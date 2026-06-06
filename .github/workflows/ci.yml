@@ -1,0 +1,49 @@
+name: CI — Build & Test
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  build-and-test:
+    name: Build & Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-22.04]
+        compiler: [gcc, clang]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q gcc clang make
+
+      - name: Build (release)
+        run: make release CC=${{ matrix.compiler }}
+
+      - name: Run tests
+        run: make test CC=${{ matrix.compiler }}
+
+      - name: Build (debug + sanitizers)
+        run: make debug CC=${{ matrix.compiler }}
+
+  build-macos:
+    name: Build & Test (macOS)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build (release)
+        run: make release
+
+      - name: Run tests
+        run: make test

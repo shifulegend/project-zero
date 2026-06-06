@@ -1,0 +1,2 @@
+Warning: --tokenizer <path> not provided. Proceeding anyway, but text generation may fail if vocab is absent.
+[gguf-tok] Loaded 102400 tokens (gpt2), 2400 special — BOS=100000 EOS=100001 chat_template=yes

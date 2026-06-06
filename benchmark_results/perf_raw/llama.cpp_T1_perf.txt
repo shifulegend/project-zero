@@ -1,0 +1,20 @@
+error: invalid argument: -no-display-prompt
+
+ Performance counter stats for '/home/ubuntu/llama.cpp/build/bin/llama-cli -m /home/<USER>/Documents/project-zero/models/deepseek-v2-lite-chat-Q4_K_S.gguf --threads 1 -p User: List the first 10 prime numbers:\n\nAssistant: -n 5 --log-disable -no-display-prompt':
+
+        32,926,251      cycles                           #    3.883 GHz                       
+        53,075,707      instructions                     #    1.61  insn per cycle            
+           404,339      cache-references                 #   47.690 M/sec                     
+           222,423      cache-misses                     #   55.01% of all cache refs         
+         9,662,750      branches                         #    1.140 G/sec                     
+           100,052      branch-misses                    #    1.04% of all branches           
+         8,478,561      task-clock                       #    0.427 CPUs utilized             
+                46      context-switches                 #    5.425 K/sec                     
+               668      page-faults                      #   78.787 K/sec                     
+
+       0.019835314 seconds time elapsed
+
+       0.005443000 seconds user
+       0.004082000 seconds sys
+
+

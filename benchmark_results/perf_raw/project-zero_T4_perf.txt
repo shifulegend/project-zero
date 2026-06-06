@@ -1,0 +1,21 @@
+Warning: --tokenizer <path> not provided. Proceeding anyway, but text generation may fail if vocab is absent.
+Failed to allocate RunState buffers.
+
+ Performance counter stats for '/home/<USER>/Documents/project-zero/adaptive_ai_engine --model /home/<USER>/Documents/project-zero/models/deepseek-v2-lite-chat-Q4_K_S.gguf --prompt List the first 10 prime numbers: --max-tokens 5 --threads 4 --simd auto --classifier bf16 --temperature 0.0':
+
+    19,495,029,027      cycles                           #    4.167 GHz                       
+    18,259,928,448      instructions                     #    0.94  insn per cycle            
+       484,385,666      cache-references                 #  103.544 M/sec                     
+       416,148,311      cache-misses                     #   85.91% of all cache refs         
+     2,385,751,024      branches                         #  509.988 M/sec                     
+           877,497      branch-misses                    #    0.04% of all branches           
+     4,678,052,569      task-clock                       #    1.420 CPUs utilized             
+                60      context-switches                 #   12.826 /sec                      
+         2,021,752      page-faults                      #  432.178 K/sec                     
+
+       3.293303598 seconds time elapsed
+
+       2.778182000 seconds user
+       2.114899000 seconds sys
+
+

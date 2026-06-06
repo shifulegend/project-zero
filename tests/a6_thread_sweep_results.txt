@@ -1,0 +1,1352 @@
+================================================================
+  Project Zero — A6 Conditions  T=1..8 Thread Sweep
+  2026-03-17 03:13:56
+================================================================
+  CPU    : 11th Gen Intel(R) Core(TM) i5-11300H @ 3.10GHz
+  Kernel : 6.17.0-19-generic
+  RAM    : 15.4 GB total
+  Governor: performance
+  earlyoom: inactive
+inactive
+  Turbo  : enabled
+  MemTotal:     : 15775 MB
+  MemFree:      : 501 MB
+  MemAvailable: : 6928 MB
+
+  Benchmark params:
+    --max-tokens 50 | --temperature 0.7 (default) | --top-p 0.9 (default)
+    No taskset | Page cache warm | Same 6 A6 prompts
+
+  A6 reference (commit 1c892f5, 2026-03-15, T=4):
+    P1 "The capital of France is"                   → 14.76 tok/s
+    P2 "The boiling point of water is"              → 14.75 tok/s
+    P3 "The largest planet in our solar system is"  → 15.72 tok/s
+    P4 "Albert Einstein was born in"                → 15.86 tok/s
+    P5 "The chemical symbol for gold is"            → 15.60 tok/s
+    P6 "The speed of light is approximately"        → 16.09 tok/s
+    Average                                         → ~15.5 tok/s
+================================================================
+
+=== Warming page cache ===
+KV Strategy: Sliding Window I4, max context: 1024 tokens
+12.51 tok/s (45 tokens)
+
+================================================================
+  T = 1 threads
+================================================================
+── Pass 1 (clean, no monitoring overhead) ──────────────────────
+  P1 "The capital of France is"                   | 5.37 tok/s
+     Answer: " Paris. B. The capital of France is Paris. C. The capital of France is Paris. "
+  P2 "The boiling point of water is"              | 5.43 tok/s
+     Answer: " 100Â°C. Answer: False The boiling point of water is actually 100Â°C at standard atmospheric pre"
+  P3 "The largest planet in our solar system is"  | 5.49 tok/s
+     Answer: " Jupiter. The smallest planet is Mercury. The sun is also a planet, but it is not a planet in the cl"
+  P4 "Albert Einstein was born in"                | 5.52 tok/s
+     Answer: " 1879 in Germany. He was a theoretical physicist and mathematician, who revolutionized the study of "
+  P5 "The chemical symbol for gold is"            | 5.52 tok/s
+     Answer: " Au. However, the chemical symbol for gold in the periodic table is not just an arbitrary notation; "
+  P6 "The speed of light is approximately"        | 5.53 tok/s
+     Answer: " 3.1 x 10^8 meters per second. If you want to calculate the time it would take for light to travel f"
+  ─── Pass 1 avg: 5.48 tok/s ─────────────────────────────────────
+
+── Pass 2 (clean run 2 — variance check) ────────────────────────
+  P1 "The capital of France is"                   | 5.12 tok/s
+  P2 "The boiling point of water is"              | 5.51 tok/s
+  P3 "The largest planet in our solar system is"  | 5.51 tok/s
+  P4 "Albert Einstein was born in"                | 5.10 tok/s
+  P5 "The chemical symbol for gold is"            | 5.52 tok/s
+  P6 "The speed of light is approximately"        | 5.51 tok/s
+  ─── Pass 2 avg: 5.38 tok/s ─────────────────────────────────────
+
+── Pass 3 (full perf + CPU/RAM/freq monitoring) ─────────────────
+  P1 "The capital of France is"                   | 5.49 tok/s  IPC:1.29  LLC-miss:97.27%  wall:9.486543992s
+     Raw perf stat:
+         88,297,358,772      instructions                     #    1.29  insn per cycle            
+         68,391,881,882      cycles                                                                
+            930,668,286      cache-references                                                      
+            192,070,157      LLC-loads                                                             
+              6,718,130      dTLB-load-misses                                                      
+          8,426,744,543      branches                                                              
+                    733      context-switches                                                      
+                 58,215      minor-faults                                                          
+                      0      major-faults                                                          
+            9.486543992 seconds time elapsed
+         88,297,358,772      instructions                     #    1.29  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  34%/  60%  CPU1:  16%/  37%  CPU2:  10%/  17%  CPU3:  36%/ 100%  CPU4:  33%/  58%  CPU5:  20%/  56%  CPU6:   8%/  15%  CPU7:  72%/ 100%  
+     Freq avg (GHz): CPU0:3.69  CPU1:3.66  CPU2:3.44  CPU3:4.00  CPU4:3.58  CPU5:3.31  CPU6:3.55  CPU7:4.00  
+     RAM: free=547MB  cache=7466MB  used=7339MB
+
+  P2 "The boiling point of water is"              | 5.53 tok/s  IPC:1.30  LLC-miss:97.14%  wall:9.422787910s
+     Raw perf stat:
+         88,300,577,278      instructions                     #    1.30  insn per cycle            
+         68,060,305,374      cycles                                                                
+            924,164,064      cache-references                                                      
+            183,941,336      LLC-loads                                                             
+              6,727,668      dTLB-load-misses                                                      
+          8,426,927,229      branches                                                              
+                    776      context-switches                                                      
+                 58,233      minor-faults                                                          
+                      0      major-faults                                                          
+            9.422787910 seconds time elapsed
+         88,300,577,278      instructions                     #    1.30  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  64%/  84%  CPU1:  13%/  19%  CPU2:   6%/   9%  CPU3:  15%/  71%  CPU4:  42%/  76%  CPU5:  53%/  80%  CPU6:   9%/  13%  CPU7:  26%/  80%  
+     Freq avg (GHz): CPU0:4.00  CPU1:3.56  CPU2:3.29  CPU3:3.51  CPU4:3.84  CPU5:3.55  CPU6:3.15  CPU7:3.71  
+     RAM: free=532MB  cache=7466MB  used=7354MB
+
+  P3 "The largest planet in our solar system is"  | 5.51 tok/s  IPC:1.29  LLC-miss:97.19%  wall:9.467052637s
+     Raw perf stat:
+         88,317,075,286      instructions                     #    1.29  insn per cycle            
+         68,279,975,664      cycles                                                                
+            921,389,716      cache-references                                                      
+            190,318,467      LLC-loads                                                             
+              6,746,190      dTLB-load-misses                                                      
+          8,430,556,790      branches                                                              
+                  1,321      context-switches                                                      
+                 58,214      minor-faults                                                          
+                      0      major-faults                                                          
+            9.467052637 seconds time elapsed
+         88,317,075,286      instructions                     #    1.29  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  24%/  75%  CPU1:  40%/  69%  CPU2:   7%/  12%  CPU3:  21%/  80%  CPU4:  20%/  70%  CPU5:  65%/  91%  CPU6:  12%/  16%  CPU7:  39%/  80%  
+     Freq avg (GHz): CPU0:3.74  CPU1:4.03  CPU2:3.36  CPU3:3.46  CPU4:3.36  CPU5:4.00  CPU6:3.61  CPU7:3.56  
+     RAM: free=529MB  cache=7466MB  used=7356MB
+
+  P4 "Albert Einstein was born in"                | 5.49 tok/s  IPC:1.30  LLC-miss:97.26%  wall:9.472875120s
+     Raw perf stat:
+         88,334,699,658      instructions                     #    1.30  insn per cycle            
+         68,212,070,022      cycles                                                                
+            919,866,064      cache-references                                                      
+            187,530,433      LLC-loads                                                             
+              6,730,451      dTLB-load-misses                                                      
+          8,434,261,168      branches                                                              
+                    672      context-switches                                                      
+                 58,390      minor-faults                                                          
+                      0      major-faults                                                          
+            9.472875120 seconds time elapsed
+         88,334,699,658      instructions                     #    1.30  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  25%/  78%  CPU1:   8%/  11%  CPU2:  43%/  72%  CPU3:   9%/  18%  CPU4:  48%/  80%  CPU5:  13%/  24%  CPU6:  63%/ 100%  CPU7:  21%/  72%  
+     Freq avg (GHz): CPU0:3.50  CPU1:3.73  CPU2:3.85  CPU3:3.48  CPU4:3.97  CPU5:3.57  CPU6:4.01  CPU7:3.71  
+     RAM: free=528MB  cache=7466MB  used=7357MB
+
+  P5 "The chemical symbol for gold is"            | 5.50 tok/s  IPC:1.29  LLC-miss:97.17%  wall:9.478532993s
+     Raw perf stat:
+         88,325,530,728      instructions                     #    1.29  insn per cycle            
+         68,360,825,371      cycles                                                                
+            920,854,798      cache-references                                                      
+            185,908,162      LLC-loads                                                             
+              6,733,377      dTLB-load-misses                                                      
+          8,432,522,701      branches                                                              
+                  1,057      context-switches                                                      
+                 58,429      minor-faults                                                          
+                      0      major-faults                                                          
+            9.478532993 seconds time elapsed
+         88,325,530,728      instructions                     #    1.29  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  29%/  63%  CPU1:  22%/  40%  CPU2:   8%/  13%  CPU3:  11%/  23%  CPU4:  25%/  61%  CPU5:  84%/  96%  CPU6:  15%/  59%  CPU7:  32%/  80%  
+     Freq avg (GHz): CPU0:3.83  CPU1:4.06  CPU2:3.11  CPU3:3.61  CPU4:3.42  CPU5:4.02  CPU6:3.52  CPU7:3.57  
+     RAM: free=527MB  cache=7467MB  used=7358MB
+
+  P6 "The speed of light is approximately"        | 5.52 tok/s  IPC:1.30  LLC-miss:97.27%  wall:9.442839005s
+     Raw perf stat:
+         88,309,018,141      instructions                     #    1.30  insn per cycle            
+         68,122,221,749      cycles                                                                
+            924,290,161      cache-references                                                      
+            187,368,000      LLC-loads                                                             
+              6,721,641      dTLB-load-misses                                                      
+          8,428,803,049      branches                                                              
+                    784      context-switches                                                      
+                 58,243      minor-faults                                                          
+                      0      major-faults                                                          
+            9.442839005 seconds time elapsed
+         88,309,018,141      instructions                     #    1.30  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  71%/  96%  CPU1:  10%/  16%  CPU2:  16%/  71%  CPU3:   9%/  13%  CPU4:  36%/  58%  CPU5:  16%/  47%  CPU6:  61%/  80%  CPU7:   9%/  15%  
+     Freq avg (GHz): CPU0:4.01  CPU1:3.29  CPU2:3.61  CPU3:3.08  CPU4:4.04  CPU5:3.36  CPU6:3.90  CPU7:3.45  
+     RAM: free=500MB  cache=7467MB  used=7385MB
+
+── T=1 Summary ─────────────────────────────────────────────────
+  Pass 1 avg (clean)  : 5.48 tok/s
+  Pass 2 avg (clean)  : 5.38 tok/s
+  Pass 3 avg (perf)   : 5.51 tok/s
+  Overall avg         : 5.45 tok/s   vs A6@T=4 (~15.5):  -10.05 tok/s
+
+  Per-prompt comparison (avg of 3 passes vs A6 ref):
+  P#  Prompt                                             P1       P2       P3      Avg   A6 ref
+  P1 "The capital of France is"                       5.37     5.12     5.49     5.33    14.76
+  P1 "The capital of France is"                       5.37     5.12     5.49     5.33    14.76
+  P2 "The boiling point of water is"                  5.43     5.51     5.53     5.49    14.75
+  P2 "The boiling point of water is"                  5.43     5.51     5.53     5.49    14.75
+  P3 "The largest planet in our solar system is"      5.49     5.51     5.51     5.50    15.72
+  P3 "The largest planet in our solar system is"      5.49     5.51     5.51     5.50    15.72
+  P4 "Albert Einstein was born in"                    5.52     5.10     5.49     5.37    15.86
+  P4 "Albert Einstein was born in"                    5.52     5.10     5.49     5.37    15.86
+  P5 "The chemical symbol for gold is"                5.52     5.52     5.50     5.51    15.60
+  P5 "The chemical symbol for gold is"                5.52     5.52     5.50     5.51    15.60
+  P6 "The speed of light is approximately"            5.53     5.51     5.52     5.52    16.09
+  P6 "The speed of light is approximately"            5.53     5.51     5.52     5.52    16.09
+
+================================================================
+  T = 2 threads
+================================================================
+── Pass 1 (clean, no monitoring overhead) ──────────────────────
+  P1 "The capital of France is"                   | 9.79 tok/s
+     Answer: " Paris, which is located in the north-central part of the country. It is known for its cultural, his"
+  P2 "The boiling point of water is"              | 9.74 tok/s
+     Answer: " 100Â°C. Therefore, 100g of water will boil at 100Â°C. The boiling point of water is not depende"
+  P3 "The largest planet in our solar system is"  | 9.67 tok/s
+     Answer: " Jupiter. Jupiter is the fifth planet from the sun and is known for its massive size. It is a gas gi"
+  P4 "Albert Einstein was born in"                | 9.82 tok/s
+     Answer: " 1879 in Ulm, Germany. This was a time of great change and innovation, with the Industrial Revolutio"
+  P5 "The chemical symbol for gold is"            | 9.82 tok/s
+     Answer: " Au, and the atomic number is 79. This means that gold has 79 protons and 79 electrons, giving it a "
+  P6 "The speed of light is approximately"        | 9.79 tok/s
+     Answer: " 300,000,000 meters per second. The speed of sound is about 343 meters per second. If you want to co"
+  ─── Pass 1 avg: 9.77 tok/s ─────────────────────────────────────
+
+── Pass 2 (clean run 2 — variance check) ────────────────────────
+  P1 "The capital of France is"                   | 9.78 tok/s
+  P2 "The boiling point of water is"              | 9.86 tok/s
+  P3 "The largest planet in our solar system is"  | 9.68 tok/s
+  P4 "Albert Einstein was born in"                | 9.78 tok/s
+  P5 "The chemical symbol for gold is"            | 9.81 tok/s
+  P6 "The speed of light is approximately"        | 9.74 tok/s
+  ─── Pass 2 avg: 9.78 tok/s ─────────────────────────────────────
+
+── Pass 3 (full perf + CPU/RAM/freq monitoring) ─────────────────
+  P1 "The capital of France is"                   | 9.64 tok/s  IPC:1.48  LLC-miss:95.46%  wall:5.456687369s
+     Raw perf stat:
+         87,842,618,439      instructions                     #    1.48  insn per cycle            
+         59,333,192,455      cycles                                                                
+            929,179,539      cache-references                                                      
+            170,874,269      LLC-loads                                                             
+              6,751,290      dTLB-load-misses                                                      
+          8,275,302,427      branches                                                              
+                    345      context-switches                                                      
+                 58,413      minor-faults                                                          
+                      0      major-faults                                                          
+            5.456687369 seconds time elapsed
+         87,842,618,439      instructions                     #    1.48  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  28%/  68%  CPU1:  18%/  29%  CPU2:  31%/  59%  CPU3:  35%/  67%  CPU4:  15%/  25%  CPU5:  92%/ 100%  CPU6:  57%/  90%  CPU7:  56%/ 100%  
+     Freq avg (GHz): CPU0:3.96  CPU1:4.00  CPU2:3.97  CPU3:4.00  CPU4:3.99  CPU5:4.00  CPU6:3.98  CPU7:4.00  
+     RAM: free=461MB  cache=7468MB  used=7423MB
+
+  P2 "The boiling point of water is"              | 9.73 tok/s  IPC:1.50  LLC-miss:95.51%  wall:5.388121807s
+     Raw perf stat:
+         87,795,814,652      instructions                     #    1.50  insn per cycle            
+         58,680,114,518      cycles                                                                
+            925,904,681      cache-references                                                      
+            173,878,097      LLC-loads                                                             
+              6,750,635      dTLB-load-misses                                                      
+          8,263,927,581      branches                                                              
+                    460      context-switches                                                      
+                 58,311      minor-faults                                                          
+                      0      major-faults                                                          
+            5.388121807 seconds time elapsed
+         87,795,814,652      instructions                     #    1.50  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  12%/  17%  CPU1:  25%/  51%  CPU2:  20%/  48%  CPU3:  17%/  25%  CPU4:  11%/  20%  CPU5:  83%/ 100%  CPU6:  88%/ 100%  CPU7:  74%/  78%  
+     Freq avg (GHz): CPU0:3.73  CPU1:4.00  CPU2:4.00  CPU3:3.68  CPU4:3.91  CPU5:4.00  CPU6:4.00  CPU7:3.70  
+     RAM: free=488MB  cache=7468MB  used=7396MB
+
+  P3 "The largest planet in our solar system is"  | 9.74 tok/s  IPC:1.49  LLC-miss:95.48%  wall:5.402789618s
+     Raw perf stat:
+         87,789,215,303      instructions                     #    1.49  insn per cycle            
+         58,788,225,261      cycles                                                                
+            926,397,984      cache-references                                                      
+            172,556,010      LLC-loads                                                             
+              6,740,861      dTLB-load-misses                                                      
+          8,262,007,808      branches                                                              
+                    406      context-switches                                                      
+                 58,298      minor-faults                                                          
+                      0      major-faults                                                          
+            5.402789618 seconds time elapsed
+         87,789,215,303      instructions                     #    1.49  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  43%/  66%  CPU1:  18%/  23%  CPU2:  17%/  26%  CPU3:  12%/  14%  CPU4:  38%/  57%  CPU5:  89%/ 100%  CPU6:  75%/ 100%  CPU7:  41%/  66%  
+     Freq avg (GHz): CPU0:3.78  CPU1:3.99  CPU2:4.03  CPU3:3.95  CPU4:3.97  CPU5:4.00  CPU6:3.94  CPU7:3.94  
+     RAM: free=434MB  cache=7468MB  used=7450MB
+
+  P4 "Albert Einstein was born in"                | 9.63 tok/s  IPC:1.40  LLC-miss:95.21%  wall:6.276321242s
+     Raw perf stat:
+         88,068,702,717      instructions                     #    1.40  insn per cycle            
+         62,795,077,996      cycles                                                                
+            931,039,994      cache-references                                                      
+            163,226,874      LLC-loads                                                             
+              6,736,118      dTLB-load-misses                                                      
+          8,342,938,583      branches                                                              
+                  1,033      context-switches                                                      
+                 58,597      minor-faults                                                          
+                      0      major-faults                                                          
+            6.276321242 seconds time elapsed
+         88,068,702,717      instructions                     #    1.40  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  38%/  90%  CPU1:  28%/  88%  CPU2:  32%/  89%  CPU3:  49%/  89%  CPU4:  40%/  99%  CPU5:  74%/  95%  CPU6:  93%/ 100%  CPU7:  53%/  99%  
+     Freq avg (GHz): CPU0:3.94  CPU1:4.00  CPU2:4.00  CPU3:3.98  CPU4:3.94  CPU5:3.79  CPU6:4.00  CPU7:4.00  
+     RAM: free=444MB  cache=7468MB  used=7440MB
+
+  P5 "The chemical symbol for gold is"            | 9.72 tok/s  IPC:1.49  LLC-miss:95.54%  wall:5.406209437s
+     Raw perf stat:
+         87,803,555,270      instructions                     #    1.49  insn per cycle            
+         58,828,606,419      cycles                                                                
+            926,631,000      cache-references                                                      
+            172,769,579      LLC-loads                                                             
+              6,749,279      dTLB-load-misses                                                      
+          8,265,950,312      branches                                                              
+                    369      context-switches                                                      
+                 58,378      minor-faults                                                          
+                      0      major-faults                                                          
+            5.406209437 seconds time elapsed
+         87,803,555,270      instructions                     #    1.49  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  45%/  92%  CPU1:  18%/  28%  CPU2:  29%/  55%  CPU3:  31%/  64%  CPU4:  14%/  23%  CPU5:  57%/  89%  CPU6:  81%/ 100%  CPU7:  57%/  78%  
+     Freq avg (GHz): CPU0:3.97  CPU1:3.96  CPU2:4.00  CPU3:3.63  CPU4:3.98  CPU5:3.85  CPU6:4.00  CPU7:3.99  
+     RAM: free=428MB  cache=7467MB  used=7457MB
+
+  P6 "The speed of light is approximately"        | 9.73 tok/s  IPC:1.49  LLC-miss:95.51%  wall:5.401545296s
+     Raw perf stat:
+         87,780,904,487      instructions                     #    1.49  insn per cycle            
+         58,789,903,578      cycles                                                                
+            926,988,559      cache-references                                                      
+            173,165,065      LLC-loads                                                             
+              6,734,153      dTLB-load-misses                                                      
+          8,260,274,514      branches                                                              
+                    376      context-switches                                                      
+                 58,243      minor-faults                                                          
+                      0      major-faults                                                          
+            5.401545296 seconds time elapsed
+         87,780,904,487      instructions                     #    1.49  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  25%/  45%  CPU1:  20%/  36%  CPU2:  17%/  28%  CPU3:  31%/  46%  CPU4:  27%/  56%  CPU5:  65%/  98%  CPU6:  95%/ 100%  CPU7:  52%/  99%  
+     Freq avg (GHz): CPU0:3.85  CPU1:3.95  CPU2:4.01  CPU3:3.93  CPU4:3.70  CPU5:3.94  CPU6:3.73  CPU7:3.95  
+     RAM: free=451MB  cache=7464MB  used=7437MB
+
+── T=2 Summary ─────────────────────────────────────────────────
+  Pass 1 avg (clean)  : 9.77 tok/s
+  Pass 2 avg (clean)  : 9.78 tok/s
+  Pass 3 avg (perf)   : 9.70 tok/s
+  Overall avg         : 9.75 tok/s   vs A6@T=4 (~15.5):  -5.75 tok/s
+
+  Per-prompt comparison (avg of 3 passes vs A6 ref):
+  P#  Prompt                                             P1       P2       P3      Avg   A6 ref
+  P1 "The capital of France is"                       9.79     9.78     9.64     9.74    14.76
+  P1 "The capital of France is"                       9.79     9.78     9.64     9.74    14.76
+  P2 "The boiling point of water is"                  9.74     9.86     9.73     9.78    14.75
+  P2 "The boiling point of water is"                  9.74     9.86     9.73     9.78    14.75
+  P3 "The largest planet in our solar system is"      9.67     9.68     9.74     9.70    15.72
+  P3 "The largest planet in our solar system is"      9.67     9.68     9.74     9.70    15.72
+  P4 "Albert Einstein was born in"                    9.82     9.78     9.63     9.74    15.86
+  P4 "Albert Einstein was born in"                    9.82     9.78     9.63     9.74    15.86
+  P5 "The chemical symbol for gold is"                9.82     9.81     9.72     9.78    15.60
+  P5 "The chemical symbol for gold is"                9.82     9.81     9.72     9.78    15.60
+  P6 "The speed of light is approximately"            9.79     9.74     9.73     9.75    16.09
+  P6 "The speed of light is approximately"            9.79     9.74     9.73     9.75    16.09
+
+================================================================
+  T = 3 threads
+================================================================
+── Pass 1 (clean, no monitoring overhead) ──────────────────────
+  P1 "The capital of France is"                   | 12.74 tok/s
+     Answer: " Paris. A: Paris The capital of France is Paris. "
+  P2 "The boiling point of water is"              | 12.58 tok/s
+     Answer: " 100 degrees Celsius. This is a fundamental property of water and is determined by its molecular str"
+  P3 "The largest planet in our solar system is"  | 12.41 tok/s
+     Answer: " Jupiter. The smallest is Mercury. The other planets are all in between. Jupiter is the fourth plane"
+  P4 "Albert Einstein was born in"                | 12.84 tok/s
+     Answer: " 1879, and he was one of the greatest physicists of the 20th century. He was known for his theory of"
+  P5 "The chemical symbol for gold is"            | 12.75 tok/s
+     Answer: " Au. It is the symbol for the element gold. Gold is a soft, yellow metal that is very valuable. It i"
+  P6 "The speed of light is approximately"        | 12.90 tok/s
+     Answer: " 300,000 kilometers per second. How many miles does the speed of light travel in one hour? Express y"
+  ─── Pass 1 avg: 12.70 tok/s ─────────────────────────────────────
+
+── Pass 2 (clean run 2 — variance check) ────────────────────────
+  P1 "The capital of France is"                   | 12.91 tok/s
+  P2 "The boiling point of water is"              | 12.85 tok/s
+  P3 "The largest planet in our solar system is"  | 12.78 tok/s
+  P4 "Albert Einstein was born in"                | 12.50 tok/s
+  P5 "The chemical symbol for gold is"            | 12.90 tok/s
+  P6 "The speed of light is approximately"        | 12.92 tok/s
+  ─── Pass 2 avg: 12.81 tok/s ─────────────────────────────────────
+
+── Pass 3 (full perf + CPU/RAM/freq monitoring) ─────────────────
+  P1 "The capital of France is"                   | 12.78 tok/s  IPC:1.42  LLC-miss:92.83%  wall:4.245040519s
+     Raw perf stat:
+         87,745,559,301      instructions                     #    1.42  insn per cycle            
+         61,654,647,743      cycles                                                                
+            935,258,161      cache-references                                                      
+            144,006,186      LLC-loads                                                             
+              6,762,400      dTLB-load-misses                                                      
+          8,250,390,119      branches                                                              
+                    348      context-switches                                                      
+                 58,220      minor-faults                                                          
+                      0      major-faults                                                          
+            4.245040519 seconds time elapsed
+         87,745,559,301      instructions                     #    1.42  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  38%/  70%  CPU1:  28%/  65%  CPU2:  37%/  53%  CPU3:  38%/  57%  CPU4:  79%/  99%  CPU5:  97%/ 100%  CPU6:  64%/  80%  CPU7:  47%/  72%  
+     Freq avg (GHz): CPU0:3.99  CPU1:3.99  CPU2:3.96  CPU3:3.98  CPU4:4.00  CPU5:4.00  CPU6:4.00  CPU7:4.00  
+     RAM: free=501MB  cache=7455MB  used=7395MB
+
+  P2 "The boiling point of water is"              | 12.55 tok/s  IPC:1.44  LLC-miss:92.88%  wall:4.211721812s
+     Raw perf stat:
+         87,730,717,271      instructions                     #    1.44  insn per cycle            
+         60,986,934,046      cycles                                                                
+            936,697,568      cache-references                                                      
+            148,023,757      LLC-loads                                                             
+              6,804,695      dTLB-load-misses                                                      
+          8,243,394,499      branches                                                              
+                    293      context-switches                                                      
+                 58,483      minor-faults                                                          
+                      0      major-faults                                                          
+            4.211721812 seconds time elapsed
+         87,730,717,271      instructions                     #    1.44  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  56%/  68%  CPU1:  21%/  27%  CPU2:  39%/  67%  CPU3:  45%/  59%  CPU4:  51%/  69%  CPU5:  64%/  90%  CPU6:  76%/  99%  CPU7:  79%/ 100%  
+     Freq avg (GHz): CPU0:4.00  CPU1:3.99  CPU2:4.00  CPU3:4.00  CPU4:4.00  CPU5:3.97  CPU6:4.00  CPU7:4.00  
+     RAM: free=502MB  cache=7455MB  used=7394MB
+
+  P3 "The largest planet in our solar system is"  | 12.91 tok/s  IPC:1.47  LLC-miss:93.34%  wall:4.110727857s
+     Raw perf stat:
+         87,672,655,357      instructions                     #    1.47  insn per cycle            
+         59,616,713,822      cycles                                                                
+            937,756,620      cache-references                                                      
+            155,573,937      LLC-loads                                                             
+              6,800,254      dTLB-load-misses                                                      
+          8,228,134,048      branches                                                              
+                    322      context-switches                                                      
+                 58,214      minor-faults                                                          
+                      0      major-faults                                                          
+            4.110727857 seconds time elapsed
+         87,672,655,357      instructions                     #    1.47  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  50%/  94%  CPU1:  21%/  32%  CPU2:  36%/  79%  CPU3:  47%/  63%  CPU4:  62%/  86%  CPU5:  75%/  95%  CPU6:  67%/ 100%  CPU7:  70%/  85%  
+     Freq avg (GHz): CPU0:4.00  CPU1:3.99  CPU2:4.00  CPU3:4.00  CPU4:4.00  CPU5:3.99  CPU6:4.00  CPU7:4.00  
+     RAM: free=466MB  cache=7455MB  used=7430MB
+
+  P4 "Albert Einstein was born in"                | 12.74 tok/s  IPC:1.45  LLC-miss:92.57%  wall:4.175039434s
+     Raw perf stat:
+         87,759,923,993      instructions                     #    1.45  insn per cycle            
+         60,624,267,433      cycles                                                                
+            937,928,561      cache-references                                                      
+            151,161,599      LLC-loads                                                             
+              6,793,705      dTLB-load-misses                                                      
+          8,250,193,418      branches                                                              
+                    501      context-switches                                                      
+                 58,356      minor-faults                                                          
+                      0      major-faults                                                          
+            4.175039434 seconds time elapsed
+         87,759,923,993      instructions                     #    1.45  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  32%/  50%  CPU1:  35%/  67%  CPU2:  43%/  70%  CPU3:  33%/  55%  CPU4:  47%/  85%  CPU5:  94%/  98%  CPU6:  57%/ 100%  CPU7:  90%/ 100%  
+     Freq avg (GHz): CPU0:3.93  CPU1:4.00  CPU2:3.93  CPU3:3.98  CPU4:3.93  CPU5:4.00  CPU6:4.00  CPU7:3.67  
+     RAM: free=473MB  cache=7455MB  used=7423MB
+
+  P5 "The chemical symbol for gold is"            | 13.00 tok/s  IPC:1.48  LLC-miss:93.22%  wall:4.085436908s
+     Raw perf stat:
+         87,668,669,284      instructions                     #    1.48  insn per cycle            
+         59,312,279,939      cycles                                                                
+            936,686,902      cache-references                                                      
+            154,323,011      LLC-loads                                                             
+              6,785,736      dTLB-load-misses                                                      
+          8,225,889,510      branches                                                              
+                    327      context-switches                                                      
+                 58,208      minor-faults                                                          
+                      0      major-faults                                                          
+            4.085436908 seconds time elapsed
+         87,668,669,284      instructions                     #    1.48  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  44%/  71%  CPU1:  22%/  40%  CPU2:  43%/  62%  CPU3:  19%/  23%  CPU4:  72%/  85%  CPU5:  99%/ 100%  CPU6:  60%/  86%  CPU7:  77%/ 100%  
+     Freq avg (GHz): CPU0:4.00  CPU1:4.00  CPU2:3.98  CPU3:4.00  CPU4:4.00  CPU5:4.00  CPU6:3.69  CPU7:4.00  
+     RAM: free=424MB  cache=7455MB  used=7472MB
+
+  P6 "The speed of light is approximately"        | 12.92 tok/s  IPC:1.47  LLC-miss:93.25%  wall:4.102281822s
+     Raw perf stat:
+         87,683,454,761      instructions                     #    1.47  insn per cycle            
+         59,507,716,756      cycles                                                                
+            935,043,197      cache-references                                                      
+            149,438,380      LLC-loads                                                             
+              6,796,819      dTLB-load-misses                                                      
+          8,230,446,607      branches                                                              
+                    280      context-switches                                                      
+                 58,244      minor-faults                                                          
+                      0      major-faults                                                          
+            4.102281822 seconds time elapsed
+         87,683,454,761      instructions                     #    1.47  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  31%/  49%  CPU1:  18%/  26%  CPU2:  27%/  41%  CPU3:  48%/  73%  CPU4:  70%/  89%  CPU5:  93%/ 100%  CPU6:  90%/ 100%  CPU7:  55%/  83%  
+     Freq avg (GHz): CPU0:3.99  CPU1:3.98  CPU2:4.00  CPU3:3.95  CPU4:4.00  CPU5:4.00  CPU6:4.00  CPU7:3.87  
+     RAM: free=468MB  cache=7453MB  used=7430MB
+
+── T=3 Summary ─────────────────────────────────────────────────
+  Pass 1 avg (clean)  : 12.70 tok/s
+  Pass 2 avg (clean)  : 12.81 tok/s
+  Pass 3 avg (perf)   : 12.82 tok/s
+  Overall avg         : 12.78 tok/s   vs A6@T=4 (~15.5):  -2.72 tok/s
+
+  Per-prompt comparison (avg of 3 passes vs A6 ref):
+  P#  Prompt                                             P1       P2       P3      Avg   A6 ref
+  P1 "The capital of France is"                      12.74    12.91    12.78    12.81    14.76
+  P1 "The capital of France is"                      12.74    12.91    12.78    12.81    14.76
+  P2 "The boiling point of water is"                 12.58    12.85    12.55    12.66    14.75
+  P2 "The boiling point of water is"                 12.58    12.85    12.55    12.66    14.75
+  P3 "The largest planet in our solar system is"     12.41    12.78    12.91    12.70    15.72
+  P3 "The largest planet in our solar system is"     12.41    12.78    12.91    12.70    15.72
+  P4 "Albert Einstein was born in"                   12.84    12.50    12.74    12.69    15.86
+  P4 "Albert Einstein was born in"                   12.84    12.50    12.74    12.69    15.86
+  P5 "The chemical symbol for gold is"               12.75    12.90    13.00    12.88    15.60
+  P5 "The chemical symbol for gold is"               12.75    12.90    13.00    12.88    15.60
+  P6 "The speed of light is approximately"           12.90    12.92    12.92    12.91    16.09
+  P6 "The speed of light is approximately"           12.90    12.92    12.92    12.91    16.09
+
+================================================================
+  T = 4 threads
+================================================================
+── Pass 1 (clean, no monitoring overhead) ──────────────────────
+  P1 "The capital of France is"                   | 13.47 tok/s
+     Answer: " Paris. In the United States, the capital is Washington, D.C. The capital of Australia is Canberra. "
+  P2 "The boiling point of water is"              | 14.34 tok/s
+     Answer: " 100Â°C. This means that water can only be vaporized when the temperature reaches 100Â°C. If the"
+  P3 "The largest planet in our solar system is"  | 13.65 tok/s
+     Answer: " Jupiter. Jupiter is the fifth planet from the sun, and is the largest planet in our solar system. J"
+  P4 "Albert Einstein was born in"                | 13.70 tok/s
+     Answer: " 1879 in Germany and he was a German-born American physicist. Albert Einstein is famous for his theo"
+  P5 "The chemical symbol for gold is"            | 14.14 tok/s
+     Answer: " Au. Answer: Au. Gold is represented by the chemical symbol Au in the periodic table. This symbol is"
+  P6 "The speed of light is approximately"        | 13.58 tok/s
+     Answer: " 3 x 10^8 meters per second. This is the maximum speed at which any object or information can travel"
+  ─── Pass 1 avg: 13.81 tok/s ─────────────────────────────────────
+
+── Pass 2 (clean run 2 — variance check) ────────────────────────
+  P1 "The capital of France is"                   | 13.90 tok/s
+  P2 "The boiling point of water is"              | 14.85 tok/s
+  P3 "The largest planet in our solar system is"  | 14.06 tok/s
+  P4 "Albert Einstein was born in"                | 13.57 tok/s
+  P5 "The chemical symbol for gold is"            | 9.77 tok/s
+  P6 "The speed of light is approximately"        | 14.25 tok/s
+  ─── Pass 2 avg: 13.40 tok/s ─────────────────────────────────────
+
+── Pass 3 (full perf + CPU/RAM/freq monitoring) ─────────────────
+  P1 "The capital of France is"                   | 11.00 tok/s  IPC:1.20  LLC-miss:88.76%  wall:4.696888449s
+     Raw perf stat:
+         88,164,172,507      instructions                     #    1.20  insn per cycle            
+         73,462,802,143      cycles                                                                
+            946,263,372      cache-references                                                      
+            132,008,994      LLC-loads                                                             
+              6,880,022      dTLB-load-misses                                                      
+          8,396,133,203      branches                                                              
+                  1,999      context-switches                                                      
+                 58,531      minor-faults                                                          
+                      0      major-faults                                                          
+            4.696888449 seconds time elapsed
+         88,164,172,507      instructions                     #    1.20  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  64%/  95%  CPU1:  59%/  95%  CPU2:  73%/ 100%  CPU3:  68%/ 100%  CPU4:  91%/  99%  CPU5:  97%/ 100%  CPU6:  68%/  91%  CPU7:  85%/  95%  
+     Freq avg (GHz): CPU0:4.00  CPU1:4.00  CPU2:4.00  CPU3:4.00  CPU4:4.00  CPU5:4.00  CPU6:4.00  CPU7:4.00  
+     RAM: free=744MB  cache=7449MB  used=7159MB
+
+  P2 "The boiling point of water is"              | 13.32 tok/s  IPC:1.21  LLC-miss:88.75%  wall:4.022945753s
+     Raw perf stat:
+         87,943,449,462      instructions                     #    1.21  insn per cycle            
+         72,844,320,880      cycles                                                                
+            938,769,198      cache-references                                                      
+            122,443,758      LLC-loads                                                             
+              6,918,816      dTLB-load-misses                                                      
+          8,318,005,992      branches                                                              
+                    539      context-switches                                                      
+                 58,485      minor-faults                                                          
+                      0      major-faults                                                          
+            4.022945753 seconds time elapsed
+         87,943,449,462      instructions                     #    1.21  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  65%/  82%  CPU1:  39%/  49%  CPU2:  70%/  95%  CPU3:  86%/ 100%  CPU4:  48%/  75%  CPU5:  87%/  98%  CPU6:  60%/  88%  CPU7:  74%/ 100%  
+     Freq avg (GHz): CPU0:3.96  CPU1:4.00  CPU2:3.60  CPU3:3.60  CPU4:3.59  CPU5:4.00  CPU6:3.97  CPU7:3.99  
+     RAM: free=744MB  cache=7449MB  used=7158MB
+
+  P3 "The largest planet in our solar system is"  | 12.68 tok/s  IPC:1.16  LLC-miss:87.99%  wall:4.167770769s
+     Raw perf stat:
+         87,903,967,222      instructions                     #    1.16  insn per cycle            
+         75,917,129,346      cycles                                                                
+            932,790,364      cache-references                                                      
+            108,150,433      LLC-loads                                                             
+              6,786,858      dTLB-load-misses                                                      
+          8,305,334,797      branches                                                              
+                    531      context-switches                                                      
+                 58,279      minor-faults                                                          
+                      0      major-faults                                                          
+            4.167770769 seconds time elapsed
+         87,903,967,222      instructions                     #    1.16  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  54%/  90%  CPU1:  30%/  34%  CPU2:  78%/  92%  CPU3:  72%/ 100%  CPU4:  73%/ 100%  CPU5:  59%/  65%  CPU6:  71%/ 100%  CPU7:  91%/ 100%  
+     Freq avg (GHz): CPU0:4.00  CPU1:4.00  CPU2:4.00  CPU3:3.98  CPU4:4.00  CPU5:4.00  CPU6:4.00  CPU7:4.00  
+     RAM: free=658MB  cache=7449MB  used=7244MB
+
+  P4 "Albert Einstein was born in"                | 13.47 tok/s  IPC:1.22  LLC-miss:88.86%  wall:3.970904808s
+     Raw perf stat:
+         87,909,604,897      instructions                     #    1.22  insn per cycle            
+         72,152,068,925      cycles                                                                
+            938,752,794      cache-references                                                      
+            125,844,881      LLC-loads                                                             
+              6,813,609      dTLB-load-misses                                                      
+          8,309,832,497      branches                                                              
+                    554      context-switches                                                      
+                 58,212      minor-faults                                                          
+                      0      major-faults                                                          
+            3.970904808 seconds time elapsed
+         87,909,604,897      instructions                     #    1.22  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  73%/  90%  CPU1:  34%/  64%  CPU2:  76%/  93%  CPU3:  67%/  75%  CPU4:  64%/  98%  CPU5:  80%/  98%  CPU6:  43%/  72%  CPU7:  92%/ 100%  
+     Freq avg (GHz): CPU0:4.00  CPU1:3.99  CPU2:3.96  CPU3:3.84  CPU4:4.00  CPU5:4.00  CPU6:3.90  CPU7:4.00  
+     RAM: free=664MB  cache=7449MB  used=7238MB
+
+  P5 "The chemical symbol for gold is"            | 14.06 tok/s  IPC:1.26  LLC-miss:88.96%  wall:3.831570792s
+     Raw perf stat:
+         87,864,198,491      instructions                     #    1.26  insn per cycle            
+         69,765,392,908      cycles                                                                
+            942,328,569      cache-references                                                      
+            127,627,216      LLC-loads                                                             
+              6,805,007      dTLB-load-misses                                                      
+          8,293,443,199      branches                                                              
+                    456      context-switches                                                      
+                 58,306      minor-faults                                                          
+                      0      major-faults                                                          
+            3.831570792 seconds time elapsed
+         87,864,198,491      instructions                     #    1.26  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  66%/  82%  CPU1:  36%/  47%  CPU2:  55%/  74%  CPU3:  69%/  86%  CPU4:  84%/  93%  CPU5:  81%/  90%  CPU6:  66%/  71%  CPU7:  72%/ 100%  
+     Freq avg (GHz): CPU0:4.00  CPU1:4.00  CPU2:4.00  CPU3:4.00  CPU4:4.00  CPU5:4.00  CPU6:4.00  CPU7:4.00  
+     RAM: free=638MB  cache=7449MB  used=7264MB
+
+  P6 "The speed of light is approximately"        | 13.11 tok/s  IPC:1.19  LLC-miss:88.84%  wall:4.054054481s
+     Raw perf stat:
+         87,961,104,811      instructions                     #    1.19  insn per cycle            
+         73,665,254,189      cycles                                                                
+            935,412,264      cache-references                                                      
+            117,679,734      LLC-loads                                                             
+              6,826,020      dTLB-load-misses                                                      
+          8,323,725,980      branches                                                              
+                    889      context-switches                                                      
+                 58,302      minor-faults                                                          
+                      0      major-faults                                                          
+            4.054054481 seconds time elapsed
+         87,961,104,811      instructions                     #    1.19  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  61%/  86%  CPU1:  60%/  76%  CPU2:  71%/  96%  CPU3:  61%/  88%  CPU4:  46%/  85%  CPU5:  86%/  99%  CPU6:  85%/  98%  CPU7:  53%/  99%  
+     Freq avg (GHz): CPU0:3.99  CPU1:4.00  CPU2:4.00  CPU3:4.00  CPU4:3.98  CPU5:4.00  CPU6:4.00  CPU7:4.00  
+     RAM: free=619MB  cache=7449MB  used=7283MB
+
+── T=4 Summary ─────────────────────────────────────────────────
+  Pass 1 avg (clean)  : 13.81 tok/s
+  Pass 2 avg (clean)  : 13.40 tok/s
+  Pass 3 avg (perf)   : 12.94 tok/s
+  Overall avg         : 13.38 tok/s   vs A6@T=4 (~15.5):  -2.12 tok/s
+
+  Per-prompt comparison (avg of 3 passes vs A6 ref):
+  P#  Prompt                                             P1       P2       P3      Avg   A6 ref
+  P1 "The capital of France is"                      13.47    13.90    11.00    12.79    14.76
+  P1 "The capital of France is"                      13.47    13.90    11.00    12.79    14.76
+  P2 "The boiling point of water is"                 14.34    14.85    13.32    14.17    14.75
+  P2 "The boiling point of water is"                 14.34    14.85    13.32    14.17    14.75
+  P3 "The largest planet in our solar system is"     13.65    14.06    12.68    13.46    15.72
+  P3 "The largest planet in our solar system is"     13.65    14.06    12.68    13.46    15.72
+  P4 "Albert Einstein was born in"                   13.70    13.57    13.47    13.58    15.86
+  P4 "Albert Einstein was born in"                   13.70    13.57    13.47    13.58    15.86
+  P5 "The chemical symbol for gold is"               14.14     9.77    14.06    12.66    15.60
+  P5 "The chemical symbol for gold is"               14.14     9.77    14.06    12.66    15.60
+  P6 "The speed of light is approximately"           13.58    14.25    13.11    13.65    16.09
+  P6 "The speed of light is approximately"           13.58    14.25    13.11    13.65    16.09
+
+================================================================
+  T = 5 threads
+================================================================
+── Pass 1 (clean, no monitoring overhead) ──────────────────────
+  P1 "The capital of France is"                   | 14.74 tok/s
+     Answer: " Paris, which is also known as the City of Light. The capital of France is Paris, which is also know"
+  P2 "The boiling point of water is"              | 14.72 tok/s
+     Answer: " 100 degrees Celsius at standard atmospheric pressure, but it can vary depending on the altitude and"
+  P3 "The largest planet in our solar system is"  | 14.70 tok/s
+     Answer: " Jupiter. Jupiter is a gas giant planet, meaning that it is mostly composed of hydrogen and helium. "
+  P4 "Albert Einstein was born in"                | 14.64 tok/s
+     Answer: " 1879 in Ulm, Germany. He had a strong interest in mathematics and physics. He was the youngest of t"
+  P5 "The chemical symbol for gold is"            | 14.85 tok/s
+     Answer: " Au, and it has a molar mass of 197.04 g/mol. Calculate the number of moles in a 5-gram sample of go"
+  P6 "The speed of light is approximately"        | 14.60 tok/s
+     Answer: " 300,000 kilometers per second. Celsius temperature is 273 degrees. What is the temperature in Kelvi"
+  ─── Pass 1 avg: 14.71 tok/s ─────────────────────────────────────
+
+── Pass 2 (clean run 2 — variance check) ────────────────────────
+  P1 "The capital of France is"                   | 14.73 tok/s
+  P2 "The boiling point of water is"              | 14.81 tok/s
+  P3 "The largest planet in our solar system is"  | 14.72 tok/s
+  P4 "Albert Einstein was born in"                | 14.70 tok/s
+  P5 "The chemical symbol for gold is"            | 14.63 tok/s
+  P6 "The speed of light is approximately"        | 14.76 tok/s
+  ─── Pass 2 avg: 14.72 tok/s ─────────────────────────────────────
+
+── Pass 3 (full perf + CPU/RAM/freq monitoring) ─────────────────
+  P1 "The capital of France is"                   | 14.68 tok/s  IPC:1.11  LLC-miss:85.57%  wall:3.610579484s
+     Raw perf stat:
+         87,863,321,990      instructions                     #    1.11  insn per cycle            
+         78,855,098,240      cycles                                                                
+            935,118,099      cache-references                                                      
+            101,888,106      LLC-loads                                                             
+              6,808,540      dTLB-load-misses                                                      
+          8,277,700,282      branches                                                              
+                  1,215      context-switches                                                      
+                 58,540      minor-faults                                                          
+                      0      major-faults                                                          
+            3.610579484 seconds time elapsed
+         87,863,321,990      instructions                     #    1.11  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  35%/  40%  CPU1:  58%/  68%  CPU2:  92%/ 100%  CPU3:  97%/ 100%  CPU4:  64%/  88%  CPU5:  78%/  92%  CPU6:  96%/ 100%  CPU7:  97%/ 100%  
+     Freq avg (GHz): CPU0:3.98  CPU1:3.98  CPU2:4.00  CPU3:4.00  CPU4:4.00  CPU5:4.00  CPU6:3.99  CPU7:4.00  
+     RAM: free=490MB  cache=7448MB  used=7413MB
+
+  P2 "The boiling point of water is"              | 14.55 tok/s  IPC:1.11  LLC-miss:85.24%  wall:3.668370491s
+     Raw perf stat:
+         88,008,798,415      instructions                     #    1.11  insn per cycle            
+         79,550,665,526      cycles                                                                
+            938,740,314      cache-references                                                      
+            107,152,067      LLC-loads                                                             
+              6,849,482      dTLB-load-misses                                                      
+          8,327,599,206      branches                                                              
+                  1,351      context-switches                                                      
+                 58,541      minor-faults                                                          
+                      0      major-faults                                                          
+            3.668370491 seconds time elapsed
+         88,008,798,415      instructions                     #    1.11  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  83%/  85%  CPU1:  57%/  81%  CPU2:  80%/ 100%  CPU3:  80%/  92%  CPU4:  80%/  90%  CPU5:  86%/  92%  CPU6:  81%/ 100%  CPU7:  78%/  92%  
+     Freq avg (GHz): CPU0:4.00  CPU1:4.00  CPU2:4.00  CPU3:4.00  CPU4:4.00  CPU5:4.00  CPU6:4.00  CPU7:4.00  
+     RAM: free=365MB  cache=7448MB  used=7537MB
+
+  P3 "The largest planet in our solar system is"  | 14.80 tok/s  IPC:1.12  LLC-miss:85.58%  wall:3.602104927s
+     Raw perf stat:
+         87,832,468,620      instructions                     #    1.12  insn per cycle            
+         78,601,107,235      cycles                                                                
+            935,574,268      cache-references                                                      
+            109,694,392      LLC-loads                                                             
+              6,818,372      dTLB-load-misses                                                      
+          8,279,032,675      branches                                                              
+                  1,007      context-switches                                                      
+                 58,221      minor-faults                                                          
+                      0      major-faults                                                          
+            3.602104927 seconds time elapsed
+         87,832,468,620      instructions                     #    1.12  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  84%/ 100%  CPU1:  51%/  71%  CPU2:  97%/ 100%  CPU3:  78%/  82%  CPU4:  79%/ 100%  CPU5:  66%/  91%  CPU6:  95%/ 100%  CPU7:  73%/  78%  
+     Freq avg (GHz): CPU0:3.99  CPU1:3.97  CPU2:3.99  CPU3:3.97  CPU4:3.99  CPU5:3.97  CPU6:3.99  CPU7:3.99  
+     RAM: free=389MB  cache=7448MB  used=7513MB
+
+  P4 "Albert Einstein was born in"                | 14.73 tok/s  IPC:1.11  LLC-miss:85.54%  wall:3.645019959s
+     Raw perf stat:
+         87,875,429,858      instructions                     #    1.11  insn per cycle            
+         79,448,685,569      cycles                                                                
+            934,253,106      cache-references                                                      
+            104,698,891      LLC-loads                                                             
+              6,821,657      dTLB-load-misses                                                      
+          8,289,239,565      branches                                                              
+                  1,624      context-switches                                                      
+                 58,324      minor-faults                                                          
+                      0      major-faults                                                          
+            3.645019959 seconds time elapsed
+         87,875,429,858      instructions                     #    1.11  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  55%/  71%  CPU1:  97%/ 100%  CPU2:  93%/ 100%  CPU3:  73%/  85%  CPU4:  47%/  74%  CPU5:  97%/ 100%  CPU6:  93%/ 100%  CPU7:  70%/  95%  
+     Freq avg (GHz): CPU0:3.98  CPU1:4.00  CPU2:3.86  CPU3:4.00  CPU4:3.97  CPU5:4.00  CPU6:3.99  CPU7:4.00  
+     RAM: free=389MB  cache=7448MB  used=7514MB
+
+  P5 "The chemical symbol for gold is"            | 14.64 tok/s  IPC:1.11  LLC-miss:85.27%  wall:3.648105100s
+     Raw perf stat:
+         87,934,516,970      instructions                     #    1.11  insn per cycle            
+         79,362,288,800      cycles                                                                
+            938,754,704      cache-references                                                      
+            107,256,078      LLC-loads                                                             
+              6,822,478      dTLB-load-misses                                                      
+          8,313,374,948      branches                                                              
+                  1,216      context-switches                                                      
+                 58,351      minor-faults                                                          
+                      0      major-faults                                                          
+            3.648105100 seconds time elapsed
+         87,934,516,970      instructions                     #    1.11  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  61%/  89%  CPU1:  51%/  68%  CPU2:  90%/ 100%  CPU3:  87%/  99%  CPU4:  57%/  67%  CPU5:  92%/  95%  CPU6:  97%/ 100%  CPU7:  89%/  92%  
+     Freq avg (GHz): CPU0:3.99  CPU1:4.00  CPU2:4.00  CPU3:4.00  CPU4:3.99  CPU5:4.00  CPU6:3.98  CPU7:4.00  
+     RAM: free=323MB  cache=7448MB  used=7579MB
+
+  P6 "The speed of light is approximately"        | 14.59 tok/s  IPC:1.11  LLC-miss:85.81%  wall:3.647449107s
+     Raw perf stat:
+         87,861,239,515      instructions                     #    1.11  insn per cycle            
+         79,472,053,768      cycles                                                                
+            935,349,615      cache-references                                                      
+            102,747,694      LLC-loads                                                             
+              6,850,804      dTLB-load-misses                                                      
+          8,285,472,874      branches                                                              
+                  1,796      context-switches                                                      
+                 58,252      minor-faults                                                          
+                      0      major-faults                                                          
+            3.647449107 seconds time elapsed
+         87,861,239,515      instructions                     #    1.11  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  57%/  62%  CPU1:  99%/ 100%  CPU2:  82%/  91%  CPU3:  91%/  97%  CPU4:  52%/  70%  CPU5:  97%/ 100%  CPU6:  46%/  54%  CPU7:  99%/ 100%  
+     Freq avg (GHz): CPU0:4.00  CPU1:4.00  CPU2:4.00  CPU3:4.00  CPU4:4.00  CPU5:4.00  CPU6:4.00  CPU7:4.00  
+     RAM: free=240MB  cache=7448MB  used=7663MB
+
+── T=5 Summary ─────────────────────────────────────────────────
+  Pass 1 avg (clean)  : 14.71 tok/s
+  Pass 2 avg (clean)  : 14.72 tok/s
+  Pass 3 avg (perf)   : 14.66 tok/s
+  Overall avg         : 14.70 tok/s   vs A6@T=4 (~15.5):  -0.80 tok/s
+
+  Per-prompt comparison (avg of 3 passes vs A6 ref):
+  P#  Prompt                                             P1       P2       P3      Avg   A6 ref
+  P1 "The capital of France is"                      14.74    14.73    14.68    14.72    14.76
+  P1 "The capital of France is"                      14.74    14.73    14.68    14.72    14.76
+  P2 "The boiling point of water is"                 14.72    14.81    14.55    14.69    14.75
+  P2 "The boiling point of water is"                 14.72    14.81    14.55    14.69    14.75
+  P3 "The largest planet in our solar system is"     14.70    14.72    14.80    14.74    15.72
+  P3 "The largest planet in our solar system is"     14.70    14.72    14.80    14.74    15.72
+  P4 "Albert Einstein was born in"                   14.64    14.70    14.73    14.69    15.86
+  P4 "Albert Einstein was born in"                   14.64    14.70    14.73    14.69    15.86
+  P5 "The chemical symbol for gold is"               14.85    14.63    14.64    14.71    15.60
+  P5 "The chemical symbol for gold is"               14.85    14.63    14.64    14.71    15.60
+  P6 "The speed of light is approximately"           14.60    14.76    14.59    14.65    16.09
+  P6 "The speed of light is approximately"           14.60    14.76    14.59    14.65    16.09
+
+================================================================
+  T = 6 threads
+================================================================
+── Pass 1 (clean, no monitoring overhead) ──────────────────────
+  P1 "The capital of France is"                   | 15.53 tok/s
+     Answer: " Paris. Paris is located in the north-central part of France and is known for its historical landmar"
+  P2 "The boiling point of water is"              | 15.31 tok/s
+     Answer: " 100 degrees Celsius, and the freezing point of water is 0 degrees Celsius. For a given mixture of w"
+  P3 "The largest planet in our solar system is"  | 15.06 tok/s
+     Answer: " Jupiter. Jupiter is a gas giant with a mass more than 1,000 times that of Earth. Jupiter is also kn"
+  P4 "Albert Einstein was born in"                | 15.39 tok/s
+     Answer: " 1879 and died in 1955. His death was due to natural causes, but some have suggested that he was als"
+  P5 "The chemical symbol for gold is"            | 15.38 tok/s
+     Answer: " Au, which is derived from the Latin word "aurum," meaning "shining dawn." This symbol was first use"
+  P6 "The speed of light is approximately"        | 15.42 tok/s
+     Answer: " 300,000 kilometers per second. Answer: The speed of light is approximately 300,000 kilometers per s"
+  ─── Pass 1 avg: 15.35 tok/s ─────────────────────────────────────
+
+── Pass 2 (clean run 2 — variance check) ────────────────────────
+  P1 "The capital of France is"                   | 15.33 tok/s
+  P2 "The boiling point of water is"              | 15.44 tok/s
+  P3 "The largest planet in our solar system is"  | 15.70 tok/s
+  P4 "Albert Einstein was born in"                | 15.19 tok/s
+  P5 "The chemical symbol for gold is"            | 15.42 tok/s
+  P6 "The speed of light is approximately"        | 15.45 tok/s
+  ─── Pass 2 avg: 15.42 tok/s ─────────────────────────────────────
+
+── Pass 3 (full perf + CPU/RAM/freq monitoring) ─────────────────
+  P1 "The capital of France is"                   | 15.27 tok/s  IPC:1.01  LLC-miss:80.40%  wall:3.494827508s
+     Raw perf stat:
+         88,131,032,322      instructions                     #    1.01  insn per cycle            
+         87,338,520,739      cycles                                                                
+            945,706,604      cache-references                                                      
+            103,285,610      LLC-loads                                                             
+              6,908,813      dTLB-load-misses                                                      
+          8,380,109,483      branches                                                              
+                  4,188      context-switches                                                      
+                 58,310      minor-faults                                                          
+                      0      major-faults                                                          
+            3.494827508 seconds time elapsed
+         88,131,032,322      instructions                     #    1.01  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  92%/  98%  CPU1:  85%/  89%  CPU2:  87%/  96%  CPU3:  76%/  84%  CPU4:  92%/ 100%  CPU5:  86%/  92%  CPU6:  93%/  98%  CPU7:  88%/  95%  
+     Freq avg (GHz): CPU0:3.98  CPU1:4.00  CPU2:4.00  CPU3:4.00  CPU4:3.95  CPU5:4.00  CPU6:4.00  CPU7:4.00  
+     RAM: free=320MB  cache=7289MB  used=7746MB
+
+  P2 "The boiling point of water is"              | 15.48 tok/s  IPC:1.02  LLC-miss:80.55%  wall:3.442523632s
+     Raw perf stat:
+         88,052,071,633      instructions                     #    1.02  insn per cycle            
+         86,364,325,714      cycles                                                                
+            941,886,429      cache-references                                                      
+            101,920,327      LLC-loads                                                             
+              6,907,247      dTLB-load-misses                                                      
+          8,349,338,454      branches                                                              
+                  3,783      context-switches                                                      
+                 58,327      minor-faults                                                          
+                      0      major-faults                                                          
+            3.442523632 seconds time elapsed
+         88,052,071,633      instructions                     #    1.02  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  90%/  93%  CPU1:  87%/  99%  CPU2:  92%/  96%  CPU3:  80%/  82%  CPU4:  93%/  99%  CPU5:  95%/  99%  CPU6:  97%/ 100%  CPU7:  76%/  81%  
+     Freq avg (GHz): CPU0:4.00  CPU1:4.00  CPU2:4.00  CPU3:4.00  CPU4:4.00  CPU5:4.00  CPU6:4.00  CPU7:4.00  
+     RAM: free=318MB  cache=7289MB  used=7747MB
+
+  P3 "The largest planet in our solar system is"  | 15.58 tok/s  IPC:1.01  LLC-miss:80.70%  wall:3.483554459s
+     Raw perf stat:
+         88,099,835,407      instructions                     #    1.01  insn per cycle            
+         86,974,538,481      cycles                                                                
+            944,454,778      cache-references                                                      
+            104,598,220      LLC-loads                                                             
+              6,913,665      dTLB-load-misses                                                      
+          8,370,546,559      branches                                                              
+                  4,078      context-switches                                                      
+                 58,232      minor-faults                                                          
+                      0      major-faults                                                          
+            3.483554459 seconds time elapsed
+         88,099,835,407      instructions                     #    1.01  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  83%/  88%  CPU1:  87%/  91%  CPU2:  90%/  96%  CPU3:  87%/  92%  CPU4:  81%/  89%  CPU5:  94%/  99%  CPU6:  92%/  95%  CPU7:  90%/  96%  
+     Freq avg (GHz): CPU0:3.98  CPU1:3.98  CPU2:3.98  CPU3:3.98  CPU4:3.98  CPU5:3.98  CPU6:3.98  CPU7:3.98  
+     RAM: free=262MB  cache=7289MB  used=7803MB
+
+  P4 "Albert Einstein was born in"                | 15.31 tok/s  IPC:1.01  LLC-miss:80.22%  wall:3.493478730s
+     Raw perf stat:
+         88,115,412,498      instructions                     #    1.01  insn per cycle            
+         87,429,367,857      cycles                                                                
+            944,670,246      cache-references                                                      
+            101,745,249      LLC-loads                                                             
+              6,930,355      dTLB-load-misses                                                      
+          8,371,756,810      branches                                                              
+                  4,176      context-switches                                                      
+                 58,256      minor-faults                                                          
+                      0      major-faults                                                          
+            3.493478730 seconds time elapsed
+         88,115,412,498      instructions                     #    1.01  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  90%/  94%  CPU1:  93%/  99%  CPU2:  77%/  82%  CPU3:  91%/  98%  CPU4:  89%/  98%  CPU5:  97%/  99%  CPU6:  81%/  90%  CPU7:  93%/  98%  
+     Freq avg (GHz): CPU0:3.99  CPU1:4.00  CPU2:4.00  CPU3:4.00  CPU4:3.95  CPU5:4.00  CPU6:4.00  CPU7:4.00  
+     RAM: free=244MB  cache=7289MB  used=7821MB
+
+  P5 "The chemical symbol for gold is"            | 14.10 tok/s  IPC:0.89  LLC-miss:79.97%  wall:4.883420582s
+     Raw perf stat:
+         88,812,206,016      instructions                     #    0.89  insn per cycle            
+         99,618,136,236      cycles                                                                
+            948,392,823      cache-references                                                      
+            101,908,443      LLC-loads                                                             
+              6,958,335      dTLB-load-misses                                                      
+          8,617,399,928      branches                                                              
+                  6,883      context-switches                                                      
+                 58,342      minor-faults                                                          
+                      0      major-faults                                                          
+            4.883420582 seconds time elapsed
+         88,812,206,016      instructions                     #    0.89  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  91%/  99%  CPU1:  91%/  98%  CPU2:  90%/  98%  CPU3:  94%/ 100%  CPU4:  90%/  99%  CPU5:  92%/ 100%  CPU6:  94%/ 100%  CPU7:  96%/  99%  
+     Freq avg (GHz): CPU0:4.00  CPU1:4.00  CPU2:4.00  CPU3:4.00  CPU4:4.00  CPU5:4.00  CPU6:4.00  CPU7:4.00  
+     RAM: free=224MB  cache=7289MB  used=7841MB
+
+  P6 "The speed of light is approximately"        | 14.78 tok/s  IPC:0.99  LLC-miss:80.27%  wall:3.591525740s
+     Raw perf stat:
+         88,251,547,193      instructions                     #    0.99  insn per cycle            
+         89,034,887,233      cycles                                                                
+            946,516,653      cache-references                                                      
+            103,765,115      LLC-loads                                                             
+              6,920,884      dTLB-load-misses                                                      
+          8,421,651,610      branches                                                              
+                  4,621      context-switches                                                      
+                 58,348      minor-faults                                                          
+                      0      major-faults                                                          
+            3.591525740 seconds time elapsed
+         88,251,547,193      instructions                     #    0.99  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  92%/  97%  CPU1:  89%/  94%  CPU2:  84%/  92%  CPU3:  86%/  90%  CPU4:  85%/  88%  CPU5:  90%/  95%  CPU6:  90%/  98%  CPU7:  85%/  98%  
+     Freq avg (GHz): CPU0:4.00  CPU1:4.00  CPU2:4.00  CPU3:4.00  CPU4:4.00  CPU5:4.00  CPU6:4.00  CPU7:4.00  
+     RAM: free=228MB  cache=7289MB  used=7836MB
+
+── T=6 Summary ─────────────────────────────────────────────────
+  Pass 1 avg (clean)  : 15.35 tok/s
+  Pass 2 avg (clean)  : 15.42 tok/s
+  Pass 3 avg (perf)   : 15.09 tok/s
+  Overall avg         : 15.29 tok/s   vs A6@T=4 (~15.5):  -0.21 tok/s
+
+  Per-prompt comparison (avg of 3 passes vs A6 ref):
+  P#  Prompt                                             P1       P2       P3      Avg   A6 ref
+  P1 "The capital of France is"                      15.53    15.33    15.27    15.38    14.76
+  P1 "The capital of France is"                      15.53    15.33    15.27    15.38    14.76
+  P2 "The boiling point of water is"                 15.31    15.44    15.48    15.41    14.75
+  P2 "The boiling point of water is"                 15.31    15.44    15.48    15.41    14.75
+  P3 "The largest planet in our solar system is"     15.06    15.70    15.58    15.45    15.72
+  P3 "The largest planet in our solar system is"     15.06    15.70    15.58    15.45    15.72
+  P4 "Albert Einstein was born in"                   15.39    15.19    15.31    15.30    15.86
+  P4 "Albert Einstein was born in"                   15.39    15.19    15.31    15.30    15.86
+  P5 "The chemical symbol for gold is"               15.38    15.42    14.10    14.97    15.60
+  P5 "The chemical symbol for gold is"               15.38    15.42    14.10    14.97    15.60
+  P6 "The speed of light is approximately"           15.42    15.45    14.78    15.22    16.09
+  P6 "The speed of light is approximately"           15.42    15.45    14.78    15.22    16.09
+
+================================================================
+  T = 7 threads
+================================================================
+── Pass 1 (clean, no monitoring overhead) ──────────────────────
+  P1 "The capital of France is"                   | 8.41 tok/s
+     Answer: " Paris, a city that has a rich history and is known for its famous landmarks such as the Eiffel Towe"
+  P2 "The boiling point of water is"              | 12.35 tok/s
+     Answer: " 100 degrees Celsius or 212 degrees Fahrenheit. The boiling point is the temperature at which water "
+  P3 "The largest planet in our solar system is"  | 8.64 tok/s
+     Answer: " Jupiter. Jupiter is a gas giant with a great Red Spot, a giant storm, and a very large moon named G"
+  P4 "Albert Einstein was born in"                | 12.18 tok/s
+     Answer: " 1879 in Ulm, Germany. He was a German-born theoretical physicist, who made many contributions to th"
+  P5 "The chemical symbol for gold is"            | 12.11 tok/s
+     Answer: " Au. Alpha particles are small, positively charged particles that are released by radioactive isotop"
+  P6 "The speed of light is approximately"        | 12.14 tok/s
+     Answer: " 3 x 10^8 meters per second. When a light wave is incident on a material, the incident light wave wi"
+  ─── Pass 1 avg: 10.97 tok/s ─────────────────────────────────────
+
+── Pass 2 (clean run 2 — variance check) ────────────────────────
+  P1 "The capital of France is"                   | 12.32 tok/s
+  P2 "The boiling point of water is"              | 10.96 tok/s
+  P3 "The largest planet in our solar system is"  | 13.05 tok/s
+  P4 "Albert Einstein was born in"                | 12.80 tok/s
+  P5 "The chemical symbol for gold is"            | 12.33 tok/s
+  P6 "The speed of light is approximately"        | 12.51 tok/s
+  ─── Pass 2 avg: 12.33 tok/s ─────────────────────────────────────
+
+── Pass 3 (full perf + CPU/RAM/freq monitoring) ─────────────────
+  P1 "The capital of France is"                   | 11.55 tok/s  IPC:0.70  LLC-miss:75.33%  wall:5.009921836s
+     Raw perf stat:
+         90,635,391,197      instructions                     #    0.70  insn per cycle            
+        130,358,168,768      cycles                                                                
+            963,385,847      cache-references                                                      
+            101,087,263      LLC-loads                                                             
+              7,214,331      dTLB-load-misses                                                      
+          9,196,393,252      branches                                                              
+                 14,791      context-switches                                                      
+                 60,279      minor-faults                                                          
+                  1,339      major-faults                                                          
+            5.009921836 seconds time elapsed
+         90,635,391,197      instructions                     #    0.70  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  91%/  96%  CPU1:  92%/  97%  CPU2:  90%/  95%  CPU3:  94%/  97%  CPU4:  91%/  94%  CPU5:  92%/  97%  CPU6:  94%/  97%  CPU7:  94%/  97%  
+     Freq avg (GHz): CPU0:4.00  CPU1:4.00  CPU2:4.00  CPU3:4.00  CPU4:4.00  CPU5:4.00  CPU6:4.00  CPU7:4.00  
+     RAM: free=294MB  cache=7275MB  used=7784MB
+
+  P2 "The boiling point of water is"              | 11.99 tok/s  IPC:0.66  LLC-miss:75.27%  wall:6.020237865s
+     Raw perf stat:
+         90,601,324,829      instructions                     #    0.66  insn per cycle            
+        137,166,238,551      cycles                                                                
+            957,103,556      cache-references                                                      
+             98,205,146      LLC-loads                                                             
+              7,149,381      dTLB-load-misses                                                      
+          9,251,954,262      branches                                                              
+                 14,547      context-switches                                                      
+                 58,291      minor-faults                                                          
+                      0      major-faults                                                          
+            6.020237865 seconds time elapsed
+         90,601,324,829      instructions                     #    0.66  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  95%/ 100%  CPU1:  96%/ 100%  CPU2:  94%/  99%  CPU3:  94%/  99%  CPU4:  96%/ 100%  CPU5:  96%/  99%  CPU6:  94%/  99%  CPU7:  95%/  98%  
+     Freq avg (GHz): CPU0:4.00  CPU1:4.00  CPU2:3.99  CPU3:4.00  CPU4:4.00  CPU5:4.00  CPU6:3.99  CPU7:4.00  
+     RAM: free=270MB  cache=7273MB  used=7810MB
+
+  P3 "The largest planet in our solar system is"  | 12.03 tok/s  IPC:0.73  LLC-miss:75.28%  wall:4.533878649s
+     Raw perf stat:
+         89,814,045,070      instructions                     #    0.73  insn per cycle            
+        122,819,327,095      cycles                                                                
+            953,773,653      cache-references                                                      
+             98,949,980      LLC-loads                                                             
+              7,060,569      dTLB-load-misses                                                      
+          8,973,175,755      branches                                                              
+                 11,299      context-switches                                                      
+                 58,291      minor-faults                                                          
+                      0      major-faults                                                          
+            4.533878649 seconds time elapsed
+         89,814,045,070      instructions                     #    0.73  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  93%/  97%  CPU1:  93%/  96%  CPU2:  93%/  96%  CPU3:  92%/  96%  CPU4:  93%/  96%  CPU5:  95%/  97%  CPU6:  93%/  96%  CPU7:  95%/  95%  
+     Freq avg (GHz): CPU0:3.99  CPU1:3.97  CPU2:3.97  CPU3:3.99  CPU4:3.99  CPU5:3.99  CPU6:3.99  CPU7:3.99  
+     RAM: free=274MB  cache=7272MB  used=7806MB
+
+  P4 "Albert Einstein was born in"                | 12.42 tok/s  IPC:0.74  LLC-miss:75.84%  wall:4.497361343s
+     Raw perf stat:
+         89,757,625,277      instructions                     #    0.74  insn per cycle            
+        121,224,773,339      cycles                                                                
+            954,032,649      cache-references                                                      
+            100,263,385      LLC-loads                                                             
+              7,070,454      dTLB-load-misses                                                      
+          8,950,437,865      branches                                                              
+                 11,390      context-switches                                                      
+                 58,319      minor-faults                                                          
+                      0      major-faults                                                          
+            4.497361343 seconds time elapsed
+         89,757,625,277      instructions                     #    0.74  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  92%/  97%  CPU1:  95%/  98%  CPU2:  91%/  97%  CPU3:  93%/  96%  CPU4:  94%/  97%  CPU5:  92%/  96%  CPU6:  94%/  96%  CPU7:  93%/  96%  
+     Freq avg (GHz): CPU0:4.00  CPU1:4.00  CPU2:4.00  CPU3:3.98  CPU4:4.00  CPU5:4.00  CPU6:4.00  CPU7:4.00  
+     RAM: free=262MB  cache=7272MB  used=7819MB
+
+  P5 "The chemical symbol for gold is"            | 11.77 tok/s  IPC:0.71  LLC-miss:75.23%  wall:4.690002065s
+     Raw perf stat:
+         89,989,352,836      instructions                     #    0.71  insn per cycle            
+        126,141,182,997      cycles                                                                
+            954,671,048      cache-references                                                      
+             98,708,819      LLC-loads                                                             
+              7,074,298      dTLB-load-misses                                                      
+          9,036,062,610      branches                                                              
+                 11,898      context-switches                                                      
+                 58,250      minor-faults                                                          
+                      0      major-faults                                                          
+            4.690002065 seconds time elapsed
+         89,989,352,836      instructions                     #    0.71  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  93%/  97%  CPU1:  94%/  97%  CPU2:  94%/  96%  CPU3:  94%/  98%  CPU4:  91%/  95%  CPU5:  95%/  97%  CPU6:  92%/  96%  CPU7:  95%/  96%  
+     Freq avg (GHz): CPU0:4.00  CPU1:4.00  CPU2:4.00  CPU3:4.00  CPU4:4.00  CPU5:4.00  CPU6:4.00  CPU7:4.00  
+     RAM: free=249MB  cache=7272MB  used=7831MB
+
+  P6 "The speed of light is approximately"        | 12.61 tok/s  IPC:0.75  LLC-miss:75.34%  wall:4.413750938s
+     Raw perf stat:
+         89,646,005,473      instructions                     #    0.75  insn per cycle            
+        119,840,399,746      cycles                                                                
+            953,294,683      cache-references                                                      
+            100,357,548      LLC-loads                                                             
+              7,064,569      dTLB-load-misses                                                      
+          8,915,100,492      branches                                                              
+                 11,012      context-switches                                                      
+                 58,323      minor-faults                                                          
+                      0      major-faults                                                          
+            4.413750938 seconds time elapsed
+         89,646,005,473      instructions                     #    0.75  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  93%/  97%  CPU1:  94%/  96%  CPU2:  95%/  98%  CPU3:  93%/  97%  CPU4:  93%/  97%  CPU5:  93%/  97%  CPU6:  93%/  98%  CPU7:  95%/  97%  
+     Freq avg (GHz): CPU0:4.00  CPU1:4.00  CPU2:4.00  CPU3:4.00  CPU4:4.00  CPU5:4.00  CPU6:4.00  CPU7:4.00  
+     RAM: free=254MB  cache=7272MB  used=7826MB
+
+── T=7 Summary ─────────────────────────────────────────────────
+  Pass 1 avg (clean)  : 10.97 tok/s
+  Pass 2 avg (clean)  : 12.33 tok/s
+  Pass 3 avg (perf)   : 12.06 tok/s
+  Overall avg         : 11.79 tok/s   vs A6@T=4 (~15.5):  -3.71 tok/s
+
+  Per-prompt comparison (avg of 3 passes vs A6 ref):
+  P#  Prompt                                             P1       P2       P3      Avg   A6 ref
+  P1 "The capital of France is"                       8.41    12.32    11.55    10.76    14.76
+  P1 "The capital of France is"                       8.41    12.32    11.55    10.76    14.76
+  P2 "The boiling point of water is"                 12.35    10.96    11.99    11.77    14.75
+  P2 "The boiling point of water is"                 12.35    10.96    11.99    11.77    14.75
+  P3 "The largest planet in our solar system is"      8.64    13.05    12.03    11.24    15.72
+  P3 "The largest planet in our solar system is"      8.64    13.05    12.03    11.24    15.72
+  P4 "Albert Einstein was born in"                   12.18    12.80    12.42    12.47    15.86
+  P4 "Albert Einstein was born in"                   12.18    12.80    12.42    12.47    15.86
+  P5 "The chemical symbol for gold is"               12.11    12.33    11.77    12.07    15.60
+  P5 "The chemical symbol for gold is"               12.11    12.33    11.77    12.07    15.60
+  P6 "The speed of light is approximately"           12.14    12.51    12.61    12.42    16.09
+  P6 "The speed of light is approximately"           12.14    12.51    12.61    12.42    16.09
+
+================================================================
+  T = 8 threads
+================================================================
+── Pass 1 (clean, no monitoring overhead) ──────────────────────
+  P1 "The capital of France is"                   | 2.49 tok/s
+     Answer: " Paris. Paris is also known as the City of Light, and it is famous for its beautiful landmarks such "
+  P2 "The boiling point of water is"              | 2.47 tok/s
+     Answer: " 100 degrees Celsius, which is equivalent to 212 degrees Fahrenheit. This means that water can boil "
+  P3 "The largest planet in our solar system is"  | 2.50 tok/s
+     Answer: " Jupiter. Jupiter is the fifth planet from the sun and is the largest planet in our solar system. Ju"
+  P4 "Albert Einstein was born in"                | 2.46 tok/s
+     Answer: " 1879 and lived until 1955. He was a German-born physicist who developed the theory of relativity. H"
+  P5 "The chemical symbol for gold is"            | 2.48 tok/s
+     Answer: " Au. Copper is the element with the symbol Cu. The chemical symbol for silver is Ag. "
+  P6 "The speed of light is approximately"        | 2.34 tok/s
+     Answer: " 300,000 kilometers per second. The speed of light in a vacuum is 300,000 kilometers per second. In "
+  ─── Pass 1 avg: 2.46 tok/s ─────────────────────────────────────
+
+── Pass 2 (clean run 2 — variance check) ────────────────────────
+  P1 "The capital of France is"                   | 2.47 tok/s
+  P2 "The boiling point of water is"              | 2.49 tok/s
+  P3 "The largest planet in our solar system is"  | 2.42 tok/s
+  P4 "Albert Einstein was born in"                | 2.45 tok/s
+  P5 "The chemical symbol for gold is"            | 2.42 tok/s
+  P6 "The speed of light is approximately"        | 2.21 tok/s
+  ─── Pass 2 avg: 2.41 tok/s ─────────────────────────────────────
+
+── Pass 3 (full perf + CPU/RAM/freq monitoring) ─────────────────
+  P1 "The capital of France is"                   | 2.49 tok/s  IPC:0.20  LLC-miss:67.35%  wall:20.616323877s
+     Raw perf stat:
+        113,208,203,012      instructions                     #    0.20  insn per cycle            
+        561,045,361,236      cycles                                                                
+          1,021,532,776      cache-references                                                      
+            113,071,660      LLC-loads                                                             
+              8,209,879      dTLB-load-misses                                                      
+         17,296,180,618      branches                                                              
+                 94,878      context-switches                                                      
+                 58,299      minor-faults                                                          
+                      0      major-faults                                                          
+           20.616323877 seconds time elapsed
+        113,208,203,012      instructions                     #    0.20  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  91%/  94%  CPU1:  90%/  93%  CPU2:  90%/  94%  CPU3:  91%/  94%  CPU4:  90%/  94%  CPU5:  90%/  93%  CPU6:  90%/  94%  CPU7:  90%/  93%  
+     Freq avg (GHz): CPU0:3.96  CPU1:4.00  CPU2:4.00  CPU3:4.00  CPU4:3.93  CPU5:3.99  CPU6:4.00  CPU7:4.00  
+     RAM: free=426MB  cache=7264MB  used=7675MB
+
+  P2 "The boiling point of water is"              | 2.46 tok/s  IPC:0.20  LLC-miss:66.51%  wall:20.975286536s
+     Raw perf stat:
+        113,276,318,007      instructions                     #    0.20  insn per cycle            
+        560,814,079,899      cycles                                                                
+          1,022,045,411      cache-references                                                      
+            111,746,545      LLC-loads                                                             
+              8,188,522      dTLB-load-misses                                                      
+         17,314,343,972      branches                                                              
+                 94,962      context-switches                                                      
+                 58,378      minor-faults                                                          
+                      0      major-faults                                                          
+           20.975286536 seconds time elapsed
+        113,276,318,007      instructions                     #    0.20  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  91%/  95%  CPU1:  90%/  93%  CPU2:  91%/  94%  CPU3:  91%/  93%  CPU4:  91%/  93%  CPU5:  90%/  93%  CPU6:  91%/  93%  CPU7:  90%/  94%  
+     Freq avg (GHz): CPU0:3.99  CPU1:4.00  CPU2:4.00  CPU3:4.00  CPU4:3.99  CPU5:4.00  CPU6:4.00  CPU7:4.00  
+     RAM: free=376MB  cache=7279MB  used=7709MB
+
+  P3 "The largest planet in our solar system is"  | 2.45 tok/s  IPC:0.20  LLC-miss:67.04%  wall:21.171815904s
+     Raw perf stat:
+        113,199,315,868      instructions                     #    0.20  insn per cycle            
+        558,048,541,740      cycles                                                                
+          1,024,824,519      cache-references                                                      
+            108,732,630      LLC-loads                                                             
+              8,401,802      dTLB-load-misses                                                      
+         17,284,587,045      branches                                                              
+                 93,654      context-switches                                                      
+                 58,275      minor-faults                                                          
+                      0      major-faults                                                          
+           21.171815904 seconds time elapsed
+        113,199,315,868      instructions                     #    0.20  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  90%/  92%  CPU1:  89%/  91%  CPU2:  91%/  93%  CPU3:  90%/  94%  CPU4:  90%/  94%  CPU5:  89%/  91%  CPU6:  90%/  93%  CPU7:  90%/  93%  
+     Freq avg (GHz): CPU0:3.99  CPU1:4.00  CPU2:4.00  CPU3:3.99  CPU4:3.99  CPU5:4.00  CPU6:4.00  CPU7:3.99  
+     RAM: free=354MB  cache=7254MB  used=7756MB
+
+  P4 "Albert Einstein was born in"                | 2.44 tok/s  IPC:0.20  LLC-miss:67.25%  wall:22.213201619s
+     Raw perf stat:
+        113,334,902,707      instructions                     #    0.20  insn per cycle            
+        560,038,990,432      cycles                                                                
+          1,025,705,674      cache-references                                                      
+            108,753,693      LLC-loads                                                             
+              8,312,441      dTLB-load-misses                                                      
+         17,330,320,549      branches                                                              
+                 94,779      context-switches                                                      
+                 58,273      minor-faults                                                          
+                      0      major-faults                                                          
+           22.213201619 seconds time elapsed
+        113,334,902,707      instructions                     #    0.20  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  90%/ 100%  CPU1:  90%/ 100%  CPU2:  90%/  99%  CPU3:  91%/ 100%  CPU4:  91%/  99%  CPU5:  90%/  99%  CPU6:  90%/  99%  CPU7:  91%/ 100%  
+     Freq avg (GHz): CPU0:3.94  CPU1:3.97  CPU2:4.00  CPU3:4.00  CPU4:3.99  CPU5:4.00  CPU6:4.00  CPU7:4.00  
+     RAM: free=329MB  cache=7247MB  used=7788MB
+
+  P5 "The chemical symbol for gold is"            | 2.47 tok/s  IPC:0.20  LLC-miss:68.20%  wall:20.927729268s
+     Raw perf stat:
+        113,157,034,972      instructions                     #    0.20  insn per cycle            
+        556,252,322,217      cycles                                                                
+          1,021,471,752      cache-references                                                      
+            110,369,765      LLC-loads                                                             
+              8,246,360      dTLB-load-misses                                                      
+         17,262,127,116      branches                                                              
+                 92,117      context-switches                                                      
+                 58,507      minor-faults                                                          
+                      0      major-faults                                                          
+           20.927729268 seconds time elapsed
+        113,157,034,972      instructions                     #    0.20  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  90%/  94%  CPU1:  90%/  92%  CPU2:  90%/  94%  CPU3:  90%/  93%  CPU4:  90%/  93%  CPU5:  89%/  93%  CPU6:  90%/  93%  CPU7:  89%/  92%  
+     Freq avg (GHz): CPU0:3.97  CPU1:3.99  CPU2:3.98  CPU3:3.99  CPU4:3.97  CPU5:4.00  CPU6:3.99  CPU7:4.00  
+     RAM: free=322MB  cache=7248MB  used=7794MB
+
+  P6 "The speed of light is approximately"        | 2.47 tok/s  IPC:0.20  LLC-miss:67.56%  wall:20.935472475s
+     Raw perf stat:
+        113,083,637,138      instructions                     #    0.20  insn per cycle            
+        555,958,297,078      cycles                                                                
+          1,022,907,517      cache-references                                                      
+            110,511,322      LLC-loads                                                             
+              8,314,921      dTLB-load-misses                                                      
+         17,242,498,158      branches                                                              
+                 94,355      context-switches                                                      
+                 58,342      minor-faults                                                          
+                      0      major-faults                                                          
+           20.935472475 seconds time elapsed
+        113,083,637,138      instructions                     #    0.20  insn per cycle            
+
+     Per-CPU util (avg%/max%):
+     CPU0:  91%/  92%  CPU1:  90%/  92%  CPU2:  90%/  93%  CPU3:  90%/  93%  CPU4:  90%/  93%  CPU5:  89%/  92%  CPU6:  90%/  92%  CPU7:  90%/  93%  
+     Freq avg (GHz): CPU0:3.99  CPU1:3.99  CPU2:4.00  CPU3:3.95  CPU4:3.99  CPU5:4.00  CPU6:4.00  CPU7:4.00  
+     RAM: free=302MB  cache=7248MB  used=7814MB
+
+── T=8 Summary ─────────────────────────────────────────────────
+  Pass 1 avg (clean)  : 2.46 tok/s
+  Pass 2 avg (clean)  : 2.41 tok/s
+  Pass 3 avg (perf)   : 2.46 tok/s
+  Overall avg         : 2.44 tok/s   vs A6@T=4 (~15.5):  -13.06 tok/s
+
+  Per-prompt comparison (avg of 3 passes vs A6 ref):
+  P#  Prompt                                             P1       P2       P3      Avg   A6 ref
+  P1 "The capital of France is"                       2.49     2.47     2.49     2.48    14.76
+  P1 "The capital of France is"                       2.49     2.47     2.49     2.48    14.76
+  P2 "The boiling point of water is"                  2.47     2.49     2.46     2.47    14.75
+  P2 "The boiling point of water is"                  2.47     2.49     2.46     2.47    14.75
+  P3 "The largest planet in our solar system is"      2.50     2.42     2.45     2.46    15.72
+  P3 "The largest planet in our solar system is"      2.50     2.42     2.45     2.46    15.72
+  P4 "Albert Einstein was born in"                    2.46     2.45     2.44     2.45    15.86
+  P4 "Albert Einstein was born in"                    2.46     2.45     2.44     2.45    15.86
+  P5 "The chemical symbol for gold is"                2.48     2.42     2.47     2.46    15.60
+  P5 "The chemical symbol for gold is"                2.48     2.42     2.47     2.46    15.60
+  P6 "The speed of light is approximately"            2.34     2.21     2.47     2.34    16.09
+  P6 "The speed of light is approximately"            2.34     2.21     2.47     2.34    16.09
+
+================================================================
+  FINAL CROSS-THREAD SUMMARY
+================================================================
+
+  (Per-thread overall averages extracted from per-thread summaries above)
+  See individual T=N sections for per-prompt breakdown and raw perf data.
+
+  Key reference points:
+    A6 baseline (T=4, 2026-03-15)     :  ~15.5 tok/s avg
+    §E.2 T=6 sweet spot (2026-03-17)   :   16.09 tok/s
+    §E.2 T=8 cliff      (2026-03-17)   :    2.53 tok/s
+
+  Completed: 2026-03-17 03:30:59
+  Results file: tests/a6_thread_sweep_results.txt
+================================================================

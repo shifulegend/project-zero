@@ -1,0 +1,41 @@
+Project Zero Engine (Phase 16 — Auto-Tuned Hardware)
+SIMD: avx512f (calibrated optimal)
+Classifier: BF16 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 8 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1280   KiB per core                 │
+│ L3 cache      : 8      MiB shared                   │
+│ Free RAM      : 11099  MiB                          │
+│ DRAM bandwidth: 8.0    GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB                           │
+│ Ceiling       : 6.6    tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 8 threads | AVX-512 VNNI | BF16 cls | 4T | 8.0 GB/s | ceiling 7 tok/s
+Model format: GGUF
+Model Configuration:
+  dim:        576
+  hidden_dim: 1536
+  n_layers:   30
+  n_heads:    9
+  n_kv_heads: 3
+  vocab_size: 49152
+  seq_len:    8192
+  act_type:   0 (SiLU)
+  rope_theta: 100000.0
+  head_dim:   64
+  kv_dim:     192
+[GGUF] Weights loaded (30 layers, arch=llama)
+KV Strategy: Quantized I8, max context: 8192 tokens
+
+The capital of France is Paris.
+
+83.56 tok/s (7 tokens)
+

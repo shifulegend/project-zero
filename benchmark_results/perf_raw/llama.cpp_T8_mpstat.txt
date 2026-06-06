@@ -1,0 +1,1 @@
+Linux 6.17.0-19-generic (ubuntu-IdeaPad-Gaming-3-15IHU6) 	03/21/2026 	_x86_64_	(8 CPU)

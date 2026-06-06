@@ -1,0 +1,275 @@
+============================================================
+  Project Zero — T=1..8 Thread Sweep
+  2026-03-17 02:45:39
+  Prompt : "The speed of light is approximately"
+  Tokens : 100  Temperature: 0.0  (greedy/deterministic)
+  KV     : Sliding Window I4, 1024 ctx
+  CPU    : 11th Gen Intel(R) Core(TM) i5-11300H @ 3.10GHz
+  Kernel : 6.17.0-19-generic
+  RAM    : 15.4 GB
+============================================================
+
+============================================================
+  T = 1 threads
+============================================================
+  Run 1 (clean)  : 5.36 tok/s  |  "Project Zero Engine (Phase 15 — RAG Memory) SIMD Backend: AVX-512 Model Configuration: ..."
+  Run 2 (clean)  : 5.33 tok/s  |  "Project Zero Engine (Phase 15 — RAG Memory) SIMD Backend: AVX-512 Model Configuration: ..."
+  Run 3 (perf)   : 5.33 tok/s  |  "Project Zero Engine (Phase 15 — RAG Memory) SIMD Backend: AVX-512 Model Configuration: ..."
+
+  ── perf stat ──────────────────────────────────────────────
+     176,124,472,709      instructions                     #    1.27  insn per cycle            
+     138,772,323,295      cycles                                                                
+       1,336,719,851      cache-misses                     #   72.58% of all cache refs         
+       1,841,771,667      cache-references                                                      
+         366,013,268      LLC-load-misses                  #   97.31% of all LL-cache accesses  
+         376,149,997      LLC-loads                                                             
+        19.151027267 seconds time elapsed
+
+  ── Per-CPU utilization (sampled during inference) ──────────
+  CPU0 avg: 10.3%
+  CPU1 avg: 11.9%
+  CPU2 avg: 41.4%
+  CPU3 avg: 13.5%
+  CPU4 avg: 7.8%
+  CPU5 avg: 43.1%
+  CPU6 avg: 58.3%
+  CPU7 avg: 41.4%
+
+  ── RAM during inference ────────────────────────────────────
+  (vmstat data unavailable)
+
+  ── Disk I/O during inference ───────────────────────────────
+  nvme0n1  read: 0.0 kB/s  write: 0.9 kB/s
+
+
+============================================================
+  T = 2 threads
+============================================================
+  Run 1 (clean)  : 8.94 tok/s  |  "Project Zero Engine (Phase 15 — RAG Memory) SIMD Backend: AVX-512 Model Configuration: ..."
+  Run 2 (clean)  : 9.59 tok/s  |  "Project Zero Engine (Phase 15 — RAG Memory) SIMD Backend: AVX-512 Model Configuration: ..."
+  Run 3 (perf)   : 9.52 tok/s  |  "Project Zero Engine (Phase 15 — RAG Memory) SIMD Backend: AVX-512 Model Configuration: ..."
+
+  ── perf stat ──────────────────────────────────────────────
+     175,043,237,243      instructions                     #    1.48  insn per cycle            
+     118,013,070,850      cycles                                                                
+       1,314,215,855      cache-misses                     #   70.49% of all cache refs         
+       1,864,398,909      cache-references                                                      
+         335,641,886      LLC-load-misses                  #   95.70% of all LL-cache accesses  
+         350,737,174      LLC-loads                                                             
+        10.752312878 seconds time elapsed
+
+  ── Per-CPU utilization (sampled during inference) ──────────
+  CPU0 avg: 55.8%
+  CPU1 avg: 12.3%
+  CPU2 avg: 34.1%
+  CPU3 avg: 30.7%
+  CPU4 avg: 37.2%
+  CPU5 avg: 47.5%
+  CPU6 avg: 28.2%
+  CPU7 avg: 80.2%
+
+  ── RAM during inference ────────────────────────────────────
+  (vmstat data unavailable)
+
+  ── Disk I/O during inference ───────────────────────────────
+  nvme0n1  read: 0.0 kB/s  write: 1.6 kB/s
+
+
+============================================================
+  T = 3 threads
+============================================================
+  Run 1 (clean)  : 12.52 tok/s  |  "Project Zero Engine (Phase 15 — RAG Memory) SIMD Backend: AVX-512 Model Configuration: ..."
+  Run 2 (clean)  : 12.76 tok/s  |  "Project Zero Engine (Phase 15 — RAG Memory) SIMD Backend: AVX-512 Model Configuration: ..."
+  Run 3 (perf)   : 12.47 tok/s  |  "Project Zero Engine (Phase 15 — RAG Memory) SIMD Backend: AVX-512 Model Configuration: ..."
+
+  ── perf stat ──────────────────────────────────────────────
+     174,875,089,987      instructions                     #    1.45  insn per cycle            
+     120,972,233,995      cycles                                                                
+       1,276,528,402      cache-misses                     #   68.28% of all cache refs         
+       1,869,438,029      cache-references                                                      
+         282,499,199      LLC-load-misses                  #   93.24% of all LL-cache accesses  
+         302,974,641      LLC-loads                                                             
+         8.231784659 seconds time elapsed
+
+  ── Per-CPU utilization (sampled during inference) ──────────
+  CPU0 avg: 41.7%
+  CPU1 avg: 23.8%
+  CPU2 avg: 52.0%
+  CPU3 avg: 39.6%
+  CPU4 avg: 68.1%
+  CPU5 avg: 98.7%
+  CPU6 avg: 49.7%
+  CPU7 avg: 57.7%
+
+  ── RAM during inference ────────────────────────────────────
+  (vmstat data unavailable)
+
+  ── Disk I/O during inference ───────────────────────────────
+  nvme0n1  read: 0.0 kB/s  write: 1.9 kB/s
+
+
+============================================================
+  T = 4 threads
+============================================================
+  Run 1 (clean)  : 14.32 tok/s  |  "Project Zero Engine (Phase 15 — RAG Memory) SIMD Backend: AVX-512 Model Configuration: ..."
+  Run 2 (clean)  : 13.63 tok/s  |  "Project Zero Engine (Phase 15 — RAG Memory) SIMD Backend: AVX-512 Model Configuration: ..."
+  Run 3 (perf)   : 13.68 tok/s  |  "Project Zero Engine (Phase 15 — RAG Memory) SIMD Backend: AVX-512 Model Configuration: ..."
+
+  ── perf stat ──────────────────────────────────────────────
+     175,154,637,682      instructions                     #    1.27  insn per cycle            
+     138,059,682,823      cycles                                                                
+       1,198,763,158      cache-misses                     #   63.55% of all cache refs         
+       1,886,327,968      cache-references                                                      
+         236,604,181      LLC-load-misses                  #   89.11% of all LL-cache accesses  
+         265,516,246      LLC-loads                                                             
+         7.494156251 seconds time elapsed
+
+  ── Per-CPU utilization (sampled during inference) ──────────
+  CPU0 avg: 56.1%
+  CPU1 avg: 50.3%
+  CPU2 avg: 43.7%
+  CPU3 avg: 88.3%
+  CPU4 avg: 54.9%
+  CPU5 avg: 90.9%
+  CPU6 avg: 88.2%
+  CPU7 avg: 61.8%
+
+  ── RAM during inference ────────────────────────────────────
+  (vmstat data unavailable)
+
+  ── Disk I/O during inference ───────────────────────────────
+  nvme0n1  read: 0.0 kB/s  write: 2.2 kB/s
+
+
+============================================================
+  T = 5 threads
+============================================================
+  Run 1 (clean)  : 14.31 tok/s  |  "Project Zero Engine (Phase 15 — RAG Memory) SIMD Backend: AVX-512 Model Configuration: ..."
+  Run 2 (clean)  : 14.18 tok/s  |  "Project Zero Engine (Phase 15 — RAG Memory) SIMD Backend: AVX-512 Model Configuration: ..."
+  Run 3 (perf)   : 14.42 tok/s  |  "Project Zero Engine (Phase 15 — RAG Memory) SIMD Backend: AVX-512 Model Configuration: ..."
+
+  ── perf stat ──────────────────────────────────────────────
+     175,092,535,985      instructions                     #    1.10  insn per cycle            
+     158,609,484,841      cycles                                                                
+       1,004,906,440      cache-misses                     #   53.72% of all cache refs         
+       1,870,609,892      cache-references                                                      
+         181,479,412      LLC-load-misses                  #   85.94% of all LL-cache accesses  
+         211,168,676      LLC-loads                                                             
+         7.143981137 seconds time elapsed
+
+  ── Per-CPU utilization (sampled during inference) ──────────
+  CPU0 avg: 91.1%
+  CPU1 avg: 40.7%
+  CPU2 avg: 65.6%
+  CPU3 avg: 98.6%
+  CPU4 avg: 98.4%
+  CPU5 avg: 75.9%
+  CPU6 avg: 56.0%
+  CPU7 avg: 98.7%
+
+  ── RAM during inference ────────────────────────────────────
+  (vmstat data unavailable)
+
+  ── Disk I/O during inference ───────────────────────────────
+  nvme0n1  read: 0.0 kB/s  write: 2.2 kB/s
+
+
+============================================================
+  T = 6 threads
+============================================================
+  Run 1 (clean)  : 14.66 tok/s  |  "Project Zero Engine (Phase 15 — RAG Memory) SIMD Backend: AVX-512 Model Configuration: ..."
+  Run 2 (clean)  : 14.69 tok/s  |  "Project Zero Engine (Phase 15 — RAG Memory) SIMD Backend: AVX-512 Model Configuration: ..."
+  Run 3 (perf)   : 14.64 tok/s  |  "Project Zero Engine (Phase 15 — RAG Memory) SIMD Backend: AVX-512 Model Configuration: ..."
+
+  ── perf stat ──────────────────────────────────────────────
+     175,898,498,441      instructions                     #    0.98  insn per cycle            
+     179,258,308,189      cycles                                                                
+         995,686,002      cache-misses                     #   52.74% of all cache refs         
+       1,887,995,121      cache-references                                                      
+         171,106,481      LLC-load-misses                  #   80.76% of all LL-cache accesses  
+         211,857,383      LLC-loads                                                             
+         7.063221607 seconds time elapsed
+
+  ── Per-CPU utilization (sampled during inference) ──────────
+  CPU0 avg: 86.6%
+  CPU1 avg: 85.7%
+  CPU2 avg: 86.6%
+  CPU3 avg: 91.4%
+  CPU4 avg: 91.2%
+  CPU5 avg: 87.1%
+  CPU6 avg: 92.1%
+  CPU7 avg: 88.8%
+
+  ── RAM during inference ────────────────────────────────────
+  (vmstat data unavailable)
+
+  ── Disk I/O during inference ───────────────────────────────
+  nvme0n1  read: 0.0 kB/s  write: 2.2 kB/s
+
+
+============================================================
+  T = 7 threads
+============================================================
+  Run 1 (clean)  : 11.42 tok/s  |  "Project Zero Engine (Phase 15 — RAG Memory) SIMD Backend: AVX-512 Model Configuration: ..."
+  Run 2 (clean)  : 10.91 tok/s  |  "Project Zero Engine (Phase 15 — RAG Memory) SIMD Backend: AVX-512 Model Configuration: ..."
+  Run 3 (perf)   : 11.33 tok/s  |  "Project Zero Engine (Phase 15 — RAG Memory) SIMD Backend: AVX-512 Model Configuration: ..."
+
+  ── perf stat ──────────────────────────────────────────────
+     179,158,801,944      instructions                     #    0.72  insn per cycle            
+     247,877,314,678      cycles                                                                
+         958,186,736      cache-misses                     #   50.25% of all cache refs         
+       1,906,755,942      cache-references                                                      
+         154,645,796      LLC-load-misses                  #   75.12% of all LL-cache accesses  
+         205,855,644      LLC-loads                                                             
+         9.011705942 seconds time elapsed
+
+  ── Per-CPU utilization (sampled during inference) ──────────
+  CPU0 avg: 94.7%
+  CPU1 avg: 94.5%
+  CPU2 avg: 94.7%
+  CPU3 avg: 94.6%
+  CPU4 avg: 94.3%
+  CPU5 avg: 94.3%
+  CPU6 avg: 95.1%
+  CPU7 avg: 94.1%
+
+  ── RAM during inference ────────────────────────────────────
+  (vmstat data unavailable)
+
+  ── Disk I/O during inference ───────────────────────────────
+  nvme0n1  read: 0.0 kB/s  write: 1.8 kB/s
+
+
+============================================================
+  T = 8 threads
+============================================================
+  Run 1 (clean)  : 2.38 tok/s  |  "Project Zero Engine (Phase 15 — RAG Memory) SIMD Backend: AVX-512 Model Configuration: ..."
+  Run 2 (clean)  : 2.43 tok/s  |  "Project Zero Engine (Phase 15 — RAG Memory) SIMD Backend: AVX-512 Model Configuration: ..."
+  Run 3 (perf)   : 2.44 tok/s  |  "Project Zero Engine (Phase 15 — RAG Memory) SIMD Backend: AVX-512 Model Configuration: ..."
+
+  ── perf stat ──────────────────────────────────────────────
+     225,674,613,037      instructions                     #    0.20  insn per cycle            
+   1,115,118,495,473      cycles                                                                
+         959,829,652      cache-misses                     #   47.06% of all cache refs         
+       2,039,637,600      cache-references                                                      
+         153,121,127      LLC-load-misses                  #   68.03% of all LL-cache accesses  
+         225,070,297      LLC-loads                                                             
+        41.587833439 seconds time elapsed
+
+  ── Per-CPU utilization (sampled during inference) ──────────
+  CPU0 avg: 90.3%
+  CPU1 avg: 89.5%
+  CPU2 avg: 90.1%
+  CPU3 avg: 90.3%
+  CPU4 avg: 89.9%
+  CPU5 avg: 89.9%
+  CPU6 avg: 90.3%
+  CPU7 avg: 89.8%
+
+  ── RAM during inference ────────────────────────────────────
+  (vmstat data unavailable)
+
+  ── Disk I/O during inference ───────────────────────────────
+  nvme0n1  read: 0.0 kB/s  write: 0.4 kB/s
+
+

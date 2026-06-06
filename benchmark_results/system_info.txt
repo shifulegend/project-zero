@@ -1,0 +1,114 @@
+=== Benchmark date: 2026-03-22T12:05:42Z ===
+=== CPU ===
+CPU(s):                                  8
+On-line CPU(s) list:                     0-7
+Model name:                              11th Gen Intel(R) Core(TM) i5-11300H @ 3.10GHz
+Thread(s) per core:                      2
+Core(s) per socket:                      4
+Socket(s):                               1
+CPU(s) scaling MHz:                      74%
+CPU max MHz:                             4400.0000
+CPU min MHz:                             400.0000
+L1d cache:                               192 KiB (4 instances)
+L1i cache:                               128 KiB (4 instances)
+L2 cache:                                5 MiB (4 instances)
+L3 cache:                                8 MiB (1 instance)
+NUMA node0 CPU(s):                       0-7
+=== Memory ===
+               total        used        free      shared  buff/cache   available
+Mem:            15Gi       8.0Gi       196Mi       109Mi       7.6Gi       7.4Gi
+Swap:          4.0Gi       1.9Gi       2.1Gi
+=== OS ===
+Linux ubuntu-IdeaPad-Gaming-3-15IHU6 6.17.0-19-generic #19~24.04.2-Ubuntu SMP PREEMPT_DYNAMIC Fri Mar  6 23:08:46 UTC 2 x86_64 x86_64 x86_64 GNU/Linux
+=== Disk ===
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/nvme0n1p6   77G   64G  9.1G  88% /
+=== Competing processes (top 10 by CPU) ===
+USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+ubuntu    159880 58.7  6.4 29224240 1041516 pts/0 RLl+ 16:58  22:01 /home/ubuntu/.local/bin/copilot
+ubuntu    171825 37.1 80.4 15252812 13001352 pts/1 R+ 17:34   0:30 /home/ubuntu/llama.cpp/build/bin/llama-bench -m /home/<USER>/Documents/project-zero/models/deepseek-v2-lite-chat-Q4_K_S.gguf -t 1 -p 32 -n 32 -r 3 --output csv
+ubuntu    121268  3.7  0.2 883304 37904 ?        Ssl  14:09   7:49 /usr/libexec/gnome-terminal-server
+ubuntu      2669  2.3  0.1 26093876 27980 tty2   Sl+  10:37   9:39 /usr/lib/xorg/Xorg vt2 -displayfd 3 -auth /run/user/1000/gdm/Xauthority -nolisten tcp -background none -noreset -keeptty -novtswitch -verbose 3
+ubuntu      2971  2.0  0.4 4718876 75044 ?       Ssl  10:37   8:43 /usr/bin/gnome-shell
+ubuntu    172065  1.2  0.0  19016  4580 pts/2    Ss   17:35   0:00 bash --norc --noprofile
+ubuntu      1623  0.3  1.3 22773504 225464 ?     Ssl  10:37   1:17 openclaw-gateway
+root      163690  0.1  0.0      0     0 ?        I    17:14   0:01 [kworker/1:0-events]
+root      164866  0.1  0.0      0     0 ?        I<   17:19   0:01 [kworker/u33:3-i915_flip]
+root           1  0.1  0.0  24056 12836 ?        Ss   10:37   0:28 /sbin/init splash
+root          15  0.1  0.0      0     0 ?        I    10:37   0:28 [rcu_preempt]
+=== CPU governor ===
+powersave
+=== CPU current freq (MHz) ===
+4000
+3387
+392
+4008
+4000
+400
+994
+4000
+=== Post-benchmark snapshot: Sun Mar 22 12:11:14 PM UTC 2026 ===
+=== CPU freq after benchmark (MHz) ===
+4000
+3783
+3858
+400
+4000
+1298
+3878
+3999
+=== Memory after benchmark ===
+               total        used        free      shared  buff/cache   available
+Mem:            15Gi       2.4Gi       5.6Gi       109Mi       7.8Gi        12Gi
+Swap:          4.0Gi       1.7Gi       2.3Gi
+=== Top CPU consumers ===
+USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+ubuntu    159880 56.9  6.5 29247164 1060532 pts/0 RLl+ 16:58  24:30 /home/ubuntu/.local/bin/copilot
+ubuntu    121268  3.7  0.2 883304 33996 ?        Ssl  14:09   7:59 /usr/libexec/gnome-terminal-server
+ubuntu      2669  2.3  0.1 26093812 27252 tty2   Sl+  10:37   9:45 /usr/lib/xorg/Xorg vt2 -displayfd 3 -auth /run/user/1000/gdm/Xauthority -nolisten tcp -background none -noreset -keeptty -novtswitch -verbose 3
+ubuntu      2971  2.0  0.4 4718876 69440 ?       Ssl  10:37   8:48 /usr/bin/gnome-shell
+ubuntu      1623  0.3  0.2 22773504 43700 ?      Ssl  10:37   1:17 openclaw-gateway
+root          93  0.1  0.0      0     0 ?        S    10:37   0:40 [kswapd0]
+root      164866  0.1  0.0      0     0 ?        I<   17:19   0:01 [kworker/u33:3-i915_flip]
+root      163690  0.1  0.0      0     0 ?        I    17:14   0:02 [kworker/1:0-events]
+root      173525  0.1  0.0      0     0 ?        I    17:38   0:00 [kworker/1:1-events]
+root          15  0.1  0.0      0     0 ?        I    10:37   0:29 [rcu_preempt]
+root           1  0.1  0.0  24056 12684 ?        Ss   10:37   0:28 /sbin/init splash
+=== Disk I/O summary ===
+Linux 6.17.0-19-generic (ubuntu-IdeaPad-Gaming-3-15IHU6) 	03/22/2026 	_x86_64_	(8 CPU)
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+          11.66    0.00    0.97    1.14    0.00   86.22
+
+Device            r/s     rkB/s   rrqm/s  %rrqm r_await rareq-sz     w/s     wkB/s   wrqm/s  %wrqm w_await wareq-sz     d/s     dkB/s   drqm/s  %drqm d_await dareq-sz     f/s f_await  aqu-sz  %util
+loop0            0.00      0.00     0.00   0.00    0.00     1.21    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+loop1            0.00      0.01     0.00   0.00    0.22     7.35    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+loop10           0.01      0.18     0.00   0.00    0.22    32.33    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+loop11           0.00      0.01     0.00   0.00    0.40     8.09    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+loop12           0.00      0.04     0.00   0.00    0.79    17.82    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+loop13           0.10      2.30     0.00   0.00    0.08    21.95    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+loop14           0.02      0.09     0.00   0.00    0.14     5.95    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+loop15           0.06      0.20     0.00   0.00    0.03     3.11    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+loop16           0.00      0.04     0.00   0.00    0.69    19.87    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+loop17           0.00      0.05     0.00   0.00    0.39    17.93    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+loop18           0.07      4.27     0.00   0.00    0.37    62.11    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+loop19           0.00      0.04     0.00   0.00    0.52    17.97    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+loop2            0.00      0.04     0.00   0.00    0.22    19.71    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+loop20           0.00      0.01     0.00   0.00    0.48     7.92    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+loop21           0.00      0.01     0.00   0.00    0.42     8.09    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+loop22           0.07      2.85     0.00   0.00    0.64    41.32    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+loop23           0.00      0.01     0.00   0.00    0.40     7.76    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+loop24           0.00      0.01     0.00   0.00    0.14     9.28    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+loop25           0.00      0.04     0.00   0.00    0.45    20.51    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+loop26           0.00      0.04     0.00   0.00    0.55    17.62    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+loop27           0.00      0.00     0.00   0.00    0.00     1.27    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+loop3            0.00      0.01     0.00   0.00    0.16     7.10    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+loop4            0.00      0.04     0.00   0.00    0.62    18.27    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+loop5            0.02      0.29     0.00   0.00    0.16    15.86    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+loop6            0.01      0.21     0.00   0.00    0.36    14.57    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+loop7            0.00      0.01     0.00   0.00    0.26     3.41    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+loop8            0.00      0.01     0.00   0.00    0.22     3.29    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+loop9            0.00      0.05     0.00   0.00    0.57    18.82    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00
+nvme0n1        517.99  41727.51    59.41  10.29    1.54    80.56   15.39   1161.82   184.20  92.29   35.03    75.51    0.00      0.00     0.00   0.00    0.00     0.00    0.19    2.58    1.34   3.46
+
+

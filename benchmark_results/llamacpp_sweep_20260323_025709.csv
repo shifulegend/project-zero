@@ -1,0 +1,5 @@
+threads,tg_tok_s,pp_tok_s,ipc,cache_miss_pct
+1,N/A,N/A,N/A,N/A
+2,N/A,N/A,N/A,N/A
+4,N/A,N/A,N/A,N/A
+8,N/A,N/A,N/A,N/A

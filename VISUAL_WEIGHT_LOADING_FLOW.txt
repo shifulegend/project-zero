@@ -1,0 +1,296 @@
+================================================================================
+VISUAL WEIGHT LOADING FLOW - BITNET-2B
+================================================================================
+
+FILE ON DISK:
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Byte 0-8      │ Magic/Version                                               │
+│ Byte 8-48     │ Config (40 bytes)                                           │
+│ Byte 48-64    │ Padding to 64-byte boundary (16 bytes)                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Byte 64+      │ WEIGHT DATA (passed to weights_map as 'data' pointer)       │
+│               │ THIS IS WHERE OFFSET CALCULATIONS BEGIN                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+================================================================================
+MMAP WORKFLOW
+================================================================================
+
+1. File on Disk
+   └─→ open() + flock() (POSIX) or CreateFile() (Windows)
+   
+2. Memory Map
+   └─→ mmap() (POSIX) or MapViewOfFile() (Windows)
+       • Read-only access (PROT_READ / FILE_MAP_READ)
+       • Private mapping (MAP_PRIVATE on POSIX)
+       • Sequential hint (POSIX_MADV_SEQUENTIAL on POSIX)
+   
+3. Pointer to Weight Data
+   └─→ data = (tn_i8*)mf.data + 64
+       • mf.data = pointer to start of file
+       • +64 = skip past header/config/padding
+   
+4. weights_map() Execution
+   └─→ Direct pointer arithmetic (NO fseek)
+       • ptr starts at data
+       • Each MAP_PTR advances ptr by read size
+       • Each ALIGN64 adds padding
+       • All bounds checked
+
+5. Result
+   └─→ TransformerWeights struct populated with pointers
+       • All pointers point into mmap'd region
+       • Direct memory access, no copying
+       • On process exit, munmap() releases mapping
+
+================================================================================
+OFFSET CALCULATION VISUALIZATION
+================================================================================
+
+                    ABSOLUTE FILE OFFSET (from byte 0)
+                    │
+                    │  offset_base = 64 (weights start here)
+                    │  
+                    v
+    ┌─────────────────────────────────────────────────────────┐
+    │  Padding to 64-byte boundary                 Byte 64+   │
+    └─────────────────────────────────────────────────────────┘
+                                                   ↑
+                                                   │ data pointer
+                                                   │
+                                    RELATIVE OFFSET (ptr - data)
+                                    │
+                                    v
+        ┌───────────────────────────────────────────┐
+        │ Weight data section (starts at rel_off=0) │
+        ├───────────────────────────────────────────┤
+        │                                           │
+        │ abs_off = rel_off + 64                    │
+        │ padding = (64 - (abs_off % 64)) % 64     │
+        │                                           │
+        └───────────────────────────────────────────┘
+
+ALIGNMENT EXAMPLE:
+─────────────────
+
+rel_off=0:      abs_off = 64    →  64 % 64 = 0    →  padding=0
+                Already at 64-byte boundary ✓
+
+rel_off=10:     abs_off = 74    →  74 % 64 = 10   →  padding=54
+                Need 54 bytes to reach next boundary ✓
+
+rel_off=4227076:abs_off=4227140 → 4227140 % 64=4 →  padding=60
+                Need 60 bytes to reach next boundary ✓
+
+rel_off=4227136:abs_off=4227200 → 4227200 % 64=0 →  padding=0
+                Already at 64-byte boundary ✓
+
+================================================================================
+READING SEQUENCE FLOWCHART
+================================================================================
+
+  START (weights_map called)
+      │
+      ├─→ ptr = data
+      ├─→ Extract config: dim, hidden_dim, kv_dim, n_layers
+      │
+      ├─→ [STEP 1] READ TOKEN EMBEDDING TABLE
+      │   ├─→ MAP_PTR(token_embedding_table, vocab_size * dim * 4)
+      │   ├─→ ALIGN64()
+      │   └─→ token_embedding_scale = 1.0f
+      │
+      ├─→ FOR LAYER l = 0 to n_layers-1:
+      │   │
+      │   ├─→ [STEP 2] INPUT ATTENTION NORM
+      │   │   ├─→ MAP_PTR(rms_att_weight[l], dim * 4)
+      │   │   └─→ ALIGN64()
+      │   │
+      │   ├─→ [STEP 3] POST-ATTENTION NORM
+      │   │   ├─→ MAP_PTR(rms_ffn_weight[l], dim * 4)
+      │   │   └─→ ALIGN64()
+      │   │
+      │   ├─→ [STEP 4] QUERY (wq + sq)
+      │   │   ├─→ MAP_PTR(wq[l], packed_bytes(dim*dim))
+      │   │   └─→ COPY_VAL_ALIGN(&sq[l], 4)
+      │   │
+      │   ├─→ [STEP 5] KEY (wk + sk)
+      │   │   ├─→ MAP_PTR(wk[l], packed_bytes(dim*kv_dim))
+      │   │   └─→ COPY_VAL_ALIGN(&sk[l], 4)
+      │   │
+      │   ├─→ [STEP 6] VALUE (wv + sv)
+      │   │   ├─→ MAP_PTR(wv[l], packed_bytes(dim*kv_dim))
+      │   │   └─→ COPY_VAL_ALIGN(&sv[l], 4)
+      │   │
+      │   ├─→ [STEP 7] ATTENTION SUB-NORM (BitNet-specific)
+      │   │   ├─→ MAP_PTR(rms_attn_sub_norm[l], dim * 4)
+      │   │   └─→ ALIGN64()
+      │   │
+      │   ├─→ [STEP 8] OUTPUT PROJECTION (wo + so)
+      │   │   ├─→ MAP_PTR(wo[l], packed_bytes(dim*dim))
+      │   │   └─→ COPY_VAL_ALIGN(&so[l], 4)
+      │   │
+      │   ├─→ [STEP 9] FFN GATE (w1 + s1)
+      │   │   ├─→ MAP_PTR(w1[l], packed_bytes(dim*hidden_dim))
+      │   │   └─→ COPY_VAL_ALIGN(&s1[l], 4)
+      │   │
+      │   ├─→ [STEP 10] FFN UP (w3 + s3)
+      │   │   ├─→ MAP_PTR(w3[l], packed_bytes(dim*hidden_dim))
+      │   │   └─→ COPY_VAL_ALIGN(&s3[l], 4)
+      │   │
+      │   ├─→ [STEP 11] FFN SUB-NORM (BitNet-specific)
+      │   │   ├─→ MAP_PTR(rms_ffn_sub_norm[l], hidden_dim * 4)
+      │   │   └─→ ALIGN64()
+      │   │
+      │   └─→ [STEP 12] FFN DOWN (w2 + s2)
+      │       ├─→ MAP_PTR(w2[l], packed_bytes(dim*hidden_dim))
+      │       └─→ COPY_VAL_ALIGN(&s2[l], 4)
+      │
+      ├─→ [STEP 13] FINAL LAYER NORM
+      │   ├─→ MAP_PTR(rms_final_weight, dim * 4)
+      │   └─→ ALIGN64()
+      │
+      ├─→ [STEP 14] OUTPUT CLASSIFIER (Tied Embeddings)
+      │   ├─→ wcls = (tn_i8*)token_embedding_table
+      │   └─→ wcls_scale = 1.0f
+      │
+      └─→ RETURN TN_OK
+
+  ERROR PATHS:
+      Any bounds check fails → RETURN TN_ERR_INVALID_WEIGHTS
+      
+================================================================================
+BOUNDS CHECKING TREE
+================================================================================
+
+EVERY READ IS GUARDED:
+
+    if ((size_t)(ptr - data + bytes_to_read) > data_size)
+        return TN_ERR_INVALID_WEIGHTS;
+
+Catches:
+    ├─→ File truncated before completing read
+    ├─→ Integer overflow in size calculation
+    ├─→ Scale factor extends beyond buffer
+    └─→ Alignment padding extends beyond file
+
+Example failure:
+    rel_offset = 4227090
+    bytes_to_read = 4 (scale factor)
+    (4227090 + 4) > data_size  →  FAIL ✗
+    
+    Converter must account for every byte!
+
+================================================================================
+TERNARY PACKING DETAIL
+================================================================================
+
+INPUT: Array of ternary values {-1, 0, 1}
+       Example for Query matrix: dim × dim = 16,777,216 values
+
+PACKING:
+    4 weights per byte, 2 bits each
+    
+    ┌─ Byte (8 bits) ─────────────────┐
+    │ [7:6] [5:4] [3:2] [1:0]         │
+    │  w[3]  w[2]  w[1]  w[0]         │
+    │  2bit  2bit  2bit  2bit         │
+    └─────────────────────────────────┘
+
+    Encoding: value + 1 → 2-bit result
+    -1 → 0b00
+     0 → 0b01
+     1 → 0b10
+     (unused: 0b11)
+
+OUTPUT: 
+    packed_bytes = ceil(16,777,216 / 4) = 4,194,304 bytes
+    
+    On disk after packing:
+    ┌──────────────────────────────┐
+    │ 4,194,304 packed bytes       │ (wq[l])
+    ├──────────────────────────────┤
+    │ 4 bytes (scale factor sq[l]) │
+    ├──────────────────────────────┤
+    │ 0-60 bytes padding           │ (to 64-byte boundary)
+    └──────────────────────────────┘
+
+UNPACKING (reference):
+    tn_i8 unpack_ternary(const tn_u8 *packed, int index) {
+        tn_u8 byte = packed[index >> 2];
+        int shift = (index & 3) << 1;
+        return (tn_i8)((byte >> shift) & 0x03) - 1;
+    }
+
+================================================================================
+MEMORY LAYOUT EXAMPLE (First Layer)
+================================================================================
+
+Start:  rel_offset=0, abs_offset=64
+
+┌─────────────────────────────────────────────────────────────┐
+│ Relative  │ Absolute  │ Content                     │ Size   │
+├─────────────────────────────────────────────────────────────┤
+│         0 │        64 │ rms_att_weight[0]           │ 16 KB  │
+│     16384 │     16448 │ (aligned, no padding)       │        │
+├─────────────────────────────────────────────────────────────┤
+│     16384 │     16448 │ rms_ffn_weight[0]           │ 16 KB  │
+│     32768 │     32832 │ (aligned)                   │        │
+├─────────────────────────────────────────────────────────────┤
+│     32768 │     32832 │ wq[0] (packed ternary)      │  4 MB  │
+│   4227072 │   4227136 │ sq[0] scale (4 bytes)       │        │
+│   4227076 │   4227140 │ (offset % 64 = 4) UNALIGNED │        │
+│         + │         + │ PADDING NEEDED = 60 bytes   │        │
+│   4227136 │   4227200 │ (now aligned)               │        │
+├─────────────────────────────────────────────────────────────┤
+│   4227136 │   4227200 │ wk[0] (packed ternary)      │  1 MB  │
+│   5275712 │   5275776 │ sk[0] scale                 │        │
+│   5275716 │   5275780 │ (offset % 64 = 4) UNALIGNED │        │
+│         + │         + │ PADDING = 60 bytes          │        │
+│   5275776 │   5275840 │ (aligned)                   │        │
+├─────────────────────────────────────────────────────────────┤
+│ ... (continue for all weights in layer 0)                   │
+└─────────────────────────────────────────────────────────────┘
+
+Note: Every 64-byte boundary is honored!
+
+================================================================================
+CONVERTER VERIFICATION MATRIX
+================================================================================
+
+Your converter output should match this EXACTLY:
+
+┌─────────┬──────────────────────┬────────────────┬─────────────────────────┐
+│ Step    │ Layer Field          │ Format         │ Size Formula            │
+├─────────┼──────────────────────┼────────────────┼─────────────────────────┤
+│ 1       │ token_embedding      │ float32        │ vocab_size × dim × 4    │
+├─────────┼──────────────────────┼────────────────┼─────────────────────────┤
+│ 2-12    │ (per layer, repeat)  │                │                         │
+│         │                      │                │                         │
+│ 2       │ rms_att_weight[l]    │ float32        │ dim × 4                 │
+│ 3       │ rms_ffn_weight[l]    │ float32        │ dim × 4                 │
+│ 4a      │ wq[l]                │ 2-bit packed   │ ceil(dim² / 4)          │
+│ 4b      │ sq[l]                │ float32        │ 4 bytes                 │
+│ 5a      │ wk[l]                │ 2-bit packed   │ ceil(dim×kv_dim / 4)    │
+│ 5b      │ sk[l]                │ float32        │ 4 bytes                 │
+│ 6a      │ wv[l]                │ 2-bit packed   │ ceil(dim×kv_dim / 4)    │
+│ 6b      │ sv[l]                │ float32        │ 4 bytes                 │
+│ 7       │ rms_attn_sub_norm[l] │ float32        │ dim × 4                 │
+│ 8a      │ wo[l]                │ 2-bit packed   │ ceil(dim² / 4)          │
+│ 8b      │ so[l]                │ float32        │ 4 bytes                 │
+│ 9a      │ w1[l]                │ 2-bit packed   │ ceil(dim×hidden / 4)    │
+│ 9b      │ s1[l]                │ float32        │ 4 bytes                 │
+│ 10a     │ w3[l]                │ 2-bit packed   │ ceil(dim×hidden / 4)    │
+│ 10b     │ s3[l]                │ float32        │ 4 bytes                 │
+│ 11      │ rms_ffn_sub_norm[l]  │ float32        │ hidden_dim × 4          │
+│ 12a     │ w2[l]                │ 2-bit packed   │ ceil(dim×hidden / 4)    │
+│ 12b     │ s2[l]                │ float32        │ 4 bytes                 │
+├─────────┼──────────────────────┼────────────────┼─────────────────────────┤
+│ 13      │ rms_final_weight     │ float32        │ dim × 4                 │
+│ 14      │ wcls                 │ (tied to 1)    │ (none)                  │
+└─────────┴──────────────────────┴────────────────┴─────────────────────────┘
+
+kv_dim = (dim / n_heads) × n_kv_heads
+
+DO NOT SKIP or REORDER any steps!
+
+================================================================================

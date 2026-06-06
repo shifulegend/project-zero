@@ -1,0 +1,21 @@
+Warning: --tokenizer <path> not provided. Proceeding anyway, but text generation may fail if vocab is absent.
+[gguf-tok] Loaded 102400 tokens (gpt2), 2400 special — BOS=100000 EOS=100001 chat_template=yes
+
+ Performance counter stats for '/home/<USER>/Documents/project-zero/adaptive_ai_engine --model /home/<USER>/Documents/project-zero/models/deepseek-v2-lite-chat-Q4_K_S.gguf --prompt List the first 10 prime numbers: --max-tokens 5 --threads 8 --simd auto --classifier bf16 --temperature 0.0':
+
+   262,504,146,828      cycles                           #    4.050 GHz                       
+   271,928,400,524      instructions                     #    1.04  insn per cycle            
+     8,788,360,998      cache-references                 #  135.578 M/sec                     
+     3,028,612,973      cache-misses                     #   34.46% of all cache refs         
+    53,283,900,285      branches                         #  822.009 M/sec                     
+       208,514,329      branch-misses                    #    0.39% of all branches           
+    64,821,565,855      task-clock                       #    1.752 CPUs utilized             
+           131,370      context-switches                 #    2.027 K/sec                     
+         2,222,953      page-faults                      #   34.293 K/sec                     
+
+      37.008749424 seconds time elapsed
+
+      59.746447000 seconds user
+       6.288245000 seconds sys
+
+

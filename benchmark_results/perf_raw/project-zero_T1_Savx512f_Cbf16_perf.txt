@@ -1,0 +1,21 @@
+# started on Sun Mar 22 17:45:48 2026
+
+
+ Performance counter stats for '/home/<USER>/Documents/project-zero/adaptive_ai_engine --model /home/<USER>/Documents/project-zero/models/deepseek-v2-lite-chat-Q4_K_S.gguf --prompt List the first 10 prime numbers: --max-tokens 5 --threads 1 --simd avx512f --classifier bf16 --temperature 0.0':
+
+   151,280,767,416      cycles                           #    4.187 GHz                       
+   263,680,468,096      instructions                     #    1.74  insn per cycle            
+     6,161,598,078      cache-references                 #  170.534 M/sec                     
+     2,720,082,104      cache-misses                     #   44.15% of all cache refs         
+    50,592,016,707      branches                         #    1.400 G/sec                     
+       102,846,507      branch-misses                    #    0.20% of all branches           
+    36,131,155,015      task-clock                       #    0.937 CPUs utilized             
+             4,521      context-switches                 #  125.127 /sec                      
+         2,215,328      page-faults                      #   61.314 K/sec                     
+
+      38.560538904 seconds time elapsed
+
+      31.874852000 seconds user
+       4.289806000 seconds sys
+
+

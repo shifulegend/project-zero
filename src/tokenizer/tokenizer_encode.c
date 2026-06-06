@@ -1,0 +1,489 @@
+#include "tokenizer/tokenizer.h"
+#include "core/platform.h"
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+/*
+ * GPT-2 byte-to-unicode table (matches the HuggingFace ByteLevel pre-tokenizer).
+ *
+ * GPT-2 / Llama-3 tokenizers use a byte-level BPE scheme where each of the 256
+ * raw input bytes is first mapped to a Unicode character before BPE encoding:
+ *   - Bytes 33-126  (printable ASCII '!'..'~') → themselves (1 UTF-8 byte)
+ *   - Bytes 161-172, 174-255 (Latin-1 printable) → themselves (2 UTF-8 bytes)
+ *   - All other bytes (0-32, 127-160, 173) → chr(256 + n) in Latin Extended-A
+ *     (2 UTF-8 bytes in the range U+0100..U+0143)
+ *
+ * Critically: ASCII space (0x20) maps to Ġ (U+0120, UTF-8: 0xC4 0xA0).
+ * Without this mapping the encoder looks up a raw ' ' that is absent from the
+ * vocabulary, so every post-space word token fails to encode correctly.
+ */
+/* GPT-2 byte-to-unicode table: maps each raw byte to its BPE vocab character (UTF-8 encoded). */
+static const struct { unsigned char u0; unsigned char u1; unsigned char u2; unsigned char u3; int len; } g_byte_unicode[256] = {
+    /*   0 */ {0xc4, 0x80, 0x00, 0x00, 2},
+    /*   1 */ {0xc4, 0x81, 0x00, 0x00, 2},
+    /*   2 */ {0xc4, 0x82, 0x00, 0x00, 2},
+    /*   3 */ {0xc4, 0x83, 0x00, 0x00, 2},
+    /*   4 */ {0xc4, 0x84, 0x00, 0x00, 2},
+    /*   5 */ {0xc4, 0x85, 0x00, 0x00, 2},
+    /*   6 */ {0xc4, 0x86, 0x00, 0x00, 2},
+    /*   7 */ {0xc4, 0x87, 0x00, 0x00, 2},
+    /*   8 */ {0xc4, 0x88, 0x00, 0x00, 2},
+    /*   9 */ {0xc4, 0x89, 0x00, 0x00, 2},
+    /*  10 */ {0xc4, 0x8a, 0x00, 0x00, 2},
+    /*  11 */ {0xc4, 0x8b, 0x00, 0x00, 2},
+    /*  12 */ {0xc4, 0x8c, 0x00, 0x00, 2},
+    /*  13 */ {0xc4, 0x8d, 0x00, 0x00, 2},
+    /*  14 */ {0xc4, 0x8e, 0x00, 0x00, 2},
+    /*  15 */ {0xc4, 0x8f, 0x00, 0x00, 2},
+    /*  16 */ {0xc4, 0x90, 0x00, 0x00, 2},
+    /*  17 */ {0xc4, 0x91, 0x00, 0x00, 2},
+    /*  18 */ {0xc4, 0x92, 0x00, 0x00, 2},
+    /*  19 */ {0xc4, 0x93, 0x00, 0x00, 2},
+    /*  20 */ {0xc4, 0x94, 0x00, 0x00, 2},
+    /*  21 */ {0xc4, 0x95, 0x00, 0x00, 2},
+    /*  22 */ {0xc4, 0x96, 0x00, 0x00, 2},
+    /*  23 */ {0xc4, 0x97, 0x00, 0x00, 2},
+    /*  24 */ {0xc4, 0x98, 0x00, 0x00, 2},
+    /*  25 */ {0xc4, 0x99, 0x00, 0x00, 2},
+    /*  26 */ {0xc4, 0x9a, 0x00, 0x00, 2},
+    /*  27 */ {0xc4, 0x9b, 0x00, 0x00, 2},
+    /*  28 */ {0xc4, 0x9c, 0x00, 0x00, 2},
+    /*  29 */ {0xc4, 0x9d, 0x00, 0x00, 2},
+    /*  30 */ {0xc4, 0x9e, 0x00, 0x00, 2},
+    /*  31 */ {0xc4, 0x9f, 0x00, 0x00, 2},
+    /*  32 */ {0xc4, 0xa0, 0x00, 0x00, 2},  /* space → Ġ (U+0120) */
+    /*  33 */ {0x21, 0x00, 0x00, 0x00, 1},
+    /*  34 */ {0x22, 0x00, 0x00, 0x00, 1},
+    /*  35 */ {0x23, 0x00, 0x00, 0x00, 1},
+    /*  36 */ {0x24, 0x00, 0x00, 0x00, 1},
+    /*  37 */ {0x25, 0x00, 0x00, 0x00, 1},
+    /*  38 */ {0x26, 0x00, 0x00, 0x00, 1},
+    /*  39 */ {0x27, 0x00, 0x00, 0x00, 1},
+    /*  40 */ {0x28, 0x00, 0x00, 0x00, 1},
+    /*  41 */ {0x29, 0x00, 0x00, 0x00, 1},
+    /*  42 */ {0x2a, 0x00, 0x00, 0x00, 1},
+    /*  43 */ {0x2b, 0x00, 0x00, 0x00, 1},
+    /*  44 */ {0x2c, 0x00, 0x00, 0x00, 1},
+    /*  45 */ {0x2d, 0x00, 0x00, 0x00, 1},
+    /*  46 */ {0x2e, 0x00, 0x00, 0x00, 1},
+    /*  47 */ {0x2f, 0x00, 0x00, 0x00, 1},
+    /*  48 */ {0x30, 0x00, 0x00, 0x00, 1},
+    /*  49 */ {0x31, 0x00, 0x00, 0x00, 1},
+    /*  50 */ {0x32, 0x00, 0x00, 0x00, 1},
+    /*  51 */ {0x33, 0x00, 0x00, 0x00, 1},
+    /*  52 */ {0x34, 0x00, 0x00, 0x00, 1},
+    /*  53 */ {0x35, 0x00, 0x00, 0x00, 1},
+    /*  54 */ {0x36, 0x00, 0x00, 0x00, 1},
+    /*  55 */ {0x37, 0x00, 0x00, 0x00, 1},
+    /*  56 */ {0x38, 0x00, 0x00, 0x00, 1},
+    /*  57 */ {0x39, 0x00, 0x00, 0x00, 1},
+    /*  58 */ {0x3a, 0x00, 0x00, 0x00, 1},
+    /*  59 */ {0x3b, 0x00, 0x00, 0x00, 1},
+    /*  60 */ {0x3c, 0x00, 0x00, 0x00, 1},
+    /*  61 */ {0x3d, 0x00, 0x00, 0x00, 1},
+    /*  62 */ {0x3e, 0x00, 0x00, 0x00, 1},
+    /*  63 */ {0x3f, 0x00, 0x00, 0x00, 1},
+    /*  64 */ {0x40, 0x00, 0x00, 0x00, 1},
+    /*  65 */ {0x41, 0x00, 0x00, 0x00, 1},
+    /*  66 */ {0x42, 0x00, 0x00, 0x00, 1},
+    /*  67 */ {0x43, 0x00, 0x00, 0x00, 1},
+    /*  68 */ {0x44, 0x00, 0x00, 0x00, 1},
+    /*  69 */ {0x45, 0x00, 0x00, 0x00, 1},
+    /*  70 */ {0x46, 0x00, 0x00, 0x00, 1},
+    /*  71 */ {0x47, 0x00, 0x00, 0x00, 1},
+    /*  72 */ {0x48, 0x00, 0x00, 0x00, 1},
+    /*  73 */ {0x49, 0x00, 0x00, 0x00, 1},
+    /*  74 */ {0x4a, 0x00, 0x00, 0x00, 1},
+    /*  75 */ {0x4b, 0x00, 0x00, 0x00, 1},
+    /*  76 */ {0x4c, 0x00, 0x00, 0x00, 1},
+    /*  77 */ {0x4d, 0x00, 0x00, 0x00, 1},
+    /*  78 */ {0x4e, 0x00, 0x00, 0x00, 1},
+    /*  79 */ {0x4f, 0x00, 0x00, 0x00, 1},
+    /*  80 */ {0x50, 0x00, 0x00, 0x00, 1},
+    /*  81 */ {0x51, 0x00, 0x00, 0x00, 1},
+    /*  82 */ {0x52, 0x00, 0x00, 0x00, 1},
+    /*  83 */ {0x53, 0x00, 0x00, 0x00, 1},
+    /*  84 */ {0x54, 0x00, 0x00, 0x00, 1},
+    /*  85 */ {0x55, 0x00, 0x00, 0x00, 1},
+    /*  86 */ {0x56, 0x00, 0x00, 0x00, 1},
+    /*  87 */ {0x57, 0x00, 0x00, 0x00, 1},
+    /*  88 */ {0x58, 0x00, 0x00, 0x00, 1},
+    /*  89 */ {0x59, 0x00, 0x00, 0x00, 1},
+    /*  90 */ {0x5a, 0x00, 0x00, 0x00, 1},
+    /*  91 */ {0x5b, 0x00, 0x00, 0x00, 1},
+    /*  92 */ {0x5c, 0x00, 0x00, 0x00, 1},
+    /*  93 */ {0x5d, 0x00, 0x00, 0x00, 1},
+    /*  94 */ {0x5e, 0x00, 0x00, 0x00, 1},
+    /*  95 */ {0x5f, 0x00, 0x00, 0x00, 1},
+    /*  96 */ {0x60, 0x00, 0x00, 0x00, 1},
+    /*  97 */ {0x61, 0x00, 0x00, 0x00, 1},
+    /*  98 */ {0x62, 0x00, 0x00, 0x00, 1},
+    /*  99 */ {0x63, 0x00, 0x00, 0x00, 1},
+    /* 100 */ {0x64, 0x00, 0x00, 0x00, 1},
+    /* 101 */ {0x65, 0x00, 0x00, 0x00, 1},
+    /* 102 */ {0x66, 0x00, 0x00, 0x00, 1},
+    /* 103 */ {0x67, 0x00, 0x00, 0x00, 1},
+    /* 104 */ {0x68, 0x00, 0x00, 0x00, 1},
+    /* 105 */ {0x69, 0x00, 0x00, 0x00, 1},
+    /* 106 */ {0x6a, 0x00, 0x00, 0x00, 1},
+    /* 107 */ {0x6b, 0x00, 0x00, 0x00, 1},
+    /* 108 */ {0x6c, 0x00, 0x00, 0x00, 1},
+    /* 109 */ {0x6d, 0x00, 0x00, 0x00, 1},
+    /* 110 */ {0x6e, 0x00, 0x00, 0x00, 1},
+    /* 111 */ {0x6f, 0x00, 0x00, 0x00, 1},
+    /* 112 */ {0x70, 0x00, 0x00, 0x00, 1},
+    /* 113 */ {0x71, 0x00, 0x00, 0x00, 1},
+    /* 114 */ {0x72, 0x00, 0x00, 0x00, 1},
+    /* 115 */ {0x73, 0x00, 0x00, 0x00, 1},
+    /* 116 */ {0x74, 0x00, 0x00, 0x00, 1},
+    /* 117 */ {0x75, 0x00, 0x00, 0x00, 1},
+    /* 118 */ {0x76, 0x00, 0x00, 0x00, 1},
+    /* 119 */ {0x77, 0x00, 0x00, 0x00, 1},
+    /* 120 */ {0x78, 0x00, 0x00, 0x00, 1},
+    /* 121 */ {0x79, 0x00, 0x00, 0x00, 1},
+    /* 122 */ {0x7a, 0x00, 0x00, 0x00, 1},
+    /* 123 */ {0x7b, 0x00, 0x00, 0x00, 1},
+    /* 124 */ {0x7c, 0x00, 0x00, 0x00, 1},
+    /* 125 */ {0x7d, 0x00, 0x00, 0x00, 1},
+    /* 126 */ {0x7e, 0x00, 0x00, 0x00, 1},
+    /* 127 */ {0xc4, 0xa1, 0x00, 0x00, 2},  /* DEL → ġ (U+0121) */
+    /* 128 */ {0xc4, 0xa2, 0x00, 0x00, 2},
+    /* 129 */ {0xc4, 0xa3, 0x00, 0x00, 2},
+    /* 130 */ {0xc4, 0xa4, 0x00, 0x00, 2},
+    /* 131 */ {0xc4, 0xa5, 0x00, 0x00, 2},
+    /* 132 */ {0xc4, 0xa6, 0x00, 0x00, 2},
+    /* 133 */ {0xc4, 0xa7, 0x00, 0x00, 2},
+    /* 134 */ {0xc4, 0xa8, 0x00, 0x00, 2},
+    /* 135 */ {0xc4, 0xa9, 0x00, 0x00, 2},
+    /* 136 */ {0xc4, 0xaa, 0x00, 0x00, 2},
+    /* 137 */ {0xc4, 0xab, 0x00, 0x00, 2},
+    /* 138 */ {0xc4, 0xac, 0x00, 0x00, 2},
+    /* 139 */ {0xc4, 0xad, 0x00, 0x00, 2},
+    /* 140 */ {0xc4, 0xae, 0x00, 0x00, 2},
+    /* 141 */ {0xc4, 0xaf, 0x00, 0x00, 2},
+    /* 142 */ {0xc4, 0xb0, 0x00, 0x00, 2},
+    /* 143 */ {0xc4, 0xb1, 0x00, 0x00, 2},
+    /* 144 */ {0xc4, 0xb2, 0x00, 0x00, 2},
+    /* 145 */ {0xc4, 0xb3, 0x00, 0x00, 2},
+    /* 146 */ {0xc4, 0xb4, 0x00, 0x00, 2},
+    /* 147 */ {0xc4, 0xb5, 0x00, 0x00, 2},
+    /* 148 */ {0xc4, 0xb6, 0x00, 0x00, 2},
+    /* 149 */ {0xc4, 0xb7, 0x00, 0x00, 2},
+    /* 150 */ {0xc4, 0xb8, 0x00, 0x00, 2},
+    /* 151 */ {0xc4, 0xb9, 0x00, 0x00, 2},
+    /* 152 */ {0xc4, 0xba, 0x00, 0x00, 2},
+    /* 153 */ {0xc4, 0xbb, 0x00, 0x00, 2},
+    /* 154 */ {0xc4, 0xbc, 0x00, 0x00, 2},
+    /* 155 */ {0xc4, 0xbd, 0x00, 0x00, 2},
+    /* 156 */ {0xc4, 0xbe, 0x00, 0x00, 2},
+    /* 157 */ {0xc4, 0xbf, 0x00, 0x00, 2},
+    /* 158 */ {0xc5, 0x80, 0x00, 0x00, 2},
+    /* 159 */ {0xc5, 0x81, 0x00, 0x00, 2},
+    /* 160 */ {0xc5, 0x82, 0x00, 0x00, 2},
+    /* 161 */ {0xc2, 0xa1, 0x00, 0x00, 2},  /* inverted ! (Latin-1 printable) */
+    /* 162 */ {0xc2, 0xa2, 0x00, 0x00, 2},
+    /* 163 */ {0xc2, 0xa3, 0x00, 0x00, 2},
+    /* 164 */ {0xc2, 0xa4, 0x00, 0x00, 2},
+    /* 165 */ {0xc2, 0xa5, 0x00, 0x00, 2},
+    /* 166 */ {0xc2, 0xa6, 0x00, 0x00, 2},
+    /* 167 */ {0xc2, 0xa7, 0x00, 0x00, 2},
+    /* 168 */ {0xc2, 0xa8, 0x00, 0x00, 2},
+    /* 169 */ {0xc2, 0xa9, 0x00, 0x00, 2},
+    /* 170 */ {0xc2, 0xaa, 0x00, 0x00, 2},
+    /* 171 */ {0xc2, 0xab, 0x00, 0x00, 2},
+    /* 172 */ {0xc2, 0xac, 0x00, 0x00, 2},
+    /* 173 */ {0xc5, 0x83, 0x00, 0x00, 2},  /* soft hyphen → Ń(U+0143) */
+    /* 174 */ {0xc2, 0xae, 0x00, 0x00, 2},
+    /* 175 */ {0xc2, 0xaf, 0x00, 0x00, 2},
+    /* 176 */ {0xc2, 0xb0, 0x00, 0x00, 2},
+    /* 177 */ {0xc2, 0xb1, 0x00, 0x00, 2},
+    /* 178 */ {0xc2, 0xb2, 0x00, 0x00, 2},
+    /* 179 */ {0xc2, 0xb3, 0x00, 0x00, 2},
+    /* 180 */ {0xc2, 0xb4, 0x00, 0x00, 2},
+    /* 181 */ {0xc2, 0xb5, 0x00, 0x00, 2},
+    /* 182 */ {0xc2, 0xb6, 0x00, 0x00, 2},
+    /* 183 */ {0xc2, 0xb7, 0x00, 0x00, 2},
+    /* 184 */ {0xc2, 0xb8, 0x00, 0x00, 2},
+    /* 185 */ {0xc2, 0xb9, 0x00, 0x00, 2},
+    /* 186 */ {0xc2, 0xba, 0x00, 0x00, 2},
+    /* 187 */ {0xc2, 0xbb, 0x00, 0x00, 2},
+    /* 188 */ {0xc2, 0xbc, 0x00, 0x00, 2},
+    /* 189 */ {0xc2, 0xbd, 0x00, 0x00, 2},
+    /* 190 */ {0xc2, 0xbe, 0x00, 0x00, 2},
+    /* 191 */ {0xc2, 0xbf, 0x00, 0x00, 2},
+    /* 192 */ {0xc3, 0x80, 0x00, 0x00, 2},
+    /* 193 */ {0xc3, 0x81, 0x00, 0x00, 2},
+    /* 194 */ {0xc3, 0x82, 0x00, 0x00, 2},
+    /* 195 */ {0xc3, 0x83, 0x00, 0x00, 2},
+    /* 196 */ {0xc3, 0x84, 0x00, 0x00, 2},
+    /* 197 */ {0xc3, 0x85, 0x00, 0x00, 2},
+    /* 198 */ {0xc3, 0x86, 0x00, 0x00, 2},
+    /* 199 */ {0xc3, 0x87, 0x00, 0x00, 2},
+    /* 200 */ {0xc3, 0x88, 0x00, 0x00, 2},
+    /* 201 */ {0xc3, 0x89, 0x00, 0x00, 2},
+    /* 202 */ {0xc3, 0x8a, 0x00, 0x00, 2},
+    /* 203 */ {0xc3, 0x8b, 0x00, 0x00, 2},
+    /* 204 */ {0xc3, 0x8c, 0x00, 0x00, 2},
+    /* 205 */ {0xc3, 0x8d, 0x00, 0x00, 2},
+    /* 206 */ {0xc3, 0x8e, 0x00, 0x00, 2},
+    /* 207 */ {0xc3, 0x8f, 0x00, 0x00, 2},
+    /* 208 */ {0xc3, 0x90, 0x00, 0x00, 2},
+    /* 209 */ {0xc3, 0x91, 0x00, 0x00, 2},
+    /* 210 */ {0xc3, 0x92, 0x00, 0x00, 2},
+    /* 211 */ {0xc3, 0x93, 0x00, 0x00, 2},
+    /* 212 */ {0xc3, 0x94, 0x00, 0x00, 2},
+    /* 213 */ {0xc3, 0x95, 0x00, 0x00, 2},
+    /* 214 */ {0xc3, 0x96, 0x00, 0x00, 2},
+    /* 215 */ {0xc3, 0x97, 0x00, 0x00, 2},
+    /* 216 */ {0xc3, 0x98, 0x00, 0x00, 2},
+    /* 217 */ {0xc3, 0x99, 0x00, 0x00, 2},
+    /* 218 */ {0xc3, 0x9a, 0x00, 0x00, 2},
+    /* 219 */ {0xc3, 0x9b, 0x00, 0x00, 2},
+    /* 220 */ {0xc3, 0x9c, 0x00, 0x00, 2},
+    /* 221 */ {0xc3, 0x9d, 0x00, 0x00, 2},
+    /* 222 */ {0xc3, 0x9e, 0x00, 0x00, 2},
+    /* 223 */ {0xc3, 0x9f, 0x00, 0x00, 2},
+    /* 224 */ {0xc3, 0xa0, 0x00, 0x00, 2},
+    /* 225 */ {0xc3, 0xa1, 0x00, 0x00, 2},
+    /* 226 */ {0xc3, 0xa2, 0x00, 0x00, 2},
+    /* 227 */ {0xc3, 0xa3, 0x00, 0x00, 2},
+    /* 228 */ {0xc3, 0xa4, 0x00, 0x00, 2},
+    /* 229 */ {0xc3, 0xa5, 0x00, 0x00, 2},
+    /* 230 */ {0xc3, 0xa6, 0x00, 0x00, 2},
+    /* 231 */ {0xc3, 0xa7, 0x00, 0x00, 2},
+    /* 232 */ {0xc3, 0xa8, 0x00, 0x00, 2},
+    /* 233 */ {0xc3, 0xa9, 0x00, 0x00, 2},
+    /* 234 */ {0xc3, 0xaa, 0x00, 0x00, 2},
+    /* 235 */ {0xc3, 0xab, 0x00, 0x00, 2},
+    /* 236 */ {0xc3, 0xac, 0x00, 0x00, 2},
+    /* 237 */ {0xc3, 0xad, 0x00, 0x00, 2},
+    /* 238 */ {0xc3, 0xae, 0x00, 0x00, 2},
+    /* 239 */ {0xc3, 0xaf, 0x00, 0x00, 2},
+    /* 240 */ {0xc3, 0xb0, 0x00, 0x00, 2},
+    /* 241 */ {0xc3, 0xb1, 0x00, 0x00, 2},
+    /* 242 */ {0xc3, 0xb2, 0x00, 0x00, 2},
+    /* 243 */ {0xc3, 0xb3, 0x00, 0x00, 2},
+    /* 244 */ {0xc3, 0xb4, 0x00, 0x00, 2},
+    /* 245 */ {0xc3, 0xb5, 0x00, 0x00, 2},
+    /* 246 */ {0xc3, 0xb6, 0x00, 0x00, 2},
+    /* 247 */ {0xc3, 0xb7, 0x00, 0x00, 2},
+    /* 248 */ {0xc3, 0xb8, 0x00, 0x00, 2},
+    /* 249 */ {0xc3, 0xb9, 0x00, 0x00, 2},
+    /* 250 */ {0xc3, 0xba, 0x00, 0x00, 2},
+    /* 251 */ {0xc3, 0xbb, 0x00, 0x00, 2},
+    /* 252 */ {0xc3, 0xbc, 0x00, 0x00, 2},
+    /* 253 */ {0xc3, 0xbd, 0x00, 0x00, 2},
+    /* 254 */ {0xc3, 0xbe, 0x00, 0x00, 2},
+    /* 255 */ {0xc3, 0xbf, 0x00, 0x00, 2},
+};
+
+/* Binary search for a token string in the sorted vocabulary.
+ * Returns the token ID if found, or -1 if not found. */
+static int tokenizer_lookup(const Tokenizer *t, const char *str) {
+    int lo = 0, hi = t->vocab_size - 1;
+    while (lo <= hi) {
+        int mid = lo + (hi - lo) / 2;
+        int idx = t->sorted_vocab_indices[mid];
+        int cmp = strcmp(str, t->vocab[idx]);
+        if (cmp == 0) return idx;
+        else if (cmp < 0) hi = mid - 1;
+        else lo = mid + 1;
+    }
+    return -1;
+}
+
+/* Encode a plain (non-special-token) text segment using byte-level BPE. */
+static int tokenizer_encode_segment(Tokenizer *t, const char *text, size_t len,
+                                    int *tokens, int max_tokens);
+
+/* Static fallback special tokens for legacy .bin tokenizers (no token_type array). */
+static const struct { const char *str; int slen; } FALLBACK_SPECIALS[] = {
+    { "<|im_start|>",         12 },
+    { "<|im_end|>",           10 },
+    { "<end_of_utterance>",   18 },
+    { "<|endoftext|>",        13 },
+    { "<|begin_of_text|>",    17 },
+    { "<|end_of_text|>",      15 },
+    { "<|eot_id|>",           10 },
+    { "<|start_header_id|>",  19 },
+    { "<|end_header_id|>",    17 },
+    { "<|finetune_right_pad_id|>", 25 },
+};
+enum { N_FALLBACK_SPECIALS = 10 };
+
+/* Check if text[pos..] starts with any special token from the model's dynamic list
+ * or the static fallback list. Returns matched length + fills *out_id.
+ * Returns 0 if no match. */
+static size_t match_special_token(const Tokenizer *t,
+                                   const char *text, size_t pos, size_t text_len,
+                                   int *out_id)
+{
+    size_t best_len = 0;
+    int    best_id  = -1;
+
+    if (t->n_special > 0) {
+        /* Dynamic list from GGUF token_type — covers all model-specific specials */
+        for (int i = 0; i < t->n_special; i++) {
+            size_t slen = strlen(t->special_tokens[i]);
+            if (slen > 0 && pos + slen <= text_len &&
+                memcmp(text + pos, t->special_tokens[i], slen) == 0 &&
+                slen > best_len) {
+                best_len = slen;
+                best_id  = t->special_token_ids[i];
+            }
+        }
+    } else {
+        /* Fallback: static list for .bin tokenizers */
+        for (int i = 0; i < N_FALLBACK_SPECIALS; i++) {
+            size_t slen = (size_t)FALLBACK_SPECIALS[i].slen;
+            if (pos + slen <= text_len &&
+                memcmp(text + pos, FALLBACK_SPECIALS[i].str, slen) == 0) {
+                int id = tokenizer_lookup(t, FALLBACK_SPECIALS[i].str);
+                if (id >= 0 && slen > best_len) {
+                    best_len = slen;
+                    best_id  = id;
+                }
+            }
+        }
+    }
+
+    if (best_len > 0 && out_id) *out_id = best_id;
+    return best_len;
+}
+
+int tokenizer_encode(Tokenizer *t, const char *text, size_t prompt_len, int *tokens, int max_tokens) {
+    if (!text || !tokens || max_tokens <= 0) return -1;
+    if (!t || !t->vocab) return -1;
+
+    /* Injection check: any ASCII <| sequence that is NOT a known special token
+     * from this model's vocabulary is rejected (prompt injection defence).
+     * Template-produced special tokens (e.g. <|im_start|>) pass because they
+     * exist in the model's dynamic special tokens list. */
+    {
+        const char *scan = text;
+        while ((scan = (const char *)memchr(scan, '<', (size_t)(text + prompt_len - scan))) != NULL) {
+            if (scan + 1 < text + prompt_len && scan[1] == '|') {
+                /* Found <| — verify it's a known special token */
+                size_t rem = (size_t)(text + prompt_len - scan);
+                int dummy_id;
+                size_t mlen = match_special_token(t, scan, 0, rem, &dummy_id);
+                if (mlen == 0) {
+                    return -1; /* Unknown control token — reject */
+                }
+                scan += mlen;
+                continue;
+            }
+            scan++;
+        }
+    }
+
+    int n_tokens = 0;
+    size_t pos = 0;
+    while (pos < prompt_len) {
+        /* Try to match a special token at current position */
+        int sp_id = -1;
+        size_t sp_len = match_special_token(t, text, pos, prompt_len, &sp_id);
+        if (sp_len > 0 && sp_id >= 0) {
+            if (n_tokens >= max_tokens) return -1;
+            tokens[n_tokens++] = sp_id;
+            pos += sp_len;
+            continue;
+        }
+        /* Accumulate plain text until the next special token boundary */
+        size_t seg_start = pos;
+        while (pos < prompt_len) {
+            int dummy;
+            if (match_special_token(t, text, pos, prompt_len, &dummy) > 0) break;
+            pos++;
+        }
+        if (pos > seg_start) {
+            int n = tokenizer_encode_segment(t, text + seg_start, pos - seg_start,
+                                             tokens + n_tokens, max_tokens - n_tokens);
+            if (n < 0) return -1;
+            n_tokens += n;
+        }
+    }
+    return n_tokens;
+}
+
+/* Byte-level BPE encoder for a plain text segment (no special tokens). */
+static int tokenizer_encode_segment(Tokenizer *t, const char *text, size_t prompt_len,
+                                    int *tokens, int max_tokens) {
+    /* Step 1: Encode each byte of the input as an initial single-byte token.
+     *
+     * GPT-2 / Llama-3 tokenizers use a byte-level BPE scheme: every raw input
+     * byte is mapped to a Unicode character via g_byte_unicode[] before being
+     * looked up in the vocabulary.  The most common case is ASCII space (0x20)
+     * which maps to Ġ (U+0120, UTF-8: 0xC4 0xA0).  Without this mapping the
+     * raw space character ' ' is not present in the vocab, causing all
+     * post-space tokens to encode incorrectly, which corrupts inference output.
+     */
+    int n_tokens = 0;
+    for (size_t i = 0; i < prompt_len; i++) {
+        unsigned char c = (unsigned char)text[i];
+
+        /* Apply the GPT-2 byte-to-unicode mapping for this byte */
+        char mapped[5];
+        int mlen = g_byte_unicode[c].len;
+        mapped[0] = (char)g_byte_unicode[c].u0;
+        mapped[1] = (char)g_byte_unicode[c].u1;
+        mapped[2] = (char)g_byte_unicode[c].u2;
+        mapped[3] = (char)g_byte_unicode[c].u3;
+        mapped[mlen] = '\0';
+
+        int id = tokenizer_lookup(t, mapped);
+        if (id == -1) {
+            /* Unknown byte — try <unk> */
+            id = tokenizer_lookup(t, "<unk>");
+            if (id == -1) id = 0; /* fallback to token 0 */
+        }
+        if (n_tokens >= max_tokens) return -1;
+        tokens[n_tokens++] = id;
+    }
+
+    /* Step 2: Iterative BPE merge loop.
+     * Repeatedly find the adjacent pair with the highest merge score,
+     * merge them into a single token, and repeat until no merges are possible. */
+    char *merge_buf = (char *)malloc((size_t)t->max_token_len * 2 + 2);
+    if (!merge_buf) return -1;
+
+    for (;;) {
+        float best_score = -1e10f;
+        int best_idx = -1;
+        int best_id = -1;
+
+        /* Scan all adjacent pairs */
+        for (int i = 0; i < n_tokens - 1; i++) {
+            /* Concatenate tokens[i] + tokens[i+1] */
+            int len1 = (int)strlen(t->vocab[tokens[i]]);
+            int len2 = (int)strlen(t->vocab[tokens[i + 1]]);
+            if (len1 + len2 > t->max_token_len * 2) continue;
+
+            memcpy(merge_buf, t->vocab[tokens[i]], (size_t)len1);
+            memcpy(merge_buf + len1, t->vocab[tokens[i + 1]], (size_t)len2);
+            merge_buf[len1 + len2] = '\0';
+
+            /* Look up merged string */
+            int id = tokenizer_lookup(t, merge_buf);
+            if (id != -1 && t->vocab_scores[id] > best_score) {
+                best_score = t->vocab_scores[id];
+                best_idx = i;
+                best_id = id;
+            }
+        }
+
+        if (best_idx == -1) break; /* No more merges possible */
+
+        /* Merge: replace tokens[best_idx] with merged token,
+         * shift remaining tokens left by one */
+        tokens[best_idx] = best_id;
+        for (int i = best_idx + 1; i < n_tokens - 1; i++) {
+            tokens[i] = tokens[i + 1];
+        }
+        n_tokens--;
+    }
+
+    free(merge_buf);
+    return n_tokens;
+}

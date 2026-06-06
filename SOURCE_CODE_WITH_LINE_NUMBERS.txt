@@ -1,0 +1,300 @@
+================================================================================
+COMPLETE SOURCE CODE - weight loading function
+File: src/core/weights.c
+Lines: 52-140 (complete function)
+================================================================================
+
+52 | TernaryError weights_map(TransformerWeights *w, const Config *cfg,
+53 |                          tn_i8 *data, size_t data_size) {
+54 |     tn_i8 *ptr = data;
+55 |     int dim = cfg->dim;
+56 |     int hidden_dim = cfg->hidden_dim;
+57 |     int kv_dim = config_kv_dim(cfg);
+58 |     int nl = cfg->n_layers;
+59 |
+60 |     /* Absolute alignment base is 64 */
+61 |     const size_t offset_base = 64;
+62 |
+63 |     #define MAP_PTR(dest, bytes) do {                       \
+64 |         if ((size_t)(ptr - data + (bytes)) > data_size) return TN_ERR_INVALID_WEIGHTS; \
+65 |         (dest) = (void *)ptr;                               \
+66 |         ptr += (bytes);                                     \
+67 |     } while(0)
+68 |
+69 |     #define ALIGN64() do {                                              \
+70 |         size_t abs_offset = (size_t)(ptr - data) + offset_base;         \
+71 |         size_t padding = (64 - (abs_offset % 64)) % 64;                 \
+72 |         if (padding > 0) {                                              \
+73 |             if ((size_t)(ptr - data + padding) > data_size) return TN_ERR_INVALID_WEIGHTS; \
+74 |             ptr += padding;                                             \
+75 |         }                                                               \
+76 |     } while(0)
+77 |
+78 |     #define COPY_VAL_ALIGN(dest, size) do {                       \
+79 |         if ((size_t)(ptr - data + (size)) > data_size) return TN_ERR_INVALID_WEIGHTS; \
+80 |         memcpy((dest), ptr, (size));                        \
+81 |         ptr += (size);                                      \
+82 |         ALIGN64();                                          \
+83 |     } while(0)
+84 |
+85 |     /* 1. Token embedding table (Always Float32 in BitNet-2B converted by this script) */
+86 |     MAP_PTR(w->token_embedding_table, (size_t)cfg->vocab_size * dim * sizeof(float));
+87 |     w->token_embedding_scale = 1.0f;
+88 |     ALIGN64();
+89 |
+90 |     w->layers_are_ternary = (cfg->scale_mode == 0);
+91 |
+92 |     /* 2. Per-layer weights (DEFINITELY CONFIRMED Microsoft BitNet-b1.58-2B-4T Sequence) */
+93 |     for (int l = 0; l < nl; l++) {
+94 |         /* Input Norms (Both present) */
+95 |         MAP_PTR(w->rms_att_weight[l], (size_t)dim * sizeof(float)); ALIGN64();
+96 |         MAP_PTR(w->rms_ffn_weight[l], (size_t)dim * sizeof(float)); ALIGN64();
+97 |
+98 |         size_t size_q = (size_t)dim * dim;
+99 |         size_t size_kv = (size_t)dim * kv_dim;
+100|         size_t size_ffn = (size_t)dim * hidden_dim;
+101|
+102|         if (w->layers_are_ternary) {
+103|             /* Attention: Q, K, V */
+104|             MAP_PTR(w->wq[l], packed_bytes(size_q));  COPY_VAL_ALIGN(&w->sq[l], 4);
+105|             MAP_PTR(w->wk[l], packed_bytes(size_kv)); COPY_VAL_ALIGN(&w->sk[l], 4);
+106|             MAP_PTR(w->wv[l], packed_bytes(size_kv)); COPY_VAL_ALIGN(&w->sv[l], 4);
+107|             
+108|             /* attn_sub_norm (SubNorm1) */
+109|             MAP_PTR(w->rms_attn_sub_norm[l], (size_t)dim * sizeof(float)); ALIGN64();
+110|
+111|             /* Output projection */
+112|             MAP_PTR(w->wo[l], packed_bytes(size_q));  COPY_VAL_ALIGN(&w->so[l], 4);
+113|             
+114|             /* FFN: Gate, Up */
+115|             MAP_PTR(w->w1[l], packed_bytes(size_ffn)); COPY_VAL_ALIGN(&w->s1[l], 4);
+116|             MAP_PTR(w->w3[l], packed_bytes(size_ffn)); COPY_VAL_ALIGN(&w->s3[l], 4);
+117|
+118|             /* ffn_sub_norm (SubNorm2) - CONFIRMED PRESENT in BitNet-2B */
+119|             MAP_PTR(w->rms_ffn_sub_norm[l], (size_t)hidden_dim * sizeof(float)); ALIGN64();
+120|
+121|             /* Down projection */
+122|             MAP_PTR(w->w2[l], packed_bytes(size_ffn)); COPY_VAL_ALIGN(&w->s2[l], 4);
+123|         } else {
+124|             return TN_ERR_INVALID_WEIGHTS; 
+125|         }
+126|     }
+127|
+128|     /* 3. Final norm */
+129|     MAP_PTR(w->rms_final_weight, (size_t)dim * sizeof(float)); ALIGN64();
+130|
+131|     /* 4. Output classifier -> Tied embeddings */
+132|     w->wcls = (tn_i8*)w->token_embedding_table;
+133|     w->wcls_scale = 1.0f;
+134|     w->wcls_is_ternary = false; 
+135|
+136|     #undef MAP_PTR
+137|     #undef ALIGN64
+138|     #undef COPY_VAL_ALIGN
+139|     return TN_OK;
+140| }
+
+================================================================================
+FUNCTION: weights_alloc_pointers()
+File: src/core/weights.c
+Lines: 7-40
+================================================================================
+
+7  | TernaryError weights_alloc_pointers(TransformerWeights *w, const Config *cfg) {
+8  |     int nl = cfg->n_layers;
+9  |     memset(w, 0, sizeof(*w));
+10 |
+11 |     w->wq = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
+12 |     w->wk = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
+13 |     w->wv = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
+14 |     w->wo = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
+15 |     w->sq = (float *)calloc(nl, sizeof(float));
+16 |     w->sk = (float *)calloc(nl, sizeof(float));
+17 |     w->sv = (float *)calloc(nl, sizeof(float));
+18 |     w->so = (float *)calloc(nl, sizeof(float));
+19 |     w->w1 = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
+20 |     w->w2 = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
+21 |     w->w3 = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
+22 |     w->s1 = (float *)calloc(nl, sizeof(float));
+23 |     w->s2 = (float *)calloc(nl, sizeof(float));
+24 |     w->s3 = (float *)calloc(nl, sizeof(float));
+25 |     w->rms_att_weight = (float **)calloc(nl, sizeof(float *));
+26 |     w->rms_ffn_weight = (float **)calloc(nl, sizeof(float *));
+27 |     w->rms_attn_sub_norm = (float **)calloc(nl, sizeof(float *));
+28 |     w->rms_ffn_sub_norm = (float **)calloc(nl, sizeof(float *));
+29 |
+30 |     if (!w->wq || !w->wk || !w->wv || !w->wo ||
+31 |         !w->sq || !w->sk || !w->sv || !w->so ||
+32 |         !w->w1 || !w->w2 || !w->w3 ||
+33 |         !w->s1 || !w->s2 || !w->s3 ||
+34 |         !w->rms_att_weight || !w->rms_ffn_weight ||
+35 |         !w->rms_attn_sub_norm || !w->rms_ffn_sub_norm) {
+36 |         weights_free_pointers(w);
+37 |         return TN_ERR_OOM;
+38 |     }
+39 |     return TN_OK;
+40 | }
+
+================================================================================
+KEY MACRO DEFINITIONS
+================================================================================
+
+MACRO: MAP_PTR(dest, bytes)
+──────────────────────────
+Purpose: Read and map a weight array
+Behavior:
+  1. Validate: (ptr - data + bytes) <= data_size
+  2. Set dest = ptr
+  3. Advance ptr by bytes
+  4. NO automatic alignment
+
+Usage: MAP_PTR(w->wq[l], packed_bytes(size_q));
+
+MACRO: ALIGN64()
+────────────────
+Purpose: Pad to next 64-byte boundary in absolute file coordinates
+Algorithm:
+  1. abs_offset = (ptr - data) + 64
+  2. padding = (64 - (abs_offset % 64)) % 64
+  3. Validate: (ptr - data + padding) <= data_size
+  4. Advance ptr by padding
+
+Usage: ALIGN64();  // After reading weights
+
+MACRO: COPY_VAL_ALIGN(dest, size)
+──────────────────────────────────
+Purpose: Copy scale factor and align
+Behavior:
+  1. Validate: (ptr - data + size) <= data_size
+  2. memcpy(dest, ptr, size)
+  3. Advance ptr by size
+  4. Call ALIGN64()
+
+Usage: COPY_VAL_ALIGN(&w->sq[l], 4);  // Read 4-byte scale, then align
+
+================================================================================
+HELPER FUNCTIONS
+================================================================================
+
+From include/core/unpack.h:
+
+static inline size_t packed_bytes(int count) {
+    return ((size_t)count + 3) >> 2;  // ceil(count / 4)
+}
+
+Purpose: Calculate bytes needed to store count ternary weights
+Formula: Ceiling division by 4 (since 4 weights per byte)
+Example: packed_bytes(16777216) = 4194304 bytes
+
+From include/core/config.h:
+
+static inline int config_kv_dim(const Config *cfg) {
+    return (cfg->dim / cfg->n_heads) * cfg->n_kv_heads;
+}
+
+Purpose: Calculate KV dimension for grouped query attention
+Formula: (model_dim / n_heads) * n_kv_heads
+Example: (4096 / 32) * 8 = 1024 bytes per layer
+
+================================================================================
+SUPPORTING STRUCTURES
+================================================================================
+
+From include/core/weights.h:
+
+typedef struct {
+    /* Token embedding table */
+    float *token_embedding_table;
+    float  token_embedding_scale;
+
+    /* Per-layer attention weights */
+    tn_i8 **wq, **wk, **wv, **wo;
+    float  *sq, *sk, *sv, *so;
+
+    /* Per-layer FFN weights */
+    tn_i8 **w1, **w2, **w3;
+    float  *s1, *s2, *s3;
+
+    /* Per-layer normalization */
+    float **rms_att_weight;
+    float **rms_ffn_weight;
+    float **rms_attn_sub_norm;
+    float **rms_ffn_sub_norm;
+    float  *rms_final_weight;
+
+    /* Output classifier */
+    tn_i8 *wcls;
+    float  wcls_scale;
+    bool   wcls_is_ternary;
+    bool   layers_are_ternary;
+} TransformerWeights;
+
+From include/core/config.h:
+
+typedef struct {
+    int dim;           /* Model dimension (e.g., 4096) */
+    int hidden_dim;    /* FFN intermediate (e.g., 14336) */
+    int n_layers;      /* Number of layers (e.g., 24) */
+    int n_heads;       /* Number of attention heads (e.g., 32) */
+    int n_kv_heads;    /* KV heads for GQA (e.g., 8) */
+    int vocab_size;    /* Vocabulary size (e.g., 32000) */
+    int seq_len;       /* Maximum sequence length (e.g., 2048) */
+    int act_type;      /* Activation type (0=SiLU, 1=ReLU2) */
+    float rope_theta;  /* RoPE base frequency */
+    int scale_mode;    /* 0=Ternary, 1=Float32 */
+} Config;
+
+================================================================================
+CALLING CONTEXT (from src/cli/main.c)
+================================================================================
+
+MappedFile mf;
+mapped_file_open(&mf, args.model_path);
+
+tn_i8 *weight_data = (tn_i8*)mf.data + 64;  // Skip header
+size_t data_size = mf.size - 64;
+
+TransformerWeights w;
+weights_alloc_pointers(&w, &p);
+
+if (weights_map(&w, &p, weight_data, data_size) != TN_OK) {
+    fprintf(stderr, "Failed to map weight structures from file.\n");
+    return 1;
+}
+
+// Now 'w' struct contains all weight pointers into memory-mapped region
+
+================================================================================
+ERROR CODES (from include/core/error.h)
+================================================================================
+
+TN_OK                    - Success
+TN_ERR_INVALID_WEIGHTS   - Weight mapping failed (bounds check, truncation, etc.)
+TN_ERR_OOM               - Out of memory (allocation failed)
+TN_ERR_FILE_OPEN         - Cannot open file
+TN_ERR_FILE_STAT         - Cannot stat file
+TN_ERR_MMAP_FAILED       - mmap() or MapViewOfFile() failed
+
+================================================================================
+ANNOTATIONS IN SOURCE
+================================================================================
+
+Line 60: "Absolute alignment base is 64"
+  → File structure: [0:8 magic][8:48 config][48:64 padding][64: weights]
+  → offset_base used to align to file boundaries, not relative offsets
+
+Line 85: "Always Float32 in BitNet-2B converted by this script"
+  → Token embeddings are NOT ternary, always full precision floats
+
+Line 92: "DEFINITELY CONFIRMED Microsoft BitNet-b1.58-2B-4T Sequence"
+  → Reading order verified against official BitNet-2B model
+
+Line 108: "attn_sub_norm (SubNorm1)"
+Line 118: "ffn_sub_norm (SubNorm2) - CONFIRMED PRESENT in BitNet-2B"
+  → BitNet-specific sub-normalizations that MUST be present
+
+Line 131-134: "Output classifier -> Tied embeddings"
+  → No separate weights for classification layer
+  → Reuses token embedding table (standard technique)
+
+================================================================================

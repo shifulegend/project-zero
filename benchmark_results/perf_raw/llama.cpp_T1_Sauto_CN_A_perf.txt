@@ -1,0 +1,21 @@
+# started on Sun Mar 22 17:46:30 2026
+
+
+ Performance counter stats for '/home/ubuntu/llama.cpp/build/bin/llama-bench -m /home/<USER>/Documents/project-zero/models/deepseek-v2-lite-chat-Q4_K_S.gguf -t 1 -p 0 -n 5 -r 1 -o csv':
+
+    34,400,663,816      cycles                           #    4.096 GHz                       
+    71,577,858,892      instructions                     #    2.08  insn per cycle            
+       492,123,842      cache-references                 #   58.596 M/sec                     
+       336,421,466      cache-misses                     #   68.36% of all cache refs         
+    10,309,233,708      branches                         #    1.227 G/sec                     
+        17,717,899      branch-misses                    #    0.17% of all branches           
+     8,398,579,997      task-clock                       #    0.270 CPUs utilized             
+            34,059      context-switches                 #    4.055 K/sec                     
+         1,607,095      page-faults                      #  191.353 K/sec                     
+
+      31.078743864 seconds time elapsed
+
+       4.950253000 seconds user
+       3.499699000 seconds sys
+
+

@@ -1,0 +1,74 @@
+Project Zero Engine (Phase 16 — Auto-Tuned Hardware)
+SIMD: avx512f (calibrated optimal)
+Classifier: BF16 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 8 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1280   KiB per core                 │
+│ L3 cache      : 8      MiB shared                   │
+│ Free RAM      : 13903  MiB                          │
+│ DRAM bandwidth: 12.1   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB                           │
+│ Ceiling       : 10.0   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 8 threads | AVX-512 VNNI | BF16 cls | 4T | 12.1 GB/s | ceiling 10 tok/s
+Model format: GGUF
+Model Configuration:
+  dim:        2048
+  hidden_dim: 10944
+  n_layers:   27
+  n_heads:    16
+  n_kv_heads: 16
+  vocab_size: 102400
+  seq_len:    163840
+  act_type:   0 (SiLU)
+  rope_theta: 10000.0
+  head_dim:   128
+  kv_dim:     2048
+[MoE] num_experts=64  top_k=6  expert_hidden_dim=1408  first_k_dense=1  shared_experts=2 (hdim=2816)
+[MLA] kv_lora_rank=512  qk_nope_head_dim=128  qk_rope_head_dim=64  v_head_dim=128
+[GGUF-DS2] Weights loaded (27 layers, 1 dense + 26 MoE, 64 experts/layer, experts=quantized)
+KV Strategy: Sliding Window I8, max context: 1024 tokens
+
+ Here is a Python program that
+
+1.14 tok/s (6 tokens)
+
+--- Expert Utilisation Summary (27 MoE layers × 64 experts) ---
+  L00:   0 unique / 64 total  (invocations:    0)  top:
+  L01:  50 unique / 64 total  (invocations:  126)  top: E8(13) E57(7) E6(5) E20(5) E29(5)
+  L02:  46 unique / 64 total  (invocations:  126)  top: E51(7) E57(7) E14(6) E17(6) E63(6)
+  L03:  45 unique / 64 total  (invocations:  126)  top: E42(11) E0(7) E33(6) E60(6) E22(5)
+  L04:  46 unique / 64 total  (invocations:  126)  top: E29(11) E1(6) E34(6) E47(6) E48(6)
+  L05:  48 unique / 64 total  (invocations:  126)  top: E38(9) E49(8) E42(7) E50(7) E41(6)
+  L06:  47 unique / 64 total  (invocations:  126)  top: E46(9) E19(8) E56(8) E4(6) E28(6)
+  L07:  39 unique / 64 total  (invocations:  126)  top: E44(13) E10(8) E41(7) E13(6) E14(6)
+  L08:  32 unique / 64 total  (invocations:  126)  top: E33(10) E2(9) E17(8) E8(7) E11(7)
+  L09:  43 unique / 64 total  (invocations:  126)  top: E26(10) E46(10) E41(8) E23(7) E28(6)
+  L10:  39 unique / 64 total  (invocations:  126)  top: E33(10) E59(8) E4(7) E31(7) E41(7)
+  L11:  41 unique / 64 total  (invocations:  126)  top: E54(11) E16(10) E43(10) E30(9) E62(7)
+  L12:  41 unique / 64 total  (invocations:  126)  top: E30(9) E44(7) E57(6) E58(6) E29(5)
+  L13:  42 unique / 64 total  (invocations:  126)  top: E6(12) E11(8) E23(7) E36(7) E10(6)
+  L14:  48 unique / 64 total  (invocations:  126)  top: E59(9) E6(7) E43(7) E18(5) E24(5)
+  L15:  44 unique / 64 total  (invocations:  126)  top: E59(8) E4(7) E49(6) E63(6) E16(5)
+  L16:  46 unique / 64 total  (invocations:  126)  top: E10(10) E26(7) E41(7) E1(5) E8(5)
+  L17:  53 unique / 64 total  (invocations:  126)  top: E61(11) E6(5) E45(5) E26(4) E35(4)
+  L18:  47 unique / 64 total  (invocations:  126)  top: E18(9) E0(7) E14(7) E35(7) E27(5)
+  L19:  52 unique / 64 total  (invocations:  126)  top: E4(9) E32(9) E24(6) E53(6) E7(5)
+  L20:  47 unique / 64 total  (invocations:  126)  top: E7(10) E50(9) E5(7) E15(6) E19(6)
+  L21:  52 unique / 64 total  (invocations:  126)  top: E32(7) E34(6) E44(6) E27(5) E54(5)
+  L22:  51 unique / 64 total  (invocations:  126)  top: E8(8) E62(7) E21(6) E60(6) E14(5)
+  L23:  49 unique / 64 total  (invocations:  126)  top: E46(8) E50(8) E51(7) E23(5) E57(5)
+  L24:  49 unique / 64 total  (invocations:  126)  top: E24(10) E20(7) E61(7) E22(6) E50(6)
+  L25:  53 unique / 64 total  (invocations:  126)  top: E54(8) E2(7) E10(6) E1(5) E17(5)
+  L26:  52 unique / 64 total  (invocations:  126)  top: E10(9) E56(7) E25(6) E12(4) E17(4)
+  Global: 64 / 64 experts activated (100.0%)
+---
+

@@ -1,0 +1,4 @@
+models/microsoft-bitnet-b1.58-2B-4T/*.safetensors filter=lfs diff=lfs merge=lfs -text
+models/microsoft-bitnet-b1.58-2B-4T/*.bin filter=lfs diff=lfs merge=lfs -text
+*.bin filter=lfs diff=lfs merge=lfs -text
+*.gguf filter=lfs diff=lfs merge=lfs -text

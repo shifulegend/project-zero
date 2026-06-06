@@ -1,0 +1,530 @@
+================================================================
+  Project Zero — A6 Exact Replication
+  2026-03-17 03:03:15
+================================================================
+
+─── Hardware ───────────────────────────────────────────────────
+  CPU   : 11th Gen Intel(R) Core(TM) i5-11300H @ 3.10GHz
+  Cores : 8 logical, 4 physical
+  RAM   : 15.4 GB total
+  Kernel: 6.17.0-19-generic
+
+─── Environment ────────────────────────────────────────────────
+  CPU governor       : performance
+  earlyoom           : inactive
+inactive/not-installed
+  CPU freq (cpu0)    : 4.00 GHz
+  CPU freq (cpu7)    : 4.00 GHz
+  Turbo boost        : enabled
+
+─── RAM at benchmark start ─────────────────────────────────────
+  MemTotal:             15775.4 MB
+  MemFree:                502.6 MB
+  MemAvailable:          7572.9 MB
+  Buffers:                480.2 MB
+  Cached:                7290.8 MB
+  SwapTotal:             4096.0 MB
+  SwapFree:              4095.9 MB
+
+─── Benchmark parameters ────────────────────────────────────────
+  Engine   : ./adaptive_ai_engine  (504672 Mar 17 02:42)
+  Model    : models/bitnet-b1.58-2B-4T.bin
+  Threads  : 4  (matches A6 — 4 physical cores, pre-E.2 auto-detect)
+  max_tokens: 50  (from appendix benchmark command)
+  temperature: 0.7  (CLI default — not explicitly passed)
+  top-p    : 0.9  (CLI default — not explicitly passed)
+  KV       : KV Strategy: Sliding Window I4, max context: 1024 tokens
+
+─── A6 reference (2026-03-15, commit 1c892f5) ──────────────────
+  Prompt 1: The capital of France is          → 14.76 tok/s
+  Prompt 2: The boiling point of water is     → 14.75 tok/s
+  Prompt 3: The largest planet in our solar   → 15.72 tok/s
+  Prompt 4: Albert Einstein was born in       → 15.86 tok/s
+  Prompt 5: The chemical symbol for gold is   → 15.60 tok/s
+  Prompt 6: The speed of light is approximately→ 16.09 tok/s
+  Average                                     → ~15.5 tok/s
+================================================================
+
+================================================================
+  Prompt 1 / 6: "The capital of France is"
+  A6 reference : 14.76 tok/s
+================================================================
+
+── Pass 1: Clean (no monitoring overhead) ──────────────────────
+  tok/s     : 14.38
+  Output    :   dim:        2560   hidden_dim: 6912   n_layers:   30   n_heads:    20   n_kv_heads: 5 
+  Raw       : Detected: 4 threads, 7581 MB free RAM
+KV Strategy: Sliding Window I4, max context: 1024 tokens
+
+── Pass 2: Clean run 2 (variance check) ────────────────────────
+  tok/s     : 13.34
+  Output    :   dim:        2560   hidden_dim: 6912   n_layers:   30   n_heads:    20   n_kv_heads: 5 
+
+── Pass 3: Full perf + system monitoring ────────────────────────
+  (perf stat: IPC, LLC, TLB, branches, faults + mpstat per-CPU + vmstat RAM + iostat)
+
+  ── Model output ────────────────────────────────────────────────
+  tok/s     : 14.26
+  Output    :   dim:        2560   hidden_dim: 6912   n_layers:   30   n_heads:    20   n_kv_heads: 5 
+
+  ── perf stat (raw counters) ─────────────────────────────────────
+      87,968,232,890      instructions                     #    1.30  insn per cycle              (53.82%)
+      67,875,522,262      cycles                                                                  (61.51%)
+         600,333,644      cache-misses                     #   63.42% of all cache refs           (69.21%)
+         946,604,204      cache-references                                                        (69.23%)
+         117,664,146      LLC-load-misses                  #   88.14% of all LL-cache accesses    (69.23%)
+         133,493,052      LLC-loads                                                               (69.25%)
+           2,724,981      LLC-store-misses                                                        (15.39%)
+           5,872,485      LLC-stores                                                              (15.40%)
+           6,806,903      dTLB-load-misses                 #    0.04% of all dTLB cache accesses  (23.09%)
+      15,916,880,194      dTLB-loads                                                              (30.78%)
+             171,262      iTLB-load-misses                                                        (30.76%)
+          45,177,580      branch-misses                    #    0.54% of all branches             (38.45%)
+       8,298,741,016      branches                                                                (46.13%)
+                 332      context-switches                                                      
+              58,559      minor-faults                                                          
+                   0      major-faults                                                          
+         3.769240149 seconds time elapsed
+
+  ── Per-CPU utilization (mpstat average during inference) ─────────
+  CPU      avg%%    max%%    samples 
+  CPU3       95.0%   100.0%  3
+  CPU6       80.5%    88.1%  3
+  CPU5       60.5%    83.0%  3
+  CPU2       33.9%    59.6%  3
+  CPU1       30.1%    36.0%  3
+  CPU4       96.3%   100.0%  3
+  CPU0       43.6%    91.0%  3
+  CPU7       73.3%    78.0%  3
+
+  ── RAM during inference (vmstat) ────────────────────────────────
+  Samples: 4
+  Free RAM avg   : 354 MB
+  Buffers avg    : 480 MB
+  Page cache avg : 7748 MB
+  RAM used avg   : 7193 MB  (total-free-buff-cache)
+
+  ── CPU frequency during inference ───────────────────────────────
+  (GHz per logical CPU: CPU0 CPU1 CPU2 CPU3 CPU4 CPU5 CPU6 CPU7)
+  avg: 4.00  4.00  3.99  4.00  4.00  4.00  3.98  4.00  
+  First sample:
+       4.00  4.00  4.00  4.00  4.00  4.00  4.00  4.00  
+  Last sample:
+       4.00  4.00  3.93  4.00  4.00  4.00  3.81  4.00  
+
+  ── Disk I/O (iostat) ────────────────────────────────────────────
+  Device:   read: 0.4 kB/s  write: 2.1 kB/s  util: 0.6%
+
+  ── Summary for this prompt ─────────────────────────────────────
+  Pass 1 (clean) : 14.38 tok/s
+  Pass 2 (clean) : 13.34 tok/s
+  Pass 3 (perf)  : 14.26 tok/s
+  Average        : 13.99 tok/s   A6 ref: 14.76   Δ: -0.77
+
+================================================================
+  Prompt 2 / 6: "The boiling point of water is"
+  A6 reference : 14.75 tok/s
+================================================================
+
+── Pass 1: Clean (no monitoring overhead) ──────────────────────
+  tok/s     : 15.10
+  Output    :   dim:        2560   hidden_dim: 6912   n_layers:   30   n_heads:    20   n_kv_heads: 5 
+  Raw       : Detected: 4 threads, 7432 MB free RAM
+KV Strategy: Sliding Window I4, max context: 1024 tokens
+
+── Pass 2: Clean run 2 (variance check) ────────────────────────
+  tok/s     : 12.73
+  Output    :   dim:        2560   hidden_dim: 6912   n_layers:   30   n_heads:    20   n_kv_heads: 5 
+
+── Pass 3: Full perf + system monitoring ────────────────────────
+  (perf stat: IPC, LLC, TLB, branches, faults + mpstat per-CPU + vmstat RAM + iostat)
+
+  ── Model output ────────────────────────────────────────────────
+  tok/s     : 14.37
+  Output    :   dim:        2560   hidden_dim: 6912   n_layers:   30   n_heads:    20   n_kv_heads: 5 
+
+  ── perf stat (raw counters) ─────────────────────────────────────
+      87,657,871,905      instructions                     #    1.33  insn per cycle              (53.79%)
+      65,969,342,734      cycles                                                                  (61.50%)
+         616,937,239      cache-misses                     #   65.24% of all cache refs           (69.20%)
+         945,629,270      cache-references                                                        (69.20%)
+         122,196,894      LLC-load-misses                  #   89.07% of all LL-cache accesses    (69.23%)
+         137,187,740      LLC-loads                                                               (69.26%)
+           2,730,353      LLC-store-misses                                                        (15.40%)
+           5,423,276      LLC-stores                                                              (15.41%)
+           6,885,161      dTLB-load-misses                 #    0.04% of all dTLB cache accesses  (23.09%)
+      15,933,248,524      dTLB-loads                                                              (30.76%)
+             178,946      iTLB-load-misses                                                        (30.74%)
+          44,229,009      branch-misses                    #    0.54% of all branches             (38.41%)
+       8,261,629,572      branches                                                                (46.08%)
+                 383      context-switches                                                      
+              58,643      minor-faults                                                          
+                   0      major-faults                                                          
+         3.670911485 seconds time elapsed
+
+  ── Per-CPU utilization (mpstat average during inference) ─────────
+  CPU      avg%%    max%%    samples 
+  CPU3       91.4%    99.0%  3
+  CPU6       77.3%    88.0%  3
+  CPU5       95.1%    99.0%  3
+  CPU2       83.3%    99.0%  3
+  CPU1       22.7%    32.7%  3
+  CPU4       80.8%    98.0%  3
+  CPU0       39.0%    72.0%  3
+  CPU7       33.2%    58.6%  3
+
+  ── RAM during inference (vmstat) ────────────────────────────────
+  Samples: 4
+  Free RAM avg   : 394 MB
+  Buffers avg    : 480 MB
+  Page cache avg : 7753 MB
+  RAM used avg   : 7147 MB  (total-free-buff-cache)
+
+  ── CPU frequency during inference ───────────────────────────────
+  (GHz per logical CPU: CPU0 CPU1 CPU2 CPU3 CPU4 CPU5 CPU6 CPU7)
+  avg: 4.00  3.98  4.00  3.97  4.00  3.99  4.00  4.00  
+  First sample:
+       4.00  3.86  4.00  3.78  4.00  3.95  4.00  4.00  
+  Last sample:
+       4.00  4.00  4.00  4.00  4.00  4.00  4.00  4.00  
+
+  ── Disk I/O (iostat) ────────────────────────────────────────────
+  Device:   read: 0.4 kB/s  write: 2.1 kB/s  util: 0.4%
+
+  ── Summary for this prompt ─────────────────────────────────────
+  Pass 1 (clean) : 15.10 tok/s
+  Pass 2 (clean) : 12.73 tok/s
+  Pass 3 (perf)  : 14.37 tok/s
+  Average        : 14.07 tok/s   A6 ref: 14.75   Δ: -0.68
+
+================================================================
+  Prompt 3 / 6: "The largest planet in our solar system is"
+  A6 reference : 15.72 tok/s
+================================================================
+
+── Pass 1: Clean (no monitoring overhead) ──────────────────────
+  tok/s     : 14.40
+  Output    :   dim:        2560   hidden_dim: 6912   n_layers:   30   n_heads:    20   n_kv_heads: 5 
+  Raw       : Detected: 4 threads, 7586 MB free RAM
+KV Strategy: Sliding Window I4, max context: 1024 tokens
+
+── Pass 2: Clean run 2 (variance check) ────────────────────────
+  tok/s     : 14.85
+  Output    :   dim:        2560   hidden_dim: 6912   n_layers:   30   n_heads:    20   n_kv_heads: 5 
+
+── Pass 3: Full perf + system monitoring ────────────────────────
+  (perf stat: IPC, LLC, TLB, branches, faults + mpstat per-CPU + vmstat RAM + iostat)
+
+  ── Model output ────────────────────────────────────────────────
+  tok/s     : 15.01
+  Output    :   dim:        2560   hidden_dim: 6912   n_layers:   30   n_heads:    20   n_kv_heads: 5 
+
+  ── perf stat (raw counters) ─────────────────────────────────────
+      87,204,319,634      instructions                     #    1.34  insn per cycle              (53.85%)
+      65,031,471,988      cycles                                                                  (61.55%)
+         622,747,064      cache-misses                     #   65.68% of all cache refs           (69.24%)
+         948,116,930      cache-references                                                        (69.25%)
+         121,357,480      LLC-load-misses                  #   89.40% of all LL-cache accesses    (69.27%)
+         135,750,384      LLC-loads                                                               (69.27%)
+           2,658,767      LLC-store-misses                                                        (15.37%)
+           5,610,285      LLC-stores                                                              (15.39%)
+           6,745,780      dTLB-load-misses                 #    0.04% of all dTLB cache accesses  (23.09%)
+      15,743,783,404      dTLB-loads                                                              (30.76%)
+             181,500      iTLB-load-misses                                                        (30.77%)
+          43,750,571      branch-misses                    #    0.53% of all branches             (38.46%)
+       8,207,360,280      branches                                                                (46.15%)
+                 379      context-switches                                                      
+              58,241      minor-faults                                                          
+                   0      major-faults                                                          
+         3.604723700 seconds time elapsed
+
+  ── Per-CPU utilization (mpstat average during inference) ─────────
+  CPU      avg%%    max%%    samples 
+  CPU3       60.0%    76.0%  3
+  CPU6       47.5%    56.0%  3
+  CPU5       84.0%    99.0%  3
+  CPU2       77.6%    81.8%  3
+  CPU1       26.9%    30.0%  3
+  CPU4       67.2%    74.8%  3
+  CPU0       65.9%    71.6%  3
+  CPU7       96.4%   100.0%  3
+
+  ── RAM during inference (vmstat) ────────────────────────────────
+  Samples: 4
+  Free RAM avg   : 447 MB
+  Buffers avg    : 480 MB
+  Page cache avg : 7753 MB
+  RAM used avg   : 7095 MB  (total-free-buff-cache)
+
+  ── CPU frequency during inference ───────────────────────────────
+  (GHz per logical CPU: CPU0 CPU1 CPU2 CPU3 CPU4 CPU5 CPU6 CPU7)
+  avg: 4.00  4.00  3.98  3.98  4.00  4.00  4.00  3.99  
+  First sample:
+       4.00  4.00  3.82  3.86  4.00  4.00  4.00  3.95  
+  Last sample:
+       4.00  4.00  4.00  4.00  4.00  4.00  4.00  4.00  
+
+  ── Disk I/O (iostat) ────────────────────────────────────────────
+  Device:   read: 0.4 kB/s  write: 2.1 kB/s  util: 0.7%
+
+  ── Summary for this prompt ─────────────────────────────────────
+  Pass 1 (clean) : 14.40 tok/s
+  Pass 2 (clean) : 14.85 tok/s
+  Pass 3 (perf)  : 15.01 tok/s
+  Average        : 14.75 tok/s   A6 ref: 15.72   Δ: -0.97
+
+================================================================
+  Prompt 4 / 6: "Albert Einstein was born in"
+  A6 reference : 15.86 tok/s
+================================================================
+
+── Pass 1: Clean (no monitoring overhead) ──────────────────────
+  tok/s     : 14.19
+  Output    :   dim:        2560   hidden_dim: 6912   n_layers:   30   n_heads:    20   n_kv_heads: 5 
+  Raw       : Detected: 4 threads, 7667 MB free RAM
+KV Strategy: Sliding Window I4, max context: 1024 tokens
+
+── Pass 2: Clean run 2 (variance check) ────────────────────────
+  tok/s     : 14.93
+  Output    :   dim:        2560   hidden_dim: 6912   n_layers:   30   n_heads:    20   n_kv_heads: 5 
+
+── Pass 3: Full perf + system monitoring ────────────────────────
+  (perf stat: IPC, LLC, TLB, branches, faults + mpstat per-CPU + vmstat RAM + iostat)
+
+  ── Model output ────────────────────────────────────────────────
+  tok/s     : 13.66
+  Output    :   dim:        2560   hidden_dim: 6912   n_layers:   30   n_heads:    20   n_kv_heads: 5 
+
+  ── perf stat (raw counters) ─────────────────────────────────────
+      88,057,111,164      instructions                     #    1.24  insn per cycle              (53.81%)
+      70,831,202,476      cycles                                                                  (61.52%)
+         544,707,929      cache-misses                     #   58.83% of all cache refs           (69.22%)
+         925,837,325      cache-references                                                        (69.22%)
+         101,439,511      LLC-load-misses                  #   87.02% of all LL-cache accesses    (69.23%)
+         116,569,483      LLC-loads                                                               (69.23%)
+           3,235,915      LLC-store-misses                                                        (15.40%)
+           6,145,930      LLC-stores                                                              (15.40%)
+           6,616,936      dTLB-load-misses                 #    0.04% of all dTLB cache accesses  (23.09%)
+      15,629,383,936      dTLB-loads                                                              (30.79%)
+             165,584      iTLB-load-misses                                                        (30.77%)
+          43,878,851      branch-misses                    #    0.53% of all branches             (38.46%)
+       8,258,222,521      branches                                                                (46.14%)
+                 548      context-switches                                                      
+              58,225      minor-faults                                                          
+                   0      major-faults                                                          
+         3.914995275 seconds time elapsed
+
+  ── Per-CPU utilization (mpstat average during inference) ─────────
+  CPU      avg%%    max%%    samples 
+  CPU3       89.0%   100.0%  3
+  CPU6       70.2%    89.9%  3
+  CPU5       47.8%    64.7%  3
+  CPU2       46.2%    67.3%  3
+  CPU1       46.7%    55.0%  3
+  CPU4       70.0%   100.0%  3
+  CPU0       63.0%    97.0%  3
+  CPU7       91.4%   100.0%  3
+
+  ── RAM during inference (vmstat) ────────────────────────────────
+  Samples: 4
+  Free RAM avg   : 428 MB
+  Buffers avg    : 481 MB
+  Page cache avg : 7754 MB
+  RAM used avg   : 7112 MB  (total-free-buff-cache)
+
+  ── CPU frequency during inference ───────────────────────────────
+  (GHz per logical CPU: CPU0 CPU1 CPU2 CPU3 CPU4 CPU5 CPU6 CPU7)
+  avg: 3.99  3.99  3.99  4.00  3.68  3.98  3.98  4.00  
+  First sample:
+       4.00  3.91  3.94  4.00  4.00  3.87  3.88  4.00  
+  Last sample:
+       4.00  4.00  4.00  4.00  4.00  4.00  4.00  4.00  
+
+  ── Disk I/O (iostat) ────────────────────────────────────────────
+  Device:   read: 0.4 kB/s  write: 2.1 kB/s  util: 0.8%
+
+  ── Summary for this prompt ─────────────────────────────────────
+  Pass 1 (clean) : 14.19 tok/s
+  Pass 2 (clean) : 14.93 tok/s
+  Pass 3 (perf)  : 13.66 tok/s
+  Average        : 14.26 tok/s   A6 ref: 15.86   Δ: -1.60
+
+================================================================
+  Prompt 5 / 6: "The chemical symbol for gold is"
+  A6 reference : 15.60 tok/s
+================================================================
+
+── Pass 1: Clean (no monitoring overhead) ──────────────────────
+  tok/s     : 15.55
+  Output    :   dim:        2560   hidden_dim: 6912   n_layers:   30   n_heads:    20   n_kv_heads: 5 
+  Raw       : Detected: 4 threads, 7688 MB free RAM
+KV Strategy: Sliding Window I4, max context: 1024 tokens
+
+── Pass 2: Clean run 2 (variance check) ────────────────────────
+  tok/s     : 15.40
+  Output    :   dim:        2560   hidden_dim: 6912   n_layers:   30   n_heads:    20   n_kv_heads: 5 
+
+── Pass 3: Full perf + system monitoring ────────────────────────
+  (perf stat: IPC, LLC, TLB, branches, faults + mpstat per-CPU + vmstat RAM + iostat)
+
+  ── Model output ────────────────────────────────────────────────
+  tok/s     : 15.11
+  Output    :   dim:        2560   hidden_dim: 6912   n_layers:   30   n_heads:    20   n_kv_heads: 5 
+
+  ── perf stat (raw counters) ─────────────────────────────────────
+      86,737,344,202      instructions                     #    1.37  insn per cycle              (53.83%)
+      63,340,838,531      cycles                                                                  (61.52%)
+         630,725,600      cache-misses                     #   66.77% of all cache refs           (69.23%)
+         944,555,897      cache-references                                                        (69.23%)
+         130,318,619      LLC-load-misses                  #   90.89% of all LL-cache accesses    (69.24%)
+         143,380,734      LLC-loads                                                               (69.23%)
+           2,471,057      LLC-store-misses                                                        (15.37%)
+           5,263,507      LLC-stores                                                              (15.40%)
+           6,639,394      dTLB-load-misses                 #    0.04% of all dTLB cache accesses  (23.10%)
+      15,664,668,404      dTLB-loads                                                              (30.80%)
+             169,139      iTLB-load-misses                                                        (30.78%)
+          43,185,503      branch-misses                    #    0.53% of all branches             (38.47%)
+       8,183,802,647      branches                                                                (46.14%)
+                 270      context-switches                                                      
+              58,212      minor-faults                                                          
+                   0      major-faults                                                          
+         3.503127576 seconds time elapsed
+
+  ── Per-CPU utilization (mpstat average during inference) ─────────
+  CPU      avg%%    max%%    samples 
+  CPU3       41.7%    85.9%  3
+  CPU6       19.1%    22.2%  3
+  CPU5       94.6%    99.0%  3
+  CPU2       94.3%   100.0%  3
+  CPU1       33.7%    62.4%  3
+  CPU4       89.3%    99.0%  3
+  CPU0       56.1%    69.0%  3
+  CPU7       81.0%    92.0%  3
+
+  ── RAM during inference (vmstat) ────────────────────────────────
+  Samples: 4
+  Free RAM avg   : 450 MB
+  Buffers avg    : 481 MB
+  Page cache avg : 7750 MB
+  RAM used avg   : 7095 MB  (total-free-buff-cache)
+
+  ── CPU frequency during inference ───────────────────────────────
+  (GHz per logical CPU: CPU0 CPU1 CPU2 CPU3 CPU4 CPU5 CPU6 CPU7)
+  avg: 4.00  3.92  4.00  3.94  4.00  4.00  3.98  3.94  
+  First sample:
+       4.00  4.00  4.00  3.88  4.00  4.00  4.00  4.00  
+  Last sample:
+       4.00  3.38  4.00  3.61  4.00  3.96  3.82  3.54  
+
+  ── Disk I/O (iostat) ────────────────────────────────────────────
+  Device:   read: 0.4 kB/s  write: 2.1 kB/s  util: 0.6%
+
+  ── Summary for this prompt ─────────────────────────────────────
+  Pass 1 (clean) : 15.55 tok/s
+  Pass 2 (clean) : 15.40 tok/s
+  Pass 3 (perf)  : 15.11 tok/s
+  Average        : 15.35 tok/s   A6 ref: 15.60   Δ: -0.25
+
+================================================================
+  Prompt 6 / 6: "The speed of light is approximately"
+  A6 reference : 16.09 tok/s
+================================================================
+
+── Pass 1: Clean (no monitoring overhead) ──────────────────────
+  tok/s     : 14.97
+  Output    :   dim:        2560   hidden_dim: 6912   n_layers:   30   n_heads:    20   n_kv_heads: 5 
+  Raw       : Detected: 4 threads, 7661 MB free RAM
+KV Strategy: Sliding Window I4, max context: 1024 tokens
+
+── Pass 2: Clean run 2 (variance check) ────────────────────────
+  tok/s     : 14.85
+  Output    :   dim:        2560   hidden_dim: 6912   n_layers:   30   n_heads:    20   n_kv_heads: 5 
+
+── Pass 3: Full perf + system monitoring ────────────────────────
+  (perf stat: IPC, LLC, TLB, branches, faults + mpstat per-CPU + vmstat RAM + iostat)
+
+  ── Model output ────────────────────────────────────────────────
+  tok/s     : 14.12
+  Output    :   dim:        2560   hidden_dim: 6912   n_layers:   30   n_heads:    20   n_kv_heads: 5 
+
+  ── perf stat (raw counters) ─────────────────────────────────────
+      87,386,875,414      instructions                     #    1.30  insn per cycle              (53.82%)
+      67,290,985,286      cycles                                                                  (61.51%)
+         612,814,232      cache-misses                     #   64.62% of all cache refs           (69.22%)
+         948,330,344      cache-references                                                        (69.21%)
+         117,875,180      LLC-load-misses                  #   89.43% of all LL-cache accesses    (69.23%)
+         131,802,107      LLC-loads                                                               (69.25%)
+           2,731,084      LLC-store-misses                                                        (15.40%)
+           5,640,431      LLC-stores                                                              (15.39%)
+           6,812,236      dTLB-load-misses                 #    0.04% of all dTLB cache accesses  (23.08%)
+      15,866,916,039      dTLB-loads                                                              (30.77%)
+             177,016      iTLB-load-misses                                                        (30.77%)
+          43,777,323      branch-misses                    #    0.53% of all branches             (38.46%)
+       8,240,706,582      branches                                                                (46.14%)
+                 576      context-switches                                                      
+              58,248      minor-faults                                                          
+                   0      major-faults                                                          
+         3.728474176 seconds time elapsed
+
+  ── Per-CPU utilization (mpstat average during inference) ─────────
+  CPU      avg%%    max%%    samples 
+  CPU3       80.2%    99.0%  3
+  CPU6       59.8%    78.2%  3
+  CPU5       81.0%   100.0%  3
+  CPU2       57.8%    90.0%  3
+  CPU1       30.4%    53.5%  3
+  CPU4       48.4%   100.0%  3
+  CPU0       92.7%    95.0%  3
+  CPU7       74.9%    88.0%  3
+
+  ── RAM during inference (vmstat) ────────────────────────────────
+  Samples: 4
+  Free RAM avg   : 460 MB
+  Buffers avg    : 481 MB
+  Page cache avg : 7747 MB
+  RAM used avg   : 7087 MB  (total-free-buff-cache)
+
+  ── CPU frequency during inference ───────────────────────────────
+  (GHz per logical CPU: CPU0 CPU1 CPU2 CPU3 CPU4 CPU5 CPU6 CPU7)
+  avg: 3.98  3.98  4.00  4.00  3.99  4.00  4.00  3.98  
+  First sample:
+       3.88  4.00  4.00  4.00  3.99  4.00  4.00  3.86  
+  Last sample:
+       4.00  4.00  4.00  4.00  4.00  4.00  4.00  4.00  
+
+  ── Disk I/O (iostat) ────────────────────────────────────────────
+  Device:   read: 0.4 kB/s  write: 2.1 kB/s  util: 1.2%
+
+  ── Summary for this prompt ─────────────────────────────────────
+  Pass 1 (clean) : 14.97 tok/s
+  Pass 2 (clean) : 14.85 tok/s
+  Pass 3 (perf)  : 14.12 tok/s
+  Average        : 14.65 tok/s   A6 ref: 16.09   Δ: -1.44
+
+================================================================
+  FINAL SUMMARY
+================================================================
+
+  Prompt                                  Pass1     Pass2      Perf    A6 ref
+  ------                                  -----     -----      ----    ------
+  Prompt 1 [see above]  → recorded in individual sections
+  Prompt 2 [see above]  → recorded in individual sections
+  Prompt 3 [see above]  → recorded in individual sections
+  Prompt 4 [see above]  → recorded in individual sections
+  Prompt 5 [see above]  → recorded in individual sections
+  Prompt 6 [see above]  → recorded in individual sections
+
+  Pass 1 avg (clean)    : 14.77 tok/s
+  Pass 2 avg (clean)    : 14.35 tok/s
+  Pass 3 avg (perf)     : 14.42 tok/s
+  Overall avg (all 3)   : 14.51 tok/s
+  A6 reference avg      : ~15.5 tok/s
+  Delta vs A6           : -0.99 tok/s
+
+─── System state at end of benchmark ──────────────────────────
+  CPU freq (cpu0): 4.00 GHz
+  MemFree:                458.4 MB
+  MemAvailable:          7558.3 MB
+
+Results saved to: tests/a6_replication_results.txt
+================================================================

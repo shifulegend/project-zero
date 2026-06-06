@@ -1,0 +1,254 @@
+================================================================================
+WEIGHT LOADING OFFSET SEQUENCE FOR BITNET-2B (Microsoft b1.58-2B-4T)
+================================================================================
+
+MEMORY-MAPPED FILE STRUCTURE:
+────────────────────────────────────────────────────────────────────────────────
+Offset    Content                             Size
+────────────────────────────────────────────────────────────────────────────────
+0x00      Magic/Version                       8 bytes
+0x08      Config struct                       40 bytes
+0x30      Padding to 64-byte boundary         16 bytes
+0x40      WEIGHT DATA BEGINS (data pointer)   < passed to weights_map()
+────────────────────────────────────────────────────────────────────────────────
+
+
+OFFSET CALCULATION MECHANISM:
+────────────────────────────────────────────────────────────────────────────────
+
+1. ALIGNMENT COMPUTATION:
+   
+   For any pointer position `ptr`:
+      relative_offset = (ptr - data)            // Offset within weight section
+      absolute_offset = relative_offset + 64   // Absolute file offset
+      alignment_needed = (64 - (absolute_offset % 64)) % 64
+      next_ptr = ptr + alignment_needed
+   
+   Example:
+      If relative_offset = 0:   absolute_offset = 64  → 64 % 64 = 0   → padding = 0
+      If relative_offset = 10:  absolute_offset = 74  → 74 % 64 = 10  → padding = 54
+      If relative_offset = 50:  absolute_offset = 114 → 114 % 64 = 50 → padding = 14
+
+2. READ MACROS:
+
+   MAP_PTR(dest, bytes):
+      - Bounds check: (ptr - data + bytes) <= data_size
+      - dest = ptr
+      - ptr += bytes
+      - NO automatic alignment (caller handles via ALIGN64)
+
+   ALIGN64():
+      - Calculate padding needed
+      - Bounds check on padding
+      - ptr += padding
+      - Align to next 64-byte boundary in absolute file coordinates
+
+   COPY_VAL_ALIGN(dest, size):
+      - Bounds check: (ptr - data + size) <= data_size
+      - memcpy(dest, ptr, size)
+      - ptr += size
+      - Call ALIGN64()
+      - Combined: copy small value, then align
+
+================================================================================
+EXACT SEQUENCE FOR EACH LAYER (Layer l):
+================================================================================
+
+Position 1: Input Layer Norm (rms_att_weight[l])
+──────────────────────────────────────────────────
+  MAP_PTR(w->rms_att_weight[l], dim * 4)
+    → Sets pointer to rms_att_weight data (float32)
+    → Size: 4096 * 4 = 16,384 bytes (for dim=4096)
+    → ptr += 16,384
+  
+  ALIGN64()
+    → relative_offset = 16,384
+    → absolute_offset = 16,384 + 64 = 16,448
+    → 16,448 % 64 = 0 (already aligned!)
+    → padding = 0
+    → ptr unchanged
+
+
+Position 2: Post-Attention Layer Norm (rms_ffn_weight[l])
+──────────────────────────────────────────────────────────
+  MAP_PTR(w->rms_ffn_weight[l], dim * 4)
+    → Sets pointer (float32)
+    → Size: 4096 * 4 = 16,384 bytes
+    → ptr += 16,384
+  
+  ALIGN64()
+    → relative_offset = 16,384 + 16,384 = 32,768
+    → absolute_offset = 32,768 + 64 = 32,832
+    → 32,832 % 64 = 0 (aligned!)
+    → padding = 0
+
+
+Position 3: Query Projection (wq[l])
+──────────────────────────────────────
+  MAP_PTR(w->wq[l], packed_bytes(dim * dim))
+    → Sets pointer to packed ternary data
+    → Size: ceil(4096 * 4096 / 4) = 4,194,304 bytes
+    → ptr += 4,194,304
+  
+  COPY_VAL_ALIGN(&w->sq[l], 4)
+    → Bounds check passes
+    → memcpy reads 4-byte float scale
+    → ptr += 4
+    → ALIGN64():
+        relative_offset = 32,768 + 4,194,304 + 4 = 4,227,076
+        absolute_offset = 4,227,076 + 64 = 4,227,140
+        4,227,140 % 64 = 4  (NOT aligned)
+        padding = 64 - 4 = 60
+        ptr += 60
+        → next_ptr relative = 4,227,136
+
+
+Position 4: Key Projection (wk[l])
+───────────────────────────────────
+  MAP_PTR(w->wk[l], packed_bytes(dim * kv_dim))
+    → Sets pointer to packed ternary data
+    → kv_dim = (4096 / 32) * 8 = 1024
+    → Size: ceil(4096 * 1024 / 4) = 1,048,576 bytes
+    → ptr += 1,048,576
+  
+  COPY_VAL_ALIGN(&w->sk[l], 4)
+    → memcpy reads 4-byte scale
+    → ptr += 4
+    → ALIGN64():
+        relative_offset = 4,227,136 + 1,048,576 + 4 = 5,275,716
+        absolute_offset = 5,275,716 + 64 = 5,275,780
+        5,275,780 % 64 = 4
+        padding = 60
+        ptr += 60
+        → next_ptr relative = 5,275,776
+
+
+Position 5: Value Projection (wv[l])
+────────────────────────────────────
+  MAP_PTR(w->wv[l], packed_bytes(dim * kv_dim))
+    → Size: 1,048,576 bytes (same as wk)
+    → ptr += 1,048,576
+  
+  COPY_VAL_ALIGN(&w->sv[l], 4)
+    → memcpy reads 4-byte scale
+    → ptr += 4
+    → ALIGN64():
+        padding = 60 (following same pattern)
+        ptr += 60
+
+
+Position 6: Attention Sub-Norm (rms_attn_sub_norm[l])
+──────────────────────────────────────────────────────
+  MAP_PTR(w->rms_attn_sub_norm[l], dim * 4)
+    → Sets pointer to float32 data
+    → Size: 16,384 bytes
+    → ptr += 16,384
+  
+  ALIGN64()
+    → Likely already 64-byte aligned, padding = 0
+
+
+Position 7: Output Projection (wo[l])
+─────────────────────────────────────
+  MAP_PTR(w->wo[l], packed_bytes(dim * dim))
+    → Size: 4,194,304 bytes (same as wq)
+    → ptr += 4,194,304
+  
+  COPY_VAL_ALIGN(&w->so[l], 4)
+    → memcpy reads 4-byte scale
+    → ptr += 4
+    → ALIGN64(): padding = 60
+
+
+Position 8: FFN Gate (w1[l])
+────────────────────────────
+  MAP_PTR(w->w1[l], packed_bytes(dim * hidden_dim))
+    → Size: ceil(4096 * 14336 / 4) = 14,680,064 bytes
+    → ptr += 14,680,064
+  
+  COPY_VAL_ALIGN(&w->s1[l], 4)
+    → memcpy reads 4-byte scale
+    → ptr += 4
+    → ALIGN64(): padding calculation needed
+
+
+Position 9: FFN Up (w3[l])
+──────────────────────────
+  MAP_PTR(w->w3[l], packed_bytes(dim * hidden_dim))
+    → Size: 14,680,064 bytes (same as w1)
+    → ptr += 14,680,064
+  
+  COPY_VAL_ALIGN(&w->s3[l], 4)
+    → memcpy reads 4-byte scale
+    → ptr += 4
+    → ALIGN64(): padding calculation
+
+
+Position 10: FFN Sub-Norm (rms_ffn_sub_norm[l])
+────────────────────────────────────────────────
+  MAP_PTR(w->rms_ffn_sub_norm[l], hidden_dim * 4)
+    → Sets pointer to float32 data
+    → Size: 14336 * 4 = 57,344 bytes
+    → ptr += 57,344
+  
+  ALIGN64()
+    → Padding calculation
+
+
+Position 11: FFN Down (w2[l])
+─────────────────────────────
+  MAP_PTR(w->w2[l], packed_bytes(dim * hidden_dim))
+    → Size: 14,680,064 bytes (same as w1/w3)
+    → ptr += 14,680,064
+  
+  COPY_VAL_ALIGN(&w->s2[l], 4)
+    → memcpy reads 4-byte scale
+    → ptr += 4
+    → ALIGN64(): padding calculation
+
+
+LOOP REPEATS for layer l+1 through n_layers-1 (24 total for Qwen 2B)
+
+
+AFTER ALL LAYERS:
+
+Position 12: Final Layer Norm (rms_final_weight)
+──────────────────────────────────────────────────
+  MAP_PTR(w->rms_final_weight, dim * 4)
+    → Sets pointer to float32 data
+    → Size: 16,384 bytes
+    → ptr += 16,384
+  
+  ALIGN64()
+    → Padding calculation
+
+
+Position 13: Output Classifier (wcls)
+──────────────────────────────────────
+  w->wcls = (tn_i8*)w->token_embedding_table
+    → NO READ - Just reuse embedding table pointer
+  w->wcls_scale = 1.0f
+    → Fixed scale
+
+
+================================================================================
+BOUNDS CHECKING THROUGHOUT:
+================================================================================
+
+Every read includes:
+   if ((size_t)(ptr - data + bytes) > data_size) return TN_ERR_INVALID_WEIGHTS;
+
+Example failure scenarios:
+   - If file is truncated mid-layer
+   - If packed_bytes calculation overflows
+   - If alignment padding extends beyond file size
+   - If any single weight read exceeds remaining buffer
+
+VALIDATION FLOW:
+   1. File size passed to weights_map() includes margin checks
+   2. Config values (dim, hidden_dim, n_layers) validated beforehand
+   3. Each read verifies remaining bytes
+   4. Alignment padding also bounds-checked
+   5. If ANY read fails, entire function returns TN_ERR_INVALID_WEIGHTS
+
+================================================================================

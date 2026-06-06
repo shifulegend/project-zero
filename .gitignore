@@ -1,0 +1,50 @@
+build/
+*.o
+adaptive_ai_engine
+*.bin
+__pycache__/
+test_image.png
+nohup.out
+*.gguf
+
+# Placeholder / zero-byte stub model files
+models/qwen2.5-7b.bin
+
+# Allow model binaries under models/ (tracked via Git LFS)
+!models/**/*.bin
+# PGO profile data (binary, machine-specific)
+pgo_profiles/
+*.gcda
+*.gcno
+
+# Model data files (large, should be in LFS or external)
+models/BitNet-b1.58-2B-4T-gguf/
+
+# Converted model binaries (generated locally, not for git)
+models/bitnet-b1.58-2B-4T-converted.bin
+models/bitnet-b1.58-2B-4T-tokenizer-converted.bin
+models/.hf_cache/
+models/deepseek-v2-lite.bin
+test_moe_final_output.txt
+test_moe_results.txt
+
+# GitNexus knowledge graph (local index, rebuilt via `npx gitnexus analyze`)
+.gitnexus/
+
+# macOS Finder duplicates and iCloud placeholders
+* 2
+* 2.*
+* 2/
+*.icloud
+.DS_Store
+**/.DS_Store
+adaptive_ai_engine 2
+CMakeLists 2.txt
+Makefile 2
+*.log
+wget-log*
+strawberry 2.jpg
+offset_calculation_sequence 2.txt
+SOURCE_CODE_WITH_LINE_NUMBERS 2.txt
+VISUAL_WEIGHT_LOADING_FLOW 2.txt
+QUICK_SUMMARY 2.txt

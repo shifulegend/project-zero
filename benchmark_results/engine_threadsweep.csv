@@ -1,0 +1,2 @@
+date,engine,threads,simd,classifier,tok_s,ntoks,load_ms,wall_ms,rss_kb
+2026-03-22T12:05:42Z,project-zero,1,auto,bf16,0.89,6,38502,45243,10865300

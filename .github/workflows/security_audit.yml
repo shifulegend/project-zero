@@ -1,0 +1,22 @@
+name: Independent Security Audit CI
+on: [push, pull_request]
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake clang valgrind
+      - name: Build with ASan/UBSan
+        run: |
+          mkdir build && cd build
+          cmake -DCMAKE_C_FLAGS="-fsanitize=address,undefined -g" ..
+          make
+      - name: Run Core Fuzzer
+        run: python3 tools/fuzz_config.py
+      - name: Run Math Kernel Unit Tests
+        run: |
+          # Unit tests for SIMD kernels would go here
+          # ./build/tests/test_math_kernels

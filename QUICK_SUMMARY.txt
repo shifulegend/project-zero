@@ -1,0 +1,181 @@
+================================================================================
+WEIGHT LOADING ANALYSIS - QUICK SUMMARY
+================================================================================
+
+PROJECT: /home/<USER>/Documents/project-zero
+MAIN FILE: src/core/weights.c (141 lines)
+FUNCTION: weights_map(TransformerWeights *w, const Config *cfg, tn_i8 *data, size_t data_size)
+
+================================================================================
+1. EXACT READING ORDER (NO EXCEPTIONS)
+================================================================================
+
+[PRE-LAYERS]
+1. Token Embedding Table (float32, vocab_size × dim)
+
+[PER-LAYER LOOP - 24 TIMES for Qwen 2B]
+For each layer l:
+   2. rms_att_weight[l]        - float32, dim values
+   3. rms_ffn_weight[l]        - float32, dim values
+   4. wq[l] + sq[l]            - packed ternary + 1 scale float
+   5. wk[l] + sk[l]            - packed ternary + 1 scale float
+   6. wv[l] + sv[l]            - packed ternary + 1 scale float
+   7. rms_attn_sub_norm[l]     - float32, dim values (BitNet-specific)
+   8. wo[l] + so[l]            - packed ternary + 1 scale float
+   9. w1[l] + s1[l]            - packed ternary + 1 scale float
+  10. w3[l] + s3[l]            - packed ternary + 1 scale float
+  11. rms_ffn_sub_norm[l]      - float32, hidden_dim values (BitNet-specific)
+  12. w2[l] + s2[l]            - packed ternary + 1 scale float
+
+[POST-LAYERS]
+13. rms_final_weight           - float32, dim values
+14. wcls                        - tied to embedding table (NO SEPARATE READ)
+
+================================================================================
+2. PACKED TERNARY FORMAT
+================================================================================
+
+4 weights per byte, 2 bits each:
+   -1 → 0b00
+    0 → 0b01
+    1 → 0b10
+
+packed_bytes(count) = ceil(count / 4) = ((count + 3) >> 2)
+
+Example:
+   For Query matrix: dim × dim = 4096 × 4096 = 16,777,216 weights
+   Packed bytes: ceil(16777216/4) = 4,194,304 bytes
+
+================================================================================
+3. OFFSET CALCULATION (64-BYTE ALIGNMENT)
+================================================================================
+
+NOT using fseek() - uses MMAP pointer arithmetic instead.
+
+Alignment base = 64 (file offset where weights start)
+
+For each read:
+   relative_offset = ptr - data
+   absolute_offset = relative_offset + 64
+   padding_needed = (64 - (absolute_offset % 64)) % 64
+   ptr += padding_needed
+
+Example sequence:
+   rel_offset=0:          abs=64   % 64 = 0   → padding=0
+   rel_offset=16384:      abs=16448 % 64 = 0   → padding=0
+   rel_offset=4227076:    abs=4227140 % 64 = 4 → padding=60
+
+================================================================================
+4. BOUNDS CHECKING (EVERY READ)
+================================================================================
+
+Before every read, validation check:
+   if ((ptr - data + bytes_to_read) > data_size)
+       return TN_ERR_INVALID_WEIGHTS
+
+Catches:
+   - File truncation
+   - Overflow in size calculations
+   - Invalid alignment padding
+   - Any read beyond buffer
+
+================================================================================
+5. MEMORY MAPPING (NOT FILE I/O)
+================================================================================
+
+POSIX (Linux):
+   int fd = open(path, O_RDONLY)
+   flock(fd, LOCK_SH | LOCK_NB)  ← Prevent concurrent modification
+   void *data = mmap(fd, ..., PROT_READ, MAP_PRIVATE, ...)
+   posix_madvise(..., POSIX_MADV_SEQUENTIAL)
+
+Windows:
+   HANDLE hFile = CreateFileA(..., GENERIC_READ, ...)
+   HANDLE hMapping = CreateFileMappingA(hFile, ..., PAGE_READONLY, ...)
+   void *data = MapViewOfFile(hMapping, FILE_MAP_READ, ...)
+
+Result: Direct memory access via pointers, NO seeking
+
+================================================================================
+6. KEY ASSERTIONS FOR CONVERTER VALIDATION
+================================================================================
+
+✓ SEQUENTIAL ORDER: Exact order above - do NOT reorder
+✓ BITNET SUB-NORMS: Both rms_attn_sub_norm AND rms_ffn_sub_norm MUST exist
+✓ TERNARY PACKING: Always 4 weights/byte, 2 bits each, LSB first
+✓ SCALE FACTORS: 4 bytes (float32) AFTER each packed weight matrix
+✓ ALIGNMENT: 64-byte boundaries in absolute file coordinates
+✓ TIED EMBEDDINGS: wcls pointer = embedding_table pointer (no separate read)
+✓ VALIDATION: All reads are bounds-checked; truncated files detected
+
+================================================================================
+7. SIZE EXAMPLE (Qwen 2B - dim=4096, hidden_dim=14336, n_layers=24)
+================================================================================
+
+Per-layer approximate breakdown:
+   Norms (4 items):              ~64 KB
+   Attention matrices (Q,K,V,O): ~10 MB
+   FFN matrices (w1,w3,w2):      ~43 MB
+   FFN/Attn sub-norms:           ~80 KB
+   ─────────────────────────────
+   Total per layer:              ~54 MB
+
+   24 layers × 54 MB = ~1.29 GB
+   Embedding table + final norm: ~524 MB
+   ─────────────────────────────
+   TOTAL FILE SIZE: ~1.8 GB
+
+================================================================================
+8. CRITICAL FILES
+================================================================================
+
+File Path                              | Purpose
+────────────────────────────────────────────────────────────────
+src/core/weights.c (lines 52-140)      | weights_map() implementation
+src/core/weights.c (lines 7-50)        | weights_alloc_pointers(), weights_free_pointers()
+include/core/weights.h                 | TransformerWeights struct definition
+include/core/unpack.h (lines 70-72)    | packed_bytes() macro
+include/core/config.h                  | Config struct, config_kv_dim()
+src/memory/mapped_file.c               | mapped_file_open() implementation
+src/cli/main.c                         | Usage example
+
+================================================================================
+9. QUICK REFERENCE - EXACT CODE
+================================================================================
+
+Main loop structure (lines 93-126):
+
+    for (int l = 0; l < nl; l++) {
+        MAP_PTR(w->rms_att_weight[l], dim*4); ALIGN64();
+        MAP_PTR(w->rms_ffn_weight[l], dim*4); ALIGN64();
+        
+        if (w->layers_are_ternary) {
+            MAP_PTR(w->wq[l], packed_bytes(dim*dim));  COPY_VAL_ALIGN(&w->sq[l], 4);
+            MAP_PTR(w->wk[l], packed_bytes(dim*kv_dim)); COPY_VAL_ALIGN(&w->sk[l], 4);
+            MAP_PTR(w->wv[l], packed_bytes(dim*kv_dim)); COPY_VAL_ALIGN(&w->sv[l], 4);
+            MAP_PTR(w->rms_attn_sub_norm[l], dim*4); ALIGN64();
+            MAP_PTR(w->wo[l], packed_bytes(dim*dim)); COPY_VAL_ALIGN(&w->so[l], 4);
+            MAP_PTR(w->w1[l], packed_bytes(dim*hidden_dim)); COPY_VAL_ALIGN(&w->s1[l], 4);
+            MAP_PTR(w->w3[l], packed_bytes(dim*hidden_dim)); COPY_VAL_ALIGN(&w->s3[l], 4);
+            MAP_PTR(w->rms_ffn_sub_norm[l], hidden_dim*4); ALIGN64();
+            MAP_PTR(w->w2[l], packed_bytes(dim*hidden_dim)); COPY_VAL_ALIGN(&w->s2[l], 4);
+        }
+    }
+
+================================================================================
+10. VALIDATION CHECKLIST FOR YOUR CONVERTER
+================================================================================
+
+When comparing your converter output to this loader:
+
+□ Are weights read in the EXACT order listed above?
+□ Are 64-byte alignments applied AFTER scale factors?
+□ Are norms (float32) separate from projection matrices?
+□ Do you include BOTH rms_attn_sub_norm AND rms_ffn_sub_norm per layer?
+□ Are ternary weights packed as 4 per byte, LSB first?
+□ Are scale factors always 4-byte floats, never packed?
+□ Is the output file structure: [8 magic] [40 config] [16 padding] [weights]?
+□ Do all weight sections start/end at 64-byte boundaries in absolute offsets?
+□ Is wcls pointer tied to embedding table (no separate export)?
+
+================================================================================

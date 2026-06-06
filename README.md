@@ -1,5 +1,12 @@
 # Project Zero — BitNet Inference Engine
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Language: C](https://img.shields.io/badge/language-C99-blue.svg)](src/)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)](README.md)
+[![SIMD](https://img.shields.io/badge/SIMD-AVX--512%20%7C%20AVX2%20%7C%20NEON-green)](src/math/)
+[![Discussions](https://img.shields.io/github/discussions/shifulegend/project-zero)](https://github.com/shifulegend/project-zero/discussions)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
 > ⚠️ **ALL CONTRIBUTORS AND AI AGENTS: READ [`GOLDEN_RULES.md`](GOLDEN_RULES.md) BEFORE TOUCHING ANY CODE.**
 > No hardcoding. Test after every change. Document at every step. No exceptions.
 

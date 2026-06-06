@@ -80,7 +80,13 @@ build/%.o: src/%.cpp
 # -mavx512vnni and -mavxvnni are additive — they do not change any other
 # code generation for other files in the project.
 
-# mapped_file.c needs _GNU_SOURCE to expose madvise() + MADV_HUGEPAGE on Linux.
+# moe_ffn.c calls madvise()/MADV_WILLNEED which require _GNU_SOURCE on Linux
+# (same reason mapped_file.c has this override).
+build/transformer/moe_ffn.o: src/transformer/moe_ffn.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -D_GNU_SOURCE -c -o $@ $<
+
+
 # _GNU_SOURCE is a superset of _POSIX_C_SOURCE so nothing is lost.
 build/memory/mapped_file.o: src/memory/mapped_file.c
 	@mkdir -p $(dir $@)

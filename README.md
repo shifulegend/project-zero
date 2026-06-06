@@ -571,6 +571,6 @@ python3 tools/convert_tokenizer.py \
 
 ---
 
-*Project Zero — Phase 16+ | BitNet b1.58-2B-4T · DeepSeek-V2-Lite-Chat (GGUF) · Vision pipeline (SigLIP)*
-*Best: **36.25 tok/s** (Xeon, PGO+LTO) · **16.1 tok/s** (i5-11300H, dual-channel) · **1.06 tok/s** (DeepSeek MoE, ceiling: 9.8)*
-*1.83× faster than bitnet.cpp on same hardware · 95% of DRAM bandwidth ceiling*
+*Project Zero — Phase 34+ | BitNet b1.58-2B-4T · DeepSeek-V2-Lite-Chat (GGUF) · Vision pipeline (SigLIP)*
+*Best: **36.25 tok/s** (Xeon, PGO+LTO) · **16.1 tok/s** (i5-11300H, dual-channel) · **1.06 tok/s** (DeepSeek MoE, ceiling: 9.8 tok/s)*
+*1.80× avg / 1.83× best vs bitnet.cpp on same hardware · 95% of DRAM bandwidth ceiling*

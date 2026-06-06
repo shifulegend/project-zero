@@ -38,6 +38,13 @@
 #if TN_HAS_AVX2 || TN_HAS_AVX512
 #  include <immintrin.h>
 #endif
+/* _mm_prefetch / _MM_HINT_T* are in SSE1 (xmmintrin.h), available on all
+ * x86 targets even without AVX2/AVX-512.  Include unconditionally so the
+ * software-prefetch loop in matmul_q4k_batch_task compiles on macOS clang
+ * which does not pull xmmintrin.h in transitively. */
+#if defined(__SSE__) || defined(__x86_64__) || defined(_M_X64)
+#  include <xmmintrin.h>
+#endif
 
 /* ── Q4_K constants ────────────────────────────────────────────────────────── */
 #define Q4K_SUPER   256

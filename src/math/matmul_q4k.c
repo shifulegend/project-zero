@@ -38,6 +38,8 @@
 #if TN_HAS_AVX2 || TN_HAS_AVX512
 #  include <immintrin.h>
 #endif
+/* TN_PREFETCH_T1 is defined in core/platform.h (included above via matmul_q4k.h).
+ * Uses __builtin_prefetch for portability across x86 and ARM (macOS M-series). */
 
 /* ── Q4_K constants ────────────────────────────────────────────────────────── */
 #define Q4K_SUPER   256
@@ -460,7 +462,7 @@ static void matmul_q4k_batch_task(void *arg, int thread_id, int start, int end) 
             int ri_p = pr % n_out;
             const char *pfx = (const char *)(a->ws[ei_p] + (size_t)ri_p * row_bytes);
             for (int p = 0; p < (int)row_bytes; p += 64)
-                _mm_prefetch(pfx + p, _MM_HINT_T1);
+                TN_PREFETCH_T1(pfx + p);
         }
         int ei = r / n_out;
         int ri = r % n_out;

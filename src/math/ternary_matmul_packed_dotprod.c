@@ -57,10 +57,12 @@ void ternary_matmul_packed_dotprod(float *out, const float *x, const tn_u8 *pack
                                     int n, int d, const float *scales, int group_size)
 {
     if (n > TN_DOTPROD_MAX_N) {
-        /* Fallback to NEON float kernel */
-        extern void ternary_matmul_packed_neon(float*, const float*, const tn_u8*,
-                                                int, int, const float*, int);
-        ternary_matmul_packed_neon(out, x, packed_w, n, d, scales, group_size);
+        /* Fallback to portable scalar kernel when n exceeds dotprod buffer.
+         * ternary_matmul_packed() handles all input sizes correctly on
+         * all platforms (x86, ARM, etc.) — no platform-specific symbol. */
+        extern void ternary_matmul_packed(float*, const float*, const tn_u8*,
+                                          int, int, const float*, int);
+        ternary_matmul_packed(out, x, packed_w, n, d, scales, group_size);
         return;
     }
 

@@ -140,6 +140,13 @@ typedef uint64_t tn_u64;
     #define TN_ARCH_ARM 0
 #endif
 
+/* ── Portable software prefetch ───────────────────────────────────────────── */
+/* _mm_prefetch/_MM_HINT_T1 are x86-only (xmmintrin.h).  Use __builtin_prefetch
+ * everywhere so the same code compiles on ARM (macOS M-series CI runners) and
+ * any other target without dragging in x86 intrinsic headers outside AVX guards.
+ *   __builtin_prefetch(addr, rw=0, locality=2)  ≈  _mm_prefetch(addr, _MM_HINT_T1) */
+#define TN_PREFETCH_T1(addr) __builtin_prefetch((const void *)(addr), 0, 2)
+
 /* ── Binary file format constants ─────────────────────────────────────────── */
 #define TN_MAGIC       0x594E5254  /* "TNRY" in little-endian */
 #define TN_VERSION     1

@@ -209,7 +209,7 @@ static void matmul_q5_1_batch_task(void *arg, int thread_id, int start, int end)
             int ri_p = pr % n_out;
             const char *pfx = (const char *)(a->ws[ei_p] + (size_t)ri_p * row_bytes);
             for (int p = 0; p < (int)row_bytes; p += 64)
-                _mm_prefetch(pfx + p, _MM_HINT_T1);
+                TN_PREFETCH_T1(pfx + p);
         }
         int ei = r / n_out;
         int ri = r % n_out;

@@ -80,7 +80,13 @@ build/%.o: src/%.cpp
 # -mavx512vnni and -mavxvnni are additive — they do not change any other
 # code generation for other files in the project.
 
-# mapped_file.c needs _GNU_SOURCE to expose madvise() + MADV_HUGEPAGE on Linux.
+# moe_ffn.c calls madvise()/MADV_WILLNEED which require _GNU_SOURCE on Linux
+# (same reason mapped_file.c has this override).
+build/transformer/moe_ffn.o: src/transformer/moe_ffn.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -D_GNU_SOURCE -c -o $@ $<
+
+
 # _GNU_SOURCE is a superset of _POSIX_C_SOURCE so nothing is lost.
 build/memory/mapped_file.o: src/memory/mapped_file.c
 	@mkdir -p $(dir $@)
@@ -131,7 +137,7 @@ endif
 # This rule must appear BEFORE the generic pattern rule to take precedence.
 build/tests/test_simd_vnni: tests/test_simd_vnni.c $(LIB_OBJS)
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS_DEBUG) $(SIMD_TEST_FLAGS) -o $@ $< $(LIB_OBJS) $(LDFLAGS)
+	$(CC) $(CFLAGS_DEBUG) $(SIMD_TEST_FLAGS) -o $@ $< $(LIB_OBJS) $(LDFLAGS) -lstdc++
 
 # test_api_server links C++ objects (chat_template.o) so must use g++ as linker.
 # Compile the C test source with release flags to avoid sanitizer symbol mismatches.
@@ -148,7 +154,7 @@ build/tests/test_q2k_matvec: tests/test_q2k_matvec.c $(LIB_OBJS)
 
 build/tests/%: tests/%.c $(LIB_OBJS)
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS_DEBUG) -o $@ $< $(LIB_OBJS) $(LDFLAGS)
+	$(CC) $(CFLAGS_DEBUG) -o $@ $< $(LIB_OBJS) $(LDFLAGS) -lstdc++
 
 # ── Convenience targets ────────────────────────────────────────────────────
 test-packed: build/tests/test_packed_weights

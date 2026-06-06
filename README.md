@@ -108,6 +108,8 @@ Benchmarked on **Intel Xeon @ 2.10 GHz** (Emerald Rapids, 4 cores, no HT, 260 Mi
 | bitnet.cpp | 19.33 | 19.83 | I2_S format, clang, 4T |
 | **Advantage** | **1.80×** | **1.83×** | Same model, same Xeon |
 
+📊 **OpenBenchmarking results:** [Xeon — Project Zero vs bitnet.cpp](https://openbenchmarking.org/result/2606063-SHIF-PROJECT91)
+
 ### Developer Laptop (i5-11300H)
 
 Benchmarked on **Intel i5-11300H** (Tiger Lake, 4 cores / 8 threads, DDR4 dual-channel):
@@ -124,6 +126,8 @@ Benchmarked on **Intel i5-11300H** (Tiger Lake, 4 cores / 8 threads, DDR4 dual-c
 token (depending on L3 cache effectiveness). The engine auto-adapts to any hardware:
 SIMD backend, thread count, KV cache strategy, and classifier quantization are all
 detected at startup.
+
+📊 **OpenBenchmarking results:** [i5-11300H — Project Zero vs llama.cpp/DeepSeek](https://openbenchmarking.org/result/2606062-SHIF-PROJECT21)
 
 > Use `--classifier bf16` to preserve full LM head precision at the cost of speed.
 > Use `--classifier int8` or `int4` to trade precision for throughput (default: auto).
@@ -567,4 +571,6 @@ python3 tools/convert_tokenizer.py \
 
 ---
 
-*Project Zero — Phase 15 | Intel i5-11300H | BitNet b1.58-2B-4T | 15.25 tok/s avg*
+*Project Zero — Phase 34+ | BitNet b1.58-2B-4T · DeepSeek-V2-Lite-Chat (GGUF) · Vision pipeline (SigLIP)*
+*Best: **36.25 tok/s** (Xeon, PGO+LTO) · **16.1 tok/s** (i5-11300H, dual-channel) · **1.06 tok/s** (DeepSeek MoE, ceiling: 9.8 tok/s)*
+*1.80× avg / 1.83× best vs bitnet.cpp on same hardware · 95% of DRAM bandwidth ceiling*

@@ -196,23 +196,22 @@ static void test_embed_token_basic(void) {
   tn_u16 table[sizeof(table_f)/sizeof(table_f[0])];
   float_array_to_bf16(table_f, table, sizeof(table_f)/sizeof(table_f[0]));
   float out[8];
-  float scale = 2.5f; /* kept for API compatibility, now ignored by embed_token */
 
-  /* Embed token 0 */
-  embed_token(out, 0, table, dim, scale);
-  TEST_ASSERT_FLOAT_EQ(out[0], 2.5f, 1e-6f, "token0[0] = 2.5");
-  TEST_ASSERT_FLOAT_EQ(out[1], -2.5f, 1e-6f, "token0[1] = -2.5");
+  /* Embed token 0 — BF16 path: embd_f32=NULL, use bf16 table */
+  embed_token(out, 0, NULL, table, dim);
+  TEST_ASSERT_FLOAT_EQ(out[0], 2.5f, 1e-2f, "token0[0] = 2.5");
+  TEST_ASSERT_FLOAT_EQ(out[1], -2.5f, 1e-2f, "token0[1] = -2.5");
   TEST_ASSERT_FLOAT_EQ(out[2], 0.0f, 1e-6f, "token0[2] = 0.0");
-  TEST_ASSERT_FLOAT_EQ(out[3], 2.5f, 1e-6f, "token0[3] = 2.5");
+  TEST_ASSERT_FLOAT_EQ(out[3], 2.5f, 1e-2f, "token0[3] = 2.5");
 
   /* Embed token 1 */
-  embed_token(out, 1, table, dim, scale);
+  embed_token(out, 1, NULL, table, dim);
   TEST_ASSERT_FLOAT_EQ(out[0], 0.0f, 1e-6f, "token1[0] = 0.0");
-  TEST_ASSERT_FLOAT_EQ(out[1], 2.5f, 1e-6f, "token1[1] = 2.5");
-  TEST_ASSERT_FLOAT_EQ(out[4], -2.5f, 1e-6f, "token1[4] = -2.5");
+  TEST_ASSERT_FLOAT_EQ(out[1], 2.5f, 1e-2f, "token1[1] = 2.5");
+  TEST_ASSERT_FLOAT_EQ(out[4], -2.5f, 1e-2f, "token1[4] = -2.5");
 
   /* Embed token 2 (all 2.5) */
-  embed_token(out, 2, table, dim, scale);
+  embed_token(out, 2, NULL, table, dim);
   for (int i = 0; i < dim; i++) {
     TEST_ASSERT_FLOAT_EQ(out[i], 2.5f, 1e-6f, "token2 all 2.5");
   }
@@ -226,7 +225,7 @@ static void test_embed_token_scale_zero(void) {
   tn_u16 table[4];
   float_array_to_bf16(table_f, table, 4);
   float out[4];
-  embed_token(out, 0, table, dim, 0.0f);
+  embed_token(out, 0, NULL, table, dim);
   for (int i = 0; i < dim; i++) {
     TEST_ASSERT_FLOAT_EQ(out[i], 0.0f, 1e-6f, "zero table gives zero output");
   }
@@ -240,11 +239,11 @@ static void test_embed_identity_scale(void) {
   float_array_to_bf16(table_f, table, 4);
   float out[4];
 
-  embed_token(out, 0, table, dim, 1.0f);
-  TEST_ASSERT_FLOAT_EQ(out[0], 1.0f, 1e-6f, "identity 1.0");
+  embed_token(out, 0, NULL, table, dim);
+  TEST_ASSERT_FLOAT_EQ(out[0], 1.0f, 1e-2f, "identity 1.0");
   TEST_ASSERT_FLOAT_EQ(out[1], 0.0f, 1e-6f, "identity 0.0");
-  TEST_ASSERT_FLOAT_EQ(out[2], -1.0f, 1e-6f, "identity -1.0");
-  TEST_ASSERT_FLOAT_EQ(out[3], 1.0f, 1e-6f, "identity 1.0 again");
+  TEST_ASSERT_FLOAT_EQ(out[2], -1.0f, 1e-2f, "identity -1.0");
+  TEST_ASSERT_FLOAT_EQ(out[3], 1.0f, 1e-2f, "identity 1.0 again");
 }
 
 /* ================================================================

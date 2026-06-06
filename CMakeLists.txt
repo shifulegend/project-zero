@@ -117,6 +117,7 @@ set(MATH_SOURCES
     src/math/elementwise_avx512.c
     src/math/matmul_f16.c
     src/math/matmul_q4k.c
+    src/math/matmul_q2k.c
     src/math/matmul_q5_0.c
     src/math/matmul_q5_1.c
     src/math/matmul_q8_0.c

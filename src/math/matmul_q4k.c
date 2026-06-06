@@ -38,13 +38,11 @@
 #if TN_HAS_AVX2 || TN_HAS_AVX512
 #  include <immintrin.h>
 #endif
-/* _mm_prefetch / _MM_HINT_T* are in SSE1 (xmmintrin.h), available on all
- * x86 targets even without AVX2/AVX-512.  Include unconditionally so the
- * software-prefetch loop in matmul_q4k_batch_task compiles on macOS clang
- * which does not pull xmmintrin.h in transitively. */
-#if defined(__SSE__) || defined(__x86_64__) || defined(_M_X64)
-#  include <xmmintrin.h>
-#endif
+/* Use __builtin_prefetch for software prefetch — this is portable across
+ * GCC and clang on all targets (x86, ARM, etc.) and avoids the need for
+ * xmmintrin.h / _mm_prefetch which is x86-only and not available on macOS
+ * ARM runners or non-SSE targets. */
+#define TN_PREFETCH_T1(addr) __builtin_prefetch((addr), 0, 2)
 
 /* ── Q4_K constants ────────────────────────────────────────────────────────── */
 #define Q4K_SUPER   256
@@ -467,7 +465,7 @@ static void matmul_q4k_batch_task(void *arg, int thread_id, int start, int end) 
             int ri_p = pr % n_out;
             const char *pfx = (const char *)(a->ws[ei_p] + (size_t)ri_p * row_bytes);
             for (int p = 0; p < (int)row_bytes; p += 64)
-                _mm_prefetch(pfx + p, _MM_HINT_T1);
+                TN_PREFETCH_T1(pfx + p);
         }
         int ei = r / n_out;
         int ri = r % n_out;

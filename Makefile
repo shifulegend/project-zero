@@ -137,7 +137,7 @@ endif
 # This rule must appear BEFORE the generic pattern rule to take precedence.
 build/tests/test_simd_vnni: tests/test_simd_vnni.c $(LIB_OBJS)
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS_DEBUG) $(SIMD_TEST_FLAGS) -o $@ $< $(LIB_OBJS) $(LDFLAGS)
+	$(CC) $(CFLAGS_DEBUG) $(SIMD_TEST_FLAGS) -o $@ $< $(LIB_OBJS) $(LDFLAGS) -lstdc++
 
 # test_api_server links C++ objects (chat_template.o) so must use g++ as linker.
 # Compile the C test source with release flags to avoid sanitizer symbol mismatches.

@@ -121,6 +121,9 @@ void test_vision_encoder() {
 void test_vision_projector() {
     printf("Testing vision projector...\n");
     VisionProjector proj;
+    memset(&proj, 0, sizeof(proj));  /* zero first: scale_factor etc. must be set,
+                                        else the uninitialized pixel-shuffle path
+                                        reads past the patches buffer */
     proj.vision_dim = 16;
     proj.llm_dim = 32;
     proj.hidden_dim = 16;

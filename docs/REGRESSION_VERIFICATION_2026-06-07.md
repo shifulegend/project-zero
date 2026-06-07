@@ -80,7 +80,15 @@ Original failures (all at the `make test` step; `make debug` was never reached):
 |------|-----------|-----|
 | `test_blackbox` | `TransformerWeights` not zeroed before `weights_alloc_pointers()` → `weights_free_pointers()` frees uninitialized pointers under ASan; uninitialized `layers_are_ternary` misroutes `transformer_forward` | add `memset(w,0,sizeof(*w))` before alloc (its documented caller contract) |
 | `audit_sliding_window_crash` | same missing-`memset` cleanup crash (clang/macOS doesn't honor the gcc-only `__SANITIZE_ADDRESS__` skip); the "VULNERABILITY CONFIRMED" print is informational, not an assertion | add `memset(&w,0,sizeof(w))` + `#include <string.h>` |
-| `test_vision_components` | hard-fails when the un-committed `test_image.png` asset is absent in CI | skip the image-load check gracefully; still run the 4 in-memory subtests |
+| `test_vision_components` (image) | hard-fails when the un-committed `test_image.png` asset is absent in CI | skip the image-load check gracefully; still run the 4 in-memory subtests |
+| `test_vision_components` (projector) | `VisionProjector proj;` left `scale_factor` uninitialized → garbage `>1` takes the pixel-shuffle path that reads 64 B past the `patches` buffer (ASan stack-overflow; non-deterministic — only surfaced on the non-AVX512 clang runner) | `memset(&proj,0,sizeof(proj))` before use |
+| `rb_mem_02_oom_resistance` (macOS) | the absurd `INT_MAX`-context allocation isn't trapped before `calloc`, which over-commits on macOS → OS `Killed:9` instead of graceful `TN_ERR_OOM` (Linux's `calloc` returns NULL, so it passed there) | add a deterministic size guard in `run_state_alloc` (reject buffers >32× available RAM via `tn_get_free_ram`) |
+
+The last two were exposed only by the GitHub CI run after the first three fixes let the suite run
+to completion on every platform/compiler (they were never reached before). The `run_state_alloc`
+guard is the root-cause fix the test already asserts ("traps absurd OOM allocation bounds
+gracefully"); the 32× headroom never rejects a runnable config, and all three models were
+re-verified correct after the change (SmolLM2 121 tok/s, BitNet 28.3 tok/s — unchanged).
 
 Two further **latent `make debug` breakages** (never reached before, because the job died at
 `make test`) were exposed once tests passed, and fixed in the `Makefile`:
@@ -175,6 +183,8 @@ No rotation or history purge required.
 | Speed, no regression | ✅ HEAD ≈ baseline within noise; meets/exceeds documented baselines |
 | No secrets in history | ✅ clean across 215 commits / all branches |
 
-**Files changed for CI (test/build only — production engine untouched):**
-`tests/test_blackbox.c`, `tests/audit_sliding_window_crash.c`, `tests/test_vision_components.c`,
-`Makefile`.
+**Files changed for CI:**
+- Test/build only: `tests/test_blackbox.c`, `tests/audit_sliding_window_crash.c`,
+  `tests/test_vision_components.c`, `Makefile`.
+- One production robustness fix (no behavior change for runnable configs, all models re-verified):
+  `src/core/run_state.c` — deterministic absurd-allocation OOM guard.

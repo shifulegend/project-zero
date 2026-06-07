@@ -2,8 +2,23 @@
 #include "core/platform.h"
 #include "math/rope.h"
 #include "memory/aligned_alloc.h"
+#include "kv_cache/kv_strategy.h"  /* tn_get_free_ram() for the OOM sanity guard */
 #include <string.h>
 #include <stdlib.h>   /* free() for k_rope_cache pointer array */
+
+/* Deterministic OOM trap: on some platforms (notably macOS) calloc over-commits
+ * for absurd sizes and the process is OOM-killed instead of receiving NULL.
+ * Reject up front when a single buffer would dwarf available RAM. The 32x
+ * headroom is far beyond any runnable configuration, so this never rejects a
+ * legitimate allocation — it only traps pathological requests (e.g. INT_MAX
+ * context) the same way malloc-returns-NULL already does on Linux. */
+static int tn_alloc_too_large(size_t count, size_t elem_size) {
+  tn_i64 ram = tn_get_free_ram();
+  size_t bytes;
+  if (ram <= 0) return 0; /* unknown RAM: fall back to malloc-NULL behavior */
+  if (tn_size_mul_overflow(count, elem_size, &bytes)) return 1;
+  return bytes > (size_t)ram * 32;
+}
 
 TernaryError run_state_alloc(RunState *s, const Config *cfg, int max_seq_len) {
   memset(s, 0, sizeof(*s));
@@ -35,6 +50,10 @@ TernaryError run_state_alloc(RunState *s, const Config *cfg, int max_seq_len) {
     run_state_free(s);
     return TN_ERR_OOM;
   }
+  if (tn_alloc_too_large(att_count, sizeof(float))) {
+    run_state_free(s);
+    return TN_ERR_OOM;
+  }
   s->att = (float *)tn_aligned_calloc(att_count, sizeof(float), TN_SIMD_ALIGN);
   s->logits =
       (float *)tn_aligned_calloc(cfg->vocab_size, sizeof(float), TN_SIMD_ALIGN);
@@ -49,6 +68,10 @@ TernaryError run_state_alloc(RunState *s, const Config *cfg, int max_seq_len) {
   size_t kv_cache_size;
   if (tn_size_mul4((size_t)cfg->n_layers, (size_t)cfg->n_kv_heads,
                    (size_t)max_seq_len, (size_t)head_dim, &kv_cache_size)) {
+    run_state_free(s);
+    return TN_ERR_OOM;
+  }
+  if (tn_alloc_too_large(kv_cache_size, sizeof(float))) {
     run_state_free(s);
     return TN_ERR_OOM;
   }

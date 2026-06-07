@@ -6,6 +6,7 @@
 #include "transformer/forward.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 /* This audit test intentionally performs an out-of-bounds KV cache index
  * calculation to verify that the engine's sliding window maps pos=15 outside
@@ -39,7 +40,10 @@ static void aud_kv_cache_overflow(void) {
 
   tn_simd_init();
 
-  /* Mock weights — allocate as float32 (layers_are_ternary defaults to false) */
+  /* Mock weights — allocate as float32 (layers_are_ternary defaults to false).
+   * weights_alloc_pointers() requires the struct to be zeroed first, else the
+   * weights_free_pointers() cleanup below frees uninitialized pointer fields. */
+  memset(&w, 0, sizeof(w));
   weights_alloc_pointers(&w, &cfg);
   w.token_embedding_table = calloc(cfg.vocab_size * cfg.dim, sizeof(float));
   w.wq[0] = calloc(cfg.dim * cfg.dim, sizeof(float));

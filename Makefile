@@ -11,9 +11,9 @@ endif
 CFLAGS_COMMON   = -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L $(DARWIN_DEFS)
 CXXFLAGS_COMMON = -std=c++17 -Wall -Wextra -Iinclude -D_POSIX_C_SOURCE=200809L $(DARWIN_DEFS)
 CFLAGS_RELEASE   = $(CFLAGS_COMMON)   -O3 -march=native -DNDEBUG
-CFLAGS_DEBUG     = $(CFLAGS_COMMON)   -g -O0 -fsanitize=address -fsanitize=undefined
+CFLAGS_DEBUG     = $(CFLAGS_COMMON)   -g -O0 -march=native -fsanitize=address -fsanitize=undefined
 CXXFLAGS_RELEASE = $(CXXFLAGS_COMMON) -O3 -march=native -DNDEBUG
-CXXFLAGS_DEBUG   = $(CXXFLAGS_COMMON) -g -O0 -fsanitize=address -fsanitize=undefined
+CXXFLAGS_DEBUG   = $(CXXFLAGS_COMMON) -g -O0 -march=native -fsanitize=address -fsanitize=undefined
 LDFLAGS = -pthread -lm
 
 # Default to release
@@ -43,7 +43,7 @@ release:
 	$(MAKE) CFLAGS="$(CFLAGS_RELEASE)" CXXFLAGS="$(CXXFLAGS_RELEASE)" all
 
 debug:
-	$(MAKE) CFLAGS="$(CFLAGS_DEBUG)" CXXFLAGS="$(CXXFLAGS_DEBUG)" all
+	$(MAKE) CFLAGS="$(CFLAGS_DEBUG)" CXXFLAGS="$(CXXFLAGS_DEBUG)" LDFLAGS="$(LDFLAGS) -fsanitize=address -fsanitize=undefined" all
 
 # Build all object files without linking (useful when main.c doesn't exist yet)
 objs: $(OBJS)
@@ -106,9 +106,12 @@ build/math/ternary_matmul_packed_vnni.o: src/math/ternary_matmul_packed_vnni.c
 	$(CC) $(CFLAGS) $(if $(filter 1,$(_HAS_AVX512VNNI)),-mavx512vnni) -c -o $@ $<
 
 # VNNI-256: EVEX-encoded 256-bit VNNI via AVX-512VNNI — no ZMM, no frequency throttle.
+# The 256-bit _mm256_dpbusds_epi32 intrinsic needs avx512vl in addition to
+# avx512vnni (clang enforces this strictly; release gets it via -march=native,
+# but the debug build has no -march=native so it must be passed explicitly).
 build/math/ternary_matmul_packed_vnni256.o: src/math/ternary_matmul_packed_vnni256.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(if $(filter 1,$(_HAS_AVX512VNNI)),-mavx512vnni) -c -o $@ $<
+	$(CC) $(CFLAGS) $(if $(filter 1,$(_HAS_AVX512VNNI)),-mavx512vnni -mavx512vl) -c -o $@ $<
 
 # ── CPU SIMD capability probing (shared by lib rules + test rules) ─────────
 #

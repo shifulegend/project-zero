@@ -47,6 +47,16 @@ A change is done only when:
   the bar. CI historically died early, masking downstream failures; expect a cascade when you
   unblock the first failing test, and keep going until the whole suite passes on all platforms.
 
+## Version control & branch hygiene
+- Integrate into `master` via small PRs (don't push directly); keep each PR's branch short-lived.
+- **Delete a feature/fix branch as soon as its PR is merged** — keep the remote to `master` plus
+  only actively-developed branches. No stale or duplicate branches.
+- Enable repo Setting "Automatically delete head branches" so merged PR branches are pruned
+  automatically (prevents accumulation; no manual cleanup needed).
+- Don't create placeholder/flag branches (e.g. `DELETE-ME-*`) as a habit — they are a last-resort
+  workaround only when an environment blocks ref deletion; delete them too once unblocked.
+- Don't commit build artifacts, downloaded models, or transient logs (`wget-log`, `*stdout.log`).
+
 ## Security / safety constraints
 - Public repo: never commit secrets, keys, tokens, `.env`, `*.pem`, real credentials. (History
   is currently clean — keep it so.) Doc placeholders like `<YOUR_SUDO_PASSWORD>` are fine.

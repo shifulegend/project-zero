@@ -3,6 +3,14 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-06-07.
 
+### 2026-06-07 — Document branch-hygiene convention
+- What: Added a "Version control & branch hygiene" section to `engineering-rules.md` (delete
+  merged branches; enable auto-delete-head-branches; avoid flag/placeholder branches; don't
+  commit artifacts/models/logs).
+- Why: post-merge cleanup surfaced redundant branches; this sandbox's git proxy blocks ref
+  deletion, so the convention + the repo auto-delete setting prevent future accumulation.
+- Areas: `docs/ai/engineering-rules.md`. Canonical-only (adapters stay lean per tool-sync-policy).
+
 ### 2026-06-07 — Cross-tool AI development system
 - What: Added `docs/ai/**` canonical docs + Claude/Copilot/Antigravity adapters.
 - Why: one source of truth; continuity across Claude Code, GitHub Copilot, Antigravity.

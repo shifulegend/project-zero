@@ -1,3 +1,30 @@
+# AGENTS.md — project-zero (Antigravity / portability adapter)
+
+> Portability mirror of `gemini/GEMINI.md`; keep the two synchronized on durable repo-wide rules.
+> **Read first, every session** (`docs/ai/session-start-checklist.md`):
+> `docs/ai/project-overview.md`, `docs/ai/engineering-rules.md`, `docs/ai/mistakes.md`,
+> `docs/ai/decision-log.md`, `docs/ai/tool-sync-policy.md`.
+> `docs/ai/**` is the **canonical source of truth**; this file is a thin adapter.
+> Scoped rules: `.agents/rules/{core,docs,tests,config}.md`. Workflows: `.agents/workflows/*.md`.
+> **All of these are dynamic — update them proactively, without being asked.**
+
+## Durable rules (summary — full text in `docs/ai/engineering-rules.md`)
+- Extreme modularity; reuse existing patterns (`simd_dispatch`, GGUF reader, `tn_aligned_*`,
+  `tn_size_mul*`, `tn_get_free_ram`) before adding abstractions.
+- No hardcoding: model shape/tokens/quant from GGUF metadata; behavior via CLI/config.
+- `memset` structs before partial init; overflow-checked size math; trap absurd allocations
+  deterministically (never rely on `calloc` returning NULL — macOS over-commits).
+- Cross-platform SIMD (x86 AVX2..VNNI / ARM NEON / scalar) must all compile; `TN_HAS_*` gates.
+- Definition of done: `make release/test/debug` green for **gcc and clang**, golden output
+  correct, no kernel perf regression (A/B), docs+adapters synced, small commit checkpoints.
+- Public repo: never commit secrets. Keep ASan/UBSan green.
+
+## Build / run (verified)
+```bash
+make release CC=gcc && make test CC=gcc && make debug CC=gcc   # repeat CC=clang
+./adaptive_ai_engine --model models/<m>.gguf --prompt "..." --max-tokens 16 --temperature 0 --threads 4
+```
+
 <!-- gitnexus:start -->
 # GitNexus MCP
 
@@ -57,27 +84,7 @@ npx gitnexus mcp
 <!-- gitnexus:end -->
 
 ## Project Overview
-
-**project-zero** is a from-scratch, CPU-optimized LLM inference engine targeting BitNet b1.58 ternary weights and DeepSeek-V2 architecture.
-
-### Key Modules
-
-| Path | Purpose |
-|------|---------|
-| `src/core/` | Weight loading, quantization, MoE config, debug utilities |
-| `src/math/` | SIMD matmul kernels (F16, Q4K, Q5_0, Q5_1, Q5K, VNNI) |
-| `src/transformer/` | Attention (MLA), MoE routing, generation loop |
-| `src/tokenizer/` | GGUF tokenizer, chat template, BPE |
-| `src/api/` | HTTP server, SSE streaming, JSON parsing, chat compilation |
-| `src/cli/` | Argument parsing, main entry point |
-| `include/` | Public headers mirroring `src/` structure |
-| `tests/` | Unit tests for math, MoE, SIMD, API, tokenizer |
-| `tools/` | Conversion utilities |
-
-### Build
-
-```bash
-cmake -B build && cmake --build build -j$(nproc)
-# or
-make
-```
+**project-zero** is a from-scratch, CPU-optimized LLM inference engine targeting BitNet b1.58
+ternary weights and DeepSeek-V2 (MoE + MLA), with an OpenAI-compatible HTTP API.
+Full architecture, directory map, terminology, and build/test/run details are canonical in
+**`docs/ai/project-overview.md`** — keep that file (not this section) authoritative.

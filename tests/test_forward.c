@@ -75,6 +75,7 @@ static void float_array_to_bf16(const float *in, tn_u16 *out, size_t count) {
 /* Tiny model config */
 static Config tiny_config(void) {
   Config cfg;
+  memset(&cfg, 0, sizeof(cfg));  /* zero all fields first */
   cfg.dim = 16;
   cfg.hidden_dim = 32;
   cfg.n_layers = 1;
@@ -82,6 +83,8 @@ static Config tiny_config(void) {
   cfg.n_kv_heads = 2;
   cfg.vocab_size = 8;
   cfg.seq_len = 16;
+  cfg.rms_norm_eps = 1e-5f;     /* required: RMSNorm divides by sqrt(mean^2 + eps) */
+  cfg.rope_freq_scale = 1.0f;   /* required: RoPE freq scale (0 = no scaling = correct default) */
   return cfg;
 }
 

@@ -4,6 +4,7 @@
 [![Language: C](https://img.shields.io/badge/language-C99-blue.svg)](src/)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)](README.md)
 [![SIMD](https://img.shields.io/badge/SIMD-AVX--512%20%7C%20AVX2%20%7C%20NEON-green)](src/math/)
+[![Benchmarks](https://img.shields.io/badge/Benchmarks-OpenBenchmarking.org-orange)](https://openbenchmarking.org/result/2606063-SHIF-PROJECT91)
 [![Discussions](https://img.shields.io/github/discussions/shifulegend/project-zero)](https://github.com/shifulegend/project-zero/discussions)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
@@ -131,6 +132,21 @@ detected at startup.
 
 > Use `--classifier bf16` to preserve full LM head precision at the cost of speed.
 > Use `--classifier int8` or `int4` to trade precision for throughput (default: auto).
+
+---
+
+## 🆘 Help Wanted
+
+We're stuck on two problems. If you've worked on either, your input in the linked Discussions would make a real difference:
+
+| Problem | Current state | Target | Discussion |
+|---|---|---|---|
+| **MoE expert weight repacking** | DeepSeek MoE runs at ~1 tok/s (13× behind llama.cpp). Root cause: expert weights are scattered in GGUF at non-contiguous offsets → 86% L3 miss rate. Fix: repack top-K experts into contiguous blocks at load time (what llama.cpp does). Challenge: Q4_K superblock layout. | ≥ 9 tok/s | [Discussion #1](https://github.com/shifulegend/project-zero/discussions/1) |
+| **Native Q4_K matmul kernel** | DeepSeek dense layers use F32 dequant path. An AVX-512 VNNI kernel operating directly on 4-bit superblocks (no F32 intermediate) would cut memory bandwidth by ~8×. | 4× speedup on dense layers | [Discussion #1](https://github.com/shifulegend/project-zero/discussions/1) |
+
+**Community benchmark challenge** — run the engine on your hardware and add your result to the comparison table: [Discussion #3](https://github.com/shifulegend/project-zero/discussions/3)
+
+For a deep-dive into how the existing fast path works: [`docs/KERNEL_INTERNALS.md`](docs/KERNEL_INTERNALS.md)
 
 ---
 
@@ -556,6 +572,7 @@ python3 tools/convert_tokenizer.py \
 | [docs/PHASE15_RAG.md](docs/PHASE15_RAG.md) | Phase 15 RAG — architecture, module guide, sub-task log |
 | [docs/PERFORMANCE_CEILING_REPORT.md](docs/PERFORMANCE_CEILING_REPORT.md) | Full optimization journal, bandwidth math, hardware ceilings, Addendum A/B/C |
 | [docs/CHANGELOG.md](docs/CHANGELOG.md) | All changes by phase |
+| [docs/KERNEL_INTERNALS.md](docs/KERNEL_INTERNALS.md) | VBMI kernel, thread pool, KV cache layout, MoE scatter problem |
 | [DEBUGGING_JOURNAL.md](DEBUGGING_JOURNAL.md) | Step-by-step debugging from 1.4 → 16 tok/s |
 | [WEIGHT_LOADING_REFERENCE.md](WEIGHT_LOADING_REFERENCE.md) | Complete binary format specification |
 

@@ -575,6 +575,10 @@ python3 tools/convert_tokenizer.py \
 | [docs/KERNEL_INTERNALS.md](docs/KERNEL_INTERNALS.md) | VBMI kernel, thread pool, KV cache layout, MoE scatter problem |
 | [DEBUGGING_JOURNAL.md](DEBUGGING_JOURNAL.md) | Step-by-step debugging from 1.4 → 16 tok/s |
 | [WEIGHT_LOADING_REFERENCE.md](WEIGHT_LOADING_REFERENCE.md) | Complete binary format specification |
+| [CPU_LLM_TERNARY_ENGINE.md](CPU_LLM_TERNARY_ENGINE.md) | Original architectural vision — ternary math, hardware adaptation, mmap design |
+| [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) | Complete 37-phase implementation spec (2907 lines) — struct definitions, file inventories, function signatures |
+| [MOE_RESEARCH_AND_FIX_PLAN.md](MOE_RESEARCH_AND_FIX_PLAN.md) | DeepSeek MoE optimization research — 8 attempted fixes (P1–P8), profiling data |
+| [.github/ROADMAP.md](.github/ROADMAP.md) | Phase status table (✅/🆘/❌), active blockers, full planned phases 17–36 |
 
 ---
 

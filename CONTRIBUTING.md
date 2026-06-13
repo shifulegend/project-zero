@@ -54,12 +54,37 @@ See [`CPU_LLM_TERNARY_ENGINE.md`](CPU_LLM_TERNARY_ENGINE.md) for a full architec
 
 ## 🔥 Highest Impact Areas Right Now
 
-| Area | Description | Skill needed |
+The full phase roadmap is at [`.github/ROADMAP.md`](.github/ROADMAP.md). The two active blockers that unblock the most downstream phases:
+
+### 🆘 Active Blockers
+
+| Area | Current state | Target | Discussion | Skill needed |
+|---|---|---|---|---|
+| **MoE expert weight repacking** | DeepSeek MoE at ~1 tok/s — 86% L3 miss rate due to non-contiguous expert offsets in GGUF | ≥ 9 tok/s | [Discussion #1](https://github.com/shifulegend/project-zero/discussions/1) | C, GGUF Q4_K layout, memory layout |
+| **Native Q4_K matmul kernel** | Dense layers dequant Q4_K → FP32 before matmul | 4× speedup on DeepSeek dense layers | [Discussion #1](https://github.com/shifulegend/project-zero/discussions/1) | C, AVX-512 intrinsics |
+
+See [`MOE_RESEARCH_AND_FIX_PLAN.md`](MOE_RESEARCH_AND_FIX_PLAN.md) for 8 previous fix attempts (P1–P8) with profiling data — read this before starting on expert repacking.
+
+### 📋 Next Up (Fully Specified, Ready to Implement)
+
+These phases are completely spec'd in [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) with struct definitions, function signatures, and file inventories. Good for contributors who want a well-defined scope:
+
+| Phase | Feature | Skill needed |
 |---|---|---|
-| **Expert weight repacking** | Interleave Q4_K MoE expert weights at load time for contiguous DRAM reads. Currently 13× behind llama.cpp. | C, GGUF format, memory layout |
-| **Native Q4_K matmul kernel** | AVX-512 VNNI kernel operating directly on 4-bit super-blocks (no F32 dequant). | C, AVX-512 intrinsics |
-| **P8 NaN fix validation** | Run one command on `DeepSeek-V2-Lite-Chat-Q2_K.gguf` and report output. | Just running a binary |
-| **YaRN/NTK context scaling** | Phase 24 — self-contained, well-specified RoPE extension | C, transformer math |
+| **37.2–37.5** | GGUF quant types: Q3_K, Q4_1, Q8_1, Q5_1, Q5_K, Q6_K | C, fixed-point arithmetic |
+| **19** | LoRA adapters — hot-swappable low-rank inference | C, linear algebra |
+| **20** | Grammar-constrained decoding / JSON mode — FSM + BNF parser | C, automata theory |
+| **24** | YaRN/NTK context scaling — RoPE frequency extension | C, transformer math |
+| **21** | OpenAI-compatible API layer (`/v1/chat/completions`, SSE streaming) | C, HTTP parsing |
+
+### ✅ Recently Completed (For Reference)
+
+| Item | Status |
+|---|---|
+| P8 NaN guard validation on Q2_K model | ✅ Done — Q2_K dequant implemented (Phase 37.1) |
+| Phase 16-S SIMD dispatch (AVX-512 VNNI, AVX-VNNI, ARM NEON) | ✅ Done |
+| Calibration system (DRAM BW probe + L3 size detection) | ✅ Done |
+| Vision pipeline Phase 11 (SigLIP + MLP projector) | ✅ Done |
 
 ---
 

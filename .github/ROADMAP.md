@@ -4,6 +4,59 @@ This document tracks all implementation phases against the original master plan 
 
 ---
 
+## 📊 Progress at a Glance
+
+```mermaid
+pie title Phase Completion (by category)
+    "✅ Complete" : 25
+    "🆘 Blocked (needs help)" : 1
+    "❌ Planned / not started" : 25
+```
+
+| Track | Progress | Count |
+|---|---|---|
+| Core Engine (Phases 0–16) | `██████████` **100%** | 17 / 17 |
+| Performance Tuning (K-series) | `██████████` **100%** | 6 / 6 |
+| GGUF / MoE Pipeline (34–37) | `████░░░░░░` **40%** | 2 / 5 *(34-MoE blocked)* |
+| Extended Roadmap (17–36) | `░░░░░░░░░░` **0%** | 0 / 20 *(fully spec'd, not started)* |
+| **Overall** | `████░░░░░░` **~49%** | **25 / 51** |
+
+---
+
+## 🗺️ Critical Path
+
+```mermaid
+flowchart LR
+    A["✅ Core Engine\nPhases 0–16"] --> B["✅ SIMD Dispatch\nPhase 16-S"]
+    B --> C["✅ GGUF Reader\nPhase 34"]
+    C --> D["🆘 MoE Repack\n34-MoE / 17\n⚡ HELP WANTED"]
+    D --> E["❌ MoE Arch Router\nPhase 35"]
+    E --> F["❌ Text-to-Image\nPhase 36"]
+    C --> G["❌ GGUF Quants\n37.2–37.5"]
+    G --> E
+    A --> H["❌ Speculative\nDecoding Ph.18"]
+    A --> I["❌ LoRA Ph.19"]
+    A --> J["❌ Grammar Ph.20"]
+    A --> K["❌ OpenAI API Ph.21"]
+```
+
+---
+
+## Performance Snapshot
+
+```
+Hardware          Model                     tok/s    vs DRAM ceil
+─────────────────────────────────────────────────────────────────
+Xeon (Emerald R.) BitNet-b1.58-2B-4T Q2      36.25   95% ████████████████████░
+i5-11300H         BitNet-b1.58-2B-4T Q2      16.10   87% █████████████████░░░░
+Xeon              DeepSeek-V2-Lite Q4_K_S     1.06   11% ██░░░░░░░░░░░░░░░░░░░ ← MoE bottleneck
+                                                         ceiling: 9.8 tok/s
+```
+
+Verified on [OpenBenchmarking.org](https://openbenchmarking.org/result/2606063-SHIF-PROJECT91) · 1.83× faster than bitnet.cpp on same hardware.
+
+---
+
 ## Status Legend
 
 | Symbol | Meaning |

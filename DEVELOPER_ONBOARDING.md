@@ -1,6 +1,6 @@
 # Developer Onboarding: Testing & Progressive Phases
 
-> ⚠️ **READ [`GOLDEN_RULES.md`](../GOLDEN_RULES.md) FIRST.**
+> ⚠️ **READ [`GOLDEN_RULES.md`](GOLDEN_RULES.md) FIRST.**
 > No hardcoding. Test after every change. Document at every step. No exceptions.
 
 ## Overview
@@ -93,7 +93,7 @@ Type `y` at `Allow? [y/N]`.
 PROJECT_ZERO_AGENT_AUTO_APPROVE=1 python3 tests/agent_pty_runner.py
 ```
 
-See [WALKTHROUGH_PHASE14.md](WALKTHROUGH_PHASE14.md) for the complete PTY runner script
+See [WALKTHROUGH_PHASE14.md](docs/phases/WALKTHROUGH_PHASE14.md) for the complete PTY runner script
 and a verified run capture.
 
 ### Agent unit tests

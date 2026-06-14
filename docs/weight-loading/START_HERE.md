@@ -1,6 +1,6 @@
 # Weight Loading Analysis - START HERE
 
-> ⚠️ **READ [`GOLDEN_RULES.md`](GOLDEN_RULES.md) FIRST — development rules, test protocol, no-hardcoding mandate.**
+> ⚠️ **READ [`GOLDEN_RULES.md`](../../GOLDEN_RULES.md) FIRST — development rules, test protocol, no-hardcoding mandate.**
 
 ## What You Need to Know (TL;DR)
 

@@ -1,6 +1,6 @@
 # Project Zero — Roadmap
 
-This document tracks all implementation phases against the original master plan in [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md). The full architectural vision is in [`CPU_LLM_TERNARY_ENGINE.md`](../CPU_LLM_TERNARY_ENGINE.md).
+This document tracks all implementation phases against the original master plan in [`IMPLEMENTATION_PLAN.md`](../docs/architecture/IMPLEMENTATION_PLAN.md). The full architectural vision is in [`CPU_LLM_TERNARY_ENGINE.md`](../docs/architecture/CPU_LLM_TERNARY_ENGINE.md).
 
 ---
 
@@ -205,8 +205,8 @@ architecture routers (Phases 35 and 22).
 
 | Document | Contents |
 |----------|----------|
-| [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) | Complete phase-by-phase specification (2907 lines, file inventories, struct definitions) |
-| [`CPU_LLM_TERNARY_ENGINE.md`](../CPU_LLM_TERNARY_ENGINE.md) | Original architectural vision — ternary math, hardware adaptation, mmap design |
-| [`MOE_RESEARCH_AND_FIX_PLAN.md`](../MOE_RESEARCH_AND_FIX_PLAN.md) | DeepSeek MoE optimization research — 8 attempted fixes (P1–P8), profiling data |
-| [`docs/KERNEL_INTERNALS.md`](KERNEL_INTERNALS.md) | VBMI kernel, thread pool design, KV cache layout, MoE scatter analysis |
-| [`docs/PERFORMANCE_CEILING_REPORT.md`](PERFORMANCE_CEILING_REPORT.md) | Hardware bottleneck analysis — bandwidth math, LLC miss profiling |
+| [`IMPLEMENTATION_PLAN.md`](../docs/architecture/IMPLEMENTATION_PLAN.md) | Complete phase-by-phase specification (2907 lines, file inventories, struct definitions) |
+| [`CPU_LLM_TERNARY_ENGINE.md`](../docs/architecture/CPU_LLM_TERNARY_ENGINE.md) | Original architectural vision — ternary math, hardware adaptation, mmap design |
+| [`MOE_RESEARCH_AND_FIX_PLAN.md`](../docs/architecture/MOE_RESEARCH_AND_FIX_PLAN.md) | DeepSeek MoE optimization research — 8 attempted fixes (P1–P8), profiling data |
+| [`docs/KERNEL_INTERNALS.md`](../docs/KERNEL_INTERNALS.md) | VBMI kernel, thread pool design, KV cache layout, MoE scatter analysis |
+| [`docs/PERFORMANCE_CEILING_REPORT.md`](../docs/PERFORMANCE_CEILING_REPORT.md) | Hardware bottleneck analysis — bandwidth math, LLC miss profiling |

@@ -2,13 +2,18 @@
 
 > Canonical source of truth. Tool adapters (CLAUDE.md, AGENTS.md, gemini/GEMINI.md,
 > .github/copilot-instructions.md) summarize and link here. Keep this current.
-> Last updated: 2026-06-07.
+> Last updated: 2026-06-14.
 
 ## Purpose
 `project-zero` is a from-scratch, CPU-optimized LLM inference engine in C/C++ targeting
-**BitNet b1.58 ternary weights** and **DeepSeek-V2** architecture (MoE + MLA attention),
-plus a **partial** OpenAI-compatible HTTP API layer (Phase 21 — see below). Goal: high
-single-machine CPU throughput with SIMD-tuned kernels, no GPU.
+**BitNet b1.58 ternary weights** and **DeepSeek-V2** architecture (MoE + MLA attention).
+The GGUF loader (`config_from_gguf()` in `src/core/gguf_loader.c`) is **architecture-agnostic**
+— it keys metadata off the GGUF `general.architecture` string — so **dense GGUF transformers**
+(Llama-family) also run through a generic path; only DeepSeek-V2 is special-cased for MoE + MLA.
+**SmolLM2-135M-Instruct F16 is the verified dense model** (up to 83.79 tok/s); other standard
+architectures (`llama`/`qwen`/`mistral`/`gemma`/`phi`) load but are untested. There is also a
+**partial** OpenAI-compatible HTTP API layer (Phase 21 — see below). Goal: high single-machine
+CPU throughput with SIMD-tuned kernels, no GPU.
 
 ## Stack & key dependencies
 - **Languages:** C99 (engine). One **temporary** C++17 translation unit

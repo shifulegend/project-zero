@@ -3,6 +3,21 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-06-14.
 
+### 2026-06-14 — Docs reflect dense GGUF support (SmolLM2 + generic loader)
+- What: README, ROADMAP, and project-overview said the engine runs only BitNet and
+  DeepSeek-V2-Lite, but the benchmark docs (`.claude/BENCHMARK_SUMMARY.md`,
+  `docs/PERFORMANCE_CEILING_REPORT.md`) already benchmark **SmolLM2-135M-Instruct F16**
+  (dense GGUF) up to 83.79 tok/s, and `config_from_gguf()` in `src/core/gguf_loader.c` is
+  architecture-agnostic. Added a third support tier: dense GGUF transformers (Llama-family)
+  via the generic loader, with SmolLM2 as the verified model and other architectures flagged
+  as loads-but-untested. MoE/MLA acceleration remains DeepSeek-V2-specific.
+- Why: docs understated actual, already-tested capability; user asked for the correct picture.
+- Areas: `README.md` (intro, new "Dense GGUF Models" section, footer), `.github/ROADMAP.md`
+  (perf snapshot), `docs/ai/project-overview.md` (Purpose). Lean adapters (AGENTS/copilot/
+  GEMINI/CLAUDE) left as-is per tool-sync-policy — they describe the targeted/special-cased
+  architectures, not an exhaustive model list. Historical benchmark addenda left untouched.
+- Branch: `claude/readme-llm-support-docs-3tg13v`.
+
 ### 2026-06-14 — README accuracy pass + repo best-practices + docs reorg
 - What: (1) Corrected README intro to match canonical scope (BitNet + DeepSeek-V2-Lite
   GGUF + vision/agentic/RAG), kept "written in C", reframed Python as temporary

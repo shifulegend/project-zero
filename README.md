@@ -13,10 +13,12 @@
 
 A from-scratch, single-binary LLM inference engine written in C, built to run
 Microsoft's [BitNet b1.58-2B-4T](https://huggingface.co/microsoft/bitnet-b1.58-2B-4T)
-ternary weights at maximum speed on commodity CPUs. It also runs
-**DeepSeek-V2-Lite-Chat** (MoE + MLA) directly from GGUF, with a vision pipeline
-(SigLIP), agentic tool use, and RAG persistent memory. The long-term goal is to be
-**LLM-agnostic** — run any model that fits and executes on a CPU.
+ternary weights at maximum speed on commodity CPUs. The same binary also runs
+**DeepSeek-V2-Lite-Chat** (MoE + MLA) and **dense GGUF transformers** (Llama-family)
+directly from GGUF — **SmolLM2-135M-Instruct F16 is verified at up to 83.79 tok/s** —
+plus a vision pipeline (SigLIP), agentic tool use, and RAG persistent memory. The
+GGUF loader is architecture-agnostic, so the long-term goal of being **LLM-agnostic**
+— run any model that fits and executes on a CPU — is already partly here.
 
 **No GPU and no ML framework.** Python is used today only for offline tooling —
 model conversion, development, and testing (see [`tools/`](tools/)); the engine
@@ -210,6 +212,52 @@ See `DEBUGGING_JOURNAL.md` for the full root cause analysis of the Q4_K nibble b
 - llama.cpp reference: 13.79 tok/s (T=4)
 - Gap to llama.cpp: ~13× — primary bottleneck: expert weight scatter access pattern
 - Next step: expert weight repacking (interleaved Q4K layout) to improve effective BW
+
+---
+
+## Dense GGUF Models (Llama-family)
+
+Beyond BitNet and DeepSeek, the same binary runs **dense GGUF transformers** with no
+format conversion. The GGUF loader is **architecture-agnostic**: `config_from_gguf()` in
+[`src/core/gguf_loader.c`](src/core/gguf_loader.c) reads `general.architecture` from the
+file and uses it as the metadata-key prefix (`<arch>.embedding_length`,
+`<arch>.attention.head_count`, …), then loads the standard Llama-family tensor names. Only
+**DeepSeek-V2** is special-cased for the MoE + MLA fast paths.
+
+This makes project-zero the only engine that runs both BitNet ternary **and** F16 dense
+models from a single binary, with no per-model build.
+
+### Quick Start
+
+```bash
+# Run a dense F16 GGUF model (no --tokenizer needed; GGUF metadata is auto-loaded)
+./adaptive_ai_engine \
+  --model models/SmolLM2-135M-Instruct-f16.gguf \
+  --prompt "What is the capital of France?" \
+  --max-tokens 30 --temperature 0
+```
+
+### Verified: SmolLM2-135M-Instruct (F16 GGUF)
+
+A dense transformer (dim=576, 30 layers, 9 heads / 3 KV heads GQA) used as the reference
+dense-model benchmark. Measured on an Intel i5-5250U (2 cores / 4 threads, DDR3, AVX2),
+project-zero vs llama.cpp / bitnet.cpp:
+
+| Threads | project-zero | bitnet.cpp | llama.cpp |
+|---|---|---|---|
+| 2 | **41.75 tok/s** | 42.05 | 39.37 |
+| 3 | **27.06 tok/s** (+22% vs both) | 22.11 | 21.40 |
+| 4 | **33.73 tok/s** (+50% vs both) | 22.19 | 22.48 |
+
+All-time peak: **83.79 tok/s** (T=4, VNNI, INT4 classifier — Addendum AL, faster machine).
+Full methodology in [`.claude/BENCHMARK_SUMMARY.md`](.claude/BENCHMARK_SUMMARY.md) and
+[`docs/PERFORMANCE_CEILING_REPORT.md`](docs/PERFORMANCE_CEILING_REPORT.md).
+
+> **Scope of support.** Standard Llama-family GGUFs (`llama`, `qwen`, `mistral`, `gemma`,
+> `phi`, …) **load** through the generic path because they share the same metadata keys and
+> tensor layout, but **SmolLM2-135M is the only dense model verified end-to-end** so far —
+> treat other architectures as untested. The **MoE / MLA** acceleration is DeepSeek-V2
+> specific; a non-DeepSeek MoE model would load but run its experts on the dense path.
 
 ---
 
@@ -649,6 +697,6 @@ python3 tools/convert_tokenizer.py \
 
 ---
 
-*Project Zero — Phase 34+ | BitNet b1.58-2B-4T · DeepSeek-V2-Lite-Chat (GGUF) · Vision pipeline (SigLIP)*
-*Best: **36.25 tok/s** (Xeon, PGO+LTO) · **16.1 tok/s** (i5-11300H, dual-channel) · **1.06 tok/s** (DeepSeek MoE, ceiling: 9.8 tok/s)*
+*Project Zero — Phase 34+ | BitNet b1.58-2B-4T · DeepSeek-V2-Lite-Chat (GGUF) · Dense GGUF (SmolLM2-135M F16) · Vision pipeline (SigLIP)*
+*Best: **83.79 tok/s** (SmolLM2-135M F16) · **36.25 tok/s** (BitNet, Xeon PGO+LTO) · **16.1 tok/s** (BitNet, i5-11300H dual-channel) · **1.06 tok/s** (DeepSeek MoE, ceiling: 9.8 tok/s)*
 *1.80× avg / 1.83× best vs bitnet.cpp on same hardware · 95% of DRAM bandwidth ceiling*

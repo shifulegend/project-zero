@@ -47,11 +47,15 @@ flowchart LR
 ```
 Hardware          Model                     tok/s    vs DRAM ceil
 ─────────────────────────────────────────────────────────────────
+i5-5250U (T=4)    SmolLM2-135M F16 (dense)   83.79   peak (VNNI, INT4 head)
 Xeon (Emerald R.) BitNet-b1.58-2B-4T Q2      36.25   95% ████████████████████░
 i5-11300H         BitNet-b1.58-2B-4T Q2      16.10   87% █████████████████░░░░
 Xeon              DeepSeek-V2-Lite Q4_K_S     1.06   11% ██░░░░░░░░░░░░░░░░░░░ ← MoE bottleneck
                                                          ceiling: 9.8 tok/s
 ```
+
+Dense GGUF transformers (Llama-family) run through the architecture-agnostic GGUF loader;
+SmolLM2-135M is the verified dense model, other standard architectures load but are untested.
 
 Verified on [OpenBenchmarking.org](https://openbenchmarking.org/result/2606063-SHIF-PROJECT91) · 1.83× faster than bitnet.cpp on same hardware.
 

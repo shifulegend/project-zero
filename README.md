@@ -1,4 +1,4 @@
-# Project Zero — BitNet Inference Engine
+# Project Zero — CPU LLM Inference Engine
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Language: C](https://img.shields.io/badge/language-C99-blue.svg)](src/)
@@ -11,9 +11,16 @@
 > ⚠️ **ALL CONTRIBUTORS AND AI AGENTS: READ [`GOLDEN_RULES.md`](GOLDEN_RULES.md) BEFORE TOUCHING ANY CODE.**
 > No hardcoding. Test after every change. Document at every step. No exceptions.
 
-A from-scratch, single-binary LLM inference engine written in C, built to run
-Microsoft's [BitNet b1.58-2B-4T](https://huggingface.co/microsoft/bitnet-b1.58-2B-4T)
-at maximum speed on commodity CPUs — no GPU, no Python, no framework.
+A from-scratch, single-binary LLM inference engine in C (plus one C++ translation
+unit for chat templating), built to run Microsoft's
+[BitNet b1.58-2B-4T](https://huggingface.co/microsoft/bitnet-b1.58-2B-4T) ternary
+weights at maximum speed on commodity CPUs. It also runs **DeepSeek-V2-Lite-Chat**
+(MoE + MLA) directly from GGUF, and layers on a vision pipeline (SigLIP), agentic
+tool use, and RAG persistent memory.
+
+**No GPU and no ML framework.** The engine itself needs no Python to build or run —
+the only Python in the repo is the offline model-conversion and benchmark tooling in
+[`tools/`](tools/).
 
 ---
 

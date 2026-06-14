@@ -1,0 +1,31 @@
+# EditorConfig — consistent style across editors. https://editorconfig.org
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+# C / C++ engine sources.
+[*.{c,h,cpp,hpp}]
+indent_style = space
+indent_size = 4
+
+# Makefiles require literal tabs for recipe lines.
+[Makefile]
+indent_style = tab
+
+# Python tooling follows PEP 8 (4-space, already the default above).
+[*.py]
+indent_size = 4
+
+# Markdown: keep trailing whitespace (two spaces = hard line break).
+[*.md]
+trim_trailing_whitespace = false
+
+# YAML config (CI, dependabot, issue chooser).
+[*.{yml,yaml}]
+indent_size = 2

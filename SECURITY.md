@@ -33,10 +33,10 @@ Security issues relevant to this project include:
 
 ## Known Security Design Decisions
 
-- The `<exec>` agentic tool is **allow-listed** to: `echo`, `ls`, `cat`, `pwd`, `uname`, `date`, `id`. All other commands are refused. See [`WALKTHROUGH_PHASE14.md`](WALKTHROUGH_PHASE14.md) for design rationale.
+- The `<exec>` agentic tool is **allow-listed** to: `echo`, `ls`, `cat`, `pwd`, `uname`, `date`, `id`. All other commands are refused. See [`WALKTHROUGH_PHASE14.md`](docs/phases/WALKTHROUGH_PHASE14.md) for design rationale.
 - Model files are loaded via `mmap` with `PROT_READ` — weights are never written to.
 - The engine does not make network requests at runtime.
 
 ## Security Audit
 
-A prior independent security audit is documented in [`SECURITY_FINDINGS.md`](SECURITY_FINDINGS.md) and [`INDEPENDENT_CODE_AUDIT_REPORT.md`](INDEPENDENT_CODE_AUDIT_REPORT.md).
+A prior independent security audit is documented in [`SECURITY_FINDINGS.md`](docs/reports/SECURITY_FINDINGS.md) and [`INDEPENDENT_CODE_AUDIT_REPORT.md`](docs/reports/INDEPENDENT_CODE_AUDIT_REPORT.md).

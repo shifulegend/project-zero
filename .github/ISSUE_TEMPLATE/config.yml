@@ -1,0 +1,14 @@
+# Issue template chooser configuration.
+# Blank issues stay enabled so maintainers can file quick notes; contributors
+# are nudged toward the structured templates and the right support channels.
+blank_issues_enabled: true
+contact_links:
+  - name: 💬 Questions & Discussion
+    url: https://github.com/shifulegend/project-zero/discussions
+    about: Ask usage questions, propose ideas, or discuss architecture here.
+  - name: 🏁 Community Benchmark Challenge
+    url: https://github.com/shifulegend/project-zero/discussions/3
+    about: Run the engine on your hardware and share your tok/s result.
+  - name: 🔐 Report a Security Vulnerability
+    url: https://github.com/shifulegend/project-zero/security/advisories/new
+    about: Please report vulnerabilities privately — do not open a public issue.

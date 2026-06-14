@@ -1,4 +1,4 @@
-# Project Zero — BitNet Inference Engine
+# Project Zero — CPU LLM Inference Engine
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Language: C](https://img.shields.io/badge/language-C99-blue.svg)](src/)
@@ -13,7 +13,14 @@
 
 A from-scratch, single-binary LLM inference engine written in C, built to run
 Microsoft's [BitNet b1.58-2B-4T](https://huggingface.co/microsoft/bitnet-b1.58-2B-4T)
-at maximum speed on commodity CPUs — no GPU, no Python, no framework.
+ternary weights at maximum speed on commodity CPUs. It also runs
+**DeepSeek-V2-Lite-Chat** (MoE + MLA) directly from GGUF, with a vision pipeline
+(SigLIP), agentic tool use, and RAG persistent memory. The long-term goal is to be
+**LLM-agnostic** — run any model that fits and executes on a CPU.
+
+**No GPU and no ML framework.** Python is used today only for offline tooling —
+model conversion, development, and testing (see [`tools/`](tools/)); the engine
+itself needs no Python to build or run, and the final product targets zero Python.
 
 ---
 
@@ -356,9 +363,18 @@ project-zero/
 │   └── microsoft-bitnet-b1.58-2B-4T/        Original HF files
 └── docs/
     ├── CHANGELOG.md
+    ├── KERNEL_INTERNALS.md
     ├── PERFORMANCE_CEILING_REPORT.md
-    └── PHASE10_PRE_AUDIT_REPORT.md
+    ├── ai/               Canonical AI-dev memory (overview, rules, decisions)
+    ├── architecture/     Design specs (CPU_LLM_TERNARY_ENGINE, IMPLEMENTATION_PLAN, MoE)
+    ├── phases/           Phase walkthroughs (WALKTHROUGH_PHASE*)
+    ├── reports/          Benchmarks, QA, audits, test reports
+    └── weight-loading/   BitNet weight-format reference + analysis
 ```
+
+> Root keeps only entry-point docs (README, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY,
+> LICENSE) and the agent guides (GOLDEN_RULES, DEVELOPER_ONBOARDING, CLAUDE, AGENTS).
+> Everything else now lives under `docs/`.
 
 ---
 
@@ -412,7 +428,7 @@ Any other command is blocked before execution (no approval prompt is shown).
 ### Non-interactive / automated testing
 
 Set `PROJECT_ZERO_AGENT_AUTO_APPROVE=1` (requires PTY — see
-[WALKTHROUGH_PHASE14.md](WALKTHROUGH_PHASE14.md) for a complete Python PTY runner).
+[WALKTHROUGH_PHASE14.md](docs/phases/WALKTHROUGH_PHASE14.md) for a complete Python PTY runner).
 
 ### More test prompts
 
@@ -424,7 +440,7 @@ Set `PROJECT_ZERO_AGENT_AUTO_APPROVE=1` (requires PTY — see
 /agent Run <exec>ls models</exec> and list available model files.
 ```
 
-> Full documentation: [WALKTHROUGH_PHASE14.md](WALKTHROUGH_PHASE14.md)
+> Full documentation: [WALKTHROUGH_PHASE14.md](docs/phases/WALKTHROUGH_PHASE14.md)
 
 ---
 
@@ -488,6 +504,47 @@ Entries with cosine similarity ≥ 0.95 to an existing entry are silently skippe
 You will see `[Memory] Duplicate detected — entry not saved.`
 
 > Full documentation: [docs/PHASE15_RAG.md](docs/PHASE15_RAG.md)
+
+---
+
+## HTTP API Server (Phase 21 — experimental)
+
+The engine can serve an **OpenAI-compatible HTTP API** for chat completions. This layer
+is **partially implemented**: it works for single-client local use, but is not yet a
+production server (see limitations below).
+
+```bash
+./adaptive_ai_engine \
+  --model models/bitnet-b1.58-2B-4T.bin \
+  --tokenizer models/bitnet-b1.58-2B-4T_tokenizer_proper.bin \
+  --server --port 8080
+```
+
+```bash
+# Non-streaming chat completion
+curl http://127.0.0.1:8080/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"messages":[{"role":"user","content":"Capital of France?"}],"max_tokens":16}'
+```
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/chat/completions` | Chat completion — streaming (SSE) and non-streaming |
+| `GET`  | `/v1/models` | List the loaded model |
+| `GET`  | `/health` | Liveness probe — `{"status":"ok"}` |
+
+### Limitations (why it is experimental)
+
+- **Loopback only** — binds `127.0.0.1`; not exposed to the network by design.
+- **Serial** — a single listener thread handles one connection at a time (no concurrency
+  or continuous batching yet).
+- **No auth** and a minimal endpoint set (no `/v1/completions`, `/v1/embeddings`).
+- **Socket layer is untested in CI** — `tests/test_api_server.c` covers the JSON parser,
+  chat-template compiler, and SSE formatter, not the running server.
+
+Tracking and remaining work: [`.github/ROADMAP.md`](.github/ROADMAP.md) → Phase 21.
 
 ---
 
@@ -567,17 +624,17 @@ python3 tools/convert_tokenizer.py \
 |---|---|
 | [README.md](README.md) | This file — all CLI flags, REPL commands, quick-start |
 | [DEVELOPER_ONBOARDING.md](DEVELOPER_ONBOARDING.md) | Testing mandate, QA protocol, branching strategy |
-| [BRANCH_CHRONOLOGY.md](BRANCH_CHRONOLOGY.md) | Full branch history, merge session log, phase table |
-| [WALKTHROUGH_PHASE14.md](WALKTHROUGH_PHASE14.md) | Phase 14 agentic tools — architecture, test steps, verified run |
+| [BRANCH_CHRONOLOGY.md](docs/BRANCH_CHRONOLOGY.md) | Full branch history, merge session log, phase table |
+| [WALKTHROUGH_PHASE14.md](docs/phases/WALKTHROUGH_PHASE14.md) | Phase 14 agentic tools — architecture, test steps, verified run |
 | [docs/PHASE15_RAG.md](docs/PHASE15_RAG.md) | Phase 15 RAG — architecture, module guide, sub-task log |
 | [docs/PERFORMANCE_CEILING_REPORT.md](docs/PERFORMANCE_CEILING_REPORT.md) | Full optimization journal, bandwidth math, hardware ceilings, Addendum A/B/C |
 | [docs/CHANGELOG.md](docs/CHANGELOG.md) | All changes by phase |
 | [docs/KERNEL_INTERNALS.md](docs/KERNEL_INTERNALS.md) | VBMI kernel, thread pool, KV cache layout, MoE scatter problem |
-| [DEBUGGING_JOURNAL.md](DEBUGGING_JOURNAL.md) | Step-by-step debugging from 1.4 → 16 tok/s |
-| [WEIGHT_LOADING_REFERENCE.md](WEIGHT_LOADING_REFERENCE.md) | Complete binary format specification |
-| [CPU_LLM_TERNARY_ENGINE.md](CPU_LLM_TERNARY_ENGINE.md) | Original architectural vision — ternary math, hardware adaptation, mmap design |
-| [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) | Complete 37-phase implementation spec (2907 lines) — struct definitions, file inventories, function signatures |
-| [MOE_RESEARCH_AND_FIX_PLAN.md](MOE_RESEARCH_AND_FIX_PLAN.md) | DeepSeek MoE optimization research — 8 attempted fixes (P1–P8), profiling data |
+| [DEBUGGING_JOURNAL.md](docs/DEBUGGING_JOURNAL.md) | Step-by-step debugging from 1.4 → 16 tok/s |
+| [WEIGHT_LOADING_REFERENCE.md](docs/weight-loading/WEIGHT_LOADING_REFERENCE.md) | Complete binary format specification |
+| [CPU_LLM_TERNARY_ENGINE.md](docs/architecture/CPU_LLM_TERNARY_ENGINE.md) | Original architectural vision — ternary math, hardware adaptation, mmap design |
+| [IMPLEMENTATION_PLAN.md](docs/architecture/IMPLEMENTATION_PLAN.md) | Complete 37-phase implementation spec (2907 lines) — struct definitions, file inventories, function signatures |
+| [MOE_RESEARCH_AND_FIX_PLAN.md](docs/architecture/MOE_RESEARCH_AND_FIX_PLAN.md) | DeepSeek MoE optimization research — 8 attempted fixes (P1–P8), profiling data |
 | [.github/ROADMAP.md](.github/ROADMAP.md) | Phase status table (✅/🆘/❌), active blockers, full planned phases 17–36 |
 
 ---

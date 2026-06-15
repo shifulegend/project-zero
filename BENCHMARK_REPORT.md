@@ -265,11 +265,11 @@ During benchmarking:
 
 | Priority | Action | Expected gain |
 |----------|--------|---------------|
-| 🔴 High | Implement Q4_K on-the-fly matmul kernels | 15-30× tok/s improvement |
-| 🔴 High | Reduce model load to mmap (no dequant at load) | 38s → <1s load time |
+| ✅ Done | Q4_K fused AVX2 matmul kernels (zero-copy, no F32 intermediate) | +109% vs F32 — 0.91 → 1.90 tok/s (Addendum AN) |
+| ✅ Done | Reduce model load to mmap (no dequant at load) | Load time eliminated as bottleneck |
+| 🔴 High | MoE expert weight repacking (contiguous layout, eliminate scatter) | 1.90 → ≥ 9 tok/s target |
 | 🟡 Med | Tune thread count (avoid HT contention) | +10-20% tok/s |
-| 🟡 Med | Batch prompt processing (parallelise 14 tokens) | -60% TTFT |
-| 🟢 Low | VNNI INT8 classifier | +5-10% on LM head |
+| 🟡 Med | Batch prompt processing (parallelise prompt tokens) | -60% TTFT |
 | 🟢 Low | KV cache compression (INT8) | -40% KV RAM |
 
 ---

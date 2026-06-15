@@ -194,13 +194,13 @@ loading in `src/cli/main.c` intentionally supports omission.
 All 10 steps verified to match llama.cpp output within float32 accumulation noise.
 See `DEBUGGING_JOURNAL.md` for the full root cause analysis of the Q4_K nibble bug.
 
-### Performance (2026-03-23)
-- Current: **1.06 tok/s** (T=4, BF16, AVX-512 VNNI — after attn Q4K fix + batched MoE dispatch)
+### Performance (best: 2026-03-23, fused kernel: 2026-06-15)
+- Current: **1.90 tok/s** (T=4, INT8 classifier, AVX2 — fused Q4K kernels active for MoE dispatch)
 - Ceiling: **9.8 tok/s** (analytical DRAM BW ceiling @ 11.7 GB/s, ~1.19 GB/token)
-- Realistic ceiling: **2–4 tok/s** (expert scatter penalty — 6 experts × scattered mmap offsets)
+- Realistic ceiling: **2–4 tok/s** today (expert scatter penalty — top-K experts at non-contiguous GGUF offsets)
 - llama.cpp reference: 13.79 tok/s (T=4)
-- Gap to llama.cpp: ~13× — primary bottleneck: expert weight scatter access pattern
-- Next step: expert weight repacking (interleaved Q4K layout) to improve effective BW
+- Gap to llama.cpp: ~7× — primary bottleneck: expert weight scatter access pattern (see Help Wanted)
+- Next step: repack top-K expert weights into contiguous memory at load time to eliminate scatter penalty
 
 ---
 
@@ -591,5 +591,5 @@ python3 tools/convert_tokenizer.py \
 ---
 
 *Project Zero — Phase 34+ | BitNet b1.58-2B-4T · DeepSeek-V2-Lite-Chat (GGUF) · Vision pipeline (SigLIP)*
-*Best: **36.25 tok/s** (Xeon, PGO+LTO) · **16.1 tok/s** (i5-11300H, dual-channel) · **1.06 tok/s** (DeepSeek MoE, ceiling: 9.8 tok/s)*
+*Best: **36.25 tok/s** (Xeon, PGO+LTO) · **16.1 tok/s** (i5-11300H, dual-channel) · **1.90 tok/s** (DeepSeek MoE, ceiling: 9.8 tok/s)*
 *1.80× avg / 1.83× best vs bitnet.cpp on same hardware · 95% of DRAM bandwidth ceiling*

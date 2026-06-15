@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use Project Zero in academic work, please cite it as below."
+title: "Project Zero — CPU LLM Inference Engine"
+abstract: >-
+  A from-scratch, single-binary LLM inference engine written in C, built to run
+  Microsoft's BitNet b1.58-2B-4T ternary weights at maximum speed on commodity
+  CPUs. Also runs DeepSeek-V2-Lite-Chat (MoE + MLA) from GGUF, with SIMD-dispatched
+  kernels (AVX-512/AVX2/NEON), an mmap weight loader, a vision pipeline, agentic
+  tools, and RAG persistent memory. No GPU and no ML framework.
+type: software
+authors:
+  - alias: shifulegend
+    name: "Project Zero Contributors"
+license: MIT
+repository-code: "https://github.com/shifulegend/project-zero"
+keywords:
+  - llm
+  - inference
+  - cpu
+  - bitnet
+  - ternary
+  - quantization
+  - simd
+  - mixture-of-experts
+  - gguf

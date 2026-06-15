@@ -48,7 +48,7 @@ Project Zero is a ternary weight ({−1, 0, +1}) LLM inference engine. Key desig
 - C11 atomics spin-then-sleep thread pool → eliminates futex syscalls
 - KV cache layout `[layer][head][pos][dim]` → sequential reads, no scatter
 
-See [`CPU_LLM_TERNARY_ENGINE.md`](CPU_LLM_TERNARY_ENGINE.md) for a full architectural walkthrough.
+See [`CPU_LLM_TERNARY_ENGINE.md`](docs/architecture/CPU_LLM_TERNARY_ENGINE.md) for a full architectural walkthrough.
 
 ---
 
@@ -63,11 +63,11 @@ The full phase roadmap is at [`.github/ROADMAP.md`](.github/ROADMAP.md). The two
 | **MoE expert weight repacking** | DeepSeek MoE at ~1 tok/s — 86% L3 miss rate due to non-contiguous expert offsets in GGUF | ≥ 9 tok/s | [Discussion #1](https://github.com/shifulegend/project-zero/discussions/1) | C, GGUF Q4_K layout, memory layout |
 | **Native Q4_K matmul kernel** | Dense layers dequant Q4_K → FP32 before matmul | 4× speedup on DeepSeek dense layers | [Discussion #1](https://github.com/shifulegend/project-zero/discussions/1) | C, AVX-512 intrinsics |
 
-See [`MOE_RESEARCH_AND_FIX_PLAN.md`](MOE_RESEARCH_AND_FIX_PLAN.md) for 8 previous fix attempts (P1–P8) with profiling data — read this before starting on expert repacking.
+See [`MOE_RESEARCH_AND_FIX_PLAN.md`](docs/architecture/MOE_RESEARCH_AND_FIX_PLAN.md) for 8 previous fix attempts (P1–P8) with profiling data — read this before starting on expert repacking.
 
 ### 📋 Next Up (Fully Specified, Ready to Implement)
 
-These phases are completely spec'd in [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) with struct definitions, function signatures, and file inventories. Good for contributors who want a well-defined scope:
+These phases are completely spec'd in [`IMPLEMENTATION_PLAN.md`](docs/architecture/IMPLEMENTATION_PLAN.md) with struct definitions, function signatures, and file inventories. Good for contributors who want a well-defined scope:
 
 | Phase | Feature | Skill needed |
 |---|---|---|

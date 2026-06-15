@@ -1,4 +1,4 @@
-# Project Zero — BitNet Inference Engine
+# Project Zero — CPU LLM Inference Engine
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Language: C](https://img.shields.io/badge/language-C99-blue.svg)](src/)
@@ -12,7 +12,16 @@
 
 A from-scratch, single-binary LLM inference engine written in C, built to run
 Microsoft's [BitNet b1.58-2B-4T](https://huggingface.co/microsoft/bitnet-b1.58-2B-4T)
-at maximum speed on commodity CPUs — no GPU, no Python, no framework.
+ternary weights at maximum speed on commodity CPUs. The same binary also runs
+**DeepSeek-V2-Lite-Chat** (MoE + MLA) and **dense GGUF transformers** (Llama-family)
+directly from GGUF — **SmolLM2-135M-Instruct F16 is verified at up to 83.79 tok/s** —
+plus a vision pipeline (SigLIP), agentic tool use, and RAG persistent memory. The
+GGUF loader is architecture-agnostic, so the long-term goal of being **LLM-agnostic**
+— run any model that fits and executes on a CPU — is already partly here.
+
+**No GPU and no ML framework.** Python is used today only for offline tooling —
+model conversion, development, and testing (see [`tools/`](tools/)); the engine
+itself needs no Python to build or run, and the final product targets zero Python.
 
 ---
 
@@ -204,6 +213,52 @@ See `DEBUGGING_JOURNAL.md` for the full root cause analysis of the Q4_K nibble b
 
 ---
 
+## Dense GGUF Models (Llama-family)
+
+Beyond BitNet and DeepSeek, the same binary runs **dense GGUF transformers** with no
+format conversion. The GGUF loader is **architecture-agnostic**: `config_from_gguf()` in
+[`src/core/gguf_loader.c`](src/core/gguf_loader.c) reads `general.architecture` from the
+file and uses it as the metadata-key prefix (`<arch>.embedding_length`,
+`<arch>.attention.head_count`, …), then loads the standard Llama-family tensor names. Only
+**DeepSeek-V2** is special-cased for the MoE + MLA fast paths.
+
+This makes project-zero the only engine that runs both BitNet ternary **and** F16 dense
+models from a single binary, with no per-model build.
+
+### Quick Start
+
+```bash
+# Run a dense F16 GGUF model (no --tokenizer needed; GGUF metadata is auto-loaded)
+./adaptive_ai_engine \
+  --model models/SmolLM2-135M-Instruct-f16.gguf \
+  --prompt "What is the capital of France?" \
+  --max-tokens 30 --temperature 0
+```
+
+### Verified: SmolLM2-135M-Instruct (F16 GGUF)
+
+A dense transformer (dim=576, 30 layers, 9 heads / 3 KV heads GQA) used as the reference
+dense-model benchmark. Measured on an Intel i5-5250U (2 cores / 4 threads, DDR3, AVX2),
+project-zero vs llama.cpp / bitnet.cpp:
+
+| Threads | project-zero | bitnet.cpp | llama.cpp |
+|---|---|---|---|
+| 2 | **41.75 tok/s** | 42.05 | 39.37 |
+| 3 | **27.06 tok/s** (+22% vs both) | 22.11 | 21.40 |
+| 4 | **33.73 tok/s** (+50% vs both) | 22.19 | 22.48 |
+
+All-time peak: **83.79 tok/s** (T=4, VNNI, INT4 classifier — Addendum AL, faster machine).
+Full methodology in [`.claude/BENCHMARK_SUMMARY.md`](.claude/BENCHMARK_SUMMARY.md) and
+[`docs/PERFORMANCE_CEILING_REPORT.md`](docs/PERFORMANCE_CEILING_REPORT.md).
+
+> **Scope of support.** Standard Llama-family GGUFs (`llama`, `qwen`, `mistral`, `gemma`,
+> `phi`, …) **load** through the generic path because they share the same metadata keys and
+> tensor layout, but **SmolLM2-135M is the only dense model verified end-to-end** so far —
+> treat other architectures as untested. The **MoE / MLA** acceleration is DeepSeek-V2
+> specific; a non-DeepSeek MoE model would load but run its experts on the dense path.
+
+---
+
 ## Architecture
 
 ```
@@ -354,9 +409,18 @@ project-zero/
 │   └── microsoft-bitnet-b1.58-2B-4T/        Original HF files
 └── docs/
     ├── CHANGELOG.md
+    ├── KERNEL_INTERNALS.md
     ├── PERFORMANCE_CEILING_REPORT.md
-    └── PHASE10_PRE_AUDIT_REPORT.md
+    ├── ai/               Canonical AI-dev memory (overview, rules, decisions)
+    ├── architecture/     Design specs (CPU_LLM_TERNARY_ENGINE, IMPLEMENTATION_PLAN, MoE)
+    ├── phases/           Phase walkthroughs (WALKTHROUGH_PHASE*)
+    ├── reports/          Benchmarks, QA, audits, test reports
+    └── weight-loading/   BitNet weight-format reference + analysis
 ```
+
+> Root keeps only entry-point docs (README, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY,
+> LICENSE) and the agent guides (GOLDEN_RULES, DEVELOPER_ONBOARDING, CLAUDE, AGENTS).
+> Everything else now lives under `docs/`.
 
 ---
 
@@ -410,7 +474,7 @@ Any other command is blocked before execution (no approval prompt is shown).
 ### Non-interactive / automated testing
 
 Set `PROJECT_ZERO_AGENT_AUTO_APPROVE=1` (requires PTY — see
-[WALKTHROUGH_PHASE14.md](WALKTHROUGH_PHASE14.md) for a complete Python PTY runner).
+[WALKTHROUGH_PHASE14.md](docs/phases/WALKTHROUGH_PHASE14.md) for a complete Python PTY runner).
 
 ### More test prompts
 
@@ -422,7 +486,7 @@ Set `PROJECT_ZERO_AGENT_AUTO_APPROVE=1` (requires PTY — see
 /agent Run <exec>ls models</exec> and list available model files.
 ```
 
-> Full documentation: [WALKTHROUGH_PHASE14.md](WALKTHROUGH_PHASE14.md)
+> Full documentation: [WALKTHROUGH_PHASE14.md](docs/phases/WALKTHROUGH_PHASE14.md)
 
 ---
 
@@ -486,6 +550,47 @@ Entries with cosine similarity ≥ 0.95 to an existing entry are silently skippe
 You will see `[Memory] Duplicate detected — entry not saved.`
 
 > Full documentation: [docs/PHASE15_RAG.md](docs/PHASE15_RAG.md)
+
+---
+
+## HTTP API Server (Phase 21 — experimental)
+
+The engine can serve an **OpenAI-compatible HTTP API** for chat completions. This layer
+is **partially implemented**: it works for single-client local use, but is not yet a
+production server (see limitations below).
+
+```bash
+./adaptive_ai_engine \
+  --model models/bitnet-b1.58-2B-4T.bin \
+  --tokenizer models/bitnet-b1.58-2B-4T_tokenizer_proper.bin \
+  --server --port 8080
+```
+
+```bash
+# Non-streaming chat completion
+curl http://127.0.0.1:8080/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"messages":[{"role":"user","content":"Capital of France?"}],"max_tokens":16}'
+```
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/chat/completions` | Chat completion — streaming (SSE) and non-streaming |
+| `GET`  | `/v1/models` | List the loaded model |
+| `GET`  | `/health` | Liveness probe — `{"status":"ok"}` |
+
+### Limitations (why it is experimental)
+
+- **Loopback only** — binds `127.0.0.1`; not exposed to the network by design.
+- **Serial** — a single listener thread handles one connection at a time (no concurrency
+  or continuous batching yet).
+- **No auth** and a minimal endpoint set (no `/v1/completions`, `/v1/embeddings`).
+- **Socket layer is untested in CI** — `tests/test_api_server.c` covers the JSON parser,
+  chat-template compiler, and SSE formatter, not the running server.
+
+Tracking and remaining work: [`.github/ROADMAP.md`](.github/ROADMAP.md) → Phase 21.
 
 ---
 
@@ -565,17 +670,17 @@ python3 tools/convert_tokenizer.py \
 |---|---|
 | [README.md](README.md) | This file — all CLI flags, REPL commands, quick-start |
 | [DEVELOPER_ONBOARDING.md](DEVELOPER_ONBOARDING.md) | Testing mandate, QA protocol, branching strategy |
-| [BRANCH_CHRONOLOGY.md](BRANCH_CHRONOLOGY.md) | Full branch history, merge session log, phase table |
-| [WALKTHROUGH_PHASE14.md](WALKTHROUGH_PHASE14.md) | Phase 14 agentic tools — architecture, test steps, verified run |
+| [BRANCH_CHRONOLOGY.md](docs/BRANCH_CHRONOLOGY.md) | Full branch history, merge session log, phase table |
+| [WALKTHROUGH_PHASE14.md](docs/phases/WALKTHROUGH_PHASE14.md) | Phase 14 agentic tools — architecture, test steps, verified run |
 | [docs/PHASE15_RAG.md](docs/PHASE15_RAG.md) | Phase 15 RAG — architecture, module guide, sub-task log |
 | [docs/PERFORMANCE_CEILING_REPORT.md](docs/PERFORMANCE_CEILING_REPORT.md) | Full optimization journal, bandwidth math, hardware ceilings, Addendum A/B/C |
 | [docs/CHANGELOG.md](docs/CHANGELOG.md) | All changes by phase |
 | [docs/KERNEL_INTERNALS.md](docs/KERNEL_INTERNALS.md) | VBMI kernel, thread pool, KV cache layout, MoE scatter problem |
-| [DEBUGGING_JOURNAL.md](DEBUGGING_JOURNAL.md) | Step-by-step debugging from 1.4 → 16 tok/s |
-| [WEIGHT_LOADING_REFERENCE.md](WEIGHT_LOADING_REFERENCE.md) | Complete binary format specification |
-| [CPU_LLM_TERNARY_ENGINE.md](CPU_LLM_TERNARY_ENGINE.md) | Original architectural vision — ternary math, hardware adaptation, mmap design |
-| [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) | Complete 37-phase implementation spec (2907 lines) — struct definitions, file inventories, function signatures |
-| [MOE_RESEARCH_AND_FIX_PLAN.md](MOE_RESEARCH_AND_FIX_PLAN.md) | DeepSeek MoE optimization research — 8 attempted fixes (P1–P8), profiling data |
+| [DEBUGGING_JOURNAL.md](docs/DEBUGGING_JOURNAL.md) | Step-by-step debugging from 1.4 → 16 tok/s |
+| [WEIGHT_LOADING_REFERENCE.md](docs/weight-loading/WEIGHT_LOADING_REFERENCE.md) | Complete binary format specification |
+| [CPU_LLM_TERNARY_ENGINE.md](docs/architecture/CPU_LLM_TERNARY_ENGINE.md) | Original architectural vision — ternary math, hardware adaptation, mmap design |
+| [IMPLEMENTATION_PLAN.md](docs/architecture/IMPLEMENTATION_PLAN.md) | Complete 37-phase implementation spec (2907 lines) — struct definitions, file inventories, function signatures |
+| [MOE_RESEARCH_AND_FIX_PLAN.md](docs/architecture/MOE_RESEARCH_AND_FIX_PLAN.md) | DeepSeek MoE optimization research — 8 attempted fixes (P1–P8), profiling data |
 | [.github/ROADMAP.md](.github/ROADMAP.md) | Phase status table (✅/🆘/❌), active blockers, full planned phases 17–36 |
 
 ---
@@ -590,6 +695,6 @@ python3 tools/convert_tokenizer.py \
 
 ---
 
-*Project Zero — Phase 34+ | BitNet b1.58-2B-4T · DeepSeek-V2-Lite-Chat (GGUF) · Vision pipeline (SigLIP)*
-*Best: **36.25 tok/s** (Xeon, PGO+LTO) · **16.1 tok/s** (i5-11300H, dual-channel) · **1.90 tok/s** (DeepSeek MoE, ceiling: 9.8 tok/s)*
+*Project Zero — Phase 34+ | BitNet b1.58-2B-4T · DeepSeek-V2-Lite-Chat (GGUF) · Dense GGUF (SmolLM2-135M F16) · Vision pipeline (SigLIP)*
+*Best: **83.79 tok/s** (SmolLM2-135M F16) · **36.25 tok/s** (BitNet, Xeon PGO+LTO) · **16.1 tok/s** (BitNet, i5-11300H dual-channel) · **1.90 tok/s** (DeepSeek MoE, ceiling: 9.8 tok/s)*
 *1.80× avg / 1.83× best vs bitnet.cpp on same hardware · 95% of DRAM bandwidth ceiling*

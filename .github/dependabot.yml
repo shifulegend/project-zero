@@ -1,0 +1,15 @@
+# Dependabot configuration.
+# The engine has no package-manager dependencies (pure C + libm + pthreads),
+# so the only ecosystem to keep current is the GitHub Actions used in CI.
+# Docs: https://docs.github.com/code-security/dependabot/dependabot-version-updates
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+      - "ci"

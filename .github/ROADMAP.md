@@ -1,6 +1,6 @@
 # Project Zero — Roadmap
 
-This document tracks all implementation phases against the original master plan in [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md). The full architectural vision is in [`CPU_LLM_TERNARY_ENGINE.md`](../CPU_LLM_TERNARY_ENGINE.md).
+This document tracks all implementation phases against the original master plan in [`IMPLEMENTATION_PLAN.md`](../docs/architecture/IMPLEMENTATION_PLAN.md). The full architectural vision is in [`CPU_LLM_TERNARY_ENGINE.md`](../docs/architecture/CPU_LLM_TERNARY_ENGINE.md).
 
 ---
 
@@ -37,7 +37,7 @@ flowchart LR
     A --> H["❌ Speculative\nDecoding Ph.18"]
     A --> I["❌ LoRA Ph.19"]
     A --> J["❌ Grammar Ph.20"]
-    A --> K["❌ OpenAI API Ph.21"]
+    A --> K["🔄 OpenAI API Ph.21\n(partial)"]
 ```
 
 ---
@@ -47,11 +47,15 @@ flowchart LR
 ```
 Hardware          Model                     tok/s    vs DRAM ceil
 ─────────────────────────────────────────────────────────────────
+i5-5250U (T=4)    SmolLM2-135M F16 (dense)   83.79   peak (VNNI, INT4 head)
 Xeon (Emerald R.) BitNet-b1.58-2B-4T Q2      36.25   95% ████████████████████░
 i5-11300H         BitNet-b1.58-2B-4T Q2      16.10   87% █████████████████░░░░
 Xeon              DeepSeek-V2-Lite Q4_K_S     1.06   11% ██░░░░░░░░░░░░░░░░░░░ ← MoE bottleneck
                                                          ceiling: 9.8 tok/s
 ```
+
+Dense GGUF transformers (Llama-family) run through the architecture-agnostic GGUF loader;
+SmolLM2-135M is the verified dense model, other standard architectures load but are untested.
 
 Verified on [OpenBenchmarking.org](https://openbenchmarking.org/result/2606063-SHIF-PROJECT91) · 1.83× faster than bitnet.cpp on same hardware.
 
@@ -124,7 +128,7 @@ Verified on [OpenBenchmarking.org](https://openbenchmarking.org/result/2606063-S
 
 ## Planned Phases (17–36)
 
-These are fully specified in `IMPLEMENTATION_PLAN.md` with file inventories, struct definitions, and function signatures. Not yet started.
+These are fully specified in `IMPLEMENTATION_PLAN.md` with file inventories, struct definitions, and function signatures. Not yet started — **except Phase 21, which is partially implemented** (see the note below the table).
 
 | Phase | Feature | Depends on | Skill needed |
 |-------|---------|------------|--------------|
@@ -132,7 +136,7 @@ These are fully specified in `IMPLEMENTATION_PLAN.md` with file inventories, str
 | **18** | Speculative decoding — draft model + verification loop | Phase 6 | C, transformer math |
 | **19** | LoRA adapters — hot-swappable, low-rank merge at inference | Phase 6 | C, linear algebra |
 | **20** | Grammar-constrained decoding — FSM, JSON mode, BNF parser | Phase 7 | C, automata theory |
-| **21** | OpenAI-compatible API layer — `/v1/chat/completions`, streaming | Phase 12 | C, HTTP/SSE |
+| **21** 🔄 | OpenAI-compatible API layer — `/v1/chat/completions`, streaming | Phase 12 | C, HTTP/SSE |
 | **22** | State Space Models — Mamba/RWKV architecture router | Phase 6 | C, SSM math |
 | **23** | PagedAttention + continuous batching | Phase 8 | C, memory management |
 | **24** | Dynamic context scaling — YaRN/NTK RoPE extension | Phase 6 | C, RoPE math |
@@ -146,6 +150,15 @@ These are fully specified in `IMPLEMENTATION_PLAN.md` with file inventories, str
 | **32** | Test-Time Training (TTT) — runtime weight adaptation | Phase 6 | C, autograd lite |
 | **33** | Output watermarking — undetectable statistical signature | Phase 7 | C, probability theory |
 | **36** | Text-to-image — Stable Diffusion / Flux (DDIM scheduler, U-Net, VAE) | Phase 35 | C, diffusion math, image I/O |
+
+> **🔄 Phase 21 (OpenAI-compatible API) — partially implemented.** `src/api/` ships a
+> working loopback HTTP server behind `--server`/`--port`, serving `POST /v1/chat/completions`
+> (streaming + non-streaming SSE), `GET /v1/models`, and `GET /health` with real model
+> inference. **Remaining before it can be marked ✅:** concurrent request handling (the
+> listener is currently serial, one connection at a time), optional non-loopback bind,
+> socket-level integration tests, and CI coverage — the existing tests
+> (`tests/test_api_server.c`) cover only the JSON/chat-template/SSE logic, not the socket
+> server. It is also not yet documented in the README.
 
 ---
 
@@ -175,12 +188,29 @@ Run the engine on your hardware and add your result: [Discussion #3](https://git
 
 ---
 
+## 🎯 Language & Dependency Goals
+
+The engine is written in C. Two deliberate, **temporary** deviations from the
+"pure C, zero-Python" target are tracked here for cleanup so the stated identity and
+the tree stay consistent:
+
+| Item | Current state | Target |
+|------|---------------|--------|
+| **Chat templating** | `src/tokenizer/chat_template.cpp` is the one C++17 translation unit in the engine | Port to C so the engine is 100% C |
+| **Python tooling** | `tools/*.py` handle offline model conversion, benchmarking, and fuzz/test harnesses — used for development and testing only | Final product ships with **no Python**; the runtime already needs none to build or run |
+
+The broader direction is to make the engine **LLM-agnostic** — run any architecture
+that fits and executes on a CPU — through the GGUF reader and the planned
+architecture routers (Phases 35 and 22).
+
+---
+
 ## Architecture References
 
 | Document | Contents |
 |----------|----------|
-| [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) | Complete phase-by-phase specification (2907 lines, file inventories, struct definitions) |
-| [`CPU_LLM_TERNARY_ENGINE.md`](../CPU_LLM_TERNARY_ENGINE.md) | Original architectural vision — ternary math, hardware adaptation, mmap design |
-| [`MOE_RESEARCH_AND_FIX_PLAN.md`](../MOE_RESEARCH_AND_FIX_PLAN.md) | DeepSeek MoE optimization research — 8 attempted fixes (P1–P8), profiling data |
-| [`docs/KERNEL_INTERNALS.md`](KERNEL_INTERNALS.md) | VBMI kernel, thread pool design, KV cache layout, MoE scatter analysis |
-| [`docs/PERFORMANCE_CEILING_REPORT.md`](PERFORMANCE_CEILING_REPORT.md) | Hardware bottleneck analysis — bandwidth math, LLC miss profiling |
+| [`IMPLEMENTATION_PLAN.md`](../docs/architecture/IMPLEMENTATION_PLAN.md) | Complete phase-by-phase specification (2907 lines, file inventories, struct definitions) |
+| [`CPU_LLM_TERNARY_ENGINE.md`](../docs/architecture/CPU_LLM_TERNARY_ENGINE.md) | Original architectural vision — ternary math, hardware adaptation, mmap design |
+| [`MOE_RESEARCH_AND_FIX_PLAN.md`](../docs/architecture/MOE_RESEARCH_AND_FIX_PLAN.md) | DeepSeek MoE optimization research — 8 attempted fixes (P1–P8), profiling data |
+| [`docs/KERNEL_INTERNALS.md`](../docs/KERNEL_INTERNALS.md) | VBMI kernel, thread pool design, KV cache layout, MoE scatter analysis |
+| [`docs/PERFORMANCE_CEILING_REPORT.md`](../docs/PERFORMANCE_CEILING_REPORT.md) | Hardware bottleneck analysis — bandwidth math, LLC miss profiling |

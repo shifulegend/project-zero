@@ -2,24 +2,32 @@
 
 > Canonical source of truth. Tool adapters (CLAUDE.md, AGENTS.md, gemini/GEMINI.md,
 > .github/copilot-instructions.md) summarize and link here. Keep this current.
-> Last updated: 2026-06-07.
+> Last updated: 2026-06-14.
 
 ## Purpose
 `project-zero` is a from-scratch, CPU-optimized LLM inference engine in C/C++ targeting
-**BitNet b1.58 ternary weights** and **DeepSeek-V2** architecture (MoE + MLA attention),
-plus an OpenAI-compatible HTTP API layer. Goal: high single-machine CPU throughput with
-SIMD-tuned kernels, no GPU.
+**BitNet b1.58 ternary weights** and **DeepSeek-V2** architecture (MoE + MLA attention).
+The GGUF loader (`config_from_gguf()` in `src/core/gguf_loader.c`) is **architecture-agnostic**
+— it keys metadata off the GGUF `general.architecture` string — so **dense GGUF transformers**
+(Llama-family) also run through a generic path; only DeepSeek-V2 is special-cased for MoE + MLA.
+**SmolLM2-135M-Instruct F16 is the verified dense model** (up to 83.79 tok/s); other standard
+architectures (`llama`/`qwen`/`mistral`/`gemma`/`phi`) load but are untested. There is also a
+**partial** OpenAI-compatible HTTP API layer (Phase 21 — see below). Goal: high single-machine
+CPU throughput with SIMD-tuned kernels, no GPU.
 
 ## Stack & key dependencies
-- **Languages:** C99 (engine), C++17 (only `src/tokenizer/chat_template.cpp`).
+- **Languages:** C99 (engine). One **temporary** C++17 translation unit
+  (`src/tokenizer/chat_template.cpp`) is slated for a C port — target is 100% C
+  (tracked in `.github/ROADMAP.md` → "Language & Dependency Goals").
 - **Build systems:** `Makefile` (primary, per-file SIMD flag control) and `CMakeLists.txt`
   (used by the security-audit workflow). Both are first-class — keep them in sync.
 - **Runtime deps:** POSIX threads (`-pthread`), libm, libstdc++ (C tests link C++ objects).
 - **SIMD:** AVX2 / AVX-512F / AVX-512VNNI / AVX-VNNI(256) / ARM NEON+dotprod, runtime-dispatched.
 - **Model format:** GGUF (llama.cpp-compatible) + a native packed `.bin` for BitNet.
 - **No third-party ML libs** — kernels, GGUF reader, tokenizer, sampler are all in-tree.
-- **Python (tools only):** conversion scripts in `tools/` use `huggingface_hub`, `torch`,
-  `transformers`, `safetensors` (not needed to build/run the engine).
+- **Python (tools only, temporary):** conversion/dev/test scripts in `tools/` use
+  `huggingface_hub`, `torch`, `transformers`, `safetensors` (not needed to build/run the
+  engine). The final product targets **zero Python** — see `.github/ROADMAP.md`.
 
 ## Architecture overview
 Load (GGUF/`.bin` → weights, mmap) → tokenize (GGUF tokenizer + Jinja-style chat template) →
@@ -68,7 +76,11 @@ release/test) and `.github/workflows/security_audit.yml` (cmake+ASan/UBSan + `to
 ## Major integration boundaries
 - **GGUF metadata** drives config, tokenizer, and quant types — *not* hardcoded constants.
 - **Runtime SIMD dispatch** (`src/math/simd_dispatch.c`, `cpu_features.c`) selects kernels.
-- **HTTP API** (`src/api/`) exposes the engine; mirrors OpenAI chat schema.
+- **HTTP API** (`src/api/`) exposes the engine; mirrors OpenAI chat schema. **Partial
+  (Phase 21, experimental):** `--server`/`--port` serve `POST /v1/chat/completions`
+  (streaming + non-streaming SSE), `GET /v1/models`, `GET /health` with real inference,
+  but the listener handles connections serially, binds loopback-only, and the socket
+  layer is untested/not in CI. Logic-level tests in `tests/test_api_server.c`.
 - **Conversion tools** (`tools/convert_*`, `import_model.py`) bridge HuggingFace → engine formats.
 
 ## Reference reports

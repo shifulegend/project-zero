@@ -1,0 +1,19 @@
+# CODEOWNERS — default reviewers for pull requests.
+# Syntax: https://docs.github.com/articles/about-code-owners
+# Order matters: the last matching pattern wins.
+
+# Default owner for everything in the repo.
+*                       @shifulegend
+
+# Build + CI configuration.
+/Makefile               @shifulegend
+/CMakeLists.txt         @shifulegend
+/.github/               @shifulegend
+
+# Core engine hot paths (kernels, weight loading, transformer).
+/src/math/              @shifulegend
+/src/core/              @shifulegend
+/src/transformer/       @shifulegend
+
+# Project memory / AI-dev system (canonical docs).
+/docs/ai/               @shifulegend

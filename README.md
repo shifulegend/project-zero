@@ -8,8 +8,7 @@
 [![Discussions](https://img.shields.io/github/discussions/shifulegend/project-zero)](https://github.com/shifulegend/project-zero/discussions)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-> ⚠️ **ALL CONTRIBUTORS AND AI AGENTS: READ [`GOLDEN_RULES.md`](GOLDEN_RULES.md) BEFORE TOUCHING ANY CODE.**
-> No hardcoding. Test after every change. Document at every step. No exceptions.
+> ⚠️ **Before contributing: read [`GOLDEN_RULES.md`](GOLDEN_RULES.md).** No hardcoding. Test after every change. No exceptions.
 
 A from-scratch, single-binary LLM inference engine written in C, built to run
 Microsoft's [BitNet b1.58-2B-4T](https://huggingface.co/microsoft/bitnet-b1.58-2B-4T)
@@ -144,14 +143,13 @@ detected at startup.
 
 ---
 
-## 🆘 Help Wanted
+## Help Wanted
 
-We're stuck on two problems. If you've worked on either, your input in the linked Discussions would make a real difference:
+One open problem where outside input would help:
 
 | Problem | Current state | Target | Discussion |
 |---|---|---|---|
-| **MoE expert weight repacking** | DeepSeek MoE runs at ~1 tok/s (13× behind llama.cpp). Root cause: expert weights are scattered in GGUF at non-contiguous offsets → 86% L3 miss rate. Fix: repack top-K experts into contiguous blocks at load time (what llama.cpp does). Challenge: Q4_K superblock layout. | ≥ 9 tok/s | [Discussion #1](https://github.com/shifulegend/project-zero/discussions/1) |
-| **Native Q4_K matmul kernel** | DeepSeek dense layers use F32 dequant path. An AVX-512 VNNI kernel operating directly on 4-bit superblocks (no F32 intermediate) would cut memory bandwidth by ~8×. | 4× speedup on dense layers | [Discussion #1](https://github.com/shifulegend/project-zero/discussions/1) |
+| **MoE expert weight repacking** | DeepSeek MoE runs at 1.90 tok/s (7× behind llama.cpp). Fused Q4_K matmul kernels are in place — the remaining gap is expert weight scatter: top-K expert weights sit at non-contiguous GGUF offsets, causing ~86% L3 miss rate per token. Fix: repack selected experts into contiguous memory at load time, matching llama.cpp's interleaved layout. | ≥ 9 tok/s | [Discussion #1](https://github.com/shifulegend/project-zero/discussions/1) |
 
 **Community benchmark challenge** — run the engine on your hardware and add your result to the comparison table: [Discussion #3](https://github.com/shifulegend/project-zero/discussions/3)
 
@@ -205,13 +203,13 @@ loading in `src/cli/main.c` intentionally supports omission.
 All 10 steps verified to match llama.cpp output within float32 accumulation noise.
 See `DEBUGGING_JOURNAL.md` for the full root cause analysis of the Q4_K nibble bug.
 
-### Performance (2026-03-23)
-- Current: **1.06 tok/s** (T=4, BF16, AVX-512 VNNI — after attn Q4K fix + batched MoE dispatch)
+### Performance (best: 2026-03-23, fused kernel: 2026-06-15)
+- Current: **1.90 tok/s** (T=4, INT8 classifier, AVX2 — fused Q4K kernels active for MoE dispatch)
 - Ceiling: **9.8 tok/s** (analytical DRAM BW ceiling @ 11.7 GB/s, ~1.19 GB/token)
-- Realistic ceiling: **2–4 tok/s** (expert scatter penalty — 6 experts × scattered mmap offsets)
+- Realistic ceiling: **2–4 tok/s** today (expert scatter penalty — top-K experts at non-contiguous GGUF offsets)
 - llama.cpp reference: 13.79 tok/s (T=4)
-- Gap to llama.cpp: ~13× — primary bottleneck: expert weight scatter access pattern
-- Next step: expert weight repacking (interleaved Q4K layout) to improve effective BW
+- Gap to llama.cpp: ~7× — primary bottleneck: expert weight scatter access pattern (see Help Wanted)
+- Next step: repack top-K expert weights into contiguous memory at load time to eliminate scatter penalty
 
 ---
 
@@ -698,5 +696,5 @@ python3 tools/convert_tokenizer.py \
 ---
 
 *Project Zero — Phase 34+ | BitNet b1.58-2B-4T · DeepSeek-V2-Lite-Chat (GGUF) · Dense GGUF (SmolLM2-135M F16) · Vision pipeline (SigLIP)*
-*Best: **83.79 tok/s** (SmolLM2-135M F16) · **36.25 tok/s** (BitNet, Xeon PGO+LTO) · **16.1 tok/s** (BitNet, i5-11300H dual-channel) · **1.06 tok/s** (DeepSeek MoE, ceiling: 9.8 tok/s)*
+*Best: **83.79 tok/s** (SmolLM2-135M F16) · **36.25 tok/s** (BitNet, Xeon PGO+LTO) · **16.1 tok/s** (BitNet, i5-11300H dual-channel) · **1.90 tok/s** (DeepSeek MoE, ceiling: 9.8 tok/s)*
 *1.80× avg / 1.83× best vs bitnet.cpp on same hardware · 95% of DRAM bandwidth ceiling*

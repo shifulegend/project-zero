@@ -265,11 +265,11 @@ During benchmarking:
 
 | Priority | Action | Expected gain |
 |----------|--------|---------------|
-| 🔴 High | Implement Q4_K on-the-fly matmul kernels | 15-30× tok/s improvement |
-| 🔴 High | Reduce model load to mmap (no dequant at load) | 38s → <1s load time |
+| ✅ Done (P2) | Q4_K fused AVX2 matmul kernels for MoE expert dispatch (`dot_q4k_row_q8k`) | MoE path: fused; MLA projection wiring (P1) still pending |
+| ✅ Done | Reduce model load to mmap (no dequant at load) | Load time eliminated as bottleneck |
+| 🔴 High | MoE expert weight repacking (contiguous layout, eliminate scatter) | 1.90 → ≥ 9 tok/s target |
 | 🟡 Med | Tune thread count (avoid HT contention) | +10-20% tok/s |
-| 🟡 Med | Batch prompt processing (parallelise 14 tokens) | -60% TTFT |
-| 🟢 Low | VNNI INT8 classifier | +5-10% on LM head |
+| 🟡 Med | Batch prompt processing (parallelise prompt tokens) | -60% TTFT |
 | 🟢 Low | KV cache compression (INT8) | -40% KV RAM |
 
 ---
@@ -993,9 +993,11 @@ Instead of dequantizing MLA projection weights (attn_q, attn_kv_a, attn_kv_b, at
 **Why it made things worse (2.5× slower):**
 `parallel_matmul_q4k()` was designed for MoE expert weights, which are large (2048×1408 per expert), rarely-reused matrices that benefit from amortizing decode cost across many output rows. MLA projection matrices (e.g., attn_q at 3072×2048) are small and executed every single token. The current `parallel_matmul_q4k()` internally calls a decode step that separates dequantization from multiplication — it first fully expands the Q4K block to F32, then multiplies. This "decode-then-multiply" pattern is exactly as expensive as F32 pre-loading, but adds decode overhead on every token instead of once at startup.
 
-**What would actually work** (not yet implemented): A fused kernel that decodes and multiplies each Q4K nibble in a single pass using `_mm256_maddubs_epi16` (as llama.cpp does). That removes the F32 intermediate entirely and reads 8× less memory. The `DS_LOAD_MLA_PROJ` path is the right architectural direction but requires the fused kernel from Addendum AO2/P1 to be implemented first.
+**What would actually work** (not yet implemented at time of writing): A fused kernel that decodes and multiplies each Q4K nibble in a single pass using `_mm256_maddubs_epi16` (as llama.cpp does). That removes the F32 intermediate entirely and reads 8× less memory. The `DS_LOAD_MLA_PROJ` path is the right architectural direction but requires the fused kernel from Addendum AO2/P1 to be implemented first.
 
-**Do not repeat this:** Enabling `DS_LOAD_MLA_PROJ` without a fused kernel is a confirmed 2.5× regression. This toggle must remain off (`DS_LOAD_PROJ` = F32 path) until the fused `q4k_matvec_fused_avx2()` function exists in `src/math/matmul_q4k.c`.
+> **Update 2026-06-15:** `dot_q4k_row_q8k()` using `_mm256_maddubs_epi16` has since been implemented in `src/math/matmul_q4k.c` and is active for MoE expert dispatch (see `moe_ffn.c`). Wiring this path to MLA projections (`DS_LOAD_MLA_PROJ`) is the remaining P1 task.
+
+**Do not repeat this:** Enabling `DS_LOAD_MLA_PROJ` without a fused kernel is a confirmed 2.5× regression. This toggle must remain off (`DS_LOAD_PROJ` = F32 path) until `dot_q4k_row_q8k()` is wired to MLA projection dispatch.
 
 ---
 
@@ -1100,8 +1102,10 @@ Project Zero dequantizes Q4K weights → F32 at load time (MLA projections) or p
 - Cache miss %: ~58% for Project Zero, ~69% for llama.cpp. Despite our higher cache miss %, our absolute throughput is lower because we read 8× more bytes per cache miss (F32 vs Q4K).
 - DRAM bandwidth consumed per tok/s: Project Zero ~9.3 GB/s for 1.90 tok/s; llama.cpp ~same bandwidth for 13.79 tok/s → llama.cpp computes 7.3× more tokens per GB read.
 
-**The one real fix (not yet implemented):**
+**The one real fix** (not yet implemented at time of writing — see update below)**:**
 Implement `q4k_matvec_fused_avx2()` in `src/math/matmul_q4k.c` — a fused kernel that decodes Q4K nibbles and multiplies by the quantized activation vector in a single pass using `_mm256_maddubs_epi16`, exactly as `ggml_vec_dot_q4_K_q8_K()` does in `~/llama.cpp/ggml/src/ggml-cpu/arch/x86/quants.c:1742`. This eliminates the F32 intermediate for MLA projections (P1) and MoE experts (P2). No other optimization listed in this document is a substitute for this.
+
+> **Update 2026-06-15:** `dot_q4k_row_q8k()` using `_mm256_maddubs_epi16` is now implemented in `src/math/matmul_q4k.c` (P2 — MoE path). `moe_ffn.c` dispatches through `parallel_matmul_q4k_batch_preq` / `parallel_matmul_q4k`. P1 (MLA projection wiring via `DS_LOAD_MLA_PROJ`) is the remaining task; expected trajectory in the table below still applies.
 
 **Expected tok/s trajectory after fused kernel implementation:**
 

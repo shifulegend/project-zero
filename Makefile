@@ -10,11 +10,38 @@ else
 endif
 CFLAGS_COMMON   = -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L $(DARWIN_DEFS)
 CXXFLAGS_COMMON = -std=c++17 -Wall -Wextra -Iinclude -D_POSIX_C_SOURCE=200809L $(DARWIN_DEFS)
-CFLAGS_RELEASE   = $(CFLAGS_COMMON)   -O3 -march=native -DNDEBUG
+# Version string baked into the binary (overridable; derived from git by default).
+# Used by --version and the startup banner; a #ifndef fallback in main.c covers
+# builds where it is not passed (e.g. plain `make debug`).
+# Passed unquoted; main.c stringifies it (PZ_STRINGIFY). This avoids embedding
+# quotes that get mangled through the recursive-make CFLAGS="..." layer.
+PZ_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+PZ_VERSION_DEF = -DPZ_VERSION=$(PZ_VERSION)
+
+CFLAGS_RELEASE   = $(CFLAGS_COMMON)   -O3 -march=native -DNDEBUG $(PZ_VERSION_DEF)
 CFLAGS_DEBUG     = $(CFLAGS_COMMON)   -g -O0 -march=native -fsanitize=address -fsanitize=undefined
-CXXFLAGS_RELEASE = $(CXXFLAGS_COMMON) -O3 -march=native -DNDEBUG
+CXXFLAGS_RELEASE = $(CXXFLAGS_COMMON) -O3 -march=native -DNDEBUG $(PZ_VERSION_DEF)
 CXXFLAGS_DEBUG   = $(CXXFLAGS_COMMON) -g -O0 -march=native -fsanitize=address -fsanitize=undefined
 LDFLAGS = -pthread -lm
+
+# ── Portable distribution build (`make dist`) ──────────────────────────────
+# One binary that runs on any x86-64-v2 (~2009+) CPU yet lights up AVX2 /
+# AVX-512 / VNNI at RUNTIME via simd_dispatch. The bulk compiles at the
+# portable baseline below; the SIMD kernels carry their own ISA via the
+# per-file rules further down, and simd_dispatch.c is compiled at the baseline
+# with -DTN_FORCE_DISPATCH_ALL so every runtime branch is present without
+# emitting SIMD in the always-run startup path. Override DIST_MARCH to raise
+# the floor (e.g. -march=x86-64-v3 to require AVX2 everywhere).
+DIST_MARCH   ?= -march=x86-64-v2 -mtune=generic
+CFLAGS_DIST   = $(CFLAGS_COMMON)   -O3 $(DIST_MARCH) -DNDEBUG $(PZ_VERSION_DEF)
+CXXFLAGS_DIST = $(CXXFLAGS_COMMON) -O3 $(DIST_MARCH) -DNDEBUG $(PZ_VERSION_DEF)
+LDFLAGS_DIST  = $(LDFLAGS) -static-libstdc++ -static-libgcc
+
+# Per-TU ISA flag groups (additive: harmless under -march=native, required at
+# the portable dist baseline). F16C is needed by matmul_f16; FMA by the AVX2/
+# AVX-512 float paths.
+ISA_AVX2   = -mavx2 -mfma -mf16c
+ISA_AVX512 = $(ISA_AVX2) -mavx512f -mavx512bw -mavx512vl -mavx512dq
 
 # Default to release
 CFLAGS   ?= $(CFLAGS_RELEASE)
@@ -35,7 +62,7 @@ TEST_BINS := $(patsubst tests/%.c, build/tests/%, $(TEST_SRCS))
 
 TARGET = adaptive_ai_engine
 
-.PHONY: all clean debug release test objs
+.PHONY: all clean debug release dist test objs
 
 all: $(TARGET)
 
@@ -44,6 +71,14 @@ release:
 
 debug:
 	$(MAKE) CFLAGS="$(CFLAGS_DEBUG)" CXXFLAGS="$(CXXFLAGS_DEBUG)" LDFLAGS="$(LDFLAGS) -fsanitize=address -fsanitize=undefined" all
+
+# Portable, statically-libstdc++/libgcc-linked x86-64 binary for distribution.
+# Forces the VNNI per-file flags ON (the build host may lack VNNI) and compiles
+# simd_dispatch.c with all branches present; runtime CPUID dispatch keeps it safe
+# on CPUs that lack a given tier. See the per-file ISA rules below.
+dist:
+	$(MAKE) CFLAGS="$(CFLAGS_DIST)" CXXFLAGS="$(CXXFLAGS_DIST)" LDFLAGS="$(LDFLAGS_DIST)" \
+	        _HAS_AVXVNNI=1 _HAS_AVX512VNNI=1 DISPATCH_DEFS=-DTN_FORCE_DISPATCH_ALL all
 
 # Build all object files without linking (useful when main.c doesn't exist yet)
 objs: $(OBJS)
@@ -112,6 +147,46 @@ build/math/ternary_matmul_packed_vnni.o: src/math/ternary_matmul_packed_vnni.c
 build/math/ternary_matmul_packed_vnni256.o: src/math/ternary_matmul_packed_vnni256.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(if $(filter 1,$(_HAS_AVX512VNNI)),-mavx512vnni -mavx512vl) -c -o $@ $<
+
+# ── Portable multiversioning: per-TU ISA flags (x86-64 dist) ───────────────
+#
+# So the bulk can compile at a portable baseline (DIST_MARCH) while AVX2 /
+# AVX-512 / VNNI still light up at runtime, each SIMD kernel TU carries its own
+# ISA flag here. The runtime-dispatched ops (ternary matmul, rmsnorm, softmax,
+# elementwise, unpack) are guarded by cpu->* checks in simd_dispatch, so they
+# are only CALLED where supported. The directly-called quant kernels
+# (matmul_q*/matmul_f16/quantize_i8/parallel_matmul) have AVX2-or-scalar paths;
+# building them at AVX2 sets the effective floor for quantized/dense GGUF
+# models to AVX2 (BitNet-ternary text-gen still degrades to scalar at the
+# baseline). These flags are additive and harmless under -march=native.
+AVX2_TUS := math/ternary_matmul_avx2 math/ternary_matmul_packed_avx2 \
+            math/elementwise_avx2 math/rmsnorm_avx2 math/softmax_avx2 \
+            core/unpack_avx2 \
+            math/matmul_q4k math/matmul_q2k math/matmul_q8_0 \
+            math/matmul_q5_0 math/matmul_q5_1 math/matmul_q5k \
+            math/matmul_f16 math/quantize_i8 math/parallel_matmul
+AVX2_OBJS := $(addprefix build/,$(addsuffix .o,$(AVX2_TUS)))
+
+AVX512_TUS := math/ternary_matmul_packed_avx512 math/elementwise_avx512 \
+              math/rmsnorm_avx512 math/softmax_avx512
+AVX512_OBJS := $(addprefix build/,$(addsuffix .o,$(AVX512_TUS)))
+
+$(AVX2_OBJS): build/%.o: src/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(ISA_AVX2) -c -o $@ $<
+
+$(AVX512_OBJS): build/%.o: src/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(ISA_AVX512) -c -o $@ $<
+
+# The dispatcher stays at the baseline ISA (no SIMD codegen in the always-run
+# startup path). In the dist build, DISPATCH_DEFS=-DTN_FORCE_DISPATCH_ALL makes
+# every runtime branch present even though this TU is compiled at x86-64-v2;
+# the kernels it references are force-compiled above with their ISA flags.
+DISPATCH_DEFS ?=
+build/math/simd_dispatch.o: src/math/simd_dispatch.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(DISPATCH_DEFS) -c -o $@ $<
 
 # ── CPU SIMD capability probing (shared by lib rules + test rules) ─────────
 #

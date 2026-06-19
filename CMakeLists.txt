@@ -26,6 +26,29 @@ endif()
 
 option(ENABLE_AVX2   "Enable AVX2 SIMD kernels"    ${DEFAULT_AVX2})
 option(ENABLE_AVX512 "Enable AVX-512 SIMD kernels"  ${DEFAULT_AVX512})
+# Portable distribution build — mirrors the Makefile `dist` target: x86-64-v2
+# baseline with per-file SIMD ISA so AVX2/AVX-512/VNNI light up at RUNTIME via
+# simd_dispatch, plus static libstdc++/libgcc. The Makefile remains canonical
+# for releases; this keeps CMake in sync (config rule). OFF by default so the
+# security-audit CI (plain cmake) is unaffected.
+option(PZ_DIST "Portable x86-64 distribution build (static libstdc++, runtime SIMD dispatch)" OFF)
+
+# Version string baked into the binary (parity with the Makefile). main.c
+# stringifies it; falls back to "dev" when git is unavailable.
+execute_process(COMMAND git describe --tags --always --dirty
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                OUTPUT_VARIABLE PZ_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+if(NOT PZ_VERSION)
+    set(PZ_VERSION "dev")
+endif()
+add_compile_definitions(PZ_VERSION=${PZ_VERSION})
+
+# In the portable build the SIMD kernels carry their own ISA per-file, so keep
+# the GLOBAL flags at the baseline (no project-wide -mavx2/-mavx512).
+if(PZ_DIST)
+    set(ENABLE_AVX2 OFF)
+    set(ENABLE_AVX512 OFF)
+endif()
 option(ENABLE_NEON   "Enable ARM NEON SIMD kernels"  ${DEFAULT_NEON})
 option(ENABLE_TESTS  "Build unit tests"              ON)
 
@@ -80,6 +103,9 @@ else()
     endif()
     if(ENABLE_NEON)
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mfpu=neon")
+    endif()
+    if(PZ_DIST)
+        set(CMAKE_C_FLAGS_RELEASE "-O3 -march=x86-64-v2 -mtune=generic -DNDEBUG -D_FORTIFY_SOURCE=2")
     endif()
 endif()
 
@@ -253,6 +279,35 @@ set(SOURCES
 # ---------------------------------------------------------------------------
 add_executable(project-zero src/cli/main.c ${SOURCES})
 target_link_libraries(project-zero PRIVATE Threads::Threads m)
+
+# Portable multiversioning (mirrors the Makefile `dist` per-file ISA rules):
+# each SIMD kernel TU carries its own ISA; simd_dispatch.c stays at the baseline
+# but forces all runtime branches present; the binary statically links the C++
+# runtime so only libc/libm are needed at run time.
+if(PZ_DIST AND NOT MSVC)
+    set(PZ_AVX2_SRCS
+        src/math/ternary_matmul_avx2.c src/math/ternary_matmul_packed_avx2.c
+        src/math/elementwise_avx2.c src/math/rmsnorm_avx2.c src/math/softmax_avx2.c
+        src/core/unpack_avx2.c
+        src/math/matmul_q4k.c src/math/matmul_q2k.c src/math/matmul_q8_0.c
+        src/math/matmul_q5_0.c src/math/matmul_q5_1.c src/math/matmul_q5k.c
+        src/math/matmul_f16.c src/math/quantize_i8.c src/math/parallel_matmul.c)
+    set(PZ_AVX512_SRCS
+        src/math/ternary_matmul_packed_avx512.c src/math/elementwise_avx512.c
+        src/math/rmsnorm_avx512.c src/math/softmax_avx512.c)
+    set_source_files_properties(${PZ_AVX2_SRCS} PROPERTIES
+        COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
+    set_source_files_properties(${PZ_AVX512_SRCS} PROPERTIES
+        COMPILE_OPTIONS "-mavx2;-mfma;-mf16c;-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq")
+    set_source_files_properties(src/math/ternary_matmul_packed_vnni.c
+        src/math/ternary_matmul_packed_vnni256.c PROPERTIES
+        COMPILE_OPTIONS "-mavx512vnni;-mavx512vl")
+    set_source_files_properties(src/math/ternary_matmul_packed_avx_vnni.c PROPERTIES
+        COMPILE_OPTIONS "-mavxvnni")
+    set_source_files_properties(src/math/simd_dispatch.c PROPERTIES
+        COMPILE_DEFINITIONS "TN_FORCE_DISPATCH_ALL")
+    target_link_options(project-zero PRIVATE -static-libstdc++ -static-libgcc)
+endif()
 
 # ---------------------------------------------------------------------------
 # Tests

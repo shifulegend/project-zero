@@ -36,6 +36,8 @@ void print_usage(const char *prog_name) {
     printf("  --server            Run as OpenAI-compatible HTTP API server (Phase 21).\n");
     printf("                      Accepts POST /v1/chat/completions requests.\n");
     printf("  --port <int>        HTTP listen port when --server is used (default: 8080).\n");
+    printf("  --version, -v       Print version and the SIMD backend for this CPU, then exit.\n");
+    printf("  --help, -h          Print this help and exit.\n");
 }
 
 TernaryError parse_args(CliArgs *args, int argc, char **argv) {
@@ -59,6 +61,7 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->classifier_override = -1; // auto (BF16)
     args->simd_override = NULL;     // auto
     args->calibrate = false;
+    args->show_version = false;
     args->dump_tensors_path = NULL;
     args->server_mode = 0;
     args->server_port = 8080;
@@ -126,6 +129,12 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
                 fprintf(stderr, "Error: --port must be 1–65535\n");
                 return TN_ERR_INVALID_CONFIG;
             }
+        } else if (strcmp(argv[i], "--version") == 0 || strcmp(argv[i], "-v") == 0) {
+            /* Short-circuit: --version must work without --model so the release
+             * binary is smoke-testable on a clean machine with no model file.
+             * main() prints the version and exits 0 before any model load. */
+            args->show_version = true;
+            return TN_OK;
         } else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
             print_usage(argv[0]);
             return TN_ERR_INVALID_CONFIG;

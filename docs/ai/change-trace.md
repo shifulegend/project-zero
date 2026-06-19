@@ -1,7 +1,27 @@
 # Change Trace — project-zero
 
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
-> Update after each meaningful sub-step. Last updated: 2026-06-14.
+> Update after each meaningful sub-step. Last updated: 2026-06-19.
+
+### 2026-06-19 — Portable `make dist` build + GitHub Release pipeline
+- What: Added a portable distribution build and a release workflow that attaches a prebuilt
+  x86-64 Linux binary to a GitHub Release. New `make dist` target compiles the bulk at
+  `-march=x86-64-v2` with per-file SIMD ISA flags (AVX2/AVX-512/VNNI) so runtime `simd_dispatch`
+  lights up the best tier on the host; `simd_dispatch.c` is compiled at the baseline with
+  `-DTN_FORCE_DISPATCH_ALL` (new guard, no SIMD codegen there) so all branches are present;
+  static `-static-libstdc++ -static-libgcc` leaves only libc/libm deps. Added a `--version`/`-v`
+  flag (works without `--model`) and a `-DPZ_VERSION` build stamp (banner no longer hardcodes
+  "Phase 16"). CMake gains an off-by-default `PZ_DIST` option mirroring the Makefile.
+- Why: user asked for a prebuilt x86-64 binary on a GitHub Release, tested thoroughly; the
+  existing `-march=native` release is not distributable on varied CPUs.
+- Areas: `Makefile` (dist target, per-TU ISA rules, version stamp), `src/math/simd_dispatch.c`
+  (`TN_FORCE_DISPATCH_ALL`), `src/cli/{args.c,main.c}` + `include/cli/args.h` (`--version`),
+  `CMakeLists.txt` (`PZ_DIST`, `PZ_VERSION`), `.github/workflows/release.yml` (new),
+  `.github/workflows/ci.yml` (dist build-check), `docs/RELEASING.md` (new).
+- Result: gcc release/test(46)/debug/dist and clang release/debug/dist green; portable binary
+  links only libc/libm; golden output (France→Paris, Germany→Berlin) correct across
+  scalar/avx2/avx512f/vnni and T=1/2/8 on the SmolLM2-135M F16 model.
+- Commit/PR: on branch `claude/x86-64-github-release-8xduj2`.
 
 ### 2026-06-14 — Docs reflect dense GGUF support (SmolLM2 + generic loader)
 - What: README, ROADMAP, and project-overview said the engine runs only BitNet and

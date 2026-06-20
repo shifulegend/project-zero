@@ -1,7 +1,27 @@
 # Decision Log — project-zero
 
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
-> Read at session start. Last updated: 2026-06-19.
+> Read at session start. Last updated: 2026-06-20.
+
+### 2026-06-20 — README repositioned as a "claim + proof" star-conversion page
+- Decision: Lead the README with an honest performance claim ("beats `llama.cpp`/`bitnet.cpp`
+  in some configs"), an above-the-fold benchmark table, visual proof, a one-command `make demo`,
+  and exposed audit/QA links. Detailed technical content (CLI, architecture, DeepSeek, limits)
+  is kept below, nothing removed.
+- Honesty rule (binding): every headline win states its config; the losses stay visible —
+  DeepSeek-V2 MoE ~7× behind llama.cpp (expert scatter) and SmolLM dense losing at T=1–2.
+  Audience is systems devs who will scrutinize; an overclaim that doesn't survive `make demo`
+  costs more credibility than it gains.
+- Added: `make demo` target (downloads SmolLM2-135M GGUF, runs golden prompt; tokenizer is
+  embedded so no `--tokenizer`), `docs/GROWTH_STRATEGY.md` (distribution playbook), and three
+  committed proof images under `docs/` (fresh-Xeon terminal card + two OpenBenchmarking result
+  screenshots, rendered via headless Chromium / Playwright).
+- Reproduction note: the cloud host is itself an Intel Xeon 2.10 GHz / AVX-512 VNNI, so the
+  fresh run (BitNet 40.42 tok/s, SmolLM2 142.39 tok/s, INT4) is legitimately comparable to the
+  documented Xeon numbers. Project Zero reads BitNet only from native `.bin` (no ternary-GGUF
+  support), so the BitNet model was converted from HF safetensors; bf16 tensors were re-encoded
+  to f32 first because `convert_hf_bitnet.py` uses numpy (no bf16 slicing) — a one-off
+  workaround, the committed tool was not modified.
 
 ### 2026-06-19 — Prebuilt x86-64 binary via a tagged GitHub Release
 - Decision: Ship a portable prebuilt `adaptive_ai_engine` as a GitHub Release asset, built by a

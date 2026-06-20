@@ -10,6 +10,28 @@
 #include <string.h>
 
 /*
+ * Portable distribution build (`make dist`): this TU is compiled at a
+ * conservative baseline (x86-64-v2) so the always-run startup path emits NO
+ * SIMD, while every kernel is force-compiled with its own ISA in its own TU.
+ * Force the x86 dispatch branches to be PRESENT here regardless of this TU's
+ * own -march; the runtime cpu->* CPUID checks below still gate actual
+ * execution, so a tier is only ever called on a CPU that supports it. ARM
+ * guards are intentionally left untouched (those kernel TUs are empty on x86).
+ * This file contains no intrinsics, so redefining the macros cannot cause the
+ * compiler to emit AVX/AVX-512 instructions.
+ */
+#ifdef TN_FORCE_DISPATCH_ALL
+#undef  TN_HAS_AVX2
+#define TN_HAS_AVX2 1
+#undef  TN_HAS_AVX512
+#define TN_HAS_AVX512 1
+#undef  TN_HAS_AVX512VNNI
+#define TN_HAS_AVX512VNNI 1
+#undef  TN_HAS_AVXVNNI
+#define TN_HAS_AVXVNNI 1
+#endif
+
+/*
  * SIMD dispatch — Phase 16-S.1 (expanded from Phase 3.6)
  *
  * Tier priority for ternary matmul (highest throughput first):

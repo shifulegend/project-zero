@@ -1,0 +1,156 @@
+name: Release — Prebuilt x86-64 Binary
+
+# Builds a portable, statically-libstdc++/libgcc-linked x86-64 Linux binary
+# (`make dist`, -march=x86-64-v2 with runtime AVX2/AVX-512/VNNI dispatch),
+# verifies it thoroughly, and attaches it to a GitHub Release on tag push.
+#
+# Trigger:
+#   - push a tag matching v*  (e.g. v0.1.0)  -> builds, verifies, and publishes
+#   - workflow_dispatch                      -> builds + verifies only (no publish)
+#
+# Supply chain: third-party actions are avoided; the release is cut with the
+# preinstalled `gh` CLI. First-party actions/* are GitHub-owned. For maximum
+# hardening, pin each `uses:` to a 40-char commit SHA
+# (`gh api repos/<owner>/<action>/commits/<tag> -q .sha`).
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      ref_name:
+        description: "Version label for a manual (non-publishing) build, e.g. v0.1.0"
+        required: false
+        default: ""
+
+# Least privilege: read-only by default; only the publish job elevates.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build & verify portable binary
+    runs-on: ubuntu-22.04          # glibc 2.35 — forward-compatible floor
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0           # tags needed for the embedded version string
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q gcc clang make file binutils
+
+      - name: Verify — full test suite (gcc + clang, ASan/UBSan)
+        run: |
+          make test CC=gcc
+          make clean
+          make test CC=clang
+
+      - name: Build portable binary (make dist)
+        run: |
+          make clean
+          make dist CC=gcc
+          file adaptive_ai_engine
+
+      - name: Package + checksums
+        id: pkg
+        run: |
+          VER="${GITHUB_REF_NAME}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.ref_name }}" ]; then
+            VER="${{ inputs.ref_name }}"
+          fi
+          case "$VER" in ''|refs/*) VER="$(git describe --tags --always)";; esac
+          NAME="adaptive_ai_engine-${VER#v}-x86_64-linux"
+          mkdir -p "dist/${NAME}"
+          cp adaptive_ai_engine "dist/${NAME}/"
+          cp LICENSE README.md "dist/${NAME}/" 2>/dev/null || true
+          tar -C dist -czf "dist/${NAME}.tar.gz" "${NAME}"
+          ( cd dist && sha256sum "${NAME}.tar.gz" > SHA256SUMS )
+          echo "name=${NAME}" >> "$GITHUB_OUTPUT"
+          echo "Packaged ${NAME}.tar.gz"; cat dist/SHA256SUMS
+
+      - name: Smoke test the packaged binary
+        run: |
+          BIN="dist/${{ steps.pkg.outputs.name }}/adaptive_ai_engine"
+          file "$BIN"
+          ldd "$BIN" || true
+          if ldd "$BIN" | grep -Eq 'libstdc\+\+|libgcc_s'; then
+            echo "ERROR: binary dynamically links libstdc++/libgcc (static linking failed)"; exit 1
+          fi
+          "$BIN" --version
+          # Missing --model must fail gracefully (non-zero), not crash.
+          if "$BIN" --prompt hi >/dev/null 2>&1; then
+            echo "ERROR: expected non-zero exit without --model"; exit 1
+          fi
+          # Each SIMD tier this runner supports must initialize correctly.
+          for b in scalar avx2 avx512f vnni; do
+            TN_FORCE_BACKEND=$b "$BIN" --version | sed "s/^/[$b] /"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  verify-clean:
+    name: Run on a clean minimal machine
+    needs: build
+    runs-on: ubuntu-22.04
+    container: debian:12-slim       # glibc 2.36 (>= build), no dev tools/libstdc++ preinstalled
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: dist, path: dist }
+      - name: Extract and run on a stock image
+        run: |
+          apt-get update -q && apt-get install -y -q tar file
+          tar -C dist -xzf dist/*.tar.gz
+          BIN="$(find dist -name adaptive_ai_engine -type f | head -1)"
+          chmod +x "$BIN"
+          file "$BIN"
+          "$BIN" --version
+
+  golden:
+    name: Golden output (real model)
+    needs: build
+    runs-on: ubuntu-22.04
+    continue-on-error: true         # gated by network policy / model availability
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: dist, path: dist }
+      - name: Download SmolLM2-135M and assert France -> Paris
+        run: |
+          tar -C dist -xzf dist/*.tar.gz
+          BIN="$(find dist -name adaptive_ai_engine -type f | head -1)"; chmod +x "$BIN"
+          mkdir -p models
+          URL="https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-f16.gguf"
+          curl -fsSL -o models/smollm2.gguf "$URL"
+          # Record all flags (GOLDEN_RULES Rule 8). Greedy decode -> deterministic.
+          OUT="$("$BIN" --model models/smollm2.gguf --prompt 'What is the capital of France?' \
+                  --max-tokens 30 --temperature 0 --threads 2)"
+          echo "$OUT" | tail -3
+          echo "$OUT" | grep -qi paris || { echo "GOLDEN FAILED: output did not contain 'Paris'"; exit 1; }
+          echo "GOLDEN PASS: France -> Paris"
+
+  release:
+    name: Publish GitHub Release
+    needs: [build, verify-clean]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write               # least privilege: only this job writes releases
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with: { name: dist, path: dist }
+      - name: Create release and upload assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            dist/*.tar.gz dist/SHA256SUMS \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            --prerelease \
+            --verify-tag

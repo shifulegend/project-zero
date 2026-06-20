@@ -25,6 +25,7 @@ typedef struct {
                                   3 = auto-fast (let engine pick fastest quantized cls) */
     char *simd_override;      /* NULL = auto, or "avx2", "avx512f", "vnni", "scalar" */
     bool calibrate;           /* --calibrate: force re-calibration of optimal settings */
+    bool show_version;        /* --version/-v: print version + detected SIMD backend, exit 0 */
     char *dump_tensors_path;  /* --dump-tensors FILE: write intermediate tensors CSV  */
     /* Phase 21: API server */
     int   server_mode;        /* --server: run as OpenAI-compatible HTTP server        */

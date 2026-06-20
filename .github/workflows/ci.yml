@@ -34,6 +34,17 @@ jobs:
       - name: Build (debug + sanitizers)
         run: make debug CC=${{ matrix.compiler }}
 
+      - name: Build (portable dist) + smoke test
+        run: |
+          make clean
+          make dist CC=${{ matrix.compiler }}
+          file adaptive_ai_engine
+          # Portable build must not dynamically link libstdc++/libgcc.
+          if ldd adaptive_ai_engine | grep -Eq 'libstdc\+\+|libgcc_s'; then
+            echo "ERROR: dist binary dynamically links libstdc++/libgcc"; exit 1
+          fi
+          ./adaptive_ai_engine --version
+
   build-macos:
     name: Build & Test (macOS)
     runs-on: macos-latest

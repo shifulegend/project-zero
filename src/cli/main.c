@@ -45,12 +45,30 @@
 /* Phase 21: OpenAI-compatible API server */
 #include "api/api_server.h"
 
+/* Version is injected unquoted by the build (-DPZ_VERSION, see Makefile) and
+ * stringified here; falls back to "dev" for builds that don't pass it
+ * (e.g. plain `make debug`). Two-level macro so the token is expanded first. */
+#ifndef PZ_VERSION
+#define PZ_VERSION dev
+#endif
+#define PZ_STRINGIFY2(x) #x
+#define PZ_STRINGIFY(x) PZ_STRINGIFY2(x)
+#define PZ_VERSION_STR PZ_STRINGIFY(PZ_VERSION)
 
 int main(int argc, char **argv) {
     CliArgs args;
     if (parse_args(&args, argc, argv) != TN_OK) {
         return 1;
     }
+
+    /* --version: print version + the SIMD backend selected for this CPU, then
+     * exit 0. tn_simd_init() only probes CPUID, so no model is required. */
+    if (args.show_version) {
+        printf("Project Zero Engine (adaptive_ai_engine) %s\n", PZ_VERSION_STR);
+        printf("SIMD backend (this CPU): %s\n", tn_simd_init());
+        return 0;
+    }
+
     if (args.verbose) g_tn_verbose = 1;
 
     /* Open tensor dump file if requested */
@@ -65,7 +83,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    printf("Project Zero Engine (Phase 16 — Auto-Tuned Hardware)\n");
+    printf("Project Zero Engine %s — Auto-Tuned Hardware\n", PZ_VERSION_STR);
 
     /* ── SIMD backend selection ─────────────────────────────────────────── */
     /* CLI --simd override takes precedence over calibration and auto-detect.

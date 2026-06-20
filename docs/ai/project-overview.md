@@ -58,12 +58,17 @@ at runtime (`--simd`, `--classifier`, or auto/calibration).
 make release CC=gcc            # or CC=clang; optimized engine + libs
 make test    CC=gcc            # builds & runs EVERY tests/*.c (ASan/UBSan), aborts on first fail
 make debug   CC=gcc            # -O0 -g -march=native -fsanitize=address,undefined
-cmake -B build && cmake --build build -j$(nproc)   # alternative build
+make dist    CC=gcc            # PORTABLE binary: -march=x86-64-v2 + per-TU SIMD ISA +
+                               # static libstdc++/libgcc; runtime AVX2/AVX-512/VNNI dispatch
+cmake -B build && cmake --build build -j$(nproc)   # alternative build (cmake -DPZ_DIST=ON = dist)
+./adaptive_ai_engine --version  # version + detected SIMD backend (no model needed)
 ./adaptive_ai_engine --model models/<m>.gguf --prompt "..." \
   --max-tokens 16 --temperature 0.0 --threads 4 [--simd auto] [--classifier auto]
 ```
-CI: `.github/workflows/ci.yml` (release/test/debug × gcc,clang × ubuntu-latest,ubuntu-22.04 + macOS
-release/test) and `.github/workflows/security_audit.yml` (cmake+ASan/UBSan + `tools/fuzz_config.py`).
+CI: `.github/workflows/ci.yml` (release/test/debug/dist × gcc,clang × ubuntu-latest,ubuntu-22.04 +
+macOS release/test), `.github/workflows/security_audit.yml` (cmake+ASan/UBSan + `tools/fuzz_config.py`),
+and `.github/workflows/release.yml` (tag `v*` → portable `make dist` binary on a GitHub Release;
+see `docs/RELEASING.md`).
 
 ## Domain terminology
 - **Ternary / b1.58** — weights in {-1,0,+1}, packed 4/byte.

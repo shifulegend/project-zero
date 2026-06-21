@@ -54,7 +54,7 @@ Pure C, single binary. Runs Microsoft's BitNet b1.58 **up to 6.4× faster than M
 </p>
 
 <p align="center">
-  <img src="docs/bar_comparison_i5.png" width="640" alt="Peak throughput bar chart: PZ INT4 42.83, PZ BF16 28.11, MSFT 6.73 tok/s">
+  <img src="docs/bar_comparison_i5.png" width="420" alt="Peak throughput bar chart: PZ INT4 42.83, PZ BF16 28.11, MSFT 6.73 tok/s">
 </p>
 
 ### Intel Xeon · AVX-512 VNNI (PGO+LTO, from earlier run)
@@ -68,7 +68,35 @@ Pure C, single binary. Runs Microsoft's BitNet b1.58 **up to 6.4× faster than M
 
 Optimized (PGO+LTO, INT4 classifier): **36.25 tok/s = 95% of the analytical DRAM bandwidth ceiling** on a 4-core Xeon.
 
+<p align="center">
+  <img src="docs/benchmark_bitnet.png" width="720" alt="BitNet b1.58-2B-4T: Project Zero beats Microsoft bitnet.cpp at every thread count (Xeon)">
+</p>
+
 > On dense models, Project Zero leads `llama.cpp` at 1–3 threads (+32%/+4%/+15%) and trails at peak 4-thread. On DeepSeek-V2 MoE it runs ~7× slower — this is the known open problem ([Help Wanted ↓](#help-wanted)).
+
+<p align="center">
+  <img src="docs/benchmark_smollm2.png" width="720" alt="SmolLM2-135M F16: Project Zero leads llama.cpp at 1-3 threads">
+</p>
+
+**Live terminal runs — Xeon (BitNet b1.58-2B-4T) and i5-11300H (SmolLM2-135M F16):**
+
+| BitNet b1.58-2B-4T (ternary, Xeon) | SmolLM2-135M (F16 dense, i5) |
+|---|---|
+| ![BitNet live run](docs/tty_bitnet.png) | ![SmolLM2 live run](docs/tty_smollm2.png) |
+
+**Xeon demo — 31-second live recording:**
+
+<p align="center">
+  <img src="docs/demo_xeon.gif" width="720" alt="Project Zero BitNet b1.58-2B-4T live demo on Xeon (36.25 tok/s)">
+</p>
+
+**Optimization journey — throughput across all phases:**
+
+<p align="center">
+  <img src="docs/performance_chart.png" width="720" alt="Project Zero throughput vs bitnet.cpp / llama.cpp across optimization steps">
+</p>
+
+*Per-configuration throughput from the [optimization journal](docs/PERFORMANCE_CEILING_REPORT.md).*
 
 📊 **Third-party results on OpenBenchmarking.org** — not self-reported:
 

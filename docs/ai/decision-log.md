@@ -1,7 +1,26 @@
 # Decision Log — project-zero
 
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
-> Read at session start. Last updated: 2026-06-20.
+> Read at session start. Last updated: 2026-06-21.
+
+### 2026-06-21 — Claim corrected to same-SIMD/same-thread/same-precision; hero = beats bitnet.cpp
+- Decision: The README headline claims only what holds apples-to-apples. Fresh three-engine
+  measurement on one Xeon (same SIMD, per-thread, matched precision) shows: Project Zero
+  beats Microsoft `bitnet.cpp` on BitNet at every thread (+19…+37%, BF16 head; 1.80× / 95%
+  DRAM ceiling tuned), and on dense SmolLM2 beats `llama.cpp` at 1–3 threads but trails at the
+  4-thread peak (−12%). So **drop any blanket "beats llama.cpp"**; hero = beats bitnet.cpp +
+  only single no-dep binary running ternary AND dense. DeepSeek MoE 7× gap stays visible.
+- Wording: marketing copy/PNGs must **not** use the word "honest" (reads as justifying);
+  state facts confidently instead. (Internal docs may still discuss honesty.)
+- Methodology: TG steady-state; PZ via `[gen]` over 128 tok; competitors via `llama-bench
+  -n 128 -r 5`; warm cache; one test at a time; full results in BENCHMARK_REPORT.md Addendum AP.
+- Gotcha (recorded): the container's host CPU migrated mid-session (Xeon 2.10→2.80 GHz; the
+  2.80 lacks `avx_vnni`), which SIGILLs native-built competitor binaries and cripples
+  bitnet.cpp's i2_s kernel (0.58 tok/s). PZ is unaffected (runtime SIMD dispatch). Comparison
+  numbers are from the 2.10 GHz host where both engines had their VNNI kernels; live tty/video
+  demos are PZ-only on the current host and labelled as such.
+- Assets added: `docs/benchmark_bitnet.png`, `docs/benchmark_smollm2.png` (bar charts),
+  `docs/tty_bitnet.png`, `docs/tty_smollm2.png` (live terminal captures), `docs/demo.webm`.
 
 ### 2026-06-20 — README repositioned as a "claim + proof" star-conversion page
 - Decision: Lead the README with an honest performance claim ("beats `llama.cpp`/`bitnet.cpp`

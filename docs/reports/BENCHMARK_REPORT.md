@@ -1670,3 +1670,51 @@ sparse activation, page faults on cold expert pages).
 4. **int8 classifier wins** over bf16 consistently (+6–20%), especially at T=1–2.
 5. **AVX2 pure-CPU** outperforms Metal+BLAS on this generation of Intel iGPU — the iGPU (Intel HD 6000) is too weak for BLAS to pay off.
 6. Q2_K quality is noticeably lower than Q4_K (expected — ~2.3 bits/weight vs ~4.5).
+
+---
+
+## Addendum AP — Three-Engine Head-to-Head, Same Machine (2026-06-21 04:03 UTC)
+
+**Measurement host:** Intel Xeon @ 2.10 GHz, 4 physical cores (no HT), AVX-512 VNNI +
+VBMI + AVX-VNNI, 15 GiB RAM, Linux. Generation throughput (TG), warm page cache, one
+test at a time. Project Zero measured via its end-to-end `[gen]` counter over 128 tokens;
+`llama.cpp` and `bitnet.cpp` via `llama-bench -n 128 -r 5` (steady-state). All engines on
+AVX-512 VNNI. `llama.cpp` and `bitnet.cpp` built from source for this comparison
+(bitnet.cpp needed a one-line const fix in `ggml-bitnet-mad.cpp` for clang 18).
+
+### BitNet b1.58-2B-4T — Project Zero (native ternary) vs Microsoft bitnet.cpp (i2_s)
+Same model, same threads, Project Zero at full-precision BF16 LM head (no INT4 speed-up).
+`llama.cpp` cannot load the i2_s ternary format at all.
+
+| Threads | Project Zero (BF16) | bitnet.cpp (i2_s) | PZ gain |
+|--------:|--------------------:|------------------:|:-------:|
+| 1 | **5.91** | 4.96 | +19% |
+| 2 | **12.78** | 9.46 | +35% |
+| 3 | **18.61** | 13.59 | +37% |
+| 4 | **21.45** | 16.10 | +33% |
+
+Project Zero leads at every thread count. With its INT4 classifier it reaches ~37–40 tok/s;
+on a tuned Xeon (PGO+LTO) 36.25 tok/s = ~95% of the DRAM-bandwidth ceiling, 1.80× over bitnet.cpp.
+
+### SmolLM2-135M F16 — Project Zero vs llama.cpp vs bitnet.cpp
+Same f16 model, same SIMD. Project Zero shown in BF16 (precision-matched to f16) and INT4.
+
+| Threads | PZ (BF16) | PZ (INT4) | llama.cpp (f16) | bitnet.cpp (f16) |
+|--------:|----------:|----------:|----------------:|-----------------:|
+| 1 | **35.03** | 42.36 | 26.60 | 31.53 |
+| 2 | **55.07** | 78.44 | 52.80 | 49.56 |
+| 3 | **82.54** | 92.79 | 71.60 | 67.46 |
+| 4 |   94.41   | **127.82** | **107.21** | 97.25 |
+
+At matched precision (BF16 vs f16) Project Zero leads llama.cpp at 1–3 threads
+(+32% / +4% / +15%) and trails at the 4-thread peak (−12%); its INT4 mode takes T=4 at
+127.8 tok/s. At peak thread + equal precision, llama.cpp is the faster dense engine.
+
+### Caveats recorded for reproducibility
+- **CPU instruction-set sensitivity:** bitnet.cpp's i2_s kernel needs `avx_vnni` (256-bit).
+  A from-source rebuild on a later host (Xeon @ 2.80 GHz **without** `avx_vnni`) ran i2_s at
+  only 0.58 tok/s — a missing-ISA artifact, not a real result. The numbers above are from the
+  2.10 GHz host where both engines had their proper VNNI kernels. Project Zero is unaffected
+  (runtime SIMD dispatch).
+- **Oversubscription:** beyond physical cores on a non-HT CPU, Project Zero degrades sharply
+  (spinlock thrash); compare only at T ≤ physical cores.

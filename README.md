@@ -17,11 +17,10 @@ binary** — no GPU, no Python, no ML framework.
 - ✅ **Faster than `bitnet.cpp` on BitNet** — **1.80×** on Xeon (and ahead at *every* thread count in fresh tests), at **~95% of the DRAM-bandwidth ceiling**
 - ✅ **One binary, two worlds** — the only engine that runs **both** BitNet ternary **and** dense F16 GGUF with no per-model build ([benchmarks below ↓](#benchmarks))
 
-> **Honest scope.** The robust, apples-to-apples win is over **bitnet.cpp** (same model,
-> same SIMD/threads — see the table). Against `llama.cpp` on **dense** models, llama.cpp
-> leads at its optimal thread count on AVX-512 many-core CPUs; on the **DeepSeek-V2 MoE**
-> model project-zero is still ~7× behind. Those gaps are documented, not hidden
-> ([Known Limitations](#known-limitations)), and `make demo` lets you reproduce the numbers.
+> **Same model, same SIMD, same threads.** Project Zero beats Microsoft's `bitnet.cpp`
+> on BitNet at every thread count (table below). On dense models it leads `llama.cpp` at
+> 1–3 threads and trails at the 4-thread peak; on DeepSeek-V2 MoE it runs ~7× slower
+> ([limitations](#known-limitations)). Every number reproduces with `make demo`.
 
 ---
 
@@ -54,9 +53,11 @@ all-hardware history in
 [`docs/PERFORMANCE_CEILING_REPORT.md`](docs/PERFORMANCE_CEILING_REPORT.md) and
 [`docs/reports/BENCHMARK_REPORT.md`](docs/reports/BENCHMARK_REPORT.md).
 
-### The fair, robust win — BitNet b1.58-2B-4T vs Microsoft `bitnet.cpp`
+### BitNet b1.58-2B-4T — vs Microsoft `bitnet.cpp`
 
-Same ternary model, same machine, same threads (`llama.cpp` cannot load BitNet i2_s at all):
+Same ternary model, same machine (AVX-512 VNNI), same threads — Project Zero at
+full-precision BF16, i.e. *without* its INT4 classifier speed-up (`llama.cpp` cannot load
+BitNet i2_s at all):
 
 | Threads | Project Zero | bitnet.cpp (i2_s) | Project Zero gain |
 |---|---|---|---|
@@ -65,12 +66,14 @@ Same ternary model, same machine, same threads (`llama.cpp` cannot load BitNet i
 | 3 | **18.61** | 13.59 | **+37%** |
 | 4 | **21.45** | 16.10 | **+33%** |
 
+![BitNet b1.58-2B-4T: Project Zero beats Microsoft bitnet.cpp at every thread](docs/benchmark_bitnet.png)
+
 *tok/s, BF16 classifier. With Project Zero's INT4 classifier: 37–40 tok/s.* On a tuned
 Xeon (PGO+LTO, INT4) Project Zero reaches **36.25 tok/s = ~95% of the analytical
 DRAM-bandwidth ceiling**, **1.80× over bitnet.cpp** — i.e. near the physical limit for
 this model on this memory.
 
-### Honest dense comparison — SmolLM2-135M F16 vs `llama.cpp`
+### Dense models — SmolLM2-135M F16 vs `llama.cpp`
 
 Same f16 model, same SIMD. Project Zero in **BF16** (precision-matched to llama.cpp's f16)
 and in its **INT4** classifier (its fast mode, lower LM-head precision):
@@ -82,15 +85,15 @@ and in its **INT4** classifier (its fast mode, lower LM-head precision):
 | 3 | **82.54** | 92.79 | 71.60 | 67.46 |
 | 4 | 94.41 | **127.82** | **107.21** | 97.25 |
 
-*tok/s.* Precision-matched (BF16 vs f16), **Project Zero leads llama.cpp at 1–3 threads**
-(+32% / +4% / +15%); at the 4-thread optimum **llama.cpp edges ahead (+13%)**, and
-Project Zero's INT4 mode retakes the lead (127.8). We do **not** claim a blanket
-"faster than llama.cpp" — at equal precision and optimal thread on this CPU, llama.cpp
-wins dense.
+![SmolLM2-135M F16: Project Zero leads at 1-3 threads, llama.cpp at T=4](docs/benchmark_smollm2.png)
 
-> **Where Project Zero loses today (stated plainly):** the **DeepSeek-V2 MoE** model is
-> ~7× behind `llama.cpp` (F32-dequant vs fused Q4_K — [help wanted](#help-wanted)), and
-> thread **oversubscription** beyond physical cores on a non-HT CPU degrades it sharply.
+*tok/s.* At matched precision (BF16 vs f16), **Project Zero leads `llama.cpp` at 1–3
+threads** (+32% / +4% / +15%) and trails at the 4-thread peak (−12%); its INT4 mode takes
+T=4 at **127.8 tok/s**. On dense models at peak thread, `llama.cpp` is the faster engine.
+
+> **Where Project Zero trails:** the **DeepSeek-V2 MoE** model runs ~7× slower than
+> `llama.cpp` (F32-dequant vs fused Q4_K — [help wanted](#help-wanted)), and thread
+> **oversubscription** beyond physical cores on a non-HT CPU degrades it sharply.
 > Reproduce any row: `make demo`, then post yours.
 
 📊 **OpenBenchmarking.org (third-party-hosted runs):**
@@ -101,10 +104,12 @@ wins dense.
 
 ## 🖼 Visual proof
 
-**Reproduced fresh on an Intel Xeon (2.10 GHz, 4C, AVX-512 VNNI)** — the same single
-binary running both models, INT4 classifier:
+Live terminal — command in, generated text out, tok/s and auto-detected hardware,
+on one Intel Xeon (AVX-512 VNNI). 30-second screen recording: **[`docs/demo.webm`](docs/demo.webm)**.
 
-![Fresh CPU benchmark: BitNet 40.42 tok/s, SmolLM2 142.39 tok/s on one Xeon](docs/benchmark_terminal.png)
+| BitNet b1.58-2B-4T (ternary) | SmolLM2-135M (F16 dense) |
+|---|---|
+| ![BitNet live run](docs/tty_bitnet.png) | ![SmolLM2 live run](docs/tty_smollm2.png) |
 
 ![Project Zero throughput vs bitnet.cpp / llama.cpp across optimization steps](docs/performance_chart.png)
 

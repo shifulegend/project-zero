@@ -62,7 +62,7 @@ TEST_BINS := $(patsubst tests/%.c, build/tests/%, $(TEST_SRCS))
 
 TARGET = adaptive_ai_engine
 
-.PHONY: all clean debug release dist test objs
+.PHONY: all clean debug release dist test objs demo
 
 all: $(TARGET)
 
@@ -235,6 +235,34 @@ build/tests/%: tests/%.c $(LIB_OBJS)
 	$(CC) $(CFLAGS_DEBUG) -o $@ $< $(LIB_OBJS) $(LDFLAGS) -lstdc++
 
 # ── Convenience targets ────────────────────────────────────────────────────
+
+# One-command demo: build, fetch a tiny dense GGUF (SmolLM2-135M-Instruct, F16,
+# ~271 MB — tokenizer is embedded in the GGUF, so no separate file is needed),
+# and run a deterministic prompt. Golden output: "The capital of France is Paris."
+# The model is cached under models/ (gitignored); re-runs skip the download.
+DEMO_MODEL = models/smollm2.gguf
+DEMO_URL   = https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-f16.gguf
+
+demo: release
+	@mkdir -p models
+	@if [ ! -f $(DEMO_MODEL) ]; then \
+	    echo "=== Downloading SmolLM2-135M-Instruct (F16 GGUF, ~271 MB) ==="; \
+	    if command -v curl >/dev/null 2>&1; then \
+	        curl -fL --retry 3 -o $(DEMO_MODEL) "$(DEMO_URL)"; \
+	    elif command -v wget >/dev/null 2>&1; then \
+	        wget -O $(DEMO_MODEL) "$(DEMO_URL)"; \
+	    else \
+	        echo "ERROR: neither curl nor wget is available to download the demo model"; \
+	        exit 1; \
+	    fi; \
+	else \
+	    echo "=== Using cached model $(DEMO_MODEL) ==="; \
+	fi
+	@echo "=== Running demo: \"What is the capital of France?\" ==="
+	@./$(TARGET) --model $(DEMO_MODEL) \
+	    --prompt "What is the capital of France?" \
+	    --max-tokens 50 --temperature 0 --threads 2
+
 test-packed: build/tests/test_packed_weights
 	@echo "=== Running Phase 10 Packed Weight Tests ==="
 	@build/tests/test_packed_weights

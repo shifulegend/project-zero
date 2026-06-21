@@ -8,7 +8,138 @@
 [![Discussions](https://img.shields.io/github/discussions/shifulegend/project-zero)](https://github.com/shifulegend/project-zero/discussions)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-> ⚠️ **Before contributing: read [`GOLDEN_RULES.md`](GOLDEN_RULES.md).** No hardcoding. Test after every change. No exceptions.
+**A pure-C, single-binary CPU LLM engine that runs Microsoft's BitNet b1.58
+*faster than Microsoft's own `bitnet.cpp`* — and dense GGUF models too, from one
+binary** — no GPU, no Python, no ML framework.
+
+- ✅ **Pure C, single binary** — `make release`, one executable, zero runtime dependencies
+- ✅ **No GPU, no Python** — runs on commodity CPUs; Python is offline tooling only
+- ✅ **Faster than `bitnet.cpp` on BitNet** — **1.80×** on Xeon (and ahead at *every* thread count in fresh tests), at **~95% of the DRAM-bandwidth ceiling**
+- ✅ **One binary, two worlds** — the only engine that runs **both** BitNet ternary **and** dense F16 GGUF with no per-model build ([benchmarks below ↓](#benchmarks))
+
+> **Same model, same SIMD, same threads.** Project Zero beats Microsoft's `bitnet.cpp`
+> on BitNet at every thread count (table below). On dense models it leads `llama.cpp` at
+> 1–3 threads and trails at the 4-thread peak; on DeepSeek-V2 MoE it runs ~7× slower
+> ([limitations](#known-limitations)). Every number reproduces with `make demo`.
+
+---
+
+## ⚡ Try it in 30 seconds
+
+```bash
+git clone https://github.com/shifulegend/project-zero.git
+cd project-zero
+make demo
+```
+
+`make demo` builds the engine, downloads a tiny model (SmolLM2-135M, ~271 MB),
+and runs a deterministic prompt. Expected output:
+
+```
+The capital of France is Paris.
+```
+
+No GPU, no Python, no API key — just a C compiler, `make`, and `curl`/`wget`.
+
+---
+
+<a id="benchmarks"></a>
+
+## 📊 Benchmarks: claim → proof
+
+All numbers below are **measured fresh on one Intel Xeon @ 2.10 GHz (4 cores, AVX-512
+VNNI)**, same SIMD, generation throughput (TG), warm cache. Full methodology +
+all-hardware history in
+[`docs/PERFORMANCE_CEILING_REPORT.md`](docs/PERFORMANCE_CEILING_REPORT.md) and
+[`docs/reports/BENCHMARK_REPORT.md`](docs/reports/BENCHMARK_REPORT.md).
+
+### BitNet b1.58-2B-4T — vs Microsoft `bitnet.cpp`
+
+Same ternary model, same machine (AVX-512 VNNI), same threads — Project Zero at
+full-precision BF16, i.e. *without* its INT4 classifier speed-up (`llama.cpp` cannot load
+BitNet i2_s at all):
+
+| Threads | Project Zero | bitnet.cpp (i2_s) | Project Zero gain |
+|---|---|---|---|
+| 1 | **5.91** | 4.96 | **+19%** |
+| 2 | **12.78** | 9.46 | **+35%** |
+| 3 | **18.61** | 13.59 | **+37%** |
+| 4 | **21.45** | 16.10 | **+33%** |
+
+![BitNet b1.58-2B-4T: Project Zero beats Microsoft bitnet.cpp at every thread](docs/benchmark_bitnet.png)
+
+*tok/s, BF16 classifier. With Project Zero's INT4 classifier: 37–40 tok/s.* On a tuned
+Xeon (PGO+LTO, INT4) Project Zero reaches **36.25 tok/s = ~95% of the analytical
+DRAM-bandwidth ceiling**, **1.80× over bitnet.cpp** — i.e. near the physical limit for
+this model on this memory.
+
+### Dense models — SmolLM2-135M F16 vs `llama.cpp`
+
+Same f16 model, same SIMD. Project Zero in **BF16** (precision-matched to llama.cpp's f16)
+and in its **INT4** classifier (its fast mode, lower LM-head precision):
+
+| Threads | PZ (BF16) | PZ (INT4) | llama.cpp | bitnet.cpp |
+|---|---|---|---|---|
+| 1 | **35.03** | 42.36 | 26.60 | 31.53 |
+| 2 | **55.07** | 78.44 | 52.80 | 49.56 |
+| 3 | **82.54** | 92.79 | 71.60 | 67.46 |
+| 4 | 94.41 | **127.82** | **107.21** | 97.25 |
+
+![SmolLM2-135M F16: Project Zero leads at 1-3 threads, llama.cpp at T=4](docs/benchmark_smollm2.png)
+
+*tok/s.* At matched precision (BF16 vs f16), **Project Zero leads `llama.cpp` at 1–3
+threads** (+32% / +4% / +15%) and trails at the 4-thread peak (−12%); its INT4 mode takes
+T=4 at **127.8 tok/s**. On dense models at peak thread, `llama.cpp` is the faster engine.
+
+> **Where Project Zero trails:** the **DeepSeek-V2 MoE** model runs ~7× slower than
+> `llama.cpp` (F32-dequant vs fused Q4_K — [help wanted](#help-wanted)), and thread
+> **oversubscription** beyond physical cores on a non-HT CPU degrades it sharply.
+> Reproduce any row: `make demo`, then post yours.
+
+📊 **OpenBenchmarking.org (third-party-hosted runs):**
+[Xeon — Project Zero vs bitnet.cpp](https://openbenchmarking.org/result/2606063-SHIF-PROJECT91)
+· [i5 — Project Zero vs llama.cpp / DeepSeek](https://openbenchmarking.org/result/2606062-SHIF-PROJECT21)
+
+---
+
+## 🖼 Visual proof
+
+Live terminal — command in, generated text out, tok/s and auto-detected hardware,
+on one Intel Xeon (AVX-512 VNNI). 30-second screen recording: **[`docs/demo.webm`](docs/demo.webm)**.
+
+| BitNet b1.58-2B-4T (ternary) | SmolLM2-135M (F16 dense) |
+|---|---|
+| ![BitNet live run](docs/tty_bitnet.png) | ![SmolLM2 live run](docs/tty_smollm2.png) |
+
+![Project Zero throughput vs bitnet.cpp / llama.cpp across optimization steps](docs/performance_chart.png)
+
+*Per-configuration throughput from the optimization journal.*
+
+**Independently hosted on [OpenBenchmarking.org](https://openbenchmarking.org/result/2606063-SHIF-PROJECT91)** — third-party result pages, not self-reported:
+
+| Xeon — Project Zero vs bitnet.cpp | i5-11300H — Project Zero vs llama.cpp |
+|---|---|
+| [![Xeon result](docs/openbenchmarking_xeon_vs_bitnetcpp.png)](https://openbenchmarking.org/result/2606063-SHIF-PROJECT91) | [![i5 result](docs/openbenchmarking_i5_vs_llamacpp.png)](https://openbenchmarking.org/result/2606062-SHIF-PROJECT21) |
+
+---
+
+## 🔍 Independent analysis & QA
+
+This is infrastructure code, so it ships with a paper trail. These are independent
+audits and full test runs — not marketing:
+
+| Report | What it covers |
+|---|---|
+| [Independent Code Audit](docs/reports/INDEPENDENT_CODE_AUDIT_REPORT.md) | Black/white-box security + code review, with executable test cases |
+| [QA Strategy](docs/reports/QA_STRATEGY_REPORT_FINAL_PHASE10.md) | Zero-trust testing methodology for the packed-weight kernels |
+| [QA Report — 3,367 assertions](docs/reports/qa_report.md) | Full suite: config, math, forward pass, sampling, KV cache, threading |
+| [Security Findings](docs/reports/SECURITY_FINDINGS.md) | Independent security review; all confirmed bugs fixed |
+| [Performance Ceiling Analysis](docs/PERFORMANCE_CEILING_REPORT.md) | Bandwidth math + multi-addendum optimization journal |
+| [Regression Verification](docs/REGRESSION_VERIFICATION_2026-06-07.md) | CI A/B correctness + speed checks, clean full-history secrets scan |
+
+---
+
+## What it is
 
 A from-scratch, single-binary LLM inference engine written in C, built to run
 Microsoft's [BitNet b1.58-2B-4T](https://huggingface.co/microsoft/bitnet-b1.58-2B-4T)
@@ -22,6 +153,8 @@ GGUF loader is architecture-agnostic, so the long-term goal of being **LLM-agnos
 **No GPU and no ML framework.** Python is used today only for offline tooling —
 model conversion, development, and testing (see [`tools/`](tools/)); the engine
 itself needs no Python to build or run, and the final product targets zero Python.
+
+> ⚠️ **Before contributing: read [`GOLDEN_RULES.md`](GOLDEN_RULES.md).** No hardcoding. Test after every change. No exceptions.
 
 ---
 

@@ -1,0 +1,55 @@
+Sun Jun 21 03:37:51 PM IST 2026
+Model name:                              11th Gen Intel(R) Core(TM) i5-11300H @ 3.10GHz
+Thread(s) per core:                      2
+Core(s) per socket:                      4
+CPU max MHz:                             4400.0000
+               total        used        free      shared  buff/cache   available
+Mem:            15Gi       4.4Gi       3.4Gi       451Mi       8.4Gi        11Gi
+Swap:          4.0Gi        84Ki       4.0Gi
+
+Command: /home/ubuntu/llama.cpp/build/bin/llama-cli -m /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf -p "Explain what machine learning is and how neural networks work in simple terms." -n 500 -t 6 --temp 0 --single-turn --simple-io
+
+
+Loading model... 
+
+
+▄▄ ▄▄
+██ ██
+██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄
+██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██
+██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀
+                                    ██    ██
+                                    ▀▀    ▀▀
+
+build      : b1-58c81f7
+model      : SmolLM2-135M-Instruct-f16.gguf
+modalities : text
+
+available commands:
+  /exit or Ctrl+C     stop or exit
+  /regen              regenerate the last response
+  /clear              clear the chat history
+  /read               add a text file
+
+
+> Explain what machine learning is and how neural networks work in simple terms.
+
+Machine learning is a type of artificial intelligence that allows computers to learn from data without being explicitly programmed. It's a way for computers to make decisions or predictions based on patterns and relationships in the data.
+
+Imagine you have a big box of toys, and you want to know how to play with them. You can't just tell the computer how to play, because it doesn't have any instructions. But, if you give it a toy box with different toys, and you give it a toy box with different toys, the computer can learn to play with the toys. It can recognize the different toys, understand how to play with them, and even make decisions about which toys to play with.
+
+In the same way, machine learning allows computers to learn from data and make decisions or predictions based on patterns and relationships in the data. This is similar to how a computer learns to play a game, like chess or video games, by following a set of rules and learning to move pieces on the board.
+
+The key idea behind machine learning is that computers can be trained to recognize patterns and make decisions based on data. This is similar to how a human brain learns to recognize patterns in the world around us.
+
+For example, in a machine learning system, the computer might be trained on a dataset of images of people, and it would learn to recognize people by looking at the patterns in the images. If the computer sees a person with a certain face, it would recognize that person as a person. If it sees a person with a different face, it would recognize that person as a person with a different face.
+
+The key to machine learning is that the computer doesn't have to be explicitly programmed to do the learning. It can learn from data and make decisions based on patterns and relationships, without being explicitly programmed. This is similar to how a human brain learns to recognize patterns in the world around us.
+
+Overall, machine learning is a powerful tool that allows computers to learn from data and make decisions or predictions based on patterns and relationships in the data.llama_memory_breakdown_print: | memory breakdown [MiB] | total   free    self   model   context   compute    unaccounted |
+llama_memory_breakdown_print: |   - Host               |                  534 =   256 +     180 +      98                |
+
+
+[ Prompt: 1015.4 t/s | Generation: 100.0 t/s ]
+
+Exiting...

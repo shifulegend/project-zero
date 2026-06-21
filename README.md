@@ -81,6 +81,33 @@ Optimized (PGO+LTO, INT4 classifier): **36.25 tok/s = 95% of the analytical DRAM
 
 > On dense models, Project Zero leads `llama.cpp` at 1–3 threads (+32%/+4%/+15%) and trails at peak 4-thread. On DeepSeek-V2 MoE it runs ~7× slower — this is the known open problem ([Help Wanted ↓](#help-wanted)).
 
+### SmolLM2-135M F16 — Project Zero vs. llama.cpp (i5-11300H, 2026-06-21)
+
+Same model, same machine, same prompt ("Explain what machine learning is..."), 500 tokens, sequential runs:
+
+| Threads | Project Zero (BF16) | llama.cpp | PZ Gain |
+|---|---|---|---|
+| 1 | 55.23 tok/s | 55.4 tok/s | −0.3% |
+| 2 | 77.91 tok/s | 85.3 tok/s | −8.7% |
+| 3 | 90.18 tok/s | 100.0 tok/s | −9.8% |
+| 4 | 99.18 tok/s | **106.6 tok/s** | −7.0% |
+| 5 | 92.81 tok/s | 101.0 tok/s | −8.1% |
+| 6 | 97.09 tok/s | 100.0 tok/s | −2.9% |
+| 7 | 92.34 tok/s | 97.3 tok/s | −5.1% |
+| 8 | **85.41 tok/s** | 84.8 tok/s | **+0.7%** |
+
+**Peak: PZ = 99.18 tok/s (t=4) · llama.cpp = 106.6 tok/s (t=4)**
+
+> PZ trails llama.cpp on dense F16 by ~7% at peak (no fused Q4K kernel yet — see [Help Wanted ↓](#help-wanted)). At t=8 (all HT logical cores), PZ overtakes llama.cpp.
+
+**Peak-run screenshots — SmolLM2 t=4:**
+
+| PZ BF16 · t=4 · **99.18 tok/s** | llama.cpp · t=4 · **106.6 tok/s** |
+|---|---|
+| ![PZ SmolLM2 peak](benchmark_results/smollm2/screenshots/pz_t4.png) | ![llama.cpp SmolLM2 peak](benchmark_results/smollm2/screenshots/llama_t4.png) |
+
+All 16 screenshots (t=1..8 × 2 engines): [`benchmark_results/smollm2/screenshots/`](benchmark_results/smollm2/screenshots/)
+
 <p align="center">
   <img src="docs/benchmark_smollm2.png" width="720" alt="SmolLM2-135M F16: Project Zero leads llama.cpp at 1-3 threads">
 </p>

@@ -60,6 +60,7 @@
 | AF | 2026-03-20 | [Phase 34.2 GGUF F16 Loader — Full Benchmark](#addendum-af--phase-342-gguf-f16-loader--full-benchmark-2026-03-20) | **59.94 tok/s** SmolLM2-135M F16 |
 | AG | 2026-03-20 | [Phase 17 MoE Routing — BitNet Full Benchmark + RCA](#addendum-ag--phase-17-moe-routing--bitnet-full-benchmark--rca-2026-03-20) | **47.59 tok/s** BitNet NEW PEAK (VNNI-256 INT4 T=6) |
 | AH | 2026-06-21 | [i5-11300H Head-to-Head: PZ vs Microsoft bitnet.cpp](#addendum-ah--i5-11300h-head-to-head-project-zero-vs-microsoft-bitnetcpp-2026-06-21) | **42.83 tok/s** PZ INT4 · **6.4× faster** than MSFT |
+| AI | 2026-06-21 | [SmolLM2-135M F16: PZ vs llama.cpp on i5-11300H](#addendum-ai--smollm2-135m-f16-project-zero-vs-llamacpp-on-i5-11300h-2026-06-21) | **99.18 tok/s** PZ · **106.6 tok/s** llama.cpp · −7% gap |
 
 ---
 
@@ -10171,4 +10172,43 @@ Peak: **6.73 tok/s** at T=4
 - `docs/speedup_graph_i5.png` — speedup ratio per thread
 - `docs/bar_comparison_i5.png` — peak throughput bar chart
 - `docs/demo_bitnet.gif` — live terminal demo (date, lscpu, free -h, multi-thread runs)
+
+---
+
+## Addendum AI — SmolLM2-135M F16: Project Zero vs. llama.cpp on i5-11300H (2026-06-21)
+
+### Hardware
+
+Same machine as Addendum AH: Intel Core i5-11300H @ 3.10 GHz, 16 GB DDR4, AVX-512 VNNI, Linux 6.17.0-20-generic.
+
+### Method
+
+- **Model**: SmolLM2-135M-Instruct-f16.gguf (135M params, F16, dense transformer)
+- **PZ command**: `./adaptive_ai_engine --model SmolLM2-135M-Instruct-f16.gguf --tokenizer smollm2-135m-tokenizer.bin --prompt "..." --max-tokens 500 --temperature 0`
+- **llama.cpp command**: `llama-cli -m SmolLM2-135M-Instruct-f16.gguf -p "..." -n 500 --temp 0 --single-turn --simple-io`
+- **Prompt**: "Explain what machine learning is and how neural networks work in simple terms."
+- **Max tokens**: 500 (model generated 419 tokens before EOS)
+- **Temperature**: 0 for both
+- **Runs**: sequential, one at a time, 10 s cooldown between thread counts
+
+### Results
+
+| Threads | PZ BF16 tok/s | llama.cpp tok/s | Diff |
+|---|---|---|---|
+| 1 | 55.23 | 55.4 | −0.3% |
+| 2 | 77.91 | 85.3 | −8.7% |
+| 3 | 90.18 | 100.0 | −9.8% |
+| 4 | **99.18** | **106.6** | −7.0% |
+| 5 | 92.81 | 101.0 | −8.1% |
+| 6 | 97.09 | 100.0 | −2.9% |
+| 7 | 92.34 | 97.3 | −5.1% |
+| 8 | 85.41 | 84.8 | **+0.7%** |
+
+**PZ peak: 99.18 tok/s (t=4) · llama.cpp peak: 106.6 tok/s (t=4)**
+
+### Analysis
+
+- PZ trails llama.cpp by ~7% at peak on dense F16 inference. This matches the known gap: PZ dequantizes weights to F32 before matmul; llama.cpp uses fused F16 dot-product kernels.
+- At t=8 (all HT logical cores active), PZ overtakes llama.cpp (+0.7%) — likely due to better HT-aware thread pool scheduling.
+- Screenshots: `benchmark_results/smollm2/screenshots/pz_t{1..8}.png` and `llama_t{1..8}.png`
 

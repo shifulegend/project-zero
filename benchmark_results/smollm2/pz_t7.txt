@@ -1,0 +1,64 @@
+Sun Jun 21 03:35:52 PM IST 2026
+Model name:                              11th Gen Intel(R) Core(TM) i5-11300H @ 3.10GHz
+Thread(s) per core:                      2
+Core(s) per socket:                      4
+CPU max MHz:                             4400.0000
+               total        used        free      shared  buff/cache   available
+Mem:            15Gi       4.4Gi       2.3Gi       451Mi       9.6Gi        11Gi
+Swap:          4.0Gi        84Ki       4.0Gi
+
+Command: /home/ubuntu/project-zero/adaptive_ai_engine --model /home/ubuntu/project-zero/models/SmolLM2-135M-Instruct-f16.gguf --tokenizer /home/ubuntu/project-zero/models/smollm2-135m-tokenizer.bin --prompt "Explain what machine learning is and how neural networks work in simple terms." --threads 7 --max-tokens 500 --temperature 0
+
+[tokenizer] chat_template patched from GGUF metadata
+Project Zero Engine v0.1.0-12-gf5d259c-dirty — Auto-Tuned Hardware
+SIMD: avx512f (calibrated optimal)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 8 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1280   KiB per core                 │
+│ L3 cache      : 8      MiB shared                   │
+│ Free RAM      : 11312  MiB                          │
+│ DRAM bandwidth: 11.2   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB                           │
+│ Ceiling       : 9.3    tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 7 threads | AVX-512 VNNI | BF16 cls | 4T | 11.2 GB/s | ceiling 9 tok/s
+Model format: GGUF
+Model Configuration:
+  dim:        576
+  hidden_dim: 1536
+  n_layers:   30
+  n_heads:    9
+  n_kv_heads: 3
+  vocab_size: 49152
+  seq_len:    8192
+  act_type:   0 (SiLU)
+  rope_theta: 100000.0
+  head_dim:   64
+  kv_dim:     192
+[GGUF] Weights loaded (30 layers, arch=llama)
+KV Strategy: Quantized I8, max context: 8192 tokens
+
+Machine learning is a type of artificial intelligence that allows computers to learn from data without being explicitly programmed. It's a way for computers to improve their performance over time by analyzing patterns and relationships in data.
+
+Imagine you have a big box of toys, and you want to know how to play with them. You can't just tell the computer to play with each toy individually, because that would be impractical. Instead, you can ask the computer to play with a toy that's already been played with before. The computer can learn from the experience of playing with that toy, and it can start to play with new toys that are similar to the ones you've played with before.
+
+Machine learning works by using a process called supervised learning. The computer is given a set of labeled data (where each toy is associated with a specific label, such as "cat" or "dog") and a set of unlabeled data (where each toy is not associated with a label). The computer uses this labeled data to learn patterns and relationships in the data.
+
+For example, let's say you're playing with a toy that's a cat. The computer can learn that the toy is a cat because it has a label "cat" in the labeled data. The computer can then use this knowledge to play with a toy that's a dog, which has a label "dog" in the labeled data.
+
+The computer uses this knowledge to make predictions about the next toy in the labeled data. For example, if the computer sees a toy labeled "dog" and a toy labeled "cat" in the labeled data, it can make a prediction about the next toy in the labeled data.
+
+This process is repeated many times, and the computer starts to learn patterns and relationships in the data that it can use to make predictions. The more labeled data the computer has, the more accurate its predictions will be.
+
+In simple terms, machine learning is like a computer that's learning from data, and it can make predictions about new data based on the patterns it's learned.
+[gen] 92.34 tok/s (419 tokens)
+
+

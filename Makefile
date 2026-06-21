@@ -3,6 +3,7 @@ CXX     ?= g++
 # On macOS, _DARWIN_C_SOURCE unlocks sysconf constants (e.g. _SC_NPROCESSORS_ONLN)
 # without conflicting with strict C99 mode.
 UNAME_S := $(shell uname -s)
+UNAME_M := $(shell uname -m)
 ifeq ($(UNAME_S),Darwin)
     DARWIN_DEFS = -D_DARWIN_C_SOURCE
 else
@@ -40,8 +41,15 @@ LDFLAGS_DIST  = $(LDFLAGS) -static-libstdc++ -static-libgcc
 # Per-TU ISA flag groups (additive: harmless under -march=native, required at
 # the portable dist baseline). F16C is needed by matmul_f16; FMA by the AVX2/
 # AVX-512 float paths.
-ISA_AVX2   = -mavx2 -mfma -mf16c
-ISA_AVX512 = $(ISA_AVX2) -mavx512f -mavx512bw -mavx512vl -mavx512dq
+# ISA flags are x86-only; leave empty on arm64/aarch64 (source files are
+# guarded by TN_HAS_AVX2 / TN_HAS_AVX512 so they compile to empty TUs).
+ifeq ($(filter x86_64 i686,$(UNAME_M)),)
+  ISA_AVX2   =
+  ISA_AVX512 =
+else
+  ISA_AVX2   = -mavx2 -mfma -mf16c
+  ISA_AVX512 = $(ISA_AVX2) -mavx512f -mavx512bw -mavx512vl -mavx512dq
+endif
 
 # Default to release
 CFLAGS   ?= $(CFLAGS_RELEASE)

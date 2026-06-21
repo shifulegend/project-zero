@@ -32,7 +32,7 @@ jobs:
     name: Build & verify portable binary
     runs-on: ubuntu-22.04          # glibc 2.35 — forward-compatible floor
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0           # tags needed for the embedded version string
 
@@ -141,7 +141,7 @@ jobs:
     permissions:
       contents: write               # least privilege: only this job writes releases
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with: { name: dist, path: dist }
       - name: Create release and upload assets

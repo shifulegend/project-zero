@@ -50,6 +50,12 @@ Pure C, single binary. Runs Microsoft's BitNet b1.58 **up to 6.4× faster than M
 
 > Project Zero BF16 is **3.7–5.8× faster** than bitnet.cpp. INT4 classifier is **5.3–9.6× faster** — same output quality on classification, faster decode.
 
+**Peak-run terminal screenshots — same machine, same model, same prompt:**
+
+| PZ INT4 · t=6 · **42.83 tok/s** | PZ BF16 · t=7 · **28.11 tok/s** | MSFT bitnet.cpp · t=4 · **6.73 tok/s** |
+|---|---|---|
+| ![PZ INT4 peak](benchmark_results/screenshots/pz_int4_t6.png) | ![PZ BF16 peak](benchmark_results/screenshots/pz_bf16_t7.png) | ![MSFT peak](benchmark_results/screenshots/msft_t4.png) |
+
 <p align="center">
   <img src="docs/comparison_graph_i5.png" width="720" alt="Tok/s vs threads: PZ BF16, PZ INT4, Microsoft bitnet.cpp on i5-11300H">
 </p>

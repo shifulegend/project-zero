@@ -139,16 +139,17 @@ ax.set_title('Peak Throughput — Project Zero vs Microsoft bitnet.cpp\n'
              'BitNet b1.58-2B-4T · i5-11300H @ 3.10 GHz · AVX-512 VNNI', fontsize=13)
 ax.set_ylim(0, pk_int4 * 1.25)
 
-# Speedup annotations
-for i, (val, label) in enumerate(zip(values[:-1], labels[:-1])):
-    speedup = val / pk_msft
-    ax.text(i, -4.5, f'{speedup:.1f}× faster\nthan MSFT', ha='center', va='top',
-            color=colours[i], fontsize=10, style='italic',
-            transform=ax.get_xaxis_transform())
+# Speedup annotations — as figure text below the chart
+speedup_int4 = pk_int4 / pk_msft
+speedup_bf16 = pk_bf16 / pk_msft
+plt.figtext(0.26, 0.01, f'{speedup_int4:.1f}× faster than MSFT',
+            ha='center', color=C_INT4, fontsize=10, style='italic')
+plt.figtext(0.57, 0.01, f'{speedup_bf16:.1f}× faster than MSFT',
+            ha='center', color=C_BF16, fontsize=10, style='italic')
 
 out = 'benchmark_results/bar_comparison.png'
-plt.tight_layout()
-plt.savefig(out, dpi=150, facecolor=BG, bbox_inches='tight')
+plt.tight_layout(rect=[0, 0.06, 1, 1])
+plt.savefig(out, dpi=150, facecolor=BG)
 plt.close()
 print(f'Saved: {out}')
 

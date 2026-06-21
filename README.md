@@ -21,7 +21,8 @@
 Pure C, single binary. Runs Microsoft's BitNet b1.58 **up to 6.4× faster than Microsoft's own `bitnet.cpp`** — and dense GGUF models — no GPU, no Python, no ML framework.
 
 - **Pure C, zero runtime deps** — `make release`, one executable, nothing else required
-- **3.7–6.4× faster than bitnet.cpp** — measured on i5-11300H; 1.80× on 4-core Xeon ([OpenBenchmarking.org ↓](#benchmarks))
+- **3.7–6.4× faster than bitnet.cpp on i5-11300H** · **1.33–1.80× faster on 4-core Xeon** (both [third-party verified on OpenBenchmarking.org ↓](#benchmarks))
+- **36.25 tok/s on Xeon (PGO+LTO) · 42.83 tok/s on i5-11300H (INT4)** — 95% of DRAM bandwidth ceiling
 - **One binary, two model families** — BitNet ternary and dense F16 GGUF, no per-model rebuild
 
 ---

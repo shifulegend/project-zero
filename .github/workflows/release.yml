@@ -100,7 +100,7 @@ jobs:
     runs-on: ubuntu-22.04
     container: debian:12-slim       # glibc 2.36 (>= build), no dev tools/libstdc++ preinstalled
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with: { name: dist, path: dist }
       - name: Extract and run on a stock image
         run: |
@@ -117,7 +117,7 @@ jobs:
     runs-on: ubuntu-22.04
     continue-on-error: true         # gated by network policy / model availability
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with: { name: dist, path: dist }
       - name: Download SmolLM2-135M and assert France -> Paris
         run: |
@@ -142,7 +142,7 @@ jobs:
       contents: write               # least privilege: only this job writes releases
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with: { name: dist, path: dist }
       - name: Create release and upload assets
         env:

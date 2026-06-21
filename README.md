@@ -8,18 +8,20 @@
 [![Discussions](https://img.shields.io/github/discussions/shifulegend/project-zero)](https://github.com/shifulegend/project-zero/discussions)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-**A pure-C, single-binary CPU LLM engine that beats `llama.cpp` and `bitnet.cpp`
-in some configurations** — no GPU, no Python, no ML framework.
+**A pure-C, single-binary CPU LLM engine that runs Microsoft's BitNet b1.58
+*faster than Microsoft's own `bitnet.cpp`* — and dense GGUF models too, from one
+binary** — no GPU, no Python, no ML framework.
 
 - ✅ **Pure C, single binary** — `make release`, one executable, zero runtime dependencies
 - ✅ **No GPU, no Python** — runs on commodity CPUs; Python is offline tooling only
-- ✅ **BitNet-optimized** — native ternary (−1/0/+1) kernels at ~95% of the DRAM-bandwidth ceiling
-- ✅ **Up to 1.8× faster than `bitnet.cpp` and +50% vs `llama.cpp`** in tested configs ([benchmarks below ↓](#benchmarks))
+- ✅ **Faster than `bitnet.cpp` on BitNet** — **1.80×** on Xeon (and ahead at *every* thread count in fresh tests), at **~95% of the DRAM-bandwidth ceiling**
+- ✅ **One binary, two worlds** — the only engine that runs **both** BitNet ternary **and** dense F16 GGUF with no per-model build ([benchmarks below ↓](#benchmarks))
 
-> **Honest scope.** These wins hold in *specific* configurations (see the table). On the
-> DeepSeek-V2 MoE model project-zero is still ~7× behind `llama.cpp` — that gap is
-> documented, not hidden ([Known Limitations](#known-limitations)). The numbers come
-> from the optimization journals in `docs/`, and `make demo` lets you reproduce them.
+> **Honest scope.** The robust, apples-to-apples win is over **bitnet.cpp** (same model,
+> same SIMD/threads — see the table). Against `llama.cpp` on **dense** models, llama.cpp
+> leads at its optimal thread count on AVX-512 many-core CPUs; on the **DeepSeek-V2 MoE**
+> model project-zero is still ~7× behind. Those gaps are documented, not hidden
+> ([Known Limitations](#known-limitations)), and `make demo` lets you reproduce the numbers.
 
 ---
 
@@ -46,28 +48,50 @@ No GPU, no Python, no API key — just a C compiler, `make`, and `curl`/`wget`.
 
 ## 📊 Benchmarks: claim → proof
 
-Real, head-to-head measurements from the optimization journals in `docs/` — same
-model, same hardware. Full methodology in
+All numbers below are **measured fresh on one Intel Xeon @ 2.10 GHz (4 cores, AVX-512
+VNNI)**, same SIMD, generation throughput (TG), warm cache. Full methodology +
+all-hardware history in
 [`docs/PERFORMANCE_CEILING_REPORT.md`](docs/PERFORMANCE_CEILING_REPORT.md) and
-[`.claude/BENCHMARK_SUMMARY.md`](.claude/BENCHMARK_SUMMARY.md).
+[`docs/reports/BENCHMARK_REPORT.md`](docs/reports/BENCHMARK_REPORT.md).
 
-| Model | Hardware (config) | Project Zero | llama.cpp / bitnet.cpp | Gain |
+### The fair, robust win — BitNet b1.58-2B-4T vs Microsoft `bitnet.cpp`
+
+Same ternary model, same machine, same threads (`llama.cpp` cannot load BitNet i2_s at all):
+
+| Threads | Project Zero | bitnet.cpp (i2_s) | Project Zero gain |
+|---|---|---|---|
+| 1 | **5.91** | 4.96 | **+19%** |
+| 2 | **12.78** | 9.46 | **+35%** |
+| 3 | **18.61** | 13.59 | **+37%** |
+| 4 | **21.45** | 16.10 | **+33%** |
+
+*tok/s, BF16 classifier. With Project Zero's INT4 classifier: 37–40 tok/s.* On a tuned
+Xeon (PGO+LTO, INT4) Project Zero reaches **36.25 tok/s = ~95% of the analytical
+DRAM-bandwidth ceiling**, **1.80× over bitnet.cpp** — i.e. near the physical limit for
+this model on this memory.
+
+### Honest dense comparison — SmolLM2-135M F16 vs `llama.cpp`
+
+Same f16 model, same SIMD. Project Zero in **BF16** (precision-matched to llama.cpp's f16)
+and in its **INT4** classifier (its fast mode, lower LM-head precision):
+
+| Threads | PZ (BF16) | PZ (INT4) | llama.cpp | bitnet.cpp |
 |---|---|---|---|---|
-| **BitNet b1.58-2B-4T** (ternary) | Xeon Emerald Rapids · 4C · VNNI · PGO+LTO | **36.25** best · 34.75 avg | bitnet.cpp 19.83 / 19.33 | **1.83× / 1.80×** ✅ |
-| **SmolLM2-135M** (F16 dense) | i5-5250U · 2C/4T · DDR3 · **T=4** | **33.73** | llama.cpp 22.48 · bitnet.cpp 22.19 | **+50%** ✅ |
-| **SmolLM2-135M** (F16 dense) | i5-5250U · 2C/4T · DDR3 · **T=3** | **27.06** | llama.cpp 21.40 · bitnet.cpp 22.11 | **+22–26%** ✅ |
-| **SmolLM2-135M** (F16 dense) | i5-5250U · 2C/4T · DDR3 · **T=1** | 27.74 | llama.cpp 30.71 | −10% ⚠️ |
-| **DeepSeek-V2-Lite** (MoE Q4_K_S) | i5-11300H · T=4 | 1.90 | llama.cpp 13.79 | ~7× slower ⚠️ |
+| 1 | **35.03** | 42.36 | 26.60 | 31.53 |
+| 2 | **55.07** | 78.44 | 52.80 | 49.56 |
+| 3 | **82.54** | 92.79 | 71.60 | 67.46 |
+| 4 | 94.41 | **127.82** | **107.21** | 97.25 |
 
-*All figures tok/s.* **All-time peaks:** SmolLM2-135M **83.79 tok/s** (i5-11300H) /
-**137.6 tok/s** (Xeon, VNNI); BitNet **51.74 tok/s**. The BitNet Xeon result sits at
-**~95% of the analytical DRAM-bandwidth ceiling** — near the physical limit for this
-model on this memory.
+*tok/s.* Precision-matched (BF16 vs f16), **Project Zero leads llama.cpp at 1–3 threads**
+(+32% / +4% / +15%); at the 4-thread optimum **llama.cpp edges ahead (+13%)**, and
+Project Zero's INT4 mode retakes the lead (127.8). We do **not** claim a blanket
+"faster than llama.cpp" — at equal precision and optimal thread on this CPU, llama.cpp
+wins dense.
 
-> **Where it wins:** native BitNet ternary (the only engine running it this fast on
-> CPU) and multi-threaded dense models at T=3–4. **Where it loses today:** low thread
-> counts (BLAS edge) and MoE expert routing (scatter penalty — [help wanted](#help-wanted)).
-> Numbers are reproducible: run `make demo`, then post yours.
+> **Where Project Zero loses today (stated plainly):** the **DeepSeek-V2 MoE** model is
+> ~7× behind `llama.cpp` (F32-dequant vs fused Q4_K — [help wanted](#help-wanted)), and
+> thread **oversubscription** beyond physical cores on a non-HT CPU degrades it sharply.
+> Reproduce any row: `make demo`, then post yours.
 
 📊 **OpenBenchmarking.org (third-party-hosted runs):**
 [Xeon — Project Zero vs bitnet.cpp](https://openbenchmarking.org/result/2606063-SHIF-PROJECT91)

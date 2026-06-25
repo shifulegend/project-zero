@@ -1885,7 +1885,61 @@ true_dot = dpbusds(w_enc_u8, q_x_i8) - 128 * sum(q_x_i8)
 ```
 `sum_i8_avx512()` uses `_mm512_cvtepi8_epi32` in four quarters to avoid signed-overflow.
 
+---
 
+## Phase K-6: 5-Trit LUT Kernel *(Next Perf Phase)*
+
+**Source:** tommyyliu/lut_mm, validated against PZ in BitNet #569 (2026-06-25).
+
+### The idea in one paragraph
+
+Current PZ packs 4 ternary weights per byte (2 bits each). The 5-trit approach packs 5 per
+byte using balanced ternary encoding, then resolves each byte as a table lookup using
+`vpermt2w` register shuffles rather than `vpdpbusd` dot-product accumulation. The 122
+non-negative table magnitudes fit in 4 zmm registers (122 <= 128 = two-register `vpermt2w`
+index space), so the lookup is entirely register-resident with no memory round-trips.
+
+### Two compounding wins
+
+**Win 1: 25% denser weights (the bigger lever)**
+
+5 trits/byte vs 4 trits/byte. Weight reads are ~80% of per-token DRAM traffic at T=1.
+PZ is at 95% of measured DRAM ceiling (Addendum T, 36.25 tok/s Xeon). A 20% reduction
+in bytes read per token → ~20% more tok/s before any compute change.
+
+**Win 2: Kernel beats VNNI (1.16-1.27x)**
+
+Measured, July 2026:
+- Intel Xeon @ 2.80 GHz (avx512bw/vnni): lut_mm 153.7 vs VNNI 132.6 Gop/s = **1.16x**
+- AMD Ryzen 9950X (Zen 5): 704.3 vs 555.2 Gop/s = **1.27x** (tommyyliu, BitNet #569)
+
+LUT wins on both architectures. Multi-thread scaling is near-linear (3.73x on 4 cores
+at T=4), consistent with compute-bound behavior.
+
+Importantly: the LUT kernel requires only **AVX-512BW**, not VNNI. Our Cascade Lake
+(avx512bw present, avx512vnni absent) currently falls back to AVX-512F float32 -- K-6
+would be the first integer-math kernel available on that CPU.
+
+### No quality loss
+
+lut_mm produces bit-identical int32 outputs to the dense GEMM reference. The encoding
+is a lossless repack of the same {-1, 0, 1} values. Token output is unchanged.
+
+### Dispatch change
+
+Current: AVX-512 VNNI → AVX-VNNI → AVX-512F → AVX2 → ARM → Scalar
+After K-6: **AVX-512BW LUT** → AVX-512 VNNI → AVX-VNNI → AVX-512F → AVX2 → ARM → Scalar
+
+LUT is placed above VNNI because it is faster on all tested x86 hardware and broader
+(BW without VNNI is a valid tier; VNNI without BW does not exist on any shipping CPU).
+
+### Expected outcome
+
+Conservative: 36.25 tok/s * 1.16 (kernel) * 1.20 (DRAM density) ≈ **50 tok/s** at T=1 on
+the reference Xeon. The DRAM term is the larger factor -- at 95% DRAM ceiling, shaving 20%
+of weight bytes is more impactful than the 16% kernel speedup.
+
+See IMPLEMENTATION_PLAN.md Phase K-6 for the full implementation spec.
 
 ---
 

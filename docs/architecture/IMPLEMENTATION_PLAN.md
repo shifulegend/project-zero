@@ -1254,6 +1254,83 @@ Since we cannot change the AI's weights at runtime, we make the AI "learn" by gi
 
 ---
 
+## PHASE K-6: 5-Trit LUT Kernel (AVX-512BW, No VNNI Required)
+
+*Status: NOT STARTED. Motivation: tommyyliu/lut_mm benchmark, BitNet #569 (2026-06-25).*
+
+### Why this beats VNNI
+
+The current ternary matmul packs 4 trits per byte (2 bits each). lut_mm packs 5 trits per
+byte using balanced ternary encoding (value = sum(w[t] * 3^(4-t)), range [-121, 121]).
+
+Two compounding improvements:
+
+1. **25% denser weights.** 5 trits/byte vs 4. Weights are ~80% of DRAM traffic per token
+   at T=1. PZ runs at 95% of measured DRAM ceiling (Addendum T). A 25% reduction in weight
+   bytes read directly translates to ~20% more tok/s before any compute improvement.
+
+2. **Faster kernel.** `vpermt2w` table-lookup shuffles replace `vpdpbusd` dot-product chains.
+   Measured on Intel Xeon @ 2.80 GHz (avx512bw/vnni, GCC 13.3.0):
+   lut_mm_avx512 153.7 Gop/s vs dense_mm_vnni 132.6 Gop/s = **1.16x at T=1**.
+   AMD Zen 5 (9950X): 704.3 vs 555.2 = **1.25x**. LUT wins on both architectures.
+   Multi-thread scaling: 3.73x on 4 cores at T=4 (compute-bound, near-linear).
+
+3. **Broader hardware support.** Requires only AVX-512BW, not VNNI. Our Cascade Lake
+   (avx512bw present, avx512vnni absent) cannot run the current VNNI kernel at all --
+   the K-6 kernel would be the new best tier on that machine.
+
+**No quality loss.** lut_mm README: "every implementation produces bit-identical int32
+results vs the dense GEMM -- the harness refuses to benchmark anything that doesn't."
+Output tokens are identical. This is a pure speed optimization.
+
+### What to build
+
+**K-6.1 — New weight packing format**
+- File: `include/math/ternary_matmul_packed.h`, `src/math/ternary_pack_5trit.c`
+- Add `TN_PACK_5TRIT` format constant alongside existing `TN_PACK_2BIT`
+- Packing: given 5 ternary values w[0..4] in {-1,0,1}, byte = w[0]*81 + w[1]*27 + w[2]*9 + w[3]*3 + w[4] + 121 (offset to unsigned [0,242])
+- Re-packing function: `tn_repack_2bit_to_5trit(dst, src_packed, n_weights)` -- one-time
+  call at model load time, output stored in existing weight buffer (or new allocation)
+- Memory: 5-trit weights need (n * 4 + 4) / 5 bytes per row vs (n + 3) / 4 for 2-bit.
+  Net: 4/5 of current weight memory = 20% reduction.
+
+**K-6.2 — AVX-512BW LUT kernel**
+- File: `src/math/ternary_matmul_lut_avx512bw.c`
+- Guard: `#if TN_HAS_AVX512BW`
+- Algorithm: 122-entry table (mirror symmetry: T[|v|] * sign(v)) in 4 zmm registers.
+  Per 5-weight group: load byte, compute |v| and sign, two `vpermt2w` + one blend to
+  resolve 122 entries, masked negate for sign. Accumulate as int16, flush to int32
+  every 51 groups (avoids int16 overflow: 51 * max_entry_640 = 32640 < 32767).
+- Input activations: int8 (same quantization as existing VNNI kernel -- reuse `quantize_i8`)
+- Dequant: identical scale application as existing VNNI path
+- Reference implementation to port from: https://github.com/tommyyliu/lut_mm
+  Key file: `src/ternary_mm_avx512.cpp` (GPL-3.0; rewrite in C, do not copy verbatim)
+- Compile flag: `-mavx512bw` per-file in Makefile (already present for other BW users)
+
+**K-6.3 — Dispatch update**
+- File: `src/math/simd_dispatch.c`
+- New priority order: AVX-512BW LUT → AVX-512 VNNI → AVX-VNNI → AVX-512F → AVX2 → ARM → Scalar
+- Rationale: LUT beats VNNI on every tested x86 microarchitecture; VNNI remains fallback
+  for CPUs with VNNI but not BW (rare in practice but possible)
+- Add `TN_BACKEND_LUT_AVX512BW` to backend name strings in `tn_cpu_best_backend_name()`
+
+**K-6.4 — Benchmark and regression**
+- File: `tools/bench_simd.c` (extend existing tool)
+- Add LUT kernel to the benchmark sweep
+- File: `tests/test_simd_vnni.c` (extend or add `tests/test_lut_avx512bw.c`)
+- Bit-exact correctness check: LUT output must match scalar reference for 50+ random inputs
+
+### Expected outcome
+At T=1 on a VNNI-capable Xeon: ~1.16x kernel improvement + ~20% DRAM reduction.
+Conservative estimate: 36.25 tok/s * 1.16 * 1.20 ≈ **50 tok/s**.
+Addendum T was 36.25 tok/s at 95% DRAM ceiling -- the 25% weight density gain is the
+larger lever because DRAM is the binding constraint, not compute.
+
+On Cascade Lake (avx512bw, no avx512vnni): currently falls back to AVX-512F float32.
+K-6 would be the first integer-math kernel available on that hardware.
+
+---
+
 ## PHASE 16-D: Documentation & Packaging
 
 ### 16.1 — Usage Documentation

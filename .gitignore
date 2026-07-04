@@ -25,6 +25,12 @@ models/bitnet-b1.58-2B-4T-converted.bin
 models/bitnet-b1.58-2B-4T-tokenizer-converted.bin
 models/.hf_cache/
 models/deepseek-v2-lite.bin
+# Session-local benchmark downloads (regenerable from Hugging Face; not for git)
+models/SmolLM2-135M-Instruct-f16.gguf
+models/bitnet-b1.58-2B-4T-i2_s.gguf
+models/bitnet-b1.58-2B-4T.bin
+models/bitnet-b1.58-2B-4T_tokenizer.bin
+models/bitnet-hf/
 test_moe_final_output.txt
 test_moe_results.txt
 

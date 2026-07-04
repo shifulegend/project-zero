@@ -1,0 +1,6 @@
+$ date -u && python3 bench_llamacpp.py  # Llama(model_path=SmolLM2-135M-Instruct-f16.gguf, n_threads=4, n_ctx=2048)
+2026-07-04T10:06:19Z
+run 1: 200 tokens in 1.609s -> 124.31 tok/s
+  text[:200]:   The first step is to understand the basics of machine learning. Machine learning is a subset of artificial intelligence that involves training algorithms to learn from data and make predictions or d
+run 2: 200 tokens in 1.543s -> 129.60 tok/s
+run 3: 200 tokens in 1.497s -> 133.64 tok/s

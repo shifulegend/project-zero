@@ -1,0 +1,49 @@
+$ date -u && ./adaptive_ai_engine --model models/SmolLM2-135M-Instruct-f16.gguf --prompt "Explain what machine learning is and how neural networks work in detail." --max-tokens 200 --temperature 0 --threads 4
+2026-07-04T10:03:55Z
+[gguf-tok] Loaded 49152 tokens (gpt2), 17 special — BOS=1 EOS=2 chat_template=yes
+Project Zero Engine 8a4905f — Auto-Tuned Hardware
+SIMD: scalar (calibrated optimal)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 2048   KiB per core                 │
+│ L3 cache      : 260    MiB shared                   │
+│ Free RAM      : 15349  MiB                          │
+│ DRAM bandwidth: 16.1   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB                           │
+│ Ceiling       : 17.3   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 4 threads | AVX-512 VNNI | BF16 cls | 4T | 16.1 GB/s | ceiling 17 tok/s
+Model format: GGUF
+Model Configuration:
+  dim:        576
+  hidden_dim: 1536
+  n_layers:   30
+  n_heads:    9
+  n_kv_heads: 3
+  vocab_size: 49152
+  seq_len:    8192
+  act_type:   0 (SiLU)
+  rope_theta: 100000.0
+  head_dim:   64
+  kv_dim:     192
+[GGUF] Weights loaded (30 layers, arch=llama)
+KV Strategy: Quantized I8, max context: 8192 tokens
+
+Machine learning is a subset of artificial intelligence that enables computers to learn from data without being explicitly programmed. It's a process of training a model to recognize patterns and make predictions based on data. In simple terms, machine learning is a way for computers to learn from experience and improve their performance over time.
+
+Imagine you're trying to solve a complex problem, like identifying patterns in a large dataset. You might use a computer to analyze the data and try to identify the underlying structure. If the computer finds a pattern, it might use that pattern to make a prediction about the next step in the problem.
+
+In machine learning, the computer is trained on a dataset that contains the patterns it's trying to learn. This training process involves feeding the computer a large amount of data, which is then used to train the model. The model learns to recognize patterns and make predictions based on the data it's been trained on.
+
+There are several types of machine learning, including supervised learning, unsupervised learning
+[gen] 110.80 tok/s (201 tokens)
+
+

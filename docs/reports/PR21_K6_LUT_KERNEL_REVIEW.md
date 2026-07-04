@@ -87,7 +87,35 @@ not the 74.6 Gop/s headline in the PR description.
 
 ---
 
+## SIMD backend × classifier × thread sweep (in place of the blocked MS bitnet.cpp comparison)
+
+Since a native Microsoft `bitnet.cpp` comparison was blocked (GitHub egress, see below), here's the
+comparison that *is* available on this hardware: Project Zero's own existing kernels — this doesn't
+touch the new K-6 LUT kernel at all (still unwired), but it does show what headroom already exists
+from backend/classifier selection alone, and it's the fairest apples-to-apples data this sandbox can
+produce. 36 configs: `{scalar, avx2, avx512f, vnni} × {bf16, int8} ∪ {vnni × int4}`, threads 1–4,
+same model/prompt as above:
+
+![SIMD backend x classifier x thread sweep](../../benchmark_results/lut_review_2026-07-04/simd_classifier_sweep.png)
+
+**Peak: `vnni` / `int4` @ t=4 → 18.54 tok/s** (1.3× over the `scalar`/`bf16` baseline at the same
+thread count). One notable anomaly: `avx2` and `avx512f` both *regress* going from t=3 to t=4
+(13.3→12.3 and 14.3→11.7 tok/s) while `scalar` and `vnni` keep climbing — worth a look if anyone
+picks up thread-scaling work on this engine, independent of this PR.
+
+![Peak-config terminal capture](../../benchmark_results/lut_review_2026-07-04/screenshots/bitnet_simd_sweep_peak.png)
+
+---
+
 ## Before / after the fix, measured end-to-end
+
+> **Reproducibility note:** this is a shared cloud vCPU. Absolute tok/s drifted noticeably between
+> an earlier pass in this same review and the numbers below (SmolLM2 ~58 → ~110 tok/s) — a fresh
+> hardware auto-calibration mid-review measured DRAM bandwidth at ~15–16 GB/s versus ~10–13 GB/s
+> earlier, consistent with noisy-neighbor variance on shared virtualized hardware rather than
+> anything in this PR. The numbers below were all captured back-to-back in one sitting so the
+> *before/after comparison itself* stays apples-to-apples; treat cross-session absolute values as
+> illustrative, not exact.
 
 Because the kernel isn't referenced from `simd_dispatch.c` or any call site outside its own file,
 both models were run on `master` (pre-fix) and on the PR branch with the fix applied, to confirm
@@ -97,21 +125,21 @@ this directly rather than just arguing it from the code:
 
 | Model | Branch | Run 1 | Run 2 | Run 3 | Best |
 |---|---|---|---|---|---|
-| SmolLM2-135M F16 (t=4) | master @ 37f1850 | 58.4 | 55.5 | 58.0 | **58.4** tok/s |
-| SmolLM2-135M F16 (t=4) | after fix @ 8a4905f | 57.7 | 56.0 | 61.2 | **61.2** tok/s |
-| BitNet b1.58-2B-4T (t=4) | master @ 37f1850 | 13.25 | 13.02 | 12.93 | **13.25** tok/s |
-| BitNet b1.58-2B-4T (t=4) | after fix @ 8a4905f | 12.89 | 13.13 | 12.89 | **13.13** tok/s |
+| SmolLM2-135M F16 (t=4) | master @ 37f1850 | 100.95 | 112.48 | 107.67 | **112.48** tok/s |
+| SmolLM2-135M F16 (t=4) | after fix @ 8a4905f | 110.80 | 107.44 | 108.35 | **110.80** tok/s |
+| BitNet b1.58-2B-4T (t=4) | master @ 37f1850 | 16.43 | 15.83 | 15.62 | **16.43** tok/s |
+| BitNet b1.58-2B-4T (t=4) | after fix @ 8a4905f | 16.52 | 15.67 | 16.13 | **16.52** tok/s |
 
-Run-to-run spread (±5% on SmolLM2, ±1% on BitNet) is normal noise for a 4-core sandbox VM; the two
-branches are statistically indistinguishable on both models, as expected.
+Run-to-run spread is normal noise for a shared 4-core sandbox VM; the two branches are statistically
+indistinguishable on both models, as expected.
 
-**Terminal captures (real runs, real UTC timestamps):**
+**Terminal captures — authentic, unedited output (real runs, real UTC timestamps):**
 
-| SmolLM2 F16 · master · 58.4 tok/s | SmolLM2 F16 · after fix · 61.2 tok/s |
+| SmolLM2 F16 · master · 112.5 tok/s | SmolLM2 F16 · after fix · 110.8 tok/s |
 |---|---|
 | ![SmolLM2 master](../../benchmark_results/lut_review_2026-07-04/screenshots/smollm2_master_t4.png) | ![SmolLM2 after fix](../../benchmark_results/lut_review_2026-07-04/screenshots/smollm2_prfixed_t4.png) |
 
-| BitNet b1.58-2B-4T · master · 13.25 tok/s | BitNet b1.58-2B-4T · after fix · 13.13 tok/s |
+| BitNet b1.58-2B-4T · master · 16.43 tok/s | BitNet b1.58-2B-4T · after fix · 16.52 tok/s |
 |---|---|
 | ![BitNet master](../../benchmark_results/lut_review_2026-07-04/screenshots/bitnet_master_t4.png) | ![BitNet after fix](../../benchmark_results/lut_review_2026-07-04/screenshots/bitnet_prfixed_t4.png) |
 
@@ -127,11 +155,11 @@ F16 GGUF, same prompt, same thread count as the Project Zero runs above:
 
 | Engine | Run 1 | Run 2 | Run 3 | Best |
 |---|---|---|---|---|
-| Project Zero · master | 58.4 | 55.5 | 58.0 | 58.4 tok/s |
-| Project Zero · after fix | 57.7 | 56.0 | 61.2 | 61.2 tok/s |
-| llama.cpp | 72.0 | 69.1 | 70.8 | **72.0** tok/s |
+| Project Zero · master | 100.95 | 112.48 | 107.67 | 112.48 tok/s |
+| Project Zero · after fix | 110.80 | 107.44 | 108.35 | 110.80 tok/s |
+| llama.cpp | 124.31 | 129.60 | 133.64 | **133.64** tok/s |
 
-llama.cpp leads by ~19–24% on this hardware — consistent with the project's own prior finding
+llama.cpp leads by ~19% on this hardware — consistent with the project's own prior finding
 (`docs/BENCHMARK.md`: PZ trails llama.cpp by 3–6% at peak on an i5-11300H; the larger gap here
 likely reflects this sandbox's different core/cache/bandwidth characteristics rather than anything
 this kernel change touches). Not relevant to the kernel fix either way — included because it was

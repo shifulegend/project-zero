@@ -3,7 +3,32 @@
 > Canonical, append-at-top (newest first). Read this at the start of every session.
 > Add an entry **immediately** when a mistake, false assumption, regression, or avoidable
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
-> Last updated: 2026-07-17.
+> Last updated: 2026-07-19.
+
+### 2026-07-19 — CI red since 07-17: test_q2_0_matmul's reference compared the wrong kernel's math
+- Summary: `test_single_block_multi_row` failed 3/5 rows on every CI run since the 07-17
+  Q2_0/VNNI commits (`f9857a2`/`ce8e90d`/`dd295e5`), on ubuntu-22.04, ubuntu-latest, and
+  macOS alike — never flaky, always the same 3 rows.
+- Root cause: `ref_dot_q2_0_row()` in `tests/test_q2_0_matmul.c` was made to compare against
+  `quantize_row_to_i8`-quantized activations, matching what `matmul_q2_0_vnni.c`'s VNNI
+  kernel actually computes with (int8 dpbusds is a hardware requirement there). But
+  `parallel_matmul_q2_0()` only dispatches to that VNNI kernel `#if TN_HAS_AVX512VNNI` — on
+  every CI runner (none of which have AVX-512 VNNI, confirmed: this reproduced locally on a
+  2-core host with `avx512bw` but no `avx512vnni`), it falls back to `matmul_q2_0.c`'s
+  portable kernel, which FMAs the raw float32 activations directly and never quantizes them
+  at all. The test was comparing two genuinely different computations and failing on
+  whichever rows this test's synthetic data happened to round unfavorably for.
+- Fix: `ref_dot_q2_0_row()` now branches on the same `TN_HAS_AVX512VNNI` macro the kernel
+  dispatch itself uses — quantized reference when VNNI will actually run, plain float
+  reference otherwise. 35/35 tests pass locally (portable path); full `make test` suite
+  passes clean.
+- Prevention rule: when a kernel has a compile-time-gated fast path, the test's reference
+  implementation must branch on the *same* gate, not assume one path unconditionally — a
+  reference tuned for the fast path silently miscompares the fallback path, and CI runners
+  are exactly where the fallback path is what actually gets exercised.
+- Not fixed here (separate, unrelated, tracked in CMO ops board): `src/math/matmul_q2_0_vnni.c`
+  itself was never exercised by this bug or its fix (no VNNI hardware available to test
+  against) — worth a dedicated VNNI-host correctness pass before the next release.
 
 ### 2026-07-17 — Ceiling push: two optimizations implemented, measured, and REVERTED on evidence; plus a misleading KV-strategy line that had already corrupted a published bound
 - Summary: pushing from 59% toward the 6.0 tok/s ceiling, step-timing was first wired into the

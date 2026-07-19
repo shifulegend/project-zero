@@ -13,6 +13,7 @@
 
 #include "math/matmul_q2_0.h"
 #include "core/gguf_quant.h"
+#include "core/platform.h"
 #include "math/quantize_i8.h"
 #include "test_harness.h"
 
@@ -60,32 +61,50 @@ static void make_q2_0_row(uint8_t *row, int n, int row_seed) {
 }
 
 /*
- * Reference dot product for one row, against the SAME int8-quantized
- * (then dequantized) activations the VNNI kernel actually computes with —
- * not the raw float x. VNNI hardware fundamentally needs int8 operands, so
- * quantize_row_to_i8's rounding is an intentional, expected approximation
- * of the true float dot product, not a correctness bug; comparing against
- * raw float x (as this function originally did) conflated that expected
- * quantization error with real kernel bugs and produced false failures on
- * this test's wider-range synthetic activations. Comparing against the
- * *quantized* x isolates whether the VNNI bias-trick and bit-unpack are
- * themselves correct, independent of int8 rounding.
+ * Reference dot product for one row. Which comparison is "correct" depends
+ * on which kernel parallel_matmul_q2_0() will actually dispatch to on this
+ * build, and the two paths compute genuinely different things:
+ *
+ *   - AVX-512 VNNI host (matmul_q2_0_vnni.c): the kernel itself quantizes x
+ *     to int8 (hardware requirement for dpbusds), so quantize_row_to_i8's
+ *     rounding is an intentional, expected approximation of the true float
+ *     dot product, not a correctness bug — comparing against the same
+ *     *quantized* x isolates whether the VNNI bias-trick/bit-unpack are
+ *     themselves correct, independent of that expected int8 rounding.
+ *   - Portable/AVX2 host (matmul_q2_0.c, TN_HAS_AVX512VNNI == 0): the kernel
+ *     never quantizes x at all — dot_q2_0_row() FMAs the raw float32 x
+ *     directly. Comparing that against an int8-quantized reference compares
+ *     two different operations and fails on whichever rows this test's
+ *     synthetic data happens to round unfavorably for, independent of
+ *     whether the kernel is actually correct (root cause of the 2026-07-17
+ *     regression: this function was made VNNI-aware but parallel_matmul_q2_0
+ *     dispatches to the portable path on every CI runner, none of which have
+ *     AVX-512 VNNI, so every run compared the exact-float portable kernel
+ *     against a quantized reference it never computes with).
+ *
+ * So: match the reference to whichever path this build will actually take,
+ * same #if this file's own matmul_q2_0.c dispatch uses.
  */
 static float ref_dot_q2_0_row(const uint8_t *row, const float *x, int n) {
     float *decoded = (float *)malloc((size_t)n * sizeof(float));
     gguf_dequant_q2_0(decoded, row, (size_t)n);
 
+    float s = 0.0f;
+
+#if TN_HAS_AVX512VNNI
     int8_t *q_x = (int8_t *)malloc((size_t)n * sizeof(int8_t));
     float act_scale = quantize_row_to_i8(x, q_x, n);
-
-    float s = 0.0f;
     if (act_scale > 0.0f) {
         for (int i = 0; i < n; i++)
             s += decoded[i] * ((float)q_x[i] * act_scale);
     }
+    free(q_x);
+#else
+    for (int i = 0; i < n; i++)
+        s += decoded[i] * x[i];
+#endif
 
     free(decoded);
-    free(q_x);
     return s;
 }
 

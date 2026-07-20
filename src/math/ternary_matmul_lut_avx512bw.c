@@ -1,10 +1,18 @@
 /*
+ * SPDX-License-Identifier: LGPL-3.0-or-later
+ *
+ * This file, and only this file, is licensed under LGPL-3.0-or-later rather
+ * than the MIT license covering the rest of Project Zero. See NOTICE at the
+ * repo root for the reason and full attribution.
+ */
+/*
  * ternary_matmul_lut_avx512bw.c  --  Phase K-6 LUT kernel
  *
  * LUT-based ternary matrix-vector multiply using AVX-512BW vpermt2w lookups.
  * Packs 5 ternary weights {-1,0,1} per byte (balanced ternary, base-3 encoding).
  *
- * Algorithm ported from lut_mm (tommyyliu, GPL-3.0) to C99 without templates.
+ * Algorithm ported from lut_mm (tommyyliu, LGPL-3.0-or-later by his agreement
+ * on tommyyliu/lut_mm#1, originally GPL-3.0) to C99 without templates.
  * Key idea: precompute 4 x zmm16 lookup tables T[0..3] from 5 int8 activations,
  * then for each 32-column block of packed weights use _mm512_permutex2var_epi16
  * (vpermt2w) to perform 32 simultaneous table lookups in a single instruction.

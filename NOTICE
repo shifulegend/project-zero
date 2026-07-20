@@ -1,0 +1,18 @@
+Project Zero is licensed under the MIT License (see LICENSE), with one exception:
+
+src/math/ternary_matmul_lut_avx512bw.c is licensed under LGPL-3.0-or-later.
+
+That file ports the AVX-512 LUT ternary matmul algorithm from tommyyliu's
+lut_mm (https://github.com/tommyyliu/lut_mm), originally GPL-3.0. tommyyliu
+agreed to LGPL-3.0-or-later for this specific file so it could be used
+in an otherwise-MIT project (see https://github.com/tommyyliu/lut_mm/issues/1).
+
+Because Project Zero's complete source, including this file, is public in
+this repository, the LGPL-3.0 static-linking requirement to make the
+licensed portion's source available for inspection and modification is
+already satisfied.
+
+Full license text: LICENSE-LGPL-3.0.txt
+
+Credit: algorithm design and reference implementation by tommyyliu
+(lut_mm, ternary_mm_avx512.cpp). C99 port by Project Zero contributors.

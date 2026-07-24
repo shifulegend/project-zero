@@ -110,7 +110,10 @@ see `docs/RELEASING.md`).
 
 ## Reference reports
 `docs/REGRESSION_VERIFICATION_2026-06-07.md`, `BENCHMARK_REPORT.md`,
-`docs/PERFORMANCE_CEILING_REPORT.md`, `GOLDEN_RULES.md`.
+`docs/PERFORMANCE_CEILING_REPORT.md`, `GOLDEN_RULES.md`,
+`docs/design/reports/sweep-2026-07-24.html` (full threads×SIMD×classifier sweep vs llama.cpp,
+251-token measurements; documents why the INT4 classifier is slower than INT8/BF16 on small
+dense models — see `decision-log.md`'s 2026-07-24 entry for the root cause).
 
 ## UNKNOWN / TODO
 - Vision/multimodal subsystem is experimental; depth of support is UNVERIFIED.

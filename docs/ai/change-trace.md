@@ -3,6 +3,22 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-07-24.
 
+### 2026-07-24 — Full threads×SIMD×classifier sweep report (repo-only) + INT4-slower RCA
+- What: full 52-config sweep report (`docs/design/reports/sweep-2026-07-24.html` +
+  `.template.html`), raw CSVs (`docs/design/reports/sweep_2026-07-24/`), 5 terminal screenshots
+  (`docs/design/screenshots/sweep_2026-07-24/`) — all committed in-repo, no external hosting.
+- Why: user asked for a full threads×SIMD×classifier sweep of both engines with terminal
+  screenshots and a final infographic, following the earlier F16/BF16 RCA below.
+- Also: caught and fixed two methodology bugs found while building this report — an early-EOS
+  short-generation measurement bug (fixed by moving to a 251-real-token run per config) and a
+  concurrent-capture CPU-contention bug — both in `mistakes.md`. Root-caused why INT4 classifier
+  measures slower than INT8/BF16 (nibble-unpack cost without AVX-512 VBMI + classifier already
+  being cache-resident, so INT4's bandwidth saving buys nothing) — full analysis in
+  `decision-log.md`; added as a Help Wanted item in `README.md` rather than fixed this pass.
+- Areas: `docs/design/reports/sweep-2026-07-24.*`, `docs/design/reports/sweep_2026-07-24/*.csv`,
+  `docs/design/screenshots/sweep_2026-07-24/*.png`, `docs/ai/mistakes.md`,
+  `docs/ai/decision-log.md`, `README.md` (Help Wanted table + benchmark section notes).
+
 ### 2026-07-24 — Fixed FMA-latency-bound F16/BF16 GEMV kernels after user-requested RCA
 - What: `parallel_matmul_f16` (`src/math/matmul_f16.c`) and `parallel_matmul_bf16`
   (`src/math/parallel_matmul.c`) AVX2/AVX-512 paths rewritten from a single FMA accumulator per

@@ -3,6 +3,49 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-07-24.
 
+### 2026-07-24 — Full threads×SIMD×classifier sweep (52 configs); RCA for why INT4 classifier is slower than INT8/BF16
+- Decision: after the F16/BF16 kernel fix (below) closed the single-sample pz-vs-llama.cpp gap,
+  did the full sweep the user asked for: all 48 project-zero `--threads`(1-4)×`--simd`(4)×
+  `--classifier`(3) combinations, plus llama.cpp's 4 thread counts (its only runtime-selectable
+  axis) — in-repo report at `docs/design/reports/sweep-2026-07-24.html`, raw CSVs at
+  `docs/design/reports/sweep_2026-07-24/`, screenshots at
+  `docs/design/screenshots/sweep_2026-07-24/`.
+- Methodology bug found and fixed mid-effort (full writeup in `mistakes.md`): the first pass used
+  a short prompt + `--max-tokens 30`; the model hit EOS after 7 tokens, so every measurement was
+  noise from a sub-200ms window. Reran all 52 configs with a long-form prompt and
+  `--max-tokens 250` so every run generates 251 real tokens. This changed the numbers materially
+  (peak dropped from a noise-inflated 84.7 to a real 69.0 tok/s) and changed the cross-engine
+  conclusion from "one wide divergent gap" to "within ~3% at every thread count." A second bug
+  (concurrent screenshot capture starving a running benchmark of CPU) was found and fixed the
+  same way — never run two CPU-bound captures at once on this 4-core sandbox.
+- RCA: INT4 classifier measured slower than INT8/BF16 at all 16 thread×SIMD combinations, holding
+  even after the methodology fix (ruling out short-run noise as the cause) — this contradicts the
+  classifier-quantization comment in `src/cli/main.c` estimating INT4 as faster. Root-caused
+  against the actual kernel code (`src/math/parallel_matmul.c`'s `matmul_i4_task`, line ~570):
+  1. INT4 weights are packed 2-per-byte, so every dot product needs a nibble-unpack step first.
+     The fast unpack path (VBMI `vpermb`+`vpmultishiftqb`, 3 instructions/64 weights) needs
+     AVX-512 VBMI, which this CPU doesn't have (confirmed via `/proc/cpuinfo`, same gap as the
+     calibration SIGILL below) — so it falls back to the ~10-instruction SSE-interleave unpack
+     (mask+shift+four `unpacklo`/`unpackhi`/`insert128` ops) on every 64 weights. INT8's kernel
+     (`matmul_i8_task`) needs zero unpacking (1 byte = 1 weight already), so this is a real,
+     large, INT4-only compute tax.
+  2. That tax buys nothing on this model: SmolLM2-135M's classifier is 54.0 MiB at BF16, 27.0 MiB
+     at INT8, 13.5 MiB at INT4, against a 33 MiB measured L3. INT8 already shrinks the classifier
+     to fit in cache; INT4 shrinking it further saves bandwidth that was never the bottleneck
+     (compute-bound, not bandwidth-bound, at this size) — so INT4 pays a real unpack cost to save
+     bandwidth nobody needed.
+  3. Confirmed the `--simd` flag doesn't affect this kernel at all — `simd_dispatch.c`'s dispatch
+     table only covers the ternary-weight ops (rmsnorm/softmax/ternary matmul), not the classifier
+     path, which explains why INT4 is uniformly slowest across all four SIMD rows in the heatmap
+     rather than four separate coincidences.
+  4. Separate, not-fully-confirmed qualitative finding: INT4 runs degenerate into looping
+     repetition before the token budget is used up (BF16/INT8 stay coherent for all 251 tokens) —
+     hypothesized as INT4's coarser per-row quantization (16 levels vs INT8's 256) pushing greedy
+     decoding into a self-reinforcing loop, not yet verified against logit distributions.
+- Status: root cause understood and documented; not fixed (a faster non-VBMI unpack path, e.g. a
+  `pshufb`-based lookup table, is the natural fix but wasn't attempted this pass — flagged as a
+  follow-up, added to `README.md`'s Help Wanted table rather than silently dropped).
+
 ### 2026-07-24 — RCA + fix: single-accumulator FMA dependency chain in the F16/BF16 GEMV kernels was latency-bound, not throughput-bound
 - Decision: user noticed project-zero (54.95 tok/s) measured behind llama.cpp (58.8 tok/s) in a
   side-by-side SmolLM2-135M-Instruct F16 screenshot comparison and asked for a detailed RCA before

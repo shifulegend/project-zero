@@ -5,6 +5,35 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-07-24.
 
+### 2026-07-24 — `make release`/`make debug` (`-march=native`) SIGILLs on illegal AVX-512 VBMI in this sandboxed environment; `make dist` doesn't
+- Summary: mid-sweep, every single `./adaptive_ai_engine` invocation started SIGILL-crashing during
+  `tn_calibrate()`'s very first backend test, reproducibly at the same file offset every time
+  (confirmed via `dmesg`: identical `ip:...0e4` offset across 5 separate crashes) — including a
+  completely fresh, flag-free invocation with no calibration cache present, so this had nothing to
+  do with the sweep's `--simd`/`--classifier` flags themselves.
+- Root cause, found by catching the SIGILL live under `gdb`: the faulting instruction is
+  `vpermi2b %ymm2,%ymm1,%ymm0` inside `tn_calibrate()` — an **AVX-512 VBMI** instruction. `lscpu`
+  confirms this CPU's flags include `avx512f avx512dq avx512cd avx512bw avx512vl avx512_vnni` but
+  **not** `avx512vbmi`. `tn_calibrate()` itself contains no VBMI intrinsics anywhere in
+  `calibration.c` — this is the compiler auto-vectorizing a plain C loop (likely a small
+  struct/string copy) under `-march=native`, which bakes in whatever the build machine's cpuid
+  probe reports. In this sandboxed/virtualized environment, that probe apparently reported (or the
+  hypervisor doesn't consistently execute) an instruction subset the runtime CPU doesn't actually
+  support — the classic build-host/run-host mismatch `-march=native` is unsafe against.
+- Not a project-zero logic bug, and not related to the same day's F16/BF16 kernel fix (different
+  file, different function — `tn_calibrate()`'s ternary-matmul benchmark loop, not
+  `matmul_f16.c`/`parallel_matmul.c`). Confirmed by rebuilding with **`make dist`** (already the
+  project's own portable target: `-march=x86-64-v2 -mtune=generic` baseline, actual SIMD kernels
+  still per-TU-compiled and runtime-dispatched) — a fresh calibration run completed cleanly, no
+  crash, real generation output.
+- Fix applied here: none to the source (this is `-march=native`'s documented risk, not a code
+  defect) — used `make dist` instead of `make release`/`make debug` for all further local testing
+  in this environment.
+- Prevention rule for this environment specifically: **use `make dist` for any real
+  execution/benchmarking in this sandbox**, not `make release`/`make debug` — reserve
+  `-march=native` builds for correctness-only work (`make test`) where the crash, if it recurs,
+  surfaces immediately and obviously rather than mid-benchmark.
+
 ### 2026-07-24 — F16/BF16 GEMV kernels were FMA-latency-bound: single accumulator, not throughput-bound
 - Summary: a side-by-side screenshot showed project-zero measuring behind llama.cpp on a dense F16
   model (SmolLM2-135M-Instruct). Nearly treated the single-sample reading as either "noise" or

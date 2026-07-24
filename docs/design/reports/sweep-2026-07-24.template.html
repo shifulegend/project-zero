@@ -1,0 +1,339 @@
+<title>Full Sweep: Threads &times; SIMD &times; Classifier</title>
+<style>
+  @font-face {
+    font-family: 'JBM';
+    font-weight: 500;
+    font-style: normal;
+    src: url(data:font/woff2;base64,__JBM500__) format('woff2');
+  }
+  @font-face {
+    font-family: 'JBM';
+    font-weight: 700;
+    font-style: normal;
+    src: url(data:font/woff2;base64,__JBM700__) format('woff2');
+  }
+  @font-face {
+    font-family: 'Serif4';
+    font-weight: 400;
+    font-style: normal;
+    src: url(data:font/woff2;base64,__SSRF400__) format('woff2');
+  }
+  @font-face {
+    font-family: 'Serif4';
+    font-weight: 600;
+    font-style: normal;
+    src: url(data:font/woff2;base64,__SSRF600__) format('woff2');
+  }
+
+  :root {
+    --bg: #f6f3ee;
+    --surface: #ffffff;
+    --surface-2: #f0ece4;
+    --border: #ddd6ca;
+    --ink: #201b13;
+    --ink-muted: #6b6355;
+    --accent: #a8621f;
+    --accent-bright: #8a4f18;
+    --data-b: #256ba3;
+    --good: #2f8a5c;
+    --good-bg: rgba(47, 138, 92, 0.09);
+    --good-border: rgba(47, 138, 92, 0.35);
+    --shadow: 0 1px 2px rgba(32, 27, 19, 0.04), 0 8px 24px -12px rgba(32, 27, 19, 0.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151a; --surface: #191e25; --surface-2: #1f242c; --border: #2a323d;
+      --ink: #e9edf1; --ink-muted: #8b96a3; --accent: #cc7a2e; --accent-bright: #e4954a;
+      --data-b: #4a90c2; --good: #5fb682; --good-bg: rgba(95,182,130,0.12); --good-border: rgba(95,182,130,0.32);
+      --shadow: 0 1px 2px rgba(0,0,0,0.2), 0 8px 28px -12px rgba(0,0,0,0.55);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #12151a; --surface: #191e25; --surface-2: #1f242c; --border: #2a323d;
+    --ink: #e9edf1; --ink-muted: #8b96a3; --accent: #cc7a2e; --accent-bright: #e4954a;
+    --data-b: #4a90c2; --good: #5fb682; --good-bg: rgba(95,182,130,0.12); --good-border: rgba(95,182,130,0.32);
+    --shadow: 0 1px 2px rgba(0,0,0,0.2), 0 8px 28px -12px rgba(0,0,0,0.55);
+  }
+  :root[data-theme="light"] {
+    --bg: #f6f3ee; --surface: #ffffff; --surface-2: #f0ece4; --border: #ddd6ca;
+    --ink: #201b13; --ink-muted: #6b6355; --accent: #a8621f; --accent-bright: #8a4f18;
+    --data-b: #256ba3; --good: #2f8a5c; --good-bg: rgba(47,138,92,0.09); --good-border: rgba(47,138,92,0.35);
+    --shadow: 0 1px 2px rgba(32,27,19,0.04), 0 8px 24px -12px rgba(32,27,19,0.12);
+  }
+
+  * { box-sizing: border-box; }
+  html { color-scheme: light dark; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: 'Serif4', Georgia, 'Times New Roman', serif;
+    font-size: 17px; line-height: 1.6; -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 980px; margin: 0 auto; padding: 56px 28px 80px; }
+
+  .eyebrow {
+    font-family: 'JBM', ui-monospace, monospace; font-weight: 700; font-size: 12.5px;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .eyebrow::before {
+    content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--good); box-shadow: 0 0 0 3px var(--good-bg);
+  }
+  h1 {
+    font-family: 'JBM', ui-monospace, monospace; font-weight: 700;
+    font-size: clamp(26px, 4vw, 38px); letter-spacing: -0.01em; line-height: 1.15;
+    margin: 14px 0 8px; text-wrap: balance;
+  }
+  h1 .dim { color: var(--ink-muted); font-weight: 500; }
+  .dek { font-size: 17.5px; color: var(--ink-muted); max-width: 68ch; margin: 0 0 28px; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 40px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-family: 'JBM', ui-monospace, monospace; font-size: 12.5px; font-weight: 500;
+    letter-spacing: 0.02em; padding: 7px 12px 7px 10px; border-radius: 999px;
+    background: var(--good-bg); border: 1px solid var(--good-border); color: var(--ink);
+  }
+  .chip svg { flex: none; width: 13px; height: 13px; color: var(--good); }
+
+  section { margin: 44px 0; }
+  section > h2 {
+    font-family: 'JBM', ui-monospace, monospace; font-weight: 700; font-size: 12.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-muted);
+    margin: 0 0 16px; padding-bottom: 10px; border-bottom: 1px solid var(--border);
+  }
+  p { margin: 0 0 14px; }
+  p:last-child { margin-bottom: 0; }
+  code {
+    font-family: 'JBM', ui-monospace, monospace; font-size: 0.86em;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px;
+    padding: 0.05em 0.4em; color: var(--ink);
+  }
+
+  /* Screenshot grid */
+  .shots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  @media (max-width: 860px) { .shots { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 560px) { .shots { grid-template-columns: 1fr; } }
+  .shots.llama-pair { grid-template-columns: 1fr 1fr; max-width: 620px; }
+  figure {
+    margin: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    overflow: hidden; box-shadow: var(--shadow); display: flex; flex-direction: column;
+  }
+  .shot-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 11px 14px; border-bottom: 1px solid var(--border); }
+  .shot-head .name { font-family: 'JBM', ui-monospace, monospace; font-weight: 700; font-size: 12.5px; }
+  .shot-head .name.pz::before, .shot-head .name.llama::before {
+    content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; position: relative; top: -1px;
+  }
+  .shot-head .name.pz::before { background: var(--accent); }
+  .shot-head .name.llama::before { background: var(--data-b); }
+  figure img { display: block; width: 100%; height: auto; background: #0d0f13; }
+  figcaption { padding: 9px 14px 13px; font-family: 'JBM', ui-monospace, monospace; font-size: 11.5px; color: var(--ink-muted); line-height: 1.5; }
+
+  /* Heatmaps */
+  .heatmap-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  @media (max-width: 860px) { .heatmap-row { grid-template-columns: 1fr; } }
+  .heatmap-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px 18px; box-shadow: var(--shadow); }
+  .heatmap-title {
+    font-family: 'JBM', ui-monospace, monospace; font-weight: 700; font-size: 12px;
+    letter-spacing: 0.08em; color: var(--ink-muted); margin-bottom: 10px;
+  }
+  table.heatmap { width: 100%; border-collapse: collapse; font-family: 'JBM', ui-monospace, monospace; font-size: 12.5px; }
+  table.heatmap th { font-weight: 500; color: var(--ink-muted); text-align: center; padding: 4px 2px; font-size: 11px; }
+  table.heatmap .hm-rowlabel { text-align: left; padding-right: 8px; white-space: nowrap; }
+  .hm-cell {
+    text-align: center; padding: 9px 4px; border-radius: 4px;
+    background: var(--bgl); color: var(--fgl);
+    font-variant-numeric: tabular-nums;
+  }
+  @media (prefers-color-scheme: dark) {
+    .hm-cell { background: var(--bgd); color: var(--fgd); }
+  }
+  :root[data-theme="dark"] .hm-cell { background: var(--bgd); color: var(--fgd); }
+  :root[data-theme="light"] .hm-cell { background: var(--bgl); color: var(--fgl); }
+
+  /* Bench bars (reused pattern) */
+  .bench { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; box-shadow: var(--shadow); }
+  .bench-row { margin-bottom: 14px; }
+  .bench-row:last-child { margin-bottom: 0; }
+  .bench-label { display: flex; justify-content: space-between; align-items: baseline; font-family: 'JBM', ui-monospace, monospace; font-size: 12.5px; margin-bottom: 6px; }
+  .bench-label .who { font-weight: 700; }
+  .bench-label .val { color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+  .bar-track { height: 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 999px; }
+  .bar-fill.pz { background: var(--accent); }
+  .bar-fill.llama { background: var(--data-b); }
+
+  .cmp-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  @media (max-width: 720px) { .cmp-grid { grid-template-columns: 1fr 1fr; } }
+  .cmp-group { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; box-shadow: var(--shadow); }
+  .cmp-label { font-family: 'JBM', ui-monospace, monospace; font-weight: 700; font-size: 12.5px; margin-bottom: 10px; }
+  .cmp-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .cmp-bar-row:last-child { margin-bottom: 0; }
+  .cmp-bar-row .bar-track { flex: 1; }
+  .cmp-val { font-family: 'JBM', ui-monospace, monospace; font-size: 11.5px; color: var(--ink-muted); font-variant-numeric: tabular-nums; width: 34px; text-align: right; }
+
+  .legend-row { display: flex; align-items: center; gap: 18px; margin-top: 14px; font-family: 'JBM', ui-monospace, monospace; font-size: 11.5px; color: var(--ink-muted); }
+  .legend-row .swatch { display: inline-flex; align-items: center; gap: 6px; }
+  .legend-row .dot { width: 9px; height: 9px; border-radius: 2px; }
+  .legend-ramp { display: inline-flex; height: 10px; width: 90px; border-radius: 3px; overflow: hidden; border: 1px solid var(--border); }
+  .legend-ramp span { flex: 1; }
+
+  .facts { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .facts li { display: grid; grid-template-columns: 20px 1fr; gap: 10px; align-items: start; font-size: 15px; }
+  .facts svg { width: 18px; height: 18px; margin-top: 3px; color: var(--good); flex: none; }
+  .facts b { font-weight: 600; }
+
+  .data-table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }
+  table.data-table { width: 100%; border-collapse: collapse; font-family: 'JBM', ui-monospace, monospace; font-size: 12.5px; }
+  table.data-table th { text-align: left; padding: 8px 12px; background: var(--surface-2); border-bottom: 1px solid var(--border); font-weight: 700; position: sticky; top: 0; }
+  table.data-table td { padding: 6px 12px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+  table.data-table tr:last-child td { border-bottom: none; }
+  .table-scroll { max-height: 420px; overflow-y: auto; }
+
+  footer {
+    margin-top: 56px; padding-top: 22px; border-top: 1px solid var(--border);
+    font-family: 'JBM', ui-monospace, monospace; font-size: 12px; color: var(--ink-muted);
+    display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: space-between;
+  }
+</style>
+
+<div class="page">
+
+  <div class="eyebrow">Full sweep &middot; project-zero</div>
+  <h1>Threads &times; SIMD &times; Classifier<br><span class="dim">&mdash; as each engine actually supports it</span></h1>
+  <p class="dek">
+    project-zero exposes three independent runtime levers (<code>--threads</code>,
+    <code>--simd</code>, <code>--classifier</code>) &mdash; a full cross-product sweep,
+    48 configurations. llama.cpp exposes exactly one of those as a runtime flag on this
+    build (<code>--threads</code>); its SIMD backend and weight precision are fixed at
+    build/conversion time, not chosen per run. So the honest comparison is: the full
+    3-axis sweep for project-zero, a 1-axis sweep for llama.cpp, and a same-axis
+    (thread-count) comparison where both actually vary the same thing.
+  </p>
+
+  <div class="chips">
+    <span class="chip"><svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4 8-9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>48/48 project-zero configs captured</span>
+    <span class="chip"><svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4 8-9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>4/4 llama.cpp thread counts captured</span>
+    <span class="chip"><svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4 8-9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Same prompt, same model, same host</span>
+  </div>
+
+  <section>
+    <h2>Method &amp; a real detour</h2>
+    <p>
+      Model: <strong>SmolLM2&#8209;135M&#8209;Instruct</strong> (F16 GGUF), prompt
+      <code>&ldquo;What is the capital of France?&rdquo;</code>, greedy decoding
+      (<code>temp&nbsp;0</code>), one shared host, single rep per configuration &mdash;
+      this is a <em>directional</em> sweep across 52 configurations, not the
+      repeated-measurement statistical comparison done earlier for the T=1/T=2
+      RCA (see <code>docs/ai/decision-log.md</code>'s 2026-07-24 entries); treat single
+      cells as approximate, not to the decimal.
+    </p>
+    <p>
+      Mid-sweep, project-zero started crashing (SIGILL) on every invocation, including
+      completely flag-free ones. Caught it live under <code>gdb</code>: a
+      <code>vpermi2b</code> (AVX-512 VBMI) instruction inside the calibration routine
+      &mdash; this CPU's flags don't include VBMI. Not a code bug: <code>-march=native</code>
+      (what <code>make release</code>/<code>make debug</code> use) bakes in whatever the
+      build machine's cpuid probe reports, which apparently doesn't match what this
+      sandboxed host can actually execute. Rebuilding with <code>make dist</code> (the
+      project's own portable target, <code>-march=x86-64-v2</code> baseline with the real
+      SIMD kernels still per-file-compiled and runtime-dispatched) fixed it outright &mdash;
+      logged in <code>mistakes.md</code> so it doesn't need re-diagnosing.
+    </p>
+  </section>
+
+  <section>
+    <h2>Representative captures</h2>
+    <div class="shots">
+      <figure>
+        <div class="shot-head"><span class="name pz">project-zero</span><span class="tag">peak</span></div>
+        <img src="data:image/png;base64,__SHOT_PZ_BEST__" alt="project-zero at T=4, avx2, int8 classifier, its fastest sweep configuration">
+        <figcaption>T=4 &middot; avx2 &middot; INT8 &mdash; 84.73 tok/s, sweep peak.</figcaption>
+      </figure>
+      <figure>
+        <div class="shot-head"><span class="name pz">project-zero</span><span class="tag">floor</span></div>
+        <img src="data:image/png;base64,__SHOT_PZ_FLOOR__" alt="project-zero at T=1, scalar, bf16 classifier, its slowest sweep configuration">
+        <figcaption>T=1 &middot; scalar &middot; BF16 &mdash; 24.27 tok/s, sweep floor.</figcaption>
+      </figure>
+      <figure>
+        <div class="shot-head"><span class="name pz">project-zero</span><span class="tag">int4</span></div>
+        <img src="data:image/png;base64,__SHOT_PZ_INT4__" alt="project-zero at T=4, avx2, int4 classifier">
+        <figcaption>T=4 &middot; avx2 &middot; INT4 &mdash; 44.08 tok/s, same thread/SIMD as the peak.</figcaption>
+      </figure>
+    </div>
+    <div class="shots llama-pair" style="margin-top:18px;">
+      <figure>
+        <div class="shot-head"><span class="name llama">llama.cpp</span><span class="tag">T=4</span></div>
+        <img src="data:image/png;base64,__SHOT_LLAMA_T4__" alt="llama.cpp at 4 threads">
+        <figcaption>T=4 &mdash; 72.2 tok/s (sweep value; this capture measured 84.9, normal run-to-run spread).</figcaption>
+      </figure>
+      <figure>
+        <div class="shot-head"><span class="name llama">llama.cpp</span><span class="tag">T=1</span></div>
+        <img src="data:image/png;base64,__SHOT_LLAMA_T1__" alt="llama.cpp at 1 thread">
+        <figcaption>T=1 &mdash; 28.2 tok/s, sweep floor for llama.cpp.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>project-zero &mdash; full 48-configuration heatmap</h2>
+    <p>One panel per classifier; each cell is threads (columns) &times; SIMD backend (rows). Color scales across all 48 cells together, so shade is comparable across panels.</p>
+    <div class="heatmap-row">__HEATMAPS__</div>
+    <div class="legend-row">
+      <span class="swatch">slower&nbsp;<span class="legend-ramp"><span style="background:rgb(255,251,244)"></span><span style="background:rgb(255,231,194)"></span><span style="background:rgb(245,189,110)"></span><span style="background:rgb(211,138,54)"></span><span style="background:rgb(150,84,20)"></span></span>&nbsp;faster</span>
+      <span>14.5 &ndash; 84.7 tok/s</span>
+    </div>
+    <p style="margin-top:16px;">
+      One consistent pattern across all three panels: <b>INT4 classifier is slower than
+      BF16 or INT8 on this model</b>, at every thread count and every SIMD backend &mdash;
+      the opposite of what the classifier-quantization comment in
+      <code>src/cli/main.c</code> estimates for larger models. Not chased further here
+      (out of scope for this sweep); worth its own RCA if it matters for real workloads.
+    </p>
+  </section>
+
+  <section>
+    <h2>llama.cpp &mdash; thread scaling (its one exposed axis)</h2>
+    <div class="bench">
+      __LLAMA_BARS__
+    </div>
+  </section>
+
+  <section>
+    <h2>Cross-engine, matched on the one axis both support</h2>
+    <p>project-zero's best SIMD backend at BF16 (full precision, the fairest match to llama.cpp's F16 weights) vs. llama.cpp, at each thread count.</p>
+    <div class="cmp-grid">__CMP_GROUPS__</div>
+    <div class="legend-row">
+      <span class="swatch"><span class="dot" style="background:var(--accent)"></span>project-zero (BF16, best SIMD)</span>
+      <span class="swatch"><span class="dot" style="background:var(--data-b)"></span>llama.cpp</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>What this sweep shows</h2>
+    <ul class="facts">
+      <li><svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4 8-9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg><span><b>Both engines scale with threads as expected</b> &mdash; roughly linear T=1&rarr;T=3, flattening toward T=4 on this 4-core host (thread-pool/scheduling overhead catching up with available parallelism).</span></li>
+      <li><svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4 8-9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg><span><b>No single SIMD backend dominates for project-zero</b> on this tiny 135M model &mdash; scalar, avx2, avx512f and vnni all land within noise of each other at a given thread/classifier, consistent with this model being far under project-zero's measured bandwidth ceiling (compute/dispatch-bound, not bandwidth-bound) at this size.</span></li>
+      <li><svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4 8-9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg><span><b>Matched on threads (the only axis both expose), the two engines are close</b> &mdash; project-zero ahead at T=1, T=2, and T=4; llama.cpp slightly ahead at T=3. Consistent with the earlier RCA finding that this comparison is now roughly even, not a deficit.</span></li>
+      <li><svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4 8-9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg><span><b>Golden output held throughout</b> &mdash; every one of the 52 runs answered correctly.</span></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Full data (appendix)</h2>
+    <div class="data-table-wrap">
+      <div class="table-scroll">
+        <table class="data-table">
+          <tr><th>threads</th><th>simd</th><th>classifier</th><th>tok/s</th></tr>
+          __DATA_TABLE__
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>branch <code>claude/pr31-branding-cli-discussion-mwwe12</code></span>
+    <span>raw CSVs: <code>docs/design/reports/sweep_2026-07-24/</code></span>
+  </footer>
+
+</div>

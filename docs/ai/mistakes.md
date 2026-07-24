@@ -5,6 +5,36 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-07-24.
 
+### 2026-07-24 — Sweep benchmark measured over 7 generated tokens (early EOS), and a concurrent capture silently corrupted a measurement
+- Summary: the threads×SIMD×classifier sweep report initially used the prompt "What is the
+  capital of France?" with `--max-tokens 30`. The model reached its EOS token after only 7
+  tokens, so every one of the 48 project-zero configs (and llama.cpp's 4 thread configs) had
+  its tok/s computed over a sub-200ms, 7-token window — dominated by process-startup and timer
+  granularity noise, not steady-state throughput. Not caught internally; a reviewer asked
+  "shouldn't this capture at least 240 tokens given the speeds involved?" — correct, and it
+  didn't the first time.
+- Fix: reran the entire sweep (52 configurations) with a long-form creative-writing prompt
+  ("Write a long, detailed story about a robot exploring an ancient forest...") that reliably
+  avoids early EOS for this small model, and `--max-tokens 250` — every run generated 251 real
+  tokens. Numbers changed materially: e.g. project-zero's sweep peak dropped from a
+  (noise-inflated) 84.7 tok/s to a real 69.0 tok/s (T=3, vnni, INT8), and project-zero vs.
+  llama.cpp went from "ahead 3-of-4, behind 1-of-4 by a wide margin" to "within ~3% at every
+  thread count" — the earlier numbers weren't wrong in direction but were not trustworthy to
+  the decimal, exactly the risk repeated-measurement/steady-state methodology exists to avoid.
+- Second, unrelated bug found while recapturing screenshots for the corrected sweep: took a
+  terminal screenshot of one engine while the other engine's sweep was still running in the
+  background on the same 4-core sandbox. llama.cpp's T=4 (4-thread) run measured 7.4 tok/s —
+  a clean isolated rerun immediately after gave 62.9 tok/s. The concurrent project-zero
+  screenshot capture (itself using several threads) was contending for the same 4 physical
+  cores, and a 4-thread victim run is maximally exposed to that (no idle core to absorb it).
+  One project-zero screenshot in the same batch was contaminated the same way (a "peak"
+  capture read 10.05 tok/s against a clean 51.01 tok/s rerun of the identical config).
+- Fix: never run two CPU-bound captures/benchmarks concurrently on this host. Prevention rule:
+  before trusting any single-run screenshot's reported tok/s, check it lands within normal
+  single-run variance of the corresponding sweep-CSV cell (same config, same-order magnitude)
+  — a >2x divergence is a contention signal, not "normal spread," and means rerun in isolation
+  before publishing.
+
 ### 2026-07-24 — `make release`/`make debug` (`-march=native`) SIGILLs on illegal AVX-512 VBMI in this sandboxed environment; `make dist` doesn't
 - Summary: mid-sweep, every single `./adaptive_ai_engine` invocation started SIGILL-crashing during
   `tn_calibrate()`'s very first backend test, reproducibly at the same file offset every time

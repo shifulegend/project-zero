@@ -214,19 +214,32 @@
   <div class="chips">
     <span class="chip"><svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4 8-9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>48/48 project-zero configs captured</span>
     <span class="chip"><svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4 8-9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>4/4 llama.cpp thread counts captured</span>
-    <span class="chip"><svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4 8-9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Same prompt, same model, same host</span>
+    <span class="chip"><svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4 8-9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>251 real tokens generated per run &mdash; no early-EOS truncation</span>
   </div>
 
   <section>
-    <h2>Method &amp; a real detour</h2>
+    <h2>Method &amp; two real detours</h2>
     <p>
-      Model: <strong>SmolLM2&#8209;135M&#8209;Instruct</strong> (F16 GGUF), prompt
-      <code>&ldquo;What is the capital of France?&rdquo;</code>, greedy decoding
-      (<code>temp&nbsp;0</code>), one shared host, single rep per configuration &mdash;
+      Model: <strong>SmolLM2&#8209;135M&#8209;Instruct</strong> (F16 GGUF), greedy decoding
+      (<code>temp&nbsp;0</code>), one shared 4-core host, single rep per configuration &mdash;
       this is a <em>directional</em> sweep across 52 configurations, not the
       repeated-measurement statistical comparison done earlier for the T=1/T=2
       RCA (see <code>docs/ai/decision-log.md</code>'s 2026-07-24 entries); treat single
       cells as approximate, not to the decimal.
+    </p>
+    <p>
+      <b>Revision note:</b> the first pass of this sweep used the prompt
+      <code>&ldquo;What is the capital of France?&rdquo;</code> with
+      <code>--max-tokens 30</code>. The model answered in 7 tokens and hit its EOS
+      token immediately &mdash; every tok/s figure in that pass was computed over a
+      7-token, sub-200ms window, dominated by process/timer noise rather than steady-state
+      throughput. Caught by a reviewer asking "shouldn't this capture at least 240 tokens
+      given the speeds involved?" &mdash; correct, and it didn't. Reran the entire sweep
+      (all 52 configurations) with a long-form creative-writing prompt
+      (<code>&ldquo;Write a long, detailed story about a robot exploring an ancient
+      forest...&rdquo;</code>) that reliably avoids early EOS, and <code>--max-tokens 250</code>;
+      every run in this report generated 251 real tokens. All numbers below are from the
+      corrected pass.
     </p>
     <p>
       Mid-sweep, project-zero started crashing (SIGILL) on every invocation, including
@@ -240,6 +253,16 @@
       SIMD kernels still per-file-compiled and runtime-dispatched) fixed it outright &mdash;
       logged in <code>mistakes.md</code> so it doesn't need re-diagnosing.
     </p>
+    <p>
+      Second detour, found while recapturing screenshots for <em>this</em> revision: taking
+      a terminal screenshot of one engine while the other engine's sweep was still running
+      in the background silently corrupted the measurement &mdash; llama.cpp's T=4 run
+      (all 4 threads) measured 7.4 tok/s against a clean 62.9 tok/s rerun, because a
+      concurrent project-zero screenshot capture was contending for the same 4 cores. Fixed
+      by never running two CPU-bound captures at once on this host, and re-verified every
+      screenshot's reported tok/s lands within normal single-run variance of its
+      corresponding sweep-CSV cell before trusting it.
+    </p>
   </section>
 
   <section>
@@ -247,30 +270,30 @@
     <div class="shots">
       <figure>
         <div class="shot-head"><span class="name pz">project-zero</span><span class="tag">peak</span></div>
-        <img src="data:image/png;base64,__SHOT_PZ_BEST__" alt="project-zero at T=4, avx2, int8 classifier, its fastest sweep configuration">
-        <figcaption>T=4 &middot; avx2 &middot; INT8 &mdash; 84.73 tok/s, sweep peak.</figcaption>
+        <img src="data:image/png;base64,__SHOT_PZ_BEST__" alt="project-zero at T=3, vnni, int8 classifier, its fastest sweep configuration">
+        <figcaption>T=3 &middot; vnni &middot; INT8 &mdash; 68.99 tok/s sweep value (this capture measured 51.01, normal single-run spread).</figcaption>
       </figure>
       <figure>
         <div class="shot-head"><span class="name pz">project-zero</span><span class="tag">floor</span></div>
-        <img src="data:image/png;base64,__SHOT_PZ_FLOOR__" alt="project-zero at T=1, scalar, bf16 classifier, its slowest sweep configuration">
-        <figcaption>T=1 &middot; scalar &middot; BF16 &mdash; 24.27 tok/s, sweep floor.</figcaption>
+        <img src="data:image/png;base64,__SHOT_PZ_FLOOR__" alt="project-zero at T=1, vnni, int4 classifier, its slowest sweep configuration">
+        <figcaption>T=1 &middot; vnni &middot; INT4 &mdash; 13.08 tok/s sweep value (this capture measured 14.06), sweep floor.</figcaption>
       </figure>
       <figure>
         <div class="shot-head"><span class="name pz">project-zero</span><span class="tag">int4</span></div>
-        <img src="data:image/png;base64,__SHOT_PZ_INT4__" alt="project-zero at T=4, avx2, int4 classifier">
-        <figcaption>T=4 &middot; avx2 &middot; INT4 &mdash; 44.08 tok/s, same thread/SIMD as the peak.</figcaption>
+        <img src="data:image/png;base64,__SHOT_PZ_INT4__" alt="project-zero at T=3, vnni, int4 classifier">
+        <figcaption>T=3 &middot; vnni &middot; INT4 &mdash; 31.46 tok/s sweep value, same thread/SIMD as the peak &mdash; note the output degenerates into looping repetition ("Zephyr and the forest were the forest..."), a quality artifact alongside the speed one.</figcaption>
       </figure>
     </div>
     <div class="shots llama-pair" style="margin-top:18px;">
       <figure>
         <div class="shot-head"><span class="name llama">llama.cpp</span><span class="tag">T=4</span></div>
         <img src="data:image/png;base64,__SHOT_LLAMA_T4__" alt="llama.cpp at 4 threads">
-        <figcaption>T=4 &mdash; 72.2 tok/s (sweep value; this capture measured 84.9, normal run-to-run spread).</figcaption>
+        <figcaption>T=4 &mdash; 62.9 tok/s sweep value (this capture measured 69.2, normal single-run spread).</figcaption>
       </figure>
       <figure>
         <div class="shot-head"><span class="name llama">llama.cpp</span><span class="tag">T=1</span></div>
         <img src="data:image/png;base64,__SHOT_LLAMA_T1__" alt="llama.cpp at 1 thread">
-        <figcaption>T=1 &mdash; 28.2 tok/s, sweep floor for llama.cpp.</figcaption>
+        <figcaption>T=1 &mdash; 24.8 tok/s sweep value (this capture measured 27.9), sweep floor for llama.cpp.</figcaption>
       </figure>
     </div>
   </section>
@@ -281,14 +304,18 @@
     <div class="heatmap-row">__HEATMAPS__</div>
     <div class="legend-row">
       <span class="swatch">slower&nbsp;<span class="legend-ramp"><span style="background:rgb(255,251,244)"></span><span style="background:rgb(255,231,194)"></span><span style="background:rgb(245,189,110)"></span><span style="background:rgb(211,138,54)"></span><span style="background:rgb(150,84,20)"></span></span>&nbsp;faster</span>
-      <span>14.5 &ndash; 84.7 tok/s</span>
+      <span>13.1 &ndash; 69.0 tok/s</span>
     </div>
     <p style="margin-top:16px;">
-      One consistent pattern across all three panels: <b>INT4 classifier is slower than
-      BF16 or INT8 on this model</b>, at every thread count and every SIMD backend &mdash;
-      the opposite of what the classifier-quantization comment in
-      <code>src/cli/main.c</code> estimates for larger models. Not chased further here
-      (out of scope for this sweep); worth its own RCA if it matters for real workloads.
+      One consistent pattern across all three panels, confirmed now with real 251-token
+      generations (it also held in the earlier 7-token pass, but that pass couldn't rule out
+      measurement noise as the cause): <b>INT4 classifier is slower than BF16 or INT8 on
+      this model, at all 16 thread&times;SIMD combinations</b> &mdash; the opposite of what
+      the classifier-quantization comment in <code>src/cli/main.c</code> estimates for
+      larger models. The INT4 captures also show a qualitative symptom: output degenerates
+      into repetitive looping text well before 251 tokens (see the INT4 screenshot above),
+      which BF16/INT8 do not. Not chased further here (out of scope for this sweep); worth
+      its own RCA, and the repetition may be the more actionable finding of the two.
     </p>
   </section>
 
@@ -314,8 +341,8 @@
     <ul class="facts">
       <li><svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4 8-9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg><span><b>Both engines scale with threads as expected</b> &mdash; roughly linear T=1&rarr;T=3, flattening toward T=4 on this 4-core host (thread-pool/scheduling overhead catching up with available parallelism).</span></li>
       <li><svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4 8-9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg><span><b>No single SIMD backend dominates for project-zero</b> on this tiny 135M model &mdash; scalar, avx2, avx512f and vnni all land within noise of each other at a given thread/classifier, consistent with this model being far under project-zero's measured bandwidth ceiling (compute/dispatch-bound, not bandwidth-bound) at this size.</span></li>
-      <li><svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4 8-9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg><span><b>Matched on threads (the only axis both expose), the two engines are close</b> &mdash; project-zero ahead at T=1, T=2, and T=4; llama.cpp slightly ahead at T=3. Consistent with the earlier RCA finding that this comparison is now roughly even, not a deficit.</span></li>
-      <li><svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4 8-9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg><span><b>Golden output held throughout</b> &mdash; every one of the 52 runs answered correctly.</span></li>
+      <li><svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4 8-9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg><span><b>Matched on threads (the only axis both expose), the two engines are effectively tied</b> &mdash; project-zero fractionally ahead at T=1 (26.0 vs 24.8) and T=2 (42.7 vs 41.0); llama.cpp fractionally ahead at T=3 (55.6 vs 55.3) and T=4 (62.9 vs 62.1). All four pairs are within ~3% of each other. Consistent with the earlier RCA finding that this comparison is now roughly even, not a deficit &mdash; and this time backed by full 251-token runs instead of a 7-token snippet.</span></li>
+      <li><svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4 8-9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg><span><b>All 251-token generations completed as coherent English</b> for BF16/INT8 across all 52 runs; INT4 runs are fluent early on but reliably degenerate into looping repetition before the token budget is used up (see the INT4 screenshot) &mdash; a quality regression that tracks the same classifier, not a one-off.</span></li>
     </ul>
   </section>
 

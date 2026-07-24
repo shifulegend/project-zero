@@ -1,0 +1,9 @@
+threads,simd,classifier,tok_s
+1,scalar,bf16,
+1,scalar,int8,
+1,scalar,int4,
+1,avx2,bf16,
+1,avx2,int8,
+1,avx2,int4,
+1,avx512f,bf16,
+1,avx512f,int8,

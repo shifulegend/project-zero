@@ -5,6 +5,34 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-07-24.
 
+### 2026-07-24 — F16/BF16 GEMV kernels were FMA-latency-bound: single accumulator, not throughput-bound
+- Summary: a side-by-side screenshot showed project-zero measuring behind llama.cpp on a dense F16
+  model (SmolLM2-135M-Instruct). Nearly treated the single-sample reading as either "noise" or
+  "confirmed regression" — correctly rejected both without repeated measurement first.
+- What repeated measurement (3x, T=1 and T=2, both engines) actually showed: at T=2 the two
+  engines were indistinguishable (within the same run-to-run spread as pz's own repeats), so the
+  original screenshot's single-sample gap was noise, not a reproducible deficit, at the thread
+  count the screenshot used. At T=1 (zero thread-dispatch overhead — see
+  `threading/thread_pool.c`), a real ~13% gap reproduced consistently across 3 reps each,
+  isolating it to raw serial kernel throughput.
+- Root cause: `parallel_matmul_f16` (`src/math/matmul_f16.c`) and `parallel_matmul_bf16`
+  (`src/math/parallel_matmul.c`) both accumulate each output row's dot product into a **single**
+  SIMD register across the whole loop (`acc = fmadd(w, x, acc)`), so every FMA waits on the
+  previous iteration's result — bound by FMA latency (~4-5 cycles), not the FMA unit's 1-cycle
+  throughput. llama.cpp's `ggml_vec_dot_f16` unrolls 4 independent accumulators specifically to
+  avoid this. Same single-accumulator shape likely exists in other kernels in this codebase that
+  weren't checked in this pass (F32, INT8/INT4, ternary packed) — not confirmed, flagged as a
+  follow-up, not assumed fine.
+- Fix: 4-accumulator unroll (AVX2: 32-wide/iter, AVX-512: 64-wide/iter) in both kernels' AVX2 and
+  AVX-512 paths, single final reduction. Verified via repeated (5x) before/after T=1/T=2
+  measurement (see `docs/ai/decision-log.md`), golden output unchanged, full gcc+clang
+  release/test/debug clean, ASan/UBSan-clean real-model run.
+- Prevention rule: when writing a per-row SIMD reduction kernel (any dot-product-style GEMV), use
+  ≥2-4 independent accumulators before the final horizontal reduce — a single accumulator is
+  latency-bound on virtually all modern x86/ARM cores with multi-cycle FMA latency and
+  multiple-per-cycle FMA throughput. Check this on any new kernel added the same way, not just the
+  ones a benchmark happens to catch.
+
 ### 2026-07-24 — New loader test crashed (null-function-pointer SEGV) because it skipped `tn_simd_init()`
 - Summary: `tests/test_gguf_loader_qwen3moe.c`'s end-to-end forward-pass test crashed with
   `AddressSanitizer: SEGV on unknown address 0x000000000000 (pc 0x000000000000 ...)` — a jump to

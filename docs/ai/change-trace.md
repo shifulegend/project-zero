@@ -3,6 +3,22 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-07-24.
 
+### 2026-07-24 — Fixed FMA-latency-bound F16/BF16 GEMV kernels after user-requested RCA
+- What: `parallel_matmul_f16` (`src/math/matmul_f16.c`) and `parallel_matmul_bf16`
+  (`src/math/parallel_matmul.c`) AVX2/AVX-512 paths rewritten from a single FMA accumulator per
+  row to 4 independent accumulators, matching llama.cpp/ggml's `ggml_vec_dot_f16` structure.
+- Why: user asked why project-zero measured behind llama.cpp on a SmolLM2-135M F16 comparison and
+  asked for an RCA before any fix. Repeated measurement showed the single-sample gap was noise at
+  T=2 but a real ~13% gap at T=1 (zero thread-dispatch overhead), traced to the single-accumulator
+  FMA dependency chain being latency-bound rather than throughput-bound.
+- Areas: `src/math/matmul_f16.c`, `src/math/parallel_matmul.c`; `docs/ai/decision-log.md`,
+  `docs/ai/mistakes.md`; `docs/design/reports/pz-vs-llamacpp-smollm2.html` (in-repo comparison
+  report, moved off external artifact hosting per explicit instruction — all deliverables now
+  live in the repo, nothing outside).
+- Verified: 5-rep before/after T=1 and T=2 measurement (see decision-log), golden output
+  unchanged, full gcc+clang release/test/debug clean, ASan/UBSan-clean real-model run.
+- Branch: `claude/pr31-branding-cli-discussion-mwwe12`.
+
 ### 2026-07-24 — CLI banner always prints; Qwen3-MoE GGUF loader support added; rename deferred to roadmap
 - What: (1) `tn_banner_print()` now shows the "PROJECT ZERO" banner for every invocation
   (TTY or piped/redirected), animated only in a real terminal — new `tn_banner_format_plain()`,

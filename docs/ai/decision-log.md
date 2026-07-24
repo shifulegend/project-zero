@@ -3,6 +3,47 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-07-24.
 
+### 2026-07-24 — RCA + fix: single-accumulator FMA dependency chain in the F16/BF16 GEMV kernels was latency-bound, not throughput-bound
+- Decision: user noticed project-zero (54.95 tok/s) measured behind llama.cpp (58.8 tok/s) in a
+  side-by-side SmolLM2-135M-Instruct F16 screenshot comparison and asked for a detailed RCA before
+  any fix. Rejected the single-sample reading as a basis for either conclusion or action — repeated
+  each engine 3x at T=1 and T=2 first. Result: at T=2 the two engines were statistically
+  indistinguishable on this host (pz 56.20/56.81/57.92 vs llama.cpp 56.0/57.1/52.3 — pz's mean
+  slightly *ahead*), so the original single-run "pz is behind" reading was itself run-to-run noise
+  on a shared/virtualized host, not a reproducible deficit. At **T=1** (0 OS worker threads in
+  project-zero's thread pool — see `threading/thread_pool.c`'s "caller-participates" design — so
+  this isolates raw serial kernel throughput with zero dispatch/sync overhead from either engine),
+  a real, consistent gap *did* reproduce: pz 29.85/28.21/29.98 (mean 29.35) vs llama.cpp
+  32.4/34.0/33.0 (mean 33.13), ~13% every time, not noise.
+- Root cause, found by reading llama.cpp's actual kernel source (cloned+built locally for this
+  comparison) rather than guessing: `ggml_vec_dot_f16` (`ggml/src/ggml-cpu/vec.cpp`) unrolls
+  **4 independent FMA accumulators** per SIMD width (`GGML_F16_STEP=32`/`GGML_F16_EPR=8` on AVX2 →
+  4 accumulators of 8 each) specifically to keep multiple FMAs in flight and hide the ~4-5 cycle
+  FMA latency (far longer than the FMA unit's 1-cycle throughput) — a standard, well-known
+  technique. `parallel_matmul_f16` (`src/math/matmul_f16.c`) and `parallel_matmul_bf16`
+  (`src/math/parallel_matmul.c`, the LM-head classifier kernel — the single largest matmul per
+  token for most dense models, dim × vocab_size) both used a **single** accumulator per output row,
+  making every FMA in the loop wait on the previous iteration's result: latency-bound, not
+  throughput-bound. Same bug, same shape, in both kernels.
+- Fix: rewrote both kernels' AVX2 and AVX-512 paths to use 4 independent accumulators (32-wide
+  AVX2 / 64-wide AVX-512 outer loop, matching ggml's exact AVX2 layout), summed together only at
+  the end, falling back to the original single-accumulator loop for the remainder and the existing
+  scalar/8-wide tails unchanged. This is a pure reassociation of the same sum (same FMA count, same
+  terms) — no algorithmic or precision-relevant change beyond normal floating-point reassociation.
+- Verified, not assumed: re-ran the same T=1/T=2 x5-rep sweep after the fix.
+  T=1: 34.20/34.64/32.75/32.16/34.93 (mean 33.74) — closes essentially all of the ~13% gap
+  (llama.cpp's own T=1 mean: 33.13). T=2: 64.90/66.95/60.18/54.42/64.42 (mean 62.17) — now
+  consistently *ahead* of llama.cpp's T=2 mean (55.13), not behind. Golden output unchanged
+  ("The capital of France is Paris.") on every run before and after. Full `make release/test/debug`
+  clean on **both gcc and clang** from a clean tree each time; additionally re-ran the real
+  SmolLM2 model under the ASan/UBSan debug build specifically to stress-test the new
+  4-accumulator load/FMA sequences for any out-of-bounds access — clean.
+- Scope note: only the F16 and BF16 kernels were touched (the two formats this specific model and
+  comparison actually exercise, and the two confirmed by evidence). The generic F32 kernel and the
+  ternary/INT8/INT4 packed kernels were not inspected for the same single-accumulator pattern in
+  this pass — flagged as a follow-up worth checking, not silently assumed fine.
+- Status: ACCEPTED.
+
 ### 2026-07-24 — Added Qwen3-MoE (e.g. Qwen3-30B-A3B) GGUF loading support, fixing issue #32
 - Decision: issue #32 (jpsoto) reported `[gguf_loader] missing tensor 'blk.0.ffn_gate.weight'`
   loading `Qwen3-30B-A3B-Q4_K_M.gguf`. Root cause: `weights_from_gguf()` only special-cased

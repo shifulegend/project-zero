@@ -303,6 +303,40 @@ TernaryError moe_config_from_gguf(MoEConfig *mc, const GGUFHeader *hdr) {
         return TN_OK;
     }
 
+    if (strcmp(hdr->arch, "qwen3moe") == 0) {
+        /* Qwen3-MoE (e.g. Qwen3-30B-A3B): routed MoE, no shared experts, no
+         * leading dense layers (all layers routed), plain GQA attention with
+         * per-head QK-norm — not MLA, gated purely by has_qk_norm. Key names
+         * follow the same expert_count/expert_used_count/
+         * expert_feed_forward_length convention as deepseek2 above; NOT yet
+         * confirmed against a real Qwen3-30B-A3B GGUF header dump (no such
+         * file available in this environment — see docs/ai/decision-log.md
+         * and docs/ai/mistakes.md for the follow-up verification needed
+         * before fully trusting these against a real file). */
+        char k[128];
+#define MK(suffix) (snprintf(k, sizeof(k), "%s." suffix, hdr->arch), k)
+        mc->num_experts         = (int)gguf_meta_u32(hdr, MK("expert_count"), 0);
+        mc->num_experts_per_tok = (int)gguf_meta_u32(hdr, MK("expert_used_count"), 0);
+        mc->expert_hidden_dim   = (int)gguf_meta_u32(hdr, MK("expert_feed_forward_length"), 0);
+        mc->attn_head_dim       = (int)gguf_meta_u32(hdr, MK("attention.key_length"), 0);
+#undef MK
+        mc->first_k_dense_replace    = 0; /* all layers routed */
+        mc->n_shared_experts         = 0; /* no shared experts */
+        mc->shared_expert_hidden_dim = 0;
+
+        if (mc->num_experts <= 0 || mc->num_experts_per_tok <= 0 ||
+            mc->expert_hidden_dim <= 0 || mc->attn_head_dim <= 0) {
+            fprintf(stderr, "[gguf_loader] qwen3moe: missing/invalid expert_count / "
+                            "expert_used_count / expert_feed_forward_length / "
+                            "attention.key_length metadata\n");
+            return TN_ERR_INVALID_CONFIG;
+        }
+        mc->is_moe      = true;
+        mc->has_mla     = 0;
+        mc->has_qk_norm = 1;
+        return TN_OK;
+    }
+
     if (strcmp(hdr->arch, "deepseek2") != 0) return TN_OK;
 
     /* All keys use the model architecture prefix from the GGUF header */
@@ -352,6 +386,49 @@ static size_t quant_bytes_for_elems(GGUFType type, size_t n_elems) {
     case GGUF_TYPE_IQ4_NL: return (n_elems / 32) * 18;
     default: return 0;
     }
+}
+
+/* ── Shared dense-BF16 embedding + output.weight loader ──────────────────
+ * Common to deepseek2 and qwen3moe (both dequant-then-BF16, unlike qwen35's
+ * zero-copy-raw-Q2_0 embedding path). Extracted out of weights_from_gguf()'s
+ * former inline deepseek2-only block so qwen3moe can reuse it verbatim
+ * rather than duplicating ~35 lines. */
+static TernaryError load_bf16_embedding_and_output(
+        TransformerWeights *w, const Config *cfg, const GGUFHeader *hdr,
+        GGUFWeightStore *store) {
+    const GGUFTensor *temb = gguf_find_tensor(hdr, "token_embd.weight");
+    if (!temb) {
+        fprintf(stderr, "[gguf_loader] missing 'token_embd.weight'\n");
+        return TN_ERR_INVALID_WEIGHTS;
+    }
+    size_t n_emb = (size_t)cfg->vocab_size * (size_t)cfg->dim;
+    float *ftmp = tensor_to_f32(temb, n_emb, store);
+    if (!ftmp) return TN_ERR_INVALID_WEIGHTS;
+    tn_u16 *ebuf = (tn_u16 *)malloc(n_emb * sizeof(tn_u16));
+    if (!ebuf) return TN_ERR_OOM;
+    for (size_t i = 0; i < n_emb; i++) {
+        uint32_t bits; memcpy(&bits, &ftmp[i], 4);
+        ebuf[i] = (tn_u16)(bits >> 16);
+    }
+    if (store_add(store, ebuf) != 0) { free(ebuf); return TN_ERR_OOM; }
+    w->token_embedding_table = ebuf;
+
+    const GGUFTensor *toutw = gguf_find_tensor(hdr, "output.weight");
+    if (toutw) {
+        float *fout = tensor_to_f32(toutw, n_emb, store);
+        if (!fout) return TN_ERR_INVALID_WEIGHTS;
+        tn_u16 *obuf = (tn_u16 *)malloc(n_emb * sizeof(tn_u16));
+        if (!obuf) return TN_ERR_OOM;
+        for (size_t i = 0; i < n_emb; i++) {
+            uint32_t bits; memcpy(&bits, &fout[i], 4);
+            obuf[i] = (tn_u16)(bits >> 16);
+        }
+        if (store_add(store, obuf) != 0) { free(obuf); return TN_ERR_OOM; }
+        w->wcls = obuf;
+    } else {
+        w->wcls = w->token_embedding_table;
+    }
+    return TN_OK;
 }
 
 /* ── weights_from_gguf_deepseek2() — DeepSeek-V2 MLA+MoE weight loader ─── */
@@ -786,6 +863,167 @@ static TernaryError weights_from_gguf_qwen35(
 #undef Q35_LOAD_Q2_0
 #undef Q35_LOAD_NORM
 
+/* ── weights_from_gguf_qwen3moe() — Qwen3-MoE (e.g. Qwen3-30B-A3B) loader ─
+ *
+ * Plain GQA attention (per-head QK-norm, no MLA compression) + routed MoE
+ * FFN (no shared experts, no leading dense layers). head_dim is independent
+ * of dim/n_heads (see MoEConfig.attn_head_dim), so wq/wo widths are q_rows-
+ * based, NOT dim*dim like the generic dense loader assumes — consumed by
+ * qwen3moe_attention.c's dedicated forward function, not attention.c's
+ * generic GQA branch (see that file's header comment for why). */
+
+/* Generic projection loader: F16/F32 zero-copy from mmap, other quantized
+ * types dequantized to a heap F32 buffer — same 3-way dispatch as the
+ * generic dense loader's LOAD_PROJ macro below (this arch is not Q2_0-
+ * locked like qwen35, nor Q4_K-heap-copied like deepseek2's MLA path).
+ * Sets *layer_wtype_out so the model-wide dispatch flag reflects the
+ * actual on-disk format, mirroring LOAD_PROJ's _layer_wtype side effect. */
+#define Q3MOE_LOAD_PROJ(field, tname, n_elems, layer_wtype_out) do {        \
+    snprintf(name_buf, sizeof(name_buf), "blk.%d." tname, l);              \
+    const GGUFTensor *_t = gguf_find_tensor(hdr, name_buf);                \
+    if (!_t) {                                                              \
+        fprintf(stderr, "[gguf_loader] missing tensor '%s'\n", name_buf);  \
+        return TN_ERR_INVALID_WEIGHTS;                                      \
+    }                                                                       \
+    if (_t->type == GGUF_TYPE_F16) {                                       \
+        (field)[l] = (tn_i8 *)_t->data;                                    \
+        *(layer_wtype_out) = WEIGHT_TYPE_F16;                              \
+    } else if (_t->type == GGUF_TYPE_F32) {                                \
+        (field)[l] = (tn_i8 *)_t->data;                                    \
+    } else {                                                                \
+        float *_f = tensor_to_f32(_t, (n_elems), store);                   \
+        if (!_f) return TN_ERR_INVALID_WEIGHTS;                             \
+        (field)[l] = (tn_i8 *)_f;                                          \
+    }                                                                       \
+} while(0)
+
+static TernaryError weights_from_gguf_qwen3moe(
+        TransformerWeights *w, const Config *cfg, const GGUFHeader *hdr,
+        const MoEConfig *mc, GGUFWeightStore *store) {
+
+    int dim         = cfg->dim;
+    int nl          = cfg->n_layers;
+    int n_heads     = cfg->n_heads;
+    int n_kv_heads  = cfg->n_kv_heads;
+    int head_dim    = mc->attn_head_dim;   /* NOT dim/n_heads for this arch */
+    int q_rows      = n_heads    * head_dim;
+    int kv_rows     = n_kv_heads * head_dim;
+    int num_experts = mc->num_experts;
+    int exp_hid     = mc->expert_hidden_dim;
+    char name_buf[128];
+    int _layer_wtype = WEIGHT_TYPE_F32;
+
+    w->expert_w2_quant_per_layer  = (int *)calloc((size_t)nl, sizeof(int));
+    w->expert_w13_quant_per_layer = (int *)calloc((size_t)nl, sizeof(int));
+    if (!w->expert_w2_quant_per_layer || !w->expert_w13_quant_per_layer) return TN_ERR_OOM;
+
+    for (int l = 0; l < nl; l++) {
+        /* Attention/FFN norms */
+        snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_norm.weight", l);
+        w->rms_att_weight[l] = norm_to_f32(hdr, name_buf, (size_t)dim, store);
+        if (!w->rms_att_weight[l]) return TN_ERR_INVALID_WEIGHTS;
+
+        snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_norm.weight", l);
+        w->rms_ffn_weight[l] = norm_to_f32(hdr, name_buf, (size_t)dim, store);
+        if (!w->rms_ffn_weight[l]) return TN_ERR_INVALID_WEIGHTS;
+
+        /* Per-head QK-norm */
+        snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_q_norm.weight", l);
+        w->qwen3moe_attn_q_norm[l] = norm_to_f32(hdr, name_buf, (size_t)head_dim, store);
+        if (!w->qwen3moe_attn_q_norm[l]) return TN_ERR_INVALID_WEIGHTS;
+
+        snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_k_norm.weight", l);
+        w->qwen3moe_attn_k_norm[l] = norm_to_f32(hdr, name_buf, (size_t)head_dim, store);
+        if (!w->qwen3moe_attn_k_norm[l]) return TN_ERR_INVALID_WEIGHTS;
+
+        /* GQA attention projections — q_rows/kv_rows widths (NOT dim*dim;
+         * head_dim is independent of dim/n_heads for this arch). */
+        Q3MOE_LOAD_PROJ(w->wq, "attn_q.weight",      (size_t)q_rows  * (size_t)dim, &_layer_wtype);
+        Q3MOE_LOAD_PROJ(w->wk, "attn_k.weight",      (size_t)kv_rows * (size_t)dim, &_layer_wtype);
+        Q3MOE_LOAD_PROJ(w->wv, "attn_v.weight",      (size_t)kv_rows * (size_t)dim, &_layer_wtype);
+        Q3MOE_LOAD_PROJ(w->wo, "attn_output.weight", (size_t)dim * (size_t)q_rows,  &_layer_wtype);
+        w->sq[l] = w->sk[l] = w->sv[l] = w->so[l] = 1.0f;
+
+        /* Router (F32, zero-copy) */
+        snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_gate_inp.weight", l);
+        const GGUFTensor *tgate = gguf_find_tensor(hdr, name_buf);
+        if (!tgate) {
+            fprintf(stderr, "[gguf_loader] missing tensor '%s'\n", name_buf);
+            return TN_ERR_INVALID_WEIGHTS;
+        }
+        if (tgate->type != GGUF_TYPE_F32) {
+            fprintf(stderr,
+                "[gguf_loader] ffn_gate_inp.weight must be F32 (got %d)\n",
+                (int)tgate->type);
+            return TN_ERR_INVALID_WEIGHTS;
+        }
+        w->moe_gate_w[l] = (tn_i8 *)tgate->data;
+        w->moe_gate_s[l] = 1.0f;
+
+        /* Stacked routed expert weights — kept quantized in mmap, same
+         * stride-slicing scheme as weights_from_gguf_deepseek2 (no shared
+         * experts for this arch). */
+        size_t expert_elems = (size_t)exp_hid * (size_t)dim;
+
+        snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_gate_exps.weight", l);
+        const GGUFTensor *tg_exps = gguf_find_tensor(hdr, name_buf);
+        snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_up_exps.weight", l);
+        const GGUFTensor *tu_exps = gguf_find_tensor(hdr, name_buf);
+        snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_down_exps.weight", l);
+        const GGUFTensor *td_exps = gguf_find_tensor(hdr, name_buf);
+
+        if (!tg_exps || !tu_exps || !td_exps) {
+            fprintf(stderr,
+                "[gguf_loader] missing expert tensors for layer %d\n", l);
+            return TN_ERR_INVALID_WEIGHTS;
+        }
+
+        size_t g_stride = quant_bytes_for_elems(tg_exps->type, expert_elems);
+        size_t u_stride = quant_bytes_for_elems(tu_exps->type, expert_elems);
+        size_t d_stride = quant_bytes_for_elems(td_exps->type, expert_elems);
+
+        if (g_stride == 0 || u_stride == 0 || d_stride == 0) {
+            fprintf(stderr,
+                "[gguf_loader] unknown quant type for expert tensors layer %d\n", l);
+            return TN_ERR_INVALID_WEIGHTS;
+        }
+
+        for (int e = 0; e < num_experts; e++) {
+            w->moe_w1[l][e] = (tn_i8 *)tg_exps->data + (size_t)e * g_stride;
+            w->moe_w3[l][e] = (tn_i8 *)tu_exps->data + (size_t)e * u_stride;
+            w->moe_w2[l][e] = (tn_i8 *)td_exps->data + (size_t)e * d_stride;
+            w->moe_s1[l][e] = w->moe_s2[l][e] = w->moe_s3[l][e] = 0.0f;
+        }
+        w->expert_w2_quant_per_layer[l]  = (int)td_exps->type;
+        w->expert_w13_quant_per_layer[l] = (int)tg_exps->type;
+    }
+
+    w->rms_final_weight = norm_to_f32(hdr, "output_norm.weight", (size_t)dim, store);
+    if (!w->rms_final_weight) return TN_ERR_INVALID_WEIGHTS;
+
+    /* Set expert quant flags from layer 0 (first_k_dense_replace=0 means
+     * every layer is MoE for this arch, unlike deepseek2's leading-dense
+     * layers). */
+    {
+        const GGUFTensor *tg = gguf_find_tensor(hdr, "blk.0.ffn_gate_exps.weight");
+        const GGUFTensor *td = gguf_find_tensor(hdr, "blk.0.ffn_down_exps.weight");
+        w->expert_w13_quant_type = tg ? (int)tg->type : GGUF_TYPE_Q4_K;
+        w->expert_w2_quant_type  = td ? (int)td->type : GGUF_TYPE_Q4_K;
+        w->has_expert_quant      = true;
+    }
+
+    w->layers_are_ternary = false;
+    w->wcls_is_ternary    = false;
+    w->wcls_scale         = 1.0f;
+    w->layer_weight_type  = _layer_wtype;
+
+    printf("[GGUF-Q3MOE] Weights loaded (%d layers, %d experts/layer, top-%d, "
+           "head_dim=%d)\n", nl, num_experts, mc->num_experts_per_tok, head_dim);
+    return TN_OK;
+}
+
+#undef Q3MOE_LOAD_PROJ
+
 /* ── weights_from_gguf() ──────────────────────────────────────────────────── */
 
 TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
@@ -800,40 +1038,8 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
         TernaryError e = moe_config_from_gguf(&mc, hdr);
         if (e != TN_OK) return e;
 
-        /* Load token embedding (common path below) */
-        const GGUFTensor *temb = gguf_find_tensor(hdr, "token_embd.weight");
-        if (!temb) {
-            fprintf(stderr, "[gguf_loader] missing 'token_embd.weight'\n");
-            return TN_ERR_INVALID_WEIGHTS;
-        }
-        size_t n_emb = (size_t)cfg->vocab_size * (size_t)cfg->dim;
-        float *ftmp = tensor_to_f32(temb, n_emb, store);
-        if (!ftmp) return TN_ERR_INVALID_WEIGHTS;
-        tn_u16 *ebuf = (tn_u16 *)malloc(n_emb * sizeof(tn_u16));
-        if (!ebuf) return TN_ERR_OOM;
-        for (size_t i = 0; i < n_emb; i++) {
-            uint32_t bits; memcpy(&bits, &ftmp[i], 4);
-            ebuf[i] = (tn_u16)(bits >> 16);
-        }
-        if (store_add(store, ebuf) != 0) { free(ebuf); return TN_ERR_OOM; }
-        w->token_embedding_table = ebuf;
-
-        /* Load output.weight (Q6_K) */
-        const GGUFTensor *toutw = gguf_find_tensor(hdr, "output.weight");
-        if (toutw) {
-            float *fout = tensor_to_f32(toutw, n_emb, store);
-            if (!fout) return TN_ERR_INVALID_WEIGHTS;
-            tn_u16 *obuf = (tn_u16 *)malloc(n_emb * sizeof(tn_u16));
-            if (!obuf) return TN_ERR_OOM;
-            for (size_t i = 0; i < n_emb; i++) {
-                uint32_t bits; memcpy(&bits, &fout[i], 4);
-                obuf[i] = (tn_u16)(bits >> 16);
-            }
-            if (store_add(store, obuf) != 0) { free(obuf); return TN_ERR_OOM; }
-            w->wcls = obuf;
-        } else {
-            w->wcls = w->token_embedding_table;
-        }
+        TernaryError ee = load_bf16_embedding_and_output(w, cfg, hdr, store);
+        if (ee != TN_OK) return ee;
 
         TernaryError e2 = weights_from_gguf_deepseek2(w, cfg, hdr, &mc, store);
         if (e2 != TN_OK) return e2;
@@ -850,6 +1056,23 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
         TernaryError e = moe_config_from_gguf(&mc, hdr);
         if (e != TN_OK) return e;
         return weights_from_gguf_qwen35(w, cfg, hdr, &mc, store);
+    }
+
+    /* Dispatch to Qwen3-MoE (e.g. Qwen3-30B-A3B) loader — routed MoE,
+     * plain GQA + QK-norm attention, dense-BF16-like embedding/output.weight
+     * handling (same as deepseek2, reused via the shared helper). */
+    if (strcmp(hdr->arch, "qwen3moe") == 0) {
+        MoEConfig mc;
+        TernaryError e = moe_config_from_gguf(&mc, hdr);
+        if (e != TN_OK) return e;
+
+        TernaryError ee = load_bf16_embedding_and_output(w, cfg, hdr, store);
+        if (ee != TN_OK) return ee;
+
+        TernaryError e2 = weights_from_gguf_qwen3moe(w, cfg, hdr, &mc, store);
+        if (e2 != TN_OK) return e2;
+        weights_build_classifier_quant(w, cfg);
+        return TN_OK;
     }
 
     int dim        = cfg->dim;

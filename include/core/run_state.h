@@ -68,6 +68,14 @@ typedef struct {
   float **q35_recur_state;  /* [n_layers] linear-attn: [n_v_heads][state_size][state_size] */
   float  *q35_rope_freq;    /* [attn_rope_dim/2] shared partial-rotary freq table */
 
+  /* Qwen3-MoE attention state (see MoEConfig.has_qk_norm). NULL for all
+   * other models. Same class of fix as q35_key_cache above: this arch's
+   * head_dim is independent of dim/n_heads, so it cannot reuse
+   * key_cache/value_cache/rope_freq. Allocated by qwen3moe_run_state_alloc(). */
+  float **qwen3moe_key_cache;    /* [n_layers] [n_kv_heads][max_seq][attn_head_dim] */
+  float **qwen3moe_value_cache;  /* [n_layers] same shape */
+  float  *qwen3moe_rope_freq;    /* [attn_head_dim/2] full-rotary freq table */
+
   /* State tracking */
   int current_pos;
   int max_seq_len;
@@ -144,5 +152,22 @@ TernaryError q35_run_state_alloc(RunState *s, const Config *cfg,
  * Call before run_state_free() when has_linear_attn was true at alloc time.
  */
 void q35_run_state_free(RunState *s, const Config *cfg, const MoEConfig *mc);
+
+/* ---- Qwen3-MoE attention extension --------------------------------------- */
+
+/**
+ * Allocate per-layer KV cache and RoPE frequency table for Qwen3-MoE models,
+ * correctly sized with mc->attn_head_dim (independent of dim/n_heads).
+ * Must be called after run_state_alloc() when mc->has_qk_norm is true.
+ * No-op (returns TN_OK) when mc == NULL or mc->has_qk_norm == 0.
+ */
+TernaryError qwen3moe_run_state_alloc(RunState *s, const Config *cfg,
+                                       const MoEConfig *mc, int max_seq_len);
+
+/**
+ * Free qwen3moe_key_cache/qwen3moe_value_cache/qwen3moe_rope_freq.
+ * Call before run_state_free() when has_qk_norm was true at alloc time.
+ */
+void qwen3moe_run_state_free(RunState *s, const Config *cfg);
 
 #endif /* TN_RUN_STATE_H */

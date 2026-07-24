@@ -98,8 +98,32 @@ static void banner_sleep_ms(long ms) {
     nanosleep(&ts, NULL);
 }
 
+size_t tn_banner_format_plain(char *buf, size_t cap) {
+    if (!buf || cap == 0) return 0;
+
+    char rows[GLYPH_ROWS][BANNER_BUF_CAP];
+    compose_banner(rows);
+
+    size_t n = 0;
+    for (int r = 0; r < GLYPH_ROWS; r++) {
+        for (const char *c = rows[r]; *c; c++) {
+            if (n + 1 >= cap) { buf[n] = '\0'; return n; }
+            buf[n++] = (*c == '.') ? ' ' : '#';
+        }
+        if (n + 1 >= cap) { buf[n] = '\0'; return n; }
+        buf[n++] = '\n';
+    }
+    buf[n] = '\0';
+    return n;
+}
+
 void tn_banner_print(int is_tty, int color_enabled) {
-    if (!is_tty) return;
+    if (!is_tty) {
+        char buf[TN_BANNER_PLAIN_BUF_CAP];
+        tn_banner_format_plain(buf, sizeof(buf));
+        fputs(buf, stdout);
+        return;
+    }
 
     char rows[GLYPH_ROWS][BANNER_BUF_CAP];
     compose_banner(rows);

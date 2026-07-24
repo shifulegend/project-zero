@@ -3,7 +3,47 @@
 > Canonical, append-at-top (newest first). Read this at the start of every session.
 > Add an entry **immediately** when a mistake, false assumption, regression, or avoidable
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
-> Last updated: 2026-07-19.
+> Last updated: 2026-07-24.
+
+### 2026-07-24 — New loader test crashed (null-function-pointer SEGV) because it skipped `tn_simd_init()`
+- Summary: `tests/test_gguf_loader_qwen3moe.c`'s end-to-end forward-pass test crashed with
+  `AddressSanitizer: SEGV on unknown address 0x000000000000 (pc 0x000000000000 ...)` — a jump to
+  a null address, i.e. a call through a NULL function pointer.
+- Root cause: `tn_rmsnorm`, `tn_vec_dot`, and the rest of `math/simd_dispatch.c`'s dispatch table
+  are plain function pointers initialized to `NULL` at file scope, only assigned a real
+  implementation inside `tn_simd_init()`. Every real entrypoint (`main.c`) calls
+  `tn_simd_init()` before doing anything else; this new standalone test built a `Config`/
+  `MoEConfig`/`TransformerWeights`/`RunState` directly and called `transformer_forward()` without
+  ever calling it, so the very first `tn_rmsnorm()` call inside `qwen3moe_attention_forward()`
+  jumped through a NULL pointer.
+- Fix: added `tn_simd_init();` as the first line of the test's `main()`. Not a bug in the new
+  loader/attention/run-state code — confirmed by re-running after the one-line fix: all three
+  tests (config/moe_config, loader + expert-stride, end-to-end forward pass) pass clean under
+  ASan/UBSan on both gcc and clang.
+- Prevention rule: any new test that calls into `attention_forward()`/`transformer_forward()` or
+  anything using `tn_rmsnorm`/`tn_vec_dot`/`tn_softmax`/etc. directly (not through `main.c`) must
+  call `tn_simd_init()` first — `test_simd.c` already does this for the same reason; there was no
+  existing loader-level test to have hit this before.
+
+### 2026-07-24 — Pre-existing Makefile fragility: `make debug` before `make test` breaks the two C++-linked test targets
+- Summary: ran `make clean && make debug CC=gcc` then `make test CC=gcc` (debug-first, instead of
+  the documented `release → test → debug` order) and got `undefined reference to
+  __ubsan_handle_pointer_overflow` / `__asan_report_load8` linking `build/tests/test_q2k_matvec`.
+- Root cause: `test_q2k_matvec` and `test_api_server` (Makefile rules ~line 238-247) deliberately
+  compile themselves with `CFLAGS_RELEASE` and link via a bare `$(CXX) ... $(LDFLAGS)` (no
+  `-fsanitize` flags) specifically to avoid C++/sanitizer symbol issues when pulling in
+  `build/tokenizer/chat_template.o`. This assumes `chat_template.o` (and the rest of `$(LIB_OBJS)`)
+  is *also* release-built (non-instrumented). Running `make debug` first rebuilds
+  `chat_template.o` with `-fsanitize=address -fsanitize=undefined`, so the subsequent `make test`
+  links an instrumented `chat_template.o` through a non-instrumented g++ link step — the sanitizer
+  runtime symbols it now calls are never pulled in.
+- Not fixed here (pre-existing, unrelated to any feature work this session touched, and the
+  documented command in `CLAUDE.md`/`project-overview.md` — `make release && make test && make
+  debug` — already avoids it by construction): flagging so a future session doesn't waste time
+  re-diagnosing the same thing if they happen to run `debug` before `test`.
+- Prevention rule: always verify in the documented order (`make release CC=<cc> && make test
+  CC=<cc> && make debug CC=<cc>`, `make clean` between compilers) — don't reorder for convenience,
+  the two C++-linked test targets are order-sensitive.
 
 ### 2026-07-19 — CI red since 07-17: test_q2_0_matmul's reference compared the wrong kernel's math
 - Summary: `test_single_block_multi_row` failed 3/5 rows on every CI run since the 07-17

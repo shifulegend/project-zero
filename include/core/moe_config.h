@@ -51,6 +51,14 @@ typedef struct {
     int  ssm_inner_size;         /* linear-attention total value width (num_v_heads * head_v_dim) */
     int  ssm_state_size;         /* linear-attention per-head K/V dim (e.g. 128) */
     int  ssm_time_step_rank;     /* linear-attention V head count (== num decay/gate heads) */
+
+    /* Qwen3-MoE fields. has_qk_norm == 0 for ALL other models → this code
+     * path is never reached, same convention as has_mla/has_linear_attn
+     * above. Populated by moe_config_from_gguf() for arch=="qwen3moe" (see
+     * gguf_loader.c). Reuses attn_head_dim (already defined above for
+     * qwen35) rather than a new field — same "independent head_dim"
+     * problem qwen35 already solves, populated from attention.key_length. */
+    int  has_qk_norm;            /* 1 for Qwen3-MoE-style per-head QK RMSNorm before RoPE */
 } MoEConfig;
 
 /**

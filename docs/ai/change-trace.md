@@ -1,7 +1,35 @@
 # Change Trace — project-zero
 
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
-> Update after each meaningful sub-step. Last updated: 2026-07-17.
+> Update after each meaningful sub-step. Last updated: 2026-07-24.
+
+### 2026-07-24 — CLI banner always prints; Qwen3-MoE GGUF loader support added; rename deferred to roadmap
+- What: (1) `tn_banner_print()` now shows the "PROJECT ZERO" banner for every invocation
+  (TTY or piped/redirected), animated only in a real terminal — new `tn_banner_format_plain()`,
+  new `tests/test_banner.c`. (2) Added `qwen3moe` GGUF architecture support (fixes issue #32):
+  `MoEConfig.has_qk_norm`, new `src/transformer/qwen3moe_attention.c` +
+  `src/core/qwen3moe_run_state.c` (dedicated buffers/KV-cache, mirroring the `qwen35`/MLA
+  independent-head-dim precedent), new `weights_from_gguf_qwen3moe()` loader, new
+  `tests/test_gguf_loader_qwen3moe.c` (synthetic GGUF fixture + real forward-pass token).
+  (3) Documented the `adaptive_ai_engine`→`projectzero` rename as a deferred item in
+  `.github/ROADMAP.md` (not implemented — research-only per explicit instruction).
+- Why: (1) branding must not depend on the CLI's invocation path (user request, traced to
+  `tools/make_screenshot.py` rendering redirected-stdout captures that never had a banner to
+  begin with). (2) jpsoto's bug report — `qwen3moe` fell through to the generic dense loader,
+  which expects `ffn_gate.weight` instead of the MoE router+stacked-expert tensors this arch
+  actually has. (3) scoped/estimated in an earlier discussion; explicitly deferred, not executed.
+- Areas: `src/cli/banner.c`/`.h`, `src/cli/main.c`, `tests/test_banner.c`;
+  `src/core/gguf_loader.c`, `include/core/moe_config.h`, `include/core/weights.h`,
+  `src/core/weights.c`, `src/transformer/attention.c`, `src/transformer/qwen3moe_attention.c`
+  (+header), `src/core/qwen3moe_run_state.c`, `include/core/run_state.h`, `CMakeLists.txt`,
+  `tests/test_gguf_loader_qwen3moe.c`; `.github/ROADMAP.md`; `docs/ai/decision-log.md`,
+  `docs/ai/mistakes.md`, `docs/ai/project-overview.md`, `docs/design/review-2026-07-15.md`.
+- Verified: `make release && make test && make debug`, gcc and clang, clean tree each time — zero
+  new warnings, ASan/UBSan clean, all tests pass including the two new test files. Real-model
+  golden-output verification of the Qwen3-MoE fix against the actual reported file is a tracked,
+  not-yet-done follow-up (see decision-log's 2026-07-24 entry) — disk/network constraints in this
+  session.
+- Branch: `claude/pr31-branding-cli-discussion-mwwe12`.
 
 ### 2026-07-18 — README front door: Bonsai-27B x86 comparison promoted to hero + quick start
 - What: added a hero block under the intro — the sweep3 headline claim (4.2-4.8x vs PrismML's

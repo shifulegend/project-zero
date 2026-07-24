@@ -3,6 +3,15 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-07-24.
 
+### 2026-07-24 — Documented: no Claude/AI signature/attribution unless explicitly asked
+- What: added a rule to `docs/ai/commit-log-guidance.md` (canonical) and mirrored it into the
+  entry adapters (`CLAUDE.md`, `.claude/rules/core.md`, `.github/copilot-instructions.md`,
+  `gemini/GEMINI.md`, `AGENTS.md`) — no Claude/AI signature or attribution (commit trailers,
+  code comments, generated artifacts) unless the user explicitly asks for it in that instance.
+- Why: user request, made directly in this session.
+- Areas: docs/ai/commit-log-guidance.md, CLAUDE.md, .claude/rules/core.md,
+  .github/copilot-instructions.md, gemini/GEMINI.md, AGENTS.md.
+
 ### 2026-07-24 — Full threads×SIMD×classifier sweep report (repo-only) + INT4-slower RCA
 - What: full 52-config sweep report (`docs/design/reports/sweep-2026-07-24.html` +
   `.template.html`), raw CSVs (`docs/design/reports/sweep_2026-07-24/`), 5 terminal screenshots

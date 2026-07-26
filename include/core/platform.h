@@ -22,6 +22,14 @@
     #define TN_APPLE 0
 #endif
 
+#if defined(_MSC_VER)
+    #define TN_THREAD_LOCAL __declspec(thread)
+#elif defined(__GNUC__) || defined(__clang__)
+    #define TN_THREAD_LOCAL __thread
+#else
+    #define TN_THREAD_LOCAL
+#endif
+
 /* ── Fixed-width type aliases ──────────────────────────────────────────────── */
 typedef int8_t   tn_i8;
 typedef int16_t  tn_i16;
@@ -148,11 +156,16 @@ typedef uint64_t tn_u64;
 #endif
 
 /* ── Portable software prefetch ───────────────────────────────────────────── */
-/* _mm_prefetch/_MM_HINT_T1 are x86-only (xmmintrin.h).  Use __builtin_prefetch
- * everywhere so the same code compiles on ARM (macOS M-series CI runners) and
- * any other target without dragging in x86 intrinsic headers outside AVX guards.
- *   __builtin_prefetch(addr, rw=0, locality=2)  ≈  _mm_prefetch(addr, _MM_HINT_T1) */
-#define TN_PREFETCH_T1(addr) __builtin_prefetch((const void *)(addr), 0, 2)
+#if defined(_MSC_VER)
+    #if defined(_M_X64) || defined(_M_IX86)
+        #include <xmmintrin.h>
+        #define TN_PREFETCH_T1(addr) _mm_prefetch((const char *)(addr), _MM_HINT_T1)
+    #else
+        #define TN_PREFETCH_T1(addr) (void)(addr)
+    #endif
+#else
+    #define TN_PREFETCH_T1(addr) __builtin_prefetch((const void *)(addr), 0, 2)
+#endif
 
 /* ── Binary file format constants ─────────────────────────────────────────── */
 #define TN_MAGIC       0x594E5254  /* "TNRY" in little-endian */

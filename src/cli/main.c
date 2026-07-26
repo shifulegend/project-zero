@@ -26,6 +26,7 @@
 #include "cli/color.h"
 #include "transformer/generate.h"
 #include "transformer/forward.h"
+#include "transformer/moe_ffn.h"
 #include "math/simd_dispatch.h"
 
 /* Phase 15 RAG */
@@ -119,6 +120,11 @@ int main(int argc, char **argv) {
     if (args.simd_override) {
         setenv("TN_FORCE_BACKEND", args.simd_override, 1);
         printf("SIMD override: %s (user-selected)\n", args.simd_override);
+    }
+
+    if (args.moe_threading_override) {
+        moe_set_threading_mode(args.moe_threading_override);
+        printf("MoE threading mode: %s\n", args.moe_threading_override);
     }
 
     tn_simd_init();

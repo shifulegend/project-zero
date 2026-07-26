@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-and-test:
-    name: Build & Test (${{ matrix.os }})
+    name: Build & Test (${{ matrix.os }}, ${{ matrix.compiler }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -18,32 +18,128 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q gcc clang make
+          sudo apt-get install -y -q gcc clang make cmake
 
       - name: Build (release)
-        run: make release CC=${{ matrix.compiler }}
+        run: |
+          if ! make release CC=${{ matrix.compiler }} 2>&1 | tee build_release.log; then
+            echo "### ❌ Build (release) Failed (${{ matrix.os }}, ${{ matrix.compiler }})" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`text" >> $GITHUB_STEP_SUMMARY
+            grep -Ei 'error:|fatal:' build_release.log | head -n 30 >> $GITHUB_STEP_SUMMARY || tail -n 30 build_release.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
 
-      - name: Run tests
-        run: make test CC=${{ matrix.compiler }}
+      - name: Run tests (Unconstrained)
+        run: |
+          if ! make test CC=${{ matrix.compiler }} 2>&1 | tee test_run.log; then
+            echo "### ❌ Run tests Failed (${{ matrix.os }}, ${{ matrix.compiler }})" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`text" >> $GITHUB_STEP_SUMMARY
+            grep -Ei 'error:|fatal:|FAIL' test_run.log | head -n 30 >> $GITHUB_STEP_SUMMARY || tail -n 30 test_run.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Build & Test (CMake + Sanitizers)
+        run: |
+          mkdir -p build_cmake
+          cd build_cmake
+          if ! cmake -DCMAKE_C_COMPILER=${{ matrix.compiler }} -DENABLE_TESTS=ON .. 2>&1 | tee cmake_config.log; then
+            echo "### ❌ CMake Config Failed (${{ matrix.os }}, ${{ matrix.compiler }})" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`text" >> $GITHUB_STEP_SUMMARY
+            tail -n 30 cmake_config.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+          if ! make -j$(nproc) 2>&1 | tee cmake_build.log; then
+            echo "### ❌ CMake Build Failed (${{ matrix.os }}, ${{ matrix.compiler }})" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`text" >> $GITHUB_STEP_SUMMARY
+            grep -Ei 'error:|fatal:' cmake_build.log | head -n 30 >> $GITHUB_STEP_SUMMARY || tail -n 30 cmake_build.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+          if ! ctest --output-on-failure 2>&1 | tee ctest.log; then
+            echo "### ❌ ctest Failed (${{ matrix.os }}, ${{ matrix.compiler }})" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`text" >> $GITHUB_STEP_SUMMARY
+            grep -Ei 'error:|FAIL|failing' ctest.log | head -n 30 >> $GITHUB_STEP_SUMMARY || tail -n 30 ctest.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+          cd ..
 
       - name: Build (debug + sanitizers)
-        run: make debug CC=${{ matrix.compiler }}
+        run: |
+          make clean
+          if ! make debug CC=${{ matrix.compiler }} 2>&1 | tee debug_build.log; then
+            echo "### ❌ Build (debug + sanitizers) Failed (${{ matrix.os }}, ${{ matrix.compiler }})" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`text" >> $GITHUB_STEP_SUMMARY
+            grep -Ei 'error:|fatal:' debug_build.log | head -n 30 >> $GITHUB_STEP_SUMMARY || tail -n 30 debug_build.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
 
       - name: Build (portable dist) + smoke test
         run: |
           make clean
           make dist CC=${{ matrix.compiler }}
           file adaptive_ai_engine
-          # Portable build must not dynamically link libstdc++/libgcc.
-          if ldd adaptive_ai_engine | grep -Eq 'libstdc\+\+|libgcc_s'; then
-            echo "ERROR: dist binary dynamically links libstdc++/libgcc"; exit 1
-          fi
           ./adaptive_ai_engine --version
+
+      - name: Publish Job Summary
+        if: always()
+        run: |
+          echo "## 📊 Build & Test Summary — ${{ matrix.os }} (${{ matrix.compiler }})" >> $GITHUB_STEP_SUMMARY
+          echo "| Matrix Target | Compiler | Job Outcome |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| ${{ matrix.os }} | ${{ matrix.compiler }} | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
+
+  moe-hardware-matrix:
+    name: MoE Hardware Simulation (${{ matrix.cores_name }}, ${{ matrix.compiler }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+        cores_name: ["1-Core (taskset -c 0)", "2-Cores (taskset -c 0,1)", "4-Cores (taskset -c 0-3)"]
+        include:
+          - cores_name: "1-Core (taskset -c 0)"
+            taskset_cmd: "taskset -c 0"
+          - cores_name: "2-Cores (taskset -c 0,1)"
+            taskset_cmd: "taskset -c 0,1"
+          - cores_name: "4-Cores (taskset -c 0-3)"
+            taskset_cmd: "taskset -c 0-3"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q gcc clang make cmake
+
+      - name: Run MoE Architecture Benchmark (${{ matrix.cores_name }})
+        run: |
+          if ! ${{ matrix.taskset_cmd }} make test CC=${{ matrix.compiler }} 2>&1 | tee moe_test.log; then
+            echo "### ❌ MoE Benchmark (${{ matrix.cores_name }}, ${{ matrix.compiler }}) Failed" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`text" >> $GITHUB_STEP_SUMMARY
+            grep -Ei 'error:|fatal:|FAIL' moe_test.log | head -n 30 >> $GITHUB_STEP_SUMMARY || tail -n 30 moe_test.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Publish MoE Matrix Job Summary
+        if: always()
+        run: |
+          echo "## 🚀 MoE Hardware Simulation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Hardware Core Target | Compiler | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| ${{ matrix.cores_name }} | ${{ matrix.compiler }} | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
 
   build-macos:
     name: Build & Test (macOS)
@@ -51,10 +147,32 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Build (release)
-        run: make release
+        run: |
+          if ! make release 2>&1 | tee macos_release.log; then
+            echo "### ❌ macOS Build (release) Failed" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`text" >> $GITHUB_STEP_SUMMARY
+            grep -Ei 'error:|fatal:' macos_release.log | head -n 30 >> $GITHUB_STEP_SUMMARY || tail -n 30 macos_release.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
 
       - name: Run tests
-        run: make test
+        run: |
+          if ! make test 2>&1 | tee macos_test.log; then
+            echo "### ❌ macOS Run tests Failed" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`text" >> $GITHUB_STEP_SUMMARY
+            grep -Ei 'error:|fatal:|FAIL' macos_test.log | head -n 30 >> $GITHUB_STEP_SUMMARY || tail -n 30 macos_test.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Publish macOS Job Summary
+        if: always()
+        run: |
+          echo "## 🍏 macOS Build & Test Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Target | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| macOS | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY

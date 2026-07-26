@@ -24,8 +24,13 @@ static inline __m512i unpack16_to_epi32(const tn_u8 *row, int j)
      * lane right by its bit-offset, mask the low 2 bits, and subtract 1
      * to map the stored encoding {0→-1, 1→0, 2→+1}.
      */
-    uint32_t bits;
-    memcpy(&bits, row + (j >> 2), sizeof(bits));
+    uint64_t raw = 0;
+    int start_byte = j >> 2;
+    int end_byte = (j + 15) >> 2;
+    size_t bytes_to_copy = (size_t)(end_byte - start_byte + 1);
+    memcpy(&raw, row + start_byte, bytes_to_copy);
+
+    uint32_t bits = (uint32_t)(raw >> ((j & 3) << 1));
 
     __m512i v      = _mm512_set1_epi32((int)bits);
     __m512i shifts = _mm512_setr_epi32(0, 2, 4, 6, 8, 10, 12, 14,
@@ -111,7 +116,7 @@ void ternary_matmul_packed_avx512(float *out, const float *x, const tn_u8 *packe
                     partial += (float)w * x[j];
                 }
 
-                total += partial * scales[g];
+                total += partial * scales[i * n_groups + g];
             }
 
             out[i] = total;

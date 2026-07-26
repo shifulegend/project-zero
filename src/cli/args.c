@@ -100,6 +100,7 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->static_dir = NULL;
     args->web_ui_mode = WEBUI_MODE_AUTO;
     args->color_mode = TN_COLOR_AUTO;
+    args->moe_threading_override = NULL;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--model") == 0 && i + 1 < argc) {
@@ -122,6 +123,8 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             args->max_tokens = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--threads") == 0 && i + 1 < argc) {
             args->num_threads = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--moe-threading") == 0 && i + 1 < argc) {
+            args->moe_threading_override = argv[++i];
         } else if (strcmp(argv[i], "--seed") == 0 && i + 1 < argc) {
             args->seed = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--memory-db") == 0 && i + 1 < argc) {

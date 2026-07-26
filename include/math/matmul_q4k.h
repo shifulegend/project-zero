@@ -42,6 +42,7 @@ typedef struct {
  * Q4K matmuls (e.g., shared-expert w1 and w3, both reading s->xb).
  */
 void tn_quantize_q8k(TnQ8KActBlock *out, const float *x, int n_blocks);
+TnQ8KActBlock *q8k_buf_ensure(int n_blocks);
 
 void parallel_matmul_q4k(float *out, const float *x, const uint8_t *w_q4k,
                           int n, int d, ThreadPool *tp);
@@ -54,6 +55,23 @@ void parallel_matmul_q4k(float *out, const float *x, const uint8_t *w_q4k,
 void parallel_matmul_q4k_preq(float *out, const TnQ8KActBlock *acts,
                                const uint8_t *w_q4k,
                                int n, int d, ThreadPool *tp);
+
+/*
+ * parallel_matmul_q4k_pf — same as parallel_matmul_q4k but accepts
+ * an optional w_next pointer (next expert's Q4_K weight matrix) to issue
+ * interleaved software prefetch hints for corresponding row offsets.
+ */
+void parallel_matmul_q4k_pf(float *out, const float *x, const uint8_t *w_q4k,
+                           const uint8_t *w_next, int n, int d, ThreadPool *tp);
+
+/*
+ * parallel_matmul_q4k_preq_pf — same as parallel_matmul_q4k_preq but accepts
+ * an optional w_next pointer (next expert's Q4_K weight matrix) to issue
+ * interleaved software prefetch hints for corresponding row offsets.
+ */
+void parallel_matmul_q4k_preq_pf(float *out, const TnQ8KActBlock *acts,
+                                  const uint8_t *w_q4k, const uint8_t *w_next,
+                                  int n, int d, ThreadPool *tp);
 
 /*
  * parallel_matmul_q4k_batch — batched Q4_K × F32 GEMV for k weight matrices
@@ -84,5 +102,20 @@ void parallel_matmul_q4k_batch_preq(float * const *outs,
                                      const TnQ8KActBlock *acts,
                                      const uint8_t * const *ws,
                                      int n, int d, int k, ThreadPool *tp);
+
+/*
+ * Fused Row-Split GEMV dispatches: 1 threadpool dispatch for all routed experts,
+ * splitting total_rows = top_k * d across T threads without inter-expert barriers.
+ */
+void parallel_matmul_q4k_fused_rowsplit_w13(float *hb_out, float *hb2_out,
+                                             const TnQ8KActBlock *acts,
+                                             const uint8_t * const *w1_ptrs,
+                                             const uint8_t * const *w3_ptrs,
+                                             int n, int d, int k, ThreadPool *tp);
+
+void parallel_matmul_q4k_fused_rowsplit_w2(float *q_out,
+                                            const TnQ8KActBlock * const *acts_array,
+                                            const uint8_t * const *w2_ptrs,
+                                            int n, int d, int k, ThreadPool *tp);
 
 #endif /* TN_MATMUL_Q4K_H */

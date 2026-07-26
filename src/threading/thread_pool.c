@@ -3,123 +3,213 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>  /* sysconf(_SC_NPROCESSORS_ONLN) */
+#include <ctype.h>
 
 #if TN_POSIX
+#include <unistd.h>  /* sysconf(_SC_NPROCESSORS_ONLN) */
+#endif
+
+#if TN_WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
 
 /*
  * How many times a WORKER spins with CPU_RELAX() before falling back to
- * pthread_cond_wait. During active inference, dispatches arrive every
- * ~170 µs (at 19 tok/s with ~300 matmuls/token). Workers spin briefly
- * between dispatches to avoid kernel wakeup latency.
- *
- * At 4 GHz, _mm_pause adds ~10–40 cycles → SPIN_LIMIT = 40 000 ≈ 160 µs.
- * Workers spin for up to 160 µs, then sleep until next cond_broadcast.
- *
- * When use_blocking_wait is true (n_threads >= physical_cores * 2),
- * SPIN_LIMIT is effectively 0 — workers and dispatcher go straight to
- * cond_var to avoid burning HW slots that are already fully subscribed.
+ * pthread_cond_wait / SleepConditionVariableCS.
  */
 #define SPIN_LIMIT 40000
 
-/*
- * Count distinct (physical_id, core_id) pairs from /proc/cpuinfo.
- * Returns logical core count as fallback if /proc/cpuinfo is unavailable.
- */
-static int detect_physical_cores(void) {
-    FILE *f = fopen("/proc/cpuinfo", "r");
-    if (!f) {
-        long n = sysconf(_SC_NPROCESSORS_ONLN);
-        return (n > 0) ? (int)n : 1;
-    }
-    int phys_ids[512], core_ids[512], count = 0;
-    int cur_phys = -1, cur_core = -1;
-    char line[256];
-    while (fgets(line, sizeof(line), f)) {
-        if (strncmp(line, "physical id", 11) == 0) {
-            char *p = strchr(line, ':');
-            if (p) cur_phys = (int)strtol(p + 1, NULL, 10);
-        } else if (strncmp(line, "core id", 7) == 0) {
-            char *p = strchr(line, ':');
-            if (p) cur_core = (int)strtol(p + 1, NULL, 10);
-            if (cur_phys >= 0 && cur_core >= 0 && count < 512) {
-                int found = 0;
-                for (int i = 0; i < count; i++) {
-                    if (phys_ids[i] == cur_phys && core_ids[i] == cur_core) {
-                        found = 1; break;
-                    }
-                }
-                if (!found) {
-                    phys_ids[count] = cur_phys;
-                    core_ids[count] = cur_core;
-                    count++;
-                }
-            }
-            cur_phys = -1; cur_core = -1;
-        }
-    }
-    fclose(f);
-    if (count <= 0) {
-        long n = sysconf(_SC_NPROCESSORS_ONLN);
-        return (n > 0) ? (int)n : 1;
-    }
-    return count;
-}
+/* ── CPU_RELAX macro yielding on x86, ARM64, and MSVC ──────────────────────── */
+#if defined(_MSC_VER)
+#  include <intrin.h>
+#endif
 
-#if defined(__x86_64__) || defined(__i386__)
-#  include <immintrin.h>
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+#  if !defined(_MSC_VER)
+#    include <immintrin.h>
+#  endif
 #  define CPU_RELAX() _mm_pause()
+#elif defined(__aarch64__) || defined(_M_ARM64) || defined(__arm__) || defined(_M_ARM)
+#  if defined(_MSC_VER)
+#    define CPU_RELAX() __yield()
+#  elif defined(__GNUC__) || defined(__clang__)
+#    define CPU_RELAX() __asm__ __volatile__("yield" ::: "memory")
+#  else
+#    define CPU_RELAX() do {} while(0)
+#  endif
 #else
 #  define CPU_RELAX() do {} while(0)
 #endif
 
-/*
- * K-5: Caller-participates thread pool.
- *
- * Root cause of T=7/T=8 oversubscription cliff:
- *   Old design: N workers + 1 spinning dispatcher = N+1 threads on N HW slots.
- *   At T=7 (8 logical CPUs): 8 threads fighting for 8 HW slots → OS preempts.
- *   At T=8: 9 threads on 8 HW slots → severe context-switch storm.
- *
- * Fix: create only N-1 OS worker threads. The calling (main) thread executes
- * the Nth work slice directly in threadpool_dispatch(). Total = N threads,
- * exactly matching N hardware slots. No wasted spinning dispatcher.
- *
- *   T=1: 0 OS workers, caller does all work (no thread overhead)
- *   T=4: 3 OS workers + caller = 4 threads on 4 physical cores
- *   T=8: 7 OS workers + caller = 8 threads on 8 logical cores (perfect fit)
- *
- * Worker threads handle slices 0..N-2 via atomic claim.
- * Caller always handles slice N-1.
- */
-static void *worker_entry(void *opaque) {
+/* ── Platform Synchronization Helpers ──────────────────────────────────────── */
+#if TN_POSIX
+#  define MUTEX_LOCK(m)         pthread_mutex_lock(m)
+#  define MUTEX_UNLOCK(m)       pthread_mutex_unlock(m)
+#  define COND_WAIT(c, m)       pthread_cond_wait(c, m)
+#  define COND_SIGNAL(c)        pthread_cond_signal(c)
+#  define COND_BROADCAST(c)     pthread_cond_broadcast(c)
+#elif TN_WIN32
+#  define MUTEX_LOCK(m)         EnterCriticalSection(m)
+#  define MUTEX_UNLOCK(m)       LeaveCriticalSection(m)
+#  define COND_WAIT(c, m)       SleepConditionVariableCS(c, m, INFINITE)
+#  define COND_SIGNAL(c)        WakeConditionVariable(c)
+#  define COND_BROADCAST(c)     WakeAllConditionVariable(c)
+#endif
+
+/* ── Topology Detection ────────────────────────────────────────────────────── */
+static bool is_blank_line(const char *s) {
+    while (*s) {
+        if (!isspace((unsigned char)*s)) return false;
+        s++;
+    }
+    return true;
+}
+
+static void commit_cpu_pair(int cur_phys, int cur_core, int *phys_ids, int *core_ids, int *count) {
+    if (cur_phys >= 0 && cur_core >= 0 && *count < 512) {
+        for (int i = 0; i < *count; i++) {
+            if (phys_ids[i] == cur_phys && core_ids[i] == cur_core) {
+                return;
+            }
+        }
+        phys_ids[*count] = cur_phys;
+        core_ids[*count] = cur_core;
+        (*count)++;
+    }
+}
+
+static int count_physical_cores_linux(void) {
+    FILE *f = fopen("/proc/cpuinfo", "r");
+    if (!f) {
+#if TN_POSIX
+        long n = sysconf(_SC_NPROCESSORS_ONLN);
+        return (n > 0) ? (int)n : 1;
+#else
+        return 1;
+#endif
+    }
+    int phys_ids[512], core_ids[512], count = 0;
+    int cur_phys = -1, cur_core = -1;
+    char line[256];
+
+    while (fgets(line, sizeof(line), f)) {
+        if (is_blank_line(line) || strncmp(line, "processor", 9) == 0) {
+            commit_cpu_pair(cur_phys, cur_core, phys_ids, core_ids, &count);
+            cur_phys = -1;
+            cur_core = -1;
+            continue;
+        }
+
+        char *colon = strchr(line, ':');
+        if (!colon) continue;
+
+        char key[128];
+        size_t key_len = (size_t)(colon - line);
+        if (key_len >= sizeof(key)) key_len = sizeof(key) - 1;
+        memcpy(key, line, key_len);
+        key[key_len] = '\0';
+
+        long val = strtol(colon + 1, NULL, 10);
+
+        if (strstr(key, "physical id") != NULL) {
+            cur_phys = (int)val;
+        } else if (strstr(key, "core id") != NULL) {
+            cur_core = (int)val;
+        }
+    }
+    commit_cpu_pair(cur_phys, cur_core, phys_ids, core_ids, &count);
+    fclose(f);
+
+    if (count <= 0) {
+#if TN_POSIX
+        long n = sysconf(_SC_NPROCESSORS_ONLN);
+        return (n > 0) ? (int)n : 1;
+#else
+        return 1;
+#endif
+    }
+    return count;
+}
+
+#if TN_WIN32
+static int count_physical_cores_win32(void) {
+    DWORD returnLength = 0;
+    GetLogicalProcessorInformation(NULL, &returnLength);
+    if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || returnLength == 0) {
+        SYSTEM_INFO si;
+        GetSystemInfo(&si);
+        return (si.dwNumberOfProcessors > 0) ? (int)si.dwNumberOfProcessors : 1;
+    }
+
+    DWORD count = returnLength / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
+    SYSTEM_LOGICAL_PROCESSOR_INFORMATION *buffer = (SYSTEM_LOGICAL_PROCESSOR_INFORMATION *)malloc(returnLength);
+    if (!buffer) {
+        SYSTEM_INFO si;
+        GetSystemInfo(&si);
+        return (si.dwNumberOfProcessors > 0) ? (int)si.dwNumberOfProcessors : 1;
+    }
+
+    if (!GetLogicalProcessorInformation(buffer, &returnLength)) {
+        free(buffer);
+        SYSTEM_INFO si;
+        GetSystemInfo(&si);
+        return (si.dwNumberOfProcessors > 0) ? (int)si.dwNumberOfProcessors : 1;
+    }
+
+    int physical_cores = 0;
+    for (DWORD i = 0; i < count; i++) {
+        if (buffer[i].Relationship == RelationProcessorCore) {
+            physical_cores++;
+        }
+    }
+    free(buffer);
+    return (physical_cores > 0) ? physical_cores : 1;
+}
+#endif
+
+static int detect_physical_cores(void) {
+#if TN_POSIX
+    return count_physical_cores_linux();
+#elif TN_WIN32
+    return count_physical_cores_win32();
+#else
+    return 1;
+#endif
+}
+
+/* ── Worker Thread Entry Point ─────────────────────────────────────────────── */
+#if TN_POSIX
+static void *worker_entry(void *opaque)
+#elif TN_WIN32
+static DWORD WINAPI worker_entry(LPVOID opaque)
+#endif
+{
     ThreadPool *tp = (ThreadPool *)opaque;
     unsigned int last_epoch = 0;
 
     for (;;) {
         /* ── Phase 1: Wait for a new dispatch ───────────────────────── */
         if (tp->use_blocking_wait) {
-            /*
-             * Fully subscribed mode (n_threads >= physical_cores * 2):
-             * Skip spin loop entirely — go straight to cond_wait.
-             * Spinning when HW slots are already saturated wastes cycles
-             * and causes priority inversion vs the caller's work slice.
-             */
-            pthread_mutex_lock(&tp->mutex);
+            atomic_fetch_add_explicit(&tp->sleeping_workers, 1, memory_order_acq_rel);
+            MUTEX_LOCK(&tp->mutex);
             while (!tp->shutdown &&
                    atomic_load_explicit(&tp->spin_epoch,
                                         memory_order_acquire) == last_epoch) {
-                pthread_cond_wait(&tp->cond_work, &tp->mutex);
+                COND_WAIT(&tp->cond_work, &tp->mutex);
             }
             if (!tp->shutdown) {
                 last_epoch = atomic_load_explicit(&tp->spin_epoch,
                                                   memory_order_relaxed);
             }
-            pthread_mutex_unlock(&tp->mutex);
+            MUTEX_UNLOCK(&tp->mutex);
+            atomic_fetch_sub_explicit(&tp->sleeping_workers, 1, memory_order_acq_rel);
         } else {
             int spins = 0;
             for (;;) {
-                if (tp->shutdown) return NULL;
+                if (tp->shutdown) return 0;
                 unsigned int cur = atomic_load_explicit(&tp->spin_epoch,
                                                         memory_order_acquire);
                 if (cur != last_epoch) {
@@ -130,22 +220,24 @@ static void *worker_entry(void *opaque) {
                     CPU_RELAX();
                 } else {
                     /* Fall back to OS sleep to avoid burning CPU when idle */
-                    pthread_mutex_lock(&tp->mutex);
+                    atomic_fetch_add_explicit(&tp->sleeping_workers, 1, memory_order_acq_rel);
+                    MUTEX_LOCK(&tp->mutex);
                     while (!tp->shutdown &&
                            atomic_load_explicit(&tp->spin_epoch,
                                                 memory_order_acquire) == last_epoch) {
-                        pthread_cond_wait(&tp->cond_work, &tp->mutex);
+                        COND_WAIT(&tp->cond_work, &tp->mutex);
                     }
                     if (!tp->shutdown) {
                         last_epoch = atomic_load_explicit(&tp->spin_epoch,
                                                           memory_order_relaxed);
                     }
-                    pthread_mutex_unlock(&tp->mutex);
+                    MUTEX_UNLOCK(&tp->mutex);
+                    atomic_fetch_sub_explicit(&tp->sleeping_workers, 1, memory_order_acq_rel);
                     break;
                 }
             }
         }
-        if (tp->shutdown) return NULL;
+        if (tp->shutdown) return 0;
 
         /* ── Phase 2: Atomically claim a slice index (0..N-2) ────────── */
         int idx      = atomic_fetch_add_explicit(&tp->spin_claimed, 1,
@@ -176,17 +268,14 @@ static void *worker_entry(void *opaque) {
         int rem = atomic_fetch_sub_explicit(&tp->spin_remaining, 1,
                                              memory_order_acq_rel);
         if (rem == 1) {
-            /*
-             * Last worker: wake the caller in case it fell back to
-             * cond_var sleep (rare — only when tasks are very slow).
-             */
-            pthread_mutex_lock(&tp->mutex);
-            pthread_cond_signal(&tp->cond_done);
-            pthread_mutex_unlock(&tp->mutex);
+            MUTEX_LOCK(&tp->mutex);
+            COND_SIGNAL(&tp->cond_done);
+            MUTEX_UNLOCK(&tp->mutex);
         }
     }
 }
 
+/* ── ThreadPool Lifecycle ──────────────────────────────────────────────────── */
 ThreadPool *threadpool_create(int n) {
     if (n <= 0) return NULL;
 
@@ -198,12 +287,6 @@ ThreadPool *threadpool_create(int n) {
     tp->shutdown    = false;
     tp->task_fn     = NULL;
 
-    /*
-     * K-5 blocking-wait mode: when thread count >= physical_cores * 2
-     * (i.e., using both HyperThreading siblings on every physical core),
-     * spin-waiting burns occupied HW slots instead of yielding them.
-     * Switch workers and dispatcher to immediate cond_wait in that case.
-     */
     int phys = detect_physical_cores();
     tp->physical_cores    = phys;
     tp->use_blocking_wait = (n >= phys * 2);
@@ -211,7 +294,9 @@ ThreadPool *threadpool_create(int n) {
     atomic_store(&tp->spin_epoch,     0u);
     atomic_store(&tp->spin_claimed,   0);
     atomic_store(&tp->spin_remaining, 0);
+    atomic_store(&tp->sleeping_workers, 0);
 
+#if TN_POSIX
     if (pthread_mutex_init(&tp->mutex, NULL) != 0) {
         free(tp);
         return NULL;
@@ -228,7 +313,6 @@ ThreadPool *threadpool_create(int n) {
         return NULL;
     }
 
-    /* Allocate thread array (may be 0 for n=1 — malloc(0) is valid in C99) */
     tp->threads = malloc(sizeof(pthread_t) * (size_t)(n > 1 ? n - 1 : 1));
     if (!tp->threads) {
         pthread_cond_destroy(&tp->cond_done);
@@ -240,7 +324,6 @@ ThreadPool *threadpool_create(int n) {
 
     for (int i = 0; i < tp->num_workers; i++) {
         if (pthread_create(&tp->threads[i], NULL, worker_entry, tp) != 0) {
-            /* Shut down threads created so far */
             pthread_mutex_lock(&tp->mutex);
             tp->shutdown = true;
             pthread_cond_broadcast(&tp->cond_work);
@@ -256,6 +339,36 @@ ThreadPool *threadpool_create(int n) {
             return NULL;
         }
     }
+#elif TN_WIN32
+    InitializeCriticalSection(&tp->mutex);
+    InitializeConditionVariable(&tp->cond_work);
+    InitializeConditionVariable(&tp->cond_done);
+
+    tp->threads = malloc(sizeof(HANDLE) * (size_t)(n > 1 ? n - 1 : 1));
+    if (!tp->threads) {
+        DeleteCriticalSection(&tp->mutex);
+        free(tp);
+        return NULL;
+    }
+
+    for (int i = 0; i < tp->num_workers; i++) {
+        tp->threads[i] = CreateThread(NULL, 0, worker_entry, tp, 0, NULL);
+        if (!tp->threads[i]) {
+            EnterCriticalSection(&tp->mutex);
+            tp->shutdown = true;
+            WakeAllConditionVariable(&tp->cond_work);
+            LeaveCriticalSection(&tp->mutex);
+            for (int j = 0; j < i; j++) {
+                WaitForSingleObject(tp->threads[j], INFINITE);
+                CloseHandle(tp->threads[j]);
+            }
+            free(tp->threads);
+            DeleteCriticalSection(&tp->mutex);
+            free(tp);
+            return NULL;
+        }
+    }
+#endif
 
     return tp;
 }
@@ -279,13 +392,15 @@ void threadpool_dispatch(ThreadPool *tp, tn_task_fn fn, void *arg, int total) {
     atomic_thread_fence(memory_order_release);
 
     if (n_workers > 0) {
-        /* Increment epoch — workers spin-watching this will wake immediately */
+        /* Increment epoch — workers spin-watching this will wake immediately in user-space */
         atomic_fetch_add_explicit(&tp->spin_epoch, 1u, memory_order_release);
-        /* Also broadcast to wake any workers that fell back to cond_var sleep */
-        pthread_mutex_lock(&tp->mutex);
-        tp->dispatch_epoch++;
-        pthread_cond_broadcast(&tp->cond_work);
-        pthread_mutex_unlock(&tp->mutex);
+        /* Broadcast ONLY if workers fell back to sleeping or in blocking wait mode */
+        if (tp->use_blocking_wait || atomic_load_explicit(&tp->sleeping_workers, memory_order_acquire) > 0) {
+            MUTEX_LOCK(&tp->mutex);
+            tp->dispatch_epoch++;
+            COND_BROADCAST(&tp->cond_work);
+            MUTEX_UNLOCK(&tp->mutex);
+        }
     }
 
     /*
@@ -312,28 +427,24 @@ void threadpool_dispatch(ThreadPool *tp, tn_task_fn fn, void *arg, int total) {
     /* Wait for N-1 workers to finish */
     if (n_workers > 0) {
         if (tp->use_blocking_wait) {
-            /*
-             * Fully-subscribed mode: go straight to cond_wait.
-             * Workers signal cond_done when spin_remaining hits 0.
-             */
-            pthread_mutex_lock(&tp->mutex);
+            MUTEX_LOCK(&tp->mutex);
             while (atomic_load_explicit(&tp->spin_remaining,
                                         memory_order_acquire) > 0) {
-                pthread_cond_wait(&tp->cond_done, &tp->mutex);
+                COND_WAIT(&tp->cond_done, &tp->mutex);
             }
-            pthread_mutex_unlock(&tp->mutex);
+            MUTEX_UNLOCK(&tp->mutex);
         } else {
             int spins = 0;
             while (atomic_load_explicit(&tp->spin_remaining, memory_order_acquire) > 0) {
                 if (++spins < SPIN_LIMIT) {
                     CPU_RELAX();
                 } else {
-                    pthread_mutex_lock(&tp->mutex);
+                    MUTEX_LOCK(&tp->mutex);
                     while (atomic_load_explicit(&tp->spin_remaining,
                                                 memory_order_acquire) > 0) {
-                        pthread_cond_wait(&tp->cond_done, &tp->mutex);
+                        COND_WAIT(&tp->cond_done, &tp->mutex);
                     }
-                    pthread_mutex_unlock(&tp->mutex);
+                    MUTEX_UNLOCK(&tp->mutex);
                     break;
                 }
             }
@@ -344,35 +455,26 @@ void threadpool_dispatch(ThreadPool *tp, tn_task_fn fn, void *arg, int total) {
 void threadpool_destroy(ThreadPool *tp) {
     if (!tp) return;
 
-    pthread_mutex_lock(&tp->mutex);
+    MUTEX_LOCK(&tp->mutex);
     tp->shutdown = true;
-    pthread_cond_broadcast(&tp->cond_work);
-    pthread_mutex_unlock(&tp->mutex);
+    COND_BROADCAST(&tp->cond_work);
+    MUTEX_UNLOCK(&tp->mutex);
 
+#if TN_POSIX
     for (int i = 0; i < tp->num_workers; i++) {
         pthread_join(tp->threads[i], NULL);
     }
-
     free(tp->threads);
     pthread_cond_destroy(&tp->cond_done);
     pthread_cond_destroy(&tp->cond_work);
     pthread_mutex_destroy(&tp->mutex);
+#elif TN_WIN32
+    for (int i = 0; i < tp->num_workers; i++) {
+        WaitForSingleObject(tp->threads[i], INFINITE);
+        CloseHandle(tp->threads[i]);
+    }
+    free(tp->threads);
+    DeleteCriticalSection(&tp->mutex);
+#endif
     free(tp);
 }
-
-#else /* Windows stub — Phase 4 Windows support deferred */
-
-ThreadPool *threadpool_create(int n) {
-    (void)n;
-    return NULL;
-}
-
-void threadpool_dispatch(ThreadPool *tp, tn_task_fn fn, void *arg, int total) {
-    (void)tp; (void)fn; (void)arg; (void)total;
-}
-
-void threadpool_destroy(ThreadPool *tp) {
-    (void)tp;
-}
-
-#endif /* TN_POSIX */

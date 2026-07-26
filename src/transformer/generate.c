@@ -141,6 +141,7 @@ void generate_with_callback(const Config *cfg, const TransformerWeights *w,
         int token = (step < n_prompt) ? prompt_tokens[step] : next;
 
         float *logits = transformer_forward(token, abs_pos, cfg, w, s, mc, tp);
+        s->current_pos = abs_pos + 1;
 
         /* Step 2: Sampling */
         if (step < n_prompt - 1) {

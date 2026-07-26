@@ -7,6 +7,7 @@
 #include "core/debug.h"
 #include "core/step_timing.h"
 #include "core/weights.h"
+#include <stdlib.h>
 
 /* Maximum input dimension supported for layer-level preq stack buffer. */
 #define FFN_PREQ_BUF_SIZE 16384
@@ -40,11 +41,18 @@ void ffn_forward(RunState *s, const TransformerWeights *w,
      * Saves 1 redundant quantisation per FFN layer (2 calls → 1 quantise). */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     if (w->layers_are_ternary) {
-        int8_t preq_buf[FFN_PREQ_BUF_SIZE];
+        int8_t stack_buf[FFN_PREQ_BUF_SIZE];
+        int8_t *preq_buf = stack_buf;
+        if (dim > FFN_PREQ_BUF_SIZE) {
+            preq_buf = (int8_t *)malloc((size_t)dim * sizeof(int8_t));
+        }
         TnPreqActivation preq;
         tn_preq_prepare(&preq, preq_buf, s->xb, dim);
         parallel_ternary_matmul_packed_preq(s->hb,  s->xb, (const tn_u8 *)w->w1[layer], dim, hidden_dim, w->s1[layer], &preq, tp);
         parallel_ternary_matmul_packed_preq(s->hb2, s->xb, (const tn_u8 *)w->w3[layer], dim, hidden_dim, w->s3[layer], &preq, tp);
+        if (preq_buf != stack_buf) {
+            free(preq_buf);
+        }
     } else if (w->layer_weight_type == WEIGHT_TYPE_F16) {
         parallel_matmul_f16(s->hb,  s->xb, (const tn_u16 *)w->w1[layer], dim, hidden_dim, tp);
         parallel_matmul_f16(s->hb2, s->xb, (const tn_u16 *)w->w3[layer], dim, hidden_dim, tp);

@@ -6,7 +6,18 @@
 #include "core/run_state.h"
 #include "core/weights.h"
 #include "threading/thread_pool.h"
+#include "transformer/moe_scheduler.h"
 #include <stdint.h>
+
+typedef enum {
+    TN_MOE_THREADING_ROWSPLIT_FUSED = 0, /* Fused layer-level row-split GEMV with prefetching (default) */
+    TN_MOE_THREADING_ROWSPLIT       = 1, /* Sequential per-expert row-split GEMV */
+    TN_MOE_THREADING_LEGACY         = 2  /* Batched multi-expert parallel matmul */
+} TnMoeThreadingMode;
+
+void moe_set_threading_mode(const char *mode_str);
+TnMoeThreadingMode moe_get_threading_mode(void);
+void moe_sort_selected_experts(int *selected_experts, float *selected_scores, int k);
 
 /**
  * moe_ffn_forward — Execute the MoE FFN for one token in one layer.

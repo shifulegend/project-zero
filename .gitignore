@@ -62,4 +62,10 @@ strawberry 2.jpg
 offset_calculation_sequence 2.txt
 SOURCE_CODE_WITH_LINE_NUMBERS 2.txt
 VISUAL_WEIGHT_LOADING_FLOW 2.txt
-QUICK_SUMMARY 2.txt
+CHANGES_SINCE_PR31.txt
+CHANGES_SUMMARY.txt
+.agents/
+ORIGINAL_REQUEST.md
+build_vs/
+build_win/
+

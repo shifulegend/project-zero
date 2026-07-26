@@ -183,6 +183,7 @@ void parallel_ternary_matmul_packed(float *out, const float *x, const tn_u8 *w,
 /* ── Layer-level pre-quantisation API ──────────────────────────────────── */
 
 int tn_preq_prepare(TnPreqActivation *preq, int8_t *buf, const float *x, int n) {
+    if (!preq) return 0;
     preq->valid = 0;
     preq->q_x = NULL;
     preq->act_scale = 0.0f;
@@ -311,7 +312,8 @@ static void matmul_bf16_task(void *arg, int thread_id, int start, int end) {
             __m128  h = _mm256_extractf128_ps(p8,1), l = _mm256_castps256_ps128(p8);
             __m128  s4 = _mm_add_ps(l,h);
             __m128  sh = _mm_movehdup_ps(s4);
-            val += _mm_cvtss_f32(_mm_add_ss(_mm_add_ps(s4,sh), _mm_movehl_ps(sh,sh)));
+            __m128  s2 = _mm_add_ps(s4, sh);
+            val += _mm_cvtss_f32(_mm_add_ss(s2, _mm_movehl_ps(s2, s2)));
             j += 8;
         }
         for (; j < a->n; j++) {

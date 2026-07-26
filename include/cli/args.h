@@ -45,6 +45,7 @@ typedef struct {
     WebUiMode web_ui_mode;     /* --web-ui <auto|on|off>: default auto                 */
     /* Phase 22.3: CLI/REPL polish */
     TnColorMode color_mode;    /* --color <auto|always|never>: default auto            */
+    char *moe_threading_override; /* --moe-threading <rowsplit|legacy>: default rowsplit */
 } CliArgs;
 
 // Parse CLI arguments into the CliArgs struct

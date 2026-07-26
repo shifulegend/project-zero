@@ -50,9 +50,25 @@ static inline float q2_0_f16_to_f32(uint16_t h) {
     uint32_t exp  = (h >> 10) & 0x1f;
     uint32_t mant = (uint32_t)(h & 0x3ff) << 13;
     uint32_t bits;
-    if      (exp == 0)  bits = sign | mant;
-    else if (exp == 31) bits = sign | 0x7f800000u | mant;
-    else                bits = sign | ((exp + 112) << 23) | mant;
+    if (exp == 0) {
+        uint32_t m = h & 0x3ff;
+        if (m == 0) {
+            bits = sign;
+        } else {
+            int shift = 0;
+            while ((m & 0x400) == 0) {
+                m <<= 1;
+                shift++;
+            }
+            uint32_t fp32_exp = (uint32_t)(113 - shift);
+            uint32_t fp32_mant = (m & 0x3ff) << 13;
+            bits = sign | (fp32_exp << 23) | fp32_mant;
+        }
+    } else if (exp == 31) {
+        bits = sign | 0x7f800000u | mant;
+    } else {
+        bits = sign | ((exp + 112) << 23) | mant;
+    }
     float f; memcpy(&f, &bits, 4); return f;
 }
 
@@ -173,6 +189,7 @@ static void matmul_q2_0_batch_task(void *arg, int thread_id, int start, int end)
     (void)thread_id;
     MatmulQ2_0BatchArgs *a = (MatmulQ2_0BatchArgs *)arg;
     int n_out = a->n_out;
+    if (n_out <= 0) return;
     for (int r = start; r < end; r++) {
         int ei = r / n_out;
         int ri = r % n_out;

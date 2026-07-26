@@ -80,6 +80,7 @@ float *transformer_forward(int token, int pos, const Config *cfg,
           dbg_vec_stats(tag, s->x, dim);
       }
     }
+    sw_advance(&s->sw);
 
   if (g_profile_enabled) t2 = prof_now();
 

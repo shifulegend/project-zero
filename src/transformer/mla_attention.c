@@ -27,6 +27,7 @@
 
 #include <math.h>
 #include <string.h>
+#include <stdlib.h>
 
 /* ── YaRN RoPE helpers ─────────────────────────────────────────────────── */
 
@@ -194,19 +195,27 @@ void mla_attention_forward(RunState *s, const TransformerWeights *w,
     }
     DBG_DUMP(layer, "kv_cmpr", kv_latent, lora);
 
-    /* Step 3: KV expand → hb  (kvb_rows ≤ hidden_dim; e.g. 4096 << 11008) */
+    /* Step 3: KV expand → hb (or heap buffer if kvb_rows > hidden_dim) */
+    float *hb_buf = s->hb;
+    float *malloc_hb = NULL;
+    int max_rows_needed = (q_rows > kvb_rows) ? q_rows : kvb_rows;
+    if (max_rows_needed > cfg->hidden_dim) {
+        malloc_hb = (float *)malloc((size_t)max_rows_needed * sizeof(float));
+        if (malloc_hb) hb_buf = malloc_hb;
+    }
+
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    MLA_MATMUL(s->hb, kv_latent, w->mla_wkv_b[layer], w->mla_skv_b[layer],
+    MLA_MATMUL(hb_buf, kv_latent, w->mla_wkv_b[layer], w->mla_skv_b[layer],
                lora, kvb_rows);
     if (t_step) {
         tn_step_timing_add(TN_STEP_8_KV_B_EXPANSION,
                            tn_step_timing_now_ns() - t_step);
     }
-    DBG_DUMP(layer, "kv", s->hb, kvb_rows);
+    DBG_DUMP(layer, "kv", hb_buf, kvb_rows);
     /* Store k_nope and v to caches before hb is overwritten */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     for (int kv_h = 0; kv_h < n_kv_h; kv_h++) {
-        float *k_nope_src = s->hb + kv_h * (nope + v_dim);
+        float *k_nope_src = hb_buf + kv_h * (nope + v_dim);
         float *v_src      = k_nope_src + nope;
         size_t k_off = KV_CACHE_IDX(layer, kv_h, mapped_pos, 0, n_kv_h, max_seq, head_dim);
         size_t v_off = KV_CACHE_IDX(layer, kv_h, mapped_pos, 0, n_kv_h, max_seq, head_dim);
@@ -218,14 +227,14 @@ void mla_attention_forward(RunState *s, const TransformerWeights *w,
                            tn_step_timing_now_ns() - t_step);
     }
 
-    /* Step 4: Q projection → hb  (q_rows ≤ hidden_dim; overwrites kv_full, already cached) */
+    /* Step 4: Q projection → hb_buf (overwrites kv_full, already cached) */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    MLA_MATMUL(s->hb, s->xb, w->mla_wq[layer], w->mla_sq[layer], dim, q_rows);
+    MLA_MATMUL(hb_buf, s->xb, w->mla_wq[layer], w->mla_sq[layer], dim, q_rows);
     if (t_step) {
         tn_step_timing_add(TN_STEP_5_Q_PROJECTION,
                            tn_step_timing_now_ns() - t_step);
     }
-    float *q_full = s->hb;   /* [n_heads][nope + rope] */
+    float *q_full = hb_buf;   /* [n_heads][nope + rope] */
     DBG_DUMP(layer, "q", q_full, q_rows);
 
     /* Step 5: Apply RoPE to k_rope_cur (in hb2, shared) and q_rope per head (in hb).
@@ -318,6 +327,7 @@ void mla_attention_forward(RunState *s, const TransformerWeights *w,
     }
     /* Step 12: post-attention residual (x after += xb) */
     DBG_DUMP(layer, "attn_resid", s->x, dim);
+    if (malloc_hb) free(malloc_hb);
 
     if (g_tn_verbose) {
         char tag[48];

@@ -8,6 +8,10 @@
 #include "math/elementwise.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdatomic.h>
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+#include <immintrin.h>
+#endif
 
 /*
  * Portable distribution build (`make dist`): this TU is compiled at a
@@ -117,25 +121,26 @@ extern void ternary_matmul_packed_dotprod(float *out, const float *x,
 #endif
 
 /* ── Global dispatch table ─────────────────────────────────────────────────
- * Initialized to NULL; call tn_simd_init() once at startup before any math.
+ * Initialized to scalar fallback implementations by default.
  */
-tn_matmul_fn         tn_ternary_matmul        = NULL;
-tn_matmul_packed_fn  tn_ternary_matmul_packed = NULL;
-tn_unpack_fn         tn_unpack_block          = NULL;
-tn_rmsnorm_fn        tn_rmsnorm               = NULL;
-tn_softmax_fn        tn_softmax               = NULL;
-tn_vec_add_fn        tn_vec_add               = NULL;
-tn_vec_mul_fn        tn_vec_mul               = NULL;
-tn_vec_scale_fn      tn_vec_scale             = NULL;
-tn_silu_fn           tn_silu                  = NULL;
-tn_relu2_fn          tn_relu2                 = NULL;
-tn_vec_dot_fn        tn_vec_dot               = NULL;
-tn_vec_saxpy_fn      tn_vec_saxpy             = NULL;
+tn_matmul_fn         tn_ternary_matmul        = ternary_matmul;
+tn_matmul_packed_fn  tn_ternary_matmul_packed = ternary_matmul_packed;
+tn_unpack_fn         tn_unpack_block          = unpack_ternary_block;
+tn_rmsnorm_fn        tn_rmsnorm               = rmsnorm;
+tn_softmax_fn        tn_softmax               = softmax;
+tn_vec_add_fn        tn_vec_add               = vec_add;
+tn_vec_mul_fn        tn_vec_mul               = vec_mul;
+tn_vec_scale_fn      tn_vec_scale             = vec_scale;
+tn_silu_fn           tn_silu                  = silu;
+tn_relu2_fn          tn_relu2                 = relu2_scalar;
+tn_vec_dot_fn        tn_vec_dot               = vec_dot;
+tn_vec_saxpy_fn      tn_vec_saxpy             = vec_saxpy;
 
 /* Human-readable name of the selected backend (set by tn_simd_init) */
 static const char *g_backend_name = "Scalar";
+static atomic_int g_simd_init_state = 0; /* 0: uninitialized, 1: initializing, 2: initialized */
 
-const char *tn_simd_init(void) {
+static const char *tn_simd_init_impl(void) {
     /*
      * Runtime probe the CPU, then select the best compiled-in kernel.
      * The probe is cached — subsequent calls to tn_simd_init are safe.
@@ -274,5 +279,20 @@ const char *tn_simd_init(void) {
     /* Scalar fallback — always compiled, works on any CPU */
     tn_ternary_matmul_packed = ternary_matmul_packed;
     g_backend_name = "Scalar";
+    return g_backend_name;
+}
+
+const char *tn_simd_init(void) {
+    int expected = 0;
+    if (atomic_compare_exchange_strong(&g_simd_init_state, &expected, 1)) {
+        tn_simd_init_impl();
+        atomic_store_explicit(&g_simd_init_state, 2, memory_order_release);
+    } else {
+        while (atomic_load_explicit(&g_simd_init_state, memory_order_acquire) == 1) {
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+            _mm_pause();
+#endif
+        }
+    }
     return g_backend_name;
 }

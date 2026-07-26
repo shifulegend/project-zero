@@ -45,8 +45,9 @@ static void top_k_select(const float *scores, int n, int k,
     /* Track which indices have been selected already */
     /* Use a tiny stack-allocated visited array; n ≤ 512 */
     /* Safe: num_experts is validated ≤ 512 in moe_config_read */
-    static int visited[512];
-    memset(visited, 0, n * sizeof(int));
+    int visited[512];
+    int n_visit = n < 512 ? n : 512;
+    memset(visited, 0, (size_t)n_visit * sizeof(int));
 
     for (int pick = 0; pick < k; pick++) {
         int   best_idx = -1;

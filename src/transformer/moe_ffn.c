@@ -16,14 +16,18 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+#if TN_POSIX
 #include <sys/mman.h>
+#endif
 
 /* Maximum experts supported without heap allocation (stack-allocated buffers) */
 #define MOE_MAX_EXPERTS_STACK 512
 
 /* Maximum expert hidden dim supported on stack (for score & index buffers only,
  * not for the FFN output — that uses RunState's hb/hb2 which are heap-allocated) */
+#ifndef MOE_SCORE_BUF_SIZE
 #define MOE_SCORE_BUF_SIZE    MOE_MAX_EXPERTS_STACK
+#endif
 
 /* Lazy-allocated dequantization scratch buffer — holds one expert weight matrix
  * (dim × expert_hdim floats).  Grown as needed; freed at process exit. */
@@ -45,6 +49,38 @@ static int    s_batch_dim    = 0;
  * (Q4K batched gate+up, shared expert w1+w3). */
 static TnQ8KActBlock *s_xb_q8k        = NULL;
 static int            s_xb_q8k_blocks = 0;
+
+static TnMoeThreadingMode s_moe_threading_mode = TN_MOE_THREADING_ROWSPLIT_FUSED;
+
+void moe_set_threading_mode(const char *mode_str) {
+    if (!mode_str) return;
+    if (strcmp(mode_str, "legacy") == 0) {
+        s_moe_threading_mode = TN_MOE_THREADING_LEGACY;
+    } else if (strcmp(mode_str, "rowsplit") == 0) {
+        s_moe_threading_mode = TN_MOE_THREADING_ROWSPLIT;
+    } else if (strcmp(mode_str, "rowsplit-fused") == 0 || strcmp(mode_str, "fused") == 0) {
+        s_moe_threading_mode = TN_MOE_THREADING_ROWSPLIT_FUSED;
+    }
+}
+
+TnMoeThreadingMode moe_get_threading_mode(void) {
+    return s_moe_threading_mode;
+}
+
+void moe_sort_selected_experts(int *selected_experts, float *selected_scores, int k) {
+    for (int i = 1; i < k; i++) {
+        int key_e = selected_experts[i];
+        float key_s = selected_scores[i];
+        int j = i - 1;
+        while (j >= 0 && selected_experts[j] > key_e) {
+            selected_experts[j + 1] = selected_experts[j];
+            selected_scores[j + 1]  = selected_scores[j];
+            j--;
+        }
+        selected_experts[j + 1] = key_e;
+        selected_scores[j + 1]  = key_s;
+    }
+}
 
 static float *dequant_expert_weight(
         const tn_i8 *raw, int quant_type, size_t n_elems) {
@@ -97,6 +133,7 @@ static void prefetch_expert_weights(
         const TransformerWeights *w,
         int layer, const int *selected, int top_k,
         size_t w13_bytes, size_t w2_bytes) {
+#if TN_POSIX && defined(MADV_WILLNEED)
     for (int i = 0; i < top_k; i++) {
         int e = selected[i];
         if (e < 0) continue;
@@ -107,6 +144,9 @@ static void prefetch_expert_weights(
         if (w->moe_w2 && w->moe_w2[layer] && w->moe_w2[layer][e])
             madvise((void *)w->moe_w2[layer][e], w2_bytes, MADV_WILLNEED);
     }
+#else
+    (void)w; (void)layer; (void)selected; (void)top_k; (void)w13_bytes; (void)w2_bytes;
+#endif
 }
 
 
@@ -231,6 +271,9 @@ void moe_ffn_forward(RunState              *s,
     }
     DBG_DUMP(layer, "ffn_moe_probs", expert_scores, num_experts);
 
+    /* Address-sort selected experts so memory traversal is monotonically ascending */
+    moe_sort_selected_experts(selected_experts, selected_scores, top_k);
+
     if (g_tn_verbose) {
         fprintf(stderr, "[DBG] L%02d router: xb_max=%.4f  experts=[",
                 layer, (float)0.0f);
@@ -281,16 +324,186 @@ void moe_ffn_forward(RunState              *s,
         tn_quantize_q8k(s_xb_q8k, s->xb, xb_n_blocks);
 
     /* ----------------------------------------------------------------
-     * Expert FFN — batched path for Q4K gate/up + Q5_1 down:
-     *   3 threadpool dispatches per MoE layer (was top_k×3 = 18).
-     *   Workers stay active across all expert rows in a single dispatch,
-     *   eliminating spin-wait gaps between sequential per-expert calls.
-     *
-     * Fallback: sequential per-expert loop for ternary / non-Q4K types.
+     * Expert FFN — batched path vs sequential row-split path:
+     *   TN_MOE_THREADING_ROWSPLIT: process experts 0..K-1 sequentially with
+     *   all T threads cooperating on row-splits for that single expert, capping
+     *   active memory streams to T (4) and pipelining next-expert prefetches.
+     *   TN_MOE_THREADING_LEGACY: batched multi-expert parallel matmul.
      * ---------------------------------------------------------------- */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     if (w->has_expert_quant &&
-        w->expert_w13_quant_type == GGUF_TYPE_Q4_K) {
+        w->expert_w13_quant_type == GGUF_TYPE_Q4_K &&
+        s_moe_threading_mode == TN_MOE_THREADING_ROWSPLIT_FUSED) {
+
+        int w2_qtype = (w->expert_w2_quant_per_layer &&
+                        w->expert_w2_quant_per_layer[layer])
+                       ? w->expert_w2_quant_per_layer[layer]
+                       : w->expert_w2_quant_type;
+
+        /* Grow module-level scratch buffers if dimensions increased */
+        if (s_batch_top_k < top_k || s_batch_ehdim < expert_hdim ||
+            s_batch_dim < dim) {
+            free(s_gate_buf); free(s_up_buf); free(s_down_buf);
+            s_gate_buf = (float *)malloc((size_t)top_k * expert_hdim * sizeof(float));
+            s_up_buf   = (float *)malloc((size_t)top_k * expert_hdim * sizeof(float));
+            s_down_buf = (float *)malloc((size_t)top_k * dim          * sizeof(float));
+            if (s_gate_buf && s_up_buf && s_down_buf) {
+                s_batch_top_k = top_k;
+                s_batch_ehdim = expert_hdim;
+                s_batch_dim   = dim;
+            } else {
+                s_batch_top_k = 0; s_batch_ehdim = 0; s_batch_dim = 0;
+            }
+        }
+
+        const uint8_t *w1_ptrs[MOE_SCORE_BUF_SIZE];
+        const uint8_t *w3_ptrs[MOE_SCORE_BUF_SIZE];
+        const uint8_t *w2_ptrs[MOE_SCORE_BUF_SIZE];
+        float          sel_sc [MOE_SCORE_BUF_SIZE];
+        int            valid_k = 0;
+
+        for (int i = 0; i < top_k; i++) {
+            int e = selected_experts[i];
+            if (e < 0 || e >= num_experts) continue;
+            if (g_expert_hits && layer < g_track_n_layers && e < g_track_n_experts)
+                g_expert_hits[layer * g_track_n_experts + e]++;
+
+            w1_ptrs[valid_k] = (const uint8_t *)w->moe_w1[layer][e];
+            w3_ptrs[valid_k] = (const uint8_t *)w->moe_w3[layer][e];
+            w2_ptrs[valid_k] = (const uint8_t *)w->moe_w2[layer][e];
+            sel_sc [valid_k] = selected_scores[i];
+            valid_k++;
+        }
+
+        if (valid_k > 0 && s_xb_q8k) {
+            /* Dispatch 1: Fused row-split GEMV for w1 + w3 across all valid routed experts */
+            parallel_matmul_q4k_fused_rowsplit_w13(s_gate_buf, s_up_buf, s_xb_q8k,
+                                                   w1_ptrs, w3_ptrs, dim, expert_hdim, valid_k, tp);
+
+            /* Quantize each expert's s_gate_buf output after activation to Q8K */
+            int hb_n_blocks = expert_hdim / TN_Q8K_BLOCK;
+            int total_hb_blocks = valid_k * hb_n_blocks;
+            static TnQ8KActBlock *s_hb_q8k_all = NULL;
+            static int s_hb_q8k_all_blocks = 0;
+            if (s_hb_q8k_all_blocks < total_hb_blocks) {
+                free(s_hb_q8k_all);
+                s_hb_q8k_all = (TnQ8KActBlock *)malloc((size_t)total_hb_blocks * sizeof(TnQ8KActBlock));
+                s_hb_q8k_all_blocks = s_hb_q8k_all ? total_hb_blocks : 0;
+            }
+
+            TnQ8KActBlock *hb_q8k_array[MOE_SCORE_BUF_SIZE];
+
+            for (int i = 0; i < valid_k; i++) {
+                float *hb  = s_gate_buf + (size_t)i * expert_hdim;
+                float *hb2 = s_up_buf   + (size_t)i * expert_hdim;
+
+                if (cfg->act_type == 1) tn_relu2(hb, expert_hdim);
+                else                    tn_silu(hb, expert_hdim);
+                tn_vec_mul(hb, hb, hb2, expert_hdim);
+
+                hb_q8k_array[i] = s_hb_q8k_all ? (s_hb_q8k_all + (size_t)i * hb_n_blocks) : NULL;
+                if (hb_q8k_array[i]) {
+                    tn_quantize_q8k(hb_q8k_array[i], hb, hb_n_blocks);
+                }
+            }
+
+            if (w2_qtype == GGUF_TYPE_Q4_K) {
+                /* Dispatch 2: Fused row-split GEMV for w2 across all valid routed experts */
+                parallel_matmul_q4k_fused_rowsplit_w2(s_down_buf, (const TnQ8KActBlock * const *)hb_q8k_array,
+                                                       w2_ptrs, expert_hdim, dim, valid_k, tp);
+
+                for (int i = 0; i < valid_k; i++) {
+                    float sc = sel_sc[i];
+                    float *q = s_down_buf + (size_t)i * dim;
+                    tn_vec_saxpy(s->xb2, sc, q, dim);
+                }
+            } else {
+                /* Fallback for non-Q4K w2 */
+                for (int i = 0; i < valid_k; i++) {
+                    float sc = sel_sc[i];
+                    float *hb = s_gate_buf + (size_t)i * expert_hdim;
+                    int e = selected_experts[i];
+                    size_t n_el = (size_t)expert_hdim * dim;
+                    float *fw = dequant_expert_weight(w->moe_w2[layer][e], w2_qtype, n_el);
+                    if (fw) parallel_matmul_float32(s->q, hb, fw, expert_hdim, dim, tp);
+                    tn_vec_saxpy(s->xb2, sc, s->q, dim);
+                }
+            }
+        }
+    } else if (w->has_expert_quant &&
+               w->expert_w13_quant_type == GGUF_TYPE_Q4_K &&
+               s_moe_threading_mode == TN_MOE_THREADING_ROWSPLIT) {
+
+        int w2_qtype = (w->expert_w2_quant_per_layer &&
+                        w->expert_w2_quant_per_layer[layer])
+                       ? w->expert_w2_quant_per_layer[layer]
+                       : w->expert_w2_quant_type;
+
+        for (int i = 0; i < top_k; i++) {
+            int e = selected_experts[i];
+            float sc = selected_scores[i];
+            if (e < 0 || e >= num_experts) continue;
+
+            if (g_expert_hits && layer < g_track_n_layers && e < g_track_n_experts)
+                g_expert_hits[layer * g_track_n_experts + e]++;
+
+            int e_next = (i + 1 < top_k) ? selected_experts[i + 1] : -1;
+            const uint8_t *w1_next = (e_next >= 0 && e_next < num_experts && w->moe_w1[layer])
+                                     ? (const uint8_t *)w->moe_w1[layer][e_next] : NULL;
+            const uint8_t *w3_next = (e_next >= 0 && e_next < num_experts && w->moe_w3[layer])
+                                     ? (const uint8_t *)w->moe_w3[layer][e_next] : NULL;
+            const uint8_t *w2_next = (e_next >= 0 && e_next < num_experts && w->moe_w2[layer])
+                                     ? (const uint8_t *)w->moe_w2[layer][e_next] : NULL;
+
+            /* Gate projection for expert i (row-split across T threads, prefetching w1_next) */
+            if (s_xb_q8k) {
+                parallel_matmul_q4k_preq_pf(s->hb, s_xb_q8k,
+                                            (const uint8_t *)w->moe_w1[layer][e],
+                                            w1_next, dim, expert_hdim, tp);
+            } else {
+                parallel_matmul_q4k(s->hb, s->xb, (const uint8_t *)w->moe_w1[layer][e],
+                                    dim, expert_hdim, tp);
+            }
+
+            /* Up projection for expert i (row-split across T threads, prefetching w3_next) */
+            if (s_xb_q8k) {
+                parallel_matmul_q4k_preq_pf(s->hb2, s_xb_q8k,
+                                            (const uint8_t *)w->moe_w3[layer][e],
+                                            w3_next, dim, expert_hdim, tp);
+            } else {
+                parallel_matmul_q4k(s->hb2, s->xb, (const uint8_t *)w->moe_w3[layer][e],
+                                    dim, expert_hdim, tp);
+            }
+
+            /* Activation & SwiGLU vector multiply */
+            if (cfg->act_type == 1) tn_relu2(s->hb, expert_hdim);
+            else                    tn_silu(s->hb, expert_hdim);
+            tn_vec_mul(s->hb, s->hb, s->hb2, expert_hdim);
+
+            /* Down projection for expert i (row-split across T threads) */
+            if (w2_qtype == GGUF_TYPE_Q5_1) {
+                parallel_matmul_q5_1(s->q, s->hb, (const uint8_t *)w->moe_w2[layer][e],
+                                     expert_hdim, dim, tp);
+            } else if (w2_qtype == GGUF_TYPE_Q5_0) {
+                parallel_matmul_q5_0(s->q, s->hb, (const uint8_t *)w->moe_w2[layer][e],
+                                     expert_hdim, dim, tp);
+            } else if (w2_qtype == GGUF_TYPE_Q8_0) {
+                parallel_matmul_q8_0(s->q, s->hb, (const uint8_t *)w->moe_w2[layer][e],
+                                     expert_hdim, dim, tp);
+            } else if (w2_qtype == GGUF_TYPE_Q4_K) {
+                parallel_matmul_q4k_pf(s->q, s->hb, (const uint8_t *)w->moe_w2[layer][e],
+                                       w2_next, expert_hdim, dim, tp);
+            } else {
+                size_t n_el = (size_t)expert_hdim * dim;
+                float *fw = dequant_expert_weight(w->moe_w2[layer][e], w2_qtype, n_el);
+                if (fw) parallel_matmul_float32(s->q, s->hb, fw, expert_hdim, dim, tp);
+            }
+
+            /* Weighted accumulation into s->xb2 */
+            tn_vec_saxpy(s->xb2, sc, s->q, dim);
+        }
+    } else if (w->has_expert_quant &&
+               w->expert_w13_quant_type == GGUF_TYPE_Q4_K) {
 
         int w2_qtype = (w->expert_w2_quant_per_layer &&
                         w->expert_w2_quant_per_layer[layer])

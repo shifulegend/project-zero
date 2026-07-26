@@ -84,10 +84,10 @@ static void q35_full_attn_forward(RunState *s, const TransformerWeights *w,
     int kv_width  = n_kv_h * head_dim;
     int max_seq   = s->max_seq_len;
 
-    static float q_full[Q35_MAX_Q_WIDTH];
-    static float k_buf[Q35_MAX_KV_WIDTH];
-    static float v_buf[Q35_MAX_KV_WIDTH];
-    static float attn_concat[Q35_MAX_HEADS * Q35_MAX_HEAD_DIM];
+    static TN_THREAD_LOCAL float q_full[Q35_MAX_Q_WIDTH];
+    static TN_THREAD_LOCAL float k_buf[Q35_MAX_KV_WIDTH];
+    static TN_THREAD_LOCAL float v_buf[Q35_MAX_KV_WIDTH];
+    static TN_THREAD_LOCAL float attn_concat[Q35_MAX_HEADS * Q35_MAX_HEAD_DIM];
 
     /* Step 1: RMSNorm */
     int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
@@ -130,7 +130,6 @@ static void q35_full_attn_forward(RunState *s, const TransformerWeights *w,
         memcpy(&s->q35_key_cache[layer][off],   &k_buf[(size_t)kh * head_dim], (size_t)head_dim * sizeof(float));
         memcpy(&s->q35_value_cache[layer][off], &v_buf[(size_t)kh * head_dim], (size_t)head_dim * sizeof(float));
     }
-    sw_advance(&s->sw);
     if (t_step)
         tn_step_timing_add(TN_STEP_10_KV_CACHE_WRITE, tn_step_timing_now_ns() - t_step);
 
@@ -202,13 +201,13 @@ static void q35_linear_attn_forward(RunState *s, const TransformerWeights *w,
     int conv_dim   = key_dim * 2 + value_dim;
     float eps      = cfg->rms_norm_eps;
 
-    static float qkv_mixed[Q35_MAX_CONV_DIM];
-    static float z[Q35_MAX_KV_WIDTH];
-    static float beta[Q35_MAX_HEADS];
-    static float alpha[Q35_MAX_HEADS];
-    static float g_exp[Q35_MAX_HEADS];
-    static float conv_out[Q35_MAX_CONV_DIM];
-    static float core_out[Q35_MAX_KV_WIDTH];
+    static TN_THREAD_LOCAL float qkv_mixed[Q35_MAX_CONV_DIM];
+    static TN_THREAD_LOCAL float z[Q35_MAX_KV_WIDTH];
+    static TN_THREAD_LOCAL float beta[Q35_MAX_HEADS];
+    static TN_THREAD_LOCAL float alpha[Q35_MAX_HEADS];
+    static TN_THREAD_LOCAL float g_exp[Q35_MAX_HEADS];
+    static TN_THREAD_LOCAL float conv_out[Q35_MAX_CONV_DIM];
+    static TN_THREAD_LOCAL float core_out[Q35_MAX_KV_WIDTH];
 
     /* Step 1: RMSNorm */
     int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;

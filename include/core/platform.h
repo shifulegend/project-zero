@@ -25,7 +25,7 @@
 #if defined(_MSC_VER)
     #define TN_THREAD_LOCAL __declspec(thread)
 #elif defined(__GNUC__) || defined(__clang__)
-    #define TN_THREAD_LOCAL __extension__ __thread
+    #define TN_THREAD_LOCAL __thread
 #else
     #define TN_THREAD_LOCAL
 #endif

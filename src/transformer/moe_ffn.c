@@ -16,7 +16,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+#if TN_POSIX
 #include <sys/mman.h>
+#endif
 
 /* Maximum experts supported without heap allocation (stack-allocated buffers) */
 #define MOE_MAX_EXPERTS_STACK 512
@@ -131,6 +133,7 @@ static void prefetch_expert_weights(
         const TransformerWeights *w,
         int layer, const int *selected, int top_k,
         size_t w13_bytes, size_t w2_bytes) {
+#if TN_POSIX && defined(MADV_WILLNEED)
     for (int i = 0; i < top_k; i++) {
         int e = selected[i];
         if (e < 0) continue;
@@ -141,6 +144,9 @@ static void prefetch_expert_weights(
         if (w->moe_w2 && w->moe_w2[layer] && w->moe_w2[layer][e])
             madvise((void *)w->moe_w2[layer][e], w2_bytes, MADV_WILLNEED);
     }
+#else
+    (void)w; (void)layer; (void)selected; (void)top_k; (void)w13_bytes; (void)w2_bytes;
+#endif
 }
 
 

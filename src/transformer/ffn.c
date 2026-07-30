@@ -1,12 +1,11 @@
 #include "transformer/ffn.h"
 #include "transformer/moe_ffn.h"
 #include "math/parallel_matmul.h"
-#include "math/matmul_f16.h"
-#include "math/matmul_q2_0.h"
 #include "math/simd_dispatch.h"
 #include "core/debug.h"
 #include "core/step_timing.h"
 #include "core/weights.h"
+#include "transformer/dense_matmul_dispatch.h"
 
 /* Maximum input dimension supported for layer-level preq stack buffer. */
 #define FFN_PREQ_BUF_SIZE 16384
@@ -45,15 +44,9 @@ void ffn_forward(RunState *s, const TransformerWeights *w,
         tn_preq_prepare(&preq, preq_buf, s->xb, dim);
         parallel_ternary_matmul_packed_preq(s->hb,  s->xb, (const tn_u8 *)w->w1[layer], dim, hidden_dim, w->s1[layer], &preq, tp);
         parallel_ternary_matmul_packed_preq(s->hb2, s->xb, (const tn_u8 *)w->w3[layer], dim, hidden_dim, w->s3[layer], &preq, tp);
-    } else if (w->layer_weight_type == WEIGHT_TYPE_F16) {
-        parallel_matmul_f16(s->hb,  s->xb, (const tn_u16 *)w->w1[layer], dim, hidden_dim, tp);
-        parallel_matmul_f16(s->hb2, s->xb, (const tn_u16 *)w->w3[layer], dim, hidden_dim, tp);
-    } else if (w->layer_weight_type == WEIGHT_TYPE_Q2_0) {
-        parallel_matmul_q2_0(s->hb,  s->xb, (const uint8_t *)w->w1[layer], dim, hidden_dim, tp);
-        parallel_matmul_q2_0(s->hb2, s->xb, (const uint8_t *)w->w3[layer], dim, hidden_dim, tp);
     } else {
-        parallel_matmul_float32(s->hb,  s->xb, (const float *)w->w1[layer], dim, hidden_dim, tp);
-        parallel_matmul_float32(s->hb2, s->xb, (const float *)w->w3[layer], dim, hidden_dim, tp);
+        tn_dense_matmul_dispatch(s->hb,  s->xb, w->w1[layer], w->w1_type[layer], dim, hidden_dim, tp);
+        tn_dense_matmul_dispatch(s->hb2, s->xb, w->w3[layer], w->w3_type[layer], dim, hidden_dim, tp);
     }
 
     /* Apply activation to Gate */
@@ -80,12 +73,8 @@ void ffn_forward(RunState *s, const TransformerWeights *w,
     /* Step 6: Down projection with Dynamic Dispatch */
     if (w->layers_are_ternary) {
         parallel_ternary_matmul_packed(s->xb, s->hb, (const tn_u8 *)w->w2[layer], hidden_dim, dim, w->s2[layer], tp);
-    } else if (w->layer_weight_type == WEIGHT_TYPE_F16) {
-        parallel_matmul_f16(s->xb, s->hb, (const tn_u16 *)w->w2[layer], hidden_dim, dim, tp);
-    } else if (w->layer_weight_type == WEIGHT_TYPE_Q2_0) {
-        parallel_matmul_q2_0(s->xb, s->hb, (const uint8_t *)w->w2[layer], hidden_dim, dim, tp);
     } else {
-        parallel_matmul_float32(s->xb, s->hb, (const float *)w->w2[layer], hidden_dim, dim, tp);
+        tn_dense_matmul_dispatch(s->xb, s->hb, w->w2[layer], w->w2_type[layer], hidden_dim, dim, tp);
     }
     /* Step 14: dense down projection output (pre-residual) */
     DBG_DUMP(layer, "dense_down", s->xb, dim);

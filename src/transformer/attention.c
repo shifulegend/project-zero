@@ -2,8 +2,8 @@
 #include "transformer/mla_attention.h"
 #include "transformer/qwen35_attention.h"
 #include "math/parallel_matmul.h"
-#include "math/matmul_f16.h"
 #include "math/rope.h"
+#include "transformer/dense_matmul_dispatch.h"
 #include "math/simd_dispatch.h"
 #include "core/platform.h"
 #include "core/weights.h"
@@ -89,14 +89,24 @@ void attention_forward(RunState *s, const TransformerWeights *w,
     parallel_ternary_matmul_packed_preq(s->q,  s->xb, (const tn_u8 *)w->wq[layer], dim, dim,    w->sq[layer], &preq, tp);
     parallel_ternary_matmul_packed_preq(k_buf, s->xb, (const tn_u8 *)w->wk[layer], dim, kv_dim, w->sk[layer], &preq, tp);
     parallel_ternary_matmul_packed_preq(v_buf, s->xb, (const tn_u8 *)w->wv[layer], dim, kv_dim, w->sv[layer], &preq, tp);
-  } else if (w->layer_weight_type == WEIGHT_TYPE_F16) {
-    parallel_matmul_f16(s->q,  s->xb, (const tn_u16 *)w->wq[layer], dim, dim,    tp);
-    parallel_matmul_f16(k_buf, s->xb, (const tn_u16 *)w->wk[layer], dim, kv_dim, tp);
-    parallel_matmul_f16(v_buf, s->xb, (const tn_u16 *)w->wv[layer], dim, kv_dim, tp);
   } else {
-    parallel_matmul_float32(s->q,  s->xb, (const float *)w->wq[layer], dim, dim,    tp);
-    parallel_matmul_float32(k_buf, s->xb, (const float *)w->wk[layer], dim, kv_dim, tp);
-    parallel_matmul_float32(v_buf, s->xb, (const float *)w->wv[layer], dim, kv_dim, tp);
+    tn_dense_matmul_dispatch(s->q,  s->xb, w->wq[layer], w->wq_type[layer], dim, dim,    tp);
+    tn_dense_matmul_dispatch(k_buf, s->xb, w->wk[layer], w->wk_type[layer], dim, kv_dim, tp);
+    tn_dense_matmul_dispatch(v_buf, s->xb, w->wv[layer], w->wv_type[layer], dim, kv_dim, tp);
+  }
+
+  /* Step 2b: Qwen3 (dense) per-head QK-norm — RMSNorm applied to each Q/K
+   * head individually, before RoPE. Absent (NULL) for architectures without
+   * it (Llama/Mistral/Gemma/Phi); a no-op branch for those models. */
+  if (w->q35_attn_q_norm && w->q35_attn_q_norm[layer]) {
+    for (int h = 0; h < n_heads; h++) {
+      float *q_h = s->q + (size_t)h * head_dim;
+      tn_rmsnorm(q_h, q_h, w->q35_attn_q_norm[layer], head_dim, cfg->rms_norm_eps);
+    }
+    for (int kh = 0; kh < n_kv_heads; kh++) {
+      float *k_h = k_buf + (size_t)kh * head_dim;
+      tn_rmsnorm(k_h, k_h, w->q35_attn_k_norm[layer], head_dim, cfg->rms_norm_eps);
+    }
   }
 
   /* Step 3: Apply RoPE to Q and K with full YaRN if configured */
@@ -198,10 +208,8 @@ void attention_forward(RunState *s, const TransformerWeights *w,
   /* Step 7: Output projection — s->xb (concatenated head outputs) → s->xb2 */
   if (w->layers_are_ternary) {
     parallel_ternary_matmul_packed(s->xb2, s->xb, (const tn_u8 *)w->wo[layer], dim, dim, w->so[layer], tp);
-  } else if (w->layer_weight_type == WEIGHT_TYPE_F16) {
-    parallel_matmul_f16(s->xb2, s->xb, (const tn_u16 *)w->wo[layer], dim, dim, tp);
   } else {
-    parallel_matmul_float32(s->xb2, s->xb, (const float *)w->wo[layer], dim, dim, tp);
+    tn_dense_matmul_dispatch(s->xb2, s->xb, w->wo[layer], w->wo_type[layer], dim, dim, tp);
   }
 
 

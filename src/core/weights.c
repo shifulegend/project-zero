@@ -32,6 +32,16 @@ TernaryError weights_alloc_pointers(TransformerWeights *w, const Config *cfg) {
     w->rms_attn_sub_norm = (float **)calloc(nl, sizeof(float *));
     w->rms_ffn_sub_norm = (float **)calloc(nl, sizeof(float *));
 
+    /* Per-layer, per-projection weight type (WEIGHT_TYPE_*) — see weights.h
+     * for why this can't be a single shared flag. */
+    w->wq_type = (int *)calloc(nl, sizeof(int));
+    w->wk_type = (int *)calloc(nl, sizeof(int));
+    w->wv_type = (int *)calloc(nl, sizeof(int));
+    w->wo_type = (int *)calloc(nl, sizeof(int));
+    w->w1_type = (int *)calloc(nl, sizeof(int));
+    w->w2_type = (int *)calloc(nl, sizeof(int));
+    w->w3_type = (int *)calloc(nl, sizeof(int));
+
     /* Qwen3.5/3.6 hybrid attention — cheap per-layer pointer arrays,
      * always allocated (NULL contents) like rms_attn_sub_norm above;
      * populated only when MoEConfig.has_linear_attn is set. */
@@ -53,6 +63,8 @@ TernaryError weights_alloc_pointers(TransformerWeights *w, const Config *cfg) {
         !w->s1 || !w->s2 || !w->s3 ||
         !w->rms_att_weight || !w->rms_ffn_weight ||
         !w->rms_attn_sub_norm || !w->rms_ffn_sub_norm ||
+        !w->wq_type || !w->wk_type || !w->wv_type || !w->wo_type ||
+        !w->w1_type || !w->w2_type || !w->w3_type ||
         !w->q35_attn_q_norm || !w->q35_attn_k_norm ||
         !w->q35_ssm_qkv || !w->q35_ssm_gate || !w->q35_ssm_conv1d ||
         !w->q35_ssm_dt_bias || !w->q35_ssm_a || !w->q35_ssm_alpha ||
@@ -82,6 +94,13 @@ void weights_free_pointers(TransformerWeights *w) {
     if (w->rms_ffn_weight) free(w->rms_ffn_weight);
     if (w->rms_attn_sub_norm) free(w->rms_attn_sub_norm);
     if (w->rms_ffn_sub_norm) free(w->rms_ffn_sub_norm);
+    if (w->wq_type) free(w->wq_type);
+    if (w->wk_type) free(w->wk_type);
+    if (w->wv_type) free(w->wv_type);
+    if (w->wo_type) free(w->wo_type);
+    if (w->w1_type) free(w->w1_type);
+    if (w->w2_type) free(w->w2_type);
+    if (w->w3_type) free(w->w3_type);
     if (w->q35_attn_q_norm) free(w->q35_attn_q_norm);
     if (w->q35_attn_k_norm) free(w->q35_attn_k_norm);
     if (w->q35_ssm_qkv) free(w->q35_ssm_qkv);

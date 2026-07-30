@@ -7,7 +7,7 @@
 #include "core/platform.h"
 #include <stdbool.h>
 
-/* Layer weight storage type constants for layer_weight_type field.
+/* Per-projection weight storage type constants (wq_type / wk_type / ... below).
  * Dispatch is purely data-driven — no model-name checks anywhere. */
 #define WEIGHT_TYPE_F32  0   /* F32 heap or mmap — existing fallback path */
 #define WEIGHT_TYPE_F16  1   /* F16 mmap zero-copy — 2× bandwidth vs F32  */
@@ -54,11 +54,32 @@ typedef struct {
     bool    wcls_is_ternary; /* true = separate packed ternary lm_head */
     bool    layers_are_ternary;
 
-    /* Layer weight storage type for non-ternary GGUF models.
-     * Set at load time by gguf_loader based on the on-disk tensor format.
-     * Dispatch in attention.c / ffn.c reads this to select the right kernel.
-     * The ternary path (layers_are_ternary=true) ignores this field entirely. */
-    int     layer_weight_type;  /* WEIGHT_TYPE_F32 / WEIGHT_TYPE_F16 / WEIGHT_TYPE_Q4K */
+    /* Per-layer, per-projection weight storage type for non-ternary GGUF
+     * models: arrays of n_layers ints, set at load time by gguf_loader from
+     * each individual tensor's own on-disk format. Dispatch in attention.c /
+     * ffn.c indexes these by [layer] to select the right kernel per
+     * projection. The ternary path (layers_are_ternary=true) ignores these
+     * fields entirely.
+     *
+     * Two dimensions of "not actually uniform" here, both found bringing up
+     * Qwen3-8B-Q4_K_M (2026-07-30):
+     *  1. Per-projection: mixed-precision GGUF schemes (e.g. Q4_K_M) assign
+     *     different quant types to different tensor roles in the same
+     *     model — attn_v/ffn_down are often Q6_K (dequanted to F32 here)
+     *     while attn_q/k/o and ffn_gate/up are Q4_K (zero-copy). A single
+     *     shared flag fed wv/w2's F32-heap data to the Q4_K kernel as if it
+     *     were raw Q4_K bytes whenever any *other* projection was Q4_K.
+     *  2. Per-layer: even for one fixed role (e.g. attn_v), the type is NOT
+     *     constant across layers — this file's attn_v/ffn_down are Q6_K on
+     *     layers 0-3 but Q4_K on layers 4-5, back to Q6_K on layer 6, etc.
+     *     A single scalar per role (last-layer-wins) misdispatched every
+     *     layer whose type didn't match the last one loaded — silent
+     *     numerical garbage that happened to stay finite for a few layers
+     *     before producing an actual NaN/Inf that then poisoned the rest of
+     *     the forward pass. Confirmed via --dump-tensors: l_out absmax grew
+     *     14 -> 53 -> 71 -> 75 over layers 0-3, then NaN from layer 4 on. */
+    int     *wq_type, *wk_type, *wv_type, *wo_type;  /* [n_layers], attention */
+    int     *w1_type, *w2_type, *w3_type;            /* [n_layers], FFN gate/down/up */
 
     /*
      * INT8 quantized classifier (computed at load time from BF16 wcls).

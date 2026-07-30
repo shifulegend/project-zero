@@ -775,7 +775,14 @@ static TernaryError weights_from_gguf_qwen35(
     w->layers_are_ternary = false;
     w->wcls_is_ternary    = false;
     w->wcls_scale         = 1.0f;
-    w->layer_weight_type  = WEIGHT_TYPE_Q2_0;
+    /* Uniform Q2_0 for every layer/projection — unlike Q4_K_M, this
+     * architecture's quantizer applies one type to all tensors, all layers.
+     * (attention routes to qwen35_attention_forward and never reads these;
+     * ffn_forward's dense SwiGLU path does, for the shared-FFN portion.) */
+    for (int l = 0; l < nl; l++) {
+        w->wq_type[l] = w->wk_type[l] = w->wv_type[l] = w->wo_type[l] = WEIGHT_TYPE_Q2_0;
+        w->w1_type[l] = w->w2_type[l] = w->w3_type[l] = WEIGHT_TYPE_Q2_0;
+    }
     (void)hidden_dim; (void)n_head;
 
     printf("[GGUF-Q35] Weights loaded (%d layers, full_attention_interval=%d, "
@@ -855,6 +862,7 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
     int dim        = cfg->dim;
     int hidden_dim = cfg->hidden_dim;
     int kv_dim     = config_kv_dim(cfg);
+    int head_dim   = config_head_dim(cfg);
     int nl         = cfg->n_layers;
     char name_buf[128];
 
@@ -941,9 +949,6 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
     }
 
     /* 2. Per-layer weights */
-    /* Detect layer weight storage type from first tensor encountered.
-     * All layers in a GGUF model use the same quantisation type. */
-    int _layer_wtype = WEIGHT_TYPE_F32;
     for (int l = 0; l < nl; l++) {
         /* Attention norm (rms_att_weight): F32 zero-copy or dequant */
         snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_norm.weight", l);
@@ -955,11 +960,33 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
         w->rms_ffn_weight[l] = norm_to_f32(hdr, name_buf, (size_t)dim, store);
         if (!w->rms_ffn_weight[l]) return TN_ERR_INVALID_WEIGHTS;
 
+        /* Qwen3 (dense) per-head QK-norm — optional: present for "qwen3" arch,
+         * absent for llama/mistral/gemma/phi. Reuses the q35_attn_{q,k}_norm
+         * fields the Qwen3.5/3.6 hybrid loader already populates; attention.c's
+         * generic forward path applies them the same way when non-NULL. */
+        snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_q_norm.weight", l);
+        if (gguf_find_tensor(hdr, name_buf)) {
+            w->q35_attn_q_norm[l] = norm_to_f32(hdr, name_buf, (size_t)head_dim, store);
+            if (!w->q35_attn_q_norm[l]) return TN_ERR_INVALID_WEIGHTS;
+            snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_k_norm.weight", l);
+            w->q35_attn_k_norm[l] = norm_to_f32(hdr, name_buf, (size_t)head_dim, store);
+            if (!w->q35_attn_k_norm[l]) return TN_ERR_INVALID_WEIGHTS;
+        }
+
 /* Helper macro: load a projection weight tensor.
  * F16/F32: zero-copy pointer into mmap'd data (no heap allocation needed).
+ * Q4_K: zero-copy raw bytes — attention.c/ffn.c dispatch to parallel_matmul_q4k
+ * (2026-07-30: dequanting every Q4_K tensor to F32 here needed ~28 GB heap for
+ * an 8B-parameter model — attn+ffn tensors alone — and reliably OOM-killed the
+ * process; Q4_K already has a fused zero-copy kernel, it just wasn't wired into
+ * this generic dense-model path, only the DeepSeek MLA/MoE path).
  * Other (quantized) types: dequantize to a heap F32 buffer via tensor_to_f32().
- * Updates _layer_wtype so the model-wide dispatch flag is set after the loop. */
-#define LOAD_PROJ(field, tname, n_elems) do {                               \
+ * Sets type_out[l] (a per-layer, per-PROJECTION array, e.g. w->wv_type) —
+ * not a single model-wide flag: Q4_K_M-style GGUF files assign different
+ * tensor roles different quant types (attn_v/ffn_down commonly Q6_K while
+ * everything else is Q4_K), AND that assignment varies layer to layer for
+ * the same role (see weights.h for the full incident note). */
+#define LOAD_PROJ(field, tname, n_elems, type_out) do {                    \
     snprintf(name_buf, sizeof(name_buf), "blk.%d." tname, l);              \
     const GGUFTensor *_t = gguf_find_tensor(hdr, name_buf);                \
     if (!_t) {                                                              \
@@ -969,29 +996,33 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
     if (_t->type == GGUF_TYPE_F16) {                                        \
         /* Zero-copy: F16 data lives in mmap for model lifetime */          \
         (field)[l] = (tn_i8 *)_t->data;                                    \
-        _layer_wtype = WEIGHT_TYPE_F16;                                     \
+        (type_out)[l] = WEIGHT_TYPE_F16;                                    \
     } else if (_t->type == GGUF_TYPE_F32) {                                 \
         /* Zero-copy: F32 data lives in mmap for model lifetime */          \
         (field)[l] = (tn_i8 *)_t->data;                                    \
-        /* _layer_wtype stays WEIGHT_TYPE_F32 (default) */                  \
+        (type_out)[l] = WEIGHT_TYPE_F32;                                    \
+    } else if (_t->type == GGUF_TYPE_Q4_K && (n_elems) % 256 == 0) {        \
+        /* Zero-copy: raw Q4_K bytes live in mmap for model lifetime */     \
+        (field)[l] = (tn_i8 *)_t->data;                                    \
+        (type_out)[l] = WEIGHT_TYPE_Q4K;                                    \
     } else {                                                                \
         float *_f = tensor_to_f32(_t, (n_elems), store);                   \
         if (!_f) return TN_ERR_INVALID_WEIGHTS;                             \
         (field)[l] = (tn_i8 *)_f;                                          \
-        /* _layer_wtype stays WEIGHT_TYPE_F32 (dequanted to F32 heap) */    \
+        (type_out)[l] = WEIGHT_TYPE_F32; /* dequanted to F32 heap */        \
     }                                                                       \
 } while(0)
 
         /* Attention projections */
-        LOAD_PROJ(w->wq, "attn_q.weight",      (size_t)dim * (size_t)dim);
-        LOAD_PROJ(w->wk, "attn_k.weight",      (size_t)kv_dim * (size_t)dim);
-        LOAD_PROJ(w->wv, "attn_v.weight",      (size_t)kv_dim * (size_t)dim);
-        LOAD_PROJ(w->wo, "attn_output.weight", (size_t)dim * (size_t)dim);
+        LOAD_PROJ(w->wq, "attn_q.weight",      (size_t)dim * (size_t)dim,    w->wq_type);
+        LOAD_PROJ(w->wk, "attn_k.weight",      (size_t)kv_dim * (size_t)dim, w->wk_type);
+        LOAD_PROJ(w->wv, "attn_v.weight",      (size_t)kv_dim * (size_t)dim, w->wv_type);
+        LOAD_PROJ(w->wo, "attn_output.weight", (size_t)dim * (size_t)dim,    w->wo_type);
 
         /* FFN projections */
-        LOAD_PROJ(w->w1, "ffn_gate.weight", (size_t)dim * (size_t)hidden_dim);
-        LOAD_PROJ(w->w2, "ffn_down.weight", (size_t)hidden_dim * (size_t)dim);
-        LOAD_PROJ(w->w3, "ffn_up.weight",   (size_t)dim * (size_t)hidden_dim);
+        LOAD_PROJ(w->w1, "ffn_gate.weight", (size_t)dim * (size_t)hidden_dim, w->w1_type);
+        LOAD_PROJ(w->w2, "ffn_down.weight", (size_t)hidden_dim * (size_t)dim, w->w2_type);
+        LOAD_PROJ(w->w3, "ffn_up.weight",   (size_t)dim * (size_t)hidden_dim, w->w3_type);
 
 #undef LOAD_PROJ
     }
@@ -1051,7 +1082,7 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
     w->layers_are_ternary = false;
     w->wcls_is_ternary    = false;
     w->wcls_scale         = 1.0f;
-    w->layer_weight_type  = _layer_wtype;
+    /* wq_type/wk_type/.../w3_type were set per-projection by LOAD_PROJ above */
     /* sq/sk/sv/so/s1/s2/s3 remain 0.0f (unused in non-ternary path) */
     /* rms_attn_sub_norm / rms_ffn_sub_norm remain NULL (not in standard llama) */
 

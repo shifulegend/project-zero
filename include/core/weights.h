@@ -212,6 +212,16 @@ typedef struct {
                                    [ssm_state_size] (== head_v_dim) */
     tn_i8 **q35_ssm_out;       /* [n_layers] linear-attn: output proj, ssm_inner_size -> dim */
 
+    /*
+     * Qwen3-MoE per-head QK-norm weights (see MoEConfig.has_qk_norm). All
+     * NULL for every other model. Consumed only by qwen3moe_attention.c's
+     * dedicated forward function (not the generic GQA path in
+     * attention.c) — arch-prefixed like q35_attn_q_norm/k_norm above,
+     * since both are per-arch-specific-function state, not shared code.
+     */
+    float **qwen3moe_attn_q_norm;  /* [n_layers] RMSNorm weight, len=attn_head_dim */
+    float **qwen3moe_attn_k_norm;  /* [n_layers] RMSNorm weight, len=attn_head_dim */
+
     /* Zero-copy Q2_0 embedding / LM-head tables (used instead of embd_f32 /
      * token_embedding_table / wcls when q35_is_q2_0_model is set — Q2_0 is
      * too large to dequantize upfront: ~5 GB each for a 27B-class model). */

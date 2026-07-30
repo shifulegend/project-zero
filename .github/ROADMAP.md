@@ -203,6 +203,97 @@ The broader direction is to make the engine **LLM-agnostic** — run any archite
 that fits and executes on a CPU — through the GGUF reader and the planned
 architecture routers (Phases 35 and 22).
 
+| Item | Current state | Target |
+|------|---------------|--------|
+| **CLI binary name** | Binary ships as `adaptive_ai_engine` (`Makefile:TARGET`) | Rename to `projectzero` |
+
+### CLI binary rename — full research (so this doesn't need to be re-done)
+
+Not implemented — deferred, research-only. Three independent full-repo searches (run blind of
+each other, then cross-checked) converged on the same numbers, giving high confidence in
+completeness:
+
+**Consensus totals**: **342 occurrences of the literal string `adaptive_ai_engine` across 164
+files.** No filename or directory anywhere is literally named `adaptive_ai_engine` (confirmed via
+`find -iname`). No occurrence is embedded in a generated/binary artifact — `src/api/
+webui_bundle_generated.c` (the one documented generated-and-committed file in the repo) was
+checked explicitly and contains zero matches. Nothing hashes, parses, or pattern-matches the name
+in a structurally complex way anywhere — every occurrence is either a literal build-target name, a
+string printed by the program, an example command in prose/docs, or a recorded shell invocation —
+so this is a mechanical rename in substance, with a handful of call-outs below that need actual
+judgment rather than pure find-and-replace.
+
+**Only ~58 files are "live" and need an edit.** The other 106 files are under `benchmark_results/`
+— timestamped, immutable captures of past benchmark runs (raw terminal transcripts, `perf stat`
+output, `Command:`/`CMD:` lines). All three independent passes agreed these must **not** be
+touched: editing them would falsify a historical record of what was actually run, and they will
+naturally age out as new benchmarks are captured under the new name.
+
+**Breakdown of the 58 live files by category:**
+- **Build system (3 files, care required)**:
+  - `Makefile:71` — `TARGET = adaptive_ai_engine`, the single source of truth; everything else in
+    the file already uses `$(TARGET)` and would auto-propagate. **Exception found**: the
+    `pgo-run` target (`Makefile:372,375,378`) already hardcodes the literal `./adaptive_ai_engine`
+    three times instead of `./$(TARGET)` — a pre-existing inconsistency to fix alongside the
+    rename, not just substitute. Comments at `Makefile:342,387` are literal text, not `$(TARGET)`.
+  - `CMakeLists.txt:2` — `project(adaptive_ai_engine C CXX)`. **Already inconsistent today**: the
+    actual `add_executable(...)` target (line 299) is already named `project-zero`, not
+    `adaptive_ai_engine` — only the top-level `project()` name argument lags. No `install()` rules
+    exist in the file, so no install-path changes are needed.
+  - `.gitignore:3` and `.gitignore:56` — ignores the built binary artifact; line 56 is a second
+    entry, `adaptive_ai_engine 2` (a macOS Finder-duplicate-file pattern), easy to miss in a
+    surface scan.
+- **CI / release pipeline (2 files, functionally load-bearing, not just cosmetic)**:
+  - `.github/workflows/ci.yml:41,43,46` — the `--version` smoke-test invocation. Confirmed this
+    does **not** grep/assert the output contains the literal string, so it's a safe mechanical
+    substitution.
+  - `.github/workflows/release.yml:54,64,66,75,109,125` — **not just an example**: line 64 builds
+    the release tarball's filename via shell interpolation
+    (`NAME="adaptive_ai_engine-${VER#v}-x86_64-linux"`), and lines 75/109/125 locate the built
+    binary via `find dist -name adaptive_ai_engine`. This must change in lockstep with the
+    Makefile/CMake name or the release-packaging step will fail to find the binary it just built.
+- **Source code (1 file, 1 line)**: `src/cli/main.c:79` — the `--version` handler's
+  `printf("Project Zero Engine (adaptive_ai_engine) %s\n", PZ_VERSION_STR)`. This is the *only*
+  place the string is emitted by the program itself, and no test asserts on that output text.
+- **Tests (5 files)**: `tests/a6_replication.sh`, `tests/a6_thread_sweep.sh`,
+  `tests/agent_pty_runner.py` (`ENGINE = "./adaptive_ai_engine"`), `tests/thread_sweep.sh` — all
+  reference the binary purely as an invocation path (`ENGINE=`/`BIN=`-style variable), not as a
+  substring assertion. `tests/a6_replication_results.txt` is a historical recorded-run file, like
+  `benchmark_results/` — same "don't touch" reasoning applies.
+- **Scripts (~18 files under `tools/`)**: `regression_bench.sh`, `bench_phase34.py`,
+  `run_sweep.py`, `extract_multimodal.py`, `make_screenshot.py`, `deepseek_bench.sh`,
+  `deepseek_bench_perf.sh`, `bench_sweep.sh`, `bench_sweep_full.sh`, `bench_full_sweep.sh`,
+  `run_perf_runs.py`, `compare_dump/run_comparison.sh`, `screenshots/README.md`,
+  `screenshots/cli/capture.mjs` — each defines an `ENGINE`/`PZ`/`BIN`-style variable pointing at
+  the literal filename; purely mechanical.
+- **Docs (~30 files)**: `README.md`, `CLAUDE.md`, `AGENTS.md`, `gemini/GEMINI.md`,
+  `GOLDEN_RULES.md`, `DEVELOPER_ONBOARDING.md`, `docs/ai/project-overview.md`,
+  `docs/ai/decision-log.md`, `docs/RELEASING.md`, `docs/WEBUI_GUIDE.md`, `docs/PHASE15_RAG.md`,
+  `docs/DEEPSEEK_Q8_HANDOVER.md`, `docs/DEBUGGING_JOURNAL.md`,
+  `docs/REGRESSION_VERIFICATION_2026-06-07.md`, `docs/PERFORMANCE_CEILING_REPORT.md`,
+  `docs/reports/{BENCHMARK_REPORT,TEST_REPORT_AND_WALKTHROUGH,QA_STRATEGY_REPORT_FINAL_PHASE10,
+  PROJECT_ANALYSIS_REPORT}.md`, `docs/architecture/{CPU_LLM_TERNARY_ENGINE,
+  MOE_RESEARCH_AND_FIX_PLAN,IMPLEMENTATION_PLAN}.md`, `docs/phases/WALKTHROUGH_PHASE{14,21}.md`,
+  `.claude/{INDEX.md,CONTEXT.md,clusters/CLUSTERS.md,processes/PROCESSES.md}`,
+  `.agents/workflows/review-and-verify.md`, `.github/PULL_REQUEST_TEMPLATE.md`,
+  `.github/ISSUE_TEMPLATE/{bug_report.md,performance_regression.md}`,
+  `.github/prompts/review-changes.prompt.md` — all example command-line invocations in prose,
+  straightforward text substitution.
+
+**Two semantically-adjacent judgment calls found (not literal matches, worth a human decision
+when this is actually implemented, not required)**:
+1. `src/api/http_server.c:211` returns `"local-adaptive-engine"` as the JSON model id on the
+   `/v1/models` endpoint — a different string (no "ai" token), not touched by a literal
+   find-and-replace, but arguably part of a full rebrand.
+2. `docs/reports/TEST_PLAN_AND_DOCUMENT.md:5` uses the prose phrase "the adaptive AI engine"
+   (spaced words, not the identifier) — a docs-consistency call, not a required change.
+
+**Effort estimate** (analytical, not measured): ~100,000–150,000 tokens for a careful pass —
+dominated by opening/verifying ~58 files at roughly one-line-substitution cost each, plus the 5
+files above needing actual judgment (`Makefile`, `CMakeLists.txt`, `release.yml`, `http_server.c`,
+`.gitignore`), plus the mandatory `make release/test/debug` on gcc+clang and golden-output
+re-verification after the rename.
+
 ---
 
 ## Architecture References

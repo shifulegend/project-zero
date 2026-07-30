@@ -3,7 +3,134 @@
 > Canonical, append-at-top (newest first). Read this at the start of every session.
 > Add an entry **immediately** when a mistake, false assumption, regression, or avoidable
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
-> Last updated: 2026-07-19.
+> Last updated: 2026-07-24.
+
+### 2026-07-24 — Sweep benchmark measured over 7 generated tokens (early EOS), and a concurrent capture silently corrupted a measurement
+- Summary: the threads×SIMD×classifier sweep report initially used the prompt "What is the
+  capital of France?" with `--max-tokens 30`. The model reached its EOS token after only 7
+  tokens, so every one of the 48 project-zero configs (and llama.cpp's 4 thread configs) had
+  its tok/s computed over a sub-200ms, 7-token window — dominated by process-startup and timer
+  granularity noise, not steady-state throughput. Not caught internally; a reviewer asked
+  "shouldn't this capture at least 240 tokens given the speeds involved?" — correct, and it
+  didn't the first time.
+- Fix: reran the entire sweep (52 configurations) with a long-form creative-writing prompt
+  ("Write a long, detailed story about a robot exploring an ancient forest...") that reliably
+  avoids early EOS for this small model, and `--max-tokens 250` — every run generated 251 real
+  tokens. Numbers changed materially: e.g. project-zero's sweep peak dropped from a
+  (noise-inflated) 84.7 tok/s to a real 69.0 tok/s (T=3, vnni, INT8), and project-zero vs.
+  llama.cpp went from "ahead 3-of-4, behind 1-of-4 by a wide margin" to "within ~3% at every
+  thread count" — the earlier numbers weren't wrong in direction but were not trustworthy to
+  the decimal, exactly the risk repeated-measurement/steady-state methodology exists to avoid.
+- Second, unrelated bug found while recapturing screenshots for the corrected sweep: took a
+  terminal screenshot of one engine while the other engine's sweep was still running in the
+  background on the same 4-core sandbox. llama.cpp's T=4 (4-thread) run measured 7.4 tok/s —
+  a clean isolated rerun immediately after gave 62.9 tok/s. The concurrent project-zero
+  screenshot capture (itself using several threads) was contending for the same 4 physical
+  cores, and a 4-thread victim run is maximally exposed to that (no idle core to absorb it).
+  One project-zero screenshot in the same batch was contaminated the same way (a "peak"
+  capture read 10.05 tok/s against a clean 51.01 tok/s rerun of the identical config).
+- Fix: never run two CPU-bound captures/benchmarks concurrently on this host. Prevention rule:
+  before trusting any single-run screenshot's reported tok/s, check it lands within normal
+  single-run variance of the corresponding sweep-CSV cell (same config, same-order magnitude)
+  — a >2x divergence is a contention signal, not "normal spread," and means rerun in isolation
+  before publishing.
+
+### 2026-07-24 — `make release`/`make debug` (`-march=native`) SIGILLs on illegal AVX-512 VBMI in this sandboxed environment; `make dist` doesn't
+- Summary: mid-sweep, every single `./adaptive_ai_engine` invocation started SIGILL-crashing during
+  `tn_calibrate()`'s very first backend test, reproducibly at the same file offset every time
+  (confirmed via `dmesg`: identical `ip:...0e4` offset across 5 separate crashes) — including a
+  completely fresh, flag-free invocation with no calibration cache present, so this had nothing to
+  do with the sweep's `--simd`/`--classifier` flags themselves.
+- Root cause, found by catching the SIGILL live under `gdb`: the faulting instruction is
+  `vpermi2b %ymm2,%ymm1,%ymm0` inside `tn_calibrate()` — an **AVX-512 VBMI** instruction. `lscpu`
+  confirms this CPU's flags include `avx512f avx512dq avx512cd avx512bw avx512vl avx512_vnni` but
+  **not** `avx512vbmi`. `tn_calibrate()` itself contains no VBMI intrinsics anywhere in
+  `calibration.c` — this is the compiler auto-vectorizing a plain C loop (likely a small
+  struct/string copy) under `-march=native`, which bakes in whatever the build machine's cpuid
+  probe reports. In this sandboxed/virtualized environment, that probe apparently reported (or the
+  hypervisor doesn't consistently execute) an instruction subset the runtime CPU doesn't actually
+  support — the classic build-host/run-host mismatch `-march=native` is unsafe against.
+- Not a project-zero logic bug, and not related to the same day's F16/BF16 kernel fix (different
+  file, different function — `tn_calibrate()`'s ternary-matmul benchmark loop, not
+  `matmul_f16.c`/`parallel_matmul.c`). Confirmed by rebuilding with **`make dist`** (already the
+  project's own portable target: `-march=x86-64-v2 -mtune=generic` baseline, actual SIMD kernels
+  still per-TU-compiled and runtime-dispatched) — a fresh calibration run completed cleanly, no
+  crash, real generation output.
+- Fix applied here: none to the source (this is `-march=native`'s documented risk, not a code
+  defect) — used `make dist` instead of `make release`/`make debug` for all further local testing
+  in this environment.
+- Prevention rule for this environment specifically: **use `make dist` for any real
+  execution/benchmarking in this sandbox**, not `make release`/`make debug` — reserve
+  `-march=native` builds for correctness-only work (`make test`) where the crash, if it recurs,
+  surfaces immediately and obviously rather than mid-benchmark.
+
+### 2026-07-24 — F16/BF16 GEMV kernels were FMA-latency-bound: single accumulator, not throughput-bound
+- Summary: a side-by-side screenshot showed project-zero measuring behind llama.cpp on a dense F16
+  model (SmolLM2-135M-Instruct). Nearly treated the single-sample reading as either "noise" or
+  "confirmed regression" — correctly rejected both without repeated measurement first.
+- What repeated measurement (3x, T=1 and T=2, both engines) actually showed: at T=2 the two
+  engines were indistinguishable (within the same run-to-run spread as pz's own repeats), so the
+  original screenshot's single-sample gap was noise, not a reproducible deficit, at the thread
+  count the screenshot used. At T=1 (zero thread-dispatch overhead — see
+  `threading/thread_pool.c`), a real ~13% gap reproduced consistently across 3 reps each,
+  isolating it to raw serial kernel throughput.
+- Root cause: `parallel_matmul_f16` (`src/math/matmul_f16.c`) and `parallel_matmul_bf16`
+  (`src/math/parallel_matmul.c`) both accumulate each output row's dot product into a **single**
+  SIMD register across the whole loop (`acc = fmadd(w, x, acc)`), so every FMA waits on the
+  previous iteration's result — bound by FMA latency (~4-5 cycles), not the FMA unit's 1-cycle
+  throughput. llama.cpp's `ggml_vec_dot_f16` unrolls 4 independent accumulators specifically to
+  avoid this. Same single-accumulator shape likely exists in other kernels in this codebase that
+  weren't checked in this pass (F32, INT8/INT4, ternary packed) — not confirmed, flagged as a
+  follow-up, not assumed fine.
+- Fix: 4-accumulator unroll (AVX2: 32-wide/iter, AVX-512: 64-wide/iter) in both kernels' AVX2 and
+  AVX-512 paths, single final reduction. Verified via repeated (5x) before/after T=1/T=2
+  measurement (see `docs/ai/decision-log.md`), golden output unchanged, full gcc+clang
+  release/test/debug clean, ASan/UBSan-clean real-model run.
+- Prevention rule: when writing a per-row SIMD reduction kernel (any dot-product-style GEMV), use
+  ≥2-4 independent accumulators before the final horizontal reduce — a single accumulator is
+  latency-bound on virtually all modern x86/ARM cores with multi-cycle FMA latency and
+  multiple-per-cycle FMA throughput. Check this on any new kernel added the same way, not just the
+  ones a benchmark happens to catch.
+
+### 2026-07-24 — New loader test crashed (null-function-pointer SEGV) because it skipped `tn_simd_init()`
+- Summary: `tests/test_gguf_loader_qwen3moe.c`'s end-to-end forward-pass test crashed with
+  `AddressSanitizer: SEGV on unknown address 0x000000000000 (pc 0x000000000000 ...)` — a jump to
+  a null address, i.e. a call through a NULL function pointer.
+- Root cause: `tn_rmsnorm`, `tn_vec_dot`, and the rest of `math/simd_dispatch.c`'s dispatch table
+  are plain function pointers initialized to `NULL` at file scope, only assigned a real
+  implementation inside `tn_simd_init()`. Every real entrypoint (`main.c`) calls
+  `tn_simd_init()` before doing anything else; this new standalone test built a `Config`/
+  `MoEConfig`/`TransformerWeights`/`RunState` directly and called `transformer_forward()` without
+  ever calling it, so the very first `tn_rmsnorm()` call inside `qwen3moe_attention_forward()`
+  jumped through a NULL pointer.
+- Fix: added `tn_simd_init();` as the first line of the test's `main()`. Not a bug in the new
+  loader/attention/run-state code — confirmed by re-running after the one-line fix: all three
+  tests (config/moe_config, loader + expert-stride, end-to-end forward pass) pass clean under
+  ASan/UBSan on both gcc and clang.
+- Prevention rule: any new test that calls into `attention_forward()`/`transformer_forward()` or
+  anything using `tn_rmsnorm`/`tn_vec_dot`/`tn_softmax`/etc. directly (not through `main.c`) must
+  call `tn_simd_init()` first — `test_simd.c` already does this for the same reason; there was no
+  existing loader-level test to have hit this before.
+
+### 2026-07-24 — Pre-existing Makefile fragility: `make debug` before `make test` breaks the two C++-linked test targets
+- Summary: ran `make clean && make debug CC=gcc` then `make test CC=gcc` (debug-first, instead of
+  the documented `release → test → debug` order) and got `undefined reference to
+  __ubsan_handle_pointer_overflow` / `__asan_report_load8` linking `build/tests/test_q2k_matvec`.
+- Root cause: `test_q2k_matvec` and `test_api_server` (Makefile rules ~line 238-247) deliberately
+  compile themselves with `CFLAGS_RELEASE` and link via a bare `$(CXX) ... $(LDFLAGS)` (no
+  `-fsanitize` flags) specifically to avoid C++/sanitizer symbol issues when pulling in
+  `build/tokenizer/chat_template.o`. This assumes `chat_template.o` (and the rest of `$(LIB_OBJS)`)
+  is *also* release-built (non-instrumented). Running `make debug` first rebuilds
+  `chat_template.o` with `-fsanitize=address -fsanitize=undefined`, so the subsequent `make test`
+  links an instrumented `chat_template.o` through a non-instrumented g++ link step — the sanitizer
+  runtime symbols it now calls are never pulled in.
+- Not fixed here (pre-existing, unrelated to any feature work this session touched, and the
+  documented command in `CLAUDE.md`/`project-overview.md` — `make release && make test && make
+  debug` — already avoids it by construction): flagging so a future session doesn't waste time
+  re-diagnosing the same thing if they happen to run `debug` before `test`.
+- Prevention rule: always verify in the documented order (`make release CC=<cc> && make test
+  CC=<cc> && make debug CC=<cc>`, `make clean` between compilers) — don't reorder for convenience,
+  the two C++-linked test targets are order-sensitive.
 
 ### 2026-07-19 — CI red since 07-17: test_q2_0_matmul's reference compared the wrong kernel's math
 - Summary: `test_single_block_multi_row` failed 3/5 rows on every CI run since the 07-17

@@ -11,6 +11,8 @@ Adapter for `docs/ai/engineering-rules.md` — read the canonical file for full 
   prefetch `TN_PREFETCH_T1`; feature-gate with `TN_HAS_*`.
 - No new compiler warnings (`-Wall -Wextra -Wpedantic`). Keep ASan/UBSan green.
 - Public repo: never commit secrets.
+- No Claude/AI signature or attribution (commit trailers, code comments, etc.) unless the user
+  explicitly asks for it that time — see `docs/ai/commit-log-guidance.md`.
 - **Any bug found gets fixed in the same pass, even if pre-existing/unrelated to the task** —
   document it in `mistakes.md` too, but documenting is not a substitute for fixing. Only defer
   when the fix itself is a large architectural change; flag that to the user explicitly instead

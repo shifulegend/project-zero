@@ -118,6 +118,8 @@ Same model, same machine, same prompt, 500 tokens, sequential, **best of 3 runs 
 
 > PZ leads at t=1 (+8.4%) and t=2 (+2.2%), trails by 3–6% at peak. No fused Q4K matmul yet — see [Help Wanted ↓](#help-wanted). llama.cpp prompt eval is faster (700–1092 tok/s) because it batches the prompt; PZ does not yet report prompt eval speed separately.
 
+**Update (2026-07-24) — RCA'd, fixed, and re-swept:** a follow-up single-sample comparison showed PZ measuring behind llama.cpp; root-caused instead of reacting to one sample — the F16/BF16 GEMV kernels (`src/math/matmul_f16.c`, `src/math/parallel_matmul.c`) were FMA-latency-bound (single accumulator per row, not throughput-bound), fixed by unrolling to 4 independent accumulators matching `ggml`'s kernel structure. Then ran a full 48-config `--threads`×`--simd`×`--classifier` sweep for PZ plus llama.cpp's 4 thread counts, all measured over 251 real generated tokens (an earlier pass measured over just 7 tokens before hitting EOS — a real methodology bug, documented and fixed): matched on threads, the two engines now land within ~3% of each other at every thread count. Full report, methodology, and raw data (in-repo, no external hosting): [`docs/design/reports/sweep-2026-07-24.html`](docs/design/reports/sweep-2026-07-24.html).
+
 **Peak-run screenshots — SmolLM2 (best-of-3):**
 
 | PZ BF16 · t=3 · **100.44 tok/s** | llama.cpp · t=3 · **106.20 tok/s** |
@@ -272,6 +274,7 @@ Two open problems where outside expertise would make a real difference:
 |---|---|---|
 | **MoE expert weight repacking** | DeepSeek-V2-Lite runs at 1.90 tok/s — 7× behind `llama.cpp`. Top-K expert weights sit at non-contiguous GGUF offsets: **~86% L3 cache miss rate per token**. Fix: repack selected expert weights into contiguous memory at load time, matching llama.cpp's interleaved layout. | ≥ 9 tok/s |
 | **Native Q4_K matmul kernel** | Current dense-model path dequants Q4_K → F32 before multiply. A fused mixed-precision kernel would close the remaining gap to `llama.cpp` on dense 4-bit GGUF models. | — |
+| **Faster non-VBMI INT4 classifier unpack** | INT4 classifier measures *slower* than INT8/BF16 at every thread/SIMD combination on small dense models ([full RCA](docs/design/reports/sweep-2026-07-24.html)) — root cause is a ~10-instruction SSE-interleave nibble unpack (`src/math/parallel_matmul.c`'s `matmul_i4_task`) on CPUs without AVX-512 VBMI, a real tax the model's cache-resident classifier doesn't need to pay for INT4's bandwidth saving. A `pshufb`-based lookup-table unpack would likely close most of this gap. | INT4 ≥ INT8 on non-VBMI hardware |
 
 Existing SIMD work documented in [`docs/KERNEL_INTERNALS.md`](docs/KERNEL_INTERNALS.md).
 MoE repacking thread: [Discussion #1](https://github.com/shifulegend/project-zero/discussions/1)
@@ -280,7 +283,7 @@ MoE repacking thread: [Discussion #1](https://github.com/shifulegend/project-zer
 
 ## What It Does
 
-Runs [Microsoft's BitNet b1.58-2B-4T](https://huggingface.co/microsoft/bitnet-b1.58-2B-4T) ternary weights and **dense GGUF transformers** (SmolLM2, DeepSeek-V2-Lite) on commodity CPUs — from scratch, in C.
+Runs [Microsoft's BitNet b1.58-2B-4T](https://huggingface.co/microsoft/bitnet-b1.58-2B-4T) ternary weights and **dense GGUF transformers** (SmolLM2, DeepSeek-V2-Lite, Qwen3-MoE) on commodity CPUs — from scratch, in C.
 
 Also included in the same binary: OpenAI-compatible HTTP API (`--server --port 8080`), persistent RAG memory (`--memory-db`), SigLIP vision pipeline (`--vision`), and an agentic tool-use loop (`/agent`).
 
@@ -377,8 +380,10 @@ rendering in the interactive REPL:
 
 **Startup banner** — an animated ASCII-art "PROJECT ZERO" splash (bottom-up slide-in reveal, a
 hand-crafted 5-row block font, no external figlet dependency) that finishes with a brief
-dim/bold shimmer, shown for the REPL and `--server` mode and suppressed for scripted one-shot
-`--prompt` runs — TTY-gated, so no escape codes ever leak into piped/redirected output:
+dim/bold shimmer, shown on **every** run including scripted one-shot `--prompt` invocations and
+piped/redirected output — TTY runs get the full animation, non-TTY runs get the same banner as
+plain `#`/space text with zero escape codes, so redirected output and benchmark captures always
+show it too (previously it silently no-op'd on non-TTY output; fixed 2026-07-24):
 
 ![CLI startup banner — animated reveal and shimmer](docs/demo_banner_shimmer.gif)
 

@@ -285,14 +285,33 @@ static void matmul_bf16_task(void *arg, int thread_id, int start, int end) {
 
 #if TN_HAS_AVX512
     /*
-     * AVX-512 BF16 → float32 matmul (16-wide).
-     * BF16 = upper 16 bits of float32; shift-left-16 reinterprets as float.
+     * AVX-512 BF16 → float32 matmul: 4 independent 16-wide accumulators
+     * (64 elements/iter), then a single-accumulator 16-wide loop for the
+     * remainder. BF16 = upper 16 bits of float32; shift-left-16 reinterprets
+     * as float. Multi-accumulator rationale: see matmul_f16.c's header
+     * comment (2026-07-24 RCA vs llama.cpp/ggml) — this is the LM-head
+     * classifier kernel, the single largest matmul per token for most
+     * models (dim × vocab_size), so it matters most here.
      */
     for (int i = start; i < end; i++) {
         const tn_u16 *row = a->w + (size_t)i * a->n;
 
-        __m512 acc = _mm512_setzero_ps();
+        __m512 acc0 = _mm512_setzero_ps();
+        __m512 acc1 = _mm512_setzero_ps();
+        __m512 acc2 = _mm512_setzero_ps();
+        __m512 acc3 = _mm512_setzero_ps();
         int j = 0;
+        for (; j + 63 < a->n; j += 64) {
+            acc0 = _mm512_fmadd_ps(_mm512_castsi512_ps(_mm512_slli_epi32(_mm512_cvtepu16_epi32(_mm256_loadu_si256((const __m256i *)&row[j])), 16)),
+                                    _mm512_loadu_ps(&a->x[j]), acc0);
+            acc1 = _mm512_fmadd_ps(_mm512_castsi512_ps(_mm512_slli_epi32(_mm512_cvtepu16_epi32(_mm256_loadu_si256((const __m256i *)&row[j + 16])), 16)),
+                                    _mm512_loadu_ps(&a->x[j + 16]), acc1);
+            acc2 = _mm512_fmadd_ps(_mm512_castsi512_ps(_mm512_slli_epi32(_mm512_cvtepu16_epi32(_mm256_loadu_si256((const __m256i *)&row[j + 32])), 16)),
+                                    _mm512_loadu_ps(&a->x[j + 32]), acc2);
+            acc3 = _mm512_fmadd_ps(_mm512_castsi512_ps(_mm512_slli_epi32(_mm512_cvtepu16_epi32(_mm256_loadu_si256((const __m256i *)&row[j + 48])), 16)),
+                                    _mm512_loadu_ps(&a->x[j + 48]), acc3);
+        }
+        __m512 acc = _mm512_add_ps(_mm512_add_ps(acc0, acc1), _mm512_add_ps(acc2, acc3));
         for (; j + 15 < a->n; j += 16) {
             __m256i bf16_16 = _mm256_loadu_si256((const __m256i *)&row[j]);
             __m512i i32_16  = _mm512_cvtepu16_epi32(bf16_16);
@@ -323,12 +342,29 @@ static void matmul_bf16_task(void *arg, int thread_id, int start, int end) {
     }
 #elif TN_HAS_AVX2
     /*
-     * AVX2 BF16 → float32 matmul (8-wide).
+     * AVX2 BF16 → float32 matmul: 4 independent 8-wide accumulators
+     * (32 elements/iter — matches llama.cpp/ggml's GGML_F16_STEP=32/EPR=8
+     * layout on this ISA), then a single-accumulator 8-wide loop for the
+     * remainder.
      */
     for (int i = start; i < end; i++) {
         const tn_u16 *row = a->w + (size_t)i * a->n;
-        __m256 acc = _mm256_setzero_ps();
+        __m256 acc0 = _mm256_setzero_ps();
+        __m256 acc1 = _mm256_setzero_ps();
+        __m256 acc2 = _mm256_setzero_ps();
+        __m256 acc3 = _mm256_setzero_ps();
         int j = 0;
+        for (; j + 31 < a->n; j += 32) {
+            acc0 = _mm256_fmadd_ps(_mm256_castsi256_ps(_mm256_slli_epi32(_mm256_cvtepu16_epi32(_mm_loadu_si128((const __m128i *)&row[j])), 16)),
+                                    _mm256_loadu_ps(&a->x[j]), acc0);
+            acc1 = _mm256_fmadd_ps(_mm256_castsi256_ps(_mm256_slli_epi32(_mm256_cvtepu16_epi32(_mm_loadu_si128((const __m128i *)&row[j + 8])), 16)),
+                                    _mm256_loadu_ps(&a->x[j + 8]), acc1);
+            acc2 = _mm256_fmadd_ps(_mm256_castsi256_ps(_mm256_slli_epi32(_mm256_cvtepu16_epi32(_mm_loadu_si128((const __m128i *)&row[j + 16])), 16)),
+                                    _mm256_loadu_ps(&a->x[j + 16]), acc2);
+            acc3 = _mm256_fmadd_ps(_mm256_castsi256_ps(_mm256_slli_epi32(_mm256_cvtepu16_epi32(_mm_loadu_si128((const __m128i *)&row[j + 24])), 16)),
+                                    _mm256_loadu_ps(&a->x[j + 24]), acc3);
+        }
+        __m256 acc = _mm256_add_ps(_mm256_add_ps(acc0, acc1), _mm256_add_ps(acc2, acc3));
         for (; j + 7 < a->n; j += 8) {
             __m128i  bf16_8  = _mm_loadu_si128((const __m128i *)&row[j]);
             __m256i  i32_8   = _mm256_cvtepu16_epi32(bf16_8);

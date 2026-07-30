@@ -1,6 +1,7 @@
 #include "transformer/attention.h"
 #include "transformer/mla_attention.h"
 #include "transformer/qwen35_attention.h"
+#include "transformer/qwen3moe_attention.h"
 #include "math/parallel_matmul.h"
 #include "math/rope.h"
 #include "transformer/dense_matmul_dispatch.h"
@@ -56,6 +57,16 @@ void attention_forward(RunState *s, const TransformerWeights *w,
    * third, mutually-exclusive attention family alongside MLA above. */
   if (mc && mc->has_linear_attn) {
     qwen35_attention_forward(s, w, cfg, mc, layer, pos, tp);
+    return;
+  }
+
+  /* Qwen3-MoE attention (plain GQA + QK-norm) — a fourth, mutually-exclusive
+   * family: independent head_dim like the two above, but no MLA compression
+   * and no linear-attention layers, so it gets its own dedicated function
+   * rather than being folded into the generic branch below (see
+   * qwen3moe_attention.c's header comment for why). */
+  if (mc && mc->has_qk_norm) {
+    qwen3moe_attention_forward(s, w, cfg, mc, layer, pos, tp);
     return;
   }
 

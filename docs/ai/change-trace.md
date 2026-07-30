@@ -1,7 +1,76 @@
 # Change Trace — project-zero
 
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
-> Update after each meaningful sub-step. Last updated: 2026-07-17.
+> Update after each meaningful sub-step. Last updated: 2026-07-24.
+
+### 2026-07-24 — Documented: no Claude/AI signature/attribution unless explicitly asked
+- What: added a rule to `docs/ai/commit-log-guidance.md` (canonical) and mirrored it into the
+  entry adapters (`CLAUDE.md`, `.claude/rules/core.md`, `.github/copilot-instructions.md`,
+  `gemini/GEMINI.md`, `AGENTS.md`) — no Claude/AI signature or attribution (commit trailers,
+  code comments, generated artifacts) unless the user explicitly asks for it in that instance.
+- Why: user request, made directly in this session.
+- Areas: docs/ai/commit-log-guidance.md, CLAUDE.md, .claude/rules/core.md,
+  .github/copilot-instructions.md, gemini/GEMINI.md, AGENTS.md.
+
+### 2026-07-24 — Full threads×SIMD×classifier sweep report (repo-only) + INT4-slower RCA
+- What: full 52-config sweep report (`docs/design/reports/sweep-2026-07-24.html` +
+  `.template.html`), raw CSVs (`docs/design/reports/sweep_2026-07-24/`), 5 terminal screenshots
+  (`docs/design/screenshots/sweep_2026-07-24/`) — all committed in-repo, no external hosting.
+- Why: user asked for a full threads×SIMD×classifier sweep of both engines with terminal
+  screenshots and a final infographic, following the earlier F16/BF16 RCA below.
+- Also: caught and fixed two methodology bugs found while building this report — an early-EOS
+  short-generation measurement bug (fixed by moving to a 251-real-token run per config) and a
+  concurrent-capture CPU-contention bug — both in `mistakes.md`. Root-caused why INT4 classifier
+  measures slower than INT8/BF16 (nibble-unpack cost without AVX-512 VBMI + classifier already
+  being cache-resident, so INT4's bandwidth saving buys nothing) — full analysis in
+  `decision-log.md`; added as a Help Wanted item in `README.md` rather than fixed this pass.
+- Areas: `docs/design/reports/sweep-2026-07-24.*`, `docs/design/reports/sweep_2026-07-24/*.csv`,
+  `docs/design/screenshots/sweep_2026-07-24/*.png`, `docs/ai/mistakes.md`,
+  `docs/ai/decision-log.md`, `README.md` (Help Wanted table + benchmark section notes).
+
+### 2026-07-24 — Fixed FMA-latency-bound F16/BF16 GEMV kernels after user-requested RCA
+- What: `parallel_matmul_f16` (`src/math/matmul_f16.c`) and `parallel_matmul_bf16`
+  (`src/math/parallel_matmul.c`) AVX2/AVX-512 paths rewritten from a single FMA accumulator per
+  row to 4 independent accumulators, matching llama.cpp/ggml's `ggml_vec_dot_f16` structure.
+- Why: user asked why project-zero measured behind llama.cpp on a SmolLM2-135M F16 comparison and
+  asked for an RCA before any fix. Repeated measurement showed the single-sample gap was noise at
+  T=2 but a real ~13% gap at T=1 (zero thread-dispatch overhead), traced to the single-accumulator
+  FMA dependency chain being latency-bound rather than throughput-bound.
+- Areas: `src/math/matmul_f16.c`, `src/math/parallel_matmul.c`; `docs/ai/decision-log.md`,
+  `docs/ai/mistakes.md`; `docs/design/reports/pz-vs-llamacpp-smollm2.html` (in-repo comparison
+  report, moved off external artifact hosting per explicit instruction — all deliverables now
+  live in the repo, nothing outside).
+- Verified: 5-rep before/after T=1 and T=2 measurement (see decision-log), golden output
+  unchanged, full gcc+clang release/test/debug clean, ASan/UBSan-clean real-model run.
+- Branch: `claude/pr31-branding-cli-discussion-mwwe12`.
+
+### 2026-07-24 — CLI banner always prints; Qwen3-MoE GGUF loader support added; rename deferred to roadmap
+- What: (1) `tn_banner_print()` now shows the "PROJECT ZERO" banner for every invocation
+  (TTY or piped/redirected), animated only in a real terminal — new `tn_banner_format_plain()`,
+  new `tests/test_banner.c`. (2) Added `qwen3moe` GGUF architecture support (fixes issue #32):
+  `MoEConfig.has_qk_norm`, new `src/transformer/qwen3moe_attention.c` +
+  `src/core/qwen3moe_run_state.c` (dedicated buffers/KV-cache, mirroring the `qwen35`/MLA
+  independent-head-dim precedent), new `weights_from_gguf_qwen3moe()` loader, new
+  `tests/test_gguf_loader_qwen3moe.c` (synthetic GGUF fixture + real forward-pass token).
+  (3) Documented the `adaptive_ai_engine`→`projectzero` rename as a deferred item in
+  `.github/ROADMAP.md` (not implemented — research-only per explicit instruction).
+- Why: (1) branding must not depend on the CLI's invocation path (user request, traced to
+  `tools/make_screenshot.py` rendering redirected-stdout captures that never had a banner to
+  begin with). (2) jpsoto's bug report — `qwen3moe` fell through to the generic dense loader,
+  which expects `ffn_gate.weight` instead of the MoE router+stacked-expert tensors this arch
+  actually has. (3) scoped/estimated in an earlier discussion; explicitly deferred, not executed.
+- Areas: `src/cli/banner.c`/`.h`, `src/cli/main.c`, `tests/test_banner.c`;
+  `src/core/gguf_loader.c`, `include/core/moe_config.h`, `include/core/weights.h`,
+  `src/core/weights.c`, `src/transformer/attention.c`, `src/transformer/qwen3moe_attention.c`
+  (+header), `src/core/qwen3moe_run_state.c`, `include/core/run_state.h`, `CMakeLists.txt`,
+  `tests/test_gguf_loader_qwen3moe.c`; `.github/ROADMAP.md`; `docs/ai/decision-log.md`,
+  `docs/ai/mistakes.md`, `docs/ai/project-overview.md`, `docs/design/review-2026-07-15.md`.
+- Verified: `make release && make test && make debug`, gcc and clang, clean tree each time — zero
+  new warnings, ASan/UBSan clean, all tests pass including the two new test files. Real-model
+  golden-output verification of the Qwen3-MoE fix against the actual reported file is a tracked,
+  not-yet-done follow-up (see decision-log's 2026-07-24 entry) — disk/network constraints in this
+  session.
+- Branch: `claude/pr31-branding-cli-discussion-mwwe12`.
 
 ### 2026-07-18 — README front door: Bonsai-27B x86 comparison promoted to hero + quick start
 - What: added a hero block under the intro — the sweep3 headline claim (4.2-4.8x vs PrismML's

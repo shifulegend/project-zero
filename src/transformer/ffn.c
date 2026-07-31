@@ -44,18 +44,21 @@ void ffn_forward(RunState *s, const TransformerWeights *w,
         tn_preq_prepare(&preq, preq_buf, s->xb, dim);
         parallel_ternary_matmul_packed_preq(s->hb,  s->xb, (const tn_u8 *)w->w1[layer], dim, hidden_dim, w->s1[layer], &preq, tp);
         parallel_ternary_matmul_packed_preq(s->hb2, s->xb, (const tn_u8 *)w->w3[layer], dim, hidden_dim, w->s3[layer], &preq, tp);
-    } else if (w->w1_type[layer] == WEIGHT_TYPE_Q4K && w->w3_type[layer] == WEIGHT_TYPE_Q4K) {
+    } else if (tn_is_q4k_family(w->w1_type[layer]) && tn_is_q4k_family(w->w3_type[layer])) {
         /* Gate and up both read s->xb — quantize to Q8K once and reuse.
          * Bug fixed 2026-07-31: this branch previously called
          * tn_dense_matmul_dispatch() twice, each independently re-quantizing
          * s->xb via parallel_matmul_q4k, despite the comment above already
          * claiming the shared-quantize optimization — it had only ever been
-         * wired up for the ternary branch, not this (Q4_K dense) one. */
+         * wired up for the ternary branch, not this (Q4_K dense) one.
+         * Extended 2026-07-31 to also cover WEIGHT_TYPE_Q4K_X8 (the repacked
+         * multi-row-GEMV variant, matmul_q4k_x8.c) — both consume the same
+         * Q8K activation format, so the shared-quantize win applies to either. */
         TnQ8KActBlock acts[FFN_PREQ_BUF_SIZE / TN_Q8K_BLOCK];
         int n_blocks = dim / TN_Q8K_BLOCK;
         tn_quantize_q8k(acts, s->xb, n_blocks);
-        parallel_matmul_q4k_preq(s->hb,  acts, (const uint8_t *)w->w1[layer], dim, hidden_dim, tp);
-        parallel_matmul_q4k_preq(s->hb2, acts, (const uint8_t *)w->w3[layer], dim, hidden_dim, tp);
+        tn_dense_matmul_dispatch_preq(s->hb,  acts, w->w1[layer], w->w1_type[layer], dim, hidden_dim, tp);
+        tn_dense_matmul_dispatch_preq(s->hb2, acts, w->w3[layer], w->w3_type[layer], dim, hidden_dim, tp);
     } else {
         tn_dense_matmul_dispatch(s->hb,  s->xb, w->w1[layer], w->w1_type[layer], dim, hidden_dim, tp);
         tn_dense_matmul_dispatch(s->hb2, s->xb, w->w3[layer], w->w3_type[layer], dim, hidden_dim, tp);

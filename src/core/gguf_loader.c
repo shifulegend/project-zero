@@ -3,6 +3,7 @@
 #include "core/moe_config.h"
 #include "core/platform.h"
 #include "core/hardware_profile.h"
+#include "math/matmul_q4k_x8.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -1217,13 +1218,19 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
  * tensor roles different quant types (attn_v/ffn_down commonly Q6_K while
  * everything else is Q4_K), AND that assignment varies layer to layer for
  * the same role (see weights.h for the full incident note). */
-#define LOAD_PROJ(field, tname, n_elems, type_out) do {                    \
+/* d_rows: output dimension (rows) of this projection; n_inner: input
+ * dimension (columns per row) — needed separately (not just their product)
+ * so a Q4_K tensor with d_rows a multiple of 8 can be repacked into the
+ * x8-interleaved layout (matmul_q4k_x8.c) for the real multi-row GEMV
+ * kernel; see docs/ai/mistakes.md 2026-07-31 "attempt 6". */
+#define LOAD_PROJ(field, tname, d_rows, n_inner, type_out) do {            \
     snprintf(name_buf, sizeof(name_buf), "blk.%d." tname, l);              \
     const GGUFTensor *_t = gguf_find_tensor(hdr, name_buf);                \
     if (!_t) {                                                              \
         fprintf(stderr, "[gguf_loader] missing tensor '%s'\n", name_buf);  \
         return TN_ERR_INVALID_WEIGHTS;                                      \
     }                                                                       \
+    size_t _n_elems = (size_t)(d_rows) * (size_t)(n_inner);                \
     if (_t->type == GGUF_TYPE_F16) {                                        \
         /* Zero-copy: F16 data lives in mmap for model lifetime */          \
         (field)[l] = (tn_i8 *)_t->data;                                    \
@@ -1232,12 +1239,33 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
         /* Zero-copy: F32 data lives in mmap for model lifetime */          \
         (field)[l] = (tn_i8 *)_t->data;                                    \
         (type_out)[l] = WEIGHT_TYPE_F32;                                    \
-    } else if (_t->type == GGUF_TYPE_Q4_K && (n_elems) % 256 == 0) {        \
+    } else if (_t->type == GGUF_TYPE_Q4_K && _n_elems % 256 == 0 &&        \
+               (size_t)(n_inner) % 256 == 0 && (size_t)(d_rows) % 8 == 0) { \
+        /* Repack into the x8-interleaved layout once, at load time (not    \
+         * per-token) — real multi-row SIMD-lane GEMV, matching llama.cpp's \
+         * actual technique rather than an approximation of it. */          \
+        int _n_blocks = (int)((size_t)(n_inner) / 256);                    \
+        int _groups   = (int)((size_t)(d_rows) / 8);                       \
+        size_t _row_bytes = (size_t)_n_blocks * 144;                       \
+        TnQ4KX8Block *_xbuf = (TnQ4KX8Block *)malloc(                      \
+            (size_t)_groups * (size_t)_n_blocks * sizeof(TnQ4KX8Block));   \
+        if (!_xbuf) return TN_ERR_OOM;                                      \
+        for (int _g = 0; _g < _groups; _g++) {                             \
+            const uint8_t *_rows[8];                                       \
+            for (int _i = 0; _i < 8; _i++)                                 \
+                _rows[_i] = (const uint8_t *)_t->data +                    \
+                    (size_t)(_g * 8 + _i) * _row_bytes;                    \
+            tn_q4k_repack_x8(_xbuf + (size_t)_g * _n_blocks, _rows, _n_blocks); \
+        }                                                                   \
+        if (store_add(store, _xbuf) != 0) { free(_xbuf); return TN_ERR_OOM; } \
+        (field)[l] = (tn_i8 *)_xbuf;                                       \
+        (type_out)[l] = WEIGHT_TYPE_Q4K_X8;                                 \
+    } else if (_t->type == GGUF_TYPE_Q4_K && _n_elems % 256 == 0) {        \
         /* Zero-copy: raw Q4_K bytes live in mmap for model lifetime */     \
         (field)[l] = (tn_i8 *)_t->data;                                    \
         (type_out)[l] = WEIGHT_TYPE_Q4K;                                    \
     } else {                                                                \
-        float *_f = tensor_to_f32(_t, (n_elems), store);                   \
+        float *_f = tensor_to_f32(_t, _n_elems, store);                    \
         if (!_f) return TN_ERR_INVALID_WEIGHTS;                             \
         (field)[l] = (tn_i8 *)_f;                                          \
         (type_out)[l] = WEIGHT_TYPE_F32; /* dequanted to F32 heap */        \
@@ -1245,15 +1273,15 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
 } while(0)
 
         /* Attention projections */
-        LOAD_PROJ(w->wq, "attn_q.weight",      (size_t)dim * (size_t)dim,    w->wq_type);
-        LOAD_PROJ(w->wk, "attn_k.weight",      (size_t)kv_dim * (size_t)dim, w->wk_type);
-        LOAD_PROJ(w->wv, "attn_v.weight",      (size_t)kv_dim * (size_t)dim, w->wv_type);
-        LOAD_PROJ(w->wo, "attn_output.weight", (size_t)dim * (size_t)dim,    w->wo_type);
+        LOAD_PROJ(w->wq, "attn_q.weight",      dim,    dim, w->wq_type);
+        LOAD_PROJ(w->wk, "attn_k.weight",      kv_dim, dim, w->wk_type);
+        LOAD_PROJ(w->wv, "attn_v.weight",      kv_dim, dim, w->wv_type);
+        LOAD_PROJ(w->wo, "attn_output.weight", dim,    dim, w->wo_type);
 
         /* FFN projections */
-        LOAD_PROJ(w->w1, "ffn_gate.weight", (size_t)dim * (size_t)hidden_dim, w->w1_type);
-        LOAD_PROJ(w->w2, "ffn_down.weight", (size_t)hidden_dim * (size_t)dim, w->w2_type);
-        LOAD_PROJ(w->w3, "ffn_up.weight",   (size_t)dim * (size_t)hidden_dim, w->w3_type);
+        LOAD_PROJ(w->w1, "ffn_gate.weight", hidden_dim, dim,        w->w1_type);
+        LOAD_PROJ(w->w2, "ffn_down.weight", dim,        hidden_dim, w->w2_type);
+        LOAD_PROJ(w->w3, "ffn_up.weight",   hidden_dim, dim,        w->w3_type);
 
 #undef LOAD_PROJ
     }

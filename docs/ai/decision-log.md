@@ -38,16 +38,36 @@
   minutes on the same host state) confirmed this was a real, monotonic regression, not noise. Reverted both
   variants (`git stash push` + `git stash drop`); working tree verified clean against the last pushed
   commit before and after.
-- Status: RCA complete and evidence-backed across five attempts (one kept: the redundant-quant bug fix;
-  four reverted: VNNI, grouped8, and both multi-row variants). The theory behind attempt 5 was directly
-  validated by reading llama.cpp's source (shared loads + independent accumulators is genuinely what their
-  kernels do) but the direct implementation of that idea still lost here — meaning the real win most likely
-  needs BOTH halves of llama.cpp's design at once (repack + multi-accumulator together, not either alone,
-  since both isolated attempts — grouped8 for the repack half, attempt 5 for the accumulator half — lost
-  independently), verified on a host with real profiling tools (`perf`/`vtune`, neither available in this
-  environment). That is a materially larger effort than anything attempted in this session and is flagged
-  explicitly, not silently parked. Full chain in `docs/ai/mistakes.md` (2026-07-30/07-31 entries) and
-  `README.md`'s Qwen3-8B section.
+- User said "Do it" in response to being asked whether to pursue llama.cpp's real combined technique
+  (repack + multi-accumulator together — the one thing no attempt had tried). 6th attempt:
+  `src/math/matmul_q4k_x8.c` is a byte-exact port of llama.cpp's actual `block_q4_Kx8` repack and
+  `ggml_gemv_q4_K_8x8_q8_K` AVX2 kernel, transcribed directly from their cloned source, not
+  re-derived — genuinely computes 8 output rows' partial products within a single SIMD register via
+  blend/shuffle tricks against one shared activation load (true SIMD-lane parallelism, unlike attempt
+  5's independent-but-serial accumulator chains). Given the transcription's complexity (a single wrong
+  byte offset would silently produce wrong, not crashing, output), verified rigorously before trusting
+  any benchmark: new `tests/test_q4k_x8_matmul.c` passed 56/56 assertions against an independent
+  scalar reference on the first real run (both the AVX2 path and, separately, the scalar fallback
+  forced via `-U__AVX2__`), with manually-inspected non-trivial output values ruling out a false pass.
+  Wired into `gguf_loader.c`'s real dense-model load path (repacks any Q4_K projection with a row
+  count divisible by 8, which covers all of Qwen3-8B's projections, once at load time). Full
+  `make release/test/debug` green on gcc and clang, plus a clean from-scratch CMake build (the
+  project's second, audit-CI build system, also updated). Measured 2.60 and 2.76 tok/s across two
+  clean runs — statistically indistinguishable from the 2.51-2.72 tok/s baseline range. Never
+  regressed in any run (unlike VNNI and both multi-row variants), so kept rather than reverted — the
+  project's revert-on-evidence discipline is about reverting demonstrated *harm*, and there is none
+  here, only an unproven win.
+- Status: RCA complete and evidence-backed across six attempts (two kept: the redundant-quant bug fix,
+  and the byte-exact x8 kernel port; four reverted: VNNI, grouped8, and both multi-row-only variants).
+  The 6th attempt is the most informative result of the whole investigation: it directly falsifies the
+  RCA's original working hypothesis (that llama.cpp's GEMV kernel design was the explanation) by
+  reproducing that exact design, verified correct, without reproducing their speed. The gap is real,
+  now investigated from six independent angles, and remains open — evidence now points away from
+  GEMV-kernel efficiency and toward something broader (virtualized memory-subsystem behavior, the
+  original bandwidth-profiling reading's own reliability given this host's noise, or optimizations
+  elsewhere in llama.cpp's pipeline), none of which this session had the tooling (no `perf`/`vtune`) or
+  host stability to isolate. Flagged explicitly for whoever picks this up next, not silently parked.
+  Full chain in `docs/ai/mistakes.md` (2026-07-30/07-31 entries) and `README.md`'s Qwen3-8B section.
 - Also fixed in the same pass: this host's clang-18 install was missing `libclang-rt-18-dev` (stale apt
   index — `apt-get update` resolved it), which had been silently skipping clang's ASan/UBSan test
   coverage. Not caused by this session's changes, but caught and fixed while verifying them, per the

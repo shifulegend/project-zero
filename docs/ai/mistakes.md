@@ -5,6 +5,94 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-07-31.
 
+### 2026-07-31 — Attempt 6: a byte-exact port of llama.cpp's ACTUAL repack + multi-row GEMV kernel (block_q4_Kx8 / ggml_gemv_q4_K_8x8_q8_K), rigorously verified correct, measured statistically indistinguishable from the single-row baseline — the most conclusive negative result of the investigation
+
+- Context: after attempt 5 (below), the user was shown the full 5-attempt status and explicitly said
+  "Do it" in response to being asked whether to pursue llama.cpp's real combined technique (repack +
+  multi-accumulator together, not either alone — the two things every prior attempt had tried only
+  one of). This entry is that attempt.
+- What was tried: cloned llama.cpp's actual source (`ggml/src/ggml-cpu/repack.cpp`,
+  `ggml/src/ggml-cpu/arch/x86/repack.cpp`, already available locally from the earlier RCA) and
+  **transcribed it byte-exact**, not re-derived from first principles:
+  - `TnQ4KX8Block` — exact port of `block_q4_Kx8` (d[8]+dmin[8]+scales[96]+qs[1024], 1152 bytes for
+    8 rows' worth of one 256-column super-block).
+  - `tn_q4k_repack_x8()` — exact port of `make_block_q4_Kx8(..., blck_size_interleave=8)`: interleaves
+    8 rows' qs bytes into 16 column-groups of (8 rows x 8 bytes), and transposes the packed 6-bit
+    scale/min format from "8 sub-blocks for 1 row" to "1 sub-block for 8 rows" (same bit-packing
+    formula, reused for a transposed meaning — confirmed by reading llama.cpp's own repack code, not
+    guessed).
+  - `gemv8_q4k_x8_q8k()` — exact port of `ggml_gemv_q4_K_8x8_q8_K`'s AVX2 body: computes 8 output
+    rows' partial products **within a single `__m256i` register** via `_mm256_blend_epi32` +
+    `_mm256_shuffle_epi32` tricks against ONE broadcast activation load — genuine SIMD-LANE
+    parallelism across output rows, not just independent accumulator chains (what attempt 5 tried
+    and which is a materially weaker technique). This is the piece that was never actually
+    attempted before this session: attempt 3 (grouped8) did the repack without this; attempt 5 did
+    independent accumulators without the repack; this does both, matching llama.cpp exactly.
+  - A from-scratch scalar fallback (`#else` branch, for non-AVX2/ARM builds) — de-interleaves and
+    computes the standard formula per row; NOT a port (llama.cpp's own generic fallback wasn't read),
+    written independently and verified against the same reference.
+- Verification (given this is the highest-risk correctness surface added all session — dozens of
+  blend/shuffle/permute intrinsics transcribed by hand, where a single wrong byte offset produces
+  silently-wrong, not crashing, output):
+  - New `tests/test_q4k_x8_matmul.c`: repack + GEMV round-trip compared against the SAME independent
+    scalar reference formula `test_q4k_matmul.c` uses for the single-row kernel, across 5 cases
+    (1-2 super-blocks, 1-2 groups of 8 rows, and the real attn/ffn dimensions). **56/56 assertions
+    passed on the first real run** (both the AVX2 path, and the scalar fallback verified separately
+    by compiling with `-U__AVX2__` to force it) — not a coincidence given the transcription's
+    complexity; genuine correctness.
+  - Manually inspected actual output values (not just pass/fail) to rule out a trivial "both sides
+    compute zero" false pass — real, varied, non-zero floats matching to float32 precision (e.g.
+    `out=-366.411560 ref=-366.411682`).
+  - Wired into the real load/inference path: `LOAD_PROJ` macro in `gguf_loader.c` (the generic dense
+    loader, Qwen3-8B's actual code path) now repacks any Q4_K projection whose output row count is a
+    multiple of 8 (true for all of Qwen3-8B's projections: dim=4096, kv_dim=1024, hidden_dim=12288)
+    into `WEIGHT_TYPE_Q4K_X8` at load time — once, not per-token. `attention.c`/`ffn.c`'s existing
+    quantize-once-reuse branch (from the earlier redundant-quant bug fix) was extended to cover this
+    new type via a shared `tn_is_q4k_family()` / `tn_dense_matmul_dispatch_preq()` helper. Full
+    `make release/test/debug` green on gcc **and** clang, plus a from-scratch CMake configure+build
+    (the project's second, audit-CI build system) — all four combinations clean, zero warnings.
+  - Real generation: output stayed coherent (readable English reasoning-model text, not garbage) —
+    strong end-to-end correctness signal beyond the unit tests.
+- Result: **2.60 and 2.76 tok/s** across two clean runs with the x8 kernel active — statistically
+  indistinguishable from this session's single-row baseline range (2.51-2.72 tok/s across multiple
+  runs). A same-session controlled A/B (x8 vs. the identical binary with only `gguf_loader.c`'s
+  x8-selection stashed out, forcing the single-row path) measured 2.27 tok/s for the baseline side —
+  but that run showed anomalously elevated `sys`/wall-clock time (a container restart had just
+  occurred), so it is not trusted as clean signal, not counted as evidence either way. Taking the
+  full set of numbers gathered this session at face value: x8 never regressed (unlike attempts 2
+  and 5, which showed clean, repeated, large regressions well outside this host's noise floor), but
+  it also never showed a clear win — the two distributions overlap.
+- Root cause / interpretation: this is the most informative result of the whole investigation,
+  precisely because it is not a coding mistake — the kernel is a verified byte-exact match of
+  llama.cpp's own production code. If reproducing their kernel exactly doesn't reproduce their
+  speed, the gap is very unlikely to be explained by GEMV-kernel micro-efficiency at all (ruling out
+  the RCA's original working hypothesis, which itself was inferred from a single, possibly-noisy
+  `TN_PROFILE=1` bandwidth-utilization reading on this same volatile host). More likely explanations,
+  none yet tested: (a) this environment's virtualized memory subsystem behaves differently under
+  llama.cpp's actual compiled binary vs. this one for reasons unrelated to the GEMV kernel (different
+  compiler, different link-time layout, different allocator behavior for the ~5GB weight mmap);
+  (b) the original bandwidth-utilization profiling reading itself was not reliable enough to found an
+  RCA on, given this host's now well-documented 20-40%+ run-to-run noise; (c) llama.cpp has additional
+  optimizations elsewhere in its pipeline (not just this one matmul) that compound to the observed
+  gap. None of these were tested this session.
+- Disposition: **kept**, not reverted — unlike VNNI (attempt 2) and both multi-row variants
+  (attempt 5), which showed clean, reproducible, large regressions and were reverted per the
+  project's evidence-based revert discipline, x8 showed no such regression in any run. It is real,
+  tested, working infrastructure implementing a well-documented external technique correctly; reverting
+  verified-correct, non-harmful code solely because it didn't prove a win on one noisy host would
+  discard genuine engineering value. This is a judgment call, not a mechanical application of the
+  revert-on-evidence rule (which is about reverting *harm*, not reverting *unproven benefit*) — flagged
+  explicitly here rather than applied silently either way.
+- Updated overall status (6 attempts across this investigation): prefetch (neutral), VNNI (regression,
+  reverted), grouped8 repack-only (neutral, reverted), redundant-quant bug fix (real bug, kept,
+  performance-neutral), independent-accumulator-only at 4-row and 2-row (regressions, reverted),
+  combined repack+multi-accumulator byte-exact port (correct, kept, performance-inconclusive on this
+  host). pz remains at ~2.5-2.7 tok/s vs. llama.cpp's 4.0-4.8 on this file/host. The gap is real,
+  thoroughly investigated from six independent angles, and not closed — the evidence now points away
+  from "our GEMV kernel is worse" (directly falsified by this attempt) and toward something broader
+  in the pipeline or environment that this session did not have the tooling (no `perf`/`vtune`) or a
+  stable-enough host to isolate.
+
 ### 2026-07-31 — Attempt 5: a genuine multi-row interleaved Q4_K kernel (not a repack — real shared-load + independent-accumulator compute), tried at 4-row and 2-row granularity, both measured SLOWER than the single-row baseline, and reverted
 
 - Context: continuation of the same-day RCA (see the two entries below). The user explicitly asked

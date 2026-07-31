@@ -264,8 +264,8 @@ instead of llama.cpp's wasteful full-40960-token default:
 **llama.cpp is ~1.6-1.9x faster here, and we're not hiding that.** Root-caused with real `TN_PROFILE=1`
 per-step timing, not guesswork: the Q4_K matmul (≈88% of per-token time) runs at only ~43% of this host's
 measured DRAM bandwidth, vs. ~95% for the plain BF16 classifier matmul on the same host/token — compute-bound,
-not bandwidth-bound. Five targeted attempts were tried and measured, honestly, in place (the fifth at
-the user's explicit request to keep pushing on this after the first four didn't close the gap):
+not bandwidth-bound. Six targeted attempts were tried and measured, honestly, in place (the fifth and
+sixth at the user's explicit request to keep pushing on this after earlier attempts didn't close the gap):
 
 - **Software prefetch** on the single-matrix Q4_K dispatch path (already used elsewhere in the kernel file):
   no measurable change.
@@ -297,26 +297,41 @@ the user's explicit request to keep pushing on this after the first four didn't 
   what llama.cpp's kernels do) but this macro-duplicated implementation of it isn't how to realize it — the
   real win likely needs the repack and the multi-accumulator technique *together* (llama.cpp uses both;
   every attempt here tried one or the other in isolation, and both isolated attempts lost). Reverted.
+- **A byte-exact port of llama.cpp's actual combined technique**: `src/math/matmul_q4k_x8.c` transcribes
+  their real `block_q4_Kx8` repack and `ggml_gemv_q4_K_8x8_q8_K` AVX2 kernel directly from their source
+  (cloned locally) — not a re-derivation. Unlike every attempt above, this genuinely computes 8 output
+  rows' partial products *within a single SIMD register* via `_mm256_blend_epi32` tricks against one
+  shared broadcast activation load — true SIMD-lane parallelism across rows, the one mechanism no prior
+  attempt had actually implemented. Rigorously verified before trusting any benchmark: a new
+  `tests/test_q4k_x8_matmul.c` passed 56/56 assertions against an independent scalar reference (both the
+  AVX2 path and, separately, the scalar fallback forced via `-U__AVX2__`) on the first real run, with
+  manually-inspected non-trivial output values ruling out a false pass; wired into the real Qwen3-8B load
+  path (`gguf_loader.c` repacks any Q4_K projection with a row count divisible by 8 — true for all of
+  Qwen3-8B's projections — once, at load time); full `make release/test/debug` green on gcc **and**
+  clang, plus a clean from-scratch CMake build (the project's second, audit-CI build system). **Result:
+  2.60 and 2.76 tok/s across two clean runs — statistically indistinguishable from the existing baseline
+  (2.51-2.72 tok/s).** Unlike VNNI and the two multi-row-only variants above, this never regressed in
+  any run — kept, not reverted, since there's no evidence of harm, only of an unproven win on this host.
 
 Direct comparison against llama.cpp's own AVX2 kernel source (cloned locally) showed it's **nearly
 byte-identical** to this engine's — ruling out "worse SIMD" as the explanation. T=1 vs. T=4 profiling showed
-3.5-4.5x scaling (87-100%+ efficiency) — ruling out thread-pool overhead. The real difference: llama.cpp's
-CPU backend transparently **repacks Q4_K weight rows into interleaved 8/16-row super-blocks at load time**
-(`ggml/src/ggml-cpu/repack.cpp`, confirmed active via its own `system_info: REPACK=1`) and uses matching
-multi-row GEMV kernels that compute 8-16 output rows per pass over the shared quantized activation with
-independent per-row accumulator chains — real instruction-level parallelism across rows, not just better
-memory layout. Attempt 5 above implemented that exact mechanism (shared loads + independent accumulators)
-without the repack, and it still regressed — meaning on this host/compiler, neither half of llama.cpp's
-combined design works in isolation. Closing this gap for real most likely needs both halves at once
-(repacked layout **and** multi-accumulator compute together, matching llama.cpp's actual implementation
-exactly, not an approximation of it) verified on a less noisy host with real profiling tools (this
-environment has neither `perf` nor `vtune`, so every attempt here was reasoned from disassembly and
-black-box timing alone) — a materially larger effort than any single attempt in this session. Current,
-honest, verified status: **pz remains at 2.5-2.7 tok/s vs. llama.cpp's 4.0-4.8** on this file/host after
-five real optimization attempts, one kept as a genuine (if performance-neutral) bug fix and four reverted
-on clean evidence. Not parked — the RCA, the four intermediate revert points, and the two remaining
-untried angles (combined repack+multi-accumulator; a non-noisy host with real profiling) are fully
-documented in `mistakes.md` for whoever picks this up next.
+3.5-4.5x scaling (87-100%+ efficiency) — ruling out thread-pool overhead. The real difference was expected
+to be llama.cpp's CPU backend transparently **repacking Q4_K weight rows into interleaved 8/16-row
+super-blocks at load time** (`ggml/src/ggml-cpu/repack.cpp`, confirmed active via its own
+`system_info: REPACK=1`) with matching multi-row GEMV kernels computing 8-16 output rows per pass with
+real SIMD-lane parallelism — but the final attempt above **directly falsifies that hypothesis**: a
+byte-exact port of their actual kernel, verified correct, does not reproduce their speed on this host.
+That's the most informative result of the whole investigation. It means the gap is very unlikely to be a
+GEMV-kernel-efficiency problem at all — more likely candidates (untested this session): virtualized
+memory-subsystem behavior specific to this host/binary, the original bandwidth-utilization profiling
+reading itself being unreliable given this host's documented 20-40%+ run-to-run noise, or optimizations
+elsewhere in llama.cpp's pipeline beyond this one matmul. None of these have real profiling tools
+available in this environment (no `perf`/`vtune`) to investigate further. Current, honest, verified
+status: **pz remains at ~2.5-2.7 tok/s vs. llama.cpp's 4.0-4.8** on this file/host after six real
+optimization attempts — two kept (one bug fix, one correct-but-unproven kernel), four reverted on clean
+evidence of regression. Not parked — the full RCA, all six attempts, and the falsified/updated hypotheses
+are documented in `mistakes.md` for whoever picks this up next, ideally on a quieter host with real
+profiling tools.
 
 Full RCA, methodology, and status: [`docs/ai/mistakes.md`](docs/ai/mistakes.md) · screenshots:
 [`benchmark_results/qwen3_8b_dense_2026-07-31/screenshots/`](benchmark_results/qwen3_8b_dense_2026-07-31/screenshots/).

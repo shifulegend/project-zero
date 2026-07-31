@@ -13,6 +13,12 @@
 #define WEIGHT_TYPE_F16  1   /* F16 mmap zero-copy — 2× bandwidth vs F32  */
 #define WEIGHT_TYPE_Q4K  3   /* Q4_K mmap zero-copy — fused matmul kernel  */
 #define WEIGHT_TYPE_Q2_0 4   /* Q2_0 mmap zero-copy — fused matmul kernel (Qwen3.5/3.6 ternary) */
+#define WEIGHT_TYPE_Q4K_X8 5 /* Q4_K repacked into llama.cpp's block_q4_Kx8 interleaved layout at
+                              * load time — real multi-row SIMD-lane GEMV kernel (matmul_q4k_x8.c),
+                              * not just independent-accumulator ILP (see docs/ai/mistakes.md,
+                              * 2026-07-31 "attempt 6"). Only used when a projection's output
+                              * dimension is a multiple of 8; falls back to WEIGHT_TYPE_Q4K
+                              * otherwise (set per-projection at load time, gguf_loader.c). */
 
 typedef struct {
     /* Token embedding table: vocab_size * dim stored as bfloat16 (tn_u16).

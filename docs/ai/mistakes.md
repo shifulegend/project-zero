@@ -5,6 +5,64 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-07-31.
 
+### 2026-07-31 — Attempt 5: a genuine multi-row interleaved Q4_K kernel (not a repack — real shared-load + independent-accumulator compute), tried at 4-row and 2-row granularity, both measured SLOWER than the single-row baseline, and reverted
+
+- Context: continuation of the same-day RCA (see the two entries below). The user explicitly asked
+  to keep going ("Fix it") after being shown the 4-attempt status (prefetch/VNNI/grouped8/
+  redundant-quant-fix, none of which closed the gap) and the RCA conclusion that llama.cpp's real
+  advantage is architectural — multi-row GEMV with independent per-row accumulator chains, not a
+  better instruction choice or a memory-layout trick alone (the grouped8 attempt proved layout
+  alone isn't it).
+- What was tried: `dot_q4k_4rows_q8k()` — a genuinely different kernel from grouped8, NOT a repack.
+  Each row keeps its original memory location; the loop structure changes instead: the Q8K
+  activation registers (bsums + 4 groups × lo/hi) are loaded ONCE per block and reused across all 4
+  rows (vs. reloaded fresh per row), and each row accumulates into its own independent
+  `__m256`/`__m128` accumulator instead of one shared accumulator — real multi-chain ILP, matching
+  what llama.cpp's repacked kernels actually exploit architecturally (confirmed by reading their
+  source, not guessed).
+- Result (4-row): **2.00 tok/s — worse than the 2.49-2.65 baseline.** Disassembly showed real stack
+  spills (`vmovaps %xmmN, N(%rsp)`) even on this AVX-512VL host's 32 available YMM registers: 8
+  shared activation registers + 4 rows × ~8 per-row temporaries (scale/q4/p16 pairs) + 8 accumulator
+  registers exceeds even a 32-register budget once the compiler tries to schedule multiple
+  row-macro invocations concurrently for ILP.
+- Scaled back to `dot_q4k_2rows_q8k()` (2 rows instead of 4, halving live-range pressure).
+  Disassembly confirmed much less spilling (only the small 128-bit min-correction accumulators
+  spilled, not the main 256-bit accumulators). Correctness verified (`tests/test_q4k_matmul.c`
+  extended with an odd-`d` case to exercise the 2-row kernel's single-row remainder tail; 41/41
+  passing, gcc+clang, full release/test/debug). Result: **2.19 tok/s — still worse than baseline.**
+- To rule out host-noise-across-session confounds (this host's DRAM bandwidth reading had drifted
+  from 32.8 to 36.8 GB/s across the session), ran a clean **same-session, back-to-back A/B**:
+  single-row baseline (current pushed code) **2.72 tok/s** → 2-row **2.19 tok/s** → 4-row **2.00
+  tok/s**, all three runs within ~15 minutes of each other on the same host state. This is a clean
+  monotonic regression (more interleaving = worse), not noise scatter — noise on this host has
+  previously been documented as bidirectional around a baseline, not a consistent one-directional
+  slope across 3 back-to-back runs.
+- Root cause (why the architecturally-correct idea still lost here): the *theory* — shared
+  activation loads + independent accumulator chains — is exactly what llama.cpp's kernels do and
+  is a real, defensible mechanism for a speedup. But this implementation realized it via
+  macro-duplicated per-row code inside a shared block loop, and the compiler's actual codegen for
+  that structure spent more on register pressure/spill traffic and probably worse instruction
+  scheduling than it saved on the activation-reload elimination — a case where the *right idea*,
+  implemented via straightforward "duplicate the row macro N times," is not sufficient; matching
+  llama.cpp's actual win likely requires either genuinely restructuring around a repacked (grouped8-
+  style) memory layout **together with** this multi-accumulator technique (neither alone has
+  worked; llama.cpp uses both simultaneously), hand-written assembly / compiler-intrinsics tuned
+  for this exact register file, or profiling tools this environment doesn't have (no perf/vtune) to
+  see the actual bottleneck instead of reasoning from disassembly alone.
+- Reverted via `git stash push -- src/math/matmul_q4k.c tests/test_q4k_matmul.c` (drop, not pop) —
+  working tree verified clean and matching the last pushed commit (`4861013`) both before and after.
+- Updated conclusion (6 attempts total now: prefetch neutral, VNNI regression/reverted, grouped8
+  neutral/reverted, redundant-quant-fix real-but-neutral/kept, 4-row multi-row regression/reverted,
+  2-row multi-row regression/reverted): every attempt that has actually changed instruction-level
+  behavior around the existing kernel — VNNI, both grouped8 and both multi-row variants — has made
+  things worse, not better, on this specific host. Only attempts that left the hot loop's compiled
+  instruction stream unchanged (prefetch, the quantize-once bug fix) were neutral. This is now a
+  strong, repeated signal that this host/compiler combination does not reward the kinds of kernel
+  restructuring that work in llama.cpp's own (differently-tuned, differently-built) binary, and that
+  closing the gap for real likely needs the *combined* repack+multi-accumulator design (untried) on
+  a less noisy host with real profiling tools — a materially larger effort than anything attempted
+  in this session, flagged explicitly rather than guessed at further.
+
 ### 2026-07-31 — Two more Q4_K throughput attempts on Qwen3-8B: a row-batched "grouped8" repack (reverted, no improvement) and a real redundant-quantization bug fix (kept, verified, but performance-neutral)
 
 - Context: continuation of the same-day RCA below. After the VNNI revert, two more angles were

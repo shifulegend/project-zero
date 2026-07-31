@@ -264,7 +264,8 @@ instead of llama.cpp's wasteful full-40960-token default:
 **llama.cpp is ~1.6-1.9x faster here, and we're not hiding that.** Root-caused with real `TN_PROFILE=1`
 per-step timing, not guesswork: the Q4_K matmul (≈88% of per-token time) runs at only ~43% of this host's
 measured DRAM bandwidth, vs. ~95% for the plain BF16 classifier matmul on the same host/token — compute-bound,
-not bandwidth-bound. Four targeted attempts were tried and measured, honestly, in place:
+not bandwidth-bound. Five targeted attempts were tried and measured, honestly, in place (the fifth at
+the user's explicit request to keep pushing on this after the first four didn't close the gap):
 
 - **Software prefetch** on the single-matrix Q4_K dispatch path (already used elsewhere in the kernel file):
   no measurable change.
@@ -285,6 +286,17 @@ not bandwidth-bound. Four targeted attempts were tried and measured, honestly, i
   green) — but measured **no throughput change** (2.51-2.70 tok/s, within the existing baseline range),
   because the eliminated work (O(n) quantization) was already 2-3 orders of magnitude smaller than the
   matmul it fed (O(d×n)).
+- **A genuine multi-row interleaved kernel** (not a repack — the real thing this section's RCA points at:
+  shared activation loads + independent per-row accumulator chains, tried at both 4-row and 2-row
+  granularity): measured **worse both ways** — 2.00 tok/s (4-row) and 2.19 tok/s (2-row) vs. a same-session,
+  back-to-back baseline of 2.72 tok/s on the unmodified code. Not noise: three runs within ~15 minutes of
+  each other on the same host state, in a clean monotonic order (more interleaving = worse). Root cause:
+  disassembly showed real register spills even on this host's 32-register AVX-512VL file — 4-row duplicated
+  enough per-row temporaries that the compiler spilled the main accumulators to the stack; 2-row still
+  regressed with lighter spilling, suggesting the shared-load/independent-accumulator *idea* is right (it's
+  what llama.cpp's kernels do) but this macro-duplicated implementation of it isn't how to realize it — the
+  real win likely needs the repack and the multi-accumulator technique *together* (llama.cpp uses both;
+  every attempt here tried one or the other in isolation, and both isolated attempts lost). Reverted.
 
 Direct comparison against llama.cpp's own AVX2 kernel source (cloned locally) showed it's **nearly
 byte-identical** to this engine's — ruling out "worse SIMD" as the explanation. T=1 vs. T=4 profiling showed
@@ -293,10 +305,18 @@ CPU backend transparently **repacks Q4_K weight rows into interleaved 8/16-row s
 (`ggml/src/ggml-cpu/repack.cpp`, confirmed active via its own `system_info: REPACK=1`) and uses matching
 multi-row GEMV kernels that compute 8-16 output rows per pass over the shared quantized activation with
 independent per-row accumulator chains — real instruction-level parallelism across rows, not just better
-memory layout, which is exactly what the reverted "grouped8" attempt above was missing. That's the real,
-evidence-backed target: a genuinely bigger kernel rewrite than any of the four attempts above, with real
-regression risk on this host's noisy measurements — flagged for an explicit call on scope rather than
-attempted blind. Full status, not parked: see `mistakes.md`.
+memory layout. Attempt 5 above implemented that exact mechanism (shared loads + independent accumulators)
+without the repack, and it still regressed — meaning on this host/compiler, neither half of llama.cpp's
+combined design works in isolation. Closing this gap for real most likely needs both halves at once
+(repacked layout **and** multi-accumulator compute together, matching llama.cpp's actual implementation
+exactly, not an approximation of it) verified on a less noisy host with real profiling tools (this
+environment has neither `perf` nor `vtune`, so every attempt here was reasoned from disassembly and
+black-box timing alone) — a materially larger effort than any single attempt in this session. Current,
+honest, verified status: **pz remains at 2.5-2.7 tok/s vs. llama.cpp's 4.0-4.8** on this file/host after
+five real optimization attempts, one kept as a genuine (if performance-neutral) bug fix and four reverted
+on clean evidence. Not parked — the RCA, the four intermediate revert points, and the two remaining
+untried angles (combined repack+multi-accumulator; a non-noisy host with real profiling) are fully
+documented in `mistakes.md` for whoever picks this up next.
 
 Full RCA, methodology, and status: [`docs/ai/mistakes.md`](docs/ai/mistakes.md) · screenshots:
 [`benchmark_results/qwen3_8b_dense_2026-07-31/screenshots/`](benchmark_results/qwen3_8b_dense_2026-07-31/screenshots/).

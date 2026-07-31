@@ -28,12 +28,26 @@
   despite measuring no throughput change, since the eliminated O(n) work was always 2-3 orders of
   magnitude smaller than the O(d×n) matmul it fed). Real test coverage for Q4_K matmul was added
   regardless (`tests/test_q4k_matmul.c`) since it had none before this pass.
-- Status: RCA complete and evidence-backed across four attempts; the real target (llama.cpp's multi-row
-  GEMV kernel with independent per-row accumulator chains, not just a data-layout change) is a materially
-  larger, higher-risk rewrite than anything tried so far, on a host whose run-to-run noise already
-  complicated reading three of the four attempts above. Flagged to the user explicitly for a scope
-  decision rather than attempted blind — not parked, an open decision point. Full chain in
-  `docs/ai/mistakes.md` (2026-07-30/07-31 entries) and `README.md`'s Qwen3-8B section.
+- User explicitly said "Fix it" after being shown the 4-attempt status, so a 5th attempt was made: a
+  genuine multi-row interleaved Q4_K kernel (shared Q8K activation loads + independent per-row
+  accumulator chains — the exact mechanism identified in the RCA, implemented directly rather than via a
+  memory repack). Tried at 4-row granularity first: measured 2.00 tok/s, *worse* than baseline; disassembly
+  showed real register spills even on this host's 32-register AVX-512VL file. Scaled back to 2-row (halving
+  live-range pressure, confirmed via disassembly to spill much less): still measured *worse*, 2.19 tok/s. A
+  clean same-session back-to-back A/B (baseline 2.72 -> 2-row 2.19 -> 4-row 2.00, all three within ~15
+  minutes on the same host state) confirmed this was a real, monotonic regression, not noise. Reverted both
+  variants (`git stash push` + `git stash drop`); working tree verified clean against the last pushed
+  commit before and after.
+- Status: RCA complete and evidence-backed across five attempts (one kept: the redundant-quant bug fix;
+  four reverted: VNNI, grouped8, and both multi-row variants). The theory behind attempt 5 was directly
+  validated by reading llama.cpp's source (shared loads + independent accumulators is genuinely what their
+  kernels do) but the direct implementation of that idea still lost here — meaning the real win most likely
+  needs BOTH halves of llama.cpp's design at once (repack + multi-accumulator together, not either alone,
+  since both isolated attempts — grouped8 for the repack half, attempt 5 for the accumulator half — lost
+  independently), verified on a host with real profiling tools (`perf`/`vtune`, neither available in this
+  environment). That is a materially larger effort than anything attempted in this session and is flagged
+  explicitly, not silently parked. Full chain in `docs/ai/mistakes.md` (2026-07-30/07-31 entries) and
+  `README.md`'s Qwen3-8B section.
 - Also fixed in the same pass: this host's clang-18 install was missing `libclang-rt-18-dev` (stale apt
   index — `apt-get update` resolved it), which had been silently skipping clang's ASan/UBSan test
   coverage. Not caused by this session's changes, but caught and fixed while verifying them, per the

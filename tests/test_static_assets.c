@@ -58,6 +58,40 @@ static void test_empty_manifest_no_crash(void) {
     PASS("empty_manifest_no_crash");
 }
 
+/* Regression coverage for the --static-dir path-traversal bug: serve_from_disk()
+ * used to concatenate the raw request path onto static_dir with no ".." check,
+ * letting "GET /../../../../etc/passwd" read arbitrary files. See docs/ai/mistakes.md. */
+static void test_path_traversal_rejected(void) {
+    static const char *bad[] = {
+        "/../etc/passwd",
+        "/../../../../etc/passwd",
+        "/assets/../../etc/passwd",
+        "/a/../../b",
+        "..",
+        "/a/..",
+    };
+    for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
+        if (static_assets_path_is_safe(bad[i])) {
+            FAIL("path_traversal_rejected", bad[i]);
+            return;
+        }
+    }
+    PASS("path_traversal_rejected");
+}
+
+static void test_normal_paths_still_allowed(void) {
+    static const char *good[] = {
+        "/", "/index.html", "/assets/app.js", "/some/spa/route", "/foo..bar", "/a.b/c",
+    };
+    for (size_t i = 0; i < sizeof(good) / sizeof(good[0]); i++) {
+        if (!static_assets_path_is_safe(good[i])) {
+            FAIL("normal_paths_still_allowed", good[i]);
+            return;
+        }
+    }
+    PASS("normal_paths_still_allowed");
+}
+
 int main(void) {
     printf("=== Phase 22.2 Static Assets Tests ===\n");
     test_exact_match_root();
@@ -65,6 +99,8 @@ int main(void) {
     test_unknown_asset_returns_null();
     test_unknown_top_level_falls_back_to_index();
     test_empty_manifest_no_crash();
+    test_path_traversal_rejected();
+    test_normal_paths_still_allowed();
 
     printf("\n");
     if (g_failures == 0) { printf("=== All static assets tests passed ===\n"); return 0; }

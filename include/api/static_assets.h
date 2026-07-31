@@ -23,6 +23,14 @@
  * small hand-written manifest instead of the real embedded webui bundle. */
 const WebuiAsset *static_assets_find_in(const WebuiAsset *assets, size_t count, const char *path);
 
+/* Testable core: true iff `path` is safe to concatenate onto a static_dir
+ * root in serve_from_disk() — starts with '/' and contains no ".." path
+ * segment (checked component-wise, so "foo..bar" is fine but "/../x" and
+ * "/a/../../x" are not). Only --static-dir (disk) mode needs this; the
+ * embedded-bundle mode does exact manifest lookup and never touches the
+ * filesystem. */
+int static_assets_path_is_safe(const char *path);
+
 /* Writes a full HTTP response (headers + body) for `path` to fd.
  * extra_headers, if non-NULL, must already be "\r\n"-terminated per line
  * (e.g. CORS headers) and is spliced into the header block.

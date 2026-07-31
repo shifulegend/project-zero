@@ -51,6 +51,41 @@
   "is this fixed" with anything but a verified yes or no. This is the same class of lesson as trusting
   CPUID over execution-verification (documented elsewhere in this file): trust what the code does, not
   what a person (including this assistant, in an earlier promise) said it would do.
+- **Follow-up correction (same day):** re-read jpsoto's actual crash log before claiming this was "very
+  likely the cause" and the arithmetic doesn't support it. jpsoto's report shows **94.7 GB free RAM**
+  (`Free RAM: 94661 MiB` / `94747 MiB` across their two runs). At that free-RAM level the safety-cap budget
+  is `0.6 * 94.7 GB` = 56.8 GB, while the *real* (head_dim=128) KV cache at 40960 ctx is only ~8.05 GB and
+  even the *buggy* naive (head_dim=64) cache is only ~4.03 GB — the safety cap never engages either way on
+  jpsoto's actual machine, so this fix, while a genuine bug worth keeping fixed (it's real and live on any
+  RAM-constrained host), **is not what caused jpsoto's segfault**. Also re-checked *where* the crash happens:
+  jpsoto's log prints `[4/4] Ready.` (i.e. RunState/KV-cache allocation already succeeded) immediately before
+  `Segmentation fault` — so the owner's OOM-during-allocation theory doesn't fit either; the crash is
+  somewhere in the actual forward pass (`generate()` → `transformer_forward()` → per-layer
+  `qwen3moe_attention_forward()` + `moe_ffn_forward()`), not allocation.
+  - Traced the forward path by hand (attention buffer sizing, MoE router/expert-pointer stride math,
+    `parallel_matmul_q4k_batch{,_preq}`'s row/expert indexing) — nothing structurally wrong found by
+    inspection.
+  - `tests/test_gguf_loader_qwen3moe.c`'s existing coverage builds all expert tensors as **F32**, so it
+    never exercised `moe_ffn_forward()`'s batched Q4_K dispatch (`moe_ffn.c`, gated on
+    `w->expert_w13_quant_type == GGUF_TYPE_Q4_K`) — the exact path a real Q4_K_M GGUF (the only format
+    anyone has reported using) takes. That path had **zero** test coverage. Added
+    `test_moe_ffn_q4k_batched_path`: a synthetic `qwen3moe` fixture with real Q4_K-encoded expert tensors
+    (128 experts, top-8, using the same block encoder as `test_q4k_matmul.c`) run through 4 forward passes
+    with a real 8-thread `ThreadPool` (not `tp=NULL` — the original test's silent gap: `tp=NULL` runs the
+    batch task inline in one `[0,k*d)` call, never exercising `threadpool_dispatch()`'s chunked
+    start/end ranges the real 9-thread run actually takes). Passes clean under ASan/UBSan on both compilers
+    — rules out a broad class of suspects (indexing, buffer sizing, threading) in that specific path at the
+    scale tested, but does not prove the real 48-layer/151936-vocab/17GB-resident model is bug-free at full
+    scale, and does not reproduce jpsoto's crash.
+  - Status, stated plainly: the RAM-safety-cap head_dim fix is real and committed, but issue #32's actual
+    segfault is still **unexplained**. Told the user this directly rather than repeating the earlier
+    overclaim. Next real lead: get an actual stack trace from jpsoto (`ulimit -c unlimited` + `gdb --batch
+    -ex bt <binary> core`, or run under `gdb -ex run -ex bt --args adaptive_ai_engine ...`) — guessing
+    further without one risks more of the same wasted-cycle pattern this entry is already about.
+  - Prevention rule (compounding the one above): before telling a user or a GitHub thread "this is very
+    likely the cause," redo the arithmetic against the *actual numbers in their report* (their free-RAM
+    figure, not an assumed low-RAM scenario) and check *where in the log* the crash actually happens. A
+    fix can be real, tested, and completely beside the point for the specific report that prompted it.
 
 ### 2026-07-31 — Attempt 6: a byte-exact port of llama.cpp's ACTUAL repack + multi-row GEMV kernel (block_q4_Kx8 / ggml_gemv_q4_K_8x8_q8_K), rigorously verified correct, measured statistically indistinguishable from the single-row baseline — the most conclusive negative result of the investigation
 

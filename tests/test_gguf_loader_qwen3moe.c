@@ -27,6 +27,7 @@
 #include "core/run_state.h"
 #include "transformer/forward.h"
 #include "math/simd_dispatch.h"
+#include "threading/thread_pool.h"
 
 #define PASS(name)  printf("[PASS] %s\n", name)
 #define FAIL(name, msg) do { printf("[FAIL] %s: %s\n", name, msg); g_failures++; } while(0)
@@ -154,6 +155,227 @@ static void build_synthetic_header(GGUFHeader *hdr) {
                    (uint64_t)T_EXPERTS * T_EXP_HID * T_DIM, 2.0f, T_DIM, (uint64_t)T_EXP_HID * T_EXPERTS);
     tracked_tensor(hdr, "blk.0.ffn_down_exps.weight",
                    (uint64_t)T_EXPERTS * T_EXP_HID * T_DIM, 3.0f, T_EXP_HID, (uint64_t)T_DIM * T_EXPERTS);
+}
+
+/* ── Q4_K expert-tensor fixture ──────────────────────────────────────────
+ * Everything above builds expert tensors as F32, which never exercises
+ * moe_ffn_forward()'s batched Q4_K path (moe_ffn.c: w->expert_w13_quant_type
+ * == GGUF_TYPE_Q4_K) — the exact path a real Q4_K_M-quantized GGUF (the
+ * only format anyone reports loading in practice, e.g. GitHub issue #32)
+ * takes. That path had zero test coverage before this. Reuses the Q4_K
+ * super-block encoder from test_q4k_matmul.c (own copy — tests don't share
+ * translation units). */
+#define TQ4K_SUPER 256
+#define TQ4K_NSUB  8
+#define TQ4K_BYTES 144
+
+static uint16_t tq4k_f32_to_fp16(float f) {
+    uint32_t u; memcpy(&u, &f, 4);
+    uint32_t sign  = (u >> 16) & 0x8000;
+    uint32_t exp   = ((u >> 23) & 0xFF);
+    uint32_t mant  = u & 0x7FFFFF;
+    if (exp >= 143) return (uint16_t)(sign | 0x7BFF);
+    if (exp <= 102) return (uint16_t)sign;
+    return (uint16_t)(sign | ((exp - 112) << 10) | (mant >> 13));
+}
+
+static void tq4k_pack_scales(uint8_t *sc12, const uint8_t *sc, const uint8_t *mn) {
+    for (int i = 0; i < 4; i++) {
+        sc12[i]     = (uint8_t)((sc[i] & 0x3F) | (((sc[i + 4] >> 4) & 0x3) << 6));
+        sc12[i + 4] = (uint8_t)((mn[i] & 0x3F) | (((mn[i + 4] >> 4) & 0x3) << 6));
+    }
+    for (int k = 0; k < 4; k++) {
+        sc12[k + 8] = (uint8_t)((sc[k + 4] & 0xF) | ((mn[k + 4] & 0xF) << 4));
+    }
+}
+
+/* Fills one valid (if arbitrary) 144-byte Q4_K super-block. Values don't
+ * need to be numerically meaningful — this test is about crash/ASan
+ * safety of the batched dispatch path, not output correctness (that's
+ * test_q4k_matmul.c's job for the kernel itself). */
+static void tq4k_make_block(uint8_t *blk, int seed) {
+    float d    = 0.01f + (float)(seed % 11) * 0.011f;
+    float dmin = 0.002f + (float)(seed % 7) * 0.003f;
+    uint16_t d_h    = tq4k_f32_to_fp16(d);
+    uint16_t dmin_h = tq4k_f32_to_fp16(dmin);
+    memcpy(blk,     &d_h,    2);
+    memcpy(blk + 2, &dmin_h, 2);
+
+    uint8_t sc[TQ4K_NSUB], mn[TQ4K_NSUB];
+    for (int j = 0; j < TQ4K_NSUB; j++) {
+        sc[j] = (uint8_t)((seed * 7 + j * 5) % 64);
+        mn[j] = (uint8_t)((seed * 3 + j * 11) % 64);
+    }
+    tq4k_pack_scales(blk + 4, sc, mn);
+
+    uint8_t *qs = blk + 16;
+    for (int i = 0; i < 128; i++) {
+        int lo = (i * 5 + seed) & 0xF;
+        int hi = (i * 7 + seed + 3) & 0xF;
+        qs[i] = (uint8_t)(lo | (hi << 4));
+    }
+}
+
+/* Builds one Q4_K-quantized "stacked experts" tensor: num_experts back-to-
+ * back slices, each `rows` rows of `n_blocks_per_row` super-blocks —
+ * exactly the row-major-per-expert layout weights_from_gguf_qwen3moe()'s
+ * stride-slicing assumes (see gguf_loader.c: g_stride/u_stride/d_stride via
+ * quant_bytes_for_elems(GGUF_TYPE_Q4_K, exp_hid*dim)). */
+static uint8_t *tq4k_add_expert_tensor(GGUFHeader *hdr, const char *name,
+                                        int num_experts, int rows,
+                                        int n_blocks_per_row) {
+    size_t row_bytes    = (size_t)n_blocks_per_row * TQ4K_BYTES;
+    size_t expert_bytes = row_bytes * (size_t)rows;
+    size_t total_bytes  = expert_bytes * (size_t)num_experts;
+
+    uint8_t *buf = (uint8_t *)malloc(total_bytes);
+    int seed = 1;
+    for (size_t off = 0; off < total_bytes; off += TQ4K_BYTES) {
+        tq4k_make_block(buf + off, seed++);
+    }
+
+    GGUFTensor *t = &hdr->tensors[hdr->n_tensors++];
+    memset(t, 0, sizeof(*t));
+    strncpy(t->name, name, GGUF_MAX_KEY_LEN - 1);
+    t->type = GGUF_TYPE_Q4_K;
+    t->data = buf;
+    t->size_bytes = total_bytes;
+    t->n_dims = 2;
+    t->dims[0] = (uint64_t)(n_blocks_per_row * TQ4K_SUPER);
+    t->dims[1] = (uint64_t)(rows * num_experts);
+    return buf;
+}
+
+#define TQ_DIM        512
+#define TQ_LAYERS     1
+#define TQ_HEADS      4
+#define TQ_KV_HEADS   2
+#define TQ_HEAD_DIM   32
+#define TQ_VOCAB      6
+#define TQ_EXPERTS    128
+#define TQ_EXPERTS_PER_TOK 8
+#define TQ_EXP_HID    256
+
+#define TQ_Q_ROWS  (TQ_HEADS    * TQ_HEAD_DIM)
+#define TQ_KV_ROWS (TQ_KV_HEADS * TQ_HEAD_DIM)
+
+static void build_synthetic_header_q4k_experts(GGUFHeader *hdr, uint8_t **out_bufs, int *out_n) {
+    memset(hdr, 0, sizeof(*hdr));
+    hdr->version = 3;
+    strncpy(hdr->arch, "qwen3moe", sizeof(hdr->arch) - 1);
+
+    add_meta_u32(hdr, "qwen3moe.embedding_length", TQ_DIM);
+    add_meta_u32(hdr, "qwen3moe.block_count", TQ_LAYERS);
+    add_meta_u32(hdr, "qwen3moe.attention.head_count", TQ_HEADS);
+    add_meta_u32(hdr, "qwen3moe.attention.head_count_kv", TQ_KV_HEADS);
+    add_meta_u32(hdr, "qwen3moe.feed_forward_length", TQ_DIM);
+    add_meta_u32(hdr, "qwen3moe.expert_count", TQ_EXPERTS);
+    add_meta_u32(hdr, "qwen3moe.expert_used_count", TQ_EXPERTS_PER_TOK);
+    add_meta_u32(hdr, "qwen3moe.expert_feed_forward_length", TQ_EXP_HID);
+    add_meta_u32(hdr, "qwen3moe.attention.key_length", TQ_HEAD_DIM);
+
+    tracked_tensor(hdr, "token_embd.weight", (uint64_t)TQ_VOCAB * TQ_DIM, 0.1f, TQ_DIM, TQ_VOCAB);
+    tracked_tensor(hdr, "output.weight",     (uint64_t)TQ_VOCAB * TQ_DIM, 0.2f, TQ_DIM, TQ_VOCAB);
+    tracked_tensor(hdr, "output_norm.weight", TQ_DIM, 1.0f, TQ_DIM, 0);
+
+    tracked_tensor(hdr, "blk.0.attn_norm.weight", TQ_DIM, 1.0f, TQ_DIM, 0);
+    tracked_tensor(hdr, "blk.0.ffn_norm.weight",  TQ_DIM, 1.0f, TQ_DIM, 0);
+    tracked_tensor(hdr, "blk.0.attn_q_norm.weight", TQ_HEAD_DIM, 1.0f, TQ_HEAD_DIM, 0);
+    tracked_tensor(hdr, "blk.0.attn_k_norm.weight", TQ_HEAD_DIM, 1.0f, TQ_HEAD_DIM, 0);
+
+    tracked_tensor(hdr, "blk.0.attn_q.weight", (uint64_t)TQ_Q_ROWS  * TQ_DIM, 0.05f, TQ_DIM, TQ_Q_ROWS);
+    tracked_tensor(hdr, "blk.0.attn_k.weight", (uint64_t)TQ_KV_ROWS * TQ_DIM, 0.05f, TQ_DIM, TQ_KV_ROWS);
+    tracked_tensor(hdr, "blk.0.attn_v.weight", (uint64_t)TQ_KV_ROWS * TQ_DIM, 0.05f, TQ_DIM, TQ_KV_ROWS);
+    tracked_tensor(hdr, "blk.0.attn_output.weight", (uint64_t)TQ_DIM * TQ_Q_ROWS, 0.05f, TQ_Q_ROWS, TQ_DIM);
+
+    tracked_tensor(hdr, "blk.0.ffn_gate_inp.weight", (uint64_t)TQ_DIM * TQ_EXPERTS, 0.1f, TQ_DIM, TQ_EXPERTS);
+
+    /* Real Q4_K expert tensors — the untested path. gate/up: expert_hdim
+     * rows x (dim/256) blocks/row. down: dim rows x (expert_hdim/256)
+     * blocks/row. Both total exp_hid*dim/256 blocks per expert, matching
+     * quant_bytes_for_elems()'s stride formula in gguf_loader.c. */
+    int n = 0;
+    out_bufs[n++] = tq4k_add_expert_tensor(hdr, "blk.0.ffn_gate_exps.weight",
+                                            TQ_EXPERTS, TQ_EXP_HID, TQ_DIM / TQ4K_SUPER);
+    out_bufs[n++] = tq4k_add_expert_tensor(hdr, "blk.0.ffn_up_exps.weight",
+                                            TQ_EXPERTS, TQ_EXP_HID, TQ_DIM / TQ4K_SUPER);
+    out_bufs[n++] = tq4k_add_expert_tensor(hdr, "blk.0.ffn_down_exps.weight",
+                                            TQ_EXPERTS, TQ_DIM, TQ_EXP_HID / TQ4K_SUPER);
+    *out_n = n;
+}
+
+static void test_moe_ffn_q4k_batched_path(void) {
+    GGUFHeader *hdr = (GGUFHeader *)malloc(sizeof(GGUFHeader));
+    uint8_t *q4k_bufs[8];
+    int n_q4k_bufs = 0;
+    build_synthetic_header_q4k_experts(hdr, q4k_bufs, &n_q4k_bufs);
+
+    Config cfg;
+    MoEConfig mc;
+    TransformerWeights w;
+    GGUFWeightStore *store = NULL;
+    RunState s;
+    int rs_alloc_ok = 0, qwen3moe_rs_alloc_ok = 0, w_alloc_ok = 0, moe_alloc_ok = 0;
+    ThreadPool *tp = NULL;
+
+    if (config_from_gguf(&cfg, hdr) != TN_OK) { FAIL("moe_ffn_q4k_batched", "config_from_gguf failed"); goto cleanup; }
+    if (moe_config_from_gguf(&mc, hdr) != TN_OK) { FAIL("moe_ffn_q4k_batched", "moe_config_from_gguf failed"); goto cleanup; }
+    if (mc.num_experts != TQ_EXPERTS || mc.num_experts_per_tok != TQ_EXPERTS_PER_TOK) {
+        FAIL("moe_ffn_q4k_batched", "MoEConfig expert counts mismatch"); goto cleanup;
+    }
+
+    memset(&w, 0, sizeof(w));
+    if (weights_alloc_pointers(&w, &cfg) != TN_OK) { FAIL("moe_ffn_q4k_batched", "weights_alloc_pointers failed"); goto cleanup; }
+    w_alloc_ok = 1;
+    if (moe_weights_alloc(&w, &cfg, &mc) != TN_OK) { FAIL("moe_ffn_q4k_batched", "moe_weights_alloc failed"); goto cleanup; }
+    moe_alloc_ok = 1;
+    if (weights_from_gguf(&w, &cfg, hdr, &store) != TN_OK) { FAIL("moe_ffn_q4k_batched", "weights_from_gguf failed"); goto cleanup; }
+
+    if (w.expert_w13_quant_type != GGUF_TYPE_Q4_K) {
+        FAIL("moe_ffn_q4k_batched", "expert_w13_quant_type != Q4_K -- fixture didn't hit the batched path"); goto cleanup;
+    }
+
+    cfg.seq_len = 16;
+    if (run_state_alloc_ex(&s, &cfg, cfg.seq_len, mc.has_qk_norm) != TN_OK) {
+        FAIL("moe_ffn_q4k_batched", "run_state_alloc_ex failed"); goto cleanup;
+    }
+    rs_alloc_ok = 1;
+    if (qwen3moe_run_state_alloc(&s, &cfg, &mc, cfg.seq_len) != TN_OK) {
+        FAIL("moe_ffn_q4k_batched", "qwen3moe_run_state_alloc failed"); goto cleanup;
+    }
+    qwen3moe_rs_alloc_ok = 1;
+
+    /* Real usage always runs the batched Q4K matmul through a real
+     * ThreadPool (main.c: 9 active threads in the reported crash) —
+     * matmul_q4k_batch_task then executes via threadpool_dispatch's
+     * chunked start/end ranges rather than the single-shot [0,k*d) call
+     * a NULL tp takes, so a race or chunking bug wouldn't show with
+     * tp=NULL. */
+    tp = threadpool_create(8);
+
+    /* Several tokens/positions, to also exercise the KV-cache write path
+     * (mapped_pos, sliding window bookkeeping) across more than pos=0. */
+    for (int pos = 0; pos < 4; pos++) {
+        float *logits = transformer_forward(pos % TQ_VOCAB, pos, &cfg, &w, &s, &mc, tp);
+        if (!logits) { FAIL("moe_ffn_q4k_batched", "transformer_forward returned NULL"); goto cleanup; }
+        for (int i = 0; i < cfg.vocab_size; i++) {
+            if (!isfinite(logits[i])) {
+                FAIL("moe_ffn_q4k_batched", "logits contain non-finite value"); goto cleanup;
+            }
+        }
+    }
+    PASS("moe_ffn_q4k_batched_path");
+
+cleanup:
+    if (tp) threadpool_destroy(tp);
+    if (qwen3moe_rs_alloc_ok) qwen3moe_run_state_free(&s, &cfg);
+    if (rs_alloc_ok) run_state_free(&s);
+    if (store) weights_free_gguf(store);
+    if (moe_alloc_ok) moe_weights_free(&w, &mc);
+    if (w_alloc_ok) weights_free_pointers(&w);
+    free_tracked_bufs();
+    for (int i = 0; i < n_q4k_bufs; i++) free(q4k_bufs[i]);
+    free(hdr);
 }
 
 static void test_config_and_moe_config(void) {
@@ -302,6 +524,7 @@ int main(void) {
     test_config_and_moe_config();
     test_weights_from_gguf_and_expert_stride();
     test_end_to_end_forward_pass();
+    test_moe_ffn_q4k_batched_path();
 
     printf("\n");
     if (g_failures == 0) { printf("=== All qwen3moe loader tests passed ===\n"); return 0; }

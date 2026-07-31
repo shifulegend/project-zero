@@ -5,6 +5,53 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-07-31.
 
+### 2026-07-31 — A promised bug fix ("I'll clamp max context for qwen3moe") was never actually completed — the RAM safety cap structurally couldn't see the real head_dim for qwen35/qwen3moe
+
+- Context: GitHub issue #32 (jpsoto) — Qwen3-30B-A3B-Q4_K_M.gguf failed to load. First root cause (missing
+  `qwen3moe` GGUF architecture support) was fixed and verified (commit `6480ef8`, "fixes #32"). jpsoto then
+  re-tested: the loader now worked, but the process **segfaulted right after "[4/4] Ready."** The repo
+  owner correctly diagnosed the real cause as a likely OOM (the `qwen3moe` path allocates a full-40960-token
+  F32 KV cache with no quantized-KV strategy wired in) and posted: "I'll push a commit to properly clamp
+  the max context length for the `qwen3moe` path when memory is constrained." **No follow-up commit
+  actually implementing that clamp was ever pushed** — the issue sat with an unfulfilled promise as its
+  last comment for 6 days.
+- When asked "did we fix this?", investigated instead of trusting the comment thread's implied resolution.
+  Found: `select_kv_strategy()` (`src/kv_cache/kv_strategy.c`) already has a generic RAM-based safety cap
+  (present since the initial commit, not new) that reduces `max_seq_len` if the resulting F32 KV cache
+  would exceed 60% of free RAM — but it computes per-token cost using `config_head_dim(cfg)` ==
+  `cfg->dim / cfg->n_heads`, a **naive formula that is wrong for qwen35-hybrid and qwen3moe**, whose real
+  per-head KV dimension comes from GGUF's `attention.key_length` and is stored in `MoEConfig.attn_head_dim`
+  — a struct `select_kv_strategy()` doesn't even take as a parameter, so it structurally cannot see the
+  real value. For Qwen3-30B-A3B specifically: naive head_dim = 2048/32 = 64, real head_dim = 128 — the
+  safety cap **underestimates true KV cache cost by exactly 2x**, so it under-clamps `max_seq_len`,
+  allowing an allocation up to 2x the intended 60%-of-RAM budget. This is very likely the actual, still-live
+  cause of jpsoto's segfault — the "fix" the owner promised was never implemented, and the pre-existing
+  generic safety net doesn't cover this architecture family at all.
+- Fixed: added a third parameter `const MoEConfig *mc` to `select_kv_strategy()`; when
+  `mc->attn_head_dim > 0` (qwen35/qwen3moe), the safety cap uses that instead of `config_head_dim(cfg)`.
+  MLA (`mc->has_mla`) was deliberately left on the naive formula — its real cache is a much smaller
+  low-rank latent (see `mla_run_state.c`: `max_seq_len * qk_rope_head_dim` per layer, no `n_kv_heads`
+  multiplier at all), so the naive formula *overestimates* MLA's cost and over-clamps (conservative, not
+  unsafe) — a real fix there needs MLA-specific accounting and is flagged as a separate follow-up rather
+  than attempted here, per the project's bug-fix policy carve-out for genuinely different architectural
+  shapes.
+- Verification: new `tests/test_strategy_moe_head_dim_safety_cap` (`tests/test_kv_cache.c`) models the
+  exact reported scenario (dim=2048, n_heads=32, n_kv_heads=4, n_layers=48, seq_len=40960, real
+  head_dim=128) at a RAM level (8.5 GB) where the bug is real: confirms the **pre-fix** behavior would
+  leave `max_seq_len` unclamped at 40960 (an allocation that provably exceeds the 60% budget, proving this
+  is a genuine reproduction of the bug, not a contrived number) and the **fixed** behavior clamps to a
+  `max_seq_len` whose real (head_dim=128) KV cache genuinely fits the budget. 126/126 assertions passing
+  (all of `test_kv_cache.c`, not just the new test). Full `make release/test/debug` green on gcc and clang,
+  plus a clean CMake build. Could not verify against the actual 18-19GB `Qwen3-30B-A3B-Q4_K_M.gguf` file
+  (same constraint the original loader fix commit already documented — this sandbox can't fit that download
+  alongside the build) — the unit test is the practical substitute, modeling the real file's actual
+  dimensions rather than arbitrary numbers.
+- Prevention rule: a comment promising a specific fix ("I'll push a commit...") is not evidence the fix
+  landed — check the actual commit history, not the comment thread's implied resolution, before answering
+  "is this fixed" with anything but a verified yes or no. This is the same class of lesson as trusting
+  CPUID over execution-verification (documented elsewhere in this file): trust what the code does, not
+  what a person (including this assistant, in an earlier promise) said it would do.
+
 ### 2026-07-31 — Attempt 6: a byte-exact port of llama.cpp's ACTUAL repack + multi-row GEMV kernel (block_q4_Kx8 / ggml_gemv_q4_K_8x8_q8_K), rigorously verified correct, measured statistically indistinguishable from the single-row baseline — the most conclusive negative result of the investigation
 
 - Context: after attempt 5 (below), the user was shown the full 5-attempt status and explicitly said

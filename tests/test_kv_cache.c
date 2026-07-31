@@ -308,7 +308,7 @@ static void test_strategy_full_f32(void) {
 
   /* 36 GB free RAM → should choose full F32 (K-3 threshold: > GB_32 = 32 GB) */
   tn_i64 ram = (tn_i64)36 * 1024 * 1024 * 1024;
-  KVStrategyResult r = select_kv_strategy(&cfg, ram);
+  KVStrategyResult r = select_kv_strategy(&cfg, ram, NULL);
   TEST_ASSERT(r.strategy == KV_FULL_F32, "36GB → full F32");
   TEST_ASSERT_EQ(r.max_seq_len, 4096, "full F32 uses full seq_len");
 }
@@ -324,7 +324,7 @@ static void test_strategy_quant_i8(void) {
 
   /* 10 GB free RAM → should choose quantized I8 (K-3 threshold: GB_8 < ram ≤ GB_32) */
   tn_i64 ram = (tn_i64)10 * 1024 * 1024 * 1024;
-  KVStrategyResult r = select_kv_strategy(&cfg, ram);
+  KVStrategyResult r = select_kv_strategy(&cfg, ram, NULL);
   TEST_ASSERT(r.strategy == KV_QUANT_I8, "10GB → quant I8");
   TEST_ASSERT_EQ(r.max_seq_len, 4096, "quant I8 uses full seq_len");
 }
@@ -340,7 +340,7 @@ static void test_strategy_sliding_i8(void) {
 
   /* 6 GB free RAM → sliding window I8 (K-3 threshold: GB_5 < ram ≤ GB_8) */
   tn_i64 ram = (tn_i64)6 * 1024 * 1024 * 1024;
-  KVStrategyResult r = select_kv_strategy(&cfg, ram);
+  KVStrategyResult r = select_kv_strategy(&cfg, ram, NULL);
   TEST_ASSERT(r.strategy == KV_SLIDING_I8, "6GB → sliding I8");
   TEST_ASSERT(r.max_seq_len <= 2048, "sliding I8 limits seq_len to window");
 }
@@ -356,7 +356,7 @@ static void test_strategy_sliding_i4(void) {
 
   /* 512 MB free RAM → sliding window I4 */
   tn_i64 ram = (tn_i64)512 * 1024 * 1024;
-  KVStrategyResult r = select_kv_strategy(&cfg, ram);
+  KVStrategyResult r = select_kv_strategy(&cfg, ram, NULL);
   TEST_ASSERT(r.strategy == KV_SLIDING_I4, "512MB → sliding I4");
   TEST_ASSERT(r.max_seq_len <= 1024, "sliding I4 limits to small window");
 }
@@ -381,7 +381,7 @@ static void test_strategy_short_seq_len(void) {
                 .seq_len = 128};
 
   tn_i64 ram = (tn_i64)2 * 1024 * 1024 * 1024;
-  KVStrategyResult r = select_kv_strategy(&cfg, ram);
+  KVStrategyResult r = select_kv_strategy(&cfg, ram, NULL);
   TEST_ASSERT(r.max_seq_len <= 128, "short seq_len not enlarged");
 }
 
@@ -391,6 +391,80 @@ static void test_get_free_ram(void) {
   TEST_ASSERT(ram > 0, "tn_get_free_ram returns positive on Linux");
   /* Sanity: should be at least 100 MB on any reasonable system */
   TEST_ASSERT(ram > 100 * 1024 * 1024, "at least 100MB available");
+}
+
+/* ================================================================
+ * TEST: RAM safety-cap head_dim fix for MoE/hybrid architectures
+ * (GitHub issue #32 — qwen3moe segfaulted after the loader fix because
+ * this safety cap used config_head_dim(cfg)==dim/n_heads, which silently
+ * underestimates the real per-head KV dimension for qwen35/qwen3moe
+ * architectures where it's independent of dim/n_heads and comes from
+ * GGUF's attention.key_length instead — see kv_strategy.c/.h).
+ *
+ * Modeled directly on the reported repro: Qwen3-30B-A3B has dim=2048,
+ * n_heads=32 (naive head_dim=64) but real head_dim=128 (2x). At a RAM
+ * level where the true cache barely fits but the naive one would let it
+ * grow to 2x that size, the fix must clamp using the true head_dim.
+ * ================================================================ */
+
+static void test_strategy_moe_head_dim_safety_cap(void) {
+  Config cfg = {.dim = 2048,
+                .hidden_dim = 6144,
+                .n_layers = 48,
+                .n_heads = 32,      /* naive head_dim = 2048/32 = 64 */
+                .n_kv_heads = 4,
+                .vocab_size = 151936,
+                .seq_len = 40960};  /* native context, matches the real file */
+
+  MoEConfig mc;
+  memset(&mc, 0, sizeof(mc));
+  mc.is_moe = true;
+  mc.has_qk_norm = true;   /* qwen3moe */
+  mc.attn_head_dim = 128;  /* real head_dim, from attention.key_length */
+
+  /* 8.5 GB free: passes the KV_QUANT_I8 tier threshold (full seq_len
+   * before the safety cap), but tight enough that the safety cap must
+   * actually reduce max_seq_len once the TRUE (128) head_dim is used.
+   * (The double multiplication must happen before the cast to tn_i64 --
+   * (tn_i64)8.5 truncates to 8 first, silently landing in the wrong RAM
+   * tier entirely.) */
+  tn_i64 ram = (tn_i64)(8.5 * 1024.0 * 1024.0 * 1024.0);
+
+  KVStrategyResult without_fix = select_kv_strategy(&cfg, ram, NULL);
+  KVStrategyResult with_fix    = select_kv_strategy(&cfg, ram, &mc);
+
+  /* Without the real head_dim, the safety cap underestimates cost and
+   * doesn't clamp at all here -- reproducing the unsafe pre-fix behavior
+   * (this assertion documents the bug, not just checks the fix). */
+  TEST_ASSERT_EQ(without_fix.max_seq_len, 40960,
+                 "pre-fix behavior: naive head_dim under-clamps to full seq_len");
+
+  /* With the real head_dim, the cap must actually reduce max_seq_len --
+   * the direct, observable signature of the fix. */
+  TEST_ASSERT(with_fix.max_seq_len < 40960,
+              "fixed: real head_dim clamps below native seq_len");
+
+  /* The critical safety property: an allocation sized with the TRUE
+   * head_dim at with_fix.max_seq_len must fit within the 60% budget --
+   * i.e. this max_seq_len is actually safe to allocate, not just smaller
+   * than before. */
+  double true_kv_bytes = (double)cfg.n_layers * mc.attn_head_dim
+                        * cfg.n_kv_heads * 2.0 * sizeof(float)
+                        * (double)with_fix.max_seq_len;
+  double budget = (double)ram * 0.6;
+  char msg[160];
+  snprintf(msg, sizeof(msg),
+           "clamped max_seq_len=%d gives a real KV cache (%.2f GB) within the 60%% budget (%.2f GB)",
+           with_fix.max_seq_len, true_kv_bytes / 1e9, budget / 1e9);
+  TEST_ASSERT(true_kv_bytes <= budget * 1.01 /* float rounding slack */, msg);
+
+  /* And confirm the UNFIXED number really would have exceeded budget --
+   * proving this test scenario genuinely reproduces the OOM risk. */
+  double unsafe_kv_bytes = (double)cfg.n_layers * mc.attn_head_dim
+                          * cfg.n_kv_heads * 2.0 * sizeof(float)
+                          * (double)without_fix.max_seq_len;
+  TEST_ASSERT(unsafe_kv_bytes > budget,
+              "pre-fix max_seq_len would have exceeded the RAM budget (the real bug)");
 }
 
 /* ================================================================ */
@@ -419,6 +493,7 @@ int main(void) {
   RUN_TEST(test_strategy_sliding_i4);
   RUN_TEST(test_strategy_names);
   RUN_TEST(test_strategy_short_seq_len);
+  RUN_TEST(test_strategy_moe_head_dim_safety_cap);
   RUN_TEST(test_get_free_ram);
 
   TEST_SUMMARY();

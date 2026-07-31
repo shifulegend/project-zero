@@ -434,7 +434,7 @@ int main(int argc, char **argv) {
      * would require 7+ GB KV cache on a machine that only has 2–3 GB left after load. */
     {
         tn_i64 post_load_ram = tn_get_free_ram();
-        KVStrategyResult kv_res = select_kv_strategy(&p, post_load_ram);
+        KVStrategyResult kv_res = select_kv_strategy(&p, post_load_ram, &mc);
         p.seq_len = kv_res.max_seq_len;
         /* Qwen35 hybrid models keep their own F32 K/V caches
          * (q35_key_cache/q35_value_cache, only the full-attention layers) —

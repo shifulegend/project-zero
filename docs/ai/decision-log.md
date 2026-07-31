@@ -1,7 +1,28 @@
 # Decision Log — project-zero
 
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
-> Read at session start. Last updated: 2026-07-24.
+> Read at session start. Last updated: 2026-07-31.
+
+### 2026-07-31 — Qwen3-8B brought up, benchmarked against llama.cpp, found slower, and root-caused instead of shipping a hand-wave
+
+- Decision: user asked to run Qwen3-8B-Q4_K_M on pz and compare with llama.cpp. First attempt hit a real
+  OOM (dequanting every Q4_K tensor to F32), then real garbage output (missing Qwen3 QK-norm, then a shared
+  weight-type flag misdispatching Q4_K_M's mixed-per-layer quant types) — all three fixed and verified, not
+  worked around. Once correct, pz measured 2.5-2.65 tok/s vs. llama.cpp's 4.0-4.8 on the same file/prompt/
+  threads/host — user explicitly required a real fix, not documentation of the gap, so a deep RCA was run:
+  read llama.cpp's actual AVX2 Q4_K kernel source directly (found it's nearly byte-identical to pz's own),
+  measured T=1 vs T=4 scaling (3.5-4.5x, ruling out thread-pool overhead), and traced the real difference to
+  llama.cpp's CPU backend transparently repacking Q4_K rows into interleaved 8/16-row super-blocks at load
+  time with matching multi-row GEMV kernels — a genuinely different GEMV batching strategy, not an
+  instruction-choice difference.
+- Two lower-risk fixes were tried first, honestly measured, and reverted when they didn't pan out: software
+  prefetch on the single-matrix dispatch (no measurable change) and a from-scratch, correctness-verified
+  AVX-512 VNNI kernel (measured 33-40% *slower* — `dpbusd`'s raw output needs a separate scale-multiply this
+  kernel's AVX2 path already fused for free). Real test coverage for Q4_K matmul was added regardless
+  (`tests/test_q4k_matmul.c`) since it had none before this pass.
+- Status: RCA complete and evidence-backed; the row-batched repack fix itself is grouped-execution
+  in-progress work (bigger lift — new data layout + new kernel), not parked. Full chain in
+  `docs/ai/mistakes.md` (2026-07-30/07-31 entries) and `README.md`'s new Qwen3-8B section.
 
 ### 2026-07-24 — Full threads×SIMD×classifier sweep (52 configs); RCA for why INT4 classifier is slower than INT8/BF16
 - Decision: after the F16/BF16 kernel fix (below) closed the single-sample pz-vs-llama.cpp gap,

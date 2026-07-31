@@ -234,6 +234,60 @@ A second real, previously-hidden bug was found and fixed while collecting the cl
 
 Full interactive write-up (live charts, hover tooltips, full input/output transcripts for every run): see the benchmark artifact linked from this repo's PR/session history.
 
+### Qwen3-8B (dense, Q4_K_M) — bringing up a previously-untested architecture, and an honest gap vs. llama.cpp
+
+Qwen3-8B is a standard dense GQA transformer — the "load but untested" class of model this engine's generic
+(non-MLA, non-hybrid) path was built for but had never actually been run end-to-end. Bringing it up on the
+real `Qwen3-8B-Q4_K_M.gguf` file surfaced three real, compounding correctness bugs (OOM from dequanting every
+Q4_K tensor to F32 heap, missing Qwen3 QK-norm, and a shared weight-type flag silently misdispatching
+Q4_K_M's mixed Q4_K/Q6_K-per-layer tensors to the wrong kernel) — all fixed, verified against a full
+gcc+clang release/test/debug pass including a from-scratch sanitizer-instrumented `make test`, and confirmed
+by matching llama.cpp's own output token-for-token in reasoning mode. Full technical detail in
+[`docs/ai/mistakes.md`](docs/ai/mistakes.md) (2026-07-30 entries).
+
+**Apples-to-apples comparison** — same `Qwen3-8B-Q4_K_M.gguf` file, same templated prompt (both engines apply
+the model's own GGUF-embedded chat template), 4 threads, temp 0, AVX2 (this host's actual ISA on both engines —
+mid-session the underlying virtualized CPU changed, taking AVX-512VBMI/VNNI/AVX-VNNI with it; llama.cpp's
+`-march=native` build SIGILL'd until rebuilt portable, see mistakes.md), `--ctx-size` matched to the task
+instead of llama.cpp's wasteful full-40960-token default:
+
+| Engine | Generation (tok/s) | Prompt (tok/s) |
+|---|---|---|
+| Project Zero | 2.5-2.65 | — |
+| llama.cpp | **4.0-4.8** | 12-14 |
+
+<p align="center">
+  <img src="benchmark_results/qwen3_8b_dense_2026-07-31/screenshots/pz_qwen3_8b_run.png" width="49%" alt="Project Zero running Qwen3-8B-Q4_K_M, 4 threads, 2.49 tok/s">
+  <img src="benchmark_results/qwen3_8b_dense_2026-07-31/screenshots/llamacpp_qwen3_8b_run.png" width="49%" alt="llama.cpp running Qwen3-8B-Q4_K_M, 4 threads, 4.0 tok/s">
+</p>
+
+**llama.cpp is ~1.6-1.9x faster here, and we're not hiding that.** Root-caused with real `TN_PROFILE=1`
+per-step timing, not guesswork: the Q4_K matmul (≈88% of per-token time) runs at only ~43% of this host's
+measured DRAM bandwidth, vs. ~95% for the plain BF16 classifier matmul on the same host/token — compute-bound,
+not bandwidth-bound. Two targeted fixes were tried and measured, honestly, in place:
+
+- **Software prefetch** on the single-matrix Q4_K dispatch path (already used elsewhere in the kernel file):
+  no measurable change.
+- **A from-scratch AVX-512 VNNI kernel** (correctness-verified first — this kernel had zero test coverage
+  before this pass; see `tests/test_q4k_matmul.c`, added regardless of the optimization's fate): measured
+  **33-40% slower**, not faster, and reverted. Root cause: `dpbusd` gives a raw unscaled dot product that
+  still needs the per-group Q4_K scale applied afterward via a separate multiply, while the existing AVX2
+  path fuses "sum and scale" into one instruction — net *more* instructions despite `dpbusd` being faster in
+  isolation. Full writeup in `mistakes.md`.
+
+Direct comparison against llama.cpp's own AVX2 kernel source (cloned locally) showed it's **nearly
+byte-identical** to this engine's — ruling out "worse SIMD" as the explanation. T=1 vs. T=4 profiling showed
+3.5-4.5x scaling (87-100%+ efficiency) — ruling out thread-pool overhead. The real difference: llama.cpp's
+CPU backend transparently **repacks Q4_K weight rows into interleaved 8/16-row super-blocks at load time**
+(`ggml/src/ggml-cpu/repack.cpp`, confirmed active via its own `system_info: REPACK=1`) and uses matching
+multi-row GEMV kernels that compute 8-16 output rows per pass over the shared quantized activation — far
+better DRAM burst and instruction-level-parallelism than a one-row-at-a-time loop, independent of which SIMD
+instructions that loop uses. That's the real, evidence-backed target — a genuinely bigger lift than the two
+fixes above, tracked as in-progress work, not parked.
+
+Full RCA, methodology, and status: [`docs/ai/mistakes.md`](docs/ai/mistakes.md) · screenshots:
+[`benchmark_results/qwen3_8b_dense_2026-07-31/screenshots/`](benchmark_results/qwen3_8b_dense_2026-07-31/screenshots/).
+
 ---
 
 <a id="quick-start"></a>

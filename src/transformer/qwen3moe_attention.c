@@ -23,10 +23,10 @@
 
 #include "transformer/qwen3moe_attention.h"
 #include "math/parallel_matmul.h"
-#include "math/matmul_f16.h"
 #include "math/rope.h"
 #include "math/simd_dispatch.h"
 #include "core/platform.h"
+#include "transformer/dense_matmul_dispatch.h"
 #include <math.h>
 #include <string.h>
 
@@ -69,14 +69,10 @@ void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w,
         parallel_ternary_matmul_packed_preq(q_buf, s->xb, (const tn_u8 *)w->wq[layer], dim, q_width,  w->sq[layer], &preq, tp);
         parallel_ternary_matmul_packed_preq(k_buf, s->xb, (const tn_u8 *)w->wk[layer], dim, kv_width, w->sk[layer], &preq, tp);
         parallel_ternary_matmul_packed_preq(v_buf, s->xb, (const tn_u8 *)w->wv[layer], dim, kv_width, w->sv[layer], &preq, tp);
-    } else if (w->layer_weight_type == WEIGHT_TYPE_F16) {
-        parallel_matmul_f16(q_buf, s->xb, (const tn_u16 *)w->wq[layer], dim, q_width,  tp);
-        parallel_matmul_f16(k_buf, s->xb, (const tn_u16 *)w->wk[layer], dim, kv_width, tp);
-        parallel_matmul_f16(v_buf, s->xb, (const tn_u16 *)w->wv[layer], dim, kv_width, tp);
     } else {
-        parallel_matmul_float32(q_buf, s->xb, (const float *)w->wq[layer], dim, q_width,  tp);
-        parallel_matmul_float32(k_buf, s->xb, (const float *)w->wk[layer], dim, kv_width, tp);
-        parallel_matmul_float32(v_buf, s->xb, (const float *)w->wv[layer], dim, kv_width, tp);
+        tn_dense_matmul_dispatch(q_buf, s->xb, w->wq[layer], w->wq_type[layer], dim, q_width,  tp);
+        tn_dense_matmul_dispatch(k_buf, s->xb, w->wk[layer], w->wk_type[layer], dim, kv_width, tp);
+        tn_dense_matmul_dispatch(v_buf, s->xb, w->wv[layer], w->wv_type[layer], dim, kv_width, tp);
     }
 
     /* Step 3: per-head QK-norm, before RoPE */
@@ -155,10 +151,8 @@ void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w,
      * [dim x dim] assumption (see weights_from_gguf_qwen3moe). */
     if (w->layers_are_ternary) {
         parallel_ternary_matmul_packed(s->xb, attn_concat, (const tn_u8 *)w->wo[layer], q_width, dim, w->so[layer], tp);
-    } else if (w->layer_weight_type == WEIGHT_TYPE_F16) {
-        parallel_matmul_f16(s->xb, attn_concat, (const tn_u16 *)w->wo[layer], q_width, dim, tp);
     } else {
-        parallel_matmul_float32(s->xb, attn_concat, (const float *)w->wo[layer], q_width, dim, tp);
+        tn_dense_matmul_dispatch(s->xb, attn_concat, w->wo[layer], w->wo_type[layer], q_width, dim, tp);
     }
     tn_vec_add(s->x, s->x, s->xb, dim);
 }

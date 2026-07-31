@@ -883,9 +883,13 @@ static TernaryError weights_from_gguf_qwen35(
  * types dequantized to a heap F32 buffer — same 3-way dispatch as the
  * generic dense loader's LOAD_PROJ macro below (this arch is not Q2_0-
  * locked like qwen35, nor Q4_K-heap-copied like deepseek2's MLA path).
- * Sets *layer_wtype_out so the model-wide dispatch flag reflects the
- * actual on-disk format, mirroring LOAD_PROJ's _layer_wtype side effect. */
-#define Q3MOE_LOAD_PROJ(field, tname, n_elems, layer_wtype_out) do {        \
+ * Sets type_out[l], a per-layer, per-projection array (e.g. w->wq_type) —
+ * see weights.h's incident note on why a single shared flag is wrong: the
+ * same class of bug (mixed quant types across projections/layers silently
+ * misdispatching to the wrong kernel) applies here too if this arch is ever
+ * loaded from a mixed-precision GGUF, even though today's F16/F32-only
+ * dispatch below doesn't yet have a Q4_K zero-copy branch to trigger it. */
+#define Q3MOE_LOAD_PROJ(field, tname, n_elems, type_out) do {              \
     snprintf(name_buf, sizeof(name_buf), "blk.%d." tname, l);              \
     const GGUFTensor *_t = gguf_find_tensor(hdr, name_buf);                \
     if (!_t) {                                                              \
@@ -894,13 +898,15 @@ static TernaryError weights_from_gguf_qwen35(
     }                                                                       \
     if (_t->type == GGUF_TYPE_F16) {                                       \
         (field)[l] = (tn_i8 *)_t->data;                                    \
-        *(layer_wtype_out) = WEIGHT_TYPE_F16;                              \
+        (type_out)[l] = WEIGHT_TYPE_F16;                                   \
     } else if (_t->type == GGUF_TYPE_F32) {                                \
         (field)[l] = (tn_i8 *)_t->data;                                    \
+        (type_out)[l] = WEIGHT_TYPE_F32;                                   \
     } else {                                                                \
         float *_f = tensor_to_f32(_t, (n_elems), store);                   \
         if (!_f) return TN_ERR_INVALID_WEIGHTS;                             \
         (field)[l] = (tn_i8 *)_f;                                          \
+        (type_out)[l] = WEIGHT_TYPE_F32;                                   \
     }                                                                       \
 } while(0)
 
@@ -918,7 +924,6 @@ static TernaryError weights_from_gguf_qwen3moe(
     int num_experts = mc->num_experts;
     int exp_hid     = mc->expert_hidden_dim;
     char name_buf[128];
-    int _layer_wtype = WEIGHT_TYPE_F32;
 
     w->expert_w2_quant_per_layer  = (int *)calloc((size_t)nl, sizeof(int));
     w->expert_w13_quant_per_layer = (int *)calloc((size_t)nl, sizeof(int));
@@ -945,10 +950,10 @@ static TernaryError weights_from_gguf_qwen3moe(
 
         /* GQA attention projections — q_rows/kv_rows widths (NOT dim*dim;
          * head_dim is independent of dim/n_heads for this arch). */
-        Q3MOE_LOAD_PROJ(w->wq, "attn_q.weight",      (size_t)q_rows  * (size_t)dim, &_layer_wtype);
-        Q3MOE_LOAD_PROJ(w->wk, "attn_k.weight",      (size_t)kv_rows * (size_t)dim, &_layer_wtype);
-        Q3MOE_LOAD_PROJ(w->wv, "attn_v.weight",      (size_t)kv_rows * (size_t)dim, &_layer_wtype);
-        Q3MOE_LOAD_PROJ(w->wo, "attn_output.weight", (size_t)dim * (size_t)q_rows,  &_layer_wtype);
+        Q3MOE_LOAD_PROJ(w->wq, "attn_q.weight",      (size_t)q_rows  * (size_t)dim, w->wq_type);
+        Q3MOE_LOAD_PROJ(w->wk, "attn_k.weight",      (size_t)kv_rows * (size_t)dim, w->wk_type);
+        Q3MOE_LOAD_PROJ(w->wv, "attn_v.weight",      (size_t)kv_rows * (size_t)dim, w->wv_type);
+        Q3MOE_LOAD_PROJ(w->wo, "attn_output.weight", (size_t)dim * (size_t)q_rows,  w->wo_type);
         w->sq[l] = w->sk[l] = w->sv[l] = w->so[l] = 1.0f;
 
         /* Router (F32, zero-copy) */
@@ -1022,7 +1027,10 @@ static TernaryError weights_from_gguf_qwen3moe(
     w->layers_are_ternary = false;
     w->wcls_is_ternary    = false;
     w->wcls_scale         = 1.0f;
-    w->layer_weight_type  = _layer_wtype;
+    /* wq_type/wk_type/wv_type/wo_type were set per-layer by Q3MOE_LOAD_PROJ
+     * above; w1_type/w2_type/w3_type stay at their zero-init default
+     * (WEIGHT_TYPE_F32) since this arch has no dense FFN layers to read
+     * them — every layer routes through moe_ffn_forward instead. */
 
     printf("[GGUF-Q3MOE] Weights loaded (%d layers, %d experts/layer, top-%d, "
            "head_dim=%d)\n", nl, num_experts, mc->num_experts_per_tok, head_dim);

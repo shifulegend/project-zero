@@ -95,21 +95,21 @@ int main(int argc, char **argv) {
         }
     }
 
-    /* Phase 22.5: animated startup banner — TTY-gated only. Previously also
-     * suppressed for one-shot --prompt runs (matching Claude Code's own
-     * convention), but llama-cli (the reference engine used throughout this
-     * project's head-to-head benchmarks) prints its banner unconditionally
-     * regardless of -p/single-turn mode — confirmed by reading its actual
-     * source (tools/cli/cli.cpp's console::log(LLAMA_ASCII_LOGO) call has no
-     * such gate at all). Matching that here keeps benchmark screenshots
-     * visually self-identifying (which engine produced this terminal
-     * capture) instead of only showing plain text for one-shot pz runs.
-     * Piped/redirected output (not a real TTY) still gets plain text. */
+    /* Phase 22.5: startup banner — always shown, regardless of invocation
+     * path (TTY, piped/redirected, one-shot --prompt, --server, REPL).
+     * Branding must not depend on how the CLI is invoked: llama-cli (the
+     * reference engine used throughout this project's head-to-head
+     * benchmarks) prints its banner unconditionally regardless of -p/
+     * single-turn mode — confirmed by reading its actual source
+     * (tools/cli/cli.cpp's console::log(LLAMA_ASCII_LOGO) call has no gate
+     * at all). tn_banner_print() itself branches on is_tty: animated reveal
+     * for a real terminal, a single plain (no-ANSI) block otherwise — so
+     * piped/redirected captures (e.g. benchmark screenshots built from
+     * tools/make_screenshot.py) are self-identifying too, not just plain
+     * generation output. */
     int stdout_is_tty = isatty(fileno(stdout));
     int color_enabled_early = tn_color_resolve(args.color_mode, stdout_is_tty, getenv("NO_COLOR"));
-    if (stdout_is_tty) {
-        tn_banner_print(stdout_is_tty, color_enabled_early);
-    }
+    tn_banner_print(stdout_is_tty, color_enabled_early);
 
     printf("Project Zero Engine %s — Auto-Tuned Hardware\n", PZ_VERSION_STR);
 
@@ -246,9 +246,11 @@ int main(int argc, char **argv) {
         }
         config_print(&p);
 
-        /* For DeepSeek-V2 (MLA+MoE) or Qwen3.5/3.6 (hybrid Gated-DeltaNet)
-         * GGUF: populate MoEConfig ahead of weight loading. */
-        if (strcmp(gguf_hdr.arch, "deepseek2") == 0 || strcmp(gguf_hdr.arch, "qwen35") == 0) {
+        /* For DeepSeek-V2 (MLA+MoE), Qwen3.5/3.6 (hybrid Gated-DeltaNet), or
+         * Qwen3-MoE (routed MoE + QK-norm) GGUF: populate MoEConfig ahead of
+         * weight loading. */
+        if (strcmp(gguf_hdr.arch, "deepseek2") == 0 || strcmp(gguf_hdr.arch, "qwen35") == 0 ||
+            strcmp(gguf_hdr.arch, "qwen3moe") == 0) {
             if (moe_config_from_gguf(&mc, &gguf_hdr) != TN_OK) {
                 fprintf(stderr, "Failed to read MoE config from GGUF.\n");
                 mapped_file_close(&mf);
@@ -432,7 +434,7 @@ int main(int argc, char **argv) {
      * would require 7+ GB KV cache on a machine that only has 2–3 GB left after load. */
     {
         tn_i64 post_load_ram = tn_get_free_ram();
-        KVStrategyResult kv_res = select_kv_strategy(&p, post_load_ram);
+        KVStrategyResult kv_res = select_kv_strategy(&p, post_load_ram, &mc);
         p.seq_len = kv_res.max_seq_len;
         /* Qwen35 hybrid models keep their own F32 K/V caches
          * (q35_key_cache/q35_value_cache, only the full-attention layers) —
@@ -440,9 +442,15 @@ int main(int argc, char **argv) {
          * so printing e.g. "Quantized I8" for them misreported what actually
          * happens (2026-07-17, found during the ceiling-gap attribution;
          * see docs/ai/mistakes.md). The RAM-aware max-context clamp from
-         * select_kv_strategy() still applies either way. */
+         * select_kv_strategy() still applies either way. Qwen3-MoE's own
+         * qwen3moe_key_cache/qwen3moe_value_cache are the same situation —
+         * independent head_dim, own F32 cache, not the quantized-KV path. */
         if (mc.has_linear_attn) {
             printf("KV Strategy: F32 (Qwen35 hybrid path; quantized-KV "
+                   "strategy not wired in), max context: %d tokens\n",
+                   p.seq_len);
+        } else if (mc.has_qk_norm) {
+            printf("KV Strategy: F32 (Qwen3-MoE path; quantized-KV "
                    "strategy not wired in), max context: %d tokens\n",
                    p.seq_len);
         } else {
@@ -462,12 +470,13 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    /* Qwen3.5/3.6 hybrid models never read the generic key_cache/value_cache
-     * (they use their own correctly-sized q35_key_cache/q35_value_cache,
-     * allocated below) — skip_kv_cache=true avoids a multi-GB calloc+memset
-     * for those models' native (often huge, e.g. 262144) context. See
+    /* Qwen3.5/3.6 hybrid models and Qwen3-MoE models never read the generic
+     * key_cache/value_cache (they use their own correctly-sized
+     * q35_key_cache/q35_value_cache or qwen3moe_key_cache/
+     * qwen3moe_value_cache, allocated below) — skip_kv_cache=true avoids a
+     * multi-GB calloc+memset for those models' context. See
      * run_state_alloc_ex's header comment and docs/ai/mistakes.md. */
-    if (run_state_alloc_ex(s, &p, p.seq_len, mc.has_linear_attn) != TN_OK) {
+    if (run_state_alloc_ex(s, &p, p.seq_len, mc.has_linear_attn || mc.has_qk_norm) != TN_OK) {
         fprintf(stderr, "Failed to allocate RunState buffers.\n");
         free(s);
         if (mc.is_moe) moe_weights_free(&w, &mc);
@@ -495,6 +504,20 @@ int main(int argc, char **argv) {
     if (mc.has_linear_attn) {
         if (q35_run_state_alloc(s, &p, &mc, p.seq_len) != TN_OK) {
             fprintf(stderr, "Failed to allocate Qwen3.5/3.6 hybrid attention state.\n");
+            run_state_free(s);
+            free(s);
+            if (mc.is_moe) moe_weights_free(&w, &mc);
+            weights_free_pointers(&w);
+            mapped_file_close(&mf);
+            threadpool_destroy(tp);
+            return 1;
+        }
+    }
+
+    /* Qwen3-MoE attention state (allocated only when has_qk_norm=1) */
+    if (mc.has_qk_norm) {
+        if (qwen3moe_run_state_alloc(s, &p, &mc, p.seq_len) != TN_OK) {
+            fprintf(stderr, "Failed to allocate Qwen3-MoE attention state.\n");
             run_state_free(s);
             free(s);
             if (mc.is_moe) moe_weights_free(&w, &mc);
@@ -680,15 +703,17 @@ int main(int argc, char **argv) {
      * common case when no external --tokenizer is passed — leaking the
      * whole vocab (~49k strings) every run. */
     tokenizer_free(&t);
-    /* mla_run_state_free/q35_run_state_free must run before run_state_free()
-     * (they free k_rope_cache/q35_* pointer arrays that run_state_free()
-     * doesn't know about). mla_run_state_free was previously never called
-     * anywhere in the shutdown path — a real leak of k_rope_cache (n_layers
-     * malloc'd buffers) + mla_rope_freq on every DeepSeek/MLA run, only its
-     * own OOM-cleanup path called it. Fixed here alongside the new
+    /* mla_run_state_free/q35_run_state_free/qwen3moe_run_state_free must run
+     * before run_state_free() (they free k_rope_cache and the q35_ / qwen3moe_
+     * pointer arrays that run_state_free() doesn't know about).
+     * mla_run_state_free was previously never called anywhere in the
+     * shutdown path — a real leak of k_rope_cache (n_layers malloc'd
+     * buffers) + mla_rope_freq on every DeepSeek/MLA run, only its own
+     * OOM-cleanup path called it. Fixed here alongside the new
      * q35_run_state_free wiring (see docs/ai/mistakes.md). */
     if (mc.has_mla) mla_run_state_free(s, p.n_layers);
     if (mc.has_linear_attn) q35_run_state_free(s, &p, &mc);
+    if (mc.has_qk_norm) qwen3moe_run_state_free(s, &p);
     run_state_free(s);
     free(s);
     if (mc.is_moe) moe_weights_free(&w, &mc);

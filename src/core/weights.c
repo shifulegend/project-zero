@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <math.h>
 
 TernaryError weights_alloc_pointers(TransformerWeights *w, const Config *cfg) {
     int nl = cfg->n_layers;
@@ -32,6 +33,16 @@ TernaryError weights_alloc_pointers(TransformerWeights *w, const Config *cfg) {
     w->rms_attn_sub_norm = (float **)calloc(nl, sizeof(float *));
     w->rms_ffn_sub_norm = (float **)calloc(nl, sizeof(float *));
 
+    /* Per-layer, per-projection weight type (WEIGHT_TYPE_*) — see weights.h
+     * for why this can't be a single shared flag. */
+    w->wq_type = (int *)calloc(nl, sizeof(int));
+    w->wk_type = (int *)calloc(nl, sizeof(int));
+    w->wv_type = (int *)calloc(nl, sizeof(int));
+    w->wo_type = (int *)calloc(nl, sizeof(int));
+    w->w1_type = (int *)calloc(nl, sizeof(int));
+    w->w2_type = (int *)calloc(nl, sizeof(int));
+    w->w3_type = (int *)calloc(nl, sizeof(int));
+
     /* Qwen3.5/3.6 hybrid attention — cheap per-layer pointer arrays,
      * always allocated (NULL contents) like rms_attn_sub_norm above;
      * populated only when MoEConfig.has_linear_attn is set. */
@@ -47,16 +58,25 @@ TernaryError weights_alloc_pointers(TransformerWeights *w, const Config *cfg) {
     w->q35_ssm_norm    = (float **)calloc(nl, sizeof(float *));
     w->q35_ssm_out     = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
 
+    /* Qwen3-MoE QK-norm — cheap per-layer pointer arrays, always allocated
+     * (NULL contents) like q35_attn_q_norm above; populated only when
+     * MoEConfig.has_qk_norm is set. */
+    w->qwen3moe_attn_q_norm = (float **)calloc(nl, sizeof(float *));
+    w->qwen3moe_attn_k_norm = (float **)calloc(nl, sizeof(float *));
+
     if (!w->wq || !w->wk || !w->wv || !w->wo ||
         !w->sq || !w->sk || !w->sv || !w->so ||
         !w->w1 || !w->w2 || !w->w3 ||
         !w->s1 || !w->s2 || !w->s3 ||
         !w->rms_att_weight || !w->rms_ffn_weight ||
         !w->rms_attn_sub_norm || !w->rms_ffn_sub_norm ||
+        !w->wq_type || !w->wk_type || !w->wv_type || !w->wo_type ||
+        !w->w1_type || !w->w2_type || !w->w3_type ||
         !w->q35_attn_q_norm || !w->q35_attn_k_norm ||
         !w->q35_ssm_qkv || !w->q35_ssm_gate || !w->q35_ssm_conv1d ||
         !w->q35_ssm_dt_bias || !w->q35_ssm_a || !w->q35_ssm_alpha ||
-        !w->q35_ssm_beta || !w->q35_ssm_norm || !w->q35_ssm_out) {
+        !w->q35_ssm_beta || !w->q35_ssm_norm || !w->q35_ssm_out ||
+        !w->qwen3moe_attn_q_norm || !w->qwen3moe_attn_k_norm) {
         weights_free_pointers(w);
         return TN_ERR_OOM;
     }
@@ -82,6 +102,13 @@ void weights_free_pointers(TransformerWeights *w) {
     if (w->rms_ffn_weight) free(w->rms_ffn_weight);
     if (w->rms_attn_sub_norm) free(w->rms_attn_sub_norm);
     if (w->rms_ffn_sub_norm) free(w->rms_ffn_sub_norm);
+    if (w->wq_type) free(w->wq_type);
+    if (w->wk_type) free(w->wk_type);
+    if (w->wv_type) free(w->wv_type);
+    if (w->wo_type) free(w->wo_type);
+    if (w->w1_type) free(w->w1_type);
+    if (w->w2_type) free(w->w2_type);
+    if (w->w3_type) free(w->w3_type);
     if (w->q35_attn_q_norm) free(w->q35_attn_q_norm);
     if (w->q35_attn_k_norm) free(w->q35_attn_k_norm);
     if (w->q35_ssm_qkv) free(w->q35_ssm_qkv);
@@ -93,6 +120,8 @@ void weights_free_pointers(TransformerWeights *w) {
     if (w->q35_ssm_beta) free(w->q35_ssm_beta);
     if (w->q35_ssm_norm) free(w->q35_ssm_norm);
     if (w->q35_ssm_out) free(w->q35_ssm_out);
+    if (w->qwen3moe_attn_q_norm) free(w->qwen3moe_attn_q_norm);
+    if (w->qwen3moe_attn_k_norm) free(w->qwen3moe_attn_k_norm);
     if (w->wcls_i8) free(w->wcls_i8);
     if (w->wcls_i8_scales) free(w->wcls_i8_scales);
     if (w->wcls_i4) free(w->wcls_i4);
@@ -241,12 +270,71 @@ TernaryError weights_map(TransformerWeights *w, const Config *cfg,
     return TN_OK;
 }
 
+/* Quantize block[0..count) to signed [-max_level, max_level] using scale
+ * `inv_scale` (= max_level / scale), and return the sum of squared
+ * reconstruction error. Used by find_best_block_scale's candidate search
+ * and (implicitly) by the final quantize pass. */
+static float block_quant_sqerr(const float *block, int count, float inv_scale,
+                                float scale, int max_level) {
+    float err = 0.0f;
+    for (int k = 0; k < count; k++) {
+        int q = (int)(block[k] * inv_scale + (block[k] >= 0 ? 0.5f : -0.5f));
+        if (q > max_level) q = max_level;
+        if (q < -max_level) q = -max_level;
+        float recon = (float)q * scale;
+        float d = block[k] - recon;
+        err += d * d;
+    }
+    return err;
+}
+
+/* find_best_block_scale — real per-block scale search minimizing squared
+ * reconstruction error, added 2026-07-31 in response to GitHub issue #27:
+ * the previous classifier INT8/INT4 quantizer used one scale for an entire
+ * row (dim elements, e.g. 4096) and picked it via pure max-abs/level — "a
+ * mere casting" that "completely ignores the whole issue of perplexity."
+ *
+ * The max-abs scale (scale0 = max_abs/max_level) is a reasonable starting
+ * point but not error-optimal: it's set entirely by whichever single value
+ * in the block is largest, even though minimizing total squared error is a
+ * function of the whole block's distribution. This does a small local
+ * search around scale0 (9 candidates, ±10%) and keeps whichever minimizes
+ * squared error for THIS block — the same principle k-quant formats like
+ * Q4_K use (see gguf_quant.c's decode side), just for a much smaller,
+ * cheaper local search rather than a full joint scale+min optimization
+ * (which would need a genuinely different, asymmetric packing format —
+ * flagged as a natural follow-up, out of scope for this pass). */
+static float find_best_block_scale(const float *block, int count, int max_level) {
+    float max_abs = 0.0f;
+    for (int k = 0; k < count; k++) {
+        float a = block[k] < 0.0f ? -block[k] : block[k];
+        if (a > max_abs) max_abs = a;
+    }
+    if (max_abs == 0.0f) return 0.0f;
+
+    float scale0 = max_abs / (float)max_level;
+    float best_scale = scale0;
+    float best_err = block_quant_sqerr(block, count, (float)max_level / max_abs, scale0, max_level);
+
+    for (int step = -4; step <= 4; step++) {
+        if (step == 0) continue;
+        float mult = 1.0f + 0.025f * (float)step; /* 0.90 .. 1.10 in 9 steps */
+        float cand_scale = scale0 * mult;
+        float cand_inv = (cand_scale > 0.0f) ? 1.0f / cand_scale : 0.0f;
+        float err = block_quant_sqerr(block, count, cand_inv, cand_scale, max_level);
+        if (err < best_err) { best_err = err; best_scale = cand_scale; }
+    }
+    return best_scale;
+}
+
 void weights_build_classifier_quant(TransformerWeights *w, const Config *cfg) {
     int dim = cfg->dim;
+    int n_blocks = (dim + TN_CLS_QUANT_BLOCK - 1) / TN_CLS_QUANT_BLOCK;
 
     /* Build INT8 quantized classifier for faster LM head inference.
-     * Per-row symmetric quantization: scale = max_abs / 127.
-     * Halves bandwidth (BF16 → INT8). Stored as unsigned (q + 128) for VNNI.
+     * Block-wise quantization (TN_CLS_QUANT_BLOCK elements/block, scale
+     * chosen to minimize squared error — see find_best_block_scale).
+     * Halves bandwidth (BF16 → INT8). Stored as unsigned (q + 128).
      * Hardware-aware: only build if hardware profile recommends INT8 or INT4. */
     w->wcls_i8 = NULL;
     w->wcls_i8_scales = NULL;
@@ -256,39 +344,42 @@ void weights_build_classifier_quant(TransformerWeights *w, const Config *cfg) {
         size_t vocab = (size_t)cfg->vocab_size;
         size_t d     = (size_t)dim;
         w->wcls_i8 = (tn_u8 *)malloc(vocab * d);
-        w->wcls_i8_scales = (float *)malloc(vocab * sizeof(float));
+        w->wcls_i8_scales = (float *)malloc(vocab * (size_t)n_blocks * sizeof(float));
         if (w->wcls_i8 && w->wcls_i8_scales) {
+            float block_f32[TN_CLS_QUANT_BLOCK];
             for (size_t i = 0; i < vocab; i++) {
                 const tn_u16 *row = w->wcls + i * d;
                 tn_u8 *dst = w->wcls_i8 + i * d;
-                /* Pass 1: find max absolute BF16 value in this row */
-                float max_abs = 0.0f;
-                for (size_t j = 0; j < d; j++) {
-                    tn_u32 bits = (tn_u32)row[j] << 16;
-                    float fval;
-                    memcpy(&fval, &bits, sizeof(float));
-                    float a = fval < 0.0f ? -fval : fval;
-                    if (a > max_abs) max_abs = a;
-                }
-                /* Pass 2: quantize to INT8, store as unsigned (+ 128 bias) */
-                float scale = max_abs / 127.0f;
-                float inv_scale = (max_abs > 0.0f) ? 127.0f / max_abs : 0.0f;
-                w->wcls_i8_scales[i] = scale;
-                for (size_t j = 0; j < d; j++) {
-                    tn_u32 bits = (tn_u32)row[j] << 16;
-                    float fval;
-                    memcpy(&fval, &bits, sizeof(float));
-                    int q = (int)(fval * inv_scale + (fval >= 0 ? 0.5f : -0.5f));
-                    if (q > 127) q = 127;
-                    if (q < -127) q = -127;
-                    dst[j] = (tn_u8)(q + 128);
+                float *row_scales = w->wcls_i8_scales + i * (size_t)n_blocks;
+
+                for (int b = 0; b < n_blocks; b++) {
+                    size_t blk_start = (size_t)b * TN_CLS_QUANT_BLOCK;
+                    int blk_len = (int)(d - blk_start);
+                    if (blk_len > TN_CLS_QUANT_BLOCK) blk_len = TN_CLS_QUANT_BLOCK;
+
+                    for (int k = 0; k < blk_len; k++) {
+                        tn_u32 bits = (tn_u32)row[blk_start + (size_t)k] << 16;
+                        memcpy(&block_f32[k], &bits, sizeof(float));
+                    }
+
+                    float scale = find_best_block_scale(block_f32, blk_len, 127);
+                    float inv_scale = (scale > 0.0f) ? 1.0f / scale : 0.0f;
+                    row_scales[b] = scale;
+
+                    for (int k = 0; k < blk_len; k++) {
+                        float fval = block_f32[k];
+                        int q = (int)(fval * inv_scale + (fval >= 0 ? 0.5f : -0.5f));
+                        if (q > 127) q = 127;
+                        if (q < -127) q = -127;
+                        dst[blk_start + (size_t)k] = (tn_u8)(q + 128);
+                    }
                 }
             }
         }
     }
 
     /* Build INT4 quantized classifier for minimum-bandwidth LM head.
-     * Per-row symmetric quantization: scale = max_abs / 7.
+     * Same block-wise, error-minimizing scale search as INT8 above.
      * Packing: byte[k] = (w[2k+1] << 4) | w[2k], unsigned (+8 bias). */
     w->wcls_i4 = NULL;
     w->wcls_i4_scales = NULL;
@@ -298,38 +389,45 @@ void weights_build_classifier_quant(TransformerWeights *w, const Config *cfg) {
         size_t d     = (size_t)dim;
         size_t row_bytes_i4 = (d + 1) / 2;
         w->wcls_i4 = (tn_u8 *)malloc(vocab * row_bytes_i4);
-        w->wcls_i4_scales = (float *)malloc(vocab * sizeof(float));
+        w->wcls_i4_scales = (float *)malloc(vocab * (size_t)n_blocks * sizeof(float));
         if (w->wcls_i4 && w->wcls_i4_scales) {
+            float block_f32[TN_CLS_QUANT_BLOCK];
+            int block_q[TN_CLS_QUANT_BLOCK];
             for (size_t i = 0; i < vocab; i++) {
                 const tn_u16 *row = w->wcls + i * d;
                 tn_u8 *dst = w->wcls_i4 + i * row_bytes_i4;
-                float max_abs_i4 = w->wcls_i8_scales[i] * 127.0f;
-                float scale_i4 = max_abs_i4 / 7.0f;
-                float inv_scale_i4 = (max_abs_i4 > 0.0f) ? 7.0f / max_abs_i4 : 0.0f;
-                w->wcls_i4_scales[i] = scale_i4;
-                size_t j = 0;
-                for (; j + 1 < d; j += 2) {
-                    tn_u32 bits0 = (tn_u32)row[j] << 16;
-                    float f0; memcpy(&f0, &bits0, sizeof(float));
-                    int q0 = (int)(f0 * inv_scale_i4 + (f0 >= 0 ? 0.5f : -0.5f));
-                    if (q0 > 7) q0 = 7;
-                    if (q0 < -7) q0 = -7;
+                float *row_scales = w->wcls_i4_scales + i * (size_t)n_blocks;
 
-                    tn_u32 bits1 = (tn_u32)row[j+1] << 16;
-                    float f1; memcpy(&f1, &bits1, sizeof(float));
-                    int q1 = (int)(f1 * inv_scale_i4 + (f1 >= 0 ? 0.5f : -0.5f));
-                    if (q1 > 7) q1 = 7;
-                    if (q1 < -7) q1 = -7;
+                for (int b = 0; b < n_blocks; b++) {
+                    size_t blk_start = (size_t)b * TN_CLS_QUANT_BLOCK;
+                    int blk_len = (int)(d - blk_start);
+                    if (blk_len > TN_CLS_QUANT_BLOCK) blk_len = TN_CLS_QUANT_BLOCK;
 
-                    dst[j/2] = (tn_u8)(((q1 + 8) << 4) | (q0 + 8));
-                }
-                if (j < d) {
-                    tn_u32 bits0 = (tn_u32)row[j] << 16;
-                    float f0; memcpy(&f0, &bits0, sizeof(float));
-                    int q0 = (int)(f0 * inv_scale_i4 + (f0 >= 0 ? 0.5f : -0.5f));
-                    if (q0 > 7) q0 = 7;
-                    if (q0 < -7) q0 = -7;
-                    dst[j/2] = (tn_u8)(q0 + 8);
+                    for (int k = 0; k < blk_len; k++) {
+                        tn_u32 bits = (tn_u32)row[blk_start + (size_t)k] << 16;
+                        memcpy(&block_f32[k], &bits, sizeof(float));
+                    }
+
+                    float scale = find_best_block_scale(block_f32, blk_len, 7);
+                    float inv_scale = (scale > 0.0f) ? 1.0f / scale : 0.0f;
+                    row_scales[b] = scale;
+
+                    for (int k = 0; k < blk_len; k++) {
+                        float fval = block_f32[k];
+                        int q = (int)(fval * inv_scale + (fval >= 0 ? 0.5f : -0.5f));
+                        if (q > 7) q = 7;
+                        if (q < -7) q = -7;
+                        block_q[k] = q + 8;
+                    }
+                    /* Pack 2 values/byte at the row's absolute element index
+                     * (blk_start + k), matching the existing byte[k]=(w[2k+1]<<4)|w[2k]
+                     * layout across block boundaries too (blocks are a
+                     * multiple of 2 elements, TN_CLS_QUANT_BLOCK=32, so no
+                     * block ever splits a byte). */
+                    for (int k = 0; k + 1 < blk_len; k += 2)
+                        dst[(blk_start + (size_t)k) / 2] = (tn_u8)((block_q[k+1] << 4) | block_q[k]);
+                    if (blk_len & 1)
+                        dst[(blk_start + (size_t)(blk_len - 1)) / 2] = (tn_u8)block_q[blk_len - 1];
                 }
             }
         }

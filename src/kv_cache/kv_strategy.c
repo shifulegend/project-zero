@@ -110,7 +110,7 @@ tn_i64 tn_get_free_ram(void) {
 #endif
 }
 
-KVStrategyResult select_kv_strategy(const Config *cfg, tn_i64 free_ram) {
+KVStrategyResult select_kv_strategy(const Config *cfg, tn_i64 free_ram, const MoEConfig *mc) {
   KVStrategyResult result;
   int seq_len = cfg->seq_len;
 
@@ -149,9 +149,21 @@ KVStrategyResult select_kv_strategy(const Config *cfg, tn_i64 free_ram) {
    *
    * Per-token KV cost (F32, K+V combined):
    *   n_layers * n_kv_heads * head_dim * 2 * sizeof(float)
+   *
+   * head_dim: use mc->attn_head_dim when set (qwen35 hybrid / qwen3moe —
+   * these architectures' real per-head KV dimension is independent of
+   * dim/n_heads; config_head_dim() silently underestimates it, e.g. 64 vs
+   * the real 128 for Qwen3-30B-A3B, which under-clamps max_seq_len and can
+   * still OOM on constrained hosts — GitHub issue #32, confirmed still
+   * broken after the qwen3moe loader fix because this cap never saw the
+   * true head_dim before). MLA (mc->has_mla) intentionally keeps the naive
+   * formula — its real cache is a smaller low-rank latent, not
+   * n_kv_heads*head_dim, so the naive formula over-clamps (conservative,
+   * not unsafe) rather than under-clamps; see kv_strategy.h for why that's
+   * left as a separate follow-up.
    */
   {
-    int head_dim = config_head_dim(cfg);
+    int head_dim = (mc && mc->attn_head_dim > 0) ? mc->attn_head_dim : config_head_dim(cfg);
     tn_i64 per_token = (tn_i64)cfg->n_layers
                      * (tn_i64)(cfg->n_kv_heads > 0 ? cfg->n_kv_heads : cfg->n_heads)
                      * (tn_i64)head_dim * 2 * (tn_i64)sizeof(float);

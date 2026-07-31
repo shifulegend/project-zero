@@ -7,12 +7,26 @@
 #include "core/platform.h"
 #include <stdbool.h>
 
-/* Layer weight storage type constants for layer_weight_type field.
+/* Per-projection weight storage type constants (wq_type / wk_type / ... below).
  * Dispatch is purely data-driven — no model-name checks anywhere. */
 #define WEIGHT_TYPE_F32  0   /* F32 heap or mmap — existing fallback path */
 #define WEIGHT_TYPE_F16  1   /* F16 mmap zero-copy — 2× bandwidth vs F32  */
 #define WEIGHT_TYPE_Q4K  3   /* Q4_K mmap zero-copy — fused matmul kernel  */
 #define WEIGHT_TYPE_Q2_0 4   /* Q2_0 mmap zero-copy — fused matmul kernel (Qwen3.5/3.6 ternary) */
+#define WEIGHT_TYPE_Q4K_X8 5 /* Q4_K repacked into llama.cpp's block_q4_Kx8 interleaved layout at
+                              * load time — real multi-row SIMD-lane GEMV kernel (matmul_q4k_x8.c),
+                              * not just independent-accumulator ILP (see docs/ai/mistakes.md,
+                              * 2026-07-31 "attempt 6"). Only used when a projection's output
+                              * dimension is a multiple of 8; falls back to WEIGHT_TYPE_Q4K
+                              * otherwise (set per-projection at load time, gguf_loader.c). */
+
+/* Block size for the classifier INT8/INT4 quantization scale granularity
+ * (weights_build_classifier_quant in weights.c, consumed by
+ * parallel_matmul_i8/i4 in parallel_matmul.c). 32 matches the sub-block
+ * granularity already used by GGUF's own k-quant formats (Q4_K etc. — see
+ * gguf_quant.c) — a reasonable, well-precedented default, not a per-model
+ * hardcode. */
+#define TN_CLS_QUANT_BLOCK 32
 
 typedef struct {
     /* Token embedding table: vocab_size * dim stored as bfloat16 (tn_u16).
@@ -54,35 +68,65 @@ typedef struct {
     bool    wcls_is_ternary; /* true = separate packed ternary lm_head */
     bool    layers_are_ternary;
 
-    /* Layer weight storage type for non-ternary GGUF models.
-     * Set at load time by gguf_loader based on the on-disk tensor format.
-     * Dispatch in attention.c / ffn.c reads this to select the right kernel.
-     * The ternary path (layers_are_ternary=true) ignores this field entirely. */
-    int     layer_weight_type;  /* WEIGHT_TYPE_F32 / WEIGHT_TYPE_F16 / WEIGHT_TYPE_Q4K */
+    /* Per-layer, per-projection weight storage type for non-ternary GGUF
+     * models: arrays of n_layers ints, set at load time by gguf_loader from
+     * each individual tensor's own on-disk format. Dispatch in attention.c /
+     * ffn.c indexes these by [layer] to select the right kernel per
+     * projection. The ternary path (layers_are_ternary=true) ignores these
+     * fields entirely.
+     *
+     * Two dimensions of "not actually uniform" here, both found bringing up
+     * Qwen3-8B-Q4_K_M (2026-07-30):
+     *  1. Per-projection: mixed-precision GGUF schemes (e.g. Q4_K_M) assign
+     *     different quant types to different tensor roles in the same
+     *     model — attn_v/ffn_down are often Q6_K (dequanted to F32 here)
+     *     while attn_q/k/o and ffn_gate/up are Q4_K (zero-copy). A single
+     *     shared flag fed wv/w2's F32-heap data to the Q4_K kernel as if it
+     *     were raw Q4_K bytes whenever any *other* projection was Q4_K.
+     *  2. Per-layer: even for one fixed role (e.g. attn_v), the type is NOT
+     *     constant across layers — this file's attn_v/ffn_down are Q6_K on
+     *     layers 0-3 but Q4_K on layers 4-5, back to Q6_K on layer 6, etc.
+     *     A single scalar per role (last-layer-wins) misdispatched every
+     *     layer whose type didn't match the last one loaded — silent
+     *     numerical garbage that happened to stay finite for a few layers
+     *     before producing an actual NaN/Inf that then poisoned the rest of
+     *     the forward pass. Confirmed via --dump-tensors: l_out absmax grew
+     *     14 -> 53 -> 71 -> 75 over layers 0-3, then NaN from layer 4 on. */
+    int     *wq_type, *wk_type, *wv_type, *wo_type;  /* [n_layers], attention */
+    int     *w1_type, *w2_type, *w3_type;            /* [n_layers], FFN gate/down/up */
 
     /*
      * INT8 quantized classifier (computed at load time from BF16 wcls).
-     * Per-row symmetric quantization: each row has a scale factor.
      * Halves LM head bandwidth (656 MB BF16 → 328 MB INT8) for ~2x speedup
      * on the classifier matmul, which is 35% of total inference time.
      * Set to NULL when wcls_is_ternary (ternary path is already fast).
      *
-     * Weights are stored as unsigned uint8 (original + 128 bias) to enable
-     * VNNI dpbusds (unsigned × signed) for 4x compute throughput over FMA.
-     * The bias is corrected at runtime: true_dot = dpbusds_result - 128 * sum_qx.
+     * Weights are stored as unsigned uint8 (original + 128 bias).
+     *
+     * 2026-07-31: switched from one scale per ROW to one scale per
+     * TN_CLS_QUANT_BLOCK-element BLOCK, with each block's scale chosen to
+     * minimize squared reconstruction error rather than pure max-abs — a
+     * real user-reported gap (GitHub issue #27: single-row-scale rounding
+     * "completely ignores the whole issue of perplexity"). See
+     * docs/ai/mistakes.md for the before/after and the honest throughput
+     * tradeoff (the VNNI dpbusds fast path, which relied on one row-wide
+     * bias correction that doesn't hold per-block, was dropped in favor of
+     * the portable FMA path applied per block).
      */
     tn_u8  *wcls_i8;        /* vocab_size * dim unsigned (biased +128), or NULL */
-    float  *wcls_i8_scales;  /* vocab_size per-row scales, or NULL */
+    float  *wcls_i8_scales;  /* vocab_size * ceil(dim/TN_CLS_QUANT_BLOCK) block scales, or NULL */
 
     /*
      * INT4 quantized classifier (computed at load time from BF16 wcls).
      * Packs 2 weights per byte: low nibble = w[2k], high nibble = w[2k+1].
      * Unsigned storage: w_signed + 8 → [1, 15] (symmetric around 8).
      * Halves LM head bandwidth again (328 MB INT8 → 164 MB INT4).
-     * Runtime: unpack to uint8, use VNNI dpbusds, bias correction = 8 * sum_qx.
+     * Same 2026-07-31 block-wise-scale change as wcls_i8_scales above —
+     * this was the specific path GitHub issue #27 called out ("maximum
+     * reduction to INT4 as a mere casting").
      */
     tn_u8  *wcls_i4;        /* vocab_size * ceil(dim/2) packed, or NULL */
-    float  *wcls_i4_scales;  /* vocab_size per-row scales, or NULL */
+    float  *wcls_i4_scales;  /* vocab_size * ceil(dim/TN_CLS_QUANT_BLOCK) block scales, or NULL */
 
     /*
      * Phase 17: Mixture of Experts (MoE) weights.
@@ -190,6 +234,16 @@ typedef struct {
     float **q35_ssm_norm;      /* [n_layers] linear-attn: gated RMSNorm weight, F32,
                                    [ssm_state_size] (== head_v_dim) */
     tn_i8 **q35_ssm_out;       /* [n_layers] linear-attn: output proj, ssm_inner_size -> dim */
+
+    /*
+     * Qwen3-MoE per-head QK-norm weights (see MoEConfig.has_qk_norm). All
+     * NULL for every other model. Consumed only by qwen3moe_attention.c's
+     * dedicated forward function (not the generic GQA path in
+     * attention.c) — arch-prefixed like q35_attn_q_norm/k_norm above,
+     * since both are per-arch-specific-function state, not shared code.
+     */
+    float **qwen3moe_attn_q_norm;  /* [n_layers] RMSNorm weight, len=attn_head_dim */
+    float **qwen3moe_attn_k_norm;  /* [n_layers] RMSNorm weight, len=attn_head_dim */
 
     /* Zero-copy Q2_0 embedding / LM-head tables (used instead of embd_f32 /
      * token_embedding_table / wcls when q35_is_q2_0_model is set — Q2_0 is

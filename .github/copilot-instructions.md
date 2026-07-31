@@ -23,6 +23,8 @@ OpenAI-compatible HTTP API. Build: `Makefile` (primary) + `CMakeLists.txt`. See 
 - Definition of done: `make release/test/debug` green for **gcc and clang**, golden output
   correct, no kernel perf regression (A/B), docs+adapters synced, small commit checkpoints.
 - Public repo: never commit secrets. Keep ASan/UBSan green.
+- No AI signature or attribution (commit trailers, code comments, etc.) unless the user
+  explicitly asks for it that time — see `docs/ai/commit-log-guidance.md`.
 
 ## Scoped rules & workflows
 - Scoped recurring rules: `.github/instructions/{core,docs,tests,config,api}.instructions.md`.

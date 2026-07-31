@@ -118,6 +118,8 @@ Same model, same machine, same prompt, 500 tokens, sequential, **best of 3 runs 
 
 > PZ leads at t=1 (+8.4%) and t=2 (+2.2%), trails by 3–6% at peak. No fused Q4K matmul yet — see [Help Wanted ↓](#help-wanted). llama.cpp prompt eval is faster (700–1092 tok/s) because it batches the prompt; PZ does not yet report prompt eval speed separately.
 
+**Update (2026-07-24) — RCA'd, fixed, and re-swept:** a follow-up single-sample comparison showed PZ measuring behind llama.cpp; root-caused instead of reacting to one sample — the F16/BF16 GEMV kernels (`src/math/matmul_f16.c`, `src/math/parallel_matmul.c`) were FMA-latency-bound (single accumulator per row, not throughput-bound), fixed by unrolling to 4 independent accumulators matching `ggml`'s kernel structure. Then ran a full 48-config `--threads`×`--simd`×`--classifier` sweep for PZ plus llama.cpp's 4 thread counts, all measured over 251 real generated tokens (an earlier pass measured over just 7 tokens before hitting EOS — a real methodology bug, documented and fixed): matched on threads, the two engines now land within ~3% of each other at every thread count. Full report, methodology, and raw data (in-repo, no external hosting): [`docs/design/reports/sweep-2026-07-24.html`](docs/design/reports/sweep-2026-07-24.html).
+
 **Peak-run screenshots — SmolLM2 (best-of-3):**
 
 | PZ BF16 · t=3 · **100.44 tok/s** | llama.cpp · t=3 · **106.20 tok/s** |
@@ -232,6 +234,108 @@ A second real, previously-hidden bug was found and fixed while collecting the cl
 
 Full interactive write-up (live charts, hover tooltips, full input/output transcripts for every run): see the benchmark artifact linked from this repo's PR/session history.
 
+### Qwen3-8B (dense, Q4_K_M) — bringing up a previously-untested architecture, and an honest gap vs. llama.cpp
+
+Qwen3-8B is a standard dense GQA transformer — the "load but untested" class of model this engine's generic
+(non-MLA, non-hybrid) path was built for but had never actually been run end-to-end. Bringing it up on the
+real `Qwen3-8B-Q4_K_M.gguf` file surfaced three real, compounding correctness bugs (OOM from dequanting every
+Q4_K tensor to F32 heap, missing Qwen3 QK-norm, and a shared weight-type flag silently misdispatching
+Q4_K_M's mixed Q4_K/Q6_K-per-layer tensors to the wrong kernel) — all fixed, verified against a full
+gcc+clang release/test/debug pass including a from-scratch sanitizer-instrumented `make test`, and confirmed
+by matching llama.cpp's own output token-for-token in reasoning mode. Full technical detail in
+[`docs/ai/mistakes.md`](docs/ai/mistakes.md) (2026-07-30 entries).
+
+**Apples-to-apples comparison** — same `Qwen3-8B-Q4_K_M.gguf` file, same templated prompt (both engines apply
+the model's own GGUF-embedded chat template), 4 threads, temp 0, AVX2 (this host's actual ISA on both engines —
+mid-session the underlying virtualized CPU changed, taking AVX-512VBMI/VNNI/AVX-VNNI with it; llama.cpp's
+`-march=native` build SIGILL'd until rebuilt portable, see mistakes.md), `--ctx-size` matched to the task
+instead of llama.cpp's wasteful full-40960-token default:
+
+| Engine | Generation (tok/s) | Prompt (tok/s) |
+|---|---|---|
+| Project Zero | 2.5-2.65 | — |
+| llama.cpp | **4.0-4.8** | 12-14 |
+
+<p align="center">
+  <img src="benchmark_results/qwen3_8b_dense_2026-07-31/screenshots/pz_qwen3_8b_run.png" width="49%" alt="Project Zero running Qwen3-8B-Q4_K_M, 4 threads, 2.49 tok/s">
+  <img src="benchmark_results/qwen3_8b_dense_2026-07-31/screenshots/llamacpp_qwen3_8b_run.png" width="49%" alt="llama.cpp running Qwen3-8B-Q4_K_M, 4 threads, 4.0 tok/s">
+</p>
+
+**llama.cpp is ~1.6-1.9x faster here, and we're not hiding that.** Root-caused with real `TN_PROFILE=1`
+per-step timing, not guesswork: the Q4_K matmul (≈88% of per-token time) runs at only ~43% of this host's
+measured DRAM bandwidth, vs. ~95% for the plain BF16 classifier matmul on the same host/token — compute-bound,
+not bandwidth-bound. Six targeted attempts were tried and measured, honestly, in place (the fifth and
+sixth at the user's explicit request to keep pushing on this after earlier attempts didn't close the gap):
+
+- **Software prefetch** on the single-matrix Q4_K dispatch path (already used elsewhere in the kernel file):
+  no measurable change.
+- **A from-scratch AVX-512 VNNI kernel** (correctness-verified first — this kernel had zero test coverage
+  before this pass; see `tests/test_q4k_matmul.c`, added regardless of the optimization's fate): measured
+  **33-40% slower**, not faster, and reverted. Root cause: `dpbusd` gives a raw unscaled dot product that
+  still needs the per-group Q4_K scale applied afterward via a separate multiply, while the existing AVX2
+  path fuses "sum and scale" into one instruction — net *more* instructions despite `dpbusd` being faster in
+  isolation.
+- **A row-batched "grouped8" Q4_K repack**, mirroring llama.cpp's interleaved memory layout: measured
+  **worse** (2.16 tok/s with prefetch, 1.72 tok/s without), and reverted. Root cause: repacking only moves
+  bytes around — it didn't change the per-row instruction count or add genuine multi-row register
+  interleaving, so there was no real work to save.
+- **A real bug fix**: `attention.c`/`ffn.c` claimed (in their own comments) to quantize the shared input
+  to Q8K once and reuse it across Q/K/V (and gate/up), but that optimization had only ever been wired up
+  for the ternary weight path — the Q4_K dense path (Qwen3-8B's actual path) was silently re-quantizing the
+  same input 3x (resp. 2x) per layer. Fixed and kept (verified correct, full gcc+clang release/test/debug
+  green) — but measured **no throughput change** (2.51-2.70 tok/s, within the existing baseline range),
+  because the eliminated work (O(n) quantization) was already 2-3 orders of magnitude smaller than the
+  matmul it fed (O(d×n)).
+- **A genuine multi-row interleaved kernel** (not a repack — the real thing this section's RCA points at:
+  shared activation loads + independent per-row accumulator chains, tried at both 4-row and 2-row
+  granularity): measured **worse both ways** — 2.00 tok/s (4-row) and 2.19 tok/s (2-row) vs. a same-session,
+  back-to-back baseline of 2.72 tok/s on the unmodified code. Not noise: three runs within ~15 minutes of
+  each other on the same host state, in a clean monotonic order (more interleaving = worse). Root cause:
+  disassembly showed real register spills even on this host's 32-register AVX-512VL file — 4-row duplicated
+  enough per-row temporaries that the compiler spilled the main accumulators to the stack; 2-row still
+  regressed with lighter spilling, suggesting the shared-load/independent-accumulator *idea* is right (it's
+  what llama.cpp's kernels do) but this macro-duplicated implementation of it isn't how to realize it — the
+  real win likely needs the repack and the multi-accumulator technique *together* (llama.cpp uses both;
+  every attempt here tried one or the other in isolation, and both isolated attempts lost). Reverted.
+- **A byte-exact port of llama.cpp's actual combined technique**: `src/math/matmul_q4k_x8.c` transcribes
+  their real `block_q4_Kx8` repack and `ggml_gemv_q4_K_8x8_q8_K` AVX2 kernel directly from their source
+  (cloned locally) — not a re-derivation. Unlike every attempt above, this genuinely computes 8 output
+  rows' partial products *within a single SIMD register* via `_mm256_blend_epi32` tricks against one
+  shared broadcast activation load — true SIMD-lane parallelism across rows, the one mechanism no prior
+  attempt had actually implemented. Rigorously verified before trusting any benchmark: a new
+  `tests/test_q4k_x8_matmul.c` passed 56/56 assertions against an independent scalar reference (both the
+  AVX2 path and, separately, the scalar fallback forced via `-U__AVX2__`) on the first real run, with
+  manually-inspected non-trivial output values ruling out a false pass; wired into the real Qwen3-8B load
+  path (`gguf_loader.c` repacks any Q4_K projection with a row count divisible by 8 — true for all of
+  Qwen3-8B's projections — once, at load time); full `make release/test/debug` green on gcc **and**
+  clang, plus a clean from-scratch CMake build (the project's second, audit-CI build system). **Result:
+  2.60 and 2.76 tok/s across two clean runs — statistically indistinguishable from the existing baseline
+  (2.51-2.72 tok/s).** Unlike VNNI and the two multi-row-only variants above, this never regressed in
+  any run — kept, not reverted, since there's no evidence of harm, only of an unproven win on this host.
+
+Direct comparison against llama.cpp's own AVX2 kernel source (cloned locally) showed it's **nearly
+byte-identical** to this engine's — ruling out "worse SIMD" as the explanation. T=1 vs. T=4 profiling showed
+3.5-4.5x scaling (87-100%+ efficiency) — ruling out thread-pool overhead. The real difference was expected
+to be llama.cpp's CPU backend transparently **repacking Q4_K weight rows into interleaved 8/16-row
+super-blocks at load time** (`ggml/src/ggml-cpu/repack.cpp`, confirmed active via its own
+`system_info: REPACK=1`) with matching multi-row GEMV kernels computing 8-16 output rows per pass with
+real SIMD-lane parallelism — but the final attempt above **directly falsifies that hypothesis**: a
+byte-exact port of their actual kernel, verified correct, does not reproduce their speed on this host.
+That's the most informative result of the whole investigation. It means the gap is very unlikely to be a
+GEMV-kernel-efficiency problem at all — more likely candidates (untested this session): virtualized
+memory-subsystem behavior specific to this host/binary, the original bandwidth-utilization profiling
+reading itself being unreliable given this host's documented 20-40%+ run-to-run noise, or optimizations
+elsewhere in llama.cpp's pipeline beyond this one matmul. None of these have real profiling tools
+available in this environment (no `perf`/`vtune`) to investigate further. Current, honest, verified
+status: **pz remains at ~2.5-2.7 tok/s vs. llama.cpp's 4.0-4.8** on this file/host after six real
+optimization attempts — two kept (one bug fix, one correct-but-unproven kernel), four reverted on clean
+evidence of regression. Not parked — the full RCA, all six attempts, and the falsified/updated hypotheses
+are documented in `mistakes.md` for whoever picks this up next, ideally on a quieter host with real
+profiling tools.
+
+Full RCA, methodology, and status: [`docs/ai/mistakes.md`](docs/ai/mistakes.md) · screenshots:
+[`benchmark_results/qwen3_8b_dense_2026-07-31/screenshots/`](benchmark_results/qwen3_8b_dense_2026-07-31/screenshots/).
+
 ---
 
 <a id="quick-start"></a>
@@ -272,6 +376,7 @@ Two open problems where outside expertise would make a real difference:
 |---|---|---|
 | **MoE expert weight repacking** | DeepSeek-V2-Lite runs at 1.90 tok/s — 7× behind `llama.cpp`. Top-K expert weights sit at non-contiguous GGUF offsets: **~86% L3 cache miss rate per token**. Fix: repack selected expert weights into contiguous memory at load time, matching llama.cpp's interleaved layout. | ≥ 9 tok/s |
 | **Native Q4_K matmul kernel** | Current dense-model path dequants Q4_K → F32 before multiply. A fused mixed-precision kernel would close the remaining gap to `llama.cpp` on dense 4-bit GGUF models. | — |
+| **Re-benchmark classifier INT8/INT4 throughput post-quality-fix** | `matmul_i4_task`/`matmul_i8_task` (`src/math/parallel_matmul.c`) were rewritten 2026-07-31 to fix a real quantization-quality gap (one scale per row → one scale per 32-element block with error-minimizing search — see `docs/ai/decision-log.md`, [GitHub issue #27](https://github.com/shifulegend/project-zero/issues/27)). That rewrite dropped the VNNI `dpbusds`/VBMI fast paths (their row-wide bias-correction trick doesn't hold once every block has its own scale) in favor of a portable per-block FMA path — the specific SSE-interleave-unpack throughput issue this row used to describe no longer applies to the current code, but the *net* throughput effect of the whole rewrite hasn't been re-measured against the historical sweep above. | Confirm INT8/INT4 throughput post-fix; a genuine multi-row/multi-block SIMD kernel (not full VNNI dpbusds, which the new per-block scaling structurally can't reuse) could recover some of the dropped throughput without regressing quality |
 
 Existing SIMD work documented in [`docs/KERNEL_INTERNALS.md`](docs/KERNEL_INTERNALS.md).
 MoE repacking thread: [Discussion #1](https://github.com/shifulegend/project-zero/discussions/1)
@@ -280,7 +385,7 @@ MoE repacking thread: [Discussion #1](https://github.com/shifulegend/project-zer
 
 ## What It Does
 
-Runs [Microsoft's BitNet b1.58-2B-4T](https://huggingface.co/microsoft/bitnet-b1.58-2B-4T) ternary weights and **dense GGUF transformers** (SmolLM2, DeepSeek-V2-Lite) on commodity CPUs — from scratch, in C.
+Runs [Microsoft's BitNet b1.58-2B-4T](https://huggingface.co/microsoft/bitnet-b1.58-2B-4T) ternary weights and **dense GGUF transformers** (SmolLM2, DeepSeek-V2-Lite, Qwen3-MoE) on commodity CPUs — from scratch, in C.
 
 Also included in the same binary: OpenAI-compatible HTTP API (`--server --port 8080`), persistent RAG memory (`--memory-db`), SigLIP vision pipeline (`--vision`), and an agentic tool-use loop (`/agent`).
 
@@ -377,8 +482,10 @@ rendering in the interactive REPL:
 
 **Startup banner** — an animated ASCII-art "PROJECT ZERO" splash (bottom-up slide-in reveal, a
 hand-crafted 5-row block font, no external figlet dependency) that finishes with a brief
-dim/bold shimmer, shown for the REPL and `--server` mode and suppressed for scripted one-shot
-`--prompt` runs — TTY-gated, so no escape codes ever leak into piped/redirected output:
+dim/bold shimmer, shown on **every** run including scripted one-shot `--prompt` invocations and
+piped/redirected output — TTY runs get the full animation, non-TTY runs get the same banner as
+plain `#`/space text with zero escape codes, so redirected output and benchmark captures always
+show it too (previously it silently no-op'd on non-TTY output; fixed 2026-07-24):
 
 ![CLI startup banner — animated reveal and shimmer](docs/demo_banner_shimmer.gif)
 

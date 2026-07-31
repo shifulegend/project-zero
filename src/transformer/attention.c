@@ -1,9 +1,10 @@
 #include "transformer/attention.h"
 #include "transformer/mla_attention.h"
 #include "transformer/qwen35_attention.h"
+#include "transformer/qwen3moe_attention.h"
 #include "math/parallel_matmul.h"
-#include "math/matmul_f16.h"
 #include "math/rope.h"
+#include "transformer/dense_matmul_dispatch.h"
 #include "math/simd_dispatch.h"
 #include "core/platform.h"
 #include "core/weights.h"
@@ -59,6 +60,16 @@ void attention_forward(RunState *s, const TransformerWeights *w,
     return;
   }
 
+  /* Qwen3-MoE attention (plain GQA + QK-norm) — a fourth, mutually-exclusive
+   * family: independent head_dim like the two above, but no MLA compression
+   * and no linear-attention layers, so it gets its own dedicated function
+   * rather than being folded into the generic branch below (see
+   * qwen3moe_attention.c's header comment for why). */
+  if (mc && mc->has_qk_norm) {
+    qwen3moe_attention_forward(s, w, cfg, mc, layer, pos, tp);
+    return;
+  }
+
   int dim = cfg->dim;
   int n_heads = cfg->n_heads;
   int n_kv_heads = cfg->n_kv_heads;
@@ -89,14 +100,42 @@ void attention_forward(RunState *s, const TransformerWeights *w,
     parallel_ternary_matmul_packed_preq(s->q,  s->xb, (const tn_u8 *)w->wq[layer], dim, dim,    w->sq[layer], &preq, tp);
     parallel_ternary_matmul_packed_preq(k_buf, s->xb, (const tn_u8 *)w->wk[layer], dim, kv_dim, w->sk[layer], &preq, tp);
     parallel_ternary_matmul_packed_preq(v_buf, s->xb, (const tn_u8 *)w->wv[layer], dim, kv_dim, w->sv[layer], &preq, tp);
-  } else if (w->layer_weight_type == WEIGHT_TYPE_F16) {
-    parallel_matmul_f16(s->q,  s->xb, (const tn_u16 *)w->wq[layer], dim, dim,    tp);
-    parallel_matmul_f16(k_buf, s->xb, (const tn_u16 *)w->wk[layer], dim, kv_dim, tp);
-    parallel_matmul_f16(v_buf, s->xb, (const tn_u16 *)w->wv[layer], dim, kv_dim, tp);
+  } else if (tn_is_q4k_family(w->wq_type[layer]) &&
+             tn_is_q4k_family(w->wk_type[layer]) &&
+             tn_is_q4k_family(w->wv_type[layer])) {
+    /* All three read the same s->xb — quantize to Q8K once and reuse, same
+     * layer-level-preq idea as the ternary branch above. Bug fixed 2026-07-31:
+     * this branch previously called tn_dense_matmul_dispatch() three times,
+     * each of which (via parallel_matmul_q4k) independently re-quantized
+     * s->xb, despite the comment above already claiming the shared-quantize
+     * optimization — it had only ever been wired up for the ternary path.
+     * Extended 2026-07-31 to also cover WEIGHT_TYPE_Q4K_X8 (the repacked
+     * multi-row-GEMV variant, matmul_q4k_x8.c) — both consume the same Q8K
+     * activation format, so the shared-quantize win applies to either. */
+    TnQ8KActBlock acts[ATTN_PREQ_BUF_SIZE / TN_Q8K_BLOCK];
+    int n_blocks = dim / TN_Q8K_BLOCK;
+    tn_quantize_q8k(acts, s->xb, n_blocks);
+    tn_dense_matmul_dispatch_preq(s->q,  acts, w->wq[layer], w->wq_type[layer], dim, dim,    tp);
+    tn_dense_matmul_dispatch_preq(k_buf, acts, w->wk[layer], w->wk_type[layer], dim, kv_dim, tp);
+    tn_dense_matmul_dispatch_preq(v_buf, acts, w->wv[layer], w->wv_type[layer], dim, kv_dim, tp);
   } else {
-    parallel_matmul_float32(s->q,  s->xb, (const float *)w->wq[layer], dim, dim,    tp);
-    parallel_matmul_float32(k_buf, s->xb, (const float *)w->wk[layer], dim, kv_dim, tp);
-    parallel_matmul_float32(v_buf, s->xb, (const float *)w->wv[layer], dim, kv_dim, tp);
+    tn_dense_matmul_dispatch(s->q,  s->xb, w->wq[layer], w->wq_type[layer], dim, dim,    tp);
+    tn_dense_matmul_dispatch(k_buf, s->xb, w->wk[layer], w->wk_type[layer], dim, kv_dim, tp);
+    tn_dense_matmul_dispatch(v_buf, s->xb, w->wv[layer], w->wv_type[layer], dim, kv_dim, tp);
+  }
+
+  /* Step 2b: Qwen3 (dense) per-head QK-norm — RMSNorm applied to each Q/K
+   * head individually, before RoPE. Absent (NULL) for architectures without
+   * it (Llama/Mistral/Gemma/Phi); a no-op branch for those models. */
+  if (w->q35_attn_q_norm && w->q35_attn_q_norm[layer]) {
+    for (int h = 0; h < n_heads; h++) {
+      float *q_h = s->q + (size_t)h * head_dim;
+      tn_rmsnorm(q_h, q_h, w->q35_attn_q_norm[layer], head_dim, cfg->rms_norm_eps);
+    }
+    for (int kh = 0; kh < n_kv_heads; kh++) {
+      float *k_h = k_buf + (size_t)kh * head_dim;
+      tn_rmsnorm(k_h, k_h, w->q35_attn_k_norm[layer], head_dim, cfg->rms_norm_eps);
+    }
   }
 
   /* Step 3: Apply RoPE to Q and K with full YaRN if configured */
@@ -198,10 +237,8 @@ void attention_forward(RunState *s, const TransformerWeights *w,
   /* Step 7: Output projection — s->xb (concatenated head outputs) → s->xb2 */
   if (w->layers_are_ternary) {
     parallel_ternary_matmul_packed(s->xb2, s->xb, (const tn_u8 *)w->wo[layer], dim, dim, w->so[layer], tp);
-  } else if (w->layer_weight_type == WEIGHT_TYPE_F16) {
-    parallel_matmul_f16(s->xb2, s->xb, (const tn_u16 *)w->wo[layer], dim, dim, tp);
   } else {
-    parallel_matmul_float32(s->xb2, s->xb, (const float *)w->wo[layer], dim, dim, tp);
+    tn_dense_matmul_dispatch(s->xb2, s->xb, w->wo[layer], w->wo_type[layer], dim, dim, tp);
   }
 
 

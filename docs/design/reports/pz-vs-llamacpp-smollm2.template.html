@@ -1,0 +1,544 @@
+<title>Same Prompt, Two Engines</title>
+<style>
+  @font-face {
+    font-family: 'JBM';
+    font-weight: 500;
+    font-style: normal;
+    src: url(data:font/woff2;base64,__JBM500__) format('woff2');
+  }
+  @font-face {
+    font-family: 'JBM';
+    font-weight: 700;
+    font-style: normal;
+    src: url(data:font/woff2;base64,__JBM700__) format('woff2');
+  }
+  @font-face {
+    font-family: 'Serif4';
+    font-weight: 400;
+    font-style: normal;
+    src: url(data:font/woff2;base64,__SSRF400__) format('woff2');
+  }
+  @font-face {
+    font-family: 'Serif4';
+    font-weight: 600;
+    font-style: normal;
+    src: url(data:font/woff2;base64,__SSRF600__) format('woff2');
+  }
+
+  :root {
+    --bg: #f6f3ee;
+    --surface: #ffffff;
+    --surface-2: #f0ece4;
+    --border: #ddd6ca;
+    --ink: #201b13;
+    --ink-muted: #6b6355;
+    --accent: #a8621f;
+    --accent-bright: #8a4f18;
+    --accent-wash: rgba(168, 98, 31, 0.08);
+    --data-b: #256ba3;
+    --good: #2f8a5c;
+    --good-bg: rgba(47, 138, 92, 0.09);
+    --good-border: rgba(47, 138, 92, 0.35);
+    --shadow: 0 1px 2px rgba(32, 27, 19, 0.04), 0 8px 24px -12px rgba(32, 27, 19, 0.12);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151a;
+      --surface: #191e25;
+      --surface-2: #1f242c;
+      --border: #2a323d;
+      --ink: #e9edf1;
+      --ink-muted: #8b96a3;
+      --accent: #cc7a2e;
+      --accent-bright: #e4954a;
+      --accent-wash: rgba(204, 122, 46, 0.12);
+      --data-b: #4a90c2;
+      --good: #5fb682;
+      --good-bg: rgba(95, 182, 130, 0.12);
+      --good-border: rgba(95, 182, 130, 0.32);
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 8px 28px -12px rgba(0, 0, 0, 0.55);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #12151a;
+    --surface: #191e25;
+    --surface-2: #1f242c;
+    --border: #2a323d;
+    --ink: #e9edf1;
+    --ink-muted: #8b96a3;
+    --accent: #cc7a2e;
+    --accent-bright: #e4954a;
+    --accent-wash: rgba(204, 122, 46, 0.12);
+    --data-b: #4a90c2;
+    --good: #5fb682;
+    --good-bg: rgba(95, 182, 130, 0.12);
+    --good-border: rgba(95, 182, 130, 0.32);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 8px 28px -12px rgba(0, 0, 0, 0.55);
+  }
+  :root[data-theme="light"] {
+    --bg: #f6f3ee;
+    --surface: #ffffff;
+    --surface-2: #f0ece4;
+    --border: #ddd6ca;
+    --ink: #201b13;
+    --ink-muted: #6b6355;
+    --accent: #a8621f;
+    --accent-bright: #8a4f18;
+    --accent-wash: rgba(168, 98, 31, 0.08);
+    --data-b: #256ba3;
+    --good: #2f8a5c;
+    --good-bg: rgba(47, 138, 92, 0.09);
+    --good-border: rgba(47, 138, 92, 0.35);
+    --shadow: 0 1px 2px rgba(32, 27, 19, 0.04), 0 8px 24px -12px rgba(32, 27, 19, 0.12);
+  }
+
+  * { box-sizing: border-box; }
+  html { color-scheme: light dark; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Serif4', Georgia, 'Times New Roman', serif;
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 56px 28px 80px;
+  }
+
+  .eyebrow {
+    font-family: 'JBM', ui-monospace, monospace;
+    font-weight: 700;
+    font-size: 12.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .eyebrow::before {
+    content: "";
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--good);
+    box-shadow: 0 0 0 3px var(--good-bg);
+  }
+
+  h1 {
+    font-family: 'JBM', ui-monospace, monospace;
+    font-weight: 700;
+    font-size: clamp(28px, 4.4vw, 42px);
+    letter-spacing: -0.01em;
+    line-height: 1.12;
+    margin: 14px 0 8px;
+    text-wrap: balance;
+  }
+  h1 .dim { color: var(--ink-muted); font-weight: 500; }
+
+  .dek {
+    font-size: 18px;
+    color: var(--ink-muted);
+    max-width: 62ch;
+    margin: 0 0 28px;
+  }
+
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 40px;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-family: 'JBM', ui-monospace, monospace;
+    font-size: 12.5px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    padding: 7px 12px 7px 10px;
+    border-radius: 999px;
+    background: var(--good-bg);
+    border: 1px solid var(--good-border);
+    color: var(--ink);
+  }
+  .chip svg { flex: none; width: 13px; height: 13px; color: var(--good); }
+
+  section { margin: 44px 0; }
+  section > h2 {
+    font-family: 'JBM', ui-monospace, monospace;
+    font-weight: 700;
+    font-size: 12.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    margin: 0 0 16px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  p { margin: 0 0 14px; }
+  p:last-child { margin-bottom: 0; }
+  code {
+    font-family: 'JBM', ui-monospace, monospace;
+    font-size: 0.86em;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.05em 0.4em;
+    color: var(--ink);
+  }
+
+  .shots {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 720px) {
+    .shots { grid-template-columns: 1fr; }
+  }
+  figure {
+    margin: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+  }
+  .shot-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .shot-head .name {
+    font-family: 'JBM', ui-monospace, monospace;
+    font-weight: 700;
+    font-size: 14px;
+  }
+  .shot-head .name.pz::before,
+  .shot-head .name.llama::before {
+    content: "";
+    display: inline-block;
+    width: 9px; height: 9px;
+    border-radius: 2px;
+    margin-right: 8px;
+    position: relative;
+    top: -1px;
+  }
+  .shot-head .name.pz::before { background: var(--accent); }
+  .shot-head .name.llama::before { background: var(--data-b); }
+  .shot-head .tag {
+    font-family: 'JBM', ui-monospace, monospace;
+    font-size: 11.5px;
+    color: var(--ink-muted);
+  }
+  figure img {
+    display: block;
+    width: 100%;
+    height: auto;
+    background: #0d0f13;
+  }
+  figcaption {
+    padding: 10px 16px 14px;
+    font-family: 'JBM', ui-monospace, monospace;
+    font-size: 12px;
+    color: var(--ink-muted);
+    line-height: 1.5;
+  }
+
+  .compare {
+    display: grid;
+    grid-template-columns: minmax(0,1fr) 260px;
+    gap: 28px;
+    align-items: start;
+  }
+  @media (max-width: 720px) {
+    .compare { grid-template-columns: 1fr; }
+  }
+
+  .bench {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 22px;
+    box-shadow: var(--shadow);
+  }
+  .bench-row { margin-bottom: 16px; }
+  .bench-row:last-child { margin-bottom: 0; }
+  .bench-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-family: 'JBM', ui-monospace, monospace;
+    font-size: 12.5px;
+    margin-bottom: 6px;
+  }
+  .bench-label .who { font-weight: 700; }
+  .bench-label .val { color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+  .bar-track {
+    height: 10px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 999px;
+  }
+  .bar-fill.pz { background: var(--accent); }
+  .bar-fill.llama { background: var(--data-b); }
+  .bench-note {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--border);
+    font-size: 12.5px;
+    color: var(--ink-muted);
+    font-family: 'JBM', ui-monospace, monospace;
+    line-height: 1.55;
+  }
+
+  .facts {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 10px;
+  }
+  .facts li {
+    display: grid;
+    grid-template-columns: 20px 1fr;
+    gap: 10px;
+    align-items: start;
+    font-size: 15.5px;
+  }
+  .facts svg { width: 18px; height: 18px; margin-top: 3px; color: var(--good); flex: none; }
+  .facts b { font-weight: 600; }
+
+  .quote-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-top: 18px;
+  }
+  @media (max-width: 720px) {
+    .quote-pair { grid-template-columns: 1fr; }
+  }
+  .quote {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .quote .who {
+    font-family: 'JBM', ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    margin-bottom: 6px;
+  }
+  .quote .out {
+    font-family: 'JBM', ui-monospace, monospace;
+    font-size: 14px;
+  }
+
+  footer {
+    margin-top: 56px;
+    padding-top: 22px;
+    border-top: 1px solid var(--border);
+    font-family: 'JBM', ui-monospace, monospace;
+    font-size: 12px;
+    color: var(--ink-muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 18px;
+    justify-content: space-between;
+  }
+</style>
+
+<div class="page">
+
+  <div class="eyebrow">Verification report &middot; project-zero</div>
+  <h1>Why was pz behind?<br><span class="dim">It wasn't &mdash; mostly.</span></h1>
+  <p class="dek">
+    A first side-by-side run showed project-zero measuring behind llama.cpp.
+    Rather than accept or "fix" that from one sample, we repeated the
+    measurement, isolated it from thread-dispatch overhead, and read
+    llama.cpp's own kernel source to find the real cause &mdash; then fixed the
+    one part that was real and re-measured to confirm it.
+  </p>
+
+  <div class="chips">
+    <span class="chip"><svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4 8-9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Single-sample gap: mostly noise</span>
+    <span class="chip"><svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4 8-9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Real ~13% gap found at T=1</span>
+    <span class="chip"><svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4 8-9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Fixed &amp; re-verified, gcc+clang clean</span>
+  </div>
+
+  <section>
+    <h2>The capture</h2>
+    <p>
+      Both runs were driven through a real pseudo-terminal (<code>script(1)</code>,
+      rendered pixel-for-pixel via xterm.js) — not a piped log — so what you're
+      looking at is exactly what a person would see typing the command themselves:
+      colors, live stats, and each engine's own startup banner included — the
+      pty session's own start/end timestamps bookend each capture.
+      Model: <strong>SmolLM2&#8209;135M&#8209;Instruct</strong> (F16 GGUF), prompt
+      <code>&ldquo;What is the capital of France?&rdquo;</code>, greedy decoding
+      (<code>temp&nbsp;0</code>), 2 threads, same host, back to back.
+    </p>
+  </section>
+
+  <section>
+    <h2>Raw captures (post-fix)</h2>
+    <div class="shots">
+      <figure>
+        <div class="shot-head">
+          <span class="name pz">project-zero</span>
+          <span class="tag">adaptive_ai_engine</span>
+        </div>
+        <img src="data:image/png;base64,__SHOT_PZ__" alt="project-zero terminal capture running SmolLM2, showing the PROJECT ZERO banner, live auto-calibration sweep, hardware profile, model configuration, and the generated answer">
+        <figcaption>Full boot sequence, nothing trimmed: banner &rarr; live SIMD + thread auto-calibration sweep &rarr; hardware profile &rarr; model config &rarr; generation. 68.22 tok/s, after the kernel fix below.</figcaption>
+      </figure>
+      <figure>
+        <div class="shot-head">
+          <span class="name llama">llama.cpp</span>
+          <span class="tag">llama-cli · b1-0cea362</span>
+        </div>
+        <img src="data:image/png;base64,__SHOT_LLAMA__" alt="llama.cpp terminal capture running SmolLM2, showing its own ASCII banner, build info, and the generated answer">
+        <figcaption>Reference engine, built from source (CPU/OpenMP, <code>-march=native</code>). 58.8 tok/s (unaffected by the fix — this is the other engine).</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>Root-cause analysis</h2>
+    <p>
+      The first capture read 54.95 tok/s for project-zero against 58.8 for
+      llama.cpp — a single sample each. Before calling that a regression (or
+      dismissing it as noise), we repeated it: 3 runs per engine at
+      <code>T=1</code> and <code>T=2</code>.
+    </p>
+    <div class="bench" style="margin-bottom:18px;">
+      <div class="bench-row">
+        <div class="bench-label"><span class="who">T=2 &mdash; project-zero</span><span class="val">mean 56.98 tok/s</span></div>
+        <div class="bar-track"><div class="bar-fill pz" style="width: 100%"></div></div>
+      </div>
+      <div class="bench-row">
+        <div class="bench-label"><span class="who">T=2 &mdash; llama.cpp</span><span class="val">mean 55.13 tok/s</span></div>
+        <div class="bar-track"><div class="bar-fill llama" style="width: 96.8%"></div></div>
+      </div>
+      <div class="bench-note">
+        At the thread count the original screenshot used, the two engines were
+        already indistinguishable (52.3&ndash;57.9 tok/s spread, both engines,
+        both directions) &mdash; the original single-run gap was noise on a
+        shared host, not a reproducible deficit.
+      </div>
+    </div>
+    <div class="bench" style="margin-bottom:18px;">
+      <div class="bench-row">
+        <div class="bench-label"><span class="who">T=1 &mdash; project-zero (before fix)</span><span class="val">mean 29.35 tok/s</span></div>
+        <div class="bar-track"><div class="bar-fill pz" style="width: 86.1%"></div></div>
+      </div>
+      <div class="bench-row">
+        <div class="bench-label"><span class="who">T=1 &mdash; llama.cpp</span><span class="val">mean 33.13 tok/s</span></div>
+        <div class="bar-track"><div class="bar-fill llama" style="width: 97.1%"></div></div>
+      </div>
+      <div class="bench-note">
+        At <code>T=1</code>, project-zero's thread pool runs 0 worker threads
+        (the caller does all the work &mdash; see <code>threading/thread_pool.c</code>),
+        so this isolates raw serial kernel throughput from any dispatch
+        overhead. Here a real, consistent ~13% gap showed up on every rep.
+      </div>
+    </div>
+    <p>
+      Reading llama.cpp's own kernel source (built from source for this
+      comparison) explained it: <code>ggml_vec_dot_f16</code> unrolls
+      <b>4 independent FMA accumulators</b> per SIMD width specifically to
+      keep multiple fused-multiply-adds in flight and hide FMA latency
+      (~4&ndash;5 cycles on typical x86 &mdash; far longer than the FMA
+      unit's 1-cycle throughput). project-zero's <code>parallel_matmul_f16</code>
+      and <code>parallel_matmul_bf16</code> (the LM-head classifier kernel)
+      both used a single accumulator per row — every FMA waited on the one
+      before it. Latency-bound, not throughput-bound. Same shape, same fix,
+      in both kernels: 4 independent accumulators, summed once at the end.
+    </p>
+    <div class="bench">
+      <div class="bench-row">
+        <div class="bench-label"><span class="who">T=1 &mdash; project-zero (after fix)</span><span class="val">mean 33.74 tok/s</span></div>
+        <div class="bar-track"><div class="bar-fill pz" style="width: 100%"></div></div>
+      </div>
+      <div class="bench-row">
+        <div class="bench-label"><span class="who">T=1 &mdash; llama.cpp</span><span class="val">mean 33.13 tok/s</span></div>
+        <div class="bar-track"><div class="bar-fill llama" style="width: 98.2%"></div></div>
+      </div>
+      <div class="bench-row" style="margin-top:6px;">
+        <div class="bench-label"><span class="who">T=2 &mdash; project-zero (after fix)</span><span class="val">mean 62.17 tok/s</span></div>
+        <div class="bar-track"><div class="bar-fill pz" style="width: 100%"></div></div>
+      </div>
+      <div class="bench-row">
+        <div class="bench-label"><span class="who">T=2 &mdash; llama.cpp</span><span class="val">mean 55.13 tok/s</span></div>
+        <div class="bar-track"><div class="bar-fill llama" style="width: 88.7%"></div></div>
+      </div>
+      <div class="bench-note">
+        5 reps each, re-measured after the fix. The T=1 gap closes to
+        essentially zero; at T=2 project-zero now runs ahead. Golden output
+        unchanged on every run (&ldquo;The capital of France is Paris.&rdquo;) —
+        this is a pure re-association of the same sum, not an algorithm change.
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>What's confirmed</h2>
+    <div class="compare">
+      <ul class="facts">
+        <li>
+          <svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4 8-9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span><b>Branding is no longer path-dependent.</b> project-zero's banner used to disappear the moment output wasn't a live TTY. It's rendered here unconditionally, matching llama.cpp's own always-on banner convention.</span>
+        </li>
+        <li>
+          <svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4 8-9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span><b>The FMA-latency bug was real and is fixed.</b> Reproduced at T=1 (3 reps), root-caused against llama.cpp's actual source, fixed in both the F16 and BF16 GEMV kernels, and re-verified with 5 more reps showing the gap closed.</span>
+        </li>
+        <li>
+          <svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4 8-9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span><b>Correctness matches the reference engine, before and after.</b> Same GGUF, same prompt, same greedy settings — identical completion, word for word, every single run.</span>
+        </li>
+        <li>
+          <svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4 8-9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span><b>Nothing else regressed.</b> Full <code>make release/test/debug</code> stayed green on gcc and clang, ASan/UBSan clean — including a real-model ASan run specifically to stress-test the new accumulator load/FMA sequences for out-of-bounds access.</span>
+        </li>
+      </ul>
+
+      <div class="quote-pair" style="grid-template-columns: 1fr; margin-top: 0;">
+        <div class="quote">
+          <div class="who">project-zero says</div>
+          <div class="out">The capital of France is Paris.</div>
+        </div>
+        <div class="quote">
+          <div class="who">llama.cpp says</div>
+          <div class="out">The capital of France is Paris.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>branch <code>claude/pr31-branding-cli-discussion-mwwe12</code></span>
+    <span>project-zero <code>bf66526-dirty</code> &middot; llama.cpp <code>b1-0cea362</code></span>
+  </footer>
+
+</div>

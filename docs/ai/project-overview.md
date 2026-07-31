@@ -6,12 +6,19 @@
 
 ## Purpose
 `project-zero` is a from-scratch, CPU-optimized LLM inference engine in C/C++ targeting
-**BitNet b1.58 ternary weights** and **DeepSeek-V2** architecture (MoE + MLA attention).
+**BitNet b1.58 ternary weights**, **DeepSeek-V2** (MoE + MLA attention), **Qwen3.5/3.6**
+(hybrid Gated-DeltaNet + Gated-Attention), and **Qwen3-MoE** (e.g. Qwen3-30B-A3B — routed MoE
++ plain GQA with per-head QK-norm, `src/transformer/qwen3moe_attention.c`) architectures.
 The GGUF loader (`config_from_gguf()` in `src/core/gguf_loader.c`) is **architecture-agnostic**
 — it keys metadata off the GGUF `general.architecture` string — so **dense GGUF transformers**
-(Llama-family) also run through a generic path; only DeepSeek-V2 is special-cased for MoE + MLA.
-**SmolLM2-135M-Instruct F16 is the verified dense model** (up to 83.79 tok/s); other standard
-architectures (`llama`/`qwen`/`mistral`/`gemma`/`phi`) load but are untested. There is also a
+(Llama-family) also run through a generic path; DeepSeek-V2/Qwen3.5/Qwen3-MoE are each
+special-cased in `weights_from_gguf()`. **SmolLM2-135M-Instruct F16 is the verified dense model**
+(up to 83.79 tok/s); other standard architectures (`llama`/`qwen`/`mistral`/`gemma`/`phi`) load but
+are untested. Qwen3-MoE support (fixes issue #32) is verified via a synthetic in-memory GGUF
+fixture (`tests/test_gguf_loader_qwen3moe.c`, covers loader + a real forward-pass token through
+the new attention path) — real-model golden-output verification against
+Qwen3-30B-A3B-Q4_K_M.gguf is a separate follow-up (not run in this environment; see
+`docs/ai/decision-log.md`'s 2026-07-24 entry). There is also a
 **partial** OpenAI-compatible HTTP API layer (Phase 21 — see below). Goal: high single-machine
 CPU throughput with SIMD-tuned kernels, no GPU.
 
@@ -103,7 +110,10 @@ see `docs/RELEASING.md`).
 
 ## Reference reports
 `docs/REGRESSION_VERIFICATION_2026-06-07.md`, `BENCHMARK_REPORT.md`,
-`docs/PERFORMANCE_CEILING_REPORT.md`, `GOLDEN_RULES.md`.
+`docs/PERFORMANCE_CEILING_REPORT.md`, `GOLDEN_RULES.md`,
+`docs/design/reports/sweep-2026-07-24.html` (full threads×SIMD×classifier sweep vs llama.cpp,
+251-token measurements; documents why the INT4 classifier is slower than INT8/BF16 on small
+dense models — see `decision-log.md`'s 2026-07-24 entry for the root cause).
 
 ## UNKNOWN / TODO
 - Vision/multimodal subsystem is experimental; depth of support is UNVERIFIED.

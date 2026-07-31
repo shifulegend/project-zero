@@ -128,6 +128,7 @@ set(CORE_SOURCES
     src/core/moe_config.c
     src/core/moe_weights.c
     src/core/qwen35_run_state.c
+    src/core/qwen3moe_run_state.c
     src/core/run_state.c
     src/core/step_timing.c
     src/core/weights.c
@@ -144,6 +145,7 @@ set(MATH_SOURCES
     src/math/elementwise_avx512.c
     src/math/matmul_f16.c
     src/math/matmul_q4k.c
+    src/math/matmul_q4k_x8.c
     src/math/matmul_q2k.c
     src/math/matmul_q5_0.c
     src/math/matmul_q5_1.c
@@ -210,6 +212,7 @@ set(TRANSFORMER_SOURCES
     src/transformer/moe_ffn.c
     src/transformer/moe_router.c
     src/transformer/qwen35_attention.c
+    src/transformer/qwen3moe_attention.c
 )
 
 set(SAMPLING_SOURCES
@@ -308,7 +311,7 @@ if(PZ_DIST AND NOT MSVC)
         src/math/ternary_matmul_avx2.c src/math/ternary_matmul_packed_avx2.c
         src/math/elementwise_avx2.c src/math/rmsnorm_avx2.c src/math/softmax_avx2.c
         src/core/unpack_avx2.c
-        src/math/matmul_q4k.c src/math/matmul_q2k.c src/math/matmul_q8_0.c
+        src/math/matmul_q4k.c src/math/matmul_q4k_x8.c src/math/matmul_q2k.c src/math/matmul_q8_0.c
         src/math/matmul_q5_0.c src/math/matmul_q5_1.c src/math/matmul_q5k.c
         src/math/matmul_f16.c src/math/quantize_i8.c src/math/parallel_matmul.c)
     set(PZ_AVX512_SRCS

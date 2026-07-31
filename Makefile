@@ -177,7 +177,7 @@ build/math/ternary_matmul_packed_vnni256.o: src/math/ternary_matmul_packed_vnni2
 AVX2_TUS := math/ternary_matmul_avx2 math/ternary_matmul_packed_avx2 \
             math/elementwise_avx2 math/rmsnorm_avx2 math/softmax_avx2 \
             core/unpack_avx2 \
-            math/matmul_q4k math/matmul_q2k math/matmul_q8_0 \
+            math/matmul_q4k math/matmul_q4k_x8 math/matmul_q2k math/matmul_q8_0 \
             math/matmul_q5_0 math/matmul_q5_1 math/matmul_q5k math/matmul_q2_0 \
             math/matmul_f16 math/quantize_i8 math/parallel_matmul
 AVX2_OBJS := $(addprefix build/,$(addsuffix .o,$(AVX2_TUS)))

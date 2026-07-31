@@ -1,7 +1,301 @@
 # Decision Log — project-zero
 
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
-> Read at session start. Last updated: 2026-07-17.
+> Read at session start. Last updated: 2026-07-31.
+
+### 2026-07-31 — Fixed a real quantization-quality gap in the classifier INT8/INT4 path (GitHub issue #27, jpsoto)
+
+- Context: GitHub user jpsoto commented on issue #27 that the classifier's runtime INT4 quantization was
+  "a mere casting" that "completely ignores the whole issue of perplexity" — a legitimate, specific
+  critique, not a vague complaint. Investigated and confirmed: `weights_build_classifier_quant()`
+  (`src/core/weights.c`) computed ONE scale per ROW (e.g. one scale shared across all 4096 elements of a
+  row) via pure max-abs, then rounded every element with that single scale — no block structure, no
+  calibration, no error-aware search. This only affects the classifier/LM-head weights when
+  `--classifier int8`/`int4` is explicitly requested or hardware-auto-selected (default is BF16); other
+  dense weights are either zero-copy F32/F16/BF16 or pre-quantized Q4_K/etc. from the GGUF file (someone
+  else's calibration, not ours). Confirmed via `grep -rn perplexity` across docs/README that this was a
+  real, previously unacknowledged gap, not a documented tradeoff.
+- Fix: switched to block-wise quantization (`TN_CLS_QUANT_BLOCK` = 32 elements/block, matching GGUF's
+  own k-quant sub-block granularity) with each block's scale chosen via a small local search (9
+  candidates, ±10% around the max-abs baseline) minimizing squared reconstruction error, instead of pure
+  max-abs — `find_best_block_scale()` in `weights.c`. Consuming kernels (`parallel_matmul_i4/i8`,
+  `src/math/parallel_matmul.c`) were rewritten to apply per-block scales instead of one scale per row;
+  this required dropping the VNNI `dpbusds` fast path (its single row-wide bias correction — `true_dot =
+  dpbusds_result - N*sum_qx` — is only valid when one scale covers the whole row's raw dot product, which
+  no longer holds once every block has its own scale) in favor of the existing portable per-block FMA
+  path (AVX512/AVX2/scalar tiers), applied per block instead of per row.
+- Verification: `tests/test_classifier_quant.c` (new — there was zero test coverage for this path before,
+  confirmed via `grep -rln` across `tests/`) checks reconstructed dot products against an independent
+  full-precision reference and confirms per-block scales actually differ when block magnitudes differ
+  (the direct, observable signature of the fix — the old scheme structurally couldn't represent this).
+  38/38 assertions passing. Full `make release/test/debug` green on gcc and clang. Real end-to-end golden
+  output ("The capital of France is Paris.") verified for BF16/INT8/INT4 on SmolLM2-135M, and a full
+  Qwen3-8B load+generate with `--classifier int4` completed correctly (coherent output, no crash, no
+  unreasonable load-time cost beyond this host's already-documented mmap/page-fault noise for a 5GB file).
+- Measured quality improvement (standalone comparison script, realistic non-adversarial synthetic
+  weights, RMSE of reconstructed logits vs. full-precision reference): INT8 error reduced **1.48x**
+  (0.528% -> 0.358% of RMS reference magnitude), INT4 error reduced **1.36x** (8.947% -> 6.561%). Modest,
+  honest, real improvements — not a dramatic fix, correctly represented as such rather than oversold.
+  Block-wise granularity is the dominant lever (~1.24-1.46x alone); the error-minimizing search adds a
+  smaller additional refinement on top.
+- Not addressed (flagged, not silently skipped): full asymmetric (scale+min, k-quant-style) block
+  quantization and calibration-data-driven error metrics remain a larger, separate follow-up — this pass
+  fixed the specific "no block structure, pure max-abs" defect jpsoto identified, not a complete
+  from-scratch GPTQ/AWQ-style calibrated quantizer.
+
+### 2026-07-31 — Qwen3-8B brought up, benchmarked against llama.cpp, found slower, and root-caused instead of shipping a hand-wave
+
+- Decision: user asked to run Qwen3-8B-Q4_K_M on pz and compare with llama.cpp. First attempt hit a real
+  OOM (dequanting every Q4_K tensor to F32), then real garbage output (missing Qwen3 QK-norm, then a shared
+  weight-type flag misdispatching Q4_K_M's mixed-per-layer quant types) — all three fixed and verified, not
+  worked around. Once correct, pz measured 2.5-2.65 tok/s vs. llama.cpp's 4.0-4.8 on the same file/prompt/
+  threads/host — user explicitly required a real fix, not documentation of the gap, so a deep RCA was run:
+  read llama.cpp's actual AVX2 Q4_K kernel source directly (found it's nearly byte-identical to pz's own),
+  measured T=1 vs T=4 scaling (3.5-4.5x, ruling out thread-pool overhead), and traced the real difference to
+  llama.cpp's CPU backend transparently repacking Q4_K rows into interleaved 8/16-row super-blocks at load
+  time with matching multi-row GEMV kernels — a genuinely different GEMV batching strategy, not an
+  instruction-choice difference.
+- Four attempts were tried in total, all honestly measured against the same 2.49-2.65 tok/s baseline:
+  (1) software prefetch on the single-matrix dispatch — no measurable change; (2) a from-scratch,
+  correctness-verified AVX-512 VNNI kernel — measured 33-40% *slower* (`dpbusd`'s raw output needs a
+  separate scale-multiply this kernel's AVX2 path already fused for free), reverted; (3) a row-batched
+  "grouped8" Q4_K repack mirroring llama.cpp's interleaved memory layout — measured *worse* (2.16 tok/s
+  with prefetch, 1.72 without), reverted, because repacking only moved bytes around without adding real
+  multi-row register interleaving; (4) a genuine bug fix — `attention.c`/`ffn.c` claimed in their own
+  comments to quantize the shared input once and reuse it across Q/K/V (and gate/up), but that had only
+  ever been wired up for the ternary path, so the Q4_K dense path (Qwen3-8B's actual path) was silently
+  re-quantizing 3x/2x per layer — fixed and kept (verified via full gcc+clang release/test/debug, kept
+  despite measuring no throughput change, since the eliminated O(n) work was always 2-3 orders of
+  magnitude smaller than the O(d×n) matmul it fed). Real test coverage for Q4_K matmul was added
+  regardless (`tests/test_q4k_matmul.c`) since it had none before this pass.
+- User explicitly said "Fix it" after being shown the 4-attempt status, so a 5th attempt was made: a
+  genuine multi-row interleaved Q4_K kernel (shared Q8K activation loads + independent per-row
+  accumulator chains — the exact mechanism identified in the RCA, implemented directly rather than via a
+  memory repack). Tried at 4-row granularity first: measured 2.00 tok/s, *worse* than baseline; disassembly
+  showed real register spills even on this host's 32-register AVX-512VL file. Scaled back to 2-row (halving
+  live-range pressure, confirmed via disassembly to spill much less): still measured *worse*, 2.19 tok/s. A
+  clean same-session back-to-back A/B (baseline 2.72 -> 2-row 2.19 -> 4-row 2.00, all three within ~15
+  minutes on the same host state) confirmed this was a real, monotonic regression, not noise. Reverted both
+  variants (`git stash push` + `git stash drop`); working tree verified clean against the last pushed
+  commit before and after.
+- User said "Do it" in response to being asked whether to pursue llama.cpp's real combined technique
+  (repack + multi-accumulator together — the one thing no attempt had tried). 6th attempt:
+  `src/math/matmul_q4k_x8.c` is a byte-exact port of llama.cpp's actual `block_q4_Kx8` repack and
+  `ggml_gemv_q4_K_8x8_q8_K` AVX2 kernel, transcribed directly from their cloned source, not
+  re-derived — genuinely computes 8 output rows' partial products within a single SIMD register via
+  blend/shuffle tricks against one shared activation load (true SIMD-lane parallelism, unlike attempt
+  5's independent-but-serial accumulator chains). Given the transcription's complexity (a single wrong
+  byte offset would silently produce wrong, not crashing, output), verified rigorously before trusting
+  any benchmark: new `tests/test_q4k_x8_matmul.c` passed 56/56 assertions against an independent
+  scalar reference on the first real run (both the AVX2 path and, separately, the scalar fallback
+  forced via `-U__AVX2__`), with manually-inspected non-trivial output values ruling out a false pass.
+  Wired into `gguf_loader.c`'s real dense-model load path (repacks any Q4_K projection with a row
+  count divisible by 8, which covers all of Qwen3-8B's projections, once at load time). Full
+  `make release/test/debug` green on gcc and clang, plus a clean from-scratch CMake build (the
+  project's second, audit-CI build system, also updated). Measured 2.60 and 2.76 tok/s across two
+  clean runs — statistically indistinguishable from the 2.51-2.72 tok/s baseline range. Never
+  regressed in any run (unlike VNNI and both multi-row variants), so kept rather than reverted — the
+  project's revert-on-evidence discipline is about reverting demonstrated *harm*, and there is none
+  here, only an unproven win.
+- Status: RCA complete and evidence-backed across six attempts (two kept: the redundant-quant bug fix,
+  and the byte-exact x8 kernel port; four reverted: VNNI, grouped8, and both multi-row-only variants).
+  The 6th attempt is the most informative result of the whole investigation: it directly falsifies the
+  RCA's original working hypothesis (that llama.cpp's GEMV kernel design was the explanation) by
+  reproducing that exact design, verified correct, without reproducing their speed. The gap is real,
+  now investigated from six independent angles, and remains open — evidence now points away from
+  GEMV-kernel efficiency and toward something broader (virtualized memory-subsystem behavior, the
+  original bandwidth-profiling reading's own reliability given this host's noise, or optimizations
+  elsewhere in llama.cpp's pipeline), none of which this session had the tooling (no `perf`/`vtune`) or
+  host stability to isolate. Flagged explicitly for whoever picks this up next, not silently parked.
+  Full chain in `docs/ai/mistakes.md` (2026-07-30/07-31 entries) and `README.md`'s Qwen3-8B section.
+- Also fixed in the same pass: this host's clang-18 install was missing `libclang-rt-18-dev` (stale apt
+  index — `apt-get update` resolved it), which had been silently skipping clang's ASan/UBSan test
+  coverage. Not caused by this session's changes, but caught and fixed while verifying them, per the
+  project's "fix any bug found in this pass" policy.
+
+### 2026-07-24 — Full threads×SIMD×classifier sweep (52 configs); RCA for why INT4 classifier is slower than INT8/BF16
+- Decision: after the F16/BF16 kernel fix (below) closed the single-sample pz-vs-llama.cpp gap,
+  did the full sweep the user asked for: all 48 project-zero `--threads`(1-4)×`--simd`(4)×
+  `--classifier`(3) combinations, plus llama.cpp's 4 thread counts (its only runtime-selectable
+  axis) — in-repo report at `docs/design/reports/sweep-2026-07-24.html`, raw CSVs at
+  `docs/design/reports/sweep_2026-07-24/`, screenshots at
+  `docs/design/screenshots/sweep_2026-07-24/`.
+- Methodology bug found and fixed mid-effort (full writeup in `mistakes.md`): the first pass used
+  a short prompt + `--max-tokens 30`; the model hit EOS after 7 tokens, so every measurement was
+  noise from a sub-200ms window. Reran all 52 configs with a long-form prompt and
+  `--max-tokens 250` so every run generates 251 real tokens. This changed the numbers materially
+  (peak dropped from a noise-inflated 84.7 to a real 69.0 tok/s) and changed the cross-engine
+  conclusion from "one wide divergent gap" to "within ~3% at every thread count." A second bug
+  (concurrent screenshot capture starving a running benchmark of CPU) was found and fixed the
+  same way — never run two CPU-bound captures at once on this 4-core sandbox.
+- RCA: INT4 classifier measured slower than INT8/BF16 at all 16 thread×SIMD combinations, holding
+  even after the methodology fix (ruling out short-run noise as the cause) — this contradicts the
+  classifier-quantization comment in `src/cli/main.c` estimating INT4 as faster. Root-caused
+  against the actual kernel code (`src/math/parallel_matmul.c`'s `matmul_i4_task`, line ~570):
+  1. INT4 weights are packed 2-per-byte, so every dot product needs a nibble-unpack step first.
+     The fast unpack path (VBMI `vpermb`+`vpmultishiftqb`, 3 instructions/64 weights) needs
+     AVX-512 VBMI, which this CPU doesn't have (confirmed via `/proc/cpuinfo`, same gap as the
+     calibration SIGILL below) — so it falls back to the ~10-instruction SSE-interleave unpack
+     (mask+shift+four `unpacklo`/`unpackhi`/`insert128` ops) on every 64 weights. INT8's kernel
+     (`matmul_i8_task`) needs zero unpacking (1 byte = 1 weight already), so this is a real,
+     large, INT4-only compute tax.
+  2. That tax buys nothing on this model: SmolLM2-135M's classifier is 54.0 MiB at BF16, 27.0 MiB
+     at INT8, 13.5 MiB at INT4, against a 33 MiB measured L3. INT8 already shrinks the classifier
+     to fit in cache; INT4 shrinking it further saves bandwidth that was never the bottleneck
+     (compute-bound, not bandwidth-bound, at this size) — so INT4 pays a real unpack cost to save
+     bandwidth nobody needed.
+  3. Confirmed the `--simd` flag doesn't affect this kernel at all — `simd_dispatch.c`'s dispatch
+     table only covers the ternary-weight ops (rmsnorm/softmax/ternary matmul), not the classifier
+     path, which explains why INT4 is uniformly slowest across all four SIMD rows in the heatmap
+     rather than four separate coincidences.
+  4. Separate, not-fully-confirmed qualitative finding: INT4 runs degenerate into looping
+     repetition before the token budget is used up (BF16/INT8 stay coherent for all 251 tokens) —
+     hypothesized as INT4's coarser per-row quantization (16 levels vs INT8's 256) pushing greedy
+     decoding into a self-reinforcing loop, not yet verified against logit distributions.
+- Status: root cause understood and documented; not fixed (a faster non-VBMI unpack path, e.g. a
+  `pshufb`-based lookup table, is the natural fix but wasn't attempted this pass — flagged as a
+  follow-up, added to `README.md`'s Help Wanted table rather than silently dropped).
+
+### 2026-07-24 — RCA + fix: single-accumulator FMA dependency chain in the F16/BF16 GEMV kernels was latency-bound, not throughput-bound
+- Decision: user noticed project-zero (54.95 tok/s) measured behind llama.cpp (58.8 tok/s) in a
+  side-by-side SmolLM2-135M-Instruct F16 screenshot comparison and asked for a detailed RCA before
+  any fix. Rejected the single-sample reading as a basis for either conclusion or action — repeated
+  each engine 3x at T=1 and T=2 first. Result: at T=2 the two engines were statistically
+  indistinguishable on this host (pz 56.20/56.81/57.92 vs llama.cpp 56.0/57.1/52.3 — pz's mean
+  slightly *ahead*), so the original single-run "pz is behind" reading was itself run-to-run noise
+  on a shared/virtualized host, not a reproducible deficit. At **T=1** (0 OS worker threads in
+  project-zero's thread pool — see `threading/thread_pool.c`'s "caller-participates" design — so
+  this isolates raw serial kernel throughput with zero dispatch/sync overhead from either engine),
+  a real, consistent gap *did* reproduce: pz 29.85/28.21/29.98 (mean 29.35) vs llama.cpp
+  32.4/34.0/33.0 (mean 33.13), ~13% every time, not noise.
+- Root cause, found by reading llama.cpp's actual kernel source (cloned+built locally for this
+  comparison) rather than guessing: `ggml_vec_dot_f16` (`ggml/src/ggml-cpu/vec.cpp`) unrolls
+  **4 independent FMA accumulators** per SIMD width (`GGML_F16_STEP=32`/`GGML_F16_EPR=8` on AVX2 →
+  4 accumulators of 8 each) specifically to keep multiple FMAs in flight and hide the ~4-5 cycle
+  FMA latency (far longer than the FMA unit's 1-cycle throughput) — a standard, well-known
+  technique. `parallel_matmul_f16` (`src/math/matmul_f16.c`) and `parallel_matmul_bf16`
+  (`src/math/parallel_matmul.c`, the LM-head classifier kernel — the single largest matmul per
+  token for most dense models, dim × vocab_size) both used a **single** accumulator per output row,
+  making every FMA in the loop wait on the previous iteration's result: latency-bound, not
+  throughput-bound. Same bug, same shape, in both kernels.
+- Fix: rewrote both kernels' AVX2 and AVX-512 paths to use 4 independent accumulators (32-wide
+  AVX2 / 64-wide AVX-512 outer loop, matching ggml's exact AVX2 layout), summed together only at
+  the end, falling back to the original single-accumulator loop for the remainder and the existing
+  scalar/8-wide tails unchanged. This is a pure reassociation of the same sum (same FMA count, same
+  terms) — no algorithmic or precision-relevant change beyond normal floating-point reassociation.
+- Verified, not assumed: re-ran the same T=1/T=2 x5-rep sweep after the fix.
+  T=1: 34.20/34.64/32.75/32.16/34.93 (mean 33.74) — closes essentially all of the ~13% gap
+  (llama.cpp's own T=1 mean: 33.13). T=2: 64.90/66.95/60.18/54.42/64.42 (mean 62.17) — now
+  consistently *ahead* of llama.cpp's T=2 mean (55.13), not behind. Golden output unchanged
+  ("The capital of France is Paris.") on every run before and after. Full `make release/test/debug`
+  clean on **both gcc and clang** from a clean tree each time; additionally re-ran the real
+  SmolLM2 model under the ASan/UBSan debug build specifically to stress-test the new
+  4-accumulator load/FMA sequences for any out-of-bounds access — clean.
+- Scope note: only the F16 and BF16 kernels were touched (the two formats this specific model and
+  comparison actually exercise, and the two confirmed by evidence). The generic F32 kernel and the
+  ternary/INT8/INT4 packed kernels were not inspected for the same single-accumulator pattern in
+  this pass — flagged as a follow-up worth checking, not silently assumed fine.
+- Status: ACCEPTED.
+
+### 2026-07-24 — Added Qwen3-MoE (e.g. Qwen3-30B-A3B) GGUF loading support, fixing issue #32
+- Decision: issue #32 (jpsoto) reported `[gguf_loader] missing tensor 'blk.0.ffn_gate.weight'`
+  loading `Qwen3-30B-A3B-Q4_K_M.gguf`. Root cause: `weights_from_gguf()` only special-cased
+  `deepseek2` and `qwen35`; `qwen3moe` (Qwen's actual MoE arch) fell through to the generic dense
+  loader, which expects `blk.N.ffn_gate.weight` — MoE GGUFs instead have `blk.N.ffn_gate_inp.weight`
+  (router) + stacked `blk.N.ffn_gate_exps.weight` (per-expert). This needed real new-architecture
+  support, not a one-line patch — planned and implemented with a Plan-agent design pass first.
+- Mid-implementation discovery (a real correctness risk, not an assumption to wave away): Qwen3's
+  head_dim is independent of `dim/n_heads` (e.g. Qwen3-30B-A3B: dim=2048, n_heads=32 →
+  dim/n_heads=64, but the real head_dim is 128), meaning Q/K/V projections are wider than `dim`
+  (q_rows = n_heads*head_dim = 4096 ≠ dim). Reusing `attention_forward()`'s generic GQA branch —
+  which sizes `s->q`/`s->xb`/`s->xb2` and the KV cache off `config_head_dim(cfg)`==dim/n_heads —
+  would have silently overflowed those buffers. This is the *exact* bug class `mla_run_state.c`
+  and `qwen35_run_state.c` already document and fix for their own independent-head-dim cases
+  (confirmed by reading `qwen35_attention.c`'s `q35_full_attn_forward`, which uses fixed generous
+  **static local buffers** and its **own** `q35_key_cache`/`q35_value_cache` for exactly this
+  reason). Followed that established precedent rather than inventing something new:
+  - New `MoEConfig.has_qk_norm` flag (like `has_mla`/`has_linear_attn`), reuses the existing
+    `attn_head_dim` field (already there for qwen35) rather than adding another head-dim field.
+  - New dedicated `qwen3moe_attention_forward()` (`src/transformer/qwen3moe_attention.c`) — plain
+    GQA + per-head QK-norm before RoPE + full (non-partial) rotary, own static Q/K/V buffers, own
+    output projection (input width q_rows, not dim — `attn_output.weight` is `[dim × q_rows]` for
+    this arch, confirmed against qwen35's identical `wo` sizing pattern).
+  - New `qwen3moe_run_state_alloc()/_free()` (`src/core/qwen3moe_run_state.c`) — own
+    `qwen3moe_key_cache`/`qwen3moe_value_cache`/`qwen3moe_rope_freq`, correctly sized with
+    `mc->attn_head_dim`; `main.c` passes `skip_kv_cache=mc.has_qk_norm` so the generic (wrongly
+    sized) `key_cache`/`value_cache` is never allocated for this arch, mirroring qwen35's approach.
+  - New `weights_from_gguf_qwen3moe()` loader: per-layer QK-norm tensors, GQA projections sized by
+    `q_rows`/`kv_rows` (not `dim*dim`), and the deepseek2 branch's per-expert stride-slicing scheme
+    reused verbatim (no shared experts, no leading dense layers for this arch — all layers routed).
+  - Extracted `load_bf16_embedding_and_output()` out of `weights_from_gguf()`'s former
+    deepseek2-only inline block so qwen3moe reuses it instead of duplicating ~35 lines.
+- Testing (two-tier plan from the design pass, both required): (a) new
+  `tests/test_gguf_loader_qwen3moe.c` — hand-builds a tiny synthetic in-memory `GGUFHeader`
+  (`GGUFHeader`'s `tensors[]`/`meta[]` are plain fixed-size embedded arrays, confirmed in
+  `include/core/gguf_reader.h`, so no real `.gguf` byte-serialization or multi-GB download is
+  needed) and exercises `config_from_gguf`/`moe_config_from_gguf`/`weights_from_gguf` directly,
+  asserts per-expert stride correctness (`moe_w1[0][0] != moe_w1[0][1]`, exact stride match), and
+  runs one real token through `transformer_forward()` end-to-end (attention + MoE FFN + classifier)
+  asserting finite logits — this is the first loader-level test in the repo (previously only
+  `test_moe.c` existed, and it bypasses `gguf_loader.c` entirely). (b) Real-model verification
+  against the actual `Qwen3-30B-A3B-Q4_K_M.gguf` (~18-19GB) from jpsoto's report, cross-checked
+  against llama.cpp — **not run in this environment** (disk/network constraints for an 18GB+
+  download were flagged up front); left as an explicit follow-up, tracked here rather than silently
+  treated as done.
+- Verification performed: `make release && make test && make debug`, **gcc and clang**, from a
+  clean tree each time (`make clean` first — a prior pass in this same session briefly ran `make
+  debug` before `make release`/`test` and hit a real but unrelated pre-existing Makefile fragility:
+  `test_q2k_matvec`/`test_api_server` force `CFLAGS_RELEASE` for their own C++ link step regardless
+  of global flags, so linking them against debug-instrumented `chat_template.o` — left over from
+  the earlier `make debug` run — produced `undefined reference to __ubsan_handle_*` errors; the
+  documented `release → test → debug` order avoids this). Zero new warnings, ASan/UBSan clean on
+  both compilers, `test_gguf_loader_qwen3moe` passes on both including the real forward-pass token.
+  This session's own test infrastructure bug caught along the way: the test initially crashed with
+  a null-function-pointer SEGV (`pc=0x0`) because it never called `tn_simd_init()` —
+  `tn_rmsnorm`/`tn_vec_dot`/etc. are function pointers that stay `NULL` until that runs (every real
+  entrypoint calls it in `main.c`); fixed in the test, not a bug in the new loader/attention code.
+- Risks/unknowns flagged honestly, not glossed over: the exact GGUF metadata key names
+  (`qwen3moe.expert_count`, `.expert_used_count`, `.expert_feed_forward_length`,
+  `.attention.key_length`) are inferred from the `deepseek2`/`qwen35` naming convention, not
+  confirmed against a real file or llama.cpp's `qwen3moe` key table — this is exactly what the
+  deferred real-model verification (b) above needs to confirm before fully trusting this fix
+  against the actual reported file. Router top-k renormalization (`norm_topk_prob`) and QK-norm
+  weight shape (assumed one `[head_dim]` vector shared across heads per layer) are likewise
+  unconfirmed against a real file.
+- Status: ACCEPTED for the synthetic-fixture-verified code path; real-model closure of issue #32
+  is a tracked follow-up, not yet done.
+
+### 2026-07-24 — Startup banner now always prints; piped/redirected output finally gets the plain text it was supposed to
+- Decision: the 2026-07-16 entry below states the banner's intended invariant as "piped/redirected
+  output (not a TTY) still gets plain text, so scripted/automated usage is unaffected" — but the
+  actual code (`src/cli/banner.c:102`, `if (!is_tty) return;`) made `tn_banner_print()` a complete
+  no-op for non-TTY output, printing nothing at all rather than plain text. This is why benchmark
+  screenshots built from `tools/make_screenshot.py` (which renders a pre-captured *redirected*
+  stdout `.txt` file, never a real TTY) never showed the "PROJECT ZERO" branding — the banner was
+  never in the captured text to begin with. User explicitly asked that branding never depend on the
+  CLI's invocation path (TTY or not, one-shot or REPL or `--server`).
+- Fix: split `tn_banner_print()` following this codebase's own established idiom for TTY-dependent
+  CLI rendering (`src/cli/progress.c`'s `tn_progress_format()` — a pure formatter taking `is_tty`,
+  branching internally, no I/O of its own). Added `tn_banner_format_plain()` (`banner.c`/`banner.h`)
+  — reuses the already-zero-I/O `compose_banner()` to render the same glyph content as a single
+  plain block (`'#'`/`' '` characters, no ANSI, one trailing `\n` per row), with no cursor-movement
+  escapes and no `nanosleep` pacing. `tn_banner_print()` now calls this plain path when `!is_tty`
+  instead of returning early; the animated reveal+shimmer path (cursor-up `\x1b[%dA`, clear-line
+  `\x1b[K`) is unchanged and still only reachable when `is_tty` is true, so no escape bytes can leak
+  into non-terminal output. `src/cli/main.c`'s call site had its `if (stdout_is_tty) { ... }` wrapper
+  removed — `tn_banner_print()` is now called unconditionally and branches internally.
+- Verified, not just read: built with gcc, ran `./adaptive_ai_engine --model <bogus path> --prompt
+  hi > out.txt 2>&1` (redirected, matching how benchmark captures are actually made) and confirmed
+  the plain glyph block appears at the top of `out.txt` with zero `\x1b` bytes (`grep -c $'\x1b'` =
+  0). Separately captured the same invocation through a real pty (`script -qec ...`) and confirmed
+  56 ANSI escape sequences still present — the animated path is provably unchanged. New
+  `tests/test_banner.c` (mirrors `tests/test_progress.c`'s pure-formatter-only convention) passes
+  clean under gcc + ASan/UBSan: no ESC bytes, exactly 5 newlines, at least one glyph pixel, NULL/
+  tiny-buffer safety.
+- Status: ACCEPTED. Supersedes the "piped/redirected output ... still gets plain text" claim in the
+  2026-07-16 entry below, which was aspirational rather than actually true until now — see
+  `mistakes.md`'s existing writeup of the same gap (2026-07-16 entry there) for the full narrative
+  of how the invariant was first stated.
 
 ### 2026-07-17 — Commit-bisected the 2.74 tok/s question instead of resting on a diff-based argument
 - Decision: user asked for direct proof rather than accepting the earlier `git diff`-based

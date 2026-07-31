@@ -87,23 +87,31 @@ void parallel_matmul_float32(float *out, const float *x, const float *w,
                               int n, int d, ThreadPool *tp);
 
 /**
- * Parallel INT8 matrix-vector multiplication with per-row scales.
+ * Parallel INT8 matrix-vector multiplication with block-wise scales.
  * Used for the INT8-quantized output classifier (LM head).
  * Reads 1 byte per weight (vs 2 for BF16), halving bandwidth.
  *
- * out[i] = (sum_j w_i8[i][j] * x[j]) * scales[i]
+ * `scales` holds d * ceil(n/TN_CLS_QUANT_BLOCK) floats — one scale per
+ * TN_CLS_QUANT_BLOCK-element block per row, not one per row (changed
+ * 2026-07-31 to fix a real quantization-quality gap, GitHub issue #27 —
+ * see weights.h/weights.c and docs/ai/mistakes.md).
+ *
+ * out[i] = sum_b (sum_{j in block b} w_i8[i][j] * x[j]) * scales[i*n_blocks+b]
  */
 void parallel_matmul_i8(float *out, const float *x, const tn_u8 *w,
                           const float *scales, int n, int d, ThreadPool *tp);
 
 /**
- * Parallel INT4 matrix-vector multiplication with per-row scales.
+ * Parallel INT4 matrix-vector multiplication with block-wise scales.
  * Used for the INT4-quantized output classifier (LM head).
  * Reads 0.5 bytes per weight (vs 1 for INT8, 2 for BF16).
  * Weights packed as 2 per byte: low nibble = w[2k], high nibble = w[2k+1].
- * Unsigned storage with +8 bias; runtime correction: true_dot - 8*sum_qx.
+ * Unsigned storage with +8 bias.
  *
- * out[i] = (sum_j w_i4[i][j] * x[j]) * scales[i]
+ * `scales` holds d * ceil(n/TN_CLS_QUANT_BLOCK) floats — same block-wise
+ * layout and rationale as parallel_matmul_i8 above.
+ *
+ * out[i] = sum_b (sum_{j in block b} w_i4[i][j] * x[j]) * scales[i*n_blocks+b]
  */
 void parallel_matmul_i4(float *out, const float *x, const tn_u8 *w,
                           const float *scales, int n, int d, ThreadPool *tp);

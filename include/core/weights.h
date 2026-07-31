@@ -20,6 +20,14 @@
                               * dimension is a multiple of 8; falls back to WEIGHT_TYPE_Q4K
                               * otherwise (set per-projection at load time, gguf_loader.c). */
 
+/* Block size for the classifier INT8/INT4 quantization scale granularity
+ * (weights_build_classifier_quant in weights.c, consumed by
+ * parallel_matmul_i8/i4 in parallel_matmul.c). 32 matches the sub-block
+ * granularity already used by GGUF's own k-quant formats (Q4_K etc. — see
+ * gguf_quant.c) — a reasonable, well-precedented default, not a per-model
+ * hardcode. */
+#define TN_CLS_QUANT_BLOCK 32
+
 typedef struct {
     /* Token embedding table: vocab_size * dim stored as bfloat16 (tn_u16).
      * Used by the classifier (lm_head) and as BF16 lookup fallback.
@@ -89,27 +97,36 @@ typedef struct {
 
     /*
      * INT8 quantized classifier (computed at load time from BF16 wcls).
-     * Per-row symmetric quantization: each row has a scale factor.
      * Halves LM head bandwidth (656 MB BF16 → 328 MB INT8) for ~2x speedup
      * on the classifier matmul, which is 35% of total inference time.
      * Set to NULL when wcls_is_ternary (ternary path is already fast).
      *
-     * Weights are stored as unsigned uint8 (original + 128 bias) to enable
-     * VNNI dpbusds (unsigned × signed) for 4x compute throughput over FMA.
-     * The bias is corrected at runtime: true_dot = dpbusds_result - 128 * sum_qx.
+     * Weights are stored as unsigned uint8 (original + 128 bias).
+     *
+     * 2026-07-31: switched from one scale per ROW to one scale per
+     * TN_CLS_QUANT_BLOCK-element BLOCK, with each block's scale chosen to
+     * minimize squared reconstruction error rather than pure max-abs — a
+     * real user-reported gap (GitHub issue #27: single-row-scale rounding
+     * "completely ignores the whole issue of perplexity"). See
+     * docs/ai/mistakes.md for the before/after and the honest throughput
+     * tradeoff (the VNNI dpbusds fast path, which relied on one row-wide
+     * bias correction that doesn't hold per-block, was dropped in favor of
+     * the portable FMA path applied per block).
      */
     tn_u8  *wcls_i8;        /* vocab_size * dim unsigned (biased +128), or NULL */
-    float  *wcls_i8_scales;  /* vocab_size per-row scales, or NULL */
+    float  *wcls_i8_scales;  /* vocab_size * ceil(dim/TN_CLS_QUANT_BLOCK) block scales, or NULL */
 
     /*
      * INT4 quantized classifier (computed at load time from BF16 wcls).
      * Packs 2 weights per byte: low nibble = w[2k], high nibble = w[2k+1].
      * Unsigned storage: w_signed + 8 → [1, 15] (symmetric around 8).
      * Halves LM head bandwidth again (328 MB INT8 → 164 MB INT4).
-     * Runtime: unpack to uint8, use VNNI dpbusds, bias correction = 8 * sum_qx.
+     * Same 2026-07-31 block-wise-scale change as wcls_i8_scales above —
+     * this was the specific path GitHub issue #27 called out ("maximum
+     * reduction to INT4 as a mere casting").
      */
     tn_u8  *wcls_i4;        /* vocab_size * ceil(dim/2) packed, or NULL */
-    float  *wcls_i4_scales;  /* vocab_size per-row scales, or NULL */
+    float  *wcls_i4_scales;  /* vocab_size * ceil(dim/TN_CLS_QUANT_BLOCK) block scales, or NULL */
 
     /*
      * Phase 17: Mixture of Experts (MoE) weights.

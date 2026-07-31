@@ -3,7 +3,60 @@
 > Canonical, append-at-top (newest first). Read this at the start of every session.
 > Add an entry **immediately** when a mistake, false assumption, regression, or avoidable
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
-> Last updated: 2026-07-24.
+> Last updated: 2026-07-31.
+
+### 2026-07-31 — Q4_K had zero test coverage; a from-scratch AVX-512 VNNI kernel was measured, found SLOWER than the existing AVX2 path, and reverted
+
+- Summary: bringing up Qwen3-8B-Q4_K_M surfaced that the Q4_K matmul kernel (`matmul_q4k.c`) —
+  the sole matmul for the generic dense attention/FFN path on any Q4_K-quantized GGUF model — had
+  **no test coverage at all** (`tests/test_q4k_matmul.c` added this pass). Separately, real
+  `TN_PROFILE=1` per-step timing showed this kernel achieving only ~43% of this host's measured
+  DRAM bandwidth (12.7 of 29.5 GB/s) vs. ~95% for the plain BF16 classifier matmul on the same
+  host/token — i.e. compute-bound, not bandwidth-bound. The file's own header comment claimed a
+  VNNI path existed ("_mm256_dpbusds_epi32 (AVX-512 VNNI)") but none did — only AVX2
+  (maddubs+madd) and scalar were ever implemented, despite this exact host's build already
+  compiling the file with implicit `-march=native` VNNI support (confirmed: this project's other
+  VNNI kernels, e.g. `matmul_q2_0_vnni.c`, already exploit exactly this).
+- What was tried: added a real, execution-verified `dot_q4k_row_q8k_vnni()` using
+  `_mm256_dpbusd_epi32`, correctness-checked against a from-scratch scalar reference
+  (`tests/test_q4k_matmul.c`, 32/32 assertions passing, disassembly-confirmed 8×`vpdpbusd` per
+  superblock actually executing, not just compiled-but-dead) — genuinely correct, not a rushed
+  guess. Also tried adding software prefetch to `matmul_q4k_task` (the single-matrix dispatch
+  path), mirroring `matmul_q4k_batch_task`'s existing PF_DIST=4 technique, which that function had
+  been missing.
+- Result: prefetch made **no measurable difference** (2.54 vs. 2.49-2.65 tok/s baseline, within
+  noise). VNNI made things **worse** — layers time went from ~322ms/token (AVX2 baseline, measured
+  at 60 tokens) to ~430-480ms/token (VNNI, steady-state at 200+ tokens), a ~33-40% regression, not
+  an improvement. Root cause: `dpbusd` produces a raw (unscaled) i32 dot product per 32-lane
+  group, but this kernel's per-group Q4_K scale must still be applied *after* that — the AVX2
+  path's `madd_epi16(scale_broadcast_i16, maddubs_result_i16)` fuses "pairwise-sum AND scale
+  multiply" into **one** instruction (since scale is pre-broadcast into an i16 operand),
+  while the VNNI replacement needed `dpbusd` (raw sum) **plus a separate** `mullo_epi32` to apply
+  the same scale afterward — net *more* instructions per group (dpbusd×2 + mullo×2 + two
+  `cvtepi16_epi32` widens = 6) than the original's maddubs×2 + madd×2 = 4, despite dpbusd itself
+  being individually "faster" than maddubs+the-widen-it-replaces. VNNI's throughput advantage
+  never had a chance to pay for the extra instruction it forced elsewhere in this specific
+  fused-scale kernel shape.
+- Both changes reverted (`git checkout -- src/math/matmul_q4k.c`); the new test file was kept —
+  it's real, durable, path-independent correctness coverage (passes against whichever kernel
+  variant is compiled in) that had a genuine pre-existing gap, unrelated to whether the
+  optimization attempt panned out.
+- Prevention rule: a SIMD instruction being individually "faster" (dpbusd replaces a 2-instruction
+  widen-and-multiply) does not mean using it is faster *in context* — check what the surrounding
+  data flow needs the result *for* (here: a per-group scale multiply that the old design had
+  already fused into the widen step for free) before assuming a newer/wider instruction is a net
+  win. Measure the actual kernel, not the instruction in isolation. This is the same "verify
+  execution, don't trust the abstract instruction-set-tier hierarchy" lesson as the AVX-512VBMI
+  CPUID-lying incident, from a different angle: there the instruction didn't execute at all; here
+  it executed correctly and was still a net loss once its integration cost was counted.
+- Not yet resolved: pz's Qwen3-8B-Q4_K_M generation throughput (2.5-2.65 tok/s, this host) remains
+  behind llama.cpp's on the same file/prompt/threads/host (4.0-4.8 tok/s, ~1.6-1.9x). The
+  bottleneck is real and profiled (Q4_K matmul, compute-bound, ~43% of measured bandwidth) but the
+  two lowest-risk fixes attempted here did not close it — a genuine win likely needs either a
+  correctly-fused VNNI+scale kernel shape (not attempted: applying the per-group scale via a
+  cheaper fused path than a separate `mullo_epi32`, if one exists) or addressing something outside
+  the row-dot-product kernel itself (e.g. the ~3x redundant Q8K activation quantization across
+  Q/K/V and gate/up in the generic dense dispatch, not yet measured in isolation).
 
 ### 2026-07-24 — Sweep benchmark measured over 7 generated tokens (early EOS), and a concurrent capture silently corrupted a measurement
 - Summary: the threads×SIMD×classifier sweep report initially used the prompt "What is the

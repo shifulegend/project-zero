@@ -15,14 +15,29 @@
   llama.cpp's CPU backend transparently repacking Q4_K rows into interleaved 8/16-row super-blocks at load
   time with matching multi-row GEMV kernels — a genuinely different GEMV batching strategy, not an
   instruction-choice difference.
-- Two lower-risk fixes were tried first, honestly measured, and reverted when they didn't pan out: software
-  prefetch on the single-matrix dispatch (no measurable change) and a from-scratch, correctness-verified
-  AVX-512 VNNI kernel (measured 33-40% *slower* — `dpbusd`'s raw output needs a separate scale-multiply this
-  kernel's AVX2 path already fused for free). Real test coverage for Q4_K matmul was added regardless
-  (`tests/test_q4k_matmul.c`) since it had none before this pass.
-- Status: RCA complete and evidence-backed; the row-batched repack fix itself is grouped-execution
-  in-progress work (bigger lift — new data layout + new kernel), not parked. Full chain in
-  `docs/ai/mistakes.md` (2026-07-30/07-31 entries) and `README.md`'s new Qwen3-8B section.
+- Four attempts were tried in total, all honestly measured against the same 2.49-2.65 tok/s baseline:
+  (1) software prefetch on the single-matrix dispatch — no measurable change; (2) a from-scratch,
+  correctness-verified AVX-512 VNNI kernel — measured 33-40% *slower* (`dpbusd`'s raw output needs a
+  separate scale-multiply this kernel's AVX2 path already fused for free), reverted; (3) a row-batched
+  "grouped8" Q4_K repack mirroring llama.cpp's interleaved memory layout — measured *worse* (2.16 tok/s
+  with prefetch, 1.72 without), reverted, because repacking only moved bytes around without adding real
+  multi-row register interleaving; (4) a genuine bug fix — `attention.c`/`ffn.c` claimed in their own
+  comments to quantize the shared input once and reuse it across Q/K/V (and gate/up), but that had only
+  ever been wired up for the ternary path, so the Q4_K dense path (Qwen3-8B's actual path) was silently
+  re-quantizing 3x/2x per layer — fixed and kept (verified via full gcc+clang release/test/debug, kept
+  despite measuring no throughput change, since the eliminated O(n) work was always 2-3 orders of
+  magnitude smaller than the O(d×n) matmul it fed). Real test coverage for Q4_K matmul was added
+  regardless (`tests/test_q4k_matmul.c`) since it had none before this pass.
+- Status: RCA complete and evidence-backed across four attempts; the real target (llama.cpp's multi-row
+  GEMV kernel with independent per-row accumulator chains, not just a data-layout change) is a materially
+  larger, higher-risk rewrite than anything tried so far, on a host whose run-to-run noise already
+  complicated reading three of the four attempts above. Flagged to the user explicitly for a scope
+  decision rather than attempted blind — not parked, an open decision point. Full chain in
+  `docs/ai/mistakes.md` (2026-07-30/07-31 entries) and `README.md`'s Qwen3-8B section.
+- Also fixed in the same pass: this host's clang-18 install was missing `libclang-rt-18-dev` (stale apt
+  index — `apt-get update` resolved it), which had been silently skipping clang's ASan/UBSan test
+  coverage. Not caused by this session's changes, but caught and fixed while verifying them, per the
+  project's "fix any bug found in this pass" policy.
 
 ### 2026-07-24 — Full threads×SIMD×classifier sweep (52 configs); RCA for why INT4 classifier is slower than INT8/BF16
 - Decision: after the F16/BF16 kernel fix (below) closed the single-sample pz-vs-llama.cpp gap,

@@ -1,8 +1,10 @@
 /*
  * test_q4k_matmul.c — Unit test for the Q4_K x Q8K fused dot product
- * (dot_q4k_row_q8k in src/math/matmul_q4k.c), covering both the AVX2 path
- * and, on an AVX-512 VNNI host, the dpbusd-based VNNI path added 2026-07-31
- * while bringing Q4_K throughput on Qwen3-8B-Q4_K_M closer to llama.cpp's.
+ * (dot_q4k_row_q8k in src/math/matmul_q4k.c), covering the AVX2 path (the
+ * only SIMD implementation of this kernel — an AVX-512 VNNI variant was
+ * attempted 2026-07-31 while bringing Q4_K throughput on Qwen3-8B-Q4_K_M
+ * closer to llama.cpp's, measured 33-40% SLOWER, and reverted; see
+ * docs/ai/mistakes.md for the root cause).
  *
  * There was previously zero test coverage for this kernel at all, despite
  * it being the sole matmul for the generic dense attention/FFN path on any

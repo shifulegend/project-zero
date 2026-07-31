@@ -100,6 +100,21 @@ void attention_forward(RunState *s, const TransformerWeights *w,
     parallel_ternary_matmul_packed_preq(s->q,  s->xb, (const tn_u8 *)w->wq[layer], dim, dim,    w->sq[layer], &preq, tp);
     parallel_ternary_matmul_packed_preq(k_buf, s->xb, (const tn_u8 *)w->wk[layer], dim, kv_dim, w->sk[layer], &preq, tp);
     parallel_ternary_matmul_packed_preq(v_buf, s->xb, (const tn_u8 *)w->wv[layer], dim, kv_dim, w->sv[layer], &preq, tp);
+  } else if (w->wq_type[layer] == WEIGHT_TYPE_Q4K &&
+             w->wk_type[layer] == WEIGHT_TYPE_Q4K &&
+             w->wv_type[layer] == WEIGHT_TYPE_Q4K) {
+    /* All three read the same s->xb — quantize to Q8K once and reuse, same
+     * layer-level-preq idea as the ternary branch above. Bug fixed 2026-07-31:
+     * this branch previously called tn_dense_matmul_dispatch() three times,
+     * each of which (via parallel_matmul_q4k) independently re-quantized
+     * s->xb, despite the comment above already claiming the shared-quantize
+     * optimization — it had only ever been wired up for the ternary path. */
+    TnQ8KActBlock acts[ATTN_PREQ_BUF_SIZE / TN_Q8K_BLOCK];
+    int n_blocks = dim / TN_Q8K_BLOCK;
+    tn_quantize_q8k(acts, s->xb, n_blocks);
+    parallel_matmul_q4k_preq(s->q,  acts, (const uint8_t *)w->wq[layer], dim, dim,    tp);
+    parallel_matmul_q4k_preq(k_buf, acts, (const uint8_t *)w->wk[layer], dim, kv_dim, tp);
+    parallel_matmul_q4k_preq(v_buf, acts, (const uint8_t *)w->wv[layer], dim, kv_dim, tp);
   } else {
     tn_dense_matmul_dispatch(s->q,  s->xb, w->wq[layer], w->wq_type[layer], dim, dim,    tp);
     tn_dense_matmul_dispatch(k_buf, s->xb, w->wk[layer], w->wk_type[layer], dim, kv_dim, tp);

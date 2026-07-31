@@ -5,6 +5,67 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-07-31.
 
+### 2026-07-31 — Two more Q4_K throughput attempts on Qwen3-8B: a row-batched "grouped8" repack (reverted, no improvement) and a real redundant-quantization bug fix (kept, verified, but performance-neutral)
+
+- Context: continuation of the same-day RCA below. After the VNNI revert, two more angles were
+  tried against the same 1.6-1.9x pz-vs-llama.cpp gap on Qwen3-8B-Q4_K_M.
+- **Attempt 3 — row-batched "grouped8" Q4_K repack (reverted).** Hypothesis: llama.cpp's real
+  advantage is its `repack.cpp` interleaved `block_q4_Kx8` format + matching multi-row
+  `ggml_gemv_q4_K_8x8_q8_K` kernel, so repacking pz's Q4_K rows into an 8-row-interleaved memory
+  layout (`tn_q4k_repack_grouped8`, new `WEIGHT_TYPE_Q4K_G8`) might unlock a similar win. Measured
+  (200-token run, with software prefetch): 2.16 tok/s — *worse* than the 2.49-2.65 tok/s baseline.
+  Removed the prefetch to isolate its effect (100-token run): 1.72 tok/s — worse still, confirming
+  prefetch was providing a real but insufficient benefit, and the repack itself was a net loss
+  either way. Root cause: the repack only changed which memory address each row's bytes live at —
+  `dot_q4k_row_q8k` was still invoked once per row, with the identical serial per-row instruction
+  count and the identical single-accumulator dependency chain across blocks. No per-block decode
+  work (scale unpack, shuffle-table broadcast) was shared or amortized across the 8 co-located
+  rows, and no genuine multi-row register interleaving (independent accumulator chains computing
+  several rows' partial sums per activation load, which is what actually lets llama.cpp's GEMV
+  kernel do less *work*, not just better-arranged memory access) was implemented. Reverted via
+  `git checkout` across all 6 touched files (`include/core/weights.h`, `include/math/matmul_q4k.h`,
+  `include/transformer/dense_matmul_dispatch.h`, `src/core/gguf_loader.c`, `src/math/matmul_q4k.c`,
+  `tests/test_q4k_matmul.c`); working tree verified clean (`git status --short` empty) against the
+  last pushed commit before starting attempt 4.
+- **Attempt 4 — fix a real redundant-Q8K-quantization bug (kept).** While re-reading the dense
+  attention/FFN forward paths for the RCA, found that `attention.c`'s and `ffn.c`'s own comments
+  ("Layer-level preq: quantise s->xb once, reuse for all three projections") were **false** for the
+  Q4_K dense branch: that optimization had only ever been wired up for the ternary
+  (`layers_are_ternary`) branch. The Q4_K branch called `tn_dense_matmul_dispatch()` separately for
+  wq/wk/wv (and w1/w3 in the FFN), and each call — via `parallel_matmul_q4k()` — independently
+  re-quantized the *same* `s->xb` to Q8K, 3x per attention layer and 2x per FFN layer instead of
+  once. This is a genuine bug (comment lying about behavior, and real wasted work), fixed in
+  `attention.c`/`ffn.c` by quantizing once with `tn_quantize_q8k()` when all three (or both)
+  projections are `WEIGHT_TYPE_Q4K`, then calling `parallel_matmul_q4k_preq()` per projection —
+  falling back to the original per-call `tn_dense_matmul_dispatch()` path when types are mixed.
+  Verified: full `make release/test/debug` green on gcc **and** clang (`libclang-rt-18-dev` was
+  missing from this host's clang-18 install — a stale apt index, not a fault in this change; fixed
+  with `apt-get update && apt-get install libclang-rt-18-dev` so clang ASan/UBSan coverage is real
+  again), `test_q4k_matmul` 32/32, coherent (non-garbage) generation output. Measured throughput:
+  2.51-2.70 tok/s across two runs — **within the existing 2.49-2.65 tok/s baseline range, i.e. no
+  measurable improvement.** Root cause of the null result (expected, not a surprise): quantizing
+  `s->xb` is O(n) work (n = 4096, one pass to find abs-max + one pass to quantize+bsum, ~16 Q8K
+  blocks), while the matmul it feeds is O(d×n) (d = 4096 for wq, up to 12288 for w1/w3) — even
+  eliminating 100% of the redundant quantization removes a cost that was already 2-3 orders of
+  magnitude smaller than the dominant per-row weight-decode work it was attached to. Kept anyway:
+  it is a correct, verified, zero-risk fix for a real bug (dead-wrong comment + real wasted CPU
+  cycles), consistent with the project's bug-fix policy — just not the throughput fix.
+- Updated conclusion (4 attempts total: prefetch neutral, VNNI regression/reverted, grouped8
+  neutral/reverted, redundant-quant fix real-but-neutral): every angle that changes *when/how* work
+  is issued around the existing per-row `dot_q4k_row_q8k` kernel has been tried and has not moved
+  the needle. The `dot_q4k_row_q8k` kernel's *own* instruction stream (AVX2 maddubs/madd, single
+  accumulator chain per row) is very close to llama.cpp's own single-row `ggml_vec_dot_q4_K_q8_K`
+  — this was true by construction (attempt 1's whole design mirrored it, see below). llama.cpp's
+  actual throughput advantage on this model is very likely **not a hot-loop instruction-count win at
+  all**, but architectural: batching multiple output rows through one GEMV call with independent
+  accumulator chains (real ILP across rows, not just across blocks within one row) plus whatever
+  amortization that gives on the memory/decode side. Implementing that correctly — not just
+  relayout-and-hope, as attempt 3 was — is a materially larger, higher-risk kernel rewrite than any
+  attempt made so far, and this host's run-to-run noise (documented below and in the RCA section)
+  makes it hard to get a clean read on a change that size. Flagged to the user explicitly rather
+  than attempted blind, per the project's bug-fix policy's carve-out for genuinely large
+  architectural changes.
+
 ### 2026-07-31 — Q4_K had zero test coverage; a from-scratch AVX-512 VNNI kernel was measured, found SLOWER than the existing AVX2 path, and reverted
 
 - Summary: bringing up Qwen3-8B-Q4_K_M surfaced that the Q4_K matmul kernel (`matmul_q4k.c`) —

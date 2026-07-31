@@ -264,7 +264,7 @@ instead of llama.cpp's wasteful full-40960-token default:
 **llama.cpp is ~1.6-1.9x faster here, and we're not hiding that.** Root-caused with real `TN_PROFILE=1`
 per-step timing, not guesswork: the Q4_K matmul (≈88% of per-token time) runs at only ~43% of this host's
 measured DRAM bandwidth, vs. ~95% for the plain BF16 classifier matmul on the same host/token — compute-bound,
-not bandwidth-bound. Two targeted fixes were tried and measured, honestly, in place:
+not bandwidth-bound. Four targeted attempts were tried and measured, honestly, in place:
 
 - **Software prefetch** on the single-matrix Q4_K dispatch path (already used elsewhere in the kernel file):
   no measurable change.
@@ -273,17 +273,30 @@ not bandwidth-bound. Two targeted fixes were tried and measured, honestly, in pl
   **33-40% slower**, not faster, and reverted. Root cause: `dpbusd` gives a raw unscaled dot product that
   still needs the per-group Q4_K scale applied afterward via a separate multiply, while the existing AVX2
   path fuses "sum and scale" into one instruction — net *more* instructions despite `dpbusd` being faster in
-  isolation. Full writeup in `mistakes.md`.
+  isolation.
+- **A row-batched "grouped8" Q4_K repack**, mirroring llama.cpp's interleaved memory layout: measured
+  **worse** (2.16 tok/s with prefetch, 1.72 tok/s without), and reverted. Root cause: repacking only moves
+  bytes around — it didn't change the per-row instruction count or add genuine multi-row register
+  interleaving, so there was no real work to save.
+- **A real bug fix**: `attention.c`/`ffn.c` claimed (in their own comments) to quantize the shared input
+  to Q8K once and reuse it across Q/K/V (and gate/up), but that optimization had only ever been wired up
+  for the ternary weight path — the Q4_K dense path (Qwen3-8B's actual path) was silently re-quantizing the
+  same input 3x (resp. 2x) per layer. Fixed and kept (verified correct, full gcc+clang release/test/debug
+  green) — but measured **no throughput change** (2.51-2.70 tok/s, within the existing baseline range),
+  because the eliminated work (O(n) quantization) was already 2-3 orders of magnitude smaller than the
+  matmul it fed (O(d×n)).
 
 Direct comparison against llama.cpp's own AVX2 kernel source (cloned locally) showed it's **nearly
 byte-identical** to this engine's — ruling out "worse SIMD" as the explanation. T=1 vs. T=4 profiling showed
 3.5-4.5x scaling (87-100%+ efficiency) — ruling out thread-pool overhead. The real difference: llama.cpp's
 CPU backend transparently **repacks Q4_K weight rows into interleaved 8/16-row super-blocks at load time**
 (`ggml/src/ggml-cpu/repack.cpp`, confirmed active via its own `system_info: REPACK=1`) and uses matching
-multi-row GEMV kernels that compute 8-16 output rows per pass over the shared quantized activation — far
-better DRAM burst and instruction-level-parallelism than a one-row-at-a-time loop, independent of which SIMD
-instructions that loop uses. That's the real, evidence-backed target — a genuinely bigger lift than the two
-fixes above, tracked as in-progress work, not parked.
+multi-row GEMV kernels that compute 8-16 output rows per pass over the shared quantized activation with
+independent per-row accumulator chains — real instruction-level parallelism across rows, not just better
+memory layout, which is exactly what the reverted "grouped8" attempt above was missing. That's the real,
+evidence-backed target: a genuinely bigger kernel rewrite than any of the four attempts above, with real
+regression risk on this host's noisy measurements — flagged for an explicit call on scope rather than
+attempted blind. Full status, not parked: see `mistakes.md`.
 
 Full RCA, methodology, and status: [`docs/ai/mistakes.md`](docs/ai/mistakes.md) · screenshots:
 [`benchmark_results/qwen3_8b_dense_2026-07-31/screenshots/`](benchmark_results/qwen3_8b_dense_2026-07-31/screenshots/).

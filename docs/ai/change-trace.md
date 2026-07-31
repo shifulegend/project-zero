@@ -1,7 +1,209 @@
 # Change Trace — project-zero
 
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
-> Update after each meaningful sub-step. Last updated: 2026-07-16.
+> Update after each meaningful sub-step. Last updated: 2026-07-24.
+
+### 2026-07-24 — Documented: no Claude/AI signature/attribution unless explicitly asked
+- What: added a rule to `docs/ai/commit-log-guidance.md` (canonical) and mirrored it into the
+  entry adapters (`CLAUDE.md`, `.claude/rules/core.md`, `.github/copilot-instructions.md`,
+  `gemini/GEMINI.md`, `AGENTS.md`) — no Claude/AI signature or attribution (commit trailers,
+  code comments, generated artifacts) unless the user explicitly asks for it in that instance.
+- Why: user request, made directly in this session.
+- Areas: docs/ai/commit-log-guidance.md, CLAUDE.md, .claude/rules/core.md,
+  .github/copilot-instructions.md, gemini/GEMINI.md, AGENTS.md.
+
+### 2026-07-24 — Full threads×SIMD×classifier sweep report (repo-only) + INT4-slower RCA
+- What: full 52-config sweep report (`docs/design/reports/sweep-2026-07-24.html` +
+  `.template.html`), raw CSVs (`docs/design/reports/sweep_2026-07-24/`), 5 terminal screenshots
+  (`docs/design/screenshots/sweep_2026-07-24/`) — all committed in-repo, no external hosting.
+- Why: user asked for a full threads×SIMD×classifier sweep of both engines with terminal
+  screenshots and a final infographic, following the earlier F16/BF16 RCA below.
+- Also: caught and fixed two methodology bugs found while building this report — an early-EOS
+  short-generation measurement bug (fixed by moving to a 251-real-token run per config) and a
+  concurrent-capture CPU-contention bug — both in `mistakes.md`. Root-caused why INT4 classifier
+  measures slower than INT8/BF16 (nibble-unpack cost without AVX-512 VBMI + classifier already
+  being cache-resident, so INT4's bandwidth saving buys nothing) — full analysis in
+  `decision-log.md`; added as a Help Wanted item in `README.md` rather than fixed this pass.
+- Areas: `docs/design/reports/sweep-2026-07-24.*`, `docs/design/reports/sweep_2026-07-24/*.csv`,
+  `docs/design/screenshots/sweep_2026-07-24/*.png`, `docs/ai/mistakes.md`,
+  `docs/ai/decision-log.md`, `README.md` (Help Wanted table + benchmark section notes).
+
+### 2026-07-24 — Fixed FMA-latency-bound F16/BF16 GEMV kernels after user-requested RCA
+- What: `parallel_matmul_f16` (`src/math/matmul_f16.c`) and `parallel_matmul_bf16`
+  (`src/math/parallel_matmul.c`) AVX2/AVX-512 paths rewritten from a single FMA accumulator per
+  row to 4 independent accumulators, matching llama.cpp/ggml's `ggml_vec_dot_f16` structure.
+- Why: user asked why project-zero measured behind llama.cpp on a SmolLM2-135M F16 comparison and
+  asked for an RCA before any fix. Repeated measurement showed the single-sample gap was noise at
+  T=2 but a real ~13% gap at T=1 (zero thread-dispatch overhead), traced to the single-accumulator
+  FMA dependency chain being latency-bound rather than throughput-bound.
+- Areas: `src/math/matmul_f16.c`, `src/math/parallel_matmul.c`; `docs/ai/decision-log.md`,
+  `docs/ai/mistakes.md`; `docs/design/reports/pz-vs-llamacpp-smollm2.html` (in-repo comparison
+  report, moved off external artifact hosting per explicit instruction — all deliverables now
+  live in the repo, nothing outside).
+- Verified: 5-rep before/after T=1 and T=2 measurement (see decision-log), golden output
+  unchanged, full gcc+clang release/test/debug clean, ASan/UBSan-clean real-model run.
+- Branch: `claude/pr31-branding-cli-discussion-mwwe12`.
+
+### 2026-07-24 — CLI banner always prints; Qwen3-MoE GGUF loader support added; rename deferred to roadmap
+- What: (1) `tn_banner_print()` now shows the "PROJECT ZERO" banner for every invocation
+  (TTY or piped/redirected), animated only in a real terminal — new `tn_banner_format_plain()`,
+  new `tests/test_banner.c`. (2) Added `qwen3moe` GGUF architecture support (fixes issue #32):
+  `MoEConfig.has_qk_norm`, new `src/transformer/qwen3moe_attention.c` +
+  `src/core/qwen3moe_run_state.c` (dedicated buffers/KV-cache, mirroring the `qwen35`/MLA
+  independent-head-dim precedent), new `weights_from_gguf_qwen3moe()` loader, new
+  `tests/test_gguf_loader_qwen3moe.c` (synthetic GGUF fixture + real forward-pass token).
+  (3) Documented the `adaptive_ai_engine`→`projectzero` rename as a deferred item in
+  `.github/ROADMAP.md` (not implemented — research-only per explicit instruction).
+- Why: (1) branding must not depend on the CLI's invocation path (user request, traced to
+  `tools/make_screenshot.py` rendering redirected-stdout captures that never had a banner to
+  begin with). (2) jpsoto's bug report — `qwen3moe` fell through to the generic dense loader,
+  which expects `ffn_gate.weight` instead of the MoE router+stacked-expert tensors this arch
+  actually has. (3) scoped/estimated in an earlier discussion; explicitly deferred, not executed.
+- Areas: `src/cli/banner.c`/`.h`, `src/cli/main.c`, `tests/test_banner.c`;
+  `src/core/gguf_loader.c`, `include/core/moe_config.h`, `include/core/weights.h`,
+  `src/core/weights.c`, `src/transformer/attention.c`, `src/transformer/qwen3moe_attention.c`
+  (+header), `src/core/qwen3moe_run_state.c`, `include/core/run_state.h`, `CMakeLists.txt`,
+  `tests/test_gguf_loader_qwen3moe.c`; `.github/ROADMAP.md`; `docs/ai/decision-log.md`,
+  `docs/ai/mistakes.md`, `docs/ai/project-overview.md`, `docs/design/review-2026-07-15.md`.
+- Verified: `make release && make test && make debug`, gcc and clang, clean tree each time — zero
+  new warnings, ASan/UBSan clean, all tests pass including the two new test files. Real-model
+  golden-output verification of the Qwen3-MoE fix against the actual reported file is a tracked,
+  not-yet-done follow-up (see decision-log's 2026-07-24 entry) — disk/network constraints in this
+  session.
+- Branch: `claude/pr31-branding-cli-discussion-mwwe12`.
+
+### 2026-07-18 — README front door: Bonsai-27B x86 comparison promoted to hero + quick start
+- What: added a hero block under the intro — the sweep3 headline claim (4.2-4.8x vs PrismML's
+  own fork, 2.97 vs 0.70 tok/s @ t4, config + drift caveat stated, links to captures and the
+  full section) with a copy-paste quick start (clone/build/curl model/run); intro line now
+  names the Bonsai result alongside the BitNet one; `#bonsai` anchor added. Also removed the
+  "95% of DRAM bandwidth ceiling" clause from the hero bullets — that figure predates the
+  2026-07-17 probe fix (bandwidth was measured ~3x low, so the utilization claim doesn't
+  survive re-derivation; see CEILING_CALCULATION.md §2/§5).
+- Why: the Bonsai comparison is the repo's strongest current, fully-documented result; the
+  README's own claim+proof rules (2026-06-20/21 decisions) require the hero to be the best
+  verifiable claim with config stated and no stale numbers.
+- Areas: `README.md`.
+- Branch: `claude/qwen-performance-drop-rca-pepnfp`.
+
+### 2026-07-18 — 3-axis comparison sweep vs PrismML llama.cpp fork, screenshots + infographic
+- What: 18 sequential same-session runs on Ternary-Bonsai-27B (60 tok, temp 0, one host):
+  project-zero threads 0.96/1.73/2.50 + four t4 sentinels 2.73-3.12; SIMD@t4
+  scalar/avx2/avx512f/vnni 2.82/3.05/2.88/3.08; classifier@t4 bf16/int8/int4 2.51/2.85/3.01.
+  Fork (prism branch b1-79697f2): t1-t4 0.2/0.4/0.6/0.7 — project-zero 4.2-4.8x ahead at
+  every thread count. Every run captured in a pty (screenshot PNG + raw bytes,
+  `benchmark_results/sweep3_2026-07-18/`); capture tool gained opt-in PZ_CAPTURE_RAW_OUT.
+  Infographic: `comparison.html` (published artifact) + `comparison_infographic.png`,
+  README-linked. This host was host-A-class (L3 260 MiB, 41.9 GB/s fixed-probe).
+- Fork gotchas recorded: rejects --no-conversation at runtime then loops printing prompts
+  forever on closed stdin (produced a 5 GB log); needs -c 4096 (default 262K ctx = ~15 GB KV
+  alloc, swap-thrash) and -st for one-shot runs.
+- Process lesson (mistakes-grade, recorded here): a background llama-cli with no timeout sat
+  swap-thrashing ~4 h while this session waited on its completion notification — long external
+  runs need explicit timeouts and liveness checks (RSS/etime), and their output must be
+  streamed/tee'd, never only piped to tail.
+- Areas: `benchmark_results/sweep3_2026-07-18/**`, `tools/screenshots/cli/capture.mjs`,
+  `README.md`.
+- Branch: `claude/qwen-performance-drop-rca-pepnfp`.
+
+### 2026-07-17 — Ceiling push round 2: instrumentation + two evidence-based reverts + KV-line fix
+- What: wired step timing into the qwen35 hybrid path (steps 4-12 + new DeltaNet steps 22/23);
+  attribution: ~91% Q2_0 matmul / 6.4% scalar recurrence / <3% rest. Tried and REVERTED on
+  measurement: A3a wide non-VBMI unpack (kernel is load-bound, not compute-bound — neutral)
+  and sub-64-row inline dispatch (pool splitting wins even at 48 rows — slightly negative).
+  Fixed the "KV Strategy: Quantized I8" line for qwen35 (F32 reality) and the ceiling doc's
+  KV bound it had corrupted (32 → 128 KB/pos). Standing result unchanged: 3.56 tok/s vs 6.0
+  ceiling (59%); doc now states that materially exceeding ~60% single-stream requires
+  batched/speculative decode, not more kernel tuning.
+- Why: user asked to aim for the ceiling; both negative results are recorded per the plan's
+  "a documented dead end is a deliverable" rule (full data in CEILING_CALCULATION.md §7,
+  lessons in mistakes.md).
+- Verification: gcc release 0 warnings, test_q2_0_matmul 35/35 after each change and after
+  each revert; interleaved same-session end-to-end A/Bs for every perf-relevant decision.
+- Areas: `src/transformer/qwen35_attention.c`, `include/core/step_timing.h`,
+  `src/core/step_timing.c`, `src/math/matmul_q2_0_vnni.c` (net: comment only),
+  `src/cli/main.c` (KV line), `docs/architecture/CEILING_CALCULATION.md`, `docs/ai/*`.
+- Branch: `claude/qwen-performance-drop-rca-pepnfp`.
+
+### 2026-07-17 — Ceiling spec + probe fix (~3x) + Q2_0 kernel optimization (+28% end-to-end)
+- What: (1) `docs/architecture/CEILING_CALCULATION.md` — full spec/audit of the tok/s ceiling
+  (probe methodology, 4 computation sites, per-model byte accounting, error bounds, bridging
+  matrix). (2) Fixed `probe_dram_bandwidth()`'s ~3x accounting error (3 passes timed, 1 pass of
+  bytes counted) + serialized volatile reads: same host 12.0 → 41.2 GB/s measured. (3) Optimized
+  `dot_q2_0_row_vnni` (per-row float vector accumulator, F16C scales; `_ref` kept for A/B):
+  micro-bench 1.32-1.68x (`tools/bench_q2_0`, `make bench-q2`), end-to-end 2.74/2.80 →
+  3.56/3.54 tok/s (+28%), token-identical output, on the real downloaded 7.16 GB model.
+  (4) calibration.c "Speed opt" line now prints computed values (was hardcoded "(INT8, ~+36%)").
+  (5) Fixed stale 18B/64 block-layout comment in matmul_q2_0.h. Corrected README + RCA claims
+  built on the broken probe numbers ("2.74 was at the bandwidth wall" → ~40% of true BW; honest
+  ceiling ~6-7 tok/s, current utilization 59%).
+- Why: user asked for detailed ceiling documentation, an independent review, and gap-bridging;
+  the probe accounting bug surfaced during the planned probe improvement.
+- Verification: clean gcc release/test 46/46 green (a mixed clang/gcc `build/` from earlier
+  compiler cycling first produced a bogus `test_simd_vnni` link failure — the documented
+  mtime-staleness Makefile trap; clean rebuild resolved it); clang compile-checks of changed
+  TUs zero-warning; interleaved same-session model A/B ×2 rounds; `TN_STEP_TIMING=1` breakdowns.
+- Areas: `src/core/hardware_profile.c`, `src/core/calibration.c`, `src/math/matmul_q2_0_vnni.c`,
+  `include/math/matmul_q2_0.h`, `tools/bench_q2_0.c`, `Makefile`, `CMakeLists.txt`,
+  `docs/architecture/CEILING_CALCULATION.md`, RCA report, README, mistakes.md.
+- Branch: `claude/qwen-performance-drop-rca-pepnfp`.
+
+### 2026-07-17 — Fix hardware profiler's hardcoded Data/token + ceiling; correct all ceiling-based claims
+- What: `hardware_profile.c` computed `weight_bytes_per_tok`/`theoretical_ceiling` from
+  compile-time BitNet-2B constants for every model (Ternary-Bonsai-27B: "1149 MB" instead of
+  ~6.8 GB → ~6x-overstated ceiling; SmolLM2: 4.5x *under*stated). Added
+  `tn_hardware_profile_set_model_bytes()` (recomputes bytes/ceiling/`model_fits_l3`/summary;
+  `rebuild_summary()` extracted from the two duplicated snprintf blocks), called from `main.c`
+  after GGUF weight load with real model sizes (embedding/head adjustment for Q2_0-native models,
+  materialized-classifier aware; MoE overcounts, TODO). Startup box now labels its figure
+  "(pre-load est.)"; corrected `[profile]` line prints post-load. Corrected the RCA report
+  (§5 addendum: real ceilings, ~1.5–2x kernel headroom on host-B class, 2.74 tok/s was at host
+  A's bandwidth wall) and the README's ceiling-derived claims.
+- Why: found while answering "what changes reach the tok/s ceiling" — the target itself failed
+  a dimensional sanity check; bug-fix policy requires fixing on discovery.
+- Verification: gcc release + test 46/46 green; clang release/debug green (clang `make test`
+  blocked by the container's missing clang ASan runtime — known, decision-log 2026-06-19);
+  `make demo` end-to-end: corrected line prints, golden output ("Paris") intact.
+- Areas: `src/core/hardware_profile.c`, `include/core/hardware_profile.h`, `src/cli/main.c`,
+  `docs/ai/mistakes.md`, `docs/reports/RCA_QWEN_TOKS_DROP_2026-07.md`, `README.md`.
+- Branch: `claude/qwen-performance-drop-rca-pepnfp`.
+
+### 2026-07-17 — Consolidated RCA report for the 2.74 → ~1 tok/s Ternary-Bonsai drop
+- What: Added `docs/reports/RCA_QWEN_TOKS_DROP_2026-07.md` — a single consolidated root-cause
+  analysis of the post-classifier-work throughput drop, independently re-verifying the
+  evidence already recorded in `mistakes.md`/`decision-log.md` (hot-path diff audit of
+  `ce8e90d..HEAD`, the commit-bisection screenshots incl. the pre-VNNI control leg, and the
+  host-A hardware profile recovered from git history via `git show 591333d:...pz_t4_peak.png`).
+  Conclusion unchanged and now falsifiably documented in one place: host performance-profile
+  change (L3 260→33 MiB, DRAM 16→~11-12 GB/s, first-touch stalls), not a code regression.
+- Why: the question keeps being re-asked; scattered evidence made the answer look like an
+  assertion rather than a proof. Report includes the restore/improve action plan
+  (`--classifier int8/int4` same-session A/B; Q2_0 LM-head unpack profiling once a stable
+  host is available).
+- Areas: `docs/reports/RCA_QWEN_TOKS_DROP_2026-07.md`, README Qwen-section link.
+- Branch: `claude/qwen-performance-drop-rca-pepnfp`.
+
+### 2026-07-16 — Qwen 3.5/3.6 hybrid-attention support (Ternary-Bonsai-27B) + benchmark
+- What: Full engine support for Qwen 3.5/3.6's hybrid Gated-DeltaNet/Gated-Attention
+  architecture and PrismML's Q2_0 ternary GGUF packing — new
+  `src/transformer/qwen35_attention.c`, `src/core/qwen35_run_state.c`, `src/math/matmul_q2_0.c`,
+  `src/core/gguf_quant.c`'s `gguf_dequant_q2_0`, plus `MoEConfig`/`TransformerWeights`/`RunState`
+  extensions (`has_linear_attn`, `q35_*` fields) mirroring the existing `has_mla` pattern. Ran the
+  real downloaded `prism-ml/Ternary-Bonsai-27B-gguf` end-to-end and fixed 6 real bugs surfaced
+  only by that real run (parser infinite loop, unexecuted macros, dotted-set namespace mutation,
+  a whitespace-control lexer bug, an OOB cache write, and a transposed conv1d tensor read) — full
+  writeup in `mistakes.md` (2026-07-16, "Qwen 3.6 integration: 6 real bugs"). Added
+  `tests/test_chat_template.c` (18 cases). Built PrismML-Eng's `llama.cpp` fork (`prism` branch,
+  group-128 Q2_0) as a benchmark/correctness comparator on the identical file.
+- Why: task requested running this specific converted model in the engine, identifying other
+  engines that can run it, and benchmarking against one of them.
+- Areas: `src/transformer/`, `src/core/`, `src/math/`, `src/tokenizer/chat_template.cpp`,
+  `include/`, `tests/test_chat_template.c`, `Makefile`, `CMakeLists.txt`, `docs/ai/mistakes.md`,
+  `docs/ai/decision-log.md`.
+- Result: gcc+clang release/test/debug all green; model produces coherent reasoning output
+  matching the reference engine's continuation of the identical prompt token-for-token up to the
+  point checked; project-zero's (unoptimized) Q2_0 kernel is markedly slower than the reference
+  engine's on this 4-core host — see the benchmark artifact for the actual numbers.
 
 ### 2026-07-16 — Graceful --server shutdown (SIGINT/SIGTERM handler + flag-polling loop)
 - What: `main.c`'s `--server` block used a bare `pause()` with no signal handler installed, so

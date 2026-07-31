@@ -10,17 +10,39 @@
  * The template string is read from the GGUF file at tokenizer.chat_template
  * and rendered dynamically — nothing is hardcoded per model.
  *
- * Supported Jinja2 subset (covers DeepSeek, ChatML, Llama-3, Mistral):
+ * Supported Jinja2 subset (covers DeepSeek, ChatML, Llama-3, Mistral,
+ * Qwen 3.6's hybrid-attention chat_template.jinja):
  *   {{ expr }}                 — output expression
- *   {% for var in iterable %}  — loop; sets loop.{first,last,index,index0}
+ *   {% for var in iterable %}  — loop; sets loop.{first,last,index,index0,
+ *                                 previtem,nextitem,length,revindex,revindex0}
  *   {% if / elif / else %}     — conditional chain
  *   {% set var = expr %}       — variable assignment
+ *   {% set ns.attr = expr %}   — namespace-object field mutation (in place)
+ *   {% macro name(a,b=1) %}    — macro definition + {{ name(...) }} call,
+ *                                 positional/default/keyword param binding
  *   expr + expr  / expr ~ expr — string concatenation
- *   message['key']             — object subscript
- *   expr is [not] defined      — defined test
- *   expr | filter              — filters: trim, upper, lower, default, replace, join
+ *   message['key'] / message.key — object subscript / attribute
+ *   arr[start:stop:step]       — Python slice (array only)
+ *   expr is [not] defined/string/none/iterable/mapping/integer/odd/even
+ *   str.split/strip/rstrip/lstrip/startswith/endswith(...) — string methods
+ *     (receiver must be a variable/expression, e.g. `content.split(...)`;
+ *     a method called directly on a literal, `'x'.upper()`, parses but
+ *     isn't specially dispatched — see eval()'s NT::Call case)
+ *   namespace(k=v, ...)        — object literal, seeded from keyword args
+ *   range/dict/list(...)       — builtins
+ *   {% for k, v in dict|items %} — dict iteration, tuple-unpacking for-loop
+ *   expr | filter              — filters: trim, upper, lower, length, default,
+ *                                 replace, join, int, string, tojson/safe/e,
+ *                                 indent, items
  *   raise_exception(...)       — no-op (ignored)
  *   {%- / -%}  {{- / -}}       — whitespace control
+ *
+ * NOT supported: {% block/call/filter/raw %} — definitions are parsed and
+ * skipped (see skip_matching_block()), rendering as nothing rather than
+ * erroring. Deliberately left unimplemented: no real chat template
+ * encountered so far uses these (they're Jinja's template-inheritance/
+ * macro-body-wrapping features, without an analogous need in a
+ * render-one-flat-prompt context) — revisit if a real template needs one.
  */
 
 #ifdef __cplusplus

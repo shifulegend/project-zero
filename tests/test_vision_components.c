@@ -5,7 +5,7 @@
 #include "memory/aligned_alloc.h"
 #include "../tests/test_harness.h"
 
-void test_patch_extraction() {
+void test_patch_extraction(void) {
     printf("Testing patch extraction...\n");
     // Create a 4x4 dummy image with 3 channels
     int img_size = 4;
@@ -49,7 +49,7 @@ void test_patch_extraction() {
 #include <stdlib.h>
 #include <string.h>
 
-void test_vision_encoder() {
+void test_vision_encoder(void) {
     printf("Testing vision encoder...\n");
     VisionConfig cfg;
     cfg.patch_dim = 12; // e.g. 2x2x3
@@ -118,7 +118,7 @@ void test_vision_encoder() {
 
 #include "multimodal/vision_projector.h"
 
-void test_vision_projector() {
+void test_vision_projector(void) {
     printf("Testing vision projector...\n");
     VisionProjector proj;
     memset(&proj, 0, sizeof(proj));  /* zero first: scale_factor etc. must be set,
@@ -147,7 +147,7 @@ void test_vision_projector() {
 
 #include "multimodal/vision_bridge.h"
 
-void test_vision_bridge() {
+void test_vision_bridge(void) {
     printf("Testing vision bridge...\n");
     
     // We don't want to actually execute a full transformer forward pass with huge uninitialized arrays
@@ -166,7 +166,7 @@ void test_vision_bridge() {
     printf("Vision bridge structures validated.\n");
 }
 
-int main() {
+int main(void) {
     float *pixels = NULL;
     int w, h;
     printf("Testing image loading...\n");

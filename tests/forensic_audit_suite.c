@@ -105,7 +105,7 @@ static void vocab_quicksort_test(int *arr, int n, char **vocab) {
 
 /* --- Tests --- */
 
-void test_blackbox_config_validation() {
+void test_blackbox_config_validation(void) {
     Config cfg;
     unsigned char buffer[1024];
     memset(buffer, 0, 1024);
@@ -122,7 +122,7 @@ void test_blackbox_config_validation() {
     assert(config_read(&cfg, buffer, 1024) == TN_ERR_INVALID_CONFIG);
 }
 
-void test_whitebox_tokenizer_sort() {
+void test_whitebox_tokenizer_sort(void) {
     char *vocab_data[] = {"z", "y", "x", "w", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o"};
     int n = 19;
     int *indices = malloc(n * sizeof(int));
@@ -133,7 +133,7 @@ void test_whitebox_tokenizer_sort() {
     free(indices);
 }
 
-void test_unit_sliding_window_wrapping() {
+void test_unit_sliding_window_wrapping(void) {
     SlidingWindow sw;
     sw_init(&sw, 10, 2);
     for (int i = 0; i < 8; i++) sw_advance(&sw);
@@ -141,7 +141,7 @@ void test_unit_sliding_window_wrapping() {
     assert(sw_map_position(&sw, 10) == 2);
 }
 
-void test_security_tokenizer_overflow() {
+void test_security_tokenizer_overflow(void) {
     printf("[SECURITY] Testing TOK-SEC-02: Integer Overflow -> Heap Overflow...\n");
     fflush(stdout);
     
@@ -171,7 +171,7 @@ void test_security_tokenizer_overflow() {
     remove(mal_path);
 }
 
-void test_security_weight_oob_read() {
+void test_security_weight_oob_read(void) {
     printf("[SECURITY] Testing WGT-SEC-03: Read-Before-Advance OOB...\n");
     fflush(stdout);
     
@@ -202,7 +202,7 @@ void test_security_weight_oob_read() {
     free(mal_data);
 }
 
-void test_concurrency_threadpool() {
+void test_concurrency_threadpool(void) {
     printf("[STRESS] Testing Concurrency: Threadpool Deadlock/Race...\n");
     fflush(stdout);
     
@@ -236,7 +236,7 @@ void test_concurrency_threadpool() {
 #include "core/unpack.h"
 #include <pthread.h>
 
-void test_sanity_ternary_math() {
+void test_sanity_ternary_math(void) {
     printf("[MATH] Starting Sanity: Ternary Matmul Basic...\n");
     fflush(stdout);
     if (tn_ternary_matmul == NULL) exit(1);
@@ -262,7 +262,7 @@ void* heartbeat_func(void* arg) {
 
 /* --- Additional Tests --- */
 
-void test_unpack_verification() {
+void test_unpack_verification(void) {
     tn_u8 packed[32];
     for(int i=0; i<32; i++) packed[i] = (tn_u8)rand();
     
@@ -292,7 +292,7 @@ void test_unpack_verification() {
     fflush(stdout);
 }
 
-void test_heavy_stress_matmul() {
+void test_heavy_stress_matmul(void) {
     int dim = 2048;
     ThreadPool *tp = threadpool_create(16); // Over-subscribe
     float *x = malloc(dim * sizeof(float));
@@ -310,7 +310,7 @@ void test_heavy_stress_matmul() {
     threadpool_destroy(tp);
 }
 
-int main() {
+int main(void) {
     pthread_t hb;
     pthread_create(&hb, NULL, heartbeat_func, NULL);
     pthread_detach(hb);

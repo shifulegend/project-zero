@@ -81,7 +81,12 @@ static inline float q4k_f16_to_f32(uint16_t h) {
     float f; memcpy(&f, &bits, 4); return f;
 }
 
-/* ── Decode 8 raw integer (scale, min) pairs from sc12[12] ──────────────────── */
+/* ── Decode 8 raw integer (scale, min) pairs from sc12[12] ──────────────────── *
+ * Only used by dot_q4k_row_q8k's scalar (no-SIMD) fallback below — the AVX2
+ * path decodes scales inline via bit ops instead (see that function's own
+ * comment), so this is compiled out on AVX2 builds to avoid an unused-
+ * function warning there. */
+#if !TN_HAS_AVX2
 static inline void q4k_decode_scales_raw(const uint8_t *sc12,
                                           uint8_t *raw_sc, uint8_t *raw_mn) {
     for (int j = 0; j < Q4K_NSUB; j++) {
@@ -98,6 +103,7 @@ static inline void q4k_decode_scales_raw(const uint8_t *sc12,
         raw_mn[j] = m;
     }
 }
+#endif /* !TN_HAS_AVX2 */
 
 /* ── Quantize float activation → Q8K blocks (one per 256 elements) ──────────── */
 static void quantize_to_q8k(TnQ8KActBlock *out, const float *x, int n_blocks) {
@@ -228,14 +234,6 @@ static inline __m256i q4k_scale_shuffle(int i) {
     return _mm256_loadu_si256((const __m256i *)k_shuf + i);
 }
 
-/* ── Horizontal sum of 8 int32 lanes ───────────────────────────────────────── */
-static inline int32_t hsum8_epi32(__m256i v) {
-    __m128i lo = _mm256_castsi256_si128(v);
-    __m128i hi = _mm256_extracti128_si256(v, 1);
-    __m128i s  = _mm_add_epi32(lo, hi);
-    s = _mm_add_epi32(s, _mm_shuffle_epi32(s, 0x4E));
-    return _mm_cvtsi128_si32(_mm_add_epi32(s, _mm_shuffle_epi32(s, 0xB1)));
-}
 #endif
 
 /*

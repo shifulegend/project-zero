@@ -77,6 +77,14 @@ TernaryError moe_config_read(MoEConfig *mc, const void *data,
 
 void moe_config_print(const MoEConfig *mc) {
     if (!mc) return;
+    if (mc->has_linear_attn) {
+        printf("[Qwen3.5/3.6] hybrid attention: full_attention_interval=%d "
+               "attn_head_dim=%d attn_rope_dim=%d "
+               "ssm(conv_kernel=%d group_count=%d inner_size=%d state_size=%d time_step_rank=%d)\n",
+               mc->full_attention_interval, mc->attn_head_dim, mc->attn_rope_dim,
+               mc->ssm_conv_kernel, mc->ssm_group_count, mc->ssm_inner_size,
+               mc->ssm_state_size, mc->ssm_time_step_rank);
+    }
     if (!mc->is_moe) {
         printf("[MoE] Dense model (MoE disabled)\n");
         return;

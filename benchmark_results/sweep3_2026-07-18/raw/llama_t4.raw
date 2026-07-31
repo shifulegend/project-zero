@@ -1,0 +1,39 @@
+Script started on 2026-07-18 08:21:39+00:00 [COMMAND="'/tmp/claude-0/-home-user-project-zero/35743cdd-0565-5557-a197-87cb055c5514/scratchpad/prism-llama/build/bin/llama-cli' '-m' 'models/Ternary-Bonsai-27B-Q2_0.gguf' '-p' 'What is the capital of France?' '-n' '60' '--temp' '0' '-t' '4' '-c' '4096' '-st'" <not executed on terminal>]
+
+Loading model... |-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\ 
+
+
+▄▄ ▄▄
+██ ██
+██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄
+██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██
+██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀
+                                    ██    ██
+                                    ▀▀    ▀▀
+
+build      : b1-79697f2
+model      : Ternary-Bonsai-27B-Q2_0.gguf
+modalities : text
+
+available commands:
+  /exit or Ctrl+C     stop or exit
+  /regen              regenerate the last response
+  /clear              clear the chat history
+  /read <file>        add a text file
+  /glob <pattern>     add text files using globbing pattern
+
+[1m[32m
+> What is the capital of France?
+[0m
+| [90m[Start thinking]
+Here's a thinking process:
+
+1.  **Identify the User's Question**: The user is asking "What is the capital of France?"
+2.  **Retrieve Knowledge**: I know from general knowledge that the capital of France is Paris.
+3.  **Verify Accuracy**: This
+[35m
+[ Prompt: 1.1 t/s | Generation: 0.7 t/s ]
+[0m
+Exiting...
+
+Script done on 2026-07-18 08:23:28+00:00 [COMMAND_EXIT_CODE="0"]

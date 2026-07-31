@@ -400,7 +400,18 @@ void tn_calibrate(TnCalibrationResult *result, const TnHardwareProfile *hw) {
     result->best_threads      = best_thread_t;
     result->best_thread_tokps = best_thread_tokps;
 
-    /* ── Classifier bandwidth estimates ───────────────────────────────────── */
+    /* ── Classifier bandwidth estimates ───────────────────────────────────────
+     * ANALYTIC pre-load estimates, not kernel measurements: calibration runs
+     * before any model file is opened, so the byte figures below are the
+     * BitNet-2B compile-time geometry (522 MB ternary, 128256x2560 classifier)
+     * — the same pre-load limitation as hardware_profile.c's startup box, and
+     * wrong in absolute terms for any other model (2026-07-17, see
+     * docs/architecture/CEILING_CALCULATION.md §4 site 4). The *ranking*
+     * between formats (what --classifier auto-fast consumes via best_cls_idx)
+     * only depends on the relative classifier byte sizes, so it survives the
+     * wrong absolute base better than the tok/s figures do. TODO: make this
+     * model-aware (needs a calibration redesign — the cache is keyed on
+     * hardware, not model). */
     double base_bw = hw->measured_bw_gbps;
     if (base_bw > 0.0) {
         double ternary_mb  = 522.0;
@@ -410,7 +421,12 @@ void tn_calibrate(TnCalibrationResult *result, const TnHardwareProfile *hw) {
         double l3_mb       = (double)hw->l3_cache_bytes / (1024.0 * 1024.0);
         double cached      = (l3_mb >= ternary_mb) ? ternary_mb : l3_mb * 0.5;
         double dram_mb     = ternary_mb - cached;
-        double bw_mbps     = base_bw * 1024.0;
+        /* base_bw is decimal GB/s (bytes/ns from the probe); the *_mb sizes
+         * are MiB, so the conversion is 1e9/2^20 ≈ 953.67 MiB/s per GB/s —
+         * NOT 1024 (2026-07-17, independent-review finding: the old *1024
+         * inflated every printed cls_tokps ~7.4%; rankings were unaffected
+         * since the error was a common factor). */
+        double bw_mbps     = base_bw * (1e9 / (1024.0 * 1024.0));
 
         result->cls_tokps[0] = bw_mbps / (dram_mb + bf16_cls_mb);
         result->cls_tokps[1] = bw_mbps / (dram_mb + int8_cls_mb);
@@ -431,7 +447,27 @@ void tn_calibrate(TnCalibrationResult *result, const TnHardwareProfile *hw) {
     printf("│    Threads   : T=%-2d  (%5.1f tok/s, swept T=1..%d)           │\n",
            result->best_threads, result->best_thread_tokps, max_t);
     printf("│    Classifier: BF16 (default — full intelligence)               │\n");
-    printf("│    Speed opt : --classifier auto-fast  (INT8, ~+36%%)            │\n");
+    /* Print the actually-computed best format + gain (2026-07-17): this line
+     * was previously the hardcoded literal "(INT8, ~+36%)" regardless of the
+     * cls_tokps[] computed above. "est." because these are analytic pre-load
+     * estimates (see the comment on the block above), not measurements. */
+    {
+        char opt_line[80];
+        if (result->cls_tokps[0] > 0.0) {
+            static const char *cls_names[3] = {"BF16", "INT8", "INT4"};
+            int best = result->best_cls_idx;
+            if (best < 0 || best > 2) best = 0;
+            double gain_pct = (result->cls_tokps[best] /
+                               result->cls_tokps[0] - 1.0) * 100.0;
+            snprintf(opt_line, sizeof(opt_line),
+                     "Speed opt : --classifier auto-fast  (%s, ~%+.0f%% est.)",
+                     cls_names[best], gain_pct);
+        } else {
+            snprintf(opt_line, sizeof(opt_line),
+                     "Speed opt : --classifier auto-fast");
+        }
+        printf("│    %-62s│\n", opt_line);
+    }
     printf("└──────────────────────────────────────────────────────────────────┘\n");
     fflush(stdout);
 }

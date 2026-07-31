@@ -16,7 +16,7 @@ static void fill_mock_weights(TransformerWeights *w, const Config *cfg) {
   /* weights_alloc_pointers() requires the caller to zero the struct first
    * (see src/core/weights.c) — otherwise weights_free_pointers() later frees
    * uninitialized pointer fields (wcls_i8, expert_*_per_layer, ...) and the
-   * uninitialized layers_are_ternary/layer_weight_type misroute forward(). */
+   * uninitialized layers_are_ternary/wq_type (etc.) misroute forward(). */
   memset(w, 0, sizeof(*w));
   weights_alloc_pointers(w, cfg);
 

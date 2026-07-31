@@ -21,6 +21,11 @@ static int tn_alloc_too_large(size_t count, size_t elem_size) {
 }
 
 TernaryError run_state_alloc(RunState *s, const Config *cfg, int max_seq_len) {
+  return run_state_alloc_ex(s, cfg, max_seq_len, false);
+}
+
+TernaryError run_state_alloc_ex(RunState *s, const Config *cfg, int max_seq_len,
+                                 bool skip_kv_cache) {
   memset(s, 0, sizeof(*s));
   s->max_seq_len = max_seq_len;
   s->current_pos = 0;
@@ -64,25 +69,31 @@ TernaryError run_state_alloc(RunState *s, const Config *cfg, int max_seq_len) {
   }
 
   /* KV Cache — transposed layout: [layer][head][pos][head_dim]
-   * FM-002 fix: overflow-checked multiplication for all 4 factors */
-  size_t kv_cache_size;
-  if (tn_size_mul4((size_t)cfg->n_layers, (size_t)cfg->n_kv_heads,
-                   (size_t)max_seq_len, (size_t)head_dim, &kv_cache_size)) {
-    run_state_free(s);
-    return TN_ERR_OOM;
-  }
-  if (tn_alloc_too_large(kv_cache_size, sizeof(float))) {
-    run_state_free(s);
-    return TN_ERR_OOM;
-  }
-  s->key_cache =
-      (float *)tn_aligned_calloc(kv_cache_size, sizeof(float), TN_SIMD_ALIGN);
-  s->value_cache =
-      (float *)tn_aligned_calloc(kv_cache_size, sizeof(float), TN_SIMD_ALIGN);
+   * FM-002 fix: overflow-checked multiplication for all 4 factors.
+   * Skipped entirely (not calloc'd, not calloc'd-then-freed — see
+   * run_state_alloc_ex's header comment) when skip_kv_cache is set: the
+   * calloc's explicit memset would force real RSS commit for the whole
+   * buffer even if freed moments later. */
+  if (!skip_kv_cache) {
+    size_t kv_cache_size;
+    if (tn_size_mul4((size_t)cfg->n_layers, (size_t)cfg->n_kv_heads,
+                     (size_t)max_seq_len, (size_t)head_dim, &kv_cache_size)) {
+      run_state_free(s);
+      return TN_ERR_OOM;
+    }
+    if (tn_alloc_too_large(kv_cache_size, sizeof(float))) {
+      run_state_free(s);
+      return TN_ERR_OOM;
+    }
+    s->key_cache =
+        (float *)tn_aligned_calloc(kv_cache_size, sizeof(float), TN_SIMD_ALIGN);
+    s->value_cache =
+        (float *)tn_aligned_calloc(kv_cache_size, sizeof(float), TN_SIMD_ALIGN);
 
-  if (!s->key_cache || !s->value_cache) {
-    run_state_free(s);
-    return TN_ERR_OOM;
+    if (!s->key_cache || !s->value_cache) {
+      run_state_free(s);
+      return TN_ERR_OOM;
+    }
   }
 
   /* Precompute RoPE frequency table — eliminates powf() from the hot loop */

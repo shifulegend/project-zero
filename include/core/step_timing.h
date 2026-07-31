@@ -26,7 +26,12 @@ typedef enum {
     TN_STEP_19_LM_HEAD = 19,
     TN_STEP_20_GREEDY_SAMPLING = 20,
     TN_STEP_21_EOS_CHECK = 21,
-    TN_STEP_COUNT = 22
+    /* Qwen35 Gated-DeltaNet linear-attention layers (2026-07-17): these two
+     * have no analogue among the MLA-derived steps above, and without them
+     * the hybrid path's recurrence time was invisible to the breakdown. */
+    TN_STEP_22_DELTANET_CONV = 22,
+    TN_STEP_23_DELTANET_RECURRENCE = 23,
+    TN_STEP_COUNT = 24
 } TnStepTimingId;
 
 int tn_step_timing_enabled(void);

@@ -36,6 +36,29 @@ typedef struct {
     int  qk_nope_head_dim;    /* per-head non-positional Q/K dim, e.g. 128         */
     int  qk_rope_head_dim;    /* per-head RoPE positional dim, e.g. 64             */
     int  v_head_dim;          /* per-head value dim, e.g. 128                      */
+
+    /* Qwen3.5/3.6 hybrid Gated-DeltaNet + Gated-Attention fields.
+     * has_linear_attn == 0 for ALL non-hybrid models → this code path is never
+     * reached, same convention as has_mla above. Populated by
+     * moe_config_from_gguf() for arch=="qwen35" (see gguf_loader.c). */
+    int  has_linear_attn;        /* 1 for Qwen3.5/3.6-style hybrid attention, 0 otherwise */
+    int  full_attention_interval;/* every Nth layer (1-indexed) is full-attention, rest linear */
+    int  attn_head_dim;          /* full-attention per-head dim (key_length/value_length),
+                                     NOT dim/n_heads — this arch's Q/K/V shapes don't factor evenly */
+    int  attn_rope_dim;          /* partial-rotary dim for full-attention layers (<= attn_head_dim) */
+    int  ssm_conv_kernel;        /* depthwise causal conv1d kernel size (e.g. 4) */
+    int  ssm_group_count;        /* linear-attention K/Q head count (repeats to ssm_time_step_rank) */
+    int  ssm_inner_size;         /* linear-attention total value width (num_v_heads * head_v_dim) */
+    int  ssm_state_size;         /* linear-attention per-head K/V dim (e.g. 128) */
+    int  ssm_time_step_rank;     /* linear-attention V head count (== num decay/gate heads) */
+
+    /* Qwen3-MoE fields. has_qk_norm == 0 for ALL other models → this code
+     * path is never reached, same convention as has_mla/has_linear_attn
+     * above. Populated by moe_config_from_gguf() for arch=="qwen3moe" (see
+     * gguf_loader.c). Reuses attn_head_dim (already defined above for
+     * qwen35) rather than a new field — same "independent head_dim"
+     * problem qwen35 already solves, populated from attention.key_length. */
+    int  has_qk_norm;            /* 1 for Qwen3-MoE-style per-head QK RMSNorm before RoPE */
 } MoEConfig;
 
 /**
@@ -82,6 +105,19 @@ void moe_config_print(const MoEConfig *mc);
 static inline bool moe_layer_is_moe(const MoEConfig *mc, int layer) {
     if (!mc || !mc->is_moe) return false;
     return layer >= mc->first_k_dense_replace;
+}
+
+/**
+ * Returns true if layer `l` is a full-attention (GQA + partial-rotary + gate)
+ * layer in a Qwen3.5/3.6-style hybrid model; false means it's a linear-attention
+ * (Gated DeltaNet) layer. Formula matches llama.cpp's qwen35.cpp default:
+ *   is_full_attention(l) == ((l + 1) % full_attention_interval == 0)
+ * Always false when has_linear_attn is unset (dense/MLA models never reach this).
+ */
+static inline bool q35_layer_is_full_attn(const MoEConfig *mc, int layer) {
+    if (!mc || !mc->has_linear_attn) return false;
+    int interval = mc->full_attention_interval > 0 ? mc->full_attention_interval : 4;
+    return ((layer + 1) % interval) == 0;
 }
 
 #endif /* TN_MOE_CONFIG_H */

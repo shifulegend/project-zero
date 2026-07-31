@@ -4,6 +4,7 @@
 
 #include "math/ternary_matmul_packed.h"
 #include "math/quantize_i8.h"
+#include "math/bitunpack2_vnni.h"
 #include <immintrin.h>
 #include <string.h>
 #include <stdint.h>
@@ -56,100 +57,11 @@
 
 /*
  * Unpack 64 packed 2-bit weights (stored in 16 bytes) into 64 uint8 w_enc
- * values {0, 1, 2}, returned in a __m512i.
- *
- * Two implementations:
- *
- * 1. VBMI path (Ice Lake+, Sapphire Rapids+): 3 instructions using
- *    vpermb (byte permute) + vpmultishiftqb (per-qword multishift) + AND.
- *    ~2.7× faster than the SSE unpack path in microbenchmarks.
- *
- * 2. SSE path (fallback): 128-bit shifts + masks + byte interleave.
- *    Works on any AVX-512 VNNI CPU without VBMI (e.g., Cascade Lake).
+ * values {0, 1, 2}, returned in a __m512i. VBMI-fast-path-or-SSE-fallback
+ * implementation now lives in math/bitunpack2_vnni.h (tn_unpack64_to_wenc_u8),
+ * shared with matmul_q2_0_vnni.c's identical bit layout — see that header
+ * for the derivation.
  */
-
-#if TN_HAS_AVX512VBMI
-
-/*
- * VBMI fast path: 3-instruction unpack.
- *
- * Step 1: vpermb replicates each of 16 packed bytes 4× → 64 bytes in __m512i.
- *         Layout: each qword = {p[2k]×4, p[2k+1]×4}.
- * Step 2: vpmultishiftqb extracts 2-bit fields at positions {0,2,4,6,32,34,36,38}
- *         within each 64-bit group. Produces 8 bytes per qword, 64 total.
- * Step 3: AND 0x03 masks to 2 bits (multishift extracts full 8-bit windows).
- *
- * Correctness: for qword with bytes {B0,B0,B0,B0,B1,B1,B1,B1}:
- *   64-bit value (LE) = B0 | (B0<<8) | (B0<<16) | (B0<<24) | (B1<<32) | ...
- *   shift=0  → bits[7:0]   = B0        → &0x03 = B0[1:0] = w_enc[4×(2k)]
- *   shift=2  → bits[9:2]   = B0>>2 ... → &0x03 = B0[3:2] = w_enc[4×(2k)+1]
- *   shift=32 → bits[39:32] = B1        → &0x03 = B1[1:0] = w_enc[4×(2k+1)]
- */
-static const __m512i g_vbmi_perm_idx = {
-    (long long)0x0101010100000000LL, (long long)0x0303030302020202LL,
-    (long long)0x0505050504040404LL, (long long)0x0707070706060606LL,
-    (long long)0x0909090908080808LL, (long long)0x0b0b0b0b0a0a0a0aLL,
-    (long long)0x0d0d0d0d0c0c0c0cLL, (long long)0x0f0f0f0f0e0e0e0eLL
-};
-
-static const __m512i g_vbmi_shift_ctrl = {
-    (long long)0x2624222006040200LL, (long long)0x2624222006040200LL,
-    (long long)0x2624222006040200LL, (long long)0x2624222006040200LL,
-    (long long)0x2624222006040200LL, (long long)0x2624222006040200LL,
-    (long long)0x2624222006040200LL, (long long)0x2624222006040200LL
-};
-
-static inline __m512i unpack64_to_wenc_u8(const tn_u8 *row_j)
-{
-    __m128i p = _mm_loadu_si128((const __m128i *)row_j);
-    __m512i expanded = _mm512_permutexvar_epi8(g_vbmi_perm_idx,
-                                                _mm512_castsi128_si512(p));
-    __m512i shifted = _mm512_multishift_epi64_epi8(g_vbmi_shift_ctrl, expanded);
-    return _mm512_and_si512(shifted, _mm512_set1_epi8(0x03));
-}
-
-#else /* !TN_HAS_AVX512VBMI — SSE fallback */
-
-/*
- * SSE unpack path: 128-bit shifts + masks + byte interleave.
- *
- * Correctness proof for _mm_srli_epi16 + AND 0x03:
- *   For a 16-bit word (H,L): (HL >> k) & 0x03 yields bits [k+1:k] of L for
- *   k ∈ {0,2,4,6}, since H contamination lands in bits 7:6 which 0x03 masks out.
- *
- * Interleaving order:
- *   m0[i] = w_enc[4i], m1[i] = w_enc[4i+1], m2[i] = w_enc[4i+2], m3[i] = w_enc[4i+3]
- *   unpacklo8/unpackhi8 then unpacklo16/unpackhi16 restores sequential order.
- */
-static inline __m512i unpack64_to_wenc_u8(const tn_u8 *row_j)
-{
-    __m128i p = _mm_loadu_si128((const __m128i *)row_j);
-
-    const __m128i mask2 = _mm_set1_epi8(0x03);
-
-    __m128i m0 = _mm_and_si128(p,                      mask2);
-    __m128i m1 = _mm_and_si128(_mm_srli_epi16(p, 2),   mask2);
-    __m128i m2 = _mm_and_si128(_mm_srli_epi16(p, 4),   mask2);
-    __m128i m3 = _mm_and_si128(_mm_srli_epi16(p, 6),   mask2);
-
-    __m128i lo01 = _mm_unpacklo_epi8(m0, m1);
-    __m128i hi01 = _mm_unpackhi_epi8(m0, m1);
-    __m128i lo23 = _mm_unpacklo_epi8(m2, m3);
-    __m128i hi23 = _mm_unpackhi_epi8(m2, m3);
-
-    __m128i q0 = _mm_unpacklo_epi16(lo01, lo23);
-    __m128i q1 = _mm_unpackhi_epi16(lo01, lo23);
-    __m128i q2 = _mm_unpacklo_epi16(hi01, hi23);
-    __m128i q3 = _mm_unpackhi_epi16(hi01, hi23);
-
-    __m512i wenc = _mm512_castsi128_si512(q0);
-    wenc = _mm512_inserti32x4(wenc, q1, 1);
-    wenc = _mm512_inserti32x4(wenc, q2, 2);
-    wenc = _mm512_inserti32x4(wenc, q3, 3);
-    return wenc;
-}
-
-#endif /* TN_HAS_AVX512VBMI */
 
 void ternary_matmul_packed_vnni(float *out, const float *x, const tn_u8 *packed_w,
                                  int n, int d, const float *scales, int group_size)
@@ -196,7 +108,7 @@ void ternary_matmul_packed_vnni(float *out, const float *x, const tn_u8 *packed_
             /* 64-weight VNNI loop */
             for (; j + 63 < n; j += 64) {
                 /* Unpack 64 weights from 16 packed bytes → 64 uint8 w_enc */
-                __m512i wenc = unpack64_to_wenc_u8(row + (j >> 2));
+                __m512i wenc = tn_unpack64_to_wenc_u8(row + (j >> 2));
 
                 /* Load 64 int8 activations */
                 __m512i qxv = _mm512_loadu_si512((const __m512i*)(q_x + j));
@@ -252,7 +164,7 @@ void ternary_matmul_packed_vnni(float *out, const float *x, const tn_u8 *packed_
                 int j = gs;
 
                 for (; j + 63 < ge; j += 64) {
-                    __m512i wenc = unpack64_to_wenc_u8(row + (j >> 2));
+                    __m512i wenc = tn_unpack64_to_wenc_u8(row + (j >> 2));
 
                     __m512i qxv = _mm512_loadu_si512((const __m512i*)(q_x + j));
                     acc = _mm512_dpbusds_epi32(acc, wenc, qxv);
@@ -320,7 +232,7 @@ void ternary_matmul_packed_vnni_preq(float *out,
             int j = 0;
 
             for (; j + 63 < n; j += 64) {
-                __m512i wenc = unpack64_to_wenc_u8(row + (j >> 2));
+                __m512i wenc = tn_unpack64_to_wenc_u8(row + (j >> 2));
 
                 __m512i qxv = _mm512_loadu_si512((const __m512i*)(q_x + j));
                 acc = _mm512_dpbusds_epi32(acc, wenc, qxv);
@@ -367,7 +279,7 @@ void ternary_matmul_packed_vnni_preq(float *out,
                 int j = gs;
 
                 for (; j + 63 < ge; j += 64) {
-                    __m512i wenc = unpack64_to_wenc_u8(row + (j >> 2));
+                    __m512i wenc = tn_unpack64_to_wenc_u8(row + (j >> 2));
 
                     __m512i qxv = _mm512_loadu_si512((const __m512i*)(q_x + j));
                     acc = _mm512_dpbusds_epi32(acc, wenc, qxv);

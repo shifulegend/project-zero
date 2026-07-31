@@ -233,6 +233,47 @@ void gguf_dequant_q5_0(float *out, const void *data, size_t n_elems) {
     for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
 }
 
+/* ── Q2_0 ─────────────────────────────────────────────────────────────────── */
+/*
+ * 2-bit block quant used by PrismML's Qwen3.6-based "Bonsai" ternary GGUF
+ * releases — specifically their "group-128" packing (34 bytes per 128
+ * elements = 2.125 bits/weight), which predates/differs from mainline
+ * ggml's own canonical block_q2_0 (group-64, 2.25 bits/weight, shipped
+ * separately as "*_g64.gguf"). Both are tagged GGUF type 42; group size
+ * isn't recoverable from the type ID and was confirmed empirically against
+ * a real downloaded Ternary-Bonsai-27B-Q2_0.gguf (bytes-per-tensor /
+ * elements-per-tensor from adjacent tensor offsets = exactly 2.125 bits).
+ * Block layout (34 bytes per 128 elements):
+ *   [d: fp16 (2)] [qs: u8×32 (32)]  — 2 bits/value, 4 values/byte
+ * Decode (same 2-bit code mapping as ggml's dequantize_row_q2_0, just a
+ * larger group):
+ *   code = (qs[byte_index] >> bit_offset) & 0x3, byte_index=j/4, bit_offset=(j%4)*2
+ *   out[j] = (code - 1) * d     // 00=-1, 01=0, 10=+1, 11=+2 (all scaled by d)
+ */
+#define Q2_0_BLOCK_SIZE 128
+#define Q2_0_BYTES_PER_BLOCK 34
+
+void gguf_dequant_q2_0(float *out, const void *data, size_t n_elems) {
+    const uint8_t *p = (const uint8_t *)data;
+    size_t n_blocks   = n_elems / Q2_0_BLOCK_SIZE;
+
+    for (size_t b = 0; b < n_blocks; b++) {
+        const uint8_t *blk = p + b * Q2_0_BYTES_PER_BLOCK;
+        uint16_t d_bits; memcpy(&d_bits, blk, 2);
+        float d = fp16_to_f32(d_bits);
+        const uint8_t *qs = blk + 2;  /* 16 bytes */
+        float *dst = out + b * Q2_0_BLOCK_SIZE;
+        for (int j = 0; j < Q2_0_BLOCK_SIZE; j++) {
+            int byte_index = j / 4;
+            int bit_offset = (j % 4) * 2;
+            int code = (qs[byte_index] >> bit_offset) & 0x3;
+            dst[j] = (float)(code - 1) * d;
+        }
+    }
+    size_t done = n_blocks * Q2_0_BLOCK_SIZE;
+    for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
+}
+
 /* ── Q5_1 ─────────────────────────────────────────────────────────────────── */
 /*
  * Block layout (24 bytes per 32 elements):

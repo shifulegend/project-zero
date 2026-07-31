@@ -185,7 +185,15 @@ static void test_moe_ffn_output_finite(void) {
     w.moe_s3 = (float **)calloc(nl, sizeof(float *));
 
     for (int l = 0; l < nl; l++) {
-        w.moe_gate_w[l] = (tn_i8 *)calloc((size_t)cfg.dim * ne, sizeof(tn_i8));
+        /* moe_gate_w is stored as a tn_i8* pointer but holds raw F32 gate
+         * weights (moe_ffn.c casts it to `const float *` before calling
+         * moe_router_forward — see its comment "Gate weight is
+         * w->moe_gate_w[layer] — F32 [num_experts × dim]"). Sizing this
+         * allocation with sizeof(tn_i8) under-allocated by 4x, which ASan
+         * only caught once make test started actually instrumenting
+         * LIB_OBJS with sanitizers (see docs/ai/mistakes.md) — the router's
+         * F32 SIMD load read past this buffer's true (undersized) end. */
+        w.moe_gate_w[l] = (tn_i8 *)calloc((size_t)cfg.dim * ne, sizeof(float));
         w.moe_gate_s[l] = 1.0f;
         w.moe_w1[l] = (tn_i8 **)calloc(ne, sizeof(tn_i8 *));
         w.moe_w2[l] = (tn_i8 **)calloc(ne, sizeof(tn_i8 *));

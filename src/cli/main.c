@@ -95,17 +95,21 @@ int main(int argc, char **argv) {
         }
     }
 
-    /* Phase 22.5: animated startup banner — TTY-gated, and only for
-     * long-running/human-watched invocations (REPL, --server), not for
-     * one-shot --prompt runs. Matches Claude Code's own convention of
-     * showing its banner interactively but suppressing it in scripted/
-     * non-interactive ("-p") mode, so piped/automated --prompt output
-     * stays clean. */
+    /* Phase 22.5: startup banner — always shown, regardless of invocation
+     * path (TTY, piped/redirected, one-shot --prompt, --server, REPL).
+     * Branding must not depend on how the CLI is invoked: llama-cli (the
+     * reference engine used throughout this project's head-to-head
+     * benchmarks) prints its banner unconditionally regardless of -p/
+     * single-turn mode — confirmed by reading its actual source
+     * (tools/cli/cli.cpp's console::log(LLAMA_ASCII_LOGO) call has no gate
+     * at all). tn_banner_print() itself branches on is_tty: animated reveal
+     * for a real terminal, a single plain (no-ANSI) block otherwise — so
+     * piped/redirected captures (e.g. benchmark screenshots built from
+     * tools/make_screenshot.py) are self-identifying too, not just plain
+     * generation output. */
     int stdout_is_tty = isatty(fileno(stdout));
     int color_enabled_early = tn_color_resolve(args.color_mode, stdout_is_tty, getenv("NO_COLOR"));
-    if (stdout_is_tty && (args.server_mode || !args.prompt)) {
-        tn_banner_print(stdout_is_tty, color_enabled_early);
-    }
+    tn_banner_print(stdout_is_tty, color_enabled_early);
 
     printf("Project Zero Engine %s — Auto-Tuned Hardware\n", PZ_VERSION_STR);
 
@@ -117,7 +121,7 @@ int main(int argc, char **argv) {
         printf("SIMD override: %s (user-selected)\n", args.simd_override);
     }
 
-    const char *simd_backend = tn_simd_init();
+    tn_simd_init();
 
     /* Hardware Profile: auto-detect cores, cache, bandwidth, classifier format */
     const TnHardwareProfile *hw = tn_hardware_profile_init();
@@ -175,7 +179,6 @@ int main(int argc, char **argv) {
     tn_hardware_profile_report(hw);
 
     /* Thread count: CLI override > calibration > auto-detected */
-    tn_i64 free_ram = (tn_i64)hw->free_ram_bytes;
     int active_threads;
     if (args.num_threads > 0) {
         active_threads = args.num_threads;
@@ -243,8 +246,11 @@ int main(int argc, char **argv) {
         }
         config_print(&p);
 
-        /* For DeepSeek-V2 GGUF: populate MoEConfig and allocate MoE weight arrays. */
-        if (strcmp(gguf_hdr.arch, "deepseek2") == 0) {
+        /* For DeepSeek-V2 (MLA+MoE), Qwen3.5/3.6 (hybrid Gated-DeltaNet), or
+         * Qwen3-MoE (routed MoE + QK-norm) GGUF: populate MoEConfig ahead of
+         * weight loading. */
+        if (strcmp(gguf_hdr.arch, "deepseek2") == 0 || strcmp(gguf_hdr.arch, "qwen35") == 0 ||
+            strcmp(gguf_hdr.arch, "qwen3moe") == 0) {
             if (moe_config_from_gguf(&mc, &gguf_hdr) != TN_OK) {
                 fprintf(stderr, "Failed to read MoE config from GGUF.\n");
                 mapped_file_close(&mf);
@@ -279,6 +285,51 @@ int main(int argc, char **argv) {
             threadpool_destroy(tp);
             return 1;
         }
+
+        /* Correct the profiler's per-token traffic + ceiling with the real
+         * loaded model (2026-07-17): tn_hardware_profile_init() runs before
+         * the model file is opened and seeds Data/token with compile-time
+         * BitNet-2B constants (~1149 MB), overstating the ceiling ~6x for
+         * multi-GB GGUF models (docs/ai/mistakes.md). Accounting per class:
+         * Q2_0-native models subtract the embedding table (read one row per
+         * token, not streamed) and swap the raw Q2_0 LM head for the
+         * materialized classifier's bytes when one was explicitly requested.
+         * Generic GGUF uses the raw file size — an upper bound that still
+         * bills the full embedding table, since its tensor format (and thus
+         * byte size) isn't known generically here; tight for tied-embedding
+         * models, conservative otherwise. MoE models overcount (all experts,
+         * not just routed) — TODO: subtract inactive-expert bytes via
+         * MoEConfig. */
+        {
+            double per_tok = (double)mf.size;
+            double cls_bytes = 0.0;
+            const TnHardwareProfile *hp_m = tn_hardware_profile_get();
+            if (w.q35_is_q2_0_model) {
+                double q2_row = (double)p.vocab_size * p.dim * (34.0 / 128.0);
+                cls_bytes = q2_row; /* zero-copy raw Q2_0 head (default) */
+                if (hp_m && hp_m->classifier_explicit) {
+                    switch (hp_m->classifier_fmt) {
+                    case TN_CLS_INT4:
+                        cls_bytes = (double)p.vocab_size * p.dim * 0.5; break;
+                    case TN_CLS_INT8:
+                        cls_bytes = (double)p.vocab_size * p.dim;       break;
+                    default:
+                        cls_bytes = (double)p.vocab_size * p.dim * 2.0; break;
+                    }
+                }
+                /* drop embedding (one row/token) + in-file head, add the
+                 * head actually used */
+                per_tok -= 2.0 * q2_row;
+                per_tok += cls_bytes;
+            }
+            tn_hardware_profile_set_model_bytes(per_tok, cls_bytes);
+            if (hp_m) {
+                printf("[profile] Data/token (loaded model): %.0f MB -> "
+                       "ceiling %.1f tok/s at %.1f GB/s\n",
+                       per_tok / (1024.0 * 1024.0),
+                       hp_m->theoretical_ceiling, hp_m->measured_bw_gbps);
+            }
+        }
     } else {
         printf("Model format: native ternary\n");
 
@@ -306,7 +357,7 @@ int main(int argc, char **argv) {
             }
             size_t moe_size = mf.size - MOE_HDR_OFFSET;
             size_t moe_off  = 0;
-            if (moe_config_read(&mc, mf.data + MOE_HDR_OFFSET, moe_size, &moe_off) != TN_OK) {
+            if (moe_config_read(&mc, (char *)mf.data + MOE_HDR_OFFSET, moe_size, &moe_off) != TN_OK) {
                 fprintf(stderr, "Failed to read MoE config header.\n");
                 mapped_file_close(&mf);
                 threadpool_destroy(tp);
@@ -346,6 +397,31 @@ int main(int argc, char **argv) {
             threadpool_destroy(tp);
             return 1;
         }
+
+        /* Native-format twin of the GGUF set_model_bytes call above
+         * (2026-07-17, independent-review finding: without this, any native
+         * model that isn't exactly BitNet-2B kept the hardcoded pre-load
+         * estimate forever). Per-token traffic = ternary layers + norms
+         * (weight data minus the BF16 embedding table, which is read one
+         * row per token) + the classifier at its selected precision (the
+         * classifier is derived from that embedding: BF16 = full table,
+         * INT8/INT4 = half/quarter). Native MoE (scale_mode==2) overcounts
+         * inactive experts here — same TODO as the GGUF branch. */
+        {
+            double embed_bytes = (double)p.vocab_size * p.dim * 2.0;
+            const TnHardwareProfile *hp_n = tn_hardware_profile_get();
+            double cls_bytes = embed_bytes; /* BF16 default */
+            if (hp_n && hp_n->classifier_fmt == TN_CLS_INT8) cls_bytes = embed_bytes / 2.0;
+            if (hp_n && hp_n->classifier_fmt == TN_CLS_INT4) cls_bytes = embed_bytes / 4.0;
+            double per_tok = ((double)data_size - embed_bytes) + cls_bytes;
+            tn_hardware_profile_set_model_bytes(per_tok, cls_bytes);
+            if (hp_n && per_tok > 0.0) {
+                printf("[profile] Data/token (loaded model): %.0f MB -> "
+                       "ceiling %.1f tok/s at %.1f GB/s\n",
+                       per_tok / (1024.0 * 1024.0),
+                       hp_n->theoretical_ceiling, hp_n->measured_bw_gbps);
+            }
+        }
     }
 
     tn_progress_stage(3, 4, "Preparing runtime...", stdout_is_tty);
@@ -358,10 +434,29 @@ int main(int argc, char **argv) {
      * would require 7+ GB KV cache on a machine that only has 2–3 GB left after load. */
     {
         tn_i64 post_load_ram = tn_get_free_ram();
-        KVStrategyResult kv_res = select_kv_strategy(&p, post_load_ram);
+        KVStrategyResult kv_res = select_kv_strategy(&p, post_load_ram, &mc);
         p.seq_len = kv_res.max_seq_len;
-        printf("KV Strategy: %s, max context: %d tokens\n",
-               kv_strategy_name(kv_res.strategy), p.seq_len);
+        /* Qwen35 hybrid models keep their own F32 K/V caches
+         * (q35_key_cache/q35_value_cache, only the full-attention layers) —
+         * the quantized-KV strategy machinery is not wired into that path,
+         * so printing e.g. "Quantized I8" for them misreported what actually
+         * happens (2026-07-17, found during the ceiling-gap attribution;
+         * see docs/ai/mistakes.md). The RAM-aware max-context clamp from
+         * select_kv_strategy() still applies either way. Qwen3-MoE's own
+         * qwen3moe_key_cache/qwen3moe_value_cache are the same situation —
+         * independent head_dim, own F32 cache, not the quantized-KV path. */
+        if (mc.has_linear_attn) {
+            printf("KV Strategy: F32 (Qwen35 hybrid path; quantized-KV "
+                   "strategy not wired in), max context: %d tokens\n",
+                   p.seq_len);
+        } else if (mc.has_qk_norm) {
+            printf("KV Strategy: F32 (Qwen3-MoE path; quantized-KV "
+                   "strategy not wired in), max context: %d tokens\n",
+                   p.seq_len);
+        } else {
+            printf("KV Strategy: %s, max context: %d tokens\n",
+                   kv_strategy_name(kv_res.strategy), p.seq_len);
+        }
     }
 
     /* Setup RunState */
@@ -375,7 +470,13 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    if (run_state_alloc(s, &p, p.seq_len) != TN_OK) {
+    /* Qwen3.5/3.6 hybrid models and Qwen3-MoE models never read the generic
+     * key_cache/value_cache (they use their own correctly-sized
+     * q35_key_cache/q35_value_cache or qwen3moe_key_cache/
+     * qwen3moe_value_cache, allocated below) — skip_kv_cache=true avoids a
+     * multi-GB calloc+memset for those models' context. See
+     * run_state_alloc_ex's header comment and docs/ai/mistakes.md. */
+    if (run_state_alloc_ex(s, &p, p.seq_len, mc.has_linear_attn || mc.has_qk_norm) != TN_OK) {
         fprintf(stderr, "Failed to allocate RunState buffers.\n");
         free(s);
         if (mc.is_moe) moe_weights_free(&w, &mc);
@@ -389,6 +490,34 @@ int main(int argc, char **argv) {
     if (mc.has_mla) {
         if (mla_run_state_alloc(s, &p, &mc, p.seq_len) != TN_OK) {
             fprintf(stderr, "Failed to allocate MLA k_rope_cache.\n");
+            run_state_free(s);
+            free(s);
+            if (mc.is_moe) moe_weights_free(&w, &mc);
+            weights_free_pointers(&w);
+            mapped_file_close(&mf);
+            threadpool_destroy(tp);
+            return 1;
+        }
+    }
+
+    /* Qwen3.5/3.6 hybrid attention state (allocated only when has_linear_attn=1) */
+    if (mc.has_linear_attn) {
+        if (q35_run_state_alloc(s, &p, &mc, p.seq_len) != TN_OK) {
+            fprintf(stderr, "Failed to allocate Qwen3.5/3.6 hybrid attention state.\n");
+            run_state_free(s);
+            free(s);
+            if (mc.is_moe) moe_weights_free(&w, &mc);
+            weights_free_pointers(&w);
+            mapped_file_close(&mf);
+            threadpool_destroy(tp);
+            return 1;
+        }
+    }
+
+    /* Qwen3-MoE attention state (allocated only when has_qk_norm=1) */
+    if (mc.has_qk_norm) {
+        if (qwen3moe_run_state_alloc(s, &p, &mc, p.seq_len) != TN_OK) {
+            fprintf(stderr, "Failed to allocate Qwen3-MoE attention state.\n");
             run_state_free(s);
             free(s);
             if (mc.is_moe) moe_weights_free(&w, &mc);
@@ -574,6 +703,17 @@ int main(int argc, char **argv) {
      * common case when no external --tokenizer is passed — leaking the
      * whole vocab (~49k strings) every run. */
     tokenizer_free(&t);
+    /* mla_run_state_free/q35_run_state_free/qwen3moe_run_state_free must run
+     * before run_state_free() (they free k_rope_cache and the q35_ / qwen3moe_
+     * pointer arrays that run_state_free() doesn't know about).
+     * mla_run_state_free was previously never called anywhere in the
+     * shutdown path — a real leak of k_rope_cache (n_layers malloc'd
+     * buffers) + mla_rope_freq on every DeepSeek/MLA run, only its own
+     * OOM-cleanup path called it. Fixed here alongside the new
+     * q35_run_state_free wiring (see docs/ai/mistakes.md). */
+    if (mc.has_mla) mla_run_state_free(s, p.n_layers);
+    if (mc.has_linear_attn) q35_run_state_free(s, &p, &mc);
+    if (mc.has_qk_norm) qwen3moe_run_state_free(s, &p);
     run_state_free(s);
     free(s);
     if (mc.is_moe) moe_weights_free(&w, &mc);

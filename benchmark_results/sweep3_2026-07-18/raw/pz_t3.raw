@@ -1,0 +1,113 @@
+Script started on 2026-07-18 07:17:30+00:00 [COMMAND="'./adaptive_ai_engine' '--model' 'models/Ternary-Bonsai-27B-Q2_0.gguf' '--prompt' 'What is the capital of France?' '--max-tokens' '60' '--temperature' '0' '--threads' '3' '--color' 'always'" <not executed on terminal>]
+
+
+
+
+
+[5A[K
+[K
+[K
+[K
+[1m[32m#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### [0m[K
+[5A[K
+[K
+[K
+[1m[32m#     # #   #   # #  #  #     #       #        #    #     # #   #   #[0m[K
+[1m[32m#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### [0m[K
+[5A[K
+[K
+[1m[32m####  ####  #   #    #  ###   #       #         #   ###   ####  #   #[0m[K
+[1m[32m#     # #   #   # #  #  #     #       #        #    #     # #   #   #[0m[K
+[1m[32m#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### [0m[K
+[5A[K
+[1m[32m#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #[0m[K
+[1m[32m####  ####  #   #    #  ###   #       #         #   ###   ####  #   #[0m[K
+[1m[32m#     # #   #   # #  #  #     #       #        #    #     # #   #   #[0m[K
+[1m[32m#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### [0m[K
+[5A[1m[32m####  ####   ###    ### #####  #### #####     ##### ##### ####   ### [0m[K
+[1m[32m#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #[0m[K
+[1m[32m####  ####  #   #    #  ###   #       #         #   ###   ####  #   #[0m[K
+[1m[32m#     # #   #   # #  #  #     #       #        #    #     # #   #   #[0m[K
+[1m[32m#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### [0m[K
+[5A[2m[32m####  ####   ###    ### #####  #### #####     ##### ##### ####   ### [0m[K
+[2m[32m#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #[0m[K
+[2m[32m####  ####  #   #    #  ###   #       #         #   ###   ####  #   #[0m[K
+[2m[32m#     # #   #   # #  #  #     #       #        #    #     # #   #   #[0m[K
+[2m[32m#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### [0m[K
+[5A[1m[32m####  ####   ###    ### #####  #### #####     ##### ##### ####   ### [0m[K
+[1m[32m#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #[0m[K
+[1m[32m####  ####  #   #    #  ###   #       #         #   ###   ####  #   #[0m[K
+[1m[32m#     # #   #   # #  #  #     #       #        #    #     # #   #   #[0m[K
+[1m[32m#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### [0m[K
+[5A[2m[32m####  ####   ###    ### #####  #### #####     ##### ##### ####   ### [0m[K
+[2m[32m#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #[0m[K
+[2m[32m####  ####  #   #    #  ###   #       #         #   ###   ####  #   #[0m[K
+[2m[32m#     # #   #   # #  #  #     #       #        #    #     # #   #   #[0m[K
+[2m[32m#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### [0m[K
+[5A[1m[32m####  ####   ###    ### #####  #### #####     ##### ##### ####   ### [0m[K
+[1m[32m#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #[0m[K
+[1m[32m####  ####  #   #    #  ###   #       #         #   ###   ####  #   #[0m[K
+[1m[32m#     # #   #   # #  #  #     #       #        #    #     # #   #   #[0m[K
+[1m[32m#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### [0m[K
+[5A[2m[32m####  ####   ###    ### #####  #### #####     ##### ##### ####   ### [0m[K
+[2m[32m#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #[0m[K
+[2m[32m####  ####  #   #    #  ###   #       #         #   ###   ####  #   #[0m[K
+[2m[32m#     # #   #   # #  #  #     #       #        #    #     # #   #   #[0m[K
+[2m[32m#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### [0m[K
+[5A[1m[32m####  ####   ###    ### #####  #### #####     ##### ##### ####   ### [0m[K
+[1m[32m#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #[0m[K
+[1m[32m####  ####  #   #    #  ###   #       #         #   ###   ####  #   #[0m[K
+[1m[32m#     # #   #   # #  #  #     #       #        #    #     # #   #   #[0m[K
+[1m[32m#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### [0m[K
+
+Project Zero Engine ffad7a5-dirty — Auto-Tuned Hardware
+SIMD: scalar (calibrated optimal)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 2048   KiB per core                 │
+│ L3 cache      : 260    MiB shared                   │
+│ Free RAM      : 15295  MiB                          │
+│ DRAM bandwidth: 41.5   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB (pre-load est.)           │
+│ Ceiling       : 44.5   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 3 threads | AVX-512 VNNI | BF16 cls | 4T | 41.5 GB/s | ceiling 45 tok/s
+[1/4] Opening model file...[K[2/4] Loading weights...[KModel format: GGUF
+Model Configuration:
+  dim:        5120
+  hidden_dim: 17408
+  n_layers:   64
+  n_heads:    24
+  n_kv_heads: 4
+  vocab_size: 248320
+  seq_len:    262144
+  act_type:   0 (SiLU)
+  rope_theta: 10000000.0
+  head_dim:   213
+  kv_dim:     852
+[Qwen3.5/3.6] hybrid attention: full_attention_interval=4 attn_head_dim=256 attn_rope_dim=64 ssm(conv_kernel=4 group_count=16 inner_size=6144 state_size=128 time_step_rank=48)
+[MoE] Dense model (MoE disabled)
+[GGUF-Q35] Weights loaded (64 layers, full_attention_interval=4, 64 Q2_0 quantized)
+[profile] Data/token (loaded model): 6511 MB -> ceiling 6.1 tok/s at 41.5 GB/s
+[3/4] Preparing runtime...[KKV Strategy: F32 (Qwen35 hybrid path; quantized-KV strategy not wired in), max context: 22014 tokens
+[gguf-tok] Loaded 248320 tokens (gpt2), 33 special — BOS=248044 EOS=248046 chat_template=yes
+[4/4] Ready.[K
+
+Here's a thinking process:
+
+1.  **Identify the User's Question**: The user is asking "What is the capital of France?"
+2.  **Retrieve Knowledge**: I know from general knowledge that the capital of France is Paris.
+3.  **Verify Accuracy**: This is
+[gen] 2.50 tok/s (61 tokens)
+
+
+
+Script done on 2026-07-18 07:19:39+00:00 [COMMAND_EXIT_CODE="0"]

@@ -32,15 +32,6 @@
 
 /* ---------- helpers ---------- */
 
-/* Fill buffer with a deterministic pattern based on seed */
-static void fill_pattern_i8(tn_i8 *buf, size_t count, int seed) {
-  for (size_t i = 0; i < count; i++) {
-    /* Generate values in {-1, 0, 1} */
-    int v = ((int)(i * 7 + seed * 13) % 3) - 1;
-    buf[i] = (tn_i8)v;
-  }
-}
-
 /* Fill float buffer with a deterministic pattern based on seed */
 static void fill_pattern_f32(float *buf, size_t count, int seed) {
   for (size_t i = 0; i < count; i++) {

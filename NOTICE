@@ -1,0 +1,43 @@
+Project Zero is licensed under the MIT License (see LICENSE), with one exception:
+
+src/math/ternary_matmul_lut_avx512bw.c is licensed under LGPL-3.0-or-later.
+
+That file ports the AVX-512 LUT ternary matmul algorithm from tommyyliu's
+lut_mm (https://github.com/tommyyliu/lut_mm), originally GPL-3.0. Discussion
+and agreement: https://github.com/tommyyliu/lut_mm/issues/1.
+
+tommyyliu subsequently relicensed the entire lut_mm project itself to
+LGPL-3.0-or-later, which covers this ported file directly and without
+any special exception. Pinned evidence, so this record does not depend
+on GitHub or the issue thread remaining available or unedited:
+
+  commit:  tommyyliu/lut_mm@0df60ef ("Switch to lgpl from gpl")
+  date:    2026-07-20T22:57:37Z
+  changed: LICENSE.LESSER added (165 lines, standard FSF LGPL-3.0 text),
+           README.md License section updated, SPDX headers updated in
+           all source files (verified directly via GitHub commit API,
+           not just the repo's cached license metadata)
+
+  Verbatim thread record (tommyyliu/lut_mm#1):
+
+  tommyyliu, 2026-07-20T05:58:02Z (issuecomment-5019212602):
+    "Would lgpl be fine? Then it would only apply to the kernel and
+    not conflict with the rest of the code?"
+
+  tommyyliu, 2026-07-20T23:22:46Z (issuecomment-5028208420):
+    "Updated this project to use LGPL so it doesn't have to be any
+    special exception."
+
+  Independent archive of the full thread (captured 2026-07-21, after
+  his confirmation, content verified to include both quotes above):
+  https://web.archive.org/web/20260721030946/https://github.com/tommyyliu/lut_mm/issues/1
+
+Because Project Zero's complete source, including this file, is public in
+this repository, the LGPL-3.0 static-linking requirement to make the
+licensed portion's source available for inspection and modification is
+already satisfied.
+
+Full license text: LICENSE-LGPL-3.0.txt
+
+Credit: algorithm design and reference implementation by tommyyliu
+(lut_mm, ternary_mm_avx512.cpp). C99 port by Project Zero contributors.

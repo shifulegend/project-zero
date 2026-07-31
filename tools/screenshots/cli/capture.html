@@ -19,9 +19,10 @@
 <script>
   // Exposes window.pzTerm so capture.mjs can feed captured bytes in and
   // know when rendering has settled.
+  const rowsParam = parseInt(new URLSearchParams(location.search).get('rows'), 10);
   const term = new Terminal({
     cols: 100,
-    rows: 70,
+    rows: Number.isFinite(rowsParam) && rowsParam > 0 ? rowsParam : 70,
     fontFamily: 'Menlo, Consolas, ui-monospace, monospace',
     fontSize: 14,
     theme: { background: '#0b0d12', foreground: '#e6e8ee' },

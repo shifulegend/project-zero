@@ -71,9 +71,12 @@ static void test_quantize_scalar_range(void) {
 
     float scale = quantize_row_to_i8(x, q, n);
 
+    /* q[i] > 127 is impossible for int8_t (its own max value) — only the
+     * -128 edge case (excluded from the symmetric [-127,127] quant range)
+     * needs checking. */
     int all_in_range = 1;
     for (int i = 0; i < n; i++) {
-        if (q[i] < -127 || q[i] > 127) { all_in_range = 0; break; }
+        if (q[i] < -127) { all_in_range = 0; break; }
     }
     TEST_ASSERT(all_in_range, "quantize_scalar: all outputs in [-127, 127]");
     TEST_ASSERT(scale >= 0.0f, "quantize_scalar: scale non-negative");
@@ -476,7 +479,7 @@ static void test_kv_strategy_16gb_system(void) {
     cfg.seq_len = 4096;
 
     tn_i64 free_ram_8_5gb = (tn_i64)8500 * 1024 * 1024;  /* 8.5 GB */
-    KVStrategyResult r = select_kv_strategy(&cfg, free_ram_8_5gb);
+    KVStrategyResult r = select_kv_strategy(&cfg, free_ram_8_5gb, NULL);
 
     TEST_ASSERT(r.strategy == KV_QUANT_I8,
                 "KV strategy K-3: 16 GB system (8.5 GB avail) → KV_QUANT_I8");
@@ -492,7 +495,7 @@ static void test_kv_strategy_8gb_system(void) {
     cfg.seq_len = 4096;
 
     tn_i64 free_ram_5_5gb = (tn_i64)5500 * 1024 * 1024;
-    KVStrategyResult r = select_kv_strategy(&cfg, free_ram_5_5gb);
+    KVStrategyResult r = select_kv_strategy(&cfg, free_ram_5_5gb, NULL);
 
     TEST_ASSERT(r.strategy == KV_SLIDING_I8,
                 "KV strategy: 8 GB system (5.5 GB avail) → KV_SLIDING_I8");
@@ -507,7 +510,7 @@ static void test_kv_strategy_4gb_system(void) {
     cfg.seq_len = 4096;
 
     tn_i64 free_ram_3gb = (tn_i64)3 * 1024 * 1024 * 1024;
-    KVStrategyResult r = select_kv_strategy(&cfg, free_ram_3gb);
+    KVStrategyResult r = select_kv_strategy(&cfg, free_ram_3gb, NULL);
 
     TEST_ASSERT(r.strategy == KV_SLIDING_I4,
                 "KV strategy: 4 GB system → KV_SLIDING_I4");
@@ -520,7 +523,7 @@ static void test_kv_strategy_server(void) {
     cfg.seq_len = 4096;
 
     tn_i64 free_ram_64gb = (tn_i64)64 * 1024 * 1024 * 1024;
-    KVStrategyResult r = select_kv_strategy(&cfg, free_ram_64gb);
+    KVStrategyResult r = select_kv_strategy(&cfg, free_ram_64gb, NULL);
 
     TEST_ASSERT(r.strategy == KV_FULL_F32,
                 "KV strategy: server (64 GB) → KV_FULL_F32");

@@ -44,6 +44,12 @@ typedef struct {
 
     /* ── Derived tuning parameters ── */
     TnClassifierFormat classifier_fmt;
+    bool   classifier_explicit;  /* true only if the user passed --classifier
+                                    (vs. classifier_fmt being an auto-picked
+                                    default) — gates whether Q2_0-native models
+                                    pay to materialize a separate classifier
+                                    copy (see gguf_loader.c) instead of always
+                                    doing so regardless of user intent. */
     int    prefetch_rows;        /* rows to prefetch ahead in matmul */
     bool   use_nt_stores;        /* non-temporal stores for large outputs */
     bool   model_fits_l3;        /* true if ternary weights fit in L3 */
@@ -80,5 +86,16 @@ const TnHardwareProfile *tn_hardware_profile_get(void);
  * Recalculates weight_bytes_per_tok and theoretical_ceiling.
  */
 void tn_hardware_profile_set_classifier(TnClassifierFormat fmt);
+
+/*
+ * Correct the per-token weight-traffic estimate with the REAL loaded model
+ * (init runs pre-load and seeds it with compile-time BitNet-2B constants —
+ * ~6x-overstated ceiling for large GGUF models; see docs/ai/mistakes.md
+ * 2026-07-17). Recomputes theoretical_ceiling and the summary string.
+ * Must be called after tn_hardware_profile_init(); no-op on
+ * weight_bytes_per_tok <= 0.
+ */
+void tn_hardware_profile_set_model_bytes(double weight_bytes_per_tok,
+                                          double cls_bytes_per_tok);
 
 #endif /* TN_HARDWARE_PROFILE_H */

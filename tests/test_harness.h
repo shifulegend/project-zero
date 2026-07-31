@@ -6,9 +6,13 @@
 #include <math.h>
 #include <string.h>
 
-static int tn_tests_run = 0;
-static int tn_tests_passed = 0;
-static int tn_tests_failed = 0;
+/* Not every test TU uses all three counters (e.g. audit-style files with
+ * their own custom pass/fail output) — marked unused since this header
+ * provides them unconditionally for any file that wants TEST_ASSERT/
+ * RUN_TEST/TEST_SUMMARY, not because a real caller ever ignores them. */
+static int tn_tests_run __attribute__((unused)) = 0;
+static int tn_tests_passed __attribute__((unused)) = 0;
+static int tn_tests_failed __attribute__((unused)) = 0;
 
 #define TEST_ASSERT(cond, msg) do { \
     tn_tests_run++; \

@@ -148,6 +148,13 @@ build/math/ternary_matmul_packed_vnni.o: src/math/ternary_matmul_packed_vnni.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(if $(filter 1,$(_HAS_AVX512VNNI)),-mavx512vnni) -c -o $@ $<
 
+# -mf16c: the optimized row dot uses _mm_cvtph_ps for the block scale; F16C
+# exists on every AVX-512VNNI CPU but is not implied by -mavx512vnni at the
+# x86-64-v2 dist baseline, so it must be requested explicitly (2026-07-17).
+build/math/matmul_q2_0_vnni.o: src/math/matmul_q2_0_vnni.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(if $(filter 1,$(_HAS_AVX512VNNI)),-mavx512vnni -mf16c) -c -o $@ $<
+
 # VNNI-256: EVEX-encoded 256-bit VNNI via AVX-512VNNI — no ZMM, no frequency throttle.
 # The 256-bit _mm256_dpbusds_epi32 intrinsic needs avx512vl in addition to
 # avx512vnni (clang enforces this strictly; release gets it via -march=native,
@@ -170,8 +177,8 @@ build/math/ternary_matmul_packed_vnni256.o: src/math/ternary_matmul_packed_vnni2
 AVX2_TUS := math/ternary_matmul_avx2 math/ternary_matmul_packed_avx2 \
             math/elementwise_avx2 math/rmsnorm_avx2 math/softmax_avx2 \
             core/unpack_avx2 \
-            math/matmul_q4k math/matmul_q2k math/matmul_q8_0 \
-            math/matmul_q5_0 math/matmul_q5_1 math/matmul_q5k \
+            math/matmul_q4k math/matmul_q4k_x8 math/matmul_q2k math/matmul_q8_0 \
+            math/matmul_q5_0 math/matmul_q5_1 math/matmul_q5k math/matmul_q2_0 \
             math/matmul_f16 math/quantize_i8 math/parallel_matmul
 AVX2_OBJS := $(addprefix build/,$(addsuffix .o,$(AVX2_TUS)))
 
@@ -313,6 +320,14 @@ build/tools/bench_full: $(LIB_OBJS) tools/bench_full.c
 	@mkdir -p build/tools
 	$(CC) $(CFLAGS_RELEASE) -mavx512vnni -mavxvnni -o $@ \
 	    tools/bench_full.c $(LIB_OBJS) $(LDFLAGS)
+
+# Q2_0 VNNI kernel A/B micro-benchmark (ref vs optimized row dot in one
+# binary — see docs/architecture/CEILING_CALCULATION.md §7 option A)
+bench-q2: $(LIB_OBJS) tools/bench_q2_0.c
+	@mkdir -p build/tools
+	$(CC) $(CFLAGS_RELEASE) -o build/tools/bench_q2_0 \
+	    tools/bench_q2_0.c $(LIB_OBJS) $(LDFLAGS) -lstdc++
+	@build/tools/bench_q2_0
 
 clean:
 	rm -rf build $(TARGET)

@@ -37,7 +37,7 @@ static int64_t now_us(void) {
 /* ── tiny random weight init ─────────────────────────────────────────────── */
 static void init_weights_random(float *w, int n) {
     for (int i = 0; i < n; i++)
-        w[i] = ((float)rand() / RAND_MAX - 0.5f) * 0.02f;
+        w[i] = ((float)rand() / (float)RAND_MAX - 0.5f) * 0.02f;
 }
 static void init_weights_ones(float *w, int n) {
     for (int i = 0; i < n; i++) w[i] = 1.0f;

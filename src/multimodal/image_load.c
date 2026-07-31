@@ -5,8 +5,13 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
+/* Vendored third-party header — suppress its own internal warnings rather
+ * than patching upstream code (avoids merge friction on future updates). */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include "stb_image_resize2.h"
+#pragma GCC diagnostic pop
 
 #include "memory/aligned_alloc.h"
 

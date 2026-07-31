@@ -22,4 +22,17 @@ void embed_token(float *out, int token,
                  const tn_u16 *embedding_table,
                  int dim);
 
+/**
+ * Token embedding lookup for zero-copy Q2_0 tables (Qwen3.5/3.6 "Bonsai"
+ * GGUF models). Dequantizes only the one row needed — the full table is
+ * ~5 GB for a 27B-class model's vocab, far too large to dequantize upfront
+ * (see weights.h's q35_token_embd_raw comment).
+ *
+ * @param out             Output float vector of size dim (pre-allocated)
+ * @param token           Token ID (0-based index into the embedding table)
+ * @param embd_q2_0_raw   Raw Q2_0 tensor bytes (mmap pointer, whole table)
+ * @param dim             Embedding dimension
+ */
+void embed_token_q2_0(float *out, int token, const void *embd_q2_0_raw, int dim);
+
 #endif /* TN_EMBEDDING_H */

@@ -7,7 +7,7 @@
 #include <stdint.h>
 #include <string.h>
 
-const char *__asan_default_options() { return "allocator_may_return_null=1"; }
+const char *__asan_default_options(void) { return "allocator_may_return_null=1"; }
 
 /**
  * Redbox Test: RB-MEM-01 (SIMD Alignment Attacks)

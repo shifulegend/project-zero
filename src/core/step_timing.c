@@ -35,6 +35,8 @@ static const char *g_step_names[TN_STEP_COUNT] = {
     "LM head",
     "Greedy sampling",
     "EOS check",
+    "DeltaNet conv1d",
+    "DeltaNet delta-rule recurrence",
 };
 
 int tn_step_timing_enabled(void) {

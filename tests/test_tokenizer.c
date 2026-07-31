@@ -28,11 +28,23 @@
  *   264: " hel"   score 7.0
  *   265: " hello" score 8.0
  *   266: "<0x0A>" score -1.0  (raw byte token for newline)
+ *
+ *   GPT-2 byte-level-BPE-encoded pieces (as a real GGUF vocab would store
+ *   them, unlike the literal-text merge tokens above — see tokenizer_decode.c
+ *   for the reverse mapping these exercise):
+ *   267: 0xC4 0xA0 "world"  (Ġworld — byte-level space marker + "world")
+ *   268: 0xC2 0xA9          (byte-level encoding of raw byte 0xA9, "©")
+ *   269: 0xC3 0xA2          (byte-level encoding of raw byte 0xE2)
+ *   270: 0xC4 0xBE          (byte-level encoding of raw byte 0x9C)
+ *   271: 0xC4 0xA7          (byte-level encoding of raw byte 0x85)
+ *   269-271 concatenated decode to the raw UTF-8 bytes of U+2705 (✅),
+ *   split across 3 separate tokens the way a real BPE tokenizer would.
+ *   272: 0xC4 0xA0 "hi"     (Ġhi — for the byte-level BOS-leading-space case)
  */
 
 #define SPECIAL_TOKENS 3
 #define BYTE_TOKENS 256
-#define MERGE_TOKENS 8
+#define MERGE_TOKENS 14
 #define TEST_VOCAB_SIZE (SPECIAL_TOKENS + BYTE_TOKENS + MERGE_TOKENS)
 #define TEST_MAX_TOKEN_LEN 16
 
@@ -77,6 +89,14 @@ static int create_test_tokenizer_file(void) {
     write_token(fp, 7.0f,  " hel");     /* 264 */
     write_token(fp, 8.0f,  " hello");   /* 265 */
     write_token(fp, -1.0f, "<0x0A>");   /* 266 */
+
+    /* GPT-2 byte-level-BPE-encoded pieces — see header comment above. */
+    write_token(fp, -1.0f, "\xC4\xA0world");  /* 267: Ġworld */
+    write_token(fp, -1.0f, "\xC2\xA9");       /* 268: byte 0xA9 */
+    write_token(fp, -1.0f, "\xC3\xA2");       /* 269: byte 0xE2 (emoji byte 1/3) */
+    write_token(fp, -1.0f, "\xC4\xBE");       /* 270: byte 0x9C (emoji byte 2/3) */
+    write_token(fp, -1.0f, "\xC4\xA7");       /* 271: byte 0x85 (emoji byte 3/3) */
+    write_token(fp, -1.0f, "\xC4\xA0hi");     /* 272: Ġhi */
 
     fclose(fp);
     return 1;
@@ -273,6 +293,83 @@ static void test_tokenizer_roundtrip(void) {
     tokenizer_free(&t);
 }
 
+static void test_tokenizer_decode_byte_level_space(void) {
+    Tokenizer t;
+    TernaryError err = tokenizer_load(&t, test_tokenizer_path);
+    TEST_ASSERT_EQ(err, TN_OK, "load for byte-level space decode test");
+
+    /* Token 267 is byte-level-BPE "Ġworld" (0xC4 0xA0 + "world"). The Ġ
+     * marker must decode to a real space, not pass through as two literal
+     * bytes 0xC4 0xA0 (the old clean_bpe_string-only path handled this one
+     * correctly too, via its hardcoded Ġ special case — this confirms the
+     * general reverse-table decode preserves that). */
+    const char *s = tokenizer_decode(&t, -1, 267);
+    TEST_ASSERT(strcmp(s, " world") == 0, "byte-level Ġworld decodes to ' world'");
+
+    tokenizer_free(&t);
+}
+
+static void test_tokenizer_decode_byte_level_latin1(void) {
+    Tokenizer t;
+    TernaryError err = tokenizer_load(&t, test_tokenizer_path);
+    TEST_ASSERT_EQ(err, TN_OK, "load for byte-level latin1 decode test");
+
+    /* Token 268 is byte-level-BPE encoding of raw byte 0xA9: two UTF-8 bytes
+     * 0xC2 0xA9 in the vocab piece. The old code had no general reverse
+     * mapping and would have passed both bytes through unchanged (wrong —
+     * doubled/mangled output); the fix must collapse them back to the
+     * single raw byte 0xA9. */
+    const char *s = tokenizer_decode(&t, -1, 268);
+    TEST_ASSERT(strlen(s) == 1 && (unsigned char)s[0] == 0xA9,
+                "byte-level piece for raw byte 0xA9 decodes to single byte 0xA9");
+
+    tokenizer_free(&t);
+}
+
+static void test_tokenizer_decode_byte_level_multibyte_emoji(void) {
+    Tokenizer t;
+    TernaryError err = tokenizer_load(&t, test_tokenizer_path);
+    TEST_ASSERT_EQ(err, TN_OK, "load for byte-level emoji decode test");
+
+    /* Tokens 269, 270, 271 are the byte-level-BPE encodings of the 3 raw
+     * UTF-8 bytes (0xE2, 0x9C, 0x85) that together spell U+2705 (✅) — the
+     * real mojibake case found via screenshot review of the model's actual
+     * output. Each token decodes independently (no cross-call state), and
+     * concatenating the 3 pieces must reassemble the original valid UTF-8
+     * emoji bytes exactly, the same way a real streaming decode loop would
+     * concatenate them. */
+    char out[16] = {0};
+    strcat(out, tokenizer_decode(&t, -1, 269));
+    strcat(out, tokenizer_decode(&t, -1, 270));
+    strcat(out, tokenizer_decode(&t, -1, 271));
+
+    TEST_ASSERT(strlen(out) == 3, "3 byte-level tokens decode to 3 raw bytes total");
+    TEST_ASSERT((unsigned char)out[0] == 0xE2 && (unsigned char)out[1] == 0x9C &&
+                (unsigned char)out[2] == 0x85,
+                "concatenated byte-level tokens reassemble raw UTF-8 emoji bytes E2 9C 85");
+
+    tokenizer_free(&t);
+}
+
+static void test_tokenizer_decode_byte_level_after_bos(void) {
+    Tokenizer t;
+    TernaryError err = tokenizer_load(&t, test_tokenizer_path);
+    TEST_ASSERT_EQ(err, TN_OK, "load for byte-level BOS decode test");
+
+    /* Token 272 is byte-level-BPE "Ġhi" (0xC4 0xA0 + "hi"). After BOS, the
+     * Ġ marker itself must be stripped (2 raw bytes), not just its first
+     * byte — the old piece[0]==' ' check never matched this at all since a
+     * byte-level piece's leading byte is 0xC4, not a literal space. */
+    const char *s = tokenizer_decode(&t, 1, 272);
+    TEST_ASSERT(strcmp(s, "hi") == 0, "byte-level Ġhi after BOS strips the 2-byte marker -> 'hi'");
+
+    /* Non-BOS: marker decodes to a normal leading space. */
+    s = tokenizer_decode(&t, 259, 272);
+    TEST_ASSERT(strcmp(s, " hi") == 0, "byte-level Ġhi after non-BOS decodes to ' hi'");
+
+    tokenizer_free(&t);
+}
+
 static void test_tokenizer_free_idempotent(void) {
     Tokenizer t;
     memset(&t, 0, sizeof(t));
@@ -301,6 +398,10 @@ int main(void) {
     RUN_TEST(test_tokenizer_decode_raw_byte);
     RUN_TEST(test_tokenizer_decode_after_bos);
     RUN_TEST(test_tokenizer_decode_out_of_range);
+    RUN_TEST(test_tokenizer_decode_byte_level_space);
+    RUN_TEST(test_tokenizer_decode_byte_level_latin1);
+    RUN_TEST(test_tokenizer_decode_byte_level_multibyte_emoji);
+    RUN_TEST(test_tokenizer_decode_byte_level_after_bos);
     RUN_TEST(test_tokenizer_roundtrip);
     RUN_TEST(test_tokenizer_free_idempotent);
 

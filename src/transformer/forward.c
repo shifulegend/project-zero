@@ -7,6 +7,7 @@
 #include "core/debug.h"
 #include "core/step_timing.h"
 #include "math/parallel_matmul.h"
+#include "math/matmul_q2_0.h"
 #include "math/simd_dispatch.h"
 #include "transformer/attention.h"
 #include "transformer/embedding.h"
@@ -50,7 +51,11 @@ float *transformer_forward(int token, int pos, const Config *cfg,
           return s->logits;
       }
       int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-      embed_token(s->x, token, w->embd_f32, w->token_embedding_table, dim);
+      if (w->q35_is_q2_0_model) {
+        embed_token_q2_0(s->x, token, w->q35_token_embd_raw, dim);
+      } else {
+        embed_token(s->x, token, w->embd_f32, w->token_embedding_table, dim);
+      }
       if (t_step) {
           tn_step_timing_add(TN_STEP_3_TOKEN_EMBEDDING,
                              tn_step_timing_now_ns() - t_step);
@@ -105,7 +110,38 @@ float *transformer_forward(int token, int pos, const Config *cfg,
    * Weights are only quantized to the selected format (saves startup time).
    * Quality preserved: LM head only needs relative ordering for sampling.
    */
-  if (w->wcls_is_ternary) {
+  if (w->q35_is_q2_0_model) {
+    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    /* Use a materialized BF16/INT8/INT4 classifier copy when one was built
+     * (only happens when the user explicitly passed --classifier — see
+     * gguf_loader.c) instead of always falling back to the raw zero-copy
+     * Q2_0 path regardless of the requested format (the bug this replaces;
+     * see docs/ai/mistakes.md). Absent an explicit request, stay zero-copy. */
+    const TnHardwareProfile *hp_q2 = tn_hardware_profile_get();
+    TnClassifierFormat fmt_q2 = hp_q2 ? hp_q2->classifier_fmt : TN_CLS_BF16;
+    bool used_materialized = false;
+    if (hp_q2 && hp_q2->classifier_explicit) {
+      if (fmt_q2 == TN_CLS_INT4 && w->wcls_i4 && w->wcls_i4_scales) {
+        parallel_matmul_i4(s->logits, s->x, w->wcls_i4, w->wcls_i4_scales,
+                            dim, cfg->vocab_size, tp);
+        used_materialized = true;
+      } else if (fmt_q2 >= TN_CLS_INT8 && w->wcls_i8 && w->wcls_i8_scales) {
+        parallel_matmul_i8(s->logits, s->x, w->wcls_i8, w->wcls_i8_scales,
+                            dim, cfg->vocab_size, tp);
+        used_materialized = true;
+      } else if (w->wcls) {
+        parallel_matmul_bf16(s->logits, s->x, w->wcls, dim, cfg->vocab_size, tp);
+        used_materialized = true;
+      }
+    }
+    if (!used_materialized) {
+      parallel_matmul_q2_0(s->logits, s->x, (const uint8_t *)w->q35_output_raw,
+                            dim, cfg->vocab_size, tp);
+    }
+    if (t_step) {
+      tn_step_timing_add(TN_STEP_19_LM_HEAD, tn_step_timing_now_ns() - t_step);
+    }
+  } else if (w->wcls_is_ternary) {
     int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     parallel_ternary_matmul_packed(s->logits, s->x, (const tn_u8 *)w->wcls, dim, cfg->vocab_size,
                             w->wcls_scale, tp);

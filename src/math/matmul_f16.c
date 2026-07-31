@@ -6,9 +6,22 @@
  * vs the F32 path, matching llama.cpp's F16 inference bandwidth.
  *
  * SIMD strategy mirrors parallel_matmul_bf16 in parallel_matmul.c:
- *   AVX-512: 16-wide F16→F32 conversion + FMA, hardware rounding
- *   AVX2:     8-wide F16→F32 via _mm256_cvtph_ps + FMA
- *   Scalar:   element-wise f16_to_f32 (same function as gguf_loader.c)
+ *   AVX-512: 4 independent 16-wide F16->F32 accumulators + FMA, hardware rounding
+ *   AVX2:    4 independent 8-wide F16->F32 accumulators via _mm256_cvtph_ps + FMA
+ *   Scalar:  element-wise f16_to_f32 (same function as gguf_loader.c)
+ *
+ * Multi-accumulator rationale (2026-07-24, RCA vs llama.cpp): a single FMA
+ * accumulator makes every iteration wait on the previous one's result
+ * (~4-5 cycle FMA latency on typical x86, far longer than the FMA unit's
+ * 1-cycle reciprocal throughput) -- latency-bound, not throughput-bound.
+ * llama.cpp/ggml's ggml_vec_dot_f16 (ggml-cpu/vec.cpp) unrolls 4 independent
+ * accumulators per SIMD width specifically to keep multiple FMAs in flight
+ * and hide that latency; confirmed by reading its source
+ * (GGML_F16_STEP=32/GGML_F16_EPR=8 on AVX2 => 4 accumulators) after a
+ * reproducible ~13% single-thread (T=1, no thread-pool overhead) tok/s gap
+ * against project-zero on SmolLM2-135M-Instruct F16 did not close under
+ * repeated measurement -- see docs/ai/decision-log.md. This file now uses
+ * the same 4-accumulator structure.
  *
  * Prefetch note: No software prefetch is used.  When the model is warm in
  * the OS page cache (standard after one warmup run), the hardware prefetcher
@@ -55,15 +68,30 @@ static void matmul_f16_task(void *arg, int thread_id, int start, int end) {
 
 #if TN_HAS_AVX512
     /*
-     * AVX-512: 16-wide F16→F32 conversion + FMA.
-     * _mm512_cvtph_ps uses hardware IEEE 754 rounding — correct for F16.
-     * Loads 16 × uint16_t (256 bits) then converts to 16 × float32 (512 bits).
+     * AVX-512: 4 independent 16-wide F16→F32 accumulators + FMA (64 elements
+     * per outer iteration), then a single-accumulator 16-wide loop for the
+     * remainder. _mm512_cvtph_ps uses hardware IEEE 754 rounding — correct
+     * for F16.
      */
     for (int i = start; i < end; i++) {
         const tn_u16 *row = a->w + (size_t)i * a->n;
 
-        __m512 acc = _mm512_setzero_ps();
+        __m512 acc0 = _mm512_setzero_ps();
+        __m512 acc1 = _mm512_setzero_ps();
+        __m512 acc2 = _mm512_setzero_ps();
+        __m512 acc3 = _mm512_setzero_ps();
         int j = 0;
+        for (; j + 63 < a->n; j += 64) {
+            acc0 = _mm512_fmadd_ps(_mm512_cvtph_ps(_mm256_loadu_si256((const __m256i *)&row[j])),
+                                    _mm512_loadu_ps(&a->x[j]), acc0);
+            acc1 = _mm512_fmadd_ps(_mm512_cvtph_ps(_mm256_loadu_si256((const __m256i *)&row[j + 16])),
+                                    _mm512_loadu_ps(&a->x[j + 16]), acc1);
+            acc2 = _mm512_fmadd_ps(_mm512_cvtph_ps(_mm256_loadu_si256((const __m256i *)&row[j + 32])),
+                                    _mm512_loadu_ps(&a->x[j + 32]), acc2);
+            acc3 = _mm512_fmadd_ps(_mm512_cvtph_ps(_mm256_loadu_si256((const __m256i *)&row[j + 48])),
+                                    _mm512_loadu_ps(&a->x[j + 48]), acc3);
+        }
+        __m512 acc = _mm512_add_ps(_mm512_add_ps(acc0, acc1), _mm512_add_ps(acc2, acc3));
         for (; j + 15 < a->n; j += 16) {
             __m256i f16_16 = _mm256_loadu_si256((const __m256i *)&row[j]);
             __m512  wv     = _mm512_cvtph_ps(f16_16);
@@ -92,15 +120,32 @@ static void matmul_f16_task(void *arg, int thread_id, int start, int end) {
 
 #elif TN_HAS_AVX2
     /*
-     * AVX2: 8-wide F16→F32 conversion + FMA.
-     * _mm256_cvtph_ps is available as F16C extension (present on all AVX2 CPUs
-     * that support F16C; we guard on TN_HAS_AVX2 as a proxy — if the target
-     * doesn't have F16C the scalar fallback below is always safe).
+     * AVX2: 4 independent 8-wide F16→F32 accumulators + FMA (32 elements per
+     * outer iteration — matches llama.cpp/ggml's GGML_F16_STEP=32/EPR=8
+     * layout on this same ISA), then a single-accumulator 8-wide loop for
+     * the remainder. _mm256_cvtph_ps is available as F16C extension (present
+     * on all AVX2 CPUs that support F16C; we guard on TN_HAS_AVX2 as a proxy
+     * — if the target doesn't have F16C the scalar fallback below is
+     * always safe).
      */
     for (int i = start; i < end; i++) {
         const tn_u16 *row = a->w + (size_t)i * a->n;
-        __m256 acc = _mm256_setzero_ps();
+        __m256 acc0 = _mm256_setzero_ps();
+        __m256 acc1 = _mm256_setzero_ps();
+        __m256 acc2 = _mm256_setzero_ps();
+        __m256 acc3 = _mm256_setzero_ps();
         int j = 0;
+        for (; j + 31 < a->n; j += 32) {
+            acc0 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i *)&row[j])),
+                                    _mm256_loadu_ps(&a->x[j]), acc0);
+            acc1 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i *)&row[j + 8])),
+                                    _mm256_loadu_ps(&a->x[j + 8]), acc1);
+            acc2 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i *)&row[j + 16])),
+                                    _mm256_loadu_ps(&a->x[j + 16]), acc2);
+            acc3 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i *)&row[j + 24])),
+                                    _mm256_loadu_ps(&a->x[j + 24]), acc3);
+        }
+        __m256 acc = _mm256_add_ps(_mm256_add_ps(acc0, acc1), _mm256_add_ps(acc2, acc3));
         for (; j + 7 < a->n; j += 8) {
             __m128i f16_8 = _mm_loadu_si128((const __m128i *)&row[j]);
             __m256  wv    = _mm256_cvtph_ps(f16_8);

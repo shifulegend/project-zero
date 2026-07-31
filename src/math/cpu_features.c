@@ -48,6 +48,52 @@ static void detect_x86(TnCpuFeatures *f) {
         f->avx512bf16  = (eax >> 5) & 1;
     }
 }
+
+#if TN_HAS_AVX512VBMI
+#include <signal.h>
+#include <setjmp.h>
+#include <immintrin.h>
+
+static sigjmp_buf g_vbmi_test_jmpbuf;
+
+static void vbmi_test_sigill_handler(int sig) {
+    (void)sig;
+    siglongjmp(g_vbmi_test_jmpbuf, 1);
+}
+
+/*
+ * CPUID can lie in virtualized environments: a hypervisor can advertise a
+ * feature bit that the underlying execution unit cannot actually retire.
+ * Confirmed empirically on a Firecracker microVM host where CPUID leaf 7
+ * ECX bit 1 (AVX-512VBMI) reads 1 — matching this build's own compile-time
+ * `-march=native` detection — but real execution of vpermb/vpermi2b faults
+ * with SIGILL (see docs/ai/mistakes.md). Execute one real VBMI instruction
+ * under a SIGILL trap to verify actual usability before any caller trusts
+ * the CPUID-reported bit; this only runs once, at startup, when the raw
+ * CPUID probe above already said VBMI is present.
+ */
+static bool verify_avx512vbmi_executable(void) {
+    struct sigaction sa, old_sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = vbmi_test_sigill_handler;
+    sigemptyset(&sa.sa_mask);
+    if (sigaction(SIGILL, &sa, &old_sa) != 0) return true; /* can't test; trust CPUID */
+
+    bool ok = true;
+    if (sigsetjmp(g_vbmi_test_jmpbuf, 1) == 0) {
+        __m512i idx  = _mm512_set1_epi8(0);
+        __m512i data = _mm512_set1_epi8((char)0x5A);
+        __m512i res  = _mm512_permutexvar_epi8(idx, data);
+        int8_t buf[64];
+        _mm512_storeu_si512((void *)buf, res);
+        if (buf[0] != 0x5A) ok = false; /* correctness, not just "didn't crash" */
+    } else {
+        ok = false;
+    }
+    sigaction(SIGILL, &old_sa, NULL);
+    return ok;
+}
+#endif /* TN_HAS_AVX512VBMI */
 #endif /* TN_ARCH_X86 */
 
 /* ── ARM feature detection ────────────────────────────────────────────────── */
@@ -113,6 +159,14 @@ const TnCpuFeatures *tn_cpu_features_detect(void) {
 
 #if TN_ARCH_X86
     detect_x86(&g_features);
+#if TN_HAS_AVX512VBMI
+    /* CPUID-reported support isn't sufficient on some virtualized hosts —
+     * verify the instruction actually executes before trusting the bit
+     * anywhere else in the engine (see verify_avx512vbmi_executable). */
+    if (g_features.avx512vbmi && !verify_avx512vbmi_executable()) {
+        g_features.avx512vbmi = false;
+    }
+#endif
 #endif
 
 #if TN_ARCH_ARM

@@ -1,0 +1,208 @@
+<title>PROJECT-ZERO vs PrismML llama.cpp — Ternary-Bonsai-27B</title>
+<style>
+  .tz{ color-scheme: dark;
+    --bg:#0b0f14; --panel:#121821; --panel2:#0e141c; --line:#223041;
+    --ink:#e8eef5; --ink2:#8ea2b8; --ink3:#5a6b80;
+    --pz:#3987e5; --fork:#d95926; --band:rgba(57,135,229,.10);
+    font-family:ui-monospace,'Cascadia Code','SF Mono',Menlo,Consolas,monospace;
+    background:var(--bg); color:var(--ink); margin:0; padding:0;
+    font-variant-numeric:tabular-nums;
+  }
+  .tz *{ box-sizing:border-box; }
+  .wrap{ max-width:1060px; margin:0 auto; padding:28px 20px 48px; }
+  .hd{ border:1px solid var(--line); background:linear-gradient(180deg,var(--panel),var(--panel2));
+       padding:18px 22px; display:flex; flex-wrap:wrap; gap:14px 28px; align-items:baseline; }
+  .hd h1{ font-family:system-ui,sans-serif; font-weight:800; font-size:clamp(19px,3vw,27px);
+          letter-spacing:.04em; margin:0; text-wrap:balance; }
+  .hd h1 .vs{ color:var(--ink3); font-weight:400; padding:0 6px; }
+  .hd h1 .pz{ color:var(--pz);} .hd h1 .fk{ color:var(--fork);}
+  .fp{ font-size:11.5px; color:var(--ink2); letter-spacing:.06em; text-transform:uppercase; line-height:1.9; }
+  .fp b{ color:var(--ink); font-weight:600; }
+  .tiles{ display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; margin:10px 0; }
+  .tile{ border:1px solid var(--line); background:var(--panel); padding:14px 16px 12px; }
+  .tile .k{ font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink2); }
+  .tile .v{ font-size:30px; font-weight:700; margin-top:4px; }
+  .tile .v small{ font-size:13px; color:var(--ink2); font-weight:400; }
+  .tile .s{ font-size:11px; color:var(--ink3); margin-top:2px; }
+  .tile.hero{ border-color:#2a4a74; box-shadow:inset 0 0 0 1px #1c3c64; }
+  .tile.hero .v{ color:var(--pz); text-shadow:0 0 18px rgba(57,135,229,.35); }
+  .panel{ border:1px solid var(--line); background:var(--panel); padding:18px 20px 14px; margin:10px 0; }
+  .panel h2{ font-size:12px; letter-spacing:.16em; text-transform:uppercase; margin:0 0 2px;
+             color:var(--ink); font-weight:700; }
+  .panel .sub{ font-size:11px; color:var(--ink3); margin:0 0 14px; }
+  .legend{ display:flex; gap:18px; font-size:11.5px; color:var(--ink2); margin:0 0 10px; }
+  .legend i{ display:inline-block; width:10px; height:10px; margin-right:6px; border-radius:2px; }
+  .chart{ position:relative; height:300px; border-left:1px solid var(--line); border-bottom:1px solid var(--line); }
+  .chart.short{ height:220px; }
+  .gl{ position:absolute; left:0; right:0; border-top:1px dashed #1b2836; }
+  .gl span{ position:absolute; left:-6px; transform:translate(-100%,-55%); font-size:10px; color:var(--ink3); }
+  .ceil{ position:absolute; left:0; right:0; border-top:2px dashed #4aa3b8; }
+  .ceil span{ position:absolute; right:4px; top:-16px; font-size:10.5px; color:#7fc6d6; letter-spacing:.08em; }
+  .drift{ position:absolute; left:0; right:0; background:var(--band); }
+  .drift span{ position:absolute; left:6px; top:-14px; font-size:10px; color:var(--ink3); }
+  .cols{ position:absolute; inset:0; display:flex; align-items:flex-end; justify-content:space-around; padding:0 4%; }
+  .grp{ display:flex; align-items:flex-end; gap:2px; height:100%; }
+  .bar{ width:34px; border-radius:4px 4px 0 0; position:relative; min-height:2px; }
+  .bar.pz{ background:var(--pz);} .bar.fk{ background:var(--fork);}
+  .bar .dl{ position:absolute; top:-18px; left:50%; transform:translateX(-50%);
+            font-size:11px; color:var(--ink); white-space:nowrap; }
+  .bar .dl.mut{ color:var(--ink2); }
+  .xlab{ display:flex; justify-content:space-around; padding:6px 4% 0; font-size:11px; color:var(--ink2); }
+  .ratio{ display:flex; justify-content:space-around; padding:2px 4% 0; font-size:10.5px; color:#7fc6d6; letter-spacing:.06em;}
+  .two{ display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:10px; }
+  .tag{ display:inline-block; font-size:9.5px; letter-spacing:.14em; border:1px solid #2a4a74; color:var(--pz);
+        padding:2px 7px; border-radius:999px; margin-left:8px; vertical-align:2px; }
+  .foot{ border:1px solid var(--line); background:var(--panel2); padding:14px 18px; font-size:11.5px;
+         color:var(--ink2); line-height:1.85; }
+  .foot b{ color:var(--ink); }
+  #tip{ position:fixed; pointer-events:none; background:#0d1420; border:1px solid #2a4a74; color:var(--ink);
+        font-size:11.5px; padding:7px 10px; border-radius:4px; display:none; z-index:9; line-height:1.6;
+        box-shadow:0 4px 18px rgba(0,0,0,.5); }
+  table.data{ width:100%; border-collapse:collapse; font-size:11.5px; margin-top:6px; }
+  table.data th,table.data td{ border:1px solid var(--line); padding:5px 9px; text-align:right; color:var(--ink2); }
+  table.data th{ color:var(--ink); text-align:right; background:var(--panel2); }
+  table.data td:first-child,table.data th:first-child{ text-align:left; }
+  details summary{ cursor:pointer; font-size:11px; color:var(--ink3); letter-spacing:.1em; text-transform:uppercase; }
+  @media (prefers-reduced-motion: no-preference){
+    .bar{ transition:filter .15s; } .bar:hover{ filter:brightness(1.25); }
+  }
+</style>
+
+<div class="tz"><div class="wrap">
+
+  <div class="hd">
+    <h1><span class="pz">PROJECT-ZERO</span><span class="vs">//</span><span class="fk">PrismML llama.cpp</span>
+        <span class="vs">·</span> TERNARY-BONSAI-27B</h1>
+    <div class="fp">
+      HOST <b>4-core Xeon · AVX-512 VNNI · L3 260 MiB · DRAM 41.9 GB/s measured</b><br>
+      LOAD <b>7.16 GB Q2_0 (2.125 bit/wt)</b> · RUN <b>60 tok · temp 0 · greedy · same prompt/file, one session</b>
+    </div>
+  </div>
+
+  <div class="tiles">
+    <div class="tile hero"><div class="k">Advantage @ t4</div><div class="v">4.2×</div>
+      <div class="s">2.97 vs 0.70 tok/s</div></div>
+    <div class="tile hero"><div class="k">Advantage @ t1</div><div class="v">4.8×</div>
+      <div class="s">0.96 vs 0.20 tok/s</div></div>
+    <div class="tile"><div class="k">project-zero peak</div><div class="v" style="color:var(--pz)">3.12 <small>tok/s</small></div>
+      <div class="s">sentinel max, t4 defaults</div></div>
+    <div class="tile"><div class="k">fork peak</div><div class="v" style="color:var(--fork)">0.70 <small>tok/s</small></div>
+      <div class="s">b1-79697f2 · -c 4096 -st</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>Thread scaling — generation throughput</h2>
+    <p class="sub">tok/s at t = 1…4 · dashed line = this host's measured DRAM-bandwidth ceiling for this model</p>
+    <div class="legend">
+      <span><i style="background:var(--pz)"></i>project-zero (defaults)</span>
+      <span><i style="background:var(--fork)"></i>PrismML llama.cpp fork</span>
+    </div>
+    <div class="chart" id="c1">
+      <div class="gl" style="bottom:15.38%"><span>1</span></div>
+      <div class="gl" style="bottom:30.77%"><span>2</span></div>
+      <div class="gl" style="bottom:46.15%"><span>3</span></div>
+      <div class="gl" style="bottom:61.54%"><span>4</span></div>
+      <div class="gl" style="bottom:76.92%"><span>5</span></div>
+      <div class="gl" style="bottom:92.31%"><span>6</span></div>
+      <div class="ceil" style="bottom:93.85%"><span>CEILING 6.1 TOK/S @ 41.9 GB/S</span></div>
+      <div class="cols">
+        <div class="grp">
+          <div class="bar pz" style="height:14.77%" data-t="project-zero · t1 · 0.96 tok/s"><span class="dl">0.96</span></div>
+          <div class="bar fk" style="height:3.08%"  data-t="llama.cpp fork · t1 · 0.20 tok/s"><span class="dl mut">0.20</span></div>
+        </div>
+        <div class="grp">
+          <div class="bar pz" style="height:26.62%" data-t="project-zero · t2 · 1.73 tok/s"><span class="dl">1.73</span></div>
+          <div class="bar fk" style="height:6.15%"  data-t="llama.cpp fork · t2 · 0.40 tok/s"><span class="dl mut">0.40</span></div>
+        </div>
+        <div class="grp">
+          <div class="bar pz" style="height:38.46%" data-t="project-zero · t3 · 2.50 tok/s"><span class="dl">2.50</span></div>
+          <div class="bar fk" style="height:9.23%"  data-t="llama.cpp fork · t3 · 0.60 tok/s"><span class="dl mut">0.60</span></div>
+        </div>
+        <div class="grp">
+          <div class="bar pz" style="height:45.69%" data-t="project-zero · t4 · 2.97 tok/s (median of 4 sentinels, 2.73–3.12)"><span class="dl">2.97</span></div>
+          <div class="bar fk" style="height:10.77%" data-t="llama.cpp fork · t4 · 0.70 tok/s"><span class="dl mut">0.70</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="xlab"><span>t = 1</span><span>t = 2</span><span>t = 3</span><span>t = 4</span></div>
+    <div class="ratio"><span>4.8×</span><span>4.3×</span><span>4.2×</span><span>4.2×</span></div>
+  </div>
+
+  <div class="two">
+    <div class="panel">
+      <h2>SIMD backend @ t4 <span class="tag">PROJECT-ZERO ONLY</span></h2>
+      <p class="sub">--simd flag · Q2_0 kernel keeps its own VNNI dispatch, so spread is small by design</p>
+      <div class="chart short">
+        <div class="gl" style="bottom:31.25%"><span>1</span></div>
+        <div class="gl" style="bottom:62.5%"><span>2</span></div>
+        <div class="gl" style="bottom:93.75%"><span>3</span></div>
+        <div class="drift" style="bottom:85.31%;height:12.19%"><span>sentinel band 2.73–3.12</span></div>
+        <div class="cols">
+          <div class="grp"><div class="bar pz" style="height:88.13%" data-t="--simd scalar · 2.82 tok/s"><span class="dl">2.82</span></div></div>
+          <div class="grp"><div class="bar pz" style="height:95.31%" data-t="--simd avx2 · 3.05 tok/s"><span class="dl">3.05</span></div></div>
+          <div class="grp"><div class="bar pz" style="height:90.00%" data-t="--simd avx512f · 2.88 tok/s"><span class="dl">2.88</span></div></div>
+          <div class="grp"><div class="bar pz" style="height:96.25%" data-t="--simd vnni · 3.08 tok/s"><span class="dl">3.08</span></div></div>
+        </div>
+      </div>
+      <div class="xlab"><span>scalar</span><span>avx2</span><span>avx512f</span><span>vnni</span></div>
+    </div>
+
+    <div class="panel">
+      <h2>Classifier precision @ t4 <span class="tag">PROJECT-ZERO ONLY</span></h2>
+      <p class="sub">--classifier flag · LM-head storage: zero-copy Q2_0 (auto) vs materialized BF16/INT8/INT4</p>
+      <div class="chart short">
+        <div class="gl" style="bottom:31.25%"><span>1</span></div>
+        <div class="gl" style="bottom:62.5%"><span>2</span></div>
+        <div class="gl" style="bottom:93.75%"><span>3</span></div>
+        <div class="drift" style="bottom:85.31%;height:12.19%"><span>sentinel band 2.73–3.12</span></div>
+        <div class="cols">
+          <div class="grp"><div class="bar pz" style="height:92.81%" data-t="auto (zero-copy Q2_0) · 2.97 tok/s (sentinel median)"><span class="dl">2.97</span></div></div>
+          <div class="grp"><div class="bar pz" style="height:78.44%" data-t="--classifier bf16 · 2.51 tok/s · +2.5 GB RAM"><span class="dl">2.51</span></div></div>
+          <div class="grp"><div class="bar pz" style="height:89.06%" data-t="--classifier int8 · 2.85 tok/s · +1.2 GB RAM"><span class="dl">2.85</span></div></div>
+          <div class="grp"><div class="bar pz" style="height:94.06%" data-t="--classifier int4 · 3.01 tok/s · +0.6 GB RAM"><span class="dl">3.01</span></div></div>
+        </div>
+      </div>
+      <div class="xlab"><span>auto</span><span>bf16</span><span>int8</span><span>int4</span></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <details>
+      <summary>Data table — all 18 runs</summary>
+      <table class="data">
+        <tr><th>Run</th><th>Engine</th><th>Config</th><th>tok/s</th></tr>
+        <tr><td>pz_t1 / t2 / t3</td><td>project-zero</td><td>threads 1 / 2 / 3</td><td>0.96 / 1.73 / 2.50</td></tr>
+        <tr><td>pz_sentinel_a…d</td><td>project-zero</td><td>t4 defaults ×4 (drift bracket)</td><td>2.93 / 2.73 / 3.12 / 3.00</td></tr>
+        <tr><td>pz_simd_*</td><td>project-zero</td><td>scalar / avx2 / avx512f / vnni @ t4</td><td>2.82 / 3.05 / 2.88 / 3.08</td></tr>
+        <tr><td>pz_cls_*</td><td>project-zero</td><td>bf16 / int8 / int4 @ t4</td><td>2.51 / 2.85 / 3.01</td></tr>
+        <tr><td>llama_t1…t4</td><td>PrismML fork</td><td>threads 1 / 2 / 3 / 4</td><td>0.20 / 0.40 / 0.60 / 0.70</td></tr>
+      </table>
+    </details>
+  </div>
+
+  <div class="foot">
+    <b>Method.</b> Every run executed inside a pty capture (raw terminal screenshot + byte stream archived in
+    <b>benchmark_results/sweep3_2026-07-18/</b>), strictly sequential, single session, same 7.16 GB GGUF, prompt
+    "What is the capital of France?", 60 tokens, temperature 0. Four interleaved project-zero sentinel runs
+    (t4 defaults) bracket all measurements at <b>2.73–3.12 tok/s (±7%)</b> — cross-run differences inside that band
+    are host noise, not signal. Fork: PrismML-Eng llama.cpp, prism branch, build b1-79697f2, <b>-c 4096 -st</b>
+    (its default 262K context allocates a ~15 GB KV cache; its --no-conversation flag is rejected at runtime).
+    SIMD and classifier axes exist only in project-zero. Ceiling = measured DRAM bandwidth ÷ model bytes/token
+    (docs/architecture/CEILING_CALCULATION.md). project-zero includes the 2026-07-17 Q2_0 kernel optimization (+28%).
+  </div>
+
+</div></div>
+<div id="tip"></div>
+<script>
+  const tip = document.getElementById('tip');
+  document.querySelectorAll('.bar').forEach(b => {
+    b.addEventListener('mousemove', e => {
+      tip.textContent = b.dataset.t;
+      tip.style.display = 'block';
+      const pad = 14, w = tip.offsetWidth;
+      tip.style.left = Math.min(e.clientX + pad, innerWidth - w - 8) + 'px';
+      tip.style.top = (e.clientY + pad) + 'px';
+    });
+    b.addEventListener('mouseleave', () => tip.style.display = 'none');
+  });
+</script>

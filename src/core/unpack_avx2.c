@@ -52,33 +52,16 @@ void unpack_ternary_block_avx2(tn_i8 *out, const tn_u8 *packed, int count) {
         __m256i expanded = _mm256_set_m128i(expanded_hi, expanded_lo);
 
         /* Now each group of 4 consecutive bytes has the same packed byte.
-         * Shift each position by the appropriate amount to extract its 2-bit field:
+         * Each position needs a different shift to extract its 2-bit field:
          *   position 0: shift right 0 (bits [1:0])
          *   position 1: shift right 2 (bits [3:2])
          *   position 2: shift right 4 (bits [5:4])
          *   position 3: shift right 6 (bits [7:6])
+         * _mm256_srlv_epi32 only works for 32-bit lanes and bytes have no
+         * variable-shift instruction, so each field is extracted with a
+         * fixed shift + mask at the byte level instead (f0..f3 below), using
+         * the already-replicated `expanded` data.
          */
-        const __m256i shift_amounts = _mm256_setr_epi8(
-            0,2,4,6, 0,2,4,6, 0,2,4,6, 0,2,4,6,
-            0,2,4,6, 0,2,4,6, 0,2,4,6, 0,2,4,6);
-
-        /* _mm256_srlv_epi32 only works for 32-bit, so we use a different approach:
-         * Multiply by powers-of-2 reciprocals isn't available for bytes.
-         * Instead, use the shift values as a lookup with manual bit manipulation. */
-
-        /* For each group of 4 bytes, we want:
-         *   out[4k+0] = (byte >> 0) & 0x03  (already in position)
-         *   out[4k+1] = (byte >> 2) & 0x03
-         *   out[4k+2] = (byte >> 4) & 0x03
-         *   out[4k+3] = (byte >> 6) & 0x03
-         *
-         * Since _mm256_srlv works on 32-bit lanes, reinterpret each group of 4
-         * identical bytes as a 32-bit word and shift by [0,2,4,6] bits. */
-        __m256i shift32 = _mm256_setr_epi32(
-            0, 0, 0, 0, 0, 0, 0, 0);  /* dummy, we'll do it byte by byte */
-
-        /* Actually, simplest correct approach: extract each field with
-         * shift + mask at the byte level using the already-replicated data. */
 
         /* Field 0: bits [1:0] - no shift needed */
         __m256i f0 = _mm256_and_si256(expanded, mask2);

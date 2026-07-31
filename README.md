@@ -160,6 +160,15 @@ All 16 screenshots (t=1..8 × 2 engines): [`benchmark_results/sweep_2026-06-21/s
 
 **Run it yourself and post your result:** [Discussion #3 — community benchmarks](https://github.com/shifulegend/project-zero/discussions/3)
 
+### Community Baselines & Known Bottlenecks
+
+**Intel i5-8350u (ThinkPad T480) — AVX2 Ternary Bottleneck:**
+- **Specs:** 4C/8T, 2x16GB DDR4, ~30GB/s bandwidth (performance mode)
+- **Model:** Ternary-Bonsai-27B-Q2_0_g128 (6.5GB loaded)
+- **Result:** ~0.1 tok/s
+- **Note:** Pinpoints a critical AVX2 packing/unpacking bottleneck for specific ternary formats falling back to slow scalar paths.
+- **Credit:** [u/WhoRoger on Reddit](https://old.reddit.com/r/LocalLLaMA/comments/1v3pn1w/built_a_fromscratch_bitnet_inference_engine_in/p0wktod/)
+
 <a id="bonsai"></a>
 
 ### Qwen 3.5/3.6 (Ternary-Bonsai-27B, hybrid Gated-DeltaNet + GQA, Q2_0 ternary) — 4-core Xeon VM

@@ -29,6 +29,24 @@ static int is_asset_path(const char *path) {
     return strncmp(path, "/assets/", 8) == 0;
 }
 
+/* Rejects any request path that could escape static_dir once concatenated:
+ * a literal ".." path segment (checked component-wise, not substring search,
+ * so a legitimate filename like "foo..bar" isn't blocked) or a path that
+ * doesn't start with '/'. http_server.c does no other decoding of req.path,
+ * so this alone closes the traversal in serve_from_disk() below. */
+int static_assets_path_is_safe(const char *path) {
+    if (path[0] != '/') return 0;
+    const char *p = path;
+    while (*p) {
+        const char *seg_end = strchr(p, '/');
+        size_t seg_len = seg_end ? (size_t)(seg_end - p) : strlen(p);
+        if (seg_len == 2 && p[0] == '.' && p[1] == '.') return 0;
+        if (!seg_end) break;
+        p = seg_end + 1;
+    }
+    return 1;
+}
+
 static void write_headers(int fd, int status, const char *mime_type, size_t body_len,
                            const char *extra_headers) {
     char hdr[512];
@@ -55,6 +73,10 @@ static void serve_404(int fd, const char *extra_headers) {
 static int serve_from_disk(int fd, const char *static_dir, const char *path,
                             const char *extra_headers) {
     char fs_path[1024];
+    if (!static_assets_path_is_safe(path)) {
+        serve_404(fd, extra_headers);
+        return 404;
+    }
     if (strcmp(path, "/") == 0) {
         snprintf(fs_path, sizeof(fs_path), "%s/index.html", static_dir);
     } else {

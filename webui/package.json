@@ -1,0 +1,16 @@
+{
+  "name": "project-zero-webui",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Web chat UI for project-zero's embedded HTTP API server (Phase 22.2). Built with Vite+Svelte at contributor time; the built dist/ is embedded into the C binary and committed, so end users never need Node.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^3.1.1",
+    "svelte": "^4.2.19",
+    "vite": "^5.4.10"
+  }
+}

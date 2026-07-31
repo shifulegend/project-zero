@@ -5,7 +5,7 @@
 > `docs/ai/project-overview.md`, `docs/ai/engineering-rules.md`, `docs/ai/mistakes.md`,
 > `docs/ai/decision-log.md`, `docs/ai/tool-sync-policy.md`.
 > `docs/ai/**` is the **canonical source of truth**; this file is a thin adapter.
-> Scoped rules: `.agents/rules/{core,docs,tests,config}.md`. Workflows: `.agents/workflows/*.md`.
+> Scoped rules: `.agents/rules/{core,docs,tests,config,api}.md`. Workflows: `.agents/workflows/*.md`.
 > **All of these are dynamic — update them proactively, without being asked.**
 
 ## Durable rules (summary — full text in `docs/ai/engineering-rules.md`)

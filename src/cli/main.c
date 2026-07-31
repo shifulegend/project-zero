@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>   /* pause() for --server mode */
+#include <signal.h>   /* SIGINT/SIGTERM graceful-shutdown handler, --server mode */
 #include "core/platform.h"
 #include "core/config.h"
 #include "core/moe_config.h"
@@ -20,6 +21,9 @@
 #include "tokenizer/tokenizer_gguf.h"
 #include "cli/args.h"
 #include "cli/repl.h"
+#include "cli/progress.h"
+#include "cli/banner.h"
+#include "cli/color.h"
 #include "transformer/generate.h"
 #include "transformer/forward.h"
 #include "math/simd_dispatch.h"
@@ -29,14 +33,9 @@
 #include "rag/vector_db.h"
 #include "rag/embedder.h"
 
-/* Phase 34 Multimodal */
-#include "multimodal/image_load.h"
-#include "multimodal/patch_extract.h"
-#include "multimodal/vision_encoder.h"
-#include "multimodal/vision_projector.h"
-#include "multimodal/vision_bridge.h"
-#include "multimodal/vision_weights_load.h"
-#include "memory/aligned_alloc.h"
+/* Phase 34 Multimodal (pipeline extracted to multimodal/vision_pipeline.c
+ * in Phase 22.2 — see include/multimodal/vision_pipeline.h) */
+#include "multimodal/vision_pipeline.h"
 
 /* Phase 34.2 GGUF loader */
 #include "core/gguf_reader.h"
@@ -54,6 +53,19 @@
 #define PZ_STRINGIFY2(x) #x
 #define PZ_STRINGIFY(x) PZ_STRINGIFY2(x)
 #define PZ_VERSION_STR PZ_STRINGIFY(PZ_VERSION)
+
+/* --server mode graceful shutdown: set only by handle_shutdown_signal (the
+ * only async-signal-safe thing to do in a handler is set a sig_atomic_t
+ * flag), polled by the main thread's wait loop below. Scoped to --server
+ * mode only — installed right before the blocking wait, not at process
+ * start, so REPL/one-shot Ctrl+C behavior (immediate kill, default
+ * disposition) is unchanged. */
+static volatile sig_atomic_t g_shutdown_requested = 0;
+
+static void handle_shutdown_signal(int sig) {
+    (void)sig;
+    g_shutdown_requested = 1;
+}
 
 int main(int argc, char **argv) {
     CliArgs args;
@@ -81,6 +93,18 @@ int main(int argc, char **argv) {
             fprintf(g_dump_fp, "layer,step,n_elem,v0,v1,v2,v3,v4,v5,v6,v7,mean,absmax\n");
             fprintf(stderr, "[dump] Writing tensors to: %s\n", args.dump_tensors_path);
         }
+    }
+
+    /* Phase 22.5: animated startup banner — TTY-gated, and only for
+     * long-running/human-watched invocations (REPL, --server), not for
+     * one-shot --prompt runs. Matches Claude Code's own convention of
+     * showing its banner interactively but suppressing it in scripted/
+     * non-interactive ("-p") mode, so piped/automated --prompt output
+     * stays clean. */
+    int stdout_is_tty = isatty(fileno(stdout));
+    int color_enabled_early = tn_color_resolve(args.color_mode, stdout_is_tty, getenv("NO_COLOR"));
+    if (stdout_is_tty && (args.server_mode || !args.prompt)) {
+        tn_banner_print(stdout_is_tty, color_enabled_early);
     }
 
     printf("Project Zero Engine %s — Auto-Tuned Hardware\n", PZ_VERSION_STR);
@@ -169,6 +193,14 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    /* Phase 22.3: coarse model-load progress (TTY-only in-place updates;
+     * degrades to plain one-line-per-stage output otherwise). Stages are
+     * named milestones, not fine-grained byte progress — threading a byte
+     * callback into the loader internals would be a loader-logic change,
+     * out of scope for CLI polish. (stdout_is_tty was already computed
+     * above, ahead of the startup banner.) */
+    tn_progress_stage(1, 4, "Opening model file...", stdout_is_tty);
+
     /* Map Model File */
     MappedFile mf;
     if (mapped_file_open(&mf, args.model_path) != TN_OK) {
@@ -181,6 +213,8 @@ int main(int argc, char **argv) {
     uint32_t file_magic = 0;
     if (mf.size >= 4) memcpy(&file_magic, mf.data, 4);
     bool is_gguf = (file_magic == GGUF_MAGIC);
+
+    tn_progress_stage(2, 4, "Loading weights...", stdout_is_tty);
 
     Config p;
     TransformerWeights w;
@@ -195,12 +229,14 @@ int main(int argc, char **argv) {
 
         if (gguf_read_header(&gguf_hdr, mf.data, mf.size) != TN_OK) {
             fprintf(stderr, "Failed to parse GGUF header.\n");
+            gguf_header_free(&gguf_hdr);
             mapped_file_close(&mf);
             threadpool_destroy(tp);
             return 1;
         }
         if (config_from_gguf(&p, &gguf_hdr) != TN_OK) {
             fprintf(stderr, "Failed to read config from GGUF metadata.\n");
+            gguf_header_free(&gguf_hdr);
             mapped_file_close(&mf);
             threadpool_destroy(tp);
             return 1;
@@ -312,6 +348,8 @@ int main(int argc, char **argv) {
         }
     }
 
+    tn_progress_stage(3, 4, "Preparing runtime...", stdout_is_tty);
+
     /* KV Strategy — measured AFTER model weights are loaded so that any F32-dequantised
      * weight allocations (MLA projections, shared experts, norms) are already counted in
      * consumed RAM.  For mmap'd GGUF models the raw quantised expert bytes don't use
@@ -421,6 +459,9 @@ int main(int argc, char **argv) {
         }
     }
 
+    tn_progress_stage(4, 4, "Ready.", stdout_is_tty);
+    tn_progress_done(stdout_is_tty);
+
     /* ── Phase 15: RAG initialisation ────────────────────────────────────── */
     RagContext rag;
     memset(&rag, 0, sizeof(rag));
@@ -447,164 +488,16 @@ int main(int argc, char **argv) {
     }
     /* ─────────────────────────────────────────────────────────────────────── */
 
-    /* ── Phase 34: Vision pipeline ──────────────────────────────────────── */
+    /* ── Phase 34: Vision pipeline (extracted to multimodal/vision_pipeline.c
+     * in Phase 22.2 so the HTTP API can reuse it for image_url uploads) ──── */
+    static char vis_prompt_buf[8192];
     if (args.image_path) {
-        if (!args.vision_path || !args.proj_path) {
-            fprintf(stderr,
-                "[vision] --image requires --vision <vision.bin> and --proj <projector.bin>\n"
-                "[vision] Extract weights first:\n"
-                "[vision]   python tools/extract_multimodal.py --repo moondream-hf/moondream2 --out models/\n");
-        } else {
-            printf("\nVision pipeline: loading %s\n", args.image_path);
-
-            /* Load vision model weights */
-            VisionModel vm;
-            memset(&vm, 0, sizeof(vm));
-            int vm_ok = 0;
-
-            if (vision_model_load_encoder(&vm, args.vision_path) == TN_OK &&
-                vision_model_load_projector(&vm, args.proj_path) == TN_OK) {
-                vision_model_print_info(&vm);
-                vm_ok = 1;
-            } else {
-                fprintf(stderr, "[vision] failed to load vision weights\n");
-            }
-
-            if (vm_ok) {
-                /* Load and normalize image */
-                float *pixels = NULL;
-                int img_w = 0, img_h = 0;
-                int target_res = (int)(0.5f + __builtin_sqrtf((float)vm.cfg.num_patches))
-                                 * (int)(0.5f + __builtin_sqrtf((float)(vm.cfg.patch_dim / 3)));
-                if (target_res <= 0) target_res = 384;
-
-                if (load_image(args.image_path, &pixels, &img_w, &img_h, target_res) != TN_OK) {
-                    fprintf(stderr, "[vision] failed to load image: %s\n", args.image_path);
-                    vm_ok = 0;
-                } else {
-                    printf("  Image loaded: %dx%d (SigLIP-normalized)\n", img_w, img_h);
-                }
-
-                if (vm_ok) {
-                    /* Extract patches */
-                    int patch_size = (int)(0.5f + __builtin_sqrtf((float)(vm.cfg.patch_dim / 3)));
-                    int max_patches = vm.cfg.num_patches;
-                    float *patches = (float *)tn_aligned_alloc(
-                        (size_t)max_patches * vm.cfg.patch_dim * sizeof(float), 64);
-                    int num_patches = 0;
-
-                    if (!patches) {
-                        fprintf(stderr, "[vision] OOM allocating patches\n");
-                        vm_ok = 0;
-                    } else {
-                        extract_patches(pixels, patches, target_res, patch_size, &num_patches);
-                        printf("  Extracted %d patches (patch_size=%d)\n", num_patches, patch_size);
-                        vm.cfg.num_patches = num_patches;
-                    }
-
-                    if (vm_ok) {
-                        /* Vision encoder forward */
-                        float *vis_emb = (float *)tn_aligned_alloc(
-                            (size_t)num_patches * vm.cfg.embed_dim * sizeof(float), 64);
-                        if (!vis_emb) {
-                            fprintf(stderr, "[vision] OOM: vision embeddings\n");
-                            vm_ok = 0;
-                        } else {
-                            printf("  Running vision encoder (%d layers)...\n", vm.cfg.n_layers);
-                            vision_encoder_forward(vis_emb, patches, &vm.cfg, &vm.weights, tp);
-                            printf("  Encoder done.\n");
-
-                            /* MLP projector (or pixel-shuffle + single linear) */
-                            int out_tokens = vision_projector_output_tokens(&vm.proj, num_patches);
-                            float *projected = (float *)tn_aligned_alloc(
-                                (size_t)out_tokens * p.dim * sizeof(float), 64);
-
-                            /* Projector llm_dim must match LLM dim; warn if mismatched */
-                            if (vm.proj.llm_dim != p.dim) {
-                                fprintf(stderr,
-                                    "[vision] WARNING: projector llm_dim=%d != LLM dim=%d\n"
-                                    "[vision] Embeddings will be truncated/zero-padded.\n",
-                                    vm.proj.llm_dim, p.dim);
-                            }
-
-                            if (!projected) {
-                                fprintf(stderr, "[vision] OOM: projected embeddings\n");
-                            } else {
-                                /* Use projector's own llm_dim for the projection */
-                                float *proj_buf = (float *)tn_aligned_alloc(
-                                    (size_t)out_tokens * vm.proj.llm_dim * sizeof(float), 64);
-                                if (proj_buf) {
-                                    vision_projector_forward_batch(proj_buf, vis_emb,
-                                                                   num_patches, &vm.proj, tp);
-                                    /* Copy into projected, matching LLM dim */
-                                    int copy_dim = vm.proj.llm_dim < p.dim ? vm.proj.llm_dim : p.dim;
-                                    memset(projected, 0, (size_t)out_tokens * p.dim * sizeof(float));
-                                    for (int pp = 0; pp < out_tokens; pp++) {
-                                        memcpy(&projected[pp * p.dim],
-                                               &proj_buf[pp * vm.proj.llm_dim],
-                                               (size_t)copy_dim * sizeof(float));
-                                    }
-                                    tn_aligned_free(proj_buf);
-                                    printf("  Projector done: %d tokens × %d-dim  (scale_factor=%d)\n",
-                                           out_tokens, p.dim, vm.proj.scale_factor);
-
-                                    /* Inject into KV cache.
-                                     * For SmolVLM-style models, pre-process a chat prefix
-                                     * so visual tokens land at the correct sequence position
-                                     * (after "User: "), matching the training layout. */
-                                    /* Inject into KV cache.
-                                     * For ChatML-style models (chat_template contains "im_start"),
-                                     * pre-process a chat prefix so visual tokens land at the correct
-                                     * sequence position (after "User: "), matching training layout.
-                                     * Detected from the model's own chat_template — no vocab_size
-                                     * heuristics. */
-                                    if (args.prompt && t.chat_template &&
-                                        strstr(t.chat_template, "im_start")) {
-                                        /* Build prefix from the actual token strings in this model's vocab */
-                                        int im_start_id = tokenizer_find_id(&t, "<|im_start|>");
-                                        const char *vis_prefix = (im_start_id >= 0)
-                                            ? "<|im_start|>User: "
-                                            : "User: ";
-                                        int prefix_toks[32];
-                                        int n_pre = tokenizer_encode(&t, vis_prefix, strlen(vis_prefix),
-                                                                     prefix_toks, 32);
-                                        if (n_pre > 0) {
-                                            for (int pi = 0; pi < n_pre; pi++) {
-                                                transformer_forward(prefix_toks[pi], s->current_pos,
-                                                                    &p, &w, s, &mc, tp);
-                                                s->current_pos++;
-                                            }
-                                            /* Strip the prefix from args.prompt for generate() */
-                                            const char *stripped = args.prompt;
-                                            size_t pfx_len = strlen(vis_prefix);
-                                            if (strncmp(stripped, vis_prefix, pfx_len) == 0)
-                                                stripped += pfx_len;
-                                            /* Store stripped pointer — use a static for simplicity */
-                                            static char vis_prompt_buf[8192];
-                                            snprintf(vis_prompt_buf, sizeof(vis_prompt_buf), "%s", stripped);
-                                            args.prompt = vis_prompt_buf;
-                                        }
-                                    }
-
-                                    VisionContext vctx;
-                                    vctx.patch_embeddings = projected;
-                                    vctx.num_patches      = out_tokens;
-                                    vctx.embed_dim        = p.dim;
-                                    inject_vision_into_kv_cache(s, &p, &w, &vctx, tp);
-                                    printf("  Vision context injected (%d KV tokens)\n\n",
-                                           out_tokens);
-                                }
-                                tn_aligned_free(projected);
-                            }
-                            tn_aligned_free(vis_emb);
-                        }
-                        tn_aligned_free(patches);
-                    }
-                    tn_aligned_free(pixels);
-                }
-            }
-            vision_model_free(&vm);
-        }
+        const char *stripped_prompt = args.prompt;
+        vision_pipeline_run(args.image_path, args.vision_path, args.proj_path,
+                            &p, &w, s, &mc, &t, tp,
+                            args.prompt, vis_prompt_buf, sizeof(vis_prompt_buf),
+                            &stripped_prompt);
+        args.prompt = (char *)stripped_prompt;
     }
 
     /* Execution Mode */
@@ -612,14 +505,53 @@ int main(int argc, char **argv) {
         /* Phase 21: Start OpenAI-compatible API server */
         ApiContext api_ctx;
         api_context_init(&api_ctx, &p, &w, s, &mc, &t, tp);
+
+        /* Phase 22: API hardening knobs, off by default */
+        api_ctx.server_config.cors.enabled = args.cors_enabled;
+        for (int ci = 0; ci < args.num_cors_origins; ci++) {
+            server_config_add_cors_origin(&api_ctx.server_config, args.cors_origins[ci]);
+        }
+        if (args.api_key) api_ctx.server_config.auth.api_key = strdup(args.api_key);
+        api_ctx.server_config.metrics.enabled = args.metrics_enabled;
+        api_ctx.server_config.web_ui = args.web_ui_mode;
+        if (args.static_dir) api_ctx.server_config.static_dir = strdup(args.static_dir);
+        if (args.vision_path && args.proj_path) {
+            api_ctx.server_config.vision_path = strdup(args.vision_path);
+            api_ctx.server_config.proj_path   = strdup(args.proj_path);
+        }
+
         TernaryError api_err = api_server_start(args.server_port, &api_ctx);
         if (api_err != TN_OK) {
             fprintf(stderr, "Error: Failed to start API server on port %d: %s\n",
                     args.server_port, tn_error_str(api_err));
         } else {
             printf("Press Ctrl+C to stop.\n");
-            /* Block main thread — listener runs in background thread */
-            pause();
+
+            /* Graceful shutdown: previously a bare pause() with no signal
+             * handler installed meant SIGINT/SIGTERM used the default
+             * disposition (terminate immediately) — pause() never actually
+             * returns under default disposition, so api_server_stop() and
+             * all of main()'s later cleanup (tokenizer_free, gguf_header_free,
+             * mapped_file_close, etc.) were unreachable dead code in server
+             * mode. Installing a handler makes the signal "caught" instead
+             * of fatal, which is what makes pause() return. */
+            struct sigaction sa;
+            memset(&sa, 0, sizeof(sa));
+            sa.sa_handler = handle_shutdown_signal;
+            sigemptyset(&sa.sa_mask);
+            sa.sa_flags = 0;
+            sigaction(SIGINT, &sa, NULL);
+            sigaction(SIGTERM, &sa, NULL);
+
+            /* Block main thread — listener runs in background thread.
+             * Loop (not a single pause()) so a signal that arrived between
+             * installing the handler and the first pause() call — setting
+             * the flag before we ever wait — is still honored immediately
+             * rather than requiring a second signal. */
+            while (!g_shutdown_requested) {
+                pause();
+            }
+            printf("\nShutting down...\n");
             api_server_stop(&api_ctx);
         }
     } else if (args.prompt) {
@@ -635,14 +567,19 @@ int main(int argc, char **argv) {
         embedder_free(&rag.emb);
         vector_db_close(&rag.db);
     }
-    if (args.tokenizer_path) {
-        tokenizer_free(&t);
-    }
+    /* tokenizer_free is safe unconditionally: t was memset to zero above,
+     * and both load paths (--tokenizer file, or GGUF auto-load) populate
+     * the same fields it frees. Previously gated on args.tokenizer_path,
+     * which skipped cleanup entirely for the GGUF-auto-load path — the
+     * common case when no external --tokenizer is passed — leaking the
+     * whole vocab (~49k strings) every run. */
+    tokenizer_free(&t);
     run_state_free(s);
     free(s);
     if (mc.is_moe) moe_weights_free(&w, &mc);
     weights_free_pointers(&w);
     if (gguf_store) weights_free_gguf(gguf_store);
+    if (is_gguf) gguf_header_free(&gguf_hdr);
     mapped_file_close(&mf);
     threadpool_destroy(tp);
 

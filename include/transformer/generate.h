@@ -33,13 +33,17 @@ void generate(const Config *cfg, const TransformerWeights *w, RunState *s,
 
 /*
  * Phase 21 — Token callback type.
+ * Phase 22: now returns int so a caller (e.g. the HTTP API's cancel
+ * endpoint) can request early termination.
  *
  * Called once for every decoded non-EOS token during generation.
  * @param piece    Decoded token text (may be a UTF-8 fragment, multi-byte).
  *                 The pointer is valid only for the duration of the call.
  * @param userdata Opaque pointer passed through from generate_with_callback().
+ * @return         0 to continue generating, nonzero to stop early (as if
+ *                 EOS had been reached).
  */
-typedef void (*TokenCallback)(const char *piece, void *userdata);
+typedef int (*TokenCallback)(const char *piece, void *userdata);
 
 /**
  * Callback-based variant of generate().

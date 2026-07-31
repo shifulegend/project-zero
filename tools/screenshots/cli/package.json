@@ -1,0 +1,12 @@
+{
+  "name": "project-zero-cli-screenshots",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Phase 22.4 — renders a captured terminal session (raw bytes, including ANSI/cursor control codes) through xterm.js in a headless Playwright page, so CLI screenshots (colors, in-place progress updates, live tok/s) are pixel-accurate to a real terminal rather than a hand-rolled ANSI-to-HTML approximation. Opt-in dev tooling only — not part of make test/release/CI.",
+  "type": "module",
+  "dependencies": {
+    "@xterm/xterm": "^5.5.0",
+    "gifenc": "^1.0.3",
+    "pngjs": "^7.0.0"
+  }
+}

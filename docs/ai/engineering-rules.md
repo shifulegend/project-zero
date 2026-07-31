@@ -1,6 +1,6 @@
 # Engineering Rules — project-zero
 
-> Canonical source of truth. Adapters reference this. Last updated: 2026-06-07.
+> Canonical source of truth. Adapters reference this. Last updated: 2026-07-16.
 
 ## Modularity
 - Smallest sensible units: small functions, single responsibility, explicit interfaces.
@@ -46,6 +46,26 @@ A change is done only when:
 - `make test` runs **every** `tests/*.c` and aborts on the first failure — a green full run is
   the bar. CI historically died early, masking downstream failures; expect a cascade when you
   unblock the first failing test, and keep going until the whole suite passes on all platforms.
+
+## Bug-fix policy (fix, don't just log)
+- **Any bug found gets fixed, in the same pass, regardless of whether it's pre-existing or
+  unrelated to the task at hand.** "Pre-existing" is not a reason to leave a real defect in
+  place — it's a reason to fix it now while it's been found, since it may not be found again
+  soon. This applies to anything surfaced by ASan/UBSan/ThreadSanitizer, screenshot/manual
+  review, test failures, or incidental code reading — not just bugs in the diff you set out
+  to write. (Example: 2026-07-16, a ~1.2MB ASan leak was traced not to the feature being worked
+  on but to `tokenizer_free()` being skipped for the common GGUF-auto-load tokenizer path —
+  fixed immediately rather than dismissed as "unrelated to this change".)
+- Document the fix in `docs/ai/mistakes.md` (root cause + correction) same as any other bug —
+  fixing it doesn't remove the obligation to record it.
+- The only valid reason to *not* fix a found bug immediately is genuine scope: a fix requiring a
+  large, architecturally-significant change (e.g. adding a whole new subsystem, a signal-handling
+  rework, a breaking API change) should be flagged explicitly to the user with a clear description
+  of the gap and a recommendation, rather than either silently fixed as scope creep or silently
+  left unfixed. Small, mechanical, or clearly-scoped fixes (a missing `free()`, a wrong guard
+  condition, an off-by-one) never need to wait for permission.
+- Re-run the full verification cycle (`## Verification` above) after any bug fix, same as for
+  planned work — a fix that isn't verified is just a different unverified change.
 
 ## Version control & branch hygiene
 - Integrate into `master` via small PRs (don't push directly); keep each PR's branch short-lived.

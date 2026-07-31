@@ -144,6 +144,55 @@ static void test_json_parse_malformed(void) {
     chat_request_free(&req);
 }
 
+/* ── 6b. JSON parse: OpenAI "content parts" array (image upload, Phase 22.2) */
+static void test_json_parse_content_parts(void) {
+    const char *json =
+        "{\"messages\":[{\"role\":\"user\",\"content\":["
+            "{\"type\":\"text\",\"text\":\"What is in this image?\"},"
+            "{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,QUJD\"}}"
+        "]}]}";
+
+    ChatRequest req;
+    chat_request_init(&req);
+    TernaryError err = chat_request_parse(json, &req);
+
+    if (err != TN_OK) { FAIL("json_parse_content_parts", "parse error"); goto done; }
+    if (req.num_messages != 1) { FAIL("json_parse_content_parts", "wrong message count"); goto done; }
+    if (!req.messages[0].content || strcmp(req.messages[0].content, "What is in this image?") != 0)
+                                   { FAIL("json_parse_content_parts", "text part mismatch"); goto done; }
+    if (!req.messages[0].image_data_url ||
+        strcmp(req.messages[0].image_data_url, "data:image/png;base64,QUJD") != 0)
+                                   { FAIL("json_parse_content_parts", "image_url mismatch"); goto done; }
+    PASS("json_parse_content_parts");
+done:
+    chat_request_free(&req);
+}
+
+/* ── 6c. JSON parse: plain string content still works alongside content-parts */
+static void test_json_parse_content_parts_text_only_message_still_plain_string(void) {
+    const char *json =
+        "{\"messages\":["
+          "{\"role\":\"user\",\"content\":["
+            "{\"type\":\"text\",\"text\":\"describe it\"},"
+            "{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/jpeg;base64,Zm9v\"}}"
+          "]},"
+          "{\"role\":\"assistant\",\"content\":\"plain reply\"}"
+        "]}";
+
+    ChatRequest req;
+    chat_request_init(&req);
+    TernaryError err = chat_request_parse(json, &req);
+
+    if (err != TN_OK) { FAIL("content_parts_mixed_with_plain_string", "parse error"); goto done; }
+    if (req.num_messages != 2) { FAIL("content_parts_mixed_with_plain_string", "wrong count"); goto done; }
+    if (!req.messages[0].image_data_url) { FAIL("content_parts_mixed_with_plain_string", "msg0 missing image"); goto done; }
+    if (req.messages[1].image_data_url != NULL) { FAIL("content_parts_mixed_with_plain_string", "msg1 must have no image"); goto done; }
+    if (strcmp(req.messages[1].content, "plain reply") != 0) { FAIL("content_parts_mixed_with_plain_string", "msg1 content mismatch"); goto done; }
+    PASS("content_parts_mixed_with_plain_string");
+done:
+    chat_request_free(&req);
+}
+
 /* ── 7. chat_template_detect ─────────────────────────────────────────────── */
 static void test_template_detect(void) {
     assert(chat_template_detect("llama-3-8b")    == CHAT_TMPL_LLAMA3);
@@ -291,6 +340,8 @@ int main(void) {
     test_json_parse_escapes();
     test_json_parse_unknown_keys();
     test_json_parse_malformed();
+    test_json_parse_content_parts();
+    test_json_parse_content_parts_text_only_message_still_plain_string();
     test_template_detect();
     test_compile_chatml();
     test_compile_llama3();

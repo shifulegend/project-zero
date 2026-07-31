@@ -15,10 +15,11 @@
 #include <time.h>
 
 /* ── stdout callback used by the public generate() wrapper ─────────────── */
-static void stdout_token_callback(const char *piece, void *userdata) {
+static int stdout_token_callback(const char *piece, void *userdata) {
     (void)userdata;
     printf("%s", piece);
     fflush(stdout);
+    return 0;
 }
 
 /* ── Core implementation: all output goes through callback ──────────────── */
@@ -213,10 +214,12 @@ void generate_with_callback(const Config *cfg, const TransformerWeights *w,
                 gen_start_us = timer_now_us();
             }
             const char *piece = tokenizer_decode(tok, prev_token, next);
+            int stop_requested = 0;
             if (piece && callback) {
-                callback(piece, userdata);
+                stop_requested = callback(piece, userdata);
             }
             tokens_generated++;
+            if (stop_requested) break;
         }
 
         prev_token = next;

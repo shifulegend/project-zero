@@ -1,5 +1,8 @@
 #include "cli/repl.h"
 #include "cli/timer.h"
+#include "cli/color.h"
+#include "cli/live_stats.h"
+#include "cli/md_render.h"
 #include "transformer/generate.h"
 #include "agent/agent_loop.h"
 #include "rag/auto_retrieve.h"
@@ -9,8 +12,26 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define MAX_REPL_LINE 4096
+
+/* Composite generate_with_callback callback: renders markdown/color and
+ * tracks a live tok/s indicator. REPL never requests early cancellation. */
+typedef struct {
+    MdRenderState md;
+    TnLiveStats   live;
+    int           is_tty;
+    int           color_enabled;
+} ReplGenContext;
+
+static int repl_token_callback(const char *piece, void *userdata) {
+    ReplGenContext *rc = (ReplGenContext *)userdata;
+    md_render_feed(&rc->md, piece);
+    tn_live_stats_tick(&rc->live);
+    tn_live_stats_render(&rc->live, rc->is_tty, rc->color_enabled);
+    return 0;
+}
 
 static void print_kv_stats(RunState *s, Config *p) {
     printf("[Context] Used: %d / %d tokens\n", s->current_pos, p->seq_len);
@@ -153,9 +174,24 @@ void run_repl(Config *p, TransformerWeights *w,
             }
         }
 
+        int is_tty = isatty(fileno(stdout));
+        int color_enabled = tn_color_resolve(args->color_mode, is_tty, getenv("NO_COLOR"));
+
+        ReplGenContext rc;
+        md_render_init(&rc.md, stdout, color_enabled);
+        tn_live_stats_init(&rc.live);
+        rc.is_tty = is_tty;
+        rc.color_enabled = color_enabled;
+
         int64_t start_time = timer_now_us();
-        generate(p, w, s, mc, t, tp, line, args->max_tokens, args->temperature, args->top_p);
+        generate_with_callback(p, w, s, mc, t, tp, line,
+                               args->max_tokens, args->temperature, args->top_p,
+                               repl_token_callback, &rc);
+        md_render_flush(&rc.md);
+        if (rc.is_tty && rc.live.count >= 2) fprintf(stderr, "\n"); /* move past the live tok/s line */
+        md_render_free(&rc.md);
         int64_t end_time = timer_now_us();
+        printf("\n");
 
         if (args->verbose) {
             printf("\n[Generation took %.2fs]\n", (end_time - start_time) / 1000000.0);

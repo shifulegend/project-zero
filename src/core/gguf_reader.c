@@ -411,3 +411,16 @@ float gguf_type_bpe(GGUFType t) {
     if (be == 0) return 0.0f;
     return (float)bs / (float)be;
 }
+
+void gguf_header_free(GGUFHeader *hdr) {
+    if (!hdr) return;
+    /* Only GGUF_VAL_STRING metadata entries heap-allocate (parse_meta_entry
+     * mallocs a NUL-terminated copy since on-disk GGUF strings aren't
+     * NUL-terminated); array/tensor data are zero-copy pointers into the
+     * mmap and owned by mapped_file_close, not by this struct. */
+    for (uint64_t i = 0; i < hdr->n_meta; i++) {
+        if (hdr->meta[i].val_type == GGUF_VAL_STRING) {
+            free(hdr->meta[i].val.string.str);
+        }
+    }
+}

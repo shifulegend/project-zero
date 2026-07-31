@@ -2,7 +2,7 @@
 
 > Canonical source of truth. Tool adapters (CLAUDE.md, AGENTS.md, gemini/GEMINI.md,
 > .github/copilot-instructions.md) summarize and link here. Keep this current.
-> Last updated: 2026-06-14.
+> Last updated: 2026-07-15.
 
 ## Purpose
 `project-zero` is a from-scratch, CPU-optimized LLM inference engine in C/C++ targeting
@@ -47,11 +47,13 @@ at runtime (`--simd`, `--classifier`, or auto/calibration).
 | `src/sampling/` | RNG, temperature, top-k, top-p, argmax |
 | `src/memory/` | Aligned alloc, mmap |
 | `src/multimodal/` | Vision encoder/projector/bridge, image load (optional/experimental) |
-| `src/cli/` | Arg parsing, REPL, `main.c` (builds `adaptive_ai_engine`) |
+| `src/cli/` | Arg parsing, REPL, `main.c` (builds `adaptive_ai_engine`); color/progress/live-stats/markdown-render (Phase 22.3, REPL-only) |
 | `include/` | Public headers mirroring `src/` |
 | `tests/` | Unit + audit + red/blackbox tests (every `tests/*.c` is auto-built & run) |
 | `tools/` | Model conversion + benchmark scripts |
+| `webui/` | Web chat UI frontend source (Vite+Svelte, Phase 22); build output is embedded into the binary, not shipped as a directory |
 | `docs/` | Reports + this `docs/ai/` AI-dev system |
+| `docs/design/` | UI/UX design-principles reference used to grade screenshots (Phase 22) |
 
 ## Build / test / run (verified)
 ```bash
@@ -81,11 +83,22 @@ see `docs/RELEASING.md`).
 ## Major integration boundaries
 - **GGUF metadata** drives config, tokenizer, and quant types — *not* hardcoded constants.
 - **Runtime SIMD dispatch** (`src/math/simd_dispatch.c`, `cpu_features.c`) selects kernels.
-- **HTTP API** (`src/api/`) exposes the engine; mirrors OpenAI chat schema. **Partial
-  (Phase 21, experimental):** `--server`/`--port` serve `POST /v1/chat/completions`
-  (streaming + non-streaming SSE), `GET /v1/models`, `GET /health` with real inference,
-  but the listener handles connections serially, binds loopback-only, and the socket
-  layer is untested/not in CI. Logic-level tests in `tests/test_api_server.c`.
+- **HTTP API** (`src/api/`) exposes the engine; mirrors OpenAI chat schema. **Phase 21** shipped
+  `POST /v1/chat/completions` (streaming + non-streaming SSE), `GET /v1/models`, `GET /health`.
+  **Phase 22.1** hardened this into a real server: CORS, optional API-key auth, `/metrics`
+  (Prometheus), `/docs`+`/openapi.json`, a cancel endpoint, and a concurrency rearchitecture
+  (per-connection threads + a `generation_mutex`, replacing the old serial-inline-accept-loop
+  model) so static asset/UI serving isn't blocked behind an in-flight generation. Still binds
+  loopback-only by default. Logic-level tests in `tests/test_api_server.c` plus
+  `tests/test_cors.c`/`test_auth.c`/`test_metrics.c`/`test_cancel.c`/`test_openapi.c`.
+- **Web chat UI** (Phase 22.2, `webui/`): a Vite+Svelte SPA served by the HTTP API at `GET /`
+  (`GET /health` remains the separate JSON health check). Built bundle is embedded into the C
+  binary as a committed generated TU (`src/api/webui_bundle_generated.c`) — default builds need
+  no Node; `make webui-bundle` regenerates it when `webui/src` changes. Supports streaming chat,
+  adjustable sampling params, stop/cancel, theme toggle, and image upload via the OpenAI
+  "content parts" form (`src/api/data_url.c` decodes the base64 payload; the vision pipeline
+  itself lives in `src/multimodal/vision_pipeline.c`, shared with the CLI's `--image`, active
+  when the server is started with `--vision`/`--proj`).
 - **Conversion tools** (`tools/convert_*`, `import_model.py`) bridge HuggingFace → engine formats.
 
 ## Reference reports

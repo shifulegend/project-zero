@@ -1,0 +1,41 @@
+$ date -u && ./adaptive_ai_engine --model models/bitnet-b1.58-2B-4T.bin --tokenizer models/bitnet-b1.58-2B-4T_tokenizer.bin --prompt "Explain the difference between supervised and unsupervised learning in three sentences." --max-tokens 40 --temperature 0 --threads 4
+2026-07-04T10:05:28Z
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+SIMD: scalar (calibrated optimal)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 2048   KiB per core                 │
+│ L3 cache      : 260    MiB shared                   │
+│ Free RAM      : 15402  MiB                          │
+│ DRAM bandwidth: 15.1   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB                           │
+│ Ceiling       : 16.2   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 4 threads | AVX-512 VNNI | BF16 cls | 4T | 15.1 GB/s | ceiling 16 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output, while unsupervised learning involves finding patterns in data without any guidance.  Response
+[gen] 16.43 tok/s (41 tokens)
+
+

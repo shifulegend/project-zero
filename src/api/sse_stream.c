@@ -95,8 +95,8 @@ int sse_write_done(int fd, const char *id) {
     return (int)write_all(fd, buf, (size_t)n);
 }
 
-int sse_write_full_response(int fd, const char *id, const char *full_text) {
-    if (!id || !full_text) return -1;
+char *sse_format_full_response(const char *id, const char *full_text) {
+    if (!id || !full_text) return NULL;
 
     /* Allocate escaped output buffer.  Upper bound: control characters (<0x20)
      * expand to \uXXXX (6 bytes each); all other special chars need at most 2
@@ -104,7 +104,7 @@ int sse_write_full_response(int fd, const char *id, const char *full_text) {
     size_t src_len = strlen(full_text);
     size_t esc_cap = src_len * 6 + 4;
     char  *escaped = (char *)malloc(esc_cap);
-    if (!escaped) return -1;
+    if (!escaped) return NULL;
 
     char *end = json_escape(escaped, full_text);
     *end = '\0';
@@ -113,7 +113,7 @@ int sse_write_full_response(int fd, const char *id, const char *full_text) {
     /* Build response JSON */
     size_t buf_cap = esc_len + 512;
     char  *buf     = (char *)malloc(buf_cap);
-    if (!buf) { free(escaped); return -1; }
+    if (!buf) { free(escaped); return NULL; }
 
     int n = snprintf(buf, buf_cap,
         "{\"id\":\"chatcmpl-%s\","
@@ -129,9 +129,14 @@ int sse_write_full_response(int fd, const char *id, const char *full_text) {
         (int)esc_len, escaped);
 
     free(escaped);
-    if (n < 0 || (size_t)n >= buf_cap) { free(buf); return -1; }
+    if (n < 0 || (size_t)n >= buf_cap) { free(buf); return NULL; }
+    return buf;
+}
 
-    int written = (int)write_all(fd, buf, (size_t)n);
-    free(buf);
+int sse_write_full_response(int fd, const char *id, const char *full_text) {
+    char *json = sse_format_full_response(id, full_text);
+    if (!json) return -1;
+    int written = (int)write_all(fd, json, strlen(json));
+    free(json);
     return written;
 }

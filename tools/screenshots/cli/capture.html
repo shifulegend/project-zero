@@ -1,0 +1,34 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>project-zero CLI capture</title>
+<link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css">
+<style>
+  html, body { margin: 0; background: #0b0d12; }
+  #term { padding: 16px; background: #0b0d12; }
+  /* xterm.js paints its own background via canvas per the theme option, but
+   * force it here too so a screenshot taken before the canvas's first paint
+   * cycle never shows the browser's default white. */
+  .xterm, .xterm-viewport, .xterm-screen { background-color: #0b0d12 !important; }
+</style>
+</head>
+<body>
+<div id="term"></div>
+<script src="node_modules/@xterm/xterm/lib/xterm.js"></script>
+<script>
+  // Exposes window.pzTerm so capture.mjs can feed captured bytes in and
+  // know when rendering has settled.
+  const term = new Terminal({
+    cols: 100,
+    rows: 70,
+    fontFamily: 'Menlo, Consolas, ui-monospace, monospace',
+    fontSize: 14,
+    theme: { background: '#0b0d12', foreground: '#e6e8ee' },
+    convertEol: true,
+  });
+  term.open(document.getElementById('term'));
+  window.pzTerm = term;
+</script>
+</body>
+</html>

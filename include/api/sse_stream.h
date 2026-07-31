@@ -39,4 +39,13 @@ int sse_write_done(int fd, const char *id);
  * Returns bytes written, or -1 on error. */
 int sse_write_full_response(int fd, const char *id, const char *full_text);
 
+/* Phase 22: builds the same non-streaming chat completion JSON as
+ * sse_write_full_response() but returns it as a heap-allocated,
+ * NUL-terminated string instead of writing it directly — so the caller can
+ * compute a correct Content-Length header before sending any bytes (writing
+ * headers with Content-Length first, then the body via a separate write(),
+ * requires knowing the length up front). Caller must free() the result.
+ * Returns NULL on allocation failure or invalid arguments. */
+char *sse_format_full_response(const char *id, const char *full_text);
+
 #endif /* TN_SSE_STREAM_H */

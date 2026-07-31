@@ -70,7 +70,7 @@ TEST_BINS := $(patsubst tests/%.c, build/tests/%, $(TEST_SRCS))
 
 TARGET = adaptive_ai_engine
 
-.PHONY: all clean debug release dist test objs demo
+.PHONY: all clean debug release dist test objs demo webui-bundle screenshots
 
 all: $(TARGET)
 
@@ -271,6 +271,26 @@ demo: release
 	@./$(TARGET) --model $(DEMO_MODEL) \
 	    --prompt "What is the capital of France?" \
 	    --max-tokens 50 --temperature 0 --threads 2
+
+# Phase 22.2 — regenerates src/api/webui_bundle_generated.c from webui/dist/.
+# Explicit, opt-in only: never part of `all`/`release`/`test`/`dist`, so
+# ordinary builds and CI never need Node — the generated file is committed
+# to git as the "prebuilt bundle" fallback. Run this after changing webui/src.
+webui-bundle:
+	npm --prefix webui ci
+	npm --prefix webui run build
+	@mkdir -p build/tools
+	$(CC) -std=c99 -Wall -Wextra -Iinclude -o build/tools/gen_webui_bundle tools/gen_webui_bundle.c
+	build/tools/gen_webui_bundle webui/dist src/api/webui_bundle_generated.c
+
+# Phase 22.4 — regenerates design-QA reference screenshots (web UI via
+# Playwright directly, CLI via `script` + xterm.js, see tools/screenshots/).
+# Opt-in only: requires `npm install` in tools/screenshots/cli/ once, a
+# running server for the webui capture, and the `release` binary for the
+# CLI capture. Never part of `all`/`release`/`test`/CI.
+screenshots:
+	@echo "Run manually — see tools/screenshots/README.md for the exact steps"
+	@echo "(starts a real server + drives Playwright; not automatable as a single target)."
 
 test-packed: build/tests/test_packed_weights
 	@echo "=== Running Phase 10 Packed Weight Tests ==="

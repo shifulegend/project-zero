@@ -1,0 +1,1404 @@
+=== scalar / bf16 / t=1 --- 2026-07-04T07:29:11Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: BF16 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15411  MiB                          │
+│ DRAM bandwidth: 10.7   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB                           │
+│ Ceiling       : 8.8    tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 1 threads | AVX-512 VNNI | BF16 cls | 4T | 10.7 GB/s | ceiling 9 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 4.73 tok/s (25 tokens)
+
+=== scalar / bf16 / t=2 --- 2026-07-04T07:29:23Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: BF16 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15321  MiB                          │
+│ DRAM bandwidth: 11.0   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB                           │
+│ Ceiling       : 9.1    tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 2 threads | AVX-512 VNNI | BF16 cls | 4T | 11.0 GB/s | ceiling 9 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 7.91 tok/s (25 tokens)
+
+=== scalar / bf16 / t=3 --- 2026-07-04T07:29:30Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: BF16 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15374  MiB                          │
+│ DRAM bandwidth: 10.8   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB                           │
+│ Ceiling       : 9.0    tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 3 threads | AVX-512 VNNI | BF16 cls | 4T | 10.8 GB/s | ceiling 9 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 10.88 tok/s (25 tokens)
+
+=== scalar / bf16 / t=4 --- 2026-07-04T07:29:36Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: BF16 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15421  MiB                          │
+│ DRAM bandwidth: 10.9   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB                           │
+│ Ceiling       : 9.1    tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 4 threads | AVX-512 VNNI | BF16 cls | 4T | 10.9 GB/s | ceiling 9 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 14.08 tok/s (25 tokens)
+
+=== scalar / int8 / t=1 --- 2026-07-04T07:29:42Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: INT8 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15453  MiB                          │
+│ DRAM bandwidth: 10.9   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : INT8 (1 byte/weight)               │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 836    MB                           │
+│ Ceiling       : 12.4   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 1 threads | AVX-512 VNNI | INT8 cls | 4T | 10.9 GB/s | ceiling 12 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 5.44 tok/s (25 tokens)
+
+=== scalar / int8 / t=2 --- 2026-07-04T07:29:52Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: INT8 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15335  MiB                          │
+│ DRAM bandwidth: 10.9   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : INT8 (1 byte/weight)               │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 836    MB                           │
+│ Ceiling       : 12.4   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 2 threads | AVX-512 VNNI | INT8 cls | 4T | 10.9 GB/s | ceiling 12 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 9.57 tok/s (25 tokens)
+
+=== scalar / int8 / t=3 --- 2026-07-04T07:30:00Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: INT8 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15178  MiB                          │
+│ DRAM bandwidth: 11.0   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : INT8 (1 byte/weight)               │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 836    MB                           │
+│ Ceiling       : 12.5   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 3 threads | AVX-512 VNNI | INT8 cls | 4T | 11.0 GB/s | ceiling 13 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 13.02 tok/s (25 tokens)
+
+=== scalar / int8 / t=4 --- 2026-07-04T07:30:06Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: INT8 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15412  MiB                          │
+│ DRAM bandwidth: 11.0   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : INT8 (1 byte/weight)               │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 836    MB                           │
+│ Ceiling       : 12.5   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 4 threads | AVX-512 VNNI | INT8 cls | 4T | 11.0 GB/s | ceiling 12 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 16.28 tok/s (25 tokens)
+
+=== avx2 / bf16 / t=1 --- 2026-07-04T07:30:12Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: BF16 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15436  MiB                          │
+│ DRAM bandwidth: 11.0   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB                           │
+│ Ceiling       : 9.2    tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 1 threads | AVX-512 VNNI | BF16 cls | 4T | 11.0 GB/s | ceiling 9 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 4.73 tok/s (25 tokens)
+
+=== avx2 / bf16 / t=2 --- 2026-07-04T07:30:23Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: BF16 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15332  MiB                          │
+│ DRAM bandwidth: 11.2   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB                           │
+│ Ceiling       : 9.3    tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 2 threads | AVX-512 VNNI | BF16 cls | 4T | 11.2 GB/s | ceiling 9 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 8.14 tok/s (25 tokens)
+
+=== avx2 / bf16 / t=3 --- 2026-07-04T07:30:30Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: BF16 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15183  MiB                          │
+│ DRAM bandwidth: 11.0   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB                           │
+│ Ceiling       : 9.1    tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 3 threads | AVX-512 VNNI | BF16 cls | 4T | 11.0 GB/s | ceiling 9 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 11.34 tok/s (25 tokens)
+
+=== avx2 / bf16 / t=4 --- 2026-07-04T07:30:37Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: BF16 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15300  MiB                          │
+│ DRAM bandwidth: 10.7   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB                           │
+│ Ceiling       : 8.9    tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 4 threads | AVX-512 VNNI | BF16 cls | 4T | 10.7 GB/s | ceiling 9 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 10.57 tok/s (25 tokens)
+
+=== avx2 / int8 / t=1 --- 2026-07-04T07:30:43Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: INT8 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15383  MiB                          │
+│ DRAM bandwidth: 10.8   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : INT8 (1 byte/weight)               │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 836    MB                           │
+│ Ceiling       : 12.3   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 1 threads | AVX-512 VNNI | INT8 cls | 4T | 10.8 GB/s | ceiling 12 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 5.51 tok/s (25 tokens)
+
+=== avx2 / int8 / t=2 --- 2026-07-04T07:30:54Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: INT8 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15303  MiB                          │
+│ DRAM bandwidth: 11.2   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : INT8 (1 byte/weight)               │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 836    MB                           │
+│ Ceiling       : 12.8   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 2 threads | AVX-512 VNNI | INT8 cls | 4T | 11.2 GB/s | ceiling 13 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 9.85 tok/s (25 tokens)
+
+=== avx2 / int8 / t=3 --- 2026-07-04T07:31:01Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: INT8 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15240  MiB                          │
+│ DRAM bandwidth: 10.7   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : INT8 (1 byte/weight)               │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 836    MB                           │
+│ Ceiling       : 12.2   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 3 threads | AVX-512 VNNI | INT8 cls | 4T | 10.7 GB/s | ceiling 12 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 13.27 tok/s (25 tokens)
+
+=== avx2 / int8 / t=4 --- 2026-07-04T07:31:07Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: INT8 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15383  MiB                          │
+│ DRAM bandwidth: 10.9   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : INT8 (1 byte/weight)               │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 836    MB                           │
+│ Ceiling       : 12.5   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 4 threads | AVX-512 VNNI | INT8 cls | 4T | 10.9 GB/s | ceiling 12 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 12.33 tok/s (25 tokens)
+
+=== avx512f / bf16 / t=1 --- 2026-07-04T07:31:13Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: BF16 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15433  MiB                          │
+│ DRAM bandwidth: 10.9   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB                           │
+│ Ceiling       : 9.1    tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 1 threads | AVX-512 VNNI | BF16 cls | 4T | 10.9 GB/s | ceiling 9 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 4.75 tok/s (25 tokens)
+
+=== avx512f / bf16 / t=2 --- 2026-07-04T07:31:25Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: BF16 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15338  MiB                          │
+│ DRAM bandwidth: 11.0   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB                           │
+│ Ceiling       : 9.1    tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 2 threads | AVX-512 VNNI | BF16 cls | 4T | 11.0 GB/s | ceiling 9 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 8.11 tok/s (25 tokens)
+
+=== avx512f / bf16 / t=3 --- 2026-07-04T07:31:32Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: BF16 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15393  MiB                          │
+│ DRAM bandwidth: 10.7   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB                           │
+│ Ceiling       : 8.9    tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 3 threads | AVX-512 VNNI | BF16 cls | 4T | 10.7 GB/s | ceiling 9 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 11.52 tok/s (25 tokens)
+
+=== avx512f / bf16 / t=4 --- 2026-07-04T07:31:38Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: BF16 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15432  MiB                          │
+│ DRAM bandwidth: 11.0   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB                           │
+│ Ceiling       : 9.2    tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 4 threads | AVX-512 VNNI | BF16 cls | 4T | 11.0 GB/s | ceiling 9 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 11.68 tok/s (25 tokens)
+
+=== avx512f / int8 / t=1 --- 2026-07-04T07:31:44Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: INT8 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15438  MiB                          │
+│ DRAM bandwidth: 10.8   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : INT8 (1 byte/weight)               │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 836    MB                           │
+│ Ceiling       : 12.4   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 1 threads | AVX-512 VNNI | INT8 cls | 4T | 10.8 GB/s | ceiling 12 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 5.54 tok/s (25 tokens)
+
+=== avx512f / int8 / t=2 --- 2026-07-04T07:31:55Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: INT8 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15276  MiB                          │
+│ DRAM bandwidth: 11.0   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : INT8 (1 byte/weight)               │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 836    MB                           │
+│ Ceiling       : 12.6   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 2 threads | AVX-512 VNNI | INT8 cls | 4T | 11.0 GB/s | ceiling 13 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 10.44 tok/s (25 tokens)
+
+=== avx512f / int8 / t=3 --- 2026-07-04T07:32:02Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: INT8 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15149  MiB                          │
+│ DRAM bandwidth: 11.0   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : INT8 (1 byte/weight)               │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 836    MB                           │
+│ Ceiling       : 12.6   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 3 threads | AVX-512 VNNI | INT8 cls | 4T | 11.0 GB/s | ceiling 13 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 14.28 tok/s (25 tokens)
+
+=== avx512f / int8 / t=4 --- 2026-07-04T07:32:08Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: INT8 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15176  MiB                          │
+│ DRAM bandwidth: 11.2   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : INT8 (1 byte/weight)               │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 836    MB                           │
+│ Ceiling       : 12.8   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 4 threads | AVX-512 VNNI | INT8 cls | 4T | 11.2 GB/s | ceiling 13 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 18.21 tok/s (25 tokens)
+
+=== vnni / bf16 / t=1 --- 2026-07-04T07:32:13Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: BF16 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15191  MiB                          │
+│ DRAM bandwidth: 11.1   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB                           │
+│ Ceiling       : 9.2    tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 1 threads | AVX-512 VNNI | BF16 cls | 4T | 11.1 GB/s | ceiling 9 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 4.74 tok/s (25 tokens)
+
+=== vnni / bf16 / t=2 --- 2026-07-04T07:32:24Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: BF16 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15340  MiB                          │
+│ DRAM bandwidth: 10.9   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB                           │
+│ Ceiling       : 9.0    tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 2 threads | AVX-512 VNNI | BF16 cls | 4T | 10.9 GB/s | ceiling 9 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 8.13 tok/s (25 tokens)
+
+=== vnni / bf16 / t=3 --- 2026-07-04T07:32:32Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: BF16 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15228  MiB                          │
+│ DRAM bandwidth: 11.0   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB                           │
+│ Ceiling       : 9.1    tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 3 threads | AVX-512 VNNI | BF16 cls | 4T | 11.0 GB/s | ceiling 9 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 11.64 tok/s (25 tokens)
+
+=== vnni / bf16 / t=4 --- 2026-07-04T07:32:37Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: BF16 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15058  MiB                          │
+│ DRAM bandwidth: 10.8   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB                           │
+│ Ceiling       : 9.0    tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 4 threads | AVX-512 VNNI | BF16 cls | 4T | 10.8 GB/s | ceiling 9 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 15.02 tok/s (25 tokens)
+
+=== vnni / int8 / t=1 --- 2026-07-04T07:32:43Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: INT8 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 14881  MiB                          │
+│ DRAM bandwidth: 10.8   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : INT8 (1 byte/weight)               │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 836    MB                           │
+│ Ceiling       : 12.3   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 1 threads | AVX-512 VNNI | INT8 cls | 4T | 10.8 GB/s | ceiling 12 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 5.56 tok/s (25 tokens)
+
+=== vnni / int8 / t=2 --- 2026-07-04T07:32:54Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: INT8 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 14949  MiB                          │
+│ DRAM bandwidth: 11.1   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : INT8 (1 byte/weight)               │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 836    MB                           │
+│ Ceiling       : 12.6   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 2 threads | AVX-512 VNNI | INT8 cls | 4T | 11.1 GB/s | ceiling 13 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 9.74 tok/s (25 tokens)
+
+=== vnni / int8 / t=3 --- 2026-07-04T07:33:02Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: INT8 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15152  MiB                          │
+│ DRAM bandwidth: 11.1   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : INT8 (1 byte/weight)               │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 836    MB                           │
+│ Ceiling       : 12.6   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 3 threads | AVX-512 VNNI | INT8 cls | 4T | 11.1 GB/s | ceiling 13 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 14.00 tok/s (25 tokens)
+
+=== vnni / int8 / t=4 --- 2026-07-04T07:33:08Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: INT8 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15140  MiB                          │
+│ DRAM bandwidth: 10.5   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : INT8 (1 byte/weight)               │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 836    MB                           │
+│ Ceiling       : 12.0   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 4 threads | AVX-512 VNNI | INT8 cls | 4T | 10.5 GB/s | ceiling 12 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+  Response: Supervised learning involves training a model on labeled data, where the input data is paired with the correct output,
+[gen] 18.00 tok/s (25 tokens)
+
+=== vnni / int4 / t=1 --- 2026-07-04T07:33:13Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: INT4 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15003  MiB                          │
+│ DRAM bandwidth: 10.9   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : INT4 (0.5 byte/weight)             │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 680    MB                           │
+│ Ceiling       : 15.3   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 1 threads | AVX-512 VNNI | INT4 cls | 4T | 10.9 GB/s | ceiling 15 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+ 1. Supervised learning is when a model is trained on labeled data. 2. Unsupervised learning is when
+[gen] 5.67 tok/s (25 tokens)
+
+=== vnni / int4 / t=2 --- 2026-07-04T07:33:25Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: INT4 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15132  MiB                          │
+│ DRAM bandwidth: 10.4   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : INT4 (0.5 byte/weight)             │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 680    MB                           │
+│ Ceiling       : 14.6   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 2 threads | AVX-512 VNNI | INT4 cls | 4T | 10.4 GB/s | ceiling 15 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+ 1. Supervised learning is when a model is trained on labeled data. 2. Unsupervised learning is when
+[gen] 10.64 tok/s (25 tokens)
+
+=== vnni / int4 / t=3 --- 2026-07-04T07:33:33Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: INT4 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15153  MiB                          │
+│ DRAM bandwidth: 10.8   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : INT4 (0.5 byte/weight)             │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 680    MB                           │
+│ Ceiling       : 15.1   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 3 threads | AVX-512 VNNI | INT4 cls | 4T | 10.8 GB/s | ceiling 15 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+ 1. Supervised learning is when a model is trained on labeled data. 2. Unsupervised learning is when
+[gen] 14.46 tok/s (25 tokens)
+
+=== vnni / int4 / t=4 --- 2026-07-04T07:33:39Z ===
+Project Zero Engine 37f1850 — Auto-Tuned Hardware
+Classifier: INT4 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 14979  MiB                          │
+│ DRAM bandwidth: 10.4   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : INT4 (0.5 byte/weight)             │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 680    MB                           │
+│ Ceiling       : 14.6   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 4 threads | AVX-512 VNNI | INT4 cls | 4T | 10.4 GB/s | ceiling 15 tok/s
+Model format: native ternary
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+KV Strategy: Quantized I8, max context: 4096 tokens
+
+ 1. Supervised learning is when a model is trained on labeled data. 2. Unsupervised learning is when
+[gen] 18.54 tok/s (25 tokens)
+

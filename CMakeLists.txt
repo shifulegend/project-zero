@@ -176,6 +176,7 @@ set(MULTIMODAL_SOURCES
     src/multimodal/vision_encoder.c
     src/multimodal/vision_projector.c
     src/multimodal/vision_weights_load.c
+    src/multimodal/vision_pipeline.c
 )
 
 set(MEMORY_SOURCES
@@ -231,6 +232,11 @@ set(CLI_SOURCES
     src/cli/args.c
     src/cli/timer.c
     src/cli/repl.c
+    src/cli/color.c
+    src/cli/progress.c
+    src/cli/live_stats.c
+    src/cli/md_render.c
+    src/cli/banner.c
 )
 
 set(API_SOURCES
@@ -238,6 +244,15 @@ set(API_SOURCES
     src/api/http_server.c
     src/api/json_parse.c
     src/api/sse_stream.c
+    src/api/server_config.c
+    src/api/cors.c
+    src/api/auth.c
+    src/api/metrics.c
+    src/api/openapi.c
+    src/api/cancel.c
+    src/api/static_assets.c
+    src/api/webui_bundle_generated.c
+    src/api/data_url.c
 )
 
 set(RAG_SOURCES

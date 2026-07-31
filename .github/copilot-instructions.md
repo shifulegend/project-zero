@@ -25,6 +25,6 @@ OpenAI-compatible HTTP API. Build: `Makefile` (primary) + `CMakeLists.txt`. See 
 - Public repo: never commit secrets. Keep ASan/UBSan green.
 
 ## Scoped rules & workflows
-- Scoped recurring rules: `.github/instructions/{core,docs,tests,config}.instructions.md`.
+- Scoped recurring rules: `.github/instructions/{core,docs,tests,config,api}.instructions.md`.
 - Reusable workflows: `.github/prompts/*.prompt.md` (start-session, plan-task, implement-task,
   review-changes, debug-failure, update-project-memory).

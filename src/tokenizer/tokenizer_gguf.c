@@ -170,10 +170,22 @@ TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
         uint64_t    scores_count = gguf_meta_array_count(hdr, "tokenizer.ggml.scores");
 
         if (scores_data && stype == GGUF_VAL_FLOAT32 && scores_count == vocab_count) {
-            /* Direct pointer cast — packed float32 in mmap */
-            const float *scores = (const float *)scores_data;
-            for (uint64_t i = 0; i < vocab_count; i++)
-                t->vocab_scores[i] = scores[i];
+            /* Packed float32 in mmap, but NOT necessarily 4-byte aligned —
+             * GGUF packs metadata byte-tight with no padding, so this
+             * array's start offset depends on whatever preceded it in the
+             * file. A raw `((const float *)scores_data)[i]` is an unaligned
+             * load, undefined behavior in C (UBSan: "misaligned address...
+             * requires 4 byte alignment") and a real crash risk on
+             * strict-alignment targets. memcpy into a local is the same
+             * fix gguf_reader.c's own read_u32/read_u64 already use for
+             * header fields — copies out at whatever alignment, compiles to
+             * a single unaligned-load instruction on x86/ARM. */
+            const char *bytes = (const char *)scores_data;
+            for (uint64_t i = 0; i < vocab_count; i++) {
+                float sc;
+                memcpy(&sc, bytes + i * sizeof(float), sizeof(float));
+                t->vocab_scores[i] = sc;
+            }
         } else if (scores_count > 0) {
             fprintf(stderr, "[gguf-tok] WARN: scores array type mismatch or wrong count "
                     "(%llu vs %llu vocab), using zeros\n",
@@ -273,13 +285,18 @@ TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
         uint64_t tt_count   = gguf_meta_array_count(hdr, "tokenizer.ggml.token_type");
 
         if (tt_data && (tt_elem == GGUF_VAL_INT32 || tt_elem == GGUF_VAL_UINT32)) {
-            const int32_t *types = (const int32_t *)tt_data;
+            /* Same unaligned-load hazard as the scores array above — GGUF's
+             * byte-tight packing gives no alignment guarantee for this
+             * array's start offset, so index via memcpy, not a raw
+             * (const int32_t *) cast + subscript. */
+            const char *tt_bytes = (const char *)tt_data;
             int cap = 128;
             t->special_tokens    = (char **)malloc((size_t)cap * sizeof(char *));
             t->special_token_ids = (int *)   malloc((size_t)cap * sizeof(int));
             if (t->special_tokens && t->special_token_ids) {
                 for (int i = 0; i < t->vocab_size && (uint64_t)i < tt_count; i++) {
-                    int32_t ttype = types[i];
+                    int32_t ttype;
+                    memcpy(&ttype, tt_bytes + (size_t)i * sizeof(int32_t), sizeof(int32_t));
                     /* Include: CONTROL(3), USER_DEFINED(4) — the "added tokens".
                      * Exclude: NORMAL(1), BYTE(6, handled by BPE), UNUSED(5). */
                     if ((ttype == 3 || ttype == 4) && t->vocab[i] && t->vocab[i][0]) {

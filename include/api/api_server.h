@@ -3,13 +3,16 @@
 
 /*
  * Phase 21 — OpenAI-Compatible API Layer
+ * Phase 22 — CORS/auth/metrics/OpenAPI/cancel hardening + concurrency
+ *            rearchitecture (per-connection threads + a generation mutex).
  *
  * Public interface for the embedded HTTP API server.
  *
  * Usage (from main.c):
  *   ApiContext ctx;
  *   api_context_init(&ctx, cfg, weights, run_state, moe_cfg, tok, tp);
- *   api_server_start(port, &ctx);   // launches listener thread
+ *   ctx.server_config = ...;             // optional, set before api_server_start
+ *   api_server_start(port, &ctx);        // launches listener thread
  *   // ... main thread blocks or runs REPL ...
  *   api_server_stop(&ctx);
  */
@@ -21,6 +24,10 @@
 #include "core/weights.h"
 #include "threading/thread_pool.h"
 #include "tokenizer/tokenizer.h"
+#include "api/server_config.h"
+#include "api/metrics.h"
+#include "api/cancel.h"
+#include <pthread.h>
 
 /* ── Inference context passed from main to API handler ──────────────────── */
 typedef struct {
@@ -30,6 +37,14 @@ typedef struct {
     const MoEConfig        *moe_cfg;
     Tokenizer              *tok;
     ThreadPool             *tp;
+
+    /* Phase 22: server hardening state. server_config may be populated by
+     * the caller (main.c) any time before api_server_start(); the others are
+     * initialised internally by api_context_init(). */
+    ServerConfig    server_config;
+    MetricsState    metrics;
+    CancelState     cancel;
+    pthread_mutex_t generation_mutex; /* serializes generate_with_callback calls */
 
     /* Server state (filled by api_server_start) */
     int   server_fd;            /* listening socket fd, -1 when stopped */

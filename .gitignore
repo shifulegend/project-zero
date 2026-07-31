@@ -7,6 +7,15 @@ test_image.png
 nohup.out
 *.gguf
 
+# Phase 22.2: webui/ build artifacts — src/api/webui_bundle_generated.c
+# (produced from webui/dist/ via `make webui-bundle`) IS committed; these
+# are not.
+webui/node_modules/
+webui/dist/
+
+# Phase 22.4: screenshot-capture tooling's installed dependency (xterm.js)
+tools/screenshots/cli/node_modules/
+
 # Placeholder / zero-byte stub model files
 models/qwen2.5-7b.bin
 
@@ -25,6 +34,12 @@ models/bitnet-b1.58-2B-4T-converted.bin
 models/bitnet-b1.58-2B-4T-tokenizer-converted.bin
 models/.hf_cache/
 models/deepseek-v2-lite.bin
+# Session-local benchmark downloads (regenerable from Hugging Face; not for git)
+models/SmolLM2-135M-Instruct-f16.gguf
+models/bitnet-b1.58-2B-4T-i2_s.gguf
+models/bitnet-b1.58-2B-4T.bin
+models/bitnet-b1.58-2B-4T_tokenizer.bin
+models/bitnet-hf/
 test_moe_final_output.txt
 test_moe_results.txt
 

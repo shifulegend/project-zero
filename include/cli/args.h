@@ -4,6 +4,10 @@
 #include <stdbool.h>
 #include "core/platform.h"
 #include "core/error.h"
+#include "cli/color.h"
+#include "api/server_config.h"
+
+#define CLI_MAX_CORS_ORIGINS 16
 
 // CLI Arguments Structure
 typedef struct {
@@ -30,6 +34,17 @@ typedef struct {
     /* Phase 21: API server */
     int   server_mode;        /* --server: run as OpenAI-compatible HTTP server        */
     int   server_port;        /* --port <N>: listen port (default: 8080)              */
+    /* Phase 22: API hardening */
+    bool  cors_enabled;        /* --cors: enable CORS response headers                 */
+    char *cors_origins[CLI_MAX_CORS_ORIGINS]; /* --cors-origin <origin> (repeatable)    */
+    int   num_cors_origins;
+    char *api_key;             /* --api-key <key>: require Authorization: Bearer <key> */
+    bool  metrics_enabled;     /* --metrics: enable GET /metrics                       */
+    /* Phase 22.2: web UI */
+    char     *static_dir;      /* --static-dir <path>: serve UI from disk (dev mode)   */
+    WebUiMode web_ui_mode;     /* --web-ui <auto|on|off>: default auto                 */
+    /* Phase 22.3: CLI/REPL polish */
+    TnColorMode color_mode;    /* --color <auto|always|never>: default auto            */
 } CliArgs;
 
 // Parse CLI arguments into the CliArgs struct

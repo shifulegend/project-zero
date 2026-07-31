@@ -131,6 +131,19 @@ typedef struct {
 TernaryError gguf_read_header(GGUFHeader *hdr, const void *mapped_ptr, size_t mapped_size);
 
 /**
+ * Frees the heap-allocated NUL-terminated copies made for GGUF_VAL_STRING
+ * metadata entries (parse_meta_entry allocates these since on-disk GGUF
+ * strings aren't NUL-terminated). Array/tensor data are zero-copy pointers
+ * into the caller's mmap and are not touched here — callers still need
+ * mapped_file_close (or equivalent) for those. Safe to call on a
+ * zero-initialized or already-freed GGUFHeader (n_meta == 0 is a no-op).
+ * Must be called once gguf_read_header succeeds, alongside the caller's
+ * other cleanup (see src/cli/main.c) — previously omitted, which leaked
+ * every string-typed metadata value for the life of the process.
+ */
+void gguf_header_free(GGUFHeader *hdr);
+
+/**
  * Find a tensor by name. Returns NULL if not found.
  */
 const GGUFTensor *gguf_find_tensor(const GGUFHeader *hdr, const char *name);

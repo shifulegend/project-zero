@@ -20,6 +20,11 @@
 typedef struct {
     char role[CHAT_MAX_ROLE_LEN];       /* "system" | "user" | "assistant" */
     char *content;                      /* Heap-allocated, NULL-terminated  */
+    /* Phase 22.2: set when `content` was the OpenAI "content parts" array
+     * form (text + image_url) rather than a plain string — carries the
+     * image's data: URL (heap-allocated, NULL-terminated). NULL for
+     * ordinary text-only messages. */
+    char *image_data_url;
 } ChatMessage;
 
 /* ── Parsed request from POST /v1/chat/completions ──────────────────────── */

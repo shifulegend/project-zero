@@ -5,24 +5,19 @@
 
 void print_usage(const char *prog_name) {
     printf("Usage: %s [options]\n", prog_name);
-    printf("Options:\n");
-    printf("  --model <path>      Path to the .bin model file (required)\n");
-    printf("  --tokenizer <path>  Path to the tokenizer.bin file (required)\n");
+
+    printf("\nModel & Generation:\n");
+    printf("  --model <path>      Path to the .bin/.gguf model file (required)\n");
+    printf("  --tokenizer <path>  Path to the tokenizer.bin file (optional for GGUF)\n");
     printf("  --prompt <string>   Initial prompt string (optional, starts REPL if omitted)\n");
-    printf("  --image <path>      Path to image file for multimodal queries (optional)\n");
-    printf("  --vision <path>     Path to vision.bin encoder weights (Phase 34)\n");
-    printf("  --proj <path>       Path to projector.bin weights (Phase 34)\n");
-    printf("                      Both --vision and --proj required to use --image.\n");
-    printf("                      Extract with: python tools/extract_multimodal.py\n");
     printf("  --temperature <val> Temperature for sampling (default: 0.7)\n");
     printf("  --top-p <val>       Top-p nucleus sampling cutoff (default: 0.9)\n");
     printf("  --max-tokens <int>  Maximum tokens to generate (default: 512)\n");
-    printf("  --threads <int>     Number of threads (default: auto)\n");
-    printf("  --reasoning         Enable hidden reasoning mode via <think> tags\n");
-    printf("  --verbose           Enable verbose logging\n");
     printf("  --seed <int>        RNG seed (default: random)\n");
-    printf("  --memory-db <path>  Path to vector DB file for RAG memory (Phase 15)\n");
-    printf("                      File is created if it does not exist.\n");
+    printf("  --reasoning         Enable hidden reasoning mode via <think> tags\n");
+
+    printf("\nHardware & Performance:\n");
+    printf("  --threads <int>     Number of threads (default: auto)\n");
     printf("  --classifier <fmt>  Classifier quantization: auto, bf16, int8, int4, auto-fast\n");
     printf("                      Default: auto (BF16, full intelligence, zero loss).\n");
     printf("                      int8/int4: faster but quantizes classifier weights.\n");
@@ -33,11 +28,44 @@ void print_usage(const char *prog_name) {
     printf("  --calibrate         Run micro-benchmarks to find optimal settings for\n");
     printf("                      this hardware. Results cached in ~/.project-zero/\n");
     printf("                      Runs automatically on first use or hardware change.\n");
-    printf("  --server            Run as OpenAI-compatible HTTP API server (Phase 21).\n");
-    printf("                      Accepts POST /v1/chat/completions requests.\n");
-    printf("  --port <int>        HTTP listen port when --server is used (default: 8080).\n");
+
+    printf("\nServer (OpenAI-compatible HTTP API):\n");
+    printf("  --server            Run as an HTTP API server (--prompt is ignored).\n");
+    printf("  --port <int>        Listen port when --server is used (default: 8080).\n");
+    printf("  --cors              Enable CORS response headers (off by default).\n");
+    printf("  --cors-origin <o>   Allowed origin for CORS; repeatable, or \"*\" for any.\n");
+    printf("                      Requires --cors.\n");
+    printf("  --api-key <key>     Require 'Authorization: Bearer <key>' on API requests\n");
+    printf("                      (off by default — loopback experimentation is open).\n");
+    printf("  --metrics           Enable GET /metrics (Prometheus text exposition).\n");
+    printf("  --web-ui <mode>     Web chat UI: auto (default, on with --server), on, off.\n");
+    printf("  --static-dir <path> Serve the web UI from disk instead of the embedded\n");
+    printf("                      bundle (dev mode, for iterating on webui/dist/).\n");
+
+    printf("\nMultimodal (vision):\n");
+    printf("  --image <path>      Path to image file for multimodal queries (optional)\n");
+    printf("  --vision <path>     Path to vision.bin encoder weights\n");
+    printf("  --proj <path>       Path to projector.bin weights\n");
+    printf("                      Both --vision and --proj required to use --image.\n");
+    printf("                      Extract with: python tools/extract_multimodal.py\n");
+
+    printf("\nMemory & RAG:\n");
+    printf("  --memory-db <path>  Path to vector DB file for RAG memory.\n");
+    printf("                      File is created if it does not exist.\n");
+
+    printf("\nOutput:\n");
+    printf("  --color <mode>      Color output: auto (default), always, never.\n");
+    printf("                      auto respects the NO_COLOR env var and disables\n");
+    printf("                      color when stdout isn't a terminal.\n");
+    printf("  --verbose           Enable verbose logging\n");
+    printf("  --dump-tensors <f>  Write intermediate tensor stats to a CSV file\n");
     printf("  --version, -v       Print version and the SIMD backend for this CPU, then exit.\n");
     printf("  --help, -h          Print this help and exit.\n");
+
+    printf("\nExamples:\n");
+    printf("  %s --model models/smollm2.gguf --prompt \"What is the capital of France?\"\n", prog_name);
+    printf("  %s --model models/smollm2.gguf --threads 4          # interactive REPL\n", prog_name);
+    printf("  %s --model models/smollm2.gguf --server --port 8080 --cors --cors-origin \"*\"\n", prog_name);
 }
 
 TernaryError parse_args(CliArgs *args, int argc, char **argv) {
@@ -65,6 +93,13 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->dump_tensors_path = NULL;
     args->server_mode = 0;
     args->server_port = 8080;
+    args->cors_enabled = false;
+    args->num_cors_origins = 0;
+    args->api_key = NULL;
+    args->metrics_enabled = false;
+    args->static_dir = NULL;
+    args->web_ui_mode = WEBUI_MODE_AUTO;
+    args->color_mode = TN_COLOR_AUTO;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--model") == 0 && i + 1 < argc) {
@@ -129,6 +164,36 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
                 fprintf(stderr, "Error: --port must be 1–65535\n");
                 return TN_ERR_INVALID_CONFIG;
             }
+        } else if (strcmp(argv[i], "--cors") == 0) {
+            args->cors_enabled = true;
+        } else if (strcmp(argv[i], "--cors-origin") == 0 && i + 1 < argc) {
+            if (args->num_cors_origins >= CLI_MAX_CORS_ORIGINS) {
+                fprintf(stderr, "Error: too many --cors-origin values (max %d)\n", CLI_MAX_CORS_ORIGINS);
+                return TN_ERR_INVALID_CONFIG;
+            }
+            args->cors_origins[args->num_cors_origins++] = argv[++i];
+        } else if (strcmp(argv[i], "--api-key") == 0 && i + 1 < argc) {
+            args->api_key = argv[++i];
+        } else if (strcmp(argv[i], "--metrics") == 0) {
+            args->metrics_enabled = true;
+        } else if (strcmp(argv[i], "--static-dir") == 0 && i + 1 < argc) {
+            args->static_dir = argv[++i];
+        } else if (strcmp(argv[i], "--web-ui") == 0 && i + 1 < argc) {
+            const char *mode = argv[++i];
+            if (strcmp(mode, "auto") == 0)      args->web_ui_mode = WEBUI_MODE_AUTO;
+            else if (strcmp(mode, "on") == 0)   args->web_ui_mode = WEBUI_MODE_ON;
+            else if (strcmp(mode, "off") == 0)  args->web_ui_mode = WEBUI_MODE_OFF;
+            else {
+                fprintf(stderr, "Error: --web-ui must be one of: auto, on, off\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--color") == 0 && i + 1 < argc) {
+            const char *mode = argv[++i];
+            if (strcmp(mode, "auto") != 0 && strcmp(mode, "always") != 0 && strcmp(mode, "never") != 0) {
+                fprintf(stderr, "Error: --color must be one of: auto, always, never\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+            args->color_mode = tn_color_mode_parse(mode);
         } else if (strcmp(argv[i], "--version") == 0 || strcmp(argv[i], "-v") == 0) {
             /* Short-circuit: --version must work without --model so the release
              * binary is smoke-testable on a clean machine with no model file.

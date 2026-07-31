@@ -5,7 +5,7 @@
 > `docs/ai/decision-log.md`, `docs/ai/tool-sync-policy.md`.
 > `docs/ai/**` is the **canonical source of truth**; this file is a thin adapter and is kept
 > synchronized with `AGENTS.md` on durable repo-wide rules.
-> Scoped rules: `.agents/rules/{core,docs,tests,config}.md`. Workflows: `.agents/workflows/*.md`.
+> Scoped rules: `.agents/rules/{core,docs,tests,config,api}.md`. Workflows: `.agents/workflows/*.md`.
 > **All of these are dynamic — update them proactively, even without being asked**
 > (procedure in `docs/ai/tool-sync-policy.md`).
 

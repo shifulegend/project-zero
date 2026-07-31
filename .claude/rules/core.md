@@ -11,3 +11,7 @@ Adapter for `docs/ai/engineering-rules.md` — read the canonical file for full 
   prefetch `TN_PREFETCH_T1`; feature-gate with `TN_HAS_*`.
 - No new compiler warnings (`-Wall -Wextra -Wpedantic`). Keep ASan/UBSan green.
 - Public repo: never commit secrets.
+- **Any bug found gets fixed in the same pass, even if pre-existing/unrelated to the task** —
+  document it in `mistakes.md` too, but documenting is not a substitute for fixing. Only defer
+  when the fix itself is a large architectural change; flag that to the user explicitly instead
+  of silently fixing or silently skipping. See `engineering-rules.md` § Bug-fix policy.

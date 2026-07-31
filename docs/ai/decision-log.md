@@ -1,7 +1,64 @@
 # Decision Log — project-zero
 
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
-> Read at session start. Last updated: 2026-06-21.
+> Read at session start. Last updated: 2026-07-16.
+
+### 2026-07-16 — Process decision: bugs get fixed on discovery, not just logged
+- Decision: any bug found during a task — including pre-existing ones unrelated to what's being
+  worked on, surfaced incidentally via ASan/UBSan/ThreadSanitizer, manual/screenshot review, test
+  failures, or code reading — gets fixed in the same pass. "Pre-existing" or "unrelated to this
+  change" is no longer an acceptable reason to leave a confirmed real defect in place.
+- Trigger: a ~1.2MB ASan leak (49k+ allocations) surfaced while verifying the Phase 22.5 CLI
+  banner/spinner work was initially treated as a pre-existing, out-of-scope finding and merely
+  documented. On follow-up, traced to two real, small, fixable bugs — (1) `tokenizer_free()` in
+  `src/cli/main.c` was gated on `args.tokenizer_path`, which is unset for the common GGUF-auto-
+  load tokenizer path, so cleanup silently never ran; (2) `GGUFHeader`'s heap-allocated
+  string-metadata copies (`parse_meta_entry` in `src/core/gguf_reader.c`) had no corresponding
+  free function at all. Both fixed same-session; see `docs/ai/mistakes.md` (2026-07-16) for the
+  full writeup.
+- Canonical rule added: `docs/ai/engineering-rules.md` § "Bug-fix policy" — only exception is a
+  fix requiring a large architectural change, which must be flagged to the user explicitly
+  rather than silently fixed or silently left. Synced to all adapters (`.claude/rules/core.md`,
+  `.github/instructions/core.instructions.md`, `.agents/rules/core.md`).
+
+### 2026-07-15 — Phase 22: Web UI & API/DX hardening — tech + scope decisions
+- Decision: project-zero has no UI/UX beyond a raw JSON API and a plain-text CLI (confirmed:
+  no `ui/`/`web/`/`static/`/`.html`/`package.json` anywhere pre-Phase-22; `src/api/http_server.c`
+  exposed only `GET /v1/models`, `POST /v1/chat/completions`, `GET /health`). Closing the gap vs.
+  leading engines (llama.cpp server, Ollama, LM Studio) requires a web chat UI, HTTP API
+  hardening (CORS/auth/metrics/OpenAPI), and CLI/REPL polish (color/progress/markdown).
+- Web UI tech: **Vite + Svelte** SPA (a lighter analogue of llama.cpp's SvelteKit server UI — no
+  SSR needed since the C server only serves static files), built via an npm step used only by
+  *contributors* touching `webui/src`. The built `webui/dist/` bundle is embedded into the C
+  binary as a generated, **git-committed** byte-array TU (`src/api/webui_bundle_generated.c`),
+  so ordinary `make release`/`cmake --build` and CI stay 100% Node-free by default — mirrors
+  llama.cpp's own build-then-embed pattern. `make webui-bundle` (opt-in, never in `all`/`test`)
+  regenerates it; a `webui.yml` CI job scoped to `webui/**` fails on drift.
+- Scope decision (concurrency): the HTTP server's single-threaded/serial `handle_connection()`
+  model is **rearchitected** to per-connection threads + a `generation_mutex` (only one
+  `generate_with_callback` in flight at a time; second concurrent chat request gets `429`), so
+  the web UI's static assets and Stop/Cancel button aren't blocked behind an in-flight
+  generation. This is a real concurrency change to `http_server.c`, not pure presentation —
+  verified with ThreadSanitizer in addition to the usual ASan/UBSan pass.
+- Scope decision (image upload): included now. Requires extracting `main.c`'s inline
+  vision-loading block into a reusable `multimodal/vision_pipeline.c` function callable from
+  both the CLI and `--server` mode, plus raising `HTTP_MAX_BODY_BYTES`/`CHAT_MAX_CONTENT` to fit
+  base64 images.
+- Mandatory verification additions (user-specified, apply project-wide going forward for this
+  kind of change): (1) any refactor of existing non-UI code done in service of a UI change (the
+  two items above) must be verified with a before/after run of every currently-tested model,
+  timestamped raw-output screenshots, and a text+tok/s diff against baseline — extends the
+  existing golden-output/A/B practice, does not replace it; (2) every UI/UX screenshot (web +
+  CLI) is graded against a written design-principles reference (`docs/design/ui-ux-principles.md`)
+  via independent image review before being accepted, looping fix→recapture on failure.
+- Capture tooling: investigated `docs/tty_bitnet.png`/`demo_bitnet.gif` — confirmed **manually
+  captured**, no script/tool/CI step produces them (repo-wide search for vhs/asciinema/ttyrec/
+  `.tape` files found zero hits). Phase 22 introduces the first real capture tooling: Playwright
+  (headless Chromium, pre-installed in this environment) for the web UI, and a scripted terminal
+  capture for the CLI/REPL (see `docs/design/ui-ux-principles.md`/Phase 22.4 notes for the exact
+  tool, since `vhs` requires `ttyd`+`ffmpeg` which are not present in this environment).
+- Full design: see the Phase 22 plan; sub-phases 22.0 (docs) → 22.1 (API hardening) → 22.2 (web
+  UI) → 22.3 (CLI polish) → 22.4 (design QA/regression/README).
 
 ### 2026-06-21 — Claim corrected to same-SIMD/same-thread/same-precision; hero = beats bitnet.cpp
 - Decision: The README headline claims only what holds apples-to-apples. Fresh three-engine

@@ -335,32 +335,25 @@ static void process_row(const int8_t *a_row, const int8_t *P,
         for (int g = 0; g < K5; g++) {
             const int8_t *a = a_row + (size_t)g * 5;
             const int8_t *pw = P + (size_t)g * N + col0;
-            /* Scalar decode and accumulate */
+            /*
+             * Scalar decode and accumulate, mirroring build_tables(): shift
+             * the packed magnitude into the base-3 digit space (+121) before
+             * splitting into hv/lv indices, matching the vectorized path.
+             */
             for (int j = 0; j < n_tail; j++) {
                 int8_t pv = pw[j];  /* balanced ternary packed value */
-                /* dot product for this one position = act dot weight */
-                /* pv encodes: a[0]*81 + a[1]*27 + a[2]*9 + a[3]*3 + a[4] */
-                /* The activation for this group comes from a_row[g*5..g*5+4] */
-                /* We just accumulate pv * 1 as-is for the scalar test -- wait */
-                /* Actually we need: sum of a[i]*w[i] for i in [0,4]          */
-                /* pv is the packed value, not the weight directly.            */
-                /* The correct approach: decode pv back to 5 weights and dot. */
-                /* But that defeats the LUT purpose. Use a mini-scalar LUT:   */
-                int32_t dot = 0;
-                int v = (int)pv;
+                int v    = (int)pv;
                 int sign = (v < 0) ? -1 : 1;
                 int av   = (v < 0) ? -v : v;
-                /* av encodes: w[0]*81 + w[1]*27 + w[2]*9 + w[3]*3 + w[4]   */
-                /* dot = a[0]*w[0]+a[1]*w[1]+...+a[4]*w[4]                   */
-                /* = (1/sign) * lookup(av)  but we build inline:              */
-                int hv_idx = av / 9;
-                int lv_idx = av % 9;
+                int u      = av + 121;
+                int hv_idx = u / 9;
+                int lv_idx = u % 9;
                 int16_t hv_val = (int16_t)a[0] * g_d0[hv_idx]
                                + (int16_t)a[1] * g_d1[hv_idx]
                                + (int16_t)a[2] * g_d2[hv_idx];
                 int16_t lv_val = (int16_t)a[3] * g_d3[lv_idx]
                                + (int16_t)a[4] * g_d4[lv_idx];
-                dot = (int32_t)(hv_val + lv_val) * sign;
+                int32_t dot = (int32_t)(hv_val + lv_val) * sign;
                 C_row[col0 + j] += dot;
             }
         }

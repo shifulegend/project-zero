@@ -163,6 +163,75 @@ static void skip_value(const char **p) {
     }
 }
 
+/*
+ * Phase 22.2 — parses the OpenAI "content parts" array form, used for image
+ * uploads:
+ *   "content": [
+ *     {"type": "text", "text": "..."},
+ *     {"type": "image_url", "image_url": {"url": "data:image/...;base64,..."}}
+ *   ]
+ * Populates msg->content (from the text part) and msg->image_data_url (from
+ * the image_url part's nested "url" field). Assumes *p already points past
+ * the "content": key, at the opening '['.
+ */
+static TernaryError parse_content_parts(const char **p, ChatMessage *msg) {
+    if (!expect_char(p, '[')) return TN_ERR_JSON_PARSE;
+    skip_ws(p);
+
+    while (**p && **p != ']') {
+        if (!expect_char(p, '{')) return TN_ERR_JSON_PARSE;
+
+        while (**p && **p != '}') {
+            skip_ws(p);
+            if (**p == '}') break;
+
+            char key[64];
+            if (!parse_string(p, key, sizeof(key))) return TN_ERR_JSON_PARSE;
+            if (!expect_char(p, ':'))               return TN_ERR_JSON_PARSE;
+            skip_ws(p);
+
+            if (strcmp(key, "text") == 0) {
+                char *text = parse_string_heap(p);
+                if (!text) return TN_ERR_JSON_PARSE;
+                free(msg->content);
+                msg->content = text;
+            } else if (strcmp(key, "image_url") == 0 && **p == '{') {
+                (*p)++; /* enter the nested {"url": "..."} object */
+                while (**p && **p != '}') {
+                    skip_ws(p);
+                    if (**p == '}') break;
+                    char nkey[32];
+                    if (!parse_string(p, nkey, sizeof(nkey))) return TN_ERR_JSON_PARSE;
+                    if (!expect_char(p, ':'))                 return TN_ERR_JSON_PARSE;
+                    skip_ws(p);
+                    if (strcmp(nkey, "url") == 0) {
+                        char *url = parse_string_heap(p);
+                        if (!url) return TN_ERR_JSON_PARSE;
+                        free(msg->image_data_url);
+                        msg->image_data_url = url;
+                    } else {
+                        skip_value(p);
+                    }
+                    skip_ws(p);
+                    if (**p == ',') (*p)++;
+                }
+                if (!expect_char(p, '}')) return TN_ERR_JSON_PARSE;
+            } else {
+                skip_value(p);
+            }
+
+            skip_ws(p);
+            if (**p == ',') (*p)++;
+        }
+        if (!expect_char(p, '}')) return TN_ERR_JSON_PARSE;
+
+        skip_ws(p);
+        if (**p == ',') { (*p)++; skip_ws(p); }
+    }
+    if (!expect_char(p, ']')) return TN_ERR_JSON_PARSE;
+    return TN_OK;
+}
+
 /* ── Message array parser ────────────────────────────────────────────────── */
 static TernaryError parse_messages(const char **p, ChatRequest *req) {
     if (!expect_char(p, '[')) return TN_ERR_JSON_PARSE;
@@ -178,8 +247,9 @@ static TernaryError parse_messages(const char **p, ChatRequest *req) {
         }
 
         ChatMessage *msg = &req->messages[req->num_messages];
-        msg->role[0]    = '\0';
-        msg->content    = NULL;
+        msg->role[0]        = '\0';
+        msg->content        = NULL;
+        msg->image_data_url = NULL;
 
         /* Parse key-value pairs inside the message object */
         while (**p && **p != '}') {
@@ -195,8 +265,15 @@ static TernaryError parse_messages(const char **p, ChatRequest *req) {
                 if (!parse_string(p, msg->role, sizeof(msg->role)))
                     return TN_ERR_JSON_PARSE;
             } else if (strcmp(key, "content") == 0) {
-                msg->content = parse_string_heap(p);
-                if (!msg->content) return TN_ERR_JSON_PARSE;
+                skip_ws(p);
+                if (**p == '[') {
+                    /* Phase 22.2: OpenAI "content parts" array (text + image_url) */
+                    TernaryError err = parse_content_parts(p, msg);
+                    if (err != TN_OK) return err;
+                } else {
+                    msg->content = parse_string_heap(p);
+                    if (!msg->content) return TN_ERR_JSON_PARSE;
+                }
             } else {
                 skip_value(p);
             }
@@ -231,6 +308,8 @@ void chat_request_free(ChatRequest *req) {
     for (int i = 0; i < req->num_messages; i++) {
         free(req->messages[i].content);
         req->messages[i].content = NULL;
+        free(req->messages[i].image_data_url);
+        req->messages[i].image_data_url = NULL;
     }
     req->num_messages = 0;
 }

@@ -377,6 +377,12 @@ No GPU. No Python at runtime. No API key. GCC or Clang + `make` + `curl` — not
 
 <a id="help-wanted"></a>
 
+
+
+> If you like my work or if it helped you, buy me a coffee or A100😉
+> 
+> [![Sponsor Nitika](https://img.shields.io/badge/Sponsor-%E2%9D%A4-red)](https://github.com/sponsors/shifulegend)
+
 ## Help Wanted
 
 Two open problems where outside expertise would make a real difference:

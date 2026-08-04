@@ -1,0 +1,17 @@
+project-zero on DeepSeek-V2-Lite-Chat Q4_K_S, T=4 threads, --temperature 0 --max-tokens 16
+Command: ./adaptive_ai_engine --model models/deepseek-v2-lite-chat-Q4_K_S.gguf \
+         --prompt "List the first 10 prime numbers:" --max-tokens 16 --temperature 0 --threads 4
+
+warmup (discarded): [gen] 3.85 tok/s (17 tokens)
+timed run 1:        [gen] 4.11 tok/s (17 tokens)
+timed run 2:        [gen] 4.19 tok/s (17 tokens)
+timed run 3:        [gen] 3.91 tok/s (17 tokens)
+
+average (3 timed runs): 4.07 tok/s
+
+Model config (from GGUF): dim=2048 hidden_dim=10944 n_layers=27 n_heads=16
+n_kv_heads=16 vocab=102400. MoE: 64 experts/layer, top_k=6, expert_hidden_dim=1408,
+first_k_dense=1, shared_experts=2. MLA: kv_lora_rank=512, qk_nope_head_dim=128,
+qk_rope_head_dim=64, v_head_dim=128.
+Expert utilisation (run 3): 64/64 experts activated globally (100%), 35-52 unique
+experts hit per layer out of 126 invocations/layer.

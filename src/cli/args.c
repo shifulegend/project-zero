@@ -15,6 +15,9 @@ void print_usage(const char *prog_name) {
     printf("  --max-tokens <int>  Maximum tokens to generate (default: 512)\n");
     printf("  --seed <int>        RNG seed (default: random)\n");
     printf("  --reasoning         Enable hidden reasoning mode via <think> tags\n");
+    printf("  --json              Constrain output to syntactically valid JSON\n");
+    printf("                      (grammar-masked sampling; physically cannot emit\n");
+    printf("                      invalid JSON syntax, not just prompted to try)\n");
 
     printf("\nHardware & Performance:\n");
     printf("  --threads <int>     Number of threads (default: auto)\n");
@@ -84,6 +87,7 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->max_tokens = 512;
     args->num_threads = 0; // auto
     args->enable_reasoning = false;
+    args->json_mode = false;
     args->verbose = false;
     args->seed = -1;
     args->classifier_override = -1; // auto (BF16)
@@ -152,6 +156,8 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             args->calibrate = true;
         } else if (strcmp(argv[i], "--reasoning") == 0) {
             args->enable_reasoning = true;
+        } else if (strcmp(argv[i], "--json") == 0) {
+            args->json_mode = true;
         } else if (strcmp(argv[i], "--verbose") == 0) {
             args->verbose = true;
         } else if (strcmp(argv[i], "--dump-tensors") == 0 && i + 1 < argc) {

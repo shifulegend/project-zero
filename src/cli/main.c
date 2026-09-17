@@ -685,7 +685,7 @@ int main(int argc, char **argv) {
         }
     } else if (args.prompt) {
         printf("\n");
-        generate(&p, &w, s, &mc, &t, tp, args.prompt, args.max_tokens, args.temperature, args.top_p);
+        generate(&p, &w, s, &mc, &t, tp, args.prompt, args.max_tokens, args.temperature, args.top_p, args.json_mode);
         printf("\n");
     } else {
         run_repl(&p, &w, &mc, NULL, NULL, NULL, s, &t, tp, &args, rag_ok ? &rag : NULL);

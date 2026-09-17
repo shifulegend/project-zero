@@ -1,6 +1,7 @@
 #ifndef TN_GENERATE_H
 #define TN_GENERATE_H
 
+#include <stdbool.h>
 #include "core/config.h"
 #include "core/moe_config.h"
 #include "core/run_state.h"
@@ -25,11 +26,14 @@
  * @param max_tokens  Maximum number of tokens to generate
  * @param temperature Sampling temperature (0.0 = greedy argmax)
  * @param top_p       Nucleus sampling threshold (1.0 = disabled)
+ * @param json_mode   Phase 20: when true, every sampled token is masked
+ *                     through a JSON grammar (sampling/grammar.h) so the
+ *                     output is guaranteed syntactically valid JSON.
  */
 void generate(const Config *cfg, const TransformerWeights *w, RunState *s,
               const MoEConfig *mc,
               Tokenizer *tok, ThreadPool *tp, const char *prompt,
-              int max_tokens, float temperature, float top_p);
+              int max_tokens, float temperature, float top_p, bool json_mode);
 
 /*
  * Phase 21 — Token callback type.
@@ -57,6 +61,7 @@ void generate_with_callback(const Config *cfg, const TransformerWeights *w,
                              RunState *s, const MoEConfig *mc,
                              Tokenizer *tok, ThreadPool *tp, const char *prompt,
                              int max_tokens, float temperature, float top_p,
+                             bool json_mode,
                              TokenCallback callback, void *userdata);
 
 #endif /* TN_GENERATE_H */

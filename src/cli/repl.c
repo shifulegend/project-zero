@@ -93,6 +93,7 @@ void run_repl(Config *p, TransformerWeights *w,
             printf("  /quit               Exit the REPL\n");
             printf("  /context            Show KV cache usage\n");
             printf("  /think              Toggle reasoning mode\n");
+            printf("  /json               Toggle JSON-constrained output mode\n");
             printf("  /agent <prompt>     Run agentic tool loop\n");
             printf("  /memory list        List all stored memories (Phase 15)\n");
             printf("  /memory search <q>  Manually search memories (Phase 15)\n");
@@ -108,6 +109,12 @@ void run_repl(Config *p, TransformerWeights *w,
         if (strcmp(line, "/think") == 0) {
             args->enable_reasoning = !args->enable_reasoning;
             printf("[Config] Reasoning mode %s\n", args->enable_reasoning ? "ENABLED" : "DISABLED");
+            continue;
+        }
+
+        if (strcmp(line, "/json") == 0) {
+            args->json_mode = !args->json_mode;
+            printf("[Config] JSON-constrained mode %s\n", args->json_mode ? "ENABLED" : "DISABLED");
             continue;
         }
 
@@ -186,6 +193,7 @@ void run_repl(Config *p, TransformerWeights *w,
         int64_t start_time = timer_now_us();
         generate_with_callback(p, w, s, mc, t, tp, line,
                                args->max_tokens, args->temperature, args->top_p,
+                               args->json_mode,
                                repl_token_callback, &rc);
         md_render_flush(&rc.md);
         if (rc.is_tty && rc.live.count >= 2) fprintf(stderr, "\n"); /* move past the live tok/s line */

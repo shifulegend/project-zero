@@ -3,6 +3,37 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-09-17.
 
+### 2026-09-17 — Phase 20: Grammar-constrained JSON-mode decoding
+- What: implemented grammar-constrained decoding for JSON output, wired into the CLI (`--json`
+  flag, REPL `/json` toggle) and the API (`"response_format": {"type": "json_object"}`, matching
+  OpenAI's actual request schema). Deliberately built a JSON-specific pushdown automaton
+  instead of the plan's generic flat-FSM/BNF-compiler design — a flat FSM (no stack) cannot
+  represent JSON's real, unbounded-nesting grammar without hard-coding a max depth, which the
+  project's own "no hardcoding" rule exists to avoid. Full rationale and file map in
+  `docs/architecture/IMPLEMENTATION_PLAN.md`'s Phase 20 section.
+- Verified against a real downloaded model (`bartowski/SmolLM2-135M-Instruct-GGUF`, Q8_0), both
+  via the CLI and the live API server: `response_format=json_object` produced
+  `{"fruit_name": "apple", "fruit_color": "red", "fruit_calories": 500}` (clean, parses with
+  `json.loads`), vs. the same prompt without it producing a stray ` ```json ` fence plus
+  trailing prose that would break a naive parser.
+- One related, deliberately-deferred observation from that testing: the CLI's startup
+  banner/hardware-profile/model-config diagnostics print to stdout (not stderr), so
+  `--json`'s own output is clean but piping `adaptive_ai_engine --json ... | jq` still needs to
+  skip the banner first. Fixing that means auditing/redirecting many pre-existing `printf()`
+  call sites in `src/cli/main.c` unrelated to this feature — flagged here rather than done as a
+  drive-by change in this pass; the API path (already wired, returns clean structured JSON with
+  no stdout concern at all) is the better-suited integration point for programmatic use anyway.
+- Not wired into `src/agent/agent_loop.c` (which has its own, separate sampling cascade) --
+  which part of an agentic turn should be JSON-constrained is a real design decision, not an
+  oversight; left for a follow-up rather than guessed at.
+- Why: user's `/goal` — Tier 1 item 2.
+- Areas: `include/sampling/{grammar,fsm,constrained_sample}.h` (new),
+  `src/sampling/{grammar_json,fsm,constrained_sample}.c` (new), `tests/{test_grammar_json,
+  test_fsm}.c` (new, 47+25 assertions), `include/transformer/generate.h` + `src/transformer/
+  generate.c` (new `json_mode` parameter), `include/cli/args.h` + `src/cli/{args,main,repl}.c`,
+  `include/api/chat_request.h` + `src/api/{json_parse,http_server}.c`, `CMakeLists.txt`
+  (SAMPLING_SOURCES), `docs/architecture/IMPLEMENTATION_PLAN.md`.
+
 ### 2026-09-17 — Phase 37 complete (all 16 GGUF quant sub-formats) + real-model test surfaced a new open bug
 - What: implemented Q4_1, Q8_1, Q8_K, IQ2_XXS/IQ2_XS/IQ2_S, IQ3_XXS/IQ3_S, IQ1_S/IQ1_M, IQ4_XS dequant
   functions (`src/core/gguf_quant.c`), completed the `GGUFType` enum, extracted BF16 dequant, and fixed

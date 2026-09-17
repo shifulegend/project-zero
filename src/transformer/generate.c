@@ -4,6 +4,7 @@
 #include "math/simd_dispatch.h"
 #include "sampling/sampling.h"
 #include "sampling/rng.h"
+#include "sampling/constrained_sample.h"
 #include "cli/timer.h"
 #include "core/step_timing.h"
 #include "tokenizer/tokenizer.h"
@@ -27,9 +28,16 @@ void generate_with_callback(const Config *cfg, const TransformerWeights *w,
                              RunState *s, const MoEConfig *mc,
                              Tokenizer *tok, ThreadPool *tp, const char *prompt,
                              int max_tokens, float temperature, float top_p,
+                             bool json_mode,
                              TokenCallback callback, void *userdata) {
     if (!prompt) prompt = "";
     tn_step_timing_reset();
+
+    /* Phase 20: grammar-constrained decoding state (only touched when
+     * json_mode is set). Fresh per call -- constrains this one generation,
+     * starting from "expecting any JSON value". */
+    FSMState json_fsm;
+    if (json_mode) fsm_init(&json_fsm);
 
     /* Reset expert hit tracking for MoE models */
     if (mc && mc->is_moe)
@@ -148,7 +156,11 @@ void generate_with_callback(const Config *cfg, const TransformerWeights *w,
         } else {
             /* Full prompt processed, sample from logits */
             int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-            if (temperature <= 0.0f || temperature < 1e-6f) {
+            if (json_mode) {
+                next = sample_constrained(logits, cfg->vocab_size, &json_fsm,
+                                           tok, prev_token, temperature, top_p,
+                                           &rng_state);
+            } else if (temperature <= 0.0f || temperature < 1e-6f) {
                 next = sample_argmax(logits, cfg->vocab_size);
             } else {
                 apply_temperature(logits, cfg->vocab_size, temperature);
@@ -247,9 +259,9 @@ void generate_with_callback(const Config *cfg, const TransformerWeights *w,
 void generate(const Config *cfg, const TransformerWeights *w, RunState *s,
               const MoEConfig *mc,
               Tokenizer *tok, ThreadPool *tp, const char *prompt,
-              int max_tokens, float temperature, float top_p) {
+              int max_tokens, float temperature, float top_p, bool json_mode) {
     generate_with_callback(cfg, w, s, mc, tok, tp, prompt,
-                           max_tokens, temperature, top_p,
+                           max_tokens, temperature, top_p, json_mode,
                            stdout_token_callback, NULL);
     /* generate_with_callback already reports timing to stderr */
     printf("\n");

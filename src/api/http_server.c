@@ -445,6 +445,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     generate_with_callback(ctx->cfg, ctx->weights, ctx->run_state, ctx->moe_cfg,
                            ctx->tok, ctx->tp,
                            prompt, max_tokens, temperature, top_p,
+                           req.json_mode,
                            streaming_token_callback, &st);
 
     cancel_registry_end(&ctx->cancel);

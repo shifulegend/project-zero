@@ -36,6 +36,11 @@ typedef struct {
     float         top_p;                /* default 1.0  */
     int           max_tokens;           /* default 512  */
     bool          stream;               /* default false */
+    /* Phase 20: OpenAI-style `"response_format": {"type": "json_object"}`.
+     * Only the basic json_object type is supported (grammar-masked to any
+     * syntactically valid JSON) -- json_schema-constrained variants are out
+     * of scope, see sampling/grammar.h's scope note. */
+    bool          json_mode;            /* default false */
 } ChatRequest;
 
 /* ── Lifecycle ───────────────────────────────────────────────────────────── */

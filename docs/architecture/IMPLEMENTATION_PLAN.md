@@ -1778,7 +1778,39 @@ Low-Rank Adaptation allows loading tiny 50MB "patch" files that alter the model'
 
 ---
 
-## PHASE 20: Grammar-Constrained Decoding (JSON Mode)
+## PHASE 20: Grammar-Constrained Decoding (JSON Mode) ✅
+> **Implemented 2026-09-17**, with one deliberate scope change from the original plan below:
+> a **JSON-specific pushdown automaton**, not the generic flat-FSM `Grammar`/BNF compiler
+> originally specified. A flat DFA (states+transitions, no stack) cannot represent JSON's real
+> grammar — arbitrarily deep nested objects/arrays is a context-free property, not a regular
+> one; a flat FSM would need a hard-coded max nesting depth to fake it, which is exactly the
+> kind of arbitrary limit `GOLDEN_RULES.md`'s "no hardcoding" rule exists to avoid. Built a
+> small stack-augmented automaton specific to JSON (RFC 8259) instead — correct for unbounded
+> nesting (well, up to `JSON_GRAMMAR_MAX_DEPTH`=256, a generous safety cap, not a design limit).
+> `grammar_load_from_bnf` (general custom-grammar support) is out of scope — JSON is the
+> concrete, needed use case (tool-call arguments, OpenAI `response_format=json_object`).
+>
+> Files: `include/sampling/grammar.h` + `src/sampling/grammar_json.c` (the JSON PDA),
+> `include/sampling/fsm.h` + `src/sampling/fsm.c` (vocabulary-aware masking via
+> `tokenizer_decode()`, with EOS-family tokens specially allowed only once the grammar reports
+> `json_grammar_is_complete()`), `include/sampling/constrained_sample.h` +
+> `src/sampling/constrained_sample.c` (same sampling cascade as `generate()`'s main loop —
+> argmax / temperature+top-p / temperature+plain-CDF — with the mask applied first).
+>
+> Wired into: `generate()`/`generate_with_callback()` (new `bool json_mode` parameter),
+> CLI `--json` flag + REPL `/json` toggle, and the API's OpenAI-compatible
+> `"response_format": {"type": "json_object"}` request field (`chat_request.h`/`json_parse.c`).
+> Not wired into `src/agent/agent_loop.c`'s own duplicate sampling cascade — a real, separate
+> integration decision (which part of an agentic turn should be JSON-constrained is a design
+> question, not an oversight) left for a follow-up.
+>
+> Tests: `tests/test_grammar_json.c` (47 assertions — valid/invalid/incomplete-prefix JSON,
+> deep nesting, the bare-number-needs-finalize edge case) and `tests/test_fsm.c` (25 assertions
+> — vocabulary masking + `sample_constrained` end-to-end against a synthetic tokenizer, including
+> "a grammar-illegal token is never chosen even when it has the highest raw logit"). Verified
+> against a real downloaded model (`bartowski/SmolLM2-135M-Instruct-GGUF`, Q8_0): both the CLI
+> `--json` flag and the API's `response_format=json_object` produce clean, `json.loads()`-parseable
+> output, vs. the same prompt without it producing a stray ` ```json ` fence and trailing prose.
 
 Physically blocks the AI from outputting invalid syntax by forcing illegal token probabilities to negative infinity.
 

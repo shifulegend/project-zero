@@ -351,6 +351,34 @@ TernaryError chat_request_parse(const char *json_body, ChatRequest *req) {
             int b = parse_bool(&p);
             if (b < 0) return TN_ERR_JSON_PARSE;
             req->stream = (b == 1);
+        } else if (strcmp(key, "response_format") == 0) {
+            /* {"type": "json_object"} -- only key this project's grammar
+             * engine can honor; any other response_format value (or the
+             * default absence of one) leaves json_mode false. */
+            skip_ws(&p);
+            if (*p == '{') {
+                p++;
+                while (*p && *p != '}') {
+                    skip_ws(&p);
+                    if (*p == '}') break;
+                    char rf_key[64];
+                    if (!parse_string(&p, rf_key, sizeof(rf_key))) return TN_ERR_JSON_PARSE;
+                    if (!expect_char(&p, ':')) return TN_ERR_JSON_PARSE;
+                    skip_ws(&p);
+                    if (strcmp(rf_key, "type") == 0) {
+                        char type_val[32];
+                        if (!parse_string(&p, type_val, sizeof(type_val))) return TN_ERR_JSON_PARSE;
+                        if (strcmp(type_val, "json_object") == 0) req->json_mode = true;
+                    } else {
+                        skip_value(&p);
+                    }
+                    skip_ws(&p);
+                    if (*p == ',') p++;
+                }
+                if (*p == '}') p++;
+            } else {
+                skip_value(&p);
+            }
         } else {
             skip_value(&p);
         }

@@ -23,6 +23,7 @@ typedef struct {
     int max_tokens;
     int num_threads;
     bool enable_reasoning;
+    bool json_mode;           /* Phase 20: --json forces syntactically valid JSON output */
     bool verbose;
     int seed;
     int classifier_override;  /* -1 = auto (BF16 default), 0 = BF16, 1 = INT8, 2 = INT4,

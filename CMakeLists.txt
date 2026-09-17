@@ -221,6 +221,9 @@ set(SAMPLING_SOURCES
     src/sampling/temperature.c
     src/sampling/top_p.c
     src/sampling/top_k.c
+    src/sampling/grammar_json.c
+    src/sampling/fsm.c
+    src/sampling/constrained_sample.c
 )
 
 set(KV_CACHE_SOURCES

@@ -150,6 +150,12 @@ static float *tensor_to_f32(const GGUFTensor *t, size_t n_elems,
     case GGUF_TYPE_IQ2_S:
         gguf_dequant_iq2_s(buf, t->data, n_elems);
         break;
+    case GGUF_TYPE_IQ3_XXS:
+        gguf_dequant_iq3_xxs(buf, t->data, n_elems);
+        break;
+    case GGUF_TYPE_IQ3_S:
+        gguf_dequant_iq3_s(buf, t->data, n_elems);
+        break;
     default:
         fprintf(stderr,
             "[gguf_loader] unsupported quant type %d ('%s') for tensor '%s'\n"
@@ -413,6 +419,8 @@ static size_t quant_bytes_for_elems(GGUFType type, size_t n_elems) {
     case GGUF_TYPE_IQ2_XXS: return (n_elems / 256) * 66;
     case GGUF_TYPE_IQ2_XS: return (n_elems / 256) * 74;
     case GGUF_TYPE_IQ2_S: return (n_elems / 256) * 82;
+    case GGUF_TYPE_IQ3_XXS: return (n_elems / 256) * 98;
+    case GGUF_TYPE_IQ3_S: return (n_elems / 256) * 110;
     default: return 0;
     }
 }

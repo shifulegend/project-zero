@@ -199,6 +199,51 @@ static void test_iq2_s_single_block(void) {
     TEST_ASSERT_FLOAT_EQ(out[255], 1.0f, 1e-5f, "iq2_s elem255 (all-zero sub-block)");
 }
 
+/* ── IQ3_XXS: d(fp16)+qs[96](idx[64]+scales_and_signs[32]) ─────────────────── */
+static void test_iq3_xxs_single_block(void) {
+    uint8_t blk[98];
+    memset(blk, 0, sizeof(blk));
+    float d = 1.0f;
+    uint16_t d_h = f32_to_fp16(d);
+    memcpy(blk, &d_h, 2);
+    /* scales_and_signs starts at blk+2+64=blk[66]; ib32=0's aux32 = blk[66..69].
+     * Set to 1 (LE) -> sign index 1 -> ksigns[1]=129 -> flips j=0,7; scale
+     * nibble (aux32>>28) stays 0. */
+    blk[66] = 1;
+
+    float out[256];
+    gguf_dequant_iq3_xxs(out, blk, 256);
+
+    /* iq3xxs_grid[0] = 0x04040404 (all bytes 4). db = d*(0.5+0)*0.5 = 0.25. */
+    TEST_ASSERT_FLOAT_EQ(out[0], -1.0f, 1e-5f, "iq3_xxs elem0 (sign flip, grid1 j=0)");
+    TEST_ASSERT_FLOAT_EQ(out[1],  1.0f, 1e-5f, "iq3_xxs elem1 (no flip)");
+    TEST_ASSERT_FLOAT_EQ(out[7], -1.0f, 1e-5f, "iq3_xxs elem7 (sign flip, grid2 j=3->dst j+4=7)");
+    TEST_ASSERT_FLOAT_EQ(out[8],  1.0f, 1e-5f, "iq3_xxs elem8 (l=1 group, all-zero)");
+    TEST_ASSERT_FLOAT_EQ(out[255], 1.0f, 1e-5f, "iq3_xxs elem255 (all-zero sub-block)");
+}
+
+/* ── IQ3_S: d(fp16)+qs[64]+qh[8]+signs[32]+scales[4] ───────────────────────── */
+static void test_iq3_s_single_block(void) {
+    uint8_t blk[110];
+    memset(blk, 0, sizeof(blk));
+    float d = 1.0f;
+    uint16_t d_h = f32_to_fp16(d);
+    memcpy(blk, &d_h, 2);
+    /* signs_base = blk+2+64+8 = blk[74]; ib32=0,l=0's signs[0] = blk[74].
+     * Set to 1 -> flips only j=0 (grid1's first byte). scales[0]=0 -> db1=1. */
+    blk[74] = 1;
+
+    float out[256];
+    gguf_dequant_iq3_s(out, blk, 256);
+
+    /* iq3s_grid[0] = 0x01010101 (all bytes 1). db1 = d*(1+2*0) = 1.0. */
+    TEST_ASSERT_FLOAT_EQ(out[0], -1.0f, 1e-5f, "iq3_s elem0 (sign flip)");
+    TEST_ASSERT_FLOAT_EQ(out[1],  1.0f, 1e-5f, "iq3_s elem1 (no flip)");
+    TEST_ASSERT_FLOAT_EQ(out[7],  1.0f, 1e-5f, "iq3_s elem7 (bit7 not set)");
+    TEST_ASSERT_FLOAT_EQ(out[8],  1.0f, 1e-5f, "iq3_s elem8 (l=1 group, all-zero)");
+    TEST_ASSERT_FLOAT_EQ(out[255], 1.0f, 1e-5f, "iq3_s elem255 (all-zero sub-block)");
+}
+
 int main(void) {
     RUN_TEST(test_q4_1_single_block);
     RUN_TEST(test_q4_1_partial_trailing);
@@ -208,5 +253,7 @@ int main(void) {
     RUN_TEST(test_iq2_xxs_single_block);
     RUN_TEST(test_iq2_xs_single_block);
     RUN_TEST(test_iq2_s_single_block);
+    RUN_TEST(test_iq3_xxs_single_block);
+    RUN_TEST(test_iq3_s_single_block);
     TEST_SUMMARY();
 }

@@ -945,6 +945,20 @@ project-zero/
 ---
 
 ## PHASE 14: Agentic Tool Execution ✅
+> **Sandbox hardened 2026-09-17** (`src/agent/cmd_exec.c`): the original allow-list checked
+> only the command *name* (`echo`/`ls`/`cat`/`pwd`/`uname`/`date`/`id`), not its *arguments* --
+> `cat`/`ls` could read any file the process could read (`.env`, SSH keys, `/etc/shadow`,
+> anything else on the host), which is real exposure in any deployment with
+> `PROJECT_ZERO_AGENT_AUTO_APPROVE=1` set (no human review at all in that mode). Added
+> `exec_policy_allows_args()`: confines `cat`/`ls` path arguments to the current working
+> directory's subtree (rejects absolute paths, `~`, and any `..` traversal segment) and
+> restricts `date` to its read-only forms (no args, or `+FORMAT` only -- blocks `-s`/`--set`).
+> Also added child-side `setrlimit(RLIMIT_CPU/RLIMIT_AS, ...)` as defense-in-depth independent
+> of the parent's own cooperative timeout/SIGKILL loop. Not a `popen()`-based shell (the
+> architecture doc's framing was already stale doc drift on this point) -- `fork`+`execvp`
+> means no shell-metacharacter injection vector existed even before this pass; the real gap was
+> argument-level, not shell-injection. `tests/test_cmd_exec.c` covers both new checks plus the
+> "not actually traversal" edge cases (`"..."`, `"foo..bar.txt"`, `".hidden"`).
 
 An "Agent" is an LLM hooked up to a `while` loop with permission to trigger external tools. Because we wrote the engine from scratch in C, we extend the State Machine from Phase 9 (the Hidden Thought Loop) to intercept tool-call tags and execute OS commands.
 

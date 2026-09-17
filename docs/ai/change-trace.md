@@ -3,6 +3,32 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-09-17.
 
+### 2026-09-17 — Agent sandbox hardening: argument-level exec policy (Tier 1 item 3)
+- What: `src/agent/cmd_exec.c`'s allow-list only ever checked the command *name*
+  (echo/ls/cat/pwd/uname/date/id), never its arguments -- `cat`/`ls` could read any file the
+  process could read, and a deployment with `PROJECT_ZERO_AGENT_AUTO_APPROVE=1` set gets zero
+  human review of that before it runs (see `user_approval.c`). Added
+  `exec_policy_allows_args()`: confines `cat`/`ls` path arguments to the CWD subtree (no
+  absolute paths, no `~`, no `..` traversal segment), restricts `date` to read-only forms (no
+  args or `+FORMAT` only, blocking `-s`/`--set`). Added `setrlimit(RLIMIT_CPU/RLIMIT_AS)` in
+  the forked child as defense-in-depth independent of the parent's own timeout loop.
+- Correction to the architecture doc's own framing: `CPU_LLM_TERNARY_ENGINE.md` calls the
+  current exec path "terrifyingly dangerous" and frames it as `popen()`-based; it's actually
+  `fork()`+`execvp()` (no shell), so there was never a shell-metacharacter injection vector --
+  the real, confirmed gap was argument-level path confinement, not shell injection. Corrected
+  in `docs/architecture/IMPLEMENTATION_PLAN.md`'s Phase 14 section.
+- Verification: 7 new assertions in `tests/test_cmd_exec.c` (path confinement, ".." detection
+  including the "not actually traversal" edge cases like `"..."`/`"foo..bar.txt"`, the `date`
+  restriction, confirming unrelated allow-listed commands aren't accidentally over-restricted,
+  and an end-to-end check that `execute_command()` itself -- not just the policy function in
+  isolation -- rejects `cat /etc/hostname`). Not verified via live LLM tool-call elicitation
+  (coaxing a real small model into emitting a malicious `<exec>` tag deterministically isn't a
+  reliable test) -- the security boundary itself is deterministic and fully covered by direct
+  unit/integration tests of the sandbox.
+- Why: user's `/goal` — Tier 1 item 3, completing all three Tier 1 items.
+- Areas: `include/agent/cmd_exec.h`, `src/agent/cmd_exec.c`, `tests/test_cmd_exec.c`,
+  `docs/architecture/IMPLEMENTATION_PLAN.md`.
+
 ### 2026-09-17 — Phase 20: Grammar-constrained JSON-mode decoding
 - What: implemented grammar-constrained decoding for JSON output, wired into the CLI (`--json`
   flag, REPL `/json` toggle) and the API (`"response_format": {"type": "json_object"}`, matching

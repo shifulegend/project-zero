@@ -70,11 +70,6 @@ static float f16_to_f32(uint16_t h) {
     float f; memcpy(&f, &bits, 4); return f;
 }
 
-static float bf16_to_f32(uint16_t b) {
-    uint32_t bits = (uint32_t)b << 16;
-    float f; memcpy(&f, &bits, 4); return f;
-}
-
 /* Allocate a float32 buffer (n_elems floats), fill from tensor data, add to store.
  * Returns NULL and prints a message for unsupported types. */
 static float *tensor_to_f32(const GGUFTensor *t, size_t n_elems,
@@ -91,11 +86,9 @@ static float *tensor_to_f32(const GGUFTensor *t, size_t n_elems,
         for (size_t i = 0; i < n_elems; i++) buf[i] = f16_to_f32(s[i]);
         break;
     }
-    case GGUF_TYPE_BF16: {
-        const uint16_t *s = (const uint16_t *)t->data;
-        for (size_t i = 0; i < n_elems; i++) buf[i] = bf16_to_f32(s[i]);
+    case GGUF_TYPE_BF16:
+        gguf_dequant_bf16(buf, t->data, n_elems);
         break;
-    }
     case GGUF_TYPE_Q8_0:
         gguf_dequant_q8_0(buf, t->data, n_elems);
         break;

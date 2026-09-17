@@ -2217,3 +2217,18 @@ void gguf_dequant_iq1_m(float *out, const void *data, size_t n_elems) {
     size_t done = n_super * IQ1_M_SUPER;
     for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
 }
+
+/* ── BF16 ─────────────────────────────────────────────────────────────────── */
+/*
+ * Not a block format -- one bf16 (top 16 bits of an IEEE-754 float32) per
+ * element, no scale/min. Extracted from gguf_loader.c's tensor_to_f32() for
+ * consistency/testability with the rest of this file (Phase 37.16 -- pure
+ * refactor, no behavior change).
+ */
+void gguf_dequant_bf16(float *out, const void *data, size_t n_elems) {
+    const uint16_t *s = (const uint16_t *)data;
+    for (size_t i = 0; i < n_elems; i++) {
+        uint32_t bits = (uint32_t)s[i] << 16;
+        memcpy(&out[i], &bits, 4);
+    }
+}

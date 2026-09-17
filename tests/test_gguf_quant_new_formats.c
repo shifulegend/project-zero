@@ -298,7 +298,19 @@ static void test_iq1_m_single_block(void) {
     TEST_ASSERT_FLOAT_EQ(out[8], -0.875f, 1e-5f, "iq1_m elem8 (l=1, unaffected)");
 }
 
+/* ── BF16: top 16 bits of an IEEE-754 float32, no block/scale ──────────────── */
+static void test_bf16_dequant(void) {
+    /* 1.0f = 0x3F800000 -> top 16 bits = 0x3F80 */
+    uint16_t in[3] = { 0x3F80, 0x0000, 0xBF80 }; /* 1.0, 0.0, -1.0 */
+    float out[3];
+    gguf_dequant_bf16(out, in, 3);
+    TEST_ASSERT_FLOAT_EQ(out[0],  1.0f, 1e-5f, "bf16 1.0");
+    TEST_ASSERT_FLOAT_EQ(out[1],  0.0f, 1e-5f, "bf16 0.0");
+    TEST_ASSERT_FLOAT_EQ(out[2], -1.0f, 1e-5f, "bf16 -1.0");
+}
+
 int main(void) {
+    RUN_TEST(test_bf16_dequant);
     RUN_TEST(test_q4_1_single_block);
     RUN_TEST(test_q4_1_partial_trailing);
     RUN_TEST(test_q8_1_single_block);

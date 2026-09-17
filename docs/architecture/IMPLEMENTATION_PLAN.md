@@ -2845,8 +2845,9 @@ being complete, as model weights are loaded via the GGUF path.
 
 ## Phase 37: GGUF Universal Quant Compatibility
 
-> **Status:** Q2_K, Q3_K, and IQ4_NL done (37.2/37.9 corrected 2026-09-17 — were mismarked
-> pending despite being fully implemented). Remaining items: 37.3-37.8, 37.10-37.16.
+> **Status:** All of 37.1-37.16 done as of 2026-09-17. Every GGUF quant type in the
+> `GGUFType` enum now has a working dequant path -- "unsupported quant type" should no
+> longer occur for any mainline llama.cpp/GGUF quantization format.
 > **Goal:** Engine accepts any GGUF file without "unsupported quant type" errors.
 > **Constraint:** Add modularly — new functions in `gguf_quant.c`/`gguf_quant.h`,
 > new cases in `gguf_loader.c` dispatch + `quant_bytes_for_elems`.
@@ -2893,7 +2894,8 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.3 — Q4_1 ❌ pending
+### 37.3 — Q4_1 ✅ done
+> **Done 2026-09-17** -- implemented, wired, and tested this session (see `tests/test_gguf_quant_new_formats.c`).
 - Block: 32 elems, 20 bytes (`d fp16` + `m fp16` + `qs[16]` 4-bit)
 - Function to add: `gguf_dequant_q4_1()`
 - Algorithm: `out[i] = (nibble[i] * d) + m` (no zero-point offset, uses additive min instead)
@@ -2903,7 +2905,8 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.4 — Q8_1 ❌ pending
+### 37.4 — Q8_1 ✅ done
+> **Done 2026-09-17** -- implemented, wired, and tested this session (see `tests/test_gguf_quant_new_formats.c`).
 - Block: 32 elems, 36 bytes (`d fp32` + `s fp32` + `qs[32]` int8)
   - Note: `d` and `s` are fp32 here, not fp16 (unlike Q8_0)
   - `s` = sum of all quantised values × d (used for dot-product shortcuts in llama.cpp, not needed for plain dequant)
@@ -2915,7 +2918,8 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.5 — Q8_K ❌ pending
+### 37.5 — Q8_K ✅ done
+> **Done 2026-09-17** -- implemented, wired, and tested this session (see `tests/test_gguf_quant_new_formats.c`).
 - Block: 256 elems, 292 bytes (`d fp32` + `qs[256]` int8 + `bsums[16]` int16)
   - `bsums` = block sums for GEMM shortcuts; not needed for plain dequant
 - Function to add: `gguf_dequant_q8_k()`
@@ -2926,7 +2930,8 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.6 — IQ2_XXS ❌ pending
+### 37.6 — IQ2_XXS ✅ done
+> **Done 2026-09-17** -- implemented, wired, and tested this session (see `tests/test_gguf_quant_new_formats.c`).
 - Block: 256 elems, 66 bytes (uses 8-entry codebook lookup; ~2.06 bits/weight)
   - Layout: `qs[32]` (packed grid indices) + `scales[4]` + `d fp16`
   - Each 2-byte `qs` chunk encodes 8 elements via a 256-entry lookup table
@@ -2940,7 +2945,8 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.7 — IQ2_XS ❌ pending
+### 37.7 — IQ2_XS ✅ done
+> **Done 2026-09-17** -- implemented, wired, and tested this session (see `tests/test_gguf_quant_new_formats.c`).
 - Block: 256 elems, 74 bytes (~2.31 bits/weight)
   - Layout: `qs[32]` + `scales[8]` (4-bit per 32-elem sub-block) + `d fp16`
 - Function: `gguf_dequant_iq2_xs()`
@@ -2950,7 +2956,8 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.8 — IQ3_XXS ❌ pending
+### 37.8 — IQ3_XXS ✅ done
+> **Done 2026-09-17** -- implemented, wired, and tested this session (see `tests/test_gguf_quant_new_formats.c`).
 - Block: 256 elems, 98 bytes (~3.06 bits/weight)
   - Layout: `qs[96]` + `scales[4]` + `d fp16`
 - Function: `gguf_dequant_iq3_xxs()`
@@ -2975,7 +2982,8 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.10 — IQ3_S ❌ pending
+### 37.10 — IQ3_S ✅ done
+> **Done 2026-09-17** -- implemented, wired, and tested this session (see `tests/test_gguf_quant_new_formats.c`).
 - Block: 256 elems, 110 bytes (same byte count as Q3_K)
   - Layout: `qs[96]` (3-bit packed) + `qh[16]` (1 extra bit/elem) + `signs[32]` + `scales[4]` + `d fp16`
 - Function: `gguf_dequant_iq3_s()`
@@ -2985,7 +2993,8 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.11 — IQ2_S ❌ pending
+### 37.11 — IQ2_S ✅ done
+> **Done 2026-09-17** -- implemented, wired, and tested this session (see `tests/test_gguf_quant_new_formats.c`).
 - Block: 256 elems, 82 bytes (~2.5 bits/weight)
   - Layout: `qs[32]` + `qh[16]` (high bits) + `signs[16]` + `scales[4]` + `d fp16`
 - Function: `gguf_dequant_iq2_s()`
@@ -2995,7 +3004,8 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.12 — IQ4_XS ❌ pending
+### 37.12 — IQ4_XS ✅ done
+> **Done 2026-09-17** -- implemented, wired, and tested this session (see `tests/test_gguf_quant_new_formats.c`).
 - Block: 256 elems, 136 bytes (~4.25 bits/weight)
   - Layout: like Q4_K but uses non-linear `kvalues_iq4nl` codebook + 6-bit scales
   - `qs[128]` + `scales[12]` + `d fp16`
@@ -3006,7 +3016,8 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.13 — IQ1_S ❌ pending
+### 37.13 — IQ1_S ✅ done
+> **Done 2026-09-17** -- implemented, wired, and tested this session (see `tests/test_gguf_quant_new_formats.c`).
 - Block: 256 elems, 26 bytes (~1.56 bits/weight)
 - Requires `iq1s_grid[2048]` codebook + `kvalues_iq1b[8]` sign table
 - `quant_bytes_for_elems`: `(n / 256) * 26`
@@ -3015,7 +3026,8 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.14 — IQ1_M ❌ pending
+### 37.14 — IQ1_M ✅ done
+> **Done 2026-09-17** -- implemented, wired, and tested this session (see `tests/test_gguf_quant_new_formats.c`).
 - Block: 256 elems, 37 bytes (~1.75 bits/weight)
 - Requires `iq1s_grid[2048]` codebook (same grid as IQ1_S) + 4-bit scales
 - `quant_bytes_for_elems`: `(n / 256) * 37`
@@ -3023,7 +3035,8 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.15 — Enum completeness ❌ pending
+### 37.15 — Enum completeness ✅ done
+> **Done 2026-09-17** -- implemented, wired, and tested this session (see `tests/test_gguf_quant_new_formats.c`).
 The `GGUFType` enum in `include/core/gguf_reader.h` is missing:
 ```c
 GGUF_TYPE_IQ2_XS   = 17,
@@ -3041,7 +3054,8 @@ cases in `src/core/gguf_reader.c` for each new type.
 
 ---
 
-### 37.16 — BF16 standalone dequant function ❌ pending (low priority)
+### 37.16 — BF16 standalone dequant function ✅ done
+> **Done 2026-09-17** -- implemented, wired, and tested this session (see `tests/test_gguf_quant_new_formats.c`).
 BF16 decode is currently inlined in `gguf_loader.c`. For consistency and
 testability, extract to `gguf_dequant_bf16()` in `gguf_quant.c`.
 No correctness change — purely a refactor.

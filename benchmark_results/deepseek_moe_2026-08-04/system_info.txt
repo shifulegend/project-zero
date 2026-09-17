@@ -1,0 +1,12 @@
+=== Benchmark date: 2026-08-04T20:41Z-20:55Z ===
+=== CPU ===
+Model name: Intel(R) Xeon(R) Processor @ 2.10GHz
+CPU(s): 4 (4 cores/socket, 1 thread/core, 1 socket) — no SMT
+=== Memory ===
+15Gi total RAM, 0B swap
+=== OS ===
+Linux (containerized remote execution environment)
+=== Notes ===
+Ephemeral cloud container (Claude Code remote environment). Disk is a shared
+block device; I/O throughput may vary run-to-run relative to dedicated
+hardware — this matters for colibri's disk-streaming design (see README).

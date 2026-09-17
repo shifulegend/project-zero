@@ -1,0 +1,19 @@
+colibri (olmoe.c) on OLMoE-1B-7B-0125-Instruct, converted int8 merged format,
+cache=64 (all experts), bits=8, OMP_NUM_THREADS=4
+Command: SNAP=/home/user/colibri/olmoe_merged ./olmoe 64 8 ref_olmoe_real.json
+
+resident weights loaded in 10.3s | RSS after load: 1.79 GB
+PEAK RSS: 5.93 GB (all runs)
+Expert cache hit rate: 65.5% (hit=1342 miss=706) -- identical across all 3 runs
+
+run 1: Speed: 0.69 tok/s (17.3s for 12 tokens)
+run 2: Speed: 0.31 tok/s (38.8s for 12 tokens)
+run 3: Speed: 0.90 tok/s (13.3s for 12 tokens)
+
+average: 0.63 tok/s (range 0.31-0.90 -- I/O-latency-bound variance, not cache
+behavior, since hit rate was constant across runs)
+
+Reference/output token match: 5/12 (greedy decode does not reproduce the
+ref.json reference continuation exactly -- expected on a different prompt
+domain than the reference was captured on; not evaluated for correctness here,
+only throughput).

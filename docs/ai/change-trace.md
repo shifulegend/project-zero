@@ -1,7 +1,25 @@
 # Change Trace — project-zero
 
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
-> Update after each meaningful sub-step. Last updated: 2026-07-24.
+> Update after each meaningful sub-step. Last updated: 2026-08-04.
+
+### 2026-08-04 — DeepSeek MoE benchmark run: project-zero vs colibri vs llama.cpp
+- What: user asked to run DeepSeek MoE on project-zero, colibri (`shifulegend/colibri`), and
+  llama.cpp and report results. Found colibri has no DeepSeek-arch loader (only GLM-5.2/Inkling/
+  Kimi K3/OLMoE, one engine per family — DeepSeek referenced only as prior-art in `colibri.c`)
+  and project-zero has no OLMoE-arch loader (`gguf_loader.c`'s MoE dispatch only special-cases
+  `deepseek2`/`qwen35`/`qwen3moe`; an `olmoe`-arch GGUF hard-fails in the generic dense loader).
+  Ran two pairwise comparisons instead of one 3-way table, both anchored on llama.cpp: (1)
+  DeepSeek-V2-Lite-Chat Q4_K_S on project-zero (4.07 tok/s avg) vs llama.cpp (12.87 tok/s), T=4;
+  (2) OLMoE-1B-7B-0924-Instruct on colibri (0.63 tok/s avg, 0.31-0.90 range) vs llama.cpp
+  (27.50 tok/s), T=4. Full methodology, raw logs, and caveats (different CPU than the standing
+  `BENCHMARK_SUMMARY.md` record; colibri's streaming design is built for disk-resident
+  100B+-scale models, not this 6.9B one) in `benchmark_results/deepseek_moe_2026-08-04/README.md`.
+- Why: user request, made directly in this session.
+- Areas: `benchmark_results/deepseek_moe_2026-08-04/**` (new). No engine code changed — this was
+  a measurement run, not a fix; the memory-bandwidth-bound MoE gap remains the open item tracked
+  in `README.md`'s Help Wanted table and `docs/DEEPSEEK_Q8_HANDOVER.md`.
+- Branch: `claude/deepseek-moe-benchmarks-j15vh5`.
 
 ### 2026-07-24 — Documented: no Claude/AI signature/attribution unless explicitly asked
 - What: added a rule to `docs/ai/commit-log-guidance.md` (canonical) and mirrored it into the

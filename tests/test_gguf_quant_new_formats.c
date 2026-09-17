@@ -123,11 +123,90 @@ static void test_iq4_xs_single_block(void) {
     TEST_ASSERT_FLOAT_EQ(out[112], -4.0f * -127.0f, 1e-3f, "iq4_xs elem112 (ib3 high nibble=0)");
 }
 
+/* ── IQ2_XXS: d(fp16)+qs[64] (8 sub-blocks of 2x u32 = grid idx + signs+scale) */
+static void test_iq2_xxs_single_block(void) {
+    uint8_t blk[66];
+    memset(blk, 0, sizeof(blk));
+    float d = 1.0f; /* exact in fp16 */
+    uint16_t d_h = f32_to_fp16(d);
+    memcpy(blk, &d_h, 2);
+    uint8_t *qs = blk + 2; /* 64 bytes, all zero except ib32=0's aux32[1] low byte */
+    /* ib32=0: aux32[0]=0 (grid index 0 for all 4 groups), aux32[1]=1 (bit0 set:
+     * sign-table index 1 for l=0 group only -> ksigns_iq2xs[1]=129=0b10000001,
+     * flips j=0 and j=7 within that first 8-element group; l=1,2,3 groups still
+     * read sign-table index 0 -> all positive). Every other ib32 (1..7) stays
+     * all-zero -> grid index 0, sign index 0, scale nibble 0. */
+    qs[4] = 1;
+
+    float out[256];
+    gguf_dequant_iq2_xxs(out, blk, 256);
+
+    /* iq2xxs_grid[0] = 0x0808080808080808 (all bytes 8). Scale nibble=0 ->
+     * db = d*(0.5+0)*0.25 = 0.125. Baseline (no sign flip) = 0.125*8 = 1.0. */
+    TEST_ASSERT_FLOAT_EQ(out[1],  1.0f, 1e-5f, "iq2_xxs elem1 (no sign flip)");
+    TEST_ASSERT_FLOAT_EQ(out[0], -1.0f, 1e-5f, "iq2_xxs elem0 (sign flip, ksigns[1] bit0)");
+    TEST_ASSERT_FLOAT_EQ(out[7], -1.0f, 1e-5f, "iq2_xxs elem7 (sign flip, ksigns[1] bit7)");
+    TEST_ASSERT_FLOAT_EQ(out[8],  1.0f, 1e-5f, "iq2_xxs elem8 (l=1 group, sign index 0)");
+    /* All-zero sub-blocks (ib32=1..7, elements 32..255) must be the uniform
+     * baseline 1.0 too -- same all-zero aux32 as ib32=0's l=1..3 groups. */
+    TEST_ASSERT_FLOAT_EQ(out[100], 1.0f, 1e-5f, "iq2_xxs elem100 (all-zero sub-block)");
+    TEST_ASSERT_FLOAT_EQ(out[255], 1.0f, 1e-5f, "iq2_xxs elem255 (all-zero sub-block)");
+}
+
+/* ── IQ2_XS: d(fp16)+qs[32] u16+scales[8], grid idx = low9 bits, sign = hi7 ── */
+static void test_iq2_xs_single_block(void) {
+    uint8_t blk[74];
+    memset(blk, 0, sizeof(blk));
+    float d = 1.0f;
+    uint16_t d_h = f32_to_fp16(d);
+    memcpy(blk, &d_h, 2);
+    uint16_t *qs = (uint16_t *)(blk + 2);
+    /* ib32=0, l=0: word = 1<<9 = 512 -> grid idx=0, sign idx=1 (ksigns[1]=129,
+     * flips j=0 and j=7, same pattern as the IQ2_XXS test above). */
+    qs[0] = 512;
+
+    float out[256];
+    gguf_dequant_iq2_xs(out, blk, 256);
+
+    /* iq2xs_grid[0] = 0x0808080808080808 (all 8s). scales[0]=0 -> db=0.125. */
+    TEST_ASSERT_FLOAT_EQ(out[0], -1.0f, 1e-5f, "iq2_xs elem0 (sign flip)");
+    TEST_ASSERT_FLOAT_EQ(out[1],  1.0f, 1e-5f, "iq2_xs elem1 (no sign flip)");
+    TEST_ASSERT_FLOAT_EQ(out[7], -1.0f, 1e-5f, "iq2_xs elem7 (sign flip)");
+    TEST_ASSERT_FLOAT_EQ(out[8],  1.0f, 1e-5f, "iq2_xs elem8 (l=1 group, all-zero word)");
+    TEST_ASSERT_FLOAT_EQ(out[255], 1.0f, 1e-5f, "iq2_xs elem255 (all-zero sub-block)");
+}
+
+/* ── IQ2_S: d(fp16)+qs[64](idx[32]+signs[32])+qh[8]+scales[8] ──────────────── */
+static void test_iq2_s_single_block(void) {
+    uint8_t blk[82];
+    memset(blk, 0, sizeof(blk));
+    float d = 1.0f;
+    uint16_t d_h = f32_to_fp16(d);
+    memcpy(blk, &d_h, 2);
+    uint8_t *qs_base = blk + 2;
+    /* ib32=0, l=0: qs[0]=0, qh[0]=0 -> grid idx=0 -> iq2s_grid[0] (all 8s).
+     * signs[0] (byte at offset 32 within qs_base) = 1 -> flips only j=0
+     * (raw bitmask, no ksigns lookup for this format). */
+    qs_base[32] = 1;
+
+    float out[256];
+    gguf_dequant_iq2_s(out, blk, 256);
+
+    TEST_ASSERT_FLOAT_EQ(out[0], -1.0f, 1e-5f, "iq2_s elem0 (sign flip)");
+    TEST_ASSERT_FLOAT_EQ(out[1],  1.0f, 1e-5f, "iq2_s elem1 (no sign flip)");
+    TEST_ASSERT_FLOAT_EQ(out[7],  1.0f, 1e-5f, "iq2_s elem7 (bit7 not set, unlike ksigns[1])");
+    TEST_ASSERT_FLOAT_EQ(out[8],  1.0f, 1e-5f, "iq2_s elem8 (l=1 group, all-zero)");
+    TEST_ASSERT_FLOAT_EQ(out[255], 1.0f, 1e-5f, "iq2_s elem255 (all-zero sub-block)");
+}
+
 int main(void) {
     RUN_TEST(test_q4_1_single_block);
     RUN_TEST(test_q4_1_partial_trailing);
     RUN_TEST(test_q8_1_single_block);
     RUN_TEST(test_q8_k_single_block);
     RUN_TEST(test_iq4_xs_single_block);
+    RUN_TEST(test_iq2_xxs_single_block);
+    RUN_TEST(test_iq2_xs_single_block);
+    RUN_TEST(test_iq2_s_single_block);
     TEST_SUMMARY();
 }

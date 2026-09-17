@@ -244,6 +244,60 @@ static void test_iq3_s_single_block(void) {
     TEST_ASSERT_FLOAT_EQ(out[255], 1.0f, 1e-5f, "iq3_s elem255 (all-zero sub-block)");
 }
 
+/* ── IQ1_S: d(fp16)+qs[32]+qh[8]xu16, shares iq1s_grid[2048] with IQ1_M ────── */
+static void test_iq1_s_single_block(void) {
+    uint8_t blk[50];
+    memset(blk, 0, sizeof(blk));
+    float d = 1.0f;
+    uint16_t d_h = f32_to_fp16(d);
+    memcpy(blk, &d_h, 2);
+    /* All-zero qs/qh: idx=0 -> iq1s_grid[0]=all -1 (int8). dl=d*(2*0+1)=d=1.
+     * delta = +IQ1S_DELTA (qh bit15=0) -> dst = 1*(-1+0.125) = -0.875 uniform. */
+    float out[256];
+    gguf_dequant_iq1_s(out, blk, 256);
+    TEST_ASSERT_FLOAT_EQ(out[0],   -0.875f, 1e-5f, "iq1_s elem0 (all-zero baseline)");
+    TEST_ASSERT_FLOAT_EQ(out[255], -0.875f, 1e-5f, "iq1_s elem255 (all-zero baseline)");
+
+    /* Set qh for ib=0 to 0x8000 (bit15) -> delta sign flips for that whole
+     * sub-block only; idx untouched since bits 0-11 of 0x8000 are all 0. */
+    uint8_t *qh_bytes = blk + 2 + 32;
+    qh_bytes[0] = 0x00; qh_bytes[1] = 0x80;
+    gguf_dequant_iq1_s(out, blk, 256);
+    TEST_ASSERT_FLOAT_EQ(out[0],  -1.125f, 1e-5f, "iq1_s elem0 (delta sign flip, ib=0)");
+    TEST_ASSERT_FLOAT_EQ(out[31], -1.125f, 1e-5f, "iq1_s elem31 (still ib=0's sub-block)");
+    TEST_ASSERT_FLOAT_EQ(out[32], -0.875f, 1e-5f, "iq1_s elem32 (ib=1, unaffected)");
+}
+
+/* ── IQ1_M: no top-level d -- packed across 4 scale u16's top nibbles ──────── */
+static void test_iq1_m_single_block(void) {
+    uint8_t blk[56];
+    memset(blk, 0, sizeof(blk));
+    /* scales_bytes = blk[48..55], viewed as sc[0..3]. Craft sc[2]/sc[3] so the
+     * packed scale.u16 = 0x3C00 = f32_to_fp16(1.0) (verified: sc[0] bits[15:12]
+     * -> result[3:0]=0; sc[1] bits[11:8] -> result[7:4]=0; sc[2] bits[15:12]=0xC
+     * -> result[11:8]=0xC; sc[3] bits[15:12]=0x3 -> result[15:12]=0x3). sc[0]/
+     * sc[1] left at 0 also zeroes the low bits used for ib=0..3's dl1/dl2. */
+    uint16_t sc2 = 0xC000, sc3 = 0x3000;
+    memcpy(blk + 48 + 4, &sc2, 2);
+    memcpy(blk + 48 + 6, &sc3, 2);
+
+    float out[256];
+    gguf_dequant_iq1_m(out, blk, 256);
+    /* All-zero qs/qh -> idx=0 -> iq1s_grid[0]=all -1. dl=d*(2*0+1)=d=1 for
+     * every ib (verified by hand that sc[2]/sc[3]'s low 12 bits are 0, so
+     * ib=4..7's dl also come out to 1 despite the nonzero top nibbles).
+     * delta=+IQ1S_DELTA -> dst = 1*(-1+0.125) = -0.875 uniform. */
+    TEST_ASSERT_FLOAT_EQ(out[0],   -0.875f, 1e-5f, "iq1_m elem0 (all-zero baseline)");
+    TEST_ASSERT_FLOAT_EQ(out[255], -0.875f, 1e-5f, "iq1_m elem255 (all-zero baseline)");
+
+    /* qh[0] bit3 set -> delta[0] (l=0, dst[0..7]) flips sign; idx0 untouched
+     * since (0x08<<8)&0x700 = 0x0800&0x0700 = 0. */
+    blk[32] = 0x08;
+    gguf_dequant_iq1_m(out, blk, 256);
+    TEST_ASSERT_FLOAT_EQ(out[0], -1.125f, 1e-5f, "iq1_m elem0 (delta sign flip)");
+    TEST_ASSERT_FLOAT_EQ(out[8], -0.875f, 1e-5f, "iq1_m elem8 (l=1, unaffected)");
+}
+
 int main(void) {
     RUN_TEST(test_q4_1_single_block);
     RUN_TEST(test_q4_1_partial_trailing);
@@ -255,5 +309,7 @@ int main(void) {
     RUN_TEST(test_iq2_s_single_block);
     RUN_TEST(test_iq3_xxs_single_block);
     RUN_TEST(test_iq3_s_single_block);
+    RUN_TEST(test_iq1_s_single_block);
+    RUN_TEST(test_iq1_m_single_block);
     TEST_SUMMARY();
 }

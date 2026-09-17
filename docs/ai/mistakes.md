@@ -3,9 +3,73 @@
 > Canonical, append-at-top (newest first). Read this at the start of every session.
 > Add an entry **immediately** when a mistake, false assumption, regression, or avoidable
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
-> Last updated: 2026-07-31.
+> Last updated: 2026-09-17.
 
-### 2026-07-31 — A promised bug fix ("I'll clamp max context for qwen3moe") was never actually completed — the RAM safety cap structurally couldn't see the real head_dim for qwen35/qwen3moe
+### 2026-09-17 — [OPEN, not fixed] Dense "llama"-arch models with IQ4_NL/IQ4_XS/Q3_K weights produce degenerate repeating-token output — dequant math proven correct, root cause still unknown
+
+- Context: Phase 37 (GGUF universal quant compatibility) added Q4_1/Q8_1/Q8_K/IQ2-family/IQ3-family/
+  IQ1-family/IQ4_XS dequant support this session. Per the user's explicit instruction to test every
+  substep against real downloaded models (not just synthetic fixtures), downloaded
+  `bartowski/SmolLM2-135M-Instruct-GGUF`'s Q8_0, Q4_0, Q3_K_S, and IQ4_XS variants and ran each through
+  `./adaptive_ai_engine`.
+- Symptom: Q8_0 and Q4_0 produce correct output ("The capital of France is Paris."). Q3_K_S and IQ4_XS
+  (both of which use `IQ4_NL` for the overwhelming majority of per-layer weights — attn_q/k/v/output,
+  ffn_gate/ffn_up — with only `ffn_down` differing between them) produce degenerate, context-independent
+  repeating-token output (e.g. `"1 ( ( ( ( ( ( ( ("`) regardless of prompt content or chat-template
+  formatting. Same behavior with `--temperature 0` (greedy) and with a manually chat-formatted prompt
+  (though note: the engine auto-wraps every prompt in the GGUF's `tokenizer.chat_template` already —
+  manually adding `<|im_start|>` tags double-wraps it, a real gotcha for future testing, but not the
+  cause here since it reproduces either way).
+- **What was ruled out, with evidence** (this is the useful part — do not re-litigate these):
+  1. **Dequantization math for Q3_K, IQ4_NL, and IQ4_XS is bit-exact correct.** Verified by extracting
+     real tensor bytes from the downloaded files via the official `gguf` Python package, independently
+     reimplementing each format's algorithm from llama.cpp's actual `ggml-quants.c`/`ggml-common.h`
+     source (fetched fresh from upstream, not from memory), and comparing against a standalone C
+     harness calling this repo's `gguf_dequant_q3_k`/`gguf_dequant_iq4_nl`/`gguf_dequant_iq4_xs`
+     directly. Checked at block 0, a middle block, and the last block of full-size real tensors
+     (`blk.0.ffn_down.weight`, `blk.0.attn_q.weight`) — exact match every time, including after finding
+     and fixing a bug in the verification script itself (an `m` sign-mask variable that needs to persist
+     across Q3_K's two 128-element outer-loop halves, not reset per-half — a transcription slip in the
+     *test*, not the engine code).
+  2. **Aggregate value distributions match Q8_0's ground truth.** Full-tensor mean/stddev/min/max for
+     `blk.0.attn_q.weight` dequantized from IQ4_NL vs from the near-lossless Q8_0 file: mean ±0.00003,
+     std 0.282 vs 0.283, min/max within 0.02 of each other — statistically indistinguishable.
+  3. **The loading/dispatch pipeline is structurally identical regardless of quant type.** Q3_K, IQ4_NL,
+     IQ4_XS, Q4_0, and Q8_0 all lack a type-specific fast path in `LOAD_PROJ` (only `Q4_K` gets one) —
+     all five hit the same generic `tensor_to_f32()` dequant-to-heap-F32 fallback, get tagged
+     `WEIGHT_TYPE_F32`, and are consumed by the identical `parallel_matmul_float32` call in
+     `tn_dense_matmul_dispatch()`. No format-specific branch exists downstream that could explain the
+     divergence structurally.
+  4. **Not a metadata/config/tokenizer difference.** All four downloaded files share the same 37
+     metadata KV entries (only `general.file_type`, a cosmetic int, differs), identical `llama.*` config
+     values, identical tokenizer/chat-template, identical tied-embedding structure (no separate
+     `output.weight` tensor in any of them).
+  5. **A real, measurable signal that IS NOT YET EXPLAINED:** with identical `s->xb` input (verified
+     bit-identical at layer 0 across models, as expected since `token_embd.weight` is Q8_0 in all four
+     files), the resulting `Q`/`K` projections are ~3x smaller in max magnitude for the IQ4_NL/IQ4_XS
+     model than for Q8_0 at every prompt position checked (e.g. pos=0: q_max 2.84 vs 8.23). This is
+     larger than expected for imatrix-calibrated 4-bit quantization (which is specifically designed to
+     preserve output-level fidelity, not just per-weight accuracy) and is the most promising lead for
+     whoever picks this up next — but a magnitude drop alone is a plausible non-bug explanation too
+     (uncorrelated per-weight quantization noise partially cancels in a 576-element dot product), so it
+     is not confirmed as the root cause, only flagged as the most concrete remaining thread.
+- **Explicitly not yet checked** (the next steps for whoever continues this): the actual attention
+  softmax/score distribution (does it become abnormally flat/uniform, which would explain
+  context-independent output — this is the leading hypothesis but wasn't directly measured); whether the
+  same degradation reproduces on a *larger* model (would point away from "tiny 135M model is just
+  fragile" and toward a real bug); whether it reproduces with `llama.cpp` itself on the same file (the
+  one test that would definitively separate "our engine has a bug" from "this specific quantization is
+  genuinely this lossy for this specific tiny model" — not attempted this session, llama.cpp isn't built
+  in this environment).
+- Why this is being logged as OPEN rather than fixed or silently deferred: per the project's bug-fix
+  policy, a real, user-impacting bug (this is likely the single most common real-world scenario — a
+  small IQ4_NL-quantized GGUF someone downloads from HuggingFace) should either be fixed or explicitly
+  flagged, never silently dropped. Root cause eluded a thorough single-session investigation (dequant
+  math, pipeline structure, and metadata are all cleared); flagging for a dedicated follow-up rather than
+  continuing to consume this session's remaining budget chasing it. The Phase 37 dequant *format support*
+  itself (the actual deliverable — loading such files without an "unsupported quant type" error) works
+  and is verified correct; it is specifically output *quality* for this mixed-precision combination that
+  is broken.
 
 - Context: GitHub issue #32 (jpsoto) — Qwen3-30B-A3B-Q4_K_M.gguf failed to load. First root cause (missing
   `qwen3moe` GGUF architecture support) was fixed and verified (commit `6480ef8`, "fixes #32"). jpsoto then

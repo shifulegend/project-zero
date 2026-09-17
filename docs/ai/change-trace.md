@@ -3,6 +3,32 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-09-17.
 
+### 2026-09-17 — Phase 37 complete (all 16 GGUF quant sub-formats) + real-model test surfaced a new open bug
+- What: implemented Q4_1, Q8_1, Q8_K, IQ2_XXS/IQ2_XS/IQ2_S, IQ3_XXS/IQ3_S, IQ1_S/IQ1_M, IQ4_XS dequant
+  functions (`src/core/gguf_quant.c`), completed the `GGUFType` enum, extracted BF16 dequant, and fixed
+  a real bug found along the way (`gguf_block_size(Q8_1)` in `gguf_reader.c` was 40 bytes, should be 36 —
+  the plan doc's own "d fp32 + s fp32" field description was wrong, both are fp16). All codebook tables
+  for the IQ-family (iq1s_grid, iq2xxs/xs/s_grid, iq3xxs/s_grid, ksigns_iq2xs) were extracted
+  programmatically from a freshly-fetched copy of llama.cpp's `ggml-common.h`, not hand-transcribed, to
+  avoid errors across ~2500 hex table entries. New `tests/test_gguf_quant_new_formats.c` (64 assertions,
+  ground-truth hand-computed expected values, not self-consistency checks). Also corrected two
+  IMPLEMENTATION_PLAN.md mismarks found along the way: 37.2 (Q3_K) and 37.9 (IQ4_NL) were already fully
+  implemented but marked "pending" — same doc-lag pattern as the earlier progress-audit session.
+- Real-model testing (per explicit user instruction to test every substep against downloaded models, not
+  just synthetic fixtures): downloaded 4 variants of `bartowski/SmolLM2-135M-Instruct-GGUF` (Q8_0, Q4_0,
+  Q3_K_S, IQ4_XS). Q8_0/Q4_0 work correctly; Q3_K_S/IQ4_XS produce degenerate repeating-token output.
+  Spent significant additional effort proving the new dequant code is NOT the cause (bit-exact verified
+  against real file bytes at multiple tensor positions, matching an independent reimplementation of
+  llama.cpp's actual algorithms) before concluding the root cause is elsewhere and logging it as an open,
+  unresolved bug rather than either silently shipping a false "tested and working" claim or burning
+  unbounded further time chasing it single-session. Full writeup: `docs/ai/mistakes.md` 2026-09-17 entry.
+- Why: user's `/goal` — "complete tier 1 [doc-hygiene items already done + Phase 37 + grammar decoding +
+  agent sandbox hardening]. Continuously keep testing every substeps using models downloaded sequentially."
+- Areas: `src/core/{gguf_quant,gguf_loader,gguf_reader}.c`, `include/core/{gguf_quant,gguf_reader}.h`,
+  `tests/test_gguf_quant_new_formats.c` (new), `docs/architecture/IMPLEMENTATION_PLAN.md`,
+  `docs/ai/mistakes.md`. Models downloaded to `models/` for testing, deleted after (not committed,
+  `models/` is gitignored).
+
 ### 2026-09-17 — IMPLEMENTATION_PLAN.md doc-hygiene sweep (progress audit follow-up)
 - What: a full architecture/implementation-plan progress audit (live `make release`/`make test`
   run + cross-referencing `docs/architecture/IMPLEMENTATION_PLAN.md` against actual `src/`/

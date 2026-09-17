@@ -2845,7 +2845,8 @@ being complete, as model weights are loaded via the GGUF path.
 
 ## Phase 37: GGUF Universal Quant Compatibility
 
-> **Status:** Q2_K done. All remaining items are pending.
+> **Status:** Q2_K, Q3_K, and IQ4_NL done (37.2/37.9 corrected 2026-09-17 — were mismarked
+> pending despite being fully implemented). Remaining items: 37.3-37.8, 37.10-37.16.
 > **Goal:** Engine accepts any GGUF file without "unsupported quant type" errors.
 > **Constraint:** Add modularly — new functions in `gguf_quant.c`/`gguf_quant.h`,
 > new cases in `gguf_loader.c` dispatch + `quant_bytes_for_elems`.
@@ -2871,7 +2872,14 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.2 — Q3_K ❌ pending
+### 37.2 — Q3_K ✅ done
+> **Doc drift found 2026-09-17:** this was already fully implemented and wired
+> (`gguf_dequant_q3_k()` in `src/core/gguf_quant.c`, dispatch case + `quant_bytes_for_elems`
+> in `src/core/gguf_loader.c`, header declaration in `include/core/gguf_quant.h`) — marked
+> ❌ pending here in error. Verified against llama.cpp's real `block_q3_K`/`dequantize_row_q3_K`
+> (fetched from upstream during this audit): the implementation's byte order (hmask[32] then
+> qs[64] then scales[12] then d) and sign logic (subtract 4 unless the hmask bit is set) match
+> exactly.
 - Block: 256 elems, 110 bytes
   - `qs[64]`   — 2-bit low values (4/byte)
   - `hmask[32]` — 1 high bit per element (8/byte)
@@ -2952,7 +2960,11 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.9 — IQ4_NL ❌ pending
+### 37.9 — IQ4_NL ✅ done
+> **Doc drift found 2026-09-17:** already fully implemented and wired
+> (`gguf_dequant_iq4_nl()` in `src/core/gguf_quant.c`, dispatch case + `quant_bytes_for_elems`
+> in `src/core/gguf_loader.c`, header declaration, `GGUF_TYPE_IQ4_NL` already in the enum) —
+> marked ❌ pending here in error.
 - Block: 32 elems, 18 bytes (non-linear 4-bit; same byte count as Q4_0)
   - Layout: `d fp16` + `qs[16]` 4-bit, but uses a 16-entry non-linear codebook
 - Function: `gguf_dequant_iq4_nl()`

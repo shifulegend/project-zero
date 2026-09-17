@@ -139,7 +139,11 @@ static size_t gguf_block_size(GGUFType t) {
         case GGUF_TYPE_Q5_0: return 2 + 4 + 16;
         case GGUF_TYPE_Q5_1: return 4 + 4 + 16;
         case GGUF_TYPE_Q8_0: return 2 + 32;   /* scale(f16) + 32 bytes */
-        case GGUF_TYPE_Q8_1: return 4 + 4 + 32;
+        case GGUF_TYPE_Q8_1: return 4 + 32;   /* d+s as fp16 pair (2+2=4) + 32 bytes int8 —
+                                                   bug fix 2026-09-17: was 4+4+32=40, but
+                                                   ggml's block_q8_1 has no qh field like
+                                                   Q5_1 does; correct size is 36, verified
+                                                   against llama.cpp's block_q8_1 struct */
         case GGUF_TYPE_Q2_K: return 84;   /* scales[16]+qs[64]+d(fp16)+dmin(fp16) */
         case GGUF_TYPE_Q3_K: return 110;
         case GGUF_TYPE_Q4_K: return 144;
@@ -147,6 +151,18 @@ static size_t gguf_block_size(GGUFType t) {
         case GGUF_TYPE_Q6_K: return 210;
         case GGUF_TYPE_Q8_K: return 292;
         case GGUF_TYPE_IQ4_NL: return 18; /* d(fp16) + qs[16] nibbles = 32 weights */
+        /* Byte counts below verified 2026-09-17 against llama.cpp's real block_iq*
+         * structs in ggml-common.h (Phase 37 enum-completeness pass) — the plan
+         * doc's own byte counts for IQ1_S (said 26) and IQ1_M (said 37) were wrong;
+         * corrected here to the real 50 and 56. */
+        case GGUF_TYPE_IQ2_XXS: return 66;  /* d(2) + qs[32]*u16(64) */
+        case GGUF_TYPE_IQ2_XS:  return 74;  /* d(2) + qs[32]*u16(64) + scales[8] */
+        case GGUF_TYPE_IQ2_S:   return 82;  /* d(2) + qs[64] + qh[8] + scales[8] */
+        case GGUF_TYPE_IQ3_XXS: return 98;  /* d(2) + qs[96] */
+        case GGUF_TYPE_IQ3_S:   return 110; /* d(2) + qs[64] + qh[8] + signs[32] + scales[4] */
+        case GGUF_TYPE_IQ1_S:   return 50;  /* d(2) + qs[32] + qh[8]*u16(16) */
+        case GGUF_TYPE_IQ1_M:   return 56;  /* qs[32] + qh[16] + scales[8], no top-level d */
+        case GGUF_TYPE_IQ4_XS:  return 136; /* d(2) + scales_h(2) + scales_l[4] + qs[128] */
         /* PrismML's group-128 packing (see gguf_quant.c's gguf_dequant_q2_0
          * comment) — NOT mainline ggml's canonical group-64 block_q2_0.
          * size_bytes computed here is informational only (t->data is
@@ -170,7 +186,11 @@ static size_t gguf_block_elems(GGUFType t) {
         case GGUF_TYPE_Q2_0: return 128;
         case GGUF_TYPE_Q2_K: case GGUF_TYPE_Q3_K:
         case GGUF_TYPE_Q4_K: case GGUF_TYPE_Q5_K:
-        case GGUF_TYPE_Q6_K: case GGUF_TYPE_Q8_K: return 256;
+        case GGUF_TYPE_Q6_K: case GGUF_TYPE_Q8_K:
+        case GGUF_TYPE_IQ2_XXS: case GGUF_TYPE_IQ2_XS: case GGUF_TYPE_IQ2_S:
+        case GGUF_TYPE_IQ3_XXS: case GGUF_TYPE_IQ3_S:
+        case GGUF_TYPE_IQ1_S: case GGUF_TYPE_IQ1_M:
+        case GGUF_TYPE_IQ4_XS: return 256;
         default: return 1;
     }
 }
@@ -395,12 +415,21 @@ const char *gguf_type_name(GGUFType t) {
         case GGUF_TYPE_Q5_0: return "Q5_0";
         case GGUF_TYPE_Q5_1: return "Q5_1";
         case GGUF_TYPE_Q8_0: return "Q8_0";
+        case GGUF_TYPE_Q8_1: return "Q8_1";
         case GGUF_TYPE_Q2_K: return "Q2_K";
         case GGUF_TYPE_Q3_K: return "Q3_K";
         case GGUF_TYPE_Q4_K: return "Q4_K";
         case GGUF_TYPE_Q5_K: return "Q5_K";
         case GGUF_TYPE_Q6_K: return "Q6_K";
         case GGUF_TYPE_Q8_K: return "Q8_K";
+        case GGUF_TYPE_IQ2_XXS: return "IQ2_XXS";
+        case GGUF_TYPE_IQ2_XS:  return "IQ2_XS";
+        case GGUF_TYPE_IQ2_S:   return "IQ2_S";
+        case GGUF_TYPE_IQ3_XXS: return "IQ3_XXS";
+        case GGUF_TYPE_IQ3_S:   return "IQ3_S";
+        case GGUF_TYPE_IQ1_S:   return "IQ1_S";
+        case GGUF_TYPE_IQ1_M:   return "IQ1_M";
+        case GGUF_TYPE_IQ4_XS:  return "IQ4_XS";
         case GGUF_TYPE_IQ4_NL: return "IQ4_NL";
         case GGUF_TYPE_Q2_0: return "Q2_0";
         case GGUF_TYPE_I8:   return "I8";

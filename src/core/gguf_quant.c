@@ -310,6 +310,41 @@ void gguf_dequant_q5_1(float *out, const void *data, size_t n_elems) {
     for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
 }
 
+/* ── Q4_1 ─────────────────────────────────────────────────────────────────── */
+/*
+ * Block layout (20 bytes per 32 elements):
+ *   [d: fp16 (2)] [m: fp16 (2)] [qs: u8×16 (16)]
+ * Decode: out[i] = nibble[i] * d + m (additive min, no zero-point offset).
+ * Low nibble of qs[i] = element i (0..15); high nibble = element i+16.
+ * Verified against llama.cpp's block_q4_1/dequantize_row_q4_1 (ggml-common.h/ggml-quants.c).
+ */
+#define Q4_1_BLOCK_SIZE 32
+#define Q4_1_BYTES_PER_BLOCK 20
+
+void gguf_dequant_q4_1(float *out, const void *data, size_t n_elems) {
+    const uint8_t *p = (const uint8_t *)data;
+    size_t n_blocks   = n_elems / Q4_1_BLOCK_SIZE;
+
+    for (size_t b = 0; b < n_blocks; b++) {
+        const uint8_t *blk = p + b * Q4_1_BYTES_PER_BLOCK;
+        uint16_t d_bits, m_bits;
+        memcpy(&d_bits, blk,     2);
+        memcpy(&m_bits, blk + 2, 2);
+        float d = fp16_to_f32(d_bits);
+        float m = fp16_to_f32(m_bits);
+        const uint8_t *qs = blk + 4;  /* 16 bytes */
+        float *dst = out + b * Q4_1_BLOCK_SIZE;
+        for (int i = 0; i < 16; i++) {
+            int q0 = qs[i] & 0xF;
+            int q1 = qs[i] >>  4;
+            dst[i]      = q0 * d + m;
+            dst[i + 16] = q1 * d + m;
+        }
+    }
+    size_t done = n_blocks * Q4_1_BLOCK_SIZE;
+    for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
+}
+
 /* ── Q5_K ─────────────────────────────────────────────────────────────────── */
 /*
  * Super-block layout (176 bytes per 256 elements):
@@ -599,5 +634,64 @@ void gguf_dequant_q6_k(float *out, const void *data, size_t n_elems) {
         }
     }
     size_t done = n_super * Q6_K_SUPER;
+    for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
+}
+
+/* ── Q8_1 ─────────────────────────────────────────────────────────────────── */
+/*
+ * Block layout (36 bytes per 32 elements):
+ *   [d: fp16 (2)] [s: fp16 (2)] [qs: int8 × 32 (32)]
+ * Decode: out[i] = qs[i] * fp16_to_f32(d). `s` (= d * sum(qs)) is a llama.cpp
+ * GEMM dot-product shortcut, unused for plain dequant — same as Q8_0 but with
+ * an extra unused fp16 field before qs[]. Verified against llama.cpp's real
+ * block_q8_1 (ggml-common.h): d and s are BOTH fp16, not fp32 as an earlier
+ * draft of the plan doc assumed — gguf_block_size(Q8_1) in gguf_reader.c had
+ * the same fp32 assumption baked in (40 bytes) and has been corrected to 36.
+ */
+#define Q8_1_BLOCK_SIZE 32
+#define Q8_1_BYTES_PER_BLOCK 36   /* 2 (d) + 2 (s) + 32 (int8) */
+
+void gguf_dequant_q8_1(float *out, const void *data, size_t n_elems) {
+    const uint8_t *p = (const uint8_t *)data;
+    size_t n_blocks   = n_elems / Q8_1_BLOCK_SIZE;
+
+    for (size_t b = 0; b < n_blocks; b++) {
+        const uint8_t *blk = p + b * Q8_1_BYTES_PER_BLOCK;
+        uint16_t d_bits; memcpy(&d_bits, blk, 2);
+        float d = fp16_to_f32(d_bits);
+        const int8_t *qs = (const int8_t *)(blk + 4);  /* skip d(2)+s(2) */
+        float *dst = out + b * Q8_1_BLOCK_SIZE;
+        for (int i = 0; i < Q8_1_BLOCK_SIZE; i++)
+            dst[i] = qs[i] * d;
+    }
+    size_t done = n_blocks * Q8_1_BLOCK_SIZE;
+    for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
+}
+
+/* ── Q8_K ─────────────────────────────────────────────────────────────────── */
+/*
+ * Super-block layout (292 bytes per 256 elements):
+ *   [d: fp32 (4)] [qs: int8 × 256 (256)] [bsums: int16 × 16 (32)]
+ * Decode: out[i] = qs[i] * d. `bsums` (per-16 sub-block sums) is a GEMM
+ * dot-product shortcut, unused for plain dequant. Unlike every other format
+ * in this file, `d` here is a genuine fp32 (matches llama.cpp block_q8_K) —
+ * no fp16_to_f32 conversion needed.
+ */
+#define Q8_K_SUPER 256
+#define Q8_K_BYTES 292
+
+void gguf_dequant_q8_k(float *out, const void *data, size_t n_elems) {
+    const uint8_t *p = (const uint8_t *)data;
+    size_t n_super    = n_elems / Q8_K_SUPER;
+
+    for (size_t b = 0; b < n_super; b++) {
+        const uint8_t *blk = p + b * Q8_K_BYTES;
+        float d; memcpy(&d, blk, 4);
+        const int8_t *qs = (const int8_t *)(blk + 4);
+        float *dst = out + b * Q8_K_SUPER;
+        for (int i = 0; i < Q8_K_SUPER; i++)
+            dst[i] = qs[i] * d;
+    }
+    size_t done = n_super * Q8_K_SUPER;
     for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
 }

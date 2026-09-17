@@ -94,10 +94,40 @@ static void test_q8_k_single_block(void) {
     TEST_ASSERT_FLOAT_EQ(out[199],   99 * 0.1f, 1e-5f, "q8_k elem199 ((199%200)-100=99)");
 }
 
+/* ── IQ4_XS: d(fp16)+scales_h(u16)+scales_l[4]+qs[128], reuses kvalues_iq4nl ── */
+static void test_iq4_xs_single_block(void) {
+    /* kvalues_iq4nl = {-127,-104,-83,-65,-49,-35,-22,-10,1,13,25,38,53,69,89,113} */
+    uint8_t blk[136];
+    memset(blk, 0, sizeof(blk));
+    float d = 0.125f; /* exact power-of-2, no fp16 rounding error to account for */
+    uint16_t d_h = f32_to_fp16(d);
+    memcpy(blk, &d_h, 2);
+    uint16_t scales_h = 0; /* high 2 bits of every ls contribute 0 -- isolates scales_l */
+    memcpy(blk + 2, &scales_h, 2);
+    uint8_t *scales_l = blk + 4;
+    scales_l[0] = 0x35; /* ib=0 low nibble=5, ib=1 high nibble=3 */
+    scales_l[1] = 0x0A; /* ib=2 low nibble=10, ib=3 high nibble=0 */
+    uint8_t *qs = blk + 8;
+    qs[0]  = 0xF0; /* ib=0, j=0: low nibble=0 -> elem0, high nibble=0xF -> elem16 */
+    qs[48] = 0x0F; /* ib=3 (offset 3*16=48), j=0: low nibble=0xF -> elem96, high nibble=0 -> elem112 */
+
+    float out[256];
+    gguf_dequant_iq4_xs(out, blk, 256);
+
+    /* ib=0: ls=5, dl = 0.125*(5-32) = -3.375 */
+    TEST_ASSERT_FLOAT_EQ(out[0],  -3.375f * -127.0f, 1e-3f, "iq4_xs elem0 (ib0 low nibble=0)");
+    TEST_ASSERT_FLOAT_EQ(out[16], -3.375f *  113.0f, 1e-3f, "iq4_xs elem16 (ib0 high nibble=15)");
+    TEST_ASSERT_FLOAT_EQ(out[5],  -3.375f * -127.0f, 1e-3f, "iq4_xs elem5 (background nibble=0)");
+    /* ib=3: ls=0, dl = 0.125*(0-32) = -4.0 */
+    TEST_ASSERT_FLOAT_EQ(out[96],  -4.0f *  113.0f, 1e-3f, "iq4_xs elem96 (ib3 low nibble=15)");
+    TEST_ASSERT_FLOAT_EQ(out[112], -4.0f * -127.0f, 1e-3f, "iq4_xs elem112 (ib3 high nibble=0)");
+}
+
 int main(void) {
     RUN_TEST(test_q4_1_single_block);
     RUN_TEST(test_q4_1_partial_trailing);
     RUN_TEST(test_q8_1_single_block);
     RUN_TEST(test_q8_k_single_block);
+    RUN_TEST(test_iq4_xs_single_block);
     TEST_SUMMARY();
 }

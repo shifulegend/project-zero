@@ -452,6 +452,49 @@ void gguf_dequant_iq4_nl(float *out, const void *data, size_t n_elems) {
     for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
 }
 
+/* ── IQ4_XS ───────────────────────────────────────────────────────────────── */
+/*
+ * Non-linear 4-bit k-quant (256 elements, 136 bytes per super-block):
+ *   [d: fp16 (2)] [scales_h: u16 (2)] [scales_l: u8×4 (4)] [qs: 4-bit×256 = 128 bytes]
+ * Reuses the same kvalues_iq4nl[16] codebook as IQ4_NL, plus a Q4_K-style 6-bit
+ * per-32-element scale (4 bits from scales_l, 2 bits from scales_h) biased by -32.
+ * Decode: out[i] = d * (scale_ib - 32) * kvalues_iq4nl[nibble[i]], for 8 sub-blocks
+ * of 32 elements each. Verified against llama.cpp's dequantize_row_iq4_xs.
+ */
+#define IQ4_XS_SUPER 256
+#define IQ4_XS_BYTES 136
+
+void gguf_dequant_iq4_xs(float *out, const void *data, size_t n_elems) {
+    const uint8_t *p = (const uint8_t *)data;
+    size_t n_super    = n_elems / IQ4_XS_SUPER;
+
+    for (size_t b = 0; b < n_super; b++) {
+        const uint8_t *blk = p + b * IQ4_XS_BYTES;
+        uint16_t d_bits;      memcpy(&d_bits,      blk,     2);
+        uint16_t scales_h;    memcpy(&scales_h,    blk + 2, 2);
+        const uint8_t *scales_l = blk + 4;      /* 4 bytes */
+        const uint8_t *qs_base  = blk + 8;       /* 128 bytes */
+        float d = fp16_to_f32(d_bits);
+        if (!(d == d)) d = 0.0f;  /* NaN guard */
+
+        float *dst = out + b * IQ4_XS_SUPER;
+        const uint8_t *qs = qs_base;
+        for (int ib = 0; ib < IQ4_XS_SUPER / 32; ib++) {
+            int ls = ((scales_l[ib / 2] >> (4 * (ib % 2))) & 0xF) |
+                     (((scales_h >> (2 * ib)) & 3) << 4);
+            float dl = d * (float)(ls - 32);
+            for (int j = 0; j < 16; j++) {
+                dst[j +  0] = dl * (float)kvalues_iq4nl[qs[j] & 0xF];
+                dst[j + 16] = dl * (float)kvalues_iq4nl[qs[j] >>  4];
+            }
+            dst += 32;
+            qs  += 16;
+        }
+    }
+    size_t done = n_super * IQ4_XS_SUPER;
+    for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
+}
+
 /* ── Q3_K ─────────────────────────────────────────────────────────────────── */
 /*
  * Super-block layout (110 bytes per 256 elements):

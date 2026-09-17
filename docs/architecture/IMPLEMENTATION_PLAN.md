@@ -592,7 +592,13 @@ project-zero/
 
 ---
 
-## PHASE 10: Weight Packing & Conversion Tools
+## PHASE 10: Weight Packing & Conversion Tools ✅
+> Implemented: `src/core/unpack.c`/`unpack_avx2.c`, `src/math/ternary_matmul_packed*.c`,
+> `tools/{pack_ternary,convert_hf_bitnet,convert_tokenizer}.py`. Verified end-to-end in
+> `docs/PHASE10_PRE_AUDIT_REPORT.md` (5,156 assertions incl. 1,469 in `test_packed_weights`)
+> and `docs/phases/WALKTHROUGH_PHASE10.md` (Qwen2.5-7B converted end-to-end). Marker added
+> 2026-09-17 during a progress audit — this phase was implemented and tested long before this
+> header was updated to reflect it.
 
 ### 10.1 — Ternary Weight Packer (2-bit Packing)
 - File: `tools/pack_ternary.py`
@@ -676,7 +682,13 @@ project-zero/
 
 ---
 
-## PHASE 11: Multimodal — Vision Encoder Bridge
+## PHASE 11: Multimodal — Vision Encoder Bridge ✅
+> Implemented: `src/multimodal/{image_load,patch_extract,vision_encoder,vision_projector,
+> vision_bridge,vision_weights_load,vision_pipeline}.c`, wired into CLI `--image` and the API's
+> `image_url` content parts. Tested via `tests/test_vision_components.c`/`test_vision_e2e.c`
+> and `docs/phases/WALKTHROUGH_PHASE11.md`. Caveat: `docs/ai/project-overview.md` flags
+> correctness beyond component-level tests as UNVERIFIED — implemented, not fully hardened.
+> Marker added 2026-09-17 during a progress audit.
 
 ### 11.1 — Image Loader (STB)
 - File: `src/multimodal/image_load.c`
@@ -736,7 +748,11 @@ project-zero/
 
 ---
 
-## PHASE 12: CLI & Main Entry Point
+## PHASE 12: CLI & Main Entry Point ✅
+> Implemented: `src/cli/{args,repl,main,banner,color,progress,live_stats,md_render,timer}.c`.
+> This is the primary user-facing entrypoint and has been actively maintained (banner/REPL
+> polish under decision-log's "Phase 22.3/22.5" naming — see the Phase 22 disambiguation note
+> below). Marker added 2026-09-17 during a progress audit.
 
 ### 12.1 — Argument Parser
 - File: `include/cli/args.h` + `src/cli/args.c`
@@ -782,7 +798,11 @@ project-zero/
 
 ---
 
-## PHASE 13: Testing & Validation
+## PHASE 13: Testing & Validation ✅
+> Implemented: every named test file below exists under `tests/` (30+ binaries), all green on
+> `make test CC=gcc` as of this audit (e.g. `test_moe` 46/46, `test_rag` 90/90, `test_simd`
+> 25/25). This was the single largest gap between this doc's per-item markers and reality —
+> the whole harness is real and passing. Marker added 2026-09-17 during a progress audit.
 
 ### 13.1 — Minimal Test Harness
 - File: `tests/test_harness.h`
@@ -1254,7 +1274,10 @@ Since we cannot change the AI's weights at runtime, we make the AI "learn" by gi
 
 ---
 
-## PHASE K-6: 5-Trit LUT Kernel (AVX-512BW, No VNNI Required)
+## PHASE K-6: 5-Trit LUT Kernel (AVX-512BW, No VNNI Required) ✅
+> Implemented: `src/math/ternary_matmul_lut_avx512bw.c`, `tests/test_ternary_lut_avx512bw.c`
+> (commit `bbf8e9b`). Also recorded in `docs/architecture/CPU_LLM_TERNARY_ENGINE.md`'s own
+> "Phase K-6" section. Marker added 2026-09-17 during a progress audit.
 
 *Status: NOT STARTED. Motivation: tommyyliu/lut_mm benchmark, BitNet #569 (2026-06-25).*
 
@@ -1331,7 +1354,9 @@ K-6 would be the first integer-math kernel available on that hardware.
 
 ---
 
-## PHASE 16-D: Documentation & Packaging
+## PHASE 16-D: Documentation & Packaging ✅
+> Implemented: `docs/RELEASING.md`, working `make dist` target (confirmed per
+> `docs/ai/decision-log.md` 2026-06-19). Marker added 2026-09-17 during a progress audit.
 
 ### 16.1 — Usage Documentation
 - File: `USAGE.md`
@@ -1427,7 +1452,15 @@ Phase 0 (Scaffold)
 
 ---
 
-## PHASE 17: Mixture of Experts (MoE) Routing
+## PHASE 17: Mixture of Experts (MoE) Routing ✅ (correctness) — performance still open
+> Implemented: `src/core/{moe_config,moe_weights}.c`, `src/transformer/{moe_router,moe_ffn,
+> mla_attention}.c`. Also has a full "Implementation Record" in
+> `docs/architecture/CPU_LLM_TERNARY_ENGINE.md` (Phase 17 + 17.5-17.12 MLA fix). Golden-output
+> correctness is verified for DeepSeek-V2. **Not** claiming this phase is "done" in the
+> performance sense — MoE throughput is ~7x behind llama.cpp, root-caused to non-contiguous
+> expert-weight offsets, tracked in README's Help Wanted table and
+> `docs/architecture/MOE_RESEARCH_AND_FIX_PLAN.md`; a repacking fix is proposed but not yet
+> implemented. Marker added 2026-09-17 during a progress audit.
 
 We built our engine assuming a Dense model (like Llama 3 or BitNet), where every word passes through every weight matrix. To run DeepSeek-R1 or Mixtral, we need an MoE Router that activates only a subset of Experts per token.
 
@@ -1569,7 +1602,10 @@ We built our engine assuming a Dense model (like Llama 3 or BitNet), where every
 
 ---
 
-## PHASE 34.2b: Quantized GGUF Support (Q8_0, Q4_K, I2_S) *(Items C, D)*
+## PHASE 34.2b: Quantized GGUF Support (Q8_0, Q4_K, I2_S) *(Items C, D)* ✅
+> Implemented: `src/math/{matmul_q8_0,matmul_q4k,matmul_q4k_x8}.c`. Also documented as an
+> "Implementation Record" in `docs/architecture/CPU_LLM_TERNARY_ENGINE.md`. Marker added
+> 2026-09-17 during a progress audit.
 
 **Background:** Currently `tensor_to_f32()` only handles F32/F16/BF16 GGUF tensors. Q8_0 and
 Q4_K represent 90%+ of community quantized models in the wild. I2_S is the BitNet-native GGUF
@@ -1592,7 +1628,11 @@ format used by llama.cpp and bitnet.cpp.
 
 ---
 
-## PHASE 34.5: GGUF Tokenizer Extraction *(Items A, F)*
+## PHASE 34.5: GGUF Tokenizer Extraction *(Items A, F)* ✅
+> Implemented: `src/tokenizer/tokenizer_gguf.c`, `src/core/gguf_reader.c` (ARRAY metadata,
+> auto-loaded chat template). Confirmed working end-to-end for DeepSeek-V2 in
+> `docs/architecture/CPU_LLM_TERNARY_ENGINE.md`'s "Current DeepSeek Status" section. Marker
+> added 2026-09-17 during a progress audit.
 
 **Background:** GGUF files embed the full vocabulary in metadata KV pairs under
 `tokenizer.ggml.*` keys. Extracting directly from GGUF eliminates the need for external
@@ -1620,7 +1660,12 @@ format used by llama.cpp and bitnet.cpp.
 
 ---
 
-## PHASE 16-E: GGUF-Aware Bandwidth Ceiling *(Item E)*
+## PHASE 16-E: GGUF-Aware Bandwidth Ceiling *(Item E)* ✅
+> Implemented: fixes the exact "hardware profiler using hardcoded BitNet-2B sizes for every
+> model's ceiling" bug (`docs/ai/decision-log.md` 2026-06-07/06-21 entries). Superseded/refined
+> further by the 2026-07-17 DRAM-bandwidth-probe fix in `docs/architecture/CEILING_CALCULATION.md`
+> (probe was under-measuring by ~3.4x; now fixed — see that doc for current ceiling numbers).
+> Marker added 2026-09-17 during a progress audit.
 
 **Background:** `hardware_profile.c` has hardcoded BitNet-specific constants that are wrong
 for every other model (wrong vocab, wrong dim, wrong byte count). Ceiling numbers for
@@ -1816,7 +1861,15 @@ Turns the C engine into a headless daemon that any frontend (Cline, OpenHands, S
 
 ---
 
-## PHASE 22: State Space Models (Mamba/RWKV) — Universal Architecture Router
+## PHASE 22-SSM: State Space Models (Mamba/RWKV) — Universal Architecture Router
+> **Disambiguation note (added 2026-09-17):** This phase's original number, "Phase 22", collided
+> with an unrelated, already-shipped "Phase 22: Web UI & API/DX hardening" used pervasively
+> (sub-phases 22.0-22.5) across `docs/ai/decision-log.md`, `docs/ai/mistakes.md`,
+> `docs/ai/change-trace.md`, and `docs/ai/project-overview.md`. That work (HTTP API hardening,
+> CORS/auth/metrics, the Vite+Svelte web chat UI, CLI/REPL polish) is real and done — see those
+> docs for its record. This phase (Mamba/RWKV state-space models) is unrelated, unimplemented,
+> and has been renamed here to "22-SSM" to stop the two from being confused. Not started — no
+> `mamba`/`ssm`/`rwkv`/`selective_scan` files exist anywhere in `src/`/`include/`.
 
 Abstracts the forward pass so the engine can run both Transformer (Attention) and SSM (Mamba) architectures.
 
@@ -1896,7 +1949,17 @@ Enables multi-user API serving by breaking KV cache into non-contiguous memory p
 
 ---
 
-## PHASE 24: Dynamic Context Scaling (YaRN / NTK)
+## PHASE 24: Dynamic Context Scaling (YaRN / NTK) ✅
+> Implemented: `src/math/rope.c` (`rope_apply_head_yarn`, YaRN ramp/correction-dim math),
+> `src/transformer/mla_attention.c` (`rope_apply_yarn`, `yarn_corr_dims` — matches llama.cpp's
+> `ggml_rope_yarn_corr_dims` per its own comment), also wired into
+> `src/transformer/{attention,qwen3moe_attention}.c`; GGUF-metadata-driven via
+> `src/core/gguf_loader.c` (`<arch>.rope.scaling.{type,factor,yarn_log_multiplier}` keys) and
+> `include/core/config.h` (`rope_yarn_*` fields). Explicitly confirmed done in
+> `docs/architecture/CPU_LLM_TERNARY_ENGINE.md`'s "Current DeepSeek Status" section
+> ("✅ STATUS UPDATE (2026-03-22): ... YaRN RoPE scaling ... — ✅ implemented, commit 4e6fdfe").
+> This was the single biggest doc-drift item found in the 2026-09-17 progress audit — a fully
+> shipped phase with zero acknowledgment in this file until now. Marker added 2026-09-17.
 
 Stretches a model's context window beyond its training limit by dynamically rescaling RoPE frequencies.
 
@@ -2607,7 +2670,14 @@ green list deterministic after any given word, destroying entropy.
 
 ---
 
-## Phase 35 — GGUF MLA + MoE Architecture Router
+## Phase 35 — GGUF MLA + MoE Architecture Router ✅
+> Implemented: `src/core/gguf_loader.c`'s `deepseek2`/`qwen3moe` dispatch, `moe_weights.c`'s
+> stacked per-expert stride slicing, shared-expert FFN (`n_shared_experts`/`moe_shared_w1` in
+> `moe_weights.c` and `moe_ffn.c`). Extensively iterated through 2026-07-31 per
+> `docs/ai/decision-log.md` (Qwen3-MoE support, issue #32 fix chain). Caveat: verified so far
+> only against a synthetic in-memory GGUF fixture, not a real ~18-19GB
+> Qwen3-30B-A3B-Q4_K_M.gguf file — see "What's pending" in the latest progress audit. Marker
+> added 2026-09-17.
 
 **Motivation:** DeepSeek-V2-Lite and future MoE models use a fundamentally
 different GGUF tensor layout that cannot be handled by the generic Llama weight

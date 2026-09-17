@@ -1,7 +1,34 @@
 # Change Trace — project-zero
 
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
-> Update after each meaningful sub-step. Last updated: 2026-08-04.
+> Update after each meaningful sub-step. Last updated: 2026-09-17.
+
+### 2026-09-17 — IMPLEMENTATION_PLAN.md doc-hygiene sweep (progress audit follow-up)
+- What: a full architecture/implementation-plan progress audit (live `make release`/`make test`
+  run + cross-referencing `docs/architecture/IMPLEMENTATION_PLAN.md` against actual `src/`/
+  `tests/`/`tools/` contents and the companion `docs/architecture/CPU_LLM_TERNARY_ENGINE.md`)
+  found the plan doc had stalled updating its header-level ✅ marks around Phase 16-S/K-5, even
+  though Phases 10, 11, 12, 13, 15, 16-D, 16-E, 17 (correctness only — perf still open), 24
+  (YaRN — the single biggest miss, fully shipped with zero prior acknowledgment), 34.2b, 34.5,
+  and 35 were all implemented, tested, and in some cases already documented as done in
+  `CPU_LLM_TERNARY_ENGINE.md`'s own "Implementation Record" sections. Added ✅ markers with
+  evidence (file paths, test files, decision-log dates) to all 12 headers. Also found and fixed
+  a genuine cross-doc inconsistency: `IMPLEMENTATION_PLAN.md`'s numeric "Phase 22" (unbuilt
+  Mamba/RWKV state-space support) collided with `decision-log.md`/`mistakes.md`/
+  `change-trace.md`'s own pervasive use of "Phase 22" (sub-phases 22.0-22.5) for the
+  already-shipped Web UI & API/DX hardening work — renamed the plan doc's phase to "22-SSM"
+  with an explicit disambiguation note pointing at the other three docs, rather than touching
+  their historical entries. (One earlier claim from the audit subagent — that Phase 15's header
+  had a mojibake character instead of a ✅ — was checked and found to be a false positive from
+  reading raw UTF-8 bytes via `cat -A`/`grep`; the header already had a correct ✅, left as-is.)
+- Why: `docs/ai/tool-sync-policy.md`/`.claude/rules/docs.md` call for proactively keeping
+  `docs/ai/**` and related canonical docs synced with reality, without being asked per-instance;
+  user explicitly asked for this sweep after reviewing the audit.
+- Areas: `docs/architecture/IMPLEMENTATION_PLAN.md` only (doc-only change, no engine code
+  touched). No new bugs found beyond what the audit's "known open risks" list already covered
+  (MoE perf gap, Qwen3-8B dense throughput gap, issue #32 segfault, classifier re-benchmark,
+  pre-2026-07-17 ceiling claims needing re-verification — all pre-existing and already tracked
+  elsewhere, not introduced by this sweep).
 
 ### 2026-08-04 — DeepSeek MoE benchmark run: project-zero vs colibri vs llama.cpp
 - What: user asked to run DeepSeek MoE on project-zero, colibri (`shifulegend/colibri`), and

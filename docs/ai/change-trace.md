@@ -3,6 +3,15 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-09-18.
 
+### 2026-09-18 — TS-2.3/2.4: added E2E JSON-mode test (CLI matrix + API response_format + non-JSON regression)
+- What: `tests/e2e_json_mode.sh` covers the CLI `--json` flag across temperature {0.0, 0.7, 1.5},
+  max_tokens (including a forced-truncation case), JSON-friendly/adversarial/prompt-injection prompts;
+  the API's `response_format:{"type":"json_object"}` for both streaming and non-streaming; and a
+  non-JSON regression check on both the CLI and API paths. 17/17 pass against a real model. No
+  production bugs -- two test-tool bugs found and fixed (see `mistakes.md` 2026-09-18): truncation
+  detection needed `>=` not `==` against the reported token count, and the server-readiness poll needed
+  a ~60s budget, not 10s.
+
 ### 2026-09-18 — TS-2.2: added a real-vocab (49152-token) token-masking correctness check; no production bugs, confirms fsm.c/grammar_json.c correct
 - What: `tools/fsm_real_vocab_check.c` loads the real embedded tokenizer from a GGUF model file and
   drives `fsm_compute_token_mask`/`fsm_advance` through 18 realistic JSON documents (all number forms,

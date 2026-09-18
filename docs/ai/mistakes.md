@@ -75,7 +75,19 @@
   part of that entry's degenerate-output symptom must have a different or additional cause) — re-running
   that investigation's real-model repro with this fix applied is the next step (test plan TS-4).
 
-### 2026-09-17 — [OPEN, not fixed] Dense "llama"-arch models with IQ4_NL/IQ4_XS/Q3_K weights produce degenerate repeating-token output — dequant math proven correct, root cause still unknown
+### 2026-09-17 — [CLOSED 2026-09-18 — see the IQ4_NL entry above] Dense "llama"-arch models with IQ4_NL/IQ4_XS/Q3_K weights produce degenerate repeating-token output — dequant math proven correct, root cause still unknown
+
+> **Resolution (2026-09-18):** root cause was the IQ4_NL nibble-packing bug documented in the entry
+> directly above (interleaved-pair instead of ggml's split-half layout). Re-ran this exact repro
+> (`bartowski/SmolLM2-135M-Instruct-GGUF`, Q3_K_S and IQ4_XS, `--temperature 0`, same prompts) after the
+> fix: both now produce fully coherent output — "The capital of France is Paris." and a correct,
+> non-repeating 40-token continuation on the DNA prompt for both files. This closes the bug completely;
+> item 5 below (the ~3x Q/K magnitude drop) was a downstream symptom of the same permutation bug, not a
+> separate attention-scale issue, and the "not yet checked" list below is now moot. The original
+> investigation's IQ4_NL "verified bit-exact correct via Python reimplementation" claim (item 1 below)
+> was wrong — see the entry above for why a reimplementation-from-reading-source can share the same
+> misreading as the code it's checking.
+
 
 - Context: Phase 37 (GGUF universal quant compatibility) added Q4_1/Q8_1/Q8_K/IQ2-family/IQ3-family/
   IQ1-family/IQ4_XS dequant support this session. Per the user's explicit instruction to test every

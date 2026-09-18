@@ -22,6 +22,11 @@
   `gguf_read_header()` parsing path, 153 assertions) and `tools/difftest_dequant.c` (not a `tests/*.c`
   file — depends on an external llama.cpp checkout at `/tmp/llama-ref`, run manually, not part of
   `make test`).
+- Closed the 2026-09-17 open bug (dense llama-arch models with IQ4_NL/IQ4_XS/Q3_K weights producing
+  degenerate repeating-token output): re-downloaded `bartowski/SmolLM2-135M-Instruct-GGUF`'s Q3_K_S and
+  IQ4_XS variants (TS-4 repro) and re-ran the exact original prompts after the IQ4_NL fix — both now
+  produce fully coherent, correct output at `--temperature 0` with no degeneration over 40 tokens. The
+  nibble-packing bug was the entire root cause.
 
 ### 2026-09-17 — Agent sandbox hardening: argument-level exec policy (Tier 1 item 3)
 - What: `src/agent/cmd_exec.c`'s allow-list only ever checked the command *name*

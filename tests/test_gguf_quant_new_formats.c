@@ -309,8 +309,38 @@ static void test_bf16_dequant(void) {
     TEST_ASSERT_FLOAT_EQ(out[2], -1.0f, 1e-5f, "bf16 -1.0");
 }
 
+/* ── IQ4_NL: block = [d fp16][qs[16]], "split-half" nibble packing ──────────
+ * Regression test for a real bug caught by differential testing against
+ * ggml's dequantize_row_iq4_nl (2026-09-18): this decoder previously used
+ * interleaved-pair nibble packing (low->2i, high->2i+1) copied from the
+ * Q4_1/Q4_0 layout, but IQ4_NL actually uses ggml's "split-half" layout —
+ * for j in [0,16), qs[j]'s low nibble is element j and its high nibble is
+ * element j+16 (same layout IQ4_XS already used correctly for the same
+ * kvalues_iq4nl codebook). The bug produced a completely wrong element
+ * permutation, not just a scale/sign error — the leading suspect for the
+ * open degenerate-repeating-token bug (see docs/ai/mistakes.md). */
+static void test_iq4_nl_single_block(void) {
+    uint8_t blk[18];
+    float d = 0.5f;
+    uint16_t d_h = f32_to_fp16(d);
+    memcpy(blk, &d_h, 2);
+    /* qs[j] = (j << 4) | (15 - j): low nibble = 15-j (element j), high nibble = j (element j+16) */
+    for (int j = 0; j < 16; j++) blk[2 + j] = (uint8_t)((j << 4) | (15 - j));
+
+    float out[32];
+    gguf_dequant_iq4_nl(out, blk, 32);
+
+    /* kvalues_iq4nl = {-127,-104,-83,-65,-49,-35,-22,-10,1,13,25,38,53,69,89,113} */
+    TEST_ASSERT_FLOAT_EQ(out[0],  0.5f * 113.0f, 1e-4f, "iq4_nl elem0 (low nibble=15, split-half)");
+    TEST_ASSERT_FLOAT_EQ(out[16], 0.5f * -127.0f, 1e-4f, "iq4_nl elem16 (high nibble=0, split-half)");
+    TEST_ASSERT_FLOAT_EQ(out[15], 0.5f * -127.0f, 1e-4f, "iq4_nl elem15 (low nibble=0, split-half)");
+    TEST_ASSERT_FLOAT_EQ(out[31], 0.5f * 113.0f, 1e-4f, "iq4_nl elem31 (high nibble=15, split-half)");
+    TEST_ASSERT_FLOAT_EQ(out[8],  0.5f * -10.0f, 1e-4f, "iq4_nl elem8 (low nibble=7, split-half)");
+}
+
 int main(void) {
     RUN_TEST(test_bf16_dequant);
+    RUN_TEST(test_iq4_nl_single_block);
     RUN_TEST(test_q4_1_single_block);
     RUN_TEST(test_q4_1_partial_trailing);
     RUN_TEST(test_q8_1_single_block);

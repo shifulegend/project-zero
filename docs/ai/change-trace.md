@@ -1,7 +1,27 @@
 # Change Trace — project-zero
 
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
-> Update after each meaningful sub-step. Last updated: 2026-09-17.
+> Update after each meaningful sub-step. Last updated: 2026-09-18.
+
+### 2026-09-18 — TS-1.1 differential dequant testing vs real ggml: found and fixed a genuine IQ4_NL bug + a Makefile build-staleness bug
+- What: built a pinned llama.cpp/ggml reference (`4fea119de30f6a923992780f6fd5ccb0bee5d47d`) and wrote
+  `tools/difftest_dequant.c` (TS-1.1), which quantizes a deterministic tensor with ggml's real
+  `ggml_quantize_chunk()` and compares ggml's real `dequantize_row_<type>()` against this repo's
+  `gguf_dequant_<type>()` for bit-exact equality across all 20 non-trivial types.
+- Found: `IQ4_NL` used interleaved-pair nibble packing instead of ggml's split-half layout (this repo's
+  own `IQ4_XS` decoder already used the correct layout for the same codebook). Fixed in
+  `src/core/gguf_quant.c`; added regression coverage in `tests/test_gguf_quant_new_formats.c`
+  (`test_iq4_nl_single_block`). All 20 types now bit-exact; see `mistakes.md` 2026-09-18 for full RCA
+  and its relation to the 2026-09-17 open degenerate-output bug.
+- Found (while validating the fix via `make release && make test && make debug`): `make debug` run
+  after `make release` silently links stale, non-sanitized objects (0 ASan/UBSan symbols) because
+  `build/%.o` paths are shared across CFLAGS variants and Make only checks mtimes. Fixed in `Makefile`
+  with a `build/.variant` stamp that forces a clean rebuild on variant switch. See `mistakes.md`
+  2026-09-18 for details. Verified release/test/debug all green, gcc and clang.
+- Added: `tests/test_gguf_geometry.c` (TS-1.2, byte-exact geometry assertions via the real
+  `gguf_read_header()` parsing path, 153 assertions) and `tools/difftest_dequant.c` (not a `tests/*.c`
+  file — depends on an external llama.cpp checkout at `/tmp/llama-ref`, run manually, not part of
+  `make test`).
 
 ### 2026-09-17 — Agent sandbox hardening: argument-level exec policy (Tier 1 item 3)
 - What: `src/agent/cmd_exec.c`'s allow-list only ever checked the command *name*

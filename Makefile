@@ -74,10 +74,30 @@ TARGET = adaptive_ai_engine
 
 all: $(TARGET)
 
+# build/%.o is a shared path across release/debug/dist -- Make only tracks
+# file mtimes, not which CFLAGS produced an object, so switching variants
+# (e.g. `make release && make debug`) without this check silently links
+# stale objects built under the PREVIOUS variant's flags: a "debug" binary
+# built right after "release" would carry zero ASan/UBSan instrumentation
+# despite exit 0 (confirmed 2026-09-18 via `nm | grep asan` on the result).
+# Recorded in build/.variant; a mismatch forces a clean before rebuilding.
+BUILD_STAMP := build/.variant
+define ensure_variant
+	@mkdir -p build
+	@if [ -f $(BUILD_STAMP) ] && [ "$$(cat $(BUILD_STAMP))" != "$(1)" ]; then \
+		echo "Build variant changed ($$(cat $(BUILD_STAMP)) -> $(1)); removing stale objects..."; \
+		rm -rf build $(TARGET); \
+		mkdir -p build; \
+	fi
+	@echo "$(1)" > $(BUILD_STAMP)
+endef
+
 release:
+	$(call ensure_variant,release)
 	$(MAKE) CFLAGS="$(CFLAGS_RELEASE)" CXXFLAGS="$(CXXFLAGS_RELEASE)" all
 
 debug:
+	$(call ensure_variant,debug)
 	$(MAKE) CFLAGS="$(CFLAGS_DEBUG)" CXXFLAGS="$(CXXFLAGS_DEBUG)" LDFLAGS="$(LDFLAGS) -fsanitize=address -fsanitize=undefined" all
 
 # Portable, statically-libstdc++/libgcc-linked x86-64 binary for distribution.
@@ -85,6 +105,7 @@ debug:
 # simd_dispatch.c with all branches present; runtime CPUID dispatch keeps it safe
 # on CPUs that lack a given tier. See the per-file ISA rules below.
 dist:
+	$(call ensure_variant,dist)
 	$(MAKE) CFLAGS="$(CFLAGS_DIST)" CXXFLAGS="$(CXXFLAGS_DIST)" LDFLAGS="$(LDFLAGS_DIST)" \
 	        _HAS_AVXVNNI=1 _HAS_AVX512VNNI=1 DISPATCH_DEFS=-DTN_FORCE_DISPATCH_ALL all
 

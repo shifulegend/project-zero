@@ -423,7 +423,10 @@ void gguf_dequant_q5_k(float *out, const void *data, size_t n_elems) {
  *   [d: fp16 (2)] [qs: 4-bit×32 = 16 bytes]
  * Decode: out[i] = d * kvalues_iq4nl[nibble[i]]
  * Uses a fixed 16-entry lookup table of int8 values (same as llama.cpp).
- * Nibble packing: low nibble of qs[i] → element 2i, high nibble → element 2i+1.
+ * Nibble packing is "split halves", NOT interleaved: for j in [0,16), the low
+ * nibble of qs[j] is element j and the high nibble is element j+16 (matches
+ * ggml's dequantize_row_iq4_nl and this file's own IQ4_XS decode, which
+ * already uses this split-half layout for the same kvalues_iq4nl codebook).
  */
 #define IQ4_NL_BLOCK_SIZE 32
 #define IQ4_NL_BYTES_PER_BLOCK 18
@@ -444,8 +447,8 @@ void gguf_dequant_iq4_nl(float *out, const void *data, size_t n_elems) {
         const uint8_t *qs = blk + 2;
         float *dst = out + b * IQ4_NL_BLOCK_SIZE;
         for (int i = 0; i < IQ4_NL_BLOCK_SIZE / 2; i++) {
-            dst[i * 2]     = d * (float)kvalues_iq4nl[qs[i] & 0xF];
-            dst[i * 2 + 1] = d * (float)kvalues_iq4nl[qs[i] >> 4];
+            dst[i]      = d * (float)kvalues_iq4nl[qs[i] & 0xF];
+            dst[i + 16] = d * (float)kvalues_iq4nl[qs[i] >> 4];
         }
     }
     size_t done = n_blocks * IQ4_NL_BLOCK_SIZE;

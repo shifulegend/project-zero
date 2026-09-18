@@ -3,7 +3,77 @@
 > Canonical, append-at-top (newest first). Read this at the start of every session.
 > Add an entry **immediately** when a mistake, false assumption, regression, or avoidable
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
-> Last updated: 2026-09-17.
+> Last updated: 2026-09-18.
+
+### 2026-09-18 — `make debug` after `make release` silently linked stale, non-instrumented objects (zero ASan/UBSan symbols) despite exit 0
+
+- Context: executing the full test plan (`docs/reports/TEST_PLAN_2026-09-18.md`), ran the project's own
+  documented build sequence verbatim: `make release CC=gcc && make test CC=gcc && make debug CC=gcc`.
+- Root cause: `build/%.o` is the same output path regardless of which CFLAGS variant produced it,and
+  Make's implicit rule only checks file mtimes, not which flags built the file. `release:`/`debug:`/
+  `dist:` each recursively invoke `$(MAKE) CFLAGS="..." all`, but nothing forced a rebuild when the
+  variant changed — after `make release`, every `build/**/*.o` was newer than its `.c` source, so
+  `make debug` saw "up to date" and skipped recompilation entirely for files already built, silently
+  linking `-O3 -DNDEBUG` (no `-fsanitize`) objects into what was supposed to be the ASan/UBSan debug
+  binary. Confirmed empirically: `nm adaptive_ai_engine | grep -c asan` was **0** after this exact
+  sequence, despite `make debug` exiting 0 and printing nothing unusual — the failure is silent, not a
+  build error.
+- Impact: this directly contradicts the "Keep ASan/UBSan green" rule — anyone following the documented
+  build sequence got a debug binary that never actually asserted anything the sanitizers catch, with no
+  indication anything was wrong. (`make test`'s own test binaries are unaffected — they hardcode
+  `CFLAGS_DEBUG` for the `tests/*.c` driver file itself regardless of the ambient `CFLAGS`, though they
+  do intentionally link against whatever `$(LIB_OBJS)` are already present, by design.)
+- Fix (`Makefile`): added a `build/.variant` stamp file and an `ensure_variant` macro that `release:`,
+  `debug:`, and `dist:` each call before recursing — if the stamp disagrees with the target variant, it
+  does `rm -rf build $(TARGET)` first, forcing a clean rebuild under the correct flags. Verified: fresh
+  `make release && make debug` now correctly detects the switch, prints "Build variant changed
+  (release -> debug); removing stale objects...", and the resulting binary has 65 (gcc) / 688 (clang)
+  ASan/UBSan symbols. `pgo-generate`/`pgo-build` were already safe (they call `$(MAKE) clean`
+  unconditionally); `test:` was left unguarded since the documented order always runs it right after
+  `release` with matching default CFLAGS, which is correct by construction.
+- Lesson: never trust an "up to date, nothing to do" from Make across a CFLAGS-variant switch in a
+  shared `build/` tree without a flag-fingerprint or separate per-variant output directories; verify
+  sanitizer builds by checking for the runtime symbols (`nm | grep asan`), not just a clean exit code.
+
+### 2026-09-18 — IQ4_NL dequant used the wrong nibble-packing layout (interleaved-pair instead of ggml's split-half) — root cause of part of the 2026-09-17 open bug, found via real differential testing against ggml
+
+- Context: TS-1.1 of the test plan — built a real llama.cpp/ggml reference (pinned commit
+  `4fea119de30f6a923992780f6fd5ccb0bee5d47d`) and wrote `tools/difftest_dequant.c`, which quantizes a
+  deterministic pseudo-random tensor with ggml's own `ggml_quantize_chunk()`, then dequantizes the exact
+  same bytes with ggml's real `dequantize_row_<type>()` (not a reimplementation — the actual linked
+  upstream function) and with this repo's `gguf_dequant_<type>()`, asserting bit-exact equality.
+- Result: 19/20 types were bit-exact on the first run. `IQ4_NL` was not: **3571 of 4096 elements
+  differed**, max abs diff 7.95 — far beyond rounding noise, indicating a structural (permutation) bug,
+  not a scale/sign error.
+- Root cause: `gguf_dequant_iq4_nl()` (`src/core/gguf_quant.c`) packed the two 4-bit nibbles per byte as
+  an **interleaved pair** — `dst[2i] = low(qs[i])`, `dst[2i+1] = high(qs[i])` — copied from the Q4_0/Q4_1
+  pattern. ggml's actual `dequantize_row_iq4_nl` (`ggml-quants.c`) uses a **split-half** layout instead:
+  for `j` in `[0,16)`, `y[j] = low(qs[j])` and `y[j+16] = high(qs[j])` — the low nibbles of all 16 bytes
+  fill the first half of the 32-element block, the high nibbles fill the second half. This repo's own
+  `gguf_dequant_iq4_xs()` (added this session, Phase 37.12) already used the correct split-half layout
+  for the *same* `kvalues_iq4nl` codebook — it was verified correct by the same differential test — so
+  the bug was specific to the older, previously-untested `IQ4_NL` path, not the packing rule itself.
+  Fixed by matching IQ4_XS's (and ggml's) split-half indexing.
+- Verified: re-ran `tools/difftest_dequant.c` after the fix — 20/20 types bit-exact, including IQ4_NL.
+  Added a permanent ground-truth regression test (`test_iq4_nl_single_block` in
+  `tests/test_gguf_quant_new_formats.c`) encoding this exact scenario so a future edit can't reintroduce
+  it silently. Full `make test`/`make debug` (gcc and clang) all green after the fix — see the entry
+  above for an unrelated build-system issue hit along the way.
+- **Relation to the 2026-09-17 open bug** (immediately below): this is a confirmed, real, structural bug
+  in exactly the format (`IQ4_NL`) that dominates the weights of both `Q3_K_S` and `IQ4_XS` GGUF files in
+  that investigation, and a wrong-element-permutation bug is a far more plausible cause of
+  context-independent repeating-token garbage than the "attention collapse" hypothesis that entry
+  flagged as leading. However, that entry's own verification claimed "bit-exact correct... verified...
+  via a Python reimplementation" for IQ4_NL specifically and did not catch this — almost certainly because
+  a from-scratch reimplementation "from reading the source" and the engine code under test can share the
+  exact same misreading of a spec (both assume the more common interleaved-pair layout because that's
+  what Q4_0/Q4_1 use). **Lesson: differential-test against the actual upstream binary/library, not a
+  reimplementation-from-reading-source — two independent readings of the same spec can still make the
+  same mistake, but a real linked reference implementation cannot.** This does not by itself close the
+  2026-09-17 bug (IQ4_XS's own dequant was already independently confirmed correct by this same
+  differential test, and Q3_K's dequant does not use `kvalues_iq4nl`/this code path at all, so at least
+  part of that entry's degenerate-output symptom must have a different or additional cause) — re-running
+  that investigation's real-model repro with this fix applied is the next step (test plan TS-4).
 
 ### 2026-09-17 — [OPEN, not fixed] Dense "llama"-arch models with IQ4_NL/IQ4_XS/Q3_K weights produce degenerate repeating-token output — dequant math proven correct, root cause still unknown
 

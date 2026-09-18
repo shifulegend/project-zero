@@ -41,7 +41,10 @@ typedef enum {
     JSON_ST_STRING_ESC_U1, JSON_ST_STRING_ESC_U2,
     JSON_ST_STRING_ESC_U3, JSON_ST_STRING_ESC_U4,
     JSON_ST_NUM_INT_FIRST,   /* just saw '-': need >=1 digit next */
-    JSON_ST_NUM_INT,         /* >=1 integer digit consumed; value may end here */
+    JSON_ST_NUM_INT,         /* >=1 integer digit consumed, first digit was 1-9; value may end here */
+    JSON_ST_NUM_INT_ZERO,    /* integer part is a single leading '0' (RFC 8259: no further
+                              * digits allowed here, unlike JSON_ST_NUM_INT -- "01" is invalid,
+                              * only "0", "0.x", "0e/E..." or a terminator may follow) */
     JSON_ST_NUM_FRAC_FIRST,  /* just saw '.': need >=1 digit next */
     JSON_ST_NUM_FRAC,        /* >=1 fraction digit consumed; value may end here */
     JSON_ST_NUM_EXP_FIRST,   /* just saw e/E: optional sign then need >=1 digit */

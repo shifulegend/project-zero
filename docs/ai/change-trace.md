@@ -3,6 +3,18 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-09-18.
 
+### 2026-09-18 — TS-2.1: added grammar differential fuzzer, found and fixed a real JSON leading-zero bug
+- What: `tools/grammar_json_verdict.c` (batch C harness driving the real `json_grammar_step`/
+  `json_grammar_finalize`) + `tools/fuzz_grammar_json.py` (generator + differential comparison against
+  `json.loads`, plus a prefix-truncation asymmetry check). Immediately found that the PDA accepted
+  leading-zero numbers (`"01"`, `"09"`) as valid JSON, which RFC 8259 forbids and `json.loads` correctly
+  rejects. Fixed with a new `JSON_ST_NUM_INT_ZERO` state (`include/sampling/grammar.h`,
+  `src/sampling/grammar_json.c`) that, unlike `JSON_ST_NUM_INT`, does not accept a further digit after a
+  leading `0`. Added `test_leading_zero_numbers_rejected` regression test.
+- Verified: 0 disagreements across ~61,000 fuzzed candidates (5 seeds), 0 prefix-asymmetry violations;
+  end-to-end confirmed on a real model with `--json`; full release/test/debug green on gcc and clang.
+  See `mistakes.md` 2026-09-18 for full RCA.
+
 ### 2026-09-18 — TS-3.1 sandbox adversarial corpus: fixed a real exit-code bug + closed the symlink-escape gap
 - What: `tests/test_cmd_exec_adversarial.c` (TS-3.1) table-drives the full adversarial argument corpus
   from the test plan against `src/agent/cmd_exec.c`. Found and fixed two real issues along the way:

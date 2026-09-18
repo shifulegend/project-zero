@@ -55,6 +55,27 @@ static void test_valid_complete_documents(void) {
                 "three levels of object nesting plus an array");
 }
 
+/* RFC 8259: int = "0" / ( digit1-9 *DIGIT ) -- a leading zero must be the
+ * whole integer part. Found via TS-2.1 differential fuzzing against
+ * json.loads (2026-09-18): this PDA previously treated '0' like any other
+ * leading digit, silently accepting "01"/"09"/etc. as complete valid JSON. */
+static void test_leading_zero_numbers_rejected(void) {
+    TEST_ASSERT(!feed_never_invalid("01"), "'01' goes INVALID (leading zero + digit)");
+    TEST_ASSERT(!feed_never_invalid("09"), "'09' goes INVALID (leading zero + digit)");
+    TEST_ASSERT(!feed_never_invalid("00"), "'00' goes INVALID (leading zero + digit)");
+    TEST_ASSERT(!feed_never_invalid("-01"), "'-01' goes INVALID (negative leading zero + digit)");
+    TEST_ASSERT(!feed_never_invalid("[01]"), "leading-zero number inside an array goes INVALID");
+    TEST_ASSERT(!feed_never_invalid("{\"a\":01}"), "leading-zero number as an object value goes INVALID");
+    /* These must NOT regress: '0' alone, and '0' followed by a legal
+     * non-digit continuation (fraction/exponent/terminator), all still work. */
+    TEST_ASSERT(feed_full("0"), "bare '0' still complete");
+    TEST_ASSERT(feed_full("-0"), "bare '-0' still complete");
+    TEST_ASSERT(feed_full("0.5"), "'0.5' still complete");
+    TEST_ASSERT(feed_full("0e10"), "'0e10' still complete");
+    TEST_ASSERT(feed_full("[0,1,2]"), "'[0,1,2]' (zero as one of several elements) still complete");
+    TEST_ASSERT(feed_full("10"), "'10' (non-leading-zero multi-digit) still complete");
+}
+
 static void test_invalid_documents(void) {
     JsonGrammarState g;
 
@@ -139,6 +160,7 @@ int main(void) {
     RUN_TEST(test_invalid_documents);
     RUN_TEST(test_valid_but_incomplete_prefixes);
     RUN_TEST(test_finalize_closes_bare_number);
+    RUN_TEST(test_leading_zero_numbers_rejected);
     RUN_TEST(test_deep_nesting_within_limit);
     TEST_SUMMARY();
 }

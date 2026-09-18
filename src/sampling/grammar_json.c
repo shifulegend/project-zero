@@ -51,6 +51,7 @@ static JsonState close_value(JsonGrammarState *g) {
 JsonState json_grammar_finalize(JsonGrammarState *g) {
     switch (g->state) {
     case JSON_ST_NUM_INT:
+    case JSON_ST_NUM_INT_ZERO:
     case JSON_ST_NUM_FRAC:
     case JSON_ST_NUM_EXP:
         g->state = close_value(g);
@@ -73,6 +74,7 @@ JsonState json_grammar_step(JsonGrammarState *g, char c) {
             if (c == '[') { g->state = JSON_ST_ARR_OPEN; return g->state; }
             if (c == '"') { g->state = JSON_ST_STRING; return g->state; }
             if (c == '-') { g->state = JSON_ST_NUM_INT_FIRST; return g->state; }
+            if (c == '0') { g->state = JSON_ST_NUM_INT_ZERO; return g->state; }
             if (is_digit(c)) { g->state = JSON_ST_NUM_INT; return g->state; }
             if (c == 't') { g->state = JSON_ST_LIT_TRUE_T; return g->state; }
             if (c == 'f') { g->state = JSON_ST_LIT_FALSE_F; return g->state; }
@@ -164,10 +166,23 @@ JsonState json_grammar_step(JsonGrammarState *g, char c) {
          * those close the value NOW and reprocess `c` in the resumed
          * context via `continue`. */
         case JSON_ST_NUM_INT_FIRST:
+            if (c == '0') { g->state = JSON_ST_NUM_INT_ZERO; return g->state; }
             g->state = is_digit(c) ? JSON_ST_NUM_INT : JSON_ST_INVALID; return g->state;
 
         case JSON_ST_NUM_INT:
             if (is_digit(c)) return g->state;
+            if (c == '.') { g->state = JSON_ST_NUM_FRAC_FIRST; return g->state; }
+            if (c == 'e' || c == 'E') { g->state = JSON_ST_NUM_EXP_FIRST; return g->state; }
+            g->state = close_value(g);
+            continue;
+
+        /* RFC 8259: int = "0" / ( digit1-9 *DIGIT ) -- a leading zero must
+         * be the entire integer part; "01"/"00" are not valid JSON numbers
+         * (found via TS-2.1 differential fuzzing against json.loads,
+         * 2026-09-18: this PDA previously treated '0' the same as any other
+         * leading digit, silently accepting "01"/"09"/etc. as DONE). */
+        case JSON_ST_NUM_INT_ZERO:
+            if (is_digit(c)) { g->state = JSON_ST_INVALID; return g->state; }
             if (c == '.') { g->state = JSON_ST_NUM_FRAC_FIRST; return g->state; }
             if (c == 'e' || c == 'E') { g->state = JSON_ST_NUM_EXP_FIRST; return g->state; }
             g->state = close_value(g);

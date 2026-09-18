@@ -5,6 +5,41 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-09-18.
 
+### 2026-09-18 — JSON grammar PDA accepted leading-zero numbers ("01", "09") as valid — found by TS-2.1 differential fuzzing against `json.loads`
+
+- Context: TS-2.1 (`tools/grammar_json_verdict.c` + `tools/fuzz_grammar_json.py`) differentially fuzzes
+  `src/sampling/grammar_json.c`'s PDA against Python's `json.loads` across three generators (uniform
+  random bytes, random tokens from the JSON alphabet, valid JSON mutated by 1-3 edits) plus a
+  prefix-truncation asymmetry check (no prefix of valid JSON may ever go INVALID). First run (3000
+  candidates/generator, seed 1234) immediately found 4 false-accepts, all leading-zero numbers: `"01"`,
+  `"09"`, `[[1],[02,[3]]]`, `" 05"` — our grammar reported these as complete/valid JSON while
+  `json.loads` correctly raises (RFC 8259: `int = "0" / ( digit1-9 *DIGIT )` — a leading zero must be
+  the *entire* integer part).
+- Root cause: `JSON_ST_VALUE`/`JSON_ST_NUM_INT_FIRST` routed digit `'0'` to the exact same state
+  (`JSON_ST_NUM_INT`) as digits `'1'-'9'`, and `JSON_ST_NUM_INT` unconditionally accepts further digits
+  — there was no state distinguishing "the integer part is a bare 0, no more digits allowed" from "saw
+  1-9, more digits are fine".
+- Impact: with `--json`/`response_format=json_object` active, the model could legally generate (never
+  masked as invalid) a number like `01` inside a field value, producing output this engine calls valid
+  JSON but that is not — the exact "false accept" failure class the whole feature exists to prevent.
+- Fix: added a new state `JSON_ST_NUM_INT_ZERO` (`include/sampling/grammar.h`,
+  `src/sampling/grammar_json.c`) entered only on a leading `'0'`; unlike `JSON_ST_NUM_INT` it rejects any
+  further digit (→ `JSON_ST_INVALID`) while still accepting `.`/`e`/`E`/a terminator exactly like the
+  normal integer-closing paths. Added to `json_grammar_finalize`'s number-closing switch alongside
+  `JSON_ST_NUM_INT`/`JSON_ST_NUM_FRAC`/`JSON_ST_NUM_EXP` so a bare top-level `"0"` still finalizes to
+  DONE correctly.
+- Verified: re-ran the fuzzer (4 more seeds, 5000 candidates/generator each) — 0 disagreements across
+  ~61,000 total candidates. Added a permanent regression test
+  (`test_leading_zero_numbers_rejected` in `tests/test_grammar_json.c`, 12 assertions covering both the
+  new rejections and non-regression of `"0"`/`"-0"`/`"0.5"`/`"0e10"`/multi-digit numbers). Confirmed
+  end-to-end on a real model (SmolLM2-135M-Instruct Q8_0, `--json`): still produces correct valid JSON.
+  Full `release`/`test`/`debug` green on gcc and clang.
+- Lesson: this bug existed since Phase 20 (grammar-constrained JSON decoding was added this session) and
+  was invisible to every hand-written unit test and every real-model manual check performed so far —
+  none happened to construct a leading-zero number. This is exactly the class of bug differential
+  fuzzing against a reference implementation exists to catch that example-based testing structurally
+  cannot: a real reference parser enumerates the *actual* spec, not the test author's mental model of it.
+
 ### 2026-09-18 — TS-3.1 adversarial corpus found two real sandbox bugs: `execute_command()` misreported a nonzero exit code as success, and closed the documented symlink-escape gap
 
 - Context: TS-3.1 (`tests/test_cmd_exec_adversarial.c`) table-drives the test plan's full adversarial

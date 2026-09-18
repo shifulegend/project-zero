@@ -27,6 +27,7 @@
 ## Build / run (verified)
 ```bash
 make release CC=gcc && make test CC=gcc && make debug CC=gcc   # repeat CC=clang
+make test-tsan CC=gcc     # concurrency changes only (thread pool / parallel matmul / API mutex)
 ./adaptive_ai_engine --model models/<m>.gguf --prompt "..." --max-tokens 16 --temperature 0 --threads 4
 ```
 

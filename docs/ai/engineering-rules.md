@@ -1,6 +1,6 @@
 # Engineering Rules — project-zero
 
-> Canonical source of truth. Adapters reference this. Last updated: 2026-07-16.
+> Canonical source of truth. Adapters reference this. Last updated: 2026-09-18.
 
 ## Modularity
 - Smallest sensible units: small functions, single responsibility, explicit interfaces.
@@ -37,7 +37,10 @@
 ## Verification (definition of done)
 A change is done only when:
 1. `make release CC=gcc && make test CC=gcc && make debug CC=gcc` pass, **and** the same for
-   `CC=clang` (clang ASan is stricter — e.g. 256-bit VNNI needs `-mavx512vl`).
+   `CC=clang` (clang ASan is stricter — e.g. 256-bit VNNI needs `-mavx512vl`). For a change
+   touching thread pool/parallel-dispatch/API-concurrency code, also run `make test-tsan`
+   (added 2026-09-18 — TSan is incompatible with ASan/UBSan so it's a separate build variant,
+   scoped to a curated concurrency-relevant test subset, not the full suite; see decision-log.md).
 2. Relevant golden-output check passes (e.g. "capital of France" → contains "Paris").
 3. No perf regression for touched kernels (A/B build vs a known-good commit on the same host;
    compare tok/s — see `docs/REGRESSION_VERIFICATION_2026-06-07.md` for method).
@@ -80,7 +83,8 @@ A change is done only when:
 ## Security / safety constraints
 - Public repo: never commit secrets, keys, tokens, `.env`, `*.pem`, real credentials. (History
   is currently clean — keep it so.) Doc placeholders like `<YOUR_SUDO_PASSWORD>` are fine.
-- Keep ASan/UBSan green; treat sanitizer aborts as real bugs, not noise.
+- Keep ASan/UBSan green (`make test`/`make debug`) and TSan green (`make test-tsan`, concurrency
+  code only); treat any sanitizer abort as a real bug, not noise.
 - Dual-use/security tooling stays within defensive/testing scope.
 
 ## Performance

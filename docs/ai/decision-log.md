@@ -1,7 +1,29 @@
 # Decision Log — project-zero
 
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
-> Read at session start. Last updated: 2026-07-31.
+> Read at session start. Last updated: 2026-09-18.
+
+### 2026-09-18 — Added TSan as a third sanitizer tier (`make test-tsan`), scoped to concurrency-relevant tests only
+
+- Context: executing `docs/reports/TEST_PLAN_2026-09-18.md`'s full test pass (TS-5.3), found TSan was
+  entirely absent from this project's sanitizer coverage (only ASan/UBSan ran, via `make test`/`make
+  debug`). TSan is incompatible with ASan/UBSan in the same binary, so it needed its own build variant
+  rather than folding into the existing `debug:` target.
+- Decision: added `CFLAGS_TSAN`/`LDFLAGS_TSAN` and a `make test-tsan` target that rebuilds `$(LIB_OBJS)`
+  under `-fsanitize=thread` (reusing the existing per-file ISA-flag rules, keyed off ambient `CFLAGS`,
+  via the `build/.variant` staleness guard added the same day) then links a **curated subset** of test
+  binaries directly — `audit_threadpool_stress`, `test_threading`, `test_api_server`,
+  `test_q4k_x8_matmul`, `test_q2_0_matmul` — rather than the full suite. Rationale: most of this
+  project's ~30 test binaries are single-threaded and would add nothing under TSan while costing real
+  CI time; the five chosen ones cover every genuinely concurrent surface (thread pool, parallel matmul
+  dispatch, the API server's `generation_mutex` trylock semantics).
+- Payoff: found a real data race on the first run (`ThreadPool.shutdown`, see `mistakes.md`
+  2026-09-18) that ASan/UBSan structurally cannot detect (pure data races with no memory-safety
+  violation are silent to both). Confirms the P0 priority the test plan gave this — TSan is the only
+  sanitizer in this project's toolchain that can catch this whole bug class.
+- Not adopted: running TSan on the full suite (would need per-test triage of single-threaded false
+  "coverage" and slow down CI for no signal), or folding TSan into `debug:` (mutually exclusive with
+  ASan/UBSan, which `debug:` exists to provide).
 
 ### 2026-07-31 — Fixed a real quantization-quality gap in the classifier INT8/INT4 path (GitHub issue #27, jpsoto)
 

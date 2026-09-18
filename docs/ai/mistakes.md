@@ -5,6 +5,32 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-09-18.
 
+### 2026-09-18 — TS-2.2 test-tool false assumption: a mid-number JSON position can legitimately be EOS-eligible; "masked until the last token" is not the right invariant
+
+- Context: `tools/fsm_real_vocab_check.c` (TS-2.2) drives `fsm_compute_token_mask`/`fsm_advance` through
+  realistic JSON documents against a real 49152-token vocab (loaded from a real GGUF's embedded
+  tokenizer). First version asserted (a) `json_grammar_is_complete(&fsm.json)` directly after feeding a
+  whole document, and (b) EOS stays masked at every step except the very last token. Both are wrong
+  assumptions about the *test*, not bugs in `src/sampling/fsm.c`/`grammar_json.c`:
+  (a) numbers have no closing delimiter of their own (documented in `grammar.h`) — a bare top-level
+  number legitimately sits in a "may end here" state until `json_grammar_finalize()` is called once, so
+  checking `is_complete()` without finalizing first will (correctly) report false for e.g. `"42"`.
+  (b) a top-level number is a valid, complete JSON document at *every* digit boundary — mid-way through
+  feeding `"-17.5"`, once `"-17"` has been fed, that prefix is already itself valid, complete JSON, so
+  EOS legitimately becomes unmasked right there, not just at the end of whichever longer number string a
+  test happens to pick.
+- Fixed the test to check the actual invariant the plan states: EOS unmasked **iff** a trial-finalize of
+  the current state is independently found complete (recomputed via a fresh scratch copy in the test
+  itself, not by re-trusting the implementation's own internal calculation) — not a fixed shape assumed
+  in advance. Result: 637/637 assertions pass against the real vocab (no-deadlock invariant, EOS gating,
+  non-destructive scratch-copy, real-token-never-masked, multi-byte/byte-level-BPE token consistency) —
+  `fsm.c`/`grammar_json.c` were correct all along; the bugs were only in the test's assumptions.
+- Lesson: when a differential/property test surfaces a "failure," verify the *test's* model of the spec
+  before concluding the implementation is wrong — especially for a PDA with explicit "may end here, not
+  yet forced closed" states, where naive assumptions like "must still be open until the end" or
+  "completeness needs no explicit finalize" are exactly the kind of subtly-wrong shortcut a test author
+  (human or AI) can take without noticing.
+
 ### 2026-09-18 — JSON grammar PDA accepted leading-zero numbers ("01", "09") as valid — found by TS-2.1 differential fuzzing against `json.loads`
 
 - Context: TS-2.1 (`tools/grammar_json_verdict.c` + `tools/fuzz_grammar_json.py`) differentially fuzzes

@@ -3,6 +3,17 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-09-18.
 
+### 2026-09-18 — TS-2.2: added a real-vocab (49152-token) token-masking correctness check; no production bugs, confirms fsm.c/grammar_json.c correct
+- What: `tools/fsm_real_vocab_check.c` loads the real embedded tokenizer from a GGUF model file and
+  drives `fsm_compute_token_mask`/`fsm_advance` through 18 realistic JSON documents (all number forms,
+  strings with escapes/unicode, nested objects/arrays), checking every case from the test plan: the
+  no-deadlock invariant, EOS gating (exact equivalence with a trial-finalize, not an assumed shape),
+  the scratch-copy non-destructive invariant, and multi-byte/byte-level-BPE token consistency.
+- Result: 637/637 assertions pass against a real 49152-token vocab (gcc and clang, no warnings) — this
+  run found two false assumptions in the *test itself* (fixed), not in the production code. See
+  `mistakes.md` 2026-09-18 for the two subtleties (number-grammar closeability without finalize; a
+  mid-number position can be a legitimate EOS-eligible stopping point).
+
 ### 2026-09-18 — TS-2.1: added grammar differential fuzzer, found and fixed a real JSON leading-zero bug
 - What: `tools/grammar_json_verdict.c` (batch C harness driving the real `json_grammar_step`/
   `json_grammar_finalize`) + `tools/fuzz_grammar_json.py` (generator + differential comparison against

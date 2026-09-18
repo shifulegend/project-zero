@@ -5,6 +5,46 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-09-18.
 
+### 2026-09-18 — TS-3.1 adversarial corpus found two real sandbox bugs: `execute_command()` misreported a nonzero exit code as success, and closed the documented symlink-escape gap
+
+- Context: TS-3.1 (`tests/test_cmd_exec_adversarial.c`) table-drives the test plan's full adversarial
+  argument corpus against `src/agent/cmd_exec.c` — absolute paths, home shortcuts, traversal,
+  traversal look-alikes, "encoded" traversal, null/odd bytes, symlink escape, flag injection, shell
+  metacharacters, argv[0] tricks.
+- **Found #1 (real bug): `execute_command()` silently reported exit code 0 (success) for a command that
+  actually failed.** Root cause: the read/wait loop's EOF branch (`r == 0`, meaning the child's dup'd
+  stdout+stderr pipe write end closed) did `break` without ever calling `waitpid()` — pipe EOF happens
+  at/around child exit but is not proof the child has already been reaped. `status` stayed at its
+  declared-but-never-assigned value of `0`, and `WIFEXITED(0)`/`WEXITSTATUS(0)` decode that as "exited
+  normally with code 0" — a real (and on Linux, common: fast-failing commands like `ls <bad path>`
+  close their pipe and exit almost simultaneously) race that silently turns real failures into reported
+  successes for any caller checking `ExecResult.exit_code`. Caught by
+  `test_shell_metacharacters_are_literal`: `ls` given a literal metacharacter-laden filename correctly
+  never executes anything (proving no shell exists, as intended), but `execute_command()` reported
+  `exit_code == 0` for a command that (verified manually) actually exits 2. Fixed by making the EOF
+  branch call a blocking `waitpid(pid, &status, 0)` before breaking, matching what the `WNOHANG`/timeout
+  branches already do correctly.
+- **Found #2 (documented known gap, now closed): symlink escape.** `path_arg_is_safe()` only rejects
+  literal `..`/absolute/`~` text — a plain relative name that is itself a symlink pointing outside the
+  CWD (e.g. `ln -s /etc/passwd escape_link; cat escape_link`) passed the lexical check untouched. This
+  was flagged in the test plan as a P1 "known gap, recommend realpath() fix as follow-up" — but per the
+  project's bug-fix policy (fix real bugs in the same pass unless the fix is a genuinely large
+  architectural change; a `realpath()`-based prefix check is not), fixed it now rather than deferring:
+  added `path_escapes_cwd_via_symlink()` (`src/agent/cmd_exec.c`), which resolves the argument with
+  `realpath()` and requires the result stay within `getcwd()`'s subtree, falling back to allow (deferring
+  to the existing lexical check) when the target doesn't exist so behavior for legitimate nonexistent
+  relative paths is unchanged. Verified: a symlink to `/etc/hostname` is now blocked; a symlink to a file
+  inside the CWD (`README.md`) is still allowed.
+- Build note: `realpath()` needed `_DEFAULT_SOURCE` defined before any header on this project's strict
+  `-std=c99` baseline — gcc accepted the bare `-D_POSIX_C_SOURCE=200809L` from `CFLAGS_COMMON` silently,
+  clang did not (`implicit-function-declaration` error). Added `#define _DEFAULT_SOURCE` at the top of
+  `cmd_exec.c` itself (matching the existing per-file `_GNU_SOURCE` pattern in `http_server.c`), not a
+  Makefile per-file override, since it's needed regardless of which TU includes the function. Reinforces
+  the existing "verify release/test/debug for both gcc and clang" rule — this would have shipped broken
+  on clang-only CI otherwise.
+- Verified: `tests/test_cmd_exec_adversarial.c` 69/69, `tests/test_cmd_exec.c` 22/22, full
+  `release`/`test`/`debug` green, gcc and clang.
+
 ### 2026-09-18 — `ThreadPool.shutdown` was a plain `bool` read outside the mutex in the worker spin-wait fast path — a real data race, found by adding `make test-tsan` (TS-5.3)
 
 - Context: TS-5.3 of the test plan called for adding TSan (previously missing — only ASan/UBSan ran)

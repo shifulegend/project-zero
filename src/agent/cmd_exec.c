@@ -1,3 +1,9 @@
+/* _DEFAULT_SOURCE for realpath() under strict -std=c99 on Linux/glibc —
+ * defined before any system header to take effect. */
+#ifndef _DEFAULT_SOURCE
+#define _DEFAULT_SOURCE
+#endif
+
 #include "agent/cmd_exec.h"
 #include <unistd.h>
 #include <sys/types.h>
@@ -11,6 +17,7 @@
 #include <fcntl.h>
 #include <time.h>
 #include <sys/select.h>
+#include <limits.h>
 
 /* Very small allow-list to prevent destructive commands. Extend as needed. */
 static const char *allowlist[] = {"echo", "ls", "cat", "pwd", "uname", "date", "id", NULL};
@@ -45,6 +52,30 @@ static int path_arg_is_safe(const char *arg) {
     return 1;
 }
 
+/* True if `arg` (an already lexically-safe relative path) does not escape
+ * the CWD subtree via a symlink. path_arg_is_safe() only rejects literal
+ * ".." segments and absolute/home paths -- a plain relative name that is
+ * itself a symlink pointing outside the CWD (e.g. "escape" -> "/etc/passwd")
+ * passes that check but still reads arbitrary host files. Resolves both
+ * sides with realpath() (which also collapses any symlinks in the CWD
+ * itself, so the comparison is canonical-to-canonical) and requires the
+ * resolved path to be the CWD itself or a real descendant of it. If `arg`
+ * doesn't exist (ENOENT), realpath() fails and this defers to the lexical
+ * check alone -- cat/ls on a nonexistent relative path is already handled
+ * (and rejected, harmlessly, by the command itself) without a filesystem
+ * probe here. (2026-09-18: closes the "symlink escape" known gap flagged
+ * in the test plan -- was previously accepted as unfixed.) */
+static int path_escapes_cwd_via_symlink(const char *arg) {
+    char resolved[PATH_MAX];
+    char cwd[PATH_MAX];
+    if (!realpath(arg, resolved)) return 0;      /* doesn't exist -- not this check's problem */
+    if (!getcwd(cwd, sizeof(cwd))) return 0;      /* can't determine CWD -- don't false-block */
+    size_t cwd_len = strlen(cwd);
+    if (strncmp(resolved, cwd, cwd_len) != 0) return 1;         /* escaped */
+    if (resolved[cwd_len] != '\0' && resolved[cwd_len] != '/') return 1; /* e.g. cwd="/a/b", resolved="/a/bc" */
+    return 0;
+}
+
 int exec_policy_allows_args(char *const argv[]) {
     if (!argv || !argv[0]) return 0;
     if (!exec_policy_allows(argv[0])) return 0;
@@ -55,6 +86,7 @@ int exec_policy_allows_args(char *const argv[]) {
              * as a path candidate and must stay within the CWD subtree. */
             if (argv[i][0] == '-') continue;
             if (!path_arg_is_safe(argv[i])) return 0;
+            if (path_escapes_cwd_via_symlink(argv[i])) return 0;
         }
     } else if (strcmp(argv[0], "date") == 0) {
         /* `date` with no args, or a `+FORMAT` string, is read-only. Every
@@ -141,7 +173,16 @@ ExecResult execute_command(char *const argv[], int timeout_sec, char *out_buf, s
                 if (total_read >= out_buf_size - 1) break;
                 continue;
             } else if (r == 0) {
-                break; /* EOF */
+                /* EOF: the pipe's write end closed (dup'd stdout+stderr),
+                 * which happens at/around child exit but is not itself
+                 * proof the child has been reaped yet -- do a blocking
+                 * waitpid here rather than leaving `status` at its default
+                 * 0 (which WIFEXITED/WEXITSTATUS decode as "exited
+                 * normally with code 0", silently misreporting any real
+                 * nonzero exit code as success; found via the TS-3.1
+                 * adversarial corpus, 2026-09-18 -- see mistakes.md). */
+                waitpid(pid, &status, 0);
+                break;
             }
         }
         pid_t wp = waitpid(pid, &status, WNOHANG);

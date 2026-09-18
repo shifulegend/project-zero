@@ -3,6 +3,19 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-09-18.
 
+### 2026-09-18 — TS-3.1 sandbox adversarial corpus: fixed a real exit-code bug + closed the symlink-escape gap
+- What: `tests/test_cmd_exec_adversarial.c` (TS-3.1) table-drives the full adversarial argument corpus
+  from the test plan against `src/agent/cmd_exec.c`. Found and fixed two real issues along the way:
+  (1) `execute_command()` could report exit code 0 for a command that actually failed, because the
+  read loop's pipe-EOF branch broke out without ever calling `waitpid()` — fixed by reaping the child
+  there too. (2) The documented "symlink escape" known gap (a relative name that is itself a symlink
+  pointing outside the CWD bypassed the lexical `..`/absolute-path check) is now closed: added
+  `path_escapes_cwd_via_symlink()`, a `realpath()`+`getcwd()` prefix check.
+- Affected: `src/agent/cmd_exec.c`, `include/threading/thread_pool.h` unaffected (separate fix earlier
+  today). Needed `_DEFAULT_SOURCE` for `realpath()` under strict `-std=c99` on clang (gcc didn't need it).
+- Verified: `test_cmd_exec_adversarial` 69/69, `test_cmd_exec` 22/22, full release/test/debug green on
+  gcc and clang. See `mistakes.md` 2026-09-18 for full detail.
+
 ### 2026-09-18 — TS-5.3: added `make test-tsan`, found and fixed a real thread-pool data race
 - What: added `CFLAGS_TSAN`/`LDFLAGS_TSAN` and a `make test-tsan` target (`Makefile`) scoped to the
   thread pool, parallel matmul, and API server concurrency surfaces (`audit_threadpool_stress`,

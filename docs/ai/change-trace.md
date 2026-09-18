@@ -3,6 +3,20 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-09-18.
 
+### 2026-09-18 — TS-5.3: added `make test-tsan`, found and fixed a real thread-pool data race
+- What: added `CFLAGS_TSAN`/`LDFLAGS_TSAN` and a `make test-tsan` target (`Makefile`) scoped to the
+  thread pool, parallel matmul, and API server concurrency surfaces (`audit_threadpool_stress`,
+  `test_threading`, `test_api_server`, `test_q4k_x8_matmul`, `test_q2_0_matmul`) — TSan was previously
+  entirely missing from this project's sanitizer coverage.
+- Found: `ThreadPool.shutdown` (`include/threading/thread_pool.h`) was a plain `bool` read without the
+  mutex in `worker_entry()`'s lock-free spin fast path while written under the mutex in
+  `threadpool_destroy()` — a real data race (undefined behavior, not just a TSan nag) that could in
+  principle let an optimizing compiler hoist the read out of the spin loop and hang shutdown. Fixed by
+  making it `atomic_bool` with explicit acquire/release ops at every site, matching the struct's
+  existing atomics. See `mistakes.md` 2026-09-18 for full details.
+- Verified: `make test-tsan` now reports 0 races on gcc and clang; full `release`/`test`/`debug` still
+  green on both compilers after the fix.
+
 ### 2026-09-18 — TS-1.1 differential dequant testing vs real ggml: found and fixed a genuine IQ4_NL bug + a Makefile build-staleness bug
 - What: built a pinned llama.cpp/ggml reference (`4fea119de30f6a923992780f6fd5ccb0bee5d47d`) and wrote
   `tools/difftest_dequant.c` (TS-1.1), which quantizes a deterministic tensor with ggml's real

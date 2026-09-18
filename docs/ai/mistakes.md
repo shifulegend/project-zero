@@ -5,6 +5,40 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-09-18.
 
+### 2026-09-18 — `ThreadPool.shutdown` was a plain `bool` read outside the mutex in the worker spin-wait fast path — a real data race, found by adding `make test-tsan` (TS-5.3)
+
+- Context: TS-5.3 of the test plan called for adding TSan (previously missing — only ASan/UBSan ran)
+  and running it against the thread pool, parallel matmul, and API server concurrency surfaces. Added
+  `make test-tsan` (`Makefile`) — rebuilds `$(LIB_OBJS)` under `-fsanitize=thread` via the same
+  `ensure_variant` stamp added earlier today, then links `audit_threadpool_stress`, `test_threading`,
+  `test_api_server`, `test_q4k_x8_matmul`, and `test_q2_0_matmul` directly with `CFLAGS_TSAN` (the
+  generic `build/tests/%` rule hardcodes `CFLAGS_DEBUG`/ASan, which cannot be linked into a TSan binary).
+- Found: TSan immediately reported 9 warnings, all the same race — `threadpool_destroy()`
+  (`src/threading/thread_pool.c:348`) writes `tp->shutdown = true` under `tp->mutex`, but
+  `worker_entry()`'s lock-free spin-wait fast path (line 122, `if (tp->shutdown) return NULL;`) reads
+  it with no lock and no atomic — a genuine data race under the C11/pthread memory model, not just a
+  TSan false positive. `shutdown` was a plain `bool` even though the struct already uses `stdatomic.h`
+  for `spin_epoch`/`spin_claimed`/`spin_remaining` right next to it.
+- Why this matters beyond "TSan complains": an unsynchronized read that an optimizing compiler is free
+  to treat as invariant across loop iterations (nothing tells it the value can change from another
+  thread) can be hoisted out of the spin loop entirely — the textbook mechanism for a worker thread
+  spinning forever after shutdown, i.e. `threadpool_destroy()` hanging in `pthread_join`. Not observed
+  as an actual hang in this session (x86 TSO and the surrounding `spin_epoch` atomic loads likely mask
+  it in practice), but it is undefined behavior, not just benign in principle — exactly the class of bug
+  ASan/UBSan cannot see (both are silent on pure data races with no memory-safety violation), which is
+  the whole reason TSan was flagged **P0** in the test plan.
+- Fix: changed `shutdown` to `atomic_bool` in `include/threading/thread_pool.h` and every read/write
+  site in `thread_pool.c` to `atomic_load_explicit`/`atomic_store_explicit` (acquire/release, matching
+  the existing convention for the pool's other atomics) — preserves the deliberate lock-free spin
+  fast-path design (no new mutex acquisition added to the hot path), just makes the flag itself safe to
+  race on. Re-ran `make test-tsan`: 0 warnings, all test binaries green, gcc and clang. Full
+  `release`/`test`/`debug` also green on both compilers after the fix.
+- Lesson: a struct that mixes plain fields with `stdatomic.h` fields for the same synchronization
+  purpose (here: gating a lock-free spin loop) is a strong signal to check every plain field the hot
+  path reads without the mutex — `spin_epoch` got the atomic treatment, `shutdown` didn't, for no
+  principled reason. TSan is the only sanitizer that would have caught this; it was genuinely missing
+  from this project's toolchain before today.
+
 ### 2026-09-18 — `make debug` after `make release` silently linked stale, non-instrumented objects (zero ASan/UBSan symbols) despite exit 0
 
 - Context: executing the full test plan (`docs/reports/TEST_PLAN_2026-09-18.md`), ran the project's own

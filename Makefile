@@ -23,6 +23,11 @@ CFLAGS_RELEASE   = $(CFLAGS_COMMON)   -O3 -march=native -DNDEBUG $(PZ_VERSION_DE
 CFLAGS_DEBUG     = $(CFLAGS_COMMON)   -g -O0 -march=native -fsanitize=address -fsanitize=undefined
 CXXFLAGS_RELEASE = $(CXXFLAGS_COMMON) -O3 -march=native -DNDEBUG $(PZ_VERSION_DEF)
 CXXFLAGS_DEBUG   = $(CXXFLAGS_COMMON) -g -O0 -march=native -fsanitize=address -fsanitize=undefined
+# TSan is incompatible with ASan/UBSan in the same binary, so it gets its own
+# variant (-O1: TSan docs recommend >-O0 for usable performance under load).
+CFLAGS_TSAN      = $(CFLAGS_COMMON)   -g -O1 -march=native -fsanitize=thread
+CXXFLAGS_TSAN    = $(CXXFLAGS_COMMON) -g -O1 -march=native -fsanitize=thread
+LDFLAGS_TSAN     = -pthread -lm -fsanitize=thread
 LDFLAGS = -pthread -lm
 
 # ── Portable distribution build (`make dist`) ──────────────────────────────
@@ -70,7 +75,7 @@ TEST_BINS := $(patsubst tests/%.c, build/tests/%, $(TEST_SRCS))
 
 TARGET = adaptive_ai_engine
 
-.PHONY: all clean debug release dist test objs demo webui-bundle screenshots
+.PHONY: all clean debug release dist test test-tsan objs demo webui-bundle screenshots
 
 all: $(TARGET)
 
@@ -329,6 +334,33 @@ test: $(LIB_OBJS) $(TEST_BINS)
 	@echo "=== Running tests ==="
 	@for t in $(TEST_BINS); do echo "--- $$t ---"; $$t || exit 1; done
 	@echo "=== All tests passed ==="
+
+# TS-5.3: TSan run, scoped to the highest-value concurrency surfaces (thread
+# pool, parallel matmul dispatch, the API server's generation_mutex trylock
+# semantics) rather than the full suite, since most tests are single-threaded
+# and add nothing here. Rebuilds $(LIB_OBJS) under -fsanitize=thread (reusing
+# the same per-file ISA rules as release/debug/dist via ensure_variant, since
+# they already key off the ambient CFLAGS) then links each target test's
+# driver file directly with CFLAGS_TSAN/LDFLAGS_TSAN -- the generic
+# build/tests/% rule hardcodes CFLAGS_DEBUG (ASan/UBSan) for the driver file,
+# which cannot be linked into a TSan binary.
+TSAN_TESTS = audit_threadpool_stress test_threading test_api_server test_q4k_x8_matmul test_q2_0_matmul
+
+test-tsan:
+	$(call ensure_variant,tsan)
+	$(MAKE) CFLAGS="$(CFLAGS_TSAN)" CXXFLAGS="$(CXXFLAGS_TSAN)" objs
+	@mkdir -p build/tests
+	@status=0; \
+	for t in $(TSAN_TESTS); do \
+		echo "=== Building $$t under TSan ==="; \
+		$(CC) $(CFLAGS_TSAN) -c -o build/tests/$$t.tsan.o tests/$$t.c || exit 1; \
+		$(CXX) -o build/tests/$$t.tsan build/tests/$$t.tsan.o $(LIB_OBJS) $(LDFLAGS_TSAN) || exit 1; \
+		echo "=== Running $$t under TSan ==="; \
+		TSAN_OPTIONS="halt_on_error=0 exitcode=1" ./build/tests/$$t.tsan || status=1; \
+	done; \
+	if [ $$status -eq 0 ]; then echo "=== TSan: no races reported ==="; \
+	else echo "=== TSan: races reported, see output above ==="; fi; \
+	exit $$status
 
 bench: $(LIB_OBJS) tools/bench_simd.c
 	@mkdir -p build/tools

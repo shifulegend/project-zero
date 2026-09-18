@@ -106,12 +106,12 @@ static void *worker_entry(void *opaque) {
              * and causes priority inversion vs the caller's work slice.
              */
             pthread_mutex_lock(&tp->mutex);
-            while (!tp->shutdown &&
+            while (!atomic_load_explicit(&tp->shutdown, memory_order_acquire) &&
                    atomic_load_explicit(&tp->spin_epoch,
                                         memory_order_acquire) == last_epoch) {
                 pthread_cond_wait(&tp->cond_work, &tp->mutex);
             }
-            if (!tp->shutdown) {
+            if (!atomic_load_explicit(&tp->shutdown, memory_order_acquire)) {
                 last_epoch = atomic_load_explicit(&tp->spin_epoch,
                                                   memory_order_relaxed);
             }
@@ -119,7 +119,7 @@ static void *worker_entry(void *opaque) {
         } else {
             int spins = 0;
             for (;;) {
-                if (tp->shutdown) return NULL;
+                if (atomic_load_explicit(&tp->shutdown, memory_order_acquire)) return NULL;
                 unsigned int cur = atomic_load_explicit(&tp->spin_epoch,
                                                         memory_order_acquire);
                 if (cur != last_epoch) {
@@ -131,12 +131,12 @@ static void *worker_entry(void *opaque) {
                 } else {
                     /* Fall back to OS sleep to avoid burning CPU when idle */
                     pthread_mutex_lock(&tp->mutex);
-                    while (!tp->shutdown &&
+                    while (!atomic_load_explicit(&tp->shutdown, memory_order_acquire) &&
                            atomic_load_explicit(&tp->spin_epoch,
                                                 memory_order_acquire) == last_epoch) {
                         pthread_cond_wait(&tp->cond_work, &tp->mutex);
                     }
-                    if (!tp->shutdown) {
+                    if (!atomic_load_explicit(&tp->shutdown, memory_order_acquire)) {
                         last_epoch = atomic_load_explicit(&tp->spin_epoch,
                                                           memory_order_relaxed);
                     }
@@ -145,7 +145,7 @@ static void *worker_entry(void *opaque) {
                 }
             }
         }
-        if (tp->shutdown) return NULL;
+        if (atomic_load_explicit(&tp->shutdown, memory_order_acquire)) return NULL;
 
         /* ── Phase 2: Atomically claim a slice index (0..N-2) ────────── */
         int idx      = atomic_fetch_add_explicit(&tp->spin_claimed, 1,
@@ -195,7 +195,7 @@ ThreadPool *threadpool_create(int n) {
 
     tp->num_threads = n;
     tp->num_workers = n - 1; /* OS threads; caller handles the Nth slice */
-    tp->shutdown    = false;
+    atomic_store_explicit(&tp->shutdown, false, memory_order_relaxed);
     tp->task_fn     = NULL;
 
     /*
@@ -242,7 +242,7 @@ ThreadPool *threadpool_create(int n) {
         if (pthread_create(&tp->threads[i], NULL, worker_entry, tp) != 0) {
             /* Shut down threads created so far */
             pthread_mutex_lock(&tp->mutex);
-            tp->shutdown = true;
+            atomic_store_explicit(&tp->shutdown, true, memory_order_release);
             pthread_cond_broadcast(&tp->cond_work);
             pthread_mutex_unlock(&tp->mutex);
             for (int j = 0; j < i; j++) {
@@ -345,7 +345,7 @@ void threadpool_destroy(ThreadPool *tp) {
     if (!tp) return;
 
     pthread_mutex_lock(&tp->mutex);
-    tp->shutdown = true;
+    atomic_store_explicit(&tp->shutdown, true, memory_order_release);
     pthread_cond_broadcast(&tp->cond_work);
     pthread_mutex_unlock(&tp->mutex);
 

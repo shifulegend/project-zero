@@ -72,7 +72,10 @@ typedef struct {
 
     /* Legacy fields — kept for shutdown signaling only */
     unsigned int dispatch_epoch; /* mirrors spin_epoch for compatibility */
-    bool shutdown;
+    /* atomic: read by worker_entry's lock-free spin path without holding
+     * tp->mutex (2026-09-18 TSan finding — was a plain bool, a real data
+     * race with threadpool_destroy's mutex-protected write; see mistakes.md). */
+    atomic_bool shutdown;
 } ThreadPool;
 
 /**

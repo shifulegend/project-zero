@@ -28,6 +28,18 @@ CXXFLAGS_DEBUG   = $(CXXFLAGS_COMMON) -g -O0 -march=native -fsanitize=address -f
 CFLAGS_TSAN      = $(CFLAGS_COMMON)   -g -O1 -march=native -fsanitize=thread
 CXXFLAGS_TSAN    = $(CXXFLAGS_COMMON) -g -O1 -march=native -fsanitize=thread
 LDFLAGS_TSAN     = -pthread -lm -fsanitize=thread
+# Coverage: instruments $(LIB_OBJS) only (via `test:`'s own default CFLAGS,
+# same trick as TSan) -- the individual tests/*.c driver files still compile
+# under CFLAGS_DEBUG (ASan/UBSan; gcov instrumentation and ASan/UBSan are not
+# mutually exclusive, unlike TSan), so what gets measured is library code
+# coverage exercised by the real ASan/UBSan-checked test binaries.
+# -fprofile-update=atomic: this project's thread pool exercises the same
+# source lines from multiple threads concurrently; gcov's default
+# (non-atomic) counter updates race and corrupt into negative counts under
+# real concurrent execution (confirmed: lcov "Unexpected negative count"
+# on thread_pool.c without this flag).
+CFLAGS_COVERAGE   = $(CFLAGS_COMMON)   -g -O0 -march=native --coverage -fprofile-update=atomic
+CXXFLAGS_COVERAGE = $(CXXFLAGS_COMMON) -g -O0 -march=native --coverage -fprofile-update=atomic
 LDFLAGS = -pthread -lm
 
 # ── Portable distribution build (`make dist`) ──────────────────────────────
@@ -75,7 +87,7 @@ TEST_BINS := $(patsubst tests/%.c, build/tests/%, $(TEST_SRCS))
 
 TARGET = adaptive_ai_engine
 
-.PHONY: all clean debug release dist test test-tsan objs demo webui-bundle screenshots
+.PHONY: all clean debug release dist test test-tsan coverage objs demo webui-bundle screenshots
 
 all: $(TARGET)
 
@@ -361,6 +373,20 @@ test-tsan:
 	if [ $$status -eq 0 ]; then echo "=== TSan: no races reported ==="; \
 	else echo "=== TSan: races reported, see output above ==="; fi; \
 	exit $$status
+
+# TS-5.5: line/branch coverage of library code, from the real test suite.
+# Requires lcov (genhtml). Uses ensure_variant like release/debug/dist/tsan
+# so switching from a non-instrumented build doesn't link stale objects.
+coverage:
+	$(call ensure_variant,coverage)
+	$(MAKE) CFLAGS="$(CFLAGS_COVERAGE)" CXXFLAGS="$(CXXFLAGS_COVERAGE)" LDFLAGS="$(LDFLAGS) --coverage" test
+	@mkdir -p build/coverage
+	lcov --capture --directory build --output-file build/coverage/coverage_raw.info --rc lcov_branch_coverage=1
+	lcov --remove build/coverage/coverage_raw.info '/usr/*' '*/tests/*' --output-file build/coverage/coverage.info --rc lcov_branch_coverage=1
+	genhtml build/coverage/coverage.info --output-directory build/coverage/html --rc lcov_branch_coverage=1
+	@echo "=== Coverage summary ==="
+	lcov --summary build/coverage/coverage.info --rc lcov_branch_coverage=1
+	@echo "=== HTML report: build/coverage/html/index.html ==="
 
 bench: $(LIB_OBJS) tools/bench_simd.c
 	@mkdir -p build/tools

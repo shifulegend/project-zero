@@ -3,7 +3,52 @@
 > Canonical, append-at-top (newest first). Read this at the start of every session.
 > Add an entry **immediately** when a mistake, false assumption, regression, or avoidable
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
-> Last updated: 2026-09-18.
+> Last updated: 2026-09-19.
+
+### 2026-09-19 — `tools/fuzz_config.py`'s "Run Core Fuzzer" CI step had been a silent no-op for an unknown period (stale binary path, swallowed the failure, exited 0 anyway)
+
+- Context: wiring today's new test infrastructure (golden-output regression, `make test-tsan`,
+  `make coverage`, the grammar differential fuzzer) into CI per
+  `docs/reports/TEST_PLAN_2026-09-18.md`'s "CI integration" table. While filling
+  `security_audit.yml`'s "Run Math Kernel Unit Tests" TODO stub, re-examined the adjacent "Run Core
+  Fuzzer" step, which calls `tools/fuzz_config.py`.
+- Found: the script hardcoded `./build/bin/ternary_engine` as the engine binary path — a name/location
+  from before the project was renamed to `adaptive_ai_engine` and moved to the repo root. Confirmed by
+  running it directly: `FileNotFoundError` every time, caught by an `except` clause that only printed
+  "ERROR: Engine binary not found" and then fell through to normal completion (no `sys.exit(1)`, no
+  exception re-raised) — so the script always exited 0 regardless. This CI step has therefore been
+  reporting green while testing nothing, for as long as the binary has been named `adaptive_ai_engine`
+  (i.e. probably since very early in the project, well before this session).
+- Fix: made the binary path overridable via `PZ_ENGINE_BIN` (defaulting to `./adaptive_ai_engine` for
+  local/Makefile-built runs; `security_audit.yml`'s own job builds via CMake into `build/project-zero`,
+  so its step sets `PZ_ENGINE_BIN=./build/project-zero`), and made a missing binary a hard failure
+  (`sys.exit(1)`) instead of a silently-passing print statement.
+- Lesson: a `try/except FileNotFoundError` around a subprocess call is exactly the shape that turns "the
+  environment isn't set up for this check" into "this check always passes" if the except branch doesn't
+  itself fail loudly — worth grep'ing for this pattern (`except FileNotFoundError`, `except
+  subprocess.CalledProcessError` without a following `sys.exit`/`raise`) elsewhere in `tools/*.py` as a
+  follow-up, since this is exactly the kind of coverage gap that looks fine in a CI dashboard.
+
+### 2026-09-19 — Wired today's new test infrastructure into CI
+
+- What: added `make coverage` (Makefile — instruments `$(LIB_OBJS)` via `--coverage
+  -fprofile-update=atomic`, the atomic-update flag being necessary because the thread pool's
+  concurrently-executed lines corrupt gcov's default non-atomic counters into negative values under
+  real concurrent execution — confirmed via `lcov`'s "Unexpected negative count" error without it).
+  Added to `ci.yml`: a CMake build-check job, a golden-output-regression job (downloads the small test
+  model once, cached by filename since it's an immutable HF release asset; runs
+  `tests/golden_regression.sh` and `tests/e2e_json_mode.sh`), and a coverage job uploading the HTML
+  report as a build artifact. Added to `security_audit.yml`: the Math Kernel Unit Tests TODO stub (now
+  runs `ctest` against the SIMD/math test binaries its own CMake+ASan build already produces) and a new
+  TSan job (`make test-tsan`). Added `nightly.yml` (scheduled + `workflow_dispatch`): extended
+  (higher-N, multi-seed) grammar differential fuzzing, and the differential-dequant-vs-real-ggml test
+  (clones and builds a pinned llama.cpp/ggml, too slow for every push/PR but fine nightly) — explicitly
+  does NOT fake steps for TS-5.2 (perplexity/KL) or TS-5.7 (soak), since neither has real tooling yet;
+  noted as such in the workflow file itself, not silently omitted.
+- Verified locally (GitHub Actions itself cannot be run in this environment): every underlying command
+  in every new CI step run directly and confirmed working, including the exact CMake+ASan build variant
+  `security_audit.yml` uses, the `ctest` filter, `PZ_ENGINE_BIN`-overridden fuzzer run, and the nightly
+  workflow's llama.cpp reference build + differential harness (still 20/20 bit-exact).
 
 ### 2026-09-18 — TS-2.3/2.4 E2E JSON-mode test-tool fixes: truncation detection needs `>=` not `==`, and server startup needs a much longer readiness timeout
 

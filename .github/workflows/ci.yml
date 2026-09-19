@@ -58,3 +58,75 @@ jobs:
 
       - name: Run tests
         run: make test
+
+  cmake-build-check:
+    name: CMake build check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Configure
+        run: cmake -B build_cmake -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build_cmake -j$(nproc) --target project-zero
+
+  golden-output-regression:
+    name: Golden-output regression (TS-5.1)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q gcc make python3
+
+      - name: Build (release)
+        run: make release CC=gcc
+
+      # Cached by filename -- SmolLM2-135M-Instruct-Q8_0.gguf is an
+      # immutable release artifact on Hugging Face, never rewritten in place.
+      - name: Cache test model
+        id: model-cache
+        uses: actions/cache@v4
+        with:
+          path: models/smollm2-q8_0.gguf
+          key: smollm2-135m-instruct-q8_0-gguf
+
+      - name: Download test model
+        if: steps.model-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p models
+          curl -fL --retry 3 -o models/smollm2-q8_0.gguf \
+            "https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q8_0.gguf"
+
+      - name: Run golden-output regression (determinism matrix + JSON mode)
+        run: tests/golden_regression.sh models/smollm2-q8_0.gguf
+
+      - name: Run E2E JSON-mode test (CLI + API, TS-2.3/2.4)
+        run: tests/e2e_json_mode.sh models/smollm2-q8_0.gguf
+
+  coverage:
+    name: Coverage (TS-5.5)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q gcc make lcov
+
+      - name: Generate coverage report
+        run: make coverage CC=gcc
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: build/coverage/html
+          retention-days: 30

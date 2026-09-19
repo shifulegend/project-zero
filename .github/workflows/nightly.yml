@@ -1,0 +1,68 @@
+name: Nightly — Extended Fuzzing & Differential Tests
+
+# Scheduled, heavier-than-CI runs: higher iteration counts and an external
+# reference build (llama.cpp/ggml) that would be too slow/expensive to run
+# on every push or PR. See docs/reports/TEST_PLAN_2026-09-18.md's "CI
+# integration" table for the origin of this workflow.
+#
+# NOT yet included here (tooling doesn't exist yet -- see that test plan's
+# "Deferred" list rather than faking a step for either):
+#   - TS-5.2 perplexity/KL-divergence quality gate (no tools/perplexity
+#     harness has been built)
+#   - TS-5.7 soak testing (no long-running-generation harness has been built)
+
+on:
+  schedule:
+    - cron: '0 3 * * *'   # 03:00 UTC daily
+  workflow_dispatch: {}
+
+jobs:
+  extended-grammar-fuzz:
+    name: Extended grammar differential fuzzing (TS-2.1)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q gcc python3
+      - name: Run grammar fuzzer at high N across multiple seeds
+        run: |
+          for seed in 1 2 3 42 1234 9999; do
+            echo "=== seed=$seed ==="
+            python3 tools/fuzz_grammar_json.py --n 20000 --seed "$seed" --harness /tmp/grammar_json_verdict_nightly
+          done
+
+  differential-dequant-vs-ggml:
+    name: Differential dequant vs real ggml (TS-1.1)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q gcc cmake
+
+      # Pinned to the commit this project's dequant implementations were
+      # verified against (see docs/ai/mistakes.md 2026-09-18) -- bump
+      # deliberately, not silently, if this ever needs to track upstream.
+      - name: Checkout llama.cpp reference
+        run: |
+          git clone --filter=blob:none https://github.com/ggerganov/llama.cpp /tmp/llama-ref
+          git -C /tmp/llama-ref checkout 4fea119de30f6a923992780f6fd5ccb0bee5d47d
+
+      - name: Build ggml
+        run: |
+          cmake -B /tmp/llama-ref/build -DGGML_NATIVE=ON -DCMAKE_BUILD_TYPE=Release \
+                -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_SERVER=OFF \
+                /tmp/llama-ref
+          cmake --build /tmp/llama-ref/build -j$(nproc) --target ggml
+
+      - name: Build and run the differential harness
+        run: |
+          gcc -std=c99 -Wall -Wextra -Iinclude -D_POSIX_C_SOURCE=200809L -O2 \
+              -I/tmp/llama-ref/ggml/include -I/tmp/llama-ref/ggml/src \
+              -o /tmp/difftest_dequant tools/difftest_dequant.c src/core/gguf_quant.c \
+              -L/tmp/llama-ref/build/bin -lggml -lggml-base -lggml-cpu -lm \
+              -Wl,-rpath,/tmp/llama-ref/build/bin
+          /tmp/difftest_dequant

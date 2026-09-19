@@ -1,7 +1,20 @@
 # Change Trace — project-zero
 
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
-> Update after each meaningful sub-step. Last updated: 2026-09-18.
+> Update after each meaningful sub-step. Last updated: 2026-09-19.
+
+### 2026-09-19 — CI integration: wired today's test infrastructure into GitHub Actions
+- What: `make coverage` (new Makefile target); `.github/workflows/ci.yml` gains a CMake build-check job,
+  a golden-output-regression job (`tests/golden_regression.sh` + `tests/e2e_json_mode.sh` against a
+  cached real model), and a coverage-report job; `.github/workflows/security_audit.yml`'s "Math Kernel
+  Unit Tests" TODO stub is filled in (real `ctest` run) and it gains a TSan job; new
+  `.github/workflows/nightly.yml` (scheduled) runs extended grammar differential fuzzing and the
+  differential-dequant-vs-real-ggml test.
+- Found and fixed along the way: `tools/fuzz_config.py`'s "Run Core Fuzzer" step had been a silent
+  no-op (stale binary path, swallowed exception, exit 0) for an unknown period — see `mistakes.md`
+  2026-09-19.
+- Verified: every underlying command run and confirmed locally (GitHub Actions itself can't run in this
+  environment); full `release`/`test`/`debug` still green on gcc and clang after the Makefile change.
 
 ### 2026-09-18 — TS-2.3/2.4: added E2E JSON-mode test (CLI matrix + API response_format + non-JSON regression)
 - What: `tests/e2e_json_mode.sh` covers the CLI `--json` flag across temperature {0.0, 0.7, 1.5},

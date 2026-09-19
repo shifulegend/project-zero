@@ -8,15 +8,34 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake clang valgrind
+          sudo apt-get install -y cmake clang valgrind python3
       - name: Build with ASan/UBSan
         run: |
           mkdir build && cd build
           cmake -DCMAKE_C_FLAGS="-fsanitize=address,undefined -g" ..
-          make
+          make -j$(nproc)
       - name: Run Core Fuzzer
-        run: python3 tools/fuzz_config.py
+        # PZ_ENGINE_BIN points at this job's own CMake+ASan build, not the
+        # Makefile's ./adaptive_ai_engine (2026-09-19: this step used to
+        # reference a stale, long-renamed binary path and silently no-op'd
+        # instead of failing -- see docs/ai/mistakes.md).
+        run: PZ_ENGINE_BIN=./build/project-zero python3 tools/fuzz_config.py
       - name: Run Math Kernel Unit Tests
+        # 2026-09-19: filled in the long-standing TODO stub. Runs the
+        # ASan/UBSan-instrumented SIMD/math-kernel test binaries this job's
+        # own CMake build already produces (ENABLE_TESTS=ON by default).
         run: |
-          # Unit tests for SIMD kernels would go here
-          # ./build/tests/test_math_kernels
+          cd build
+          ctest -R "^(test_simd|test_math|test_q2_0_matmul|test_q2k_matvec|test_q4k_matmul|test_q4k_x8_matmul|audit_math|test_ternary_lut_avx512bw)$" --output-on-failure
+
+  tsan:
+    name: ThreadSanitizer (TS-5.3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q gcc make
+      - name: Run TSan-instrumented concurrency tests
+        run: make test-tsan CC=gcc

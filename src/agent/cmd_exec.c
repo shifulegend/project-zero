@@ -22,6 +22,29 @@
 /* Very small allow-list to prevent destructive commands. Extend as needed. */
 static const char *allowlist[] = {"echo", "ls", "cat", "pwd", "uname", "date", "id", NULL};
 
+/* Trusted directories to resolve an allow-listed command name against,
+ * instead of the process's own (possibly attacker-influenced) $PATH --
+ * closes the "PATH hijacking" known gap: execvp() searches $PATH, so a
+ * malicious "ls" placed in a directory earlier in PATH than the real one
+ * would otherwise win. Fixed, never sourced from the environment: these
+ * are the standard POSIX-utility locations on every Linux distro (whether
+ * or not /bin is itself a symlink to /usr/bin) and macOS -- every
+ * allow-listed command is always in one of them. (2026-09-19: see
+ * docs/ai/mistakes.md for the differential run that flagged this gap.) */
+static const char *trusted_bin_dirs[] = { "/bin", "/usr/bin", NULL };
+
+/* Resolves `cmd_name` to an absolute, executable path inside
+ * trusted_bin_dirs. Returns 1 and NUL-terminates `out` on success, 0 if no
+ * trusted directory has an executable file by that name. */
+static int resolve_trusted_path(const char *cmd_name, char *out, size_t out_size) {
+    for (int i = 0; trusted_bin_dirs[i]; i++) {
+        int n = snprintf(out, out_size, "%s/%s", trusted_bin_dirs[i], cmd_name);
+        if (n < 0 || (size_t)n >= out_size) continue;
+        if (access(out, X_OK) == 0) return 1;
+    }
+    return 0;
+}
+
 int exec_policy_allows(const char *cmd_name) {
     if (!cmd_name) return 0;
     for (size_t i = 0; allowlist[i] != NULL; i++) {
@@ -142,8 +165,14 @@ ExecResult execute_command(char *const argv[], int timeout_sec, char *out_buf, s
         as_limit.rlim_max = as_limit.rlim_cur;
         setrlimit(RLIMIT_AS, &as_limit);
 
-        execvp(argv[0], argv);
-        /* exec failed */
+        {
+            char resolved[PATH_MAX];
+            if (resolve_trusted_path(argv[0], resolved, sizeof(resolved))) {
+                execv(resolved, argv);
+            }
+            /* Not found in a trusted directory, or exec itself failed --
+             * never fall back to execvp()'s $PATH search here. */
+        }
         _exit(127);
     }
 

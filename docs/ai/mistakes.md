@@ -5,6 +5,40 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-09-19.
 
+### 2026-09-19 — Closed the "PATH hijacking" known gap; verified RLIMIT_CPU/RLIMIT_AS actually work (TS-3.2/TS-3.3)
+
+- Context: continuing down the test plan's P1 items after CI integration. TS-3.3 needed a way to prove
+  `RLIMIT_CPU`/`RLIMIT_AS` (set in `execute_command()`'s forked child) are actually enforced by the OS,
+  which the allow-listed commands (echo/ls/cat/pwd/uname/date/id) can never trigger themselves (none of
+  them burn CPU or memory) — so `tests/test_cmd_exec_rlimits.c`'s two rlimit tests deliberately
+  replicate cmd_exec.c's exact `fork()+setrlimit()+exec()` shape against a real CPU-spinning
+  (`sh -c 'while :; do :; done'`) and memory-exploding (`sh -c 'a=X; while :; do a="$a$a"; done'`) child,
+  white-box-testing the underlying OS mechanism rather than routing through the sandboxed allow-list.
+  Both confirmed: the CPU-limited child is killed within ~1s (not left spinning), the memory-limited
+  child's allocation fails cleanly at 16 MiB (not left consuming host memory).
+- TS-3.2's "PATH hijacking" gap (`execvp()` searches the process's own `$PATH`, so a malicious `cat`
+  placed in a directory earlier in `$PATH` than the real one would win) was fixed rather than only
+  documented, following the same judgment as the symlink-escape fix a day earlier: the remedy the test
+  plan itself names ("Fix = absolute-path table") is a small, contained change, not a large
+  architectural one. Added `resolve_trusted_path()` (`src/agent/cmd_exec.c`) — resolves an allow-listed
+  command name against a **fixed** `{/bin, /usr/bin}` list (never the inherited environment's `$PATH`)
+  and execs via `execv()` on the resolved absolute path instead of `execvp()`. Verified live in
+  `tests/test_cmd_exec_gaps.c`: with a malicious `cat` script prepended to `$PATH`, `execute_command()`
+  still runs the real `/usr/bin/cat`, and the malicious script's side effect never happens.
+- Also verified (same file): `PROJECT_ZERO_AGENT_AUTO_APPROVE=1` does not weaken `execute_command()`'s
+  own policy check — confirmed structurally, since that env var is only read in `user_approval.c`, a
+  layer entirely upstream of and independent from `cmd_exec.c`.
+- **TOCTOU left explicitly unfixed and documented, not silently dropped**: the realpath()-based
+  symlink check and the later `execv()` are not atomic. Correctly closing this needs an atomic
+  open-then-check-then-exec sequence (`openat()` + `O_NOFOLLOW` + `fstat` + `fexecve()`) — a real
+  restructuring of `execute_command()`'s control flow, which *is* the kind of "genuinely large
+  architectural change" the bug-fix policy allows deferring, with the deferral stated explicitly (per
+  policy) rather than silently skipped. Not covered by a runtime test either: reliably winning a race
+  window this narrow is not something a deterministic, non-flaky unit test can prove either way.
+- Verified: `test_cmd_exec_rlimits.c` (12 assertions), `test_cmd_exec_gaps.c` (6 assertions), plus all
+  pre-existing `cmd_exec` tests still pass after switching `execvp`→`execv`+trusted-path-resolution.
+  Full `release`/`test`/`debug` green on gcc and clang.
+
 ### 2026-09-19 — `tools/fuzz_config.py`'s "Run Core Fuzzer" CI step had been a silent no-op for an unknown period (stale binary path, swallowed the failure, exited 0 anyway)
 
 - Context: wiring today's new test infrastructure (golden-output regression, `make test-tsan`,

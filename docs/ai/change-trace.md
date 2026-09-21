@@ -3,6 +3,18 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-09-19.
 
+### 2026-09-19 — TS-3.2/TS-3.3: closed PATH-hijacking gap, verified rlimits, documented TOCTOU
+- What: `src/agent/cmd_exec.c` gains `resolve_trusted_path()` — allow-listed commands now resolve
+  against a fixed `{/bin, /usr/bin}` list and exec via `execv()`, never the inherited `$PATH` via
+  `execvp()` (closes the "PATH hijacking" known gap). Added `tests/test_cmd_exec_rlimits.c` (TS-3.3:
+  white-box verification that RLIMIT_CPU/RLIMIT_AS are actually enforced by the OS, plus the
+  timeout/truncation/zero-timeout cases reachable through `execute_command()` itself) and
+  `tests/test_cmd_exec_gaps.c` (TS-3.2: live PATH-hijacking regression test, AUTO_APPROVE-doesn't-
+  weaken-policy verification, and TOCTOU documented as an explicitly-deferred architectural gap, not
+  silently dropped).
+- Verified: 12 + 6 new assertions pass, all pre-existing `cmd_exec` tests still pass, full
+  release/test/debug green on gcc and clang. See `mistakes.md` 2026-09-19 for full detail.
+
 ### 2026-09-19 — CI integration: wired today's test infrastructure into GitHub Actions
 - What: `make coverage` (new Makefile target); `.github/workflows/ci.yml` gains a CMake build-check job,
   a golden-output-regression job (`tests/golden_regression.sh` + `tests/e2e_json_mode.sh` against a

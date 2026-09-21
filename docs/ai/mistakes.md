@@ -5,6 +5,31 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-09-21.
 
+### 2026-09-21 — `test_symlink_escape_now_blocked` hardcoded `/etc/hostname` as an "outside CWD, guaranteed to exist" target — doesn't exist on macOS
+
+- Context: re-triggered `ci.yml` (`workflow_dispatch`, run 35564048955) on the commit that fixed the
+  RLIMIT_AS/macOS entry below, expecting `Build & Test (macOS)` to go green. It failed again, but at a
+  *different* test this time: `test_cmd_exec_adversarial`'s `test_symlink_escape_now_blocked`, with both
+  its `exec_policy_allows_args` and `execute_command` assertions failing (i.e. the symlink was allowed
+  through, not blocked).
+- Root cause (test bug, not a production bug): the test creates a symlink pointing at `/etc/hostname` and
+  asserts `path_escapes_cwd_via_symlink()` (`src/agent/cmd_exec.c`) blocks it. macOS/XNU has no
+  `/etc/hostname` file (hostname is set via `scutil`/NVRAM there, not a file — unlike Linux). Against a
+  dangling symlink, `realpath()` fails with `ENOENT`, and the check's existing, deliberate fallback —
+  "target doesn't exist, not this check's problem, since a broken symlink can't leak anything the command
+  couldn't already fail to read on its own" — kicks in and lets the argument through. The production
+  security check itself is correct and was never the bug: a dangling symlink genuinely cannot exfiltrate
+  data. The test's assumption that `/etc/hostname` is a universally-present target was wrong.
+- Fixed: `tests/test_cmd_exec_adversarial.c`'s `test_symlink_escape_now_blocked` now `mkstemp()`s its own
+  ephemeral file under `/tmp` as the outside-CWD target instead of relying on any specific system path —
+  guaranteed to exist and guaranteed outside CWD on every POSIX platform this project targets, and cleaned
+  up (`unlink`) alongside the symlink itself at the end of the test. Verified: 69/69 assertions pass, full
+  release/test/debug green on gcc and clang.
+- Lesson (a second instance of the same pattern as the entry directly below in one sitting): tests that
+  assume specific OS files/paths exist are themselves an unverified cross-platform claim. Prefer creating
+  fixtures under a portable temp dir (`mkstemp()`) over hardcoding `/etc/whatever` when a test's actual
+  intent is just "some file outside the directory I'm testing confinement against."
+
 ### 2026-09-21 — RLIMIT_AS is not enforced on macOS/Darwin — a real, previously-unknown production gap, found only by actually running CI on a real macOS runner
 
 - Context: manually triggered `ci.yml` (via `workflow_dispatch`, immediately after discovering it had

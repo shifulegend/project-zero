@@ -3,6 +3,16 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-09-21.
 
+### 2026-09-21 — Fixed a macOS-only test portability bug (`/etc/hostname` doesn't exist there)
+- What: re-triggering `ci.yml` after the RLIMIT_AS fix (below) still failed `Build & Test (macOS)`, this
+  time in `test_cmd_exec_adversarial`'s `test_symlink_escape_now_blocked` — it hardcoded a symlink to
+  `/etc/hostname` as an "outside CWD" target, but that file doesn't exist on macOS/XNU. The production
+  `path_escapes_cwd_via_symlink()` check was correct throughout (a dangling symlink can't leak data); only
+  the test's fixture assumption was wrong.
+- Fixed: the test now `mkstemp()`s its own ephemeral outside-CWD target under `/tmp` instead of assuming a
+  system path exists, and cleans it up. 69/69 assertions pass; full release/test/debug green on gcc and
+  clang. See `mistakes.md` 2026-09-21 for full detail.
+
 ### 2026-09-21 — Corrected RLIMIT_AS defense-in-depth claim after a real macOS CI failure exposed it as false
 - What: manually triggering `ci.yml` (`workflow_dispatch`, after the fix below) surfaced a real
   `Build & Test (macOS)` failure: `test_rlimit_as_actually_enforced` — the XNU kernel does not enforce

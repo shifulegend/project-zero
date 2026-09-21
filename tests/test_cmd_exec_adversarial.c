@@ -11,8 +11,10 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <limits.h>
+#include <errno.h>
 
 /* Both layers must agree: the policy function directly, and
  * execute_command()'s own enforcement (exit_code 127 = policy denied). */
@@ -128,10 +130,30 @@ static void test_null_and_odd_bytes(void) {
  * that is itself a symlink pointing outside CWD is now caught even though
  * it has no ".." in its own text. */
 static void test_symlink_escape_now_blocked(void) {
+    /* The outside-CWD target must actually exist: realpath() fails on a
+     * dangling symlink, and path_escapes_cwd_via_symlink() correctly treats
+     * that as "not this check's problem" (a broken symlink can't leak
+     * anything -- cat/ls fails on it harmlessly regardless), which would
+     * silently skip this test's real assertion rather than exercise it. A
+     * hardcoded system path is not portable enough to rely on for that: this
+     * test previously used /etc/hostname, which doesn't exist on macOS/XNU
+     * (no such file there, unlike Linux) -- confirmed via a real macOS CI
+     * run, 2026-09-21. mkstemp() under the system tmp dir gives a target
+     * that's guaranteed to exist and guaranteed outside CWD on every POSIX
+     * platform this project targets. */
+    char target_template[] = "/tmp/pz_symlink_escape_target_XXXXXX";
+    int target_fd = mkstemp(target_template);
+    if (target_fd < 0) {
+        printf("  SKIP: could not create outside-CWD target file (%s)\n", strerror(errno));
+        return;
+    }
+    close(target_fd);
+
     const char *link_name = "test_adv_symlink_escape_tmp";
     unlink(link_name); /* best-effort cleanup from a previous crashed run */
-    if (symlink("/etc/hostname", link_name) != 0) {
+    if (symlink(target_template, link_name) != 0) {
         printf("  SKIP: could not create test symlink (no write access to CWD?)\n");
+        unlink(target_template);
         return;
     }
 
@@ -139,6 +161,7 @@ static void test_symlink_escape_now_blocked(void) {
     assert_blocked(a, "cat <symlink pointing outside CWD>");
 
     unlink(link_name);
+    unlink(target_template);
 }
 
 static void test_symlink_within_cwd_still_allowed(void) {

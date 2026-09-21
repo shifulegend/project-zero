@@ -41,6 +41,20 @@
   "stub" was an honest flag left by whoever wrote it, but nothing ever closed the loop, and it sat
   self-documented-but-broken long enough to ship two independent functions (`simd_dispatch.c` and
   `cpu_features.c`) both claiming a "NEON" backend that would never actually run.
+- **Update, same day**: triggered `ci.yml` on GitHub and confirmed on the real `macos-26-arm64`
+  runner — `test_packed_weights` went from `1469/1469` (x86, SKIP branch, 0 new assertions) to
+  `1485/1485` (16 new real assertions, one per output row), proving the kernel actually executed
+  and matched the scalar reference on genuine ARM hardware, not just compiled.
+- **New, separate observation from that same run** (flagged, not chased further this pass): the
+  live backend name printed by `test_simd`/`forensic_audit_suite` on that Apple Silicon runner was
+  `"NEON"`, not `"NEON+dotprod"` — meaning `cpu->arm_dotprod` and/or `TN_HAS_ARM_DOTPROD` did not
+  select the dotprod kernel despite running on Apple Silicon (M-series chips all support
+  `FEAT_DotProd`). This was structurally invisible before today's fix (dotprod-not-selected and
+  no-NEON-kernel both silently fell to the same scalar fallback, so nothing differentiated them);
+  fixing the NEON gap is what makes it observable for the first time. Not diagnosed further here —
+  needs a real ARM CI run with explicit `sysctl -a | grep -i dotprod` / a debug print of
+  `cpu->arm_dotprod` and `TN_HAS_ARM_DOTPROD` at compile+run time to tell whether this is a
+  hosted-runner feature-bit quirk or a genuine detection bug in `cpu_features.c`/`platform.h`.
 
 ### 2026-09-21 — `test_symlink_escape_now_blocked` hardcoded `/etc/hostname` as an "outside CWD, guaranteed to exist" target — doesn't exist on macOS
 

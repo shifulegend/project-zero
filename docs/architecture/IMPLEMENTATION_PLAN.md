@@ -239,17 +239,40 @@ project-zero/
   parameter will change to `const float *scales` for per-group scale factors. See Phase 10.4–10.5
   for the fused unpack+compute kernel that eliminates the intermediate buffer entirely.
 
-### 3.4 — Ternary MatMul (AVX-512 SIMD — x86_64)
-- File: `src/math/ternary_matmul_avx512.c`
-- Guarded by `#ifdef __AVX512F__`
-- Processes 16 floats per iteration using `_mm512_*` intrinsics.
-- Masked tail via `_mm512_maskz_loadu_ps`.
+### 3.4 — Ternary MatMul (AVX-512 SIMD — x86_64) ✅ (superseded by Phase 10.5)
+- The unpacked-`int8`-weight design this item describes (`ternary_matmul_avx512.c`) was
+  overtaken by the Phase 10.5 packed-weight (2-bit) fused unpack+compute design before it was
+  built standalone. `src/math/ternary_matmul_packed_avx512.c` is the real, shipped AVX-512F
+  kernel — 16 weights/iteration, `_mm512_*` intrinsics, masked tail. Wired into
+  `simd_dispatch.c`'s tier-3 slot (after AVX-512 VNNI / AVX-VNNI). Covered by
+  `tests/test_packed_weights.c`.
 
-### 3.5 — Ternary MatMul (NEON SIMD — ARM)
-- File: `src/math/ternary_matmul_neon.c`
-- Guarded by `#ifdef __ARM_NEON`
-- Uses `vld1q_f32`, `vaddq_f32`, `vsubq_f32`.
-- Processes 4 floats per iteration.
+### 3.5 — Ternary MatMul (NEON SIMD — ARM) ✅ done 2026-09-21
+- Same supersession as 3.4: the packed-weight design is what shipped, as
+  `src/math/ternary_matmul_packed_neon.c` (not the unpacked-`int8` `ternary_matmul_neon.c` this
+  item originally described). Uses `vld1q_f32`/`vaddq_f32`/`vsubq_f32`/`vceqq_s32` on 4-lane
+  vectors, matching `ternary_matmul_packed_avx2.c`'s fused-unpack architecture; horizontal sum via
+  `vadd_f32`/`vpadd_f32` (portable to both ARMv7-A and AArch64 NEON, not the AArch64-only
+  `vaddvq_f32`).
+- **Found while auditing `simd_dispatch.c`'s ARM tier list** (not part of a fresh audit — its own
+  comment already named this tier "stub, always compiled for ARM," i.e. a previously-flagged,
+  never-closed gap): NEON is unconditionally available on every ARMv8-A core, but only the
+  dotprod-requiring tier (3.5's Phase-16-S sibling, `ternary_matmul_packed_dotprod.c`) existed.
+  Any ARMv8.0/8.1 CPU without the dotprod extension — Raspberry Pi 4 (Cortex-A72), older AWS
+  Graviton/Graviton2, most ARMv8.0/8.1 embedded boards — silently fell all the way through to the
+  scalar kernel for the hottest path in the engine, losing the entire documented NEON tier.
+- Wired into `simd_dispatch.c`'s dispatch table between ARM dotprod and scalar (both the tier
+  selection and its own stale "stub" comment corrected); `tn_cpu_best_backend_name()`
+  (`cpu_features.c`) already named "NEON" as a possible backend before this fix, which was itself
+  inaccurate until now.
+- Verified: direct-kernel test `test_neon_packed_matmul_matches_scalar` added to
+  `tests/test_packed_weights.c` (mirrors the existing `test_avx2_packed_matmul_matches_scalar`
+  pattern). Compiles to an empty TU and the test SKIPs on x86 (`TN_HAS_NEON == 0` there, this dev
+  environment is x86_64-only) — full `make release/test/debug` green on gcc and clang, plus a
+  clean `cmake --build` sanity pass, confirm the addition is inert and harmless on x86. The kernel
+  itself can only be exercised on real ARM hardware; not verified on real ARM silicon this pass
+  (flagged, not silently claimed) — `ci.yml`'s `macos-latest` job (Apple Silicon) will be the
+  first real signal once pushed.
 
 ### 3.6 — SIMD Dispatch (Runtime Selection) ✅
 - File: `include/math/simd_dispatch.h` + `src/math/simd_dispatch.c`

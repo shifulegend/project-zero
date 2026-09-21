@@ -82,4 +82,13 @@ void ternary_matmul_packed_avx_vnni(float *out, const float *x, const tn_u8 *pac
 void ternary_matmul_packed_dotprod(float *out, const float *x, const tn_u8 *packed_w,
                                     int n, int d, const float *scales, int group_size);
 
+/**
+ * Plain ARM NEON variant: float32 vectorized add/sub, 4 MACs/cycle.
+ * Fallback tier for ARMv8-A cores without the dotprod extension (e.g.
+ * Cortex-A72/Raspberry Pi 4, older Graviton) -- NEON itself is mandatory
+ * on all ARMv8-A, unlike dotprod.
+ */
+void ternary_matmul_packed_neon(float *out, const float *x, const tn_u8 *packed_w,
+                                 int n, int d, const float *scales, int group_size);
+
 #endif /* TN_TERNARY_MATMUL_PACKED_H */

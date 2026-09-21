@@ -116,6 +116,13 @@ extern void ternary_matmul_packed_dotprod(float *out, const float *x,
                                            const float *scales, int group_size);
 #endif
 
+/* ── ARM plain NEON forward declaration ──────────────────────────────────── */
+#if TN_HAS_NEON
+extern void ternary_matmul_packed_neon(float *out, const float *x,
+                                        const tn_u8 *packed_w, int n, int d,
+                                        const float *scales, int group_size);
+#endif
+
 /* ── Global dispatch table ─────────────────────────────────────────────────
  * Initialized to NULL; call tn_simd_init() once at startup before any math.
  */
@@ -220,7 +227,9 @@ const char *tn_simd_init(void) {
      *
      * ARM path (priority: dotprod > NEON fallback):
      *   dotprod:      16 int8 MACs/cycle — signed×signed, no bias trick needed
-     *   NEON:          4 fp32 MACs/cycle — stub, always compiled for ARM
+     *   NEON:          4 fp32 MACs/cycle — always available on ARMv8-A, no
+     *                  dotprod extension required (see
+     *                  ternary_matmul_packed_neon.c)
      *
      * TN_FORCE_BACKEND skips upper tiers to reach a specific backend.
      */
@@ -267,6 +276,14 @@ const char *tn_simd_init(void) {
     if (cpu->arm_dotprod) {
         tn_ternary_matmul_packed = ternary_matmul_packed_dotprod;
         g_backend_name = "NEON+dotprod";
+        return g_backend_name;
+    }
+#endif
+
+#if TN_HAS_NEON
+    if (!force_scalar && cpu->neon) {
+        tn_ternary_matmul_packed = ternary_matmul_packed_neon;
+        g_backend_name = "NEON";
         return g_backend_name;
     }
 #endif

@@ -5,6 +5,43 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-09-21.
 
+### 2026-09-21 — `simd_dispatch.c` self-documented a "NEON" tier that never had a kernel behind it
+
+- Context: user asked to continue implementation-phase work, specifically CPU ternary. Auditing
+  `docs/architecture/IMPLEMENTATION_PLAN.md`'s Phase 3 (ternary matmul kernels) against the actual
+  `src/math/` tree to find the next real item, rather than trusting the plan doc's own status
+  marks (same doc-lag pattern already found multiple times this session for Phase 37 items).
+- Finding: `simd_dispatch.c`'s own tier-priority comment listed "6. ARM NEON — 4 fp32 MACs/cycle
+  (all ARMv8-A)" as a real dispatch tier, and a second comment inside `tn_simd_init()` called it
+  out explicitly: `"NEON: 4 fp32 MACs/cycle — stub, always compiled for ARM"`. Neither claim was
+  true — no NEON kernel existed anywhere in the tree, and the dispatch selection logic jumped
+  straight from `TN_HAS_ARM_DOTPROD` to the scalar fallback with no NEON branch in between.
+  `cpu_features.c`'s `tn_cpu_best_backend_name()` independently claimed "NEON" as a possible
+  return value too — a second place asserting a backend that didn't exist.
+- Impact: any ARMv8-A CPU with NEON (mandatory on all of them) but without the dotprod extension
+  — Raspberry Pi 4 (Cortex-A72, ARMv8.0), older AWS Graviton/Graviton2, most ARMv8.0/8.1 embedded
+  boards — silently fell all the way through to the scalar kernel for `ternary_matmul_packed`, the
+  single hottest function in the engine (every forward-pass matmul against BitNet-ternary
+  weights). This is a real, previously-undiagnosed performance gap on real deployment hardware,
+  not a documentation nit: those CPUs were running at 1 MAC/cycle instead of the intended 4.
+- Fixed: `src/math/ternary_matmul_packed_neon.c` (new) — plain NEON fused unpack+matmul for the
+  2-bit packed weight format (matching `ternary_matmul_packed_avx2.c`'s architecture, not the
+  stale unpacked-`int8` design the original Phase 3.5 plan entry described). Wired into
+  `ternary_matmul_packed.h`, `simd_dispatch.c`'s forward declarations + dispatch table + both
+  stale comments, `CMakeLists.txt`'s `MATH_SOURCES`. New direct-kernel test
+  `test_neon_packed_matmul_matches_scalar` in `tests/test_packed_weights.c`.
+- Verified on this (x86_64-only) dev environment: compiles to an empty TU under `TN_HAS_NEON == 0`
+  on both gcc and clang with zero new warnings; the new test correctly SKIPs rather than silently
+  passing; full `make release/test/debug` green on both compilers; a clean `cmake --build` sanity
+  pass confirms `CMakeLists.txt` stays in sync per `config.md`'s rule. **Not verified on real ARM
+  hardware this pass** — flagged explicitly rather than claimed: this environment cannot exercise
+  `TN_HAS_NEON` code at all (same structural limitation as the RLIMIT_AS/macOS findings earlier
+  today). `ci.yml`'s `macos-latest` job runs on Apple Silicon and will be the first real signal.
+- Lesson: a dispatcher's own inline comments asserting a tier exists are not evidence it does —
+  "stub" was an honest flag left by whoever wrote it, but nothing ever closed the loop, and it sat
+  self-documented-but-broken long enough to ship two independent functions (`simd_dispatch.c` and
+  `cpu_features.c`) both claiming a "NEON" backend that would never actually run.
+
 ### 2026-09-21 — `test_symlink_escape_now_blocked` hardcoded `/etc/hostname` as an "outside CWD, guaranteed to exist" target — doesn't exist on macOS
 
 - Context: re-triggered `ci.yml` (`workflow_dispatch`, run 35564048955) on the commit that fixed the

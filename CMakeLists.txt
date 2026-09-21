@@ -172,6 +172,7 @@ set(MATH_SOURCES
     src/math/ternary_matmul_packed_avx_vnni.c
     src/math/ternary_matmul_packed_dotprod.c
     src/math/ternary_matmul_packed_vnni256.c
+    src/math/ternary_matmul_packed_neon.c
 )
 
 set(MULTIMODAL_SOURCES

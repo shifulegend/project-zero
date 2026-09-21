@@ -3,6 +3,29 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-09-21.
 
+### 2026-09-21 — Implemented the missing plain-NEON ternary matmul kernel (Phase 3.5)
+- What: `src/math/ternary_matmul_packed_neon.c` (new) — fused unpack+matmul for 2-bit packed
+  ternary weights using plain NEON (`vld1q_f32`/`vaddq_f32`/`vsubq_f32`/`vceqq_s32`), filling a
+  dispatch tier `simd_dispatch.c` had documented ("NEON — stub, always compiled for ARM") but
+  never actually implemented. Wired into `include/math/ternary_matmul_packed.h`,
+  `simd_dispatch.c`'s dispatch table (between ARM dotprod and scalar) and its two stale comments,
+  and `CMakeLists.txt`'s `MATH_SOURCES`.
+- Why: user's instruction to continue implementation-phase work on CPU ternary. Found by auditing
+  `IMPLEMENTATION_PLAN.md`'s Phase 3 against the real `src/math/` tree and the dispatcher's own
+  code — any ARMv8-A CPU without the dotprod extension (Raspberry Pi 4, older Graviton, most
+  ARMv8.0/8.1 boards) was silently running the engine's hottest function at scalar (1 MAC/cycle)
+  speed instead of the documented NEON tier (4 MACs/cycle).
+- Verified: new `test_neon_packed_matmul_matches_scalar` in `tests/test_packed_weights.c` (mirrors
+  the existing AVX2 direct-kernel test); compiles to an empty TU and SKIPs correctly on this
+  x86_64-only dev environment; full release/test/debug green on gcc and clang; `cmake --build`
+  sanity pass confirms CMake/Makefile stay in sync. Not verified on real ARM hardware this pass
+  (flagged, not claimed) — see `mistakes.md` 2026-09-21 for full detail and the honest
+  not-yet-verified-on-real-ARM caveat.
+- Areas: `src/math/ternary_matmul_packed_neon.c` (new), `include/math/ternary_matmul_packed.h`,
+  `src/math/simd_dispatch.c`, `CMakeLists.txt`, `tests/test_packed_weights.c`,
+  `docs/architecture/IMPLEMENTATION_PLAN.md` (Phase 3.4/3.5 corrected to describe what actually
+  shipped — the Phase 10.5 packed-weight design, not the original unpacked-`int8` one).
+
 ### 2026-09-21 — Fixed a macOS-only test portability bug (`/etc/hostname` doesn't exist there)
 - What: re-triggering `ci.yml` after the RLIMIT_AS fix (below) still failed `Build & Test (macOS)`, this
   time in `test_cmd_exec_adversarial`'s `test_symlink_escape_now_blocked` — it hardcoded a symlink to

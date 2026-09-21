@@ -1,7 +1,16 @@
 # Change Trace — project-zero
 
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
-> Update after each meaningful sub-step. Last updated: 2026-09-19.
+> Update after each meaningful sub-step. Last updated: 2026-09-21.
+
+### 2026-09-21 — TS-2.6 API concurrency verification; fixed ci.yml never actually running
+- What: `tests/e2e_api_concurrency.sh` (TS-2.6) verifies the API server's `generation_mutex` trylock
+  serialization (a second concurrent request gets 429 while the first is in flight, never blocks) and
+  that `FSMState` (stack-local per call) never leaks grammar progress between sequential JSON-mode
+  requests of different shapes. 6/6 assertions pass against a real model.
+- Found and fixed: `ci.yml`'s push/PR triggers are scoped to `branches: [master, main]`, so it had never
+  run for any commit pushed to this session's feature branch. Added `workflow_dispatch: {}` (additive,
+  doesn't change the existing triggers) so it can be verified directly. See `mistakes.md` 2026-09-21.
 
 ### 2026-09-19 — TS-3.2/TS-3.3: closed PATH-hijacking gap, verified rlimits, documented TOCTOU
 - What: `src/agent/cmd_exec.c` gains `resolve_trusted_path()` — allow-listed commands now resolve

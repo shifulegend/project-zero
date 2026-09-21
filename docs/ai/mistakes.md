@@ -3,7 +3,29 @@
 > Canonical, append-at-top (newest first). Read this at the start of every session.
 > Add an entry **immediately** when a mistake, false assumption, regression, or avoidable
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
-> Last updated: 2026-09-19.
+> Last updated: 2026-09-21.
+
+### 2026-09-21 — `ci.yml`'s new jobs (and the original build-and-test matrix) had never actually run on GitHub for any commit this session
+
+- Context: after wiring golden-output regression, CMake build check, and coverage into `ci.yml`
+  (2026-09-19), assumed the next push would exercise them. Checking actual GitHub Actions run history
+  (via the `mcp__github__actions_list`/`actions_get` tools) while addressing a direct question about CI
+  status found: `ci.yml`'s trigger is `push`/`pull_request` scoped to `branches: [master, main]` only.
+  Every commit this session was pushed directly to `claude/architecture-progress-review-ahv93e` — never
+  to master/main, and no PR was ever opened — so `ci.yml` (including its brand-new jobs, and the
+  pre-existing build-and-test matrix) had **zero runs, ever**, on this branch. Only
+  `security_audit.yml` (triggers unconditionally on `[push, pull_request]`, no branch filter) actually
+  executed, and it has been green on every push (confirmed via the API for all 12 commits since this
+  round of testing began).
+- Fix: added `workflow_dispatch: {}` to `ci.yml`'s triggers (purely additive — the existing push/PR
+  triggers are unchanged) so it can be run manually from any branch without needing a PR, then triggered
+  it directly via the GitHub API to get real, on-GitHub confirmation rather than only local verification.
+- Lesson: "I verified every underlying command locally" (as stated when `ci.yml` was first wired up) is
+  not the same claim as "CI is green" — a workflow's trigger conditions are themselves something to
+  verify, not just its step contents. Local verification of each command is real evidence the steps
+  *work*, but says nothing about whether the workflow ever *runs*. Would not have been caught without
+  someone explicitly asking about CI status and going to check the actual run history rather than
+  assuming the pattern from `security_audit.yml`'s (unconditional) trigger generalized.
 
 ### 2026-09-19 — Closed the "PATH hijacking" known gap; verified RLIMIT_CPU/RLIMIT_AS actually work (TS-3.2/TS-3.3)
 

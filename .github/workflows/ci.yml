@@ -5,6 +5,11 @@ on:
     branches: [ master, main ]
   pull_request:
     branches: [ master, main ]
+  workflow_dispatch: {}   # manual trigger from any branch (e.g. to verify
+                          # a feature branch's CI before opening a PR --
+                          # push/pull_request above only fire for
+                          # master/main, so a direct push to another branch
+                          # never runs this workflow on its own)
 
 jobs:
   build-and-test:

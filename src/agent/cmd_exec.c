@@ -154,7 +154,21 @@ ExecResult execute_command(char *const argv[], int timeout_sec, char *out_buf, s
          * and a bounded address space. The allow-listed commands (echo, ls,
          * cat, pwd, uname, date, id) never legitimately need more than
          * this. Best-effort -- if setrlimit itself fails, still proceed to
-         * exec rather than silently hang the agent turn. */
+         * exec rather than silently hang the agent turn.
+         *
+         * RLIMIT_CPU is reliably enforced on both Linux and macOS (verified
+         * via tests/test_cmd_exec_rlimits.c on both, including a real
+         * macOS CI runner). RLIMIT_AS is NOT: on macOS/Darwin, the XNU
+         * kernel does not enforce RLIMIT_AS the way Linux does -- a child's
+         * address space can grow past this cap with no effect (confirmed
+         * 2026-09-21 via the same test failing specifically, and only, on
+         * a real macOS runner; see docs/ai/mistakes.md). Still set here
+         * (harmless, and does bound things on Linux/most other POSIX
+         * targets), but on macOS deployments the parent's timeout/SIGKILL
+         * loop is the ONLY real backstop against a memory-hungry child --
+         * a genuine, currently-unmitigated platform gap, not fixed here
+         * (a real per-platform memory watchdog, e.g. polling task_info()
+         * on Darwin, is a real architectural addition, not a small one). */
         struct rlimit cpu_limit;
         cpu_limit.rlim_cur = (rlim_t)(timeout_sec > 0 ? timeout_sec + 2 : 30);
         cpu_limit.rlim_max = cpu_limit.rlim_cur;

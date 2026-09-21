@@ -3,6 +3,21 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-09-21.
 
+### 2026-09-21 — Corrected RLIMIT_AS defense-in-depth claim after a real macOS CI failure exposed it as false
+- What: manually triggering `ci.yml` (`workflow_dispatch`, after the fix below) surfaced a real
+  `Build & Test (macOS)` failure: `test_rlimit_as_actually_enforced` — the XNU kernel does not enforce
+  `RLIMIT_AS` on macOS/Darwin, unlike Linux (confirmed via the sibling `RLIMIT_CPU` test passing on the
+  same runner in the same run, isolating the gap to address-space limits specifically).
+- Fixed: `src/agent/cmd_exec.c`'s comment on the `setrlimit(RLIMIT_AS, ...)` call no longer claims
+  blanket "defense-in-depth" — it now states plainly that the 256 MiB cap is a no-op on macOS and the
+  parent's cooperative timeout/SIGKILL loop is the only real backstop there. `tests/test_cmd_exec_rlimits.c`'s
+  `test_rlimit_as_actually_enforced` now skips gracefully under `#ifdef __APPLE__` instead of burning 15s
+  and real unbounded memory growth on CI to reconfirm a known, documented negative every run.
+- Explicitly deferred (not silently dropped): a real Darwin memory watchdog (poll `task_info()`/
+  `proc_pidinfo`, kill on RSS threshold) is a genuine architectural addition, flagged rather than built
+  in this pass. See `mistakes.md` 2026-09-21 for full detail, including the meta-lesson that this
+  Linux-only dev environment cannot catch macOS-kernel-specific gaps — only real CI on a macOS runner can.
+
 ### 2026-09-21 — TS-2.6 API concurrency verification; fixed ci.yml never actually running
 - What: `tests/e2e_api_concurrency.sh` (TS-2.6) verifies the API server's `generation_mutex` trylock
   serialization (a second concurrent request gets 429 while the first is in flight, never blocks) and

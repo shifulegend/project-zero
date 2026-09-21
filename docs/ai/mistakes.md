@@ -5,6 +5,34 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-09-21.
 
+### 2026-09-21 — RLIMIT_AS is not enforced on macOS/Darwin — a real, previously-unknown production gap, found only by actually running CI on a real macOS runner
+
+- Context: manually triggered `ci.yml` (via `workflow_dispatch`, immediately after discovering it had
+  never run — see the entry above) to get real, on-GitHub confirmation of everything wired up this
+  session. `Build & Test (macOS)` failed at `test_rlimit_cpu_actually_enforced`'s sibling,
+  `test_rlimit_as_actually_enforced` — `RLIMIT_AS did NOT stop the child within 15s`.
+- This is a real, previously-unknown platform gap in **production code**, not a test bug: on macOS, the
+  XNU kernel does not enforce `RLIMIT_AS` the way Linux does — a child process's address space can grow
+  past the limit with no effect. Confirmed specifically (not a blanket "rlimits don't work on macOS"):
+  the sibling `RLIMIT_CPU` test passed on the same macOS runner in the same run, so CPU-time limits
+  *are* reliably enforced there — only the address-space cap is the gap.
+- Impact: `execute_command()`'s (`src/agent/cmd_exec.c`) 256 MiB `RLIMIT_AS` cap on the forked child was
+  documented as "defense-in-depth" memory protection — on macOS deployments, this defense silently does
+  nothing, and the parent's cooperative timeout/`SIGKILL` loop is the *only* real backstop against a
+  memory-hungry child (which could still consume a lot of host memory before that timeout fires).
+- Not fixed this pass (explicitly deferred, not silently dropped): a real per-platform memory watchdog
+  for Darwin (e.g. a monitor thread polling `task_info()`/`proc_pidinfo` and killing the child if RSS
+  exceeds a threshold) is a genuine architectural addition, not a small change. Fixed what's in scope:
+  corrected the misleading "defense-in-depth" comment in `cmd_exec.c` to state the platform limitation
+  explicitly, and made `test_rlimit_as_actually_enforced` skip gracefully on `__APPLE__` (matching this
+  project's existing convention for environment-dependent tests) instead of burning 15s and unbounded
+  real memory growth on CI to reconfirm a now-documented, known negative every run.
+- Lesson (compounds the entry above): this would never have been caught by local verification alone —
+  this dev environment is Linux-only, so "verified locally" for anything rlimit-related was structurally
+  incapable of catching a macOS-specific kernel behavior difference. Only actually running CI on GitHub's
+  real macOS runner surfaced it. Two real findings from checking actual CI status in one sitting, neither
+  visible from "the commands work when I run them myself."
+
 ### 2026-09-21 — `ci.yml`'s new jobs (and the original build-and-test matrix) had never actually run on GitHub for any commit this session
 
 - Context: after wiring golden-output regression, CMake build check, and coverage into `ci.yml`

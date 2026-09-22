@@ -2,10 +2,12 @@
 #include "transformer/moe_ffn.h"
 #include "math/parallel_matmul.h"
 #include "math/simd_dispatch.h"
+#include "math/batched_matmul.h"
 #include "core/debug.h"
 #include "core/step_timing.h"
 #include "core/weights.h"
 #include "transformer/dense_matmul_dispatch.h"
+#include <string.h>
 
 /* Maximum input dimension supported for layer-level preq stack buffer. */
 #define FFN_PREQ_BUF_SIZE 16384
@@ -94,11 +96,75 @@ void ffn_forward(RunState *s, const TransformerWeights *w,
     /* Step 14: dense down projection output (pre-residual) */
     DBG_DUMP(layer, "dense_down", s->xb, dim);
 
-
     /* Step 7: Residual connection — s->x += s->xb */
     tn_vec_add(s->x, s->x, s->xb, dim);
     if (t_step) {
         tn_step_timing_add(TN_STEP_14_DENSE_FFN,
                            tn_step_timing_now_ns() - t_step);
     }
+}
+
+/* ── Phase 18 (speculative decoding): batched multi-token FFN ──────────────
+ * See include/transformer/ffn.h for the MoE-fallback rationale. */
+TernaryError ffn_forward_batch(RunState *s, SpecBatchScratch *sb,
+                                const TransformerWeights *w, const Config *cfg,
+                                const MoEConfig *mc, int layer, int n_tokens, ThreadPool *tp) {
+    int dim = cfg->dim;
+    int hidden_dim = cfg->hidden_dim;
+
+    if (moe_layer_is_moe(mc, layer)) {
+        for (int k = 0; k < n_tokens; k++) {
+            memcpy(s->x, sb->x + (size_t)k * dim, (size_t)dim * sizeof(float));
+            moe_ffn_forward(s, w, cfg, mc, layer, tp);
+            memcpy(sb->x + (size_t)k * dim, s->x, (size_t)dim * sizeof(float));
+        }
+        return TN_OK;
+    }
+
+    /* Dense SwiGLU FFN — fully batched. */
+    for (int k = 0; k < n_tokens; k++) {
+        tn_rmsnorm(sb->xb + (size_t)k * dim, sb->x + (size_t)k * dim,
+                   w->rms_ffn_weight[layer], dim, cfg->rms_norm_eps);
+    }
+
+    if (w->layers_are_ternary) {
+        tn_ternary_matmul_packed_batch(sb->hb,  sb->xb, (const tn_u8 *)w->w1[layer],
+                                        dim, hidden_dim, w->s1[layer], n_tokens, tp);
+        tn_ternary_matmul_packed_batch(sb->hb2, sb->xb, (const tn_u8 *)w->w3[layer],
+                                        dim, hidden_dim, w->s3[layer], n_tokens, tp);
+    } else {
+        tn_dense_matmul_dispatch_batch(sb->hb,  sb->xb, w->w1[layer], w->w1_type[layer],
+                                        dim, hidden_dim, n_tokens, tp);
+        tn_dense_matmul_dispatch_batch(sb->hb2, sb->xb, w->w3[layer], w->w3_type[layer],
+                                        dim, hidden_dim, n_tokens, tp);
+    }
+
+    /* Activation + SwiGLU gate: purely elementwise, so one call spanning
+     * the full n_tokens*hidden_dim block is equivalent to n_tokens
+     * per-row calls. */
+    if (cfg->act_type == 1) {
+        tn_relu2(sb->hb, n_tokens * hidden_dim);
+    } else {
+        tn_silu(sb->hb, n_tokens * hidden_dim);
+    }
+    tn_vec_mul(sb->hb, sb->hb, sb->hb2, n_tokens * hidden_dim);
+
+    if (w->rms_ffn_sub_norm && w->rms_ffn_sub_norm[layer]) {
+        for (int k = 0; k < n_tokens; k++) {
+            float *hb_k = sb->hb + (size_t)k * hidden_dim;
+            tn_rmsnorm(hb_k, hb_k, w->rms_ffn_sub_norm[layer], hidden_dim, cfg->rms_norm_eps);
+        }
+    }
+
+    if (w->layers_are_ternary) {
+        tn_ternary_matmul_packed_batch(sb->xb, sb->hb, (const tn_u8 *)w->w2[layer],
+                                        hidden_dim, dim, w->s2[layer], n_tokens, tp);
+    } else {
+        tn_dense_matmul_dispatch_batch(sb->xb, sb->hb, w->w2[layer], w->w2_type[layer],
+                                        hidden_dim, dim, n_tokens, tp);
+    }
+
+    tn_vec_add(sb->x, sb->x, sb->xb, n_tokens * dim);
+
+    return TN_OK;
 }

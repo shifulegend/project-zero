@@ -168,6 +168,7 @@ set(MATH_SOURCES
     src/math/ternary_matmul_packed.c
     src/math/ternary_matmul_packed_avx2.c
     src/math/ternary_matmul_packed_avx512.c
+    src/math/ternary_matmul_lut_avx512bw.c
     src/math/ternary_matmul_packed_vnni.c
     src/math/ternary_matmul_packed_avx_vnni.c
     src/math/ternary_matmul_packed_dotprod.c
@@ -236,6 +237,10 @@ set(KV_CACHE_SOURCES
     src/kv_cache/kv_strategy.c
 )
 
+set(SPECULATIVE_SOURCES
+    src/speculative/spec_scratch.c
+)
+
 set(REASONING_SOURCES
     src/reasoning/thought_filter.c
     src/reasoning/prompt_inject.c
@@ -296,6 +301,7 @@ set(SOURCES
     ${TRANSFORMER_SOURCES}
     ${SAMPLING_SOURCES}
     ${KV_CACHE_SOURCES}
+    ${SPECULATIVE_SOURCES}
     ${REASONING_SOURCES}
     ${CLI_SOURCES}
     ${API_SOURCES}
@@ -322,7 +328,8 @@ if(PZ_DIST AND NOT MSVC)
         src/math/matmul_q5_0.c src/math/matmul_q5_1.c src/math/matmul_q5k.c
         src/math/matmul_f16.c src/math/quantize_i8.c src/math/parallel_matmul.c)
     set(PZ_AVX512_SRCS
-        src/math/ternary_matmul_packed_avx512.c src/math/elementwise_avx512.c
+        src/math/ternary_matmul_packed_avx512.c src/math/ternary_matmul_lut_avx512bw.c
+        src/math/elementwise_avx512.c
         src/math/rmsnorm_avx512.c src/math/softmax_avx512.c)
     set_source_files_properties(${PZ_AVX2_SRCS} PROPERTIES
         COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")

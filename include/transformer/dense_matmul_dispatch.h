@@ -14,6 +14,7 @@
 #include "math/matmul_q2_0.h"
 #include "math/matmul_q4k.h"
 #include "math/matmul_q4k_x8.h"
+#include "math/batched_matmul.h"
 #include "threading/thread_pool.h"
 
 /* Bound for the stack Q8K activation buffer below — matches
@@ -64,6 +65,31 @@ static inline void tn_dense_matmul_dispatch_preq(float *out, const TnQ8KActBlock
         parallel_matmul_q4k_x8_preq(out, acts, (const TnQ4KX8Block *)w, n / 256, d, tp);
     } else {
         parallel_matmul_q4k_preq(out, acts, (const uint8_t *)w, n, d, tp);
+    }
+}
+
+/* Phase 18 (speculative decoding): batched variant of
+ * tn_dense_matmul_dispatch() — `x` is [n_tokens][n] row-major, `out` is
+ * [n_tokens][d] row-major (see include/math/batched_matmul.h).
+ *
+ * WEIGHT_TYPE_F16 gets the real batched kernel (each weight row read from
+ * RAM once, reused across all n_tokens candidates). Every other format
+ * (Q4_K, Q4_K_X8, Q2_0, F32) falls back to n_tokens sequential single-token
+ * calls through the exact same per-token dispatch above -- correct (matches
+ * the non-batched forward pass bit-for-bit), but without the RAM-bandwidth
+ * win for those formats. Documented Phase 18-B follow-up, not silently
+ * accepted -- see docs/architecture/IMPLEMENTATION_PLAN.md's Phase 18
+ * section and docs/ai/decision-log.md. */
+static inline void tn_dense_matmul_dispatch_batch(float *out, const float *x,
+                                                    const tn_i8 *w, int wtype,
+                                                    int n, int d, int n_tokens,
+                                                    ThreadPool *tp) {
+    if (wtype == WEIGHT_TYPE_F16) {
+        tn_matmul_f16_batch(out, x, (const tn_u16 *)w, n, d, n_tokens, tp);
+        return;
+    }
+    for (int k = 0; k < n_tokens; k++) {
+        tn_dense_matmul_dispatch(out + (size_t)k * d, x + (size_t)k * n, w, wtype, n, d, tp);
     }
 }
 

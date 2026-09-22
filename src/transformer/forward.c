@@ -9,6 +9,7 @@
 #include "math/parallel_matmul.h"
 #include "math/matmul_q2_0.h"
 #include "math/simd_dispatch.h"
+#include "math/batched_matmul.h"
 #include "transformer/attention.h"
 #include "transformer/embedding.h"
 #include "transformer/ffn.h"
@@ -219,4 +220,83 @@ float *transformer_forward(int token, int pos, const Config *cfg,
   }
 
   return s->logits;
+}
+
+/* ── Phase 18 (speculative decoding): batched multi-token forward pass ─────
+ * See include/transformer/forward.h for the full contract. Orchestrates:
+ * embed all n_tokens, loop layers calling the batched attention/FFN
+ * functions, batched final RMSNorm, batched classifier matmul.
+ *
+ * Diagnostics (TN_PROFILE, step_timing, DBG_DUMP) are intentionally not
+ * threaded through this path -- they're per-single-token instrumentation
+ * that doesn't have an obvious batched analogue, and are not needed for
+ * this function's correctness. */
+TernaryError transformer_forward_batch(const int *tokens, int pos, int n_tokens,
+                                        const Config *cfg, const TransformerWeights *w,
+                                        RunState *s, SpecBatchScratch *sb,
+                                        const MoEConfig *mc, ThreadPool *tp,
+                                        float *logits_out) {
+  if (mc && mc->has_linear_attn) {
+    return TN_ERR_UNSUPPORTED;
+  }
+
+  int dim = cfg->dim;
+
+  /* Step 1: embed all tokens into sb->x */
+  for (int k = 0; k < n_tokens; k++) {
+    int token = tokens[k];
+    if (token < 0 || token >= cfg->vocab_size) {
+      memset(sb->x + (size_t)k * dim, 0, (size_t)dim * sizeof(float));
+      continue;
+    }
+    if (w->q35_is_q2_0_model) {
+      /* Unreachable in practice: q35_is_q2_0_model models always have
+       * has_linear_attn set (see gguf_loader.c's Qwen3.5/3.6 loader),
+       * already refused above. Handled anyway for defense-in-depth rather
+       * than assuming the correlation always holds. */
+      embed_token_q2_0(sb->x + (size_t)k * dim, token, w->q35_token_embd_raw, dim);
+    } else {
+      embed_token(sb->x + (size_t)k * dim, token, w->embd_f32, w->token_embedding_table, dim);
+    }
+  }
+
+  /* Step 2: run through all transformer layers */
+  for (int l = 0; l < cfg->n_layers; l++) {
+    TernaryError err = attention_forward_batch(s, sb, w, cfg, mc, l, pos, n_tokens, tp);
+    if (err != TN_OK) return err;
+    err = ffn_forward_batch(s, sb, w, cfg, mc, l, n_tokens, tp);
+    if (err != TN_OK) return err;
+  }
+
+  /* Step 3: final RMSNorm, per token (per-row statistic, not batchable) */
+  if (w->rms_final_weight) {
+    for (int k = 0; k < n_tokens; k++) {
+      float *x_k = sb->x + (size_t)k * dim;
+      tn_rmsnorm(x_k, x_k, w->rms_final_weight, dim, cfg->rms_norm_eps);
+    }
+  }
+
+  /* Step 4: classifier matmul -> logits_out, batched. Mirrors
+   * transformer_forward()'s non-q35 branches (wcls_is_ternary, then the
+   * hardware-profile-selected INT4/INT8/BF16 generic path); the
+   * q35_is_q2_0_model branch there is unreachable here (see Step 1). */
+  if (w->wcls_is_ternary) {
+    tn_ternary_matmul_packed_batch(logits_out, sb->x, (const tn_u8 *)w->wcls,
+                                    dim, cfg->vocab_size, w->wcls_scale, n_tokens, tp);
+  } else {
+    const TnHardwareProfile *hp = tn_hardware_profile_get();
+    TnClassifierFormat fmt = hp ? hp->classifier_fmt : TN_CLS_BF16;
+
+    if (fmt == TN_CLS_INT4 && w->wcls_i4 && w->wcls_i4_scales) {
+      tn_matmul_i4_batch(logits_out, sb->x, w->wcls_i4, w->wcls_i4_scales,
+                          dim, cfg->vocab_size, n_tokens, tp);
+    } else if (fmt >= TN_CLS_INT8 && w->wcls_i8 && w->wcls_i8_scales) {
+      tn_matmul_i8_batch(logits_out, sb->x, w->wcls_i8, w->wcls_i8_scales,
+                          dim, cfg->vocab_size, n_tokens, tp);
+    } else {
+      tn_matmul_bf16_batch(logits_out, sb->x, w->wcls, dim, cfg->vocab_size, n_tokens, tp);
+    }
+  }
+
+  return TN_OK;
 }

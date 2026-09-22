@@ -3,6 +3,49 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-09-22.
 
+### 2026-09-22 — Phase 18 (speculative decoding) Stage 2: `transformer_forward_batch()`
+- What: `include/speculative/spec_scratch.h` + `src/speculative/spec_scratch.c` (new) — the
+  `SpecBatchScratch` N-token-wide buffer bundle, owned entirely outside `RunState` so every
+  existing single-token caller is untouched. `attention_forward_batch()` (`attention.c`, dispatches
+  to `mla_attention_forward_batch()`/`qwen3moe_attention_forward_batch()`/a generic dense-GQA batch
+  path, or refuses with the new `TN_ERR_UNSUPPORTED` for `has_linear_attn` models),
+  `ffn_forward_batch()` (`ffn.c`, dense path fully batched, MoE path falls back to N sequential
+  `moe_ffn_forward()` calls — documented limitation), and `transformer_forward_batch()`
+  (`forward.c`) orchestrating embed → batched-layer-loop → per-token final RMSNorm → batched
+  classifier matmul into a caller-owned `logits_out` buffer. `tn_dense_matmul_dispatch_batch()`
+  added to `dense_matmul_dispatch.h` (F16 gets a real batch kernel; Q4_K/Q4_K_X8/Q2_0/F32 fall back
+  to N sequential calls, matching Stage 1's documented scope).
+- New test `tests/test_forward_batch.c` (23 assertions across 4 sub-tests): synthetic dense, MLA,
+  and Qwen3-MoE (QK-norm) models, asserting `transformer_forward_batch()`'s output is
+  bit-tolerance-identical to N sequential `transformer_forward()` calls (the teacher-forcing
+  equivalence the whole feature depends on), plus a negative test confirming `has_linear_attn`
+  models get a clean `TN_ERR_UNSUPPORTED` refusal, not a crash or silent wrong answer.
+- Found and fixed a real, pre-existing production bug while debugging this test's Qwen3-MoE case:
+  the AVX-512 8-wide tail of the BF16 (`parallel_matmul.c`) and F16 (`matmul_f16.c`) classifier
+  matmul kernels silently dropped one of four horizontal-sum lanes for any `n` in `[8,15]` — see
+  `docs/ai/mistakes.md`'s 2026-09-22 entry for the full root-cause writeup. Fixed both call sites;
+  confirmed via full grep of every `_mm_movehl_ps` call site in `src/math/` that no other instance
+  of the same bug pattern exists elsewhere. Also fixed a test-construction gap (all three synthetic
+  models left `rope_yarn_attn_factor` at its zeroed default, degenerating RoPE to all-zero output
+  in every test) so the equivalence tests actually exercise real RoPE rotation.
+- Verified: `make release/test/debug` green on gcc and clang with zero new warnings; a `cmake
+  --build` sanity pass confirms `CMakeLists.txt`'s new `SPECULATIVE_SOURCES` stays in sync. That
+  same CMake pass also caught an unrelated, pre-existing bug: `src/math/ternary_matmul_lut_avx512bw.c`
+  was missing from `CMakeLists.txt` entirely (present in the Makefile's `AVX512_TUS` since it was
+  added, never ported to CMake), breaking the CMake build for `test_ternary_lut_avx512bw` — see
+  `docs/ai/mistakes.md`'s 2026-09-22 entry. Fixed in the same pass.
+- Why: Stage 2 of the user-approved Phase 18 plan — the load-bearing correctness proof (batched
+  forward pass matches sequential forward pass, architecture-by-architecture) that Stages 3-6
+  (CLI wiring, draft-model loading, accept/reject loop) build on.
+- Areas: `include/speculative/spec_scratch.h` (new), `src/speculative/spec_scratch.c` (new),
+  `include/transformer/forward.h`, `src/transformer/forward.c`, `include/transformer/attention.h`,
+  `src/transformer/attention.c`, `include/transformer/mla_attention.h`,
+  `src/transformer/mla_attention.c`, `include/transformer/qwen3moe_attention.h`,
+  `src/transformer/qwen3moe_attention.c`, `include/transformer/ffn.h`, `src/transformer/ffn.c`,
+  `include/transformer/dense_matmul_dispatch.h`, `include/core/error.h`, `src/core/error.c`,
+  `src/math/parallel_matmul.c`, `src/math/matmul_f16.c` (bugfix), `tests/test_forward_batch.c`
+  (new), `CMakeLists.txt`.
+
 ### 2026-09-22 — Phase 18 (speculative decoding) Stage 1: batched GEMM kernels
 - What: `include/math/batched_matmul.h`, `src/math/batched_matmul.c` (ternary-packed),
   `src/math/batched_matmul_f16.c` (F16), `src/math/batched_matmul_classifier.c` (BF16/INT8/INT4).

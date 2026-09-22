@@ -3,7 +3,94 @@
 > Canonical, append-at-top (newest first). Read this at the start of every session.
 > Add an entry **immediately** when a mistake, false assumption, regression, or avoidable
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
-> Last updated: 2026-09-21.
+> Last updated: 2026-09-22.
+
+### 2026-09-22 — `CMakeLists.txt` was missing `src/math/ternary_matmul_lut_avx512bw.c` entirely, breaking the CMake build for `test_ternary_lut_avx512bw`
+
+- Context: Stage 2's plan-mandated verification step ("run a CMake sanity build") on this AVX-512
+  VNNI dev machine, after `make release/test/debug` was already green on gcc and clang.
+- Finding: `cmake --build` failed at the link step for `test_ternary_lut_avx512bw` with undefined
+  references to `lut_pack_weights`/`lut_mm_avx512bw` — `src/math/ternary_matmul_lut_avx512bw.c`
+  (the Phase K-6 LUT-based AVX-512BW ternary kernel, with its own dedicated 6-assertion test) was
+  never added to `CMakeLists.txt`'s `MATH_SOURCES` or the dist-build's `PZ_AVX512_SRCS` list, even
+  though the Makefile's `AVX512_TUS` has always included it. Pure CMake/Makefile drift — exactly
+  the failure mode `.claude/rules/config.md` calls out ("Keep both in sync when adding source
+  files or flags"), just never caught because this session appears to be the first time anyone
+  ran a CMake build since that file was added.
+- Impact: `test_ternary_lut_avx512bw` (and, transitively, the whole CMake build, since `make -j`
+  aborts on the first failing target with unfinished jobs left dangling) was broken for every
+  CMake-based build/CI path, invisible to the Makefile-based `make test` this project's day-to-day
+  workflow and existing CI jobs actually use.
+- Fixed: added `src/math/ternary_matmul_lut_avx512bw.c` to `MATH_SOURCES` and to `PZ_AVX512_SRCS`
+  (with the same `-mavx512bw` compile options already applied to its AVX-512 siblings there).
+- Verified: full `cmake --build` (all targets) now succeeds; `test_ternary_lut_avx512bw` passes
+  (6/6) from the CMake-built binary.
+- Lesson: unrelated to Phase 18, found only because this session's Stage 2 verification step
+  happened to include a CMake build — a reminder that "the Makefile passes" and "the build is
+  correct" are not the same claim when two build systems are both meant to be canonical, per the
+  bug-fix policy this was fixed in the same pass rather than filed for later.
+
+### 2026-09-22 — Pre-existing AVX-512 horizontal-sum bug in the BF16/F16 classifier matmul's 8-wide tail, silently dropping one of four lanes for any `n` in `[8,15]`
+
+- Context: Phase 18 (speculative decoding) Stage 2 — writing `tests/test_forward_batch.c`'s
+  Qwen3-MoE (QK-norm) equivalence test (`transformer_forward_batch()` must match N sequential
+  `transformer_forward()` calls). The synthetic test model uses `Q3_DIM=8`, `Q3_VOCAB=6`, smaller
+  than the dense/MLA tests' `D_DIM=M_DIM=16` — chosen for test speed, not realizing this crossed
+  into an untested code path.
+- Symptom: final logits diverged by ~O(1) between the sequential and batched forward passes even
+  though every earlier stage (attention `attn_concat`, post-attention residual, post-FFN residual,
+  final RMSNorm output) matched to within float rounding when dumped side-by-side — the divergence
+  only appeared in the raw classifier-matmul output itself, despite both paths reading the *same*
+  `w->wcls` array and near-identical input activations.
+- Root cause: `matmul_bf16_task()` (`src/math/parallel_matmul.c`, the sequential/reference kernel)
+  and `matmul_f16_task()` (`src/math/matmul_f16.c`) both have an AVX-512-tier "8-wide tail" branch
+  (`if (j + 7 < a->n) { ... }`) that only executes when `n` has a remainder of exactly 8 after the
+  64-wide and 16-wide main loops — i.e. only when `n` (here, `dim`) is in `[8, 15]` and not a
+  multiple of 16. This project's only prior BF16/F16-classifier tests all used `dim` values that
+  are multiples of 16, so this branch had zero test coverage before today. Its 4-lane horizontal
+  sum had a real bug: `val += _mm_cvtss_f32(_mm_add_ss(_mm_add_ps(s4,sh), _mm_movehl_ps(sh,sh)))`
+  reuses the *pre-update* shuffled register `sh` (from `_mm_movehdup_ps(s4)`, i.e. `[s4_1, s4_1,
+  s4_3, s4_3]`) as both arguments to `_mm_movehl_ps`, extracting `s4_3` a second time instead of
+  the lane holding `s4_2+s4_3`. Net effect: `s4[2]` (elements 2 and 6 of the original 8-wide
+  product vector) is silently dropped from every dot product computed through this path — not a
+  precision loss, a missing term. The correct idiom (used correctly by every *other*
+  horizontal-sum call site in the codebase, e.g. `parallel_matmul.c`'s INT8/INT4 classifier paths
+  and `matmul_q5_0.c`/`ternary_matmul_avx2.c`) computes the running sum first
+  (`sums = _mm_add_ps(s4, sh)`) and only *then* calls `_mm_movehl_ps(sh, sums)` — passing the
+  *updated* sum as the second operand, not the stale pre-update shuffle twice.
+- Fixed: both call sites corrected to use `_mm_movehl_ps(sh, sums)` where `sums = _mm_add_ps(s4,
+  sh)` is computed first — the pattern already used correctly everywhere else in the file. Grepped
+  the whole `src/math/` tree for every `_mm_movehl_ps` call site to confirm no other instance of
+  this specific bug (passing the pre-update shuffle register twice instead of shuffle+updated-sum)
+  exists — all others already matched the correct idiom.
+- Also fixed, same pass: `tests/test_forward_batch.c`'s three synthetic model builders (dense,
+  MLA, Qwen3-MoE) all `memset(cfg, 0, ...)` their `Config` and never set `rope_yarn_attn_factor`,
+  leaving it at 0 — but `apply_rope()`'s `mscale = attn_factor` multiplies cos/sin unconditionally
+  (not gated by `ext_factor`), so every RoPE call in all three tests silently produced all-zero
+  rotated output. This didn't cause a false pass (both sequential and batched paths degenerate
+  identically, so the equivalence check still holds), but it meant none of the three tests were
+  actually exercising real RoPE rotation math. Fixed by setting `cfg->rope_yarn_attn_factor = 1.0f`
+  (matching `config.c`'s real default and `gguf_loader.c`'s real GGUF-driven computation) in all
+  three builders.
+- Impact: this is a real, previously-shipped correctness bug in the production BF16/F16 classifier
+  kernels (`parallel_matmul_bf16`/`tn_matmul_f16` and their batched Stage-1 companions call the
+  same underlying scalar fallback for the true tail, but the *AVX-512* 8-wide sub-path is only hit
+  automatically when the hardware profile selects BF16 classifier format on an AVX-512 CPU AND the
+  model's `dim` happens to fall in `[8,15]` mod 16 — for F16, any dense-matmul call with `n` in
+  that same range, e.g. certain small MLA/projection widths). No production `dim` this codebase
+  currently ships defaults to a value in that exact range for the classifier path (real models use
+  `dim` in the hundreds to thousands, always evenly divisible by 16), so this most likely never
+  fired in an actual inference run to date — but it was silently wrong for any future model or
+  code path landing on such an `n`, and would have produced wrong top-token selection with no
+  error, warning, or NaN to signal it.
+- Verified: `test_forward_batch` (23/23), full `make release/test/debug` green on gcc and clang,
+  CMake sanity build.
+- Lesson: an AVX-512 kernel's "tail" branches for in-between sizes (here, exactly `n mod 16 ==
+  8..15`) are load-bearing code with their own untested boundary, not leftover scaffolding — a
+  test suite that only ever exercises `dim` values that are clean multiples of the main SIMD
+  width (16, 32, 64...) can pass indefinitely while a real bug sits in the tail path, surfacing
+  only when some other change (here, choosing a small `dim` for test speed) happens to land inside
+  it. Per the bug-fix policy, this was fixed in the same pass despite being unrelated to Phase 18.
 
 ### 2026-09-21 — `simd_dispatch.c` self-documented a "NEON" tier that never had a kernel behind it
 

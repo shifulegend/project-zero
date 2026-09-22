@@ -25,10 +25,12 @@
 #include "math/parallel_matmul.h"
 #include "math/rope.h"
 #include "math/simd_dispatch.h"
+#include "math/batched_matmul.h"
 #include "core/platform.h"
 #include "transformer/dense_matmul_dispatch.h"
 #include <math.h>
 #include <string.h>
+#include <stdlib.h>
 
 /* Generous fixed stack-buffer bounds, mirroring qwen35_attention.c's
  * Q35_MAX_* convention (fixed generous buffer, no runtime malloc). Sized
@@ -155,4 +157,156 @@ void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w,
         tn_dense_matmul_dispatch(s->xb, attn_concat, w->wo[layer], w->wo_type[layer], q_width, dim, tp);
     }
     tn_vec_add(s->x, s->x, s->xb, dim);
+}
+
+/* ── Phase 18 (speculative decoding): batched multi-token Qwen3-MoE attention
+ *
+ * Same write-phase/read-phase restructuring as attention_forward_batch()
+ * (attention.c) -- see that function's header comment for the general
+ * design and correctness argument.
+ *
+ * This arch's q_width/kv_width are independent of dim/hidden_dim (may
+ * exceed both -- see this file's top-of-file comment), so it cannot reuse
+ * SpecBatchScratch's generic dim/hidden_dim-wide buffers the way the dense
+ * and MLA batched paths do. Instead it heap-allocates its own N-wide Q/K/V/
+ * attention-output scratch here, sized by this layer's *actual* q_width/
+ * kv_width (not the QWEN3MOE_MAX_* stack-buffer bounds the single-token
+ * path uses) -- freed at the end of this call. */
+TernaryError qwen3moe_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
+                                               const TransformerWeights *w, const Config *cfg,
+                                               const MoEConfig *mc, int layer, int pos,
+                                               int n_tokens, ThreadPool *tp) {
+    int dim      = cfg->dim;
+    int n_heads  = cfg->n_heads;
+    int n_kv_h   = cfg->n_kv_heads;
+    int head_dim = mc->attn_head_dim;
+    int kv_mul   = n_heads / n_kv_h;
+    int q_width  = n_heads * head_dim;
+    int kv_width = n_kv_h  * head_dim;
+    int max_seq  = s->max_seq_len;
+
+    float *q_buf_all = (float *)malloc((size_t)n_tokens * q_width * sizeof(float));
+    float *k_buf_all = (float *)malloc((size_t)n_tokens * kv_width * sizeof(float));
+    float *v_buf_all = (float *)malloc((size_t)n_tokens * kv_width * sizeof(float));
+    float *attn_concat_all = (float *)malloc((size_t)n_tokens * q_width * sizeof(float));
+    if (!q_buf_all || !k_buf_all || !v_buf_all || !attn_concat_all) {
+        free(q_buf_all); free(k_buf_all); free(v_buf_all); free(attn_concat_all);
+        return TN_ERR_OOM;
+    }
+
+    /* Step 1: rmsnorm, per token */
+    for (int k = 0; k < n_tokens; k++) {
+        tn_rmsnorm(sb->xb + (size_t)k * dim, sb->x + (size_t)k * dim,
+                   w->rms_att_weight[layer], dim, cfg->rms_norm_eps);
+    }
+
+    /* Step 2: Q/K/V projections -- real batch for ternary/F16, sequential
+     * fallback for everything else (documented Phase 18-B scope). */
+    if (w->layers_are_ternary) {
+        tn_ternary_matmul_packed_batch(q_buf_all, sb->xb, (const tn_u8 *)w->wq[layer],
+                                        dim, q_width, w->sq[layer], n_tokens, tp);
+        tn_ternary_matmul_packed_batch(k_buf_all, sb->xb, (const tn_u8 *)w->wk[layer],
+                                        dim, kv_width, w->sk[layer], n_tokens, tp);
+        tn_ternary_matmul_packed_batch(v_buf_all, sb->xb, (const tn_u8 *)w->wv[layer],
+                                        dim, kv_width, w->sv[layer], n_tokens, tp);
+    } else {
+        tn_dense_matmul_dispatch_batch(q_buf_all, sb->xb, w->wq[layer], w->wq_type[layer],
+                                        dim, q_width, n_tokens, tp);
+        tn_dense_matmul_dispatch_batch(k_buf_all, sb->xb, w->wk[layer], w->wk_type[layer],
+                                        dim, kv_width, n_tokens, tp);
+        tn_dense_matmul_dispatch_batch(v_buf_all, sb->xb, w->wv[layer], w->wv_type[layer],
+                                        dim, kv_width, n_tokens, tp);
+    }
+
+    for (int k = 0; k < n_tokens; k++) {
+        int tok_pos = pos + k;
+        float *q_k = q_buf_all + (size_t)k * q_width;
+        float *k_k = k_buf_all + (size_t)k * kv_width;
+        float *v_k = v_buf_all + (size_t)k * kv_width;
+
+        /* Step 3: per-head QK-norm, before RoPE */
+        for (int h = 0; h < n_heads; h++) {
+            float *qh = q_k + (size_t)h * head_dim;
+            tn_rmsnorm(qh, qh, w->qwen3moe_attn_q_norm[layer], head_dim, cfg->rms_norm_eps);
+        }
+        for (int kh = 0; kh < n_kv_h; kh++) {
+            float *khp = k_k + (size_t)kh * head_dim;
+            tn_rmsnorm(khp, khp, w->qwen3moe_attn_k_norm[layer], head_dim, cfg->rms_norm_eps);
+        }
+
+        /* Step 4: full (non-partial) RoPE with YaRN support */
+        float corr[2] = {0.0f, 0.0f};
+        float freq_scale  = cfg->rope_freq_scale;
+        float ext_factor  = cfg->rope_yarn_ext_factor;
+        float attn_factor = cfg->rope_yarn_attn_factor;
+        if (ext_factor != 0.0f) {
+            static const float M_PI_F = 3.14159265358979323846f;
+            float log_base = logf(cfg->rope_theta);
+            float start = floorf((float)head_dim * logf((float)cfg->rope_orig_ctx_len
+                                 / (cfg->rope_yarn_beta_fast * 2.0f * M_PI_F)) / (2.0f * log_base));
+            float end   = ceilf ((float)head_dim * logf((float)cfg->rope_orig_ctx_len
+                                 / (cfg->rope_yarn_beta_slow * 2.0f * M_PI_F)) / (2.0f * log_base));
+            corr[0] = start < 0.0f ? 0.0f : (start > (float)(head_dim-1) ? (float)(head_dim-1) : start);
+            corr[1] = end   < 0.0f ? 0.0f : (end   > (float)(head_dim-1) ? (float)(head_dim-1) : end  );
+        }
+        apply_rope(q_k, k_k, s->qwen3moe_rope_freq, head_dim, tok_pos, n_heads, n_kv_h,
+                   freq_scale, ext_factor, attn_factor, corr);
+
+        /* Step 5: write K/V into this layer's own cache */
+        int mapped_pos = sw_map_position(&s->sw, tok_pos);
+        for (int kh = 0; kh < n_kv_h; kh++) {
+            size_t off = ((size_t)kh * max_seq + (size_t)mapped_pos) * head_dim;
+            memcpy(&s->qwen3moe_key_cache[layer][off],   &k_k[(size_t)kh * head_dim], (size_t)head_dim * sizeof(float));
+            memcpy(&s->qwen3moe_value_cache[layer][off], &v_k[(size_t)kh * head_dim], (size_t)head_dim * sizeof(float));
+        }
+        sw_advance(&s->sw); /* kept for parity; see attention_forward_batch()'s comment */
+    }
+
+    /* Read phase: attention per token (not batched across k) */
+    float inv_sqrt_hd = 1.0f / sqrtf((float)head_dim);
+    for (int k = 0; k < n_tokens; k++) {
+        int tok_pos = pos + k;
+        float *q_k = q_buf_all + (size_t)k * q_width;
+        float *out_k = attn_concat_all + (size_t)k * q_width;
+        int valid_ctx = sw_valid_count(&s->sw, tok_pos);
+
+        for (int h = 0; h < n_heads; h++) {
+            float *q_h = q_k + (size_t)h * head_dim;
+            int    kh  = h / kv_mul;
+            float *att = s->att + (size_t)h * max_seq;
+
+            for (int t = 0; t < valid_ctx; t++) {
+                int hist     = (tok_pos >= valid_ctx) ? (tok_pos - valid_ctx + 1 + t) : t;
+                int mapped_t = sw_map_position(&s->sw, hist);
+                size_t off = ((size_t)kh * max_seq + (size_t)mapped_t) * head_dim;
+                att[t] = tn_vec_dot(q_h, &s->qwen3moe_key_cache[layer][off], head_dim) * inv_sqrt_hd;
+            }
+            tn_softmax(att, valid_ctx);
+
+            float *out_h = out_k + (size_t)h * head_dim;
+            memset(out_h, 0, (size_t)head_dim * sizeof(float));
+            for (int t = 0; t < valid_ctx; t++) {
+                int hist     = (tok_pos >= valid_ctx) ? (tok_pos - valid_ctx + 1 + t) : t;
+                int mapped_t = sw_map_position(&s->sw, hist);
+                size_t off = ((size_t)kh * max_seq + (size_t)mapped_t) * head_dim;
+                tn_vec_saxpy(out_h, att[t], &s->qwen3moe_value_cache[layer][off], head_dim);
+            }
+        }
+    }
+
+    /* Step 7: output projection (q_width -> dim), batched; + residual */
+    if (w->layers_are_ternary) {
+        tn_ternary_matmul_packed_batch(sb->xb, attn_concat_all, (const tn_u8 *)w->wo[layer],
+                                        q_width, dim, w->so[layer], n_tokens, tp);
+    } else {
+        tn_dense_matmul_dispatch_batch(sb->xb, attn_concat_all, w->wo[layer], w->wo_type[layer],
+                                        q_width, dim, n_tokens, tp);
+    }
+    tn_vec_add(sb->x, sb->x, sb->xb, n_tokens * dim);
+
+    free(q_buf_all);
+    free(k_buf_all);
+    free(v_buf_all);
+    free(attn_concat_all);
+    return TN_OK;
 }

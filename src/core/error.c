@@ -21,6 +21,7 @@ static const char *error_strings[] = {
     [TN_ERR_DB_OPEN]          = "Failed to open vector database",
     [TN_ERR_DB_WRITE]         = "Failed to write to vector database",
     [TN_ERR_INVALID_ARGS]     = "Invalid arguments",
+    [TN_ERR_UNSUPPORTED]      = "Operation not supported for this model configuration",
 };
 
 const char *tn_error_str(TernaryError err) {

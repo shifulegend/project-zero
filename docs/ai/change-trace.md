@@ -1,7 +1,39 @@
 # Change Trace — project-zero
 
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
-> Update after each meaningful sub-step. Last updated: 2026-09-21.
+> Update after each meaningful sub-step. Last updated: 2026-09-22.
+
+### 2026-09-22 — Phase 18 (speculative decoding) Stage 1: batched GEMM kernels
+- What: `include/math/batched_matmul.h`, `src/math/batched_matmul.c` (ternary-packed),
+  `src/math/batched_matmul_f16.c` (F16), `src/math/batched_matmul_classifier.c` (BF16/INT8/INT4).
+  Each computes N candidate-token activations against one weight matrix in a single call instead
+  of N separate single-vector calls, so each weight row is read from RAM once (stays resident in
+  L1/L2 across the token loop) instead of N times -- the actual mechanism that makes speculative
+  decoding's batched verify step cheaper than N normal forward-pass steps on this
+  memory-bandwidth-bound engine. Portable C, correctness-first (no new ISA-tuned SIMD tiers this
+  pass -- flagged as a documented Phase 18-B follow-up, matching the already-agreed
+  MoE-FFN-batching and NEON-tier deferrals in this project's history).
+- New test `tests/test_batched_matmul.c` (6 assertions): each batched kernel vs. N calls to its
+  existing single-vector reference. Caught two real test-authoring bugs before they'd have masked
+  real kernel bugs: (1) the ternary reference path initially called
+  `parallel_ternary_matmul_packed()` without `tn_simd_init()` first, segfaulting on a NULL
+  dispatch-table function pointer; (2) after fixing that, it still failed -- this dev machine has
+  AVX-512 VNNI, so the dispatch-selected reference kernel quantizes activations to int8
+  internally (~1% error vs. float32), which the batched kernel (plain float, no quantization)
+  correctly does NOT match at a tight tolerance. Fixed by comparing against the exact float32
+  scalar reference (`ternary_matmul_packed()`) directly, bypassing dispatch entirely -- the same
+  fix `tests/test_packed_weights.c` already applied for the identical reason, per its own comment.
+- Verified: `make release/test/debug` green on gcc and clang, zero new warnings; a `cmake --build`
+  sanity pass confirms the three new files (added to `CMakeLists.txt`'s `MATH_SOURCES`) stay in
+  sync with the Makefile's auto-discovery.
+- Why: user chose Phase 18 (speculative decoding) as the next feature, explicitly requiring a
+  real batched forward pass (not a sequential-verify scaffold) and a configurable
+  `--draft-model` CLI path (never embedded). Full staged plan at
+  `docs/architecture/IMPLEMENTATION_PLAN.md`'s Phase 18 section (to be updated at Stage 6) and
+  the session's approved plan file. This is Stage 1 of 6.
+- Areas: `include/math/batched_matmul.h` (new), `src/math/batched_matmul.c` (new),
+  `src/math/batched_matmul_f16.c` (new), `src/math/batched_matmul_classifier.c` (new),
+  `tests/test_batched_matmul.c` (new), `CMakeLists.txt`.
 
 ### 2026-09-21 — Implemented the missing plain-NEON ternary matmul kernel (Phase 3.5)
 - What: `src/math/ternary_matmul_packed_neon.c` (new) — fused unpack+matmul for 2-bit packed

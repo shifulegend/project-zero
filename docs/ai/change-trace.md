@@ -3,6 +3,41 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-09-22.
 
+### 2026-09-22 — Phase 18 (speculative decoding) Stage 3: factor GGUF model loading out of `main()`
+- What: `include/cli/model_load.h` + `src/cli/model_load.c` (new) — `load_gguf_model()`, the
+  GGUF-only half of main()'s old inline model-load block (mmap → GGUF header → Config/MoEConfig →
+  weight alloc/load → KV-strategy sizing → RunState + MLA/Qwen3.5/Qwen3-MoE state allocation),
+  returning a `LoadedModel` bundle. Takes `is_primary`: true (the verifier, main()'s only caller
+  this stage) prints the usual load/config/profiler output and sizes the KV cache from free RAM;
+  false (a future draft-model caller, Stage 5) loads silently and sizes context from a hint instead
+  — a draft model never needs a large context, and `tn_hardware_profile_set_model_bytes()` must
+  only ever reflect the verifier. `main.c`'s native raw-ternary `.bin` path is untouched in its own
+  format-specific logic (config_read/weights_map) but now carries its own copy of the
+  KV-strategy/RunState-allocation tail that used to be shared code after the format if/else —
+  native `.bin` models have no draft-model use case, so `load_gguf_model()` doesn't cover them.
+- Found and fixed a real, pre-existing latent bug while writing `loaded_model_free()`: its doc
+  comment ("safe to call on a zeroed LoadedModel") requires `mapped_file_close()` to truly be
+  safe on a zero-initialized `MappedFile` — but `mapped_file_close()`'s own existing doc comment
+  already claimed exactly that, and it was FALSE: a zeroed struct has `fd == 0` (not -1) until
+  `mapped_file_open()` has run, so `if (mf->fd >= 0) close(mf->fd)` would silently close fd 0
+  (stdin). No existing call site ever triggered it (all guard on a prior successful open), making
+  this session's `loaded_model_free()` the first real caller to rely on the promise. Fixed by
+  gating the fd teardown on `mf->data` (only ever set together with `fd` on the single success
+  path) in `src/memory/mapped_file.c`; added a regression test in `tests/test_mmap.c` that closes
+  a zeroed `MappedFile` and asserts stdin's fd is still open afterward.
+- Verified: golden-output equivalence — built the pre-Stage-3 commit (`69be1a5`) in a separate git
+  worktree, ran the "What is the capital of France?" prompt (`--temperature 0`) against both
+  binaries on the real SmolLM2-135M-Instruct GGUF demo model, diffed the full output with only
+  hardware-measurement lines (free RAM/bandwidth/ceiling, which vary run-to-run regardless of
+  code) excluded — zero differences, including the generated text itself
+  ("The capital of France is Paris."). `make release/test/debug` green on gcc and clang, zero new
+  warnings. CMake sanity build green (`project-zero` executable + all test targets).
+- Why: Stage 3 of the user-approved Phase 18 plan — `load_gguf_model()` is what Stage 5's draft
+  model loader will call (`is_primary=false`) to load a second, smaller GGUF model alongside the
+  verifier with zero duplicated GGUF-parsing code.
+- Areas: `include/cli/model_load.h` (new), `src/cli/model_load.c` (new), `src/cli/main.c`,
+  `src/memory/mapped_file.c` (bugfix), `tests/test_mmap.c`, `CMakeLists.txt`.
+
 ### 2026-09-22 — Phase 18 (speculative decoding) Stage 2: `transformer_forward_batch()`
 - What: `include/speculative/spec_scratch.h` + `src/speculative/spec_scratch.c` (new) — the
   `SpecBatchScratch` N-token-wide buffer bundle, owned entirely outside `RunState` so every

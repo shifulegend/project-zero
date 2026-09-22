@@ -20,6 +20,7 @@
 #include "tokenizer/tokenizer.h"
 #include "tokenizer/tokenizer_gguf.h"
 #include "cli/args.h"
+#include "cli/model_load.h"
 #include "cli/repl.h"
 #include "cli/progress.h"
 #include "cli/banner.h"
@@ -204,18 +205,23 @@ int main(int argc, char **argv) {
      * above, ahead of the startup banner.) */
     tn_progress_stage(1, 4, "Opening model file...", stdout_is_tty);
 
-    /* Map Model File */
-    MappedFile mf;
-    if (mapped_file_open(&mf, args.model_path) != TN_OK) {
-        fprintf(stderr, "Failed to map model file: %s\n", args.model_path);
-        threadpool_destroy(tp);
-        return 1;
+    /* Detect model format by reading the 4-byte magic number, without a
+     * full mmap (load_gguf_model() below does its own mapped_file_open() for
+     * the GGUF case; the native case opens its own mf directly below) —
+     * a plain 4-byte read is all this decision needs. */
+    bool is_gguf = false;
+    {
+        FILE *magic_f = fopen(args.model_path, "rb");
+        if (!magic_f) {
+            fprintf(stderr, "Failed to open model file: %s\n", args.model_path);
+            threadpool_destroy(tp);
+            return 1;
+        }
+        uint32_t file_magic = 0;
+        size_t n = fread(&file_magic, 1, sizeof(file_magic), magic_f);
+        fclose(magic_f);
+        is_gguf = (n == sizeof(file_magic) && file_magic == GGUF_MAGIC);
     }
-
-    /* Detect model format by reading the 4-byte magic number */
-    uint32_t file_magic = 0;
-    if (mf.size >= 4) memcpy(&file_magic, mf.data, 4);
-    bool is_gguf = (file_magic == GGUF_MAGIC);
 
     tn_progress_stage(2, 4, "Loading weights...", stdout_is_tty);
 
@@ -225,113 +231,35 @@ int main(int argc, char **argv) {
     MoEConfig mc;
     moe_config_init_dense(&mc); /* initialise to dense; overridden below for MoE models */
     GGUFHeader gguf_hdr;
+    memset(&gguf_hdr, 0, sizeof(gguf_hdr));
     GGUFWeightStore *gguf_store = NULL;
+    MappedFile mf;
+    RunState *s = NULL;
 
     if (is_gguf) {
-        printf("Model format: GGUF\n");
-
-        if (gguf_read_header(&gguf_hdr, mf.data, mf.size) != TN_OK) {
-            fprintf(stderr, "Failed to parse GGUF header.\n");
-            gguf_header_free(&gguf_hdr);
-            mapped_file_close(&mf);
+        LoadedModel lm;
+        TernaryError lerr = load_gguf_model(&lm, args.model_path, /*is_primary=*/true,
+                                             0, tp, stdout_is_tty);
+        if (lerr != TN_OK) {
+            fprintf(stderr, "Failed to load model: %s\n", tn_error_str(lerr));
             threadpool_destroy(tp);
             return 1;
         }
-        if (config_from_gguf(&p, &gguf_hdr) != TN_OK) {
-            fprintf(stderr, "Failed to read config from GGUF metadata.\n");
-            gguf_header_free(&gguf_hdr);
-            mapped_file_close(&mf);
-            threadpool_destroy(tp);
-            return 1;
-        }
-        config_print(&p);
-
-        /* For DeepSeek-V2 (MLA+MoE), Qwen3.5/3.6 (hybrid Gated-DeltaNet), or
-         * Qwen3-MoE (routed MoE + QK-norm) GGUF: populate MoEConfig ahead of
-         * weight loading. */
-        if (strcmp(gguf_hdr.arch, "deepseek2") == 0 || strcmp(gguf_hdr.arch, "qwen35") == 0 ||
-            strcmp(gguf_hdr.arch, "qwen3moe") == 0) {
-            if (moe_config_from_gguf(&mc, &gguf_hdr) != TN_OK) {
-                fprintf(stderr, "Failed to read MoE config from GGUF.\n");
-                mapped_file_close(&mf);
-                threadpool_destroy(tp);
-                return 1;
-            }
-            moe_config_print(&mc);
-        }
-
-        if (weights_alloc_pointers(&w, &p) != TN_OK) {
-            fprintf(stderr, "Failed to allocate weight pointers.\n");
-            mapped_file_close(&mf);
-            threadpool_destroy(tp);
-            return 1;
-        }
-        /* For MoE GGUF models (DeepSeek-V2), allocate per-layer/expert arrays. */
-        if (mc.is_moe) {
-            if (moe_weights_alloc(&w, &p, &mc) != TN_OK) {
-                fprintf(stderr, "Failed to allocate MoE weight pointer arrays.\n");
-                if (mc.is_moe) moe_weights_free(&w, &mc);
-                weights_free_pointers(&w);
-                mapped_file_close(&mf);
-                threadpool_destroy(tp);
-                return 1;
-            }
-        }
-        if (weights_from_gguf(&w, &p, &gguf_hdr, &gguf_store) != TN_OK) {
-            fprintf(stderr, "Failed to load GGUF weights.\n");
-            if (mc.is_moe) moe_weights_free(&w, &mc);
-            weights_free_pointers(&w);
-            mapped_file_close(&mf);
-            threadpool_destroy(tp);
-            return 1;
-        }
-
-        /* Correct the profiler's per-token traffic + ceiling with the real
-         * loaded model (2026-07-17): tn_hardware_profile_init() runs before
-         * the model file is opened and seeds Data/token with compile-time
-         * BitNet-2B constants (~1149 MB), overstating the ceiling ~6x for
-         * multi-GB GGUF models (docs/ai/mistakes.md). Accounting per class:
-         * Q2_0-native models subtract the embedding table (read one row per
-         * token, not streamed) and swap the raw Q2_0 LM head for the
-         * materialized classifier's bytes when one was explicitly requested.
-         * Generic GGUF uses the raw file size — an upper bound that still
-         * bills the full embedding table, since its tensor format (and thus
-         * byte size) isn't known generically here; tight for tied-embedding
-         * models, conservative otherwise. MoE models overcount (all experts,
-         * not just routed) — TODO: subtract inactive-expert bytes via
-         * MoEConfig. */
-        {
-            double per_tok = (double)mf.size;
-            double cls_bytes = 0.0;
-            const TnHardwareProfile *hp_m = tn_hardware_profile_get();
-            if (w.q35_is_q2_0_model) {
-                double q2_row = (double)p.vocab_size * p.dim * (34.0 / 128.0);
-                cls_bytes = q2_row; /* zero-copy raw Q2_0 head (default) */
-                if (hp_m && hp_m->classifier_explicit) {
-                    switch (hp_m->classifier_fmt) {
-                    case TN_CLS_INT4:
-                        cls_bytes = (double)p.vocab_size * p.dim * 0.5; break;
-                    case TN_CLS_INT8:
-                        cls_bytes = (double)p.vocab_size * p.dim;       break;
-                    default:
-                        cls_bytes = (double)p.vocab_size * p.dim * 2.0; break;
-                    }
-                }
-                /* drop embedding (one row/token) + in-file head, add the
-                 * head actually used */
-                per_tok -= 2.0 * q2_row;
-                per_tok += cls_bytes;
-            }
-            tn_hardware_profile_set_model_bytes(per_tok, cls_bytes);
-            if (hp_m) {
-                printf("[profile] Data/token (loaded model): %.0f MB -> "
-                       "ceiling %.1f tok/s at %.1f GB/s\n",
-                       per_tok / (1024.0 * 1024.0),
-                       hp_m->theoretical_ceiling, hp_m->measured_bw_gbps);
-            }
-        }
+        p = lm.config;
+        w = lm.weights;
+        mc = lm.moe_config;
+        s = lm.state;
+        mf = lm.mf;
+        gguf_hdr = lm.gguf_hdr;
+        gguf_store = lm.gguf_store;
     } else {
         printf("Model format: native ternary\n");
+
+        if (mapped_file_open(&mf, args.model_path) != TN_OK) {
+            fprintf(stderr, "Failed to map model file: %s\n", args.model_path);
+            threadpool_destroy(tp);
+            return 1;
+        }
 
         if (config_read(&p, mf.data, mf.size) != TN_OK) {
             fprintf(stderr, "Invalid model configuration.\n");
@@ -422,109 +350,105 @@ int main(int argc, char **argv) {
                        hp_n->theoretical_ceiling, hp_n->measured_bw_gbps);
             }
         }
-    }
 
-    tn_progress_stage(3, 4, "Preparing runtime...", stdout_is_tty);
+        tn_progress_stage(3, 4, "Preparing runtime...", stdout_is_tty);
 
-    /* KV Strategy — measured AFTER model weights are loaded so that any F32-dequantised
-     * weight allocations (MLA projections, shared experts, norms) are already counted in
-     * consumed RAM.  For mmap'd GGUF models the raw quantised expert bytes don't use
-     * physical RAM until accessed, so only the upfront malloc'd F32 blocks matter here.
-     * Re-measuring at this point prevents DeepSeek-style OOM where a 163840-token context
-     * would require 7+ GB KV cache on a machine that only has 2–3 GB left after load. */
-    {
-        tn_i64 post_load_ram = tn_get_free_ram();
-        KVStrategyResult kv_res = select_kv_strategy(&p, post_load_ram, &mc);
-        p.seq_len = kv_res.max_seq_len;
-        /* Qwen35 hybrid models keep their own F32 K/V caches
-         * (q35_key_cache/q35_value_cache, only the full-attention layers) —
-         * the quantized-KV strategy machinery is not wired into that path,
-         * so printing e.g. "Quantized I8" for them misreported what actually
-         * happens (2026-07-17, found during the ceiling-gap attribution;
-         * see docs/ai/mistakes.md). The RAM-aware max-context clamp from
-         * select_kv_strategy() still applies either way. Qwen3-MoE's own
-         * qwen3moe_key_cache/qwen3moe_value_cache are the same situation —
-         * independent head_dim, own F32 cache, not the quantized-KV path. */
+        /* KV Strategy — measured AFTER model weights are loaded so that any F32-dequantised
+         * weight allocations (MLA projections, shared experts, norms) are already counted in
+         * consumed RAM.  For mmap'd GGUF models the raw quantised expert bytes don't use
+         * physical RAM until accessed, so only the upfront malloc'd F32 blocks matter here.
+         * Re-measuring at this point prevents DeepSeek-style OOM where a 163840-token context
+         * would require 7+ GB KV cache on a machine that only has 2–3 GB left after load.
+         *
+         * This is the native-format twin of load_gguf_model()'s identical KV-strategy/
+         * RunState-allocation sequence (Phase 18 Stage 3) — native `.bin` models have no
+         * draft-model use case (see cli/model_load.h), so this stays inline here rather
+         * than sharing that GGUF-only helper. */
+        {
+            tn_i64 post_load_ram = tn_get_free_ram();
+            KVStrategyResult kv_res = select_kv_strategy(&p, post_load_ram, &mc);
+            p.seq_len = kv_res.max_seq_len;
+            if (mc.has_linear_attn) {
+                printf("KV Strategy: F32 (Qwen35 hybrid path; quantized-KV "
+                       "strategy not wired in), max context: %d tokens\n",
+                       p.seq_len);
+            } else if (mc.has_qk_norm) {
+                printf("KV Strategy: F32 (Qwen3-MoE path; quantized-KV "
+                       "strategy not wired in), max context: %d tokens\n",
+                       p.seq_len);
+            } else {
+                printf("KV Strategy: %s, max context: %d tokens\n",
+                       kv_strategy_name(kv_res.strategy), p.seq_len);
+            }
+        }
+
+        /* Setup RunState */
+        s = (RunState *)malloc(sizeof(RunState));
+        if (!s) {
+            fprintf(stderr, "Failed to allocate RunState header.\n");
+            if (mc.is_moe) moe_weights_free(&w, &mc);
+            weights_free_pointers(&w);
+            mapped_file_close(&mf);
+            threadpool_destroy(tp);
+            return 1;
+        }
+
+        /* Qwen3.5/3.6 hybrid models and Qwen3-MoE models never read the generic
+         * key_cache/value_cache (they use their own correctly-sized
+         * q35_key_cache/q35_value_cache or qwen3moe_key_cache/
+         * qwen3moe_value_cache, allocated below) — skip_kv_cache=true avoids a
+         * multi-GB calloc+memset for those models' context. See
+         * run_state_alloc_ex's header comment and docs/ai/mistakes.md. */
+        if (run_state_alloc_ex(s, &p, p.seq_len, mc.has_linear_attn || mc.has_qk_norm) != TN_OK) {
+            fprintf(stderr, "Failed to allocate RunState buffers.\n");
+            free(s);
+            if (mc.is_moe) moe_weights_free(&w, &mc);
+            weights_free_pointers(&w);
+            mapped_file_close(&mf);
+            threadpool_destroy(tp);
+            return 1;
+        }
+
+        /* Phase 17.7: MLA k_rope_cache (allocated only when has_mla=1) */
+        if (mc.has_mla) {
+            if (mla_run_state_alloc(s, &p, &mc, p.seq_len) != TN_OK) {
+                fprintf(stderr, "Failed to allocate MLA k_rope_cache.\n");
+                run_state_free(s);
+                free(s);
+                if (mc.is_moe) moe_weights_free(&w, &mc);
+                weights_free_pointers(&w);
+                mapped_file_close(&mf);
+                threadpool_destroy(tp);
+                return 1;
+            }
+        }
+
+        /* Qwen3.5/3.6 hybrid attention state (allocated only when has_linear_attn=1) */
         if (mc.has_linear_attn) {
-            printf("KV Strategy: F32 (Qwen35 hybrid path; quantized-KV "
-                   "strategy not wired in), max context: %d tokens\n",
-                   p.seq_len);
-        } else if (mc.has_qk_norm) {
-            printf("KV Strategy: F32 (Qwen3-MoE path; quantized-KV "
-                   "strategy not wired in), max context: %d tokens\n",
-                   p.seq_len);
-        } else {
-            printf("KV Strategy: %s, max context: %d tokens\n",
-                   kv_strategy_name(kv_res.strategy), p.seq_len);
+            if (q35_run_state_alloc(s, &p, &mc, p.seq_len) != TN_OK) {
+                fprintf(stderr, "Failed to allocate Qwen3.5/3.6 hybrid attention state.\n");
+                run_state_free(s);
+                free(s);
+                if (mc.is_moe) moe_weights_free(&w, &mc);
+                weights_free_pointers(&w);
+                mapped_file_close(&mf);
+                threadpool_destroy(tp);
+                return 1;
+            }
         }
-    }
 
-    /* Setup RunState */
-    RunState *s = (RunState *)malloc(sizeof(RunState));
-    if (!s) {
-        fprintf(stderr, "Failed to allocate RunState header.\n");
-        if (mc.is_moe) moe_weights_free(&w, &mc);
-        weights_free_pointers(&w);
-        mapped_file_close(&mf);
-        threadpool_destroy(tp);
-        return 1;
-    }
-
-    /* Qwen3.5/3.6 hybrid models and Qwen3-MoE models never read the generic
-     * key_cache/value_cache (they use their own correctly-sized
-     * q35_key_cache/q35_value_cache or qwen3moe_key_cache/
-     * qwen3moe_value_cache, allocated below) — skip_kv_cache=true avoids a
-     * multi-GB calloc+memset for those models' context. See
-     * run_state_alloc_ex's header comment and docs/ai/mistakes.md. */
-    if (run_state_alloc_ex(s, &p, p.seq_len, mc.has_linear_attn || mc.has_qk_norm) != TN_OK) {
-        fprintf(stderr, "Failed to allocate RunState buffers.\n");
-        free(s);
-        if (mc.is_moe) moe_weights_free(&w, &mc);
-        weights_free_pointers(&w);
-        mapped_file_close(&mf);
-        threadpool_destroy(tp);
-        return 1;
-    }
-
-    /* Phase 17.7: MLA k_rope_cache (allocated only when has_mla=1) */
-    if (mc.has_mla) {
-        if (mla_run_state_alloc(s, &p, &mc, p.seq_len) != TN_OK) {
-            fprintf(stderr, "Failed to allocate MLA k_rope_cache.\n");
-            run_state_free(s);
-            free(s);
-            if (mc.is_moe) moe_weights_free(&w, &mc);
-            weights_free_pointers(&w);
-            mapped_file_close(&mf);
-            threadpool_destroy(tp);
-            return 1;
-        }
-    }
-
-    /* Qwen3.5/3.6 hybrid attention state (allocated only when has_linear_attn=1) */
-    if (mc.has_linear_attn) {
-        if (q35_run_state_alloc(s, &p, &mc, p.seq_len) != TN_OK) {
-            fprintf(stderr, "Failed to allocate Qwen3.5/3.6 hybrid attention state.\n");
-            run_state_free(s);
-            free(s);
-            if (mc.is_moe) moe_weights_free(&w, &mc);
-            weights_free_pointers(&w);
-            mapped_file_close(&mf);
-            threadpool_destroy(tp);
-            return 1;
-        }
-    }
-
-    /* Qwen3-MoE attention state (allocated only when has_qk_norm=1) */
-    if (mc.has_qk_norm) {
-        if (qwen3moe_run_state_alloc(s, &p, &mc, p.seq_len) != TN_OK) {
-            fprintf(stderr, "Failed to allocate Qwen3-MoE attention state.\n");
-            run_state_free(s);
-            free(s);
-            if (mc.is_moe) moe_weights_free(&w, &mc);
-            weights_free_pointers(&w);
-            mapped_file_close(&mf);
-            threadpool_destroy(tp);
-            return 1;
+        /* Qwen3-MoE attention state (allocated only when has_qk_norm=1) */
+        if (mc.has_qk_norm) {
+            if (qwen3moe_run_state_alloc(s, &p, &mc, p.seq_len) != TN_OK) {
+                fprintf(stderr, "Failed to allocate Qwen3-MoE attention state.\n");
+                run_state_free(s);
+                free(s);
+                if (mc.is_moe) moe_weights_free(&w, &mc);
+                weights_free_pointers(&w);
+                mapped_file_close(&mf);
+                threadpool_destroy(tp);
+                return 1;
+            }
         }
     }
 

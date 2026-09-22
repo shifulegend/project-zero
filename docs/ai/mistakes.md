@@ -5,6 +5,39 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-09-22.
 
+### 2026-09-22 — `mapped_file_close()`'s own doc comment promised "safe to call on a zeroed MappedFile" — it wasn't; a zero-initialized struct's `fd == 0` meant it would silently `close(0)` (stdin)
+
+- Context: Phase 18 Stage 3, writing `loaded_model_free()` (`cli/model_load.c`) — documented as
+  "safe to call on a zero-initialized LoadedModel" so a future caller (Stage 5's draft-model
+  cleanup, or main()'s own error paths) never needs to track whether a load actually succeeded
+  before freeing. That promise only holds if every function it calls, including
+  `mapped_file_close(&m->mf)`, is itself safe on a zeroed struct — which `mapped_file_close()`'s
+  own header doc already claimed ("Safe to call on a zeroed MappedFile").
+- Finding: that claim was false. `mapped_file_open()` only sets `mf->fd` on its single success
+  path (or to -1 at entry, before any failure can occur) — but a `MappedFile` that was simply
+  `memset` to zero and never passed to `mapped_file_open()` at all has `fd == 0`, not -1. The old
+  `mapped_file_close()` checked `if (mf->fd >= 0) { flock(...); close(mf->fd); }` — 0 >= 0 is
+  true, so this would flock and `close(0)`, silently closing stdin instead of being the no-op the
+  doc comment promised.
+- Impact: grepped every real call site in the codebase (`vision_weights_load.c`, `main.c`,
+  `tests/test_mmap.c`) — none of them ever call `mapped_file_close()` on a struct that wasn't
+  already successfully opened, so this never actually fired in practice. It was a real, latent
+  bug sitting behind a doc comment nobody had tested, waiting for the first caller (this session's
+  `loaded_model_free()`) to actually rely on the promise.
+- Fixed: `src/memory/mapped_file.c`'s POSIX `mapped_file_close()` now gates the fd teardown on
+  `mf->data` (only ever set together with `fd`, on `mapped_file_open()`'s single success path),
+  matching the invariant that already made `munmap()`'s own `if (mf->data)` guard correct. The
+  Windows variant was already safe (`if (mf->handle)`, NULL on a zeroed struct).
+- Verified: new regression test in `tests/test_mmap.c`
+  (`test_mmap_close_on_zeroed_struct_does_not_close_stdin`) — closes a zeroed `MappedFile` and
+  asserts `fcntl(STDIN_FILENO, F_GETFD)` still succeeds afterward (the only way to observe this
+  bug from outside the function). `make release/test/debug` green on gcc and clang.
+- Lesson: a function's own doc comment claiming a safety property is not evidence that property
+  holds — it's a claim nobody had exercised. The bug was findable by static inspection alone (no
+  crash needed to discover it), but it took a new caller that actually depended on the promise to
+  surface it. Per the bug-fix policy, fixed in the same pass despite being unrelated to Phase 18's
+  actual feature work.
+
 ### 2026-09-22 — `CMakeLists.txt` was missing `src/math/ternary_matmul_lut_avx512bw.c` entirely, breaking the CMake build for `test_ternary_lut_avx512bw`
 
 - Context: Stage 2's plan-mandated verification step ("run a CMake sanity build") on this AVX-512

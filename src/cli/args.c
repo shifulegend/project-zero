@@ -56,6 +56,17 @@ void print_usage(const char *prog_name) {
     printf("  --memory-db <path>  Path to vector DB file for RAG memory.\n");
     printf("                      File is created if it does not exist.\n");
 
+    printf("\nSpeculative decoding:\n");
+    printf("  --draft-model <path> Path to a small GGUF draft model. Disabled by default --\n");
+    printf("                      this is the ONLY way to enable speculative decoding;\n");
+    printf("                      there is no default/embedded draft model. The draft\n");
+    printf("                      model must share the verifier's tokenizer (same\n");
+    printf("                      vocab_size) and be GGUF (native .bin models cannot be\n");
+    printf("                      used as a draft). Not supported for linear-attention\n");
+    printf("                      models (Qwen3.5/3.6 hybrid) -- refused at startup.\n");
+    printf("  --spec-length <int> Tokens drafted per round when --draft-model is set\n");
+    printf("                      (default: 5). Ignored otherwise.\n");
+
     printf("\nOutput:\n");
     printf("  --color <mode>      Color output: auto (default), always, never.\n");
     printf("                      auto respects the NO_COLOR env var and disables\n");
@@ -104,6 +115,9 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->static_dir = NULL;
     args->web_ui_mode = WEBUI_MODE_AUTO;
     args->color_mode = TN_COLOR_AUTO;
+    args->draft_model_path = NULL; /* disabled by default -- the ONLY way to enable
+                                       speculative decoding is --draft-model */
+    args->spec_length = 5;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--model") == 0 && i + 1 < argc) {
@@ -191,6 +205,14 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             else if (strcmp(mode, "off") == 0)  args->web_ui_mode = WEBUI_MODE_OFF;
             else {
                 fprintf(stderr, "Error: --web-ui must be one of: auto, on, off\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--draft-model") == 0 && i + 1 < argc) {
+            args->draft_model_path = argv[++i];
+        } else if (strcmp(argv[i], "--spec-length") == 0 && i + 1 < argc) {
+            args->spec_length = atoi(argv[++i]);
+            if (args->spec_length <= 0) {
+                fprintf(stderr, "Error: --spec-length must be a positive integer\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--color") == 0 && i + 1 < argc) {

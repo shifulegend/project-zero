@@ -3,6 +3,27 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-09-22.
 
+### 2026-09-22 — Phase 18 (speculative decoding) Stage 4: `--draft-model` / `--spec-length` CLI flags
+- What: `include/cli/args.h` — `CliArgs.draft_model_path` (`char *`, default `NULL`) and
+  `CliArgs.spec_length` (`int`, default 5). `src/cli/args.c` — `--draft-model <path>` (string flag,
+  mirrors `--proj`'s pattern) and `--spec-length <N>` (validated int flag, mirrors `--port`'s
+  pattern, rejecting `<= 0`), plus a new `"\nSpeculative decoding:\n"` `print_usage()` section
+  documenting both flags, the draft/verifier tokenizer-match requirement, GGUF-only draft models,
+  and the linear-attention-model refusal. `draft_model_path` defaults to `NULL` — the *only* way
+  to enable speculative decoding is passing `--draft-model` explicitly; there is no default or
+  embedded draft-model path, per the user's original hard requirement for this feature.
+- New test `tests/test_args.c` (13 assertions) — no `parse_args()` test coverage existed at all
+  before this stage; scoped here to the two new flags per the plan's Stage 4 requirement (a
+  broader CLI-arg test sweep for the many pre-existing flags is a separate, real gap, out of scope
+  for this change). Covers: flag sets the value, default when omitted, `--spec-length 0` and
+  negative values rejected, missing value after either flag rejected.
+- Verified: `make release/test/debug` green on gcc and clang, zero new warnings; `test_args` also
+  builds and passes via the CMake test target (auto-discovered, no `CMakeLists.txt` change
+  needed). No behavior change yet — `main.c` doesn't read `draft_model_path`/`spec_length` until
+  Stage 5.
+- Why: Stage 4 of the user-approved Phase 18 plan.
+- Areas: `include/cli/args.h`, `src/cli/args.c`, `tests/test_args.c` (new).
+
 ### 2026-09-22 — Phase 18 (speculative decoding) Stage 3: factor GGUF model loading out of `main()`
 - What: `include/cli/model_load.h` + `src/cli/model_load.c` (new) — `load_gguf_model()`, the
   GGUF-only half of main()'s old inline model-load block (mmap → GGUF header → Config/MoEConfig →

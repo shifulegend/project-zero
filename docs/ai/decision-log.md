@@ -1,7 +1,71 @@
 # Decision Log — project-zero
 
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
-> Read at session start. Last updated: 2026-09-18.
+> Read at session start. Last updated: 2026-09-24.
+
+### 2026-09-24 — Phase 18 (speculative decoding) scope: full batched verification, GGUF-only draft loading, no explicit KV rollback, narrowed matmul-format coverage for this pass
+
+- Context: the user picked Phase 18 (never previously implemented, per
+  `docs/architecture/IMPLEMENTATION_PLAN.md`) as the next feature, with two explicit hard
+  requirements stated up front: (1) real speedup via batched multi-token verification, not a
+  sequential scaffold; (2) `--draft-model <path>` as the *only* way to enable the feature — never
+  a default or embedded path. Three rounds of codebase research before implementation began
+  established several facts the original plan text (written before any of this research) didn't
+  account for.
+- Decision 1 — **full batched version, not a scaffold**: confirmed via research that the
+  promised "2-3x on CPU" only materializes if the verifier checks all `spec_length` draft tokens
+  in one batched forward pass (this engine is memory-bandwidth-bound; the win is streaming each
+  weight matrix from RAM once and reusing it across N candidate activations, not N re-reads). The
+  user confirmed via `AskUserQuestion` that they wanted the full batched version, accepting the
+  larger scope (new batched GEMM kernels, a batched attention/FFN restructuring, a
+  `SpecBatchScratch` buffer set — Stages 1-2) over a cheaper sequential-verification scaffold that
+  would ship faster but deliver none of the promised speedup.
+- Decision 2 — **Qwen3.5/3.6 hybrid models are excluded, refusing cleanly**: research found this
+  engine's four attention families differ in batchability — dense/GQA, MLA, and Qwen3-MoE all
+  share a "flat KV cache, write-then-causally-read" shape that batches cleanly with a local
+  write-phase/read-phase restructuring, but the Qwen3.5/3.6 hybrid's Gated-DeltaNet
+  linear-attention layers hold a genuinely recurrent state matrix that position N+1 must read only
+  after position N's update has landed — not batchable without a chunked/parallel delta-rule
+  algorithm rewrite, out of scope here. Speculative decoding refuses cleanly
+  (`TN_ERR_UNSUPPORTED` from the batched-forward path, plus an explicit upfront check in
+  `speculative_generate()` so callers never actually hit the per-call error in practice) rather
+  than silently degrading or producing wrong output for these models.
+- Decision 3 — **MoE-FFN batching deferred**: token→expert routing under batching is materially
+  harder than dense-FFN batching (which expert(s) each of the N tokens routes to can differ token
+  by token). Deferred; MoE layers fall back to `spec_length` sequential per-token
+  `moe_ffn_forward()` calls inside the batch loop — a documented, explicit limitation (MoE models
+  get partial speedup: attention batched, FFN not), not a silent gap.
+- Decision 4 — **draft models load via the same GGUF loader as the verifier, not a separate
+  raw-binary format**: the original plan text (written before Phase 34+'s GGUF-first direction
+  existed) specified a raw-binary `DraftModel` struct with its own `mmap`+`config_read` path.
+  Superseded during Stage 3/5 implementation: `load_gguf_model()` (factored out of `main()`'s
+  existing GGUF-load block specifically to make this reuse possible, `is_primary` parameter gating
+  the two primary-model-only side effects) already does everything a draft-model loader needs,
+  so `draft_model_load()` is a thin wrapper around it with zero duplicated GGUF-parsing code.
+  Native `.bin` models are not supported as draft models (GGUF-only, matching where the rest of
+  the model-loading surface already is).
+- Decision 5 — **no explicit `kv_cache_rollback()` function**: the original plan specified one
+  (`kv_cache_rollback(RunState *s, const Config *p, int rollback_pos)`, resetting
+  `s->current_pos`). Research found `s->current_pos` is dead weight for this feature —
+  `sw_map_position()`/`sw_valid_count()` never read it — so no special-case rollback code is
+  needed on the verifier side: the loop simply never advances its logical `pos` past the last
+  accepted token, and any KV slots written for rejected draft positions are naturally overwritten
+  the next time that logical position is actually reached — which is exactly what the corrective
+  commit call (one real `transformer_forward()` per model, feeding the just-decided token at
+  `pos + n_accept`, run at the end of every round) already does. Worked out during Stage 5
+  implementation that this same corrective commit is needed on **both** models, not only the
+  draft model as the original plan's KV-rollback section implied — the verifier's own KV cache
+  also holds possibly-wrong entries whenever a draft token is rejected partway through the batch.
+- Decision 6 — **matmul-format coverage for this pass**: only ternary-packed and F16 dense matmul
+  get real batched kernels (the project's flagship BitNet path, and its default demo model's
+  format). `Q4_K`/`Q4_K_X8`/`Q2_0`/`F32` fall back to sequential single-vector calls inside the
+  batch dispatch helper — correct, but without the bandwidth win for those formats. Documented as
+  a follow-up (Phase 18-B) rather than blocking this pass on covering every weight format.
+- Not adopted: a sequential-verification scaffold (rejected per Decision 1); batching MoE-FFN
+  routing in this pass (rejected per Decision 3 — real added complexity for a model family this
+  repo's own demo model doesn't use); an explicit rollback function (superseded by Decision 5's
+  "commit, don't roll back" design, which needed less new code and no `s->current_pos` semantics
+  to maintain).
 
 ### 2026-09-18 — Added TSan as a third sanitizer tier (`make test-tsan`), scoped to concurrency-relevant tests only
 

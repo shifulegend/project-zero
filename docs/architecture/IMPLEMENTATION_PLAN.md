@@ -1743,35 +1743,88 @@ non-BitNet models are misleading.
 
 ---
 
-## PHASE 18: Speculative Decoding
+## PHASE 18: Speculative Decoding ✅ (ternary + F16 batched kernels; other formats fall back to sequential — Phase 18-B) — Qwen3.5/3.6 hybrid excluded (linear-attn)
 
 The ultimate CPU speed hack. Load two models: a massive "Brain" (verifier) and a tiny "Drafter". The Drafter guesses N tokens rapidly, the Brain verifies them all in one batched forward pass.
 
-### 18.1 — Draft Model Loader
+**As implemented** (see `docs/ai/decision-log.md` and `docs/ai/change-trace.md`'s 2026-09-22/24
+entries for the full rationale behind each deviation from the design below): real batched
+verification via `transformer_forward_batch()` (not a sequential scaffold — the whole point of
+this phase is the RAM-bandwidth win from streaming each weight matrix once and reusing it across
+N candidate activations), draft models load through the same GGUF loader as the verifier
+(`load_gguf_model()`, Stage 3) rather than a separate raw-binary format, and there is no explicit
+`kv_cache_rollback()` function — see 18.3 below for why none was needed. `--draft-model <path>` is
+the *only* way to enable this feature; there is no default or embedded draft-model path.
+
+### 18.0 — Batched GEMM kernels + `transformer_forward_batch()` ✅
+- Files: `include/math/batched_matmul.h` + `src/math/batched_matmul{,_f16,_classifier}.c`
+  (Stage 1); `include/speculative/spec_scratch.h` + `src/speculative/spec_scratch.c` (the
+  `SpecBatchScratch` N-wide buffer set, allocated only when `--draft-model` is given);
+  `attention_forward_batch()`/`mla_attention_forward_batch()`/
+  `qwen3moe_attention_forward_batch()` (`attention.c`/`mla_attention.c`/`qwen3moe_attention.c`),
+  `ffn_forward_batch()` (`ffn.c`), `transformer_forward_batch()` (`forward.c`) (Stage 2).
+- Each batched attention function refuses cleanly (`TN_ERR_UNSUPPORTED`) for
+  `mc->has_linear_attn` models (Qwen3.5/3.6 hybrid) — their Gated-DeltaNet layers hold a
+  genuinely recurrent state that can't be batched with a local restructuring; out of scope for
+  this pass. MoE-FFN layers fall back to `spec_length` sequential per-token `moe_ffn_forward()`
+  calls inside the batch loop (MoE models get partial speedup: attention batched, FFN not) —
+  also out of scope. Only ternary-packed and F16 dense matmul get real batched kernels this pass;
+  `Q4_K`/`Q4_K_X8`/`Q2_0`/`F32` fall back to sequential single-vector calls inside the batch
+  dispatch helper — correct, but without the bandwidth win for those formats (documented
+  follow-up: Phase 18-B).
+- Proven equivalent to N sequential `transformer_forward()` calls (teacher-forcing) by
+  `tests/test_forward_batch.c` across dense, MLA, and Qwen3-MoE synthetic configs.
+
+### 18.1 — Draft Model Loader ✅
 - File: `include/speculative/draft_model.h` + `src/speculative/draft_model.c`
-- `typedef struct { Config config; TransformerWeights weights; RunState state; MappedFile mf; } DraftModel;`
-- `TernaryError draft_model_load(DraftModel *dm, const char *path);`
-- Loads a small model (e.g., 125M params) alongside the main model.
-- Uses separate mmap'd file and separate RunState.
+- `DraftModel` bundles `Config`/`TransformerWeights`/`MoEConfig`/`RunState*`/`MappedFile`/
+  `GGUFWeightStore*`/`Tokenizer`, built entirely via Stage 3's `load_gguf_model(is_primary=false)`
+  — zero duplicated GGUF-parsing code, GGUF-only (no raw `.bin` draft models).
+- `TernaryError draft_model_load(DraftModel *dm, const char *draft_model_path, int
+  verifier_vocab_size, int max_seq_len_hint, ThreadPool *tp);` — refuses `has_linear_attn` draft
+  models and `vocab_size` mismatches against the verifier at load time (draft and verifier must
+  share a tokenizer for token-ID comparison to mean anything).
 
-### 18.2 — Speculative Generation Loop
-- File: `include/speculative/spec_decode.h` + `src/speculative/spec_decode.c`
-- `void speculative_generate(Config *p, TransformerWeights *w, RunState *s, DraftModel *draft, Tokenizer *t, ThreadPool *tp, const char *prompt, int max_tokens, float temperature, float top_p, int spec_length);`
-  - `spec_length`: number of tokens to draft (default: 5).
-  - **Algorithm:**
-    1. Draft model generates `spec_length` candidate tokens greedily.
-    2. Main model runs a single batched forward pass over all candidates.
-    3. Compare draft logits vs. main logits using rejection sampling.
-    4. Accept matching tokens (often 3-4 out of 5).
-    5. On first mismatch: resample from main model's distribution, discard remaining drafts.
-    6. Repeat.
-  - **Speedup:** 2-3x on CPU when draft model is 10x smaller than main model.
+### 18.2 — Speculative Generation Loop ✅
+- File: `include/speculative/spec_decode.h` + `src/speculative/spec_decode.c`,
+  `include/speculative/accept_reject.h` + `src/speculative/accept_reject.c`.
+- `speculative_generate()`/`speculative_generate_with_callback()` mirror
+  `generate()`/`generate_with_callback()`'s signatures plus `DraftModel *draft, int spec_length`
+  (`--spec-length`, default 5, CLI flag added in Stage 4). **Algorithm, as implemented:**
+  1. Draft model generates `spec_length` candidate tokens sequentially (its own KV cache), sampled
+     per the same `temperature`/`top_p` policy as plain generation.
+  2. Verifier runs a single batched forward pass (`transformer_forward_batch()`) over all
+     candidates.
+  3. `accept_reject_round()` compares draft vs. verifier logits: greedy mode accepts a draft token
+     iff it equals the verifier's own argmax (teacher-forcing equivalence makes greedy speculative
+     output *identical* to plain greedy generation, by construction); stochastic mode accepts with
+     probability `min(1, p_verifier/p_draft)` and resamples from the renormalized residual
+     `max(0, p_verifier - p_draft)` on reject.
+  4. Accept matching tokens up to the first mismatch (or all `spec_length`, plus a fresh bonus
+     token sampled from the verifier's own next-position distribution).
+  5. One corrective `transformer_forward()` commit call per model, feeding the just-decided token
+     at `pos + n_accept` (see 18.3).
+  6. Repeat.
+  - **Speedup:** real, measured via the same `[gen]`/`[spec-gen] %.2f tok/s` reporting both paths
+    already print — no real-model measurement was available this pass (see `change-trace.md`'s
+    Stage 5 entry: this repo's only local model, `models/smollm2.gguf`/SmolLM2-135M, is already
+    the smallest size in its family, so no smaller same-tokenizer sibling exists to demonstrate
+    the win against); correctness (greedy-equivalence) is proven on synthetic tiny models instead
+    (`tests/test_speculative.c`).
 
-### 18.3 — KV Cache Rollback
-- File: `src/speculative/kv_rollback.c`
-- `void kv_cache_rollback(RunState *s, const Config *p, int rollback_pos);`
-  - When speculative tokens are rejected, the KV cache must be rewound.
-  - Sets `s->current_pos = rollback_pos` — the rejected K/V entries are simply overwritten on next forward pass.
+### 18.3 — KV Cache Rollback → superseded by "commit, don't roll back" ✅
+- No `kv_cache_rollback()` function exists; none was needed. `s->current_pos` was confirmed dead
+  weight for this feature (`sw_map_position`/`sw_valid_count` never read it), so the loop simply
+  never advances `pos` past the last accepted token — any KV slots the batched verify call wrote
+  for rejected draft positions are naturally overwritten the next time that logical position is
+  actually reached, which is exactly what the corrective commit call (18.2 step 5) *is*: one real
+  `transformer_forward(emit_token, pos + n_accept, ...)` call on **both** models (not only the
+  draft model, as originally scoped here — the verifier's own KV cache needs the same correction
+  on a partial accept, worked out from first principles during Stage 5) — never a separate
+  rollback path.
+- Granular step-timing coverage for the whole batched/speculative path (Stage 5.5, closing a
+  pre-existing `TN_STEP_TIMING` gap in the generic dense/GQA and Qwen3-MoE attention paths found
+  along the way) — see `docs/ai/mistakes.md`'s 2026-09-24 entries.
 
 ---
 

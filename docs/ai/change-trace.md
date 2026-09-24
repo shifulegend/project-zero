@@ -1,7 +1,81 @@
 # Change Trace — project-zero
 
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
-> Update after each meaningful sub-step. Last updated: 2026-09-22.
+> Update after each meaningful sub-step. Last updated: 2026-09-24.
+
+### 2026-09-24 — Phase 18 (speculative decoding) Stage 5: draft loading + accept/reject loop, wired end-to-end
+- What: `include/speculative/draft_model.h` + `src/speculative/draft_model.c` (new) —
+  `DraftModel` struct and `draft_model_load()`, implemented entirely via Stage 3's
+  `load_gguf_model(is_primary=false)` (zero duplicated GGUF-parsing code); refuses
+  `has_linear_attn` draft models and vocab-size mismatches against the verifier at load time with
+  a clear error message (draft and verifier must share a tokenizer for token-ID comparison to
+  mean anything); best-effort loads the draft's own tokenizer (non-fatal on failure — only
+  `vocab_size` is ever used for validation, decode always goes through the verifier's tokenizer).
+  `include/speculative/accept_reject.h` + `src/speculative/accept_reject.c` (new) —
+  `accept_reject_round()`: greedy path (checks each draft token against
+  `sample_argmax(verify_check_logits[i])`, emitting the verifier's own argmax at the first
+  mismatch or its bonus-token argmax if all accepted — by construction, teacher-forcing-equivalent
+  to plain greedy generation, per Stage 2's batched/sequential equivalence proof) and stochastic
+  path (`min(1, p_verifier/p_draft)` acceptance via `apply_temperature`+`softmax`, residual
+  resampling `max(0, p_verifier - p_draft)` on reject via the same CDF walk
+  `generate_with_callback` already uses for its non-top-p stochastic path).
+  `include/speculative/spec_decode.h` + `src/speculative/spec_decode.c` (new) —
+  `speculative_generate()`/`speculative_generate_with_callback()`, mirroring
+  `generate()`/`generate_with_callback()`'s signatures plus `DraftModel *draft`/`int spec_length`.
+  Refuses `mc->has_linear_attn` and nonzero `s->current_pos` (vision-prefill incompatibility) once
+  at startup; reuses the existing prompt-encoding block verbatim for both models' prefill. Per
+  round: draft phase (`spec_length` sequential draft-model forwards, saving raw pre-sampling
+  logits), verify phase (one `transformer_forward_batch()` call), builds the shifted
+  `verify_check_logits` array standard speculative-decoding verification requires (draft token `i`
+  is checked against the verifier's prediction made *before* token `i` was fed, not after — row
+  `i-1` of the batch output, or the carried-over last-verifier-logits for `i=0`) plus a separate
+  `bonus_logits` pointer for the all-accepted case, calls `accept_reject_round()`, emits accepted
+  + resampled/bonus tokens through the callback with the same per-token EOS-check/decode
+  convention `generate_with_callback` uses, then runs one corrective `transformer_forward()` call
+  on *both* models (not only the draft model, despite the original plan text only mentioning the
+  draft side — worked out from first principles that the verifier's own KV cache also needs a
+  correction commit whenever a draft token is rejected) at `pos + n_accept` feeding the
+  just-decided token, before drafting the next round.
+  `main.c`/`repl.c` — branch on `args.draft_model_path` at both existing `generate()`/
+  `generate_with_callback()` call sites; the `else` branch is byte-identical to before.
+- Found and fixed two real, pre-existing/unrelated bugs during this stage (see `mistakes.md`'s
+  2026-09-24 entries for full writeups): `SpecBatchScratch.logits` (Stage 2) was a dead allocation
+  never read or written by `transformer_forward_batch()` — removed the field entirely
+  (`include/speculative/spec_scratch.h`, `src/speculative/spec_scratch.c`). More significantly,
+  `generate_with_callback()`'s `total_steps = n_prompt + max_tokens` off-by-one silently generated
+  `max_tokens + 1` tokens for every caller whenever `max_tokens` (not EOS) was the actual stopping
+  condition — invisible on this repo's existing golden prompts (all EOS-terminated) but caught by
+  this stage's own equivalence test, which deliberately disables EOS. Fixed in
+  `src/transformer/generate.c` (`total_steps = n_prompt + max_tokens - 1`); this is a real,
+  previously-shipped behavior change affecting `--max-tokens` semantics for the CLI, the REPL, and
+  now the speculative path, all of which share this one function.
+- New test `tests/test_speculative.c` (12 assertions) — 3 direct `accept_reject_round()` unit
+  tests (all-accepted, rejects-at-first-mismatch, rejects-immediately), 1 full-pipeline greedy
+  equivalence test (`speculative_generate()`'s output byte-identical to plain `generate()`'s, on
+  independently-seeded tiny synthetic ternary draft + verifier models with EOS disabled — this is
+  the test that caught the `generate.c` off-by-one), 1 vocab-mismatch startup-error test (real
+  `models/smollm2.gguf`, skipped gracefully if the file is absent).
+- Verified: `make release/test/debug` green on gcc and clang (zero new warnings), plus a CMake
+  sanity build (`cmake --build`, all targets including `test_speculative`) — all clean, only
+  pre-existing third-party (`stb_image_resize2.h`) and pre-existing test-file warnings present,
+  nothing from this stage's files. Golden-output check (`models/smollm2.gguf`, "What is the
+  capital of France?", `--max-tokens 16 --temperature 0`) unchanged on both compilers' debug
+  (ASan/UBSan) builds: "The capital of France is Paris." at 7 tokens.
+  Real-model end-to-end `--draft-model` check **not performed this stage**: the only model
+  present in `models/` is `smollm2.gguf` itself (`Smollm2 135M 8k Lc100K Mix1 Ep2`, confirmed via
+  its own GGUF metadata) — the SmolLM2 family's smallest published size is 135M, so no smaller
+  same-tokenizer sibling exists to use as a draft model without downloading a same-size or larger
+  model, which would demonstrate nothing about draft/verify speedup. Per the plan's own explicit
+  instruction ("if none is readily available, flag this to the user rather than guessing a
+  mismatched-vocab model"), this is flagged rather than worked around; correctness is otherwise
+  fully covered by the synthetic-model equivalence test above, and the honest real-model
+  speedup measurement remains outstanding pending a usable draft model.
+- Why: Stage 5 of the user-approved Phase 18 plan.
+- Areas: `include/speculative/{draft_model,accept_reject,spec_decode}.h`,
+  `src/speculative/{draft_model,accept_reject,spec_decode}.c` (new), `src/cli/main.c`,
+  `include/cli/repl.h`, `src/cli/repl.c`, `include/speculative/spec_scratch.h`,
+  `src/speculative/spec_scratch.c`, `src/transformer/generate.c`, `tests/test_speculative.c` (new),
+  `CMakeLists.txt`.
 
 ### 2026-09-22 — Phase 18 (speculative decoding) Stage 4: `--draft-model` / `--spec-length` CLI flags
 - What: `include/cli/args.h` — `CliArgs.draft_model_path` (`char *`, default `NULL`) and

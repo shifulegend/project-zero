@@ -239,6 +239,9 @@ set(KV_CACHE_SOURCES
 
 set(SPECULATIVE_SOURCES
     src/speculative/spec_scratch.c
+    src/speculative/draft_model.c
+    src/speculative/accept_reject.c
+    src/speculative/spec_decode.c
 )
 
 set(REASONING_SOURCES

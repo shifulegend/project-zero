@@ -33,7 +33,13 @@ typedef struct {
     float *hb;      /* [n_tokens][hidden_dim] FFN gate; doubles as MLA kv_full/q_full */
     float *hb2;      /* [n_tokens][hidden_dim] FFN up; doubles as v_buf / MLA kv-compress */
     float *q;       /* [n_tokens][dim]        query projections (all heads) */
-    float *logits;   /* [n_tokens][vocab_size] one row per candidate position */
+    /* No logits buffer here: transformer_forward_batch() always writes the
+     * classifier output to its own explicit `logits_out` parameter (a
+     * separate caller-owned [n_tokens][vocab_size] buffer, per
+     * transformer/forward.h) -- an earlier revision of this struct
+     * allocated an unused `logits` field here that nothing ever read or
+     * wrote (2026-09-22, see docs/ai/mistakes.md); removed rather than
+     * left as dead weight. */
 } SpecBatchScratch;
 
 /**

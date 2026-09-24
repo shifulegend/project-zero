@@ -27,6 +27,8 @@
 #include "cli/color.h"
 #include "transformer/generate.h"
 #include "transformer/forward.h"
+#include "speculative/draft_model.h"
+#include "speculative/spec_decode.h"
 #include "math/simd_dispatch.h"
 
 /* Phase 15 RAG */
@@ -515,6 +517,33 @@ int main(int argc, char **argv) {
     tn_progress_stage(4, 4, "Ready.", stdout_is_tty);
     tn_progress_done(stdout_is_tty);
 
+    /* ── Phase 18: speculative decoding draft model (optional) ──────────────
+     * --draft-model is the only way this ever activates -- see cli/args.h.
+     * Loaded once here so both call sites below (--prompt one-shot and the
+     * REPL) can share it. */
+    DraftModel draft_model;
+    bool draft_active = false;
+    if (args.draft_model_path) {
+        if (draft_model_load(&draft_model, args.draft_model_path, p.vocab_size,
+                              args.max_tokens + args.spec_length + 64, tp) != TN_OK) {
+            fprintf(stderr, "Error: failed to load --draft-model '%s'.\n", args.draft_model_path);
+            tokenizer_free(&t);
+            if (mc.has_mla) mla_run_state_free(s, p.n_layers);
+            if (mc.has_linear_attn) q35_run_state_free(s, &p, &mc);
+            if (mc.has_qk_norm) qwen3moe_run_state_free(s, &p);
+            run_state_free(s);
+            free(s);
+            if (mc.is_moe) moe_weights_free(&w, &mc);
+            weights_free_pointers(&w);
+            if (gguf_store) weights_free_gguf(gguf_store);
+            if (is_gguf) gguf_header_free(&gguf_hdr);
+            mapped_file_close(&mf);
+            threadpool_destroy(tp);
+            return 1;
+        }
+        draft_active = true;
+    }
+
     /* ── Phase 15: RAG initialisation ────────────────────────────────────── */
     RagContext rag;
     memset(&rag, 0, sizeof(rag));
@@ -609,13 +638,21 @@ int main(int argc, char **argv) {
         }
     } else if (args.prompt) {
         printf("\n");
-        generate(&p, &w, s, &mc, &t, tp, args.prompt, args.max_tokens, args.temperature, args.top_p, args.json_mode);
+        if (draft_active) {
+            speculative_generate(&p, &w, s, &mc, &t, tp, args.prompt, args.max_tokens,
+                                  args.temperature, args.top_p, args.json_mode,
+                                  &draft_model, args.spec_length);
+        } else {
+            generate(&p, &w, s, &mc, &t, tp, args.prompt, args.max_tokens, args.temperature, args.top_p, args.json_mode);
+        }
         printf("\n");
     } else {
-        run_repl(&p, &w, &mc, NULL, NULL, NULL, s, &t, tp, &args, rag_ok ? &rag : NULL);
+        run_repl(&p, &w, &mc, NULL, NULL, NULL, s, &t, tp, &args, rag_ok ? &rag : NULL,
+                 draft_active ? &draft_model : NULL);
     }
 
     /* Cleanup */
+    if (draft_active) draft_model_free(&draft_model);
     if (rag_ok) {
         embedder_free(&rag.emb);
         vector_db_close(&rag.db);

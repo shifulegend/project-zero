@@ -3,7 +3,71 @@
 > Canonical, append-at-top (newest first). Read this at the start of every session.
 > Add an entry **immediately** when a mistake, false assumption, regression, or avoidable
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
-> Last updated: 2026-09-22.
+> Last updated: 2026-09-24.
+
+### 2026-09-24 — `generate_with_callback()`'s `total_steps` off-by-one silently generated `max_tokens + 1` tokens for every caller, invisible in practice because EOS almost always fires first
+
+- Context: Phase 18 Stage 5, writing `tests/test_speculative.c`'s
+  `test_speculative_greedy_matches_plain_generation` — a synthetic tiny model with EOS
+  deliberately unreachable (so the loop can only stop via the `max_tokens` cap), asserting
+  `speculative_generate()`'s token count/text is byte-identical to plain `generate()`'s for the
+  same `max_tokens=6` request.
+- Finding: the two paths disagreed — plain generation emitted 7 tokens, speculative emitted 6.
+  Hand-simulating `generate_with_callback()`'s loop (`src/transformer/generate.c`) traced it to
+  `int total_steps = n_prompt + max_tokens;`. The first generated token is sampled "for free" from
+  the *last prompt-processing* step (`step == n_prompt - 1`, which both advances `next` and is the
+  step whose EOS-check/decode/callback block already fires); every subsequent step generates one
+  more token. So exactly `max_tokens` tokens requires `total_steps = n_prompt + max_tokens - 1`,
+  not `n_prompt + max_tokens` — the old bound ran one extra step and emitted `max_tokens + 1`
+  tokens whenever `max_tokens` (not EOS) was the actual stopping condition.
+- Impact: shared by every caller of `generate()`/`generate_with_callback()` — the CLI's one-shot
+  `--prompt` path, the REPL, and now `speculative_generate_with_callback()`'s teacher-forcing
+  equivalence claim (Stage 2's proof that batched verification matches sequential generation only
+  holds if both loops actually run the same number of steps). Invisible on essentially every real
+  prompt used in this repo's manual testing and existing golden-output checks, because EOS fires
+  before the cap on those prompts (`models/smollm2.gguf`'s "What is the capital of France?" at
+  `--max-tokens 16` only ever generates 7 tokens, EOS-terminated, on either side of this fix) — it
+  took a synthetic test with EOS deliberately disabled to surface it. A real, previously-shipped
+  behavior bug in `--max-tokens` semantics, not new-code-only.
+- Fixed: `src/transformer/generate.c`'s `total_steps` computation changed to
+  `n_prompt + max_tokens - 1`, with a comment explaining the "free" first token.
+- Verified: `test_speculative`'s equivalence test now reports 6/6 tokens on both paths (12/12
+  assertions pass). Full `make release/test/debug` re-run clean on gcc and clang after the fix
+  (no regressions elsewhere in the suite). Golden-output check (`models/smollm2.gguf`, "What is
+  the capital of France?", `--max-tokens 16 --temperature 0`) unchanged — "The capital of France
+  is Paris." at 7 tokens — confirming the fix is inert on EOS-terminated generations and only
+  changes behavior when `max_tokens` was actually the limiting factor.
+- Lesson: a loop bound built from "N prompt steps + M generation steps" needs to account for
+  bootstrap: whichever step samples the *first* generated token already belongs to one of the two
+  categories, not both. A bug like this can ship and pass every existing test/CI run indefinitely
+  if the golden prompts all happen to stop via a different condition (EOS) than the one the loop
+  bound governs — worth deliberately testing the `max_tokens`-is-the-limit case, not just the
+  EOS-terminates-first case, for any generation-loop change. Per the bug-fix policy, fixed in the
+  same pass despite being unrelated to Phase 18's own feature work.
+
+### 2026-09-24 — `SpecBatchScratch.logits` was allocated every round but never read or written by `transformer_forward_batch()`, which always writes to its own explicit `logits_out` parameter
+
+- Context: Phase 18 Stage 5, writing `draft_model.c`/`spec_decode.c` — wiring
+  `transformer_forward_batch()`'s (Stage 2) output into the new accept/reject loop.
+- Finding: `SpecBatchScratch` (`include/speculative/spec_scratch.h`, added in Stage 2) allocated
+  an N-wide `logits` buffer sized `n_tokens * vocab_size`, but `transformer_forward_batch()`'s
+  actual signature takes a separate `float *logits_out` parameter that every real caller (Stage 2's
+  own test, and now Stage 5's `spec_decode.c`) already passes its own buffer for — `sb->logits`
+  was dead weight, confirmed via grep that no test or production code anywhere ever read it either.
+- Impact: pure wasted allocation (`n_tokens * vocab_size * sizeof(float)`, non-trivial for a large
+  vocab) every time `--draft-model` is used; no correctness impact since it was never accessed, but
+  it also carried a since-removed overflow check (`spec_scratch.c`) that existed only to protect a
+  field nothing used.
+- Fixed: removed the `logits` field from `SpecBatchScratch` and the corresponding overflow check
+  from `spec_scratch_alloc()` (`include/speculative/spec_scratch.h`, `src/speculative/spec_scratch.c`).
+- Verified: `make release/test/debug` green on gcc and clang; `test_forward_batch` (Stage 2's own
+  suite, unaffected by the removal since it never referenced the field) and the new
+  `test_speculative` suite both pass.
+- Lesson: a scratch struct's fields should be added when a concrete caller needs them, not
+  speculatively "for completeness" alongside a sibling buffer (`x`/`xb`/`hb`/etc. are all genuinely
+  read by the batched forward pass; `logits` never was) — caught by writing the doc comment for the
+  struct's actual consumer and noticing the field had no reader. Per the bug-fix policy, fixed in
+  the same pass.
 
 ### 2026-09-22 — `mapped_file_close()`'s own doc comment promised "safe to call on a zeroed MappedFile" — it wasn't; a zero-initialized struct's `fd == 0` meant it would silently `close(0)` (stdin)
 

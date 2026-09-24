@@ -4,6 +4,7 @@
 #include "cli/live_stats.h"
 #include "cli/md_render.h"
 #include "transformer/generate.h"
+#include "speculative/spec_decode.h"
 #include "agent/agent_loop.h"
 #include "rag/auto_retrieve.h"
 #include "rag/auto_save.h"
@@ -59,7 +60,7 @@ void run_repl(Config *p, TransformerWeights *w,
               const MoEConfig *mc,
               VisionConfig *vc, VisionWeights *vw, VisionProjector *vp,
               RunState *s, Tokenizer *t, ThreadPool *tp,
-              CliArgs *args, RagContext *rag) {
+              CliArgs *args, RagContext *rag, DraftModel *draft) {
     (void)vc; (void)vw; (void)vp; /* multimodal stubs — unused */
 
     char line[MAX_REPL_LINE];
@@ -191,10 +192,17 @@ void run_repl(Config *p, TransformerWeights *w,
         rc.color_enabled = color_enabled;
 
         int64_t start_time = timer_now_us();
-        generate_with_callback(p, w, s, mc, t, tp, line,
-                               args->max_tokens, args->temperature, args->top_p,
-                               args->json_mode,
-                               repl_token_callback, &rc);
+        if (draft) {
+            speculative_generate_with_callback(p, w, s, mc, t, tp, line,
+                                                args->max_tokens, args->temperature, args->top_p,
+                                                args->json_mode, draft, args->spec_length,
+                                                repl_token_callback, &rc);
+        } else {
+            generate_with_callback(p, w, s, mc, t, tp, line,
+                                   args->max_tokens, args->temperature, args->top_p,
+                                   args->json_mode,
+                                   repl_token_callback, &rc);
+        }
         md_render_flush(&rc.md);
         if (rc.is_tty && rc.live.count >= 2) fprintf(stderr, "\n"); /* move past the live tok/s line */
         md_render_free(&rc.md);

@@ -141,7 +141,16 @@ void generate_with_callback(const Config *cfg, const TransformerWeights *w,
     int tokens_generated = 0;
     int64_t gen_start_us = 0; /* wall-clock start of generation phase */
 
-    int total_steps = n_prompt + max_tokens;
+    /* max_tokens generation-eligible steps: the first generated token comes
+     * "free" from the last prompt-processing step (step == n_prompt - 1
+     * below), so the loop only needs max_tokens - 1 MORE steps after that to
+     * reach exactly max_tokens emitted tokens -- i.e. total_steps = n_prompt
+     * + max_tokens - 1, not n_prompt + max_tokens (2026-09-24: the off-by-one
+     * here silently generated max_tokens + 1 tokens for every caller;
+     * invisible in practice because EOS almost always fires first on real
+     * prompts, only surfaced by a synthetic test with EOS deliberately
+     * disabled — see docs/ai/mistakes.md). */
+    int total_steps = n_prompt + max_tokens - 1;
     for (int step = 0; step < total_steps && (step + pos_offset) < cfg->seq_len; step++) {
         int abs_pos = step + pos_offset;
 

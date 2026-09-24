@@ -3,6 +3,7 @@
 #include "math/parallel_matmul.h"
 #include "math/simd_dispatch.h"
 #include "math/batched_matmul.h"
+#include "math/lora_matmul.h"
 #include "core/debug.h"
 #include "core/step_timing.h"
 #include "core/weights.h"
@@ -65,6 +66,12 @@ void ffn_forward(RunState *s, const TransformerWeights *w,
         tn_dense_matmul_dispatch(s->hb,  s->xb, w->w1[layer], w->w1_type[layer], dim, hidden_dim, tp);
         tn_dense_matmul_dispatch(s->hb2, s->xb, w->w3[layer], w->w3_type[layer], dim, hidden_dim, tp);
     }
+    /* Phase 19: LoRA correction on gate/up (see attention.c's Q/K/V comment
+     * for the general convention). */
+    if (s->active_lora) {
+        lora_apply(s->hb,  s->xb, lora_mod(s->active_lora->gate, layer), dim, hidden_dim, tp);
+        lora_apply(s->hb2, s->xb, lora_mod(s->active_lora->up,   layer), dim, hidden_dim, tp);
+    }
 
     /* Apply activation to Gate */
     if (cfg->act_type == 1) {
@@ -92,6 +99,10 @@ void ffn_forward(RunState *s, const TransformerWeights *w,
         parallel_ternary_matmul_packed(s->xb, s->hb, (const tn_u8 *)w->w2[layer], hidden_dim, dim, w->s2[layer], tp);
     } else {
         tn_dense_matmul_dispatch(s->xb, s->hb, w->w2[layer], w->w2_type[layer], hidden_dim, dim, tp);
+    }
+    /* Phase 19: LoRA correction on the down projection. */
+    if (s->active_lora) {
+        lora_apply(s->xb, s->hb, lora_mod(s->active_lora->down, layer), hidden_dim, dim, tp);
     }
     /* Step 14: dense down projection output (pre-residual) */
     DBG_DUMP(layer, "dense_down", s->xb, dim);

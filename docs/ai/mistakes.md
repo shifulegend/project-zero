@@ -5,6 +5,111 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-09-24.
 
+### 2026-09-24 — Phase 19's `.lora.bin` loader hardcoded K/V's output width as `dim`, corrupting every GQA model's K/V-targeting LoRA — found only by downloading a real adapter and running it end to end
+
+- Context: Phase 19 (LoRA adapters) implementation + verification. Synthetic unit tests
+  (`tests/test_lora.c`) all passed, and the converter's own byte-level round-trip check (source
+  tensor -> `.lora.bin` -> decoded back, compared against the original numpy arrays) also passed
+  cleanly. Only surfaced when following the plan's own verification step: "a real end-to-end
+  check with an actual downloaded HuggingFace LoRA adapter if one compatible with a
+  locally-available base model can be found." Found and downloaded
+  `CTU-ai-lab/SmolLM2-135M-LoRA-Adapter` (HuggingFace Hub, PEFT format, `target_modules:
+  ["q_proj", "v_proj"]`) for this project's own `models/smollm2.gguf`.
+- Finding: `./adaptive_ai_engine --lora <converted adapter>` failed immediately with `[lora]
+  truncated/OOM reading target 2 layer 20 A`. Root cause: `src/core/lora_load.c`'s per-target
+  shape table hardcoded `dim` as *both* the input width (`n`, correct) and the output width (`d`,
+  **wrong**) for the K and V target modules:
+  `{ LORA_TARGET_K, &lora->k, dim, dim }, { LORA_TARGET_V, &lora->v, dim, dim }`. On a GQA model
+  (`n_kv_heads < n_heads`), the K/V projections actually go `dim -> kv_dim`, not `dim -> dim` —
+  SmolLM2 itself is GQA (`n_kv_heads=3`, `n_heads=9`, `dim=576`, `kv_dim=192`), so the loader
+  expected 3x more bytes for every V block than the (correctly-sized) file actually contained,
+  eventually running past EOF. `attention.c`'s own `lora_apply()` call sites were already correct
+  (`lora_apply(k_buf, ..., dim, kv_dim, tp)`) — only the *loader's* shape table had the bug, so
+  the mismatch was invisible until a file with real K/V blocks was actually loaded.
+- Why the unit tests missed it: `tests/test_lora.c`'s existing forward-level tests used
+  `tiny_config()` with `n_heads == n_kv_heads` (no GQA, `kv_dim == dim` by coincidence), so the
+  wrong shape table happened to compute the right byte count there. The converter's own
+  byte-level round-trip check used a synthetic adapter targeting `q_proj`/`v_proj`/`down_proj`
+  with `dim=16` for *all* of them (also no GQA) for the same reason. Neither test exercised the
+  one shape (`kv_dim != dim`) where the bug actually manifests.
+- Fix: added `kv_dim` to the `.lora.bin` header (validated against the base model's
+  `config_kv_dim(cfg)` at load time, exactly like `dim`/`hidden_dim`/`n_layers` already are —
+  rejecting a mismatch rather than silently corrupting output), corrected the K/V entries in
+  `lora_load.c`'s shape table to use `kv_dim` for their output width, added `--kv-dim` to
+  `tools/convert_lora.py` (defaults to `--dim`, with an explicit warning when the adapter targets
+  k_proj/v_proj and no `--kv-dim` was given), and added two dedicated regression tests to
+  `tests/test_lora.c`: `test_lora_load_rejects_kv_dim_mismatch` (a `kv_dim`-only header mismatch,
+  everything else correct, must be rejected) and `test_lora_load_gqa_kv_shape` (a hand-built
+  `.lora.bin` with a real `kv_dim != dim` V-target block, verifying both A and B decode correctly
+  end to end). Re-ran the real SmolLM2 adapter after the fix: loads and generates coherently.
+- Correction verified: full `make release/test/debug` green for gcc and clang after the fix
+  (`test_lora` now 184/184, up from 155/155); the real downloaded adapter loads and runs without
+  error; that specific adapter's `lora_B` tensors turned out to be all exactly zero across all 30
+  layers (confirmed by inspecting the source safetensors file directly, not a bug in this
+  pipeline — an untrained/placeholder homework adapter), so the pipeline's real-world
+  "LoRA measurably changes output" proof comes from `test_lora.c`'s synthetic nonzero-LoRA case
+  (`test_forward_lora_active_changes_output`) instead, which was already passing.
+- Prevention rule: for any per-target-module shape assumption in this codebase, **GQA is not an
+  edge case to check later — it's the config this project's own default demo model uses.** A
+  correctness test suite that never exercises `n_kv_heads != n_heads` for a K/V-shaped code path
+  will not catch a `kv_dim`-vs-`dim` bug, however thorough it looks otherwise; the only test that
+  actually caught this was a real downloaded artifact exercising the real shape. Reinforces the
+  project's own "download a real artifact rather than trust synthetic coverage" pattern (same
+  lesson Phase 18's benchmark work already drew from a real-model run finding what synthetic
+  tests couldn't).
+
+### 2026-09-24 — AVX-512VNNI CPUID lies on this sandboxed dev host too (same class as the 2026-07-16 VBMI entry below), silently corrupting `test_q2_0_matmul` under gcc only — found while verifying Phase 19's `make test`
+
+- Context: routine `make test CC=gcc` run as part of Phase 19's build/test verification (no
+  LoRA-related code involved). `build/tests/test_q2_0_matmul` crashed with a bare `Illegal
+  instruction` (SIGILL, exit 132) — reproduced identically on a clean pre-Phase-19 checkout
+  (confirmed via `git stash`), ruling out anything from this session's own changes. `make test
+  CC=clang` on the *same host* passed cleanly (35/35) — compiler-dependent SIGILL is itself a
+  strong signal for the CPUID-lies-under-virtualization bug class the 2026-07-16 entry below
+  already root-caused once for AVX-512VBMI, not a logic bug (a real logic bug wouldn't flip
+  between compilers on identical source).
+- Finding: `matmul_q2_0.c` gates its VNNI fast path (`matmul_q2_0_vnni.c`'s
+  `_mm512_dpbusds_epi32`-based kernel) purely on the compile-time `TN_HAS_AVX512VNNI` macro, with
+  **zero runtime verification** — the exact anti-pattern the 2026-07-16 VBMI entry already
+  documented and fixed for `bitunpack2_vnni.h` and `matmul_i4_task`, just never applied to this
+  sibling VNNI consumer. This sandboxed dev host's hypervisor advertises AVX-512VNNI in CPUID
+  (`/proc/cpuinfo` shows `avx512_vnni`) — matching `-march=native`'s own `TN_HAS_AVX512VNNI=1` —
+  but a gcc-compiled `vpdpbusds` reproducibly faults; clang-compiled code touching the identical
+  logical instruction happens not to trigger it, almost certainly differing register/scheduling
+  around the same faulting opcode rather than gcc actually needing something clang doesn't.
+- Fix: added `verify_avx512vnni_executable()` to `src/math/cpu_features.c`, structurally
+  identical to the existing `verify_avx512vbmi_executable()` (installs a `SIGILL` handler via
+  `sigaction`, executes one real `_mm512_dpbusds_epi32` under `sigsetjmp`/`siglongjmp`, checks the
+  numeric result — not just "didn't crash" — and downgrades `g_features.avx512vnni` to `false` on
+  a fault or wrong result). `tn_cpu_features_detect()` now runs it once at startup, same as the
+  VBMI check. `matmul_q2_0.c`'s two dispatch call sites
+  (`parallel_matmul_q2_0`/`parallel_matmul_q2_0_batch`) now gate on
+  `tn_cpu_features_detect()->avx512vnni` (the *verified* flag) in addition to the compile-time
+  macro, instead of trusting the macro alone.
+- A second, related bug this surfaced: `tests/test_q2_0_matmul.c`'s own reference implementation
+  (`ref_dot_q2_0_row()`) picked its comparison math (int8-quantized-reference vs. exact-float) by
+  keying off the same bare `TN_HAS_AVX512VNNI` compile-time macro — so once the actual kernel
+  dispatch started correctly falling back to the exact-float path (per the fix above) while the
+  macro was still compile-time `1`, the test's own reference now disagreed with what the kernel
+  legitimately computes, failing 3/35 cases (`single block, multi row`, rows 1/3/4). This is the
+  *same* class of test/dispatch mismatch the file's own header comment already documents once
+  (the 2026-07-17 regression, opposite direction: CI runners with no VNNI hardware at all vs. a
+  macro that still said yes). Fixed by keying `ref_dot_q2_0_row()` off the same runtime-verified
+  `tn_cpu_features_detect()->avx512vnni` flag the kernel itself now uses, not the macro.
+- Scope note: `TN_HAS_AVX512VNNI` is also consulted compile-time-only in `bitunpack2_vnni.h`
+  (already runtime-guarded via its own VBMI-independent path), `src/core/calibration.c`,
+  `src/math/parallel_matmul.c`, `src/math/simd_dispatch.c`,
+  `src/math/ternary_matmul_packed_vnni{,256}.c` — none of these were touched this pass (out of
+  scope for a Phase 19 side-fix; this session's real generation/benchmark runs against actual
+  models never crashed, so these paths are not known-broken on this host, just unverified the
+  same way `matmul_q2_0.c` was before today). Flagged here explicitly per the project's bug-fix
+  policy rather than silently left for a future session to rediscover independently.
+- Prevention rule: a compile-time `TN_HAS_AVX512*` macro is a *hint* that hardware support was
+  detected during configuration, never a guarantee it's safe to execute — every new caller of an
+  AVX-512VNNI/VBMI code path must consult the *runtime-verified* flag (`tn_cpu_features_detect()`
+  after `verify_avx512{vnni,vbmi}_executable()` has run), not the macro alone, on this class of
+  virtualized/sandboxed host.
+
 ### 2026-09-24 — Phase 18's batched matmul kernels (ternary, F16, BF16/INT8/INT4 classifier) were scalar-only, making speculative decoding's "verify" step slower than the sequential calls it was meant to replace — found via the first real-model benchmark
 
 - Context: Stage 7, the first real end-to-end speculative-decoding benchmark against actual

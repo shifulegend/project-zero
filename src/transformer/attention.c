@@ -7,6 +7,7 @@
 #include "transformer/dense_matmul_dispatch.h"
 #include "math/simd_dispatch.h"
 #include "math/batched_matmul.h"
+#include "math/lora_matmul.h"
 #include "speculative/spec_scratch.h"
 #include "core/platform.h"
 #include "core/weights.h"
@@ -131,6 +132,20 @@ void attention_forward(RunState *s, const TransformerWeights *w,
     tn_dense_matmul_dispatch(s->q,  s->xb, w->wq[layer], w->wq_type[layer], dim, dim,    tp);
     tn_dense_matmul_dispatch(k_buf, s->xb, w->wk[layer], w->wk_type[layer], dim, kv_dim, tp);
     tn_dense_matmul_dispatch(v_buf, s->xb, w->wv[layer], w->wv_type[layer], dim, kv_dim, tp);
+  }
+
+  /* Phase 19: LoRA correction on top of the base Q/K/V projections (one
+   * call each, once here, regardless of which dispatch branch just ran --
+   * see docs/ai/decision-log.md for why this is a no-op for every model
+   * that doesn't set s->active_lora). Applied before QK-norm/RoPE below,
+   * matching standard LoRA semantics: the adapter modifies the linear
+   * projection's output, and any subsequent normalization/rotation acts on
+   * the combined (base + LoRA) result, same as a real fine-tuned weight
+   * would produce. */
+  if (s->active_lora) {
+    lora_apply(s->q,  s->xb, lora_mod(s->active_lora->q, layer), dim, dim,    tp);
+    lora_apply(k_buf, s->xb, lora_mod(s->active_lora->k, layer), dim, kv_dim, tp);
+    lora_apply(v_buf, s->xb, lora_mod(s->active_lora->v, layer), dim, kv_dim, tp);
   }
 
   /* Step 2b: Qwen3 (dense) per-head QK-norm — RMSNorm applied to each Q/K
@@ -268,6 +283,11 @@ void attention_forward(RunState *s, const TransformerWeights *w,
     parallel_ternary_matmul_packed(s->xb2, s->xb, (const tn_u8 *)w->wo[layer], dim, dim, w->so[layer], tp);
   } else {
     tn_dense_matmul_dispatch(s->xb2, s->xb, w->wo[layer], w->wo_type[layer], dim, dim, tp);
+  }
+  /* Phase 19: LoRA correction on the output projection (see the Q/K/V
+   * comment above for the general convention). */
+  if (s->active_lora) {
+    lora_apply(s->xb2, s->xb, lora_mod(s->active_lora->o, layer), dim, dim, tp);
   }
 
 

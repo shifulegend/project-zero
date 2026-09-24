@@ -3,6 +3,65 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-09-24.
 
+### 2026-09-24 — Phase 19 (LoRA adapters) scope: generic dense/GQA path only, RunState-carried not parameter-threaded, format-agnostic application, GQA kv_dim fix found via a real adapter
+
+- Context: the user picked Phase 19 (LoRA Adapters — never previously implemented, per
+  `docs/architecture/IMPLEMENTATION_PLAN.md`'s own stub) as the next feature immediately after
+  Phase 18. The plan-file stub specified a fused-per-format kernel
+  (`ternary_matmul_with_lora()`) and a single shared A/B pair per layer; both were revised during
+  planning/implementation, and a real correctness bug was found (and fixed, same pass) via
+  end-to-end testing against an actually downloaded HuggingFace LoRA adapter.
+- Decision 1 — **format-agnostic `lora_apply()`, not a fused per-format kernel**: since A/B are
+  always dequantized to F32 at load time, the LoRA delta computation is 100% independent of the
+  base weight's quantization format (ternary/Q4_K/F16/Q2_0/F32) — one generic function that adds
+  the correction after any base matmul completes covers every format this engine supports, rather
+  than a fused kernel that would only work for the ternary path the plan stub specifically named.
+- Decision 2 — **per-module `LoRAModule *` arrays, not one shared A/B pair**: the plan stub's
+  struct (`float **lora_A; float **lora_B;`) only has room for one A/B pair per layer, but a real
+  adapter has independent matrices per target module (`q_proj` and `v_proj` are different
+  matrices, not a shared pair). `LoRAWeights` gets one `LoRAModule *` array per of 7 target
+  module types instead, `NULL` when that target isn't in the adapter's `target_mask` (mirrors
+  `weights.h`'s own NULL-for-inapplicable-module convention).
+- Decision 3 — **`RunState.active_lora`, not a new `transformer_forward()` parameter**: recon
+  before implementation found `transformer_forward()` has ~20 real production call sites
+  (`generate.c`, `spec_decode.c` ×5, `vision_bridge.c`, `vision_pipeline.c`, `agent_loop.c`,
+  `output_inject.c`, `reasoning_generate.c`, `rag/embedder.c`) plus ~15 test call sites — a new
+  required parameter would force touching essentially every one of them, most of which (RAG
+  embedding, vision prefill, hidden reasoning) have no business ever applying a *different* LoRA.
+  Added one field (`const LoRAWeights *active_lora;`) to the already-`memset`-zeroed `RunState`
+  instead — every existing caller gets `active_lora == NULL` for free, zero call sites touched,
+  no signature change to `transformer_forward()`/`attention_forward()`/`ffn_forward()` at all.
+  Only `main.c` sets it, once, right after `--lora` loads successfully.
+- Decision 4 — **scope: generic dense/GQA attention+FFN path only, single-token, this pass**:
+  `attention_forward()`/`ffn_forward()` only, not `_batch()`, not MLA, not Qwen3-MoE, not
+  Qwen3.5/3.6 hybrid, not MoE-FFN. Covers the architecture the overwhelming majority of public
+  HuggingFace LoRA adapters target (Llama/Mistral-style dense/GQA, including this repo's own demo
+  model). Documented as a follow-up ("Phase 19-B") in `IMPLEMENTATION_PLAN.md`, same staged-scope
+  precedent Phase 18 used for its own batched-kernel format coverage — not silently dropped.
+- Decision 5 — **GQA `kv_dim` bug, found and fixed via real-adapter end-to-end testing**: the
+  first implementation hardcoded `dim` as both the input *and* output width for K/V modules in
+  `lora_load.c`'s per-target shape table. This is wrong on any GQA model (K/V project
+  `dim -> kv_dim`, not `dim -> dim`) — including this project's own demo model
+  (SmolLM2, `n_kv_heads=3 < n_heads=9`, `kv_dim=192 != dim=576`). Went undetected by the
+  synthetic unit tests (which happened to use non-GQA configs for the Q/K/V case) and was only
+  caught by downloading a real PEFT LoRA adapter for SmolLM2 from HuggingFace
+  (`CTU-ai-lab/SmolLM2-135M-LoRA-Adapter`, targeting `q_proj`/`v_proj`) and running it through the
+  actual converter + loader + engine — `lora_load()` failed with "truncated/OOM reading target 2
+  layer 20 A" because the loader expected 3x more bytes for V's B matrix than the file (correctly)
+  contained. Fixed in the same pass, per the project's bug-fix policy: added `kv_dim` to the
+  `.lora.bin` header (validated against the base model's `config_kv_dim(cfg)`, same as
+  `dim`/`hidden_dim`/`n_layers`), corrected the K/V shape-table entries, added `--kv-dim` to
+  `convert_lora.py`, and added two dedicated regression tests
+  (`test_lora_load_rejects_kv_dim_mismatch`, `test_lora_load_gqa_kv_shape`) to
+  `tests/test_lora.c` so this class of bug can't silently regress. Full detail in
+  `docs/ai/mistakes.md`'s 2026-09-24 entry.
+- Not adopted: a fused per-format kernel (rejected per Decision 1 — would only work for ternary);
+  a single shared A/B pair (rejected per Decision 2 — doesn't model real adapters); threading a
+  new `transformer_forward()` parameter (rejected per Decision 3 — ~35 call sites, most needing
+  manual "pass NULL" review, for zero behavioral benefit over the `RunState` field); covering
+  MLA/Qwen3-MoE/hybrid/MoE-FFN/batched this pass (rejected per Decision 4 — real added scope for
+  architectures the overwhelming majority of public LoRA adapters don't target).
+
 ### 2026-09-24 — Phase 18 (speculative decoding) scope: full batched verification, GGUF-only draft loading, no explicit KV rollback, narrowed matmul-format coverage for this pass
 
 - Context: the user picked Phase 18 (never previously implemented, per

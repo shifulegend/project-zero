@@ -49,11 +49,13 @@ static void detect_x86(TnCpuFeatures *f) {
     }
 }
 
-#if TN_HAS_AVX512VBMI
+#if TN_HAS_AVX512VBMI || TN_HAS_AVX512VNNI
 #include <signal.h>
 #include <setjmp.h>
 #include <immintrin.h>
+#endif
 
+#if TN_HAS_AVX512VBMI
 static sigjmp_buf g_vbmi_test_jmpbuf;
 
 static void vbmi_test_sigill_handler(int sig) {
@@ -94,6 +96,52 @@ static bool verify_avx512vbmi_executable(void) {
     return ok;
 }
 #endif /* TN_HAS_AVX512VBMI */
+
+#if TN_HAS_AVX512VNNI
+static sigjmp_buf g_vnni_test_jmpbuf;
+
+static void vnni_test_sigill_handler(int sig) {
+    (void)sig;
+    siglongjmp(g_vnni_test_jmpbuf, 1);
+}
+
+/*
+ * Same CPUID-lies-in-virtualization class of bug as
+ * verify_avx512vbmi_executable() above (see docs/ai/mistakes.md,
+ * 2026-07-16 entry) — confirmed independently for AVX-512VNNI on this
+ * project's own sandboxed dev host: CPUID leaf 7 ECX bit 11 reads 1 and
+ * `-march=native` sets `TN_HAS_AVX512VNNI=1`, but a gcc-compiled
+ * `vpdpbusds` (matmul_q2_0_vnni.c's `_mm512_dpbusds_epi32`) reproducibly
+ * faults with SIGILL on this host (clang-compiled code happens not to
+ * trigger it — almost certainly differing register/instruction scheduling
+ * around the same faulting opcode, not a difference in HOST capability, so
+ * this cannot be trusted as "clang is safe, gcc isn't"). Execute one real
+ * VNNI dot-product instruction under a SIGILL trap, same pattern as the
+ * VBMI check, before any caller trusts the CPUID-reported bit.
+ */
+static bool verify_avx512vnni_executable(void) {
+    struct sigaction sa, old_sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = vnni_test_sigill_handler;
+    sigemptyset(&sa.sa_mask);
+    if (sigaction(SIGILL, &sa, &old_sa) != 0) return true; /* can't test; trust CPUID */
+
+    bool ok = true;
+    if (sigsetjmp(g_vnni_test_jmpbuf, 1) == 0) {
+        __m512i acc = _mm512_setzero_si512();
+        __m512i a   = _mm512_set1_epi8(1);
+        __m512i b   = _mm512_set1_epi8(1);
+        acc = _mm512_dpbusds_epi32(acc, a, b);
+        int32_t buf[16];
+        _mm512_storeu_si512((void *)buf, acc);
+        if (buf[0] != 64) ok = false; /* 64 lanes of 1*1 summed into each i32 */
+    } else {
+        ok = false;
+    }
+    sigaction(SIGILL, &old_sa, NULL);
+    return ok;
+}
+#endif /* TN_HAS_AVX512VNNI */
 #endif /* TN_ARCH_X86 */
 
 /* ── ARM feature detection ────────────────────────────────────────────────── */
@@ -165,6 +213,13 @@ const TnCpuFeatures *tn_cpu_features_detect(void) {
      * anywhere else in the engine (see verify_avx512vbmi_executable). */
     if (g_features.avx512vbmi && !verify_avx512vbmi_executable()) {
         g_features.avx512vbmi = false;
+    }
+#endif
+#if TN_HAS_AVX512VNNI
+    /* Same verified-execution safety net as VBMI above — see
+     * verify_avx512vnni_executable(). */
+    if (g_features.avx512vnni && !verify_avx512vnni_executable()) {
+        g_features.avx512vnni = false;
     }
 #endif
 #endif

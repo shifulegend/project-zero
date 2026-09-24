@@ -24,6 +24,7 @@
 #include "math/matmul_q2_0.h"
 #include "threading/thread_pool.h"
 #include "core/platform.h"
+#include "math/cpu_features.h"
 #include <stdint.h>
 #include <string.h>
 
@@ -134,7 +135,14 @@ extern int parallel_matmul_q2_0_vnni(float *out, const float *x, const uint8_t *
 void parallel_matmul_q2_0(float *out, const float *x, const uint8_t *w_q2_0,
                            int n, int d, ThreadPool *tp) {
 #if TN_HAS_AVX512VNNI
-    if (parallel_matmul_q2_0_vnni(out, x, w_q2_0, n, d, tp)) return;
+    /* Gated on the verified-executable runtime flag, not just the
+     * TN_HAS_AVX512VNNI compile-time macro: a hypervisor can advertise
+     * AVX-512VNNI in CPUID while the underlying execution unit faults on
+     * a real vpdpbusds, same class of bug as bitunpack2_vnni.h's VBMI
+     * check (see cpu_features.c's verify_avx512vnni_executable() and
+     * docs/ai/mistakes.md, 2026-09-24 entry). */
+    if (tn_cpu_features_detect()->avx512vnni &&
+        parallel_matmul_q2_0_vnni(out, x, w_q2_0, n, d, tp)) return;
 #endif
     size_t row_bytes = (size_t)(n / Q2_0_BLOCK) * Q2_0_BYTES;
     MatmulQ2_0Args args = { .out = out, .x = x, .w = w_q2_0,
@@ -185,7 +193,10 @@ void parallel_matmul_q2_0_batch(float **outs, float **xs,
                                  const uint8_t * const *ws,
                                  int n, int d, int k, ThreadPool *tp) {
 #if TN_HAS_AVX512VNNI
-    if (parallel_matmul_q2_0_batch_vnni(outs, xs, ws, n, d, k, tp)) return;
+    /* See parallel_matmul_q2_0()'s comment above: verified-executable
+     * runtime flag, not just the compile-time macro. */
+    if (tn_cpu_features_detect()->avx512vnni &&
+        parallel_matmul_q2_0_batch_vnni(outs, xs, ws, n, d, k, tp)) return;
 #endif
     size_t row_bytes = (size_t)(n / Q2_0_BLOCK) * Q2_0_BYTES;
     MatmulQ2_0BatchArgs args = {

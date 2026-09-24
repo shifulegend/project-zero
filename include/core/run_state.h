@@ -3,6 +3,7 @@
 
 #include "core/config.h"
 #include "core/error.h"
+#include "core/lora.h"
 #include "kv_cache/sliding_window.h"
 #include <stdbool.h>
 
@@ -82,6 +83,16 @@ typedef struct {
 
   /* Sliding Window state for circular KV cache mapping */
   SlidingWindow sw;
+
+  /* Phase 19: LoRA adapter active for this RunState's generation, or NULL
+   * (the default -- zeroed by run_state_alloc_ex()'s memset). Not owned:
+   * points at a LoRAWeights the caller loaded and outlives this RunState.
+   * Read directly by attention_forward()/ffn_forward() (single-token
+   * dense/GQA path only -- see docs/ai/decision-log.md for scope); every
+   * other RunState in the process (RAG's embedder, vision prefill, the
+   * draft model's own state, every test) simply never sets this and pays
+   * zero cost. */
+  const LoRAWeights *active_lora;
 } RunState;
 
 /**

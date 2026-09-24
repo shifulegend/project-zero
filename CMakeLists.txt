@@ -136,6 +136,7 @@ set(CORE_SOURCES
     src/core/unpack_avx2.c
     src/core/gguf_reader.c
     src/core/gguf_loader.c
+    src/core/lora_load.c
 )
 
 set(MATH_SOURCES
@@ -177,6 +178,7 @@ set(MATH_SOURCES
     src/math/batched_matmul.c
     src/math/batched_matmul_f16.c
     src/math/batched_matmul_classifier.c
+    src/math/lora_matmul.c
 )
 
 set(MULTIMODAL_SOURCES

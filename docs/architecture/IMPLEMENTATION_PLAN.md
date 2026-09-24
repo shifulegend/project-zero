@@ -1828,43 +1828,82 @@ the *only* way to enable this feature; there is no default or embedded draft-mod
 
 ---
 
-## PHASE 19: LoRA Adapters (Hot-Swappable Brains)
+## PHASE 19: LoRA Adapters ✅ (generic dense/GQA attention+FFN path only — MLA/Qwen3-MoE/Qwen3.5 hybrid/MoE-FFN/batched excluded, Phase 19-B)
 
-Low-Rank Adaptation allows loading tiny 50MB "patch" files that alter the model's behavior without modifying base weights.
+Low-Rank Adaptation allows loading tiny "patch" files that alter the model's behavior without
+modifying base weights: `out = base_matmul(x, W) + (alpha/rank) * (x @ A @ B)`.
 
-### 19.1 — LoRA Weight Structures
+**As implemented** (see `docs/ai/decision-log.md` and `docs/ai/mistakes.md`'s 2026-09-24 entries
+for the full rationale behind each deviation from the design below): a single format-agnostic
+`lora_apply()` adds the correction generically in F32 after any base matmul completes (ternary/
+Q4_K/F16/Q2_0/F32 alike) rather than a per-format fused kernel; `LoRAWeights` holds one
+`LoRAModule *` array per target module (not a single shared A/B pair) since a real adapter has
+independent matrices per `q_proj`/`v_proj`/etc.; the adapter is carried on `RunState.active_lora`
+(set once in `main.c`) rather than threaded as a new parameter through
+`transformer_forward()`/`attention_forward()`/`ffn_forward()`, avoiding touching ~35 existing call
+sites for zero behavior change on every caller that never sets it. `--lora <path>` is the *only*
+way to enable this feature; there is no default or embedded adapter path.
+
+### 19.1 — LoRA Weight Structures ✅
 - File: `include/core/lora.h`
-- ```c
-  typedef struct {
-      int rank;              // LoRA rank (e.g., 16, 32, 64)
-      float alpha;           // Scaling factor
-      float **lora_A;        // Per-layer A matrices: [dim × rank]
-      float **lora_B;        // Per-layer B matrices: [rank × dim]
-      char *target_modules;  // Comma-separated: "q_proj,v_proj,..."
-  } LoRAWeights;
-  ```
-- `TernaryError lora_load(LoRAWeights *lora, const char *path);`
-- `void lora_free(LoRAWeights *lora);`
+- `LoRAModule { const float *A; const float *B; int rank; float scale; }` — one per (layer,
+  target module); `rank == 0` is the "inactive" no-op sentinel.
+- `LoRAWeights { int n_layers, rank, dim, hidden_dim; float alpha; LoRAModule *q, *k, *v, *o,
+  *gate, *up, *down; }` — a module array is `NULL` entirely when that target isn't in the
+  adapter's `target_mask` (same NULL-for-inapplicable-module convention `weights.h` already uses
+  for e.g. `q35_attn_q_norm`). `lora_mod(arr, layer)` is the safe accessor for a possibly-NULL
+  array.
+- `TernaryError lora_load(LoRAWeights *lora, const char *path, int dim, int kv_dim, int
+  hidden_dim, int n_layers);` / `void lora_free(LoRAWeights *lora);`
 
-### 19.2 — LoRA File Loader
+### 19.2 — LoRA File Loader ✅
 - File: `src/core/lora_load.c`
-- Reads a `.lora.bin` file with header: `[magic "LORA"] [rank] [alpha] [target_mask] [A_matrices] [B_matrices]`.
-- A and B matrices stored as float16, dequantized to float32 on load.
-- Memory footprint: ~50MB for rank-32 on a 2B model.
+- `mapped_file_open()` + magic/version/header-field reads (`rd32`/`rd32s`/`rdf32` local
+  helpers), same idiom as `src/multimodal/vision_weights_load.c`. Header: magic, version,
+  `n_layers`, `rank`, `alpha` (f32), `dim`, `hidden_dim`, `target_mask`, **`kv_dim`**, reserved
+  to 64 bytes. `kv_dim` is validated against the base model's `config_kv_dim(cfg)` exactly like
+  `dim`/`hidden_dim`/`n_layers` — **K/V project `dim -> kv_dim`, not `dim -> dim`, on a GQA model**
+  (found via a real downloaded SmolLM2 LoRA adapter corrupting reads on this project's own demo
+  model, `n_kv_heads=3 < n_heads=9`; see `docs/ai/mistakes.md`). A/B are F16 on disk (row-major,
+  matching HuggingFace PEFT's own `lora_A.weight [rank, in_features]` / `lora_B.weight
+  [out_features, rank]` tensor shapes exactly — the converter does no reshape/transpose), decoded
+  to owned F32 arrays at load time; the mmap is closed immediately after.
 
-### 19.3 — LoRA-Fused MatMul
+### 19.3 — Generic LoRA Application ✅ (not a fused per-format kernel)
 - File: `include/math/lora_matmul.h` + `src/math/lora_matmul.c`
-- `void ternary_matmul_with_lora(float *out, const float *x, const int8_t *w, int n, int d, float scale, const LoRAWeights *lora, int layer, const char *module_name);`
-  - Computes: `out = (x @ W) * scale + (x @ A @ B) * (alpha / rank)`.
-  - The LoRA term `x @ A @ B` is computed separately: first `x @ A` (dim → rank, very small), then `result @ B` (rank → dim).
-  - Added to the base matmul output.
-- **Hot-swap:** Calling `lora_free()` + `lora_load()` with a different file switches personality in milliseconds.
+- `void lora_apply(float *out, const float *x, const LoRAModule *mod, int n, int d, ThreadPool
+  *tp);` — no-op when `mod == NULL || mod->rank == 0`. Step 1 (`tmp = A @ x`, `rank` rows) runs
+  directly, not thread-dispatched (rank is small by construction); step 2 (`out += scale * (B @
+  tmp)`, up to `d` rows) is row-distributed across the thread pool, mirroring
+  `parallel_matmul.c`'s task-per-output-row pattern. Both dot products go through
+  `tn_vec_dot()` (`math/simd_dispatch.h`) — never a hand-rolled scalar loop, the exact lesson from
+  Phase 18's own scalar-batched-kernel regression (`docs/ai/mistakes.md`, 2026-09-24).
+- Call sites: one line each after the existing Q/K/V, O, gate/up, and down dispatch blocks
+  complete in `attention_forward()`/`ffn_forward()` (single-token path only) — no signature
+  changes to either function; both read `s->active_lora` directly.
+- **Hot-swap:** `lora_free()` + `lora_load()` with a different file switches personality; no
+  base-weight reload needed.
 
-### 19.4 — LoRA Converter Tool
+### 19.4 — LoRA Converter Tool ✅
 - File: `tools/convert_lora.py`
-- Reads HuggingFace LoRA adapter (typically `adapter_model.safetensors` + `adapter_config.json`).
-- Extracts A/B matrices, writes to `.lora.bin` format.
-- CLI: `python convert_lora.py --adapter path/to/lora --output adapter.lora.bin`
+- Reads a HuggingFace PEFT LoRA adapter directory (`adapter_model.safetensors` +
+  `adapter_config.json`); `rank`/`alpha`/`target_modules` come straight from the config JSON,
+  `A`/`B` tensors straight from the safetensors file with **zero reshape/transpose** (PEFT's
+  native layout already matches `lora_apply()`'s row-major-by-output convention). `--kv-dim`
+  (defaults to `--dim`, correct only for non-GQA models) sizes K/V's output width correctly on a
+  GQA base model — see 19.2's `kv_dim` fix above. Verified end-to-end against a real downloaded
+  adapter (`CTU-ai-lab/SmolLM2-135M-LoRA-Adapter`, HuggingFace Hub) targeting `q_proj`/`v_proj` on
+  this project's own `models/smollm2.gguf`: converts, loads, and generates coherently; that
+  particular adapter's `lora_B` tensors are all exactly zero (an untrained/placeholder adapter,
+  confirmed by inspecting the source safetensors directly — not a bug in this pipeline), so its
+  own real-world behavioral-change proof comes from `tests/test_lora.c`'s synthetic nonzero-LoRA
+  case instead (`test_forward_lora_active_changes_output`).
+
+### 19-B (documented follow-up, not in this pass)
+- MLA, Qwen3-MoE, Qwen3.5/3.6 hybrid attention, MoE-FFN, and the batched speculative-decoding
+  path (`attention_forward_batch()`/`ffn_forward_batch()`) don't read `active_lora` — a `--lora`
+  adapter silently has no effect on those architectures/paths today. Same staged-scope precedent
+  Phase 18 used for its own batched-kernel format coverage.
 
 ---
 

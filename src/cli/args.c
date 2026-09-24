@@ -67,6 +67,15 @@ void print_usage(const char *prog_name) {
     printf("  --spec-length <int> Tokens drafted per round when --draft-model is set\n");
     printf("                      (default: 5). Ignored otherwise.\n");
 
+    printf("\nLoRA adapters:\n");
+    printf("  --lora <path>       Path to a .lora.bin adapter. Disabled by default --\n");
+    printf("                      this is the ONLY way to enable a LoRA adapter; there\n");
+    printf("                      is no default/embedded adapter. The adapter must have\n");
+    printf("                      been built for this exact base model (n_layers, dim,\n");
+    printf("                      hidden_dim all checked at load time). v1 scope: the\n");
+    printf("                      generic dense/GQA attention/FFN path only -- not MLA,\n");
+    printf("                      Qwen3-MoE, Qwen3.5/3.6 hybrid, or MoE-FFN layers.\n");
+
     printf("\nOutput:\n");
     printf("  --color <mode>      Color output: auto (default), always, never.\n");
     printf("                      auto respects the NO_COLOR env var and disables\n");
@@ -118,6 +127,8 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->draft_model_path = NULL; /* disabled by default -- the ONLY way to enable
                                        speculative decoding is --draft-model */
     args->spec_length = 5;
+    args->lora_path = NULL; /* disabled by default -- the ONLY way to enable a
+                                LoRA adapter is --lora */
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--model") == 0 && i + 1 < argc) {
@@ -215,6 +226,8 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
                 fprintf(stderr, "Error: --spec-length must be a positive integer\n");
                 return TN_ERR_INVALID_CONFIG;
             }
+        } else if (strcmp(argv[i], "--lora") == 0 && i + 1 < argc) {
+            args->lora_path = argv[++i];
         } else if (strcmp(argv[i], "--color") == 0 && i + 1 < argc) {
             const char *mode = argv[++i];
             if (strcmp(mode, "auto") != 0 && strcmp(mode, "always") != 0 && strcmp(mode, "never") != 0) {

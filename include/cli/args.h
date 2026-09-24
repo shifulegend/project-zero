@@ -52,6 +52,10 @@ typedef struct {
                                   decoding; never a default/embedded path.         */
     int   spec_length;        /* --spec-length <N>: tokens drafted per round.
                                   Default 5. Only used when draft_model_path is set. */
+    /* Phase 19: LoRA adapters */
+    char *lora_path;          /* --lora <path>: .lora.bin adapter. NULL (default) =
+                                  disabled -- the ONLY way to enable a LoRA adapter;
+                                  never a default/embedded path.                    */
 } CliArgs;
 
 // Parse CLI arguments into the CliArgs struct

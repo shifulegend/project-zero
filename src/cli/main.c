@@ -9,6 +9,7 @@
 #include "core/moe_weights.h"
 #include "core/weights.h"
 #include "core/run_state.h"
+#include "core/lora.h"
 #include "core/hardware_profile.h"
 #include "core/calibration.h"
 #include "core/debug.h"
@@ -544,6 +545,40 @@ int main(int argc, char **argv) {
         draft_active = true;
     }
 
+    /* ── Phase 19: LoRA adapter (optional) ───────────────────────────────────
+     * --lora is the only way this ever activates -- see cli/args.h. Applies
+     * to the *primary* model's RunState only (s->active_lora), never the
+     * draft model's -- see docs/ai/decision-log.md for the scope rationale.
+     * v1 covers the generic dense/GQA attention/FFN path only; lora_load()
+     * itself doesn't know or care about the model's architecture family, so
+     * loading succeeds even for MLA/Qwen3-MoE/hybrid models, but
+     * attention_forward()/ffn_forward() only read active_lora on the
+     * generic path -- the adapter would silently have no effect on those
+     * architectures. */
+    LoRAWeights lora;
+    bool lora_active = false;
+    if (args.lora_path) {
+        if (lora_load(&lora, args.lora_path, p.dim, config_kv_dim(&p), p.hidden_dim, p.n_layers) != TN_OK) {
+            fprintf(stderr, "Error: failed to load --lora '%s'.\n", args.lora_path);
+            if (draft_active) draft_model_free(&draft_model);
+            tokenizer_free(&t);
+            if (mc.has_mla) mla_run_state_free(s, p.n_layers);
+            if (mc.has_linear_attn) q35_run_state_free(s, &p, &mc);
+            if (mc.has_qk_norm) qwen3moe_run_state_free(s, &p);
+            run_state_free(s);
+            free(s);
+            if (mc.is_moe) moe_weights_free(&w, &mc);
+            weights_free_pointers(&w);
+            if (gguf_store) weights_free_gguf(gguf_store);
+            if (is_gguf) gguf_header_free(&gguf_hdr);
+            mapped_file_close(&mf);
+            threadpool_destroy(tp);
+            return 1;
+        }
+        lora_active = true;
+        s->active_lora = &lora;
+    }
+
     /* ── Phase 15: RAG initialisation ────────────────────────────────────── */
     RagContext rag;
     memset(&rag, 0, sizeof(rag));
@@ -653,6 +688,7 @@ int main(int argc, char **argv) {
 
     /* Cleanup */
     if (draft_active) draft_model_free(&draft_model);
+    if (lora_active) lora_free(&lora);
     if (rag_ok) {
         embedder_free(&rag.emb);
         vector_db_close(&rag.db);

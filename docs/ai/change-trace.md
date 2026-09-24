@@ -3,6 +3,42 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-09-24.
 
+### 2026-09-24 — Phase 19: LoRA adapters (hot-swappable low-rank fine-tunes)
+- Full design rationale and deviations from the original plan stub: `docs/ai/decision-log.md`'s
+  matching 2026-09-24 entry. The two bugs found and fixed during this phase (GQA `kv_dim`
+  loader bug; a pre-existing, unrelated AVX-512VNNI CPUID-lies-on-virtualized-host bug found
+  while verifying `make test`): `docs/ai/mistakes.md`'s two matching 2026-09-24 entries.
+- New: `include/core/lora.h` + `src/core/lora_load.c` (`LoRAWeights`/`LoRAModule` structs,
+  `lora_load()`/`lora_free()`, mmap-based `.lora.bin` loader mirroring
+  `vision_weights_load.c`'s magic/header idiom); `include/math/lora_matmul.h` +
+  `src/math/lora_matmul.c` (`lora_apply()`, format-agnostic F32 correction, thread-pool
+  row-distributed, `tn_vec_dot()`-based); `tools/convert_lora.py` (HuggingFace PEFT adapter ->
+  `.lora.bin`, no reshape/transpose needed since PEFT's own tensor layout already matches);
+  `tests/test_lora.c` (`lora_apply()` unit correctness incl. disabled-LoRA edge cases,
+  `.lora.bin` load-roundtrip, GQA `kv_dim` shape regression tests, `transformer_forward()`-level
+  zero-behavior-change + real-effect tests).
+- Changed: `include/core/run_state.h` (new `const LoRAWeights *active_lora;` field, zeroed by the
+  existing `run_state_alloc_ex()` memset — zero-touched-call-sites for every existing caller);
+  `src/transformer/attention.c`/`ffn.c` (single-token path only — one-line `lora_apply()` calls
+  after each existing Q/K/V, O, gate/up, down dispatch block; no signature changes);
+  `include/cli/args.h` + `src/cli/args.c` (`--lora <path>`, NULL/disabled by default, the only
+  way to enable it — mirrors `--draft-model`'s own convention); `src/cli/main.c` (load/wire/free
+  `lora`, mirroring the existing draft-model block's error-cleanup chain);
+  `CMakeLists.txt` (`src/core/lora_load.c`/`src/math/lora_matmul.c` added to
+  `CORE_SOURCES`/`MATH_SOURCES`; `Makefile` needed no change, auto-discovers via `find`).
+- Verified: `make release/test/debug` green for gcc and clang (`test_lora` 184/184), a CMake
+  sanity build, the existing golden-output check (`models/smollm2.gguf`, "What is the capital of
+  France?", no `--lora`) confirming byte-identical output to before this phase, and a real
+  end-to-end run against a downloaded HuggingFace PEFT LoRA adapter
+  (`CTU-ai-lab/SmolLM2-135M-LoRA-Adapter`) on this project's own demo model — converts, loads,
+  and generates coherently (that adapter's own `lora_B` tensors are all exactly zero, an
+  untrained/placeholder adapter confirmed by inspecting the source safetensors directly, not a
+  bug in this pipeline; the "LoRA measurably changes output" proof instead comes from
+  `test_lora.c`'s synthetic nonzero-LoRA case).
+- Scope: generic dense/GQA `attention_forward()`/`ffn_forward()` (single-token) only this pass —
+  not MLA, not Qwen3-MoE, not Qwen3.5/3.6 hybrid, not MoE-FFN, not the batched speculative-decoding
+  path. Documented as a follow-up ("Phase 19-B") in `IMPLEMENTATION_PLAN.md`, not silently dropped.
+
 ### 2026-09-24 — Phase 18 (speculative decoding) Stage 7: real-model benchmark + SIMD-accelerate the batched matmul kernels
 - Full benchmark writeup (setup, correctness, the bug's before/after numbers, the full results
   and round-breakdown tables): `docs/reports/PHASE18_SPECULATIVE_DECODING_BENCHMARK_2026-09-24.md`.

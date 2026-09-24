@@ -14,6 +14,7 @@
 #include "math/matmul_q2_0.h"
 #include "core/gguf_quant.h"
 #include "core/platform.h"
+#include "math/cpu_features.h"
 #include "math/quantize_i8.h"
 #include "test_harness.h"
 
@@ -71,19 +72,28 @@ static void make_q2_0_row(uint8_t *row, int n, int row_seed) {
  *     dot product, not a correctness bug — comparing against the same
  *     *quantized* x isolates whether the VNNI bias-trick/bit-unpack are
  *     themselves correct, independent of that expected int8 rounding.
- *   - Portable/AVX2 host (matmul_q2_0.c, TN_HAS_AVX512VNNI == 0): the kernel
- *     never quantizes x at all — dot_q2_0_row() FMAs the raw float32 x
- *     directly. Comparing that against an int8-quantized reference compares
- *     two different operations and fails on whichever rows this test's
- *     synthetic data happens to round unfavorably for, independent of
- *     whether the kernel is actually correct (root cause of the 2026-07-17
- *     regression: this function was made VNNI-aware but parallel_matmul_q2_0
- *     dispatches to the portable path on every CI runner, none of which have
- *     AVX-512 VNNI, so every run compared the exact-float portable kernel
- *     against a quantized reference it never computes with).
+ *   - Portable/AVX2 host: the kernel never quantizes x at all —
+ *     dot_q2_0_row() FMAs the raw float32 x directly. Comparing that against
+ *     an int8-quantized reference compares two different operations and
+ *     fails on whichever rows this test's synthetic data happens to round
+ *     unfavorably for, independent of whether the kernel is actually correct
+ *     (root cause of the 2026-07-17 regression: this function was made
+ *     VNNI-aware but parallel_matmul_q2_0 dispatches to the portable path on
+ *     every CI runner, none of which have AVX-512 VNNI, so every run
+ *     compared the exact-float portable kernel against a quantized
+ *     reference it never computes with).
  *
- * So: match the reference to whichever path this build will actually take,
- * same #if this file's own matmul_q2_0.c dispatch uses.
+ * So: match the reference to whichever path this build will actually take —
+ * the same *runtime-verified* `tn_cpu_features_detect()->avx512vnni` flag
+ * matmul_q2_0.c's own dispatch consults, not the bare TN_HAS_AVX512VNNI
+ * compile-time macro. A hypervisor can advertise AVX-512VNNI in CPUID while
+ * the underlying execution unit faults on a real vpdpbusds (see
+ * cpu_features.c's verify_avx512vnni_executable() and docs/ai/mistakes.md,
+ * 2026-09-24 entry) — on such a host TN_HAS_AVX512VNNI is still 1 but the
+ * kernel correctly falls back to the exact-float path, so keying this
+ * reference off the compile-time macro alone reintroduces the exact
+ * mismatch the 2026-07-17 fix above already root-caused once, just from the
+ * opposite direction (macro says yes, verified runtime says no).
  */
 static float ref_dot_q2_0_row(const uint8_t *row, const float *x, int n) {
     float *decoded = (float *)malloc((size_t)n * sizeof(float));
@@ -91,18 +101,18 @@ static float ref_dot_q2_0_row(const uint8_t *row, const float *x, int n) {
 
     float s = 0.0f;
 
-#if TN_HAS_AVX512VNNI
-    int8_t *q_x = (int8_t *)malloc((size_t)n * sizeof(int8_t));
-    float act_scale = quantize_row_to_i8(x, q_x, n);
-    if (act_scale > 0.0f) {
+    if (tn_cpu_features_detect()->avx512vnni) {
+        int8_t *q_x = (int8_t *)malloc((size_t)n * sizeof(int8_t));
+        float act_scale = quantize_row_to_i8(x, q_x, n);
+        if (act_scale > 0.0f) {
+            for (int i = 0; i < n; i++)
+                s += decoded[i] * ((float)q_x[i] * act_scale);
+        }
+        free(q_x);
+    } else {
         for (int i = 0; i < n; i++)
-            s += decoded[i] * ((float)q_x[i] * act_scale);
+            s += decoded[i] * x[i];
     }
-    free(q_x);
-#else
-    for (int i = 0; i < n; i++)
-        s += decoded[i] * x[i];
-#endif
 
     free(decoded);
     return s;

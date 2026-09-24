@@ -5,6 +5,74 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-09-24.
 
+### 2026-09-24 — Phase 18's batched matmul kernels (ternary, F16, BF16/INT8/INT4 classifier) were scalar-only, making speculative decoding's "verify" step slower than the sequential calls it was meant to replace — found via the first real-model benchmark
+
+- Context: Stage 7, the first real end-to-end speculative-decoding benchmark against actual
+  downloaded models (SmolLM2-135M draft vs. 360M/1.7B verifiers, both same-tokenizer siblings of
+  the repo's existing demo model). Before this, all correctness verification (Stages 1, 2, 5) used
+  tiny synthetic models where kernel-level performance was never measured, only numerical
+  correctness.
+- Finding: speculative decoding was dramatically *slower* than plain generation -- e.g. 360M
+  verifier: plain ~31-37 tok/s, speculative ~3.6-4.5 tok/s, roughly 8-10x slower, not faster.
+  `TN_STEP_TIMING=1` (Stage 5.5's own instrumentation) isolated it immediately: step 25
+  ("Speculative: verify batch") cost ~790ms/round for a 5-token batched call on the 360M model,
+  while 5 sequential single-token calls on the same model cost ~150ms total -- the batched call
+  was ~5x *more* expensive than the calls it was supposed to replace. Root cause: every batched
+  kernel in `src/math/batched_matmul{,_f16,_classifier}.c` (Stage 1, 2026-09-22) did its
+  weight-decode-and-accumulate loop in plain scalar C (`f16_to_f32_scalar()` / `unpack_ternary()`
+  called per-element, per-token), while every corresponding single-token kernel
+  (`src/math/matmul_f16.c`, `ternary_matmul_packed_avx512.c`, etc.) is AVX-512/AVX2 SIMD-accelerated
+  with multi-accumulator FMA. The batched kernels *did* deliver their documented RAM-bandwidth win
+  (each weight row read from RAM once, not once per candidate token) -- Stage 1's header comment
+  said exactly this and it was true -- but on AVX-512 hardware, scalar-speed compute is so much
+  slower than SIMD-speed compute that it became the new bottleneck, more than erasing the
+  bandwidth savings. Stage 1's own header comment had flagged the SIMD gap as "a documented
+  follow-up" without measuring what skipping it would actually cost -- it costs correctness of the
+  feature's entire premise for real (non-tiny-synthetic) models.
+- Impact: every one of Stage 1's five batched-kernel formats (ternary, F16, BF16, INT8, INT4) had
+  this defect. F16 (attention/FFN projections) and BF16 (the default classifier format) are what
+  every real GGUF model in this repo's `models/` directory actually uses, so this wasn't a
+  narrow-format edge case -- it made `--draft-model` a strict regression for every model anyone
+  had actually tried it on, the opposite of Phase 18's stated purpose.
+- Fixed: rewrote all five kernels to dequantize/unpack each weight row to F32 **once per row**
+  (SIMD-accelerated where a fast decode path already existed, e.g. `_mm512_cvtph_ps` for F16,
+  `unpack_ternary_block_avx2()` for ternary), then reuse this project's existing SIMD-dispatched
+  `tn_vec_dot()` (`math/simd_dispatch.h` -- the same dispatch table the single-token dense/GQA
+  attention path's own dot products already go through) for each of the n_tokens dot products
+  against that decoded row. This pays the decode cost once per row instead of once per candidate
+  token, on top of the existing RAM-read savings, and gets full SIMD width on the O(n*n_tokens)
+  dot-product work that actually dominates. `include/math/batched_matmul.h`'s header comment
+  updated to describe the new design instead of the stale "portable C, correctness-first, SIMD is
+  a follow-up" framing.
+- Verified: `tests/test_batched_matmul.c` (all 5 formats' correctness assertions, unchanged
+  tolerance) still passes 6/6 -- caught one real regression while fixing this: the test file never
+  called `tn_simd_init()`, so `tn_vec_dot` was a NULL function pointer and the first call SEGV'd
+  under ASan (`PC=0x0`) the moment the rewritten kernels started depending on it; fixed by adding
+  the same `tn_simd_init()` call `test_forward.c`/`test_forward_batch.c`/`test_threading.c` already
+  make. Full `make release/test/debug` green on gcc and clang after both fixes. Re-confirmed
+  plain-vs-speculative output byte-identical at `--temperature 0` on both real model pairs
+  (135M+360M, 135M+1.7B) -- the SIMD rewrite is a pure performance change, no different numerics
+  (same dot-product math, just computed with wider SIMD lanes and less redundant re-decoding).
+  Direct before/after measurement on the 360M pair: step 25 avg round cost dropped from ~790ms to
+  ~122ms (~6.5x), and scales further with `spec_length` (measured 9%/33%/45% cheaper than the
+  sequential-equivalent cost at spec_length 3/5/8 on the 1.7B pair) -- the batched-verification
+  mechanism itself is now working as designed. End-to-end, speculative decoding is still net
+  slower than plain generation for both tested pairs on this 4-core benchmark box (see the Stage 7
+  benchmark report) -- per-round draft-phase + corrective-commit overhead still outweighs the
+  (now-real) verify-batch savings at this core count and these draft:verifier ratios; reported
+  honestly rather than treated as a further bug to chase, since the batched math itself is
+  confirmed correct and meaningfully faster than before.
+- Lesson: a "documented, deferred" scope limitation (here: "SIMD tiers are a follow-up, portable C
+  is correctness-first") is not the same claim as "this will still deliver the feature's intended
+  benefit." The bandwidth-savings argument for batching was sound in isolation, but nobody had
+  checked whether it would survive contact with a several-times-slower compute path on the actual
+  target hardware (AVX-512) until a real-model benchmark measured it end-to-end. Synthetic-model
+  correctness tests (Stages 1/2/5) proved the math right but said nothing about performance;
+  real-model measurement is what caught this, exactly why Stage 5's plan called for it (even
+  though it took until Stage 7, once a compatible real draft/verifier pair was actually available,
+  for that check to happen). Per the bug-fix policy, fixed in the same pass despite being
+  pre-existing (Stage 1, 2026-09-22) rather than deferred as "Phase 18-B."
+
 ### 2026-09-24 — `attention.c`'s generic dense/GQA path and `qwen3moe_attention.c` had zero `TN_STEP_TIMING` coverage — steps 4-12 silently reported `0.000000ms` for every non-MLA, non-Qwen3.5-hybrid model, including this repo's own demo model
 
 - Context: the user asked for "full details in profile mode... the system shd be able to profile

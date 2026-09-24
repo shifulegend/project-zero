@@ -3,6 +3,48 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-09-24.
 
+### 2026-09-24 — Phase 18 (speculative decoding) Stage 7: real-model benchmark + SIMD-accelerate the batched matmul kernels
+- What: downloaded two larger same-tokenizer siblings of the repo's existing demo model
+  (`bartowski/SmolLM2-{360M,1.7B}-Instruct-GGUF`, F16, confirmed `vocab_size=49152`/gpt2 tokenizer
+  matching `models/smollm2.gguf`) into `models/` (gitignored, not committed) to serve as verifiers,
+  keeping the existing 135M model as draft -- the repo's only local model was already the smallest
+  in its family, so no smaller sibling existed to use as draft (per Stage 5's own flagged
+  limitation); flipped which role got downloaded instead.
+- Correctness confirmed first: plain vs. speculative output byte-identical at `--temperature 0` on
+  both pairs (135M+360M, 135M+1.7B) -- the real-model confirmation of Stage 5's synthetic
+  greedy-equivalence proof. One ASan/UBSan smoke run with real (non-tiny-synthetic) tensor shapes
+  came back clean -- the "real-model end-to-end check" Stage 5's own verification bar wanted and
+  couldn't complete without a compatible model.
+- Found and fixed a severe, real bug while benchmarking (full writeup in `mistakes.md`'s matching
+  2026-09-24 entry): every Stage 1 batched-matmul kernel (`src/math/batched_matmul{,_f16,_classifier}.c`)
+  was scalar-only, making the batched "verify" call *slower* than the sequential calls it replaces
+  on real AVX-512 hardware -- speculative decoding was ~8-10x slower than plain generation before
+  the fix. Rewrote all five kernels (ternary, F16, BF16, INT8, INT4) to dequantize each row to F32
+  once per row then reuse the existing SIMD-dispatched `tn_vec_dot()` for the per-token dot
+  products; also fixed `tests/test_batched_matmul.c` missing a `tn_simd_init()` call (caused a NULL
+  function-pointer SEGV once the kernels started depending on it).
+- Verified: `test_batched_matmul` 6/6 (unchanged numerical tolerance); full `make release/test/debug`
+  green on gcc and clang; plain-vs-speculative output re-confirmed byte-identical on both real
+  pairs after the fix. Step 25 ("verify batch") round cost dropped ~6.5x on the 360M pair
+  (~790ms -> ~122ms); batching's savings vs. the sequential-equivalent cost grow with
+  `spec_length` on the 1.7B pair (9%/33%/45% cheaper at spec_length 3/5/8).
+- Benchmark result (honestly reported, matching Stage 5's own commitment): even after the fix,
+  end-to-end throughput is still net *slower* than plain generation for both tested pairs on this
+  4-core benchmark environment -- roughly 0.45-0.51x of plain for the 360M pair, 0.58-0.68x for the
+  1.7B pair, across `--spec-length` 3/5/8. Root cause (not a further bug, a real characteristic of
+  this workload/hardware combination): per-round draft-phase (sequential draft-model forwards) and
+  corrective-commit overhead (one extra single-token forward per model per round) outweigh the
+  now-real verify-batch savings at this core count (4) and these draft:verifier ratios and
+  observed greedy acceptance rates (~37-65%, derived from `tokens_generated / step25.count`). The
+  batched-verification mechanism itself is confirmed working as designed; whether it nets out
+  ahead of plain generation depends on hardware (core count, memory-bandwidth pressure) and
+  acceptance rate, consistent with the general literature on CPU speculative decoding.
+- Why: user request, following up on Stage 5's flagged "no compatible draft model available"
+  limitation -- "find a smaller draft model, test it, draw a detailed benchmark with and without."
+- Areas: `models/` (new downloads, not committed), `src/math/batched_matmul.c`,
+  `src/math/batched_matmul_f16.c`, `src/math/batched_matmul_classifier.c`,
+  `include/math/batched_matmul.h`, `tests/test_batched_matmul.c`.
+
 ### 2026-09-24 — Phase 18 (speculative decoding) Stage 5.5: granular step-timing coverage everywhere, including the batched speculative path
 - What: closes the `TN_STEP_TIMING=1` coverage gap found while answering the user's request for
   "full details in profile mode... the granulest steps" (see `mistakes.md`'s matching 2026-09-24

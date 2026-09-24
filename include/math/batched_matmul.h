@@ -24,11 +24,24 @@
  * row is out + k*d).
  *
  * v1 scope (2026-09-22): ternary-packed and F16 dense matmul, plus the
- * classifier formats (BF16/INT8/INT4). Portable C, correctness-first --
- * ISA-tuned SIMD tiers (AVX-512/VNNI/NEON variants matching the per-vector
- * kernels in ternary_matmul_packed.h) are a documented follow-up, not
- * implemented here. Q4_K/Q4_K_x8/Q2_0/F32 weight formats are NOT covered
- * (callers fall back to n_tokens sequential single-vector calls for those).
+ * classifier formats (BF16/INT8/INT4). Q4_K/Q4_K_x8/Q2_0/F32 weight formats
+ * are NOT covered (callers fall back to n_tokens sequential single-vector
+ * calls for those, via tn_dense_matmul_dispatch_batch() in
+ * dense_matmul_dispatch.h).
+ *
+ * 2026-09-24: each of these kernels now dequantizes/unpacks a weight row to
+ * F32 ONCE, then reuses this project's existing SIMD-dispatched tn_vec_dot()
+ * (math/simd_dispatch.h) for every one of the n_tokens dot products against
+ * that row -- fixing a real regression the v1 scalar-accumulator
+ * implementation had (RAM-bandwidth savings were real, but scalar per-token
+ * FMA made the batched call slower in wall-clock terms than N sequential
+ * SIMD-accelerated single-token calls on the same hardware; see
+ * docs/ai/mistakes.md's 2026-09-24 entry for the real-model measurement that
+ * caught it). Full ISA-tuned dispatch tiers matching every per-vector
+ * kernel's own dispatch surface (ternary_matmul_packed.h's 9-way
+ * scalar/AVX2/AVX-512/VNNI/dotprod/NEON tiers) are still a documented
+ * follow-up -- tn_vec_dot() itself already SIMD-dispatches, so this fix
+ * closes the actual perf gap without needing every tier replicated here.
  */
 
 /**

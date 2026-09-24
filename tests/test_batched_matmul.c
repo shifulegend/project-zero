@@ -13,6 +13,7 @@
 #include "math/parallel_matmul.h"
 #include "math/matmul_f16.h"
 #include "math/ternary_matmul_packed.h"
+#include "math/simd_dispatch.h"
 #include "core/unpack.h"
 #include "core/weights.h"
 
@@ -243,6 +244,13 @@ static void test_batch_single_token_edge_case(void) {
 }
 
 int main(void) {
+    /* The 2026-09-24 SIMD rewrite of the batched kernels routes their
+     * per-token dot products through tn_vec_dot (math/simd_dispatch.h), a
+     * function pointer that stays NULL until tn_simd_init() runs -- matching
+     * the same requirement test_forward.c/test_forward_batch.c/
+     * test_threading.c already have for exercising SIMD-dispatched code. */
+    tn_simd_init();
+
     RUN_TEST(test_ternary_batch_matches_single);
     RUN_TEST(test_f16_batch_matches_single);
     RUN_TEST(test_bf16_batch_matches_single);

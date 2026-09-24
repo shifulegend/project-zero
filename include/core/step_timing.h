@@ -31,7 +31,17 @@ typedef enum {
      * the hybrid path's recurrence time was invisible to the breakdown. */
     TN_STEP_22_DELTANET_CONV = 22,
     TN_STEP_23_DELTANET_RECURRENCE = 23,
-    TN_STEP_COUNT = 24
+    /* Phase 18 (speculative decoding) round-level accounting (2026-09-24):
+     * these deliberately overlap in wall-clock terms with steps 1-23 above
+     * (a round's draft/verify/commit brackets still contain real
+     * Q-projection/RoPE/etc. time counted again under its own low-level
+     * step) -- a second, complementary view of where a speculative round's
+     * wall-clock time goes, not a partition of it. */
+    TN_STEP_24_SPEC_DRAFT_PHASE = 24,
+    TN_STEP_25_SPEC_VERIFY_BATCH = 25,
+    TN_STEP_26_SPEC_ACCEPT_REJECT = 26,
+    TN_STEP_27_SPEC_COMMIT = 27,
+    TN_STEP_COUNT = 28
 } TnStepTimingId;
 
 int tn_step_timing_enabled(void);

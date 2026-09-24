@@ -121,12 +121,22 @@ TernaryError ffn_forward_batch(RunState *s, SpecBatchScratch *sb,
         return TN_OK;
     }
 
+    /* Whole-batch-call step-timing granularity (Stage 5.5): mirrors
+     * ffn_forward()'s two step calls (13 pre-FFN RMSNorm, 14 dense FFN) at
+     * the equivalent batched call boundaries. */
+    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+
     /* Dense SwiGLU FFN — fully batched. */
     for (int k = 0; k < n_tokens; k++) {
         tn_rmsnorm(sb->xb + (size_t)k * dim, sb->x + (size_t)k * dim,
                    w->rms_ffn_weight[layer], dim, cfg->rms_norm_eps);
     }
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_13_PRE_FFN_RMSNORM,
+                           tn_step_timing_now_ns() - t_step);
+    }
 
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     if (w->layers_are_ternary) {
         tn_ternary_matmul_packed_batch(sb->hb,  sb->xb, (const tn_u8 *)w->w1[layer],
                                         dim, hidden_dim, w->s1[layer], n_tokens, tp);
@@ -165,6 +175,10 @@ TernaryError ffn_forward_batch(RunState *s, SpecBatchScratch *sb,
     }
 
     tn_vec_add(sb->x, sb->x, sb->xb, n_tokens * dim);
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_14_DENSE_FFN,
+                           tn_step_timing_now_ns() - t_step);
+    }
 
     return TN_OK;
 }

@@ -227,10 +227,18 @@ float *transformer_forward(int token, int pos, const Config *cfg,
  * embed all n_tokens, loop layers calling the batched attention/FFN
  * functions, batched final RMSNorm, batched classifier matmul.
  *
- * Diagnostics (TN_PROFILE, step_timing, DBG_DUMP) are intentionally not
- * threaded through this path -- they're per-single-token instrumentation
- * that doesn't have an obvious batched analogue, and are not needed for
- * this function's correctness. */
+ * Step-timing coverage (Stage 5.5, 2026-09-24): TN_STEP_TIMING=1 brackets
+ * are threaded through this path and every batched sub-function it calls
+ * (attention_forward_batch()/mla_attention_forward_batch()/
+ * qwen3moe_attention_forward_batch(), ffn_forward_batch()) at
+ * whole-batch-call granularity -- one measurement per architectural step
+ * spanning all n_tokens in the call, not per-token (per-token timing here
+ * would defeat the point of batching). They reuse the exact same step IDs
+ * as their single-token counterparts (transformer_forward()/
+ * attention_forward()/ffn_forward()) so "cost of this step per token,
+ * sequential vs. batched" is directly comparable from one report. DBG_DUMP
+ * and TN_PROFILE remain single-token-only (no batched analogue defined for
+ * either; not needed for this function's correctness). */
 TernaryError transformer_forward_batch(const int *tokens, int pos, int n_tokens,
                                         const Config *cfg, const TransformerWeights *w,
                                         RunState *s, SpecBatchScratch *sb,
@@ -269,17 +277,22 @@ TernaryError transformer_forward_batch(const int *tokens, int pos, int n_tokens,
   }
 
   /* Step 3: final RMSNorm, per token (per-row statistic, not batchable) */
+  int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
   if (w->rms_final_weight) {
     for (int k = 0; k < n_tokens; k++) {
       float *x_k = sb->x + (size_t)k * dim;
       tn_rmsnorm(x_k, x_k, w->rms_final_weight, dim, cfg->rms_norm_eps);
     }
   }
+  if (t_step) {
+    tn_step_timing_add(TN_STEP_18_FINAL_RMSNORM, tn_step_timing_now_ns() - t_step);
+  }
 
   /* Step 4: classifier matmul -> logits_out, batched. Mirrors
    * transformer_forward()'s non-q35 branches (wcls_is_ternary, then the
    * hardware-profile-selected INT4/INT8/BF16 generic path); the
    * q35_is_q2_0_model branch there is unreachable here (see Step 1). */
+  t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
   if (w->wcls_is_ternary) {
     tn_ternary_matmul_packed_batch(logits_out, sb->x, (const tn_u8 *)w->wcls,
                                     dim, cfg->vocab_size, w->wcls_scale, n_tokens, tp);
@@ -296,6 +309,9 @@ TernaryError transformer_forward_batch(const int *tokens, int pos, int n_tokens,
     } else {
       tn_matmul_bf16_batch(logits_out, sb->x, w->wcls, dim, cfg->vocab_size, n_tokens, tp);
     }
+  }
+  if (t_step) {
+    tn_step_timing_add(TN_STEP_19_LM_HEAD, tn_step_timing_now_ns() - t_step);
   }
 
   return TN_OK;

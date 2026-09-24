@@ -10,6 +10,7 @@
 #include "speculative/spec_scratch.h"
 #include "core/platform.h"
 #include "core/weights.h"
+#include "core/step_timing.h"
 #include <math.h>
 #include <string.h>
 #if TN_HAS_AVX512
@@ -84,7 +85,12 @@ void attention_forward(RunState *s, const TransformerWeights *w,
   int mapped_pos = sw_map_position(&s->sw, pos);
 
   /* Step 1: RMSNorm — normalize s->x into s->xb */
+  int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
   tn_rmsnorm(s->xb, s->x, w->rms_att_weight[layer], dim, cfg->rms_norm_eps);
+  if (t_step) {
+      tn_step_timing_add(TN_STEP_4_PRE_ATTN_RMSNORM,
+                         tn_step_timing_now_ns() - t_step);
+  }
 
   /* Temp buffers for K and V (reuse RunState scratch buffers):
    * k_buf: kv_dim floats — xb2 is dim floats, kv_dim <= dim, safe
@@ -95,6 +101,7 @@ void attention_forward(RunState *s, const TransformerWeights *w,
   /* Step 2: Compute Q, K, V projections
    * Layer-level preq: quantise s->xb once, reuse for all three projections.
    * Saves 2 redundant quantisations per attention layer (3 calls → 1 quantise). */
+  t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
   if (w->layers_are_ternary) {
     int8_t preq_buf[ATTN_PREQ_BUF_SIZE];
     TnPreqActivation preq;
@@ -139,8 +146,13 @@ void attention_forward(RunState *s, const TransformerWeights *w,
       tn_rmsnorm(k_h, k_h, w->q35_attn_k_norm[layer], head_dim, cfg->rms_norm_eps);
     }
   }
+  if (t_step) {
+      tn_step_timing_add(TN_STEP_5_Q_PROJECTION,
+                         tn_step_timing_now_ns() - t_step);
+  }
 
   /* Step 3: Apply RoPE to Q and K with full YaRN if configured */
+  t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
   {
     float corr[2] = {0.0f, 0.0f};
     float freq_scale  = cfg->rope_freq_scale;
@@ -160,10 +172,15 @@ void attention_forward(RunState *s, const TransformerWeights *w,
     apply_rope(s->q, k_buf, s->rope_freq, head_dim, pos, n_heads, n_kv_heads,
                freq_scale, ext_factor, attn_factor, corr);
   }
+  if (t_step) {
+      tn_step_timing_add(TN_STEP_9_YARN_ROPE,
+                         tn_step_timing_now_ns() - t_step);
+  }
 
   /* Step 4: Store K and V into the transposed KV cache at
    * [layer][kv_head][mapped_pos][:] using non-temporal stores (K-3 R-3).
    * NT stores prevent KV writes from evicting weight data from L3 cache. */
+  t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
   for (int kv_h = 0; kv_h < n_kv_heads; kv_h++) {
     size_t cache_offset =
         KV_CACHE_IDX(layer, kv_h, mapped_pos, 0, n_kv_heads, max_seq, head_dim);
@@ -173,10 +190,15 @@ void attention_forward(RunState *s, const TransformerWeights *w,
 
   /* Advance the sliding window write head */
   sw_advance(&s->sw);
+  if (t_step) {
+      tn_step_timing_add(TN_STEP_10_KV_CACHE_WRITE,
+                         tn_step_timing_now_ns() - t_step);
+  }
 
   /* Step 5: Compute attention for each query head */
   float inv_sqrt_head_dim = 1.0f / sqrtf((float)head_dim);
 
+  t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
   for (int h = 0; h < n_heads; h++) {
     /* Pointer to this head's query vector */
     float *q_head = s->q + h * head_dim;
@@ -230,8 +252,13 @@ void attention_forward(RunState *s, const TransformerWeights *w,
       tn_vec_saxpy(out_head, a, v_vec, head_dim);
     }
   }
+  if (t_step) {
+      tn_step_timing_add(TN_STEP_11_ATTN_SCORE,
+                         tn_step_timing_now_ns() - t_step);
+  }
 
   /* Step 6: Apply attn_sub_norm (BitNet) if present */
+  t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
   if (w->rms_attn_sub_norm && w->rms_attn_sub_norm[layer]) {
     tn_rmsnorm(s->xb, s->xb, w->rms_attn_sub_norm[layer], dim, cfg->rms_norm_eps);
   }
@@ -246,6 +273,10 @@ void attention_forward(RunState *s, const TransformerWeights *w,
 
   /* Step 8: Residual connection — s->x += s->xb2 */
   tn_vec_add(s->x, s->x, s->xb2, dim);
+  if (t_step) {
+      tn_step_timing_add(TN_STEP_12_POST_ATTN,
+                         tn_step_timing_now_ns() - t_step);
+  }
 }
 
 /* ── Phase 18 (speculative decoding): batched multi-token attention ────────
@@ -318,13 +349,25 @@ TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb,
 
   /* ── Write phase ── */
 
+  /* Whole-batch-call step-timing granularity (Stage 5.5): one bracket per
+   * architectural step spanning all n_tokens in this call, mirroring
+   * attention_forward()'s single-token step IDs so the two can be compared
+   * directly -- not per-token instrumentation (that would defeat the point
+   * of batching). */
+  int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+
   /* rmsnorm is per-row (each token normalizes against its own mean square),
    * so it must loop per token -- not a batchable weight-matrix operation. */
   for (int k = 0; k < n_tokens; k++) {
     tn_rmsnorm(sb->xb + (size_t)k * dim, sb->x + (size_t)k * dim,
                w->rms_att_weight[layer], dim, cfg->rms_norm_eps);
   }
+  if (t_step) {
+      tn_step_timing_add(TN_STEP_4_PRE_ATTN_RMSNORM,
+                         tn_step_timing_now_ns() - t_step);
+  }
 
+  t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
   if (w->layers_are_ternary) {
     tn_ternary_matmul_packed_batch(sb->q, sb->xb, (const tn_u8 *)w->wq[layer],
                                     dim, dim, w->sq[layer], n_tokens, tp);
@@ -340,7 +383,17 @@ TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb,
     tn_dense_matmul_dispatch_batch(v_buf_all, sb->xb, w->wv[layer], w->wv_type[layer],
                                     dim, kv_dim, n_tokens, tp);
   }
+  if (t_step) {
+      tn_step_timing_add(TN_STEP_5_Q_PROJECTION,
+                         tn_step_timing_now_ns() - t_step);
+  }
 
+  /* Per-head QK-norm + RoPE, per token -- bracketed together as step 9
+   * (mirrors the single-token path, where QK-norm is folded into the same
+   * step-5 bracket as the projections but RoPE is its own step; here the
+   * projections already closed their own bracket above, so QK-norm's small
+   * remaining cost is grouped with RoPE instead of reopening step 5). */
+  t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
   for (int k = 0; k < n_tokens; k++) {
     float *q_k = sb->q + (size_t)k * dim;
     float *kbuf_k = k_buf_all + (size_t)k * kv_dim;
@@ -375,10 +428,19 @@ TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb,
     }
     apply_rope(q_k, kbuf_k, s->rope_freq, head_dim, tok_pos, n_heads, n_kv_heads,
                freq_scale, ext_factor, attn_factor, corr);
+  }
+  if (t_step) {
+      tn_step_timing_add(TN_STEP_9_YARN_ROPE,
+                         tn_step_timing_now_ns() - t_step);
+  }
 
-    /* KV cache store at this token's mapped position */
-    int mapped_pos = sw_map_position(&s->sw, tok_pos);
+  /* KV cache store, per token */
+  t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+  for (int k = 0; k < n_tokens; k++) {
+    int tok_pos = pos + k;
+    float *kbuf_k = k_buf_all + (size_t)k * kv_dim;
     float *v_k = v_buf_all + (size_t)k * kv_dim;
+    int mapped_pos = sw_map_position(&s->sw, tok_pos);
     for (int kv_h = 0; kv_h < n_kv_heads; kv_h++) {
       size_t cache_offset =
           KV_CACHE_IDX(layer, kv_h, mapped_pos, 0, n_kv_heads, max_seq, head_dim);
@@ -389,8 +451,13 @@ TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb,
                           * the function's header comment on why read-phase
                           * correctness does not depend on this call. */
   }
+  if (t_step) {
+      tn_step_timing_add(TN_STEP_10_KV_CACHE_WRITE,
+                         tn_step_timing_now_ns() - t_step);
+  }
 
   /* ── Read phase ── */
+  t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
   float inv_sqrt_head_dim = 1.0f / sqrtf((float)head_dim);
   for (int k = 0; k < n_tokens; k++) {
     int tok_pos = pos + k;
@@ -426,7 +493,12 @@ TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb,
       }
     }
   }
+  if (t_step) {
+      tn_step_timing_add(TN_STEP_11_ATTN_SCORE,
+                         tn_step_timing_now_ns() - t_step);
+  }
 
+  t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
   /* attn_sub_norm (BitNet) — per token, elementwise-independent stats per row */
   if (w->rms_attn_sub_norm && w->rms_attn_sub_norm[layer]) {
     for (int k = 0; k < n_tokens; k++) {
@@ -448,6 +520,10 @@ TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb,
    * equivalent to n_tokens per-row calls (row boundaries don't matter for
    * a purely elementwise op). */
   tn_vec_add(sb->x, sb->x, sb->xb2, n_tokens * dim);
+  if (t_step) {
+      tn_step_timing_add(TN_STEP_12_POST_ATTN,
+                         tn_step_timing_now_ns() - t_step);
+  }
 
   return TN_OK;
 }

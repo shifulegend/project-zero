@@ -3,6 +3,64 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-09-24.
 
+### 2026-09-24 — Phase 18 (speculative decoding) Stage 5.5: granular step-timing coverage everywhere, including the batched speculative path
+- What: closes the `TN_STEP_TIMING=1` coverage gap found while answering the user's request for
+  "full details in profile mode... the granulest steps" (see `mistakes.md`'s matching 2026-09-24
+  entry for the investigation and root cause), and extends the same accounting into the
+  batched/speculative path. Three parts, all reusing the existing `TN_STEP_TIMING=1` system
+  (`include/core/step_timing.h`, `src/core/step_timing.c`) end to end — no new CLI flag, no new
+  env var, no new reporting mechanism:
+  1. `src/transformer/attention.c`'s `attention_forward()` (generic dense/GQA) and
+     `src/transformer/qwen3moe_attention.c`'s `qwen3moe_attention_forward()` now carry the same
+     `tn_step_timing_add()` brackets `mla_attention.c`/`qwen35_attention.c` already had, reusing
+     the existing step IDs 4 (pre-attn RMSNorm), 5 (Q projection, covering QK-norm too), 9 (YaRN
+     RoPE), 10 (KV cache write), 11 (attention score/softmax), 12 (post-attention output/residual).
+  2. Every Phase 18 batched sub-function (`attention_forward_batch()` in `attention.c`,
+     `mla_attention_forward_batch()` in `mla_attention.c`,
+     `qwen3moe_attention_forward_batch()` in `qwen3moe_attention.c`, `ffn_forward_batch()` in
+     `ffn.c`, `transformer_forward_batch()` in `forward.c`) now carries the same step IDs as its
+     single-token counterpart, at **whole-batch-call granularity** (one measurement per
+     architectural step spanning all `n_tokens` in the call, not per-token — per-token timing here
+     would defeat the point of batching) so a user can directly compare "cost of this step per
+     token, sequential vs. batched" from one report. Where a single-token step bracket covered
+     work that a batched sub-function does in one fused per-token loop (e.g. `attention.c`'s
+     original combined QK-norm+RoPE+KV-store loop), that loop was split into separate per-step
+     loops (RoPE-only, then KV-store-only) so each step's bracket measures only its own work —
+     a minimal, correctness-preserving restructuring (each token's writes are still independent
+     across the split, same as before). `forward.c`'s `transformer_forward_batch()` header comment
+     (previously: "Diagnostics ... are intentionally not threaded through this path") updated to
+     describe the new coverage instead of its absence.
+  3. Four new step IDs in `include/core/step_timing.h`/`src/core/step_timing.c`
+     (`TN_STEP_24_SPEC_DRAFT_PHASE` .. `TN_STEP_27_SPEC_COMMIT`, `TN_STEP_COUNT` now 28) for
+     speculative decoding's own round-level accounting, wired into
+     `src/speculative/spec_decode.c`'s round loop: the `spec_length` sequential draft-model
+     forward+sample calls → step 24; the `transformer_forward_batch()` verifier call → step 25;
+     building the shifted `verify_check_logits` array + `accept_reject_round()` → step 26; the two
+     corrective `transformer_forward()` commit calls (both models) → step 27. These deliberately
+     overlap in wall-clock terms with steps 1-23 (a round's brackets still contain real
+     Q-projection/RoPE/etc. time counted again under its own low-level step) — a second,
+     complementary view of where a round's time goes, not a partition of it, exactly like existing
+     brackets already coexist (step 14 doesn't exclude step 13's time).
+- Verified: re-ran `TN_STEP_TIMING=1 ./adaptive_ai_engine --model models/smollm2.gguf --prompt
+  "What is the capital of France?" --max-tokens 8 --temperature 0` — steps 4-12 now report real
+  nonzero numbers (previously all exactly `0.000000ms`), confirming the concrete repro this stage
+  fixes. Confirmed the four new speculative-decoding step IDs report nonzero values by running
+  `TN_STEP_TIMING=1` against the `test_speculative` test binary directly (no compatible real
+  `--draft-model` is available this session — see Stage 5's own entry above). Full bar: `make
+  release/test/debug` green on gcc and clang (zero new warnings), plus a CMake sanity build, all
+  clean. Since this stage's edits sit inside hot inference code, re-confirmed byte-identical golden
+  output ("The capital of France is Paris.", 7 tokens) before/after on both compilers' debug
+  (ASan/UBSan) builds and re-ran `test_forward_batch`/`test_speculative` (unaffected by pure-timing
+  instrumentation) — proving the new brackets are a pure side-channel that changed no computed
+  value, per this stage's own negative verification bar (it adds no new correctness contract of
+  its own).
+- Why: Stage 5.5 of the user-approved Phase 18 plan, added after the user explicitly asked for
+  fuller profiling detail and selected "also instrument the new batched speculative-decoding path"
+  when asked how far the fix should go.
+- Areas: `include/core/step_timing.h`, `src/core/step_timing.c`, `src/transformer/attention.c`,
+  `src/transformer/qwen3moe_attention.c`, `src/transformer/mla_attention.c`,
+  `src/transformer/ffn.c`, `src/transformer/forward.c`, `src/speculative/spec_decode.c`.
+
 ### 2026-09-24 — Phase 18 (speculative decoding) Stage 5: draft loading + accept/reject loop, wired end-to-end
 - What: `include/speculative/draft_model.h` + `src/speculative/draft_model.c` (new) —
   `DraftModel` struct and `draft_model_load()`, implemented entirely via Stage 3's

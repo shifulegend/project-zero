@@ -5,6 +5,56 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-09-24.
 
+### 2026-09-24 — `attention.c`'s generic dense/GQA path and `qwen3moe_attention.c` had zero `TN_STEP_TIMING` coverage — steps 4-12 silently reported `0.000000ms` for every non-MLA, non-Qwen3.5-hybrid model, including this repo's own demo model
+
+- Context: the user asked for "full details in profile mode... the system shd be able to profile
+  the granulest steps." Investigating by actually running `TN_STEP_TIMING=1` against
+  `models/smollm2.gguf` (a plain dense/GQA "llama"-arch model — the most common case, and this
+  repo's own demo model) to see what the existing per-step breakdown showed.
+- Finding: steps 4 through 12 (the entire attention block: pre-attention RMSNorm, Q projection,
+  YaRN RoPE, KV cache write, attention score/softmax, post-attention output/residual) all reported
+  exactly `0.000000ms` with `count=0`, while steps 13+ (FFN, final norm, LM head, sampling) reported
+  real numbers. Root cause: `src/transformer/attention.c`'s `attention_forward()` (the generic
+  dense/GQA path most models actually use) and `src/transformer/qwen3moe_attention.c`'s
+  `qwen3moe_attention_forward()` had never had `tn_step_timing_add()` calls wired in at all —
+  only `mla_attention.c` (DeepSeek-V2 MLA) and `qwen35_attention.c` (Qwen3.5/3.6 hybrid) were
+  instrumented. Any model using neither of those two attention families — which includes this
+  repo's own demo model and, more generally, every plain Llama/Mistral/Gemma/Phi/BitNet/Qwen3-MoE
+  architecture — got a step-timing report with a large, silent blind spot covering its entire
+  attention cost, with no error or warning of any kind.
+- Impact: `TN_STEP_TIMING=1`'s per-step breakdown, the tool's whole purpose, was misleading (not
+  merely incomplete) for the majority of models this engine actually runs, understating total
+  attention cost as zero rather than omitting it visibly. Nobody had previously run
+  `TN_STEP_TIMING=1` against a non-MLA, non-hybrid model and looked closely at the output, or this
+  would have been caught immediately — the `0.000000ms` rows look superficially like "this step is
+  just fast," not "this step was never measured."
+- Fixed: added the same `t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0; ...
+  tn_step_timing_add(ID, ...)` brackets already used in `mla_attention.c`/`qwen35_attention.c` to
+  both functions, reusing the existing step IDs 4/5/9/10/11/12 (no enum changes needed for this
+  part). Also extended the same instrumentation, at whole-batch-call granularity, into every
+  batched sub-function added by Phase 18 Stages 1-2 (`attention_forward_batch()`,
+  `mla_attention_forward_batch()`, `qwen3moe_attention_forward_batch()`, `ffn_forward_batch()`,
+  `transformer_forward_batch()`), which had never carried any diagnostics by design until now, plus
+  four new step IDs (24-27) for speculative decoding's own draft/verify/accept-reject/commit
+  round-level accounting in `spec_decode.c` — see `change-trace.md`'s Stage 5.5 entry for the full
+  scope.
+- Verified: re-ran `TN_STEP_TIMING=1` against `models/smollm2.gguf` — steps 4-12 now report real
+  nonzero `total_ms`/`count` values (e.g. step 5 "Q projection" ~57ms/1320 calls, step 12
+  "Post-attention output/residual" ~31ms/1320 calls, for an 8-token generation). Confirmed the
+  four new speculative-decoding step IDs (24-27) report nonzero values by running
+  `TN_STEP_TIMING=1` against the `test_speculative` binary directly. `make release/test/debug`
+  green on gcc and clang, plus a CMake sanity build, all clean — and, since this instrumentation
+  sits inside hot inference code, re-confirmed byte-identical golden output
+  ("The capital of France is Paris.", 7 tokens) before/after on both compilers' debug (ASan/UBSan)
+  builds, proving the new brackets are a pure side-channel that changed no computed value.
+- Lesson: an instrumentation system's own coverage needs to be verified the same way a feature's
+  correctness would be — by actually running it against a representative real case and inspecting
+  the output for gaps, not by assuming "it exists in the codebase, therefore it's wired in
+  everywhere it should be." A `0.000000ms` row is not evidence of a fast step; it can just as
+  easily be evidence of a step nobody ever measured. Unrelated to Phase 18's speculative-decoding
+  feature work itself, but found while investigating this session's profiling request and fixed in
+  the same pass per the bug-fix policy.
+
 ### 2026-09-24 — `generate_with_callback()`'s `total_steps` off-by-one silently generated `max_tokens + 1` tokens for every caller, invisible in practice because EOS almost always fires first
 
 - Context: Phase 18 Stage 5, writing `tests/test_speculative.c`'s

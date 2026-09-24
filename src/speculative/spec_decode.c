@@ -196,6 +196,7 @@ void speculative_generate_with_callback(const Config *cfg, const TransformerWeig
            && pos + spec_length < draft->state->max_seq_len) {
 
         /* ── Draft phase: spec_length sequential draft-model forward calls ── */
+        int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
         memcpy(draft_logits_buf, last_draft_logits, (size_t)vocab_size * sizeof(float));
         int dt = sample_next(draft_logits_buf, vocab_size, temperature, top_p, &rng_state);
         draft_tokens[0] = dt;
@@ -206,18 +207,27 @@ void speculative_generate_with_callback(const Config *cfg, const TransformerWeig
             draft_tokens[i] = sample_next(draft_logits_buf + (size_t)i * vocab_size, vocab_size,
                                            temperature, top_p, &rng_state);
         }
+        if (t_step) {
+            tn_step_timing_add(TN_STEP_24_SPEC_DRAFT_PHASE, tn_step_timing_now_ns() - t_step);
+        }
 
         /* ── Verify phase: one batched forward pass on the verifier ─────── */
+        t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
         TernaryError verr = transformer_forward_batch(draft_tokens, pos, spec_length, cfg, w, s,
                                                         &sb, mc, tp, verifier_logits_out);
+        if (t_step) {
+            tn_step_timing_add(TN_STEP_25_SPEC_VERIFY_BATCH, tn_step_timing_now_ns() - t_step);
+        }
         if (verr != TN_OK) {
             fprintf(stderr, "[spec] transformer_forward_batch failed (err=%d) -- stopping.\n",
                     (int)verr);
             break;
         }
 
-        /* Build the shifted "what would the verifier have predicted before
-         * seeing tokens[i]" array -- see this function's header comment. */
+        /* ── Accept/reject: build the shifted "what would the verifier have
+         * predicted before seeing tokens[i]" array -- see this function's
+         * header comment -- then decide n_accept/emit_token. ─────────────── */
+        t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
         memcpy(verify_check_logits, last_verifier_logits, (size_t)vocab_size * sizeof(float));
         if (spec_length > 1) {
             memcpy(verify_check_logits + vocab_size, verifier_logits_out,
@@ -229,6 +239,9 @@ void speculative_generate_with_callback(const Config *cfg, const TransformerWeig
         accept_reject_round(draft_tokens, draft_logits_buf, verify_check_logits, bonus_logits,
                              spec_length, vocab_size, temperature, &rng_state,
                              &n_accept, &emit_token);
+        if (t_step) {
+            tn_step_timing_add(TN_STEP_26_SPEC_ACCEPT_REJECT, tn_step_timing_now_ns() - t_step);
+        }
 
         /* ── Emit accepted tokens + the resampled/bonus token ────────────── */
         for (int i = 0; i <= n_accept; i++) {
@@ -245,6 +258,7 @@ void speculative_generate_with_callback(const Config *cfg, const TransformerWeig
         if (stop) break;
 
         /* ── Commit emit_token: one corrective forward call per model ────── */
+        t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
         int commit_pos = pos + n_accept;
         float *v_next = transformer_forward(emit_token, commit_pos, cfg, w, s, mc, tp);
         float *d_next = transformer_forward(emit_token, commit_pos, &draft->config, &draft->weights,
@@ -252,6 +266,9 @@ void speculative_generate_with_callback(const Config *cfg, const TransformerWeig
         memcpy(last_verifier_logits, v_next, (size_t)vocab_size * sizeof(float));
         memcpy(last_draft_logits, d_next, (size_t)vocab_size * sizeof(float));
         pos = commit_pos + 1;
+        if (t_step) {
+            tn_step_timing_add(TN_STEP_27_SPEC_COMMIT, tn_step_timing_now_ns() - t_step);
+        }
     }
 
     free(draft_tokens);

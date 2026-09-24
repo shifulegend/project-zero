@@ -403,13 +403,23 @@ TernaryError mla_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
         return TN_ERR_OOM;
     }
 
+    /* Whole-batch-call step-timing granularity (Stage 5.5): mirrors
+     * mla_attention_forward()'s own step tagging (4, 6, 7, 8, 9, 10, 11, 12)
+     * at the equivalent call boundaries in this batched version. */
+    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+
     /* Step 1: rmsnorm, per token */
     for (int k = 0; k < n_tokens; k++) {
         tn_rmsnorm(sb->xb + (size_t)k * dim, sb->x + (size_t)k * dim,
                    w->rms_att_weight[layer], dim, cfg->rms_norm_eps);
     }
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_4_PRE_ATTN_RMSNORM,
+                           tn_step_timing_now_ns() - t_step);
+    }
 
     /* Step 2: KV compress -> sb->hb2, packed at stride kva_rows */
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     if (can_batch) {
         tn_ternary_matmul_packed_batch(sb->hb2, sb->xb, (const tn_u8 *)w->mla_wkv_a[layer],
                                         dim, kva_rows, w->mla_skv_a[layer], n_tokens, tp);
@@ -419,9 +429,14 @@ TernaryError mla_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
                        w->mla_wkv_a[layer], w->mla_skv_a[layer], dim, kva_rows);
         }
     }
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_6_KV_A_COMPRESSION,
+                           tn_step_timing_now_ns() - t_step);
+    }
 
     /* Step 2b: KV-A norm + gather kv_latent into a tightly-packed buffer
      * (stride lora) for the KV-expand call below. */
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     for (int k = 0; k < n_tokens; k++) {
         float *kv_latent_k = sb->hb2 + (size_t)k * kva_rows;
         if (w->rms_attn_sub_norm && w->rms_attn_sub_norm[layer]) {
@@ -429,8 +444,13 @@ TernaryError mla_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
         }
         memcpy(kv_latent_packed + (size_t)k * lora, kv_latent_k, (size_t)lora * sizeof(float));
     }
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_7_KV_A_LATENT_NORM,
+                           tn_step_timing_now_ns() - t_step);
+    }
 
     /* Step 3: KV expand -> kv_full_packed, stride kvb_rows */
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     if (can_batch) {
         tn_ternary_matmul_packed_batch(kv_full_packed, kv_latent_packed, (const tn_u8 *)w->mla_wkv_b[layer],
                                         lora, kvb_rows, w->mla_skv_b[layer], n_tokens, tp);
@@ -440,8 +460,13 @@ TernaryError mla_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
                        w->mla_wkv_b[layer], w->mla_skv_b[layer], lora, kvb_rows);
         }
     }
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_8_KV_B_EXPANSION,
+                           tn_step_timing_now_ns() - t_step);
+    }
 
     /* Store k_nope/v to caches, per token */
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     for (int k = 0; k < n_tokens; k++) {
         int tok_pos = pos + k;
         int mapped_pos = sw_map_position(&s->sw, tok_pos);
@@ -454,11 +479,16 @@ TernaryError mla_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
             memcpy(&s->value_cache[off], v_src,       (size_t)v_dim * sizeof(float));
         }
     }
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_10_KV_CACHE_WRITE,
+                           tn_step_timing_now_ns() - t_step);
+    }
 
     /* Step 4: Q projection -> sb->hb, packed at stride q_rows (sb->hb was
      * never used for kv_full in this batched version -- kv_full lives in
      * its own kv_full_packed buffer above -- so there is no "overwrite
      * after caching" ordering constraint to worry about here). */
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     if (can_batch) {
         tn_ternary_matmul_packed_batch(sb->hb, sb->xb, (const tn_u8 *)w->mla_wq[layer],
                                         dim, q_rows, w->mla_sq[layer], n_tokens, tp);
@@ -468,8 +498,13 @@ TernaryError mla_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
                        w->mla_wq[layer], w->mla_sq[layer], dim, q_rows);
         }
     }
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_5_Q_PROJECTION,
+                           tn_step_timing_now_ns() - t_step);
+    }
 
-    /* Step 5+6: RoPE + store k_rope_cur to cache, per token */
+    /* Step 5: RoPE, per token */
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     for (int k = 0; k < n_tokens; k++) {
         int tok_pos = pos + k;
         float *k_rope_cur_k = sb->hb2 + (size_t)k * kva_rows + lora;
@@ -481,13 +516,28 @@ TernaryError mla_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
             rope_apply_yarn(q_full_k + h * (nope + rope) + nope, rf, rope, tok_pos,
                             yarn_freq_scale, yarn_ext_factor, yarn_attn_factor, corr);
         }
+    }
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_9_YARN_ROPE,
+                           tn_step_timing_now_ns() - t_step);
+    }
 
+    /* Step 6: store k_rope_cur to cache, per token */
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    for (int k = 0; k < n_tokens; k++) {
+        int tok_pos = pos + k;
+        float *k_rope_cur_k = sb->hb2 + (size_t)k * kva_rows + lora;
         int mapped_pos = sw_map_position(&s->sw, tok_pos);
         memcpy(&s->k_rope_cache[layer][mapped_pos * rope], k_rope_cur_k, (size_t)rope * sizeof(float));
         sw_advance(&s->sw); /* kept for parity; see attention_forward_batch()'s comment */
     }
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_10_KV_CACHE_WRITE,
+                           tn_step_timing_now_ns() - t_step);
+    }
 
     /* Read phase: attention, per token (not batched across k) */
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     for (int k = 0; k < n_tokens; k++) {
         int tok_pos = pos + k;
         float *q_full_k = sb->hb + (size_t)k * q_rows;
@@ -523,8 +573,13 @@ TernaryError mla_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
             }
         }
     }
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_11_ATTN_SCORE,
+                           tn_step_timing_now_ns() - t_step);
+    }
 
     /* Step 8: wo projection -> sb->xb2, packed at stride dim; residual */
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     if (can_batch) {
         tn_ternary_matmul_packed_batch(sb->xb2, attn_out_packed, (const tn_u8 *)w->wo[layer],
                                         attn_out_width, dim, w->so[layer], n_tokens, tp);
@@ -535,6 +590,10 @@ TernaryError mla_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
         }
     }
     tn_vec_add(sb->x, sb->x, sb->xb2, n_tokens * dim);
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_12_POST_ATTN,
+                           tn_step_timing_now_ns() - t_step);
+    }
 
     free(kv_latent_packed);
     free(kv_full_packed);

@@ -4,6 +4,9 @@
 > Update after each meaningful sub-step. Last updated: 2026-09-24.
 
 ### 2026-09-24 — Phase 18 (speculative decoding) Stage 7: real-model benchmark + SIMD-accelerate the batched matmul kernels
+- Full benchmark writeup (setup, correctness, the bug's before/after numbers, the full results
+  and round-breakdown tables): `docs/reports/PHASE18_SPECULATIVE_DECODING_BENCHMARK_2026-09-24.md`.
+  This entry stays the summary; that file is the detailed reference.
 - What: downloaded two larger same-tokenizer siblings of the repo's existing demo model
   (`bartowski/SmolLM2-{360M,1.7B}-Instruct-GGUF`, F16, confirmed `vocab_size=49152`/gpt2 tokenizer
   matching `models/smollm2.gguf`) into `models/` (gitignored, not committed) to serve as verifiers,

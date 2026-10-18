@@ -6,9 +6,13 @@ Reads summary.txt + run{1..3}.txt files from each suite, renders the best run
 as a dark-theme terminal screenshot and saves to benchmark_results/sweep_2026-06-21/screenshots/.
 
 Usage:
-    python3 tools/make_sweep_screenshots.py
+    python3 tools/make_sweep_screenshots.py                      # 2026-06-21 sweep (defaults)
+    python3 tools/make_sweep_screenshots.py --sweep DIR --hardware "..." \
+        [--suite NAME=Label ...]   # any sweep from tools/bench_sweep_seq.py (reads DIR/meta.json)
 """
 
+import argparse
+import json
 import os
 import re
 import sys
@@ -133,8 +137,12 @@ def make_screenshot(suite_name, t, run_text, out_path, run_num=None):
             if "===" in line and in_output:
                 break
             continue
-        if "[gen]" in line or "llama_perf" in line or "[ Prompt:" in line:
+        if "[gen]" in line or "llama_perf" in line or "[ Prompt:" in line or line.startswith("PERF:"):
             break
+        # engine start-up chatter (profile box, loader steps) is not model output
+        if is_pz and (line[:1] in "│┌├└" or line.startswith(("[", "Active:", "KV cache", "SIMD", "Classifier",
+                                                                 "Attention:", "Hardware", "Calibration"))):
+            continue
         if line.strip():
             in_output = True
         if in_output:
@@ -153,15 +161,19 @@ def make_screenshot(suite_name, t, run_text, out_path, run_num=None):
         "smollm2_llama":  "llama.cpp  (SmolLM2-135M-Instruct F16)",
     }.get(suite_name, suite_name)
 
+    engine_label = LABELS.get(suite_name, engine_label)
+    perf = re.search(r'PERF:\s*(.+)', run_text)
     header_rows = [
         ("date",    "Date/Time",        date_str,               CYAN),
-        ("hw",      "Hardware",         "i5-11300H @ 3.10GHz · 4c/8t · 16GB DDR4 · AVX-512 VNNI", FG),
+        ("hw",      "Hardware",         HARDWARE,               FG),
         ("engine",  "Engine",           engine_label,           GREEN),
         ("threads", "Threads",          str(t),                 YELLOW),
-        ("tokens",  "Max tokens",       "500",                  FG),
+        ("tokens",  "Max tokens",       str(MAX_TOKENS),        FG),
         ("prompt",  "Prompt tok/s",     pmt_speed,              BLUE if pmt_speed != "N/A (not reported by PZ)" else DIM),
         ("gen",     "Generation tok/s", gen_speed + " tok/s",   YELLOW),
     ]
+    if perf:
+        header_rows.append(("perf", "Wall / RSS / CPU", perf.group(1), FG))
     if run_num:
         header_rows.insert(0, ("run", "Run", run_num, DIM))
 
@@ -237,7 +249,7 @@ def find_best_run(suite_name, t):
     is_llama = "llama" in suite_name
 
     best_val, best_r, best_text = -1, None, None
-    for r in range(1, 4):
+    for r in range(1, RUNS + 1):
         fpath = f"{t_dir}/run{r}.txt"
         if not os.path.exists(fpath):
             continue
@@ -260,8 +272,36 @@ def find_best_run(suite_name, t):
     return best_r, best_text
 
 SUITES = ["bitnet_pz_bf16", "bitnet_pz_int4", "bitnet_msft", "smollm2_pz", "smollm2_llama"]
+HARDWARE = "i5-11300H @ 3.10GHz · 4c/8t · 16GB DDR4 · AVX-512 VNNI"
+MAX_TOKENS = 500
+RUNS = 3
+THREADS = list(range(1, 9))
+LABELS = {}
 
 if __name__ == "__main__":
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--sweep", help="sweep directory (default: the 2026-06-21 sweep)")
+    ap.add_argument("--hardware", help="hardware line shown on every screenshot")
+    ap.add_argument("--suite", action="append", default=[], help="NAME=Label (repeatable)")
+    args = ap.parse_args()
+    if args.sweep:
+        SWEEP = args.sweep
+        SS_DIR = os.path.join(SWEEP, "screenshots")
+        meta_path = os.path.join(SWEEP, "meta.json")
+        if os.path.exists(meta_path):
+            with open(meta_path) as f:
+                meta = json.load(f)
+            MAX_TOKENS = meta.get("max_tokens", MAX_TOKENS)
+            RUNS = meta.get("runs", RUNS)
+            THREADS = meta.get("threads", THREADS)
+            SUITES = list(meta.get("suites", {}).keys())
+    if args.hardware:
+        HARDWARE = args.hardware
+    for item in args.suite:
+        k, _, v = item.partition("=")
+        LABELS[k] = v
+        if k not in SUITES:
+            SUITES.append(k)
     os.makedirs(SS_DIR, exist_ok=True)
     total = 0
     for suite_name in SUITES:
@@ -270,13 +310,13 @@ if __name__ == "__main__":
             print(f"Skipping {suite_name} — no data")
             continue
         print(f"\n=== {suite_name} ===")
-        for t in range(1, 9):
+        for t in THREADS:
             best_r, text = find_best_run(suite_name, t)
             if text is None:
                 print(f"  t={t}: no data")
                 continue
             out_path = f"{SS_DIR}/{suite_name}_t{t}.png"
-            make_screenshot(suite_name, t, text, out_path, run_num=f"best of 3 (run {best_r})")
+            make_screenshot(suite_name, t, text, out_path, run_num=f"best of {RUNS} (run {best_r})")
             total += 1
 
     print(f"\nDone — {total} screenshots saved to {SS_DIR}/")

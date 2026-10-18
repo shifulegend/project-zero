@@ -30,7 +30,8 @@ after a change).
   so starting the server with e.g. `--temperature 0.2 --top-k 40 --system-prompt "…"` changes
   what the UI starts from:
   - *Sampling*: temperature, top-p, top-k, min-p, max tokens (capped by the model context or
-    `--max-tokens-limit`).
+    `--max-tokens-limit`), best of N (generate N replies and keep the one the model finds most
+    likely — N× slower, the reply appears once chosen).
   - *Repetition*: repetition / presence / frequency penalty and the penalty window.
   - *Output*: random or fixed seed (reproducible replies), JSON mode, reuse prompt cache
     (skips re-reading the history already in the KV cache — same output, faster turns; the line
@@ -126,8 +127,9 @@ the CLI.
 Chat completion requests accept, besides `messages`/`stream`/`max_tokens`/`temperature`/`top_p`:
 `top_k`, `min_p`, `repetition_penalty`, `presence_penalty`, `frequency_penalty`,
 `penalty_last_n`, `seed`, `stop` (string or array), `response_format: {"type":"json_object"}`
-`watermark: {"enabled", "key", "gamma", "delta"}` and `cache_prompt` (default from
-`--prompt-cache`, on). Omitted fields use the server defaults
+`watermark: {"enabled", "key", "gamma", "delta"}`, `cache_prompt` (default from
+`--prompt-cache`, on) and `best_of` (default `--best-of`, capped by `--best-of-max`; the response
+then includes a `best_of` object with each candidate's score). Omitted fields use the server defaults
 (the CLI flags). Responses carry real `usage` token counts and `finish_reason`
 (`stop` | `length` | `cancelled`); the final streaming chunk includes `usage` too.
 

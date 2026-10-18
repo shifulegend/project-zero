@@ -66,6 +66,8 @@
 #include "api/api_info.h"
 #include "api/request_params.h"
 #include "api/watermark_endpoint.h"
+#include "reasoning/best_of.h"
+#include "api/json_write.h"
 #include "multimodal/vision_pipeline.h"
 #include "transformer/generate.h"
 #include "core/debug.h"
@@ -184,6 +186,33 @@ typedef struct {
     /* Cancellation */
     CancelState *cancel;
 } StreamState;
+
+/* Phase 30: adds "best_of": {"n", "chosen", "scores": [...], "completion_tokens_total"}
+ * to a finished response object (consumes and returns the heap string). */
+static char *append_best_of_json(char *json, const BestOfResult *r) {
+    size_t len = strlen(json);
+    if (len < 2 || json[len - 1] != '}') return json;
+    JsonBuf jb;
+    jb_init(&jb);
+    json[len - 1] = '\0';
+    jb_raw(&jb, json);
+    jb_raw(&jb, ",\"best_of\":{\"n\":"); jb_int(&jb, r->n);
+    jb_raw(&jb, ",\"chosen\":"); jb_int(&jb, r->chosen);
+    jb_raw(&jb, ",\"completion_tokens_total\":"); jb_int(&jb, r->tokens_total);
+    jb_raw(&jb, ",\"scores\":[");
+    for (int i = 0; i < r->n && i < 64; i++) { if (i) jb_raw(&jb, ","); jb_num(&jb, r->scores[i]); }
+    jb_raw(&jb, "]}}");
+    char *out = jb_finish(&jb);
+    if (!out) { json[len - 1] = '}'; return json; }
+    free(json);
+    return out;
+}
+
+/* Phase 30: lets best-of-N abandon its candidates when the client cancels. */
+static int best_of_abort_check(void *userdata) {
+    StreamState *st = (StreamState *)userdata;
+    return cancel_registry_check(st->cancel, st->public_id);
+}
 
 static int streaming_token_callback(const char *piece, void *userdata) {
     StreamState *st = (StreamState *)userdata;
@@ -535,10 +564,23 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     else prefix_cache_reset(&ctx->prefix_cache); /* KV is about to be overwritten */
 
     GenerationStats gstats;
+    memset(&gstats, 0, sizeof(gstats));
     gp.stats = &gstats;
-    generate_ex(ctx->cfg, ctx->weights, ctx->run_state, ctx->moe_cfg,
-                ctx->tok, ctx->tp, prompt, &gp,
-                streaming_token_callback, &st);
+    /* Phase 30: best-of-N (server default --best-of, capped by --best-of-max). */
+    int best_of = (req.set_mask & CHAT_SET_BEST_OF) ? req.best_of : ctx->server_config.best_of;
+    if (best_of < 1) best_of = 1;
+    if (best_of > ctx->server_config.best_of_max) best_of = ctx->server_config.best_of_max;
+    BestOfResult bres;
+    memset(&bres, 0, sizeof(bres));
+    if (best_of > 1) {
+        generate_best_of(ctx->cfg, ctx->weights, ctx->run_state, ctx->moe_cfg,
+                         ctx->tok, ctx->tp, prompt, &gp, best_of, BEST_OF_SCORE_MEAN_LOGPROB,
+                         streaming_token_callback, &st, best_of_abort_check, &bres);
+    } else {
+        generate_ex(ctx->cfg, ctx->weights, ctx->run_state, ctx->moe_cfg,
+                    ctx->tok, ctx->tp, prompt, &gp,
+                    streaming_token_callback, &st);
+    }
     const char *finish_reason = gen_finish_reason_str(gstats.finish_reason);
 
     cancel_registry_end(&ctx->cancel);
@@ -570,6 +612,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
                                                  gstats.prompt_tokens,
                                                  gstats.completion_tokens,
                                                  gstats.cached_tokens);
+        if (json && best_of > 1) json = append_best_of_json(json, &bres);
         send_response_ex(fd, 200, "application/json", json, 0, extra_headers);
         free(json);
     }

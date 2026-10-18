@@ -34,7 +34,8 @@ enum {
     CHAT_SET_WM_GAMMA      = 1u << 12,
     CHAT_SET_WM_DELTA      = 1u << 13,
     CHAT_SET_JSON_MODE     = 1u << 14,
-    CHAT_SET_CACHE_PROMPT  = 1u << 15
+    CHAT_SET_CACHE_PROMPT  = 1u << 15,
+    CHAT_SET_BEST_OF       = 1u << 16
 };
 
 /* ── Single chat message ─────────────────────────────────────────────────── */
@@ -83,6 +84,8 @@ typedef struct {
     float         watermark_delta;
     /* Phase 21.5: "cache_prompt": false forces a full prefill for this request. */
     bool          cache_prompt;
+    /* Phase 30: "best_of": N candidates, return the most likely one. */
+    int           best_of;
 } ChatRequest;
 
 /* ── Lifecycle ───────────────────────────────────────────────────────────── */

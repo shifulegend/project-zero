@@ -2389,7 +2389,23 @@ Replaces raw `popen()` with an isolated WebAssembly sandbox for safe AI tool exe
 
 ---
 
-## PHASE 30: Test-Time Compute (MCTS & PRM) — Advanced Reasoning
+## PHASE 30: Test-Time Compute (MCTS & PRM) — Advanced Reasoning 🟡 best-of-N done 2026-10-18 (MCTS + external PRM open)
+
+**As built (first stage):** best-of-N candidate selection — the depth-1 case of the tree search
+below, with the policy model's own likelihood standing in for the PRM.
+- `include/sampling/logprob.h` + `GenerationParams.compute_logprobs` →
+  `GenerationStats.sum_logprob` (raw-distribution log p of each emitted token).
+- `include/reasoning/best_of.h` / `src/reasoning/best_of.c`: N candidates (seed + i), pluggable
+  score (`BEST_OF_SCORE_MEAN_LOGPROB` default, `SUM_LOGPROB`); candidates that finished on their
+  own outrank max_tokens-truncated ones (likelihood alone rewarded endless loops in a live
+  test); shares the prompt through the prefix cache (temporary one when the caller has none).
+- Configurable: `--best-of`, `--best-of-max`, request `best_of`, `/v1/config`
+  (`defaults.best_of`, `limits.best_of`, `features.best_of`), web UI "Best of N" slider; the
+  response carries `best_of: {n, chosen, scores, completion_tokens_total}`.
+- Open: 30.1 external PRM (`--prm <gguf>` scoring steps), 30.2/30.3 step-level MCTS with KV
+  snapshots (Phase 26's prompt store is the natural snapshot mechanism).
+
+*Original stub, kept for reference:*
 
 Replaces linear Chain-of-Thought with tree-search reasoning for mathematically proven answers.
 

@@ -121,6 +121,7 @@ export function streamChatCompletion({ messages, options = {}, imageDataUrl }, o
           const fr = evt.choices?.[0]?.finish_reason;
           if (fr) summary.finish_reason = fr;
           if (evt.usage) summary.usage = evt.usage;
+          if (evt.best_of) summary.best_of = evt.best_of;
         }
       }
     } finally {

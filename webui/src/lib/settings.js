@@ -23,6 +23,7 @@ export function defaultsFromConfig(cfg) {
     seed: d.seed ?? -1,
     json_mode: !!d.json_mode,
     cache_prompt: d.cache_prompt !== false,
+    best_of: d.best_of ?? 1,
     system_prompt: d.system_prompt ?? '',
     stop: (d.stop ?? []).join('\n'),
     watermark_enabled: !!d.watermark?.enabled,
@@ -97,6 +98,7 @@ export function requestParams(settings, cfg) {
   if (Number.isInteger(settings.seed) && settings.seed >= 0) body.seed = settings.seed;
   body.response_format = { type: settings.json_mode ? 'json_object' : 'text' };
   if (cfg?.features?.prompt_cache) body.cache_prompt = !!settings.cache_prompt;
+  if (cfg?.features?.best_of) body.best_of = settings.best_of;
   const wm = {
     enabled: !!settings.watermark_enabled,
     gamma: settings.watermark_gamma,

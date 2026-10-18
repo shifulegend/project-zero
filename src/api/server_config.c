@@ -4,6 +4,7 @@
  */
 
 #include "api/server_config.h"
+#include "reasoning/best_of.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -17,6 +18,8 @@ void server_config_init(ServerConfig *sc) {
     sc->prompt_cache_mb = 0;  /* main.c sets the CLI value (default 256) */
     sc->prompt_cache_min_tokens = 32;
     sc->chat_format = -1;
+    sc->best_of = 1;
+    sc->best_of_max = BEST_OF_MAX_DEFAULT;
 }
 
 int server_config_add_cors_origin(ServerConfig *sc, const char *origin) {

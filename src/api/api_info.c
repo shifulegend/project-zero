@@ -1,6 +1,7 @@
 #include "api/api_info.h"
 #include "api/json_write.h"
 #include "api/chat_compile.h"
+#include "reasoning/best_of.h"
 #include "api/chat_request.h"
 #include "sampling/watermark_text.h"
 #include "threading/cache_probe.h"
@@ -98,6 +99,7 @@ char *api_config_json(const ApiContext *ctx) {
     jb_raw(&jb, ","); jb_key(&jb, "seed");               jb_int(&jb, def.seed);
     jb_raw(&jb, ","); jb_key(&jb, "json_mode");          jb_bool(&jb, def.json_mode);
     jb_raw(&jb, ","); jb_key(&jb, "cache_prompt");       jb_bool(&jb, ctx && ctx->server_config.prompt_cache);
+    jb_raw(&jb, ","); jb_key(&jb, "best_of");            jb_int(&jb, ctx ? ctx->server_config.best_of : 1);
     jb_raw(&jb, ","); jb_key(&jb, "system_prompt");      jb_str(&jb, def.system_prompt ? def.system_prompt : "");
     jb_raw(&jb, ","); jb_key(&jb, "stop"); jb_raw(&jb, "[");
     for (int i = 0; i < def.n_stop; i++) { if (i) jb_raw(&jb, ","); jb_str(&jb, def.stop[i]); }
@@ -124,6 +126,7 @@ char *api_config_json(const ApiContext *ctx) {
     range(&jb, "penalty_last_n", -1, lim, 1);                    jb_raw(&jb, ",");
     range(&jb, "watermark_gamma", 0.01, 0.99, 0.01);             jb_raw(&jb, ",");
     range(&jb, "watermark_delta", 0, 20, 0.1);                   jb_raw(&jb, ",");
+    range(&jb, "best_of", 1, ctx ? ctx->server_config.best_of_max : BEST_OF_MAX_DEFAULT, 1); jb_raw(&jb, ",");
     jb_key(&jb, "max_stop");     jb_int(&jb, CHAT_MAX_STOP);     jb_raw(&jb, ",");
     jb_key(&jb, "max_messages"); jb_int(&jb, CHAT_MAX_MESSAGES);
     jb_raw(&jb, "},");
@@ -151,6 +154,7 @@ char *api_config_json(const ApiContext *ctx) {
     jb_raw(&jb, ","); jb_key(&jb, "watermark"); jb_bool(&jb, 1);
     jb_raw(&jb, ","); jb_key(&jb, "vision"); jb_bool(&jb, vision_enabled(ctx));
     jb_raw(&jb, ","); jb_key(&jb, "cancel"); jb_bool(&jb, 1);
+    jb_raw(&jb, ","); jb_key(&jb, "best_of"); jb_bool(&jb, ctx && ctx->server_config.best_of_max > 1);
     /* Recurrent linear-attention state cannot resume from a partial prefix. */
     jb_raw(&jb, ","); jb_key(&jb, "prompt_cache");
     jb_bool(&jb, !(ctx && moe_is_recurrent(ctx->moe_cfg)));

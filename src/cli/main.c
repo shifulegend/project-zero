@@ -24,6 +24,7 @@
 #include "transformer/attn_tiled.h"
 #include "threading/cache_probe.h"
 #include "sampling/watermark_text.h"
+#include "reasoning/best_of.h"
 #include "cli/model_load.h"
 #include "cli/repl.h"
 #include "cli/progress.h"
@@ -68,6 +69,14 @@
  * start, so REPL/one-shot Ctrl+C behavior (immediate kill, default
  * disposition) is unchanged. */
 static volatile sig_atomic_t g_shutdown_requested = 0;
+
+/* stdout sink for one-shot CLI generation paths that take a TokenCallback. */
+static int stdout_piece_callback(const char *piece, void *userdata) {
+    (void)userdata;
+    fputs(piece, stdout);
+    fflush(stdout);
+    return 0;
+}
 
 static void handle_shutdown_signal(int sig) {
     (void)sig;
@@ -663,6 +672,8 @@ int main(int argc, char **argv) {
         if (args.ui_title) api_ctx.server_config.ui_title = strdup(args.ui_title);
         api_ctx.server_config.prompt_cache = args.prompt_cache ? 1 : 0;
         api_ctx.server_config.chat_format = args.chat_format;
+        api_ctx.server_config.best_of = args.best_of;
+        api_ctx.server_config.best_of_max = args.best_of_max;
         api_ctx.server_config.prompt_cache_mb = args.prompt_cache_mb;
         api_ctx.server_config.prompt_cache_min_tokens = args.prompt_cache_min_tokens;
         api_ctx.server_config.max_tokens_limit =
@@ -717,7 +728,16 @@ int main(int argc, char **argv) {
         } else {
             GenerationParams gp;
             args_fill_gen_params(&args, &gp);
-            generate_params(&p, &w, s, &mc, &t, tp, args.prompt, &gp);
+            if (args.best_of > 1) {
+                BestOfResult br;
+                generate_best_of(&p, &w, s, &mc, &t, tp, args.prompt, &gp, args.best_of,
+                                 BEST_OF_SCORE_MEAN_LOGPROB, stdout_piece_callback, NULL, NULL, &br);
+                printf("\n");
+                fprintf(stderr, "[best-of] %d candidates, chose #%d (mean log-prob %.3f)\n",
+                        br.n, br.chosen, br.chosen >= 0 ? br.scores[br.chosen] : 0.0);
+            } else {
+                generate_params(&p, &w, s, &mc, &t, tp, args.prompt, &gp);
+            }
         }
         printf("\n");
     } else {

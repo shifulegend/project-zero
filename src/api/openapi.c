@@ -19,7 +19,7 @@ static const char OPENAPI_JSON[] =
       "\"description\":\"Supports streaming (SSE) and non-streaming modes. Optional fields (server defaults apply when omitted): "
         "temperature, top_p, top_k, min_p, max_tokens, repetition_penalty, presence_penalty, frequency_penalty, "
         "penalty_last_n, seed, stop (string or array), response_format {type: json_object}, "
-        "watermark {enabled, key, gamma, delta}, cache_prompt (reuse the KV prefix shared with the previous request; default on). Responses report usage (incl. prompt_tokens_details.cached_tokens) and finish_reason (stop|length|cancelled).\","
+        "watermark {enabled, key, gamma, delta}, cache_prompt (reuse the KV prefix shared with the previous request; default on), best_of (N candidates, the most likely is returned; scores in the best_of response object). Responses report usage (incl. prompt_tokens_details.cached_tokens) and finish_reason (stop|length|cancelled).\","
       "\"responses\":{\"200\":{\"description\":\"OK\"},\"400\":{\"description\":\"Invalid request\"},"
         "\"401\":{\"description\":\"Unauthorized\"},\"429\":{\"description\":\"Another generation is in flight\"}}}},"
     "\"/v1/chat/completions/cancel\":{\"post\":{\"summary\":\"Cancel an in-flight generation\","

@@ -1,6 +1,7 @@
 #include "cli/args.h"
 #include "transformer/attn_tiled.h"
 #include "api/chat_compile.h"
+#include "reasoning/best_of.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,6 +26,9 @@ void print_usage(const char *prog_name) {
     printf("                      -1 = all generated tokens, 0 = penalties off)\n");
     printf("  --system-prompt <s> System prompt for chat-template models (default: none)\n");
     printf("  --stop <text>       Stop generation at this string; repeatable (max %d)\n", GEN_MAX_STOP);
+    printf("  --best-of <N>       Generate N candidates, keep the one the model finds\n");
+    printf("                      most likely (mean log-prob). Default 1 (off).\n");
+    printf("  --best-of-max <N>   Server: largest best_of a request may ask for (default %d)\n", BEST_OF_MAX_DEFAULT);
     printf("  --reasoning         Enable hidden reasoning mode via <think> tags\n");
     printf("  --json              Constrain output to syntactically valid JSON\n");
     printf("                      (grammar-masked sampling; physically cannot emit\n");
@@ -192,6 +196,8 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->watermark_detect = NULL;
     args->ui_title = NULL;
     args->chat_format = -1;
+    args->best_of = 1;
+    args->best_of_max = BEST_OF_MAX_DEFAULT;
     args->prompt_cache = true;
     args->prompt_cache_mb = 256;
     args->prompt_cache_min_tokens = 32;
@@ -306,6 +312,18 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             else if (strcmp(mode, "off") == 0) args->prompt_cache = false;
             else {
                 fprintf(stderr, "Error: --prompt-cache must be on or off\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--best-of") == 0 && i + 1 < argc) {
+            args->best_of = atoi(argv[++i]);
+            if (args->best_of < 1 || args->best_of > 64) {
+                fprintf(stderr, "Error: --best-of must be 1..64\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--best-of-max") == 0 && i + 1 < argc) {
+            args->best_of_max = atoi(argv[++i]);
+            if (args->best_of_max < 1 || args->best_of_max > 64) {
+                fprintf(stderr, "Error: --best-of-max must be 1..64\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--chat-format") == 0 && i + 1 < argc) {

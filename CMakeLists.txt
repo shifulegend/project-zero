@@ -240,6 +240,7 @@ set(SAMPLING_SOURCES
     src/sampling/sampler_chain.c
     src/sampling/watermark.c
     src/sampling/watermark_text.c
+    src/sampling/logprob.c
 )
 
 set(KV_CACHE_SOURCES
@@ -261,6 +262,7 @@ set(REASONING_SOURCES
     src/reasoning/thought_filter.c
     src/reasoning/prompt_inject.c
     src/reasoning/reasoning_generate.c
+    src/reasoning/best_of.c
 )
 
 set(CLI_SOURCES

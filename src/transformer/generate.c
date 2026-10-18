@@ -6,6 +6,7 @@
 #include "sampling/rng.h"
 #include "sampling/constrained_sample.h"
 #include "sampling/sampler_chain.h"
+#include "sampling/logprob.h"
 #include "transformer/stop_seq.h"
 #include "cli/timer.h"
 #include "core/step_timing.h"
@@ -48,6 +49,7 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
         gp->stats->prompt_tokens = 0;
         gp->stats->completion_tokens = 0;
         gp->stats->cached_tokens = 0;
+        gp->stats->sum_logprob = 0.0;
         gp->stats->finish_reason = GEN_FINISH_ERROR; /* until generation runs */
         gp->stats->tokens_per_sec = 0.0;
     }
@@ -183,6 +185,11 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
     /* Generated-token history for repetition/presence/frequency penalties. */
     int *gen_history = NULL;
     int  n_history = 0;
+    /* Phase 30: raw-logit copy for log-probabilities of sampled tokens. */
+    float *raw_logits = (gp->compute_logprobs && gp->stats)
+                        ? (float *)malloc((size_t)cfg->vocab_size * sizeof(float)) : NULL;
+    double sum_logprob = 0.0;
+    double step_lse = 0.0;
     if (sampler_penalties_active(ss) && max_tokens > 0)
         gen_history = (int *)malloc((size_t)max_tokens * sizeof(int));
 
@@ -245,6 +252,10 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
         } else {
             /* Full prompt processed, sample from logits */
             int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+            if (raw_logits) {
+                memcpy(raw_logits, logits, (size_t)cfg->vocab_size * sizeof(float));
+                step_lse = logprob_logsumexp(raw_logits, cfg->vocab_size);
+            }
             if (json_mode) {
                 next = sample_constrained_chain(logits, cfg->vocab_size, &json_fsm,
                                                 tok, prev_token, ss,
@@ -307,6 +318,7 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
                 stop_requested = stop_matcher_feed(&stop, piece, callback, userdata);
             }
             if (gen_history && n_history < max_tokens) gen_history[n_history++] = next;
+            if (raw_logits) sum_logprob += (double)raw_logits[next] - step_lse;
             tokens_generated++;
             if (stop_requested) {
                 finish = stop.stopped ? GEN_FINISH_STOP : GEN_FINISH_CANCELLED;
@@ -324,6 +336,7 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
     stop_matcher_free(&stop);
     if (pstore && cache_eligible) prompt_store_save(pstore, cfg, s, pcache);
     free(gen_history);
+    free(raw_logits);
     free(prompt_tokens);
 
     /* Report throughput to stderr (does not interfere with callback output) */
@@ -338,6 +351,7 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
         gp->stats->completion_tokens = tokens_generated;
         gp->stats->finish_reason = finish;
         gp->stats->tokens_per_sec = tok_per_sec;
+        gp->stats->sum_logprob = sum_logprob;
     }
 
     /* Print expert utilisation for MoE models */

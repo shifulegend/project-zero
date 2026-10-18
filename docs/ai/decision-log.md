@@ -3,6 +3,15 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-10-18.
 
+### 2026-10-18 — Phase 30 starts with best-of-N, not MCTS
+
+- Best-of-N with the model's own mean log-prob is the useful, verifiable core of test-time
+  compute on CPU: no second model, prompt shared via the prefix cache, and a clean pluggable
+  score function where a PRM can slot in. Step-level MCTS needs KV snapshots per node and a
+  reward model; both remain open (Phase 26's snapshot store is the planned mechanism).
+- Completed candidates outrank truncated ones because pure likelihood favours repetitive loops
+  (observed live). Default best_of = 1 (off), cap 8, all configurable.
+
 ### 2026-10-18 — Phase 22-SSM: Mamba via MoEConfig flag + per-layer router, verified by an independent reference
 
 - Followed the existing per-family pattern (flag on MoEConfig, own weights/state structs, a

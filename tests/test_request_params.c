@@ -7,6 +7,7 @@
 #include "api/request_params.h"
 #include "api/json_fields.h"
 #include "api/chat_compile.h"
+#include "reasoning/best_of.h"
 
 static void test_parse_extended_fields(void) {
     ChatRequest r; chat_request_init(&r);
@@ -106,6 +107,22 @@ static void test_chat_format_choice(void) {
     chat_request_free(&r);
 }
 
+static void test_best_of_parse_and_score(void) {
+    ChatRequest r; chat_request_init(&r);
+    chat_request_parse("{\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"best_of\":3}", &r);
+    TEST_ASSERT((r.set_mask & CHAT_SET_BEST_OF) && r.best_of == 3, "best_of parsed");
+    chat_request_free(&r);
+    GenerationStats a = {0}, b = {0};
+    a.completion_tokens = 10; a.sum_logprob = -10.0;   /* mean -1.0 */
+    b.completion_tokens = 2;  b.sum_logprob = -3.0;    /* mean -1.5, sum -3 */
+    TEST_ASSERT(best_of_score(&a, BEST_OF_SCORE_MEAN_LOGPROB) > best_of_score(&b, BEST_OF_SCORE_MEAN_LOGPROB),
+                "mean log-prob prefers the more likely-per-token candidate");
+    TEST_ASSERT(best_of_score(&b, BEST_OF_SCORE_SUM_LOGPROB) > best_of_score(&a, BEST_OF_SCORE_SUM_LOGPROB),
+                "sum log-prob prefers the shorter candidate");
+    GenerationStats empty = {0};
+    TEST_ASSERT(best_of_score(&empty, BEST_OF_SCORE_MEAN_LOGPROB) < -1e299, "empty candidate never wins");
+}
+
 static void test_json_fields(void) {
     const char *b = "{\"a\":{\"x\":1},\"text\":\"hi\\nthere\",\"gamma\":0.3,\"flag\":true}";
     char *t = json_field_string(b, "text");
@@ -127,6 +144,7 @@ int main(void) {
     RUN_TEST(test_resolve_defaults_and_overrides);
     RUN_TEST(test_cache_prompt_field);
     RUN_TEST(test_chat_format_choice);
+    RUN_TEST(test_best_of_parse_and_score);
     RUN_TEST(test_json_fields);
     TEST_SUMMARY();
 }

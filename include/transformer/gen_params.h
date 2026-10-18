@@ -32,6 +32,9 @@ typedef struct {
     int             cached_tokens;  /* prompt tokens reused from the prefix cache */
     GenFinishReason finish_reason;
     double          tokens_per_sec; /* 0 when fewer than 2 tokens */
+    /* Sum of log p(token) over emitted tokens under the raw model
+     * distribution; only filled when GenerationParams.compute_logprobs. */
+    double          sum_logprob;
 } GenerationStats;
 
 /* "stop" | "length" | "cancelled" | "error" — OpenAI finish_reason strings. */
@@ -67,6 +70,10 @@ typedef struct {
     /* Phase 26: multi-entry snapshot store consulted when the live prefix
      * cache matches less than a stored sequence. Requires prefix_cache. */
     PromptStore *prompt_store;
+
+    /* Phase 30: accumulate GenerationStats.sum_logprob (costs one logits
+     * copy + log-sum-exp per generated token; off by default). */
+    bool compute_logprobs;
 
     /* Optional out-param: token counts + why generation ended. */
     GenerationStats *stats;

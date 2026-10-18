@@ -79,6 +79,8 @@ typedef struct {
     char  *watermark_detect;   /* --watermark-detect <text>: score text, exit   */
     char  *ui_title;           /* --ui-title <name>: web UI brand name          */
     int    chat_format;        /* --chat-format: -1 auto, else ChatTemplateType */
+    int    best_of;            /* --best-of <N>: candidates, keep most likely (1) */
+    int    best_of_max;        /* --best-of-max <N>: per-request cap (server, 8) */
     char  *attn_kernel;        /* --attn-kernel standard|tiled (standard)       */
     int    attn_tile;          /* --attn-tile <N>: tiled kernel tile (0 = L1d)  */
     int    attn_parallel_min_ctx; /* --attn-parallel-min-ctx <N> (256, 0=off)  */

@@ -3,6 +3,7 @@
  */
 #include "test_harness.h"
 #include "sampling/sampler_chain.h"
+#include "sampling/logprob.h"
 #include "sampling/sampling.h"
 #include "sampling/rng.h"
 #include "math/simd_dispatch.h"
@@ -124,6 +125,14 @@ static void test_seed_reproducible(void) {
     TEST_ASSERT(same, "same seed -> same samples");
 }
 
+static void test_logsumexp(void) {
+    float l[3] = {0.0f, 0.0f, 0.0f};
+    TEST_ASSERT(fabs(logprob_logsumexp(l, 3) - log(3.0)) < 1e-9, "lse of zeros = ln n");
+    float big[2] = {1000.0f, 1000.0f};
+    TEST_ASSERT(fabs(logprob_logsumexp(big, 2) - (1000.0 + log(2.0))) < 1e-6, "stable for large logits");
+    TEST_ASSERT(isinf(logprob_logsumexp(l, 0)), "empty -> -inf");
+}
+
 int main(void) {
     tn_simd_init();
     printf("=== Sampler Chain Tests ===\n");
@@ -135,5 +144,6 @@ int main(void) {
     RUN_TEST(test_min_p_restricts);
     RUN_TEST(test_penalties);
     RUN_TEST(test_seed_reproducible);
+    RUN_TEST(test_logsumexp);
     TEST_SUMMARY();
 }

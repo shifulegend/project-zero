@@ -59,7 +59,8 @@
     try {
       const summary = await done;
       if (summary && messages[assistantIndex]) {
-        messages[assistantIndex].meta = summary;
+        const opts = requestParams(settings, config);
+        messages[assistantIndex].meta = { ...summary, best_of_n: opts.best_of ?? 1 };
         messages = messages;
       }
     } catch (err) {

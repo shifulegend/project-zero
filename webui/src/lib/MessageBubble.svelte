@@ -22,6 +22,7 @@
   {#if role === 'assistant' && meta && !streaming}
     <div class="meta">
       {#if meta.usage}{meta.usage.completion_tokens} tokens · {meta.usage.prompt_tokens} prompt{#if meta.usage.prompt_tokens_details?.cached_tokens}{' '}({meta.usage.prompt_tokens_details.cached_tokens} cached){/if}{/if}
+      {#if meta.best_of_n > 1} · best of {meta.best_of_n}{/if}
       {#if meta.finish_reason}<span class:warn={meta.finish_reason === 'length'}> · {FINISH_LABEL[meta.finish_reason] ?? meta.finish_reason}</span>{/if}
     </div>
   {/if}

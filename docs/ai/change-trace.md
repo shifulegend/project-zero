@@ -3,6 +3,13 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-18.
 
+### 2026-10-18 — Phase 30 (first stage): best-of-N with likelihood scoring
+- New: `sampling/logprob`, `reasoning/best_of`; `GenerationParams.compute_logprobs`,
+  `GenerationStats.sum_logprob`; `--best-of`, `--best-of-max`; request `best_of`; response
+  `best_of` object; `/v1/config` default/limit/feature; UI slider + footer note.
+- Verified: unit tests (score modes, parse, log-sum-exp), gcc+clang test suites, live API (4
+  candidates, 38/39 prompt tokens cached, streaming sends the winner), browser drive.
+
 ### 2026-10-18 — Phase 22-SSM: Mamba-1 support + vocabulary-driven chat format
 - New: `transformer/mamba` (+ `tests/test_mamba.c`), `tools/mamba_reference.py`,
   `tests/e2e_mamba_reference.sh`; `MoEConfig.is_ssm` + `moe_is_recurrent()`;

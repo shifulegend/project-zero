@@ -8,6 +8,7 @@
 #include "core/weights.h"
 #include "threading/thread_pool.h"
 #include "tokenizer/tokenizer.h"
+#include "transformer/gen_params.h"
 
 /**
  * Text generation loop.
@@ -63,5 +64,22 @@ void generate_with_callback(const Config *cfg, const TransformerWeights *w,
                              int max_tokens, float temperature, float top_p,
                              bool json_mode,
                              TokenCallback callback, void *userdata);
+
+/**
+ * Full-control generation: every knob (sampler chain, seed, JSON mode,
+ * watermark, chat history, system prompt, stop strings) comes from @p gp
+ * (NULL = gen_params_default()). generate()/generate_with_callback() are
+ * thin wrappers over this.
+ */
+void generate_ex(const Config *cfg, const TransformerWeights *w,
+                 RunState *s, const MoEConfig *mc,
+                 Tokenizer *tok, ThreadPool *tp, const char *prompt,
+                 const GenerationParams *gp,
+                 TokenCallback callback, void *userdata);
+
+/** generate_ex() writing tokens to stdout (+ trailing newline), for the CLI. */
+void generate_params(const Config *cfg, const TransformerWeights *w, RunState *s,
+                     const MoEConfig *mc, Tokenizer *tok, ThreadPool *tp,
+                     const char *prompt, const GenerationParams *gp);
 
 #endif /* TN_GENERATE_H */

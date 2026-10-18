@@ -198,10 +198,9 @@ void run_repl(Config *p, TransformerWeights *w,
                                                 args->json_mode, draft, args->spec_length,
                                                 repl_token_callback, &rc);
         } else {
-            generate_with_callback(p, w, s, mc, t, tp, line,
-                                   args->max_tokens, args->temperature, args->top_p,
-                                   args->json_mode,
-                                   repl_token_callback, &rc);
+            GenerationParams gp;
+            args_fill_gen_params(args, &gp);
+            generate_ex(p, w, s, mc, t, tp, line, &gp, repl_token_callback, &rc);
         }
         md_render_flush(&rc.md);
         if (rc.is_tty && rc.live.count >= 2) fprintf(stderr, "\n"); /* move past the live tok/s line */

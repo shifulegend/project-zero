@@ -6,6 +6,7 @@
 #include "core/error.h"
 #include "cli/color.h"
 #include "api/server_config.h"
+#include "transformer/gen_params.h"
 
 #define CLI_MAX_CORS_ORIGINS 16
 
@@ -56,10 +57,34 @@ typedef struct {
     char *lora_path;          /* --lora <path>: .lora.bin adapter. NULL (default) =
                                   disabled -- the ONLY way to enable a LoRA adapter;
                                   never a default/embedded path.                    */
+    /* Sampler chain + generation knobs (sampling/sampler_chain.h). In
+     * --server mode these become the server-side defaults every API
+     * request (and the web UI) starts from and may override. */
+    int    top_k;              /* --top-k <N>: 0 = disabled (default)          */
+    float  min_p;              /* --min-p <p>: 0 = disabled (default)          */
+    float  repeat_penalty;     /* --repeat-penalty <r>: 1 = disabled (default) */
+    float  presence_penalty;   /* --presence-penalty <v>: 0 = disabled         */
+    float  frequency_penalty;  /* --frequency-penalty <v>: 0 = disabled        */
+    int    repeat_last_n;      /* --repeat-last-n <N>: penalty window (64)     */
+    char  *system_prompt;      /* --system-prompt <text>: NULL = none          */
+    char  *stop[GEN_MAX_STOP]; /* --stop <text> (repeatable)                   */
+    int    n_stop;
+    int    max_tokens_limit;   /* --max-tokens-limit <N>: per-request cap in
+                                  --server mode; 0 = model context length    */
+    /* Phase 33: watermarking (off by default) */
+    bool   watermark;          /* --watermark                                   */
+    char  *watermark_key;      /* --watermark-key <passphrase>                  */
+    float  watermark_gamma;    /* --watermark-gamma <g> (default 0.25)          */
+    float  watermark_delta;    /* --watermark-delta <d> (default 2.0)           */
+    char  *watermark_detect;   /* --watermark-detect <text>: score text, exit   */
+    char  *ui_title;           /* --ui-title <name>: web UI brand name          */
 } CliArgs;
 
 // Parse CLI arguments into the CliArgs struct
 TernaryError parse_args(CliArgs *args, int argc, char **argv);
+
+// Builds the GenerationParams a CLI run (or the server defaults) starts from.
+void args_fill_gen_params(const CliArgs *args, GenerationParams *gp);
 
 // Print usage help
 void print_usage(const char *prog_name);

@@ -5,6 +5,8 @@
 #include "sampling/sampling.h"
 #include "sampling/rng.h"
 #include "sampling/constrained_sample.h"
+#include "sampling/sampler_chain.h"
+#include "transformer/stop_seq.h"
 #include "cli/timer.h"
 #include "core/step_timing.h"
 #include "tokenizer/tokenizer.h"
@@ -23,15 +25,34 @@ static int stdout_token_callback(const char *piece, void *userdata) {
     return 0;
 }
 
+/* Max messages rendered through the chat template in one call (system
+ * prompt + history). Bounded so the role/content pointer arrays live on the
+ * stack; 64 matches the API's CHAT_MAX_MESSAGES. */
+#define GEN_MAX_TEMPLATE_MESSAGES 65
+
 /* ── Core implementation: all output goes through callback ──────────────── */
-void generate_with_callback(const Config *cfg, const TransformerWeights *w,
-                             RunState *s, const MoEConfig *mc,
-                             Tokenizer *tok, ThreadPool *tp, const char *prompt,
-                             int max_tokens, float temperature, float top_p,
-                             bool json_mode,
-                             TokenCallback callback, void *userdata) {
+void generate_ex(const Config *cfg, const TransformerWeights *w,
+                 RunState *s, const MoEConfig *mc,
+                 Tokenizer *tok, ThreadPool *tp, const char *prompt,
+                 const GenerationParams *gp,
+                 TokenCallback callback, void *userdata) {
     if (!prompt) prompt = "";
+    GenerationParams gp_default;
+    if (!gp) { gen_params_default(&gp_default); gp = &gp_default; }
+    const int  max_tokens = gp->max_tokens;
+    const bool json_mode  = gp->json_mode;
+    const SamplerSettings *ss = &gp->sampler;
+    const WatermarkConfig *wm = gp->watermark.enabled ? &gp->watermark : NULL;
     tn_step_timing_reset();
+    if (gp->stats) {
+        gp->stats->prompt_tokens = 0;
+        gp->stats->completion_tokens = 0;
+        gp->stats->finish_reason = GEN_FINISH_ERROR; /* until generation runs */
+        gp->stats->tokens_per_sec = 0.0;
+    }
+
+    StopMatcher stop;
+    stop_matcher_init(&stop, gp->stop, gp->n_stop);
 
     /* Phase 20: grammar-constrained decoding state (only touched when
      * json_mode is set). Fresh per call -- constrains this one generation,
@@ -58,12 +79,31 @@ void generate_with_callback(const Config *cfg, const TransformerWeights *w,
         const char *eos_str = (tok->eos_token_id >= 0 && tok->eos_token_id < tok->vocab_size)
                               ? tok->vocab[tok->eos_token_id] : "";
 
-        const char *roles[1]    = { "user" };
-        const char *contents[1] = { prompt };
+        /* Conversation to render: the caller's history when supplied,
+         * else the single prompt as one user turn; an optional system
+         * prompt goes first unless the history already opens with one. */
+        const char *roles[GEN_MAX_TEMPLATE_MESSAGES];
+        const char *contents[GEN_MAX_TEMPLATE_MESSAGES];
+        int n_msg = 0;
+        int history_has_system = gp->n_messages > 0 && gp->roles && gp->roles[0] &&
+                                 strcmp(gp->roles[0], "system") == 0;
+        if (gp->system_prompt && gp->system_prompt[0] && !history_has_system) {
+            roles[n_msg] = "system";
+            contents[n_msg++] = gp->system_prompt;
+        }
+        if (gp->n_messages > 0 && gp->roles && gp->contents) {
+            for (int i = 0; i < gp->n_messages && n_msg < GEN_MAX_TEMPLATE_MESSAGES; i++) {
+                roles[n_msg] = gp->roles[i] ? gp->roles[i] : "user";
+                contents[n_msg++] = gp->contents[i] ? gp->contents[i] : "";
+            }
+        } else {
+            roles[n_msg] = "user";
+            contents[n_msg++] = prompt;
+        }
 
         int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
         char *formatted = chat_template_apply(tok->chat_template,
-                                              roles, contents, 1,
+                                              roles, contents, n_msg,
                                               bos_str, eos_str,
                                               /*add_generation_prompt=*/1);
         if (t_step) {
@@ -72,6 +112,7 @@ void generate_with_callback(const Config *cfg, const TransformerWeights *w,
         }
         if (!formatted) {
             free(prompt_tokens);
+            stop_matcher_free(&stop);
             return;
         }
 
@@ -89,6 +130,7 @@ void generate_with_callback(const Config *cfg, const TransformerWeights *w,
 
         if (n_prompt < 0) {
             free(prompt_tokens);
+            stop_matcher_free(&stop);
             return;
         }
     } else {
@@ -114,6 +156,7 @@ void generate_with_callback(const Config *cfg, const TransformerWeights *w,
         }
         if (n_encoded < 0) {
             free(prompt_tokens);
+            stop_matcher_free(&stop);
             return;
         }
         n_prompt += n_encoded;
@@ -129,9 +172,18 @@ void generate_with_callback(const Config *cfg, const TransformerWeights *w,
     /* pos_offset: skip over any vision tokens already pre-filled in the KV cache */
     int pos_offset = s->current_pos;
 
-    /* Initialize RNG */
+    /* Initialize RNG: explicit seed (--seed / API "seed") for reproducible
+     * sampling, else time-based. (2026-10-18: the seed used to be parsed by
+     * the CLI and then ignored — every run was time-seeded.) */
     unsigned long long rng_state;
-    rng_seed(&rng_state, (unsigned long long)time(NULL));
+    rng_seed(&rng_state, gp->seed >= 0 ? (unsigned long long)gp->seed
+                                       : (unsigned long long)time(NULL));
+
+    /* Generated-token history for repetition/presence/frequency penalties. */
+    int *gen_history = NULL;
+    int  n_history = 0;
+    if (sampler_penalties_active(ss) && max_tokens > 0)
+        gen_history = (int *)malloc((size_t)max_tokens * sizeof(int));
 
     /* Initialize Sliding Window (pins the entire prompt) */
     sw_init(&s->sw, s->max_seq_len, n_prompt + pos_offset);
@@ -139,6 +191,7 @@ void generate_with_callback(const Config *cfg, const TransformerWeights *w,
     int prev_token = -1;
     int next = 0;
     int tokens_generated = 0;
+    GenFinishReason finish = GEN_FINISH_LENGTH;
     int64_t gen_start_us = 0; /* wall-clock start of generation phase */
 
     /* max_tokens generation-eligible steps: the first generated token comes
@@ -166,28 +219,14 @@ void generate_with_callback(const Config *cfg, const TransformerWeights *w,
             /* Full prompt processed, sample from logits */
             int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
             if (json_mode) {
-                next = sample_constrained(logits, cfg->vocab_size, &json_fsm,
-                                           tok, prev_token, temperature, top_p,
-                                           &rng_state);
-            } else if (temperature <= 0.0f || temperature < 1e-6f) {
-                next = sample_argmax(logits, cfg->vocab_size);
+                next = sample_constrained_chain(logits, cfg->vocab_size, &json_fsm,
+                                                tok, prev_token, ss,
+                                                gen_history, n_history, wm,
+                                                &rng_state);
             } else {
-                apply_temperature(logits, cfg->vocab_size, temperature);
-                if (top_p < 1.0f && top_p > 0.0f) {
-                    next = sample_top_p(logits, cfg->vocab_size, top_p, &rng_state);
-                } else {
-                    tn_softmax(logits, cfg->vocab_size);
-                    float r = rng_float(&rng_state);
-                    float cdf = 0.0f;
-                    next = cfg->vocab_size - 1; /* fallback */
-                    for (int i = 0; i < cfg->vocab_size; i++) {
-                        cdf += logits[i];
-                        if (r < cdf) {
-                            next = i;
-                            break;
-                        }
-                    }
-                }
+                next = sampler_chain_sample(logits, cfg->vocab_size, ss,
+                                            gen_history, n_history, wm,
+                                            prev_token, &rng_state);
             }
             if (t_step) {
                 tn_step_timing_add(TN_STEP_20_GREEDY_SAMPLING,
@@ -228,6 +267,7 @@ void generate_with_callback(const Config *cfg, const TransformerWeights *w,
                                    tn_step_timing_now_ns() - t_step);
             }
             if (is_eos) {
+                finish = GEN_FINISH_STOP;
                 break;
             }
             /* Non-EOS token: decode and deliver to callback */
@@ -236,11 +276,15 @@ void generate_with_callback(const Config *cfg, const TransformerWeights *w,
             }
             const char *piece = tokenizer_decode(tok, prev_token, next);
             int stop_requested = 0;
-            if (piece && callback) {
-                stop_requested = callback(piece, userdata);
+            if (piece) {
+                stop_requested = stop_matcher_feed(&stop, piece, callback, userdata);
             }
+            if (gen_history && n_history < max_tokens) gen_history[n_history++] = next;
             tokens_generated++;
-            if (stop_requested) break;
+            if (stop_requested) {
+                finish = stop.stopped ? GEN_FINISH_STOP : GEN_FINISH_CANCELLED;
+                break;
+            }
         }
 
         prev_token = next;
@@ -249,13 +293,23 @@ void generate_with_callback(const Config *cfg, const TransformerWeights *w,
         }
     }
 
+    stop_matcher_flush(&stop, callback, userdata);
+    stop_matcher_free(&stop);
+    free(gen_history);
     free(prompt_tokens);
 
     /* Report throughput to stderr (does not interfere with callback output) */
+    double tok_per_sec = 0.0;
     if (tokens_generated > 1 && gen_start_us > 0) {
         int64_t end_us = timer_now_us();
-        double tok_per_sec = timer_tokens_per_sec(gen_start_us, end_us, tokens_generated);
+        tok_per_sec = timer_tokens_per_sec(gen_start_us, end_us, tokens_generated);
         fprintf(stderr, "\n[gen] %.2f tok/s (%d tokens)\n", tok_per_sec, tokens_generated);
+    }
+    if (gp->stats) {
+        gp->stats->prompt_tokens = n_prompt;
+        gp->stats->completion_tokens = tokens_generated;
+        gp->stats->finish_reason = finish;
+        gp->stats->tokens_per_sec = tok_per_sec;
     }
 
     /* Print expert utilisation for MoE models */
@@ -264,14 +318,40 @@ void generate_with_callback(const Config *cfg, const TransformerWeights *w,
     tn_step_timing_report(stderr);
 }
 
+/* ── Legacy positional wrappers ─────────────────────────────────────────── */
+static void legacy_params(GenerationParams *gp, int max_tokens, float temperature,
+                          float top_p, bool json_mode) {
+    gen_params_default(gp);
+    gp->max_tokens = max_tokens;
+    gp->sampler.temperature = temperature;
+    gp->sampler.top_p = top_p;
+    gp->json_mode = json_mode;
+}
+
+void generate_with_callback(const Config *cfg, const TransformerWeights *w,
+                             RunState *s, const MoEConfig *mc,
+                             Tokenizer *tok, ThreadPool *tp, const char *prompt,
+                             int max_tokens, float temperature, float top_p,
+                             bool json_mode,
+                             TokenCallback callback, void *userdata) {
+    GenerationParams gp;
+    legacy_params(&gp, max_tokens, temperature, top_p, json_mode);
+    generate_ex(cfg, w, s, mc, tok, tp, prompt, &gp, callback, userdata);
+}
+
+void generate_params(const Config *cfg, const TransformerWeights *w, RunState *s,
+                     const MoEConfig *mc, Tokenizer *tok, ThreadPool *tp,
+                     const char *prompt, const GenerationParams *gp) {
+    generate_ex(cfg, w, s, mc, tok, tp, prompt, gp, stdout_token_callback, NULL);
+    printf("\n");
+}
+
 /* ── Public wrapper: generate() prints to stdout ────────────────────────── */
 void generate(const Config *cfg, const TransformerWeights *w, RunState *s,
               const MoEConfig *mc,
               Tokenizer *tok, ThreadPool *tp, const char *prompt,
               int max_tokens, float temperature, float top_p, bool json_mode) {
-    generate_with_callback(cfg, w, s, mc, tok, tp, prompt,
-                           max_tokens, temperature, top_p, json_mode,
-                           stdout_token_callback, NULL);
-    /* generate_with_callback already reports timing to stderr */
-    printf("\n");
+    GenerationParams gp;
+    legacy_params(&gp, max_tokens, temperature, top_p, json_mode);
+    generate_params(cfg, w, s, mc, tok, tp, prompt, &gp);
 }

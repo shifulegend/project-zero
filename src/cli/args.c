@@ -13,11 +13,29 @@ void print_usage(const char *prog_name) {
     printf("  --temperature <val> Temperature for sampling (default: 0.7)\n");
     printf("  --top-p <val>       Top-p nucleus sampling cutoff (default: 0.9)\n");
     printf("  --max-tokens <int>  Maximum tokens to generate (default: 512)\n");
-    printf("  --seed <int>        RNG seed (default: random)\n");
+    printf("  --seed <int>        RNG seed for reproducible sampling (default: random)\n");
+    printf("  --top-k <int>       Keep only the k most likely tokens (default: 0 = off)\n");
+    printf("  --min-p <val>       Drop tokens below min_p * p(max) (default: 0 = off)\n");
+    printf("  --repeat-penalty <r> Repetition penalty (default: 1.0 = off)\n");
+    printf("  --presence-penalty <v>  OpenAI presence penalty, -2..2 (default: 0)\n");
+    printf("  --frequency-penalty <v> OpenAI frequency penalty, -2..2 (default: 0)\n");
+    printf("  --repeat-last-n <N> Penalty window in generated tokens (default: 64,\n");
+    printf("                      -1 = all generated tokens, 0 = penalties off)\n");
+    printf("  --system-prompt <s> System prompt for chat-template models (default: none)\n");
+    printf("  --stop <text>       Stop generation at this string; repeatable (max %d)\n", GEN_MAX_STOP);
     printf("  --reasoning         Enable hidden reasoning mode via <think> tags\n");
     printf("  --json              Constrain output to syntactically valid JSON\n");
     printf("                      (grammar-masked sampling; physically cannot emit\n");
     printf("                      invalid JSON syntax, not just prompted to try)\n");
+
+    printf("\nWatermarking (off by default):\n");
+    printf("  --watermark         Bias sampling toward a keyed green list so output can\n");
+    printf("                      later be identified (statistical, not visible).\n");
+    printf("  --watermark-key <s> Secret passphrase for the green list.\n");
+    printf("  --watermark-gamma <g> Green-list fraction (default: 0.25).\n");
+    printf("  --watermark-delta <d> Logit bias for green tokens (default: 2.0).\n");
+    printf("  --watermark-detect <text> Score <text> for the watermark (needs --model for\n");
+    printf("                      the tokenizer and the same key/gamma), then exit.\n");
 
     printf("\nHardware & Performance:\n");
     printf("  --threads <int>     Number of threads (default: auto)\n");
@@ -42,6 +60,10 @@ void print_usage(const char *prog_name) {
     printf("                      (off by default — loopback experimentation is open).\n");
     printf("  --metrics           Enable GET /metrics (Prometheus text exposition).\n");
     printf("  --web-ui <mode>     Web chat UI: auto (default, on with --server), on, off.\n");
+    printf("  --max-tokens-limit <N> Per-request max_tokens cap (default: 0 = model\n");
+    printf("                      context length). Generation flags above become the\n");
+    printf("                      server defaults; requests/the web UI may override them.\n");
+    printf("  --ui-title <name>   Brand name shown in the web UI (default: project-zero)\n");
     printf("  --static-dir <path> Serve the web UI from disk instead of the embedded\n");
     printf("                      bundle (dev mode, for iterating on webui/dist/).\n");
 
@@ -129,6 +151,25 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->spec_length = 5;
     args->lora_path = NULL; /* disabled by default -- the ONLY way to enable a
                                 LoRA adapter is --lora */
+    {
+        SamplerSettings ss;
+        sampler_settings_default(&ss);
+        args->top_k = ss.top_k;
+        args->min_p = ss.min_p;
+        args->repeat_penalty = ss.repetition_penalty;
+        args->presence_penalty = ss.presence_penalty;
+        args->frequency_penalty = ss.frequency_penalty;
+        args->repeat_last_n = ss.penalty_last_n;
+    }
+    args->system_prompt = NULL;
+    args->n_stop = 0;
+    args->max_tokens_limit = 0;
+    args->watermark = false;
+    args->watermark_key = NULL;
+    args->watermark_gamma = WATERMARK_DEFAULT_GAMMA;
+    args->watermark_delta = WATERMARK_DEFAULT_DELTA;
+    args->watermark_detect = NULL;
+    args->ui_title = NULL;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--model") == 0 && i + 1 < argc) {
@@ -153,6 +194,44 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             args->num_threads = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--seed") == 0 && i + 1 < argc) {
             args->seed = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--top-k") == 0 && i + 1 < argc) {
+            args->top_k = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--min-p") == 0 && i + 1 < argc) {
+            args->min_p = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--repeat-penalty") == 0 && i + 1 < argc) {
+            args->repeat_penalty = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--presence-penalty") == 0 && i + 1 < argc) {
+            args->presence_penalty = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--frequency-penalty") == 0 && i + 1 < argc) {
+            args->frequency_penalty = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--repeat-last-n") == 0 && i + 1 < argc) {
+            args->repeat_last_n = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--system-prompt") == 0 && i + 1 < argc) {
+            args->system_prompt = argv[++i];
+        } else if (strcmp(argv[i], "--stop") == 0 && i + 1 < argc) {
+            if (args->n_stop >= GEN_MAX_STOP) {
+                fprintf(stderr, "Error: too many --stop values (max %d)\n", GEN_MAX_STOP);
+                return TN_ERR_INVALID_CONFIG;
+            }
+            args->stop[args->n_stop++] = argv[++i];
+        } else if (strcmp(argv[i], "--max-tokens-limit") == 0 && i + 1 < argc) {
+            args->max_tokens_limit = atoi(argv[++i]);
+            if (args->max_tokens_limit < 0) {
+                fprintf(stderr, "Error: --max-tokens-limit must be >= 0\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--watermark") == 0) {
+            args->watermark = true;
+        } else if (strcmp(argv[i], "--watermark-key") == 0 && i + 1 < argc) {
+            args->watermark_key = argv[++i];
+        } else if (strcmp(argv[i], "--watermark-gamma") == 0 && i + 1 < argc) {
+            args->watermark_gamma = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--watermark-delta") == 0 && i + 1 < argc) {
+            args->watermark_delta = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--ui-title") == 0 && i + 1 < argc) {
+            args->ui_title = argv[++i];
+        } else if (strcmp(argv[i], "--watermark-detect") == 0 && i + 1 < argc) {
+            args->watermark_detect = argv[++i];
         } else if (strcmp(argv[i], "--memory-db") == 0 && i + 1 < argc) {
             args->memory_db_path = argv[++i];
         } else if (strcmp(argv[i], "--classifier") == 0 && i + 1 < argc) {
@@ -270,4 +349,29 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     }
 
     return TN_OK;
+}
+
+void args_fill_gen_params(const CliArgs *args, GenerationParams *gp) {
+    gen_params_default(gp);
+    if (!args) return;
+    gp->max_tokens                 = args->max_tokens;
+    gp->sampler.temperature        = args->temperature;
+    gp->sampler.top_p              = args->top_p;
+    gp->sampler.top_k              = args->top_k;
+    gp->sampler.min_p              = args->min_p;
+    gp->sampler.repetition_penalty = args->repeat_penalty;
+    gp->sampler.presence_penalty   = args->presence_penalty;
+    gp->sampler.frequency_penalty  = args->frequency_penalty;
+    gp->sampler.penalty_last_n     = args->repeat_last_n;
+    sampler_settings_sanitize(&gp->sampler);
+    gp->seed      = args->seed;
+    gp->json_mode = args->json_mode;
+    gp->system_prompt = args->system_prompt;
+    for (int i = 0; i < args->n_stop && i < GEN_MAX_STOP; i++) gp->stop[i] = args->stop[i];
+    gp->n_stop = args->n_stop < GEN_MAX_STOP ? args->n_stop : GEN_MAX_STOP;
+    gp->watermark.enabled = args->watermark;
+    gp->watermark.key     = watermark_key_from_string(args->watermark_key);
+    gp->watermark.gamma   = args->watermark_gamma;
+    gp->watermark.delta   = args->watermark_delta;
+    watermark_config_sanitize(&gp->watermark);
 }

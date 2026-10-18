@@ -220,6 +220,8 @@ set(TRANSFORMER_SOURCES
     src/transformer/moe_router.c
     src/transformer/qwen35_attention.c
     src/transformer/qwen3moe_attention.c
+    src/transformer/gen_params.c
+    src/transformer/stop_seq.c
 )
 
 set(SAMPLING_SOURCES
@@ -231,6 +233,9 @@ set(SAMPLING_SOURCES
     src/sampling/grammar_json.c
     src/sampling/fsm.c
     src/sampling/constrained_sample.c
+    src/sampling/sampler_chain.c
+    src/sampling/watermark.c
+    src/sampling/watermark_text.c
 )
 
 set(KV_CACHE_SOURCES
@@ -278,6 +283,10 @@ set(API_SOURCES
     src/api/static_assets.c
     src/api/webui_bundle_generated.c
     src/api/data_url.c
+    src/api/json_write.c
+    src/api/request_params.c
+    src/api/api_info.c
+    src/api/watermark_endpoint.c
 )
 
 set(RAG_SOURCES

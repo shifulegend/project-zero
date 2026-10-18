@@ -14,6 +14,7 @@
  */
 
 #include "sampling/fsm.h"
+#include "sampling/sampler_chain.h"
 
 /*
  * Masks `logits` in place via the grammar, samples one token from the
@@ -26,5 +27,16 @@ int sample_constrained(float *logits, int vocab_size, FSMState *fsm,
                         Tokenizer *t, int prev_token,
                         float temperature, float top_p,
                         unsigned long long *rng_state);
+
+/*
+ * Full-settings variant: penalties + watermark bias -> grammar mask ->
+ * top-k/min-p/temperature/top-p (sampler_chain.h). `history`/`wm` may be NULL.
+ */
+int sample_constrained_chain(float *logits, int vocab_size, FSMState *fsm,
+                             Tokenizer *t, int prev_token,
+                             const SamplerSettings *ss,
+                             const int *history, int n_history,
+                             const WatermarkConfig *wm,
+                             unsigned long long *rng_state);
 
 #endif /* TN_CONSTRAINED_SAMPLE_H */

@@ -277,18 +277,25 @@ build/tests/test_simd_vnni: tests/test_simd_vnni.c $(LIB_OBJS)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS_DEBUG) $(SIMD_TEST_FLAGS) -o $@ $< $(LIB_OBJS) $(LDFLAGS) -lstdc++
 
+# When the library objects are a sanitizer build (last variant was `debug`),
+# links that don't use CFLAGS_DEBUG still need the ASan/UBSan runtime.
+# 2026-10-18: without this, `make debug && make test` failed to link
+# test_api_server/test_q2k_matvec (undefined __asan_*/__ubsan_*); CI never hit
+# it only because it runs release -> test -> debug.
+SAN_LINK_FLAGS = $(if $(filter debug,$(shell cat $(BUILD_STAMP) 2>/dev/null)),-fsanitize=address -fsanitize=undefined)
+
 # test_api_server links C++ objects (chat_template.o) so must use g++ as linker.
 # Compile the C test source with release flags to avoid sanitizer symbol mismatches.
 build/tests/test_api_server: tests/test_api_server.c $(LIB_OBJS)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS_RELEASE) -c -o build/tests/test_api_server.o tests/test_api_server.c
-	$(CXX) -o $@ build/tests/test_api_server.o $(LIB_OBJS) $(LDFLAGS)
+	$(CXX) -o $@ build/tests/test_api_server.o $(LIB_OBJS) $(LDFLAGS) $(SAN_LINK_FLAGS)
 
 # test_q2k_matvec: pure C test but links C++ chat_template.o; use CXX linker.
 build/tests/test_q2k_matvec: tests/test_q2k_matvec.c $(LIB_OBJS)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS_RELEASE) -c -o build/tests/test_q2k_matvec.o tests/test_q2k_matvec.c
-	$(CXX) -o $@ build/tests/test_q2k_matvec.o $(LIB_OBJS) $(LDFLAGS)
+	$(CXX) -o $@ build/tests/test_q2k_matvec.o $(LIB_OBJS) $(LDFLAGS) $(SAN_LINK_FLAGS)
 
 build/tests/%: tests/%.c $(LIB_OBJS)
 	@mkdir -p $(dir $@)

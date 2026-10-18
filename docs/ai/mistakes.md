@@ -5,6 +5,14 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-10-18.
 
+### 2026-10-18 — `make debug && make test` failed to link two tests (order-dependent build)
+
+- `build/tests/test_api_server` and `build/tests/test_q2k_matvec` have custom rules that link
+  with plain `$(LDFLAGS)`; when the library objects were last built by `make debug` (ASan/UBSan
+  instrumented) the link failed with undefined `__asan_*`/`__ubsan_*`. CI masks it by always
+  running release → test → debug. Fix: `SAN_LINK_FLAGS` (sanitizer runtime when
+  `build/.variant` is `debug`). Verified both orders on gcc and clang.
+
 ### 2026-10-18 — "KV Strategy: Quantized I8" was printed although the KV cache is always F32
 
 - Finding: `select_kv_strategy()` returns a strategy enum + context length, but only

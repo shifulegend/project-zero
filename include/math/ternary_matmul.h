@@ -20,4 +20,11 @@
 void ternary_matmul(float *out, const float *x, const tn_i8 *w,
                     int n, int d, float scale);
 
+/**
+ * Phase 3.2: branchless variant of ternary_matmul() (same arguments). Used as
+ * the scalar-backend dispatch target; ternary_matmul() stays the reference.
+ */
+void ternary_matmul_branchless(float *out, const float *x, const tn_i8 *w,
+                               int n, int d, float scale);
+
 #endif /* TN_TERNARY_MATMUL_H */

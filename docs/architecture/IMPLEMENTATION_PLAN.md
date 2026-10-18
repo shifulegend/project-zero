@@ -194,7 +194,10 @@ project-zero/
   may use per-group scales (e.g., every 128 weights). The inner loop will need to accumulate
   per-group and apply `out[i] = sum_g( scale[g] * sum_j_in_g(...) )` when that transition happens.
 
-### 3.2 — Ternary MatMul (Branchless Scalar)
+### 3.2 — Ternary MatMul (Branchless Scalar) ✅ done 2026-10-18
+- Built as `ternary_matmul_branchless()` (4 accumulators, `val += (float)w * x`), now the
+  scalar-backend `tn_ternary_matmul` target; the branchy `ternary_matmul()` stays the reference.
+  Microbench 2048×2048: 28.3 ms → 2.8 ms (10×), max |diff| 4e-5. Test: `tests/test_ternary_branchless.c`.
 - File: `src/math/ternary_matmul_branchless.c`
 - Eliminates `if/else` with: `val += (float)weight * x[j];` — the compiler can optimize since weight ∈ {-1,0,1}, the multiply becomes a conditional negate.
 - Alternative: `val += x[j] * (weight > 0) - x[j] * (weight < 0);`

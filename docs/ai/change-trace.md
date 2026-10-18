@@ -3,6 +3,11 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-18.
 
+### 2026-10-18 — Phase 3.2 branchless scalar ternary matvec + debug→test link fix
+- `src/math/ternary_matmul_branchless.c` (scalar dispatch target, 10× vs reference),
+  `tests/test_ternary_branchless.c`; Makefile `SAN_LINK_FLAGS` for the two custom-linked tests.
+- Verified: gcc+clang release/test/debug, plus debug→test order on both compilers.
+
 ### 2026-10-18 — Configurable context sizing + honest KV report
 - `KVStrategyOptions` / `select_kv_strategy_ex()` / `kv_strategy_set_options()` /
   `kv_strategy_print()` in `kv_cache/kv_strategy`; `--ctx-size`, `--kv-ram-fraction`; both

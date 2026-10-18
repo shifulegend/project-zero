@@ -214,7 +214,9 @@ const char *tn_simd_init(void) {
 #endif
     {
         tn_unpack_block    = unpack_ternary_block;
-        tn_ternary_matmul  = ternary_matmul;
+        /* Phase 3.2: branchless scalar (10-12x faster than the branchy
+         * reference on random ternary rows; 2026-10-18 microbench, 2048x2048). */
+        tn_ternary_matmul  = ternary_matmul_branchless;
     }
 
     /* ── Packed matmul: VNNI tier selection ──

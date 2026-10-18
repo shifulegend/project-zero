@@ -166,6 +166,7 @@ set(MATH_SOURCES
     src/math/softmax_avx512.c
     src/math/ternary_matmul_avx2.c
     src/math/ternary_matmul_scalar.c
+    src/math/ternary_matmul_branchless.c
     src/math/ternary_matmul_packed.c
     src/math/ternary_matmul_packed_avx2.c
     src/math/ternary_matmul_packed_avx512.c

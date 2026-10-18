@@ -14,3 +14,8 @@
 - Makefile tracks header deps (`-MMD -MP`); keep it.
 - Context sizing: `--ctx-size`, `--kv-ram-fraction`, `--kv-type f32|i8`, `--kv-offload <dir>`
   (`KVStrategyOptions`; with offload the cap budgets free disk, not RAM).
+- Update checks: `--no-update-check --update-interval --update-channel --update-repo
+  --update-api --check-update`, env `PZ_NO_UPDATE_CHECK`/`DO_NOT_TRACK`, off under `CI`; build
+  default repo `PZ_UPDATE_REPO` (Makefile + CMake).
+- Calibration (`~/.project-zero/calibration.bin`, v3) only overrides the auto SIMD tier when a
+  forced tier is clearly faster; bump `TN_CALIB_VERSION` whenever selection logic changes.

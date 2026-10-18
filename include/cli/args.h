@@ -7,6 +7,7 @@
 #include "cli/color.h"
 #include "api/server_config.h"
 #include "transformer/gen_params.h"
+#include "update/update_check.h"
 
 #define CLI_MAX_CORS_ORIGINS 16
 
@@ -32,6 +33,13 @@ typedef struct {
     char *simd_override;      /* NULL = auto, or "avx2", "avx512f", "vnni", "scalar" */
     bool calibrate;           /* --calibrate: force re-calibration of optimal settings */
     bool show_version;        /* --version/-v: print version + detected SIMD backend, exit 0 */
+    /* Phase 38: update notifications (update/update_check.h) */
+    bool check_update;        /* --check-update: check now, print, exit (no --model needed) */
+    bool no_update_check;     /* --no-update-check */
+    char *update_repo;        /* --update-repo owner/name */
+    char *update_api;         /* --update-api https://... (GitHub Enterprise / mirror) */
+    int  update_interval_h;   /* --update-interval <hours>, -1 = default 24, 0 = off */
+    int  update_channel;      /* --update-channel auto|stable|prerelease */
     char *dump_tensors_path;  /* --dump-tensors FILE: write intermediate tensors CSV  */
     /* Phase 21: API server */
     int   server_mode;        /* --server: run as OpenAI-compatible HTTP server        */
@@ -107,6 +115,9 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv);
 
 // Builds the GenerationParams a CLI run (or the server defaults) starts from.
 void args_fill_gen_params(const CliArgs *args, GenerationParams *gp);
+
+/* Phase 38: update-check options from the --update-* / --no-update-check flags. */
+void args_fill_update_options(const CliArgs *args, UpdateOptions *o);
 
 // Print usage help
 void print_usage(const char *prog_name);

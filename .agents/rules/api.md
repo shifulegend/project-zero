@@ -23,3 +23,6 @@
 - Phase 21.5 prefix cache (`ApiContext.prefix_cache`, `--prompt-cache`, `cache_prompt`): any new
   code path that writes the RunState's KV outside `generate_ex()` must `prefix_cache_reset()`
   first, or the next request will reuse stale K/V.
+- Phase 38 update notices: `GET /v1/update` / `POST /v1/update/check` read the update service
+  (`update/update_check.h`) and never touch `generation_mutex`. Notify-only — never add code that
+  downloads or replaces the binary without signed release metadata (decision-log 2026-10-18).

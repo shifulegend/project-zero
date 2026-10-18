@@ -3,6 +3,7 @@
 #include "kv_cache/kv_quant_ops.h"
 #include "api/chat_compile.h"
 #include "reasoning/best_of.h"
+#include "update/update_check.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -151,6 +152,18 @@ void print_usage(const char *prog_name) {
     printf("  --version, -v       Print version and the SIMD backend for this CPU, then exit.\n");
     printf("  --help, -h          Print this help and exit.\n");
 
+    printf("\nUpdates (notify only -- nothing is downloaded or installed):\n");
+    printf("  --check-update      Check GitHub Releases now, print the result, exit\n");
+    printf("                      (0 up to date/unknown, 3 update available, 1 error).\n");
+    printf("  --no-update-check   Never check. Also: PZ_NO_UPDATE_CHECK=1, DO_NOT_TRACK=1;\n");
+    printf("                      always off when CI is set. Otherwise interactive runs and\n");
+    printf("                      --server check in the background at most once per\n");
+    printf("                      --update-interval (sends only a User-Agent with the version).\n");
+    printf("  --update-interval <h> Hours between checks (default %d, 0 = off).\n", UPDATE_DEFAULT_INTERVAL_H);
+    printf("  --update-channel <c> auto (default: pre-releases while on 0.x) | stable | prerelease\n");
+    printf("  --update-repo <o/n> Releases source (default: upstream; forks set their own).\n");
+    printf("  --update-api <url>  API base, e.g. GitHub Enterprise (default https://api.github.com).\n");
+
     printf("\nExamples:\n");
     printf("  %s --model models/smollm2.gguf --prompt \"What is the capital of France?\"\n", prog_name);
     printf("  %s --model models/smollm2.gguf --threads 4          # interactive REPL\n", prog_name);
@@ -180,6 +193,12 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->simd_override = NULL;     // auto
     args->calibrate = false;
     args->show_version = false;
+    args->check_update = false;
+    args->no_update_check = false;
+    args->update_repo = NULL;
+    args->update_api = NULL;
+    args->update_interval_h = -1;
+    args->update_channel = UPDATE_CHANNEL_AUTO;
     args->dump_tensors_path = NULL;
     args->server_mode = 0;
     args->server_port = 8080;
@@ -480,6 +499,34 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
                 return TN_ERR_INVALID_CONFIG;
             }
             args->color_mode = tn_color_mode_parse(mode);
+        } else if (strcmp(argv[i], "--check-update") == 0) {
+            args->check_update = true;
+        } else if (strcmp(argv[i], "--no-update-check") == 0) {
+            args->no_update_check = true;
+        } else if (strcmp(argv[i], "--update-repo") == 0 && i + 1 < argc) {
+            args->update_repo = argv[++i];
+            if (!update_repo_valid(args->update_repo)) {
+                fprintf(stderr, "Error: --update-repo must be owner/name\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--update-api") == 0 && i + 1 < argc) {
+            args->update_api = argv[++i];
+            if (!update_api_base_valid(args->update_api)) {
+                fprintf(stderr, "Error: --update-api must be an https:// URL\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--update-interval") == 0 && i + 1 < argc) {
+            args->update_interval_h = atoi(argv[++i]);
+            if (args->update_interval_h < 0 || args->update_interval_h > 24 * 365) {
+                fprintf(stderr, "Error: --update-interval must be 0-8760 hours\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--update-channel") == 0 && i + 1 < argc) {
+            args->update_channel = update_channel_parse(argv[++i]);
+            if (args->update_channel < 0) {
+                fprintf(stderr, "Error: --update-channel must be auto, stable or prerelease\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
         } else if (strcmp(argv[i], "--version") == 0 || strcmp(argv[i], "-v") == 0) {
             /* Short-circuit: --version must work without --model so the release
              * binary is smoke-testable on a clean machine with no model file.
@@ -495,6 +542,8 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             return TN_ERR_INVALID_CONFIG;
         }
     }
+
+    if (args->check_update) return TN_OK; /* needs no model */
 
     if (!args->model_path) {
         fprintf(stderr, "Error: --model <path> is required.\n");
@@ -540,4 +589,13 @@ void args_fill_gen_params(const CliArgs *args, GenerationParams *gp) {
     gp->watermark.gamma   = args->watermark_gamma;
     gp->watermark.delta   = args->watermark_delta;
     watermark_config_sanitize(&gp->watermark);
+}
+
+void args_fill_update_options(const CliArgs *args, UpdateOptions *o) {
+    update_options_default(o);
+    if (args->no_update_check) o->enabled = 0;
+    if (args->update_interval_h >= 0) o->interval_hours = args->update_interval_h;
+    o->channel = args->update_channel;
+    if (args->update_repo) snprintf(o->repo, sizeof(o->repo), "%s", args->update_repo);
+    if (args->update_api) snprintf(o->api_base, sizeof(o->api_base), "%s", args->update_api);
 }

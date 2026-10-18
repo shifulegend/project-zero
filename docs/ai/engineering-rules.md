@@ -92,6 +92,9 @@ A change is done only when:
 - Don't commit build artifacts, downloaded models, or transient logs (`wget-log`, `*stdout.log`).
 
 ## Security / safety constraints
+- **Updates are notify-only** (Phase 38): never download or replace the binary without signed
+  release metadata; network checks are opt-out-able, off in CI, HTTPS-only via argv (no shell),
+  and send nothing but the version in the User-Agent.
 - Public repo: never commit secrets, keys, tokens, `.env`, `*.pem`, real credentials. (History
   is currently clean — keep it so.) Doc placeholders like `<YOUR_SUDO_PASSWORD>` are fine.
 - Keep ASan/UBSan green (`make test`/`make debug`) and TSan green (`make test-tsan`, concurrency

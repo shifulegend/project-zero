@@ -3,6 +3,18 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-18.
 
+### 2026-10-18 — Phase 38: update notifications + calibration fix
+- New: `update/semver`, `update/update_check`, `api/update_endpoint` (`GET /v1/update`,
+  `POST /v1/update/check`), CLI `--check-update --no-update-check --update-interval
+  --update-channel --update-repo --update-api`, web UI `UpdateBanner` + Settings → Updates,
+  `tests/test_update_check.c` (TSAN_TESTS), `tools/screenshots/webui/update.spec.mjs`,
+  `PZ_UPDATE_REPO` (Makefile/CMake), plan Phase 38.
+- Fixed: calibration overriding the auto SIMD tier with noise ("scalar" on AVX-VNNI); JSON
+  trailing-backslash over-read; CMake test working directory; CMake API source list.
+- Verified: gcc+clang release/test/debug, TSan, CMake build + 77/77 ctest, golden Paris, live
+  `--check-update` against this repo's Releases (v0.0.9 → v0.1.0 available, exit 3), live server
+  `/v1/update`, UI screenshots light/dark + dismissal persistence.
+
 ### 2026-10-18 — Phase 31: disk-backed KV cache (--kv-offload)
 - New: `memory/file_backed` (+ `tests/test_kv_offload.c`), `RunState.kv_offload_base/bytes`,
   `KVStrategyOptions.offload_dir` (disk-budgeted context cap), `run_state_kv_prefetch_layer`,

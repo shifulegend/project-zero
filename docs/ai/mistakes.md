@@ -5,6 +5,24 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-10-18.
 
+### 2026-10-18 — Three pre-existing bugs found while building the updater (Phase 38)
+
+- **Calibration replaced the CPU's best kernel with "scalar".** `tn_calibrate()` benchmarked only
+  forced tiers (scalar/avx2/avx512f/vnni) — never AVX-VNNI, which only the dispatcher's auto path
+  selects — and the noisy winner always overrode auto. On this AVX-VNNI Xeon the cached result was
+  "scalar" (auto-vectorised by `-march=native`, within noise), so every ternary matmul silently ran
+  the scalar kernel while the profile box still printed "AVX-VNNI"; `/v1/config runtime.simd`
+  said "Scalar". Fix: "auto" is candidate 0 and wins unless a forced tier is clearly faster
+  (median > auto × 1.05 and slowest rep > auto median); cache version 3 forces stale caches to
+  re-calibrate. Lesson: an auto-tuner must measure the default it may override, and must not
+  override on noise.
+- **JSON parser over-read:** a trailing backslash (`{"a":"x\`) stepped past the NUL in
+  `parse_string()` — reachable from any HTTP body. Now rejected (test in test_update_check).
+- **CMake tests ran from the build dir:** `test_cmd_exec_gaps` / `test_vision_e2e` read
+  repo-relative files and failed under `ctest` only. `add_test(... WORKING_DIRECTORY
+  ${CMAKE_SOURCE_DIR})`, matching `make test`. CMake was also missing `update_endpoint.c` until
+  linked — always build both systems.
+
 ### 2026-10-18 — Distributed (Phase 28) worker produced garbage: un-initialised sliding window
 
 - The worker ran its layers with a zeroed `s->sw`, so `sw_*` mapped positions to the wrong KV

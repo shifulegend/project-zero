@@ -161,3 +161,17 @@ export async function clearPromptCache() {
   if (!res.ok) throw new Error(json?.error?.message ?? `clear failed: ${res.status}`);
   return json;
 }
+
+/** GET /v1/update — Phase 38 update-check state (the server checks; notify only). */
+export async function fetchUpdate() {
+  const res = await fetch('/v1/update');
+  if (!res.ok) throw new Error(`GET /v1/update failed: ${res.status}`);
+  return res.json();
+}
+
+/** POST /v1/update/check — ask the server to re-check now (rate-limited server-side). */
+export async function checkUpdateNow() {
+  const res = await fetch('/v1/update/check', { method: 'POST' });
+  if (!res.ok) throw new Error(`update check failed: ${res.status}`);
+  return res.json();
+}

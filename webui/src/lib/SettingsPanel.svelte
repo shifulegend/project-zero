@@ -4,6 +4,7 @@
   import RangeField from './RangeField.svelte';
   import NumberField from './NumberField.svelte';
   import PromptCacheStatus from './PromptCacheStatus.svelte';
+  import UpdateStatus from './UpdateStatus.svelte';
 
   export let settings;
   export let config;
@@ -90,6 +91,11 @@
       <textarea rows="3" bind:value={settings.system_prompt} placeholder="Instructions applied to every conversation"></textarea>
     </section>
   {/if}
+
+  <section>
+    <h3>Updates</h3>
+    <UpdateStatus />
+  </section>
 
   <div class="actions">
     <button class="link-btn" on:click={onReset} title="Discard your overrides and use the server's defaults">Reset to server defaults</button>

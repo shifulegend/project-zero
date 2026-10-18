@@ -26,6 +26,7 @@
 #include "sampling/watermark_text.h"
 #include "reasoning/best_of.h"
 #include "distributed/dist_plan.h"
+#include "update/update_check.h"
 #include "cli/model_load.h"
 #include "cli/repl.h"
 #include "cli/progress.h"
@@ -102,6 +103,24 @@ int main(int argc, char **argv) {
         printf("Project Zero Engine (adaptive_ai_engine) %s\n", PZ_VERSION_STR);
         printf("SIMD backend (this CPU): %s\n", tn_simd_init());
         return 0;
+    }
+
+    /* Phase 38: --check-update — explicit, synchronous, no model needed. */
+    if (args.check_update) {
+        UpdateOptions uo;
+        UpdateInfo ui;
+        args_fill_update_options(&args, &uo);
+        update_check(&uo, PZ_VERSION_STR, 1, &ui);
+        printf("current : %s\n", PZ_VERSION_STR);
+        printf("latest  : %s%s\n", ui.latest[0] ? ui.latest : "(none found)",
+               ui.latest_prerelease ? " (pre-release)" : "");
+        printf("channel : %s   repo: %s\n", update_channel_name(uo.channel), uo.repo);
+        printf("status  : %s%s%s\n", update_status_name(ui.status),
+               ui.error[0] ? " - " : "", ui.error);
+        if (ui.url[0]) printf("release : %s\n", ui.url);
+        if (ui.status == UPDATE_STATUS_AVAILABLE)
+            printf("verify the download with the release's SHA256SUMS (sha256sum -c SHA256SUMS)\n");
+        return ui.status == UPDATE_STATUS_AVAILABLE ? 3 : ui.status == UPDATE_STATUS_ERROR ? 1 : 0;
     }
 
     if (args.verbose) g_tn_verbose = 1;
@@ -698,6 +717,17 @@ int main(int argc, char **argv) {
         dist_active = 1;
     }
 
+    /* Phase 38: background update check — server always (the web UI shows
+     * it), CLI only when a person is watching stderr. Never blocks. */
+    int update_notice = 0;
+    if (!args.watermark_detect && (args.server_mode || isatty(fileno(stderr)))) {
+        UpdateOptions uo;
+        args_fill_update_options(&args, &uo);
+        update_service_init(&uo, PZ_VERSION_STR);
+        update_service_poll(0);
+        update_notice = !args.server_mode;
+    }
+
     /* Execution Mode */
     if (args.watermark_detect) {
         /* Phase 33: offline watermark detection — tokenize the text with this
@@ -812,6 +842,16 @@ int main(int argc, char **argv) {
     }
 
     if (dist_active) dist_plan_close(&dist_plan);
+
+    /* Phase 38: one line after the output, from the cached/background result
+     * (an in-flight check is not waited for — it lands in the cache for next time). */
+    if (update_notice) {
+        UpdateInfo ui;
+        char notice[512];
+        update_service_get(&ui);
+        update_format_notice(&ui, notice, sizeof(notice));
+        if (notice[0]) fprintf(stderr, "\n%s", notice);
+    }
 
 cleanup_after_run:
     /* Cleanup */

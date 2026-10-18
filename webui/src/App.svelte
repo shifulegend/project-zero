@@ -5,6 +5,7 @@
   import WatermarkPanel from './lib/WatermarkPanel.svelte';
   import ThemeToggle from './lib/ThemeToggle.svelte';
   import ModelInfoPanel from './lib/ModelInfoPanel.svelte';
+  import UpdateBanner from './lib/UpdateBanner.svelte';
   import { fetchConfig } from './lib/api.js';
   import { loadSettings, saveSettings, clearSavedSettings, defaultsFromConfig, countOverrides } from './lib/settings.js';
 
@@ -66,6 +67,7 @@
   {/if}
 
   <ModelInfoPanel {modelInfo} runtime={config?.runtime ?? null} />
+  {#if config}<UpdateBanner />{/if}
 
   <main class="main">
     {#if configError}

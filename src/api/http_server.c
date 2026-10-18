@@ -17,6 +17,8 @@
  *   POST /v1/watermark/detect             → Phase 33 watermark z-score for text
  *   GET  /v1/prompt_cache                 → Phase 26 prompt-cache stats
  *   POST /v1/prompt_cache/clear           → drop all cached prompt snapshots
+ *   GET  /v1/update                       → Phase 38 update-check state (notify only)
+ *   POST /v1/update/check                 → re-check now (rate-limited)
  *   POST /v1/chat/completions             → Chat completion (streaming + non-streaming;
  *                                            image_url content parts run the vision
  *                                            pipeline when --vision/--proj are set)
@@ -65,6 +67,7 @@
 #include "api/static_assets.h"
 #include "api/data_url.h"
 #include "api/api_info.h"
+#include "api/update_endpoint.h"
 #include "api/request_params.h"
 #include "api/watermark_endpoint.h"
 #include "reasoning/best_of.h"
@@ -861,6 +864,10 @@ static void handle_connection(int fd, ApiContext *ctx) {
         handle_get_models(fd, ctx, extra_headers);
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/config") == 0) {
         handle_get_config(fd, ctx, extra_headers);
+    } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/update") == 0) {
+        send_json_heap(fd, 200, api_update_json(0), extra_headers);
+    } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/update/check") == 0) {
+        send_json_heap(fd, 200, api_update_json(1), extra_headers);
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/prompt_cache") == 0) {
         handle_prompt_cache_stats(fd, ctx, extra_headers);
     } else if (strcmp(req.method, "POST") == 0 &&

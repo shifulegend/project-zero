@@ -140,5 +140,14 @@ time; by default a second concurrent request gets `429 Too Many Requests`; start
 `--queue-size N` (and optionally `--queue-timeout S`) to let up to N requests wait their turn instead
 (the web UI shows the queue position). A server started with `--remote-layers` (Phase 28) shows a
 `dist N nodes` tag in the header; hover it for each node's layer range. `--kv-offload <dir>` (Phase 31)
-shows a `KV on disk` tag. Either way, other routes (static assets, `/metrics`, `/docs`, `/health` are never blocked by an in-flight
+shows a `KV on disk` tag.
+
+**Update notices (Phase 38).** The server checks this project's GitHub Releases in the background
+at most once a day and the UI shows `>_ update available vX → vY · release notes · dismiss` when a
+newer release exists (dismissed per version). Settings → Updates shows the status, the server's
+interval/channel/repo, a **Check now** button and a banner toggle. Nothing is ever downloaded or
+installed — verify the release's `SHA256SUMS`. Operators control it with `--no-update-check`,
+`--update-interval <h>`, `--update-channel auto|stable|prerelease`, `--update-repo owner/name`,
+`--update-api <url>` or `PZ_NO_UPDATE_CHECK=1`; it is always off when `CI` is set.
+`adaptive_ai_engine --check-update` checks once from the shell (exit 3 = update available). Either way, other routes (static assets, `/metrics`, `/docs`, `/health` are never blocked by an in-flight
 generation).

@@ -42,6 +42,11 @@ if(NOT PZ_VERSION)
     set(PZ_VERSION "dev")
 endif()
 add_compile_definitions(PZ_VERSION=${PZ_VERSION})
+# Phase 38: forks/packagers point update notifications at their own releases.
+set(PZ_UPDATE_REPO "" CACHE STRING "owner/name whose GitHub Releases drive update notices (empty = upstream)")
+if(PZ_UPDATE_REPO)
+    add_compile_definitions(PZ_UPDATE_REPO=${PZ_UPDATE_REPO})
+endif()
 
 # In the portable build the SIMD kernels carry their own ISA per-file, so keep
 # the GLOBAL flags at the baseline (no project-wide -mavx2/-mavx512).
@@ -298,6 +303,7 @@ set(API_SOURCES
     src/api/request_params.c
     src/api/api_info.c
     src/api/watermark_endpoint.c
+    src/api/update_endpoint.c
     src/api/gen_queue.c
 )
 
@@ -313,6 +319,11 @@ set(RAG_SOURCES
 set(DISTRIBUTED_SOURCES
     src/distributed/tensor_rpc.c
     src/distributed/dist_plan.c
+)
+
+set(UPDATE_SOURCES
+    src/update/semver.c
+    src/update/update_check.c
 )
 
 set(AGENT_SOURCES
@@ -340,6 +351,7 @@ set(SOURCES
     ${RAG_SOURCES}
     ${AGENT_SOURCES}
     ${DISTRIBUTED_SOURCES}
+    ${UPDATE_SOURCES}
 )
 
 # ---------------------------------------------------------------------------
@@ -404,6 +416,8 @@ if(ENABLE_TESTS)
         target_link_options(${TEST_NAME} PRIVATE
             $<$<NOT:$<C_COMPILER_ID:MSVC>>:-fsanitize=address -fsanitize=undefined>
         )
-        add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+        # Tests read repo-relative assets (README.md, tests/assets/...) exactly like
+        # `make test`, which runs from the source root.
+        add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME} WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
     endforeach()
 endif()

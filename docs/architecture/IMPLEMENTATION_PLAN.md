@@ -2856,6 +2856,7 @@ For fastest path to a working text-generation demo:
 39. **34.1 → 34.2 → 34.3** — Model import pipeline (importer → GGUF reader → multimodal extractor)
 40. **13.1–13.30+** — All tests
 41. **16.1 → 16.2 → 16.3** — Docs
+42. **38** — Update notifications (semver → release check + cache → API/UI notice)
 
 ---
 
@@ -3451,3 +3452,47 @@ All lookup tables (`iq2xxs_grid`, `iq2xs_grid`, `iq3xxs_grid`, `iq3s_grid`,
 `llama.cpp/src/llama-quants.cpp` (MIT licence). Copy verbatim as static const
 arrays into a new file `src/core/gguf_quant_tables.c` with a matching header
 `include/core/gguf_quant_tables.h`. Include from `gguf_quant.c` only.
+
+---
+
+## Phase 38: Update Notifications (Auto-Updater) ✅ done 2026-10-18
+
+Lets people already running Project Zero learn about new releases. Added to the plan on request;
+tracked here like every other phase.
+
+**Research → design decisions** (sources: npm `update-notifier` docs, gh/Nuxt/ZenStack CLI
+update-check implementations, The Update Framework threat model):
+- **Notify, don't auto-install.** Silent self-replacement was unpopular in the CLI tools surveyed
+  and, without a signed-metadata scheme (TUF-style roles/threshold keys, rollback protection), a
+  self-updater is a supply-chain hazard for a public repo. The binary is never touched; the notice
+  links the release and asks the user to verify `SHA256SUMS`. A signed self-update is out of
+  scope until releases are signed.
+- **Never slow the engine:** the check runs on a background thread (`posix_spawnp` of the system
+  `curl`, no shell, HTTPS-only incl. redirects, 5 s timeout, 2 MiB cap) and fails silently.
+- **At most once per interval** (default 24 h, `--update-interval`), result cached atomically at
+  `$PZ_CACHE_DIR | $XDG_CACHE_HOME/project-zero | ~/.cache/project-zero /update-check`; failures back
+  off 1 h and keep the last good answer, so a known update stays visible offline.
+- **Opt-outs:** `--no-update-check`, `--update-interval 0`, `PZ_NO_UPDATE_CHECK=1`, `DO_NOT_TRACK=1`;
+  always off when `CI` is set. CLI notices only when stderr is a TTY; the operator's opt-out also
+  beats the web UI's "Check now".
+- **Privacy:** the request carries only `User-Agent: project-zero/<version>`.
+- **Correct versioning:** SemVer 2.0 precedence incl. pre-releases; `git describe` builds
+  (`v0.1.0-4-gabc`) count as newer than their tag; dev builds (bare hash) report "unknown" instead
+  of a false "update available". Channels: `auto` (pre-releases while on 0.x — all current
+  releases are pre-releases), `stable`, `prerelease`. Drafts ignored; non-https URLs dropped.
+- **No hardcoding:** source repo `--update-repo` (build default `make PZ_UPDATE_REPO=owner/name`
+  / `cmake -DPZ_UPDATE_REPO=`), `--update-api` for GitHub Enterprise or mirrors.
+
+**As built:**
+- `include/update/semver.h` / `src/update/semver.c` — parse/compare/format.
+- `include/update/update_check.h` / `src/update/update_check.c` — release selection, cache,
+  transport (injectable fetcher), synchronous `update_check()`, background service.
+- `src/api/update_endpoint.c` — `GET /v1/update` (state + server settings; kicks a refresh when
+  stale, so long-running servers stay current without a timer), `POST /v1/update/check`
+  (rate-limited 60 s). Neither touches the generation mutex. OpenAPI updated.
+- CLI: `--check-update` (exit 0 / 3 update available / 1 error, no model needed),
+  `--no-update-check`, `--update-interval`, `--update-channel`, `--update-repo`, `--update-api`.
+- Web UI: `UpdateBanner` (`>_ update available vX → vY · release notes · dismiss`, dismissal per
+  version) and Settings → Updates (status, server settings, "Check now", banner toggle).
+- Tests: `tests/test_update_check.c` (77 assertions, in TSAN_TESTS); live check against this
+  repo's real Releases; screenshots in `docs/design/screenshots/phase38-update-2026-10-18/`.

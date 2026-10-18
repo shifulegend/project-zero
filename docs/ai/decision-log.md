@@ -3,6 +3,21 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-10-18.
 
+### 2026-10-18 — Updates are notify-only (Phase 38)
+
+- Surveyed CLI update notifiers (npm update-notifier, gh, Nuxt, ZenStack) and TUF: auto-install
+  was dropped by update-notifier as unpopular, and a self-updater without signed metadata
+  (threshold keys, rollback/freeze protection) is a supply-chain risk for a public repo whose
+  releases are only checksummed. So: background, cached, opt-out-able, silent-on-failure checks
+  that link the release and ask for `SHA256SUMS` verification. Transport is the system `curl`
+  (the engine has no TLS stack; adding one for a daily GET isn't worth the dependency).
+  Revisit a signed self-update once releases are signed.
+
+### 2026-10-18 — Calibration keeps the dispatcher's choice unless clearly beaten
+
+- The auto tier is now benchmarked and wins ties/noise (5 % margin + slowest-rep rule). A tuner
+  that can only pick among forced values will eventually pick a worse one on a noisy run.
+
 ### 2026-10-18 — Phase 31 uses the OS page cache as the tiering engine
 
 - A MAP_SHARED file-backed KV cache gets LRU eviction, write-back and async read-ahead from the

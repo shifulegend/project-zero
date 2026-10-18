@@ -11,6 +11,8 @@ void server_config_init(ServerConfig *sc) {
     if (!sc) return;
     memset(sc, 0, sizeof(*sc));
     sc->web_ui = WEBUI_MODE_AUTO;
+    gen_params_default(&sc->gen_defaults);
+    sc->max_tokens_limit = 0; /* 0 = no cap beyond the model context */
 }
 
 int server_config_add_cors_origin(ServerConfig *sc, const char *origin) {
@@ -37,4 +39,8 @@ void server_config_free(ServerConfig *sc) {
     sc->vision_path = NULL;
     free(sc->proj_path);
     sc->proj_path = NULL;
+    free(sc->model_id);
+    sc->model_id = NULL;
+    free(sc->ui_title);
+    sc->ui_title = NULL;
 }

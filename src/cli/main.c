@@ -21,6 +21,7 @@
 #include "tokenizer/tokenizer.h"
 #include "tokenizer/tokenizer_gguf.h"
 #include "cli/args.h"
+#include "sampling/watermark_text.h"
 #include "cli/model_load.h"
 #include "cli/repl.h"
 #include "cli/progress.h"
@@ -618,7 +619,20 @@ int main(int argc, char **argv) {
     }
 
     /* Execution Mode */
-    if (args.server_mode) {
+    if (args.watermark_detect) {
+        /* Phase 33: offline watermark detection — tokenize the text with this
+         * model's tokenizer and score it with the configured key/gamma. */
+        GenerationParams gp;
+        args_fill_gen_params(&args, &gp);
+        WatermarkResult wr;
+        if (watermark_detect_text(&gp.watermark, &t, args.watermark_detect, &wr) != TN_OK) {
+            fprintf(stderr, "Error: could not tokenize --watermark-detect text.\n");
+        } else {
+            printf("watermark: tokens_scored=%d green=%d green_fraction=%.3f z=%.2f -> %s\n",
+                   wr.n_scored, wr.n_green, wr.green_fraction, wr.z_score,
+                   wr.z_score >= WATERMARK_DETECT_Z_THRESHOLD ? "WATERMARKED" : "not detected");
+        }
+    } else if (args.server_mode) {
         /* Phase 21: Start OpenAI-compatible API server */
         ApiContext api_ctx;
         api_context_init(&api_ctx, &p, &w, s, &mc, &t, tp);
@@ -631,6 +645,17 @@ int main(int argc, char **argv) {
         if (args.api_key) api_ctx.server_config.auth.api_key = strdup(args.api_key);
         api_ctx.server_config.metrics.enabled = args.metrics_enabled;
         api_ctx.server_config.web_ui = args.web_ui_mode;
+        /* Generation flags become the server-side defaults every request
+         * (and the web UI, via GET /v1/config) starts from. */
+        args_fill_gen_params(&args, &api_ctx.server_config.gen_defaults);
+        {
+            const char *base = strrchr(args.model_path, '/');
+            api_ctx.server_config.model_id = strdup(base ? base + 1 : args.model_path);
+        }
+        if (args.ui_title) api_ctx.server_config.ui_title = strdup(args.ui_title);
+        api_ctx.server_config.max_tokens_limit =
+            (args.max_tokens_limit > 0 && args.max_tokens_limit < p.seq_len)
+                ? args.max_tokens_limit : p.seq_len;
         if (args.static_dir) api_ctx.server_config.static_dir = strdup(args.static_dir);
         if (args.vision_path && args.proj_path) {
             api_ctx.server_config.vision_path = strdup(args.vision_path);
@@ -678,7 +703,9 @@ int main(int argc, char **argv) {
                                   args.temperature, args.top_p, args.json_mode,
                                   &draft_model, args.spec_length);
         } else {
-            generate(&p, &w, s, &mc, &t, tp, args.prompt, args.max_tokens, args.temperature, args.top_p, args.json_mode);
+            GenerationParams gp;
+            args_fill_gen_params(&args, &gp);
+            generate_params(&p, &w, s, &mc, &t, tp, args.prompt, &gp);
         }
         printf("\n");
     } else {

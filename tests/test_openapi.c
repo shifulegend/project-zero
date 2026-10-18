@@ -18,7 +18,7 @@ static void test_openapi_json_has_routes(void) {
     if (!json) { FAIL("openapi_json_has_routes", "NULL json"); return; }
     const char *routes[] = {
         "/v1/models", "/v1/chat/completions", "/v1/chat/completions/cancel",
-        "/health", "/metrics", "/docs"
+        "/health", "/metrics", "/docs", "/v1/config", "/v1/watermark/detect"
     };
     for (size_t i = 0; i < sizeof(routes)/sizeof(routes[0]); i++) {
         if (!strstr(json, routes[i])) {

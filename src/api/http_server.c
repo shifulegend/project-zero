@@ -10,7 +10,11 @@
  *
  * Supported routes
  * ────────────────
- *   GET  /v1/models                       → JSON model list
+ *   GET  /v1/models                       → JSON model list (+ model metadata)
+ *   GET  /v1/config                       → Server generation defaults, valid
+ *                                            ranges and feature flags (drives
+ *                                            every web UI control)
+ *   POST /v1/watermark/detect             → Phase 33 watermark z-score for text
  *   POST /v1/chat/completions             → Chat completion (streaming + non-streaming;
  *                                            image_url content parts run the vision
  *                                            pipeline when --vision/--proj are set)
@@ -57,6 +61,9 @@
 #include "api/cancel.h"
 #include "api/static_assets.h"
 #include "api/data_url.h"
+#include "api/api_info.h"
+#include "api/request_params.h"
+#include "api/watermark_endpoint.h"
 #include "multimodal/vision_pipeline.h"
 #include "transformer/generate.h"
 #include "core/debug.h"
@@ -204,14 +211,43 @@ static int streaming_token_callback(const char *piece, void *userdata) {
 
 /* ── Route handlers ──────────────────────────────────────────────────────── */
 
-static void handle_get_models(int fd, const char *extra_headers) {
-    const char *body =
-        "{\"object\":\"list\","
-         "\"data\":[{"
-            "\"id\":\"local-adaptive-engine\","
-            "\"object\":\"model\","
-            "\"owned_by\":\"project-zero\"}]}";
-    send_response_ex(fd, 200, "application/json", body, 0, extra_headers);
+static void send_json_heap(int fd, int status, char *body, const char *extra_headers) {
+    if (!body) { send_error_ex(fd, 500, "OOM", extra_headers); return; }
+    if (status == 200) send_response_ex(fd, 200, "application/json", body, 0, extra_headers);
+    else {
+        char hdr[1024];
+        int n = snprintf(hdr, sizeof(hdr),
+            "HTTP/1.1 %d Error\r\nContent-Type: application/json\r\n"
+            "Content-Length: %zu\r\nConnection: close\r\n%s\r\n",
+            status, strlen(body), extra_headers ? extra_headers : "");
+        if (n > 0) { ssize_t r = write(fd, hdr, (size_t)n); (void)r; }
+        ssize_t r = write(fd, body, strlen(body)); (void)r;
+    }
+    free(body);
+}
+
+/* 2026-10-18: previously a hardcoded {"id":"local-adaptive-engine"} with no
+ * "vision" flag, so the web UI's image-upload control (gated on
+ * modelInfo.vision) could never appear even with --vision/--proj set. */
+static void handle_get_models(int fd, ApiContext *ctx, const char *extra_headers) {
+    send_json_heap(fd, 200, api_models_json(ctx), extra_headers);
+}
+
+static void handle_get_config(int fd, ApiContext *ctx, const char *extra_headers) {
+    send_json_heap(fd, 200, api_config_json(ctx), extra_headers);
+}
+
+static int handle_watermark_detect(int fd, const char *body_start, size_t body_len,
+                                   ApiContext *ctx, const char *extra_headers) {
+    char *body = (char *)malloc(body_len + 1);
+    if (!body) { send_error_ex(fd, 500, "OOM", extra_headers); return 500; }
+    memcpy(body, body_start, body_len);
+    body[body_len] = '\0';
+    int status = 500;
+    char *json = api_watermark_detect(ctx, body, &status);
+    free(body);
+    send_json_heap(fd, status, json, extra_headers);
+    return status;
 }
 
 static void handle_health(int fd, const char *extra_headers) {
@@ -311,6 +347,12 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
         return;
     }
 
+    /* Every request is a fresh conversation rendered from its full message
+     * history, so start from KV position 0. (2026-10-18: current_pos was
+     * never reset — after one image request (vision prefill advances it) every
+     * later text request silently started after the stale image prefix.) */
+    ctx->run_state->current_pos = 0;
+
     /* Phase 22.2: image upload via the web UI's image_url content parts —
      * inject the vision pipeline into the KV cache before compiling/
      * generating the prompt, mirroring the CLI's --image handling.
@@ -380,19 +422,31 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     char *prompt = NULL;
     int free_prompt = 0;
 
+    /* Resolve generation settings: server defaults (CLI flags) overlaid
+     * with whatever the client sent, clamped to valid ranges. */
+    GenerationParams gp;
+    request_params_resolve(&req, &ctx->server_config.gen_defaults,
+                           api_max_tokens_limit(ctx), &gp);
+
+    const char *roles[CHAT_MAX_MESSAGES];
+    const char *contents[CHAT_MAX_MESSAGES];
+
     if (ctx->tok->chat_template) {
-        /* GGUF tokenizer: just pass the last user message content directly;
-         * generate_with_callback will apply the Jinja template. */
-        const char *last_content = NULL;
-        for (int i = req.num_messages - 1; i >= 0; i--) {
-            if (strcmp(req.messages[i].role, "user") == 0 &&
-                req.messages[i].content) {
-                last_content = req.messages[i].content;
-                break;
-            }
+        /* GGUF tokenizer: the model's own Jinja template renders the whole
+         * conversation (system/user/assistant turns). 2026-10-18: this used
+         * to forward only the last user message, silently dropping all
+         * earlier turns and any system message — multi-turn chat in the web
+         * UI had no memory. */
+        int n = 0;
+        for (int i = 0; i < req.num_messages && n < CHAT_MAX_MESSAGES; i++) {
+            if (!req.messages[i].content) continue;
+            roles[n] = req.messages[i].role[0] ? req.messages[i].role : "user";
+            contents[n++] = req.messages[i].content;
         }
-        if (!last_content) last_content = req.messages[req.num_messages-1].content;
-        prompt = (char *)last_content; /* borrow — do NOT free */
+        gp.roles = roles;
+        gp.contents = contents;
+        gp.n_messages = n;
+        prompt = (char *)(n > 0 ? contents[n - 1] : "");
     } else {
         /* Legacy tokenizer: compile all messages into a formatted prompt */
         char *compiled = (char *)malloc(HTTP_MAX_PROMPT_BYTES);
@@ -408,15 +462,6 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
         prompt     = compiled;
         free_prompt = 1;
     }
-
-    /* Clamp sampling parameters to valid ranges */
-    float temperature = req.temperature;
-    float top_p       = req.top_p;
-    int   max_tokens  = req.max_tokens;
-    if (temperature < 0.0f) temperature = 0.0f;
-    if (temperature > 2.0f) temperature = 2.0f;
-    if (top_p < 0.0f || top_p > 1.0f) top_p = 1.0f;
-    if (max_tokens <= 0 || max_tokens > 4096) max_tokens = 512;
 
     /* Generate a request ID */
     char id[32];
@@ -442,24 +487,28 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     cancel_registry_begin(&ctx->cancel, st.public_id);
 
     /* Run inference */
-    generate_with_callback(ctx->cfg, ctx->weights, ctx->run_state, ctx->moe_cfg,
-                           ctx->tok, ctx->tp,
-                           prompt, max_tokens, temperature, top_p,
-                           req.json_mode,
-                           streaming_token_callback, &st);
+    GenerationStats gstats;
+    gp.stats = &gstats;
+    generate_ex(ctx->cfg, ctx->weights, ctx->run_state, ctx->moe_cfg,
+                ctx->tok, ctx->tp, prompt, &gp,
+                streaming_token_callback, &st);
+    const char *finish_reason = gen_finish_reason_str(gstats.finish_reason);
 
     cancel_registry_end(&ctx->cancel);
     metrics_add_tokens(&ctx->metrics, st.tokens_emitted);
 
     if (req.stream) {
-        sse_write_done(fd, id);
+        sse_write_done_ex(fd, id, finish_reason,
+                          gstats.prompt_tokens, gstats.completion_tokens);
     } else {
         /* 2026-07-15: build the JSON body FIRST so Content-Length reflects
          * its real size. The previous code sent "Content-Length: 0" (NULL
          * body) and only then wrote the actual JSON via a second write() —
          * conformant HTTP clients stop reading at 0 bytes and never see it. */
         const char *text = st.accum_buf ? st.accum_buf : "";
-        char *json = sse_format_full_response(id, text);
+        char *json = sse_format_full_response_ex(id, text, finish_reason,
+                                                 gstats.prompt_tokens,
+                                                 gstats.completion_tokens);
         send_response_ex(fd, 200, "application/json", json, 0, extra_headers);
         free(json);
     }
@@ -657,7 +706,12 @@ static void handle_connection(int fd, ApiContext *ctx) {
     /* ── Route dispatch ──────────────────────────────────────────────────── */
     int status = 200;
     if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/models") == 0) {
-        handle_get_models(fd, extra_headers);
+        handle_get_models(fd, ctx, extra_headers);
+    } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/config") == 0) {
+        handle_get_config(fd, ctx, extra_headers);
+    } else if (strcmp(req.method, "POST") == 0 &&
+               strcmp(req.path, "/v1/watermark/detect") == 0) {
+        status = handle_watermark_detect(fd, req.body, req.body_len, ctx, extra_headers);
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/health") == 0) {
         /* Always available, regardless of --web-ui — distinct from "/",
          * which now serves the web UI (Phase 22.2). */

@@ -7,6 +7,8 @@
  * http_server.c decoupled from CLI argument parsing.
  */
 
+#include "transformer/gen_params.h"
+
 #define SERVER_CORS_MAX_ORIGINS 16
 
 typedef struct {
@@ -41,6 +43,15 @@ typedef struct {
      * requirement (both must be set). */
     char         *vision_path;
     char         *proj_path;
+    /* Generation defaults every request starts from (CLI generation flags,
+     * see args_fill_gen_params) and the per-request max_tokens cap. Both are
+     * published to clients via GET /v1/config so the web UI renders its
+     * controls from the server's real values instead of hardcoded ones.
+     * Pointer fields (system_prompt, stop) borrow argv. */
+    GenerationParams gen_defaults;
+    int              max_tokens_limit;
+    char            *model_id;  /* reported by /v1/models; main.c sets the model file's basename */
+    char            *ui_title;  /* --ui-title: web UI brand name (default "project-zero") */
 } ServerConfig;
 
 /* Zero-initialise. Must be called before use. */

@@ -15,6 +15,26 @@
 #define CHAT_MAX_ROLE_LEN   32
 #define CHAT_MAX_CONTENT    65536   /* 64 KiB per message */
 #define CHAT_MAX_MODEL_LEN  128
+#define CHAT_MAX_STOP       8       /* == GEN_MAX_STOP */
+
+/* ChatRequest.set_mask bits: which optional fields the client sent. */
+enum {
+    CHAT_SET_TEMPERATURE   = 1u << 0,
+    CHAT_SET_TOP_P         = 1u << 1,
+    CHAT_SET_MAX_TOKENS    = 1u << 2,
+    CHAT_SET_TOP_K         = 1u << 3,
+    CHAT_SET_MIN_P         = 1u << 4,
+    CHAT_SET_REP_PENALTY   = 1u << 5,
+    CHAT_SET_PRES_PENALTY  = 1u << 6,
+    CHAT_SET_FREQ_PENALTY  = 1u << 7,
+    CHAT_SET_PENALTY_N     = 1u << 8,
+    CHAT_SET_SEED          = 1u << 9,
+    CHAT_SET_STOP          = 1u << 10,
+    CHAT_SET_WATERMARK     = 1u << 11,
+    CHAT_SET_WM_GAMMA      = 1u << 12,
+    CHAT_SET_WM_DELTA      = 1u << 13,
+    CHAT_SET_JSON_MODE     = 1u << 14
+};
 
 /* ── Single chat message ─────────────────────────────────────────────────── */
 typedef struct {
@@ -41,6 +61,25 @@ typedef struct {
      * syntactically valid JSON) -- json_schema-constrained variants are out
      * of scope, see sampling/grammar.h's scope note. */
     bool          json_mode;            /* default false */
+
+    /* Extended sampling / generation fields. Each is honored only when its
+     * CHAT_SET_* bit is set in `set_mask` — absent fields fall back to the
+     * server-side defaults (CLI flags), see api/request_params.h. */
+    unsigned      set_mask;
+    int           top_k;
+    float         min_p;
+    float         repetition_penalty;   /* "repetition_penalty" or "repeat_penalty" */
+    float         presence_penalty;
+    float         frequency_penalty;
+    int           penalty_last_n;       /* "penalty_last_n" or "repeat_last_n" */
+    long long     seed;
+    char         *stop[CHAT_MAX_STOP];  /* heap strings; "stop": "x" or ["x","y"] */
+    int           n_stop;
+    /* Phase 33: "watermark": {"enabled": bool, "key": str, "gamma": n, "delta": n} */
+    bool          watermark_enabled;
+    char         *watermark_key;        /* heap; NULL = use the server's key */
+    float         watermark_gamma;
+    float         watermark_delta;
 } ChatRequest;
 
 /* ── Lifecycle ───────────────────────────────────────────────────────────── */

@@ -1758,7 +1758,7 @@ non-BitNet models are misleading.
 
 ---
 
-## PHASE 34.3: SmolLM2-1.7B Benchmark *(Item G)*
+## PHASE 34.3: SmolLM2-1.7B Benchmark *(Item G)* ✅ done 2026-10-18 (Q4_K_M; PERFORMANCE_CEILING_REPORT Addendum AK)
 
 ### 34.3.1 — Download SmolLM2-1.7B-Instruct-F16 GGUF
 - **Status:** IN PROGRESS (downloading in background)

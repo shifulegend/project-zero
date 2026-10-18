@@ -3,6 +3,11 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-18.
 
+### 2026-10-18 — Full sequential sweep (Addendum AK, plan 34.3)
+- `tools/bench_sweep_seq.py` (sequential, best-of-N, cooldowns, wait4 RSS/CPU, resumable) and
+  `tools/make_sweep_screenshots.py --sweep/--hardware/--suite`; results, 20 screenshots, chart and
+  system profile in `benchmark_results/sweep_2026-10-18/`; report addendum AK.
+
 ### 2026-10-18 — Phase 38: update notifications + calibration fix
 - New: `update/semver`, `update/update_check`, `api/update_endpoint` (`GET /v1/update`,
   `POST /v1/update/check`), CLI `--check-update --no-update-check --update-interval

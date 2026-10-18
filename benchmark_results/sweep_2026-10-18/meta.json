@@ -37,8 +37,20 @@
         "--classifier",
         "bf16"
       ]
+    },
+    "smollm2_1p7b_q4km_pz_int4": {
+      "model": "models/SmolLM2-1.7B-Instruct-Q4_K_M.gguf",
+      "extra": [
+        "--classifier",
+        "int4"
+      ]
     }
   },
   "started": "2026-10-18T19:01:45+00:00",
-  "note": "container restarted after smollm2_1p7b_q4km_pz_bf16 t=2; resumed at t=3 on the same host and binary (afabca1)"
+  "note": "container restarted after smollm2_1p7b_q4km_pz_bf16 t=2; resumed at t=3 on the same host and binary (afabca1)",
+  "finished": "2026-10-18T19:58:59.756124+00:00",
+  "resumed": [
+    "2026-10-18T19:31:38.701934+00:00",
+    "2026-10-18T19:40:00.191662+00:00"
+  ]
 }

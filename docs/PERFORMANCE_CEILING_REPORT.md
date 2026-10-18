@@ -10300,3 +10300,88 @@ Note: PZ's higher RSS (~2 GB) is because it mmap-loads the full model. llama.cpp
 
 All 40 screenshots (5 engines × 8 thread counts): `benchmark_results/sweep_2026-06-21/screenshots/`
 
+
+---
+
+## Addendum AK — Full Sequential Sweep on Xeon (KVM): SmolLM2-135M, Mamba-130m, SmolLM2-1.7B Q4_K_M (2026-10-18)
+
+### Hardware & build
+
+| | |
+|---|---|
+| Date | 2026-10-18, 19:01–20:00 UTC (resumed once — see Notes) |
+| CPU | Intel Xeon Processor @ 2.10 GHz (KVM guest, family 6 model 207), 4 vCPU (4 cores × 1 thread) |
+| ISA | AVX2, AVX-512F/BW, AVX-VNNI (no AVX-512 VNNI) — engine backend: **AVX-VNNI** |
+| Cache | L1d 48 KiB/core, L2 2 MiB/core, L3 260 MiB shared |
+| Memory | 16 GB, measured DRAM bandwidth 41.2 GB/s (engine profiler) |
+| OS | Linux 6.18.44 x86_64 |
+| Compiler | gcc 13.3.0, `make release` (`-O3 -march=native`) |
+| Engine | `adaptive_ai_engine afabca1` (includes the calibration fix — auto SIMD tier kept) |
+
+Full `lscpu`, memory, compiler and engine hardware-profile output:
+`benchmark_results/sweep_2026-10-18/system_info.txt`.
+
+### Methodology (as Addendum AJ)
+
+- **Sequential only** — one engine process at a time, nothing else running (load avg < 0.4 at start).
+- **t = 1..4** (all vCPUs), **best of 3** runs per thread count, **10 s cooldown** between runs and
+  between thread counts.
+- **500-token cap**, temperature 0, same prompt for every run: "Explain what machine learning is and
+  how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement
+  learning with real-world examples of each." (SmolLM2-1.7B hits EOS at 426 / 455 tokens.)
+- Metric: the engine's `[gen] tok/s` (decode). Wall time, max RSS and CPU% per run from `wait4`
+  (no `/usr/bin/time` on this host). Harness: `tools/bench_sweep_seq.py`; raw runs:
+  `benchmark_results/sweep_2026-10-18/<suite>/t<N>/run<k>.txt`; all 60 rows: `summary.csv`.
+- llama.cpp / bitnet.cpp are not installed on this host and the BitNet model is not present, so this
+  sweep is Project Zero only (comparisons remain those of Addenda AH–AJ on the i5-11300H).
+
+### Results — decode tok/s (best of 3)
+
+| Threads | SmolLM2-135M BF16 cls | SmolLM2-135M INT4 cls | Mamba-130m BF16 cls | SmolLM2-1.7B Q4_K_M BF16 cls | SmolLM2-1.7B Q4_K_M INT4 cls |
+|---|---|---|---|---|---|
+| 1 | 28.89 | 31.41 | 30.81 | 5.20 | 4.96 |
+| 2 | 53.16 | 62.73 | 57.63 | 10.09 | 9.50 |
+| 3 | 79.18 | 93.42 | 77.96 | 12.38 | 13.20 |
+| 4 | 92.29 | **129.46** | **93.76** | **16.09** | 15.65 |
+
+![Decode throughput vs threads](../benchmark_results/sweep_2026-10-18/throughput_vs_threads.png)
+
+### Resource use (best run at t = 4)
+
+| Suite | Wall | Max RSS | CPU% |
+|---|---|---|---|
+| SmolLM2-135M BF16 | 11.4 s | 2,055 MB | 255% |
+| SmolLM2-135M INT4 | 10.1 s | 2,055 MB | 228% |
+| Mamba-130m BF16 | 11.0 s | 2,055 MB | 258% |
+| SmolLM2-1.7B Q4_K_M BF16 | 47.3 s | 5,395 MB | 282% |
+| SmolLM2-1.7B Q4_K_M INT4 | 62.0 s | 5,563 MB | 252% |
+
+### Analysis
+
+- **Scaling is near-linear to 4 vCPUs** for every model (135M BF16: 3.2× from t=1 to t=4; 1.7B:
+  3.1×) — no hyper-thread plateau here because the guest exposes 4 real cores.
+- **INT4 classifier pays off on small-vocab-dominated models**: SmolLM2-135M's 49k×576 output head
+  is a large share of per-token bytes, so INT4 gives +40% at t=4 (92.3 → 129.5 tok/s). On the 1.7B
+  Q4_K_M model the head is a small share and INT4 is within noise of BF16 (±5%) — keep BF16
+  (full precision) as the default there.
+- **Mamba-130m** (SSM, Phase 22-SSM) decodes at the same rate as the similarly sized transformer,
+  with constant per-token cost (no KV growth).
+- **SmolLM2-1.7B Q4_K_M at 16.1 tok/s** confirms the fused Q6_K kernel gain (8.7 → 15.3 tok/s
+  measured at 64 tokens earlier the same day; 16.1 here over 426 tokens).
+- RSS ~2 GB for the 130M models is the engine's mmap'd model + calibration/profile buffers, as noted
+  in Addendum AJ.
+
+### Notes
+
+- **Container restart mid-sweep:** the session's container restarted after SmolLM2-1.7B BF16 t=2.
+  The sweep was resumed at t=3 on the same host type, same binary (afabca1) and same harness;
+  `meta.json` records the resume. The first run after the restart (and the first run of each new
+  model) shows long wall time at low CPU% (e.g. 1.7B BF16 t=3 run 1: 152 s, 100% CPU) — cold page
+  cache while the 1 GB model is read from disk. Decode tok/s is unaffected (12.38 vs 12.09/12.23
+  on the warm runs), which is why the table uses the engine's decode metric, not wall time.
+
+### Screenshots
+
+20 screenshots (5 suites × 4 thread counts, best run of each), rendered from the raw run logs with
+`tools/make_sweep_screenshots.py --sweep benchmark_results/sweep_2026-10-18 ...`:
+`benchmark_results/sweep_2026-10-18/screenshots/`.

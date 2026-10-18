@@ -1,4 +1,18 @@
 #include "core/calibration.h"
+
+/* Portable dist build: this TU is compiled at the baseline ISA, so the
+ * TN_HAS_* macros below would hide every SIMD backend from calibration even
+ * though simd_dispatch can run them (runtime CPUID decides, via cpu->*).
+ * Same treatment as simd_dispatch.c — this file contains no intrinsics.
+ * (2026-10-18: dist auto-calibration only ever benchmarked "scalar".) */
+#ifdef TN_FORCE_DISPATCH_ALL
+#undef  TN_HAS_AVX2
+#define TN_HAS_AVX2 1
+#undef  TN_HAS_AVX512
+#define TN_HAS_AVX512 1
+#undef  TN_HAS_AVX512VNNI
+#define TN_HAS_AVX512VNNI 1
+#endif
 #include "math/cpu_features.h"
 #include "math/simd_dispatch.h"
 #include "math/parallel_matmul.h"

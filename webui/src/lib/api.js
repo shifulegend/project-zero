@@ -12,19 +12,37 @@ export async function fetchModels() {
   return json.data ?? [];
 }
 
+/** GET /v1/config — server defaults, valid ranges, feature flags, UI branding. */
+export async function fetchConfig() {
+  const res = await fetch('/v1/config');
+  if (!res.ok) throw new Error(`GET /v1/config failed: ${res.status}`);
+  return res.json();
+}
+
+/** POST /v1/watermark/detect */
+export async function detectWatermark({ text, key, gamma }) {
+  const res = await fetch('/v1/watermark/detect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, key, gamma }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json?.error?.message ?? `detect failed: ${res.status}`);
+  return json;
+}
+
 /**
  * Streams a chat completion, invoking callbacks as SSE events arrive.
  *
  * @param {object} params
  * @param {{role: string, content: string}[]} params.messages
- * @param {number} params.temperature
- * @param {number} params.top_p
- * @param {number} params.max_tokens
+ * @param {object} params.options - every other request field (sampling,
+ *   penalties, seed, stop, response_format, watermark — see settings.js)
  * @param {string=} params.imageDataUrl - base64 data: URL, if an image is attached
  * @param {(delta: string) => void} onToken
- * @returns {{ id: Promise<string|null>, done: Promise<void>, abort: () => void }}
+ * @returns {{ id: Promise<string|null>, done: Promise<{finish_reason?: string, usage?: object}>, abort: () => void }}
  */
-export function streamChatCompletion({ messages, temperature, top_p, max_tokens, imageDataUrl }, onToken) {
+export function streamChatCompletion({ messages, options = {}, imageDataUrl }, onToken) {
   const controller = new AbortController();
   let resolveId;
   const idPromise = new Promise((resolve) => { resolveId = resolve; });
@@ -47,10 +65,8 @@ export function streamChatCompletion({ messages, temperature, top_p, max_tokens,
   }
 
   const body = JSON.stringify({
+    ...options,
     messages: requestMessages,
-    temperature,
-    top_p,
-    max_tokens,
     stream: true,
   });
 
@@ -65,7 +81,7 @@ export function streamChatCompletion({ messages, temperature, top_p, max_tokens,
       });
     } catch (err) {
       resolveId(null);
-      if (err.name === 'AbortError') return;
+      if (err.name === 'AbortError') return {};
       throw err;
     }
 
@@ -79,6 +95,7 @@ export function streamChatCompletion({ messages, temperature, top_p, max_tokens,
     const decoder = new TextDecoder();
     let buffer = '';
     let idResolved = false;
+    const summary = {};
 
     try {
       for (;;) {
@@ -101,11 +118,15 @@ export function streamChatCompletion({ messages, temperature, top_p, max_tokens,
           if (!idResolved && evt.id) { idResolved = true; resolveId(evt.id); }
           const delta = evt.choices?.[0]?.delta?.content;
           if (delta) onToken(delta);
+          const fr = evt.choices?.[0]?.finish_reason;
+          if (fr) summary.finish_reason = fr;
+          if (evt.usage) summary.usage = evt.usage;
         }
       }
     } finally {
       if (!idResolved) resolveId(null);
     }
+    return summary;
   })();
 
   return { id: idPromise, done, abort: () => controller.abort() };

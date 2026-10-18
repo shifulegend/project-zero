@@ -54,7 +54,7 @@ async function main() {
   await page.waitForSelector('button.send-btn', { timeout: 30000 });
   await shot('03-reply-light');
 
-  await page.click('button.icon-btn'); // open sampling params
+  await page.click('button[title="Generation settings"]'); // open settings panel
   await page.waitForSelector('input[type=range]');
   await shot('04-params-light');
 

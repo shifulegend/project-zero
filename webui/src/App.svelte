@@ -1,51 +1,78 @@
 <script>
   import { onMount } from 'svelte';
   import ChatWindow from './lib/ChatWindow.svelte';
-  import SamplingControls from './lib/SamplingControls.svelte';
+  import SettingsPanel from './lib/SettingsPanel.svelte';
+  import WatermarkPanel from './lib/WatermarkPanel.svelte';
   import ThemeToggle from './lib/ThemeToggle.svelte';
   import ModelInfoPanel from './lib/ModelInfoPanel.svelte';
+  import { fetchConfig } from './lib/api.js';
+  import { loadSettings, saveSettings, clearSavedSettings, defaultsFromConfig, countOverrides } from './lib/settings.js';
 
-  let temperature = 0.7;
-  let top_p = 0.9;
-  let max_tokens = 512;
-  let modelInfo = null;
-  let controlsOpen = false;
+  // Everything below is populated from GET /v1/config — the UI carries no
+  // default sampling values, limits or branding of its own.
+  let config = null;
+  let settings = null;
+  let configError = null;
+  let panel = null; // null | 'settings' | 'watermark'
+  let chat;
 
   onMount(async () => {
     try {
-      const res = await fetch('/v1/models');
-      if (res.ok) {
-        const json = await res.json();
-        modelInfo = json.data?.[0] ?? null;
-      }
-    } catch {
-      /* server not reachable yet / no models — panel just shows "unknown" */
+      config = await fetchConfig();
+      settings = loadSettings(config);
+      if (config?.ui?.title) document.title = config.ui.title;
+    } catch (e) {
+      configError = e.message ?? String(e);
     }
   });
+
+  $: if (config && settings) saveSettings(settings, config);
+  $: brand = config?.ui?.title ?? '';
+  $: modelInfo = config?.model ?? null;
+  $: overrides = config && settings ? countOverrides(settings, config) : 0;
+
+  function toggle(name) {
+    panel = panel === name ? null : name;
+  }
+
+  function resetSettings() {
+    clearSavedSettings();
+    settings = defaultsFromConfig(config);
+  }
 </script>
 
 <div class="shell">
   <header class="topbar">
     <div class="brand">
       <span class="brand-mark">&gt;_</span>
-      <span class="brand-name">project-zero</span>
+      <span class="brand-name">{brand}</span>
     </div>
     <div class="topbar-actions">
-      <button class="icon-btn" on:click={() => (controlsOpen = !controlsOpen)} aria-expanded={controlsOpen} title="Sampling parameters">
-        Params
+      <button class="icon-btn" on:click={() => chat?.clearConversation()} title="Start a new conversation" disabled={!settings}>New chat</button>
+      <button class="icon-btn" class:active={panel === 'settings'} on:click={() => toggle('settings')} aria-expanded={panel === 'settings'} title="Generation settings" disabled={!settings}>
+        Settings{#if overrides}<span class="badge" title="{overrides} setting(s) differ from the server defaults">{overrides}</span>{/if}
       </button>
+      {#if config?.features?.watermark}
+        <button class="icon-btn" class:active={panel === 'watermark'} on:click={() => toggle('watermark')} aria-expanded={panel === 'watermark'} title="Check text for this server's watermark">Watermark</button>
+      {/if}
       <ThemeToggle />
     </div>
   </header>
 
-  {#if controlsOpen}
-    <SamplingControls bind:temperature bind:top_p bind:max_tokens />
+  {#if panel === 'settings' && settings}
+    <SettingsPanel bind:settings {config} onReset={resetSettings} />
+  {:else if panel === 'watermark' && config}
+    <WatermarkPanel {config} defaultKey={settings?.watermark_key ?? ''} />
   {/if}
 
   <ModelInfoPanel {modelInfo} />
 
   <main class="main">
-    <ChatWindow {temperature} {top_p} {max_tokens} visionCapable={modelInfo?.vision === true} />
+    {#if configError}
+      <div class="boot-error" role="alert"><strong>Error:</strong> could not load server configuration ({configError}).</div>
+    {:else if settings}
+      <ChatWindow bind:this={chat} {settings} {config} {brand} visionCapable={modelInfo?.vision === true} />
+    {/if}
   </main>
 </div>
 
@@ -108,6 +135,8 @@
 
   .topbar {
     display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
     align-items: center;
     justify-content: space-between;
     padding: 0.75rem 1.25rem;
@@ -130,6 +159,7 @@
 
   .topbar-actions {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem;
   }
@@ -144,8 +174,33 @@
     cursor: pointer;
   }
 
-  .icon-btn:hover {
+  .icon-btn:hover:not(:disabled),
+  .icon-btn.active {
     border-color: var(--accent);
+  }
+
+  .icon-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .badge {
+    display: inline-block;
+    margin-left: 0.35rem;
+    min-width: 1.1rem;
+    padding: 0 0.25rem;
+    border-radius: 4px;
+    background: var(--accent);
+    color: var(--accent-contrast);
+    font-size: 0.7rem;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    text-align: center;
+  }
+
+  .boot-error {
+    margin: auto;
+    color: #e5484d;
+    font-size: 0.9rem;
   }
 
   .main {

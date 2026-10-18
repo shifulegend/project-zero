@@ -7,7 +7,13 @@
   {#if modelInfo}
     <span>{modelInfo.id}</span>
     <span class="sep">·</span>
+    {#if modelInfo.context_length}
+      <span class="dim mono">{modelInfo.n_layers}L · d{modelInfo.dim} · ctx {modelInfo.context_length}</span>
+      <span class="sep">·</span>
+    {/if}
     <span class="dim">served by {modelInfo.owned_by}</span>
+    {#if modelInfo.vision}<span class="tag">vision</span>{/if}
+    {#if modelInfo.moe}<span class="tag">MoE</span>{/if}
   {:else}
     <span class="dim">connecting to server…</span>
   {/if}
@@ -16,6 +22,7 @@
 <style>
   .model-info {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem;
     padding: 0.5rem 1.25rem;
@@ -36,6 +43,16 @@
     color: var(--text-dim);
   }
   .dim {
+    color: var(--text-dim);
+  }
+  .mono {
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+  }
+  .tag {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0 0.3rem;
+    font-size: 0.7rem;
     color: var(--text-dim);
   }
 </style>

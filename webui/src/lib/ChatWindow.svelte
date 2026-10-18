@@ -1,4 +1,5 @@
 <script>
+  import AsciiLogo from './AsciiLogo.svelte';
   import { tick } from 'svelte';
   import MessageBubble from './MessageBubble.svelte';
   import ImageUpload from './ImageUpload.svelte';
@@ -9,6 +10,7 @@
   export let settings;
   export let config;
   export let brand = '';
+  export let logoAscii = ''; // block wordmark (GET /v1/config ui.logo_ascii), '' = text only
   export let visionCapable = false;
 
   /** @type {{role: string, content: string, imageDataUrl?: string}[]} */
@@ -97,6 +99,7 @@
   <div class="messages" bind:this={scrollEl}>
     {#if messages.length === 0}
       <div class="empty-state">
+        {#if logoAscii}<div class="hero-logo"><AsciiLogo rows={logoAscii} label={brand} size="lg" /></div>{/if}
         <p>Ask {brand} anything.</p>
         <p class="hint">Shift+Enter for a new line · Enter to send</p>
       </div>
@@ -149,6 +152,13 @@
     flex-direction: column;
     gap: 0.75rem;
     padding: 1.25rem;
+  }
+  .hero-logo {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 1.25rem;
+    max-width: 100%;
+    overflow: hidden;
   }
   .empty-state {
     margin: auto;

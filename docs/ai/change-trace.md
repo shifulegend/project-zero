@@ -3,6 +3,13 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-18.
 
+### 2026-10-18 — Block wordmark in the web UI (shared brand font)
+- New: `brand/block_font` (glyphs moved out of `cli/banner.c`), `tests/test_block_font.c`
+  (golden = `docs/design/brand/project-zero-wordmark.txt`), `/v1/config ui.logo` +
+  `ui.logo_ascii`, `--ui-logo ascii|text`, `webui/src/lib/AsciiLogo.svelte` (top bar + empty
+  state, transparent, accent-tinted), `docs/design/brand/` assets.
+- Verified: served wordmark byte-identical to the reference ASCII; light/dark/mobile screenshots.
+
 ### 2026-10-18 — Full sequential sweep (Addendum AK, plan 34.3)
 - `tools/bench_sweep_seq.py` (sequential, best-of-N, cooldowns, wait4 RSS/CPU, resumable) and
   `tools/make_sweep_screenshots.py --sweep/--hardware/--suite`; results, 20 screenshots, chart and

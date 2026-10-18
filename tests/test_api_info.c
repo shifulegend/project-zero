@@ -51,6 +51,9 @@ static void test_config_reflects_defaults_and_limits(void) {
     char *j = api_config_json(&ctx);
     TEST_ASSERT(j != NULL, "json built");
     TEST_ASSERT(strstr(j, "\"title\":\"acme-zero\"") != NULL, "ui title");
+    /* "acme" has letters the block font lacks -> text fallback, no ascii art. */
+    TEST_ASSERT(strstr(j, "\"logo\":\"text\"") != NULL && strstr(j, "\"logo_ascii\":null") != NULL,
+                "unspellable title falls back to text logo");
     TEST_ASSERT(strstr(j, "\"max_tokens\":1000") != NULL, "default clamped to limit");
     TEST_ASSERT(strstr(j, "\"temperature\":0.25") != NULL, "temperature default");
     TEST_ASSERT(strstr(j, "\"top_k\":33") != NULL, "top_k default");
@@ -60,6 +63,17 @@ static void test_config_reflects_defaults_and_limits(void) {
     TEST_ASSERT(strstr(j, "\"max_tokens\":{\"min\":1,\"max\":1000") != NULL, "max_tokens range");
     TEST_ASSERT(strstr(j, "\"top_k\":{\"min\":0,\"max\":32000") != NULL, "top_k range = vocab");
     TEST_ASSERT_EQ(api_max_tokens_limit(&ctx), 1000, "explicit limit");
+    free(ctx.server_config.ui_title);
+    ctx.server_config.ui_title = strdup("project-zero");
+    char *jl = api_config_json(&ctx);
+    TEST_ASSERT(jl && strstr(jl, "\"logo\":\"ascii\"") && strstr(jl, "\"logo_ascii\":\"####  ####"),
+                "default title -> ascii wordmark");
+    free(jl);
+    ctx.server_config.ui_logo = 1;
+    jl = api_config_json(&ctx);
+    TEST_ASSERT(jl && strstr(jl, "\"logo\":\"text\""), "--ui-logo text");
+    free(jl);
+    ctx.server_config.ui_logo = 0;
     ctx.server_config.max_tokens_limit = 0;
     TEST_ASSERT_EQ(api_max_tokens_limit(&ctx), 2048, "falls back to context length");
     free(j);

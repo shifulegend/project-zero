@@ -763,6 +763,7 @@ int main(int argc, char **argv) {
             api_ctx.server_config.model_id = strdup(base ? base + 1 : args.model_path);
         }
         if (args.ui_title) api_ctx.server_config.ui_title = strdup(args.ui_title);
+        api_ctx.server_config.ui_logo = args.ui_logo;
         api_ctx.server_config.prompt_cache = args.prompt_cache ? 1 : 0;
         api_ctx.server_config.chat_format = args.chat_format;
         api_ctx.server_config.best_of = args.best_of;

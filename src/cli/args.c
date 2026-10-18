@@ -88,6 +88,8 @@ void print_usage(const char *prog_name) {
     printf("                      generating, instead of answering 429 (default: 0)\n");
     printf("  --queue-timeout <s> Seconds a queued request waits before giving up (120)\n");
     printf("  --ui-title <name>   Brand name shown in the web UI (default: project-zero)\n");
+    printf("  --ui-logo <m>       ascii (default: the block wordmark of --ui-title, as in the\n");
+    printf("                      terminal banner; falls back to text for other letters) | text\n");
     printf("  --chat-format <f>   Prompt format for models without an embedded chat\n");
     printf("                      template: auto (default: from the vocabulary), chatml,\n");
     printf("                      llama3, deepseek, mistral, plain\n");
@@ -233,6 +235,7 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->watermark_delta = WATERMARK_DEFAULT_DELTA;
     args->watermark_detect = NULL;
     args->ui_title = NULL;
+    args->ui_logo = 0;
     args->chat_format = -1;
     args->best_of = 1;
     args->queue_size = 0;
@@ -415,6 +418,14 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             }
         } else if (strcmp(argv[i], "--ui-title") == 0 && i + 1 < argc) {
             args->ui_title = argv[++i];
+        } else if (strcmp(argv[i], "--ui-logo") == 0 && i + 1 < argc) {
+            const char *m = argv[++i];
+            if (strcmp(m, "ascii") == 0) args->ui_logo = 0;
+            else if (strcmp(m, "text") == 0) args->ui_logo = 1;
+            else {
+                fprintf(stderr, "Error: --ui-logo must be ascii or text\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
         } else if (strcmp(argv[i], "--watermark-detect") == 0 && i + 1 < argc) {
             args->watermark_detect = argv[++i];
         } else if (strcmp(argv[i], "--memory-db") == 0 && i + 1 < argc) {

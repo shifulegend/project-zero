@@ -86,6 +86,7 @@ typedef struct {
     float  watermark_delta;    /* --watermark-delta <d> (default 2.0)           */
     char  *watermark_detect;   /* --watermark-detect <text>: score text, exit   */
     char  *ui_title;           /* --ui-title <name>: web UI brand name          */
+    int    ui_logo;            /* --ui-logo ascii|text (0 = ascii, default)     */
     int    chat_format;        /* --chat-format: -1 auto, else ChatTemplateType */
     /* Phase 28: distributed layers */
     int    rpc_worker_port;    /* --rpc-worker <port>: serve --layers, exit      */

@@ -81,3 +81,13 @@ The same anti-"generic AI" instinct applies to terminal output: avoid rainbow/gr
 color on every line (reserve color for status: green=success/online, dim=secondary/live-stats,
 red=error/stop); respect `NO_COLOR` and non-TTY output unconditionally; a progress indicator
 should degrade to a single clean line off-TTY, never leak raw escape codes into piped output.
+
+## Wordmark (2026-10-18)
+
+- The `PROJECT ZERO` block wordmark (`docs/design/brand/`) is the brand's primary mark in the
+  terminal and the web UI. It is always **text in a monospace face on a transparent background**,
+  tinted with the accent — never a raster image with a baked-in background, never a gradient.
+- One font, two renderers: `src/brand/block_font.c` feeds both the CLI banner and the web UI
+  (`ui.logo_ascii`), pinned by `tests/test_block_font.c` to the reference ASCII.
+- Top bar: `>_` + compact wordmark; empty chat state: large wordmark above the prompt line.
+  `--ui-logo text` (or an unspellable `--ui-title`) falls back to the text name.

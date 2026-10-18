@@ -321,6 +321,10 @@ set(DISTRIBUTED_SOURCES
     src/distributed/dist_plan.c
 )
 
+set(BRAND_SOURCES
+    src/brand/block_font.c
+)
+
 set(UPDATE_SOURCES
     src/update/semver.c
     src/update/update_check.c
@@ -352,6 +356,7 @@ set(SOURCES
     ${AGENT_SOURCES}
     ${DISTRIBUTED_SOURCES}
     ${UPDATE_SOURCES}
+    ${BRAND_SOURCES}
 )
 
 # ---------------------------------------------------------------------------

@@ -53,7 +53,12 @@ after a change).
   server with both `--vision <path>` and `--proj <path>`.
 - **Model info panel** — shows the loaded model file, layer count, width and context size, plus
   vision/MoE tags (from `GET /v1/config`'s `model` object, same data as `GET /v1/models`).
-- **Branding** — the top-bar name comes from `--ui-title` (default `project-zero`).
+- **Branding** — the top-bar name comes from `--ui-title` (default `project-zero`). It is shown
+  as the block wordmark from the terminal banner (`>_` + `PROJECT ZERO` in `#` glyphs, accent
+  green on a transparent background) in the top bar and, large, on the empty chat screen. The
+  server renders it from the title with the same font as the CLI (`GET /v1/config` →
+  `ui.logo_ascii`); `--ui-logo text`, or a title with letters the font doesn't have, shows the
+  plain name instead. Assets: `docs/design/brand/`.
 
 ### Enabling image upload
 

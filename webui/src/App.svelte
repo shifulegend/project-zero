@@ -6,6 +6,7 @@
   import ThemeToggle from './lib/ThemeToggle.svelte';
   import ModelInfoPanel from './lib/ModelInfoPanel.svelte';
   import UpdateBanner from './lib/UpdateBanner.svelte';
+  import AsciiLogo from './lib/AsciiLogo.svelte';
   import { fetchConfig } from './lib/api.js';
   import { loadSettings, saveSettings, clearSavedSettings, defaultsFromConfig, countOverrides } from './lib/settings.js';
 
@@ -29,6 +30,7 @@
 
   $: if (config && settings) saveSettings(settings, config);
   $: brand = config?.ui?.title ?? '';
+  $: logoAscii = config?.ui?.logo === 'ascii' ? config?.ui?.logo_ascii ?? '' : '';
   $: modelInfo = config?.model ?? null;
   $: overrides = config && settings ? countOverrides(settings, config) : 0;
 
@@ -46,7 +48,11 @@
   <header class="topbar">
     <div class="brand">
       <span class="brand-mark">&gt;_</span>
-      <span class="brand-name">{brand}</span>
+      {#if logoAscii}
+        <AsciiLogo rows={logoAscii} label={brand} size="sm" />
+      {:else}
+        <span class="brand-name">{brand}</span>
+      {/if}
     </div>
     <div class="topbar-actions">
       <button class="icon-btn" on:click={() => chat?.clearConversation()} title="Start a new conversation" disabled={!settings}>New chat</button>
@@ -73,7 +79,7 @@
     {#if configError}
       <div class="boot-error" role="alert"><strong>Error:</strong> could not load server configuration ({configError}).</div>
     {:else if settings}
-      <ChatWindow bind:this={chat} {settings} {config} {brand} visionCapable={modelInfo?.vision === true} />
+      <ChatWindow bind:this={chat} {settings} {config} {brand} {logoAscii} visionCapable={modelInfo?.vision === true} />
     {/if}
   </main>
 </div>

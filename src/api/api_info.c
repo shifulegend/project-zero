@@ -7,6 +7,7 @@
 #include "threading/cache_probe.h"
 #include "transformer/attn_tiled.h"
 #include "kv_cache/kv_quant_ops.h"
+#include "brand/block_font.h"
 #include "distributed/dist_plan.h"
 #include <stdio.h>
 #include "math/simd_dispatch.h"
@@ -85,7 +86,16 @@ char *api_config_json(const ApiContext *ctx) {
     JsonBuf jb;
     jb_init(&jb);
     jb_raw(&jb, "{");
-    jb_key(&jb, "ui"); jb_raw(&jb, "{"); jb_key(&jb, "title"); jb_str(&jb, title); jb_raw(&jb, "},");
+    /* The block wordmark is rendered from the (customisable) title with the
+     * same font as the CLI banner; titles the font can't spell fall back to
+     * text, as does --ui-logo text. */
+    char logo[TN_BLOCK_FONT_ROWS * 160];
+    int ascii = !(ctx && ctx->server_config.ui_logo == 1) &&
+                tn_block_font_render(title, logo, sizeof(logo), 0) > 0;
+    jb_key(&jb, "ui"); jb_raw(&jb, "{"); jb_key(&jb, "title"); jb_str(&jb, title);
+    jb_raw(&jb, ","); jb_key(&jb, "logo"); jb_str(&jb, ascii ? "ascii" : "text");
+    jb_raw(&jb, ","); jb_key(&jb, "logo_ascii"); jb_str(&jb, ascii ? logo : NULL);
+    jb_raw(&jb, "},");
 
     jb_key(&jb, "model"); jb_raw(&jb, "{"); model_meta(&jb, ctx); jb_raw(&jb, "},");
 

@@ -2,68 +2,38 @@
  * Phase 22.5 — src/cli/banner.c
  * See include/cli/banner.h for responsibility.
  *
- * A tiny built-in 5-row block font (only the letters "PROJECT ZERO" needs)
- * rather than depending on an external figlet/font file — composed
- * programmatically from per-letter glyphs so the concatenation itself
- * can't introduce alignment bugs; only the individual glyphs need to be
- * correct.
+ * The 5-row block font lives in brand/block_font.c (shared with the web UI
+ * logo); this file only animates it.
  */
 
 #include "cli/banner.h"
 #include "cli/color.h"
+#include "brand/block_font.h"
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
 
-#define GLYPH_ROWS 5
-
-typedef struct { const char *rows[GLYPH_ROWS]; int width; } Glyph;
-
-static const Glyph GLYPH_P = { { "####.", "#..#.", "####.", "#....", "#...." }, 5 };
-static const Glyph GLYPH_R = { { "####.", "#..#.", "####.", "#.#..", "#..#." }, 5 };
-static const Glyph GLYPH_O = { { ".###.", "#...#", "#...#", "#...#", ".###." }, 5 };
-static const Glyph GLYPH_J = { { "..###", "...#.", "...#.", "#..#.", ".##.." }, 5 };
-static const Glyph GLYPH_E = { { "#####", "#....", "###..", "#....", "#####" }, 5 };
-static const Glyph GLYPH_C = { { ".####", "#....", "#....", "#....", ".####" }, 5 };
-static const Glyph GLYPH_T = { { "#####", "..#..", "..#..", "..#..", "..#.." }, 5 };
-static const Glyph GLYPH_Z = { { "#####", "...#.", "..#..", ".#...", "#####" }, 5 };
-static const Glyph GLYPH_SPACE = { { "...", "...", "...", "...", "..." }, 3 };
-
-static const Glyph *glyph_for(char c) {
-    switch (c) {
-        case 'P': return &GLYPH_P;
-        case 'R': return &GLYPH_R;
-        case 'O': return &GLYPH_O;
-        case 'J': return &GLYPH_J;
-        case 'E': return &GLYPH_E;
-        case 'C': return &GLYPH_C;
-        case 'T': return &GLYPH_T;
-        case 'Z': return &GLYPH_Z;
-        case ' ': return &GLYPH_SPACE;
-        default:  return NULL; /* unsupported char: skipped */
-    }
-}
+#define GLYPH_ROWS TN_BLOCK_FONT_ROWS
 
 #define BANNER_TEXT   "PROJECT ZERO"
 #define BANNER_BUF_CAP 128
 
-/* Composes GLYPH_ROWS output strings (one per font row) by looking up each
- * character's glyph and concatenating its row with a 1-column gap between
- * letters. buf must provide GLYPH_ROWS buffers of at least BANNER_BUF_CAP
- * bytes each. */
+/* Composes GLYPH_ROWS output strings (one per font row) from the shared
+ * block font (brand/block_font.c — also the web UI logo), keeping its '.'
+ * blank marker. buf must provide GLYPH_ROWS buffers of at least
+ * BANNER_BUF_CAP bytes each. */
 static void compose_banner(char buf[GLYPH_ROWS][BANNER_BUF_CAP]) {
+    char all[GLYPH_ROWS * BANNER_BUF_CAP];
     for (int r = 0; r < GLYPH_ROWS; r++) buf[r][0] = '\0';
-
-    for (const char *p = BANNER_TEXT; *p; p++) {
-        const Glyph *g = glyph_for(*p);
-        if (!g) continue;
-        for (int r = 0; r < GLYPH_ROWS; r++) {
-            strncat(buf[r], g->rows[r], BANNER_BUF_CAP - strlen(buf[r]) - 1);
-            /* Separator must be '.' (blank), not a literal space — print_glyph_row
-             * only treats '.' as blank and renders anything else as '#', so a
-             * literal " " here would render as a solid block instead of a gap. */
-            if (p[1]) strncat(buf[r], ".", BANNER_BUF_CAP - strlen(buf[r]) - 1);
-        }
+    if (!tn_block_font_render(BANNER_TEXT, all, sizeof(all), 1)) return;
+    const char *p = all;
+    for (int r = 0; r < GLYPH_ROWS && *p; r++) {
+        size_t len = strcspn(p, "\n");
+        if (len >= BANNER_BUF_CAP) len = BANNER_BUF_CAP - 1;
+        memcpy(buf[r], p, len);
+        buf[r][len] = '\0';
+        p += strcspn(p, "\n");
+        if (*p == '\n') p++;
     }
 }
 

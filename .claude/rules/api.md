@@ -40,3 +40,5 @@ Adapter for the API-layer decisions in `docs/ai/decision-log.md` (Phase 22) and
 - Phase 38 update notices: `GET /v1/update` / `POST /v1/update/check` read the update service
   (`update/update_check.h`) and never touch `generation_mutex`. Notify-only — never add code that
   downloads or replaces the binary without signed release metadata (decision-log 2026-10-18).
+- Brand wordmark: `/v1/config ui.logo_ascii` is rendered server-side from `--ui-title` by
+  `brand/block_font.c` (same font as the CLI banner) — never hardcode the logo in `webui/src`.

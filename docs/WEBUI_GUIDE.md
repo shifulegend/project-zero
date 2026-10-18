@@ -136,6 +136,7 @@ then includes a `best_of` object with each candidate's score). Omitted fields us
 CORS (`--cors`, `--cors-origin <origin>`, repeatable or `*`) and API-key auth (`--api-key
 <key>`, checked via `Authorization: Bearer <key>`) are both **off by default** — enable them
 explicitly for anything beyond loopback experimentation. Only one chat completion runs at a
-time; a second concurrent request gets `429 Too Many Requests` rather than queueing or blocking
-other routes (static assets, `/metrics`, `/docs`, `/health` are never blocked by an in-flight
+time; by default a second concurrent request gets `429 Too Many Requests`; start the server with
+`--queue-size N` (and optionally `--queue-timeout S`) to let up to N requests wait their turn instead
+(the web UI shows the queue position). Either way, other routes (static assets, `/metrics`, `/docs`, `/health` are never blocked by an in-flight
 generation).

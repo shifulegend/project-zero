@@ -673,6 +673,9 @@ int main(int argc, char **argv) {
         api_ctx.server_config.prompt_cache = args.prompt_cache ? 1 : 0;
         api_ctx.server_config.chat_format = args.chat_format;
         api_ctx.server_config.best_of = args.best_of;
+        api_ctx.server_config.queue_size = args.queue_size;
+        api_ctx.server_config.queue_timeout_s = args.queue_timeout_s;
+        gen_queue_set_max_waiting(&api_ctx.gen_queue, args.queue_size);
         api_ctx.server_config.best_of_max = args.best_of_max;
         api_ctx.server_config.prompt_cache_mb = args.prompt_cache_mb;
         api_ctx.server_config.prompt_cache_min_tokens = args.prompt_cache_min_tokens;

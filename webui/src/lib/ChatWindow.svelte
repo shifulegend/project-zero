@@ -50,8 +50,13 @@
       { messages: history, options: requestParams(settings, config), imageDataUrl: attachedImage },
       (delta) => {
         messages[assistantIndex].content += delta;
+        messages[assistantIndex].queued = 0;
         messages = messages; // trigger reactivity
         scrollToBottom();
+      },
+      ({ queued }) => {
+        messages[assistantIndex].queued = queued;
+        messages = messages;
       }
     );
     id.then((rid) => { currentRequestId = rid; });
@@ -102,6 +107,7 @@
         content={m.content}
         imageDataUrl={m.imageDataUrl}
         meta={m.meta}
+        queued={m.queued ?? 0}
         {brand}
         streaming={generating && i === messages.length - 1 && m.role === 'assistant'}
       />

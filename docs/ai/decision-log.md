@@ -3,6 +3,17 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-10-18.
 
+### 2026-10-18 — Phase 23 stage 1: an opt-in FIFO queue before true continuous batching
+
+- Real continuous batching needs the generation loop split into a per-step state machine plus a
+  multi-sequence batched forward — a large refactor of the core loop, left for a dedicated
+  stage. The immediate user-facing problem (a second tab gets 429) is solved by FIFO admission
+  with position feedback, which keeps the single-generation invariant the rest of the server
+  relies on.
+- 429 stays the default (documented API behaviour; loopback single-user workflows unchanged);
+  `--queue-size` opts in. A linked list of stack-allocated waiters (not a ticket counter) lets a
+  timed-out/disconnected waiter leave without stalling the line.
+
 ### 2026-10-18 — int8 KV: per-row absmax, opt-in, F32 default
 
 - Per (layer, kv_head, pos) row scale keeps the read path a plain int8·float dot plus one

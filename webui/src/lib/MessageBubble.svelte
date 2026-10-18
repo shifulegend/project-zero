@@ -7,6 +7,7 @@
   export let streaming = false;
   export let meta = null; // {finish_reason, usage} once the reply completes
   export let brand = '';
+  export let queued = 0; // position in the server's generation queue, 0 = running
 
   const FINISH_LABEL = { stop: 'complete', length: 'hit max tokens', cancelled: 'stopped' };
 </script>
@@ -15,6 +16,9 @@
   <div class="role-label">{role === 'user' ? 'You' : brand}</div>
   {#if imageDataUrl}
     <img class="attached-image" src={imageDataUrl} alt="attached" />
+  {/if}
+  {#if queued > 0 && !content}
+    <div class="queued" role="status">Waiting for another reply to finish — position {queued} in queue</div>
   {/if}
   <div class="content">
     {@html renderMarkdown(content)}{#if streaming}<span class="cursor">▌</span>{/if}
@@ -76,6 +80,11 @@
     border-radius: 8px;
     display: block;
     margin-bottom: 0.5rem;
+  }
+  .queued {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    font-family: ui-monospace, Menlo, Consolas, monospace;
   }
   .meta {
     margin-top: 0.4rem;

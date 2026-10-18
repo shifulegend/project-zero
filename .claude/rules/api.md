@@ -7,7 +7,8 @@ Adapter for the API-layer decisions in `docs/ai/decision-log.md` (Phase 22) and
 - CORS (`--cors`/`--cors-origin`) and API-key auth (`--api-key`) are both **off by default** —
   don't change this default; it exists so loopback experimentation stays open.
 - Only one `generate_with_callback` runs at a time, serialized by `ApiContext.generation_mutex`
-  (trylock — a second concurrent chat request gets `429`, never blocks). All other routes
+  (via `ctx->gen_queue`: a second concurrent chat request gets `429` by default, or waits in FIFO
+  order with `--queue-size N` — streaming waiters get `: queued N` comments). All other routes
   (static assets, `/metrics`, `/docs`, `/health`, cancel) must never touch that mutex.
 - The web UI bundle (`src/api/webui_bundle_generated.c`) is **generated and committed** — never
   hand-edit it; edit `webui/src` and run `make webui-bundle`.

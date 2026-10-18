@@ -80,6 +80,9 @@ void print_usage(const char *prog_name) {
     printf("  --max-tokens-limit <N> Per-request max_tokens cap (default: 0 = model\n");
     printf("                      context length). Generation flags above become the\n");
     printf("                      server defaults; requests/the web UI may override them.\n");
+    printf("  --queue-size <N>    Let up to N chat requests wait (in order) while one is\n");
+    printf("                      generating, instead of answering 429 (default: 0)\n");
+    printf("  --queue-timeout <s> Seconds a queued request waits before giving up (120)\n");
     printf("  --ui-title <name>   Brand name shown in the web UI (default: project-zero)\n");
     printf("  --chat-format <f>   Prompt format for models without an embedded chat\n");
     printf("                      template: auto (default: from the vocabulary), chatml,\n");
@@ -200,6 +203,8 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->ui_title = NULL;
     args->chat_format = -1;
     args->best_of = 1;
+    args->queue_size = 0;
+    args->queue_timeout_s = 120;
     args->best_of_max = BEST_OF_MAX_DEFAULT;
     args->prompt_cache = true;
     args->prompt_cache_mb = 256;
@@ -322,6 +327,18 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             else if (strcmp(mode, "off") == 0) args->prompt_cache = false;
             else {
                 fprintf(stderr, "Error: --prompt-cache must be on or off\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--queue-size") == 0 && i + 1 < argc) {
+            args->queue_size = atoi(argv[++i]);
+            if (args->queue_size < 0) {
+                fprintf(stderr, "Error: --queue-size must be >= 0\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--queue-timeout") == 0 && i + 1 < argc) {
+            args->queue_timeout_s = atoi(argv[++i]);
+            if (args->queue_timeout_s < 1) {
+                fprintf(stderr, "Error: --queue-timeout must be >= 1 second\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--best-of") == 0 && i + 1 < argc) {

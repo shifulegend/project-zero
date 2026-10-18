@@ -29,6 +29,7 @@
 #include "api/cancel.h"
 #include "kv_cache/prefix_cache.h"
 #include "kv_cache/prompt_store.h"
+#include "api/gen_queue.h"
 #include <pthread.h>
 
 /* ── Inference context passed from main to API handler ──────────────────── */
@@ -47,6 +48,9 @@ typedef struct {
     MetricsState    metrics;
     CancelState     cancel;
     pthread_mutex_t generation_mutex; /* serializes generate_with_callback calls */
+    /* Phase 23 stage 1: FIFO admission to the generation slot (max_waiting =
+     * --queue-size; 0 keeps the 429-when-busy behaviour). */
+    GenQueue        gen_queue;
     /* Phase 21.5: which tokens currently sit in run_state's KV cache, so the
      * next request can skip its shared prefix. Allocated lazily by the chat
      * handler (under generation_mutex); process-lifetime like the rest. */

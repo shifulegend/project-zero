@@ -158,6 +158,7 @@ char *api_config_json(const ApiContext *ctx) {
     jb_raw(&jb, ","); jb_key(&jb, "vision"); jb_bool(&jb, vision_enabled(ctx));
     jb_raw(&jb, ","); jb_key(&jb, "cancel"); jb_bool(&jb, 1);
     jb_raw(&jb, ","); jb_key(&jb, "best_of"); jb_bool(&jb, ctx && ctx->server_config.best_of_max > 1);
+    jb_raw(&jb, ","); jb_key(&jb, "queue_size"); jb_int(&jb, ctx ? ctx->server_config.queue_size : 0);
     /* Recurrent linear-attention state cannot resume from a partial prefix. */
     jb_raw(&jb, ","); jb_key(&jb, "prompt_cache");
     jb_bool(&jb, !(ctx && moe_is_recurrent(ctx->moe_cfg)));

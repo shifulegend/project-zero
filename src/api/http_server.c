@@ -34,8 +34,9 @@
  * per-connection thread for each accepted socket, so static/metrics/docs/
  * cancel requests are never blocked behind an in-flight generation. Only
  * one generate_with_callback() call may run at a time — routes that
- * generate acquire ctx->generation_mutex via trylock and return 429
- * immediately if it's already held (no queueing).
+ * generate take the slot through ctx->gen_queue (Phase 23 stage 1): 429
+ * immediately when busy by default, or wait in FIFO order with
+ * --queue-size N; generation_mutex is then locked uncontended.
  *
  * Security notes
  * ──────────────
@@ -68,6 +69,7 @@
 #include "api/watermark_endpoint.h"
 #include "reasoning/best_of.h"
 #include "api/json_write.h"
+#include "api/gen_queue.h"
 #include "multimodal/vision_pipeline.h"
 #include "transformer/generate.h"
 #include "core/debug.h"
@@ -268,6 +270,12 @@ static void handle_get_config(int fd, ApiContext *ctx, const char *extra_headers
     send_json_heap(fd, 200, api_config_json(ctx), extra_headers);
 }
 
+/* Releases the generation slot taken by handle_chat_completions() / prompt-cache clear. */
+static void release_generation_slot(ApiContext *ctx) {
+    pthread_mutex_unlock(&ctx->generation_mutex);
+    gen_queue_release(&ctx->gen_queue);
+}
+
 /* GET /v1/prompt_cache — Phase 26 store stats. Reads counters without the
  * generation mutex (word-sized, informational only). */
 static void handle_prompt_cache_stats(int fd, ApiContext *ctx, const char *extra_headers) {
@@ -278,13 +286,14 @@ static void handle_prompt_cache_stats(int fd, ApiContext *ctx, const char *extra
  * record. Mutates generation state, so it takes generation_mutex (429 while
  * a generation is running, same as a second chat request). */
 static int handle_prompt_cache_clear(int fd, ApiContext *ctx, const char *extra_headers) {
-    if (pthread_mutex_trylock(&ctx->generation_mutex) != 0) {
+    if (gen_queue_try_acquire(&ctx->gen_queue) != GEN_QUEUE_OK) {
         send_error_ex(fd, 429, "A generation is in flight", extra_headers);
         return 429;
     }
+    pthread_mutex_lock(&ctx->generation_mutex);
     prompt_store_clear(&ctx->prompt_store);
     prefix_cache_reset(&ctx->prefix_cache);
-    pthread_mutex_unlock(&ctx->generation_mutex);
+    release_generation_slot(ctx);
     send_json_heap(fd, 200, api_prompt_cache_json(ctx), extra_headers);
     return 200;
 }
@@ -365,19 +374,34 @@ static void handle_cancel(int fd, const char *body_start, size_t body_len,
     }
 }
 
+/* Phase 23 stage 1: while a streaming request waits for the generation slot,
+ * send the SSE headers once and then ": queued <position>" comments (also a
+ * keep-alive). A failed write means the client left — abandon the wait. */
+typedef struct {
+    int fd;
+    int stream;
+    int headers_sent;
+    const char *extra_headers;
+} QueueWaitCtx;
+
+static int queue_wait_notify(int position, void *userdata) {
+    QueueWaitCtx *w = (QueueWaitCtx *)userdata;
+    if (!w->stream) return 0;
+    if (!w->headers_sent) {
+        send_response_ex(w->fd, 200, "text/event-stream", NULL, 1, w->extra_headers);
+        w->headers_sent = 1;
+    }
+    char line[64];
+    int n = snprintf(line, sizeof(line), ": queued %d\n\n", position);
+    return write(w->fd, line, (size_t)n) != n;
+}
+
 static void handle_chat_completions(int fd, const char *body_start, size_t body_len,
                                     ApiContext *ctx, const char *extra_headers) {
-    /* Only one generation runs at a time — try to acquire the mutex without
-     * blocking so unrelated routes (metrics/docs/static/cancel) are never
-     * stalled behind an in-flight generation. */
-    if (pthread_mutex_trylock(&ctx->generation_mutex) != 0) {
-        send_error_ex(fd, 429, "Another generation is already in flight", extra_headers);
-        return;
-    }
-
-    /* Null-terminate the body for parsing */
+    /* Parse first — no shared state is touched — so the request's own
+     * settings (stream) are known while it waits for the slot. */
     char *body = (char *)malloc(body_len + 1);
-    if (!body) { pthread_mutex_unlock(&ctx->generation_mutex); send_error_ex(fd, 500, "OOM", extra_headers); return; }
+    if (!body) { send_error_ex(fd, 500, "OOM", extra_headers); return; }
     memcpy(body, body_start, body_len);
     body[body_len] = '\0';
 
@@ -386,7 +410,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
 
     if (chat_request_parse(body, &req) != TN_OK) {
         free(body);
-        pthread_mutex_unlock(&ctx->generation_mutex);
+        chat_request_free(&req);
         send_error_ex(fd, 400, "Invalid JSON in request body", extra_headers);
         return;
     }
@@ -394,10 +418,34 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
 
     if (req.num_messages == 0) {
         chat_request_free(&req);
-        pthread_mutex_unlock(&ctx->generation_mutex);
         send_error_ex(fd, 400, "No messages in request", extra_headers);
         return;
     }
+
+    /* Only one generation runs at a time. With --queue-size N, up to N
+     * requests wait their turn in arrival order (Phase 23 stage 1); otherwise
+     * (the default) a busy server answers 429 immediately. Unrelated routes
+     * (metrics/docs/static/cancel) never touch the slot. */
+    QueueWaitCtx qw = { fd, req.stream ? 1 : 0, 0, extra_headers };
+    GenQueueResult qr = gen_queue_acquire(&ctx->gen_queue,
+                                          ctx->server_config.queue_timeout_s * 1000,
+                                          queue_wait_notify, &qw);
+    if (qr != GEN_QUEUE_OK) {
+        chat_request_free(&req);
+        if (qr == GEN_QUEUE_ABORTED) return; /* client already gone */
+        const char *why = qr == GEN_QUEUE_TIMEOUT ? "Timed out waiting for the generation queue"
+                        : ctx->server_config.queue_size > 0 ? "Generation queue is full"
+                        : "Another generation is already in flight";
+        if (qw.headers_sent) {
+            char ev[160];
+            int n = snprintf(ev, sizeof(ev), "data: {\"error\":{\"message\":\"%s\",\"type\":\"server_error\"}}\n\n", why);
+            ssize_t wr = write(fd, ev, (size_t)n); (void)wr;
+        } else {
+            send_error_ex(fd, 429, why, extra_headers);
+        }
+        return;
+    }
+    pthread_mutex_lock(&ctx->generation_mutex); /* uncontended: the queue granted the slot */
 
     /* Every request is a fresh conversation rendered from its full message
      * history, so start from KV position 0. (2026-10-18: current_pos was
@@ -504,14 +552,14 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     } else {
         /* Legacy tokenizer: compile all messages into a formatted prompt */
         char *compiled = (char *)malloc(HTTP_MAX_PROMPT_BYTES);
-        if (!compiled) { chat_request_free(&req); pthread_mutex_unlock(&ctx->generation_mutex); send_error_ex(fd, 500, "OOM", extra_headers); return; }
+        if (!compiled) { chat_request_free(&req); release_generation_slot(ctx); send_error_ex(fd, 500, "OOM", extra_headers); return; }
         ChatTemplateType tmpl = ctx->server_config.chat_format >= 0
                                 ? (ChatTemplateType)ctx->server_config.chat_format
                                 : chat_template_detect_vocab(ctx->tok);
         if (chat_compile_prompt(&req, tmpl, compiled, HTTP_MAX_PROMPT_BYTES) != TN_OK) {
             free(compiled);
             chat_request_free(&req);
-            pthread_mutex_unlock(&ctx->generation_mutex);
+            release_generation_slot(ctx);
             send_error_ex(fd, 500, "Prompt compilation failed", extra_headers);
             return;
         }
@@ -532,7 +580,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     snprintf(st.id, sizeof(st.id), "%s", id);
     snprintf(st.public_id, sizeof(st.public_id), "chatcmpl-%s", id);
 
-    if (req.stream) {
+    if (req.stream && !qw.headers_sent) {
         /* Send SSE headers before starting generation */
         send_response_ex(fd, 200, "text/event-stream", NULL, 1, extra_headers);
     }
@@ -593,7 +641,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
         free(st.accum_buf);
         if (free_prompt) free(prompt);
         chat_request_free(&req);
-        pthread_mutex_unlock(&ctx->generation_mutex);
+        release_generation_slot(ctx);
         send_error_ex(fd, 400, "Prompt could not be tokenized for this model", extra_headers);
         return;
     }
@@ -620,7 +668,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     free(st.accum_buf);
     if (free_prompt) free(prompt);
     chat_request_free(&req);
-    pthread_mutex_unlock(&ctx->generation_mutex);
+    release_generation_slot(ctx);
 }
 
 /* ── HTTP request parser ─────────────────────────────────────────────────── */
@@ -932,6 +980,7 @@ void api_context_init(ApiContext *ctx,
     metrics_init(&ctx->metrics);
     cancel_state_init(&ctx->cancel);
     pthread_mutex_init(&ctx->generation_mutex, NULL);
+    gen_queue_init(&ctx->gen_queue, 0);
 }
 
 TernaryError api_server_start(int port, ApiContext *ctx) {

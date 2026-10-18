@@ -3,6 +3,13 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-18.
 
+### 2026-10-18 — Phase 23 stage 1: FIFO generation queue
+- New: `api/gen_queue` (+ `tests/test_gen_queue.c`, added to TSAN_TESTS); `--queue-size`,
+  `--queue-timeout`; chat handler parses before acquiring, streams `: queued N`; prompt-cache
+  clear uses try-acquire; UI shows queue position; `/v1/config features.queue_size`.
+- Verified: gcc+clang release/test/debug, TSan, live default-429 vs queued (both 122-chunk
+  replies, one queue comment), two-tab browser drive, golden Paris.
+
 ### 2026-10-18 — Plan 8.5: int8 KV cache for the dense/GQA path
 - New: `kv_cache/kv_quant_ops` (+ `tests/test_kv_quant.c`), `RunState.kv_type/key_cache_q/
   value_cache_q/key_scale/value_scale`, `KV_SCALE_IDX`, `--kv-type`, `/v1/config runtime.kv_type`;

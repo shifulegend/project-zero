@@ -79,6 +79,8 @@ typedef struct {
     char  *watermark_detect;   /* --watermark-detect <text>: score text, exit   */
     char  *ui_title;           /* --ui-title <name>: web UI brand name          */
     int    chat_format;        /* --chat-format: -1 auto, else ChatTemplateType */
+    int    queue_size;         /* --queue-size <N>: waiting chat requests (0)   */
+    int    queue_timeout_s;    /* --queue-timeout <s>: max wait (120)           */
     int    best_of;            /* --best-of <N>: candidates, keep most likely (1) */
     int    best_of_max;        /* --best-of-max <N>: per-request cap (server, 8) */
     char  *attn_kernel;        /* --attn-kernel standard|tiled (standard)       */

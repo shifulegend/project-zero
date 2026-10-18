@@ -2124,7 +2124,20 @@ Abstracts the forward pass so the engine can run both Transformer (Attention) an
 
 ---
 
-## PHASE 23: PagedAttention & Continuous Batching
+## PHASE 23: PagedAttention & Continuous Batching 🟡 stage 1 (FIFO admission queue) done 2026-10-18
+
+**Stage 1 as built:** `include/api/gen_queue.h` / `src/api/gen_queue.c` — FIFO admission to the
+single generation slot. `--queue-size N` lets N chat requests wait in arrival order (default 0
+keeps the documented 429-when-busy behaviour), `--queue-timeout S` bounds the wait; streaming
+waiters get `: queued <position>` SSE comments (keep-alive + position), a disconnected or
+timed-out waiter leaves without disturbing the order. The request body is parsed before taking
+the slot. `/v1/config features.queue_size`; the web UI shows "position N in queue" in the
+pending reply. Tests: `tests/test_gen_queue.c` (in TSAN_TESTS); live two-tab browser check.
+**Still open:** 23.1/23.2 paged KV, 23.3 true continuous batching (multi-sequence batched
+forward + a step-wise generation state machine), 23.4 shared-prefix dedup (partly covered by
+Phase 26 snapshots).
+
+*Original stub, kept for reference:*
 
 Enables multi-user API serving by breaking KV cache into non-contiguous memory pages.
 

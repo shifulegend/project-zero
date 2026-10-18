@@ -296,6 +296,7 @@ set(API_SOURCES
     src/api/request_params.c
     src/api/api_info.c
     src/api/watermark_endpoint.c
+    src/api/gen_queue.c
 )
 
 set(RAG_SOURCES

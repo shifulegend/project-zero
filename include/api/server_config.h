@@ -55,6 +55,8 @@ typedef struct {
     int              prompt_cache; /* --prompt-cache on|off: default for KV prefix reuse (1) */
     int              prompt_cache_mb;         /* --prompt-cache-mb: Phase 26 snapshot budget (0 = off) */
     int              prompt_cache_min_tokens; /* --prompt-cache-min-tokens: shortest stored sequence */
+    int              queue_size;      /* --queue-size: requests that may wait for the slot (0 = 429) */
+    int              queue_timeout_s; /* --queue-timeout: seconds a queued request waits */
     int              best_of;     /* --best-of: default candidates per request (1 = off) */
     int              best_of_max; /* --best-of-max: per-request cap */
     int              chat_format; /* --chat-format: -1 = auto (from vocabulary), else ChatTemplateType;

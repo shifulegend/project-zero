@@ -1,0 +1,44 @@
+{
+  "prompt": "Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.",
+  "max_tokens": 500,
+  "runs": 3,
+  "cooldown_s": 10.0,
+  "threads": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "suites": {
+    "smollm2_135m_pz_bf16": {
+      "model": "models/SmolLM2-135M-Instruct-f16.gguf",
+      "extra": [
+        "--classifier",
+        "bf16"
+      ]
+    },
+    "smollm2_135m_pz_int4": {
+      "model": "models/SmolLM2-135M-Instruct-f16.gguf",
+      "extra": [
+        "--classifier",
+        "int4"
+      ]
+    },
+    "mamba_130m_pz_bf16": {
+      "model": "models/mamba-130m-hf.f16.gguf",
+      "extra": [
+        "--classifier",
+        "bf16"
+      ]
+    },
+    "smollm2_1p7b_q4km_pz_bf16": {
+      "model": "models/SmolLM2-1.7B-Instruct-Q4_K_M.gguf",
+      "extra": [
+        "--classifier",
+        "bf16"
+      ]
+    }
+  },
+  "started": "2026-10-18T19:01:45+00:00",
+  "note": "container restarted after smollm2_1p7b_q4km_pz_bf16 t=2; resumed at t=3 on the same host and binary (afabca1)"
+}

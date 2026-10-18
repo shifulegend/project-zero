@@ -1,0 +1,86 @@
+=== smollm2_135m_pz_int4 t=4 run 1 ===
+DATE: 2026-10-18 19:12:30 UTC
+CMD: ./adaptive_ai_engine --model models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --max-tokens 500 --temperature 0 --threads 4 --no-update-check --classifier int4
+PROMPT: Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+============================================================
+[1/4] Opening model file...
+[2/4] Loading weights...
+[3/4] Preparing runtime...
+[gguf-tok] Loaded 49152 tokens (gpt2), 17 special — BOS=1 EOS=2 chat_template=yes
+[4/4] Ready.
+####  ####   ###    ### #####  #### #####     ##### ##### ####   ### 
+#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #
+####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
+#     # #   #   # #  #  #     #       #        #    #     # #   #   #
+#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
+Project Zero Engine afabca1 — Auto-Tuned Hardware
+Classifier: INT4 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-VNNI                           │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 2048   KiB per core                 │
+│ L3 cache      : 260    MiB shared                   │
+│ Free RAM      : 15421  MiB                          │
+│ DRAM bandwidth: 42.1   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : INT4 (0.5 byte/weight)             │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 680    MB (pre-load est.)           │
+│ Ceiling       : 59.0   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 4 threads | AVX-VNNI | INT4 cls | 4T | 42.1 GB/s | ceiling 59 tok/s
+Model format: GGUF
+Model Configuration:
+  dim:        576
+  hidden_dim: 1536
+  n_layers:   30
+  n_heads:    9
+  n_kv_heads: 3
+  vocab_size: 49152
+  seq_len:    8192
+  act_type:   0 (SiLU)
+  rope_theta: 100000.0
+  head_dim:   64
+  kv_dim:     192
+[GGUF] Weights loaded (30 layers, arch=llama)
+[profile] Data/token (loaded model): 258 MB -> ceiling 155.3 tok/s at 42.1 GB/s
+KV cache: F32, max context: 8192 tokens (sizing tier: Quantized I8, RAM budget 60%)
+
+Machine learning is a subset of artificial intelligence that enables computers to learn from data without being explicitly programmed. It involves using algorithms and statistical models to analyze and improve the performance of machine learning models.
+
+**Supervised Learning:**
+
+Supervised learning is a type of machine learning where the algorithm is trained on labeled data, meaning it's been shown which inputs map to the correct outputs. The goal is to learn a mapping between inputs and outputs, so the algorithm can make predictions or classify new inputs.
+
+**Unsupervised Learning:**
+
+Unsupervised learning is a type of machine learning where the algorithm is trained on unlabeled data, meaning it's not been shown which inputs map to the correct outputs. The goal is to discover patterns or relationships in the data that the labeled data doesn't reveal.
+
+**Reinforcement Learning:**
+
+Reinforcement learning is a type of machine learning where the algorithm learns by performing actions and receiving feedback in the form of rewards or penalties. The goal is to maximize the reward or minimize the penalty, so the algorithm can adapt to new situations and improve its performance over time.
+
+**Examples of Supervised Learning:**
+
+The example I mentioned earlier is a simple example of supervised learning. A medical doctor is trained to recognize certain medical conditions based on images of patients' skin lesions. The doctor uses a supervised learning algorithm to learn the mapping between images of patients and their corresponding symptoms. The algorithm then uses this mapping to make predictions about patients who have a certain medical condition.
+
+**Examples of Unsupervised Learning:**
+
+The example I mentioned earlier is a simple example of unsupervised learning. A customer service agent is trained to recognize customer complaints based on images of the customer's complaints. The agent then uses this mapping to make predictions about new customer complaints.
+
+**Examples of Reinforcement Learning:**
+
+The example I mentioned earlier is a simple example of reinforcement learning. A game-playing computer program is trained to play a game of chess. The program uses a reinforcement learning algorithm to learn the mapping between the game board and the game's rules. The agent then uses this mapping to make decisions about the game's outcome.
+
+**Examples of Supervised Learning and Unsupervised Learning:**
+
+The example I mentioned earlier is a simple example of supervised learning. A medical doctor is trained to recognize certain medical conditions based on images of patients' skin lesions. The doctor uses a supervised learning algorithm to learn the mapping between images
+[gen] 121.82 tok/s (500 tokens)
+
+
+
+PERF: wall=10.22s max_rss=2055MB cpu=234% exit=0

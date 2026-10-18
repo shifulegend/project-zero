@@ -108,7 +108,17 @@ def main():
             time.sleep(a.cooldown)
 
     meta["finished"] = datetime.datetime.now().astimezone().isoformat()
-    with open(os.path.join(a.out, "meta.json"), "w") as f:
+    # Resumed sweeps (same --out) merge into the existing meta.json.
+    mpath = os.path.join(a.out, "meta.json")
+    if os.path.exists(mpath):
+        with open(mpath) as f:
+            old = json.load(f)
+        old["suites"].update(meta["suites"])
+        old["threads"] = sorted(set(old.get("threads", [])) | set(threads))
+        old["finished"] = meta["finished"]
+        old.setdefault("resumed", []).append(meta["started"])
+        meta = old
+    with open(mpath, "w") as f:
         json.dump(meta, f, indent=2)
     sf.close()
 

@@ -62,6 +62,33 @@ typedef struct {
 KVStrategyResult select_kv_strategy(const Config *cfg, tn_i64 free_ram, const MoEConfig *mc);
 
 /**
+ * User overrides for context sizing (CLI --ctx-size / --kv-ram-fraction).
+ * Zero-initialised fields mean "automatic", so `KVStrategyOptions o = {0}`
+ * reproduces select_kv_strategy() exactly.
+ */
+typedef struct {
+  int   ctx_size;     /* > 0: requested context (capped at the model's seq_len
+                         and by the RAM budget); 0 = tier default */
+  float ram_fraction; /* (0, 0.95]: share of free RAM the F32 KV cache may use;
+                         0 = default 0.60 */
+} KVStrategyOptions;
+
+#define KV_DEFAULT_RAM_FRACTION 0.60f
+
+KVStrategyResult select_kv_strategy_ex(const Config *cfg, tn_i64 free_ram, const MoEConfig *mc,
+                                       const KVStrategyOptions *opt);
+
+/* Process-wide options used by select_kv_strategy() (set once from the CLI
+ * before any model loads, so every load path — native, GGUF, draft — sizes
+ * its context the same way). NULL restores the automatic defaults. */
+void kv_strategy_set_options(const KVStrategyOptions *opt);
+
+/* One honest startup line: the KV cache is stored as F32 on every path today
+ * (the int8/int4 kernels in kv_compress.h are not wired into attention), so
+ * the tier only determines the context length. */
+void kv_strategy_print(const KVStrategyResult *r, int max_seq_len);
+
+/**
  * Get a human-readable name for a KV strategy.
  */
 const char *kv_strategy_name(KVStrategy s);

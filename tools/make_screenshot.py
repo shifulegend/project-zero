@@ -60,7 +60,7 @@ def colour_line(line: str):
         return DIM, line
     if re.match(r'\s+(dim|hidden_dim|n_layers|n_heads|vocab_size|seq_len|act_type|rope_theta|head_dim|kv_dim):', line):
         return DIM, line
-    if 'KV Strategy' in line:
+    if 'KV Strategy' in line or line.startswith('KV cache:'):
         return DIM, line
     return FG, line
 
@@ -74,6 +74,7 @@ def render(text: str, title: str, command: str, output_path: str):
     skip_patterns = [
         r'^\s+(dim|hidden_dim|n_layers|n_heads|n_kv_heads|vocab_size|seq_len|act_type|rope_theta|head_dim|kv_dim):',
         r'^KV Strategy:',
+        r'^KV cache:',
         r'^Model format:',
     ]
     filtered = []

@@ -3,6 +3,14 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-18.
 
+### 2026-10-18 — Configurable context sizing + honest KV report
+- `KVStrategyOptions` / `select_kv_strategy_ex()` / `kv_strategy_set_options()` /
+  `kv_strategy_print()` in `kv_cache/kv_strategy`; `--ctx-size`, `--kv-ram-fraction`; both
+  startup paths (native + GGUF) print the same honest line; scripts grepping "KV Strategy"
+  also accept "KV cache:". Plan 2.4/2.5 marked done (as built), 8.5 opened.
+- Verified: gcc+clang release/test/debug green (`test_kv_cache` 20/20 incl. new options test);
+  CLI `--ctx-size 2048 --kv-ram-fraction 0.3` → "max context: 2048 … RAM budget 30%".
+
 ### 2026-10-18 — Phase 21.5: KV prefix reuse (context caching)
 - New: `kv_cache/prefix_cache` (+ `tests/test_prefix_cache.c`), `tests/e2e_prompt_cache.sh`.
 - Changed: `generate_ex()` (resume at the cached LCP, record forwarded tokens,

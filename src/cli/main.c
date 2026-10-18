@@ -77,6 +77,10 @@ int main(int argc, char **argv) {
     if (parse_args(&args, argc, argv) != TN_OK) {
         return 1;
     }
+    {
+        KVStrategyOptions kv_opt = { args.ctx_size, args.kv_ram_fraction };
+        kv_strategy_set_options(&kv_opt);
+    }
 
     /* --version: print version + the SIMD backend selected for this CPU, then
      * exit 0. tn_simd_init() only probes CPUID, so no model is required. */
@@ -372,18 +376,7 @@ int main(int argc, char **argv) {
             tn_i64 post_load_ram = tn_get_free_ram();
             KVStrategyResult kv_res = select_kv_strategy(&p, post_load_ram, &mc);
             p.seq_len = kv_res.max_seq_len;
-            if (mc.has_linear_attn) {
-                printf("KV Strategy: F32 (Qwen35 hybrid path; quantized-KV "
-                       "strategy not wired in), max context: %d tokens\n",
-                       p.seq_len);
-            } else if (mc.has_qk_norm) {
-                printf("KV Strategy: F32 (Qwen3-MoE path; quantized-KV "
-                       "strategy not wired in), max context: %d tokens\n",
-                       p.seq_len);
-            } else {
-                printf("KV Strategy: %s, max context: %d tokens\n",
-                       kv_strategy_name(kv_res.strategy), p.seq_len);
-            }
+            kv_strategy_print(&kv_res, p.seq_len);
         }
 
         /* Setup RunState */

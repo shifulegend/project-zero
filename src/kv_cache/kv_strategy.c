@@ -110,7 +110,29 @@ tn_i64 tn_get_free_ram(void) {
 #endif
 }
 
+static KVStrategyOptions g_kv_opts; /* zero = automatic */
+
+void kv_strategy_set_options(const KVStrategyOptions *opt) {
+  if (opt) g_kv_opts = *opt;
+  else { g_kv_opts.ctx_size = 0; g_kv_opts.ram_fraction = 0.0f; }
+}
+
 KVStrategyResult select_kv_strategy(const Config *cfg, tn_i64 free_ram, const MoEConfig *mc) {
+  return select_kv_strategy_ex(cfg, free_ram, mc, &g_kv_opts);
+}
+
+void kv_strategy_print(const KVStrategyResult *r, int max_seq_len) {
+  /* 2026-10-18: this used to print e.g. "KV Strategy: Quantized I8", but no
+   * attention path reads a quantized cache — K/V are always F32. The tier name
+   * is reported as what it actually is: the context-sizing tier. */
+  float frac = g_kv_opts.ram_fraction > 0.0f ? g_kv_opts.ram_fraction : KV_DEFAULT_RAM_FRACTION;
+  printf("KV cache: F32, max context: %d tokens (sizing tier: %s%s, RAM budget %.0f%%)\n",
+         max_seq_len, r ? kv_strategy_name(r->strategy) : "n/a",
+         g_kv_opts.ctx_size > 0 ? ", --ctx-size" : "", frac * 100.0f);
+}
+
+KVStrategyResult select_kv_strategy_ex(const Config *cfg, tn_i64 free_ram, const MoEConfig *mc,
+                                       const KVStrategyOptions *opt) {
   KVStrategyResult result;
   int seq_len = cfg->seq_len;
 
@@ -140,6 +162,11 @@ KVStrategyResult select_kv_strategy(const Config *cfg, tn_i64 free_ram, const Mo
     result.max_seq_len = seq_len < 512 ? seq_len : 512;
   }
 
+  /* Explicit --ctx-size replaces the tier's default window (still bounded by
+   * the model's own context and the RAM safety cap below). */
+  if (opt && opt->ctx_size > 0)
+    result.max_seq_len = opt->ctx_size < seq_len ? opt->ctx_size : seq_len;
+
   /*
    * Safety cap: compute the actual F32 KV cache cost for the chosen max_seq_len
    * and reduce it if the allocation would exceed 60% of free_ram.
@@ -168,7 +195,9 @@ KVStrategyResult select_kv_strategy(const Config *cfg, tn_i64 free_ram, const Mo
                      * (tn_i64)(cfg->n_kv_heads > 0 ? cfg->n_kv_heads : cfg->n_heads)
                      * (tn_i64)head_dim * 2 * (tn_i64)sizeof(float);
     if (per_token > 0) {
-      tn_i64 budget        = (free_ram / 10) * 6;  /* 60% of free_ram */
+      float frac = (opt && opt->ram_fraction > 0.0f) ? opt->ram_fraction : KV_DEFAULT_RAM_FRACTION;
+      if (frac > 0.95f) frac = 0.95f;
+      tn_i64 budget        = (tn_i64)((double)free_ram * (double)frac);
       tn_i64 max_safe_ctx  = budget / per_token;
       if (max_safe_ctx < 512) max_safe_ctx = 512;  /* never below 512 */
       if (result.max_seq_len > (int)max_safe_ctx)

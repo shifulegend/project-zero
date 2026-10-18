@@ -78,6 +78,8 @@ typedef struct {
     float  watermark_delta;    /* --watermark-delta <d> (default 2.0)           */
     char  *watermark_detect;   /* --watermark-detect <text>: score text, exit   */
     char  *ui_title;           /* --ui-title <name>: web UI brand name          */
+    int    ctx_size;           /* --ctx-size <N>: context length (0 = auto)     */
+    float  kv_ram_fraction;    /* --kv-ram-fraction <f>: KV RAM budget (0=0.60) */
     bool   prompt_cache;       /* --prompt-cache on|off: server KV prefix reuse
                                   default (on)                                  */
 } CliArgs;

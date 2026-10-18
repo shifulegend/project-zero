@@ -5,6 +5,19 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-10-18.
 
+### 2026-10-18 — "KV Strategy: Quantized I8" was printed although the KV cache is always F32
+
+- Finding: `select_kv_strategy()` returns a strategy enum + context length, but only
+  `max_seq_len` was ever used; `RunState.key_cache/value_cache` are `float *` and no attention
+  kernel calls `kv_compress_*`. Phase 8 was marked ✅ because the kernels and selector existed
+  and were unit-tested — nobody checked they were connected to the forward pass.
+- Fix (same pass): honest startup line via `kv_strategy_print()` ("KV cache: F32 … sizing
+  tier: …"); context sizing made configurable (`--ctx-size`, `--kv-ram-fraction`). The real
+  integration (quantized storage + fused dequant attention for every attention family) is an
+  architectural change — logged as plan item 8.5 and flagged to the user, not silently skipped.
+- Lesson: a ✅ on a plan item needs an end-to-end check that the code is *reached*, not just
+  that its unit tests pass (same lesson as the 2026-07-15 "untested" socket-layer entry).
+
 ### 2026-10-18 — Six pre-existing bugs found while making every generation setting front-end configurable (all fixed in the same pass)
 
 - **`--seed` was parsed and then ignored.** `args.c` stored it, but `generate_with_callback()`

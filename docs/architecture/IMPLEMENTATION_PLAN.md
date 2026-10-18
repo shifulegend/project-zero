@@ -142,7 +142,7 @@ project-zero/
 - Uses `CreateFileA()` → `GetFileSizeEx()` → `CreateFileMappingA()` → `MapViewOfFile()`.
 - Close path: `UnmapViewOfFile()` → `CloseHandle()` (mapping) → `CloseHandle()` (file).
 
-### 2.4 — Hardware RAM Probe
+### 2.4 — Hardware RAM Probe ✅ (as `tn_get_free_ram()` in `kv_cache/kv_strategy.c`: Linux MemAvailable, sysconf fallback, Windows GlobalMemoryStatusEx)
 - File: `include/memory/hw_probe.h` + `src/memory/hw_probe.c`
 - `int64_t get_free_ram_bytes()`:
   - Linux: Parse `/proc/meminfo` for `MemAvailable`.
@@ -150,7 +150,7 @@ project-zero/
   - Windows: `GlobalMemoryStatusEx()`.
 - `int64_t get_total_ram_bytes()`: Same sources, total RAM.
 
-### 2.5 — Dynamic Memory Budget Calculator
+### 2.5 — Dynamic Memory Budget Calculator ✅ (as `select_kv_strategy_ex()`: per-token F32 KV cost × RAM-fraction budget cap; fraction and context user-configurable since 2026-10-18)
 - File: `include/memory/mem_budget.h` + `src/memory/mem_budget.c`
 - `MemBudget compute_mem_budget(const Config *cfg, int64_t free_ram)`:
   - Calculates `bytes_per_token = 2 * n_layers * kv_dim * sizeof(float)`.
@@ -551,7 +551,7 @@ project-zero/
 
 ---
 
-## PHASE 8: KV Cache Optimizations ✅
+## PHASE 8: KV Cache Optimizations ✅ (kernels) — ⚠ quantized KV not wired into attention (8.5 open)
 
 ### 8.1 — KV Cache Quantization (float32 → int8) ✅
 - File: `include/kv_cache/kv_compress.h` + `src/kv_cache/kv_compress.c`
@@ -583,6 +583,21 @@ project-zero/
   - free_ram > 1GB → `KV_SLIDING_I8`
   - free_ram <= 1GB → `KV_SLIDING_I4`
 - Returns strategy + computed `max_seq_len`.
+- 2026-10-18: the tier now only sizes the context (the startup line says so honestly:
+  `KV cache: F32, max context: N (sizing tier: …)`), and is user-overridable:
+  `--ctx-size <N>` and `--kv-ram-fraction <f>` (`KVStrategyOptions`, `select_kv_strategy_ex()`,
+  `kv_strategy_set_options()`).
+
+### 8.5 — Wire Quantized KV Storage into Attention ⬜ OPEN (found 2026-10-18)
+- The int8/int4 compress/decompress kernels (8.1/8.2) are unit-tested but **no attention path
+  reads a quantized cache** — `RunState.key_cache/value_cache` are `float *` and every attention
+  kernel (dense/GQA single + batched, MLA, Qwen3-MoE, Qwen3.5 hybrid, spec-decode) streams F32.
+  Until 2026-10-18 the startup line still printed e.g. "KV Strategy: Quantized I8".
+- Needed: per-position (or per-block) int8 K/V storage + scales in RunState, a fused
+  dequant-dot attention kernel per SIMD tier, write-side quantization in each attention TU,
+  `--kv-type f32|i8|i4` (CLI + `/v1/config`), A/B tok/s and perplexity checks. Architecturally
+  significant (hot path, every attention family) — tracked here rather than folded into an
+  unrelated change.
 
 ---
 

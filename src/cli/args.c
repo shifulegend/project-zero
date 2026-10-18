@@ -28,6 +28,10 @@ void print_usage(const char *prog_name) {
     printf("                      (grammar-masked sampling; physically cannot emit\n");
     printf("                      invalid JSON syntax, not just prompted to try)\n");
 
+    printf("  --ctx-size <int>    Context length to allocate (default: auto from free RAM;\n");
+    printf("                      capped at the model's own context and the RAM budget)\n");
+    printf("  --kv-ram-fraction <f> Share of free RAM the KV cache may use (default 0.60)\n");
+
     printf("\nWatermarking (off by default):\n");
     printf("  --watermark         Bias sampling toward a keyed green list so output can\n");
     printf("                      later be identified (statistical, not visible).\n");
@@ -175,6 +179,8 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->watermark_detect = NULL;
     args->ui_title = NULL;
     args->prompt_cache = true;
+    args->ctx_size = 0;
+    args->kv_ram_fraction = 0.0f;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--model") == 0 && i + 1 < argc) {
@@ -233,6 +239,18 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             args->watermark_gamma = (float)atof(argv[++i]);
         } else if (strcmp(argv[i], "--watermark-delta") == 0 && i + 1 < argc) {
             args->watermark_delta = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--ctx-size") == 0 && i + 1 < argc) {
+            args->ctx_size = atoi(argv[++i]);
+            if (args->ctx_size < 0) {
+                fprintf(stderr, "Error: --ctx-size must be >= 0\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--kv-ram-fraction") == 0 && i + 1 < argc) {
+            args->kv_ram_fraction = (float)atof(argv[++i]);
+            if (!(args->kv_ram_fraction > 0.0f && args->kv_ram_fraction <= 0.95f)) {
+                fprintf(stderr, "Error: --kv-ram-fraction must be in (0, 0.95]\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
         } else if (strcmp(argv[i], "--prompt-cache") == 0 && i + 1 < argc) {
             const char *mode = argv[++i];
             if (strcmp(mode, "on") == 0) args->prompt_cache = true;

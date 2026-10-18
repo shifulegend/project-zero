@@ -16,3 +16,5 @@ Adapter for the configurability rules in `docs/ai/engineering-rules.md`.
   `args_fill_gen_params()`; in `--server` mode they are the defaults published by `/v1/config`.
   A new knob must reach CLI + API + web UI (see `engineering-rules.md` § No hardcoding).
 - Makefile tracks header deps (`-MMD -MP`); keep it.
+- Context sizing: `--ctx-size`, `--kv-ram-fraction` (`KVStrategyOptions`). KV is stored as F32 on
+  every path; quantized KV storage is open plan item 8.5.

@@ -68,7 +68,7 @@ echo "" | tee -a "$OUT"
 echo "=== Warming page cache ===" | tee -a "$OUT"
 ./adaptive_ai_engine --model "$MODEL" --tokenizer "$TOKENIZER" \
   --prompt "The capital of France is" --max-tokens "$MAX_TOKENS" --threads 4 2>&1 | \
-  grep -E "KV Strategy|tok/s" | tee -a "$OUT"
+  grep -E "KV Strategy|KV cache:|tok/s" | tee -a "$OUT"
 echo "" | tee -a "$OUT"
 
 run_clean() {

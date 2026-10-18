@@ -162,18 +162,7 @@ TernaryError load_gguf_model(LoadedModel *out, const char *model_path,
          * select_kv_strategy() still applies either way. Qwen3-MoE's own
          * qwen3moe_key_cache/qwen3moe_value_cache are the same situation —
          * independent head_dim, own F32 cache, not the quantized-KV path. */
-        if (out->moe_config.has_linear_attn) {
-            printf("KV Strategy: F32 (Qwen35 hybrid path; quantized-KV "
-                   "strategy not wired in), max context: %d tokens\n",
-                   out->config.seq_len);
-        } else if (out->moe_config.has_qk_norm) {
-            printf("KV Strategy: F32 (Qwen3-MoE path; quantized-KV "
-                   "strategy not wired in), max context: %d tokens\n",
-                   out->config.seq_len);
-        } else {
-            printf("KV Strategy: %s, max context: %d tokens\n",
-                   kv_strategy_name(kv_res.strategy), out->config.seq_len);
-        }
+        kv_strategy_print(&kv_res, out->config.seq_len);
     } else {
         out->config.seq_len = (max_seq_len_hint > 0) ? max_seq_len_hint : 1;
     }

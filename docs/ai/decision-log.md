@@ -3,6 +3,13 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-10-18.
 
+### 2026-10-18 — Phase 31 uses the OS page cache as the tiering engine
+
+- A MAP_SHARED file-backed KV cache gets LRU eviction, write-back and async read-ahead from the
+  kernel for free; a hand-rolled io_uring pager would need the Phase 23 page table first and
+  would duplicate the page cache. `posix_fallocate` up front turns "disk full" into a startup
+  error instead of a SIGBUS during write-back. Opt-in only (`--kv-offload`), RAM stays default.
+
 ### 2026-10-18 — Phase 28 as pipeline (layer) parallelism over a static node list
 
 - Layer-range pipelining needs only one hidden-state vector (dim floats) per token per hop —

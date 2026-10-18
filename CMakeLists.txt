@@ -196,6 +196,7 @@ set(MULTIMODAL_SOURCES
 set(MEMORY_SOURCES
     src/memory/aligned_alloc.c
     src/memory/mapped_file.c
+    src/memory/file_backed.c
 )
 
 set(THREADING_SOURCES

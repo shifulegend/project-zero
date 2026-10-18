@@ -302,22 +302,22 @@ static void test_strategy_options(void) {
   Config cfg = {.dim = 4096, .hidden_dim = 11008, .n_layers = 32, .n_heads = 32,
                 .n_kv_heads = 8, .vocab_size = 32000, .seq_len = 4096};
   tn_i64 ram = (tn_i64)3 * 1024 * 1024 * 1024; /* 3 GB: sliding tier, 1024 window */
-  KVStrategyOptions none = {0, 0.0f, 0};
+  KVStrategyOptions none = {0, 0.0f, 0, NULL};
   KVStrategyResult a = select_kv_strategy_ex(&cfg, ram, NULL, &none);
   KVStrategyResult b = select_kv_strategy(&cfg, ram, NULL);
   TEST_ASSERT_EQ(a.max_seq_len, b.max_seq_len, "zero options == automatic");
   TEST_ASSERT_EQ(a.max_seq_len, 1024, "tier default window");
 
-  KVStrategyOptions big = {3000, 0.0f, 0};
+  KVStrategyOptions big = {3000, 0.0f, 0, NULL};
   KVStrategyResult c = select_kv_strategy_ex(&cfg, ram, NULL, &big);
   TEST_ASSERT_EQ(c.max_seq_len, 3000, "--ctx-size replaces the tier window");
 
-  KVStrategyOptions huge = {100000, 0.0f, 0};
+  KVStrategyOptions huge = {100000, 0.0f, 0, NULL};
   KVStrategyResult d = select_kv_strategy_ex(&cfg, ram, NULL, &huge);
   TEST_ASSERT_EQ(d.max_seq_len, 4096, "--ctx-size capped at model seq_len");
 
   /* per-token F32 KV = 32*8*128*2*4 = 256 KiB; 10% of 3 GB = ~1228 tokens */
-  KVStrategyOptions tight = {4096, 0.10f, 0};
+  KVStrategyOptions tight = {4096, 0.10f, 0, NULL};
   KVStrategyResult e = select_kv_strategy_ex(&cfg, ram, NULL, &tight);
   TEST_ASSERT(e.max_seq_len < 4096 && e.max_seq_len >= 512, "RAM fraction caps the context");
 

@@ -4,7 +4,9 @@
 #include "core/platform.h"
 #include "math/rope.h"
 #include "memory/aligned_alloc.h"
+#include "memory/file_backed.h"
 #include "kv_cache/kv_strategy.h"  /* tn_get_free_ram() for the OOM sanity guard */
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>   /* free() for k_rope_cache pointer array */
 
@@ -20,6 +22,36 @@ static int tn_alloc_too_large(size_t count, size_t elem_size) {
   if (ram <= 0) return 0; /* unknown RAM: fall back to malloc-NULL behavior */
   if (tn_size_mul_overflow(count, elem_size, &bytes)) return 1;
   return bytes > (size_t)ram * 32;
+}
+
+/* Phase 31: carve `n` buffers of sizes[i] bytes out of one disk-backed
+ * mapping in `dir`, each 64-byte aligned. On success out[i] point into
+ * s->kv_offload_base. */
+static TernaryError kv_offload_carve(RunState *s, const char *dir, const size_t *sizes,
+                                     void **out, int n) {
+  size_t total = 0;
+  for (int i = 0; i < n; i++) {
+    size_t a = (sizes[i] + (TN_SIMD_ALIGN - 1)) & ~(size_t)(TN_SIMD_ALIGN - 1);
+    if (total + a < total) return TN_ERR_OOM;
+    total += a;
+  }
+  tn_i64 disk = file_backed_free_space(dir);
+  if (disk >= 0 && (tn_i64)total > disk) {
+    fprintf(stderr, "[kv-offload] need %.1f GiB in %s, only %.1f GiB free\n",
+            (double)total / 1073741824.0, dir, (double)disk / 1073741824.0);
+    return TN_ERR_OOM;
+  }
+  FileBacked fb;
+  TernaryError e = file_backed_alloc(&fb, dir, total);
+  if (e != TN_OK) return e;
+  s->kv_offload_base = fb.base;
+  s->kv_offload_bytes = fb.bytes;
+  size_t off = 0;
+  for (int i = 0; i < n; i++) {
+    out[i] = (char *)fb.base + off;
+    off += (sizes[i] + (TN_SIMD_ALIGN - 1)) & ~(size_t)(TN_SIMD_ALIGN - 1);
+  }
+  return TN_OK;
 }
 
 TernaryError run_state_alloc(RunState *s, const Config *cfg, int max_seq_len) {
@@ -77,6 +109,7 @@ TernaryError run_state_alloc_ex(RunState *s, const Config *cfg, int max_seq_len,
    * calloc's explicit memset would force real RSS commit for the whole
    * buffer even if freed moments later. */
   if (!skip_kv_cache) {
+    const char *offload_dir = kv_strategy_offload_dir();
     size_t kv_cache_size;
     if (tn_size_mul4((size_t)cfg->n_layers, (size_t)cfg->n_kv_heads,
                      (size_t)max_seq_len, (size_t)head_dim, &kv_cache_size)) {
@@ -86,28 +119,48 @@ TernaryError run_state_alloc_ex(RunState *s, const Config *cfg, int max_seq_len,
     if (kv_strategy_kv_type() == KV_TYPE_I8) {
       /* Plan 8.5: int8 rows + one F32 scale per row (4x smaller than F32). */
       size_t n_rows = kv_cache_size / (size_t)(head_dim > 0 ? head_dim : 1);
-      if (tn_alloc_too_large(kv_cache_size, sizeof(tn_i8))) {
+      if (!offload_dir && tn_alloc_too_large(kv_cache_size, sizeof(tn_i8))) {
         run_state_free(s);
         return TN_ERR_OOM;
       }
       s->kv_type = KV_TYPE_I8;
-      s->key_cache_q = (tn_i8 *)tn_aligned_calloc(kv_cache_size, sizeof(tn_i8), TN_SIMD_ALIGN);
-      s->value_cache_q = (tn_i8 *)tn_aligned_calloc(kv_cache_size, sizeof(tn_i8), TN_SIMD_ALIGN);
-      s->key_scale = (float *)tn_aligned_calloc(n_rows, sizeof(float), TN_SIMD_ALIGN);
-      s->value_scale = (float *)tn_aligned_calloc(n_rows, sizeof(float), TN_SIMD_ALIGN);
+      if (offload_dir) {
+        size_t sz[4] = { kv_cache_size, kv_cache_size, n_rows * sizeof(float), n_rows * sizeof(float) };
+        void *pp[4] = { NULL, NULL, NULL, NULL };
+        TernaryError e = kv_offload_carve(s, offload_dir, sz, pp, 4);
+        if (e != TN_OK) { run_state_free(s); return e; }
+        s->key_cache_q = (tn_i8 *)pp[0]; s->value_cache_q = (tn_i8 *)pp[1];
+        s->key_scale = (float *)pp[2];   s->value_scale = (float *)pp[3];
+      } else {
+        s->key_cache_q = (tn_i8 *)tn_aligned_calloc(kv_cache_size, sizeof(tn_i8), TN_SIMD_ALIGN);
+        s->value_cache_q = (tn_i8 *)tn_aligned_calloc(kv_cache_size, sizeof(tn_i8), TN_SIMD_ALIGN);
+        s->key_scale = (float *)tn_aligned_calloc(n_rows, sizeof(float), TN_SIMD_ALIGN);
+        s->value_scale = (float *)tn_aligned_calloc(n_rows, sizeof(float), TN_SIMD_ALIGN);
+      }
       if (!s->key_cache_q || !s->value_cache_q || !s->key_scale || !s->value_scale) {
         run_state_free(s);
         return TN_ERR_OOM;
       }
     } else {
-      if (tn_alloc_too_large(kv_cache_size, sizeof(float))) {
+      size_t kv_bytes;
+      if (tn_size_mul_overflow(kv_cache_size, sizeof(float), &kv_bytes) ||
+          (!offload_dir && tn_alloc_too_large(kv_cache_size, sizeof(float)))) {
         run_state_free(s);
         return TN_ERR_OOM;
       }
-      s->key_cache =
-          (float *)tn_aligned_calloc(kv_cache_size, sizeof(float), TN_SIMD_ALIGN);
-      s->value_cache =
-          (float *)tn_aligned_calloc(kv_cache_size, sizeof(float), TN_SIMD_ALIGN);
+      if (offload_dir) {
+        size_t sz[2] = { kv_bytes, kv_bytes };
+        void *pp[2] = { NULL, NULL };
+        TernaryError e = kv_offload_carve(s, offload_dir, sz, pp, 2);
+        if (e != TN_OK) { run_state_free(s); return e; }
+        s->key_cache = (float *)pp[0];
+        s->value_cache = (float *)pp[1];
+      } else {
+        s->key_cache =
+            (float *)tn_aligned_calloc(kv_cache_size, sizeof(float), TN_SIMD_ALIGN);
+        s->value_cache =
+            (float *)tn_aligned_calloc(kv_cache_size, sizeof(float), TN_SIMD_ALIGN);
+      }
 
       if (!s->key_cache || !s->value_cache) {
         run_state_free(s);
@@ -133,6 +186,15 @@ TernaryError run_state_alloc_ex(RunState *s, const Config *cfg, int max_seq_len,
 
 void run_state_free(RunState *s) {
   if (s->mamba) { mamba_state_free(s->mamba); s->mamba = NULL; }
+  if (s->kv_offload_base) {
+    /* KV buffers point into the disk-backed mapping, not the aligned heap. */
+    FileBacked fb = { s->kv_offload_base, s->kv_offload_bytes };
+    file_backed_free(&fb);
+    s->kv_offload_base = NULL;
+    s->key_cache = s->value_cache = NULL;
+    s->key_cache_q = s->value_cache_q = NULL;
+    s->key_scale = s->value_scale = NULL;
+  }
   tn_aligned_free(s->key_cache_q);   s->key_cache_q = NULL;
   tn_aligned_free(s->value_cache_q); s->value_cache_q = NULL;
   tn_aligned_free(s->key_scale);     s->key_scale = NULL;
@@ -158,4 +220,22 @@ void run_state_free(RunState *s) {
     s->k_rope_cache = NULL;
   }
   memset(s, 0, sizeof(*s));
+}
+
+void run_state_kv_prefetch_layer(const RunState *s, const Config *cfg, int layer, int n_pos) {
+  if (!s || !s->kv_offload_base || layer < 0 || layer >= cfg->n_layers || n_pos <= 0) return;
+  int hd = config_head_dim(cfg);
+  if (n_pos > s->max_seq_len) n_pos = s->max_seq_len;
+  for (int h = 0; h < cfg->n_kv_heads; h++) {
+    size_t row0 = ((size_t)layer * (size_t)cfg->n_kv_heads + (size_t)h) * (size_t)s->max_seq_len;
+    if (s->kv_type == KV_TYPE_I8) {
+      file_backed_prefetch(s->key_cache_q + row0 * (size_t)hd, (size_t)n_pos * (size_t)hd);
+      file_backed_prefetch(s->value_cache_q + row0 * (size_t)hd, (size_t)n_pos * (size_t)hd);
+      file_backed_prefetch(s->key_scale + row0, (size_t)n_pos * sizeof(float));
+      file_backed_prefetch(s->value_scale + row0, (size_t)n_pos * sizeof(float));
+    } else {
+      file_backed_prefetch(s->key_cache + row0 * (size_t)hd, (size_t)n_pos * (size_t)hd * sizeof(float));
+      file_backed_prefetch(s->value_cache + row0 * (size_t)hd, (size_t)n_pos * (size_t)hd * sizeof(float));
+    }
+  }
 }

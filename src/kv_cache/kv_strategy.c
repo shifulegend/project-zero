@@ -1,8 +1,10 @@
 #include "kv_cache/kv_strategy.h"
+#include "memory/file_backed.h"
 #include "core/platform.h"
 #include "core/config.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #if TN_POSIX
 #include <unistd.h>
@@ -114,10 +116,11 @@ static KVStrategyOptions g_kv_opts; /* zero = automatic */
 
 void kv_strategy_set_options(const KVStrategyOptions *opt) {
   if (opt) g_kv_opts = *opt;
-  else { g_kv_opts.ctx_size = 0; g_kv_opts.ram_fraction = 0.0f; g_kv_opts.kv_type = 0; }
+  else memset(&g_kv_opts, 0, sizeof(g_kv_opts));
 }
 
 int kv_strategy_kv_type(void) { return g_kv_opts.kv_type; }
+const char *kv_strategy_offload_dir(void) { return g_kv_opts.offload_dir; }
 
 KVStrategyResult select_kv_strategy(const Config *cfg, tn_i64 free_ram, const MoEConfig *mc) {
   return select_kv_strategy_ex(cfg, free_ram, mc, &g_kv_opts);
@@ -129,10 +132,13 @@ void kv_strategy_print(const KVStrategyResult *r, int max_seq_len) {
    * generic cache really uses (--kv-type) and the tier for what it is: the
    * context-sizing tier. */
   float frac = g_kv_opts.ram_fraction > 0.0f ? g_kv_opts.ram_fraction : KV_DEFAULT_RAM_FRACTION;
-  printf("KV cache: %s, max context: %d tokens (sizing tier: %s%s, RAM budget %.0f%%)\n",
+  printf("KV cache: %s%s%s, max context: %d tokens (sizing tier: %s%s, %s budget %.0f%%)\n",
          g_kv_opts.kv_type == 1 ? "I8" : "F32",
+         g_kv_opts.offload_dir ? " on disk in " : "",
+         g_kv_opts.offload_dir ? g_kv_opts.offload_dir : "",
          max_seq_len, r ? kv_strategy_name(r->strategy) : "n/a",
-         g_kv_opts.ctx_size > 0 ? ", --ctx-size" : "", frac * 100.0f);
+         g_kv_opts.ctx_size > 0 ? ", --ctx-size" : "",
+         g_kv_opts.offload_dir ? "disk" : "RAM", frac * 100.0f);
 }
 
 KVStrategyResult select_kv_strategy_ex(const Config *cfg, tn_i64 free_ram, const MoEConfig *mc,
@@ -206,7 +212,14 @@ KVStrategyResult select_kv_strategy_ex(const Config *cfg, tn_i64 free_ram, const
     if (per_token > 0) {
       float frac = (opt && opt->ram_fraction > 0.0f) ? opt->ram_fraction : KV_DEFAULT_RAM_FRACTION;
       if (frac > 0.95f) frac = 0.95f;
-      tn_i64 budget        = (tn_i64)((double)free_ram * (double)frac);
+      /* Phase 31: a disk-backed cache is bounded by free disk space instead
+       * (RAM then only holds the hot pages). Unknown disk space keeps RAM. */
+      tn_i64 base = free_ram;
+      if (opt && opt->offload_dir) {
+        tn_i64 disk = file_backed_free_space(opt->offload_dir);
+        if (disk > 0) base = disk;
+      }
+      tn_i64 budget        = (tn_i64)((double)base * (double)frac);
       tn_i64 max_safe_ctx  = budget / per_token;
       if (max_safe_ctx < 512) max_safe_ctx = 512;  /* never below 512 */
       if (result.max_seq_len > (int)max_safe_ctx)

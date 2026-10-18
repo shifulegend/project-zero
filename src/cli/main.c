@@ -90,7 +90,8 @@ int main(int argc, char **argv) {
         return 1;
     }
     {
-        KVStrategyOptions kv_opt = { args.ctx_size, args.kv_ram_fraction, args.kv_type };
+        KVStrategyOptions kv_opt = { args.ctx_size, args.kv_ram_fraction, args.kv_type,
+                                     args.kv_offload_dir };
         kv_strategy_set_options(&kv_opt);
     }
     (void)tn_cache_info(); /* Phase 27.1: probe once, before any worker threads */

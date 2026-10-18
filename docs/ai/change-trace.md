@@ -3,6 +3,13 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-18.
 
+### 2026-10-18 — Phase 31: disk-backed KV cache (--kv-offload)
+- New: `memory/file_backed` (+ `tests/test_kv_offload.c`), `RunState.kv_offload_base/bytes`,
+  `KVStrategyOptions.offload_dir` (disk-budgeted context cap), `run_state_kv_prefetch_layer`,
+  `/v1/config runtime.kv_offload`, UI tag; CMake MEMORY_SOURCES.
+- Verified: gcc+clang release/test/debug, TSan, golden Paris, identical output F32/i8 on/off disk,
+  live server.
+
 ### 2026-10-18 — Phase 28: distributed pipeline inference
 - New: `distributed/tensor_rpc` (framed TCP), `distributed/dist_plan` (parse, RAM planner,
   connect/INFO validation, worker loop, remote forward); flags `--rpc-worker --layers

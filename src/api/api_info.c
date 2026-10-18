@@ -142,6 +142,9 @@ char *api_config_json(const ApiContext *ctx) {
         jb_raw(&jb, ","); jb_key(&jb, "threads"); jb_int(&jb, ctx && ctx->tp ? ctx->tp->num_threads : 1);
         jb_raw(&jb, ","); jb_key(&jb, "kv_type");
         jb_str(&jb, ctx && ctx->run_state && ctx->run_state->kv_type == KV_TYPE_I8 ? "i8" : "f32");
+        /* Phase 31: whether the KV cache is disk-backed (the path stays server-side). */
+        jb_raw(&jb, ","); jb_key(&jb, "kv_offload");
+        jb_raw(&jb, ctx && ctx->run_state && ctx->run_state->kv_offload_base ? "true" : "false");
         jb_raw(&jb, ","); jb_key(&jb, "attention_kernel"); jb_str(&jb, attn_kernel_name(attn_kernel_get()));
         jb_raw(&jb, ","); jb_key(&jb, "attention_tile"); jb_int(&jb, attn_tile_get());
         jb_raw(&jb, ","); jb_key(&jb, "attention_parallel_min_ctx"); jb_int(&jb, attn_parallel_min_ctx_get());

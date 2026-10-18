@@ -499,7 +499,7 @@ static void test_forward_kv_i8_close_to_f32(void) {
   alloc_synthetic_weights(&w, &cfg);
   float f32[8], i8[8];
   run_positions(&cfg, &w, NULL, 60, f32);
-  KVStrategyOptions o = {0, 0.0f, 1};
+  KVStrategyOptions o = {0, 0.0f, 1, NULL};
   kv_strategy_set_options(&o);
   RunState probe; memset(&probe, 0, sizeof(probe));
   run_state_alloc(&probe, &cfg, cfg.seq_len);

@@ -40,6 +40,9 @@ void print_usage(const char *prog_name) {
     printf("  --kv-ram-fraction <f> Share of free RAM the KV cache may use (default 0.60)\n");
     printf("  --kv-type <t>       KV cache storage: f32 (default) | i8 (4x smaller, per-row\n");
     printf("                      absmax scale; dense/GQA attention path)\n");
+    printf("  --kv-offload <dir>  Keep the KV cache in a disk-backed file in <dir> (NVMe/SSD):\n");
+    printf("                      the OS keeps hot pages in RAM, so context is bounded by\n");
+    printf("                      free disk (x --kv-ram-fraction), not RAM. Dense/GQA path.\n");
     printf("  --attn-kernel <k>   standard (default) | tiled (single-pass online softmax)\n");
     printf("  --attn-tile <int>   Positions per tile for --attn-kernel tiled (0 = from L1d)\n");
     printf("  --attn-parallel-min-ctx <N> Spread attention heads over threads once the\n");
@@ -226,6 +229,7 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->prompt_cache_min_tokens = 32;
     args->ctx_size = 0;
     args->kv_type = 0;
+    args->kv_offload_dir = NULL;
     args->attn_kernel = NULL;
     args->attn_tile = 0;
     args->attn_parallel_min_ctx = ATTN_PARALLEL_MIN_CTX_DEFAULT;
@@ -312,6 +316,8 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
                 fprintf(stderr, "Error: --kv-type must be f32 or i8\n");
                 return TN_ERR_INVALID_CONFIG;
             }
+        } else if (strcmp(argv[i], "--kv-offload") == 0 && i + 1 < argc) {
+            args->kv_offload_dir = argv[++i];
         } else if (strcmp(argv[i], "--ctx-size") == 0 && i + 1 < argc) {
             args->ctx_size = atoi(argv[++i]);
             if (args->ctx_size < 0) {

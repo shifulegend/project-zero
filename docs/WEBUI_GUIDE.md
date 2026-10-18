@@ -139,5 +139,6 @@ explicitly for anything beyond loopback experimentation. Only one chat completio
 time; by default a second concurrent request gets `429 Too Many Requests`; start the server with
 `--queue-size N` (and optionally `--queue-timeout S`) to let up to N requests wait their turn instead
 (the web UI shows the queue position). A server started with `--remote-layers` (Phase 28) shows a
-`dist N nodes` tag in the header; hover it for each node's layer range. Either way, other routes (static assets, `/metrics`, `/docs`, `/health` are never blocked by an in-flight
+`dist N nodes` tag in the header; hover it for each node's layer range. `--kv-offload <dir>` (Phase 31)
+shows a `KV on disk` tag. Either way, other routes (static assets, `/metrics`, `/docs`, `/health` are never blocked by an in-flight
 generation).

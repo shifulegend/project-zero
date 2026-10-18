@@ -110,6 +110,11 @@ typedef struct {
   tn_i8 *value_cache_q;
   float *key_scale;
   float *value_scale;
+  /* Phase 31: when --kv-offload DIR is set, the generic KV buffers above are
+   * carved out of one disk-backed mapping (memory/file_backed.h) instead of
+   * tn_aligned_calloc; run_state_free() unmaps it. NULL otherwise. */
+  void  *kv_offload_base;
+  size_t kv_offload_bytes;
 } RunState;
 
 /**
@@ -145,6 +150,10 @@ TernaryError run_state_alloc_ex(RunState *s, const Config *cfg, int max_seq_len,
  * Free all RunState buffers.
  */
 void run_state_free(RunState *s);
+
+/* Phase 31: async read-ahead of layer `layer`'s KV rows [0, n_pos) when the
+ * cache is disk-backed (no-op otherwise). Called one layer ahead. */
+void run_state_kv_prefetch_layer(const RunState *s, const Config *cfg, int layer, int n_pos);
 
 /* ---- MLA extension (Phase 17.7) ----------------------------------------- */
 #include "core/moe_config.h"

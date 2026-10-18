@@ -2504,7 +2504,22 @@ Replaces linear Chain-of-Thought with tree-search reasoning for mathematically p
 
 ---
 
-## PHASE 31: NVMe Storage Tiering (FlexGen) — Infinite Memory
+## PHASE 31: NVMe Storage Tiering (FlexGen) — Infinite Memory ✅ KV offload done 2026-10-18 (page-cache tiering)
+
+**As built:** `include/memory/file_backed.h` / `src/memory/file_backed.c` + `--kv-offload <dir>`.
+The generic dense/GQA KV cache (F32 or `--kv-type i8`) is carved from one unlinked, fully
+`posix_fallocate`d file in `<dir>` mapped `MAP_SHARED`; the kernel page cache is the hot tier and
+evicts cold pages to the SSD under pressure, so the context is bounded by free disk
+(× `--kv-ram-fraction`) instead of free RAM. The forward loop prefetches the next layer's KV rows
+(`posix_madvise(WILLNEED)`, `run_state_kv_prefetch_layer`) — the "prefetch adjacent pages" item.
+Blocks are reserved up front so a full disk fails at startup, never as a SIGBUS mid-generation.
+`/v1/config runtime.kv_offload` (path stays server-side); web UI header shows `KV on disk`.
+Verified: identical greedy output with/without offload for F32 and int8; tests/test_kv_offload.c.
+**Not adopted:** explicit io_uring pager + LRU page table — that depends on Phase 23 paged KV;
+the OS page cache already gives LRU eviction and async read-ahead without a second cache.
+MLA / Qwen3.5 hybrid caches still live in RAM.
+
+*Original stub, kept for reference:*
 
 Extends KV cache to SSD when physical RAM is exhausted.
 

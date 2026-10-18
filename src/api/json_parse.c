@@ -85,6 +85,9 @@ static int parse_string(const char **p, char *dst, size_t dst_cap) {
         char c = **p;
         if (c == '\\') {
             (*p)++;
+            /* 2026-10-18: a trailing backslash used to step past the NUL and
+             * keep reading beyond the buffer. */
+            if (**p == '\0') return 0;
             switch (**p) {
                 case '"':  c = '"';  break;
                 case '\\': c = '\\'; break;

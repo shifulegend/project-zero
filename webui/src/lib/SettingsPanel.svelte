@@ -3,6 +3,7 @@
   // defaults, ranges and feature flags all come from the server.
   import RangeField from './RangeField.svelte';
   import NumberField from './NumberField.svelte';
+  import PromptCacheStatus from './PromptCacheStatus.svelte';
 
   export let settings;
   export let config;
@@ -55,6 +56,7 @@
         <input type="checkbox" bind:checked={settings.cache_prompt} />
         <span>Reuse prompt cache <span class="dim">(faster multi-turn)</span></span>
       </label>
+      {#if features.prompt_store}<PromptCacheStatus />{/if}
     {/if}
     <label class="text">
       <span>Stop sequences <span class="dim">(one per line, max {L.max_stop ?? 0}; \n for newline)</span></span>

@@ -15,6 +15,8 @@
  *                                            ranges and feature flags (drives
  *                                            every web UI control)
  *   POST /v1/watermark/detect             → Phase 33 watermark z-score for text
+ *   GET  /v1/prompt_cache                 → Phase 26 prompt-cache stats
+ *   POST /v1/prompt_cache/clear           → drop all cached prompt snapshots
  *   POST /v1/chat/completions             → Chat completion (streaming + non-streaming;
  *                                            image_url content parts run the vision
  *                                            pipeline when --vision/--proj are set)
@@ -235,6 +237,27 @@ static void handle_get_models(int fd, ApiContext *ctx, const char *extra_headers
 
 static void handle_get_config(int fd, ApiContext *ctx, const char *extra_headers) {
     send_json_heap(fd, 200, api_config_json(ctx), extra_headers);
+}
+
+/* GET /v1/prompt_cache — Phase 26 store stats. Reads counters without the
+ * generation mutex (word-sized, informational only). */
+static void handle_prompt_cache_stats(int fd, ApiContext *ctx, const char *extra_headers) {
+    send_json_heap(fd, 200, api_prompt_cache_json(ctx), extra_headers);
+}
+
+/* POST /v1/prompt_cache/clear — drops every snapshot and the live prefix
+ * record. Mutates generation state, so it takes generation_mutex (429 while
+ * a generation is running, same as a second chat request). */
+static int handle_prompt_cache_clear(int fd, ApiContext *ctx, const char *extra_headers) {
+    if (pthread_mutex_trylock(&ctx->generation_mutex) != 0) {
+        send_error_ex(fd, 429, "A generation is in flight", extra_headers);
+        return 429;
+    }
+    prompt_store_clear(&ctx->prompt_store);
+    prefix_cache_reset(&ctx->prefix_cache);
+    pthread_mutex_unlock(&ctx->generation_mutex);
+    send_json_heap(fd, 200, api_prompt_cache_json(ctx), extra_headers);
+    return 200;
 }
 
 static int handle_watermark_detect(int fd, const char *body_start, size_t body_len,
@@ -495,8 +518,18 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
                                                            : ctx->server_config.prompt_cache;
     if (!ctx->prefix_cache.tokens && ctx->run_state)
         prefix_cache_init(&ctx->prefix_cache, ctx->run_state->max_seq_len);
+    if (!ctx->prompt_store_ready) {
+        prompt_store_init(&ctx->prompt_store,
+                          (size_t)(ctx->server_config.prompt_cache_mb > 0
+                                   ? ctx->server_config.prompt_cache_mb : 0) * 1024u * 1024u,
+                          ctx->server_config.prompt_cache_min_tokens);
+        ctx->prompt_store_ready = 1;
+    }
     if (had_image) prefix_cache_reset(&ctx->prefix_cache); /* vision prefill rewrote KV */
-    if (use_cache && ctx->prefix_cache.tokens) gp.prefix_cache = &ctx->prefix_cache;
+    if (use_cache && ctx->prefix_cache.tokens) {
+        gp.prefix_cache = &ctx->prefix_cache;
+        gp.prompt_store = &ctx->prompt_store;
+    }
     else prefix_cache_reset(&ctx->prefix_cache); /* KV is about to be overwritten */
 
     GenerationStats gstats;
@@ -723,6 +756,11 @@ static void handle_connection(int fd, ApiContext *ctx) {
         handle_get_models(fd, ctx, extra_headers);
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/config") == 0) {
         handle_get_config(fd, ctx, extra_headers);
+    } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/prompt_cache") == 0) {
+        handle_prompt_cache_stats(fd, ctx, extra_headers);
+    } else if (strcmp(req.method, "POST") == 0 &&
+               strcmp(req.path, "/v1/prompt_cache/clear") == 0) {
+        status = handle_prompt_cache_clear(fd, ctx, extra_headers);
     } else if (strcmp(req.method, "POST") == 0 &&
                strcmp(req.path, "/v1/watermark/detect") == 0) {
         status = handle_watermark_detect(fd, req.body, req.body_len, ctx, extra_headers);

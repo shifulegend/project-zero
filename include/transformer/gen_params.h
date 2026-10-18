@@ -14,6 +14,7 @@
 #include "sampling/sampler_chain.h"
 #include "sampling/watermark.h"
 #include "kv_cache/prefix_cache.h"
+#include "kv_cache/prompt_store.h"
 
 #define GEN_MAX_STOP 8
 
@@ -63,6 +64,9 @@ typedef struct {
      * disabled (always recompute the whole prompt). Owned by the caller
      * (the API server keeps one per RunState). */
     PrefixCache *prefix_cache;
+    /* Phase 26: multi-entry snapshot store consulted when the live prefix
+     * cache matches less than a stored sequence. Requires prefix_cache. */
+    PromptStore *prompt_store;
 
     /* Optional out-param: token counts + why generation ended. */
     GenerationStats *stats;

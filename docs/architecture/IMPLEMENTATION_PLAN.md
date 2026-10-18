@@ -2209,7 +2209,24 @@ Enables real-time voice conversations by streaming audio tokens directly into th
 
 ---
 
-## PHASE 26: Prompt Caching (Radix Trees) — Zero-Compute Recall
+## PHASE 26: Prompt Caching (Radix Trees) — Zero-Compute Recall ✅ done 2026-10-18 (generic dense/GQA KV)
+
+**As built** (`include/kv_cache/prompt_store.h`, `src/kv_cache/prompt_store.c`): a multi-entry
+snapshot store on top of Phase 21.5's live `PrefixCache`. Each entry holds a token sequence and
+the packed K/V rows for it; `prompt_store_restore()` copies the best-matching entry back into
+the RunState when it shares more than the live KV, `prompt_store_save()` snapshots the live
+sequence after each generation (a continuation replaces its shorter entry; LRU eviction inside
+a byte budget). Lookup is an LCP scan over entries rather than a radix tree — at the entry
+counts a RAM budget allows it is negligible next to a forward pass and needs no node splitting
+(deviation, see decision-log 2026-10-18). Scope: the generic `key_cache/value_cache` (MLA,
+Qwen3-MoE and Qwen3.5 hybrid keep their own caches and are excluded).
+Configurable: `--prompt-cache-mb` (default 256, 0 = off), `--prompt-cache-min-tokens` (32),
+`GET /v1/prompt_cache` stats, `POST /v1/prompt_cache/clear`, web UI status line + Clear.
+Verified: `tests/test_prompt_store.c` (roundtrip into the KV cache, supersede, LRU, budget,
+scope) and `tests/e2e_prompt_cache.sh` (two interleaved conversations: identical output to
+no-cache, 308 tokens reused on each return).
+
+*Original stub, kept for reference:*
 
 Eliminates redundant computation when the same prompt prefix appears across multiple API requests.
 

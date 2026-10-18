@@ -3,6 +3,16 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-18.
 
+### 2026-10-18 — Phase 26: multi-entry prompt snapshot store (LRU)
+- New: `kv_cache/prompt_store` + `tests/test_prompt_store.c`; e2e interleaved-conversation check
+  in `tests/e2e_prompt_cache.sh`; web UI `PromptCacheStatus.svelte`.
+- Changed: `generate_ex()` (restore before the prompt loop, save after),
+  `GenerationParams.prompt_store`, `ApiContext.prompt_store`, `--prompt-cache-mb`,
+  `--prompt-cache-min-tokens`, `GET /v1/prompt_cache`, `POST /v1/prompt_cache/clear`
+  (takes generation_mutex, 429 while busy), `/v1/config` `features.prompt_store`, OpenAPI.
+- Verified: gcc+clang release/test/debug; golden Paris; e2e identical output with/without
+  cache for sequential and interleaved conversations; browser shows stats and Clear works.
+
 ### 2026-10-18 — Phase 3.2 branchless scalar ternary matvec + debug→test link fix
 - `src/math/ternary_matmul_branchless.c` (scalar dispatch target, 10× vs reference),
   `tests/test_ternary_branchless.c`; Makefile `SAN_LINK_FLAGS` for the two custom-linked tests.

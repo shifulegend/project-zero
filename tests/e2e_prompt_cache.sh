@@ -44,6 +44,25 @@ def run(cache):
 on, cached_on = run(True)
 off, cached_off = run(False)
 fails = 0
+
+# Phase 26: two conversations interleaved (A1, B1, A2, B2). With the snapshot
+# store, returning to A must reuse A's history although B overwrote the live KV.
+def interleaved(cache):
+    convs = {k: [{"role": "system", "content": f"{SYSTEM} You are assistant {k}."}] for k in "AB"}
+    out = []
+    for k, q in [("A", TURNS[0]), ("B", TURNS[0]), ("A", TURNS[1]), ("B", TURNS[1])]:
+        convs[k].append({"role": "user", "content": q})
+        a, c = chat(convs[k], cache)
+        convs[k].append({"role": "assistant", "content": a})
+        out.append((a, c))
+    return out
+il_on, il_off = interleaved(True), interleaved(False)
+ok = [a for a, _ in il_on] == [a for a, _ in il_off]
+print(f"  [{'PASS' if ok else 'FAIL'}] interleaved conversations identical with/without cache")
+fails += not ok
+ok = il_on[2][1] > 0 and il_on[3][1] > 0
+print(f"  [{'PASS' if ok else 'FAIL'}] returning to A/B reuses snapshots: cached={[c for _, c in il_on]}")
+fails += not ok
 for i, (a, b) in enumerate(zip(on, off)):
     ok = a == b
     print(f"  [{'PASS' if ok else 'FAIL'}] turn {i+1} identical with/without cache")

@@ -80,6 +80,8 @@ typedef struct {
     char  *ui_title;           /* --ui-title <name>: web UI brand name          */
     int    ctx_size;           /* --ctx-size <N>: context length (0 = auto)     */
     float  kv_ram_fraction;    /* --kv-ram-fraction <f>: KV RAM budget (0=0.60) */
+    int    prompt_cache_mb;    /* --prompt-cache-mb <N>: Phase 26 store (256)   */
+    int    prompt_cache_min_tokens; /* --prompt-cache-min-tokens <N> (32)       */
     bool   prompt_cache;       /* --prompt-cache on|off: server KV prefix reuse
                                   default (on)                                  */
 } CliArgs;

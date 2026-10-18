@@ -141,3 +141,18 @@ export async function cancelGeneration(id) {
     body: JSON.stringify({ id }),
   }).catch(() => {});
 }
+
+/** GET /v1/prompt_cache — Phase 26 snapshot store stats. */
+export async function fetchPromptCache() {
+  const res = await fetch('/v1/prompt_cache');
+  if (!res.ok) throw new Error(`GET /v1/prompt_cache failed: ${res.status}`);
+  return res.json();
+}
+
+/** POST /v1/prompt_cache/clear */
+export async function clearPromptCache() {
+  const res = await fetch('/v1/prompt_cache/clear', { method: 'POST' });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json?.error?.message ?? `clear failed: ${res.status}`);
+  return json;
+}

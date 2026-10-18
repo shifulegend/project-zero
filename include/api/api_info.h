@@ -15,6 +15,9 @@
 
 char *api_models_json(const ApiContext *ctx);
 char *api_config_json(const ApiContext *ctx);
+/* Phase 26 store stats: {enabled, supported, entries, bytes_used, budget_bytes,
+ * hits, misses, evictions, live_tokens}. */
+char *api_prompt_cache_json(const ApiContext *ctx);
 
 /* Effective per-request max_tokens cap: server_config.max_tokens_limit when
  * set, else the model context length. */

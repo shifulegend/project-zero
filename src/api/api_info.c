@@ -126,9 +126,32 @@ char *api_config_json(const ApiContext *ctx) {
     /* Recurrent linear-attention state cannot resume from a partial prefix. */
     jb_raw(&jb, ","); jb_key(&jb, "prompt_cache");
     jb_bool(&jb, !(ctx && ctx->moe_cfg && ctx->moe_cfg->has_linear_attn));
+    jb_raw(&jb, ","); jb_key(&jb, "prompt_store");
+    jb_bool(&jb, ctx && ctx->server_config.prompt_cache_mb > 0 &&
+                 (!ctx->moe_cfg || prompt_store_supported(ctx->moe_cfg)));
     jb_raw(&jb, ","); jb_key(&jb, "metrics"); jb_bool(&jb, ctx && ctx->server_config.metrics.enabled);
     jb_raw(&jb, ","); jb_key(&jb, "system_prompt"); jb_bool(&jb, ctx && ctx->tok && ctx->tok->chat_template != NULL);
     jb_raw(&jb, "}");
+    jb_raw(&jb, "}");
+    return jb_finish(&jb);
+}
+
+char *api_prompt_cache_json(const ApiContext *ctx) {
+    const PromptStore *ps = ctx ? &ctx->prompt_store : NULL;
+    int supported = !(ctx && ctx->moe_cfg) || prompt_store_supported(ctx->moe_cfg);
+    size_t budget = ctx ? (size_t)(ctx->server_config.prompt_cache_mb > 0
+                                   ? ctx->server_config.prompt_cache_mb : 0) * 1024u * 1024u : 0;
+    JsonBuf jb;
+    jb_init(&jb);
+    jb_raw(&jb, "{"); jb_key(&jb, "enabled");   jb_bool(&jb, budget > 0 && supported);
+    jb_raw(&jb, ","); jb_key(&jb, "supported"); jb_bool(&jb, supported);
+    jb_raw(&jb, ","); jb_key(&jb, "entries");   jb_int(&jb, ps ? ps->n : 0);
+    jb_raw(&jb, ","); jb_key(&jb, "bytes_used"); jb_int(&jb, ps ? (long long)ps->bytes_used : 0);
+    jb_raw(&jb, ","); jb_key(&jb, "budget_bytes"); jb_int(&jb, (long long)budget);
+    jb_raw(&jb, ","); jb_key(&jb, "hits");      jb_int(&jb, ps ? (long long)ps->hits : 0);
+    jb_raw(&jb, ","); jb_key(&jb, "misses");    jb_int(&jb, ps ? (long long)ps->misses : 0);
+    jb_raw(&jb, ","); jb_key(&jb, "evictions"); jb_int(&jb, ps ? (long long)ps->evictions : 0);
+    jb_raw(&jb, ","); jb_key(&jb, "live_tokens"); jb_int(&jb, ctx ? ctx->prefix_cache.n : 0);
     jb_raw(&jb, "}");
     return jb_finish(&jb);
 }

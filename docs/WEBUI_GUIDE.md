@@ -33,7 +33,8 @@ after a change).
     `--max-tokens-limit`).
   - *Repetition*: repetition / presence / frequency penalty and the penalty window.
   - *Output*: random or fixed seed (reproducible replies), JSON mode, reuse prompt cache
-    (skips re-reading the history already in the KV cache — same output, faster turns), stop
+    (skips re-reading the history already in the KV cache — same output, faster turns; the line
+    below it shows how many conversations the server keeps snapshots of, with **Clear**), stop
     sequences.
   - *Watermark*: watermark replies, key (blank = the server's `--watermark-key`), γ and δ.
   - *System prompt*: applied to every conversation (chat-template models).
@@ -115,6 +116,7 @@ the CLI.
 | `POST /v1/chat/completions/cancel` | Cancel the in-flight generation |
 | `GET /v1/models` | Model metadata (file name, context length, layers, dims, vision/MoE flags) |
 | `GET /v1/config` | Server generation defaults, valid ranges, feature flags, UI title |
+| `GET /v1/prompt_cache`, `POST /v1/prompt_cache/clear` | Prompt-cache snapshot stats / drop all snapshots |
 | `POST /v1/watermark/detect` | `{text, key?, gamma?, z_threshold?}` → watermark z-score |
 | `GET /health` | Liveness check (JSON) |
 | `GET /metrics` | Prometheus text exposition (needs `--metrics`) |

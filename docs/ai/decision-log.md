@@ -3,6 +3,18 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-10-18.
 
+### 2026-10-18 — Phase 26 as an LCP-scanned snapshot store, not a radix tree; default budget 256 MB
+
+- An entry costs `len × n_layers × kv_heads × head_dim × 8` bytes (≈46 KB/token on
+  SmolLM2-135M), so a RAM budget holds tens of entries; scanning them for the longest common
+  prefix costs microseconds versus milliseconds per forward token. A radix tree would only pay
+  off with thousands of entries and needs shared-KV page bookkeeping (Phase 23 territory).
+- Snapshots are taken after every generation (copy cost ≈ one memcpy of the sequence's KV) and a
+  continuation of the same conversation replaces its older entry, so one conversation uses one
+  entry. Clearing takes the generation mutex because it mutates generation state.
+- Default 256 MB (`--prompt-cache-mb`), documented and configurable; 0 restores Phase 21.5-only
+  behaviour.
+
 ### 2026-10-18 — Phase 21.5 prefix cache: single slot in the KV module, resume-not-copy, on by default
 
 - Decision: keep one token record per RunState (`kv_cache/prefix_cache`) and resume the prompt
@@ -45,7 +57,7 @@
 - Branding: new UI pieces follow `docs/design/ui-ux-principles.md` (terminal `>_` mark,
   monospace for values/labels, single green accent for state only, borders not blur). The title
   is configurable (`--ui-title`, default `project-zero`) and comes from `/v1/config`.
-- Not done this pass (remaining plan phases, still open): 26 radix-tree prompt cache,
+- Not done this pass (remaining plan phases, still open):
   22-SSM, 23 PagedAttention/continuous batching, 25 audio, 27 cache tiling, 28 distributed,
   29 WASM sandbox, 30 MCTS/PRM, 31 NVMe tiering, 32 TTT, 36 text-to-image, 18-B/19-B follow-ups,
   2.4/2.5 RAM budget.

@@ -64,6 +64,21 @@ static void test_config_reflects_defaults_and_limits(void) {
     server_config_free(&ctx.server_config);
 }
 
+static void test_prompt_cache_json(void) {
+    ApiContext ctx; Config cfg;
+    make_ctx(&ctx, &cfg);
+    ctx.server_config.prompt_cache_mb = 8;
+    char *j = api_prompt_cache_json(&ctx);
+    TEST_ASSERT(j && strstr(j, "\"enabled\":true") && strstr(j, "\"budget_bytes\":8388608"), "budget reported");
+    TEST_ASSERT(strstr(j, "\"entries\":0") != NULL, "empty store");
+    free(j);
+    ctx.server_config.prompt_cache_mb = 0;
+    j = api_prompt_cache_json(&ctx);
+    TEST_ASSERT(strstr(j, "\"enabled\":false") != NULL, "0 MB = disabled");
+    free(j);
+    server_config_free(&ctx.server_config);
+}
+
 static void test_watermark_endpoint_errors(void) {
     ApiContext ctx; Config cfg;
     make_ctx(&ctx, &cfg);
@@ -84,6 +99,7 @@ int main(void) {
     printf("=== API Info Tests ===\n");
     RUN_TEST(test_models_reports_metadata);
     RUN_TEST(test_config_reflects_defaults_and_limits);
+    RUN_TEST(test_prompt_cache_json);
     RUN_TEST(test_watermark_endpoint_errors);
     TEST_SUMMARY();
 }

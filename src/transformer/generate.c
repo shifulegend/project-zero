@@ -195,10 +195,15 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
      * a vision prefill (pos_offset > 0) or for recurrent linear-attention
      * layers, whose state cannot be rewound to a partial prefix. */
     PrefixCache *pcache = gp->prefix_cache;
+    PromptStore *pstore = (pcache && prompt_store_supported(mc)) ? gp->prompt_store : NULL;
     int start_step = 0;
+    int cache_eligible = pcache && pos_offset == 0 && !(mc && mc->has_linear_attn);
     if (pcache) {
-        if (pos_offset == 0 && !(mc && mc->has_linear_attn) && n_prompt > 1) {
+        if (cache_eligible && n_prompt > 1) {
             int lcp = prefix_cache_match(pcache, prompt_tokens, n_prompt);
+            /* Phase 26: a stored snapshot may share more than the live KV. */
+            if (pstore)
+                lcp = prompt_store_restore(pstore, cfg, s, pcache, prompt_tokens, n_prompt, lcp);
             start_step = lcp < n_prompt - 1 ? lcp : n_prompt - 1;
             prefix_cache_truncate(pcache, start_step);
         } else {
@@ -317,6 +322,7 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
 
     stop_matcher_flush(&stop, callback, userdata);
     stop_matcher_free(&stop);
+    if (pstore && cache_eligible) prompt_store_save(pstore, cfg, s, pcache);
     free(gen_history);
     free(prompt_tokens);
 

@@ -72,6 +72,10 @@ void print_usage(const char *prog_name) {
     printf("                      prefix shared with the previous request (multi-turn\n");
     printf("                      chat skips re-reading the history). Per request:\n");
     printf("                      \"cache_prompt\": false.\n");
+    printf("  --prompt-cache-mb <N> RAM for snapshots of several conversations' prompt\n");
+    printf("                      KV so switching between them skips re-reading\n");
+    printf("                      (default: 256, 0 = only the live conversation).\n");
+    printf("  --prompt-cache-min-tokens <N> Shortest sequence worth storing (default 32)\n");
     printf("  --static-dir <path> Serve the web UI from disk instead of the embedded\n");
     printf("                      bundle (dev mode, for iterating on webui/dist/).\n");
 
@@ -179,6 +183,8 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->watermark_detect = NULL;
     args->ui_title = NULL;
     args->prompt_cache = true;
+    args->prompt_cache_mb = 256;
+    args->prompt_cache_min_tokens = 32;
     args->ctx_size = 0;
     args->kv_ram_fraction = 0.0f;
 
@@ -249,6 +255,18 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             args->kv_ram_fraction = (float)atof(argv[++i]);
             if (!(args->kv_ram_fraction > 0.0f && args->kv_ram_fraction <= 0.95f)) {
                 fprintf(stderr, "Error: --kv-ram-fraction must be in (0, 0.95]\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--prompt-cache-mb") == 0 && i + 1 < argc) {
+            args->prompt_cache_mb = atoi(argv[++i]);
+            if (args->prompt_cache_mb < 0) {
+                fprintf(stderr, "Error: --prompt-cache-mb must be >= 0\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--prompt-cache-min-tokens") == 0 && i + 1 < argc) {
+            args->prompt_cache_min_tokens = atoi(argv[++i]);
+            if (args->prompt_cache_min_tokens < 1) {
+                fprintf(stderr, "Error: --prompt-cache-min-tokens must be >= 1\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--prompt-cache") == 0 && i + 1 < argc) {

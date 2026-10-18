@@ -54,6 +54,7 @@ at runtime (`--simd`, `--classifier`, or auto/calibration).
 | `src/kv_cache/` | KV cache strategy/compression, sliding window |
 | `src/sampling/` | RNG, temperature, top-k, top-p, argmax |
 | `src/memory/` | Aligned alloc, mmap |
+| `src/distributed/` | Phase 28 pipeline split: framed tensor RPC, layer plan, worker loop (`--rpc-worker`, `--remote-layers`) |
 | `src/multimodal/` | Vision encoder/projector/bridge, image load (optional/experimental) |
 | `src/cli/` | Arg parsing, REPL, `main.c` (builds `adaptive_ai_engine`); color/progress/live-stats/markdown-render (Phase 22.3, REPL-only) |
 | `include/` | Public headers mirroring `src/` |

@@ -98,6 +98,16 @@ void print_usage(const char *prog_name) {
     printf("  --static-dir <path> Serve the web UI from disk instead of the embedded\n");
     printf("                      bundle (dev mode, for iterating on webui/dist/).\n");
 
+    printf("\nDistributed layers (pipeline across processes/machines):\n");
+    printf("  --rpc-worker <port> Serve a layer range for a coordinator, then exit on error.\n");
+    printf("  --layers <A-B>      Layers [A, B) this worker runs (with --rpc-worker).\n");
+    printf("  --rpc-bind-all      Worker listens on all interfaces (default: 127.0.0.1 only;\n");
+    printf("                      the protocol has no authentication -- trusted LANs only).\n");
+    printf("  --remote-layers <s> Coordinator: host:port@A-B[,host:port@C-D...] — run those\n");
+    printf("                      layers on workers started with the same model file.\n");
+    printf("  --plan-layers <s>   Print a layer split proportional to each node's RAM in GB\n");
+    printf("                      (e.g. 16,8,8 — first entry is this coordinator), then exit.\n");
+
     printf("\nMultimodal (vision):\n");
     printf("  --image <path>      Path to image file for multimodal queries (optional)\n");
     printf("  --vision <path>     Path to vision.bin encoder weights\n");
@@ -204,6 +214,11 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->chat_format = -1;
     args->best_of = 1;
     args->queue_size = 0;
+    args->rpc_worker_port = 0;
+    args->worker_layers = NULL;
+    args->rpc_bind_all = false;
+    args->remote_layers = NULL;
+    args->plan_layers = NULL;
     args->queue_timeout_s = 120;
     args->best_of_max = BEST_OF_MAX_DEFAULT;
     args->prompt_cache = true;
@@ -329,6 +344,20 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
                 fprintf(stderr, "Error: --prompt-cache must be on or off\n");
                 return TN_ERR_INVALID_CONFIG;
             }
+        } else if (strcmp(argv[i], "--rpc-worker") == 0 && i + 1 < argc) {
+            args->rpc_worker_port = atoi(argv[++i]);
+            if (args->rpc_worker_port <= 0 || args->rpc_worker_port > 65535) {
+                fprintf(stderr, "Error: --rpc-worker must be a port 1-65535\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--layers") == 0 && i + 1 < argc) {
+            args->worker_layers = argv[++i];
+        } else if (strcmp(argv[i], "--rpc-bind-all") == 0) {
+            args->rpc_bind_all = true;
+        } else if (strcmp(argv[i], "--remote-layers") == 0 && i + 1 < argc) {
+            args->remote_layers = argv[++i];
+        } else if (strcmp(argv[i], "--plan-layers") == 0 && i + 1 < argc) {
+            args->plan_layers = argv[++i];
         } else if (strcmp(argv[i], "--queue-size") == 0 && i + 1 < argc) {
             args->queue_size = atoi(argv[++i]);
             if (args->queue_size < 0) {

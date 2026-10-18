@@ -8,6 +8,7 @@
 #include "sampling/sampler_chain.h"
 #include "sampling/logprob.h"
 #include "transformer/stop_seq.h"
+#include "distributed/dist_plan.h"
 #include "cli/timer.h"
 #include "core/step_timing.h"
 #include "tokenizer/tokenizer.h"
@@ -202,8 +203,12 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
      * a vision prefill (pos_offset > 0) or for recurrent linear-attention
      * layers, whose state cannot be rewound to a partial prefix. */
     PrefixCache *pcache = gp->prefix_cache;
-    /* Snapshots copy F32 KV rows; with --kv-type i8 only the live prefix cache applies. */
-    PromptStore *pstore = (pcache && prompt_store_supported(mc) && s->key_cache)
+    /* Snapshots copy F32 KV rows; with --kv-type i8 only the live prefix cache applies.
+     * 2026-10-18: also off under --remote-layers — a snapshot restores only the local
+     * layers' KV, while each worker still holds the KV of the last prompt it saw. The
+     * live prefix cache stays valid there: workers mirror the coordinator's last sequence. */
+    PromptStore *pstore = (pcache && prompt_store_supported(mc) && s->key_cache &&
+                           !dist_plan_active())
                           ? gp->prompt_store : NULL;
     int start_step = 0;
     int cache_eligible = pcache && pos_offset == 0 && !moe_is_recurrent(mc);
@@ -246,6 +251,10 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
         int token = (step < n_prompt) ? prompt_tokens[step] : next;
 
         float *logits = transformer_forward(token, abs_pos, cfg, w, s, mc, tp);
+        if (dist_plan_active() && dist_plan_active()->failed) {
+            finish = GEN_FINISH_ERROR;   /* a remote layer range is unreachable */
+            break;
+        }
         if (pcache && pos_offset == 0) prefix_cache_set(pcache, abs_pos, token);
 
         /* Step 2: Sampling */

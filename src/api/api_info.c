@@ -7,6 +7,8 @@
 #include "threading/cache_probe.h"
 #include "transformer/attn_tiled.h"
 #include "kv_cache/kv_quant_ops.h"
+#include "distributed/dist_plan.h"
+#include <stdio.h>
 #include "math/simd_dispatch.h"
 
 int api_max_tokens_limit(const ApiContext *ctx) {
@@ -143,6 +145,17 @@ char *api_config_json(const ApiContext *ctx) {
         jb_raw(&jb, ","); jb_key(&jb, "attention_kernel"); jb_str(&jb, attn_kernel_name(attn_kernel_get()));
         jb_raw(&jb, ","); jb_key(&jb, "attention_tile"); jb_int(&jb, attn_tile_get());
         jb_raw(&jb, ","); jb_key(&jb, "attention_parallel_min_ctx"); jb_int(&jb, attn_parallel_min_ctx_get());
+        jb_raw(&jb, ","); jb_key(&jb, "distributed"); jb_raw(&jb, "[");
+        DistPlan *dp = dist_plan_active();
+        for (int i = 0; dp && i < dp->n; i++) {
+            if (i) jb_raw(&jb, ",");
+            jb_raw(&jb, "{"); jb_key(&jb, "host"); jb_str(&jb, dp->nodes[i].host);
+            jb_raw(&jb, ","); jb_key(&jb, "port"); jb_int(&jb, dp->nodes[i].port);
+            jb_raw(&jb, ","); jb_key(&jb, "layers");
+            char lr[32]; snprintf(lr, sizeof(lr), "%d-%d", dp->nodes[i].start, dp->nodes[i].end);
+            jb_str(&jb, lr); jb_raw(&jb, "}");
+        }
+        jb_raw(&jb, "]");
         jb_raw(&jb, ","); jb_key(&jb, "cache"); jb_raw(&jb, "{");
         jb_key(&jb, "l1d_bytes"); jb_int(&jb, ci->l1d_bytes);
         jb_raw(&jb, ","); jb_key(&jb, "l2_bytes"); jb_int(&jb, ci->l2_bytes);

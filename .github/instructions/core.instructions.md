@@ -20,3 +20,6 @@ applyTo: "src/**,include/**"
   slice. Concurrency changes there need `make test-tsan` (test_forward is in TSAN_TESTS).
 - Generic KV may be int8 (`RunState.kv_type == KV_TYPE_I8`: `key_cache` is NULL, use
   `key_cache_q`/`key_scale`). Any new reader/writer of the dense KV cache must handle both.
+- Distributed (`--remote-layers`, Phase 28): layers can run in a worker process. Per-layer state
+  that maps position → cache slot (sliding window) is part of the RPC contract; anything that
+  restores/copies KV for all layers (prompt snapshots) must be bypassed when `dist_plan_active()`.

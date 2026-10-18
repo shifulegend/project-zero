@@ -4,6 +4,7 @@
 #include <time.h>
 #include "transformer/forward.h"
 #include "transformer/mamba.h"
+#include "distributed/dist_plan.h"
 #include "core/moe_config.h"
 #include "core/debug.h"
 #include "core/step_timing.h"
@@ -68,7 +69,16 @@ float *transformer_forward(int token, int pos, const Config *cfg,
   if (g_profile_enabled) t1 = prof_now();
 
     /* Step 2: Run through all transformer layers */
+    DistPlan *dist = dist_plan_active();
     for (int l = 0; l < cfg->n_layers; l++) {
+      /* Phase 28: a contiguous range assigned to a remote worker runs there. */
+      RemoteNode *rn = dist ? dist_plan_node_starting_at(dist, l) : NULL;
+      if (rn) {
+        if (dist_forward_remote(dist, rn, s->x, pos, s->sw.system_prompt_len) != TN_OK)
+          return s->logits;
+        l = rn->end - 1;
+        continue;
+      }
       int64_t la = 0, lb = 0;
       if (g_profile_enabled) la = prof_now();
       if (mc && mc->is_ssm) {
@@ -251,7 +261,7 @@ TernaryError transformer_forward_batch(const int *tokens, int pos, int n_tokens,
                                         RunState *s, SpecBatchScratch *sb,
                                         const MoEConfig *mc, ThreadPool *tp,
                                         float *logits_out) {
-  if (moe_is_recurrent(mc)) {
+  if (moe_is_recurrent(mc) || dist_plan_active()) {
     return TN_ERR_UNSUPPORTED;
   }
 
@@ -322,4 +332,16 @@ TernaryError transformer_forward_batch(const int *tokens, int pos, int n_tokens,
   }
 
   return TN_OK;
+}
+
+/* One layer (attention + FFN, or a Mamba block) — the unit both the local
+ * layer loop and a distributed worker (Phase 28) execute. */
+void transformer_layer_forward(RunState *s, const TransformerWeights *w, const Config *cfg,
+                               const MoEConfig *mc, int layer, int pos, ThreadPool *tp) {
+  if (mc && mc->is_ssm) {
+    mamba_block_forward(s->x, s->xb, s->xb2, s->mamba, w->mamba, cfg, mc, layer, pos, tp);
+    return;
+  }
+  attention_forward(s, w, cfg, mc, layer, pos, tp);
+  ffn_forward(s, w, cfg, mc, layer, tp);
 }

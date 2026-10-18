@@ -2370,7 +2370,30 @@ Maximizes L1/L2 cache utilization by tiling matrix operations into cache-sized b
 
 ---
 
-## PHASE 28: Distributed Inference (RPC/MPI) — Network Tensor Router
+## PHASE 28: Distributed Inference (RPC/MPI) — Network Tensor Router ✅ pipeline split done 2026-10-18
+
+**As built:** `include/distributed/{tensor_rpc,dist_plan}.h` + `src/distributed/`.
+- **28.2 transport** (`tensor_rpc.c`): framed TCP — 16-byte header (magic `PZT1`, type, arg,
+  count) + float payload; INFO (worker geometry + layer range, validated by the coordinator
+  against its own model), FORWARD (arg = position; payload = hidden state + the coordinator's
+  sliding-window pinned length), ERROR, BYE. `TCP_NODELAY`, loopback-only unless `--rpc-bind-all`
+  (no auth — trusted LANs only).
+- **28.3 forward**: a worker (`--rpc-worker PORT --layers A-B`) loads the same model file and runs
+  only its layer range with its own KV/SSM state; the coordinator (`--remote-layers
+  host:port@A-B[,...]`) runs embedding, its local layers and the classifier, and ships the hidden
+  state through `transformer_layer_forward()`'s hook whenever the layer loop reaches a remote
+  range. Works in CLI, REPL and `--server`; `/v1/config runtime.distributed` lists the nodes and the
+  web UI header shows a `dist N nodes` tag. A transport failure stops generation with an error.
+  Batched prefill and speculative decoding refuse to run distributed (single-token path only);
+  prompt snapshots (`--prompt-cache-mb`) are bypassed (they restore only local KV), the live
+  prefix cache still applies.
+- **28.1 planner**: `dist_plan_layers_by_ram()` — contiguous ranges proportional to RAM, ≥1
+  layer per node; `--plan-layers 16,8,8` prints the split and the matching flags.
+- Verified: split run (layers 15-30 on a worker) gives byte-identical greedy output to a single
+  process (SmolLM2-135M, 48 vs 54 tok/s on loopback); `tests/test_tensor_rpc.c` (in TSAN_TESTS).
+- **Not done:** UDP auto-discovery (static node list instead — explicit and safer), MPI.
+
+*Original stub, kept for reference:*
 
 Splits a model across multiple machines on the same network for models too large for a single device.
 

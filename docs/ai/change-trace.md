@@ -3,6 +3,15 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-18.
 
+### 2026-10-18 — Phase 28: distributed pipeline inference
+- New: `distributed/tensor_rpc` (framed TCP), `distributed/dist_plan` (parse, RAM planner,
+  connect/INFO validation, worker loop, remote forward); flags `--rpc-worker --layers
+  --rpc-bind-all --remote-layers --plan-layers`; forward-loop hook; `/v1/config
+  runtime.distributed`; UI `dist N nodes` tag; `tests/test_tensor_rpc.c` (TSAN_TESTS); CMake
+  DISTRIBUTED_SOURCES.
+- Fixed: worker sliding-window init; prompt snapshots bypassed when distributed.
+- Verified: gcc+clang release/test/debug, TSan, golden Paris, split == single md5, live server.
+
 ### 2026-10-18 — Fused Q6_K kernel (plan 37.17)
 - New: `math/matmul_q6k` (+ `tests/test_q6k_matmul.c`), `WEIGHT_TYPE_Q6K`, loader/dispatch
   wiring (single + batched); added to the Makefile/CMake AVX2 TU lists.

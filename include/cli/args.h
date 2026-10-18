@@ -79,6 +79,12 @@ typedef struct {
     char  *watermark_detect;   /* --watermark-detect <text>: score text, exit   */
     char  *ui_title;           /* --ui-title <name>: web UI brand name          */
     int    chat_format;        /* --chat-format: -1 auto, else ChatTemplateType */
+    /* Phase 28: distributed layers */
+    int    rpc_worker_port;    /* --rpc-worker <port>: serve --layers, exit      */
+    char  *worker_layers;      /* --layers A-B: range a worker serves           */
+    bool   rpc_bind_all;       /* --rpc-bind-all: worker listens on 0.0.0.0     */
+    char  *remote_layers;      /* --remote-layers host:port@A-B[,...]           */
+    char  *plan_layers;        /* --plan-layers GB,GB,...: print a RAM split    */
     int    queue_size;         /* --queue-size <N>: waiting chat requests (0)   */
     int    queue_timeout_s;    /* --queue-timeout <s>: max wait (120)           */
     int    best_of;            /* --best-of <N>: candidates, keep most likely (1) */

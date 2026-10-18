@@ -3,6 +3,15 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-10-18.
 
+### 2026-10-18 — Phase 28 as pipeline (layer) parallelism over a static node list
+
+- Layer-range pipelining needs only one hidden-state vector (dim floats) per token per hop —
+  cheap enough for a LAN — and each worker keeps its own KV for its layers, so no KV crosses the
+  wire. Tensor parallelism would need several all-reduces per layer. Static `host:port@A-B`
+  list instead of UDP broadcast discovery: explicit, no surprise peers, and the protocol has no
+  auth (workers bind loopback unless `--rpc-bind-all`). Workers validate geometry via INFO so a
+  mismatched model file fails at connect time instead of producing garbage.
+
 ### 2026-10-18 — Q6_K gets a fused zero-copy kernel (was dequantised to F32)
 
 - Q4_K_M — the most common GGUF quant — stores attn_v/ffn_down as Q6_K; dequantising them to

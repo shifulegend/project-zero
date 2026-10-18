@@ -33,6 +33,10 @@
   returns NULL" (false on macOS overcommit).
 - Use the overflow-checked size helpers for every multi-factor allocation.
 - All SIMD buffers are 64-byte aligned (`TN_SIMD_ALIGN`, `tn_aligned_*`).
+- **Distributed layers (Phase 28).** With `--remote-layers`, some layers' KV/SSM state lives in
+  a worker process. Per-layer position → slot mapping (sliding window) travels in the FORWARD
+  frame; any feature that saves/restores KV for all layers (prompt snapshots) must be bypassed
+  when `dist_plan_active()` — it would silently mix two prompts' caches.
 
 ## Code organization
 - C99 for engine; C++17 only where already used (chat template). Match existing style

@@ -5,6 +5,28 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-10-18.
 
+### 2026-10-18 — Distributed (Phase 28) worker produced garbage: un-initialised sliding window
+
+- The worker ran its layers with a zeroed `s->sw`, so `sw_*` mapped positions to the wrong KV
+  slots and the split run diverged from the single process after a few tokens. Fix: FORWARD
+  carries the coordinator's pinned length; the worker calls `sw_init()` at pos 0 or when it
+  changes. Lesson: anything that maps position → cache slot is part of the remote contract.
+  Verified by md5 of the greedy output (split == single process).
+- Found in the same pass: prompt snapshots (`--prompt-cache-mb`) would restore only the
+  coordinator's layers while each worker kept the last prompt's KV → silent mixing. Snapshots
+  are now bypassed when `--remote-layers` is active (live prefix cache stays; verified with the
+  A/B/A request sequence giving identical replies to the single-process server).
+
+### 2026-10-18 — Portable dist build silently disabled SIMD-aware heuristics (compile-time gating in baseline TUs)
+
+- `cpu_probe.c` and `calibration.c` are compiled at the x86-64-v2 baseline in `make dist`, so
+  their `#if TN_HAS_AVX512/AVX2` blocks were always false there: the AVX-512 thread heuristic
+  never applied and auto-calibration only benchmarked "scalar", even though the binary
+  dispatches AVX2/AVX-512 at runtime. Surfaced as two dist-only compiler warnings (unused
+  function / variable). Fix: runtime CPUID check in cpu_probe; `TN_FORCE_DISPATCH_ALL` for
+  calibration.c (as simd_dispatch.c). Lesson: in baseline-ISA TUs, decide SIMD-dependent
+  behaviour at runtime, never with TN_HAS_* macros.
+
 ### 2026-10-18 — Two bugs surfaced by adding a new architecture (Mamba)
 
 - **MoEConfig only populated for a hardcoded arch list.** `load_gguf_model()` called

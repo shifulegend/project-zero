@@ -95,9 +95,15 @@ void mamba_block_forward(float *x, float *xb, float *xb2, MambaState *ms,
                          const MambaWeights *mw, const Config *cfg, const MoEConfig *mc,
                          int layer, int pos, ThreadPool *tp) {
     (void)mc;
-    if (layer == 0 && pos == 0) mamba_state_reset(ms);
     const int dim = cfg->dim, di = ms->d_inner, ds = ms->d_state;
     const int dc = ms->d_conv, dr = ms->dt_rank, cw = dc > 1 ? dc - 1 : 1;
+    /* Each layer resets its own state at position 0 (2026-10-18: was "layer 0
+     * resets all", which a distributed worker running layers a..b, a > 0,
+     * would never trigger). */
+    if (pos == 0) {
+        memset(ms->conv_state + (size_t)layer * di * cw, 0, (size_t)di * cw * sizeof(float));
+        memset(ms->ssm_state + (size_t)layer * di * ds, 0, (size_t)di * ds * sizeof(float));
+    }
 
     /* norm + in-projection -> [u | z] */
     tn_rmsnorm(xb, x, mw->norm[layer], dim, cfg->rms_norm_eps);

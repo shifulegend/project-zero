@@ -17,6 +17,11 @@
       <span class="sep">·</span>
       <span class="dim mono" title="SIMD backend · threads · attention kernel">{runtime.simd} · {runtime.threads}T · attn {runtime.attention_kernel}</span>
     {/if}
+    {#if runtime?.distributed?.length}
+      <span class="tag mono" title={runtime.distributed.map((n) => `layers ${n.layers} → ${n.host}:${n.port}`).join('\n')}>
+        dist {runtime.distributed.length + 1} nodes
+      </span>
+    {/if}
     {#if modelInfo.vision}<span class="tag">vision</span>{/if}
     {#if modelInfo.moe}<span class="tag">MoE</span>{/if}
     {#if modelInfo.recurrent}<span class="tag" title="Recurrent state: prompt caching is not used">SSM / recurrent</span>{/if}

@@ -58,7 +58,7 @@ void         mamba_state_reset(MambaState *ms);
 
 /*
  * One Mamba block, in place on x[dim] (residual included). `xb`/`xb2` are
- * dim-sized scratch. Resets the recurrent state when layer == 0 && pos == 0.
+ * dim-sized scratch. Resets this layer's recurrent state when pos == 0.
  */
 void mamba_block_forward(float *x, float *xb, float *xb2, MambaState *ms,
                          const MambaWeights *mw, const Config *cfg, const MoEConfig *mc,

@@ -61,5 +61,9 @@ TernaryError transformer_forward_batch(const int *tokens, int pos, int n_tokens,
                                         const MoEConfig *mc, ThreadPool *tp,
                                         float *logits_out);
 
+/* One decoder layer in place on s->x (attention + FFN, or Mamba block). */
+void transformer_layer_forward(RunState *s, const TransformerWeights *w, const Config *cfg,
+                               const MoEConfig *mc, int layer, int pos, ThreadPool *tp);
+
 #endif /* TN_FORWARD_H */
 

@@ -138,5 +138,6 @@ CORS (`--cors`, `--cors-origin <origin>`, repeatable or `*`) and API-key auth (`
 explicitly for anything beyond loopback experimentation. Only one chat completion runs at a
 time; by default a second concurrent request gets `429 Too Many Requests`; start the server with
 `--queue-size N` (and optionally `--queue-timeout S`) to let up to N requests wait their turn instead
-(the web UI shows the queue position). Either way, other routes (static assets, `/metrics`, `/docs`, `/health` are never blocked by an in-flight
+(the web UI shows the queue position). A server started with `--remote-layers` (Phase 28) shows a
+`dist N nodes` tag in the header; hover it for each node's layer range. Either way, other routes (static assets, `/metrics`, `/docs`, `/health` are never blocked by an in-flight
 generation).

@@ -309,6 +309,11 @@ set(RAG_SOURCES
     src/rag/vector_db.c
 )
 
+set(DISTRIBUTED_SOURCES
+    src/distributed/tensor_rpc.c
+    src/distributed/dist_plan.c
+)
+
 set(AGENT_SOURCES
     src/agent/agent_loop.c
     src/agent/cmd_exec.c
@@ -333,6 +338,7 @@ set(SOURCES
     ${API_SOURCES}
     ${RAG_SOURCES}
     ${AGENT_SOURCES}
+    ${DISTRIBUTED_SOURCES}
 )
 
 # ---------------------------------------------------------------------------

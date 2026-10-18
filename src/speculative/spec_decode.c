@@ -1,4 +1,5 @@
 #include "speculative/spec_decode.h"
+#include "distributed/dist_plan.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -95,6 +96,10 @@ void speculative_generate_with_callback(const Config *cfg, const TransformerWeig
     if (!prompt) prompt = "";
     tn_step_timing_reset();
 
+    if (dist_plan_active()) {
+        fprintf(stderr, "[spec] Speculative decoding is not supported with --remote-layers -- refusing.\n");
+        return;
+    }
     if (moe_is_recurrent(mc)) {
         fprintf(stderr, "[spec] Speculative decoding is not supported for recurrent-state "
                 "models (Qwen3.5/3.6 linear attention, Mamba SSM) -- refusing.\n");

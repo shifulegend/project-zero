@@ -25,6 +25,7 @@
 #include "threading/cache_probe.h"
 #include "sampling/watermark_text.h"
 #include "reasoning/best_of.h"
+#include "distributed/dist_plan.h"
 #include "cli/model_load.h"
 #include "cli/repl.h"
 #include "cli/progress.h"
@@ -635,6 +636,67 @@ int main(int argc, char **argv) {
                ci->l1d_bytes / 1024, ci->l2_bytes / 1024, tn_cache_source_name(ci->source));
     }
 
+    /* Phase 28.1: --plan-layers prints a RAM-proportional split and exits. */
+    if (args.plan_layers) {
+        long long ram[DIST_MAX_NODES];
+        int starts[DIST_MAX_NODES], ends[DIST_MAX_NODES], n = 0;
+        char buf[256];
+        snprintf(buf, sizeof(buf), "%s", args.plan_layers);
+        char *save = NULL;
+        for (char *t = strtok_r(buf, ",", &save); t && n < DIST_MAX_NODES; t = strtok_r(NULL, ",", &save))
+            ram[n++] = (long long)(atof(t) * 1073741824.0);
+        if (n == 0) {
+            fprintf(stderr, "Error: --plan-layers needs GB,GB,... (max %d nodes)\n", DIST_MAX_NODES);
+        } else {
+            dist_plan_layers_by_ram(p.n_layers, ram, n, starts, ends);
+            printf("Layer plan for %d layers over %d node(s):\n", p.n_layers, n);
+            for (int i = 0; i < n; i++)
+                printf("  node %d (%.1f GB): layers %d-%d%s\n", i, (double)ram[i] / 1073741824.0,
+                       starts[i], ends[i], i == 0 ? "  (coordinator)" : "");
+            if (n > 1) {
+                printf("Coordinator: --remote-layers ");
+                for (int i = 1; i < n; i++)
+                    printf("%sHOST%d:PORT@%d-%d", i > 1 ? "," : "", i, starts[i], ends[i]);
+                printf("\nWorker i:    --rpc-worker PORT --layers <its range>\n");
+            }
+        }
+        args.prompt = NULL;
+        args.server_mode = 0;
+        goto cleanup_after_run;
+    }
+
+    /* Phase 28: worker mode serves a layer range and never generates. */
+    if (args.rpc_worker_port > 0) {
+        int a = 0, b = p.n_layers;
+        if (!args.worker_layers || sscanf(args.worker_layers, "%d-%d", &a, &b) != 2 ||
+            a < 0 || b > p.n_layers || a >= b) {
+            fprintf(stderr, "Error: --rpc-worker needs --layers A-B within 0-%d\n", p.n_layers);
+        } else {
+            dist_worker_serve(args.rpc_worker_port, !args.rpc_bind_all, a, b, &p, &w, s, &mc, tp);
+        }
+        args.prompt = NULL;
+        args.server_mode = 0;
+        goto cleanup_after_run;
+    }
+
+    /* Phase 28: coordinator — connect to the workers for remote layer ranges. */
+    static DistPlan dist_plan;
+    int dist_active = 0;
+    if (args.remote_layers) {
+        if (draft_active) {
+            fprintf(stderr, "Error: --draft-model cannot be combined with --remote-layers\n");
+            goto cleanup_after_run;
+        }
+        if (dist_plan_parse(&dist_plan, args.remote_layers, p.n_layers) != 0 ||
+            dist_plan_connect(&dist_plan, &p, &mc) != TN_OK) {
+            fprintf(stderr, "Error: could not set up --remote-layers\n");
+            dist_plan_close(&dist_plan);
+            goto cleanup_after_run;
+        }
+        dist_plan_set_active(&dist_plan);
+        dist_active = 1;
+    }
+
     /* Execution Mode */
     if (args.watermark_detect) {
         /* Phase 33: offline watermark detection — tokenize the text with this
@@ -748,6 +810,9 @@ int main(int argc, char **argv) {
                  draft_active ? &draft_model : NULL);
     }
 
+    if (dist_active) dist_plan_close(&dist_plan);
+
+cleanup_after_run:
     /* Cleanup */
     if (draft_active) draft_model_free(&draft_model);
     if (lora_active) lora_free(&lora);

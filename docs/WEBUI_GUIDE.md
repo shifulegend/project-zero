@@ -32,7 +32,9 @@ after a change).
   - *Sampling*: temperature, top-p, top-k, min-p, max tokens (capped by the model context or
     `--max-tokens-limit`).
   - *Repetition*: repetition / presence / frequency penalty and the penalty window.
-  - *Output*: random or fixed seed (reproducible replies), JSON mode, stop sequences.
+  - *Output*: random or fixed seed (reproducible replies), JSON mode, reuse prompt cache
+    (skips re-reading the history already in the KV cache — same output, faster turns), stop
+    sequences.
   - *Watermark*: watermark replies, key (blank = the server's `--watermark-key`), γ and δ.
   - *System prompt*: applied to every conversation (chat-template models).
   Your changes are remembered in this browser; the badge on **Settings** counts how many differ
@@ -41,8 +43,8 @@ after a change).
   so the model remembers earlier messages).
 - **Watermark** — paste text to check whether it carries this server's watermark (z-score
   against the threshold; uses `POST /v1/watermark/detect`).
-- **Reply footer** — completion/prompt token counts and why the reply ended (complete, hit max
-  tokens, stopped).
+- **Reply footer** — completion/prompt token counts (with how many prompt tokens came from the
+  prompt cache) and why the reply ended (complete, hit max tokens, stopped).
 - **Theme toggle** (top bar) — cycles dark → light → auto (follows OS preference).
 - **Image upload** (paperclip icon, composer) — only rendered when the server reports vision
   is configured; attach an image, then send a message referencing it. Requires starting the
@@ -122,7 +124,8 @@ the CLI.
 Chat completion requests accept, besides `messages`/`stream`/`max_tokens`/`temperature`/`top_p`:
 `top_k`, `min_p`, `repetition_penalty`, `presence_penalty`, `frequency_penalty`,
 `penalty_last_n`, `seed`, `stop` (string or array), `response_format: {"type":"json_object"}`
-and `watermark: {"enabled", "key", "gamma", "delta"}`. Omitted fields use the server defaults
+`watermark: {"enabled", "key", "gamma", "delta"}` and `cache_prompt` (default from
+`--prompt-cache`, on). Omitted fields use the server defaults
 (the CLI flags). Responses carry real `usage` token counts and `finish_reason`
 (`stop` | `length` | `cancelled`); the final streaming chunk includes `usage` too.
 

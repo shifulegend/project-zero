@@ -3,6 +3,16 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-18.
 
+### 2026-10-18 — Phase 21.5: KV prefix reuse (context caching)
+- New: `kv_cache/prefix_cache` (+ `tests/test_prefix_cache.c`), `tests/e2e_prompt_cache.sh`.
+- Changed: `generate_ex()` (resume at the cached LCP, record forwarded tokens,
+  `GenerationStats.cached_tokens`), `ApiContext.prefix_cache` (lazy, under generation_mutex),
+  `ChatRequest.cache_prompt`, `ServerConfig.prompt_cache` / `--prompt-cache`, `/v1/config`
+  (`defaults.cache_prompt`, `features.prompt_cache`), SSE/JSON usage
+  `prompt_tokens_details.cached_tokens`, OpenAPI text, web UI toggle + "(N cached)" footer.
+- Verified: gcc+clang release/test/debug green; golden Paris; e2e identical output on/off over
+  3 turns; repeat 516-token request 8.6 s → 0.21 s; browser multi-turn shows cached tokens.
+
 ### 2026-10-18 — Phase 22-UI (front-end configurability) + Phase 33 (watermarking)
 - Rationale: `decision-log.md` 2026-10-18; bugs found/fixed: `mistakes.md` 2026-10-18.
 - New modules (each with its own test): `sampling/sampler_chain` (test_sampler_chain),

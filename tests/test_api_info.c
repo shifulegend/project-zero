@@ -54,6 +54,7 @@ static void test_config_reflects_defaults_and_limits(void) {
     TEST_ASSERT(strstr(j, "\"top_k\":33") != NULL, "top_k default");
     TEST_ASSERT(strstr(j, "\"system_prompt\":\"Say \\\"hi\\\"\"") != NULL, "escaped system prompt");
     TEST_ASSERT(strstr(j, "\"stop\":[\"###\"]") != NULL, "stop list");
+    TEST_ASSERT(strstr(j, "\"cache_prompt\":true") != NULL, "prompt cache on by default");
     TEST_ASSERT(strstr(j, "\"max_tokens\":{\"min\":1,\"max\":1000") != NULL, "max_tokens range");
     TEST_ASSERT(strstr(j, "\"top_k\":{\"min\":0,\"max\":32000") != NULL, "top_k range = vocab");
     TEST_ASSERT_EQ(api_max_tokens_limit(&ctx), 1000, "explicit limit");

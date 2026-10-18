@@ -87,6 +87,7 @@ char *api_config_json(const ApiContext *ctx) {
     jb_raw(&jb, ","); jb_key(&jb, "penalty_last_n");     jb_int(&jb, ss->penalty_last_n);
     jb_raw(&jb, ","); jb_key(&jb, "seed");               jb_int(&jb, def.seed);
     jb_raw(&jb, ","); jb_key(&jb, "json_mode");          jb_bool(&jb, def.json_mode);
+    jb_raw(&jb, ","); jb_key(&jb, "cache_prompt");       jb_bool(&jb, ctx && ctx->server_config.prompt_cache);
     jb_raw(&jb, ","); jb_key(&jb, "system_prompt");      jb_str(&jb, def.system_prompt ? def.system_prompt : "");
     jb_raw(&jb, ","); jb_key(&jb, "stop"); jb_raw(&jb, "[");
     for (int i = 0; i < def.n_stop; i++) { if (i) jb_raw(&jb, ","); jb_str(&jb, def.stop[i]); }
@@ -122,6 +123,9 @@ char *api_config_json(const ApiContext *ctx) {
     jb_raw(&jb, ","); jb_key(&jb, "watermark"); jb_bool(&jb, 1);
     jb_raw(&jb, ","); jb_key(&jb, "vision"); jb_bool(&jb, vision_enabled(ctx));
     jb_raw(&jb, ","); jb_key(&jb, "cancel"); jb_bool(&jb, 1);
+    /* Recurrent linear-attention state cannot resume from a partial prefix. */
+    jb_raw(&jb, ","); jb_key(&jb, "prompt_cache");
+    jb_bool(&jb, !(ctx && ctx->moe_cfg && ctx->moe_cfg->has_linear_attn));
     jb_raw(&jb, ","); jb_key(&jb, "metrics"); jb_bool(&jb, ctx && ctx->server_config.metrics.enabled);
     jb_raw(&jb, ","); jb_key(&jb, "system_prompt"); jb_bool(&jb, ctx && ctx->tok && ctx->tok->chat_template != NULL);
     jb_raw(&jb, "}");

@@ -13,6 +13,7 @@
 #include <stdbool.h>
 #include "sampling/sampler_chain.h"
 #include "sampling/watermark.h"
+#include "kv_cache/prefix_cache.h"
 
 #define GEN_MAX_STOP 8
 
@@ -27,6 +28,7 @@ typedef enum {
 typedef struct {
     int             prompt_tokens;
     int             completion_tokens;
+    int             cached_tokens;  /* prompt tokens reused from the prefix cache */
     GenFinishReason finish_reason;
     double          tokens_per_sec; /* 0 when fewer than 2 tokens */
 } GenerationStats;
@@ -56,6 +58,11 @@ typedef struct {
     /* OpenAI-style stop strings (borrowed). */
     const char *stop[GEN_MAX_STOP];
     int         n_stop;
+
+    /* Phase 21.5: KV prefix reuse across calls on the same RunState. NULL =
+     * disabled (always recompute the whole prompt). Owned by the caller
+     * (the API server keeps one per RunState). */
+    PrefixCache *prefix_cache;
 
     /* Optional out-param: token counts + why generation ended. */
     GenerationStats *stats;

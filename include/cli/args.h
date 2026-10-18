@@ -78,6 +78,8 @@ typedef struct {
     float  watermark_delta;    /* --watermark-delta <d> (default 2.0)           */
     char  *watermark_detect;   /* --watermark-detect <text>: score text, exit   */
     char  *ui_title;           /* --ui-title <name>: web UI brand name          */
+    bool   prompt_cache;       /* --prompt-cache on|off: server KV prefix reuse
+                                  default (on)                                  */
 } CliArgs;
 
 // Parse CLI arguments into the CliArgs struct

@@ -2013,12 +2013,22 @@ Turns the C engine into a headless daemon that any frontend (Cline, OpenHands, S
   - On completion: `data: [DONE]\n\n`
 - Hooks directly into the `generate()` loop — each decoded token is immediately flushed over the TCP socket.
 
-### 21.5 — KV Cache Prefix Matching (Context Caching)
-- File: `include/api/prefix_cache.h` + `src/api/prefix_cache.c`
-- `int find_prefix_match(const int *new_tokens, int new_len, const int *cached_tokens, int cached_len);`
-  - Returns the length of the longest common prefix.
-  - If prefix match is found, skip re-computing those tokens — reuse existing KV cache entries.
-  - Drops Time-To-First-Token from seconds to milliseconds for repeated API calls.
+### 21.5 — KV Cache Prefix Matching (Context Caching) ✅ done 2026-10-18
+- As built: `include/kv_cache/prefix_cache.h` + `src/kv_cache/prefix_cache.c` (lives with the KV
+  cache, not the API — any `generate_ex()` caller can use it via `GenerationParams.prefix_cache`).
+  `prefix_cache_match()` returns the longest common prefix with the token record of what is in
+  the KV cache; `generate_ex()` starts the prompt loop there (always recomputing the last prompt
+  token for its logits) and records every forwarded token.
+- Invalidation: window wrap (position ≥ capacity), vision prefill (`pos_offset > 0`), any
+  request with `cache_prompt: false`; disabled for recurrent linear-attention models
+  (Qwen3.5/3.6 hybrid — `features.prompt_cache: false` in `/v1/config`).
+- Configurable: `--prompt-cache on|off` (server default, on), per-request `"cache_prompt"`, web
+  UI toggle; responses report `usage.prompt_tokens_details.cached_tokens`.
+- Measured (SmolLM2-135M F16, 4 threads, 516-token prompt): repeat request 8.6 s → 0.21 s;
+  multi-turn chat turns 5–7× faster. Output byte-identical with/without cache
+  (`tests/e2e_prompt_cache.sh`, `tests/test_prefix_cache.c`).
+- Not covered here: multi-entry radix-tree cache with LRU (Phase 26) — this is the single-slot
+  form (one cached sequence per RunState), which is what a single-generation server can use.
 
 ---
 

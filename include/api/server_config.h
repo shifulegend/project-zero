@@ -52,6 +52,7 @@ typedef struct {
     int              max_tokens_limit;
     char            *model_id;  /* reported by /v1/models; main.c sets the model file's basename */
     char            *ui_title;  /* --ui-title: web UI brand name (default "project-zero") */
+    int              prompt_cache; /* --prompt-cache on|off: default for KV prefix reuse (1) */
 } ServerConfig;
 
 /* Zero-initialise. Must be called before use. */

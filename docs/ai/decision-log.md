@@ -3,6 +3,18 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-10-18.
 
+### 2026-10-18 — Phase 21.5 prefix cache: single slot in the KV module, resume-not-copy, on by default
+
+- Decision: keep one token record per RunState (`kv_cache/prefix_cache`) and resume the prompt
+  loop at the longest common prefix, instead of snapshotting/copying KV blocks. The server runs
+  one generation at a time on one RunState, so a single slot captures the dominant win
+  (multi-turn chat re-sends the history) with zero KV copying. A multi-entry radix tree + LRU
+  (Phase 26) needs per-entry KV storage and stays open.
+- On by default (`--prompt-cache on`): verified output-identical, so there is no quality
+  trade-off; per-request `cache_prompt: false` and the UI toggle exist for benchmarking/debug.
+- Disabled automatically where unsound: recurrent linear-attention state (Qwen3.5/3.6), after a
+  vision prefill, and once positions wrap the sliding window.
+
 ### 2026-10-18 — Front-end configurability (Phase 22-UI) + Phase 33 watermarking: server-published config, one GenerationParams value, statistical (not HMAC) green list
 
 - Context: goal "complete the missing features of the architecture doc + implementation plan,
@@ -33,7 +45,7 @@
 - Branding: new UI pieces follow `docs/design/ui-ux-principles.md` (terminal `>_` mark,
   monospace for values/labels, single green accent for state only, borders not blur). The title
   is configurable (`--ui-title`, default `project-zero`) and comes from `/v1/config`.
-- Not done this pass (remaining plan phases, still open): 21.5/26 prompt/prefix caching,
+- Not done this pass (remaining plan phases, still open): 26 radix-tree prompt cache,
   22-SSM, 23 PagedAttention/continuous batching, 25 audio, 27 cache tiling, 28 distributed,
   29 WASM sandbox, 30 MCTS/PRM, 31 NVMe tiering, 32 TTT, 36 text-to-image, 18-B/19-B follow-ups,
   2.4/2.5 RAM budget.

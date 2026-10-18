@@ -84,7 +84,7 @@ int sse_write_token(int fd, const char *id, const char *token_text) {
 }
 
 int sse_write_done_ex(int fd, const char *id, const char *finish_reason,
-                      int prompt_tokens, int completion_tokens) {
+                      int prompt_tokens, int completion_tokens, int cached_tokens) {
     if (!id) return -1;
     if (!finish_reason) finish_reason = "stop";
 
@@ -97,21 +97,23 @@ int sse_write_done_ex(int fd, const char *id, const char *finish_reason,
                           "\"finish_reason\":\"%s\"}],"
              "\"usage\":{\"prompt_tokens\":%d,"
                        "\"completion_tokens\":%d,"
-                       "\"total_tokens\":%d}}\n\n"
+                       "\"total_tokens\":%d,"
+                       "\"prompt_tokens_details\":{\"cached_tokens\":%d}}}\n\n"
         "data: [DONE]\n\n",
         id, finish_reason, prompt_tokens, completion_tokens,
-        prompt_tokens + completion_tokens);
+        prompt_tokens + completion_tokens, cached_tokens);
     if (n < 0 || (size_t)n >= sizeof(buf)) return -1;
     return (int)write_all(fd, buf, (size_t)n);
 }
 
 int sse_write_done(int fd, const char *id) {
-    return sse_write_done_ex(fd, id, "stop", 0, 0);
+    return sse_write_done_ex(fd, id, "stop", 0, 0, 0);
 }
 
 char *sse_format_full_response_ex(const char *id, const char *full_text,
                                   const char *finish_reason,
-                                  int prompt_tokens, int completion_tokens) {
+                                  int prompt_tokens, int completion_tokens,
+                                  int cached_tokens) {
     if (!id || !full_text) return NULL;
     if (!finish_reason) finish_reason = "stop";
 
@@ -141,10 +143,12 @@ char *sse_format_full_response_ex(const char *id, const char *full_text,
                       "\"finish_reason\":\"%s\"}],"
          "\"usage\":{\"prompt_tokens\":%d,"
                    "\"completion_tokens\":%d,"
-                   "\"total_tokens\":%d}}",
+                   "\"total_tokens\":%d,"
+                   "\"prompt_tokens_details\":{\"cached_tokens\":%d}}}",
         id,
         (int)esc_len, escaped, finish_reason,
-        prompt_tokens, completion_tokens, prompt_tokens + completion_tokens);
+        prompt_tokens, completion_tokens, prompt_tokens + completion_tokens,
+        cached_tokens);
 
     free(escaped);
     if (n < 0 || (size_t)n >= buf_cap) { free(buf); return NULL; }
@@ -152,7 +156,7 @@ char *sse_format_full_response_ex(const char *id, const char *full_text,
 }
 
 char *sse_format_full_response(const char *id, const char *full_text) {
-    return sse_format_full_response_ex(id, full_text, "stop", 0, 0);
+    return sse_format_full_response_ex(id, full_text, "stop", 0, 0, 0);
 }
 
 int sse_write_full_response(int fd, const char *id, const char *full_text) {

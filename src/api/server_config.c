@@ -13,6 +13,7 @@ void server_config_init(ServerConfig *sc) {
     sc->web_ui = WEBUI_MODE_AUTO;
     gen_params_default(&sc->gen_defaults);
     sc->max_tokens_limit = 0; /* 0 = no cap beyond the model context */
+    sc->prompt_cache = 1;     /* reuse shared prompt prefixes by default */
 }
 
 int server_config_add_cors_origin(ServerConfig *sc, const char *origin) {

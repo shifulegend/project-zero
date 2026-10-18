@@ -33,3 +33,6 @@ Adapter for the API-layer decisions in `docs/ai/decision-log.md` (Phase 22) and
   turn). Each chat request resets `run_state->current_pos` to 0.
 - `POST /v1/watermark/detect` and the discovery routes never take `generation_mutex`
   (tokenizer encode is read-only).
+- Phase 21.5 prefix cache (`ApiContext.prefix_cache`, `--prompt-cache`, `cache_prompt`): any new
+  code path that writes the RunState's KV outside `generate_ex()` must `prefix_cache_reset()`
+  first, or the next request will reuse stale K/V.

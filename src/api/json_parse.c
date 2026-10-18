@@ -509,6 +509,11 @@ TernaryError chat_request_parse(const char *json_body, ChatRequest *req) {
         } else if (strcmp(key, "watermark") == 0) {
             TernaryError err = parse_watermark(&p, req);
             if (err != TN_OK) return err;
+        } else if (strcmp(key, "cache_prompt") == 0) {
+            int b = parse_bool(&p);
+            if (b < 0) return TN_ERR_JSON_PARSE;
+            req->cache_prompt = (b == 1);
+            req->set_mask |= CHAT_SET_CACHE_PROMPT;
         } else if (strcmp(key, "stream") == 0) {
             int b = parse_bool(&p);
             if (b < 0) return TN_ERR_JSON_PARSE;

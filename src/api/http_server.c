@@ -352,6 +352,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
      * never reset — after one image request (vision prefill advances it) every
      * later text request silently started after the stale image prefix.) */
     ctx->run_state->current_pos = 0;
+    int had_image = 0;
 
     /* Phase 22.2: image upload via the web UI's image_url content parts —
      * inject the vision pipeline into the KV cache before compiling/
@@ -398,6 +399,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
          * never mutates them); the vision pipeline's KV-cache injection
          * needs non-const pointers even though it doesn't rewrite either —
          * same underlying objects main.c's CLI path passes non-const. */
+        had_image = 1;
         vision_pipeline_run(tmp_path, ctx->server_config.vision_path, ctx->server_config.proj_path,
                             (Config *)ctx->cfg, (TransformerWeights *)ctx->weights, ctx->run_state,
                             ctx->moe_cfg, ctx->tok, ctx->tp,
@@ -487,6 +489,16 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     cancel_registry_begin(&ctx->cancel, st.public_id);
 
     /* Run inference */
+    /* Phase 21.5: reuse the KV prefix shared with the previous request unless
+     * disabled server-wide (--prompt-cache off) or for this request. */
+    int use_cache = (req.set_mask & CHAT_SET_CACHE_PROMPT) ? req.cache_prompt
+                                                           : ctx->server_config.prompt_cache;
+    if (!ctx->prefix_cache.tokens && ctx->run_state)
+        prefix_cache_init(&ctx->prefix_cache, ctx->run_state->max_seq_len);
+    if (had_image) prefix_cache_reset(&ctx->prefix_cache); /* vision prefill rewrote KV */
+    if (use_cache && ctx->prefix_cache.tokens) gp.prefix_cache = &ctx->prefix_cache;
+    else prefix_cache_reset(&ctx->prefix_cache); /* KV is about to be overwritten */
+
     GenerationStats gstats;
     gp.stats = &gstats;
     generate_ex(ctx->cfg, ctx->weights, ctx->run_state, ctx->moe_cfg,
@@ -499,7 +511,8 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
 
     if (req.stream) {
         sse_write_done_ex(fd, id, finish_reason,
-                          gstats.prompt_tokens, gstats.completion_tokens);
+                          gstats.prompt_tokens, gstats.completion_tokens,
+                          gstats.cached_tokens);
     } else {
         /* 2026-07-15: build the JSON body FIRST so Content-Length reflects
          * its real size. The previous code sent "Content-Length: 0" (NULL
@@ -508,7 +521,8 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
         const char *text = st.accum_buf ? st.accum_buf : "";
         char *json = sse_format_full_response_ex(id, text, finish_reason,
                                                  gstats.prompt_tokens,
-                                                 gstats.completion_tokens);
+                                                 gstats.completion_tokens,
+                                                 gstats.cached_tokens);
         send_response_ex(fd, 200, "application/json", json, 0, extra_headers);
         free(json);
     }

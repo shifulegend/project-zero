@@ -50,6 +50,12 @@
         <span>JSON mode <span class="dim">(grammar-constrained)</span></span>
       </label>
     {/if}
+    {#if features.prompt_cache}
+      <label class="check" title="Skip re-reading the part of the conversation the model has already processed. Output is identical either way.">
+        <input type="checkbox" bind:checked={settings.cache_prompt} />
+        <span>Reuse prompt cache <span class="dim">(faster multi-turn)</span></span>
+      </label>
+    {/if}
     <label class="text">
       <span>Stop sequences <span class="dim">(one per line, max {L.max_stop ?? 0}; \n for newline)</span></span>
       <textarea rows="2" bind:value={settings.stop} spellcheck="false"></textarea>

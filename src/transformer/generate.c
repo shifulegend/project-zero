@@ -47,6 +47,7 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
     if (gp->stats) {
         gp->stats->prompt_tokens = 0;
         gp->stats->completion_tokens = 0;
+        gp->stats->cached_tokens = 0;
         gp->stats->finish_reason = GEN_FINISH_ERROR; /* until generation runs */
         gp->stats->tokens_per_sec = 0.0;
     }
@@ -188,8 +189,28 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
     /* Initialize Sliding Window (pins the entire prompt) */
     sw_init(&s->sw, s->max_seq_len, n_prompt + pos_offset);
 
-    int prev_token = -1;
-    int next = 0;
+    /* Phase 21.5: skip prompt positions whose K/V are already cached from a
+     * previous call with the same leading tokens. The last prompt token is
+     * always recomputed — its logits seed the first sample. Not valid after
+     * a vision prefill (pos_offset > 0) or for recurrent linear-attention
+     * layers, whose state cannot be rewound to a partial prefix. */
+    PrefixCache *pcache = gp->prefix_cache;
+    int start_step = 0;
+    if (pcache) {
+        if (pos_offset == 0 && !(mc && mc->has_linear_attn) && n_prompt > 1) {
+            int lcp = prefix_cache_match(pcache, prompt_tokens, n_prompt);
+            start_step = lcp < n_prompt - 1 ? lcp : n_prompt - 1;
+            prefix_cache_truncate(pcache, start_step);
+        } else {
+            prefix_cache_reset(pcache);
+        }
+    }
+    if (gp->stats) gp->stats->cached_tokens = start_step;
+
+    /* prev_token at the start of step k is the token being forwarded at k
+     * (for k >= 1) — see the end-of-loop update below. */
+    int prev_token = start_step > 0 ? prompt_tokens[start_step] : -1;
+    int next = (start_step < n_prompt - 1) ? prompt_tokens[start_step + 1] : 0;
     int tokens_generated = 0;
     GenFinishReason finish = GEN_FINISH_LENGTH;
     int64_t gen_start_us = 0; /* wall-clock start of generation phase */
@@ -204,13 +225,14 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
      * prompts, only surfaced by a synthetic test with EOS deliberately
      * disabled — see docs/ai/mistakes.md). */
     int total_steps = n_prompt + max_tokens - 1;
-    for (int step = 0; step < total_steps && (step + pos_offset) < cfg->seq_len; step++) {
+    for (int step = start_step; step < total_steps && (step + pos_offset) < cfg->seq_len; step++) {
         int abs_pos = step + pos_offset;
 
         /* Step 1: Forward pass */
         int token = (step < n_prompt) ? prompt_tokens[step] : next;
 
         float *logits = transformer_forward(token, abs_pos, cfg, w, s, mc, tp);
+        if (pcache && pos_offset == 0) prefix_cache_set(pcache, abs_pos, token);
 
         /* Step 2: Sampling */
         if (step < n_prompt - 1) {

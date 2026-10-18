@@ -78,6 +78,18 @@ static void test_resolve_defaults_and_overrides(void) {
     chat_request_free(&r);
 }
 
+static void test_cache_prompt_field(void) {
+    ChatRequest r; chat_request_init(&r);
+    TEST_ASSERT_EQ(chat_request_parse("{\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"cache_prompt\":false}", &r),
+                   TN_OK, "parses");
+    TEST_ASSERT((r.set_mask & CHAT_SET_CACHE_PROMPT) && !r.cache_prompt, "cache_prompt=false recorded");
+    chat_request_free(&r);
+    chat_request_init(&r);
+    chat_request_parse("{\"messages\":[{\"role\":\"user\",\"content\":\"x\"}]}", &r);
+    TEST_ASSERT(!(r.set_mask & CHAT_SET_CACHE_PROMPT), "absent -> server default");
+    chat_request_free(&r);
+}
+
 static void test_json_fields(void) {
     const char *b = "{\"a\":{\"x\":1},\"text\":\"hi\\nthere\",\"gamma\":0.3,\"flag\":true}";
     char *t = json_field_string(b, "text");
@@ -97,6 +109,7 @@ int main(void) {
     RUN_TEST(test_stop_string_form);
     RUN_TEST(test_unicode_escape_decoding);
     RUN_TEST(test_resolve_defaults_and_overrides);
+    RUN_TEST(test_cache_prompt_field);
     RUN_TEST(test_json_fields);
     TEST_SUMMARY();
 }

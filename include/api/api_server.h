@@ -27,6 +27,7 @@
 #include "api/server_config.h"
 #include "api/metrics.h"
 #include "api/cancel.h"
+#include "kv_cache/prefix_cache.h"
 #include <pthread.h>
 
 /* ── Inference context passed from main to API handler ──────────────────── */
@@ -45,6 +46,10 @@ typedef struct {
     MetricsState    metrics;
     CancelState     cancel;
     pthread_mutex_t generation_mutex; /* serializes generate_with_callback calls */
+    /* Phase 21.5: which tokens currently sit in run_state's KV cache, so the
+     * next request can skip its shared prefix. Allocated lazily by the chat
+     * handler (under generation_mutex); process-lifetime like the rest. */
+    PrefixCache     prefix_cache;
 
     /* Server state (filled by api_server_start) */
     int   server_fd;            /* listening socket fd, -1 when stopped */

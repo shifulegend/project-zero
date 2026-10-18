@@ -242,6 +242,7 @@ set(KV_CACHE_SOURCES
     src/kv_cache/kv_compress.c
     src/kv_cache/sliding_window.c
     src/kv_cache/kv_strategy.c
+    src/kv_cache/prefix_cache.c
 )
 
 set(SPECULATIVE_SOURCES

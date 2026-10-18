@@ -64,6 +64,10 @@ void print_usage(const char *prog_name) {
     printf("                      context length). Generation flags above become the\n");
     printf("                      server defaults; requests/the web UI may override them.\n");
     printf("  --ui-title <name>   Brand name shown in the web UI (default: project-zero)\n");
+    printf("  --prompt-cache <m>  on (default) | off: reuse the KV cache for the prompt\n");
+    printf("                      prefix shared with the previous request (multi-turn\n");
+    printf("                      chat skips re-reading the history). Per request:\n");
+    printf("                      \"cache_prompt\": false.\n");
     printf("  --static-dir <path> Serve the web UI from disk instead of the embedded\n");
     printf("                      bundle (dev mode, for iterating on webui/dist/).\n");
 
@@ -170,6 +174,7 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->watermark_delta = WATERMARK_DEFAULT_DELTA;
     args->watermark_detect = NULL;
     args->ui_title = NULL;
+    args->prompt_cache = true;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--model") == 0 && i + 1 < argc) {
@@ -228,6 +233,14 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             args->watermark_gamma = (float)atof(argv[++i]);
         } else if (strcmp(argv[i], "--watermark-delta") == 0 && i + 1 < argc) {
             args->watermark_delta = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--prompt-cache") == 0 && i + 1 < argc) {
+            const char *mode = argv[++i];
+            if (strcmp(mode, "on") == 0) args->prompt_cache = true;
+            else if (strcmp(mode, "off") == 0) args->prompt_cache = false;
+            else {
+                fprintf(stderr, "Error: --prompt-cache must be on or off\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
         } else if (strcmp(argv[i], "--ui-title") == 0 && i + 1 < argc) {
             args->ui_title = argv[++i];
         } else if (strcmp(argv[i], "--watermark-detect") == 0 && i + 1 < argc) {

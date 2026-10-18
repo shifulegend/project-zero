@@ -3,6 +3,15 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-10-18.
 
+### 2026-10-18 — int8 KV: per-row absmax, opt-in, F32 default
+
+- Per (layer, kv_head, pos) row scale keeps the read path a plain int8·float dot plus one
+  multiply, which auto-vectorises on every tier (no new per-ISA kernels to maintain).
+- Opt-in because greedy outputs change (numerically expected); memory/bandwidth win makes it
+  the right choice for long contexts on RAM-limited machines — exposed as `--kv-type i8` and
+  reported in `/v1/config`.
+- Snapshot store stays F32-only rather than duplicating its copy paths for int8 now.
+
 ### 2026-10-18 — Phase 30 starts with best-of-N, not MCTS
 
 - Best-of-N with the model's own mean log-prob is the useful, verifiable core of test-time

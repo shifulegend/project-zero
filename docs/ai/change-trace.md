@@ -3,6 +3,14 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-18.
 
+### 2026-10-18 — Plan 8.5: int8 KV cache for the dense/GQA path
+- New: `kv_cache/kv_quant_ops` (+ `tests/test_kv_quant.c`), `RunState.kv_type/key_cache_q/
+  value_cache_q/key_scale/value_scale`, `KV_SCALE_IDX`, `--kv-type`, `/v1/config runtime.kv_type`;
+  attention single + batched read/write branches; sizing accounts for int8; prompt store and
+  tiled kernel gated to F32; startup line reports the real storage type.
+- Verified: gcc+clang release/test/debug, TSan, golden Paris with both types, live server with
+  i8 (prefix cache hit 36 tokens), ~10% decode gain at long context.
+
 ### 2026-10-18 — Phase 30 (first stage): best-of-N with likelihood scoring
 - New: `sampling/logprob`, `reasoning/best_of`; `GenerationParams.compute_logprobs`,
   `GenerationStats.sum_logprob`; `--best-of`, `--best-of-max`; request `best_of`; response

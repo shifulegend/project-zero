@@ -554,7 +554,7 @@ project-zero/
 
 ---
 
-## PHASE 8: KV Cache Optimizations ✅ (kernels) — ⚠ quantized KV not wired into attention (8.5 open)
+## PHASE 8: KV Cache Optimizations ✅ (int8 KV wired into dense/GQA attention 2026-10-18; int4 + other attention families open)
 
 ### 8.1 — KV Cache Quantization (float32 → int8) ✅
 - File: `include/kv_cache/kv_compress.h` + `src/kv_cache/kv_compress.c`
@@ -591,7 +591,20 @@ project-zero/
   `--ctx-size <N>` and `--kv-ram-fraction <f>` (`KVStrategyOptions`, `select_kv_strategy_ex()`,
   `kv_strategy_set_options()`).
 
-### 8.5 — Wire Quantized KV Storage into Attention ⬜ OPEN (found 2026-10-18)
+### 8.5 — Wire Quantized KV Storage into Attention ✅ int8, generic dense/GQA path (2026-10-18)
+- As built: `--kv-type f32|i8` (`KVStrategyOptions.kv_type`, process-wide). With i8,
+  `run_state_alloc_ex()` allocates `key_cache_q/value_cache_q` (int8, same `KV_CACHE_IDX` layout)
+  plus one absmax scale per (layer, kv_head, pos) row (`KV_SCALE_IDX`) instead of the F32 cache;
+  `src/kv_cache/kv_quant_ops.c` provides `kvq_store_row/kvq_dot/kvq_axpy`; both the single-token
+  (head-parallel) and batched attention paths read/write it; the context-sizing cap accounts
+  for 1 byte/element + scales. Tiled attention and the Phase 26 snapshot store are F32-only
+  (they fall back / disable themselves); the live prefix cache works with i8.
+- Measured (SmolLM2-135M, ~1700-token context, 4 threads): ~10% faster decode, 4× less KV
+  memory; greedy continuations diverge from F32 after a few words but stay coherent, so F32
+  stays the default. Tests: `tests/test_kv_quant.c`, `test_forward_kv_i8_close_to_f32`.
+- Still open: int4 KV, and quantized storage for the MLA / Qwen3-MoE / Qwen3.5 caches.
+
+*Original finding (kept):*
 - The int8/int4 compress/decompress kernels (8.1/8.2) are unit-tested but **no attention path
   reads a quantized cache** — `RunState.key_cache/value_cache` are `float *` and every attention
   kernel (dense/GQA single + batched, MLA, Qwen3-MoE, Qwen3.5 hybrid, spec-decode) streams F32.

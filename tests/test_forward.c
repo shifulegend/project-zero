@@ -26,6 +26,7 @@
 #include "transformer/forward.h"
 #include "transformer/attn_tiled.h"
 #include "threading/thread_pool.h"
+#include "kv_cache/kv_strategy.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -487,6 +488,35 @@ static void test_forward_parallel_and_tiled_attention(void) {
   free_synthetic_weights(&w, &cfg);
 }
 
+/* Plan 8.5: the int8 KV cache must track the F32 cache closely. */
+static void test_forward_kv_i8_close_to_f32(void) {
+  Config cfg = tiny_config();
+  cfg.n_heads = 4;
+  cfg.n_kv_heads = 2;
+  cfg.seq_len = 96;
+  TransformerWeights w;
+  tn_simd_init();
+  alloc_synthetic_weights(&w, &cfg);
+  float f32[8], i8[8];
+  run_positions(&cfg, &w, NULL, 60, f32);
+  KVStrategyOptions o = {0, 0.0f, 1};
+  kv_strategy_set_options(&o);
+  RunState probe; memset(&probe, 0, sizeof(probe));
+  run_state_alloc(&probe, &cfg, cfg.seq_len);
+  TEST_ASSERT(probe.kv_type == 1 && probe.key_cache == NULL && probe.key_cache_q != NULL,
+              "i8 run state allocates int8 storage only");
+  run_state_free(&probe);
+  run_positions(&cfg, &w, NULL, 60, i8);
+  kv_strategy_set_options(NULL);
+  float md = 0, mag = 0;
+  for (int i = 0; i < cfg.vocab_size; i++) {
+    float e = fabsf(f32[i] - i8[i]); if (e > md) md = e;
+    if (fabsf(f32[i]) > mag) mag = fabsf(f32[i]);
+  }
+  TEST_ASSERT(md <= 0.05f * (mag > 1.0f ? mag : 1.0f), "i8 KV logits within 5% of F32");
+  free_synthetic_weights(&w, &cfg);
+}
+
 static void test_forward_multiple_tokens(void) {
   Config cfg = tiny_config();
   TransformerWeights w;
@@ -599,6 +629,7 @@ int main(void) {
   RUN_TEST(test_forward_single_token);
   RUN_TEST(test_forward_multiple_tokens);
   RUN_TEST(test_forward_parallel_and_tiled_attention);
+  RUN_TEST(test_forward_kv_i8_close_to_f32);
   RUN_TEST(test_forward_different_tokens);
   RUN_TEST(test_forward_multilayer);
 

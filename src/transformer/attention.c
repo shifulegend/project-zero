@@ -1,5 +1,6 @@
 #include "transformer/attention.h"
 #include "transformer/attn_tiled.h"
+#include "kv_cache/kv_quant_ops.h"
 #include "transformer/mla_attention.h"
 #include "transformer/qwen35_attention.h"
 #include "transformer/qwen3moe_attention.h"
@@ -71,8 +72,8 @@ static void attn_one_head(const AttnHeadArgs *a, int h) {
   /* Number of valid context tokens to attend to */
   int valid_ctx = sw_valid_count(&s->sw, pos);
 
-  /* Phase 27.3: single-pass tiled online-softmax kernel (opt-in). */
-  if (a->use_tiled) {
+  /* Phase 27.3: single-pass tiled online-softmax kernel (opt-in; F32 KV only). */
+  if (a->use_tiled && s->kv_type == KV_TYPE_F32) {
     size_t slab = KV_CACHE_IDX(layer, kv_h, 0, 0, n_kv_heads, max_seq, head_dim);
     attn_head_tiled(s->xb + h * head_dim, q_head, &s->key_cache[slab],
                     &s->value_cache[slab], head_dim, &s->sw, pos, valid_ctx,
@@ -94,10 +95,15 @@ static void attn_one_head(const AttnHeadArgs *a, int h) {
 
     size_t k_offset =
         KV_CACHE_IDX(layer, kv_h, mapped_t, 0, n_kv_heads, max_seq, head_dim);
-    float *k_vec = &s->key_cache[k_offset];
-
-    /* Dot product — use SIMD-dispatched vec_dot for speed */
-    float score = tn_vec_dot(q_head, k_vec, head_dim);
+    float score;
+    if (s->kv_type == KV_TYPE_I8) {
+      /* Plan 8.5: int8 row · F32 query, then the row's absmax scale. */
+      score = kvq_dot(q_head, &s->key_cache_q[k_offset], head_dim) *
+              s->key_scale[KV_SCALE_IDX(layer, kv_h, mapped_t, n_kv_heads, max_seq)];
+    } else {
+      /* Dot product — use SIMD-dispatched vec_dot for speed */
+      score = tn_vec_dot(q_head, &s->key_cache[k_offset], head_dim);
+    }
     att_scores[t] = score * inv_sqrt_head_dim;
   }
 
@@ -118,9 +124,14 @@ static void attn_one_head(const AttnHeadArgs *a, int h) {
 
     size_t v_offset =
         KV_CACHE_IDX(layer, kv_h, v_mapped, 0, n_kv_heads, max_seq, head_dim);
-    float *v_vec = &s->value_cache[v_offset];
     float a_t = att_scores[t];
-    tn_vec_saxpy(out_head, a_t, v_vec, head_dim);
+    if (s->kv_type == KV_TYPE_I8) {
+      kvq_axpy(out_head,
+               a_t * s->value_scale[KV_SCALE_IDX(layer, kv_h, v_mapped, n_kv_heads, max_seq)],
+               &s->value_cache_q[v_offset], head_dim);
+    } else {
+      tn_vec_saxpy(out_head, a_t, &s->value_cache[v_offset], head_dim);
+    }
   }
 }
 
@@ -282,8 +293,14 @@ void attention_forward(RunState *s, const TransformerWeights *w,
   for (int kv_h = 0; kv_h < n_kv_heads; kv_h++) {
     size_t cache_offset =
         KV_CACHE_IDX(layer, kv_h, mapped_pos, 0, n_kv_heads, max_seq, head_dim);
-    kv_nt_store(&s->key_cache[cache_offset],   &k_buf[kv_h * head_dim], head_dim);
-    kv_nt_store(&s->value_cache[cache_offset], &v_buf[kv_h * head_dim], head_dim);
+    if (s->kv_type == KV_TYPE_I8) {
+      size_t row = KV_SCALE_IDX(layer, kv_h, mapped_pos, n_kv_heads, max_seq);
+      kvq_store_row(&s->key_cache_q[cache_offset], &s->key_scale[row], &k_buf[kv_h * head_dim], head_dim);
+      kvq_store_row(&s->value_cache_q[cache_offset], &s->value_scale[row], &v_buf[kv_h * head_dim], head_dim);
+    } else {
+      kv_nt_store(&s->key_cache[cache_offset],   &k_buf[kv_h * head_dim], head_dim);
+      kv_nt_store(&s->value_cache[cache_offset], &v_buf[kv_h * head_dim], head_dim);
+    }
   }
 
   /* Advance the sliding window write head */
@@ -508,8 +525,14 @@ TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb,
     for (int kv_h = 0; kv_h < n_kv_heads; kv_h++) {
       size_t cache_offset =
           KV_CACHE_IDX(layer, kv_h, mapped_pos, 0, n_kv_heads, max_seq, head_dim);
-      kv_nt_store(&s->key_cache[cache_offset],   &kbuf_k[kv_h * head_dim], head_dim);
-      kv_nt_store(&s->value_cache[cache_offset], &v_k[kv_h * head_dim], head_dim);
+      if (s->kv_type == KV_TYPE_I8) {
+        size_t row = KV_SCALE_IDX(layer, kv_h, mapped_pos, n_kv_heads, max_seq);
+        kvq_store_row(&s->key_cache_q[cache_offset], &s->key_scale[row], &kbuf_k[kv_h * head_dim], head_dim);
+        kvq_store_row(&s->value_cache_q[cache_offset], &s->value_scale[row], &v_k[kv_h * head_dim], head_dim);
+      } else {
+        kv_nt_store(&s->key_cache[cache_offset],   &kbuf_k[kv_h * head_dim], head_dim);
+        kv_nt_store(&s->value_cache[cache_offset], &v_k[kv_h * head_dim], head_dim);
+      }
     }
     sw_advance(&s->sw); /* kept for parity with the single-token path; see
                           * the function's header comment on why read-phase
@@ -538,8 +561,10 @@ TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb,
         int hist_logical = (tok_pos >= valid_ctx) ? (tok_pos - valid_ctx + 1 + t) : t;
         int mapped_t = sw_map_position(&s->sw, hist_logical);
         size_t k_offset = KV_CACHE_IDX(layer, kv_h, mapped_t, 0, n_kv_heads, max_seq, head_dim);
-        float *k_vec = &s->key_cache[k_offset];
-        float score = tn_vec_dot(q_head, k_vec, head_dim);
+        float score = (s->kv_type == KV_TYPE_I8)
+            ? kvq_dot(q_head, &s->key_cache_q[k_offset], head_dim) *
+              s->key_scale[KV_SCALE_IDX(layer, kv_h, mapped_t, n_kv_heads, max_seq)]
+            : tn_vec_dot(q_head, &s->key_cache[k_offset], head_dim);
         att_scores[t] = score * inv_sqrt_head_dim;
       }
 
@@ -551,9 +576,12 @@ TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb,
         int hist_logical = (tok_pos >= valid_ctx) ? (tok_pos - valid_ctx + 1 + t) : t;
         int mapped_t = sw_map_position(&s->sw, hist_logical);
         size_t v_offset = KV_CACHE_IDX(layer, kv_h, mapped_t, 0, n_kv_heads, max_seq, head_dim);
-        float *v_vec = &s->value_cache[v_offset];
         float a = att_scores[t];
-        tn_vec_saxpy(out_head, a, v_vec, head_dim);
+        if (s->kv_type == KV_TYPE_I8)
+          kvq_axpy(out_head, a * s->value_scale[KV_SCALE_IDX(layer, kv_h, mapped_t, n_kv_heads, max_seq)],
+                   &s->value_cache_q[v_offset], head_dim);
+        else
+          tn_vec_saxpy(out_head, a, &s->value_cache[v_offset], head_dim);
       }
     }
   }

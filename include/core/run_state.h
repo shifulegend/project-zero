@@ -18,6 +18,10 @@
   ((size_t)(layer) * (n_kv_heads) * (max_seq) * (head_dim) +                   \
    (size_t)(head) * (max_seq) * (head_dim) + (size_t)(pos) * (head_dim) + (d))
 
+/* Row index of a (layer, kv_head, pos) entry in key_scale/value_scale. */
+#define KV_SCALE_IDX(layer, head, pos, n_kv_heads, max_seq)                       \
+  (((size_t)(layer) * (n_kv_heads) + (size_t)(head)) * (max_seq) + (size_t)(pos))
+
 typedef struct {
   /* Scratch vectors (dim) */
   float *x;   /* current activation */
@@ -97,6 +101,15 @@ typedef struct {
    * Allocated by mamba_state_alloc() after run_state_alloc*(); released by
    * run_state_free(). */
   struct MambaState *mamba;
+  /* Plan 8.5: int8 KV storage for the generic dense/GQA cache (--kv-type i8).
+   * When kv_type == KV_TYPE_I8, key_cache/value_cache are NULL and these hold
+   * the same KV_CACHE_IDX layout as int8, plus one absmax scale per
+   * (layer, kv_head, position) row at index KV_SCALE_IDX. */
+  int    kv_type;
+  tn_i8 *key_cache_q;
+  tn_i8 *value_cache_q;
+  float *key_scale;
+  float *value_scale;
 } RunState;
 
 /**

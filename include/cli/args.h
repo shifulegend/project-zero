@@ -85,6 +85,7 @@ typedef struct {
     int    attn_tile;          /* --attn-tile <N>: tiled kernel tile (0 = L1d)  */
     int    attn_parallel_min_ctx; /* --attn-parallel-min-ctx <N> (256, 0=off)  */
     int    ctx_size;           /* --ctx-size <N>: context length (0 = auto)     */
+    int    kv_type;            /* --kv-type f32|i8 (KVCacheType, default f32)   */
     float  kv_ram_fraction;    /* --kv-ram-fraction <f>: KV RAM budget (0=0.60) */
     int    prompt_cache_mb;    /* --prompt-cache-mb <N>: Phase 26 store (256)   */
     int    prompt_cache_min_tokens; /* --prompt-cache-min-tokens <N> (32)       */

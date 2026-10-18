@@ -249,6 +249,7 @@ set(KV_CACHE_SOURCES
     src/kv_cache/kv_strategy.c
     src/kv_cache/prefix_cache.c
     src/kv_cache/prompt_store.c
+    src/kv_cache/kv_quant_ops.c
 )
 
 set(SPECULATIVE_SOURCES

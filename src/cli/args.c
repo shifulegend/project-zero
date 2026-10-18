@@ -1,5 +1,6 @@
 #include "cli/args.h"
 #include "transformer/attn_tiled.h"
+#include "kv_cache/kv_quant_ops.h"
 #include "api/chat_compile.h"
 #include "reasoning/best_of.h"
 #include <stdio.h>
@@ -37,6 +38,8 @@ void print_usage(const char *prog_name) {
     printf("  --ctx-size <int>    Context length to allocate (default: auto from free RAM;\n");
     printf("                      capped at the model's own context and the RAM budget)\n");
     printf("  --kv-ram-fraction <f> Share of free RAM the KV cache may use (default 0.60)\n");
+    printf("  --kv-type <t>       KV cache storage: f32 (default) | i8 (4x smaller, per-row\n");
+    printf("                      absmax scale; dense/GQA attention path)\n");
     printf("  --attn-kernel <k>   standard (default) | tiled (single-pass online softmax)\n");
     printf("  --attn-tile <int>   Positions per tile for --attn-kernel tiled (0 = from L1d)\n");
     printf("  --attn-parallel-min-ctx <N> Spread attention heads over threads once the\n");
@@ -202,6 +205,7 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->prompt_cache_mb = 256;
     args->prompt_cache_min_tokens = 32;
     args->ctx_size = 0;
+    args->kv_type = 0;
     args->attn_kernel = NULL;
     args->attn_tile = 0;
     args->attn_parallel_min_ctx = ATTN_PARALLEL_MIN_CTX_DEFAULT;
@@ -280,6 +284,12 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             args->attn_parallel_min_ctx = atoi(argv[++i]);
             if (args->attn_parallel_min_ctx < 0) {
                 fprintf(stderr, "Error: --attn-parallel-min-ctx must be >= 0\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--kv-type") == 0 && i + 1 < argc) {
+            args->kv_type = kv_type_parse(argv[++i]);
+            if (args->kv_type < 0) {
+                fprintf(stderr, "Error: --kv-type must be f32 or i8\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--ctx-size") == 0 && i + 1 < argc) {

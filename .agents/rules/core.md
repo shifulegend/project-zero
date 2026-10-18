@@ -14,3 +14,5 @@
 - Attention heads run in parallel over the thread pool (`attn_heads_task`, threshold
   `--attn-parallel-min-ctx`): per-head code must only write its own `s->att` row and `s->xb`
   slice. Concurrency changes there need `make test-tsan` (test_forward is in TSAN_TESTS).
+- Generic KV may be int8 (`RunState.kv_type == KV_TYPE_I8`: `key_cache` is NULL, use
+  `key_cache_q`/`key_scale`). Any new reader/writer of the dense KV cache must handle both.

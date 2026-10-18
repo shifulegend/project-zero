@@ -114,19 +114,23 @@ static KVStrategyOptions g_kv_opts; /* zero = automatic */
 
 void kv_strategy_set_options(const KVStrategyOptions *opt) {
   if (opt) g_kv_opts = *opt;
-  else { g_kv_opts.ctx_size = 0; g_kv_opts.ram_fraction = 0.0f; }
+  else { g_kv_opts.ctx_size = 0; g_kv_opts.ram_fraction = 0.0f; g_kv_opts.kv_type = 0; }
 }
+
+int kv_strategy_kv_type(void) { return g_kv_opts.kv_type; }
 
 KVStrategyResult select_kv_strategy(const Config *cfg, tn_i64 free_ram, const MoEConfig *mc) {
   return select_kv_strategy_ex(cfg, free_ram, mc, &g_kv_opts);
 }
 
 void kv_strategy_print(const KVStrategyResult *r, int max_seq_len) {
-  /* 2026-10-18: this used to print e.g. "KV Strategy: Quantized I8", but no
-   * attention path reads a quantized cache — K/V are always F32. The tier name
-   * is reported as what it actually is: the context-sizing tier. */
+  /* 2026-10-18: this used to print e.g. "KV Strategy: Quantized I8" although
+   * no attention path read a quantized cache. It now reports the storage the
+   * generic cache really uses (--kv-type) and the tier for what it is: the
+   * context-sizing tier. */
   float frac = g_kv_opts.ram_fraction > 0.0f ? g_kv_opts.ram_fraction : KV_DEFAULT_RAM_FRACTION;
-  printf("KV cache: F32, max context: %d tokens (sizing tier: %s%s, RAM budget %.0f%%)\n",
+  printf("KV cache: %s, max context: %d tokens (sizing tier: %s%s, RAM budget %.0f%%)\n",
+         g_kv_opts.kv_type == 1 ? "I8" : "F32",
          max_seq_len, r ? kv_strategy_name(r->strategy) : "n/a",
          g_kv_opts.ctx_size > 0 ? ", --ctx-size" : "", frac * 100.0f);
 }
@@ -191,9 +195,14 @@ KVStrategyResult select_kv_strategy_ex(const Config *cfg, tn_i64 free_ram, const
    */
   {
     int head_dim = (mc && mc->attn_head_dim > 0) ? mc->attn_head_dim : config_head_dim(cfg);
+    /* Bytes per element: F32 = 4; I8 (--kv-type i8) = 1 plus one F32 scale
+     * per head_dim-row. */
+    int i8 = opt && opt->kv_type == 1;
+    tn_i64 row_bytes = i8 ? (tn_i64)head_dim + (tn_i64)sizeof(float)
+                          : (tn_i64)head_dim * (tn_i64)sizeof(float);
     tn_i64 per_token = (tn_i64)cfg->n_layers
                      * (tn_i64)(cfg->n_kv_heads > 0 ? cfg->n_kv_heads : cfg->n_heads)
-                     * (tn_i64)head_dim * 2 * (tn_i64)sizeof(float);
+                     * row_bytes * 2;
     if (per_token > 0) {
       float frac = (opt && opt->ram_fraction > 0.0f) ? opt->ram_fraction : KV_DEFAULT_RAM_FRACTION;
       if (frac > 0.95f) frac = 0.95f;

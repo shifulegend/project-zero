@@ -1,5 +1,6 @@
 #include "core/run_state.h"
 #include "transformer/mamba.h"
+#include "kv_cache/kv_quant_ops.h"
 #include "core/platform.h"
 #include "math/rope.h"
 #include "memory/aligned_alloc.h"
@@ -82,18 +83,36 @@ TernaryError run_state_alloc_ex(RunState *s, const Config *cfg, int max_seq_len,
       run_state_free(s);
       return TN_ERR_OOM;
     }
-    if (tn_alloc_too_large(kv_cache_size, sizeof(float))) {
-      run_state_free(s);
-      return TN_ERR_OOM;
-    }
-    s->key_cache =
-        (float *)tn_aligned_calloc(kv_cache_size, sizeof(float), TN_SIMD_ALIGN);
-    s->value_cache =
-        (float *)tn_aligned_calloc(kv_cache_size, sizeof(float), TN_SIMD_ALIGN);
+    if (kv_strategy_kv_type() == KV_TYPE_I8) {
+      /* Plan 8.5: int8 rows + one F32 scale per row (4x smaller than F32). */
+      size_t n_rows = kv_cache_size / (size_t)(head_dim > 0 ? head_dim : 1);
+      if (tn_alloc_too_large(kv_cache_size, sizeof(tn_i8))) {
+        run_state_free(s);
+        return TN_ERR_OOM;
+      }
+      s->kv_type = KV_TYPE_I8;
+      s->key_cache_q = (tn_i8 *)tn_aligned_calloc(kv_cache_size, sizeof(tn_i8), TN_SIMD_ALIGN);
+      s->value_cache_q = (tn_i8 *)tn_aligned_calloc(kv_cache_size, sizeof(tn_i8), TN_SIMD_ALIGN);
+      s->key_scale = (float *)tn_aligned_calloc(n_rows, sizeof(float), TN_SIMD_ALIGN);
+      s->value_scale = (float *)tn_aligned_calloc(n_rows, sizeof(float), TN_SIMD_ALIGN);
+      if (!s->key_cache_q || !s->value_cache_q || !s->key_scale || !s->value_scale) {
+        run_state_free(s);
+        return TN_ERR_OOM;
+      }
+    } else {
+      if (tn_alloc_too_large(kv_cache_size, sizeof(float))) {
+        run_state_free(s);
+        return TN_ERR_OOM;
+      }
+      s->key_cache =
+          (float *)tn_aligned_calloc(kv_cache_size, sizeof(float), TN_SIMD_ALIGN);
+      s->value_cache =
+          (float *)tn_aligned_calloc(kv_cache_size, sizeof(float), TN_SIMD_ALIGN);
 
-    if (!s->key_cache || !s->value_cache) {
-      run_state_free(s);
-      return TN_ERR_OOM;
+      if (!s->key_cache || !s->value_cache) {
+        run_state_free(s);
+        return TN_ERR_OOM;
+      }
     }
   }
 
@@ -114,6 +133,10 @@ TernaryError run_state_alloc_ex(RunState *s, const Config *cfg, int max_seq_len,
 
 void run_state_free(RunState *s) {
   if (s->mamba) { mamba_state_free(s->mamba); s->mamba = NULL; }
+  tn_aligned_free(s->key_cache_q);   s->key_cache_q = NULL;
+  tn_aligned_free(s->value_cache_q); s->value_cache_q = NULL;
+  tn_aligned_free(s->key_scale);     s->key_scale = NULL;
+  tn_aligned_free(s->value_scale);   s->value_scale = NULL;
   tn_aligned_free(s->x);
   tn_aligned_free(s->xb);
   tn_aligned_free(s->xb2);

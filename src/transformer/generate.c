@@ -202,7 +202,9 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
      * a vision prefill (pos_offset > 0) or for recurrent linear-attention
      * layers, whose state cannot be rewound to a partial prefix. */
     PrefixCache *pcache = gp->prefix_cache;
-    PromptStore *pstore = (pcache && prompt_store_supported(mc)) ? gp->prompt_store : NULL;
+    /* Snapshots copy F32 KV rows; with --kv-type i8 only the live prefix cache applies. */
+    PromptStore *pstore = (pcache && prompt_store_supported(mc) && s->key_cache)
+                          ? gp->prompt_store : NULL;
     int start_step = 0;
     int cache_eligible = pcache && pos_offset == 0 && !moe_is_recurrent(mc);
     if (pcache) {

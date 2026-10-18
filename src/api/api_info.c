@@ -6,6 +6,7 @@
 #include "sampling/watermark_text.h"
 #include "threading/cache_probe.h"
 #include "transformer/attn_tiled.h"
+#include "kv_cache/kv_quant_ops.h"
 #include "math/simd_dispatch.h"
 
 int api_max_tokens_limit(const ApiContext *ctx) {
@@ -137,6 +138,8 @@ char *api_config_json(const ApiContext *ctx) {
         jb_key(&jb, "runtime"); jb_raw(&jb, "{");
         jb_key(&jb, "simd"); jb_str(&jb, tn_simd_backend_name());
         jb_raw(&jb, ","); jb_key(&jb, "threads"); jb_int(&jb, ctx && ctx->tp ? ctx->tp->num_threads : 1);
+        jb_raw(&jb, ","); jb_key(&jb, "kv_type");
+        jb_str(&jb, ctx && ctx->run_state && ctx->run_state->kv_type == KV_TYPE_I8 ? "i8" : "f32");
         jb_raw(&jb, ","); jb_key(&jb, "attention_kernel"); jb_str(&jb, attn_kernel_name(attn_kernel_get()));
         jb_raw(&jb, ","); jb_key(&jb, "attention_tile"); jb_int(&jb, attn_tile_get());
         jb_raw(&jb, ","); jb_key(&jb, "attention_parallel_min_ctx"); jb_int(&jb, attn_parallel_min_ctx_get());
@@ -160,7 +163,8 @@ char *api_config_json(const ApiContext *ctx) {
     jb_bool(&jb, !(ctx && moe_is_recurrent(ctx->moe_cfg)));
     jb_raw(&jb, ","); jb_key(&jb, "prompt_store");
     jb_bool(&jb, ctx && ctx->server_config.prompt_cache_mb > 0 &&
-                 (!ctx->moe_cfg || prompt_store_supported(ctx->moe_cfg)));
+                 (!ctx->moe_cfg || prompt_store_supported(ctx->moe_cfg)) &&
+                 !(ctx->run_state && ctx->run_state->kv_type == KV_TYPE_I8));
     jb_raw(&jb, ","); jb_key(&jb, "metrics"); jb_bool(&jb, ctx && ctx->server_config.metrics.enabled);
     jb_raw(&jb, ","); jb_key(&jb, "system_prompt"); jb_bool(&jb, ctx && ctx->tok && ctx->tok->chat_template != NULL);
     jb_raw(&jb, "}");
@@ -170,7 +174,10 @@ char *api_config_json(const ApiContext *ctx) {
 
 char *api_prompt_cache_json(const ApiContext *ctx) {
     const PromptStore *ps = ctx ? &ctx->prompt_store : NULL;
-    int supported = !(ctx && ctx->moe_cfg) || prompt_store_supported(ctx->moe_cfg);
+    /* Snapshots copy F32 KV rows: unavailable for SSM/MLA/hybrid models and
+     * with --kv-type i8 (the live prefix cache still applies). */
+    int supported = (!(ctx && ctx->moe_cfg) || prompt_store_supported(ctx->moe_cfg)) &&
+                    !(ctx && ctx->run_state && ctx->run_state->kv_type == KV_TYPE_I8);
     size_t budget = ctx ? (size_t)(ctx->server_config.prompt_cache_mb > 0
                                    ? ctx->server_config.prompt_cache_mb : 0) * 1024u * 1024u : 0;
     JsonBuf jb;

@@ -3,7 +3,42 @@
 > Canonical, append-at-top (newest first). Read this at the start of every session.
 > Add an entry **immediately** when a mistake, false assumption, regression, or avoidable
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
-> Last updated: 2026-09-24.
+> Last updated: 2026-10-18.
+
+### 2026-10-18 — Six pre-existing bugs found while making every generation setting front-end configurable (all fixed in the same pass)
+
+- **`--seed` was parsed and then ignored.** `args.c` stored it, but `generate_with_callback()`
+  always seeded the RNG with `time(NULL)`, so no sampled run was ever reproducible. Fix: the seed
+  travels in `GenerationParams.seed` (`< 0` = time-based) and is honored by `generate_ex()`; the
+  API accepts `"seed"` and the web UI exposes it. Regression: `tests/test_sampler_chain.c`
+  `test_seed_reproducible` + a CLI md5 check (two `--seed 42` runs identical).
+- **API dropped all conversation history on GGUF models.** The chat handler forwarded only the
+  last user message to the chat template, so the web UI had no multi-turn memory and system
+  messages were silently discarded. Fix: the full message list (system/user/assistant) is passed
+  as `GenerationParams.roles/contents` and rendered by the model's own template. Verified live:
+  "My name is Ankit … What is my name?" now answers correctly.
+- **`RunState.current_pos` never reset between API requests.** After one image request (the
+  vision prefill advances it), every later text request started after a stale image prefix.
+  Fix: reset to 0 at the start of each chat request.
+- **`/v1/models` was a hardcoded `{"id":"local-adaptive-engine"}` with no `vision` field**, so
+  the web UI's image-upload control (gated on `modelInfo.vision`) could never appear even with
+  `--vision/--proj`. Fix: `src/api/api_info.c` reports the real model file name, metadata and
+  vision flag. Similarly `usage` was always `0/0/0` and `finish_reason` always `"stop"`; both are
+  now real (`GenerationStats`).
+- **JSON `\uXXXX` escapes decoded to `'?'`** in `json_parse.c`, mangling any client that escapes
+  non-ASCII (Python's `json.dumps` default). Fix: full UTF-8 decoding incl. surrogate pairs;
+  `"content": null` also accepted. Regression: `tests/test_request_params.c`.
+- **Makefile had no header dependency tracking.** Adding a field to `GenerationParams` (embedded
+  in `ServerConfig`) left previously-built objects with the old struct layout linked into the
+  tests — surfaced as an ASan SEGV reading `max_tokens_limit` at a shifted offset (address
+  `0x3e8` = the test's value 1000). Fix: `-MMD -MP` in `CFLAGS_COMMON`/`CXXFLAGS_COMMON`, `-MF`
+  for test binaries, `-include` of the `.d` files. Lesson: before this fix, ANY header edit could
+  silently produce a mixed-layout binary unless you `make clean`; it is now tracked.
+- Also hardened: `sse_write_token()` escaped into a fixed `char[1024]` with no bound check —
+  safe only while pieces stayed tiny; stop-sequence hold-back can release longer chunks, so it
+  now sizes the buffer from the input.
+- Environment note (not a code bug): this container's clang lacked its ASan runtime
+  (`libclang-rt-18-dev`); `make test CC=clang` fails at link time until it is installed.
 
 ### 2026-09-24 — Phase 19's `.lora.bin` loader hardcoded K/V's output width as `dim`, corrupting every GQA model's K/V-targeting LoRA — found only by downloading a real adapter and running it end to end
 

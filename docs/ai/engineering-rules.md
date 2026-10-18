@@ -1,6 +1,6 @@
 # Engineering Rules — project-zero
 
-> Canonical source of truth. Adapters reference this. Last updated: 2026-09-18.
+> Canonical source of truth. Adapters reference this. Last updated: 2026-10-18.
 
 ## Modularity
 - Smallest sensible units: small functions, single responsibility, explicit interfaces.
@@ -16,6 +16,13 @@
 - Behavior is selectable via CLI flags / env / calibration: `--threads --simd --classifier
   --temperature --top-p --seed`. Add config, don't branch on magic numbers.
 - Any unavoidable constant must carry a timestamped comment explaining why (see code-comment rule).
+- **Every user-facing generation knob is front-end customisable** (2026-10-18): add it to
+  `GenerationParams`/`SamplerSettings` (with a sanitizer clamp), a CLI flag (which becomes the
+  server default), the `ChatRequest` parser + `set_mask` bit, `request_params_resolve()`, the
+  `GET /v1/config` defaults/limits, and the web UI (rendered from `/v1/config` — never hardcode a
+  default or range in `webui/`). Then `make webui-bundle`.
+- Build: the Makefile tracks header dependencies (`-MMD -MP`, 2026-10-18); don't remove it —
+  stale objects with old struct layouts were linked silently before.
 
 ## Memory & safety (hard rules, learned from real bugs)
 - **Zero structs before partial population.** Always `memset(&x, 0, sizeof(x))` before

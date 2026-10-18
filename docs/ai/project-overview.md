@@ -2,7 +2,7 @@
 
 > Canonical source of truth. Tool adapters (CLAUDE.md, AGENTS.md, gemini/GEMINI.md,
 > .github/copilot-instructions.md) summarize and link here. Keep this current.
-> Last updated: 2026-07-15.
+> Last updated: 2026-10-18.
 
 ## Purpose
 `project-zero` is a from-scratch, CPU-optimized LLM inference engine in C/C++ targeting
@@ -98,11 +98,19 @@ see `docs/RELEASING.md`).
   model) so static asset/UI serving isn't blocked behind an in-flight generation. Still binds
   loopback-only by default. Logic-level tests in `tests/test_api_server.c` plus
   `tests/test_cors.c`/`test_auth.c`/`test_metrics.c`/`test_cancel.c`/`test_openapi.c`.
+- **Generation settings** (Phase 22-UI, 2026-10-18): one `GenerationParams` value
+  (`include/transformer/gen_params.h`) drives `generate_ex()` — sampler chain
+  (`sampling/sampler_chain.h`: penalties, top-k, min-p, temperature, top-p), seed, JSON mode,
+  Phase 33 watermark (`sampling/watermark.h`), chat history, system prompt, stop strings, and
+  usage/finish-reason stats. CLI flags set the server defaults; `GET /v1/config` publishes
+  defaults/ranges/features so the web UI hardcodes nothing; requests override any subset.
+  `POST /v1/watermark/detect` scores text for the watermark.
 - **Web chat UI** (Phase 22.2, `webui/`): a Vite+Svelte SPA served by the HTTP API at `GET /`
   (`GET /health` remains the separate JSON health check). Built bundle is embedded into the C
   binary as a committed generated TU (`src/api/webui_bundle_generated.c`) — default builds need
   no Node; `make webui-bundle` regenerates it when `webui/src` changes. Supports streaming chat,
-  adjustable sampling params, stop/cancel, theme toggle, and image upload via the OpenAI
+  a Settings panel for every generation knob (built from `/v1/config`, per-viewer overrides in
+  localStorage), new chat, watermark detection, per-reply token usage, stop/cancel, theme toggle, and image upload via the OpenAI
   "content parts" form (`src/api/data_url.c` decodes the base64 payload; the vision pipeline
   itself lives in `src/multimodal/vision_pipeline.c`, shared with the CLI's `--image`, active
   when the server is started with `--vision`/`--proj`).

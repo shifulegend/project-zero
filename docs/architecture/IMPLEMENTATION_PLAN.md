@@ -2405,36 +2405,66 @@ Implements the TTT architecture where the model trains a tiny internal network o
 
 ---
 
-## PHASE 33: Cryptographic Watermarking (Toggleable)
+## PHASE 33: Cryptographic Watermarking (Toggleable) ✅ done 2026-10-18
 
-Embeds invisible, cryptographically verifiable signatures into generated text.
+Embeds invisible, statistically verifiable signatures into generated text. Off by default at
+every surface; toggled per request from the CLI (`--watermark*`), the API (`"watermark"`
+object) and the web UI (Settings → Watermark; Watermark panel for detection).
 
-### 33.1 — Watermark Key Management
-- File: `include/sampling/watermark.h`
-- ```c
-  typedef struct {
-      uint8_t private_key[32];  // 256-bit key
-      float delta;              // Logit bias magnitude (e.g., 2.0)
-      bool enabled;
-  } WatermarkConfig;
-  ```
-- `void watermark_init(WatermarkConfig *wc, const uint8_t *key);`
+**As built (deviations from the original stub, see `docs/ai/decision-log.md` 2026-10-18):**
+- Key is a 64-bit value derived from a passphrase (FNV-1a), and the green list is keyed by a
+  splitmix64 mix of (key, prev_token, token) rather than HMAC-SHA256 — the scheme only needs a
+  keyed pseudo-random partition (Kirchenbauer et al.), not a MAC, and a per-vocab-entry SHA-256
+  would cost far more than the matmuls it rides on. `gamma` (green fraction) is configurable,
+  not fixed at 0.5.
+- Detection scores each **distinct** (prev, token) bigram once — repeated phrases otherwise
+  inflate the z-score (an un-watermarked repetitive reply scored z≈4.6 before this).
 
-### 33.2 — Watermark Logit Biasing
-- File: `src/sampling/watermark_apply.c`
-- `void watermark_bias_logits(float *logits, int vocab_size, const WatermarkConfig *wc, int prev_token);`
-  - Hash: `h = HMAC-SHA256(key, prev_token)`.
-  - Use hash to partition vocabulary into "green list" and "red list".
-  - Add `delta` to all green-list token logits.
-  - The model preferentially selects green-list tokens — invisible to humans, detectable by the algorithm.
+### 33.1 — Watermark Key Management ✅
+- `include/sampling/watermark.h` — `WatermarkConfig {enabled, key, gamma, delta}`,
+  `watermark_config_default()`, `watermark_key_from_string()`, `watermark_config_sanitize()`.
 
-### 33.3 — Watermark Detector
-- File: `src/sampling/watermark_detect.c`
-- `float watermark_detect(const int *tokens, int num_tokens, const WatermarkConfig *wc);`
-  - For each token: check if it's in the green list given `prev_token`.
-  - Compute z-score: proportion of green tokens vs. expected by chance.
-  - z-score > 4.0 → statistically certain watermark present.
-  - Returns z-score.
+### 33.2 — Watermark Logit Biasing ✅
+- `src/sampling/watermark.c` — `watermark_bias_logits()`; applied by the sampler chain
+  (`src/sampling/sampler_chain.c`) after penalties and before truncation/temperature, and by the
+  JSON-grammar sampler before the grammar mask.
+
+### 33.3 — Watermark Detector ✅
+- `watermark_detect()` (token IDs) + `src/sampling/watermark_text.c` (`watermark_detect_text()`,
+  tokenizes raw text with the model's tokenizer). Exposed as `--watermark-detect <text>` and
+  `POST /v1/watermark/detect`. Default threshold z ≥ 4 (`WATERMARK_DETECT_Z_THRESHOLD`),
+  overridable per request.
+- Tests: `tests/test_watermark.c` (green fraction ≈ γ, bias only on green tokens, 0/200 false
+  positives on random sequences, 20/20 watermarked sequences detected, bigram dedup).
+
+---
+
+## PHASE 22-UI: Front-End Configurability (no hardcoded generation settings) ✅ done 2026-10-18
+
+Every generation knob the engine has is settable from the CLI, the API and the web UI, and the
+UI carries no defaults or limits of its own.
+
+- **Sampler chain** (`include/sampling/sampler_chain.h`): repetition/presence/frequency
+  penalties over a configurable window → watermark → top-k → min-p → temperature → top-p.
+  Defaults are neutral and bit-identical to the old cascade (verified: same greedy output md5
+  as the previous commit).
+- **`GenerationParams`** (`include/transformer/gen_params.h`) + `generate_ex()`: one value carries
+  sampler settings, seed (the old `--seed` was parsed but ignored), JSON mode, watermark, full
+  chat history, system prompt, stop strings, and an optional `GenerationStats` out-param (token
+  usage + finish reason). `generate()`/`generate_with_callback()` are thin wrappers.
+- **Stop sequences** (`src/transformer/stop_seq.c`): streaming-safe — text that may begin a stop
+  string is held back, so clients never see a partial stop sequence.
+- **API**: new request fields (`top_k`, `min_p`, `repetition_penalty`, `presence_penalty`,
+  `frequency_penalty`, `penalty_last_n`, `seed`, `stop`, `watermark`) resolved over the server
+  defaults (`src/api/request_params.c`); `GET /v1/config` publishes defaults, valid ranges,
+  feature flags and the UI title; `/v1/models` reports real model metadata; responses carry real
+  `usage` and `finish_reason`.
+- **CLI**: `--top-k --min-p --repeat-penalty --presence-penalty --frequency-penalty
+  --repeat-last-n --system-prompt --stop --max-tokens-limit --ui-title --watermark*`.
+- **Web UI**: Settings panel (sampling, repetition, output, watermark, system prompt) built from
+  `/v1/config`, per-viewer overrides remembered in localStorage with a "Reset to server
+  defaults" action and an override-count badge; New chat; Watermark detection panel; per-reply
+  token usage/finish reason; brand title from the server.
 
 ---
 

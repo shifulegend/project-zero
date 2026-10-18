@@ -1,7 +1,30 @@
 # Change Trace — project-zero
 
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
-> Update after each meaningful sub-step. Last updated: 2026-09-24.
+> Update after each meaningful sub-step. Last updated: 2026-10-18.
+
+### 2026-10-18 — Phase 22-UI (front-end configurability) + Phase 33 (watermarking)
+- Rationale: `decision-log.md` 2026-10-18; bugs found/fixed: `mistakes.md` 2026-10-18.
+- New modules (each with its own test): `sampling/sampler_chain` (test_sampler_chain),
+  `sampling/watermark` + `watermark_text` (test_watermark), `transformer/stop_seq`
+  (test_stop_seq), `transformer/gen_params`, `api/request_params` + `api/json_fields`
+  (test_request_params), `api/json_write`, `api/api_info` + `api/watermark_endpoint`
+  (test_api_info).
+- Changed: `generate.c` (`generate_ex()`, seed, history/system prompt, stop strings, stats),
+  `constrained_sample.c` (`sample_constrained_chain()`), `json_parse.c` (new fields, `\u`
+  decoding, null content), `http_server.c` (`/v1/config`, `/v1/watermark/detect`, real
+  `/v1/models`, history forwarding, `current_pos` reset, usage/finish_reason), `sse_stream.c`
+  (`*_ex` variants, input-sized token buffer), `openapi.c`, `server_config.*`, `args.*`,
+  `main.c`, `repl.c`, `Makefile` (header deps), `CMakeLists.txt`, web UI (`SettingsPanel`,
+  `RangeField`, `NumberField`, `WatermarkPanel`, `settings.js`, `App`, `ChatWindow`,
+  `MessageBubble`, `ModelInfoPanel`, `api.js`; `SamplingControls` removed), regenerated
+  `webui_bundle_generated.c`, `tools/screenshots/webui/chat.spec.mjs`.
+- Verified: `make release/test/debug` green for gcc and clang (clean tree); golden "capital of
+  France" → "Paris"; greedy output md5 identical to the previous commit; A/B tok/s within noise
+  (3-run mean 86.8 base vs 85.6, SmolLM2-135M F16, 4 threads); live curl smoke of every new
+  endpoint (multi-turn memory, stop strings incl. streaming, usage/finish_reason, watermark
+  z=7.9 vs −2.2 plain, `\u00e9`); Playwright drive of the UI (settings, persistence badge,
+  stop, watermark panel, dark mode, 390px width with no horizontal scroll, zero console errors).
 
 ### 2026-09-24 — Phase 19: LoRA adapters (hot-swappable low-rank fine-tunes)
 - Full design rationale and deviations from the original plan stub: `docs/ai/decision-log.md`'s

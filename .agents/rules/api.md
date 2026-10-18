@@ -13,3 +13,10 @@
   behind that exact label).
 - `signal(SIGPIPE, SIG_IGN)` must stay in `api_server_start()` — a client disconnect mid-write
   otherwise kills the whole process.
+- Generation knobs: `GET /v1/config` publishes server defaults (CLI flags), valid ranges and
+  feature flags; the web UI renders every control from it and hardcodes nothing. Requests
+  override any subset (`set_mask` → `request_params_resolve()`); absent fields use the server
+  default. Chat-template models receive the **full** message history (never just the last user
+  turn). Each chat request resets `run_state->current_pos` to 0.
+- `POST /v1/watermark/detect` and the discovery routes never take `generation_mutex`
+  (tokenizer encode is read-only).

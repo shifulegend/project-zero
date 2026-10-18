@@ -11,3 +11,8 @@ Adapter for the configurability rules in `docs/ai/engineering-rules.md`.
   --temperature --top-p --seed --threads --simd --classifier --calibrate`.
 - Model config/tokenizer/quant come from GGUF metadata, never hardcoded.
 - New tunables: prefer flags/metadata/feature-detection over magic numbers; document defaults.
+- Generation flags (`--top-k --min-p --repeat-penalty --presence-penalty --frequency-penalty
+  --repeat-last-n --seed --system-prompt --stop --watermark*`) fill `GenerationParams` via
+  `args_fill_gen_params()`; in `--server` mode they are the defaults published by `/v1/config`.
+  A new knob must reach CLI + API + web UI (see `engineering-rules.md` § No hardcoding).
+- Makefile tracks header deps (`-MMD -MP`); keep it.

@@ -7,3 +7,8 @@
 - Runtime config via CLI/env, not literals (`--model --tokenizer --prompt --max-tokens
   --temperature --top-p --seed --threads --simd --classifier --calibrate`).
 - Model config/tokenizer/quant from GGUF metadata; new tunables via flags/metadata.
+- Generation flags (`--top-k --min-p --repeat-penalty --presence-penalty --frequency-penalty
+  --repeat-last-n --seed --system-prompt --stop --watermark*`) fill `GenerationParams` via
+  `args_fill_gen_params()`; in `--server` mode they are the defaults published by `/v1/config`.
+  A new knob must reach CLI + API + web UI (see `engineering-rules.md` § No hardcoding).
+- Makefile tracks header deps (`-MMD -MP`); keep it.

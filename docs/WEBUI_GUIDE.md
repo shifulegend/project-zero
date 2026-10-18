@@ -25,14 +25,31 @@ after a change).
 - **Composer** — type a message, press **Send** (or Enter) to stream a response.
 - **Stop** — replaces Send while a response is streaming; click it to cancel generation
   mid-stream (calls `POST /v1/chat/completions/cancel` under the hood).
-- **Params** — toggles a panel with three sliders: **Temperature** (0–2), **Top-p** (0–1), and
-  **Max tokens** (16–2048), applied to the next message you send.
+- **Settings** — toggles a panel with every generation knob, applied to the next message you
+  send. Defaults, ranges and which sections appear all come from the server (`GET /v1/config`),
+  so starting the server with e.g. `--temperature 0.2 --top-k 40 --system-prompt "…"` changes
+  what the UI starts from:
+  - *Sampling*: temperature, top-p, top-k, min-p, max tokens (capped by the model context or
+    `--max-tokens-limit`).
+  - *Repetition*: repetition / presence / frequency penalty and the penalty window.
+  - *Output*: random or fixed seed (reproducible replies), JSON mode, stop sequences.
+  - *Watermark*: watermark replies, key (blank = the server's `--watermark-key`), γ and δ.
+  - *System prompt*: applied to every conversation (chat-template models).
+  Your changes are remembered in this browser; the badge on **Settings** counts how many differ
+  from the server defaults, and **Reset to server defaults** discards them.
+- **New chat** — clears the conversation (the full history is otherwise sent with every turn,
+  so the model remembers earlier messages).
+- **Watermark** — paste text to check whether it carries this server's watermark (z-score
+  against the threshold; uses `POST /v1/watermark/detect`).
+- **Reply footer** — completion/prompt token counts and why the reply ended (complete, hit max
+  tokens, stopped).
 - **Theme toggle** (top bar) — cycles dark → light → auto (follows OS preference).
 - **Image upload** (paperclip icon, composer) — only rendered when the server reports vision
   is configured; attach an image, then send a message referencing it. Requires starting the
   server with both `--vision <path>` and `--proj <path>`.
-- **Model info panel** — shows the loaded model's architecture, quantization, and context size
-  (from `GET /v1/models`).
+- **Model info panel** — shows the loaded model file, layer count, width and context size, plus
+  vision/MoE tags (from `GET /v1/config`'s `model` object, same data as `GET /v1/models`).
+- **Branding** — the top-bar name comes from `--ui-title` (default `project-zero`).
 
 ### Enabling image upload
 
@@ -94,11 +111,20 @@ the CLI.
 |---|---|
 | `POST /v1/chat/completions` | OpenAI-compatible chat completion (streaming via SSE, or full JSON) |
 | `POST /v1/chat/completions/cancel` | Cancel the in-flight generation |
-| `GET /v1/models` | Model metadata (architecture, quantization, context size) |
+| `GET /v1/models` | Model metadata (file name, context length, layers, dims, vision/MoE flags) |
+| `GET /v1/config` | Server generation defaults, valid ranges, feature flags, UI title |
+| `POST /v1/watermark/detect` | `{text, key?, gamma?, z_threshold?}` → watermark z-score |
 | `GET /health` | Liveness check (JSON) |
 | `GET /metrics` | Prometheus text exposition (needs `--metrics`) |
 | `GET /docs`, `GET /openapi.json` | Interactive API docs / OpenAPI 3.0 spec |
 | `GET /`, `GET /assets/*` | The web UI (see `--web-ui` above) |
+
+Chat completion requests accept, besides `messages`/`stream`/`max_tokens`/`temperature`/`top_p`:
+`top_k`, `min_p`, `repetition_penalty`, `presence_penalty`, `frequency_penalty`,
+`penalty_last_n`, `seed`, `stop` (string or array), `response_format: {"type":"json_object"}`
+and `watermark: {"enabled", "key", "gamma", "delta"}`. Omitted fields use the server defaults
+(the CLI flags). Responses carry real `usage` token counts and `finish_reason`
+(`stop` | `length` | `cancelled`); the final streaming chunk includes `usage` too.
 
 CORS (`--cors`, `--cors-origin <origin>`, repeatable or `*`) and API-key auth (`--api-key
 <key>`, checked via `Authorization: Bearer <key>`) are both **off by default** — enable them

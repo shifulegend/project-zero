@@ -1,7 +1,42 @@
 # Decision Log — project-zero
 
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
-> Read at session start. Last updated: 2026-09-24.
+> Read at session start. Last updated: 2026-10-18.
+
+### 2026-10-18 — Front-end configurability (Phase 22-UI) + Phase 33 watermarking: server-published config, one GenerationParams value, statistical (not HMAC) green list
+
+- Context: goal "complete the missing features of the architecture doc + implementation plan,
+  keep branding, no hardcoding, everything customisable at the front end". The web UI exposed
+  only temperature/top-p/max-tokens with hardcoded defaults and limits; the engine had several
+  knobs (top-k sampler existed but was unreachable, seed ignored) with no API/UI path.
+- Decision 1 — **`GET /v1/config` is the single source for the UI.** Defaults (from CLI flags),
+  valid ranges (mirroring the C sanitizers), feature flags and the UI title are served by the
+  engine; the Svelte app renders every control from it and stores only per-viewer *overrides*
+  in localStorage (with a reset action). Rejected: duplicating defaults in JS (drifts from the
+  engine) and server-side persistence of UI prefs (multi-user state the engine has no business
+  owning).
+- Decision 2 — **`GenerationParams` + `generate_ex()` instead of growing positional
+  parameters.** `generate()`/`generate_with_callback()` stay as wrappers so the ~20 existing call
+  sites (spec-decode, agent loop, RAG, tests) are untouched. Per-request values resolve over the
+  server defaults via a `set_mask` on `ChatRequest` (absent field → server default).
+- Decision 3 — **Sampler chain order**: penalties → watermark → (greedy) → top-k → min-p →
+  temperature → top-p. With neutral settings it is bit-identical to the old cascade (verified by
+  unit test against the legacy path and by identical greedy md5 vs the previous commit). In JSON
+  mode the grammar mask runs *before* top-k/min-p so truncation can never remove every legal
+  token.
+- Decision 4 — **Watermark = keyed splitmix64 partition, not HMAC-SHA256** (plan stub). The
+  Kirchenbauer scheme needs only a keyed pseudo-random green list; hashing every vocab entry with
+  SHA-256 per step would cost more than the forward pass on small models. Detection dedups
+  bigrams (independence assumption of the z-test). Default γ=0.25, δ=2.0, z≥4.
+- Decision 5 — **Stop sequences hold back possible prefixes** rather than truncating after the
+  fact, because streamed bytes cannot be recalled.
+- Branding: new UI pieces follow `docs/design/ui-ux-principles.md` (terminal `>_` mark,
+  monospace for values/labels, single green accent for state only, borders not blur). The title
+  is configurable (`--ui-title`, default `project-zero`) and comes from `/v1/config`.
+- Not done this pass (remaining plan phases, still open): 21.5/26 prompt/prefix caching,
+  22-SSM, 23 PagedAttention/continuous batching, 25 audio, 27 cache tiling, 28 distributed,
+  29 WASM sandbox, 30 MCTS/PRM, 31 NVMe tiering, 32 TTT, 36 text-to-image, 18-B/19-B follow-ups,
+  2.4/2.5 RAM budget.
 
 ### 2026-09-24 — Phase 19 (LoRA adapters) scope: generic dense/GQA path only, RunState-carried not parameter-threaded, format-agnostic application, GQA kv_dim fix found via a real adapter
 

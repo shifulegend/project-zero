@@ -14,6 +14,7 @@
 #include "math/matmul_q2_0.h"
 #include "math/matmul_q4k.h"
 #include "math/matmul_q4k_x8.h"
+#include "math/matmul_q6k.h"
 #include "math/batched_matmul.h"
 #include "threading/thread_pool.h"
 #include <stdlib.h>
@@ -42,6 +43,9 @@ static inline void tn_dense_matmul_dispatch(float *out, const float *x,
     }
     case WEIGHT_TYPE_Q2_0:
         parallel_matmul_q2_0(out, x, (const uint8_t *)w, n, d, tp);
+        break;
+    case WEIGHT_TYPE_Q6K:
+        parallel_matmul_q6k(out, x, (const uint8_t *)w, n, d, tp);
         break;
     default: /* WEIGHT_TYPE_F32 */
         parallel_matmul_float32(out, x, (const float *)w, n, d, tp);
@@ -93,6 +97,10 @@ static inline void tn_dense_matmul_dispatch_batch(float *out, const float *x,
      * batch too (bit-identical to the per-token loop below). */
     if (wtype == WEIGHT_TYPE_F32) {
         tn_matmul_f32_batch(out, x, (const float *)w, n, d, n_tokens, tp);
+        return;
+    }
+    if (wtype == WEIGHT_TYPE_Q6K) {
+        parallel_matmul_q6k_tokens(out, x, (const uint8_t *)w, n, d, n_tokens, tp);
         return;
     }
     if (wtype == WEIGHT_TYPE_Q4K) {

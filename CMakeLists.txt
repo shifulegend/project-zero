@@ -152,6 +152,7 @@ set(MATH_SOURCES
     src/math/matmul_q5_1.c
     src/math/matmul_q8_0.c
     src/math/matmul_q5k.c
+    src/math/matmul_q6k.c
     src/math/matmul_q2_0.c
     src/math/matmul_q2_0_vnni.c
     src/math/parallel_matmul.c
@@ -350,7 +351,7 @@ if(PZ_DIST AND NOT MSVC)
         src/math/elementwise_avx2.c src/math/rmsnorm_avx2.c src/math/softmax_avx2.c
         src/core/unpack_avx2.c
         src/math/matmul_q4k.c src/math/matmul_q4k_x8.c src/math/matmul_q2k.c src/math/matmul_q8_0.c
-        src/math/matmul_q5_0.c src/math/matmul_q5_1.c src/math/matmul_q5k.c
+        src/math/matmul_q5_0.c src/math/matmul_q5_1.c src/math/matmul_q5k.c src/math/matmul_q6k.c
         src/math/matmul_f16.c src/math/quantize_i8.c src/math/parallel_matmul.c)
     set(PZ_AVX512_SRCS
         src/math/ternary_matmul_packed_avx512.c src/math/ternary_matmul_lut_avx512bw.c
@@ -369,7 +370,7 @@ if(PZ_DIST AND NOT MSVC)
         COMPILE_OPTIONS "-mavx512vnni;-mavx512vl;-mf16c")
     set_source_files_properties(src/math/ternary_matmul_packed_avx_vnni.c PROPERTIES
         COMPILE_OPTIONS "-mavxvnni")
-    set_source_files_properties(src/math/simd_dispatch.c PROPERTIES
+    set_source_files_properties(src/math/simd_dispatch.c src/core/calibration.c PROPERTIES
         COMPILE_DEFINITIONS "TN_FORCE_DISPATCH_ALL")
     target_link_options(project-zero PRIVATE -static-libstdc++ -static-libgcc)
 endif()

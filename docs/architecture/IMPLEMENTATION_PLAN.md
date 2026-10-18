@@ -3381,6 +3381,15 @@ cases in `src/core/gguf_reader.c` for each new type.
 
 ---
 
+### 37.17 — Fused Q6_K matmul (zero-copy) ✅ done 2026-10-18
+- `include/math/matmul_q6k.h` / `src/math/matmul_q6k.c`: Q6_K × Q8K dot (AVX2 + scalar reference),
+  single and batched-over-tokens entry points; `WEIGHT_TYPE_Q6K`; the generic and Mamba loaders
+  map Q6_K projections zero-copy instead of dequantising to F32. Q4_K_M files use Q6_K for
+  attn_v / ffn_down. Measured SmolLM2-1.7B-Instruct Q4_K_M (4 threads): 8.7 → 15.3 tok/s decode,
+  same answer; the F32 copies of those tensors are no longer allocated.
+- Tests: `tests/test_q6k_matmul.c` (SIMD == scalar exactly; matches dequantise-then-dot;
+  batched == per-token).
+
 ### 37.16 — BF16 standalone dequant function ✅ done
 > **Done 2026-09-17** -- implemented, wired, and tested this session (see `tests/test_gguf_quant_new_formats.c`).
 BF16 decode is currently inlined in `gguf_loader.c`. For consistency and

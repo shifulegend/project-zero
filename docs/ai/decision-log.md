@@ -3,6 +3,14 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-10-18.
 
+### 2026-10-18 — Q6_K gets a fused zero-copy kernel (was dequantised to F32)
+
+- Q4_K_M — the most common GGUF quant — stores attn_v/ffn_down as Q6_K; dequantising them to
+  F32 cost ~4.9× the bytes per weight and ~1.5 GB extra RAM on a 1.7B model, and decode on this
+  host is limited by those layers. Same design as matmul_q4k.c: Q8K activations,
+  `maddubs` on unsigned 6-bit codes with the −32 bias folded in through the activation block
+  sums, one integer accumulator per block. Scalar reference kept for non-AVX2 builds and tests.
+
 ### 2026-10-18 — Phase 18-B kept despite small gains; 18-C (decode-once GEMM) identified
 
 - Profiling (TN_STEP_TIMING) showed verify-batch cost ≈ 5.4× a single step: the Q4_K path is

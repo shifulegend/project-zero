@@ -19,6 +19,9 @@
                               * 2026-07-31 "attempt 6"). Only used when a projection's output
                               * dimension is a multiple of 8; falls back to WEIGHT_TYPE_Q4K
                               * otherwise (set per-projection at load time, gguf_loader.c). */
+#define WEIGHT_TYPE_Q6K  6   /* Q6_K mmap zero-copy — fused matmul kernel (matmul_q6k.c); Q4_K_M
+                              * files use it for attn_v/ffn_down. Was dequantised to F32 before
+                              * 2026-10-18 (~4.9x the bytes per weight). */
 
 /* Block size for the classifier INT8/INT4 quantization scale granularity
  * (weights_build_classifier_quant in weights.c, consumed by

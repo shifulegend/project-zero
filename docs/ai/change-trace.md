@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-18.
 
+### 2026-10-18 — Fused Q6_K kernel (plan 37.17)
+- New: `math/matmul_q6k` (+ `tests/test_q6k_matmul.c`), `WEIGHT_TYPE_Q6K`, loader/dispatch
+  wiring (single + batched); added to the Makefile/CMake AVX2 TU lists.
+- Verified: gcc+clang release/test/debug, TSan, dist build; SmolLM2-1.7B Q4_K_M 8.7 → 15.3 tok/s
+  with the same greedy answer; golden Paris on both models.
+
 ### 2026-10-18 — Phase 18-B: batched Q4_K / Q4_K-x8 / F32 verify kernels
 - New: `parallel_matmul_q4k_tokens`, `parallel_matmul_q4k_x8_tokens_preq`, `tn_matmul_f32_batch`;
   `tn_dense_matmul_dispatch_batch` uses them; `tests/test_q4k_batch_tokens.c` (bit-exact).

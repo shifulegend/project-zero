@@ -1127,6 +1127,7 @@ static TernaryError mamba_load_proj(const GGUFHeader *hdr, GGUFWeightStore *stor
     if (t->type == GGUF_TYPE_F16) { *out = (tn_i8 *)t->data; *type_out = WEIGHT_TYPE_F16; }
     else if (t->type == GGUF_TYPE_F32) { *out = (tn_i8 *)t->data; *type_out = WEIGHT_TYPE_F32; }
     else if (t->type == GGUF_TYPE_Q4_K && n_inner % 256 == 0) { *out = (tn_i8 *)t->data; *type_out = WEIGHT_TYPE_Q4K; }
+    else if (t->type == GGUF_TYPE_Q6_K && n_inner % 256 == 0) { *out = (tn_i8 *)t->data; *type_out = WEIGHT_TYPE_Q6K; }
     else {
         float *f = tensor_to_f32(t, n, store);
         if (!f) return TN_ERR_INVALID_WEIGHTS;
@@ -1411,6 +1412,10 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
         /* Zero-copy: raw Q4_K bytes live in mmap for model lifetime */     \
         (field)[l] = (tn_i8 *)_t->data;                                    \
         (type_out)[l] = WEIGHT_TYPE_Q4K;                                    \
+    } else if (_t->type == GGUF_TYPE_Q6_K && (size_t)(n_inner) % 256 == 0) { \
+        /* Zero-copy Q6_K, fused kernel (matmul_q6k.c) — 2026-10-18 */      \
+        (field)[l] = (tn_i8 *)_t->data;                                    \
+        (type_out)[l] = WEIGHT_TYPE_Q6K;                                    \
     } else {                                                                \
         float *_f = tensor_to_f32(_t, _n_elems, store);                    \
         if (!_f) return TN_ERR_INVALID_WEIGHTS;                             \

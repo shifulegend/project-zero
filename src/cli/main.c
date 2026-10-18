@@ -662,6 +662,7 @@ int main(int argc, char **argv) {
         }
         if (args.ui_title) api_ctx.server_config.ui_title = strdup(args.ui_title);
         api_ctx.server_config.prompt_cache = args.prompt_cache ? 1 : 0;
+        api_ctx.server_config.chat_format = args.chat_format;
         api_ctx.server_config.prompt_cache_mb = args.prompt_cache_mb;
         api_ctx.server_config.prompt_cache_min_tokens = args.prompt_cache_min_tokens;
         api_ctx.server_config.max_tokens_limit =

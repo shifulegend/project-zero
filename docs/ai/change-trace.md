@@ -3,6 +3,16 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-18.
 
+### 2026-10-18 — Phase 22-SSM: Mamba-1 support + vocabulary-driven chat format
+- New: `transformer/mamba` (+ `tests/test_mamba.c`), `tools/mamba_reference.py`,
+  `tests/e2e_mamba_reference.sh`; `MoEConfig.is_ssm` + `moe_is_recurrent()`;
+  `TransformerWeights.mamba`, `RunState.mamba` (freed by the existing free functions);
+  `weights_from_gguf_mamba()`; forward routing; `chat_template_detect_vocab/parse/name`,
+  `--chat-format`, `/v1/models` `chat_format` + `recurrent`, UI tags.
+- Fixed: arch-allowlisted MoEConfig population; empty-200 on un-tokenizable prompts.
+- Verified: gcc+clang release/test/debug, TSan, golden Paris, numpy-reference e2e, prompt-cache
+  e2e unchanged.
+
 ### 2026-10-18 — Phase 27: cache probe, tiled attention kernel, head-parallel attention
 - New: `threading/cache_probe`, `transformer/attn_tiled` (+ `tests/test_cache_probe.c`),
   `tn_simd_backend_name()`; `attention.c` step 5 refactored into `attn_one_head()` dispatched

@@ -78,6 +78,7 @@ typedef struct {
     float  watermark_delta;    /* --watermark-delta <d> (default 2.0)           */
     char  *watermark_detect;   /* --watermark-detect <text>: score text, exit   */
     char  *ui_title;           /* --ui-title <name>: web UI brand name          */
+    int    chat_format;        /* --chat-format: -1 auto, else ChatTemplateType */
     char  *attn_kernel;        /* --attn-kernel standard|tiled (standard)       */
     int    attn_tile;          /* --attn-tile <N>: tiled kernel tile (0 = L1d)  */
     int    attn_parallel_min_ctx; /* --attn-parallel-min-ctx <N> (256, 0=off)  */

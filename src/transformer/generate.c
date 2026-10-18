@@ -197,7 +197,7 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
     PrefixCache *pcache = gp->prefix_cache;
     PromptStore *pstore = (pcache && prompt_store_supported(mc)) ? gp->prompt_store : NULL;
     int start_step = 0;
-    int cache_eligible = pcache && pos_offset == 0 && !(mc && mc->has_linear_attn);
+    int cache_eligible = pcache && pos_offset == 0 && !moe_is_recurrent(mc);
     if (pcache) {
         if (cache_eligible && n_prompt > 1) {
             int lcp = prefix_cache_match(pcache, prompt_tokens, n_prompt);

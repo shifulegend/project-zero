@@ -1,5 +1,6 @@
 #include "api/api_info.h"
 #include "api/json_write.h"
+#include "api/chat_compile.h"
 #include "api/chat_request.h"
 #include "sampling/watermark_text.h"
 #include "threading/cache_probe.h"
@@ -42,6 +43,12 @@ static void model_meta(JsonBuf *jb, const ApiContext *ctx) {
     }
     jb_raw(jb, ","); jb_key(jb, "chat_template");
     jb_bool(jb, ctx && ctx->tok && ctx->tok->chat_template != NULL);
+    jb_raw(jb, ","); jb_key(jb, "chat_format");
+    if (ctx && ctx->tok && ctx->tok->chat_template) jb_str(jb, "embedded");
+    else if (ctx && ctx->server_config.chat_format >= 0)
+        jb_str(jb, chat_template_name((ChatTemplateType)ctx->server_config.chat_format));
+    else jb_str(jb, chat_template_name(chat_template_detect_vocab(ctx ? ctx->tok : NULL)));
+    jb_raw(jb, ","); jb_key(jb, "recurrent"); jb_bool(jb, ctx && moe_is_recurrent(ctx->moe_cfg));
 }
 
 char *api_models_json(const ApiContext *ctx) {
@@ -146,7 +153,7 @@ char *api_config_json(const ApiContext *ctx) {
     jb_raw(&jb, ","); jb_key(&jb, "cancel"); jb_bool(&jb, 1);
     /* Recurrent linear-attention state cannot resume from a partial prefix. */
     jb_raw(&jb, ","); jb_key(&jb, "prompt_cache");
-    jb_bool(&jb, !(ctx && ctx->moe_cfg && ctx->moe_cfg->has_linear_attn));
+    jb_bool(&jb, !(ctx && moe_is_recurrent(ctx->moe_cfg)));
     jb_raw(&jb, ","); jb_key(&jb, "prompt_store");
     jb_bool(&jb, ctx && ctx->server_config.prompt_cache_mb > 0 &&
                  (!ctx->moe_cfg || prompt_store_supported(ctx->moe_cfg)));

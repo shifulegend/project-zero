@@ -1,4 +1,5 @@
 #include "core/gguf_loader.h"
+#include "transformer/mamba.h"
 #include "core/gguf_quant.h"
 #include "core/moe_config.h"
 #include "core/platform.h"
@@ -207,6 +208,17 @@ TernaryError config_from_gguf(Config *cfg, const GGUFHeader *hdr) {
     cfg->n_heads   = (int)gguf_meta_u32(hdr, head_key, 0);
     cfg->hidden_dim= (int)gguf_meta_u32(hdr, ffn_key,  0);
 
+    /* Phase 22-SSM: Mamba has no attention heads or FFN (head_count = 0,
+     * feed_forward_length = 0 in the file). Give the generic RunState a single
+     * notional head (sized buffers stay valid; the KV cache is skipped for SSMs)
+     * and size hb/hb2 by the SSM inner width so they are never zero-length. */
+    if (strcmp(arch, "mamba") == 0) {
+        char ik[128];
+        snprintf(ik, sizeof(ik), "%s.ssm.inner_size", arch);
+        if (cfg->n_heads <= 0) cfg->n_heads = 1;
+        if (cfg->hidden_dim <= 0) cfg->hidden_dim = (int)gguf_meta_u32(hdr, ik, 0);
+    }
+
     if (cfg->dim <= 0 || cfg->n_layers <= 0 ||
         cfg->n_heads <= 0 || cfg->hidden_dim <= 0) {
         fprintf(stderr,
@@ -301,6 +313,25 @@ TernaryError config_from_gguf(Config *cfg, const GGUFHeader *hdr) {
 
 TernaryError moe_config_from_gguf(MoEConfig *mc, const GGUFHeader *hdr) {
     moe_config_init_dense(mc);
+
+    if (strcmp(hdr->arch, "mamba") == 0) {
+        /* Phase 22-SSM: Mamba-1. Key names per llama.cpp (mamba.ssm.*),
+         * verified against a real mamba-130m-hf GGUF header dump. */
+        char k[128];
+#define MK(suffix) (snprintf(k, sizeof(k), "%s." suffix, hdr->arch), k)
+        mc->ssm_conv_kernel    = (int)gguf_meta_u32(hdr, MK("ssm.conv_kernel"), 0);
+        mc->ssm_inner_size     = (int)gguf_meta_u32(hdr, MK("ssm.inner_size"), 0);
+        mc->ssm_state_size     = (int)gguf_meta_u32(hdr, MK("ssm.state_size"), 0);
+        mc->ssm_time_step_rank = (int)gguf_meta_u32(hdr, MK("ssm.time_step_rank"), 0);
+#undef MK
+        if (mc->ssm_conv_kernel <= 0 || mc->ssm_inner_size <= 0 ||
+            mc->ssm_state_size <= 0 || mc->ssm_time_step_rank <= 0) {
+            fprintf(stderr, "[gguf_loader] mamba: missing/invalid ssm.* metadata\n");
+            return TN_ERR_INVALID_CONFIG;
+        }
+        mc->is_ssm = 1;
+        return TN_OK;
+    }
 
     if (strcmp(hdr->arch, "qwen35") == 0) {
         /* Qwen3.5/3.6 hybrid Gated-DeltaNet + Gated-Attention.
@@ -1079,6 +1110,77 @@ static TernaryError weights_from_gguf_qwen3moe(
 
 /* ── weights_from_gguf() ──────────────────────────────────────────────────── */
 
+/* ── weights_from_gguf_mamba() — Phase 22-SSM Mamba-1 loader ─────────────── */
+
+/* Projection with its own storage type, same policy as the generic dense
+ * loader: F16/F32 zero-copy, Q4_K zero-copy when blocks align, anything else
+ * dequantized to F32 once. `d_rows` x `n_inner` (output x input). */
+static TernaryError mamba_load_proj(const GGUFHeader *hdr, GGUFWeightStore *store,
+                                    const char *name, int d_rows, int n_inner,
+                                    tn_i8 **out, int *type_out) {
+    const GGUFTensor *t = gguf_find_tensor(hdr, name);
+    if (!t) {
+        fprintf(stderr, "[gguf_loader] mamba: missing tensor '%s'\n", name);
+        return TN_ERR_INVALID_WEIGHTS;
+    }
+    size_t n = (size_t)d_rows * (size_t)n_inner;
+    if (t->type == GGUF_TYPE_F16) { *out = (tn_i8 *)t->data; *type_out = WEIGHT_TYPE_F16; }
+    else if (t->type == GGUF_TYPE_F32) { *out = (tn_i8 *)t->data; *type_out = WEIGHT_TYPE_F32; }
+    else if (t->type == GGUF_TYPE_Q4_K && n_inner % 256 == 0) { *out = (tn_i8 *)t->data; *type_out = WEIGHT_TYPE_Q4K; }
+    else {
+        float *f = tensor_to_f32(t, n, store);
+        if (!f) return TN_ERR_INVALID_WEIGHTS;
+        *out = (tn_i8 *)f;
+        *type_out = WEIGHT_TYPE_F32;
+    }
+    return TN_OK;
+}
+
+static TernaryError weights_from_gguf_mamba(TransformerWeights *w, const Config *cfg,
+                                            const GGUFHeader *hdr, const MoEConfig *mc,
+                                            GGUFWeightStore *store) {
+    TernaryError e = load_bf16_embedding_and_output(w, cfg, hdr, store);
+    if (e != TN_OK) return e;
+    w->rms_final_weight = norm_to_f32(hdr, "output_norm.weight", (size_t)cfg->dim, store);
+    if (!w->rms_final_weight) return TN_ERR_INVALID_WEIGHTS;
+
+    MambaWeights *mw = NULL;
+    e = mamba_weights_alloc(&mw, cfg->n_layers);
+    if (e != TN_OK) return e;
+    w->mamba = mw; /* owned by w from here on (weights_free_pointers) */
+
+    const int dim = cfg->dim, di = mc->ssm_inner_size, ds = mc->ssm_state_size;
+    const int dc = mc->ssm_conv_kernel, dr = mc->ssm_time_step_rank;
+    char nm[128];
+#define MAMBA_NORM(dst, suffix, count) do {                                       \
+        snprintf(nm, sizeof(nm), "blk.%d." suffix, l);                            \
+        (dst) = norm_to_f32(hdr, nm, (size_t)(count), store);                     \
+        if (!(dst)) return TN_ERR_INVALID_WEIGHTS;                                \
+    } while (0)
+#define MAMBA_PROJ(dst, type, suffix, rows, cols) do {                            \
+        snprintf(nm, sizeof(nm), "blk.%d." suffix, l);                            \
+        TernaryError pe = mamba_load_proj(hdr, store, nm, (rows), (cols), &(dst), &(type)); \
+        if (pe != TN_OK) return pe;                                               \
+    } while (0)
+    for (int l = 0; l < cfg->n_layers; l++) {
+        MAMBA_NORM(mw->norm[l],   "attn_norm.weight",       dim);
+        MAMBA_NORM(mw->conv_w[l], "ssm_conv1d.weight",      (size_t)di * dc);
+        MAMBA_NORM(mw->conv_b[l], "ssm_conv1d.bias",        di);
+        MAMBA_NORM(mw->dt_b[l],   "ssm_dt.bias",            di);
+        MAMBA_NORM(mw->A[l],      "ssm_a",                  (size_t)di * ds);
+        MAMBA_NORM(mw->D[l],      "ssm_d",                  di);
+        MAMBA_PROJ(mw->in_proj[l],  mw->in_type[l],  "ssm_in.weight",  2 * di,      dim);
+        MAMBA_PROJ(mw->x_proj[l],   mw->x_type[l],   "ssm_x.weight",   dr + 2 * ds, di);
+        MAMBA_PROJ(mw->dt_proj[l],  mw->dt_type[l],  "ssm_dt.weight",  di,          dr);
+        MAMBA_PROJ(mw->out_proj[l], mw->out_type[l], "ssm_out.weight", dim,         di);
+    }
+#undef MAMBA_NORM
+#undef MAMBA_PROJ
+    weights_build_classifier_quant(w, cfg);
+    return TN_OK;
+}
+
+/* ── weights_from_gguf() ── */
 TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
                                 const GGUFHeader *hdr, GGUFWeightStore **store_out) {
     GGUFWeightStore *store = store_alloc();
@@ -1098,6 +1200,14 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
         if (e2 != TN_OK) return e2;
         weights_build_classifier_quant(w, cfg);
         return TN_OK;
+    }
+
+    /* Phase 22-SSM: Mamba (pure state-space model). */
+    if (strcmp(hdr->arch, "mamba") == 0) {
+        MoEConfig mc;
+        TernaryError e = moe_config_from_gguf(&mc, hdr);
+        if (e != TN_OK) return e;
+        return weights_from_gguf_mamba(w, cfg, hdr, &mc, store);
     }
 
     /* Dispatch to Qwen3.5/3.6 hybrid Gated-DeltaNet + Gated-Attention loader.

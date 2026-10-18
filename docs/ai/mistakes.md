@@ -5,6 +5,21 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-10-18.
 
+### 2026-10-18 — Two bugs surfaced by adding a new architecture (Mamba)
+
+- **MoEConfig only populated for a hardcoded arch list.** `load_gguf_model()` called
+  `moe_config_from_gguf()` only for `deepseek2|qwen35|qwen3moe`; a new arch silently ran as a
+  dense transformer with NULL attention weights (segfault in `attention_forward`). Fix: always
+  call it (it returns the dense default for plain archs).
+- **Server prompt format guessed from the client's `model` string.** Models without an embedded
+  chat template got ChatML for any name (the web UI sends "local"); on vocabularies without
+  `<|im_start|>` the tokenizer's injection guard rejects the prompt and the server answered an
+  empty 200. Fix: `chat_template_detect_vocab()` picks the format from tokens the vocabulary
+  actually has (`plain` for base models, which now ends with an `assistant:` cue),
+  `--chat-format` overrides, and an un-tokenizable prompt returns 400.
+- Lesson: architecture/feature dispatch must not hide behind name allowlists — derive it from
+  the file's metadata and fail loudly.
+
 ### 2026-10-18 — `make debug && make test` failed to link two tests (order-dependent build)
 
 - `build/tests/test_api_server` and `build/tests/test_q2k_matvec` have custom rules that link

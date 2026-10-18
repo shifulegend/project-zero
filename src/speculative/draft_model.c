@@ -19,8 +19,8 @@ TernaryError draft_model_load(DraftModel *dm, const char *draft_model_path,
         return err;
     }
 
-    if (lm.moe_config.has_linear_attn) {
-        fprintf(stderr, "Draft model '%s' uses linear attention (Qwen3.5/3.6 hybrid), "
+    if (moe_is_recurrent(&lm.moe_config)) {
+        fprintf(stderr, "Draft model '%s' has recurrent state (Qwen3.5/3.6 linear attention or Mamba), "
                 "which speculative decoding's batched verify pass does not support.\n",
                 draft_model_path);
         loaded_model_free(&lm);

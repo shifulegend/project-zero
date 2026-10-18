@@ -19,6 +19,8 @@
     {/if}
     {#if modelInfo.vision}<span class="tag">vision</span>{/if}
     {#if modelInfo.moe}<span class="tag">MoE</span>{/if}
+    {#if modelInfo.recurrent}<span class="tag" title="Recurrent state: prompt caching is not used">SSM / recurrent</span>{/if}
+    {#if modelInfo.chat_format && modelInfo.chat_format !== 'embedded'}<span class="tag" title="Prompt format (no embedded chat template)">{modelInfo.chat_format} format</span>{/if}
   {:else}
     <span class="dim">connecting to server…</span>
   {/if}

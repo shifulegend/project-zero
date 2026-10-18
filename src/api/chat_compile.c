@@ -20,6 +20,7 @@
  */
 
 #include "api/chat_compile.h"
+#include "tokenizer/tokenizer.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -163,6 +164,9 @@ static TernaryError compile_raw(const ChatRequest *req,
         if (!buf_append(out, &off, cap, m->content))     return TN_ERR_OOM;
         if (!buf_append(out, &off, cap, "\n"))            return TN_ERR_OOM;
     }
+    /* Generation prompt, so a base model continues as the assistant
+     * (2026-10-18: previously absent — the model just continued the user turn). */
+    if (!buf_append(out, &off, cap, "assistant:"))           return TN_ERR_OOM;
     return TN_OK;
 }
 
@@ -180,5 +184,37 @@ TernaryError chat_compile_prompt(const ChatRequest *req,
         case CHAT_TMPL_MISTRAL:  return compile_mistral(req, out, cap);
         case CHAT_TMPL_RAW:      return compile_raw(req, out, cap);
         default:                 return compile_chatml(req, out, cap);
+    }
+}
+
+/* ── Vocabulary-driven format choice ─────────────────────────────────────── */
+
+ChatTemplateType chat_template_detect_vocab(const Tokenizer *t) {
+    if (!t) return CHAT_TMPL_RAW;
+    if (tokenizer_find_id(t, "<|im_start|>") >= 0 && tokenizer_find_id(t, "<|im_end|>") >= 0)
+        return CHAT_TMPL_CHATML;
+    if (tokenizer_find_id(t, "<|start_header_id|>") >= 0) return CHAT_TMPL_LLAMA3;
+    if (tokenizer_find_id(t, "[INST]") >= 0) return CHAT_TMPL_MISTRAL;
+    return CHAT_TMPL_RAW;
+}
+
+int chat_template_parse(const char *name) {
+    if (!name || strcmp(name, "auto") == 0) return -1;
+    if (strcmp(name, "chatml") == 0)   return CHAT_TMPL_CHATML;
+    if (strcmp(name, "llama3") == 0)   return CHAT_TMPL_LLAMA3;
+    if (strcmp(name, "deepseek") == 0) return CHAT_TMPL_DEEPSEEK;
+    if (strcmp(name, "mistral") == 0)  return CHAT_TMPL_MISTRAL;
+    if (strcmp(name, "plain") == 0)    return CHAT_TMPL_RAW;
+    return -2;
+}
+
+const char *chat_template_name(ChatTemplateType t) {
+    switch (t) {
+        case CHAT_TMPL_CHATML:   return "chatml";
+        case CHAT_TMPL_LLAMA3:   return "llama3";
+        case CHAT_TMPL_DEEPSEEK: return "deepseek";
+        case CHAT_TMPL_MISTRAL:  return "mistral";
+        case CHAT_TMPL_RAW:      return "plain";
+        default:                 return "chatml";
     }
 }

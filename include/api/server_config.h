@@ -55,6 +55,8 @@ typedef struct {
     int              prompt_cache; /* --prompt-cache on|off: default for KV prefix reuse (1) */
     int              prompt_cache_mb;         /* --prompt-cache-mb: Phase 26 snapshot budget (0 = off) */
     int              prompt_cache_min_tokens; /* --prompt-cache-min-tokens: shortest stored sequence */
+    int              chat_format; /* --chat-format: -1 = auto (from vocabulary), else ChatTemplateType;
+                                     only used when the model has no embedded chat template */
 } ServerConfig;
 
 /* Zero-initialise. Must be called before use. */

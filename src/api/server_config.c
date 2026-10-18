@@ -16,6 +16,7 @@ void server_config_init(ServerConfig *sc) {
     sc->prompt_cache = 1;     /* reuse shared prompt prefixes by default */
     sc->prompt_cache_mb = 0;  /* main.c sets the CLI value (default 256) */
     sc->prompt_cache_min_tokens = 32;
+    sc->chat_format = -1;
 }
 
 int server_config_add_cors_origin(ServerConfig *sc, const char *origin) {

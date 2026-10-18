@@ -1,4 +1,5 @@
 #include "core/run_state.h"
+#include "transformer/mamba.h"
 #include "core/platform.h"
 #include "math/rope.h"
 #include "memory/aligned_alloc.h"
@@ -112,6 +113,7 @@ TernaryError run_state_alloc_ex(RunState *s, const Config *cfg, int max_seq_len,
 }
 
 void run_state_free(RunState *s) {
+  if (s->mamba) { mamba_state_free(s->mamba); s->mamba = NULL; }
   tn_aligned_free(s->x);
   tn_aligned_free(s->xb);
   tn_aligned_free(s->xb2);

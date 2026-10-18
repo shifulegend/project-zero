@@ -3,6 +3,7 @@
 #include <string.h>
 #include <time.h>
 #include "transformer/forward.h"
+#include "transformer/mamba.h"
 #include "core/moe_config.h"
 #include "core/debug.h"
 #include "core/step_timing.h"
@@ -70,9 +71,15 @@ float *transformer_forward(int token, int pos, const Config *cfg,
     for (int l = 0; l < cfg->n_layers; l++) {
       int64_t la = 0, lb = 0;
       if (g_profile_enabled) la = prof_now();
+      if (mc && mc->is_ssm) {
+        /* Phase 22-SSM: a Mamba block replaces attention + FFN. */
+        mamba_block_forward(s->x, s->xb, s->xb2, s->mamba, w->mamba, cfg, mc, l, pos, tp);
+        if (g_profile_enabled) lb = prof_now();
+      } else {
       attention_forward(s, w, cfg, mc, l, pos, tp);
       if (g_profile_enabled) lb = prof_now();
       ffn_forward(s, w, cfg, mc, l, tp);
+      }
       if (g_profile_enabled) { int64_t lc = prof_now(); g_prof_attn_only_ns += (lb - la); g_prof_ffn_only_ns += (lc - lb); }
       DBG_DUMP(l, "l_out", s->x, dim);
       if (g_tn_verbose) {
@@ -244,7 +251,7 @@ TernaryError transformer_forward_batch(const int *tokens, int pos, int n_tokens,
                                         RunState *s, SpecBatchScratch *sb,
                                         const MoEConfig *mc, ThreadPool *tp,
                                         float *logits_out) {
-  if (mc && mc->has_linear_attn) {
+  if (moe_is_recurrent(mc)) {
     return TN_ERR_UNSUPPORTED;
   }
 

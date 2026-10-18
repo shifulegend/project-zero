@@ -37,7 +37,7 @@ void prompt_store_free(PromptStore *ps) {
 }
 
 int prompt_store_supported(const MoEConfig *mc) {
-    return !(mc && (mc->has_mla || mc->has_linear_attn || mc->has_qk_norm));
+    return !(mc && (mc->has_mla || moe_is_recurrent(mc) || mc->has_qk_norm));
 }
 
 static int kv_heads(const Config *cfg) {

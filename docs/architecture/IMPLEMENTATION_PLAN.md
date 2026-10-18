@@ -2050,7 +2050,25 @@ Turns the C engine into a headless daemon that any frontend (Cline, OpenHands, S
 
 ---
 
-## PHASE 22-SSM: State Space Models (Mamba/RWKV) — Universal Architecture Router
+## PHASE 22-SSM: State Space Models (Mamba/RWKV) — Universal Architecture Router ✅ Mamba-1 done 2026-10-18 (RWKV / Mamba-2 open)
+
+**As built:** GGUF arch `mamba` (llama.cpp tensor naming) runs end to end.
+- `include/transformer/mamba.h` / `src/transformer/mamba.c`: `MambaWeights`, `MambaState`
+  (conv + SSM state per layer, reset when position 0 is processed), `mamba_block_forward()`
+  (RMSNorm → in-proj → causal depthwise conv1d + SiLU → x-proj → softplus dt → selective scan →
+  SiLU(z) gate → out-proj → residual). Projections go through `tn_dense_matmul_dispatch`, so
+  F16/F32/Q4_K/dequantised formats all work.
+- Router (22.4): `transformer_forward()` routes each layer to the Mamba block when
+  `MoEConfig.is_ssm`; config/MoE-config/weights loaders handle `mamba` (n_heads/ffn absent in
+  the file); generic KV cache skipped. `moe_is_recurrent()` gates prefix cache, prompt store,
+  batched forward and speculative decoding for SSMs and Qwen3.5 linear attention alike.
+- Verified against an independent numpy implementation (`tools/mamba_reference.py`,
+  `tests/e2e_mamba_reference.sh`) on real `mamba-130m-hf.f16.gguf`: same greedy tokens, top-1
+  logits within 0.2 (BF16 classifier vs F32); unit test `tests/test_mamba.c`. ~72 tok/s on 4
+  threads. Server works with the vocabulary-chosen `plain` prompt format.
+- Open: RWKV, Mamba-2 (`mamba2`, grouped SSD heads), hybrid Jamba-style models.
+
+*Original stub, kept for reference:*
 > **Disambiguation note (added 2026-09-17):** This phase's original number, "Phase 22", collided
 > with an unrelated, already-shipped "Phase 22: Web UI & API/DX hardening" used pervasively
 > (sub-phases 22.0-22.5) across `docs/ai/decision-log.md`, `docs/ai/mistakes.md`,

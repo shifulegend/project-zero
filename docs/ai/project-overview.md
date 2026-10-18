@@ -7,7 +7,8 @@
 ## Purpose
 `project-zero` is a from-scratch, CPU-optimized LLM inference engine in C/C++ targeting
 **BitNet b1.58 ternary weights**, **DeepSeek-V2** (MoE + MLA attention), **Qwen3.5/3.6**
-(hybrid Gated-DeltaNet + Gated-Attention), and **Qwen3-MoE** (e.g. Qwen3-30B-A3B — routed MoE
+(hybrid Gated-DeltaNet + Gated-Attention), **Mamba-1** state-space models (GGUF arch `mamba`,
+`src/transformer/mamba.c`, verified against a numpy reference on mamba-130m), and **Qwen3-MoE** (e.g. Qwen3-30B-A3B — routed MoE
 + plain GQA with per-head QK-norm, `src/transformer/qwen3moe_attention.c`) architectures.
 The GGUF loader (`config_from_gguf()` in `src/core/gguf_loader.c`) is **architecture-agnostic**
 — it keys metadata off the GGUF `general.architecture` string — so **dense GGUF transformers**

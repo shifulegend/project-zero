@@ -85,6 +85,12 @@ void moe_config_print(const MoEConfig *mc) {
                mc->ssm_conv_kernel, mc->ssm_group_count, mc->ssm_inner_size,
                mc->ssm_state_size, mc->ssm_time_step_rank);
     }
+    if (mc->is_ssm) {
+        printf("[Mamba] state-space model: d_inner=%d d_state=%d d_conv=%d dt_rank=%d\n",
+               mc->ssm_inner_size, mc->ssm_state_size, mc->ssm_conv_kernel,
+               mc->ssm_time_step_rank);
+        return;
+    }
     if (!mc->is_moe) {
         printf("[MoE] Dense model (MoE disabled)\n");
         return;

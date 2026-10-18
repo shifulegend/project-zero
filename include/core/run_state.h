@@ -93,6 +93,10 @@ typedef struct {
    * draft model's own state, every test) simply never sets this and pays
    * zero cost. */
   const LoRAWeights *active_lora;
+  /* Phase 22-SSM: Mamba recurrent state (MoEConfig.is_ssm), NULL otherwise.
+   * Allocated by mamba_state_alloc() after run_state_alloc*(); released by
+   * run_state_free(). */
+  struct MambaState *mamba;
 } RunState;
 
 /**

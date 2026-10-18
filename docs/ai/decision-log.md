@@ -3,6 +3,17 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-10-18.
 
+### 2026-10-18 — Phase 22-SSM: Mamba via MoEConfig flag + per-layer router, verified by an independent reference
+
+- Followed the existing per-family pattern (flag on MoEConfig, own weights/state structs, a
+  branch in the layer loop) rather than a new "architecture vtable": it keeps the change local
+  and every other path untouched. Weights/state hang off single pointers released by the
+  existing `weights_free_pointers()`/`run_state_free()`, so no call site changed for cleanup.
+- No llama.cpp/torch in the environment, so correctness is anchored by a from-scratch numpy
+  Mamba reading the same GGUF (tooling-only Python), compared on real weights.
+- Recurrent models share one predicate (`moe_is_recurrent`) for "cannot rewind/batch positions",
+  replacing scattered `has_linear_attn` checks in the cache/spec-decode paths.
+
 ### 2026-10-18 — Phase 27: ship head-parallel attention by default, keep the tiled kernel opt-in
 
 - Measured before deciding: the online-softmax tiled kernel is at parity with the standard

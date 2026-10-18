@@ -59,7 +59,21 @@ typedef struct {
      * qwen35) rather than a new field — same "independent head_dim"
      * problem qwen35 already solves, populated from attention.key_length. */
     int  has_qk_norm;            /* 1 for Qwen3-MoE-style per-head QK RMSNorm before RoPE */
+
+    /* Phase 22-SSM: pure state-space model (GGUF arch "mamba"). Reuses the
+     * ssm_* fields above with Mamba-1 meaning: ssm_inner_size = d_inner,
+     * ssm_state_size = d_state, ssm_conv_kernel = d_conv,
+     * ssm_time_step_rank = dt_rank. 0 for every other model. */
+    int  is_ssm;
 } MoEConfig;
+
+/* True for models whose per-token state is recurrent (cannot be rewound to
+ * an arbitrary earlier position or batched across positions): Qwen3.5/3.6
+ * linear attention and pure SSMs. Gates prefix caching, prompt snapshots,
+ * batched forward and speculative decoding. */
+static inline int moe_is_recurrent(const MoEConfig *mc) {
+    return mc && (mc->has_linear_attn || mc->is_ssm);
+}
 
 /**
  * Initialise MoEConfig for a dense (non-MoE) model.

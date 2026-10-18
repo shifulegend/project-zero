@@ -1,4 +1,5 @@
 #include "core/weights.h"
+#include "transformer/mamba.h"
 #include "core/moe_config.h"
 #include "core/moe_weights.h"
 #include "core/unpack.h"
@@ -84,6 +85,7 @@ TernaryError weights_alloc_pointers(TransformerWeights *w, const Config *cfg) {
 }
 
 void weights_free_pointers(TransformerWeights *w) {
+    if (w->mamba) { mamba_weights_free(w->mamba); w->mamba = NULL; }
     if (w->wq) free(w->wq);
     if (w->wk) free(w->wk);
     if (w->wv) free(w->wv);

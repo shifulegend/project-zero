@@ -476,7 +476,9 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
         /* Legacy tokenizer: compile all messages into a formatted prompt */
         char *compiled = (char *)malloc(HTTP_MAX_PROMPT_BYTES);
         if (!compiled) { chat_request_free(&req); pthread_mutex_unlock(&ctx->generation_mutex); send_error_ex(fd, 500, "OOM", extra_headers); return; }
-        ChatTemplateType tmpl = chat_template_detect(req.model);
+        ChatTemplateType tmpl = ctx->server_config.chat_format >= 0
+                                ? (ChatTemplateType)ctx->server_config.chat_format
+                                : chat_template_detect_vocab(ctx->tok);
         if (chat_compile_prompt(&req, tmpl, compiled, HTTP_MAX_PROMPT_BYTES) != TN_OK) {
             free(compiled);
             chat_request_free(&req);
@@ -541,6 +543,18 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
 
     cancel_registry_end(&ctx->cancel);
     metrics_add_tokens(&ctx->metrics, st.tokens_emitted);
+
+    if (gstats.finish_reason == GEN_FINISH_ERROR && !req.stream) {
+        /* Nothing was generated because the prompt could not be prepared
+         * (template render or tokenization failed) — report it instead of an
+         * empty 200 completion. */
+        free(st.accum_buf);
+        if (free_prompt) free(prompt);
+        chat_request_free(&req);
+        pthread_mutex_unlock(&ctx->generation_mutex);
+        send_error_ex(fd, 400, "Prompt could not be tokenized for this model", extra_headers);
+        return;
+    }
 
     if (req.stream) {
         sse_write_done_ex(fd, id, finish_reason,

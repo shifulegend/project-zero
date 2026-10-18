@@ -1,5 +1,6 @@
 #include "cli/args.h"
 #include "transformer/attn_tiled.h"
+#include "api/chat_compile.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -73,6 +74,9 @@ void print_usage(const char *prog_name) {
     printf("                      context length). Generation flags above become the\n");
     printf("                      server defaults; requests/the web UI may override them.\n");
     printf("  --ui-title <name>   Brand name shown in the web UI (default: project-zero)\n");
+    printf("  --chat-format <f>   Prompt format for models without an embedded chat\n");
+    printf("                      template: auto (default: from the vocabulary), chatml,\n");
+    printf("                      llama3, deepseek, mistral, plain\n");
     printf("  --prompt-cache <m>  on (default) | off: reuse the KV cache for the prompt\n");
     printf("                      prefix shared with the previous request (multi-turn\n");
     printf("                      chat skips re-reading the history). Per request:\n");
@@ -187,6 +191,7 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->watermark_delta = WATERMARK_DEFAULT_DELTA;
     args->watermark_detect = NULL;
     args->ui_title = NULL;
+    args->chat_format = -1;
     args->prompt_cache = true;
     args->prompt_cache_mb = 256;
     args->prompt_cache_min_tokens = 32;
@@ -301,6 +306,12 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             else if (strcmp(mode, "off") == 0) args->prompt_cache = false;
             else {
                 fprintf(stderr, "Error: --prompt-cache must be on or off\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--chat-format") == 0 && i + 1 < argc) {
+            args->chat_format = chat_template_parse(argv[++i]);
+            if (args->chat_format < -1) {
+                fprintf(stderr, "Error: --chat-format must be auto, chatml, llama3, deepseek, mistral or plain\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--ui-title") == 0 && i + 1 < argc) {

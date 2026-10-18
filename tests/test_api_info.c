@@ -26,6 +26,8 @@ static void test_models_reports_metadata(void) {
     TEST_ASSERT(strstr(j, "\"id\":\"tiny.gguf\"") != NULL, "model id from server config");
     TEST_ASSERT(strstr(j, "\"vision\":false") != NULL, "vision flag present");
     TEST_ASSERT(strstr(j, "\"context_length\":2048") != NULL, "context length");
+    TEST_ASSERT(strstr(j, "\"chat_format\":\"plain\"") != NULL, "no tokenizer -> plain format");
+    TEST_ASSERT(strstr(j, "\"recurrent\":false") != NULL, "dense is not recurrent");
     free(j);
     ctx.server_config.vision_path = strdup("v.bin");
     ctx.server_config.proj_path = strdup("p.bin");

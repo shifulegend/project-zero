@@ -1,4 +1,5 @@
 #include "cli/model_load.h"
+#include "transformer/mamba.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -47,18 +48,23 @@ TernaryError load_gguf_model(LoadedModel *out, const char *model_path,
     }
     if (is_primary) config_print(&out->config);
 
-    /* For DeepSeek-V2 (MLA+MoE), Qwen3.5/3.6 (hybrid Gated-DeltaNet), or
-     * Qwen3-MoE (routed MoE + QK-norm) GGUF: populate MoEConfig ahead of
-     * weight loading. */
-    if (strcmp(out->gguf_hdr.arch, "deepseek2") == 0 || strcmp(out->gguf_hdr.arch, "qwen35") == 0 ||
-        strcmp(out->gguf_hdr.arch, "qwen3moe") == 0) {
+    /* Populate MoEConfig (MoE/MLA/hybrid/SSM flags) ahead of weight loading.
+     * moe_config_from_gguf() returns the dense default for plain
+     * architectures, so it is called for every model. 2026-10-18: this used
+     * to be gated on a hardcoded arch list (deepseek2/qwen35/qwen3moe), so a
+     * newly supported architecture (mamba) silently ran as a dense
+     * transformer with NULL attention weights. */
+    {
         if (moe_config_from_gguf(&out->moe_config, &out->gguf_hdr) != TN_OK) {
             fprintf(stderr, "Failed to read MoE config from GGUF.\n");
             gguf_header_free(&out->gguf_hdr);
             mapped_file_close(&out->mf);
             return TN_ERR_INVALID_ARGS;
         }
-        if (is_primary) moe_config_print(&out->moe_config);
+        if (is_primary && (out->moe_config.is_moe || out->moe_config.has_mla ||
+                           out->moe_config.has_linear_attn || out->moe_config.has_qk_norm ||
+                           out->moe_config.is_ssm))
+            moe_config_print(&out->moe_config);
     }
 
     if (weights_alloc_pointers(&out->weights, &out->config) != TN_OK) {
@@ -186,7 +192,8 @@ TernaryError load_gguf_model(LoadedModel *out, const char *model_path,
      * multi-GB calloc+memset for those models' context. See
      * run_state_alloc_ex's header comment and docs/ai/mistakes.md. */
     if (run_state_alloc_ex(out->state, &out->config, out->config.seq_len,
-                            out->moe_config.has_linear_attn || out->moe_config.has_qk_norm) != TN_OK) {
+                            out->moe_config.has_linear_attn || out->moe_config.has_qk_norm ||
+                            out->moe_config.is_ssm) != TN_OK) {
         fprintf(stderr, "Failed to allocate RunState buffers.\n");
         free(out->state);
         out->state = NULL;
@@ -206,6 +213,21 @@ TernaryError load_gguf_model(LoadedModel *out, const char *model_path,
             free(out->state);
             out->state = NULL;
             if (out->moe_config.is_moe) moe_weights_free(&out->weights, &out->moe_config);
+            weights_free_pointers(&out->weights);
+            if (out->gguf_store) weights_free_gguf(out->gguf_store);
+            gguf_header_free(&out->gguf_hdr);
+            mapped_file_close(&out->mf);
+            return TN_ERR_OOM;
+        }
+    }
+
+    /* Phase 22-SSM: Mamba recurrent state (freed by run_state_free). */
+    if (out->moe_config.is_ssm) {
+        if (mamba_state_alloc(&out->state->mamba, out->config.n_layers, &out->moe_config) != TN_OK) {
+            fprintf(stderr, "Failed to allocate Mamba SSM state.\n");
+            run_state_free(out->state);
+            free(out->state);
+            out->state = NULL;
             weights_free_pointers(&out->weights);
             if (out->gguf_store) weights_free_gguf(out->gguf_store);
             gguf_header_free(&out->gguf_hdr);

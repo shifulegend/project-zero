@@ -6,6 +6,7 @@
 #include "api/chat_request.h"
 #include "api/request_params.h"
 #include "api/json_fields.h"
+#include "api/chat_compile.h"
 
 static void test_parse_extended_fields(void) {
     ChatRequest r; chat_request_init(&r);
@@ -90,6 +91,21 @@ static void test_cache_prompt_field(void) {
     chat_request_free(&r);
 }
 
+static void test_chat_format_choice(void) {
+    TEST_ASSERT_EQ(chat_template_parse("auto"), -1, "auto");
+    TEST_ASSERT_EQ(chat_template_parse("plain"), CHAT_TMPL_RAW, "plain");
+    TEST_ASSERT_EQ(chat_template_parse("llama3"), CHAT_TMPL_LLAMA3, "llama3");
+    TEST_ASSERT_EQ(chat_template_parse("bogus"), -2, "unknown rejected");
+    TEST_ASSERT_EQ(chat_template_detect_vocab(NULL), CHAT_TMPL_RAW, "no tokenizer -> plain");
+    TEST_ASSERT(strcmp(chat_template_name(CHAT_TMPL_RAW), "plain") == 0, "name");
+    ChatRequest r; chat_request_init(&r);
+    chat_request_parse("{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}", &r);
+    char out[256];
+    TEST_ASSERT_EQ(chat_compile_prompt(&r, CHAT_TMPL_RAW, out, sizeof(out)), TN_OK, "compile plain");
+    TEST_ASSERT(strcmp(out, "user: hi\nassistant:") == 0, "plain format ends with the assistant cue");
+    chat_request_free(&r);
+}
+
 static void test_json_fields(void) {
     const char *b = "{\"a\":{\"x\":1},\"text\":\"hi\\nthere\",\"gamma\":0.3,\"flag\":true}";
     char *t = json_field_string(b, "text");
@@ -110,6 +126,7 @@ int main(void) {
     RUN_TEST(test_unicode_escape_decoding);
     RUN_TEST(test_resolve_defaults_and_overrides);
     RUN_TEST(test_cache_prompt_field);
+    RUN_TEST(test_chat_format_choice);
     RUN_TEST(test_json_fields);
     TEST_SUMMARY();
 }

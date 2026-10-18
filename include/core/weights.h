@@ -249,6 +249,10 @@ typedef struct {
      * token_embedding_table / wcls when q35_is_q2_0_model is set — Q2_0 is
      * too large to dequantize upfront: ~5 GB each for a 27B-class model). */
     bool        q35_is_q2_0_model;
+
+    /* Phase 22-SSM: Mamba block weights (MoEConfig.is_ssm). NULL for every
+     * other model; owned here and released by weights_free_pointers(). */
+    struct MambaWeights *mamba;
     const void *q35_token_embd_raw;
     const void *q35_output_raw;
 } TransformerWeights;

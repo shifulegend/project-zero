@@ -95,9 +95,9 @@ void speculative_generate_with_callback(const Config *cfg, const TransformerWeig
     if (!prompt) prompt = "";
     tn_step_timing_reset();
 
-    if (mc && mc->has_linear_attn) {
-        fprintf(stderr, "[spec] Speculative decoding is not supported for linear-attention "
-                "models (Qwen3.5/3.6 hybrid) -- refusing.\n");
+    if (moe_is_recurrent(mc)) {
+        fprintf(stderr, "[spec] Speculative decoding is not supported for recurrent-state "
+                "models (Qwen3.5/3.6 linear attention, Mamba SSM) -- refusing.\n");
         return;
     }
     if (s->current_pos != 0) {

@@ -2,6 +2,9 @@
 #include "api/json_write.h"
 #include "api/chat_request.h"
 #include "sampling/watermark_text.h"
+#include "threading/cache_probe.h"
+#include "transformer/attn_tiled.h"
+#include "math/simd_dispatch.h"
 
 int api_max_tokens_limit(const ApiContext *ctx) {
     int ctx_len = (ctx && ctx->cfg) ? ctx->cfg->seq_len : 0;
@@ -117,6 +120,24 @@ char *api_config_json(const ApiContext *ctx) {
     jb_key(&jb, "max_stop");     jb_int(&jb, CHAT_MAX_STOP);     jb_raw(&jb, ",");
     jb_key(&jb, "max_messages"); jb_int(&jb, CHAT_MAX_MESSAGES);
     jb_raw(&jb, "},");
+
+    /* Read-only runtime facts (startup flags, not per-request settings). */
+    {
+        const CacheInfo *ci = tn_cache_info();
+        jb_key(&jb, "runtime"); jb_raw(&jb, "{");
+        jb_key(&jb, "simd"); jb_str(&jb, tn_simd_backend_name());
+        jb_raw(&jb, ","); jb_key(&jb, "threads"); jb_int(&jb, ctx && ctx->tp ? ctx->tp->num_threads : 1);
+        jb_raw(&jb, ","); jb_key(&jb, "attention_kernel"); jb_str(&jb, attn_kernel_name(attn_kernel_get()));
+        jb_raw(&jb, ","); jb_key(&jb, "attention_tile"); jb_int(&jb, attn_tile_get());
+        jb_raw(&jb, ","); jb_key(&jb, "attention_parallel_min_ctx"); jb_int(&jb, attn_parallel_min_ctx_get());
+        jb_raw(&jb, ","); jb_key(&jb, "cache"); jb_raw(&jb, "{");
+        jb_key(&jb, "l1d_bytes"); jb_int(&jb, ci->l1d_bytes);
+        jb_raw(&jb, ","); jb_key(&jb, "l2_bytes"); jb_int(&jb, ci->l2_bytes);
+        jb_raw(&jb, ","); jb_key(&jb, "l3_bytes"); jb_int(&jb, ci->l3_bytes);
+        jb_raw(&jb, ","); jb_key(&jb, "source"); jb_str(&jb, tn_cache_source_name(ci->source));
+        jb_raw(&jb, "}}");
+        jb_raw(&jb, ",");
+    }
 
     jb_key(&jb, "features"); jb_raw(&jb, "{");
     jb_key(&jb, "json_mode"); jb_bool(&jb, 1);

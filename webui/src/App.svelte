@@ -65,7 +65,7 @@
     <WatermarkPanel {config} defaultKey={settings?.watermark_key ?? ''} />
   {/if}
 
-  <ModelInfoPanel {modelInfo} />
+  <ModelInfoPanel {modelInfo} runtime={config?.runtime ?? null} />
 
   <main class="main">
     {#if configError}

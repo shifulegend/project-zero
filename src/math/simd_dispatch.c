@@ -142,6 +142,8 @@ tn_vec_saxpy_fn      tn_vec_saxpy             = NULL;
 /* Human-readable name of the selected backend (set by tn_simd_init) */
 static const char *g_backend_name = "Scalar";
 
+const char *tn_simd_backend_name(void) { return g_backend_name; }
+
 const char *tn_simd_init(void) {
     /*
      * Runtime probe the CPU, then select the best compiled-in kernel.

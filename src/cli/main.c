@@ -21,6 +21,8 @@
 #include "tokenizer/tokenizer.h"
 #include "tokenizer/tokenizer_gguf.h"
 #include "cli/args.h"
+#include "transformer/attn_tiled.h"
+#include "threading/cache_probe.h"
 #include "sampling/watermark_text.h"
 #include "cli/model_load.h"
 #include "cli/repl.h"
@@ -81,6 +83,7 @@ int main(int argc, char **argv) {
         KVStrategyOptions kv_opt = { args.ctx_size, args.kv_ram_fraction };
         kv_strategy_set_options(&kv_opt);
     }
+    (void)tn_cache_info(); /* Phase 27.1: probe once, before any worker threads */
 
     /* --version: print version + the SIMD backend selected for this CPU, then
      * exit 0. tn_simd_init() only probes CPUID, so no model is required. */
@@ -609,6 +612,18 @@ int main(int argc, char **argv) {
                             args.prompt, vis_prompt_buf, sizeof(vis_prompt_buf),
                             &stripped_prompt);
         args.prompt = (char *)stripped_prompt;
+    }
+
+    /* Phase 27: attention kernel + head-parallel threshold (tile size from L1d). */
+    attn_kernel_configure(args.attn_kernel ? (AttnKernel)attn_kernel_parse(args.attn_kernel)
+                                           : ATTN_KERNEL_STANDARD,
+                          args.attn_tile, config_head_dim(&p));
+    attn_parallel_min_ctx_set(args.attn_parallel_min_ctx);
+    if (args.verbose || args.attn_kernel) {
+        const CacheInfo *ci = tn_cache_info();
+        printf("Attention: %s kernel (tile %d), heads parallel from %d ctx; L1d %d KiB, L2 %d KiB (%s)\n",
+               attn_kernel_name(attn_kernel_get()), attn_tile_get(), attn_parallel_min_ctx_get(),
+               ci->l1d_bytes / 1024, ci->l2_bytes / 1024, tn_cache_source_name(ci->source));
     }
 
     /* Execution Mode */

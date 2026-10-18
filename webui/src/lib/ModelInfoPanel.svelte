@@ -1,5 +1,6 @@
 <script>
   export let modelInfo = null;
+  export let runtime = null; // GET /v1/config "runtime"
 </script>
 
 <div class="model-info">
@@ -12,6 +13,10 @@
       <span class="sep">·</span>
     {/if}
     <span class="dim">served by {modelInfo.owned_by}</span>
+    {#if runtime}
+      <span class="sep">·</span>
+      <span class="dim mono" title="SIMD backend · threads · attention kernel">{runtime.simd} · {runtime.threads}T · attn {runtime.attention_kernel}</span>
+    {/if}
     {#if modelInfo.vision}<span class="tag">vision</span>{/if}
     {#if modelInfo.moe}<span class="tag">MoE</span>{/if}
   {:else}

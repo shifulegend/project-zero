@@ -2264,7 +2264,28 @@ Eliminates redundant computation when the same prompt prefix appears across mult
 
 ---
 
-## PHASE 27: CPU Cache Tiling (FlashAttention for CPU)
+## PHASE 27: CPU Cache Tiling (FlashAttention for CPU) ✅ 27.1 + 27.3 done 2026-10-18 (27.2 not adopted)
+
+**As built:**
+- **27.1** `include/threading/cache_probe.h` / `src/threading/cache_probe.c`: L1d/L2/L3/line from
+  sysfs (per-index level/type), CPUID leaf 4 fallback, documented defaults. `hardware_profile.c`
+  now delegates to it (its old reader assumed index1 = L2, which is L1i on typical x86).
+- **27.3** `src/transformer/attn_tiled.c`: single-query online-softmax attention over L1-sized
+  tiles (`--attn-kernel tiled`, `--attn-tile N`, default tile from L1d). Microbench: parity with
+  the standard path (0.94–1.00×; per-row dot/saxpy dominates at head_dim 64), so it stays
+  opt-in. **The real win was elsewhere:** the per-head loop was serial; heads are now dispatched
+  over the thread pool once the context reaches `--attn-parallel-min-ctx` (default 64). Measured
+  (SmolLM2-135M F16, 4 threads, greedy, identical output): ~1700-token context 20 → 44 tok/s,
+  ~300-token 59 → 83 tok/s, short prompts 78 → 93 tok/s.
+- **27.2** tiled int8 ternary matmul: not built — the unpacked int8 path is legacy (packed
+  kernels are already cache-blocked) and Phase 3.2's branchless kernel already gave that path
+  10×.
+- Tests: `tests/test_cache_probe.c` (size parsing, probe sanity, tiled == standard incl. a
+  wrapped sliding window), `tests/test_forward.c` (head-parallel bit-identical to serial; tiled
+  within 1e-4), TSan clean with `test_forward` added to `TSAN_TESTS`. `/v1/config` reports
+  `runtime` (SIMD, threads, attention kernel/tile/threshold, cache sizes); the web UI shows it.
+
+*Original stub, kept for reference:*
 
 Maximizes L1/L2 cache utilization by tiling matrix operations into cache-sized blocks.
 

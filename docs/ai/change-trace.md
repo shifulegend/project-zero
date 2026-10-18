@@ -3,6 +3,15 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-18.
 
+### 2026-10-18 — Phase 27: cache probe, tiled attention kernel, head-parallel attention
+- New: `threading/cache_probe`, `transformer/attn_tiled` (+ `tests/test_cache_probe.c`),
+  `tn_simd_backend_name()`; `attention.c` step 5 refactored into `attn_one_head()` dispatched
+  over the pool (`attn_heads_task`); flags `--attn-kernel --attn-tile --attn-parallel-min-ctx`;
+  `/v1/config` `runtime` block; UI model bar shows SIMD/threads/kernel; `test_forward` gains a
+  parallel/tiled equivalence test and joins `TSAN_TESTS`.
+- Verified: gcc+clang release/test/debug, TSan clean, golden Paris, A/B identical greedy output
+  with 2.2× decode at ~1700 ctx.
+
 ### 2026-10-18 — Phase 26: multi-entry prompt snapshot store (LRU)
 - New: `kv_cache/prompt_store` + `tests/test_prompt_store.c`; e2e interleaved-conversation check
   in `tests/e2e_prompt_cache.sh`; web UI `PromptCacheStatus.svelte`.

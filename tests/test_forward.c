@@ -24,6 +24,8 @@
 #include "transformer/embedding.h"
 #include "transformer/ffn.h"
 #include "transformer/forward.h"
+#include "transformer/attn_tiled.h"
+#include "threading/thread_pool.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -437,6 +439,54 @@ static void test_forward_single_token(void) {
   free_synthetic_weights(&w, &cfg);
 }
 
+/* Phase 27: head-parallel attention (thread pool) and the tiled kernel must
+ * reproduce the serial standard path over a long-ish context. Also the TSan
+ * target for the head dispatch (test_forward is in TSAN_TESTS). */
+static void run_positions(const Config *cfg, TransformerWeights *w, ThreadPool *tp,
+                          int n_pos, float *last_logits) {
+  RunState s;
+  memset(&s, 0, sizeof(s));
+  run_state_alloc(&s, cfg, cfg->seq_len);
+  sw_init(&s.sw, cfg->seq_len, 0);
+  float *logits = NULL;
+  for (int pos = 0; pos < n_pos; pos++)
+    logits = transformer_forward(pos % cfg->vocab_size, pos, cfg, w, &s, NULL, tp);
+  memcpy(last_logits, logits, (size_t)cfg->vocab_size * sizeof(float));
+  run_state_free(&s);
+}
+
+static void test_forward_parallel_and_tiled_attention(void) {
+  Config cfg = tiny_config();
+  cfg.n_heads = 4;
+  cfg.n_kv_heads = 2;
+  cfg.seq_len = 96;
+  TransformerWeights w;
+  tn_simd_init();
+  alloc_synthetic_weights(&w, &cfg);
+  float serial[8], parallel[8], tiled[8];
+
+  attn_kernel_configure(ATTN_KERNEL_STANDARD, 0, cfg.dim / cfg.n_heads);
+  run_positions(&cfg, &w, NULL, 80, serial);
+
+  ThreadPool *tp = threadpool_create(4);
+  attn_parallel_min_ctx_set(1); /* force the head dispatch from position 0 */
+  run_positions(&cfg, &w, tp, 80, parallel);
+  int same = 1;
+  for (int i = 0; i < cfg.vocab_size; i++) if (serial[i] != parallel[i]) same = 0;
+  TEST_ASSERT(same, "head-parallel attention is bit-identical to serial");
+
+  attn_kernel_configure(ATTN_KERNEL_TILED, 8, cfg.dim / cfg.n_heads);
+  run_positions(&cfg, &w, tp, 80, tiled);
+  float md = 0;
+  for (int i = 0; i < cfg.vocab_size; i++) { float e = fabsf(serial[i] - tiled[i]); if (e > md) md = e; }
+  TEST_ASSERT(md < 1e-4f, "tiled online-softmax attention matches standard");
+
+  attn_kernel_configure(ATTN_KERNEL_STANDARD, 0, cfg.dim / cfg.n_heads);
+  attn_parallel_min_ctx_set(ATTN_PARALLEL_MIN_CTX_DEFAULT);
+  threadpool_destroy(tp);
+  free_synthetic_weights(&w, &cfg);
+}
+
 static void test_forward_multiple_tokens(void) {
   Config cfg = tiny_config();
   TransformerWeights w;
@@ -548,6 +598,7 @@ int main(void) {
   RUN_TEST(test_ffn_residual);
   RUN_TEST(test_forward_single_token);
   RUN_TEST(test_forward_multiple_tokens);
+  RUN_TEST(test_forward_parallel_and_tiled_attention);
   RUN_TEST(test_forward_different_tokens);
   RUN_TEST(test_forward_multilayer);
 

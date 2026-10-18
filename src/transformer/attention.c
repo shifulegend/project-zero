@@ -1,4 +1,5 @@
 #include "transformer/attention.h"
+#include "transformer/attn_tiled.h"
 #include "transformer/mla_attention.h"
 #include "transformer/qwen35_attention.h"
 #include "transformer/qwen3moe_attention.h"
@@ -44,6 +45,88 @@ static void kv_nt_store(float *dst, const float *src, int n) {
 #else
     memcpy(dst, src, (size_t)n * sizeof(float));
 #endif
+}
+
+/* ── Per-head attention (Step 5 of attention_forward) ───────────────────── */
+
+typedef struct {
+  RunState *s;
+  int layer, pos, head_dim, kv_mul, n_kv_heads, max_seq;
+  float inv_sqrt_head_dim;
+  int use_tiled, tile;
+} AttnHeadArgs;
+
+static void attn_one_head(const AttnHeadArgs *a, int h) {
+  RunState *s = a->s;
+  const int head_dim = a->head_dim, max_seq = a->max_seq, pos = a->pos;
+  const int layer = a->layer, n_kv_heads = a->n_kv_heads;
+  const float inv_sqrt_head_dim = a->inv_sqrt_head_dim;
+
+  /* Pointer to this head's query vector */
+  float *q_head = s->q + h * head_dim;
+
+  /* Resolve which KV head this query head maps to (GQA) */
+  int kv_h = h / a->kv_mul;
+
+  /* Number of valid context tokens to attend to */
+  int valid_ctx = sw_valid_count(&s->sw, pos);
+
+  /* Phase 27.3: single-pass tiled online-softmax kernel (opt-in). */
+  if (a->use_tiled) {
+    size_t slab = KV_CACHE_IDX(layer, kv_h, 0, 0, n_kv_heads, max_seq, head_dim);
+    attn_head_tiled(s->xb + h * head_dim, q_head, &s->key_cache[slab],
+                    &s->value_cache[slab], head_dim, &s->sw, pos, valid_ctx,
+                    inv_sqrt_head_dim, a->tile);
+    return;
+  }
+
+  /* Pointer to this head's attention scores (valid_ctx entries) */
+  float *att_scores = s->att + h * max_seq;
+
+  /* Step 5a: Compute attention scores: score[t] = Q · K[t] / sqrt(head_dim)
+   * We iterate through logical history and map to physical slots */
+  for (int t = 0; t < valid_ctx; t++) {
+    /* Reconstruct historical logical position.
+     * If we've wrapped, the oldest valid token is at pos - valid_ctx + 1 + t.
+     * Otherwise it's simply t. */
+    int hist_logical = (pos >= valid_ctx) ? (pos - valid_ctx + 1 + t) : t;
+    int mapped_t = sw_map_position(&s->sw, hist_logical);
+
+    size_t k_offset =
+        KV_CACHE_IDX(layer, kv_h, mapped_t, 0, n_kv_heads, max_seq, head_dim);
+    float *k_vec = &s->key_cache[k_offset];
+
+    /* Dot product — use SIMD-dispatched vec_dot for speed */
+    float score = tn_vec_dot(q_head, k_vec, head_dim);
+    att_scores[t] = score * inv_sqrt_head_dim;
+  }
+
+  /* Step 5b: Softmax over attention scores [0..valid_ctx-1] */
+  tn_softmax(att_scores, valid_ctx);
+
+  /* Step 5c: Weighted sum of Value vectors → s->xb[h * head_dim ..
+   * (h+1)*head_dim) */
+  float *out_head = s->xb + h * head_dim;
+  memset(out_head, 0, head_dim * sizeof(float));
+
+  for (int t = 0; t < valid_ctx; t++) {
+    /* Map to physical slot — must match the key lookup in Step 5a.
+     * PRE10-BUG-004: previously used raw `t` instead of mapped position,
+     * reading wrong value vectors after the sliding window wraps. */
+    int v_hist = (pos >= valid_ctx) ? (pos - valid_ctx + 1 + t) : t;
+    int v_mapped = sw_map_position(&s->sw, v_hist);
+
+    size_t v_offset =
+        KV_CACHE_IDX(layer, kv_h, v_mapped, 0, n_kv_heads, max_seq, head_dim);
+    float *v_vec = &s->value_cache[v_offset];
+    float a_t = att_scores[t];
+    tn_vec_saxpy(out_head, a_t, v_vec, head_dim);
+  }
+}
+
+static void attn_heads_task(void *arg, int thread_id, int start, int end) {
+  (void)thread_id;
+  for (int h = start; h < end; h++) attn_one_head((const AttnHeadArgs *)arg, h);
 }
 
 void attention_forward(RunState *s, const TransformerWeights *w,
@@ -214,58 +297,19 @@ void attention_forward(RunState *s, const TransformerWeights *w,
   float inv_sqrt_head_dim = 1.0f / sqrtf((float)head_dim);
 
   t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-  for (int h = 0; h < n_heads; h++) {
-    /* Pointer to this head's query vector */
-    float *q_head = s->q + h * head_dim;
-
-    /* Resolve which KV head this query head maps to (GQA) */
-    int kv_h = h / kv_mul;
-
-    /* Number of valid context tokens to attend to */
+  {
+    AttnHeadArgs ha = { s, layer, pos, head_dim, kv_mul, n_kv_heads, max_seq,
+                        inv_sqrt_head_dim, attn_kernel_get() == ATTN_KERNEL_TILED,
+                        attn_tile_get() };
+    /* Phase 27: heads are independent (own score row in s->att, own output
+     * slice of s->xb) — spread them over the pool once the context is long
+     * enough for the dispatch to pay off (--attn-parallel-min-ctx). */
     int valid_ctx = sw_valid_count(&s->sw, pos);
-
-    /* Pointer to this head's attention scores (valid_ctx entries) */
-    float *att_scores = s->att + h * max_seq;
-
-    /* Step 5a: Compute attention scores: score[t] = Q · K[t] / sqrt(head_dim)
-     * We iterate through logical history and map to physical slots */
-    for (int t = 0; t < valid_ctx; t++) {
-      /* Reconstruct historical logical position.
-       * If we've wrapped, the oldest valid token is at pos - valid_ctx + 1 + t.
-       * Otherwise it's simply t. */
-      int hist_logical = (pos >= valid_ctx) ? (pos - valid_ctx + 1 + t) : t;
-      int mapped_t = sw_map_position(&s->sw, hist_logical);
-
-      size_t k_offset =
-          KV_CACHE_IDX(layer, kv_h, mapped_t, 0, n_kv_heads, max_seq, head_dim);
-      float *k_vec = &s->key_cache[k_offset];
-
-      /* Dot product — use SIMD-dispatched vec_dot for speed */
-      float score = tn_vec_dot(q_head, k_vec, head_dim);
-      att_scores[t] = score * inv_sqrt_head_dim;
-    }
-
-    /* Step 5b: Softmax over attention scores [0..valid_ctx-1] */
-    tn_softmax(att_scores, valid_ctx);
-
-    /* Step 5c: Weighted sum of Value vectors → s->xb[h * head_dim ..
-     * (h+1)*head_dim) */
-    float *out_head = s->xb + h * head_dim;
-    memset(out_head, 0, head_dim * sizeof(float));
-
-    for (int t = 0; t < valid_ctx; t++) {
-      /* Map to physical slot — must match the key lookup in Step 5a.
-       * PRE10-BUG-004: previously used raw `t` instead of mapped position,
-       * reading wrong value vectors after the sliding window wraps. */
-      int v_hist = (pos >= valid_ctx) ? (pos - valid_ctx + 1 + t) : t;
-      int v_mapped = sw_map_position(&s->sw, v_hist);
-
-      size_t v_offset =
-          KV_CACHE_IDX(layer, kv_h, v_mapped, 0, n_kv_heads, max_seq, head_dim);
-      float *v_vec = &s->value_cache[v_offset];
-      float a = att_scores[t];
-      tn_vec_saxpy(out_head, a, v_vec, head_dim);
-    }
+    int min_ctx = attn_parallel_min_ctx_get();
+    if (tp && n_heads > 1 && min_ctx > 0 && valid_ctx >= min_ctx)
+      threadpool_dispatch(tp, attn_heads_task, &ha, n_heads);
+    else
+      attn_heads_task(&ha, 0, 0, n_heads);
   }
   if (t_step) {
       tn_step_timing_add(TN_STEP_11_ATTN_SCORE,

@@ -17,3 +17,6 @@ Adapter for `docs/ai/engineering-rules.md` — read the canonical file for full 
   document it in `mistakes.md` too, but documenting is not a substitute for fixing. Only defer
   when the fix itself is a large architectural change; flag that to the user explicitly instead
   of silently fixing or silently skipping. See `engineering-rules.md` § Bug-fix policy.
+- Attention heads run in parallel over the thread pool (`attn_heads_task`, threshold
+  `--attn-parallel-min-ctx`): per-head code must only write its own `s->att` row and `s->xb`
+  slice. Concurrency changes there need `make test-tsan` (test_forward is in TSAN_TESTS).

@@ -15,3 +15,6 @@ applyTo: "src/**,include/**"
   in `mistakes.md` too, but that's not a substitute for fixing. Only defer for genuinely
   large architectural fixes, and flag those to the user explicitly. See `engineering-rules.md`
   § Bug-fix policy.
+- Attention heads run in parallel over the thread pool (`attn_heads_task`, threshold
+  `--attn-parallel-min-ctx`): per-head code must only write its own `s->att` row and `s->xb`
+  slice. Concurrency changes there need `make test-tsan` (test_forward is in TSAN_TESTS).

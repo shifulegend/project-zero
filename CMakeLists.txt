@@ -200,6 +200,7 @@ set(MEMORY_SOURCES
 set(THREADING_SOURCES
     src/threading/cpu_probe.c
     src/threading/thread_pool.c
+    src/threading/cache_probe.c
 )
 
 set(TOKENIZER_SOURCES
@@ -223,6 +224,7 @@ set(TRANSFORMER_SOURCES
     src/transformer/qwen3moe_attention.c
     src/transformer/gen_params.c
     src/transformer/stop_seq.c
+    src/transformer/attn_tiled.c
 )
 
 set(SAMPLING_SOURCES

@@ -1,4 +1,5 @@
 #include "core/hardware_profile.h"
+#include "threading/cache_probe.h"
 #include "kv_cache/kv_strategy.h"
 #include "math/cpu_features.h"
 #include "threading/cpu_probe.h"
@@ -37,42 +38,20 @@
 
 /* ── Cache size detection ──────────────────────────────────────────────── */
 
-#if TN_POSIX
-static size_t read_sysfs_cache_size(int cpu, int index) {
-    char path[256];
-    snprintf(path, sizeof(path),
-             "/sys/devices/system/cpu/cpu%d/cache/index%d/size", cpu, index);
-    FILE *f = fopen(path, "r");
-    if (!f) return 0;
-
-    char buf[64];
-    if (!fgets(buf, sizeof(buf), f)) { fclose(f); return 0; }
-    fclose(f);
-
-    size_t val = 0;
-    char unit = 0;
-    if (sscanf(buf, "%zu%c", &val, &unit) >= 1) {
-        if (unit == 'K' || unit == 'k') val *= 1024;
-        else if (unit == 'M' || unit == 'm') val *= 1024 * 1024;
-    }
-    return val;
-}
-
+/* Delegates to threading/cache_probe (Phase 27.1), which reads each sysfs
+ * cache index's own level/type instead of assuming index2 = L2 / index1 =
+ * L2 fallback (2026-10-18: on typical x86 index1 is the L1 *instruction*
+ * cache, so a missing index2 reported L1i as L2) and adds a CPUID path for
+ * non-Linux hosts. */
 static size_t detect_l2_cache(void) {
-    /* index2 = L2 on most Linux systems */
-    size_t l2 = read_sysfs_cache_size(0, 2);
-    if (l2 > 0) return l2;
-    /* Some systems have L2 at index1 (unified) */
-    return read_sysfs_cache_size(0, 1);
+    const CacheInfo *ci = tn_cache_info();
+    return ci->source ? (size_t)ci->l2_bytes : 0;
 }
 
 static size_t detect_l3_cache(void) {
-    return read_sysfs_cache_size(0, 3);
+    const CacheInfo *ci = tn_cache_info();
+    return ci->source ? (size_t)ci->l3_bytes : 0;
 }
-#else
-static size_t detect_l2_cache(void) { return 0; }
-static size_t detect_l3_cache(void) { return 0; }
-#endif
 
 /* ── DRAM bandwidth probe ──────────────────────────────────────────────── */
 

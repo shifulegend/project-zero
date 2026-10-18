@@ -1,4 +1,5 @@
 #include "cli/args.h"
+#include "transformer/attn_tiled.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,6 +32,10 @@ void print_usage(const char *prog_name) {
     printf("  --ctx-size <int>    Context length to allocate (default: auto from free RAM;\n");
     printf("                      capped at the model's own context and the RAM budget)\n");
     printf("  --kv-ram-fraction <f> Share of free RAM the KV cache may use (default 0.60)\n");
+    printf("  --attn-kernel <k>   standard (default) | tiled (single-pass online softmax)\n");
+    printf("  --attn-tile <int>   Positions per tile for --attn-kernel tiled (0 = from L1d)\n");
+    printf("  --attn-parallel-min-ctx <N> Spread attention heads over threads once the\n");
+    printf("                      context reaches N tokens (default %d, 0 = never)\n", ATTN_PARALLEL_MIN_CTX_DEFAULT);
 
     printf("\nWatermarking (off by default):\n");
     printf("  --watermark         Bias sampling toward a keyed green list so output can\n");
@@ -186,6 +191,9 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->prompt_cache_mb = 256;
     args->prompt_cache_min_tokens = 32;
     args->ctx_size = 0;
+    args->attn_kernel = NULL;
+    args->attn_tile = 0;
+    args->attn_parallel_min_ctx = ATTN_PARALLEL_MIN_CTX_DEFAULT;
     args->kv_ram_fraction = 0.0f;
 
     for (int i = 1; i < argc; i++) {
@@ -245,6 +253,24 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             args->watermark_gamma = (float)atof(argv[++i]);
         } else if (strcmp(argv[i], "--watermark-delta") == 0 && i + 1 < argc) {
             args->watermark_delta = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--attn-kernel") == 0 && i + 1 < argc) {
+            args->attn_kernel = argv[++i];
+            if (attn_kernel_parse(args->attn_kernel) < 0) {
+                fprintf(stderr, "Error: --attn-kernel must be standard or tiled\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--attn-tile") == 0 && i + 1 < argc) {
+            args->attn_tile = atoi(argv[++i]);
+            if (args->attn_tile < 0) {
+                fprintf(stderr, "Error: --attn-tile must be >= 0\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--attn-parallel-min-ctx") == 0 && i + 1 < argc) {
+            args->attn_parallel_min_ctx = atoi(argv[++i]);
+            if (args->attn_parallel_min_ctx < 0) {
+                fprintf(stderr, "Error: --attn-parallel-min-ctx must be >= 0\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
         } else if (strcmp(argv[i], "--ctx-size") == 0 && i + 1 < argc) {
             args->ctx_size = atoi(argv[++i]);
             if (args->ctx_size < 0) {

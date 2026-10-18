@@ -68,4 +68,7 @@ extern tn_vec_saxpy_fn      tn_vec_saxpy;
  */
 const char *tn_simd_init(void);
 
+/* Name of the backend selected by the last tn_simd_init() ("Scalar" before). */
+const char *tn_simd_backend_name(void);
+
 #endif /* TN_SIMD_DISPATCH_H */

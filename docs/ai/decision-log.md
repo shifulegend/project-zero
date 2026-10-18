@@ -3,6 +3,17 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-10-18.
 
+### 2026-10-18 — Phase 27: ship head-parallel attention by default, keep the tiled kernel opt-in
+
+- Measured before deciding: the online-softmax tiled kernel is at parity with the standard
+  three-pass loop on this hardware (head_dim 64: per-row dot/saxpy calls dominate, not memory
+  traffic), so it is selectable (`--attn-kernel tiled`) but not the default.
+- The serial per-head loop was the real cost at long context (≈34 ms/token at 4096 ctx across 30
+  layers). Heads are independent (own score row, own output slice), so dispatching them over the
+  existing pool is bit-identical and gave 1.2–2.2× decode. Threshold default 64 from a sweep
+  (64: 92.6 tok/s vs 256: 77.8, 5-run means); configurable, 0 disables.
+- 27.2 (tiled int8 matmul) skipped: legacy path, already 10× faster via 3.2.
+
 ### 2026-10-18 — Phase 26 as an LCP-scanned snapshot store, not a radix tree; default budget 256 MB
 
 - An entry costs `len × n_layers × kv_heads × head_dim × 8` bytes (≈46 KB/token on

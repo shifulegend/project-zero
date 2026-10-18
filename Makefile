@@ -9,8 +9,14 @@ ifeq ($(UNAME_S),Darwin)
 else
     DARWIN_DEFS =
 endif
-CFLAGS_COMMON   = -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L $(DARWIN_DEFS)
-CXXFLAGS_COMMON = -std=c++17 -Wall -Wextra -Iinclude -D_POSIX_C_SOURCE=200809L $(DARWIN_DEFS)
+# -MMD -MP: emit build/**.d header-dependency files (included at the bottom)
+# so editing a header rebuilds every object that includes it. 2026-10-18:
+# without this, adding a field to a struct embedded elsewhere (GenerationParams
+# inside ServerConfig) left stale objects with the old layout linked into the
+# binary/tests — caught as an ASan SEGV reading a shifted field offset.
+DEPFLAGS        = -MMD -MP
+CFLAGS_COMMON   = -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L $(DARWIN_DEFS) $(DEPFLAGS)
+CXXFLAGS_COMMON = -std=c++17 -Wall -Wextra -Iinclude -D_POSIX_C_SOURCE=200809L $(DARWIN_DEFS) $(DEPFLAGS)
 # Version string baked into the binary (overridable; derived from git by default).
 # Used by --version and the startup banner; a #ifndef fallback in main.c covers
 # builds where it is not passed (e.g. plain `make debug`).
@@ -286,7 +292,7 @@ build/tests/test_q2k_matvec: tests/test_q2k_matvec.c $(LIB_OBJS)
 
 build/tests/%: tests/%.c $(LIB_OBJS)
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS_DEBUG) -o $@ $< $(LIB_OBJS) $(LDFLAGS) -lstdc++
+	$(CC) $(CFLAGS_DEBUG) -MF $@.d -o $@ $< $(LIB_OBJS) $(LDFLAGS) -lstdc++
 
 # ── Convenience targets ────────────────────────────────────────────────────
 
@@ -467,3 +473,6 @@ pgo-build:
 
 pgo-clean:
 	rm -rf pgo_profiles
+
+# Header dependency files written by $(DEPFLAGS) (absent on a clean tree).
+-include $(OBJS:.o=.d) $(TEST_BINS:=.d)

@@ -1774,7 +1774,17 @@ non-BitNet models are misleading.
 
 ---
 
-## PHASE 18: Speculative Decoding ✅ (ternary + F16 batched kernels; other formats fall back to sequential — Phase 18-B) — Qwen3.5/3.6 hybrid excluded (linear-attn)
+## PHASE 18: Speculative Decoding ✅ (batched kernels: ternary, F16, F32, Q4_K, Q4_K-x8 — 18-B 2026-10-18; Q2_0 sequential) — recurrent models (Qwen3.5/3.6 linear attn, Mamba) excluded
+
+**18-B (2026-10-18):** `parallel_matmul_q4k_tokens()`, `parallel_matmul_q4k_x8_tokens_preq()`,
+`tn_matmul_f32_batch()` — each weight row read once per verify batch, bit-identical to per-token
+calls (`tests/test_q4k_batch_tokens.c`). Measured on SmolLM2-1.7B-Instruct Q4_K_M verifier +
+SmolLM2-135M F16 draft (4 threads): 3.6 → 4.2 tok/s, identical output. **Finding:** speculative
+decoding is still slower than plain decoding (8.4 tok/s) on this host: a 6-token verify batch
+costs ~5.4× one step because these kernels are compute-bound (each candidate re-decodes the
+Q4_K nibbles) rather than bandwidth-bound. The real fix is decode-once multi-token GEMM
+kernels (unpack a row block to int8 once, then dot all candidates) — open as 18-C. Also open:
+a fused Q6_K kernel (Q6_K tensors are dequantised to F32 today, 7× the bytes).
 
 The ultimate CPU speed hack. Load two models: a massive "Brain" (verifier) and a tiny "Drafter". The Drafter guesses N tokens rapidly, the Brain verifies them all in one batched forward pass.
 

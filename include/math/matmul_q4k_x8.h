@@ -67,4 +67,13 @@ void parallel_matmul_q4k_x8_preq(float *out, const TnQ8KActBlock *acts,
                                   const TnQ4KX8Block *repacked,
                                   int n_blocks, int d, ThreadPool *tp);
 
+/*
+ * Phase 18-B: same as parallel_matmul_q4k_x8_preq for n_tokens activation
+ * vectors at once (acts: [n_tokens][n_blocks], out: [n_tokens][d]); each
+ * repacked group streams from RAM once. Bit-identical to per-token calls.
+ */
+void parallel_matmul_q4k_x8_tokens_preq(float *out, const TnQ8KActBlock *acts,
+                                        const TnQ4KX8Block *repacked,
+                                        int n_blocks, int d, int n_tokens, ThreadPool *tp);
+
 #endif /* TN_MATMUL_Q4K_X8_H */

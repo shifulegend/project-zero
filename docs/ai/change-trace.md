@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-18.
 
+### 2026-10-18 — Phase 18-B: batched Q4_K / Q4_K-x8 / F32 verify kernels
+- New: `parallel_matmul_q4k_tokens`, `parallel_matmul_q4k_x8_tokens_preq`, `tn_matmul_f32_batch`;
+  `tn_dense_matmul_dispatch_batch` uses them; `tests/test_q4k_batch_tokens.c` (bit-exact).
+- Measured: spec decode 1.7B Q4_K_M + 135M draft 3.6 → 4.2 tok/s (identical output); still below
+  plain decode (8.4) — compute-bound kernels; see plan 18-C.
+
 ### 2026-10-18 — Phase 23 stage 1: FIFO generation queue
 - New: `api/gen_queue` (+ `tests/test_gen_queue.c`, added to TSAN_TESTS); `--queue-size`,
   `--queue-timeout`; chat handler parses before acquiring, streams `: queued N`; prompt-cache

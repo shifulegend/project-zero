@@ -85,4 +85,13 @@ void parallel_matmul_q4k_batch_preq(float * const *outs,
                                      const uint8_t * const *ws,
                                      int n, int d, int k, ThreadPool *tp);
 
+/*
+ * parallel_matmul_q4k_tokens — Phase 18-B: one Q4_K matrix, n_tokens inputs.
+ *   out: float[n_tokens][d], x: float[n_tokens][n] (row-major)
+ * Each weight row is read once and applied to every token (speculative
+ * verify batches). Bit-identical to n_tokens parallel_matmul_q4k() calls.
+ */
+void parallel_matmul_q4k_tokens(float *out, const float *x, const uint8_t *w_q4k,
+                                int n, int d, int n_tokens, ThreadPool *tp);
+
 #endif /* TN_MATMUL_Q4K_H */

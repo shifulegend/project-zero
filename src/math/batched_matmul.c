@@ -89,3 +89,31 @@ void tn_ternary_matmul_packed_batch(float *out, const float *x, const tn_u8 *pac
     }
     threadpool_dispatch(tp, ternary_matmul_packed_batch_task, &args, d);
 }
+
+/* ── Phase 18-B: F32 dense batched matmul ───────────────────────────────────
+ * Weights the GGUF loader dequantised to F32 (e.g. Q6_K/Q5_0 tensors in a
+ * Q4_K_M model) are 4 bytes/element, so re-streaming them once per candidate
+ * token dominated the batched verify pass. Each row is now read once and
+ * dotted against all n_tokens activations with the same tn_vec_dot() the
+ * single-token parallel_matmul_float32() path uses. */
+typedef struct {
+    float *out; const float *x; const float *w;
+    int n, d, n_tokens;
+} F32BatchArgs;
+
+static void matmul_f32_batch_task(void *arg, int thread_id, int start, int end) {
+    (void)thread_id;
+    const F32BatchArgs *a = (const F32BatchArgs *)arg;
+    for (int i = start; i < end; i++) {
+        const float *row = a->w + (size_t)i * a->n;
+        for (int t = 0; t < a->n_tokens; t++)
+            a->out[(size_t)t * a->d + i] = tn_vec_dot(row, a->x + (size_t)t * a->n, a->n);
+    }
+}
+
+void tn_matmul_f32_batch(float *out, const float *x, const float *w,
+                         int n, int d, int n_tokens, ThreadPool *tp) {
+    F32BatchArgs args = { out, x, w, n, d, n_tokens };
+    if (!tp) { matmul_f32_batch_task(&args, 0, 0, d); return; }
+    threadpool_dispatch(tp, matmul_f32_batch_task, &args, d);
+}

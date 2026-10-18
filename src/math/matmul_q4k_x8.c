@@ -364,3 +364,34 @@ void parallel_matmul_q4k_x8_preq(float *out, const TnQ8KActBlock *acts,
     if (!tp) { matmul_q4k_x8_task(&args, 0, 0, groups); return; }
     threadpool_dispatch(tp, matmul_q4k_x8_task, &args, groups);
 }
+
+/* ── Phase 18-B: batched over n_tokens activation vectors ───────────────────
+ * Same group kernel as parallel_matmul_q4k_x8_preq(), but each 8-row group is
+ * applied to every token's activations before moving on, so the repacked
+ * weights stream from RAM once per call instead of once per token. */
+typedef struct {
+    float *out;                  /* [n_tokens][d] */
+    const TnQ8KActBlock *acts;   /* [n_tokens][n_blocks] */
+    const TnQ4KX8Block *repacked;
+    int n_blocks, d, n_tokens;
+} MatmulQ4KX8TokensArgs;
+
+static void matmul_q4k_x8_tokens_task(void *arg, int thread_id, int start, int end) {
+    (void)thread_id;
+    const MatmulQ4KX8TokensArgs *a = (const MatmulQ4KX8TokensArgs *)arg;
+    for (int g = start; g < end; g++) {
+        const TnQ4KX8Block *grp = a->repacked + (size_t)g * a->n_blocks;
+        for (int t = 0; t < a->n_tokens; t++)
+            gemv8_q4k_x8_q8k(a->out + (size_t)t * a->d + (size_t)g * 8,
+                             a->acts + (size_t)t * a->n_blocks, grp, a->n_blocks);
+    }
+}
+
+void parallel_matmul_q4k_x8_tokens_preq(float *out, const TnQ8KActBlock *acts,
+                                        const TnQ4KX8Block *repacked,
+                                        int n_blocks, int d, int n_tokens, ThreadPool *tp) {
+    MatmulQ4KX8TokensArgs args = { out, acts, repacked, n_blocks, d, n_tokens };
+    int groups = d / 8;
+    if (!tp) { matmul_q4k_x8_tokens_task(&args, 0, 0, groups); return; }
+    threadpool_dispatch(tp, matmul_q4k_x8_tokens_task, &args, groups);
+}

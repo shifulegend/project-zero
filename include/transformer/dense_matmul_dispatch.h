@@ -16,6 +16,7 @@
 #include "math/matmul_q4k_x8.h"
 #include "math/batched_matmul.h"
 #include "threading/thread_pool.h"
+#include <stdlib.h>
 
 /* Bound for the stack Q8K activation buffer below — matches
  * ATTN_PREQ_BUF_SIZE/FFN_PREQ_BUF_SIZE's 16384-element cap (attention.c,
@@ -72,9 +73,9 @@ static inline void tn_dense_matmul_dispatch_preq(float *out, const TnQ8KActBlock
  * tn_dense_matmul_dispatch() — `x` is [n_tokens][n] row-major, `out` is
  * [n_tokens][d] row-major (see include/math/batched_matmul.h).
  *
- * WEIGHT_TYPE_F16 gets the real batched kernel (each weight row read from
- * RAM once, reused across all n_tokens candidates). Every other format
- * (Q4_K, Q4_K_X8, Q2_0, F32) falls back to n_tokens sequential single-token
+ * WEIGHT_TYPE_F16, F32, Q4_K and Q4_K_X8 (Phase 18-B) get real batched kernels
+ * (each weight row read from RAM once, reused across all n_tokens
+ * candidates). Q2_0 still falls back to n_tokens sequential single-token
  * calls through the exact same per-token dispatch above -- correct (matches
  * the non-batched forward pass bit-for-bit), but without the RAM-bandwidth
  * win for those formats. Documented Phase 18-B follow-up, not silently
@@ -87,6 +88,28 @@ static inline void tn_dense_matmul_dispatch_batch(float *out, const float *x,
     if (wtype == WEIGHT_TYPE_F16) {
         tn_matmul_f16_batch(out, x, (const tn_u16 *)w, n, d, n_tokens, tp);
         return;
+    }
+    /* Phase 18-B: Q4_K and its x8-repacked form read the weights once per
+     * batch too (bit-identical to the per-token loop below). */
+    if (wtype == WEIGHT_TYPE_F32) {
+        tn_matmul_f32_batch(out, x, (const float *)w, n, d, n_tokens, tp);
+        return;
+    }
+    if (wtype == WEIGHT_TYPE_Q4K) {
+        parallel_matmul_q4k_tokens(out, x, (const uint8_t *)w, n, d, n_tokens, tp);
+        return;
+    }
+    if (wtype == WEIGHT_TYPE_Q4K_X8) {
+        int n_blocks = n / 256;
+        TnQ8KActBlock *acts = (TnQ8KActBlock *)malloc((size_t)n_tokens * n_blocks * sizeof(TnQ8KActBlock));
+        if (acts) {
+            for (int k = 0; k < n_tokens; k++)
+                tn_quantize_q8k(acts + (size_t)k * n_blocks, x + (size_t)k * n, n_blocks);
+            parallel_matmul_q4k_x8_tokens_preq(out, acts, (const TnQ4KX8Block *)w,
+                                               n_blocks, d, n_tokens, tp);
+            free(acts);
+            return;
+        }
     }
     for (int k = 0; k < n_tokens; k++) {
         tn_dense_matmul_dispatch(out + (size_t)k * d, x + (size_t)k * n, w, wtype, n, d, tp);

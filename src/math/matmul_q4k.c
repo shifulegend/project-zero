@@ -539,3 +539,49 @@ void parallel_matmul_q4k_batch_preq(float * const *outs,
     if (!tp) { matmul_q4k_batch_task(&args, 0, 0, k * d); return; }
     threadpool_dispatch(tp, matmul_q4k_batch_task, &args, k * d);
 }
+
+/* ── Phase 18-B: one weight matrix, n_tokens activations ────────────────────
+ * Speculative decoding's batched verify pass multiplies the same weights by
+ * n_tokens candidate activations. Each row is read from RAM once and dotted
+ * against every token's Q8K activations while it is cache-hot, instead of
+ * n_tokens full passes over the matrix. Per-(row, token) arithmetic is the
+ * same dot_q4k_row_q8k() call as the single-token path, so results are
+ * bit-identical to n_tokens parallel_matmul_q4k() calls. */
+
+typedef struct {
+    float              *out;     /* [n_tokens][d] */
+    const uint8_t      *w;
+    const TnQ8KActBlock *acts;   /* [n_tokens][n_blocks] */
+    int n_blocks, d, n_tokens;
+    size_t row_bytes;
+} MatmulQ4KTokensArgs;
+
+static void matmul_q4k_tokens_task(void *arg, int thread_id, int start, int end) {
+    (void)thread_id;
+    const MatmulQ4KTokensArgs *a = (const MatmulQ4KTokensArgs *)arg;
+    for (int i = start; i < end; i++) {
+        const uint8_t *row = a->w + (size_t)i * a->row_bytes;
+        for (int t = 0; t < a->n_tokens; t++)
+            a->out[(size_t)t * a->d + i] =
+                dot_q4k_row_q8k(row, a->acts + (size_t)t * a->n_blocks, a->n_blocks);
+    }
+}
+
+void parallel_matmul_q4k_tokens(float *out, const float *x, const uint8_t *w_q4k,
+                                int n, int d, int n_tokens, ThreadPool *tp) {
+    int n_blocks = n / Q4K_SUPER;
+    if (n_tokens <= 0 || n_blocks <= 0) return;
+    TnQ8KActBlock *acts = (TnQ8KActBlock *)malloc((size_t)n_tokens * n_blocks * sizeof(TnQ8KActBlock));
+    if (!acts) {   /* OOM: fall back to per-token calls (same results) */
+        for (int t = 0; t < n_tokens; t++)
+            parallel_matmul_q4k(out + (size_t)t * d, x + (size_t)t * n, w_q4k, n, d, tp);
+        return;
+    }
+    for (int t = 0; t < n_tokens; t++)
+        quantize_to_q8k(acts + (size_t)t * n_blocks, x + (size_t)t * n, n_blocks);
+    MatmulQ4KTokensArgs args = { out, w_q4k, acts, n_blocks, d, n_tokens,
+                                 (size_t)n_blocks * Q4K_BYTES };
+    if (!tp) matmul_q4k_tokens_task(&args, 0, 0, d);
+    else threadpool_dispatch(tp, matmul_q4k_tokens_task, &args, d);
+    free(acts);
+}

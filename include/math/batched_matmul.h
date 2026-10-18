@@ -59,6 +59,12 @@ void tn_matmul_f16_batch(float *out, const float *x, const tn_u16 *w,
                           int n, int d, int n_tokens, ThreadPool *tp);
 
 /**
+ * F32 dense batched matmul (Phase 18-B: weights dequantised to F32 at load).
+ */
+void tn_matmul_f32_batch(float *out, const float *x, const float *w,
+                         int n, int d, int n_tokens, ThreadPool *tp);
+
+/**
  * BF16 dense batched matmul (classifier format).
  */
 void tn_matmul_bf16_batch(float *out, const float *x, const tn_u16 *w,

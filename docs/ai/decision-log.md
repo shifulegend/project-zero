@@ -3,6 +3,15 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-10-18.
 
+### 2026-10-18 — Phase 18-B kept despite small gains; 18-C (decode-once GEMM) identified
+
+- Profiling (TN_STEP_TIMING) showed verify-batch cost ≈ 5.4× a single step: the Q4_K path is
+  compute-bound on this host, so reading weights once per batch saves little. The batched
+  kernels are bit-identical and never slower, so they stay; the honest conclusion is recorded in
+  the plan (speculative decoding currently does not pay for Q4_K_M models here).
+- Next perf levers, in order: fused Q6_K kernel (affects all Q4_K_M decode), decode-once
+  multi-token kernels (18-C).
+
 ### 2026-10-18 — Phase 23 stage 1: an opt-in FIFO queue before true continuous batching
 
 - Real continuous batching needs the generation loop split into a per-step state machine plus a

@@ -141,7 +141,7 @@ def make_screenshot(suite_name, t, run_text, out_path, run_num=None):
     in_output = False
     for line in run_text.splitlines():
         if line.startswith("===") or line.startswith("DATE:") or \
-           line.startswith("CMD:") or line.startswith("PROMPT:") or \
+           line.startswith("CMD:") or line.startswith("PROMPT:") or line.startswith("HOST_CPU:") or \
            line.startswith("="):
             if "===" in line and in_output:
                 break
@@ -150,11 +150,16 @@ def make_screenshot(suite_name, t, run_text, out_path, run_num=None):
                 or "common_perf_print" in line:
             break
         # reference-engine log lines ("0.00.123.456 I ...", "llama_model_loader: ...") are not output
-        if is_ref and (re.match(r'^\d+\.\d+\.\d+\.\d+ [IWED] ', line) or re.match(r'^[a-z_]+: ', line)):
+        if is_ref and (re.match(r'^\d+\.\d+\.\d+\.\d+ [IWED] ', line) or re.match(r'^[a-z_]+: ', line)
+                       or re.match(r'^\t[a-z_]+ = ', line)):        # sampler settings dump
             continue
+        line = line.expandtabs(4)
         # engine start-up chatter (profile box, loader steps) is not model output
-        if is_pz and (line[:1] in "│┌├└" or line.startswith(("[", "Active:", "KV cache", "SIMD", "Classifier",
-                                                                 "Attention:", "Hardware", "Calibration"))):
+        if is_pz and (line[:1] in "│┌├└#" or line.startswith(("[", "Active:", "KV cache", "SIMD", "Classifier",
+                                                                 "Attention:", "Hardware", "Calibration",
+                                                                 "Project Zero Engine", "Model format",
+                                                                 "Model Configuration"))
+                      or re.match(r'^  [a-z_]+:\s', line)):
             continue
         if line.strip():
             in_output = True

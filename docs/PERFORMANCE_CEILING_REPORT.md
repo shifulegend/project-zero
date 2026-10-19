@@ -61,6 +61,8 @@
 | AG | 2026-03-20 | [Phase 17 MoE Routing — BitNet Full Benchmark + RCA](#addendum-ag--phase-17-moe-routing--bitnet-full-benchmark--rca-2026-03-20) | **47.59 tok/s** BitNet NEW PEAK (VNNI-256 INT4 T=6) |
 | AH | 2026-06-21 | [i5-11300H Head-to-Head: PZ vs Microsoft bitnet.cpp](#addendum-ah--i5-11300h-head-to-head-project-zero-vs-microsoft-bitnetcpp-2026-06-21) | **42.83 tok/s** PZ INT4 · **6.4× faster** than MSFT |
 | AI | 2026-06-21 | [SmolLM2-135M F16: PZ vs llama.cpp on i5-11300H](#addendum-ai--smollm2-135m-f16-project-zero-vs-llamacpp-on-i5-11300h-2026-06-21) | **99.18 tok/s** PZ · **106.6 tok/s** llama.cpp · −7% gap |
+| AK | 2026-10-18 | [Full Sequential Sweep on Xeon (KVM)](#addendum-ak--full-sequential-sweep-on-xeon-kvm-smollm2-135m-mamba-130m-smollm2-17b-q4_k_m-2026-10-18) | 129.5 tok/s SmolLM2-135M INT4 cls |
+| AL | 2026-10-19 | [Head-to-Head vs llama.cpp / bitnet.cpp, same host](#addendum-al--head-to-head-vs-llamacpp-and-bitnetcpp-sequential-same-host-2026-10-19) | Decode +2 % / −12 % / −15 %; startup 20–70 s → 0.1–8 s |
 
 ---
 
@@ -10385,3 +10387,131 @@ Full `lscpu`, memory, compiler and engine hardware-profile output:
 20 screenshots (5 suites × 4 thread counts, best run of each), rendered from the raw run logs with
 `tools/make_sweep_screenshots.py --sweep benchmark_results/sweep_2026-10-18 ...`:
 `benchmark_results/sweep_2026-10-18/screenshots/`.
+
+---
+
+## Addendum AL — Head-to-Head vs llama.cpp and bitnet.cpp, Sequential, Same Host (2026-10-19)
+
+First full sweep with the reference engines installed and built on the same machine as Project
+Zero. It found near-parity decode speed, and a **startup cost of 20–70 s per run** that no earlier
+sweep could see (they reported only the engine's own decode rate). The startup defects were fixed
+in the same session and the Project Zero suites re-run (§AL.5).
+
+### AL.1 Hardware, software, date
+
+| | |
+|---|---|
+| Date | 2026-10-19 — reference window 01:45–03:44 UTC; post-fix PZ window 05:05–05:45 UTC |
+| CPU | Intel Xeon Processor @ 2.80 GHz (KVM guest, family 6 **model 85**, Cascade Lake), 4 vCPU (4 cores × 1 thread) |
+| ISA | AVX2, AVX-512F/BW/VL, **AVX-512 VNNI** (no AVX-VNNI, no AMX) — engine backend AVX-512F (calibrated) |
+| Cache | L1d 32 KiB/core, L2 1 MiB/core, L3 33 MiB shared |
+| Memory | 16 GB, no swap; engine-measured DRAM bandwidth 33.5–34.4 GB/s |
+| OS / compilers | Linux 6.18.44 x86_64; gcc 13.3.0 (PZ, llama.cpp), clang 18.1.3 (bitnet.cpp) |
+| Project Zero | `35e076d` (reference window), `e9adee3` (post-fix) — `make release` (`-O3 -march=native`) |
+| llama.cpp | `ff5a233` upstream, Release, `GGML_NATIVE=ON`, `llama-completion` |
+| bitnet.cpp | `0b341e5` (microsoft/BitNet), Release, i2_s kernels (`BITNET_X86_TL2=OFF`), `llama-completion` |
+
+Full `lscpu`, memory, compiler and engine hardware-profile dump:
+`benchmark_results/sweep_h2h_2026-10-19/system_info.txt`. Every run file records `HOST_CPU:`;
+all 108 runs show the same CPU (model 85). The container restarted once mid-session (§AL.6).
+
+### AL.2 Method
+
+- **Strictly sequential**: one engine process at a time, nothing else running; best of **3** runs per
+  thread count, **t = 1..4**, **10 s cooldown** between runs and between thread counts.
+- **Same work for every engine** (`--fixed-length`): raw prompt (no chat template) and EOS ignored,
+  so each run generates exactly **500 tokens**, temperature 0. PZ: `--raw-prompt --ignore-eos`;
+  references: `-no-cnv --ignore-eos`. Prompt: "Explain what machine learning is and how neural
+  networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning
+  with real-world examples of each."
+- Metrics: decode tok/s (PZ `[gen]`; references' `common_perf_print` eval line), wall time, max
+  RSS and CPU% from `wait4`. Harness `tools/bench_sweep_seq.py`, launcher
+  `tools/run_h2h_sweep_2026-10-19.sh` (`postfix` mode for §AL.5). 108 rows in `summary.csv`, all
+  exit 0.
+- Models: SmolLM2-135M-Instruct F16, SmolLM2-1.7B-Instruct Q4_K_M, BitNet b1.58 2B-4T I2_S (the
+  official Microsoft GGUF; bitnet.cpp is the reference for it, upstream llama.cpp cannot load I2_S).
+- Output parity: greedy continuations agree between engines (e.g. both SmolLM2-135M runs continue
+  "Lastly, consider the role of data in machine learning…"); perplexity parity is in
+  `docs/reports/ACCURACY_PARITY_2026-10-19.md`.
+
+### AL.3 Decode throughput (best of 3, tok/s) — same window, same host
+
+| Model | Engine | t=1 | t=2 | t=3 | t=4 | PZ vs ref @ t=4 |
+|---|---|---|---|---|---|---|
+| SmolLM2-135M F16 | **Project Zero** | **28.98** | **49.42** | **65.79** | **77.13** | **+2.1 %** |
+| | llama.cpp | 26.02 | 42.96 | 60.33 | 75.56 | |
+| SmolLM2-1.7B Q4_K_M | Project Zero | 5.30 | 9.18 | 12.76 | 15.30 | −12.1 % |
+| | **llama.cpp** | **5.78** | **10.01** | **13.79** | **17.41** | |
+| BitNet b1.58 2B-4T I2_S | Project Zero | 4.20 | 7.63 | 10.94 | 12.27 | −14.6 % |
+| | **bitnet.cpp** | **5.04** | **8.53** | **11.79** | **14.37** | |
+
+![Decode throughput vs threads — Project Zero vs llama.cpp / bitnet.cpp](../benchmark_results/sweep_h2h_2026-10-19/throughput_vs_threads.png)
+
+(`tools/plot_sweep_svg.py`; SVG alongside.)
+
+### AL.4 Wall time and memory (best decode run at t = 4; 500 tokens)
+
+| Model | Engine | Wall | Max RSS | CPU% |
+|---|---|---|---|---|
+| SmolLM2-135M | PZ `35e076d` | 24.8 s | 2,055 MB | 180 % |
+| | llama.cpp | 7.2 s | 473 MB | 379 % |
+| SmolLM2-1.7B | PZ `35e076d` | 59.1 s | 5,395 MB | 265 % |
+| | llama.cpp | 38.4 s | 3,310 MB | 324 % |
+| BitNet 2B | PZ `35e076d` | 108.3 s | 2,871 MB | 210 % |
+| | bitnet.cpp | 36.7 s | 1,509 MB | 384 % |
+
+Decode was close, yet wall time was 1.5–3.4× the references' and CPU% low: most of each PZ run was
+single-threaded startup. Profiling (gdb sampling) attributed it to four pre-existing defects —
+`docs/ai/mistakes.md` 2026-10-19 "Startup cost 20–70 s":
+
+| Defect | Cost |
+|---|---|
+| BPE merge resolution scanned the vocab linearly per merge (O(merges × vocab)) | ~4 s SmolLM2, ~60 s Llama-3 vocab (BitNet) |
+| DRAM bandwidth probe (2 GB, single-threaded first touch) on every start | 1.3–15 s, and the ≥ 2 GB RSS floor of every run |
+| `tn_aligned_calloc` memset the whole max-context KV cache | ~5 s and the full cache in RSS before token 1 |
+| I2_S repack decoded 2-bit fields one at a time | seconds on BitNet |
+
+Correction to Addenda AJ/AK: their "~2 GB RSS = mmap'd model + calibration buffers" was in fact
+this bandwidth probe.
+
+### AL.5 After the fixes (`e912a23`/`e9adee3`, same host, 05:05–05:45 UTC)
+
+| Model | Wall @ t=4 | Max RSS | CPU% @ t=4 | Decode @ t=4 | Wall @ t=1 |
+|---|---|---|---|---|---|
+| SmolLM2-135M | **7.4 s** (was 24.8; llama.cpp 7.2) | **346 MB** (was 2,055; llama.cpp 473) | 387 % | 72.47 | 20.4 s (was 77.4) |
+| SmolLM2-1.7B | 45.6 s (was 59.1; llama.cpp 38.4) | 2,526 MB (was 5,395; llama.cpp 3,310) | 345 % | 13.08 | 121.2 s (was 214.1) |
+| BitNet 2B | 49.6 s (was 108.3; bitnet.cpp 36.7) | 2,349 MB (was 2,871; bitnet.cpp 1,509) | 359 % | 11.29 | 139.2 s (was 291.2) |
+
+- Startup is now 0.1 s for SmolLM2-135M (was ~20 s) and ~8 s for BitNet warm (was ~70 s); PZ now
+  uses less memory than llama.cpp on both SmolLM2 models.
+- **Host drift, not regression:** the post-fix decode numbers are 6–15 % below the reference
+  window's. The pre-fix binary run back-to-back with the new one in the post-fix window gave the
+  same speed (SmolLM2-135M t=4: old 69.0 vs new 68.5 tok/s mean of 3; SmolLM2-1.7B: three rounds,
+  differences within this VM's ±4 % noise and changing sign). The same CPU model got ~10 % slower
+  after the container restart, so post-fix decode must not be compared with §AL.3's absolute numbers.
+- Follow-up fix after this sweep (not in these rows): converted raw tensors are released from the
+  `MAP_POPULATE`d mapping (`mapped_file_release`) — BitNet RSS 2,867 → 1,766 MB, SmolLM2-1.7B
+  5,311 → 2,369 MB end to end; and KV rows a generation will use are committed up front
+  (`run_state_kv_reserve`) so first-touch faults stay out of the decode loop.
+
+### AL.6 Notes
+
+- **Remaining gap to the references** is decode on the larger models (−12 % Q4_K_M, −15 % BitNet at
+  t=4 in the same window). bitnet.cpp's i2_s kernels and llama.cpp's Q4_K path keep all 4 cores at
+  ~380 % CPU; PZ's decode loop now does too (~350–390 %), so the gap is kernel/bandwidth efficiency,
+  not threading. BitNet's 128k×2560 head is ~58 % of PZ's 1.13 GB/token at BF16 (an INT8/INT4
+  classifier is the obvious lever; not used here so all engines compute the head at 16-bit).
+- **BitNet chat mode**: the official GGUF's chat template appends EOS after the assistant prefix
+  (bitnet.cpp `--jinja` answers nothing; PZ continued past it). Use
+  `--chat-template-file docs/templates/bitnet-b1.58.jinja`; PZ now also stops on `<|eot_id|>` and
+  other end-of-turn tokens for every GGUF (`tokenizer_collect_eog`). Benchmarks above are raw-prompt
+  and unaffected.
+- **Container restart**: the session moved from a model-207 host to this model-85 host before the
+  sweep; reference engines were rebuilt natively on it (the old `-march=native` builds died with
+  SIGILL), and `system_info.txt` was regenerated here.
+
+### AL.7 Screenshots
+
+36 screenshots (9 suites × 4 thread counts, best run of each), rendered from the raw logs by
+`tools/make_sweep_screenshots.py` (now skips `HOST_CPU:`, banner and config lines, and llama.cpp's
+sampler dump): `benchmark_results/sweep_h2h_2026-10-19/screenshots/`.

@@ -19,6 +19,8 @@ void server_config_init(ServerConfig *sc) {
     sc->prompt_cache_min_tokens = 32;
     sc->chat_format = -1;
     sc->allow_request_template = 1;
+    sc->mcts_max = 64;
+    mcts_options_defaults(&sc->mcts);
     sc->best_of = 1;
     sc->queue_size = 0;
     sc->queue_timeout_s = 120;

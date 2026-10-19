@@ -95,6 +95,22 @@ static void test_prompt_cache_json(void) {
     server_config_free(&ctx.server_config);
 }
 
+static void test_config_mcts(void) {
+    ApiContext ctx; Config cfg;
+    make_ctx(&ctx, &cfg);
+    char *j = api_config_json(&ctx);
+    TEST_ASSERT(j && strstr(j, "\"mcts\":{\"simulations\":0,\"expand\":3") != NULL, "defaults.mcts published");
+    TEST_ASSERT(strstr(j, "\"mcts_simulations\":{\"min\":0,\"max\":64") != NULL, "simulations range = --mcts-max");
+    TEST_ASSERT(strstr(j, "\"mcts\":true") != NULL && strstr(j, "\"prm\":null") != NULL,
+                "feature on, no judge");
+    free(j);
+    ctx.server_config.mcts_max = 0;
+    j = api_config_json(&ctx);
+    TEST_ASSERT(j && strstr(j, "\"mcts\":false") != NULL, "--mcts-max 0 -> feature off");
+    free(j);
+    server_config_free(&ctx.server_config);
+}
+
 static void test_config_chat_template(void) {
     ApiContext ctx; Config cfg;
     make_ctx(&ctx, &cfg);
@@ -138,5 +154,6 @@ int main(void) {
     RUN_TEST(test_prompt_cache_json);
     RUN_TEST(test_watermark_endpoint_errors);
     RUN_TEST(test_config_chat_template);
+    RUN_TEST(test_config_mcts);
     TEST_SUMMARY();
 }

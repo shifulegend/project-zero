@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-19.
 
+### 2026-10-19 — Phase 30 complete: PRM judge + step-level MCTS
+- New: `reasoning/prm`, `reasoning/mcts`, `reasoning/mcts_options`; `GenerationParams.assistant_prefix`,
+  `GenerationStats.hit_eos`; CLI `--mcts* --prm*`, request `"mcts"`, `/v1/config` mcts fields,
+  web UI Settings → Tree search; `tests/test_mcts.c`.
+- Verified: live CLI + API (stream and non-stream) with self-scoring and a GGUF judge.
+
 ### 2026-10-19 — Chat template from the front end; int4 KV cache
 - New: API `"chat_template"` + `--no-request-template`, `/v1/config chat_template`, web UI Settings →
   Chat template (commit 18d7acd). `--kv-type i4` (`kvq_row_layout/kvq_store/kvq_dot_row/

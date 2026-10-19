@@ -39,6 +39,10 @@ after a change).
     sequences.
   - *Watermark*: watermark replies, key (blank = the server's `--watermark-key`), γ and δ.
   - *System prompt*: applied to every conversation (chat-template models).
+  - *Tree search*: step-level MCTS (Phase 30). *Simulations* 0 = off; branching, max steps,
+    tokens per step, exploration *c* and step temperature. Steps are scored by the server's `--prm`
+    judge when one is loaded (named under the sliders), else by the model's own token probability.
+    The reply arrives once the search has chosen a path.
   - *Chat template*: the model's Jinja template as the server uses it (source: `gguf` or `file`).
     Edit it and every request carries your copy as `chat_template`; *Restore model template*
     undoes it. Needed for GGUFs that ship a broken template (official BitNet b1.58 2B-4T — start

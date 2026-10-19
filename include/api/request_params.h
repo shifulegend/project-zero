@@ -18,4 +18,10 @@
 void request_params_resolve(const ChatRequest *req, const GenerationParams *defaults,
                             int max_tokens_limit, GenerationParams *out);
 
+/* Phase 30: the server's --mcts* defaults overlaid with a request's "mcts"
+ * fields (non-zero ones), clamped to the shared ranges and to sim_cap
+ * (--mcts-max). simulations 0 = no search. */
+void request_mcts_resolve(const ChatRequest *req, const MctsOptions *defaults, int sim_cap,
+                          MctsOptions *out);
+
 #endif /* TN_REQUEST_PARAMS_H */

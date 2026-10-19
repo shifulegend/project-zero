@@ -71,6 +71,7 @@
 #include "api/request_params.h"
 #include "api/watermark_endpoint.h"
 #include "reasoning/best_of.h"
+#include "reasoning/mcts.h"
 #include "api/json_write.h"
 #include "api/gen_queue.h"
 #include "multimodal/vision_pipeline.h"
@@ -207,6 +208,28 @@ static char *append_best_of_json(char *json, const BestOfResult *r) {
     jb_raw(&jb, ",\"scores\":[");
     for (int i = 0; i < r->n && i < 64; i++) { if (i) jb_raw(&jb, ","); jb_num(&jb, r->scores[i]); }
     jb_raw(&jb, "]}}");
+    char *out = jb_finish(&jb);
+    if (!out) { json[len - 1] = '}'; return json; }
+    free(json);
+    return out;
+}
+
+/* Phase 30: adds "mcts": {"simulations", "nodes", "steps", "path_value",
+ * "scorer", "search_tokens"} to a finished response object. */
+static char *append_mcts_json(char *json, const MctsResult *r) {
+    size_t len = strlen(json);
+    if (len < 2 || json[len - 1] != '}') return json;
+    JsonBuf jb;
+    jb_init(&jb);
+    json[len - 1] = '\0';
+    jb_raw(&jb, json);
+    jb_raw(&jb, ",\"mcts\":{\"simulations\":"); jb_int(&jb, r->simulations);
+    jb_raw(&jb, ",\"nodes\":"); jb_int(&jb, r->nodes);
+    jb_raw(&jb, ",\"steps\":"); jb_int(&jb, r->steps);
+    jb_raw(&jb, ",\"path_value\":"); jb_num(&jb, r->path_value);
+    jb_raw(&jb, ",\"scorer\":"); jb_str(&jb, r->used_prm ? "prm" : "self");
+    jb_raw(&jb, ",\"search_tokens\":"); jb_int(&jb, r->tokens_total);
+    jb_raw(&jb, "}}");
     char *out = jb_finish(&jb);
     if (!out) { json[len - 1] = '}'; return json; }
     free(json);
@@ -626,7 +649,23 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     if (best_of > ctx->server_config.best_of_max) best_of = ctx->server_config.best_of_max;
     BestOfResult bres;
     memset(&bres, 0, sizeof(bres));
-    if (best_of > 1) {
+    /* Phase 30: step-level tree search (server --mcts*, request "mcts"). */
+    MctsOptions mopt;
+    request_mcts_resolve(&req, &ctx->server_config.mcts, ctx->server_config.mcts_max, &mopt);
+    MctsResult mres;
+    memset(&mres, 0, sizeof(mres));
+    if (mopt.simulations > 0) {
+        const char *question = "";
+        for (int i = req.num_messages - 1; i >= 0; i--)
+            if (req.messages[i].content && strcmp(req.messages[i].role, "user") == 0) {
+                question = req.messages[i].content;
+                break;
+            }
+        if (generate_mcts(ctx->cfg, ctx->weights, ctx->run_state, ctx->moe_cfg, ctx->tok, ctx->tp,
+                          prompt, question, &gp, &mopt, ctx->prm, streaming_token_callback, &st,
+                          best_of_abort_check, &mres) != TN_OK && gstats.completion_tokens == 0)
+            gstats.finish_reason = GEN_FINISH_ERROR;
+    } else if (best_of > 1) {
         generate_best_of(ctx->cfg, ctx->weights, ctx->run_state, ctx->moe_cfg,
                          ctx->tok, ctx->tp, prompt, &gp, best_of, BEST_OF_SCORE_MEAN_LOGPROB,
                          streaming_token_callback, &st, best_of_abort_check, &bres);
@@ -666,7 +705,8 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
                                                  gstats.prompt_tokens,
                                                  gstats.completion_tokens,
                                                  gstats.cached_tokens);
-        if (json && best_of > 1) json = append_best_of_json(json, &bres);
+        if (json && mopt.simulations > 0) json = append_mcts_json(json, &mres);
+        else if (json && best_of > 1) json = append_best_of_json(json, &bres);
         send_response_ex(fd, 200, "application/json", json, 0, extra_headers);
         free(json);
     }

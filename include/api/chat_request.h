@@ -8,6 +8,7 @@
  * Matches the OpenAI /v1/chat/completions schema.
  */
 
+#include "reasoning/mcts_options.h"
 #include <stdbool.h>
 #include "core/error.h"
 
@@ -38,7 +39,8 @@ enum {
     CHAT_SET_CACHE_PROMPT  = 1u << 15,
     CHAT_SET_BEST_OF       = 1u << 16,
     CHAT_SET_IGNORE_EOS    = 1u << 17,
-    CHAT_SET_CHAT_TEMPLATE = 1u << 18
+    CHAT_SET_CHAT_TEMPLATE = 1u << 18,
+    CHAT_SET_MCTS          = 1u << 19
 };
 
 /* ── Single chat message ─────────────────────────────────────────────────── */
@@ -95,6 +97,9 @@ typedef struct {
      * (heap; NULL = server's). Ignored when the server runs
      * --no-request-template. */
     char         *chat_template;
+    /* Phase 30: "mcts": N (simulations) or {"simulations", "expand",
+     * "max_depth", "step_tokens", "c", "temperature"}; 0 fields = server's. */
+    MctsOptions   mcts;
 } ChatRequest;
 
 /* ── Lifecycle ───────────────────────────────────────────────────────────── */

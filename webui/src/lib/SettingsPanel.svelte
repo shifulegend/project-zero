@@ -34,6 +34,22 @@
     {/if}
   </section>
 
+  {#if features.mcts}
+    <section>
+      <h3>Tree search</h3>
+      <RangeField label="Simulations" bind:value={settings.mcts_simulations} range={L.mcts_simulations} offValue={0}
+        hint="Step-level MCTS: explore alternative reasoning steps, answer along the best path (slower; streams once chosen)" />
+      {#if settings.mcts_simulations > 0}
+        <RangeField label="Branching" bind:value={settings.mcts_expand} range={L.mcts_expand} />
+        <RangeField label="Max steps" bind:value={settings.mcts_max_depth} range={L.mcts_max_depth} />
+        <RangeField label="Tokens per step" bind:value={settings.mcts_step_tokens} range={L.mcts_step_tokens} />
+        <RangeField label="Exploration (c)" bind:value={settings.mcts_c} range={L.mcts_c} />
+        <RangeField label="Step temperature" bind:value={settings.mcts_temperature} range={L.mcts_temperature} />
+      {/if}
+      <span class="dim">Steps scored by {features.prm ? `reward model ${features.prm}` : "the model's own token probability (start the server with --prm for a judge)"}</span>
+    </section>
+  {/if}
+
   <section>
     <h3>Repetition</h3>
     <RangeField label="Repetition penalty" bind:value={settings.repetition_penalty} range={L.repetition_penalty} offValue={1} />

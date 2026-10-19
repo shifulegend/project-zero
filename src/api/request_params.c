@@ -46,3 +46,20 @@ void request_params_resolve(const ChatRequest *req, const GenerationParams *defa
                                                 ? defaults->max_tokens : max_tokens_limit;
     if (out->max_tokens > max_tokens_limit) out->max_tokens = max_tokens_limit;
 }
+
+void request_mcts_resolve(const ChatRequest *req, const MctsOptions *defaults, int sim_cap,
+                          MctsOptions *out) {
+    if (!out) return;
+    if (defaults) *out = *defaults;
+    else memset(out, 0, sizeof(*out));
+    if (req && (req->set_mask & CHAT_SET_MCTS)) {
+        const MctsOptions *r = &req->mcts;
+        out->simulations = r->simulations;               /* explicit 0 turns search off */
+        if (r->expand > 0)       out->expand = r->expand;
+        if (r->max_depth > 0)    out->max_depth = r->max_depth;
+        if (r->step_tokens > 0)  out->step_tokens = r->step_tokens;
+        if (r->c_ucb > 0.0f)     out->c_ucb = r->c_ucb;
+        if (r->temperature > 0.0f) out->temperature = r->temperature;
+    }
+    mcts_options_clamp(out, sim_cap < 0 ? 0 : sim_cap);
+}

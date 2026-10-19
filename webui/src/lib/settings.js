@@ -25,6 +25,12 @@ export function defaultsFromConfig(cfg) {
     ignore_eos: !!d.ignore_eos,
     cache_prompt: d.cache_prompt !== false,
     best_of: d.best_of ?? 1,
+    mcts_simulations: d.mcts?.simulations ?? 0,
+    mcts_expand: d.mcts?.expand,
+    mcts_max_depth: d.mcts?.max_depth,
+    mcts_step_tokens: d.mcts?.step_tokens,
+    mcts_c: d.mcts?.c,
+    mcts_temperature: d.mcts?.temperature,
     system_prompt: d.system_prompt ?? '',
     // The model's active Jinja chat template; editing it makes every request
     // carry the edited copy as "chat_template" (when the server allows it).
@@ -104,6 +110,16 @@ export function requestParams(settings, cfg) {
   if (cfg?.features?.prompt_cache) body.cache_prompt = !!settings.cache_prompt;
   body.ignore_eos = !!settings.ignore_eos;
   if (cfg?.features?.best_of) body.best_of = settings.best_of;
+  if (cfg?.features?.mcts) {
+    body.mcts = {
+      simulations: settings.mcts_simulations,
+      expand: settings.mcts_expand,
+      max_depth: settings.mcts_max_depth,
+      step_tokens: settings.mcts_step_tokens,
+      c: settings.mcts_c,
+      temperature: settings.mcts_temperature,
+    };
+  }
   const wm = {
     enabled: !!settings.watermark_enabled,
     gamma: settings.watermark_gamma,

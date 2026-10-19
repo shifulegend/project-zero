@@ -35,6 +35,17 @@ void print_usage(const char *prog_name) {
     printf("  --best-of <N>       Generate N candidates, keep the one the model finds\n");
     printf("                      most likely (mean log-prob). Default 1 (off).\n");
     printf("  --best-of-max <N>   Server: largest best_of a request may ask for (default %d)\n", BEST_OF_MAX_DEFAULT);
+    printf("  --mcts <N>          Step-level tree search with N simulations (0 = off): sample\n");
+    printf("                      --mcts-expand children per step, score each step, answer\n");
+    printf("                      along the most visited path\n");
+    printf("  --mcts-expand <k> --mcts-depth <d> --mcts-step-tokens <n> --mcts-c <c>\n");
+    printf("  --mcts-temperature <t> --mcts-delim <s>   search shape (defaults %d %d %d %.1f %.1f \"\\n\")\n",
+           MCTS_DEFAULT_EXPAND, MCTS_DEFAULT_DEPTH, MCTS_DEFAULT_STEP_TOKENS,
+           (double)MCTS_DEFAULT_C, (double)MCTS_DEFAULT_TEMPERATURE);
+    printf("  --mcts-max <N>      Server: largest \"mcts\" simulations a request may ask for\n");
+    printf("  --prm <gguf>        Process reward model scoring each step (default: the policy's\n");
+    printf("                      own token probability). --prm-format <s> with {question}\n");
+    printf("                      {steps}; --prm-good <s> / --prm-bad <s> answer strings\n");
     printf("  --reasoning         Enable hidden reasoning mode via <think> tags\n");
     printf("  --json              Constrain output to syntactically valid JSON\n");
     printf("  --perplexity <file> Report perplexity on a text file, then exit (llama.cpp's\n");
@@ -270,6 +281,9 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->plan_layers = NULL;
     args->queue_timeout_s = 120;
     args->best_of_max = BEST_OF_MAX_DEFAULT;
+    memset(&args->mcts, 0, sizeof(args->mcts));
+    args->mcts_max = 64;
+    args->prm_path = args->prm_format = args->prm_good = args->prm_bad = NULL;
     args->prompt_cache = true;
     args->prompt_cache_mb = 256;
     args->prompt_cache_min_tokens = 32;
@@ -453,6 +467,70 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
                 fprintf(stderr, "Error: --best-of must be 1..64\n");
                 return TN_ERR_INVALID_CONFIG;
             }
+        } else if (strcmp(argv[i], "--mcts") == 0 && i + 1 < argc) {
+            args->mcts.simulations = atoi(argv[++i]);
+            if (args->mcts.simulations < 0 || args->mcts.simulations > 4096) {
+                fprintf(stderr, "Error: --mcts must be 0..4096\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--mcts-max") == 0 && i + 1 < argc) {
+            args->mcts_max = atoi(argv[++i]);
+            if (args->mcts_max < 0 || args->mcts_max > 4096) {
+                fprintf(stderr, "Error: --mcts-max must be 0..4096\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--mcts-expand") == 0 && i + 1 < argc) {
+            args->mcts.expand = atoi(argv[++i]);
+            if (args->mcts.expand < 1 || args->mcts.expand > 16) {
+                fprintf(stderr, "Error: --mcts-expand must be 1..16\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--mcts-depth") == 0 && i + 1 < argc) {
+            args->mcts.max_depth = atoi(argv[++i]);
+            if (args->mcts.max_depth < 1 || args->mcts.max_depth > 256) {
+                fprintf(stderr, "Error: --mcts-depth must be 1..256\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--mcts-step-tokens") == 0 && i + 1 < argc) {
+            args->mcts.step_tokens = atoi(argv[++i]);
+            if (args->mcts.step_tokens < 1 || args->mcts.step_tokens > 4096) {
+                fprintf(stderr, "Error: --mcts-step-tokens must be 1..4096\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--mcts-c") == 0 && i + 1 < argc) {
+            args->mcts.c_ucb = (float)atof(argv[++i]);
+            if (!(args->mcts.c_ucb > 0.0f && args->mcts.c_ucb <= 10.0f)) {
+                fprintf(stderr, "Error: --mcts-c must be in (0, 10]\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--mcts-temperature") == 0 && i + 1 < argc) {
+            args->mcts.temperature = (float)atof(argv[++i]);
+            if (!(args->mcts.temperature > 0.0f && args->mcts.temperature <= 2.0f)) {
+                fprintf(stderr, "Error: --mcts-temperature must be in (0, 2]\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--mcts-delim") == 0 && i + 1 < argc) {
+            /* "\n" in the argument means a newline */
+            const char *d = argv[++i];
+            size_t k = 0;
+            for (; *d && k + 1 < sizeof(args->mcts_delim_buf); d++) {
+                if (d[0] == '\\' && d[1] == 'n') { args->mcts_delim_buf[k++] = '\n'; d++; }
+                else args->mcts_delim_buf[k++] = *d;
+            }
+            args->mcts_delim_buf[k] = '\0';
+            if (k == 0) {
+                fprintf(stderr, "Error: --mcts-delim must not be empty\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+            args->mcts.step_delim = args->mcts_delim_buf;
+        } else if (strcmp(argv[i], "--prm") == 0 && i + 1 < argc) {
+            args->prm_path = argv[++i];
+        } else if (strcmp(argv[i], "--prm-format") == 0 && i + 1 < argc) {
+            args->prm_format = argv[++i];
+        } else if (strcmp(argv[i], "--prm-good") == 0 && i + 1 < argc) {
+            args->prm_good = argv[++i];
+        } else if (strcmp(argv[i], "--prm-bad") == 0 && i + 1 < argc) {
+            args->prm_bad = argv[++i];
         } else if (strcmp(argv[i], "--best-of-max") == 0 && i + 1 < argc) {
             args->best_of_max = atoi(argv[++i]);
             if (args->best_of_max < 1 || args->best_of_max > 64) {

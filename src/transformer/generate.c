@@ -54,6 +54,7 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
         gp->stats->sum_logprob = 0.0;
         gp->stats->finish_reason = GEN_FINISH_ERROR; /* until generation runs */
         gp->stats->tokens_per_sec = 0.0;
+        gp->stats->hit_eos = false;
     }
 
     StopMatcher stop;
@@ -127,6 +128,19 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
         if (g_tn_verbose)
             fprintf(stderr, "[DBG] formatted prompt: %s\n", formatted);
 
+        if (gp->assistant_prefix && gp->assistant_prefix[0]) {
+            size_t fl = strlen(formatted), al = strlen(gp->assistant_prefix);
+            char *joined = (char *)realloc(formatted, fl + al + 1);
+            if (!joined) {
+                free(formatted);
+                free(prompt_tokens);
+                stop_matcher_free(&stop);
+                return;
+            }
+            memcpy(joined + fl, gp->assistant_prefix, al + 1);
+            formatted = joined;
+        }
+
         t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
         n_prompt = tokenizer_encode(tok, formatted, strlen(formatted),
                                     prompt_tokens, cfg->seq_len);
@@ -171,6 +185,16 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
             return;
         }
         n_prompt += n_encoded;
+        if (gp->assistant_prefix && gp->assistant_prefix[0]) {
+            int n_more = tokenizer_encode(tok, gp->assistant_prefix, strlen(gp->assistant_prefix),
+                                          &prompt_tokens[n_prompt], cfg->seq_len - n_prompt);
+            if (n_more < 0) {
+                free(prompt_tokens);
+                stop_matcher_free(&stop);
+                return;
+            }
+            n_prompt += n_more;
+        }
     }
 
     /* Debug: print prompt token IDs when verbose */
@@ -336,6 +360,7 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
             }
             if (is_eos) {
                 finish = GEN_FINISH_STOP;
+                if (gp->stats) gp->stats->hit_eos = true;
                 break;
             }
             /* Non-EOS token: decode and deliver to callback */

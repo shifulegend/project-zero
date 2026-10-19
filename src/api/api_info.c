@@ -1,4 +1,5 @@
 #include "api/api_info.h"
+#include <string.h>
 #include "api/json_write.h"
 #include "api/chat_compile.h"
 #include "reasoning/best_of.h"
@@ -115,6 +116,19 @@ char *api_config_json(const ApiContext *ctx) {
     jb_raw(&jb, ","); jb_key(&jb, "ignore_eos");         jb_bool(&jb, def.ignore_eos);
     jb_raw(&jb, ","); jb_key(&jb, "cache_prompt");       jb_bool(&jb, ctx && ctx->server_config.prompt_cache);
     jb_raw(&jb, ","); jb_key(&jb, "best_of");            jb_int(&jb, ctx ? ctx->server_config.best_of : 1);
+    {
+        MctsOptions m;
+        if (ctx) m = ctx->server_config.mcts; else memset(&m, 0, sizeof(m));
+        mcts_options_defaults(&m);
+        jb_raw(&jb, ","); jb_key(&jb, "mcts"); jb_raw(&jb, "{");
+        jb_key(&jb, "simulations"); jb_int(&jb, m.simulations);
+        jb_raw(&jb, ","); jb_key(&jb, "expand");      jb_int(&jb, m.expand);
+        jb_raw(&jb, ","); jb_key(&jb, "max_depth");   jb_int(&jb, m.max_depth);
+        jb_raw(&jb, ","); jb_key(&jb, "step_tokens"); jb_int(&jb, m.step_tokens);
+        jb_raw(&jb, ","); jb_key(&jb, "c");           jb_num(&jb, m.c_ucb);
+        jb_raw(&jb, ","); jb_key(&jb, "temperature"); jb_num(&jb, m.temperature);
+        jb_raw(&jb, "}");
+    }
     jb_raw(&jb, ","); jb_key(&jb, "system_prompt");      jb_str(&jb, def.system_prompt ? def.system_prompt : "");
     jb_raw(&jb, ","); jb_key(&jb, "stop"); jb_raw(&jb, "[");
     for (int i = 0; i < def.n_stop; i++) { if (i) jb_raw(&jb, ","); jb_str(&jb, def.stop[i]); }
@@ -142,6 +156,12 @@ char *api_config_json(const ApiContext *ctx) {
     range(&jb, "watermark_gamma", 0.01, 0.99, 0.01);             jb_raw(&jb, ",");
     range(&jb, "watermark_delta", 0, 20, 0.1);                   jb_raw(&jb, ",");
     range(&jb, "best_of", 1, ctx ? ctx->server_config.best_of_max : BEST_OF_MAX_DEFAULT, 1); jb_raw(&jb, ",");
+    range(&jb, "mcts_simulations", 0, ctx ? ctx->server_config.mcts_max : 0, 1); jb_raw(&jb, ",");
+    range(&jb, "mcts_expand", 1, MCTS_MAX_EXPAND, 1); jb_raw(&jb, ",");
+    range(&jb, "mcts_max_depth", 1, MCTS_MAX_DEPTH, 1); jb_raw(&jb, ",");
+    range(&jb, "mcts_step_tokens", 1, MCTS_MAX_STEP_TOKENS, 1); jb_raw(&jb, ",");
+    range(&jb, "mcts_c", 0.1, 10, 0.1); jb_raw(&jb, ",");
+    range(&jb, "mcts_temperature", 0.05, 2, 0.05); jb_raw(&jb, ",");
     jb_key(&jb, "max_stop");     jb_int(&jb, CHAT_MAX_STOP);     jb_raw(&jb, ",");
     jb_key(&jb, "max_messages"); jb_int(&jb, CHAT_MAX_MESSAGES);
     jb_raw(&jb, "},");
@@ -189,6 +209,10 @@ char *api_config_json(const ApiContext *ctx) {
     jb_raw(&jb, ","); jb_key(&jb, "vision"); jb_bool(&jb, vision_enabled(ctx));
     jb_raw(&jb, ","); jb_key(&jb, "cancel"); jb_bool(&jb, 1);
     jb_raw(&jb, ","); jb_key(&jb, "best_of"); jb_bool(&jb, ctx && ctx->server_config.best_of_max > 1);
+    jb_raw(&jb, ","); jb_key(&jb, "mcts"); jb_bool(&jb, ctx && ctx->server_config.mcts_max > 0);
+    jb_raw(&jb, ","); jb_key(&jb, "prm");
+    if (ctx && ctx->prm && ctx->server_config.prm_model) jb_str(&jb, ctx->server_config.prm_model);
+    else jb_raw(&jb, "null");
     jb_raw(&jb, ","); jb_key(&jb, "queue_size"); jb_int(&jb, ctx ? ctx->server_config.queue_size : 0);
     /* Recurrent linear-attention state cannot resume from a partial prefix. */
     jb_raw(&jb, ","); jb_key(&jb, "prompt_cache");

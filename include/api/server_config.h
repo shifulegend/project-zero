@@ -8,6 +8,7 @@
  */
 
 #include "transformer/gen_params.h"
+#include "reasoning/mcts_options.h"
 
 #define SERVER_CORS_MAX_ORIGINS 16
 
@@ -64,6 +65,9 @@ typedef struct {
                                      only used when the model has no embedded chat template */
     int              allow_request_template; /* requests may send "chat_template" (1; --no-request-template = 0) */
     const char      *chat_template_source;   /* "gguf" | "file" | "none" — published by /v1/config */
+    MctsOptions      mcts;        /* Phase 30: --mcts* defaults every request starts from */
+    int              mcts_max;    /* --mcts-max: per-request simulation cap (0 = search disabled) */
+    const char      *prm_model;   /* basename of --prm, NULL when steps are self-scored */
 } ServerConfig;
 
 /* Zero-initialise. Must be called before use. */

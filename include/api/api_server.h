@@ -40,6 +40,7 @@ typedef struct {
     const MoEConfig        *moe_cfg;
     Tokenizer              *tok;
     ThreadPool             *tp;
+    struct PrmModel        *prm;   /* Phase 30 judge for "mcts" requests; NULL = self-scored */
 
     /* Phase 22: server hardening state. server_config may be populated by
      * the caller (main.c) any time before api_server_start(); the others are

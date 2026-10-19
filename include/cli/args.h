@@ -1,6 +1,7 @@
 #ifndef PROJECT_ZERO_ARGS_H
 #define PROJECT_ZERO_ARGS_H
 
+#include "reasoning/mcts.h"
 #include <stdbool.h>
 #include "core/platform.h"
 #include "core/error.h"
@@ -108,6 +109,15 @@ typedef struct {
     int    queue_timeout_s;    /* --queue-timeout <s>: max wait (120)           */
     int    best_of;            /* --best-of <N>: candidates, keep most likely (1) */
     int    best_of_max;        /* --best-of-max <N>: per-request cap (server, 8) */
+    /* Phase 30: step-level MCTS (reasoning/mcts.h) and an optional PRM judge. */
+    MctsOptions mcts;          /* --mcts N (simulations; 0 = off) --mcts-expand --mcts-depth
+                                  --mcts-step-tokens --mcts-c --mcts-temperature --mcts-delim */
+    int    mcts_max;           /* --mcts-max <N>: per-request simulation cap (server) */
+    char  *prm_path;           /* --prm <gguf>: process reward model (judge) */
+    char  *prm_format;         /* --prm-format <s>: judge input with {question} {steps} */
+    char  *prm_good;           /* --prm-good <s> / --prm-bad <s>: judge answer strings */
+    char  *prm_bad;
+    char   mcts_delim_buf[16]; /* unescaped --mcts-delim */
     char  *attn_kernel;        /* --attn-kernel standard|tiled (standard)       */
     int    attn_tile;          /* --attn-tile <N>: tiled kernel tile (0 = L1d)  */
     int    attn_parallel_min_ctx; /* --attn-parallel-min-ctx <N> (256, 0=off)  */

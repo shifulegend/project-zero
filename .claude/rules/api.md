@@ -30,6 +30,9 @@ Adapter for the API-layer decisions in `docs/ai/decision-log.md` (Phase 22) and
 - Chat template: `--chat-template-file` sets the server's; requests may override it with
   `"chat_template"` (≤ 64 KiB, `CHAT_SET_CHAT_TEMPLATE`) unless `--no-request-template`;
   `/v1/config chat_template {source,text,request_override,max_bytes}` feeds the web UI editor.
+- Tree search (Phase 30): server `--mcts* --mcts-max --prm*`; request `"mcts"`
+  (`CHAT_SET_MCTS`, `request_mcts_resolve`); `ApiContext.prm` is the judge. Runs under
+  `generation_mutex` like any generation.
 - Generation knobs: `GET /v1/config` publishes server defaults (CLI flags), valid ranges and
   feature flags; the web UI renders every control from it and hardcodes nothing. Requests
   override any subset (`set_mask` → `request_params_resolve()`); absent fields use the server

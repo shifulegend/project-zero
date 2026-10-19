@@ -2464,7 +2464,7 @@ Replaces raw `popen()` with an isolated WebAssembly sandbox for safe AI tool exe
 
 ---
 
-## PHASE 30: Test-Time Compute (MCTS & PRM) — Advanced Reasoning 🟡 best-of-N done 2026-10-18 (MCTS + external PRM open)
+## PHASE 30: Test-Time Compute (MCTS & PRM) — Advanced Reasoning ✅ best-of-N 2026-10-18; PRM + step-level MCTS 2026-10-19
 
 **As built (first stage):** best-of-N candidate selection — the depth-1 case of the tree search
 below, with the policy model's own likelihood standing in for the PRM.
@@ -2477,8 +2477,29 @@ below, with the policy model's own likelihood standing in for the PRM.
 - Configurable: `--best-of`, `--best-of-max`, request `best_of`, `/v1/config`
   (`defaults.best_of`, `limits.best_of`, `features.best_of`), web UI "Best of N" slider; the
   response carries `best_of: {n, chosen, scores, completion_tokens_total}`.
-- Open: 30.1 external PRM (`--prm <gguf>` scoring steps), 30.2/30.3 step-level MCTS with KV
-  snapshots (Phase 26's prompt store is the natural snapshot mechanism).
+- **30.1 PRM ✅ 2026-10-19:** `include/reasoning/prm.h` / `src/reasoning/prm.c` — any GGUF as
+  judge: `--prm <gguf>`, input `--prm-format` with `{question}` `{steps}` (default asks "Is the last
+  step correct? Answer Yes or No."), score = P(good)/(P(good)+P(bad)) for `--prm-good`/`--prm-bad`
+  (default " Yes"/" No"), so Math-Shepherd-style "+"/"−" PRMs and instruct judges both work; the
+  judge reuses its KV for the shared question/earlier-steps prefix.
+- **30.2/30.3 MCTS ✅ 2026-10-19:** `include/reasoning/mcts.h` / `src/reasoning/mcts.c`
+  (+ `mcts_options.h/.c`). Node = one step (text to `--mcts-delim`, ≤ `--mcts-step-tokens`);
+  UCB1 selection (`--mcts-c`), expansion by sampling (`--mcts-temperature`) a continuation of the
+  partial assistant turn (new `GenerationParams.assistant_prefix`), evaluation by the PRM or the
+  policy's own geometric-mean token probability, backup; answer = most-visited path, completed
+  with the caller's own settings if the model did not end it. Snapshots: the shared prompt prefix
+  comes from the prefix cache / prompt store each expansion (no per-node RunState copies). Every
+  step respects the request's `max_tokens`; `GenerationStats.hit_eos` separates "turn ended" from
+  "step delimiter".
+- Configurable everywhere: CLI `--mcts N --mcts-expand --mcts-depth --mcts-step-tokens --mcts-c
+  --mcts-temperature --mcts-delim --mcts-max --prm*`; request `"mcts": N | {simulations, expand,
+  max_depth, step_tokens, c, temperature}` (capped by `--mcts-max`); `/v1/config defaults.mcts`,
+  `limits.mcts_*`, `features.mcts`, `features.prm`; web UI Settings → Tree search. Response
+  carries `mcts: {simulations, nodes, steps, path_value, scorer, search_tokens}`.
+- Live (SmolLM2-1.7B policy, SmolLM2-135M or 1.7B judge): search and PRM paths work end to end;
+  answer quality is bounded by these small models (the "17 sheep, all but 9" riddle stays wrong
+  with or without search). Tests: `tests/test_mcts.c`, `test_request_params` (mcts),
+  `test_api_info` (config); screenshots `docs/design/screenshots/mcts-2026-10-19/`.
 
 *Original stub, kept for reference:*
 

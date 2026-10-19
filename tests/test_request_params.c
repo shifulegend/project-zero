@@ -131,6 +131,49 @@ static void test_chat_template_field(void) {
     free(big);
 }
 
+static void test_mcts_field(void) {
+    MctsOptions def;
+    memset(&def, 0, sizeof(def));
+    def.simulations = 4;
+    def.expand = 2;
+    mcts_options_defaults(&def);
+    ChatRequest r; chat_request_init(&r);
+    MctsOptions out;
+    chat_request_parse("{\"messages\":[{\"role\":\"user\",\"content\":\"x\"}]}", &r);
+    request_mcts_resolve(&r, &def, 32, &out);
+    TEST_ASSERT(out.simulations == 4 && out.expand == 2, "absent -> server defaults");
+    chat_request_free(&r);
+
+    chat_request_init(&r);
+    TEST_ASSERT_EQ(chat_request_parse("{\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"mcts\":10,\"top_k\":2}", &r),
+                   TN_OK, "number form parses");
+    request_mcts_resolve(&r, &def, 32, &out);
+    TEST_ASSERT(out.simulations == 10 && out.expand == 2 && r.top_k == 2, "number = simulations");
+    chat_request_free(&r);
+
+    chat_request_init(&r);
+    TEST_ASSERT_EQ(chat_request_parse("{\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],"
+                                      "\"mcts\":{\"simulations\":500,\"expand\":99,\"max_depth\":3,"
+                                      "\"step_tokens\":12,\"c\":0.5,\"temperature\":9,\"unknown\":[1]},\"top_k\":5}", &r),
+                   TN_OK, "object form parses");
+    request_mcts_resolve(&r, &def, 32, &out);
+    TEST_ASSERT(out.simulations == 32, "simulations capped by --mcts-max");
+    TEST_ASSERT(out.expand == MCTS_MAX_EXPAND && out.max_depth == 3 && out.step_tokens == 12,
+                "fields applied and clamped");
+    TEST_ASSERT_FLOAT_EQ(out.c_ucb, 0.5f, 1e-7f, "c applied");
+    TEST_ASSERT_FLOAT_EQ(out.temperature, 2.0f, 1e-7f, "temperature clamped to 2");
+    TEST_ASSERT_EQ(r.top_k, 5, "fields after the object still parse");
+    chat_request_free(&r);
+
+    chat_request_init(&r);
+    chat_request_parse("{\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"mcts\":0}", &r);
+    request_mcts_resolve(&r, &def, 32, &out);
+    TEST_ASSERT_EQ(out.simulations, 0, "explicit 0 turns the server default off");
+    request_mcts_resolve(NULL, &def, 0, &out);
+    TEST_ASSERT_EQ(out.simulations, 0, "--mcts-max 0 disables search");
+    chat_request_free(&r);
+}
+
 static void test_ignore_eos_field(void) {
     ChatRequest r; chat_request_init(&r);
     TEST_ASSERT_EQ(chat_request_parse("{\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"ignore_eos\":true}", &r),
@@ -202,6 +245,7 @@ int main(void) {
     RUN_TEST(test_cache_prompt_field);
     RUN_TEST(test_ignore_eos_field);
     RUN_TEST(test_chat_template_field);
+    RUN_TEST(test_mcts_field);
     RUN_TEST(test_chat_format_choice);
     RUN_TEST(test_best_of_parse_and_score);
     RUN_TEST(test_json_fields);

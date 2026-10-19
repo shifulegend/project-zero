@@ -275,6 +275,9 @@ set(REASONING_SOURCES
     src/reasoning/prompt_inject.c
     src/reasoning/reasoning_generate.c
     src/reasoning/best_of.c
+    src/reasoning/prm.c
+    src/reasoning/mcts.c
+    src/reasoning/mcts_options.c
 )
 
 set(CLI_SOURCES

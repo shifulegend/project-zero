@@ -26,6 +26,8 @@
 #include "threading/cache_probe.h"
 #include "sampling/watermark_text.h"
 #include "reasoning/best_of.h"
+#include "reasoning/mcts.h"
+#include "reasoning/prm.h"
 #include "distributed/dist_plan.h"
 #include "update/update_check.h"
 #include "math/rope.h"
@@ -645,6 +647,16 @@ int main(int argc, char **argv) {
         draft_active = true;
     }
 
+    /* ── Phase 30: process reward model for --mcts (optional) ───────────── */
+    mcts_options_defaults(&args.mcts);
+    PrmModel prm;
+    memset(&prm, 0, sizeof(prm));
+    if (args.prm_path &&
+        prm_load(&prm, args.prm_path, args.prm_format, args.prm_good, args.prm_bad,
+                 s->max_seq_len, tp) != TN_OK) {
+        fprintf(stderr, "[prm] continuing without a PRM: steps are scored by the model itself\n");
+    }
+
     /* ── Phase 19: LoRA adapter (optional) ───────────────────────────────────
      * --lora is the only way this ever activates -- see cli/args.h. Applies
      * to the *primary* model's RunState only (s->active_lora), never the
@@ -661,6 +673,7 @@ int main(int argc, char **argv) {
         if (lora_load(&lora, args.lora_path, p.dim, config_kv_dim(&p), p.hidden_dim, p.n_layers) != TN_OK) {
             fprintf(stderr, "Error: failed to load --lora '%s'.\n", args.lora_path);
             if (draft_active) draft_model_free(&draft_model);
+            prm_free(&prm);
             tokenizer_free(&t);
             if (mc.has_mla) mla_run_state_free(s, p.n_layers);
             if (mc.has_linear_attn) q35_run_state_free(s, &p, &mc);
@@ -834,6 +847,14 @@ int main(int argc, char **argv) {
         /* Generation flags become the server-side defaults every request
          * (and the web UI, via GET /v1/config) starts from. */
         args_fill_gen_params(&args, &api_ctx.server_config.gen_defaults);
+        /* Phase 30: --mcts* are the request defaults; --prm the judge. */
+        api_ctx.server_config.mcts = args.mcts;
+        api_ctx.server_config.mcts_max = args.mcts_max;
+        if (prm.loaded) {
+            const char *pb = strrchr(args.prm_path, '/');
+            api_ctx.prm = &prm;
+            api_ctx.server_config.prm_model = pb ? pb + 1 : args.prm_path;
+        }
         {
             const char *base = strrchr(args.model_path, '/');
             api_ctx.server_config.model_id = strdup(base ? base + 1 : args.model_path);
@@ -904,7 +925,17 @@ int main(int argc, char **argv) {
         } else {
             GenerationParams gp;
             args_fill_gen_params(&args, &gp);
-            if (args.best_of > 1) {
+            if (args.mcts.simulations > 0) {
+                MctsResult mr;
+                TernaryError me = generate_mcts(&p, &w, s, &mc, &t, tp, args.prompt, args.prompt, &gp,
+                                                &args.mcts, prm.loaded ? &prm : NULL,
+                                                stdout_piece_callback, NULL, NULL, &mr);
+                printf("\n");
+                fprintf(stderr, "[mcts] %d simulations, %d nodes, %d-step path (value %.3f, %s), %d search tokens%s\n",
+                        mr.simulations, mr.nodes, mr.steps, (double)mr.path_value,
+                        mr.used_prm ? "PRM" : "self-scored", mr.tokens_total,
+                        me == TN_OK ? "" : " (failed)");
+            } else if (args.best_of > 1) {
                 BestOfResult br;
                 generate_best_of(&p, &w, s, &mc, &t, tp, args.prompt, &gp, args.best_of,
                                  BEST_OF_SCORE_MEAN_LOGPROB, stdout_piece_callback, NULL, NULL, &br);
@@ -936,6 +967,7 @@ int main(int argc, char **argv) {
 cleanup_after_run:
     /* Cleanup */
     if (draft_active) draft_model_free(&draft_model);
+    prm_free(&prm);
     if (lora_active) lora_free(&lora);
     if (rag_ok) {
         embedder_free(&rag.emb);

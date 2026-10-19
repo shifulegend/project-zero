@@ -35,6 +35,7 @@ typedef struct {
     /* Sum of log p(token) over emitted tokens under the raw model
      * distribution; only filled when GenerationParams.compute_logprobs. */
     double          sum_logprob;
+    bool            hit_eos;        /* ended on an end-of-generation token (vs a stop string) */
 } GenerationStats;
 
 /* "stop" | "length" | "cancelled" | "error" — OpenAI finish_reason strings. */
@@ -66,6 +67,11 @@ typedef struct {
     /* Jinja chat template overriding the tokenizer's for this call (an API
      * request's "chat_template"); NULL = tok->chat_template. Borrowed. */
     const char *chat_template;
+
+    /* Text the assistant turn already starts with: appended after the
+     * rendered template (or the raw prompt) so generation continues it —
+     * Phase 30 MCTS extends a partial reasoning path this way. Borrowed. */
+    const char *assistant_prefix;
 
     /* OpenAI-style stop strings (borrowed). */
     const char *stop[GEN_MAX_STOP];

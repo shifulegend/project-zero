@@ -17,6 +17,8 @@
 - Update checks: `--no-update-check --update-interval --update-channel --update-repo
   --update-api --check-update`, env `PZ_NO_UPDATE_CHECK`/`DO_NOT_TRACK`, off under `CI`; build
   default repo `PZ_UPDATE_REPO` (Makefile + CMake).
+- Phase 30 search: `--mcts N --mcts-expand --mcts-depth --mcts-step-tokens --mcts-c --mcts-temperature
+  --mcts-delim --mcts-max`, judge `--prm <gguf> --prm-format --prm-good --prm-bad` (no hardcoded judge).
 - DRAM bandwidth is cached per host (`core/bw_cache`: `$PZ_CACHE_DIR|$XDG_CACHE_HOME/project-zero|~/.cache/project-zero/membw`, 30 days); `--calibrate` or `PZ_BW_REPROBE=1` re-measures.
 - `--chat-template-file <f>` replaces a GGUF's `tokenizer.chat_template` (CLI + `--server`);
   `docs/templates/bitnet-b1.58.jinja` fixes the official BitNet GGUF's broken template.

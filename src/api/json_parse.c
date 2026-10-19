@@ -517,6 +517,33 @@ TernaryError chat_request_parse(const char *json_body, ChatRequest *req) {
         } else if (strcmp(key, "best_of") == 0) {
             req->best_of = (int)parse_number(&p);
             req->set_mask |= CHAT_SET_BEST_OF;
+        } else if (strcmp(key, "mcts") == 0) {
+            skip_ws(&p);
+            if (*p == '{') {
+                p++;
+                while (*p && *p != '}') {
+                    skip_ws(&p);
+                    if (*p == '}') break;
+                    char mk[32];
+                    if (!parse_string(&p, mk, sizeof(mk))) return TN_ERR_JSON_PARSE;
+                    if (!expect_char(&p, ':')) return TN_ERR_JSON_PARSE;
+                    skip_ws(&p);
+                    if (strcmp(mk, "simulations") == 0)      req->mcts.simulations = (int)parse_number(&p);
+                    else if (strcmp(mk, "expand") == 0)      req->mcts.expand = (int)parse_number(&p);
+                    else if (strcmp(mk, "max_depth") == 0)   req->mcts.max_depth = (int)parse_number(&p);
+                    else if (strcmp(mk, "step_tokens") == 0) req->mcts.step_tokens = (int)parse_number(&p);
+                    else if (strcmp(mk, "c") == 0)           req->mcts.c_ucb = (float)parse_number(&p);
+                    else if (strcmp(mk, "temperature") == 0) req->mcts.temperature = (float)parse_number(&p);
+                    else skip_value(&p);
+                    skip_ws(&p);
+                    if (*p == ',') p++;
+                }
+                if (*p != '}') return TN_ERR_JSON_PARSE;
+                p++;
+            } else {
+                req->mcts.simulations = (int)parse_number(&p);
+            }
+            req->set_mask |= CHAT_SET_MCTS;
         } else if (strcmp(key, "chat_template") == 0) {
             skip_ws(&p);
             if (strncmp(p, "null", 4) == 0) {

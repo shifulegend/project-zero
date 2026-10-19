@@ -3501,3 +3501,68 @@ update-check implementations, The Update Framework threat model):
   version) and Settings → Updates (status, server settings, "Check now", banner toggle).
 - Tests: `tests/test_update_check.c` (77 assertions, in TSAN_TESTS); live check against this
   repo's real Releases; screenshots in `docs/design/screenshots/phase38-update-2026-10-18/`.
+
+---
+
+## Phase 39 (last phase): Retire the legacy name "adaptive_ai_engine" → Project Zero 🔲 PLANNED (added 2026-10-19)
+
+Added to the plan on request, deliberately last: every earlier phase builds, tests and benchmarks
+through `./adaptive_ai_engine`, so the rename happens once the feature work is done. Goal: every
+place the erstwhile name "adaptive AI engine" (or an alias) appears becomes **Project Zero**
+(prose), **project-zero** (repo/package/paths), **pz** (binary, commands) or **PZ** (macros, env,
+abbreviations), as the context requires — with nothing broken. **Rule for execution: a thorough
+pre-check first, then one change group at a time, and each group is fully verified before the
+next one starts.**
+
+### 39.1 Pre-check inventory (read-only grep, 2026-10-19; re-run before executing)
+
+Spellings found: `adaptive_ai_engine` (208 lines outside raw benchmark logs; ~517 incl. them) and
+"adaptive AI engine" (2, prose). No `AdaptiveAI`/`ADAPTIVE_AI_*` identifiers, no hits in
+`src/` C identifiers, `include/` or `webui/src`. Not aliases (keep): technical terms such as
+"Adaptive Blocking/Spin/Dispatcher/parallelism", "Adaptive KV Cache Strategy", Phase 32's
+"Adaptive Internal Networks", the banner tagline "Auto-Tuned Hardware", and the `tn_`/`TN_`
+prefix (= ternary, not the old name).
+
+| # | Area | Locations | What depends on it |
+|---|---|---|---|
+| A | Build output name | `Makefile` (`TARGET`, PGO targets, messages), `CMakeLists.txt` (`project(adaptive_ai_engine …)`, target), `.gitignore` (2 lines) | every script/test/CI step that execs the binary |
+| B | Program self-identification | `src/cli/main.c` `--version` (`Project Zero Engine (adaptive_ai_engine) …`); usage/help text; `argv[0]` echoes | `tests` that grep `--version`; release workflow checks `--version` |
+| C | CI / release | `.github/workflows/ci.yml` (file/ldd/--version), `release.yml` (asset `adaptive_ai_engine-<ver>-x86_64-linux.tar.gz`, `find -name adaptive_ai_engine`, SHA256SUMS), `security_audit.yml` (comment) | published release asset names; `docs/RELEASING.md`; anyone scripting downloads; the Phase 38 update notice links releases (it does not depend on asset names — re-verify) |
+| D | Test harnesses | `tests/golden_regression.sh`, `e2e_api_concurrency.sh`, `e2e_json_mode.sh`, `e2e_prompt_cache.sh`, `e2e_mamba_reference.sh`, `thread_sweep.sh`, `a6_*.sh`, `agent_pty_runner.py` | `make test` runs `tests/*.c` only, but the e2e/golden scripts are the live-server and golden gates |
+| E | Benchmark / dev tools | `tools/bench_sweep_seq.py` (`ENGINE`), `bench_sweep*.sh`, `bench_full_sweep.sh`, `bench_phase34.py`, `deepseek_bench*.sh`, `regression_bench.sh`, `run_sweep.py`, `run_perf_runs.py`, `make_screenshot.py`, `make_sweep_screenshots.py` (parses `CMD:` lines), `fuzz_config.py`, `extract_multimodal.py`, `mamba_reference.py`, `compare_dump`, `tools/screenshots/cli/*` | screenshot renderers must still parse **old** raw logs (`CMD: ./adaptive_ai_engine …`) — accept both names |
+| F | Issue templates | `.github/ISSUE_TEMPLATE/bug_report.md`, `performance_regression.md` | user bug reports |
+| G | Docs + AI adapters | `README.md`, `DEVELOPER_ONBOARDING.md`, `GOLDEN_RULES.md`, `CLAUDE.md`, `AGENTS.md`, `gemini/GEMINI.md`, `docs/ai/*` (4), `docs/architecture/*` (3), `docs/phases/*`, `docs/design/*`, `docs/reports/*` (8), `docs/RELEASING.md`, `docs/WEBUI_GUIDE.md`, `PERFORMANCE_CEILING_REPORT.md`, `DEBUGGING_JOURNAL.md`, … (~40 files) | run instructions copied by users and agents |
+| H | Historical records | `benchmark_results/**` (231 raw run logs with `CMD: ./adaptive_ai_engine …`), dated reports quoting those commands, git history | **not rewritten** — they are measurements of what was run; editing them would falsify records. A note in each report index says the binary was renamed in Phase 39 |
+| I | Outside the repo | users' scripts/aliases, the GitHub repo name (already `project-zero`), per-user dirs (already `~/.project-zero`, `~/.cache/project-zero`), env vars (already `PZ_*`) | transition alias below |
+
+### 39.2 Decisions to settle before execution
+- Binary name: **`pz`** (short, matches `PZ_*` env and the CLI style) vs `project-zero`.
+  Recommendation: build `pz`; release asset `project-zero-<ver>-x86_64-linux.tar.gz` containing `pz`.
+- Transition: for one release, `make` also creates `adaptive_ai_engine` as a symlink to `pz`
+  (and the tarball ships it) that prints a one-line deprecation notice to stderr; removed the
+  release after. Release notes call out the rename.
+- `--version` → `Project Zero <ver>` (tests and release checks updated in the same step).
+
+### 39.3 Execution order — one group per commit, gate after each
+1. **Re-run the 39.1 inventory** (`grep -rIniE "adaptive[ _-]?ai|ai[ _-]engine"`) and diff it
+   against this table; investigate anything new before touching code.
+2. **A + B (build + self-name)**: rename the target, keep the compat symlink, update `--version`.
+   Gate: `make release/test/debug` gcc+clang, `make test-tsan`, `make dist`, CMake build + ctest,
+   `./pz --version`, `./adaptive_ai_engine --version` (compat), golden "capital of France" → Paris,
+   `make clean` removes both names.
+3. **D + E (tests, tools)**: switch scripts to `./pz` via one variable each (env-overridable, e.g.
+   `PZ_BIN`); renderers accept both names in old logs. Gate: golden_regression.sh, the e2e
+   server scripts with live `curl`, one short sequential sweep with `bench_sweep_seq.py`,
+   regenerate one old sweep's screenshots to prove old logs still parse.
+4. **C + F (CI, release, templates)**: rename assets, `find -name pz`. Gate: CI green on the
+   branch; a dry-run of the release packaging step locally (`make dist`, tar contents, SHA256SUMS);
+   confirm the Phase 38 update check still finds releases (asset-name independent).
+5. **G (docs + adapters)**: replace run instructions and prose ("Project Zero", `pz`, `project-zero`
+   as appropriate); sync `docs/ai/**` first, then adapters (`CLAUDE.md`, `AGENTS.md`, `.claude/`,
+   `.github/instructions/`, `.agents/`, `gemini/`). Gate: every command in README/onboarding run
+   as written; link check of edited docs.
+6. **Final sweep**: inventory grep returns only group H (historical) hits and the documented compat
+   shim; full verification matrix again; record in `change-trace.md` and `decision-log.md`.
+
+**Done when:** no live code, script, CI job, template or current doc uses the old name; old
+benchmark logs still render; the compat shim works for one release; all gates green on gcc and clang.

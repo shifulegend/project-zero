@@ -1,7 +1,18 @@
 # Decision Log — project-zero
 
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
-> Read at session start. Last updated: 2026-10-18.
+> Read at session start. Last updated: 2026-10-19.
+
+### 2026-10-19 — int4 KV is asymmetric (Q4_1-style), opt-in; chat templates overridable per request
+
+- `--kv-type i4` stores groups of 32 with an F32 scale and minimum: a symmetric −7..7 code cost
+  +15–19 % perplexity on SmolLM2 (key channels are skewed), the asymmetric one +6–7 %. F32 stays
+  the default; i4 is documented as a capacity option (slower than F32 at ~2k context until SIMD
+  int8·int4 kernels exist). Layout matches ggml's nibble order so such kernels can follow it.
+- Chat templates: `--chat-template-file` (server-wide) and a per-request `"chat_template"` (≤ 64
+  KiB, rendered by the existing bounded Jinja interpreter) both exist, because some GGUFs ship a
+  broken template and the front-end must be able to fix it without a restart. Operators can
+  refuse client templates with `--no-request-template`.
 
 ### 2026-10-19 — Follow llama.cpp's conventions where GGUF metadata is silent
 

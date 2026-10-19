@@ -17,6 +17,7 @@
       <span class="sep">·</span>
       <span class="dim mono" title="SIMD backend · threads · attention kernel">{runtime.simd} · {runtime.threads}T · attn {runtime.attention_kernel}</span>
     {/if}
+    {#if runtime?.kv_type && runtime.kv_type !== 'f32'}<span class="tag mono" title="Quantized KV cache (--kv-type {runtime.kv_type}): less memory per token, slightly lower accuracy">KV {runtime.kv_type}</span>{/if}
     {#if runtime?.kv_offload}<span class="tag" title="KV cache is disk-backed (--kv-offload): hot pages in RAM, the rest on SSD">KV on disk</span>{/if}
     {#if runtime?.distributed?.length}
       <span class="tag mono" title={runtime.distributed.map((n) => `layers ${n.layers} → ${n.host}:${n.port}`).join('\n')}>

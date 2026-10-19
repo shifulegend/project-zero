@@ -29,6 +29,7 @@
 #include "kv_cache/kv_strategy.h"
 
 #include <math.h>
+#include "kv_cache/kv_quant_ops.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
@@ -517,6 +518,39 @@ static void test_forward_kv_i8_close_to_f32(void) {
   free_synthetic_weights(&w, &cfg);
 }
 
+/* int4 KV (2026-10-19): head_dim 32 so the i4 groups apply; a head_dim that is
+ * not a multiple of 32 falls back to i8. */
+static void test_forward_kv_i4_close_to_f32(void) {
+  Config cfg = tiny_config();
+  cfg.dim = 128; cfg.hidden_dim = 256; cfg.n_heads = 4; cfg.n_kv_heads = 2; cfg.seq_len = 96;
+  TransformerWeights w;
+  tn_simd_init();
+  alloc_synthetic_weights(&w, &cfg);
+  float f32[8], i4[8];
+  run_positions(&cfg, &w, NULL, 60, f32);
+  KVStrategyOptions o = {0, 0.0f, KV_TYPE_I4, NULL};
+  kv_strategy_set_options(&o);
+  RunState probe; memset(&probe, 0, sizeof(probe));
+  run_state_alloc(&probe, &cfg, cfg.seq_len);
+  TEST_ASSERT(probe.kv_type == KV_TYPE_I4 && probe.kv_row_bytes == 16 && probe.kv_row_scales == 2,
+              "i4 run state: 16 data bytes + (scale,min) per 32-wide row");
+  run_state_free(&probe);
+  run_positions(&cfg, &w, NULL, 60, i4);
+  Config narrow = tiny_config();            /* head_dim 8 */
+  memset(&probe, 0, sizeof(probe));
+  run_state_alloc(&probe, &narrow, narrow.seq_len);
+  TEST_ASSERT(probe.kv_type == KV_TYPE_I8, "head_dim % 32 != 0 falls back to i8");
+  run_state_free(&probe);
+  kv_strategy_set_options(NULL);
+  float md = 0, mag = 0;
+  for (int i = 0; i < cfg.vocab_size; i++) {
+    float e = fabsf(f32[i] - i4[i]); if (e > md) md = e;
+    if (fabsf(f32[i]) > mag) mag = fabsf(f32[i]);
+  }
+  TEST_ASSERT(md <= 0.10f * (mag > 1.0f ? mag : 1.0f), "i4 KV logits within 10% of F32");
+  free_synthetic_weights(&w, &cfg);
+}
+
 static void test_forward_multiple_tokens(void) {
   Config cfg = tiny_config();
   TransformerWeights w;
@@ -630,6 +664,7 @@ int main(void) {
   RUN_TEST(test_forward_multiple_tokens);
   RUN_TEST(test_forward_parallel_and_tiled_attention);
   RUN_TEST(test_forward_kv_i8_close_to_f32);
+  RUN_TEST(test_forward_kv_i4_close_to_f32);
   RUN_TEST(test_forward_different_tokens);
   RUN_TEST(test_forward_multilayer);
 

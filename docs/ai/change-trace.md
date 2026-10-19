@@ -3,6 +3,14 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-19.
 
+### 2026-10-19 — Chat template from the front end; int4 KV cache
+- New: API `"chat_template"` + `--no-request-template`, `/v1/config chat_template`, web UI Settings →
+  Chat template (commit 18d7acd). `--kv-type i4` (`kvq_row_layout/kvq_store/kvq_dot_row/
+  kvq_axpy_row`, `RunState.kv_row_bytes/kv_row_scales`), web UI "KV i4" tag.
+- Faster: int8 KV dot (16-lane accumulators): 29 → 33.6 tok/s at ~1.9k context (f32 37).
+- Verified: PPL i4 +6.2 % / +6.8 % (SmolLM2-135M / 1.7B), i8 ≤ 0.1 %; tests `test_kv_quant`,
+  `test_forward_kv_i4_close_to_f32`, `test_request_params`, `test_api_info`.
+
 ### 2026-10-19 — Startup cost, GGUF stop tokens, chat-template override (commit e912a23)
 - Why: head-to-head sweep (Addendum AL) showed decode parity but 3–4× the reference engines'
   wall time; BitNet chat answered nonsense / never stopped.

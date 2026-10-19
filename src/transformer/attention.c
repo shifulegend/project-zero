@@ -36,7 +36,15 @@
  * layer.  This is critical when the model (1.1 GB) dwarfs L3 (12 MB).
  * An _mm_sfence() after the loop ensures the stores reach DRAM ordering.
  */
+/* Quantized KV rows (plan 8.5, i8/i4): row r = KV_SCALE_IDX(...) -> its data
+ * bytes and its F32 scales (see RunState.kv_row_bytes/kv_row_scales). */
+static inline tn_i8 *kvq_k(const RunState *s, size_t r) { return s->key_cache_q + r * (size_t)s->kv_row_bytes; }
+static inline tn_i8 *kvq_v(const RunState *s, size_t r) { return s->value_cache_q + r * (size_t)s->kv_row_bytes; }
+static inline float *kvq_ks(const RunState *s, size_t r) { return s->key_scale + r * (size_t)s->kv_row_scales; }
+static inline float *kvq_vs(const RunState *s, size_t r) { return s->value_scale + r * (size_t)s->kv_row_scales; }
+
 /* y += b (n floats); no-op when the model has no bias for this projection. */
+
 static inline void attn_add_bias(float *y, const float *b, int n) {
   if (!b) return;
   for (int i = 0; i < n; i++) y[i] += b[i];
@@ -102,10 +110,11 @@ static void attn_one_head(const AttnHeadArgs *a, int h) {
     size_t k_offset =
         KV_CACHE_IDX(layer, kv_h, mapped_t, 0, n_kv_heads, max_seq, head_dim);
     float score;
-    if (s->kv_type == KV_TYPE_I8) {
-      /* Plan 8.5: int8 row · F32 query, then the row's absmax scale. */
-      score = kvq_dot(q_head, &s->key_cache_q[k_offset], head_dim) *
-              s->key_scale[KV_SCALE_IDX(layer, kv_h, mapped_t, n_kv_heads, max_seq)];
+    if (s->kv_type != KV_TYPE_F32) {
+      /* Plan 8.5: quantized row · F32 query, scales folded in. */
+      size_t r = KV_SCALE_IDX(layer, kv_h, mapped_t, n_kv_heads, max_seq);
+      score = kvq_dot_row((KVCacheType)s->kv_type, q_head, kvq_k(s, r), kvq_ks(s, r), head_dim);
+      (void)k_offset;
     } else {
       /* Dot product — use SIMD-dispatched vec_dot for speed */
       score = tn_vec_dot(q_head, &s->key_cache[k_offset], head_dim);
@@ -131,10 +140,10 @@ static void attn_one_head(const AttnHeadArgs *a, int h) {
     size_t v_offset =
         KV_CACHE_IDX(layer, kv_h, v_mapped, 0, n_kv_heads, max_seq, head_dim);
     float a_t = att_scores[t];
-    if (s->kv_type == KV_TYPE_I8) {
-      kvq_axpy(out_head,
-               a_t * s->value_scale[KV_SCALE_IDX(layer, kv_h, v_mapped, n_kv_heads, max_seq)],
-               &s->value_cache_q[v_offset], head_dim);
+    if (s->kv_type != KV_TYPE_F32) {
+      size_t r = KV_SCALE_IDX(layer, kv_h, v_mapped, n_kv_heads, max_seq);
+      kvq_axpy_row((KVCacheType)s->kv_type, out_head, a_t, kvq_v(s, r), kvq_vs(s, r), head_dim);
+      (void)v_offset;
     } else {
       tn_vec_saxpy(out_head, a_t, &s->value_cache[v_offset], head_dim);
     }
@@ -304,10 +313,11 @@ void attention_forward(RunState *s, const TransformerWeights *w,
   for (int kv_h = 0; kv_h < n_kv_heads; kv_h++) {
     size_t cache_offset =
         KV_CACHE_IDX(layer, kv_h, mapped_pos, 0, n_kv_heads, max_seq, head_dim);
-    if (s->kv_type == KV_TYPE_I8) {
+    if (s->kv_type != KV_TYPE_F32) {
       size_t row = KV_SCALE_IDX(layer, kv_h, mapped_pos, n_kv_heads, max_seq);
-      kvq_store_row(&s->key_cache_q[cache_offset], &s->key_scale[row], &k_buf[kv_h * head_dim], head_dim);
-      kvq_store_row(&s->value_cache_q[cache_offset], &s->value_scale[row], &v_buf[kv_h * head_dim], head_dim);
+      kvq_store((KVCacheType)s->kv_type, kvq_k(s, row), kvq_ks(s, row), &k_buf[kv_h * head_dim], head_dim);
+      kvq_store((KVCacheType)s->kv_type, kvq_v(s, row), kvq_vs(s, row), &v_buf[kv_h * head_dim], head_dim);
+      (void)cache_offset;
     } else {
       kv_nt_store(&s->key_cache[cache_offset],   &k_buf[kv_h * head_dim], head_dim);
       kv_nt_store(&s->value_cache[cache_offset], &v_buf[kv_h * head_dim], head_dim);
@@ -539,10 +549,11 @@ TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb,
     for (int kv_h = 0; kv_h < n_kv_heads; kv_h++) {
       size_t cache_offset =
           KV_CACHE_IDX(layer, kv_h, mapped_pos, 0, n_kv_heads, max_seq, head_dim);
-      if (s->kv_type == KV_TYPE_I8) {
+      if (s->kv_type != KV_TYPE_F32) {
         size_t row = KV_SCALE_IDX(layer, kv_h, mapped_pos, n_kv_heads, max_seq);
-        kvq_store_row(&s->key_cache_q[cache_offset], &s->key_scale[row], &kbuf_k[kv_h * head_dim], head_dim);
-        kvq_store_row(&s->value_cache_q[cache_offset], &s->value_scale[row], &v_k[kv_h * head_dim], head_dim);
+        kvq_store((KVCacheType)s->kv_type, kvq_k(s, row), kvq_ks(s, row), &kbuf_k[kv_h * head_dim], head_dim);
+        kvq_store((KVCacheType)s->kv_type, kvq_v(s, row), kvq_vs(s, row), &v_k[kv_h * head_dim], head_dim);
+        (void)cache_offset;
       } else {
         kv_nt_store(&s->key_cache[cache_offset],   &kbuf_k[kv_h * head_dim], head_dim);
         kv_nt_store(&s->value_cache[cache_offset], &v_k[kv_h * head_dim], head_dim);
@@ -575,9 +586,9 @@ TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb,
         int hist_logical = (tok_pos >= valid_ctx) ? (tok_pos - valid_ctx + 1 + t) : t;
         int mapped_t = sw_map_position(&s->sw, hist_logical);
         size_t k_offset = KV_CACHE_IDX(layer, kv_h, mapped_t, 0, n_kv_heads, max_seq, head_dim);
-        float score = (s->kv_type == KV_TYPE_I8)
-            ? kvq_dot(q_head, &s->key_cache_q[k_offset], head_dim) *
-              s->key_scale[KV_SCALE_IDX(layer, kv_h, mapped_t, n_kv_heads, max_seq)]
+        size_t kr = KV_SCALE_IDX(layer, kv_h, mapped_t, n_kv_heads, max_seq);
+        float score = (s->kv_type != KV_TYPE_F32)
+            ? kvq_dot_row((KVCacheType)s->kv_type, q_head, kvq_k(s, kr), kvq_ks(s, kr), head_dim)
             : tn_vec_dot(q_head, &s->key_cache[k_offset], head_dim);
         att_scores[t] = score * inv_sqrt_head_dim;
       }
@@ -591,10 +602,10 @@ TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb,
         int mapped_t = sw_map_position(&s->sw, hist_logical);
         size_t v_offset = KV_CACHE_IDX(layer, kv_h, mapped_t, 0, n_kv_heads, max_seq, head_dim);
         float a = att_scores[t];
-        if (s->kv_type == KV_TYPE_I8)
-          kvq_axpy(out_head, a * s->value_scale[KV_SCALE_IDX(layer, kv_h, mapped_t, n_kv_heads, max_seq)],
-                   &s->value_cache_q[v_offset], head_dim);
-        else
+        if (s->kv_type != KV_TYPE_F32) {
+          size_t vr = KV_SCALE_IDX(layer, kv_h, mapped_t, n_kv_heads, max_seq);
+          kvq_axpy_row((KVCacheType)s->kv_type, out_head, a, kvq_v(s, vr), kvq_vs(s, vr), head_dim);
+        } else
           tn_vec_saxpy(out_head, a, &s->value_cache[v_offset], head_dim);
       }
     }

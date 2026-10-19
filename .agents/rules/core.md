@@ -19,8 +19,9 @@
   uses `MADV_DONTNEED` on Linux — no full memset). Benchmarks report wall time + RSS too.
 - GGUF stop tokens: `tokenizer_collect_eog()` (declared EOS/EOT/EOM + end-of-turn control
   tokens). Generation loops must check all of `tok->eos_list`, not just `eos_token_id`.
-- Generic KV may be int8 (`RunState.kv_type == KV_TYPE_I8`: `key_cache` is NULL, use
-  `key_cache_q`/`key_scale`). Any new reader/writer of the dense KV cache must handle both.
+- Generic KV may be quantized (`RunState.kv_type` I8 or I4: `key_cache` is NULL; row r =
+  `KV_SCALE_IDX` lives at `key_cache_q + r*kv_row_bytes`, scales at `key_scale + r*kv_row_scales`;
+  use `kvq_store/kvq_dot_row/kvq_axpy_row`). Any new reader/writer of the dense KV cache must handle all.
 - Distributed (`--remote-layers`, Phase 28): layers can run in a worker process. Per-layer state
   that maps position → cache slot (sliding window) is part of the RPC contract; anything that
   restores/copies KV for all layers (prompt snapshots) must be bypassed when `dist_plan_active()`.

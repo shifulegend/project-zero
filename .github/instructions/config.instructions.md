@@ -17,7 +17,7 @@ applyTo: "Makefile,CMakeLists.txt,**/*.cmake,**/*.mk,.github/workflows/**"
   `args_fill_gen_params()`; in `--server` mode they are the defaults published by `/v1/config`.
   A new knob must reach CLI + API + web UI (see `engineering-rules.md` § No hardcoding).
 - Makefile tracks header deps (`-MMD -MP`); keep it.
-- Context sizing: `--ctx-size`, `--kv-ram-fraction`, `--kv-type f32|i8`, `--kv-offload <dir>`
+- Context sizing: `--ctx-size`, `--kv-ram-fraction`, `--kv-type f32|i8|i4`, `--kv-offload <dir>`
   (`KVStrategyOptions`; with offload the cap budgets free disk, not RAM).
 - Update checks: `--no-update-check --update-interval --update-channel --update-repo
   --update-api --check-update`, env `PZ_NO_UPDATE_CHECK`/`DO_NOT_TRACK`, off under `CI`; build

@@ -554,7 +554,7 @@ project-zero/
 
 ---
 
-## PHASE 8: KV Cache Optimizations ✅ (int8 KV wired into dense/GQA attention 2026-10-18; int4 + other attention families open)
+## PHASE 8: KV Cache Optimizations ✅ (int8 2026-10-18 + int4 2026-10-19 KV wired into dense/GQA attention; other attention families open)
 
 ### 8.1 — KV Cache Quantization (float32 → int8) ✅
 - File: `include/kv_cache/kv_compress.h` + `src/kv_cache/kv_compress.c`
@@ -602,7 +602,18 @@ project-zero/
 - Measured (SmolLM2-135M, ~1700-token context, 4 threads): ~10% faster decode, 4× less KV
   memory; greedy continuations diverge from F32 after a few words but stay coherent, so F32
   stays the default. Tests: `tests/test_kv_quant.c`, `test_forward_kv_i8_close_to_f32`.
-- Still open: int4 KV, and quantized storage for the MLA / Qwen3-MoE / Qwen3.5 caches.
+- **int4 ✅ 2026-10-19:** `--kv-type i4` — Q4_1-style groups of 32 (codes 0..15, F32 scale + min per
+  group; byte j = element j | element j+16 << 4). `RunState.kv_row_bytes/kv_row_scales` give the
+  row layout, `kvq_row_layout/kvq_store/kvq_dot_row/kvq_axpy_row` dispatch i8/i4 at the same call
+  sites; head_dim % 32 != 0 falls back to i8 with a notice. 6 bits/element (F32: 32, i8: 8.5).
+  Measured (Xeon model 85, 4 T, parity text, n_ctx 512): PPL SmolLM2-135M f32 38.82 / i8 38.82 /
+  i4 41.21 (+6.2 %); SmolLM2-1.7B 17.73 / 17.72 / 18.93 (+6.8 %); a symmetric −7..7 code was
+  +15–19 % and was replaced. Decode at ~1.9k context (SmolLM2-135M): f32 37, i8 33.6 (was 29
+  before the 16-lane dot), i4 20.7 tok/s — attention is compute-bound at this size, so i4 is a
+  capacity option, not a speed one; SIMD (VNNI int8·int4) kernels are the follow-up. Greedy
+  answers stay correct on SmolLM2-135M/1.7B and BitNet. `/v1/config runtime.kv_type`, web UI tag.
+  Tests: `test_kv_quant` (i4 layout/error/dot/axpy), `test_forward_kv_i4_close_to_f32`.
+- Still open: quantized storage for the MLA / Qwen3-MoE / Qwen3.5 caches.
 
 *Original finding (kept):*
 - The int8/int4 compress/decompress kernels (8.1/8.2) are unit-tested but **no attention path

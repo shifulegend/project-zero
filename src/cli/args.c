@@ -53,7 +53,8 @@ void print_usage(const char *prog_name) {
     printf("                      capped at the model's own context and the RAM budget)\n");
     printf("  --kv-ram-fraction <f> Share of free RAM the KV cache may use (default 0.60)\n");
     printf("  --kv-type <t>       KV cache storage: f32 (default) | i8 (4x smaller, per-row\n");
-    printf("                      absmax scale; dense/GQA attention path)\n");
+    printf("                      absmax scale) | i4 (~7x smaller, 32-value groups; needs\n");
+    printf("                      head_dim %% 32 == 0, else i8). Dense/GQA attention path\n");
     printf("  --kv-offload <dir>  Keep the KV cache in a disk-backed file in <dir> (NVMe/SSD):\n");
     printf("                      the OS keeps hot pages in RAM, so context is bounded by\n");
     printf("                      free disk (x --kv-ram-fraction), not RAM. Dense/GQA path.\n");
@@ -383,7 +384,7 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
         } else if (strcmp(argv[i], "--kv-type") == 0 && i + 1 < argc) {
             args->kv_type = kv_type_parse(argv[++i]);
             if (args->kv_type < 0) {
-                fprintf(stderr, "Error: --kv-type must be f32 or i8\n");
+                fprintf(stderr, "Error: --kv-type must be f32, i8 or i4\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--kv-offload") == 0 && i + 1 < argc) {

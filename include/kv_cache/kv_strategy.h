@@ -71,7 +71,7 @@ typedef struct {
                          and by the RAM budget); 0 = tier default */
   float ram_fraction; /* (0, 0.95]: share of free RAM the F32 KV cache may use;
                          0 = default 0.60 */
-  int   kv_type;      /* KVCacheType (kv_quant_ops.h): 0 = F32 (default), 1 = I8 */
+  int   kv_type;      /* KVCacheType (kv_quant_ops.h): 0 = F32 (default), 1 = I8, 2 = I4 */
   const char *offload_dir; /* Phase 31 --kv-offload: non-NULL puts the generic KV
                               cache in a disk-backed mapping there; the safety
                               cap then budgets free disk space, not free RAM */

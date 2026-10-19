@@ -1,5 +1,6 @@
 #include "kv_cache/kv_strategy.h"
 #include "memory/file_backed.h"
+#include "kv_cache/kv_quant_ops.h"
 #include "core/platform.h"
 #include "core/config.h"
 
@@ -133,7 +134,7 @@ void kv_strategy_print(const KVStrategyResult *r, int max_seq_len) {
    * context-sizing tier. */
   float frac = g_kv_opts.ram_fraction > 0.0f ? g_kv_opts.ram_fraction : KV_DEFAULT_RAM_FRACTION;
   printf("KV cache: %s%s%s, max context: %d tokens (sizing tier: %s%s, %s budget %.0f%%)\n",
-         g_kv_opts.kv_type == 1 ? "I8" : "F32",
+         kv_type_name((KVCacheType)g_kv_opts.kv_type),
          g_kv_opts.offload_dir ? " on disk in " : "",
          g_kv_opts.offload_dir ? g_kv_opts.offload_dir : "",
          max_seq_len, r ? kv_strategy_name(r->strategy) : "n/a",
@@ -201,11 +202,15 @@ KVStrategyResult select_kv_strategy_ex(const Config *cfg, tn_i64 free_ram, const
    */
   {
     int head_dim = (mc && mc->attn_head_dim > 0) ? mc->attn_head_dim : config_head_dim(cfg);
-    /* Bytes per element: F32 = 4; I8 (--kv-type i8) = 1 plus one F32 scale
-     * per head_dim-row. */
-    int i8 = opt && opt->kv_type == 1;
-    tn_i64 row_bytes = i8 ? (tn_i64)head_dim + (tn_i64)sizeof(float)
-                          : (tn_i64)head_dim * (tn_i64)sizeof(float);
+    /* Bytes per head_dim row: F32 = 4/element; quantized (--kv-type i8|i4)
+     * = data bytes + F32 scales (kvq_row_layout; i4 falls back to i8). */
+    tn_i64 row_bytes = (tn_i64)head_dim * (tn_i64)sizeof(float);
+    if (opt && opt->kv_type != KV_TYPE_F32) {
+      int rb = 0, rs = 0;
+      if (kvq_row_layout((KVCacheType)opt->kv_type, head_dim, &rb, &rs) != 0)
+        kvq_row_layout(KV_TYPE_I8, head_dim, &rb, &rs);
+      row_bytes = (tn_i64)rb + (tn_i64)rs * (tn_i64)sizeof(float);
+    }
     tn_i64 per_token = (tn_i64)cfg->n_layers
                      * (tn_i64)(cfg->n_kv_heads > 0 ? cfg->n_kv_heads : cfg->n_heads)
                      * row_bytes * 2;

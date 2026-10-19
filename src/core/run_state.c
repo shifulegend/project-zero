@@ -116,26 +116,40 @@ TernaryError run_state_alloc_ex(RunState *s, const Config *cfg, int max_seq_len,
       run_state_free(s);
       return TN_ERR_OOM;
     }
-    if (kv_strategy_kv_type() == KV_TYPE_I8) {
-      /* Plan 8.5: int8 rows + one F32 scale per row (4x smaller than F32). */
+    int qtype = kv_strategy_kv_type();
+    int row_bytes = 0, row_scales = 0;
+    if (qtype != KV_TYPE_F32 &&
+        kvq_row_layout((KVCacheType)qtype, head_dim, &row_bytes, &row_scales) != 0) {
+      /* i4 groups need head_dim % TN_KV_I4_GROUP == 0; fall back to i8. */
+      fprintf(stderr, "[kv] --kv-type %s needs head_dim %% %d == 0 (head_dim %d); using i8\n",
+              kv_type_name((KVCacheType)qtype), TN_KV_I4_GROUP, head_dim);
+      qtype = KV_TYPE_I8;
+      kvq_row_layout(KV_TYPE_I8, head_dim, &row_bytes, &row_scales);
+    }
+    if (qtype != KV_TYPE_F32) {
+      /* Plan 8.5: quantized rows + F32 scales (i8 4x, i4 ~7x smaller than F32). */
       size_t n_rows = kv_cache_size / (size_t)(head_dim > 0 ? head_dim : 1);
-      if (!offload_dir && tn_alloc_too_large(kv_cache_size, sizeof(tn_i8))) {
+      size_t data_bytes = n_rows * (size_t)row_bytes;
+      size_t scale_n = n_rows * (size_t)row_scales;
+      if (!offload_dir && tn_alloc_too_large(data_bytes, sizeof(tn_i8))) {
         run_state_free(s);
         return TN_ERR_OOM;
       }
-      s->kv_type = KV_TYPE_I8;
+      s->kv_type = qtype;
+      s->kv_row_bytes = row_bytes;
+      s->kv_row_scales = row_scales;
       if (offload_dir) {
-        size_t sz[4] = { kv_cache_size, kv_cache_size, n_rows * sizeof(float), n_rows * sizeof(float) };
+        size_t sz[4] = { data_bytes, data_bytes, scale_n * sizeof(float), scale_n * sizeof(float) };
         void *pp[4] = { NULL, NULL, NULL, NULL };
         TernaryError e = kv_offload_carve(s, offload_dir, sz, pp, 4);
         if (e != TN_OK) { run_state_free(s); return e; }
         s->key_cache_q = (tn_i8 *)pp[0]; s->value_cache_q = (tn_i8 *)pp[1];
         s->key_scale = (float *)pp[2];   s->value_scale = (float *)pp[3];
       } else {
-        s->key_cache_q = (tn_i8 *)tn_aligned_calloc(kv_cache_size, sizeof(tn_i8), TN_SIMD_ALIGN);
-        s->value_cache_q = (tn_i8 *)tn_aligned_calloc(kv_cache_size, sizeof(tn_i8), TN_SIMD_ALIGN);
-        s->key_scale = (float *)tn_aligned_calloc(n_rows, sizeof(float), TN_SIMD_ALIGN);
-        s->value_scale = (float *)tn_aligned_calloc(n_rows, sizeof(float), TN_SIMD_ALIGN);
+        s->key_cache_q = (tn_i8 *)tn_aligned_calloc(data_bytes, sizeof(tn_i8), TN_SIMD_ALIGN);
+        s->value_cache_q = (tn_i8 *)tn_aligned_calloc(data_bytes, sizeof(tn_i8), TN_SIMD_ALIGN);
+        s->key_scale = (float *)tn_aligned_calloc(scale_n, sizeof(float), TN_SIMD_ALIGN);
+        s->value_scale = (float *)tn_aligned_calloc(scale_n, sizeof(float), TN_SIMD_ALIGN);
       }
       if (!s->key_cache_q || !s->value_cache_q || !s->key_scale || !s->value_scale) {
         run_state_free(s);
@@ -232,12 +246,13 @@ void run_state_kv_reserve(RunState *s, const Config *cfg, int n_pos) {
   for (int l = 0; l < cfg->n_layers; l++) {
     for (int h = 0; h < cfg->n_kv_heads; h++) {
       size_t row = ((size_t)l * (size_t)cfg->n_kv_heads + (size_t)h) * (size_t)s->max_seq_len + (size_t)from;
-      if (s->kv_type == KV_TYPE_I8) {
+      if (s->kv_type != KV_TYPE_F32) {
         if (!s->key_cache_q || !s->value_cache_q || !s->key_scale || !s->value_scale) return;
-        tn_mem_commit(s->key_cache_q + row * (size_t)hd, cnt * (size_t)hd);
-        tn_mem_commit(s->value_cache_q + row * (size_t)hd, cnt * (size_t)hd);
-        tn_mem_commit(s->key_scale + row, cnt * sizeof(float));
-        tn_mem_commit(s->value_scale + row, cnt * sizeof(float));
+        size_t rb = (size_t)s->kv_row_bytes, rs = (size_t)s->kv_row_scales;
+        tn_mem_commit(s->key_cache_q + row * rb, cnt * rb);
+        tn_mem_commit(s->value_cache_q + row * rb, cnt * rb);
+        tn_mem_commit(s->key_scale + row * rs, cnt * rs * sizeof(float));
+        tn_mem_commit(s->value_scale + row * rs, cnt * rs * sizeof(float));
       } else {
         if (!s->key_cache || !s->value_cache) return;
         tn_mem_commit(s->key_cache + row * (size_t)hd, cnt * (size_t)hd * sizeof(float));
@@ -254,11 +269,12 @@ void run_state_kv_prefetch_layer(const RunState *s, const Config *cfg, int layer
   if (n_pos > s->max_seq_len) n_pos = s->max_seq_len;
   for (int h = 0; h < cfg->n_kv_heads; h++) {
     size_t row0 = ((size_t)layer * (size_t)cfg->n_kv_heads + (size_t)h) * (size_t)s->max_seq_len;
-    if (s->kv_type == KV_TYPE_I8) {
-      file_backed_prefetch(s->key_cache_q + row0 * (size_t)hd, (size_t)n_pos * (size_t)hd);
-      file_backed_prefetch(s->value_cache_q + row0 * (size_t)hd, (size_t)n_pos * (size_t)hd);
-      file_backed_prefetch(s->key_scale + row0, (size_t)n_pos * sizeof(float));
-      file_backed_prefetch(s->value_scale + row0, (size_t)n_pos * sizeof(float));
+    if (s->kv_type != KV_TYPE_F32) {
+      size_t rb = (size_t)s->kv_row_bytes, rs = (size_t)s->kv_row_scales;
+      file_backed_prefetch(s->key_cache_q + row0 * rb, (size_t)n_pos * rb);
+      file_backed_prefetch(s->value_cache_q + row0 * rb, (size_t)n_pos * rb);
+      file_backed_prefetch(s->key_scale + row0 * rs, (size_t)n_pos * rs * sizeof(float));
+      file_backed_prefetch(s->value_scale + row0 * rs, (size_t)n_pos * rs * sizeof(float));
     } else {
       file_backed_prefetch(s->key_cache + row0 * (size_t)hd, (size_t)n_pos * (size_t)hd * sizeof(float));
       file_backed_prefetch(s->value_cache + row0 * (size_t)hd, (size_t)n_pos * (size_t)hd * sizeof(float));

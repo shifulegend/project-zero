@@ -1,6 +1,8 @@
 /*
- * tests/test_kv_quant.c — plan 8.5 int8 KV rows: quantisation error bound,
- * dot/axpy against F32, zero rows, and type parsing.
+ * tests/test_kv_quant.c — plan 8.5 quantized KV rows: int8 error bound,
+ * dot/axpy against F32, zero rows, type parsing; int4 (Q4_1-style groups)
+ * layout, error bound, constant rows, and dot/axpy against a dequantised
+ * reference.
  */
 #include "test_harness.h"
 #include "kv_cache/kv_quant_ops.h"
@@ -47,10 +49,58 @@ static void test_zero_row_and_parse(void) {
     TEST_ASSERT_EQ(kv_type_parse("q4"), -1, "reject unknown");
 }
 
+static void test_i4_layout_and_roundtrip(void) {
+    enum { N = 128 };
+    int b = 0, sc = 0;
+    TEST_ASSERT_EQ(kvq_row_layout(KV_TYPE_I4, N, &b, &sc), 0, "i4 layout for 128");
+    TEST_ASSERT(b == N / 2 && sc == 2 * (N / TN_KV_I4_GROUP), "nibbles + (scale,min) per group");
+    TEST_ASSERT_EQ(kvq_row_layout(KV_TYPE_I4, 48, &b, &sc), -1, "i4 needs a multiple of 32");
+    TEST_ASSERT_EQ(kvq_row_layout(KV_TYPE_I8, 48, &b, &sc), 0, "i8 any width");
+    TEST_ASSERT_EQ(kvq_row_layout(KV_TYPE_F32, 48, &b, &sc), -1, "f32 is not quantized");
+    TEST_ASSERT_EQ(kv_type_parse("i4"), KV_TYPE_I4, "parse i4");
+
+    unsigned long long r; rng_seed(&r, 33);
+    float src[N], deq[N], scales[2 * (N / TN_KV_I4_GROUP)];
+    tn_i8 q[N / 2];
+    for (int i = 0; i < N; i++) src[i] = (rng_float(&r) - 0.3f) * 6.0f;    /* skewed */
+    kvq_store(KV_TYPE_I4, q, scales, src, N);
+    /* Dequantise via axpy with a = 1 into zeros. */
+    for (int i = 0; i < N; i++) deq[i] = 0.0f;
+    kvq_axpy_row(KV_TYPE_I4, deq, 1.0f, q, scales, N);
+    int ok = 1;
+    for (int g = 0; g < N / TN_KV_I4_GROUP; g++)
+        for (int i = 0; i < TN_KV_I4_GROUP; i++) {
+            int k = g * TN_KV_I4_GROUP + i;
+            if (fabsf(deq[k] - src[k]) > 0.5f * scales[2 * g] + 1e-5f) ok = 0;
+        }
+    TEST_ASSERT(ok, "i4 reconstruction within half a step of its group");
+
+    float qv[N];
+    for (int i = 0; i < N; i++) qv[i] = rng_float(&r) - 0.5f;
+    double ref = 0;
+    for (int i = 0; i < N; i++) ref += (double)qv[i] * deq[i];
+    TEST_ASSERT(fabs(kvq_dot_row(KV_TYPE_I4, qv, q, scales, N) - ref) < 1e-3,
+                "i4 dot == dot with the dequantised row");
+
+    float c[32], cs[2], back[32] = {0};
+    tn_i8 cq[16];
+    for (int i = 0; i < 32; i++) c[i] = 2.5f;
+    kvq_store(KV_TYPE_I4, cq, cs, c, 32);
+    kvq_axpy_row(KV_TYPE_I4, back, 1.0f, cq, cs, 32);
+    int exact = 1;
+    for (int i = 0; i < 32; i++) exact &= fabsf(back[i] - 2.5f) < 1e-6f;
+    TEST_ASSERT(cs[0] == 0.0f && exact, "constant group is exact (zero scale, min = value)");
+
+    float i8out[N] = {0};
+    kvq_axpy_row(KV_TYPE_I8, i8out, 1.0f, q, scales, 4);  /* dispatch smoke: i8 path uses scales[0] */
+    TEST_ASSERT(isfinite(i8out[0]), "i8 dispatch");
+}
+
 int main(void) {
-    printf("=== KV int8 (plan 8.5) Tests ===\n");
+    printf("=== KV int8 / int4 (plan 8.5) Tests ===\n");
     RUN_TEST(test_store_roundtrip_error);
     RUN_TEST(test_dot_and_axpy);
     RUN_TEST(test_zero_row_and_parse);
+    RUN_TEST(test_i4_layout_and_roundtrip);
     TEST_SUMMARY();
 }

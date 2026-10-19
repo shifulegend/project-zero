@@ -106,6 +106,10 @@ typedef struct {
    * the same KV_CACHE_IDX layout as int8, plus one absmax scale per
    * (layer, kv_head, position) row at index KV_SCALE_IDX. */
   int    kv_type;
+  int    kv_row_bytes;   /* quantized: data bytes per head_dim row (i8: hd, i4: hd/2) */
+  int    kv_row_scales;  /* quantized: F32 scales per row (i8: 1, i4: 2*hd/32); row r's
+                            data at key_cache_q + r*kv_row_bytes, scales at
+                            key_scale + r*kv_row_scales, r = KV_SCALE_IDX(...) */
   tn_i8 *key_cache_q;
   tn_i8 *value_cache_q;
   float *key_scale;

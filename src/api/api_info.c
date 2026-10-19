@@ -153,7 +153,8 @@ char *api_config_json(const ApiContext *ctx) {
         jb_key(&jb, "simd"); jb_str(&jb, tn_simd_backend_name());
         jb_raw(&jb, ","); jb_key(&jb, "threads"); jb_int(&jb, ctx && ctx->tp ? ctx->tp->num_threads : 1);
         jb_raw(&jb, ","); jb_key(&jb, "kv_type");
-        jb_str(&jb, ctx && ctx->run_state && ctx->run_state->kv_type == KV_TYPE_I8 ? "i8" : "f32");
+        jb_str(&jb, !(ctx && ctx->run_state) ? "f32" : ctx->run_state->kv_type == KV_TYPE_I8 ? "i8"
+               : ctx->run_state->kv_type == KV_TYPE_I4 ? "i4" : "f32");
         /* Phase 31: whether the KV cache is disk-backed (the path stays server-side). */
         jb_raw(&jb, ","); jb_key(&jb, "kv_offload");
         jb_raw(&jb, ctx && ctx->run_state && ctx->run_state->kv_offload_base ? "true" : "false");
@@ -195,7 +196,7 @@ char *api_config_json(const ApiContext *ctx) {
     jb_raw(&jb, ","); jb_key(&jb, "prompt_store");
     jb_bool(&jb, ctx && ctx->server_config.prompt_cache_mb > 0 &&
                  (!ctx->moe_cfg || prompt_store_supported(ctx->moe_cfg)) &&
-                 !(ctx->run_state && ctx->run_state->kv_type == KV_TYPE_I8));
+                 !(ctx->run_state && ctx->run_state->kv_type != KV_TYPE_F32));
     jb_raw(&jb, ","); jb_key(&jb, "metrics"); jb_bool(&jb, ctx && ctx->server_config.metrics.enabled);
     jb_raw(&jb, ","); jb_key(&jb, "system_prompt"); jb_bool(&jb, ctx && ctx->tok && ctx->tok->chat_template != NULL);
     jb_raw(&jb, ","); jb_key(&jb, "request_chat_template");
@@ -222,7 +223,7 @@ char *api_prompt_cache_json(const ApiContext *ctx) {
     /* Snapshots copy F32 KV rows: unavailable for SSM/MLA/hybrid models and
      * with --kv-type i8 (the live prefix cache still applies). */
     int supported = (!(ctx && ctx->moe_cfg) || prompt_store_supported(ctx->moe_cfg)) &&
-                    !(ctx && ctx->run_state && ctx->run_state->kv_type == KV_TYPE_I8);
+                    !(ctx && ctx->run_state && ctx->run_state->kv_type != KV_TYPE_F32);
     size_t budget = ctx ? (size_t)(ctx->server_config.prompt_cache_mb > 0
                                    ? ctx->server_config.prompt_cache_mb : 0) * 1024u * 1024u : 0;
     JsonBuf jb;

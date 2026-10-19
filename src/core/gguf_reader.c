@@ -198,6 +198,9 @@ static size_t gguf_block_elems(GGUFType t) {
 static size_t tensor_size_bytes(const GGUFTensor *t) {
     uint64_t n_elems = 1;
     for (uint32_t i = 0; i < t->n_dims; i++) n_elems *= t->dims[i];
+    /* I2_S is not block-structured: n/4 code bytes + F32 scale, padded to 32
+     * (ggml_nbytes in bitnet.cpp's ggml.c). */
+    if (t->type == GGUF_TYPE_I2_S) return (size_t)(n_elems / 4) + 32;
     size_t block_sz = gguf_block_size(t->type);
     size_t block_el = gguf_block_elems(t->type);
     size_t n_blocks = (size_t)((n_elems + block_el - 1) / block_el);
@@ -301,12 +304,21 @@ TernaryError gguf_read_header(GGUFHeader *hdr, const void *mapped_ptr, size_t ma
     /* Resolve tensor data pointers */
     for (uint64_t i = 0; i < hdr->n_tensors; i++) {
         GGUFTensor *t = &hdr->tensors[i];
-        if (t->offset > hdr->data_region_size) {
+        size_t sz = tensor_size_bytes(t);
+        /* 2026-10-18: also require the whole tensor to fit. Only the start
+         * offset was checked, so a truncated file handed kernels a pointer
+         * whose tail ran past the mapping. Q2_0's size is informational
+         * (PrismML packing, see gguf_block_size), so it keeps the old rule. */
+        int fits = t->offset <= hdr->data_region_size &&
+                   (t->type == GGUF_TYPE_Q2_0 || sz <= hdr->data_region_size - t->offset);
+        if (!fits) {
+            if (t->offset <= hdr->data_region_size)
+                fprintf(stderr, "[gguf] tensor '%s' extends past the end of the file (truncated?)\n", t->name);
             t->data = NULL;
             t->size_bytes = 0;
         } else {
             t->data = (const uint8_t *)hdr->data_region + t->offset;
-            t->size_bytes = tensor_size_bytes(t);
+            t->size_bytes = sz;
         }
     }
 
@@ -410,6 +422,7 @@ const char *gguf_type_name(GGUFType t) {
         case GGUF_TYPE_F32:  return "F32";
         case GGUF_TYPE_F16:  return "F16";
         case GGUF_TYPE_BF16: return "BF16";
+        case GGUF_TYPE_I2_S: return "I2_S";
         case GGUF_TYPE_Q4_0: return "Q4_0";
         case GGUF_TYPE_Q4_1: return "Q4_1";
         case GGUF_TYPE_Q5_0: return "Q5_0";

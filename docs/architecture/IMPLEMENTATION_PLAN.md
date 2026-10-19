@@ -1689,7 +1689,12 @@ format used by llama.cpp and bitnet.cpp.
   in `tensor_to_f32()` switch. Callers are fully unaware of quantization type.
 
 ### 34.2b.2 — I2_S BitNet Native Format *(Item D)*
-- **Status:** PLANNED
+- **Status:** ✅ DONE 2026-10-19 — `core/gguf_i2s` repacks bitnet.cpp's I2_S (type 36, 128-weight
+  interleaved blocks, one F32 scale per tensor) losslessly into the engine's packed ternary rows,
+  so the official `microsoft/bitnet-b1.58-2B-4T-gguf` runs on the native ternary kernels
+  (`layers_are_ternary`, sub-norms, ReLU², NEOX RoPE). Was marked under the phase ✅ while still
+  unimplemented — see mistakes.md 2026-10-19. The layout notes below are superseded (real I2_S
+  has one scale per tensor, not per 32-weight group).
 - 2 bits/weight, groups of 32, FP16 scale per group.
 - Decode: `val = (packed >> 2*i) & 0x3` → sign-extend to {-1, 0, +1} → multiply by scale.
 - Extends `gguf_quant.c`; adds one case to `gguf_loader.c`.

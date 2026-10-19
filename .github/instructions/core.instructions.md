@@ -23,3 +23,5 @@ applyTo: "src/**,include/**"
 - Distributed (`--remote-layers`, Phase 28): layers can run in a worker process. Per-layer state
   that maps position → cache slot (sliding window) is part of the RPC contract; anything that
   restores/copies KV for all layers (prompt snapshots) must be bypassed when `dist_plan_active()`.
+- Anything that calls `transformer_forward()` directly gets a default sliding window if none was
+  set, but should `sw_init()` itself when it owns a sequence (generate_ex, perplexity, worker).

@@ -4,6 +4,7 @@
 #include "api/chat_compile.h"
 #include "reasoning/best_of.h"
 #include "update/update_check.h"
+#include "math/rope.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,6 +34,13 @@ void print_usage(const char *prog_name) {
     printf("  --best-of-max <N>   Server: largest best_of a request may ask for (default %d)\n", BEST_OF_MAX_DEFAULT);
     printf("  --reasoning         Enable hidden reasoning mode via <think> tags\n");
     printf("  --json              Constrain output to syntactically valid JSON\n");
+    printf("  --perplexity <file> Report perplexity on a text file, then exit (llama.cpp's\n");
+    printf("                      llama-perplexity method: chunks of --ppl-ctx tokens\n");
+    printf("                      (default 512), second half of each chunk scored;\n");
+    printf("                      --ppl-chunks N limits the chunk count).\n");
+    printf("  --raw-prompt        Feed --prompt verbatim (BOS + text) instead of wrapping it in\n");
+    printf("                      the model's chat template -- plain completion, as\n");
+    printf("                      llama-completion does (benchmarks, base models).\n");
     printf("                      (grammar-masked sampling; physically cannot emit\n");
     printf("                      invalid JSON syntax, not just prompted to try)\n");
 
@@ -44,6 +52,8 @@ void print_usage(const char *prog_name) {
     printf("  --kv-offload <dir>  Keep the KV cache in a disk-backed file in <dir> (NVMe/SSD):\n");
     printf("                      the OS keeps hot pages in RAM, so context is bounded by\n");
     printf("                      free disk (x --kv-ram-fraction), not RAM. Dense/GQA path.\n");
+    printf("  --rope-layout <l>   auto (default: from the GGUF architecture, as llama.cpp) |\n");
+    printf("                      norm (adjacent pairs) | neox (rotate-half pairs)\n");
     printf("  --attn-kernel <k>   standard (default) | tiled (single-pass online softmax)\n");
     printf("  --attn-tile <int>   Positions per tile for --attn-kernel tiled (0 = from L1d)\n");
     printf("  --attn-parallel-min-ctx <N> Spread attention heads over threads once the\n");
@@ -189,6 +199,11 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->num_threads = 0; // auto
     args->enable_reasoning = false;
     args->json_mode = false;
+    args->raw_prompt = false;
+    args->rope_layout = -1;
+    args->perplexity_file = NULL;
+    args->ppl_ctx = 512;
+    args->ppl_chunks = 0;
     args->verbose = false;
     args->seed = -1;
     args->classifier_override = -1; // auto (BF16)
@@ -314,6 +329,27 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             args->watermark_gamma = (float)atof(argv[++i]);
         } else if (strcmp(argv[i], "--watermark-delta") == 0 && i + 1 < argc) {
             args->watermark_delta = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--perplexity") == 0 && i + 1 < argc) {
+            args->perplexity_file = argv[++i];
+        } else if (strcmp(argv[i], "--ppl-ctx") == 0 && i + 1 < argc) {
+            args->ppl_ctx = atoi(argv[++i]);
+            if (args->ppl_ctx < 4) {
+                fprintf(stderr, "Error: --ppl-ctx must be >= 4\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--ppl-chunks") == 0 && i + 1 < argc) {
+            args->ppl_chunks = atoi(argv[++i]);
+            if (args->ppl_chunks < 0) {
+                fprintf(stderr, "Error: --ppl-chunks must be >= 0\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--rope-layout") == 0 && i + 1 < argc) {
+            const char *m = argv[++i];
+            args->rope_layout = strcmp(m, "auto") == 0 ? -1 : rope_layout_parse(m);
+            if (strcmp(m, "auto") != 0 && args->rope_layout < 0) {
+                fprintf(stderr, "Error: --rope-layout must be auto, norm or neox\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
         } else if (strcmp(argv[i], "--attn-kernel") == 0 && i + 1 < argc) {
             args->attn_kernel = argv[++i];
             if (attn_kernel_parse(args->attn_kernel) < 0) {
@@ -458,6 +494,8 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             args->enable_reasoning = true;
         } else if (strcmp(argv[i], "--json") == 0) {
             args->json_mode = true;
+        } else if (strcmp(argv[i], "--raw-prompt") == 0) {
+            args->raw_prompt = true;
         } else if (strcmp(argv[i], "--verbose") == 0) {
             args->verbose = true;
         } else if (strcmp(argv[i], "--dump-tensors") == 0 && i + 1 < argc) {
@@ -592,6 +630,7 @@ void args_fill_gen_params(const CliArgs *args, GenerationParams *gp) {
     sampler_settings_sanitize(&gp->sampler);
     gp->seed      = args->seed;
     gp->json_mode = args->json_mode;
+    gp->raw_prompt = args->raw_prompt;
     gp->system_prompt = args->system_prompt;
     for (int i = 0; i < args->n_stop && i < GEN_MAX_STOP; i++) gp->stop[i] = args->stop[i];
     gp->n_stop = args->n_stop < GEN_MAX_STOP ? args->n_stop : GEN_MAX_STOP;

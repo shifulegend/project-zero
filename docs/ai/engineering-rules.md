@@ -60,6 +60,11 @@ A change is done only when:
 - `make test` runs **every** `tests/*.c` and aborts on the first failure — a green full run is
   the bar. CI historically died early, masking downstream failures; expect a cascade when you
   unblock the first failing test, and keep going until the whole suite passes on all platforms.
+- **Model support is verified against a reference engine**, not by "the output looks fluent":
+  token ids vs `llama-tokenize`, and `--perplexity` vs `llama-perplexity` on the same text
+  (reference builds live outside the repo, e.g. `/home/user/ext/{llama.cpp,BitNet}`).
+- A phase marked ✅ must have every sub-item's own status line done; a stale "PLANNED" under a ✅
+  hid missing I2_S support for months (mistakes.md 2026-10-19).
 
 ## Bug-fix policy (fix, don't just log)
 - **Any bug found gets fixed, in the same pass, regardless of whether it's pre-existing or

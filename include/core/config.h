@@ -29,6 +29,8 @@ typedef struct {
                                    / sqrt(head_dim), matching llama.cpp deepseek2.cpp */
     float rms_norm_eps;         /* RMSNorm epsilon (default 1e-5; DeepSeek needs 1e-6) */
     int   eos_token_id;         /* EOS token ID (-1 = none) */
+    int   rope_layout;          /* RopeLayout (math/rope.h): pair layout from the GGUF arch,
+                                   overridable with --rope-layout; 0 (NORM) for .bin */
 } Config;
 
 /**

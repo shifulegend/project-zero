@@ -31,6 +31,10 @@ typedef struct {
      * Includes <|eot_id|>, <|end_of_text|>, </s>, <|im_end|>, etc. */
     int eos_list[8];
     int n_eos;
+
+    /* BPE pre-tokenization (tokenizer/pretokenize.h PretokType), from GGUF
+     * tokenizer.ggml.pre; 0 = none (SentencePiece, legacy .bin tokenizers). */
+    int pretok_type;
 } Tokenizer;
 
 /**

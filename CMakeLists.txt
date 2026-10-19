@@ -140,6 +140,7 @@ set(CORE_SOURCES
     src/core/unpack.c
     src/core/unpack_avx2.c
     src/core/gguf_reader.c
+    src/core/gguf_i2s.c
     src/core/gguf_loader.c
     src/core/lora_load.c
 )
@@ -214,6 +215,7 @@ set(TOKENIZER_SOURCES
     src/tokenizer/chat_template.cpp
     src/tokenizer/tokenizer_load.c
     src/tokenizer/tokenizer_encode.c
+    src/tokenizer/pretokenize.c
     src/tokenizer/tokenizer_decode.c
     src/tokenizer/tokenizer_gguf.c
 )
@@ -321,6 +323,10 @@ set(DISTRIBUTED_SOURCES
     src/distributed/dist_plan.c
 )
 
+set(EVAL_SOURCES
+    src/eval/perplexity.c
+)
+
 set(BRAND_SOURCES
     src/brand/block_font.c
 )
@@ -357,6 +363,7 @@ set(SOURCES
     ${DISTRIBUTED_SOURCES}
     ${UPDATE_SOURCES}
     ${BRAND_SOURCES}
+    ${EVAL_SOURCES}
 )
 
 # ---------------------------------------------------------------------------

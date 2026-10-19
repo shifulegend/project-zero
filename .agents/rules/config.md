@@ -19,3 +19,7 @@
   default repo `PZ_UPDATE_REPO` (Makefile + CMake).
 - Calibration (`~/.project-zero/calibration.bin`, v3) only overrides the auto SIMD tier when a
   forced tier is clearly faster; bump `TN_CALIB_VERSION` whenever selection logic changes.
+- GGUF conventions follow llama.cpp: RoPE layout from the architecture (`--rope-layout` to
+  override), BPE pre-tokenizer from `tokenizer.ggml.pre`. `--raw-prompt` skips the chat template
+  (plain completion, for benchmarks vs llama-completion); `--perplexity <file>` (+`--ppl-ctx`,
+  `--ppl-chunks`) reproduces llama-perplexity for accuracy checks.

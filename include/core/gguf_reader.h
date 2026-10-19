@@ -53,6 +53,8 @@ typedef enum {
     GGUF_TYPE_F64    = 28,
     GGUF_TYPE_IQ1_M   = 29,
     GGUF_TYPE_BF16   = 30,
+    GGUF_TYPE_I2_S   = 36, /* Microsoft BitNet (bitnet.cpp) ternary: 4 weights/byte, 128-weight
+                               interleaved blocks, one F32 scale per tensor after the codes */
     GGUF_TYPE_Q2_0   = 42, /* legacy 2-bit block quant (ggml block_q2_0, block=64) —
                                used by PrismML's Qwen3.6-based "Bonsai" ternary GGUF releases */
     GGUF_TYPE_COUNT

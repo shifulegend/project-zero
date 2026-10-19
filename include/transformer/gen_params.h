@@ -45,6 +45,8 @@ typedef struct {
     SamplerSettings sampler;
     long long       seed;          /* < 0 = time-based (non-reproducible) */
     bool            json_mode;     /* Phase 20 grammar-constrained JSON   */
+    bool            raw_prompt;    /* --raw-prompt: feed the prompt verbatim (BOS + text),
+                                      skipping the model's embedded chat template */
     WatermarkConfig watermark;     /* Phase 33, disabled by default        */
 
     /* Conversation for chat-template models. When n_messages > 0 the GGUF

@@ -118,8 +118,8 @@ void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w,
             corr[0] = start < 0.0f ? 0.0f : (start > (float)(head_dim-1) ? (float)(head_dim-1) : start);
             corr[1] = end   < 0.0f ? 0.0f : (end   > (float)(head_dim-1) ? (float)(head_dim-1) : end  );
         }
-        apply_rope(q_buf, k_buf, s->qwen3moe_rope_freq, head_dim, pos, n_heads, n_kv_h,
-                   freq_scale, ext_factor, attn_factor, corr);
+        apply_rope_ex(q_buf, k_buf, s->qwen3moe_rope_freq, head_dim, pos, n_heads, n_kv_h,
+                      freq_scale, ext_factor, attn_factor, corr, cfg->rope_layout);
     }
     if (t_step) {
         tn_step_timing_add(TN_STEP_9_YARN_ROPE,
@@ -296,8 +296,8 @@ TernaryError qwen3moe_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
             corr[0] = start < 0.0f ? 0.0f : (start > (float)(head_dim-1) ? (float)(head_dim-1) : start);
             corr[1] = end   < 0.0f ? 0.0f : (end   > (float)(head_dim-1) ? (float)(head_dim-1) : end  );
         }
-        apply_rope(q_k, k_k, s->qwen3moe_rope_freq, head_dim, tok_pos, n_heads, n_kv_h,
-                   freq_scale, ext_factor, attn_factor, corr);
+        apply_rope_ex(q_k, k_k, s->qwen3moe_rope_freq, head_dim, tok_pos, n_heads, n_kv_h,
+                      freq_scale, ext_factor, attn_factor, corr, cfg->rope_layout);
     }
     if (t_step) {
         tn_step_timing_add(TN_STEP_9_YARN_ROPE,

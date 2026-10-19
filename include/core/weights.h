@@ -22,6 +22,8 @@
 #define WEIGHT_TYPE_Q6K  6   /* Q6_K mmap zero-copy — fused matmul kernel (matmul_q6k.c); Q4_K_M
                               * files use it for attn_v/ffn_down. Was dequantised to F32 before
                               * 2026-10-18 (~4.9x the bytes per weight). */
+#define WEIGHT_TYPE_TERNARY 7 /* packed ternary rows (core/unpack.h) repacked at load time from a
+                              * BitNet I2_S GGUF tensor; selects layers_are_ternary. */
 
 /* Block size for the classifier INT8/INT4 quantization scale granularity
  * (weights_build_classifier_quant in weights.c, consumed by

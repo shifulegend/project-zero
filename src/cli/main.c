@@ -27,6 +27,8 @@
 #include "reasoning/best_of.h"
 #include "distributed/dist_plan.h"
 #include "update/update_check.h"
+#include "math/rope.h"
+#include "eval/perplexity.h"
 #include "cli/model_load.h"
 #include "cli/repl.h"
 #include "cli/progress.h"
@@ -83,6 +85,53 @@ static int stdout_piece_callback(const char *piece, void *userdata) {
 static void handle_shutdown_signal(int sig) {
     (void)sig;
     g_shutdown_requested = 1;
+}
+
+/* --perplexity: tokenize the file (BOS-prefixed, no chat template), score it
+ * like llama-perplexity and print running + final PPL. */
+static void ppl_progress(int chunk, const PplResult *r, void *user) {
+    (void)user;
+    printf("[%d]%.4f,", chunk + 1, r->ppl);
+    fflush(stdout);
+}
+
+static void run_perplexity(const CliArgs *args, const Config *p, const TransformerWeights *w,
+                           RunState *s, const MoEConfig *mc, Tokenizer *t, ThreadPool *tp) {
+    FILE *f = fopen(args->perplexity_file, "rb");
+    if (!f) { fprintf(stderr, "Error: cannot open %s\n", args->perplexity_file); return; }
+    fseek(f, 0, SEEK_END);
+    long sz = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (sz <= 0 || sz > (64L << 20)) { fclose(f); fprintf(stderr, "Error: perplexity file must be 1 B..64 MiB\n"); return; }
+    char *text = (char *)malloc((size_t)sz + 1);
+    int *toks = (int *)malloc(((size_t)sz + 2) * sizeof(int));
+    if (!text || !toks) { fclose(f); free(text); free(toks); return; }
+    size_t rd = fread(text, 1, (size_t)sz, f);
+    fclose(f);
+    text[rd] = '\0';
+    int bos = p->bos_token_id >= 0 ? p->bos_token_id : t->bos_token_id;
+    int n = 0;
+    if (bos >= 0) toks[n++] = bos;
+    int k = tokenizer_encode(t, text, rd, toks + n, (int)rd + 1);
+    if (k < 0) {
+        fprintf(stderr, "Error: could not tokenize %s\n", args->perplexity_file);
+    } else {
+        n += k;
+        PplOptions opt = { args->ppl_ctx, args->ppl_chunks, bos };
+        PplResult r;
+        printf("perplexity: %d tokens, n_ctx %d, %d chunk(s)\n", n,
+               opt.n_ctx < s->max_seq_len ? opt.n_ctx : s->max_seq_len,
+               args->ppl_chunks > 0 && args->ppl_chunks < n / opt.n_ctx ? args->ppl_chunks : n / opt.n_ctx);
+        TernaryError e = perplexity_eval(toks, n, &opt, p, w, s, mc, tp, ppl_progress, NULL, &r);
+        if (e != TN_OK) {
+            fprintf(stderr, "\nError: perplexity needs at least --ppl-ctx (%d) tokens\n", opt.n_ctx);
+        } else {
+            printf("\nFinal estimate: PPL = %.4f +/- %.5f  (%d tokens scored, %d chunks, %.1f s)\n",
+                   r.ppl, r.ppl_err, r.n_scored, r.n_chunks, r.seconds);
+        }
+    }
+    free(text);
+    free(toks);
 }
 
 int main(int argc, char **argv) {
@@ -482,6 +531,13 @@ int main(int argc, char **argv) {
         }
     }
 
+    /* RoPE pair layout: from the GGUF architecture unless --rope-layout says
+     * otherwise (e.g. a GGUF converted with a non-standard Q/K order). */
+    if (args.rope_layout >= 0) p.rope_layout = args.rope_layout;
+    if (args.verbose || args.rope_layout >= 0)
+        printf("RoPE layout: %s%s\n", rope_layout_name(p.rope_layout),
+               args.rope_layout >= 0 ? " (--rope-layout)" : " (from model architecture)");
+
     /* Tokenizer */
     Tokenizer t;
     memset(&t, 0, sizeof(t));
@@ -720,7 +776,8 @@ int main(int argc, char **argv) {
     /* Phase 38: background update check — server always (the web UI shows
      * it), CLI only when a person is watching stderr. Never blocks. */
     int update_notice = 0;
-    if (!args.watermark_detect && (args.server_mode || isatty(fileno(stderr)))) {
+    if (!args.watermark_detect && !args.perplexity_file &&
+        (args.server_mode || isatty(fileno(stderr)))) {
         UpdateOptions uo;
         args_fill_update_options(&args, &uo);
         update_service_init(&uo, PZ_VERSION_STR);
@@ -729,7 +786,9 @@ int main(int argc, char **argv) {
     }
 
     /* Execution Mode */
-    if (args.watermark_detect) {
+    if (args.perplexity_file) {
+        run_perplexity(&args, &p, &w, s, &mc, &t, tp);
+    } else if (args.watermark_detect) {
         /* Phase 33: offline watermark detection — tokenize the text with this
          * model's tokenizer and score it with the configured key/gamma. */
         GenerationParams gp;

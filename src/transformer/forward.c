@@ -3,6 +3,7 @@
 #include <string.h>
 #include <time.h>
 #include "transformer/forward.h"
+#include "kv_cache/sliding_window.h"
 #include "transformer/mamba.h"
 #include "distributed/dist_plan.h"
 #include "core/moe_config.h"
@@ -38,6 +39,12 @@ float *transformer_forward(int token, int pos, const Config *cfg,
                            const TransformerWeights *w, RunState *s,
                            const MoEConfig *mc, ThreadPool *tp) {
   int dim = cfg->dim;
+
+  /* 2026-10-18: a RunState whose sliding window was never initialised maps
+   * every position to slot 0 (garbage attention). generate_ex() sets it up,
+   * but direct callers (the Phase 28 worker, --perplexity) got it wrong
+   * twice — default to a plain window over the whole cache instead. */
+  if (s->sw.window_size == 0) sw_init(&s->sw, s->max_seq_len, 0);
 
   /* One-time check for profiling env var */
   if (g_profile_enabled < 0) {
@@ -266,6 +273,7 @@ TernaryError transformer_forward_batch(const int *tokens, int pos, int n_tokens,
                                         RunState *s, SpecBatchScratch *sb,
                                         const MoEConfig *mc, ThreadPool *tp,
                                         float *logits_out) {
+  if (s->sw.window_size == 0) sw_init(&s->sw, s->max_seq_len, 0); /* see transformer_forward */
   if (moe_is_recurrent(mc) || dist_plan_active()) {
     return TN_ERR_UNSUPPORTED;
   }

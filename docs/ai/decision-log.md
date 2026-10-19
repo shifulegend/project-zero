@@ -3,6 +3,17 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-10-18.
 
+### 2026-10-19 — Follow llama.cpp's conventions where GGUF metadata is silent
+
+- GGUF leaves some semantics to convention: RoPE pair layout (by architecture) and the BPE
+  pre-tokenizer (by `tokenizer.ggml.pre`, "default" when absent). The engine now mirrors
+  llama.cpp's tables for both, because every GGUF in circulation was produced and validated
+  against llama.cpp; both stay overridable (`--rope-layout`). Accuracy is checked with
+  `--perplexity`, which reproduces llama-perplexity's chunking so numbers are directly
+  comparable (SmolLM2-135M: 63.84 vs llama.cpp 63.57 on the same text).
+- I2_S is repacked at load time instead of getting its own kernel: same 2-bit codes, only the
+  bit order differs, so the existing tuned ternary kernels (VNNI/AVX2/NEON) apply unchanged.
+
 ### 2026-10-18 — Updates are notify-only (Phase 38)
 
 - Surveyed CLI update notifiers (npm update-notifier, gh, Nuxt, ZenStack) and TUF: auto-install

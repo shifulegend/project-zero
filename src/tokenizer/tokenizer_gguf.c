@@ -24,6 +24,7 @@
  */
 
 #include "tokenizer/tokenizer_gguf.h"
+#include "tokenizer/pretokenize.h"
 #include "core/gguf_reader.h"
 #include <stdlib.h>
 #include <string.h>
@@ -117,8 +118,12 @@ static int find_vocab_token(char **vocab, int vocab_size, const char *s) {
 
 TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
     /* 1. Detect tokenizer type */
-    const char *tok_model = gguf_meta_str(hdr, "tokenizer.ggml.model");
-    if (!tok_model) tok_model = "llama"; /* safe default */
+    /* Copied: gguf_meta_str() returns a shared static buffer that the next
+     * call (e.g. tokenizer.ggml.pre below) overwrites. */
+    char tok_model_buf[32];
+    const char *tok_model_meta = gguf_meta_str(hdr, "tokenizer.ggml.model");
+    snprintf(tok_model_buf, sizeof(tok_model_buf), "%s", tok_model_meta ? tok_model_meta : "llama");
+    const char *tok_model = tok_model_buf; /* "llama" = safe default */
 
     int is_bpe = (strcmp(tok_model, "gpt2") == 0);
     int is_spm = (!is_bpe);  /* SPM, WPM, UGM, RWKV — all use scores array */
@@ -315,9 +320,16 @@ TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
         }
     }
 
-    /* 6. Log summary */
-    fprintf(stderr, "[gguf-tok] Loaded %d tokens (%s), %d special — BOS=%d EOS=%d chat_template=%s\n",
-            t->vocab_size, tok_model, t->n_special,
+    /* 6. BPE pre-tokenizer from tokenizer.ggml.pre — absent means llama.cpp's
+     * "default" pipeline (what the reference runtimes use for such files). */
+    if (is_bpe) {
+        const char *pre = gguf_meta_str(hdr, "tokenizer.ggml.pre");
+        t->pretok_type = (int)pretok_type_from_name(pre);
+    }
+
+    /* 7. Log summary */
+    fprintf(stderr, "[gguf-tok] Loaded %d tokens (%s, pre=%s), %d special — BOS=%d EOS=%d chat_template=%s\n",
+            t->vocab_size, tok_model, pretok_type_name((PretokType)t->pretok_type), t->n_special,
             t->bos_token_id, t->eos_token_id,
             t->chat_template ? "yes" : "no");
 

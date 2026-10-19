@@ -5,6 +5,9 @@
 #include "core/platform.h"
 #include "core/hardware_profile.h"
 #include "math/matmul_q4k_x8.h"
+#include "core/gguf_i2s.h"
+#include "math/rope.h"
+#include "core/unpack.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -257,6 +260,16 @@ TernaryError config_from_gguf(Config *cfg, const GGUFHeader *hdr) {
 
     cfg->scale_mode    = 1; /* non-ternary float path */
     cfg->act_type      = 0; /* SiLU */
+    /* Rotary pair layout follows the architecture (llama.cpp convention):
+     * llama-family GGUFs have Q/K permuted for NORM; Qwen/Phi/Gemma/BitNet/...
+     * keep NEOX. 2026-10-18: everything used NORM before — wrong for those. */
+    cfg->rope_layout   = rope_layout_for_arch(hdr->arch);
+    /* BitNet b1.58 GGUF (arch "bitnet-b1.58", bitnet.cpp's I2_S release):
+     * squared-ReLU FFN and matrix-scaled ternary projections. */
+    if (strncmp(hdr->arch, "bitnet", 6) == 0) {
+        cfg->act_type   = 1; /* ReLU2 */
+        cfg->scale_mode = 0;
+    }
     cfg->bos_token_id  = (int)gguf_meta_u32(hdr, "tokenizer.ggml.bos_token_id", (uint32_t)-1);
     cfg->eos_token_id  = (int)gguf_meta_u32(hdr, "tokenizer.ggml.eos_token_id", (uint32_t)-1);
 
@@ -1371,7 +1384,7 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
  * so a Q4_K tensor with d_rows a multiple of 8 can be repacked into the
  * x8-interleaved layout (matmul_q4k_x8.c) for the real multi-row GEMV
  * kernel; see docs/ai/mistakes.md 2026-07-31 "attempt 6". */
-#define LOAD_PROJ(field, tname, d_rows, n_inner, type_out) do {            \
+#define LOAD_PROJ(field, tname, d_rows, n_inner, type_out, scale_out) do { \
     snprintf(name_buf, sizeof(name_buf), "blk.%d." tname, l);              \
     const GGUFTensor *_t = gguf_find_tensor(hdr, name_buf);                \
     if (!_t) {                                                              \
@@ -1379,7 +1392,26 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
         return TN_ERR_INVALID_WEIGHTS;                                      \
     }                                                                       \
     size_t _n_elems = (size_t)(d_rows) * (size_t)(n_inner);                \
-    if (_t->type == GGUF_TYPE_F16) {                                        \
+    if (_t->type == GGUF_TYPE_I2_S) {                                       \
+        /* BitNet I2_S: lossless repack into the engine's packed ternary   \
+         * rows (2026-10-18) — runs on the native ternary kernels.         */ \
+        size_t _pb = (size_t)(d_rows) * packed_bytes((int)(n_inner));     \
+        if (_t->size_bytes < tn_i2s_tensor_bytes(_n_elems)) {               \
+            fprintf(stderr, "[gguf_loader] I2_S tensor '%s' too small\n", name_buf); \
+            return TN_ERR_INVALID_WEIGHTS;                                  \
+        }                                                                   \
+        uint8_t *_pk = (uint8_t *)malloc(_pb);                              \
+        if (!_pk) return TN_ERR_OOM;                                        \
+        if (tn_i2s_repack(_pk, &(scale_out)[l], (const uint8_t *)_t->data,  \
+                          (int)(d_rows), (int)(n_inner)) != 0) {            \
+            free(_pk);                                                      \
+            fprintf(stderr, "[gguf_loader] I2_S tensor '%s' malformed (needs columns %% 128 == 0)\n", name_buf); \
+            return TN_ERR_INVALID_WEIGHTS;                                  \
+        }                                                                   \
+        if (store_add(store, _pk) != 0) { free(_pk); return TN_ERR_OOM; }   \
+        (field)[l] = (tn_i8 *)_pk;                                         \
+        (type_out)[l] = WEIGHT_TYPE_TERNARY;                                \
+    } else if (_t->type == GGUF_TYPE_F16) {                                 \
         /* Zero-copy: F16 data lives in mmap for model lifetime */          \
         (field)[l] = (tn_i8 *)_t->data;                                    \
         (type_out)[l] = WEIGHT_TYPE_F16;                                    \
@@ -1425,15 +1457,27 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
 } while(0)
 
         /* Attention projections */
-        LOAD_PROJ(w->wq, "attn_q.weight",      dim,    dim, w->wq_type);
-        LOAD_PROJ(w->wk, "attn_k.weight",      kv_dim, dim, w->wk_type);
-        LOAD_PROJ(w->wv, "attn_v.weight",      kv_dim, dim, w->wv_type);
-        LOAD_PROJ(w->wo, "attn_output.weight", dim,    dim, w->wo_type);
+        LOAD_PROJ(w->wq, "attn_q.weight",      dim,    dim, w->wq_type, w->sq);
+        LOAD_PROJ(w->wk, "attn_k.weight",      kv_dim, dim, w->wk_type, w->sk);
+        LOAD_PROJ(w->wv, "attn_v.weight",      kv_dim, dim, w->wv_type, w->sv);
+        LOAD_PROJ(w->wo, "attn_output.weight", dim,    dim, w->wo_type, w->so);
 
         /* FFN projections */
-        LOAD_PROJ(w->w1, "ffn_gate.weight", hidden_dim, dim,        w->w1_type);
-        LOAD_PROJ(w->w2, "ffn_down.weight", dim,        hidden_dim, w->w2_type);
-        LOAD_PROJ(w->w3, "ffn_up.weight",   hidden_dim, dim,        w->w3_type);
+        LOAD_PROJ(w->w1, "ffn_gate.weight", hidden_dim, dim,        w->w1_type, w->s1);
+        LOAD_PROJ(w->w2, "ffn_down.weight", dim,        hidden_dim, w->w2_type, w->s2);
+        LOAD_PROJ(w->w3, "ffn_up.weight",   hidden_dim, dim,        w->w3_type, w->s3);
+
+        /* BitNet sub-norms (before attn_output / ffn_down) — optional. */
+        snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_sub_norm.weight", l);
+        if (gguf_find_tensor(hdr, name_buf)) {
+            w->rms_attn_sub_norm[l] = norm_to_f32(hdr, name_buf, (size_t)dim, store);
+            if (!w->rms_attn_sub_norm[l]) return TN_ERR_INVALID_WEIGHTS;
+        }
+        snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_sub_norm.weight", l);
+        if (gguf_find_tensor(hdr, name_buf)) {
+            w->rms_ffn_sub_norm[l] = norm_to_f32(hdr, name_buf, (size_t)hidden_dim, store);
+            if (!w->rms_ffn_sub_norm[l]) return TN_ERR_INVALID_WEIGHTS;
+        }
 
 #undef LOAD_PROJ
     }
@@ -1489,13 +1533,27 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
         }
     }
 
-    /* 5. Set inference flags */
-    w->layers_are_ternary = false;
+    /* 5. Set inference flags. All-I2_S projections (BitNet GGUF) run on the
+     * ternary path; a mix of ternary and float projections has no kernel
+     * path, so it is refused rather than misdispatched. */
+    {
+        int n_tern = 0, n_proj = 0;
+        for (int l = 0; l < nl; l++) {
+            const int t7[7] = { w->wq_type[l], w->wk_type[l], w->wv_type[l], w->wo_type[l],
+                                w->w1_type[l], w->w2_type[l], w->w3_type[l] };
+            for (int k = 0; k < 7; k++) { n_proj++; n_tern += (t7[k] == WEIGHT_TYPE_TERNARY); }
+        }
+        if (n_tern && n_tern != n_proj) {
+            fprintf(stderr, "[gguf_loader] mixed I2_S and non-ternary projections are not supported\n");
+            return TN_ERR_UNSUPPORTED;
+        }
+        w->layers_are_ternary = (n_tern == n_proj && n_proj > 0);
+    }
     w->wcls_is_ternary    = false;
     w->wcls_scale         = 1.0f;
-    /* wq_type/wk_type/.../w3_type were set per-projection by LOAD_PROJ above */
-    /* sq/sk/sv/so/s1/s2/s3 remain 0.0f (unused in non-ternary path) */
-    /* rms_attn_sub_norm / rms_ffn_sub_norm remain NULL (not in standard llama) */
+    /* wq_type/wk_type/.../w3_type were set per-projection by LOAD_PROJ above;
+     * sq/sk/.../s3 hold the I2_S tensor scales on the ternary path (0 otherwise);
+     * rms_*_sub_norm are set only when the file has them (BitNet). */
 
     /* 6. Build INT8 / INT4 quantized classifier variants */
     weights_build_classifier_quant(w, cfg);

@@ -8,6 +8,7 @@
 #include "transformer/attn_tiled.h"
 #include "kv_cache/kv_quant_ops.h"
 #include "brand/block_font.h"
+#include "math/rope.h"
 #include "distributed/dist_plan.h"
 #include <stdio.h>
 #include "math/simd_dispatch.h"
@@ -156,6 +157,8 @@ char *api_config_json(const ApiContext *ctx) {
         jb_raw(&jb, ","); jb_key(&jb, "kv_offload");
         jb_raw(&jb, ctx && ctx->run_state && ctx->run_state->kv_offload_base ? "true" : "false");
         jb_raw(&jb, ","); jb_key(&jb, "attention_kernel"); jb_str(&jb, attn_kernel_name(attn_kernel_get()));
+        jb_raw(&jb, ","); jb_key(&jb, "rope_layout");
+        jb_str(&jb, rope_layout_name(ctx && ctx->cfg ? ctx->cfg->rope_layout : 0));
         jb_raw(&jb, ","); jb_key(&jb, "attention_tile"); jb_int(&jb, attn_tile_get());
         jb_raw(&jb, ","); jb_key(&jb, "attention_parallel_min_ctx"); jb_int(&jb, attn_parallel_min_ctx_get());
         jb_raw(&jb, ","); jb_key(&jb, "distributed"); jb_raw(&jb, "[");

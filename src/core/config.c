@@ -29,6 +29,7 @@ TernaryError config_read(Config *cfg, const void *mapped_ptr, size_t file_size) 
     cfg->bos_token_id = -1;  /* not stored in .bin format; set by GGUF loader */
     cfg->eos_token_id = -1;  /* not stored in .bin format; set by GGUF loader */
     cfg->rms_norm_eps = 1e-5f; /* default; overridden by GGUF loader */
+    cfg->rope_layout  = 0;     /* NORM: .bin converters emit llama-layout Q/K */
 
     /* RoPE scaling: .bin format predates YaRN — set safe defaults so apply_rope
      * behaves as standard (no-scaling) RoPE.  attn_factor=1.0 is critical: if left

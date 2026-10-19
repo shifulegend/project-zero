@@ -3,6 +3,17 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-18.
 
+### 2026-10-19 — Reference-engine parity: I2_S, NEOX RoPE, pre-tokenizer, perplexity
+- New: `core/gguf_i2s`, `GGUF_TYPE_I2_S`, `WEIGHT_TYPE_TERNARY`; `math/rope` NEOX +
+  `rope_layout_for_arch` + `--rope-layout`; `tokenizer/pretokenize` (+ `Tokenizer.pretok_type`);
+  `eval/perplexity` + `--perplexity --ppl-ctx --ppl-chunks`; `--raw-prompt`; `/v1/config
+  runtime.rope_layout`; tests `test_gguf_i2s`, `test_pretokenize`.
+- Fixed: sliding window auto-init in `transformer_forward*`; GGUF full-tensor bounds check;
+  `gguf_meta_str` static-buffer reuse in the tokenizer loader.
+- Verified: token-exact vs llama.cpp (8/8 × 4 models); PPL parity SmolLM2 63.84 vs 63.57;
+  BitNet PPL 253.0 (PZ) vs 419.8 (bitnet.cpp) on identical tokens; golden Paris (SmolLM2,
+  BitNet raw prompt). Reference engines built in `/home/user/ext` (not committed).
+
 ### 2026-10-18 — Block wordmark in the web UI (shared brand font)
 - New: `brand/block_font` (glyphs moved out of `cli/banner.c`), `tests/test_block_font.c`
   (golden = `docs/design/brand/project-zero-wordmark.txt`), `/v1/config ui.logo` +

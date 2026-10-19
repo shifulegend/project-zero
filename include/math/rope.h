@@ -37,4 +37,22 @@ void apply_rope(float *q, float *k, const float *freq,
                 float freq_scale, float ext_factor, float attn_factor,
                 const float corr[2]);
 
+/* Pair layout of the rotary embedding — which two dimensions rotate together.
+ * NORM: (v[2i], v[2i+1]) — llama-family GGUFs (the converter permutes Q/K).
+ * NEOX: (v[i], v[i+d/2]) — "rotate half": Qwen2/3, Phi, Gemma, StableLM,
+ * BitNet b1.58 GGUFs, ... (llama.cpp's LLAMA_ROPE_TYPE_NEOX group). */
+typedef enum { ROPE_LAYOUT_NORM = 0, ROPE_LAYOUT_NEOX = 1 } RopeLayout;
+
+/* apply_rope with an explicit layout (apply_rope == ROPE_LAYOUT_NORM). */
+void apply_rope_ex(float *q, float *k, const float *freq,
+                   int head_dim, int pos, int n_heads, int n_kv_heads,
+                   float freq_scale, float ext_factor, float attn_factor,
+                   const float corr[2], int layout);
+
+/* Layout a GGUF general.architecture string uses (mirrors llama.cpp's
+ * llama_model_rope_type for the architectures this engine can load). */
+int rope_layout_for_arch(const char *arch);
+const char *rope_layout_name(int layout);
+int rope_layout_parse(const char *s); /* "norm" | "neox" -> layout, -1 otherwise */
+
 #endif /* TN_ROPE_H */

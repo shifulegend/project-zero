@@ -5,6 +5,35 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-10-18.
 
+### 2026-10-19 — Found by benchmarking against the reference engines (llama.cpp, bitnet.cpp)
+
+Installing llama.cpp and bitnet.cpp for head-to-head runs exposed six pre-existing gaps:
+
+- **Official BitNet GGUF could not load.** Plan 34.2b was marked ✅ while its I2_S sub-item
+  (34.2b.2) still said PLANNED; the ternary engine rejected tensor type 36. Fixed: lossless I2_S
+  → packed-ternary repack (`core/gguf_i2s`), sub-norms + ReLU² + ternary path for arch
+  `bitnet-b1.58`. Lesson: a phase ✅ must be checked against every sub-item's status line.
+- **RoPE pair layout ignored the architecture.** Every GGUF used NORM (adjacent pairs); llama.cpp
+  uses NEOX (rotate-half) for Qwen2/3, Phi, Gemma, StableLM, BitNet, ... (their Q/K are not
+  permuted at conversion). Fixed: `Config.rope_layout` from `rope_layout_for_arch()`,
+  `apply_rope_ex()`, `--rope-layout` override. BitNet output went from truncated to fluent.
+- **No BPE pre-tokenization.** BPE ran over whole segments, merging across word/digit/punctuation
+  boundaries (`?\n\n` as one token). Fixed: `tokenizer/pretokenize` ports llama.cpp's splitters,
+  selected by `tokenizer.ggml.pre` ("default" when absent); 8/8 token-exact vs llama.cpp on four
+  models (BitNet, SmolLM2, Qwen3, Mamba).
+- **Direct `transformer_forward()` callers got an uninitialised sliding window** (second time,
+  after the Phase 28 worker): every position mapped to slot 0. Now initialised on first use.
+- **GGUF tensors were bounds-checked by start offset only** — a truncated file gave kernels a
+  pointer running past the mapping. Now the whole tensor must fit (Q2_0 excepted, size
+  informational).
+- **`gguf_meta_str()` returns a shared static buffer**; a second call silently changed the
+  first result (seen as `tokenizer: smollm (smollm)` in the log). Callers that keep the value
+  now copy it.
+- Still open (documented, not silently skipped): Qwen2 Q/K/V **bias** tensors are not loaded
+  (Qwen2.5 produces garbage — loader should refuse or support them) and models whose
+  `attention.key_length` ≠ dim/n_heads (e.g. Qwen3-0.6B) take the wrong head_dim on the
+  generic path. Both are tracked in IMPLEMENTATION_PLAN under 34.2b.
+
 ### 2026-10-18 — Three pre-existing bugs found while building the updater (Phase 38)
 
 - **Calibration replaced the CPU's best kernel with "scalar".** `tn_calibrate()` benchmarked only

@@ -74,7 +74,7 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
 
     int n_prompt = 0;
 
-    if (tok->chat_template) {
+    if (tok->chat_template && !gp->raw_prompt) {
         /* ── GGUF path: apply the model's own Jinja2 chat template ─────────
          * The template itself renders BOS ({{ bos_token }}) so we must NOT
          * prepend it manually — that would produce a double-BOS. */
@@ -138,7 +138,7 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
             return;
         }
     } else {
-        /* ── Legacy path: raw prompt + manual BOS ───────────────────────── */
+        /* ── Legacy path / --raw-prompt: raw prompt + manual BOS ─────────── */
         int bos = (cfg->bos_token_id > 0)   ? cfg->bos_token_id
                 : (tok->bos_token_id >= 0)  ? tok->bos_token_id
                 : -1;

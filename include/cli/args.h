@@ -26,6 +26,11 @@ typedef struct {
     int num_threads;
     bool enable_reasoning;
     bool json_mode;           /* Phase 20: --json forces syntactically valid JSON output */
+    bool raw_prompt;          /* --raw-prompt: no chat template, prompt fed verbatim */
+    int  rope_layout;         /* --rope-layout auto|norm|neox: -1 = from GGUF arch */
+    char *perplexity_file;    /* --perplexity <file>: evaluate PPL, then exit */
+    int  ppl_ctx;             /* --ppl-ctx <n>: tokens per chunk (512) */
+    int  ppl_chunks;          /* --ppl-chunks <n>: 0 = all */
     bool verbose;
     int seed;
     int classifier_override;  /* -1 = auto (BF16 default), 0 = BF16, 1 = INT8, 2 = INT4,

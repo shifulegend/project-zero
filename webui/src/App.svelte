@@ -47,7 +47,6 @@
 <div class="shell">
   <header class="topbar">
     <div class="brand">
-      <span class="brand-mark">&gt;_</span>
       {#if logoAscii}
         <AsciiLogo rows={logoAscii} label={brand} size="sm" />
       {:else}
@@ -158,11 +157,6 @@
     gap: 0.5rem;
     font-weight: 600;
     font-size: 1.05rem;
-  }
-
-  .brand-mark {
-    font-family: ui-monospace, Menlo, Consolas, monospace;
-    color: var(--accent);
   }
 
   .topbar-actions {

@@ -89,5 +89,6 @@ should degrade to a single clean line off-TTY, never leak raw escape codes into 
   tinted with the accent — never a raster image with a baked-in background, never a gradient.
 - One font, two renderers: `src/brand/block_font.c` feeds both the CLI banner and the web UI
   (`ui.logo_ascii`), pinned by `tests/test_block_font.c` to the reference ASCII.
-- Top bar: `>_` + compact wordmark; empty chat state: large wordmark above the prompt line.
+- Top bar: the compact wordmark alone (no `>_` prefix — removed 2026-10-19 at the owner's request);
+  empty chat state: large wordmark above the prompt line.
   `--ui-logo text` (or an unspellable `--ui-title`) falls back to the text name.

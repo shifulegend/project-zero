@@ -57,7 +57,7 @@ def gen_toks(text):
     if m:
         return float(m.group(1)), int(m.group(2))
     # llama.cpp / bitnet.cpp (common_perf_print): "eval time = X ms / N runs (... , T tokens per second)"
-    m = re.search(r"\beval time =\s*[\d.]+ ms /\s*(\d+) (?:runs|tokens)\s*\([^,]+,\s*([\d.]+) tokens per second", text)
+    m = re.search(r"(?<!prompt )\beval time =\s*[\d.]+ ms /\s*(\d+) (?:runs|tokens)\s*\([^,]+,\s*([\d.]+) tokens per second", text)
     if m:
         return float(m.group(2)), int(m.group(1)) + 1   # + the token sampled from the prompt pass
     return None, None

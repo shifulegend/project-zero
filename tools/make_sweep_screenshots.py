@@ -91,7 +91,7 @@ def extract_llama_speeds(text):
 def extract_perf_print(text):
     """llama.cpp / bitnet.cpp common_perf_print: (prompt tok/s, generation tok/s)."""
     p = re.search(r'prompt eval time =.*?([\d.]+) tokens per second', text)
-    g = re.search(r'\beval time =\s*[\d.]+ ms /\s*\d+ (?:runs|tokens).*?([\d.]+) tokens per second', text)
+    g = re.search(r'(?<!prompt )\beval time =\s*[\d.]+ ms /\s*\d+ (?:runs|tokens).*?([\d.]+) tokens per second', text)
     return (p.group(1) if p else "N/A"), (g.group(1) if g else "N/A")
 
 def extract_date(text):

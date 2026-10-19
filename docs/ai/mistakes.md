@@ -5,6 +5,18 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-10-18.
 
+### 2026-10-19 — A container restart moved the benchmark to different hardware
+
+- The head-to-head sweep's `system_info.txt` was written on an Xeon @ 2.10 GHz (model 207,
+  AVX-VNNI/AMX); after a container restart the run continued on an Xeon @ 2.80 GHz (model 85,
+  Cascade Lake — no AVX-VNNI, no AMX). Only the date/commit lines of the profile were refreshed,
+  so it described the wrong machine, and the `-march=native` builds of llama.cpp/bitnet.cpp
+  from the old host died with SIGILL on every run (recorded as missing results, not crashes).
+- Fixes: `bench_sweep_seq.py` writes `HOST_CPU:` into every run file; the system profile is
+  regenerated in full on the host that runs the sweep; native reference builds are rebuilt after
+  any restart. Lesson: in cloud sessions, a restart can change the CPU — never reuse a hardware
+  profile or a native binary across one, and treat a non-zero exit as a failed run, not a slow one.
+
 ### 2026-10-19 — Found by benchmarking against the reference engines (llama.cpp, bitnet.cpp)
 
 Installing llama.cpp and bitnet.cpp for head-to-head runs exposed nine pre-existing gaps:

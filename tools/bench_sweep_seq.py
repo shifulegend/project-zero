@@ -32,6 +32,22 @@ PROMPT = ("Explain what machine learning is and how neural networks work. Discus
 ENGINE = "./adaptive_ai_engine"
 
 
+def host_cpu():
+    """CPU model string — recorded per run because cloud containers can be moved to
+    different hardware by a restart (2026-10-19: a sweep's host changed mid-way)."""
+    try:
+        with open("/proc/cpuinfo") as f:
+            name = next((l.split(":", 1)[1].strip() for l in f if l.startswith("model name")), "?")
+        with open("/proc/cpuinfo") as f:
+            model = next((l.split(":", 1)[1].strip() for l in f if l.startswith("model\t")), "?")
+        return f"{name} (model {model}, {os.cpu_count()} vCPU)"
+    except OSError:
+        return "unknown"
+
+
+HOST_CPU = host_cpu()
+
+
 def parse_threads(spec):
     if "-" in spec:
         a, b = spec.split("-", 1)
@@ -142,15 +158,16 @@ def main():
                 ptps = prompt_toks(text)
                 stamp = datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
                 with open(os.path.join(tdir, f"run{r}.txt"), "w") as f:
-                    f.write(f"=== {name} t={t} run {r} ===\nDATE: {stamp}\nCMD: {' '.join(cmd)}\n"
+                    f.write(f"=== {name} t={t} run {r} ===\nDATE: {stamp}\nHOST_CPU: {HOST_CPU}\nCMD: {' '.join(cmd)}\n"
                             f"PROMPT: {a.prompt}\n{'=' * 60}\n{text}\n"
                             f"PERF: wall={wall:.2f}s max_rss={rss:.0f}MB cpu={cpu:.0f}% exit={rc}\n"
                             + (f"PROMPT_TPS: {ptps}\n" if ptps else ""))
                 sw.writerow([name, t, r, tps if tps is not None else "", ntok or "", f"{wall:.2f}",
                              f"{rss:.0f}", f"{cpu:.0f}", rc])
                 sf.flush()
+                status = "" if rc == 0 else f"  FAILED (exit {rc}{', signal' if rc < 0 else ''})"
                 print(f"  t={t} run {r}: {tps} tok/s ({ntok} tok)  wall {wall:.1f}s  rss {rss:.0f}MB  "
-                      f"cpu {cpu:.0f}%", flush=True)
+                      f"cpu {cpu:.0f}%{status}", flush=True)
                 if tps is not None and (best is None or tps > best):
                     best = tps
                 time.sleep(a.cooldown)

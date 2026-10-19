@@ -25,6 +25,8 @@ Adapter for `docs/ai/engineering-rules.md` — read the canonical file for full 
   uses `MADV_DONTNEED` on Linux — no full memset). Benchmarks report wall time + RSS too.
 - GGUF stop tokens: `tokenizer_collect_eog()` (declared EOS/EOT/EOM + end-of-turn control
   tokens). Generation loops must check all of `tok->eos_list`, not just `eos_token_id`.
+- LoRA: every attention/FFN path that runs a projection must apply `s->active_lora` (single and
+  batched); Q width is `q_dim` (n_heads*head_dim) — not `dim` — on Qwen3.
 - Generic KV may be quantized (`RunState.kv_type` I8 or I4: `key_cache` is NULL; row r =
   `KV_SCALE_IDX` lives at `key_cache_q + r*kv_row_bytes`, scales at `key_scale + r*kv_row_scales`;
   use `kvq_store/kvq_dot_row/kvq_axpy_row`). Any new reader/writer of the dense KV cache must handle all.

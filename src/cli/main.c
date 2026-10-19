@@ -670,7 +670,12 @@ int main(int argc, char **argv) {
     LoRAWeights lora;
     bool lora_active = false;
     if (args.lora_path) {
-        if (lora_load(&lora, args.lora_path, p.dim, config_kv_dim(&p), p.hidden_dim, p.n_layers) != TN_OK) {
+        /* Qwen3 (QK-norm path) has head_dim from GGUF key_length, so its Q
+         * is n_heads*head_dim wide, not dim (Phase 19-B, 2026-10-19). */
+        int lhd = (mc.has_qk_norm && mc.attn_head_dim > 0) ? mc.attn_head_dim : 0;
+        int l_q_dim = lhd ? p.n_heads * lhd : p.dim;
+        int l_kv_dim = lhd ? p.n_kv_heads * lhd : config_kv_dim(&p);
+        if (lora_load_ex(&lora, args.lora_path, p.dim, l_q_dim, l_kv_dim, p.hidden_dim, p.n_layers) != TN_OK) {
             fprintf(stderr, "Error: failed to load --lora '%s'.\n", args.lora_path);
             if (draft_active) draft_model_free(&draft_model);
             prm_free(&prm);
@@ -690,6 +695,8 @@ int main(int argc, char **argv) {
         }
         lora_active = true;
         s->active_lora = &lora;
+        fprintf(stderr, "[lora] '%s' active (rank %d, alpha %.1f, q_dim %d, kv_dim %d)\n",
+                args.lora_path, lora.rank, (double)lora.alpha, l_q_dim, l_kv_dim);
     }
 
     /* ── Phase 15: RAG initialisation ────────────────────────────────────── */

@@ -23,4 +23,10 @@
 void lora_apply(float *out, const float *x, const LoRAModule *mod,
                  int n, int d, ThreadPool *tp);
 
+/* lora_apply() on each of n_tokens rows (out row stride d, x row stride n):
+ * the batched speculative-decoding verify pass (2026-10-19 — it skipped the
+ * adapter, so --lora + --draft-model verified against the base model). */
+void lora_apply_batch(float *out, const float *x, const LoRAModule *mod,
+                      int n, int d, int n_tokens, ThreadPool *tp);
+
 #endif /* TN_LORA_MATMUL_H */

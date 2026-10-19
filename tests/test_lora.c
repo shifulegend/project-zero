@@ -321,6 +321,55 @@ static void test_lora_load_gqa_kv_shape(void) {
   remove(path);
 }
 
+/* Phase 19-B (2026-10-19): Qwen3's Q is n_heads*head_dim wide (q_dim != dim);
+ * header [36:40] carries it, O then maps q_dim -> dim. */
+static void test_lora_load_q_dim(void) {
+  const char *path = "/tmp/tn_test_lora_qdim.bin";
+  int n_layers = 1, dim = 8, q_dim = 12, kv_dim = 4, hidden_dim = 16, rank = 2;
+  float q_a[2 * 8], q_b[12 * 2], o_a[2 * 12], o_b[8 * 2];
+  for (int i = 0; i < 16; i++) q_a[i] = 0.01f * (float)(i + 1);
+  for (int i = 0; i < 24; i++) { q_b[i] = -0.02f * (float)(i + 1); o_a[i] = 0.03f * (float)(i + 1); }
+  for (int i = 0; i < 16; i++) o_b[i] = 0.04f * (float)(i + 1);
+  for (int pass = 0; pass < 2; pass++) {
+    FILE *f = fopen(path, "wb");
+    uint32_t magic = LORA_BIN_MAGIC, version = 1;
+    int32_t hdr[8] = { n_layers, rank, 0, dim, hidden_dim,
+                       (1 << LORA_TARGET_Q) | (1 << LORA_TARGET_O), kv_dim, pass == 0 ? q_dim : 0 };
+    float alpha = 2.0f;
+    uint8_t zero[24] = {0};
+    fwrite(&magic, 4, 1, f); fwrite(&version, 4, 1, f);
+    fwrite(&hdr[0], 4, 2, f); fwrite(&alpha, 4, 1, f); fwrite(&hdr[3], 4, 5, f);
+    fwrite(zero, 1, 24, f);
+    if (pass == 0) {
+      write_f16_block(f, q_a, 16); write_f16_block(f, q_b, 24);
+      write_f16_block(f, o_a, 24); write_f16_block(f, o_b, 16);
+    } else {   /* legacy file: q_dim 0 = dim */
+      write_f16_block(f, q_a, 16); write_f16_block(f, q_a, 16);
+      write_f16_block(f, q_a, 16); write_f16_block(f, q_a, 16);
+    }
+    fclose(f);
+    LoRAWeights lora;
+    if (pass == 0) {
+      TEST_ASSERT_EQ(lora_load_ex(&lora, path, dim, q_dim, kv_dim, hidden_dim, n_layers), TN_OK,
+                     "q_dim file loads with the matching model q_dim");
+      const LoRAModule *q = lora_mod(lora.q, 0), *o = lora_mod(lora.o, 0);
+      TEST_ASSERT(q && o, "q and o present");
+      TEST_ASSERT_FLOAT_EQ(q->B[23], q_b[23], 5e-3f, "Q's B is q_dim x rank");
+      TEST_ASSERT_FLOAT_EQ(o->A[23], o_a[23], 5e-3f, "O's A is rank x q_dim");
+      TEST_ASSERT_FLOAT_EQ(o->B[15], o_b[15], 5e-3f, "O's B is dim x rank");
+      lora_free(&lora);
+      TEST_ASSERT(lora_load_ex(&lora, path, dim, dim, kv_dim, hidden_dim, n_layers) != TN_OK,
+                  "q_dim mismatch refused");
+      lora_free(&lora);
+    } else {
+      TEST_ASSERT_EQ(lora_load(&lora, path, dim, kv_dim, hidden_dim, n_layers), TN_OK,
+                     "legacy file (q_dim 0) loads as q_dim = dim");
+      lora_free(&lora);
+    }
+  }
+  remove(path);
+}
+
 static void test_lora_load_rejects_bad_magic(void) {
   const char *path = "/tmp/tn_test_lora_badmagic.bin";
   FILE *f = fopen(path, "wb");
@@ -573,6 +622,7 @@ int main(void) {
   RUN_TEST(test_lora_load_rejects_kv_dim_mismatch);
   RUN_TEST(test_lora_load_gqa_kv_shape);
   RUN_TEST(test_lora_load_rejects_bad_magic);
+  RUN_TEST(test_lora_load_q_dim);
   RUN_TEST(test_forward_lora_null_is_byte_identical);
   RUN_TEST(test_forward_lora_active_changes_output);
 

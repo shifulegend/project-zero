@@ -159,6 +159,10 @@ TernaryError ffn_forward_batch(RunState *s, SpecBatchScratch *sb,
         tn_dense_matmul_dispatch_batch(sb->hb2, sb->xb, w->w3[layer], w->w3_type[layer],
                                         dim, hidden_dim, n_tokens, tp);
     }
+    if (s->active_lora) {      /* Phase 19: gate/up deltas, as the single-token path */
+        lora_apply_batch(sb->hb,  sb->xb, lora_mod(s->active_lora->gate, layer), dim, hidden_dim, n_tokens, tp);
+        lora_apply_batch(sb->hb2, sb->xb, lora_mod(s->active_lora->up,   layer), dim, hidden_dim, n_tokens, tp);
+    }
 
     /* Activation + SwiGLU gate: purely elementwise, so one call spanning
      * the full n_tokens*hidden_dim block is equivalent to n_tokens
@@ -184,6 +188,8 @@ TernaryError ffn_forward_batch(RunState *s, SpecBatchScratch *sb,
         tn_dense_matmul_dispatch_batch(sb->xb, sb->hb, w->w2[layer], w->w2_type[layer],
                                         hidden_dim, dim, n_tokens, tp);
     }
+    if (s->active_lora)
+        lora_apply_batch(sb->xb, sb->hb, lora_mod(s->active_lora->down, layer), hidden_dim, dim, n_tokens, tp);
 
     tn_vec_add(sb->x, sb->x, sb->xb, n_tokens * dim);
     if (t_step) {

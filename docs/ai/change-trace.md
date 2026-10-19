@@ -3,6 +3,11 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-19.
 
+### 2026-10-19 — LoRA (19-B): batched spec-decode path + Qwen3 attention
+- Fixed: `--lora --draft-model` verified against the base model (batched path skipped LoRA).
+- New: Qwen3 Q/K/V/O deltas; adapter header `q_dim` (`lora_load_ex`, converter `--q-dim`);
+  load notice. Tests: `test_dense_batch_matches_sequential_with_lora`, `test_lora_load_q_dim`.
+
 ### 2026-10-19 — Phase 30 complete: PRM judge + step-level MCTS
 - New: `reasoning/prm`, `reasoning/mcts`, `reasoning/mcts_options`; `GenerationParams.assistant_prefix`,
   `GenerationStats.hit_eos`; CLI `--mcts* --prm*`, request `"mcts"`, `/v1/config` mcts fields,

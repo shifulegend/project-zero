@@ -5,6 +5,17 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-10-18.
 
+### 2026-10-19 — LoRA skipped by the batched verify pass and by Qwen3 attention
+
+- `--lora` with `--draft-model`: `attention_forward_batch()`/`ffn_forward_batch()` never read
+  `s->active_lora`, so speculative decoding accepted draft tokens by the *base* model's verdict and
+  wrote un-adapted K/V. The plan listed "batched" under a 19-B follow-up as a coverage gap; it was a
+  correctness bug for a supported flag combination. Fixed with `lora_apply_batch()`.
+- Qwen3 (dense and MoE) runs `qwen3moe_attention_forward*`, which had no LoRA calls; its Q is
+  `n_heads*head_dim` wide, which the adapter format could not describe. Header `[36:40] q_dim` added
+  (0 = dim, backward compatible). Lesson: a "follow-up" scope note must say whether the excluded
+  path silently changes results for a flag users can already pass — that makes it a bug.
+
 ### 2026-10-19 — Startup cost 20–70 s: found only by timing wall clock against llama.cpp
 
 The head-to-head sweep reported near-parity decode tok/s, but Project Zero's wall time was 3–4×

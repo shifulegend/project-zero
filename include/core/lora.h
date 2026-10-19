@@ -29,7 +29,9 @@
  *   [28:32] target_mask   (int32) -- bitmask, see LoRaTargetBit below
  *   [32:36] kv_dim        (int32) -- base model's GQA kv_dim (config_kv_dim();
  *                                    == dim for a non-GQA/MHA model)
- *   [36:64] reserved (zeroes, pad to 64-byte alignment)
+ *   [36:40] q_dim         (int32) -- Q output / O input width (n_heads*head_dim);
+ *                            0 = dim (files before 2026-10-19; Qwen3 has q_dim != dim)
+ *   [40:64] reserved (zeroes, pad to 64-byte alignment)
  *   For each bit set in target_mask, in LoRaTargetBit order, n_layers blocks
  *   of (A then B), float16, row-major:
  *     A [rank x n]   -- n = dim for Q/K/V/O, hidden_dim for DOWN, dim for GATE/UP
@@ -109,6 +111,10 @@ static inline const LoRAModule *lora_mod(const LoRAModule *arr, int layer) {
  * as MappedFile). */
 TernaryError lora_load(LoRAWeights *lora, const char *path,
                         int dim, int kv_dim, int hidden_dim, int n_layers);
+/* As lora_load() with the base model's Q width (n_heads * head_dim): equal
+ * to dim for most models, wider on Qwen3 (head_dim from GGUF key_length). */
+TernaryError lora_load_ex(LoRAWeights *lora, const char *path, int dim, int q_dim,
+                          int kv_dim, int hidden_dim, int n_layers);
 void lora_free(LoRAWeights *lora);
 
 #endif /* TN_LORA_H */

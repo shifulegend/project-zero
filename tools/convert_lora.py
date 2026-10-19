@@ -101,6 +101,9 @@ def main():
                          help="Base model's FFN hidden_dim (Config.hidden_dim)")
     parser.add_argument("--n-layers", type=int, required=True,
                          help="Base model's layer count (Config.n_layers)")
+    parser.add_argument("--q-dim", type=int, default=None,
+                         help="Base model's Q width (n_heads * head_dim). Differs from --dim on "
+                              "Qwen3 (head_dim from attention.key_length); defaults to --dim.")
     parser.add_argument("--kv-dim", type=int, default=None,
                          help="Base model's GQA kv_dim (n_kv_heads * head_dim — printed as "
                               "'kv_dim' in the base GGUF's startup banner). Required when the "
@@ -110,6 +113,7 @@ def main():
                               "Defaults to --dim (correct only for a non-GQA/MHA base model).")
     args = parser.parse_args()
     kv_dim = args.kv_dim if args.kv_dim is not None else args.dim
+    q_dim = args.q_dim if args.q_dim is not None else args.dim
     if args.kv_dim is None and ({"k_proj", "v_proj"} & set(json.load(
             open(os.path.join(args.adapter, "adapter_config.json"))).get("target_modules", []))):
         print(f"warning: adapter targets k_proj/v_proj but --kv-dim was not given — "
@@ -148,7 +152,7 @@ def main():
     print(f"adapter: {args.adapter}")
     print(f"  rank={rank} alpha={alpha} scale={alpha/rank:.4f}")
     print(f"  target_modules={sorted(hf_target_modules)} -> mask=0x{target_mask:02x}")
-    print(f"  base model shape: dim={args.dim} kv_dim={kv_dim} hidden_dim={args.hidden_dim} n_layers={args.n_layers}")
+    print(f"  base model shape: dim={args.dim} q_dim={q_dim} kv_dim={kv_dim} hidden_dim={args.hidden_dim} n_layers={args.n_layers}")
 
     with safe_open(weights_path, framework="numpy", device="cpu") as st:
         keys = list(st.keys())
@@ -163,7 +167,8 @@ def main():
             out.write(struct.pack("<i", args.hidden_dim))
             out.write(struct.pack("<i", target_mask))
             out.write(struct.pack("<i", kv_dim))
-            out.write(b"\x00" * 28)  # reserved, pad header to 64 bytes
+            out.write(struct.pack("<i", q_dim if q_dim != args.dim else 0))  # 0 = dim
+            out.write(b"\x00" * 24)  # reserved, pad header to 64 bytes
             assert out.tell() == 64
 
             for hf_name, bit in TARGETS:

@@ -21,6 +21,7 @@
 #include "math/simd_dispatch.h"
 #include "speculative/spec_scratch.h"
 #include "transformer/forward.h"
+#include "core/lora.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -192,6 +193,81 @@ static void test_dense_batch_matches_sequential(void) {
     spec_batch_scratch_free(&sb);
     run_state_free(&s_ref);
     run_state_free(&s_batch);
+    free_dense_ternary_model(&w);
+}
+
+/* 2026-10-19: the batched verify pass ignored an active LoRA adapter, so
+ * --lora with --draft-model verified against the base model. With every
+ * target module set (q/k/v/o/gate/up/down), batched must equal sequential. */
+static LoRAModule *lora_modules(int n_layers, int in, int out, int rank, unsigned seed) {
+    LoRAModule *m = (LoRAModule *)calloc((size_t)n_layers, sizeof(LoRAModule));
+    for (int l = 0; l < n_layers; l++) {
+        float *A = (float *)malloc((size_t)rank * in * sizeof(float));
+        float *B = (float *)malloc((size_t)out * rank * sizeof(float));
+        for (int i = 0; i < rank * in; i++) A[i] = 0.05f * (float)((int)((seed + 7u * i) % 13u) - 6);
+        for (int i = 0; i < out * rank; i++) B[i] = 0.05f * (float)((int)((seed + 5u * i) % 11u) - 5);
+        m[l].A = A; m[l].B = B; m[l].rank = rank; m[l].scale = 2.0f;
+    }
+    return m;
+}
+
+static void lora_modules_free(LoRAModule *m, int n_layers) {
+    for (int l = 0; l < n_layers; l++) { free((void *)m[l].A); free((void *)m[l].B); }
+    free(m);
+}
+
+static void test_dense_batch_matches_sequential_with_lora(void) {
+    tn_simd_init();
+    Config cfg;
+    TransformerWeights w;
+    build_dense_ternary_model(&cfg, &w);
+    int kv_dim = config_kv_dim(&cfg);
+    LoRAWeights lora;
+    memset(&lora, 0, sizeof(lora));
+    lora.n_layers = cfg.n_layers; lora.rank = 2; lora.alpha = 4.0f;
+    lora.dim = cfg.dim; lora.hidden_dim = cfg.hidden_dim;
+    lora.q = lora_modules(cfg.n_layers, cfg.dim, cfg.dim, 2, 1);
+    lora.k = lora_modules(cfg.n_layers, cfg.dim, kv_dim, 2, 2);
+    lora.v = lora_modules(cfg.n_layers, cfg.dim, kv_dim, 2, 3);
+    lora.o = lora_modules(cfg.n_layers, cfg.dim, cfg.dim, 2, 4);
+    lora.gate = lora_modules(cfg.n_layers, cfg.dim, cfg.hidden_dim, 2, 5);
+    lora.up = lora_modules(cfg.n_layers, cfg.dim, cfg.hidden_dim, 2, 6);
+    lora.down = lora_modules(cfg.n_layers, cfg.hidden_dim, cfg.dim, 2, 7);
+
+    const int n_tokens = 3;
+    int tokens[3] = {1, 4, 2};
+    RunState s_ref, s_base, s_batch;
+    run_state_alloc(&s_ref, &cfg, cfg.seq_len);
+    run_state_alloc(&s_base, &cfg, cfg.seq_len);
+    run_state_alloc(&s_batch, &cfg, cfg.seq_len);
+    sw_init(&s_ref.sw, cfg.seq_len, 0);
+    sw_init(&s_base.sw, cfg.seq_len, 0);
+    sw_init(&s_batch.sw, cfg.seq_len, 0);
+    s_ref.active_lora = &lora;
+    s_batch.active_lora = &lora;
+    float ref[3][D_VOCAB], base[3][D_VOCAB], batch[3][D_VOCAB];
+    for (int k = 0; k < n_tokens; k++) {
+        memcpy(ref[k], transformer_forward(tokens[k], k, &cfg, &w, &s_ref, NULL, NULL), sizeof(ref[k]));
+        memcpy(base[k], transformer_forward(tokens[k], k, &cfg, &w, &s_base, NULL, NULL), sizeof(base[k]));
+    }
+    SpecBatchScratch sb;
+    TEST_ASSERT(spec_batch_scratch_alloc(&sb, &cfg, n_tokens) == TN_OK, "scratch");
+    TEST_ASSERT(transformer_forward_batch(tokens, 0, n_tokens, &cfg, &w, &s_batch, &sb, NULL, NULL,
+                                          (float *)batch) == TN_OK, "batched forward");
+    int match = 1, differs = 0;
+    for (int k = 0; k < n_tokens; k++)
+        for (int i = 0; i < D_VOCAB; i++) {
+            if (fabsf(ref[k][i] - batch[k][i]) > TOL) match = 0;
+            if (fabsf(ref[k][i] - base[k][i]) > 1e-4f) differs = 1;
+        }
+    TEST_ASSERT(differs, "the adapter changes the sequential logits");
+    TEST_ASSERT(match, "batched forward applies the same LoRA deltas as sequential");
+    spec_batch_scratch_free(&sb);
+    run_state_free(&s_ref); run_state_free(&s_base); run_state_free(&s_batch);
+    lora_modules_free(lora.q, cfg.n_layers); lora_modules_free(lora.k, cfg.n_layers);
+    lora_modules_free(lora.v, cfg.n_layers); lora_modules_free(lora.o, cfg.n_layers);
+    lora_modules_free(lora.gate, cfg.n_layers); lora_modules_free(lora.up, cfg.n_layers);
+    lora_modules_free(lora.down, cfg.n_layers);
     free_dense_ternary_model(&w);
 }
 
@@ -536,6 +612,7 @@ int main(void) {
     setenv("TN_FORCE_BACKEND", "avx2", 1);
 
     RUN_TEST(test_dense_batch_matches_sequential);
+    RUN_TEST(test_dense_batch_matches_sequential_with_lora);
     RUN_TEST(test_mla_batch_matches_sequential);
     RUN_TEST(test_qwen3moe_batch_matches_sequential);
     RUN_TEST(test_linear_attn_returns_unsupported);

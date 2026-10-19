@@ -73,7 +73,13 @@ static void free_module_array(LoRAModule *arr, int n_layers) {
 
 TernaryError lora_load(LoRAWeights *lora, const char *path,
                         int dim, int kv_dim, int hidden_dim, int n_layers) {
+    return lora_load_ex(lora, path, dim, dim, kv_dim, hidden_dim, n_layers);
+}
+
+TernaryError lora_load_ex(LoRAWeights *lora, const char *path, int dim, int q_dim,
+                          int kv_dim, int hidden_dim, int n_layers) {
     if (!lora || !path) return TN_ERR_INVALID_ARGS;
+    if (q_dim <= 0) q_dim = dim;
     memset(lora, 0, sizeof(*lora));
 
     MappedFile mf;
@@ -105,21 +111,23 @@ TernaryError lora_load(LoRAWeights *lora, const char *path,
     int   file_hidden_dim = rd32s(d, 24);
     int   target_mask     = rd32s(d, 28);
     int   file_kv_dim      = rd32s(d, 32);
+    int   file_q_dim       = rd32s(d, 36);
+    if (file_q_dim == 0) file_q_dim = file_dim;   /* pre-2026-10-19 files */
 
     if (file_n_layers < 1 || file_n_layers > 512 || rank < 1 || rank > 4096 ||
         file_dim < 1 || file_dim > 65536 || file_hidden_dim < 0 || file_hidden_dim > 262144 ||
-        file_kv_dim < 1 || file_kv_dim > 65536) {
+        file_kv_dim < 1 || file_kv_dim > 65536 || file_q_dim < 1 || file_q_dim > 262144) {
         fprintf(stderr, "[lora] invalid header (n_layers=%d rank=%d dim=%d kv_dim=%d hidden_dim=%d)\n",
                 file_n_layers, rank, file_dim, file_kv_dim, file_hidden_dim);
         goto fail;
     }
     if (file_n_layers != n_layers || file_dim != dim || file_hidden_dim != hidden_dim ||
-        file_kv_dim != kv_dim) {
+        file_kv_dim != kv_dim || file_q_dim != q_dim) {
         fprintf(stderr, "[lora] '%s' was built for a different base model "
-                "(file: n_layers=%d dim=%d kv_dim=%d hidden_dim=%d; "
-                "model: n_layers=%d dim=%d kv_dim=%d hidden_dim=%d)\n",
-                path, file_n_layers, file_dim, file_kv_dim, file_hidden_dim,
-                n_layers, dim, kv_dim, hidden_dim);
+                "(file: n_layers=%d dim=%d q_dim=%d kv_dim=%d hidden_dim=%d; "
+                "model: n_layers=%d dim=%d q_dim=%d kv_dim=%d hidden_dim=%d)\n",
+                path, file_n_layers, file_dim, file_q_dim, file_kv_dim, file_hidden_dim,
+                n_layers, dim, q_dim, kv_dim, hidden_dim);
         goto fail;
     }
 
@@ -137,10 +145,10 @@ TernaryError lora_load(LoRAWeights *lora, const char *path,
      * on this project's own demo model (n_kv_heads=3 < n_heads=9), see
      * docs/ai/mistakes.md, 2026-09-24 entry. */
     const LoraTargetSpec specs[LORA_TARGET_COUNT] = {
-        { LORA_TARGET_Q,    &lora->q,    dim,        dim        },
+        { LORA_TARGET_Q,    &lora->q,    dim,        q_dim      },
         { LORA_TARGET_K,    &lora->k,    dim,        kv_dim     },
         { LORA_TARGET_V,    &lora->v,    dim,        kv_dim     },
-        { LORA_TARGET_O,    &lora->o,    dim,        dim        },
+        { LORA_TARGET_O,    &lora->o,    q_dim,      dim        },
         { LORA_TARGET_GATE, &lora->gate, dim,        hidden_dim },
         { LORA_TARGET_UP,   &lora->up,   dim,        hidden_dim },
         { LORA_TARGET_DOWN, &lora->down, hidden_dim, dim        },

@@ -485,6 +485,12 @@ TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb,
     tn_dense_matmul_dispatch_batch(v_buf_all, sb->xb, w->wv[layer], w->wv_type[layer],
                                     dim, kv_dim, n_tokens, tp);
   }
+  /* Phase 19: same LoRA deltas as the single-token path, per row. */
+  if (s->active_lora) {
+    lora_apply_batch(sb->q,     sb->xb, lora_mod(s->active_lora->q, layer), dim, dim,    n_tokens, tp);
+    lora_apply_batch(k_buf_all, sb->xb, lora_mod(s->active_lora->k, layer), dim, kv_dim, n_tokens, tp);
+    lora_apply_batch(v_buf_all, sb->xb, lora_mod(s->active_lora->v, layer), dim, kv_dim, n_tokens, tp);
+  }
   if (t_step) {
       tn_step_timing_add(TN_STEP_5_Q_PROJECTION,
                          tn_step_timing_now_ns() - t_step);
@@ -632,6 +638,8 @@ TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb,
     tn_dense_matmul_dispatch_batch(sb->xb2, sb->xb, w->wo[layer], w->wo_type[layer],
                                     dim, dim, n_tokens, tp);
   }
+  if (s->active_lora)
+    lora_apply_batch(sb->xb2, sb->xb, lora_mod(s->active_lora->o, layer), dim, dim, n_tokens, tp);
 
   /* Residual: elementwise, so one call over the full n_tokens*dim span is
    * equivalent to n_tokens per-row calls (row boundaries don't matter for

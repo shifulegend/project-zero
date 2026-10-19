@@ -1885,7 +1885,7 @@ the *only* way to enable this feature; there is no default or embedded draft-mod
 
 ---
 
-## PHASE 19: LoRA Adapters ✅ (generic dense/GQA attention+FFN path only — MLA/Qwen3-MoE/Qwen3.5 hybrid/MoE-FFN/batched excluded, Phase 19-B)
+## PHASE 19: LoRA Adapters ✅ (dense/GQA + Qwen3 attention, FFN, batched spec-decode path; MLA/Qwen3.5 hybrid/MoE experts open, Phase 19-B)
 
 Low-Rank Adaptation allows loading tiny "patch" files that alter the model's behavior without
 modifying base weights: `out = base_matmul(x, W) + (alpha/rank) * (x @ A @ B)`.
@@ -1956,11 +1956,21 @@ way to enable this feature; there is no default or embedded adapter path.
   own real-world behavioral-change proof comes from `tests/test_lora.c`'s synthetic nonzero-LoRA
   case instead (`test_forward_lora_active_changes_output`).
 
-### 19-B (documented follow-up, not in this pass)
-- MLA, Qwen3-MoE, Qwen3.5/3.6 hybrid attention, MoE-FFN, and the batched speculative-decoding
-  path (`attention_forward_batch()`/`ffn_forward_batch()`) don't read `active_lora` — a `--lora`
-  adapter silently has no effect on those architectures/paths today. Same staged-scope precedent
-  Phase 18 used for its own batched-kernel format coverage.
+### 19-B — partly done 2026-10-19
+- ✅ **Batched speculative-decoding path** (`attention_forward_batch()`/`ffn_forward_batch()`,
+  `lora_apply_batch()`): it ignored the adapter, so `--lora --draft-model` verified draft tokens
+  against the *base* model and cached un-adapted K/V — a correctness bug. Test:
+  `test_dense_batch_matches_sequential_with_lora` (fails without the fix).
+- ✅ **Qwen3 dense + Qwen3-MoE attention** (`qwen3moe_attention_forward*`): Q/K/V/O deltas, with
+  the wide Q (`n_heads*head_dim`, head_dim from `attention.key_length`). Format: header `[36:40]
+  q_dim` (0 = dim, so older files load unchanged), `lora_load_ex()`, converter `--q-dim`; main
+  derives q_dim/kv_dim from the real head_dim. A wrong-shape file is refused with both shapes
+  printed; `[lora] … active` notice on load. Tests: `test_lora_load_q_dim`; live on Qwen3-0.6B.
+- Still open, deliberately: **MLA** (DeepSeek: PEFT targets `q_a_proj/q_b_proj/kv_a_proj_with_mqa/
+  kv_b_proj`, which this format's 7 targets cannot express), **Qwen3.5/3.6 hybrid** linear
+  attention, and **MoE experts** — each needs format targets plus a model to verify against;
+  none is available here, so no unverifiable code was added. An adapter still loads on those
+  models and applies to the dense FFN/attention parts it shares.
 
 ---
 

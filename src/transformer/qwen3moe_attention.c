@@ -29,6 +29,8 @@
 #include "core/platform.h"
 #include "core/step_timing.h"
 #include "transformer/dense_matmul_dispatch.h"
+#include "math/lora_matmul.h"
+#include "core/lora.h"
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
@@ -82,6 +84,13 @@ void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w,
         tn_dense_matmul_dispatch(q_buf, s->xb, w->wq[layer], w->wq_type[layer], dim, q_width,  tp);
         tn_dense_matmul_dispatch(k_buf, s->xb, w->wk[layer], w->wk_type[layer], dim, kv_width, tp);
         tn_dense_matmul_dispatch(v_buf, s->xb, w->wv[layer], w->wv_type[layer], dim, kv_width, tp);
+    }
+    /* Phase 19-B (2026-10-19): LoRA deltas on the wide Q (n_heads*head_dim)
+     * and K/V, before QK-norm — Qwen3 adapters were silently ignored. */
+    if (s->active_lora) {
+        lora_apply(q_buf, s->xb, lora_mod(s->active_lora->q, layer), dim, q_width,  tp);
+        lora_apply(k_buf, s->xb, lora_mod(s->active_lora->k, layer), dim, kv_width, tp);
+        lora_apply(v_buf, s->xb, lora_mod(s->active_lora->v, layer), dim, kv_width, tp);
     }
 
     /* Step 3: per-head QK-norm, before RoPE */
@@ -183,6 +192,8 @@ void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w,
     } else {
         tn_dense_matmul_dispatch(s->xb, attn_concat, w->wo[layer], w->wo_type[layer], q_width, dim, tp);
     }
+    if (s->active_lora)
+        lora_apply(s->xb, attn_concat, lora_mod(s->active_lora->o, layer), q_width, dim, tp);
     tn_vec_add(s->x, s->x, s->xb, dim);
     if (t_step) {
         tn_step_timing_add(TN_STEP_12_POST_ATTN,
@@ -256,6 +267,11 @@ TernaryError qwen3moe_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
                                         dim, kv_width, n_tokens, tp);
         tn_dense_matmul_dispatch_batch(v_buf_all, sb->xb, w->wv[layer], w->wv_type[layer],
                                         dim, kv_width, n_tokens, tp);
+    }
+    if (s->active_lora) {
+        lora_apply_batch(q_buf_all, sb->xb, lora_mod(s->active_lora->q, layer), dim, q_width,  n_tokens, tp);
+        lora_apply_batch(k_buf_all, sb->xb, lora_mod(s->active_lora->k, layer), dim, kv_width, n_tokens, tp);
+        lora_apply_batch(v_buf_all, sb->xb, lora_mod(s->active_lora->v, layer), dim, kv_width, n_tokens, tp);
     }
     if (t_step) {
         tn_step_timing_add(TN_STEP_5_Q_PROJECTION,
@@ -369,6 +385,8 @@ TernaryError qwen3moe_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
         tn_dense_matmul_dispatch_batch(sb->xb, attn_concat_all, w->wo[layer], w->wo_type[layer],
                                         q_width, dim, n_tokens, tp);
     }
+    if (s->active_lora)
+        lora_apply_batch(sb->xb, attn_concat_all, lora_mod(s->active_lora->o, layer), q_width, dim, n_tokens, tp);
     tn_vec_add(sb->x, sb->x, sb->xb, n_tokens * dim);
     if (t_step) {
         tn_step_timing_add(TN_STEP_12_POST_ATTN,

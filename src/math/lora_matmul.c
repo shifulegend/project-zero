@@ -61,3 +61,10 @@ void lora_apply(float *out, const float *x, const LoRAModule *mod,
 
     free(tmp);
 }
+
+void lora_apply_batch(float *out, const float *x, const LoRAModule *mod,
+                      int n, int d, int n_tokens, ThreadPool *tp) {
+    if (!mod || mod->rank == 0) return;
+    for (int k = 0; k < n_tokens; k++)
+        lora_apply(out + (size_t)k * d, x + (size_t)k * n, mod, n, d, tp);
+}

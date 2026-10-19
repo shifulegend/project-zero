@@ -45,11 +45,30 @@
       "binary": "/home/user/ext/BitNet/build/bin/llama-completion",
       "model": "models/bitnet-b1.58-2B-4T-i2_s.gguf",
       "extra": []
+    },
+    "smollm2_135m_pz_postfix": {
+      "engine": "pz",
+      "binary": "./adaptive_ai_engine",
+      "model": "models/SmolLM2-135M-Instruct-f16.gguf",
+      "extra": []
+    },
+    "smollm2_1p7b_q4km_pz_postfix": {
+      "engine": "pz",
+      "binary": "./adaptive_ai_engine",
+      "model": "models/SmolLM2-1.7B-Instruct-Q4_K_M.gguf",
+      "extra": []
+    },
+    "bitnet_2b_pz_postfix": {
+      "engine": "pz",
+      "binary": "./adaptive_ai_engine",
+      "model": "models/bitnet-b1.58-2B-4T-i2_s.gguf",
+      "extra": []
     }
   },
   "started": "2026-10-19T01:45:51.926236+00:00",
-  "finished": "2026-10-19T03:44:50.165452+00:00",
+  "finished": "2026-10-19T05:44:55.627358+00:00",
   "resumed": [
-    "2026-10-19T03:07:57.280918+00:00"
+    "2026-10-19T03:07:57.280918+00:00",
+    "2026-10-19T05:05:01.966370+00:00"
   ]
 }

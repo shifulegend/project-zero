@@ -35,7 +35,8 @@ enum {
     CHAT_SET_WM_DELTA      = 1u << 13,
     CHAT_SET_JSON_MODE     = 1u << 14,
     CHAT_SET_CACHE_PROMPT  = 1u << 15,
-    CHAT_SET_BEST_OF       = 1u << 16
+    CHAT_SET_BEST_OF       = 1u << 16,
+    CHAT_SET_IGNORE_EOS    = 1u << 17
 };
 
 /* ── Single chat message ─────────────────────────────────────────────────── */
@@ -86,6 +87,8 @@ typedef struct {
     bool          cache_prompt;
     /* Phase 30: "best_of": N candidates, return the most likely one. */
     int           best_of;
+    /* "ignore_eos": true keeps generating to max_tokens (llama.cpp server name). */
+    bool          ignore_eos;
 } ChatRequest;
 
 /* ── Lifecycle ───────────────────────────────────────────────────────────── */

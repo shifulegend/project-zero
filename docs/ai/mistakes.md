@@ -7,7 +7,7 @@
 
 ### 2026-10-19 — Found by benchmarking against the reference engines (llama.cpp, bitnet.cpp)
 
-Installing llama.cpp and bitnet.cpp for head-to-head runs exposed six pre-existing gaps:
+Installing llama.cpp and bitnet.cpp for head-to-head runs exposed nine pre-existing gaps:
 
 - **Official BitNet GGUF could not load.** Plan 34.2b was marked ✅ while its I2_S sub-item
   (34.2b.2) still said PLANNED; the ternary engine rejected tensor type 36. Fixed: lossless I2_S
@@ -29,10 +29,15 @@ Installing llama.cpp and bitnet.cpp for head-to-head runs exposed six pre-existi
 - **`gguf_meta_str()` returns a shared static buffer**; a second call silently changed the
   first result (seen as `tokenizer: smollm (smollm)` in the log). Callers that keep the value
   now copy it.
-- Still open (documented, not silently skipped): Qwen2 Q/K/V **bias** tensors are not loaded
-  (Qwen2.5 produces garbage — loader should refuse or support them) and models whose
-  `attention.key_length` ≠ dim/n_heads (e.g. Qwen3-0.6B) take the wrong head_dim on the
-  generic path. Both are tracked in IMPLEMENTATION_PLAN under 34.2b.
+- **Qwen2 Q/K/V biases were never loaded** (Qwen2.5 → garbage). Now `w->bq/bk/bv`, added after
+  the projections in single-token and batched attention.
+- **Dense Qwen3 with `key_length` ≠ dim/n_heads** (Qwen3-0.6B) took head_dim = dim/n_heads.
+  Now routed to the independent-head_dim QK-norm attention with q_rows-wide Q/O.
+- **`tokenizer.ggml.add_bos_token` was parsed and ignored** — every raw prompt and perplexity
+  chunk got a BOS that Qwen/SmolLM never see in llama.cpp (Qwen3-0.6B PPL +5%). Now honoured,
+  with llama.cpp's default when absent (BOS for SentencePiece and Llama-3-style BPE only).
+- Verification: PPL parity vs llama.cpp/bitnet.cpp table in
+  `docs/reports/ACCURACY_PARITY_2026-10-19.md`.
 
 ### 2026-10-18 — Three pre-existing bugs found while building the updater (Phase 38)
 

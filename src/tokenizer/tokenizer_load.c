@@ -84,6 +84,7 @@ int tokenizer_find_id(const Tokenizer *t, const char *str) {
 
 TernaryError tokenizer_load(Tokenizer *t, const char *path) {
     memset(t, 0, sizeof(*t));
+    t->add_bos_token = 1; /* legacy .bin tokenizers: the engine always prepended BOS */
     /* sentinel -1 means "not found yet"; memset alone sets these to 0 which is a valid token ID */
     t->bos_token_id = -1;
     t->eos_token_id = -1;

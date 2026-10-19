@@ -112,6 +112,7 @@ char *api_config_json(const ApiContext *ctx) {
     jb_raw(&jb, ","); jb_key(&jb, "penalty_last_n");     jb_int(&jb, ss->penalty_last_n);
     jb_raw(&jb, ","); jb_key(&jb, "seed");               jb_int(&jb, def.seed);
     jb_raw(&jb, ","); jb_key(&jb, "json_mode");          jb_bool(&jb, def.json_mode);
+    jb_raw(&jb, ","); jb_key(&jb, "ignore_eos");         jb_bool(&jb, def.ignore_eos);
     jb_raw(&jb, ","); jb_key(&jb, "cache_prompt");       jb_bool(&jb, ctx && ctx->server_config.prompt_cache);
     jb_raw(&jb, ","); jb_key(&jb, "best_of");            jb_int(&jb, ctx ? ctx->server_config.best_of : 1);
     jb_raw(&jb, ","); jb_key(&jb, "system_prompt");      jb_str(&jb, def.system_prompt ? def.system_prompt : "");

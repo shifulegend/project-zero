@@ -24,6 +24,7 @@ void request_params_resolve(const ChatRequest *req, const GenerationParams *defa
         if (m & CHAT_SET_PENALTY_N)    ss->penalty_last_n     = req->penalty_last_n;
         if (m & CHAT_SET_MAX_TOKENS)   out->max_tokens        = req->max_tokens;
         if (m & CHAT_SET_SEED)         out->seed              = req->seed;
+        if (m & CHAT_SET_IGNORE_EOS)   out->ignore_eos        = req->ignore_eos;
         if (m & CHAT_SET_JSON_MODE)    out->json_mode         = req->json_mode;
         else if (req->json_mode)       out->json_mode         = true;
         if (m & CHAT_SET_STOP) {

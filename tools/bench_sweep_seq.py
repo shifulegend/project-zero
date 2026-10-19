@@ -12,7 +12,10 @@ Usage:
       --suite smollm2_pz_bf16:models/SmolLM2-135M-Instruct-f16.gguf:--classifier,bf16 \\
       [--suite ...] [--threads 1-4] [--runs 3] [--tokens 500] [--cooldown 10]
 
-A suite is NAME:MODEL[:extra,args,comma,separated].
+A suite is NAME:MODEL[:extra,args,comma,separated] (Project Zero). Reference engines:
+  --ref-suite NAME:path/to/llama-completion:MODEL[:extra]   (llama.cpp / bitnet.cpp)
+--fixed-length makes every engine do the same work: raw prompt, EOS ignored, exactly
+--tokens generated (PZ: --raw-prompt --ignore-eos; llama.cpp: -no-cnv --ignore-eos).
 """
 import argparse
 import csv
@@ -39,7 +42,8 @@ def parse_threads(spec):
 def run_once(cmd, log_path):
     """Run cmd, capture stdout+stderr, return (text, wall_s, maxrss_mb, cpu_pct)."""
     t0 = time.monotonic()
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            stdin=subprocess.DEVNULL)
     out = proc.stdout.read()
     _, status, ru = os.wait4(proc.pid, 0)
     proc.returncode = os.waitstatus_to_exitcode(status)
@@ -50,13 +54,29 @@ def run_once(cmd, log_path):
 
 def gen_toks(text):
     m = re.search(r"\[gen\]\s+([\d.]+)\s+tok/s\s+\((\d+) tokens\)", text)
-    return (float(m.group(1)), int(m.group(2))) if m else (None, None)
+    if m:
+        return float(m.group(1)), int(m.group(2))
+    # llama.cpp / bitnet.cpp (common_perf_print): "eval time = X ms / N runs (... , T tokens per second)"
+    m = re.search(r"\beval time =\s*[\d.]+ ms /\s*(\d+) (?:runs|tokens)\s*\([^,]+,\s*([\d.]+) tokens per second", text)
+    if m:
+        return float(m.group(2)), int(m.group(1)) + 1   # + the token sampled from the prompt pass
+    return None, None
+
+
+def prompt_toks(text):
+    m = re.search(r"prompt eval time =\s*[\d.]+ ms /\s*\d+ tokens\s*\([^,]+,\s*([\d.]+) tokens per second", text)
+    return float(m.group(1)) if m else None
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
-    ap.add_argument("--suite", action="append", required=True)
+    ap.add_argument("--suite", action="append", default=[],
+                    help="Project Zero suite NAME:MODEL[:extra,args]")
+    ap.add_argument("--ref-suite", action="append", default=[],
+                    help="llama.cpp-family suite NAME:BINARY:MODEL[:extra,args] (llama-completion)")
+    ap.add_argument("--fixed-length", action="store_true",
+                    help="same work for every engine: raw prompt + ignore EOS (PZ --raw-prompt --ignore-eos)")
     ap.add_argument("--threads", default="1-4")
     ap.add_argument("--runs", type=int, default=3)
     ap.add_argument("--tokens", type=int, default=500)
@@ -76,26 +96,45 @@ def main():
     meta = {"prompt": a.prompt, "max_tokens": a.tokens, "runs": a.runs, "cooldown_s": a.cooldown,
             "threads": threads, "suites": {}, "started": datetime.datetime.now().astimezone().isoformat()}
 
+    jobs = []
     for spec in a.suite:
         parts = spec.split(":", 2)
-        name, model = parts[0], parts[1]
         extra = parts[2].split(",") if len(parts) > 2 and parts[2] else []
-        meta["suites"][name] = {"model": model, "extra": extra}
+        jobs.append((parts[0], "pz", ENGINE, parts[1], extra))
+    for spec in a.ref_suite:
+        parts = spec.split(":", 3)
+        extra = parts[3].split(",") if len(parts) > 3 and parts[3] else []
+        jobs.append((parts[0], "ref", parts[1], parts[2], extra))
+    if not jobs:
+        ap.error("give at least one --suite or --ref-suite")
+
+    for name, kind, binary, model, extra in jobs:
+        meta["suites"][name] = {"engine": kind, "binary": binary, "model": model, "extra": extra}
         print(f"\n=== {name}  ({model} {' '.join(extra)}) ===", flush=True)
         for t in threads:
             tdir = os.path.join(a.out, name, f"t{t}")
             os.makedirs(tdir, exist_ok=True)
             best = None
             for r in range(1, a.runs + 1):
-                cmd = [ENGINE, "--model", model, "--prompt", a.prompt, "--max-tokens", str(a.tokens),
-                       "--temperature", "0", "--threads", str(t), "--no-update-check"] + extra
+                if kind == "pz":
+                    cmd = [binary, "--model", model, "--prompt", a.prompt, "--max-tokens", str(a.tokens),
+                           "--temperature", "0", "--threads", str(t), "--no-update-check"] + extra
+                    if a.fixed_length:
+                        cmd += ["--raw-prompt", "--ignore-eos"]
+                else:
+                    cmd = [binary, "-m", model, "-p", a.prompt, "-n", str(a.tokens), "--temp", "0",
+                           "-t", str(t), "-no-cnv"] + extra
+                    if a.fixed_length:
+                        cmd += ["--ignore-eos"]
                 text, wall, rss, cpu, rc = run_once(cmd, None)
                 tps, ntok = gen_toks(text)
+                ptps = prompt_toks(text)
                 stamp = datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
                 with open(os.path.join(tdir, f"run{r}.txt"), "w") as f:
                     f.write(f"=== {name} t={t} run {r} ===\nDATE: {stamp}\nCMD: {' '.join(cmd)}\n"
                             f"PROMPT: {a.prompt}\n{'=' * 60}\n{text}\n"
-                            f"PERF: wall={wall:.2f}s max_rss={rss:.0f}MB cpu={cpu:.0f}% exit={rc}\n")
+                            f"PERF: wall={wall:.2f}s max_rss={rss:.0f}MB cpu={cpu:.0f}% exit={rc}\n"
+                            + (f"PROMPT_TPS: {ptps}\n" if ptps else ""))
                 sw.writerow([name, t, r, tps if tps is not None else "", ntok or "", f"{wall:.2f}",
                              f"{rss:.0f}", f"{cpu:.0f}", rc])
                 sf.flush()

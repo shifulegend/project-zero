@@ -515,6 +515,11 @@ TernaryError chat_request_parse(const char *json_body, ChatRequest *req) {
         } else if (strcmp(key, "best_of") == 0) {
             req->best_of = (int)parse_number(&p);
             req->set_mask |= CHAT_SET_BEST_OF;
+        } else if (strcmp(key, "ignore_eos") == 0) {
+            int b = parse_bool(&p);
+            if (b < 0) return TN_ERR_JSON_PARSE;
+            req->ignore_eos = (b == 1);
+            req->set_mask |= CHAT_SET_IGNORE_EOS;
         } else if (strcmp(key, "cache_prompt") == 0) {
             int b = parse_bool(&p);
             if (b < 0) return TN_ERR_JSON_PARSE;

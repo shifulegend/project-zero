@@ -56,6 +56,10 @@
         <span>JSON mode <span class="dim">(grammar-constrained)</span></span>
       </label>
     {/if}
+    <label class="check" title="Never stop at the end-of-sequence token; always generate Max tokens (useful for speed tests).">
+      <input type="checkbox" bind:checked={settings.ignore_eos} />
+      <span>Ignore end-of-sequence <span class="dim">(run to max tokens)</span></span>
+    </label>
     {#if features.prompt_cache}
       <label class="check" title="Skip re-reading the part of the conversation the model has already processed. Output is identical either way.">
         <input type="checkbox" bind:checked={settings.cache_prompt} />

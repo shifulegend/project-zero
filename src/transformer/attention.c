@@ -36,6 +36,12 @@
  * layer.  This is critical when the model (1.1 GB) dwarfs L3 (12 MB).
  * An _mm_sfence() after the loop ensures the stores reach DRAM ordering.
  */
+/* y += b (n floats); no-op when the model has no bias for this projection. */
+static inline void attn_add_bias(float *y, const float *b, int n) {
+  if (!b) return;
+  for (int i = 0; i < n; i++) y[i] += b[i];
+}
+
 static void kv_nt_store(float *dst, const float *src, int n) {
 #if TN_HAS_AVX512
     int i = 0;
@@ -241,6 +247,11 @@ void attention_forward(RunState *s, const TransformerWeights *w,
     lora_apply(k_buf, s->xb, lora_mod(s->active_lora->k, layer), dim, kv_dim, tp);
     lora_apply(v_buf, s->xb, lora_mod(s->active_lora->v, layer), dim, kv_dim, tp);
   }
+
+  /* Q/K/V biases (Qwen2/2.5), after any LoRA delta, before QK-norm/RoPE. */
+  attn_add_bias(s->q,  w->bq ? w->bq[layer] : NULL, dim);
+  attn_add_bias(k_buf, w->bk ? w->bk[layer] : NULL, kv_dim);
+  attn_add_bias(v_buf, w->bv ? w->bv[layer] : NULL, kv_dim);
 
   /* Step 2b: Qwen3 (dense) per-head QK-norm — RMSNorm applied to each Q/K
    * head individually, before RoPE. Absent (NULL) for architectures without
@@ -478,6 +489,9 @@ TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb,
   for (int k = 0; k < n_tokens; k++) {
     float *q_k = sb->q + (size_t)k * dim;
     float *kbuf_k = k_buf_all + (size_t)k * kv_dim;
+    attn_add_bias(q_k,    w->bq ? w->bq[layer] : NULL, dim);
+    attn_add_bias(kbuf_k, w->bk ? w->bk[layer] : NULL, kv_dim);
+    attn_add_bias(v_buf_all + (size_t)k * kv_dim, w->bv ? w->bv[layer] : NULL, kv_dim);
 
     /* Optional per-head QK-norm (Qwen3 dense), same as the single-token path */
     if (w->q35_attn_q_norm && w->q35_attn_q_norm[layer]) {

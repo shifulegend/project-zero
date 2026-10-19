@@ -38,6 +38,8 @@ void print_usage(const char *prog_name) {
     printf("                      llama-perplexity method: chunks of --ppl-ctx tokens\n");
     printf("                      (default 512), second half of each chunk scored;\n");
     printf("                      --ppl-chunks N limits the chunk count).\n");
+    printf("  --ignore-eos        Never sample end-of-sequence: generate exactly --max-tokens\n");
+    printf("                      (fixed-length benchmarks; server default, per-request too).\n");
     printf("  --raw-prompt        Feed --prompt verbatim (BOS + text) instead of wrapping it in\n");
     printf("                      the model's chat template -- plain completion, as\n");
     printf("                      llama-completion does (benchmarks, base models).\n");
@@ -200,6 +202,7 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->enable_reasoning = false;
     args->json_mode = false;
     args->raw_prompt = false;
+    args->ignore_eos = false;
     args->rope_layout = -1;
     args->perplexity_file = NULL;
     args->ppl_ctx = 512;
@@ -496,6 +499,8 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             args->json_mode = true;
         } else if (strcmp(argv[i], "--raw-prompt") == 0) {
             args->raw_prompt = true;
+        } else if (strcmp(argv[i], "--ignore-eos") == 0) {
+            args->ignore_eos = true;
         } else if (strcmp(argv[i], "--verbose") == 0) {
             args->verbose = true;
         } else if (strcmp(argv[i], "--dump-tensors") == 0 && i + 1 < argc) {
@@ -631,6 +636,7 @@ void args_fill_gen_params(const CliArgs *args, GenerationParams *gp) {
     gp->seed      = args->seed;
     gp->json_mode = args->json_mode;
     gp->raw_prompt = args->raw_prompt;
+    gp->ignore_eos = args->ignore_eos;
     gp->system_prompt = args->system_prompt;
     for (int i = 0; i < args->n_stop && i < GEN_MAX_STOP; i++) gp->stop[i] = args->stop[i];
     gp->n_stop = args->n_stop < GEN_MAX_STOP ? args->n_stop : GEN_MAX_STOP;

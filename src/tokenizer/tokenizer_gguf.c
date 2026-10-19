@@ -278,7 +278,7 @@ TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
         if (abm && abm->val_type == GGUF_VAL_BOOL)
             t->add_bos_token = abm->val.boolean ? 1 : 0;
         else
-            t->add_bos_token = 1; /* default: add BOS */
+            t->add_bos_token = -1; /* resolved below from the vocab type, as llama.cpp */
     }
 
     /* token_type array → dynamic special tokens list.
@@ -326,6 +326,10 @@ TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
         const char *pre = gguf_meta_str(hdr, "tokenizer.ggml.pre");
         t->pretok_type = (int)pretok_type_from_name(pre);
     }
+    /* Missing add_bos_token: llama.cpp adds BOS for SentencePiece and for
+     * Llama-3-style BPE, not for other BPE vocabularies (Qwen, SmolLM, ...). */
+    if (t->add_bos_token < 0)
+        t->add_bos_token = is_bpe ? (t->pretok_type == PRETOK_LLAMA3) : 1;
 
     /* 7. Log summary */
     fprintf(stderr, "[gguf-tok] Loaded %d tokens (%s, pre=%s), %d special — BOS=%d EOS=%d chat_template=%s\n",

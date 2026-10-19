@@ -250,6 +250,11 @@ typedef struct {
     float **qwen3moe_attn_q_norm;  /* [n_layers] RMSNorm weight, len=attn_head_dim */
     float **qwen3moe_attn_k_norm;  /* [n_layers] RMSNorm weight, len=attn_head_dim */
 
+    /* Optional Q/K/V projection biases (Qwen2/2.5 "attn_{q,k,v}.bias"),
+     * [n_layers] pointers, NULL entries when the model has none. Added after
+     * the projection, before QK-norm/RoPE (llama.cpp build_qkv order). */
+    float **bq, **bk, **bv;
+
     /* Zero-copy Q2_0 embedding / LM-head tables (used instead of embd_f32 /
      * token_embedding_table / wcls when q35_is_q2_0_model is set — Q2_0 is
      * too large to dequantize upfront: ~5 GB each for a 27B-class model). */

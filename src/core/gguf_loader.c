@@ -374,6 +374,23 @@ TernaryError moe_config_from_gguf(MoEConfig *mc, const GGUFHeader *hdr) {
         return TN_OK;
     }
 
+    /* Dense Qwen3 whose head width is not dim/n_heads (e.g. Qwen3-0.6B:
+     * key_length 128, 1024/16 = 64). The generic path derives head_dim from
+     * dim/n_heads, so these run on the independent-head_dim attention of the
+     * Qwen3-MoE path (QK-norm, q_rows-wide wq/wo) with a dense FFN.
+     * 2026-10-19: previously silent garbage. */
+    if (strcmp(hdr->arch, "qwen3") == 0) {
+        uint32_t kl    = gguf_meta_u32(hdr, "qwen3.attention.key_length", 0);
+        uint32_t emb   = gguf_meta_u32(hdr, "qwen3.embedding_length", 0);
+        uint32_t heads = gguf_meta_u32(hdr, "qwen3.attention.head_count", 0);
+        if (kl > 0 && heads > 0 && kl != emb / heads) {
+            mc->attn_head_dim = (int)kl;
+            mc->has_qk_norm   = 1;
+            mc->is_moe        = false;
+        }
+        return TN_OK;
+    }
+
     if (strcmp(hdr->arch, "qwen3moe") == 0) {
         /* Qwen3-MoE (e.g. Qwen3-30B-A3B): routed MoE, no shared experts, no
          * leading dense layers (all layers routed), plain GQA attention with
@@ -1258,6 +1275,22 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
     int head_dim   = config_head_dim(cfg);
     int nl         = cfg->n_layers;
     char name_buf[128];
+    /* Independent head width (dense Qwen3 with key_length != dim/n_heads):
+     * Q/K/V/O widths and the per-head norms follow it, and the forward pass
+     * routes to the QK-norm attention (MoEConfig.has_qk_norm). */
+    int q_rows = dim;
+    int wide_heads = 0;
+    {
+        MoEConfig gmc;
+        memset(&gmc, 0, sizeof(gmc));
+        if (moe_config_from_gguf(&gmc, hdr) == TN_OK && gmc.has_qk_norm && !gmc.is_moe &&
+            gmc.attn_head_dim > 0) {
+            wide_heads = 1;
+            head_dim = gmc.attn_head_dim;
+            q_rows = cfg->n_heads * head_dim;
+            kv_dim = cfg->n_kv_heads * head_dim;
+        }
+    }
 
     /* 1. Token embedding table (vocab_size × dim).
      *
@@ -1359,11 +1392,13 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
          * generic forward path applies them the same way when non-NULL. */
         snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_q_norm.weight", l);
         if (gguf_find_tensor(hdr, name_buf)) {
-            w->q35_attn_q_norm[l] = norm_to_f32(hdr, name_buf, (size_t)head_dim, store);
-            if (!w->q35_attn_q_norm[l]) return TN_ERR_INVALID_WEIGHTS;
+            float **qn = wide_heads ? w->qwen3moe_attn_q_norm : w->q35_attn_q_norm;
+            float **kn = wide_heads ? w->qwen3moe_attn_k_norm : w->q35_attn_k_norm;
+            qn[l] = norm_to_f32(hdr, name_buf, (size_t)head_dim, store);
+            if (!qn[l]) return TN_ERR_INVALID_WEIGHTS;
             snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_k_norm.weight", l);
-            w->q35_attn_k_norm[l] = norm_to_f32(hdr, name_buf, (size_t)head_dim, store);
-            if (!w->q35_attn_k_norm[l]) return TN_ERR_INVALID_WEIGHTS;
+            kn[l] = norm_to_f32(hdr, name_buf, (size_t)head_dim, store);
+            if (!kn[l]) return TN_ERR_INVALID_WEIGHTS;
         }
 
 /* Helper macro: load a projection weight tensor.
@@ -1457,15 +1492,29 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
 } while(0)
 
         /* Attention projections */
-        LOAD_PROJ(w->wq, "attn_q.weight",      dim,    dim, w->wq_type, w->sq);
-        LOAD_PROJ(w->wk, "attn_k.weight",      kv_dim, dim, w->wk_type, w->sk);
-        LOAD_PROJ(w->wv, "attn_v.weight",      kv_dim, dim, w->wv_type, w->sv);
-        LOAD_PROJ(w->wo, "attn_output.weight", dim,    dim, w->wo_type, w->so);
+        LOAD_PROJ(w->wq, "attn_q.weight",      q_rows, dim,    w->wq_type, w->sq);
+        LOAD_PROJ(w->wk, "attn_k.weight",      kv_dim, dim,    w->wk_type, w->sk);
+        LOAD_PROJ(w->wv, "attn_v.weight",      kv_dim, dim,    w->wv_type, w->sv);
+        LOAD_PROJ(w->wo, "attn_output.weight", dim,    q_rows, w->wo_type, w->so);
 
         /* FFN projections */
         LOAD_PROJ(w->w1, "ffn_gate.weight", hidden_dim, dim,        w->w1_type, w->s1);
         LOAD_PROJ(w->w2, "ffn_down.weight", dim,        hidden_dim, w->w2_type, w->s2);
         LOAD_PROJ(w->w3, "ffn_up.weight",   hidden_dim, dim,        w->w3_type, w->s3);
+
+        /* Q/K/V biases (Qwen2/2.5) — optional; 2026-10-19: previously never
+         * loaded, so such models produced garbage instead of being refused. */
+        {
+            static const char *const bias_names[3] = { "attn_q.bias", "attn_k.bias", "attn_v.bias" };
+            float **dst[3] = { w->bq, w->bk, w->bv };
+            const int lens[3] = { q_rows, kv_dim, kv_dim };
+            for (int b = 0; b < 3; b++) {
+                snprintf(name_buf, sizeof(name_buf), "blk.%d.%s", l, bias_names[b]);
+                if (!gguf_find_tensor(hdr, name_buf)) continue;
+                dst[b][l] = norm_to_f32(hdr, name_buf, (size_t)lens[b], store);
+                if (!dst[b][l]) return TN_ERR_INVALID_WEIGHTS;
+            }
+        }
 
         /* BitNet sub-norms (before attn_output / ffn_down) — optional. */
         snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_sub_norm.weight", l);

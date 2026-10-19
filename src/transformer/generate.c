@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include <time.h>
 
 /* ── stdout callback used by the public generate() wrapper ─────────────── */
@@ -139,8 +140,11 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
         }
     } else {
         /* ── Legacy path / --raw-prompt: raw prompt + manual BOS ─────────── */
-        int bos = (cfg->bos_token_id > 0)   ? cfg->bos_token_id
-                : (tok->bos_token_id >= 0)  ? tok->bos_token_id
+        /* 2026-10-19: honour tokenizer.ggml.add_bos_token — Qwen/SmolLM GGUFs
+         * say false, and llama.cpp feeds them no BOS. */
+        int bos = !tok->add_bos_token          ? -1
+                : (cfg->bos_token_id > 0)      ? cfg->bos_token_id
+                : (tok->bos_token_id >= 0)     ? tok->bos_token_id
                 : -1;
         if (bos >= 0) {
             int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
@@ -266,6 +270,15 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
             if (raw_logits) {
                 memcpy(raw_logits, logits, (size_t)cfg->vocab_size * sizeof(float));
                 step_lse = logprob_logsumexp(raw_logits, cfg->vocab_size);
+            }
+            /* ignore_eos: never sample an end-of-sequence token (llama.cpp's
+             * --ignore-eos), so runs last exactly max_tokens. */
+            if (gp->ignore_eos) {
+                if (cfg->eos_token_id >= 0 && cfg->eos_token_id < cfg->vocab_size)
+                    logits[cfg->eos_token_id] = -INFINITY;
+                for (int ei = 0; ei < tok->n_eos; ei++)
+                    if (tok->eos_list[ei] >= 0 && tok->eos_list[ei] < cfg->vocab_size)
+                        logits[tok->eos_list[ei]] = -INFINITY;
             }
             if (json_mode) {
                 next = sample_constrained_chain(logits, cfg->vocab_size, &json_fsm,

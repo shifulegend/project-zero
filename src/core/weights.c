@@ -64,6 +64,9 @@ TernaryError weights_alloc_pointers(TransformerWeights *w, const Config *cfg) {
      * MoEConfig.has_qk_norm is set. */
     w->qwen3moe_attn_q_norm = (float **)calloc(nl, sizeof(float *));
     w->qwen3moe_attn_k_norm = (float **)calloc(nl, sizeof(float *));
+    w->bq = (float **)calloc(nl, sizeof(float *));
+    w->bk = (float **)calloc(nl, sizeof(float *));
+    w->bv = (float **)calloc(nl, sizeof(float *));
 
     if (!w->wq || !w->wk || !w->wv || !w->wo ||
         !w->sq || !w->sk || !w->sv || !w->so ||
@@ -77,7 +80,8 @@ TernaryError weights_alloc_pointers(TransformerWeights *w, const Config *cfg) {
         !w->q35_ssm_qkv || !w->q35_ssm_gate || !w->q35_ssm_conv1d ||
         !w->q35_ssm_dt_bias || !w->q35_ssm_a || !w->q35_ssm_alpha ||
         !w->q35_ssm_beta || !w->q35_ssm_norm || !w->q35_ssm_out ||
-        !w->qwen3moe_attn_q_norm || !w->qwen3moe_attn_k_norm) {
+        !w->qwen3moe_attn_q_norm || !w->qwen3moe_attn_k_norm ||
+        !w->bq || !w->bk || !w->bv) {
         weights_free_pointers(w);
         return TN_ERR_OOM;
     }
@@ -124,6 +128,7 @@ void weights_free_pointers(TransformerWeights *w) {
     if (w->q35_ssm_out) free(w->q35_ssm_out);
     if (w->qwen3moe_attn_q_norm) free(w->qwen3moe_attn_q_norm);
     if (w->qwen3moe_attn_k_norm) free(w->qwen3moe_attn_k_norm);
+    free(w->bq); free(w->bk); free(w->bv);
     if (w->wcls_i8) free(w->wcls_i8);
     if (w->wcls_i8_scales) free(w->wcls_i8_scales);
     if (w->wcls_i4) free(w->wcls_i4);

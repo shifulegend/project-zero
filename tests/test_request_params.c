@@ -92,6 +92,24 @@ static void test_cache_prompt_field(void) {
     chat_request_free(&r);
 }
 
+static void test_ignore_eos_field(void) {
+    ChatRequest r; chat_request_init(&r);
+    TEST_ASSERT_EQ(chat_request_parse("{\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"ignore_eos\":true}", &r),
+                   TN_OK, "parses");
+    TEST_ASSERT((r.set_mask & CHAT_SET_IGNORE_EOS) && r.ignore_eos, "ignore_eos=true recorded");
+    GenerationParams def, out;
+    gen_params_default(&def);
+    request_params_resolve(&r, &def, 4096, &out);
+    TEST_ASSERT(out.ignore_eos, "request overrides the server default");
+    chat_request_free(&r);
+    chat_request_init(&r);
+    chat_request_parse("{\"messages\":[{\"role\":\"user\",\"content\":\"x\"}]}", &r);
+    def.ignore_eos = true;
+    request_params_resolve(&r, &def, 4096, &out);
+    TEST_ASSERT(out.ignore_eos, "absent -> server default (--ignore-eos)");
+    chat_request_free(&r);
+}
+
 static void test_chat_format_choice(void) {
     TEST_ASSERT_EQ(chat_template_parse("auto"), -1, "auto");
     TEST_ASSERT_EQ(chat_template_parse("plain"), CHAT_TMPL_RAW, "plain");
@@ -143,6 +161,7 @@ int main(void) {
     RUN_TEST(test_unicode_escape_decoding);
     RUN_TEST(test_resolve_defaults_and_overrides);
     RUN_TEST(test_cache_prompt_field);
+    RUN_TEST(test_ignore_eos_field);
     RUN_TEST(test_chat_format_choice);
     RUN_TEST(test_best_of_parse_and_score);
     RUN_TEST(test_json_fields);

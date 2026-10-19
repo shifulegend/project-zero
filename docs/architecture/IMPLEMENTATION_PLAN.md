@@ -1802,6 +1802,16 @@ Q4_K nibbles) rather than bandwidth-bound. The real fix is decode-once multi-tok
 kernels (unpack a row block to int8 once, then dot all candidates) — open as 18-C. Also open:
 a fused Q6_K kernel (Q6_K tensors are dequantised to F32 today, 7× the bytes).
 
+**18-C (2026-10-19, first kernel):** `gemm8_q4k_x8_q8k_tokens()` — the x8-interleaved Q4_K
+multi-token path now unpacks each super-block's nibbles, the maddubs blend/shuffle mixes, the
+6-bit scales/mins and the column scales once and runs every candidate token against them
+(previously one full GEMV per token). Bit-identical (`test_q4k_batch_tokens`). Measured
+(SmolLM2-1.7B Q4_K_M verifier + 135M draft, spec-length 6, 4 T, Xeon model 85, 3 interleaved
+rounds): 6.70 → 7.56 tok/s (+13 %), identical output. Plain decode on the same host is 14.0 tok/s,
+so speculative decoding still does not pay off here: the remaining verify cost is the Q6_K /
+F16 tensors and attention, which still run per token. Still open: decode-once kernels for those
+formats (Q6_K, F16 draft-side) and a VNNI variant of this one.
+
 The ultimate CPU speed hack. Load two models: a massive "Brain" (verifier) and a tiny "Drafter". The Drafter guesses N tokens rapidly, the Brain verifies them all in one batched forward pass.
 
 **As implemented** (see `docs/ai/decision-log.md` and `docs/ai/change-trace.md`'s 2026-09-22/24

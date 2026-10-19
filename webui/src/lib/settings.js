@@ -26,6 +26,9 @@ export function defaultsFromConfig(cfg) {
     cache_prompt: d.cache_prompt !== false,
     best_of: d.best_of ?? 1,
     system_prompt: d.system_prompt ?? '',
+    // The model's active Jinja chat template; editing it makes every request
+    // carry the edited copy as "chat_template" (when the server allows it).
+    chat_template: cfg?.chat_template?.text ?? '',
     stop: (d.stop ?? []).join('\n'),
     watermark_enabled: !!d.watermark?.enabled,
     watermark_key: '',
@@ -108,6 +111,9 @@ export function requestParams(settings, cfg) {
   };
   if (settings.watermark_key) wm.key = settings.watermark_key;
   body.watermark = wm;
+  const tmpl = settings.chat_template ?? '';
+  if (cfg?.features?.request_chat_template && tmpl.trim() &&
+      tmpl !== (cfg?.chat_template?.text ?? '')) body.chat_template = tmpl;
   return body;
 }
 

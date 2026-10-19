@@ -27,6 +27,9 @@ Adapter for the API-layer decisions in `docs/ai/decision-log.md` (Phase 22) and
   (!g_shutdown_requested) pause();` loop, not a bare `pause()`) is what makes this path reachable
   at all — don't revert to a bare `pause()`, it silently makes all of `api_server_stop()` and
   `main()`'s later cleanup dead code again.
+- Chat template: `--chat-template-file` sets the server's; requests may override it with
+  `"chat_template"` (≤ 64 KiB, `CHAT_SET_CHAT_TEMPLATE`) unless `--no-request-template`;
+  `/v1/config chat_template {source,text,request_override,max_bytes}` feeds the web UI editor.
 - Generation knobs: `GET /v1/config` publishes server defaults (CLI flags), valid ranges and
   feature flags; the web UI renders every control from it and hardcodes nothing. Requests
   override any subset (`set_mask` → `request_params_resolve()`); absent fields use the server

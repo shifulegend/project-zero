@@ -75,7 +75,10 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
 
     int n_prompt = 0;
 
-    if (tok->chat_template && !gp->raw_prompt) {
+    /* A request's own template (API "chat_template") wins over the model's. */
+    const char *chat_tmpl = (gp->chat_template && gp->chat_template[0]) ? gp->chat_template
+                                                                       : tok->chat_template;
+    if (chat_tmpl && !gp->raw_prompt) {
         /* ── GGUF path: apply the model's own Jinja2 chat template ─────────
          * The template itself renders BOS ({{ bos_token }}) so we must NOT
          * prepend it manually — that would produce a double-BOS. */
@@ -107,7 +110,7 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
         }
 
         int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-        char *formatted = chat_template_apply(tok->chat_template,
+        char *formatted = chat_template_apply(chat_tmpl,
                                               roles, contents, n_msg,
                                               bos_str, eos_str,
                                               /*add_generation_prompt=*/1);

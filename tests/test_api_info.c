@@ -95,6 +95,26 @@ static void test_prompt_cache_json(void) {
     server_config_free(&ctx.server_config);
 }
 
+static void test_config_chat_template(void) {
+    ApiContext ctx; Config cfg;
+    make_ctx(&ctx, &cfg);
+    Tokenizer tok; memset(&tok, 0, sizeof(tok));
+    tok.chat_template = (char *)"{{ bos_token }}User: \"q\"";
+    ctx.tok = &tok;
+    ctx.server_config.chat_template_source = "file";
+    char *j = api_config_json(&ctx);
+    TEST_ASSERT(j && strstr(j, "\"request_chat_template\":true") != NULL, "override allowed by default");
+    TEST_ASSERT(strstr(j, "\"source\":\"file\"") != NULL, "template source published");
+    TEST_ASSERT(strstr(j, "\"text\":\"{{ bos_token }}User: \\\"q\\\"\"") != NULL, "template text JSON-escaped");
+    TEST_ASSERT(strstr(j, "\"max_bytes\":65536") != NULL, "size cap published");
+    free(j);
+    ctx.server_config.allow_request_template = 0;
+    j = api_config_json(&ctx);
+    TEST_ASSERT(j && strstr(j, "\"request_override\":false") != NULL, "--no-request-template published");
+    free(j);
+    server_config_free(&ctx.server_config);
+}
+
 static void test_watermark_endpoint_errors(void) {
     ApiContext ctx; Config cfg;
     make_ctx(&ctx, &cfg);
@@ -117,5 +137,6 @@ int main(void) {
     RUN_TEST(test_config_reflects_defaults_and_limits);
     RUN_TEST(test_prompt_cache_json);
     RUN_TEST(test_watermark_endpoint_errors);
+    RUN_TEST(test_config_chat_template);
     TEST_SUMMARY();
 }

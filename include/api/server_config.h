@@ -62,6 +62,8 @@ typedef struct {
     int              best_of_max; /* --best-of-max: per-request cap */
     int              chat_format; /* --chat-format: -1 = auto (from vocabulary), else ChatTemplateType;
                                      only used when the model has no embedded chat template */
+    int              allow_request_template; /* requests may send "chat_template" (1; --no-request-template = 0) */
+    const char      *chat_template_source;   /* "gguf" | "file" | "none" — published by /v1/config */
 } ServerConfig;
 
 /* Zero-initialise. Must be called before use. */

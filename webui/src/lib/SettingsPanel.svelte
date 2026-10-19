@@ -12,6 +12,7 @@
 
   $: L = config?.limits ?? {};
   $: features = config?.features ?? {};
+  $: templateEdited = (settings.chat_template ?? '') !== (config?.chat_template?.text ?? '');
   $: randomSeed = !(Number.isInteger(settings.seed) && settings.seed >= 0);
 
   function toggleRandomSeed(e) {
@@ -96,6 +97,26 @@
     </section>
   {/if}
 
+  {#if config?.chat_template}
+    <section class="wide">
+      <h3>Chat template <span class="tag">{templateEdited ? 'edited · sent per request' : `model · ${config.chat_template.source}`}</span></h3>
+      {#if features.request_chat_template}
+        <textarea class="mono" rows="6" spellcheck="false" bind:value={settings.chat_template}
+                  maxlength={config.chat_template.max_bytes}
+                  placeholder="Jinja template — messages, bos_token, eos_token, add_generation_prompt"></textarea>
+        <div class="row">
+          <span class="dim">{(settings.chat_template ?? '').length} / {config.chat_template.max_bytes} chars</span>
+          {#if templateEdited}
+            <button class="link-btn" on:click={() => (settings.chat_template = config.chat_template.text)}>Restore model template</button>
+          {/if}
+        </div>
+      {:else}
+        <pre class="mono readonly">{config.chat_template.text || '(none — legacy chat format)'}</pre>
+        <span class="dim">The server ignores per-request templates (--no-request-template).</span>
+      {/if}
+    </section>
+  {/if}
+
   <section>
     <h3>Updates</h3>
     <UpdateStatus />
@@ -125,6 +146,30 @@
   }
   section.wide {
     grid-column: 1 / -1;
+  }
+  .mono {
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.75rem;
+  }
+  pre.readonly {
+    margin: 0;
+    padding: 0.5rem;
+    max-height: 10rem;
+    overflow: auto;
+    white-space: pre-wrap;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  .tag {
+    text-transform: none;
+    letter-spacing: 0;
+    margin-left: 0.4rem;
+    color: var(--accent, var(--text-dim));
+  }
+  .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
   }
   h3 {
     margin: 0;

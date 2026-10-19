@@ -39,6 +39,11 @@ after a change).
     sequences.
   - *Watermark*: watermark replies, key (blank = the server's `--watermark-key`), γ and δ.
   - *System prompt*: applied to every conversation (chat-template models).
+  - *Chat template*: the model's Jinja template as the server uses it (source: `gguf` or `file`).
+    Edit it and every request carries your copy as `chat_template`; *Restore model template*
+    undoes it. Needed for GGUFs that ship a broken template (official BitNet b1.58 2B-4T — start
+    from `docs/templates/bitnet-b1.58.jinja`, or launch with `--chat-template-file`). Read-only
+    when the server runs `--no-request-template`.
   Your changes are remembered in this browser; the badge on **Settings** counts how many differ
   from the server defaults, and **Reset to server defaults** discards them.
 - **New chat** — clears the conversation (the full history is otherwise sent with every turn,

@@ -63,6 +63,10 @@ typedef struct {
      * starts with a system message). Borrowed. */
     const char *system_prompt;
 
+    /* Jinja chat template overriding the tokenizer's for this call (an API
+     * request's "chat_template"); NULL = tok->chat_template. Borrowed. */
+    const char *chat_template;
+
     /* OpenAI-style stop strings (borrowed). */
     const char *stop[GEN_MAX_STOP];
     int         n_stop;

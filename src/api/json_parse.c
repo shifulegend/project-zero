@@ -375,6 +375,8 @@ void chat_request_free(ChatRequest *req) {
     req->n_stop = 0;
     free(req->watermark_key);
     req->watermark_key = NULL;
+    free(req->chat_template);
+    req->chat_template = NULL;
 }
 
 /* "stop": "x" | ["x", "y", ...] | null */
@@ -515,6 +517,19 @@ TernaryError chat_request_parse(const char *json_body, ChatRequest *req) {
         } else if (strcmp(key, "best_of") == 0) {
             req->best_of = (int)parse_number(&p);
             req->set_mask |= CHAT_SET_BEST_OF;
+        } else if (strcmp(key, "chat_template") == 0) {
+            skip_ws(&p);
+            if (strncmp(p, "null", 4) == 0) {
+                p += 4;                         /* null = use the server's template */
+            } else {
+                char *t = parse_string_heap(&p);
+                if (!t) return TN_ERR_JSON_PARSE;
+                if (strlen(t) > CHAT_MAX_TEMPLATE) { free(t); return TN_ERR_INVALID_ARGS; }
+                free(req->chat_template);
+                req->chat_template = NULL;
+                if (t[0]) { req->chat_template = t; req->set_mask |= CHAT_SET_CHAT_TEMPLATE; }
+                else free(t);                   /* "" = use the server's template */
+            }
         } else if (strcmp(key, "ignore_eos") == 0) {
             int b = parse_bool(&p);
             if (b < 0) return TN_ERR_JSON_PARSE;

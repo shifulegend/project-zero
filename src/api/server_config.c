@@ -18,6 +18,7 @@ void server_config_init(ServerConfig *sc) {
     sc->prompt_cache_mb = 0;  /* main.c sets the CLI value (default 256) */
     sc->prompt_cache_min_tokens = 32;
     sc->chat_format = -1;
+    sc->allow_request_template = 1;
     sc->best_of = 1;
     sc->queue_size = 0;
     sc->queue_timeout_s = 120;

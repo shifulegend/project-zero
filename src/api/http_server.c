@@ -536,7 +536,10 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     const char *roles[CHAT_MAX_MESSAGES];
     const char *contents[CHAT_MAX_MESSAGES];
 
-    if (ctx->tok->chat_template) {
+    /* Per-request templates only when the operator allows them. */
+    if (!ctx->server_config.allow_request_template) gp.chat_template = NULL;
+
+    if (ctx->tok->chat_template || gp.chat_template) {
         /* GGUF tokenizer: the model's own Jinja template renders the whole
          * conversation (system/user/assistant turns). 2026-10-18: this used
          * to forward only the last user message, silently dropping all

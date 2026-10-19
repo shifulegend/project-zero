@@ -198,6 +198,20 @@ char *api_config_json(const ApiContext *ctx) {
                  !(ctx->run_state && ctx->run_state->kv_type == KV_TYPE_I8));
     jb_raw(&jb, ","); jb_key(&jb, "metrics"); jb_bool(&jb, ctx && ctx->server_config.metrics.enabled);
     jb_raw(&jb, ","); jb_key(&jb, "system_prompt"); jb_bool(&jb, ctx && ctx->tok && ctx->tok->chat_template != NULL);
+    jb_raw(&jb, ","); jb_key(&jb, "request_chat_template");
+    jb_bool(&jb, ctx && ctx->server_config.allow_request_template);
+    jb_raw(&jb, "}");
+    /* The active chat template, so the web UI can show it and offer an
+     * edited copy as a per-request "chat_template" override. */
+    jb_raw(&jb, ","); jb_key(&jb, "chat_template"); jb_raw(&jb, "{");
+    jb_key(&jb, "source");
+    jb_str(&jb, ctx && ctx->server_config.chat_template_source ? ctx->server_config.chat_template_source
+                : (ctx && ctx->tok && ctx->tok->chat_template ? "gguf" : "none"));
+    jb_raw(&jb, ","); jb_key(&jb, "text");
+    jb_str(&jb, ctx && ctx->tok && ctx->tok->chat_template ? ctx->tok->chat_template : "");
+    jb_raw(&jb, ","); jb_key(&jb, "request_override");
+    jb_bool(&jb, ctx && ctx->server_config.allow_request_template);
+    jb_raw(&jb, ","); jb_key(&jb, "max_bytes"); jb_int(&jb, CHAT_MAX_TEMPLATE);
     jb_raw(&jb, "}");
     jb_raw(&jb, "}");
     return jb_finish(&jb);

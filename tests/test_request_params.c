@@ -92,6 +92,45 @@ static void test_cache_prompt_field(void) {
     chat_request_free(&r);
 }
 
+static void test_chat_template_field(void) {
+    const char *M = "{\"messages\":[{\"role\":\"user\",\"content\":\"x\"}]";
+    char body[256];
+    ChatRequest r; chat_request_init(&r);
+    snprintf(body, sizeof(body), "%s,\"chat_template\":\"{{ messages[0].content }}\",\"top_k\":3}", M);
+    TEST_ASSERT_EQ(chat_request_parse(body, &r), TN_OK, "template parses");
+    TEST_ASSERT((r.set_mask & CHAT_SET_CHAT_TEMPLATE) && r.chat_template &&
+                strcmp(r.chat_template, "{{ messages[0].content }}") == 0, "template recorded");
+    TEST_ASSERT((r.set_mask & CHAT_SET_TOP_K) && r.top_k == 3, "fields after it still parse");
+    GenerationParams def, out;
+    gen_params_default(&def);
+    request_params_resolve(&r, &def, 4096, &out);
+    TEST_ASSERT(out.chat_template == r.chat_template, "resolved into GenerationParams");
+    chat_request_free(&r);
+    TEST_ASSERT(r.chat_template == NULL, "freed");
+
+    const char *empties[] = { "\"\"", "null" };
+    for (int i = 0; i < 2; i++) {
+        chat_request_init(&r);
+        snprintf(body, sizeof(body), "%s,\"chat_template\":%s,\"top_k\":4}", M, empties[i]);
+        TEST_ASSERT_EQ(chat_request_parse(body, &r), TN_OK, "empty/null parses");
+        TEST_ASSERT(!(r.set_mask & CHAT_SET_CHAT_TEMPLATE) && r.chat_template == NULL && r.top_k == 4,
+                    "empty/null = server template");
+        request_params_resolve(&r, &def, 4096, &out);
+        TEST_ASSERT(out.chat_template == NULL, "no override resolved");
+        chat_request_free(&r);
+    }
+
+    size_t n = CHAT_MAX_TEMPLATE + 64;
+    char *big = (char *)malloc(n + 128);
+    int k = snprintf(big, n + 128, "%s,\"chat_template\":\"", M);
+    memset(big + k, 'a', CHAT_MAX_TEMPLATE + 1);
+    strcpy(big + k + CHAT_MAX_TEMPLATE + 1, "\"}");
+    chat_request_init(&r);
+    TEST_ASSERT_EQ(chat_request_parse(big, &r), TN_ERR_INVALID_ARGS, "over CHAT_MAX_TEMPLATE refused");
+    chat_request_free(&r);
+    free(big);
+}
+
 static void test_ignore_eos_field(void) {
     ChatRequest r; chat_request_init(&r);
     TEST_ASSERT_EQ(chat_request_parse("{\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"ignore_eos\":true}", &r),
@@ -162,6 +201,7 @@ int main(void) {
     RUN_TEST(test_resolve_defaults_and_overrides);
     RUN_TEST(test_cache_prompt_field);
     RUN_TEST(test_ignore_eos_field);
+    RUN_TEST(test_chat_template_field);
     RUN_TEST(test_chat_format_choice);
     RUN_TEST(test_best_of_parse_and_score);
     RUN_TEST(test_json_fields);

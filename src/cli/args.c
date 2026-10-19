@@ -29,7 +29,8 @@ void print_usage(const char *prog_name) {
     printf("                      -1 = all generated tokens, 0 = penalties off)\n");
     printf("  --system-prompt <s> System prompt for chat-template models (default: none)\n");
     printf("  --chat-template-file <f>  Jinja chat template replacing the model's own\n");
-    printf("                      (e.g. templates/bitnet-b1.58.jinja); default: GGUF\n");
+    printf("                      (e.g. docs/templates/bitnet-b1.58.jinja); default: GGUF\n");
+    printf("  --no-request-template  Server: ignore a request's \"chat_template\" field\n");
     printf("  --stop <text>       Stop generation at this string; repeatable (max %d)\n", GEN_MAX_STOP);
     printf("  --best-of <N>       Generate N candidates, keep the one the model finds\n");
     printf("                      most likely (mean log-prob). Default 1 (off).\n");
@@ -248,6 +249,7 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     }
     args->system_prompt = NULL;
     args->chat_template_file = NULL;
+    args->no_request_template = false;
     args->n_stop = 0;
     args->max_tokens_limit = 0;
     args->watermark = false;
@@ -315,6 +317,8 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             args->repeat_last_n = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--system-prompt") == 0 && i + 1 < argc) {
             args->system_prompt = argv[++i];
+        } else if (strcmp(argv[i], "--no-request-template") == 0) {
+            args->no_request_template = true;
         } else if (strcmp(argv[i], "--chat-template-file") == 0 && i + 1 < argc) {
             args->chat_template_file = argv[++i];
         } else if (strcmp(argv[i], "--stop") == 0 && i + 1 < argc) {

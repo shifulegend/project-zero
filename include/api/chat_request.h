@@ -16,6 +16,7 @@
 #define CHAT_MAX_CONTENT    65536   /* 64 KiB per message */
 #define CHAT_MAX_MODEL_LEN  128
 #define CHAT_MAX_STOP       8       /* == GEN_MAX_STOP */
+#define CHAT_MAX_TEMPLATE   65536   /* per-request "chat_template" cap (2026-10-19) */
 
 /* ChatRequest.set_mask bits: which optional fields the client sent. */
 enum {
@@ -36,7 +37,8 @@ enum {
     CHAT_SET_JSON_MODE     = 1u << 14,
     CHAT_SET_CACHE_PROMPT  = 1u << 15,
     CHAT_SET_BEST_OF       = 1u << 16,
-    CHAT_SET_IGNORE_EOS    = 1u << 17
+    CHAT_SET_IGNORE_EOS    = 1u << 17,
+    CHAT_SET_CHAT_TEMPLATE = 1u << 18
 };
 
 /* ── Single chat message ─────────────────────────────────────────────────── */
@@ -89,6 +91,10 @@ typedef struct {
     int           best_of;
     /* "ignore_eos": true keeps generating to max_tokens (llama.cpp server name). */
     bool          ignore_eos;
+    /* "chat_template": Jinja template replacing the model's for this request
+     * (heap; NULL = server's). Ignored when the server runs
+     * --no-request-template. */
+    char         *chat_template;
 } ChatRequest;
 
 /* ── Lifecycle ───────────────────────────────────────────────────────────── */

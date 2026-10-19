@@ -599,6 +599,7 @@ int main(int argc, char **argv) {
      * --server alike (both render from t.chat_template). Some GGUFs ship a
      * broken one — the official BitNet b1.58 2B-4T file appends eos_token
      * after the generation prompt (2026-10-19). */
+    int chat_template_from_file = 0;
     if (args.chat_template_file) {
         size_t tl = 0;
         char *tmpl = tn_read_text_file(args.chat_template_file, (size_t)1 << 20, &tl);
@@ -608,6 +609,7 @@ int main(int argc, char **argv) {
         } else {
             free(t.chat_template);
             t.chat_template = tmpl;
+            chat_template_from_file = 1;
             fprintf(stderr, "[tokenizer] chat template from %s (%zu bytes)\n",
                     args.chat_template_file, tl);
         }
@@ -840,6 +842,9 @@ int main(int argc, char **argv) {
         api_ctx.server_config.ui_logo = args.ui_logo;
         api_ctx.server_config.prompt_cache = args.prompt_cache ? 1 : 0;
         api_ctx.server_config.chat_format = args.chat_format;
+        api_ctx.server_config.allow_request_template = args.no_request_template ? 0 : 1;
+        api_ctx.server_config.chat_template_source =
+            !t.chat_template ? "none" : (chat_template_from_file ? "file" : "gguf");
         api_ctx.server_config.best_of = args.best_of;
         api_ctx.server_config.queue_size = args.queue_size;
         api_ctx.server_config.queue_timeout_s = args.queue_timeout_s;

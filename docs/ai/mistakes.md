@@ -20,7 +20,7 @@ Installing llama.cpp and bitnet.cpp for head-to-head runs exposed nine pre-exist
 - **No BPE pre-tokenization.** BPE ran over whole segments, merging across word/digit/punctuation
   boundaries (`?\n\n` as one token). Fixed: `tokenizer/pretokenize` ports llama.cpp's splitters,
   selected by `tokenizer.ggml.pre` ("default" when absent); 8/8 token-exact vs llama.cpp on four
-  models (BitNet, SmolLM2, Qwen3, Mamba).
+  models (BitNet, SmolLM2, Qwen3, Mamba). PPL parity table: `docs/reports/ACCURACY_PARITY_2026-10-19.md`.
 - **Direct `transformer_forward()` callers got an uninitialised sliding window** (second time,
   after the Phase 28 worker): every position mapped to slot 0. Now initialised on first use.
 - **GGUF tensors were bounds-checked by start offset only** — a truncated file gave kernels a

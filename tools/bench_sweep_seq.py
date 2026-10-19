@@ -82,12 +82,20 @@ def main():
     ap.add_argument("--tokens", type=int, default=500)
     ap.add_argument("--cooldown", type=float, default=10.0)
     ap.add_argument("--prompt", default=PROMPT)
+    ap.add_argument("--resume", action="store_true",
+                    help="skip (suite, threads, run) rows already in OUT/summary.csv (after a restart)")
     a = ap.parse_args()
 
     os.makedirs(a.out, exist_ok=True)
     threads = parse_threads(a.threads)
     summary_path = os.path.join(a.out, "summary.csv")
     new = not os.path.exists(summary_path)
+    done = set()
+    if a.resume and not new:
+        with open(summary_path) as f:
+            for row in csv.DictReader(f):
+                if row.get("gen_tok_s"):
+                    done.add((row["suite"], int(row["threads"]), int(row["run"])))
     sf = open(summary_path, "a", newline="")
     sw = csv.writer(sf)
     if new:
@@ -116,6 +124,9 @@ def main():
             os.makedirs(tdir, exist_ok=True)
             best = None
             for r in range(1, a.runs + 1):
+                if (name, t, r) in done:
+                    print(f"  t={t} run {r}: already recorded (resume)", flush=True)
+                    continue
                 if kind == "pz":
                     cmd = [binary, "--model", model, "--prompt", a.prompt, "--max-tokens", str(a.tokens),
                            "--temperature", "0", "--threads", str(t), "--no-update-check"] + extra

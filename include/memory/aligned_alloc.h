@@ -43,6 +43,15 @@ void *tn_aligned_alloc(size_t size, size_t alignment);
 void *tn_aligned_calloc(size_t count, size_t elem_size, size_t alignment);
 
 /**
+ * Commit (fault in) the pages of [p, p+n) for writing WITHOUT changing their
+ * contents — for lazily committed buffers (tn_aligned_calloc on Linux) whose
+ * first-touch faults would otherwise land in a hot loop. Uses
+ * MADV_POPULATE_WRITE where available, else touches one byte per page by
+ * rewriting its own value (callers must not race with other writers).
+ */
+void tn_mem_commit(void *p, size_t n);
+
+/**
  * Free memory allocated by tn_aligned_alloc or tn_aligned_calloc.
  * Safe to call with NULL.
  */

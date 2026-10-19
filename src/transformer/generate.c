@@ -201,6 +201,9 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
     /* Initialize Sliding Window (pins the entire prompt) */
     sw_init(&s->sw, s->max_seq_len, n_prompt + pos_offset);
 
+    /* Commit the KV rows this call can write, up front (no-op once resident). */
+    run_state_kv_reserve(s, cfg, pos_offset + n_prompt + (max_tokens > 0 ? max_tokens : 0));
+
     /* Phase 21.5: skip prompt positions whose K/V are already cached from a
      * previous call with the same leading tokens. The last prompt token is
      * always recomputed — its logits seed the first sample. Not valid after

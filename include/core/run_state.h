@@ -115,6 +115,9 @@ typedef struct {
    * tn_aligned_calloc; run_state_free() unmaps it. NULL otherwise. */
   void  *kv_offload_base;
   size_t kv_offload_bytes;
+  /* Positions [0, kv_committed) of the generic KV cache are known resident
+   * (run_state_kv_reserve); the buffers are committed lazily otherwise. */
+  int    kv_committed;
 } RunState;
 
 /**
@@ -150,6 +153,15 @@ TernaryError run_state_alloc_ex(RunState *s, const Config *cfg, int max_seq_len,
  * Free all RunState buffers.
  */
 void run_state_free(RunState *s);
+
+/* Commit the generic KV cache rows for positions [0, n_pos) of every layer
+ * and KV head (no-op for rows already committed, disk-backed KV, or NULL
+ * caches). Contents are preserved. generate_ex() calls it with prompt +
+ * max_tokens so decode never takes first-touch page faults (2026-10-19:
+ * otherwise ~100 faults per token on SmolLM2-1.7B land in the decode loop;
+ * the tok/s effect was within this VM's +-4% noise, but per-token latency
+ * stays flat). RSS still only grows with the positions actually used. */
+void run_state_kv_reserve(RunState *s, const Config *cfg, int n_pos);
 
 /* Phase 31: async read-ahead of layer `layer`'s KV rows [0, n_pos) when the
  * cache is disk-backed (no-op otherwise). Called one layer ahead. */

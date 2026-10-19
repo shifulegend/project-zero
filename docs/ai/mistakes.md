@@ -25,6 +25,16 @@ this was never seen. Four pre-existing defects:
   (8192 × F32) before the first token. Fixed on Linux: `madvise(MADV_DONTNEED)` on whole pages
   (zero-fill-on-demand), memset only partial head/tail pages; elsewhere unchanged.
 - **I2_S repack decoded 2-bit fields one at a time**; now one 32-bit word → 4 output bytes.
+- **Converted raw tensors stayed resident**: the model is mapped with `MAP_POPULATE`, so raw I2_S
+  and embedding bytes counted in RSS after being converted to engine buffers. Now released
+  (`mapped_file_release`, `MADV_DONTNEED` on the read-only mapping — refaults from the file):
+  BitNet 2,867 → 1,766 MB.
+- Tried and rejected: `MADV_HUGEPAGE` on lazily zeroed buffers. The KV cache is laid out per
+  (layer, head), so 2 MB pages committed nearly the whole cache (SmolLM2-1.7B RSS 2.3 → 5.4 GB).
+  Instead `run_state_kv_reserve()` commits only the rows a generation can write, up front.
+- A/B noise: single old-vs-new rounds on this VM showed a "consistent" −3.5 % that vanished (and
+  flipped sign) in later rounds; ±4 % run-to-run. Repeat interleaved rounds before calling a
+  regression, and count page faults (`ru_minflt`) to test a mechanism directly.
 - Lesson: benchmark wall time and RSS, not only the engine's self-reported decode rate, and
   compare against a reference engine on the same host — "one-time cost" comments hide O(n²).
 

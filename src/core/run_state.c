@@ -222,6 +222,32 @@ void run_state_free(RunState *s) {
   memset(s, 0, sizeof(*s));
 }
 
+void run_state_kv_reserve(RunState *s, const Config *cfg, int n_pos) {
+  if (!s || !cfg || s->kv_offload_base) return;
+  if (n_pos > s->max_seq_len) n_pos = s->max_seq_len;
+  int from = s->kv_committed;
+  if (n_pos <= from) return;
+  int hd = config_head_dim(cfg);
+  size_t cnt = (size_t)(n_pos - from);
+  for (int l = 0; l < cfg->n_layers; l++) {
+    for (int h = 0; h < cfg->n_kv_heads; h++) {
+      size_t row = ((size_t)l * (size_t)cfg->n_kv_heads + (size_t)h) * (size_t)s->max_seq_len + (size_t)from;
+      if (s->kv_type == KV_TYPE_I8) {
+        if (!s->key_cache_q || !s->value_cache_q || !s->key_scale || !s->value_scale) return;
+        tn_mem_commit(s->key_cache_q + row * (size_t)hd, cnt * (size_t)hd);
+        tn_mem_commit(s->value_cache_q + row * (size_t)hd, cnt * (size_t)hd);
+        tn_mem_commit(s->key_scale + row, cnt * sizeof(float));
+        tn_mem_commit(s->value_scale + row, cnt * sizeof(float));
+      } else {
+        if (!s->key_cache || !s->value_cache) return;
+        tn_mem_commit(s->key_cache + row * (size_t)hd, cnt * (size_t)hd * sizeof(float));
+        tn_mem_commit(s->value_cache + row * (size_t)hd, cnt * (size_t)hd * sizeof(float));
+      }
+    }
+  }
+  s->kv_committed = n_pos;
+}
+
 void run_state_kv_prefetch_layer(const RunState *s, const Config *cfg, int layer, int n_pos) {
   if (!s || !s->kv_offload_base || layer < 0 || layer >= cfg->n_layers || n_pos <= 0) return;
   int hd = config_head_dim(cfg);

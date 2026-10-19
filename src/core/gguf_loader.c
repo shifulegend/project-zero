@@ -6,6 +6,7 @@
 #include "core/hardware_profile.h"
 #include "math/matmul_q4k_x8.h"
 #include "core/gguf_i2s.h"
+#include "memory/mapped_file.h"
 #include "math/rope.h"
 #include "core/unpack.h"
 #include <stdlib.h>
@@ -1323,6 +1324,7 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
             }
             if (store_add(store, buf) != 0) { free(buf); return TN_ERR_OOM; }
             w->token_embedding_table = buf;
+            mapped_file_release(t->data, t->size_bytes);
         } else if (t->type == GGUF_TYPE_F16) {
             /* Dequant F16 → F32 → BF16 */
             tn_u16 *buf = (tn_u16 *)malloc(n * sizeof(tn_u16));
@@ -1335,6 +1337,7 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
             }
             if (store_add(store, buf) != 0) { free(buf); return TN_ERR_OOM; }
             w->token_embedding_table = buf;
+            mapped_file_release(t->data, t->size_bytes);
         } else if (t->type == GGUF_TYPE_Q4_K || t->type == GGUF_TYPE_Q8_0 ||
                    t->type == GGUF_TYPE_Q4_0 || t->type == GGUF_TYPE_Q5_0 ||
                    t->type == GGUF_TYPE_Q5_1 ||
@@ -1365,6 +1368,7 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
             }
             if (store_add(store, buf) != 0) { free(buf); return TN_ERR_OOM; }
             w->token_embedding_table = buf;
+            mapped_file_release(t->data, t->size_bytes);
         } else {
             fprintf(stderr,
                 "[gguf_loader] unsupported embedding type %d ('%s')\n"
@@ -1444,6 +1448,7 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
             return TN_ERR_INVALID_WEIGHTS;                                  \
         }                                                                   \
         if (store_add(store, _pk) != 0) { free(_pk); return TN_ERR_OOM; }   \
+        mapped_file_release(_t->data, _t->size_bytes); /* raw I2_S unused now */ \
         (field)[l] = (tn_i8 *)_pk;                                         \
         (type_out)[l] = WEIGHT_TYPE_TERNARY;                                \
     } else if (_t->type == GGUF_TYPE_F16) {                                 \
@@ -1552,6 +1557,7 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
                 }
                 if (store_add(store, buf) != 0) { free(buf); return TN_ERR_OOM; }
                 w->wcls = buf;
+                mapped_file_release(t->data, t->size_bytes);
             } else if (t->type == GGUF_TYPE_F16) {
                 tn_u16 *buf = (tn_u16 *)malloc(n * sizeof(tn_u16));
                 if (!buf) return TN_ERR_OOM;
@@ -1563,6 +1569,7 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
                 }
                 if (store_add(store, buf) != 0) { free(buf); return TN_ERR_OOM; }
                 w->wcls = buf;
+                mapped_file_release(t->data, t->size_bytes);
             } else {
                 /* Quantized types → F32 → BF16 */
                 float *ftmp = tensor_to_f32(t, n, store);
@@ -1575,6 +1582,7 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
                 }
                 if (store_add(store, buf) != 0) { free(buf); return TN_ERR_OOM; }
                 w->wcls = buf;
+                mapped_file_release(t->data, t->size_bytes);
             }
             wcls_done:;
         } else {

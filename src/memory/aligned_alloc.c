@@ -80,3 +80,20 @@ void *tn_aligned_calloc(size_t count, size_t elem_size, size_t alignment) {
     }
     return ptr;
 }
+
+void tn_mem_commit(void *p, size_t n) {
+    if (!p || n == 0) return;
+#if defined(__linux__) && defined(MADV_POPULATE_WRITE)
+    {
+        long pg = sysconf(_SC_PAGESIZE);
+        if (pg > 0) {
+            uintptr_t a = (uintptr_t)p & ~((uintptr_t)pg - 1);
+            uintptr_t e = ((uintptr_t)p + n + (uintptr_t)pg - 1) & ~((uintptr_t)pg - 1);
+            if (madvise((void *)a, e - a, MADV_POPULATE_WRITE) == 0) return;
+        }   /* EINVAL on kernels < 5.14: fall through to touching */
+    }
+#endif
+    volatile unsigned char *b = (volatile unsigned char *)p;
+    for (size_t i = 0; i < n; i += 4096) b[i] = b[i];
+    b[n - 1] = b[n - 1];
+}

@@ -2,6 +2,8 @@
 #include "core/platform.h"
 #include <string.h>
 
+#include <stdint.h>
+
 #if TN_POSIX
 
 #include <fcntl.h>
@@ -164,3 +166,18 @@ void mapped_file_close(MappedFile *mf) {
 }
 
 #endif
+
+void mapped_file_release(const void *p, size_t n) {
+#if defined(__linux__)
+    long pg = sysconf(_SC_PAGESIZE);
+    if (!p || pg <= 0) return;
+    uintptr_t a = (uintptr_t)p, e = a + n;
+    uintptr_t lo = (a + (uintptr_t)pg - 1) & ~((uintptr_t)pg - 1);
+    uintptr_t hi = e & ~((uintptr_t)pg - 1);
+    /* Read-only private file mapping: MADV_DONTNEED drops the pages; the
+     * next access refaults them from the file, never zero-fills. */
+    if (hi > lo) (void)madvise((void *)lo, hi - lo, MADV_DONTNEED);
+#else
+    (void)p; (void)n;
+#endif
+}

@@ -1,0 +1,56 @@
+DATE: 2026-10-19 01:42:36 UTC
+PROJECT_ZERO_COMMIT: 5af8359
+LLAMA_CPP_COMMIT: ff5a233 (upstream ggml-org/llama.cpp, Release, GGML_NATIVE=ON, gcc)
+BITNET_CPP_COMMIT: 0b341e5 (microsoft/BitNet, Release, clang, BITNET_X86_TL2=OFF, i2_s kernels)
+--- uname
+Linux vm 6.18.44-fc-v139 #1 SMP PREEMPT_DYNAMIC @0 x86_64 x86_64 x86_64 GNU/Linux
+--- lscpu
+Architecture:                            x86_64
+CPU op-mode(s):                          32-bit, 64-bit
+Address sizes:                           52 bits physical, 57 bits virtual
+Byte Order:                              Little Endian
+CPU(s):                                  4
+On-line CPU(s) list:                     0-3
+Vendor ID:                               GenuineIntel
+Model name:                              Intel(R) Xeon(R) Processor @ 2.10GHz
+CPU family:                              6
+Model:                                   207
+Thread(s) per core:                      1
+Core(s) per socket:                      4
+Socket(s):                               1
+Stepping:                                2
+BogoMIPS:                                4200.00
+Hypervisor vendor:                       KVM
+Virtualization type:                     full
+L1d cache:                               192 KiB (4 instances)
+L1i cache:                               128 KiB (4 instances)
+L2 cache:                                8 MiB (4 instances)
+L3 cache:                                260 MiB (1 instance)
+NUMA node(s):                            1
+NUMA node0 CPU(s):                       0-3
+--- memory
+               total        used        free      shared  buff/cache   available
+Mem:           16093         785       11786          14        3837       15307
+Swap:              0           0           0
+--- engine
+Project Zero Engine (adaptive_ai_engine) 03ca5eb-dirty
+SIMD backend (this CPU): AVX-VNNI
+--- hardware profile (engine)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-VNNI                           │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 2048   KiB per core                 │
+│ L3 cache      : 260    MiB shared                   │
+│ Free RAM      : 15304  MiB                          │
+│ DRAM bandwidth: 42.2   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB (pre-load est.)           │
+│ Ceiling       : 45.2   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 4 threads | AVX-VNNI | BF16 cls | 4T | 42.2 GB/s | ceiling 45 tok/s

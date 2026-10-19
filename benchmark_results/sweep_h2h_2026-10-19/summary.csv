@@ -1,0 +1,2 @@
+suite,threads,run,gen_tok_s,tokens,wall_s,max_rss_mb,cpu_pct,exit
+smollm2_135m_pz,1,1,31.03,500,22.69,2055,101,0

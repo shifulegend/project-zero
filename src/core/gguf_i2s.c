@@ -1,5 +1,6 @@
 #include "core/gguf_i2s.h"
 #include <math.h>
+#include <stdint.h>
 #include <string.h>
 
 size_t tn_i2s_tensor_bytes(size_t n_elems) { return n_elems / 4 + 32; }
@@ -12,20 +13,26 @@ int tn_i2s_repack(uint8_t *dst, float *scale_out, const uint8_t *src,
     float scale;
     memcpy(&scale, src + n / 4, sizeof(scale));
     if (!isfinite(scale)) return -1;
-    int bad = 0;
+    /* Output byte m of a block holds within-block weights 4m..4m+3, which
+     * all sit in group g = m/8 of input bytes k = 4(m%8)..4(m%8)+3. So each
+     * 32-bit word of 4 input bytes yields one output byte per group: pick
+     * the group's 2-bit field from every byte (bits 0,8,16,24), then fold
+     * them down to bits 0,2,4,6. Word-at-a-time instead of per field: the
+     * per-field loop made BitNet-2B loading take seconds (2026-10-19). */
+    uint32_t bad = 0;
     for (size_t b = 0; b < n / TN_I2S_BLOCK; b++) {
         const uint8_t *in = src + b * 32;
-        /* 128 consecutive weights b*128 .. b*128+127 == 32 output bytes; blocks
-         * never straddle rows because n_inner % 128 == 0. */
+        /* blocks never straddle rows because n_inner % 128 == 0 */
         uint8_t *out = dst + b * 32;
-        memset(out, 0, 32);
-        for (int k = 0; k < 32; k++) {
-            uint8_t byte = in[k];
+        for (int q = 0; q < 8; q++) {
+            const uint8_t *w4 = in + 4 * q;
+            uint32_t w = (uint32_t)w4[0] | ((uint32_t)w4[1] << 8) |
+                         ((uint32_t)w4[2] << 16) | ((uint32_t)w4[3] << 24);
+            bad |= w & (w >> 1) & 0x55555555u;          /* any code 3 (0b11) */
             for (int g = 0; g < 4; g++) {
-                uint8_t code = (uint8_t)((byte >> (6 - 2 * g)) & 3);
-                bad |= (code == 3);
-                size_t j = (size_t)(k + 32 * g);          /* index within block */
-                out[j >> 2] |= (uint8_t)(code << ((j & 3) << 1));
+                uint32_t f = (w >> (6 - 2 * g)) & 0x03030303u;
+                f |= f >> 6;
+                out[8 * g + q] = (uint8_t)((f | (f >> 12)) & 0xFFu);
             }
         }
     }

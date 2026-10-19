@@ -104,14 +104,28 @@ static char *str_cursor_next(StrArrayCursor *c) {
     return s;
 }
 
-/* ── Find a vocab token by exact string match (linear scan) ─────────────── */
-/* Used for BPE merge resolution. Linear O(vocab_size) per merge — acceptable
- * since merge resolution is a one-time initialization cost. */
-static int find_vocab_token(char **vocab, int vocab_size, const char *s) {
-    for (int i = 0; i < vocab_size; i++) {
-        if (vocab[i] && strcmp(vocab[i], s) == 0) return i;
+/* ── Find a vocab token by exact string match (sorted index) ────────────── */
+/* Used for BPE merge resolution. Was a linear O(vocab) scan per merge —
+ * O(merges x vocab) overall: ~4 s at startup for SmolLM2 (49k x 49k) and
+ * ~60 s for Llama-3-vocab models (280k merges x 128k tokens); found by the
+ * 2026-10-19 head-to-head sweep. Binary search over the sorted index; among
+ * duplicate strings the lowest id wins, as the linear scan returned. */
+static int find_vocab_token(const Tokenizer *t, const char *s) {
+    int lo = 0, hi = t->vocab_size - 1, hit = -1;
+    const int *ix = t->sorted_vocab_indices;
+    while (lo <= hi) {
+        int mid = lo + (hi - lo) / 2;
+        int c = strcmp(t->vocab[ix[mid]], s);
+        if (c == 0) { hit = mid; break; }
+        if (c < 0) lo = mid + 1; else hi = mid - 1;
     }
-    return -1;
+    if (hit < 0) return -1;
+    int best = ix[hit];
+    for (int k = hit - 1; k >= 0 && strcmp(t->vocab[ix[k]], s) == 0; k--)
+        if (ix[k] < best) best = ix[k];
+    for (int k = hit + 1; k < t->vocab_size && strcmp(t->vocab[ix[k]], s) == 0; k++)
+        if (ix[k] < best) best = ix[k];
+    return best;
 }
 
 /* ── Main loader ─────────────────────────────────────────────────────────── */
@@ -200,6 +214,9 @@ TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
         /* If no scores array: all zeros (valid for uniform-weight SPM or RWKV) */
     }
 
+    /* Sorted index for binary-search encode and merge resolution below */
+    build_sorted(t);
+
     /* 3b. BPE path: read merges array, compute scores from merge ranks */
     if (is_bpe) {
         GGUFValType mtype = GGUF_VAL_STRING;
@@ -230,7 +247,7 @@ TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
                     memcpy(merged + la, space + 1, lb);
                     merged[lm] = '\0';
 
-                    int id = find_vocab_token(t->vocab, t->vocab_size, merged);
+                    int id = find_vocab_token(t, merged);
                     if (id >= 0) {
                         /* Only update if not already set (keep highest-priority merge) */
                         if (t->vocab_scores[id] == 0.0f)
@@ -245,9 +262,6 @@ TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
                     "array — BPE merge scores will be zero\n");
         }
     }
-
-    /* 4. Build sorted index for binary-search encode */
-    build_sorted(t);
 
     /* 5. Read chat template and special token metadata
      * Use gguf_meta_find + exact length copy to get the full string from the
@@ -331,7 +345,20 @@ TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
     if (t->add_bos_token < 0)
         t->add_bos_token = is_bpe ? (t->pretok_type == PRETOK_LLAMA3) : 1;
 
-    /* 7. Log summary */
+    /* 7. End-of-generation set: declared EOS/EOT/EOM + end-of-turn control
+     * tokens (a Llama-3-vocab model whose eos is <|end_of_text|> must still
+     * stop on <|eot_id|>; GGUF loads never filled this list before
+     * 2026-10-19, so such models ran to --max-tokens). */
+    {
+        int ids[3] = {
+            t->eos_token_id,
+            (int)gguf_meta_u32(hdr, "tokenizer.ggml.eot_token_id", (uint32_t)-1),
+            (int)gguf_meta_u32(hdr, "tokenizer.ggml.eom_token_id", (uint32_t)-1),
+        };
+        tokenizer_collect_eog(t, ids, 3, t->n_special > 0);
+    }
+
+    /* 8. Log summary */
     fprintf(stderr, "[gguf-tok] Loaded %d tokens (%s, pre=%s), %d special — BOS=%d EOS=%d chat_template=%s\n",
             t->vocab_size, tok_model, pretok_type_name((PretokType)t->pretok_type), t->n_special,
             t->bos_token_id, t->eos_token_id,

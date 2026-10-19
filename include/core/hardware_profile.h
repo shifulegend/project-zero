@@ -41,6 +41,7 @@ typedef struct {
     size_t l3_cache_bytes;       /* shared L3 (0 if not detected) */
     size_t free_ram_bytes;
     double measured_bw_gbps;     /* DRAM bandwidth in GB/s */
+    bool   bw_cached;            /* measured_bw_gbps came from the per-host cache (core/bw_cache.h) */
 
     /* ── Derived tuning parameters ── */
     TnClassifierFormat classifier_fmt;

@@ -5,6 +5,42 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-10-18.
 
+### 2026-10-19 — Startup cost 20–70 s: found only by timing wall clock against llama.cpp
+
+The head-to-head sweep reported near-parity decode tok/s, but Project Zero's wall time was 3–4×
+the reference engines' for the same 500 tokens (SmolLM2-135M 25 s vs 7.5 s; BitNet 108 s vs
+37 s). Every earlier sweep reported the engine's own `[gen] tok/s`, which excludes startup, so
+this was never seen. Four pre-existing defects:
+
+- **BPE merge resolution was O(merges × vocab)** — a linear vocab scan per merge, commented
+  "acceptable since one-time". SmolLM2 (49k × 49k) ≈ 4 s; Llama-3 vocabularies (280k merges ×
+  128k tokens, BitNet) ≈ 60 s. Fixed: binary search over the sorted index (built earlier),
+  lowest id among duplicates as before. Outputs identical on all models.
+- **DRAM bandwidth probe on every start**: 2 GB malloc'd and first-touched single-threaded —
+  1.3–15 s on a VM and the reason every run's max RSS was ≥ 2 GB (Addendum AJ/AK attributed that
+  RSS to "mmap'd model + calibration buffers"). Fixed: per-host cache (`core/bw_cache`, keyed by
+  CPU/cores/L3/RAM, 30-day expiry, `--calibrate`/`PZ_BW_REPROBE=1` re-measure); probe buffer
+  4×L3 (512 MB..2 GB, ≤ ¼ free RAM), touched by the probing threads in parallel.
+- **`tn_aligned_calloc` memset the whole buffer**, committing the full max-context KV cache
+  (8192 × F32) before the first token. Fixed on Linux: `madvise(MADV_DONTNEED)` on whole pages
+  (zero-fill-on-demand), memset only partial head/tail pages; elsewhere unchanged.
+- **I2_S repack decoded 2-bit fields one at a time**; now one 32-bit word → 4 output bytes.
+- Lesson: benchmark wall time and RSS, not only the engine's self-reported decode rate, and
+  compare against a reference engine on the same host — "one-time cost" comments hide O(n²).
+
+### 2026-10-19 — GGUF models never stopped on end-of-turn tokens; BitNet's GGUF template is broken
+
+- `Tokenizer.eos_list` was only filled by the legacy `.bin` loader. GGUF models stopped only on
+  the declared `eos_token_id`, so a Llama-3-vocab model whose EOS is `<|end_of_text|>` ran past
+  `<|eot_id|>` to `--max-tokens` (BitNet: "Paris.<|eot_id|><|eot_id|>..."). Fixed:
+  `tokenizer_collect_eog()` (declared EOS/EOT/EOM + llama.cpp's end-of-generation names, control
+  tokens only for GGUF), shared by both loaders; `--ignore-eos` masks the whole set, as llama.cpp.
+- The official `bitnet-b1.58-2B-4T-gguf` file's `tokenizer.chat_template` appends `eos_token`
+  after `BITNETAssistant: `, so the model starts a new document (bitnet.cpp `--jinja` returns an
+  empty answer from it). Fix: `--chat-template-file` (CLI and `--server`) with
+  `docs/templates/bitnet-b1.58.jinja` (the model card's `User: …<|eot_id|>Assistant: ` format).
+  Golden "capital of France" → "Paris" now holds in chat mode, not only with `--raw-prompt`.
+
 ### 2026-10-19 — A container restart moved the benchmark to different hardware
 
 - The head-to-head sweep's `system_info.txt` was written on an Xeon @ 2.10 GHz (model 207,

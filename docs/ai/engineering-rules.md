@@ -109,3 +109,8 @@ A change is done only when:
 ## Performance
 - Hot path is memory-bandwidth bound; prefer fused kernels and avoiding redundant
   quantize/dequant passes. Measure before/after with the `tools/*bench*.sh` harness.
+- **Startup is part of performance** (2026-10-19): benchmark wall time and max RSS next to the
+  engine's own `[gen] tok/s`, against a reference engine on the same host. No O(n²) "one-time"
+  init (tokenizer lookups go through the sorted index); per-host measurements (DRAM bandwidth)
+  are cached (`core/bw_cache`), not repeated per run; large zeroed buffers must stay lazily
+  committed (`tn_aligned_calloc` uses `MADV_DONTNEED` on Linux — don't add a full memset).

@@ -21,6 +21,9 @@ Adapter for the configurability rules in `docs/ai/engineering-rules.md`.
 - Update checks: `--no-update-check --update-interval --update-channel --update-repo
   --update-api --check-update`, env `PZ_NO_UPDATE_CHECK`/`DO_NOT_TRACK`, off under `CI`; build
   default repo `PZ_UPDATE_REPO` (Makefile + CMake).
+- DRAM bandwidth is cached per host (`core/bw_cache`: `$PZ_CACHE_DIR|$XDG_CACHE_HOME/project-zero|~/.cache/project-zero/membw`, 30 days); `--calibrate` or `PZ_BW_REPROBE=1` re-measures.
+- `--chat-template-file <f>` replaces a GGUF's `tokenizer.chat_template` (CLI + `--server`);
+  `docs/templates/bitnet-b1.58.jinja` fixes the official BitNet GGUF's broken template.
 - Calibration (`~/.project-zero/calibration.bin`, v3) only overrides the auto SIMD tier when a
   forced tier is clearly faster; bump `TN_CALIB_VERSION` whenever selection logic changes.
 - GGUF conventions follow llama.cpp: RoPE layout from the architecture (`--rope-layout` to

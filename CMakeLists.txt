@@ -128,6 +128,8 @@ set(CORE_SOURCES
     src/core/error.c
     src/core/gguf_quant.c
     src/core/hardware_profile.c
+    src/core/bw_cache.c
+    src/core/text_file.c
     src/core/calibration.c
     src/core/mla_run_state.c
     src/core/moe_config.c

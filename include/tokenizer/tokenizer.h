@@ -4,6 +4,8 @@
 #include "core/error.h"
 #include <stddef.h>
 
+#define TN_TOKENIZER_MAX_EOG 16
+
 typedef struct {
     /* Core vocabulary (BPE) */
     char **vocab;              /* Array of token strings */
@@ -27,9 +29,10 @@ typedef struct {
     int   *special_token_ids;  /* corresponding token IDs */
     int    n_special;          /* count */
 
-    /* All EOS-like token IDs, populated by tokenizer_load via vocab scan.
-     * Includes <|eot_id|>, <|end_of_text|>, </s>, <|im_end|>, etc. */
-    int eos_list[8];
+    /* End-of-generation token IDs (tokenizer_collect_eog): the declared
+     * EOS/EOT/EOM ids plus known end-of-turn tokens (<|eot_id|>, <|im_end|>,
+     * <end_of_turn>, ...), as llama.cpp's EOG set. */
+    int eos_list[TN_TOKENIZER_MAX_EOG];
     int n_eos;
 
     /* BPE pre-tokenization (tokenizer/pretokenize.h PretokType), from GGUF
@@ -50,6 +53,16 @@ TernaryError tokenizer_load(Tokenizer *t, const char *path);
  * Requires that the sorted index has been built (after tokenizer_load).
  */
 int tokenizer_find_id(const Tokenizer *t, const char *str);
+
+/**
+ * Rebuild t->eos_list: first the given ids (declared EOS/EOT/EOM; negative or
+ * out-of-range entries skipped), then every vocab token whose text is a known
+ * end-of-turn marker. With require_special, a text match only counts when the
+ * token is one of t->special_token_ids (GGUF CONTROL/USER_DEFINED types), so
+ * an ordinary vocab entry spelled like a marker never stops generation.
+ * Needs the sorted index. Duplicates are dropped; at most TN_TOKENIZER_MAX_EOG.
+ */
+void tokenizer_collect_eog(Tokenizer *t, const int *ids, int n_ids, int require_special);
 
 /**
  * Free all tokenizer memory.

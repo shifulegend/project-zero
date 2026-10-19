@@ -1,8 +1,10 @@
 #include "core/hardware_profile.h"
+#include "core/bw_cache.h"
 #include "threading/cache_probe.h"
 #include "kv_cache/kv_strategy.h"
 #include "math/cpu_features.h"
 #include "threading/cpu_probe.h"
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -114,6 +116,18 @@ static volatile uint64_t g_bw_probe_sink;
  *    vectorize and the core overlap misses; the volatile sink store
  *    happens once per pass, outside the timed loop.
  */
+#if TN_POSIX
+/* First-touch of a probe buffer, run on the probing thread itself so the
+ * page faults are taken in parallel (single-threaded touching of the old
+ * 2 GB buffer cost up to 15 s on VMs; 2026-10-19). */
+static void *bw_touch_fn(void *arg) {
+    BwThreadArg *a = (BwThreadArg *)arg;
+    unsigned char *m = (unsigned char *)(uintptr_t)a->buf;
+    for (size_t j = 0; j < a->size; j += 4096) m[j] = (unsigned char)j;
+    return NULL;
+}
+#endif
+
 static void *bw_thread_fn(void *arg) {
     BwThreadArg *a = (BwThreadArg *)arg;
     uint64_t s0 = 0, s1 = 0, s2 = 0, s3 = 0,
@@ -134,45 +148,54 @@ static void *bw_thread_fn(void *arg) {
 /* Forward declaration — defined below after /proc/cpuinfo parsing */
 static int count_physical_cores(void);
 
+/* Free RAM seen by tn_hardware_profile_init() before the probe runs (caps
+ * the probe buffer); 0 = unknown. */
+static size_t g_free_ram_hint;
+
 static double probe_dram_bandwidth(void) {
     size_t l3 = detect_l3_cache();
     int n_threads = count_physical_cores();
     if (n_threads < 1) n_threads = 1;
     if (n_threads > 8) n_threads = 8;
 
-    /* Each thread needs a buffer > L3 to measure DRAM, not cache.
-     * Use 512 MB per thread (ensures DRAM-dominant even with 260 MB L3).
-     * Cap total at 4 GB to avoid OOM. */
-    size_t per_thread = 512ULL * 1024 * 1024;
-    if (l3 > 0 && l3 > per_thread) per_thread = l3 + 64ULL * 1024 * 1024;
-    if (per_thread * (size_t)n_threads > 4ULL * 1024 * 1024 * 1024)
-        per_thread = (4ULL * 1024 * 1024 * 1024) / (size_t)n_threads;
+    /* The buffers together must dwarf the shared L3 to measure DRAM, not
+     * cache: total = 4x L3, at least 512 MB, at most 2 GB and a quarter of
+     * free RAM. (Was 512 MB per thread regardless — 2 GB on 4 cores, which
+     * also showed up as every run's max RSS; 2026-10-19.) */
+    size_t total = (l3 > 0) ? 4 * l3 : 0;
+    if (total < 512ULL * 1024 * 1024) total = 512ULL * 1024 * 1024;
+    if (total > 2048ULL * 1024 * 1024) total = 2048ULL * 1024 * 1024;
+    if (g_free_ram_hint > 0 && total > g_free_ram_hint / 4) total = g_free_ram_hint / 4;
+    size_t per_thread = (total / (size_t)n_threads) & ~(size_t)4095;
+    if (per_thread < 4096) return 0.0;
 
 #if TN_POSIX
     BwThreadArg args[8];
     pthread_t threads[8];
 
-    /* Allocate and touch all pages */
+    /* Allocate, then touch all pages from the probing threads */
     for (int i = 0; i < n_threads; i++) {
         unsigned char *mem = (unsigned char *)malloc(per_thread);
         if (!mem) { n_threads = i; break; }
-        for (size_t j = 0; j < per_thread; j += 4096)
-            mem[j] = (unsigned char)(i + j);
         args[i].buf = mem;
         args[i].size = per_thread;
         args[i].gbps = 0.0;
     }
 
     if (n_threads == 0) return 0.0;
+    for (int i = 0; i < n_threads; i++)
+        pthread_create(&threads[i], NULL, bw_touch_fn, &args[i]);
+    for (int i = 0; i < n_threads; i++)
+        pthread_join(threads[i], NULL);
 
     /* Measure WALL TIME for all threads to complete ONE pass each — true
      * aggregate bandwidth including bus contention (plus a small
      * thread-create/join overhead, which biases slightly conservative).
-     * 3 rounds, best kept. */
+     * 5 rounds, best kept (the buffers are smaller than they used to be). */
     size_t total_bytes = per_thread * (size_t)n_threads;
     double best_gbps = 0.0;
 
-    for (int pass = 0; pass < 3; pass++) {
+    for (int pass = 0; pass < 5; pass++) {
         int64_t wall_t0 = bw_now_ns();
         for (int i = 0; i < n_threads; i++)
             pthread_create(&threads[i], NULL, bw_thread_fn, &args[i]);
@@ -330,6 +353,41 @@ static int select_prefetch_rows(size_t l2_bytes) {
     return rows;
 }
 
+/* ── Cached bandwidth ─────────────────────────────────────────────────── */
+
+static size_t total_ram_bytes(void) {
+#if TN_POSIX && defined(_SC_PHYS_PAGES)
+    long pages = sysconf(_SC_PHYS_PAGES), psz = sysconf(_SC_PAGESIZE);
+    if (pages > 0 && psz > 0) return (size_t)pages * (size_t)psz;
+#endif
+    return 0;
+}
+
+/* Probe result from the per-host cache when the fingerprint matches and the
+ * entry is fresh; otherwise probe and store. PZ_BW_REPROBE=1 (set by
+ * --calibrate) forces a new measurement. */
+static double cached_dram_bandwidth(int physical_cores, int logical_cores, size_t l3_bytes,
+                                    bool *from_cache) {
+    *from_cache = false;
+    char model[128], key[256], path[512];
+    tn_bw_cache_cpu_model(model, sizeof(model));
+    int have_key = tn_bw_cache_key(key, sizeof(key), model, physical_cores, logical_cores,
+                                   l3_bytes, total_ram_bytes()) == 0;
+    int have_path = have_key && tn_bw_cache_path(path, sizeof(path)) == 0;
+    const char *re = getenv("PZ_BW_REPROBE");
+    int reprobe = re && *re && strcmp(re, "0") != 0;
+    long long now = (long long)time(NULL);
+    double gbps = 0.0;
+    if (have_path && !reprobe &&
+        tn_bw_cache_load(path, key, now, TN_BW_CACHE_MAX_AGE_S, &gbps)) {
+        *from_cache = true;
+        return gbps;
+    }
+    gbps = probe_dram_bandwidth();
+    if (have_path && gbps > 0.0) (void)tn_bw_cache_save(path, key, gbps, now);
+    return gbps;
+}
+
 /* ── Main initialization ──────────────────────────────────────────────── */
 
 static TnHardwareProfile g_profile;
@@ -418,8 +476,10 @@ const TnHardwareProfile *tn_hardware_profile_init(void) {
     }
 #endif
 
-    /* 5. Bandwidth probe */
-    g_profile.measured_bw_gbps = probe_dram_bandwidth();
+    /* 5. Bandwidth: per-host cache, else probe (core/bw_cache.h) */
+    g_free_ram_hint = g_profile.free_ram_bytes;
+    g_profile.measured_bw_gbps = cached_dram_bandwidth(g_profile.physical_cores, g_profile.logical_cores,
+                                                       g_profile.l3_cache_bytes, &g_profile.bw_cached);
 
     /* 6. Classifier selection */
     g_profile.classifier_fmt = select_classifier(g_profile.cpu);
@@ -572,8 +632,8 @@ void tn_hardware_profile_report(const TnHardwareProfile *hp) {
            hp->l3_cache_bytes / (1024 * 1024));
     printf("│ Free RAM      : %-6zu MiB                          │\n",
            hp->free_ram_bytes / (1024 * 1024));
-    printf("│ DRAM bandwidth: %-6.1f GB/s (measured)              │\n",
-           hp->measured_bw_gbps);
+    printf("│ DRAM bandwidth: %-6.1f GB/s %-24s│\n",
+           hp->measured_bw_gbps, hp->bw_cached ? "(cached)" : "(measured)");
     printf("├─────────────────────────────────────────────────────┤\n");
     const char *cls_name = "BF16 (full precision)";
     if (hp->classifier_fmt == TN_CLS_INT8) cls_name = "INT8 (1 byte/weight)";

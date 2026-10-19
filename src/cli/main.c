@@ -12,6 +12,7 @@
 #include "core/lora.h"
 #include "core/hardware_profile.h"
 #include "core/calibration.h"
+#include "core/text_file.h"
 #include "core/debug.h"
 #include "memory/mapped_file.h"
 #include "memory/aligned_alloc.h"
@@ -97,18 +98,11 @@ static void ppl_progress(int chunk, const PplResult *r, void *user) {
 
 static void run_perplexity(const CliArgs *args, const Config *p, const TransformerWeights *w,
                            RunState *s, const MoEConfig *mc, Tokenizer *t, ThreadPool *tp) {
-    FILE *f = fopen(args->perplexity_file, "rb");
-    if (!f) { fprintf(stderr, "Error: cannot open %s\n", args->perplexity_file); return; }
-    fseek(f, 0, SEEK_END);
-    long sz = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    if (sz <= 0 || sz > (64L << 20)) { fclose(f); fprintf(stderr, "Error: perplexity file must be 1 B..64 MiB\n"); return; }
-    char *text = (char *)malloc((size_t)sz + 1);
-    int *toks = (int *)malloc(((size_t)sz + 2) * sizeof(int));
-    if (!text || !toks) { fclose(f); free(text); free(toks); return; }
-    size_t rd = fread(text, 1, (size_t)sz, f);
-    fclose(f);
-    text[rd] = '\0';
+    size_t rd = 0;
+    char *text = tn_read_text_file(args->perplexity_file, (size_t)64 << 20, &rd);
+    if (!text) { fprintf(stderr, "Error: cannot read %s (must be 1 B..64 MiB)\n", args->perplexity_file); return; }
+    int *toks = (int *)malloc((rd + 2) * sizeof(int));
+    if (!toks) { free(text); return; }
     int bos = !t->add_bos_token ? -1 : (p->bos_token_id >= 0 ? p->bos_token_id : t->bos_token_id);
     int n = 0;
     if (bos >= 0) toks[n++] = bos;
@@ -214,7 +208,10 @@ int main(int argc, char **argv) {
 
     tn_simd_init();
 
-    /* Hardware Profile: auto-detect cores, cache, bandwidth, classifier format */
+    /* Hardware Profile: auto-detect cores, cache, bandwidth, classifier format.
+     * The DRAM bandwidth comes from a per-host cache (core/bw_cache.h);
+     * --calibrate re-measures it along with everything else. */
+    if (args.calibrate) setenv("PZ_BW_REPROBE", "1", 1);
     const TnHardwareProfile *hw = tn_hardware_profile_init();
 
     /* ── Calibration ────────────────────────────────────────────────────── */
@@ -579,7 +576,7 @@ int main(int argc, char **argv) {
                 t.eos_token_id = (int)gguf_meta_u32(&gguf_hdr, "tokenizer.ggml.eos_token_id", (uint32_t)-1);
                 /* Ensure eos_list is populated so agent_loop.c EOS detection
                  * also fires — agent_loop only iterates eos_list, not eos_token_id */
-                if (t.eos_token_id >= 0 && t.n_eos < 8) {
+                if (t.eos_token_id >= 0 && t.n_eos < TN_TOKENIZER_MAX_EOG) {
                     int already = 0;
                     for (int _i = 0; _i < t.n_eos; _i++)
                         if (t.eos_list[_i] == t.eos_token_id) { already = 1; break; }
@@ -595,6 +592,24 @@ int main(int argc, char **argv) {
             fprintf(stderr, "[WARN] GGUF tokenizer load failed (err=%d). "
                     "Run with --tokenizer <path> to specify one.\n", (int)terr);
             /* Non-fatal: engine can still run if tokens passed externally */
+        }
+    }
+
+    /* --chat-template-file replaces the model's template for the CLI and
+     * --server alike (both render from t.chat_template). Some GGUFs ship a
+     * broken one — the official BitNet b1.58 2B-4T file appends eos_token
+     * after the generation prompt (2026-10-19). */
+    if (args.chat_template_file) {
+        size_t tl = 0;
+        char *tmpl = tn_read_text_file(args.chat_template_file, (size_t)1 << 20, &tl);
+        if (!tmpl) {
+            fprintf(stderr, "[WARN] cannot read --chat-template-file '%s' (1 B..1 MiB); "
+                    "keeping the model's template\n", args.chat_template_file);
+        } else {
+            free(t.chat_template);
+            t.chat_template = tmpl;
+            fprintf(stderr, "[tokenizer] chat template from %s (%zu bytes)\n",
+                    args.chat_template_file, tl);
         }
     }
 

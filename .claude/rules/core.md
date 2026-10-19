@@ -20,6 +20,11 @@ Adapter for `docs/ai/engineering-rules.md` — read the canonical file for full 
 - Attention heads run in parallel over the thread pool (`attn_heads_task`, threshold
   `--attn-parallel-min-ctx`): per-head code must only write its own `s->att` row and `s->xb`
   slice. Concurrency changes there need `make test-tsan` (test_forward is in TSAN_TESTS).
+- Startup counts as performance: no O(n²) init (tokenizer lookups via the sorted index), per-host
+  probes cached (`core/bw_cache`), large zeroed buffers lazily committed (`tn_aligned_calloc`
+  uses `MADV_DONTNEED` on Linux — no full memset). Benchmarks report wall time + RSS too.
+- GGUF stop tokens: `tokenizer_collect_eog()` (declared EOS/EOT/EOM + end-of-turn control
+  tokens). Generation loops must check all of `tok->eos_list`, not just `eos_token_id`.
 - Generic KV may be int8 (`RunState.kv_type == KV_TYPE_I8`: `key_cache` is NULL, use
   `key_cache_q`/`key_scale`). Any new reader/writer of the dense KV cache must handle both.
 - Distributed (`--remote-layers`, Phase 28): layers can run in a worker process. Per-layer state

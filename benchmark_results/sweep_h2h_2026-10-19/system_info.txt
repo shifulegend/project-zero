@@ -1,5 +1,5 @@
-DATE: 2026-10-19 01:42:36 UTC
-PROJECT_ZERO_COMMIT: 5af8359
+DATE: 2026-10-19 01:45:40 UTC
+PROJECT_ZERO_COMMIT: 35e076d
 LLAMA_CPP_COMMIT: ff5a233 (upstream ggml-org/llama.cpp, Release, GGML_NATIVE=ON, gcc)
 BITNET_CPP_COMMIT: 0b341e5 (microsoft/BitNet, Release, clang, BITNET_X86_TL2=OFF, i2_s kernels)
 --- uname
@@ -33,7 +33,7 @@ NUMA node0 CPU(s):                       0-3
 Mem:           16093         785       11786          14        3837       15307
 Swap:              0           0           0
 --- engine
-Project Zero Engine (adaptive_ai_engine) 03ca5eb-dirty
+Project Zero Engine (adaptive_ai_engine) 35e076d
 SIMD backend (this CPU): AVX-VNNI
 --- hardware profile (engine)
 ┌─────────────────────────────────────────────────────┐

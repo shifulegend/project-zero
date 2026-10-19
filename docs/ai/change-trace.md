@@ -1,7 +1,18 @@
 # Change Trace — project-zero
 
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
-> Update after each meaningful sub-step. Last updated: 2026-10-18.
+> Update after each meaningful sub-step. Last updated: 2026-10-19.
+
+### 2026-10-19 — Startup cost, GGUF stop tokens, chat-template override (commit e912a23)
+- Why: head-to-head sweep (Addendum AL) showed decode parity but 3–4× the reference engines'
+  wall time; BitNet chat answered nonsense / never stopped.
+- New: `core/bw_cache` (per-host DRAM bandwidth, `PZ_BW_REPROBE`), `core/text_file`,
+  `tokenizer_collect_eog()`, `--chat-template-file`, `docs/templates/bitnet-b1.58.jinja`,
+  `tools/plot_sweep_svg.py`, `tests/test_startup_paths.c`.
+- Fixed: O(merges×vocab) BPE merge lookup; bandwidth probe every start (2 GB RSS); full memset
+  in `tn_aligned_calloc` (Linux: `MADV_DONTNEED`); per-field I2_S repack; GGUF `eos_list` empty.
+- Verified: gcc+clang release/test/debug, TSan; outputs identical to the sweep on 3 models;
+  golden Paris in chat mode on SmolLM2-135M/1.7B, Qwen2.5-0.5B, BitNet (with the template).
 
 ### 2026-10-19 — Reference-engine parity: I2_S, NEOX RoPE, pre-tokenizer, perplexity
 - New: `core/gguf_i2s`, `GGUF_TYPE_I2_S`, `WEIGHT_TYPE_TERNARY`; `math/rope` NEOX +

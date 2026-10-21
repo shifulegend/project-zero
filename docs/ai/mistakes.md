@@ -5,6 +5,16 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-10-21.
 
+### 2026-10-21 — OOM guard assumed lazy zeroing on every OS (macOS CI SIGKILL)
+
+- `run_state.c`'s `tn_alloc_too_large` allowed a buffer up to 32x free RAM. That is only safe where
+  `tn_aligned_calloc` zeroes lazily (Linux). On macOS it memsets the whole buffer, so
+  `test_redbox`'s INT_MAX-context case (a ~275 GB attention buffer) passed the guard on a runner with
+  ~9 GB free and the memory killer SIGKILLed the test. It had passed only when runners reported less
+  free memory. Fixed: off Linux the bound is total physical RAM (a buffer that can't be zeroed can't
+  be used). Verified by building `run_state.c` with `-U__linux__` and running test_redbox (8/8).
+- Lesson: a guard's threshold must match the allocator behaviour on each platform it runs on.
+
 ### 2026-10-21 — CI gaps found by running every workflow on the branch
 
 - **macOS build broken since 2026-10-18:** `file_backed.c` (`--kv-offload`) called

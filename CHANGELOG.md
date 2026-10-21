@@ -63,6 +63,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 - Fix a `SIGILL` crash on CPUs that advertise AVX-512 VBMI in CPUID but cannot execute it.
 - Fix the macOS build, broken by a Linux-only call in the disk-backed KV cache (`--kv-offload`).
+- Fix oversized buffer requests on macOS and Windows getting the process killed instead of failing with an out-of-memory error.
 - Fix AVX-512 VNNI kernels being disabled on every CPU by a startup self-test that expected the wrong result.
 - Fix mixture-of-experts routing ignoring the GGUF gating function, weight normalization and weight scale (affected Qwen3-MoE and DeepSeek-V2).
 - Fix generation not stopping at a GGUF model's end-of-turn tokens.

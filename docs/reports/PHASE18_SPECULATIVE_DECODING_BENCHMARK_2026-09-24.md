@@ -1,5 +1,7 @@
 # Phase 18 speculative decoding — real-model benchmark (2026-09-24)
 
+> **Binary name (Phase 39, 2026-10-21):** the engine binary is now `pz` (previously `adaptive_ai_engine`). Commands quoted below record what was actually run at the time and are left unchanged; substitute `./pz` to reproduce them.
+
 **Verdict:** the benchmark found and fixed a severe, real bug (Stage 1's batched-matmul kernels
 were scalar-only, making the batched "verify" step *slower* than the sequential calls it was
 meant to replace) — fixing it delivered a real **3.6–5.3× speedup** to speculative decoding

@@ -107,7 +107,7 @@ warnings remain (unrelated to Phase 15).
 **Engine smoke test**:
 
 ```
-$ ./adaptive_ai_engine --model /tmp/test_tiny_model.bin \
+$ ./pz --model /tmp/test_tiny_model.bin \
     --tokenizer /tmp/test_tiny_tokenizer.bin \
     --memory-db /tmp/test_memory.vrdb \
     --prompt "hello" --max-tokens 3
@@ -210,7 +210,7 @@ Key design decisions made at this stage:
 ### Enable memory
 
 ```bash
-./adaptive_ai_engine \
+./pz \
     --model bitnet.bin \
     --tokenizer tokenizer.bin \
     --memory-db ~/.project_zero_memory.vrdb

@@ -3,6 +3,17 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-10-21.
 
+### 2026-10-21 — Phase 39 rename: binary `pz`, one-release alias, triple-named release assets
+
+- Binary `pz` (user's choice); `adaptive_ai_engine` stays for one release as a symlink that prints
+  a deprecation notice (`cli/program_name`), then is removed.
+- Release asset `project-zero-<ver>-x86_64-unknown-linux-gnu.tar.gz` (user asked for best
+  practice): `<project>-<version>-<target triple>` as ripgrep and Rust/LLVM toolchains do — the
+  triple carries arch, vendor and libc, so aarch64/musl/macOS builds can be added without renaming;
+  archive unpacks to a same-named directory; `SHA256SUMS` unchanged.
+- Historical benchmark logs and dated reports keep the commands as run (rewriting would falsify
+  them); each carries a one-line rename note instead.
+
 ### 2026-10-21 — Third-party agent skill plugins: superpowers + mattpocock-skills (repo rules win)
 
 - Enabled for everyone working in the repo via `.claude/settings.json` (`enabledPlugins`

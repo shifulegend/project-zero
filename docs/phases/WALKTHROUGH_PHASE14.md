@@ -135,7 +135,7 @@ make release
 ### Method 1: Interactive REPL (recommended for human testing)
 
 ```bash
-./adaptive_ai_engine \
+./pz \
   --model   models/bitnet-b1.58-2B-4T.bin \
   --tokenizer models/bitnet-b1.58-2B-4T_tokenizer_proper.bin \
   --verbose
@@ -183,7 +183,7 @@ import os, pty, select, time
 
 os.environ['PROJECT_ZERO_AGENT_AUTO_APPROVE'] = '1'
 
-cmd = ['./adaptive_ai_engine',
+cmd = ['./pz',
        '--model', 'models/bitnet-b1.58-2B-4T.bin',
        '--tokenizer', 'models/bitnet-b1.58-2B-4T_tokenizer_proper.bin',
        '--max-tokens', '64', '--verbose']

@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-21.
 
+### 2026-10-21 — Phase 39: adaptive_ai_engine → pz
+- Build (Makefile/CMake), `--version`, deprecation alias, tests/tools scripts, CI/release/templates,
+  living docs + adapters renamed; historical records annotated. Per-group gates: gcc release
+  build, `--version` + alias notice, `test_program_name`, golden "Paris", `golden_regression.sh`,
+  `e2e_json_mode.sh`, workflow YAML parse.
+
 ### 2026-10-21 — superpowers + mattpocock/skills plugins enabled
 - `.claude/settings.json` (new): official marketplace + both plugins at project scope; install
   notes for Copilot/Antigravity/Gemini/Codex in `tool-sync-policy.md`; adapters link to it.

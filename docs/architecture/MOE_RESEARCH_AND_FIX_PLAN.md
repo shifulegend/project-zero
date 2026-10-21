@@ -70,7 +70,7 @@ Also added: `expert_w13_quant_per_layer[]` array in `TransformerWeights` to trac
 **Why the fix should work:** Zeroing a corrupt scale converts NaN-producing blocks into zero-output blocks (silent bad block vs NaN cascade). For a Q2K model with billions of blocks, a single zeroed block is imperceptible. The logits stay finite → argmax works → coherent output.
 
 **What still needs validation:**
-1. Download model and run: `./adaptive_ai_engine --model models/DeepSeek-V2-Lite-Chat-Q2_K.gguf --prompt "What is the capital of France?" --max-tokens 20 --temperature 0.0`
+1. Download model and run: `./pz --model models/DeepSeek-V2-Lite-Chat-Q2_K.gguf --prompt "What is the capital of France?" --max-tokens 20 --temperature 0.0`
 2. Confirm output is coherent (not `ãĢįãĢį...`)
 3. Measure tok/s — must be ≥ 0.63 tok/s (no regression from P7)
 4. Compare with llama.cpp: `llama-cli -m models/DeepSeek-V2-Lite-Chat-Q2_K.gguf -ngl 0 --threads 4 -n 30 --temp 0 -p "What is the capital of France?"`
@@ -149,14 +149,14 @@ make release   # or: cmake -B build && cmake --build build -j4
 make test
 
 # 4. Once model is downloaded, test for garbled output fix
-./adaptive_ai_engine \
+./pz \
   --model models/DeepSeek-V2-Lite-Chat-Q2_K.gguf \
   --prompt "What is the capital of France?" \
   --max-tokens 20 \
   --temperature 0.0
 
 # 5. Benchmark
-./adaptive_ai_engine \
+./pz \
   --model models/DeepSeek-V2-Lite-Chat-Q2_K.gguf \
   --prompt "Explain quantum entanglement in simple terms." \
   --max-tokens 50 \

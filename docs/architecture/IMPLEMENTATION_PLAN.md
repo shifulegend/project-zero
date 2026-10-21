@@ -3567,7 +3567,18 @@ update-check implementations, The Update Framework threat model):
 
 ---
 
-## Phase 39 (last phase): Retire the legacy name "adaptive_ai_engine" → Project Zero 🔲 PLANNED (added 2026-10-19)
+## Phase 39 (last phase): Retire the legacy name "adaptive_ai_engine" → Project Zero ✅ executed 2026-10-21 (alias removal due the release after next)
+
+**As executed (2026-10-21):** decisions taken by the user — binary **`pz`**; one-release
+transition alias; release asset named by best practice. Groups, one commit each, gated:
+A+B build + self-name (`Makefile` `TARGET = pz` + `LEGACY_TARGET` symlink, CMake target `pz`,
+`project(project_zero)`, `--version` → `Project Zero <ver>`, `cli/program_name` deprecation notice
++ `tests/test_program_name.c`); D+E test scripts and tools; C+F CI/release/templates (asset
+`project-zero-<ver>-x86_64-unknown-linux-gnu.tar.gz`, i.e. name-version-target-triple like
+ripgrep, unpacking to a same-named directory with `pz` + the alias; update notifier confirmed
+asset-name independent); G living docs + adapters, historical reports/logs annotated, not
+rewritten. **Remaining:** call out the rename in the first release's notes; delete the alias
+(`LEGACY_TARGET`, release.yml `ln -s`, `cli/program_name` notice) in the release after.
 
 Added to the plan on request, deliberately last: every earlier phase builds, tests and benchmarks
 through `./adaptive_ai_engine`, so the rename happens once the feature work is done. Goal: every

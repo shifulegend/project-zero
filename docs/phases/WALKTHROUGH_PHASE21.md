@@ -195,7 +195,7 @@ The template selection follows this priority order:
 ### Start the API server
 
 ```bash
-./adaptive_ai_engine \
+./pz \
   --model   models/bitnet-b1.58-2B-4T.bin \
   --tokenizer models/bitnet-b1.58-2B-4T_tokenizer_proper.bin \
   --server \

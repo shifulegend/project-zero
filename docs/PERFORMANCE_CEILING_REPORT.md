@@ -1,5 +1,7 @@
 # Project-Zero Performance Ceiling Report
 
+> **Binary name (Phase 39, 2026-10-21):** the engine binary is now `pz` (previously `adaptive_ai_engine`). Commands quoted below record what was actually run at the time and are left unchanged; substitute `./pz` to reproduce them.
+
 **Engine:** BitNet b1.58-2B-4T Ternary LLM Inference
 **Date:** 2025-07-15 (initial) · Updated 2026-03-19
 **Author:** Automated profiling + analysis

@@ -1,5 +1,7 @@
 # Regression Verification & CI Remediation Report
 
+> **Binary name (Phase 39, 2026-10-21):** the engine binary is now `pz` (previously `adaptive_ai_engine`). Commands quoted below record what was actually run at the time and are left unchanged; substitute `./pz` to reproduce them.
+
 **Run timestamp:** 2026-06-07 04:30–04:55 UTC (generated 2026-06-07)
 **Branch under test:** `claude/merge-master-ci-regression-rDcBg` (== `master` production code + CI fixes)
 **Verdict:** ✅ **PASS — no functional, output, or performance regression.** CI made green; secrets scan clean.

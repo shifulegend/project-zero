@@ -57,7 +57,7 @@ at runtime (`--simd`, `--classifier`, or auto/calibration).
 | `src/update/` | Phase 38 update notices: SemVer, GitHub Releases check, cache, background service (notify-only) |
 | `src/distributed/` | Phase 28 pipeline split: framed tensor RPC, layer plan, worker loop (`--rpc-worker`, `--remote-layers`) |
 | `src/multimodal/` | Vision encoder/projector/bridge, image load (optional/experimental) |
-| `src/cli/` | Arg parsing, REPL, `main.c` (builds `adaptive_ai_engine`); color/progress/live-stats/markdown-render (Phase 22.3, REPL-only) |
+| `src/cli/` | Arg parsing, REPL, `main.c` (builds `pz`); color/progress/live-stats/markdown-render (Phase 22.3, REPL-only) |
 | `include/` | Public headers mirroring `src/` |
 | `tests/` | Unit + audit + red/blackbox tests (every `tests/*.c` is auto-built & run) |
 | `tools/` | Model conversion + benchmark scripts |
@@ -73,8 +73,10 @@ make debug   CC=gcc            # -O0 -g -march=native -fsanitize=address,undefin
 make dist    CC=gcc            # PORTABLE binary: -march=x86-64-v2 + per-TU SIMD ISA +
                                # static libstdc++/libgcc; runtime AVX2/AVX-512/VNNI dispatch
 cmake -B build && cmake --build build -j$(nproc)   # alternative build (cmake -DPZ_DIST=ON = dist)
-./adaptive_ai_engine --version  # version + detected SIMD backend (no model needed)
-./adaptive_ai_engine --model models/<m>.gguf --prompt "..." \
+./pz --version  # version + detected SIMD backend (no model needed)
+# Binary renamed adaptive_ai_engine -> pz in Phase 39 (2026-10-21); `make` keeps an
+# adaptive_ai_engine -> pz symlink for one release (prints a deprecation notice; cli/program_name).
+./pz --model models/<m>.gguf --prompt "..." \
   --max-tokens 16 --temperature 0.0 --threads 4 [--simd auto] [--classifier auto]
 ```
 CI: `.github/workflows/ci.yml` (release/test/debug/dist × gcc,clang × ubuntu-latest,ubuntu-22.04 +

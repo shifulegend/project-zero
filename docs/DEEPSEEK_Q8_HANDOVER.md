@@ -24,7 +24,7 @@ but caused regressions — re-discovering them wastes days.
 
 **project-zero** is a from-scratch, high-performance LLM inference engine written in pure C.
 It runs large language models on commodity CPUs with no GPU, no Python, no external framework.
-A single compiled binary (`adaptive_ai_engine`) can run BitNet ternary models, F16 dense models
+A single compiled binary (`pz`) can run BitNet ternary models, F16 dense models
 (e.g. SmolLM2-135M), and quantized GGUF models (e.g. DeepSeek-V2-Lite-Chat Q4_K_S).
 
 **Why C, not Python?** Python ML frameworks have unavoidable overhead — Python interpreter,
@@ -41,7 +41,7 @@ make clean         # Remove all build artifacts
 
 **How to run (DeepSeek example):**
 ```bash
-./adaptive_ai_engine \
+./pz \
   --model models/deepseek-v2-lite-chat-Q4_K_S.gguf \
   --prompt "What is the capital of France?" \
   --max-tokens 12 --temperature 0.0 --threads 4
@@ -790,13 +790,13 @@ After adding `tn_q8k_act_quantize()`, after adding `dot_q4k_row_q8act()`, and af
 them into `matmul_q4k_task()` — run the correctness check EACH TIME:
 
 ```bash
-make -j4 && ./adaptive_ai_engine \
+make -j4 && ./pz \
   --model models/deepseek-v2-lite-chat-Q3_K_M.gguf \
   --prompt "What is the capital of France?" \
   --max-tokens 12 --temperature 0.0 --threads 4
 # MUST contain: "Paris"
 
-./adaptive_ai_engine \
+./pz \
   --model models/deepseek-v2-lite-chat-Q3_K_M.gguf \
   --prompt "What is the capital of Germany?" \
   --max-tokens 12 --temperature 0.0 --threads 4
@@ -815,7 +815,7 @@ expert activity while L02–L26 are silent (NaN propagated from the first MoE la
 subsequent attention scores). Check with:
 
 ```bash
-./adaptive_ai_engine \
+./pz \
   --model models/deepseek-v2-lite-chat-Q3_K_M.gguf \
   --prompt "Explain the French Revolution in detail." \
   --max-tokens 64 --temperature 0.0 --threads 4 --verbose 2>&1 | grep "layer\|expert\|L[0-9]"
@@ -829,7 +829,7 @@ Failure: only L00 or L01 active → NaN in Q8 kernel. Revert.
 After Phase 1:
 ```bash
 cat models/deepseek-v2-lite-chat-Q3_K_M.gguf > /dev/null  # warm page cache (macOS)
-./adaptive_ai_engine \
+./pz \
   --model models/deepseek-v2-lite-chat-Q3_K_M.gguf \
   --prompt "Explain the history of the Roman Empire from founding to fall in great detail." \
   --max-tokens 64 --temperature 0.0 --threads 4 2>&1 | grep "tok/s"
@@ -847,7 +847,7 @@ Changes to `matmul_q4k.c` must not affect the F16 matmul path (completely separa
 Verify anyway:
 
 ```bash
-./adaptive_ai_engine \
+./pz \
   --model models/SmolLM2-135M-Instruct-f16.gguf \
   --prompt "What is the capital of France? Answer in one word." \
   --max-tokens 5 --temperature 0.0 --threads 4
@@ -859,7 +859,7 @@ Verify anyway:
 Every benchmark result must record ALL flags. From GOLDEN_RULES.md:
 ```
 Date: YYYY-MM-DD HH:MM UTC | Commit: <SHA>
-Command: ./adaptive_ai_engine --model <path> --prompt "<text>" \
+Command: ./pz --model <path> --prompt "<text>" \
          --max-tokens N --temperature T --threads N --simd <mode> --classifier <mode>
 Output:  <exact text>
 tok/s:   X.XX tok/s (N tokens)
@@ -876,7 +876,7 @@ PROMPT="Tell me everything you know about the history of ancient Rome, from foun
 for t in 1 2 3 4; do
   echo "=== T=$t ==="
   for r in 1 2 3; do
-    ./adaptive_ai_engine --model models/deepseek-v2-lite-chat-Q3_K_M.gguf \
+    ./pz --model models/deepseek-v2-lite-chat-Q3_K_M.gguf \
       --prompt "$PROMPT" --max-tokens 64 --temperature 0.0 --threads $t \
       --classifier int8 2>&1 | grep "tok/s"
   done

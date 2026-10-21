@@ -1,5 +1,7 @@
 # Accuracy parity vs llama.cpp / bitnet.cpp (2026-10-19)
 
+> **Binary name (Phase 39, 2026-10-21):** the engine binary is now `pz` (previously `adaptive_ai_engine`). Commands quoted below record what was actually run at the time and are left unchanged; substitute `./pz` to reproduce them.
+
 **Verdict:** on six GGUF models spanning dense transformers (F16, Q8_0, Q4_K_M), a state-space
 model and a ternary BitNet, Project Zero's perplexity matches the reference engines within
 **0.7 %** (Mamba 0.03 %, SmolLM2-135M 0.01 %), and on BitNet b1.58 2B-4T it is *lower* than

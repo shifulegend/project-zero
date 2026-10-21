@@ -1,5 +1,7 @@
 # Project Zero — Performance Ceiling Report
 
+> **Binary name (Phase 39, 2026-10-21):** the engine binary is now `pz` (previously `adaptive_ai_engine`). Commands quoted below record what was actually run at the time and are left unchanged; substitute `./pz` to reproduce them.
+
 > Covers three models: **DeepSeek-V2-Lite-Chat**, **Bitnet-b1.58-2B-4T**, **SmolLM2-135M-Instruct**  
 > Purpose: establish performance baselines, detect regressions, and compare against llama.cpp reference  
 > See Section 8 for cross-model regression summary.

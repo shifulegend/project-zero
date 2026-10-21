@@ -9,7 +9,7 @@
 
 **project-zero** is a high-performance, portable LLM inference engine written in C (+ one C++ file for
 Jinja2 chat templates). It supports BitNet ternary models, GGUF float models (F16, Q4_K, Q5_K, Q6_K,
-Q8_0, F32), and DeepSeek-V2-style MoE/MLA models. The primary binary is `adaptive_ai_engine`.
+Q8_0, F32), and DeepSeek-V2-style MoE/MLA models. The primary binary is `pz`.
 
 **Core design principles:**
 - Zero external dependencies for core inference (no BLAS, no ONNX, no Python)

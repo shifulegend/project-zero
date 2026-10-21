@@ -39,7 +39,7 @@
 
 ```bash
 cd /home/<USER>/Documents/project-zero
-make -j4 && ./adaptive_ai_engine \
+make -j4 && ./pz \
   --model models/deepseek-v2-lite-chat-Q4_K_S.gguf \
   --prompt "What is the capital of France?" \
   --max-tokens 12 --temperature 0.0 --threads 4
@@ -49,7 +49,7 @@ Expected output must contain: `The capital of France is Paris.`
 
 Also test Germany:
 ```bash
-./adaptive_ai_engine \
+./pz \
   --model models/deepseek-v2-lite-chat-Q4_K_S.gguf \
   --prompt "What is the capital of Germany?" \
   --max-tokens 12 --temperature 0.0 --threads 4
@@ -114,7 +114,7 @@ Baseline (established on this machine, 4 threads, DeepSeek-V2-Lite Q4K_S):
 
 Quick performance check:
 ```bash
-./adaptive_ai_engine \
+./pz \
   --model models/deepseek-v2-lite-chat-Q4_K_S.gguf \
   --prompt "Explain the theory of relativity in detail." \
   --max-tokens 64 --temperature 0.0 --threads 4 2>&1 | grep "tok/s"
@@ -242,7 +242,7 @@ since the classifier was added, invisible because nobody ever tested it with the
 **Mandatory test result template:**
 ```
 Date: YYYY-MM-DD HH:MM UTC | Commit: <SHA>
-Command: ./adaptive_ai_engine --model <path> --prompt "<text>" \
+Command: ./pz --model <path> --prompt "<text>" \
          --max-tokens N --temperature T --threads N --simd <mode> --classifier <mode>
 Output:  <exact text>
 tok/s:   X.XX tok/s (N tokens)

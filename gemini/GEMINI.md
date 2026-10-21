@@ -32,5 +32,5 @@ See `docs/ai/project-overview.md`.
 ## Build / run (verified)
 ```bash
 make release CC=gcc && make test CC=gcc && make debug CC=gcc   # repeat CC=clang
-./adaptive_ai_engine --model models/<m>.gguf --prompt "..." --max-tokens 16 --temperature 0 --threads 4
+./pz --model models/<m>.gguf --prompt "..." --max-tokens 16 --temperature 0 --threads 4
 ```

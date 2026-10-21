@@ -31,7 +31,7 @@ double timer_tokens_per_sec(int64_t start_us, int64_t end_us, int tokens);
 
 **Internal dependencies:** All other clusters (main.c orchestrates everything)
 
-**External-facing API:** Binary interface — `./adaptive_ai_engine --model ... --prompt ...`
+**External-facing API:** Binary interface — `./pz --model ... --prompt ...`
 
 ---
 

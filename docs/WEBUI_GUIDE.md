@@ -10,7 +10,7 @@ section](../README.md#ui-ux); for the design-QA writeup, see
 ### Starting it
 
 ```bash
-./adaptive_ai_engine --model models/smollm2.gguf --server --port 8080
+./pz --model models/smollm2.gguf --server --port 8080
 # open http://127.0.0.1:8080/ in a browser
 ```
 
@@ -72,7 +72,7 @@ after a change).
 ### Enabling image upload
 
 ```bash
-./adaptive_ai_engine --model models/<vision-model>.gguf \
+./pz --model models/<vision-model>.gguf \
     --vision models/<vision-tower>.gguf --proj models/<projector>.gguf \
     --server --port 8080
 ```
@@ -85,7 +85,7 @@ the web UI only ever offers controls the running server can actually serve.
 ### Starting it
 
 ```bash
-./adaptive_ai_engine --model models/smollm2.gguf
+./pz --model models/smollm2.gguf
 ```
 
 With no `--prompt`, this drops into the interactive REPL. On a real terminal (TTY) you'll see,
@@ -163,5 +163,5 @@ interval/channel/repo, a **Check now** button and a banner toggle. Nothing is ev
 installed — verify the release's `SHA256SUMS`. Operators control it with `--no-update-check`,
 `--update-interval <h>`, `--update-channel auto|stable|prerelease`, `--update-repo owner/name`,
 `--update-api <url>` or `PZ_NO_UPDATE_CHECK=1`; it is always off when `CI` is set.
-`adaptive_ai_engine --check-update` checks once from the shell (exit 3 = update available). Either way, other routes (static assets, `/metrics`, `/docs`, `/health` are never blocked by an in-flight
+`pz --check-update` checks once from the shell (exit 3 = update available). Either way, other routes (static assets, `/metrics`, `/docs`, `/health` are never blocked by an in-flight
 generation).

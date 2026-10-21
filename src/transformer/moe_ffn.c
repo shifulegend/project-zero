@@ -1,5 +1,6 @@
 #include "transformer/moe_ffn.h"
 #include "transformer/moe_router.h"
+#include "transformer/moe_experts.h"
 #include "math/parallel_matmul.h"
 #include "math/matmul_q4k.h"
 #include "math/matmul_q2k.h"
@@ -175,6 +176,78 @@ void moe_expert_tracking_free(void) {
     g_track_n_layers  = 0;
     g_track_n_experts = 0;
 }
+
+/* 2026-10-21: fused two-dispatch expert path (moe_experts.c). Builds one job
+ * per selected routed expert (+ the shared expert) whose weight types have
+ * integer row-dot kernels, and runs them all in two thread-pool dispatches.
+ * Sets *routed_done / *shared_done for the parts it handled; anything it
+ * cannot handle (ternary .bin experts, Q2_K/Q3_K/IQ*, F32-dequantized shared
+ * tensors) stays on the legacy path below. PZ_MOE_FUSED=0 forces the legacy
+ * path (A/B and bisecting aid). */
+static int moe_fused_enabled(void) {
+    static int cached = -1;
+    if (cached < 0) {
+        const char *e = getenv("PZ_MOE_FUSED");
+        cached = (e && e[0] == '0') ? 0 : 1;
+    }
+    return cached;
+}
+
+static void moe_fused_try(RunState *s, const TransformerWeights *w,
+                          const Config *cfg, const MoEConfig *mc, int layer,
+                          const int *selected, const float *scores, int top_k,
+                          ThreadPool *tp, int *routed_done, int *shared_done) {
+    *routed_done = 0;
+    *shared_done = 0;
+    if (!moe_fused_enabled()) return;
+    const int dim = cfg->dim;
+    TnMoEExpertJob jobs[MOE_SCORE_BUF_SIZE + 1];
+    int nj = 0, routed = 0, shared = 0;
+
+    if (w->has_expert_quant) {
+        int w13 = (w->expert_w13_quant_per_layer && w->expert_w13_quant_per_layer[layer])
+                  ? w->expert_w13_quant_per_layer[layer] : w->expert_w13_quant_type;
+        int w2  = (w->expert_w2_quant_per_layer && w->expert_w2_quant_per_layer[layer])
+                  ? w->expert_w2_quant_per_layer[layer] : w->expert_w2_quant_type;
+        TnMoEExpertJob probe = { (const uint8_t *)1, (const uint8_t *)1, (const uint8_t *)1,
+                                 w13, w13, w2, mc->expert_hidden_dim, 0.0f };
+        if (moe_experts_job_ok(&probe, dim)) {
+            for (int i = 0; i < top_k; i++) {
+                int e = selected[i];
+                if (e < 0 || e >= mc->num_experts) continue;
+                TnMoEExpertJob j = { (const uint8_t *)w->moe_w1[layer][e],
+                                     (const uint8_t *)w->moe_w3[layer][e],
+                                     (const uint8_t *)w->moe_w2[layer][e],
+                                     w13, w13, w2, mc->expert_hidden_dim, scores[i] };
+                jobs[nj++] = j;
+            }
+            routed = 1;
+        }
+    }
+    if (mc->n_shared_experts > 0 && w->moe_shared_w1 && w->moe_shared_w1[layer] &&
+        w->shared_w1_type_per_layer && w->shared_w2_type_per_layer &&
+        w->shared_w3_type_per_layer) {
+        TnMoEExpertJob j = { (const uint8_t *)w->moe_shared_w1[layer],
+                             (const uint8_t *)w->moe_shared_w3[layer],
+                             (const uint8_t *)w->moe_shared_w2[layer],
+                             w->shared_w1_type_per_layer[layer],
+                             w->shared_w3_type_per_layer[layer],
+                             w->shared_w2_type_per_layer[layer],
+                             mc->shared_expert_hidden_dim, 1.0f };
+        if (moe_experts_job_ok(&j, dim)) { jobs[nj++] = j; shared = 1; }
+    }
+    if (nj == 0) return;
+    if (moe_experts_forward(s->xb2, s->xb, jobs, nj, dim, cfg->act_type, tp) != 0) return;
+    if (routed && g_expert_hits && layer < g_track_n_layers) {
+        for (int i = 0; i < top_k; i++) {
+            int e = selected[i];
+            if (e >= 0 && e < mc->num_experts && e < g_track_n_experts)
+                g_expert_hits[layer * g_track_n_experts + e]++;
+        }
+    }
+    *routed_done = routed;
+    *shared_done = shared;
+}
 /* -------------------------------------------------------------------------- */
 
 void moe_ffn_forward(RunState              *s,
@@ -265,6 +338,14 @@ void moe_ffn_forward(RunState              *s,
      * ---------------------------------------------------------------- */
     memset(s->xb2, 0, dim * sizeof(float));
 
+    int routed_done = 0, shared_done = 0;
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    moe_fused_try(s, w, cfg, mc, layer, selected_experts, selected_scores, top_k,
+                  tp, &routed_done, &shared_done);
+    if (t_step && (routed_done || shared_done)) {
+        tn_step_timing_add(TN_STEP_16_MOE_ROUTED, tn_step_timing_now_ns() - t_step);
+    }
+
     /* P1: Pre-quantize s->xb to Q8K once — reused by all Q4K dispatches
      * (batched gate+up for routed experts, shared expert w1+w3). */
     int xb_n_blocks = dim / TN_Q8K_BLOCK;
@@ -274,7 +355,7 @@ void moe_ffn_forward(RunState              *s,
             (size_t)xb_n_blocks * sizeof(TnQ8KActBlock));
         s_xb_q8k_blocks = s_xb_q8k ? xb_n_blocks : 0;
     }
-    if (s_xb_q8k && w->has_expert_quant &&
+    if (s_xb_q8k && !(routed_done && shared_done) && w->has_expert_quant &&
         (w->expert_w13_quant_type == GGUF_TYPE_Q4_K ||
          (w->shared_w1_type_per_layer &&
           w->shared_w1_type_per_layer[layer] == GGUF_TYPE_Q4_K)))
@@ -289,7 +370,9 @@ void moe_ffn_forward(RunState              *s,
      * Fallback: sequential per-expert loop for ternary / non-Q4K types.
      * ---------------------------------------------------------------- */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    if (w->has_expert_quant &&
+    if (routed_done) {
+        /* handled by moe_fused_try() above */
+    } else if (w->has_expert_quant &&
         w->expert_w13_quant_type == GGUF_TYPE_Q4_K) {
 
         int w2_qtype = (w->expert_w2_quant_per_layer &&
@@ -515,7 +598,7 @@ void moe_ffn_forward(RunState              *s,
             tn_vec_saxpy(s->xb2, sc, s->q, dim);
         }
     }
-    if (t_step) {
+    if (t_step && !routed_done) {
         tn_step_timing_add(TN_STEP_16_MOE_ROUTED,
                            tn_step_timing_now_ns() - t_step);
     }
@@ -531,7 +614,7 @@ void moe_ffn_forward(RunState              *s,
      * This handles the mixed-type case: e.g. ffn_down_shexp is Q5_K on layer 1
      * but Q4_K on all other MoE layers.
      * ---------------------------------------------------------------- */
-    if (mc->n_shared_experts > 0 && w->moe_shared_w1 && w->moe_shared_w1[layer]) {
+    if (!shared_done && mc->n_shared_experts > 0 && w->moe_shared_w1 && w->moe_shared_w1[layer]) {
         t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
         int shdim = mc->shared_expert_hidden_dim;
         int w1t = w->shared_w1_type_per_layer ? w->shared_w1_type_per_layer[layer] : 0;

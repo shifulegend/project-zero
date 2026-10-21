@@ -161,6 +161,7 @@ set(MATH_SOURCES
     src/math/matmul_q8_0.c
     src/math/matmul_q5k.c
     src/math/matmul_q6k.c
+    src/math/q8_0_act.c
     src/math/matmul_q2_0.c
     src/math/matmul_q2_0_vnni.c
     src/math/parallel_matmul.c
@@ -230,6 +231,7 @@ set(TRANSFORMER_SOURCES
     src/transformer/generate.c
     src/transformer/mla_attention.c
     src/transformer/moe_ffn.c
+    src/transformer/moe_experts.c
     src/transformer/moe_router.c
     src/transformer/qwen35_attention.c
     src/transformer/qwen3moe_attention.c
@@ -388,7 +390,8 @@ if(PZ_DIST AND NOT MSVC)
         src/core/unpack_avx2.c
         src/math/matmul_q4k.c src/math/matmul_q4k_x8.c src/math/matmul_q2k.c src/math/matmul_q8_0.c
         src/math/matmul_q5_0.c src/math/matmul_q5_1.c src/math/matmul_q5k.c src/math/matmul_q6k.c
-        src/math/matmul_f16.c src/math/quantize_i8.c src/math/parallel_matmul.c)
+        src/math/matmul_f16.c src/math/quantize_i8.c src/math/parallel_matmul.c
+        src/math/q8_0_act.c)
     set(PZ_AVX512_SRCS
         src/math/ternary_matmul_packed_avx512.c src/math/ternary_matmul_lut_avx512bw.c
         src/math/elementwise_avx512.c

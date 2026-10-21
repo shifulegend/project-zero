@@ -1,4 +1,6 @@
 #include "kv_cache/kv_quant_ops.h"
+#include "math/kvq4_kernels.h"
+#include "math/simd_dispatch.h"
 #include <math.h>
 #include <stdint.h>
 #include <string.h>
@@ -77,7 +79,7 @@ static void kvq4_store(uint8_t *dst, float *scales, const float *src, int n) {
     }
 }
 
-static float kvq4_dot(const float *q, const uint8_t *k, const float *scales, int n) {
+float kvq4_dot_scalar(const float *q, const uint8_t *k, const float *scales, int n) {
     /* sum_i q_i * (d_g * c_i + m_g), one 16-lane accumulator for the whole
      * row and a single horizontal reduction at the end (a per-group
      * reduction cost more than the dot itself). */
@@ -95,7 +97,7 @@ static float kvq4_dot(const float *q, const uint8_t *k, const float *scales, int
     return t;
 }
 
-static void kvq4_axpy(float *out, float a, const uint8_t *v, const float *scales, int n) {
+void kvq4_axpy_scalar(float *out, float a, const uint8_t *v, const float *scales, int n) {
     enum { H = TN_KV_I4_GROUP / 2 };
     for (int g = 0; g < n / TN_KV_I4_GROUP; g++) {
         float ad = a * scales[2 * g], am = a * scales[2 * g + 1];
@@ -125,11 +127,12 @@ void kvq_store(KVCacheType t, tn_i8 *dst, float *scales, const float *src, int n
 }
 
 float kvq_dot_row(KVCacheType t, const float *q, const tn_i8 *k, const float *scales, int n) {
-    if (t == KV_TYPE_I4) return kvq4_dot(q, (const uint8_t *)k, scales, n);
+    /* tn_kvq4_*: AVX2/AVX-512 kernels picked by tn_simd_init(), scalar until then. */
+    if (t == KV_TYPE_I4) return tn_kvq4_dot(q, (const uint8_t *)k, scales, n);
     return kvq_dot(q, k, n) * scales[0];
 }
 
 void kvq_axpy_row(KVCacheType t, float *out, float a, const tn_i8 *v, const float *scales, int n) {
-    if (t == KV_TYPE_I4) kvq4_axpy(out, a, (const uint8_t *)v, scales, n);
+    if (t == KV_TYPE_I4) tn_kvq4_axpy(out, a, (const uint8_t *)v, scales, n);
     else kvq_axpy(out, a * scales[0], v, n);
 }

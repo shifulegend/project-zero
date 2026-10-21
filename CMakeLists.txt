@@ -263,6 +263,8 @@ set(KV_CACHE_SOURCES
     src/kv_cache/prefix_cache.c
     src/kv_cache/prompt_store.c
     src/kv_cache/kv_quant_ops.c
+    src/math/kvq4_avx2.c
+    src/math/kvq4_avx512.c
 )
 
 set(SPECULATIVE_SOURCES
@@ -393,11 +395,11 @@ if(PZ_DIST AND NOT MSVC)
         src/math/matmul_q4k.c src/math/matmul_q4k_x8.c src/math/matmul_q2k.c src/math/matmul_q8_0.c
         src/math/matmul_q5_0.c src/math/matmul_q5_1.c src/math/matmul_q5k.c src/math/matmul_q6k.c
         src/math/matmul_f16.c src/math/quantize_i8.c src/math/parallel_matmul.c
-        src/math/q8_0_act.c)
+        src/math/q8_0_act.c src/math/kvq4_avx2.c)
     set(PZ_AVX512_SRCS
         src/math/ternary_matmul_packed_avx512.c src/math/ternary_matmul_lut_avx512bw.c
         src/math/elementwise_avx512.c
-        src/math/rmsnorm_avx512.c src/math/softmax_avx512.c)
+        src/math/rmsnorm_avx512.c src/math/softmax_avx512.c src/math/kvq4_avx512.c)
     set_source_files_properties(${PZ_AVX2_SRCS} PROPERTIES
         COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
     set_source_files_properties(${PZ_AVX512_SRCS} PROPERTIES

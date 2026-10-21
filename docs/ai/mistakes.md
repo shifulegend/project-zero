@@ -5,6 +5,15 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-10-21.
 
+### 2026-10-21 — Benchmark contaminated by my own concurrent work
+
+- While an A/B benchmark ran I compiled and ran a test binary and started an MCP server: the F32
+  control showed a 44 % gap that the code could not cause. All numbers were discarded and the
+  benchmark re-run on an idle machine. The rule (benchmarks strictly sequential, nothing else on
+  the CPU) already existed. Lesson: once a benchmark starts, only text/network work until it
+  reports — no builds, no test runs, no tool servers. Also: `pkill -f` matched my own shell again;
+  kill by PID.
+
 ### 2026-10-21 — OOM guard assumed lazy zeroing on every OS (macOS CI SIGKILL)
 
 - `run_state.c`'s `tn_alloc_too_large` allowed a buffer up to 32x free RAM. That is only safe where

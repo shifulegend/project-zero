@@ -2,11 +2,16 @@
  * tests/test_kv_quant.c — plan 8.5 quantized KV rows: int8 error bound,
  * dot/axpy against F32, zero rows, type parsing; int4 (Q4_1-style groups)
  * layout, error bound, constant rows, and dot/axpy against a dequantised
- * reference.
+ * reference; AVX2 / AVX-512 int4 kernels against the scalar reference
+ * (directly and through tn_simd_init's dispatch).
  */
 #include "test_harness.h"
 #include "kv_cache/kv_quant_ops.h"
 #include "sampling/rng.h"
+#include "math/kvq4_kernels.h"
+#include "math/simd_dispatch.h"
+#include "math/cpu_features.h"
+#include "core/platform.h"
 
 static void test_store_roundtrip_error(void) {
     enum { N = 64 };
@@ -96,11 +101,64 @@ static void test_i4_layout_and_roundtrip(void) {
     TEST_ASSERT(isfinite(i8out[0]), "i8 dispatch");
 }
 
+/* Compares one SIMD int4 kernel pair with the scalar reference on random rows
+ * of several sizes (row values up to +-50 so d and m both matter). */
+static void check_kvq4_kernels(const char *name, tn_kvq4_dot_fn dot, tn_kvq4_axpy_fn axpy) {
+    enum { MAXN = 256 };
+    static const int sizes[] = { 32, 64, 128, 256 };
+    unsigned long long r; rng_seed(&r, 77);
+    int ok_dot = 1, ok_axpy = 1;
+    for (int si = 0; si < 4; si++) {
+        int n = sizes[si];
+        float src[MAXN], q[MAXN], scales[2 * MAXN / TN_KV_I4_GROUP];
+        tn_i8 packed[MAXN / 2];
+        for (int rep = 0; rep < 20; rep++) {
+            float amp = rep < 10 ? 1.0f : 50.0f;
+            for (int i = 0; i < n; i++) {
+                src[i] = (rng_float(&r) - 0.3f) * amp;
+                q[i] = rng_float(&r) - 0.5f;
+            }
+            kvq_store(KV_TYPE_I4, packed, scales, src, n);
+            float ref = kvq4_dot_scalar(q, (const uint8_t *)packed, scales, n);
+            float got = dot(q, (const uint8_t *)packed, scales, n);
+            float tol = 1e-5f * (float)n * amp + 1e-5f;
+            if (fabsf(ref - got) > tol) ok_dot = 0;
+            float o_ref[MAXN], o_got[MAXN];
+            for (int i = 0; i < n; i++) o_ref[i] = o_got[i] = q[i];
+            kvq4_axpy_scalar(o_ref, 0.37f, (const uint8_t *)packed, scales, n);
+            axpy(o_got, 0.37f, (const uint8_t *)packed, scales, n);
+            for (int i = 0; i < n; i++)
+                if (fabsf(o_ref[i] - o_got[i]) > 1e-5f * amp + 1e-6f) ok_axpy = 0;
+        }
+    }
+    char m1[96], m2[96];
+    snprintf(m1, sizeof(m1), "%s int4 dot matches scalar", name);
+    snprintf(m2, sizeof(m2), "%s int4 axpy matches scalar", name);
+    TEST_ASSERT(ok_dot, m1);
+    TEST_ASSERT(ok_axpy, m2);
+}
+
+static void test_i4_simd_kernels(void) {
+    const TnCpuFeatures *cpu = tn_cpu_features_detect();
+#if TN_HAS_AVX2
+    if (cpu->avx2) check_kvq4_kernels("AVX2", kvq4_dot_avx2, kvq4_axpy_avx2);
+    else printf("  (skip AVX2: CPU lacks it)\n");
+#endif
+#if TN_HAS_AVX512
+    if (cpu->avx512f) check_kvq4_kernels("AVX-512", kvq4_dot_avx512, kvq4_axpy_avx512);
+    else printf("  (skip AVX-512: CPU lacks it)\n");
+#endif
+    (void)cpu;
+    tn_simd_init();                                /* whatever this CPU selects */
+    check_kvq4_kernels("dispatched", tn_kvq4_dot, tn_kvq4_axpy);
+}
+
 int main(void) {
     printf("=== KV int8 / int4 (plan 8.5) Tests ===\n");
     RUN_TEST(test_store_roundtrip_error);
     RUN_TEST(test_dot_and_axpy);
     RUN_TEST(test_zero_row_and_parse);
     RUN_TEST(test_i4_layout_and_roundtrip);
+    RUN_TEST(test_i4_simd_kernels);
     TEST_SUMMARY();
 }

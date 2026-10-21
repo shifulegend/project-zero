@@ -3,6 +3,15 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-10-21.
 
+### 2026-10-21 — int4 KV SIMD kernels via simd_dispatch
+
+- `math/kvq4_avx2.c`, `math/kvq4_avx512.c` (per-file ISA flags, portable `dist` safe), selected
+  by `tn_simd_init()` as `tn_kvq4_dot/tn_kvq4_axpy` (default scalar, honours TN_FORCE_BACKEND).
+  Dot computed as d*sum(q*c) + m*sum(q), one reduction per row. +27 % long-context decode
+  (3 interleaved rounds). F32 control −4.3 % mean, but every F32-path function compiled to
+  identical instructions in both builds (objdump diff), so it is run-to-run/layout noise.
+  NEON version not written (scalar autovectorises on ARM); open.
+
 ### 2026-10-21 — Installer + `pz config` as Phase 40; DoD #6; rea registered as MCP
 
 - Phase 40 (design via superpowers:brainstorming → spec → writing-plans): optional install script and

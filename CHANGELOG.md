@@ -22,6 +22,7 @@ section becomes the version's entry and is published as its GitHub release notes
 - Cut startup from 20–70 s to under 1–8 s by caching the DRAM bandwidth probe per host (`--calibrate` or `PZ_BW_REPROBE=1` re-measures), zeroing large buffers lazily and indexing tokenizer lookups.
 - Reduce resident memory by releasing the file pages of converted tensors and committing KV cache rows only as far as a generation can reach.
 - Quantize the INT8/INT4 classifier (LM head) block-wise instead of with one scale per row.
+- Speed up long-context decode with `--kv-type i4` by about 27% with AVX2/AVX-512 int4 KV kernels: SmolLM2-1.7B Q4_K_M, about 2,200-token context, 4 threads: 8.32 → 10.58 tok/s on a 4-vCPU AVX-512 Xeon.
 - Speed up mixture-of-experts decode about 1.7–1.8× with a fused expert FFN, 8-bit-activation integer kernels and dynamic expert scheduling: DeepSeek-V2-Lite-Chat Q4_K_S at 4 threads goes from 6.3–7.3 to 11.7–12.6 tok/s (llama.cpp: 9.4–10.5) on a 4-vCPU AVX-512 VNNI Xeon.
 - Keep Q4_K/Q6_K output layers and Q5_0/Q5_1/Q8_0 projections in their quantized format instead of widening them, reducing DeepSeek-V2-Lite resident memory from 12.0 to 10.6 GB.
 

@@ -554,7 +554,7 @@ project-zero/
 
 ---
 
-## PHASE 8: KV Cache Optimizations ✅ (int8 2026-10-18 + int4 2026-10-19 KV wired into dense/GQA attention; other attention families open)
+## PHASE 8: KV Cache Optimizations ✅ (int8 2026-10-18 + int4 2026-10-19 KV wired into dense/GQA attention; AVX2/AVX-512 int4 kernels 2026-10-21; other attention families open)
 
 ### 8.1 — KV Cache Quantization (float32 → int8) ✅
 - File: `include/kv_cache/kv_compress.h` + `src/kv_cache/kv_compress.c`

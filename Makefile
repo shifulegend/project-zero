@@ -243,12 +243,12 @@ AVX2_TUS := math/ternary_matmul_avx2 math/ternary_matmul_packed_avx2 \
             math/matmul_q4k math/matmul_q4k_x8 math/matmul_q2k math/matmul_q8_0 \
             math/matmul_q5_0 math/matmul_q5_1 math/matmul_q5k math/matmul_q2_0 \
             math/matmul_f16 math/quantize_i8 math/parallel_matmul math/matmul_q6k \
-            math/q8_0_act
+            math/q8_0_act math/kvq4_avx2
 AVX2_OBJS := $(addprefix build/,$(addsuffix .o,$(AVX2_TUS)))
 
 AVX512_TUS := math/ternary_matmul_packed_avx512 math/ternary_matmul_lut_avx512bw \
               math/elementwise_avx512 \
-              math/rmsnorm_avx512 math/softmax_avx512
+              math/rmsnorm_avx512 math/softmax_avx512 math/kvq4_avx512
 AVX512_OBJS := $(addprefix build/,$(addsuffix .o,$(AVX512_TUS)))
 
 $(AVX2_OBJS): build/%.o: src/%.c

@@ -137,6 +137,8 @@ tn_vec_scale_fn      tn_vec_scale             = NULL;
 tn_silu_fn           tn_silu                  = NULL;
 tn_relu2_fn          tn_relu2                 = NULL;
 tn_vec_dot_fn        tn_vec_dot               = NULL;
+tn_kvq4_dot_fn       tn_kvq4_dot              = kvq4_dot_scalar;
+tn_kvq4_axpy_fn      tn_kvq4_axpy             = kvq4_axpy_scalar;
 tn_vec_saxpy_fn      tn_vec_saxpy             = NULL;
 
 /* Human-readable name of the selected backend (set by tn_simd_init) */
@@ -179,6 +181,8 @@ const char *tn_simd_init(void) {
         tn_silu      = silu_avx512;
         tn_relu2     = relu2_avx512;
         tn_vec_dot   = vec_dot_avx512;
+        tn_kvq4_dot  = kvq4_dot_avx512;
+        tn_kvq4_axpy = kvq4_axpy_avx512;
         tn_vec_saxpy = vec_saxpy_avx512;
     } else
 #endif
@@ -192,6 +196,8 @@ const char *tn_simd_init(void) {
         tn_silu      = silu_avx2;
         tn_relu2     = relu2_avx2;
         tn_vec_dot   = vec_dot_avx2;
+        tn_kvq4_dot  = kvq4_dot_avx2;
+        tn_kvq4_axpy = kvq4_axpy_avx2;
         tn_vec_saxpy = vec_saxpy_avx2;
     } else
 #endif
@@ -204,6 +210,8 @@ const char *tn_simd_init(void) {
         tn_silu      = silu;
         tn_relu2     = relu2_scalar;
         tn_vec_dot   = vec_dot;
+        tn_kvq4_dot  = kvq4_dot_scalar;
+        tn_kvq4_axpy = kvq4_axpy_scalar;
         tn_vec_saxpy = vec_saxpy;
     }
 

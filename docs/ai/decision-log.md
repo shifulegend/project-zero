@@ -3,6 +3,17 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-10-21.
 
+### 2026-10-21 — Installer + `pz config` as Phase 40; DoD #6; rea registered as MCP
+
+- Phase 40 (design via superpowers:brainstorming → spec → writing-plans): optional install script and
+  `pz config` wizard/CLI over a TOML config file; precedence CLI > env > file > default; zero
+  mandatory configuration. DoD #6: settings changes update installer + config schema in the same
+  commit (Phase 40 inventory until it lands).
+- rea registered project-wide as MCP server (`.mcp.json`, exact version 6.7.0, no install scripts,
+  vetted by the MoE agent); objdump/GDB providers work in the container, decompilers do not.
+- `tool-sync-policy.md` § Which skill or tool, when: default mapping for superpowers,
+  mattpocock-skills and rea.
+
 ### 2026-10-21 — Changelog writing rules: Keep a Changelog format + Common Changelog wording
 
 - Canonical rules in `docs/ai/changelog-guidance.md`, researched from Keep a Changelog 1.1.0,

@@ -2,7 +2,21 @@
   "mcpServers": {
     "gitnexus": {
       "command": "npx",
-      "args": ["gitnexus", "mcp"],
+      "args": [
+        "gitnexus",
+        "mcp"
+      ],
+      "env": {}
+    },
+    "rea": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "--package",
+        "rea-agents@6.7.0",
+        "rea",
+        "--mcp"
+      ],
       "env": {}
     }
   }

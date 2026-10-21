@@ -60,6 +60,11 @@ A change is done only when:
    under `## [Unreleased]` in `CHANGELOG.md` in the same commit — Keep a Changelog sections, written
    for users. `python3 tools/changelog.py check` must pass (CI job `changelog`). Writing rules:
    **`docs/ai/changelog-guidance.md`**; release procedure: `docs/RELEASING.md` (added 2026-10-21).
+6. **Installer and configuration stay in sync** (added 2026-10-21): a change that adds, renames or
+   removes a user-facing flag, env var, default, config/file location, release asset or runtime
+   dependency updates, in the same commit, the `pz config` schema (key, default, range, help, wizard
+   step where relevant), the install script, `/v1/config` + web UI if user-facing, and the docs.
+   Until Phase 40 lands these, add the item to the Phase 40 inventory in `IMPLEMENTATION_PLAN.md`.
 - Never claim completion without stating what was verified and what remains UNVERIFIED.
 - `make test` runs **every** `tests/*.c` and aborts on the first failure — a green full run is
   the bar. It builds the library as the `debug` variant (ASan/UBSan on engine code too, since

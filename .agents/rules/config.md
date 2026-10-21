@@ -28,3 +28,6 @@
   override), BPE pre-tokenizer from `tokenizer.ggml.pre`. `--raw-prompt` skips the chat template
   (plain completion, for benchmarks vs llama-completion); `--perplexity <file>` (+`--ppl-ctx`,
   `--ppl-chunks`) reproduces llama-perplexity for accuracy checks.
+- **Installer + config in sync** (DoD #6): new/renamed/removed flag, env var, default, file location,
+  release asset or dependency → update `pz config` schema, install script, `/v1/config`/web UI and docs
+  in the same commit (until Phase 40 exists: add it to the plan's Phase 40 inventory).

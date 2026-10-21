@@ -69,3 +69,21 @@ vendored copies — installing both a plugin and copies duplicates every skill.
 - `/setup-matt-pocock-skills` (issue tracker, triage labels, glossary/ADR layout) edits
   `CLAUDE.md` and is interactive — run only when the user asks; its output then goes in
   `docs/ai/` first, adapters second.
+
+## Which skill or tool, when (2026-10-21)
+Use these by default; the repo's own skills (`session-start`, `implement-task`, `review-and-verify`,
+`project-memory`, `update-changelog`) remain the definition of done and override them.
+
+| Situation | Use |
+|-----------|-----|
+| New feature / behaviour with open design questions | `superpowers:brainstorming` → spec in `docs/superpowers/specs/` → `superpowers:writing-plans`. In scheduled/autonomous goal runs, don't block on questions: take the plan's stated defaults and record them as calls made. |
+| Executing a written plan | `superpowers:executing-plans` (inline) or `superpowers:subagent-driven-development` |
+| Writing code | `superpowers:test-driven-development` / `mattpocock-skills:tdd` (test first, watch it fail) |
+| Bug, CI failure, perf regression | `superpowers:systematic-debugging` / `mattpocock-skills:diagnosing-bugs` — reproduce before fixing; "flake" is not a root cause |
+| Module/interface design, refactors | `mattpocock-skills:codebase-design` (deep modules, seams) |
+| Terminology, glossary, ADRs | `mattpocock-skills:domain-modeling` |
+| Gathering facts from primary sources | `mattpocock-skills:research` |
+| Independent tasks in parallel | `superpowers:dispatching-parallel-agents` — **never** for benchmarks (strictly sequential) |
+| Before claiming done | `superpowers:verification-before-completion` + `review-and-verify` |
+| Review | `superpowers:requesting-code-review` / `mattpocock-skills:code-review`; `superpowers:receiving-code-review` when answering one |
+| Comparing against a reference engine (llama.cpp, bitnet.cpp) | **rea** (MCP server `rea` in `.mcp.json`, pinned `rea-agents@6.7.0`; CLI `rea`): `inspect-with-objdump <bin> disassemble\|symbols` for kernel code, `inspect-binary-layout` for ELF/symbol inventory, GDB provider for runtime. Decompiler providers (Ghidra/Hopper/IDA) are unavailable in the cloud container; use them locally if installed. Pair with the reference's source and `perf`. |

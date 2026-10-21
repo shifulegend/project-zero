@@ -3640,3 +3640,41 @@ prefix (= ternary, not the old name).
 
 **Done when:** no live code, script, CI job, template or current doc uses the old name; old
 benchmark logs still render; the compat shim works for one release; all gates green on gcc and clang.
+
+## Phase 40: Installer + `pz config` (guided setup, persistent configuration) 🟡 DESIGN (added 2026-10-21)
+
+**Why:** a first-time user should get from download to a working model without reading docs, and
+every setting a user changes once (model folder, threads, port, defaults) should persist — editable
+from the CLI wizard, `pz config set/get/list`, and the web UI — with no hardcoded values.
+
+**Principles (best practice, researched 2026-10-21):** zero *mandatory* configuration (the engine
+already auto-detects hardware and reads model shape from GGUF, so the installer and wizard are
+optional conveniences, never gates); non-interactive mode for CI/scripts; checksum-verified
+downloads; user-scope install without root; one precedence order everywhere:
+**CLI flag > environment variable > config file > built-in default**.
+
+**Proposed scope (to be finalised by the design spec
+`docs/superpowers/specs/2026-10-21-installer-config-design.md`, written with
+superpowers:brainstorming and planned with superpowers:writing-plans):**
+- 40.1 Config module: `include/config/pz_config.h` / `src/config/pz_config.c` — schema of keys
+  (name, type, default, range, help, which CLI flag/env it maps to), load/merge/save of
+  `$XDG_CONFIG_HOME/project-zero/config.toml` (TOML subset), validation; unit tests.
+- 40.2 CLI: `pz config` (interactive wizard), `pz config list|get <k>|set <k> <v>|unset <k>|path|edit`;
+  `args.c` applies file values before flags.
+- 40.3 Server/web UI: `/v1/config` reports each value's source (default/file/env/flag); Settings
+  can save a server default back to the file (opt-in, local-only).
+- 40.4 Installer: `install.sh` (POSIX sh): platform detect → release asset by target triple →
+  `SHA256SUMS` verify → install to `~/.local/bin` (`--prefix`), PATH hint, optional wizard;
+  `--yes`, `--version`, `--uninstall`; tested in CI on a clean container. Windows/macOS packages
+  later (Homebrew tap, winget) — not in this phase.
+- 40.5 Docs, CHANGELOG, RELEASING (installer ships as a release asset with its checksum).
+
+**Standing rule (engineering-rules DoD #6, 2026-10-21):** every change that adds/renames/removes a
+user-facing flag, env var, default, file location, release asset or runtime dependency updates the
+installer and the configuration schema in the same commit (until 40.1/40.4 exist: add it to the
+inventory below).
+
+**Inventory of settings the config schema must cover** (start: every `args.c` flag with a default;
+keep current): model/tokenizer paths, threads, simd, classifier, ctx-size, kv-type, kv-ram-fraction,
+kv-offload, sampling defaults, server host/port/cors/api-key/queue, update-check settings, MCTS/PRM,
+chat template file, UI title.

@@ -3,6 +3,9 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-21.
 
+### 2026-10-21 — Phase 40 planned; DoD #6; rea MCP; skill/tool map
+- Plan Phase 40, engineering-rules DoD #6 + all adapters, `.mcp.json` rea, tool-sync-policy map.
+
 ### 2026-10-21 — CI fixes from dispatching every workflow on the branch
 - macOS `posix_fallocate` → `F_PREALLOCATE`; `make coverage` → `run-tests` + lcov-2 unused-pattern
   handling; `fuzz_config.py` checks graceful rejection instead of timing out. Reproduced locally:

@@ -23,6 +23,7 @@
   document it in `mistakes.md`, but that never substitutes for the fix. Only defer for a
   genuinely large architectural change, and flag that to the user explicitly instead of silently
   skipping it. See `engineering-rules.md` § Bug-fix policy.
+- Third-party skill plugins **superpowers** and **mattpocock-skills** are enabled (`.claude/settings.json`); repo rules override them — see `docs/ai/tool-sync-policy.md` § Third-party skill plugins.
 
 ## Build / run (verified)
 ```bash

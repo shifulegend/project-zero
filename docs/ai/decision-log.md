@@ -1,7 +1,21 @@
 # Decision Log — project-zero
 
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
-> Read at session start. Last updated: 2026-10-19.
+> Read at session start. Last updated: 2026-10-21.
+
+### 2026-10-21 — Third-party agent skill plugins: superpowers + mattpocock-skills (repo rules win)
+
+- Enabled for everyone working in the repo via `.claude/settings.json` (`enabledPlugins`
+  `superpowers@claude-plugins-official`, `mattpocock-skills@claude-plugins-official`, marketplace
+  declared in `extraKnownMarketplaces`) — installed as plugins, never also copied into
+  `.claude/skills/` (their READMEs warn that both gives every skill twice).
+- Precedence: `docs/ai/**` + `CLAUDE.md`/adapters override plugin workflows. Concretely: no AI
+  attribution in commits even if a skill suggests one; no PR unless asked (superpowers'
+  finishing-a-development-branch offers one); benchmarks stay sequential when its parallel-agent
+  skills fan out; scheduled/autonomous goal runs don't stop for brainstorming/grilling questions.
+- `/setup-matt-pocock-skills` is interactive (issue tracker, triage labels, glossary/ADR layout)
+  and edits `CLAUDE.md`; not run — run it only when the user asks. Details in
+  `tool-sync-policy.md` § Third-party skill plugins.
 
 ### 2026-10-19 — int4 KV is asymmetric (Q4_1-style), opt-in; chat templates overridable per request
 

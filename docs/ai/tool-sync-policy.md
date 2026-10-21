@@ -1,7 +1,7 @@
 # Tool Sync Policy — project-zero
 
 > Defines canonical vs adapter files and how they stay synchronized.
-> Last updated: 2026-07-15.
+> Last updated: 2026-10-21.
 
 ## Canonical (source of truth)
 `docs/ai/**` — overview, engineering-rules, mistakes, decision-log, change-trace,
@@ -45,3 +45,23 @@ concurrency-rearchitecture surface). Adapters added: `.claude/rules/api.md`,
 ## Drift check
 At session start and before task completion, confirm adapters still match the canonical docs;
 if not, reconcile (canonical wins) and note it in `change-trace.md`.
+
+## Third-party skill plugins (2026-10-21)
+Two external skill packs are part of the workflow. They are *plugins* (self-updating), never
+vendored copies — installing both a plugin and copies duplicates every skill.
+
+| Pack | What it adds | Claude Code (repo-enabled) | Other tools (per user, optional) |
+|------|--------------|----------------------------|----------------------------------|
+| [obra/superpowers](https://github.com/obra/superpowers) | brainstorming, writing/executing plans, TDD, systematic debugging, verification-before-completion, code review, worktrees, subagent-driven development; SessionStart hook loads `using-superpowers` | `superpowers@claude-plugins-official` | Antigravity: `agy plugin install https://github.com/obra/superpowers`; Codex/Cursor: their plugin marketplaces |
+| [mattpocock/skills](https://github.com/mattpocock/skills) | grill-me / grill-with-docs, tdd, diagnosing-bugs, codebase-design, to-spec / to-tickets / triage, research, handoff | `mattpocock-skills@claude-plugins-official` | Copilot: `copilot plugin marketplace add mattpocock/skills` + `copilot plugin install mattpocock-skills@mattpocock`; Gemini: `gemini skills install https://github.com/mattpocock/skills.git --path skills/engineering` (and `skills/productivity`); Codex: `codex plugin marketplace add mattpocock/skills` |
+
+- Claude Code: `.claude/settings.json` declares the `claude-plugins-official` marketplace and
+  enables both; Claude Code offers to install them when the repo is trusted. Manual:
+  `claude plugin install <id> --scope project`.
+- **Precedence:** these docs and the repo adapters override any plugin skill. No AI attribution
+  in commits; no PR unless asked; benchmarks strictly sequential; autonomous/scheduled runs do
+  not block on brainstorming or grilling questions; repo-local skills (`implement-task`,
+  `review-and-verify`, `session-start`, `project-memory`) stay the definition of done.
+- `/setup-matt-pocock-skills` (issue tracker, triage labels, glossary/ADR layout) edits
+  `CLAUDE.md` and is interactive — run only when the user asks; its output then goes in
+  `docs/ai/` first, adapters second.

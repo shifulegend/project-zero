@@ -1,7 +1,11 @@
 # Change Trace — project-zero
 
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
-> Update after each meaningful sub-step. Last updated: 2026-10-19.
+> Update after each meaningful sub-step. Last updated: 2026-10-21.
+
+### 2026-10-21 — superpowers + mattpocock/skills plugins enabled
+- `.claude/settings.json` (new): official marketplace + both plugins at project scope; install
+  notes for Copilot/Antigravity/Gemini/Codex in `tool-sync-policy.md`; adapters link to it.
 
 ### 2026-10-19 — 18-C decode-once Q4_K multi-token kernel
 - `gemm8_q4k_x8_q8k_tokens()`: weight-side unpack once per super-block, all verify tokens reuse it;

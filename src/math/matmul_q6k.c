@@ -109,7 +109,7 @@ float tn_dot_q6k_row_q8k(const uint8_t *row, const TnQ8KActBlock *acts, int n_bl
         for (int h = 0; h < 2; h++) {
             const uint8_t *ql = blk + 64 * h, *qh = blk + 128 + 32 * h;
             const int8_t *a = act->qs + 128 * h;
-            const __m128i sh8 = _mm_cvtepi8_epi16(_mm_srli_si128(sc8, 8 * h));
+            const __m128i sh8 = _mm_cvtepi8_epi16(h ? _mm_unpackhi_epi64(sc8, sc8) : sc8);
             const __m256i sh  = _mm256_broadcastsi128_si256(sh8);
             __m256i l0 = _mm256_loadu_si256((const __m256i *)ql);
             __m256i l1 = _mm256_loadu_si256((const __m256i *)(ql + 32));

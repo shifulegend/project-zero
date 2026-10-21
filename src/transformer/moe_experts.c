@@ -197,8 +197,8 @@ int moe_experts_forward(float *out, const float *x,
         s_off[j + 1] = s_off[j] + jobs[j].hdim;
         s_hq_off[j]  = hq_total;
         hq_total    += act_bytes(jobs[j].down_type, jobs[j].hdim);
-        need_k |= is_kquant(jobs[j].gate_type) | is_kquant(jobs[j].up_type);
-        need_0 |= !is_kquant(jobs[j].gate_type) | !is_kquant(jobs[j].up_type);
+        need_k |= (is_kquant(jobs[j].gate_type) || is_kquant(jobs[j].up_type));
+        need_0 |= (!is_kquant(jobs[j].gate_type) || !is_kquant(jobs[j].up_type));
     }
     const size_t rows = (size_t)s_off[n_jobs];
     if (grow((void **)&s_g, &s_g_cap, rows * sizeof(float)) ||

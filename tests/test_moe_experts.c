@@ -10,9 +10,15 @@
  *     Q5_0 down batch, weighted saxpy, + a Q4_K shared expert): relative L2
  *     error bounded by the Q8_0 activation rounding (< 1e-2), and the fused
  *     result is bit-identical across thread counts (rows are independent).
+ *  4. Router weighting options (MoEConfig gating / norm / scale): default =
+ *     raw softmax probabilities (DeepSeek-V2-Lite), norm sums the selected
+ *     weights to 1 (Qwen3-MoE), scale multiplies, sigmoid gating selects on
+ *     sigmoid(logit).
  */
 #include "test_harness.h"
 #include "transformer/moe_experts.h"
+#include "transformer/moe_router.h"
+#include "core/moe_config.h"
 #include "math/matmul_q4k.h"
 #include "math/matmul_q5_0.h"
 #include "math/q8_0_act.h"
@@ -227,11 +233,46 @@ static void test_fused_matches_legacy(void) {
     free(g); free(u); free(dn); free(sg); free(su); free(sd);
 }
 
+static void test_router_opts(void) {
+    enum { D = 8, E = 6, K = 2 };
+    float gw[E * D], x[D];
+    unsigned long long r; rng_seed(&r, 31);
+    for (int i = 0; i < E * D; i++) gw[i] = rng_float(&r) * 2.0f - 1.0f;
+    for (int i = 0; i < D; i++) x[i] = rng_float(&r) * 2.0f - 1.0f;
+    float logits[E];
+    for (int e = 0; e < E; e++) { logits[e] = 0; for (int i = 0; i < D; i++) logits[e] += gw[e * D + i] * x[i]; }
+
+    float sc[E]; int sel[K]; float w0[K], w1[K], w2[K], w3[K];
+    moe_router_forward(sc, sel, w0, x, gw, D, E, K, NULL);
+    int sel0[K]; memcpy(sel0, sel, sizeof(sel));
+    double z = 0; float mx = logits[0];
+    for (int e = 1; e < E; e++) if (logits[e] > mx) mx = logits[e];
+    for (int e = 0; e < E; e++) z += exp((double)logits[e] - mx);
+    TEST_ASSERT(fabs(w0[0] - exp((double)logits[sel[0]] - mx) / z) < 1e-5, "default = raw softmax probability");
+    TEST_ASSERT(w0[0] >= w0[1], "top-k in descending order");
+
+    MoERouterOpts on = { MOE_GATING_SOFTMAX, 1, 0.0f };
+    moe_router_forward_opts(sc, sel, w1, x, gw, D, E, K, &on, NULL);
+    TEST_ASSERT(sel[0] == sel0[0] && sel[1] == sel0[1], "norm does not change selection");
+    TEST_ASSERT(fabsf(w1[0] + w1[1] - 1.0f) < 1e-6f, "norm: selected weights sum to 1");
+    TEST_ASSERT(fabsf(w1[0] / w1[1] - w0[0] / w0[1]) < 1e-4f, "norm keeps ratios");
+
+    MoERouterOpts scl = { MOE_GATING_SOFTMAX, 0, 16.0f };
+    moe_router_forward_opts(sc, sel, w2, x, gw, D, E, K, &scl, NULL);
+    TEST_ASSERT(fabsf(w2[0] - 16.0f * w0[0]) < 1e-5f, "scale multiplies the weights");
+
+    MoERouterOpts sig = { MOE_GATING_SIGMOID, 0, 0.0f };
+    moe_router_forward_opts(sc, sel, w3, x, gw, D, E, K, &sig, NULL);
+    TEST_ASSERT(sel[0] == sel0[0], "sigmoid is monotone: same top-1");
+    TEST_ASSERT(fabsf(w3[0] - 1.0f / (1.0f + expf(-logits[sel[0]]))) < 1e-5f, "sigmoid gating weight");
+}
+
 int main(void) {
     tn_simd_init();
     printf("=== MoE fused experts / Q8_0-activation kernels ===\n");
     RUN_TEST(test_q8_0_act_dots);
     RUN_TEST(test_q4k_vnni_matches_avx2);
     RUN_TEST(test_fused_matches_legacy);
+    RUN_TEST(test_router_opts);
     TEST_SUMMARY();
 }

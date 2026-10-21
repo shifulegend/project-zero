@@ -323,6 +323,34 @@ TernaryError config_from_gguf(Config *cfg, const GGUFHeader *hdr) {
     return TN_OK;
 }
 
+/* ── MoE router weighting keys (2026-10-21) ─────────────────────────────────
+ * Reads <arch>.expert_gating_func / expert_weights_norm / expert_weights_scale
+ * with llama.cpp's per-arch defaults (see MoEConfig). An unsupported gating
+ * function falls back to the default with a warning instead of silently
+ * misrouting. */
+static void moe_config_read_gating(MoEConfig *mc, const GGUFHeader *hdr,
+                                   int default_gating, int default_norm) {
+    char k[128];
+    snprintf(k, sizeof(k), "%s.expert_gating_func", hdr->arch);
+    int g = (int)gguf_meta_u32(hdr, k, 0);
+    if (g == 0) g = default_gating;
+    if (g != MOE_GATING_SOFTMAX && g != MOE_GATING_SIGMOID) {
+        fprintf(stderr, "[gguf_loader] %s: expert_gating_func=%d not supported, "
+                        "using softmax\n", hdr->arch, g);
+        g = MOE_GATING_SOFTMAX;
+    }
+    mc->expert_gating_func = g;
+
+    snprintf(k, sizeof(k), "%s.expert_weights_norm", hdr->arch);
+    const GGUFMeta *m = gguf_meta_find(hdr, k);
+    mc->expert_weights_norm = default_norm;
+    if (m && m->val_type == GGUF_VAL_BOOL) mc->expert_weights_norm = m->val.boolean ? 1 : 0;
+    else if (m) mc->expert_weights_norm = gguf_meta_u32(hdr, k, (uint32_t)default_norm) ? 1 : 0;
+
+    snprintf(k, sizeof(k), "%s.expert_weights_scale", hdr->arch);
+    mc->expert_weights_scale = gguf_meta_f32(hdr, k, 0.0f);
+}
+
 /* ── moe_config_from_gguf() ───────────────────────────────────────────────── */
 
 TernaryError moe_config_from_gguf(MoEConfig *mc, const GGUFHeader *hdr) {
@@ -412,6 +440,8 @@ TernaryError moe_config_from_gguf(MoEConfig *mc, const GGUFHeader *hdr) {
         mc->first_k_dense_replace    = 0; /* all layers routed */
         mc->n_shared_experts         = 0; /* no shared experts */
         mc->shared_expert_hidden_dim = 0;
+        /* llama.cpp qwen3moe.cpp: softmax gating, norm_w hardcoded true */
+        moe_config_read_gating(mc, hdr, MOE_GATING_SOFTMAX, 1);
 
         if (mc->num_experts <= 0 || mc->num_experts_per_tok <= 0 ||
             mc->expert_hidden_dim <= 0 || mc->attn_head_dim <= 0) {
@@ -450,6 +480,10 @@ TernaryError moe_config_from_gguf(MoEConfig *mc, const GGUFHeader *hdr) {
 
     /* shared hidden = n_shared * expert_hidden */
     mc->shared_expert_hidden_dim = mc->n_shared_experts * mc->expert_hidden_dim;
+
+    /* llama.cpp deepseek2.cpp: gating from metadata, softmax when absent
+     * (V2 / V2.5 GGUFs carry no gating key); norm defaults to false. */
+    moe_config_read_gating(mc, hdr, MOE_GATING_SOFTMAX, 0);
 
     mc->is_moe  = true;
     mc->has_mla = 1;

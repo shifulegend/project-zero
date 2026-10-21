@@ -291,13 +291,15 @@ void moe_ffn_forward(RunState              *s,
         DBG_DUMP(layer, "router_logits", raw_logits, num_experts);
     }
 
-    /* Router computes gate matmul, softmax, top-k in one call */
-    moe_router_forward(expert_scores,
-                       selected_experts,
-                       selected_scores,
-                       s->xb,
-                       (const float *)w->moe_gate_w[layer],
-                       dim, num_experts, top_k, tp);
+    /* Router computes gate matmul, gating, top-k (+ norm/scale) in one call */
+    const MoERouterOpts ropts = { mc->expert_gating_func, mc->expert_weights_norm,
+                                  mc->expert_weights_scale };
+    moe_router_forward_opts(expert_scores,
+                            selected_experts,
+                            selected_scores,
+                            s->xb,
+                            (const float *)w->moe_gate_w[layer],
+                            dim, num_experts, top_k, &ropts, tp);
     if (t_step) {
         tn_step_timing_add(TN_STEP_15_MOE_ROUTING,
                            tn_step_timing_now_ns() - t_step);

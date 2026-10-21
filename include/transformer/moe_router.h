@@ -25,6 +25,25 @@
  * @param top_k             How many experts to activate.
  * @param tp                Thread pool (may be NULL for sequential).
  */
+/* Router weighting options (see MoEConfig). NULL = DeepSeek-V2-Lite
+ * defaults: softmax gating, no renormalization, no scale. */
+typedef struct {
+    int   gating_func;    /* MOE_GATING_SOFTMAX / MOE_GATING_SIGMOID */
+    int   norm_weights;   /* renormalize the selected weights to sum to 1 */
+    float weights_scale;  /* 0 or 1 = no-op */
+} MoERouterOpts;
+
+void moe_router_forward_opts(float       *expert_scores,
+                             int         *selected_experts,
+                             float       *selected_scores,
+                             const float *x,
+                             const float *gate_w,
+                             int          dim,
+                             int          num_experts,
+                             int          top_k,
+                             const MoERouterOpts *opts,
+                             ThreadPool  *tp);
+
 void moe_router_forward(float       *expert_scores,
                         int         *selected_experts,
                         float       *selected_scores,

@@ -69,6 +69,11 @@ TernaryError moe_config_read(MoEConfig *mc, const void *data,
     mc->qk_nope_head_dim         = has_mla ? qk_nope_head_dim : 0;
     mc->qk_rope_head_dim         = has_mla ? qk_rope_head_dim : 0;
     mc->v_head_dim               = has_mla ? v_head_dim       : 0;
+    /* .bin MoE header carries no router-weighting fields: DeepSeek-V2-Lite
+     * semantics (softmax, no renormalization, no scale). */
+    mc->expert_gating_func       = MOE_GATING_SOFTMAX;
+    mc->expert_weights_norm      = 0;
+    mc->expert_weights_scale     = 0.0f;
 
     /* Advance by the full 48 bytes; old 32-byte files advance by 32 */
     *offset += (*offset + HEADER_SIZE <= data_size) ? HEADER_SIZE : 32;

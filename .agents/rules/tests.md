@@ -6,3 +6,6 @@
 - Asset/CPU/env-dependent tests skip gracefully; never hard-fail on a missing optional asset.
 - Verify the full CI sequence locally (release+test+debug, gcc+clang); expect a cascade when
   unblocking the first failing test. Add golden-output checks for behavior changes.
+- `make test` builds the library as the `debug` (ASan/UBSan) variant, so engine code is sanitized
+  too (2026-10-21); it replaces a release `./pz` — run `make release` again before benchmarking.
+  The build stamp also tracks compiler and host ISA, so CPU/compiler changes force a clean rebuild.

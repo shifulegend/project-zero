@@ -11,3 +11,6 @@ Adapter for the verification section of `docs/ai/engineering-rules.md`.
 - Verify the full CI sequence locally (release+test+debug, gcc+clang) — a step only validates
   what it reaches; expect a cascade when unblocking the first failing test.
 - Add a golden-output check for behavior changes (e.g. "capital of France" → "Paris").
+- `make test` builds the library as the `debug` (ASan/UBSan) variant, so engine code is sanitized
+  too (2026-10-21); it replaces a release `./pz` — run `make release` again before benchmarking.
+  The build stamp also tracks compiler and host ISA, so CPU/compiler changes force a clean rebuild.

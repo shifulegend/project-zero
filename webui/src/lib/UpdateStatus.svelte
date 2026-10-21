@@ -40,6 +40,17 @@
         disabled on the server (--no-update-check, --update-interval 0, PZ_NO_UPDATE_CHECK or CI)
       {/if}
     </div>
+    {#if info.release_notes_url || info.changelog_url}
+      <!-- Links come from the server (update repo/API settings), never hardcoded here. -->
+      <div class="row small-text">
+        {#if info.release_notes_url}
+          <a href={info.release_notes_url} target="_blank" rel="noopener noreferrer">Release notes for {info.current}</a>
+        {/if}
+        {#if info.changelog_url}
+          <a href={info.changelog_url} target="_blank" rel="noopener noreferrer">Changelog</a>
+        {/if}
+      </div>
+    {/if}
     {#if info.error}<div class="row err small-text">{info.error}</div>{/if}
     <div class="row">
       <label class="check">

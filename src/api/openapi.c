@@ -31,7 +31,7 @@ static const char OPENAPI_JSON[] =
       "\"responses\":{\"200\":{\"description\":\"OK\"}}}},"
     "\"/v1/prompt_cache/clear\":{\"post\":{\"summary\":\"Drop all cached prompt snapshots\","
       "\"responses\":{\"200\":{\"description\":\"OK\"},\"429\":{\"description\":\"A generation is in flight\"}}}},"
-    "\"/v1/update\":{\"get\":{\"summary\":\"Update-check state (status, current, latest, url, settings); notify only\","
+    "\"/v1/update\":{\"get\":{\"summary\":\"Update-check state (status, current, latest, url, release_notes_url, changelog_url, settings); notify only\","
       "\"responses\":{\"200\":{\"description\":\"OK\"}}}},"
     "\"/v1/update/check\":{\"post\":{\"summary\":\"Re-check for a newer release now (rate-limited; disabled by --no-update-check)\","
       "\"responses\":{\"200\":{\"description\":\"Current state; checking=true when a check started — poll GET /v1/update\"}}}},"

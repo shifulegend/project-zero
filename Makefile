@@ -102,7 +102,7 @@ TARGET = pz
 # notice when run through it); drop LEGACY_TARGET the release after.
 LEGACY_TARGET = adaptive_ai_engine
 
-.PHONY: all clean debug release dist test test-tsan coverage objs demo webui-bundle screenshots
+.PHONY: all clean debug release dist test run-tests test-tsan coverage objs demo webui-bundle screenshots
 
 all: $(TARGET)
 
@@ -113,15 +113,25 @@ all: $(TARGET)
 # built right after "release" would carry zero ASan/UBSan instrumentation
 # despite exit 0 (confirmed 2026-09-18 via `nm | grep asan` on the result).
 # Recorded in build/.variant; a mismatch forces a clean before rebuilding.
+#
+# 2026-10-21: the stamp also records the compiler and the host's -march=native
+# ISA set. Objects are compiled with host-detected ISA flags (_HAS_*VNNI,
+# -march=native), so a VM that migrates to a different CPU between builds (seen
+# after a container restart: test_simd_vnni failed to link against a stale
+# ternary_matmul_packed_avx_vnni.o) or a gcc->clang switch on the same variant
+# silently reused objects built for the other configuration.
 BUILD_STAMP := build/.variant
+HOST_ISA := $(shell $(CC) -march=native -dM -E - </dev/null 2>/dev/null | \
+	grep -E '__(AVX|SSE|FMA|F16C|BMI|AMX|ARM_FEATURE)' | sort | cksum | cut -d' ' -f1)
+VARIANT_ID = $(1) cc=$(notdir $(CC)) isa=$(HOST_ISA) vnni=$(_HAS_AVX512VNNI)$(_HAS_AVXVNNI)
 define ensure_variant
 	@mkdir -p build
-	@if [ -f $(BUILD_STAMP) ] && [ "$$(cat $(BUILD_STAMP))" != "$(1)" ]; then \
-		echo "Build variant changed ($$(cat $(BUILD_STAMP)) -> $(1)); removing stale objects..."; \
+	@if [ -f $(BUILD_STAMP) ] && [ "$$(cat $(BUILD_STAMP))" != "$(call VARIANT_ID,$(1))" ]; then \
+		echo "Build configuration changed ($$(cat $(BUILD_STAMP)) -> $(call VARIANT_ID,$(1))); removing stale objects..."; \
 		rm -rf build $(TARGET) $(LEGACY_TARGET); \
 		mkdir -p build; \
 	fi
-	@echo "$(1)" > $(BUILD_STAMP)
+	@echo "$(call VARIANT_ID,$(1))" > $(BUILD_STAMP)
 endef
 
 release:
@@ -369,7 +379,17 @@ test-packed: build/tests/test_packed_weights
 	@build/tests/test_packed_weights
 	@echo "=== Phase 10 Tests Passed ==="
 
-test: $(LIB_OBJS) $(TEST_BINS)
+# 2026-10-21: `make test` builds the library as the sanitizer (debug) variant.
+# It used to link whatever objects existed -- on a fresh tree (CI) the default
+# release flags -- so only the test drivers ran under ASan/UBSan, never the
+# engine code they exercise. Sharing the `debug` variant means the usual
+# release -> test -> debug sequence still rebuilds only once.
+test:
+	$(call ensure_variant,debug)
+	$(MAKE) CFLAGS="$(CFLAGS_DEBUG)" CXXFLAGS="$(CXXFLAGS_DEBUG)" \
+	        LDFLAGS="$(LDFLAGS) -fsanitize=address -fsanitize=undefined" run-tests
+
+run-tests: $(LIB_OBJS) $(TEST_BINS)
 	@echo "=== Running tests ==="
 	@for t in $(TEST_BINS); do echo "--- $$t ---"; $$t || exit 1; done
 	@echo "=== All tests passed ==="

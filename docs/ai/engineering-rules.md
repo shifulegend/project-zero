@@ -62,7 +62,8 @@ A change is done only when:
    **`docs/ai/changelog-guidance.md`**; release procedure: `docs/RELEASING.md` (added 2026-10-21).
 - Never claim completion without stating what was verified and what remains UNVERIFIED.
 - `make test` runs **every** `tests/*.c` and aborts on the first failure — a green full run is
-  the bar. CI historically died early, masking downstream failures; expect a cascade when you
+  the bar. It builds the library as the `debug` variant (ASan/UBSan on engine code too, since
+  2026-10-21) and so replaces a release `./pz`; rebuild `make release` before benchmarking. CI historically died early, masking downstream failures; expect a cascade when you
   unblock the first failing test, and keep going until the whole suite passes on all platforms.
 - **Model support is verified against a reference engine**, not by "the output looks fluent":
   token ids vs `llama-tokenize`, and `--perplexity` vs `llama-perplexity` on the same text

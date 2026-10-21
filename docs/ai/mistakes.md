@@ -3,7 +3,24 @@
 > Canonical, append-at-top (newest first). Read this at the start of every session.
 > Add an entry **immediately** when a mistake, false assumption, regression, or avoidable
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
-> Last updated: 2026-10-18.
+> Last updated: 2026-10-21.
+
+### 2026-10-21 — `make test` never sanitized the engine; build stamp blind to CPU and compiler
+
+- `make test` had no build-variant guard and linked whatever library objects existed. On a fresh
+  tree (every CI job) those were built with the default release flags (`-O3`, no ASan/UBSan), so
+  only the test drivers were instrumented and engine code never ran under the sanitizers the docs
+  promised. Fixed: `make test` builds the `debug` variant (same stamp as `make debug`, so
+  release → test → debug still rebuilds once). Every suite stayed green with the engine instrumented.
+- `build/.variant` recorded only the variant name. Objects take host-detected ISA flags
+  (`-march=native`, `_HAS_*VNNI`), so after this VM migrated to another CPU across a restart
+  `test_simd_vnni` failed to link against a stale `ternary_matmul_packed_avx_vnni.o`; a gcc→clang
+  switch on the same variant also reused the other compiler's objects. The stamp now carries
+  `cc=` and an `isa=` fingerprint of `-march=native`'s macros; any change forces a clean rebuild.
+- Side effect to know: `make test` (debug variant) replaces a release `./pz`; run `make release`
+  afterwards before benchmarking.
+- Lesson: a cache key must include every input that changes the output — here variant, compiler
+  and host ISA.
 
 ### 2026-10-19 — LoRA skipped by the batched verify pass and by Qwen3 attention
 

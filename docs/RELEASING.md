@@ -1,6 +1,6 @@
 # Releasing project-zero — Prebuilt x86-64 Linux Binary
 
-How a portable, prebuilt `adaptive_ai_engine` binary is built, verified, and
+How a portable, prebuilt `pz` binary is built, verified, and
 published as a GitHub Release. The release pipeline lives in
 [`.github/workflows/release.yml`](../.github/workflows/release.yml); the build
 is driven by the Makefile `dist` target.
@@ -26,8 +26,16 @@ runs on a `v*` tag push.
 
 | Asset | Contents |
 |-------|----------|
-| `adaptive_ai_engine-<version>-x86_64-linux.tar.gz` | the binary + `LICENSE` + `README.md` |
+| `project-zero-<version>-x86_64-unknown-linux-gnu.tar.gz` | unpacks to `project-zero-<version>-x86_64-unknown-linux-gnu/`: `pz` + `LICENSE` + `README.md` (+ the `adaptive_ai_engine → pz` alias symlink, first release after the rename only) |
 | `SHA256SUMS` | checksum of the tarball (`sha256sum -c SHA256SUMS` to verify) |
+
+**Naming (Phase 39, 2026-10-21):** `<project>-<version>-<target triple>` — the convention ripgrep
+and the Rust/LLVM toolchains use. The version drops the tag's leading `v`; the triple says arch,
+vendor and libc (`-gnu`: glibc, with libstdc++/libgcc linked statically), so future aarch64, musl
+or macOS builds get their own names without breaking download scripts. Releases up to the rename
+were named `adaptive_ai_engine-<version>-x86_64-linux.tar.gz`. **Release notes of the first
+release after the rename must call out the new binary and asset names**; remove the alias symlink
+(Makefile `LEGACY_TARGET`, release.yml `ln -s`) in the release after that.
 
 ## The portable build (`make dist`)
 
@@ -36,7 +44,7 @@ AVX-512-VNNI CI runner it would bake in AVX-512 and `SIGILL` on older CPUs. The
 distribution build is therefore separate:
 
 ```bash
-make dist CC=gcc      # -> ./adaptive_ai_engine (portable)
+make dist CC=gcc      # -> ./pz (portable)
 ```
 
 Design — **per-TU multiversioning** (leverages the existing `simd_dispatch`):
@@ -85,15 +93,15 @@ Runtime variation flags: `--simd {auto,avx2,avx512f,vnni,scalar}`,
 ```bash
 make test CC=gcc && make test CC=clang        # 46 tests, ASan/UBSan, mock weights
 make dist CC=gcc
-file ./adaptive_ai_engine                      # ELF x86-64
-ldd  ./adaptive_ai_engine                      # only libc/libm/ld (no libstdc++/libgcc)
-./adaptive_ai_engine --version                 # prints version + detected backend, exit 0
-for b in scalar avx2 avx512f vnni; do TN_FORCE_BACKEND=$b ./adaptive_ai_engine --version; done
+file ./pz                      # ELF x86-64
+ldd  ./pz                      # only libc/libm/ld (no libstdc++/libgcc)
+./pz --version                 # prints version + detected backend, exit 0
+for b in scalar avx2 avx512f vnni; do TN_FORCE_BACKEND=$b ./pz --version; done
 
 # Real-model golden output (network permitting):
 curl -fsSL -o models/smollm2.gguf \
   https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-f16.gguf
-./adaptive_ai_engine --model models/smollm2.gguf \
+./pz --model models/smollm2.gguf \
   --prompt "What is the capital of France?" --max-tokens 30 --temperature 0 --threads 2 | grep -i paris
 ```
 

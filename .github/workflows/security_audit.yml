@@ -16,10 +16,10 @@ jobs:
           make -j$(nproc)
       - name: Run Core Fuzzer
         # PZ_ENGINE_BIN points at this job's own CMake+ASan build, not the
-        # Makefile's ./adaptive_ai_engine (2026-09-19: this step used to
+        # Makefile's ./pz (2026-09-19: this step used to
         # reference a stale, long-renamed binary path and silently no-op'd
         # instead of failing -- see docs/ai/mistakes.md).
-        run: PZ_ENGINE_BIN=./build/project-zero python3 tools/fuzz_config.py
+        run: PZ_ENGINE_BIN=./build/pz python3 tools/fuzz_config.py
       - name: Run Math Kernel Unit Tests
         # 2026-09-19: filled in the long-standing TODO stub. Runs the
         # ASan/UBSan-instrumented SIMD/math-kernel test binaries this job's

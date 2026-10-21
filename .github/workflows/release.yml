@@ -51,7 +51,7 @@ jobs:
         run: |
           make clean
           make dist CC=gcc
-          file adaptive_ai_engine
+          file pz
 
       - name: Package + checksums
         id: pkg
@@ -61,9 +61,15 @@ jobs:
             VER="${{ inputs.ref_name }}"
           fi
           case "$VER" in ''|refs/*) VER="$(git describe --tags --always)";; esac
-          NAME="adaptive_ai_engine-${VER#v}-x86_64-linux"
+          # <project>-<version>-<target triple> (ripgrep/Rust convention): the
+          # triple names arch, vendor and libc, leaving room for aarch64,
+          # musl and macOS builds. The archive unpacks into a directory of
+          # the same name. Phase 39 (2026-10-21): binary `pz`, plus the
+          # `adaptive_ai_engine` alias symlink for this one release.
+          NAME="project-zero-${VER#v}-x86_64-unknown-linux-gnu"
           mkdir -p "dist/${NAME}"
-          cp adaptive_ai_engine "dist/${NAME}/"
+          cp pz "dist/${NAME}/"
+          ln -s pz "dist/${NAME}/adaptive_ai_engine"
           cp LICENSE README.md "dist/${NAME}/" 2>/dev/null || true
           tar -C dist -czf "dist/${NAME}.tar.gz" "${NAME}"
           ( cd dist && sha256sum "${NAME}.tar.gz" > SHA256SUMS )
@@ -72,13 +78,15 @@ jobs:
 
       - name: Smoke test the packaged binary
         run: |
-          BIN="dist/${{ steps.pkg.outputs.name }}/adaptive_ai_engine"
+          BIN="dist/${{ steps.pkg.outputs.name }}/pz"
           file "$BIN"
           ldd "$BIN" || true
           if ldd "$BIN" | grep -Eq 'libstdc\+\+|libgcc_s'; then
             echo "ERROR: binary dynamically links libstdc++/libgcc (static linking failed)"; exit 1
           fi
           "$BIN" --version
+          # The one-release alias ships as a symlink and announces the rename.
+          "$(dirname "$BIN")/adaptive_ai_engine" --version 2>&1 | grep -q "renamed to 'pz'"
           # Missing --model must fail gracefully (non-zero), not crash.
           if "$BIN" --prompt hi >/dev/null 2>&1; then
             echo "ERROR: expected non-zero exit without --model"; exit 1
@@ -106,7 +114,7 @@ jobs:
         run: |
           apt-get update -q && apt-get install -y -q tar file
           tar -C dist -xzf dist/*.tar.gz
-          BIN="$(find dist -name adaptive_ai_engine -type f | head -1)"
+          BIN="$(find dist -name pz -type f | head -1)"
           chmod +x "$BIN"
           file "$BIN"
           "$BIN" --version
@@ -122,7 +130,7 @@ jobs:
       - name: Download SmolLM2-135M and assert France -> Paris
         run: |
           tar -C dist -xzf dist/*.tar.gz
-          BIN="$(find dist -name adaptive_ai_engine -type f | head -1)"; chmod +x "$BIN"
+          BIN="$(find dist -name pz -type f | head -1)"; chmod +x "$BIN"
           mkdir -p models
           URL="https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-f16.gguf"
           curl -fsSL -o models/smollm2.gguf "$URL"

@@ -43,11 +43,13 @@ jobs:
         run: |
           make clean
           make dist CC=${{ matrix.compiler }}
-          file adaptive_ai_engine
+          file pz
           # Portable build must not dynamically link libstdc++/libgcc.
-          if ldd adaptive_ai_engine | grep -Eq 'libstdc\+\+|libgcc_s'; then
+          if ldd pz | grep -Eq 'libstdc\+\+|libgcc_s'; then
             echo "ERROR: dist binary dynamically links libstdc++/libgcc"; exit 1
           fi
+          ./pz --version
+          # Phase 39 transition alias (one release): must still run.
           ./adaptive_ai_engine --version
 
   build-macos:
@@ -75,7 +77,7 @@ jobs:
         run: cmake -B build_cmake -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build build_cmake -j$(nproc) --target project-zero
+        run: cmake --build build_cmake -j$(nproc) --target pz
 
   golden-output-regression:
     name: Golden-output regression (TS-5.1)

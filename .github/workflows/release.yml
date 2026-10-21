@@ -77,7 +77,7 @@ jobs:
           mkdir -p "dist/${NAME}"
           cp pz "dist/${NAME}/"
           ln -s pz "dist/${NAME}/adaptive_ai_engine"
-          cp LICENSE README.md "dist/${NAME}/" 2>/dev/null || true
+          cp LICENSE README.md CHANGELOG.md "dist/${NAME}/"
           tar -C dist -czf "dist/${NAME}.tar.gz" "${NAME}"
           ( cd dist && sha256sum "${NAME}.tar.gz" > SHA256SUMS )
           echo "name=${NAME}" >> "$GITHUB_OUTPUT"

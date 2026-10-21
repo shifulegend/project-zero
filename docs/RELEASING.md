@@ -53,7 +53,7 @@ runs on a `v*` tag push.
 
 | Asset | Contents |
 |-------|----------|
-| `project-zero-<version>-x86_64-unknown-linux-gnu.tar.gz` | unpacks to `project-zero-<version>-x86_64-unknown-linux-gnu/`: `pz` + `LICENSE` + `README.md` (+ the `adaptive_ai_engine → pz` alias symlink, first release after the rename only) |
+| `project-zero-<version>-x86_64-unknown-linux-gnu.tar.gz` | unpacks to `project-zero-<version>-x86_64-unknown-linux-gnu/`: `pz` + `LICENSE` + `README.md` + `CHANGELOG.md` (+ the `adaptive_ai_engine → pz` alias symlink, first release after the rename only) |
 | `SHA256SUMS` | checksum of the tarball (`sha256sum -c SHA256SUMS` to verify) |
 
 **Naming (Phase 39, 2026-10-21):** `<project>-<version>-<target triple>` — the convention ripgrep

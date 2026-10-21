@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-21.
 
+### 2026-10-21 — Build: `make test` sanitizes engine code; stamp tracks compiler + host ISA
+- Makefile `test` → debug variant + `run-tests`; `VARIANT_ID` (variant, cc, `-march=native` ISA
+  fingerprint, VNNI flags) in `build/.variant`. Found by a stale-object link failure after a VM
+  CPU change. Verified gcc+clang release/test/debug green, 0 warnings, `nm` shows ASan in lib objects.
+- Release archive also ships `CHANGELOG.md`; `/v1/update` release links + Settings → Updates live-checked.
+
 ### 2026-10-21 — Changelog guidance embedded in canonical docs
 - New `docs/ai/changelog-guidance.md`; pointers from engineering-rules DoD #5, commit-log-guidance,
   session-start checklist, tool-sync-policy, RELEASING.md, all entrypoints and `docs` scoped rules;

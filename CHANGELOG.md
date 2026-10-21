@@ -51,6 +51,7 @@ section becomes the version's entry and is published as its GitHub release notes
 - Add graceful shutdown on Ctrl+C/SIGTERM in `--server` mode.
 - Add distributed pipeline inference over TCP (`--remote-layers`, `--rpc-worker`).
 - Add notify-only update checks (`--check-update`, `GET /v1/update`, `--no-update-check`, `--update-*`).
+- Add `CHANGELOG.md` to the release archive.
 - Add release-notes and changelog links for the running build to `GET /v1/update` (`release_notes_url`, `changelog_url`) and to the web UI under Settings → Updates.
 - Add the web chat UI with image upload, settings rendered from `/v1/config` (including the chat-template editor and tree search), a watermark panel, a usage footer and an update banner.
 - Add colour, progress, live token statistics, markdown rendering and a startup banner to the CLI.

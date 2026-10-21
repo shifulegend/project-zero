@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-21.
 
+### 2026-10-21 — Changelog guidance embedded in canonical docs
+- New `docs/ai/changelog-guidance.md`; pointers from engineering-rules DoD #5, commit-log-guidance,
+  session-start checklist, tool-sync-policy, RELEASING.md, all entrypoints and `docs` scoped rules;
+  `update-changelog` skill/prompt/workflow; linter section-order + `[YANKED]` checks (10 tests);
+  `CHANGELOG.md` entries rewritten to the rules (imperative, `**Breaking:**` for the rename).
+
 ### 2026-10-21 — CHANGELOG.md (Keep a Changelog), release notes from it, version links in the UI
 - `CHANGELOG.md` (root; was `docs/CHANGELOG.md`), `tools/changelog.py` (check / notes) +
   `tools/test_changelog.py`, CI job `changelog`, release.yml `--notes-file`, `docs/RELEASING.md`

@@ -6,9 +6,12 @@ one version's section as release notes.
   python3 tools/changelog.py check [--file CHANGELOG.md] [--require-unreleased]
   python3 tools/changelog.py notes <version|vX.Y.Z|Unreleased> [--file CHANGELOG.md]
 
+Rules: docs/ai/changelog-guidance.md.
 check: exactly one "## [Unreleased]" and it comes first; releases are
-"## [X.Y.Z] - YYYY-MM-DD", newest first, no duplicates; only the six standard
-subsections; every version heading has a link reference at the bottom.
+"## [X.Y.Z] - YYYY-MM-DD" (optionally " [YANKED]"), newest first, no
+duplicates; only the six standard subsections, each at most once, in the order
+Changed, Deprecated, Removed, Added, Fixed, Security; every version heading has
+a link reference at the bottom.
 notes: prints the body of that section (without its heading) plus a link to
 the full diff; exits 1 if the section is missing or empty, so a tag cannot be
 released without changelog notes.
@@ -17,9 +20,10 @@ import argparse
 import re
 import sys
 
-SECTIONS = ("Added", "Changed", "Deprecated", "Removed", "Fixed", "Security")
+# Keep a Changelog types, ordered breaking-first (docs/ai/changelog-guidance.md §3).
+SECTIONS = ("Changed", "Deprecated", "Removed", "Added", "Fixed", "Security")
 SEMVER = r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?"
-RELEASE_RE = re.compile(r"^## \[(" + SEMVER + r")\] - (\d{4}-\d{2}-\d{2})$")
+RELEASE_RE = re.compile(r"^## \[(" + SEMVER + r")\] - (\d{4}-\d{2}-\d{2})( \[YANKED\])?$")
 LINK_RE = re.compile(r"^\[([^\]]+)\]: (\S+)$")
 
 
@@ -39,7 +43,7 @@ def parse(text):
                 r = RELEASE_RE.match(line)
                 if not r:
                     errors.append(f"line {n}: bad version heading {line!r} "
-                                  "(want '## [X.Y.Z] - YYYY-MM-DD' or '## [Unreleased]')")
+                                  "(want '## [X.Y.Z] - YYYY-MM-DD[ [YANKED]]' or '## [Unreleased]')")
                     cur = None
                     continue
                 cur = [r.group(1), r.group(5), n, []]
@@ -49,6 +53,13 @@ def parse(text):
             name = line[4:].strip()
             if name not in SECTIONS:
                 errors.append(f"line {n}: subsection {name!r} not one of {', '.join(SECTIONS)}")
+            else:
+                done = [l[4:].strip() for l in cur[3] if l.startswith("### ")]
+                if name in done:
+                    errors.append(f"line {n}: subsection {name!r} repeated in {cur[0]}")
+                elif any(SECTIONS.index(d) > SECTIONS.index(name) for d in done if d in SECTIONS):
+                    errors.append(f"line {n}: subsection {name!r} out of order "
+                                  f"(order: {', '.join(SECTIONS)})")
         if cur is not None:
             cur[3].append(line)
     return entries, links, errors

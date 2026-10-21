@@ -7,3 +7,7 @@ Adapter for `docs/ai/` policy — read `docs/ai/tool-sync-policy.md` and `commit
 - On a durable lesson: update `docs/ai/**` first → sync adapters → record in `change-trace.md`.
 - Keep docs concise, factual, repository-specific; follow existing report style.
 - Mark unknowns as TODO / UNKNOWN / ASSUMPTION; never invent commands/architecture.
+- **Changelog** (`docs/ai/changelog-guidance.md`): every user-facing change adds one imperative line
+  under `## [Unreleased]` in `CHANGELOG.md` in the same commit (Keep a Changelog sections, order
+  Changed/Deprecated/Removed/Added/Fixed/Security; `**Breaking:**` prefix + what to do; deprecations
+  name replacement + removal release; perf claims carry numbers). `tools/changelog.py check` must pass.

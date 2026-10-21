@@ -20,7 +20,8 @@
 ## During / end of session (auto, no user prompt needed)
 - New durable lesson → add to `mistakes.md` and/or `engineering-rules.md`, then sync adapters.
 - New decision → `decision-log.md`. Notable change → `change-trace.md`.
-- Before each commit: code ⇄ docs synchronized; propose an exact commit message.
+- Before each commit: code ⇄ docs synchronized; user-facing change → `CHANGELOG.md` `[Unreleased]`
+  line per `docs/ai/changelog-guidance.md`; propose an exact commit message.
 - At task end: update `docs/ai/**` first, then Copilot/Claude/Antigravity adapters; record in
   `change-trace.md`.
 - Verify (`make release/test/debug` for gcc+clang; golden output) and state what is

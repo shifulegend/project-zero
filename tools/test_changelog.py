@@ -71,6 +71,21 @@ class Check(unittest.TestCase):
         self.assertEqual(changelog.check(t), [])
 
 
+class SectionsAndYanked(unittest.TestCase):
+    def test_section_order_and_repeat(self):
+        t = GOOD.replace("### Added\n\n- new thing\n",
+                         "### Added\n\n- new thing\n\n### Changed\n\n- x\n")
+        self.assertTrue(any("out of order" in e for e in changelog.check(t)))
+        t = GOOD.replace("### Added\n\n- new thing\n",
+                         "### Added\n\n- a\n\n### Added\n\n- b\n")
+        self.assertTrue(any("repeated" in e for e in changelog.check(t)))
+
+    def test_yanked_heading(self):
+        t = GOOD.replace("[0.1.0] - 2026-06-20", "[0.1.0] - 2026-06-20 [YANKED]")
+        self.assertEqual(changelog.check(t), [])
+        self.assertIn("- bug", changelog.notes(t, "0.1.0"))
+
+
 class Notes(unittest.TestCase):
     def test_extract_with_v_prefix_and_link(self):
         out = changelog.notes(GOOD, "v0.2.0")

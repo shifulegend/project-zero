@@ -17,7 +17,7 @@
 - Cross-platform SIMD (x86 AVX2..VNNI / ARM NEON / scalar) must all compile; `TN_HAS_*` gates.
 - Definition of done: `make release/test/debug` green for **gcc and clang**, golden output
   correct, no kernel perf regression (A/B), docs+adapters synced, user-facing changes logged
-  under `[Unreleased]` in `CHANGELOG.md` (Keep a Changelog), small commit checkpoints.
+  under `[Unreleased]` in `CHANGELOG.md` per `docs/ai/changelog-guidance.md`, small commit checkpoints.
 - Public repo: never commit secrets. Keep ASan/UBSan green.
 - No AI signature or attribution (commit trailers, code comments, etc.) unless the user
   explicitly asks for it that time — see `docs/ai/commit-log-guidance.md`.

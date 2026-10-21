@@ -39,10 +39,12 @@ runs on a `v*` tag push.
   (`pz --version` → `Project Zero v0.2.0`, or `v0.2.0-5-gabc1234` between releases), and the
   update notifier compares it with the latest GitHub release.
 - **`CHANGELOG.md`** (repo root) follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/):
-  newest first, one `## [Unreleased]` section on top, sections `Added / Changed / Deprecated /
-  Removed / Fixed / Security`, written for users (what changed and which flag/API), not a commit
+  newest first, one `## [Unreleased]` section on top, sections in the order `Changed / Deprecated /
+  Removed / Added / Fixed / Security`, written for users (what changed and which flag/API), not a commit
   list. **Every user-facing change adds its line under `[Unreleased]` in the same commit.**
   Breaking changes and deprecations always get an entry, with the removal release named.
+- How to write entries (wording, breaking changes, deprecations, security, curation):
+  [`docs/ai/changelog-guidance.md`](ai/changelog-guidance.md).
 - `tools/changelog.py check` lints the format (CI job `changelog`); `tools/changelog.py notes <tag>`
   is what the release workflow publishes, so the GitHub release page, the update banner's link and
   the web UI's "Release notes" link all show the same curated text.

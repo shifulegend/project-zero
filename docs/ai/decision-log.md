@@ -3,6 +3,19 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-10-21.
 
+### 2026-10-21 — Changelog writing rules: Keep a Changelog format + Common Changelog wording
+
+- Canonical rules in `docs/ai/changelog-guidance.md`, researched from Keep a Changelog 1.1.0,
+  Common Changelog and SemVer 2.0. Kept from Keep a Changelog: the six change types, `[Unreleased]`,
+  ISO dates, `[YANKED]`. Taken from Common Changelog: one-line imperative self-describing entries,
+  `**Breaking:**` prefix, breaking-first ordering (sections ordered Changed, Deprecated, Removed,
+  Added, Fixed, Security), curation instead of commit dumps, commit the entry before tagging.
+- Repo-specific: name the flag/API field/UI control; performance claims need numbers and host;
+  security entries follow `SECURITY.md` disclosure; PR/issue references optional (most work lands
+  as direct commits); no author names, no AI attribution.
+- The linter enforces section order, uniqueness and `[YANKED]` headings; per-tool workflow mirrors
+  (`update-changelog`) for Claude, Copilot and Antigravity.
+
 ### 2026-10-21 — Version history: Keep a Changelog + SemVer, release notes from the changelog
 
 - `CHANGELOG.md` moved to the repo root and rewritten to Keep a Changelog 1.1.0: one

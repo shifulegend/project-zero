@@ -5,7 +5,7 @@
 
 ## Canonical (source of truth)
 `docs/ai/**` — overview, engineering-rules, mistakes, decision-log, change-trace,
-session-start-checklist, commit-log-guidance, this policy. Durable knowledge lives ONLY here.
+session-start-checklist, commit-log-guidance, changelog-guidance, this policy. Durable knowledge lives ONLY here.
 
 ## Adapter files (concise; summarize + link to canonical)
 | Tool | Entry | Scoped rules | Workflows / skills |
@@ -16,6 +16,10 @@ session-start-checklist, commit-log-guidance, this policy. Durable knowledge liv
 
 `AGENTS.md` is a portability mirror; keep it synchronized with `gemini/GEMINI.md` on durable
 repo-wide rules. (Both currently also carry the GitNexus MCP block — preserve it.)
+
+## Changelog workflow (2026-10-21)
+Rules: `docs/ai/changelog-guidance.md`. Per-tool workflow mirrors: `.claude/skills/update-changelog/SKILL.md`,
+`.github/prompts/update-changelog.prompt.md`, `.agents/workflows/update-changelog.md` — keep them in sync with it.
 
 ## Canonicality rule
 - On a conflict, update `docs/ai/**` first, then the adapters. Adapters must never hold durable

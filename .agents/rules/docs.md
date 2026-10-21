@@ -5,3 +5,7 @@
   incl. keeping `gemini/GEMINI.md` ⇄ `AGENTS.md`) → record in `docs/ai/change-trace.md`.
 - Timestamp doc updates and non-obvious code comments (decisions/risks/workarounds).
 - Concise, factual, repository-specific. Mark unknowns TODO / UNKNOWN / ASSUMPTION.
+- **Changelog** (`docs/ai/changelog-guidance.md`): every user-facing change adds one imperative line
+  under `## [Unreleased]` in `CHANGELOG.md` in the same commit (Keep a Changelog sections, order
+  Changed/Deprecated/Removed/Added/Fixed/Security; `**Breaking:**` prefix + what to do; deprecations
+  name replacement + removal release; perf claims carry numbers). `tools/changelog.py check` must pass.

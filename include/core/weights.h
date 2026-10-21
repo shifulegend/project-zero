@@ -24,6 +24,12 @@
                               * 2026-10-18 (~4.9x the bytes per weight). */
 #define WEIGHT_TYPE_TERNARY 7 /* packed ternary rows (core/unpack.h) repacked at load time from a
                               * BitNet I2_S GGUF tensor; selects layers_are_ternary. */
+/* 2026-10-21: legacy 32-element GGUF quants kept zero-copy and run by the
+ * Q8_0-activation integer kernels (math/q8_0_act.c) instead of being
+ * dequantized to an F32 heap copy (4-6x the bytes per weight). */
+#define WEIGHT_TYPE_Q5_0 8
+#define WEIGHT_TYPE_Q5_1 9
+#define WEIGHT_TYPE_Q8_0 10
 
 /* Block size for the classifier INT8/INT4 quantization scale granularity
  * (weights_build_classifier_quant in weights.c, consumed by
@@ -265,6 +271,15 @@ typedef struct {
     struct MambaWeights *mamba;
     const void *q35_token_embd_raw;
     const void *q35_output_raw;
+
+    /* 2026-10-21: zero-copy quantized LM head — GGUF output.weight kept in
+     * its own Q4_K/Q6_K format (as llama.cpp runs it) instead of being
+     * widened to a BF16 wcls copy (DeepSeek-V2-Lite: 172 MB streamed per
+     * token instead of 420 MB, and 420 MB less RSS). forward.c uses it
+     * whenever non-NULL and the user did not pass --classifier. Points into
+     * the mmap; never freed. */
+    const void *wcls_raw;
+    int         wcls_raw_type;   /* GGUF_TYPE_Q4_K or GGUF_TYPE_Q6_K */
 } TransformerWeights;
 
 /**

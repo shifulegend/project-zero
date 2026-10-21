@@ -11,6 +11,9 @@
 #include "core/step_timing.h"
 #include "math/parallel_matmul.h"
 #include "math/matmul_q2_0.h"
+#include "math/matmul_q4k.h"
+#include "math/matmul_q6k.h"
+#include "core/gguf_reader.h"
 #include "math/simd_dispatch.h"
 #include "math/batched_matmul.h"
 #include "transformer/attention.h"
@@ -183,7 +186,14 @@ float *transformer_forward(int token, int pos, const Config *cfg,
     TnClassifierFormat fmt = hp ? hp->classifier_fmt : TN_CLS_BF16;
     int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
 
-    if (fmt == TN_CLS_INT4 && w->wcls_i4 && w->wcls_i4_scales) {
+    if (w->wcls_raw && w->wcls_raw_type == GGUF_TYPE_Q6_K) {
+      /* zero-copy quantized head (2026-10-21, see weights.h) */
+      parallel_matmul_q6k(s->logits, s->x, (const uint8_t *)w->wcls_raw,
+                          dim, cfg->vocab_size, tp);
+    } else if (w->wcls_raw && w->wcls_raw_type == GGUF_TYPE_Q4_K) {
+      parallel_matmul_q4k(s->logits, s->x, (const uint8_t *)w->wcls_raw,
+                          dim, cfg->vocab_size, tp);
+    } else if (fmt == TN_CLS_INT4 && w->wcls_i4 && w->wcls_i4_scales) {
       parallel_matmul_i4(s->logits, s->x, w->wcls_i4, w->wcls_i4_scales,
                           dim, cfg->vocab_size, tp);
     } else if (fmt >= TN_CLS_INT8 && w->wcls_i8 && w->wcls_i8_scales) {
@@ -282,7 +292,13 @@ static void forward_rows_logits(SpecBatchScratch *sb, const TransformerWeights *
     const TnHardwareProfile *hp = tn_hardware_profile_get();
     TnClassifierFormat fmt = hp ? hp->classifier_fmt : TN_CLS_BF16;
 
-    if (fmt == TN_CLS_INT4 && w->wcls_i4 && w->wcls_i4_scales) {
+    if (w->wcls_raw && w->wcls_raw_type == GGUF_TYPE_Q6_K) {
+      parallel_matmul_q6k_tokens(logits_out, sb->x, (const uint8_t *)w->wcls_raw,
+                                 dim, cfg->vocab_size, n_tokens, tp);
+    } else if (w->wcls_raw && w->wcls_raw_type == GGUF_TYPE_Q4_K) {
+      parallel_matmul_q4k_tokens(logits_out, sb->x, (const uint8_t *)w->wcls_raw,
+                                 dim, cfg->vocab_size, n_tokens, tp);
+    } else if (fmt == TN_CLS_INT4 && w->wcls_i4 && w->wcls_i4_scales) {
       tn_matmul_i4_batch(logits_out, sb->x, w->wcls_i4, w->wcls_i4_scales,
                           dim, cfg->vocab_size, n_tokens, tp);
     } else if (fmt >= TN_CLS_INT8 && w->wcls_i8 && w->wcls_i8_scales) {

@@ -345,6 +345,13 @@ void weights_build_classifier_quant(TransformerWeights *w, const Config *cfg) {
      * Hardware-aware: only build if hardware profile recommends INT8 or INT4. */
     w->wcls_i8 = NULL;
     w->wcls_i8_scales = NULL;
+    /* Raw quantized LM head (wcls_raw) in use: there is no BF16 table to
+     * derive INT8/INT4 copies from, and none is needed (2026-10-21). */
+    if (!w->wcls) {
+        w->wcls_i4 = NULL;
+        w->wcls_i4_scales = NULL;
+        return;
+    }
     const TnHardwareProfile *hw = tn_hardware_profile_get();
     bool need_i8 = !hw || hw->classifier_fmt >= TN_CLS_INT8;
     if (!w->wcls_is_ternary && need_i8) {

@@ -1,4 +1,5 @@
 #include "transformer/moe_router.h"
+#include "core/moe_config.h"
 #include "math/parallel_matmul.h"
 
 #include <math.h>
@@ -75,6 +76,23 @@ void moe_router_forward(float       *expert_scores,
                         int          num_experts,
                         int          top_k,
                         ThreadPool  *tp) {
+    moe_router_forward_opts(expert_scores, selected_experts, selected_scores,
+                            x, gate_w, dim, num_experts, top_k, NULL, tp);
+}
+
+/* 2026-10-21: gating / renormalization / scale from MoEConfig, matching
+ * llama.cpp build_moe_ffn() (probs -> top-k -> get_rows -> norm -> scale). */
+void moe_router_forward_opts(float       *expert_scores,
+                             int         *selected_experts,
+                             float       *selected_scores,
+                             const float *x,
+                             const float *gate_w,
+                             int          dim,
+                             int          num_experts,
+                             int          top_k,
+                             const MoERouterOpts *opts,
+                             ThreadPool  *tp) {
+    const int gating = (opts && opts->gating_func) ? opts->gating_func : MOE_GATING_SOFTMAX;
     /* Step 1: gate_logits[e] = dot(x, gate_w_row[e])
      *
      * gate_w is F32 [num_experts × dim] — the tensor ffn_gate_inp.weight.
@@ -86,7 +104,12 @@ void moe_router_forward(float       *expert_scores,
      * DeepSeek-V2-Lite (n_layer=27) defaults to softmax gating.
      * Ref: llama-model.cpp LLM_ARCH_DEEPSEEK2 → SOFTMAX when GGUF has no gating key.
      */
-    softmax_inplace(expert_scores, num_experts);
+    if (gating == MOE_GATING_SIGMOID) {
+        for (int e = 0; e < num_experts; e++)
+            expert_scores[e] = 1.0f / (1.0f + expf(-expert_scores[e]));
+    } else {
+        softmax_inplace(expert_scores, num_experts);
+    }
 
     /* Step 3: Top-k selection */
     top_k_select(expert_scores, num_experts, top_k, selected_experts);
@@ -96,5 +119,17 @@ void moe_router_forward(float       *expert_scores,
     for (int i = 0; i < top_k; i++) {
         int e = selected_experts[i];
         selected_scores[i] = (e >= 0) ? expert_scores[e] : 0.0f;
+    }
+
+    /* Step 5: optional renormalization (Qwen3-MoE norm_topk_prob) — the
+     * sum is clamped like llama.cpp (smallest normal fp16) — then scale. */
+    if (opts && opts->norm_weights) {
+        float sum = 0.0f;
+        for (int i = 0; i < top_k; i++) sum += selected_scores[i];
+        if (sum < 6.103515625e-5f) sum = 6.103515625e-5f;
+        for (int i = 0; i < top_k; i++) selected_scores[i] /= sum;
+    }
+    if (opts && opts->weights_scale != 0.0f && opts->weights_scale != 1.0f) {
+        for (int i = 0; i < top_k; i++) selected_scores[i] *= opts->weights_scale;
     }
 }

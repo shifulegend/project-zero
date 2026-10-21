@@ -98,6 +98,22 @@ ThreadPool *threadpool_create(int n);
 void threadpool_dispatch(ThreadPool *tp, tn_task_fn fn, void *arg, int total);
 
 /**
+ * Dynamic variant (2026-10-21): fn is called on consecutive chunks of
+ * `chunk` items ([start, end) with end - start <= chunk) that the pool
+ * slices claim from a shared atomic counter until `total` is covered, so a
+ * slice delayed by the OS/VM does not hold up the whole dispatch. fn must be
+ * a pure per-item task (each item's result independent of which slice or
+ * chunk computes it) — true for every row-parallel GEMV. thread_id is the
+ * claiming slice. chunk <= 0 picks threadpool_chunk_size(tp, total). tp may
+ * be NULL (runs fn(arg, 0, 0, total) inline).
+ */
+void threadpool_dispatch_chunked(ThreadPool *tp, tn_task_fn fn, void *arg,
+                                 int total, int chunk);
+
+/** ~8 chunks per slice, a multiple of 8 items, at least 8. */
+int threadpool_chunk_size(const ThreadPool *tp, int total);
+
+/**
  * Destroy the thread pool. Signals all workers to exit and joins them.
  * Frees all resources. tp is invalid after this call.
  */

@@ -22,6 +22,36 @@
 - Lesson: a cache key must include every input that changes the output — here variant, compiler
   and host ISA.
 
+### 2026-10-21 — MoE ~2-3x behind llama.cpp: format widening and a broken VNNI self-test, not "expert scatter"
+
+Reverse-engineering llama.cpp's MoE path (source + `perf` + a ggml `mul_mat_id` microbench on the
+same expert shapes) showed its per-op expert GEMV throughput is about the same as ours
+(Q4_K x 6 experts, 4T: ~16-17 GB/s both). The gap was elsewhere — pre-existing defects:
+
+- **VNNI self-test always failed.** `verify_avx512vnni_executable()` expected 64 from a
+  `vpdpbusd` of all-ones bytes; the instruction sums 4 products per lane (= 4). Every VNNI host
+  had `avx512vnni` silently cleared, disabling all runtime-gated VNNI kernels (Q2_0 included).
+  The 2026-09-24 entry's "CPUID lies" diagnosis for VNNI was at least partly this bug. Fixed.
+- **Q5_0/Q5_1/Q8_0 ran against F32 activations** (decode to float + FMA): the DeepSeek-V2-Lite
+  expert down projection (Q5_0) was compute-bound at ~9 GB/s. Now Q8_0-quantized activations +
+  integer dots (`math/q8_0_act.c`), as llama.cpp does.
+- **Quantized LM heads were widened to BF16** (Q6_K 172 MB -> 420 MB streamed per token) in the
+  deepseek2/qwen3moe and the generic loaders; now zero-copy Q4_K/Q6_K (`wcls_raw`).
+- **DeepSeek-V2's dense layer 0 was dequantized to F32** (269 MB/token vs 42 MB); now typed
+  zero-copy (`load_proj_typed`, new `WEIGHT_TYPE_Q5_0/Q5_1/Q8_0`).
+- **Router ignored `expert_weights_norm/scale/gating_func`**: Qwen3-MoE (norm_topk_prob, always on
+  in llama.cpp) and DeepSeek-V2 full (scale 16) were mis-weighted. Fixed from GGUF metadata.
+- **Q6_K kernel built scale vectors with 8 x `_mm256_setr_epi16` per block** and a scalar bias
+  loop; rewritten (bit-identical). Its first rewrite used `_mm_srli_si128(x, 8*h)` — non-constant
+  immediate, compiled at -O3 gcc only; debug/clang builds failed. Lesson: build all variants
+  before benchmarking a kernel change.
+- **SIMD silu on thread-dependent sub-ranges** made the fused MoE result depend on the thread
+  count (vector exp approximation + scalar tail); activation now runs per whole expert vector.
+- **Benchmark trap: memcg page-cache thrash.** The session memcg is 14.3 GB; an mmap'd 9.5 GB model
+  plus ~3 GB anon puts both engines at the limit, and earlier runs (PZ 4.07 / llama 5.8 tok/s with
+  mmap) were measuring re-reads from disk. llama.cpp must run with `-lm none` here; check
+  "File system inputs" in `/usr/bin/time -v` before trusting a number.
+
 ### 2026-10-19 — LoRA skipped by the batched verify pass and by Qwen3 attention
 
 - `--lora` with `--draft-model`: `attention_forward_batch()`/`ffn_forward_batch()` never read

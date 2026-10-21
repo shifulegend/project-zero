@@ -33,5 +33,9 @@ Adapter for `docs/ai/engineering-rules.md` — read the canonical file for full 
 - Distributed (`--remote-layers`, Phase 28): layers can run in a worker process. Per-layer state
   that maps position → cache slot (sliding window) is part of the RPC contract; anything that
   restores/copies KV for all layers (prompt snapshots) must be bypassed when `dist_plan_active()`.
+- MoE experts run through `moe_experts_forward()` (2 dispatches/layer, Q8_0/Q8K activations
+  quantized once). New expert weight types need a `rowdot()` case there, else the layer silently
+  takes the slow legacy path. Q5_0/Q5_1/Q8_0 projections are zero-copy `WEIGHT_TYPE_Q5_0/Q5_1/Q8_0`
+  (integer kernels in `math/q8_0_act.c`) — never dequantize them to F32.
 - Anything that calls `transformer_forward()` directly gets a default sliding window if none was
   set, but should `sw_init()` itself when it owns a sequence (generate_ex, perplexity, worker).

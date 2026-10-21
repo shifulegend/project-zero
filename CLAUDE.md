@@ -15,7 +15,8 @@
 - `memset` every struct before partial init (weights/run-state). Trap absurd allocations
   deterministically — never rely on `calloc` returning NULL (macOS over-commits).
 - Definition of done: `make release/test/debug` green for **gcc and clang**, golden output
-  correct, no kernel perf regression (A/B), docs+adapters synced, commit checkpoint proposed.
+  correct, no kernel perf regression (A/B), docs+adapters synced, user-facing changes
+  logged under `[Unreleased]` in `CHANGELOG.md` (Keep a Changelog), commit checkpoint proposed.
 - Public repo: never commit secrets. Keep ASan/UBSan green.
 - No Claude/AI signature or attribution (commit trailers, code comments, etc.) unless the user
   explicitly asks for it that time — see `docs/ai/commit-log-guidance.md`.

@@ -3,6 +3,20 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-10-21.
 
+### 2026-10-21 — Version history: Keep a Changelog + SemVer, release notes from the changelog
+
+- `CHANGELOG.md` moved to the repo root and rewritten to Keep a Changelog 1.1.0: one
+  `[Unreleased]` section on top, `[0.1.0] - 2026-06-20` for the only published tag, user-facing
+  wording, compare links. The old file had several dated "[Unreleased]" headings, stopped in March
+  and listed files, not changes; its pre-0.1.0 content is condensed into the 0.1.0 entry (full text
+  stays in git history).
+- Release notes are the changelog section for the tag (`tools/changelog.py notes`), replacing
+  `gh --generate-notes`; a tag without a section fails the release before the build. CI lints the
+  format. Every user-facing change adds its line in the same commit (engineering-rules DoD #5).
+- SemVer: on 0.x a breaking change bumps MINOR — the Phase 39 rename makes the next release 0.2.0.
+- The running build's release-notes / changelog links are computed server-side from the update
+  settings (`update/release_links`) so the web UI hardcodes no URLs and forks/GHE get their own.
+
 ### 2026-10-21 — Phase 39 rename: binary `pz`, one-release alias, triple-named release assets
 
 - Binary `pz` (user's choice); `adaptive_ai_engine` stays for one release as a symlink that prints

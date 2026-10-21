@@ -21,7 +21,8 @@ OpenAI-compatible HTTP API. Build: `Makefile` (primary) + `CMakeLists.txt`. See 
 - Cross-platform SIMD (x86 AVX2..VNNI / ARM NEON / scalar) must all compile; feature-gate with
   `TN_HAS_*`; portable prefetch `TN_PREFETCH_T1`.
 - Definition of done: `make release/test/debug` green for **gcc and clang**, golden output
-  correct, no kernel perf regression (A/B), docs+adapters synced, small commit checkpoints.
+  correct, no kernel perf regression (A/B), docs+adapters synced, user-facing changes logged
+  under `[Unreleased]` in `CHANGELOG.md` (Keep a Changelog), small commit checkpoints.
 - Public repo: never commit secrets. Keep ASan/UBSan green.
 - No AI signature or attribution (commit trailers, code comments, etc.) unless the user
   explicitly asks for it that time — see `docs/ai/commit-log-guidance.md`.

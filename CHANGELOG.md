@@ -1,162 +1,108 @@
 # Changelog
 
-## [Unreleased] — 2026-03-17 (Phase 16-S: SIMD Performance Kernels)
+All notable changes to Project Zero are documented in this file.
 
-### Added (Phase 16-S: Multi-tier SIMD Dispatch & int8 Quantization)
+The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/), and this
+project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). While the major
+version is 0, a minor bump (0.x.0) may carry breaking changes; they are always listed under
+**Changed**, **Deprecated** or **Removed**.
 
-- `src/math/ternary_matmul_packed_vnni.c` — AVX-512 VNNI kernel using
-  `_mm512_dpbusd_epi32` for 64 int8 MACs/cycle. Targets Ice Lake Server,
-  Tiger Lake, Zen 4, Sapphire Rapids. Uses the `w_enc = w + 1` bias trick:
-  `dot(w_enc, q_x) - sum(q_x)` to stay in unsigned×signed domain.
-- `src/math/ternary_matmul_packed_avx_vnni.c` — AVX-VNNI 256-bit kernel using
-  `_mm256_dpbusd_epi32` for 32 int8 MACs/cycle. Targets Alder Lake (12th Gen),
-  Raptor Lake (13th Gen), Zen 3 — i.e. CPUs that have 256-bit VNNI but no
-  AVX-512.
-- `src/math/ternary_matmul_packed_dotprod.c` — ARM NEON+dotprod kernel using
-  `vdotq_s32` for 16 int8 MACs/cycle. Targets Apple M1/M2/M3/M4, Cortex-A75+,
-  Snapdragon 8 Gen 1+. Uses signed×signed dot product directly (no bias trick
-  needed).
-- `src/math/quantize_i8.c` — Runtime float32→int8 quantization of activation
-  vectors (`quantize_row_to_i8`), with scalar, AVX2, and AVX-512 variants.
-  Activations are quantized at inference time and never stored to disk.
-- `src/math/cpu_features.c` — Runtime CPUID/`getauxval` detection for all
-  SIMD tiers: AVX2, AVX-512F, AVX-512 VNNI, AVX-VNNI, ARM NEON, ARM dotprod,
-  SVE2, BF16. Result is cached after first call.
-- `tests/test_simd_vnni.c` — Correctness and dispatch tests for Phase 16-S:
-  quantize, sum_i8, VNNI matmul vs float baselines, CPU detection, dispatch
-  selection, KV strategy threshold fix (K-3).
+Every user-facing change adds a line under **[Unreleased]** in the same commit. At release time the
+section is renamed to the version and date, and the release workflow publishes that section as the
+GitHub release notes (`tools/changelog.py notes <version>`; see `docs/RELEASING.md`).
 
-### Changed (Phase 16-S)
+## [Unreleased]
 
-- `src/math/simd_dispatch.c` — Expanded dispatch table with 7-tier priority:
-  AVX-512 VNNI > AVX-VNNI > AVX-512F > AVX2 > ARM dotprod > ARM NEON > Scalar.
-  Dispatch is always runtime-selected via `tn_cpu_features_detect()`; compile-
-  time `TN_HAS_*` guards only prevent emitting ISA instructions the compiler
-  doesn't know about.
-- `src/kv_cache/kv_strategy.c` — Fixed K-3 threshold: 16 GB systems (≥8 GB
-  free) now correctly select `KV_QUANT_I8` instead of falling to `KV_SLIDING_I4`.
-- `src/memory/mapped_file.c` — Added `MADV_HUGEPAGE` hint on Linux for the
-  weight mmap region, reducing TLB pressure for large models.
+### Changed
 
-### Model Conversion: No Changes Required
+- **The binary is now `pz`** (was `adaptive_ai_engine`). `pz --version` prints
+  `Project Zero <version>`. Release downloads are named
+  `project-zero-<version>-x86_64-unknown-linux-gnu.tar.gz` (was
+  `adaptive_ai_engine-<version>-x86_64-linux.tar.gz`) and unpack into a directory of the same name.
+- Startup takes under 1–8 s instead of 20–70 s: the DRAM bandwidth probe is cached per host
+  (`--calibrate` or `PZ_BW_REPROBE=1` re-measures), large buffers are zeroed lazily and tokenizer
+  lookups use the sorted index.
+- Lower memory use: converted tensors release their file pages, and KV cache rows are committed only
+  as far as a generation can reach.
+- The INT8/INT4 classifier (LM head) quantizes block-wise instead of with one scale per row.
 
-**Phase 16-S does not change the on-disk weight format.** The packed binary
-format (`.tnry`) established in Phase 10 is identical:
+### Deprecated
 
-```
-[TN_MAGIC | TN_VERSION | config | packed_weights[]]
-  └─ 2 bits per weight, 4 weights per byte, LSB-first
-  └─ encoding: w_enc = w + 1  →  {-1,0,1} → {0,1,2}
-```
-
-The `w_enc = w + 1` encoding was deliberately chosen in Phase 10 to be
-VNNI-compatible: it keeps `w_enc` in `[0, 2]` which is unsigned-safe for
-`_mm512_dpbusd_epi32`. The new VNNI/dotprod kernels consume `tn_u8 *packed_w`
-directly without any format change. **`convert_hf_bitnet.py`, `convert_hf.py`,
-`pack_ternary.py`, and `convert_tokenizer.py` are all unmodified.**
-
----
-
-## [Unreleased] — 2026-03-13 (Phase 10 Complete)
-
-### Added (Phase 10: Weight Packing & Conversion Tools)
-
-- `include/core/unpack.h` — 2-bit ternary weight unpacking API with inline
-  `unpack_ternary()`, `pack_ternary()`, and `packed_bytes()` helpers.
-- `src/core/unpack.c` — Scalar reference unpacker (`unpack_ternary_block`).
-- `src/core/unpack_avx2.c` — AVX2 SIMD unpacker processing 32 weights per
-  iteration via byte-replication + shift-extract + blend selection.
-- `include/math/ternary_matmul_packed.h` — Packed ternary matmul API with
-  per-matrix and per-group scale support.
-- `src/math/ternary_matmul_packed.c` — Scalar reference packed matmul.
-- `src/math/ternary_matmul_packed_avx2.c` — AVX2 fused unpack+matmul kernel.
-- `tests/test_packed_weights.c` — 13 test functions (1469 assertions) covering
-  pack/unpack round-trip, AVX2 correctness, packed matmul per-matrix/per-group
-  scales, edge cases, and large dimensions.
-- `tools/pack_ternary.py` — Python ternary weight packer/unpacker with binary
-  format writer (magic, version, config, scale_mode, weights+scales).
-- `tools/convert_hf_bitnet.py` — Converts HuggingFace BitNet safetensors models
-  to packed binary format with ternary validation and scale computation.
-- `tools/convert_tokenizer.py` — Converts HuggingFace tokenizer.json or
-  SentencePiece .model files to binary tokenizer format.
-
-### Fixed (Phase 10 Deep Audit — 3 additional bugs)
-
-- **PRE10-BUG-004 (HIGH):** Value cache indexing in `attention.c` Step 5c used
-  raw loop index `t` instead of mapped physical position, causing silent output
-  corruption after the sliding window wraps. Now uses `sw_map_position()`
-  consistently with Step 5a's key cache lookup.
-
-- **PRE10-BUG-005 (MEDIUM):** RNG in `reasoning_generate.c` was re-seeded every
-  iteration with `step * 1337`, making stochastic sampling deterministic. Moved
-  RNG initialization before the loop with proper time-based seed.
-
-- **PRE10-BUG-006 (HIGH):** Memory leak in `weights_alloc_pointers()` when a
-  middle allocation fails. Interleaved alloc+check via TN_CHECK leaked prior
-  allocations on failure. Restructured to alloc-all-then-check with
-  `weights_free_pointers()` cleanup.
-
-### Fixed (Phase 10 Pre-Audit — 3 new bugs found and verified)
-
-- **PRE10-BUG-001 (HIGH):** File descriptor and flock leak in `mapped_file_open()` when
-  opening a zero-size file. The `TN_CHECK(file_size > 0)` macro performed a bare return
-  without closing the already-open fd or releasing the shared flock. Also fixed a secondary
-  issue where a negative `off_t` cast to `size_t` would produce a huge positive value
-  passing the `> 0` check. (`src/memory/mapped_file.c:36`)
-
-- **PRE10-BUG-002 (HIGH):** FILE handle leak in `tokenizer_load()` when vocab_size or
-  max_token_len validation fails. The `TN_CHECK` macro on lines 87-88 returned without
-  calling `fclose(fp)`, leaking the FILE handle on invalid input.
-  (`src/tokenizer/tokenizer_load.c:87-88`)
-
-- **PRE10-BUG-003 (MEDIUM):** NULL pointer dereference in `tokenizer_decode()` when
-  `t->vocab[token]` is NULL and `prev_token == 1` (BOS). The hex-byte check had a NULL
-  guard but the BOS-strip path at line 42 accessed `piece[0]` unconditionally, causing
-  SIGSEGV. (`src/tokenizer/tokenizer_decode.c:42`)
-
-### Fixed (QA Forensic Audit)
-
-- **QA-BUG-001 (CRITICAL):** Stack buffer overflow in `sample_top_k()` when `k > 1024`.
-  Added `TOP_K_MAX` constant and clamping logic to prevent stack-allocated arrays
-  from being overrun. (`src/sampling/top_k.c`)
-
-- **QA-BUG-002 (HIGH):** Buffer overflow in `thought_filter_process()` — output buffer
-  had no size parameter, allowing unbounded writes. Added `output_buf_size` parameter
-  to the function signature and bounds checks on all three output write paths.
-  Updated all callers. (`src/reasoning/thought_filter.c`, `include/reasoning/thought_filter.h`,
-  `src/reasoning/reasoning_generate.c`, `tests/test_reasoning.c`)
-
-- **QA-BUG-003 (MEDIUM):** Windows HANDLE truncation in `MappedFile` struct. On 64-bit
-  Windows, the file handle was stored as `int`, truncating the pointer-sized `HANDLE`.
-  Changed to `void *handle` under `_WIN32`. (`include/memory/mapped_file.h`,
-  `src/memory/mapped_file.c`)
-
-- **Pre-existing:** Missing includes in `reasoning_generate.c` causing implicit function
-  declaration warnings for `transformer_forward`, `sample_argmax`, `apply_temperature`,
-  `rng_seed`, and `sample_top_p`.
-
-### Improved
-
-- **QA-ISS-004 (LOW):** Made `byte_decode_buf` in `tokenizer_decode.c` thread-local
-  using `__thread` (POSIX) / `__declspec(thread)` (MSVC) to prevent data races in
-  concurrent decoding. (`src/tokenizer/tokenizer_decode.c`)
-
-- **QA-ISS-005 (INFO):** Added TODO comment in `include/math/simd_dispatch.h` noting
-  the need for runtime CPUID detection to replace compile-time SIMD dispatch.
+- The `adaptive_ai_engine` name. `make` and the release archive still provide it as a symlink to
+  `pz`, which prints a one-line notice; it will be removed in the release after the next one.
 
 ### Added
 
-- `tests/test_bugfixes.c` — Regression tests for QA-BUG-001, QA-BUG-002, QA-BUG-003,
-  PRE10-BUG-001, PRE10-BUG-002, and PRE10-BUG-003 (15 test functions, 35 assertions).
-- `docs/FIX_PLAN.md` — Detailed fix plan for all QA audit findings.
-- `docs/PHASE10_PRE_AUDIT_REPORT.md` — Comprehensive forensic investigation report
-  documenting 20 testing rounds, root cause analysis of recurring bugs, and Phase 10
-  readiness assessment.
+- **Models and formats:** Qwen 3.5/3.6 hybrid attention (e.g. Ternary-Bonsai-27B) and the Q2_0
+  quant; Qwen3-MoE GGUF; Mamba-1 state-space models; every GGUF quant type in mainline llama.cpp
+  (Q4_1, Q8_1, Q8_K, BF16, IQ1–IQ4 families); BitNet I2_S, NEOX RoPE and BPE pre-tokenizer parity
+  with llama.cpp; `--perplexity` for accuracy checks; `--raw-prompt`.
+- **Generation:** speculative decoding (`--draft-model`, `--spec-length`); LoRA adapters (`--lora`);
+  grammar-constrained JSON mode; a configurable sampler chain (`--top-k --min-p --repeat-penalty
+  --presence-penalty --frequency-penalty --repeat-last-n`) with stop sequences (`--stop`);
+  toggleable cryptographic watermarking (`--watermark*`); best-of-N; step-level tree search with an
+  optional process reward model (`--mcts*`, `--prm*`); chat templates replaceable from a file
+  (`--chat-template-file`) or per request.
+- **Context and KV cache:** `--ctx-size`, `--kv-ram-fraction`; int8 and int4 KV storage
+  (`--kv-type f32|i8|i4`); disk-backed KV (`--kv-offload <dir>`); KV prefix reuse across requests
+  and a multi-entry prompt snapshot cache (`--prompt-cache`); tiled, head-parallel attention.
+- **Serving:** OpenAI-compatible API hardening (CORS and API key, both opt-in; metrics; OpenAPI docs;
+  cancel); `GET /v1/config` publishing defaults, ranges and features; `POST /v1/watermark/detect`;
+  a FIFO generation queue (`--queue-size`, `--queue-timeout`); graceful Ctrl+C/SIGTERM shutdown;
+  distributed pipeline inference over TCP (`--remote-layers`, `--rpc-worker`); notify-only update
+  checks (`--check-update`, `GET /v1/update`, `--no-update-check`).
+- **Web UI:** chat with image upload; settings rendered from `/v1/config` (every generation knob,
+  chat template editor, tree search); watermark panel; usage footer; update banner; brand wordmark.
+- **CLI:** colour, progress, live token statistics, markdown rendering and the startup banner.
+- **Version history:** this changelog follows Keep a Changelog; GitHub release notes are generated
+  from it. `GET /v1/update` returns `release_notes_url` and `changelog_url` for the running build
+  (derived from `--update-repo`/`--update-api`), shown in the web UI under Settings → Updates.
+- **Kernels:** K-6 5-trit LUT ternary kernel (AVX-512BW); plain-NEON ternary kernel; AVX-512 VNNI
+  Q2_0; llama.cpp-compatible Q4_K x8 repack with multi-row GEMV; fused zero-copy Q6_K; batched
+  verify kernels for speculative decoding.
 
-### Changed (Phase 10 SIMD Dispatch)
+### Fixed
 
-- `include/math/simd_dispatch.h` — Added `tn_matmul_packed_fn` and `tn_unpack_fn`
-  function pointer types; added `tn_ternary_matmul_packed` and `tn_unpack_block`
-  global dispatch pointers.
-- `src/math/simd_dispatch.c` — Wires packed matmul and unpack dispatch to AVX2
-  or scalar implementations at runtime via `tn_simd_init()`.
+- Crash (`SIGILL`) on CPUs that advertise AVX-512 VBMI in CPUID but cannot execute it.
+- Generation not stopping at a GGUF model's end-of-turn tokens (all declared EOS/EOT/EOM tokens and
+  end-of-turn control tokens now stop it).
+- `--lora` was ignored when combined with `--draft-model`.
+- The INT8/INT4/BF16 classifier option had no effect on Q2_0-native models.
+- Wrong output from IQ4_NL weights (nibble packing) and mojibake from byte-level BPE detokenizing.
+- The JSON-mode grammar accepted numbers with leading zeros.
+- A data race in thread pool shutdown.
+- Saved calibration overriding the automatically chosen SIMD tier; the DRAM bandwidth probe
+  under-reporting about 3×; hardware ceilings computed from fixed BitNet-2B sizes for every model.
+- Release builds silently linking objects compiled for a different build variant.
+
+### Security
+
+- Static web assets: requests could escape `--static-dir` via path traversal.
+- Agent tool sandbox: argument-level command policy, and fixes for an exit-code race, a symlink
+  escape and `PATH` hijacking.
+
+## [0.1.0] - 2026-06-20
+
+First release with a prebuilt, portable x86-64 Linux binary
+(`adaptive_ai_engine-0.1.0-x86_64-linux.tar.gz`, runtime CPU dispatch, static libstdc++/libgcc).
+
+### Added
+
+- BitNet b1.58 ternary inference with packed 2-bit weights and runtime SIMD dispatch: scalar, AVX2,
+  AVX-512F, AVX-512 VNNI, AVX-VNNI, ARM NEON and dotprod; int8 activation quantization.
+- GGUF loading (Q8_0, Q4_K, I2_S and tokenizer extraction) with an architecture router; DeepSeek-V2
+  mixture-of-experts routing and multi-head latent attention.
+- Sampling and text generation, KV cache strategies (int8, sliding window), hidden reasoning,
+  agentic tool execution, local RAG memory and a vision encoder bridge.
+- An OpenAI-compatible HTTP API, CLI and REPL.
+- Conversion tools: HuggingFace BitNet and dense models, tokenizers, one-click model import.
+
+### Fixed
+
+- Memory-safety bugs found by the Phase 10 and QA audits: a stack overflow in top-k sampling, a
+  buffer overflow in the thought filter, file-handle and descriptor leaks in model and tokenizer
+  loading, a NULL dereference in token decoding, wrong value-cache indexing in attention, and an RNG
+  re-seeded on every call.
+
+[Unreleased]: https://github.com/shifulegend/project-zero/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/shifulegend/project-zero/releases/tag/v0.1.0

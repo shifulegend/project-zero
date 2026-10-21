@@ -12,6 +12,17 @@ on:
                           # never runs this workflow on its own)
 
 jobs:
+  changelog:
+    name: Changelog format (Keep a Changelog + SemVer)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Lint CHANGELOG.md and test the tool
+        run: |
+          python3 tools/changelog.py check --require-unreleased
+          python3 -I tools/test_changelog.py
+
   build-and-test:
     name: Build & Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

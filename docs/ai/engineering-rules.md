@@ -56,6 +56,10 @@ A change is done only when:
 3. No perf regression for touched kernels (A/B build vs a known-good commit on the same host;
    compare tok/s — see `docs/REGRESSION_VERIFICATION_2026-06-07.md` for method).
 4. Docs synchronized (this file set + the right tool adapters) and a commit checkpoint proposed.
+5. A user-facing change (flag, API field, UI control, behaviour, fix, deprecation) adds its line
+   under `## [Unreleased]` in `CHANGELOG.md` in the same commit — Keep a Changelog sections, written
+   for users. `python3 tools/changelog.py check` must pass (CI job `changelog`). Release procedure
+   and SemVer policy: `docs/RELEASING.md` § Versioning and the changelog (added 2026-10-21).
 - Never claim completion without stating what was verified and what remains UNVERIFIED.
 - `make test` runs **every** `tests/*.c` and aborts on the first failure — a green full run is
   the bar. CI historically died early, masking downstream failures; expect a cascade when you

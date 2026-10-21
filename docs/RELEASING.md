@@ -8,19 +8,44 @@ is driven by the Makefile `dist` target.
 ## TL;DR — cut a release
 
 ```bash
-# 1. From the default branch, at the commit you want to ship:
-git tag v0.1.0           # SemVer; stay on 0.x while pre-1.0 (marked prerelease)
-git push origin v0.1.0   # tag push triggers .github/workflows/release.yml
+# 1. Pick the version (SemVer, see below) and move the notes in CHANGELOG.md:
+#    "## [Unreleased]"  ->  keep an empty "## [Unreleased]" on top, then
+#    "## [0.2.0] - 2026-11-01" with the entries that were under Unreleased,
+#    and update the link references at the bottom:
+#      [Unreleased]: https://github.com/<owner>/project-zero/compare/v0.2.0...HEAD
+#      [0.2.0]: https://github.com/<owner>/project-zero/compare/v0.1.0...v0.2.0
+python3 tools/changelog.py check            # format lint (also runs in CI)
+python3 tools/changelog.py notes v0.2.0     # preview the GitHub release notes
+git commit -am "Release v0.2.0"
+# 2. Tag that commit on the default branch and push the tag:
+git tag -a v0.2.0 -m "Project Zero v0.2.0"
+git push origin v0.2.0   # tag push triggers .github/workflows/release.yml
 ```
 
-The workflow then: runs the full test suite (gcc + clang), builds the portable
+The workflow then: refuses the tag if `CHANGELOG.md` has no section for it, runs the full test suite (gcc + clang), builds the portable
 binary (`make dist`), packages it, smoke-tests it, runs it on a clean minimal
 container, attempts a real-model golden check, and publishes a **prerelease**
-with the `.tar.gz` and `SHA256SUMS` attached.
+with the `.tar.gz` and `SHA256SUMS` attached and that changelog section as its release notes.
 
 To test the build **without publishing**, run the workflow via
 **Actions → Release → Run workflow** (`workflow_dispatch`); the publish job only
 runs on a `v*` tag push.
+
+## Versioning and the changelog
+
+- **Versions** follow [Semantic Versioning 2.0](https://semver.org/): `MAJOR.MINOR.PATCH`, tags
+  `vX.Y.Z`. While on 0.x, a breaking change bumps MINOR (e.g. the Phase 39 rename → 0.2.0) and
+  releases are published as prereleases. The binary embeds `git describe --tags`
+  (`pz --version` → `Project Zero v0.2.0`, or `v0.2.0-5-gabc1234` between releases), and the
+  update notifier compares it with the latest GitHub release.
+- **`CHANGELOG.md`** (repo root) follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/):
+  newest first, one `## [Unreleased]` section on top, sections `Added / Changed / Deprecated /
+  Removed / Fixed / Security`, written for users (what changed and which flag/API), not a commit
+  list. **Every user-facing change adds its line under `[Unreleased]` in the same commit.**
+  Breaking changes and deprecations always get an entry, with the removal release named.
+- `tools/changelog.py check` lints the format (CI job `changelog`); `tools/changelog.py notes <tag>`
+  is what the release workflow publishes, so the GitHub release page, the update banner's link and
+  the web UI's "Release notes" link all show the same curated text.
 
 ## What gets shipped
 

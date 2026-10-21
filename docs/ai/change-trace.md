@@ -3,6 +3,14 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-21.
 
+### 2026-10-21 — CHANGELOG.md (Keep a Changelog), release notes from it, version links in the UI
+- `CHANGELOG.md` (root; was `docs/CHANGELOG.md`), `tools/changelog.py` (check / notes) +
+  `tools/test_changelog.py`, CI job `changelog`, release.yml `--notes-file`, `docs/RELEASING.md`
+  § Versioning and the changelog, `update/release_links` + `tests/test_release_links.c`,
+  `/v1/update release_notes_url/changelog_url`, Settings → Updates links, DoD #5 in all adapters.
+- Rename audit follow-ups: `tests/monkey_tester.py` still looked for `./build/project-zero` (the
+  old CMake target) and fell back to another binary; Phase 21 walkthrough's old model id example.
+
 ### 2026-10-21 — Phase 39: adaptive_ai_engine → pz
 - Build (Makefile/CMake), `--version`, deprecation alias, tests/tools scripts, CI/release/templates,
   living docs + adapters renamed; historical records annotated. Per-group gates: gcc release

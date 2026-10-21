@@ -26,6 +26,11 @@
 - `fix(run_state): deterministic OOM guard for absurd allocations (cross-platform)`
 - `docs(ai): seed canonical project memory + tool adapters`
 
+## Changelog vs commit log
+Commits are the developer record; `CHANGELOG.md` is the user record. A commit with a user-facing
+effect also edits `## [Unreleased]` (Added / Changed / Deprecated / Removed / Fixed / Security).
+Release notes are generated from that section, never from commit subjects.
+
 ## Checkpoint discipline
 - After each meaningful sub-step: propose the commit message and update the relevant
   `docs/ai/**` entry (`mistakes`/`decision-log`/`change-trace`) in the same or adjacent commit.

@@ -36,6 +36,13 @@ jobs:
         with:
           fetch-depth: 0           # tags needed for the embedded version string
 
+      - name: Release notes present in CHANGELOG.md
+        # Fails fast, before the long build, if the tag has no changelog section.
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          python3 tools/changelog.py check
+          python3 tools/changelog.py notes "${GITHUB_REF_NAME}" > /dev/null
+
       - name: Install toolchain
         run: |
           sudo apt-get update -q
@@ -156,9 +163,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Notes are the curated CHANGELOG.md section for this tag (Keep a Changelog),
+          # not GitHub's auto-generated commit list.
+          python3 tools/changelog.py notes "${GITHUB_REF_NAME}" > release-notes.md
           gh release create "${GITHUB_REF_NAME}" \
             dist/*.tar.gz dist/SHA256SUMS \
-            --title "${GITHUB_REF_NAME}" \
-            --generate-notes \
+            --title "Project Zero ${GITHUB_REF_NAME}" \
+            --notes-file release-notes.md \
             --prerelease \
             --verify-tag

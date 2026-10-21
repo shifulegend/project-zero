@@ -132,6 +132,20 @@ extern int parallel_matmul_q2_0_vnni(float *out, const float *x, const uint8_t *
                                       int n, int d, ThreadPool *tp);
 #endif
 
+/* 2026-10-21: single source of truth for which path parallel_matmul_q2_0()
+ * takes. The VNNI call is compiled in only when THIS translation unit is
+ * built with AVX-512 VNNI (Makefile -march=native, `dist`/PZ_DIST per-file
+ * flags); a baseline build (e.g. the CMake security-audit job) uses the float
+ * path even on a VNNI CPU. test_q2_0_matmul used to infer the path from the
+ * runtime flag alone and failed on VNNI runners for such builds. */
+int matmul_q2_0_uses_vnni(void) {
+#if TN_HAS_AVX512VNNI
+    return tn_cpu_features_detect()->avx512vnni;
+#else
+    return 0;
+#endif
+}
+
 void parallel_matmul_q2_0(float *out, const float *x, const uint8_t *w_q2_0,
                            int n, int d, ThreadPool *tp) {
 #if TN_HAS_AVX512VNNI
@@ -141,7 +155,7 @@ void parallel_matmul_q2_0(float *out, const float *x, const uint8_t *w_q2_0,
      * a real vpdpbusds, same class of bug as bitunpack2_vnni.h's VBMI
      * check (see cpu_features.c's verify_avx512vnni_executable() and
      * docs/ai/mistakes.md, 2026-09-24 entry). */
-    if (tn_cpu_features_detect()->avx512vnni &&
+    if (matmul_q2_0_uses_vnni() &&
         parallel_matmul_q2_0_vnni(out, x, w_q2_0, n, d, tp)) return;
 #endif
     size_t row_bytes = (size_t)(n / Q2_0_BLOCK) * Q2_0_BYTES;
@@ -195,7 +209,7 @@ void parallel_matmul_q2_0_batch(float **outs, float **xs,
 #if TN_HAS_AVX512VNNI
     /* See parallel_matmul_q2_0()'s comment above: verified-executable
      * runtime flag, not just the compile-time macro. */
-    if (tn_cpu_features_detect()->avx512vnni &&
+    if (matmul_q2_0_uses_vnni() &&
         parallel_matmul_q2_0_batch_vnni(outs, xs, ws, n, d, k, tp)) return;
 #endif
     size_t row_bytes = (size_t)(n / Q2_0_BLOCK) * Q2_0_BYTES;

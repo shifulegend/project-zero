@@ -3,6 +3,10 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-21.
 
+### 2026-10-21 — Fix CI-only test_q2_0_matmul failure on VNNI runners
+- `matmul_q2_0_uses_vnni()` (kernel TU decides; dispatcher + test use it). Reproduced CI's 32/35 with
+  baseline flags, 35/35 after; gcc+clang `make test` green.
+
 ### 2026-10-21 — Build: `make test` sanitizes engine code; stamp tracks compiler + host ISA
 - Makefile `test` → debug variant + `run-tests`; `VARIANT_ID` (variant, cc, `-march=native` ISA
   fingerprint, VNNI flags) in `build/.variant`. Found by a stale-object link failure after a VM

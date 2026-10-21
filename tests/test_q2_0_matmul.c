@@ -84,7 +84,7 @@ static void make_q2_0_row(uint8_t *row, int n, int row_seed) {
  *     reference it never computes with).
  *
  * So: match the reference to whichever path this build will actually take —
- * the same *runtime-verified* `tn_cpu_features_detect()->avx512vnni` flag
+ * the same `matmul_q2_0_uses_vnni()` decision (runtime flag + how the kernel was built)
  * matmul_q2_0.c's own dispatch consults, not the bare TN_HAS_AVX512VNNI
  * compile-time macro. A hypervisor can advertise AVX-512VNNI in CPUID while
  * the underlying execution unit faults on a real vpdpbusds (see
@@ -101,7 +101,7 @@ static float ref_dot_q2_0_row(const uint8_t *row, const float *x, int n) {
 
     float s = 0.0f;
 
-    if (tn_cpu_features_detect()->avx512vnni) {
+    if (matmul_q2_0_uses_vnni()) {
         int8_t *q_x = (int8_t *)malloc((size_t)n * sizeof(int8_t));
         float act_scale = quantize_row_to_i8(x, q_x, n);
         if (act_scale > 0.0f) {

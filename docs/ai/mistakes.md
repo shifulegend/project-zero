@@ -5,6 +5,20 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-10-21.
 
+### 2026-10-21 — test_q2_0_matmul guessed the kernel's path from the CPU alone
+
+- The reference in `tests/test_q2_0_matmul.c` switched to int8-quantized math whenever the CPU
+  reported AVX-512 VNNI, but `parallel_matmul_q2_0()` only takes the VNNI path when its own TU is
+  compiled with VNNI. The security-audit job's CMake build is baseline (`-mavx2` only, per-file
+  VNNI flags are `PZ_DIST`-only), so on VNNI runners the kernel ran float math against an int8
+  reference: rows 1/3/4 of "single block, multi row" failed (run 315), passing on non-VNNI
+  runners. It looked like a flake; reproduced exactly by compiling the TU with the job's flags.
+  The broken VNNI self-test (fixed the same day) had hidden it on most runners.
+- Fixed: `matmul_q2_0_uses_vnni()` in the kernel TU is the single decision (compile-time + runtime);
+  the dispatcher and the test both use it.
+- Lesson: a test's reference must ask the code under test which path it took, never re-derive the
+  choice from CPU flags — build flags are part of the decision.
+
 ### 2026-10-21 — `make test` never sanitized the engine; build stamp blind to CPU and compiler
 
 - `make test` had no build-variant guard and linked whatever library objects existed. On a fresh

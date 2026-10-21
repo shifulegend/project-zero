@@ -271,6 +271,63 @@ static void test_dense_batch_matches_sequential_with_lora(void) {
     free_dense_ternary_model(&w);
 }
 
+/* Phase 23 (2026-10-19): one multi-sequence step == per-sequence sequential
+ * forwards. Sequences A and B continue their own histories with one decode
+ * row each while C prefills two tokens in the same step (rows sharing a state). */
+static void test_forward_multi_matches_sequential(void) {
+    tn_simd_init();
+    Config cfg;
+    TransformerWeights w;
+    build_dense_ternary_model(&cfg, &w);
+    RunState ref[3], mul[3];
+    for (int i = 0; i < 3; i++) {
+        run_state_alloc(&ref[i], &cfg, cfg.seq_len); sw_init(&ref[i].sw, cfg.seq_len, 0);
+        run_state_alloc(&mul[i], &cfg, cfg.seq_len); sw_init(&mul[i].sw, cfg.seq_len, 0);
+    }
+    /* histories: A = {1, 4, 2}, B = {3}, C = {} */
+    const int ha[3] = {1, 4, 2};
+    for (int p = 0; p < 3; p++) {
+        transformer_forward(ha[p], p, &cfg, &w, &ref[0], NULL, NULL);
+        transformer_forward(ha[p], p, &cfg, &w, &mul[0], NULL, NULL);
+    }
+    transformer_forward(3, 0, &cfg, &w, &ref[1], NULL, NULL);
+    transformer_forward(3, 0, &cfg, &w, &mul[1], NULL, NULL);
+
+    float want[4][D_VOCAB];
+    memcpy(want[0], transformer_forward(5, 3, &cfg, &w, &ref[0], NULL, NULL), sizeof(want[0]));
+    memcpy(want[1], transformer_forward(6, 1, &cfg, &w, &ref[1], NULL, NULL), sizeof(want[1]));
+    memcpy(want[2], transformer_forward(2, 0, &cfg, &w, &ref[2], NULL, NULL), sizeof(want[2]));
+    memcpy(want[3], transformer_forward(7, 1, &cfg, &w, &ref[2], NULL, NULL), sizeof(want[3]));
+
+    int tokens[4] = {5, 6, 2, 7}, pos[4] = {3, 1, 0, 1};
+    RunState *st[4] = {&mul[0], &mul[1], &mul[2], &mul[2]};
+    SpecBatchScratch sb;
+    TEST_ASSERT(spec_batch_scratch_alloc(&sb, &cfg, 4) == TN_OK, "scratch for 4 rows");
+    float got[4][D_VOCAB];
+    TEST_ASSERT(transformer_forward_multi(tokens, pos, st, 4, &cfg, &w, &sb, NULL, NULL,
+                                          (float *)got) == TN_OK, "multi-sequence step");
+    int ok = 1;
+    for (int k = 0; k < 4; k++)
+        for (int i = 0; i < D_VOCAB; i++)
+            if (fabsf(want[k][i] - got[k][i]) > TOL) ok = 0;
+    TEST_ASSERT(ok, "each row equals its own sequence's sequential forward");
+    /* The next step must see what the multi step wrote into each cache. */
+    float w2[D_VOCAB], g2[D_VOCAB];
+    memcpy(w2, transformer_forward(1, 4, &cfg, &w, &ref[0], NULL, NULL), sizeof(w2));
+    int t1 = 1, p1 = 4;
+    RunState *s1 = &mul[0];
+    transformer_forward_multi(&t1, &p1, &s1, 1, &cfg, &w, &sb, NULL, NULL, g2);
+    int ok2 = 1;
+    for (int i = 0; i < D_VOCAB; i++) if (fabsf(w2[i] - g2[i]) > TOL) ok2 = 0;
+    TEST_ASSERT(ok2, "KV written by a multi step is reused by the next step");
+    int bad_pos = 99;
+    TEST_ASSERT(transformer_forward_multi(&t1, &bad_pos, &s1, 1, &cfg, &w, &sb, NULL, NULL, g2)
+                == TN_ERR_INVALID_ARGS, "position past the context refused");
+    spec_batch_scratch_free(&sb);
+    for (int i = 0; i < 3; i++) { run_state_free(&ref[i]); run_state_free(&mul[i]); }
+    free_dense_ternary_model(&w);
+}
+
 /* ── MLA ternary synthetic model ─────────────────────────────────────── */
 
 #define M_DIM 16
@@ -613,6 +670,7 @@ int main(void) {
 
     RUN_TEST(test_dense_batch_matches_sequential);
     RUN_TEST(test_dense_batch_matches_sequential_with_lora);
+    RUN_TEST(test_forward_multi_matches_sequential);
     RUN_TEST(test_mla_batch_matches_sequential);
     RUN_TEST(test_qwen3moe_batch_matches_sequential);
     RUN_TEST(test_linear_attn_returns_unsupported);

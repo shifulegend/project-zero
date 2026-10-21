@@ -251,6 +251,53 @@ float *transformer_forward(int token, int pos, const Config *cfg,
   return s->logits;
 }
 
+/* Final RMSNorm + classifier over n_tokens rows of sb->x -> logits_out
+ * ([n_tokens][vocab]); shared by the speculative batch and multi-sequence
+ * steps. */
+static void forward_rows_logits(SpecBatchScratch *sb, const TransformerWeights *w,
+                                const Config *cfg, int n_tokens, ThreadPool *tp,
+                                float *logits_out) {
+  int dim = cfg->dim;
+  /* final RMSNorm, per token (per-row statistic, not batchable) */
+  int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+  if (w->rms_final_weight) {
+    for (int k = 0; k < n_tokens; k++) {
+      float *x_k = sb->x + (size_t)k * dim;
+      tn_rmsnorm(x_k, x_k, w->rms_final_weight, dim, cfg->rms_norm_eps);
+    }
+  }
+  if (t_step) {
+    tn_step_timing_add(TN_STEP_18_FINAL_RMSNORM, tn_step_timing_now_ns() - t_step);
+  }
+
+  /* classifier matmul -> logits_out, batched. Mirrors
+   * transformer_forward()'s non-q35 branches (wcls_is_ternary, then the
+   * hardware-profile-selected INT4/INT8/BF16 generic path); the
+   * q35_is_q2_0_model branch there is unreachable here (see Step 1). */
+  t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+  if (w->wcls_is_ternary) {
+    tn_ternary_matmul_packed_batch(logits_out, sb->x, (const tn_u8 *)w->wcls,
+                                    dim, cfg->vocab_size, w->wcls_scale, n_tokens, tp);
+  } else {
+    const TnHardwareProfile *hp = tn_hardware_profile_get();
+    TnClassifierFormat fmt = hp ? hp->classifier_fmt : TN_CLS_BF16;
+
+    if (fmt == TN_CLS_INT4 && w->wcls_i4 && w->wcls_i4_scales) {
+      tn_matmul_i4_batch(logits_out, sb->x, w->wcls_i4, w->wcls_i4_scales,
+                          dim, cfg->vocab_size, n_tokens, tp);
+    } else if (fmt >= TN_CLS_INT8 && w->wcls_i8 && w->wcls_i8_scales) {
+      tn_matmul_i8_batch(logits_out, sb->x, w->wcls_i8, w->wcls_i8_scales,
+                          dim, cfg->vocab_size, n_tokens, tp);
+    } else {
+      tn_matmul_bf16_batch(logits_out, sb->x, w->wcls, dim, cfg->vocab_size, n_tokens, tp);
+    }
+  }
+  if (t_step) {
+    tn_step_timing_add(TN_STEP_19_LM_HEAD, tn_step_timing_now_ns() - t_step);
+  }
+
+}
+
 /* ── Phase 18 (speculative decoding): batched multi-token forward pass ─────
  * See include/transformer/forward.h for the full contract. Orchestrates:
  * embed all n_tokens, loop layers calling the batched attention/FFN
@@ -310,44 +357,40 @@ TernaryError transformer_forward_batch(const int *tokens, int pos, int n_tokens,
     if (err != TN_OK) return err;
   }
 
-  /* Step 3: final RMSNorm, per token (per-row statistic, not batchable) */
-  int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-  if (w->rms_final_weight) {
-    for (int k = 0; k < n_tokens; k++) {
-      float *x_k = sb->x + (size_t)k * dim;
-      tn_rmsnorm(x_k, x_k, w->rms_final_weight, dim, cfg->rms_norm_eps);
-    }
-  }
-  if (t_step) {
-    tn_step_timing_add(TN_STEP_18_FINAL_RMSNORM, tn_step_timing_now_ns() - t_step);
-  }
+  forward_rows_logits(sb, w, cfg, n_tokens, tp, logits_out);
+  return TN_OK;
+}
 
-  /* Step 4: classifier matmul -> logits_out, batched. Mirrors
-   * transformer_forward()'s non-q35 branches (wcls_is_ternary, then the
-   * hardware-profile-selected INT4/INT8/BF16 generic path); the
-   * q35_is_q2_0_model branch there is unreachable here (see Step 1). */
-  t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-  if (w->wcls_is_ternary) {
-    tn_ternary_matmul_packed_batch(logits_out, sb->x, (const tn_u8 *)w->wcls,
-                                    dim, cfg->vocab_size, w->wcls_scale, n_tokens, tp);
-  } else {
-    const TnHardwareProfile *hp = tn_hardware_profile_get();
-    TnClassifierFormat fmt = hp ? hp->classifier_fmt : TN_CLS_BF16;
-
-    if (fmt == TN_CLS_INT4 && w->wcls_i4 && w->wcls_i4_scales) {
-      tn_matmul_i4_batch(logits_out, sb->x, w->wcls_i4, w->wcls_i4_scales,
-                          dim, cfg->vocab_size, n_tokens, tp);
-    } else if (fmt >= TN_CLS_INT8 && w->wcls_i8 && w->wcls_i8_scales) {
-      tn_matmul_i8_batch(logits_out, sb->x, w->wcls_i8, w->wcls_i8_scales,
-                          dim, cfg->vocab_size, n_tokens, tp);
-    } else {
-      tn_matmul_bf16_batch(logits_out, sb->x, w->wcls, dim, cfg->vocab_size, n_tokens, tp);
-    }
+/* Phase 23 (2026-10-19): one decode/prefill step for rows from several
+ * sequences (see forward.h). Embedding, every weight matmul, the final norm
+ * and the classifier are batched across rows; attention runs per row against
+ * states[k]'s own KV. */
+TernaryError transformer_forward_multi(const int *tokens, const int *pos_arr,
+                                       RunState *const *states, int n_tokens,
+                                       const Config *cfg, const TransformerWeights *w,
+                                       SpecBatchScratch *sb, const MoEConfig *mc,
+                                       ThreadPool *tp, float *logits_out) {
+  if (!tokens || !pos_arr || !states || n_tokens <= 0 || !sb || !logits_out)
+    return TN_ERR_INVALID_ARGS;
+  if (moe_is_recurrent(mc) || dist_plan_active() || (mc && mc->is_moe) || w->q35_is_q2_0_model)
+    return TN_ERR_UNSUPPORTED;
+  int dim = cfg->dim;
+  for (int k = 0; k < n_tokens; k++) {
+    if (states[k]->sw.window_size == 0) sw_init(&states[k]->sw, states[k]->max_seq_len, 0);
+    if (pos_arr[k] < 0 || pos_arr[k] >= states[k]->max_seq_len) return TN_ERR_INVALID_ARGS;
+    int token = tokens[k];
+    if (token < 0 || token >= cfg->vocab_size)
+      memset(sb->x + (size_t)k * dim, 0, (size_t)dim * sizeof(float));
+    else
+      embed_token(sb->x + (size_t)k * dim, token, w->embd_f32, w->token_embedding_table, dim);
   }
-  if (t_step) {
-    tn_step_timing_add(TN_STEP_19_LM_HEAD, tn_step_timing_now_ns() - t_step);
+  for (int l = 0; l < cfg->n_layers; l++) {
+    TernaryError err = attention_forward_multi(states, pos_arr, sb, w, cfg, mc, l, n_tokens, tp);
+    if (err != TN_OK) return err;
+    err = ffn_forward_batch(states[0], sb, w, cfg, mc, l, n_tokens, tp);
+    if (err != TN_OK) return err;
   }
-
+  forward_rows_logits(sb, w, cfg, n_tokens, tp, logits_out);
   return TN_OK;
 }
 

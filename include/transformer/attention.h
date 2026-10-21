@@ -56,4 +56,16 @@ TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb,
                                       const MoEConfig *mc, int layer, int pos,
                                       int n_tokens, ThreadPool *tp);
 
+/*
+ * Phase 23 (2026-10-19): one attention step over rows from several sequences
+ * — row k belongs to states[k] at position pos_arr[k] (its K/V are written to
+ * and read from states[k]'s own cache). Weight matmuls are batched over all
+ * rows. Generic dense/GQA models only (TN_ERR_UNSUPPORTED for MLA, Qwen3 QK-
+ * norm, hybrid/recurrent); every state must share the same active_lora.
+ */
+TernaryError attention_forward_multi(RunState *const *states, const int *pos_arr,
+                                     SpecBatchScratch *sb, const TransformerWeights *w,
+                                     const Config *cfg, const MoEConfig *mc, int layer,
+                                     int n_tokens, ThreadPool *tp);
+
 #endif /* TN_ATTENTION_H */

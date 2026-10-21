@@ -414,33 +414,21 @@ void attention_forward(RunState *s, const TransformerWeights *w,
  * intentionally not replicated here -- a real perf refinement, not a
  * correctness concern, left for Phase 18-B alongside the Q4_K/Q2_0/F32
  * batched kernels themselves. */
-TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb,
-                                      const TransformerWeights *w, const Config *cfg,
-                                      const MoEConfig *mc, int layer, int pos,
-                                      int n_tokens, ThreadPool *tp) {
-  if (mc && mc->has_mla) {
-    return mla_attention_forward_batch(s, sb, w, cfg, mc, layer, pos, n_tokens, tp);
-  }
-  if (mc && mc->has_linear_attn) {
-    /* Qwen3.5/3.6 hybrid's Gated-DeltaNet linear-attention layers hold a
-     * genuinely recurrent state (q35_recur_state) that position k+1's
-     * update must read only after position k's update has landed -- this
-     * cannot be batched with a local restructuring like the write/read
-     * split above. Refuse cleanly; speculative_generate() checks this once
-     * at startup so callers should never actually reach this branch in
-     * practice (see docs/architecture/IMPLEMENTATION_PLAN.md Phase 18). */
-    return TN_ERR_UNSUPPORTED;
-  }
-  if (mc && mc->has_qk_norm) {
-    return qwen3moe_attention_forward_batch(s, sb, w, cfg, mc, layer, pos, n_tokens, tp);
-  }
-
+/* Generic dense/GQA batched attention over n_tokens rows whose K/V live in
+ * states[k] at position pos_arr[k] (Phase 23, 2026-10-19). One sequence's
+ * consecutive tokens (speculative verify) and one token from each of several
+ * sequences (continuous batching) are the same computation: weight matmuls
+ * batched over all rows, KV writes then reads per row in its own cache. All
+ * states share one adapter (states[0]->active_lora). */
+static TernaryError attention_forward_rows(RunState *const *states, const int *pos_arr,
+                                           SpecBatchScratch *sb,
+                                           const TransformerWeights *w, const Config *cfg,
+                                           int layer, int n_tokens, ThreadPool *tp) {
   int dim = cfg->dim;
   int n_heads = cfg->n_heads;
   int n_kv_heads = cfg->n_kv_heads;
   int head_dim = config_head_dim(cfg);
   int kv_dim = config_kv_dim(cfg);
-  int max_seq = s->max_seq_len;
   int kv_mul = n_heads / n_kv_heads;
 
   /* k_buf/v_buf: reuse sb->xb2/sb->hb2 exactly like the single-token path
@@ -486,10 +474,11 @@ TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb,
                                     dim, kv_dim, n_tokens, tp);
   }
   /* Phase 19: same LoRA deltas as the single-token path, per row. */
-  if (s->active_lora) {
-    lora_apply_batch(sb->q,     sb->xb, lora_mod(s->active_lora->q, layer), dim, dim,    n_tokens, tp);
-    lora_apply_batch(k_buf_all, sb->xb, lora_mod(s->active_lora->k, layer), dim, kv_dim, n_tokens, tp);
-    lora_apply_batch(v_buf_all, sb->xb, lora_mod(s->active_lora->v, layer), dim, kv_dim, n_tokens, tp);
+  const RunState *s0 = states[0];   /* the adapter is shared by every sequence in a step */
+  if (s0->active_lora) {
+    lora_apply_batch(sb->q,     sb->xb, lora_mod(s0->active_lora->q, layer), dim, dim,    n_tokens, tp);
+    lora_apply_batch(k_buf_all, sb->xb, lora_mod(s0->active_lora->k, layer), dim, kv_dim, n_tokens, tp);
+    lora_apply_batch(v_buf_all, sb->xb, lora_mod(s0->active_lora->v, layer), dim, kv_dim, n_tokens, tp);
   }
   if (t_step) {
       tn_step_timing_add(TN_STEP_5_Q_PROJECTION,
@@ -521,8 +510,8 @@ TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb,
       }
     }
 
-    /* RoPE at this token's own position pos+k */
-    int tok_pos = pos + k;
+    /* RoPE at this token's own position */
+    int tok_pos = pos_arr[k];
     float corr[2] = {0.0f, 0.0f};
     float freq_scale  = cfg->rope_freq_scale;
     float ext_factor  = cfg->rope_yarn_ext_factor;
@@ -537,7 +526,7 @@ TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb,
       corr[0] = start < 0.0f ? 0.0f : (start > (float)(head_dim-1) ? (float)(head_dim-1) : start);
       corr[1] = end   < 0.0f ? 0.0f : (end   > (float)(head_dim-1) ? (float)(head_dim-1) : end  );
     }
-    apply_rope_ex(q_k, kbuf_k, s->rope_freq, head_dim, tok_pos, n_heads, n_kv_heads,
+    apply_rope_ex(q_k, kbuf_k, states[k]->rope_freq, head_dim, tok_pos, n_heads, n_kv_heads,
                   freq_scale, ext_factor, attn_factor, corr, cfg->rope_layout);
   }
   if (t_step) {
@@ -548,7 +537,9 @@ TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb,
   /* KV cache store, per token */
   t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
   for (int k = 0; k < n_tokens; k++) {
-    int tok_pos = pos + k;
+    RunState *s = states[k];
+    int max_seq = s->max_seq_len;
+    int tok_pos = pos_arr[k];
     float *kbuf_k = k_buf_all + (size_t)k * kv_dim;
     float *v_k = v_buf_all + (size_t)k * kv_dim;
     int mapped_pos = sw_map_position(&s->sw, tok_pos);
@@ -578,7 +569,9 @@ TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb,
   t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
   float inv_sqrt_head_dim = 1.0f / sqrtf((float)head_dim);
   for (int k = 0; k < n_tokens; k++) {
-    int tok_pos = pos + k;
+    RunState *s = states[k];
+    int max_seq = s->max_seq_len;
+    int tok_pos = pos_arr[k];
     float *q_k = sb->q + (size_t)k * dim;
     float *xb_out = sb->xb + (size_t)k * dim; /* attention output, reusing xb (rmsnorm input no longer needed) */
 
@@ -638,8 +631,8 @@ TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb,
     tn_dense_matmul_dispatch_batch(sb->xb2, sb->xb, w->wo[layer], w->wo_type[layer],
                                     dim, dim, n_tokens, tp);
   }
-  if (s->active_lora)
-    lora_apply_batch(sb->xb2, sb->xb, lora_mod(s->active_lora->o, layer), dim, dim, n_tokens, tp);
+  if (s0->active_lora)
+    lora_apply_batch(sb->xb2, sb->xb, lora_mod(s0->active_lora->o, layer), dim, dim, n_tokens, tp);
 
   /* Residual: elementwise, so one call over the full n_tokens*dim span is
    * equivalent to n_tokens per-row calls (row boundaries don't matter for
@@ -651,4 +644,51 @@ TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb,
   }
 
   return TN_OK;
+}
+
+TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb,
+                                      const TransformerWeights *w, const Config *cfg,
+                                      const MoEConfig *mc, int layer, int pos,
+                                      int n_tokens, ThreadPool *tp) {
+  if (mc && mc->has_mla) {
+    return mla_attention_forward_batch(s, sb, w, cfg, mc, layer, pos, n_tokens, tp);
+  }
+  if (mc && mc->has_linear_attn) {
+    /* Qwen3.5/3.6 hybrid's Gated-DeltaNet linear-attention layers hold a
+     * genuinely recurrent state (q35_recur_state) that position k+1's
+     * update must read only after position k's update has landed -- this
+     * cannot be batched with a local restructuring like the write/read
+     * split above. Refuse cleanly; speculative_generate() checks this once
+     * at startup so callers should never actually reach this branch in
+     * practice (see docs/architecture/IMPLEMENTATION_PLAN.md Phase 18). */
+    return TN_ERR_UNSUPPORTED;
+  }
+  if (mc && mc->has_qk_norm) {
+    return qwen3moe_attention_forward_batch(s, sb, w, cfg, mc, layer, pos, n_tokens, tp);
+  }
+
+  enum { ROWS_ON_STACK = 64 };
+  RunState *st_stack[ROWS_ON_STACK] = {0};
+  int pos_stack[ROWS_ON_STACK] = {0};
+  RunState **st = st_stack;
+  int *ps = pos_stack;
+  if (n_tokens > ROWS_ON_STACK) {
+    st = (RunState **)malloc((size_t)n_tokens * sizeof(*st));
+    ps = (int *)malloc((size_t)n_tokens * sizeof(*ps));
+    if (!st || !ps) { free(st); free(ps); return TN_ERR_OOM; }
+  }
+  for (int k = 0; k < n_tokens; k++) { st[k] = s; ps[k] = pos + k; }
+  TernaryError e = attention_forward_rows(st, ps, sb, w, cfg, layer, n_tokens, tp);
+  if (st != st_stack) { free(st); free(ps); }
+  return e;
+}
+
+TernaryError attention_forward_multi(RunState *const *states, const int *pos_arr,
+                                     SpecBatchScratch *sb, const TransformerWeights *w,
+                                     const Config *cfg, const MoEConfig *mc, int layer,
+                                     int n_tokens, ThreadPool *tp) {
+  if (!states || !pos_arr || n_tokens <= 0) return TN_ERR_INVALID_ARGS;
+  if (mc && (mc->has_mla || mc->has_linear_attn || mc->has_qk_norm || mc->is_ssm))
+    return TN_ERR_UNSUPPORTED;   /* generic dense/GQA path only (stage 2) */
+  return attention_forward_rows(states, pos_arr, sb, w, cfg, layer, n_tokens, tp);
 }

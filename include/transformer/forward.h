@@ -61,6 +61,20 @@ TernaryError transformer_forward_batch(const int *tokens, int pos, int n_tokens,
                                         const MoEConfig *mc, ThreadPool *tp,
                                         float *logits_out);
 
+/*
+ * Phase 23 continuous batching (2026-10-19): one forward step over n_tokens
+ * rows from different sequences — row k is tokens[k] at position pos_arr[k]
+ * of the sequence whose KV lives in states[k] (several rows may share a
+ * state for chunked prefill, in increasing position order). Logits for every
+ * row go to logits_out ([n_tokens][vocab]). sb must hold n_tokens rows.
+ * Generic dense/GQA models only; TN_ERR_UNSUPPORTED otherwise.
+ */
+TernaryError transformer_forward_multi(const int *tokens, const int *pos_arr,
+                                       RunState *const *states, int n_tokens,
+                                       const Config *cfg, const TransformerWeights *w,
+                                       SpecBatchScratch *sb, const MoEConfig *mc,
+                                       ThreadPool *tp, float *logits_out);
+
 /* One decoder layer in place on s->x (attention + FFN, or Mamba block). */
 void transformer_layer_forward(RunState *s, const TransformerWeights *w, const Config *cfg,
                                const MoEConfig *mc, int layer, int pos, ThreadPool *tp);

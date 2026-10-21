@@ -134,7 +134,11 @@ static bool verify_avx512vnni_executable(void) {
         acc = _mm512_dpbusds_epi32(acc, a, b);
         int32_t buf[16];
         _mm512_storeu_si512((void *)buf, acc);
-        if (buf[0] != 64) ok = false; /* 64 lanes of 1*1 summed into each i32 */
+        /* vpdpbusd sums the FOUR adjacent u8*s8 products of each 32-bit
+         * lane: 1*1*4 = 4. (2026-10-21: this compared against 64, so the
+         * check failed on every VNNI host and silently disabled every
+         * runtime-gated VNNI kernel — see mistakes.md.) */
+        if (buf[0] != 4) ok = false;
     } else {
         ok = false;
     }

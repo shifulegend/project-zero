@@ -15,6 +15,8 @@
 #include "math/matmul_q4k.h"
 #include "math/matmul_q4k_x8.h"
 #include "math/matmul_q6k.h"
+#include "math/q8_0_act.h"
+#include "core/gguf_reader.h"
 #include "math/batched_matmul.h"
 #include "threading/thread_pool.h"
 #include <stdlib.h>
@@ -46,6 +48,15 @@ static inline void tn_dense_matmul_dispatch(float *out, const float *x,
         break;
     case WEIGHT_TYPE_Q6K:
         parallel_matmul_q6k(out, x, (const uint8_t *)w, n, d, tp);
+        break;
+    case WEIGHT_TYPE_Q5_0:
+        parallel_matmul_q8a(out, x, (const uint8_t *)w, GGUF_TYPE_Q5_0, n, d, tp);
+        break;
+    case WEIGHT_TYPE_Q5_1:
+        parallel_matmul_q8a(out, x, (const uint8_t *)w, GGUF_TYPE_Q5_1, n, d, tp);
+        break;
+    case WEIGHT_TYPE_Q8_0:
+        parallel_matmul_q8a(out, x, (const uint8_t *)w, GGUF_TYPE_Q8_0, n, d, tp);
         break;
     default: /* WEIGHT_TYPE_F32 */
         parallel_matmul_float32(out, x, (const float *)w, n, d, tp);

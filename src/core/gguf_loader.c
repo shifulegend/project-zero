@@ -488,6 +488,23 @@ static size_t quant_bytes_for_elems(GGUFType type, size_t n_elems) {
     }
 }
 
+/* ── Raw quantized LM head (2026-10-21) ──────────────────────────────────
+ * Keep output.weight zero-copy in its own Q4_K/Q6_K format when a fused
+ * kernel exists and the user did not explicitly ask for a --classifier
+ * format (which needs the BF16 table to derive INT8/INT4 copies). Returns 1
+ * when w->wcls_raw was set. Previously every quantized head was widened to
+ * BF16: 2.4x the bytes streamed per token for a Q6_K head. */
+static int classifier_keep_raw(TransformerWeights *w, const Config *cfg,
+                               const GGUFTensor *t) {
+    const TnHardwareProfile *hw = tn_hardware_profile_get();
+    if (!t || (hw && hw->classifier_explicit)) return 0;
+    if (cfg->dim % 256 != 0) return 0;
+    if (t->type != GGUF_TYPE_Q6_K && t->type != GGUF_TYPE_Q4_K) return 0;
+    w->wcls_raw      = t->data;
+    w->wcls_raw_type = (int)t->type;
+    return 1;
+}
+
 /* ── Shared dense-BF16 embedding + output.weight loader ──────────────────
  * Common to deepseek2 and qwen3moe (both dequant-then-BF16, unlike qwen35's
  * zero-copy-raw-Q2_0 embedding path). Extracted out of weights_from_gguf()'s
@@ -514,7 +531,9 @@ static TernaryError load_bf16_embedding_and_output(
     w->token_embedding_table = ebuf;
 
     const GGUFTensor *toutw = gguf_find_tensor(hdr, "output.weight");
-    if (toutw) {
+    if (toutw && classifier_keep_raw(w, cfg, toutw)) {
+        w->wcls = NULL;   /* forward.c dispatches on wcls_raw */
+    } else if (toutw) {
         float *fout = tensor_to_f32(toutw, n_emb, store);
         if (!fout) return TN_ERR_INVALID_WEIGHTS;
         tn_u16 *obuf = (tn_u16 *)malloc(n_emb * sizeof(tn_u16));
@@ -527,6 +546,40 @@ static TernaryError load_bf16_embedding_and_output(
         w->wcls = obuf;
     } else {
         w->wcls = w->token_embedding_table;
+    }
+    return TN_OK;
+}
+
+/* ── Typed zero-copy projection loader (shared) ──────────────────────────
+ * F16/F32 zero-copy; Q4_K / Q6_K zero-copy when n_inner % 256 == 0;
+ * Q5_0 / Q5_1 / Q8_0 zero-copy when n_inner % 32 == 0 (2026-10-21: run by
+ * the Q8_0-activation integer kernels, math/q8_0_act.c); anything else is
+ * dequantized to F32 once. `d_rows` x `n_inner` (output x input). Used by
+ * the mamba loader and DeepSeek-V2's leading dense FFN layers (which were
+ * F32-dequantized before: 269 MB/token for DeepSeek-V2-Lite's layer 0
+ * instead of 42 MB). */
+static TernaryError load_proj_typed(const GGUFHeader *hdr, GGUFWeightStore *store,
+                                    const char *name, int d_rows, int n_inner,
+                                    tn_i8 **out, int *type_out) {
+    const GGUFTensor *t = gguf_find_tensor(hdr, name);
+    if (!t) {
+        fprintf(stderr, "[gguf_loader] missing tensor '%s'\n", name);
+        return TN_ERR_INVALID_WEIGHTS;
+    }
+    size_t n = (size_t)d_rows * (size_t)n_inner;
+    const int k_ok = n_inner % 256 == 0, l_ok = n_inner % 32 == 0;
+    if (t->type == GGUF_TYPE_F16) { *out = (tn_i8 *)t->data; *type_out = WEIGHT_TYPE_F16; }
+    else if (t->type == GGUF_TYPE_F32) { *out = (tn_i8 *)t->data; *type_out = WEIGHT_TYPE_F32; }
+    else if (t->type == GGUF_TYPE_Q4_K && k_ok) { *out = (tn_i8 *)t->data; *type_out = WEIGHT_TYPE_Q4K; }
+    else if (t->type == GGUF_TYPE_Q6_K && k_ok) { *out = (tn_i8 *)t->data; *type_out = WEIGHT_TYPE_Q6K; }
+    else if (t->type == GGUF_TYPE_Q5_0 && l_ok) { *out = (tn_i8 *)t->data; *type_out = WEIGHT_TYPE_Q5_0; }
+    else if (t->type == GGUF_TYPE_Q5_1 && l_ok) { *out = (tn_i8 *)t->data; *type_out = WEIGHT_TYPE_Q5_1; }
+    else if (t->type == GGUF_TYPE_Q8_0 && l_ok) { *out = (tn_i8 *)t->data; *type_out = WEIGHT_TYPE_Q8_0; }
+    else {
+        float *f = tensor_to_f32(t, n, store);
+        if (!f) return TN_ERR_INVALID_WEIGHTS;
+        *out = (tn_i8 *)f;
+        *type_out = WEIGHT_TYPE_F32;
     }
     return TN_OK;
 }
@@ -709,13 +762,18 @@ static TernaryError weights_from_gguf_deepseek2(
         w->so[l]        = 1.0f;
 
         if (l < first_dense) {
-            /* Dense FFN layer */
-            DS_LOAD_PROJ(w->w1, "ffn_gate.weight",
-                         (size_t)hidden_dim * (size_t)dim);
-            DS_LOAD_PROJ(w->w2, "ffn_down.weight",
-                         (size_t)hidden_dim * (size_t)dim);
-            DS_LOAD_PROJ(w->w3, "ffn_up.weight",
-                         (size_t)hidden_dim * (size_t)dim);
+            /* Dense FFN layer — typed zero-copy (ffn.c dispatches on
+             * w{1,2,3}_type via tn_dense_matmul_dispatch). */
+            TernaryError pe;
+            snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_gate.weight", l);
+            pe = load_proj_typed(hdr, store, name_buf, hidden_dim, dim, &w->w1[l], &w->w1_type[l]);
+            if (pe != TN_OK) return pe;
+            snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_down.weight", l);
+            pe = load_proj_typed(hdr, store, name_buf, dim, hidden_dim, &w->w2[l], &w->w2_type[l]);
+            if (pe != TN_OK) return pe;
+            snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_up.weight", l);
+            pe = load_proj_typed(hdr, store, name_buf, hidden_dim, dim, &w->w3[l], &w->w3_type[l]);
+            if (pe != TN_OK) return pe;
             w->s1[l] = w->s2[l] = w->s3[l] = 1.0f;
         } else {
             /* MoE FFN layer */
@@ -1143,29 +1201,11 @@ static TernaryError weights_from_gguf_qwen3moe(
 
 /* ── weights_from_gguf_mamba() — Phase 22-SSM Mamba-1 loader ─────────────── */
 
-/* Projection with its own storage type, same policy as the generic dense
- * loader: F16/F32 zero-copy, Q4_K zero-copy when blocks align, anything else
- * dequantized to F32 once. `d_rows` x `n_inner` (output x input). */
+/* Mamba projection: shared typed policy (load_proj_typed above). */
 static TernaryError mamba_load_proj(const GGUFHeader *hdr, GGUFWeightStore *store,
                                     const char *name, int d_rows, int n_inner,
                                     tn_i8 **out, int *type_out) {
-    const GGUFTensor *t = gguf_find_tensor(hdr, name);
-    if (!t) {
-        fprintf(stderr, "[gguf_loader] mamba: missing tensor '%s'\n", name);
-        return TN_ERR_INVALID_WEIGHTS;
-    }
-    size_t n = (size_t)d_rows * (size_t)n_inner;
-    if (t->type == GGUF_TYPE_F16) { *out = (tn_i8 *)t->data; *type_out = WEIGHT_TYPE_F16; }
-    else if (t->type == GGUF_TYPE_F32) { *out = (tn_i8 *)t->data; *type_out = WEIGHT_TYPE_F32; }
-    else if (t->type == GGUF_TYPE_Q4_K && n_inner % 256 == 0) { *out = (tn_i8 *)t->data; *type_out = WEIGHT_TYPE_Q4K; }
-    else if (t->type == GGUF_TYPE_Q6_K && n_inner % 256 == 0) { *out = (tn_i8 *)t->data; *type_out = WEIGHT_TYPE_Q6K; }
-    else {
-        float *f = tensor_to_f32(t, n, store);
-        if (!f) return TN_ERR_INVALID_WEIGHTS;
-        *out = (tn_i8 *)f;
-        *type_out = WEIGHT_TYPE_F32;
-    }
-    return TN_OK;
+    return load_proj_typed(hdr, store, name, d_rows, n_inner, out, type_out);
 }
 
 static TernaryError weights_from_gguf_mamba(TransformerWeights *w, const Config *cfg,
@@ -1545,7 +1585,9 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
         const GGUFTensor *t = gguf_find_tensor(hdr, "output.weight");
         if (t) {
             size_t n = (size_t)cfg->vocab_size * (size_t)dim;
-            if (t->type == GGUF_TYPE_BF16) {
+            if (classifier_keep_raw(w, cfg, t)) {
+                w->wcls = NULL;   /* forward.c dispatches on wcls_raw */
+            } else if (t->type == GGUF_TYPE_BF16) {
                 w->wcls = (tn_u16 *)t->data; /* zero-copy */
             } else if (t->type == GGUF_TYPE_F32) {
                 tn_u16 *buf = (tn_u16 *)malloc(n * sizeof(tn_u16));

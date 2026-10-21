@@ -15,6 +15,7 @@
 #include "core/gguf_reader.h"
 #include "core/platform.h"
 
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -104,11 +105,11 @@ static inline const void *x_acts_for(int type) {
 typedef struct {
     const TnMoEExpertJob *jobs;
     int n_jobs, dim, vq4, vq8;
+    int rows, chunk;          /* dynamic scheduling: chunk rows per grab */
+    atomic_int next;          /* next unclaimed chunk */
 } MoEExpArgs;
 
-static void phase1_task(void *arg, int thread_id, int start, int end) {
-    (void)thread_id;
-    const MoEExpArgs *a = (const MoEExpArgs *)arg;
+static void phase1_rows(const MoEExpArgs *a, int start, int end) {
     int j = 0;
     while (j + 1 < a->n_jobs && s_off[j + 1] <= start) j++;
     int r = start;
@@ -134,16 +135,34 @@ static void phase1_task(void *arg, int thread_id, int start, int end) {
     }
 }
 
+/* Dynamic chunk scheduling (2026-10-21): each pool slice pulls fixed-size
+ * row chunks from a shared counter instead of owning a static 1/N range, so
+ * a thread delayed by the VM (steal time, noisy neighbours) or by a slower
+ * mix of rows no longer stalls the whole dispatch. Every row is still
+ * computed by exactly one thread with the same arithmetic, so results do not
+ * depend on the schedule. */
+static void phase1_task(void *arg, int thread_id, int start, int end) {
+    (void)thread_id; (void)start; (void)end;
+    MoEExpArgs *a = (MoEExpArgs *)arg;
+    for (;;) {
+        int c = atomic_fetch_add_explicit(&a->next, 1, memory_order_relaxed);
+        int r0 = c * a->chunk;
+        if (r0 >= a->rows) break;
+        int r1 = r0 + a->chunk < a->rows ? r0 + a->chunk : a->rows;
+        phase1_rows(a, r0, r1);
+    }
+}
+
 /* ── phase 2: down projections summed into out ───────────────────────────── */
 typedef struct {
     float *out;
     const TnMoEExpertJob *jobs;
     int n_jobs, dim, vq4, vq8;
+    int chunk;
+    atomic_int next;
 } MoEDownArgs;
 
-static void phase2_task(void *arg, int thread_id, int start, int end) {
-    (void)thread_id;
-    const MoEDownArgs *a = (const MoEDownArgs *)arg;
+static void phase2_rows(const MoEDownArgs *a, int start, int end) {
     /* expert-outer: each thread streams one contiguous row range of one
      * down matrix at a time (hardware-prefetch friendly); the out rows are
      * owned exclusively by this thread, so += is race-free. */
@@ -159,6 +178,27 @@ static void phase2_task(void *arg, int thread_id, int start, int end) {
                                       jb->hdim, a->vq4, a->vq8);
         }
     }
+}
+
+static void phase2_task(void *arg, int thread_id, int start, int end) {
+    (void)thread_id; (void)start; (void)end;
+    MoEDownArgs *a = (MoEDownArgs *)arg;
+    for (;;) {
+        int c = atomic_fetch_add_explicit(&a->next, 1, memory_order_relaxed);
+        int r0 = c * a->chunk;
+        if (r0 >= a->dim) break;
+        int r1 = r0 + a->chunk < a->dim ? r0 + a->chunk : a->dim;
+        phase2_rows(a, r0, r1);
+    }
+}
+
+/* chunk size: ~MOE_CHUNKS_PER_THREAD grabs per pool slice, rounded to 8 */
+#define MOE_CHUNKS_PER_THREAD 8
+static int moe_chunk_rows(int rows, ThreadPool *tp) {
+    int nt = tp ? tp->num_threads : 1;
+    int c = rows / (nt * MOE_CHUNKS_PER_THREAD);
+    c = (c + 7) & ~7;
+    return c < 8 ? 8 : c;
 }
 
 /* grow-only reallocation; returns 0 on success */
@@ -214,9 +254,12 @@ int moe_experts_forward(float *out, const float *x,
     const int vq4 = tn_q4k_vnni_ok();
     const int vq8 = tn_q8_0_act_vnni_ok();
 
-    MoEExpArgs a1 = { jobs, n_jobs, dim, vq4, vq8 };
-    if (tp) threadpool_dispatch(tp, phase1_task, &a1, (int)rows);
-    else    phase1_task(&a1, 0, 0, (int)rows);
+    MoEExpArgs a1;
+    a1.jobs = jobs; a1.n_jobs = n_jobs; a1.dim = dim; a1.vq4 = vq4; a1.vq8 = vq8;
+    a1.rows = (int)rows; a1.chunk = moe_chunk_rows((int)rows, tp);
+    atomic_init(&a1.next, 0);
+    if (tp) threadpool_dispatch(tp, phase1_task, &a1, tp->num_threads);
+    else    phase1_task(&a1, 0, 0, 1);
 
     /* act(gate) * up, then quantize each hidden vector once for its down
      * type. The activation runs here over each WHOLE expert vector, not
@@ -236,8 +279,11 @@ int moe_experts_forward(float *out, const float *x,
             tn_quantize_q8_0_act((TnQ8_0ActBlock *)dst, h, jobs[j].hdim / 32);
     }
 
-    MoEDownArgs a2 = { out, jobs, n_jobs, dim, vq4, vq8 };
-    if (tp) threadpool_dispatch(tp, phase2_task, &a2, dim);
-    else    phase2_task(&a2, 0, 0, dim);
+    MoEDownArgs a2;
+    a2.out = out; a2.jobs = jobs; a2.n_jobs = n_jobs; a2.dim = dim;
+    a2.vq4 = vq4; a2.vq8 = vq8; a2.chunk = moe_chunk_rows(dim, tp);
+    atomic_init(&a2.next, 0);
+    if (tp) threadpool_dispatch(tp, phase2_task, &a2, tp->num_threads);
+    else    phase2_task(&a2, 0, 0, 1);
     return 0;
 }

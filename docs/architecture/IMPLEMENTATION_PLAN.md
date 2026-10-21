@@ -2170,7 +2170,18 @@ Abstracts the forward pass so the engine can run both Transformer (Attention) an
 
 ---
 
-## PHASE 23: PagedAttention & Continuous Batching 🟡 stage 1 (FIFO admission queue) done 2026-10-18
+## PHASE 23: PagedAttention & Continuous Batching 🟡 stage 1 (FIFO admission queue) done 2026-10-18; stage 2a (multi-sequence forward) done 2026-10-19
+
+**Stage 2a as built (2026-10-19):** `transformer_forward_multi(tokens, pos_arr, states, n, …)`
+(`src/transformer/forward.c`) runs one token from each of `n` independent sequences (own
+RunState / KV / position) through a single batched pass: weights stream once for all rows
+(`attention_forward_multi()` + the shared batched FFN), attention reads each row's own KV.
+Refuses MoE, recurrent/SSM, MLA, linear-attention, qk-norm and distributed models with
+`TN_ERR_UNSUPPORTED` (callers fall back to sequential). Test:
+`test_forward_multi_matches_sequential`. **Open:** stage 2b — step-wise `GenSession` extracted
+from `generate_ex`, a `--parallel N` scheduler in the API server that interleaves active
+requests, vAttention-style paged KV (lazy commit per slot, release on finish), `/v1/config` +
+web UI display, benchmark.
 
 **Stage 1 as built:** `include/api/gen_queue.h` / `src/api/gen_queue.c` — FIFO admission to the
 single generation slot. `--queue-size N` lets N chat requests wait in arrival order (default 0

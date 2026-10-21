@@ -425,12 +425,17 @@ test-tsan:
 # TS-5.5: line/branch coverage of library code, from the real test suite.
 # Requires lcov (genhtml). Uses ensure_variant like release/debug/dist/tsan
 # so switching from a non-instrumented build doesn't link stale objects.
+# 2026-10-21: runs `run-tests`, not `test` -- `test` now switches to the debug
+# variant, which would wipe the coverage objects (CI reported 40 lines covered).
+# lcov 2.x fails on an exclude pattern that matched nothing (e.g. '/usr/*' when
+# no system header was instrumented); lcov 1.x rejects `--ignore-errors unused`.
+LCOV_IGNORE_UNUSED = $(if $(shell lcov --version 2>/dev/null | grep -E 'version [2-9]'),--ignore-errors unused)
 coverage:
 	$(call ensure_variant,coverage)
-	$(MAKE) CFLAGS="$(CFLAGS_COVERAGE)" CXXFLAGS="$(CXXFLAGS_COVERAGE)" LDFLAGS="$(LDFLAGS) --coverage" test
+	$(MAKE) CFLAGS="$(CFLAGS_COVERAGE)" CXXFLAGS="$(CXXFLAGS_COVERAGE)" LDFLAGS="$(LDFLAGS) --coverage" run-tests
 	@mkdir -p build/coverage
 	lcov --capture --directory build --output-file build/coverage/coverage_raw.info --rc lcov_branch_coverage=1
-	lcov --remove build/coverage/coverage_raw.info '/usr/*' '*/tests/*' --output-file build/coverage/coverage.info --rc lcov_branch_coverage=1
+	lcov --remove build/coverage/coverage_raw.info '/usr/*' '*/tests/*' --output-file build/coverage/coverage.info --rc lcov_branch_coverage=1 $(LCOV_IGNORE_UNUSED)
 	genhtml build/coverage/coverage.info --output-directory build/coverage/html --rc lcov_branch_coverage=1
 	@echo "=== Coverage summary ==="
 	lcov --summary build/coverage/coverage.info --rc lcov_branch_coverage=1

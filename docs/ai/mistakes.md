@@ -5,6 +5,20 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-10-21.
 
+### 2026-10-21 — CI gaps found by running every workflow on the branch
+
+- **macOS build broken since 2026-10-18:** `file_backed.c` (`--kv-offload`) called
+  `posix_fallocate`, which macOS lacks. CI only auto-runs on master/main, so the branch never ran
+  the macOS job. Fixed with `F_PREALLOCATE` + `ftruncate` on macOS. Lesson: dispatch `ci.yml`
+  (`workflow_dispatch`) on a long-lived branch before calling it done.
+- **Coverage measured 40 lines:** my `make test` → debug-variant change made `make coverage`
+  (which called `test`) wipe its own instrumented objects; now it calls `run-tests` (50.8 % of
+  23,989 lines). lcov 2.x also errors on an unused exclude pattern — `--ignore-errors unused` on 2.x.
+- **Fuzzer passed by timing out:** `tools/fuzz_config.py` passed only on an "Invalid" message or a
+  5 s timeout; in CI the uncached startup probe made it time out, locally the engine rejected the
+  corrupt model instantly and the script failed. Now: graceful non-zero exit = pass; signal,
+  sanitizer report, exit 0 or a 60 s hang = fail.
+
 ### 2026-10-21 — test_q2_0_matmul guessed the kernel's path from the CPU alone
 
 - The reference in `tests/test_q2_0_matmul.c` switched to int8-quantized math whenever the CPU

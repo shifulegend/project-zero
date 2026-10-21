@@ -3,6 +3,11 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-21.
 
+### 2026-10-21 — CI fixes from dispatching every workflow on the branch
+- macOS `posix_fallocate` → `F_PREALLOCATE`; `make coverage` → `run-tests` + lcov-2 unused-pattern
+  handling; `fuzz_config.py` checks graceful rejection instead of timing out. Reproduced locally:
+  coverage (lcov 2.0), security-audit CMake+ASan subset 8/8, fuzzer warm and cold cache.
+
 ### 2026-10-21 — Fix CI-only test_q2_0_matmul failure on VNNI runners
 - `matmul_q2_0_uses_vnni()` (kernel TU decides; dispatcher + test use it). Reproduced CI's 32/35 with
   baseline flags, 35/35 after; gcc+clang `make test` green.

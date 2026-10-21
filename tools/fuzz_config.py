@@ -17,26 +17,39 @@ def create_fuzzed_model(filename, vocab_size, dim):
 # outputs build_dir/pz, same name as the Makefile build).
 ENGINE_BIN = os.environ.get("PZ_ENGINE_BIN", "./pz")
 
+# Generous: an ASan build on a cold CI runner may spend seconds probing the
+# host before it reads the model. A corrupt file must be rejected well within it.
+TIMEOUT_S = int(os.environ.get("PZ_FUZZ_TIMEOUT", "60"))
+
 def run_fuzz_test(vocab_size, dim):
     filename = f"fuzz_{vocab_size}_{dim}.bin"
     create_fuzzed_model(filename, vocab_size, dim)
     print(f"Testing vocab_size={vocab_size}, dim={dim}...")
     try:
         result = subprocess.run([ENGINE_BIN, "--model", filename],
-                                capture_output=True, timeout=5)
+                                capture_output=True, timeout=TIMEOUT_S)
         print(f"  Return code: {result.returncode}")
-        if result.returncode == -11:
-            print("  VULNERABILITY CONFIRMED: SEGFAULT DETECTED")
+        err = result.stderr + result.stdout
+        # 2026-10-21: the contract is "reject corrupt input gracefully": a
+        # non-zero exit, no signal, no sanitizer report. This used to pass only
+        # on an "Invalid" message or a 5 s timeout -- it passed in CI because
+        # the uncached startup probe made the engine slow, and failed wherever
+        # the engine rejected the file quickly with another message.
+        if result.returncode < 0:
+            print(f"  VULNERABILITY: engine killed by signal {-result.returncode}")
             return False
-        elif b"Invalid" in result.stderr:
-            print("  PASS: Engine caught invalid config")
-            return True
-        else:
-            print(f"  UNKNOWN: {result.stderr[:200]}")
+        if b"AddressSanitizer" in err or b"runtime error:" in err:
+            print(f"  VULNERABILITY: sanitizer report: {err[:300]}")
             return False
-    except subprocess.TimeoutExpired:
-        print("  PASS: Engine timed out (likely stuck in safe loop)")
+        if result.returncode == 0:
+            print("  FAIL: corrupt model accepted (exit 0)")
+            return False
+        msg = result.stderr.decode("utf-8", "replace").strip().splitlines()
+        print(f"  PASS: rejected gracefully: {msg[-1] if msg else '(no message)'}")
         return True
+    except subprocess.TimeoutExpired:
+        print(f"  FAIL: engine still running after {TIMEOUT_S}s on a corrupt model (hang)")
+        return False
     except FileNotFoundError:
         # 2026-09-19: this used to reference the stale ./build/bin/ternary_engine
         # path (renamed to ./adaptive_ai_engine long ago) and silently printed an

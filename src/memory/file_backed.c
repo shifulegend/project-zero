@@ -12,6 +12,23 @@
 #include <sys/statvfs.h>
 #include <unistd.h>
 
+/* Reserve `bytes` of real disk blocks for fd. Returns 0 or an errno value.
+ * 2026-10-21: posix_fallocate() does not exist on macOS (the macOS CI build
+ * failed to compile); F_PREALLOCATE + ftruncate is its equivalent there. */
+static int reserve_blocks(int fd, off_t bytes) {
+#if defined(__APPLE__)
+    fstore_t fs = { .fst_flags = F_ALLOCATECONTIG, .fst_posmode = F_PEOFPOSMODE,
+                    .fst_offset = 0, .fst_length = bytes, .fst_bytesalloc = 0 };
+    if (fcntl(fd, F_PREALLOCATE, &fs) == -1) {
+        fs.fst_flags = F_ALLOCATEALL;            /* fragmented is fine */
+        if (fcntl(fd, F_PREALLOCATE, &fs) == -1) return errno;
+    }
+    return ftruncate(fd, bytes) == 0 ? 0 : errno;
+#else
+    return posix_fallocate(fd, 0, bytes);
+#endif
+}
+
 TernaryError file_backed_alloc(FileBacked *fb, const char *dir, size_t bytes) {
     if (!fb || !dir || !*dir || bytes == 0) return TN_ERR_INVALID_ARGS;
     memset(fb, 0, sizeof(*fb));
@@ -26,7 +43,7 @@ TernaryError file_backed_alloc(FileBacked *fb, const char *dir, size_t bytes) {
 
     /* Reserve the blocks now: a sparse file would SIGBUS on page write-back
      * once the disk fills up, long after this call reported success. */
-    int rc = posix_fallocate(fd, 0, (off_t)bytes);
+    int rc = reserve_blocks(fd, (off_t)bytes);
     if (rc != 0) {
         close(fd);
         return rc == ENOSPC ? TN_ERR_OOM : TN_ERR_FILE_STAT;

@@ -99,9 +99,12 @@ User starts engine with --server --port 8080
 ```json
 {
   "object": "list",
-  "data": [{"id": "local-adaptive-engine", "object": "model", "owned_by": "project-zero"}]
+  "data": [{"id": "<model file name>", "object": "model", "owned_by": "project-zero", "vision": false,
+            "context_length": 8192, "vocab_size": 49152, "...": "shape fields from the GGUF"}]
 }
 ```
+(Updated 2026-10-21: Phase 21 originally returned a fixed id `local-adaptive-engine`; since
+2026-10-18 the id and shape come from the loaded model — see `src/api/api_info.c`.)
 
 ### `GET /health`
 ```json

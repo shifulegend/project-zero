@@ -14,8 +14,11 @@ def run_with_timeout(cmd, timeout_sec):
 
 def monkey_test_cli():
     print("[MONKEY] Starting randomized garbage input test...")
-    # Prioritize the actual engine binary
-    binary = "./build/project-zero"
+    # Prioritize the actual engine binary: $PZ_ENGINE_BIN, the Makefile's ./pz,
+    # then a CMake build's build/pz (2026-10-21: was ./build/project-zero, the
+    # pre-Phase-39 CMake target name).
+    binary = next((b for b in (os.environ.get("PZ_ENGINE_BIN"), "./pz", "./build/pz")
+                   if b and os.path.exists(b)), "./pz")
     if not os.path.exists(binary):
         binary = "./build/forensic_audit_suite"
     

@@ -21,6 +21,7 @@
 #include "threading/cpu_probe.h"
 #include "tokenizer/tokenizer.h"
 #include "tokenizer/tokenizer_gguf.h"
+#include "cli/program_name.h"
 #include "cli/args.h"
 #include "transformer/attn_tiled.h"
 #include "threading/cache_probe.h"
@@ -131,6 +132,7 @@ static void run_perplexity(const CliArgs *args, const Config *p, const Transform
 }
 
 int main(int argc, char **argv) {
+    pz_warn_if_legacy_invocation(argc > 0 ? argv[0] : NULL);
     CliArgs args;
     if (parse_args(&args, argc, argv) != TN_OK) {
         return 1;
@@ -145,7 +147,7 @@ int main(int argc, char **argv) {
     /* --version: print version + the SIMD backend selected for this CPU, then
      * exit 0. tn_simd_init() only probes CPUID, so no model is required. */
     if (args.show_version) {
-        printf("Project Zero Engine (adaptive_ai_engine) %s\n", PZ_VERSION_STR);
+        printf("Project Zero %s\n", PZ_VERSION_STR);
         printf("SIMD backend (this CPU): %s\n", tn_simd_init());
         return 0;
     }

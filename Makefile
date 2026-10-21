@@ -96,7 +96,11 @@ LIB_OBJS := $(filter-out build/cli/main.o, $(OBJS))
 TEST_SRCS := $(shell find tests -name '*.c' 2>/dev/null)
 TEST_BINS := $(patsubst tests/%.c, build/tests/%, $(TEST_SRCS))
 
-TARGET = adaptive_ai_engine
+TARGET = pz
+# Phase 39 (2026-10-21): the binary was renamed from adaptive_ai_engine. For one
+# release a symlink with the old name is kept (the program prints a deprecation
+# notice when run through it); drop LEGACY_TARGET the release after.
+LEGACY_TARGET = adaptive_ai_engine
 
 .PHONY: all clean debug release dist test test-tsan coverage objs demo webui-bundle screenshots
 
@@ -114,7 +118,7 @@ define ensure_variant
 	@mkdir -p build
 	@if [ -f $(BUILD_STAMP) ] && [ "$$(cat $(BUILD_STAMP))" != "$(1)" ]; then \
 		echo "Build variant changed ($$(cat $(BUILD_STAMP)) -> $(1)); removing stale objects..."; \
-		rm -rf build $(TARGET); \
+		rm -rf build $(TARGET) $(LEGACY_TARGET); \
 		mkdir -p build; \
 	fi
 	@echo "$(1)" > $(BUILD_STAMP)
@@ -143,7 +147,7 @@ objs: $(OBJS)
 # Skip building engine executable if main.c is missing
 $(TARGET): $(OBJS)
 	@if [ -f src/cli/main.c ]; then \
-		$(CXX) -o $@ $^ $(LDFLAGS); \
+		$(CXX) -o $@ $^ $(LDFLAGS) && ln -sf $(TARGET) $(LEGACY_TARGET); \
 	else \
 		echo "Skipping $(TARGET) build (src/cli/main.c not found)"; \
 	fi
@@ -432,7 +436,7 @@ bench-q2: $(LIB_OBJS) tools/bench_q2_0.c
 	@build/tools/bench_q2_0
 
 clean:
-	rm -rf build $(TARGET)
+	rm -rf build $(TARGET) $(LEGACY_TARGET)
 
 # ── K-2 R-1: LTO + PGO build pipeline ─────────────────────────────────────
 #
@@ -441,7 +445,7 @@ clean:
 #   make pgo-run               ← run 3 warmup inferences to collect .gcda files
 #   make pgo-build             ← rebuild with -fprofile-use + -flto=auto
 #
-# After `make pgo-build`, ./adaptive_ai_engine is the fully optimised binary.
+# After `make pgo-build`, ./$(TARGET) is the fully optimised binary.
 # PGO profile data is written to pgo_profiles/ directory.
 # LTO enables cross-module inlining (e.g. quantize_row_to_i8 into matmul).
 #
@@ -471,13 +475,13 @@ pgo-generate:
 pgo-run:
 	@echo "=== K-2 R-1: PGO Phase 2 — running 3 inference passes to collect profile ==="
 	@if [ ! -f $(MODEL) ]; then echo "ERROR: $(MODEL) not found"; exit 1; fi
-	./adaptive_ai_engine --model $(MODEL) --tokenizer $(TOKENIZER) \
+	./$(TARGET) --model $(MODEL) --tokenizer $(TOKENIZER) \
 	    --prompt "What is the capital of France?" \
 	    --threads $(PGO_THREADS) --max-tokens $(PGO_TOKENS) > /dev/null 2>&1
-	./adaptive_ai_engine --model $(MODEL) --tokenizer $(TOKENIZER) \
+	./$(TARGET) --model $(MODEL) --tokenizer $(TOKENIZER) \
 	    --prompt "Explain how DNA stores genetic information." \
 	    --threads $(PGO_THREADS) --max-tokens $(PGO_TOKENS) > /dev/null 2>&1
-	./adaptive_ai_engine --model $(MODEL) --tokenizer $(TOKENIZER) \
+	./$(TARGET) --model $(MODEL) --tokenizer $(TOKENIZER) \
 	    --prompt "Describe the process of photosynthesis." \
 	    --threads $(PGO_THREADS) --max-tokens $(PGO_TOKENS) > /dev/null 2>&1
 	@echo "=== Profile data written to pgo_profiles/ — run 'make pgo-build' next ==="
@@ -486,7 +490,7 @@ pgo-build:
 	@echo "=== K-2 R-1: PGO Phase 3 — rebuilding with -fprofile-use + -flto ==="
 	$(MAKE) clean
 	$(MAKE) CFLAGS="$(CFLAGS_PGO_USE)" LDFLAGS="$(LDFLAGS_LTO)" all
-	@echo "=== LTO+PGO optimised binary built: ./adaptive_ai_engine ==="
+	@echo "=== LTO+PGO optimised binary built: ./$(TARGET) ==="
 
 pgo-clean:
 	rm -rf pgo_profiles

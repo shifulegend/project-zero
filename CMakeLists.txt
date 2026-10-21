@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.12)
-project(adaptive_ai_engine C CXX)
+project(project_zero C CXX)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -282,6 +282,7 @@ set(REASONING_SOURCES
 
 set(CLI_SOURCES
     src/cli/args.c
+    src/cli/program_name.c
     src/cli/timer.c
     src/cli/repl.c
     src/cli/color.c
@@ -374,8 +375,8 @@ set(SOURCES
 # ---------------------------------------------------------------------------
 # Main target
 # ---------------------------------------------------------------------------
-add_executable(project-zero src/cli/main.c ${SOURCES})
-target_link_libraries(project-zero PRIVATE Threads::Threads m)
+add_executable(pz src/cli/main.c ${SOURCES})
+target_link_libraries(pz PRIVATE Threads::Threads m)
 
 # Portable multiversioning (mirrors the Makefile `dist` per-file ISA rules):
 # each SIMD kernel TU carries its own ISA; simd_dispatch.c stays at the baseline
@@ -408,7 +409,7 @@ if(PZ_DIST AND NOT MSVC)
         COMPILE_OPTIONS "-mavxvnni")
     set_source_files_properties(src/math/simd_dispatch.c src/core/calibration.c PROPERTIES
         COMPILE_DEFINITIONS "TN_FORCE_DISPATCH_ALL")
-    target_link_options(project-zero PRIVATE -static-libstdc++ -static-libgcc)
+    target_link_options(pz PRIVATE -static-libstdc++ -static-libgcc)
 endif()
 
 # ---------------------------------------------------------------------------

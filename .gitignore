@@ -1,5 +1,6 @@
 build/
 *.o
+/pz
 adaptive_ai_engine
 *.bin
 __pycache__/
@@ -54,6 +55,7 @@ test_moe_results.txt
 .DS_Store
 **/.DS_Store
 adaptive_ai_engine 2
+pz 2
 CMakeLists 2.txt
 Makefile 2
 *.log

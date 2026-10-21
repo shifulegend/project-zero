@@ -1,7 +1,16 @@
 # Change Trace — project-zero
 
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
-> Update after each meaningful sub-step. Last updated: 2026-10-19.
+> Update after each meaningful sub-step. Last updated: 2026-10-21.
+
+### 2026-10-21 — MoE decode vs llama.cpp (DeepSeek-V2-Lite Q4_K_S)
+- New: `transformer/moe_experts` (fused 2-dispatch experts), `math/q8_0_act` (Q8_0-activation
+  Q5_0/Q5_1/Q8_0 dots, `WEIGHT_TYPE_Q5_0/Q5_1/Q8_0`), Q4_K `vpdpwssd` kernel, raw Q4_K/Q6_K LM head
+  (`wcls_raw`), `load_proj_typed`, router gating/norm/scale from GGUF, `threadpool_dispatch_chunked`,
+  faster Q6_K kernel; fixed VNNI self-test. Test: `tests/test_moe_experts.c` (also in TSAN_TESTS).
+- Measured (Xeon 2.1 GHz, 4 vCPU, 64 tokens, runs with no disk re-reads; llama.cpp `-lm none`):
+  T=1 base 2.46-2.51 / new 4.34-4.58 / llama 3.17-3.31; T=2 4.42-4.49 / 7.06-7.35 / 5.81-6.09;
+  T=4 6.26-7.34 / 11.71-12.63 / 9.44-10.51 tok/s. RSS 12.0 -> 10.6 GB (llama 9.5).
 
 ### 2026-10-19 — 18-C decode-once Q4_K multi-token kernel
 - `gemm8_q4k_x8_q8k_tokens()`: weight-side unpack once per super-block, all verify tokens reuse it;

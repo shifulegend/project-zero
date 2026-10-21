@@ -1,7 +1,28 @@
 # Decision Log — project-zero
 
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
-> Read at session start. Last updated: 2026-10-19.
+> Read at session start. Last updated: 2026-10-21.
+
+### 2026-10-21 — MoE: fused two-dispatch expert FFN; integer activations for legacy quants; native-format LM head
+
+- Routed + shared experts of one MoE layer run in two thread-pool dispatches
+  (`transformer/moe_experts.c`): all gate/up rows, then all down rows summed straight into the
+  output, with dynamic row-chunk scheduling (`threadpool_dispatch_chunked`). Modelled on
+  llama.cpp's `ggml_compute_forward_mul_mat_id` (quantize activation once, only selected experts
+  touched). Anything without a kernel (ternary .bin experts, Q2_K/Q3_K, F32-dequantized shared
+  tensors) stays on the legacy path per layer; `PZ_MOE_FUSED=0` forces it.
+- Q5_0/Q5_1/Q8_0 weights use Q8_0-quantized activations + integer dots (`math/q8_0_act.c`) — the
+  same approximation llama.cpp makes; per-element rounding ~0.4 %, fused-vs-legacy relative L2
+  ~1e-3 in `tests/test_moe_experts.c`.
+- Quantized LM heads stay in their GGUF format (`TransformerWeights.wcls_raw`) unless
+  `--classifier` is passed; INT8/INT4 copies are only built from a BF16 table then.
+- Q4_K VNNI: a 256-bit `vpdpwssd` variant (fuses scale-madd+add) instead of a ZMM `vpdpbusd` +
+  `vpmulld` one: equal in L2, the ZMM version lost single-thread DRAM streaming (frequency
+  licence). Only ~3 % end to end; `PZ_Q4K_VNNI=0` / `PZ_Q8A_VNNI=0` select AVX2 for A/B.
+- Not done (measured/considered): x8 repack of expert tensors (llama.cpp's q4_K_8x8 gemv reached
+  the same per-op GB/s as our row kernel in a ggml microbench), dynamic chunking for every GEMV
+  (neutral over 6 rounds), copying experts to anon huge pages (+10 % in a microbench, but +9 GB anon
+  under a 14 GB memcg; `MADV_COLLAPSE` on the file mapping returns EINVAL here).
 
 ### 2026-10-19 — int4 KV is asymmetric (Q4_1-style), opt-in; chat templates overridable per request
 

@@ -63,3 +63,6 @@ offset_calculation_sequence 2.txt
 SOURCE_CODE_WITH_LINE_NUMBERS 2.txt
 VISUAL_WEIGHT_LOADING_FLOW 2.txt
 QUICK_SUMMARY 2.txt
+
+# Agent worktrees (local only)
+.claude/worktrees/

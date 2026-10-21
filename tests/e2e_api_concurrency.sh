@@ -13,7 +13,7 @@
 set -u
 
 MODEL="${1:?usage: e2e_api_concurrency.sh <model.gguf>}"
-BIN="./adaptive_ai_engine"
+BIN="./pz"
 PORT="${E2E_PORT:-8098}"
 
 n_pass=0

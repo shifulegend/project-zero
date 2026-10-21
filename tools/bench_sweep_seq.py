@@ -29,7 +29,7 @@ import time
 
 PROMPT = ("Explain what machine learning is and how neural networks work. Discuss supervised "
           "learning, unsupervised learning, and reinforcement learning with real-world examples of each.")
-ENGINE = "./adaptive_ai_engine"
+ENGINE = "./pz"
 
 
 def host_cpu():

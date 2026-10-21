@@ -14,8 +14,8 @@ def create_fuzzed_model(filename, vocab_size, dim):
         f.write(b"\x00" * 4096)
 
 # Overridable via PZ_ENGINE_BIN for CI jobs that build via CMake (which
-# outputs build_dir/project-zero, not the Makefile's ./adaptive_ai_engine).
-ENGINE_BIN = os.environ.get("PZ_ENGINE_BIN", "./adaptive_ai_engine")
+# outputs build_dir/pz, same name as the Makefile build).
+ENGINE_BIN = os.environ.get("PZ_ENGINE_BIN", "./pz")
 
 def run_fuzz_test(vocab_size, dim):
     filename = f"fuzz_{vocab_size}_{dim}.bin"

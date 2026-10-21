@@ -4,7 +4,7 @@
 #           then capture quality outputs for best settings with all 5 prompts
 
 set -euo pipefail
-ENGINE="./adaptive_ai_engine"
+ENGINE="./pz"
 CSV="benchmark_full_results.csv"
 REPORT_MD="BENCHMARK_FULL_REPORT.md"
 

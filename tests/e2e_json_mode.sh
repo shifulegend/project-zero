@@ -8,7 +8,7 @@
 set -u
 
 MODEL="${1:?usage: e2e_json_mode.sh <model.gguf>}"
-BIN="./adaptive_ai_engine"
+BIN="./pz"
 PORT="${E2E_PORT:-8099}"
 
 n_pass=0

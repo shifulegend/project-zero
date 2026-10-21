@@ -19,7 +19,7 @@
 set -e
 cd "$(dirname "$0")/.."
 
-ENGINE=./adaptive_ai_engine
+ENGINE=./pz
 MODEL=models/bitnet-b1.58-2B-4T.bin
 TOKENIZER=models/bitnet-b1.58-2B-4T_tokenizer_proper.bin
 THREADS=4
@@ -60,7 +60,7 @@ echo "  Threads  : $THREADS  (matches A6 — 4 physical cores, pre-E.2 auto-dete
 echo "  max_tokens: $MAX_TOKENS  (from appendix benchmark command)"
 echo "  temperature: 0.7  (CLI default — not explicitly passed)"
 echo "  top-p    : 0.9  (CLI default — not explicitly passed)"
-echo "  KV       : $(./adaptive_ai_engine --model $MODEL --tokenizer $TOKENIZER --prompt x --max-tokens 1 --threads $THREADS 2>&1 | grep -E 'KV Strategy|KV cache:' || echo 'see run output')"
+echo "  KV       : $(./pz --model $MODEL --tokenizer $TOKENIZER --prompt x --max-tokens 1 --threads $THREADS 2>&1 | grep -E 'KV Strategy|KV cache:' || echo 'see run output')"
 echo ""
 echo "─── A6 reference (2026-03-15, commit 1c892f5) ──────────────────"
 echo "  Prompt 1: The capital of France is          → 14.76 tok/s"

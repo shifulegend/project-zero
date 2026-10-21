@@ -26,11 +26,11 @@
 //
 // Example (one-shot):
 //   node tools/screenshots/cli/capture.mjs docs/design/screenshots/cli-repl.png \
-//     -- ./adaptive_ai_engine --model models/smollm2.gguf --color always --threads 2
+//     -- ./pz --model models/smollm2.gguf --color always --threads 2
 //
 // Example (REPL):
 //   PZ_CAPTURE_STDIN=$'Explain **bold** briefly\n/quit' \
-//     node tools/screenshots/cli/capture.mjs out.png -- ./adaptive_ai_engine --model models/smollm2.gguf
+//     node tools/screenshots/cli/capture.mjs out.png -- ./pz --model models/smollm2.gguf
 //
 // Requires: `script` (util-linux, present on this Linux environment),
 // the `playwright` package (global at /opt/node22/lib/node_modules/playwright

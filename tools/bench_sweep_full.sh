@@ -3,7 +3,7 @@
 # Output: CSV + human-readable report
 
 set -euo pipefail
-ENGINE="./adaptive_ai_engine"
+ENGINE="./pz"
 OUT_CSV="benchmark_results.csv"
 OUT_REPORT="BENCHMARK_REPORT.md"
 

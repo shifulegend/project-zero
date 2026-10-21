@@ -13,7 +13,7 @@
 set -u
 
 MODEL="${1:?usage: golden_regression.sh <model.gguf>}"
-BIN="./adaptive_ai_engine"
+BIN="./pz"
 THREADS_LIST="${GOLDEN_THREADS:-1 2 4}"
 SIMD_LIST="${GOLDEN_SIMD:-scalar avx2 avx512f vnni}"
 

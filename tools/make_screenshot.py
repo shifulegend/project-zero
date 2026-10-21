@@ -7,7 +7,7 @@ Usage:
         --input benchmark_results/pz_bf16_t4.txt \
         --output benchmark_results/screenshots/pz_bf16_t4.png \
         --title "Project Zero · BF16 · 4 threads" \
-        --command "./adaptive_ai_engine --model models/bitnet-b1.58-2B-4T.bin ..."
+        --command "./pz --model models/bitnet-b1.58-2B-4T.bin ..."
 """
 
 import argparse

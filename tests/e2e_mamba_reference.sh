@@ -7,7 +7,7 @@
 # Usage: tests/e2e_mamba_reference.sh <mamba.gguf>   (needs python3 + numpy)
 set -u
 MODEL="${1:?usage: e2e_mamba_reference.sh <mamba.gguf>}"
-OUT=$(./adaptive_ai_engine --model "$MODEL" --prompt "The capital of France is" \
+OUT=$(./pz --model "$MODEL" --prompt "The capital of France is" \
       --max-tokens 3 --temperature 0 --threads 1 --verbose 2>&1)
 TOKS=$(echo "$OUT" | grep -m1 "n_prompt=" | sed 's/.*tokens: //' | tr ' ' ',')
 REF=$(python3 tools/mamba_reference.py "$MODEL" "$TOKS" 2)

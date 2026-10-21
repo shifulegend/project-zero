@@ -458,7 +458,7 @@ def main():
     print(f'\nSummary:')
     print(f'  Vision encoder: {n_layers}L × {embed_dim}d × {n_heads}h, patch={patch_size}px')
     print(f'  Run with:')
-    print(f'    ./adaptive_ai_engine \\')
+    print(f'    ./pz \\')
     print(f'        --model  models/bitnet-b1.58-2B-4T.bin \\')
     print(f'        --tokenizer models/bitnet-b1.58-2B-4T_tokenizer_proper.bin \\')
     print(f'        --vision {vision_out} \\')

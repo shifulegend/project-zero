@@ -10,7 +10,7 @@
 set -u
 
 MODEL="${1:?usage: e2e_prompt_cache.sh <model.gguf>}"
-BIN="./adaptive_ai_engine"
+BIN="./pz"
 PORT="${E2E_PORT:-8099}"
 
 "$BIN" --model "$MODEL" --server --port "$PORT" --threads 4 >/tmp/pz_e2e_cache.log 2>&1 &

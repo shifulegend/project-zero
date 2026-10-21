@@ -32,7 +32,7 @@ except ImportError:
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ENGINE      = os.path.join(PROJECT_ROOT, "adaptive_ai_engine")
+ENGINE      = os.path.join(PROJECT_ROOT, "pz")
 MODEL       = os.path.join(PROJECT_ROOT, "models", "bitnet-b1.58-2B-4T.bin")
 TOKENIZER   = os.path.join(PROJECT_ROOT, "models", "bitnet-b1.58-2B-4T_tokenizer_proper.bin")
 PROMPT      = "Explain the difference between supervised and unsupervised learning in machine learning."

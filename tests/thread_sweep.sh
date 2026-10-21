@@ -6,7 +6,7 @@
 set -e
 cd "$(dirname "$0")/.."
 
-ENGINE=./adaptive_ai_engine
+ENGINE=./pz
 MODEL=models/bitnet-b1.58-2B-4T.bin
 TOKENIZER=models/bitnet-b1.58-2B-4T_tokenizer_proper.bin
 PROMPT="The speed of light is approximately"

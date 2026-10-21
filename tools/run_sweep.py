@@ -22,7 +22,7 @@ import time
 
 # ── paths ─────────────────────────────────────────────────────────────────────
 PROJECT       = "/home/ubuntu/project-zero"
-PZ            = f"{PROJECT}/adaptive_ai_engine"
+PZ            = f"{PROJECT}/pz"
 PZ_BITNET     = f"{PROJECT}/models/bitnet-b1.58-2B-4T.bin"
 PZ_BITNET_TOK = f"{PROJECT}/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin"
 PZ_SMOL       = f"{PROJECT}/models/SmolLM2-135M-Instruct-f16.gguf"

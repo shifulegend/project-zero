@@ -4,7 +4,7 @@
 # Reads an F16/F32 Mamba GGUF directly (no llama.cpp, no torch), runs the
 # same token ids through a straightforward Mamba-1 implementation and prints
 # the top-5 logits for each greedy step, for comparison with
-#   adaptive_ai_engine --model <m> --prompt ... --temperature 0 --verbose
+#   pz --model <m> --prompt ... --temperature 0 --verbose
 # (its "[DBG] step=N ... top5:[...]" lines).
 #
 # Usage: tools/mamba_reference.py <model.gguf> <comma-separated token ids> <n_gen>

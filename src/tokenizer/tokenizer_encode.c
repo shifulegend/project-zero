@@ -393,7 +393,29 @@ int tokenizer_encode(Tokenizer *t, const char *text, size_t prompt_len, int *tok
                 int dummy_id;
                 size_t mlen = match_special_token(t, scan, 0, rem, &dummy_id);
                 if (mlen == 0) {
-                    return -1; /* Unknown control token — reject */
+                    /* Not a flagged special. If it is nonetheless a real token
+                     * in this model's vocabulary — e.g. Falcon3's <|user|> /
+                     * <|assistant|>, emitted by the model's own chat template —
+                     * accept it. Reject only control tokens the model does not
+                     * know, which is what this injection guard is for. */
+                    const char *lim = text + prompt_len;
+                    const char *p2  = scan + 2;   /* past "<|" */
+                    while (p2 + 1 < lim && !(p2[0] == '|' && p2[1] == '>')) p2++;
+                    size_t toklen = (p2 + 1 < lim) ? (size_t)(p2 + 2 - scan) : 0;
+                    char tokbuf[128];
+                    int known = 0;
+                    if (toklen > 0 && toklen < sizeof(tokbuf)) {
+                        memcpy(tokbuf, scan, toklen);
+                        tokbuf[toklen] = '\0';
+                        /* Known if it is a real vocab token, or a control token
+                         * the model's own chat template emits (trusted by
+                         * construction). */
+                        known = tokenizer_lookup(t, tokbuf) >= 0 ||
+                                (t->chat_template && strstr(t->chat_template, tokbuf) != NULL);
+                    }
+                    if (!known) return -1; /* Unknown control token — reject */
+                    scan += toklen;
+                    continue;
                 }
                 scan += mlen;
                 continue;

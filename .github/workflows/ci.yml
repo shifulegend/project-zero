@@ -51,7 +51,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update -q
+          sudo apt-get update -q || { echo "apt-get update failed; dropping the runner's third-party Microsoft repo (unused) and retrying"; sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list /etc/apt/sources.list.d/*microsoft*; sudo apt-get update -q; }
           sudo apt-get install -y -q gcc clang make
 
       - name: Build (release)
@@ -112,7 +112,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update -q
+          sudo apt-get update -q || { echo "apt-get update failed; dropping the runner's third-party Microsoft repo (unused) and retrying"; sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list /etc/apt/sources.list.d/*microsoft*; sudo apt-get update -q; }
           sudo apt-get install -y -q gcc make python3
 
       - name: Build (release)
@@ -154,7 +154,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update -q
+          sudo apt-get update -q || { echo "apt-get update failed; dropping the runner's third-party Microsoft repo (unused) and retrying"; sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list /etc/apt/sources.list.d/*microsoft*; sudo apt-get update -q; }
           sudo apt-get install -y -q gcc make lcov
 
       - name: Generate coverage report

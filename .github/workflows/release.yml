@@ -45,7 +45,7 @@ jobs:
 
       - name: Install toolchain
         run: |
-          sudo apt-get update -q
+          sudo apt-get update -q || { echo "apt-get update failed; dropping the runner's third-party Microsoft repo (unused) and retrying"; sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list /etc/apt/sources.list.d/*microsoft*; sudo apt-get update -q; }
           sudo apt-get install -y -q gcc clang make file binutils
 
       - name: Verify — full test suite (gcc + clang, ASan/UBSan)

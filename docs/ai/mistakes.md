@@ -5,6 +5,16 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-10-22.
 
+### 2026-10-22 — CI jobs died in `apt-get update` on a broken runner repository
+
+- Two CI runs in a row (#142, #143) lost one job each before any test ran: `apt-get update`
+  failed because the runner image's third-party `packages.microsoft.com` list returned 403 ("no
+  longer signed"). Not our code, but it turns PRs red at random.
+- Correction: every runner `apt-get update` drops that unused list and retries once when the first
+  update fails (ci, nightly, release, security_audit workflows); a second failure still fails.
+- Prevention rule: CI must not depend on package sources it doesn't use; a repeat infrastructure
+  failure gets a robustness fix, not another re-run.
+
 ### 2026-10-22 — Shipped a per-model `--stop` tip instead of fixing end-of-turn detection
 
 - After verifying Falcon3-1.58bit I recommended `--stop ">>UNUSED_1<<"` (in PR/issue reply drafts)

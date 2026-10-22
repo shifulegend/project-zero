@@ -36,10 +36,6 @@ typedef struct {
     int eos_list[TN_TOKENIZER_MAX_EOG];
     int n_eos;
 
-    /* Chat-mode turn ends (tokenizer_set_chat_stops, 2026-10-22): 1 for every
-     * CONTROL token the active chat template never writes. NULL = raw mode. */
-    unsigned char *chat_stop;
-
     /* BPE pre-tokenization (tokenizer/pretokenize.h PretokType), from GGUF
      * tokenizer.ggml.pre; 0 = none (SentencePiece, legacy .bin tokenizers). */
     int pretok_type;
@@ -76,13 +72,18 @@ void tokenizer_collect_eog(Tokenizer *t, const int *ids, int n_ids, int require_
  * Falcon3-1.58bit ends turns with ">>UNUSED_1<<" though its metadata declares
  * "<|endoftext|>". Tokens a template uses inside answers (Llama-3.1's
  * <|python_tag|>) and USER_DEFINED added tokens (<think>, <tool_call>) stay
- * generatable. Call at the start of every generation with the template in
- * use, or NULL for raw prompts (then only the declared EOG set stops).
+ * generatable.
+ *
+ * Returns a malloc'd vocab_size bitmap (1 = ends the turn) owned by the
+ * caller -- one per generation, never stored in the shared Tokenizer, so
+ * concurrent generations with different templates cannot disturb each other
+ * (2026-10-22). NULL for raw prompts (template NULL) or when nothing applies.
  */
-void tokenizer_set_chat_stops(Tokenizer *t, const char *chat_template);
+unsigned char *tokenizer_chat_stops_new(const Tokenizer *t, const char *chat_template);
 
-/** 1 if `id` ends generation: declared EOS, the EOG set, or a chat stop. */
-int tokenizer_is_eog(const Tokenizer *t, int id);
+/** 1 if `id` ends generation: declared EOS, the EOG set, or a chat stop
+ *  (`chat_stops` from tokenizer_chat_stops_new; NULL = none). */
+int tokenizer_is_eog(const Tokenizer *t, int id, const unsigned char *chat_stops);
 
 /**
  * Free all tokenizer memory.

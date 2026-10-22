@@ -3,6 +3,14 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-22.
 
+### 2026-10-22 — GenSession: generation as a step-wise state machine (Phase 23 stage 2b, step 1)
+- `transformer/gen_session.{h,c}` (begin/input/consume/end) holds everything `generate_ex()`
+  did; `generate_ex()` is now a 6-line driver loop, so the coming parallel API scheduler runs the
+  same prompt, sampling, stop and stats code. Chat stops moved out of the shared Tokenizer
+  (`tokenizer_chat_stops_new`, `tokenizer_is_eog(tok, id, stops)`, `FSMState.chat_stops`); prompt
+  encode-failure message now says the prompt doesn't fit the context. Output byte-identical to the
+  previous binary on 12 cases (greedy, seeded sampling, JSON, stops, raw, penalties, system prompt).
+
 ### 2026-10-22 — README: two unsourced claims checked against history and re-measured
 - Dense claim "+32%/+4%/+15%" traced to the first 2026-06-21 SmolLM2-135M sweep (superseded by
   README's own best-of-3 table: +8/+2/−5/−4%). Re-measured same-host today (4-vCPU Xeon, best of 3,
@@ -17,7 +25,7 @@
   CHANGELOG, plan. `test_config_cmd` 39/39; live pty run with a real 2.2 GB download + verify.
 
 ### 2026-10-22 — Chat-mode end of turn from undeclared CONTROL tokens (Falcon3 `>>UNUSED_1<<`)
-- `tokenizer_set_chat_stops()` / `tokenizer_is_eog()` (tokenizer_load.c); every generation loop
+- `tokenizer_chat_stops_new()` / `tokenizer_is_eog()` (tokenizer_load.c; originally a setter on the Tokenizer, see GenSession entry); every generation loop
   uses `tokenizer_is_eog` (generate, spec_decode, fsm, reasoning, agent); `--ignore-eos` masks the
   chat stops too. `tests/test_chat_stops.c` (12). Falcon3 stops at "Paris" with no `--stop`;
   Qwen3 `<think>`, SmolLM2, golden, e2e unchanged.

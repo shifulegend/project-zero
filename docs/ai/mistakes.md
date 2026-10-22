@@ -5,6 +5,19 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-10-22.
 
+### 2026-10-22 — Per-generation state stored in the shared Tokenizer (chat stops)
+
+- The chat-mode stop set (2026-10-22) was a `Tokenizer.chat_stop` bitmap set by
+  `tokenizer_set_chat_stops()` before each generation. The Tokenizer is shared by every request;
+  with the planned parallel API slots, one chat request would rewrite another's stop set (a raw
+  completion running beside a chat request would start stopping on chat-only tokens, and vice
+  versa). Found while designing Phase 23 stage 2b, before any concurrent caller existed.
+- Correction: `tokenizer_chat_stops_new(tok, template)` returns a caller-owned set;
+  `tokenizer_is_eog(tok, id, stops)` takes it. Each generation (GenSession, spec_decode, the JSON
+  FSM via `FSMState.chat_stops`) owns and frees its own; the Tokenizer is read-only after load.
+- Prevention rule: shared model objects (Tokenizer, weights, config) are read-only after load;
+  anything that varies per request lives in the request's own state and is passed explicitly.
+
 ### 2026-10-22 — CI jobs died in `apt-get update` on a broken runner repository
 
 - Two CI runs in a row (#142, #143) lost one job each before any test ran: `apt-get update`

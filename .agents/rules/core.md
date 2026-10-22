@@ -20,7 +20,8 @@
 - GGUF stop tokens: `tokenizer_collect_eog()` (declared EOS/EOT/EOM + end-of-turn control
   tokens). Generation loops must check all of `tok->eos_list`, not just `eos_token_id`.
 - End of generation: always `tokenizer_is_eog()` (declared EOS + EOG set + chat-mode stops).
-  Chat generations call `tokenizer_set_chat_stops(tok, template)` first: a CONTROL token the
+  Chat generations own a `tokenizer_chat_stops_new(tok, template)` set (never stored in the
+  shared Tokenizer) and pass it to `tokenizer_is_eog`: a CONTROL token the
   template never writes ends the turn (Falcon3 `>>UNUSED_1<<`); raw prompts pass NULL.
 - Prompt-injection defence (2026-10-22): untrusted text -- chat message content, tool output,
   retrieved memories -- goes through `tokenizer_neutralize_control()` before it enters a prompt

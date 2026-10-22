@@ -3,6 +3,7 @@
 #define TN_GRAMMAR_MASK_SENTINEL (-1e30f)
 
 void fsm_init(FSMState *fsm) {
+    fsm->chat_stops = NULL;
     /* 2026-10-22: root mode -- output always starts with '{' or '[' and ends
      * at the matching bracket. The permissive any-value start let sampling at
      * high temperature open with a bare string ("{"...) and pad with
@@ -10,9 +11,9 @@ void fsm_init(FSMState *fsm) {
     json_grammar_init_root(&fsm->json);
 }
 
-static int is_eos_token(const Tokenizer *t, int token_id) {
+static int is_eos_token(const FSMState *fsm, const Tokenizer *t, int token_id) {
     /* Includes chat-mode turn ends, so JSON mode cannot stop early on one. */
-    return tokenizer_is_eog(t, token_id);
+    return tokenizer_is_eog(t, token_id, fsm->chat_stops);
 }
 
 /* Feeds `piece` through a scratch copy of `base`, returning 1 if every
@@ -38,7 +39,7 @@ void fsm_compute_token_mask(const FSMState *fsm, Tokenizer *t, int prev_token,
                              float *logits, int vocab_size) {
     int eos_ok = eos_is_acceptable(&fsm->json);
     for (int token_id = 0; token_id < vocab_size; token_id++) {
-        if (is_eos_token(t, token_id)) {
+        if (is_eos_token(fsm, t, token_id)) {
             if (!eos_ok) logits[token_id] = TN_GRAMMAR_MASK_SENTINEL;
             continue;
         }
@@ -49,7 +50,7 @@ void fsm_compute_token_mask(const FSMState *fsm, Tokenizer *t, int prev_token,
 }
 
 void fsm_advance(FSMState *fsm, Tokenizer *t, int prev_token, int token_id) {
-    if (is_eos_token(t, token_id)) return; /* terminates generation, not grammar-visible */
+    if (is_eos_token(fsm, t, token_id)) return; /* terminates generation, not grammar-visible */
     const char *piece = tokenizer_decode(t, prev_token, token_id);
     for (const char *p = piece; *p; p++) {
         json_grammar_step(&fsm->json, *p);

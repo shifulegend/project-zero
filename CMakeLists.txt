@@ -231,6 +231,7 @@ set(TRANSFORMER_SOURCES
     src/transformer/ffn.c
     src/transformer/forward.c
     src/transformer/generate.c
+    src/transformer/gen_session.c
     src/transformer/mla_attention.c
     src/transformer/moe_ffn.c
     src/transformer/moe_experts.c

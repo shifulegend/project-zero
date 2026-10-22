@@ -63,6 +63,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Fixed
 
+- Fix JSON mode (`--json`, `response_format: json_object`) sometimes starting with a bare string or padding with whitespace at high temperature: output now always starts with `{` or `[` and ends at the matching bracket.
 - Fix a nonexistent or unreadable `--model` path being reported only after the first-run hardware calibration, which can take minutes.
 - Fix a `SIGILL` crash on CPUs that advertise AVX-512 VBMI in CPUID but cannot execute it.
 - Fix the macOS build, broken by a Linux-only call in the disk-backed KV cache (`--kv-offload`).

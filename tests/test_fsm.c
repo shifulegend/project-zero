@@ -50,10 +50,11 @@ static void test_initial_mask_allows_value_starts_only(void) {
     for (int i = 0; i < TOK_VOCAB_SIZE; i++) logits[i] = 0.0f;
     fsm_compute_token_mask(&fsm, t, -1, logits, TOK_VOCAB_SIZE);
 
-    TEST_ASSERT(!MASKED(logits, TOK_LBRACE), "'{' allowed as a value start");
-    TEST_ASSERT(!MASKED(logits, TOK_QUOTE),  "'\"' allowed as a value start");
-    TEST_ASSERT(!MASKED(logits, TOK_ONE),    "'1' allowed as a value start");
-    TEST_ASSERT(!MASKED(logits, TOK_SPACE),  "leading whitespace allowed");
+    /* Root mode (2026-10-22): JSON-mode output always starts with '{' or '['. */
+    TEST_ASSERT(!MASKED(logits, TOK_LBRACE), "'{' allowed as the first token");
+    TEST_ASSERT(MASKED(logits, TOK_QUOTE),   "bare string NOT allowed at the root");
+    TEST_ASSERT(MASKED(logits, TOK_ONE),     "bare number NOT allowed at the root");
+    TEST_ASSERT(MASKED(logits, TOK_SPACE),   "leading whitespace NOT allowed");
     TEST_ASSERT(MASKED(logits, TOK_RBRACE),  "'}' NOT allowed before any '{'");
     TEST_ASSERT(MASKED(logits, TOK_A),       "'a' NOT a valid value start");
     TEST_ASSERT(MASKED(logits, TOK_COLON),   "':' NOT a valid value start");
@@ -112,6 +113,8 @@ static void test_full_object_via_constrained_sample(void) {
     for (int i = 0; i < TOK_VOCAB_SIZE; i++) logits[i] = 0.0f;
     fsm_compute_token_mask(&fsm, t, prev, logits, TOK_VOCAB_SIZE);
     TEST_ASSERT(!MASKED(logits, TOK_EOS), "EOS allowed once the JSON document is complete");
+    TEST_ASSERT(MASKED(logits, TOK_SPACE), "no trailing whitespace after the root value: only EOS");
+    TEST_ASSERT(MASKED(logits, TOK_LBRACE), "no second document after the root value");
 
     free_tiny_tokenizer(t);
 }

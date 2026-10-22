@@ -5,6 +5,20 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-10-22.
 
+### 2026-10-22 — JSON-mode e2e test passed or failed by luck (no seed; permissive root)
+
+- `tests/e2e_json_mode.sh` sampled at temperature 0.7/1.5 without `--seed`, so every CI run saw a
+  different output; the 1.5 case failed on run #131 and twice on PR #48 (passed on re-run 3).
+- Root cause in the engine, not just the test: the JSON grammar accepted *any* value at the root
+  plus surrounding whitespace, so at high temperature the model could open with a bare string
+  (`"{"…`, seeds 3/6/7 locally) or pad after the value until `max_tokens`; empty-text tokens were
+  also always allowed.
+- Correction: root mode (`json_grammar_init_root`, used by `fsm_init`): first byte `{` or `[`,
+  nothing after the closing bracket but EOS; empty-piece tokens masked; the test pins
+  `--seed ${JSON_SEED:-42}`. 40-seed sweep at temperature 1.5/2.0: 0 bad starts.
+- Prevention rule: any test that samples (temperature > 0) must pass a fixed seed; a re-run that
+  turns a failure green is a finding, not a fix.
+
 ### 2026-10-22 — Security-audit fuzzer red since its hardening: first-run calibration + a leak
 
 - After `tools/fuzz_config.py` stopped passing on a timeout (2026-10-21), the Independent Security

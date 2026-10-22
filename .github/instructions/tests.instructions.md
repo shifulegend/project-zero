@@ -16,3 +16,5 @@ applyTo: "tests/**"
 - `make test` builds the library as the `debug` (ASan/UBSan) variant, so engine code is sanitized
   too (2026-10-21); it replaces a release `./pz` — run `make release` again before benchmarking.
   The build stamp also tracks compiler and host ISA, so CPU/compiler changes force a clean rebuild.
+- Benchmark screenshots are real terminal sessions captured with `tools/screenshots/cli/capture.mjs`
+  (banner visible, numbers from that run) — never images rendered from logs (2026-10-22).

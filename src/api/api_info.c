@@ -215,6 +215,18 @@ char *api_config_json(const ApiContext *ctx) {
     if (ctx && ctx->prm && ctx->server_config.prm_model) jb_str(&jb, ctx->server_config.prm_model);
     else jb_raw(&jb, "null");
     jb_raw(&jb, ","); jb_key(&jb, "queue_size"); jb_int(&jb, ctx ? ctx->server_config.queue_size : 0);
+    /* Phase 23 stage 2b: requests served at once, what was asked for, and
+     * why fewer when the model or memory cannot do it. */
+    jb_raw(&jb, ","); jb_key(&jb, "parallel"); jb_raw(&jb, "{");
+    jb_key(&jb, "slots"); jb_int(&jb, ctx && ctx->parallel_slots > 0 ? ctx->parallel_slots : 1);
+    jb_raw(&jb, ","); jb_key(&jb, "requested"); jb_int(&jb, ctx ? ctx->server_config.parallel : 1);
+    jb_raw(&jb, ","); jb_key(&jb, "batch_tokens");
+    jb_int(&jb, ctx ? ctx->server_config.parallel_batch : PZ_PARALLEL_BATCH_DEFAULT);
+    jb_raw(&jb, ","); jb_key(&jb, "kv_budget_tokens"); jb_int(&jb, ctx ? ctx->parallel_kv_budget : 0);
+    jb_raw(&jb, ","); jb_key(&jb, "max"); jb_int(&jb, PZ_PARALLEL_MAX);
+    jb_raw(&jb, ","); jb_key(&jb, "batch_tokens_max"); jb_int(&jb, PZ_PARALLEL_BATCH_MAX);
+    jb_raw(&jb, ","); jb_key(&jb, "note"); jb_str(&jb, ctx ? ctx->parallel_note : NULL);
+    jb_raw(&jb, "}");
     /* Recurrent linear-attention state cannot resume from a partial prefix. */
     jb_raw(&jb, ","); jb_key(&jb, "prompt_cache");
     jb_bool(&jb, !(ctx && moe_is_recurrent(ctx->moe_cfg)));

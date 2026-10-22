@@ -11,3 +11,5 @@
   The build stamp also tracks compiler and host ISA, so CPU/compiler changes force a clean rebuild.
 - Any test that samples (temperature > 0) passes a fixed `--seed` (2026-10-22): a check that
   passes or fails by luck is broken; a re-run turning red green is a finding, not a fix.
+- Benchmark screenshots are real terminal sessions captured with `tools/screenshots/cli/capture.mjs`
+  (banner visible, numbers from that run) — never images rendered from logs (2026-10-22).

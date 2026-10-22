@@ -29,6 +29,18 @@
   $: sources = sourcesSummary(config);
   let title = null;
   $: if (title === null && config?.ui?.title) title = config.ui.title;
+  // Phase 23 stage 2b: how many chat requests the server answers at once
+  // (--parallel) and its batch size; saved for the next start like the title.
+  $: par = features.parallel ?? null;
+  let parallel = null;
+  let parallelBatch = null;
+  $: if (parallel === null && par) { parallel = par.requested; parallelBatch = par.batch_tokens; }
+  $: parallelChanges = par
+    ? [
+        ...(parallel !== par.requested ? [{ key: 'parallel', value: parallel }] : []),
+        ...(parallelBatch !== par.batch_tokens ? [{ key: 'parallel_batch', value: parallelBatch }] : []),
+      ]
+    : [];
   let saving = false;
   let saveMsg = '';
   let saveErr = '';
@@ -178,6 +190,23 @@
         </span>
       {:else}
         <span class="dim">Every server value is the built-in default.</span>
+      {/if}
+      {#if par}
+        <span class="dim">
+          Answers {par.slots} chat request{par.slots === 1 ? '' : 's'} at once{par.slots > 1 ? ', batched into one pass per token' : ''}{par.note ? ` (asked for ${par.requested}: ${par.note})` : ''}.
+        </span>
+      {/if}
+      {#if cfgInfo.writable && par}
+        <div class="row gap">
+          <NumberField label="Requests at once" bind:value={parallel} range={{ min: 1, max: par.max, step: 1 }}
+                       hint="More users served together; each one's reply gets a little slower. 1 = one at a time." />
+          <NumberField label="Tokens per batched pass" bind:value={parallelBatch}
+                       range={{ min: 1, max: par.batch_tokens_max, step: 1 }}
+                       hint="How much of waiting prompts is read per step while others are replying." />
+          <button class="link-btn" disabled={saving || !parallelChanges.length}
+                  on:click={() => saveAll(parallelChanges)}
+                  title="Write to {cfgInfo.path}; applies when the server restarts">Save for next start</button>
+        </div>
       {/if}
       {#if cfgInfo.writable}
         <label class="text">

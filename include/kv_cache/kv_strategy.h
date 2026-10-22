@@ -86,6 +86,15 @@ const char *kv_strategy_offload_dir(void);
 
 #define KV_DEFAULT_RAM_FRACTION 0.60f
 
+/* Bytes one context position costs in the KV cache (all layers, K + V) at
+ * the configured --kv-type. */
+tn_i64 kv_strategy_bytes_per_token(const Config *cfg, const MoEConfig *mc);
+
+/* Phase 23 (2026-10-22): how many positions the KV budget (--kv-ram-fraction
+ * of free_ram, or of free disk with --kv-offload) holds in total — the pool
+ * that parallel-serving slots share. 0 when unknown. */
+tn_i64 kv_strategy_budget_tokens(const Config *cfg, const MoEConfig *mc, tn_i64 free_ram);
+
 KVStrategyResult select_kv_strategy_ex(const Config *cfg, tn_i64 free_ram, const MoEConfig *mc,
                                        const KVStrategyOptions *opt);
 

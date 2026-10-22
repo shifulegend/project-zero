@@ -899,6 +899,8 @@ int main(int argc, char **argv) {
         api_ctx.server_config.best_of = args.best_of;
         api_ctx.server_config.queue_size = args.queue_size;
         api_ctx.server_config.queue_timeout_s = args.queue_timeout_s;
+        api_ctx.server_config.parallel = args.parallel;
+        api_ctx.server_config.parallel_batch = args.parallel_batch;
         gen_queue_set_max_waiting(&api_ctx.gen_queue, args.queue_size);
         api_ctx.server_config.best_of_max = args.best_of_max;
         api_ctx.server_config.prompt_cache_mb = args.prompt_cache_mb;

@@ -105,6 +105,11 @@ see `docs/RELEASING.md`).
   model) so static asset/UI serving isn't blocked behind an in-flight generation. Still binds
   loopback-only by default. Logic-level tests in `tests/test_api_server.c` plus
   `tests/test_cors.c`/`test_auth.c`/`test_metrics.c`/`test_cancel.c`/`test_openapi.c`.
+- **Parallel serving** (Phase 23 stage 2b, 2026-10-22): `--parallel N` runs plain chat requests
+  through `src/api/batch_scheduler.c` — one thread, N slots (RunState + prefix cache each), one
+  `transformer_forward_multi_ex()` pass per step across all of them, each request driven by the
+  same `transformer/gen_session` state machine `generate_ex()` uses. `GenQueue` units (capacity N)
+  admit requests; whole-engine requests (image, best-of, MCTS, cache reset) take all units.
 - **Generation settings** (Phase 22-UI, 2026-10-18): one `GenerationParams` value
   (`include/transformer/gen_params.h`) drives `generate_ex()` — sampler chain
   (`sampling/sampler_chain.h`: penalties, top-k, min-p, temperature, top-p), seed, JSON mode,

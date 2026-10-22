@@ -41,7 +41,7 @@ TernaryError generate_best_of(const Config *cfg, const TransformerWeights *w,
                               BestOfAbortFn abort_fn, BestOfResult *out) {
     if (!cfg || !w || !s || !tok || !gp || !out) return TN_ERR_INVALID_ARGS;
     if (n < 1) n = 1;
-    if (n > 64) n = 64;
+    if (n > BEST_OF_N_MAX) n = BEST_OF_N_MAX;
     memset(out, 0, sizeof(*out));
     out->chosen = -1;
 
@@ -71,7 +71,7 @@ TernaryError generate_best_of(const Config *cfg, const TransformerWeights *w,
             return TN_ERR_OOM;
         }
         double sc = best_of_score(&st, mode);
-        if (i < 64) out->scores[i] = sc;
+        if (i < BEST_OF_N_MAX) out->scores[i] = sc;
         out->n = i + 1;
         out->tokens_total += st.completion_tokens;
         /* A candidate that ended on its own (EOS / stop sequence) beats one

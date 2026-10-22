@@ -178,10 +178,18 @@ int gen_session_begin(GenSession *g, const Config *cfg, const TransformerWeights
                       RunState *s, const MoEConfig *mc, Tokenizer *tok, ThreadPool *tp,
                       const char *prompt, const GenerationParams *gp,
                       TokenCallback callback, void *userdata) {
+    if (gen_session_prepare(g, cfg, w, mc, tok, tp, prompt, gp, callback, userdata) != 0) return -1;
+    return gen_session_start(g, s, g->gp->prefix_cache, g->gp->prompt_store);
+}
+
+int gen_session_prepare(GenSession *g, const Config *cfg, const TransformerWeights *w,
+                        const MoEConfig *mc, Tokenizer *tok, ThreadPool *tp,
+                        const char *prompt, const GenerationParams *gp,
+                        TokenCallback callback, void *userdata) {
     memset(g, 0, sizeof(*g));
     if (!prompt) prompt = "";
     if (!gp) { gen_params_default(&g->gp_default); gp = &g->gp_default; }
-    g->cfg = cfg; g->w = w; g->s = s; g->mc = mc; g->tok = tok; g->tp = tp;
+    g->cfg = cfg; g->w = w; g->mc = mc; g->tok = tok; g->tp = tp;
     g->gp = gp; g->callback = callback; g->userdata = userdata;
     g->max_tokens = gp->max_tokens;
     g->json_mode = gp->json_mode;
@@ -226,9 +234,6 @@ int gen_session_begin(GenSession *g, const Config *cfg, const TransformerWeights
         fprintf(stderr, "\n");
     }
 
-    /* pos_offset: skip over any vision tokens already pre-filled in the KV cache */
-    g->pos_offset = s->current_pos;
-
     /* RNG: explicit seed (--seed / API "seed") for reproducible sampling,
      * else time-based. */
     rng_seed(&g->rng_state, gp->seed >= 0 ? (unsigned long long)gp->seed
@@ -241,6 +246,20 @@ int gen_session_begin(GenSession *g, const Config *cfg, const TransformerWeights
     if (sampler_penalties_active(g->ss) && g->max_tokens > 0)
         g->gen_history = (int *)malloc((size_t)g->max_tokens * sizeof(int));
 
+    return 0;
+}
+
+int gen_session_start(GenSession *g, RunState *s, PrefixCache *pcache, PromptStore *pstore) {
+    if (!g->prompt_tokens || g->started) return -1;
+    const Config *cfg = g->cfg;
+    const MoEConfig *mc = g->mc;
+    const GenerationParams *gp = g->gp;
+    int n_prompt = g->n_prompt;
+    g->s = s;
+
+    /* pos_offset: skip over any vision tokens already pre-filled in the KV cache */
+    g->pos_offset = s->current_pos;
+
     /* Initialize Sliding Window (pins the entire prompt) */
     sw_init(&s->sw, s->max_seq_len, n_prompt + g->pos_offset);
 
@@ -252,12 +271,12 @@ int gen_session_begin(GenSession *g, const Config *cfg, const TransformerWeights
      * always recomputed — its logits seed the first sample. Not valid after
      * a vision prefill (pos_offset > 0) or for recurrent linear-attention
      * layers, whose state cannot be rewound to a partial prefix. */
-    g->pcache = gp->prefix_cache;
+    g->pcache = pcache;
     /* Snapshots copy F32 KV rows; with --kv-type i8 only the live prefix cache applies.
      * 2026-10-18: also off under --remote-layers — a snapshot restores only the local
      * layers' KV, while each worker still holds the KV of the last prompt it saw. */
     g->pstore = (g->pcache && prompt_store_supported(mc) && s->key_cache && !dist_plan_active())
-                ? gp->prompt_store : NULL;
+                ? pstore : NULL;
     int start_step = 0;
     g->cache_eligible = g->pcache && g->pos_offset == 0 && !moe_is_recurrent(mc);
     if (g->pcache) {
@@ -297,6 +316,32 @@ int gen_session_input(const GenSession *g, int *token, int *pos) {
     return 1;
 }
 
+int gen_session_input_rows(const GenSession *g, int *tokens, int *pos, int max_rows) {
+    if (g->done || max_rows <= 0) return 0;
+    /* Prompt rows up to and including the last one (whose logits seed the
+     * first sample) can go in one pass; after that, one row per step. */
+    int n = 1;
+    if (g->step < g->n_prompt - 1) {
+        n = g->n_prompt - g->step;
+        int left = g->total_steps - g->step;
+        int room = g->cfg->seq_len - (g->step + g->pos_offset);
+        if (n > left) n = left;
+        if (n > room) n = room;
+        if (n > max_rows) n = max_rows;
+        if (n < 1) n = 1;
+    }
+    for (int k = 0; k < n; k++) {
+        int st = g->step + k;
+        tokens[k] = (st < g->n_prompt) ? g->prompt_tokens[st] : g->next;
+        pos[k] = st + g->pos_offset;
+    }
+    return n;
+}
+
+int gen_session_needs_logits(const GenSession *g) {
+    return !g->done && g->step >= g->n_prompt - 1;
+}
+
 int gen_session_consume(GenSession *g, float *logits) {
     if (g->done) return 0;
     const Config *cfg = g->cfg;
@@ -306,7 +351,7 @@ int gen_session_consume(GenSession *g, float *logits) {
     int abs_pos = step + g->pos_offset;
     int token = (step < n_prompt) ? g->prompt_tokens[step] : g->next;
 
-    if (!logits || (dist_plan_active() && dist_plan_active()->failed)) {
+    if ((!logits && step >= n_prompt - 1) || (dist_plan_active() && dist_plan_active()->failed)) {
         g->finish = GEN_FINISH_ERROR;   /* a remote layer range is unreachable */
         g->done = 1;
         return 0;

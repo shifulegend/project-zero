@@ -1,4 +1,5 @@
 #include "math/batched_matmul.h"
+#include "math/parallel_matmul.h"
 #include "math/simd_dispatch.h"
 #include "core/weights.h"
 #include <stdint.h>
@@ -22,57 +23,12 @@
 
 /* ── BF16 ────────────────────────────────────────────────────────────────── */
 
-typedef struct {
-    float        *out;
-    const float  *x;
-    const tn_u16 *w;
-    int n, d, n_tokens;
-} Bf16BatchArgs;
-
-static void matmul_bf16_batch_task(void *arg, int thread_id, int start, int end) {
-    (void)thread_id;
-    Bf16BatchArgs *a = (Bf16BatchArgs *)arg;
-
-    float *row_f32 = (float *)malloc((size_t)a->n * sizeof(float));
-    if (!row_f32) {
-        for (int i = start; i < end; i++) {
-            const tn_u16 *row = a->w + (size_t)i * a->n;
-            for (int k = 0; k < a->n_tokens; k++) {
-                const float *xk = a->x + (size_t)k * a->n;
-                float val = 0.0f;
-                for (int j = 0; j < a->n; j++) {
-                    tn_u32 bits = (tn_u32)row[j] << 16;
-                    float wval; memcpy(&wval, &bits, sizeof(wval));
-                    val += wval * xk[j];
-                }
-                a->out[(size_t)k * a->d + i] = val;
-            }
-        }
-        return;
-    }
-
-    for (int i = start; i < end; i++) {
-        const tn_u16 *row = a->w + (size_t)i * a->n;
-        for (int j = 0; j < a->n; j++) {
-            tn_u32 bits = (tn_u32)row[j] << 16;
-            memcpy(&row_f32[j], &bits, sizeof(float));
-        }
-        for (int k = 0; k < a->n_tokens; k++) {
-            const float *xk = a->x + (size_t)k * a->n;
-            a->out[(size_t)k * a->d + i] = tn_vec_dot(row_f32, xk, a->n);
-        }
-    }
-    free(row_f32);
-}
-
 void tn_matmul_bf16_batch(float *out, const float *x, const tn_u16 *w,
                            int n, int d, int n_tokens, ThreadPool *tp) {
-    Bf16BatchArgs args = { .out = out, .x = x, .w = w, .n = n, .d = d, .n_tokens = n_tokens };
-    if (!tp) {
-        matmul_bf16_batch_task(&args, 0, 0, d);
-        return;
-    }
-    threadpool_dispatch(tp, matmul_bf16_batch_task, &args, d);
+    /* 2026-10-22: the fused SIMD kernel in parallel_matmul.c (an AVX2 TU)
+     * replaces the convert-then-dot task below, which was ~20x slower than
+     * the single-token kernel at one row (Phase 23 batched decode). */
+    parallel_matmul_bf16_tokens(out, x, w, n, d, n_tokens, tp);
 }
 
 /* ── INT8, block-quantized (TN_CLS_QUANT_BLOCK elements/block) ────────────── */

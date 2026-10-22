@@ -1,0 +1,11 @@
+$ python3 tools/bench_parallel.py --model models/SmolLM2-1.7B-Instruct-Q4_K_M.gguf --parallel 1 4 8 --clients 1 4 8 --max-tokens 128 --threads 4
+
+model: SmolLM2-1.7B-Instruct-Q4_K_M.gguf   threads: 4   max_tokens: 128 (ignore_eos)
+
+parallel clients  aggregate tok/s  per-req tok/s mean lat s max lat s  vs --parallel 1
+--------------------------------------------------------------------------------------
+       1       1             13.3           13.3        9.6       9.6                -
+       1       4             12.7            6.5       25.3      40.2                -
+       1       8             13.1            4.4       44.2      78.3                -
+       4       4             29.8            7.5       17.1      17.2            2.34x
+       8       8             35.4            4.4       28.8      28.9            2.71x

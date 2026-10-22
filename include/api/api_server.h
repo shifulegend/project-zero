@@ -60,6 +60,12 @@ typedef struct {
      * --prompt-cache-mb). Lazily initialised with prefix_cache. */
     PromptStore     prompt_store;
     int             prompt_store_ready;
+    /* Phase 23 stage 2b: the --parallel scheduler (NULL = sequential) and
+     * what it ended up running: slots, and why fewer than requested. */
+    struct BatchScheduler *sched;
+    int             parallel_slots;
+    const char     *parallel_note;
+    long long       parallel_kv_budget;
 
     /* Server state (filled by api_server_start) */
     int   server_fd;            /* listening socket fd, -1 when stopped */

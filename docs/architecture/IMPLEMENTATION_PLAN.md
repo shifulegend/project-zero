@@ -2174,7 +2174,21 @@ Abstracts the forward pass so the engine can run both Transformer (Attention) an
 
 ---
 
-## PHASE 23: PagedAttention & Continuous Batching 🟡 stage 1 (FIFO admission queue) done 2026-10-18; stage 2a (multi-sequence forward) done 2026-10-19
+## PHASE 23: PagedAttention & Continuous Batching 🟡 stage 1 (FIFO admission queue) done 2026-10-18; stage 2a (multi-sequence forward) done 2026-10-19; stage 2b (GenSession + `--parallel N` scheduler) done 2026-10-22
+
+**Stage 2b as built (2026-10-22):** `transformer/gen_session.{h,c}` — one generation as a
+step-wise state machine (prepare / start / input_rows / consume / end); `generate_ex()` is a short
+driver over it. `api/batch_scheduler.{h,c}` — `--parallel N` (default 1): one thread, N slots
+(RunState + prefix cache; slot 0 is the server's own), one `transformer_forward_multi_ex()` pass per
+step (decode rows first, then prompt chunks up to `--parallel-batch` rows; prompt-only rows skip the
+classifier). `GenQueue` admits *units* (capacity N): plain chat = 1, image/best-of/MCTS/cache reset =
+all N. vAttention-style memory without a page table: slot KV commits lazily, all slots share
+max(one context, `--kv-ram-fraction` × free RAM) positions, idle slots release KV
+(`run_state_kv_release`) when room is needed, requests wait otherwise. `/v1/config
+features.parallel` (+ reason when the model cannot batch), `/metrics` slot gauges, Settings → Server
+defaults, `pz config parallel|parallel-batch`. Output is byte-identical to sequential serving
+(`tests/test_batch_scheduler.c`, `tests/e2e_parallel.sh`). **Open:** 23.4 shared-prefix page
+sharing between slots; batching for MoE/MLA/Qwen3-head_dim models.
 
 **Stage 2a as built (2026-10-19):** `transformer_forward_multi(tokens, pos_arr, states, n, …)`
 (`src/transformer/forward.c`) runs one token from each of `n` independent sequences (own

@@ -3,6 +3,16 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-22.
 
+### 2026-10-22 — Parallel serving: `--parallel N` (Phase 23 stage 2b, step 2)
+- New `api/batch_scheduler.{h,c}`; `transformer_forward_multi_ex` (logits row mask) +
+  `transformer_forward_multi_supported`; GenSession `prepare/start`, `input_rows`, `needs_logits`;
+  `run_state_kv_release` + `tn_mem_release`; `kv_strategy_bytes_per_token/budget_tokens`; GenQueue
+  units/capacity; multi-entry cancel registry + shutdown; server start/stop (drain), `/v1/config
+  features.parallel`, `/metrics` slot gauges, `pz config` `parallel`/`parallel-batch` (saveable from
+  Settings → Server defaults). Fixes: stream write failure, shutdown use-after-free, best-of-max range.
+- Tests: `test_batch_scheduler` (model-backed, TSan), `test_gen_queue` units, `test_cancel`
+  concurrency, `test_api_info`, `tests/e2e_parallel.sh` (7 checks).
+
 ### 2026-10-22 — GenSession: generation as a step-wise state machine (Phase 23 stage 2b, step 1)
 - `transformer/gen_session.{h,c}` (begin/input/consume/end) holds everything `generate_ex()`
   did; `generate_ex()` is now a 6-line driver loop, so the coming parallel API scheduler runs the

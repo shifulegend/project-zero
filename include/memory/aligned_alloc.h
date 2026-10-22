@@ -52,6 +52,16 @@ void *tn_aligned_calloc(size_t count, size_t elem_size, size_t alignment);
 void tn_mem_commit(void *p, size_t n);
 
 /**
+ * Return the whole pages inside [p, p+n) to the OS; they read back as zero
+ * and cost no RSS until written again (Linux MADV_DONTNEED on private
+ * anonymous memory). Partial head/tail pages are left untouched. Returns 1
+ * when pages were released, 0 when the platform cannot (contents then stay
+ * as they were). Phase 23 (2026-10-22): an idle parallel-serving slot gives
+ * its KV memory back this way.
+ */
+int tn_mem_release(void *p, size_t n);
+
+/**
  * Free memory allocated by tn_aligned_alloc or tn_aligned_calloc.
  * Safe to call with NULL.
  */

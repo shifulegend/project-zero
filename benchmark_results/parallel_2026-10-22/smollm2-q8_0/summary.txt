@@ -1,0 +1,11 @@
+$ python3 tools/bench_parallel.py --model models/smollm2-q8_0.gguf --parallel 1 4 8 --clients 1 4 8 --max-tokens 128 --threads 4
+
+model: smollm2-q8_0.gguf   threads: 4   max_tokens: 128 (ignore_eos)
+
+parallel clients  aggregate tok/s  per-req tok/s mean lat s max lat s  vs --parallel 1
+--------------------------------------------------------------------------------------
+       1       1             51.9           51.9        2.5       2.5                -
+       1       4             45.3           21.6        7.3      11.3                -
+       1       8             48.6           15.3       12.1      21.1                -
+       4       4            100.9           25.3        5.1       5.1            2.23x
+       8       8            116.8           14.7        8.7       8.8            2.40x

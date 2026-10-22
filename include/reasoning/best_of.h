@@ -16,6 +16,8 @@
 #include "transformer/generate.h"
 
 #define BEST_OF_MAX_DEFAULT 8
+/* Largest candidate count anywhere (flags, config schema, per-request cap). */
+#define BEST_OF_N_MAX 64
 
 typedef enum {
     BEST_OF_SCORE_MEAN_LOGPROB = 0, /* sum / tokens — default, length-fair */
@@ -25,7 +27,7 @@ typedef enum {
 typedef struct {
     int     n;            /* candidates actually generated */
     int     chosen;       /* index of the winner (-1 if none) */
-    double  scores[64];   /* score per candidate (first min(n, 64)) */
+    double  scores[BEST_OF_N_MAX]; /* score per candidate */
     int     tokens_total; /* completion tokens across all candidates */
     GenerationStats winner;
 } BestOfResult;
@@ -37,7 +39,7 @@ typedef int (*BestOfAbortFn)(void *userdata);
 double best_of_score(const GenerationStats *st, BestOfScore mode);
 
 /*
- * Runs n (>= 1, clamped to 64) candidates with the settings in *gp (whose
+ * Runs n (>= 1, clamped to BEST_OF_N_MAX) candidates with the settings in *gp (whose
  * seed, if >= 0, becomes seed + i per candidate), then streams the winning
  * text through callback. `gp->stats` (if set) receives the winner's stats.
  * Returns TN_OK, TN_ERR_OOM, or TN_ERR_INVALID_ARGS.

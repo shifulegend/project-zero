@@ -3,6 +3,28 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-10-21.
 
+### 2026-10-22 — Parallel serving (Phase 23 stage 2b): one scheduler thread, slots, shared KV budget
+
+- `--parallel N` (default 1 = unchanged sequential server). Plain chat requests go to
+  `api/batch_scheduler`: one thread, N slots (own RunState + prefix cache; slot 0 is the server's
+  existing state), one `transformer_forward_multi_ex()` pass per step over every active request.
+  Decode rows first, then prompt chunks (`--parallel-batch` rows per pass, default 128); prompt rows
+  that only fill the KV skip the classifier. Requests run the same GenSession code as the CLI, so
+  text is byte-identical to sequential serving (verified greedy + seeded, unit + e2e).
+- Admission: `GenQueue` became a FIFO of *units* (capacity N). Batched request = 1 unit; image,
+  best-of, tree search and cache reset take all N + `generation_mutex` (scheduler idle). Strict FIFO
+  so whole-engine requests are not starved; `--queue-size` / 429 semantics unchanged.
+- Memory: slot KV is committed lazily; all slots share max(one context, `--kv-ram-fraction` of free
+  RAM) positions. An idle slot's KV (and prefix cache) is released (`run_state_kv_release`) when a
+  new request needs room; a request waits when active ones hold it all. Chosen over llama.cpp's
+  fixed ctx/N split so a single long request still gets the full context.
+- Output: pieces are queued per request and written by the request's own thread, so a slow client
+  never stalls the batch. Cancel registry holds up to 64 ids (`PZ_PARALLEL_MAX`).
+- Unsupported (MoE, MLA, recurrent/SSM, linear attention, Qwen3 independent head_dim, distributed):
+  the server stays sequential and `/v1/config features.parallel.note` says why. Rejected for now:
+  per-request LoRA in a batch (all slots share the server adapter) and paged KV (23.1/23.2) — lazy
+  commit + release gives the memory benefit without a page table.
+
 ### 2026-10-22 — Guided setup (owner's Decision A) and the starter-model catalog
 
 - Owner: setup is for anyone who wants to use pz; workflow driven; each step gives a simple

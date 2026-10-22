@@ -5,6 +5,58 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-10-22.
 
+### 2026-10-22 — Benchmark screenshots rendered from log text: no brand banner, not the real session
+
+- The 2026-10-22 SmolLM2-135M head-to-head screenshots (commit 0ee11ae) were drawn from the logs
+  by `tools/make_sweep_screenshots.py` — a styled text box, without the Project Zero banner and
+  without the real terminal output. The owner flagged the missing logo; the 2026-07-17 entries
+  below already established that benchmark screenshots are real terminal sessions captured with
+  `tools/screenshots/cli/capture.mjs` (banner visible).
+- Correction: re-captured all 8 as real sessions of the same commands (`capture.mjs`); README
+  quotes those runs' own numbers next to the best-of-3 table. The parallel-serving benchmark
+  (`benchmark_results/parallel_2026-10-22/`) captures every configuration the same way, with
+  `tools/bench_parallel.py --show-server` so the server's banner and log are in the session.
+- Prevention rule: a benchmark screenshot is a `capture.mjs` capture of the run itself (banner,
+  command, output, tok/s); log-rendering scripts are not screenshots.
+
+### 2026-10-22 — The multi-sequence forward (Phase 23 stage 2a) was slower than running rows one by one
+
+- Stage 2a shipped `transformer_forward_multi` with an equivalence test only; nobody timed it. The
+  first parallel-serving benchmark gained just 1.25×. A step harness showed one batched row cost
+  3× a normal `transformer_forward` (SmolLM2-1.7B Q4_K_M, 4 threads: 169 vs 56 ms):
+  - LM head: `tn_matmul_bf16_batch` converted BF16 element by element and malloc'd per task —
+    136 ms vs 6.8 ms. Replaced by a fused SIMD kernel (`parallel_matmul_bf16_tokens`, AVX-512/
+    AVX2/scalar; each weight slice converted once, FMA'd into one accumulator per token).
+  - Q8_0/Q5_0/Q5_1 projections had no batched kernel (per-token fallback reads the matrix N
+    times). Added `parallel_matmul_q8a_tokens` (activations quantized once per token, each row
+    dotted against every token while in L1; same dot kernels, same per-token results).
+  - Attention read phase ran every row×head serially on one thread. Now heads go over the pool
+    (`rows_heads_task`, same `--attn-parallel-min-ctx` gate as the single-token path).
+  - (A 25× "KV write" cost in the harness was first-touch page faults; sessions reserve KV.)
+- Result: batched decode 2.3× (4 rows) / 2.8× (8 rows) faster than sequential on both SmolLM2
+  models; the scheduler uses `transformer_forward` when only one row is active.
+- Prevention rule: a path added "for speed" ships with a timing check against the path it
+  replaces, not only an equivalence test; batched variants are timed at 1 row too.
+
+### 2026-10-22 — Three serving bugs found while building --parallel (all fixed in the same pass)
+
+- Streaming replies ignored write failures: `streaming_token_callback` dropped
+  `sse_write_token()`'s error, so a client that disconnected kept the generation slot busy until
+  `max_tokens`. Now a failed write stops the generation.
+- Shutdown freed the model under a running generation: `api_server_stop()` returned while detached
+  handler threads were still generating, and `main()` then freed weights/tokenizer. Now stop marks
+  every generation cancelled (sticky `cancel_registry_shutdown`), waits until the generation queue
+  is empty, stops the scheduler thread, and handlers granted a slot after stop answer 503.
+- `pz config` schema allowed `best-of-max` up to 1024 while `--best-of-max` rejects > 64, so a saved
+  value made the server refuse to start (same class as the 2026-10-22 `repeat-last-n` entry). Both
+  now use `BEST_OF_N_MAX`; the new `parallel`/`parallel-batch` rows use `PZ_PARALLEL_*` likewise.
+- Also caught by TSan before commit: the new scheduler read slot 0's `kv_committed` while idle,
+  racing the sequential path that may use slot 0 then; and `cancel_state_init` left the new
+  `shutdown` flag uninitialised (ASan passed by luck).
+- Prevention rule: a schema range and its flag check share one constant; a background thread that
+  shares state with another path may only read it while it provably owns it (here: while one of
+  its own requests holds a queue unit).
+
 ### 2026-10-22 — Per-generation state stored in the shared Tokenizer (chat stops)
 
 - The chat-mode stop set (2026-10-22) was a `Tokenizer.chat_stop` bitmap set by

@@ -250,6 +250,27 @@ void run_state_kv_reserve(RunState *s, const Config *cfg, int n_pos) {
   s->kv_committed = n_pos;
 }
 
+int run_state_kv_release(RunState *s, const Config *cfg) {
+  if (!s || !cfg || s->kv_offload_base || s->kv_committed <= 0) return 0;
+  int n = s->kv_committed;
+  size_t rows = (size_t)s->max_seq_len * (size_t)cfg->n_layers * (size_t)cfg->n_kv_heads;
+  int ok;
+  if (s->kv_type != KV_TYPE_F32) {
+    if (!s->key_cache_q || !s->value_cache_q || !s->key_scale || !s->value_scale) return 0;
+    size_t rb = (size_t)s->kv_row_bytes, rs = (size_t)s->kv_row_scales;
+    ok = tn_mem_release(s->key_cache_q, rows * rb) & tn_mem_release(s->value_cache_q, rows * rb) &
+         tn_mem_release(s->key_scale, rows * rs * sizeof(float)) &
+         tn_mem_release(s->value_scale, rows * rs * sizeof(float));
+  } else {
+    if (!s->key_cache || !s->value_cache) return 0;
+    size_t bytes = rows * (size_t)config_head_dim(cfg) * sizeof(float);
+    ok = tn_mem_release(s->key_cache, bytes) & tn_mem_release(s->value_cache, bytes);
+  }
+  if (!ok) return 0;
+  s->kv_committed = 0;
+  return n;
+}
+
 void run_state_kv_prefetch_layer(const RunState *s, const Config *cfg, int layer, int n_pos) {
   if (!s || !s->kv_offload_base || layer < 0 || layer >= cfg->n_layers || n_pos <= 0) return;
   int hd = config_head_dim(cfg);

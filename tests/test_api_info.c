@@ -63,6 +63,16 @@ static void test_config_reflects_defaults_and_limits(void) {
     TEST_ASSERT(strstr(j, "\"max_tokens\":{\"min\":1,\"max\":1000") != NULL, "max_tokens range");
     TEST_ASSERT(strstr(j, "\"top_k\":{\"min\":0,\"max\":32000") != NULL, "top_k range = vocab");
     TEST_ASSERT_EQ(api_max_tokens_limit(&ctx), 1000, "explicit limit");
+    TEST_ASSERT(strstr(j, "\"parallel\":{\"slots\":1,\"requested\":1,\"batch_tokens\":128") != NULL,
+                "parallel: sequential by default, batch size published");
+    ctx.server_config.parallel = 4;
+    ctx.parallel_slots = 1;
+    ctx.parallel_note = "this model architecture runs one request at a time";
+    char *jp = api_config_json(&ctx);
+    TEST_ASSERT(jp && strstr(jp, "\"slots\":1,\"requested\":4") &&
+                strstr(jp, "\"note\":\"this model architecture runs one request at a time\""),
+                "parallel fallback: requested vs actual slots and the reason");
+    free(jp);
     free(ctx.server_config.ui_title);
     ctx.server_config.ui_title = strdup("project-zero");
     char *jl = api_config_json(&ctx);

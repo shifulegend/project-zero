@@ -381,15 +381,33 @@ TernaryError transformer_forward_batch(const int *tokens, int pos, int n_tokens,
  * sequences (see forward.h). Embedding, every weight matmul, the final norm
  * and the classifier are batched across rows; attention runs per row against
  * states[k]'s own KV. */
+int transformer_forward_multi_supported(const TransformerWeights *w, const MoEConfig *mc) {
+  if (!w || dist_plan_active() || w->q35_is_q2_0_model) return 0;
+  if (mc && (moe_is_recurrent(mc) || mc->is_moe || mc->has_mla || mc->has_linear_attn ||
+             mc->has_qk_norm || mc->is_ssm))
+    return 0;
+  return 1;
+}
+
 TernaryError transformer_forward_multi(const int *tokens, const int *pos_arr,
                                        RunState *const *states, int n_tokens,
                                        const Config *cfg, const TransformerWeights *w,
                                        SpecBatchScratch *sb, const MoEConfig *mc,
                                        ThreadPool *tp, float *logits_out) {
+  return transformer_forward_multi_ex(tokens, pos_arr, states, n_tokens, NULL,
+                                      cfg, w, sb, mc, tp, logits_out);
+}
+
+TernaryError transformer_forward_multi_ex(const int *tokens, const int *pos_arr,
+                                          RunState *const *states, int n_tokens,
+                                          const unsigned char *want_logits,
+                                          const Config *cfg, const TransformerWeights *w,
+                                          SpecBatchScratch *sb, const MoEConfig *mc,
+                                          ThreadPool *tp, float *logits_out) {
   if (!tokens || !pos_arr || !states || n_tokens <= 0 || !sb || !logits_out)
     return TN_ERR_INVALID_ARGS;
-  if (moe_is_recurrent(mc) || dist_plan_active() || (mc && mc->is_moe) || w->q35_is_q2_0_model)
-    return TN_ERR_UNSUPPORTED;
+  if (n_tokens > sb->n_tokens) return TN_ERR_INVALID_ARGS;
+  if (!transformer_forward_multi_supported(w, mc)) return TN_ERR_UNSUPPORTED;
   int dim = cfg->dim;
   for (int k = 0; k < n_tokens; k++) {
     if (states[k]->sw.window_size == 0) sw_init(&states[k]->sw, states[k]->max_seq_len, 0);
@@ -406,7 +424,20 @@ TernaryError transformer_forward_multi(const int *tokens, const int *pos_arr,
     err = ffn_forward_batch(states[0], sb, w, cfg, mc, l, n_tokens, tp);
     if (err != TN_OK) return err;
   }
-  forward_rows_logits(sb, w, cfg, n_tokens, tp, logits_out);
+  /* 2026-10-22: rows that only feed the KV cache (all but the last row of a
+   * prefill chunk) skip the final norm and classifier — move the wanted
+   * rows' hidden states to the front, in order, and run the head on those. */
+  int n_out = n_tokens;
+  if (want_logits) {
+    n_out = 0;
+    for (int k = 0; k < n_tokens; k++) {
+      if (!want_logits[k]) continue;
+      if (n_out != k)
+        memmove(sb->x + (size_t)n_out * dim, sb->x + (size_t)k * dim, (size_t)dim * sizeof(float));
+      n_out++;
+    }
+  }
+  if (n_out > 0) forward_rows_logits(sb, w, cfg, n_out, tp, logits_out);
   return TN_OK;
 }
 

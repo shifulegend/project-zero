@@ -88,7 +88,7 @@ static inline void tn_dense_matmul_dispatch_preq(float *out, const TnQ8KActBlock
  * tn_dense_matmul_dispatch() — `x` is [n_tokens][n] row-major, `out` is
  * [n_tokens][d] row-major (see include/math/batched_matmul.h).
  *
- * WEIGHT_TYPE_F16, F32, Q4_K and Q4_K_X8 (Phase 18-B) get real batched kernels
+ * WEIGHT_TYPE_F16, F32, Q4_K, Q4_K_X8, Q6_K and (2026-10-22) Q8_0/Q5_0/Q5_1 get real batched kernels
  * (each weight row read from RAM once, reused across all n_tokens
  * candidates). Q2_0 still falls back to n_tokens sequential single-token
  * calls through the exact same per-token dispatch above -- correct (matches
@@ -117,6 +117,14 @@ static inline void tn_dense_matmul_dispatch_batch(float *out, const float *x,
     if (wtype == WEIGHT_TYPE_Q4K) {
         parallel_matmul_q4k_tokens(out, x, (const uint8_t *)w, n, d, n_tokens, tp);
         return;
+    }
+    /* 2026-10-22 (Phase 23 batched decode): Q8_0/Q5_0/Q5_1 read each weight
+     * row once per batch as well. */
+    if (wtype == WEIGHT_TYPE_Q8_0 || wtype == WEIGHT_TYPE_Q5_0 || wtype == WEIGHT_TYPE_Q5_1) {
+        int gt = wtype == WEIGHT_TYPE_Q8_0 ? GGUF_TYPE_Q8_0
+               : wtype == WEIGHT_TYPE_Q5_0 ? GGUF_TYPE_Q5_0 : GGUF_TYPE_Q5_1;
+        if (parallel_matmul_q8a_tokens(out, x, (const uint8_t *)w, gt, n, d, n_tokens, tp) == 0)
+            return;
     }
     if (wtype == WEIGHT_TYPE_Q4K_X8) {
         int n_blocks = n / 256;

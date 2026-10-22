@@ -78,12 +78,33 @@ int gen_session_begin(GenSession *g, const Config *cfg, const TransformerWeights
                       const char *prompt, const GenerationParams *gp,
                       TokenCallback callback, void *userdata);
 
+/* The two halves of begin, for schedulers that pick the RunState after
+ * seeing the prompt: prepare renders and tokenizes (no RunState touched;
+ * returns -1 when nothing can be generated), start binds the session to s
+ * and reuses cached prefix K/V from pcache/pstore (either may be NULL).
+ * begin(s) == prepare + start(s, gp->prefix_cache, gp->prompt_store). */
+int gen_session_prepare(GenSession *g, const Config *cfg, const TransformerWeights *w,
+                        const MoEConfig *mc, Tokenizer *tok, ThreadPool *tp,
+                        const char *prompt, const GenerationParams *gp,
+                        TokenCallback callback, void *userdata);
+int gen_session_start(GenSession *g, RunState *s, PrefixCache *pcache, PromptStore *pstore);
+
 /* 1 and the token/position to forward next, or 0 when the session is done. */
 int gen_session_input(const GenSession *g, int *token, int *pos);
 
+/* Batched form: up to max_rows consecutive rows to forward in one pass (a
+ * run of prompt tokens during prefill, else one row). Returns the count;
+ * feed each row's result to gen_session_consume() in order. */
+int gen_session_input_rows(const GenSession *g, int *tokens, int *pos, int max_rows);
+
+/* 1 when the next row consumed needs its logits (the last prompt row and
+ * every generated row); prompt rows before it only fill the KV cache. */
+int gen_session_needs_logits(const GenSession *g);
+
 /* Consumes the logits of the forward pass for gen_session_input()'s token:
  * samples, checks end of generation and stop sequences, delivers text to the
- * callback. Returns 1 to continue, 0 when finished. */
+ * callback. logits may be NULL while !gen_session_needs_logits(). Returns 1
+ * to continue, 0 when finished. */
 int gen_session_consume(GenSession *g, float *logits);
 
 /* Flushes, saves the prompt snapshot, fills stats and frees the session. */

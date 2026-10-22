@@ -54,4 +54,10 @@ int tn_q8_0_act_vnni_ok(void);
 int parallel_matmul_q8a(float *out, const float *x, const uint8_t *w,
                         int gguf_type, int n, int d, ThreadPool *tp);
 
+/* Multi-token form: x [n_tokens][n] -> out [n_tokens][d]. Each weight row is
+ * read once for all tokens (same per-token results as parallel_matmul_q8a).
+ * Returns -1 on unsupported type/shape or allocation failure. */
+int parallel_matmul_q8a_tokens(float *out, const float *x, const uint8_t *w,
+                               int gguf_type, int n, int d, int n_tokens, ThreadPool *tp);
+
 #endif /* TN_Q8_0_ACT_H */

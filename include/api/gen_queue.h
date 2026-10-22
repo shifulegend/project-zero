@@ -12,19 +12,29 @@
  * waiter that times out or whose client disconnects leaves the list without
  * disturbing the order of the others. Routes that must never block (static,
  * metrics, cancel, health) never touch this.
+ *
+ * Stage 2b (2026-10-22): the queue admits up to `capacity` units at once.
+ * With --parallel N a batched chat request takes 1 unit (one scheduler
+ * slot) and a request that needs the whole engine (image input, best-of,
+ * tree search, cache reset) takes all N. Grants stay strictly FIFO: a
+ * waiter at the head that needs more units than are free holds back the
+ * ones behind it, so whole-engine requests are never starved. Capacity 1
+ * (the default) is the original single-slot behaviour.
  */
 
 #include <pthread.h>
 
 typedef struct GenWaiter {
     struct GenWaiter *next;
+    int units;
     int granted;
 } GenWaiter;
 
 typedef struct {
     pthread_mutex_t mu;
     pthread_cond_t  cv;
-    int        busy;         /* the generation slot is held */
+    int        capacity;     /* units that may be held at once (>= 1) */
+    int        in_use;       /* units held now */
     GenWaiter *head, *tail;
     int        n_waiting;
     int        max_waiting;  /* 0 = no queue (reject when busy) */
@@ -45,6 +55,10 @@ void gen_queue_init(GenQueue *q, int max_waiting);
 void gen_queue_destroy(GenQueue *q);
 void gen_queue_set_max_waiting(GenQueue *q, int max_waiting);
 
+/* Units available at once (clamped to >= 1). Set before serving starts. */
+void gen_queue_set_capacity(GenQueue *q, int capacity);
+int  gen_queue_capacity(GenQueue *q);
+
 /* Take the slot now if it is free and nobody is waiting; never blocks. */
 GenQueueResult gen_queue_try_acquire(GenQueue *q);
 
@@ -56,6 +70,16 @@ GenQueueResult gen_queue_acquire(GenQueue *q, int timeout_ms,
 
 /* Hand the slot to the next waiter (or free it). */
 void gen_queue_release(GenQueue *q);
+
+/* The same for `units` units (clamped to [1, capacity]); the plain
+ * functions above take one unit. */
+GenQueueResult gen_queue_try_acquire_n(GenQueue *q, int units);
+GenQueueResult gen_queue_acquire_n(GenQueue *q, int units, int timeout_ms,
+                                   GenQueueWaitFn on_wait, void *userdata);
+void gen_queue_release_n(GenQueue *q, int units);
+
+/* Snapshot of how many units are held. */
+int gen_queue_in_use(GenQueue *q);
 
 /* Snapshot of how many requests are waiting. */
 int gen_queue_waiting(GenQueue *q);

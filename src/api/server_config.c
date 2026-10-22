@@ -24,6 +24,8 @@ void server_config_init(ServerConfig *sc) {
     sc->best_of = 1;
     sc->queue_size = 0;
     sc->queue_timeout_s = 120;
+    sc->parallel = 1;
+    sc->parallel_batch = PZ_PARALLEL_BATCH_DEFAULT;
     sc->best_of_max = BEST_OF_MAX_DEFAULT;
 }
 

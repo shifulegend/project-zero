@@ -28,6 +28,8 @@ static const struct { const char *json, *key; } g_map[] = {
     { "system_prompt",      "system-prompt" },
     { "stop",               "stop" },
     { "ui_title",           "ui-title" },
+    { "parallel",           "parallel" },
+    { "parallel_batch",     "parallel-batch" },
 };
 #define N_MAP ((int)(sizeof(g_map) / sizeof(g_map[0])))
 

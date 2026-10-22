@@ -6,10 +6,14 @@ Adapter for the API-layer decisions in `docs/ai/decision-log.md` (Phase 22) and
 - Hand-rolled HTTP/1.1 over raw sockets — no external HTTP library. Loopback-only by default.
 - CORS (`--cors`/`--cors-origin`) and API-key auth (`--api-key`) are both **off by default** —
   don't change this default; it exists so loopback experimentation stays open.
-- Only one `generate_with_callback` runs at a time, serialized by `ApiContext.generation_mutex`
-  (via `ctx->gen_queue`: a second concurrent chat request gets `429` by default, or waits in FIFO
-  order with `--queue-size N` — streaming waiters get `: queued N` comments). All other routes
-  (static assets, `/metrics`, `/docs`, `/health`, cancel) must never touch that mutex.
+- Generation admission goes through `ctx->gen_queue`, a FIFO of units (capacity = `--parallel`
+  slots, default 1). A plain chat request takes 1 unit and runs in `api/batch_scheduler` (Phase 23
+  stage 2b: one thread, per-slot RunState/prefix cache, one batched forward per step); image input,
+  best-of, tree search and cache reset take **all** units plus `ApiContext.generation_mutex`, so the
+  scheduler is idle while they use `ctx->run_state` (slot 0). No free unit → `429`, or FIFO wait
+  with `--queue-size N` (streaming waiters get `: queued N` comments). All other routes (static
+  assets, `/metrics`, `/docs`, `/health`, cancel) must never take a unit or that mutex. The
+  scheduler may read slot state only while one of its own requests holds a unit.
 - The web UI bundle (`src/api/webui_bundle_generated.c`) is **generated and committed** — never
   hand-edit it; edit `webui/src` and run `make webui-bundle`.
 - Image uploads (`image_url` content parts) decode via `src/api/data_url.c` and run through
@@ -20,6 +24,8 @@ Adapter for the API-layer decisions in `docs/ai/decision-log.md` (Phase 22) and
   (see the 2026-07-15 mistakes.md entry: four real bugs hid behind that label).
 - `signal(SIGPIPE, SIG_IGN)` is required in `api_server_start()` — any client disconnect mid-write
   otherwise kills the whole process.
+- `api_server_stop()` cancels every generation (`cancel_registry_shutdown`), waits for the queue
+  to drain and stops the scheduler before returning — `main()` frees the model right after.
 - `api_server_stop()` must call `shutdown(ctx->server_fd, SHUT_RDWR)` **before** `close()` — a
   bare `close()` from another thread does not reliably wake a concurrent blocking `accept()` on
   Linux (confirmed by an actual hang, see the 2026-07-16 mistakes.md entry). `--server` mode's

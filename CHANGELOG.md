@@ -51,6 +51,7 @@ section becomes the version's entry and is published as its GitHub release notes
 - Add opt-in CORS (`--cors`, `--cors-origin`) and API-key auth (`--api-key`), `/metrics`, OpenAPI docs at `/docs` and request cancellation.
 - Add `GET /v1/config`, publishing server defaults, valid ranges and feature flags.
 - Add a FIFO generation queue (`--queue-size`, `--queue-timeout`).
+- Add parallel serving (`--parallel N`, `--parallel-batch N`): up to N chat requests generate at once, batched into one forward pass per token for dense attention models, with per-slot KV memory taken from a shared budget; `/v1/config`, `/metrics` and Settings → Server defaults show and save it. With 4 concurrent clients aggregate throughput rises from 45 to 101 tok/s (SmolLM2-135M Q8_0) and from 12.7 to 29.8 tok/s (SmolLM2-1.7B Q4_K_M) on a 4-vCPU Xeon at 4 threads.
 - Add graceful shutdown on Ctrl+C/SIGTERM in `--server` mode.
 - Add distributed pipeline inference over TCP (`--remote-layers`, `--rpc-worker`).
 - Add notify-only update checks (`--check-update`, `GET /v1/update`, `--no-update-check`, `--update-*`).
@@ -86,6 +87,9 @@ section becomes the version's entry and is published as its GitHub release notes
 - Fix a saved calibration overriding the automatically chosen SIMD tier.
 - Fix the DRAM bandwidth probe under-reporting about 3× and hardware ceilings using fixed BitNet-2B sizes for every model.
 - Fix release builds silently linking objects compiled for a different build variant.
+- Fix a streaming API reply continuing to generate after its client disconnected, holding the generation slot until `max_tokens`.
+- Fix stopping the server (Ctrl+C/SIGTERM) while a request was generating: the generation now stops before the model is unloaded instead of running on freed memory.
+- Fix `pz config set best-of-max` accepting values up to 1024 that `--best-of-max` then rejects at startup (the limit is 64 in both).
 
 ### Security
 

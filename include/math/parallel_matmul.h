@@ -79,6 +79,11 @@ void parallel_ternary_matmul_packed_preq(float *out, const float *x, const tn_u8
 void parallel_matmul_bf16(float *out, const float *x, const tn_u16 *w,
                            int n, int d, ThreadPool *tp);
 
+/* Multi-token BF16 matmul: x [n_tokens][n] -> out [n_tokens][d], each weight
+ * row streamed once for all tokens (Phase 23 batched decode). */
+void parallel_matmul_bf16_tokens(float *out, const float *x, const tn_u16 *w,
+                                 int n, int d, int n_tokens, ThreadPool *tp);
+
 /**
  * Parallel float32 matrix-vector multiplication.
  * Used when weights are stored as regular float32 (non-ternary fallback path).

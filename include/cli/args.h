@@ -108,6 +108,8 @@ typedef struct {
     char  *plan_layers;        /* --plan-layers GB,GB,...: print a RAM split    */
     int    queue_size;         /* --queue-size <N>: waiting chat requests (0)   */
     int    queue_timeout_s;    /* --queue-timeout <s>: max wait (120)           */
+    int    parallel;           /* --parallel <N>: chat requests served at once (1) */
+    int    parallel_batch;     /* --parallel-batch <N>: rows per batched pass (128) */
     int    best_of;            /* --best-of <N>: candidates, keep most likely (1) */
     int    best_of_max;        /* --best-of-max <N>: per-request cap (server, 8) */
     /* Phase 30: step-level MCTS (reasoning/mcts.h) and an optional PRM judge. */

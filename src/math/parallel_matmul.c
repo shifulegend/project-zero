@@ -413,6 +413,83 @@ void parallel_matmul_bf16(float *out, const float *x, const tn_u16 *w,
     threadpool_dispatch(tp, matmul_bf16_task, &args, d);
 }
 
+/* ── BF16 multi-token matmul (Phase 23 batched decode, 2026-10-22) ─────────
+ * x [n_tokens][n] -> out [n_tokens][d]. Each 8/16-wide slice of a weight row
+ * is converted from BF16 once and FMA'd into one accumulator per token, for
+ * tiles of BF16_TOK_TILE tokens -- the LM head (dim x vocab, the largest
+ * matmul per token) streams from memory once per batch. The previous batched
+ * path (batched_matmul_classifier.c) converted each row element by element
+ * and ran ~20x slower than the single-token kernel above at one row. */
+
+#define BF16_TOK_TILE 4
+
+typedef struct {
+    float *out;
+    const float *x;
+    const tn_u16 *w;
+    int n, d, n_tokens;
+} ParallelMatmulBF16TokArgs;
+
+static inline float bf16_to_f32(tn_u16 h) {
+    tn_u32 bits = (tn_u32)h << 16;
+    float f; __builtin_memcpy(&f, &bits, sizeof(f));
+    return f;
+}
+
+static void matmul_bf16_tokens_task(void *arg, int thread_id, int start, int end) {
+    (void)thread_id;
+    const ParallelMatmulBF16TokArgs *a = (const ParallelMatmulBF16TokArgs *)arg;
+    const int n = a->n;
+    for (int i = start; i < end; i++) {
+        const tn_u16 *row = a->w + (size_t)i * n;
+        for (int k0 = 0; k0 < a->n_tokens; k0 += BF16_TOK_TILE) {
+            int nt = a->n_tokens - k0 < BF16_TOK_TILE ? a->n_tokens - k0 : BF16_TOK_TILE;
+            const float *xs[BF16_TOK_TILE];
+            for (int t = 0; t < BF16_TOK_TILE; t++)
+                xs[t] = a->x + (size_t)(k0 + (t < nt ? t : 0)) * n;
+            float sum[BF16_TOK_TILE] = { 0 };
+            int j = 0;
+#if TN_HAS_AVX512
+            __m512 acc[BF16_TOK_TILE];
+            for (int t = 0; t < BF16_TOK_TILE; t++) acc[t] = _mm512_setzero_ps();
+            for (; j + 15 < n; j += 16) {
+                __m512 wv = _mm512_castsi512_ps(_mm512_slli_epi32(
+                    _mm512_cvtepu16_epi32(_mm256_loadu_si256((const __m256i *)&row[j])), 16));
+                for (int t = 0; t < BF16_TOK_TILE; t++)
+                    acc[t] = _mm512_fmadd_ps(wv, _mm512_loadu_ps(&xs[t][j]), acc[t]);
+            }
+            for (int t = 0; t < BF16_TOK_TILE; t++) sum[t] = _mm512_reduce_add_ps(acc[t]);
+#elif TN_HAS_AVX2
+            __m256 acc[BF16_TOK_TILE];
+            for (int t = 0; t < BF16_TOK_TILE; t++) acc[t] = _mm256_setzero_ps();
+            for (; j + 7 < n; j += 8) {
+                __m256 wv = _mm256_castsi256_ps(_mm256_slli_epi32(
+                    _mm256_cvtepu16_epi32(_mm_loadu_si128((const __m128i *)&row[j])), 16));
+                for (int t = 0; t < BF16_TOK_TILE; t++)
+                    acc[t] = _mm256_fmadd_ps(wv, _mm256_loadu_ps(&xs[t][j]), acc[t]);
+            }
+            for (int t = 0; t < BF16_TOK_TILE; t++) {
+                __m128 s4 = _mm_add_ps(_mm256_castps256_ps128(acc[t]), _mm256_extractf128_ps(acc[t], 1));
+                s4 = _mm_add_ps(s4, _mm_movehl_ps(s4, s4));
+                sum[t] = _mm_cvtss_f32(_mm_add_ss(s4, _mm_movehdup_ps(s4)));
+            }
+#endif
+            for (; j < n; j++) {
+                float wv = bf16_to_f32(row[j]);
+                for (int t = 0; t < BF16_TOK_TILE; t++) sum[t] += wv * xs[t][j];
+            }
+            for (int t = 0; t < nt; t++) a->out[(size_t)(k0 + t) * a->d + i] = sum[t];
+        }
+    }
+}
+
+void parallel_matmul_bf16_tokens(float *out, const float *x, const tn_u16 *w,
+                                 int n, int d, int n_tokens, ThreadPool *tp) {
+    ParallelMatmulBF16TokArgs args = { out, x, w, n, d, n_tokens };
+    if (!tp) { matmul_bf16_tokens_task(&args, 0, 0, d); return; }
+    threadpool_dispatch(tp, matmul_bf16_tokens_task, &args, d);
+}
+
 /* ── INT8 classifier matmul ─────────────────────────────────────────────────
  *
  * Block-wise INT8 weights: TN_CLS_QUANT_BLOCK-element blocks, each with its

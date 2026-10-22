@@ -5,7 +5,8 @@
 void gen_queue_init(GenQueue *q, int max_waiting) {
     pthread_mutex_init(&q->mu, NULL);
     pthread_cond_init(&q->cv, NULL);
-    q->busy = 0;
+    q->capacity = 1;
+    q->in_use = 0;
     q->head = q->tail = NULL;
     q->n_waiting = 0;
     q->max_waiting = max_waiting > 0 ? max_waiting : 0;
@@ -22,13 +23,33 @@ void gen_queue_set_max_waiting(GenQueue *q, int max_waiting) {
     pthread_mutex_unlock(&q->mu);
 }
 
-GenQueueResult gen_queue_try_acquire(GenQueue *q) {
+void gen_queue_set_capacity(GenQueue *q, int capacity) {
     pthread_mutex_lock(&q->mu);
+    q->capacity = capacity > 0 ? capacity : 1;
+    pthread_mutex_unlock(&q->mu);
+}
+
+int gen_queue_capacity(GenQueue *q) {
+    pthread_mutex_lock(&q->mu);
+    int c = q->capacity;
+    pthread_mutex_unlock(&q->mu);
+    return c;
+}
+
+static int clamp_units(const GenQueue *q, int units) {
+    return units < 1 ? 1 : (units > q->capacity ? q->capacity : units);
+}
+
+GenQueueResult gen_queue_try_acquire_n(GenQueue *q, int units) {
+    pthread_mutex_lock(&q->mu);
+    units = clamp_units(q, units);
     GenQueueResult r = GEN_QUEUE_FULL;
-    if (!q->busy && !q->head) { q->busy = 1; r = GEN_QUEUE_OK; }
+    if (!q->head && q->in_use + units <= q->capacity) { q->in_use += units; r = GEN_QUEUE_OK; }
     pthread_mutex_unlock(&q->mu);
     return r;
 }
+
+GenQueueResult gen_queue_try_acquire(GenQueue *q) { return gen_queue_try_acquire_n(q, 1); }
 
 static int position_of(const GenQueue *q, const GenWaiter *w) {
     int pos = 1;
@@ -53,11 +74,32 @@ static long long now_ms(void) {
     return (long long)ts.tv_sec * 1000LL + ts.tv_nsec / 1000000;
 }
 
+/* Grant units to waiters from the head, in order, while they fit. */
+static void grant_waiters(GenQueue *q) {
+    int granted = 0;
+    while (q->head && q->in_use + q->head->units <= q->capacity) {
+        GenWaiter *w = q->head;
+        q->head = w->next;
+        if (!q->head) q->tail = NULL;
+        q->n_waiting--;
+        q->in_use += w->units;
+        w->granted = 1;
+        granted = 1;
+    }
+    if (granted) pthread_cond_broadcast(&q->cv);
+}
+
 GenQueueResult gen_queue_acquire(GenQueue *q, int timeout_ms,
                                  GenQueueWaitFn on_wait, void *userdata) {
+    return gen_queue_acquire_n(q, 1, timeout_ms, on_wait, userdata);
+}
+
+GenQueueResult gen_queue_acquire_n(GenQueue *q, int units, int timeout_ms,
+                                   GenQueueWaitFn on_wait, void *userdata) {
     pthread_mutex_lock(&q->mu);
-    if (!q->busy && !q->head) {
-        q->busy = 1;
+    units = clamp_units(q, units);
+    if (!q->head && q->in_use + units <= q->capacity) {
+        q->in_use += units;
         pthread_mutex_unlock(&q->mu);
         return GEN_QUEUE_OK;
     }
@@ -65,7 +107,7 @@ GenQueueResult gen_queue_acquire(GenQueue *q, int timeout_ms,
         pthread_mutex_unlock(&q->mu);
         return GEN_QUEUE_FULL;
     }
-    GenWaiter me = { NULL, 0 };
+    GenWaiter me = { NULL, units, 0 };
     if (q->tail) q->tail->next = &me; else q->head = &me;
     q->tail = &me;
     q->n_waiting++;
@@ -79,7 +121,12 @@ GenQueueResult gen_queue_acquire(GenQueue *q, int timeout_ms,
             pthread_mutex_unlock(&q->mu);
             int stop = on_wait(pos, userdata);
             pthread_mutex_lock(&q->mu);
-            if (stop && !me.granted) { unlink_waiter(q, &me); result = GEN_QUEUE_ABORTED; break; }
+            if (stop && !me.granted) {
+                unlink_waiter(q, &me);
+                grant_waiters(q);   /* it may have been holding back smaller requests */
+                result = GEN_QUEUE_ABORTED;
+                break;
+            }
             if (me.granted) break;
         }
         long long wake = now_ms() + 1000;
@@ -88,6 +135,7 @@ GenQueueResult gen_queue_acquire(GenQueue *q, int timeout_ms,
         pthread_cond_timedwait(&q->cv, &q->mu, &ts);
         if (!me.granted && deadline && now_ms() >= deadline) {
             unlink_waiter(q, &me);
+            grant_waiters(q);
             result = GEN_QUEUE_TIMEOUT;
             break;
         }
@@ -96,19 +144,21 @@ GenQueueResult gen_queue_acquire(GenQueue *q, int timeout_ms,
     return result;
 }
 
-void gen_queue_release(GenQueue *q) {
+void gen_queue_release(GenQueue *q) { gen_queue_release_n(q, 1); }
+
+void gen_queue_release_n(GenQueue *q, int units) {
     pthread_mutex_lock(&q->mu);
-    GenWaiter *next = q->head;
-    if (next) {
-        q->head = next->next;
-        if (!q->head) q->tail = NULL;
-        q->n_waiting--;
-        next->granted = 1;         /* slot passes straight to it; busy stays 1 */
-        pthread_cond_broadcast(&q->cv);
-    } else {
-        q->busy = 0;
-    }
+    q->in_use -= clamp_units(q, units);
+    if (q->in_use < 0) q->in_use = 0;
+    grant_waiters(q);              /* units pass straight to the waiters in order */
     pthread_mutex_unlock(&q->mu);
+}
+
+int gen_queue_in_use(GenQueue *q) {
+    pthread_mutex_lock(&q->mu);
+    int n = q->in_use;
+    pthread_mutex_unlock(&q->mu);
+    return n;
 }
 
 int gen_queue_waiting(GenQueue *q) {

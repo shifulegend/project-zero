@@ -7,10 +7,17 @@
  * http_server.c decoupled from CLI argument parsing.
  */
 
+#include "api/cancel.h"
 #include "transformer/gen_params.h"
 #include "reasoning/mcts_options.h"
 
 #define SERVER_CORS_MAX_ORIGINS 16
+
+/* Phase 23 stage 2b (2026-10-22): --parallel / --parallel-batch bounds and
+ * defaults (the cancel registry holds one entry per parallel request). */
+#define PZ_PARALLEL_MAX            CANCEL_MAX_ACTIVE
+#define PZ_PARALLEL_BATCH_DEFAULT  128
+#define PZ_PARALLEL_BATCH_MAX      4096
 
 typedef struct {
     int   enabled;                          /* --cors */
@@ -59,6 +66,8 @@ typedef struct {
     int              prompt_cache_min_tokens; /* --prompt-cache-min-tokens: shortest stored sequence */
     int              queue_size;      /* --queue-size: requests that may wait for the slot (0 = 429) */
     int              queue_timeout_s; /* --queue-timeout: seconds a queued request waits */
+    int              parallel;        /* --parallel: chat requests served at once (1 = sequential) */
+    int              parallel_batch;  /* --parallel-batch: rows per batched forward pass */
     int              best_of;     /* --best-of: default candidates per request (1 = off) */
     int              best_of_max; /* --best-of-max: per-request cap */
     int              chat_format; /* --chat-format: -1 = auto (from vocabulary), else ChatTemplateType;

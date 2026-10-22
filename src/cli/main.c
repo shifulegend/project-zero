@@ -208,6 +208,25 @@ int main(int argc, char **argv) {
 
     printf("Project Zero Engine %s — Auto-Tuned Hardware\n", PZ_VERSION_STR);
 
+    /* Detect model format by reading the 4-byte magic number, without a
+     * full mmap (load_gguf_model() below does its own mapped_file_open() for
+     * the GGUF case; the native case opens its own mf directly below) —
+     * a plain 4-byte read is all this decision needs. Done before the
+     * hardware probe and first-run calibration (2026-10-22) so a wrong
+     * --model path fails at once instead of after a minutes-long sweep. */
+    bool is_gguf = false;
+    {
+        FILE *magic_f = fopen(args.model_path, "rb");
+        if (!magic_f) {
+            fprintf(stderr, "Failed to open model file: %s\n", args.model_path);
+            return 1;
+        }
+        uint32_t file_magic = 0;
+        size_t n = fread(&file_magic, 1, sizeof(file_magic), magic_f);
+        fclose(magic_f);
+        is_gguf = (n == sizeof(file_magic) && file_magic == GGUF_MAGIC);
+    }
+
     /* ── SIMD backend selection ─────────────────────────────────────────── */
     /* CLI --simd override takes precedence over calibration and auto-detect.
      * Order: --simd flag > TN_FORCE_BACKEND env > calibration cache > auto */
@@ -231,12 +250,19 @@ int main(int argc, char **argv) {
     if (args.calibrate) {
         /* User explicitly requested calibration */
         tn_calibrate(&calib, hw);
-        tn_calibration_save(&calib);
+        /* A sanitizer build measures 5-20x slower than release: never let
+         * it overwrite the cache release builds read (2026-10-22). */
+        if (!TN_SANITIZED) tn_calibration_save(&calib);
         have_calib = true;
     } else {
         /* Try to load cached calibration */
         have_calib = tn_calibration_load(&calib, hw);
-        if (!have_calib) {
+        if (!have_calib && TN_SANITIZED) {
+            /* 2026-10-22: the first-run sweep took >2 min under ASan on a
+             * fresh CI runner (the fuzzer counted it as a hang) and would
+             * save meaningless timings. Auto-detected defaults instead. */
+            printf("[Calibration] Skipped: sanitizer build (timings not representative)\n");
+        } else if (!have_calib) {
             /* First run or hardware changed — auto-calibrate */
             printf("[Calibration] First run on this hardware — calibrating...\n");
             tn_calibrate(&calib, hw);
@@ -306,19 +332,7 @@ int main(int argc, char **argv) {
      * full mmap (load_gguf_model() below does its own mapped_file_open() for
      * the GGUF case; the native case opens its own mf directly below) —
      * a plain 4-byte read is all this decision needs. */
-    bool is_gguf = false;
-    {
-        FILE *magic_f = fopen(args.model_path, "rb");
-        if (!magic_f) {
-            fprintf(stderr, "Failed to open model file: %s\n", args.model_path);
-            threadpool_destroy(tp);
-            return 1;
-        }
-        uint32_t file_magic = 0;
-        size_t n = fread(&file_magic, 1, sizeof(file_magic), magic_f);
-        fclose(magic_f);
-        is_gguf = (n == sizeof(file_magic) && file_magic == GGUF_MAGIC);
-    }
+    /* (is_gguf was decided before calibration, see above.) */
 
     tn_progress_stage(2, 4, "Loading weights...", stdout_is_tty);
 

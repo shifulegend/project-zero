@@ -202,6 +202,12 @@ int pz_config_command(int argc, char **argv) {
 
 int pz_config_prepare_argv(int argc, char **argv, char ***out_argv) {
     static PzConfig cfg;      /* values referenced by the returned argv: process lifetime */
+    /* The returned array is owned here and freed on the next call; holding it
+     * in a static keeps it reachable, so LeakSanitizer stays quiet on every
+     * exit path of main() (2026-10-22: the fuzzer flagged it as a leak). */
+    static char **owned;
+    free(owned);
+    owned = NULL;
     *out_argv = argv;
     int skip = 0;
     const char *ne = getenv("PZ_NO_CONFIG");
@@ -214,15 +220,17 @@ int pz_config_prepare_argv(int argc, char **argv, char ***out_argv) {
         filtered[keep++] = argv[i];
     }
     filtered[keep] = NULL;
-    if (skip) { *out_argv = filtered; return keep; }
+    *out_argv = owned = filtered;
+    if (skip) return keep;
     char path[1024];
-    if (pz_config_init(&cfg) != 0) { *out_argv = filtered; return keep; }
+    pz_config_free(&cfg);     /* no-op on first use (static: zeroed) */
+    if (pz_config_init(&cfg) != 0) return keep;
     if (pz_config_path(path, sizeof(path)) == 0) pz_config_load(&cfg, path, warn_stderr);
     pz_config_apply_env(&cfg, warn_stderr);
     char **merged = NULL;
     int n = pz_config_merge_argv(&cfg, keep, filtered, &merged);
-    if (n < 0) { *out_argv = filtered; return keep; }
+    if (n < 0) return keep;
     free(filtered);
-    *out_argv = merged;
+    *out_argv = owned = merged;
     return n;
 }

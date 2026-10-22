@@ -30,8 +30,9 @@ int pz_config_wizard(PzConfig *c, FILE *in, FILE *out, const char *const *model_
 /* Loads the config file + PZ_* environment and returns argv with those
  * settings placed before the user's flags (see pz_config_merge_argv). With
  * --no-config anywhere in argv, or PZ_NO_CONFIG=1, nothing is loaded and the
- * flag is removed. The strings the returned argv points to stay valid for the
- * life of the process; the array itself is malloc'd (free() it when done). Returns the new argc (argv unchanged on error). */
+ * flag is removed. The returned argv and its strings are owned by this module
+ * and stay valid until the next call (do not free them). Returns the new argc
+ * (argv unchanged on error). */
 int pz_config_prepare_argv(int argc, char **argv, char ***out_argv);
 
 #endif /* PZ_CLI_CONFIG_CMD_H */

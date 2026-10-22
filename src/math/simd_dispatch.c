@@ -167,6 +167,8 @@ const char *tn_simd_init(void) {
     int force_vnni256 = force && strcmp(force, "vnni256") == 0;
     /* force_vnni is the default; listed for clarity */
     /* int force_vnni = force && strcmp(force, "vnni") == 0; */
+    /* Unused when the build has no SIMD tiers (e.g. CMake without -m flags). */
+    (void)force_avx2; (void)force_avx512f; (void)force_vnni256;
 
     const TnCpuFeatures *cpu = tn_cpu_features_detect();
 

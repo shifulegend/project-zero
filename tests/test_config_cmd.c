@@ -76,13 +76,11 @@ static void test_prepare_argv_no_config(void) {
     int n = pz_config_prepare_argv(4, argv, &out);
     TEST_ASSERT_EQ(n, 3, "--no-config removed, env ignored");
     TEST_ASSERT(n == 3 && strcmp(out[1], "--prompt") == 0 && out[3] == NULL, "argv intact");
-    free(out);
     char *argv2[] = { "pz", "--prompt", "hi", NULL };
     setenv("PZ_CONFIG", "/nonexistent/pz.toml", 1);
     n = pz_config_prepare_argv(3, argv2, &out);
     TEST_ASSERT(n == 5 && strcmp(out[1], "--threads") == 0 && strcmp(out[2], "2") == 0 &&
                 strcmp(out[3], "--prompt") == 0, "env value placed before user flags");
-    free(out);
     unsetenv("PZ_THREADS");
     unsetenv("PZ_CONFIG");
 }

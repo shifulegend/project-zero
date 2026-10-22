@@ -1,7 +1,12 @@
 # Change Trace — project-zero
 
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
-> Update after each meaningful sub-step. Last updated: 2026-10-21.
+> Update after each meaningful sub-step. Last updated: 2026-10-22.
+
+### 2026-10-22 — Security-audit fuzzer fix
+- `TN_SANITIZED` (core/platform.h); `main.c` opens the model before the hardware probe and skips
+  first-run calibration (and any save) in sanitizer builds; `pz_config_prepare_argv` owns its
+  returned argv (LeakSanitizer). Fuzzer on a fresh-HOME CMake ASan build: 2m16s → 0.97s, clean.
 
 ### 2026-10-21 — Phase 40.1/40.2: `pz config`
 - `config/pz_config` + `cli/config_cmd`, main dispatch + argv merge, usage text, CMake sources,

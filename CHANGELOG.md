@@ -63,6 +63,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Fixed
 
+- Fix a nonexistent or unreadable `--model` path being reported only after the first-run hardware calibration, which can take minutes.
 - Fix a `SIGILL` crash on CPUs that advertise AVX-512 VBMI in CPUID but cannot execute it.
 - Fix the macOS build, broken by a Linux-only call in the disk-backed KV cache (`--kv-offload`).
 - Fix oversized buffer requests on macOS and Windows getting the process killed instead of failing with an out-of-memory error.

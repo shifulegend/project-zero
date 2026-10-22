@@ -3,7 +3,25 @@
 > Canonical, append-at-top (newest first). Read this at the start of every session.
 > Add an entry **immediately** when a mistake, false assumption, regression, or avoidable
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
-> Last updated: 2026-10-21.
+> Last updated: 2026-10-22.
+
+### 2026-10-22 — Security-audit fuzzer red since its hardening: first-run calibration + a leak
+
+- After `tools/fuzz_config.py` stopped passing on a timeout (2026-10-21), the Independent Security
+  Audit failed on every push: "engine still running after 60s on a corrupt model (hang)".
+- Root cause 1: on a host with no `~/.project-zero/calibration.bin` (every fresh CI runner), `main()`
+  ran the first-run SIMD/thread calibration sweep before even opening the model — 2 min 12 s
+  under ASan -O0, and the meaningless timings were saved to the cache release builds read.
+  Root cause 2: `pz_config_prepare_argv()` (Phase 40.2, mine) returned a malloc'd argv that `main()`
+  never freed; LeakSanitizer reported it on every exit path.
+- Detection: reproduced with the workflow's exact CMake ASan build and an empty `HOME` (with my
+  own `HOME` the run took 0.2 s, which is why local runs looked fine).
+- Correction: sanitizer builds (`TN_SANITIZED`, core/platform.h) skip the automatic calibration and
+  never save one; the model file is opened before the hardware probe so a bad path fails at once;
+  `prepare_argv` keeps the array it returns. Fuzzer: 2 min 16 s → 1 s, no sanitizer report.
+  Also silenced three unused-variable warnings in `simd_dispatch.c` on SIMD-less (CMake) builds.
+- Prevention rule: reproduce CI with CI's build *and* CI's clean environment (empty `HOME`, no
+  caches); a local cache can hide minutes of first-run work.
 
 ### 2026-10-21 — Benchmark contaminated by my own concurrent work
 

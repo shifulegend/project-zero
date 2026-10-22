@@ -14,6 +14,8 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-22
+
 ### Changed
 
 - **Breaking:** Rename the binary to `pz` (was `adaptive_ai_engine`); `pz --version` prints `Project Zero <version>`.
@@ -28,7 +30,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Deprecated
 
-- Deprecate the `adaptive_ai_engine` name: `make` and the release archive still provide it as a symlink to `pz` that prints a notice; it is removed in the release after the next one.
+- Deprecate the `adaptive_ai_engine` name: `make` and the release archive still provide it as a symlink to `pz` that prints a notice; replaced by `pz` and removed in v0.3.0.
 
 ### Added
 
@@ -120,5 +122,6 @@ _First release with a prebuilt, portable x86-64 Linux binary (`adaptive_ai_engin
 - Fix wrong value-cache indexing in attention.
 - Fix the sampling RNG being re-seeded on every call.
 
-[Unreleased]: https://github.com/shifulegend/project-zero/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/shifulegend/project-zero/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/shifulegend/project-zero/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/shifulegend/project-zero/releases/tag/v0.1.0

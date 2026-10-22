@@ -25,6 +25,8 @@ OpenAI-compatible HTTP API. Build: `Makefile` (primary) + `CMakeLists.txt`. See 
   under `[Unreleased]` in `CHANGELOG.md` per `docs/ai/changelog-guidance.md`, installer +
   `pz config` schema updated for any new/changed setting (DoD #6), small commit checkpoints.
 - Public repo: never commit secrets. Keep ASan/UBSan green.
+- Published releases are immutable — fixes ship as a new version; old notes only gain a dated
+  notice. See `docs/RELEASING.md` § Maintaining published releases.
 - No AI signature or attribution (commit trailers, code comments, etc.) unless the user
   explicitly asks for it that time — see `docs/ai/commit-log-guidance.md`.
 - Third-party skill plugins **superpowers** and **mattpocock-skills** are used (per-tool install commands in `docs/ai/tool-sync-policy.md`); repo rules override them — see `docs/ai/tool-sync-policy.md` § Third-party skill plugins.

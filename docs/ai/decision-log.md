@@ -3,6 +3,19 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-10-21.
 
+### 2026-10-22 — Release v0.1.0 triage (first use of the release-maintenance rules)
+
+- v0.1.0 (tag `4fd4627`, prerelease, 26 downloads, asset `adaptive_ai_engine-0.1.0-x86_64-linux.tar.gz`)
+  contains code later fixed for: the agent tool sandbox (symlink escape, `PATH` hijacking, exit-code
+  race; reachable through the REPL's `/agent`), prompt injection through chat messages (reachable
+  through `--server`), the VNNI self-test that disabled VNNI kernels (performance only). Not
+  affected: `--static-dir` traversal and the VBMI `SIGILL` (code not in 0.1.0).
+- Decision: v0.1.0 is not modified (immutable). `[Unreleased]` already holds a release's worth of
+  tested work including all these fixes, so **v0.2.0 is the fix release** (owner cuts it); once
+  published, v0.1.0's notes get a dated "superseded by v0.2.0 — security fixes" notice, and the
+  owner decides on GitHub Security Advisories for the two security items (drafts in the owner
+  report). No 0.1.1 backport (pre-1.0, SECURITY.md: latest release only).
+
 ### 2026-10-22 — Prompt injection: neutralise control tokens in untrusted text (owner: "fix it")
 
 - Chat message content, tool output and retrieved memories are untrusted; CONTROL special-token

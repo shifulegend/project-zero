@@ -13,3 +13,6 @@ applyTo: "docs/**,**/*.md"
   under `## [Unreleased]` in `CHANGELOG.md` in the same commit (Keep a Changelog sections, order
   Changed/Deprecated/Removed/Added/Fixed/Security; `**Breaking:**` prefix + what to do; deprecations
   name replacement + removal release; perf claims carry numbers). `tools/changelog.py check` must pass.
+- **Releases** (`docs/RELEASING.md` § Maintaining published releases): published releases are
+  immutable (no asset replacement, tag moves or note rewrites — fixes ship as a new version);
+  triage every landed fix against the latest release; security fixes via a private advisory.

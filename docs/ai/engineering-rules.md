@@ -110,6 +110,13 @@ A change is done only when:
   workaround only when an environment blocks ref deletion; delete them too once unblocked.
 - Don't commit build artifacts, downloaded models, or transient logs (`wget-log`, `*stdout.log`).
 
+## Releases (standing rule, added 2026-10-22)
+- Published releases are immutable: never replace assets, move a tag or rewrite notes; fixes ship
+  as a new version; old notes only get a dated notice added (superseded / known issues /
+  advisory). Every landed fix is triaged against the latest (supported) release — security,
+  data loss or crash on supported hardware → a release within `SECURITY.md`'s timeline.
+  Full rules: **`docs/RELEASING.md` § Maintaining published releases**.
+
 ## Security / safety constraints
 - **Updates are notify-only** (Phase 38): never download or replace the binary without signed
   release metadata; network checks are opt-out-able, off in CI, HTTPS-only via argv (no shell),

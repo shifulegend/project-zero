@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-22.
 
+### 2026-10-22 — Standing release-maintenance rules; v0.1.0 triage
+- `docs/RELEASING.md` § Maintaining published releases (immutability, notice-only note edits,
+  fix triage, advisories, yanking, supported versions, pre/post-release checks, deprecations);
+  engineering-rules § Releases; docs adapters; `SECURITY.md` supported versions; CLAUDE.md summary.
+  v0.1.0 triage recorded in decision-log.
+
 ### 2026-10-22 — Prompt-injection fix (Decision B)
 - `tokenizer_neutralize_control()` + placeholder decoding in `tokenizer_encode`, old reject guard
   removed (supersedes PR #44's relaxation, merged first so the owner's merge of #48 stays clean);

@@ -4,8 +4,13 @@
 
 | Version | Supported |
 |---|---|
+| Latest release | ✅ Yes — fixes ship as a new release |
 | Latest `master` | ✅ Yes |
-| Older commits | ❌ No — please update to latest |
+| Older releases / commits | ❌ No — please update to the latest release (pre-1.0: no backports) |
+
+Published releases are never modified; a fix always arrives as a new version, and affected
+releases get a notice in their release notes (see `docs/RELEASING.md` § Maintaining published
+releases).
 
 ## Reporting a Vulnerability
 

@@ -5,6 +5,14 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-10-22.
 
+### 2026-10-22 — Config schema range narrower than the flag it mirrors (`repeat-last-n`)
+
+- `g_schema` gave `repeat-last-n` a minimum of 0, but `--repeat-last-n -1` ("all generated
+  tokens") is documented and accepted, so `pz config set repeat-last-n -1` was refused. Found
+  while mapping `/v1/config` limits (`penalty_last_n` min -1) to schema keys for 40.3. Fixed
+  (min -1). Prevention: a schema range must equal what `parse_args` and `/v1/config limits`
+  accept; check all three when adding a key.
+
 ### 2026-10-22 — Security-audit fuzzer red since its hardening: first-run calibration + a leak
 
 - After `tools/fuzz_config.py` stopped passing on a timeout (2026-10-21), the Independent Security

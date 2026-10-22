@@ -3,6 +3,14 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-22.
 
+### 2026-10-22 — Phase 40.3: value sources in /v1/config, save server defaults from the web UI
+- `config/pz_config` provenance (`src`, `pz_config_mark_cli`, `pz_config_publish`), `cli/config_cmd`
+  records it; `api/config_endpoint` (`config` block in `/v1/config`, `POST /v1/config/defaults`,
+  cross-site guard), `json_fields` number-text/string-list helpers, `HttpRequest` Content-Type/Host,
+  `--no-config-write` (+ schema key); web UI Settings → Server defaults; OpenAPI, WEBUI_GUIDE,
+  plan. Fixed: schema rejected `repeat-last-n -1`. Tests `test_config_endpoint` (46), live curl,
+  restart check, Playwright screenshots (light/dark).
+
 ### 2026-10-22 — Security-audit fuzzer fix
 - `TN_SANITIZED` (core/platform.h); `main.c` opens the model before the hardware probe and skips
   first-run calibration (and any save) in sanitizer builds; `pz_config_prepare_argv` owns its

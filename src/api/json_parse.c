@@ -656,3 +656,37 @@ int json_field_bool(const char *json_body, const char *key, int *out) {
     *out = b;
     return 1;
 }
+
+char *json_field_number_text(const char *json_body, const char *key) {
+    const char *p;
+    if (!find_top_level(json_body, key, &p)) return NULL;
+    if (!(*p == '-' || isdigit((unsigned char)*p))) return NULL;
+    const char *start = p;
+    while (*p && (isdigit((unsigned char)*p) || strchr("+-.eE", *p))) p++;
+    size_t n = (size_t)(p - start);
+    char *out = (char *)malloc(n + 1);
+    if (!out) return NULL;
+    memcpy(out, start, n);
+    out[n] = '\0';
+    return out;
+}
+
+int json_field_string_list(const char *json_body, const char *key, char **out, int max) {
+    const char *p;
+    if (!find_top_level(json_body, key, &p) || !expect_char(&p, '[')) return -1;
+    int n = 0;
+    skip_ws(&p);
+    while (*p && *p != ']') {
+        char *s = (*p == '"') ? parse_string_heap(&p) : NULL;
+        if (!s || n >= max) {
+            free(s);
+            while (n > 0) free(out[--n]);
+            return -1;
+        }
+        out[n++] = s;
+        skip_ws(&p);
+        if (*p == ',') { p++; skip_ws(&p); }
+    }
+    if (*p != ']') { while (n > 0) free(out[--n]); return -1; }
+    return n;
+}

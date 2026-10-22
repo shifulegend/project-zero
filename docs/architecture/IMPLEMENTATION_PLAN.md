@@ -3641,7 +3641,7 @@ prefix (= ternary, not the old name).
 **Done when:** no live code, script, CI job, template or current doc uses the old name; old
 benchmark logs still render; the compat shim works for one release; all gates green on gcc and clang.
 
-## Phase 40: Installer + `pz config` (guided setup, persistent configuration) 🟡 40.1 + 40.2 done 2026-10-21; 40.3–40.5 open
+## Phase 40: Installer + `pz config` (guided setup, persistent configuration) 🟡 40.1–40.3 done 2026-10-22; 40.4–40.5 open
 
 **Why:** a first-time user should get from download to a working model without reading docs, and
 every setting a user changes once (model folder, threads, port, defaults) should persist — editable
@@ -3678,7 +3678,19 @@ command-line flags win. `--no-config` / `PZ_NO_CONFIG=1` skip it. Tests: `test_p
 `test_config_cmd` (14). Limits: a boolean set in the file can't be switched off by a flag (use
 `pz config unset` or `--no-config`); list settings add to command-line ones. Design defaults were
 taken without the owner's brainstorming answers (recorded in decision-log 2026-10-21) and can be
-revisited. Open: 40.3 value sources in `/v1/config` + web UI save, 40.4 `install.sh`, 40.5 docs.
+revisited.
+
+**As built (40.3, 2026-10-22):** provenance per entry (`PzCfgEntry.src`: default/file/env/cli;
+`pz_config_mark_cli`, `pz_config_publish`/`pz_config_active_source`), recorded by
+`pz_config_prepare_argv`. `api/config_endpoint` adds `GET /v1/config` → `config {path, file_used,
+writable, keys, sources}` and `POST /v1/config/defaults` (`{key, value}` / `{key, unset}`; schema
+validated; written atomically to the same file as `pz config set`; applies at the next start;
+reports `overridden_by` when a flag/env still wins). Guard: `Content-Type: application/json` plus
+same-origin or CORS-allowed `Origin` (blocks browser cross-site writes to a key-less loopback
+server); `--no-config-write` turns it off. Web UI: Settings → *Server defaults* (value sources,
+save changed settings, web UI title). Tests: `test_config_endpoint` (46); live curl + Playwright
+(`tools/screenshots/webui/server_defaults.spec.mjs`). Saving does not change the running server's
+defaults (requests already override per call). Open: 40.4 `install.sh`, 40.5 docs.
 
 **Standing rule (engineering-rules DoD #6, 2026-10-21):** every change that adds/renames/removes a
 user-facing flag, env var, default, file location, release asset or runtime dependency updates the

@@ -1,3 +1,4 @@
+#include "api/config_endpoint.h"
 #include "api/api_info.h"
 #include <string.h>
 #include "api/json_write.h"
@@ -238,6 +239,8 @@ char *api_config_json(const ApiContext *ctx) {
     jb_bool(&jb, ctx && ctx->server_config.allow_request_template);
     jb_raw(&jb, ","); jb_key(&jb, "max_bytes"); jb_int(&jb, CHAT_MAX_TEMPLATE);
     jb_raw(&jb, "}");
+    /* Phase 40.3: where each default came from, and whether the UI may save. */
+    jb_raw(&jb, ","); api_config_sources_json(&jb, ctx);
     jb_raw(&jb, "}");
     return jb_finish(&jb);
 }

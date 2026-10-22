@@ -42,9 +42,18 @@ typedef struct {
 #define PZ_CFG_MAX_VALUE 65536   /* bytes per value (a system prompt can be long) */
 #define PZ_CFG_MAX_ITEMS 16      /* items per list key */
 
+/* Where a setting's effective value comes from (Phase 40.3, 2026-10-22). */
+typedef enum {
+    PZ_SRC_DEFAULT = 0,
+    PZ_SRC_FILE,
+    PZ_SRC_ENV,
+    PZ_SRC_CLI
+} PzCfgSource;
+
 typedef struct {
     const PzCfgKey *key;
     int   set;                     /* value present */
+    int   src;                     /* PzCfgSource of the value (CLI: flag given, value not held) */
     int   n;                       /* items (1 for scalars) */
     char *v[PZ_CFG_MAX_ITEMS];     /* malloc'd raw values (strings unquoted) */
 } PzCfgEntry;
@@ -95,5 +104,24 @@ int pz_config_apply_env(PzConfig *c, void (*warn)(const char *msg));
  * tokens from c. *out_argv is malloc'd (strings point into c / argv), free
  * with free(). Returns the new argc, or -1. */
 int pz_config_merge_argv(const PzConfig *c, int argc, char **argv, char ***out_argv);
+
+/* "default" | "file" | "env" | "cli". */
+const char *pz_config_source_name(int src);
+
+/* Marks every schema key given as a flag in argv[1..] (the user's own flags)
+ * as PZ_SRC_CLI. Returns the number of keys marked. */
+int pz_config_mark_cli(PzConfig *c, int argc, char **argv);
+
+/* Process-wide record of the configuration the engine started with, for
+ * reporting (GET /v1/config). `c` must outlive all readers; NULL clears it.
+ * path may be NULL (no config location); file_used is 0 when the file and
+ * environment were skipped (--no-config / PZ_NO_CONFIG). */
+void pz_config_publish(const PzConfig *c, const char *path, int file_used);
+/* Source of `key` in the published config ("default" when none / unknown). */
+const char *pz_config_active_source(const char *key);
+/* Path of the published config file, or NULL. */
+const char *pz_config_active_path(void);
+/* 1 when the published config read the file and environment. */
+int pz_config_active_file_used(void);
 
 #endif /* PZ_CONFIG_H */

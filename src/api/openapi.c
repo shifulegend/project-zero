@@ -31,6 +31,8 @@ static const char OPENAPI_JSON[] =
       "\"responses\":{\"200\":{\"description\":\"OK\"}}}},"
     "\"/v1/prompt_cache/clear\":{\"post\":{\"summary\":\"Drop all cached prompt snapshots\","
       "\"responses\":{\"200\":{\"description\":\"OK\"},\"429\":{\"description\":\"A generation is in flight\"}}}},"
+    "\"/v1/config/defaults\":{\"post\":{\"summary\":\"Save one server default to the pz config file, applied at the next start. Body {key, value} or {key, unset:true}; key is a /v1/config defaults name (or ui_title). Needs Content-Type application/json; disabled by --no-config-write\","
+      "\"responses\":{\"200\":{\"description\":\"Saved (applies, overridden_by)\"},\"400\":{\"description\":\"Unknown key or invalid value\"},\"403\":{\"description\":\"Saving disabled, no config location, or cross-site request\"}}}},"
     "\"/v1/update\":{\"get\":{\"summary\":\"Update-check state (status, current, latest, url, release_notes_url, changelog_url, settings); notify only\","
       "\"responses\":{\"200\":{\"description\":\"OK\"}}}},"
     "\"/v1/update/check\":{\"post\":{\"summary\":\"Re-check for a newer release now (rate-limited; disabled by --no-update-check)\","

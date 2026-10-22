@@ -14,6 +14,8 @@
  *   GET  /v1/config                       → Server generation defaults, valid
  *                                            ranges and feature flags (drives
  *                                            every web UI control)
+ *   POST /v1/config/defaults              → Phase 40.3 save one default to the
+ *                                            `pz config` file (next start)
  *   POST /v1/watermark/detect             → Phase 33 watermark z-score for text
  *   GET  /v1/prompt_cache                 → Phase 26 prompt-cache stats
  *   POST /v1/prompt_cache/clear           → drop all cached prompt snapshots
@@ -55,6 +57,7 @@
 #define _GNU_SOURCE
 #endif
 
+#include "api/config_endpoint.h"
 #include "api/api_server.h"
 #include "api/chat_request.h"
 #include "api/chat_compile.h"
@@ -332,6 +335,27 @@ static int handle_watermark_detect(int fd, const char *body_start, size_t body_l
     body[body_len] = '\0';
     int status = 500;
     char *json = api_watermark_detect(ctx, body, &status);
+    free(body);
+    send_json_heap(fd, status, json, extra_headers);
+    return status;
+}
+
+/* Phase 40.3: save a server default to the config file (never takes the
+ * generation mutex). */
+static int handle_config_save(int fd, const char *body_start, size_t body_len,
+                              const char *content_type, const char *origin, const char *host,
+                              ApiContext *ctx, const char *extra_headers) {
+    if (!api_config_write_allowed(content_type, origin, host, &ctx->server_config.cors)) {
+        send_error_ex(fd, 403, "Cross-site request refused (send Content-Type: application/json "
+                               "from the server's own origin)", extra_headers);
+        return 403;
+    }
+    char *body = (char *)malloc(body_len + 1);
+    if (!body) { send_error_ex(fd, 500, "OOM", extra_headers); return 500; }
+    memcpy(body, body_start, body_len);
+    body[body_len] = '\0';
+    int status = 500;
+    char *json = api_config_save(ctx, body, &status);
     free(body);
     send_json_heap(fd, status, json, extra_headers);
     return status;
@@ -728,6 +752,8 @@ typedef struct {
     int  is_chunked;
     char origin[256];
     char authorization[512];
+    char content_type[128];
+    char host[256];
     int  has_origin;
     int  has_authorization;
 } HttpRequest;
@@ -782,6 +808,10 @@ static int http_parse(const char *buf, size_t buf_len, HttpRequest *req) {
         } else if (strncasecmp(p, "authorization:", 14) == 0) {
             copy_header_value(p + 14, req->authorization, sizeof(req->authorization));
             req->has_authorization = 1;
+        } else if (strncasecmp(p, "content-type:", 13) == 0) {
+            copy_header_value(p + 13, req->content_type, sizeof(req->content_type));
+        } else if (strncasecmp(p, "host:", 5) == 0) {
+            copy_header_value(p + 5, req->host, sizeof(req->host));
         }
         /* Skip to next line */
         while (*p && *p != '\n') p++;
@@ -907,6 +937,9 @@ static void handle_connection(int fd, ApiContext *ctx) {
         handle_get_models(fd, ctx, extra_headers);
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/config") == 0) {
         handle_get_config(fd, ctx, extra_headers);
+    } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/config/defaults") == 0) {
+        status = handle_config_save(fd, req.body, req.body_len, req.content_type,
+                                    req.has_origin ? req.origin : NULL, req.host, ctx, extra_headers);
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/update") == 0) {
         send_json_heap(fd, 200, api_update_json(0), extra_headers);
     } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/update/check") == 0) {

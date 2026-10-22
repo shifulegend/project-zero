@@ -57,7 +57,7 @@ at runtime (`--simd`, `--classifier`, or auto/calibration).
 | `src/update/` | Phase 38 update notices: SemVer, GitHub Releases check, cache, background service (notify-only) |
 | `src/distributed/` | Phase 28 pipeline split: framed tensor RPC, layer plan, worker loop (`--rpc-worker`, `--remote-layers`) |
 | `src/multimodal/` | Vision encoder/projector/bridge, image load (optional/experimental) |
-| `src/config/` | Phase 40 persistent settings: schema, config file, `PZ_*` env, argv merge (`pz config` lives in `src/cli/config_cmd.c`) |
+| `src/config/` | Phase 40 persistent settings: schema, config file, `PZ_*` env, argv merge, per-key source (`pz config` lives in `src/cli/config_cmd.c`; web UI save in `src/api/config_endpoint.c`) |
 | `src/cli/` | Arg parsing, REPL, `main.c` (builds `pz`); color/progress/live-stats/markdown-render (Phase 22.3, REPL-only) |
 | `include/` | Public headers mirroring `src/` |
 | `tests/` | Unit + audit + red/blackbox tests (every `tests/*.c` is auto-built & run) |

@@ -3,6 +3,17 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-10-21.
 
+### 2026-10-22 — Phase 40.3: web UI saves server defaults to the config file, for the next start
+
+- The web UI writes to the same `pz config` file as the CLI (one source of truth), one key per
+  `POST /v1/config/defaults`, validated by the config schema; only the `/v1/config` defaults plus
+  `ui_title` are saveable (never secrets, paths or server/security settings).
+- Saved values apply at the next start; the running server's defaults are not mutated, because
+  requests already override every knob per call and live mutation would race generations.
+- On by default, as the plan's "local-only" requirement is met by the loopback default + a
+  cross-site guard (JSON content type forces a CORS preflight that only `--cors` answers; foreign
+  `Origin` refused); `--no-config-write` disables it. With `--api-key` the key gates it as usual.
+
 ### 2026-10-21 — `pz config` design calls (Phase 40.1/40.2)
 
 Taken from the plan's defaults while the owner's design answers were pending (any can be revisited):

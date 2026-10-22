@@ -221,12 +221,21 @@ int pz_config_prepare_argv(int argc, char **argv, char ***out_argv) {
     }
     filtered[keep] = NULL;
     *out_argv = owned = filtered;
-    if (skip) return keep;
     char path[1024];
+    pz_config_publish(NULL, NULL, 0);
     pz_config_free(&cfg);     /* no-op on first use (static: zeroed) */
     if (pz_config_init(&cfg) != 0) return keep;
-    if (pz_config_path(path, sizeof(path)) == 0) pz_config_load(&cfg, path, warn_stderr);
-    pz_config_apply_env(&cfg, warn_stderr);
+    int have_path = pz_config_path(path, sizeof(path)) == 0;
+    /* Provenance for GET /v1/config (Phase 40.3). With --no-config only the
+     * user's flags count, but the file location is still published so the
+     * web UI can save to it. */
+    if (!skip) {
+        if (have_path) pz_config_load(&cfg, path, warn_stderr);
+        pz_config_apply_env(&cfg, warn_stderr);
+    }
+    pz_config_mark_cli(&cfg, keep, filtered);
+    pz_config_publish(&cfg, have_path ? path : NULL, !skip);
+    if (skip) return keep;
     char **merged = NULL;
     int n = pz_config_merge_argv(&cfg, keep, filtered, &merged);
     if (n < 0) return keep;

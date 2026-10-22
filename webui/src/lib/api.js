@@ -175,3 +175,20 @@ export async function checkUpdateNow() {
   if (!res.ok) throw new Error(`update check failed: ${res.status}`);
   return res.json();
 }
+
+/**
+ * POST /v1/config/defaults — save one server default to the `pz config` file
+ * (applies when the server restarts). Pass value === undefined to unset.
+ * @returns {Promise<{saved: boolean, applies: string, overridden_by: string|null, path: string}>}
+ */
+export async function saveServerDefault(key, value) {
+  const body = value === undefined ? { key, unset: true } : { key, value };
+  const res = await fetch('/v1/config/defaults', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json?.error?.message ?? `save failed: ${res.status}`);
+  return json;
+}

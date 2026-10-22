@@ -37,7 +37,10 @@ run_cli_json() {
     local stderr_file
     stderr_file=$(mktemp)
     local out
-    out=$($BIN --model "$MODEL" --prompt "$prompt" --max-tokens "$mtok" --temperature "$temp" --json 2>"$stderr_file" \
+    # Fixed seed (2026-10-22): sampled cases (temp > 0) were different on
+    # every run, so this test passed or failed by luck. JSON_SEED overrides.
+    out=$($BIN --model "$MODEL" --prompt "$prompt" --max-tokens "$mtok" --temperature "$temp" \
+        --seed "${JSON_SEED:-42}" --json 2>"$stderr_file" \
         | awk 'started{buf = buf == "" ? $0 : buf "\n" $0} NF==0 && !started{started=1} END{sub(/\n+$/, "", buf); print buf}')
     local n_generated
     n_generated=$(grep -o '([0-9]* tokens)' "$stderr_file" | grep -o '[0-9]*' | tail -1)

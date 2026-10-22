@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-22.
 
+### 2026-10-22 — JSON mode always starts with { or [; seeded e2e test
+- `sampling/grammar_json` root mode (`JSON_ST_ROOT`, `root` flag), `sampling/fsm` uses it and masks
+  empty pieces; `tests/test_grammar_json.c` root tests, `tests/test_fsm.c` updated to the new
+  contract; `tests/e2e_json_mode.sh` CLI cases get `--seed ${JSON_SEED:-42}`. Branch
+  `claude/fix-json-mode-start` off master so master can take it alone.
+
 ### 2026-10-22 — Phase 40.4: install.sh
 - `install.sh` (root), `tools/test_install.sh` (24 checks: install, discovery, upgrade, tampered
   archive, missing checksum entry, unsupported platform, version injection, --help piped,

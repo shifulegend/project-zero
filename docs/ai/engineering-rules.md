@@ -53,6 +53,8 @@ A change is done only when:
    (added 2026-09-18 — TSan is incompatible with ASan/UBSan so it's a separate build variant,
    scoped to a curated concurrency-relevant test subset, not the full suite; see decision-log.md).
 2. Relevant golden-output check passes (e.g. "capital of France" → contains "Paris").
+   Tests that sample (temperature > 0) pass a fixed `--seed`, so a result never depends on luck
+   (added 2026-10-22 after the unseeded JSON-mode e2e case flaked in CI).
 3. No perf regression for touched kernels (A/B build vs a known-good commit on the same host;
    compare tok/s — see `docs/REGRESSION_VERIFICATION_2026-06-07.md` for method).
 4. Docs synchronized (this file set + the right tool adapters) and a commit checkpoint proposed.

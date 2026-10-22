@@ -4,6 +4,29 @@
 > Dependencies between modules are explicitly marked.
 > Each task produces exactly one file or one function.
 
+## Status — 2026-10-22 18:05 UTC (branch `claude/architecture-progress-review-ahv93e`, head `0445b8b`)
+
+**Done since v0.1.0 (2026-06-20):** every phase marked ✅ below; most recently Phase 23 stage 2b
+(`--parallel N`: up to N chat requests batched into one forward pass per token, 2.2–2.7× aggregate
+throughput on SmolLM2 135M/1.7B — `benchmark_results/parallel_2026-10-22/`), Phase 40.1–40.4
+(installer, `pz config`, guided setup), prompt-injection defence, chat-mode end of turn, JSON-mode
+root constraint, release-maintenance rules.
+
+**Still open (candidates after v0.2.0):**
+
+| Item | Phase | Notes |
+|---|---|---|
+| LoRA for MLA, Qwen3.5 hybrid and MoE experts | 19-B | dense/GQA + Qwen3 done |
+| MoE performance follow-ups | 17 | Q5_K shared expert, MLA dispatch, Qwen3-MoE end-to-end test, NEON int4 kernel |
+| Shared-prefix page sharing between parallel slots; batching for MoE/MLA | 23.4 | sequential fallback today |
+| Native audio streaming | 25 | not started |
+| WASM agent sandbox | 29 | not started (argument-level command policy shipped instead) |
+| Test-time training | 32 | not started |
+| Text-to-image (Stable Diffusion / Flux) | 36 | not started |
+| Remaining GGUF quant coverage | 37 | see Phase 37 checklist |
+| First release with the installer; remove the `adaptive_ai_engine` alias | 40.5 / 39 | alias removal is due the release after v0.2.0 |
+| Docs: ROADMAP counts, "Pure C" tagline | — | small |
+
 ---
 
 ## PHASE 0: Project Scaffolding & Build System ✅
@@ -2174,7 +2197,7 @@ Abstracts the forward pass so the engine can run both Transformer (Attention) an
 
 ---
 
-## PHASE 23: PagedAttention & Continuous Batching 🟡 stage 1 (FIFO admission queue) done 2026-10-18; stage 2a (multi-sequence forward) done 2026-10-19; stage 2b (GenSession + `--parallel N` scheduler) done 2026-10-22
+## PHASE 23: PagedAttention & Continuous Batching ✅ stage 1 (FIFO admission queue) 2026-10-18; stage 2a (multi-sequence forward) 2026-10-19; stage 2b (GenSession + `--parallel N` scheduler, fast batched kernels) 2026-10-22 18:00 UTC — open: 23.4 shared-prefix page sharing, batching for MoE/MLA models
 
 **Stage 2b as built (2026-10-22):** `transformer/gen_session.{h,c}` — one generation as a
 step-wise state machine (prepare / start / input_rows / consume / end); `generate_ex()` is a short

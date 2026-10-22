@@ -128,6 +128,11 @@ Verified on [OpenBenchmarking.org](https://openbenchmarking.org/result/2606063-S
 
 ## Planned Phases (17–36)
 
+> **Out of date (noted 2026-10-22 18:05 UTC):** most phases below have since shipped (17–24, 26–28,
+> 30, 31, 33–35, 37–39, and 23 stage 2b `--parallel`). The current done/open list is the
+> **Status** section at the top of [`docs/architecture/IMPLEMENTATION_PLAN.md`](../docs/architecture/IMPLEMENTATION_PLAN.md);
+> this table is kept for its dependency/skill columns until it is rewritten.
+
 These are fully specified in `IMPLEMENTATION_PLAN.md` with file inventories, struct definitions, and function signatures. Not yet started — **except Phase 21, which is partially implemented** (see the note below the table).
 
 | Phase | Feature | Depends on | Skill needed |

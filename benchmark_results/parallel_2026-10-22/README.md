@@ -1,9 +1,12 @@
-# Parallel serving (`--parallel N`) — 2026-10-22
+# Parallel serving (`--parallel N`) — 2026-10-22 17:30–17:36 UTC
 
 Phase 23 stage 2b. Aggregate throughput of `pz --server` when C clients send a chat request at the
 same moment (temperature 0, `ignore_eos`, 128 completion tokens each, distinct prompts, prompt
 cache off), with `--parallel 1` (one at a time, the rest wait in the queue) versus `--parallel N`.
 
+- Measured: 2026-10-22, SmolLM2-135M 17:30:14–17:31:36 UTC, SmolLM2-1.7B 17:32:00–17:35:43 UTC
+  (each run's own timestamp is the `date` field of its JSON); code of commit `0445b8b`
+  (built before committing, so the banner reads `v0.1.0-263-ge2a95bd-dirty`).
 - Host: Intel Xeon @ 2.10 GHz, 4 vCPU, AVX-512 VNNI, 15 GB free RAM; `--threads 4`.
 - Runs strictly sequential, one server at a time, 5 s apart, nothing else on the CPU.
 - Every configuration is one real terminal session captured with

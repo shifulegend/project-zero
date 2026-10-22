@@ -98,7 +98,7 @@ Optimized (PGO+LTO, INT4 classifier): **36.25 tok/s = 95% of the analytical DRAM
   <img src="docs/benchmark_bitnet.png" width="720" alt="BitNet b1.58-2B-4T: Project Zero beats Microsoft bitnet.cpp at every thread count (Xeon)">
 </p>
 
-> On dense models (SmolLM2-135M F16), Project Zero leads `llama.cpp` at 1–3 threads and trails slightly at 4: **+13% / +18% / +5% / −3%** at 1/2/3/4 threads on a 4-vCPU AVX-512 Xeon (same host, best of 3, 2026-10-22: [raw logs](benchmark_results/h2h_smollm2_135m_2026-10-22/) · real terminal sessions of the same commands captured later that day, single runs: PZ 29.7 / 60.2 / 76.1 / 104.1 vs llama.cpp 25.6 / 46.5 / 65.5 / 87.9 tok/s — [PZ t=4](benchmark_results/h2h_smollm2_135m_2026-10-22/screenshots/smollm2_135m_pz_t4.png) / [llama.cpp t=4](benchmark_results/h2h_smollm2_135m_2026-10-22/screenshots/smollm2_135m_llamacpp_t4.png), [all](benchmark_results/h2h_smollm2_135m_2026-10-22/screenshots/)); on the i5-11300H table above the margins are +8% / +2% / −5% / −4%. On DeepSeek-V2 MoE it is now **ahead of llama.cpp**: a fused expert FFN, 8-bit-activation integer kernels and dynamic expert scheduling took DeepSeek-V2-Lite-Chat Q4_K_S at 4 threads from 6.3–7.3 to **11.7–12.6 tok/s (llama.cpp: 9.4–10.5)** on a 4-vCPU AVX-512 VNNI Xeon, and resident memory fell from 12.0 to 10.6 GB ([`CHANGELOG.md`](CHANGELOG.md)).
+> On dense models (SmolLM2-135M F16), Project Zero leads `llama.cpp` at 1–3 threads and trails slightly at 4: **+13% / +18% / +5% / −3%** at 1/2/3/4 threads on a 4-vCPU AVX-512 Xeon (same host, best of 3, 2026-10-22 09:06–09:12 UTC: [raw logs](benchmark_results/h2h_smollm2_135m_2026-10-22/) · real terminal sessions of the same commands captured 2026-10-22 17:36–17:38 UTC, single runs: PZ 29.7 / 60.2 / 76.1 / 104.1 vs llama.cpp 25.6 / 46.5 / 65.5 / 87.9 tok/s — [PZ t=4](benchmark_results/h2h_smollm2_135m_2026-10-22/screenshots/smollm2_135m_pz_t4.png) / [llama.cpp t=4](benchmark_results/h2h_smollm2_135m_2026-10-22/screenshots/smollm2_135m_llamacpp_t4.png), [all](benchmark_results/h2h_smollm2_135m_2026-10-22/screenshots/)); on the i5-11300H table above the margins are +8% / +2% / −5% / −4%. On DeepSeek-V2 MoE it is now **ahead of llama.cpp**: a fused expert FFN, 8-bit-activation integer kernels and dynamic expert scheduling took DeepSeek-V2-Lite-Chat Q4_K_S at 4 threads from 6.3–7.3 to **11.7–12.6 tok/s (llama.cpp: 9.4–10.5)** on a 4-vCPU AVX-512 VNNI Xeon, and resident memory fell from 12.0 to 10.6 GB ([`CHANGELOG.md`](CHANGELOG.md)).
 
 ### SmolLM2-135M F16 — Project Zero vs. llama.cpp (i5-11300H, 2026-06-21, fresh sweep)
 
@@ -592,7 +592,7 @@ behind a running chat completion. By default one generation runs at a time; `--p
 serves up to N chat requests at once, batched into one forward pass per token (dense attention
 models; others stay sequential and `/v1/config` says why). With 4 clients at once, aggregate
 throughput rises 2.2–2.3× over one-at-a-time serving (SmolLM2-135M Q8_0: 45 → 101 tok/s;
-SmolLM2-1.7B Q4_K_M: 12.7 → 29.8 tok/s), and 2.4–2.7× with 8 (4-vCPU Xeon, 4 threads,
+SmolLM2-1.7B Q4_K_M: 12.7 → 29.8 tok/s), and 2.4–2.7× with 8 (4-vCPU Xeon, 4 threads, 2026-10-22 17:30–17:36 UTC,
 [results and terminal screenshots](benchmark_results/parallel_2026-10-22/)). When every slot is busy a chat request
 gets `429`, or waits in order with `--queue-size N` (`--queue-timeout S`). Ctrl+C/SIGTERM stops
 running generations and shuts the server down cleanly.

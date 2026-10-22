@@ -64,7 +64,8 @@ A change is done only when:
    removes a user-facing flag, env var, default, config/file location, release asset or runtime
    dependency updates, in the same commit, the `pz config` schema (key, default, range, help, wizard
    step where relevant), the install script, `/v1/config` + web UI if user-facing, and the docs.
-   Until Phase 40 lands these, add the item to the Phase 40 inventory in `IMPLEMENTATION_PLAN.md`.
+   Concretely: a persistable flag gets an entry in `g_schema` (`src/config/pz_config.c`); the
+   install script (Phase 40.4, pending) is updated when release assets or dependencies change.
 - Never claim completion without stating what was verified and what remains UNVERIFIED.
 - `make test` runs **every** `tests/*.c` and aborts on the first failure — a green full run is
   the bar. It builds the library as the `debug` variant (ASan/UBSan on engine code too, since

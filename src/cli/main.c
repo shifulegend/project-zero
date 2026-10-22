@@ -22,6 +22,7 @@
 #include "tokenizer/tokenizer.h"
 #include "tokenizer/tokenizer_gguf.h"
 #include "cli/program_name.h"
+#include "cli/config_cmd.h"
 #include "cli/args.h"
 #include "transformer/attn_tiled.h"
 #include "threading/cache_probe.h"
@@ -133,6 +134,11 @@ static void run_perplexity(const CliArgs *args, const Config *p, const Transform
 
 int main(int argc, char **argv) {
     pz_warn_if_legacy_invocation(argc > 0 ? argv[0] : NULL);
+    /* Phase 40: `pz config ...` manages the settings file; every other run
+     * reads it (and PZ_* env) as defaults placed before the user's flags. */
+    if (argc > 1 && strcmp(argv[1], "config") == 0)
+        return pz_config_command(argc - 1, argv + 1);
+    argc = pz_config_prepare_argv(argc, argv, &argv);
     CliArgs args;
     if (parse_args(&args, argc, argv) != TN_OK) {
         return 1;

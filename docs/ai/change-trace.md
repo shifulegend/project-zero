@@ -3,6 +3,11 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-21.
 
+### 2026-10-21 — Phase 40.1/40.2: `pz config`
+- `config/pz_config` + `cli/config_cmd`, main dispatch + argv merge, usage text, CMake sources,
+  tests `test_pz_config` / `test_config_cmd`. gcc+clang release/test/debug, CMake, golden green;
+  live precedence check (file 1 → env 2 → flag 3 threads).
+
 ### 2026-10-21 — Falcon3-1.58bit verified on our branch; CLI tokenization error message
 - Falcon3-3B-Instruct-1.58bit (I2_S) generates coherently on our branch ("Paris", "Red, green,
   blue") — our stored-scale + interleaved I2_S decode is right for it (issues #41/#42). Its chat

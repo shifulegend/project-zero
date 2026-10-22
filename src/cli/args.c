@@ -11,6 +11,9 @@
 
 void print_usage(const char *prog_name) {
     printf("Usage: %s [options]\n", prog_name);
+    printf("       %s config        set up defaults interactively (pz config --help)\n", prog_name);
+    printf("Saved settings (pz config) and PZ_<KEY> environment variables act as defaults;\n"
+           "flags given here override them. --no-config ignores both.\n");
 
     printf("\nModel & Generation:\n");
     printf("  --model <path>      Path to the .bin/.gguf model file (required)\n");

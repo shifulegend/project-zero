@@ -34,4 +34,5 @@ Adapter for the configurability rules in `docs/ai/engineering-rules.md`.
   `--ppl-chunks`) reproduces llama-perplexity for accuracy checks.
 - **Installer + config in sync** (DoD #6): new/renamed/removed flag, env var, default, file location,
   release asset or dependency → update `pz config` schema, install script, `/v1/config`/web UI and docs
-  in the same commit (until Phase 40 exists: add it to the plan's Phase 40 inventory).
+  in the same commit: a persistable flag gets a `g_schema` entry in `src/config/pz_config.c`
+  (`pz config` / `PZ_<KEY>` / config file), validated again by `parse_args`.

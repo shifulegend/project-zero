@@ -58,6 +58,7 @@ section becomes the version's entry and is published as its GitHub release notes
 - Add release-notes and changelog links for the running build to `GET /v1/update` (`release_notes_url`, `changelog_url`) and to the web UI under Settings → Updates.
 - Add the web chat UI with image upload, settings rendered from `/v1/config` (including the chat-template editor and tree search), a watermark panel, a usage footer and an update banner.
 - Add colour, progress, live token statistics, markdown rendering and a startup banner to the CLI.
+- Add persistent settings: `pz config` (interactive setup), `pz config list|get|set|add|unset|path`, a config file at `~/.config/project-zero/config.toml` (`PZ_CONFIG` overrides the location) and `PZ_<KEY>` environment variables. Precedence is command-line flag > environment > file > default; `--no-config` ignores the file and environment.
 - Add faster kernels: K-6 5-trit LUT ternary (AVX-512BW), plain NEON ternary, AVX-512 VNNI Q2_0, llama.cpp-compatible Q4_K x8 repack, fused zero-copy Q6_K and batched speculative-verify kernels.
 
 ### Fixed

@@ -3641,7 +3641,7 @@ prefix (= ternary, not the old name).
 **Done when:** no live code, script, CI job, template or current doc uses the old name; old
 benchmark logs still render; the compat shim works for one release; all gates green on gcc and clang.
 
-## Phase 40: Installer + `pz config` (guided setup, persistent configuration) 🟡 DESIGN (added 2026-10-21)
+## Phase 40: Installer + `pz config` (guided setup, persistent configuration) 🟡 40.1 + 40.2 done 2026-10-21; 40.3–40.5 open
 
 **Why:** a first-time user should get from download to a working model without reading docs, and
 every setting a user changes once (model folder, threads, port, defaults) should persist — editable
@@ -3668,6 +3668,17 @@ superpowers:brainstorming and planned with superpowers:writing-plans):**
   `--yes`, `--version`, `--uninstall`; tested in CI on a clean container. Windows/macOS packages
   later (Homebrew tap, winget) — not in this phase.
 - 40.5 Docs, CHANGELOG, RELEASING (installer ships as a release asset with its checksum).
+
+**As built (40.1 + 40.2, 2026-10-21):** `include/config/pz_config.h` / `src/config/pz_config.c`
+(schema table `g_schema`: key = flag name, type, group, help, choices, range, secret; flat TOML
+subset; atomic 0600 save; `PZ_<KEY>` env overlay) and `include/cli/config_cmd.h` /
+`src/cli/config_cmd.c` (`pz config` wizard + `list|get|set|add|unset|path`). Settings become
+flag tokens placed before the user's argv, so `parse_args` stays the only validator and
+command-line flags win. `--no-config` / `PZ_NO_CONFIG=1` skip it. Tests: `test_pz_config` (40),
+`test_config_cmd` (14). Limits: a boolean set in the file can't be switched off by a flag (use
+`pz config unset` or `--no-config`); list settings add to command-line ones. Design defaults were
+taken without the owner's brainstorming answers (recorded in decision-log 2026-10-21) and can be
+revisited. Open: 40.3 value sources in `/v1/config` + web UI save, 40.4 `install.sh`, 40.5 docs.
 
 **Standing rule (engineering-rules DoD #6, 2026-10-21):** every change that adds/renames/removes a
 user-facing flag, env var, default, file location, release asset or runtime dependency updates the

@@ -3,6 +3,18 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-10-21.
 
+### 2026-10-21 — `pz config` design calls (Phase 40.1/40.2)
+
+Taken from the plan's defaults while the owner's design answers were pending (any can be revisited):
+- Settings are injected as flag tokens before the user's argv, so `parse_args` remains the single
+  validator and precedence (flag > env > file > default) falls out of last-wins parsing.
+- Keys are the flag names (`threads`, `kv-type`), env `PZ_<KEY>`; flat TOML subset (no tables);
+  file `$PZ_CONFIG` | `$XDG_CONFIG_HOME/project-zero/config.toml` | `~/.config/...`; saved 0600.
+- Only settings worth persisting are in the schema (per-run inputs like `--prompt` are not).
+- Wizard asks five things (model — offering `.gguf` files found in ./models, ~/models,
+  ~/.local/share/project-zero/models — threads, KV type, server port, update channel); nothing
+  is mandatory.
+
 ### 2026-10-21 — int4 KV SIMD kernels via simd_dispatch
 
 - `math/kvq4_avx2.c`, `math/kvq4_avx512.c` (per-file ISA flags, portable `dist` safe), selected

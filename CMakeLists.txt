@@ -287,6 +287,8 @@ set(REASONING_SOURCES
 set(CLI_SOURCES
     src/cli/args.c
     src/cli/program_name.c
+    src/cli/config_cmd.c
+    src/config/pz_config.c
     src/cli/timer.c
     src/cli/repl.c
     src/cli/color.c

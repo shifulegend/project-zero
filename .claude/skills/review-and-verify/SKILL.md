@@ -11,6 +11,7 @@ description: Verify a project-zero change before claiming completion — build r
 3. Kernel/perf changes: A/B tok/s vs a known-good commit on the same host.
 4. Review the diff for modularity, no-hardcoding, memset-before-partial-init, and no new warnings;
    user-facing changes have a `CHANGELOG.md` `[Unreleased]` line (`python3 tools/changelog.py check`).
+   README reviewed for anything the change made stale (DoD #7: flags vs `./pz --help`, links, numbers, phase status).
 5. Report: what was verified, what remains UNVERIFIED, and the exact commit message.
 Bar: `make test` runs every `tests/*.c` and aborts on first failure — full green required.
 Details: `docs/ai/engineering-rules.md`, `docs/REGRESSION_VERIFICATION_2026-06-07.md`.

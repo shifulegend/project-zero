@@ -3,6 +3,11 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-22.
 
+### 2026-10-22 — Standing rule: review README before every major commit (DoD #7)
+- engineering-rules DoD #7; docs adapters; CLAUDE.md/AGENTS.md/copilot entrypoints; review-and-verify
+  checklists (Claude skill, Copilot prompt, Antigravity workflow). README itself updated by a
+  separate review pass.
+
 ### 2026-10-22 — Standing release-maintenance rules; v0.1.0 triage
 - `docs/RELEASING.md` § Maintaining published releases (immutability, notice-only note edits,
   fix triage, advisories, yanking, supported versions, pre/post-release checks, deprecations);

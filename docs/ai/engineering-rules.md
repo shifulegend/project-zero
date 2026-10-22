@@ -69,6 +69,13 @@ A change is done only when:
    Concretely: a persistable flag gets an entry in `g_schema` (`src/config/pz_config.c`); the
    install script (`install.sh`, Phase 40.4) is updated when release assets or dependencies change,
    and `tools/test_install.sh` (CI job `installer`) must pass.
+7. **README reviewed before every major commit** (added 2026-10-22): a commit that adds or
+   changes a feature, flag, command, default, supported model/platform, install step, release
+   asset or a published number (benchmark, speed, memory) re-reads `README.md` and corrects
+   every statement it makes stale -- in the same commit. Check: each flag/command README shows
+   exists (`./pz --help`), each relative link resolves, numbers match the source report, and
+   "coming soon"/phase-status lines match `IMPLEMENTATION_PLAN.md`. A "major commit" is any
+   commit with a `CHANGELOG.md` `[Unreleased]` entry; pure refactors/tests/internal docs are exempt.
 - Never claim completion without stating what was verified and what remains UNVERIFIED.
 - `make test` runs **every** `tests/*.c` and aborts on the first failure — a green full run is
   the bar. It builds the library as the `debug` variant (ASan/UBSan on engine code too, since

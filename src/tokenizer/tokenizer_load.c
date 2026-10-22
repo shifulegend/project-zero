@@ -227,6 +227,36 @@ void tokenizer_collect_eog(Tokenizer *t, const int *ids, int n_ids, int require_
     }
 }
 
+void tokenizer_set_chat_stops(Tokenizer *t, const char *chat_template) {
+    if (!t) return;
+    free(t->chat_stop);
+    t->chat_stop = NULL;
+    if (!chat_template || !chat_template[0] || !t->special_is_control || t->vocab_size <= 0) return;
+    unsigned char *m = (unsigned char *)calloc((size_t)t->vocab_size, 1);
+    if (!m) return;   /* falls back to the declared EOG set */
+    for (int i = 0; i < t->n_special; i++) {
+        int id = t->special_token_ids[i];
+        if (!t->special_is_control[i] || id < 0 || id >= t->vocab_size) continue;
+        if (id == t->bos_token_id && t->bos_token_id != t->eos_token_id) {
+            /* BOS is written through the template's bos_token variable, so it
+             * is "used" even when its text is absent; generating it still
+             * means a new sequence starts -- end the turn. */
+            m[id] = 1;
+            continue;
+        }
+        if (!strstr(chat_template, t->special_tokens[i])) m[id] = 1;
+    }
+    t->chat_stop = m;
+}
+
+int tokenizer_is_eog(const Tokenizer *t, int id) {
+    if (!t || id < 0) return 0;
+    if (id == t->eos_token_id) return 1;
+    for (int i = 0; i < t->n_eos; i++)
+        if (t->eos_list[i] == id) return 1;
+    return t->chat_stop && id < t->vocab_size && t->chat_stop[id];
+}
+
 void tokenizer_free(Tokenizer *t) {
     if (t->vocab) {
         for (int i = 0; i < t->vocab_size; i++) {
@@ -243,5 +273,6 @@ void tokenizer_free(Tokenizer *t) {
     }
     free(t->special_token_ids);
     free(t->special_is_control);
+    free(t->chat_stop);
     memset(t, 0, sizeof(*t));
 }

@@ -88,6 +88,9 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
     /* A request's own template (API "chat_template") wins over the model's. */
     const char *chat_tmpl = (gp->chat_template && gp->chat_template[0]) ? gp->chat_template
                                                                        : tok->chat_template;
+    /* Chat mode ends a turn at any CONTROL token the template never writes
+     * (Falcon3's ">>UNUSED_1<<"); raw prompts keep the declared EOG set. */
+    tokenizer_set_chat_stops(tok, (chat_tmpl && !gp->raw_prompt) ? chat_tmpl : NULL);
     if (chat_tmpl && !gp->raw_prompt) {
         /* ── GGUF path: apply the model's own Jinja2 chat template ─────────
          * The template itself renders BOS ({{ bos_token }}) so we must NOT
@@ -333,6 +336,9 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
                 for (int ei = 0; ei < tok->n_eos; ei++)
                     if (tok->eos_list[ei] >= 0 && tok->eos_list[ei] < cfg->vocab_size)
                         logits[tok->eos_list[ei]] = -INFINITY;
+                if (tok->chat_stop)
+                    for (int vi = 0; vi < cfg->vocab_size && vi < tok->vocab_size; vi++)
+                        if (tok->chat_stop[vi]) logits[vi] = -INFINITY;
             }
             if (json_mode) {
                 next = sample_constrained_chain(logits, cfg->vocab_size, &json_fsm,
@@ -373,11 +379,9 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
          * No hardcoded token IDs here. */
         if (step >= n_prompt - 1) {
             int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-            int is_eos = 0;
-            if (cfg->eos_token_id > 0 && next == cfg->eos_token_id) is_eos = 1;
-            for (int ei = 0; ei < tok->n_eos && !is_eos; ei++) {
-                if (next == tok->eos_list[ei]) is_eos = 1;
-            }
+            /* tokenizer_is_eog adds the chat-mode turn ends set below. */
+            int is_eos = (cfg->eos_token_id > 0 && next == cfg->eos_token_id) ||
+                         tokenizer_is_eog(tok, next);
             if (t_step) {
                 tn_step_timing_add(TN_STEP_21_EOS_CHECK,
                                    tn_step_timing_now_ns() - t_step);

@@ -5,6 +5,16 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-10-22.
 
+### 2026-10-22 — Shipped a per-model `--stop` tip instead of fixing end-of-turn detection
+
+- After verifying Falcon3-1.58bit I recommended `--stop ">>UNUSED_1<<"` (in PR/issue reply drafts)
+  as "a property of this model". The owner rightly called it a workaround: the engine had no
+  general notion of "the model emitted structure, the turn is over". Fixed with chat-mode stops
+  from CONTROL tokens the template never writes (decision-log 2026-10-22).
+- Prevention rule: a user-side flag that compensates for engine behaviour is a bug report, not a
+  tip. Compare with the reference engine to locate the cause, then fix it generically -- no
+  model names or ids.
+
 ### 2026-10-22 — Special tokens in chat messages were parsed as real control tokens
 
 - Message text was rendered into the chat template and tokenized as one trusted string, so a

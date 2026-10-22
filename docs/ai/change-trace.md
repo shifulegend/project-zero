@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-22.
 
+### 2026-10-22 — Chat-mode end of turn from undeclared CONTROL tokens (Falcon3 `>>UNUSED_1<<`)
+- `tokenizer_set_chat_stops()` / `tokenizer_is_eog()` (tokenizer_load.c); every generation loop
+  uses `tokenizer_is_eog` (generate, spec_decode, fsm, reasoning, agent); `--ignore-eos` masks the
+  chat stops too. `tests/test_chat_stops.c` (12). Falcon3 stops at "Paris" with no `--stop`;
+  Qwen3 `<think>`, SmolLM2, golden, e2e unchanged.
+
 ### 2026-10-22 — Standing rule: review README before every major commit (DoD #7)
 - engineering-rules DoD #7; docs adapters; CLAUDE.md/AGENTS.md/copilot entrypoints; review-and-verify
   checklists (Claude skill, Copilot prompt, Antigravity workflow). README itself updated by a

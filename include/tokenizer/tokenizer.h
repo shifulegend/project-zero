@@ -36,6 +36,10 @@ typedef struct {
     int eos_list[TN_TOKENIZER_MAX_EOG];
     int n_eos;
 
+    /* Chat-mode turn ends (tokenizer_set_chat_stops, 2026-10-22): 1 for every
+     * CONTROL token the active chat template never writes. NULL = raw mode. */
+    unsigned char *chat_stop;
+
     /* BPE pre-tokenization (tokenizer/pretokenize.h PretokType), from GGUF
      * tokenizer.ggml.pre; 0 = none (SentencePiece, legacy .bin tokenizers). */
     int pretok_type;
@@ -64,6 +68,21 @@ int tokenizer_find_id(const Tokenizer *t, const char *str);
  * Needs the sorted index. Duplicates are dropped; at most TN_TOKENIZER_MAX_EOG.
  */
 void tokenizer_collect_eog(Tokenizer *t, const int *ids, int n_ids, int require_special);
+
+/**
+ * Chat-mode end of turn (2026-10-22). A CONTROL token (GGUF token_type 3) is
+ * structure, never answer text; when the model generates one that the active
+ * chat template itself never writes, the assistant's turn is over -- e.g.
+ * Falcon3-1.58bit ends turns with ">>UNUSED_1<<" though its metadata declares
+ * "<|endoftext|>". Tokens a template uses inside answers (Llama-3.1's
+ * <|python_tag|>) and USER_DEFINED added tokens (<think>, <tool_call>) stay
+ * generatable. Call at the start of every generation with the template in
+ * use, or NULL for raw prompts (then only the declared EOG set stops).
+ */
+void tokenizer_set_chat_stops(Tokenizer *t, const char *chat_template);
+
+/** 1 if `id` ends generation: declared EOS, the EOG set, or a chat stop. */
+int tokenizer_is_eog(const Tokenizer *t, int id);
 
 /**
  * Free all tokenizer memory.

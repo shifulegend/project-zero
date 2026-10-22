@@ -3,6 +3,19 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-10-21.
 
+### 2026-10-22 — End of turn in chat mode: CONTROL tokens the template never writes
+
+- Falcon3-3B-Instruct-1.58bit ends turns with `>>UNUSED_1<<` (id 127, CONTROL) while its GGUF
+  declares EOS `<|endoftext|>` (11); bitnet.cpp's llama-completion generates the same tokens, so
+  it is the checkpoint's fine-tuning, not our maths -- and llama.cpp does not stop there either.
+- Rule (no per-model names or ids): in chat mode a generated CONTROL token is structure, never
+  answer text; if the active template never writes it, the turn is over. Template-written control
+  tokens (Llama-3.1 `<|python_tag|>`) and USER_DEFINED tokens (`<think>`, `<tool_call>`) stay
+  generatable; BOS ends the turn. Raw prompts keep the declared EOG set (llama-completion parity
+  for benchmarks). Recomputed per generation, so a request's own `chat_template` is honoured.
+- Rejected: telling users to pass `--stop ">>UNUSED_1<<"` (symptom, per model), and adding names
+  to `EOG_NAMES` (hardcoding).
+
 ### 2026-10-22 — Release v0.1.0 triage (first use of the release-maintenance rules)
 
 - v0.1.0 (tag `4fd4627`, prerelease, 26 downloads, asset `adaptive_ai_engine-0.1.0-x86_64-linux.tar.gz`)

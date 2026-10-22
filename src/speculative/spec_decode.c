@@ -52,10 +52,7 @@ static int sample_next(float *logits, int vocab_size, float temperature, float t
 
 static int is_eos_token(int token, const Config *cfg, const Tokenizer *tok) {
     if (cfg->eos_token_id > 0 && token == cfg->eos_token_id) return 1;
-    for (int i = 0; i < tok->n_eos; i++) {
-        if (token == tok->eos_list[i]) return 1;
-    }
-    return 0;
+    return tokenizer_is_eog(tok, token);   /* incl. chat-mode turn ends */
 }
 
 /* ── Core implementation ─────────────────────────────────────────────────
@@ -127,6 +124,7 @@ void speculative_generate_with_callback(const Config *cfg, const TransformerWeig
     if (!prompt_tokens) return;
     int n_prompt = 0;
 
+    tokenizer_set_chat_stops(tok, tok->chat_template);
     if (tok->chat_template) {
         const char *bos_str = (tok->bos_token_id >= 0 && tok->bos_token_id < tok->vocab_size)
                               ? tok->vocab[tok->bos_token_id] : "";

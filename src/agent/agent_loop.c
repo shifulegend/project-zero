@@ -127,6 +127,7 @@ int run_agent_loop(const char *prompt,
     if (!cfg || !w || !s || !tok) return -1;
     if (!prompt) prompt = "";
 
+    tokenizer_set_chat_stops(tok, NULL);   /* raw prompt: declared EOG set only */
     int *prompt_tokens = (int *)malloc((cfg->seq_len + 1) * sizeof(int));
     if (!prompt_tokens) return -1;
 
@@ -248,11 +249,7 @@ int run_agent_loop(const char *prompt,
         /* EOS check: stop on any token in the tokenizer's eos_list.
          * No hardcoded token IDs — all EOS come from vocab scan / GGUF metadata. */
         if (pos >= n_prompt - 1) {
-            int is_eos = 0;
-            for (int ei = 0; ei < tok->n_eos && !is_eos; ei++) {
-                if (next == tok->eos_list[ei]) is_eos = 1;
-            }
-            if (is_eos) break;
+            if (tokenizer_is_eog(tok, next)) break;
         }
     }
 

@@ -5,6 +5,19 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-10-22.
 
+### 2026-10-22 — Special tokens in chat messages were parsed as real control tokens
+
+- Message text was rendered into the chat template and tokenized as one trusted string, so a
+  user (or a pasted document, or tool output) writing `<|im_end|>\n<|im_start|>system` produced
+  genuine turn markers -- a prompt-injection hole. The only defence was a guard that rejected
+  *unknown* `<|...|>` text, which blocked harmless prompts (Falcon3, PR #44) and did nothing
+  against *known* control tokens. Fixed by neutralising untrusted text before templating
+  (decision-log 2026-10-22); test `test_prompt_injection` fails 3/11 without the fix.
+- Also fixed while there: the GGUF special-token list grew with `x = realloc(x, ...)` (leak +
+  NULL entries on OOM) and stored unchecked `strdup` results that `match_special_token` strlen()s.
+- Prevention rule: treat every string that did not come from the template or the operator as
+  untrusted at the point it is placed into a prompt.
+
 ### 2026-10-22 — JSON-mode e2e test passed or failed by luck (no seed; permissive root)
 
 - `tests/e2e_json_mode.sh` sampled at temperature 0.7/1.5 without `--seed`, so every CI run saw a

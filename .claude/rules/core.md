@@ -25,6 +25,11 @@ Adapter for `docs/ai/engineering-rules.md` — read the canonical file for full 
   uses `MADV_DONTNEED` on Linux — no full memset). Benchmarks report wall time + RSS too.
 - GGUF stop tokens: `tokenizer_collect_eog()` (declared EOS/EOT/EOM + end-of-turn control
   tokens). Generation loops must check all of `tok->eos_list`, not just `eos_token_id`.
+- Prompt-injection defence (2026-10-22): untrusted text -- chat message content, tool output,
+  retrieved memories -- goes through `tokenizer_neutralize_control()` before it enters a prompt
+  (CONTROL specials become placeholders that encode as plain text; USER_DEFINED like `<think>`
+  stay tokens). Any new path that puts user/tool text into a prompt must do the same;
+  `tests/test_prompt_injection.c` (CI golden job) guards it.
 - LoRA: every attention/FFN path that runs a projection must apply `s->active_lora` (single and
   batched); Q width is `q_dim` (n_heads*head_dim) — not `dim` — on Qwen3.
 - Generic KV may be quantized (`RunState.kv_type` I8 or I4: `key_cache` is NULL; row r =

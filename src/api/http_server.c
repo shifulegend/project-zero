@@ -609,6 +609,24 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
         ChatTemplateType tmpl = ctx->server_config.chat_format >= 0
                                 ? (ChatTemplateType)ctx->server_config.chat_format
                                 : chat_template_detect_vocab(ctx->tok);
+        /* Message text is content, never chat markup (prompt-injection
+         * defence, 2026-10-22): neutralise control tokens before the
+         * built-in formats wrap it in their own. */
+        int neutral_ok = 1;
+        for (int i = 0; i < req.num_messages && neutral_ok; i++) {
+            if (!req.messages[i].content) continue;
+            char *safe = tokenizer_neutralize_control(ctx->tok, req.messages[i].content);
+            if (!safe) { neutral_ok = 0; break; }   /* fail closed */
+            free(req.messages[i].content);
+            req.messages[i].content = safe;
+        }
+        if (!neutral_ok) {
+            free(compiled);
+            chat_request_free(&req);
+            release_generation_slot(ctx);
+            send_error_ex(fd, 500, "OOM", extra_headers);
+            return;
+        }
         if (chat_compile_prompt(&req, tmpl, compiled, HTTP_MAX_PROMPT_BYTES) != TN_OK) {
             free(compiled);
             chat_request_free(&req);

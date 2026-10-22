@@ -353,6 +353,73 @@ static size_t match_special_token(const Tokenizer *t,
     return best_len;
 }
 
+/* ── Neutralised control tokens (prompt-injection defence, 2026-10-22) ──
+ * A CONTROL special token found in untrusted text is replaced by the 4-byte
+ * UTF-8 encoding of U+F0000 + i, where i indexes the special list in use
+ * (the GGUF list, or FALLBACK_SPECIALS for .bin tokenizers -- all control). */
+#define TN_PH_BASE 0xF0000u
+
+static int special_count(const Tokenizer *t) {
+    return t->n_special > 0 ? t->n_special : N_FALLBACK_SPECIALS;
+}
+
+static const char *special_literal(const Tokenizer *t, int i) {
+    return t->n_special > 0 ? t->special_tokens[i] : FALLBACK_SPECIALS[i].str;
+}
+
+static int special_is_control(const Tokenizer *t, int i) {
+    return t->n_special > 0 ? (t->special_is_control ? t->special_is_control[i] : 1) : 1;
+}
+
+/* Index of the placeholder at text[pos], or -1. */
+static int placeholder_at(const Tokenizer *t, const char *text, size_t pos, size_t len) {
+    const unsigned char *u = (const unsigned char *)text + pos;
+    if (pos + 4 > len || (u[0] != 0xF3 && u[0] != 0xF4)) return -1;
+    if ((u[1] & 0xC0) != 0x80 || (u[2] & 0xC0) != 0x80 || (u[3] & 0xC0) != 0x80) return -1;
+    unsigned cp = ((unsigned)(u[0] & 0x07) << 18) | ((unsigned)(u[1] & 0x3F) << 12) |
+                  ((unsigned)(u[2] & 0x3F) << 6) | (unsigned)(u[3] & 0x3F);
+    if (cp < TN_PH_BASE) return -1;
+    unsigned i = cp - TN_PH_BASE;
+    return (i < (unsigned)special_count(t) && special_is_control(t, (int)i)) ? (int)i : -1;
+}
+
+/* Longest CONTROL special at text[pos]: its length, index in *out_i. */
+static size_t match_control(const Tokenizer *t, const char *text, size_t pos, size_t len, int *out_i) {
+    size_t best = 0;
+    for (int i = 0; i < special_count(t); i++) {
+        if (!special_is_control(t, i)) continue;
+        const char *lit = special_literal(t, i);
+        size_t l = strlen(lit);
+        if (l > best && pos + l <= len && memcmp(text + pos, lit, l) == 0) { best = l; *out_i = i; }
+    }
+    return best;
+}
+
+char *tokenizer_neutralize_control(const Tokenizer *t, const char *text) {
+    if (!text) return NULL;
+    size_t len = strlen(text);
+    /* A placeholder is 4 bytes and replaces at least 1, so 4x is a hard bound. */
+    char *out = (char *)malloc(len * 4 + 1);
+    if (!out) return NULL;
+    size_t o = 0;
+    for (size_t pos = 0; pos < len;) {
+        int i = -1;
+        size_t m = (t && t->vocab && text[pos] != '\0') ? match_control(t, text, pos, len, &i) : 0;
+        if (m > 0 && (unsigned)i < 0x20000u - 2) {
+            unsigned cp = TN_PH_BASE + (unsigned)i;
+            out[o++] = (char)(0xF0 | (cp >> 18));
+            out[o++] = (char)(0x80 | ((cp >> 12) & 0x3F));
+            out[o++] = (char)(0x80 | ((cp >> 6) & 0x3F));
+            out[o++] = (char)(0x80 | (cp & 0x3F));
+            pos += m;
+        } else {
+            out[o++] = text[pos++];
+        }
+    }
+    out[o] = '\0';
+    return out;
+}
+
 /* Pre-tokenize (GGUF tokenizer.ggml.pre — see tokenizer/pretokenize.h), then
  * run BPE inside each fragment, as llama.cpp does. 2026-10-18: segments used
  * to be merged whole, so BPE crossed word/digit/punctuation boundaries the
@@ -380,53 +447,26 @@ int tokenizer_encode(Tokenizer *t, const char *text, size_t prompt_len, int *tok
     if (!text || !tokens || max_tokens <= 0) return -1;
     if (!t || !t->vocab) return -1;
 
-    /* Injection check: any ASCII <| sequence that is NOT a known special token
-     * from this model's vocabulary is rejected (prompt injection defence).
-     * Template-produced special tokens (e.g. <|im_start|>) pass because they
-     * exist in the model's dynamic special tokens list. */
-    {
-        const char *scan = text;
-        while ((scan = (const char *)memchr(scan, '<', (size_t)(text + prompt_len - scan))) != NULL) {
-            if (scan + 1 < text + prompt_len && scan[1] == '|') {
-                /* Found <| — verify it's a known special token */
-                size_t rem = (size_t)(text + prompt_len - scan);
-                int dummy_id;
-                size_t mlen = match_special_token(t, scan, 0, rem, &dummy_id);
-                if (mlen == 0) {
-                    /* Not a flagged special. If it is nonetheless a real token
-                     * in this model's vocabulary — e.g. Falcon3's <|user|> /
-                     * <|assistant|>, emitted by the model's own chat template —
-                     * accept it. Reject only control tokens the model does not
-                     * know, which is what this injection guard is for. */
-                    const char *lim = text + prompt_len;
-                    const char *p2  = scan + 2;   /* past "<|" */
-                    while (p2 + 1 < lim && !(p2[0] == '|' && p2[1] == '>')) p2++;
-                    size_t toklen = (p2 + 1 < lim) ? (size_t)(p2 + 2 - scan) : 0;
-                    char tokbuf[128];
-                    int known = 0;
-                    if (toklen > 0 && toklen < sizeof(tokbuf)) {
-                        memcpy(tokbuf, scan, toklen);
-                        tokbuf[toklen] = '\0';
-                        /* Known if it is a real vocab token, or a control token
-                         * the model's own chat template emits (trusted by
-                         * construction). */
-                        known = tokenizer_lookup(t, tokbuf) >= 0 ||
-                                (t->chat_template && strstr(t->chat_template, tokbuf) != NULL);
-                    }
-                    if (!known) return -1; /* Unknown control token — reject */
-                    scan += toklen;
-                    continue;
-                }
-                scan += mlen;
-                continue;
-            }
-            scan++;
-        }
-    }
-
+    /* 2026-10-22: the old injection guard (reject any "<|" that is not a
+     * known special) is gone. Untrusted text is now neutralised before it
+     * enters a prompt (tokenizer_neutralize_control), so its control-token
+     * strings arrive here as placeholders that can only become plain text.
+     * Text reaching here unneutralised is trusted (chat template, operator
+     * prompt); an unknown "<|...|>" in it is ordinary text. */
     int n_tokens = 0;
     size_t pos = 0;
     while (pos < prompt_len) {
+        /* A neutralised control token: its characters, as plain text. */
+        int ph = placeholder_at(t, text, pos, prompt_len);
+        if (ph >= 0) {
+            const char *lit = special_literal(t, ph);
+            int n = tokenizer_encode_pretokenized(t, lit, strlen(lit),
+                                                  tokens + n_tokens, max_tokens - n_tokens);
+            if (n < 0) return -1;
+            n_tokens += n;
+            pos += 4;
+            continue;
+        }
         /* Try to match a special token at current position */
         int sp_id = -1;
         size_t sp_len = match_special_token(t, text, pos, prompt_len, &sp_id);
@@ -440,6 +480,7 @@ int tokenizer_encode(Tokenizer *t, const char *text, size_t prompt_len, int *tok
         size_t seg_start = pos;
         while (pos < prompt_len) {
             int dummy;
+            if (placeholder_at(t, text, pos, prompt_len) >= 0) break;
             if (match_special_token(t, text, pos, prompt_len, &dummy) > 0) break;
             pos++;
         }

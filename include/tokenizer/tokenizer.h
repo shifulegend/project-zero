@@ -27,6 +27,7 @@ typedef struct {
      * Any token with type != 1 (NORMAL) is matched verbatim before BPE. */
     char **special_tokens;     /* malloc'd array of token strings (owned) */
     int   *special_token_ids;  /* corresponding token IDs */
+    unsigned char *special_is_control; /* 1 = GGUF CONTROL type (e.g. <|im_start|>), 0 = USER_DEFINED */
     int    n_special;          /* count */
 
     /* End-of-generation token IDs (tokenizer_collect_eog): the declared
@@ -75,6 +76,20 @@ void tokenizer_free(Tokenizer *t);
  * Tokens are written to `tokens[]`, up to `max_tokens`.
  */
 int tokenizer_encode(Tokenizer *t, const char *text, size_t prompt_len, int *tokens, int max_tokens);
+
+/**
+ * Prompt-injection defence (2026-10-22). Returns a malloc'd copy of untrusted
+ * text (chat message content, tool output) in which every CONTROL special
+ * token string -- "<|im_start|>", "<|eot_id|>", ... -- is replaced by an
+ * opaque placeholder. tokenizer_encode() turns a placeholder back into the
+ * same characters as plain text, never into the control token, so the text
+ * cannot open or close turns of the chat template it is placed into. Template
+ * string operations (split, trim) still work on the copy. USER_DEFINED added
+ * tokens (<think>, <tool_call>) stay matchable, as with llama.cpp's
+ * parse_special = false. Placeholders are code points U+F0000 + index
+ * (supplementary private use); NULL on OOM or NULL input.
+ */
+char *tokenizer_neutralize_control(const Tokenizer *t, const char *text);
 
 /**
  * Decode a single token ID to its string representation.

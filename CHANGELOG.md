@@ -86,6 +86,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Security
 
+- Fix prompt injection through chat messages: control tokens such as `<|im_start|>` or `<|eot_id|>` typed or pasted into a message (or returned by a tool) are now read as plain text, so they can no longer end a turn or start a forged system turn; prompts containing unknown `<|...|>` text are no longer rejected.
 - Fix path traversal out of `--static-dir` when serving web assets.
 - Harden the agent tool sandbox with an argument-level command policy and fix an exit-code race, a symlink escape and `PATH` hijacking.
 

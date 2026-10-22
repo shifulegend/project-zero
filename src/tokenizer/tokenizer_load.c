@@ -242,5 +242,6 @@ void tokenizer_free(Tokenizer *t) {
         free(t->special_tokens);
     }
     free(t->special_token_ids);
+    free(t->special_is_control);
     memset(t, 0, sizeof(*t));
 }

@@ -119,11 +119,23 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
             contents[n_msg++] = prompt;
         }
 
+        /* Message text is content, never chat markup: a "<|im_end|>" typed by
+         * a user (or pasted from a document) must not close their turn
+         * (2026-10-22, prompt-injection defence; see tokenizer.h). */
+        char *safe[GEN_MAX_TEMPLATE_MESSAGES];
+        int n_safe = 0;
+        for (; n_safe < n_msg; n_safe++) {
+            safe[n_safe] = tokenizer_neutralize_control(tok, contents[n_safe]);
+            if (!safe[n_safe]) break;
+            contents[n_safe] = safe[n_safe];
+        }
         int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-        char *formatted = chat_template_apply(chat_tmpl,
+        char *formatted = n_safe < n_msg ? NULL
+                        : chat_template_apply(chat_tmpl,
                                               roles, contents, n_msg,
                                               bos_str, eos_str,
                                               /*add_generation_prompt=*/1);
+        for (int i = 0; i < n_safe; i++) free(safe[i]);
         if (t_step) {
             tn_step_timing_add(TN_STEP_2_BOS_INJECTION,
                                tn_step_timing_now_ns() - t_step);

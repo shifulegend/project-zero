@@ -132,10 +132,14 @@ void speculative_generate_with_callback(const Config *cfg, const TransformerWeig
                               ? tok->vocab[tok->bos_token_id] : "";
         const char *eos_str = (tok->eos_token_id >= 0 && tok->eos_token_id < tok->vocab_size)
                               ? tok->vocab[tok->eos_token_id] : "";
+        /* Content, never chat markup (prompt-injection defence, see tokenizer.h). */
+        char *safe = tokenizer_neutralize_control(tok, prompt);
+        if (!safe) { free(prompt_tokens); return; }
         const char *roles[1]    = { "user" };
-        const char *contents[1] = { prompt };
+        const char *contents[1] = { safe };
         char *formatted = chat_template_apply(tok->chat_template, roles, contents, 1,
                                               bos_str, eos_str, /*add_generation_prompt=*/1);
+        free(safe);
         if (!formatted) { free(prompt_tokens); return; }
         n_prompt = tokenizer_encode(tok, formatted, strlen(formatted), prompt_tokens, cfg->seq_len);
         free(formatted);

@@ -3,6 +3,22 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-10-21.
 
+### 2026-10-22 — Prompt injection: neutralise control tokens in untrusted text (owner: "fix it")
+
+- Chat message content, tool output and retrieved memories are untrusted; CONTROL special-token
+  strings in them are replaced by placeholders (U+F0000 + index) that `tokenizer_encode` turns
+  back into the same characters as plain text. The model sees exactly what the user typed, but
+  it can never close a turn or forge one. Template text (trusted) keeps real control tokens.
+- Follows llama.cpp's `parse_special=false` semantics: USER_DEFINED added tokens (`<think>`,
+  `<tool_call>`) remain tokens in message text, which keeps templates that split content on
+  `</think>` working.
+- Placeholders rather than in-string sentinels, so template string operations (`split`, `trim`)
+  on content keep working; trade-off: a user's own U+F0000+ private-use characters that collide
+  with a placeholder index become that control token's text (still plain text, never a token).
+- Replaces the old guard that rejected any prompt containing an unknown `<|...|>` (and PR #44's
+  relaxation of it): such text is now ordinary text.
+- `--raw-prompt` and the CLI's single `--prompt` in raw mode stay trusted (operator input).
+
 ### 2026-10-22 — Phase 40.4 installer: audience-independent core only
 
 - Built the parts every audience needs (download for this platform, verify against `SHA256SUMS`,

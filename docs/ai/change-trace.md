@@ -3,6 +3,13 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-22.
 
+### 2026-10-22 — Prompt-injection fix (Decision B)
+- `tokenizer_neutralize_control()` + placeholder decoding in `tokenizer_encode`, old reject guard
+  removed (supersedes PR #44's relaxation, merged first so the owner's merge of #48 stays clean);
+  `Tokenizer.special_is_control`; callers: `generate.c` (all template messages), `spec_decode.c`,
+  API legacy formats (`http_server.c`, fail closed), `agent/output_inject.c` (tool output, RAG).
+  `tests/test_prompt_injection.c` (11 checks; CI golden job step). Falcon3 chat still "Paris".
+
 ### 2026-10-22 — JSON mode always starts with { or [; seeded e2e test
 - `sampling/grammar_json` root mode (`JSON_ST_ROOT`, `root` flag), `sampling/fsm` uses it and masks
   empty pieces; `tests/test_grammar_json.c` root tests, `tests/test_fsm.c` updated to the new

@@ -9,3 +9,5 @@
 - `make test` builds the library as the `debug` (ASan/UBSan) variant, so engine code is sanitized
   too (2026-10-21); it replaces a release `./pz` — run `make release` again before benchmarking.
   The build stamp also tracks compiler and host ISA, so CPU/compiler changes force a clean rebuild.
+- Any test that samples (temperature > 0) passes a fixed `--seed` (2026-10-22): a check that
+  passes or fails by luck is broken; a re-run turning red green is a finding, not a fix.

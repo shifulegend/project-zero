@@ -3,7 +3,11 @@
 #define TN_GRAMMAR_MASK_SENTINEL (-1e30f)
 
 void fsm_init(FSMState *fsm) {
-    json_grammar_init(&fsm->json);
+    /* 2026-10-22: root mode -- output always starts with '{' or '[' and ends
+     * at the matching bracket. The permissive any-value start let sampling at
+     * high temperature open with a bare string ("{"...) and pad with
+     * whitespace after the value until max_tokens. */
+    json_grammar_init_root(&fsm->json);
 }
 
 static int is_eos_token(const Tokenizer *t, int token_id) {
@@ -16,6 +20,9 @@ static int is_eos_token(const Tokenizer *t, int token_id) {
 /* Feeds `piece` through a scratch copy of `base`, returning 1 if every
  * byte was accepted (never JSON_ST_INVALID). Does not mutate `base`. */
 static int piece_is_acceptable(const JsonGrammarState *base, const char *piece) {
+    /* A token that emits nothing never advances the document; allowing it
+     * lets sampling idle until max_tokens (2026-10-22). */
+    if (!piece || !*piece) return 0;
     JsonGrammarState g = *base; /* struct copy: plain fields + fixed array */
     for (const char *p = piece; *p; p++) {
         if (json_grammar_step(&g, *p) == JSON_ST_INVALID) return 0;

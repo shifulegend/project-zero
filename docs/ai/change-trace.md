@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-22.
 
+### 2026-10-22 — JSON mode always starts with { or [; seeded e2e test
+- `sampling/grammar_json` root mode (`JSON_ST_ROOT`, `root` flag), `sampling/fsm` uses it and masks
+  empty pieces; `tests/test_grammar_json.c` root tests, `tests/test_fsm.c` updated to the new
+  contract; `tests/e2e_json_mode.sh` CLI cases get `--seed ${JSON_SEED:-42}`. Branch
+  `claude/fix-json-mode-start` off master so master can take it alone.
+
 ### 2026-10-22 — Security-audit fuzzer fix
 - `TN_SANITIZED` (core/platform.h); `main.c` opens the model before the hardware probe and skips
   first-run calibration (and any save) in sanitizer builds; `pz_config_prepare_argv` owns its

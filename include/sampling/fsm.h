@@ -19,7 +19,7 @@ typedef struct {
     JsonGrammarState json;
 } FSMState;
 
-/* Resets to "expecting the start of any JSON value". */
+/* Resets to root mode: "expecting '{' or '['" (see json_grammar_init_root). */
 void fsm_init(FSMState *fsm);
 
 /*

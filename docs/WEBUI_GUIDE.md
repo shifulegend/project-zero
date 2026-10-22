@@ -140,7 +140,7 @@ the CLI.
 
 Chat completion requests accept, besides `messages`/`stream`/`max_tokens`/`temperature`/`top_p`:
 `top_k`, `min_p`, `repetition_penalty`, `presence_penalty`, `frequency_penalty`,
-`penalty_last_n`, `seed`, `stop` (string or array), `response_format: {"type":"json_object"}`
+`penalty_last_n`, `seed`, `stop` (string or array), `response_format: {"type":"json_object"}` (the reply is then one JSON object or array: it starts with `{` or `[` and ends at the matching bracket)
 `watermark: {"enabled", "key", "gamma", "delta"}`, `cache_prompt` (default from
 `--prompt-cache`, on) and `best_of` (default `--best-of`, capped by `--best-of-max`; the response
 then includes a `best_of` object with each candidate's score). Omitted fields use the server defaults

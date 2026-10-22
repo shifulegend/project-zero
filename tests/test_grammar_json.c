@@ -155,8 +155,38 @@ static void test_deep_nesting_within_limit(void) {
     TEST_ASSERT(json_grammar_is_complete(&g), "deeply nested empty arrays close back to DONE");
 }
 
+/* Root mode (--json / response_format, 2026-10-22): returns 1 if every
+ * byte is accepted; *done set when the document is complete. */
+static int feed_root(const char *s, int *done) {
+    JsonGrammarState g;
+    json_grammar_init_root(&g);
+    for (size_t i = 0; s[i]; i++) {
+        if (json_grammar_step(&g, s[i]) == JSON_ST_INVALID) return 0;
+    }
+    if (done) *done = json_grammar_is_complete(&g);
+    return 1;
+}
+
+static void test_root_mode(void) {
+    int done = 0;
+    TEST_ASSERT(feed_root("{\"ok\":true}", &done) && done, "object accepted and complete");
+    TEST_ASSERT(feed_root("[1, {\"a\": \"b\"}]", &done) && done, "array accepted and complete");
+    TEST_ASSERT(feed_root("{\"a\": [", &done) && !done, "open prefix is legal, not complete");
+    TEST_ASSERT(!feed_root("\"{\"", NULL), "bare string at the root rejected");
+    TEST_ASSERT(!feed_root("42", NULL), "bare number at the root rejected");
+    TEST_ASSERT(!feed_root("true", NULL), "bare literal at the root rejected");
+    TEST_ASSERT(!feed_root(" {}", NULL), "leading whitespace rejected (output starts with { or [)");
+    TEST_ASSERT(!feed_root("`", NULL), "markdown fence cannot start the output");
+    TEST_ASSERT(!feed_root("{} ", NULL), "nothing, not even whitespace, after the root value");
+    TEST_ASSERT(!feed_root("{}{}", NULL), "a second document rejected");
+    TEST_ASSERT(feed_root("{\"code\": \"```\"}", &done) && done, "backticks inside a string stay legal");
+    /* The permissive grammar is unchanged. */
+    TEST_ASSERT(feed_full(" {} "), "default mode still allows surrounding whitespace");
+}
+
 int main(void) {
     RUN_TEST(test_valid_complete_documents);
+    RUN_TEST(test_root_mode);
     RUN_TEST(test_invalid_documents);
     RUN_TEST(test_valid_but_incomplete_prefixes);
     RUN_TEST(test_finalize_closes_bare_number);

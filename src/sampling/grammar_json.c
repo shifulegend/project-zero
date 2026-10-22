@@ -18,6 +18,13 @@ static int is_hex(char c) {
 void json_grammar_init(JsonGrammarState *g) {
     g->state = JSON_ST_VALUE;
     g->sp = 0;
+    g->root = 0;
+}
+
+void json_grammar_init_root(JsonGrammarState *g) {
+    g->state = JSON_ST_ROOT;
+    g->sp = 0;
+    g->root = 1;
 }
 
 int json_grammar_is_complete(const JsonGrammarState *g) {
@@ -234,8 +241,14 @@ JsonState json_grammar_step(JsonGrammarState *g, char c) {
             g->state = (c == 'l') ? close_value(g) : JSON_ST_INVALID; return g->state;
 
         /* ── Done: only trailing whitespace is legal ────────────────── */
+        case JSON_ST_ROOT:
+            if (c == '{') { g->state = JSON_ST_OBJ_OPEN; return g->state; }
+            if (c == '[') { g->state = JSON_ST_ARR_OPEN; return g->state; }
+            g->state = JSON_ST_INVALID; return g->state;
+
         case JSON_ST_DONE:
-            g->state = is_ws(c) ? JSON_ST_DONE : JSON_ST_INVALID; return g->state;
+            /* Root mode ends at the closing bracket: only EOS may follow. */
+            g->state = (!g->root && is_ws(c)) ? JSON_ST_DONE : JSON_ST_INVALID; return g->state;
 
         case JSON_ST_INVALID:
         default:

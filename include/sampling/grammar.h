@@ -54,6 +54,7 @@ typedef enum {
     JSON_ST_LIT_FALSE_F, JSON_ST_LIT_FALSE_A,
     JSON_ST_LIT_FALSE_L, JSON_ST_LIT_FALSE_S,                    /* matched "f".."fals" */
     JSON_ST_LIT_NULL_N, JSON_ST_LIT_NULL_U, JSON_ST_LIT_NULL_L,  /* matched "n"/"nu"/"nul" */
+    JSON_ST_ROOT,            /* root mode start: only '{' or '[' (json_grammar_init_root) */
     JSON_ST_DONE,            /* the single top-level value is complete */
     JSON_ST_INVALID          /* sink state: this input can never be valid JSON */
 } JsonState;
@@ -66,10 +67,17 @@ typedef struct {
      * nested in an array). */
     JsonState stack[JSON_GRAMMAR_MAX_DEPTH];
     int sp; /* stack pointer; 0 = top-level, grows on '{'/'[' */
+    int root; /* root mode: document must be one object/array, nothing after it */
 } JsonGrammarState;
 
 /* Resets to the initial state: expecting any JSON value, empty stack. */
 void json_grammar_init(JsonGrammarState *g);
+
+/* Root mode (what --json / response_format use, 2026-10-22): the document's
+ * first byte must be '{' or '[' -- no leading whitespace, no bare string,
+ * number or literal -- and once that value closes, no further byte (not even
+ * whitespace) is accepted, so the only legal continuation is end-of-sequence. */
+void json_grammar_init_root(JsonGrammarState *g);
 
 /*
  * Feeds one input byte through the automaton, returning the new state.

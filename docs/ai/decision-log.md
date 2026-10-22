@@ -3,6 +3,20 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-10-21.
 
+### 2026-10-22 — Guided setup (owner's Decision A) and the starter-model catalog
+
+- Owner: setup is for anyone who wants to use pz; workflow driven; each step gives a simple
+  explanation, example options with their impact, and what can be changed later.
+- Step texts live in one table (`STEPS`, config_cmd.c) so wording can be reviewed in one place;
+  every step is optional (hardware is auto-detected) and Enter takes the current/suggested value.
+- Starter models are a default list, not a hardcoded flow: `$PZ_MODEL_CATALOG` replaces it
+  (`id | name | bytes | min_free_ram_gb | sha256 | https-url | description`). Defaults: SmolLM2-135M
+  Q8_0 (tiny), SmolLM2-1.7B Q4_K_M (balanced), Falcon3-3B-1.58bit I2_S (best; ternary, on brand).
+  Suggestion = largest that fits free RAM. Every download is SHA-256-verified (new `core/sha256`)
+  before use; https only; curl, else wget; no shell.
+- Opening the chat page: exec `pz --server` (config supplies model/port) and, with a desktop,
+  `xdg-open`/`open` after a short delay; the shell command contains only a formatted port number.
+
 ### 2026-10-22 — End of turn in chat mode: CONTROL tokens the template never writes
 
 - Falcon3-3B-Instruct-1.58bit ends turns with `>>UNUSED_1<<` (id 127, CONTROL) while its GGUF

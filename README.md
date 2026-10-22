@@ -402,7 +402,11 @@ Expected output: `The capital of France is Paris.`
 No GPU. No Python at runtime. No API key. GCC or Clang (C and C++ compilers) + `make` + `curl` (or
 `wget`) — nothing else.
 
-**Save your defaults (optional):** `pz config` starts an interactive setup that writes
+**Guided setup (optional):** `pz config` walks you through five plain-language steps (model,
+processor use, memory for long chats, chat-page port, update notices). Each step says what it
+means, shows example choices and their effect, and how to change it later. It can download a
+checksum-verified starter model suited to your computer's free memory and open the chat page
+when you are done. It writes
 `~/.config/project-zero/config.toml` (`PZ_CONFIG` overrides the location); `pz config
 list|get|set|add|unset|path` edits it non-interactively, and every key can also be set as a
 `PZ_<KEY>` environment variable. Precedence: command-line flag > environment > file > default;

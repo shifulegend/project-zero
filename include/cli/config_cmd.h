@@ -22,9 +22,31 @@
 /* argv[0] is "config". Returns the process exit code. */
 int pz_config_command(int argc, char **argv);
 
-/* Interactive wizard over `in`/`out` (testable without a terminal). Offers
- * .gguf files found in model_dirs (NULL-terminated; may be NULL). Updates c;
- * returns 1 when the user chose to save, 0 when cancelled, -1 on error. */
+#include "cli/model_catalog.h"
+
+/* Guided setup options (2026-10-22: written for people who are not
+ * technical -- every step says what it means, shows example choices and
+ * their effect, and whether it can be changed later). */
+typedef struct {
+    const char *const *model_dirs;   /* where to look for .gguf files (NULL-terminated; may be NULL) */
+    const PzStarterModel *catalog;   /* starter models offered for download (may be NULL) */
+    int    n_catalog;
+    const char *download_dir;        /* where starter models are saved */
+    double free_ram_gb;              /* for the suggestion; <= 0 = unknown */
+    /* NULL = pz_model_download (tests inject a fake). */
+    int  (*download)(const PzStarterModel *m, const char *dir, char *path, size_t pathn, FILE *out);
+    int    offer_chat;               /* ask "open the chat page now?" after saving */
+    int    want_chat;                /* out: the user said yes */
+} PzWizardOpts;
+
+/* Interactive guided setup over `in`/`out` (testable without a terminal).
+ * Updates c; returns 1 when the user chose to save, 0 when cancelled, -1 on
+ * error. At any question "?" repeats the explanation, Enter keeps the
+ * current value or takes the suggestion, "-" clears the setting. */
+int pz_config_wizard_ex(PzConfig *c, FILE *in, FILE *out, PzWizardOpts *opts);
+
+/* Same, offering only the .gguf files found in model_dirs (no downloads,
+ * no chat-page offer). */
 int pz_config_wizard(PzConfig *c, FILE *in, FILE *out, const char *const *model_dirs);
 
 /* Loads the config file + PZ_* environment and returns argv with those

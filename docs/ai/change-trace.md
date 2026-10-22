@@ -3,6 +3,11 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-22.
 
+### 2026-10-22 — Guided setup for non-technical users (Decision A)
+- `pz_config_wizard_ex` + `STEPS` table, `cli/model_catalog` (catalog, recommendation, verified
+  download), `core/sha256`, chat-page launch, installer hand-off wording; CMake sources; README,
+  CHANGELOG, plan. `test_config_cmd` 39/39; live pty run with a real 2.2 GB download + verify.
+
 ### 2026-10-22 — Chat-mode end of turn from undeclared CONTROL tokens (Falcon3 `>>UNUSED_1<<`)
 - `tokenizer_set_chat_stops()` / `tokenizer_is_eog()` (tokenizer_load.c); every generation loop
   uses `tokenizer_is_eog` (generate, spec_decode, fsm, reasoning, agent); `--ignore-eos` masks the

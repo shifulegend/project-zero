@@ -3707,8 +3707,20 @@ message. Mirrors/tests: `PZ_INSTALL_BASE_URL`, `PZ_INSTALL_API`. `tools/test_ins
 checks, offline file:// mirror) runs in CI job `installer` with shellcheck; release.yml ships
 `install.sh` beside the archive and in `SHA256SUMS`. 40.5: README/RELEASING/WEBUI_GUIDE updated;
 the first release carrying the installer (v0.2.0) is the owner's to cut. Extras that depend on
-the owner's audience decision (decision-log 2026-10-22: e.g. offering a starter model, opening
-the web UI) are not built.
+the owner's audience decision were added once it came (below).
+
+**Guided setup (Decision A, 2026-10-22):** owner: the setup is for anyone who wants to use pz,
+workflow driven, so a non-technical person can install and use it; every step explains in simple
+terms what it means, gives example options and their impact, and says what can be changed later.
+Built as `pz_config_wizard_ex` (`src/cli/config_cmd.c`, step texts in the `STEPS` table): model →
+processor threads → conversation memory (kv-type) → chat-page port → update notices → summary
+("nothing here is permanent") → save → offer to open the chat page (`pz --server` + desktop
+opener). `?` repeats a step's explanation. Starter models: `cli/model_catalog` (built-in tiny /
+balanced / 1.58-bit list with sizes and SHA-256; `$PZ_MODEL_CATALOG` replaces it), suggested by
+free memory, downloaded with curl/wget into `$XDG_DATA_HOME/project-zero/models` and verified
+with `core/sha256` before use. `install.sh` hands over to it. Tests: `test_config_cmd` (39, incl.
+SHA-256 vectors, catalog parsing, scripted guided runs); live pty run downloaded and verified
+the 2.2 GB Falcon3 file from Hugging Face.
 
 **Standing rule (engineering-rules DoD #6, 2026-10-21):** every change that adds/renames/removes a
 user-facing flag, env var, default, file location, release asset or runtime dependency updates the

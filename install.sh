@@ -191,7 +191,8 @@ say "Uninstall: sh install.sh --uninstall$PREFIX_ARG"
 # ── optional setup wizard (needs a terminal; works under `curl | sh` too) ─
 if [ "$WIZARD" -eq 1 ] && [ "$ASSUME_YES" -eq 0 ] && [ -r /dev/tty ] && [ -w /dev/tty ] &&
    { : < /dev/tty; } 2>/dev/null; then
-    printf '\nRun the optional setup (default model, threads, port)? [Y/n] ' > /dev/tty
+    printf '\nRun the guided setup now? It explains each choice in plain words, can download\n'  > /dev/tty
+    printf 'a starter model for you and open the chat page. (About a minute.) [Y/n] ' > /dev/tty
     read -r ans < /dev/tty || ans=n
     case "$ans" in
         ''|y|Y|yes|YES) "$BIN_DIR/pz" config < /dev/tty > /dev/tty 2>&1 || true ;;

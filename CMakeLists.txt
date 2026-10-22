@@ -129,6 +129,7 @@ set(CORE_SOURCES
     src/core/gguf_quant.c
     src/core/hardware_profile.c
     src/core/bw_cache.c
+    src/core/sha256.c
     src/core/text_file.c
     src/core/calibration.c
     src/core/mla_run_state.c
@@ -288,6 +289,7 @@ set(CLI_SOURCES
     src/cli/args.c
     src/cli/program_name.c
     src/cli/config_cmd.c
+    src/cli/model_catalog.c
     src/config/pz_config.c
     src/cli/timer.c
     src/cli/repl.c

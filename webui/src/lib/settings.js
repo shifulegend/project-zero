@@ -85,14 +85,47 @@ export function countOverrides(settings, cfg) {
   return Object.keys(base).filter((k) => settings[k] !== base[k]).length;
 }
 
-/** Request-body fields for POST /v1/chat/completions. */
-export function requestParams(settings, cfg) {
+/** Stop sequences from the one-per-line textarea ("\\n" = newline). */
+function stopList(settings, cfg) {
   const maxStop = cfg?.limits?.max_stop ?? 0;
-  const stop = String(settings.stop ?? '')
+  return String(settings.stop ?? '')
     .split('\n')
     .map((s) => s.replace(/\\n/g, '\n'))
     .filter((s) => s.length > 0)
     .slice(0, maxStop);
+}
+
+/**
+ * Settings that differ from the server defaults and that the server can save
+ * to its config file (/v1/config "config.keys"), as [{key, value}] for
+ * POST /v1/config/defaults. A random seed is saved as -1.
+ */
+export function serverDefaultChanges(settings, cfg) {
+  const keys = cfg?.config?.keys ?? {};
+  const base = defaultsFromConfig(cfg);
+  const out = [];
+  for (const k of Object.keys(keys)) {
+    if (!(k in base) || settings[k] === base[k]) continue;
+    let value = settings[k];
+    if (k === 'stop') value = stopList(settings, cfg);
+    else if (k === 'seed') value = Number.isInteger(value) && value >= 0 ? value : -1;
+    out.push({ key: k, value });
+  }
+  return out;
+}
+
+/** {source: [json names]} for settings whose server value is not the built-in default. */
+export function sourcesSummary(cfg) {
+  const groups = {};
+  for (const [k, src] of Object.entries(cfg?.config?.sources ?? {})) {
+    if (src && src !== 'default') (groups[src] ??= []).push(k);
+  }
+  return groups;
+}
+
+/** Request-body fields for POST /v1/chat/completions. */
+export function requestParams(settings, cfg) {
+  const stop = stopList(settings, cfg);
   const body = {
     temperature: settings.temperature,
     top_p: settings.top_p,

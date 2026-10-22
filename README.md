@@ -18,12 +18,13 @@
 
 ---
 
-Pure C, single binary. Runs Microsoft's BitNet b1.58 **up to 5.4× faster than Microsoft's own `bitnet.cpp`**, PrismML's Bonsai-27B **4.2–4.8× faster than PrismML's own engine fork**, and dense GGUF models — no GPU, no Python, no ML framework.
+Pure C, single binary (`pz`). Runs Microsoft's BitNet b1.58 **5.4× faster than Microsoft's own `bitnet.cpp` at 4 threads (up to 8.3× single-threaded)**, PrismML's Bonsai-27B **4.2–4.8× faster than PrismML's own engine fork**, DeepSeek-V2-Lite **faster than llama.cpp**, and dense GGUF models — no GPU, no Python, no ML framework.
 
-- **Pure C, zero runtime deps** — `make release`, one executable, nothing else required
-- **3.5–8.3× faster than bitnet.cpp on i5-11300H** (INT4, t=1..8) · **1.33–1.80× faster on 4-core Xeon** ([third-party verified on OpenBenchmarking.org ↓](#benchmarks))
+- **No third-party dependencies** — `make release`, one executable; the prebuilt release binary needs only libc/libm
+- **4.9–8.3× faster than bitnet.cpp on i5-11300H** (INT4, t=1..8) · **up to 1.83× faster on a 4-core Xeon** (best vs best at 4 threads: 36.25 vs 19.83 tok/s, [third-party verified on OpenBenchmarking.org ↓](#benchmarks))
 - **35.79 tok/s on i5-11300H (INT4, 500 tokens, best-of-3)** · **36.25 tok/s on Xeon (PGO+LTO)**
-- **One binary, two model families** — BitNet ternary and dense F16 GGUF, no per-model rebuild
+- **MoE faster than llama.cpp** — DeepSeek-V2-Lite-Chat Q4_K_S at 4 threads: **11.7–12.6 tok/s vs llama.cpp's 9.4–10.5** on a 4-vCPU AVX-512 VNNI Xeon
+- **One binary, many model families** — BitNet b1.58 / Falcon3-1.58bit ternary, Bonsai Q2_0, dense GGUF, DeepSeek-V2 and Qwen3 MoE, Mamba-1 — no per-model rebuild
 
 ---
 
@@ -35,7 +36,7 @@ Run it yourself — one binary, no Python (model download ~7.2 GB):
 
 ```bash
 git clone https://github.com/shifulegend/project-zero && cd project-zero && make release
-curl -fL -o models/Ternary-Bonsai-27B-Q2_0.gguf \
+curl -fL --create-dirs -o models/Ternary-Bonsai-27B-Q2_0.gguf \
   https://huggingface.co/prism-ml/Ternary-Bonsai-27B-gguf/resolve/main/Ternary-Bonsai-27B-Q2_0.gguf
 ./pz --model models/Ternary-Bonsai-27B-Q2_0.gguf \
   --prompt "What is the capital of France?" --max-tokens 60 --temperature 0 --threads 4
@@ -64,7 +65,7 @@ curl -fL -o models/Ternary-Bonsai-27B-Q2_0.gguf \
 
 **Peak: PZ INT4 = 35.79 tok/s (t=4) · PZ BF16 = 23.42 tok/s (t=4) · MSFT = 6.64 tok/s (t=4)**
 
-> Project Zero INT4 is **3.9–8.3×** faster than bitnet.cpp across all thread counts. BF16 is **3.3–5.7×** faster. Prompt also faster: MSFT reports 7.00 tok/s prompt eval at t=4 vs ~110+ tok/s for the PZ tokenizer path.
+> Project Zero INT4 is **4.9–8.3×** faster than bitnet.cpp across all thread counts. BF16 is **3.3–5.7×** faster. Prompt also faster: MSFT reports 7.00 tok/s prompt eval at t=4 vs ~110+ tok/s for the PZ tokenizer path.
 
 **Peak-run terminal screenshots — same machine, same model, same prompt (500 tokens, best-of-3):**
 
@@ -97,7 +98,7 @@ Optimized (PGO+LTO, INT4 classifier): **36.25 tok/s = 95% of the analytical DRAM
   <img src="docs/benchmark_bitnet.png" width="720" alt="BitNet b1.58-2B-4T: Project Zero beats Microsoft bitnet.cpp at every thread count (Xeon)">
 </p>
 
-> On dense models, Project Zero leads `llama.cpp` at 1–3 threads (+32%/+4%/+15%) and trails at peak 4-thread. On DeepSeek-V2 MoE it runs ~7× slower — this is the known open problem ([Help Wanted ↓](#help-wanted)).
+> On dense models, Project Zero leads `llama.cpp` at 1–3 threads (+32%/+4%/+15%) and trails at peak 4-thread. On DeepSeek-V2 MoE it is now **ahead of llama.cpp**: a fused expert FFN, 8-bit-activation integer kernels and dynamic expert scheduling took DeepSeek-V2-Lite-Chat Q4_K_S at 4 threads from 6.3–7.3 to **11.7–12.6 tok/s (llama.cpp: 9.4–10.5)** on a 4-vCPU AVX-512 VNNI Xeon, and resident memory fell from 12.0 to 10.6 GB ([`CHANGELOG.md`](CHANGELOG.md)).
 
 ### SmolLM2-135M F16 — Project Zero vs. llama.cpp (i5-11300H, 2026-06-21, fresh sweep)
 
@@ -351,21 +352,42 @@ Full RCA, methodology, and status: [`docs/ai/mistakes.md`](docs/ai/mistakes.md) 
 
 ## Quick Start
 
-**Option A — pre-built binary (Linux x86-64, no compiler needed):**
+**Option A — installer (Linux x86-64, no compiler, no root):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/shifulegend/project-zero/master/install.sh | sh
+# models are not bundled; e.g. SmolLM2-135M-Instruct (F16 GGUF, ~271 MB):
+curl -fL -o SmolLM2-135M-Instruct-f16.gguf \
+  https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-f16.gguf
+pz --model SmolLM2-135M-Instruct-f16.gguf --prompt "What is the capital of France?" --temperature 0
+```
+
+It finds the newest release (pre-releases included), checks the archive against the release's
+`SHA256SUMS` (and refuses to install on a mismatch or a missing entry), puts `pz` in
+`~/.local/bin` (and tells you if that is not on your `PATH`), and offers the optional `pz config`
+setup. Options: `--version X.Y.Z`, `--prefix DIR`, `--repo OWNER/NAME`, `--yes`, `--no-wizard`,
+`--uninstall` (`sh install.sh --help`). Works from release 0.2.0 on; your settings and models are
+never touched.
+
+**Or by hand:**
 
 ```bash
 VER=0.2.0   # example: use the version shown on the Releases page
 NAME=project-zero-$VER-x86_64-unknown-linux-gnu
 wget https://github.com/shifulegend/project-zero/releases/download/v$VER/$NAME.tar.gz
 wget https://github.com/shifulegend/project-zero/releases/download/v$VER/SHA256SUMS
-sha256sum -c SHA256SUMS && tar xf $NAME.tar.gz && cd $NAME
-./pz --model models/bitnet-b1.58-2B-4T.bin \
-  --tokenizer models/bitnet-b1.58-2B-4T_tokenizer_proper.bin \
-  --prompt "The capital of France is"
+sha256sum -c --ignore-missing SHA256SUMS && tar xf $NAME.tar.gz && cd $NAME
+./pz --model /path/to/model.gguf --prompt "What is the capital of France?"
 ```
 
-Releases before the Phase 39 rename shipped `adaptive_ai_engine-<ver>-x86_64-linux.tar.gz`
-with an `pz` binary — same program, old name.
+The archive holds `pz`, `LICENSE`, `README.md` and `CHANGELOG.md`. Quantized/dense GGUF models need
+an AVX2 CPU (Haswell, 2013+); BitNet ternary runs on any x86-64-v2 CPU, and AVX-512/VNNI is used
+automatically when present.
+
+v0.1.0 (before the Phase 39 rename) shipped `adaptive_ai_engine-0.1.0-x86_64-linux.tar.gz` with an
+`adaptive_ai_engine` binary — same program, old name. The first release after the rename still
+includes an `adaptive_ai_engine` → `pz` alias symlink that prints a deprecation notice; it is
+removed in the release after that.
 
 **Option B — build from source (60 seconds):**
 
@@ -377,7 +399,14 @@ make demo   # builds engine + downloads SmolLM2-135M + runs a test prompt
 
 Expected output: `The capital of France is Paris.`
 
-No GPU. No Python at runtime. No API key. GCC or Clang + `make` + `curl` — nothing else.
+No GPU. No Python at runtime. No API key. GCC or Clang (C and C++ compilers) + `make` + `curl` (or
+`wget`) — nothing else.
+
+**Save your defaults (optional):** `pz config` starts an interactive setup that writes
+`~/.config/project-zero/config.toml` (`PZ_CONFIG` overrides the location); `pz config
+list|get|set|add|unset|path` edits it non-interactively, and every key can also be set as a
+`PZ_<KEY>` environment variable. Precedence: command-line flag > environment > file > default;
+`--no-config` ignores the file and environment.
 
 ---
 
@@ -395,20 +424,25 @@ Two open problems where outside expertise would make a real difference:
 
 | Problem | Current state | Target |
 |---|---|---|
-| **MoE expert weight repacking** | DeepSeek-V2-Lite runs at 1.90 tok/s — 7× behind `llama.cpp`. Top-K expert weights sit at non-contiguous GGUF offsets: **~86% L3 cache miss rate per token**. Fix: repack selected expert weights into contiguous memory at load time, matching llama.cpp's interleaved layout. | ≥ 9 tok/s |
-| **Native Q4_K matmul kernel** | Current dense-model path dequants Q4_K → F32 before multiply. A fused mixed-precision kernel would close the remaining gap to `llama.cpp` on dense 4-bit GGUF models. | — |
+| **Dense Q4_K throughput** | Q4_K weights already run through native Q4_K kernels without widening to F32 (including a byte-exact port of llama.cpp's Q4_K x8 repack), yet Qwen3-8B Q4_K_M decodes at ~2.5–2.7 tok/s vs llama.cpp's 4.0–4.8 on the same host. Six measured attempts have not closed it, and the "kernel efficiency" hypothesis has been falsified — see the [Qwen3-8B section above](#benchmarks). | Root-cause and close the gap to `llama.cpp` |
 | **Re-benchmark classifier INT8/INT4 throughput post-quality-fix** | `matmul_i4_task`/`matmul_i8_task` (`src/math/parallel_matmul.c`) were rewritten 2026-07-31 to fix a real quantization-quality gap (one scale per row → one scale per 32-element block with error-minimizing search — see `docs/ai/decision-log.md`, [GitHub issue #27](https://github.com/shifulegend/project-zero/issues/27)). That rewrite dropped the VNNI `dpbusds`/VBMI fast paths (their row-wide bias-correction trick doesn't hold once every block has its own scale) in favor of a portable per-block FMA path — the specific SSE-interleave-unpack throughput issue this row used to describe no longer applies to the current code, but the *net* throughput effect of the whole rewrite hasn't been re-measured against the historical sweep above. | Confirm INT8/INT4 throughput post-fix; a genuine multi-row/multi-block SIMD kernel (not full VNNI dpbusds, which the new per-block scaling structurally can't reuse) could recover some of the dropped throughput without regressing quality |
 
 Existing SIMD work documented in [`docs/KERNEL_INTERNALS.md`](docs/KERNEL_INTERNALS.md).
-MoE repacking thread: [Discussion #1](https://github.com/shifulegend/project-zero/discussions/1)
+(The former MoE help-wanted item is solved: DeepSeek-V2-Lite now runs faster than llama.cpp — see [Benchmarks](#benchmarks).)
 
 ---
 
 ## What It Does
 
-Runs [Microsoft's BitNet b1.58-2B-4T](https://huggingface.co/microsoft/bitnet-b1.58-2B-4T) ternary weights and **dense GGUF transformers** (SmolLM2, DeepSeek-V2-Lite, Qwen3-MoE) on commodity CPUs — from scratch, in C.
+Runs on commodity CPUs — from scratch, in C:
 
-Also included in the same binary: OpenAI-compatible HTTP API (`--server --port 8080`), persistent RAG memory (`--memory-db`), SigLIP vision pipeline (`--vision`), and an agentic tool-use loop (`/agent`).
+- **Ternary:** [Microsoft's BitNet b1.58-2B-4T](https://huggingface.co/microsoft/bitnet-b1.58-2B-4T) (converted `.bin`, or the official I2_S GGUF — its embedded chat template is broken, use `--chat-template-file docs/templates/bitnet-b1.58.jinja`), Falcon3-1.58bit (I2_S GGUF), and Qwen 3.5/3.6 hybrid-attention models such as Ternary-Bonsai-27B (Q2_0).
+- **Mixture of experts:** DeepSeek-V2 / V2-Lite (MoE + MLA) and Qwen3-MoE GGUF models.
+- **Dense GGUF transformers** (e.g. SmolLM2, Qwen3-8B) and **Mamba-1** state-space models, with every mainline GGUF quant type (F16/BF16, the legacy and K-quants, and the IQ1–IQ4 families).
+
+Also included in the same binary: an OpenAI-compatible HTTP API with a built-in web chat UI (`--server --port 8080`), grammar-constrained JSON mode (`--json`; output always starts with `{` or `[`), a configurable sampler chain and stop sequences, speculative decoding (`--draft-model`), LoRA adapters (`--lora`), int8/int4 or disk-backed KV cache (`--kv-type`, `--kv-offload`), KV prefix reuse across requests (`--prompt-cache`), best-of-N and step-level tree search (`--best-of`, `--mcts*`, `--prm`), toggleable watermarking (`--watermark*`), distributed pipeline inference (`--remote-layers`, `--rpc-worker`), persistent RAG memory (`--memory-db`), SigLIP vision pipeline (`--vision`), an agentic tool-use loop (`/agent`), persistent settings (`pz config`) and notify-only update checks (`--check-update`).
+
+Control tokens such as `<|im_start|>` typed or pasted into a chat message (or returned by a tool) are read as plain text, so a message cannot end its turn or forge a system turn.
 
 No GPU required. Python is offline tooling only (model conversion, testing).
 
@@ -418,7 +452,7 @@ No GPU required. Python is offline tooling only (model conversion, testing).
 
 ## Hardware
 
-Memory bandwidth is the bottleneck — the engine reads 420–680 MB of weights per token. SIMD backend and thread count are auto-detected at startup.
+Memory bandwidth is the bottleneck — for BitNet b1.58-2B the engine reads 420–680 MB of weights per token. SIMD backend and thread count are auto-detected at startup; the DRAM bandwidth probe is cached per host (`--calibrate` or `PZ_BW_REPROBE=1` re-measures).
 
 | RAM config | BitNet tok/s | Notes |
 |---|---|---|
@@ -426,7 +460,7 @@ Memory bandwidth is the bottleneck — the engine reads 420–680 MB of weights 
 | 8 GB single-channel DDR4 | ~13 | bandwidth ceiling |
 | 16 GB dual-channel DDR4 | ~16 | measured (+24% over single-ch) |
 
-SIMD: AVX-512 VNNI → AVX2 → NEON → Scalar, selected at startup.
+SIMD: AVX-512 VNNI → AVX-512F → AVX-VNNI → AVX2 → ARM NEON/dotprod → scalar, selected at startup (`--simd` forces a tier). Quantized/dense GGUF models need at least AVX2 on x86.
 
 ---
 
@@ -434,14 +468,18 @@ SIMD: AVX-512 VNNI → AVX2 → NEON → Scalar, selected at startup.
 
 ```
 project-zero (binary: pz)
-├── src/math/       AVX-512 VBMI ternary kernel, VNNI INT8/INT4, AVX2/NEON fallbacks
-├── src/core/       mmap weight loader (zero-copy), GGUF architecture-agnostic parser
-├── src/sampling/   top-p / temperature (static 200K buffer, no malloc per token)
-├── src/threading/  C11 atomic spinlock thread pool (no futex per dispatch)
-└── src/transformer/ forward pass, attention, FFN, RoPE, KV cache (int8-quantized)
+├── src/math/       ternary (VNNI / AVX-512BW LUT / AVX2 / NEON), Q2_0, K-quant, Q8_0, int4-KV kernels
+├── src/core/       weight + GGUF loading (architecture-agnostic), quant formats, run state
+├── src/memory/     mmap (zero-copy), aligned allocation, disk-backed buffers
+├── src/sampling/   sampler chain (penalties, top-k, min-p, temperature, top-p), JSON grammar, watermark
+├── src/threading/  spin-then-sleep thread pool
+├── src/transformer/ forward pass, attention (MHA/GQA, MLA, hybrid), MoE, Mamba, generation loop
+├── src/kv_cache/   KV strategy (f32/int8/int4), sliding window, prefix + prompt cache
+├── src/api/        OpenAI-compatible HTTP server and the embedded web UI
+└── src/config/     persistent settings (`pz config`, PZ_* env, config file)
 ```
 
-Key design choices: `mmap` + `POSIX_MADV_WILLNEED` for weight loading, runtime SIMD dispatch via function pointers, sliding-window int8 KV cache for 131k context, BF16 embeddings (660 MB smaller vs F32, no precision loss).
+Key design choices: `mmap` + `POSIX_MADV_WILLNEED` for weight loading, runtime SIMD dispatch via function pointers, KV cache sized from free RAM (`--ctx-size`, `--kv-ram-fraction`) with optional int8/int4 storage and a sliding window, BF16 embeddings (660 MB smaller vs F32), model shape/tokenizer/quant read from GGUF metadata — never hardcoded.
 
 ---
 
@@ -450,11 +488,13 @@ Key design choices: `mmap` + `POSIX_MADV_WILLNEED` for weight loading, runtime S
 ```bash
 make release      # -O3 -march=native (default)
 make debug        # ASan + UBSan
-make test         # 3,367 assertions across all modules
+make test         # builds and runs every tests/*.c under ASan/UBSan
+make dist         # portable x86-64 binary with runtime SIMD dispatch (what releases ship)
+make demo         # release build + SmolLM2-135M download + a test prompt
 make clean
 ```
 
-Requirements: GCC or Clang, pthreads, libm. No other dependencies.
+Requirements: GCC or Clang with its C++ compiler (one C++17 file, the chat-template renderer), pthreads, libm. No other dependencies. `make` also creates an `adaptive_ai_engine` → `pz` symlink, the deprecated old name, removed in the release after next.
 
 ---
 
@@ -469,9 +509,18 @@ Requirements: GCC or Clang, pthreads, libm. No other dependencies.
   --max-tokens 256
 ```
 
-Key flags: `--temperature`, `--top-p`, `--seed`, `--classifier {bf16|int8|int4|auto}`, `--server --port 8080`, `--memory-db path.vrdb`, `--image photo.jpg --vision vision.bin --proj projector.bin`
+GGUF models carry their own tokenizer, so `--tokenizer` is only needed for native `.bin` models. Omit `--prompt` to start the interactive REPL.
 
-Full flag reference and REPL commands: run `./pz --help`
+Key flags:
+
+- Sampling: `--temperature`, `--top-p`, `--top-k`, `--min-p`, `--repeat-penalty`, `--presence-penalty`, `--frequency-penalty`, `--repeat-last-n`, `--seed`, `--stop`, `--system-prompt`, `--json`
+- Context and KV cache: `--ctx-size`, `--kv-ram-fraction`, `--kv-type f32|i8|i4`, `--kv-offload <dir>`
+- Hardware: `--threads`, `--simd {auto|avx2|avx512f|vnni|scalar}`, `--classifier {auto|bf16|int8|int4|auto-fast}`, `--calibrate`
+- Models and templates: `--chat-template-file <f>`, `--raw-prompt`, `--draft-model <gguf>`, `--lora <file>`, `--perplexity <file>`
+- Server: `--server --port 8080`, `--cors`, `--api-key`, `--metrics`, `--queue-size`
+- Other: `--memory-db path.vrdb`, `--image photo.jpg --vision vision.bin --proj projector.bin`, `--no-config`, `--no-update-check`, `--version`
+
+Full flag reference: `./pz --help`. REPL commands (`/help`, `/think`, `/agent`, `/memory …`) and every API route: [`docs/WEBUI_GUIDE.md`](docs/WEBUI_GUIDE.md).
 
 ---
 
@@ -483,8 +532,14 @@ Full flag reference and REPL commands: run `./pz --help`
 > [`docs/WEBUI_GUIDE.md`](docs/WEBUI_GUIDE.md).
 
 **Web chat UI** — a browser-based chat interface embedded directly in the binary (no separate
-install): streaming responses, adjustable sampling parameters, stop/cancel mid-generation, a
-dark/light theme, and image upload (when the server is started with `--vision`/`--proj`).
+install): streaming responses, stop/cancel mid-generation, a dark/light theme and image upload
+(when the server is started with `--vision`/`--proj`). The Settings panel is built from
+`GET /v1/config`, so it starts from the server's own defaults: sampling and repetition controls,
+seed, JSON mode, prompt cache, stop sequences, watermark, system prompt, tree search and a
+chat-template editor. **Settings → Server defaults** shows whether each server value comes from
+the config file, an environment variable or a command-line flag, and saves changed settings (and
+the web UI title) as defaults for the next start (turn off with `--no-config-write`).
+**Settings → Updates** and a banner report newer releases (notify only).
 
 ```bash
 ./pz --model models/smollm2.gguf --server --port 8080
@@ -525,7 +580,9 @@ off by default), Prometheus metrics (`--metrics` → `GET /metrics`), interactiv
 (`GET /docs`, `GET /openapi.json`), and a cancel endpoint (`POST /v1/chat/completions/cancel`)
 that actually stops an in-flight generation, backed by a concurrency rearchitecture (per-
 connection threads + a generation mutex) so static/metrics/docs requests are never blocked
-behind a running chat completion.
+behind a running chat completion. One generation runs at a time: a second chat request gets
+`429` by default, or waits in order with `--queue-size N` (`--queue-timeout S`). Ctrl+C/SIGTERM
+shuts the server down cleanly.
 
 Design decisions are checked against a written [design-principles reference](docs/design/ui-ux-principles.md)
 before being accepted — see the [Phase 22.4 review](docs/design/review-2026-07-15.md) for the
@@ -541,11 +598,16 @@ during that review, not just cosmetic nits).
 | [KERNEL_INTERNALS.md](docs/KERNEL_INTERNALS.md) | AVX-512 VBMI kernel, MoE scatter problem, thread pool design |
 | [PERFORMANCE_CEILING_REPORT.md](docs/PERFORMANCE_CEILING_REPORT.md) | Full optimization journal: 1.4 → 36.25 tok/s, bandwidth math |
 | [DEBUGGING_JOURNAL.md](docs/DEBUGGING_JOURNAL.md) | Root-cause log of every major perf regression and fix |
-| [ROADMAP.md](.github/ROADMAP.md) | Phase status (✅/🆘/❌), active blockers, planned phases |
+| [WEBUI_GUIDE.md](docs/WEBUI_GUIDE.md) | Web UI controls, REPL commands, CLI flags, HTTP API routes |
+| [IMPLEMENTATION_PLAN.md](docs/architecture/IMPLEMENTATION_PLAN.md) | Phase-by-phase plan and current status of every phase |
+| [ROADMAP.md](.github/ROADMAP.md) | Roadmap overview, language and dependency goals |
+| [CHANGELOG.md](CHANGELOG.md) | User-facing changes per release (and `[Unreleased]`) |
+| [RELEASING.md](docs/RELEASING.md) | Release assets, installer, supported models, minimum CPU |
+| [SECURITY.md](SECURITY.md) | Supported versions and how to report a vulnerability |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Build, test, and contribution protocol |
 | [DEVELOPER_ONBOARDING.md](DEVELOPER_ONBOARDING.md) | Testing mandate, QA protocol, branching strategy |
 
 ---
 
-*Phase 34+ · BitNet b1.58-2B-4T · DeepSeek-V2-Lite-Chat (GGUF) · SmolLM2-135M F16 · SigLIP vision*
-*Best: **35.79 tok/s** (BitNet INT4, i5-11300H, 500 tok, best-of-3) · **36.25 tok/s** (Xeon PGO+LTO) · **100.44 tok/s** (SmolLM2 F16) · **5.4× vs bitnet.cpp** (INT4 @ t=4) · 95% DRAM ceiling*
+*Phase 40 · BitNet b1.58-2B-4T · Falcon3-1.58bit · Ternary-Bonsai-27B · DeepSeek-V2-Lite-Chat (GGUF) · Qwen3-8B · SmolLM2-135M F16 · SigLIP vision*
+*Best: **35.79 tok/s** (BitNet INT4, i5-11300H, 500 tok, best-of-3) · **36.25 tok/s** (Xeon PGO+LTO) · **100.44 tok/s** (SmolLM2 F16) · **5.4× vs bitnet.cpp** (INT4 @ t=4) · **11.7–12.6 tok/s** (DeepSeek-V2-Lite, ahead of llama.cpp) · 95% DRAM ceiling*

@@ -50,6 +50,13 @@ after a change).
     when the server runs `--no-request-template`.
   Your changes are remembered in this browser; the badge on **Settings** counts how many differ
   from the server defaults, and **Reset to server defaults** discards them.
+  - *Server defaults* (Phase 40.3): which server values are not at their built-in default and
+    where each comes from — the `pz config` file, a `PZ_*` environment variable or a command-line
+    flag. **Save N as server defaults** writes the settings you changed here to the server's config
+    file (the same file `pz config set` writes), and **Save title** sets the web UI title and
+    wordmark. Saved values apply when the server restarts; a flag or environment variable given at
+    startup still wins, and the message says so. The server can turn this off with
+    `--no-config-write` (or `pz config set no-config-write true`).
 - **New chat** — clears the conversation (the full history is otherwise sent with every turn,
   so the model remembers earlier messages).
 - **Watermark** — paste text to check whether it carries this server's watermark (z-score
@@ -130,7 +137,8 @@ the CLI.
 | `POST /v1/chat/completions` | OpenAI-compatible chat completion (streaming via SSE, or full JSON) |
 | `POST /v1/chat/completions/cancel` | Cancel the in-flight generation |
 | `GET /v1/models` | Model metadata (file name, context length, layers, dims, vision/MoE flags) |
-| `GET /v1/config` | Server generation defaults, valid ranges, feature flags, UI title |
+| `GET /v1/config` | Server generation defaults, valid ranges, feature flags, UI title; `config` = where each default comes from (`sources`: default/file/env/cli), the config file `path` and whether the UI may save (`writable`) |
+| `POST /v1/config/defaults` | `{key, value}` or `{key, unset: true}` → save one default (a `/v1/config` defaults name, or `ui_title`) to the `pz config` file for the next start. Needs `Content-Type: application/json` from the server's own origin (or a CORS-allowed one); off with `--no-config-write` |
 | `GET /v1/prompt_cache`, `POST /v1/prompt_cache/clear` | Prompt-cache snapshot stats / drop all snapshots |
 | `POST /v1/watermark/detect` | `{text, key?, gamma?, z_threshold?}` → watermark z-score |
 | `GET /health` | Liveness check (JSON) |

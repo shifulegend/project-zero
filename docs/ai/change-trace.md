@@ -3,11 +3,50 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-22.
 
+### 2026-10-22 — Chat-mode end of turn from undeclared CONTROL tokens (Falcon3 `>>UNUSED_1<<`)
+- `tokenizer_set_chat_stops()` / `tokenizer_is_eog()` (tokenizer_load.c); every generation loop
+  uses `tokenizer_is_eog` (generate, spec_decode, fsm, reasoning, agent); `--ignore-eos` masks the
+  chat stops too. `tests/test_chat_stops.c` (12). Falcon3 stops at "Paris" with no `--stop`;
+  Qwen3 `<think>`, SmolLM2, golden, e2e unchanged.
+
+### 2026-10-22 — Standing rule: review README before every major commit (DoD #7)
+- engineering-rules DoD #7; docs adapters; CLAUDE.md/AGENTS.md/copilot entrypoints; review-and-verify
+  checklists (Claude skill, Copilot prompt, Antigravity workflow). README itself updated by a
+  separate review pass.
+
+### 2026-10-22 — Standing release-maintenance rules; v0.1.0 triage
+- `docs/RELEASING.md` § Maintaining published releases (immutability, notice-only note edits,
+  fix triage, advisories, yanking, supported versions, pre/post-release checks, deprecations);
+  engineering-rules § Releases; docs adapters; `SECURITY.md` supported versions; CLAUDE.md summary.
+  v0.1.0 triage recorded in decision-log.
+
+### 2026-10-22 — Prompt-injection fix (Decision B)
+- `tokenizer_neutralize_control()` + placeholder decoding in `tokenizer_encode`, old reject guard
+  removed (supersedes PR #44's relaxation, merged first so the owner's merge of #48 stays clean);
+  `Tokenizer.special_is_control`; callers: `generate.c` (all template messages), `spec_decode.c`,
+  API legacy formats (`http_server.c`, fail closed), `agent/output_inject.c` (tool output, RAG).
+  `tests/test_prompt_injection.c` (11 checks; CI golden job step). Falcon3 chat still "Paris".
+
 ### 2026-10-22 — JSON mode always starts with { or [; seeded e2e test
 - `sampling/grammar_json` root mode (`JSON_ST_ROOT`, `root` flag), `sampling/fsm` uses it and masks
   empty pieces; `tests/test_grammar_json.c` root tests, `tests/test_fsm.c` updated to the new
   contract; `tests/e2e_json_mode.sh` CLI cases get `--seed ${JSON_SEED:-42}`. Branch
   `claude/fix-json-mode-start` off master so master can take it alone.
+
+### 2026-10-22 — Phase 40.4: install.sh
+- `install.sh` (root), `tools/test_install.sh` (24 checks: install, discovery, upgrade, tampered
+  archive, missing checksum entry, unsupported platform, version injection, --help piped,
+  uninstall; dash + bash), CI job `installer` (shellcheck + test), release.yml ships `install.sh`
+  (+ `SHA256SUMS` line), README Option A, RELEASING asset table, DoD #6 + config adapters.
+  Real-repo check: v0.1.0 (old asset name) gets the "predates this installer" message.
+
+### 2026-10-22 — Phase 40.3: value sources in /v1/config, save server defaults from the web UI
+- `config/pz_config` provenance (`src`, `pz_config_mark_cli`, `pz_config_publish`), `cli/config_cmd`
+  records it; `api/config_endpoint` (`config` block in `/v1/config`, `POST /v1/config/defaults`,
+  cross-site guard), `json_fields` number-text/string-list helpers, `HttpRequest` Content-Type/Host,
+  `--no-config-write` (+ schema key); web UI Settings → Server defaults; OpenAPI, WEBUI_GUIDE,
+  plan. Fixed: schema rejected `repeat-last-n -1`. Tests `test_config_endpoint` (46), live curl,
+  restart check, Playwright screenshots (light/dark).
 
 ### 2026-10-22 — Security-audit fuzzer fix
 - `TN_SANITIZED` (core/platform.h); `main.c` opens the model before the hardware probe and skips

@@ -5,6 +5,8 @@
   import NumberField from './NumberField.svelte';
   import PromptCacheStatus from './PromptCacheStatus.svelte';
   import UpdateStatus from './UpdateStatus.svelte';
+  import { serverDefaultChanges, sourcesSummary } from './settings.js';
+  import { saveServerDefault } from './api.js';
 
   export let settings;
   export let config;
@@ -17,6 +19,39 @@
 
   function toggleRandomSeed(e) {
     settings.seed = e.target.checked ? -1 : 0;
+  }
+
+  // Phase 40.3: save this browser's changes as the server's own defaults
+  // (written to the `pz config` file; the server applies them at its next start).
+  const SOURCE_LABEL = { file: 'config file', env: 'environment', cli: 'command line' };
+  $: cfgInfo = config?.config ?? null;
+  $: changes = config && settings ? serverDefaultChanges(settings, config) : [];
+  $: sources = sourcesSummary(config);
+  let title = null;
+  $: if (title === null && config?.ui?.title) title = config.ui.title;
+  let saving = false;
+  let saveMsg = '';
+  let saveErr = '';
+
+  async function saveAll(items) {
+    saving = true;
+    saveMsg = '';
+    saveErr = '';
+    const overridden = [];
+    try {
+      for (const { key, value } of items) {
+        const r = await saveServerDefault(key, value);
+        if (r.overridden_by) overridden.push(`${key} (${SOURCE_LABEL[r.overridden_by] ?? r.overridden_by})`);
+      }
+      saveMsg = `Saved ${items.length} setting${items.length === 1 ? '' : 's'} to ${cfgInfo.path}. ` +
+        'They apply when the server restarts.' +
+        (cfgInfo.file_used ? '' : ' Note: this server was started with --no-config, so it ignores the file.') +
+        (overridden.length ? ` Still overridden at startup by: ${overridden.join(', ')}.` : '');
+    } catch (e) {
+      saveErr = e.message;
+    } finally {
+      saving = false;
+    }
   }
 </script>
 
@@ -133,6 +168,42 @@
     </section>
   {/if}
 
+  {#if cfgInfo}
+    <section class="wide">
+      <h3>Server defaults</h3>
+      {#if Object.keys(sources).length}
+        <span class="dim">
+          Server values not at their built-in default:
+          {#each Object.entries(sources) as [src, keys], i}{i ? ' · ' : ''}<b>{SOURCE_LABEL[src] ?? src}</b>: {keys.join(', ')}{/each}
+        </span>
+      {:else}
+        <span class="dim">Every server value is the built-in default.</span>
+      {/if}
+      {#if cfgInfo.writable}
+        <label class="text">
+          <span>Web UI title <span class="dim">(also drawn as the wordmark)</span></span>
+          <div class="row gap">
+            <input type="text" bind:value={title} maxlength="64" />
+            <button class="link-btn" disabled={saving || !title?.trim() || title === config.ui.title}
+                    on:click={() => saveAll([{ key: 'ui_title', value: title.trim() }])}>Save title</button>
+          </div>
+        </label>
+        <div class="row gap">
+          <span class="dim">{changes.length ? `Changed here: ${changes.map((c) => c.key).join(', ')}` : 'No changes from the server defaults.'}</span>
+          <button class="link-btn" disabled={saving || !changes.length} on:click={() => saveAll(changes)}
+                  title="Write these values to {cfgInfo.path}; the server uses them from its next start">
+            {saving ? 'Saving…' : `Save ${changes.length || ''} as server defaults`}
+          </button>
+        </div>
+      {:else}
+        <span class="dim">{cfgInfo.path ? 'Saving is disabled on this server (--no-config-write).' : 'This server has no config file location.'}
+          Use <code>pz config set</code> on the server instead.</span>
+      {/if}
+      {#if saveMsg}<span class="ok">{saveMsg}</span>{/if}
+      {#if saveErr}<span class="err" role="alert">Error: {saveErr}</span>{/if}
+    </section>
+  {/if}
+
   <section>
     <h3>Updates</h3>
     <UpdateStatus />
@@ -186,6 +257,24 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+  }
+  .row.gap {
+    gap: 0.75rem;
+  }
+  .row.gap input {
+    flex: 1;
+  }
+  .ok {
+    color: var(--accent);
+    font-size: 0.8rem;
+  }
+  .err {
+    color: #e5484d;
+    font-size: 0.8rem;
+  }
+  .link-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
   h3 {
     margin: 0;

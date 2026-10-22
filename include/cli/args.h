@@ -83,6 +83,7 @@ typedef struct {
     int    repeat_last_n;      /* --repeat-last-n <N>: penalty window (64)     */
     char  *system_prompt;      /* --system-prompt <text>: NULL = none          */
     bool   no_request_template; /* --no-request-template: ignore API "chat_template" */
+    bool   no_config_write;    /* --no-config-write: refuse POST /v1/config/defaults */
     char  *chat_template_file; /* --chat-template-file <path>: replaces the
                                   model's tokenizer.chat_template (CLI and
                                   --server); NULL = use the GGUF template     */

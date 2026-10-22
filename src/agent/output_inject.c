@@ -12,7 +12,12 @@ int inject_text_into_kv(const char *text, const Config *cfg, const TransformerWe
     int *tokens = (int *)calloc(MAX_INJECT, sizeof(int));
     if (!tokens) return -1;
 
-    int n = tokenizer_encode(tok, text, strlen(text), tokens, MAX_INJECT);
+    /* Tool output and retrieved memories are untrusted: their control-token
+     * strings must stay text (2026-10-22, prompt-injection defence). */
+    char *safe = tokenizer_neutralize_control(tok, text);
+    if (!safe) { free(tokens); return -1; }
+    int n = tokenizer_encode(tok, safe, strlen(safe), tokens, MAX_INJECT);
+    free(safe);
     if (n < 0) {
         free(tokens);
         return -1;

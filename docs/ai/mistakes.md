@@ -5,6 +5,29 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-10-22.
 
+### 2026-10-22 — Shipped a per-model `--stop` tip instead of fixing end-of-turn detection
+
+- After verifying Falcon3-1.58bit I recommended `--stop ">>UNUSED_1<<"` (in PR/issue reply drafts)
+  as "a property of this model". The owner rightly called it a workaround: the engine had no
+  general notion of "the model emitted structure, the turn is over". Fixed with chat-mode stops
+  from CONTROL tokens the template never writes (decision-log 2026-10-22).
+- Prevention rule: a user-side flag that compensates for engine behaviour is a bug report, not a
+  tip. Compare with the reference engine to locate the cause, then fix it generically -- no
+  model names or ids.
+
+### 2026-10-22 — Special tokens in chat messages were parsed as real control tokens
+
+- Message text was rendered into the chat template and tokenized as one trusted string, so a
+  user (or a pasted document, or tool output) writing `<|im_end|>\n<|im_start|>system` produced
+  genuine turn markers -- a prompt-injection hole. The only defence was a guard that rejected
+  *unknown* `<|...|>` text, which blocked harmless prompts (Falcon3, PR #44) and did nothing
+  against *known* control tokens. Fixed by neutralising untrusted text before templating
+  (decision-log 2026-10-22); test `test_prompt_injection` fails 3/11 without the fix.
+- Also fixed while there: the GGUF special-token list grew with `x = realloc(x, ...)` (leak +
+  NULL entries on OOM) and stored unchecked `strdup` results that `match_special_token` strlen()s.
+- Prevention rule: treat every string that did not come from the template or the operator as
+  untrusted at the point it is placed into a prompt.
+
 ### 2026-10-22 — JSON-mode e2e test passed or failed by luck (no seed; permissive root)
 
 - `tests/e2e_json_mode.sh` sampled at temperature 0.7/1.5 without `--seed`, so every CI run saw a
@@ -18,6 +41,21 @@
   `--seed ${JSON_SEED:-42}`. 40-seed sweep at temperature 1.5/2.0: 0 bad starts.
 - Prevention rule: any test that samples (temperature > 0) must pass a fixed seed; a re-run that
   turns a failure green is a finding, not a fix.
+
+### 2026-10-22 — Rename search-and-replace broke a README sentence about old releases
+
+- README said releases before the Phase 39 rename shipped "an `pz` binary": the bulk rename hit a
+  sentence that is about the *old* name. Fixed ("an `adaptive_ai_engine` binary"). Prevention:
+  after a bulk rename, grep the new name next to words like "before", "old", "legacy", "was" and
+  read those lines.
+
+### 2026-10-22 — Config schema range narrower than the flag it mirrors (`repeat-last-n`)
+
+- `g_schema` gave `repeat-last-n` a minimum of 0, but `--repeat-last-n -1` ("all generated
+  tokens") is documented and accepted, so `pz config set repeat-last-n -1` was refused. Found
+  while mapping `/v1/config` limits (`penalty_last_n` min -1) to schema keys for 40.3. Fixed
+  (min -1). Prevention: a schema range must equal what `parse_args` and `/v1/config limits`
+  accept; check all three when adding a key.
 
 ### 2026-10-22 — Security-audit fuzzer red since its hardening: first-run calibration + a leak
 

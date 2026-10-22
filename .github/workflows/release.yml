@@ -79,7 +79,9 @@ jobs:
           ln -s pz "dist/${NAME}/adaptive_ai_engine"
           cp LICENSE README.md CHANGELOG.md "dist/${NAME}/"
           tar -C dist -czf "dist/${NAME}.tar.gz" "${NAME}"
-          ( cd dist && sha256sum "${NAME}.tar.gz" > SHA256SUMS )
+          # Phase 40.4: the installer ships beside the archive, in SHA256SUMS too.
+          cp install.sh dist/install.sh
+          ( cd dist && sha256sum "${NAME}.tar.gz" install.sh > SHA256SUMS )
           echo "name=${NAME}" >> "$GITHUB_OUTPUT"
           echo "Packaged ${NAME}.tar.gz"; cat dist/SHA256SUMS
 
@@ -167,7 +169,7 @@ jobs:
           # not GitHub's auto-generated commit list.
           python3 tools/changelog.py notes "${GITHUB_REF_NAME}" > release-notes.md
           gh release create "${GITHUB_REF_NAME}" \
-            dist/*.tar.gz dist/SHA256SUMS \
+            dist/*.tar.gz dist/install.sh dist/SHA256SUMS \
             --title "Project Zero ${GITHUB_REF_NAME}" \
             --notes-file release-notes.md \
             --prerelease \

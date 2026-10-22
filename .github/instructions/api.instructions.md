@@ -33,3 +33,8 @@ applyTo: "src/api/**,include/api/**,tests/test_api_server.c,tests/test_cors.c,te
   downloads or replaces the binary without signed release metadata (decision-log 2026-10-18).
 - Brand wordmark: `/v1/config ui.logo_ascii` is rendered server-side from `--ui-title` by
   `brand/block_font.c` (same font as the CLI banner) — never hardcode the logo in `webui/src`.
+- Phase 40.3 settings provenance: `/v1/config config.sources` (default/file/env/cli, recorded by
+  `pz_config_prepare_argv`) and `POST /v1/config/defaults` (`api/config_endpoint.c`) writing the
+  `pz config` file for the next start. State-changing routes on a key-less server must pass
+  `api_config_write_allowed()` (JSON content type + same-origin/CORS-allowed Origin); a new
+  saveable default needs a row in `g_map` there **and** a `g_schema` key (DoD #6).

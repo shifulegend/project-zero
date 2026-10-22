@@ -67,7 +67,15 @@ A change is done only when:
    dependency updates, in the same commit, the `pz config` schema (key, default, range, help, wizard
    step where relevant), the install script, `/v1/config` + web UI if user-facing, and the docs.
    Concretely: a persistable flag gets an entry in `g_schema` (`src/config/pz_config.c`); the
-   install script (Phase 40.4, pending) is updated when release assets or dependencies change.
+   install script (`install.sh`, Phase 40.4) is updated when release assets or dependencies change,
+   and `tools/test_install.sh` (CI job `installer`) must pass.
+7. **README reviewed before every major commit** (added 2026-10-22): a commit that adds or
+   changes a feature, flag, command, default, supported model/platform, install step, release
+   asset or a published number (benchmark, speed, memory) re-reads `README.md` and corrects
+   every statement it makes stale -- in the same commit. Check: each flag/command README shows
+   exists (`./pz --help`), each relative link resolves, numbers match the source report, and
+   "coming soon"/phase-status lines match `IMPLEMENTATION_PLAN.md`. A "major commit" is any
+   commit with a `CHANGELOG.md` `[Unreleased]` entry; pure refactors/tests/internal docs are exempt.
 - Never claim completion without stating what was verified and what remains UNVERIFIED.
 - `make test` runs **every** `tests/*.c` and aborts on the first failure — a green full run is
   the bar. It builds the library as the `debug` variant (ASan/UBSan on engine code too, since
@@ -108,6 +116,13 @@ A change is done only when:
 - Don't create placeholder/flag branches (e.g. `DELETE-ME-*`) as a habit — they are a last-resort
   workaround only when an environment blocks ref deletion; delete them too once unblocked.
 - Don't commit build artifacts, downloaded models, or transient logs (`wget-log`, `*stdout.log`).
+
+## Releases (standing rule, added 2026-10-22)
+- Published releases are immutable: never replace assets, move a tag or rewrite notes; fixes ship
+  as a new version; old notes only get a dated notice added (superseded / known issues /
+  advisory). Every landed fix is triaged against the latest (supported) release — security,
+  data loss or crash on supported hardware → a release within `SECURITY.md`'s timeline.
+  Full rules: **`docs/RELEASING.md` § Maintaining published releases**.
 
 ## Security / safety constraints
 - **Updates are notify-only** (Phase 38): never download or replace the binary without signed

@@ -3,6 +3,71 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-10-21.
 
+### 2026-10-22 — End of turn in chat mode: CONTROL tokens the template never writes
+
+- Falcon3-3B-Instruct-1.58bit ends turns with `>>UNUSED_1<<` (id 127, CONTROL) while its GGUF
+  declares EOS `<|endoftext|>` (11); bitnet.cpp's llama-completion generates the same tokens, so
+  it is the checkpoint's fine-tuning, not our maths -- and llama.cpp does not stop there either.
+- Rule (no per-model names or ids): in chat mode a generated CONTROL token is structure, never
+  answer text; if the active template never writes it, the turn is over. Template-written control
+  tokens (Llama-3.1 `<|python_tag|>`) and USER_DEFINED tokens (`<think>`, `<tool_call>`) stay
+  generatable; BOS ends the turn. Raw prompts keep the declared EOG set (llama-completion parity
+  for benchmarks). Recomputed per generation, so a request's own `chat_template` is honoured.
+- Rejected: telling users to pass `--stop ">>UNUSED_1<<"` (symptom, per model), and adding names
+  to `EOG_NAMES` (hardcoding).
+
+### 2026-10-22 — Release v0.1.0 triage (first use of the release-maintenance rules)
+
+- v0.1.0 (tag `4fd4627`, prerelease, 26 downloads, asset `adaptive_ai_engine-0.1.0-x86_64-linux.tar.gz`)
+  contains code later fixed for: the agent tool sandbox (symlink escape, `PATH` hijacking, exit-code
+  race; reachable through the REPL's `/agent`), prompt injection through chat messages (reachable
+  through `--server`), the VNNI self-test that disabled VNNI kernels (performance only). Not
+  affected: `--static-dir` traversal and the VBMI `SIGILL` (code not in 0.1.0).
+- Decision: v0.1.0 is not modified (immutable). `[Unreleased]` already holds a release's worth of
+  tested work including all these fixes, so **v0.2.0 is the fix release** (owner cuts it); once
+  published, v0.1.0's notes get a dated "superseded by v0.2.0 — security fixes" notice, and the
+  owner decides on GitHub Security Advisories for the two security items (drafts in the owner
+  report). No 0.1.1 backport (pre-1.0, SECURITY.md: latest release only).
+
+### 2026-10-22 — Prompt injection: neutralise control tokens in untrusted text (owner: "fix it")
+
+- Chat message content, tool output and retrieved memories are untrusted; CONTROL special-token
+  strings in them are replaced by placeholders (U+F0000 + index) that `tokenizer_encode` turns
+  back into the same characters as plain text. The model sees exactly what the user typed, but
+  it can never close a turn or forge one. Template text (trusted) keeps real control tokens.
+- Follows llama.cpp's `parse_special=false` semantics: USER_DEFINED added tokens (`<think>`,
+  `<tool_call>`) remain tokens in message text, which keeps templates that split content on
+  `</think>` working.
+- Placeholders rather than in-string sentinels, so template string operations (`split`, `trim`)
+  on content keep working; trade-off: a user's own U+F0000+ private-use characters that collide
+  with a placeholder index become that control token's text (still plain text, never a token).
+- Replaces the old guard that rejected any prompt containing an unknown `<|...|>` (and PR #44's
+  relaxation of it): such text is now ordinary text.
+- `--raw-prompt` and the CLI's single `--prompt` in raw mode stay trusted (operator input).
+
+### 2026-10-22 — Phase 40.4 installer: audience-independent core only
+
+- Built the parts every audience needs (download for this platform, verify against `SHA256SUMS`,
+  user-scope install, upgrade in place, uninstall by manifest, optional `pz config`). Things that
+  depend on the owner's still-open answer about the first-time user (fetching a starter model,
+  starting/opening the web UI, a background service) are deliberately not built.
+- Newest release comes from the release list, not `/releases/latest` (every release is a
+  prerelease). Only Linux x86-64 has an asset; other platforms get build-from-source steps.
+- No signature verification yet: checksums come from the same release as the archive, so they
+  protect against corruption and mirror tampering, not a compromised GitHub release. Signed
+  release metadata stays the precondition for any self-update (decision-log 2026-10-18).
+
+### 2026-10-22 — Phase 40.3: web UI saves server defaults to the config file, for the next start
+
+- The web UI writes to the same `pz config` file as the CLI (one source of truth), one key per
+  `POST /v1/config/defaults`, validated by the config schema; only the `/v1/config` defaults plus
+  `ui_title` are saveable (never secrets, paths or server/security settings).
+- Saved values apply at the next start; the running server's defaults are not mutated, because
+  requests already override every knob per call and live mutation would race generations.
+- On by default, as the plan's "local-only" requirement is met by the loopback default + a
+  cross-site guard (JSON content type forces a CORS preflight that only `--cors` answers; foreign
+  `Origin` refused); `--no-config-write` disables it. With `--api-key` the key gates it as usual.
+
 ### 2026-10-21 — `pz config` design calls (Phase 40.1/40.2)
 
 Taken from the plan's defaults while the owner's design answers were pending (any can be revisited):

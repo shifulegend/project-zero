@@ -52,10 +52,7 @@ static int sample_next(float *logits, int vocab_size, float temperature, float t
 
 static int is_eos_token(int token, const Config *cfg, const Tokenizer *tok) {
     if (cfg->eos_token_id > 0 && token == cfg->eos_token_id) return 1;
-    for (int i = 0; i < tok->n_eos; i++) {
-        if (token == tok->eos_list[i]) return 1;
-    }
-    return 0;
+    return tokenizer_is_eog(tok, token);   /* incl. chat-mode turn ends */
 }
 
 /* ── Core implementation ─────────────────────────────────────────────────
@@ -127,15 +124,20 @@ void speculative_generate_with_callback(const Config *cfg, const TransformerWeig
     if (!prompt_tokens) return;
     int n_prompt = 0;
 
+    tokenizer_set_chat_stops(tok, tok->chat_template);
     if (tok->chat_template) {
         const char *bos_str = (tok->bos_token_id >= 0 && tok->bos_token_id < tok->vocab_size)
                               ? tok->vocab[tok->bos_token_id] : "";
         const char *eos_str = (tok->eos_token_id >= 0 && tok->eos_token_id < tok->vocab_size)
                               ? tok->vocab[tok->eos_token_id] : "";
+        /* Content, never chat markup (prompt-injection defence, see tokenizer.h). */
+        char *safe = tokenizer_neutralize_control(tok, prompt);
+        if (!safe) { free(prompt_tokens); return; }
         const char *roles[1]    = { "user" };
-        const char *contents[1] = { prompt };
+        const char *contents[1] = { safe };
         char *formatted = chat_template_apply(tok->chat_template, roles, contents, 1,
                                               bos_str, eos_str, /*add_generation_prompt=*/1);
+        free(safe);
         if (!formatted) { free(prompt_tokens); return; }
         n_prompt = tokenizer_encode(tok, formatted, strlen(formatted), prompt_tokens, cfg->seq_len);
         free(formatted);

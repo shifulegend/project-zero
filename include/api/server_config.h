@@ -64,6 +64,7 @@ typedef struct {
     int              chat_format; /* --chat-format: -1 = auto (from vocabulary), else ChatTemplateType;
                                      only used when the model has no embedded chat template */
     int              allow_request_template; /* requests may send "chat_template" (1; --no-request-template = 0) */
+    int              allow_config_write;     /* POST /v1/config/defaults may save (1; --no-config-write = 0) */
     const char      *chat_template_source;   /* "gguf" | "file" | "none" — published by /v1/config */
     MctsOptions      mcts;        /* Phase 30: --mcts* defaults every request starts from */
     int              mcts_max;    /* --mcts-max: per-request simulation cap (0 = search disabled) */

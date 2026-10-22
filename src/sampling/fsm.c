@@ -11,10 +11,8 @@ void fsm_init(FSMState *fsm) {
 }
 
 static int is_eos_token(const Tokenizer *t, int token_id) {
-    if (token_id == t->eos_token_id) return 1;
-    for (int i = 0; i < t->n_eos; i++)
-        if (t->eos_list[i] == token_id) return 1;
-    return 0;
+    /* Includes chat-mode turn ends, so JSON mode cannot stop early on one. */
+    return tokenizer_is_eog(t, token_id);
 }
 
 /* Feeds `piece` through a scratch copy of `base`, returning 1 if every

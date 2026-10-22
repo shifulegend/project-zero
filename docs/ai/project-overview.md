@@ -2,7 +2,7 @@
 
 > Canonical source of truth. Tool adapters (CLAUDE.md, AGENTS.md, gemini/GEMINI.md,
 > .github/copilot-instructions.md) summarize and link here. Keep this current.
-> Last updated: 2026-10-18.
+> Last updated: 2026-10-22.
 
 ## Purpose
 `project-zero` is a from-scratch, CPU-optimized LLM inference engine in C/C++ targeting
@@ -57,11 +57,12 @@ at runtime (`--simd`, `--classifier`, or auto/calibration).
 | `src/update/` | Phase 38 update notices: SemVer, GitHub Releases check, cache, background service (notify-only) |
 | `src/distributed/` | Phase 28 pipeline split: framed tensor RPC, layer plan, worker loop (`--rpc-worker`, `--remote-layers`) |
 | `src/multimodal/` | Vision encoder/projector/bridge, image load (optional/experimental) |
-| `src/config/` | Phase 40 persistent settings: schema, config file, `PZ_*` env, argv merge (`pz config` lives in `src/cli/config_cmd.c`) |
+| `src/config/` | Phase 40 persistent settings: schema, config file, `PZ_*` env, argv merge, per-key source (`pz config` lives in `src/cli/config_cmd.c`; web UI save in `src/api/config_endpoint.c`) |
 | `src/cli/` | Arg parsing, REPL, `main.c` (builds `pz`); color/progress/live-stats/markdown-render (Phase 22.3, REPL-only) |
 | `include/` | Public headers mirroring `src/` |
 | `tests/` | Unit + audit + red/blackbox tests (every `tests/*.c` is auto-built & run) |
-| `tools/` | Model conversion + benchmark scripts |
+| `tools/` | Model conversion + benchmark scripts, `changelog.py`, `test_install.sh` |
+| `install.sh` | Phase 40.4 installer (release asset; checksum-verified, user-scope) |
 | `webui/` | Web chat UI frontend source (Vite+Svelte, Phase 22); build output is embedded into the binary, not shipped as a directory |
 | `docs/` | Reports + this `docs/ai/` AI-dev system |
 | `docs/design/` | UI/UX design-principles reference used to grade screenshots (Phase 22) |

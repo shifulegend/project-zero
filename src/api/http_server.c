@@ -14,6 +14,8 @@
  *   GET  /v1/config                       → Server generation defaults, valid
  *                                            ranges and feature flags (drives
  *                                            every web UI control)
+ *   POST /v1/config/defaults              → Phase 40.3 save one default to the
+ *                                            `pz config` file (next start)
  *   POST /v1/watermark/detect             → Phase 33 watermark z-score for text
  *   GET  /v1/prompt_cache                 → Phase 26 prompt-cache stats
  *   POST /v1/prompt_cache/clear           → drop all cached prompt snapshots
@@ -55,6 +57,7 @@
 #define _GNU_SOURCE
 #endif
 
+#include "api/config_endpoint.h"
 #include "api/api_server.h"
 #include "api/chat_request.h"
 #include "api/chat_compile.h"
@@ -337,6 +340,27 @@ static int handle_watermark_detect(int fd, const char *body_start, size_t body_l
     return status;
 }
 
+/* Phase 40.3: save a server default to the config file (never takes the
+ * generation mutex). */
+static int handle_config_save(int fd, const char *body_start, size_t body_len,
+                              const char *content_type, const char *origin, const char *host,
+                              ApiContext *ctx, const char *extra_headers) {
+    if (!api_config_write_allowed(content_type, origin, host, &ctx->server_config.cors)) {
+        send_error_ex(fd, 403, "Cross-site request refused (send Content-Type: application/json "
+                               "from the server's own origin)", extra_headers);
+        return 403;
+    }
+    char *body = (char *)malloc(body_len + 1);
+    if (!body) { send_error_ex(fd, 500, "OOM", extra_headers); return 500; }
+    memcpy(body, body_start, body_len);
+    body[body_len] = '\0';
+    int status = 500;
+    char *json = api_config_save(ctx, body, &status);
+    free(body);
+    send_json_heap(fd, status, json, extra_headers);
+    return status;
+}
+
 static void handle_health(int fd, const char *extra_headers) {
     send_response_ex(fd, 200, "application/json", "{\"status\":\"ok\"}", 0, extra_headers);
 }
@@ -585,6 +609,24 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
         ChatTemplateType tmpl = ctx->server_config.chat_format >= 0
                                 ? (ChatTemplateType)ctx->server_config.chat_format
                                 : chat_template_detect_vocab(ctx->tok);
+        /* Message text is content, never chat markup (prompt-injection
+         * defence, 2026-10-22): neutralise control tokens before the
+         * built-in formats wrap it in their own. */
+        int neutral_ok = 1;
+        for (int i = 0; i < req.num_messages && neutral_ok; i++) {
+            if (!req.messages[i].content) continue;
+            char *safe = tokenizer_neutralize_control(ctx->tok, req.messages[i].content);
+            if (!safe) { neutral_ok = 0; break; }   /* fail closed */
+            free(req.messages[i].content);
+            req.messages[i].content = safe;
+        }
+        if (!neutral_ok) {
+            free(compiled);
+            chat_request_free(&req);
+            release_generation_slot(ctx);
+            send_error_ex(fd, 500, "OOM", extra_headers);
+            return;
+        }
         if (chat_compile_prompt(&req, tmpl, compiled, HTTP_MAX_PROMPT_BYTES) != TN_OK) {
             free(compiled);
             chat_request_free(&req);
@@ -728,6 +770,8 @@ typedef struct {
     int  is_chunked;
     char origin[256];
     char authorization[512];
+    char content_type[128];
+    char host[256];
     int  has_origin;
     int  has_authorization;
 } HttpRequest;
@@ -782,6 +826,10 @@ static int http_parse(const char *buf, size_t buf_len, HttpRequest *req) {
         } else if (strncasecmp(p, "authorization:", 14) == 0) {
             copy_header_value(p + 14, req->authorization, sizeof(req->authorization));
             req->has_authorization = 1;
+        } else if (strncasecmp(p, "content-type:", 13) == 0) {
+            copy_header_value(p + 13, req->content_type, sizeof(req->content_type));
+        } else if (strncasecmp(p, "host:", 5) == 0) {
+            copy_header_value(p + 5, req->host, sizeof(req->host));
         }
         /* Skip to next line */
         while (*p && *p != '\n') p++;
@@ -907,6 +955,9 @@ static void handle_connection(int fd, ApiContext *ctx) {
         handle_get_models(fd, ctx, extra_headers);
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/config") == 0) {
         handle_get_config(fd, ctx, extra_headers);
+    } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/config/defaults") == 0) {
+        status = handle_config_save(fd, req.body, req.body_len, req.content_type,
+                                    req.has_origin ? req.origin : NULL, req.host, ctx, extra_headers);
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/update") == 0) {
         send_json_heap(fd, 200, api_update_json(0), extra_headers);
     } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/update/check") == 0) {

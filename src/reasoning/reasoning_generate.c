@@ -26,6 +26,7 @@
 void generate_with_reasoning(Config *p, TransformerWeights *w, RunState *s,
                              Tokenizer *t, ThreadPool *tp, const char *prompt,
                              int max_tokens, float temperature, float top_p) {
+  tokenizer_set_chat_stops(t, NULL);   /* raw prompt: declared EOG set only */
   /* Step 1: Inject reasoning prompt */
   char augmented_prompt[4096];
   inject_reasoning_prompt(augmented_prompt, prompt, sizeof(augmented_prompt));
@@ -103,11 +104,7 @@ void generate_with_reasoning(Config *p, TransformerWeights *w, RunState *s,
 
     /* Check for EOS — all IDs come from tokenizer vocab scan / GGUF metadata */
     {
-      int is_eos = 0;
-      for (int _ei = 0; _ei < t->n_eos && !is_eos; _ei++)
-        if (next == t->eos_list[_ei]) is_eos = 1;
-      if (!is_eos && t->eos_token_id >= 0 && next == t->eos_token_id) is_eos = 1;
-      if (is_eos) break;
+      if (tokenizer_is_eog(t, next)) break;
     }
 
     token = next;

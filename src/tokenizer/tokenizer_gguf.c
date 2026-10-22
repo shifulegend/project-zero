@@ -312,7 +312,8 @@ TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
             int cap = 128;
             t->special_tokens    = (char **)malloc((size_t)cap * sizeof(char *));
             t->special_token_ids = (int *)   malloc((size_t)cap * sizeof(int));
-            if (t->special_tokens && t->special_token_ids) {
+            t->special_is_control = (unsigned char *)malloc((size_t)cap);
+            if (t->special_tokens && t->special_token_ids && t->special_is_control) {
                 for (int i = 0; i < t->vocab_size && (uint64_t)i < tt_count; i++) {
                     int32_t ttype;
                     memcpy(&ttype, tt_bytes + (size_t)i * sizeof(int32_t), sizeof(int32_t));
@@ -320,13 +321,25 @@ TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
                      * Exclude: NORMAL(1), BYTE(6, handled by BPE), UNUSED(5). */
                     if ((ttype == 3 || ttype == 4) && t->vocab[i] && t->vocab[i][0]) {
                         if (t->n_special >= cap) {
-                            cap *= 2;
-                            t->special_tokens    = (char **)realloc(t->special_tokens,    (size_t)cap * sizeof(char *));
-                            t->special_token_ids = (int *)   realloc(t->special_token_ids, (size_t)cap * sizeof(int));
-                            if (!t->special_tokens || !t->special_token_ids) break;
+                            /* Grow each array separately; on failure keep what
+                             * was collected (2026-10-22: assigning realloc's
+                             * result in place leaked the old arrays and left
+                             * NULLs that tokenizer_free then walked). */
+                            int ncap = cap * 2;
+                            char **ns = (char **)realloc(t->special_tokens, (size_t)ncap * sizeof(char *));
+                            if (ns) t->special_tokens = ns;
+                            int *ni = ns ? (int *)realloc(t->special_token_ids, (size_t)ncap * sizeof(int)) : NULL;
+                            if (ni) t->special_token_ids = ni;
+                            unsigned char *nc = ni ? (unsigned char *)realloc(t->special_is_control, (size_t)ncap) : NULL;
+                            if (nc) t->special_is_control = nc;
+                            if (!nc) break;
+                            cap = ncap;
                         }
-                        t->special_tokens[t->n_special]    = strdup(t->vocab[i]);
+                        char *dup = strdup(t->vocab[i]);
+                        if (!dup) break;   /* match_special_token strlen()s every entry */
+                        t->special_tokens[t->n_special]    = dup;
                         t->special_token_ids[t->n_special] = i;
+                        t->special_is_control[t->n_special] = (unsigned char)(ttype == 3);
                         t->n_special++;
                     }
                 }

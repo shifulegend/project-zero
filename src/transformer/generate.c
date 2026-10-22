@@ -91,6 +91,9 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
     /* A request's own template (API "chat_template") wins over the model's. */
     const char *chat_tmpl = (gp->chat_template && gp->chat_template[0]) ? gp->chat_template
                                                                        : tok->chat_template;
+    /* Chat mode ends a turn at any CONTROL token the template never writes
+     * (Falcon3's ">>UNUSED_1<<"); raw prompts keep the declared EOG set. */
+    tokenizer_set_chat_stops(tok, (chat_tmpl && !gp->raw_prompt) ? chat_tmpl : NULL);
     if (chat_tmpl && !gp->raw_prompt) {
         /* ── GGUF path: apply the model's own Jinja2 chat template ─────────
          * The template itself renders BOS ({{ bos_token }}) so we must NOT
@@ -122,11 +125,23 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
             contents[n_msg++] = prompt;
         }
 
+        /* Message text is content, never chat markup: a "<|im_end|>" typed by
+         * a user (or pasted from a document) must not close their turn
+         * (2026-10-22, prompt-injection defence; see tokenizer.h). */
+        char *safe[GEN_MAX_TEMPLATE_MESSAGES];
+        int n_safe = 0;
+        for (; n_safe < n_msg; n_safe++) {
+            safe[n_safe] = tokenizer_neutralize_control(tok, contents[n_safe]);
+            if (!safe[n_safe]) break;
+            contents[n_safe] = safe[n_safe];
+        }
         int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-        char *formatted = chat_template_apply(chat_tmpl,
+        char *formatted = n_safe < n_msg ? NULL
+                        : chat_template_apply(chat_tmpl,
                                               roles, contents, n_msg,
                                               bos_str, eos_str,
                                               /*add_generation_prompt=*/1);
+        for (int i = 0; i < n_safe; i++) free(safe[i]);
         if (t_step) {
             tn_step_timing_add(TN_STEP_2_BOS_INJECTION,
                                tn_step_timing_now_ns() - t_step);
@@ -324,6 +339,9 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
                 for (int ei = 0; ei < tok->n_eos; ei++)
                     if (tok->eos_list[ei] >= 0 && tok->eos_list[ei] < cfg->vocab_size)
                         logits[tok->eos_list[ei]] = -INFINITY;
+                if (tok->chat_stop)
+                    for (int vi = 0; vi < cfg->vocab_size && vi < tok->vocab_size; vi++)
+                        if (tok->chat_stop[vi]) logits[vi] = -INFINITY;
             }
             if (json_mode) {
                 next = sample_constrained_chain(logits, cfg->vocab_size, &json_fsm,
@@ -364,11 +382,9 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
          * No hardcoded token IDs here. */
         if (step >= n_prompt - 1) {
             int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-            int is_eos = 0;
-            if (cfg->eos_token_id > 0 && next == cfg->eos_token_id) is_eos = 1;
-            for (int ei = 0; ei < tok->n_eos && !is_eos; ei++) {
-                if (next == tok->eos_list[ei]) is_eos = 1;
-            }
+            /* tokenizer_is_eog adds the chat-mode turn ends set below. */
+            int is_eos = (cfg->eos_token_id > 0 && next == cfg->eos_token_id) ||
+                         tokenizer_is_eog(tok, next);
             if (t_step) {
                 tn_step_timing_add(TN_STEP_21_EOS_CHECK,
                                    tn_step_timing_now_ns() - t_step);

@@ -1540,6 +1540,10 @@ Phase 0 (Scaffold)
 > expert-weight offsets, tracked in README's Help Wanted table and
 > `docs/architecture/MOE_RESEARCH_AND_FIX_PLAN.md`; a repacking fix is proposed but not yet
 > implemented. Marker added 2026-09-17 during a progress audit.
+>
+> **Status update (2026-10-22):** that MoE gap is closed — DeepSeek-V2-Lite-Chat Q4_K_S now
+> decodes at 11.7–12.6 tok/s vs llama.cpp's 9.4–10.5 at 4 threads (CHANGELOG `[Unreleased]`);
+> the text above is kept as history.
 
 We built our engine assuming a Dense model (like Llama 3 or BitNet), where every word passes through every weight matrix. To run DeepSeek-R1 or Mixtral, we need an MoE Router that activates only a subset of Experts per token.
 
@@ -3641,7 +3645,7 @@ prefix (= ternary, not the old name).
 **Done when:** no live code, script, CI job, template or current doc uses the old name; old
 benchmark logs still render; the compat shim works for one release; all gates green on gcc and clang.
 
-## Phase 40: Installer + `pz config` (guided setup, persistent configuration) 🟡 40.1 + 40.2 done 2026-10-21; 40.3–40.5 open
+## Phase 40: Installer + `pz config` (guided setup, persistent configuration) 🟡 40.1–40.4 done 2026-10-22; 40.5 partly (docs done; first release with the installer pending)
 
 **Why:** a first-time user should get from download to a working model without reading docs, and
 every setting a user changes once (model folder, threads, port, defaults) should persist — editable
@@ -3678,7 +3682,33 @@ command-line flags win. `--no-config` / `PZ_NO_CONFIG=1` skip it. Tests: `test_p
 `test_config_cmd` (14). Limits: a boolean set in the file can't be switched off by a flag (use
 `pz config unset` or `--no-config`); list settings add to command-line ones. Design defaults were
 taken without the owner's brainstorming answers (recorded in decision-log 2026-10-21) and can be
-revisited. Open: 40.3 value sources in `/v1/config` + web UI save, 40.4 `install.sh`, 40.5 docs.
+revisited.
+
+**As built (40.3, 2026-10-22):** provenance per entry (`PzCfgEntry.src`: default/file/env/cli;
+`pz_config_mark_cli`, `pz_config_publish`/`pz_config_active_source`), recorded by
+`pz_config_prepare_argv`. `api/config_endpoint` adds `GET /v1/config` → `config {path, file_used,
+writable, keys, sources}` and `POST /v1/config/defaults` (`{key, value}` / `{key, unset}`; schema
+validated; written atomically to the same file as `pz config set`; applies at the next start;
+reports `overridden_by` when a flag/env still wins). Guard: `Content-Type: application/json` plus
+same-origin or CORS-allowed `Origin` (blocks browser cross-site writes to a key-less loopback
+server); `--no-config-write` turns it off. Web UI: Settings → *Server defaults* (value sources,
+save changed settings, web UI title). Tests: `test_config_endpoint` (46); live curl + Playwright
+(`tools/screenshots/webui/server_defaults.spec.mjs`). Saving does not change the running server's
+defaults (requests already override per call).
+
+**As built (40.4, 2026-10-22):** `install.sh` (POSIX sh; dash + bash): Linux x86-64 → asset
+`project-zero-<v>-x86_64-unknown-linux-gnu.tar.gz`; newest release from the release *list*
+(all releases are prereleases); `SHA256SUMS` verification (refuses a mismatch or a missing entry);
+installs `pz` atomically to `~/.local/bin` (`--prefix`), docs to `share/doc/project-zero`, a manifest
+for `--uninstall` (never touches settings or models); PATH hint; offers `pz config` via `/dev/tty`
+(works under `curl | sh`); `--version`, `--repo`, `--yes`, `--no-wizard`; other platforms exit 2
+with build-from-source steps; releases before 0.2.0 get a clear "predates the installer"
+message. Mirrors/tests: `PZ_INSTALL_BASE_URL`, `PZ_INSTALL_API`. `tools/test_install.sh` (24
+checks, offline file:// mirror) runs in CI job `installer` with shellcheck; release.yml ships
+`install.sh` beside the archive and in `SHA256SUMS`. 40.5: README/RELEASING/WEBUI_GUIDE updated;
+the first release carrying the installer (v0.2.0) is the owner's to cut. Extras that depend on
+the owner's audience decision (decision-log 2026-10-22: e.g. offering a starter model, opening
+the web UI) are not built.
 
 **Standing rule (engineering-rules DoD #6, 2026-10-21):** every change that adds/renames/removes a
 user-facing flag, env var, default, file location, release asset or runtime dependency updates the

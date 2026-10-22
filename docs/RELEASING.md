@@ -54,7 +54,13 @@ runs on a `v*` tag push.
 | Asset | Contents |
 |-------|----------|
 | `project-zero-<version>-x86_64-unknown-linux-gnu.tar.gz` | unpacks to `project-zero-<version>-x86_64-unknown-linux-gnu/`: `pz` + `LICENSE` + `README.md` + `CHANGELOG.md` (+ the `adaptive_ai_engine → pz` alias symlink, first release after the rename only) |
-| `SHA256SUMS` | checksum of the tarball (`sha256sum -c SHA256SUMS` to verify) |
+| `install.sh` | the installer (Phase 40.4): picks the asset for the machine, verifies it against `SHA256SUMS`, installs `pz` to `~/.local/bin` |
+| `SHA256SUMS` | checksums of the tarball and `install.sh` (`sha256sum -c --ignore-missing SHA256SUMS` to verify what you downloaded) |
+
+`install.sh` finds the newest release through the release list (every release so far is a
+prerelease, which `/releases/latest` skips) and expects exactly the asset and directory names
+above: **renaming an asset means changing `install.sh` and `tools/test_install.sh` in the same
+commit** (engineering-rules DoD #6).
 
 **Naming (Phase 39, 2026-10-21):** `<project>-<version>-<target triple>` — the convention ripgrep
 and the Rust/LLVM toolchains use. The version drops the tag's leading `v`; the triple says arch,
@@ -118,7 +124,7 @@ Runtime variation flags: `--simd {auto,avx2,avx512f,vnni,scalar}`,
 ## Verification (run before tagging)
 
 ```bash
-make test CC=gcc && make test CC=clang        # 46 tests, ASan/UBSan, mock weights
+make test CC=gcc && make test CC=clang        # every tests/*.c, ASan/UBSan, mock weights
 make dist CC=gcc
 file ./pz                      # ELF x86-64
 ldd  ./pz                      # only libc/libm/ld (no libstdc++/libgcc)
@@ -140,6 +146,46 @@ because the HuggingFace download is gated by the environment's network policy.
 - SemVer; stay on `0.MINOR.PATCH` while pre-1.0 and publish as **prerelease**.
 - The tag (`vX.Y.Z`) is the version embedded in the binary (`--version`), via
   `git describe` → `-DPZ_VERSION` (Makefile / CMake).
+
+## Maintaining published releases (standing rules, 2026-10-22)
+
+Sources: SemVer 2.0 §3 ("once a versioned package has been released, the contents of that version
+MUST NOT be modified; any modifications MUST be released as a new version"), Keep a Changelog 1.1
+(`[YANKED]`), GitHub release immutability, OpenSSF coordinated-vulnerability-disclosure guide.
+
+1. **A published release never changes.** Never replace or delete its assets, never move, delete
+   or re-push its tag, never rebuild it. Users' checksums, `install.sh` and reproducibility depend
+   on that. Any fix ships as a **new version**.
+2. **Only the release notes may be edited**, and only to *add* a dated notice at the top
+   (superseded by vX, known issues, security advisory link). Never rewrite or remove the
+   original notes.
+3. **Every fix that lands is triaged against the releases people use** (the latest release, and
+   any release `SECURITY.md` lists as supported):
+   - security issue reachable in a shipped feature, data loss, or a crash on supported
+     hardware → a release within `SECURITY.md`'s timeline (critical: 14 days). A patch release
+     (`x.y.Z`) when the fix is small; when `[Unreleased]` already holds a release's worth of
+     tested work, the next minor release *is* the fix — don't hold it back for features;
+   - anything else → rolls into the next planned release.
+   Record the triage outcome in `docs/ai/decision-log.md`.
+4. **Security fixes**: coordinate through a private GitHub Security Advisory (draft → fix →
+   publish with the release), request a CVE when the impact warrants it, list them under
+   `### Security` in the changelog, credit the reporter, and add a notice to every affected
+   release's notes (rule 2).
+5. **A broken release** (wrong or unusable artifact, build that crashes on supported CPUs, a
+   security hole with no quick fix): publish the fixed version first, then mark the bad one
+   `## [x.y.z] - date [YANKED]` in `CHANGELOG.md` and add a notice to its notes. Keep its assets
+   unless they are malicious or must go for legal reasons — deleting breaks checksums and history.
+6. **Supported versions** are stated in `SECURITY.md` (pre-1.0: the latest release and `master`;
+   no backports to older 0.x releases). Change the table when that policy changes.
+7. **Before tagging** (in addition to "Verification" above): every workflow green on the tag
+   commit — CI (incl. macOS, golden, installer) **and** the Independent Security Audit;
+   `CHANGELOG.md` section promoted and `tools/changelog.py check` clean; artifacts built only by
+   `release.yml` from the tag.
+8. **After publishing**: download the live assets on a clean machine, verify `SHA256SUMS`, run
+   `install.sh --version <v>` and `pz --version`; then add the superseded notice (rule 2) to
+   the previous release when this one fixes something users of it should know about.
+9. **Deprecations** follow the changelog guidance: announce in release N, remove in release N+2
+   at the earliest (e.g. the `adaptive_ai_engine` alias), and say so in both releases' notes.
 
 ## Hardening note
 

@@ -48,7 +48,7 @@ static const PzCfgKey g_schema[] = {
     { "repeat-penalty",  PZ_CFG_FLOAT,  "generation", "Repetition penalty (1 = off)", NULL, 0, 10, 0 },
     { "presence-penalty", PZ_CFG_FLOAT, "generation", "Presence penalty", NULL, -10, 10, 0 },
     { "frequency-penalty", PZ_CFG_FLOAT,"generation", "Frequency penalty", NULL, -10, 10, 0 },
-    { "repeat-last-n",   PZ_CFG_INT,    "generation", "Tokens considered by the penalties", NULL, 0, 1048576, 0 },
+    { "repeat-last-n",   PZ_CFG_INT,    "generation", "Tokens considered by the penalties (-1 = all)", NULL, -1, 1048576, 0 },
     { "seed",            PZ_CFG_INT,    "generation", "Sampling seed (-1 = random)", NULL, -1, 9.2e18, 0 },
     { "system-prompt",   PZ_CFG_STRING, "generation", "Default system prompt", NULL, 0, 0, 0 },
     { "stop",            PZ_CFG_LIST,   "generation", "Stop sequences", NULL, 0, 0, 0 },
@@ -65,6 +65,7 @@ static const PzCfgKey g_schema[] = {
     { "queue-timeout",   PZ_CFG_INT,    "server", "Seconds a queued request waits", NULL, 0, 86400, 0 },
     { "max-tokens-limit", PZ_CFG_INT,   "server", "Per-request max_tokens cap (0 = context)", NULL, 0, 16777216, 0 },
     { "best-of-max",     PZ_CFG_INT,    "server", "Largest best_of a request may ask for", NULL, 1, 1024, 0 },
+    { "no-config-write", PZ_CFG_BOOL,   "server", "Web UI may not save server defaults to this file", NULL, 0, 0, 0 },
     { "mcts-max",        PZ_CFG_INT,    "server", "Largest tree-search budget a request may ask for", NULL, 0, 1048576, 0 },
     /* updates */
     { "no-update-check", PZ_CFG_BOOL,   "updates", "Never check for new releases", NULL, 0, 0, 0 },
@@ -99,6 +100,7 @@ static void entry_clear(PzCfgEntry *e) {
     for (int i = 0; i < e->n; i++) { free(e->v[i]); e->v[i] = NULL; }
     e->n = 0;
     e->set = 0;
+    e->src = PZ_SRC_DEFAULT;
 }
 
 int pz_config_init(PzConfig *c) {
@@ -184,6 +186,7 @@ static int store(PzConfig *c, const char *key, const char *value, int append, ch
     strcpy(dup, value);
     e->v[e->n++] = dup;
     e->set = 1;
+    e->src = PZ_SRC_FILE;   /* set/add/parse hold file values; apply_env re-marks */
     return 0;
 }
 
@@ -469,7 +472,10 @@ int pz_config_apply_env(PzConfig *c, void (*warn)(const char *)) {
         const char *v = getenv(name);
         if (!v || !*v) continue;
         char err[256];
-        if (pz_config_set(c, c->entries[i].key->key, v, err, sizeof(err)) == 0) applied++;
+        if (pz_config_set(c, c->entries[i].key->key, v, err, sizeof(err)) == 0) {
+            c->entries[i].src = PZ_SRC_ENV;
+            applied++;
+        }
         else if (warn) {
             char m[400];
             snprintf(m, sizeof(m), "%s ignored: %s", name, err);
@@ -509,3 +515,47 @@ int pz_config_merge_argv(const PzConfig *c, int argc, char **argv, char ***out_a
     *out_argv = av;
     return k;
 }
+
+/* ── provenance (Phase 40.3) ──────────────────────────────────────────── */
+
+const char *pz_config_source_name(int src) {
+    switch (src) {
+    case PZ_SRC_FILE: return "file";
+    case PZ_SRC_ENV:  return "env";
+    case PZ_SRC_CLI:  return "cli";
+    default:          return "default";
+    }
+}
+
+int pz_config_mark_cli(PzConfig *c, int argc, char **argv) {
+    int marked = 0;
+    for (int i = 1; c && argv && i < argc; i++) {
+        /* parse_args only takes the "--key value" form. */
+        if (!argv[i] || strncmp(argv[i], "--", 2) != 0) continue;
+        PzCfgEntry *e = entry_for(c, argv[i] + 2);
+        if (e && e->src != PZ_SRC_CLI) { e->src = PZ_SRC_CLI; marked++; }
+    }
+    return marked;
+}
+
+static const PzConfig *g_active;
+static char g_active_path[1024];
+static int g_active_file_used;
+
+void pz_config_publish(const PzConfig *c, const char *path, int file_used) {
+    g_active = c;
+    g_active_file_used = c ? file_used : 0;
+    snprintf(g_active_path, sizeof(g_active_path), "%s", (c && path) ? path : "");
+}
+
+const char *pz_config_active_source(const char *key) {
+    /* entry_for, not pz_config_get: a key given only as a flag is unset here. */
+    const PzCfgEntry *e = (g_active && key) ? entry_for((PzConfig *)g_active, key) : NULL;
+    return pz_config_source_name(e ? e->src : PZ_SRC_DEFAULT);
+}
+
+const char *pz_config_active_path(void) {
+    return g_active_path[0] ? g_active_path : NULL;
+}
+
+int pz_config_active_file_used(void) { return g_active_file_used; }

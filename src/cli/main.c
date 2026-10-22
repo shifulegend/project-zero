@@ -893,6 +893,7 @@ int main(int argc, char **argv) {
         api_ctx.server_config.prompt_cache = args.prompt_cache ? 1 : 0;
         api_ctx.server_config.chat_format = args.chat_format;
         api_ctx.server_config.allow_request_template = args.no_request_template ? 0 : 1;
+        api_ctx.server_config.allow_config_write = args.no_config_write ? 0 : 1;
         api_ctx.server_config.chat_template_source =
             !t.chat_template ? "none" : (chat_template_from_file ? "file" : "gguf");
         api_ctx.server_config.best_of = args.best_of;

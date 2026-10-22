@@ -34,6 +34,15 @@ static int stdout_token_callback(const char *piece, void *userdata) {
 #define GEN_MAX_TEMPLATE_MESSAGES 65
 
 /* ── Core implementation: all output goes through callback ──────────────── */
+/* 2026-10-21: a prompt the tokenizer rejects used to end generation with no
+ * output and no message (seen with Falcon3, whose template writes <|user|> as
+ * plain text). The API already answers 400; tell CLI users too. */
+static void report_encode_failure(const char *what) {
+    fprintf(stderr, "[error] the %s could not be tokenized for this model: it likely contains "
+                    "a \"<|...|>\" control sequence the tokenizer does not accept. Nothing was "
+                    "generated.\n", what);
+}
+
 void generate_ex(const Config *cfg, const TransformerWeights *w,
                  RunState *s, const MoEConfig *mc,
                  Tokenizer *tok, ThreadPool *tp, const char *prompt,
@@ -151,6 +160,7 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
         free(formatted);
 
         if (n_prompt < 0) {
+            report_encode_failure("chat-formatted prompt");
             free(prompt_tokens);
             stop_matcher_free(&stop);
             return;
@@ -180,6 +190,7 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
                                tn_step_timing_now_ns() - t_step);
         }
         if (n_encoded < 0) {
+            report_encode_failure("prompt");
             free(prompt_tokens);
             stop_matcher_free(&stop);
             return;
@@ -189,6 +200,7 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
             int n_more = tokenizer_encode(tok, gp->assistant_prefix, strlen(gp->assistant_prefix),
                                           &prompt_tokens[n_prompt], cfg->seq_len - n_prompt);
             if (n_more < 0) {
+                report_encode_failure("assistant prefix");
                 free(prompt_tokens);
                 stop_matcher_free(&stop);
                 return;

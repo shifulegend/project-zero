@@ -68,6 +68,7 @@ section becomes the version's entry and is published as its GitHub release notes
 - Fix AVX-512 VNNI kernels being disabled on every CPU by a startup self-test that expected the wrong result.
 - Fix mixture-of-experts routing ignoring the GGUF gating function, weight normalization and weight scale (affected Qwen3-MoE and DeepSeek-V2).
 - Fix generation not stopping at a GGUF model's end-of-turn tokens.
+- Fix the CLI silently generating nothing when a prompt cannot be tokenized; it now prints an error (the API already returned 400).
 - Fix `--lora` being ignored when combined with `--draft-model`.
 - Fix the INT8/INT4/BF16 classifier option having no effect on Q2_0-native models.
 - Fix wrong output from IQ4_NL weights and mojibake from byte-level BPE detokenizing.

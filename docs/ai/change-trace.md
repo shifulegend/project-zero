@@ -3,6 +3,14 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-21.
 
+### 2026-10-21 — Falcon3-1.58bit verified on our branch; CLI tokenization error message
+- Falcon3-3B-Instruct-1.58bit (I2_S) generates coherently on our branch ("Paris", "Red, green,
+  blue") — our stored-scale + interleaved I2_S decode is right for it (issues #41/#42). Its chat
+  path fails in the injection guard (template writes <|user|> as plain text; not in vocab) —
+  PR #44's tokenizer change fixes it (tested on a local branch, not merged pending the owner).
+  The model ends turns with >>UNUSED_1<< (id 127), not its declared EOS: use --stop.
+- `generate_ex` now reports a prompt it cannot tokenize instead of returning silently.
+
 ### 2026-10-21 — int4 KV AVX2/AVX-512 kernels
 - New `include/math/kvq4_kernels.h`, `src/math/kvq4_avx{2,512}.c`; dispatch in simd_dispatch;
   kv_quant_ops uses `tn_kvq4_*`; Makefile AVX2/AVX512 TU lists + CMake PZ_DIST lists; test

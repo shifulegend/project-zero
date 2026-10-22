@@ -19,6 +19,17 @@
                               * 2026-07-31 "attempt 6"). Only used when a projection's output
                               * dimension is a multiple of 8; falls back to WEIGHT_TYPE_Q4K
                               * otherwise (set per-projection at load time, gguf_loader.c). */
+#define WEIGHT_TYPE_Q6K  6   /* Q6_K mmap zero-copy — fused matmul kernel (matmul_q6k.c); Q4_K_M
+                              * files use it for attn_v/ffn_down. Was dequantised to F32 before
+                              * 2026-10-18 (~4.9x the bytes per weight). */
+#define WEIGHT_TYPE_TERNARY 7 /* packed ternary rows (core/unpack.h) repacked at load time from a
+                              * BitNet I2_S GGUF tensor; selects layers_are_ternary. */
+/* 2026-10-21: legacy 32-element GGUF quants kept zero-copy and run by the
+ * Q8_0-activation integer kernels (math/q8_0_act.c) instead of being
+ * dequantized to an F32 heap copy (4-6x the bytes per weight). */
+#define WEIGHT_TYPE_Q5_0 8
+#define WEIGHT_TYPE_Q5_1 9
+#define WEIGHT_TYPE_Q8_0 10
 
 /* Block size for the classifier INT8/INT4 quantization scale granularity
  * (weights_build_classifier_quant in weights.c, consumed by
@@ -245,12 +256,30 @@ typedef struct {
     float **qwen3moe_attn_q_norm;  /* [n_layers] RMSNorm weight, len=attn_head_dim */
     float **qwen3moe_attn_k_norm;  /* [n_layers] RMSNorm weight, len=attn_head_dim */
 
+    /* Optional Q/K/V projection biases (Qwen2/2.5 "attn_{q,k,v}.bias"),
+     * [n_layers] pointers, NULL entries when the model has none. Added after
+     * the projection, before QK-norm/RoPE (llama.cpp build_qkv order). */
+    float **bq, **bk, **bv;
+
     /* Zero-copy Q2_0 embedding / LM-head tables (used instead of embd_f32 /
      * token_embedding_table / wcls when q35_is_q2_0_model is set — Q2_0 is
      * too large to dequantize upfront: ~5 GB each for a 27B-class model). */
     bool        q35_is_q2_0_model;
+
+    /* Phase 22-SSM: Mamba block weights (MoEConfig.is_ssm). NULL for every
+     * other model; owned here and released by weights_free_pointers(). */
+    struct MambaWeights *mamba;
     const void *q35_token_embd_raw;
     const void *q35_output_raw;
+
+    /* 2026-10-21: zero-copy quantized LM head — GGUF output.weight kept in
+     * its own Q4_K/Q6_K format (as llama.cpp runs it) instead of being
+     * widened to a BF16 wcls copy (DeepSeek-V2-Lite: 172 MB streamed per
+     * token instead of 420 MB, and 420 MB less RSS). forward.c uses it
+     * whenever non-NULL and the user did not pass --classifier. Points into
+     * the mmap; never freed. */
+    const void *wcls_raw;
+    int         wcls_raw_type;   /* GGUF_TYPE_Q4_K or GGUF_TYPE_Q6_K */
 } TransformerWeights;
 
 /**

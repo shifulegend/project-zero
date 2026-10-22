@@ -3,12 +3,19 @@
 #include <string.h>
 #include <time.h>
 #include "transformer/forward.h"
+#include "kv_cache/sliding_window.h"
+#include "transformer/mamba.h"
+#include "distributed/dist_plan.h"
 #include "core/moe_config.h"
 #include "core/debug.h"
 #include "core/step_timing.h"
 #include "math/parallel_matmul.h"
 #include "math/matmul_q2_0.h"
+#include "math/matmul_q4k.h"
+#include "math/matmul_q6k.h"
+#include "core/gguf_reader.h"
 #include "math/simd_dispatch.h"
+#include "math/batched_matmul.h"
 #include "transformer/attention.h"
 #include "transformer/embedding.h"
 #include "transformer/ffn.h"
@@ -35,6 +42,12 @@ float *transformer_forward(int token, int pos, const Config *cfg,
                            const TransformerWeights *w, RunState *s,
                            const MoEConfig *mc, ThreadPool *tp) {
   int dim = cfg->dim;
+
+  /* 2026-10-18: a RunState whose sliding window was never initialised maps
+   * every position to slot 0 (garbage attention). generate_ex() sets it up,
+   * but direct callers (the Phase 28 worker, --perplexity) got it wrong
+   * twice — default to a plain window over the whole cache instead. */
+  if (s->sw.window_size == 0) sw_init(&s->sw, s->max_seq_len, 0);
 
   /* One-time check for profiling env var */
   if (g_profile_enabled < 0) {
@@ -66,12 +79,32 @@ float *transformer_forward(int token, int pos, const Config *cfg,
   if (g_profile_enabled) t1 = prof_now();
 
     /* Step 2: Run through all transformer layers */
+    DistPlan *dist = dist_plan_active();
     for (int l = 0; l < cfg->n_layers; l++) {
+      /* Phase 28: a contiguous range assigned to a remote worker runs there. */
+      RemoteNode *rn = dist ? dist_plan_node_starting_at(dist, l) : NULL;
+      if (rn) {
+        if (dist_forward_remote(dist, rn, s->x, pos, s->sw.system_prompt_len) != TN_OK)
+          return s->logits;
+        l = rn->end - 1;
+        continue;
+      }
       int64_t la = 0, lb = 0;
       if (g_profile_enabled) la = prof_now();
+      if (mc && mc->is_ssm) {
+        /* Phase 22-SSM: a Mamba block replaces attention + FFN. */
+        mamba_block_forward(s->x, s->xb, s->xb2, s->mamba, w->mamba, cfg, mc, l, pos, tp);
+        if (g_profile_enabled) lb = prof_now();
+      } else {
+      /* Phase 31: disk-backed KV — start reading the next layer's rows now. */
+      if (s->kv_offload_base) {
+        if (l == 0) run_state_kv_prefetch_layer(s, cfg, 0, pos + 1);
+        run_state_kv_prefetch_layer(s, cfg, l + 1, pos + 1);
+      }
       attention_forward(s, w, cfg, mc, l, pos, tp);
       if (g_profile_enabled) lb = prof_now();
       ffn_forward(s, w, cfg, mc, l, tp);
+      }
       if (g_profile_enabled) { int64_t lc = prof_now(); g_prof_attn_only_ns += (lb - la); g_prof_ffn_only_ns += (lc - lb); }
       DBG_DUMP(l, "l_out", s->x, dim);
       if (g_tn_verbose) {
@@ -153,7 +186,14 @@ float *transformer_forward(int token, int pos, const Config *cfg,
     TnClassifierFormat fmt = hp ? hp->classifier_fmt : TN_CLS_BF16;
     int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
 
-    if (fmt == TN_CLS_INT4 && w->wcls_i4 && w->wcls_i4_scales) {
+    if (w->wcls_raw && w->wcls_raw_type == GGUF_TYPE_Q6_K) {
+      /* zero-copy quantized head (2026-10-21, see weights.h) */
+      parallel_matmul_q6k(s->logits, s->x, (const uint8_t *)w->wcls_raw,
+                          dim, cfg->vocab_size, tp);
+    } else if (w->wcls_raw && w->wcls_raw_type == GGUF_TYPE_Q4_K) {
+      parallel_matmul_q4k(s->logits, s->x, (const uint8_t *)w->wcls_raw,
+                          dim, cfg->vocab_size, tp);
+    } else if (fmt == TN_CLS_INT4 && w->wcls_i4 && w->wcls_i4_scales) {
       parallel_matmul_i4(s->logits, s->x, w->wcls_i4, w->wcls_i4_scales,
                           dim, cfg->vocab_size, tp);
     } else if (fmt >= TN_CLS_INT8 && w->wcls_i8 && w->wcls_i8_scales) {
@@ -219,4 +259,165 @@ float *transformer_forward(int token, int pos, const Config *cfg,
   }
 
   return s->logits;
+}
+
+/* Final RMSNorm + classifier over n_tokens rows of sb->x -> logits_out
+ * ([n_tokens][vocab]); shared by the speculative batch and multi-sequence
+ * steps. */
+static void forward_rows_logits(SpecBatchScratch *sb, const TransformerWeights *w,
+                                const Config *cfg, int n_tokens, ThreadPool *tp,
+                                float *logits_out) {
+  int dim = cfg->dim;
+  /* final RMSNorm, per token (per-row statistic, not batchable) */
+  int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+  if (w->rms_final_weight) {
+    for (int k = 0; k < n_tokens; k++) {
+      float *x_k = sb->x + (size_t)k * dim;
+      tn_rmsnorm(x_k, x_k, w->rms_final_weight, dim, cfg->rms_norm_eps);
+    }
+  }
+  if (t_step) {
+    tn_step_timing_add(TN_STEP_18_FINAL_RMSNORM, tn_step_timing_now_ns() - t_step);
+  }
+
+  /* classifier matmul -> logits_out, batched. Mirrors
+   * transformer_forward()'s non-q35 branches (wcls_is_ternary, then the
+   * hardware-profile-selected INT4/INT8/BF16 generic path); the
+   * q35_is_q2_0_model branch there is unreachable here (see Step 1). */
+  t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+  if (w->wcls_is_ternary) {
+    tn_ternary_matmul_packed_batch(logits_out, sb->x, (const tn_u8 *)w->wcls,
+                                    dim, cfg->vocab_size, w->wcls_scale, n_tokens, tp);
+  } else {
+    const TnHardwareProfile *hp = tn_hardware_profile_get();
+    TnClassifierFormat fmt = hp ? hp->classifier_fmt : TN_CLS_BF16;
+
+    if (w->wcls_raw && w->wcls_raw_type == GGUF_TYPE_Q6_K) {
+      parallel_matmul_q6k_tokens(logits_out, sb->x, (const uint8_t *)w->wcls_raw,
+                                 dim, cfg->vocab_size, n_tokens, tp);
+    } else if (w->wcls_raw && w->wcls_raw_type == GGUF_TYPE_Q4_K) {
+      parallel_matmul_q4k_tokens(logits_out, sb->x, (const uint8_t *)w->wcls_raw,
+                                 dim, cfg->vocab_size, n_tokens, tp);
+    } else if (fmt == TN_CLS_INT4 && w->wcls_i4 && w->wcls_i4_scales) {
+      tn_matmul_i4_batch(logits_out, sb->x, w->wcls_i4, w->wcls_i4_scales,
+                          dim, cfg->vocab_size, n_tokens, tp);
+    } else if (fmt >= TN_CLS_INT8 && w->wcls_i8 && w->wcls_i8_scales) {
+      tn_matmul_i8_batch(logits_out, sb->x, w->wcls_i8, w->wcls_i8_scales,
+                          dim, cfg->vocab_size, n_tokens, tp);
+    } else {
+      tn_matmul_bf16_batch(logits_out, sb->x, w->wcls, dim, cfg->vocab_size, n_tokens, tp);
+    }
+  }
+  if (t_step) {
+    tn_step_timing_add(TN_STEP_19_LM_HEAD, tn_step_timing_now_ns() - t_step);
+  }
+
+}
+
+/* ── Phase 18 (speculative decoding): batched multi-token forward pass ─────
+ * See include/transformer/forward.h for the full contract. Orchestrates:
+ * embed all n_tokens, loop layers calling the batched attention/FFN
+ * functions, batched final RMSNorm, batched classifier matmul.
+ *
+ * Step-timing coverage (Stage 5.5, 2026-09-24): TN_STEP_TIMING=1 brackets
+ * are threaded through this path and every batched sub-function it calls
+ * (attention_forward_batch()/mla_attention_forward_batch()/
+ * qwen3moe_attention_forward_batch(), ffn_forward_batch()) at
+ * whole-batch-call granularity -- one measurement per architectural step
+ * spanning all n_tokens in the call, not per-token (per-token timing here
+ * would defeat the point of batching). They reuse the exact same step IDs
+ * as their single-token counterparts (transformer_forward()/
+ * attention_forward()/ffn_forward()) so "cost of this step per token,
+ * sequential vs. batched" is directly comparable from one report. DBG_DUMP
+ * and TN_PROFILE remain single-token-only (no batched analogue defined for
+ * either; not needed for this function's correctness). */
+TernaryError transformer_forward_batch(const int *tokens, int pos, int n_tokens,
+                                        const Config *cfg, const TransformerWeights *w,
+                                        RunState *s, SpecBatchScratch *sb,
+                                        const MoEConfig *mc, ThreadPool *tp,
+                                        float *logits_out) {
+  if (s->sw.window_size == 0) sw_init(&s->sw, s->max_seq_len, 0); /* see transformer_forward */
+  if (moe_is_recurrent(mc) || dist_plan_active()) {
+    return TN_ERR_UNSUPPORTED;
+  }
+
+  int dim = cfg->dim;
+
+  /* Step 1: embed all tokens into sb->x */
+  for (int k = 0; k < n_tokens; k++) {
+    int token = tokens[k];
+    if (token < 0 || token >= cfg->vocab_size) {
+      memset(sb->x + (size_t)k * dim, 0, (size_t)dim * sizeof(float));
+      continue;
+    }
+    if (w->q35_is_q2_0_model) {
+      /* Unreachable in practice: q35_is_q2_0_model models always have
+       * has_linear_attn set (see gguf_loader.c's Qwen3.5/3.6 loader),
+       * already refused above. Handled anyway for defense-in-depth rather
+       * than assuming the correlation always holds. */
+      embed_token_q2_0(sb->x + (size_t)k * dim, token, w->q35_token_embd_raw, dim);
+    } else {
+      embed_token(sb->x + (size_t)k * dim, token, w->embd_f32, w->token_embedding_table, dim);
+    }
+  }
+
+  /* Step 2: run through all transformer layers */
+  for (int l = 0; l < cfg->n_layers; l++) {
+    if (s->kv_offload_base) {
+      if (l == 0) run_state_kv_prefetch_layer(s, cfg, 0, pos + n_tokens);
+      run_state_kv_prefetch_layer(s, cfg, l + 1, pos + n_tokens);
+    }
+    TernaryError err = attention_forward_batch(s, sb, w, cfg, mc, l, pos, n_tokens, tp);
+    if (err != TN_OK) return err;
+    err = ffn_forward_batch(s, sb, w, cfg, mc, l, n_tokens, tp);
+    if (err != TN_OK) return err;
+  }
+
+  forward_rows_logits(sb, w, cfg, n_tokens, tp, logits_out);
+  return TN_OK;
+}
+
+/* Phase 23 (2026-10-19): one decode/prefill step for rows from several
+ * sequences (see forward.h). Embedding, every weight matmul, the final norm
+ * and the classifier are batched across rows; attention runs per row against
+ * states[k]'s own KV. */
+TernaryError transformer_forward_multi(const int *tokens, const int *pos_arr,
+                                       RunState *const *states, int n_tokens,
+                                       const Config *cfg, const TransformerWeights *w,
+                                       SpecBatchScratch *sb, const MoEConfig *mc,
+                                       ThreadPool *tp, float *logits_out) {
+  if (!tokens || !pos_arr || !states || n_tokens <= 0 || !sb || !logits_out)
+    return TN_ERR_INVALID_ARGS;
+  if (moe_is_recurrent(mc) || dist_plan_active() || (mc && mc->is_moe) || w->q35_is_q2_0_model)
+    return TN_ERR_UNSUPPORTED;
+  int dim = cfg->dim;
+  for (int k = 0; k < n_tokens; k++) {
+    if (states[k]->sw.window_size == 0) sw_init(&states[k]->sw, states[k]->max_seq_len, 0);
+    if (pos_arr[k] < 0 || pos_arr[k] >= states[k]->max_seq_len) return TN_ERR_INVALID_ARGS;
+    int token = tokens[k];
+    if (token < 0 || token >= cfg->vocab_size)
+      memset(sb->x + (size_t)k * dim, 0, (size_t)dim * sizeof(float));
+    else
+      embed_token(sb->x + (size_t)k * dim, token, w->embd_f32, w->token_embedding_table, dim);
+  }
+  for (int l = 0; l < cfg->n_layers; l++) {
+    TernaryError err = attention_forward_multi(states, pos_arr, sb, w, cfg, mc, l, n_tokens, tp);
+    if (err != TN_OK) return err;
+    err = ffn_forward_batch(states[0], sb, w, cfg, mc, l, n_tokens, tp);
+    if (err != TN_OK) return err;
+  }
+  forward_rows_logits(sb, w, cfg, n_tokens, tp, logits_out);
+  return TN_OK;
+}
+
+/* One layer (attention + FFN, or a Mamba block) — the unit both the local
+ * layer loop and a distributed worker (Phase 28) execute. */
+void transformer_layer_forward(RunState *s, const TransformerWeights *w, const Config *cfg,
+                               const MoEConfig *mc, int layer, int pos, ThreadPool *tp) {
+  if (mc && mc->is_ssm) {
+    mamba_block_forward(s->x, s->xb, s->xb2, s->mamba, w->mamba, cfg, mc, layer, pos, tp);
+    return;
+  }
+  attention_forward(s, w, cfg, mc, layer, pos, tp);
+  ffn_forward(s, w, cfg, mc, layer, tp);
 }

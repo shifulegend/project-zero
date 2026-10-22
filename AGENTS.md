@@ -16,15 +16,18 @@
   deterministically (never rely on `calloc` returning NULL — macOS over-commits).
 - Cross-platform SIMD (x86 AVX2..VNNI / ARM NEON / scalar) must all compile; `TN_HAS_*` gates.
 - Definition of done: `make release/test/debug` green for **gcc and clang**, golden output
-  correct, no kernel perf regression (A/B), docs+adapters synced, small commit checkpoints.
+  correct, no kernel perf regression (A/B), docs+adapters synced, user-facing changes logged
+  under `[Unreleased]` in `CHANGELOG.md` per `docs/ai/changelog-guidance.md`, installer +
+  `pz config` schema updated for any new/changed setting (DoD #6), small commit checkpoints.
 - Public repo: never commit secrets. Keep ASan/UBSan green.
 - No AI signature or attribution (commit trailers, code comments, etc.) unless the user
   explicitly asks for it that time — see `docs/ai/commit-log-guidance.md`.
+- Third-party skill plugins **superpowers** and **mattpocock-skills** are used (per-tool install commands in `docs/ai/tool-sync-policy.md`); repo rules override them — see `docs/ai/tool-sync-policy.md` § Third-party skill plugins.
 
 ## Build / run (verified)
 ```bash
 make release CC=gcc && make test CC=gcc && make debug CC=gcc   # repeat CC=clang
-./adaptive_ai_engine --model models/<m>.gguf --prompt "..." --max-tokens 16 --temperature 0 --threads 4
+./pz --model models/<m>.gguf --prompt "..." --max-tokens 16 --temperature 0 --threads 4
 ```
 
 <!-- gitnexus:start -->

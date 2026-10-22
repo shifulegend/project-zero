@@ -19,9 +19,11 @@
  */
 
 #include "core/config.h"
+#include "core/error.h"
 #include "core/moe_config.h"
 #include "core/run_state.h"
 #include "core/weights.h"
+#include "speculative/spec_scratch.h"
 #include "threading/thread_pool.h"
 
 /**
@@ -32,5 +34,17 @@
 void mla_attention_forward(RunState *s, const TransformerWeights *w,
                             const Config *cfg, const MoEConfig *mc,
                             int layer, int pos, ThreadPool *tp);
+
+/**
+ * Phase 18 (speculative decoding): batched multi-token MLA attention.
+ * See attention_forward_batch() (attention.h) for the general contract.
+ * MLA's KV compression is per-position-independent (no cross-position
+ * coupling beyond the ordinary causal attention read), so it batches the
+ * same write-phase/read-phase way as the generic dense/GQA path.
+ */
+TernaryError mla_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
+                                          const TransformerWeights *w, const Config *cfg,
+                                          const MoEConfig *mc, int layer, int pos,
+                                          int n_tokens, ThreadPool *tp);
 
 #endif /* TN_MLA_ATTENTION_H */

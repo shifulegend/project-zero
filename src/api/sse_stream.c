@@ -57,46 +57,65 @@ static ssize_t write_all(int fd, const char *buf, size_t len) {
 int sse_write_token(int fd, const char *id, const char *token_text) {
     if (!token_text || !id) return -1;
 
-    /* Escape the token into a local buffer.  Tokens are at most a few bytes
-     * each; 1024 bytes is more than sufficient even after escaping. */
-    char escaped[1024];
-    char *end = json_escape(escaped, token_text);
-    *end = '\0';
-    size_t esc_len = (size_t)(end - escaped);
+    /* Worst case every byte is a control char -> \uXXXX (6x). Pieces are
+     * usually a few bytes, but stop-sequence hold-back can release a longer
+     * chunk at once, so size from the input instead of a fixed buffer
+     * (2026-10-18: was a fixed char[1024] with an unchecked escape loop). */
+    size_t tl = strlen(token_text);
+    size_t cap = tl * 6 + 256 + strlen(id);
+    char stack_buf[2048];
+    char *buf = cap <= sizeof(stack_buf) ? stack_buf : (char *)malloc(cap);
+    if (!buf) return -1;
 
-    /* Build the SSE data line.  Fixed overhead ~ 140 bytes + id + token. */
-    char buf[2048];
-    int n = snprintf(buf, sizeof(buf),
+    int head = snprintf(buf, cap,
         "data: {\"id\":\"chatcmpl-%s\","
              "\"object\":\"chat.completion.chunk\","
              "\"choices\":[{\"index\":0,"
-                          "\"delta\":{\"content\":\"%.*s\"},"
-                          "\"finish_reason\":null}]}\n\n",
-        id,
-        (int)esc_len, escaped);
-    if (n < 0 || (size_t)n >= sizeof(buf)) return -1;
+                          "\"delta\":{\"content\":\"", id);
+    if (head < 0 || (size_t)head >= cap) { if (buf != stack_buf) free(buf); return -1; }
+    char *end = json_escape(buf + head, token_text);
+    static const char tail[] = "\"},\"finish_reason\":null}]}\n\n";
+    memcpy(end, tail, sizeof(tail) - 1);
+    end += sizeof(tail) - 1;
 
-    return (int)write_all(fd, buf, (size_t)n);
+    int rc = (int)write_all(fd, buf, (size_t)(end - buf));
+    if (buf != stack_buf) free(buf);
+    return rc;
 }
 
-int sse_write_done(int fd, const char *id) {
+int sse_write_done_ex(int fd, const char *id, const char *finish_reason,
+                      int prompt_tokens, int completion_tokens, int cached_tokens) {
     if (!id) return -1;
+    if (!finish_reason) finish_reason = "stop";
 
-    char buf[512];
+    char buf[768];
     int n = snprintf(buf, sizeof(buf),
         "data: {\"id\":\"chatcmpl-%s\","
              "\"object\":\"chat.completion.chunk\","
              "\"choices\":[{\"index\":0,"
                           "\"delta\":{},"
-                          "\"finish_reason\":\"stop\"}]}\n\n"
+                          "\"finish_reason\":\"%s\"}],"
+             "\"usage\":{\"prompt_tokens\":%d,"
+                       "\"completion_tokens\":%d,"
+                       "\"total_tokens\":%d,"
+                       "\"prompt_tokens_details\":{\"cached_tokens\":%d}}}\n\n"
         "data: [DONE]\n\n",
-        id);
+        id, finish_reason, prompt_tokens, completion_tokens,
+        prompt_tokens + completion_tokens, cached_tokens);
     if (n < 0 || (size_t)n >= sizeof(buf)) return -1;
     return (int)write_all(fd, buf, (size_t)n);
 }
 
-char *sse_format_full_response(const char *id, const char *full_text) {
+int sse_write_done(int fd, const char *id) {
+    return sse_write_done_ex(fd, id, "stop", 0, 0, 0);
+}
+
+char *sse_format_full_response_ex(const char *id, const char *full_text,
+                                  const char *finish_reason,
+                                  int prompt_tokens, int completion_tokens,
+                                  int cached_tokens) {
     if (!id || !full_text) return NULL;
+    if (!finish_reason) finish_reason = "stop";
 
     /* Allocate escaped output buffer.  Upper bound: control characters (<0x20)
      * expand to \uXXXX (6 bytes each); all other special chars need at most 2
@@ -111,7 +130,7 @@ char *sse_format_full_response(const char *id, const char *full_text) {
     size_t esc_len = (size_t)(end - escaped);
 
     /* Build response JSON */
-    size_t buf_cap = esc_len + 512;
+    size_t buf_cap = esc_len + 640;
     char  *buf     = (char *)malloc(buf_cap);
     if (!buf) { free(escaped); return NULL; }
 
@@ -121,16 +140,23 @@ char *sse_format_full_response(const char *id, const char *full_text) {
          "\"choices\":[{\"index\":0,"
                       "\"message\":{\"role\":\"assistant\","
                                    "\"content\":\"%.*s\"},"
-                      "\"finish_reason\":\"stop\"}],"
-         "\"usage\":{\"prompt_tokens\":0,"
-                   "\"completion_tokens\":0,"
-                   "\"total_tokens\":0}}",
+                      "\"finish_reason\":\"%s\"}],"
+         "\"usage\":{\"prompt_tokens\":%d,"
+                   "\"completion_tokens\":%d,"
+                   "\"total_tokens\":%d,"
+                   "\"prompt_tokens_details\":{\"cached_tokens\":%d}}}",
         id,
-        (int)esc_len, escaped);
+        (int)esc_len, escaped, finish_reason,
+        prompt_tokens, completion_tokens, prompt_tokens + completion_tokens,
+        cached_tokens);
 
     free(escaped);
     if (n < 0 || (size_t)n >= buf_cap) { free(buf); return NULL; }
     return buf;
+}
+
+char *sse_format_full_response(const char *id, const char *full_text) {
+    return sse_format_full_response_ex(id, full_text, "stop", 0, 0, 0);
 }
 
 int sse_write_full_response(int fd, const char *id, const char *full_text) {

@@ -142,7 +142,7 @@ project-zero/
 - Uses `CreateFileA()` → `GetFileSizeEx()` → `CreateFileMappingA()` → `MapViewOfFile()`.
 - Close path: `UnmapViewOfFile()` → `CloseHandle()` (mapping) → `CloseHandle()` (file).
 
-### 2.4 — Hardware RAM Probe
+### 2.4 — Hardware RAM Probe ✅ (as `tn_get_free_ram()` in `kv_cache/kv_strategy.c`: Linux MemAvailable, sysconf fallback, Windows GlobalMemoryStatusEx)
 - File: `include/memory/hw_probe.h` + `src/memory/hw_probe.c`
 - `int64_t get_free_ram_bytes()`:
   - Linux: Parse `/proc/meminfo` for `MemAvailable`.
@@ -150,7 +150,7 @@ project-zero/
   - Windows: `GlobalMemoryStatusEx()`.
 - `int64_t get_total_ram_bytes()`: Same sources, total RAM.
 
-### 2.5 — Dynamic Memory Budget Calculator
+### 2.5 — Dynamic Memory Budget Calculator ✅ (as `select_kv_strategy_ex()`: per-token F32 KV cost × RAM-fraction budget cap; fraction and context user-configurable since 2026-10-18)
 - File: `include/memory/mem_budget.h` + `src/memory/mem_budget.c`
 - `MemBudget compute_mem_budget(const Config *cfg, int64_t free_ram)`:
   - Calculates `bytes_per_token = 2 * n_layers * kv_dim * sizeof(float)`.
@@ -194,7 +194,10 @@ project-zero/
   may use per-group scales (e.g., every 128 weights). The inner loop will need to accumulate
   per-group and apply `out[i] = sum_g( scale[g] * sum_j_in_g(...) )` when that transition happens.
 
-### 3.2 — Ternary MatMul (Branchless Scalar)
+### 3.2 — Ternary MatMul (Branchless Scalar) ✅ done 2026-10-18
+- Built as `ternary_matmul_branchless()` (4 accumulators, `val += (float)w * x`), now the
+  scalar-backend `tn_ternary_matmul` target; the branchy `ternary_matmul()` stays the reference.
+  Microbench 2048×2048: 28.3 ms → 2.8 ms (10×), max |diff| 4e-5. Test: `tests/test_ternary_branchless.c`.
 - File: `src/math/ternary_matmul_branchless.c`
 - Eliminates `if/else` with: `val += (float)weight * x[j];` — the compiler can optimize since weight ∈ {-1,0,1}, the multiply becomes a conditional negate.
 - Alternative: `val += x[j] * (weight > 0) - x[j] * (weight < 0);`
@@ -239,17 +242,40 @@ project-zero/
   parameter will change to `const float *scales` for per-group scale factors. See Phase 10.4–10.5
   for the fused unpack+compute kernel that eliminates the intermediate buffer entirely.
 
-### 3.4 — Ternary MatMul (AVX-512 SIMD — x86_64)
-- File: `src/math/ternary_matmul_avx512.c`
-- Guarded by `#ifdef __AVX512F__`
-- Processes 16 floats per iteration using `_mm512_*` intrinsics.
-- Masked tail via `_mm512_maskz_loadu_ps`.
+### 3.4 — Ternary MatMul (AVX-512 SIMD — x86_64) ✅ (superseded by Phase 10.5)
+- The unpacked-`int8`-weight design this item describes (`ternary_matmul_avx512.c`) was
+  overtaken by the Phase 10.5 packed-weight (2-bit) fused unpack+compute design before it was
+  built standalone. `src/math/ternary_matmul_packed_avx512.c` is the real, shipped AVX-512F
+  kernel — 16 weights/iteration, `_mm512_*` intrinsics, masked tail. Wired into
+  `simd_dispatch.c`'s tier-3 slot (after AVX-512 VNNI / AVX-VNNI). Covered by
+  `tests/test_packed_weights.c`.
 
-### 3.5 — Ternary MatMul (NEON SIMD — ARM)
-- File: `src/math/ternary_matmul_neon.c`
-- Guarded by `#ifdef __ARM_NEON`
-- Uses `vld1q_f32`, `vaddq_f32`, `vsubq_f32`.
-- Processes 4 floats per iteration.
+### 3.5 — Ternary MatMul (NEON SIMD — ARM) ✅ done 2026-09-21
+- Same supersession as 3.4: the packed-weight design is what shipped, as
+  `src/math/ternary_matmul_packed_neon.c` (not the unpacked-`int8` `ternary_matmul_neon.c` this
+  item originally described). Uses `vld1q_f32`/`vaddq_f32`/`vsubq_f32`/`vceqq_s32` on 4-lane
+  vectors, matching `ternary_matmul_packed_avx2.c`'s fused-unpack architecture; horizontal sum via
+  `vadd_f32`/`vpadd_f32` (portable to both ARMv7-A and AArch64 NEON, not the AArch64-only
+  `vaddvq_f32`).
+- **Found while auditing `simd_dispatch.c`'s ARM tier list** (not part of a fresh audit — its own
+  comment already named this tier "stub, always compiled for ARM," i.e. a previously-flagged,
+  never-closed gap): NEON is unconditionally available on every ARMv8-A core, but only the
+  dotprod-requiring tier (3.5's Phase-16-S sibling, `ternary_matmul_packed_dotprod.c`) existed.
+  Any ARMv8.0/8.1 CPU without the dotprod extension — Raspberry Pi 4 (Cortex-A72), older AWS
+  Graviton/Graviton2, most ARMv8.0/8.1 embedded boards — silently fell all the way through to the
+  scalar kernel for the hottest path in the engine, losing the entire documented NEON tier.
+- Wired into `simd_dispatch.c`'s dispatch table between ARM dotprod and scalar (both the tier
+  selection and its own stale "stub" comment corrected); `tn_cpu_best_backend_name()`
+  (`cpu_features.c`) already named "NEON" as a possible backend before this fix, which was itself
+  inaccurate until now.
+- Verified: direct-kernel test `test_neon_packed_matmul_matches_scalar` added to
+  `tests/test_packed_weights.c` (mirrors the existing `test_avx2_packed_matmul_matches_scalar`
+  pattern). Compiles to an empty TU and the test SKIPs on x86 (`TN_HAS_NEON == 0` there, this dev
+  environment is x86_64-only) — full `make release/test/debug` green on gcc and clang, plus a
+  clean `cmake --build` sanity pass, confirm the addition is inert and harmless on x86. The kernel
+  itself can only be exercised on real ARM hardware; not verified on real ARM silicon this pass
+  (flagged, not silently claimed) — `ci.yml`'s `macos-latest` job (Apple Silicon) will be the
+  first real signal once pushed.
 
 ### 3.6 — SIMD Dispatch (Runtime Selection) ✅
 - File: `include/math/simd_dispatch.h` + `src/math/simd_dispatch.c`
@@ -528,7 +554,7 @@ project-zero/
 
 ---
 
-## PHASE 8: KV Cache Optimizations ✅
+## PHASE 8: KV Cache Optimizations ✅ (int8 2026-10-18 + int4 2026-10-19 KV wired into dense/GQA attention; AVX2/AVX-512 int4 kernels 2026-10-21; other attention families open)
 
 ### 8.1 — KV Cache Quantization (float32 → int8) ✅
 - File: `include/kv_cache/kv_compress.h` + `src/kv_cache/kv_compress.c`
@@ -560,6 +586,45 @@ project-zero/
   - free_ram > 1GB → `KV_SLIDING_I8`
   - free_ram <= 1GB → `KV_SLIDING_I4`
 - Returns strategy + computed `max_seq_len`.
+- 2026-10-18: the tier now only sizes the context (the startup line says so honestly:
+  `KV cache: F32, max context: N (sizing tier: …)`), and is user-overridable:
+  `--ctx-size <N>` and `--kv-ram-fraction <f>` (`KVStrategyOptions`, `select_kv_strategy_ex()`,
+  `kv_strategy_set_options()`).
+
+### 8.5 — Wire Quantized KV Storage into Attention ✅ int8, generic dense/GQA path (2026-10-18)
+- As built: `--kv-type f32|i8` (`KVStrategyOptions.kv_type`, process-wide). With i8,
+  `run_state_alloc_ex()` allocates `key_cache_q/value_cache_q` (int8, same `KV_CACHE_IDX` layout)
+  plus one absmax scale per (layer, kv_head, pos) row (`KV_SCALE_IDX`) instead of the F32 cache;
+  `src/kv_cache/kv_quant_ops.c` provides `kvq_store_row/kvq_dot/kvq_axpy`; both the single-token
+  (head-parallel) and batched attention paths read/write it; the context-sizing cap accounts
+  for 1 byte/element + scales. Tiled attention and the Phase 26 snapshot store are F32-only
+  (they fall back / disable themselves); the live prefix cache works with i8.
+- Measured (SmolLM2-135M, ~1700-token context, 4 threads): ~10% faster decode, 4× less KV
+  memory; greedy continuations diverge from F32 after a few words but stay coherent, so F32
+  stays the default. Tests: `tests/test_kv_quant.c`, `test_forward_kv_i8_close_to_f32`.
+- **int4 ✅ 2026-10-19:** `--kv-type i4` — Q4_1-style groups of 32 (codes 0..15, F32 scale + min per
+  group; byte j = element j | element j+16 << 4). `RunState.kv_row_bytes/kv_row_scales` give the
+  row layout, `kvq_row_layout/kvq_store/kvq_dot_row/kvq_axpy_row` dispatch i8/i4 at the same call
+  sites; head_dim % 32 != 0 falls back to i8 with a notice. 6 bits/element (F32: 32, i8: 8.5).
+  Measured (Xeon model 85, 4 T, parity text, n_ctx 512): PPL SmolLM2-135M f32 38.82 / i8 38.82 /
+  i4 41.21 (+6.2 %); SmolLM2-1.7B 17.73 / 17.72 / 18.93 (+6.8 %); a symmetric −7..7 code was
+  +15–19 % and was replaced. Decode at ~1.9k context (SmolLM2-135M): f32 37, i8 33.6 (was 29
+  before the 16-lane dot), i4 20.7 tok/s — attention is compute-bound at this size, so i4 is a
+  capacity option, not a speed one; SIMD (VNNI int8·int4) kernels are the follow-up. Greedy
+  answers stay correct on SmolLM2-135M/1.7B and BitNet. `/v1/config runtime.kv_type`, web UI tag.
+  Tests: `test_kv_quant` (i4 layout/error/dot/axpy), `test_forward_kv_i4_close_to_f32`.
+- Still open: quantized storage for the MLA / Qwen3-MoE / Qwen3.5 caches.
+
+*Original finding (kept):*
+- The int8/int4 compress/decompress kernels (8.1/8.2) are unit-tested but **no attention path
+  reads a quantized cache** — `RunState.key_cache/value_cache` are `float *` and every attention
+  kernel (dense/GQA single + batched, MLA, Qwen3-MoE, Qwen3.5 hybrid, spec-decode) streams F32.
+  Until 2026-10-18 the startup line still printed e.g. "KV Strategy: Quantized I8".
+- Needed: per-position (or per-block) int8 K/V storage + scales in RunState, a fused
+  dequant-dot attention kernel per SIMD tier, write-side quantization in each attention TU,
+  `--kv-type f32|i8|i4` (CLI + `/v1/config`), A/B tok/s and perplexity checks. Architecturally
+  significant (hot path, every attention family) — tracked here rather than folded into an
+  unrelated change.
 
 ---
 
@@ -592,7 +657,13 @@ project-zero/
 
 ---
 
-## PHASE 10: Weight Packing & Conversion Tools
+## PHASE 10: Weight Packing & Conversion Tools ✅
+> Implemented: `src/core/unpack.c`/`unpack_avx2.c`, `src/math/ternary_matmul_packed*.c`,
+> `tools/{pack_ternary,convert_hf_bitnet,convert_tokenizer}.py`. Verified end-to-end in
+> `docs/PHASE10_PRE_AUDIT_REPORT.md` (5,156 assertions incl. 1,469 in `test_packed_weights`)
+> and `docs/phases/WALKTHROUGH_PHASE10.md` (Qwen2.5-7B converted end-to-end). Marker added
+> 2026-09-17 during a progress audit — this phase was implemented and tested long before this
+> header was updated to reflect it.
 
 ### 10.1 — Ternary Weight Packer (2-bit Packing)
 - File: `tools/pack_ternary.py`
@@ -676,7 +747,13 @@ project-zero/
 
 ---
 
-## PHASE 11: Multimodal — Vision Encoder Bridge
+## PHASE 11: Multimodal — Vision Encoder Bridge ✅
+> Implemented: `src/multimodal/{image_load,patch_extract,vision_encoder,vision_projector,
+> vision_bridge,vision_weights_load,vision_pipeline}.c`, wired into CLI `--image` and the API's
+> `image_url` content parts. Tested via `tests/test_vision_components.c`/`test_vision_e2e.c`
+> and `docs/phases/WALKTHROUGH_PHASE11.md`. Caveat: `docs/ai/project-overview.md` flags
+> correctness beyond component-level tests as UNVERIFIED — implemented, not fully hardened.
+> Marker added 2026-09-17 during a progress audit.
 
 ### 11.1 — Image Loader (STB)
 - File: `src/multimodal/image_load.c`
@@ -736,7 +813,11 @@ project-zero/
 
 ---
 
-## PHASE 12: CLI & Main Entry Point
+## PHASE 12: CLI & Main Entry Point ✅
+> Implemented: `src/cli/{args,repl,main,banner,color,progress,live_stats,md_render,timer}.c`.
+> This is the primary user-facing entrypoint and has been actively maintained (banner/REPL
+> polish under decision-log's "Phase 22.3/22.5" naming — see the Phase 22 disambiguation note
+> below). Marker added 2026-09-17 during a progress audit.
 
 ### 12.1 — Argument Parser
 - File: `include/cli/args.h` + `src/cli/args.c`
@@ -782,7 +863,11 @@ project-zero/
 
 ---
 
-## PHASE 13: Testing & Validation
+## PHASE 13: Testing & Validation ✅
+> Implemented: every named test file below exists under `tests/` (30+ binaries), all green on
+> `make test CC=gcc` as of this audit (e.g. `test_moe` 46/46, `test_rag` 90/90, `test_simd`
+> 25/25). This was the single largest gap between this doc's per-item markers and reality —
+> the whole harness is real and passing. Marker added 2026-09-17 during a progress audit.
 
 ### 13.1 — Minimal Test Harness
 - File: `tests/test_harness.h`
@@ -925,6 +1010,20 @@ project-zero/
 ---
 
 ## PHASE 14: Agentic Tool Execution ✅
+> **Sandbox hardened 2026-09-17** (`src/agent/cmd_exec.c`): the original allow-list checked
+> only the command *name* (`echo`/`ls`/`cat`/`pwd`/`uname`/`date`/`id`), not its *arguments* --
+> `cat`/`ls` could read any file the process could read (`.env`, SSH keys, `/etc/shadow`,
+> anything else on the host), which is real exposure in any deployment with
+> `PROJECT_ZERO_AGENT_AUTO_APPROVE=1` set (no human review at all in that mode). Added
+> `exec_policy_allows_args()`: confines `cat`/`ls` path arguments to the current working
+> directory's subtree (rejects absolute paths, `~`, and any `..` traversal segment) and
+> restricts `date` to its read-only forms (no args, or `+FORMAT` only -- blocks `-s`/`--set`).
+> Also added child-side `setrlimit(RLIMIT_CPU/RLIMIT_AS, ...)` as defense-in-depth independent
+> of the parent's own cooperative timeout/SIGKILL loop. Not a `popen()`-based shell (the
+> architecture doc's framing was already stale doc drift on this point) -- `fork`+`execvp`
+> means no shell-metacharacter injection vector existed even before this pass; the real gap was
+> argument-level, not shell-injection. `tests/test_cmd_exec.c` covers both new checks plus the
+> "not actually traversal" edge cases (`"..."`, `"foo..bar.txt"`, `".hidden"`).
 
 An "Agent" is an LLM hooked up to a `while` loop with permission to trigger external tools. Because we wrote the engine from scratch in C, we extend the State Machine from Phase 9 (the Hidden Thought Loop) to intercept tool-call tags and execute OS commands.
 
@@ -1254,7 +1353,10 @@ Since we cannot change the AI's weights at runtime, we make the AI "learn" by gi
 
 ---
 
-## PHASE K-6: 5-Trit LUT Kernel (AVX-512BW, No VNNI Required)
+## PHASE K-6: 5-Trit LUT Kernel (AVX-512BW, No VNNI Required) ✅
+> Implemented: `src/math/ternary_matmul_lut_avx512bw.c`, `tests/test_ternary_lut_avx512bw.c`
+> (commit `bbf8e9b`). Also recorded in `docs/architecture/CPU_LLM_TERNARY_ENGINE.md`'s own
+> "Phase K-6" section. Marker added 2026-09-17 during a progress audit.
 
 *Status: NOT STARTED. Motivation: tommyyliu/lut_mm benchmark, BitNet #569 (2026-06-25).*
 
@@ -1331,7 +1433,9 @@ K-6 would be the first integer-math kernel available on that hardware.
 
 ---
 
-## PHASE 16-D: Documentation & Packaging
+## PHASE 16-D: Documentation & Packaging ✅
+> Implemented: `docs/RELEASING.md`, working `make dist` target (confirmed per
+> `docs/ai/decision-log.md` 2026-06-19). Marker added 2026-09-17 during a progress audit.
 
 ### 16.1 — Usage Documentation
 - File: `USAGE.md`
@@ -1427,7 +1531,15 @@ Phase 0 (Scaffold)
 
 ---
 
-## PHASE 17: Mixture of Experts (MoE) Routing
+## PHASE 17: Mixture of Experts (MoE) Routing ✅ (correctness) — performance still open
+> Implemented: `src/core/{moe_config,moe_weights}.c`, `src/transformer/{moe_router,moe_ffn,
+> mla_attention}.c`. Also has a full "Implementation Record" in
+> `docs/architecture/CPU_LLM_TERNARY_ENGINE.md` (Phase 17 + 17.5-17.12 MLA fix). Golden-output
+> correctness is verified for DeepSeek-V2. **Not** claiming this phase is "done" in the
+> performance sense — MoE throughput is ~7x behind llama.cpp, root-caused to non-contiguous
+> expert-weight offsets, tracked in README's Help Wanted table and
+> `docs/architecture/MOE_RESEARCH_AND_FIX_PLAN.md`; a repacking fix is proposed but not yet
+> implemented. Marker added 2026-09-17 during a progress audit.
 
 We built our engine assuming a Dense model (like Llama 3 or BitNet), where every word passes through every weight matrix. To run DeepSeek-R1 or Mixtral, we need an MoE Router that activates only a subset of Experts per token.
 
@@ -1569,7 +1681,10 @@ We built our engine assuming a Dense model (like Llama 3 or BitNet), where every
 
 ---
 
-## PHASE 34.2b: Quantized GGUF Support (Q8_0, Q4_K, I2_S) *(Items C, D)*
+## PHASE 34.2b: Quantized GGUF Support (Q8_0, Q4_K, I2_S) *(Items C, D)* ✅
+> Implemented: `src/math/{matmul_q8_0,matmul_q4k,matmul_q4k_x8}.c`. Also documented as an
+> "Implementation Record" in `docs/architecture/CPU_LLM_TERNARY_ENGINE.md`. Marker added
+> 2026-09-17 during a progress audit.
 
 **Background:** Currently `tensor_to_f32()` only handles F32/F16/BF16 GGUF tensors. Q8_0 and
 Q4_K represent 90%+ of community quantized models in the wild. I2_S is the BitNet-native GGUF
@@ -1585,14 +1700,23 @@ format used by llama.cpp and bitnet.cpp.
   in `tensor_to_f32()` switch. Callers are fully unaware of quantization type.
 
 ### 34.2b.2 — I2_S BitNet Native Format *(Item D)*
-- **Status:** PLANNED
+- **Status:** ✅ DONE 2026-10-19 — `core/gguf_i2s` repacks bitnet.cpp's I2_S (type 36, 128-weight
+  interleaved blocks, one F32 scale per tensor) losslessly into the engine's packed ternary rows,
+  so the official `microsoft/bitnet-b1.58-2B-4T-gguf` runs on the native ternary kernels
+  (`layers_are_ternary`, sub-norms, ReLU², NEOX RoPE). Was marked under the phase ✅ while still
+  unimplemented — see mistakes.md 2026-10-19. The layout notes below are superseded (real I2_S
+  has one scale per tensor, not per 32-weight group).
 - 2 bits/weight, groups of 32, FP16 scale per group.
 - Decode: `val = (packed >> 2*i) & 0x3` → sign-extend to {-1, 0, +1} → multiply by scale.
 - Extends `gguf_quant.c`; adds one case to `gguf_loader.c`.
 
 ---
 
-## PHASE 34.5: GGUF Tokenizer Extraction *(Items A, F)*
+## PHASE 34.5: GGUF Tokenizer Extraction *(Items A, F)* ✅
+> Implemented: `src/tokenizer/tokenizer_gguf.c`, `src/core/gguf_reader.c` (ARRAY metadata,
+> auto-loaded chat template). Confirmed working end-to-end for DeepSeek-V2 in
+> `docs/architecture/CPU_LLM_TERNARY_ENGINE.md`'s "Current DeepSeek Status" section. Marker
+> added 2026-09-17 during a progress audit.
 
 **Background:** GGUF files embed the full vocabulary in metadata KV pairs under
 `tokenizer.ggml.*` keys. Extracting directly from GGUF eliminates the need for external
@@ -1620,7 +1744,12 @@ format used by llama.cpp and bitnet.cpp.
 
 ---
 
-## PHASE 16-E: GGUF-Aware Bandwidth Ceiling *(Item E)*
+## PHASE 16-E: GGUF-Aware Bandwidth Ceiling *(Item E)* ✅
+> Implemented: fixes the exact "hardware profiler using hardcoded BitNet-2B sizes for every
+> model's ceiling" bug (`docs/ai/decision-log.md` 2026-06-07/06-21 entries). Superseded/refined
+> further by the 2026-07-17 DRAM-bandwidth-probe fix in `docs/architecture/CEILING_CALCULATION.md`
+> (probe was under-measuring by ~3.4x; now fixed — see that doc for current ceiling numbers).
+> Marker added 2026-09-17 during a progress audit.
 
 **Background:** `hardware_profile.c` has hardcoded BitNet-specific constants that are wrong
 for every other model (wrong vocab, wrong dim, wrong byte count). Ceiling numbers for
@@ -1645,7 +1774,7 @@ non-BitNet models are misleading.
 
 ---
 
-## PHASE 34.3: SmolLM2-1.7B Benchmark *(Item G)*
+## PHASE 34.3: SmolLM2-1.7B Benchmark *(Item G)* ✅ done 2026-10-18 (Q4_K_M; PERFORMANCE_CEILING_REPORT Addendum AK)
 
 ### 34.3.1 — Download SmolLM2-1.7B-Instruct-F16 GGUF
 - **Status:** IN PROGRESS (downloading in background)
@@ -1661,79 +1790,233 @@ non-BitNet models are misleading.
 
 ---
 
-## PHASE 18: Speculative Decoding
+## PHASE 18: Speculative Decoding ✅ (batched kernels: ternary, F16, F32, Q4_K, Q4_K-x8 — 18-B 2026-10-18; Q2_0 sequential) — recurrent models (Qwen3.5/3.6 linear attn, Mamba) excluded
+
+**18-B (2026-10-18):** `parallel_matmul_q4k_tokens()`, `parallel_matmul_q4k_x8_tokens_preq()`,
+`tn_matmul_f32_batch()` — each weight row read once per verify batch, bit-identical to per-token
+calls (`tests/test_q4k_batch_tokens.c`). Measured on SmolLM2-1.7B-Instruct Q4_K_M verifier +
+SmolLM2-135M F16 draft (4 threads): 3.6 → 4.2 tok/s, identical output. **Finding:** speculative
+decoding is still slower than plain decoding (8.4 tok/s) on this host: a 6-token verify batch
+costs ~5.4× one step because these kernels are compute-bound (each candidate re-decodes the
+Q4_K nibbles) rather than bandwidth-bound. The real fix is decode-once multi-token GEMM
+kernels (unpack a row block to int8 once, then dot all candidates) — open as 18-C. Also open:
+a fused Q6_K kernel (Q6_K tensors are dequantised to F32 today, 7× the bytes).
+
+**18-C (2026-10-19, first kernel):** `gemm8_q4k_x8_q8k_tokens()` — the x8-interleaved Q4_K
+multi-token path now unpacks each super-block's nibbles, the maddubs blend/shuffle mixes, the
+6-bit scales/mins and the column scales once and runs every candidate token against them
+(previously one full GEMV per token). Bit-identical (`test_q4k_batch_tokens`). Measured
+(SmolLM2-1.7B Q4_K_M verifier + 135M draft, spec-length 6, 4 T, Xeon model 85, 3 interleaved
+rounds): 6.70 → 7.56 tok/s (+13 %), identical output. Plain decode on the same host is 14.0 tok/s,
+so speculative decoding still does not pay off here: the remaining verify cost is the Q6_K /
+F16 tensors and attention, which still run per token. Still open: decode-once kernels for those
+formats (Q6_K, F16 draft-side) and a VNNI variant of this one.
 
 The ultimate CPU speed hack. Load two models: a massive "Brain" (verifier) and a tiny "Drafter". The Drafter guesses N tokens rapidly, the Brain verifies them all in one batched forward pass.
 
-### 18.1 — Draft Model Loader
+**As implemented** (see `docs/ai/decision-log.md` and `docs/ai/change-trace.md`'s 2026-09-22/24
+entries for the full rationale behind each deviation from the design below): real batched
+verification via `transformer_forward_batch()` (not a sequential scaffold — the whole point of
+this phase is the RAM-bandwidth win from streaming each weight matrix once and reusing it across
+N candidate activations), draft models load through the same GGUF loader as the verifier
+(`load_gguf_model()`, Stage 3) rather than a separate raw-binary format, and there is no explicit
+`kv_cache_rollback()` function — see 18.3 below for why none was needed. `--draft-model <path>` is
+the *only* way to enable this feature; there is no default or embedded draft-model path.
+
+### 18.0 — Batched GEMM kernels + `transformer_forward_batch()` ✅
+- Files: `include/math/batched_matmul.h` + `src/math/batched_matmul{,_f16,_classifier}.c`
+  (Stage 1); `include/speculative/spec_scratch.h` + `src/speculative/spec_scratch.c` (the
+  `SpecBatchScratch` N-wide buffer set, allocated only when `--draft-model` is given);
+  `attention_forward_batch()`/`mla_attention_forward_batch()`/
+  `qwen3moe_attention_forward_batch()` (`attention.c`/`mla_attention.c`/`qwen3moe_attention.c`),
+  `ffn_forward_batch()` (`ffn.c`), `transformer_forward_batch()` (`forward.c`) (Stage 2).
+- Each batched attention function refuses cleanly (`TN_ERR_UNSUPPORTED`) for
+  `mc->has_linear_attn` models (Qwen3.5/3.6 hybrid) — their Gated-DeltaNet layers hold a
+  genuinely recurrent state that can't be batched with a local restructuring; out of scope for
+  this pass. MoE-FFN layers fall back to `spec_length` sequential per-token `moe_ffn_forward()`
+  calls inside the batch loop (MoE models get partial speedup: attention batched, FFN not) —
+  also out of scope. Only ternary-packed and F16 dense matmul get real batched kernels this pass;
+  `Q4_K`/`Q4_K_X8`/`Q2_0`/`F32` fall back to sequential single-vector calls inside the batch
+  dispatch helper — correct, but without the bandwidth win for those formats (documented
+  follow-up: Phase 18-B).
+- Proven equivalent to N sequential `transformer_forward()` calls (teacher-forcing) by
+  `tests/test_forward_batch.c` across dense, MLA, and Qwen3-MoE synthetic configs.
+
+### 18.1 — Draft Model Loader ✅
 - File: `include/speculative/draft_model.h` + `src/speculative/draft_model.c`
-- `typedef struct { Config config; TransformerWeights weights; RunState state; MappedFile mf; } DraftModel;`
-- `TernaryError draft_model_load(DraftModel *dm, const char *path);`
-- Loads a small model (e.g., 125M params) alongside the main model.
-- Uses separate mmap'd file and separate RunState.
+- `DraftModel` bundles `Config`/`TransformerWeights`/`MoEConfig`/`RunState*`/`MappedFile`/
+  `GGUFWeightStore*`/`Tokenizer`, built entirely via Stage 3's `load_gguf_model(is_primary=false)`
+  — zero duplicated GGUF-parsing code, GGUF-only (no raw `.bin` draft models).
+- `TernaryError draft_model_load(DraftModel *dm, const char *draft_model_path, int
+  verifier_vocab_size, int max_seq_len_hint, ThreadPool *tp);` — refuses `has_linear_attn` draft
+  models and `vocab_size` mismatches against the verifier at load time (draft and verifier must
+  share a tokenizer for token-ID comparison to mean anything).
 
-### 18.2 — Speculative Generation Loop
-- File: `include/speculative/spec_decode.h` + `src/speculative/spec_decode.c`
-- `void speculative_generate(Config *p, TransformerWeights *w, RunState *s, DraftModel *draft, Tokenizer *t, ThreadPool *tp, const char *prompt, int max_tokens, float temperature, float top_p, int spec_length);`
-  - `spec_length`: number of tokens to draft (default: 5).
-  - **Algorithm:**
-    1. Draft model generates `spec_length` candidate tokens greedily.
-    2. Main model runs a single batched forward pass over all candidates.
-    3. Compare draft logits vs. main logits using rejection sampling.
-    4. Accept matching tokens (often 3-4 out of 5).
-    5. On first mismatch: resample from main model's distribution, discard remaining drafts.
-    6. Repeat.
-  - **Speedup:** 2-3x on CPU when draft model is 10x smaller than main model.
+### 18.2 — Speculative Generation Loop ✅
+- File: `include/speculative/spec_decode.h` + `src/speculative/spec_decode.c`,
+  `include/speculative/accept_reject.h` + `src/speculative/accept_reject.c`.
+- `speculative_generate()`/`speculative_generate_with_callback()` mirror
+  `generate()`/`generate_with_callback()`'s signatures plus `DraftModel *draft, int spec_length`
+  (`--spec-length`, default 5, CLI flag added in Stage 4). **Algorithm, as implemented:**
+  1. Draft model generates `spec_length` candidate tokens sequentially (its own KV cache), sampled
+     per the same `temperature`/`top_p` policy as plain generation.
+  2. Verifier runs a single batched forward pass (`transformer_forward_batch()`) over all
+     candidates.
+  3. `accept_reject_round()` compares draft vs. verifier logits: greedy mode accepts a draft token
+     iff it equals the verifier's own argmax (teacher-forcing equivalence makes greedy speculative
+     output *identical* to plain greedy generation, by construction); stochastic mode accepts with
+     probability `min(1, p_verifier/p_draft)` and resamples from the renormalized residual
+     `max(0, p_verifier - p_draft)` on reject.
+  4. Accept matching tokens up to the first mismatch (or all `spec_length`, plus a fresh bonus
+     token sampled from the verifier's own next-position distribution).
+  5. One corrective `transformer_forward()` commit call per model, feeding the just-decided token
+     at `pos + n_accept` (see 18.3).
+  6. Repeat.
+  - **Speedup:** real, measured via the same `[gen]`/`[spec-gen] %.2f tok/s` reporting both paths
+    already print — no real-model measurement was available this pass (see `change-trace.md`'s
+    Stage 5 entry: this repo's only local model, `models/smollm2.gguf`/SmolLM2-135M, is already
+    the smallest size in its family, so no smaller same-tokenizer sibling exists to demonstrate
+    the win against); correctness (greedy-equivalence) is proven on synthetic tiny models instead
+    (`tests/test_speculative.c`).
 
-### 18.3 — KV Cache Rollback
-- File: `src/speculative/kv_rollback.c`
-- `void kv_cache_rollback(RunState *s, const Config *p, int rollback_pos);`
-  - When speculative tokens are rejected, the KV cache must be rewound.
-  - Sets `s->current_pos = rollback_pos` — the rejected K/V entries are simply overwritten on next forward pass.
+### 18.3 — KV Cache Rollback → superseded by "commit, don't roll back" ✅
+- No `kv_cache_rollback()` function exists; none was needed. `s->current_pos` was confirmed dead
+  weight for this feature (`sw_map_position`/`sw_valid_count` never read it), so the loop simply
+  never advances `pos` past the last accepted token — any KV slots the batched verify call wrote
+  for rejected draft positions are naturally overwritten the next time that logical position is
+  actually reached, which is exactly what the corrective commit call (18.2 step 5) *is*: one real
+  `transformer_forward(emit_token, pos + n_accept, ...)` call on **both** models (not only the
+  draft model, as originally scoped here — the verifier's own KV cache needs the same correction
+  on a partial accept, worked out from first principles during Stage 5) — never a separate
+  rollback path.
+- Granular step-timing coverage for the whole batched/speculative path (Stage 5.5, closing a
+  pre-existing `TN_STEP_TIMING` gap in the generic dense/GQA and Qwen3-MoE attention paths found
+  along the way) — see `docs/ai/mistakes.md`'s 2026-09-24 entries.
 
 ---
 
-## PHASE 19: LoRA Adapters (Hot-Swappable Brains)
+## PHASE 19: LoRA Adapters ✅ (dense/GQA + Qwen3 attention, FFN, batched spec-decode path; MLA/Qwen3.5 hybrid/MoE experts open, Phase 19-B)
 
-Low-Rank Adaptation allows loading tiny 50MB "patch" files that alter the model's behavior without modifying base weights.
+Low-Rank Adaptation allows loading tiny "patch" files that alter the model's behavior without
+modifying base weights: `out = base_matmul(x, W) + (alpha/rank) * (x @ A @ B)`.
 
-### 19.1 — LoRA Weight Structures
+**As implemented** (see `docs/ai/decision-log.md` and `docs/ai/mistakes.md`'s 2026-09-24 entries
+for the full rationale behind each deviation from the design below): a single format-agnostic
+`lora_apply()` adds the correction generically in F32 after any base matmul completes (ternary/
+Q4_K/F16/Q2_0/F32 alike) rather than a per-format fused kernel; `LoRAWeights` holds one
+`LoRAModule *` array per target module (not a single shared A/B pair) since a real adapter has
+independent matrices per `q_proj`/`v_proj`/etc.; the adapter is carried on `RunState.active_lora`
+(set once in `main.c`) rather than threaded as a new parameter through
+`transformer_forward()`/`attention_forward()`/`ffn_forward()`, avoiding touching ~35 existing call
+sites for zero behavior change on every caller that never sets it. `--lora <path>` is the *only*
+way to enable this feature; there is no default or embedded adapter path.
+
+### 19.1 — LoRA Weight Structures ✅
 - File: `include/core/lora.h`
-- ```c
-  typedef struct {
-      int rank;              // LoRA rank (e.g., 16, 32, 64)
-      float alpha;           // Scaling factor
-      float **lora_A;        // Per-layer A matrices: [dim × rank]
-      float **lora_B;        // Per-layer B matrices: [rank × dim]
-      char *target_modules;  // Comma-separated: "q_proj,v_proj,..."
-  } LoRAWeights;
-  ```
-- `TernaryError lora_load(LoRAWeights *lora, const char *path);`
-- `void lora_free(LoRAWeights *lora);`
+- `LoRAModule { const float *A; const float *B; int rank; float scale; }` — one per (layer,
+  target module); `rank == 0` is the "inactive" no-op sentinel.
+- `LoRAWeights { int n_layers, rank, dim, hidden_dim; float alpha; LoRAModule *q, *k, *v, *o,
+  *gate, *up, *down; }` — a module array is `NULL` entirely when that target isn't in the
+  adapter's `target_mask` (same NULL-for-inapplicable-module convention `weights.h` already uses
+  for e.g. `q35_attn_q_norm`). `lora_mod(arr, layer)` is the safe accessor for a possibly-NULL
+  array.
+- `TernaryError lora_load(LoRAWeights *lora, const char *path, int dim, int kv_dim, int
+  hidden_dim, int n_layers);` / `void lora_free(LoRAWeights *lora);`
 
-### 19.2 — LoRA File Loader
+### 19.2 — LoRA File Loader ✅
 - File: `src/core/lora_load.c`
-- Reads a `.lora.bin` file with header: `[magic "LORA"] [rank] [alpha] [target_mask] [A_matrices] [B_matrices]`.
-- A and B matrices stored as float16, dequantized to float32 on load.
-- Memory footprint: ~50MB for rank-32 on a 2B model.
+- `mapped_file_open()` + magic/version/header-field reads (`rd32`/`rd32s`/`rdf32` local
+  helpers), same idiom as `src/multimodal/vision_weights_load.c`. Header: magic, version,
+  `n_layers`, `rank`, `alpha` (f32), `dim`, `hidden_dim`, `target_mask`, **`kv_dim`**, reserved
+  to 64 bytes. `kv_dim` is validated against the base model's `config_kv_dim(cfg)` exactly like
+  `dim`/`hidden_dim`/`n_layers` — **K/V project `dim -> kv_dim`, not `dim -> dim`, on a GQA model**
+  (found via a real downloaded SmolLM2 LoRA adapter corrupting reads on this project's own demo
+  model, `n_kv_heads=3 < n_heads=9`; see `docs/ai/mistakes.md`). A/B are F16 on disk (row-major,
+  matching HuggingFace PEFT's own `lora_A.weight [rank, in_features]` / `lora_B.weight
+  [out_features, rank]` tensor shapes exactly — the converter does no reshape/transpose), decoded
+  to owned F32 arrays at load time; the mmap is closed immediately after.
 
-### 19.3 — LoRA-Fused MatMul
+### 19.3 — Generic LoRA Application ✅ (not a fused per-format kernel)
 - File: `include/math/lora_matmul.h` + `src/math/lora_matmul.c`
-- `void ternary_matmul_with_lora(float *out, const float *x, const int8_t *w, int n, int d, float scale, const LoRAWeights *lora, int layer, const char *module_name);`
-  - Computes: `out = (x @ W) * scale + (x @ A @ B) * (alpha / rank)`.
-  - The LoRA term `x @ A @ B` is computed separately: first `x @ A` (dim → rank, very small), then `result @ B` (rank → dim).
-  - Added to the base matmul output.
-- **Hot-swap:** Calling `lora_free()` + `lora_load()` with a different file switches personality in milliseconds.
+- `void lora_apply(float *out, const float *x, const LoRAModule *mod, int n, int d, ThreadPool
+  *tp);` — no-op when `mod == NULL || mod->rank == 0`. Step 1 (`tmp = A @ x`, `rank` rows) runs
+  directly, not thread-dispatched (rank is small by construction); step 2 (`out += scale * (B @
+  tmp)`, up to `d` rows) is row-distributed across the thread pool, mirroring
+  `parallel_matmul.c`'s task-per-output-row pattern. Both dot products go through
+  `tn_vec_dot()` (`math/simd_dispatch.h`) — never a hand-rolled scalar loop, the exact lesson from
+  Phase 18's own scalar-batched-kernel regression (`docs/ai/mistakes.md`, 2026-09-24).
+- Call sites: one line each after the existing Q/K/V, O, gate/up, and down dispatch blocks
+  complete in `attention_forward()`/`ffn_forward()` (single-token path only) — no signature
+  changes to either function; both read `s->active_lora` directly.
+- **Hot-swap:** `lora_free()` + `lora_load()` with a different file switches personality; no
+  base-weight reload needed.
 
-### 19.4 — LoRA Converter Tool
+### 19.4 — LoRA Converter Tool ✅
 - File: `tools/convert_lora.py`
-- Reads HuggingFace LoRA adapter (typically `adapter_model.safetensors` + `adapter_config.json`).
-- Extracts A/B matrices, writes to `.lora.bin` format.
-- CLI: `python convert_lora.py --adapter path/to/lora --output adapter.lora.bin`
+- Reads a HuggingFace PEFT LoRA adapter directory (`adapter_model.safetensors` +
+  `adapter_config.json`); `rank`/`alpha`/`target_modules` come straight from the config JSON,
+  `A`/`B` tensors straight from the safetensors file with **zero reshape/transpose** (PEFT's
+  native layout already matches `lora_apply()`'s row-major-by-output convention). `--kv-dim`
+  (defaults to `--dim`, correct only for non-GQA models) sizes K/V's output width correctly on a
+  GQA base model — see 19.2's `kv_dim` fix above. Verified end-to-end against a real downloaded
+  adapter (`CTU-ai-lab/SmolLM2-135M-LoRA-Adapter`, HuggingFace Hub) targeting `q_proj`/`v_proj` on
+  this project's own `models/smollm2.gguf`: converts, loads, and generates coherently; that
+  particular adapter's `lora_B` tensors are all exactly zero (an untrained/placeholder adapter,
+  confirmed by inspecting the source safetensors directly — not a bug in this pipeline), so its
+  own real-world behavioral-change proof comes from `tests/test_lora.c`'s synthetic nonzero-LoRA
+  case instead (`test_forward_lora_active_changes_output`).
+
+### 19-B — partly done 2026-10-19
+- ✅ **Batched speculative-decoding path** (`attention_forward_batch()`/`ffn_forward_batch()`,
+  `lora_apply_batch()`): it ignored the adapter, so `--lora --draft-model` verified draft tokens
+  against the *base* model and cached un-adapted K/V — a correctness bug. Test:
+  `test_dense_batch_matches_sequential_with_lora` (fails without the fix).
+- ✅ **Qwen3 dense + Qwen3-MoE attention** (`qwen3moe_attention_forward*`): Q/K/V/O deltas, with
+  the wide Q (`n_heads*head_dim`, head_dim from `attention.key_length`). Format: header `[36:40]
+  q_dim` (0 = dim, so older files load unchanged), `lora_load_ex()`, converter `--q-dim`; main
+  derives q_dim/kv_dim from the real head_dim. A wrong-shape file is refused with both shapes
+  printed; `[lora] … active` notice on load. Tests: `test_lora_load_q_dim`; live on Qwen3-0.6B.
+- Still open, deliberately: **MLA** (DeepSeek: PEFT targets `q_a_proj/q_b_proj/kv_a_proj_with_mqa/
+  kv_b_proj`, which this format's 7 targets cannot express), **Qwen3.5/3.6 hybrid** linear
+  attention, and **MoE experts** — each needs format targets plus a model to verify against;
+  none is available here, so no unverifiable code was added. An adapter still loads on those
+  models and applies to the dense FFN/attention parts it shares.
 
 ---
 
-## PHASE 20: Grammar-Constrained Decoding (JSON Mode)
+## PHASE 20: Grammar-Constrained Decoding (JSON Mode) ✅
+> **Implemented 2026-09-17**, with one deliberate scope change from the original plan below:
+> a **JSON-specific pushdown automaton**, not the generic flat-FSM `Grammar`/BNF compiler
+> originally specified. A flat DFA (states+transitions, no stack) cannot represent JSON's real
+> grammar — arbitrarily deep nested objects/arrays is a context-free property, not a regular
+> one; a flat FSM would need a hard-coded max nesting depth to fake it, which is exactly the
+> kind of arbitrary limit `GOLDEN_RULES.md`'s "no hardcoding" rule exists to avoid. Built a
+> small stack-augmented automaton specific to JSON (RFC 8259) instead — correct for unbounded
+> nesting (well, up to `JSON_GRAMMAR_MAX_DEPTH`=256, a generous safety cap, not a design limit).
+> `grammar_load_from_bnf` (general custom-grammar support) is out of scope — JSON is the
+> concrete, needed use case (tool-call arguments, OpenAI `response_format=json_object`).
+>
+> Files: `include/sampling/grammar.h` + `src/sampling/grammar_json.c` (the JSON PDA),
+> `include/sampling/fsm.h` + `src/sampling/fsm.c` (vocabulary-aware masking via
+> `tokenizer_decode()`, with EOS-family tokens specially allowed only once the grammar reports
+> `json_grammar_is_complete()`), `include/sampling/constrained_sample.h` +
+> `src/sampling/constrained_sample.c` (same sampling cascade as `generate()`'s main loop —
+> argmax / temperature+top-p / temperature+plain-CDF — with the mask applied first).
+>
+> Wired into: `generate()`/`generate_with_callback()` (new `bool json_mode` parameter),
+> CLI `--json` flag + REPL `/json` toggle, and the API's OpenAI-compatible
+> `"response_format": {"type": "json_object"}` request field (`chat_request.h`/`json_parse.c`).
+> Not wired into `src/agent/agent_loop.c`'s own duplicate sampling cascade — a real, separate
+> integration decision (which part of an agentic turn should be JSON-constrained is a design
+> question, not an oversight) left for a follow-up.
+>
+> Tests: `tests/test_grammar_json.c` (47 assertions — valid/invalid/incomplete-prefix JSON,
+> deep nesting, the bare-number-needs-finalize edge case) and `tests/test_fsm.c` (25 assertions
+> — vocabulary masking + `sample_constrained` end-to-end against a synthetic tokenizer, including
+> "a grammar-illegal token is never chosen even when it has the highest raw logit"). Verified
+> against a real downloaded model (`bartowski/SmolLM2-135M-Instruct-GGUF`, Q8_0): both the CLI
+> `--json` flag and the API's `response_format=json_object` produce clean, `json.loads()`-parseable
+> output, vs. the same prompt without it producing a stray ` ```json ` fence and trailing prose.
 
 Physically blocks the AI from outputting invalid syntax by forcing illegal token probabilities to negative infinity.
 
@@ -1807,16 +2090,52 @@ Turns the C engine into a headless daemon that any frontend (Cline, OpenHands, S
   - On completion: `data: [DONE]\n\n`
 - Hooks directly into the `generate()` loop — each decoded token is immediately flushed over the TCP socket.
 
-### 21.5 — KV Cache Prefix Matching (Context Caching)
-- File: `include/api/prefix_cache.h` + `src/api/prefix_cache.c`
-- `int find_prefix_match(const int *new_tokens, int new_len, const int *cached_tokens, int cached_len);`
-  - Returns the length of the longest common prefix.
-  - If prefix match is found, skip re-computing those tokens — reuse existing KV cache entries.
-  - Drops Time-To-First-Token from seconds to milliseconds for repeated API calls.
+### 21.5 — KV Cache Prefix Matching (Context Caching) ✅ done 2026-10-18
+- As built: `include/kv_cache/prefix_cache.h` + `src/kv_cache/prefix_cache.c` (lives with the KV
+  cache, not the API — any `generate_ex()` caller can use it via `GenerationParams.prefix_cache`).
+  `prefix_cache_match()` returns the longest common prefix with the token record of what is in
+  the KV cache; `generate_ex()` starts the prompt loop there (always recomputing the last prompt
+  token for its logits) and records every forwarded token.
+- Invalidation: window wrap (position ≥ capacity), vision prefill (`pos_offset > 0`), any
+  request with `cache_prompt: false`; disabled for recurrent linear-attention models
+  (Qwen3.5/3.6 hybrid — `features.prompt_cache: false` in `/v1/config`).
+- Configurable: `--prompt-cache on|off` (server default, on), per-request `"cache_prompt"`, web
+  UI toggle; responses report `usage.prompt_tokens_details.cached_tokens`.
+- Measured (SmolLM2-135M F16, 4 threads, 516-token prompt): repeat request 8.6 s → 0.21 s;
+  multi-turn chat turns 5–7× faster. Output byte-identical with/without cache
+  (`tests/e2e_prompt_cache.sh`, `tests/test_prefix_cache.c`).
+- Not covered here: multi-entry radix-tree cache with LRU (Phase 26) — this is the single-slot
+  form (one cached sequence per RunState), which is what a single-generation server can use.
 
 ---
 
-## PHASE 22: State Space Models (Mamba/RWKV) — Universal Architecture Router
+## PHASE 22-SSM: State Space Models (Mamba/RWKV) — Universal Architecture Router ✅ Mamba-1 done 2026-10-18 (RWKV / Mamba-2 open)
+
+**As built:** GGUF arch `mamba` (llama.cpp tensor naming) runs end to end.
+- `include/transformer/mamba.h` / `src/transformer/mamba.c`: `MambaWeights`, `MambaState`
+  (conv + SSM state per layer, reset when position 0 is processed), `mamba_block_forward()`
+  (RMSNorm → in-proj → causal depthwise conv1d + SiLU → x-proj → softplus dt → selective scan →
+  SiLU(z) gate → out-proj → residual). Projections go through `tn_dense_matmul_dispatch`, so
+  F16/F32/Q4_K/dequantised formats all work.
+- Router (22.4): `transformer_forward()` routes each layer to the Mamba block when
+  `MoEConfig.is_ssm`; config/MoE-config/weights loaders handle `mamba` (n_heads/ffn absent in
+  the file); generic KV cache skipped. `moe_is_recurrent()` gates prefix cache, prompt store,
+  batched forward and speculative decoding for SSMs and Qwen3.5 linear attention alike.
+- Verified against an independent numpy implementation (`tools/mamba_reference.py`,
+  `tests/e2e_mamba_reference.sh`) on real `mamba-130m-hf.f16.gguf`: same greedy tokens, top-1
+  logits within 0.2 (BF16 classifier vs F32); unit test `tests/test_mamba.c`. ~72 tok/s on 4
+  threads. Server works with the vocabulary-chosen `plain` prompt format.
+- Open: RWKV, Mamba-2 (`mamba2`, grouped SSD heads), hybrid Jamba-style models.
+
+*Original stub, kept for reference:*
+> **Disambiguation note (added 2026-09-17):** This phase's original number, "Phase 22", collided
+> with an unrelated, already-shipped "Phase 22: Web UI & API/DX hardening" used pervasively
+> (sub-phases 22.0-22.5) across `docs/ai/decision-log.md`, `docs/ai/mistakes.md`,
+> `docs/ai/change-trace.md`, and `docs/ai/project-overview.md`. That work (HTTP API hardening,
+> CORS/auth/metrics, the Vite+Svelte web chat UI, CLI/REPL polish) is real and done — see those
+> docs for its record. This phase (Mamba/RWKV state-space models) is unrelated, unimplemented,
+> and has been renamed here to "22-SSM" to stop the two from being confused. Not started — no
+> `mamba`/`ssm`/`rwkv`/`selective_scan` files exist anywhere in `src/`/`include/`.
 
 Abstracts the forward pass so the engine can run both Transformer (Attention) and SSM (Mamba) architectures.
 
@@ -1851,7 +2170,31 @@ Abstracts the forward pass so the engine can run both Transformer (Attention) an
 
 ---
 
-## PHASE 23: PagedAttention & Continuous Batching
+## PHASE 23: PagedAttention & Continuous Batching 🟡 stage 1 (FIFO admission queue) done 2026-10-18; stage 2a (multi-sequence forward) done 2026-10-19
+
+**Stage 2a as built (2026-10-19):** `transformer_forward_multi(tokens, pos_arr, states, n, …)`
+(`src/transformer/forward.c`) runs one token from each of `n` independent sequences (own
+RunState / KV / position) through a single batched pass: weights stream once for all rows
+(`attention_forward_multi()` + the shared batched FFN), attention reads each row's own KV.
+Refuses MoE, recurrent/SSM, MLA, linear-attention, qk-norm and distributed models with
+`TN_ERR_UNSUPPORTED` (callers fall back to sequential). Test:
+`test_forward_multi_matches_sequential`. **Open:** stage 2b — step-wise `GenSession` extracted
+from `generate_ex`, a `--parallel N` scheduler in the API server that interleaves active
+requests, vAttention-style paged KV (lazy commit per slot, release on finish), `/v1/config` +
+web UI display, benchmark.
+
+**Stage 1 as built:** `include/api/gen_queue.h` / `src/api/gen_queue.c` — FIFO admission to the
+single generation slot. `--queue-size N` lets N chat requests wait in arrival order (default 0
+keeps the documented 429-when-busy behaviour), `--queue-timeout S` bounds the wait; streaming
+waiters get `: queued <position>` SSE comments (keep-alive + position), a disconnected or
+timed-out waiter leaves without disturbing the order. The request body is parsed before taking
+the slot. `/v1/config features.queue_size`; the web UI shows "position N in queue" in the
+pending reply. Tests: `tests/test_gen_queue.c` (in TSAN_TESTS); live two-tab browser check.
+**Still open:** 23.1/23.2 paged KV, 23.3 true continuous batching (multi-sequence batched
+forward + a step-wise generation state machine), 23.4 shared-prefix dedup (partly covered by
+Phase 26 snapshots).
+
+*Original stub, kept for reference:*
 
 Enables multi-user API serving by breaking KV cache into non-contiguous memory pages.
 
@@ -1896,7 +2239,17 @@ Enables multi-user API serving by breaking KV cache into non-contiguous memory p
 
 ---
 
-## PHASE 24: Dynamic Context Scaling (YaRN / NTK)
+## PHASE 24: Dynamic Context Scaling (YaRN / NTK) ✅
+> Implemented: `src/math/rope.c` (`rope_apply_head_yarn`, YaRN ramp/correction-dim math),
+> `src/transformer/mla_attention.c` (`rope_apply_yarn`, `yarn_corr_dims` — matches llama.cpp's
+> `ggml_rope_yarn_corr_dims` per its own comment), also wired into
+> `src/transformer/{attention,qwen3moe_attention}.c`; GGUF-metadata-driven via
+> `src/core/gguf_loader.c` (`<arch>.rope.scaling.{type,factor,yarn_log_multiplier}` keys) and
+> `include/core/config.h` (`rope_yarn_*` fields). Explicitly confirmed done in
+> `docs/architecture/CPU_LLM_TERNARY_ENGINE.md`'s "Current DeepSeek Status" section
+> ("✅ STATUS UPDATE (2026-03-22): ... YaRN RoPE scaling ... — ✅ implemented, commit 4e6fdfe").
+> This was the single biggest doc-drift item found in the 2026-09-17 progress audit — a fully
+> shipped phase with zero acknowledgment in this file until now. Marker added 2026-09-17.
 
 Stretches a model's context window beyond its training limit by dynamically rescaling RoPE frequencies.
 
@@ -1957,7 +2310,24 @@ Enables real-time voice conversations by streaming audio tokens directly into th
 
 ---
 
-## PHASE 26: Prompt Caching (Radix Trees) — Zero-Compute Recall
+## PHASE 26: Prompt Caching (Radix Trees) — Zero-Compute Recall ✅ done 2026-10-18 (generic dense/GQA KV)
+
+**As built** (`include/kv_cache/prompt_store.h`, `src/kv_cache/prompt_store.c`): a multi-entry
+snapshot store on top of Phase 21.5's live `PrefixCache`. Each entry holds a token sequence and
+the packed K/V rows for it; `prompt_store_restore()` copies the best-matching entry back into
+the RunState when it shares more than the live KV, `prompt_store_save()` snapshots the live
+sequence after each generation (a continuation replaces its shorter entry; LRU eviction inside
+a byte budget). Lookup is an LCP scan over entries rather than a radix tree — at the entry
+counts a RAM budget allows it is negligible next to a forward pass and needs no node splitting
+(deviation, see decision-log 2026-10-18). Scope: the generic `key_cache/value_cache` (MLA,
+Qwen3-MoE and Qwen3.5 hybrid keep their own caches and are excluded).
+Configurable: `--prompt-cache-mb` (default 256, 0 = off), `--prompt-cache-min-tokens` (32),
+`GET /v1/prompt_cache` stats, `POST /v1/prompt_cache/clear`, web UI status line + Clear.
+Verified: `tests/test_prompt_store.c` (roundtrip into the KV cache, supersede, LRU, budget,
+scope) and `tests/e2e_prompt_cache.sh` (two interleaved conversations: identical output to
+no-cache, 308 tokens reused on each return).
+
+*Original stub, kept for reference:*
 
 Eliminates redundant computation when the same prompt prefix appears across multiple API requests.
 
@@ -1995,7 +2365,28 @@ Eliminates redundant computation when the same prompt prefix appears across mult
 
 ---
 
-## PHASE 27: CPU Cache Tiling (FlashAttention for CPU)
+## PHASE 27: CPU Cache Tiling (FlashAttention for CPU) ✅ 27.1 + 27.3 done 2026-10-18 (27.2 not adopted)
+
+**As built:**
+- **27.1** `include/threading/cache_probe.h` / `src/threading/cache_probe.c`: L1d/L2/L3/line from
+  sysfs (per-index level/type), CPUID leaf 4 fallback, documented defaults. `hardware_profile.c`
+  now delegates to it (its old reader assumed index1 = L2, which is L1i on typical x86).
+- **27.3** `src/transformer/attn_tiled.c`: single-query online-softmax attention over L1-sized
+  tiles (`--attn-kernel tiled`, `--attn-tile N`, default tile from L1d). Microbench: parity with
+  the standard path (0.94–1.00×; per-row dot/saxpy dominates at head_dim 64), so it stays
+  opt-in. **The real win was elsewhere:** the per-head loop was serial; heads are now dispatched
+  over the thread pool once the context reaches `--attn-parallel-min-ctx` (default 64). Measured
+  (SmolLM2-135M F16, 4 threads, greedy, identical output): ~1700-token context 20 → 44 tok/s,
+  ~300-token 59 → 83 tok/s, short prompts 78 → 93 tok/s.
+- **27.2** tiled int8 ternary matmul: not built — the unpacked int8 path is legacy (packed
+  kernels are already cache-blocked) and Phase 3.2's branchless kernel already gave that path
+  10×.
+- Tests: `tests/test_cache_probe.c` (size parsing, probe sanity, tiled == standard incl. a
+  wrapped sliding window), `tests/test_forward.c` (head-parallel bit-identical to serial; tiled
+  within 1e-4), TSan clean with `test_forward` added to `TSAN_TESTS`. `/v1/config` reports
+  `runtime` (SIMD, threads, attention kernel/tile/threshold, cache sizes); the web UI shows it.
+
+*Original stub, kept for reference:*
 
 Maximizes L1/L2 cache utilization by tiling matrix operations into cache-sized blocks.
 
@@ -2026,7 +2417,30 @@ Maximizes L1/L2 cache utilization by tiling matrix operations into cache-sized b
 
 ---
 
-## PHASE 28: Distributed Inference (RPC/MPI) — Network Tensor Router
+## PHASE 28: Distributed Inference (RPC/MPI) — Network Tensor Router ✅ pipeline split done 2026-10-18
+
+**As built:** `include/distributed/{tensor_rpc,dist_plan}.h` + `src/distributed/`.
+- **28.2 transport** (`tensor_rpc.c`): framed TCP — 16-byte header (magic `PZT1`, type, arg,
+  count) + float payload; INFO (worker geometry + layer range, validated by the coordinator
+  against its own model), FORWARD (arg = position; payload = hidden state + the coordinator's
+  sliding-window pinned length), ERROR, BYE. `TCP_NODELAY`, loopback-only unless `--rpc-bind-all`
+  (no auth — trusted LANs only).
+- **28.3 forward**: a worker (`--rpc-worker PORT --layers A-B`) loads the same model file and runs
+  only its layer range with its own KV/SSM state; the coordinator (`--remote-layers
+  host:port@A-B[,...]`) runs embedding, its local layers and the classifier, and ships the hidden
+  state through `transformer_layer_forward()`'s hook whenever the layer loop reaches a remote
+  range. Works in CLI, REPL and `--server`; `/v1/config runtime.distributed` lists the nodes and the
+  web UI header shows a `dist N nodes` tag. A transport failure stops generation with an error.
+  Batched prefill and speculative decoding refuse to run distributed (single-token path only);
+  prompt snapshots (`--prompt-cache-mb`) are bypassed (they restore only local KV), the live
+  prefix cache still applies.
+- **28.1 planner**: `dist_plan_layers_by_ram()` — contiguous ranges proportional to RAM, ≥1
+  layer per node; `--plan-layers 16,8,8` prints the split and the matching flags.
+- Verified: split run (layers 15-30 on a worker) gives byte-identical greedy output to a single
+  process (SmolLM2-135M, 48 vs 54 tok/s on loopback); `tests/test_tensor_rpc.c` (in TSAN_TESTS).
+- **Not done:** UDP auto-discovery (static node list instead — explicit and safer), MPI.
+
+*Original stub, kept for reference:*
 
 Splits a model across multiple machines on the same network for models too large for a single device.
 
@@ -2081,7 +2495,44 @@ Replaces raw `popen()` with an isolated WebAssembly sandbox for safe AI tool exe
 
 ---
 
-## PHASE 30: Test-Time Compute (MCTS & PRM) — Advanced Reasoning
+## PHASE 30: Test-Time Compute (MCTS & PRM) — Advanced Reasoning ✅ best-of-N 2026-10-18; PRM + step-level MCTS 2026-10-19
+
+**As built (first stage):** best-of-N candidate selection — the depth-1 case of the tree search
+below, with the policy model's own likelihood standing in for the PRM.
+- `include/sampling/logprob.h` + `GenerationParams.compute_logprobs` →
+  `GenerationStats.sum_logprob` (raw-distribution log p of each emitted token).
+- `include/reasoning/best_of.h` / `src/reasoning/best_of.c`: N candidates (seed + i), pluggable
+  score (`BEST_OF_SCORE_MEAN_LOGPROB` default, `SUM_LOGPROB`); candidates that finished on their
+  own outrank max_tokens-truncated ones (likelihood alone rewarded endless loops in a live
+  test); shares the prompt through the prefix cache (temporary one when the caller has none).
+- Configurable: `--best-of`, `--best-of-max`, request `best_of`, `/v1/config`
+  (`defaults.best_of`, `limits.best_of`, `features.best_of`), web UI "Best of N" slider; the
+  response carries `best_of: {n, chosen, scores, completion_tokens_total}`.
+- **30.1 PRM ✅ 2026-10-19:** `include/reasoning/prm.h` / `src/reasoning/prm.c` — any GGUF as
+  judge: `--prm <gguf>`, input `--prm-format` with `{question}` `{steps}` (default asks "Is the last
+  step correct? Answer Yes or No."), score = P(good)/(P(good)+P(bad)) for `--prm-good`/`--prm-bad`
+  (default " Yes"/" No"), so Math-Shepherd-style "+"/"−" PRMs and instruct judges both work; the
+  judge reuses its KV for the shared question/earlier-steps prefix.
+- **30.2/30.3 MCTS ✅ 2026-10-19:** `include/reasoning/mcts.h` / `src/reasoning/mcts.c`
+  (+ `mcts_options.h/.c`). Node = one step (text to `--mcts-delim`, ≤ `--mcts-step-tokens`);
+  UCB1 selection (`--mcts-c`), expansion by sampling (`--mcts-temperature`) a continuation of the
+  partial assistant turn (new `GenerationParams.assistant_prefix`), evaluation by the PRM or the
+  policy's own geometric-mean token probability, backup; answer = most-visited path, completed
+  with the caller's own settings if the model did not end it. Snapshots: the shared prompt prefix
+  comes from the prefix cache / prompt store each expansion (no per-node RunState copies). Every
+  step respects the request's `max_tokens`; `GenerationStats.hit_eos` separates "turn ended" from
+  "step delimiter".
+- Configurable everywhere: CLI `--mcts N --mcts-expand --mcts-depth --mcts-step-tokens --mcts-c
+  --mcts-temperature --mcts-delim --mcts-max --prm*`; request `"mcts": N | {simulations, expand,
+  max_depth, step_tokens, c, temperature}` (capped by `--mcts-max`); `/v1/config defaults.mcts`,
+  `limits.mcts_*`, `features.mcts`, `features.prm`; web UI Settings → Tree search. Response
+  carries `mcts: {simulations, nodes, steps, path_value, scorer, search_tokens}`.
+- Live (SmolLM2-1.7B policy, SmolLM2-135M or 1.7B judge): search and PRM paths work end to end;
+  answer quality is bounded by these small models (the "17 sheep, all but 9" riddle stays wrong
+  with or without search). Tests: `tests/test_mcts.c`, `test_request_params` (mcts),
+  `test_api_info` (config); screenshots `docs/design/screenshots/mcts-2026-10-19/`.
+
+*Original stub, kept for reference:*
 
 Replaces linear Chain-of-Thought with tree-search reasoning for mathematically proven answers.
 
@@ -2121,7 +2572,22 @@ Replaces linear Chain-of-Thought with tree-search reasoning for mathematically p
 
 ---
 
-## PHASE 31: NVMe Storage Tiering (FlexGen) — Infinite Memory
+## PHASE 31: NVMe Storage Tiering (FlexGen) — Infinite Memory ✅ KV offload done 2026-10-18 (page-cache tiering)
+
+**As built:** `include/memory/file_backed.h` / `src/memory/file_backed.c` + `--kv-offload <dir>`.
+The generic dense/GQA KV cache (F32 or `--kv-type i8`) is carved from one unlinked, fully
+`posix_fallocate`d file in `<dir>` mapped `MAP_SHARED`; the kernel page cache is the hot tier and
+evicts cold pages to the SSD under pressure, so the context is bounded by free disk
+(× `--kv-ram-fraction`) instead of free RAM. The forward loop prefetches the next layer's KV rows
+(`posix_madvise(WILLNEED)`, `run_state_kv_prefetch_layer`) — the "prefetch adjacent pages" item.
+Blocks are reserved up front so a full disk fails at startup, never as a SIGBUS mid-generation.
+`/v1/config runtime.kv_offload` (path stays server-side); web UI header shows `KV on disk`.
+Verified: identical greedy output with/without offload for F32 and int8; tests/test_kv_offload.c.
+**Not adopted:** explicit io_uring pager + LRU page table — that depends on Phase 23 paged KV;
+the OS page cache already gives LRU eviction and async read-ahead without a second cache.
+MLA / Qwen3.5 hybrid caches still live in RAM.
+
+*Original stub, kept for reference:*
 
 Extends KV cache to SSD when physical RAM is exhausted.
 
@@ -2181,36 +2647,66 @@ Implements the TTT architecture where the model trains a tiny internal network o
 
 ---
 
-## PHASE 33: Cryptographic Watermarking (Toggleable)
+## PHASE 33: Cryptographic Watermarking (Toggleable) ✅ done 2026-10-18
 
-Embeds invisible, cryptographically verifiable signatures into generated text.
+Embeds invisible, statistically verifiable signatures into generated text. Off by default at
+every surface; toggled per request from the CLI (`--watermark*`), the API (`"watermark"`
+object) and the web UI (Settings → Watermark; Watermark panel for detection).
 
-### 33.1 — Watermark Key Management
-- File: `include/sampling/watermark.h`
-- ```c
-  typedef struct {
-      uint8_t private_key[32];  // 256-bit key
-      float delta;              // Logit bias magnitude (e.g., 2.0)
-      bool enabled;
-  } WatermarkConfig;
-  ```
-- `void watermark_init(WatermarkConfig *wc, const uint8_t *key);`
+**As built (deviations from the original stub, see `docs/ai/decision-log.md` 2026-10-18):**
+- Key is a 64-bit value derived from a passphrase (FNV-1a), and the green list is keyed by a
+  splitmix64 mix of (key, prev_token, token) rather than HMAC-SHA256 — the scheme only needs a
+  keyed pseudo-random partition (Kirchenbauer et al.), not a MAC, and a per-vocab-entry SHA-256
+  would cost far more than the matmuls it rides on. `gamma` (green fraction) is configurable,
+  not fixed at 0.5.
+- Detection scores each **distinct** (prev, token) bigram once — repeated phrases otherwise
+  inflate the z-score (an un-watermarked repetitive reply scored z≈4.6 before this).
 
-### 33.2 — Watermark Logit Biasing
-- File: `src/sampling/watermark_apply.c`
-- `void watermark_bias_logits(float *logits, int vocab_size, const WatermarkConfig *wc, int prev_token);`
-  - Hash: `h = HMAC-SHA256(key, prev_token)`.
-  - Use hash to partition vocabulary into "green list" and "red list".
-  - Add `delta` to all green-list token logits.
-  - The model preferentially selects green-list tokens — invisible to humans, detectable by the algorithm.
+### 33.1 — Watermark Key Management ✅
+- `include/sampling/watermark.h` — `WatermarkConfig {enabled, key, gamma, delta}`,
+  `watermark_config_default()`, `watermark_key_from_string()`, `watermark_config_sanitize()`.
 
-### 33.3 — Watermark Detector
-- File: `src/sampling/watermark_detect.c`
-- `float watermark_detect(const int *tokens, int num_tokens, const WatermarkConfig *wc);`
-  - For each token: check if it's in the green list given `prev_token`.
-  - Compute z-score: proportion of green tokens vs. expected by chance.
-  - z-score > 4.0 → statistically certain watermark present.
-  - Returns z-score.
+### 33.2 — Watermark Logit Biasing ✅
+- `src/sampling/watermark.c` — `watermark_bias_logits()`; applied by the sampler chain
+  (`src/sampling/sampler_chain.c`) after penalties and before truncation/temperature, and by the
+  JSON-grammar sampler before the grammar mask.
+
+### 33.3 — Watermark Detector ✅
+- `watermark_detect()` (token IDs) + `src/sampling/watermark_text.c` (`watermark_detect_text()`,
+  tokenizes raw text with the model's tokenizer). Exposed as `--watermark-detect <text>` and
+  `POST /v1/watermark/detect`. Default threshold z ≥ 4 (`WATERMARK_DETECT_Z_THRESHOLD`),
+  overridable per request.
+- Tests: `tests/test_watermark.c` (green fraction ≈ γ, bias only on green tokens, 0/200 false
+  positives on random sequences, 20/20 watermarked sequences detected, bigram dedup).
+
+---
+
+## PHASE 22-UI: Front-End Configurability (no hardcoded generation settings) ✅ done 2026-10-18
+
+Every generation knob the engine has is settable from the CLI, the API and the web UI, and the
+UI carries no defaults or limits of its own.
+
+- **Sampler chain** (`include/sampling/sampler_chain.h`): repetition/presence/frequency
+  penalties over a configurable window → watermark → top-k → min-p → temperature → top-p.
+  Defaults are neutral and bit-identical to the old cascade (verified: same greedy output md5
+  as the previous commit).
+- **`GenerationParams`** (`include/transformer/gen_params.h`) + `generate_ex()`: one value carries
+  sampler settings, seed (the old `--seed` was parsed but ignored), JSON mode, watermark, full
+  chat history, system prompt, stop strings, and an optional `GenerationStats` out-param (token
+  usage + finish reason). `generate()`/`generate_with_callback()` are thin wrappers.
+- **Stop sequences** (`src/transformer/stop_seq.c`): streaming-safe — text that may begin a stop
+  string is held back, so clients never see a partial stop sequence.
+- **API**: new request fields (`top_k`, `min_p`, `repetition_penalty`, `presence_penalty`,
+  `frequency_penalty`, `penalty_last_n`, `seed`, `stop`, `watermark`) resolved over the server
+  defaults (`src/api/request_params.c`); `GET /v1/config` publishes defaults, valid ranges,
+  feature flags and the UI title; `/v1/models` reports real model metadata; responses carry real
+  `usage` and `finish_reason`.
+- **CLI**: `--top-k --min-p --repeat-penalty --presence-penalty --frequency-penalty
+  --repeat-last-n --system-prompt --stop --max-tokens-limit --ui-title --watermark*`.
+- **Web UI**: Settings panel (sampling, repetition, output, watermark, system prompt) built from
+  `/v1/config`, per-viewer overrides remembered in localStorage with a "Reset to server
+  defaults" action and an override-count badge; New chat; Watermark detection panel; per-reply
+  token usage/finish reason; brand title from the server.
 
 ---
 
@@ -2428,6 +2924,7 @@ For fastest path to a working text-generation demo:
 39. **34.1 → 34.2 → 34.3** — Model import pipeline (importer → GGUF reader → multimodal extractor)
 40. **13.1–13.30+** — All tests
 41. **16.1 → 16.2 → 16.3** — Docs
+42. **38** — Update notifications (semver → release check + cache → API/UI notice)
 
 ---
 
@@ -2607,7 +3104,14 @@ green list deterministic after any given word, destroying entropy.
 
 ---
 
-## Phase 35 — GGUF MLA + MoE Architecture Router
+## Phase 35 — GGUF MLA + MoE Architecture Router ✅
+> Implemented: `src/core/gguf_loader.c`'s `deepseek2`/`qwen3moe` dispatch, `moe_weights.c`'s
+> stacked per-expert stride slicing, shared-expert FFN (`n_shared_experts`/`moe_shared_w1` in
+> `moe_weights.c` and `moe_ffn.c`). Extensively iterated through 2026-07-31 per
+> `docs/ai/decision-log.md` (Qwen3-MoE support, issue #32 fix chain). Caveat: verified so far
+> only against a synthetic in-memory GGUF fixture, not a real ~18-19GB
+> Qwen3-30B-A3B-Q4_K_M.gguf file — see "What's pending" in the latest progress audit. Marker
+> added 2026-09-17.
 
 **Motivation:** DeepSeek-V2-Lite and future MoE models use a fundamentally
 different GGUF tensor layout that cannot be handled by the generic Llama weight
@@ -2775,7 +3279,9 @@ being complete, as model weights are loaded via the GGUF path.
 
 ## Phase 37: GGUF Universal Quant Compatibility
 
-> **Status:** Q2_K done. All remaining items are pending.
+> **Status:** All of 37.1-37.16 done as of 2026-09-17. Every GGUF quant type in the
+> `GGUFType` enum now has a working dequant path -- "unsupported quant type" should no
+> longer occur for any mainline llama.cpp/GGUF quantization format.
 > **Goal:** Engine accepts any GGUF file without "unsupported quant type" errors.
 > **Constraint:** Add modularly — new functions in `gguf_quant.c`/`gguf_quant.h`,
 > new cases in `gguf_loader.c` dispatch + `quant_bytes_for_elems`.
@@ -2801,7 +3307,14 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.2 — Q3_K ❌ pending
+### 37.2 — Q3_K ✅ done
+> **Doc drift found 2026-09-17:** this was already fully implemented and wired
+> (`gguf_dequant_q3_k()` in `src/core/gguf_quant.c`, dispatch case + `quant_bytes_for_elems`
+> in `src/core/gguf_loader.c`, header declaration in `include/core/gguf_quant.h`) — marked
+> ❌ pending here in error. Verified against llama.cpp's real `block_q3_K`/`dequantize_row_q3_K`
+> (fetched from upstream during this audit): the implementation's byte order (hmask[32] then
+> qs[64] then scales[12] then d) and sign logic (subtract 4 unless the hmask bit is set) match
+> exactly.
 - Block: 256 elems, 110 bytes
   - `qs[64]`   — 2-bit low values (4/byte)
   - `hmask[32]` — 1 high bit per element (8/byte)
@@ -2815,7 +3328,8 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.3 — Q4_1 ❌ pending
+### 37.3 — Q4_1 ✅ done
+> **Done 2026-09-17** -- implemented, wired, and tested this session (see `tests/test_gguf_quant_new_formats.c`).
 - Block: 32 elems, 20 bytes (`d fp16` + `m fp16` + `qs[16]` 4-bit)
 - Function to add: `gguf_dequant_q4_1()`
 - Algorithm: `out[i] = (nibble[i] * d) + m` (no zero-point offset, uses additive min instead)
@@ -2825,7 +3339,8 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.4 — Q8_1 ❌ pending
+### 37.4 — Q8_1 ✅ done
+> **Done 2026-09-17** -- implemented, wired, and tested this session (see `tests/test_gguf_quant_new_formats.c`).
 - Block: 32 elems, 36 bytes (`d fp32` + `s fp32` + `qs[32]` int8)
   - Note: `d` and `s` are fp32 here, not fp16 (unlike Q8_0)
   - `s` = sum of all quantised values × d (used for dot-product shortcuts in llama.cpp, not needed for plain dequant)
@@ -2837,7 +3352,8 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.5 — Q8_K ❌ pending
+### 37.5 — Q8_K ✅ done
+> **Done 2026-09-17** -- implemented, wired, and tested this session (see `tests/test_gguf_quant_new_formats.c`).
 - Block: 256 elems, 292 bytes (`d fp32` + `qs[256]` int8 + `bsums[16]` int16)
   - `bsums` = block sums for GEMM shortcuts; not needed for plain dequant
 - Function to add: `gguf_dequant_q8_k()`
@@ -2848,7 +3364,8 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.6 — IQ2_XXS ❌ pending
+### 37.6 — IQ2_XXS ✅ done
+> **Done 2026-09-17** -- implemented, wired, and tested this session (see `tests/test_gguf_quant_new_formats.c`).
 - Block: 256 elems, 66 bytes (uses 8-entry codebook lookup; ~2.06 bits/weight)
   - Layout: `qs[32]` (packed grid indices) + `scales[4]` + `d fp16`
   - Each 2-byte `qs` chunk encodes 8 elements via a 256-entry lookup table
@@ -2862,7 +3379,8 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.7 — IQ2_XS ❌ pending
+### 37.7 — IQ2_XS ✅ done
+> **Done 2026-09-17** -- implemented, wired, and tested this session (see `tests/test_gguf_quant_new_formats.c`).
 - Block: 256 elems, 74 bytes (~2.31 bits/weight)
   - Layout: `qs[32]` + `scales[8]` (4-bit per 32-elem sub-block) + `d fp16`
 - Function: `gguf_dequant_iq2_xs()`
@@ -2872,7 +3390,8 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.8 — IQ3_XXS ❌ pending
+### 37.8 — IQ3_XXS ✅ done
+> **Done 2026-09-17** -- implemented, wired, and tested this session (see `tests/test_gguf_quant_new_formats.c`).
 - Block: 256 elems, 98 bytes (~3.06 bits/weight)
   - Layout: `qs[96]` + `scales[4]` + `d fp16`
 - Function: `gguf_dequant_iq3_xxs()`
@@ -2882,7 +3401,11 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.9 — IQ4_NL ❌ pending
+### 37.9 — IQ4_NL ✅ done
+> **Doc drift found 2026-09-17:** already fully implemented and wired
+> (`gguf_dequant_iq4_nl()` in `src/core/gguf_quant.c`, dispatch case + `quant_bytes_for_elems`
+> in `src/core/gguf_loader.c`, header declaration, `GGUF_TYPE_IQ4_NL` already in the enum) —
+> marked ❌ pending here in error.
 - Block: 32 elems, 18 bytes (non-linear 4-bit; same byte count as Q4_0)
   - Layout: `d fp16` + `qs[16]` 4-bit, but uses a 16-entry non-linear codebook
 - Function: `gguf_dequant_iq4_nl()`
@@ -2893,7 +3416,8 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.10 — IQ3_S ❌ pending
+### 37.10 — IQ3_S ✅ done
+> **Done 2026-09-17** -- implemented, wired, and tested this session (see `tests/test_gguf_quant_new_formats.c`).
 - Block: 256 elems, 110 bytes (same byte count as Q3_K)
   - Layout: `qs[96]` (3-bit packed) + `qh[16]` (1 extra bit/elem) + `signs[32]` + `scales[4]` + `d fp16`
 - Function: `gguf_dequant_iq3_s()`
@@ -2903,7 +3427,8 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.11 — IQ2_S ❌ pending
+### 37.11 — IQ2_S ✅ done
+> **Done 2026-09-17** -- implemented, wired, and tested this session (see `tests/test_gguf_quant_new_formats.c`).
 - Block: 256 elems, 82 bytes (~2.5 bits/weight)
   - Layout: `qs[32]` + `qh[16]` (high bits) + `signs[16]` + `scales[4]` + `d fp16`
 - Function: `gguf_dequant_iq2_s()`
@@ -2913,7 +3438,8 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.12 — IQ4_XS ❌ pending
+### 37.12 — IQ4_XS ✅ done
+> **Done 2026-09-17** -- implemented, wired, and tested this session (see `tests/test_gguf_quant_new_formats.c`).
 - Block: 256 elems, 136 bytes (~4.25 bits/weight)
   - Layout: like Q4_K but uses non-linear `kvalues_iq4nl` codebook + 6-bit scales
   - `qs[128]` + `scales[12]` + `d fp16`
@@ -2924,7 +3450,8 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.13 — IQ1_S ❌ pending
+### 37.13 — IQ1_S ✅ done
+> **Done 2026-09-17** -- implemented, wired, and tested this session (see `tests/test_gguf_quant_new_formats.c`).
 - Block: 256 elems, 26 bytes (~1.56 bits/weight)
 - Requires `iq1s_grid[2048]` codebook + `kvalues_iq1b[8]` sign table
 - `quant_bytes_for_elems`: `(n / 256) * 26`
@@ -2933,7 +3460,8 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.14 — IQ1_M ❌ pending
+### 37.14 — IQ1_M ✅ done
+> **Done 2026-09-17** -- implemented, wired, and tested this session (see `tests/test_gguf_quant_new_formats.c`).
 - Block: 256 elems, 37 bytes (~1.75 bits/weight)
 - Requires `iq1s_grid[2048]` codebook (same grid as IQ1_S) + 4-bit scales
 - `quant_bytes_for_elems`: `(n / 256) * 37`
@@ -2941,7 +3469,8 @@ being complete, as model weights are loaded via the GGUF path.
 
 ---
 
-### 37.15 — Enum completeness ❌ pending
+### 37.15 — Enum completeness ✅ done
+> **Done 2026-09-17** -- implemented, wired, and tested this session (see `tests/test_gguf_quant_new_formats.c`).
 The `GGUFType` enum in `include/core/gguf_reader.h` is missing:
 ```c
 GGUF_TYPE_IQ2_XS   = 17,
@@ -2959,7 +3488,17 @@ cases in `src/core/gguf_reader.c` for each new type.
 
 ---
 
-### 37.16 — BF16 standalone dequant function ❌ pending (low priority)
+### 37.17 — Fused Q6_K matmul (zero-copy) ✅ done 2026-10-18
+- `include/math/matmul_q6k.h` / `src/math/matmul_q6k.c`: Q6_K × Q8K dot (AVX2 + scalar reference),
+  single and batched-over-tokens entry points; `WEIGHT_TYPE_Q6K`; the generic and Mamba loaders
+  map Q6_K projections zero-copy instead of dequantising to F32. Q4_K_M files use Q6_K for
+  attn_v / ffn_down. Measured SmolLM2-1.7B-Instruct Q4_K_M (4 threads): 8.7 → 15.3 tok/s decode,
+  same answer; the F32 copies of those tensors are no longer allocated.
+- Tests: `tests/test_q6k_matmul.c` (SIMD == scalar exactly; matches dequantise-then-dot;
+  batched == per-token).
+
+### 37.16 — BF16 standalone dequant function ✅ done
+> **Done 2026-09-17** -- implemented, wired, and tested this session (see `tests/test_gguf_quant_new_formats.c`).
 BF16 decode is currently inlined in `gguf_loader.c`. For consistency and
 testability, extract to `gguf_dequant_bf16()` in `gguf_quant.c`.
 No correctness change — purely a refactor.
@@ -2981,3 +3520,172 @@ All lookup tables (`iq2xxs_grid`, `iq2xs_grid`, `iq3xxs_grid`, `iq3s_grid`,
 `llama.cpp/src/llama-quants.cpp` (MIT licence). Copy verbatim as static const
 arrays into a new file `src/core/gguf_quant_tables.c` with a matching header
 `include/core/gguf_quant_tables.h`. Include from `gguf_quant.c` only.
+
+---
+
+## Phase 38: Update Notifications (Auto-Updater) ✅ done 2026-10-18
+
+Lets people already running Project Zero learn about new releases. Added to the plan on request;
+tracked here like every other phase.
+
+**Research → design decisions** (sources: npm `update-notifier` docs, gh/Nuxt/ZenStack CLI
+update-check implementations, The Update Framework threat model):
+- **Notify, don't auto-install.** Silent self-replacement was unpopular in the CLI tools surveyed
+  and, without a signed-metadata scheme (TUF-style roles/threshold keys, rollback protection), a
+  self-updater is a supply-chain hazard for a public repo. The binary is never touched; the notice
+  links the release and asks the user to verify `SHA256SUMS`. A signed self-update is out of
+  scope until releases are signed.
+- **Never slow the engine:** the check runs on a background thread (`posix_spawnp` of the system
+  `curl`, no shell, HTTPS-only incl. redirects, 5 s timeout, 2 MiB cap) and fails silently.
+- **At most once per interval** (default 24 h, `--update-interval`), result cached atomically at
+  `$PZ_CACHE_DIR | $XDG_CACHE_HOME/project-zero | ~/.cache/project-zero /update-check`; failures back
+  off 1 h and keep the last good answer, so a known update stays visible offline.
+- **Opt-outs:** `--no-update-check`, `--update-interval 0`, `PZ_NO_UPDATE_CHECK=1`, `DO_NOT_TRACK=1`;
+  always off when `CI` is set. CLI notices only when stderr is a TTY; the operator's opt-out also
+  beats the web UI's "Check now".
+- **Privacy:** the request carries only `User-Agent: project-zero/<version>`.
+- **Correct versioning:** SemVer 2.0 precedence incl. pre-releases; `git describe` builds
+  (`v0.1.0-4-gabc`) count as newer than their tag; dev builds (bare hash) report "unknown" instead
+  of a false "update available". Channels: `auto` (pre-releases while on 0.x — all current
+  releases are pre-releases), `stable`, `prerelease`. Drafts ignored; non-https URLs dropped.
+- **No hardcoding:** source repo `--update-repo` (build default `make PZ_UPDATE_REPO=owner/name`
+  / `cmake -DPZ_UPDATE_REPO=`), `--update-api` for GitHub Enterprise or mirrors.
+
+**As built:**
+- `include/update/semver.h` / `src/update/semver.c` — parse/compare/format.
+- `include/update/update_check.h` / `src/update/update_check.c` — release selection, cache,
+  transport (injectable fetcher), synchronous `update_check()`, background service.
+- `src/api/update_endpoint.c` — `GET /v1/update` (state + server settings; kicks a refresh when
+  stale, so long-running servers stay current without a timer), `POST /v1/update/check`
+  (rate-limited 60 s). Neither touches the generation mutex. OpenAPI updated.
+- CLI: `--check-update` (exit 0 / 3 update available / 1 error, no model needed),
+  `--no-update-check`, `--update-interval`, `--update-channel`, `--update-repo`, `--update-api`.
+- Web UI: `UpdateBanner` (`>_ update available vX → vY · release notes · dismiss`, dismissal per
+  version) and Settings → Updates (status, server settings, "Check now", banner toggle).
+- Tests: `tests/test_update_check.c` (77 assertions, in TSAN_TESTS); live check against this
+  repo's real Releases; screenshots in `docs/design/screenshots/phase38-update-2026-10-18/`.
+
+---
+
+## Phase 39 (last phase): Retire the legacy name "adaptive_ai_engine" → Project Zero ✅ executed 2026-10-21 (alias removal due the release after next)
+
+**As executed (2026-10-21):** decisions taken by the user — binary **`pz`**; one-release
+transition alias; release asset named by best practice. Groups, one commit each, gated:
+A+B build + self-name (`Makefile` `TARGET = pz` + `LEGACY_TARGET` symlink, CMake target `pz`,
+`project(project_zero)`, `--version` → `Project Zero <ver>`, `cli/program_name` deprecation notice
++ `tests/test_program_name.c`); D+E test scripts and tools; C+F CI/release/templates (asset
+`project-zero-<ver>-x86_64-unknown-linux-gnu.tar.gz`, i.e. name-version-target-triple like
+ripgrep, unpacking to a same-named directory with `pz` + the alias; update notifier confirmed
+asset-name independent); G living docs + adapters, historical reports/logs annotated, not
+rewritten. **Remaining:** call out the rename in the first release's notes; delete the alias
+(`LEGACY_TARGET`, release.yml `ln -s`, `cli/program_name` notice) in the release after.
+
+Added to the plan on request, deliberately last: every earlier phase builds, tests and benchmarks
+through `./adaptive_ai_engine`, so the rename happens once the feature work is done. Goal: every
+place the erstwhile name "adaptive AI engine" (or an alias) appears becomes **Project Zero**
+(prose), **project-zero** (repo/package/paths), **pz** (binary, commands) or **PZ** (macros, env,
+abbreviations), as the context requires — with nothing broken. **Rule for execution: a thorough
+pre-check first, then one change group at a time, and each group is fully verified before the
+next one starts.**
+
+### 39.1 Pre-check inventory (read-only grep, 2026-10-19; re-run before executing)
+
+Spellings found: `adaptive_ai_engine` (208 lines outside raw benchmark logs; ~517 incl. them) and
+"adaptive AI engine" (2, prose). No `AdaptiveAI`/`ADAPTIVE_AI_*` identifiers, no hits in
+`src/` C identifiers, `include/` or `webui/src`. Not aliases (keep): technical terms such as
+"Adaptive Blocking/Spin/Dispatcher/parallelism", "Adaptive KV Cache Strategy", Phase 32's
+"Adaptive Internal Networks", the banner tagline "Auto-Tuned Hardware", and the `tn_`/`TN_`
+prefix (= ternary, not the old name).
+
+| # | Area | Locations | What depends on it |
+|---|---|---|---|
+| A | Build output name | `Makefile` (`TARGET`, PGO targets, messages), `CMakeLists.txt` (`project(adaptive_ai_engine …)`, target), `.gitignore` (2 lines) | every script/test/CI step that execs the binary |
+| B | Program self-identification | `src/cli/main.c` `--version` (`Project Zero Engine (adaptive_ai_engine) …`); usage/help text; `argv[0]` echoes | `tests` that grep `--version`; release workflow checks `--version` |
+| C | CI / release | `.github/workflows/ci.yml` (file/ldd/--version), `release.yml` (asset `adaptive_ai_engine-<ver>-x86_64-linux.tar.gz`, `find -name adaptive_ai_engine`, SHA256SUMS), `security_audit.yml` (comment) | published release asset names; `docs/RELEASING.md`; anyone scripting downloads; the Phase 38 update notice links releases (it does not depend on asset names — re-verify) |
+| D | Test harnesses | `tests/golden_regression.sh`, `e2e_api_concurrency.sh`, `e2e_json_mode.sh`, `e2e_prompt_cache.sh`, `e2e_mamba_reference.sh`, `thread_sweep.sh`, `a6_*.sh`, `agent_pty_runner.py` | `make test` runs `tests/*.c` only, but the e2e/golden scripts are the live-server and golden gates |
+| E | Benchmark / dev tools | `tools/bench_sweep_seq.py` (`ENGINE`), `bench_sweep*.sh`, `bench_full_sweep.sh`, `bench_phase34.py`, `deepseek_bench*.sh`, `regression_bench.sh`, `run_sweep.py`, `run_perf_runs.py`, `make_screenshot.py`, `make_sweep_screenshots.py` (parses `CMD:` lines), `fuzz_config.py`, `extract_multimodal.py`, `mamba_reference.py`, `compare_dump`, `tools/screenshots/cli/*` | screenshot renderers must still parse **old** raw logs (`CMD: ./adaptive_ai_engine …`) — accept both names |
+| F | Issue templates | `.github/ISSUE_TEMPLATE/bug_report.md`, `performance_regression.md` | user bug reports |
+| G | Docs + AI adapters | `README.md`, `DEVELOPER_ONBOARDING.md`, `GOLDEN_RULES.md`, `CLAUDE.md`, `AGENTS.md`, `gemini/GEMINI.md`, `docs/ai/*` (4), `docs/architecture/*` (3), `docs/phases/*`, `docs/design/*`, `docs/reports/*` (8), `docs/RELEASING.md`, `docs/WEBUI_GUIDE.md`, `PERFORMANCE_CEILING_REPORT.md`, `DEBUGGING_JOURNAL.md`, … (~40 files) | run instructions copied by users and agents |
+| H | Historical records | `benchmark_results/**` (231 raw run logs with `CMD: ./adaptive_ai_engine …`), dated reports quoting those commands, git history | **not rewritten** — they are measurements of what was run; editing them would falsify records. A note in each report index says the binary was renamed in Phase 39 |
+| I | Outside the repo | users' scripts/aliases, the GitHub repo name (already `project-zero`), per-user dirs (already `~/.project-zero`, `~/.cache/project-zero`), env vars (already `PZ_*`) | transition alias below |
+
+### 39.2 Decisions to settle before execution
+- Binary name: **`pz`** (short, matches `PZ_*` env and the CLI style) vs `project-zero`.
+  Recommendation: build `pz`; release asset `project-zero-<ver>-x86_64-linux.tar.gz` containing `pz`.
+- Transition: for one release, `make` also creates `adaptive_ai_engine` as a symlink to `pz`
+  (and the tarball ships it) that prints a one-line deprecation notice to stderr; removed the
+  release after. Release notes call out the rename.
+- `--version` → `Project Zero <ver>` (tests and release checks updated in the same step).
+
+### 39.3 Execution order — one group per commit, gate after each
+1. **Re-run the 39.1 inventory** (`grep -rIniE "adaptive[ _-]?ai|ai[ _-]engine"`) and diff it
+   against this table; investigate anything new before touching code.
+2. **A + B (build + self-name)**: rename the target, keep the compat symlink, update `--version`.
+   Gate: `make release/test/debug` gcc+clang, `make test-tsan`, `make dist`, CMake build + ctest,
+   `./pz --version`, `./adaptive_ai_engine --version` (compat), golden "capital of France" → Paris,
+   `make clean` removes both names.
+3. **D + E (tests, tools)**: switch scripts to `./pz` via one variable each (env-overridable, e.g.
+   `PZ_BIN`); renderers accept both names in old logs. Gate: golden_regression.sh, the e2e
+   server scripts with live `curl`, one short sequential sweep with `bench_sweep_seq.py`,
+   regenerate one old sweep's screenshots to prove old logs still parse.
+4. **C + F (CI, release, templates)**: rename assets, `find -name pz`. Gate: CI green on the
+   branch; a dry-run of the release packaging step locally (`make dist`, tar contents, SHA256SUMS);
+   confirm the Phase 38 update check still finds releases (asset-name independent).
+5. **G (docs + adapters)**: replace run instructions and prose ("Project Zero", `pz`, `project-zero`
+   as appropriate); sync `docs/ai/**` first, then adapters (`CLAUDE.md`, `AGENTS.md`, `.claude/`,
+   `.github/instructions/`, `.agents/`, `gemini/`). Gate: every command in README/onboarding run
+   as written; link check of edited docs.
+6. **Final sweep**: inventory grep returns only group H (historical) hits and the documented compat
+   shim; full verification matrix again; record in `change-trace.md` and `decision-log.md`.
+
+**Done when:** no live code, script, CI job, template or current doc uses the old name; old
+benchmark logs still render; the compat shim works for one release; all gates green on gcc and clang.
+
+## Phase 40: Installer + `pz config` (guided setup, persistent configuration) 🟡 40.1 + 40.2 done 2026-10-21; 40.3–40.5 open
+
+**Why:** a first-time user should get from download to a working model without reading docs, and
+every setting a user changes once (model folder, threads, port, defaults) should persist — editable
+from the CLI wizard, `pz config set/get/list`, and the web UI — with no hardcoded values.
+
+**Principles (best practice, researched 2026-10-21):** zero *mandatory* configuration (the engine
+already auto-detects hardware and reads model shape from GGUF, so the installer and wizard are
+optional conveniences, never gates); non-interactive mode for CI/scripts; checksum-verified
+downloads; user-scope install without root; one precedence order everywhere:
+**CLI flag > environment variable > config file > built-in default**.
+
+**Proposed scope (to be finalised by the design spec
+`docs/superpowers/specs/2026-10-21-installer-config-design.md`, written with
+superpowers:brainstorming and planned with superpowers:writing-plans):**
+- 40.1 Config module: `include/config/pz_config.h` / `src/config/pz_config.c` — schema of keys
+  (name, type, default, range, help, which CLI flag/env it maps to), load/merge/save of
+  `$XDG_CONFIG_HOME/project-zero/config.toml` (TOML subset), validation; unit tests.
+- 40.2 CLI: `pz config` (interactive wizard), `pz config list|get <k>|set <k> <v>|unset <k>|path|edit`;
+  `args.c` applies file values before flags.
+- 40.3 Server/web UI: `/v1/config` reports each value's source (default/file/env/flag); Settings
+  can save a server default back to the file (opt-in, local-only).
+- 40.4 Installer: `install.sh` (POSIX sh): platform detect → release asset by target triple →
+  `SHA256SUMS` verify → install to `~/.local/bin` (`--prefix`), PATH hint, optional wizard;
+  `--yes`, `--version`, `--uninstall`; tested in CI on a clean container. Windows/macOS packages
+  later (Homebrew tap, winget) — not in this phase.
+- 40.5 Docs, CHANGELOG, RELEASING (installer ships as a release asset with its checksum).
+
+**As built (40.1 + 40.2, 2026-10-21):** `include/config/pz_config.h` / `src/config/pz_config.c`
+(schema table `g_schema`: key = flag name, type, group, help, choices, range, secret; flat TOML
+subset; atomic 0600 save; `PZ_<KEY>` env overlay) and `include/cli/config_cmd.h` /
+`src/cli/config_cmd.c` (`pz config` wizard + `list|get|set|add|unset|path`). Settings become
+flag tokens placed before the user's argv, so `parse_args` stays the only validator and
+command-line flags win. `--no-config` / `PZ_NO_CONFIG=1` skip it. Tests: `test_pz_config` (40),
+`test_config_cmd` (14). Limits: a boolean set in the file can't be switched off by a flag (use
+`pz config unset` or `--no-config`); list settings add to command-line ones. Design defaults were
+taken without the owner's brainstorming answers (recorded in decision-log 2026-10-21) and can be
+revisited. Open: 40.3 value sources in `/v1/config` + web UI save, 40.4 `install.sh`, 40.5 docs.
+
+**Standing rule (engineering-rules DoD #6, 2026-10-21):** every change that adds/renames/removes a
+user-facing flag, env var, default, file location, release asset or runtime dependency updates the
+installer and the configuration schema in the same commit (until 40.1/40.4 exist: add it to the
+inventory below).
+
+**Inventory of settings the config schema must cover** (start: every `args.c` flag with a default;
+keep current): model/tokenizer paths, threads, simd, classifier, ctx-size, kv-type, kv-ram-fraction,
+kv-offload, sampling defaults, server host/port/cors/api-key/queue, update-check settings, MCTS/PRM,
+chat template file, UI title.

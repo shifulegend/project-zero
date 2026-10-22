@@ -302,6 +302,52 @@ static void test_avx2_packed_matmul_matches_scalar(void) {
     free(packed);
 }
 
+/*
+ * NEON packed matmul matches scalar packed matmul (direct kernel call, not
+ * via dispatch -- mirrors test_avx2_packed_matmul_matches_scalar above).
+ * Compiles to nothing and is skipped on x86 (TN_HAS_NEON == 0 there); this
+ * exercises real hardware only on an ARM CI runner (e.g. ci.yml's
+ * macos-latest job, which runs on Apple Silicon).
+ */
+static void test_neon_packed_matmul_matches_scalar(void) {
+#if TN_HAS_NEON
+    tn_simd_init();
+
+    int n = 128, d = 16;
+    float scale = 2.0f;
+
+    tn_i8 weights[128 * 16];
+    fill_ternary(weights, n * d, 777);
+
+    float x[128];
+    fill_input(x, n, 888);
+
+    size_t row_bytes = packed_bytes(n);
+    tn_u8 *packed = (tn_u8 *)calloc(d * row_bytes, 1);
+
+    for (int i = 0; i < d; i++) {
+        for (int j = 0; j < n; j++) {
+            pack_ternary(&packed[i * row_bytes], j, weights[i * n + j]);
+        }
+    }
+
+    float scalar_out[16];
+    ternary_matmul_packed(scalar_out, x, packed, n, d, &scale, 0);
+
+    float neon_out[16];
+    ternary_matmul_packed_neon(neon_out, x, packed, n, d, &scale, 0);
+
+    for (int i = 0; i < d; i++) {
+        float diff = fabsf(scalar_out[i] - neon_out[i]);
+        TEST_ASSERT(diff < 1e-4f, "NEON packed matmul matches scalar");
+    }
+
+    free(packed);
+#else
+    printf("  SKIP: TN_HAS_NEON is 0 on this build target (x86, not ARM)\n");
+#endif
+}
+
 /* ================================================================
  * 6. Edge Cases
  * ================================================================ */
@@ -447,6 +493,7 @@ int main(void) {
     RUN_TEST(test_packed_matmul_per_matrix);
     RUN_TEST(test_packed_matmul_per_group);
     RUN_TEST(test_avx2_packed_matmul_matches_scalar);
+    RUN_TEST(test_neon_packed_matmul_matches_scalar);
 
     /* Edge cases */
     RUN_TEST(test_single_element);

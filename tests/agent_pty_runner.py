@@ -6,7 +6,7 @@ Usage:
     PROJECT_ZERO_AGENT_AUTO_APPROVE=1 python3 tests/agent_pty_runner.py
 
 What it does:
-    - Launches adaptive_ai_engine under a pseudo-TTY (required: engine reads
+    - Launches pz under a pseudo-TTY (required: engine reads
       from TTY for approval prompts).
     - Sends an /agent prompt that asks the model to emit an <exec> tag.
     - With PROJECT_ZERO_AGENT_AUTO_APPROVE=1 the approval is automatic.
@@ -26,7 +26,7 @@ import select
 import sys
 import time
 
-ENGINE = "./adaptive_ai_engine"
+ENGINE = "./pz"
 MODEL  = "models/bitnet-b1.58-2B-4T.bin"
 TOKENIZER = "models/bitnet-b1.58-2B-4T_tokenizer_proper.bin"
 LOG_PATH = "/tmp/agent_pty_run.log"

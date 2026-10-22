@@ -2,9 +2,11 @@
 #define TN_QWEN3MOE_ATTENTION_H
 
 #include "core/config.h"
+#include "core/error.h"
 #include "core/moe_config.h"
 #include "core/run_state.h"
 #include "core/weights.h"
+#include "speculative/spec_scratch.h"
 #include "threading/thread_pool.h"
 
 /**
@@ -20,5 +22,21 @@
 void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w,
                                  const Config *cfg, const MoEConfig *mc,
                                  int layer, int pos, ThreadPool *tp);
+
+/**
+ * Phase 18 (speculative decoding): batched multi-token Qwen3-MoE attention.
+ * See attention_forward_batch() (attention.h) for the general contract.
+ * QK-norm is a per-position in-place RMSNorm with no cross-position read,
+ * so this arch batches the same write-phase/read-phase way as the generic
+ * dense/GQA path -- it just needs its own N-wide Q/K/V scratch (allocated
+ * locally, not from SpecBatchScratch) since this arch's q_width/kv_width
+ * are independent of dim/hidden_dim and could overflow SpecBatchScratch's
+ * generic buffers (same reason qwen3moe_attention_forward() cannot reuse
+ * RunState's generic scratch — see this file's header comment).
+ */
+TernaryError qwen3moe_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
+                                               const TransformerWeights *w, const Config *cfg,
+                                               const MoEConfig *mc, int layer, int pos,
+                                               int n_tokens, ThreadPool *tp);
 
 #endif /* TN_QWEN3MOE_ATTENTION_H */

@@ -1,7 +1,895 @@
 # Change Trace — project-zero
 
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
-> Update after each meaningful sub-step. Last updated: 2026-08-04.
+> Update after each meaningful sub-step. Last updated: 2026-10-22.
+
+### 2026-10-22 — Security-audit fuzzer fix
+- `TN_SANITIZED` (core/platform.h); `main.c` opens the model before the hardware probe and skips
+  first-run calibration (and any save) in sanitizer builds; `pz_config_prepare_argv` owns its
+  returned argv (LeakSanitizer). Fuzzer on a fresh-HOME CMake ASan build: 2m16s → 0.97s, clean.
+
+### 2026-10-21 — Phase 40.1/40.2: `pz config`
+- `config/pz_config` + `cli/config_cmd`, main dispatch + argv merge, usage text, CMake sources,
+  tests `test_pz_config` / `test_config_cmd`. gcc+clang release/test/debug, CMake, golden green;
+  live precedence check (file 1 → env 2 → flag 3 threads).
+
+### 2026-10-21 — Falcon3-1.58bit verified on our branch; CLI tokenization error message
+- Falcon3-3B-Instruct-1.58bit (I2_S) generates coherently on our branch ("Paris", "Red, green,
+  blue") — our stored-scale + interleaved I2_S decode is right for it (issues #41/#42). Its chat
+  path fails in the injection guard (template writes <|user|> as plain text; not in vocab) —
+  PR #44's tokenizer change fixes it (tested on a local branch, not merged pending the owner).
+  The model ends turns with >>UNUSED_1<< (id 127), not its declared EOS: use --stop.
+- `generate_ex` now reports a prompt it cannot tokenize instead of returning silently.
+
+### 2026-10-21 — int4 KV AVX2/AVX-512 kernels
+- New `include/math/kvq4_kernels.h`, `src/math/kvq4_avx{2,512}.c`; dispatch in simd_dispatch;
+  kv_quant_ops uses `tn_kvq4_*`; Makefile AVX2/AVX512 TU lists + CMake PZ_DIST lists; test
+  `test_i4_simd_kernels`. gcc+clang release/test/debug, dist, CMake, golden (f32 + i4) green.
+
+### 2026-10-21 — Phase 40 planned; DoD #6; rea MCP; skill/tool map
+- Plan Phase 40, engineering-rules DoD #6 + all adapters, `.mcp.json` rea, tool-sync-policy map.
+
+### 2026-10-21 — CI fixes from dispatching every workflow on the branch
+- macOS `posix_fallocate` → `F_PREALLOCATE`; `make coverage` → `run-tests` + lcov-2 unused-pattern
+  handling; `fuzz_config.py` checks graceful rejection instead of timing out. Reproduced locally:
+  coverage (lcov 2.0), security-audit CMake+ASan subset 8/8, fuzzer warm and cold cache.
+
+### 2026-10-21 — Fix CI-only test_q2_0_matmul failure on VNNI runners
+- `matmul_q2_0_uses_vnni()` (kernel TU decides; dispatcher + test use it). Reproduced CI's 32/35 with
+  baseline flags, 35/35 after; gcc+clang `make test` green.
+
+### 2026-10-21 — Build: `make test` sanitizes engine code; stamp tracks compiler + host ISA
+- Makefile `test` → debug variant + `run-tests`; `VARIANT_ID` (variant, cc, `-march=native` ISA
+  fingerprint, VNNI flags) in `build/.variant`. Found by a stale-object link failure after a VM
+  CPU change. Verified gcc+clang release/test/debug green, 0 warnings, `nm` shows ASan in lib objects.
+- Release archive also ships `CHANGELOG.md`; `/v1/update` release links + Settings → Updates live-checked.
+
+### 2026-10-21 — Changelog guidance embedded in canonical docs
+- New `docs/ai/changelog-guidance.md`; pointers from engineering-rules DoD #5, commit-log-guidance,
+  session-start checklist, tool-sync-policy, RELEASING.md, all entrypoints and `docs` scoped rules;
+  `update-changelog` skill/prompt/workflow; linter section-order + `[YANKED]` checks (10 tests);
+  `CHANGELOG.md` entries rewritten to the rules (imperative, `**Breaking:**` for the rename).
+
+### 2026-10-21 — CHANGELOG.md (Keep a Changelog), release notes from it, version links in the UI
+- `CHANGELOG.md` (root; was `docs/CHANGELOG.md`), `tools/changelog.py` (check / notes) +
+  `tools/test_changelog.py`, CI job `changelog`, release.yml `--notes-file`, `docs/RELEASING.md`
+  § Versioning and the changelog, `update/release_links` + `tests/test_release_links.c`,
+  `/v1/update release_notes_url/changelog_url`, Settings → Updates links, DoD #5 in all adapters.
+- Rename audit follow-ups: `tests/monkey_tester.py` still looked for `./build/project-zero` (the
+  old CMake target) and fell back to another binary; Phase 21 walkthrough's old model id example.
+
+### 2026-10-21 — Phase 39: adaptive_ai_engine → pz
+- Build (Makefile/CMake), `--version`, deprecation alias, tests/tools scripts, CI/release/templates,
+  living docs + adapters renamed; historical records annotated. Per-group gates: gcc release
+  build, `--version` + alias notice, `test_program_name`, golden "Paris", `golden_regression.sh`,
+  `e2e_json_mode.sh`, workflow YAML parse.
+
+### 2026-10-21 — superpowers + mattpocock/skills plugins enabled
+- `.claude/settings.json` (new): official marketplace + both plugins at project scope; install
+  notes for Copilot/Antigravity/Gemini/Codex in `tool-sync-policy.md`; adapters link to it.
+
+### 2026-10-21 — MoE decode vs llama.cpp (DeepSeek-V2-Lite Q4_K_S)
+- New: `transformer/moe_experts` (fused 2-dispatch experts), `math/q8_0_act` (Q8_0-activation
+  Q5_0/Q5_1/Q8_0 dots, `WEIGHT_TYPE_Q5_0/Q5_1/Q8_0`), Q4_K `vpdpwssd` kernel, raw Q4_K/Q6_K LM head
+  (`wcls_raw`), `load_proj_typed`, router gating/norm/scale from GGUF, `threadpool_dispatch_chunked`,
+  faster Q6_K kernel; fixed VNNI self-test. Test: `tests/test_moe_experts.c` (also in TSAN_TESTS).
+- Measured (Xeon 2.1 GHz, 4 vCPU, 64 tokens, runs with no disk re-reads; llama.cpp `-lm none`):
+  T=1 base 2.46-2.51 / new 4.34-4.58 / llama 3.17-3.31; T=2 4.42-4.49 / 7.06-7.35 / 5.81-6.09;
+  T=4 6.26-7.34 / 11.71-12.63 / 9.44-10.51 tok/s. RSS 12.0 -> 10.6 GB (llama 9.5).
+
+### 2026-10-19 — 18-C decode-once Q4_K multi-token kernel
+- `gemm8_q4k_x8_q8k_tokens()`: weight-side unpack once per super-block, all verify tokens reuse it;
+  bit-identical; spec decode 6.70 → 7.56 tok/s (plain 14.0, so still not a win on this host).
+
+### 2026-10-19 — LoRA (19-B): batched spec-decode path + Qwen3 attention
+- Fixed: `--lora --draft-model` verified against the base model (batched path skipped LoRA).
+- New: Qwen3 Q/K/V/O deltas; adapter header `q_dim` (`lora_load_ex`, converter `--q-dim`);
+  load notice. Tests: `test_dense_batch_matches_sequential_with_lora`, `test_lora_load_q_dim`.
+
+### 2026-10-19 — Phase 30 complete: PRM judge + step-level MCTS
+- New: `reasoning/prm`, `reasoning/mcts`, `reasoning/mcts_options`; `GenerationParams.assistant_prefix`,
+  `GenerationStats.hit_eos`; CLI `--mcts* --prm*`, request `"mcts"`, `/v1/config` mcts fields,
+  web UI Settings → Tree search; `tests/test_mcts.c`.
+- Verified: live CLI + API (stream and non-stream) with self-scoring and a GGUF judge.
+
+### 2026-10-19 — Chat template from the front end; int4 KV cache
+- New: API `"chat_template"` + `--no-request-template`, `/v1/config chat_template`, web UI Settings →
+  Chat template (commit 18d7acd). `--kv-type i4` (`kvq_row_layout/kvq_store/kvq_dot_row/
+  kvq_axpy_row`, `RunState.kv_row_bytes/kv_row_scales`), web UI "KV i4" tag.
+- Faster: int8 KV dot (16-lane accumulators): 29 → 33.6 tok/s at ~1.9k context (f32 37).
+- Verified: PPL i4 +6.2 % / +6.8 % (SmolLM2-135M / 1.7B), i8 ≤ 0.1 %; tests `test_kv_quant`,
+  `test_forward_kv_i4_close_to_f32`, `test_request_params`, `test_api_info`.
+
+### 2026-10-19 — Startup cost, GGUF stop tokens, chat-template override (commit e912a23)
+- Why: head-to-head sweep (Addendum AL) showed decode parity but 3–4× the reference engines'
+  wall time; BitNet chat answered nonsense / never stopped.
+- New: `core/bw_cache` (per-host DRAM bandwidth, `PZ_BW_REPROBE`), `core/text_file`,
+  `tokenizer_collect_eog()`, `--chat-template-file`, `docs/templates/bitnet-b1.58.jinja`,
+  `tools/plot_sweep_svg.py`, `tests/test_startup_paths.c`.
+- Fixed: O(merges×vocab) BPE merge lookup; bandwidth probe every start (2 GB RSS); full memset
+  in `tn_aligned_calloc` (Linux: `MADV_DONTNEED`); per-field I2_S repack; GGUF `eos_list` empty.
+- Verified: gcc+clang release/test/debug, TSan; outputs identical to the sweep on 3 models;
+  golden Paris in chat mode on SmolLM2-135M/1.7B, Qwen2.5-0.5B, BitNet (with the template).
+
+### 2026-10-19 — Reference-engine parity: I2_S, NEOX RoPE, pre-tokenizer, perplexity
+- New: `core/gguf_i2s`, `GGUF_TYPE_I2_S`, `WEIGHT_TYPE_TERNARY`; `math/rope` NEOX +
+  `rope_layout_for_arch` + `--rope-layout`; `tokenizer/pretokenize` (+ `Tokenizer.pretok_type`);
+  `eval/perplexity` + `--perplexity --ppl-ctx --ppl-chunks`; `--raw-prompt`; `/v1/config
+  runtime.rope_layout`; tests `test_gguf_i2s`, `test_pretokenize`.
+- Fixed: sliding window auto-init in `transformer_forward*`; GGUF full-tensor bounds check;
+  `gguf_meta_str` static-buffer reuse in the tokenizer loader.
+- Verified: token-exact vs llama.cpp (8/8 × 4 models); PPL parity SmolLM2 63.84 vs 63.57;
+  BitNet PPL 253.0 (PZ) vs 419.8 (bitnet.cpp) on identical tokens; golden Paris (SmolLM2,
+  BitNet raw prompt). Reference engines built in `/home/user/ext` (not committed).
+
+### 2026-10-18 — Block wordmark in the web UI (shared brand font)
+- New: `brand/block_font` (glyphs moved out of `cli/banner.c`), `tests/test_block_font.c`
+  (golden = `docs/design/brand/project-zero-wordmark.txt`), `/v1/config ui.logo` +
+  `ui.logo_ascii`, `--ui-logo ascii|text`, `webui/src/lib/AsciiLogo.svelte` (top bar + empty
+  state, transparent, accent-tinted), `docs/design/brand/` assets.
+- Verified: served wordmark byte-identical to the reference ASCII; light/dark/mobile screenshots.
+
+### 2026-10-18 — Full sequential sweep (Addendum AK, plan 34.3)
+- `tools/bench_sweep_seq.py` (sequential, best-of-N, cooldowns, wait4 RSS/CPU, resumable) and
+  `tools/make_sweep_screenshots.py --sweep/--hardware/--suite`; results, 20 screenshots, chart and
+  system profile in `benchmark_results/sweep_2026-10-18/`; report addendum AK.
+
+### 2026-10-18 — Phase 38: update notifications + calibration fix
+- New: `update/semver`, `update/update_check`, `api/update_endpoint` (`GET /v1/update`,
+  `POST /v1/update/check`), CLI `--check-update --no-update-check --update-interval
+  --update-channel --update-repo --update-api`, web UI `UpdateBanner` + Settings → Updates,
+  `tests/test_update_check.c` (TSAN_TESTS), `tools/screenshots/webui/update.spec.mjs`,
+  `PZ_UPDATE_REPO` (Makefile/CMake), plan Phase 38.
+- Fixed: calibration overriding the auto SIMD tier with noise ("scalar" on AVX-VNNI); JSON
+  trailing-backslash over-read; CMake test working directory; CMake API source list.
+- Verified: gcc+clang release/test/debug, TSan, CMake build + 77/77 ctest, golden Paris, live
+  `--check-update` against this repo's Releases (v0.0.9 → v0.1.0 available, exit 3), live server
+  `/v1/update`, UI screenshots light/dark + dismissal persistence.
+
+### 2026-10-18 — Phase 31: disk-backed KV cache (--kv-offload)
+- New: `memory/file_backed` (+ `tests/test_kv_offload.c`), `RunState.kv_offload_base/bytes`,
+  `KVStrategyOptions.offload_dir` (disk-budgeted context cap), `run_state_kv_prefetch_layer`,
+  `/v1/config runtime.kv_offload`, UI tag; CMake MEMORY_SOURCES.
+- Verified: gcc+clang release/test/debug, TSan, golden Paris, identical output F32/i8 on/off disk,
+  live server.
+
+### 2026-10-18 — Phase 28: distributed pipeline inference
+- New: `distributed/tensor_rpc` (framed TCP), `distributed/dist_plan` (parse, RAM planner,
+  connect/INFO validation, worker loop, remote forward); flags `--rpc-worker --layers
+  --rpc-bind-all --remote-layers --plan-layers`; forward-loop hook; `/v1/config
+  runtime.distributed`; UI `dist N nodes` tag; `tests/test_tensor_rpc.c` (TSAN_TESTS); CMake
+  DISTRIBUTED_SOURCES.
+- Fixed: worker sliding-window init; prompt snapshots bypassed when distributed.
+- Verified: gcc+clang release/test/debug, TSan, golden Paris, split == single md5, live server.
+
+### 2026-10-18 — Fused Q6_K kernel (plan 37.17)
+- New: `math/matmul_q6k` (+ `tests/test_q6k_matmul.c`), `WEIGHT_TYPE_Q6K`, loader/dispatch
+  wiring (single + batched); added to the Makefile/CMake AVX2 TU lists.
+- Verified: gcc+clang release/test/debug, TSan, dist build; SmolLM2-1.7B Q4_K_M 8.7 → 15.3 tok/s
+  with the same greedy answer; golden Paris on both models.
+
+### 2026-10-18 — Phase 18-B: batched Q4_K / Q4_K-x8 / F32 verify kernels
+- New: `parallel_matmul_q4k_tokens`, `parallel_matmul_q4k_x8_tokens_preq`, `tn_matmul_f32_batch`;
+  `tn_dense_matmul_dispatch_batch` uses them; `tests/test_q4k_batch_tokens.c` (bit-exact).
+- Measured: spec decode 1.7B Q4_K_M + 135M draft 3.6 → 4.2 tok/s (identical output); still below
+  plain decode (8.4) — compute-bound kernels; see plan 18-C.
+
+### 2026-10-18 — Phase 23 stage 1: FIFO generation queue
+- New: `api/gen_queue` (+ `tests/test_gen_queue.c`, added to TSAN_TESTS); `--queue-size`,
+  `--queue-timeout`; chat handler parses before acquiring, streams `: queued N`; prompt-cache
+  clear uses try-acquire; UI shows queue position; `/v1/config features.queue_size`.
+- Verified: gcc+clang release/test/debug, TSan, live default-429 vs queued (both 122-chunk
+  replies, one queue comment), two-tab browser drive, golden Paris.
+
+### 2026-10-18 — Plan 8.5: int8 KV cache for the dense/GQA path
+- New: `kv_cache/kv_quant_ops` (+ `tests/test_kv_quant.c`), `RunState.kv_type/key_cache_q/
+  value_cache_q/key_scale/value_scale`, `KV_SCALE_IDX`, `--kv-type`, `/v1/config runtime.kv_type`;
+  attention single + batched read/write branches; sizing accounts for int8; prompt store and
+  tiled kernel gated to F32; startup line reports the real storage type.
+- Verified: gcc+clang release/test/debug, TSan, golden Paris with both types, live server with
+  i8 (prefix cache hit 36 tokens), ~10% decode gain at long context.
+
+### 2026-10-18 — Phase 30 (first stage): best-of-N with likelihood scoring
+- New: `sampling/logprob`, `reasoning/best_of`; `GenerationParams.compute_logprobs`,
+  `GenerationStats.sum_logprob`; `--best-of`, `--best-of-max`; request `best_of`; response
+  `best_of` object; `/v1/config` default/limit/feature; UI slider + footer note.
+- Verified: unit tests (score modes, parse, log-sum-exp), gcc+clang test suites, live API (4
+  candidates, 38/39 prompt tokens cached, streaming sends the winner), browser drive.
+
+### 2026-10-18 — Phase 22-SSM: Mamba-1 support + vocabulary-driven chat format
+- New: `transformer/mamba` (+ `tests/test_mamba.c`), `tools/mamba_reference.py`,
+  `tests/e2e_mamba_reference.sh`; `MoEConfig.is_ssm` + `moe_is_recurrent()`;
+  `TransformerWeights.mamba`, `RunState.mamba` (freed by the existing free functions);
+  `weights_from_gguf_mamba()`; forward routing; `chat_template_detect_vocab/parse/name`,
+  `--chat-format`, `/v1/models` `chat_format` + `recurrent`, UI tags.
+- Fixed: arch-allowlisted MoEConfig population; empty-200 on un-tokenizable prompts.
+- Verified: gcc+clang release/test/debug, TSan, golden Paris, numpy-reference e2e, prompt-cache
+  e2e unchanged.
+
+### 2026-10-18 — Phase 27: cache probe, tiled attention kernel, head-parallel attention
+- New: `threading/cache_probe`, `transformer/attn_tiled` (+ `tests/test_cache_probe.c`),
+  `tn_simd_backend_name()`; `attention.c` step 5 refactored into `attn_one_head()` dispatched
+  over the pool (`attn_heads_task`); flags `--attn-kernel --attn-tile --attn-parallel-min-ctx`;
+  `/v1/config` `runtime` block; UI model bar shows SIMD/threads/kernel; `test_forward` gains a
+  parallel/tiled equivalence test and joins `TSAN_TESTS`.
+- Verified: gcc+clang release/test/debug, TSan clean, golden Paris, A/B identical greedy output
+  with 2.2× decode at ~1700 ctx.
+
+### 2026-10-18 — Phase 26: multi-entry prompt snapshot store (LRU)
+- New: `kv_cache/prompt_store` + `tests/test_prompt_store.c`; e2e interleaved-conversation check
+  in `tests/e2e_prompt_cache.sh`; web UI `PromptCacheStatus.svelte`.
+- Changed: `generate_ex()` (restore before the prompt loop, save after),
+  `GenerationParams.prompt_store`, `ApiContext.prompt_store`, `--prompt-cache-mb`,
+  `--prompt-cache-min-tokens`, `GET /v1/prompt_cache`, `POST /v1/prompt_cache/clear`
+  (takes generation_mutex, 429 while busy), `/v1/config` `features.prompt_store`, OpenAPI.
+- Verified: gcc+clang release/test/debug; golden Paris; e2e identical output with/without
+  cache for sequential and interleaved conversations; browser shows stats and Clear works.
+
+### 2026-10-18 — Phase 3.2 branchless scalar ternary matvec + debug→test link fix
+- `src/math/ternary_matmul_branchless.c` (scalar dispatch target, 10× vs reference),
+  `tests/test_ternary_branchless.c`; Makefile `SAN_LINK_FLAGS` for the two custom-linked tests.
+- Verified: gcc+clang release/test/debug, plus debug→test order on both compilers.
+
+### 2026-10-18 — Configurable context sizing + honest KV report
+- `KVStrategyOptions` / `select_kv_strategy_ex()` / `kv_strategy_set_options()` /
+  `kv_strategy_print()` in `kv_cache/kv_strategy`; `--ctx-size`, `--kv-ram-fraction`; both
+  startup paths (native + GGUF) print the same honest line; scripts grepping "KV Strategy"
+  also accept "KV cache:". Plan 2.4/2.5 marked done (as built), 8.5 opened.
+- Verified: gcc+clang release/test/debug green (`test_kv_cache` 20/20 incl. new options test);
+  CLI `--ctx-size 2048 --kv-ram-fraction 0.3` → "max context: 2048 … RAM budget 30%".
+
+### 2026-10-18 — Phase 21.5: KV prefix reuse (context caching)
+- New: `kv_cache/prefix_cache` (+ `tests/test_prefix_cache.c`), `tests/e2e_prompt_cache.sh`.
+- Changed: `generate_ex()` (resume at the cached LCP, record forwarded tokens,
+  `GenerationStats.cached_tokens`), `ApiContext.prefix_cache` (lazy, under generation_mutex),
+  `ChatRequest.cache_prompt`, `ServerConfig.prompt_cache` / `--prompt-cache`, `/v1/config`
+  (`defaults.cache_prompt`, `features.prompt_cache`), SSE/JSON usage
+  `prompt_tokens_details.cached_tokens`, OpenAPI text, web UI toggle + "(N cached)" footer.
+- Verified: gcc+clang release/test/debug green; golden Paris; e2e identical output on/off over
+  3 turns; repeat 516-token request 8.6 s → 0.21 s; browser multi-turn shows cached tokens.
+
+### 2026-10-18 — Phase 22-UI (front-end configurability) + Phase 33 (watermarking)
+- Rationale: `decision-log.md` 2026-10-18; bugs found/fixed: `mistakes.md` 2026-10-18.
+- New modules (each with its own test): `sampling/sampler_chain` (test_sampler_chain),
+  `sampling/watermark` + `watermark_text` (test_watermark), `transformer/stop_seq`
+  (test_stop_seq), `transformer/gen_params`, `api/request_params` + `api/json_fields`
+  (test_request_params), `api/json_write`, `api/api_info` + `api/watermark_endpoint`
+  (test_api_info).
+- Changed: `generate.c` (`generate_ex()`, seed, history/system prompt, stop strings, stats),
+  `constrained_sample.c` (`sample_constrained_chain()`), `json_parse.c` (new fields, `\u`
+  decoding, null content), `http_server.c` (`/v1/config`, `/v1/watermark/detect`, real
+  `/v1/models`, history forwarding, `current_pos` reset, usage/finish_reason), `sse_stream.c`
+  (`*_ex` variants, input-sized token buffer), `openapi.c`, `server_config.*`, `args.*`,
+  `main.c`, `repl.c`, `Makefile` (header deps), `CMakeLists.txt`, web UI (`SettingsPanel`,
+  `RangeField`, `NumberField`, `WatermarkPanel`, `settings.js`, `App`, `ChatWindow`,
+  `MessageBubble`, `ModelInfoPanel`, `api.js`; `SamplingControls` removed), regenerated
+  `webui_bundle_generated.c`, `tools/screenshots/webui/chat.spec.mjs`.
+- Verified: `make release/test/debug` green for gcc and clang (clean tree); golden "capital of
+  France" → "Paris"; greedy output md5 identical to the previous commit; A/B tok/s within noise
+  (3-run mean 86.8 base vs 85.6, SmolLM2-135M F16, 4 threads); live curl smoke of every new
+  endpoint (multi-turn memory, stop strings incl. streaming, usage/finish_reason, watermark
+  z=7.9 vs −2.2 plain, `\u00e9`); Playwright drive of the UI (settings, persistence badge,
+  stop, watermark panel, dark mode, 390px width with no horizontal scroll, zero console errors).
+
+### 2026-09-24 — Phase 19: LoRA adapters (hot-swappable low-rank fine-tunes)
+- Full design rationale and deviations from the original plan stub: `docs/ai/decision-log.md`'s
+  matching 2026-09-24 entry. The two bugs found and fixed during this phase (GQA `kv_dim`
+  loader bug; a pre-existing, unrelated AVX-512VNNI CPUID-lies-on-virtualized-host bug found
+  while verifying `make test`): `docs/ai/mistakes.md`'s two matching 2026-09-24 entries.
+- New: `include/core/lora.h` + `src/core/lora_load.c` (`LoRAWeights`/`LoRAModule` structs,
+  `lora_load()`/`lora_free()`, mmap-based `.lora.bin` loader mirroring
+  `vision_weights_load.c`'s magic/header idiom); `include/math/lora_matmul.h` +
+  `src/math/lora_matmul.c` (`lora_apply()`, format-agnostic F32 correction, thread-pool
+  row-distributed, `tn_vec_dot()`-based); `tools/convert_lora.py` (HuggingFace PEFT adapter ->
+  `.lora.bin`, no reshape/transpose needed since PEFT's own tensor layout already matches);
+  `tests/test_lora.c` (`lora_apply()` unit correctness incl. disabled-LoRA edge cases,
+  `.lora.bin` load-roundtrip, GQA `kv_dim` shape regression tests, `transformer_forward()`-level
+  zero-behavior-change + real-effect tests).
+- Changed: `include/core/run_state.h` (new `const LoRAWeights *active_lora;` field, zeroed by the
+  existing `run_state_alloc_ex()` memset — zero-touched-call-sites for every existing caller);
+  `src/transformer/attention.c`/`ffn.c` (single-token path only — one-line `lora_apply()` calls
+  after each existing Q/K/V, O, gate/up, down dispatch block; no signature changes);
+  `include/cli/args.h` + `src/cli/args.c` (`--lora <path>`, NULL/disabled by default, the only
+  way to enable it — mirrors `--draft-model`'s own convention); `src/cli/main.c` (load/wire/free
+  `lora`, mirroring the existing draft-model block's error-cleanup chain);
+  `CMakeLists.txt` (`src/core/lora_load.c`/`src/math/lora_matmul.c` added to
+  `CORE_SOURCES`/`MATH_SOURCES`; `Makefile` needed no change, auto-discovers via `find`).
+- Verified: `make release/test/debug` green for gcc and clang (`test_lora` 184/184), a CMake
+  sanity build, the existing golden-output check (`models/smollm2.gguf`, "What is the capital of
+  France?", no `--lora`) confirming byte-identical output to before this phase, and a real
+  end-to-end run against a downloaded HuggingFace PEFT LoRA adapter
+  (`CTU-ai-lab/SmolLM2-135M-LoRA-Adapter`) on this project's own demo model — converts, loads,
+  and generates coherently (that adapter's own `lora_B` tensors are all exactly zero, an
+  untrained/placeholder adapter confirmed by inspecting the source safetensors directly, not a
+  bug in this pipeline; the "LoRA measurably changes output" proof instead comes from
+  `test_lora.c`'s synthetic nonzero-LoRA case).
+- Scope: generic dense/GQA `attention_forward()`/`ffn_forward()` (single-token) only this pass —
+  not MLA, not Qwen3-MoE, not Qwen3.5/3.6 hybrid, not MoE-FFN, not the batched speculative-decoding
+  path. Documented as a follow-up ("Phase 19-B") in `IMPLEMENTATION_PLAN.md`, not silently dropped.
+
+### 2026-09-24 — Phase 18 (speculative decoding) Stage 7: real-model benchmark + SIMD-accelerate the batched matmul kernels
+- Full benchmark writeup (setup, correctness, the bug's before/after numbers, the full results
+  and round-breakdown tables): `docs/reports/PHASE18_SPECULATIVE_DECODING_BENCHMARK_2026-09-24.md`.
+  This entry stays the summary; that file is the detailed reference.
+- What: downloaded two larger same-tokenizer siblings of the repo's existing demo model
+  (`bartowski/SmolLM2-{360M,1.7B}-Instruct-GGUF`, F16, confirmed `vocab_size=49152`/gpt2 tokenizer
+  matching `models/smollm2.gguf`) into `models/` (gitignored, not committed) to serve as verifiers,
+  keeping the existing 135M model as draft -- the repo's only local model was already the smallest
+  in its family, so no smaller sibling existed to use as draft (per Stage 5's own flagged
+  limitation); flipped which role got downloaded instead.
+- Correctness confirmed first: plain vs. speculative output byte-identical at `--temperature 0` on
+  both pairs (135M+360M, 135M+1.7B) -- the real-model confirmation of Stage 5's synthetic
+  greedy-equivalence proof. One ASan/UBSan smoke run with real (non-tiny-synthetic) tensor shapes
+  came back clean -- the "real-model end-to-end check" Stage 5's own verification bar wanted and
+  couldn't complete without a compatible model.
+- Found and fixed a severe, real bug while benchmarking (full writeup in `mistakes.md`'s matching
+  2026-09-24 entry): every Stage 1 batched-matmul kernel (`src/math/batched_matmul{,_f16,_classifier}.c`)
+  was scalar-only, making the batched "verify" call *slower* than the sequential calls it replaces
+  on real AVX-512 hardware -- speculative decoding was ~8-10x slower than plain generation before
+  the fix. Rewrote all five kernels (ternary, F16, BF16, INT8, INT4) to dequantize each row to F32
+  once per row then reuse the existing SIMD-dispatched `tn_vec_dot()` for the per-token dot
+  products; also fixed `tests/test_batched_matmul.c` missing a `tn_simd_init()` call (caused a NULL
+  function-pointer SEGV once the kernels started depending on it).
+- Verified: `test_batched_matmul` 6/6 (unchanged numerical tolerance); full `make release/test/debug`
+  green on gcc and clang; plain-vs-speculative output re-confirmed byte-identical on both real
+  pairs after the fix. Step 25 ("verify batch") round cost dropped ~6.5x on the 360M pair
+  (~790ms -> ~122ms); batching's savings vs. the sequential-equivalent cost grow with
+  `spec_length` on the 1.7B pair (9%/33%/45% cheaper at spec_length 3/5/8).
+- Benchmark result (honestly reported, matching Stage 5's own commitment): even after the fix,
+  end-to-end throughput is still net *slower* than plain generation for both tested pairs on this
+  4-core benchmark environment -- roughly 0.45-0.51x of plain for the 360M pair, 0.58-0.68x for the
+  1.7B pair, across `--spec-length` 3/5/8. Root cause (not a further bug, a real characteristic of
+  this workload/hardware combination): per-round draft-phase (sequential draft-model forwards) and
+  corrective-commit overhead (one extra single-token forward per model per round) outweigh the
+  now-real verify-batch savings at this core count (4) and these draft:verifier ratios and
+  observed greedy acceptance rates (~37-65%, derived from `tokens_generated / step25.count`). The
+  batched-verification mechanism itself is confirmed working as designed; whether it nets out
+  ahead of plain generation depends on hardware (core count, memory-bandwidth pressure) and
+  acceptance rate, consistent with the general literature on CPU speculative decoding.
+- Why: user request, following up on Stage 5's flagged "no compatible draft model available"
+  limitation -- "find a smaller draft model, test it, draw a detailed benchmark with and without."
+- Areas: `models/` (new downloads, not committed), `src/math/batched_matmul.c`,
+  `src/math/batched_matmul_f16.c`, `src/math/batched_matmul_classifier.c`,
+  `include/math/batched_matmul.h`, `tests/test_batched_matmul.c`.
+
+### 2026-09-24 — Phase 18 (speculative decoding) Stage 5.5: granular step-timing coverage everywhere, including the batched speculative path
+- What: closes the `TN_STEP_TIMING=1` coverage gap found while answering the user's request for
+  "full details in profile mode... the granulest steps" (see `mistakes.md`'s matching 2026-09-24
+  entry for the investigation and root cause), and extends the same accounting into the
+  batched/speculative path. Three parts, all reusing the existing `TN_STEP_TIMING=1` system
+  (`include/core/step_timing.h`, `src/core/step_timing.c`) end to end — no new CLI flag, no new
+  env var, no new reporting mechanism:
+  1. `src/transformer/attention.c`'s `attention_forward()` (generic dense/GQA) and
+     `src/transformer/qwen3moe_attention.c`'s `qwen3moe_attention_forward()` now carry the same
+     `tn_step_timing_add()` brackets `mla_attention.c`/`qwen35_attention.c` already had, reusing
+     the existing step IDs 4 (pre-attn RMSNorm), 5 (Q projection, covering QK-norm too), 9 (YaRN
+     RoPE), 10 (KV cache write), 11 (attention score/softmax), 12 (post-attention output/residual).
+  2. Every Phase 18 batched sub-function (`attention_forward_batch()` in `attention.c`,
+     `mla_attention_forward_batch()` in `mla_attention.c`,
+     `qwen3moe_attention_forward_batch()` in `qwen3moe_attention.c`, `ffn_forward_batch()` in
+     `ffn.c`, `transformer_forward_batch()` in `forward.c`) now carries the same step IDs as its
+     single-token counterpart, at **whole-batch-call granularity** (one measurement per
+     architectural step spanning all `n_tokens` in the call, not per-token — per-token timing here
+     would defeat the point of batching) so a user can directly compare "cost of this step per
+     token, sequential vs. batched" from one report. Where a single-token step bracket covered
+     work that a batched sub-function does in one fused per-token loop (e.g. `attention.c`'s
+     original combined QK-norm+RoPE+KV-store loop), that loop was split into separate per-step
+     loops (RoPE-only, then KV-store-only) so each step's bracket measures only its own work —
+     a minimal, correctness-preserving restructuring (each token's writes are still independent
+     across the split, same as before). `forward.c`'s `transformer_forward_batch()` header comment
+     (previously: "Diagnostics ... are intentionally not threaded through this path") updated to
+     describe the new coverage instead of its absence.
+  3. Four new step IDs in `include/core/step_timing.h`/`src/core/step_timing.c`
+     (`TN_STEP_24_SPEC_DRAFT_PHASE` .. `TN_STEP_27_SPEC_COMMIT`, `TN_STEP_COUNT` now 28) for
+     speculative decoding's own round-level accounting, wired into
+     `src/speculative/spec_decode.c`'s round loop: the `spec_length` sequential draft-model
+     forward+sample calls → step 24; the `transformer_forward_batch()` verifier call → step 25;
+     building the shifted `verify_check_logits` array + `accept_reject_round()` → step 26; the two
+     corrective `transformer_forward()` commit calls (both models) → step 27. These deliberately
+     overlap in wall-clock terms with steps 1-23 (a round's brackets still contain real
+     Q-projection/RoPE/etc. time counted again under its own low-level step) — a second,
+     complementary view of where a round's time goes, not a partition of it, exactly like existing
+     brackets already coexist (step 14 doesn't exclude step 13's time).
+- Verified: re-ran `TN_STEP_TIMING=1 ./adaptive_ai_engine --model models/smollm2.gguf --prompt
+  "What is the capital of France?" --max-tokens 8 --temperature 0` — steps 4-12 now report real
+  nonzero numbers (previously all exactly `0.000000ms`), confirming the concrete repro this stage
+  fixes. Confirmed the four new speculative-decoding step IDs report nonzero values by running
+  `TN_STEP_TIMING=1` against the `test_speculative` test binary directly (no compatible real
+  `--draft-model` is available this session — see Stage 5's own entry above). Full bar: `make
+  release/test/debug` green on gcc and clang (zero new warnings), plus a CMake sanity build, all
+  clean. Since this stage's edits sit inside hot inference code, re-confirmed byte-identical golden
+  output ("The capital of France is Paris.", 7 tokens) before/after on both compilers' debug
+  (ASan/UBSan) builds and re-ran `test_forward_batch`/`test_speculative` (unaffected by pure-timing
+  instrumentation) — proving the new brackets are a pure side-channel that changed no computed
+  value, per this stage's own negative verification bar (it adds no new correctness contract of
+  its own).
+- Why: Stage 5.5 of the user-approved Phase 18 plan, added after the user explicitly asked for
+  fuller profiling detail and selected "also instrument the new batched speculative-decoding path"
+  when asked how far the fix should go.
+- Areas: `include/core/step_timing.h`, `src/core/step_timing.c`, `src/transformer/attention.c`,
+  `src/transformer/qwen3moe_attention.c`, `src/transformer/mla_attention.c`,
+  `src/transformer/ffn.c`, `src/transformer/forward.c`, `src/speculative/spec_decode.c`.
+
+### 2026-09-24 — Phase 18 (speculative decoding) Stage 5: draft loading + accept/reject loop, wired end-to-end
+- What: `include/speculative/draft_model.h` + `src/speculative/draft_model.c` (new) —
+  `DraftModel` struct and `draft_model_load()`, implemented entirely via Stage 3's
+  `load_gguf_model(is_primary=false)` (zero duplicated GGUF-parsing code); refuses
+  `has_linear_attn` draft models and vocab-size mismatches against the verifier at load time with
+  a clear error message (draft and verifier must share a tokenizer for token-ID comparison to
+  mean anything); best-effort loads the draft's own tokenizer (non-fatal on failure — only
+  `vocab_size` is ever used for validation, decode always goes through the verifier's tokenizer).
+  `include/speculative/accept_reject.h` + `src/speculative/accept_reject.c` (new) —
+  `accept_reject_round()`: greedy path (checks each draft token against
+  `sample_argmax(verify_check_logits[i])`, emitting the verifier's own argmax at the first
+  mismatch or its bonus-token argmax if all accepted — by construction, teacher-forcing-equivalent
+  to plain greedy generation, per Stage 2's batched/sequential equivalence proof) and stochastic
+  path (`min(1, p_verifier/p_draft)` acceptance via `apply_temperature`+`softmax`, residual
+  resampling `max(0, p_verifier - p_draft)` on reject via the same CDF walk
+  `generate_with_callback` already uses for its non-top-p stochastic path).
+  `include/speculative/spec_decode.h` + `src/speculative/spec_decode.c` (new) —
+  `speculative_generate()`/`speculative_generate_with_callback()`, mirroring
+  `generate()`/`generate_with_callback()`'s signatures plus `DraftModel *draft`/`int spec_length`.
+  Refuses `mc->has_linear_attn` and nonzero `s->current_pos` (vision-prefill incompatibility) once
+  at startup; reuses the existing prompt-encoding block verbatim for both models' prefill. Per
+  round: draft phase (`spec_length` sequential draft-model forwards, saving raw pre-sampling
+  logits), verify phase (one `transformer_forward_batch()` call), builds the shifted
+  `verify_check_logits` array standard speculative-decoding verification requires (draft token `i`
+  is checked against the verifier's prediction made *before* token `i` was fed, not after — row
+  `i-1` of the batch output, or the carried-over last-verifier-logits for `i=0`) plus a separate
+  `bonus_logits` pointer for the all-accepted case, calls `accept_reject_round()`, emits accepted
+  + resampled/bonus tokens through the callback with the same per-token EOS-check/decode
+  convention `generate_with_callback` uses, then runs one corrective `transformer_forward()` call
+  on *both* models (not only the draft model, despite the original plan text only mentioning the
+  draft side — worked out from first principles that the verifier's own KV cache also needs a
+  correction commit whenever a draft token is rejected) at `pos + n_accept` feeding the
+  just-decided token, before drafting the next round.
+  `main.c`/`repl.c` — branch on `args.draft_model_path` at both existing `generate()`/
+  `generate_with_callback()` call sites; the `else` branch is byte-identical to before.
+- Found and fixed two real, pre-existing/unrelated bugs during this stage (see `mistakes.md`'s
+  2026-09-24 entries for full writeups): `SpecBatchScratch.logits` (Stage 2) was a dead allocation
+  never read or written by `transformer_forward_batch()` — removed the field entirely
+  (`include/speculative/spec_scratch.h`, `src/speculative/spec_scratch.c`). More significantly,
+  `generate_with_callback()`'s `total_steps = n_prompt + max_tokens` off-by-one silently generated
+  `max_tokens + 1` tokens for every caller whenever `max_tokens` (not EOS) was the actual stopping
+  condition — invisible on this repo's existing golden prompts (all EOS-terminated) but caught by
+  this stage's own equivalence test, which deliberately disables EOS. Fixed in
+  `src/transformer/generate.c` (`total_steps = n_prompt + max_tokens - 1`); this is a real,
+  previously-shipped behavior change affecting `--max-tokens` semantics for the CLI, the REPL, and
+  now the speculative path, all of which share this one function.
+- New test `tests/test_speculative.c` (12 assertions) — 3 direct `accept_reject_round()` unit
+  tests (all-accepted, rejects-at-first-mismatch, rejects-immediately), 1 full-pipeline greedy
+  equivalence test (`speculative_generate()`'s output byte-identical to plain `generate()`'s, on
+  independently-seeded tiny synthetic ternary draft + verifier models with EOS disabled — this is
+  the test that caught the `generate.c` off-by-one), 1 vocab-mismatch startup-error test (real
+  `models/smollm2.gguf`, skipped gracefully if the file is absent).
+- Verified: `make release/test/debug` green on gcc and clang (zero new warnings), plus a CMake
+  sanity build (`cmake --build`, all targets including `test_speculative`) — all clean, only
+  pre-existing third-party (`stb_image_resize2.h`) and pre-existing test-file warnings present,
+  nothing from this stage's files. Golden-output check (`models/smollm2.gguf`, "What is the
+  capital of France?", `--max-tokens 16 --temperature 0`) unchanged on both compilers' debug
+  (ASan/UBSan) builds: "The capital of France is Paris." at 7 tokens.
+  Real-model end-to-end `--draft-model` check **not performed this stage**: the only model
+  present in `models/` is `smollm2.gguf` itself (`Smollm2 135M 8k Lc100K Mix1 Ep2`, confirmed via
+  its own GGUF metadata) — the SmolLM2 family's smallest published size is 135M, so no smaller
+  same-tokenizer sibling exists to use as a draft model without downloading a same-size or larger
+  model, which would demonstrate nothing about draft/verify speedup. Per the plan's own explicit
+  instruction ("if none is readily available, flag this to the user rather than guessing a
+  mismatched-vocab model"), this is flagged rather than worked around; correctness is otherwise
+  fully covered by the synthetic-model equivalence test above, and the honest real-model
+  speedup measurement remains outstanding pending a usable draft model.
+- Why: Stage 5 of the user-approved Phase 18 plan.
+- Areas: `include/speculative/{draft_model,accept_reject,spec_decode}.h`,
+  `src/speculative/{draft_model,accept_reject,spec_decode}.c` (new), `src/cli/main.c`,
+  `include/cli/repl.h`, `src/cli/repl.c`, `include/speculative/spec_scratch.h`,
+  `src/speculative/spec_scratch.c`, `src/transformer/generate.c`, `tests/test_speculative.c` (new),
+  `CMakeLists.txt`.
+
+### 2026-09-22 — Phase 18 (speculative decoding) Stage 4: `--draft-model` / `--spec-length` CLI flags
+- What: `include/cli/args.h` — `CliArgs.draft_model_path` (`char *`, default `NULL`) and
+  `CliArgs.spec_length` (`int`, default 5). `src/cli/args.c` — `--draft-model <path>` (string flag,
+  mirrors `--proj`'s pattern) and `--spec-length <N>` (validated int flag, mirrors `--port`'s
+  pattern, rejecting `<= 0`), plus a new `"\nSpeculative decoding:\n"` `print_usage()` section
+  documenting both flags, the draft/verifier tokenizer-match requirement, GGUF-only draft models,
+  and the linear-attention-model refusal. `draft_model_path` defaults to `NULL` — the *only* way
+  to enable speculative decoding is passing `--draft-model` explicitly; there is no default or
+  embedded draft-model path, per the user's original hard requirement for this feature.
+- New test `tests/test_args.c` (13 assertions) — no `parse_args()` test coverage existed at all
+  before this stage; scoped here to the two new flags per the plan's Stage 4 requirement (a
+  broader CLI-arg test sweep for the many pre-existing flags is a separate, real gap, out of scope
+  for this change). Covers: flag sets the value, default when omitted, `--spec-length 0` and
+  negative values rejected, missing value after either flag rejected.
+- Verified: `make release/test/debug` green on gcc and clang, zero new warnings; `test_args` also
+  builds and passes via the CMake test target (auto-discovered, no `CMakeLists.txt` change
+  needed). No behavior change yet — `main.c` doesn't read `draft_model_path`/`spec_length` until
+  Stage 5.
+- Why: Stage 4 of the user-approved Phase 18 plan.
+- Areas: `include/cli/args.h`, `src/cli/args.c`, `tests/test_args.c` (new).
+
+### 2026-09-22 — Phase 18 (speculative decoding) Stage 3: factor GGUF model loading out of `main()`
+- What: `include/cli/model_load.h` + `src/cli/model_load.c` (new) — `load_gguf_model()`, the
+  GGUF-only half of main()'s old inline model-load block (mmap → GGUF header → Config/MoEConfig →
+  weight alloc/load → KV-strategy sizing → RunState + MLA/Qwen3.5/Qwen3-MoE state allocation),
+  returning a `LoadedModel` bundle. Takes `is_primary`: true (the verifier, main()'s only caller
+  this stage) prints the usual load/config/profiler output and sizes the KV cache from free RAM;
+  false (a future draft-model caller, Stage 5) loads silently and sizes context from a hint instead
+  — a draft model never needs a large context, and `tn_hardware_profile_set_model_bytes()` must
+  only ever reflect the verifier. `main.c`'s native raw-ternary `.bin` path is untouched in its own
+  format-specific logic (config_read/weights_map) but now carries its own copy of the
+  KV-strategy/RunState-allocation tail that used to be shared code after the format if/else —
+  native `.bin` models have no draft-model use case, so `load_gguf_model()` doesn't cover them.
+- Found and fixed a real, pre-existing latent bug while writing `loaded_model_free()`: its doc
+  comment ("safe to call on a zeroed LoadedModel") requires `mapped_file_close()` to truly be
+  safe on a zero-initialized `MappedFile` — but `mapped_file_close()`'s own existing doc comment
+  already claimed exactly that, and it was FALSE: a zeroed struct has `fd == 0` (not -1) until
+  `mapped_file_open()` has run, so `if (mf->fd >= 0) close(mf->fd)` would silently close fd 0
+  (stdin). No existing call site ever triggered it (all guard on a prior successful open), making
+  this session's `loaded_model_free()` the first real caller to rely on the promise. Fixed by
+  gating the fd teardown on `mf->data` (only ever set together with `fd` on the single success
+  path) in `src/memory/mapped_file.c`; added a regression test in `tests/test_mmap.c` that closes
+  a zeroed `MappedFile` and asserts stdin's fd is still open afterward.
+- Verified: golden-output equivalence — built the pre-Stage-3 commit (`69be1a5`) in a separate git
+  worktree, ran the "What is the capital of France?" prompt (`--temperature 0`) against both
+  binaries on the real SmolLM2-135M-Instruct GGUF demo model, diffed the full output with only
+  hardware-measurement lines (free RAM/bandwidth/ceiling, which vary run-to-run regardless of
+  code) excluded — zero differences, including the generated text itself
+  ("The capital of France is Paris."). `make release/test/debug` green on gcc and clang, zero new
+  warnings. CMake sanity build green (`project-zero` executable + all test targets).
+- Why: Stage 3 of the user-approved Phase 18 plan — `load_gguf_model()` is what Stage 5's draft
+  model loader will call (`is_primary=false`) to load a second, smaller GGUF model alongside the
+  verifier with zero duplicated GGUF-parsing code.
+- Areas: `include/cli/model_load.h` (new), `src/cli/model_load.c` (new), `src/cli/main.c`,
+  `src/memory/mapped_file.c` (bugfix), `tests/test_mmap.c`, `CMakeLists.txt`.
+
+### 2026-09-22 — Phase 18 (speculative decoding) Stage 2: `transformer_forward_batch()`
+- What: `include/speculative/spec_scratch.h` + `src/speculative/spec_scratch.c` (new) — the
+  `SpecBatchScratch` N-token-wide buffer bundle, owned entirely outside `RunState` so every
+  existing single-token caller is untouched. `attention_forward_batch()` (`attention.c`, dispatches
+  to `mla_attention_forward_batch()`/`qwen3moe_attention_forward_batch()`/a generic dense-GQA batch
+  path, or refuses with the new `TN_ERR_UNSUPPORTED` for `has_linear_attn` models),
+  `ffn_forward_batch()` (`ffn.c`, dense path fully batched, MoE path falls back to N sequential
+  `moe_ffn_forward()` calls — documented limitation), and `transformer_forward_batch()`
+  (`forward.c`) orchestrating embed → batched-layer-loop → per-token final RMSNorm → batched
+  classifier matmul into a caller-owned `logits_out` buffer. `tn_dense_matmul_dispatch_batch()`
+  added to `dense_matmul_dispatch.h` (F16 gets a real batch kernel; Q4_K/Q4_K_X8/Q2_0/F32 fall back
+  to N sequential calls, matching Stage 1's documented scope).
+- New test `tests/test_forward_batch.c` (23 assertions across 4 sub-tests): synthetic dense, MLA,
+  and Qwen3-MoE (QK-norm) models, asserting `transformer_forward_batch()`'s output is
+  bit-tolerance-identical to N sequential `transformer_forward()` calls (the teacher-forcing
+  equivalence the whole feature depends on), plus a negative test confirming `has_linear_attn`
+  models get a clean `TN_ERR_UNSUPPORTED` refusal, not a crash or silent wrong answer.
+- Found and fixed a real, pre-existing production bug while debugging this test's Qwen3-MoE case:
+  the AVX-512 8-wide tail of the BF16 (`parallel_matmul.c`) and F16 (`matmul_f16.c`) classifier
+  matmul kernels silently dropped one of four horizontal-sum lanes for any `n` in `[8,15]` — see
+  `docs/ai/mistakes.md`'s 2026-09-22 entry for the full root-cause writeup. Fixed both call sites;
+  confirmed via full grep of every `_mm_movehl_ps` call site in `src/math/` that no other instance
+  of the same bug pattern exists elsewhere. Also fixed a test-construction gap (all three synthetic
+  models left `rope_yarn_attn_factor` at its zeroed default, degenerating RoPE to all-zero output
+  in every test) so the equivalence tests actually exercise real RoPE rotation.
+- Verified: `make release/test/debug` green on gcc and clang with zero new warnings; a `cmake
+  --build` sanity pass confirms `CMakeLists.txt`'s new `SPECULATIVE_SOURCES` stays in sync. That
+  same CMake pass also caught an unrelated, pre-existing bug: `src/math/ternary_matmul_lut_avx512bw.c`
+  was missing from `CMakeLists.txt` entirely (present in the Makefile's `AVX512_TUS` since it was
+  added, never ported to CMake), breaking the CMake build for `test_ternary_lut_avx512bw` — see
+  `docs/ai/mistakes.md`'s 2026-09-22 entry. Fixed in the same pass.
+- Why: Stage 2 of the user-approved Phase 18 plan — the load-bearing correctness proof (batched
+  forward pass matches sequential forward pass, architecture-by-architecture) that Stages 3-6
+  (CLI wiring, draft-model loading, accept/reject loop) build on.
+- Areas: `include/speculative/spec_scratch.h` (new), `src/speculative/spec_scratch.c` (new),
+  `include/transformer/forward.h`, `src/transformer/forward.c`, `include/transformer/attention.h`,
+  `src/transformer/attention.c`, `include/transformer/mla_attention.h`,
+  `src/transformer/mla_attention.c`, `include/transformer/qwen3moe_attention.h`,
+  `src/transformer/qwen3moe_attention.c`, `include/transformer/ffn.h`, `src/transformer/ffn.c`,
+  `include/transformer/dense_matmul_dispatch.h`, `include/core/error.h`, `src/core/error.c`,
+  `src/math/parallel_matmul.c`, `src/math/matmul_f16.c` (bugfix), `tests/test_forward_batch.c`
+  (new), `CMakeLists.txt`.
+
+### 2026-09-22 — Phase 18 (speculative decoding) Stage 1: batched GEMM kernels
+- What: `include/math/batched_matmul.h`, `src/math/batched_matmul.c` (ternary-packed),
+  `src/math/batched_matmul_f16.c` (F16), `src/math/batched_matmul_classifier.c` (BF16/INT8/INT4).
+  Each computes N candidate-token activations against one weight matrix in a single call instead
+  of N separate single-vector calls, so each weight row is read from RAM once (stays resident in
+  L1/L2 across the token loop) instead of N times -- the actual mechanism that makes speculative
+  decoding's batched verify step cheaper than N normal forward-pass steps on this
+  memory-bandwidth-bound engine. Portable C, correctness-first (no new ISA-tuned SIMD tiers this
+  pass -- flagged as a documented Phase 18-B follow-up, matching the already-agreed
+  MoE-FFN-batching and NEON-tier deferrals in this project's history).
+- New test `tests/test_batched_matmul.c` (6 assertions): each batched kernel vs. N calls to its
+  existing single-vector reference. Caught two real test-authoring bugs before they'd have masked
+  real kernel bugs: (1) the ternary reference path initially called
+  `parallel_ternary_matmul_packed()` without `tn_simd_init()` first, segfaulting on a NULL
+  dispatch-table function pointer; (2) after fixing that, it still failed -- this dev machine has
+  AVX-512 VNNI, so the dispatch-selected reference kernel quantizes activations to int8
+  internally (~1% error vs. float32), which the batched kernel (plain float, no quantization)
+  correctly does NOT match at a tight tolerance. Fixed by comparing against the exact float32
+  scalar reference (`ternary_matmul_packed()`) directly, bypassing dispatch entirely -- the same
+  fix `tests/test_packed_weights.c` already applied for the identical reason, per its own comment.
+- Verified: `make release/test/debug` green on gcc and clang, zero new warnings; a `cmake --build`
+  sanity pass confirms the three new files (added to `CMakeLists.txt`'s `MATH_SOURCES`) stay in
+  sync with the Makefile's auto-discovery.
+- Why: user chose Phase 18 (speculative decoding) as the next feature, explicitly requiring a
+  real batched forward pass (not a sequential-verify scaffold) and a configurable
+  `--draft-model` CLI path (never embedded). Full staged plan at
+  `docs/architecture/IMPLEMENTATION_PLAN.md`'s Phase 18 section (to be updated at Stage 6) and
+  the session's approved plan file. This is Stage 1 of 6.
+- Areas: `include/math/batched_matmul.h` (new), `src/math/batched_matmul.c` (new),
+  `src/math/batched_matmul_f16.c` (new), `src/math/batched_matmul_classifier.c` (new),
+  `tests/test_batched_matmul.c` (new), `CMakeLists.txt`.
+
+### 2026-09-21 — Implemented the missing plain-NEON ternary matmul kernel (Phase 3.5)
+- What: `src/math/ternary_matmul_packed_neon.c` (new) — fused unpack+matmul for 2-bit packed
+  ternary weights using plain NEON (`vld1q_f32`/`vaddq_f32`/`vsubq_f32`/`vceqq_s32`), filling a
+  dispatch tier `simd_dispatch.c` had documented ("NEON — stub, always compiled for ARM") but
+  never actually implemented. Wired into `include/math/ternary_matmul_packed.h`,
+  `simd_dispatch.c`'s dispatch table (between ARM dotprod and scalar) and its two stale comments,
+  and `CMakeLists.txt`'s `MATH_SOURCES`.
+- Why: user's instruction to continue implementation-phase work on CPU ternary. Found by auditing
+  `IMPLEMENTATION_PLAN.md`'s Phase 3 against the real `src/math/` tree and the dispatcher's own
+  code — any ARMv8-A CPU without the dotprod extension (Raspberry Pi 4, older Graviton, most
+  ARMv8.0/8.1 boards) was silently running the engine's hottest function at scalar (1 MAC/cycle)
+  speed instead of the documented NEON tier (4 MACs/cycle).
+- Verified: new `test_neon_packed_matmul_matches_scalar` in `tests/test_packed_weights.c` (mirrors
+  the existing AVX2 direct-kernel test); compiles to an empty TU and SKIPs correctly on this
+  x86_64-only dev environment; full release/test/debug green on gcc and clang; `cmake --build`
+  sanity pass confirms CMake/Makefile stay in sync. Not verified on real ARM hardware this pass
+  (flagged, not claimed) — see `mistakes.md` 2026-09-21 for full detail and the honest
+  not-yet-verified-on-real-ARM caveat.
+- Areas: `src/math/ternary_matmul_packed_neon.c` (new), `include/math/ternary_matmul_packed.h`,
+  `src/math/simd_dispatch.c`, `CMakeLists.txt`, `tests/test_packed_weights.c`,
+  `docs/architecture/IMPLEMENTATION_PLAN.md` (Phase 3.4/3.5 corrected to describe what actually
+  shipped — the Phase 10.5 packed-weight design, not the original unpacked-`int8` one).
+
+### 2026-09-21 — Fixed a macOS-only test portability bug (`/etc/hostname` doesn't exist there)
+- What: re-triggering `ci.yml` after the RLIMIT_AS fix (below) still failed `Build & Test (macOS)`, this
+  time in `test_cmd_exec_adversarial`'s `test_symlink_escape_now_blocked` — it hardcoded a symlink to
+  `/etc/hostname` as an "outside CWD" target, but that file doesn't exist on macOS/XNU. The production
+  `path_escapes_cwd_via_symlink()` check was correct throughout (a dangling symlink can't leak data); only
+  the test's fixture assumption was wrong.
+- Fixed: the test now `mkstemp()`s its own ephemeral outside-CWD target under `/tmp` instead of assuming a
+  system path exists, and cleans it up. 69/69 assertions pass; full release/test/debug green on gcc and
+  clang. See `mistakes.md` 2026-09-21 for full detail.
+
+### 2026-09-21 — Corrected RLIMIT_AS defense-in-depth claim after a real macOS CI failure exposed it as false
+- What: manually triggering `ci.yml` (`workflow_dispatch`, after the fix below) surfaced a real
+  `Build & Test (macOS)` failure: `test_rlimit_as_actually_enforced` — the XNU kernel does not enforce
+  `RLIMIT_AS` on macOS/Darwin, unlike Linux (confirmed via the sibling `RLIMIT_CPU` test passing on the
+  same runner in the same run, isolating the gap to address-space limits specifically).
+- Fixed: `src/agent/cmd_exec.c`'s comment on the `setrlimit(RLIMIT_AS, ...)` call no longer claims
+  blanket "defense-in-depth" — it now states plainly that the 256 MiB cap is a no-op on macOS and the
+  parent's cooperative timeout/SIGKILL loop is the only real backstop there. `tests/test_cmd_exec_rlimits.c`'s
+  `test_rlimit_as_actually_enforced` now skips gracefully under `#ifdef __APPLE__` instead of burning 15s
+  and real unbounded memory growth on CI to reconfirm a known, documented negative every run.
+- Explicitly deferred (not silently dropped): a real Darwin memory watchdog (poll `task_info()`/
+  `proc_pidinfo`, kill on RSS threshold) is a genuine architectural addition, flagged rather than built
+  in this pass. See `mistakes.md` 2026-09-21 for full detail, including the meta-lesson that this
+  Linux-only dev environment cannot catch macOS-kernel-specific gaps — only real CI on a macOS runner can.
+
+### 2026-09-21 — TS-2.6 API concurrency verification; fixed ci.yml never actually running
+- What: `tests/e2e_api_concurrency.sh` (TS-2.6) verifies the API server's `generation_mutex` trylock
+  serialization (a second concurrent request gets 429 while the first is in flight, never blocks) and
+  that `FSMState` (stack-local per call) never leaks grammar progress between sequential JSON-mode
+  requests of different shapes. 6/6 assertions pass against a real model.
+- Found and fixed: `ci.yml`'s push/PR triggers are scoped to `branches: [master, main]`, so it had never
+  run for any commit pushed to this session's feature branch. Added `workflow_dispatch: {}` (additive,
+  doesn't change the existing triggers) so it can be verified directly. See `mistakes.md` 2026-09-21.
+
+### 2026-09-19 — TS-3.2/TS-3.3: closed PATH-hijacking gap, verified rlimits, documented TOCTOU
+- What: `src/agent/cmd_exec.c` gains `resolve_trusted_path()` — allow-listed commands now resolve
+  against a fixed `{/bin, /usr/bin}` list and exec via `execv()`, never the inherited `$PATH` via
+  `execvp()` (closes the "PATH hijacking" known gap). Added `tests/test_cmd_exec_rlimits.c` (TS-3.3:
+  white-box verification that RLIMIT_CPU/RLIMIT_AS are actually enforced by the OS, plus the
+  timeout/truncation/zero-timeout cases reachable through `execute_command()` itself) and
+  `tests/test_cmd_exec_gaps.c` (TS-3.2: live PATH-hijacking regression test, AUTO_APPROVE-doesn't-
+  weaken-policy verification, and TOCTOU documented as an explicitly-deferred architectural gap, not
+  silently dropped).
+- Verified: 12 + 6 new assertions pass, all pre-existing `cmd_exec` tests still pass, full
+  release/test/debug green on gcc and clang. See `mistakes.md` 2026-09-19 for full detail.
+
+### 2026-09-19 — CI integration: wired today's test infrastructure into GitHub Actions
+- What: `make coverage` (new Makefile target); `.github/workflows/ci.yml` gains a CMake build-check job,
+  a golden-output-regression job (`tests/golden_regression.sh` + `tests/e2e_json_mode.sh` against a
+  cached real model), and a coverage-report job; `.github/workflows/security_audit.yml`'s "Math Kernel
+  Unit Tests" TODO stub is filled in (real `ctest` run) and it gains a TSan job; new
+  `.github/workflows/nightly.yml` (scheduled) runs extended grammar differential fuzzing and the
+  differential-dequant-vs-real-ggml test.
+- Found and fixed along the way: `tools/fuzz_config.py`'s "Run Core Fuzzer" step had been a silent
+  no-op (stale binary path, swallowed exception, exit 0) for an unknown period — see `mistakes.md`
+  2026-09-19.
+- Verified: every underlying command run and confirmed locally (GitHub Actions itself can't run in this
+  environment); full `release`/`test`/`debug` still green on gcc and clang after the Makefile change.
+
+### 2026-09-18 — TS-2.3/2.4: added E2E JSON-mode test (CLI matrix + API response_format + non-JSON regression)
+- What: `tests/e2e_json_mode.sh` covers the CLI `--json` flag across temperature {0.0, 0.7, 1.5},
+  max_tokens (including a forced-truncation case), JSON-friendly/adversarial/prompt-injection prompts;
+  the API's `response_format:{"type":"json_object"}` for both streaming and non-streaming; and a
+  non-JSON regression check on both the CLI and API paths. 17/17 pass against a real model. No
+  production bugs -- two test-tool bugs found and fixed (see `mistakes.md` 2026-09-18): truncation
+  detection needed `>=` not `==` against the reported token count, and the server-readiness poll needed
+  a ~60s budget, not 10s.
+
+### 2026-09-18 — TS-2.2: added a real-vocab (49152-token) token-masking correctness check; no production bugs, confirms fsm.c/grammar_json.c correct
+- What: `tools/fsm_real_vocab_check.c` loads the real embedded tokenizer from a GGUF model file and
+  drives `fsm_compute_token_mask`/`fsm_advance` through 18 realistic JSON documents (all number forms,
+  strings with escapes/unicode, nested objects/arrays), checking every case from the test plan: the
+  no-deadlock invariant, EOS gating (exact equivalence with a trial-finalize, not an assumed shape),
+  the scratch-copy non-destructive invariant, and multi-byte/byte-level-BPE token consistency.
+- Result: 637/637 assertions pass against a real 49152-token vocab (gcc and clang, no warnings) — this
+  run found two false assumptions in the *test itself* (fixed), not in the production code. See
+  `mistakes.md` 2026-09-18 for the two subtleties (number-grammar closeability without finalize; a
+  mid-number position can be a legitimate EOS-eligible stopping point).
+
+### 2026-09-18 — TS-2.1: added grammar differential fuzzer, found and fixed a real JSON leading-zero bug
+- What: `tools/grammar_json_verdict.c` (batch C harness driving the real `json_grammar_step`/
+  `json_grammar_finalize`) + `tools/fuzz_grammar_json.py` (generator + differential comparison against
+  `json.loads`, plus a prefix-truncation asymmetry check). Immediately found that the PDA accepted
+  leading-zero numbers (`"01"`, `"09"`) as valid JSON, which RFC 8259 forbids and `json.loads` correctly
+  rejects. Fixed with a new `JSON_ST_NUM_INT_ZERO` state (`include/sampling/grammar.h`,
+  `src/sampling/grammar_json.c`) that, unlike `JSON_ST_NUM_INT`, does not accept a further digit after a
+  leading `0`. Added `test_leading_zero_numbers_rejected` regression test.
+- Verified: 0 disagreements across ~61,000 fuzzed candidates (5 seeds), 0 prefix-asymmetry violations;
+  end-to-end confirmed on a real model with `--json`; full release/test/debug green on gcc and clang.
+  See `mistakes.md` 2026-09-18 for full RCA.
+
+### 2026-09-18 — TS-3.1 sandbox adversarial corpus: fixed a real exit-code bug + closed the symlink-escape gap
+- What: `tests/test_cmd_exec_adversarial.c` (TS-3.1) table-drives the full adversarial argument corpus
+  from the test plan against `src/agent/cmd_exec.c`. Found and fixed two real issues along the way:
+  (1) `execute_command()` could report exit code 0 for a command that actually failed, because the
+  read loop's pipe-EOF branch broke out without ever calling `waitpid()` — fixed by reaping the child
+  there too. (2) The documented "symlink escape" known gap (a relative name that is itself a symlink
+  pointing outside the CWD bypassed the lexical `..`/absolute-path check) is now closed: added
+  `path_escapes_cwd_via_symlink()`, a `realpath()`+`getcwd()` prefix check.
+- Affected: `src/agent/cmd_exec.c`, `include/threading/thread_pool.h` unaffected (separate fix earlier
+  today). Needed `_DEFAULT_SOURCE` for `realpath()` under strict `-std=c99` on clang (gcc didn't need it).
+- Verified: `test_cmd_exec_adversarial` 69/69, `test_cmd_exec` 22/22, full release/test/debug green on
+  gcc and clang. See `mistakes.md` 2026-09-18 for full detail.
+
+### 2026-09-18 — TS-5.3: added `make test-tsan`, found and fixed a real thread-pool data race
+- What: added `CFLAGS_TSAN`/`LDFLAGS_TSAN` and a `make test-tsan` target (`Makefile`) scoped to the
+  thread pool, parallel matmul, and API server concurrency surfaces (`audit_threadpool_stress`,
+  `test_threading`, `test_api_server`, `test_q4k_x8_matmul`, `test_q2_0_matmul`) — TSan was previously
+  entirely missing from this project's sanitizer coverage.
+- Found: `ThreadPool.shutdown` (`include/threading/thread_pool.h`) was a plain `bool` read without the
+  mutex in `worker_entry()`'s lock-free spin fast path while written under the mutex in
+  `threadpool_destroy()` — a real data race (undefined behavior, not just a TSan nag) that could in
+  principle let an optimizing compiler hoist the read out of the spin loop and hang shutdown. Fixed by
+  making it `atomic_bool` with explicit acquire/release ops at every site, matching the struct's
+  existing atomics. See `mistakes.md` 2026-09-18 for full details.
+- Verified: `make test-tsan` now reports 0 races on gcc and clang; full `release`/`test`/`debug` still
+  green on both compilers after the fix.
+
+### 2026-09-18 — TS-1.1 differential dequant testing vs real ggml: found and fixed a genuine IQ4_NL bug + a Makefile build-staleness bug
+- What: built a pinned llama.cpp/ggml reference (`4fea119de30f6a923992780f6fd5ccb0bee5d47d`) and wrote
+  `tools/difftest_dequant.c` (TS-1.1), which quantizes a deterministic tensor with ggml's real
+  `ggml_quantize_chunk()` and compares ggml's real `dequantize_row_<type>()` against this repo's
+  `gguf_dequant_<type>()` for bit-exact equality across all 20 non-trivial types.
+- Found: `IQ4_NL` used interleaved-pair nibble packing instead of ggml's split-half layout (this repo's
+  own `IQ4_XS` decoder already used the correct layout for the same codebook). Fixed in
+  `src/core/gguf_quant.c`; added regression coverage in `tests/test_gguf_quant_new_formats.c`
+  (`test_iq4_nl_single_block`). All 20 types now bit-exact; see `mistakes.md` 2026-09-18 for full RCA
+  and its relation to the 2026-09-17 open degenerate-output bug.
+- Found (while validating the fix via `make release && make test && make debug`): `make debug` run
+  after `make release` silently links stale, non-sanitized objects (0 ASan/UBSan symbols) because
+  `build/%.o` paths are shared across CFLAGS variants and Make only checks mtimes. Fixed in `Makefile`
+  with a `build/.variant` stamp that forces a clean rebuild on variant switch. See `mistakes.md`
+  2026-09-18 for details. Verified release/test/debug all green, gcc and clang.
+- Added: `tests/test_gguf_geometry.c` (TS-1.2, byte-exact geometry assertions via the real
+  `gguf_read_header()` parsing path, 153 assertions) and `tools/difftest_dequant.c` (not a `tests/*.c`
+  file — depends on an external llama.cpp checkout at `/tmp/llama-ref`, run manually, not part of
+  `make test`).
+- Closed the 2026-09-17 open bug (dense llama-arch models with IQ4_NL/IQ4_XS/Q3_K weights producing
+  degenerate repeating-token output): re-downloaded `bartowski/SmolLM2-135M-Instruct-GGUF`'s Q3_K_S and
+  IQ4_XS variants (TS-4 repro) and re-ran the exact original prompts after the IQ4_NL fix — both now
+  produce fully coherent, correct output at `--temperature 0` with no degeneration over 40 tokens. The
+  nibble-packing bug was the entire root cause.
+
+### 2026-09-17 — Agent sandbox hardening: argument-level exec policy (Tier 1 item 3)
+- What: `src/agent/cmd_exec.c`'s allow-list only ever checked the command *name*
+  (echo/ls/cat/pwd/uname/date/id), never its arguments -- `cat`/`ls` could read any file the
+  process could read, and a deployment with `PROJECT_ZERO_AGENT_AUTO_APPROVE=1` set gets zero
+  human review of that before it runs (see `user_approval.c`). Added
+  `exec_policy_allows_args()`: confines `cat`/`ls` path arguments to the CWD subtree (no
+  absolute paths, no `~`, no `..` traversal segment), restricts `date` to read-only forms (no
+  args or `+FORMAT` only, blocking `-s`/`--set`). Added `setrlimit(RLIMIT_CPU/RLIMIT_AS)` in
+  the forked child as defense-in-depth independent of the parent's own timeout loop.
+- Correction to the architecture doc's own framing: `CPU_LLM_TERNARY_ENGINE.md` calls the
+  current exec path "terrifyingly dangerous" and frames it as `popen()`-based; it's actually
+  `fork()`+`execvp()` (no shell), so there was never a shell-metacharacter injection vector --
+  the real, confirmed gap was argument-level path confinement, not shell injection. Corrected
+  in `docs/architecture/IMPLEMENTATION_PLAN.md`'s Phase 14 section.
+- Verification: 7 new assertions in `tests/test_cmd_exec.c` (path confinement, ".." detection
+  including the "not actually traversal" edge cases like `"..."`/`"foo..bar.txt"`, the `date`
+  restriction, confirming unrelated allow-listed commands aren't accidentally over-restricted,
+  and an end-to-end check that `execute_command()` itself -- not just the policy function in
+  isolation -- rejects `cat /etc/hostname`). Not verified via live LLM tool-call elicitation
+  (coaxing a real small model into emitting a malicious `<exec>` tag deterministically isn't a
+  reliable test) -- the security boundary itself is deterministic and fully covered by direct
+  unit/integration tests of the sandbox.
+- Why: user's `/goal` — Tier 1 item 3, completing all three Tier 1 items.
+- Areas: `include/agent/cmd_exec.h`, `src/agent/cmd_exec.c`, `tests/test_cmd_exec.c`,
+  `docs/architecture/IMPLEMENTATION_PLAN.md`.
+
+### 2026-09-17 — Phase 20: Grammar-constrained JSON-mode decoding
+- What: implemented grammar-constrained decoding for JSON output, wired into the CLI (`--json`
+  flag, REPL `/json` toggle) and the API (`"response_format": {"type": "json_object"}`, matching
+  OpenAI's actual request schema). Deliberately built a JSON-specific pushdown automaton
+  instead of the plan's generic flat-FSM/BNF-compiler design — a flat FSM (no stack) cannot
+  represent JSON's real, unbounded-nesting grammar without hard-coding a max depth, which the
+  project's own "no hardcoding" rule exists to avoid. Full rationale and file map in
+  `docs/architecture/IMPLEMENTATION_PLAN.md`'s Phase 20 section.
+- Verified against a real downloaded model (`bartowski/SmolLM2-135M-Instruct-GGUF`, Q8_0), both
+  via the CLI and the live API server: `response_format=json_object` produced
+  `{"fruit_name": "apple", "fruit_color": "red", "fruit_calories": 500}` (clean, parses with
+  `json.loads`), vs. the same prompt without it producing a stray ` ```json ` fence plus
+  trailing prose that would break a naive parser.
+- One related, deliberately-deferred observation from that testing: the CLI's startup
+  banner/hardware-profile/model-config diagnostics print to stdout (not stderr), so
+  `--json`'s own output is clean but piping `adaptive_ai_engine --json ... | jq` still needs to
+  skip the banner first. Fixing that means auditing/redirecting many pre-existing `printf()`
+  call sites in `src/cli/main.c` unrelated to this feature — flagged here rather than done as a
+  drive-by change in this pass; the API path (already wired, returns clean structured JSON with
+  no stdout concern at all) is the better-suited integration point for programmatic use anyway.
+- Not wired into `src/agent/agent_loop.c` (which has its own, separate sampling cascade) --
+  which part of an agentic turn should be JSON-constrained is a real design decision, not an
+  oversight; left for a follow-up rather than guessed at.
+- Why: user's `/goal` — Tier 1 item 2.
+- Areas: `include/sampling/{grammar,fsm,constrained_sample}.h` (new),
+  `src/sampling/{grammar_json,fsm,constrained_sample}.c` (new), `tests/{test_grammar_json,
+  test_fsm}.c` (new, 47+25 assertions), `include/transformer/generate.h` + `src/transformer/
+  generate.c` (new `json_mode` parameter), `include/cli/args.h` + `src/cli/{args,main,repl}.c`,
+  `include/api/chat_request.h` + `src/api/{json_parse,http_server}.c`, `CMakeLists.txt`
+  (SAMPLING_SOURCES), `docs/architecture/IMPLEMENTATION_PLAN.md`.
+
+### 2026-09-17 — Phase 37 complete (all 16 GGUF quant sub-formats) + real-model test surfaced a new open bug
+- What: implemented Q4_1, Q8_1, Q8_K, IQ2_XXS/IQ2_XS/IQ2_S, IQ3_XXS/IQ3_S, IQ1_S/IQ1_M, IQ4_XS dequant
+  functions (`src/core/gguf_quant.c`), completed the `GGUFType` enum, extracted BF16 dequant, and fixed
+  a real bug found along the way (`gguf_block_size(Q8_1)` in `gguf_reader.c` was 40 bytes, should be 36 —
+  the plan doc's own "d fp32 + s fp32" field description was wrong, both are fp16). All codebook tables
+  for the IQ-family (iq1s_grid, iq2xxs/xs/s_grid, iq3xxs/s_grid, ksigns_iq2xs) were extracted
+  programmatically from a freshly-fetched copy of llama.cpp's `ggml-common.h`, not hand-transcribed, to
+  avoid errors across ~2500 hex table entries. New `tests/test_gguf_quant_new_formats.c` (64 assertions,
+  ground-truth hand-computed expected values, not self-consistency checks). Also corrected two
+  IMPLEMENTATION_PLAN.md mismarks found along the way: 37.2 (Q3_K) and 37.9 (IQ4_NL) were already fully
+  implemented but marked "pending" — same doc-lag pattern as the earlier progress-audit session.
+- Real-model testing (per explicit user instruction to test every substep against downloaded models, not
+  just synthetic fixtures): downloaded 4 variants of `bartowski/SmolLM2-135M-Instruct-GGUF` (Q8_0, Q4_0,
+  Q3_K_S, IQ4_XS). Q8_0/Q4_0 work correctly; Q3_K_S/IQ4_XS produce degenerate repeating-token output.
+  Spent significant additional effort proving the new dequant code is NOT the cause (bit-exact verified
+  against real file bytes at multiple tensor positions, matching an independent reimplementation of
+  llama.cpp's actual algorithms) before concluding the root cause is elsewhere and logging it as an open,
+  unresolved bug rather than either silently shipping a false "tested and working" claim or burning
+  unbounded further time chasing it single-session. Full writeup: `docs/ai/mistakes.md` 2026-09-17 entry.
+- Why: user's `/goal` — "complete tier 1 [doc-hygiene items already done + Phase 37 + grammar decoding +
+  agent sandbox hardening]. Continuously keep testing every substeps using models downloaded sequentially."
+- Areas: `src/core/{gguf_quant,gguf_loader,gguf_reader}.c`, `include/core/{gguf_quant,gguf_reader}.h`,
+  `tests/test_gguf_quant_new_formats.c` (new), `docs/architecture/IMPLEMENTATION_PLAN.md`,
+  `docs/ai/mistakes.md`. Models downloaded to `models/` for testing, deleted after (not committed,
+  `models/` is gitignored).
+
+### 2026-09-17 — IMPLEMENTATION_PLAN.md doc-hygiene sweep (progress audit follow-up)
+- What: a full architecture/implementation-plan progress audit (live `make release`/`make test`
+  run + cross-referencing `docs/architecture/IMPLEMENTATION_PLAN.md` against actual `src/`/
+  `tests/`/`tools/` contents and the companion `docs/architecture/CPU_LLM_TERNARY_ENGINE.md`)
+  found the plan doc had stalled updating its header-level ✅ marks around Phase 16-S/K-5, even
+  though Phases 10, 11, 12, 13, 15, 16-D, 16-E, 17 (correctness only — perf still open), 24
+  (YaRN — the single biggest miss, fully shipped with zero prior acknowledgment), 34.2b, 34.5,
+  and 35 were all implemented, tested, and in some cases already documented as done in
+  `CPU_LLM_TERNARY_ENGINE.md`'s own "Implementation Record" sections. Added ✅ markers with
+  evidence (file paths, test files, decision-log dates) to all 12 headers. Also found and fixed
+  a genuine cross-doc inconsistency: `IMPLEMENTATION_PLAN.md`'s numeric "Phase 22" (unbuilt
+  Mamba/RWKV state-space support) collided with `decision-log.md`/`mistakes.md`/
+  `change-trace.md`'s own pervasive use of "Phase 22" (sub-phases 22.0-22.5) for the
+  already-shipped Web UI & API/DX hardening work — renamed the plan doc's phase to "22-SSM"
+  with an explicit disambiguation note pointing at the other three docs, rather than touching
+  their historical entries. (One earlier claim from the audit subagent — that Phase 15's header
+  had a mojibake character instead of a ✅ — was checked and found to be a false positive from
+  reading raw UTF-8 bytes via `cat -A`/`grep`; the header already had a correct ✅, left as-is.)
+- Why: `docs/ai/tool-sync-policy.md`/`.claude/rules/docs.md` call for proactively keeping
+  `docs/ai/**` and related canonical docs synced with reality, without being asked per-instance;
+  user explicitly asked for this sweep after reviewing the audit.
+- Areas: `docs/architecture/IMPLEMENTATION_PLAN.md` only (doc-only change, no engine code
+  touched). No new bugs found beyond what the audit's "known open risks" list already covered
+  (MoE perf gap, Qwen3-8B dense throughput gap, issue #32 segfault, classifier re-benchmark,
+  pre-2026-07-17 ceiling claims needing re-verification — all pre-existing and already tracked
+  elsewhere, not introduced by this sweep).
 
 ### 2026-08-04 — DeepSeek MoE benchmark run: project-zero vs colibri vs llama.cpp
 - What: user asked to run DeepSeek MoE on project-zero, colibri (`shifulegend/colibri`), and

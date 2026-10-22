@@ -205,11 +205,11 @@ architecture routers (Phases 35 and 22).
 
 | Item | Current state | Target |
 |------|---------------|--------|
-| **CLI binary name** | Binary ships as `adaptive_ai_engine` (`Makefile:TARGET`) | Rename to `projectzero` |
+| **CLI binary name** | ✅ Done in Phase 39 (2026-10-21): binary `pz`, `adaptive_ai_engine` alias symlink for one release | — |
 
 ### CLI binary rename — full research (so this doesn't need to be re-done)
 
-Not implemented — deferred, research-only. Three independent full-repo searches (run blind of
+**Executed as Phase 39 (2026-10-21) with binary name `pz` — see IMPLEMENTATION_PLAN.md Phase 39. The research below is kept as the pre-check record.** Three independent full-repo searches (run blind of
 each other, then cross-checked) converged on the same numbers, giving high confidence in
 completeness:
 

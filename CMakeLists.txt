@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.12)
-project(adaptive_ai_engine C CXX)
+project(project_zero C CXX)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -42,6 +42,11 @@ if(NOT PZ_VERSION)
     set(PZ_VERSION "dev")
 endif()
 add_compile_definitions(PZ_VERSION=${PZ_VERSION})
+# Phase 38: forks/packagers point update notifications at their own releases.
+set(PZ_UPDATE_REPO "" CACHE STRING "owner/name whose GitHub Releases drive update notices (empty = upstream)")
+if(PZ_UPDATE_REPO)
+    add_compile_definitions(PZ_UPDATE_REPO=${PZ_UPDATE_REPO})
+endif()
 
 # In the portable build the SIMD kernels carry their own ISA per-file, so keep
 # the GLOBAL flags at the baseline (no project-wide -mavx2/-mavx512).
@@ -123,6 +128,8 @@ set(CORE_SOURCES
     src/core/error.c
     src/core/gguf_quant.c
     src/core/hardware_profile.c
+    src/core/bw_cache.c
+    src/core/text_file.c
     src/core/calibration.c
     src/core/mla_run_state.c
     src/core/moe_config.c
@@ -135,7 +142,9 @@ set(CORE_SOURCES
     src/core/unpack.c
     src/core/unpack_avx2.c
     src/core/gguf_reader.c
+    src/core/gguf_i2s.c
     src/core/gguf_loader.c
+    src/core/lora_load.c
 )
 
 set(MATH_SOURCES
@@ -151,6 +160,8 @@ set(MATH_SOURCES
     src/math/matmul_q5_1.c
     src/math/matmul_q8_0.c
     src/math/matmul_q5k.c
+    src/math/matmul_q6k.c
+    src/math/q8_0_act.c
     src/math/matmul_q2_0.c
     src/math/matmul_q2_0_vnni.c
     src/math/parallel_matmul.c
@@ -165,13 +176,20 @@ set(MATH_SOURCES
     src/math/softmax_avx512.c
     src/math/ternary_matmul_avx2.c
     src/math/ternary_matmul_scalar.c
+    src/math/ternary_matmul_branchless.c
     src/math/ternary_matmul_packed.c
     src/math/ternary_matmul_packed_avx2.c
     src/math/ternary_matmul_packed_avx512.c
+    src/math/ternary_matmul_lut_avx512bw.c
     src/math/ternary_matmul_packed_vnni.c
     src/math/ternary_matmul_packed_avx_vnni.c
     src/math/ternary_matmul_packed_dotprod.c
     src/math/ternary_matmul_packed_vnni256.c
+    src/math/ternary_matmul_packed_neon.c
+    src/math/batched_matmul.c
+    src/math/batched_matmul_f16.c
+    src/math/batched_matmul_classifier.c
+    src/math/lora_matmul.c
 )
 
 set(MULTIMODAL_SOURCES
@@ -187,17 +205,20 @@ set(MULTIMODAL_SOURCES
 set(MEMORY_SOURCES
     src/memory/aligned_alloc.c
     src/memory/mapped_file.c
+    src/memory/file_backed.c
 )
 
 set(THREADING_SOURCES
     src/threading/cpu_probe.c
     src/threading/thread_pool.c
+    src/threading/cache_probe.c
 )
 
 set(TOKENIZER_SOURCES
     src/tokenizer/chat_template.cpp
     src/tokenizer/tokenizer_load.c
     src/tokenizer/tokenizer_encode.c
+    src/tokenizer/pretokenize.c
     src/tokenizer/tokenizer_decode.c
     src/tokenizer/tokenizer_gguf.c
 )
@@ -210,9 +231,14 @@ set(TRANSFORMER_SOURCES
     src/transformer/generate.c
     src/transformer/mla_attention.c
     src/transformer/moe_ffn.c
+    src/transformer/moe_experts.c
     src/transformer/moe_router.c
     src/transformer/qwen35_attention.c
     src/transformer/qwen3moe_attention.c
+    src/transformer/gen_params.c
+    src/transformer/stop_seq.c
+    src/transformer/attn_tiled.c
+    src/transformer/mamba.c
 )
 
 set(SAMPLING_SOURCES
@@ -221,22 +247,48 @@ set(SAMPLING_SOURCES
     src/sampling/temperature.c
     src/sampling/top_p.c
     src/sampling/top_k.c
+    src/sampling/grammar_json.c
+    src/sampling/fsm.c
+    src/sampling/constrained_sample.c
+    src/sampling/sampler_chain.c
+    src/sampling/watermark.c
+    src/sampling/watermark_text.c
+    src/sampling/logprob.c
 )
 
 set(KV_CACHE_SOURCES
     src/kv_cache/kv_compress.c
     src/kv_cache/sliding_window.c
     src/kv_cache/kv_strategy.c
+    src/kv_cache/prefix_cache.c
+    src/kv_cache/prompt_store.c
+    src/kv_cache/kv_quant_ops.c
+    src/math/kvq4_avx2.c
+    src/math/kvq4_avx512.c
+)
+
+set(SPECULATIVE_SOURCES
+    src/speculative/spec_scratch.c
+    src/speculative/draft_model.c
+    src/speculative/accept_reject.c
+    src/speculative/spec_decode.c
 )
 
 set(REASONING_SOURCES
     src/reasoning/thought_filter.c
     src/reasoning/prompt_inject.c
     src/reasoning/reasoning_generate.c
+    src/reasoning/best_of.c
+    src/reasoning/prm.c
+    src/reasoning/mcts.c
+    src/reasoning/mcts_options.c
 )
 
 set(CLI_SOURCES
     src/cli/args.c
+    src/cli/program_name.c
+    src/cli/config_cmd.c
+    src/config/pz_config.c
     src/cli/timer.c
     src/cli/repl.c
     src/cli/color.c
@@ -244,6 +296,7 @@ set(CLI_SOURCES
     src/cli/live_stats.c
     src/cli/md_render.c
     src/cli/banner.c
+    src/cli/model_load.c
 )
 
 set(API_SOURCES
@@ -260,6 +313,12 @@ set(API_SOURCES
     src/api/static_assets.c
     src/api/webui_bundle_generated.c
     src/api/data_url.c
+    src/api/json_write.c
+    src/api/request_params.c
+    src/api/api_info.c
+    src/api/watermark_endpoint.c
+    src/api/update_endpoint.c
+    src/api/gen_queue.c
 )
 
 set(RAG_SOURCES
@@ -269,6 +328,25 @@ set(RAG_SOURCES
     src/rag/memory_search.c
     src/rag/similarity.c
     src/rag/vector_db.c
+)
+
+set(DISTRIBUTED_SOURCES
+    src/distributed/tensor_rpc.c
+    src/distributed/dist_plan.c
+)
+
+set(EVAL_SOURCES
+    src/eval/perplexity.c
+)
+
+set(BRAND_SOURCES
+    src/brand/block_font.c
+)
+
+set(UPDATE_SOURCES
+    src/update/release_links.c
+    src/update/semver.c
+    src/update/update_check.c
 )
 
 set(AGENT_SOURCES
@@ -289,18 +367,23 @@ set(SOURCES
     ${TRANSFORMER_SOURCES}
     ${SAMPLING_SOURCES}
     ${KV_CACHE_SOURCES}
+    ${SPECULATIVE_SOURCES}
     ${REASONING_SOURCES}
     ${CLI_SOURCES}
     ${API_SOURCES}
     ${RAG_SOURCES}
     ${AGENT_SOURCES}
+    ${DISTRIBUTED_SOURCES}
+    ${UPDATE_SOURCES}
+    ${BRAND_SOURCES}
+    ${EVAL_SOURCES}
 )
 
 # ---------------------------------------------------------------------------
 # Main target
 # ---------------------------------------------------------------------------
-add_executable(project-zero src/cli/main.c ${SOURCES})
-target_link_libraries(project-zero PRIVATE Threads::Threads m)
+add_executable(pz src/cli/main.c ${SOURCES})
+target_link_libraries(pz PRIVATE Threads::Threads m)
 
 # Portable multiversioning (mirrors the Makefile `dist` per-file ISA rules):
 # each SIMD kernel TU carries its own ISA; simd_dispatch.c stays at the baseline
@@ -312,11 +395,13 @@ if(PZ_DIST AND NOT MSVC)
         src/math/elementwise_avx2.c src/math/rmsnorm_avx2.c src/math/softmax_avx2.c
         src/core/unpack_avx2.c
         src/math/matmul_q4k.c src/math/matmul_q4k_x8.c src/math/matmul_q2k.c src/math/matmul_q8_0.c
-        src/math/matmul_q5_0.c src/math/matmul_q5_1.c src/math/matmul_q5k.c
-        src/math/matmul_f16.c src/math/quantize_i8.c src/math/parallel_matmul.c)
+        src/math/matmul_q5_0.c src/math/matmul_q5_1.c src/math/matmul_q5k.c src/math/matmul_q6k.c
+        src/math/matmul_f16.c src/math/quantize_i8.c src/math/parallel_matmul.c
+        src/math/q8_0_act.c src/math/kvq4_avx2.c)
     set(PZ_AVX512_SRCS
-        src/math/ternary_matmul_packed_avx512.c src/math/elementwise_avx512.c
-        src/math/rmsnorm_avx512.c src/math/softmax_avx512.c)
+        src/math/ternary_matmul_packed_avx512.c src/math/ternary_matmul_lut_avx512bw.c
+        src/math/elementwise_avx512.c
+        src/math/rmsnorm_avx512.c src/math/softmax_avx512.c src/math/kvq4_avx512.c)
     set_source_files_properties(${PZ_AVX2_SRCS} PROPERTIES
         COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
     set_source_files_properties(${PZ_AVX512_SRCS} PROPERTIES
@@ -330,9 +415,9 @@ if(PZ_DIST AND NOT MSVC)
         COMPILE_OPTIONS "-mavx512vnni;-mavx512vl;-mf16c")
     set_source_files_properties(src/math/ternary_matmul_packed_avx_vnni.c PROPERTIES
         COMPILE_OPTIONS "-mavxvnni")
-    set_source_files_properties(src/math/simd_dispatch.c PROPERTIES
+    set_source_files_properties(src/math/simd_dispatch.c src/core/calibration.c PROPERTIES
         COMPILE_DEFINITIONS "TN_FORCE_DISPATCH_ALL")
-    target_link_options(project-zero PRIVATE -static-libstdc++ -static-libgcc)
+    target_link_options(pz PRIVATE -static-libstdc++ -static-libgcc)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -357,6 +442,8 @@ if(ENABLE_TESTS)
         target_link_options(${TEST_NAME} PRIVATE
             $<$<NOT:$<C_COMPILER_ID:MSVC>>:-fsanitize=address -fsanitize=undefined>
         )
-        add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+        # Tests read repo-relative assets (README.md, tests/assets/...) exactly like
+        # `make test`, which runs from the source root.
+        add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME} WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
     endforeach()
 endif()

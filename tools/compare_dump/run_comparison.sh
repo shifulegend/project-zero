@@ -68,7 +68,7 @@ echo ""
 echo "━━━ [2/3] Our engine forward pass ━━━━━━━━━━━━━━━━━━━━"
 echo "    RAM before: $(ram_mb) MB"
 
-"${PROJECT}/adaptive_ai_engine" \
+"${PROJECT}/pz" \
     --model         "${MODEL}" \
     --tokenizer     "${TOKENIZER}" \
     --threads       4 \

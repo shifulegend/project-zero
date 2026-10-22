@@ -4,6 +4,7 @@
  */
 
 #include "api/server_config.h"
+#include "reasoning/best_of.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -11,6 +12,19 @@ void server_config_init(ServerConfig *sc) {
     if (!sc) return;
     memset(sc, 0, sizeof(*sc));
     sc->web_ui = WEBUI_MODE_AUTO;
+    gen_params_default(&sc->gen_defaults);
+    sc->max_tokens_limit = 0; /* 0 = no cap beyond the model context */
+    sc->prompt_cache = 1;     /* reuse shared prompt prefixes by default */
+    sc->prompt_cache_mb = 0;  /* main.c sets the CLI value (default 256) */
+    sc->prompt_cache_min_tokens = 32;
+    sc->chat_format = -1;
+    sc->allow_request_template = 1;
+    sc->mcts_max = 64;
+    mcts_options_defaults(&sc->mcts);
+    sc->best_of = 1;
+    sc->queue_size = 0;
+    sc->queue_timeout_s = 120;
+    sc->best_of_max = BEST_OF_MAX_DEFAULT;
 }
 
 int server_config_add_cors_origin(ServerConfig *sc, const char *origin) {
@@ -37,4 +51,8 @@ void server_config_free(ServerConfig *sc) {
     sc->vision_path = NULL;
     free(sc->proj_path);
     sc->proj_path = NULL;
+    free(sc->model_id);
+    sc->model_id = NULL;
+    free(sc->ui_title);
+    sc->ui_title = NULL;
 }

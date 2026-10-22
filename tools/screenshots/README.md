@@ -8,7 +8,7 @@ screenshots graded against `docs/design/ui-ux-principles.md`.
 1. Build the engine and start a server with the web UI on and a model loaded:
    ```bash
    make release
-   ./adaptive_ai_engine --model models/smollm2.gguf --server --port 8080 --threads 2 &
+   ./pz --model models/smollm2.gguf --server --port 8080 --threads 2 &
    ```
 2. Run the capture script (uses the `playwright` package):
    ```bash
@@ -30,7 +30,7 @@ screenshots graded against `docs/design/ui-ux-principles.md`.
    ```bash
    node tools/screenshots/cli/capture.mjs \
      docs/design/screenshots/cli-repl.png "REPL: --color always" \
-     -- ./adaptive_ai_engine --model models/smollm2.gguf --color always --threads 2
+     -- ./pz --model models/smollm2.gguf --color always --threads 2
    ```
 
 ## After capturing

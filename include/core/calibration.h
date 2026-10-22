@@ -35,9 +35,16 @@
  */
 
 #define TN_CALIB_MAGIC    0x505A4341  /* "PZCA" */
-#define TN_CALIB_VERSION  2           /* bumped: added thread sweep arrays */
+#define TN_CALIB_VERSION  3           /* 3: "auto" candidate + override margin (2026-10-18) */
 
 #define TN_CALIB_MAX_THREADS 16       /* max thread counts tracked in sweep */
+
+/* SIMD candidates: "auto" (the dispatcher's CPUID pick, e.g. AVX-VNNI, which no
+ * forced value selects) + every forceable tier. A forced tier replaces "auto"
+ * only when clearly faster: median > auto median * TN_CALIB_OVERRIDE_MARGIN and
+ * its slowest rep beats auto's median — otherwise run-to-run noise decides. */
+#define TN_CALIB_SIMD_N          6
+#define TN_CALIB_OVERRIDE_MARGIN 1.05
 
 typedef struct {
     /* Hardware fingerprint (for cache invalidation) */
@@ -48,9 +55,10 @@ typedef struct {
     size_t l3_cache_bytes;
 
     /* SIMD backend comparison: median tok/s per backend (0 = not tested) */
-    double simd_tokps[4];      /* [0]=scalar, [1]=avx2, [2]=avx512f, [3]=vnni */
+    double simd_tokps[TN_CALIB_SIMD_N]; /* see tn_calibration_simd_names(); [0] = "auto" */
     int    best_simd_idx;      /* index into simd_tokps[] */
-    char   best_simd_name[32]; /* e.g. "avx2", "vnni" */
+    char   best_simd_name[32]; /* "auto" = keep the dispatcher's own choice */
+    char   auto_backend[32];   /* what "auto" resolved to, e.g. "AVX-VNNI" */
 
     /* Classifier bandwidth estimates (tok/s) */
     double cls_tokps[3];       /* [0]=bf16, [1]=int8, [2]=int4 */

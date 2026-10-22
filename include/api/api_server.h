@@ -27,6 +27,9 @@
 #include "api/server_config.h"
 #include "api/metrics.h"
 #include "api/cancel.h"
+#include "kv_cache/prefix_cache.h"
+#include "kv_cache/prompt_store.h"
+#include "api/gen_queue.h"
 #include <pthread.h>
 
 /* ── Inference context passed from main to API handler ──────────────────── */
@@ -37,6 +40,7 @@ typedef struct {
     const MoEConfig        *moe_cfg;
     Tokenizer              *tok;
     ThreadPool             *tp;
+    struct PrmModel        *prm;   /* Phase 30 judge for "mcts" requests; NULL = self-scored */
 
     /* Phase 22: server hardening state. server_config may be populated by
      * the caller (main.c) any time before api_server_start(); the others are
@@ -45,6 +49,17 @@ typedef struct {
     MetricsState    metrics;
     CancelState     cancel;
     pthread_mutex_t generation_mutex; /* serializes generate_with_callback calls */
+    /* Phase 23 stage 1: FIFO admission to the generation slot (max_waiting =
+     * --queue-size; 0 keeps the 429-when-busy behaviour). */
+    GenQueue        gen_queue;
+    /* Phase 21.5: which tokens currently sit in run_state's KV cache, so the
+     * next request can skip its shared prefix. Allocated lazily by the chat
+     * handler (under generation_mutex); process-lifetime like the rest. */
+    PrefixCache     prefix_cache;
+    /* Phase 26: snapshots of several sequences (LRU, byte budget from
+     * --prompt-cache-mb). Lazily initialised with prefix_cache. */
+    PromptStore     prompt_store;
+    int             prompt_store_ready;
 
     /* Server state (filled by api_server_start) */
     int   server_fd;            /* listening socket fd, -1 when stopped */

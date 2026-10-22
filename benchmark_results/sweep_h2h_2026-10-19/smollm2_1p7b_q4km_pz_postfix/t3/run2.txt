@@ -1,0 +1,117 @@
+=== smollm2_1p7b_q4km_pz_postfix t=3 run 2 ===
+DATE: 2026-10-19 05:21:14 UTC
+HOST_CPU: Intel(R) Xeon(R) Processor @ 2.80GHz (model 85, 4 vCPU)
+CMD: ./adaptive_ai_engine --model models/SmolLM2-1.7B-Instruct-Q4_K_M.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --max-tokens 500 --temperature 0 --threads 3 --no-update-check --raw-prompt --ignore-eos
+PROMPT: Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+============================================================
+[1/4] Opening model file...
+[2/4] Loading weights...
+[3/4] Preparing runtime...
+[gguf-tok] Loaded 49152 tokens (gpt2, pre=smollm), 17 special — BOS=1 EOS=2 chat_template=yes
+[4/4] Ready.
+####  ####   ###    ### #####  #### #####     ##### ##### ####   ### 
+#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #
+####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
+#     # #   #   # #  #  #     #       #        #    #     # #   #   #
+#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
+Project Zero Engine e9adee3 — Auto-Tuned Hardware
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512F                           │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15444  MiB                          │
+│ DRAM bandwidth: 33.5   GB/s (cached)                │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB (pre-load est.)           │
+│ Ceiling       : 28.6   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 3 threads | AVX-512F | BF16 cls | 4T | 33.5 GB/s | ceiling 29 tok/s
+Model format: GGUF
+Model Configuration:
+  dim:        2048
+  hidden_dim: 8192
+  n_layers:   24
+  n_heads:    32
+  n_kv_heads: 32
+  vocab_size: 49152
+  seq_len:    8192
+  act_type:   0 (SiLU)
+  rope_theta: 130000.0
+  head_dim:   64
+  kv_dim:     2048
+[GGUF] Weights loaded (24 layers, arch=llama)
+[profile] Data/token (loaded model): 1007 MB -> ceiling 31.7 tok/s at 33.5 GB/s
+KV cache: F32, max context: 8192 tokens (sizing tier: Quantized I8, RAM budget 60%)
+
+
+
+Machine learning is a subset of artificial intelligence that involves training algorithms to learn from data and make predictions or decisions without being explicitly programmed. It's a powerful tool for solving complex problems and making data-driven decisions.
+
+There are three main types of machine learning: supervised learning, unsupervised learning, and reinforcement learning.
+
+**Supervised Learning**
+
+In supervised learning, the algorithm is trained on labeled data, where each example is accompanied by a target output or response. The goal is to learn a mapping between input data and the corresponding output labels.
+
+Example: Image classification
+
+* Input: A picture of a dog
+* Output: The algorithm predicts whether the picture is a dog or not
+
+Supervised learning algorithms include:
+
+* Linear regression
+* Decision trees
+* Support vector machines (SVMs)
+* Neural networks
+
+**Unsupervised Learning**
+
+In unsupervised learning, the algorithm is trained on unlabeled data, and the goal is to discover patterns, relationships, or groupings in the data.
+
+Example: Clustering customers
+
+* Input: A dataset of customer information (age, income, location)
+* Output: The algorithm groups customers into clusters based on their characteristics
+
+Unsupervised learning algorithms include:
+
+* K-means clustering
+* Hierarchical clustering
+* Principal component analysis (PCA)
+
+**Reinforcement Learning**
+
+In reinforcement learning, the algorithm learns by interacting with an environment and receiving rewards or penalties for its actions. The goal is to learn a policy that maximizes the cumulative reward over time.
+
+Example: Playing a game
+
+* Input: A game environment (e.g., chess, Go)
+* Output: The algorithm learns to make moves that maximize its chances of winning
+
+Reinforcement learning algorithms include:
+
+* Q-learning
+* Deep Q-Networks (DQN)
+* Policy gradient methods
+
+Real-world examples of each type of machine learning:
+
+* **Supervised Learning:**
+	+ Image recognition: Google's image recognition service uses supervised learning to identify objects in images.
+	+ Speech recognition: Siri and Google Assistant use supervised learning to recognize spoken words and respond accordingly.
+* **Unsupervised Learning:**
+	+ Customer segmentation: Retailers use unsupervised learning to group customers based on their purchasing behavior and preferences.
+	+ Anomaly detection: Financial institutions
+[gen] 11.05 tok/s (500 tokens)
+
+
+
+PERF: wall=53.32s max_rss=2526MB cpu=267% exit=0

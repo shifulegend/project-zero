@@ -37,7 +37,7 @@ Run it yourself — one binary, no Python (model download ~7.2 GB):
 git clone https://github.com/shifulegend/project-zero && cd project-zero && make release
 curl -fL -o models/Ternary-Bonsai-27B-Q2_0.gguf \
   https://huggingface.co/prism-ml/Ternary-Bonsai-27B-gguf/resolve/main/Ternary-Bonsai-27B-Q2_0.gguf
-./adaptive_ai_engine --model models/Ternary-Bonsai-27B-Q2_0.gguf \
+./pz --model models/Ternary-Bonsai-27B-Q2_0.gguf \
   --prompt "What is the capital of France?" --max-tokens 60 --temperature 0 --threads 4
 ```
 
@@ -354,12 +354,18 @@ Full RCA, methodology, and status: [`docs/ai/mistakes.md`](docs/ai/mistakes.md) 
 **Option A — pre-built binary (Linux x86-64, no compiler needed):**
 
 ```bash
-wget https://github.com/shifulegend/project-zero/releases/download/v0.1.0/adaptive_ai_engine-0.1.0-x86_64-linux.tar.gz
-tar xf adaptive_ai_engine-0.1.0-x86_64-linux.tar.gz
-./adaptive_ai_engine --model models/bitnet-b1.58-2B-4T.bin \
+VER=0.2.0   # example: use the version shown on the Releases page
+NAME=project-zero-$VER-x86_64-unknown-linux-gnu
+wget https://github.com/shifulegend/project-zero/releases/download/v$VER/$NAME.tar.gz
+wget https://github.com/shifulegend/project-zero/releases/download/v$VER/SHA256SUMS
+sha256sum -c SHA256SUMS && tar xf $NAME.tar.gz && cd $NAME
+./pz --model models/bitnet-b1.58-2B-4T.bin \
   --tokenizer models/bitnet-b1.58-2B-4T_tokenizer_proper.bin \
   --prompt "The capital of France is"
 ```
+
+Releases before the Phase 39 rename shipped `adaptive_ai_engine-<ver>-x86_64-linux.tar.gz`
+with an `pz` binary — same program, old name.
 
 **Option B — build from source (60 seconds):**
 
@@ -427,7 +433,7 @@ SIMD: AVX-512 VNNI → AVX2 → NEON → Scalar, selected at startup.
 ## Architecture
 
 ```
-adaptive_ai_engine
+project-zero (binary: pz)
 ├── src/math/       AVX-512 VBMI ternary kernel, VNNI INT8/INT4, AVX2/NEON fallbacks
 ├── src/core/       mmap weight loader (zero-copy), GGUF architecture-agnostic parser
 ├── src/sampling/   top-p / temperature (static 200K buffer, no malloc per token)
@@ -455,7 +461,7 @@ Requirements: GCC or Clang, pthreads, libm. No other dependencies.
 ## CLI Reference
 
 ```bash
-./adaptive_ai_engine \
+./pz \
   --model   models/bitnet-b1.58-2B-4T.bin \
   --tokenizer models/bitnet-b1.58-2B-4T_tokenizer_proper.bin \
   --prompt  "Your prompt here" \
@@ -465,7 +471,7 @@ Requirements: GCC or Clang, pthreads, libm. No other dependencies.
 
 Key flags: `--temperature`, `--top-p`, `--seed`, `--classifier {bf16|int8|int4|auto}`, `--server --port 8080`, `--memory-db path.vrdb`, `--image photo.jpg --vision vision.bin --proj projector.bin`
 
-Full flag reference and REPL commands: run `./adaptive_ai_engine --help`
+Full flag reference and REPL commands: run `./pz --help`
 
 ---
 
@@ -481,7 +487,7 @@ install): streaming responses, adjustable sampling parameters, stop/cancel mid-g
 dark/light theme, and image upload (when the server is started with `--vision`/`--proj`).
 
 ```bash
-./adaptive_ai_engine --model models/smollm2.gguf --server --port 8080
+./pz --model models/smollm2.gguf --server --port 8080
 # open http://127.0.0.1:8080/ in a browser
 ```
 

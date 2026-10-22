@@ -9,8 +9,10 @@
 #include "core/moe_weights.h"
 #include "core/weights.h"
 #include "core/run_state.h"
+#include "core/lora.h"
 #include "core/hardware_profile.h"
 #include "core/calibration.h"
+#include "core/text_file.h"
 #include "core/debug.h"
 #include "memory/mapped_file.h"
 #include "memory/aligned_alloc.h"
@@ -19,13 +21,28 @@
 #include "threading/cpu_probe.h"
 #include "tokenizer/tokenizer.h"
 #include "tokenizer/tokenizer_gguf.h"
+#include "cli/program_name.h"
+#include "cli/config_cmd.h"
 #include "cli/args.h"
+#include "transformer/attn_tiled.h"
+#include "threading/cache_probe.h"
+#include "sampling/watermark_text.h"
+#include "reasoning/best_of.h"
+#include "reasoning/mcts.h"
+#include "reasoning/prm.h"
+#include "distributed/dist_plan.h"
+#include "update/update_check.h"
+#include "math/rope.h"
+#include "eval/perplexity.h"
+#include "cli/model_load.h"
 #include "cli/repl.h"
 #include "cli/progress.h"
 #include "cli/banner.h"
 #include "cli/color.h"
 #include "transformer/generate.h"
 #include "transformer/forward.h"
+#include "speculative/draft_model.h"
+#include "speculative/spec_decode.h"
 #include "math/simd_dispatch.h"
 
 /* Phase 15 RAG */
@@ -62,23 +79,101 @@
  * disposition) is unchanged. */
 static volatile sig_atomic_t g_shutdown_requested = 0;
 
+/* stdout sink for one-shot CLI generation paths that take a TokenCallback. */
+static int stdout_piece_callback(const char *piece, void *userdata) {
+    (void)userdata;
+    fputs(piece, stdout);
+    fflush(stdout);
+    return 0;
+}
+
 static void handle_shutdown_signal(int sig) {
     (void)sig;
     g_shutdown_requested = 1;
 }
 
+/* --perplexity: tokenize the file (BOS-prefixed, no chat template), score it
+ * like llama-perplexity and print running + final PPL. */
+static void ppl_progress(int chunk, const PplResult *r, void *user) {
+    (void)user;
+    printf("[%d]%.4f,", chunk + 1, r->ppl);
+    fflush(stdout);
+}
+
+static void run_perplexity(const CliArgs *args, const Config *p, const TransformerWeights *w,
+                           RunState *s, const MoEConfig *mc, Tokenizer *t, ThreadPool *tp) {
+    size_t rd = 0;
+    char *text = tn_read_text_file(args->perplexity_file, (size_t)64 << 20, &rd);
+    if (!text) { fprintf(stderr, "Error: cannot read %s (must be 1 B..64 MiB)\n", args->perplexity_file); return; }
+    int *toks = (int *)malloc((rd + 2) * sizeof(int));
+    if (!toks) { free(text); return; }
+    int bos = !t->add_bos_token ? -1 : (p->bos_token_id >= 0 ? p->bos_token_id : t->bos_token_id);
+    int n = 0;
+    if (bos >= 0) toks[n++] = bos;
+    int k = tokenizer_encode(t, text, rd, toks + n, (int)rd + 1);
+    if (k < 0) {
+        fprintf(stderr, "Error: could not tokenize %s\n", args->perplexity_file);
+    } else {
+        n += k;
+        PplOptions opt = { args->ppl_ctx, args->ppl_chunks, bos };
+        PplResult r;
+        printf("perplexity: %d tokens, n_ctx %d, %d chunk(s)\n", n,
+               opt.n_ctx < s->max_seq_len ? opt.n_ctx : s->max_seq_len,
+               args->ppl_chunks > 0 && args->ppl_chunks < n / opt.n_ctx ? args->ppl_chunks : n / opt.n_ctx);
+        TernaryError e = perplexity_eval(toks, n, &opt, p, w, s, mc, tp, ppl_progress, NULL, &r);
+        if (e != TN_OK) {
+            fprintf(stderr, "\nError: perplexity needs at least --ppl-ctx (%d) tokens\n", opt.n_ctx);
+        } else {
+            printf("\nFinal estimate: PPL = %.4f +/- %.5f  (%d tokens scored, %d chunks, %.1f s)\n",
+                   r.ppl, r.ppl_err, r.n_scored, r.n_chunks, r.seconds);
+        }
+    }
+    free(text);
+    free(toks);
+}
+
 int main(int argc, char **argv) {
+    pz_warn_if_legacy_invocation(argc > 0 ? argv[0] : NULL);
+    /* Phase 40: `pz config ...` manages the settings file; every other run
+     * reads it (and PZ_* env) as defaults placed before the user's flags. */
+    if (argc > 1 && strcmp(argv[1], "config") == 0)
+        return pz_config_command(argc - 1, argv + 1);
+    argc = pz_config_prepare_argv(argc, argv, &argv);
     CliArgs args;
     if (parse_args(&args, argc, argv) != TN_OK) {
         return 1;
     }
+    {
+        KVStrategyOptions kv_opt = { args.ctx_size, args.kv_ram_fraction, args.kv_type,
+                                     args.kv_offload_dir };
+        kv_strategy_set_options(&kv_opt);
+    }
+    (void)tn_cache_info(); /* Phase 27.1: probe once, before any worker threads */
 
     /* --version: print version + the SIMD backend selected for this CPU, then
      * exit 0. tn_simd_init() only probes CPUID, so no model is required. */
     if (args.show_version) {
-        printf("Project Zero Engine (adaptive_ai_engine) %s\n", PZ_VERSION_STR);
+        printf("Project Zero %s\n", PZ_VERSION_STR);
         printf("SIMD backend (this CPU): %s\n", tn_simd_init());
         return 0;
+    }
+
+    /* Phase 38: --check-update — explicit, synchronous, no model needed. */
+    if (args.check_update) {
+        UpdateOptions uo;
+        UpdateInfo ui;
+        args_fill_update_options(&args, &uo);
+        update_check(&uo, PZ_VERSION_STR, 1, &ui);
+        printf("current : %s\n", PZ_VERSION_STR);
+        printf("latest  : %s%s\n", ui.latest[0] ? ui.latest : "(none found)",
+               ui.latest_prerelease ? " (pre-release)" : "");
+        printf("channel : %s   repo: %s\n", update_channel_name(uo.channel), uo.repo);
+        printf("status  : %s%s%s\n", update_status_name(ui.status),
+               ui.error[0] ? " - " : "", ui.error);
+        if (ui.url[0]) printf("release : %s\n", ui.url);
+        if (ui.status == UPDATE_STATUS_AVAILABLE)
+            printf("verify the download with the release's SHA256SUMS (sha256sum -c SHA256SUMS)\n");
+        return ui.status == UPDATE_STATUS_AVAILABLE ? 3 : ui.status == UPDATE_STATUS_ERROR ? 1 : 0;
     }
 
     if (args.verbose) g_tn_verbose = 1;
@@ -113,6 +208,25 @@ int main(int argc, char **argv) {
 
     printf("Project Zero Engine %s — Auto-Tuned Hardware\n", PZ_VERSION_STR);
 
+    /* Detect model format by reading the 4-byte magic number, without a
+     * full mmap (load_gguf_model() below does its own mapped_file_open() for
+     * the GGUF case; the native case opens its own mf directly below) —
+     * a plain 4-byte read is all this decision needs. Done before the
+     * hardware probe and first-run calibration (2026-10-22) so a wrong
+     * --model path fails at once instead of after a minutes-long sweep. */
+    bool is_gguf = false;
+    {
+        FILE *magic_f = fopen(args.model_path, "rb");
+        if (!magic_f) {
+            fprintf(stderr, "Failed to open model file: %s\n", args.model_path);
+            return 1;
+        }
+        uint32_t file_magic = 0;
+        size_t n = fread(&file_magic, 1, sizeof(file_magic), magic_f);
+        fclose(magic_f);
+        is_gguf = (n == sizeof(file_magic) && file_magic == GGUF_MAGIC);
+    }
+
     /* ── SIMD backend selection ─────────────────────────────────────────── */
     /* CLI --simd override takes precedence over calibration and auto-detect.
      * Order: --simd flag > TN_FORCE_BACKEND env > calibration cache > auto */
@@ -123,7 +237,10 @@ int main(int argc, char **argv) {
 
     tn_simd_init();
 
-    /* Hardware Profile: auto-detect cores, cache, bandwidth, classifier format */
+    /* Hardware Profile: auto-detect cores, cache, bandwidth, classifier format.
+     * The DRAM bandwidth comes from a per-host cache (core/bw_cache.h);
+     * --calibrate re-measures it along with everything else. */
+    if (args.calibrate) setenv("PZ_BW_REPROBE", "1", 1);
     const TnHardwareProfile *hw = tn_hardware_profile_init();
 
     /* ── Calibration ────────────────────────────────────────────────────── */
@@ -133,12 +250,19 @@ int main(int argc, char **argv) {
     if (args.calibrate) {
         /* User explicitly requested calibration */
         tn_calibrate(&calib, hw);
-        tn_calibration_save(&calib);
+        /* A sanitizer build measures 5-20x slower than release: never let
+         * it overwrite the cache release builds read (2026-10-22). */
+        if (!TN_SANITIZED) tn_calibration_save(&calib);
         have_calib = true;
     } else {
         /* Try to load cached calibration */
         have_calib = tn_calibration_load(&calib, hw);
-        if (!have_calib) {
+        if (!have_calib && TN_SANITIZED) {
+            /* 2026-10-22: the first-run sweep took >2 min under ASan on a
+             * fresh CI runner (the fuzzer counted it as a hang) and would
+             * save meaningless timings. Auto-detected defaults instead. */
+            printf("[Calibration] Skipped: sanitizer build (timings not representative)\n");
+        } else if (!have_calib) {
             /* First run or hardware changed — auto-calibrate */
             printf("[Calibration] First run on this hardware — calibrating...\n");
             tn_calibrate(&calib, hw);
@@ -204,18 +328,11 @@ int main(int argc, char **argv) {
      * above, ahead of the startup banner.) */
     tn_progress_stage(1, 4, "Opening model file...", stdout_is_tty);
 
-    /* Map Model File */
-    MappedFile mf;
-    if (mapped_file_open(&mf, args.model_path) != TN_OK) {
-        fprintf(stderr, "Failed to map model file: %s\n", args.model_path);
-        threadpool_destroy(tp);
-        return 1;
-    }
-
-    /* Detect model format by reading the 4-byte magic number */
-    uint32_t file_magic = 0;
-    if (mf.size >= 4) memcpy(&file_magic, mf.data, 4);
-    bool is_gguf = (file_magic == GGUF_MAGIC);
+    /* Detect model format by reading the 4-byte magic number, without a
+     * full mmap (load_gguf_model() below does its own mapped_file_open() for
+     * the GGUF case; the native case opens its own mf directly below) —
+     * a plain 4-byte read is all this decision needs. */
+    /* (is_gguf was decided before calibration, see above.) */
 
     tn_progress_stage(2, 4, "Loading weights...", stdout_is_tty);
 
@@ -225,113 +342,35 @@ int main(int argc, char **argv) {
     MoEConfig mc;
     moe_config_init_dense(&mc); /* initialise to dense; overridden below for MoE models */
     GGUFHeader gguf_hdr;
+    memset(&gguf_hdr, 0, sizeof(gguf_hdr));
     GGUFWeightStore *gguf_store = NULL;
+    MappedFile mf;
+    RunState *s = NULL;
 
     if (is_gguf) {
-        printf("Model format: GGUF\n");
-
-        if (gguf_read_header(&gguf_hdr, mf.data, mf.size) != TN_OK) {
-            fprintf(stderr, "Failed to parse GGUF header.\n");
-            gguf_header_free(&gguf_hdr);
-            mapped_file_close(&mf);
+        LoadedModel lm;
+        TernaryError lerr = load_gguf_model(&lm, args.model_path, /*is_primary=*/true,
+                                             0, tp, stdout_is_tty);
+        if (lerr != TN_OK) {
+            fprintf(stderr, "Failed to load model: %s\n", tn_error_str(lerr));
             threadpool_destroy(tp);
             return 1;
         }
-        if (config_from_gguf(&p, &gguf_hdr) != TN_OK) {
-            fprintf(stderr, "Failed to read config from GGUF metadata.\n");
-            gguf_header_free(&gguf_hdr);
-            mapped_file_close(&mf);
-            threadpool_destroy(tp);
-            return 1;
-        }
-        config_print(&p);
-
-        /* For DeepSeek-V2 (MLA+MoE), Qwen3.5/3.6 (hybrid Gated-DeltaNet), or
-         * Qwen3-MoE (routed MoE + QK-norm) GGUF: populate MoEConfig ahead of
-         * weight loading. */
-        if (strcmp(gguf_hdr.arch, "deepseek2") == 0 || strcmp(gguf_hdr.arch, "qwen35") == 0 ||
-            strcmp(gguf_hdr.arch, "qwen3moe") == 0) {
-            if (moe_config_from_gguf(&mc, &gguf_hdr) != TN_OK) {
-                fprintf(stderr, "Failed to read MoE config from GGUF.\n");
-                mapped_file_close(&mf);
-                threadpool_destroy(tp);
-                return 1;
-            }
-            moe_config_print(&mc);
-        }
-
-        if (weights_alloc_pointers(&w, &p) != TN_OK) {
-            fprintf(stderr, "Failed to allocate weight pointers.\n");
-            mapped_file_close(&mf);
-            threadpool_destroy(tp);
-            return 1;
-        }
-        /* For MoE GGUF models (DeepSeek-V2), allocate per-layer/expert arrays. */
-        if (mc.is_moe) {
-            if (moe_weights_alloc(&w, &p, &mc) != TN_OK) {
-                fprintf(stderr, "Failed to allocate MoE weight pointer arrays.\n");
-                if (mc.is_moe) moe_weights_free(&w, &mc);
-                weights_free_pointers(&w);
-                mapped_file_close(&mf);
-                threadpool_destroy(tp);
-                return 1;
-            }
-        }
-        if (weights_from_gguf(&w, &p, &gguf_hdr, &gguf_store) != TN_OK) {
-            fprintf(stderr, "Failed to load GGUF weights.\n");
-            if (mc.is_moe) moe_weights_free(&w, &mc);
-            weights_free_pointers(&w);
-            mapped_file_close(&mf);
-            threadpool_destroy(tp);
-            return 1;
-        }
-
-        /* Correct the profiler's per-token traffic + ceiling with the real
-         * loaded model (2026-07-17): tn_hardware_profile_init() runs before
-         * the model file is opened and seeds Data/token with compile-time
-         * BitNet-2B constants (~1149 MB), overstating the ceiling ~6x for
-         * multi-GB GGUF models (docs/ai/mistakes.md). Accounting per class:
-         * Q2_0-native models subtract the embedding table (read one row per
-         * token, not streamed) and swap the raw Q2_0 LM head for the
-         * materialized classifier's bytes when one was explicitly requested.
-         * Generic GGUF uses the raw file size — an upper bound that still
-         * bills the full embedding table, since its tensor format (and thus
-         * byte size) isn't known generically here; tight for tied-embedding
-         * models, conservative otherwise. MoE models overcount (all experts,
-         * not just routed) — TODO: subtract inactive-expert bytes via
-         * MoEConfig. */
-        {
-            double per_tok = (double)mf.size;
-            double cls_bytes = 0.0;
-            const TnHardwareProfile *hp_m = tn_hardware_profile_get();
-            if (w.q35_is_q2_0_model) {
-                double q2_row = (double)p.vocab_size * p.dim * (34.0 / 128.0);
-                cls_bytes = q2_row; /* zero-copy raw Q2_0 head (default) */
-                if (hp_m && hp_m->classifier_explicit) {
-                    switch (hp_m->classifier_fmt) {
-                    case TN_CLS_INT4:
-                        cls_bytes = (double)p.vocab_size * p.dim * 0.5; break;
-                    case TN_CLS_INT8:
-                        cls_bytes = (double)p.vocab_size * p.dim;       break;
-                    default:
-                        cls_bytes = (double)p.vocab_size * p.dim * 2.0; break;
-                    }
-                }
-                /* drop embedding (one row/token) + in-file head, add the
-                 * head actually used */
-                per_tok -= 2.0 * q2_row;
-                per_tok += cls_bytes;
-            }
-            tn_hardware_profile_set_model_bytes(per_tok, cls_bytes);
-            if (hp_m) {
-                printf("[profile] Data/token (loaded model): %.0f MB -> "
-                       "ceiling %.1f tok/s at %.1f GB/s\n",
-                       per_tok / (1024.0 * 1024.0),
-                       hp_m->theoretical_ceiling, hp_m->measured_bw_gbps);
-            }
-        }
+        p = lm.config;
+        w = lm.weights;
+        mc = lm.moe_config;
+        s = lm.state;
+        mf = lm.mf;
+        gguf_hdr = lm.gguf_hdr;
+        gguf_store = lm.gguf_store;
     } else {
         printf("Model format: native ternary\n");
+
+        if (mapped_file_open(&mf, args.model_path) != TN_OK) {
+            fprintf(stderr, "Failed to map model file: %s\n", args.model_path);
+            threadpool_destroy(tp);
+            return 1;
+        }
 
         if (config_read(&p, mf.data, mf.size) != TN_OK) {
             fprintf(stderr, "Invalid model configuration.\n");
@@ -422,111 +461,103 @@ int main(int argc, char **argv) {
                        hp_n->theoretical_ceiling, hp_n->measured_bw_gbps);
             }
         }
-    }
 
-    tn_progress_stage(3, 4, "Preparing runtime...", stdout_is_tty);
+        tn_progress_stage(3, 4, "Preparing runtime...", stdout_is_tty);
 
-    /* KV Strategy — measured AFTER model weights are loaded so that any F32-dequantised
-     * weight allocations (MLA projections, shared experts, norms) are already counted in
-     * consumed RAM.  For mmap'd GGUF models the raw quantised expert bytes don't use
-     * physical RAM until accessed, so only the upfront malloc'd F32 blocks matter here.
-     * Re-measuring at this point prevents DeepSeek-style OOM where a 163840-token context
-     * would require 7+ GB KV cache on a machine that only has 2–3 GB left after load. */
-    {
-        tn_i64 post_load_ram = tn_get_free_ram();
-        KVStrategyResult kv_res = select_kv_strategy(&p, post_load_ram, &mc);
-        p.seq_len = kv_res.max_seq_len;
-        /* Qwen35 hybrid models keep their own F32 K/V caches
-         * (q35_key_cache/q35_value_cache, only the full-attention layers) —
-         * the quantized-KV strategy machinery is not wired into that path,
-         * so printing e.g. "Quantized I8" for them misreported what actually
-         * happens (2026-07-17, found during the ceiling-gap attribution;
-         * see docs/ai/mistakes.md). The RAM-aware max-context clamp from
-         * select_kv_strategy() still applies either way. Qwen3-MoE's own
-         * qwen3moe_key_cache/qwen3moe_value_cache are the same situation —
-         * independent head_dim, own F32 cache, not the quantized-KV path. */
+        /* KV Strategy — measured AFTER model weights are loaded so that any F32-dequantised
+         * weight allocations (MLA projections, shared experts, norms) are already counted in
+         * consumed RAM.  For mmap'd GGUF models the raw quantised expert bytes don't use
+         * physical RAM until accessed, so only the upfront malloc'd F32 blocks matter here.
+         * Re-measuring at this point prevents DeepSeek-style OOM where a 163840-token context
+         * would require 7+ GB KV cache on a machine that only has 2–3 GB left after load.
+         *
+         * This is the native-format twin of load_gguf_model()'s identical KV-strategy/
+         * RunState-allocation sequence (Phase 18 Stage 3) — native `.bin` models have no
+         * draft-model use case (see cli/model_load.h), so this stays inline here rather
+         * than sharing that GGUF-only helper. */
+        {
+            tn_i64 post_load_ram = tn_get_free_ram();
+            KVStrategyResult kv_res = select_kv_strategy(&p, post_load_ram, &mc);
+            p.seq_len = kv_res.max_seq_len;
+            kv_strategy_print(&kv_res, p.seq_len);
+        }
+
+        /* Setup RunState */
+        s = (RunState *)malloc(sizeof(RunState));
+        if (!s) {
+            fprintf(stderr, "Failed to allocate RunState header.\n");
+            if (mc.is_moe) moe_weights_free(&w, &mc);
+            weights_free_pointers(&w);
+            mapped_file_close(&mf);
+            threadpool_destroy(tp);
+            return 1;
+        }
+
+        /* Qwen3.5/3.6 hybrid models and Qwen3-MoE models never read the generic
+         * key_cache/value_cache (they use their own correctly-sized
+         * q35_key_cache/q35_value_cache or qwen3moe_key_cache/
+         * qwen3moe_value_cache, allocated below) — skip_kv_cache=true avoids a
+         * multi-GB calloc+memset for those models' context. See
+         * run_state_alloc_ex's header comment and docs/ai/mistakes.md. */
+        if (run_state_alloc_ex(s, &p, p.seq_len, mc.has_linear_attn || mc.has_qk_norm) != TN_OK) {
+            fprintf(stderr, "Failed to allocate RunState buffers.\n");
+            free(s);
+            if (mc.is_moe) moe_weights_free(&w, &mc);
+            weights_free_pointers(&w);
+            mapped_file_close(&mf);
+            threadpool_destroy(tp);
+            return 1;
+        }
+
+        /* Phase 17.7: MLA k_rope_cache (allocated only when has_mla=1) */
+        if (mc.has_mla) {
+            if (mla_run_state_alloc(s, &p, &mc, p.seq_len) != TN_OK) {
+                fprintf(stderr, "Failed to allocate MLA k_rope_cache.\n");
+                run_state_free(s);
+                free(s);
+                if (mc.is_moe) moe_weights_free(&w, &mc);
+                weights_free_pointers(&w);
+                mapped_file_close(&mf);
+                threadpool_destroy(tp);
+                return 1;
+            }
+        }
+
+        /* Qwen3.5/3.6 hybrid attention state (allocated only when has_linear_attn=1) */
         if (mc.has_linear_attn) {
-            printf("KV Strategy: F32 (Qwen35 hybrid path; quantized-KV "
-                   "strategy not wired in), max context: %d tokens\n",
-                   p.seq_len);
-        } else if (mc.has_qk_norm) {
-            printf("KV Strategy: F32 (Qwen3-MoE path; quantized-KV "
-                   "strategy not wired in), max context: %d tokens\n",
-                   p.seq_len);
-        } else {
-            printf("KV Strategy: %s, max context: %d tokens\n",
-                   kv_strategy_name(kv_res.strategy), p.seq_len);
+            if (q35_run_state_alloc(s, &p, &mc, p.seq_len) != TN_OK) {
+                fprintf(stderr, "Failed to allocate Qwen3.5/3.6 hybrid attention state.\n");
+                run_state_free(s);
+                free(s);
+                if (mc.is_moe) moe_weights_free(&w, &mc);
+                weights_free_pointers(&w);
+                mapped_file_close(&mf);
+                threadpool_destroy(tp);
+                return 1;
+            }
+        }
+
+        /* Qwen3-MoE attention state (allocated only when has_qk_norm=1) */
+        if (mc.has_qk_norm) {
+            if (qwen3moe_run_state_alloc(s, &p, &mc, p.seq_len) != TN_OK) {
+                fprintf(stderr, "Failed to allocate Qwen3-MoE attention state.\n");
+                run_state_free(s);
+                free(s);
+                if (mc.is_moe) moe_weights_free(&w, &mc);
+                weights_free_pointers(&w);
+                mapped_file_close(&mf);
+                threadpool_destroy(tp);
+                return 1;
+            }
         }
     }
 
-    /* Setup RunState */
-    RunState *s = (RunState *)malloc(sizeof(RunState));
-    if (!s) {
-        fprintf(stderr, "Failed to allocate RunState header.\n");
-        if (mc.is_moe) moe_weights_free(&w, &mc);
-        weights_free_pointers(&w);
-        mapped_file_close(&mf);
-        threadpool_destroy(tp);
-        return 1;
-    }
-
-    /* Qwen3.5/3.6 hybrid models and Qwen3-MoE models never read the generic
-     * key_cache/value_cache (they use their own correctly-sized
-     * q35_key_cache/q35_value_cache or qwen3moe_key_cache/
-     * qwen3moe_value_cache, allocated below) — skip_kv_cache=true avoids a
-     * multi-GB calloc+memset for those models' context. See
-     * run_state_alloc_ex's header comment and docs/ai/mistakes.md. */
-    if (run_state_alloc_ex(s, &p, p.seq_len, mc.has_linear_attn || mc.has_qk_norm) != TN_OK) {
-        fprintf(stderr, "Failed to allocate RunState buffers.\n");
-        free(s);
-        if (mc.is_moe) moe_weights_free(&w, &mc);
-        weights_free_pointers(&w);
-        mapped_file_close(&mf);
-        threadpool_destroy(tp);
-        return 1;
-    }
-
-    /* Phase 17.7: MLA k_rope_cache (allocated only when has_mla=1) */
-    if (mc.has_mla) {
-        if (mla_run_state_alloc(s, &p, &mc, p.seq_len) != TN_OK) {
-            fprintf(stderr, "Failed to allocate MLA k_rope_cache.\n");
-            run_state_free(s);
-            free(s);
-            if (mc.is_moe) moe_weights_free(&w, &mc);
-            weights_free_pointers(&w);
-            mapped_file_close(&mf);
-            threadpool_destroy(tp);
-            return 1;
-        }
-    }
-
-    /* Qwen3.5/3.6 hybrid attention state (allocated only when has_linear_attn=1) */
-    if (mc.has_linear_attn) {
-        if (q35_run_state_alloc(s, &p, &mc, p.seq_len) != TN_OK) {
-            fprintf(stderr, "Failed to allocate Qwen3.5/3.6 hybrid attention state.\n");
-            run_state_free(s);
-            free(s);
-            if (mc.is_moe) moe_weights_free(&w, &mc);
-            weights_free_pointers(&w);
-            mapped_file_close(&mf);
-            threadpool_destroy(tp);
-            return 1;
-        }
-    }
-
-    /* Qwen3-MoE attention state (allocated only when has_qk_norm=1) */
-    if (mc.has_qk_norm) {
-        if (qwen3moe_run_state_alloc(s, &p, &mc, p.seq_len) != TN_OK) {
-            fprintf(stderr, "Failed to allocate Qwen3-MoE attention state.\n");
-            run_state_free(s);
-            free(s);
-            if (mc.is_moe) moe_weights_free(&w, &mc);
-            weights_free_pointers(&w);
-            mapped_file_close(&mf);
-            threadpool_destroy(tp);
-            return 1;
-        }
-    }
+    /* RoPE pair layout: from the GGUF architecture unless --rope-layout says
+     * otherwise (e.g. a GGUF converted with a non-standard Q/K order). */
+    if (args.rope_layout >= 0) p.rope_layout = args.rope_layout;
+    if (args.verbose || args.rope_layout >= 0)
+        printf("RoPE layout: %s%s\n", rope_layout_name(p.rope_layout),
+               args.rope_layout >= 0 ? " (--rope-layout)" : " (from model architecture)");
 
     /* Tokenizer */
     Tokenizer t;
@@ -569,7 +600,7 @@ int main(int argc, char **argv) {
                 t.eos_token_id = (int)gguf_meta_u32(&gguf_hdr, "tokenizer.ggml.eos_token_id", (uint32_t)-1);
                 /* Ensure eos_list is populated so agent_loop.c EOS detection
                  * also fires — agent_loop only iterates eos_list, not eos_token_id */
-                if (t.eos_token_id >= 0 && t.n_eos < 8) {
+                if (t.eos_token_id >= 0 && t.n_eos < TN_TOKENIZER_MAX_EOG) {
                     int already = 0;
                     for (int _i = 0; _i < t.n_eos; _i++)
                         if (t.eos_list[_i] == t.eos_token_id) { already = 1; break; }
@@ -588,8 +619,107 @@ int main(int argc, char **argv) {
         }
     }
 
+    /* --chat-template-file replaces the model's template for the CLI and
+     * --server alike (both render from t.chat_template). Some GGUFs ship a
+     * broken one — the official BitNet b1.58 2B-4T file appends eos_token
+     * after the generation prompt (2026-10-19). */
+    int chat_template_from_file = 0;
+    if (args.chat_template_file) {
+        size_t tl = 0;
+        char *tmpl = tn_read_text_file(args.chat_template_file, (size_t)1 << 20, &tl);
+        if (!tmpl) {
+            fprintf(stderr, "[WARN] cannot read --chat-template-file '%s' (1 B..1 MiB); "
+                    "keeping the model's template\n", args.chat_template_file);
+        } else {
+            free(t.chat_template);
+            t.chat_template = tmpl;
+            chat_template_from_file = 1;
+            fprintf(stderr, "[tokenizer] chat template from %s (%zu bytes)\n",
+                    args.chat_template_file, tl);
+        }
+    }
+
     tn_progress_stage(4, 4, "Ready.", stdout_is_tty);
     tn_progress_done(stdout_is_tty);
+
+    /* ── Phase 18: speculative decoding draft model (optional) ──────────────
+     * --draft-model is the only way this ever activates -- see cli/args.h.
+     * Loaded once here so both call sites below (--prompt one-shot and the
+     * REPL) can share it. */
+    DraftModel draft_model;
+    bool draft_active = false;
+    if (args.draft_model_path) {
+        if (draft_model_load(&draft_model, args.draft_model_path, p.vocab_size,
+                              args.max_tokens + args.spec_length + 64, tp) != TN_OK) {
+            fprintf(stderr, "Error: failed to load --draft-model '%s'.\n", args.draft_model_path);
+            tokenizer_free(&t);
+            if (mc.has_mla) mla_run_state_free(s, p.n_layers);
+            if (mc.has_linear_attn) q35_run_state_free(s, &p, &mc);
+            if (mc.has_qk_norm) qwen3moe_run_state_free(s, &p);
+            run_state_free(s);
+            free(s);
+            if (mc.is_moe) moe_weights_free(&w, &mc);
+            weights_free_pointers(&w);
+            if (gguf_store) weights_free_gguf(gguf_store);
+            if (is_gguf) gguf_header_free(&gguf_hdr);
+            mapped_file_close(&mf);
+            threadpool_destroy(tp);
+            return 1;
+        }
+        draft_active = true;
+    }
+
+    /* ── Phase 30: process reward model for --mcts (optional) ───────────── */
+    mcts_options_defaults(&args.mcts);
+    PrmModel prm;
+    memset(&prm, 0, sizeof(prm));
+    if (args.prm_path &&
+        prm_load(&prm, args.prm_path, args.prm_format, args.prm_good, args.prm_bad,
+                 s->max_seq_len, tp) != TN_OK) {
+        fprintf(stderr, "[prm] continuing without a PRM: steps are scored by the model itself\n");
+    }
+
+    /* ── Phase 19: LoRA adapter (optional) ───────────────────────────────────
+     * --lora is the only way this ever activates -- see cli/args.h. Applies
+     * to the *primary* model's RunState only (s->active_lora), never the
+     * draft model's -- see docs/ai/decision-log.md for the scope rationale.
+     * v1 covers the generic dense/GQA attention/FFN path only; lora_load()
+     * itself doesn't know or care about the model's architecture family, so
+     * loading succeeds even for MLA/Qwen3-MoE/hybrid models, but
+     * attention_forward()/ffn_forward() only read active_lora on the
+     * generic path -- the adapter would silently have no effect on those
+     * architectures. */
+    LoRAWeights lora;
+    bool lora_active = false;
+    if (args.lora_path) {
+        /* Qwen3 (QK-norm path) has head_dim from GGUF key_length, so its Q
+         * is n_heads*head_dim wide, not dim (Phase 19-B, 2026-10-19). */
+        int lhd = (mc.has_qk_norm && mc.attn_head_dim > 0) ? mc.attn_head_dim : 0;
+        int l_q_dim = lhd ? p.n_heads * lhd : p.dim;
+        int l_kv_dim = lhd ? p.n_kv_heads * lhd : config_kv_dim(&p);
+        if (lora_load_ex(&lora, args.lora_path, p.dim, l_q_dim, l_kv_dim, p.hidden_dim, p.n_layers) != TN_OK) {
+            fprintf(stderr, "Error: failed to load --lora '%s'.\n", args.lora_path);
+            if (draft_active) draft_model_free(&draft_model);
+            prm_free(&prm);
+            tokenizer_free(&t);
+            if (mc.has_mla) mla_run_state_free(s, p.n_layers);
+            if (mc.has_linear_attn) q35_run_state_free(s, &p, &mc);
+            if (mc.has_qk_norm) qwen3moe_run_state_free(s, &p);
+            run_state_free(s);
+            free(s);
+            if (mc.is_moe) moe_weights_free(&w, &mc);
+            weights_free_pointers(&w);
+            if (gguf_store) weights_free_gguf(gguf_store);
+            if (is_gguf) gguf_header_free(&gguf_hdr);
+            mapped_file_close(&mf);
+            threadpool_destroy(tp);
+            return 1;
+        }
+        lora_active = true;
+        s->active_lora = &lora;
+        fprintf(stderr, "[lora] '%s' active (rank %d, alpha %.1f, q_dim %d, kv_dim %d)\n",
+                args.lora_path, lora.rank, (double)lora.alpha, l_q_dim, l_kv_dim);
+    }
 
     /* ── Phase 15: RAG initialisation ────────────────────────────────────── */
     RagContext rag;
@@ -629,8 +759,108 @@ int main(int argc, char **argv) {
         args.prompt = (char *)stripped_prompt;
     }
 
+    /* Phase 27: attention kernel + head-parallel threshold (tile size from L1d). */
+    attn_kernel_configure(args.attn_kernel ? (AttnKernel)attn_kernel_parse(args.attn_kernel)
+                                           : ATTN_KERNEL_STANDARD,
+                          args.attn_tile, config_head_dim(&p));
+    attn_parallel_min_ctx_set(args.attn_parallel_min_ctx);
+    if (args.verbose || args.attn_kernel) {
+        const CacheInfo *ci = tn_cache_info();
+        printf("Attention: %s kernel (tile %d), heads parallel from %d ctx; L1d %d KiB, L2 %d KiB (%s)\n",
+               attn_kernel_name(attn_kernel_get()), attn_tile_get(), attn_parallel_min_ctx_get(),
+               ci->l1d_bytes / 1024, ci->l2_bytes / 1024, tn_cache_source_name(ci->source));
+    }
+
+    /* Phase 28.1: --plan-layers prints a RAM-proportional split and exits. */
+    if (args.plan_layers) {
+        long long ram[DIST_MAX_NODES];
+        int starts[DIST_MAX_NODES], ends[DIST_MAX_NODES], n = 0;
+        char buf[256];
+        snprintf(buf, sizeof(buf), "%s", args.plan_layers);
+        char *save = NULL;
+        for (char *t = strtok_r(buf, ",", &save); t && n < DIST_MAX_NODES; t = strtok_r(NULL, ",", &save))
+            ram[n++] = (long long)(atof(t) * 1073741824.0);
+        if (n == 0) {
+            fprintf(stderr, "Error: --plan-layers needs GB,GB,... (max %d nodes)\n", DIST_MAX_NODES);
+        } else {
+            dist_plan_layers_by_ram(p.n_layers, ram, n, starts, ends);
+            printf("Layer plan for %d layers over %d node(s):\n", p.n_layers, n);
+            for (int i = 0; i < n; i++)
+                printf("  node %d (%.1f GB): layers %d-%d%s\n", i, (double)ram[i] / 1073741824.0,
+                       starts[i], ends[i], i == 0 ? "  (coordinator)" : "");
+            if (n > 1) {
+                printf("Coordinator: --remote-layers ");
+                for (int i = 1; i < n; i++)
+                    printf("%sHOST%d:PORT@%d-%d", i > 1 ? "," : "", i, starts[i], ends[i]);
+                printf("\nWorker i:    --rpc-worker PORT --layers <its range>\n");
+            }
+        }
+        args.prompt = NULL;
+        args.server_mode = 0;
+        goto cleanup_after_run;
+    }
+
+    /* Phase 28: worker mode serves a layer range and never generates. */
+    if (args.rpc_worker_port > 0) {
+        int a = 0, b = p.n_layers;
+        if (!args.worker_layers || sscanf(args.worker_layers, "%d-%d", &a, &b) != 2 ||
+            a < 0 || b > p.n_layers || a >= b) {
+            fprintf(stderr, "Error: --rpc-worker needs --layers A-B within 0-%d\n", p.n_layers);
+        } else {
+            dist_worker_serve(args.rpc_worker_port, !args.rpc_bind_all, a, b, &p, &w, s, &mc, tp);
+        }
+        args.prompt = NULL;
+        args.server_mode = 0;
+        goto cleanup_after_run;
+    }
+
+    /* Phase 28: coordinator — connect to the workers for remote layer ranges. */
+    static DistPlan dist_plan;
+    int dist_active = 0;
+    if (args.remote_layers) {
+        if (draft_active) {
+            fprintf(stderr, "Error: --draft-model cannot be combined with --remote-layers\n");
+            goto cleanup_after_run;
+        }
+        if (dist_plan_parse(&dist_plan, args.remote_layers, p.n_layers) != 0 ||
+            dist_plan_connect(&dist_plan, &p, &mc) != TN_OK) {
+            fprintf(stderr, "Error: could not set up --remote-layers\n");
+            dist_plan_close(&dist_plan);
+            goto cleanup_after_run;
+        }
+        dist_plan_set_active(&dist_plan);
+        dist_active = 1;
+    }
+
+    /* Phase 38: background update check — server always (the web UI shows
+     * it), CLI only when a person is watching stderr. Never blocks. */
+    int update_notice = 0;
+    if (!args.watermark_detect && !args.perplexity_file &&
+        (args.server_mode || isatty(fileno(stderr)))) {
+        UpdateOptions uo;
+        args_fill_update_options(&args, &uo);
+        update_service_init(&uo, PZ_VERSION_STR);
+        update_service_poll(0);
+        update_notice = !args.server_mode;
+    }
+
     /* Execution Mode */
-    if (args.server_mode) {
+    if (args.perplexity_file) {
+        run_perplexity(&args, &p, &w, s, &mc, &t, tp);
+    } else if (args.watermark_detect) {
+        /* Phase 33: offline watermark detection — tokenize the text with this
+         * model's tokenizer and score it with the configured key/gamma. */
+        GenerationParams gp;
+        args_fill_gen_params(&args, &gp);
+        WatermarkResult wr;
+        if (watermark_detect_text(&gp.watermark, &t, args.watermark_detect, &wr) != TN_OK) {
+            fprintf(stderr, "Error: could not tokenize --watermark-detect text.\n");
+        } else {
+            printf("watermark: tokens_scored=%d green=%d green_fraction=%.3f z=%.2f -> %s\n",
+                   wr.n_scored, wr.n_green, wr.green_fraction, wr.z_score,
+                   wr.z_score >= WATERMARK_DETECT_Z_THRESHOLD ? "WATERMARKED" : "not detected");
+        }
+    } else if (args.server_mode) {
         /* Phase 21: Start OpenAI-compatible API server */
         ApiContext api_ctx;
         api_context_init(&api_ctx, &p, &w, s, &mc, &t, tp);
@@ -643,6 +873,38 @@ int main(int argc, char **argv) {
         if (args.api_key) api_ctx.server_config.auth.api_key = strdup(args.api_key);
         api_ctx.server_config.metrics.enabled = args.metrics_enabled;
         api_ctx.server_config.web_ui = args.web_ui_mode;
+        /* Generation flags become the server-side defaults every request
+         * (and the web UI, via GET /v1/config) starts from. */
+        args_fill_gen_params(&args, &api_ctx.server_config.gen_defaults);
+        /* Phase 30: --mcts* are the request defaults; --prm the judge. */
+        api_ctx.server_config.mcts = args.mcts;
+        api_ctx.server_config.mcts_max = args.mcts_max;
+        if (prm.loaded) {
+            const char *pb = strrchr(args.prm_path, '/');
+            api_ctx.prm = &prm;
+            api_ctx.server_config.prm_model = pb ? pb + 1 : args.prm_path;
+        }
+        {
+            const char *base = strrchr(args.model_path, '/');
+            api_ctx.server_config.model_id = strdup(base ? base + 1 : args.model_path);
+        }
+        if (args.ui_title) api_ctx.server_config.ui_title = strdup(args.ui_title);
+        api_ctx.server_config.ui_logo = args.ui_logo;
+        api_ctx.server_config.prompt_cache = args.prompt_cache ? 1 : 0;
+        api_ctx.server_config.chat_format = args.chat_format;
+        api_ctx.server_config.allow_request_template = args.no_request_template ? 0 : 1;
+        api_ctx.server_config.chat_template_source =
+            !t.chat_template ? "none" : (chat_template_from_file ? "file" : "gguf");
+        api_ctx.server_config.best_of = args.best_of;
+        api_ctx.server_config.queue_size = args.queue_size;
+        api_ctx.server_config.queue_timeout_s = args.queue_timeout_s;
+        gen_queue_set_max_waiting(&api_ctx.gen_queue, args.queue_size);
+        api_ctx.server_config.best_of_max = args.best_of_max;
+        api_ctx.server_config.prompt_cache_mb = args.prompt_cache_mb;
+        api_ctx.server_config.prompt_cache_min_tokens = args.prompt_cache_min_tokens;
+        api_ctx.server_config.max_tokens_limit =
+            (args.max_tokens_limit > 0 && args.max_tokens_limit < p.seq_len)
+                ? args.max_tokens_limit : p.seq_len;
         if (args.static_dir) api_ctx.server_config.static_dir = strdup(args.static_dir);
         if (args.vision_path && args.proj_path) {
             api_ctx.server_config.vision_path = strdup(args.vision_path);
@@ -685,13 +947,57 @@ int main(int argc, char **argv) {
         }
     } else if (args.prompt) {
         printf("\n");
-        generate(&p, &w, s, &mc, &t, tp, args.prompt, args.max_tokens, args.temperature, args.top_p);
+        if (draft_active) {
+            speculative_generate(&p, &w, s, &mc, &t, tp, args.prompt, args.max_tokens,
+                                  args.temperature, args.top_p, args.json_mode,
+                                  &draft_model, args.spec_length);
+        } else {
+            GenerationParams gp;
+            args_fill_gen_params(&args, &gp);
+            if (args.mcts.simulations > 0) {
+                MctsResult mr;
+                TernaryError me = generate_mcts(&p, &w, s, &mc, &t, tp, args.prompt, args.prompt, &gp,
+                                                &args.mcts, prm.loaded ? &prm : NULL,
+                                                stdout_piece_callback, NULL, NULL, &mr);
+                printf("\n");
+                fprintf(stderr, "[mcts] %d simulations, %d nodes, %d-step path (value %.3f, %s), %d search tokens%s\n",
+                        mr.simulations, mr.nodes, mr.steps, (double)mr.path_value,
+                        mr.used_prm ? "PRM" : "self-scored", mr.tokens_total,
+                        me == TN_OK ? "" : " (failed)");
+            } else if (args.best_of > 1) {
+                BestOfResult br;
+                generate_best_of(&p, &w, s, &mc, &t, tp, args.prompt, &gp, args.best_of,
+                                 BEST_OF_SCORE_MEAN_LOGPROB, stdout_piece_callback, NULL, NULL, &br);
+                printf("\n");
+                fprintf(stderr, "[best-of] %d candidates, chose #%d (mean log-prob %.3f)\n",
+                        br.n, br.chosen, br.chosen >= 0 ? br.scores[br.chosen] : 0.0);
+            } else {
+                generate_params(&p, &w, s, &mc, &t, tp, args.prompt, &gp);
+            }
+        }
         printf("\n");
     } else {
-        run_repl(&p, &w, &mc, NULL, NULL, NULL, s, &t, tp, &args, rag_ok ? &rag : NULL);
+        run_repl(&p, &w, &mc, NULL, NULL, NULL, s, &t, tp, &args, rag_ok ? &rag : NULL,
+                 draft_active ? &draft_model : NULL);
     }
 
+    if (dist_active) dist_plan_close(&dist_plan);
+
+    /* Phase 38: one line after the output, from the cached/background result
+     * (an in-flight check is not waited for — it lands in the cache for next time). */
+    if (update_notice) {
+        UpdateInfo ui;
+        char notice[512];
+        update_service_get(&ui);
+        update_format_notice(&ui, notice, sizeof(notice));
+        if (notice[0]) fprintf(stderr, "\n%s", notice);
+    }
+
+cleanup_after_run:
     /* Cleanup */
+    if (draft_active) draft_model_free(&draft_model);
+    prm_free(&prm);
+    if (lora_active) lora_free(&lora);
     if (rag_ok) {
         embedder_free(&rag.emb);
         vector_db_close(&rag.db);

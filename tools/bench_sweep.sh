@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # bench_sweep.sh — Phase 17 Comprehensive Benchmark
 #
-# Runs adaptive_ai_engine for every combination of:
+# Runs pz (Project Zero) for every combination of:
 #   Threads T=1..MAX_T   × SIMD backends × Classifier formats
 #
 # Methodology: 25 generated tokens, 3s cooldown between cells.
@@ -15,7 +15,7 @@ MAX_T="${3:-8}"
 MAX_TOKENS=25
 COOLDOWN=3
 PROMPT="The capital of France is"
-ENGINE=./adaptive_ai_engine
+ENGINE=./pz
 OUT_CSV="/tmp/bench_sweep_results.csv"
 LOG="/tmp/bench_sweep.log"
 

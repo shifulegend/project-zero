@@ -46,7 +46,7 @@
 
 ```
 project-zero/
-├── adaptive_ai_engine          ← compiled binary
+├── pz          ← compiled binary
 ├── Makefile / CMakeLists.txt
 ├── include/
 │   ├── core/

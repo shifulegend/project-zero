@@ -38,4 +38,20 @@ TernaryError chat_compile_prompt(const ChatRequest *req,
                                  ChatTemplateType tmpl,
                                  char *out, size_t cap);
 
+/*
+ * Format for models WITHOUT an embedded Jinja template, chosen from what the
+ * tokenizer can actually encode: ChatML if <|im_start|>/<|im_end|> are in the
+ * vocabulary, Llama-3 / Mistral by their markers, else plain "role: text"
+ * (base models). Model-name guessing (chat_template_detect) picked ChatML for
+ * any client "model" string, which the tokenizer's injection guard then
+ * rejects on vocabularies without those tokens (2026-10-18, Mamba).
+ */
+#include "tokenizer/tokenizer.h"
+ChatTemplateType chat_template_detect_vocab(const Tokenizer *t);
+
+/* "auto" -> -1, "chatml"|"llama3"|"deepseek"|"mistral"|"plain" -> type,
+ * anything else -> -2. */
+int chat_template_parse(const char *name);
+const char *chat_template_name(ChatTemplateType t);
+
 #endif /* TN_CHAT_COMPILE_H */

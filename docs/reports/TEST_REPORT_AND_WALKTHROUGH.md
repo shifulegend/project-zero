@@ -1,4 +1,7 @@
 # Test Report and Execution Walkthrough
+
+> **Binary name (Phase 39, 2026-10-21):** the engine binary is now `pz` (previously `adaptive_ai_engine`). Commands quoted below record what was actually run at the time and are left unchanged; substitute `./pz` to reproduce them.
+
 Project: CPU LLM Ternary Engine (Project-Zero)
 
 ## 1. Executive Summary

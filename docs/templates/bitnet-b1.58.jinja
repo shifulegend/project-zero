@@ -1,0 +1,8 @@
+{%- for message in messages -%}
+{%- if loop.first -%}{{ bos_token }}{%- endif -%}
+{%- if message['role'] == 'system' -%}{{ 'System: ' + message['content'] | trim + '<|eot_id|>' }}
+{%- elif message['role'] == 'user' -%}{{ 'User: ' + message['content'] | trim + '<|eot_id|>' }}
+{%- elif message['role'] == 'assistant' -%}{{ 'Assistant: ' + message['content'] | trim + '<|eot_id|>' }}
+{%- endif -%}
+{%- endfor -%}
+{%- if add_generation_prompt -%}{{ 'Assistant: ' }}{%- endif -%}

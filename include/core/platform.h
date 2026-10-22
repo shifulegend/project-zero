@@ -22,6 +22,21 @@
     #define TN_APPLE 0
 #endif
 
+/* Sanitizer-instrumented build (ASan/UBSan/TSan). Timings from such a build
+ * say nothing about a release build, so startup skips measuring the host
+ * (2026-10-22). gcc defines __SANITIZE_*; clang reports via __has_feature. */
+#if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
+    #define TN_SANITIZED 1
+#elif defined(__has_feature)
+    #if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer) || \
+        __has_feature(undefined_behavior_sanitizer)
+        #define TN_SANITIZED 1
+    #endif
+#endif
+#ifndef TN_SANITIZED
+    #define TN_SANITIZED 0
+#endif
+
 /* ── Fixed-width type aliases ──────────────────────────────────────────────── */
 typedef int8_t   tn_i8;
 typedef int16_t  tn_i16;

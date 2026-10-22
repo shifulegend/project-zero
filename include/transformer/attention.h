@@ -2,9 +2,11 @@
 #define TN_ATTENTION_H
 
 #include "core/config.h"
+#include "core/error.h"
 #include "core/moe_config.h"
 #include "core/run_state.h"
 #include "core/weights.h"
+#include "speculative/spec_scratch.h"
 #include "threading/thread_pool.h"
 
 /**
@@ -32,5 +34,38 @@
 void attention_forward(RunState *s, const TransformerWeights *w,
                        const Config *cfg, const MoEConfig *mc,
                        int layer, int pos, ThreadPool *tp);
+
+/**
+ * Phase 18 (speculative decoding): batched multi-token attention forward
+ * pass. Semantically equivalent to calling attention_forward() once per
+ * token at positions pos..pos+n_tokens-1 in sequence (teacher-forcing
+ * property of causal transformers), but streams each weight matrix from
+ * RAM once and reuses it across all n_tokens candidate activations.
+ *
+ * Dispatches to mla_attention_forward_batch()/qwen3moe_attention_forward_batch()
+ * exactly like attention_forward() dispatches to the single-token versions.
+ * Returns TN_ERR_UNSUPPORTED (not a crash, not a silent slow fallback) when
+ * mc->has_linear_attn is set — see attention.c's attention_forward_batch()
+ * header comment for why Qwen3.5/3.6 hybrid models cannot be batched this
+ * way.
+ *
+ * sb must be sized for exactly n_tokens (spec_batch_scratch_alloc()).
+ */
+TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb,
+                                      const TransformerWeights *w, const Config *cfg,
+                                      const MoEConfig *mc, int layer, int pos,
+                                      int n_tokens, ThreadPool *tp);
+
+/*
+ * Phase 23 (2026-10-19): one attention step over rows from several sequences
+ * — row k belongs to states[k] at position pos_arr[k] (its K/V are written to
+ * and read from states[k]'s own cache). Weight matmuls are batched over all
+ * rows. Generic dense/GQA models only (TN_ERR_UNSUPPORTED for MLA, Qwen3 QK-
+ * norm, hybrid/recurrent); every state must share the same active_lora.
+ */
+TernaryError attention_forward_multi(RunState *const *states, const int *pos_arr,
+                                     SpecBatchScratch *sb, const TransformerWeights *w,
+                                     const Config *cfg, const MoEConfig *mc, int layer,
+                                     int n_tokens, ThreadPool *tp);
 
 #endif /* TN_ATTENTION_H */

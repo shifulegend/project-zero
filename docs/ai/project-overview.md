@@ -2,12 +2,13 @@
 
 > Canonical source of truth. Tool adapters (CLAUDE.md, AGENTS.md, gemini/GEMINI.md,
 > .github/copilot-instructions.md) summarize and link here. Keep this current.
-> Last updated: 2026-07-15.
+> Last updated: 2026-10-18.
 
 ## Purpose
 `project-zero` is a from-scratch, CPU-optimized LLM inference engine in C/C++ targeting
 **BitNet b1.58 ternary weights**, **DeepSeek-V2** (MoE + MLA attention), **Qwen3.5/3.6**
-(hybrid Gated-DeltaNet + Gated-Attention), and **Qwen3-MoE** (e.g. Qwen3-30B-A3B — routed MoE
+(hybrid Gated-DeltaNet + Gated-Attention), **Mamba-1** state-space models (GGUF arch `mamba`,
+`src/transformer/mamba.c`, verified against a numpy reference on mamba-130m), and **Qwen3-MoE** (e.g. Qwen3-30B-A3B — routed MoE
 + plain GQA with per-head QK-norm, `src/transformer/qwen3moe_attention.c`) architectures.
 The GGUF loader (`config_from_gguf()` in `src/core/gguf_loader.c`) is **architecture-agnostic**
 — it keys metadata off the GGUF `general.architecture` string — so **dense GGUF transformers**
@@ -53,8 +54,11 @@ at runtime (`--simd`, `--classifier`, or auto/calibration).
 | `src/kv_cache/` | KV cache strategy/compression, sliding window |
 | `src/sampling/` | RNG, temperature, top-k, top-p, argmax |
 | `src/memory/` | Aligned alloc, mmap |
+| `src/update/` | Phase 38 update notices: SemVer, GitHub Releases check, cache, background service (notify-only) |
+| `src/distributed/` | Phase 28 pipeline split: framed tensor RPC, layer plan, worker loop (`--rpc-worker`, `--remote-layers`) |
 | `src/multimodal/` | Vision encoder/projector/bridge, image load (optional/experimental) |
-| `src/cli/` | Arg parsing, REPL, `main.c` (builds `adaptive_ai_engine`); color/progress/live-stats/markdown-render (Phase 22.3, REPL-only) |
+| `src/config/` | Phase 40 persistent settings: schema, config file, `PZ_*` env, argv merge (`pz config` lives in `src/cli/config_cmd.c`) |
+| `src/cli/` | Arg parsing, REPL, `main.c` (builds `pz`); color/progress/live-stats/markdown-render (Phase 22.3, REPL-only) |
 | `include/` | Public headers mirroring `src/` |
 | `tests/` | Unit + audit + red/blackbox tests (every `tests/*.c` is auto-built & run) |
 | `tools/` | Model conversion + benchmark scripts |
@@ -70,8 +74,10 @@ make debug   CC=gcc            # -O0 -g -march=native -fsanitize=address,undefin
 make dist    CC=gcc            # PORTABLE binary: -march=x86-64-v2 + per-TU SIMD ISA +
                                # static libstdc++/libgcc; runtime AVX2/AVX-512/VNNI dispatch
 cmake -B build && cmake --build build -j$(nproc)   # alternative build (cmake -DPZ_DIST=ON = dist)
-./adaptive_ai_engine --version  # version + detected SIMD backend (no model needed)
-./adaptive_ai_engine --model models/<m>.gguf --prompt "..." \
+./pz --version  # version + detected SIMD backend (no model needed)
+# Binary renamed adaptive_ai_engine -> pz in Phase 39 (2026-10-21); `make` keeps an
+# adaptive_ai_engine -> pz symlink for one release (prints a deprecation notice; cli/program_name).
+./pz --model models/<m>.gguf --prompt "..." \
   --max-tokens 16 --temperature 0.0 --threads 4 [--simd auto] [--classifier auto]
 ```
 CI: `.github/workflows/ci.yml` (release/test/debug/dist × gcc,clang × ubuntu-latest,ubuntu-22.04 +
@@ -98,11 +104,19 @@ see `docs/RELEASING.md`).
   model) so static asset/UI serving isn't blocked behind an in-flight generation. Still binds
   loopback-only by default. Logic-level tests in `tests/test_api_server.c` plus
   `tests/test_cors.c`/`test_auth.c`/`test_metrics.c`/`test_cancel.c`/`test_openapi.c`.
+- **Generation settings** (Phase 22-UI, 2026-10-18): one `GenerationParams` value
+  (`include/transformer/gen_params.h`) drives `generate_ex()` — sampler chain
+  (`sampling/sampler_chain.h`: penalties, top-k, min-p, temperature, top-p), seed, JSON mode,
+  Phase 33 watermark (`sampling/watermark.h`), chat history, system prompt, stop strings, and
+  usage/finish-reason stats. CLI flags set the server defaults; `GET /v1/config` publishes
+  defaults/ranges/features so the web UI hardcodes nothing; requests override any subset.
+  `POST /v1/watermark/detect` scores text for the watermark.
 - **Web chat UI** (Phase 22.2, `webui/`): a Vite+Svelte SPA served by the HTTP API at `GET /`
   (`GET /health` remains the separate JSON health check). Built bundle is embedded into the C
   binary as a committed generated TU (`src/api/webui_bundle_generated.c`) — default builds need
   no Node; `make webui-bundle` regenerates it when `webui/src` changes. Supports streaming chat,
-  adjustable sampling params, stop/cancel, theme toggle, and image upload via the OpenAI
+  a Settings panel for every generation knob (built from `/v1/config`, per-viewer overrides in
+  localStorage), new chat, watermark detection, per-reply token usage, stop/cancel, theme toggle, and image upload via the OpenAI
   "content parts" form (`src/api/data_url.c` decodes the base64 payload; the vision pipeline
   itself lives in `src/multimodal/vision_pipeline.c`, shared with the CLI's `--image`, active
   when the server is started with `--vision`/`--proj`).

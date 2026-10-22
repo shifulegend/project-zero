@@ -25,10 +25,15 @@
 #include "math/parallel_matmul.h"
 #include "math/rope.h"
 #include "math/simd_dispatch.h"
+#include "math/batched_matmul.h"
 #include "core/platform.h"
+#include "core/step_timing.h"
 #include "transformer/dense_matmul_dispatch.h"
+#include "math/lora_matmul.h"
+#include "core/lora.h"
 #include <math.h>
 #include <string.h>
+#include <stdlib.h>
 
 /* Generous fixed stack-buffer bounds, mirroring qwen35_attention.c's
  * Q35_MAX_* convention (fixed generous buffer, no runtime malloc). Sized
@@ -58,10 +63,16 @@ void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w,
     static float attn_concat[QWEN3MOE_MAX_HEADS * QWEN3MOE_MAX_HEAD_DIM];
 
     /* Step 1: RMSNorm */
+    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     tn_rmsnorm(s->xb, s->x, w->rms_att_weight[layer], dim, cfg->rms_norm_eps);
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_4_PRE_ATTN_RMSNORM,
+                           tn_step_timing_now_ns() - t_step);
+    }
 
     /* Step 2: Q/K/V projections — 3-way dispatch, same convention as
      * attention.c's generic path (this arch is not Q2_0-locked). */
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     if (w->layers_are_ternary) {
         int8_t preq_buf[QWEN3MOE_PREQ_BUF_SIZE];
         TnPreqActivation preq;
@@ -74,6 +85,13 @@ void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w,
         tn_dense_matmul_dispatch(k_buf, s->xb, w->wk[layer], w->wk_type[layer], dim, kv_width, tp);
         tn_dense_matmul_dispatch(v_buf, s->xb, w->wv[layer], w->wv_type[layer], dim, kv_width, tp);
     }
+    /* Phase 19-B (2026-10-19): LoRA deltas on the wide Q (n_heads*head_dim)
+     * and K/V, before QK-norm — Qwen3 adapters were silently ignored. */
+    if (s->active_lora) {
+        lora_apply(q_buf, s->xb, lora_mod(s->active_lora->q, layer), dim, q_width,  tp);
+        lora_apply(k_buf, s->xb, lora_mod(s->active_lora->k, layer), dim, kv_width, tp);
+        lora_apply(v_buf, s->xb, lora_mod(s->active_lora->v, layer), dim, kv_width, tp);
+    }
 
     /* Step 3: per-head QK-norm, before RoPE */
     for (int h = 0; h < n_heads; h++) {
@@ -84,11 +102,16 @@ void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w,
         float *khp = k_buf + (size_t)kh * head_dim;
         tn_rmsnorm(khp, khp, w->qwen3moe_attn_k_norm[layer], head_dim, cfg->rms_norm_eps);
     }
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_5_Q_PROJECTION,
+                           tn_step_timing_now_ns() - t_step);
+    }
 
     /* Step 4: full (non-partial) RoPE with YaRN support, sized for this
      * arch's real head_dim via s->qwen3moe_rope_freq
      * (qwen3moe_run_state_alloc) — identical convention to
      * attention_forward()'s generic Step 3. */
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     {
         float corr[2] = {0.0f, 0.0f};
         float freq_scale  = cfg->rope_freq_scale;
@@ -104,12 +127,17 @@ void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w,
             corr[0] = start < 0.0f ? 0.0f : (start > (float)(head_dim-1) ? (float)(head_dim-1) : start);
             corr[1] = end   < 0.0f ? 0.0f : (end   > (float)(head_dim-1) ? (float)(head_dim-1) : end  );
         }
-        apply_rope(q_buf, k_buf, s->qwen3moe_rope_freq, head_dim, pos, n_heads, n_kv_h,
-                   freq_scale, ext_factor, attn_factor, corr);
+        apply_rope_ex(q_buf, k_buf, s->qwen3moe_rope_freq, head_dim, pos, n_heads, n_kv_h,
+                      freq_scale, ext_factor, attn_factor, corr, cfg->rope_layout);
+    }
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_9_YARN_ROPE,
+                           tn_step_timing_now_ns() - t_step);
     }
 
     /* Step 5: write K/V into this layer's own correctly-sized cache
      * (qwen3moe_run_state_alloc) — flat per-layer buffer, [kv_head][pos][d]. */
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     int mapped_pos = sw_map_position(&s->sw, pos);
     for (int kh = 0; kh < n_kv_h; kh++) {
         size_t off = ((size_t)kh * max_seq + (size_t)mapped_pos) * head_dim;
@@ -117,8 +145,13 @@ void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w,
         memcpy(&s->qwen3moe_value_cache[layer][off], &v_buf[(size_t)kh * head_dim], (size_t)head_dim * sizeof(float));
     }
     sw_advance(&s->sw);
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_10_KV_CACHE_WRITE,
+                           tn_step_timing_now_ns() - t_step);
+    }
 
     /* Step 6: attention per head (scores + softmax + weighted sum) */
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     int valid_ctx = sw_valid_count(&s->sw, pos);
     float inv_sqrt_hd = 1.0f / sqrtf((float)head_dim);
 
@@ -144,15 +177,225 @@ void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w,
             tn_vec_saxpy(out_h, att[t], &s->qwen3moe_value_cache[layer][off], head_dim);
         }
     }
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_11_ATTN_SCORE,
+                           tn_step_timing_now_ns() - t_step);
+    }
 
     /* Step 7: output projection (q_width -> dim) + residual. wo's input
      * width is q_width (n_heads*head_dim), NOT dim — attn_output.weight is
      * shaped [dim x q_width] for this arch, unlike the generic dense path's
      * [dim x dim] assumption (see weights_from_gguf_qwen3moe). */
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     if (w->layers_are_ternary) {
         parallel_ternary_matmul_packed(s->xb, attn_concat, (const tn_u8 *)w->wo[layer], q_width, dim, w->so[layer], tp);
     } else {
         tn_dense_matmul_dispatch(s->xb, attn_concat, w->wo[layer], w->wo_type[layer], q_width, dim, tp);
     }
+    if (s->active_lora)
+        lora_apply(s->xb, attn_concat, lora_mod(s->active_lora->o, layer), q_width, dim, tp);
     tn_vec_add(s->x, s->x, s->xb, dim);
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_12_POST_ATTN,
+                           tn_step_timing_now_ns() - t_step);
+    }
+}
+
+/* ── Phase 18 (speculative decoding): batched multi-token Qwen3-MoE attention
+ *
+ * Same write-phase/read-phase restructuring as attention_forward_batch()
+ * (attention.c) -- see that function's header comment for the general
+ * design and correctness argument.
+ *
+ * This arch's q_width/kv_width are independent of dim/hidden_dim (may
+ * exceed both -- see this file's top-of-file comment), so it cannot reuse
+ * SpecBatchScratch's generic dim/hidden_dim-wide buffers the way the dense
+ * and MLA batched paths do. Instead it heap-allocates its own N-wide Q/K/V/
+ * attention-output scratch here, sized by this layer's *actual* q_width/
+ * kv_width (not the QWEN3MOE_MAX_* stack-buffer bounds the single-token
+ * path uses) -- freed at the end of this call. */
+TernaryError qwen3moe_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
+                                               const TransformerWeights *w, const Config *cfg,
+                                               const MoEConfig *mc, int layer, int pos,
+                                               int n_tokens, ThreadPool *tp) {
+    int dim      = cfg->dim;
+    int n_heads  = cfg->n_heads;
+    int n_kv_h   = cfg->n_kv_heads;
+    int head_dim = mc->attn_head_dim;
+    int kv_mul   = n_heads / n_kv_h;
+    int q_width  = n_heads * head_dim;
+    int kv_width = n_kv_h  * head_dim;
+    int max_seq  = s->max_seq_len;
+
+    float *q_buf_all = (float *)malloc((size_t)n_tokens * q_width * sizeof(float));
+    float *k_buf_all = (float *)malloc((size_t)n_tokens * kv_width * sizeof(float));
+    float *v_buf_all = (float *)malloc((size_t)n_tokens * kv_width * sizeof(float));
+    float *attn_concat_all = (float *)malloc((size_t)n_tokens * q_width * sizeof(float));
+    if (!q_buf_all || !k_buf_all || !v_buf_all || !attn_concat_all) {
+        free(q_buf_all); free(k_buf_all); free(v_buf_all); free(attn_concat_all);
+        return TN_ERR_OOM;
+    }
+
+    /* Whole-batch-call step-timing granularity (Stage 5.5); same 4/5/9/10/11/12
+     * mapping as attention_forward_batch() -- see that function's comment. */
+    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+
+    /* Step 1: rmsnorm, per token */
+    for (int k = 0; k < n_tokens; k++) {
+        tn_rmsnorm(sb->xb + (size_t)k * dim, sb->x + (size_t)k * dim,
+                   w->rms_att_weight[layer], dim, cfg->rms_norm_eps);
+    }
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_4_PRE_ATTN_RMSNORM,
+                           tn_step_timing_now_ns() - t_step);
+    }
+
+    /* Step 2: Q/K/V projections -- real batch for ternary/F16, sequential
+     * fallback for everything else (documented Phase 18-B scope). */
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    if (w->layers_are_ternary) {
+        tn_ternary_matmul_packed_batch(q_buf_all, sb->xb, (const tn_u8 *)w->wq[layer],
+                                        dim, q_width, w->sq[layer], n_tokens, tp);
+        tn_ternary_matmul_packed_batch(k_buf_all, sb->xb, (const tn_u8 *)w->wk[layer],
+                                        dim, kv_width, w->sk[layer], n_tokens, tp);
+        tn_ternary_matmul_packed_batch(v_buf_all, sb->xb, (const tn_u8 *)w->wv[layer],
+                                        dim, kv_width, w->sv[layer], n_tokens, tp);
+    } else {
+        tn_dense_matmul_dispatch_batch(q_buf_all, sb->xb, w->wq[layer], w->wq_type[layer],
+                                        dim, q_width, n_tokens, tp);
+        tn_dense_matmul_dispatch_batch(k_buf_all, sb->xb, w->wk[layer], w->wk_type[layer],
+                                        dim, kv_width, n_tokens, tp);
+        tn_dense_matmul_dispatch_batch(v_buf_all, sb->xb, w->wv[layer], w->wv_type[layer],
+                                        dim, kv_width, n_tokens, tp);
+    }
+    if (s->active_lora) {
+        lora_apply_batch(q_buf_all, sb->xb, lora_mod(s->active_lora->q, layer), dim, q_width,  n_tokens, tp);
+        lora_apply_batch(k_buf_all, sb->xb, lora_mod(s->active_lora->k, layer), dim, kv_width, n_tokens, tp);
+        lora_apply_batch(v_buf_all, sb->xb, lora_mod(s->active_lora->v, layer), dim, kv_width, n_tokens, tp);
+    }
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_5_Q_PROJECTION,
+                           tn_step_timing_now_ns() - t_step);
+    }
+
+    /* Step 3 (QK-norm) + Step 4 (RoPE), per token -- bracketed together as
+     * step 9 (see attention_forward_batch()'s comment on why QK-norm's small
+     * remaining cost is grouped with RoPE rather than reopening step 5). */
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    for (int k = 0; k < n_tokens; k++) {
+        int tok_pos = pos + k;
+        float *q_k = q_buf_all + (size_t)k * q_width;
+        float *k_k = k_buf_all + (size_t)k * kv_width;
+
+        /* Step 3: per-head QK-norm, before RoPE */
+        for (int h = 0; h < n_heads; h++) {
+            float *qh = q_k + (size_t)h * head_dim;
+            tn_rmsnorm(qh, qh, w->qwen3moe_attn_q_norm[layer], head_dim, cfg->rms_norm_eps);
+        }
+        for (int kh = 0; kh < n_kv_h; kh++) {
+            float *khp = k_k + (size_t)kh * head_dim;
+            tn_rmsnorm(khp, khp, w->qwen3moe_attn_k_norm[layer], head_dim, cfg->rms_norm_eps);
+        }
+
+        /* Step 4: full (non-partial) RoPE with YaRN support */
+        float corr[2] = {0.0f, 0.0f};
+        float freq_scale  = cfg->rope_freq_scale;
+        float ext_factor  = cfg->rope_yarn_ext_factor;
+        float attn_factor = cfg->rope_yarn_attn_factor;
+        if (ext_factor != 0.0f) {
+            static const float M_PI_F = 3.14159265358979323846f;
+            float log_base = logf(cfg->rope_theta);
+            float start = floorf((float)head_dim * logf((float)cfg->rope_orig_ctx_len
+                                 / (cfg->rope_yarn_beta_fast * 2.0f * M_PI_F)) / (2.0f * log_base));
+            float end   = ceilf ((float)head_dim * logf((float)cfg->rope_orig_ctx_len
+                                 / (cfg->rope_yarn_beta_slow * 2.0f * M_PI_F)) / (2.0f * log_base));
+            corr[0] = start < 0.0f ? 0.0f : (start > (float)(head_dim-1) ? (float)(head_dim-1) : start);
+            corr[1] = end   < 0.0f ? 0.0f : (end   > (float)(head_dim-1) ? (float)(head_dim-1) : end  );
+        }
+        apply_rope_ex(q_k, k_k, s->qwen3moe_rope_freq, head_dim, tok_pos, n_heads, n_kv_h,
+                      freq_scale, ext_factor, attn_factor, corr, cfg->rope_layout);
+    }
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_9_YARN_ROPE,
+                           tn_step_timing_now_ns() - t_step);
+    }
+
+    /* Step 5: write K/V into this layer's own cache, per token */
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    for (int k = 0; k < n_tokens; k++) {
+        int tok_pos = pos + k;
+        float *k_k = k_buf_all + (size_t)k * kv_width;
+        float *v_k = v_buf_all + (size_t)k * kv_width;
+        int mapped_pos = sw_map_position(&s->sw, tok_pos);
+        for (int kh = 0; kh < n_kv_h; kh++) {
+            size_t off = ((size_t)kh * max_seq + (size_t)mapped_pos) * head_dim;
+            memcpy(&s->qwen3moe_key_cache[layer][off],   &k_k[(size_t)kh * head_dim], (size_t)head_dim * sizeof(float));
+            memcpy(&s->qwen3moe_value_cache[layer][off], &v_k[(size_t)kh * head_dim], (size_t)head_dim * sizeof(float));
+        }
+        sw_advance(&s->sw); /* kept for parity; see attention_forward_batch()'s comment */
+    }
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_10_KV_CACHE_WRITE,
+                           tn_step_timing_now_ns() - t_step);
+    }
+
+    /* Read phase: attention per token (not batched across k) */
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    float inv_sqrt_hd = 1.0f / sqrtf((float)head_dim);
+    for (int k = 0; k < n_tokens; k++) {
+        int tok_pos = pos + k;
+        float *q_k = q_buf_all + (size_t)k * q_width;
+        float *out_k = attn_concat_all + (size_t)k * q_width;
+        int valid_ctx = sw_valid_count(&s->sw, tok_pos);
+
+        for (int h = 0; h < n_heads; h++) {
+            float *q_h = q_k + (size_t)h * head_dim;
+            int    kh  = h / kv_mul;
+            float *att = s->att + (size_t)h * max_seq;
+
+            for (int t = 0; t < valid_ctx; t++) {
+                int hist     = (tok_pos >= valid_ctx) ? (tok_pos - valid_ctx + 1 + t) : t;
+                int mapped_t = sw_map_position(&s->sw, hist);
+                size_t off = ((size_t)kh * max_seq + (size_t)mapped_t) * head_dim;
+                att[t] = tn_vec_dot(q_h, &s->qwen3moe_key_cache[layer][off], head_dim) * inv_sqrt_hd;
+            }
+            tn_softmax(att, valid_ctx);
+
+            float *out_h = out_k + (size_t)h * head_dim;
+            memset(out_h, 0, (size_t)head_dim * sizeof(float));
+            for (int t = 0; t < valid_ctx; t++) {
+                int hist     = (tok_pos >= valid_ctx) ? (tok_pos - valid_ctx + 1 + t) : t;
+                int mapped_t = sw_map_position(&s->sw, hist);
+                size_t off = ((size_t)kh * max_seq + (size_t)mapped_t) * head_dim;
+                tn_vec_saxpy(out_h, att[t], &s->qwen3moe_value_cache[layer][off], head_dim);
+            }
+        }
+    }
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_11_ATTN_SCORE,
+                           tn_step_timing_now_ns() - t_step);
+    }
+
+    /* Step 7: output projection (q_width -> dim), batched; + residual */
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    if (w->layers_are_ternary) {
+        tn_ternary_matmul_packed_batch(sb->xb, attn_concat_all, (const tn_u8 *)w->wo[layer],
+                                        q_width, dim, w->so[layer], n_tokens, tp);
+    } else {
+        tn_dense_matmul_dispatch_batch(sb->xb, attn_concat_all, w->wo[layer], w->wo_type[layer],
+                                        q_width, dim, n_tokens, tp);
+    }
+    if (s->active_lora)
+        lora_apply_batch(sb->xb, attn_concat_all, lora_mod(s->active_lora->o, layer), q_width, dim, n_tokens, tp);
+    tn_vec_add(sb->x, sb->x, sb->xb, n_tokens * dim);
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_12_POST_ATTN,
+                           tn_step_timing_now_ns() - t_step);
+    }
+
+    free(q_buf_all);
+    free(k_buf_all);
+    free(v_buf_all);
+    free(attn_concat_all);
+    return TN_OK;
 }

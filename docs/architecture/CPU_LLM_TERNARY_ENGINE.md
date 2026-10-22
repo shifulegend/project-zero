@@ -763,7 +763,7 @@ When the engine detects low RAM, load a **Stable Diffusion 1.5 LCM** instead:
 ## Compiling the Engine
 
 ```bash
-gcc -O3 -march=native -pthread src/main.c src/math.c src/memory.c -lm -o adaptive_ai_engine
+gcc -O3 -march=native -pthread src/main.c src/math.c src/memory.c -lm -o pz
 ```
 
 Flag breakdown:
@@ -772,7 +772,7 @@ Flag breakdown:
 * **`-march=native`** (The Hardware Probe): Unlocks every hidden hardware instruction (AVX2, AVX-512, NEON) available on the compiling CPU.
 * **`-pthread`**: Links the POSIX threading library for dynamic multi-core dispatching.
 * **`-lm`**: Links the C Math library for `roundf()` and `fabsf()`.
-* **`-o adaptive_ai_engine`**: Outputs the final, hyper-optimized standalone executable.
+* **`-o pz`**: Outputs the final, hyper-optimized standalone executable.
 
 ---
 
@@ -870,7 +870,7 @@ If we write our C engine's config loader (Phase 1 of our plan) to understand the
 * **Compatibility:** 100% compatible.
 * **The Workflow:**
   1. Download the `.gguf` file.
-  2. Point your C engine at it: `./adaptive_ai_engine -m llama.gguf`
+  2. Point your C engine at it: `./pz -m llama.gguf`
   3. The engine reads the header, maps the memory, and runs. No tweaks required.
 
 ### Category 2: Native Ternary Models (Require "Packing" Tweaks)
@@ -907,7 +907,7 @@ If you want to run a model that can see images (like LLaVA or a Vision-BitNet), 
 * **The Workflow:**
   1. Write a Python extraction script.
   2. The script physically slices the Hugging Face model into three separate files: `vision.bin`, `projector.bin`, and `text.bin`.
-  3. You boot your C engine by pointing it at all three: `./adaptive_ai_engine --text text.bin --vision vision.bin --proj projector.bin`
+  3. You boot your C engine by pointing it at all three: `./pz --text text.bin --vision vision.bin --proj projector.bin`
 
 ### The Ultimate "One-Click" Workflow
 
@@ -1508,7 +1508,7 @@ CFLAGS_OPTIMIZED = $(CFLAGS_COMMON) -O3 -march=native -fprofile-use -flto=thin
 Usage:
 ```bash
 make CFLAGS="$(CFLAGS_PROFILE)"              # Build with profiling
-./adaptive_ai_engine --prompt "..." --max-tokens 50  # Run to generate profile
+./pz --prompt "..." --max-tokens 50  # Run to generate profile
 make CFLAGS="$(CFLAGS_OPTIMIZED)"            # Rebuild with profile data
 ```
 
@@ -2306,7 +2306,7 @@ Point the engine directly at it — that is the entire workflow.
 
 ```bash
 # No conversion. No Python. No setup. Just run.
-./adaptive_ai_engine --model deepseek-v2-lite-chat-Q4_K_S.gguf --tokenizer ...
+./pz --model deepseek-v2-lite-chat-Q4_K_S.gguf --tokenizer ...
 ```
 
 ### What GGUF Actually Is

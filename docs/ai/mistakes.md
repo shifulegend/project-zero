@@ -3,9 +3,1253 @@
 > Canonical, append-at-top (newest first). Read this at the start of every session.
 > Add an entry **immediately** when a mistake, false assumption, regression, or avoidable
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
-> Last updated: 2026-07-31.
+> Last updated: 2026-10-22.
 
-### 2026-07-31 — A promised bug fix ("I'll clamp max context for qwen3moe") was never actually completed — the RAM safety cap structurally couldn't see the real head_dim for qwen35/qwen3moe
+### 2026-10-22 — Security-audit fuzzer red since its hardening: first-run calibration + a leak
+
+- After `tools/fuzz_config.py` stopped passing on a timeout (2026-10-21), the Independent Security
+  Audit failed on every push: "engine still running after 60s on a corrupt model (hang)".
+- Root cause 1: on a host with no `~/.project-zero/calibration.bin` (every fresh CI runner), `main()`
+  ran the first-run SIMD/thread calibration sweep before even opening the model — 2 min 12 s
+  under ASan -O0, and the meaningless timings were saved to the cache release builds read.
+  Root cause 2: `pz_config_prepare_argv()` (Phase 40.2, mine) returned a malloc'd argv that `main()`
+  never freed; LeakSanitizer reported it on every exit path.
+- Detection: reproduced with the workflow's exact CMake ASan build and an empty `HOME` (with my
+  own `HOME` the run took 0.2 s, which is why local runs looked fine).
+- Correction: sanitizer builds (`TN_SANITIZED`, core/platform.h) skip the automatic calibration and
+  never save one; the model file is opened before the hardware probe so a bad path fails at once;
+  `prepare_argv` keeps the array it returns. Fuzzer: 2 min 16 s → 1 s, no sanitizer report.
+  Also silenced three unused-variable warnings in `simd_dispatch.c` on SIMD-less (CMake) builds.
+  Same day, macOS CI: `tests/test_config_cmd.c` called `mkdtemp` without `<unistd.h>` (macOS
+  declares it there, glibc in `<stdlib.h>`); include added.
+- Prevention rule: reproduce CI with CI's build *and* CI's clean environment (empty `HOME`, no
+  caches); a local cache can hide minutes of first-run work.
+
+### 2026-10-21 — Benchmark contaminated by my own concurrent work
+
+- While an A/B benchmark ran I compiled and ran a test binary and started an MCP server: the F32
+  control showed a 44 % gap that the code could not cause. All numbers were discarded and the
+  benchmark re-run on an idle machine. The rule (benchmarks strictly sequential, nothing else on
+  the CPU) already existed. Lesson: once a benchmark starts, only text/network work until it
+  reports — no builds, no test runs, no tool servers. Also: `pkill -f` matched my own shell again;
+  kill by PID.
+
+### 2026-10-21 — OOM guard assumed lazy zeroing on every OS (macOS CI SIGKILL)
+
+- `run_state.c`'s `tn_alloc_too_large` allowed a buffer up to 32x free RAM. That is only safe where
+  `tn_aligned_calloc` zeroes lazily (Linux). On macOS it memsets the whole buffer, so
+  `test_redbox`'s INT_MAX-context case (a ~275 GB attention buffer) passed the guard on a runner with
+  ~9 GB free and the memory killer SIGKILLed the test. It had passed only when runners reported less
+  free memory. Fixed: off Linux the bound is total physical RAM (a buffer that can't be zeroed can't
+  be used). Verified by building `run_state.c` with `-U__linux__` and running test_redbox (8/8).
+- Lesson: a guard's threshold must match the allocator behaviour on each platform it runs on.
+
+### 2026-10-21 — CI gaps found by running every workflow on the branch
+
+- **macOS build broken since 2026-10-18:** `file_backed.c` (`--kv-offload`) called
+  `posix_fallocate`, which macOS lacks. CI only auto-runs on master/main, so the branch never ran
+  the macOS job. Fixed with `F_PREALLOCATE` + `ftruncate` on macOS. Lesson: dispatch `ci.yml`
+  (`workflow_dispatch`) on a long-lived branch before calling it done.
+- **Coverage measured 40 lines:** my `make test` → debug-variant change made `make coverage`
+  (which called `test`) wipe its own instrumented objects; now it calls `run-tests` (50.8 % of
+  23,989 lines). lcov 2.x also errors on an unused exclude pattern — `--ignore-errors unused` on 2.x.
+- **Fuzzer passed by timing out:** `tools/fuzz_config.py` passed only on an "Invalid" message or a
+  5 s timeout; in CI the uncached startup probe made it time out, locally the engine rejected the
+  corrupt model instantly and the script failed. Now: graceful non-zero exit = pass; signal,
+  sanitizer report, exit 0 or a 60 s hang = fail.
+
+### 2026-10-21 — test_q2_0_matmul guessed the kernel's path from the CPU alone
+
+- The reference in `tests/test_q2_0_matmul.c` switched to int8-quantized math whenever the CPU
+  reported AVX-512 VNNI, but `parallel_matmul_q2_0()` only takes the VNNI path when its own TU is
+  compiled with VNNI. The security-audit job's CMake build is baseline (`-mavx2` only, per-file
+  VNNI flags are `PZ_DIST`-only), so on VNNI runners the kernel ran float math against an int8
+  reference: rows 1/3/4 of "single block, multi row" failed (run 315), passing on non-VNNI
+  runners. It looked like a flake; reproduced exactly by compiling the TU with the job's flags.
+  The broken VNNI self-test (fixed the same day) had hidden it on most runners.
+- Fixed: `matmul_q2_0_uses_vnni()` in the kernel TU is the single decision (compile-time + runtime);
+  the dispatcher and the test both use it.
+- Lesson: a test's reference must ask the code under test which path it took, never re-derive the
+  choice from CPU flags — build flags are part of the decision.
+
+### 2026-10-21 — `make test` never sanitized the engine; build stamp blind to CPU and compiler
+
+- `make test` had no build-variant guard and linked whatever library objects existed. On a fresh
+  tree (every CI job) those were built with the default release flags (`-O3`, no ASan/UBSan), so
+  only the test drivers were instrumented and engine code never ran under the sanitizers the docs
+  promised. Fixed: `make test` builds the `debug` variant (same stamp as `make debug`, so
+  release → test → debug still rebuilds once). Every suite stayed green with the engine instrumented.
+- `build/.variant` recorded only the variant name. Objects take host-detected ISA flags
+  (`-march=native`, `_HAS_*VNNI`), so after this VM migrated to another CPU across a restart
+  `test_simd_vnni` failed to link against a stale `ternary_matmul_packed_avx_vnni.o`; a gcc→clang
+  switch on the same variant also reused the other compiler's objects. The stamp now carries
+  `cc=` and an `isa=` fingerprint of `-march=native`'s macros; any change forces a clean rebuild.
+- Side effect to know: `make test` (debug variant) replaces a release `./pz`; run `make release`
+  afterwards before benchmarking.
+- Lesson: a cache key must include every input that changes the output — here variant, compiler
+  and host ISA.
+
+### 2026-10-21 — MoE ~2-3x behind llama.cpp: format widening and a broken VNNI self-test, not "expert scatter"
+
+Reverse-engineering llama.cpp's MoE path (source + `perf` + a ggml `mul_mat_id` microbench on the
+same expert shapes) showed its per-op expert GEMV throughput is about the same as ours
+(Q4_K x 6 experts, 4T: ~16-17 GB/s both). The gap was elsewhere — pre-existing defects:
+
+- **VNNI self-test always failed.** `verify_avx512vnni_executable()` expected 64 from a
+  `vpdpbusd` of all-ones bytes; the instruction sums 4 products per lane (= 4). Every VNNI host
+  had `avx512vnni` silently cleared, disabling all runtime-gated VNNI kernels (Q2_0 included).
+  The 2026-09-24 entry's "CPUID lies" diagnosis for VNNI was at least partly this bug. Fixed.
+- **Q5_0/Q5_1/Q8_0 ran against F32 activations** (decode to float + FMA): the DeepSeek-V2-Lite
+  expert down projection (Q5_0) was compute-bound at ~9 GB/s. Now Q8_0-quantized activations +
+  integer dots (`math/q8_0_act.c`), as llama.cpp does.
+- **Quantized LM heads were widened to BF16** (Q6_K 172 MB -> 420 MB streamed per token) in the
+  deepseek2/qwen3moe and the generic loaders; now zero-copy Q4_K/Q6_K (`wcls_raw`).
+- **DeepSeek-V2's dense layer 0 was dequantized to F32** (269 MB/token vs 42 MB); now typed
+  zero-copy (`load_proj_typed`, new `WEIGHT_TYPE_Q5_0/Q5_1/Q8_0`).
+- **Router ignored `expert_weights_norm/scale/gating_func`**: Qwen3-MoE (norm_topk_prob, always on
+  in llama.cpp) and DeepSeek-V2 full (scale 16) were mis-weighted. Fixed from GGUF metadata.
+- **Q6_K kernel built scale vectors with 8 x `_mm256_setr_epi16` per block** and a scalar bias
+  loop; rewritten (bit-identical). Its first rewrite used `_mm_srli_si128(x, 8*h)` — non-constant
+  immediate, compiled at -O3 gcc only; debug/clang builds failed. Lesson: build all variants
+  before benchmarking a kernel change.
+- **SIMD silu on thread-dependent sub-ranges** made the fused MoE result depend on the thread
+  count (vector exp approximation + scalar tail); activation now runs per whole expert vector.
+- **Benchmark trap: memcg page-cache thrash.** The session memcg is 14.3 GB; an mmap'd 9.5 GB model
+  plus ~3 GB anon puts both engines at the limit, and earlier runs (PZ 4.07 / llama 5.8 tok/s with
+  mmap) were measuring re-reads from disk. llama.cpp must run with `-lm none` here; check
+  "File system inputs" in `/usr/bin/time -v` before trusting a number.
+
+### 2026-10-19 — LoRA skipped by the batched verify pass and by Qwen3 attention
+
+- `--lora` with `--draft-model`: `attention_forward_batch()`/`ffn_forward_batch()` never read
+  `s->active_lora`, so speculative decoding accepted draft tokens by the *base* model's verdict and
+  wrote un-adapted K/V. The plan listed "batched" under a 19-B follow-up as a coverage gap; it was a
+  correctness bug for a supported flag combination. Fixed with `lora_apply_batch()`.
+- Qwen3 (dense and MoE) runs `qwen3moe_attention_forward*`, which had no LoRA calls; its Q is
+  `n_heads*head_dim` wide, which the adapter format could not describe. Header `[36:40] q_dim` added
+  (0 = dim, backward compatible). Lesson: a "follow-up" scope note must say whether the excluded
+  path silently changes results for a flag users can already pass — that makes it a bug.
+
+### 2026-10-19 — Startup cost 20–70 s: found only by timing wall clock against llama.cpp
+
+The head-to-head sweep reported near-parity decode tok/s, but Project Zero's wall time was 3–4×
+the reference engines' for the same 500 tokens (SmolLM2-135M 25 s vs 7.5 s; BitNet 108 s vs
+37 s). Every earlier sweep reported the engine's own `[gen] tok/s`, which excludes startup, so
+this was never seen. Four pre-existing defects:
+
+- **BPE merge resolution was O(merges × vocab)** — a linear vocab scan per merge, commented
+  "acceptable since one-time". SmolLM2 (49k × 49k) ≈ 4 s; Llama-3 vocabularies (280k merges ×
+  128k tokens, BitNet) ≈ 60 s. Fixed: binary search over the sorted index (built earlier),
+  lowest id among duplicates as before. Outputs identical on all models.
+- **DRAM bandwidth probe on every start**: 2 GB malloc'd and first-touched single-threaded —
+  1.3–15 s on a VM and the reason every run's max RSS was ≥ 2 GB (Addendum AJ/AK attributed that
+  RSS to "mmap'd model + calibration buffers"). Fixed: per-host cache (`core/bw_cache`, keyed by
+  CPU/cores/L3/RAM, 30-day expiry, `--calibrate`/`PZ_BW_REPROBE=1` re-measure); probe buffer
+  4×L3 (512 MB..2 GB, ≤ ¼ free RAM), touched by the probing threads in parallel.
+- **`tn_aligned_calloc` memset the whole buffer**, committing the full max-context KV cache
+  (8192 × F32) before the first token. Fixed on Linux: `madvise(MADV_DONTNEED)` on whole pages
+  (zero-fill-on-demand), memset only partial head/tail pages; elsewhere unchanged.
+- **I2_S repack decoded 2-bit fields one at a time**; now one 32-bit word → 4 output bytes.
+- **Converted raw tensors stayed resident**: the model is mapped with `MAP_POPULATE`, so raw I2_S
+  and embedding bytes counted in RSS after being converted to engine buffers. Now released
+  (`mapped_file_release`, `MADV_DONTNEED` on the read-only mapping — refaults from the file):
+  BitNet 2,867 → 1,766 MB.
+- Tried and rejected: `MADV_HUGEPAGE` on lazily zeroed buffers. The KV cache is laid out per
+  (layer, head), so 2 MB pages committed nearly the whole cache (SmolLM2-1.7B RSS 2.3 → 5.4 GB).
+  Instead `run_state_kv_reserve()` commits only the rows a generation can write, up front.
+- A/B noise: single old-vs-new rounds on this VM showed a "consistent" −3.5 % that vanished (and
+  flipped sign) in later rounds; ±4 % run-to-run. Repeat interleaved rounds before calling a
+  regression, and count page faults (`ru_minflt`) to test a mechanism directly.
+- Lesson: benchmark wall time and RSS, not only the engine's self-reported decode rate, and
+  compare against a reference engine on the same host — "one-time cost" comments hide O(n²).
+
+### 2026-10-19 — GGUF models never stopped on end-of-turn tokens; BitNet's GGUF template is broken
+
+- `Tokenizer.eos_list` was only filled by the legacy `.bin` loader. GGUF models stopped only on
+  the declared `eos_token_id`, so a Llama-3-vocab model whose EOS is `<|end_of_text|>` ran past
+  `<|eot_id|>` to `--max-tokens` (BitNet: "Paris.<|eot_id|><|eot_id|>..."). Fixed:
+  `tokenizer_collect_eog()` (declared EOS/EOT/EOM + llama.cpp's end-of-generation names, control
+  tokens only for GGUF), shared by both loaders; `--ignore-eos` masks the whole set, as llama.cpp.
+- The official `bitnet-b1.58-2B-4T-gguf` file's `tokenizer.chat_template` appends `eos_token`
+  after `BITNETAssistant: `, so the model starts a new document (bitnet.cpp `--jinja` returns an
+  empty answer from it). Fix: `--chat-template-file` (CLI and `--server`) with
+  `docs/templates/bitnet-b1.58.jinja` (the model card's `User: …<|eot_id|>Assistant: ` format).
+  Golden "capital of France" → "Paris" now holds in chat mode, not only with `--raw-prompt`.
+
+### 2026-10-19 — A container restart moved the benchmark to different hardware
+
+- The head-to-head sweep's `system_info.txt` was written on an Xeon @ 2.10 GHz (model 207,
+  AVX-VNNI/AMX); after a container restart the run continued on an Xeon @ 2.80 GHz (model 85,
+  Cascade Lake — no AVX-VNNI, no AMX). Only the date/commit lines of the profile were refreshed,
+  so it described the wrong machine, and the `-march=native` builds of llama.cpp/bitnet.cpp
+  from the old host died with SIGILL on every run (recorded as missing results, not crashes).
+- Fixes: `bench_sweep_seq.py` writes `HOST_CPU:` into every run file; the system profile is
+  regenerated in full on the host that runs the sweep; native reference builds are rebuilt after
+  any restart. Lesson: in cloud sessions, a restart can change the CPU — never reuse a hardware
+  profile or a native binary across one, and treat a non-zero exit as a failed run, not a slow one.
+
+### 2026-10-19 — Found by benchmarking against the reference engines (llama.cpp, bitnet.cpp)
+
+Installing llama.cpp and bitnet.cpp for head-to-head runs exposed nine pre-existing gaps:
+
+- **Official BitNet GGUF could not load.** Plan 34.2b was marked ✅ while its I2_S sub-item
+  (34.2b.2) still said PLANNED; the ternary engine rejected tensor type 36. Fixed: lossless I2_S
+  → packed-ternary repack (`core/gguf_i2s`), sub-norms + ReLU² + ternary path for arch
+  `bitnet-b1.58`. Lesson: a phase ✅ must be checked against every sub-item's status line.
+- **RoPE pair layout ignored the architecture.** Every GGUF used NORM (adjacent pairs); llama.cpp
+  uses NEOX (rotate-half) for Qwen2/3, Phi, Gemma, StableLM, BitNet, ... (their Q/K are not
+  permuted at conversion). Fixed: `Config.rope_layout` from `rope_layout_for_arch()`,
+  `apply_rope_ex()`, `--rope-layout` override. BitNet output went from truncated to fluent.
+- **No BPE pre-tokenization.** BPE ran over whole segments, merging across word/digit/punctuation
+  boundaries (`?\n\n` as one token). Fixed: `tokenizer/pretokenize` ports llama.cpp's splitters,
+  selected by `tokenizer.ggml.pre` ("default" when absent); 8/8 token-exact vs llama.cpp on four
+  models (BitNet, SmolLM2, Qwen3, Mamba). PPL parity table: `docs/reports/ACCURACY_PARITY_2026-10-19.md`.
+- **Direct `transformer_forward()` callers got an uninitialised sliding window** (second time,
+  after the Phase 28 worker): every position mapped to slot 0. Now initialised on first use.
+- **GGUF tensors were bounds-checked by start offset only** — a truncated file gave kernels a
+  pointer running past the mapping. Now the whole tensor must fit (Q2_0 excepted, size
+  informational).
+- **`gguf_meta_str()` returns a shared static buffer**; a second call silently changed the
+  first result (seen as `tokenizer: smollm (smollm)` in the log). Callers that keep the value
+  now copy it.
+- **Qwen2 Q/K/V biases were never loaded** (Qwen2.5 → garbage). Now `w->bq/bk/bv`, added after
+  the projections in single-token and batched attention.
+- **Dense Qwen3 with `key_length` ≠ dim/n_heads** (Qwen3-0.6B) took head_dim = dim/n_heads.
+  Now routed to the independent-head_dim QK-norm attention with q_rows-wide Q/O.
+- **`tokenizer.ggml.add_bos_token` was parsed and ignored** — every raw prompt and perplexity
+  chunk got a BOS that Qwen/SmolLM never see in llama.cpp (Qwen3-0.6B PPL +5%). Now honoured,
+  with llama.cpp's default when absent (BOS for SentencePiece and Llama-3-style BPE only).
+- Verification: PPL parity vs llama.cpp/bitnet.cpp table in
+  `docs/reports/ACCURACY_PARITY_2026-10-19.md`.
+
+### 2026-10-18 — Three pre-existing bugs found while building the updater (Phase 38)
+
+- **Calibration replaced the CPU's best kernel with "scalar".** `tn_calibrate()` benchmarked only
+  forced tiers (scalar/avx2/avx512f/vnni) — never AVX-VNNI, which only the dispatcher's auto path
+  selects — and the noisy winner always overrode auto. On this AVX-VNNI Xeon the cached result was
+  "scalar" (auto-vectorised by `-march=native`, within noise), so every ternary matmul silently ran
+  the scalar kernel while the profile box still printed "AVX-VNNI"; `/v1/config runtime.simd`
+  said "Scalar". Fix: "auto" is candidate 0 and wins unless a forced tier is clearly faster
+  (median > auto × 1.05 and slowest rep > auto median); cache version 3 forces stale caches to
+  re-calibrate. Lesson: an auto-tuner must measure the default it may override, and must not
+  override on noise.
+- **JSON parser over-read:** a trailing backslash (`{"a":"x\`) stepped past the NUL in
+  `parse_string()` — reachable from any HTTP body. Now rejected (test in test_update_check).
+- **CMake tests ran from the build dir:** `test_cmd_exec_gaps` / `test_vision_e2e` read
+  repo-relative files and failed under `ctest` only. `add_test(... WORKING_DIRECTORY
+  ${CMAKE_SOURCE_DIR})`, matching `make test`. CMake was also missing `update_endpoint.c` until
+  linked — always build both systems.
+
+### 2026-10-18 — Distributed (Phase 28) worker produced garbage: un-initialised sliding window
+
+- The worker ran its layers with a zeroed `s->sw`, so `sw_*` mapped positions to the wrong KV
+  slots and the split run diverged from the single process after a few tokens. Fix: FORWARD
+  carries the coordinator's pinned length; the worker calls `sw_init()` at pos 0 or when it
+  changes. Lesson: anything that maps position → cache slot is part of the remote contract.
+  Verified by md5 of the greedy output (split == single process).
+- Found in the same pass: prompt snapshots (`--prompt-cache-mb`) would restore only the
+  coordinator's layers while each worker kept the last prompt's KV → silent mixing. Snapshots
+  are now bypassed when `--remote-layers` is active (live prefix cache stays; verified with the
+  A/B/A request sequence giving identical replies to the single-process server).
+
+### 2026-10-18 — Portable dist build silently disabled SIMD-aware heuristics (compile-time gating in baseline TUs)
+
+- `cpu_probe.c` and `calibration.c` are compiled at the x86-64-v2 baseline in `make dist`, so
+  their `#if TN_HAS_AVX512/AVX2` blocks were always false there: the AVX-512 thread heuristic
+  never applied and auto-calibration only benchmarked "scalar", even though the binary
+  dispatches AVX2/AVX-512 at runtime. Surfaced as two dist-only compiler warnings (unused
+  function / variable). Fix: runtime CPUID check in cpu_probe; `TN_FORCE_DISPATCH_ALL` for
+  calibration.c (as simd_dispatch.c). Lesson: in baseline-ISA TUs, decide SIMD-dependent
+  behaviour at runtime, never with TN_HAS_* macros.
+
+### 2026-10-18 — Two bugs surfaced by adding a new architecture (Mamba)
+
+- **MoEConfig only populated for a hardcoded arch list.** `load_gguf_model()` called
+  `moe_config_from_gguf()` only for `deepseek2|qwen35|qwen3moe`; a new arch silently ran as a
+  dense transformer with NULL attention weights (segfault in `attention_forward`). Fix: always
+  call it (it returns the dense default for plain archs).
+- **Server prompt format guessed from the client's `model` string.** Models without an embedded
+  chat template got ChatML for any name (the web UI sends "local"); on vocabularies without
+  `<|im_start|>` the tokenizer's injection guard rejects the prompt and the server answered an
+  empty 200. Fix: `chat_template_detect_vocab()` picks the format from tokens the vocabulary
+  actually has (`plain` for base models, which now ends with an `assistant:` cue),
+  `--chat-format` overrides, and an un-tokenizable prompt returns 400.
+- Lesson: architecture/feature dispatch must not hide behind name allowlists — derive it from
+  the file's metadata and fail loudly.
+
+### 2026-10-18 — `make debug && make test` failed to link two tests (order-dependent build)
+
+- `build/tests/test_api_server` and `build/tests/test_q2k_matvec` have custom rules that link
+  with plain `$(LDFLAGS)`; when the library objects were last built by `make debug` (ASan/UBSan
+  instrumented) the link failed with undefined `__asan_*`/`__ubsan_*`. CI masks it by always
+  running release → test → debug. Fix: `SAN_LINK_FLAGS` (sanitizer runtime when
+  `build/.variant` is `debug`). Verified both orders on gcc and clang.
+
+### 2026-10-18 — "KV Strategy: Quantized I8" was printed although the KV cache is always F32
+
+- Finding: `select_kv_strategy()` returns a strategy enum + context length, but only
+  `max_seq_len` was ever used; `RunState.key_cache/value_cache` are `float *` and no attention
+  kernel calls `kv_compress_*`. Phase 8 was marked ✅ because the kernels and selector existed
+  and were unit-tested — nobody checked they were connected to the forward pass.
+- Fix (same pass): honest startup line via `kv_strategy_print()` ("KV cache: F32 … sizing
+  tier: …"); context sizing made configurable (`--ctx-size`, `--kv-ram-fraction`). The real
+  integration (quantized storage + fused dequant attention for every attention family) is an
+  architectural change — logged as plan item 8.5 and flagged to the user, not silently skipped.
+- Lesson: a ✅ on a plan item needs an end-to-end check that the code is *reached*, not just
+  that its unit tests pass (same lesson as the 2026-07-15 "untested" socket-layer entry).
+
+### 2026-10-18 — Six pre-existing bugs found while making every generation setting front-end configurable (all fixed in the same pass)
+
+- **`--seed` was parsed and then ignored.** `args.c` stored it, but `generate_with_callback()`
+  always seeded the RNG with `time(NULL)`, so no sampled run was ever reproducible. Fix: the seed
+  travels in `GenerationParams.seed` (`< 0` = time-based) and is honored by `generate_ex()`; the
+  API accepts `"seed"` and the web UI exposes it. Regression: `tests/test_sampler_chain.c`
+  `test_seed_reproducible` + a CLI md5 check (two `--seed 42` runs identical).
+- **API dropped all conversation history on GGUF models.** The chat handler forwarded only the
+  last user message to the chat template, so the web UI had no multi-turn memory and system
+  messages were silently discarded. Fix: the full message list (system/user/assistant) is passed
+  as `GenerationParams.roles/contents` and rendered by the model's own template. Verified live:
+  "My name is Ankit … What is my name?" now answers correctly.
+- **`RunState.current_pos` never reset between API requests.** After one image request (the
+  vision prefill advances it), every later text request started after a stale image prefix.
+  Fix: reset to 0 at the start of each chat request.
+- **`/v1/models` was a hardcoded `{"id":"local-adaptive-engine"}` with no `vision` field**, so
+  the web UI's image-upload control (gated on `modelInfo.vision`) could never appear even with
+  `--vision/--proj`. Fix: `src/api/api_info.c` reports the real model file name, metadata and
+  vision flag. Similarly `usage` was always `0/0/0` and `finish_reason` always `"stop"`; both are
+  now real (`GenerationStats`).
+- **JSON `\uXXXX` escapes decoded to `'?'`** in `json_parse.c`, mangling any client that escapes
+  non-ASCII (Python's `json.dumps` default). Fix: full UTF-8 decoding incl. surrogate pairs;
+  `"content": null` also accepted. Regression: `tests/test_request_params.c`.
+- **Makefile had no header dependency tracking.** Adding a field to `GenerationParams` (embedded
+  in `ServerConfig`) left previously-built objects with the old struct layout linked into the
+  tests — surfaced as an ASan SEGV reading `max_tokens_limit` at a shifted offset (address
+  `0x3e8` = the test's value 1000). Fix: `-MMD -MP` in `CFLAGS_COMMON`/`CXXFLAGS_COMMON`, `-MF`
+  for test binaries, `-include` of the `.d` files. Lesson: before this fix, ANY header edit could
+  silently produce a mixed-layout binary unless you `make clean`; it is now tracked.
+- Also hardened: `sse_write_token()` escaped into a fixed `char[1024]` with no bound check —
+  safe only while pieces stayed tiny; stop-sequence hold-back can release longer chunks, so it
+  now sizes the buffer from the input.
+- Environment note (not a code bug): this container's clang lacked its ASan runtime
+  (`libclang-rt-18-dev`); `make test CC=clang` fails at link time until it is installed.
+
+### 2026-09-24 — Phase 19's `.lora.bin` loader hardcoded K/V's output width as `dim`, corrupting every GQA model's K/V-targeting LoRA — found only by downloading a real adapter and running it end to end
+
+- Context: Phase 19 (LoRA adapters) implementation + verification. Synthetic unit tests
+  (`tests/test_lora.c`) all passed, and the converter's own byte-level round-trip check (source
+  tensor -> `.lora.bin` -> decoded back, compared against the original numpy arrays) also passed
+  cleanly. Only surfaced when following the plan's own verification step: "a real end-to-end
+  check with an actual downloaded HuggingFace LoRA adapter if one compatible with a
+  locally-available base model can be found." Found and downloaded
+  `CTU-ai-lab/SmolLM2-135M-LoRA-Adapter` (HuggingFace Hub, PEFT format, `target_modules:
+  ["q_proj", "v_proj"]`) for this project's own `models/smollm2.gguf`.
+- Finding: `./adaptive_ai_engine --lora <converted adapter>` failed immediately with `[lora]
+  truncated/OOM reading target 2 layer 20 A`. Root cause: `src/core/lora_load.c`'s per-target
+  shape table hardcoded `dim` as *both* the input width (`n`, correct) and the output width (`d`,
+  **wrong**) for the K and V target modules:
+  `{ LORA_TARGET_K, &lora->k, dim, dim }, { LORA_TARGET_V, &lora->v, dim, dim }`. On a GQA model
+  (`n_kv_heads < n_heads`), the K/V projections actually go `dim -> kv_dim`, not `dim -> dim` —
+  SmolLM2 itself is GQA (`n_kv_heads=3`, `n_heads=9`, `dim=576`, `kv_dim=192`), so the loader
+  expected 3x more bytes for every V block than the (correctly-sized) file actually contained,
+  eventually running past EOF. `attention.c`'s own `lora_apply()` call sites were already correct
+  (`lora_apply(k_buf, ..., dim, kv_dim, tp)`) — only the *loader's* shape table had the bug, so
+  the mismatch was invisible until a file with real K/V blocks was actually loaded.
+- Why the unit tests missed it: `tests/test_lora.c`'s existing forward-level tests used
+  `tiny_config()` with `n_heads == n_kv_heads` (no GQA, `kv_dim == dim` by coincidence), so the
+  wrong shape table happened to compute the right byte count there. The converter's own
+  byte-level round-trip check used a synthetic adapter targeting `q_proj`/`v_proj`/`down_proj`
+  with `dim=16` for *all* of them (also no GQA) for the same reason. Neither test exercised the
+  one shape (`kv_dim != dim`) where the bug actually manifests.
+- Fix: added `kv_dim` to the `.lora.bin` header (validated against the base model's
+  `config_kv_dim(cfg)` at load time, exactly like `dim`/`hidden_dim`/`n_layers` already are —
+  rejecting a mismatch rather than silently corrupting output), corrected the K/V entries in
+  `lora_load.c`'s shape table to use `kv_dim` for their output width, added `--kv-dim` to
+  `tools/convert_lora.py` (defaults to `--dim`, with an explicit warning when the adapter targets
+  k_proj/v_proj and no `--kv-dim` was given), and added two dedicated regression tests to
+  `tests/test_lora.c`: `test_lora_load_rejects_kv_dim_mismatch` (a `kv_dim`-only header mismatch,
+  everything else correct, must be rejected) and `test_lora_load_gqa_kv_shape` (a hand-built
+  `.lora.bin` with a real `kv_dim != dim` V-target block, verifying both A and B decode correctly
+  end to end). Re-ran the real SmolLM2 adapter after the fix: loads and generates coherently.
+- Correction verified: full `make release/test/debug` green for gcc and clang after the fix
+  (`test_lora` now 184/184, up from 155/155); the real downloaded adapter loads and runs without
+  error; that specific adapter's `lora_B` tensors turned out to be all exactly zero across all 30
+  layers (confirmed by inspecting the source safetensors file directly, not a bug in this
+  pipeline — an untrained/placeholder homework adapter), so the pipeline's real-world
+  "LoRA measurably changes output" proof comes from `test_lora.c`'s synthetic nonzero-LoRA case
+  (`test_forward_lora_active_changes_output`) instead, which was already passing.
+- Prevention rule: for any per-target-module shape assumption in this codebase, **GQA is not an
+  edge case to check later — it's the config this project's own default demo model uses.** A
+  correctness test suite that never exercises `n_kv_heads != n_heads` for a K/V-shaped code path
+  will not catch a `kv_dim`-vs-`dim` bug, however thorough it looks otherwise; the only test that
+  actually caught this was a real downloaded artifact exercising the real shape. Reinforces the
+  project's own "download a real artifact rather than trust synthetic coverage" pattern (same
+  lesson Phase 18's benchmark work already drew from a real-model run finding what synthetic
+  tests couldn't).
+
+### 2026-09-24 — AVX-512VNNI CPUID lies on this sandboxed dev host too (same class as the 2026-07-16 VBMI entry below), silently corrupting `test_q2_0_matmul` under gcc only — found while verifying Phase 19's `make test`
+
+- Context: routine `make test CC=gcc` run as part of Phase 19's build/test verification (no
+  LoRA-related code involved). `build/tests/test_q2_0_matmul` crashed with a bare `Illegal
+  instruction` (SIGILL, exit 132) — reproduced identically on a clean pre-Phase-19 checkout
+  (confirmed via `git stash`), ruling out anything from this session's own changes. `make test
+  CC=clang` on the *same host* passed cleanly (35/35) — compiler-dependent SIGILL is itself a
+  strong signal for the CPUID-lies-under-virtualization bug class the 2026-07-16 entry below
+  already root-caused once for AVX-512VBMI, not a logic bug (a real logic bug wouldn't flip
+  between compilers on identical source).
+- Finding: `matmul_q2_0.c` gates its VNNI fast path (`matmul_q2_0_vnni.c`'s
+  `_mm512_dpbusds_epi32`-based kernel) purely on the compile-time `TN_HAS_AVX512VNNI` macro, with
+  **zero runtime verification** — the exact anti-pattern the 2026-07-16 VBMI entry already
+  documented and fixed for `bitunpack2_vnni.h` and `matmul_i4_task`, just never applied to this
+  sibling VNNI consumer. This sandboxed dev host's hypervisor advertises AVX-512VNNI in CPUID
+  (`/proc/cpuinfo` shows `avx512_vnni`) — matching `-march=native`'s own `TN_HAS_AVX512VNNI=1` —
+  but a gcc-compiled `vpdpbusds` reproducibly faults; clang-compiled code touching the identical
+  logical instruction happens not to trigger it, almost certainly differing register/scheduling
+  around the same faulting opcode rather than gcc actually needing something clang doesn't.
+- Fix: added `verify_avx512vnni_executable()` to `src/math/cpu_features.c`, structurally
+  identical to the existing `verify_avx512vbmi_executable()` (installs a `SIGILL` handler via
+  `sigaction`, executes one real `_mm512_dpbusds_epi32` under `sigsetjmp`/`siglongjmp`, checks the
+  numeric result — not just "didn't crash" — and downgrades `g_features.avx512vnni` to `false` on
+  a fault or wrong result). `tn_cpu_features_detect()` now runs it once at startup, same as the
+  VBMI check. `matmul_q2_0.c`'s two dispatch call sites
+  (`parallel_matmul_q2_0`/`parallel_matmul_q2_0_batch`) now gate on
+  `tn_cpu_features_detect()->avx512vnni` (the *verified* flag) in addition to the compile-time
+  macro, instead of trusting the macro alone.
+- A second, related bug this surfaced: `tests/test_q2_0_matmul.c`'s own reference implementation
+  (`ref_dot_q2_0_row()`) picked its comparison math (int8-quantized-reference vs. exact-float) by
+  keying off the same bare `TN_HAS_AVX512VNNI` compile-time macro — so once the actual kernel
+  dispatch started correctly falling back to the exact-float path (per the fix above) while the
+  macro was still compile-time `1`, the test's own reference now disagreed with what the kernel
+  legitimately computes, failing 3/35 cases (`single block, multi row`, rows 1/3/4). This is the
+  *same* class of test/dispatch mismatch the file's own header comment already documents once
+  (the 2026-07-17 regression, opposite direction: CI runners with no VNNI hardware at all vs. a
+  macro that still said yes). Fixed by keying `ref_dot_q2_0_row()` off the same runtime-verified
+  `tn_cpu_features_detect()->avx512vnni` flag the kernel itself now uses, not the macro.
+- Scope note: `TN_HAS_AVX512VNNI` is also consulted compile-time-only in `bitunpack2_vnni.h`
+  (already runtime-guarded via its own VBMI-independent path), `src/core/calibration.c`,
+  `src/math/parallel_matmul.c`, `src/math/simd_dispatch.c`,
+  `src/math/ternary_matmul_packed_vnni{,256}.c` — none of these were touched this pass (out of
+  scope for a Phase 19 side-fix; this session's real generation/benchmark runs against actual
+  models never crashed, so these paths are not known-broken on this host, just unverified the
+  same way `matmul_q2_0.c` was before today). Flagged here explicitly per the project's bug-fix
+  policy rather than silently left for a future session to rediscover independently.
+- Prevention rule: a compile-time `TN_HAS_AVX512*` macro is a *hint* that hardware support was
+  detected during configuration, never a guarantee it's safe to execute — every new caller of an
+  AVX-512VNNI/VBMI code path must consult the *runtime-verified* flag (`tn_cpu_features_detect()`
+  after `verify_avx512{vnni,vbmi}_executable()` has run), not the macro alone, on this class of
+  virtualized/sandboxed host.
+
+### 2026-09-24 — Phase 18's batched matmul kernels (ternary, F16, BF16/INT8/INT4 classifier) were scalar-only, making speculative decoding's "verify" step slower than the sequential calls it was meant to replace — found via the first real-model benchmark
+
+- Context: Stage 7, the first real end-to-end speculative-decoding benchmark against actual
+  downloaded models (SmolLM2-135M draft vs. 360M/1.7B verifiers, both same-tokenizer siblings of
+  the repo's existing demo model). Before this, all correctness verification (Stages 1, 2, 5) used
+  tiny synthetic models where kernel-level performance was never measured, only numerical
+  correctness.
+- Finding: speculative decoding was dramatically *slower* than plain generation -- e.g. 360M
+  verifier: plain ~31-37 tok/s, speculative ~3.6-4.5 tok/s, roughly 8-10x slower, not faster.
+  `TN_STEP_TIMING=1` (Stage 5.5's own instrumentation) isolated it immediately: step 25
+  ("Speculative: verify batch") cost ~790ms/round for a 5-token batched call on the 360M model,
+  while 5 sequential single-token calls on the same model cost ~150ms total -- the batched call
+  was ~5x *more* expensive than the calls it was supposed to replace. Root cause: every batched
+  kernel in `src/math/batched_matmul{,_f16,_classifier}.c` (Stage 1, 2026-09-22) did its
+  weight-decode-and-accumulate loop in plain scalar C (`f16_to_f32_scalar()` / `unpack_ternary()`
+  called per-element, per-token), while every corresponding single-token kernel
+  (`src/math/matmul_f16.c`, `ternary_matmul_packed_avx512.c`, etc.) is AVX-512/AVX2 SIMD-accelerated
+  with multi-accumulator FMA. The batched kernels *did* deliver their documented RAM-bandwidth win
+  (each weight row read from RAM once, not once per candidate token) -- Stage 1's header comment
+  said exactly this and it was true -- but on AVX-512 hardware, scalar-speed compute is so much
+  slower than SIMD-speed compute that it became the new bottleneck, more than erasing the
+  bandwidth savings. Stage 1's own header comment had flagged the SIMD gap as "a documented
+  follow-up" without measuring what skipping it would actually cost -- it costs correctness of the
+  feature's entire premise for real (non-tiny-synthetic) models.
+- Impact: every one of Stage 1's five batched-kernel formats (ternary, F16, BF16, INT8, INT4) had
+  this defect. F16 (attention/FFN projections) and BF16 (the default classifier format) are what
+  every real GGUF model in this repo's `models/` directory actually uses, so this wasn't a
+  narrow-format edge case -- it made `--draft-model` a strict regression for every model anyone
+  had actually tried it on, the opposite of Phase 18's stated purpose.
+- Fixed: rewrote all five kernels to dequantize/unpack each weight row to F32 **once per row**
+  (SIMD-accelerated where a fast decode path already existed, e.g. `_mm512_cvtph_ps` for F16,
+  `unpack_ternary_block_avx2()` for ternary), then reuse this project's existing SIMD-dispatched
+  `tn_vec_dot()` (`math/simd_dispatch.h` -- the same dispatch table the single-token dense/GQA
+  attention path's own dot products already go through) for each of the n_tokens dot products
+  against that decoded row. This pays the decode cost once per row instead of once per candidate
+  token, on top of the existing RAM-read savings, and gets full SIMD width on the O(n*n_tokens)
+  dot-product work that actually dominates. `include/math/batched_matmul.h`'s header comment
+  updated to describe the new design instead of the stale "portable C, correctness-first, SIMD is
+  a follow-up" framing.
+- Verified: `tests/test_batched_matmul.c` (all 5 formats' correctness assertions, unchanged
+  tolerance) still passes 6/6 -- caught one real regression while fixing this: the test file never
+  called `tn_simd_init()`, so `tn_vec_dot` was a NULL function pointer and the first call SEGV'd
+  under ASan (`PC=0x0`) the moment the rewritten kernels started depending on it; fixed by adding
+  the same `tn_simd_init()` call `test_forward.c`/`test_forward_batch.c`/`test_threading.c` already
+  make. Full `make release/test/debug` green on gcc and clang after both fixes. Re-confirmed
+  plain-vs-speculative output byte-identical at `--temperature 0` on both real model pairs
+  (135M+360M, 135M+1.7B) -- the SIMD rewrite is a pure performance change, no different numerics
+  (same dot-product math, just computed with wider SIMD lanes and less redundant re-decoding).
+  Direct before/after measurement on the 360M pair: step 25 avg round cost dropped from ~790ms to
+  ~122ms (~6.5x), and scales further with `spec_length` (measured 9%/33%/45% cheaper than the
+  sequential-equivalent cost at spec_length 3/5/8 on the 1.7B pair) -- the batched-verification
+  mechanism itself is now working as designed. End-to-end, speculative decoding is still net
+  slower than plain generation for both tested pairs on this 4-core benchmark box (see the Stage 7
+  benchmark report) -- per-round draft-phase + corrective-commit overhead still outweighs the
+  (now-real) verify-batch savings at this core count and these draft:verifier ratios; reported
+  honestly rather than treated as a further bug to chase, since the batched math itself is
+  confirmed correct and meaningfully faster than before.
+- Lesson: a "documented, deferred" scope limitation (here: "SIMD tiers are a follow-up, portable C
+  is correctness-first") is not the same claim as "this will still deliver the feature's intended
+  benefit." The bandwidth-savings argument for batching was sound in isolation, but nobody had
+  checked whether it would survive contact with a several-times-slower compute path on the actual
+  target hardware (AVX-512) until a real-model benchmark measured it end-to-end. Synthetic-model
+  correctness tests (Stages 1/2/5) proved the math right but said nothing about performance;
+  real-model measurement is what caught this, exactly why Stage 5's plan called for it (even
+  though it took until Stage 7, once a compatible real draft/verifier pair was actually available,
+  for that check to happen). Per the bug-fix policy, fixed in the same pass despite being
+  pre-existing (Stage 1, 2026-09-22) rather than deferred as "Phase 18-B."
+
+### 2026-09-24 — `attention.c`'s generic dense/GQA path and `qwen3moe_attention.c` had zero `TN_STEP_TIMING` coverage — steps 4-12 silently reported `0.000000ms` for every non-MLA, non-Qwen3.5-hybrid model, including this repo's own demo model
+
+- Context: the user asked for "full details in profile mode... the system shd be able to profile
+  the granulest steps." Investigating by actually running `TN_STEP_TIMING=1` against
+  `models/smollm2.gguf` (a plain dense/GQA "llama"-arch model — the most common case, and this
+  repo's own demo model) to see what the existing per-step breakdown showed.
+- Finding: steps 4 through 12 (the entire attention block: pre-attention RMSNorm, Q projection,
+  YaRN RoPE, KV cache write, attention score/softmax, post-attention output/residual) all reported
+  exactly `0.000000ms` with `count=0`, while steps 13+ (FFN, final norm, LM head, sampling) reported
+  real numbers. Root cause: `src/transformer/attention.c`'s `attention_forward()` (the generic
+  dense/GQA path most models actually use) and `src/transformer/qwen3moe_attention.c`'s
+  `qwen3moe_attention_forward()` had never had `tn_step_timing_add()` calls wired in at all —
+  only `mla_attention.c` (DeepSeek-V2 MLA) and `qwen35_attention.c` (Qwen3.5/3.6 hybrid) were
+  instrumented. Any model using neither of those two attention families — which includes this
+  repo's own demo model and, more generally, every plain Llama/Mistral/Gemma/Phi/BitNet/Qwen3-MoE
+  architecture — got a step-timing report with a large, silent blind spot covering its entire
+  attention cost, with no error or warning of any kind.
+- Impact: `TN_STEP_TIMING=1`'s per-step breakdown, the tool's whole purpose, was misleading (not
+  merely incomplete) for the majority of models this engine actually runs, understating total
+  attention cost as zero rather than omitting it visibly. Nobody had previously run
+  `TN_STEP_TIMING=1` against a non-MLA, non-hybrid model and looked closely at the output, or this
+  would have been caught immediately — the `0.000000ms` rows look superficially like "this step is
+  just fast," not "this step was never measured."
+- Fixed: added the same `t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0; ...
+  tn_step_timing_add(ID, ...)` brackets already used in `mla_attention.c`/`qwen35_attention.c` to
+  both functions, reusing the existing step IDs 4/5/9/10/11/12 (no enum changes needed for this
+  part). Also extended the same instrumentation, at whole-batch-call granularity, into every
+  batched sub-function added by Phase 18 Stages 1-2 (`attention_forward_batch()`,
+  `mla_attention_forward_batch()`, `qwen3moe_attention_forward_batch()`, `ffn_forward_batch()`,
+  `transformer_forward_batch()`), which had never carried any diagnostics by design until now, plus
+  four new step IDs (24-27) for speculative decoding's own draft/verify/accept-reject/commit
+  round-level accounting in `spec_decode.c` — see `change-trace.md`'s Stage 5.5 entry for the full
+  scope.
+- Verified: re-ran `TN_STEP_TIMING=1` against `models/smollm2.gguf` — steps 4-12 now report real
+  nonzero `total_ms`/`count` values (e.g. step 5 "Q projection" ~57ms/1320 calls, step 12
+  "Post-attention output/residual" ~31ms/1320 calls, for an 8-token generation). Confirmed the
+  four new speculative-decoding step IDs (24-27) report nonzero values by running
+  `TN_STEP_TIMING=1` against the `test_speculative` binary directly. `make release/test/debug`
+  green on gcc and clang, plus a CMake sanity build, all clean — and, since this instrumentation
+  sits inside hot inference code, re-confirmed byte-identical golden output
+  ("The capital of France is Paris.", 7 tokens) before/after on both compilers' debug (ASan/UBSan)
+  builds, proving the new brackets are a pure side-channel that changed no computed value.
+- Lesson: an instrumentation system's own coverage needs to be verified the same way a feature's
+  correctness would be — by actually running it against a representative real case and inspecting
+  the output for gaps, not by assuming "it exists in the codebase, therefore it's wired in
+  everywhere it should be." A `0.000000ms` row is not evidence of a fast step; it can just as
+  easily be evidence of a step nobody ever measured. Unrelated to Phase 18's speculative-decoding
+  feature work itself, but found while investigating this session's profiling request and fixed in
+  the same pass per the bug-fix policy.
+
+### 2026-09-24 — `generate_with_callback()`'s `total_steps` off-by-one silently generated `max_tokens + 1` tokens for every caller, invisible in practice because EOS almost always fires first
+
+- Context: Phase 18 Stage 5, writing `tests/test_speculative.c`'s
+  `test_speculative_greedy_matches_plain_generation` — a synthetic tiny model with EOS
+  deliberately unreachable (so the loop can only stop via the `max_tokens` cap), asserting
+  `speculative_generate()`'s token count/text is byte-identical to plain `generate()`'s for the
+  same `max_tokens=6` request.
+- Finding: the two paths disagreed — plain generation emitted 7 tokens, speculative emitted 6.
+  Hand-simulating `generate_with_callback()`'s loop (`src/transformer/generate.c`) traced it to
+  `int total_steps = n_prompt + max_tokens;`. The first generated token is sampled "for free" from
+  the *last prompt-processing* step (`step == n_prompt - 1`, which both advances `next` and is the
+  step whose EOS-check/decode/callback block already fires); every subsequent step generates one
+  more token. So exactly `max_tokens` tokens requires `total_steps = n_prompt + max_tokens - 1`,
+  not `n_prompt + max_tokens` — the old bound ran one extra step and emitted `max_tokens + 1`
+  tokens whenever `max_tokens` (not EOS) was the actual stopping condition.
+- Impact: shared by every caller of `generate()`/`generate_with_callback()` — the CLI's one-shot
+  `--prompt` path, the REPL, and now `speculative_generate_with_callback()`'s teacher-forcing
+  equivalence claim (Stage 2's proof that batched verification matches sequential generation only
+  holds if both loops actually run the same number of steps). Invisible on essentially every real
+  prompt used in this repo's manual testing and existing golden-output checks, because EOS fires
+  before the cap on those prompts (`models/smollm2.gguf`'s "What is the capital of France?" at
+  `--max-tokens 16` only ever generates 7 tokens, EOS-terminated, on either side of this fix) — it
+  took a synthetic test with EOS deliberately disabled to surface it. A real, previously-shipped
+  behavior bug in `--max-tokens` semantics, not new-code-only.
+- Fixed: `src/transformer/generate.c`'s `total_steps` computation changed to
+  `n_prompt + max_tokens - 1`, with a comment explaining the "free" first token.
+- Verified: `test_speculative`'s equivalence test now reports 6/6 tokens on both paths (12/12
+  assertions pass). Full `make release/test/debug` re-run clean on gcc and clang after the fix
+  (no regressions elsewhere in the suite). Golden-output check (`models/smollm2.gguf`, "What is
+  the capital of France?", `--max-tokens 16 --temperature 0`) unchanged — "The capital of France
+  is Paris." at 7 tokens — confirming the fix is inert on EOS-terminated generations and only
+  changes behavior when `max_tokens` was actually the limiting factor.
+- Lesson: a loop bound built from "N prompt steps + M generation steps" needs to account for
+  bootstrap: whichever step samples the *first* generated token already belongs to one of the two
+  categories, not both. A bug like this can ship and pass every existing test/CI run indefinitely
+  if the golden prompts all happen to stop via a different condition (EOS) than the one the loop
+  bound governs — worth deliberately testing the `max_tokens`-is-the-limit case, not just the
+  EOS-terminates-first case, for any generation-loop change. Per the bug-fix policy, fixed in the
+  same pass despite being unrelated to Phase 18's own feature work.
+
+### 2026-09-24 — `SpecBatchScratch.logits` was allocated every round but never read or written by `transformer_forward_batch()`, which always writes to its own explicit `logits_out` parameter
+
+- Context: Phase 18 Stage 5, writing `draft_model.c`/`spec_decode.c` — wiring
+  `transformer_forward_batch()`'s (Stage 2) output into the new accept/reject loop.
+- Finding: `SpecBatchScratch` (`include/speculative/spec_scratch.h`, added in Stage 2) allocated
+  an N-wide `logits` buffer sized `n_tokens * vocab_size`, but `transformer_forward_batch()`'s
+  actual signature takes a separate `float *logits_out` parameter that every real caller (Stage 2's
+  own test, and now Stage 5's `spec_decode.c`) already passes its own buffer for — `sb->logits`
+  was dead weight, confirmed via grep that no test or production code anywhere ever read it either.
+- Impact: pure wasted allocation (`n_tokens * vocab_size * sizeof(float)`, non-trivial for a large
+  vocab) every time `--draft-model` is used; no correctness impact since it was never accessed, but
+  it also carried a since-removed overflow check (`spec_scratch.c`) that existed only to protect a
+  field nothing used.
+- Fixed: removed the `logits` field from `SpecBatchScratch` and the corresponding overflow check
+  from `spec_scratch_alloc()` (`include/speculative/spec_scratch.h`, `src/speculative/spec_scratch.c`).
+- Verified: `make release/test/debug` green on gcc and clang; `test_forward_batch` (Stage 2's own
+  suite, unaffected by the removal since it never referenced the field) and the new
+  `test_speculative` suite both pass.
+- Lesson: a scratch struct's fields should be added when a concrete caller needs them, not
+  speculatively "for completeness" alongside a sibling buffer (`x`/`xb`/`hb`/etc. are all genuinely
+  read by the batched forward pass; `logits` never was) — caught by writing the doc comment for the
+  struct's actual consumer and noticing the field had no reader. Per the bug-fix policy, fixed in
+  the same pass.
+
+### 2026-09-22 — `mapped_file_close()`'s own doc comment promised "safe to call on a zeroed MappedFile" — it wasn't; a zero-initialized struct's `fd == 0` meant it would silently `close(0)` (stdin)
+
+- Context: Phase 18 Stage 3, writing `loaded_model_free()` (`cli/model_load.c`) — documented as
+  "safe to call on a zero-initialized LoadedModel" so a future caller (Stage 5's draft-model
+  cleanup, or main()'s own error paths) never needs to track whether a load actually succeeded
+  before freeing. That promise only holds if every function it calls, including
+  `mapped_file_close(&m->mf)`, is itself safe on a zeroed struct — which `mapped_file_close()`'s
+  own header doc already claimed ("Safe to call on a zeroed MappedFile").
+- Finding: that claim was false. `mapped_file_open()` only sets `mf->fd` on its single success
+  path (or to -1 at entry, before any failure can occur) — but a `MappedFile` that was simply
+  `memset` to zero and never passed to `mapped_file_open()` at all has `fd == 0`, not -1. The old
+  `mapped_file_close()` checked `if (mf->fd >= 0) { flock(...); close(mf->fd); }` — 0 >= 0 is
+  true, so this would flock and `close(0)`, silently closing stdin instead of being the no-op the
+  doc comment promised.
+- Impact: grepped every real call site in the codebase (`vision_weights_load.c`, `main.c`,
+  `tests/test_mmap.c`) — none of them ever call `mapped_file_close()` on a struct that wasn't
+  already successfully opened, so this never actually fired in practice. It was a real, latent
+  bug sitting behind a doc comment nobody had tested, waiting for the first caller (this session's
+  `loaded_model_free()`) to actually rely on the promise.
+- Fixed: `src/memory/mapped_file.c`'s POSIX `mapped_file_close()` now gates the fd teardown on
+  `mf->data` (only ever set together with `fd`, on `mapped_file_open()`'s single success path),
+  matching the invariant that already made `munmap()`'s own `if (mf->data)` guard correct. The
+  Windows variant was already safe (`if (mf->handle)`, NULL on a zeroed struct).
+- Verified: new regression test in `tests/test_mmap.c`
+  (`test_mmap_close_on_zeroed_struct_does_not_close_stdin`) — closes a zeroed `MappedFile` and
+  asserts `fcntl(STDIN_FILENO, F_GETFD)` still succeeds afterward (the only way to observe this
+  bug from outside the function). `make release/test/debug` green on gcc and clang.
+- Lesson: a function's own doc comment claiming a safety property is not evidence that property
+  holds — it's a claim nobody had exercised. The bug was findable by static inspection alone (no
+  crash needed to discover it), but it took a new caller that actually depended on the promise to
+  surface it. Per the bug-fix policy, fixed in the same pass despite being unrelated to Phase 18's
+  actual feature work.
+
+### 2026-09-22 — `CMakeLists.txt` was missing `src/math/ternary_matmul_lut_avx512bw.c` entirely, breaking the CMake build for `test_ternary_lut_avx512bw`
+
+- Context: Stage 2's plan-mandated verification step ("run a CMake sanity build") on this AVX-512
+  VNNI dev machine, after `make release/test/debug` was already green on gcc and clang.
+- Finding: `cmake --build` failed at the link step for `test_ternary_lut_avx512bw` with undefined
+  references to `lut_pack_weights`/`lut_mm_avx512bw` — `src/math/ternary_matmul_lut_avx512bw.c`
+  (the Phase K-6 LUT-based AVX-512BW ternary kernel, with its own dedicated 6-assertion test) was
+  never added to `CMakeLists.txt`'s `MATH_SOURCES` or the dist-build's `PZ_AVX512_SRCS` list, even
+  though the Makefile's `AVX512_TUS` has always included it. Pure CMake/Makefile drift — exactly
+  the failure mode `.claude/rules/config.md` calls out ("Keep both in sync when adding source
+  files or flags"), just never caught because this session appears to be the first time anyone
+  ran a CMake build since that file was added.
+- Impact: `test_ternary_lut_avx512bw` (and, transitively, the whole CMake build, since `make -j`
+  aborts on the first failing target with unfinished jobs left dangling) was broken for every
+  CMake-based build/CI path, invisible to the Makefile-based `make test` this project's day-to-day
+  workflow and existing CI jobs actually use.
+- Fixed: added `src/math/ternary_matmul_lut_avx512bw.c` to `MATH_SOURCES` and to `PZ_AVX512_SRCS`
+  (with the same `-mavx512bw` compile options already applied to its AVX-512 siblings there).
+- Verified: full `cmake --build` (all targets) now succeeds; `test_ternary_lut_avx512bw` passes
+  (6/6) from the CMake-built binary.
+- Lesson: unrelated to Phase 18, found only because this session's Stage 2 verification step
+  happened to include a CMake build — a reminder that "the Makefile passes" and "the build is
+  correct" are not the same claim when two build systems are both meant to be canonical, per the
+  bug-fix policy this was fixed in the same pass rather than filed for later.
+
+### 2026-09-22 — Pre-existing AVX-512 horizontal-sum bug in the BF16/F16 classifier matmul's 8-wide tail, silently dropping one of four lanes for any `n` in `[8,15]`
+
+- Context: Phase 18 (speculative decoding) Stage 2 — writing `tests/test_forward_batch.c`'s
+  Qwen3-MoE (QK-norm) equivalence test (`transformer_forward_batch()` must match N sequential
+  `transformer_forward()` calls). The synthetic test model uses `Q3_DIM=8`, `Q3_VOCAB=6`, smaller
+  than the dense/MLA tests' `D_DIM=M_DIM=16` — chosen for test speed, not realizing this crossed
+  into an untested code path.
+- Symptom: final logits diverged by ~O(1) between the sequential and batched forward passes even
+  though every earlier stage (attention `attn_concat`, post-attention residual, post-FFN residual,
+  final RMSNorm output) matched to within float rounding when dumped side-by-side — the divergence
+  only appeared in the raw classifier-matmul output itself, despite both paths reading the *same*
+  `w->wcls` array and near-identical input activations.
+- Root cause: `matmul_bf16_task()` (`src/math/parallel_matmul.c`, the sequential/reference kernel)
+  and `matmul_f16_task()` (`src/math/matmul_f16.c`) both have an AVX-512-tier "8-wide tail" branch
+  (`if (j + 7 < a->n) { ... }`) that only executes when `n` has a remainder of exactly 8 after the
+  64-wide and 16-wide main loops — i.e. only when `n` (here, `dim`) is in `[8, 15]` and not a
+  multiple of 16. This project's only prior BF16/F16-classifier tests all used `dim` values that
+  are multiples of 16, so this branch had zero test coverage before today. Its 4-lane horizontal
+  sum had a real bug: `val += _mm_cvtss_f32(_mm_add_ss(_mm_add_ps(s4,sh), _mm_movehl_ps(sh,sh)))`
+  reuses the *pre-update* shuffled register `sh` (from `_mm_movehdup_ps(s4)`, i.e. `[s4_1, s4_1,
+  s4_3, s4_3]`) as both arguments to `_mm_movehl_ps`, extracting `s4_3` a second time instead of
+  the lane holding `s4_2+s4_3`. Net effect: `s4[2]` (elements 2 and 6 of the original 8-wide
+  product vector) is silently dropped from every dot product computed through this path — not a
+  precision loss, a missing term. The correct idiom (used correctly by every *other*
+  horizontal-sum call site in the codebase, e.g. `parallel_matmul.c`'s INT8/INT4 classifier paths
+  and `matmul_q5_0.c`/`ternary_matmul_avx2.c`) computes the running sum first
+  (`sums = _mm_add_ps(s4, sh)`) and only *then* calls `_mm_movehl_ps(sh, sums)` — passing the
+  *updated* sum as the second operand, not the stale pre-update shuffle twice.
+- Fixed: both call sites corrected to use `_mm_movehl_ps(sh, sums)` where `sums = _mm_add_ps(s4,
+  sh)` is computed first — the pattern already used correctly everywhere else in the file. Grepped
+  the whole `src/math/` tree for every `_mm_movehl_ps` call site to confirm no other instance of
+  this specific bug (passing the pre-update shuffle register twice instead of shuffle+updated-sum)
+  exists — all others already matched the correct idiom.
+- Also fixed, same pass: `tests/test_forward_batch.c`'s three synthetic model builders (dense,
+  MLA, Qwen3-MoE) all `memset(cfg, 0, ...)` their `Config` and never set `rope_yarn_attn_factor`,
+  leaving it at 0 — but `apply_rope()`'s `mscale = attn_factor` multiplies cos/sin unconditionally
+  (not gated by `ext_factor`), so every RoPE call in all three tests silently produced all-zero
+  rotated output. This didn't cause a false pass (both sequential and batched paths degenerate
+  identically, so the equivalence check still holds), but it meant none of the three tests were
+  actually exercising real RoPE rotation math. Fixed by setting `cfg->rope_yarn_attn_factor = 1.0f`
+  (matching `config.c`'s real default and `gguf_loader.c`'s real GGUF-driven computation) in all
+  three builders.
+- Impact: this is a real, previously-shipped correctness bug in the production BF16/F16 classifier
+  kernels (`parallel_matmul_bf16`/`tn_matmul_f16` and their batched Stage-1 companions call the
+  same underlying scalar fallback for the true tail, but the *AVX-512* 8-wide sub-path is only hit
+  automatically when the hardware profile selects BF16 classifier format on an AVX-512 CPU AND the
+  model's `dim` happens to fall in `[8,15]` mod 16 — for F16, any dense-matmul call with `n` in
+  that same range, e.g. certain small MLA/projection widths). No production `dim` this codebase
+  currently ships defaults to a value in that exact range for the classifier path (real models use
+  `dim` in the hundreds to thousands, always evenly divisible by 16), so this most likely never
+  fired in an actual inference run to date — but it was silently wrong for any future model or
+  code path landing on such an `n`, and would have produced wrong top-token selection with no
+  error, warning, or NaN to signal it.
+- Verified: `test_forward_batch` (23/23), full `make release/test/debug` green on gcc and clang,
+  CMake sanity build.
+- Lesson: an AVX-512 kernel's "tail" branches for in-between sizes (here, exactly `n mod 16 ==
+  8..15`) are load-bearing code with their own untested boundary, not leftover scaffolding — a
+  test suite that only ever exercises `dim` values that are clean multiples of the main SIMD
+  width (16, 32, 64...) can pass indefinitely while a real bug sits in the tail path, surfacing
+  only when some other change (here, choosing a small `dim` for test speed) happens to land inside
+  it. Per the bug-fix policy, this was fixed in the same pass despite being unrelated to Phase 18.
+
+### 2026-09-21 — `simd_dispatch.c` self-documented a "NEON" tier that never had a kernel behind it
+
+- Context: user asked to continue implementation-phase work, specifically CPU ternary. Auditing
+  `docs/architecture/IMPLEMENTATION_PLAN.md`'s Phase 3 (ternary matmul kernels) against the actual
+  `src/math/` tree to find the next real item, rather than trusting the plan doc's own status
+  marks (same doc-lag pattern already found multiple times this session for Phase 37 items).
+- Finding: `simd_dispatch.c`'s own tier-priority comment listed "6. ARM NEON — 4 fp32 MACs/cycle
+  (all ARMv8-A)" as a real dispatch tier, and a second comment inside `tn_simd_init()` called it
+  out explicitly: `"NEON: 4 fp32 MACs/cycle — stub, always compiled for ARM"`. Neither claim was
+  true — no NEON kernel existed anywhere in the tree, and the dispatch selection logic jumped
+  straight from `TN_HAS_ARM_DOTPROD` to the scalar fallback with no NEON branch in between.
+  `cpu_features.c`'s `tn_cpu_best_backend_name()` independently claimed "NEON" as a possible
+  return value too — a second place asserting a backend that didn't exist.
+- Impact: any ARMv8-A CPU with NEON (mandatory on all of them) but without the dotprod extension
+  — Raspberry Pi 4 (Cortex-A72, ARMv8.0), older AWS Graviton/Graviton2, most ARMv8.0/8.1 embedded
+  boards — silently fell all the way through to the scalar kernel for `ternary_matmul_packed`, the
+  single hottest function in the engine (every forward-pass matmul against BitNet-ternary
+  weights). This is a real, previously-undiagnosed performance gap on real deployment hardware,
+  not a documentation nit: those CPUs were running at 1 MAC/cycle instead of the intended 4.
+- Fixed: `src/math/ternary_matmul_packed_neon.c` (new) — plain NEON fused unpack+matmul for the
+  2-bit packed weight format (matching `ternary_matmul_packed_avx2.c`'s architecture, not the
+  stale unpacked-`int8` design the original Phase 3.5 plan entry described). Wired into
+  `ternary_matmul_packed.h`, `simd_dispatch.c`'s forward declarations + dispatch table + both
+  stale comments, `CMakeLists.txt`'s `MATH_SOURCES`. New direct-kernel test
+  `test_neon_packed_matmul_matches_scalar` in `tests/test_packed_weights.c`.
+- Verified on this (x86_64-only) dev environment: compiles to an empty TU under `TN_HAS_NEON == 0`
+  on both gcc and clang with zero new warnings; the new test correctly SKIPs rather than silently
+  passing; full `make release/test/debug` green on both compilers; a clean `cmake --build` sanity
+  pass confirms `CMakeLists.txt` stays in sync per `config.md`'s rule. **Not verified on real ARM
+  hardware this pass** — flagged explicitly rather than claimed: this environment cannot exercise
+  `TN_HAS_NEON` code at all (same structural limitation as the RLIMIT_AS/macOS findings earlier
+  today). `ci.yml`'s `macos-latest` job runs on Apple Silicon and will be the first real signal.
+- Lesson: a dispatcher's own inline comments asserting a tier exists are not evidence it does —
+  "stub" was an honest flag left by whoever wrote it, but nothing ever closed the loop, and it sat
+  self-documented-but-broken long enough to ship two independent functions (`simd_dispatch.c` and
+  `cpu_features.c`) both claiming a "NEON" backend that would never actually run.
+- **Update, same day**: triggered `ci.yml` on GitHub and confirmed on the real `macos-26-arm64`
+  runner — `test_packed_weights` went from `1469/1469` (x86, SKIP branch, 0 new assertions) to
+  `1485/1485` (16 new real assertions, one per output row), proving the kernel actually executed
+  and matched the scalar reference on genuine ARM hardware, not just compiled.
+- **New, separate observation from that same run** (flagged, not chased further this pass): the
+  live backend name printed by `test_simd`/`forensic_audit_suite` on that Apple Silicon runner was
+  `"NEON"`, not `"NEON+dotprod"` — meaning `cpu->arm_dotprod` and/or `TN_HAS_ARM_DOTPROD` did not
+  select the dotprod kernel despite running on Apple Silicon (M-series chips all support
+  `FEAT_DotProd`). This was structurally invisible before today's fix (dotprod-not-selected and
+  no-NEON-kernel both silently fell to the same scalar fallback, so nothing differentiated them);
+  fixing the NEON gap is what makes it observable for the first time. Not diagnosed further here —
+  needs a real ARM CI run with explicit `sysctl -a | grep -i dotprod` / a debug print of
+  `cpu->arm_dotprod` and `TN_HAS_ARM_DOTPROD` at compile+run time to tell whether this is a
+  hosted-runner feature-bit quirk or a genuine detection bug in `cpu_features.c`/`platform.h`.
+
+### 2026-09-21 — `test_symlink_escape_now_blocked` hardcoded `/etc/hostname` as an "outside CWD, guaranteed to exist" target — doesn't exist on macOS
+
+- Context: re-triggered `ci.yml` (`workflow_dispatch`, run 35564048955) on the commit that fixed the
+  RLIMIT_AS/macOS entry below, expecting `Build & Test (macOS)` to go green. It failed again, but at a
+  *different* test this time: `test_cmd_exec_adversarial`'s `test_symlink_escape_now_blocked`, with both
+  its `exec_policy_allows_args` and `execute_command` assertions failing (i.e. the symlink was allowed
+  through, not blocked).
+- Root cause (test bug, not a production bug): the test creates a symlink pointing at `/etc/hostname` and
+  asserts `path_escapes_cwd_via_symlink()` (`src/agent/cmd_exec.c`) blocks it. macOS/XNU has no
+  `/etc/hostname` file (hostname is set via `scutil`/NVRAM there, not a file — unlike Linux). Against a
+  dangling symlink, `realpath()` fails with `ENOENT`, and the check's existing, deliberate fallback —
+  "target doesn't exist, not this check's problem, since a broken symlink can't leak anything the command
+  couldn't already fail to read on its own" — kicks in and lets the argument through. The production
+  security check itself is correct and was never the bug: a dangling symlink genuinely cannot exfiltrate
+  data. The test's assumption that `/etc/hostname` is a universally-present target was wrong.
+- Fixed: `tests/test_cmd_exec_adversarial.c`'s `test_symlink_escape_now_blocked` now `mkstemp()`s its own
+  ephemeral file under `/tmp` as the outside-CWD target instead of relying on any specific system path —
+  guaranteed to exist and guaranteed outside CWD on every POSIX platform this project targets, and cleaned
+  up (`unlink`) alongside the symlink itself at the end of the test. Verified: 69/69 assertions pass, full
+  release/test/debug green on gcc and clang.
+- Lesson (a second instance of the same pattern as the entry directly below in one sitting): tests that
+  assume specific OS files/paths exist are themselves an unverified cross-platform claim. Prefer creating
+  fixtures under a portable temp dir (`mkstemp()`) over hardcoding `/etc/whatever` when a test's actual
+  intent is just "some file outside the directory I'm testing confinement against."
+
+### 2026-09-21 — RLIMIT_AS is not enforced on macOS/Darwin — a real, previously-unknown production gap, found only by actually running CI on a real macOS runner
+
+- Context: manually triggered `ci.yml` (via `workflow_dispatch`, immediately after discovering it had
+  never run — see the entry above) to get real, on-GitHub confirmation of everything wired up this
+  session. `Build & Test (macOS)` failed at `test_rlimit_cpu_actually_enforced`'s sibling,
+  `test_rlimit_as_actually_enforced` — `RLIMIT_AS did NOT stop the child within 15s`.
+- This is a real, previously-unknown platform gap in **production code**, not a test bug: on macOS, the
+  XNU kernel does not enforce `RLIMIT_AS` the way Linux does — a child process's address space can grow
+  past the limit with no effect. Confirmed specifically (not a blanket "rlimits don't work on macOS"):
+  the sibling `RLIMIT_CPU` test passed on the same macOS runner in the same run, so CPU-time limits
+  *are* reliably enforced there — only the address-space cap is the gap.
+- Impact: `execute_command()`'s (`src/agent/cmd_exec.c`) 256 MiB `RLIMIT_AS` cap on the forked child was
+  documented as "defense-in-depth" memory protection — on macOS deployments, this defense silently does
+  nothing, and the parent's cooperative timeout/`SIGKILL` loop is the *only* real backstop against a
+  memory-hungry child (which could still consume a lot of host memory before that timeout fires).
+- Not fixed this pass (explicitly deferred, not silently dropped): a real per-platform memory watchdog
+  for Darwin (e.g. a monitor thread polling `task_info()`/`proc_pidinfo` and killing the child if RSS
+  exceeds a threshold) is a genuine architectural addition, not a small change. Fixed what's in scope:
+  corrected the misleading "defense-in-depth" comment in `cmd_exec.c` to state the platform limitation
+  explicitly, and made `test_rlimit_as_actually_enforced` skip gracefully on `__APPLE__` (matching this
+  project's existing convention for environment-dependent tests) instead of burning 15s and unbounded
+  real memory growth on CI to reconfirm a now-documented, known negative every run.
+- Lesson (compounds the entry above): this would never have been caught by local verification alone —
+  this dev environment is Linux-only, so "verified locally" for anything rlimit-related was structurally
+  incapable of catching a macOS-specific kernel behavior difference. Only actually running CI on GitHub's
+  real macOS runner surfaced it. Two real findings from checking actual CI status in one sitting, neither
+  visible from "the commands work when I run them myself."
+
+### 2026-09-21 — `ci.yml`'s new jobs (and the original build-and-test matrix) had never actually run on GitHub for any commit this session
+
+- Context: after wiring golden-output regression, CMake build check, and coverage into `ci.yml`
+  (2026-09-19), assumed the next push would exercise them. Checking actual GitHub Actions run history
+  (via the `mcp__github__actions_list`/`actions_get` tools) while addressing a direct question about CI
+  status found: `ci.yml`'s trigger is `push`/`pull_request` scoped to `branches: [master, main]` only.
+  Every commit this session was pushed directly to `claude/architecture-progress-review-ahv93e` — never
+  to master/main, and no PR was ever opened — so `ci.yml` (including its brand-new jobs, and the
+  pre-existing build-and-test matrix) had **zero runs, ever**, on this branch. Only
+  `security_audit.yml` (triggers unconditionally on `[push, pull_request]`, no branch filter) actually
+  executed, and it has been green on every push (confirmed via the API for all 12 commits since this
+  round of testing began).
+- Fix: added `workflow_dispatch: {}` to `ci.yml`'s triggers (purely additive — the existing push/PR
+  triggers are unchanged) so it can be run manually from any branch without needing a PR, then triggered
+  it directly via the GitHub API to get real, on-GitHub confirmation rather than only local verification.
+- Lesson: "I verified every underlying command locally" (as stated when `ci.yml` was first wired up) is
+  not the same claim as "CI is green" — a workflow's trigger conditions are themselves something to
+  verify, not just its step contents. Local verification of each command is real evidence the steps
+  *work*, but says nothing about whether the workflow ever *runs*. Would not have been caught without
+  someone explicitly asking about CI status and going to check the actual run history rather than
+  assuming the pattern from `security_audit.yml`'s (unconditional) trigger generalized.
+
+### 2026-09-19 — Closed the "PATH hijacking" known gap; verified RLIMIT_CPU/RLIMIT_AS actually work (TS-3.2/TS-3.3)
+
+- Context: continuing down the test plan's P1 items after CI integration. TS-3.3 needed a way to prove
+  `RLIMIT_CPU`/`RLIMIT_AS` (set in `execute_command()`'s forked child) are actually enforced by the OS,
+  which the allow-listed commands (echo/ls/cat/pwd/uname/date/id) can never trigger themselves (none of
+  them burn CPU or memory) — so `tests/test_cmd_exec_rlimits.c`'s two rlimit tests deliberately
+  replicate cmd_exec.c's exact `fork()+setrlimit()+exec()` shape against a real CPU-spinning
+  (`sh -c 'while :; do :; done'`) and memory-exploding (`sh -c 'a=X; while :; do a="$a$a"; done'`) child,
+  white-box-testing the underlying OS mechanism rather than routing through the sandboxed allow-list.
+  Both confirmed: the CPU-limited child is killed within ~1s (not left spinning), the memory-limited
+  child's allocation fails cleanly at 16 MiB (not left consuming host memory).
+- TS-3.2's "PATH hijacking" gap (`execvp()` searches the process's own `$PATH`, so a malicious `cat`
+  placed in a directory earlier in `$PATH` than the real one would win) was fixed rather than only
+  documented, following the same judgment as the symlink-escape fix a day earlier: the remedy the test
+  plan itself names ("Fix = absolute-path table") is a small, contained change, not a large
+  architectural one. Added `resolve_trusted_path()` (`src/agent/cmd_exec.c`) — resolves an allow-listed
+  command name against a **fixed** `{/bin, /usr/bin}` list (never the inherited environment's `$PATH`)
+  and execs via `execv()` on the resolved absolute path instead of `execvp()`. Verified live in
+  `tests/test_cmd_exec_gaps.c`: with a malicious `cat` script prepended to `$PATH`, `execute_command()`
+  still runs the real `/usr/bin/cat`, and the malicious script's side effect never happens.
+- Also verified (same file): `PROJECT_ZERO_AGENT_AUTO_APPROVE=1` does not weaken `execute_command()`'s
+  own policy check — confirmed structurally, since that env var is only read in `user_approval.c`, a
+  layer entirely upstream of and independent from `cmd_exec.c`.
+- **TOCTOU left explicitly unfixed and documented, not silently dropped**: the realpath()-based
+  symlink check and the later `execv()` are not atomic. Correctly closing this needs an atomic
+  open-then-check-then-exec sequence (`openat()` + `O_NOFOLLOW` + `fstat` + `fexecve()`) — a real
+  restructuring of `execute_command()`'s control flow, which *is* the kind of "genuinely large
+  architectural change" the bug-fix policy allows deferring, with the deferral stated explicitly (per
+  policy) rather than silently skipped. Not covered by a runtime test either: reliably winning a race
+  window this narrow is not something a deterministic, non-flaky unit test can prove either way.
+- Verified: `test_cmd_exec_rlimits.c` (12 assertions), `test_cmd_exec_gaps.c` (6 assertions), plus all
+  pre-existing `cmd_exec` tests still pass after switching `execvp`→`execv`+trusted-path-resolution.
+  Full `release`/`test`/`debug` green on gcc and clang.
+
+### 2026-09-19 — `tools/fuzz_config.py`'s "Run Core Fuzzer" CI step had been a silent no-op for an unknown period (stale binary path, swallowed the failure, exited 0 anyway)
+
+- Context: wiring today's new test infrastructure (golden-output regression, `make test-tsan`,
+  `make coverage`, the grammar differential fuzzer) into CI per
+  `docs/reports/TEST_PLAN_2026-09-18.md`'s "CI integration" table. While filling
+  `security_audit.yml`'s "Run Math Kernel Unit Tests" TODO stub, re-examined the adjacent "Run Core
+  Fuzzer" step, which calls `tools/fuzz_config.py`.
+- Found: the script hardcoded `./build/bin/ternary_engine` as the engine binary path — a name/location
+  from before the project was renamed to `adaptive_ai_engine` and moved to the repo root. Confirmed by
+  running it directly: `FileNotFoundError` every time, caught by an `except` clause that only printed
+  "ERROR: Engine binary not found" and then fell through to normal completion (no `sys.exit(1)`, no
+  exception re-raised) — so the script always exited 0 regardless. This CI step has therefore been
+  reporting green while testing nothing, for as long as the binary has been named `adaptive_ai_engine`
+  (i.e. probably since very early in the project, well before this session).
+- Fix: made the binary path overridable via `PZ_ENGINE_BIN` (defaulting to `./adaptive_ai_engine` for
+  local/Makefile-built runs; `security_audit.yml`'s own job builds via CMake into `build/project-zero`,
+  so its step sets `PZ_ENGINE_BIN=./build/project-zero`), and made a missing binary a hard failure
+  (`sys.exit(1)`) instead of a silently-passing print statement.
+- Lesson: a `try/except FileNotFoundError` around a subprocess call is exactly the shape that turns "the
+  environment isn't set up for this check" into "this check always passes" if the except branch doesn't
+  itself fail loudly — worth grep'ing for this pattern (`except FileNotFoundError`, `except
+  subprocess.CalledProcessError` without a following `sys.exit`/`raise`) elsewhere in `tools/*.py` as a
+  follow-up, since this is exactly the kind of coverage gap that looks fine in a CI dashboard.
+
+### 2026-09-19 — Wired today's new test infrastructure into CI
+
+- What: added `make coverage` (Makefile — instruments `$(LIB_OBJS)` via `--coverage
+  -fprofile-update=atomic`, the atomic-update flag being necessary because the thread pool's
+  concurrently-executed lines corrupt gcov's default non-atomic counters into negative values under
+  real concurrent execution — confirmed via `lcov`'s "Unexpected negative count" error without it).
+  Added to `ci.yml`: a CMake build-check job, a golden-output-regression job (downloads the small test
+  model once, cached by filename since it's an immutable HF release asset; runs
+  `tests/golden_regression.sh` and `tests/e2e_json_mode.sh`), and a coverage job uploading the HTML
+  report as a build artifact. Added to `security_audit.yml`: the Math Kernel Unit Tests TODO stub (now
+  runs `ctest` against the SIMD/math test binaries its own CMake+ASan build already produces) and a new
+  TSan job (`make test-tsan`). Added `nightly.yml` (scheduled + `workflow_dispatch`): extended
+  (higher-N, multi-seed) grammar differential fuzzing, and the differential-dequant-vs-real-ggml test
+  (clones and builds a pinned llama.cpp/ggml, too slow for every push/PR but fine nightly) — explicitly
+  does NOT fake steps for TS-5.2 (perplexity/KL) or TS-5.7 (soak), since neither has real tooling yet;
+  noted as such in the workflow file itself, not silently omitted.
+- Verified locally (GitHub Actions itself cannot be run in this environment): every underlying command
+  in every new CI step run directly and confirmed working, including the exact CMake+ASan build variant
+  `security_audit.yml` uses, the `ctest` filter, `PZ_ENGINE_BIN`-overridden fuzzer run, and the nightly
+  workflow's llama.cpp reference build + differential harness (still 20/20 bit-exact).
+
+### 2026-09-18 — TS-2.3/2.4 E2E JSON-mode test-tool fixes: truncation detection needs `>=` not `==`, and server startup needs a much longer readiness timeout
+
+- Context: `tests/e2e_json_mode.sh` (TS-2.3/2.4) runs the CLI `--json` flag across a temperature/
+  max_tokens/prompt matrix (including adversarial "don't use JSON" and prompt-injection "use markdown"
+  prompts) and the API's `response_format:{"type":"json_object"}` (streaming + non-streaming), plus a
+  non-JSON regression check. First run found two test-tool bugs, not production bugs:
+  1. **Truncation detection used exact equality against `max_tokens`.** The CLI's real `[gen] N tok/s
+     (M tokens)` trailer reported `M = max_tokens + 1` when generation was genuinely cut off (e.g. 21
+     tokens for `--max-tokens 20`), not exactly `M == max_tokens` — an off-by-one in how the count is
+     reported, not investigated further since it's a display-only counter, not a correctness path. Fixed
+     the test to use `n_generated >= mtok`. This also fixed a wrong classification: the plan's own
+     truncation leniency ("valid JSON OR a legal truncated prefix when max_tokens cut it off") was
+     hardcoded in the test to only the one row deliberately given a tiny `--max-tokens`, but this tiny
+     model can legitimately ramble past a 200-token budget too (observed on the prompt-injection case) --
+     the leniency now applies whenever the real tokens-generated count shows truncation actually
+     happened, not a hardcoded assumption about which row "should" truncate.
+  2. **Server readiness poll timeout (10s) was too short.** Model load + hardware profiling took
+     ~25-30s in this environment before `/health` started responding; the test's poll loop gave up and
+     reported "server never became ready" well before that. Increased to a 60s budget (120 x 0.5s).
+- Verified: 17/17 assertions pass after both fixes (CLI matrix incl. truncation and adversarial/injection
+  prompts, non-JSON CLI regression, API non-streaming + streaming `response_format=json_object`, API
+  non-JSON regression).
+
+### 2026-09-18 — TS-2.2 test-tool false assumption: a mid-number JSON position can legitimately be EOS-eligible; "masked until the last token" is not the right invariant
+
+- Context: `tools/fsm_real_vocab_check.c` (TS-2.2) drives `fsm_compute_token_mask`/`fsm_advance` through
+  realistic JSON documents against a real 49152-token vocab (loaded from a real GGUF's embedded
+  tokenizer). First version asserted (a) `json_grammar_is_complete(&fsm.json)` directly after feeding a
+  whole document, and (b) EOS stays masked at every step except the very last token. Both are wrong
+  assumptions about the *test*, not bugs in `src/sampling/fsm.c`/`grammar_json.c`:
+  (a) numbers have no closing delimiter of their own (documented in `grammar.h`) — a bare top-level
+  number legitimately sits in a "may end here" state until `json_grammar_finalize()` is called once, so
+  checking `is_complete()` without finalizing first will (correctly) report false for e.g. `"42"`.
+  (b) a top-level number is a valid, complete JSON document at *every* digit boundary — mid-way through
+  feeding `"-17.5"`, once `"-17"` has been fed, that prefix is already itself valid, complete JSON, so
+  EOS legitimately becomes unmasked right there, not just at the end of whichever longer number string a
+  test happens to pick.
+- Fixed the test to check the actual invariant the plan states: EOS unmasked **iff** a trial-finalize of
+  the current state is independently found complete (recomputed via a fresh scratch copy in the test
+  itself, not by re-trusting the implementation's own internal calculation) — not a fixed shape assumed
+  in advance. Result: 637/637 assertions pass against the real vocab (no-deadlock invariant, EOS gating,
+  non-destructive scratch-copy, real-token-never-masked, multi-byte/byte-level-BPE token consistency) —
+  `fsm.c`/`grammar_json.c` were correct all along; the bugs were only in the test's assumptions.
+- Lesson: when a differential/property test surfaces a "failure," verify the *test's* model of the spec
+  before concluding the implementation is wrong — especially for a PDA with explicit "may end here, not
+  yet forced closed" states, where naive assumptions like "must still be open until the end" or
+  "completeness needs no explicit finalize" are exactly the kind of subtly-wrong shortcut a test author
+  (human or AI) can take without noticing.
+
+### 2026-09-18 — JSON grammar PDA accepted leading-zero numbers ("01", "09") as valid — found by TS-2.1 differential fuzzing against `json.loads`
+
+- Context: TS-2.1 (`tools/grammar_json_verdict.c` + `tools/fuzz_grammar_json.py`) differentially fuzzes
+  `src/sampling/grammar_json.c`'s PDA against Python's `json.loads` across three generators (uniform
+  random bytes, random tokens from the JSON alphabet, valid JSON mutated by 1-3 edits) plus a
+  prefix-truncation asymmetry check (no prefix of valid JSON may ever go INVALID). First run (3000
+  candidates/generator, seed 1234) immediately found 4 false-accepts, all leading-zero numbers: `"01"`,
+  `"09"`, `[[1],[02,[3]]]`, `" 05"` — our grammar reported these as complete/valid JSON while
+  `json.loads` correctly raises (RFC 8259: `int = "0" / ( digit1-9 *DIGIT )` — a leading zero must be
+  the *entire* integer part).
+- Root cause: `JSON_ST_VALUE`/`JSON_ST_NUM_INT_FIRST` routed digit `'0'` to the exact same state
+  (`JSON_ST_NUM_INT`) as digits `'1'-'9'`, and `JSON_ST_NUM_INT` unconditionally accepts further digits
+  — there was no state distinguishing "the integer part is a bare 0, no more digits allowed" from "saw
+  1-9, more digits are fine".
+- Impact: with `--json`/`response_format=json_object` active, the model could legally generate (never
+  masked as invalid) a number like `01` inside a field value, producing output this engine calls valid
+  JSON but that is not — the exact "false accept" failure class the whole feature exists to prevent.
+- Fix: added a new state `JSON_ST_NUM_INT_ZERO` (`include/sampling/grammar.h`,
+  `src/sampling/grammar_json.c`) entered only on a leading `'0'`; unlike `JSON_ST_NUM_INT` it rejects any
+  further digit (→ `JSON_ST_INVALID`) while still accepting `.`/`e`/`E`/a terminator exactly like the
+  normal integer-closing paths. Added to `json_grammar_finalize`'s number-closing switch alongside
+  `JSON_ST_NUM_INT`/`JSON_ST_NUM_FRAC`/`JSON_ST_NUM_EXP` so a bare top-level `"0"` still finalizes to
+  DONE correctly.
+- Verified: re-ran the fuzzer (4 more seeds, 5000 candidates/generator each) — 0 disagreements across
+  ~61,000 total candidates. Added a permanent regression test
+  (`test_leading_zero_numbers_rejected` in `tests/test_grammar_json.c`, 12 assertions covering both the
+  new rejections and non-regression of `"0"`/`"-0"`/`"0.5"`/`"0e10"`/multi-digit numbers). Confirmed
+  end-to-end on a real model (SmolLM2-135M-Instruct Q8_0, `--json`): still produces correct valid JSON.
+  Full `release`/`test`/`debug` green on gcc and clang.
+- Lesson: this bug existed since Phase 20 (grammar-constrained JSON decoding was added this session) and
+  was invisible to every hand-written unit test and every real-model manual check performed so far —
+  none happened to construct a leading-zero number. This is exactly the class of bug differential
+  fuzzing against a reference implementation exists to catch that example-based testing structurally
+  cannot: a real reference parser enumerates the *actual* spec, not the test author's mental model of it.
+
+### 2026-09-18 — TS-3.1 adversarial corpus found two real sandbox bugs: `execute_command()` misreported a nonzero exit code as success, and closed the documented symlink-escape gap
+
+- Context: TS-3.1 (`tests/test_cmd_exec_adversarial.c`) table-drives the test plan's full adversarial
+  argument corpus against `src/agent/cmd_exec.c` — absolute paths, home shortcuts, traversal,
+  traversal look-alikes, "encoded" traversal, null/odd bytes, symlink escape, flag injection, shell
+  metacharacters, argv[0] tricks.
+- **Found #1 (real bug): `execute_command()` silently reported exit code 0 (success) for a command that
+  actually failed.** Root cause: the read/wait loop's EOF branch (`r == 0`, meaning the child's dup'd
+  stdout+stderr pipe write end closed) did `break` without ever calling `waitpid()` — pipe EOF happens
+  at/around child exit but is not proof the child has already been reaped. `status` stayed at its
+  declared-but-never-assigned value of `0`, and `WIFEXITED(0)`/`WEXITSTATUS(0)` decode that as "exited
+  normally with code 0" — a real (and on Linux, common: fast-failing commands like `ls <bad path>`
+  close their pipe and exit almost simultaneously) race that silently turns real failures into reported
+  successes for any caller checking `ExecResult.exit_code`. Caught by
+  `test_shell_metacharacters_are_literal`: `ls` given a literal metacharacter-laden filename correctly
+  never executes anything (proving no shell exists, as intended), but `execute_command()` reported
+  `exit_code == 0` for a command that (verified manually) actually exits 2. Fixed by making the EOF
+  branch call a blocking `waitpid(pid, &status, 0)` before breaking, matching what the `WNOHANG`/timeout
+  branches already do correctly.
+- **Found #2 (documented known gap, now closed): symlink escape.** `path_arg_is_safe()` only rejects
+  literal `..`/absolute/`~` text — a plain relative name that is itself a symlink pointing outside the
+  CWD (e.g. `ln -s /etc/passwd escape_link; cat escape_link`) passed the lexical check untouched. This
+  was flagged in the test plan as a P1 "known gap, recommend realpath() fix as follow-up" — but per the
+  project's bug-fix policy (fix real bugs in the same pass unless the fix is a genuinely large
+  architectural change; a `realpath()`-based prefix check is not), fixed it now rather than deferring:
+  added `path_escapes_cwd_via_symlink()` (`src/agent/cmd_exec.c`), which resolves the argument with
+  `realpath()` and requires the result stay within `getcwd()`'s subtree, falling back to allow (deferring
+  to the existing lexical check) when the target doesn't exist so behavior for legitimate nonexistent
+  relative paths is unchanged. Verified: a symlink to `/etc/hostname` is now blocked; a symlink to a file
+  inside the CWD (`README.md`) is still allowed.
+- Build note: `realpath()` needed `_DEFAULT_SOURCE` defined before any header on this project's strict
+  `-std=c99` baseline — gcc accepted the bare `-D_POSIX_C_SOURCE=200809L` from `CFLAGS_COMMON` silently,
+  clang did not (`implicit-function-declaration` error). Added `#define _DEFAULT_SOURCE` at the top of
+  `cmd_exec.c` itself (matching the existing per-file `_GNU_SOURCE` pattern in `http_server.c`), not a
+  Makefile per-file override, since it's needed regardless of which TU includes the function. Reinforces
+  the existing "verify release/test/debug for both gcc and clang" rule — this would have shipped broken
+  on clang-only CI otherwise.
+- Verified: `tests/test_cmd_exec_adversarial.c` 69/69, `tests/test_cmd_exec.c` 22/22, full
+  `release`/`test`/`debug` green, gcc and clang.
+
+### 2026-09-18 — `ThreadPool.shutdown` was a plain `bool` read outside the mutex in the worker spin-wait fast path — a real data race, found by adding `make test-tsan` (TS-5.3)
+
+- Context: TS-5.3 of the test plan called for adding TSan (previously missing — only ASan/UBSan ran)
+  and running it against the thread pool, parallel matmul, and API server concurrency surfaces. Added
+  `make test-tsan` (`Makefile`) — rebuilds `$(LIB_OBJS)` under `-fsanitize=thread` via the same
+  `ensure_variant` stamp added earlier today, then links `audit_threadpool_stress`, `test_threading`,
+  `test_api_server`, `test_q4k_x8_matmul`, and `test_q2_0_matmul` directly with `CFLAGS_TSAN` (the
+  generic `build/tests/%` rule hardcodes `CFLAGS_DEBUG`/ASan, which cannot be linked into a TSan binary).
+- Found: TSan immediately reported 9 warnings, all the same race — `threadpool_destroy()`
+  (`src/threading/thread_pool.c:348`) writes `tp->shutdown = true` under `tp->mutex`, but
+  `worker_entry()`'s lock-free spin-wait fast path (line 122, `if (tp->shutdown) return NULL;`) reads
+  it with no lock and no atomic — a genuine data race under the C11/pthread memory model, not just a
+  TSan false positive. `shutdown` was a plain `bool` even though the struct already uses `stdatomic.h`
+  for `spin_epoch`/`spin_claimed`/`spin_remaining` right next to it.
+- Why this matters beyond "TSan complains": an unsynchronized read that an optimizing compiler is free
+  to treat as invariant across loop iterations (nothing tells it the value can change from another
+  thread) can be hoisted out of the spin loop entirely — the textbook mechanism for a worker thread
+  spinning forever after shutdown, i.e. `threadpool_destroy()` hanging in `pthread_join`. Not observed
+  as an actual hang in this session (x86 TSO and the surrounding `spin_epoch` atomic loads likely mask
+  it in practice), but it is undefined behavior, not just benign in principle — exactly the class of bug
+  ASan/UBSan cannot see (both are silent on pure data races with no memory-safety violation), which is
+  the whole reason TSan was flagged **P0** in the test plan.
+- Fix: changed `shutdown` to `atomic_bool` in `include/threading/thread_pool.h` and every read/write
+  site in `thread_pool.c` to `atomic_load_explicit`/`atomic_store_explicit` (acquire/release, matching
+  the existing convention for the pool's other atomics) — preserves the deliberate lock-free spin
+  fast-path design (no new mutex acquisition added to the hot path), just makes the flag itself safe to
+  race on. Re-ran `make test-tsan`: 0 warnings, all test binaries green, gcc and clang. Full
+  `release`/`test`/`debug` also green on both compilers after the fix.
+- Lesson: a struct that mixes plain fields with `stdatomic.h` fields for the same synchronization
+  purpose (here: gating a lock-free spin loop) is a strong signal to check every plain field the hot
+  path reads without the mutex — `spin_epoch` got the atomic treatment, `shutdown` didn't, for no
+  principled reason. TSan is the only sanitizer that would have caught this; it was genuinely missing
+  from this project's toolchain before today.
+
+### 2026-09-18 — `make debug` after `make release` silently linked stale, non-instrumented objects (zero ASan/UBSan symbols) despite exit 0
+
+- Context: executing the full test plan (`docs/reports/TEST_PLAN_2026-09-18.md`), ran the project's own
+  documented build sequence verbatim: `make release CC=gcc && make test CC=gcc && make debug CC=gcc`.
+- Root cause: `build/%.o` is the same output path regardless of which CFLAGS variant produced it,and
+  Make's implicit rule only checks file mtimes, not which flags built the file. `release:`/`debug:`/
+  `dist:` each recursively invoke `$(MAKE) CFLAGS="..." all`, but nothing forced a rebuild when the
+  variant changed — after `make release`, every `build/**/*.o` was newer than its `.c` source, so
+  `make debug` saw "up to date" and skipped recompilation entirely for files already built, silently
+  linking `-O3 -DNDEBUG` (no `-fsanitize`) objects into what was supposed to be the ASan/UBSan debug
+  binary. Confirmed empirically: `nm adaptive_ai_engine | grep -c asan` was **0** after this exact
+  sequence, despite `make debug` exiting 0 and printing nothing unusual — the failure is silent, not a
+  build error.
+- Impact: this directly contradicts the "Keep ASan/UBSan green" rule — anyone following the documented
+  build sequence got a debug binary that never actually asserted anything the sanitizers catch, with no
+  indication anything was wrong. (`make test`'s own test binaries are unaffected — they hardcode
+  `CFLAGS_DEBUG` for the `tests/*.c` driver file itself regardless of the ambient `CFLAGS`, though they
+  do intentionally link against whatever `$(LIB_OBJS)` are already present, by design.)
+- Fix (`Makefile`): added a `build/.variant` stamp file and an `ensure_variant` macro that `release:`,
+  `debug:`, and `dist:` each call before recursing — if the stamp disagrees with the target variant, it
+  does `rm -rf build $(TARGET)` first, forcing a clean rebuild under the correct flags. Verified: fresh
+  `make release && make debug` now correctly detects the switch, prints "Build variant changed
+  (release -> debug); removing stale objects...", and the resulting binary has 65 (gcc) / 688 (clang)
+  ASan/UBSan symbols. `pgo-generate`/`pgo-build` were already safe (they call `$(MAKE) clean`
+  unconditionally); `test:` was left unguarded since the documented order always runs it right after
+  `release` with matching default CFLAGS, which is correct by construction.
+- Lesson: never trust an "up to date, nothing to do" from Make across a CFLAGS-variant switch in a
+  shared `build/` tree without a flag-fingerprint or separate per-variant output directories; verify
+  sanitizer builds by checking for the runtime symbols (`nm | grep asan`), not just a clean exit code.
+
+### 2026-09-18 — IQ4_NL dequant used the wrong nibble-packing layout (interleaved-pair instead of ggml's split-half) — root cause of part of the 2026-09-17 open bug, found via real differential testing against ggml
+
+- Context: TS-1.1 of the test plan — built a real llama.cpp/ggml reference (pinned commit
+  `4fea119de30f6a923992780f6fd5ccb0bee5d47d`) and wrote `tools/difftest_dequant.c`, which quantizes a
+  deterministic pseudo-random tensor with ggml's own `ggml_quantize_chunk()`, then dequantizes the exact
+  same bytes with ggml's real `dequantize_row_<type>()` (not a reimplementation — the actual linked
+  upstream function) and with this repo's `gguf_dequant_<type>()`, asserting bit-exact equality.
+- Result: 19/20 types were bit-exact on the first run. `IQ4_NL` was not: **3571 of 4096 elements
+  differed**, max abs diff 7.95 — far beyond rounding noise, indicating a structural (permutation) bug,
+  not a scale/sign error.
+- Root cause: `gguf_dequant_iq4_nl()` (`src/core/gguf_quant.c`) packed the two 4-bit nibbles per byte as
+  an **interleaved pair** — `dst[2i] = low(qs[i])`, `dst[2i+1] = high(qs[i])` — copied from the Q4_0/Q4_1
+  pattern. ggml's actual `dequantize_row_iq4_nl` (`ggml-quants.c`) uses a **split-half** layout instead:
+  for `j` in `[0,16)`, `y[j] = low(qs[j])` and `y[j+16] = high(qs[j])` — the low nibbles of all 16 bytes
+  fill the first half of the 32-element block, the high nibbles fill the second half. This repo's own
+  `gguf_dequant_iq4_xs()` (added this session, Phase 37.12) already used the correct split-half layout
+  for the *same* `kvalues_iq4nl` codebook — it was verified correct by the same differential test — so
+  the bug was specific to the older, previously-untested `IQ4_NL` path, not the packing rule itself.
+  Fixed by matching IQ4_XS's (and ggml's) split-half indexing.
+- Verified: re-ran `tools/difftest_dequant.c` after the fix — 20/20 types bit-exact, including IQ4_NL.
+  Added a permanent ground-truth regression test (`test_iq4_nl_single_block` in
+  `tests/test_gguf_quant_new_formats.c`) encoding this exact scenario so a future edit can't reintroduce
+  it silently. Full `make test`/`make debug` (gcc and clang) all green after the fix — see the entry
+  above for an unrelated build-system issue hit along the way.
+- **Relation to the 2026-09-17 open bug** (immediately below): this is a confirmed, real, structural bug
+  in exactly the format (`IQ4_NL`) that dominates the weights of both `Q3_K_S` and `IQ4_XS` GGUF files in
+  that investigation, and a wrong-element-permutation bug is a far more plausible cause of
+  context-independent repeating-token garbage than the "attention collapse" hypothesis that entry
+  flagged as leading. However, that entry's own verification claimed "bit-exact correct... verified...
+  via a Python reimplementation" for IQ4_NL specifically and did not catch this — almost certainly because
+  a from-scratch reimplementation "from reading the source" and the engine code under test can share the
+  exact same misreading of a spec (both assume the more common interleaved-pair layout because that's
+  what Q4_0/Q4_1 use). **Lesson: differential-test against the actual upstream binary/library, not a
+  reimplementation-from-reading-source — two independent readings of the same spec can still make the
+  same mistake, but a real linked reference implementation cannot.** This does not by itself close the
+  2026-09-17 bug (IQ4_XS's own dequant was already independently confirmed correct by this same
+  differential test, and Q3_K's dequant does not use `kvalues_iq4nl`/this code path at all, so at least
+  part of that entry's degenerate-output symptom must have a different or additional cause) — re-running
+  that investigation's real-model repro with this fix applied is the next step (test plan TS-4).
+
+### 2026-09-17 — [CLOSED 2026-09-18 — see the IQ4_NL entry above] Dense "llama"-arch models with IQ4_NL/IQ4_XS/Q3_K weights produce degenerate repeating-token output — dequant math proven correct, root cause still unknown
+
+> **Resolution (2026-09-18):** root cause was the IQ4_NL nibble-packing bug documented in the entry
+> directly above (interleaved-pair instead of ggml's split-half layout). Re-ran this exact repro
+> (`bartowski/SmolLM2-135M-Instruct-GGUF`, Q3_K_S and IQ4_XS, `--temperature 0`, same prompts) after the
+> fix: both now produce fully coherent output — "The capital of France is Paris." and a correct,
+> non-repeating 40-token continuation on the DNA prompt for both files. This closes the bug completely;
+> item 5 below (the ~3x Q/K magnitude drop) was a downstream symptom of the same permutation bug, not a
+> separate attention-scale issue, and the "not yet checked" list below is now moot. The original
+> investigation's IQ4_NL "verified bit-exact correct via Python reimplementation" claim (item 1 below)
+> was wrong — see the entry above for why a reimplementation-from-reading-source can share the same
+> misreading as the code it's checking.
+
+
+- Context: Phase 37 (GGUF universal quant compatibility) added Q4_1/Q8_1/Q8_K/IQ2-family/IQ3-family/
+  IQ1-family/IQ4_XS dequant support this session. Per the user's explicit instruction to test every
+  substep against real downloaded models (not just synthetic fixtures), downloaded
+  `bartowski/SmolLM2-135M-Instruct-GGUF`'s Q8_0, Q4_0, Q3_K_S, and IQ4_XS variants and ran each through
+  `./adaptive_ai_engine`.
+- Symptom: Q8_0 and Q4_0 produce correct output ("The capital of France is Paris."). Q3_K_S and IQ4_XS
+  (both of which use `IQ4_NL` for the overwhelming majority of per-layer weights — attn_q/k/v/output,
+  ffn_gate/ffn_up — with only `ffn_down` differing between them) produce degenerate, context-independent
+  repeating-token output (e.g. `"1 ( ( ( ( ( ( ( ("`) regardless of prompt content or chat-template
+  formatting. Same behavior with `--temperature 0` (greedy) and with a manually chat-formatted prompt
+  (though note: the engine auto-wraps every prompt in the GGUF's `tokenizer.chat_template` already —
+  manually adding `<|im_start|>` tags double-wraps it, a real gotcha for future testing, but not the
+  cause here since it reproduces either way).
+- **What was ruled out, with evidence** (this is the useful part — do not re-litigate these):
+  1. **Dequantization math for Q3_K, IQ4_NL, and IQ4_XS is bit-exact correct.** Verified by extracting
+     real tensor bytes from the downloaded files via the official `gguf` Python package, independently
+     reimplementing each format's algorithm from llama.cpp's actual `ggml-quants.c`/`ggml-common.h`
+     source (fetched fresh from upstream, not from memory), and comparing against a standalone C
+     harness calling this repo's `gguf_dequant_q3_k`/`gguf_dequant_iq4_nl`/`gguf_dequant_iq4_xs`
+     directly. Checked at block 0, a middle block, and the last block of full-size real tensors
+     (`blk.0.ffn_down.weight`, `blk.0.attn_q.weight`) — exact match every time, including after finding
+     and fixing a bug in the verification script itself (an `m` sign-mask variable that needs to persist
+     across Q3_K's two 128-element outer-loop halves, not reset per-half — a transcription slip in the
+     *test*, not the engine code).
+  2. **Aggregate value distributions match Q8_0's ground truth.** Full-tensor mean/stddev/min/max for
+     `blk.0.attn_q.weight` dequantized from IQ4_NL vs from the near-lossless Q8_0 file: mean ±0.00003,
+     std 0.282 vs 0.283, min/max within 0.02 of each other — statistically indistinguishable.
+  3. **The loading/dispatch pipeline is structurally identical regardless of quant type.** Q3_K, IQ4_NL,
+     IQ4_XS, Q4_0, and Q8_0 all lack a type-specific fast path in `LOAD_PROJ` (only `Q4_K` gets one) —
+     all five hit the same generic `tensor_to_f32()` dequant-to-heap-F32 fallback, get tagged
+     `WEIGHT_TYPE_F32`, and are consumed by the identical `parallel_matmul_float32` call in
+     `tn_dense_matmul_dispatch()`. No format-specific branch exists downstream that could explain the
+     divergence structurally.
+  4. **Not a metadata/config/tokenizer difference.** All four downloaded files share the same 37
+     metadata KV entries (only `general.file_type`, a cosmetic int, differs), identical `llama.*` config
+     values, identical tokenizer/chat-template, identical tied-embedding structure (no separate
+     `output.weight` tensor in any of them).
+  5. **A real, measurable signal that IS NOT YET EXPLAINED:** with identical `s->xb` input (verified
+     bit-identical at layer 0 across models, as expected since `token_embd.weight` is Q8_0 in all four
+     files), the resulting `Q`/`K` projections are ~3x smaller in max magnitude for the IQ4_NL/IQ4_XS
+     model than for Q8_0 at every prompt position checked (e.g. pos=0: q_max 2.84 vs 8.23). This is
+     larger than expected for imatrix-calibrated 4-bit quantization (which is specifically designed to
+     preserve output-level fidelity, not just per-weight accuracy) and is the most promising lead for
+     whoever picks this up next — but a magnitude drop alone is a plausible non-bug explanation too
+     (uncorrelated per-weight quantization noise partially cancels in a 576-element dot product), so it
+     is not confirmed as the root cause, only flagged as the most concrete remaining thread.
+- **Explicitly not yet checked** (the next steps for whoever continues this): the actual attention
+  softmax/score distribution (does it become abnormally flat/uniform, which would explain
+  context-independent output — this is the leading hypothesis but wasn't directly measured); whether the
+  same degradation reproduces on a *larger* model (would point away from "tiny 135M model is just
+  fragile" and toward a real bug); whether it reproduces with `llama.cpp` itself on the same file (the
+  one test that would definitively separate "our engine has a bug" from "this specific quantization is
+  genuinely this lossy for this specific tiny model" — not attempted this session, llama.cpp isn't built
+  in this environment).
+- Why this is being logged as OPEN rather than fixed or silently deferred: per the project's bug-fix
+  policy, a real, user-impacting bug (this is likely the single most common real-world scenario — a
+  small IQ4_NL-quantized GGUF someone downloads from HuggingFace) should either be fixed or explicitly
+  flagged, never silently dropped. Root cause eluded a thorough single-session investigation (dequant
+  math, pipeline structure, and metadata are all cleared); flagging for a dedicated follow-up rather than
+  continuing to consume this session's remaining budget chasing it. The Phase 37 dequant *format support*
+  itself (the actual deliverable — loading such files without an "unsupported quant type" error) works
+  and is verified correct; it is specifically output *quality* for this mixed-precision combination that
+  is broken.
 
 - Context: GitHub issue #32 (jpsoto) — Qwen3-30B-A3B-Q4_K_M.gguf failed to load. First root cause (missing
   `qwen3moe` GGUF architecture support) was fixed and verified (commit `6480ef8`, "fixes #32"). jpsoto then

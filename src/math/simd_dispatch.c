@@ -116,6 +116,13 @@ extern void ternary_matmul_packed_dotprod(float *out, const float *x,
                                            const float *scales, int group_size);
 #endif
 
+/* ── ARM plain NEON forward declaration ──────────────────────────────────── */
+#if TN_HAS_NEON
+extern void ternary_matmul_packed_neon(float *out, const float *x,
+                                        const tn_u8 *packed_w, int n, int d,
+                                        const float *scales, int group_size);
+#endif
+
 /* ── Global dispatch table ─────────────────────────────────────────────────
  * Initialized to NULL; call tn_simd_init() once at startup before any math.
  */
@@ -130,10 +137,14 @@ tn_vec_scale_fn      tn_vec_scale             = NULL;
 tn_silu_fn           tn_silu                  = NULL;
 tn_relu2_fn          tn_relu2                 = NULL;
 tn_vec_dot_fn        tn_vec_dot               = NULL;
+tn_kvq4_dot_fn       tn_kvq4_dot              = kvq4_dot_scalar;
+tn_kvq4_axpy_fn      tn_kvq4_axpy             = kvq4_axpy_scalar;
 tn_vec_saxpy_fn      tn_vec_saxpy             = NULL;
 
 /* Human-readable name of the selected backend (set by tn_simd_init) */
 static const char *g_backend_name = "Scalar";
+
+const char *tn_simd_backend_name(void) { return g_backend_name; }
 
 const char *tn_simd_init(void) {
     /*
@@ -156,6 +167,8 @@ const char *tn_simd_init(void) {
     int force_vnni256 = force && strcmp(force, "vnni256") == 0;
     /* force_vnni is the default; listed for clarity */
     /* int force_vnni = force && strcmp(force, "vnni") == 0; */
+    /* Unused when the build has no SIMD tiers (e.g. CMake without -m flags). */
+    (void)force_avx2; (void)force_avx512f; (void)force_vnni256;
 
     const TnCpuFeatures *cpu = tn_cpu_features_detect();
 
@@ -170,6 +183,8 @@ const char *tn_simd_init(void) {
         tn_silu      = silu_avx512;
         tn_relu2     = relu2_avx512;
         tn_vec_dot   = vec_dot_avx512;
+        tn_kvq4_dot  = kvq4_dot_avx512;
+        tn_kvq4_axpy = kvq4_axpy_avx512;
         tn_vec_saxpy = vec_saxpy_avx512;
     } else
 #endif
@@ -183,6 +198,8 @@ const char *tn_simd_init(void) {
         tn_silu      = silu_avx2;
         tn_relu2     = relu2_avx2;
         tn_vec_dot   = vec_dot_avx2;
+        tn_kvq4_dot  = kvq4_dot_avx2;
+        tn_kvq4_axpy = kvq4_axpy_avx2;
         tn_vec_saxpy = vec_saxpy_avx2;
     } else
 #endif
@@ -195,6 +212,8 @@ const char *tn_simd_init(void) {
         tn_silu      = silu;
         tn_relu2     = relu2_scalar;
         tn_vec_dot   = vec_dot;
+        tn_kvq4_dot  = kvq4_dot_scalar;
+        tn_kvq4_axpy = kvq4_axpy_scalar;
         tn_vec_saxpy = vec_saxpy;
     }
 
@@ -207,7 +226,9 @@ const char *tn_simd_init(void) {
 #endif
     {
         tn_unpack_block    = unpack_ternary_block;
-        tn_ternary_matmul  = ternary_matmul;
+        /* Phase 3.2: branchless scalar (10-12x faster than the branchy
+         * reference on random ternary rows; 2026-10-18 microbench, 2048x2048). */
+        tn_ternary_matmul  = ternary_matmul_branchless;
     }
 
     /* ── Packed matmul: VNNI tier selection ──
@@ -220,7 +241,9 @@ const char *tn_simd_init(void) {
      *
      * ARM path (priority: dotprod > NEON fallback):
      *   dotprod:      16 int8 MACs/cycle — signed×signed, no bias trick needed
-     *   NEON:          4 fp32 MACs/cycle — stub, always compiled for ARM
+     *   NEON:          4 fp32 MACs/cycle — always available on ARMv8-A, no
+     *                  dotprod extension required (see
+     *                  ternary_matmul_packed_neon.c)
      *
      * TN_FORCE_BACKEND skips upper tiers to reach a specific backend.
      */
@@ -267,6 +290,14 @@ const char *tn_simd_init(void) {
     if (cpu->arm_dotprod) {
         tn_ternary_matmul_packed = ternary_matmul_packed_dotprod;
         g_backend_name = "NEON+dotprod";
+        return g_backend_name;
+    }
+#endif
+
+#if TN_HAS_NEON
+    if (!force_scalar && cpu->neon) {
+        tn_ternary_matmul_packed = ternary_matmul_packed_neon;
+        g_backend_name = "NEON";
         return g_backend_name;
     }
 #endif

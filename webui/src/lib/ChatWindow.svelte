@@ -1,12 +1,16 @@
 <script>
+  import AsciiLogo from './AsciiLogo.svelte';
   import { tick } from 'svelte';
   import MessageBubble from './MessageBubble.svelte';
   import ImageUpload from './ImageUpload.svelte';
   import { streamChatCompletion, cancelGeneration } from './api.js';
 
-  export let temperature;
-  export let top_p;
-  export let max_tokens;
+  import { requestParams, systemMessage } from './settings.js';
+
+  export let settings;
+  export let config;
+  export let brand = '';
+  export let logoAscii = ''; // block wordmark (GET /v1/config ui.logo_ascii), '' = text only
   export let visionCapable = false;
 
   /** @type {{role: string, content: string, imageDataUrl?: string}[]} */
@@ -41,19 +45,31 @@
       .slice(0, assistantIndex)
       .filter((m) => m.content && typeof m.content === 'string')
       .map((m) => ({ role: m.role, content: m.content }));
+    const sys = systemMessage(settings, config);
+    if (sys) history.unshift(sys);
 
     const { id, done } = streamChatCompletion(
-      { messages: history, temperature, top_p, max_tokens, imageDataUrl: attachedImage },
+      { messages: history, options: requestParams(settings, config), imageDataUrl: attachedImage },
       (delta) => {
         messages[assistantIndex].content += delta;
+        messages[assistantIndex].queued = 0;
         messages = messages; // trigger reactivity
         scrollToBottom();
+      },
+      ({ queued }) => {
+        messages[assistantIndex].queued = queued;
+        messages = messages;
       }
     );
     id.then((rid) => { currentRequestId = rid; });
 
     try {
-      await done;
+      const summary = await done;
+      if (summary && messages[assistantIndex]) {
+        const opts = requestParams(settings, config);
+        messages[assistantIndex].meta = { ...summary, best_of_n: opts.best_of ?? 1 };
+        messages = messages;
+      }
     } catch (err) {
       errorText = err.message ?? String(err);
     }
@@ -63,6 +79,12 @@
 
   async function stop() {
     if (currentRequestId) await cancelGeneration(currentRequestId);
+  }
+
+  export function clearConversation() {
+    if (generating) return;
+    messages = [];
+    errorText = null;
   }
 
   function onKeydown(e) {
@@ -77,7 +99,8 @@
   <div class="messages" bind:this={scrollEl}>
     {#if messages.length === 0}
       <div class="empty-state">
-        <p>Ask project-zero anything.</p>
+        {#if logoAscii}<div class="hero-logo"><AsciiLogo rows={logoAscii} label={brand} size="lg" /></div>{/if}
+        <p>Ask {brand} anything.</p>
         <p class="hint">Shift+Enter for a new line · Enter to send</p>
       </div>
     {/if}
@@ -86,11 +109,14 @@
         role={m.role}
         content={m.content}
         imageDataUrl={m.imageDataUrl}
+        meta={m.meta}
+        queued={m.queued ?? 0}
+        {brand}
         streaming={generating && i === messages.length - 1 && m.role === 'assistant'}
       />
     {/each}
     {#if errorText}
-      <div class="error">⚠ {errorText}</div>
+      <div class="error" role="alert"><strong>Error:</strong> {errorText}</div>
     {/if}
   </div>
 
@@ -99,7 +125,7 @@
       <ImageUpload bind:imageDataUrl />
     {/if}
     <textarea
-      placeholder="Message project-zero…"
+      placeholder={`Message ${brand}…`}
       bind:value={input}
       on:keydown={onKeydown}
       rows="1"
@@ -126,6 +152,13 @@
     flex-direction: column;
     gap: 0.75rem;
     padding: 1.25rem;
+  }
+  .hero-logo {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 1.25rem;
+    max-width: 100%;
+    overflow: hidden;
   }
   .empty-state {
     margin: auto;

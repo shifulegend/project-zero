@@ -28,6 +28,10 @@ extern "C" {
 void parallel_matmul_q2_0(float *out, const float *x, const uint8_t *w_q2_0,
                            int n, int d, ThreadPool *tp);
 
+/* 1 when parallel_matmul_q2_0()/_batch() take the int8 VNNI path (which
+ * quantizes x to int8) on this CPU with this build; 0 for the float path. */
+int matmul_q2_0_uses_vnni(void);
+
 /*
  * parallel_matmul_q2_0_batch — batched Q2_0 × F32 GEMV for k weight matrices.
  */

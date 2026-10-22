@@ -62,7 +62,7 @@ the engine intercepts, executes safely, and injects results back into the KV cac
 
 ```bash
 make release
-./adaptive_ai_engine \
+./pz \
   --model   models/bitnet-b1.58-2B-4T.bin \
   --tokenizer models/bitnet-b1.58-2B-4T_tokenizer_proper.bin \
   --verbose
@@ -146,7 +146,7 @@ cd ~/llama.cpp
 
 ```bash
 cd /home/<USER>/Documents/project-zero
-./adaptive_ai_engine \
+./pz \
   --model models/deepseek-v2-lite-chat-Q4_K_S.gguf \
   --prompt "What is the capital of France?" \
   --max-tokens 1 \
@@ -315,7 +315,7 @@ llama.cpp catch-up work began.
 
 Command:
 ```bash
-./adaptive_ai_engine \
+./pz \
   --model models/deepseek-v2-lite-chat-Q4_K_S.gguf \
   --prompt "What is the capital of France?" \
   --max-tokens 12 \

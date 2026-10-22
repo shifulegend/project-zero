@@ -8,7 +8,7 @@
 ## Flow 1: TokenGenerationFlow — CLI Invocation to First Output Token
 
 ```
-./adaptive_ai_engine --model foo.gguf --prompt "Hello" --threads 4
+./pz --model foo.gguf --prompt "Hello" --threads 4
 
 main()
   parse_args()                         ← --model, --prompt, --threads extracted

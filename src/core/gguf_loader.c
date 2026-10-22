@@ -1,9 +1,14 @@
 #include "core/gguf_loader.h"
+#include "transformer/mamba.h"
 #include "core/gguf_quant.h"
 #include "core/moe_config.h"
 #include "core/platform.h"
 #include "core/hardware_profile.h"
 #include "math/matmul_q4k_x8.h"
+#include "core/gguf_i2s.h"
+#include "memory/mapped_file.h"
+#include "math/rope.h"
+#include "core/unpack.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -70,11 +75,6 @@ static float f16_to_f32(uint16_t h) {
     float f; memcpy(&f, &bits, 4); return f;
 }
 
-static float bf16_to_f32(uint16_t b) {
-    uint32_t bits = (uint32_t)b << 16;
-    float f; memcpy(&f, &bits, 4); return f;
-}
-
 /* Allocate a float32 buffer (n_elems floats), fill from tensor data, add to store.
  * Returns NULL and prints a message for unsupported types. */
 static float *tensor_to_f32(const GGUFTensor *t, size_t n_elems,
@@ -91,11 +91,9 @@ static float *tensor_to_f32(const GGUFTensor *t, size_t n_elems,
         for (size_t i = 0; i < n_elems; i++) buf[i] = f16_to_f32(s[i]);
         break;
     }
-    case GGUF_TYPE_BF16: {
-        const uint16_t *s = (const uint16_t *)t->data;
-        for (size_t i = 0; i < n_elems; i++) buf[i] = bf16_to_f32(s[i]);
+    case GGUF_TYPE_BF16:
+        gguf_dequant_bf16(buf, t->data, n_elems);
         break;
-    }
     case GGUF_TYPE_Q8_0:
         gguf_dequant_q8_0(buf, t->data, n_elems);
         break;
@@ -128,6 +126,39 @@ static float *tensor_to_f32(const GGUFTensor *t, size_t n_elems,
         break;
     case GGUF_TYPE_Q2_0:
         gguf_dequant_q2_0(buf, t->data, n_elems);
+        break;
+    case GGUF_TYPE_Q4_1:
+        gguf_dequant_q4_1(buf, t->data, n_elems);
+        break;
+    case GGUF_TYPE_Q8_1:
+        gguf_dequant_q8_1(buf, t->data, n_elems);
+        break;
+    case GGUF_TYPE_Q8_K:
+        gguf_dequant_q8_k(buf, t->data, n_elems);
+        break;
+    case GGUF_TYPE_IQ4_XS:
+        gguf_dequant_iq4_xs(buf, t->data, n_elems);
+        break;
+    case GGUF_TYPE_IQ2_XXS:
+        gguf_dequant_iq2_xxs(buf, t->data, n_elems);
+        break;
+    case GGUF_TYPE_IQ2_XS:
+        gguf_dequant_iq2_xs(buf, t->data, n_elems);
+        break;
+    case GGUF_TYPE_IQ2_S:
+        gguf_dequant_iq2_s(buf, t->data, n_elems);
+        break;
+    case GGUF_TYPE_IQ3_XXS:
+        gguf_dequant_iq3_xxs(buf, t->data, n_elems);
+        break;
+    case GGUF_TYPE_IQ3_S:
+        gguf_dequant_iq3_s(buf, t->data, n_elems);
+        break;
+    case GGUF_TYPE_IQ1_S:
+        gguf_dequant_iq1_s(buf, t->data, n_elems);
+        break;
+    case GGUF_TYPE_IQ1_M:
+        gguf_dequant_iq1_m(buf, t->data, n_elems);
         break;
     default:
         fprintf(stderr,
@@ -181,6 +212,17 @@ TernaryError config_from_gguf(Config *cfg, const GGUFHeader *hdr) {
     cfg->n_heads   = (int)gguf_meta_u32(hdr, head_key, 0);
     cfg->hidden_dim= (int)gguf_meta_u32(hdr, ffn_key,  0);
 
+    /* Phase 22-SSM: Mamba has no attention heads or FFN (head_count = 0,
+     * feed_forward_length = 0 in the file). Give the generic RunState a single
+     * notional head (sized buffers stay valid; the KV cache is skipped for SSMs)
+     * and size hb/hb2 by the SSM inner width so they are never zero-length. */
+    if (strcmp(arch, "mamba") == 0) {
+        char ik[128];
+        snprintf(ik, sizeof(ik), "%s.ssm.inner_size", arch);
+        if (cfg->n_heads <= 0) cfg->n_heads = 1;
+        if (cfg->hidden_dim <= 0) cfg->hidden_dim = (int)gguf_meta_u32(hdr, ik, 0);
+    }
+
     if (cfg->dim <= 0 || cfg->n_layers <= 0 ||
         cfg->n_heads <= 0 || cfg->hidden_dim <= 0) {
         fprintf(stderr,
@@ -219,6 +261,16 @@ TernaryError config_from_gguf(Config *cfg, const GGUFHeader *hdr) {
 
     cfg->scale_mode    = 1; /* non-ternary float path */
     cfg->act_type      = 0; /* SiLU */
+    /* Rotary pair layout follows the architecture (llama.cpp convention):
+     * llama-family GGUFs have Q/K permuted for NORM; Qwen/Phi/Gemma/BitNet/...
+     * keep NEOX. 2026-10-18: everything used NORM before — wrong for those. */
+    cfg->rope_layout   = rope_layout_for_arch(hdr->arch);
+    /* BitNet b1.58 GGUF (arch "bitnet-b1.58", bitnet.cpp's I2_S release):
+     * squared-ReLU FFN and matrix-scaled ternary projections. */
+    if (strncmp(hdr->arch, "bitnet", 6) == 0) {
+        cfg->act_type   = 1; /* ReLU2 */
+        cfg->scale_mode = 0;
+    }
     cfg->bos_token_id  = (int)gguf_meta_u32(hdr, "tokenizer.ggml.bos_token_id", (uint32_t)-1);
     cfg->eos_token_id  = (int)gguf_meta_u32(hdr, "tokenizer.ggml.eos_token_id", (uint32_t)-1);
 
@@ -271,10 +323,57 @@ TernaryError config_from_gguf(Config *cfg, const GGUFHeader *hdr) {
     return TN_OK;
 }
 
+/* ── MoE router weighting keys (2026-10-21) ─────────────────────────────────
+ * Reads <arch>.expert_gating_func / expert_weights_norm / expert_weights_scale
+ * with llama.cpp's per-arch defaults (see MoEConfig). An unsupported gating
+ * function falls back to the default with a warning instead of silently
+ * misrouting. */
+static void moe_config_read_gating(MoEConfig *mc, const GGUFHeader *hdr,
+                                   int default_gating, int default_norm) {
+    char k[128];
+    snprintf(k, sizeof(k), "%s.expert_gating_func", hdr->arch);
+    int g = (int)gguf_meta_u32(hdr, k, 0);
+    if (g == 0) g = default_gating;
+    if (g != MOE_GATING_SOFTMAX && g != MOE_GATING_SIGMOID) {
+        fprintf(stderr, "[gguf_loader] %s: expert_gating_func=%d not supported, "
+                        "using softmax\n", hdr->arch, g);
+        g = MOE_GATING_SOFTMAX;
+    }
+    mc->expert_gating_func = g;
+
+    snprintf(k, sizeof(k), "%s.expert_weights_norm", hdr->arch);
+    const GGUFMeta *m = gguf_meta_find(hdr, k);
+    mc->expert_weights_norm = default_norm;
+    if (m && m->val_type == GGUF_VAL_BOOL) mc->expert_weights_norm = m->val.boolean ? 1 : 0;
+    else if (m) mc->expert_weights_norm = gguf_meta_u32(hdr, k, (uint32_t)default_norm) ? 1 : 0;
+
+    snprintf(k, sizeof(k), "%s.expert_weights_scale", hdr->arch);
+    mc->expert_weights_scale = gguf_meta_f32(hdr, k, 0.0f);
+}
+
 /* ── moe_config_from_gguf() ───────────────────────────────────────────────── */
 
 TernaryError moe_config_from_gguf(MoEConfig *mc, const GGUFHeader *hdr) {
     moe_config_init_dense(mc);
+
+    if (strcmp(hdr->arch, "mamba") == 0) {
+        /* Phase 22-SSM: Mamba-1. Key names per llama.cpp (mamba.ssm.*),
+         * verified against a real mamba-130m-hf GGUF header dump. */
+        char k[128];
+#define MK(suffix) (snprintf(k, sizeof(k), "%s." suffix, hdr->arch), k)
+        mc->ssm_conv_kernel    = (int)gguf_meta_u32(hdr, MK("ssm.conv_kernel"), 0);
+        mc->ssm_inner_size     = (int)gguf_meta_u32(hdr, MK("ssm.inner_size"), 0);
+        mc->ssm_state_size     = (int)gguf_meta_u32(hdr, MK("ssm.state_size"), 0);
+        mc->ssm_time_step_rank = (int)gguf_meta_u32(hdr, MK("ssm.time_step_rank"), 0);
+#undef MK
+        if (mc->ssm_conv_kernel <= 0 || mc->ssm_inner_size <= 0 ||
+            mc->ssm_state_size <= 0 || mc->ssm_time_step_rank <= 0) {
+            fprintf(stderr, "[gguf_loader] mamba: missing/invalid ssm.* metadata\n");
+            return TN_ERR_INVALID_CONFIG;
+        }
+        mc->is_ssm = 1;
+        return TN_OK;
+    }
 
     if (strcmp(hdr->arch, "qwen35") == 0) {
         /* Qwen3.5/3.6 hybrid Gated-DeltaNet + Gated-Attention.
@@ -304,6 +403,23 @@ TernaryError moe_config_from_gguf(MoEConfig *mc, const GGUFHeader *hdr) {
         return TN_OK;
     }
 
+    /* Dense Qwen3 whose head width is not dim/n_heads (e.g. Qwen3-0.6B:
+     * key_length 128, 1024/16 = 64). The generic path derives head_dim from
+     * dim/n_heads, so these run on the independent-head_dim attention of the
+     * Qwen3-MoE path (QK-norm, q_rows-wide wq/wo) with a dense FFN.
+     * 2026-10-19: previously silent garbage. */
+    if (strcmp(hdr->arch, "qwen3") == 0) {
+        uint32_t kl    = gguf_meta_u32(hdr, "qwen3.attention.key_length", 0);
+        uint32_t emb   = gguf_meta_u32(hdr, "qwen3.embedding_length", 0);
+        uint32_t heads = gguf_meta_u32(hdr, "qwen3.attention.head_count", 0);
+        if (kl > 0 && heads > 0 && kl != emb / heads) {
+            mc->attn_head_dim = (int)kl;
+            mc->has_qk_norm   = 1;
+            mc->is_moe        = false;
+        }
+        return TN_OK;
+    }
+
     if (strcmp(hdr->arch, "qwen3moe") == 0) {
         /* Qwen3-MoE (e.g. Qwen3-30B-A3B): routed MoE, no shared experts, no
          * leading dense layers (all layers routed), plain GQA attention with
@@ -324,6 +440,8 @@ TernaryError moe_config_from_gguf(MoEConfig *mc, const GGUFHeader *hdr) {
         mc->first_k_dense_replace    = 0; /* all layers routed */
         mc->n_shared_experts         = 0; /* no shared experts */
         mc->shared_expert_hidden_dim = 0;
+        /* llama.cpp qwen3moe.cpp: softmax gating, norm_w hardcoded true */
+        moe_config_read_gating(mc, hdr, MOE_GATING_SOFTMAX, 1);
 
         if (mc->num_experts <= 0 || mc->num_experts_per_tok <= 0 ||
             mc->expert_hidden_dim <= 0 || mc->attn_head_dim <= 0) {
@@ -363,6 +481,10 @@ TernaryError moe_config_from_gguf(MoEConfig *mc, const GGUFHeader *hdr) {
     /* shared hidden = n_shared * expert_hidden */
     mc->shared_expert_hidden_dim = mc->n_shared_experts * mc->expert_hidden_dim;
 
+    /* llama.cpp deepseek2.cpp: gating from metadata, softmax when absent
+     * (V2 / V2.5 GGUFs carry no gating key); norm defaults to false. */
+    moe_config_read_gating(mc, hdr, MOE_GATING_SOFTMAX, 0);
+
     mc->is_moe  = true;
     mc->has_mla = 1;
     return TN_OK;
@@ -385,8 +507,36 @@ static size_t quant_bytes_for_elems(GGUFType type, size_t n_elems) {
     case GGUF_TYPE_Q2_K: return (n_elems / 256) * 84;
     case GGUF_TYPE_Q3_K: return (n_elems / 256) * 110;
     case GGUF_TYPE_IQ4_NL: return (n_elems / 32) * 18;
+    case GGUF_TYPE_Q4_1: return (n_elems / 32) * 20;
+    case GGUF_TYPE_Q8_1: return (n_elems / 32) * 36;
+    case GGUF_TYPE_Q8_K: return (n_elems / 256) * 292;
+    case GGUF_TYPE_IQ4_XS: return (n_elems / 256) * 136;
+    case GGUF_TYPE_IQ2_XXS: return (n_elems / 256) * 66;
+    case GGUF_TYPE_IQ2_XS: return (n_elems / 256) * 74;
+    case GGUF_TYPE_IQ2_S: return (n_elems / 256) * 82;
+    case GGUF_TYPE_IQ3_XXS: return (n_elems / 256) * 98;
+    case GGUF_TYPE_IQ3_S: return (n_elems / 256) * 110;
+    case GGUF_TYPE_IQ1_S: return (n_elems / 256) * 50;
+    case GGUF_TYPE_IQ1_M: return (n_elems / 256) * 56;
     default: return 0;
     }
+}
+
+/* ── Raw quantized LM head (2026-10-21) ──────────────────────────────────
+ * Keep output.weight zero-copy in its own Q4_K/Q6_K format when a fused
+ * kernel exists and the user did not explicitly ask for a --classifier
+ * format (which needs the BF16 table to derive INT8/INT4 copies). Returns 1
+ * when w->wcls_raw was set. Previously every quantized head was widened to
+ * BF16: 2.4x the bytes streamed per token for a Q6_K head. */
+static int classifier_keep_raw(TransformerWeights *w, const Config *cfg,
+                               const GGUFTensor *t) {
+    const TnHardwareProfile *hw = tn_hardware_profile_get();
+    if (!t || (hw && hw->classifier_explicit)) return 0;
+    if (cfg->dim % 256 != 0) return 0;
+    if (t->type != GGUF_TYPE_Q6_K && t->type != GGUF_TYPE_Q4_K) return 0;
+    w->wcls_raw      = t->data;
+    w->wcls_raw_type = (int)t->type;
+    return 1;
 }
 
 /* ── Shared dense-BF16 embedding + output.weight loader ──────────────────
@@ -415,7 +565,9 @@ static TernaryError load_bf16_embedding_and_output(
     w->token_embedding_table = ebuf;
 
     const GGUFTensor *toutw = gguf_find_tensor(hdr, "output.weight");
-    if (toutw) {
+    if (toutw && classifier_keep_raw(w, cfg, toutw)) {
+        w->wcls = NULL;   /* forward.c dispatches on wcls_raw */
+    } else if (toutw) {
         float *fout = tensor_to_f32(toutw, n_emb, store);
         if (!fout) return TN_ERR_INVALID_WEIGHTS;
         tn_u16 *obuf = (tn_u16 *)malloc(n_emb * sizeof(tn_u16));
@@ -428,6 +580,40 @@ static TernaryError load_bf16_embedding_and_output(
         w->wcls = obuf;
     } else {
         w->wcls = w->token_embedding_table;
+    }
+    return TN_OK;
+}
+
+/* ── Typed zero-copy projection loader (shared) ──────────────────────────
+ * F16/F32 zero-copy; Q4_K / Q6_K zero-copy when n_inner % 256 == 0;
+ * Q5_0 / Q5_1 / Q8_0 zero-copy when n_inner % 32 == 0 (2026-10-21: run by
+ * the Q8_0-activation integer kernels, math/q8_0_act.c); anything else is
+ * dequantized to F32 once. `d_rows` x `n_inner` (output x input). Used by
+ * the mamba loader and DeepSeek-V2's leading dense FFN layers (which were
+ * F32-dequantized before: 269 MB/token for DeepSeek-V2-Lite's layer 0
+ * instead of 42 MB). */
+static TernaryError load_proj_typed(const GGUFHeader *hdr, GGUFWeightStore *store,
+                                    const char *name, int d_rows, int n_inner,
+                                    tn_i8 **out, int *type_out) {
+    const GGUFTensor *t = gguf_find_tensor(hdr, name);
+    if (!t) {
+        fprintf(stderr, "[gguf_loader] missing tensor '%s'\n", name);
+        return TN_ERR_INVALID_WEIGHTS;
+    }
+    size_t n = (size_t)d_rows * (size_t)n_inner;
+    const int k_ok = n_inner % 256 == 0, l_ok = n_inner % 32 == 0;
+    if (t->type == GGUF_TYPE_F16) { *out = (tn_i8 *)t->data; *type_out = WEIGHT_TYPE_F16; }
+    else if (t->type == GGUF_TYPE_F32) { *out = (tn_i8 *)t->data; *type_out = WEIGHT_TYPE_F32; }
+    else if (t->type == GGUF_TYPE_Q4_K && k_ok) { *out = (tn_i8 *)t->data; *type_out = WEIGHT_TYPE_Q4K; }
+    else if (t->type == GGUF_TYPE_Q6_K && k_ok) { *out = (tn_i8 *)t->data; *type_out = WEIGHT_TYPE_Q6K; }
+    else if (t->type == GGUF_TYPE_Q5_0 && l_ok) { *out = (tn_i8 *)t->data; *type_out = WEIGHT_TYPE_Q5_0; }
+    else if (t->type == GGUF_TYPE_Q5_1 && l_ok) { *out = (tn_i8 *)t->data; *type_out = WEIGHT_TYPE_Q5_1; }
+    else if (t->type == GGUF_TYPE_Q8_0 && l_ok) { *out = (tn_i8 *)t->data; *type_out = WEIGHT_TYPE_Q8_0; }
+    else {
+        float *f = tensor_to_f32(t, n, store);
+        if (!f) return TN_ERR_INVALID_WEIGHTS;
+        *out = (tn_i8 *)f;
+        *type_out = WEIGHT_TYPE_F32;
     }
     return TN_OK;
 }
@@ -610,13 +796,18 @@ static TernaryError weights_from_gguf_deepseek2(
         w->so[l]        = 1.0f;
 
         if (l < first_dense) {
-            /* Dense FFN layer */
-            DS_LOAD_PROJ(w->w1, "ffn_gate.weight",
-                         (size_t)hidden_dim * (size_t)dim);
-            DS_LOAD_PROJ(w->w2, "ffn_down.weight",
-                         (size_t)hidden_dim * (size_t)dim);
-            DS_LOAD_PROJ(w->w3, "ffn_up.weight",
-                         (size_t)hidden_dim * (size_t)dim);
+            /* Dense FFN layer — typed zero-copy (ffn.c dispatches on
+             * w{1,2,3}_type via tn_dense_matmul_dispatch). */
+            TernaryError pe;
+            snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_gate.weight", l);
+            pe = load_proj_typed(hdr, store, name_buf, hidden_dim, dim, &w->w1[l], &w->w1_type[l]);
+            if (pe != TN_OK) return pe;
+            snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_down.weight", l);
+            pe = load_proj_typed(hdr, store, name_buf, dim, hidden_dim, &w->w2[l], &w->w2_type[l]);
+            if (pe != TN_OK) return pe;
+            snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_up.weight", l);
+            pe = load_proj_typed(hdr, store, name_buf, hidden_dim, dim, &w->w3[l], &w->w3_type[l]);
+            if (pe != TN_OK) return pe;
             w->s1[l] = w->s2[l] = w->s3[l] = 1.0f;
         } else {
             /* MoE FFN layer */
@@ -1042,6 +1233,60 @@ static TernaryError weights_from_gguf_qwen3moe(
 
 /* ── weights_from_gguf() ──────────────────────────────────────────────────── */
 
+/* ── weights_from_gguf_mamba() — Phase 22-SSM Mamba-1 loader ─────────────── */
+
+/* Mamba projection: shared typed policy (load_proj_typed above). */
+static TernaryError mamba_load_proj(const GGUFHeader *hdr, GGUFWeightStore *store,
+                                    const char *name, int d_rows, int n_inner,
+                                    tn_i8 **out, int *type_out) {
+    return load_proj_typed(hdr, store, name, d_rows, n_inner, out, type_out);
+}
+
+static TernaryError weights_from_gguf_mamba(TransformerWeights *w, const Config *cfg,
+                                            const GGUFHeader *hdr, const MoEConfig *mc,
+                                            GGUFWeightStore *store) {
+    TernaryError e = load_bf16_embedding_and_output(w, cfg, hdr, store);
+    if (e != TN_OK) return e;
+    w->rms_final_weight = norm_to_f32(hdr, "output_norm.weight", (size_t)cfg->dim, store);
+    if (!w->rms_final_weight) return TN_ERR_INVALID_WEIGHTS;
+
+    MambaWeights *mw = NULL;
+    e = mamba_weights_alloc(&mw, cfg->n_layers);
+    if (e != TN_OK) return e;
+    w->mamba = mw; /* owned by w from here on (weights_free_pointers) */
+
+    const int dim = cfg->dim, di = mc->ssm_inner_size, ds = mc->ssm_state_size;
+    const int dc = mc->ssm_conv_kernel, dr = mc->ssm_time_step_rank;
+    char nm[128];
+#define MAMBA_NORM(dst, suffix, count) do {                                       \
+        snprintf(nm, sizeof(nm), "blk.%d." suffix, l);                            \
+        (dst) = norm_to_f32(hdr, nm, (size_t)(count), store);                     \
+        if (!(dst)) return TN_ERR_INVALID_WEIGHTS;                                \
+    } while (0)
+#define MAMBA_PROJ(dst, type, suffix, rows, cols) do {                            \
+        snprintf(nm, sizeof(nm), "blk.%d." suffix, l);                            \
+        TernaryError pe = mamba_load_proj(hdr, store, nm, (rows), (cols), &(dst), &(type)); \
+        if (pe != TN_OK) return pe;                                               \
+    } while (0)
+    for (int l = 0; l < cfg->n_layers; l++) {
+        MAMBA_NORM(mw->norm[l],   "attn_norm.weight",       dim);
+        MAMBA_NORM(mw->conv_w[l], "ssm_conv1d.weight",      (size_t)di * dc);
+        MAMBA_NORM(mw->conv_b[l], "ssm_conv1d.bias",        di);
+        MAMBA_NORM(mw->dt_b[l],   "ssm_dt.bias",            di);
+        MAMBA_NORM(mw->A[l],      "ssm_a",                  (size_t)di * ds);
+        MAMBA_NORM(mw->D[l],      "ssm_d",                  di);
+        MAMBA_PROJ(mw->in_proj[l],  mw->in_type[l],  "ssm_in.weight",  2 * di,      dim);
+        MAMBA_PROJ(mw->x_proj[l],   mw->x_type[l],   "ssm_x.weight",   dr + 2 * ds, di);
+        MAMBA_PROJ(mw->dt_proj[l],  mw->dt_type[l],  "ssm_dt.weight",  di,          dr);
+        MAMBA_PROJ(mw->out_proj[l], mw->out_type[l], "ssm_out.weight", dim,         di);
+    }
+#undef MAMBA_NORM
+#undef MAMBA_PROJ
+    weights_build_classifier_quant(w, cfg);
+    return TN_OK;
+}
+
+/* ── weights_from_gguf() ── */
 TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
                                 const GGUFHeader *hdr, GGUFWeightStore **store_out) {
     GGUFWeightStore *store = store_alloc();
@@ -1061,6 +1306,14 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
         if (e2 != TN_OK) return e2;
         weights_build_classifier_quant(w, cfg);
         return TN_OK;
+    }
+
+    /* Phase 22-SSM: Mamba (pure state-space model). */
+    if (strcmp(hdr->arch, "mamba") == 0) {
+        MoEConfig mc;
+        TernaryError e = moe_config_from_gguf(&mc, hdr);
+        if (e != TN_OK) return e;
+        return weights_from_gguf_mamba(w, cfg, hdr, &mc, store);
     }
 
     /* Dispatch to Qwen3.5/3.6 hybrid Gated-DeltaNet + Gated-Attention loader.
@@ -1097,6 +1350,22 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
     int head_dim   = config_head_dim(cfg);
     int nl         = cfg->n_layers;
     char name_buf[128];
+    /* Independent head width (dense Qwen3 with key_length != dim/n_heads):
+     * Q/K/V/O widths and the per-head norms follow it, and the forward pass
+     * routes to the QK-norm attention (MoEConfig.has_qk_norm). */
+    int q_rows = dim;
+    int wide_heads = 0;
+    {
+        MoEConfig gmc;
+        memset(&gmc, 0, sizeof(gmc));
+        if (moe_config_from_gguf(&gmc, hdr) == TN_OK && gmc.has_qk_norm && !gmc.is_moe &&
+            gmc.attn_head_dim > 0) {
+            wide_heads = 1;
+            head_dim = gmc.attn_head_dim;
+            q_rows = cfg->n_heads * head_dim;
+            kv_dim = cfg->n_kv_heads * head_dim;
+        }
+    }
 
     /* 1. Token embedding table (vocab_size × dim).
      *
@@ -1129,6 +1398,7 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
             }
             if (store_add(store, buf) != 0) { free(buf); return TN_ERR_OOM; }
             w->token_embedding_table = buf;
+            mapped_file_release(t->data, t->size_bytes);
         } else if (t->type == GGUF_TYPE_F16) {
             /* Dequant F16 → F32 → BF16 */
             tn_u16 *buf = (tn_u16 *)malloc(n * sizeof(tn_u16));
@@ -1141,6 +1411,7 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
             }
             if (store_add(store, buf) != 0) { free(buf); return TN_ERR_OOM; }
             w->token_embedding_table = buf;
+            mapped_file_release(t->data, t->size_bytes);
         } else if (t->type == GGUF_TYPE_Q4_K || t->type == GGUF_TYPE_Q8_0 ||
                    t->type == GGUF_TYPE_Q4_0 || t->type == GGUF_TYPE_Q5_0 ||
                    t->type == GGUF_TYPE_Q5_1 ||
@@ -1171,6 +1442,7 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
             }
             if (store_add(store, buf) != 0) { free(buf); return TN_ERR_OOM; }
             w->token_embedding_table = buf;
+            mapped_file_release(t->data, t->size_bytes);
         } else {
             fprintf(stderr,
                 "[gguf_loader] unsupported embedding type %d ('%s')\n"
@@ -1198,11 +1470,13 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
          * generic forward path applies them the same way when non-NULL. */
         snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_q_norm.weight", l);
         if (gguf_find_tensor(hdr, name_buf)) {
-            w->q35_attn_q_norm[l] = norm_to_f32(hdr, name_buf, (size_t)head_dim, store);
-            if (!w->q35_attn_q_norm[l]) return TN_ERR_INVALID_WEIGHTS;
+            float **qn = wide_heads ? w->qwen3moe_attn_q_norm : w->q35_attn_q_norm;
+            float **kn = wide_heads ? w->qwen3moe_attn_k_norm : w->q35_attn_k_norm;
+            qn[l] = norm_to_f32(hdr, name_buf, (size_t)head_dim, store);
+            if (!qn[l]) return TN_ERR_INVALID_WEIGHTS;
             snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_k_norm.weight", l);
-            w->q35_attn_k_norm[l] = norm_to_f32(hdr, name_buf, (size_t)head_dim, store);
-            if (!w->q35_attn_k_norm[l]) return TN_ERR_INVALID_WEIGHTS;
+            kn[l] = norm_to_f32(hdr, name_buf, (size_t)head_dim, store);
+            if (!kn[l]) return TN_ERR_INVALID_WEIGHTS;
         }
 
 /* Helper macro: load a projection weight tensor.
@@ -1223,7 +1497,7 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
  * so a Q4_K tensor with d_rows a multiple of 8 can be repacked into the
  * x8-interleaved layout (matmul_q4k_x8.c) for the real multi-row GEMV
  * kernel; see docs/ai/mistakes.md 2026-07-31 "attempt 6". */
-#define LOAD_PROJ(field, tname, d_rows, n_inner, type_out) do {            \
+#define LOAD_PROJ(field, tname, d_rows, n_inner, type_out, scale_out) do { \
     snprintf(name_buf, sizeof(name_buf), "blk.%d." tname, l);              \
     const GGUFTensor *_t = gguf_find_tensor(hdr, name_buf);                \
     if (!_t) {                                                              \
@@ -1231,7 +1505,27 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
         return TN_ERR_INVALID_WEIGHTS;                                      \
     }                                                                       \
     size_t _n_elems = (size_t)(d_rows) * (size_t)(n_inner);                \
-    if (_t->type == GGUF_TYPE_F16) {                                        \
+    if (_t->type == GGUF_TYPE_I2_S) {                                       \
+        /* BitNet I2_S: lossless repack into the engine's packed ternary   \
+         * rows (2026-10-18) — runs on the native ternary kernels.         */ \
+        size_t _pb = (size_t)(d_rows) * packed_bytes((int)(n_inner));     \
+        if (_t->size_bytes < tn_i2s_tensor_bytes(_n_elems)) {               \
+            fprintf(stderr, "[gguf_loader] I2_S tensor '%s' too small\n", name_buf); \
+            return TN_ERR_INVALID_WEIGHTS;                                  \
+        }                                                                   \
+        uint8_t *_pk = (uint8_t *)malloc(_pb);                              \
+        if (!_pk) return TN_ERR_OOM;                                        \
+        if (tn_i2s_repack(_pk, &(scale_out)[l], (const uint8_t *)_t->data,  \
+                          (int)(d_rows), (int)(n_inner)) != 0) {            \
+            free(_pk);                                                      \
+            fprintf(stderr, "[gguf_loader] I2_S tensor '%s' malformed (needs columns %% 128 == 0)\n", name_buf); \
+            return TN_ERR_INVALID_WEIGHTS;                                  \
+        }                                                                   \
+        if (store_add(store, _pk) != 0) { free(_pk); return TN_ERR_OOM; }   \
+        mapped_file_release(_t->data, _t->size_bytes); /* raw I2_S unused now */ \
+        (field)[l] = (tn_i8 *)_pk;                                         \
+        (type_out)[l] = WEIGHT_TYPE_TERNARY;                                \
+    } else if (_t->type == GGUF_TYPE_F16) {                                 \
         /* Zero-copy: F16 data lives in mmap for model lifetime */          \
         (field)[l] = (tn_i8 *)_t->data;                                    \
         (type_out)[l] = WEIGHT_TYPE_F16;                                    \
@@ -1264,6 +1558,10 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
         /* Zero-copy: raw Q4_K bytes live in mmap for model lifetime */     \
         (field)[l] = (tn_i8 *)_t->data;                                    \
         (type_out)[l] = WEIGHT_TYPE_Q4K;                                    \
+    } else if (_t->type == GGUF_TYPE_Q6_K && (size_t)(n_inner) % 256 == 0) { \
+        /* Zero-copy Q6_K, fused kernel (matmul_q6k.c) — 2026-10-18 */      \
+        (field)[l] = (tn_i8 *)_t->data;                                    \
+        (type_out)[l] = WEIGHT_TYPE_Q6K;                                    \
     } else {                                                                \
         float *_f = tensor_to_f32(_t, _n_elems, store);                    \
         if (!_f) return TN_ERR_INVALID_WEIGHTS;                             \
@@ -1273,15 +1571,41 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
 } while(0)
 
         /* Attention projections */
-        LOAD_PROJ(w->wq, "attn_q.weight",      dim,    dim, w->wq_type);
-        LOAD_PROJ(w->wk, "attn_k.weight",      kv_dim, dim, w->wk_type);
-        LOAD_PROJ(w->wv, "attn_v.weight",      kv_dim, dim, w->wv_type);
-        LOAD_PROJ(w->wo, "attn_output.weight", dim,    dim, w->wo_type);
+        LOAD_PROJ(w->wq, "attn_q.weight",      q_rows, dim,    w->wq_type, w->sq);
+        LOAD_PROJ(w->wk, "attn_k.weight",      kv_dim, dim,    w->wk_type, w->sk);
+        LOAD_PROJ(w->wv, "attn_v.weight",      kv_dim, dim,    w->wv_type, w->sv);
+        LOAD_PROJ(w->wo, "attn_output.weight", dim,    q_rows, w->wo_type, w->so);
 
         /* FFN projections */
-        LOAD_PROJ(w->w1, "ffn_gate.weight", hidden_dim, dim,        w->w1_type);
-        LOAD_PROJ(w->w2, "ffn_down.weight", dim,        hidden_dim, w->w2_type);
-        LOAD_PROJ(w->w3, "ffn_up.weight",   hidden_dim, dim,        w->w3_type);
+        LOAD_PROJ(w->w1, "ffn_gate.weight", hidden_dim, dim,        w->w1_type, w->s1);
+        LOAD_PROJ(w->w2, "ffn_down.weight", dim,        hidden_dim, w->w2_type, w->s2);
+        LOAD_PROJ(w->w3, "ffn_up.weight",   hidden_dim, dim,        w->w3_type, w->s3);
+
+        /* Q/K/V biases (Qwen2/2.5) — optional; 2026-10-19: previously never
+         * loaded, so such models produced garbage instead of being refused. */
+        {
+            static const char *const bias_names[3] = { "attn_q.bias", "attn_k.bias", "attn_v.bias" };
+            float **dst[3] = { w->bq, w->bk, w->bv };
+            const int lens[3] = { q_rows, kv_dim, kv_dim };
+            for (int b = 0; b < 3; b++) {
+                snprintf(name_buf, sizeof(name_buf), "blk.%d.%s", l, bias_names[b]);
+                if (!gguf_find_tensor(hdr, name_buf)) continue;
+                dst[b][l] = norm_to_f32(hdr, name_buf, (size_t)lens[b], store);
+                if (!dst[b][l]) return TN_ERR_INVALID_WEIGHTS;
+            }
+        }
+
+        /* BitNet sub-norms (before attn_output / ffn_down) — optional. */
+        snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_sub_norm.weight", l);
+        if (gguf_find_tensor(hdr, name_buf)) {
+            w->rms_attn_sub_norm[l] = norm_to_f32(hdr, name_buf, (size_t)dim, store);
+            if (!w->rms_attn_sub_norm[l]) return TN_ERR_INVALID_WEIGHTS;
+        }
+        snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_sub_norm.weight", l);
+        if (gguf_find_tensor(hdr, name_buf)) {
+            w->rms_ffn_sub_norm[l] = norm_to_f32(hdr, name_buf, (size_t)hidden_dim, store);
+            if (!w->rms_ffn_sub_norm[l]) return TN_ERR_INVALID_WEIGHTS;
+        }
 
 #undef LOAD_PROJ
     }
@@ -1295,7 +1619,9 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
         const GGUFTensor *t = gguf_find_tensor(hdr, "output.weight");
         if (t) {
             size_t n = (size_t)cfg->vocab_size * (size_t)dim;
-            if (t->type == GGUF_TYPE_BF16) {
+            if (classifier_keep_raw(w, cfg, t)) {
+                w->wcls = NULL;   /* forward.c dispatches on wcls_raw */
+            } else if (t->type == GGUF_TYPE_BF16) {
                 w->wcls = (tn_u16 *)t->data; /* zero-copy */
             } else if (t->type == GGUF_TYPE_F32) {
                 tn_u16 *buf = (tn_u16 *)malloc(n * sizeof(tn_u16));
@@ -1307,6 +1633,7 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
                 }
                 if (store_add(store, buf) != 0) { free(buf); return TN_ERR_OOM; }
                 w->wcls = buf;
+                mapped_file_release(t->data, t->size_bytes);
             } else if (t->type == GGUF_TYPE_F16) {
                 tn_u16 *buf = (tn_u16 *)malloc(n * sizeof(tn_u16));
                 if (!buf) return TN_ERR_OOM;
@@ -1318,6 +1645,7 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
                 }
                 if (store_add(store, buf) != 0) { free(buf); return TN_ERR_OOM; }
                 w->wcls = buf;
+                mapped_file_release(t->data, t->size_bytes);
             } else {
                 /* Quantized types → F32 → BF16 */
                 float *ftmp = tensor_to_f32(t, n, store);
@@ -1330,6 +1658,7 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
                 }
                 if (store_add(store, buf) != 0) { free(buf); return TN_ERR_OOM; }
                 w->wcls = buf;
+                mapped_file_release(t->data, t->size_bytes);
             }
             wcls_done:;
         } else {
@@ -1337,13 +1666,27 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
         }
     }
 
-    /* 5. Set inference flags */
-    w->layers_are_ternary = false;
+    /* 5. Set inference flags. All-I2_S projections (BitNet GGUF) run on the
+     * ternary path; a mix of ternary and float projections has no kernel
+     * path, so it is refused rather than misdispatched. */
+    {
+        int n_tern = 0, n_proj = 0;
+        for (int l = 0; l < nl; l++) {
+            const int t7[7] = { w->wq_type[l], w->wk_type[l], w->wv_type[l], w->wo_type[l],
+                                w->w1_type[l], w->w2_type[l], w->w3_type[l] };
+            for (int k = 0; k < 7; k++) { n_proj++; n_tern += (t7[k] == WEIGHT_TYPE_TERNARY); }
+        }
+        if (n_tern && n_tern != n_proj) {
+            fprintf(stderr, "[gguf_loader] mixed I2_S and non-ternary projections are not supported\n");
+            return TN_ERR_UNSUPPORTED;
+        }
+        w->layers_are_ternary = (n_tern == n_proj && n_proj > 0);
+    }
     w->wcls_is_ternary    = false;
     w->wcls_scale         = 1.0f;
-    /* wq_type/wk_type/.../w3_type were set per-projection by LOAD_PROJ above */
-    /* sq/sk/sv/so/s1/s2/s3 remain 0.0f (unused in non-ternary path) */
-    /* rms_attn_sub_norm / rms_ffn_sub_norm remain NULL (not in standard llama) */
+    /* wq_type/wk_type/.../w3_type were set per-projection by LOAD_PROJ above;
+     * sq/sk/.../s3 hold the I2_S tensor scales on the ternary path (0 otherwise);
+     * rms_*_sub_norm are set only when the file has them (BitNet). */
 
     /* 6. Build INT8 / INT4 quantized classifier variants */
     weights_build_classifier_quant(w, cfg);

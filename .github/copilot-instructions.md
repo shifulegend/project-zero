@@ -21,10 +21,13 @@ OpenAI-compatible HTTP API. Build: `Makefile` (primary) + `CMakeLists.txt`. See 
 - Cross-platform SIMD (x86 AVX2..VNNI / ARM NEON / scalar) must all compile; feature-gate with
   `TN_HAS_*`; portable prefetch `TN_PREFETCH_T1`.
 - Definition of done: `make release/test/debug` green for **gcc and clang**, golden output
-  correct, no kernel perf regression (A/B), docs+adapters synced, small commit checkpoints.
+  correct, no kernel perf regression (A/B), docs+adapters synced, user-facing changes logged
+  under `[Unreleased]` in `CHANGELOG.md` per `docs/ai/changelog-guidance.md`, installer +
+  `pz config` schema updated for any new/changed setting (DoD #6), small commit checkpoints.
 - Public repo: never commit secrets. Keep ASan/UBSan green.
 - No AI signature or attribution (commit trailers, code comments, etc.) unless the user
   explicitly asks for it that time — see `docs/ai/commit-log-guidance.md`.
+- Third-party skill plugins **superpowers** and **mattpocock-skills** are used (per-tool install commands in `docs/ai/tool-sync-policy.md`); repo rules override them — see `docs/ai/tool-sync-policy.md` § Third-party skill plugins.
 
 ## Scoped rules & workflows
 - Scoped recurring rules: `.github/instructions/{core,docs,tests,config,api}.instructions.md`.

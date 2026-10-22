@@ -37,6 +37,10 @@ static const char *g_step_names[TN_STEP_COUNT] = {
     "EOS check",
     "DeltaNet conv1d",
     "DeltaNet delta-rule recurrence",
+    "Speculative: draft phase",
+    "Speculative: verify batch",
+    "Speculative: accept/reject",
+    "Speculative: commit",
 };
 
 int tn_step_timing_enabled(void) {

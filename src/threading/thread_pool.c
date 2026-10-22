@@ -106,12 +106,12 @@ static void *worker_entry(void *opaque) {
              * and causes priority inversion vs the caller's work slice.
              */
             pthread_mutex_lock(&tp->mutex);
-            while (!tp->shutdown &&
+            while (!atomic_load_explicit(&tp->shutdown, memory_order_acquire) &&
                    atomic_load_explicit(&tp->spin_epoch,
                                         memory_order_acquire) == last_epoch) {
                 pthread_cond_wait(&tp->cond_work, &tp->mutex);
             }
-            if (!tp->shutdown) {
+            if (!atomic_load_explicit(&tp->shutdown, memory_order_acquire)) {
                 last_epoch = atomic_load_explicit(&tp->spin_epoch,
                                                   memory_order_relaxed);
             }
@@ -119,7 +119,7 @@ static void *worker_entry(void *opaque) {
         } else {
             int spins = 0;
             for (;;) {
-                if (tp->shutdown) return NULL;
+                if (atomic_load_explicit(&tp->shutdown, memory_order_acquire)) return NULL;
                 unsigned int cur = atomic_load_explicit(&tp->spin_epoch,
                                                         memory_order_acquire);
                 if (cur != last_epoch) {
@@ -131,12 +131,12 @@ static void *worker_entry(void *opaque) {
                 } else {
                     /* Fall back to OS sleep to avoid burning CPU when idle */
                     pthread_mutex_lock(&tp->mutex);
-                    while (!tp->shutdown &&
+                    while (!atomic_load_explicit(&tp->shutdown, memory_order_acquire) &&
                            atomic_load_explicit(&tp->spin_epoch,
                                                 memory_order_acquire) == last_epoch) {
                         pthread_cond_wait(&tp->cond_work, &tp->mutex);
                     }
-                    if (!tp->shutdown) {
+                    if (!atomic_load_explicit(&tp->shutdown, memory_order_acquire)) {
                         last_epoch = atomic_load_explicit(&tp->spin_epoch,
                                                           memory_order_relaxed);
                     }
@@ -145,7 +145,7 @@ static void *worker_entry(void *opaque) {
                 }
             }
         }
-        if (tp->shutdown) return NULL;
+        if (atomic_load_explicit(&tp->shutdown, memory_order_acquire)) return NULL;
 
         /* ── Phase 2: Atomically claim a slice index (0..N-2) ────────── */
         int idx      = atomic_fetch_add_explicit(&tp->spin_claimed, 1,
@@ -195,7 +195,7 @@ ThreadPool *threadpool_create(int n) {
 
     tp->num_threads = n;
     tp->num_workers = n - 1; /* OS threads; caller handles the Nth slice */
-    tp->shutdown    = false;
+    atomic_store_explicit(&tp->shutdown, false, memory_order_relaxed);
     tp->task_fn     = NULL;
 
     /*
@@ -242,7 +242,7 @@ ThreadPool *threadpool_create(int n) {
         if (pthread_create(&tp->threads[i], NULL, worker_entry, tp) != 0) {
             /* Shut down threads created so far */
             pthread_mutex_lock(&tp->mutex);
-            tp->shutdown = true;
+            atomic_store_explicit(&tp->shutdown, true, memory_order_release);
             pthread_cond_broadcast(&tp->cond_work);
             pthread_mutex_unlock(&tp->mutex);
             for (int j = 0; j < i; j++) {
@@ -341,11 +341,51 @@ void threadpool_dispatch(ThreadPool *tp, tn_task_fn fn, void *arg, int total) {
     }
 }
 
+/* ── Dynamic chunked dispatch (2026-10-21) ────────────────────────────────── */
+typedef struct {
+    tn_task_fn fn;
+    void      *arg;
+    int        total, chunk;
+    atomic_int next;
+} TpChunkedArgs;
+
+static void tp_chunked_trampoline(void *opaque, int thread_id, int start, int end) {
+    (void)start; (void)end;
+    TpChunkedArgs *c = (TpChunkedArgs *)opaque;
+    for (;;) {
+        int k  = atomic_fetch_add_explicit(&c->next, 1, memory_order_relaxed);
+        long s = (long)k * c->chunk;
+        if (s >= c->total) break;
+        int e = (int)(s + c->chunk < c->total ? s + c->chunk : c->total);
+        c->fn(c->arg, thread_id, (int)s, e);
+    }
+}
+
+int threadpool_chunk_size(const ThreadPool *tp, int total) {
+    int nt = tp ? tp->num_threads : 1;
+    int c = total / (nt * 8);
+    c = (c + 7) & ~7;
+    return c < 8 ? 8 : c;
+}
+
+void threadpool_dispatch_chunked(ThreadPool *tp, tn_task_fn fn, void *arg,
+                                 int total, int chunk) {
+    if (!fn || total <= 0) return;
+    if (!tp || tp->num_threads <= 1) { fn(arg, 0, 0, total); return; }
+    TpChunkedArgs c;
+    c.fn = fn; c.arg = arg; c.total = total;
+    c.chunk = chunk > 0 ? chunk : threadpool_chunk_size(tp, total);
+    atomic_init(&c.next, 0);
+    /* threadpool_dispatch's release fence publishes c; its completion wait
+     * orders every fn() write before we return. */
+    threadpool_dispatch(tp, tp_chunked_trampoline, &c, tp->num_threads);
+}
+
 void threadpool_destroy(ThreadPool *tp) {
     if (!tp) return;
 
     pthread_mutex_lock(&tp->mutex);
-    tp->shutdown = true;
+    atomic_store_explicit(&tp->shutdown, true, memory_order_release);
     pthread_cond_broadcast(&tp->cond_work);
     pthread_mutex_unlock(&tp->mutex);
 
@@ -373,6 +413,17 @@ void threadpool_dispatch(ThreadPool *tp, tn_task_fn fn, void *arg, int total) {
 
 void threadpool_destroy(ThreadPool *tp) {
     (void)tp;
+}
+
+int threadpool_chunk_size(const ThreadPool *tp, int total) {
+    (void)tp;
+    return total > 8 ? total : 8;
+}
+
+void threadpool_dispatch_chunked(ThreadPool *tp, tn_task_fn fn, void *arg,
+                                 int total, int chunk) {
+    (void)tp; (void)chunk;
+    if (fn && total > 0) fn(arg, 0, 0, total);
 }
 
 #endif /* TN_POSIX */

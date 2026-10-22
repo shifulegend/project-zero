@@ -7,6 +7,9 @@
  * http_server.c decoupled from CLI argument parsing.
  */
 
+#include "transformer/gen_params.h"
+#include "reasoning/mcts_options.h"
+
 #define SERVER_CORS_MAX_ORIGINS 16
 
 typedef struct {
@@ -41,6 +44,30 @@ typedef struct {
      * requirement (both must be set). */
     char         *vision_path;
     char         *proj_path;
+    /* Generation defaults every request starts from (CLI generation flags,
+     * see args_fill_gen_params) and the per-request max_tokens cap. Both are
+     * published to clients via GET /v1/config so the web UI renders its
+     * controls from the server's real values instead of hardcoded ones.
+     * Pointer fields (system_prompt, stop) borrow argv. */
+    GenerationParams gen_defaults;
+    int              max_tokens_limit;
+    char            *model_id;  /* reported by /v1/models; main.c sets the model file's basename */
+    char            *ui_title;  /* --ui-title: web UI brand name (default "project-zero") */
+    int              ui_logo;   /* --ui-logo: 0 = ascii block wordmark of ui_title (default), 1 = text */
+    int              prompt_cache; /* --prompt-cache on|off: default for KV prefix reuse (1) */
+    int              prompt_cache_mb;         /* --prompt-cache-mb: Phase 26 snapshot budget (0 = off) */
+    int              prompt_cache_min_tokens; /* --prompt-cache-min-tokens: shortest stored sequence */
+    int              queue_size;      /* --queue-size: requests that may wait for the slot (0 = 429) */
+    int              queue_timeout_s; /* --queue-timeout: seconds a queued request waits */
+    int              best_of;     /* --best-of: default candidates per request (1 = off) */
+    int              best_of_max; /* --best-of-max: per-request cap */
+    int              chat_format; /* --chat-format: -1 = auto (from vocabulary), else ChatTemplateType;
+                                     only used when the model has no embedded chat template */
+    int              allow_request_template; /* requests may send "chat_template" (1; --no-request-template = 0) */
+    const char      *chat_template_source;   /* "gguf" | "file" | "none" — published by /v1/config */
+    MctsOptions      mcts;        /* Phase 30: --mcts* defaults every request starts from */
+    int              mcts_max;    /* --mcts-max: per-request simulation cap (0 = search disabled) */
+    const char      *prm_model;   /* basename of --prm, NULL when steps are self-scored */
 } ServerConfig;
 
 /* Zero-initialise. Must be called before use. */

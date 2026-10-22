@@ -1,4 +1,18 @@
 #include "core/calibration.h"
+
+/* Portable dist build: this TU is compiled at the baseline ISA, so the
+ * TN_HAS_* macros below would hide every SIMD backend from calibration even
+ * though simd_dispatch can run them (runtime CPUID decides, via cpu->*).
+ * Same treatment as simd_dispatch.c — this file contains no intrinsics.
+ * (2026-10-18: dist auto-calibration only ever benchmarked "scalar".) */
+#ifdef TN_FORCE_DISPATCH_ALL
+#undef  TN_HAS_AVX2
+#define TN_HAS_AVX2 1
+#undef  TN_HAS_AVX512
+#define TN_HAS_AVX512 1
+#undef  TN_HAS_AVX512VNNI
+#define TN_HAS_AVX512VNNI 1
+#endif
 #include "math/cpu_features.h"
 #include "math/simd_dispatch.h"
 #include "math/parallel_matmul.h"
@@ -276,28 +290,36 @@ void tn_calibrate(TnCalibrationResult *result, const TnHardwareProfile *hw) {
         return;
     }
 
-    const char *backends[4]  = {"scalar", "avx2", "avx512f", "vnni"};
-    bool        avail[4]     = {true, false, false, false};
+    /* 2026-10-18: "auto" added. Before, the tier the dispatcher actually picks
+     * on AVX-VNNI CPUs was never measured, and the noisy winner of the forced
+     * tiers always overrode it — on an AVX-VNNI Xeon "scalar" (auto-vectorised
+     * by -march=native) won and silently replaced AVX-VNNI. */
+    const char *backends[TN_CALIB_SIMD_N] = {"auto", "scalar", "avx2", "avx512f", "vnni", "vnni256"};
+    bool        avail[TN_CALIB_SIMD_N]    = {true, true, false, false, false, false};
 
 #if TN_HAS_AVX2
-    if (cpu->avx2)       avail[1] = true;
+    if (cpu->avx2)       avail[2] = true;
 #endif
 #if TN_HAS_AVX512
-    if (cpu->avx512f)    avail[2] = true;
+    if (cpu->avx512f)    avail[3] = true;
 #endif
 #if TN_HAS_AVX512VNNI
-    if (cpu->avx512vnni) avail[3] = true;
+    if (cpu->avx512vnni) { avail[4] = true; avail[5] = true; }
 #endif
 
     double best_simd_tokps = 0.0;
     int    best_simd_idx   = 0;
     bool   first_backend   = true;
 
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < TN_CALIB_SIMD_N; i++) {
         if (!avail[i]) { result->simd_tokps[i] = 0.0; continue; }
 
-        setenv("TN_FORCE_BACKEND", backends[i], 1);
-        tn_simd_init();
+        if (i == 0) unsetenv("TN_FORCE_BACKEND");
+        else        setenv("TN_FORCE_BACKEND", backends[i], 1);
+        const char *picked = tn_simd_init();
+        /* A forced value that lands on the same kernel as "auto" adds nothing. */
+        if (i > 0 && strcmp(picked, result->auto_backend) == 0) { result->simd_tokps[i] = 0.0; continue; }
+        if (i == 0) snprintf(result->auto_backend, sizeof(result->auto_backend), "%s", picked);
 
         /* Sample background load BEFORE we start (our threads are idle) */
         int bg = sample_background_load();
@@ -305,7 +327,8 @@ void tn_calibrate(TnCalibrationResult *result, const TnHardwareProfile *hw) {
         if (bg >= 0) snprintf(bg_str, sizeof(bg_str), "%3d%%", bg);
         else         snprintf(bg_str, sizeof(bg_str), " n/a");
 
-        printf("  %-9s bg:%4s  ", backends[i], bg_str);
+        if (i == 0) printf("  auto=%-9.9s bg:%4s  ", picked, bg_str);
+        else        printf("  %-14s bg:%4s  ", backends[i], bg_str);
         fflush(stdout);
 
         /*
@@ -319,7 +342,11 @@ void tn_calibrate(TnCalibrationResult *result, const TnHardwareProfile *hw) {
         first_backend = false;
         result->simd_tokps[i] = tokps;
 
-        bool is_best = (tokps > best_simd_tokps);
+        /* "auto" wins ties and noise; see TN_CALIB_OVERRIDE_MARGIN. */
+        bool is_best = (i == 0) ||
+                       (tokps > best_simd_tokps &&
+                        tokps > result->simd_tokps[0] * TN_CALIB_OVERRIDE_MARGIN &&
+                        lo > result->simd_tokps[0]);
         if (is_best) { best_simd_tokps = tokps; best_simd_idx = i; }
 
         bool noisy = (bg >= 0 && bg > 30);
@@ -337,7 +364,7 @@ void tn_calibrate(TnCalibrationResult *result, const TnHardwareProfile *hw) {
              "%s", backends[best_simd_idx]);
 
     /* Restore best backend for phase 2 */
-    setenv("TN_FORCE_BACKEND", backends[best_simd_idx], 1);
+    if (best_simd_idx > 0) setenv("TN_FORCE_BACKEND", backends[best_simd_idx], 1);
     tn_simd_init();
     unsetenv("TN_FORCE_BACKEND");
 
@@ -574,6 +601,8 @@ void tn_calibration_report(const TnCalibrationResult *result) {
 
 const char *tn_calibration_best_simd(const TnCalibrationResult *result) {
     if (!result->valid) return NULL;
+    /* "auto": the dispatcher's own CPUID choice stands — nothing to force. */
+    if (strcmp(result->best_simd_name, "auto") == 0) return NULL;
     return result->best_simd_name;
 }
 

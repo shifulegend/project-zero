@@ -1,6 +1,6 @@
 # Engineering Rules — project-zero
 
-> Canonical source of truth. Adapters reference this. Last updated: 2026-07-16.
+> Canonical source of truth. Adapters reference this. Last updated: 2026-10-18.
 
 ## Modularity
 - Smallest sensible units: small functions, single responsibility, explicit interfaces.
@@ -16,6 +16,13 @@
 - Behavior is selectable via CLI flags / env / calibration: `--threads --simd --classifier
   --temperature --top-p --seed`. Add config, don't branch on magic numbers.
 - Any unavoidable constant must carry a timestamped comment explaining why (see code-comment rule).
+- **Every user-facing generation knob is front-end customisable** (2026-10-18): add it to
+  `GenerationParams`/`SamplerSettings` (with a sanitizer clamp), a CLI flag (which becomes the
+  server default), the `ChatRequest` parser + `set_mask` bit, `request_params_resolve()`, the
+  `GET /v1/config` defaults/limits, and the web UI (rendered from `/v1/config` — never hardcode a
+  default or range in `webui/`). Then `make webui-bundle`.
+- Build: the Makefile tracks header dependencies (`-MMD -MP`, 2026-10-18); don't remove it —
+  stale objects with old struct layouts were linked silently before.
 
 ## Memory & safety (hard rules, learned from real bugs)
 - **Zero structs before partial population.** Always `memset(&x, 0, sizeof(x))` before
@@ -26,6 +33,10 @@
   returns NULL" (false on macOS overcommit).
 - Use the overflow-checked size helpers for every multi-factor allocation.
 - All SIMD buffers are 64-byte aligned (`TN_SIMD_ALIGN`, `tn_aligned_*`).
+- **Distributed layers (Phase 28).** With `--remote-layers`, some layers' KV/SSM state lives in
+  a worker process. Per-layer position → slot mapping (sliding window) travels in the FORWARD
+  frame; any feature that saves/restores KV for all layers (prompt snapshots) must be bypassed
+  when `dist_plan_active()` — it would silently mix two prompts' caches.
 
 ## Code organization
 - C99 for engine; C++17 only where already used (chat template). Match existing style
@@ -37,15 +48,34 @@
 ## Verification (definition of done)
 A change is done only when:
 1. `make release CC=gcc && make test CC=gcc && make debug CC=gcc` pass, **and** the same for
-   `CC=clang` (clang ASan is stricter — e.g. 256-bit VNNI needs `-mavx512vl`).
+   `CC=clang` (clang ASan is stricter — e.g. 256-bit VNNI needs `-mavx512vl`). For a change
+   touching thread pool/parallel-dispatch/API-concurrency code, also run `make test-tsan`
+   (added 2026-09-18 — TSan is incompatible with ASan/UBSan so it's a separate build variant,
+   scoped to a curated concurrency-relevant test subset, not the full suite; see decision-log.md).
 2. Relevant golden-output check passes (e.g. "capital of France" → contains "Paris").
 3. No perf regression for touched kernels (A/B build vs a known-good commit on the same host;
    compare tok/s — see `docs/REGRESSION_VERIFICATION_2026-06-07.md` for method).
 4. Docs synchronized (this file set + the right tool adapters) and a commit checkpoint proposed.
+5. A user-facing change (flag, API field, UI control, behaviour, fix, deprecation) adds its line
+   under `## [Unreleased]` in `CHANGELOG.md` in the same commit — Keep a Changelog sections, written
+   for users. `python3 tools/changelog.py check` must pass (CI job `changelog`). Writing rules:
+   **`docs/ai/changelog-guidance.md`**; release procedure: `docs/RELEASING.md` (added 2026-10-21).
+6. **Installer and configuration stay in sync** (added 2026-10-21): a change that adds, renames or
+   removes a user-facing flag, env var, default, config/file location, release asset or runtime
+   dependency updates, in the same commit, the `pz config` schema (key, default, range, help, wizard
+   step where relevant), the install script, `/v1/config` + web UI if user-facing, and the docs.
+   Concretely: a persistable flag gets an entry in `g_schema` (`src/config/pz_config.c`); the
+   install script (Phase 40.4, pending) is updated when release assets or dependencies change.
 - Never claim completion without stating what was verified and what remains UNVERIFIED.
 - `make test` runs **every** `tests/*.c` and aborts on the first failure — a green full run is
-  the bar. CI historically died early, masking downstream failures; expect a cascade when you
+  the bar. It builds the library as the `debug` variant (ASan/UBSan on engine code too, since
+  2026-10-21) and so replaces a release `./pz`; rebuild `make release` before benchmarking. CI historically died early, masking downstream failures; expect a cascade when you
   unblock the first failing test, and keep going until the whole suite passes on all platforms.
+- **Model support is verified against a reference engine**, not by "the output looks fluent":
+  token ids vs `llama-tokenize`, and `--perplexity` vs `llama-perplexity` on the same text
+  (reference builds live outside the repo, e.g. `/home/user/ext/{llama.cpp,BitNet}`).
+- A phase marked ✅ must have every sub-item's own status line done; a stale "PLANNED" under a ✅
+  hid missing I2_S support for months (mistakes.md 2026-10-19).
 
 ## Bug-fix policy (fix, don't just log)
 - **Any bug found gets fixed, in the same pass, regardless of whether it's pre-existing or
@@ -78,11 +108,20 @@ A change is done only when:
 - Don't commit build artifacts, downloaded models, or transient logs (`wget-log`, `*stdout.log`).
 
 ## Security / safety constraints
+- **Updates are notify-only** (Phase 38): never download or replace the binary without signed
+  release metadata; network checks are opt-out-able, off in CI, HTTPS-only via argv (no shell),
+  and send nothing but the version in the User-Agent.
 - Public repo: never commit secrets, keys, tokens, `.env`, `*.pem`, real credentials. (History
   is currently clean — keep it so.) Doc placeholders like `<YOUR_SUDO_PASSWORD>` are fine.
-- Keep ASan/UBSan green; treat sanitizer aborts as real bugs, not noise.
+- Keep ASan/UBSan green (`make test`/`make debug`) and TSan green (`make test-tsan`, concurrency
+  code only); treat any sanitizer abort as a real bug, not noise.
 - Dual-use/security tooling stays within defensive/testing scope.
 
 ## Performance
 - Hot path is memory-bandwidth bound; prefer fused kernels and avoiding redundant
   quantize/dequant passes. Measure before/after with the `tools/*bench*.sh` harness.
+- **Startup is part of performance** (2026-10-19): benchmark wall time and max RSS next to the
+  engine's own `[gen] tok/s`, against a reference engine on the same host. No O(n²) "one-time"
+  init (tokenizer lookups go through the sorted index); per-host measurements (DRAM bandwidth)
+  are cached (`core/bw_cache`), not repeated per run; large zeroed buffers must stay lazily
+  committed (`tn_aligned_calloc` uses `MADV_DONTNEED` on Linux — don't add a full memset).

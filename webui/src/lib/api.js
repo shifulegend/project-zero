@@ -12,19 +12,37 @@ export async function fetchModels() {
   return json.data ?? [];
 }
 
+/** GET /v1/config — server defaults, valid ranges, feature flags, UI branding. */
+export async function fetchConfig() {
+  const res = await fetch('/v1/config');
+  if (!res.ok) throw new Error(`GET /v1/config failed: ${res.status}`);
+  return res.json();
+}
+
+/** POST /v1/watermark/detect */
+export async function detectWatermark({ text, key, gamma }) {
+  const res = await fetch('/v1/watermark/detect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, key, gamma }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json?.error?.message ?? `detect failed: ${res.status}`);
+  return json;
+}
+
 /**
  * Streams a chat completion, invoking callbacks as SSE events arrive.
  *
  * @param {object} params
  * @param {{role: string, content: string}[]} params.messages
- * @param {number} params.temperature
- * @param {number} params.top_p
- * @param {number} params.max_tokens
+ * @param {object} params.options - every other request field (sampling,
+ *   penalties, seed, stop, response_format, watermark — see settings.js)
  * @param {string=} params.imageDataUrl - base64 data: URL, if an image is attached
  * @param {(delta: string) => void} onToken
- * @returns {{ id: Promise<string|null>, done: Promise<void>, abort: () => void }}
+ * @returns {{ id: Promise<string|null>, done: Promise<{finish_reason?: string, usage?: object}>, abort: () => void }}
  */
-export function streamChatCompletion({ messages, temperature, top_p, max_tokens, imageDataUrl }, onToken) {
+export function streamChatCompletion({ messages, options = {}, imageDataUrl }, onToken, onStatus = () => {}) {
   const controller = new AbortController();
   let resolveId;
   const idPromise = new Promise((resolve) => { resolveId = resolve; });
@@ -47,10 +65,8 @@ export function streamChatCompletion({ messages, temperature, top_p, max_tokens,
   }
 
   const body = JSON.stringify({
+    ...options,
     messages: requestMessages,
-    temperature,
-    top_p,
-    max_tokens,
     stream: true,
   });
 
@@ -65,7 +81,7 @@ export function streamChatCompletion({ messages, temperature, top_p, max_tokens,
       });
     } catch (err) {
       resolveId(null);
-      if (err.name === 'AbortError') return;
+      if (err.name === 'AbortError') return {};
       throw err;
     }
 
@@ -79,6 +95,7 @@ export function streamChatCompletion({ messages, temperature, top_p, max_tokens,
     const decoder = new TextDecoder();
     let buffer = '';
     let idResolved = false;
+    const summary = {};
 
     try {
       for (;;) {
@@ -91,6 +108,9 @@ export function streamChatCompletion({ messages, temperature, top_p, max_tokens,
           const rawEvent = buffer.slice(0, sepIndex);
           buffer = buffer.slice(sepIndex + 2);
           const line = rawEvent.trim();
+          // Server comment while waiting for the generation slot (--queue-size).
+          const queued = line.match(/^: queued (\d+)/);
+          if (queued) { onStatus({ queued: Number(queued[1]) }); continue; }
           if (!line.startsWith('data:')) continue;
           const payload = line.slice(5).trim();
           if (payload === '[DONE]') continue;
@@ -98,14 +118,20 @@ export function streamChatCompletion({ messages, temperature, top_p, max_tokens,
           let evt;
           try { evt = JSON.parse(payload); } catch { continue; }
 
-          if (!idResolved && evt.id) { idResolved = true; resolveId(evt.id); }
+          if (evt.error) throw new Error(evt.error.message ?? 'server error');
+          if (!idResolved && evt.id) { idResolved = true; resolveId(evt.id); onStatus({ queued: 0 }); }
           const delta = evt.choices?.[0]?.delta?.content;
           if (delta) onToken(delta);
+          const fr = evt.choices?.[0]?.finish_reason;
+          if (fr) summary.finish_reason = fr;
+          if (evt.usage) summary.usage = evt.usage;
+          if (evt.best_of) summary.best_of = evt.best_of;
         }
       }
     } finally {
       if (!idResolved) resolveId(null);
     }
+    return summary;
   })();
 
   return { id: idPromise, done, abort: () => controller.abort() };
@@ -119,4 +145,33 @@ export async function cancelGeneration(id) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id }),
   }).catch(() => {});
+}
+
+/** GET /v1/prompt_cache — Phase 26 snapshot store stats. */
+export async function fetchPromptCache() {
+  const res = await fetch('/v1/prompt_cache');
+  if (!res.ok) throw new Error(`GET /v1/prompt_cache failed: ${res.status}`);
+  return res.json();
+}
+
+/** POST /v1/prompt_cache/clear */
+export async function clearPromptCache() {
+  const res = await fetch('/v1/prompt_cache/clear', { method: 'POST' });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json?.error?.message ?? `clear failed: ${res.status}`);
+  return json;
+}
+
+/** GET /v1/update — Phase 38 update-check state (the server checks; notify only). */
+export async function fetchUpdate() {
+  const res = await fetch('/v1/update');
+  if (!res.ok) throw new Error(`GET /v1/update failed: ${res.status}`);
+  return res.json();
+}
+
+/** POST /v1/update/check — ask the server to re-check now (rate-limited server-side). */
+export async function checkUpdateNow() {
+  const res = await fetch('/v1/update/check', { method: 'POST' });
+  if (!res.ok) throw new Error(`update check failed: ${res.status}`);
+  return res.json();
 }

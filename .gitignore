@@ -1,5 +1,6 @@
 build/
 *.o
+/pz
 adaptive_ai_engine
 *.bin
 __pycache__/
@@ -54,6 +55,7 @@ test_moe_results.txt
 .DS_Store
 **/.DS_Store
 adaptive_ai_engine 2
+pz 2
 CMakeLists 2.txt
 Makefile 2
 *.log
@@ -63,3 +65,6 @@ offset_calculation_sequence 2.txt
 SOURCE_CODE_WITH_LINE_NUMBERS 2.txt
 VISUAL_WEIGHT_LOADING_FLOW 2.txt
 QUICK_SUMMARY 2.txt
+
+# Agent worktrees (local only)
+.claude/worktrees/

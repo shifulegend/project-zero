@@ -3,6 +3,7 @@
 
 #include "core/config.h"
 #include "core/error.h"
+#include "core/lora.h"
 #include "kv_cache/sliding_window.h"
 #include <stdbool.h>
 
@@ -16,6 +17,10 @@
 #define KV_CACHE_IDX(layer, head, pos, d, n_kv_heads, max_seq, head_dim)       \
   ((size_t)(layer) * (n_kv_heads) * (max_seq) * (head_dim) +                   \
    (size_t)(head) * (max_seq) * (head_dim) + (size_t)(pos) * (head_dim) + (d))
+
+/* Row index of a (layer, kv_head, pos) entry in key_scale/value_scale. */
+#define KV_SCALE_IDX(layer, head, pos, n_kv_heads, max_seq)                       \
+  (((size_t)(layer) * (n_kv_heads) + (size_t)(head)) * (max_seq) + (size_t)(pos))
 
 typedef struct {
   /* Scratch vectors (dim) */
@@ -82,6 +87,41 @@ typedef struct {
 
   /* Sliding Window state for circular KV cache mapping */
   SlidingWindow sw;
+
+  /* Phase 19: LoRA adapter active for this RunState's generation, or NULL
+   * (the default -- zeroed by run_state_alloc_ex()'s memset). Not owned:
+   * points at a LoRAWeights the caller loaded and outlives this RunState.
+   * Read directly by attention_forward()/ffn_forward() (single-token
+   * dense/GQA path only -- see docs/ai/decision-log.md for scope); every
+   * other RunState in the process (RAG's embedder, vision prefill, the
+   * draft model's own state, every test) simply never sets this and pays
+   * zero cost. */
+  const LoRAWeights *active_lora;
+  /* Phase 22-SSM: Mamba recurrent state (MoEConfig.is_ssm), NULL otherwise.
+   * Allocated by mamba_state_alloc() after run_state_alloc*(); released by
+   * run_state_free(). */
+  struct MambaState *mamba;
+  /* Plan 8.5: int8 KV storage for the generic dense/GQA cache (--kv-type i8).
+   * When kv_type == KV_TYPE_I8, key_cache/value_cache are NULL and these hold
+   * the same KV_CACHE_IDX layout as int8, plus one absmax scale per
+   * (layer, kv_head, position) row at index KV_SCALE_IDX. */
+  int    kv_type;
+  int    kv_row_bytes;   /* quantized: data bytes per head_dim row (i8: hd, i4: hd/2) */
+  int    kv_row_scales;  /* quantized: F32 scales per row (i8: 1, i4: 2*hd/32); row r's
+                            data at key_cache_q + r*kv_row_bytes, scales at
+                            key_scale + r*kv_row_scales, r = KV_SCALE_IDX(...) */
+  tn_i8 *key_cache_q;
+  tn_i8 *value_cache_q;
+  float *key_scale;
+  float *value_scale;
+  /* Phase 31: when --kv-offload DIR is set, the generic KV buffers above are
+   * carved out of one disk-backed mapping (memory/file_backed.h) instead of
+   * tn_aligned_calloc; run_state_free() unmaps it. NULL otherwise. */
+  void  *kv_offload_base;
+  size_t kv_offload_bytes;
+  /* Positions [0, kv_committed) of the generic KV cache are known resident
+   * (run_state_kv_reserve); the buffers are committed lazily otherwise. */
+  int    kv_committed;
 } RunState;
 
 /**
@@ -117,6 +157,19 @@ TernaryError run_state_alloc_ex(RunState *s, const Config *cfg, int max_seq_len,
  * Free all RunState buffers.
  */
 void run_state_free(RunState *s);
+
+/* Commit the generic KV cache rows for positions [0, n_pos) of every layer
+ * and KV head (no-op for rows already committed, disk-backed KV, or NULL
+ * caches). Contents are preserved. generate_ex() calls it with prompt +
+ * max_tokens so decode never takes first-touch page faults (2026-10-19:
+ * otherwise ~100 faults per token on SmolLM2-1.7B land in the decode loop;
+ * the tok/s effect was within this VM's +-4% noise, but per-token latency
+ * stays flat). RSS still only grows with the positions actually used. */
+void run_state_kv_reserve(RunState *s, const Config *cfg, int n_pos);
+
+/* Phase 31: async read-ahead of layer `layer`'s KV rows [0, n_pos) when the
+ * cache is disk-backed (no-op otherwise). Called one layer ahead. */
+void run_state_kv_prefetch_layer(const RunState *s, const Config *cfg, int layer, int n_pos);
 
 /* ---- MLA extension (Phase 17.7) ----------------------------------------- */
 #include "core/moe_config.h"

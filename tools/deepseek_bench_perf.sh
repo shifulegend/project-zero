@@ -11,7 +11,7 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-ENGINE="$REPO_DIR/adaptive_ai_engine"
+ENGINE="$REPO_DIR/pz"
 MODEL="$REPO_DIR/models/deepseek-v2-lite-chat-Q4_K_S.gguf"
 LLAMA_CLI="/home/ubuntu/llama.cpp/build/bin/llama-cli"
 LLAMA_BENCH="/home/ubuntu/llama.cpp/build/bin/llama-bench"

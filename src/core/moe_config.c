@@ -69,6 +69,11 @@ TernaryError moe_config_read(MoEConfig *mc, const void *data,
     mc->qk_nope_head_dim         = has_mla ? qk_nope_head_dim : 0;
     mc->qk_rope_head_dim         = has_mla ? qk_rope_head_dim : 0;
     mc->v_head_dim               = has_mla ? v_head_dim       : 0;
+    /* .bin MoE header carries no router-weighting fields: DeepSeek-V2-Lite
+     * semantics (softmax, no renormalization, no scale). */
+    mc->expert_gating_func       = MOE_GATING_SOFTMAX;
+    mc->expert_weights_norm      = 0;
+    mc->expert_weights_scale     = 0.0f;
 
     /* Advance by the full 48 bytes; old 32-byte files advance by 32 */
     *offset += (*offset + HEADER_SIZE <= data_size) ? HEADER_SIZE : 32;
@@ -84,6 +89,12 @@ void moe_config_print(const MoEConfig *mc) {
                mc->full_attention_interval, mc->attn_head_dim, mc->attn_rope_dim,
                mc->ssm_conv_kernel, mc->ssm_group_count, mc->ssm_inner_size,
                mc->ssm_state_size, mc->ssm_time_step_rank);
+    }
+    if (mc->is_ssm) {
+        printf("[Mamba] state-space model: d_inner=%d d_state=%d d_conv=%d dt_rank=%d\n",
+               mc->ssm_inner_size, mc->ssm_state_size, mc->ssm_conv_kernel,
+               mc->ssm_time_step_rank);
+        return;
     }
     if (!mc->is_moe) {
         printf("[MoE] Dense model (MoE disabled)\n");

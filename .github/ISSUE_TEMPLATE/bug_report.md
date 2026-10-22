@@ -12,7 +12,7 @@ assignees: ''
 ## Steps to Reproduce
 ```bash
 # Exact command(s) you ran
-./adaptive_ai_engine --model ... --prompt "..." --max-tokens ...
+./pz --model ... --prompt "..." --max-tokens ...
 ```
 
 ## Expected Output

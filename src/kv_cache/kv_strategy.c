@@ -1,8 +1,11 @@
 #include "kv_cache/kv_strategy.h"
+#include "memory/file_backed.h"
+#include "kv_cache/kv_quant_ops.h"
 #include "core/platform.h"
 #include "core/config.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #if TN_POSIX
 #include <unistd.h>
@@ -110,7 +113,37 @@ tn_i64 tn_get_free_ram(void) {
 #endif
 }
 
+static KVStrategyOptions g_kv_opts; /* zero = automatic */
+
+void kv_strategy_set_options(const KVStrategyOptions *opt) {
+  if (opt) g_kv_opts = *opt;
+  else memset(&g_kv_opts, 0, sizeof(g_kv_opts));
+}
+
+int kv_strategy_kv_type(void) { return g_kv_opts.kv_type; }
+const char *kv_strategy_offload_dir(void) { return g_kv_opts.offload_dir; }
+
 KVStrategyResult select_kv_strategy(const Config *cfg, tn_i64 free_ram, const MoEConfig *mc) {
+  return select_kv_strategy_ex(cfg, free_ram, mc, &g_kv_opts);
+}
+
+void kv_strategy_print(const KVStrategyResult *r, int max_seq_len) {
+  /* 2026-10-18: this used to print e.g. "KV Strategy: Quantized I8" although
+   * no attention path read a quantized cache. It now reports the storage the
+   * generic cache really uses (--kv-type) and the tier for what it is: the
+   * context-sizing tier. */
+  float frac = g_kv_opts.ram_fraction > 0.0f ? g_kv_opts.ram_fraction : KV_DEFAULT_RAM_FRACTION;
+  printf("KV cache: %s%s%s, max context: %d tokens (sizing tier: %s%s, %s budget %.0f%%)\n",
+         kv_type_name((KVCacheType)g_kv_opts.kv_type),
+         g_kv_opts.offload_dir ? " on disk in " : "",
+         g_kv_opts.offload_dir ? g_kv_opts.offload_dir : "",
+         max_seq_len, r ? kv_strategy_name(r->strategy) : "n/a",
+         g_kv_opts.ctx_size > 0 ? ", --ctx-size" : "",
+         g_kv_opts.offload_dir ? "disk" : "RAM", frac * 100.0f);
+}
+
+KVStrategyResult select_kv_strategy_ex(const Config *cfg, tn_i64 free_ram, const MoEConfig *mc,
+                                       const KVStrategyOptions *opt) {
   KVStrategyResult result;
   int seq_len = cfg->seq_len;
 
@@ -140,6 +173,11 @@ KVStrategyResult select_kv_strategy(const Config *cfg, tn_i64 free_ram, const Mo
     result.max_seq_len = seq_len < 512 ? seq_len : 512;
   }
 
+  /* Explicit --ctx-size replaces the tier's default window (still bounded by
+   * the model's own context and the RAM safety cap below). */
+  if (opt && opt->ctx_size > 0)
+    result.max_seq_len = opt->ctx_size < seq_len ? opt->ctx_size : seq_len;
+
   /*
    * Safety cap: compute the actual F32 KV cache cost for the chosen max_seq_len
    * and reduce it if the allocation would exceed 60% of free_ram.
@@ -164,11 +202,29 @@ KVStrategyResult select_kv_strategy(const Config *cfg, tn_i64 free_ram, const Mo
    */
   {
     int head_dim = (mc && mc->attn_head_dim > 0) ? mc->attn_head_dim : config_head_dim(cfg);
+    /* Bytes per head_dim row: F32 = 4/element; quantized (--kv-type i8|i4)
+     * = data bytes + F32 scales (kvq_row_layout; i4 falls back to i8). */
+    tn_i64 row_bytes = (tn_i64)head_dim * (tn_i64)sizeof(float);
+    if (opt && opt->kv_type != KV_TYPE_F32) {
+      int rb = 0, rs = 0;
+      if (kvq_row_layout((KVCacheType)opt->kv_type, head_dim, &rb, &rs) != 0)
+        kvq_row_layout(KV_TYPE_I8, head_dim, &rb, &rs);
+      row_bytes = (tn_i64)rb + (tn_i64)rs * (tn_i64)sizeof(float);
+    }
     tn_i64 per_token = (tn_i64)cfg->n_layers
                      * (tn_i64)(cfg->n_kv_heads > 0 ? cfg->n_kv_heads : cfg->n_heads)
-                     * (tn_i64)head_dim * 2 * (tn_i64)sizeof(float);
+                     * row_bytes * 2;
     if (per_token > 0) {
-      tn_i64 budget        = (free_ram / 10) * 6;  /* 60% of free_ram */
+      float frac = (opt && opt->ram_fraction > 0.0f) ? opt->ram_fraction : KV_DEFAULT_RAM_FRACTION;
+      if (frac > 0.95f) frac = 0.95f;
+      /* Phase 31: a disk-backed cache is bounded by free disk space instead
+       * (RAM then only holds the hot pages). Unknown disk space keeps RAM. */
+      tn_i64 base = free_ram;
+      if (opt && opt->offload_dir) {
+        tn_i64 disk = file_backed_free_space(opt->offload_dir);
+        if (disk > 0) base = disk;
+      }
+      tn_i64 budget        = (tn_i64)((double)base * (double)frac);
       tn_i64 max_safe_ctx  = budget / per_token;
       if (max_safe_ctx < 512) max_safe_ctx = 512;  /* never below 512 */
       if (result.max_seq_len > (int)max_safe_ctx)

@@ -1,3 +1,7 @@
+/* _DEFAULT_SOURCE for madvise()/MADV_DONTNEED under strict -std=c99 on Linux. */
+#ifndef _DEFAULT_SOURCE
+#define _DEFAULT_SOURCE
+#endif
 #include "memory/aligned_alloc.h"
 #include <string.h>
 
@@ -38,6 +42,30 @@ void tn_aligned_free(void *ptr) {
 
 #endif
 
+#if defined(__linux__)
+#include <stdint.h>
+#include <sys/mman.h>
+#include <unistd.h>
+
+/* Large buffers: zero the whole pages inside [p, p+n) with MADV_DONTNEED
+ * (private anonymous memory reads back as zero-fill-on-demand) and memset
+ * only the partial head/tail pages. An explicit memset of the whole buffer
+ * committed every page up front: a 135M model's 8192-token F32 KV cache
+ * cost ~5 s of startup and its full size in RSS before a single token was
+ * generated (2026-10-19, head-to-head sweep). Returns 0 if it did nothing. */
+static int zero_lazily(void *p, size_t n) {
+    long pg = sysconf(_SC_PAGESIZE);
+    if (pg <= 0 || n < (size_t)pg * 16) return 0;
+    uintptr_t a = (uintptr_t)p, e = a + n;
+    uintptr_t lo = (a + (uintptr_t)pg - 1) & ~((uintptr_t)pg - 1);
+    uintptr_t hi = e & ~((uintptr_t)pg - 1);
+    if (hi <= lo || madvise((void *)lo, hi - lo, MADV_DONTNEED) != 0) return 0;
+    memset(p, 0, lo - a);
+    memset((void *)hi, 0, e - hi);
+    return 1;
+}
+#endif
+
 void *tn_aligned_calloc(size_t count, size_t elem_size, size_t alignment) {
     size_t total = count * elem_size;
     if (total == 0) return NULL;
@@ -45,7 +73,27 @@ void *tn_aligned_calloc(size_t count, size_t elem_size, size_t alignment) {
     if (elem_size != 0 && total / elem_size != count) return NULL;
     void *ptr = tn_aligned_alloc(total, alignment);
     if (ptr) {
-        memset(ptr, 0, total);
+#if defined(__linux__)
+        if (!zero_lazily(ptr, total))
+#endif
+            memset(ptr, 0, total);
     }
     return ptr;
+}
+
+void tn_mem_commit(void *p, size_t n) {
+    if (!p || n == 0) return;
+#if defined(__linux__) && defined(MADV_POPULATE_WRITE)
+    {
+        long pg = sysconf(_SC_PAGESIZE);
+        if (pg > 0) {
+            uintptr_t a = (uintptr_t)p & ~((uintptr_t)pg - 1);
+            uintptr_t e = ((uintptr_t)p + n + (uintptr_t)pg - 1) & ~((uintptr_t)pg - 1);
+            if (madvise((void *)a, e - a, MADV_POPULATE_WRITE) == 0) return;
+        }   /* EINVAL on kernels < 5.14: fall through to touching */
+    }
+#endif
+    volatile unsigned char *b = (volatile unsigned char *)p;
+    for (size_t i = 0; i < n; i += 4096) b[i] = b[i];
+    b[n - 1] = b[n - 1];
 }

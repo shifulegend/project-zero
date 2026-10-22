@@ -1,12 +1,14 @@
 #ifndef TN_GENERATE_H
 #define TN_GENERATE_H
 
+#include <stdbool.h>
 #include "core/config.h"
 #include "core/moe_config.h"
 #include "core/run_state.h"
 #include "core/weights.h"
 #include "threading/thread_pool.h"
 #include "tokenizer/tokenizer.h"
+#include "transformer/gen_params.h"
 
 /**
  * Text generation loop.
@@ -25,11 +27,14 @@
  * @param max_tokens  Maximum number of tokens to generate
  * @param temperature Sampling temperature (0.0 = greedy argmax)
  * @param top_p       Nucleus sampling threshold (1.0 = disabled)
+ * @param json_mode   Phase 20: when true, every sampled token is masked
+ *                     through a JSON grammar (sampling/grammar.h) so the
+ *                     output is guaranteed syntactically valid JSON.
  */
 void generate(const Config *cfg, const TransformerWeights *w, RunState *s,
               const MoEConfig *mc,
               Tokenizer *tok, ThreadPool *tp, const char *prompt,
-              int max_tokens, float temperature, float top_p);
+              int max_tokens, float temperature, float top_p, bool json_mode);
 
 /*
  * Phase 21 — Token callback type.
@@ -57,6 +62,24 @@ void generate_with_callback(const Config *cfg, const TransformerWeights *w,
                              RunState *s, const MoEConfig *mc,
                              Tokenizer *tok, ThreadPool *tp, const char *prompt,
                              int max_tokens, float temperature, float top_p,
+                             bool json_mode,
                              TokenCallback callback, void *userdata);
+
+/**
+ * Full-control generation: every knob (sampler chain, seed, JSON mode,
+ * watermark, chat history, system prompt, stop strings) comes from @p gp
+ * (NULL = gen_params_default()). generate()/generate_with_callback() are
+ * thin wrappers over this.
+ */
+void generate_ex(const Config *cfg, const TransformerWeights *w,
+                 RunState *s, const MoEConfig *mc,
+                 Tokenizer *tok, ThreadPool *tp, const char *prompt,
+                 const GenerationParams *gp,
+                 TokenCallback callback, void *userdata);
+
+/** generate_ex() writing tokens to stdout (+ trailing newline), for the CLI. */
+void generate_params(const Config *cfg, const TransformerWeights *w, RunState *s,
+                     const MoEConfig *mc, Tokenizer *tok, ThreadPool *tp,
+                     const char *prompt, const GenerationParams *gp);
 
 #endif /* TN_GENERATE_H */

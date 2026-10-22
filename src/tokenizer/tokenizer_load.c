@@ -84,6 +84,7 @@ int tokenizer_find_id(const Tokenizer *t, const char *str) {
 
 TernaryError tokenizer_load(Tokenizer *t, const char *path) {
     memset(t, 0, sizeof(*t));
+    t->add_bos_token = 1; /* legacy .bin tokenizers: the engine always prepended BOS */
     /* sentinel -1 means "not found yet"; memset alone sets these to 0 which is a valid token ID */
     t->bos_token_id = -1;
     t->eos_token_id = -1;
@@ -191,23 +192,39 @@ TernaryError tokenizer_load(Tokenizer *t, const char *path) {
         }
     }
 
-    /* ── Populate eos_list: all EOS-like token IDs found in this vocab ─────
-     * Used by generate.c / agent_loop.c to stop generation without any
-     * hardcoded numeric token IDs.
-     * ─────────────────────────────────────────────────────────────────────── */
-    static const char *const EOS_CANDIDATES[] = {
-        "<|eot_id|>", "<|end_of_text|>", "</s>", "<|im_end|>",
-        "<eos>", "[EOS]", "<|endoftext|>", "<end_of_utterance>", NULL
-    };
-    t->n_eos = 0;
-    for (int k = 0; EOS_CANDIDATES[k] && t->n_eos < 8; k++) {
-        int id = tokenizer_find_id(t, EOS_CANDIDATES[k]);
-        if (id >= 0) {
-            t->eos_list[t->n_eos++] = id;
-        }
-    }
+    /* ── Populate eos_list (no metadata in a .bin vocab: names only) ─────── */
+    tokenizer_collect_eog(t, &t->eos_token_id, 1, 0);
 
     return TN_OK;
+}
+
+static void eog_add(Tokenizer *t, int id) {
+    if (id < 0 || id >= t->vocab_size || t->n_eos >= TN_TOKENIZER_MAX_EOG) return;
+    for (int i = 0; i < t->n_eos; i++) if (t->eos_list[i] == id) return;
+    t->eos_list[t->n_eos++] = id;
+}
+
+void tokenizer_collect_eog(Tokenizer *t, const int *ids, int n_ids, int require_special) {
+    /* llama.cpp llama_vocab::impl::load end-of-generation names, plus the
+     * EOS spellings this engine always stopped on. No numeric ids here. */
+    static const char *const EOG_NAMES[] = {
+        "<|eot_id|>", "<|end_of_text|>", "<|im_end|>", "<|endoftext|>", "<|end|>",
+        "<end_of_turn>", "<|eom_id|>", "<EOT>", "_<EOT>", "</s>", "<eos>", "[EOS]",
+        "<end_of_utterance>", NULL
+    };
+    t->n_eos = 0;
+    for (int i = 0; ids && i < n_ids; i++) eog_add(t, ids[i]);
+    for (int k = 0; EOG_NAMES[k]; k++) {
+        int id = tokenizer_find_id(t, EOG_NAMES[k]);
+        if (id < 0) continue;
+        if (require_special) {
+            int special = 0;
+            for (int j = 0; j < t->n_special && !special; j++)
+                special = (t->special_token_ids[j] == id);
+            if (!special) continue;
+        }
+        eog_add(t, id);
+    }
 }
 
 void tokenizer_free(Tokenizer *t) {

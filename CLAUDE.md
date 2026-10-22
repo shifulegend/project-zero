@@ -15,7 +15,9 @@
 - `memset` every struct before partial init (weights/run-state). Trap absurd allocations
   deterministically — never rely on `calloc` returning NULL (macOS over-commits).
 - Definition of done: `make release/test/debug` green for **gcc and clang**, golden output
-  correct, no kernel perf regression (A/B), docs+adapters synced, commit checkpoint proposed.
+  correct, no kernel perf regression (A/B), docs+adapters synced, user-facing changes
+  logged under `[Unreleased]` in `CHANGELOG.md` per `docs/ai/changelog-guidance.md`, installer +
+  `pz config` schema updated for any new/changed setting (DoD #6), commit checkpoint proposed.
 - Public repo: never commit secrets. Keep ASan/UBSan green.
 - No Claude/AI signature or attribution (commit trailers, code comments, etc.) unless the user
   explicitly asks for it that time — see `docs/ai/commit-log-guidance.md`.
@@ -23,11 +25,13 @@
   document it in `mistakes.md`, but that never substitutes for the fix. Only defer for a
   genuinely large architectural change, and flag that to the user explicitly instead of silently
   skipping it. See `engineering-rules.md` § Bug-fix policy.
+- Third-party skill plugins **superpowers** and **mattpocock-skills** are enabled (`.claude/settings.json`); repo rules override them — see `docs/ai/tool-sync-policy.md` § Third-party skill plugins.
 
 ## Build / run (verified)
 ```bash
 make release CC=gcc && make test CC=gcc && make debug CC=gcc   # repeat CC=clang
-./adaptive_ai_engine --model models/<m>.gguf --prompt "..." --max-tokens 16 --temperature 0 --threads 4
+make test-tsan CC=gcc     # concurrency changes only (thread pool / parallel matmul / API mutex)
+./pz --model models/<m>.gguf --prompt "..." --max-tokens 16 --temperature 0 --threads 4
 ```
 
 <!-- gitnexus:start -->

@@ -11,17 +11,21 @@
 #include "multimodal/vision_encoder.h"
 #include "multimodal/vision_projector.h"
 #include "rag/rag_context.h"  /* Phase 15 */
+#include "speculative/draft_model.h"  /* Phase 18 */
 
 /**
  * Run the interactive Read-Eval-Print-Loop (REPL).
  *
- * @param mc   MoE config — NULL or zero-init for dense models.
- * @param rag  Optional RAG context (Phase 15).  Pass NULL to disable memory.
+ * @param mc     MoE config — NULL or zero-init for dense models.
+ * @param rag    Optional RAG context (Phase 15).  Pass NULL to disable memory.
+ * @param draft  Optional draft model (Phase 18, speculative decoding).
+ *               Pass NULL to use plain generation (the default —
+ *               speculative decoding is opt-in only via --draft-model).
  */
 void run_repl(Config *p, TransformerWeights *w,
               const MoEConfig *mc,
               VisionConfig *vc, VisionWeights *vw, VisionProjector *vp,
               RunState *s, Tokenizer *t, ThreadPool *tp,
-              CliArgs *args, RagContext *rag);
+              CliArgs *args, RagContext *rag, DraftModel *draft);
 
 #endif // PROJECT_ZERO_REPL_H

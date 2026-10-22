@@ -1,4 +1,5 @@
 #include "tokenizer/tokenizer.h"
+#include "tokenizer/pretokenize.h"
 #include "core/platform.h"
 #include <string.h>
 #include <stdlib.h>
@@ -352,6 +353,29 @@ static size_t match_special_token(const Tokenizer *t,
     return best_len;
 }
 
+/* Pre-tokenize (GGUF tokenizer.ggml.pre — see tokenizer/pretokenize.h), then
+ * run BPE inside each fragment, as llama.cpp does. 2026-10-18: segments used
+ * to be merged whole, so BPE crossed word/digit/punctuation boundaries the
+ * model never saw ("?\n\n" as one token instead of "?", "\n", "\n"). */
+static int tokenizer_encode_pretokenized(Tokenizer *t, const char *text, size_t len,
+                                         int *tokens, int max_tokens) {
+    if (t->pretok_type == PRETOK_NONE)
+        return tokenizer_encode_segment(t, text, len, tokens, max_tokens);
+    size_t *starts = (size_t *)malloc((len + 1) * sizeof(size_t));
+    size_t *lens = (size_t *)malloc((len + 1) * sizeof(size_t));
+    if (!starts || !lens) { free(starts); free(lens); return -1; }
+    int nf = pretokenize((PretokType)t->pretok_type, text, len, starts, lens, (int)(len + 1));
+    int n = 0;
+    for (int i = 0; nf > 0 && i < nf; i++) {
+        int k = tokenizer_encode_segment(t, text + starts[i], lens[i], tokens + n, max_tokens - n);
+        if (k < 0) { n = -1; break; }
+        n += k;
+    }
+    free(starts);
+    free(lens);
+    return nf < 0 ? -1 : n;
+}
+
 int tokenizer_encode(Tokenizer *t, const char *text, size_t prompt_len, int *tokens, int max_tokens) {
     if (!text || !tokens || max_tokens <= 0) return -1;
     if (!t || !t->vocab) return -1;
@@ -398,8 +422,8 @@ int tokenizer_encode(Tokenizer *t, const char *text, size_t prompt_len, int *tok
             pos++;
         }
         if (pos > seg_start) {
-            int n = tokenizer_encode_segment(t, text + seg_start, pos - seg_start,
-                                             tokens + n_tokens, max_tokens - n_tokens);
+            int n = tokenizer_encode_pretokenized(t, text + seg_start, pos - seg_start,
+                                                  tokens + n_tokens, max_tokens - n_tokens);
             if (n < 0) return -1;
             n_tokens += n;
         }

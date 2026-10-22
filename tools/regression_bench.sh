@@ -12,7 +12,7 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-ENGINE="$REPO_DIR/adaptive_ai_engine"
+ENGINE="$REPO_DIR/pz"
 OUT_DIR="$REPO_DIR/benchmark_results"
 mkdir -p "$OUT_DIR"
 

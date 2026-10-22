@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="460" viewBox="0 0 1000 460" font-family="ui-monospace,Menlo,Consolas,monospace">
+<rect width="1000" height="460" fill="#fcfcfb"/>
+<text x="40" y="36" font-size="18" fill="#1f1f1d" font-weight="600">Decode throughput vs threads — best of 3, 500-token cap, sequential</text>
+<text x="40" y="58" font-size="12" fill="#6b6a64">Xeon @ 2.10 GHz (KVM) · 4 vCPU · 16 GB · AVX-512F + AVX-VNNI · 2026-10-18 · commit afabca1 · tokens/s (higher is better)</text>
+<text x="60" y="72" font-size="13" fill="#1f1f1d">~130M-parameter models (F16)</text>
+<line x1="60" x2="340" y1="370.0" y2="370.0" stroke="#e7e6e1" stroke-width="1"/>
+<text x="52" y="374.0" font-size="11" fill="#6b6a64" text-anchor="end">0</text>
+<line x1="60" x2="340" y1="297.5" y2="297.5" stroke="#e7e6e1" stroke-width="1"/>
+<text x="52" y="301.5" font-size="11" fill="#6b6a64" text-anchor="end">35</text>
+<line x1="60" x2="340" y1="225.0" y2="225.0" stroke="#e7e6e1" stroke-width="1"/>
+<text x="52" y="229.0" font-size="11" fill="#6b6a64" text-anchor="end">70</text>
+<line x1="60" x2="340" y1="152.5" y2="152.5" stroke="#e7e6e1" stroke-width="1"/>
+<text x="52" y="156.5" font-size="11" fill="#6b6a64" text-anchor="end">105</text>
+<line x1="60" x2="340" y1="80.0" y2="80.0" stroke="#e7e6e1" stroke-width="1"/>
+<text x="52" y="84.0" font-size="11" fill="#6b6a64" text-anchor="end">140</text>
+<text x="60.0" y="388" font-size="11" fill="#6b6a64" text-anchor="middle">t=1</text>
+<text x="153.3" y="388" font-size="11" fill="#6b6a64" text-anchor="middle">t=2</text>
+<text x="246.7" y="388" font-size="11" fill="#6b6a64" text-anchor="middle">t=3</text>
+<text x="340.0" y="388" font-size="11" fill="#6b6a64" text-anchor="middle">t=4</text>
+<polyline points="60.0,310.2 153.3,259.9 246.7,206.0 340.0,178.8" fill="none" stroke="#2a78d6" stroke-width="2" stroke-linejoin="round"/>
+<circle cx="60.0" cy="310.2" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<circle cx="153.3" cy="259.9" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<circle cx="246.7" cy="206.0" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<circle cx="340.0" cy="178.8" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<polyline points="60.0,304.9 153.3,240.1 246.7,176.5 340.0,101.8" fill="none" stroke="#eb6834" stroke-width="2" stroke-linejoin="round"/>
+<rect x="55.5" y="300.4" width="9" height="9" rx="1.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<rect x="148.8" y="235.6" width="9" height="9" rx="1.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<rect x="242.2" y="172.0" width="9" height="9" rx="1.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<rect x="335.5" y="97.3" width="9" height="9" rx="1.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<polyline points="60.0,306.2 153.3,250.6 246.7,208.5 340.0,175.8" fill="none" stroke="#1baf7a" stroke-width="2" stroke-linejoin="round"/>
+<path d="M60.0 300.2 L66.0 306.2 L60.0 312.2 L54.0 306.2Z" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"/>
+<path d="M153.3 244.6 L159.3 250.6 L153.3 256.6 L147.3 250.6Z" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"/>
+<path d="M246.7 202.5 L252.7 208.5 L246.7 214.5 L240.7 208.5Z" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"/>
+<path d="M340.0 169.8 L346.0 175.8 L340.0 181.8 L334.0 175.8Z" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"/>
+<rect x="351.5" y="97.3" width="9" height="9" rx="1.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<text x="368" y="99.8" font-size="11" fill="#1f1f1d">SmolLM2-135M · INT4 cls</text>
+<text x="368" y="113.8" font-size="11" fill="#6b6a64">129.5 tok/s @ t=4</text>
+<path d="M356.0 169.8 L362.0 175.8 L356.0 181.8 L350.0 175.8Z" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"/>
+<text x="368" y="173.8" font-size="11" fill="#1f1f1d">Mamba-130m · BF16 cls</text>
+<text x="368" y="187.8" font-size="11" fill="#6b6a64">93.8 tok/s @ t=4</text>
+<circle cx="356.0" cy="205.8" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<text x="368" y="203.8" font-size="11" fill="#1f1f1d">SmolLM2-135M · BF16 cls</text>
+<text x="368" y="217.8" font-size="11" fill="#6b6a64">92.3 tok/s @ t=4</text>
+<text x="570" y="72" font-size="13" fill="#1f1f1d">SmolLM2-1.7B-Instruct (Q4_K_M)</text>
+<line x1="570" x2="850" y1="370.0" y2="370.0" stroke="#e7e6e1" stroke-width="1"/>
+<text x="562" y="374.0" font-size="11" fill="#6b6a64" text-anchor="end">0</text>
+<line x1="570" x2="850" y1="297.5" y2="297.5" stroke="#e7e6e1" stroke-width="1"/>
+<text x="562" y="301.5" font-size="11" fill="#6b6a64" text-anchor="end">5</text>
+<line x1="570" x2="850" y1="225.0" y2="225.0" stroke="#e7e6e1" stroke-width="1"/>
+<text x="562" y="229.0" font-size="11" fill="#6b6a64" text-anchor="end">10</text>
+<line x1="570" x2="850" y1="152.5" y2="152.5" stroke="#e7e6e1" stroke-width="1"/>
+<text x="562" y="156.5" font-size="11" fill="#6b6a64" text-anchor="end">15</text>
+<line x1="570" x2="850" y1="80.0" y2="80.0" stroke="#e7e6e1" stroke-width="1"/>
+<text x="562" y="84.0" font-size="11" fill="#6b6a64" text-anchor="end">20</text>
+<text x="570.0" y="388" font-size="11" fill="#6b6a64" text-anchor="middle">t=1</text>
+<text x="663.3" y="388" font-size="11" fill="#6b6a64" text-anchor="middle">t=2</text>
+<text x="756.7" y="388" font-size="11" fill="#6b6a64" text-anchor="middle">t=3</text>
+<text x="850.0" y="388" font-size="11" fill="#6b6a64" text-anchor="middle">t=4</text>
+<polyline points="570.0,294.6 663.3,223.7 756.7,190.5 850.0,136.7" fill="none" stroke="#2a78d6" stroke-width="2" stroke-linejoin="round"/>
+<circle cx="570.0" cy="294.6" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<circle cx="663.3" cy="223.7" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<circle cx="756.7" cy="190.5" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<circle cx="850.0" cy="136.7" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<polyline points="570.0,298.1 663.3,232.2 756.7,178.6 850.0,143.1" fill="none" stroke="#eb6834" stroke-width="2" stroke-linejoin="round"/>
+<rect x="565.5" y="293.6" width="9" height="9" rx="1.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<rect x="658.8" y="227.8" width="9" height="9" rx="1.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<rect x="752.2" y="174.1" width="9" height="9" rx="1.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<rect x="845.5" y="138.6" width="9" height="9" rx="1.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<circle cx="866.0" cy="136.7" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<text x="878" y="134.7" font-size="11" fill="#1f1f1d">BF16 cls</text>
+<text x="878" y="148.7" font-size="11" fill="#6b6a64">16.1 tok/s @ t=4</text>
+<rect x="861.5" y="162.2" width="9" height="9" rx="1.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<text x="878" y="164.7" font-size="11" fill="#1f1f1d">INT4 cls</text>
+<text x="878" y="178.7" font-size="11" fill="#6b6a64">15.7 tok/s @ t=4</text>
+</svg>

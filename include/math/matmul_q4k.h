@@ -43,6 +43,19 @@ typedef struct {
  */
 void tn_quantize_q8k(TnQ8KActBlock *out, const float *x, int n_blocks);
 
+/*
+ * tn_dot_q4k_row_q8k — one Q4_K row (n_blocks super-blocks) · Q8K activations.
+ * vnni != 0 selects the AVX-512 VNNI kernel when compiled in (2026-10-21);
+ * pass tn_q4k_vnni_ok() evaluated on the calling (main) thread. Exposed for
+ * fused multi-matrix tasks (moe_experts.c) that interleave several weight
+ * types inside one thread-pool dispatch.
+ */
+float tn_dot_q4k_row_q8k(const uint8_t *row_q4k, const TnQ8KActBlock *acts,
+                         int n_blocks, int vnni);
+
+/* 1 when the AVX-512 VNNI Q4_K kernel is compiled in and the CPU verified it. */
+int tn_q4k_vnni_ok(void);
+
 void parallel_matmul_q4k(float *out, const float *x, const uint8_t *w_q4k,
                           int n, int d, ThreadPool *tp);
 
@@ -84,5 +97,14 @@ void parallel_matmul_q4k_batch_preq(float * const *outs,
                                      const TnQ8KActBlock *acts,
                                      const uint8_t * const *ws,
                                      int n, int d, int k, ThreadPool *tp);
+
+/*
+ * parallel_matmul_q4k_tokens — Phase 18-B: one Q4_K matrix, n_tokens inputs.
+ *   out: float[n_tokens][d], x: float[n_tokens][n] (row-major)
+ * Each weight row is read once and applied to every token (speculative
+ * verify batches). Bit-identical to n_tokens parallel_matmul_q4k() calls.
+ */
+void parallel_matmul_q4k_tokens(float *out, const float *x, const uint8_t *w_q4k,
+                                int n, int d, int n_tokens, ThreadPool *tp);
 
 #endif /* TN_MATMUL_Q4K_H */

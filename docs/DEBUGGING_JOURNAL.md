@@ -1,4 +1,7 @@
 # DeepSeek-V2-Lite MLA Debugging Journal
+
+> **Binary name (Phase 39, 2026-10-21):** the engine binary is now `pz` (previously `adaptive_ai_engine`). Commands quoted below record what was actually run at the time and are left unchanged; substitute `./pz` to reproduce them.
+
 **Status: ✅ GENERATION CORRECT — Steps 1–21 verified match llama.cpp (commit pending)**
 
 This document is a handoff for the next developer. It captures every fix attempted,

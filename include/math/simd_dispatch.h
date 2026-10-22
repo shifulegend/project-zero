@@ -1,6 +1,7 @@
 #ifndef TN_SIMD_DISPATCH_H
 #define TN_SIMD_DISPATCH_H
 
+#include "math/kvq4_kernels.h"
 #include "core/platform.h"
 
 /**
@@ -51,6 +52,10 @@ extern tn_vec_scale_fn      tn_vec_scale;
 extern tn_silu_fn           tn_silu;
 extern tn_relu2_fn          tn_relu2;
 extern tn_vec_dot_fn        tn_vec_dot;
+/* int4 KV-cache row kernels (math/kvq4_kernels.h); default to scalar before
+ * tn_simd_init() so callers that never init still get correct results. */
+extern tn_kvq4_dot_fn       tn_kvq4_dot;
+extern tn_kvq4_axpy_fn      tn_kvq4_axpy;
 extern tn_vec_saxpy_fn      tn_vec_saxpy;
 
 /**
@@ -67,5 +72,8 @@ extern tn_vec_saxpy_fn      tn_vec_saxpy;
  * kernel at startup, independent of compile-time flags.
  */
 const char *tn_simd_init(void);
+
+/* Name of the backend selected by the last tn_simd_init() ("Scalar" before). */
+const char *tn_simd_backend_name(void);
 
 #endif /* TN_SIMD_DISPATCH_H */

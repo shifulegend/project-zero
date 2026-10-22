@@ -331,7 +331,8 @@ static void matmul_bf16_task(void *arg, int thread_id, int start, int end) {
             __m128  h = _mm256_extractf128_ps(p8,1), l = _mm256_castps256_ps128(p8);
             __m128  s4 = _mm_add_ps(l,h);
             __m128  sh = _mm_movehdup_ps(s4);
-            val += _mm_cvtss_f32(_mm_add_ss(_mm_add_ps(s4,sh), _mm_movehl_ps(sh,sh)));
+            __m128  sums = _mm_add_ps(s4,sh);
+            val += _mm_cvtss_f32(_mm_add_ss(sums, _mm_movehl_ps(sh,sums)));
             j += 8;
         }
         for (; j < a->n; j++) {

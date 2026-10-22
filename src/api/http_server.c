@@ -10,7 +10,15 @@
  *
  * Supported routes
  * ────────────────
- *   GET  /v1/models                       → JSON model list
+ *   GET  /v1/models                       → JSON model list (+ model metadata)
+ *   GET  /v1/config                       → Server generation defaults, valid
+ *                                            ranges and feature flags (drives
+ *                                            every web UI control)
+ *   POST /v1/watermark/detect             → Phase 33 watermark z-score for text
+ *   GET  /v1/prompt_cache                 → Phase 26 prompt-cache stats
+ *   POST /v1/prompt_cache/clear           → drop all cached prompt snapshots
+ *   GET  /v1/update                       → Phase 38 update-check state (notify only)
+ *   POST /v1/update/check                 → re-check now (rate-limited)
  *   POST /v1/chat/completions             → Chat completion (streaming + non-streaming;
  *                                            image_url content parts run the vision
  *                                            pipeline when --vision/--proj are set)
@@ -28,8 +36,9 @@
  * per-connection thread for each accepted socket, so static/metrics/docs/
  * cancel requests are never blocked behind an in-flight generation. Only
  * one generate_with_callback() call may run at a time — routes that
- * generate acquire ctx->generation_mutex via trylock and return 429
- * immediately if it's already held (no queueing).
+ * generate take the slot through ctx->gen_queue (Phase 23 stage 1): 429
+ * immediately when busy by default, or wait in FIFO order with
+ * --queue-size N; generation_mutex is then locked uncontended.
  *
  * Security notes
  * ──────────────
@@ -57,6 +66,14 @@
 #include "api/cancel.h"
 #include "api/static_assets.h"
 #include "api/data_url.h"
+#include "api/api_info.h"
+#include "api/update_endpoint.h"
+#include "api/request_params.h"
+#include "api/watermark_endpoint.h"
+#include "reasoning/best_of.h"
+#include "reasoning/mcts.h"
+#include "api/json_write.h"
+#include "api/gen_queue.h"
 #include "multimodal/vision_pipeline.h"
 #include "transformer/generate.h"
 #include "core/debug.h"
@@ -176,6 +193,55 @@ typedef struct {
     CancelState *cancel;
 } StreamState;
 
+/* Phase 30: adds "best_of": {"n", "chosen", "scores": [...], "completion_tokens_total"}
+ * to a finished response object (consumes and returns the heap string). */
+static char *append_best_of_json(char *json, const BestOfResult *r) {
+    size_t len = strlen(json);
+    if (len < 2 || json[len - 1] != '}') return json;
+    JsonBuf jb;
+    jb_init(&jb);
+    json[len - 1] = '\0';
+    jb_raw(&jb, json);
+    jb_raw(&jb, ",\"best_of\":{\"n\":"); jb_int(&jb, r->n);
+    jb_raw(&jb, ",\"chosen\":"); jb_int(&jb, r->chosen);
+    jb_raw(&jb, ",\"completion_tokens_total\":"); jb_int(&jb, r->tokens_total);
+    jb_raw(&jb, ",\"scores\":[");
+    for (int i = 0; i < r->n && i < 64; i++) { if (i) jb_raw(&jb, ","); jb_num(&jb, r->scores[i]); }
+    jb_raw(&jb, "]}}");
+    char *out = jb_finish(&jb);
+    if (!out) { json[len - 1] = '}'; return json; }
+    free(json);
+    return out;
+}
+
+/* Phase 30: adds "mcts": {"simulations", "nodes", "steps", "path_value",
+ * "scorer", "search_tokens"} to a finished response object. */
+static char *append_mcts_json(char *json, const MctsResult *r) {
+    size_t len = strlen(json);
+    if (len < 2 || json[len - 1] != '}') return json;
+    JsonBuf jb;
+    jb_init(&jb);
+    json[len - 1] = '\0';
+    jb_raw(&jb, json);
+    jb_raw(&jb, ",\"mcts\":{\"simulations\":"); jb_int(&jb, r->simulations);
+    jb_raw(&jb, ",\"nodes\":"); jb_int(&jb, r->nodes);
+    jb_raw(&jb, ",\"steps\":"); jb_int(&jb, r->steps);
+    jb_raw(&jb, ",\"path_value\":"); jb_num(&jb, r->path_value);
+    jb_raw(&jb, ",\"scorer\":"); jb_str(&jb, r->used_prm ? "prm" : "self");
+    jb_raw(&jb, ",\"search_tokens\":"); jb_int(&jb, r->tokens_total);
+    jb_raw(&jb, "}}");
+    char *out = jb_finish(&jb);
+    if (!out) { json[len - 1] = '}'; return json; }
+    free(json);
+    return out;
+}
+
+/* Phase 30: lets best-of-N abandon its candidates when the client cancels. */
+static int best_of_abort_check(void *userdata) {
+    StreamState *st = (StreamState *)userdata;
+    return cancel_registry_check(st->cancel, st->public_id);
+}
+
 static int streaming_token_callback(const char *piece, void *userdata) {
     StreamState *st = (StreamState *)userdata;
     if (!piece) return 0;
@@ -204,14 +270,71 @@ static int streaming_token_callback(const char *piece, void *userdata) {
 
 /* ── Route handlers ──────────────────────────────────────────────────────── */
 
-static void handle_get_models(int fd, const char *extra_headers) {
-    const char *body =
-        "{\"object\":\"list\","
-         "\"data\":[{"
-            "\"id\":\"local-adaptive-engine\","
-            "\"object\":\"model\","
-            "\"owned_by\":\"project-zero\"}]}";
-    send_response_ex(fd, 200, "application/json", body, 0, extra_headers);
+static void send_json_heap(int fd, int status, char *body, const char *extra_headers) {
+    if (!body) { send_error_ex(fd, 500, "OOM", extra_headers); return; }
+    if (status == 200) send_response_ex(fd, 200, "application/json", body, 0, extra_headers);
+    else {
+        char hdr[1024];
+        int n = snprintf(hdr, sizeof(hdr),
+            "HTTP/1.1 %d Error\r\nContent-Type: application/json\r\n"
+            "Content-Length: %zu\r\nConnection: close\r\n%s\r\n",
+            status, strlen(body), extra_headers ? extra_headers : "");
+        if (n > 0) { ssize_t r = write(fd, hdr, (size_t)n); (void)r; }
+        ssize_t r = write(fd, body, strlen(body)); (void)r;
+    }
+    free(body);
+}
+
+/* 2026-10-18: previously a hardcoded {"id":"local-adaptive-engine"} with no
+ * "vision" flag, so the web UI's image-upload control (gated on
+ * modelInfo.vision) could never appear even with --vision/--proj set. */
+static void handle_get_models(int fd, ApiContext *ctx, const char *extra_headers) {
+    send_json_heap(fd, 200, api_models_json(ctx), extra_headers);
+}
+
+static void handle_get_config(int fd, ApiContext *ctx, const char *extra_headers) {
+    send_json_heap(fd, 200, api_config_json(ctx), extra_headers);
+}
+
+/* Releases the generation slot taken by handle_chat_completions() / prompt-cache clear. */
+static void release_generation_slot(ApiContext *ctx) {
+    pthread_mutex_unlock(&ctx->generation_mutex);
+    gen_queue_release(&ctx->gen_queue);
+}
+
+/* GET /v1/prompt_cache — Phase 26 store stats. Reads counters without the
+ * generation mutex (word-sized, informational only). */
+static void handle_prompt_cache_stats(int fd, ApiContext *ctx, const char *extra_headers) {
+    send_json_heap(fd, 200, api_prompt_cache_json(ctx), extra_headers);
+}
+
+/* POST /v1/prompt_cache/clear — drops every snapshot and the live prefix
+ * record. Mutates generation state, so it takes generation_mutex (429 while
+ * a generation is running, same as a second chat request). */
+static int handle_prompt_cache_clear(int fd, ApiContext *ctx, const char *extra_headers) {
+    if (gen_queue_try_acquire(&ctx->gen_queue) != GEN_QUEUE_OK) {
+        send_error_ex(fd, 429, "A generation is in flight", extra_headers);
+        return 429;
+    }
+    pthread_mutex_lock(&ctx->generation_mutex);
+    prompt_store_clear(&ctx->prompt_store);
+    prefix_cache_reset(&ctx->prefix_cache);
+    release_generation_slot(ctx);
+    send_json_heap(fd, 200, api_prompt_cache_json(ctx), extra_headers);
+    return 200;
+}
+
+static int handle_watermark_detect(int fd, const char *body_start, size_t body_len,
+                                   ApiContext *ctx, const char *extra_headers) {
+    char *body = (char *)malloc(body_len + 1);
+    if (!body) { send_error_ex(fd, 500, "OOM", extra_headers); return 500; }
+    memcpy(body, body_start, body_len);
+    body[body_len] = '\0';
+    int status = 500;
+    char *json = api_watermark_detect(ctx, body, &status);
+    free(body);
+    send_json_heap(fd, status, json, extra_headers);
+    return status;
 }
 
 static void handle_health(int fd, const char *extra_headers) {
@@ -277,19 +400,34 @@ static void handle_cancel(int fd, const char *body_start, size_t body_len,
     }
 }
 
+/* Phase 23 stage 1: while a streaming request waits for the generation slot,
+ * send the SSE headers once and then ": queued <position>" comments (also a
+ * keep-alive). A failed write means the client left — abandon the wait. */
+typedef struct {
+    int fd;
+    int stream;
+    int headers_sent;
+    const char *extra_headers;
+} QueueWaitCtx;
+
+static int queue_wait_notify(int position, void *userdata) {
+    QueueWaitCtx *w = (QueueWaitCtx *)userdata;
+    if (!w->stream) return 0;
+    if (!w->headers_sent) {
+        send_response_ex(w->fd, 200, "text/event-stream", NULL, 1, w->extra_headers);
+        w->headers_sent = 1;
+    }
+    char line[64];
+    int n = snprintf(line, sizeof(line), ": queued %d\n\n", position);
+    return write(w->fd, line, (size_t)n) != n;
+}
+
 static void handle_chat_completions(int fd, const char *body_start, size_t body_len,
                                     ApiContext *ctx, const char *extra_headers) {
-    /* Only one generation runs at a time — try to acquire the mutex without
-     * blocking so unrelated routes (metrics/docs/static/cancel) are never
-     * stalled behind an in-flight generation. */
-    if (pthread_mutex_trylock(&ctx->generation_mutex) != 0) {
-        send_error_ex(fd, 429, "Another generation is already in flight", extra_headers);
-        return;
-    }
-
-    /* Null-terminate the body for parsing */
+    /* Parse first — no shared state is touched — so the request's own
+     * settings (stream) are known while it waits for the slot. */
     char *body = (char *)malloc(body_len + 1);
-    if (!body) { pthread_mutex_unlock(&ctx->generation_mutex); send_error_ex(fd, 500, "OOM", extra_headers); return; }
+    if (!body) { send_error_ex(fd, 500, "OOM", extra_headers); return; }
     memcpy(body, body_start, body_len);
     body[body_len] = '\0';
 
@@ -298,7 +436,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
 
     if (chat_request_parse(body, &req) != TN_OK) {
         free(body);
-        pthread_mutex_unlock(&ctx->generation_mutex);
+        chat_request_free(&req);
         send_error_ex(fd, 400, "Invalid JSON in request body", extra_headers);
         return;
     }
@@ -306,10 +444,41 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
 
     if (req.num_messages == 0) {
         chat_request_free(&req);
-        pthread_mutex_unlock(&ctx->generation_mutex);
         send_error_ex(fd, 400, "No messages in request", extra_headers);
         return;
     }
+
+    /* Only one generation runs at a time. With --queue-size N, up to N
+     * requests wait their turn in arrival order (Phase 23 stage 1); otherwise
+     * (the default) a busy server answers 429 immediately. Unrelated routes
+     * (metrics/docs/static/cancel) never touch the slot. */
+    QueueWaitCtx qw = { fd, req.stream ? 1 : 0, 0, extra_headers };
+    GenQueueResult qr = gen_queue_acquire(&ctx->gen_queue,
+                                          ctx->server_config.queue_timeout_s * 1000,
+                                          queue_wait_notify, &qw);
+    if (qr != GEN_QUEUE_OK) {
+        chat_request_free(&req);
+        if (qr == GEN_QUEUE_ABORTED) return; /* client already gone */
+        const char *why = qr == GEN_QUEUE_TIMEOUT ? "Timed out waiting for the generation queue"
+                        : ctx->server_config.queue_size > 0 ? "Generation queue is full"
+                        : "Another generation is already in flight";
+        if (qw.headers_sent) {
+            char ev[160];
+            int n = snprintf(ev, sizeof(ev), "data: {\"error\":{\"message\":\"%s\",\"type\":\"server_error\"}}\n\n", why);
+            ssize_t wr = write(fd, ev, (size_t)n); (void)wr;
+        } else {
+            send_error_ex(fd, 429, why, extra_headers);
+        }
+        return;
+    }
+    pthread_mutex_lock(&ctx->generation_mutex); /* uncontended: the queue granted the slot */
+
+    /* Every request is a fresh conversation rendered from its full message
+     * history, so start from KV position 0. (2026-10-18: current_pos was
+     * never reset — after one image request (vision prefill advances it) every
+     * later text request silently started after the stale image prefix.) */
+    ctx->run_state->current_pos = 0;
+    int had_image = 0;
 
     /* Phase 22.2: image upload via the web UI's image_url content parts —
      * inject the vision pipeline into the KV cache before compiling/
@@ -356,6 +525,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
          * never mutates them); the vision pipeline's KV-cache injection
          * needs non-const pointers even though it doesn't rewrite either —
          * same underlying objects main.c's CLI path passes non-const. */
+        had_image = 1;
         vision_pipeline_run(tmp_path, ctx->server_config.vision_path, ctx->server_config.proj_path,
                             (Config *)ctx->cfg, (TransformerWeights *)ctx->weights, ctx->run_state,
                             ctx->moe_cfg, ctx->tok, ctx->tp,
@@ -380,43 +550,51 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     char *prompt = NULL;
     int free_prompt = 0;
 
-    if (ctx->tok->chat_template) {
-        /* GGUF tokenizer: just pass the last user message content directly;
-         * generate_with_callback will apply the Jinja template. */
-        const char *last_content = NULL;
-        for (int i = req.num_messages - 1; i >= 0; i--) {
-            if (strcmp(req.messages[i].role, "user") == 0 &&
-                req.messages[i].content) {
-                last_content = req.messages[i].content;
-                break;
-            }
+    /* Resolve generation settings: server defaults (CLI flags) overlaid
+     * with whatever the client sent, clamped to valid ranges. */
+    GenerationParams gp;
+    request_params_resolve(&req, &ctx->server_config.gen_defaults,
+                           api_max_tokens_limit(ctx), &gp);
+
+    const char *roles[CHAT_MAX_MESSAGES];
+    const char *contents[CHAT_MAX_MESSAGES];
+
+    /* Per-request templates only when the operator allows them. */
+    if (!ctx->server_config.allow_request_template) gp.chat_template = NULL;
+
+    if (ctx->tok->chat_template || gp.chat_template) {
+        /* GGUF tokenizer: the model's own Jinja template renders the whole
+         * conversation (system/user/assistant turns). 2026-10-18: this used
+         * to forward only the last user message, silently dropping all
+         * earlier turns and any system message — multi-turn chat in the web
+         * UI had no memory. */
+        int n = 0;
+        for (int i = 0; i < req.num_messages && n < CHAT_MAX_MESSAGES; i++) {
+            if (!req.messages[i].content) continue;
+            roles[n] = req.messages[i].role[0] ? req.messages[i].role : "user";
+            contents[n++] = req.messages[i].content;
         }
-        if (!last_content) last_content = req.messages[req.num_messages-1].content;
-        prompt = (char *)last_content; /* borrow — do NOT free */
+        gp.roles = roles;
+        gp.contents = contents;
+        gp.n_messages = n;
+        prompt = (char *)(n > 0 ? contents[n - 1] : "");
     } else {
         /* Legacy tokenizer: compile all messages into a formatted prompt */
         char *compiled = (char *)malloc(HTTP_MAX_PROMPT_BYTES);
-        if (!compiled) { chat_request_free(&req); pthread_mutex_unlock(&ctx->generation_mutex); send_error_ex(fd, 500, "OOM", extra_headers); return; }
-        ChatTemplateType tmpl = chat_template_detect(req.model);
+        if (!compiled) { chat_request_free(&req); release_generation_slot(ctx); send_error_ex(fd, 500, "OOM", extra_headers); return; }
+        ChatTemplateType tmpl = ctx->server_config.chat_format >= 0
+                                ? (ChatTemplateType)ctx->server_config.chat_format
+                                : chat_template_detect_vocab(ctx->tok);
         if (chat_compile_prompt(&req, tmpl, compiled, HTTP_MAX_PROMPT_BYTES) != TN_OK) {
             free(compiled);
             chat_request_free(&req);
-            pthread_mutex_unlock(&ctx->generation_mutex);
+            release_generation_slot(ctx);
             send_error_ex(fd, 500, "Prompt compilation failed", extra_headers);
             return;
         }
         prompt     = compiled;
         free_prompt = 1;
     }
-
-    /* Clamp sampling parameters to valid ranges */
-    float temperature = req.temperature;
-    float top_p       = req.top_p;
-    int   max_tokens  = req.max_tokens;
-    if (temperature < 0.0f) temperature = 0.0f;
-    if (temperature > 2.0f) temperature = 2.0f;
-    if (top_p < 0.0f || top_p > 1.0f) top_p = 1.0f;
-    if (max_tokens <= 0 || max_tokens > 4096) max_tokens = 512;
 
     /* Generate a request ID */
     char id[32];
@@ -431,7 +609,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     snprintf(st.id, sizeof(st.id), "%s", id);
     snprintf(st.public_id, sizeof(st.public_id), "chatcmpl-%s", id);
 
-    if (req.stream) {
+    if (req.stream && !qw.headers_sent) {
         /* Send SSE headers before starting generation */
         send_response_ex(fd, 200, "text/event-stream", NULL, 1, extra_headers);
     }
@@ -442,23 +620,93 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     cancel_registry_begin(&ctx->cancel, st.public_id);
 
     /* Run inference */
-    generate_with_callback(ctx->cfg, ctx->weights, ctx->run_state, ctx->moe_cfg,
-                           ctx->tok, ctx->tp,
-                           prompt, max_tokens, temperature, top_p,
-                           streaming_token_callback, &st);
+    /* Phase 21.5: reuse the KV prefix shared with the previous request unless
+     * disabled server-wide (--prompt-cache off) or for this request. */
+    int use_cache = (req.set_mask & CHAT_SET_CACHE_PROMPT) ? req.cache_prompt
+                                                           : ctx->server_config.prompt_cache;
+    if (!ctx->prefix_cache.tokens && ctx->run_state)
+        prefix_cache_init(&ctx->prefix_cache, ctx->run_state->max_seq_len);
+    if (!ctx->prompt_store_ready) {
+        prompt_store_init(&ctx->prompt_store,
+                          (size_t)(ctx->server_config.prompt_cache_mb > 0
+                                   ? ctx->server_config.prompt_cache_mb : 0) * 1024u * 1024u,
+                          ctx->server_config.prompt_cache_min_tokens);
+        ctx->prompt_store_ready = 1;
+    }
+    if (had_image) prefix_cache_reset(&ctx->prefix_cache); /* vision prefill rewrote KV */
+    if (use_cache && ctx->prefix_cache.tokens) {
+        gp.prefix_cache = &ctx->prefix_cache;
+        gp.prompt_store = &ctx->prompt_store;
+    }
+    else prefix_cache_reset(&ctx->prefix_cache); /* KV is about to be overwritten */
+
+    GenerationStats gstats;
+    memset(&gstats, 0, sizeof(gstats));
+    gp.stats = &gstats;
+    /* Phase 30: best-of-N (server default --best-of, capped by --best-of-max). */
+    int best_of = (req.set_mask & CHAT_SET_BEST_OF) ? req.best_of : ctx->server_config.best_of;
+    if (best_of < 1) best_of = 1;
+    if (best_of > ctx->server_config.best_of_max) best_of = ctx->server_config.best_of_max;
+    BestOfResult bres;
+    memset(&bres, 0, sizeof(bres));
+    /* Phase 30: step-level tree search (server --mcts*, request "mcts"). */
+    MctsOptions mopt;
+    request_mcts_resolve(&req, &ctx->server_config.mcts, ctx->server_config.mcts_max, &mopt);
+    MctsResult mres;
+    memset(&mres, 0, sizeof(mres));
+    if (mopt.simulations > 0) {
+        const char *question = "";
+        for (int i = req.num_messages - 1; i >= 0; i--)
+            if (req.messages[i].content && strcmp(req.messages[i].role, "user") == 0) {
+                question = req.messages[i].content;
+                break;
+            }
+        if (generate_mcts(ctx->cfg, ctx->weights, ctx->run_state, ctx->moe_cfg, ctx->tok, ctx->tp,
+                          prompt, question, &gp, &mopt, ctx->prm, streaming_token_callback, &st,
+                          best_of_abort_check, &mres) != TN_OK && gstats.completion_tokens == 0)
+            gstats.finish_reason = GEN_FINISH_ERROR;
+    } else if (best_of > 1) {
+        generate_best_of(ctx->cfg, ctx->weights, ctx->run_state, ctx->moe_cfg,
+                         ctx->tok, ctx->tp, prompt, &gp, best_of, BEST_OF_SCORE_MEAN_LOGPROB,
+                         streaming_token_callback, &st, best_of_abort_check, &bres);
+    } else {
+        generate_ex(ctx->cfg, ctx->weights, ctx->run_state, ctx->moe_cfg,
+                    ctx->tok, ctx->tp, prompt, &gp,
+                    streaming_token_callback, &st);
+    }
+    const char *finish_reason = gen_finish_reason_str(gstats.finish_reason);
 
     cancel_registry_end(&ctx->cancel);
     metrics_add_tokens(&ctx->metrics, st.tokens_emitted);
 
+    if (gstats.finish_reason == GEN_FINISH_ERROR && !req.stream) {
+        /* Nothing was generated because the prompt could not be prepared
+         * (template render or tokenization failed) — report it instead of an
+         * empty 200 completion. */
+        free(st.accum_buf);
+        if (free_prompt) free(prompt);
+        chat_request_free(&req);
+        release_generation_slot(ctx);
+        send_error_ex(fd, 400, "Prompt could not be tokenized for this model", extra_headers);
+        return;
+    }
+
     if (req.stream) {
-        sse_write_done(fd, id);
+        sse_write_done_ex(fd, id, finish_reason,
+                          gstats.prompt_tokens, gstats.completion_tokens,
+                          gstats.cached_tokens);
     } else {
         /* 2026-07-15: build the JSON body FIRST so Content-Length reflects
          * its real size. The previous code sent "Content-Length: 0" (NULL
          * body) and only then wrote the actual JSON via a second write() —
          * conformant HTTP clients stop reading at 0 bytes and never see it. */
         const char *text = st.accum_buf ? st.accum_buf : "";
-        char *json = sse_format_full_response(id, text);
+        char *json = sse_format_full_response_ex(id, text, finish_reason,
+                                                 gstats.prompt_tokens,
+                                                 gstats.completion_tokens,
+                                                 gstats.cached_tokens);
+        if (json && mopt.simulations > 0) json = append_mcts_json(json, &mres);
+        else if (json && best_of > 1) json = append_best_of_json(json, &bres);
         send_response_ex(fd, 200, "application/json", json, 0, extra_headers);
         free(json);
     }
@@ -466,7 +714,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     free(st.accum_buf);
     if (free_prompt) free(prompt);
     chat_request_free(&req);
-    pthread_mutex_unlock(&ctx->generation_mutex);
+    release_generation_slot(ctx);
 }
 
 /* ── HTTP request parser ─────────────────────────────────────────────────── */
@@ -656,7 +904,21 @@ static void handle_connection(int fd, ApiContext *ctx) {
     /* ── Route dispatch ──────────────────────────────────────────────────── */
     int status = 200;
     if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/models") == 0) {
-        handle_get_models(fd, extra_headers);
+        handle_get_models(fd, ctx, extra_headers);
+    } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/config") == 0) {
+        handle_get_config(fd, ctx, extra_headers);
+    } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/update") == 0) {
+        send_json_heap(fd, 200, api_update_json(0), extra_headers);
+    } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/update/check") == 0) {
+        send_json_heap(fd, 200, api_update_json(1), extra_headers);
+    } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/prompt_cache") == 0) {
+        handle_prompt_cache_stats(fd, ctx, extra_headers);
+    } else if (strcmp(req.method, "POST") == 0 &&
+               strcmp(req.path, "/v1/prompt_cache/clear") == 0) {
+        status = handle_prompt_cache_clear(fd, ctx, extra_headers);
+    } else if (strcmp(req.method, "POST") == 0 &&
+               strcmp(req.path, "/v1/watermark/detect") == 0) {
+        status = handle_watermark_detect(fd, req.body, req.body_len, ctx, extra_headers);
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/health") == 0) {
         /* Always available, regardless of --web-ui — distinct from "/",
          * which now serves the web UI (Phase 22.2). */
@@ -768,6 +1030,7 @@ void api_context_init(ApiContext *ctx,
     metrics_init(&ctx->metrics);
     cancel_state_init(&ctx->cancel);
     pthread_mutex_init(&ctx->generation_mutex, NULL);
+    gen_queue_init(&ctx->gen_queue, 0);
 }
 
 TernaryError api_server_start(int port, ApiContext *ctx) {

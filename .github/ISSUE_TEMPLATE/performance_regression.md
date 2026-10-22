@@ -17,7 +17,7 @@ assignees: ''
 ## Model & Config Used
 ```bash
 # Exact command
-./adaptive_ai_engine --model ... --threads ... --classifier ... --prompt "..."
+./pz --model ... --threads ... --classifier ... --prompt "..."
 ```
 
 ## Environment

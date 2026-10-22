@@ -27,6 +27,9 @@ typedef enum {
     TN_ERR_SOCKET_BIND,
     TN_ERR_SOCKET_LISTEN,
     TN_ERR_JSON_PARSE,
+    /* Phase 18: speculative decoding */
+    TN_ERR_UNSUPPORTED,  /* operation not supported for this model configuration
+                           * (e.g. batched forward pass on a linear-attention model) */
     TN_ERR_COUNT  /* sentinel — must be last */
 } TernaryError;
 

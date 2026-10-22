@@ -1,5 +1,7 @@
 # Independent QA and Security Strategy Report
 
+> **Binary name (Phase 39, 2026-10-21):** the engine binary is now `pz` (previously `adaptive_ai_engine`). Commands quoted below record what was actually run at the time and are left unchanged; substitute `./pz` to reproduce them.
+
 **Role:** Independent Principal QA Architect, Senior Software Security Auditor, IT Systems Auditor
 **Objective:** Ground-up Quality Assurance and Testing Strategy for Project Zero LLM Ternary Engine (Phase 10 Compliant).
 

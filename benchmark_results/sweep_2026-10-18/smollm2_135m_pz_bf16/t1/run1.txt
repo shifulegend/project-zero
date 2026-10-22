@@ -1,0 +1,82 @@
+=== smollm2_135m_pz_bf16 t=1 run 1 ===
+DATE: 2026-10-18 19:02:14 UTC
+CMD: ./adaptive_ai_engine --model models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --max-tokens 500 --temperature 0 --threads 1 --no-update-check --classifier bf16
+PROMPT: Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+============================================================
+[1/4] Opening model file...
+[2/4] Loading weights...
+[3/4] Preparing runtime...
+[gguf-tok] Loaded 49152 tokens (gpt2), 17 special — BOS=1 EOS=2 chat_template=yes
+[4/4] Ready.
+####  ####   ###    ### #####  #### #####     ##### ##### ####   ### 
+#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #
+####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
+#     # #   #   # #  #  #     #       #        #    #     # #   #   #
+#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
+Project Zero Engine afabca1 — Auto-Tuned Hardware
+Classifier: BF16 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-VNNI                           │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 2048   KiB per core                 │
+│ L3 cache      : 260    MiB shared                   │
+│ Free RAM      : 15403  MiB                          │
+│ DRAM bandwidth: 35.9   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB (pre-load est.)           │
+│ Ceiling       : 29.8   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 1 threads | AVX-VNNI | BF16 cls | 4T | 35.9 GB/s | ceiling 30 tok/s
+Model format: GGUF
+Model Configuration:
+  dim:        576
+  hidden_dim: 1536
+  n_layers:   30
+  n_heads:    9
+  n_kv_heads: 3
+  vocab_size: 49152
+  seq_len:    8192
+  act_type:   0 (SiLU)
+  rope_theta: 100000.0
+  head_dim:   64
+  kv_dim:     192
+[GGUF] Weights loaded (30 layers, arch=llama)
+[profile] Data/token (loaded model): 258 MB -> ceiling 132.6 tok/s at 35.9 GB/s
+KV cache: F32, max context: 8192 tokens (sizing tier: Quantized I8, RAM budget 60%)
+
+Machine learning is a subset of artificial intelligence that enables computers to learn from data without being explicitly programmed. It's a method of training a machine to make accurate predictions or decisions based on patterns and relationships in data.
+
+**Supervised Learning:**
+
+Supervised learning is a type of machine learning where the algorithm learns from labeled data, where each example is associated with a specific target or class label. The algorithm is trained on a dataset of labeled data, and the goal is to learn a mapping between the input data and the corresponding target label.
+
+Here's a simple example of supervised learning:
+
+Imagine you're a teacher who wants to teach a class of students about a particular subject. The teacher collects data on the students' test scores, and the data is labeled with the correct answers. The teacher uses this data to train a machine learning model that can predict the correct answers for new, unseen data.
+
+For instance, if the teacher wants to teach a class of students about the concept of "weather," the teacher collects data on the students' temperature readings, and the data is labeled with the correct temperature readings. The teacher uses this data to train a machine learning model that can predict the correct temperature readings for new, unseen data.
+
+**Unsupervised Learning:**
+
+Unsupervised learning is a type of machine learning where the algorithm learns from unlabeled data, where the goal is to identify patterns or relationships in the data that are not necessarily associated with a target or class label.
+
+Here's a simple example of unsupervised learning:
+
+Imagine you're a detective who wants to find a missing person. The detective collects data on the missing person's phone numbers, and the data is labeled with the missing person's phone number. The data is not necessarily associated with a target or class label, but the data is used to train a machine learning model that can identify patterns in the data.
+
+For instance, if the detective wants to find a missing person, the data is labeled with the missing person's phone number, and the data is not necessarily associated with a target or class label. The machine learning model is trained on the data to identify patterns in the data that are not necessarily associated with a target or class label.
+
+**Reinforcement Learning:**
+
+Reinforcement learning is a type of machine learning where the algorithm learns by performing actions that maximize a reward function. The goal is to learn a policy that takes the most actions
+[gen] 27.39 tok/s (500 tokens)
+
+
+
+PERF: wall=25.97s max_rss=2055MB cpu=101% exit=0

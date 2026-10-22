@@ -1,4 +1,5 @@
 #include "threading/cpu_probe.h"
+#include "math/cpu_features.h"
 #include "core/platform.h"
 #include <string.h>
 #include <stdlib.h>
@@ -19,7 +20,7 @@
  * Count unique physical cores on Linux by reading /proc/cpuinfo.
  * Returns 0 if the file is unreadable or parsing fails.
  */
-#if TN_POSIX
+#if TN_POSIX && TN_ARCH_X86
 #include <stdio.h>
 static int count_physical_cores_linux(void) {
     FILE *f = fopen("/proc/cpuinfo", "r");
@@ -68,7 +69,11 @@ int tn_get_optimal_thread_count(void) {
     logical = (int)si.dwNumberOfProcessors;
 #endif
 
-#if TN_HAS_AVX512 && TN_POSIX
+#if TN_POSIX && TN_ARCH_X86
+    /* 2026-10-18: runtime CPUID check instead of compile-time TN_HAS_AVX512,
+     * so the portable dist binary (baseline-ISA TU) applies the same rule on
+     * AVX-512 hosts as a -march=native build. */
+    if (tn_cpu_features_detect()->avx512f) {
     /*
      * On AVX-512 VNNI capable x86 CPUs, hyperthreading causes severe
      * performance degradation due to contention on the shared AVX-512
@@ -119,6 +124,13 @@ int tn_get_optimal_thread_count(void) {
     }
     if (optimal < 1) optimal = 1;
     return optimal;
+    }
+    {
+        /* x86 without AVX-512: half of logical cores (see the #else note). */
+        int threads = logical / 2;
+        if (threads < 1) threads = 1;
+        return threads;
+    }
 
 #elif TN_HAS_NEON
     /*

@@ -21,7 +21,7 @@
 - [ ] Ran inference manually and output is correct:
   ```
   # paste a sample run here
-  ./adaptive_ai_engine --model ... --prompt "What is the capital of France?" --max-tokens 10
+  ./pz --model ... --prompt "What is the capital of France?" --max-tokens 10
   # Output: ...
   ```
 - [ ] For perf changes: benchmarked before/after

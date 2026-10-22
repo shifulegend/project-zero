@@ -9,8 +9,14 @@ ifeq ($(UNAME_S),Darwin)
 else
     DARWIN_DEFS =
 endif
-CFLAGS_COMMON   = -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L $(DARWIN_DEFS)
-CXXFLAGS_COMMON = -std=c++17 -Wall -Wextra -Iinclude -D_POSIX_C_SOURCE=200809L $(DARWIN_DEFS)
+# -MMD -MP: emit build/**.d header-dependency files (included at the bottom)
+# so editing a header rebuilds every object that includes it. 2026-10-18:
+# without this, adding a field to a struct embedded elsewhere (GenerationParams
+# inside ServerConfig) left stale objects with the old layout linked into the
+# binary/tests — caught as an ASan SEGV reading a shifted field offset.
+DEPFLAGS        = -MMD -MP
+CFLAGS_COMMON   = -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L $(DARWIN_DEFS) $(DEPFLAGS)
+CXXFLAGS_COMMON = -std=c++17 -Wall -Wextra -Iinclude -D_POSIX_C_SOURCE=200809L $(DARWIN_DEFS) $(DEPFLAGS)
 # Version string baked into the binary (overridable; derived from git by default).
 # Used by --version and the startup banner; a #ifndef fallback in main.c covers
 # builds where it is not passed (e.g. plain `make debug`).
@@ -18,11 +24,33 @@ CXXFLAGS_COMMON = -std=c++17 -Wall -Wextra -Iinclude -D_POSIX_C_SOURCE=200809L $
 # quotes that get mangled through the recursive-make CFLAGS="..." layer.
 PZ_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 PZ_VERSION_DEF = -DPZ_VERSION=$(PZ_VERSION)
+# Phase 38: forks/packagers point update notifications at their own releases
+# (make PZ_UPDATE_REPO=owner/name); default is the upstream repo (update_check.c).
+ifdef PZ_UPDATE_REPO
+PZ_VERSION_DEF += -DPZ_UPDATE_REPO=$(PZ_UPDATE_REPO)
+endif
 
 CFLAGS_RELEASE   = $(CFLAGS_COMMON)   -O3 -march=native -DNDEBUG $(PZ_VERSION_DEF)
 CFLAGS_DEBUG     = $(CFLAGS_COMMON)   -g -O0 -march=native -fsanitize=address -fsanitize=undefined
 CXXFLAGS_RELEASE = $(CXXFLAGS_COMMON) -O3 -march=native -DNDEBUG $(PZ_VERSION_DEF)
 CXXFLAGS_DEBUG   = $(CXXFLAGS_COMMON) -g -O0 -march=native -fsanitize=address -fsanitize=undefined
+# TSan is incompatible with ASan/UBSan in the same binary, so it gets its own
+# variant (-O1: TSan docs recommend >-O0 for usable performance under load).
+CFLAGS_TSAN      = $(CFLAGS_COMMON)   -g -O1 -march=native -fsanitize=thread
+CXXFLAGS_TSAN    = $(CXXFLAGS_COMMON) -g -O1 -march=native -fsanitize=thread
+LDFLAGS_TSAN     = -pthread -lm -fsanitize=thread
+# Coverage: instruments $(LIB_OBJS) only (via `test:`'s own default CFLAGS,
+# same trick as TSan) -- the individual tests/*.c driver files still compile
+# under CFLAGS_DEBUG (ASan/UBSan; gcov instrumentation and ASan/UBSan are not
+# mutually exclusive, unlike TSan), so what gets measured is library code
+# coverage exercised by the real ASan/UBSan-checked test binaries.
+# -fprofile-update=atomic: this project's thread pool exercises the same
+# source lines from multiple threads concurrently; gcov's default
+# (non-atomic) counter updates race and corrupt into negative counts under
+# real concurrent execution (confirmed: lcov "Unexpected negative count"
+# on thread_pool.c without this flag).
+CFLAGS_COVERAGE   = $(CFLAGS_COMMON)   -g -O0 -march=native --coverage -fprofile-update=atomic
+CXXFLAGS_COVERAGE = $(CXXFLAGS_COMMON) -g -O0 -march=native --coverage -fprofile-update=atomic
 LDFLAGS = -pthread -lm
 
 # ── Portable distribution build (`make dist`) ──────────────────────────────
@@ -68,16 +96,50 @@ LIB_OBJS := $(filter-out build/cli/main.o, $(OBJS))
 TEST_SRCS := $(shell find tests -name '*.c' 2>/dev/null)
 TEST_BINS := $(patsubst tests/%.c, build/tests/%, $(TEST_SRCS))
 
-TARGET = adaptive_ai_engine
+TARGET = pz
+# Phase 39 (2026-10-21): the binary was renamed from adaptive_ai_engine. For one
+# release a symlink with the old name is kept (the program prints a deprecation
+# notice when run through it); drop LEGACY_TARGET the release after.
+LEGACY_TARGET = adaptive_ai_engine
 
-.PHONY: all clean debug release dist test objs demo webui-bundle screenshots
+.PHONY: all clean debug release dist test run-tests test-tsan coverage objs demo webui-bundle screenshots
 
 all: $(TARGET)
 
+# build/%.o is a shared path across release/debug/dist -- Make only tracks
+# file mtimes, not which CFLAGS produced an object, so switching variants
+# (e.g. `make release && make debug`) without this check silently links
+# stale objects built under the PREVIOUS variant's flags: a "debug" binary
+# built right after "release" would carry zero ASan/UBSan instrumentation
+# despite exit 0 (confirmed 2026-09-18 via `nm | grep asan` on the result).
+# Recorded in build/.variant; a mismatch forces a clean before rebuilding.
+#
+# 2026-10-21: the stamp also records the compiler and the host's -march=native
+# ISA set. Objects are compiled with host-detected ISA flags (_HAS_*VNNI,
+# -march=native), so a VM that migrates to a different CPU between builds (seen
+# after a container restart: test_simd_vnni failed to link against a stale
+# ternary_matmul_packed_avx_vnni.o) or a gcc->clang switch on the same variant
+# silently reused objects built for the other configuration.
+BUILD_STAMP := build/.variant
+HOST_ISA := $(shell $(CC) -march=native -dM -E - </dev/null 2>/dev/null | \
+	grep -E '__(AVX|SSE|FMA|F16C|BMI|AMX|ARM_FEATURE)' | sort | cksum | cut -d' ' -f1)
+VARIANT_ID = $(1) cc=$(notdir $(CC)) isa=$(HOST_ISA) vnni=$(_HAS_AVX512VNNI)$(_HAS_AVXVNNI)
+define ensure_variant
+	@mkdir -p build
+	@if [ -f $(BUILD_STAMP) ] && [ "$$(cat $(BUILD_STAMP))" != "$(call VARIANT_ID,$(1))" ]; then \
+		echo "Build configuration changed ($$(cat $(BUILD_STAMP)) -> $(call VARIANT_ID,$(1))); removing stale objects..."; \
+		rm -rf build $(TARGET) $(LEGACY_TARGET); \
+		mkdir -p build; \
+	fi
+	@echo "$(call VARIANT_ID,$(1))" > $(BUILD_STAMP)
+endef
+
 release:
+	$(call ensure_variant,release)
 	$(MAKE) CFLAGS="$(CFLAGS_RELEASE)" CXXFLAGS="$(CXXFLAGS_RELEASE)" all
 
 debug:
+	$(call ensure_variant,debug)
 	$(MAKE) CFLAGS="$(CFLAGS_DEBUG)" CXXFLAGS="$(CXXFLAGS_DEBUG)" LDFLAGS="$(LDFLAGS) -fsanitize=address -fsanitize=undefined" all
 
 # Portable, statically-libstdc++/libgcc-linked x86-64 binary for distribution.
@@ -85,6 +147,7 @@ debug:
 # simd_dispatch.c with all branches present; runtime CPUID dispatch keeps it safe
 # on CPUs that lack a given tier. See the per-file ISA rules below.
 dist:
+	$(call ensure_variant,dist)
 	$(MAKE) CFLAGS="$(CFLAGS_DIST)" CXXFLAGS="$(CXXFLAGS_DIST)" LDFLAGS="$(LDFLAGS_DIST)" \
 	        _HAS_AVXVNNI=1 _HAS_AVX512VNNI=1 DISPATCH_DEFS=-DTN_FORCE_DISPATCH_ALL all
 
@@ -94,7 +157,7 @@ objs: $(OBJS)
 # Skip building engine executable if main.c is missing
 $(TARGET): $(OBJS)
 	@if [ -f src/cli/main.c ]; then \
-		$(CXX) -o $@ $^ $(LDFLAGS); \
+		$(CXX) -o $@ $^ $(LDFLAGS) && ln -sf $(TARGET) $(LEGACY_TARGET); \
 	else \
 		echo "Skipping $(TARGET) build (src/cli/main.c not found)"; \
 	fi
@@ -179,12 +242,13 @@ AVX2_TUS := math/ternary_matmul_avx2 math/ternary_matmul_packed_avx2 \
             core/unpack_avx2 \
             math/matmul_q4k math/matmul_q4k_x8 math/matmul_q2k math/matmul_q8_0 \
             math/matmul_q5_0 math/matmul_q5_1 math/matmul_q5k math/matmul_q2_0 \
-            math/matmul_f16 math/quantize_i8 math/parallel_matmul
+            math/matmul_f16 math/quantize_i8 math/parallel_matmul math/matmul_q6k \
+            math/q8_0_act math/kvq4_avx2
 AVX2_OBJS := $(addprefix build/,$(addsuffix .o,$(AVX2_TUS)))
 
 AVX512_TUS := math/ternary_matmul_packed_avx512 math/ternary_matmul_lut_avx512bw \
               math/elementwise_avx512 \
-              math/rmsnorm_avx512 math/softmax_avx512
+              math/rmsnorm_avx512 math/softmax_avx512 math/kvq4_avx512
 AVX512_OBJS := $(addprefix build/,$(addsuffix .o,$(AVX512_TUS)))
 
 $(AVX2_OBJS): build/%.o: src/%.c
@@ -201,6 +265,11 @@ $(AVX512_OBJS): build/%.o: src/%.c
 # the kernels it references are force-compiled above with their ISA flags.
 DISPATCH_DEFS ?=
 build/math/simd_dispatch.o: src/math/simd_dispatch.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(DISPATCH_DEFS) -c -o $@ $<
+
+# Calibration decides which backends to benchmark from the same macros.
+build/core/calibration.o: src/core/calibration.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(DISPATCH_DEFS) -c -o $@ $<
 
@@ -233,22 +302,29 @@ build/tests/test_simd_vnni: tests/test_simd_vnni.c $(LIB_OBJS)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS_DEBUG) $(SIMD_TEST_FLAGS) -o $@ $< $(LIB_OBJS) $(LDFLAGS) -lstdc++
 
+# When the library objects are a sanitizer build (last variant was `debug`),
+# links that don't use CFLAGS_DEBUG still need the ASan/UBSan runtime.
+# 2026-10-18: without this, `make debug && make test` failed to link
+# test_api_server/test_q2k_matvec (undefined __asan_*/__ubsan_*); CI never hit
+# it only because it runs release -> test -> debug.
+SAN_LINK_FLAGS = $(if $(filter debug,$(shell cat $(BUILD_STAMP) 2>/dev/null)),-fsanitize=address -fsanitize=undefined)
+
 # test_api_server links C++ objects (chat_template.o) so must use g++ as linker.
 # Compile the C test source with release flags to avoid sanitizer symbol mismatches.
 build/tests/test_api_server: tests/test_api_server.c $(LIB_OBJS)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS_RELEASE) -c -o build/tests/test_api_server.o tests/test_api_server.c
-	$(CXX) -o $@ build/tests/test_api_server.o $(LIB_OBJS) $(LDFLAGS)
+	$(CXX) -o $@ build/tests/test_api_server.o $(LIB_OBJS) $(LDFLAGS) $(SAN_LINK_FLAGS)
 
 # test_q2k_matvec: pure C test but links C++ chat_template.o; use CXX linker.
 build/tests/test_q2k_matvec: tests/test_q2k_matvec.c $(LIB_OBJS)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS_RELEASE) -c -o build/tests/test_q2k_matvec.o tests/test_q2k_matvec.c
-	$(CXX) -o $@ build/tests/test_q2k_matvec.o $(LIB_OBJS) $(LDFLAGS)
+	$(CXX) -o $@ build/tests/test_q2k_matvec.o $(LIB_OBJS) $(LDFLAGS) $(SAN_LINK_FLAGS)
 
 build/tests/%: tests/%.c $(LIB_OBJS)
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS_DEBUG) -o $@ $< $(LIB_OBJS) $(LDFLAGS) -lstdc++
+	$(CC) $(CFLAGS_DEBUG) -MF $@.d -o $@ $< $(LIB_OBJS) $(LDFLAGS) -lstdc++
 
 # ── Convenience targets ────────────────────────────────────────────────────
 
@@ -304,10 +380,66 @@ test-packed: build/tests/test_packed_weights
 	@build/tests/test_packed_weights
 	@echo "=== Phase 10 Tests Passed ==="
 
-test: $(LIB_OBJS) $(TEST_BINS)
+# 2026-10-21: `make test` builds the library as the sanitizer (debug) variant.
+# It used to link whatever objects existed -- on a fresh tree (CI) the default
+# release flags -- so only the test drivers ran under ASan/UBSan, never the
+# engine code they exercise. Sharing the `debug` variant means the usual
+# release -> test -> debug sequence still rebuilds only once.
+test:
+	$(call ensure_variant,debug)
+	$(MAKE) CFLAGS="$(CFLAGS_DEBUG)" CXXFLAGS="$(CXXFLAGS_DEBUG)" \
+	        LDFLAGS="$(LDFLAGS) -fsanitize=address -fsanitize=undefined" run-tests
+
+run-tests: $(LIB_OBJS) $(TEST_BINS)
 	@echo "=== Running tests ==="
 	@for t in $(TEST_BINS); do echo "--- $$t ---"; $$t || exit 1; done
 	@echo "=== All tests passed ==="
+
+# TS-5.3: TSan run, scoped to the highest-value concurrency surfaces (thread
+# pool, parallel matmul dispatch, the API server's generation_mutex trylock
+# semantics) rather than the full suite, since most tests are single-threaded
+# and add nothing here. Rebuilds $(LIB_OBJS) under -fsanitize=thread (reusing
+# the same per-file ISA rules as release/debug/dist via ensure_variant, since
+# they already key off the ambient CFLAGS) then links each target test's
+# driver file directly with CFLAGS_TSAN/LDFLAGS_TSAN -- the generic
+# build/tests/% rule hardcodes CFLAGS_DEBUG (ASan/UBSan) for the driver file,
+# which cannot be linked into a TSan binary.
+TSAN_TESTS = audit_threadpool_stress test_threading test_moe_experts test_api_server test_q4k_x8_matmul test_q2_0_matmul test_forward test_gen_queue test_tensor_rpc test_update_check
+
+test-tsan:
+	$(call ensure_variant,tsan)
+	$(MAKE) CFLAGS="$(CFLAGS_TSAN)" CXXFLAGS="$(CXXFLAGS_TSAN)" objs
+	@mkdir -p build/tests
+	@status=0; \
+	for t in $(TSAN_TESTS); do \
+		echo "=== Building $$t under TSan ==="; \
+		$(CC) $(CFLAGS_TSAN) -c -o build/tests/$$t.tsan.o tests/$$t.c || exit 1; \
+		$(CXX) -o build/tests/$$t.tsan build/tests/$$t.tsan.o $(LIB_OBJS) $(LDFLAGS_TSAN) || exit 1; \
+		echo "=== Running $$t under TSan ==="; \
+		TSAN_OPTIONS="halt_on_error=0 exitcode=1" ./build/tests/$$t.tsan || status=1; \
+	done; \
+	if [ $$status -eq 0 ]; then echo "=== TSan: no races reported ==="; \
+	else echo "=== TSan: races reported, see output above ==="; fi; \
+	exit $$status
+
+# TS-5.5: line/branch coverage of library code, from the real test suite.
+# Requires lcov (genhtml). Uses ensure_variant like release/debug/dist/tsan
+# so switching from a non-instrumented build doesn't link stale objects.
+# 2026-10-21: runs `run-tests`, not `test` -- `test` now switches to the debug
+# variant, which would wipe the coverage objects (CI reported 40 lines covered).
+# lcov 2.x fails on an exclude pattern that matched nothing (e.g. '/usr/*' when
+# no system header was instrumented); lcov 1.x rejects `--ignore-errors unused`.
+LCOV_IGNORE_UNUSED = $(if $(shell lcov --version 2>/dev/null | grep -E 'version [2-9]'),--ignore-errors unused)
+coverage:
+	$(call ensure_variant,coverage)
+	$(MAKE) CFLAGS="$(CFLAGS_COVERAGE)" CXXFLAGS="$(CXXFLAGS_COVERAGE)" LDFLAGS="$(LDFLAGS) --coverage" run-tests
+	@mkdir -p build/coverage
+	lcov --capture --directory build --output-file build/coverage/coverage_raw.info --rc lcov_branch_coverage=1
+	lcov --remove build/coverage/coverage_raw.info '/usr/*' '*/tests/*' --output-file build/coverage/coverage.info --rc lcov_branch_coverage=1 $(LCOV_IGNORE_UNUSED)
+	genhtml build/coverage/coverage.info --output-directory build/coverage/html --rc lcov_branch_coverage=1
+	@echo "=== Coverage summary ==="
+	lcov --summary build/coverage/coverage.info --rc lcov_branch_coverage=1
+	@echo "=== HTML report: build/coverage/html/index.html ==="
 
 bench: $(LIB_OBJS) tools/bench_simd.c
 	@mkdir -p build/tools
@@ -330,7 +462,7 @@ bench-q2: $(LIB_OBJS) tools/bench_q2_0.c
 	@build/tools/bench_q2_0
 
 clean:
-	rm -rf build $(TARGET)
+	rm -rf build $(TARGET) $(LEGACY_TARGET)
 
 # ── K-2 R-1: LTO + PGO build pipeline ─────────────────────────────────────
 #
@@ -339,7 +471,7 @@ clean:
 #   make pgo-run               ← run 3 warmup inferences to collect .gcda files
 #   make pgo-build             ← rebuild with -fprofile-use + -flto=auto
 #
-# After `make pgo-build`, ./adaptive_ai_engine is the fully optimised binary.
+# After `make pgo-build`, ./$(TARGET) is the fully optimised binary.
 # PGO profile data is written to pgo_profiles/ directory.
 # LTO enables cross-module inlining (e.g. quantize_row_to_i8 into matmul).
 #
@@ -369,13 +501,13 @@ pgo-generate:
 pgo-run:
 	@echo "=== K-2 R-1: PGO Phase 2 — running 3 inference passes to collect profile ==="
 	@if [ ! -f $(MODEL) ]; then echo "ERROR: $(MODEL) not found"; exit 1; fi
-	./adaptive_ai_engine --model $(MODEL) --tokenizer $(TOKENIZER) \
+	./$(TARGET) --model $(MODEL) --tokenizer $(TOKENIZER) \
 	    --prompt "What is the capital of France?" \
 	    --threads $(PGO_THREADS) --max-tokens $(PGO_TOKENS) > /dev/null 2>&1
-	./adaptive_ai_engine --model $(MODEL) --tokenizer $(TOKENIZER) \
+	./$(TARGET) --model $(MODEL) --tokenizer $(TOKENIZER) \
 	    --prompt "Explain how DNA stores genetic information." \
 	    --threads $(PGO_THREADS) --max-tokens $(PGO_TOKENS) > /dev/null 2>&1
-	./adaptive_ai_engine --model $(MODEL) --tokenizer $(TOKENIZER) \
+	./$(TARGET) --model $(MODEL) --tokenizer $(TOKENIZER) \
 	    --prompt "Describe the process of photosynthesis." \
 	    --threads $(PGO_THREADS) --max-tokens $(PGO_TOKENS) > /dev/null 2>&1
 	@echo "=== Profile data written to pgo_profiles/ — run 'make pgo-build' next ==="
@@ -384,7 +516,10 @@ pgo-build:
 	@echo "=== K-2 R-1: PGO Phase 3 — rebuilding with -fprofile-use + -flto ==="
 	$(MAKE) clean
 	$(MAKE) CFLAGS="$(CFLAGS_PGO_USE)" LDFLAGS="$(LDFLAGS_LTO)" all
-	@echo "=== LTO+PGO optimised binary built: ./adaptive_ai_engine ==="
+	@echo "=== LTO+PGO optimised binary built: ./$(TARGET) ==="
 
 pgo-clean:
 	rm -rf pgo_profiles
+
+# Header dependency files written by $(DEPFLAGS) (absent on a clean tree).
+-include $(OBJS:.o=.d) $(TEST_BINS:=.d)

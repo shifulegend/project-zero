@@ -11,3 +11,21 @@
   in `mistakes.md` too, but that's not a substitute for fixing. Only defer for genuinely
   large architectural fixes, and flag those to the user explicitly. See `engineering-rules.md`
   § Bug-fix policy.
+- Attention heads run in parallel over the thread pool (`attn_heads_task`, threshold
+  `--attn-parallel-min-ctx`): per-head code must only write its own `s->att` row and `s->xb`
+  slice. Concurrency changes there need `make test-tsan` (test_forward is in TSAN_TESTS).
+- Startup counts as performance: no O(n²) init (tokenizer lookups via the sorted index), per-host
+  probes cached (`core/bw_cache`), large zeroed buffers lazily committed (`tn_aligned_calloc`
+  uses `MADV_DONTNEED` on Linux — no full memset). Benchmarks report wall time + RSS too.
+- GGUF stop tokens: `tokenizer_collect_eog()` (declared EOS/EOT/EOM + end-of-turn control
+  tokens). Generation loops must check all of `tok->eos_list`, not just `eos_token_id`.
+- LoRA: every attention/FFN path that runs a projection must apply `s->active_lora` (single and
+  batched); Q width is `q_dim` (n_heads*head_dim) — not `dim` — on Qwen3.
+- Generic KV may be quantized (`RunState.kv_type` I8 or I4: `key_cache` is NULL; row r =
+  `KV_SCALE_IDX` lives at `key_cache_q + r*kv_row_bytes`, scales at `key_scale + r*kv_row_scales`;
+  use `kvq_store/kvq_dot_row/kvq_axpy_row`). Any new reader/writer of the dense KV cache must handle all.
+- Distributed (`--remote-layers`, Phase 28): layers can run in a worker process. Per-layer state
+  that maps position → cache slot (sliding window) is part of the RPC contract; anything that
+  restores/copies KV for all layers (prompt snapshots) must be bypassed when `dist_plan_active()`.
+- Anything that calls `transformer_forward()` directly gets a default sliding window if none was
+  set, but should `sw_init()` itself when it owns a sequence (generate_ex, perplexity, worker).

@@ -59,7 +59,38 @@ typedef struct {
      * qwen35) rather than a new field — same "independent head_dim"
      * problem qwen35 already solves, populated from attention.key_length. */
     int  has_qk_norm;            /* 1 for Qwen3-MoE-style per-head QK RMSNorm before RoPE */
+
+    /* Phase 22-SSM: pure state-space model (GGUF arch "mamba"). Reuses the
+     * ssm_* fields above with Mamba-1 meaning: ssm_inner_size = d_inner,
+     * ssm_state_size = d_state, ssm_conv_kernel = d_conv,
+     * ssm_time_step_rank = dt_rank. 0 for every other model. */
+    int  is_ssm;
+
+    /* Router weighting (2026-10-21), GGUF keys "<arch>.expert_weights_scale",
+     * "<arch>.expert_weights_norm", "<arch>.expert_gating_func" — same
+     * semantics and defaults as llama.cpp's build_moe_ffn():
+     *   gating:  MOE_GATING_SOFTMAX (1) or MOE_GATING_SIGMOID (2) over the
+     *            router logits; top-k selects on those probabilities.
+     *   norm:    renormalize the k selected weights to sum to 1
+     *            (Qwen3-MoE always; DeepSeek per metadata, V2 = false).
+     *   scale:   multiply the k weights (0 or 1 = no-op; DeepSeek-V2 = 16).
+     * Previously the router always used softmax, never renormalized and
+     * never scaled — wrong for Qwen3-MoE and for DeepSeek-V2 (non-Lite). */
+    int   expert_gating_func;
+    int   expert_weights_norm;
+    float expert_weights_scale;
 } MoEConfig;
+
+#define MOE_GATING_SOFTMAX 1
+#define MOE_GATING_SIGMOID 2
+
+/* True for models whose per-token state is recurrent (cannot be rewound to
+ * an arbitrary earlier position or batched across positions): Qwen3.5/3.6
+ * linear attention and pure SSMs. Gates prefix caching, prompt snapshots,
+ * batched forward and speculative decoding. */
+static inline int moe_is_recurrent(const MoEConfig *mc) {
+    return mc && (mc->has_linear_attn || mc->is_ssm);
+}
 
 /**
  * Initialise MoEConfig for a dense (non-MoE) model.

@@ -1,11 +1,11 @@
 # Tool Sync Policy — project-zero
 
 > Defines canonical vs adapter files and how they stay synchronized.
-> Last updated: 2026-07-15.
+> Last updated: 2026-10-21.
 
 ## Canonical (source of truth)
 `docs/ai/**` — overview, engineering-rules, mistakes, decision-log, change-trace,
-session-start-checklist, commit-log-guidance, this policy. Durable knowledge lives ONLY here.
+session-start-checklist, commit-log-guidance, changelog-guidance, this policy. Durable knowledge lives ONLY here.
 
 ## Adapter files (concise; summarize + link to canonical)
 | Tool | Entry | Scoped rules | Workflows / skills |
@@ -16,6 +16,10 @@ session-start-checklist, commit-log-guidance, this policy. Durable knowledge liv
 
 `AGENTS.md` is a portability mirror; keep it synchronized with `gemini/GEMINI.md` on durable
 repo-wide rules. (Both currently also carry the GitNexus MCP block — preserve it.)
+
+## Changelog workflow (2026-10-21)
+Rules: `docs/ai/changelog-guidance.md`. Per-tool workflow mirrors: `.claude/skills/update-changelog/SKILL.md`,
+`.github/prompts/update-changelog.prompt.md`, `.agents/workflows/update-changelog.md` — keep them in sync with it.
 
 ## Canonicality rule
 - On a conflict, update `docs/ai/**` first, then the adapters. Adapters must never hold durable
@@ -45,3 +49,41 @@ concurrency-rearchitecture surface). Adapters added: `.claude/rules/api.md`,
 ## Drift check
 At session start and before task completion, confirm adapters still match the canonical docs;
 if not, reconcile (canonical wins) and note it in `change-trace.md`.
+
+## Third-party skill plugins (2026-10-21)
+Two external skill packs are part of the workflow. They are *plugins* (self-updating), never
+vendored copies — installing both a plugin and copies duplicates every skill.
+
+| Pack | What it adds | Claude Code (repo-enabled) | Other tools (per user, optional) |
+|------|--------------|----------------------------|----------------------------------|
+| [obra/superpowers](https://github.com/obra/superpowers) | brainstorming, writing/executing plans, TDD, systematic debugging, verification-before-completion, code review, worktrees, subagent-driven development; SessionStart hook loads `using-superpowers` | `superpowers@claude-plugins-official` | Antigravity: `agy plugin install https://github.com/obra/superpowers`; Codex/Cursor: their plugin marketplaces |
+| [mattpocock/skills](https://github.com/mattpocock/skills) | grill-me / grill-with-docs, tdd, diagnosing-bugs, codebase-design, to-spec / to-tickets / triage, research, handoff | `mattpocock-skills@claude-plugins-official` | Copilot: `copilot plugin marketplace add mattpocock/skills` + `copilot plugin install mattpocock-skills@mattpocock`; Gemini: `gemini skills install https://github.com/mattpocock/skills.git --path skills/engineering` (and `skills/productivity`); Codex: `codex plugin marketplace add mattpocock/skills` |
+
+- Claude Code: `.claude/settings.json` declares the `claude-plugins-official` marketplace and
+  enables both; Claude Code offers to install them when the repo is trusted. Manual:
+  `claude plugin install <id> --scope project`.
+- **Precedence:** these docs and the repo adapters override any plugin skill. No AI attribution
+  in commits; no PR unless asked; benchmarks strictly sequential; autonomous/scheduled runs do
+  not block on brainstorming or grilling questions; repo-local skills (`implement-task`,
+  `review-and-verify`, `session-start`, `project-memory`) stay the definition of done.
+- `/setup-matt-pocock-skills` (issue tracker, triage labels, glossary/ADR layout) edits
+  `CLAUDE.md` and is interactive — run only when the user asks; its output then goes in
+  `docs/ai/` first, adapters second.
+
+## Which skill or tool, when (2026-10-21)
+Use these by default; the repo's own skills (`session-start`, `implement-task`, `review-and-verify`,
+`project-memory`, `update-changelog`) remain the definition of done and override them.
+
+| Situation | Use |
+|-----------|-----|
+| New feature / behaviour with open design questions | `superpowers:brainstorming` → spec in `docs/superpowers/specs/` → `superpowers:writing-plans`. In scheduled/autonomous goal runs, don't block on questions: take the plan's stated defaults and record them as calls made. |
+| Executing a written plan | `superpowers:executing-plans` (inline) or `superpowers:subagent-driven-development` |
+| Writing code | `superpowers:test-driven-development` / `mattpocock-skills:tdd` (test first, watch it fail) |
+| Bug, CI failure, perf regression | `superpowers:systematic-debugging` / `mattpocock-skills:diagnosing-bugs` — reproduce before fixing; "flake" is not a root cause |
+| Module/interface design, refactors | `mattpocock-skills:codebase-design` (deep modules, seams) |
+| Terminology, glossary, ADRs | `mattpocock-skills:domain-modeling` |
+| Gathering facts from primary sources | `mattpocock-skills:research` |
+| Independent tasks in parallel | `superpowers:dispatching-parallel-agents` — **never** for benchmarks (strictly sequential) |
+| Before claiming done | `superpowers:verification-before-completion` + `review-and-verify` |
+| Review | `superpowers:requesting-code-review` / `mattpocock-skills:code-review`; `superpowers:receiving-code-review` when answering one |
+| Comparing against a reference engine (llama.cpp, bitnet.cpp) | **rea** (MCP server `rea` in `.mcp.json`, pinned `rea-agents@6.7.0`; CLI `rea`): `inspect-with-objdump <bin> disassemble\|symbols` for kernel code, `inspect-binary-layout` for ELF/symbol inventory, GDB provider for runtime. Decompiler providers (Ghidra/Hopper/IDA) are unavailable in the cloud container; use them locally if installed. Pair with the reference's source and `perf`. |

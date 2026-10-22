@@ -1,0 +1,72 @@
+=== smollm2_1p7b_q4km_pz_int4 t=3 run 2 ===
+DATE: 2026-10-18 19:53:57 UTC
+CMD: ./adaptive_ai_engine --model models/SmolLM2-1.7B-Instruct-Q4_K_M.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --max-tokens 500 --temperature 0 --threads 3 --no-update-check --classifier int4
+PROMPT: Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+============================================================
+[1/4] Opening model file...
+[2/4] Loading weights...
+[3/4] Preparing runtime...
+[gguf-tok] Loaded 49152 tokens (gpt2), 17 special — BOS=1 EOS=2 chat_template=yes
+[4/4] Ready.
+####  ####   ###    ### #####  #### #####     ##### ##### ####   ### 
+#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #
+####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
+#     # #   #   # #  #  #     #       #        #    #     # #   #   #
+#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
+Project Zero Engine afabca1 — Auto-Tuned Hardware
+Classifier: INT4 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-VNNI                           │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 2048   KiB per core                 │
+│ L3 cache      : 260    MiB shared                   │
+│ Free RAM      : 15500  MiB                          │
+│ DRAM bandwidth: 42.0   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : INT4 (0.5 byte/weight)             │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 680    MB (pre-load est.)           │
+│ Ceiling       : 58.9   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 3 threads | AVX-VNNI | INT4 cls | 4T | 42.0 GB/s | ceiling 59 tok/s
+Model format: GGUF
+Model Configuration:
+  dim:        2048
+  hidden_dim: 8192
+  n_layers:   24
+  n_heads:    32
+  n_kv_heads: 32
+  vocab_size: 49152
+  seq_len:    8192
+  act_type:   0 (SiLU)
+  rope_theta: 130000.0
+  head_dim:   64
+  kv_dim:     2048
+[GGUF] Weights loaded (24 layers, arch=llama)
+[profile] Data/token (loaded model): 1007 MB -> ceiling 39.8 tok/s at 42.0 GB/s
+KV cache: F32, max context: 8192 tokens (sizing tier: Quantized I8, RAM budget 60%)
+
+Sure, I'd be happy to explain these concepts!
+
+Machine learning is a subset of artificial intelligence that involves training algorithms on data so they can learn and make predictions or decisions on their own. This process is called learning.
+
+There are three main types of machine learning: supervised learning, unsupervised learning, and reinforcement learning.
+
+1. **Supervised Learning**: In supervised learning, the algorithm learns from labeled data. Labeled data means that each piece of data has a correct answer or a target output. For example, if you're trying to teach a computer to recognize pictures of cats and dogs, you would provide it with many pictures of cats and dogs, each labeled as either a cat or a dog. The algorithm would then learn to recognize these patterns and use them to predict whether a new picture is a cat or a dog.
+
+2. **Unsupervised Learning**: In unsupervised learning, the algorithm learns from unlabeled data. This type of learning is used when there's no clear target output for the algorithm to learn from. For example, if you have a dataset of people's heights and weights, an unsupervised learning algorithm might group people into clusters based on their height and weight. This could help you understand patterns in the data that you wouldn't have noticed otherwise.
+
+3. **Reinforcement Learning**: In reinforcement learning, the algorithm learns by performing actions and receiving feedback in the form of rewards or penalties. This type of learning is often used in games or other situations where the algorithm needs to make decisions. For example, imagine a game where you're trying to teach a robot to play chess. The robot would make moves, and based on whether it won or lost, it would receive a reward or penalty. Over time, the robot would learn to make moves that lead to winning games.
+
+Each type of learning has its own strengths and is suited to different types of problems. For instance, supervised learning is great for tasks where there's a clear right answer, while reinforcement learning is great for tasks where there's no clear right answer but there's still a clear goal to be achieved.
+
+Remember, these are just some basic concepts. There's a lot more to machine learning and neural networks than what I've described here!
+[gen] 12.98 tok/s (455 tokens)
+
+
+
+PERF: wall=60.95s max_rss=5563MB cpu=226% exit=0

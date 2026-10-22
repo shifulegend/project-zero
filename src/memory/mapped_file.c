@@ -2,6 +2,8 @@
 #include "core/platform.h"
 #include <string.h>
 
+#include <stdint.h>
+
 #if TN_POSIX
 
 #include <fcntl.h>
@@ -97,12 +99,21 @@ TernaryError mapped_file_open(MappedFile *mf, const char *path) {
 }
 
 void mapped_file_close(MappedFile *mf) {
+    /* mf->data and mf->fd are only ever set together, on mapped_file_open()'s
+     * single success path (both NULL/-1 on any of its failure paths and on a
+     * struct that was simply zero-initialized and never opened at all) — so
+     * gating the fd teardown on mf->data is what actually delivers this
+     * function's "safe to call on a zeroed MappedFile" doc promise. Without
+     * it, a zeroed struct has fd == 0, and `close(0)` would silently close
+     * stdin instead of being the no-op callers rely on (2026-09-22: found
+     * while adding a caller — loaded_model_free() in cli/model_load.c — that
+     * is documented to make exactly this zeroed-struct call). */
     if (mf->data) {
         munmap(mf->data, mf->size);
-    }
-    if (mf->fd >= 0) {
-        flock(mf->fd, LOCK_UN);
-        close(mf->fd);
+        if (mf->fd >= 0) {
+            flock(mf->fd, LOCK_UN);
+            close(mf->fd);
+        }
     }
     memset(mf, 0, sizeof(*mf));
     mf->fd = -1;
@@ -155,3 +166,18 @@ void mapped_file_close(MappedFile *mf) {
 }
 
 #endif
+
+void mapped_file_release(const void *p, size_t n) {
+#if defined(__linux__)
+    long pg = sysconf(_SC_PAGESIZE);
+    if (!p || pg <= 0) return;
+    uintptr_t a = (uintptr_t)p, e = a + n;
+    uintptr_t lo = (a + (uintptr_t)pg - 1) & ~((uintptr_t)pg - 1);
+    uintptr_t hi = e & ~((uintptr_t)pg - 1);
+    /* Read-only private file mapping: MADV_DONTNEED drops the pages; the
+     * next access refaults them from the file, never zero-fills. */
+    if (hi > lo) (void)madvise((void *)lo, hi - lo, MADV_DONTNEED);
+#else
+    (void)p; (void)n;
+#endif
+}

@@ -3,6 +3,18 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-10-21.
 
+### 2026-10-22 — Phase 40.4 installer: audience-independent core only
+
+- Built the parts every audience needs (download for this platform, verify against `SHA256SUMS`,
+  user-scope install, upgrade in place, uninstall by manifest, optional `pz config`). Things that
+  depend on the owner's still-open answer about the first-time user (fetching a starter model,
+  starting/opening the web UI, a background service) are deliberately not built.
+- Newest release comes from the release list, not `/releases/latest` (every release is a
+  prerelease). Only Linux x86-64 has an asset; other platforms get build-from-source steps.
+- No signature verification yet: checksums come from the same release as the archive, so they
+  protect against corruption and mirror tampering, not a compromised GitHub release. Signed
+  release metadata stays the precondition for any self-update (decision-log 2026-10-18).
+
 ### 2026-10-22 — Phase 40.3: web UI saves server defaults to the config file, for the next start
 
 - The web UI writes to the same `pz config` file as the CLI (one source of truth), one key per

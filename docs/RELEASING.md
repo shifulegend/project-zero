@@ -54,7 +54,13 @@ runs on a `v*` tag push.
 | Asset | Contents |
 |-------|----------|
 | `project-zero-<version>-x86_64-unknown-linux-gnu.tar.gz` | unpacks to `project-zero-<version>-x86_64-unknown-linux-gnu/`: `pz` + `LICENSE` + `README.md` + `CHANGELOG.md` (+ the `adaptive_ai_engine → pz` alias symlink, first release after the rename only) |
-| `SHA256SUMS` | checksum of the tarball (`sha256sum -c SHA256SUMS` to verify) |
+| `install.sh` | the installer (Phase 40.4): picks the asset for the machine, verifies it against `SHA256SUMS`, installs `pz` to `~/.local/bin` |
+| `SHA256SUMS` | checksums of the tarball and `install.sh` (`sha256sum -c --ignore-missing SHA256SUMS` to verify what you downloaded) |
+
+`install.sh` finds the newest release through the release list (every release so far is a
+prerelease, which `/releases/latest` skips) and expects exactly the asset and directory names
+above: **renaming an asset means changing `install.sh` and `tools/test_install.sh` in the same
+commit** (engineering-rules DoD #6).
 
 **Naming (Phase 39, 2026-10-21):** `<project>-<version>-<target triple>` — the convention ripgrep
 and the Rust/LLVM toolchains use. The version drops the tag's leading `v`; the triple says arch,

@@ -61,7 +61,8 @@ at runtime (`--simd`, `--classifier`, or auto/calibration).
 | `src/cli/` | Arg parsing, REPL, `main.c` (builds `pz`); color/progress/live-stats/markdown-render (Phase 22.3, REPL-only) |
 | `include/` | Public headers mirroring `src/` |
 | `tests/` | Unit + audit + red/blackbox tests (every `tests/*.c` is auto-built & run) |
-| `tools/` | Model conversion + benchmark scripts |
+| `tools/` | Model conversion + benchmark scripts, `changelog.py`, `test_install.sh` |
+| `install.sh` | Phase 40.4 installer (release asset; checksum-verified, user-scope) |
 | `webui/` | Web chat UI frontend source (Vite+Svelte, Phase 22); build output is embedded into the binary, not shipped as a directory |
 | `docs/` | Reports + this `docs/ai/` AI-dev system |
 | `docs/design/` | UI/UX design-principles reference used to grade screenshots (Phase 22) |

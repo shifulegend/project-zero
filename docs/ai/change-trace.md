@@ -3,6 +3,13 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-22.
 
+### 2026-10-22 — Phase 40.4: install.sh
+- `install.sh` (root), `tools/test_install.sh` (24 checks: install, discovery, upgrade, tampered
+  archive, missing checksum entry, unsupported platform, version injection, --help piped,
+  uninstall; dash + bash), CI job `installer` (shellcheck + test), release.yml ships `install.sh`
+  (+ `SHA256SUMS` line), README Option A, RELEASING asset table, DoD #6 + config adapters.
+  Real-repo check: v0.1.0 (old asset name) gets the "predates this installer" message.
+
 ### 2026-10-22 — Phase 40.3: value sources in /v1/config, save server defaults from the web UI
 - `config/pz_config` provenance (`src`, `pz_config_mark_cli`, `pz_config_publish`), `cli/config_cmd`
   records it; `api/config_endpoint` (`config` block in `/v1/config`, `POST /v1/config/defaults`,

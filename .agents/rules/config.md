@@ -32,3 +32,5 @@
   release asset or dependency → update `pz config` schema, install script, `/v1/config`/web UI and docs
   in the same commit: a persistable flag gets a `g_schema` entry in `src/config/pz_config.c`
   (`pz config` / `PZ_<KEY>` / config file), validated again by `parse_args`.
+  Release assets/dependencies → `install.sh` (asset name `project-zero-<v>-<triple>.tar.gz`,
+  `SHA256SUMS`), checked offline by `tools/test_install.sh` (CI job `installer`).

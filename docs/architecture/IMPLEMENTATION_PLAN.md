@@ -3641,7 +3641,7 @@ prefix (= ternary, not the old name).
 **Done when:** no live code, script, CI job, template or current doc uses the old name; old
 benchmark logs still render; the compat shim works for one release; all gates green on gcc and clang.
 
-## Phase 40: Installer + `pz config` (guided setup, persistent configuration) 🟡 40.1–40.3 done 2026-10-22; 40.4–40.5 open
+## Phase 40: Installer + `pz config` (guided setup, persistent configuration) 🟡 40.1–40.4 done 2026-10-22; 40.5 partly (docs done; first release with the installer pending)
 
 **Why:** a first-time user should get from download to a working model without reading docs, and
 every setting a user changes once (model folder, threads, port, defaults) should persist — editable
@@ -3690,7 +3690,21 @@ same-origin or CORS-allowed `Origin` (blocks browser cross-site writes to a key-
 server); `--no-config-write` turns it off. Web UI: Settings → *Server defaults* (value sources,
 save changed settings, web UI title). Tests: `test_config_endpoint` (46); live curl + Playwright
 (`tools/screenshots/webui/server_defaults.spec.mjs`). Saving does not change the running server's
-defaults (requests already override per call). Open: 40.4 `install.sh`, 40.5 docs.
+defaults (requests already override per call).
+
+**As built (40.4, 2026-10-22):** `install.sh` (POSIX sh; dash + bash): Linux x86-64 → asset
+`project-zero-<v>-x86_64-unknown-linux-gnu.tar.gz`; newest release from the release *list*
+(all releases are prereleases); `SHA256SUMS` verification (refuses a mismatch or a missing entry);
+installs `pz` atomically to `~/.local/bin` (`--prefix`), docs to `share/doc/project-zero`, a manifest
+for `--uninstall` (never touches settings or models); PATH hint; offers `pz config` via `/dev/tty`
+(works under `curl | sh`); `--version`, `--repo`, `--yes`, `--no-wizard`; other platforms exit 2
+with build-from-source steps; releases before 0.2.0 get a clear "predates the installer"
+message. Mirrors/tests: `PZ_INSTALL_BASE_URL`, `PZ_INSTALL_API`. `tools/test_install.sh` (24
+checks, offline file:// mirror) runs in CI job `installer` with shellcheck; release.yml ships
+`install.sh` beside the archive and in `SHA256SUMS`. 40.5: README/RELEASING/WEBUI_GUIDE updated;
+the first release carrying the installer (v0.2.0) is the owner's to cut. Extras that depend on
+the owner's audience decision (decision-log 2026-10-22: e.g. offering a starter model, opening
+the web UI) are not built.
 
 **Standing rule (engineering-rules DoD #6, 2026-10-21):** every change that adds/renames/removes a
 user-facing flag, env var, default, file location, release asset or runtime dependency updates the

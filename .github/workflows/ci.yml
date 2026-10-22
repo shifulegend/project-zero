@@ -23,6 +23,19 @@ jobs:
           python3 tools/changelog.py check --require-unreleased
           python3 -I tools/test_changelog.py
 
+  installer:
+    name: Installer (install.sh, offline mirror)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Lint (shellcheck)
+        run: shellcheck install.sh tools/test_install.sh
+      - name: Build (release)
+        run: make release CC=gcc
+      - name: Install / upgrade / refuse tampered / uninstall (dash + bash)
+        run: sh tools/test_install.sh ./pz
+
   build-and-test:
     name: Build & Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

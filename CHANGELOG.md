@@ -60,6 +60,7 @@ section becomes the version's entry and is published as its GitHub release notes
 - Add colour, progress, live token statistics, markdown rendering and a startup banner to the CLI.
 - Add persistent settings: `pz config` (interactive setup), `pz config list|get|set|add|unset|path`, a config file at `~/.config/project-zero/config.toml` (`PZ_CONFIG` overrides the location) and `PZ_<KEY>` environment variables. Precedence is command-line flag > environment > file > default; `--no-config` ignores the file and environment.
 - Add Settings → Server defaults to the web UI: see whether each server value comes from the config file, an environment variable or a command-line flag, and save changed settings (and the web UI title) as server defaults for the next start (`GET /v1/config` `config`, `POST /v1/config/defaults`; disable with `--no-config-write`).
+- Add `install.sh`: a one-line, checksum-verified installer for Linux x86-64 that puts `pz` in `~/.local/bin` without root, finds the newest release, offers `pz config`, and uninstalls with `--uninstall`; it ships with each release and is listed in `SHA256SUMS`.
 - Add faster kernels: K-6 5-trit LUT ternary (AVX-512BW), plain NEON ternary, AVX-512 VNNI Q2_0, llama.cpp-compatible Q4_K x8 repack, fused zero-copy Q6_K and batched speculative-verify kernels.
 
 ### Fixed

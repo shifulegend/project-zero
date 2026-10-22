@@ -351,21 +351,33 @@ Full RCA, methodology, and status: [`docs/ai/mistakes.md`](docs/ai/mistakes.md) 
 
 ## Quick Start
 
-**Option A — pre-built binary (Linux x86-64, no compiler needed):**
+**Option A — installer (Linux x86-64, no compiler, no root):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/shifulegend/project-zero/master/install.sh | sh
+pz --model <model.gguf> --prompt "The capital of France is"
+```
+
+It downloads the newest release, checks it against the release's `SHA256SUMS` (and refuses to
+install on a mismatch), puts `pz` in `~/.local/bin`, and offers the optional `pz config` setup.
+Options: `--version X.Y.Z`, `--prefix DIR`, `--yes`, `--uninstall` (`sh install.sh --help`).
+Works from release 0.2.0 on.
+
+**Or by hand:**
 
 ```bash
 VER=0.2.0   # example: use the version shown on the Releases page
 NAME=project-zero-$VER-x86_64-unknown-linux-gnu
 wget https://github.com/shifulegend/project-zero/releases/download/v$VER/$NAME.tar.gz
 wget https://github.com/shifulegend/project-zero/releases/download/v$VER/SHA256SUMS
-sha256sum -c SHA256SUMS && tar xf $NAME.tar.gz && cd $NAME
+sha256sum -c --ignore-missing SHA256SUMS && tar xf $NAME.tar.gz && cd $NAME
 ./pz --model models/bitnet-b1.58-2B-4T.bin \
   --tokenizer models/bitnet-b1.58-2B-4T_tokenizer_proper.bin \
   --prompt "The capital of France is"
 ```
 
 Releases before the Phase 39 rename shipped `adaptive_ai_engine-<ver>-x86_64-linux.tar.gz`
-with an `pz` binary — same program, old name.
+with an `adaptive_ai_engine` binary — same program, old name.
 
 **Option B — build from source (60 seconds):**
 

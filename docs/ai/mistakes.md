@@ -5,6 +5,13 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-10-22.
 
+### 2026-10-22 — Rename search-and-replace broke a README sentence about old releases
+
+- README said releases before the Phase 39 rename shipped "an `pz` binary": the bulk rename hit a
+  sentence that is about the *old* name. Fixed ("an `adaptive_ai_engine` binary"). Prevention:
+  after a bulk rename, grep the new name next to words like "before", "old", "legacy", "was" and
+  read those lines.
+
 ### 2026-10-22 — Config schema range narrower than the flag it mirrors (`repeat-last-n`)
 
 - `g_schema` gave `repeat-last-n` a minimum of 0, but `--repeat-last-n -1` ("all generated

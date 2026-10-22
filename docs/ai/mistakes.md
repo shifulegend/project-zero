@@ -20,6 +20,8 @@
   never save one; the model file is opened before the hardware probe so a bad path fails at once;
   `prepare_argv` keeps the array it returns. Fuzzer: 2 min 16 s → 1 s, no sanitizer report.
   Also silenced three unused-variable warnings in `simd_dispatch.c` on SIMD-less (CMake) builds.
+  Same day, macOS CI: `tests/test_config_cmd.c` called `mkdtemp` without `<unistd.h>` (macOS
+  declares it there, glibc in `<stdlib.h>`); include added.
 - Prevention rule: reproduce CI with CI's build *and* CI's clean environment (empty `HOME`, no
   caches); a local cache can hide minutes of first-run work.
 

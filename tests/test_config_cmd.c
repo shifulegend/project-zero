@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>   /* mkdtemp on macOS */
 
 static FILE *script(const char *text) {
     FILE *f = tmpfile();

@@ -1554,3 +1554,14 @@
   `tests/test_vision_components.c`, `Makefile`, `src/core/run_state.c`,
   `docs/REGRESSION_VERIFICATION_2026-06-07.md`.
 - Result: all 7 CI checks green on PR #6 and on `master`; secrets scan clean (215 commits).
+
+### 2026-10-07 — `safe_alloc` foundation + Q2_0 batch-matmul allocation carve
+- What: new `include/memory/safe_alloc.h`, `src/memory/safe_alloc.c`,
+  `tests/test_safe_alloc.c`; `run_state.c` now uses the shared `tn_alloc_too_large()`;
+  `matmul_q2_0_vnni.c` carves one checked allocation instead of five `malloc`s;
+  `generate.c` uses `tn_safe_malloc` for the required prompt-token buffer.
+- Why: deterministic OOM trapping (macOS over-commit) + fewer hot-path allocations, per
+  `engineering-rules.md` (trap absurd allocations; reuse existing helpers).
+- Areas: `include/memory/`, `src/memory/`, `src/core/run_state.c`,
+  `src/math/matmul_q2_0_vnni.c`, `src/transformer/generate.c`, `tests/test_safe_alloc.c`.
+- Verified: `make release` clean for gcc and clang; `test_safe_alloc` 40/40 under ASan/UBSan.

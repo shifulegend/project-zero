@@ -13,6 +13,7 @@
 #include "core/step_timing.h"
 #include "tokenizer/tokenizer.h"
 #include "tokenizer/chat_template.h"
+#include "memory/safe_alloc.h"
 #include "core/debug.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -79,9 +80,11 @@ void generate_ex(const Config *cfg, const TransformerWeights *w,
     if (mc && mc->is_moe)
         moe_expert_tracking_reset(cfg->n_layers, mc->num_experts);
 
-    /* Allocate token buffer */
-    int *prompt_tokens = (int *)malloc((cfg->seq_len + 1) * sizeof(int));
-    if (!prompt_tokens) return;
+    /* Allocate token buffer (required): checked sizing, traps on absurd size
+     * rather than letting a required buffer come back NULL. */
+    size_t tok_bytes;
+    if (tn_size_mul_overflow((size_t)cfg->seq_len + 1, sizeof(int), &tok_bytes)) return;
+    int *prompt_tokens = (int *)tn_safe_malloc(tok_bytes, "generate prompt tokens");
 
     int n_prompt = 0;
 

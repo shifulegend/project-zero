@@ -6,45 +6,10 @@
 #include "memory/aligned_alloc.h"
 #include "memory/file_backed.h"
 #include "kv_cache/kv_strategy.h"
-#if TN_POSIX
-#include <unistd.h>
-#endif  /* tn_get_free_ram() for the OOM sanity guard */
+#include "memory/safe_alloc.h"     /* tn_alloc_too_large() — shared OOM guard */
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>   /* free() for k_rope_cache pointer array */
-
-/* Deterministic OOM trap: on some platforms (notably macOS) calloc over-commits
- * for absurd sizes and the process is OOM-killed instead of receiving NULL.
- * Reject up front when a single buffer would dwarf available RAM. The 32x
- * headroom is far beyond any runnable configuration, so this never rejects a
- * legitimate allocation — it only traps pathological requests (e.g. INT_MAX
- * context) the same way malloc-returns-NULL already does on Linux. */
-static int tn_alloc_too_large(size_t count, size_t elem_size) {
-  size_t bytes;
-  if (tn_size_mul_overflow(count, elem_size, &bytes)) return 1;
-#if defined(__linux__)
-  /* tn_aligned_calloc zeroes lazily here (MADV_DONTNEED), so untouched pages
-   * cost nothing: allow up to 32x free RAM. */
-  tn_i64 ram = tn_get_free_ram();
-  if (ram <= 0) return 0; /* unknown RAM: fall back to malloc-NULL behavior */
-  return bytes > (size_t)ram * 32;
-#else
-  /* 2026-10-21: elsewhere tn_aligned_calloc memsets the whole buffer, touching
-   * every page, so a buffer larger than physical RAM can never be zeroed --
-   * macOS lets the allocation succeed and the memory killer SIGKILLs the
-   * process (CI: test_redbox's INT_MAX-context case, a 275 GB attention
-   * buffer, passed the 32x-free-RAM check on a runner with ~9 GB free).
-   * Deterministic bound: total physical RAM. */
-  tn_i64 total = -1;
-#if TN_POSIX && defined(_SC_PHYS_PAGES)
-  long pages = sysconf(_SC_PHYS_PAGES), psz = sysconf(_SC_PAGESIZE);
-  if (pages > 0 && psz > 0) total = (tn_i64)pages * (tn_i64)psz;
-#endif
-  if (total <= 0) total = tn_get_free_ram();
-  if (total <= 0) return 0;
-  return bytes > (size_t)total;
-#endif
-}
 
 /* Phase 31: carve `n` buffers of sizes[i] bytes out of one disk-backed
  * mapping in `dir`, each 64-byte aligned. On success out[i] point into

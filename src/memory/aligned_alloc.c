@@ -81,6 +81,20 @@ void *tn_aligned_calloc(size_t count, size_t elem_size, size_t alignment) {
     return ptr;
 }
 
+int tn_mem_release(void *p, size_t n) {
+    if (!p || n == 0) return 0;
+#if defined(__linux__)
+    long pg = sysconf(_SC_PAGESIZE);
+    if (pg <= 0) return 0;
+    uintptr_t a = (uintptr_t)p, e = a + n;
+    uintptr_t lo = (a + (uintptr_t)pg - 1) & ~((uintptr_t)pg - 1);
+    uintptr_t hi = e & ~((uintptr_t)pg - 1);
+    return hi > lo && madvise((void *)lo, hi - lo, MADV_DONTNEED) == 0;
+#else
+    return 0;
+#endif
+}
+
 void tn_mem_commit(void *p, size_t n) {
     if (!p || n == 0) return;
 #if defined(__linux__) && defined(MADV_POPULATE_WRITE)

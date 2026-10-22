@@ -1,5 +1,15 @@
 # Benchmark Results
 
+## Latest (2026-10-22, 4-vCPU Intel Xeon @ 2.10 GHz, AVX-512 VNNI)
+
+| What | When (UTC) | Result | Data + screenshots |
+|---|---|---|---|
+| SmolLM2-135M F16, PZ vs llama.cpp, 1–4 threads, best of 3 | 2026-10-22 09:06–09:12 | +13% / +18% / +5% / −3% | [`benchmark_results/h2h_smollm2_135m_2026-10-22/`](../benchmark_results/h2h_smollm2_135m_2026-10-22/) |
+| Same commands, captured terminal sessions (single runs) | 2026-10-22 17:36–17:38 | PZ 29.7 / 60.2 / 76.1 / 104.1 vs 25.6 / 46.5 / 65.5 / 87.9 tok/s | same folder, `screenshots/` |
+| Parallel serving (`--parallel N`), 4 and 8 concurrent clients | 2026-10-22 17:30–17:36 | 2.2–2.3× (4 clients), 2.4–2.7× (8) aggregate tok/s | [`benchmark_results/parallel_2026-10-22/`](../benchmark_results/parallel_2026-10-22/) |
+
+The full sweep below is the original 2026-06-21 BitNet b1.58-2B-4T report (i5-11300H).
+
 Full thread sweep: Project Zero vs Microsoft bitnet.cpp on BitNet b1.58-2B-4T.
 
 ---

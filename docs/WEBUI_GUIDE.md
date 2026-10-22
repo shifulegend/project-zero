@@ -157,10 +157,16 @@ then includes a `best_of` object with each candidate's score). Omitted fields us
 
 CORS (`--cors`, `--cors-origin <origin>`, repeatable or `*`) and API-key auth (`--api-key
 <key>`, checked via `Authorization: Bearer <key>`) are both **off by default** — enable them
-explicitly for anything beyond loopback experimentation. Only one chat completion runs at a
-time; by default a second concurrent request gets `429 Too Many Requests`; start the server with
-`--queue-size N` (and optionally `--queue-timeout S`) to let up to N requests wait their turn instead
-(the web UI shows the queue position). A server started with `--remote-layers` (Phase 28) shows a
+explicitly for anything beyond loopback experimentation. By default one chat completion runs at
+a time; `--parallel N` lets up to N run together, batched into one forward pass per token
+(`--parallel-batch` sets how many tokens that pass may carry, default 128). Settings → Server
+defaults shows how many requests the server answers at once (and why fewer, for models that cannot
+batch) and saves both values for the next start. Requests that need the whole engine (an image,
+`best_of`, tree search) wait for the others and run alone. When every slot is busy a request gets
+`429 Too Many Requests`; start the server with `--queue-size N` (and optionally
+`--queue-timeout S`) to let up to N requests wait their turn instead (the web UI shows the queue
+position). `/metrics` reports `project_zero_generation_slots`, `_slots_busy`, `queue_waiting` and
+`parallel_kv_tokens`. A server started with `--remote-layers` (Phase 28) shows a
 `dist N nodes` tag in the header; hover it for each node's layer range. `--kv-offload <dir>` (Phase 31)
 shows a `KV on disk` tag.
 

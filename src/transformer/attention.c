@@ -414,6 +414,60 @@ void attention_forward(RunState *s, const TransformerWeights *w,
  * intentionally not replicated here -- a real perf refinement, not a
  * correctness concern, left for Phase 18-B alongside the Q4_K/Q2_0/F32
  * batched kernels themselves. */
+/* One head of the batched read phase for every row (see the call site in
+ * attention_forward_rows). */
+typedef struct {
+  RunState *const *states;
+  const int *pos_arr;
+  SpecBatchScratch *sb;
+  int layer, n_tokens, dim, head_dim, kv_mul, n_kv_heads;
+  float inv_sqrt_head_dim;
+} RowsHeadArgs;
+
+static void rows_one_head(const RowsHeadArgs *a, int h) {
+  const int head_dim = a->head_dim, layer = a->layer, n_kv_heads = a->n_kv_heads;
+  const int kv_h = h / a->kv_mul;
+  for (int k = 0; k < a->n_tokens; k++) {
+    RunState *s = a->states[k];
+    int max_seq = s->max_seq_len;
+    int tok_pos = a->pos_arr[k];
+    const float *q_head = a->sb->q + (size_t)k * a->dim + h * head_dim;
+    float *out_head = a->sb->xb + (size_t)k * a->dim + h * head_dim;
+    int valid_ctx = sw_valid_count(&s->sw, tok_pos);
+    float *att_scores = s->att + h * max_seq;
+
+    for (int t = 0; t < valid_ctx; t++) {
+      int hist_logical = (tok_pos >= valid_ctx) ? (tok_pos - valid_ctx + 1 + t) : t;
+      int mapped_t = sw_map_position(&s->sw, hist_logical);
+      size_t k_offset = KV_CACHE_IDX(layer, kv_h, mapped_t, 0, n_kv_heads, max_seq, head_dim);
+      size_t kr = KV_SCALE_IDX(layer, kv_h, mapped_t, n_kv_heads, max_seq);
+      float score = (s->kv_type != KV_TYPE_F32)
+          ? kvq_dot_row((KVCacheType)s->kv_type, q_head, kvq_k(s, kr), kvq_ks(s, kr), head_dim)
+          : tn_vec_dot(q_head, &s->key_cache[k_offset], head_dim);
+      att_scores[t] = score * a->inv_sqrt_head_dim;
+    }
+    tn_softmax(att_scores, valid_ctx);
+
+    memset(out_head, 0, head_dim * sizeof(float));
+    for (int t = 0; t < valid_ctx; t++) {
+      int hist_logical = (tok_pos >= valid_ctx) ? (tok_pos - valid_ctx + 1 + t) : t;
+      int mapped_t = sw_map_position(&s->sw, hist_logical);
+      size_t v_offset = KV_CACHE_IDX(layer, kv_h, mapped_t, 0, n_kv_heads, max_seq, head_dim);
+      float w_t = att_scores[t];
+      if (s->kv_type != KV_TYPE_F32) {
+        size_t vr = KV_SCALE_IDX(layer, kv_h, mapped_t, n_kv_heads, max_seq);
+        kvq_axpy_row((KVCacheType)s->kv_type, out_head, w_t, kvq_v(s, vr), kvq_vs(s, vr), head_dim);
+      } else
+        tn_vec_saxpy(out_head, w_t, &s->value_cache[v_offset], head_dim);
+    }
+  }
+}
+
+static void rows_heads_task(void *arg, int thread_id, int start, int end) {
+  (void)thread_id;
+  for (int h = start; h < end; h++) rows_one_head((const RowsHeadArgs *)arg, h);
+}
+
 /* Generic dense/GQA batched attention over n_tokens rows whose K/V live in
  * states[k] at position pos_arr[k] (Phase 23, 2026-10-19). One sequence's
  * consecutive tokens (speculative verify) and one token from each of several
@@ -567,47 +621,20 @@ static TernaryError attention_forward_rows(RunState *const *states, const int *p
 
   /* ── Read phase ── */
   t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-  float inv_sqrt_head_dim = 1.0f / sqrtf((float)head_dim);
-  for (int k = 0; k < n_tokens; k++) {
-    RunState *s = states[k];
-    int max_seq = s->max_seq_len;
-    int tok_pos = pos_arr[k];
-    float *q_k = sb->q + (size_t)k * dim;
-    float *xb_out = sb->xb + (size_t)k * dim; /* attention output, reusing xb (rmsnorm input no longer needed) */
-
-    for (int h = 0; h < n_heads; h++) {
-      float *q_head = q_k + h * head_dim;
-      int kv_h = h / kv_mul;
-      int valid_ctx = sw_valid_count(&s->sw, tok_pos);
-      float *att_scores = s->att + h * max_seq;
-
-      for (int t = 0; t < valid_ctx; t++) {
-        int hist_logical = (tok_pos >= valid_ctx) ? (tok_pos - valid_ctx + 1 + t) : t;
-        int mapped_t = sw_map_position(&s->sw, hist_logical);
-        size_t k_offset = KV_CACHE_IDX(layer, kv_h, mapped_t, 0, n_kv_heads, max_seq, head_dim);
-        size_t kr = KV_SCALE_IDX(layer, kv_h, mapped_t, n_kv_heads, max_seq);
-        float score = (s->kv_type != KV_TYPE_F32)
-            ? kvq_dot_row((KVCacheType)s->kv_type, q_head, kvq_k(s, kr), kvq_ks(s, kr), head_dim)
-            : tn_vec_dot(q_head, &s->key_cache[k_offset], head_dim);
-        att_scores[t] = score * inv_sqrt_head_dim;
-      }
-
-      tn_softmax(att_scores, valid_ctx);
-
-      float *out_head = xb_out + h * head_dim;
-      memset(out_head, 0, head_dim * sizeof(float));
-      for (int t = 0; t < valid_ctx; t++) {
-        int hist_logical = (tok_pos >= valid_ctx) ? (tok_pos - valid_ctx + 1 + t) : t;
-        int mapped_t = sw_map_position(&s->sw, hist_logical);
-        size_t v_offset = KV_CACHE_IDX(layer, kv_h, mapped_t, 0, n_kv_heads, max_seq, head_dim);
-        float a = att_scores[t];
-        if (s->kv_type != KV_TYPE_F32) {
-          size_t vr = KV_SCALE_IDX(layer, kv_h, mapped_t, n_kv_heads, max_seq);
-          kvq_axpy_row((KVCacheType)s->kv_type, out_head, a, kvq_v(s, vr), kvq_vs(s, vr), head_dim);
-        } else
-          tn_vec_saxpy(out_head, a, &s->value_cache[v_offset], head_dim);
-      }
-    }
+  {
+    /* 2026-10-22 (Phase 23 batched decode): spread heads over the pool like
+     * the single-token path. A head owns its own s->att row and its slice of
+     * every row's output, and walks the rows in order, so rows that share a
+     * state (a prefill chunk) never touch the same score row at once. */
+    RowsHeadArgs ra = { states, pos_arr, sb, layer, n_tokens, dim, head_dim, kv_mul,
+                        n_kv_heads, 1.0f / sqrtf((float)head_dim) };
+    int work = 0;
+    for (int k = 0; k < n_tokens; k++) work += sw_valid_count(&states[k]->sw, pos_arr[k]);
+    int min_ctx = attn_parallel_min_ctx_get();
+    if (tp && n_heads > 1 && min_ctx > 0 && work >= min_ctx)
+      threadpool_dispatch(tp, rows_heads_task, &ra, n_heads);
+    else
+      rows_heads_task(&ra, 0, 0, n_heads);
   }
   if (t_step) {
       tn_step_timing_add(TN_STEP_11_ATTN_SCORE,

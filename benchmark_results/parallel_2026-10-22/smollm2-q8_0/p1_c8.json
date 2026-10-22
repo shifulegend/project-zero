@@ -1,0 +1,16 @@
+{
+  "parallel": 1,
+  "slots": 1,
+  "clients": 8,
+  "completion_tokens": 1024,
+  "prompt_tokens": 313,
+  "wall_s": 21.08203454699992,
+  "aggregate_tok_s": 48.57216212776391,
+  "per_request_tok_s": 15.288626705845555,
+  "mean_latency_s": 12.130622758375011,
+  "max_latency_s": 21.08053351400008,
+  "model": "models/smollm2-q8_0.gguf",
+  "threads": 4,
+  "max_tokens": 128,
+  "date": "2026-10-22 17:31:19 UTC"
+}

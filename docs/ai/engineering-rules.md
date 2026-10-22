@@ -137,6 +137,10 @@ A change is done only when:
 ## Performance
 - Hot path is memory-bandwidth bound; prefer fused kernels and avoiding redundant
   quantize/dequant passes. Measure before/after with the `tools/*bench*.sh` harness.
+- **Benchmark screenshots are real sessions** (2026-10-22): capture each run with
+  `tools/screenshots/cli/capture.mjs` so the image shows the Project Zero banner, the command, the
+  output and the tok/s of that run (server benchmarks: `tools/bench_parallel.py --show-server`).
+  Never publish images rendered from log text; quote the captured runs' own numbers.
 - **Startup is part of performance** (2026-10-19): benchmark wall time and max RSS next to the
   engine's own `[gen] tok/s`, against a reference engine on the same host. No O(n²) "one-time"
   init (tokenizer lookups go through the sorted index); per-host measurements (DRAM bandwidth)

@@ -5,8 +5,9 @@ applyTo: "src/api/**,include/api/**,tests/test_api_server.c,tests/test_cors.c,te
 
 - Hand-rolled HTTP/1.1 over raw sockets, no external HTTP library; loopback-only by default.
 - CORS/auth are off by default — don't change; keeps loopback experimentation open.
-- Only one `generate_with_callback` runs at a time, serialized via `ApiContext.generation_mutex`
-  trylock (second concurrent request → `429`); other routes never touch that mutex.
+- Admission via `ctx->gen_queue` units (capacity `--parallel`, default 1): plain chat = 1 unit in
+  `api/batch_scheduler`; image/best-of/MCTS/cache reset = all units + `generation_mutex`. No free
+  unit → `429` (or FIFO wait with `--queue-size`); other routes never take a unit or the mutex.
 - `src/api/webui_bundle_generated.c` is generated/committed — edit `webui/src` + `make
   webui-bundle` instead.
 - "Untested" socket code is not verified code — smoke-test with real `curl`/`curl --raw` before

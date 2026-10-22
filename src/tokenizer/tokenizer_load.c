@@ -227,13 +227,11 @@ void tokenizer_collect_eog(Tokenizer *t, const int *ids, int n_ids, int require_
     }
 }
 
-void tokenizer_set_chat_stops(Tokenizer *t, const char *chat_template) {
-    if (!t) return;
-    free(t->chat_stop);
-    t->chat_stop = NULL;
-    if (!chat_template || !chat_template[0] || !t->special_is_control || t->vocab_size <= 0) return;
+unsigned char *tokenizer_chat_stops_new(const Tokenizer *t, const char *chat_template) {
+    if (!t || !chat_template || !chat_template[0] || !t->special_is_control || t->vocab_size <= 0)
+        return NULL;
     unsigned char *m = (unsigned char *)calloc((size_t)t->vocab_size, 1);
-    if (!m) return;   /* falls back to the declared EOG set */
+    if (!m) return NULL;   /* falls back to the declared EOG set */
     for (int i = 0; i < t->n_special; i++) {
         int id = t->special_token_ids[i];
         if (!t->special_is_control[i] || id < 0 || id >= t->vocab_size) continue;
@@ -246,15 +244,15 @@ void tokenizer_set_chat_stops(Tokenizer *t, const char *chat_template) {
         }
         if (!strstr(chat_template, t->special_tokens[i])) m[id] = 1;
     }
-    t->chat_stop = m;
+    return m;
 }
 
-int tokenizer_is_eog(const Tokenizer *t, int id) {
+int tokenizer_is_eog(const Tokenizer *t, int id, const unsigned char *chat_stops) {
     if (!t || id < 0) return 0;
     if (id == t->eos_token_id) return 1;
     for (int i = 0; i < t->n_eos; i++)
         if (t->eos_list[i] == id) return 1;
-    return t->chat_stop && id < t->vocab_size && t->chat_stop[id];
+    return chat_stops && id < t->vocab_size && chat_stops[id];
 }
 
 void tokenizer_free(Tokenizer *t) {
@@ -273,6 +271,5 @@ void tokenizer_free(Tokenizer *t) {
     }
     free(t->special_token_ids);
     free(t->special_is_control);
-    free(t->chat_stop);
     memset(t, 0, sizeof(*t));
 }

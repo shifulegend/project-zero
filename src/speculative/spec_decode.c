@@ -50,9 +50,10 @@ static int sample_next(float *logits, int vocab_size, float temperature, float t
     return vocab_size - 1;
 }
 
-static int is_eos_token(int token, const Config *cfg, const Tokenizer *tok) {
+static int is_eos_token(int token, const Config *cfg, const Tokenizer *tok,
+                        const unsigned char *chat_stops) {
     if (cfg->eos_token_id > 0 && token == cfg->eos_token_id) return 1;
-    return tokenizer_is_eog(tok, token);   /* incl. chat-mode turn ends */
+    return tokenizer_is_eog(tok, token, chat_stops);   /* incl. chat-mode turn ends */
 }
 
 /* ── Core implementation ─────────────────────────────────────────────────
@@ -124,7 +125,6 @@ void speculative_generate_with_callback(const Config *cfg, const TransformerWeig
     if (!prompt_tokens) return;
     int n_prompt = 0;
 
-    tokenizer_set_chat_stops(tok, tok->chat_template);
     if (tok->chat_template) {
         const char *bos_str = (tok->bos_token_id >= 0 && tok->bos_token_id < tok->vocab_size)
                               ? tok->vocab[tok->bos_token_id] : "";
@@ -179,6 +179,8 @@ void speculative_generate_with_callback(const Config *cfg, const TransformerWeig
 
     unsigned long long rng_state;
     rng_seed(&rng_state, (unsigned long long)time(NULL));
+    /* Chat-mode turn ends for this generation (owned here, never shared). */
+    unsigned char *chat_stops = tokenizer_chat_stops_new(tok, tok->chat_template);
 
     sw_init(&s->sw, s->max_seq_len, n_prompt);
     sw_init(&draft->state->sw, draft->state->max_seq_len, n_prompt);
@@ -253,7 +255,7 @@ void speculative_generate_with_callback(const Config *cfg, const TransformerWeig
         /* ── Emit accepted tokens + the resampled/bonus token ────────────── */
         for (int i = 0; i <= n_accept; i++) {
             int emitted = (i < n_accept) ? draft_tokens[i] : emit_token;
-            if (is_eos_token(emitted, cfg, tok)) { stop = 1; break; }
+            if (is_eos_token(emitted, cfg, tok, chat_stops)) { stop = 1; break; }
             if (tokens_generated == 0) gen_start_us = timer_now_us();
             const char *piece = tokenizer_decode(tok, prev_token, emitted);
             int stop_requested = 0;
@@ -286,6 +288,7 @@ void speculative_generate_with_callback(const Config *cfg, const TransformerWeig
     free(last_draft_logits);
     spec_batch_scratch_free(&sb);
     free(prompt_tokens);
+    free(chat_stops);
 
     if (tokens_generated > 1 && gen_start_us > 0) {
         int64_t end_us = timer_now_us();

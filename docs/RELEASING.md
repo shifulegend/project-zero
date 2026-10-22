@@ -184,8 +184,9 @@ MUST NOT be modified; any modifications MUST be released as a new version"), Kee
 8. **After publishing**: download the live assets on a clean machine, verify `SHA256SUMS`, run
    `install.sh --version <v>` and `pz --version`; then add the superseded notice (rule 2) to
    the previous release when this one fixes something users of it should know about.
-9. **Deprecations** follow the changelog guidance: announce in release N, remove in release N+2
-   at the earliest (e.g. the `adaptive_ai_engine` alias), and say so in both releases' notes.
+9. **Deprecations** follow the changelog guidance: announce in release N, remove no earlier than
+   N+1 and name that release in the deprecation (the `adaptive_ai_engine` alias: deprecated in
+   0.2.0, removed in 0.3.0 per the Phase 39 decision), and say so in both releases' notes.
 
 ## Hardening note
 

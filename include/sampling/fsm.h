@@ -17,6 +17,9 @@
 
 typedef struct {
     JsonGrammarState json;
+    /* The generation's chat-mode turn ends (tokenizer_chat_stops_new; NULL =
+     * none), treated like EOS: masked until the JSON document is complete. */
+    const unsigned char *chat_stops;
 } FSMState;
 
 /* Resets to root mode: "expecting '{' or '['" (see json_grammar_init_root). */

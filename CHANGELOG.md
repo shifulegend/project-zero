@@ -14,6 +14,8 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-22
+
 ### Changed
 
 - **Breaking:** Rename the binary to `pz` (was `adaptive_ai_engine`); `pz --version` prints `Project Zero <version>`.
@@ -28,7 +30,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Deprecated
 
-- Deprecate the `adaptive_ai_engine` name: `make` and the release archive still provide it as a symlink to `pz` that prints a notice; it is removed in the release after the next one.
+- Deprecate the `adaptive_ai_engine` name: `make` and the release archive still provide it as a symlink to `pz` that prints a notice; replaced by `pz` and removed in v0.3.0.
 
 ### Added
 
@@ -51,6 +53,7 @@ section becomes the version's entry and is published as its GitHub release notes
 - Add opt-in CORS (`--cors`, `--cors-origin`) and API-key auth (`--api-key`), `/metrics`, OpenAPI docs at `/docs` and request cancellation.
 - Add `GET /v1/config`, publishing server defaults, valid ranges and feature flags.
 - Add a FIFO generation queue (`--queue-size`, `--queue-timeout`).
+- Add parallel serving (`--parallel N`, `--parallel-batch N`): up to N chat requests generate at once, batched into one forward pass per token for dense attention models, with per-slot KV memory taken from a shared budget; `/v1/config`, `/metrics` and Settings → Server defaults show and save it. With 4 concurrent clients aggregate throughput rises from 45 to 101 tok/s (SmolLM2-135M Q8_0) and from 12.7 to 29.8 tok/s (SmolLM2-1.7B Q4_K_M) on a 4-vCPU Xeon at 4 threads.
 - Add graceful shutdown on Ctrl+C/SIGTERM in `--server` mode.
 - Add distributed pipeline inference over TCP (`--remote-layers`, `--rpc-worker`).
 - Add notify-only update checks (`--check-update`, `GET /v1/update`, `--no-update-check`, `--update-*`).
@@ -61,6 +64,7 @@ section becomes the version's entry and is published as its GitHub release notes
 - Add persistent settings: `pz config` (interactive setup), `pz config list|get|set|add|unset|path`, a config file at `~/.config/project-zero/config.toml` (`PZ_CONFIG` overrides the location) and `PZ_<KEY>` environment variables. Precedence is command-line flag > environment > file > default; `--no-config` ignores the file and environment.
 - Add Settings → Server defaults to the web UI: see whether each server value comes from the config file, an environment variable or a command-line flag, and save changed settings (and the web UI title) as server defaults for the next start (`GET /v1/config` `config`, `POST /v1/config/defaults`; disable with `--no-config-write`).
 - Add `install.sh`: a one-line, checksum-verified installer for Linux x86-64 that puts `pz` in `~/.local/bin` without root, finds the newest release, offers `pz config`, and uninstalls with `--uninstall`; it ships with each release and is listed in `SHA256SUMS`.
+- Add a guided `pz config` setup for non-technical users: each step explains in plain words what it means, shows example choices and their effect, and says how to change it later; it can download a checksum-verified starter model sized to the computer's free memory (list replaceable with `PZ_MODEL_CATALOG`) and open the chat page when done. The installer hands over to it.
 - Add faster kernels: K-6 5-trit LUT ternary (AVX-512BW), plain NEON ternary, AVX-512 VNNI Q2_0, llama.cpp-compatible Q4_K x8 repack, fused zero-copy Q6_K and batched speculative-verify kernels.
 
 ### Fixed
@@ -85,6 +89,9 @@ section becomes the version's entry and is published as its GitHub release notes
 - Fix a saved calibration overriding the automatically chosen SIMD tier.
 - Fix the DRAM bandwidth probe under-reporting about 3× and hardware ceilings using fixed BitNet-2B sizes for every model.
 - Fix release builds silently linking objects compiled for a different build variant.
+- Fix a streaming API reply continuing to generate after its client disconnected, holding the generation slot until `max_tokens`.
+- Fix stopping the server (Ctrl+C/SIGTERM) while a request was generating: the generation now stops before the model is unloaded instead of running on freed memory.
+- Fix `pz config set best-of-max` accepting values up to 1024 that `--best-of-max` then rejects at startup (the limit is 64 in both).
 
 ### Security
 
@@ -115,5 +122,6 @@ _First release with a prebuilt, portable x86-64 Linux binary (`adaptive_ai_engin
 - Fix wrong value-cache indexing in attention.
 - Fix the sampling RNG being re-seeded on every call.
 
-[Unreleased]: https://github.com/shifulegend/project-zero/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/shifulegend/project-zero/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/shifulegend/project-zero/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/shifulegend/project-zero/releases/tag/v0.1.0

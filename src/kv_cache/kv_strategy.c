@@ -123,6 +123,39 @@ void kv_strategy_set_options(const KVStrategyOptions *opt) {
 int kv_strategy_kv_type(void) { return g_kv_opts.kv_type; }
 const char *kv_strategy_offload_dir(void) { return g_kv_opts.offload_dir; }
 
+/* Bytes one position costs across all layers and KV heads (K + V).
+ * Per head_dim row: F32 = 4/element; quantized (--kv-type i8|i4) = data
+ * bytes + F32 scales (kvq_row_layout; i4 falls back to i8). */
+static tn_i64 kv_bytes_per_token(const Config *cfg, const MoEConfig *mc, int kv_type) {
+  int head_dim = (mc && mc->attn_head_dim > 0) ? mc->attn_head_dim : config_head_dim(cfg);
+  tn_i64 row_bytes = (tn_i64)head_dim * (tn_i64)sizeof(float);
+  if (kv_type != KV_TYPE_F32) {
+    int rb = 0, rs = 0;
+    if (kvq_row_layout((KVCacheType)kv_type, head_dim, &rb, &rs) != 0)
+      kvq_row_layout(KV_TYPE_I8, head_dim, &rb, &rs);
+    row_bytes = (tn_i64)rb + (tn_i64)rs * (tn_i64)sizeof(float);
+  }
+  return (tn_i64)cfg->n_layers * (tn_i64)(cfg->n_kv_heads > 0 ? cfg->n_kv_heads : cfg->n_heads)
+         * row_bytes * 2;
+}
+
+tn_i64 kv_strategy_bytes_per_token(const Config *cfg, const MoEConfig *mc) {
+  return cfg ? kv_bytes_per_token(cfg, mc, g_kv_opts.kv_type) : 0;
+}
+
+tn_i64 kv_strategy_budget_tokens(const Config *cfg, const MoEConfig *mc, tn_i64 free_ram) {
+  tn_i64 per_token = kv_strategy_bytes_per_token(cfg, mc);
+  if (per_token <= 0 || free_ram <= 0) return 0;
+  float frac = g_kv_opts.ram_fraction > 0.0f ? g_kv_opts.ram_fraction : KV_DEFAULT_RAM_FRACTION;
+  if (frac > 0.95f) frac = 0.95f;
+  tn_i64 base = free_ram;
+  if (g_kv_opts.offload_dir) {
+    tn_i64 disk = file_backed_free_space(g_kv_opts.offload_dir);
+    if (disk > 0) base = disk;
+  }
+  return (tn_i64)((double)base * (double)frac) / per_token;
+}
+
 KVStrategyResult select_kv_strategy(const Config *cfg, tn_i64 free_ram, const MoEConfig *mc) {
   return select_kv_strategy_ex(cfg, free_ram, mc, &g_kv_opts);
 }
@@ -201,19 +234,7 @@ KVStrategyResult select_kv_strategy_ex(const Config *cfg, tn_i64 free_ram, const
    * left as a separate follow-up.
    */
   {
-    int head_dim = (mc && mc->attn_head_dim > 0) ? mc->attn_head_dim : config_head_dim(cfg);
-    /* Bytes per head_dim row: F32 = 4/element; quantized (--kv-type i8|i4)
-     * = data bytes + F32 scales (kvq_row_layout; i4 falls back to i8). */
-    tn_i64 row_bytes = (tn_i64)head_dim * (tn_i64)sizeof(float);
-    if (opt && opt->kv_type != KV_TYPE_F32) {
-      int rb = 0, rs = 0;
-      if (kvq_row_layout((KVCacheType)opt->kv_type, head_dim, &rb, &rs) != 0)
-        kvq_row_layout(KV_TYPE_I8, head_dim, &rb, &rs);
-      row_bytes = (tn_i64)rb + (tn_i64)rs * (tn_i64)sizeof(float);
-    }
-    tn_i64 per_token = (tn_i64)cfg->n_layers
-                     * (tn_i64)(cfg->n_kv_heads > 0 ? cfg->n_kv_heads : cfg->n_heads)
-                     * row_bytes * 2;
+    tn_i64 per_token = kv_bytes_per_token(cfg, mc, opt ? opt->kv_type : KV_TYPE_F32);
     if (per_token > 0) {
       float frac = (opt && opt->ram_fraction > 0.0f) ? opt->ram_fraction : KV_DEFAULT_RAM_FRACTION;
       if (frac > 0.95f) frac = 0.95f;

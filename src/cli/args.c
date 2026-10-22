@@ -3,6 +3,7 @@
 #include "kv_cache/kv_quant_ops.h"
 #include "api/chat_compile.h"
 #include "reasoning/best_of.h"
+#include "api/server_config.h"
 #include "update/update_check.h"
 #include "math/rope.h"
 #include <stdio.h>
@@ -118,6 +119,11 @@ void print_usage(const char *prog_name) {
     printf("  --queue-size <N>    Let up to N chat requests wait (in order) while one is\n");
     printf("                      generating, instead of answering 429 (default: 0)\n");
     printf("  --queue-timeout <s> Seconds a queued request waits before giving up (120)\n");
+    printf("  --parallel <N>      Serve up to N chat requests at once, batched into one\n");
+    printf("                      forward pass per token (default: 1 = one at a time;\n");
+    printf("                      max %d). Dense models only; others stay sequential.\n", PZ_PARALLEL_MAX);
+    printf("  --parallel-batch <N> Tokens per batched pass: every active reply's next\n");
+    printf("                      token plus a chunk of waiting prompts (default: %d)\n", PZ_PARALLEL_BATCH_DEFAULT);
     printf("  --ui-title <name>   Brand name shown in the web UI (default: project-zero)\n");
     printf("  --ui-logo <m>       ascii (default: the block wordmark of --ui-title, as in the\n");
     printf("                      terminal banner; falls back to text for other letters) | text\n");
@@ -284,6 +290,8 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->remote_layers = NULL;
     args->plan_layers = NULL;
     args->queue_timeout_s = 120;
+    args->parallel = 1;
+    args->parallel_batch = PZ_PARALLEL_BATCH_DEFAULT;
     args->best_of_max = BEST_OF_MAX_DEFAULT;
     memset(&args->mcts, 0, sizeof(args->mcts));
     args->mcts_max = 64;
@@ -467,10 +475,22 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
                 fprintf(stderr, "Error: --queue-timeout must be >= 1 second\n");
                 return TN_ERR_INVALID_CONFIG;
             }
+        } else if (strcmp(argv[i], "--parallel") == 0 && i + 1 < argc) {
+            args->parallel = atoi(argv[++i]);
+            if (args->parallel < 1 || args->parallel > PZ_PARALLEL_MAX) {
+                fprintf(stderr, "Error: --parallel must be 1..%d\n", PZ_PARALLEL_MAX);
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--parallel-batch") == 0 && i + 1 < argc) {
+            args->parallel_batch = atoi(argv[++i]);
+            if (args->parallel_batch < 1 || args->parallel_batch > PZ_PARALLEL_BATCH_MAX) {
+                fprintf(stderr, "Error: --parallel-batch must be 1..%d\n", PZ_PARALLEL_BATCH_MAX);
+                return TN_ERR_INVALID_CONFIG;
+            }
         } else if (strcmp(argv[i], "--best-of") == 0 && i + 1 < argc) {
             args->best_of = atoi(argv[++i]);
-            if (args->best_of < 1 || args->best_of > 64) {
-                fprintf(stderr, "Error: --best-of must be 1..64\n");
+            if (args->best_of < 1 || args->best_of > BEST_OF_N_MAX) {
+                fprintf(stderr, "Error: --best-of must be 1..%d\n", BEST_OF_N_MAX);
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--mcts") == 0 && i + 1 < argc) {
@@ -539,8 +559,8 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             args->prm_bad = argv[++i];
         } else if (strcmp(argv[i], "--best-of-max") == 0 && i + 1 < argc) {
             args->best_of_max = atoi(argv[++i]);
-            if (args->best_of_max < 1 || args->best_of_max > 64) {
-                fprintf(stderr, "Error: --best-of-max must be 1..64\n");
+            if (args->best_of_max < 1 || args->best_of_max > BEST_OF_N_MAX) {
+                fprintf(stderr, "Error: --best-of-max must be 1..%d\n", BEST_OF_N_MAX);
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--chat-format") == 0 && i + 1 < argc) {

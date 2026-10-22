@@ -4,6 +4,29 @@
 > Dependencies between modules are explicitly marked.
 > Each task produces exactly one file or one function.
 
+## Status — 2026-10-22 18:05 UTC (branch `claude/architecture-progress-review-ahv93e`, head `0445b8b`)
+
+**Done since v0.1.0 (2026-06-20):** every phase marked ✅ below; most recently Phase 23 stage 2b
+(`--parallel N`: up to N chat requests batched into one forward pass per token, 2.2–2.7× aggregate
+throughput on SmolLM2 135M/1.7B — `benchmark_results/parallel_2026-10-22/`), Phase 40.1–40.4
+(installer, `pz config`, guided setup), prompt-injection defence, chat-mode end of turn, JSON-mode
+root constraint, release-maintenance rules.
+
+**Still open (candidates after v0.2.0):**
+
+| Item | Phase | Notes |
+|---|---|---|
+| LoRA for MLA, Qwen3.5 hybrid and MoE experts | 19-B | dense/GQA + Qwen3 done |
+| MoE performance follow-ups | 17 | Q5_K shared expert, MLA dispatch, Qwen3-MoE end-to-end test, NEON int4 kernel |
+| Shared-prefix page sharing between parallel slots; batching for MoE/MLA | 23.4 | sequential fallback today |
+| Native audio streaming | 25 | not started |
+| WASM agent sandbox | 29 | not started (argument-level command policy shipped instead) |
+| Test-time training | 32 | not started |
+| Text-to-image (Stable Diffusion / Flux) | 36 | not started |
+| Remaining GGUF quant coverage | 37 | see Phase 37 checklist |
+| First release with the installer; remove the `adaptive_ai_engine` alias | 40.5 / 39 | alias removal is due the release after v0.2.0 |
+| Docs: ROADMAP counts, "Pure C" tagline | — | small |
+
 ---
 
 ## PHASE 0: Project Scaffolding & Build System ✅
@@ -2174,7 +2197,21 @@ Abstracts the forward pass so the engine can run both Transformer (Attention) an
 
 ---
 
-## PHASE 23: PagedAttention & Continuous Batching 🟡 stage 1 (FIFO admission queue) done 2026-10-18; stage 2a (multi-sequence forward) done 2026-10-19
+## PHASE 23: PagedAttention & Continuous Batching ✅ stage 1 (FIFO admission queue) 2026-10-18; stage 2a (multi-sequence forward) 2026-10-19; stage 2b (GenSession + `--parallel N` scheduler, fast batched kernels) 2026-10-22 18:00 UTC — open: 23.4 shared-prefix page sharing, batching for MoE/MLA models
+
+**Stage 2b as built (2026-10-22):** `transformer/gen_session.{h,c}` — one generation as a
+step-wise state machine (prepare / start / input_rows / consume / end); `generate_ex()` is a short
+driver over it. `api/batch_scheduler.{h,c}` — `--parallel N` (default 1): one thread, N slots
+(RunState + prefix cache; slot 0 is the server's own), one `transformer_forward_multi_ex()` pass per
+step (decode rows first, then prompt chunks up to `--parallel-batch` rows; prompt-only rows skip the
+classifier). `GenQueue` admits *units* (capacity N): plain chat = 1, image/best-of/MCTS/cache reset =
+all N. vAttention-style memory without a page table: slot KV commits lazily, all slots share
+max(one context, `--kv-ram-fraction` × free RAM) positions, idle slots release KV
+(`run_state_kv_release`) when room is needed, requests wait otherwise. `/v1/config
+features.parallel` (+ reason when the model cannot batch), `/metrics` slot gauges, Settings → Server
+defaults, `pz config parallel|parallel-batch`. Output is byte-identical to sequential serving
+(`tests/test_batch_scheduler.c`, `tests/e2e_parallel.sh`). **Open:** 23.4 shared-prefix page
+sharing between slots; batching for MoE/MLA/Qwen3-head_dim models.
 
 **Stage 2a as built (2026-10-19):** `transformer_forward_multi(tokens, pos_arr, states, n, …)`
 (`src/transformer/forward.c`) runs one token from each of `n` independent sequences (own
@@ -3707,8 +3744,20 @@ message. Mirrors/tests: `PZ_INSTALL_BASE_URL`, `PZ_INSTALL_API`. `tools/test_ins
 checks, offline file:// mirror) runs in CI job `installer` with shellcheck; release.yml ships
 `install.sh` beside the archive and in `SHA256SUMS`. 40.5: README/RELEASING/WEBUI_GUIDE updated;
 the first release carrying the installer (v0.2.0) is the owner's to cut. Extras that depend on
-the owner's audience decision (decision-log 2026-10-22: e.g. offering a starter model, opening
-the web UI) are not built.
+the owner's audience decision were added once it came (below).
+
+**Guided setup (Decision A, 2026-10-22):** owner: the setup is for anyone who wants to use pz,
+workflow driven, so a non-technical person can install and use it; every step explains in simple
+terms what it means, gives example options and their impact, and says what can be changed later.
+Built as `pz_config_wizard_ex` (`src/cli/config_cmd.c`, step texts in the `STEPS` table): model →
+processor threads → conversation memory (kv-type) → chat-page port → update notices → summary
+("nothing here is permanent") → save → offer to open the chat page (`pz --server` + desktop
+opener). `?` repeats a step's explanation. Starter models: `cli/model_catalog` (built-in tiny /
+balanced / 1.58-bit list with sizes and SHA-256; `$PZ_MODEL_CATALOG` replaces it), suggested by
+free memory, downloaded with curl/wget into `$XDG_DATA_HOME/project-zero/models` and verified
+with `core/sha256` before use. `install.sh` hands over to it. Tests: `test_config_cmd` (39, incl.
+SHA-256 vectors, catalog parsing, scripted guided runs); live pty run downloaded and verified
+the 2.2 GB Falcon3 file from Hugging Face.
 
 **Standing rule (engineering-rules DoD #6, 2026-10-21):** every change that adds/renames/removes a
 user-facing flag, env var, default, file location, release asset or runtime dependency updates the

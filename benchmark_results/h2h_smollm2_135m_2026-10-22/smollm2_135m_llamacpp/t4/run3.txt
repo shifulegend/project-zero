@@ -1,0 +1,58 @@
+=== smollm2_135m_llamacpp t=4 run 3 ===
+DATE: 2026-10-22 09:11:56 UTC
+HOST_CPU: Intel(R) Xeon(R) Processor @ 2.10GHz (model 207, 4 vCPU)
+CMD: /home/user/ext/llama.cpp/build/bin/llama-completion -m models/SmolLM2-135M-Instruct-f16.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 300 --temp 0 -t 4 -no-cnv --ignore-eos
+PROMPT: Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+============================================================
+0.00.001.294 I llama_completion: llama backend init
+0.00.002.594 I llama_completion: load the model and apply lora adapter, if any
+0.00.302.371 I cmn          init: llama threadpool init, n_threads = 4
+0.00.339.307 I 
+0.00.339.405 I system_info: n_threads = 4 (n_threads_batch = 4) / 4 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | AVX512 = 1 | AVX512_VNNI = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 | 
+0.00.339.405 I 
+0.00.339.711 I sampler seed: 4294967295
+0.00.339.733 I sampler params: 
+	repeat_last_n = 64, repeat_penalty = 1.000, frequency_penalty = 0.000, presence_penalty = 0.000
+	dry_multiplier = 0.000, dry_base = 1.750, dry_allowed_length = 2, dry_penalty_last_n = 64
+	top_k = 40, top_p = 0.950, min_p = 0.050, xtc_probability = 0.000, xtc_threshold = 0.100, typical_p = 1.000, top_n_sigma = -1.000, temp = 0.000
+	mirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000, adaptive_target = -1.000, adaptive_decay = 0.900
+0.00.339.742 I sampler chain: logits -> logit-bias -> ?penalties -> ?dry -> ?top-n-sigma -> top-k -> ?typical -> top-p -> min-p -> ?xtc -> temp-ext -> greedy 
+0.00.339.743 I generate: n_ctx = 8192, n_batch = 2048, n_predict = 300, n_keep = 0
+0.00.339.743 I 
+Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+
+Lastly, consider the role of data in machine learning and its impact on decision-making. Discuss the importance of data quality, data preprocessing, and data visualization in machine learning.
+
+Throughout the discussion, provide clear and concise explanations of each concept, and use examples to illustrate the practical applications of each. By the end of the lecture, you should have a solid understanding of machine learning and its role in data analysis and decision-making.
+
+Please go ahead and present your lecture outline, and I'll be happy to help you refine your content and provide additional feedback.
+
+Best regards,
+Alex Johnson
+Data Scientist
+Machine Learning Engineer
+Data Science Academy
+
+What are the key differences between supervised and unsupervised learning? How do these two types of learning differ in terms of their goals and approaches? Provide examples of each type of learning and discuss their applications in real-world scenarios.
+
+Also, what are the main differences between reinforcement learning and deep learning? Discuss the role of reinforcement learning in computer vision and its applications in image recognition and object recognition.
+
+Lastly, what are the main differences between supervised and unsupervised learning? How do these two types of learning differ in terms of their goals and approaches? Provide examples of each type of learning and discuss their applications in real-world scenarios.
+
+Please go ahead and present your lecture outline, and I'll be happy to help you refine your content and provide additional feedback.
+
+Best regards,
+Alex Johnson
+
+0.04.051.543 I common_perf_print:    sampling time =      54.62 ms
+0.04.051.574 I common_perf_print:    samplers time =      15.22 ms /   329 tokens
+0.04.051.603 I common_perf_print:        load time =     203.71 ms
+0.04.051.628 I common_perf_print: prompt eval time =      37.56 ms /    29 tokens (    1.30 ms per token,   772.18 tokens per second)
+0.04.051.653 I common_perf_print:        eval time =    3598.93 ms /   299 runs   (   12.04 ms per token,    83.08 tokens per second)
+0.04.051.677 I common_perf_print:       total time =    3712.30 ms /   328 tokens
+0.04.051.701 I common_perf_print: unaccounted time =      21.19 ms /   0.6 %      (total - sampling - prompt eval - eval) / (total)
+0.04.051.724 I common_perf_print:    graphs reused =        297
+0.04.051.747 I common_perf_print:   graph reallocs =          0    /     0        (same size) / (changed size)
+
+PERF: wall=4.09s max_rss=472MB cpu=366% exit=0
+PROMPT_TPS: 772.18

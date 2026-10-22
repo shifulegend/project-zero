@@ -348,3 +348,68 @@ int parallel_matmul_q8a(float *out, const float *x, const uint8_t *w,
     else    q8a_task(&a, 0, 0, d);
     return 0;
 }
+
+/* ── Multi-token GEMM (Phase 23 batched decode, 2026-10-22) ────────────────
+ * x is [n_tokens][n], out [n_tokens][d]. Every token's activations are
+ * quantized once; each weight row is then read from memory once and dotted
+ * against all tokens while it is still in L1 -- the per-token fallback read
+ * the whole matrix n_tokens times. Same dot kernels, so each row's result
+ * is bit-identical to parallel_matmul_q8a() for that token. */
+
+typedef struct {
+    float *out;
+    const uint8_t *w;
+    const TnQ8_0ActBlock *acts;   /* [n_tokens][n_blocks] */
+    size_t row_bytes;
+    int n_blocks, type, vnni, n_tokens, d;
+} Q8ATokensArgs;
+
+static void q8a_tokens_task(void *arg, int thread_id, int start, int end) {
+    (void)thread_id;
+    const Q8ATokensArgs *a = (const Q8ATokensArgs *)arg;
+    for (int r = start; r < end; r++) {
+        const uint8_t *row = a->w + (size_t)r * a->row_bytes;
+        for (int k = 0; k < a->n_tokens; k++) {
+            const TnQ8_0ActBlock *ak = a->acts + (size_t)k * a->n_blocks;
+            float v;
+            switch (a->type) {
+            case GGUF_TYPE_Q5_0: v = tn_dot_q5_0_q8_0(row, ak, a->n_blocks, a->vnni); break;
+            case GGUF_TYPE_Q5_1: v = tn_dot_q5_1_q8_0(row, ak, a->n_blocks, a->vnni); break;
+            default:             v = tn_dot_q8_0_q8_0(row, ak, a->n_blocks, a->vnni); break;
+            }
+            a->out[(size_t)k * a->d + r] = v;
+        }
+    }
+}
+
+static TnQ8_0ActBlock *s_q8a_tok_buf = NULL;
+static size_t          s_q8a_tok_cap = 0;
+
+int parallel_matmul_q8a_tokens(float *out, const float *x, const uint8_t *w,
+                               int gguf_type, int n, int d, int n_tokens, ThreadPool *tp) {
+    size_t blk;
+    switch (gguf_type) {
+    case GGUF_TYPE_Q5_0: blk = Q5_0_BYTES; break;
+    case GGUF_TYPE_Q5_1: blk = Q5_1_BYTES; break;
+    case GGUF_TYPE_Q8_0: blk = Q8_0_BYTES; break;
+    default: return -1;
+    }
+    if (n <= 0 || n % TN_Q8_0_BLOCK != 0 || d <= 0 || n_tokens <= 0) return -1;
+    if (n_tokens == 1) return parallel_matmul_q8a(out, x, w, gguf_type, n, d, tp);
+    const int nb = n / TN_Q8_0_BLOCK;
+    size_t need = (size_t)nb * (size_t)n_tokens;
+    if (s_q8a_tok_cap < need) {
+        TnQ8_0ActBlock *nbuf = (TnQ8_0ActBlock *)malloc(need * sizeof(TnQ8_0ActBlock));
+        if (!nbuf) return -1;
+        free(s_q8a_tok_buf);
+        s_q8a_tok_buf = nbuf;
+        s_q8a_tok_cap = need;
+    }
+    for (int k = 0; k < n_tokens; k++)
+        tn_quantize_q8_0_act(s_q8a_tok_buf + (size_t)k * nb, x + (size_t)k * n, nb);
+    Q8ATokensArgs a = { out, w, s_q8a_tok_buf, (size_t)nb * blk, nb, gguf_type,
+                        tn_q8_0_act_vnni_ok(), n_tokens, d };
+    if (tp) threadpool_dispatch(tp, q8a_tokens_task, &a, d);
+    else    q8a_tokens_task(&a, 0, 0, d);
+    return 0;
+}

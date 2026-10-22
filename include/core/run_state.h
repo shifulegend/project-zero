@@ -167,6 +167,14 @@ void run_state_free(RunState *s);
  * stays flat). RSS still only grows with the positions actually used. */
 void run_state_kv_reserve(RunState *s, const Config *cfg, int n_pos);
 
+/* Phase 23 (2026-10-22): give the generic KV cache's committed rows back to
+ * the OS (they read back as zero) and reset kv_committed to 0 — an idle
+ * parallel-serving slot's KV memory is reclaimed this way. Returns the
+ * number of positions released (0 for disk-backed or NULL caches, or where
+ * the platform cannot release memory). Contents are lost: callers must
+ * invalidate whatever indexes them (the slot's prefix cache) first. */
+int run_state_kv_release(RunState *s, const Config *cfg);
+
 /* Phase 31: async read-ahead of layer `layer`'s KV rows [0, n_pos) when the
  * cache is disk-backed (no-op otherwise). Called one layer ahead. */
 void run_state_kv_prefetch_layer(const RunState *s, const Config *cfg, int layer, int n_pos);

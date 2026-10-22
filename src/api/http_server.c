@@ -77,6 +77,8 @@
 #include "reasoning/mcts.h"
 #include "api/json_write.h"
 #include "api/gen_queue.h"
+#include "api/batch_scheduler.h"
+#include "kv_cache/kv_strategy.h"
 #include "multimodal/vision_pipeline.h"
 #include "transformer/generate.h"
 #include "core/debug.h"
@@ -209,7 +211,7 @@ static char *append_best_of_json(char *json, const BestOfResult *r) {
     jb_raw(&jb, ",\"chosen\":"); jb_int(&jb, r->chosen);
     jb_raw(&jb, ",\"completion_tokens_total\":"); jb_int(&jb, r->tokens_total);
     jb_raw(&jb, ",\"scores\":[");
-    for (int i = 0; i < r->n && i < 64; i++) { if (i) jb_raw(&jb, ","); jb_num(&jb, r->scores[i]); }
+    for (int i = 0; i < r->n && i < BEST_OF_N_MAX; i++) { if (i) jb_raw(&jb, ","); jb_num(&jb, r->scores[i]); }
     jb_raw(&jb, "]}}");
     char *out = jb_finish(&jb);
     if (!out) { json[len - 1] = '}'; return json; }
@@ -250,7 +252,9 @@ static int streaming_token_callback(const char *piece, void *userdata) {
     if (!piece) return 0;
 
     if (st->is_streaming) {
-        sse_write_token(st->conn_fd, st->id, piece);
+        /* 2026-10-22: a failed write means the client left — stop instead of
+         * generating the rest of the reply for nobody (and holding a slot). */
+        if (sse_write_token(st->conn_fd, st->id, piece) < 0) return 1;
     } else {
         /* Accumulate into dynamic buffer */
         size_t plen = strlen(piece);
@@ -299,10 +303,17 @@ static void handle_get_config(int fd, ApiContext *ctx, const char *extra_headers
     send_json_heap(fd, 200, api_config_json(ctx), extra_headers);
 }
 
-/* Releases the generation slot taken by handle_chat_completions() / prompt-cache clear. */
-static void release_generation_slot(ApiContext *ctx) {
-    pthread_mutex_unlock(&ctx->generation_mutex);
-    gen_queue_release(&ctx->gen_queue);
+/* Phase 23 stage 2b: a batched chat request holds one gen_queue unit (one
+ * scheduler slot); anything that needs the whole engine — the sequential
+ * generation path, image input, best-of, tree search, cache reset — holds
+ * all of them plus generation_mutex, so the scheduler is idle meanwhile. */
+static int engine_units(ApiContext *ctx) { return gen_queue_capacity(&ctx->gen_queue); }
+
+/* Releases what handle_chat_completions() / prompt-cache clear took:
+ * `units` gen_queue units, and generation_mutex when it held the engine. */
+static void release_generation_slot(ApiContext *ctx, int units, int exclusive) {
+    if (exclusive) pthread_mutex_unlock(&ctx->generation_mutex);
+    gen_queue_release_n(&ctx->gen_queue, units);
 }
 
 /* GET /v1/prompt_cache — Phase 26 store stats. Reads counters without the
@@ -315,14 +326,16 @@ static void handle_prompt_cache_stats(int fd, ApiContext *ctx, const char *extra
  * record. Mutates generation state, so it takes generation_mutex (429 while
  * a generation is running, same as a second chat request). */
 static int handle_prompt_cache_clear(int fd, ApiContext *ctx, const char *extra_headers) {
-    if (gen_queue_try_acquire(&ctx->gen_queue) != GEN_QUEUE_OK) {
+    int units = engine_units(ctx);
+    if (gen_queue_try_acquire_n(&ctx->gen_queue, units) != GEN_QUEUE_OK) {
         send_error_ex(fd, 429, "A generation is in flight", extra_headers);
         return 429;
     }
     pthread_mutex_lock(&ctx->generation_mutex);
     prompt_store_clear(&ctx->prompt_store);
     prefix_cache_reset(&ctx->prefix_cache);
-    release_generation_slot(ctx);
+    batch_scheduler_reset_caches(ctx->sched);   /* every parallel slot's prefix too */
+    release_generation_slot(ctx, units, 1);
     send_json_heap(fd, 200, api_prompt_cache_json(ctx), extra_headers);
     return 200;
 }
@@ -366,8 +379,28 @@ static void handle_health(int fd, const char *extra_headers) {
 }
 
 static void handle_get_metrics(int fd, ApiContext *ctx, const char *extra_headers) {
-    char buf[2048];
-    metrics_render(&ctx->metrics, buf, sizeof(buf));
+    char buf[4096];
+    size_t n = metrics_render(&ctx->metrics, buf, sizeof(buf));
+    /* Phase 23: generation slots (gen_queue units) and the parallel scheduler. */
+    BatchSchedulerStats bst;
+    batch_scheduler_stats(ctx->sched, &bst);
+    if (n < sizeof(buf))
+        snprintf(buf + n, sizeof(buf) - n,
+            "# HELP project_zero_generation_slots Requests the server generates at once (--parallel).\n"
+            "# TYPE project_zero_generation_slots gauge\n"
+            "project_zero_generation_slots %d\n"
+            "# HELP project_zero_generation_slots_busy Generation slots in use.\n"
+            "# TYPE project_zero_generation_slots_busy gauge\n"
+            "project_zero_generation_slots_busy %d\n"
+            "# HELP project_zero_queue_waiting Chat requests waiting for a slot.\n"
+            "# TYPE project_zero_queue_waiting gauge\n"
+            "project_zero_queue_waiting %d\n"
+            "# HELP project_zero_parallel_kv_tokens KV-cache positions held by parallel slots.\n"
+            "# TYPE project_zero_parallel_kv_tokens gauge\n"
+            "project_zero_parallel_kv_tokens %lld\n",
+            ctx->parallel_slots > 0 ? ctx->parallel_slots : 1,
+            gen_queue_in_use(&ctx->gen_queue), gen_queue_waiting(&ctx->gen_queue),
+            bst.kv_committed_tokens);
     send_response_ex(fd, 200, "text/plain; version=0.0.4", buf, 0, extra_headers);
 }
 
@@ -472,14 +505,38 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
         return;
     }
 
-    /* Only one generation runs at a time. With --queue-size N, up to N
-     * requests wait their turn in arrival order (Phase 23 stage 1); otherwise
-     * (the default) a busy server answers 429 immediately. Unrelated routes
-     * (metrics/docs/static/cancel) never touch the slot. */
+    /* Phase 30: best-of-N (server default --best-of, capped by --best-of-max)
+     * and step-level tree search (server --mcts*, request "mcts"). */
+    int best_of = (req.set_mask & CHAT_SET_BEST_OF) ? req.best_of : ctx->server_config.best_of;
+    if (best_of < 1) best_of = 1;
+    if (best_of > ctx->server_config.best_of_max) best_of = ctx->server_config.best_of_max;
+    MctsOptions mopt;
+    request_mcts_resolve(&req, &ctx->server_config.mcts, ctx->server_config.mcts_max, &mopt);
+    int wants_image = 0;
+    if (ctx->server_config.vision_path && ctx->server_config.proj_path)
+        for (int i = 0; i < req.num_messages; i++)
+            if (strcmp(req.messages[i].role, "user") == 0 && req.messages[i].image_data_url)
+                wants_image = 1;
+    /* Phase 23 stage 2b: plain chat requests share the engine through the
+     * parallel scheduler (one unit each); the rest need all of it. */
+    int batched = ctx->sched && best_of <= 1 && mopt.simulations <= 0 && !wants_image;
+    int units = batched ? 1 : engine_units(ctx);
+
+    /* With --parallel N, N batched requests run at once; otherwise one
+     * generation at a time. With --queue-size N, up to N requests wait their
+     * turn in arrival order (Phase 23 stage 1); otherwise (the default) a
+     * busy server answers 429 immediately. Unrelated routes
+     * (metrics/docs/static/cancel) never touch the queue. */
     QueueWaitCtx qw = { fd, req.stream ? 1 : 0, 0, extra_headers };
-    GenQueueResult qr = gen_queue_acquire(&ctx->gen_queue,
-                                          ctx->server_config.queue_timeout_s * 1000,
-                                          queue_wait_notify, &qw);
+    GenQueueResult qr = gen_queue_acquire_n(&ctx->gen_queue, units,
+                                            ctx->server_config.queue_timeout_s * 1000,
+                                            queue_wait_notify, &qw);
+    if (qr == GEN_QUEUE_OK && !ctx->running) {   /* shutting down: don't start */
+        gen_queue_release_n(&ctx->gen_queue, units);
+        chat_request_free(&req);
+        if (!qw.headers_sent) send_error_ex(fd, 503, "Server is shutting down", extra_headers);
+        return;
+    }
     if (qr != GEN_QUEUE_OK) {
         chat_request_free(&req);
         if (qr == GEN_QUEUE_ABORTED) return; /* client already gone */
@@ -495,14 +552,21 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
         }
         return;
     }
-    pthread_mutex_lock(&ctx->generation_mutex); /* uncontended: the queue granted the slot */
+    int had_image = 0;
+    if (batched && !(ctx->server_config.vision_path && ctx->server_config.proj_path))
+        for (int i = 0; i < req.num_messages; i++)
+            if (strcmp(req.messages[i].role, "user") == 0 && req.messages[i].image_data_url) {
+                fprintf(stderr, "[vision] image_url provided but server has no --vision/--proj configured; ignoring image\n");
+                break;
+            }
+    if (!batched) {
+    pthread_mutex_lock(&ctx->generation_mutex); /* uncontended: the queue granted the engine */
 
     /* Every request is a fresh conversation rendered from its full message
      * history, so start from KV position 0. (2026-10-18: current_pos was
      * never reset — after one image request (vision prefill advances it) every
      * later text request silently started after the stale image prefix.) */
     ctx->run_state->current_pos = 0;
-    int had_image = 0;
 
     /* Phase 22.2: image upload via the web UI's image_url content parts —
      * inject the vision pipeline into the KV cache before compiling/
@@ -566,6 +630,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
         }
         break;
     }
+    } /* !batched */
 
     /* Compile messages into a single prompt.
      * If the tokenizer has an embedded chat template (GGUF), generate()
@@ -605,7 +670,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     } else {
         /* Legacy tokenizer: compile all messages into a formatted prompt */
         char *compiled = (char *)malloc(HTTP_MAX_PROMPT_BYTES);
-        if (!compiled) { chat_request_free(&req); release_generation_slot(ctx); send_error_ex(fd, 500, "OOM", extra_headers); return; }
+        if (!compiled) { chat_request_free(&req); release_generation_slot(ctx, units, !batched); send_error_ex(fd, 500, "OOM", extra_headers); return; }
         ChatTemplateType tmpl = ctx->server_config.chat_format >= 0
                                 ? (ChatTemplateType)ctx->server_config.chat_format
                                 : chat_template_detect_vocab(ctx->tok);
@@ -623,14 +688,14 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
         if (!neutral_ok) {
             free(compiled);
             chat_request_free(&req);
-            release_generation_slot(ctx);
+            release_generation_slot(ctx, units, !batched);
             send_error_ex(fd, 500, "OOM", extra_headers);
             return;
         }
         if (chat_compile_prompt(&req, tmpl, compiled, HTTP_MAX_PROMPT_BYTES) != TN_OK) {
             free(compiled);
             chat_request_free(&req);
-            release_generation_slot(ctx);
+            release_generation_slot(ctx, units, !batched);
             send_error_ex(fd, 500, "Prompt compilation failed", extra_headers);
             return;
         }
@@ -666,37 +731,26 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
      * disabled server-wide (--prompt-cache off) or for this request. */
     int use_cache = (req.set_mask & CHAT_SET_CACHE_PROMPT) ? req.cache_prompt
                                                            : ctx->server_config.prompt_cache;
-    if (!ctx->prefix_cache.tokens && ctx->run_state)
-        prefix_cache_init(&ctx->prefix_cache, ctx->run_state->max_seq_len);
-    if (!ctx->prompt_store_ready) {
-        prompt_store_init(&ctx->prompt_store,
-                          (size_t)(ctx->server_config.prompt_cache_mb > 0
-                                   ? ctx->server_config.prompt_cache_mb : 0) * 1024u * 1024u,
-                          ctx->server_config.prompt_cache_min_tokens);
-        ctx->prompt_store_ready = 1;
+    if (!batched) {
+        if (had_image) prefix_cache_reset(&ctx->prefix_cache); /* vision prefill rewrote KV */
+        if (use_cache && ctx->prefix_cache.tokens) {
+            gp.prefix_cache = &ctx->prefix_cache;
+            gp.prompt_store = &ctx->prompt_store;
+        }
+        else prefix_cache_reset(&ctx->prefix_cache); /* KV is about to be overwritten */
     }
-    if (had_image) prefix_cache_reset(&ctx->prefix_cache); /* vision prefill rewrote KV */
-    if (use_cache && ctx->prefix_cache.tokens) {
-        gp.prefix_cache = &ctx->prefix_cache;
-        gp.prompt_store = &ctx->prompt_store;
-    }
-    else prefix_cache_reset(&ctx->prefix_cache); /* KV is about to be overwritten */
 
     GenerationStats gstats;
     memset(&gstats, 0, sizeof(gstats));
     gp.stats = &gstats;
-    /* Phase 30: best-of-N (server default --best-of, capped by --best-of-max). */
-    int best_of = (req.set_mask & CHAT_SET_BEST_OF) ? req.best_of : ctx->server_config.best_of;
-    if (best_of < 1) best_of = 1;
-    if (best_of > ctx->server_config.best_of_max) best_of = ctx->server_config.best_of_max;
     BestOfResult bres;
     memset(&bres, 0, sizeof(bres));
-    /* Phase 30: step-level tree search (server --mcts*, request "mcts"). */
-    MctsOptions mopt;
-    request_mcts_resolve(&req, &ctx->server_config.mcts, ctx->server_config.mcts_max, &mopt);
     MctsResult mres;
     memset(&mres, 0, sizeof(mres));
-    if (mopt.simulations > 0) {
+    if (batched) {
+        batch_scheduler_generate(ctx->sched, prompt, &gp, use_cache,
+                                 streaming_token_callback, &st);
+    } else if (mopt.simulations > 0) {
         const char *question = "";
         for (int i = req.num_messages - 1; i >= 0; i--)
             if (req.messages[i].content && strcmp(req.messages[i].role, "user") == 0) {
@@ -718,7 +772,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     }
     const char *finish_reason = gen_finish_reason_str(gstats.finish_reason);
 
-    cancel_registry_end(&ctx->cancel);
+    cancel_registry_end(&ctx->cancel, st.public_id);
     metrics_add_tokens(&ctx->metrics, st.tokens_emitted);
 
     if (gstats.finish_reason == GEN_FINISH_ERROR && !req.stream) {
@@ -728,7 +782,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
         free(st.accum_buf);
         if (free_prompt) free(prompt);
         chat_request_free(&req);
-        release_generation_slot(ctx);
+        release_generation_slot(ctx, units, !batched);
         send_error_ex(fd, 400, "Prompt could not be tokenized for this model", extra_headers);
         return;
     }
@@ -756,7 +810,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     free(st.accum_buf);
     if (free_prompt) free(prompt);
     chat_request_free(&req);
-    release_generation_slot(ctx);
+    release_generation_slot(ctx, units, !batched);
 }
 
 /* ── HTTP request parser ─────────────────────────────────────────────────── */
@@ -1084,6 +1138,8 @@ void api_context_init(ApiContext *ctx,
     gen_queue_init(&ctx->gen_queue, 0);
 }
 
+static void start_parallel(ApiContext *ctx);
+
 TernaryError api_server_start(int port, ApiContext *ctx) {
     if (!ctx) return TN_ERR_INVALID_ARGS;
 
@@ -1120,6 +1176,19 @@ TernaryError api_server_start(int port, ApiContext *ctx) {
         ctx->server_fd = -1;
         return TN_ERR_SOCKET_LISTEN;
     }
+
+    /* Phase 21.5 / 26: the live prefix record and snapshot store exist for
+     * the server's lifetime (the parallel scheduler's slot 0 shares them). */
+    if (!ctx->prefix_cache.tokens && ctx->run_state)
+        prefix_cache_init(&ctx->prefix_cache, ctx->run_state->max_seq_len);
+    if (!ctx->prompt_store_ready) {
+        prompt_store_init(&ctx->prompt_store,
+                          (size_t)(ctx->server_config.prompt_cache_mb > 0
+                                   ? ctx->server_config.prompt_cache_mb : 0) * 1024u * 1024u,
+                          ctx->server_config.prompt_cache_min_tokens);
+        ctx->prompt_store_ready = 1;
+    }
+    start_parallel(ctx);
 
     ctx->running = 1;
 
@@ -1160,6 +1229,42 @@ TernaryError api_server_start(int port, ApiContext *ctx) {
     return TN_OK;
 }
 
+/* Phase 23 stage 2b: --parallel N > 1 starts the batch scheduler when the
+ * model can run batched; otherwise (or if it cannot be set up) the server
+ * stays sequential and /v1/config says why. */
+static void start_parallel(ApiContext *ctx) {
+    int want = ctx->server_config.parallel;
+    ctx->parallel_slots = 1;
+    ctx->parallel_note = NULL;
+    if (want > 1 && !batch_scheduler_supported(ctx->weights, ctx->moe_cfg)) {
+        ctx->parallel_note = "this model architecture runs one request at a time "
+                             "(batched serving covers dense attention models)";
+    } else if (want > 1) {
+        int rows = ctx->server_config.parallel_batch;
+        if (rows < want) rows = want;    /* every slot needs a row per step */
+        /* All slots share the KV budget one context was sized from, or
+         * the larger pool --kv-ram-fraction of free memory holds. */
+        long long budget = kv_strategy_budget_tokens(ctx->cfg, ctx->moe_cfg, tn_get_free_ram());
+        if (budget < ctx->run_state->max_seq_len) budget = ctx->run_state->max_seq_len;
+        BatchSchedulerOptions o = { want, rows, budget };
+        ctx->sched = batch_scheduler_create(ctx->cfg, ctx->weights, ctx->run_state,
+                                            &ctx->prefix_cache, &ctx->prompt_store,
+                                            ctx->moe_cfg, ctx->tok, ctx->tp, &o);
+        if (ctx->sched) {
+            ctx->parallel_slots = want;
+            ctx->parallel_kv_budget = budget;
+        } else {
+            ctx->parallel_note = "could not allocate the parallel slots (out of memory?)";
+        }
+    }
+    gen_queue_set_capacity(&ctx->gen_queue, ctx->parallel_slots);
+    if (want > 1)
+        printf("[API] Parallel: %d request%s at once%s%s%s\n", ctx->parallel_slots,
+               ctx->parallel_slots == 1 ? "" : "s", ctx->parallel_note ? " — " : "",
+               ctx->parallel_note ? ctx->parallel_note : "",
+               ctx->parallel_note ? "" : " (batched)");
+}
+
 void api_server_stop(ApiContext *ctx) {
     if (!ctx || ctx->server_fd < 0) return;
     ctx->running = 0;
@@ -1181,6 +1286,19 @@ void api_server_stop(ApiContext *ctx) {
         free(ctx->listener_thread);
         ctx->listener_thread = NULL;
     }
+    /* Generations still running would read the model main() frees next:
+     * cancel them all (also any that start from here on) and wait until the
+     * queue is empty, then stop the scheduler thread. 2026-10-22: before,
+     * an in-flight request kept generating on freed weights at exit. */
+    cancel_registry_shutdown(&ctx->cancel);
+    for (int waited_ms = 0; gen_queue_in_use(&ctx->gen_queue) > 0 || gen_queue_waiting(&ctx->gen_queue) > 0;
+         waited_ms += 10) {
+        if (waited_ms == 2000) fprintf(stderr, "[API] waiting for in-flight generations to stop...\n");
+        struct timespec ts = { 0, 10 * 1000000L };
+        nanosleep(&ts, NULL);
+    }
+    batch_scheduler_stop(ctx->sched);
+
     /* Deliberately NOT freeing server_config/cancel/generation_mutex here:
      * detached per-connection threads spawned before the stop request may
      * still be running and reference them. There is no drain/barrier to

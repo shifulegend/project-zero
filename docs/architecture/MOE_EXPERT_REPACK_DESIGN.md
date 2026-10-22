@@ -1,6 +1,17 @@
 # MoE Expert Weight Repack — Design (Discussion #1, Q1)
 
 **Status:** design draft (no engine code yet)
+
+> **Status update (2026-10-21): not adopted — kept for its analysis.** Measuring llama.cpp's own
+> MoE matmul through a harness linked against its libggml showed its repacked layout is not
+> what makes it fast (6.2 / 12.4 / 16.9 GB/s with repack vs 5.1 / 9.5 / 16.0 without, at
+> 1 / 2 / 4 threads; our plain Q4_K path reaches 13–18 GB/s at 4 threads). The gap had other
+> causes — a broken VNNI self-test, float activations on Q5_0/Q5_1/Q8_0 experts, a widened
+> LM head and dense layer, six thread-pool dispatches per MoE layer, and page-cache eviction
+> under a memory cap. With those fixed, Project Zero decodes DeepSeek-V2-Lite Q4_K_S faster
+> than llama.cpp on the same host (11.7–12.6 vs 9.4–10.5 tok/s at 4 threads). See
+> `docs/ai/decision-log.md` and `CHANGELOG.md`. The prefetcher/stream analysis below remains a
+> useful model of scattered-weight bandwidth.
 **Date:** 2026-10-07
 **Companion to:** [`MOE_RESEARCH_AND_FIX_PLAN.md`](MOE_RESEARCH_AND_FIX_PLAN.md) · [Discussion #1](https://github.com/shifulegend/project-zero/discussions/1)
 

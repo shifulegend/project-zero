@@ -1540,6 +1540,10 @@ Phase 0 (Scaffold)
 > expert-weight offsets, tracked in README's Help Wanted table and
 > `docs/architecture/MOE_RESEARCH_AND_FIX_PLAN.md`; a repacking fix is proposed but not yet
 > implemented. Marker added 2026-09-17 during a progress audit.
+>
+> **Status update (2026-10-22):** that MoE gap is closed — DeepSeek-V2-Lite-Chat Q4_K_S now
+> decodes at 11.7–12.6 tok/s vs llama.cpp's 9.4–10.5 at 4 threads (CHANGELOG `[Unreleased]`);
+> the text above is kept as history.
 
 We built our engine assuming a Dense model (like Llama 3 or BitNet), where every word passes through every weight matrix. To run DeepSeek-R1 or Mixtral, we need an MoE Router that activates only a subset of Experts per token.
 

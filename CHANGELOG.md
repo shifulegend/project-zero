@@ -66,6 +66,7 @@ section becomes the version's entry and is published as its GitHub release notes
 ### Fixed
 
 - Fix chat replies running past the end of the answer when a model ends its turn with a control token its metadata does not declare (e.g. Falcon3-1.58bit's `>>UNUSED_1<<`): in chat mode any control token the chat template never writes now ends the turn, so no `--stop` workaround is needed.
+- Fix BitNet I2_S GGUF files (the official BitNet b1.58 2B-4T GGUF, Falcon3-1.58bit) producing incoherent text: weights are now read in bitnet.cpp's interleaved 128-weight layout with the per-tensor scale stored after the packed data.
 - Fix `pz config set repeat-last-n -1` being rejected although `--repeat-last-n -1` is valid.
 - Fix JSON mode (`--json`, `response_format: json_object`) sometimes starting with a bare string or padding with whitespace at high temperature: output now always starts with `{` or `[` and ends at the matching bracket.
 - Fix a nonexistent or unreadable `--model` path being reported only after the first-run hardware calibration, which can take minutes.

@@ -2,7 +2,7 @@
 
 > Canonical source of truth. Tool adapters (CLAUDE.md, AGENTS.md, gemini/GEMINI.md,
 > .github/copilot-instructions.md) summarize and link here. Keep this current.
-> Last updated: 2026-10-18.
+> Last updated: 2026-10-22.
 
 ## Purpose
 `project-zero` is a from-scratch, CPU-optimized LLM inference engine in C/C++ targeting

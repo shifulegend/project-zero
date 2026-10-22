@@ -124,7 +124,7 @@ Runtime variation flags: `--simd {auto,avx2,avx512f,vnni,scalar}`,
 ## Verification (run before tagging)
 
 ```bash
-make test CC=gcc && make test CC=clang        # 46 tests, ASan/UBSan, mock weights
+make test CC=gcc && make test CC=clang        # every tests/*.c, ASan/UBSan, mock weights
 make dist CC=gcc
 file ./pz                      # ELF x86-64
 ldd  ./pz                      # only libc/libm/ld (no libstdc++/libgcc)

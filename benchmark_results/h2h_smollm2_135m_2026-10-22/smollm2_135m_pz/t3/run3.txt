@@ -1,0 +1,82 @@
+=== smollm2_135m_pz t=3 run 3 ===
+DATE: 2026-10-22 09:08:38 UTC
+HOST_CPU: Intel(R) Xeon(R) Processor @ 2.10GHz (model 207, 4 vCPU)
+CMD: ./pz --model models/SmolLM2-135M-Instruct-f16.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --max-tokens 300 --temperature 0 --threads 3 --no-update-check --raw-prompt --ignore-eos
+PROMPT: Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+============================================================
+[1/4] Opening model file...
+[2/4] Loading weights...
+[3/4] Preparing runtime...
+[gguf-tok] Loaded 49152 tokens (gpt2, pre=smollm), 17 special — BOS=1 EOS=2 chat_template=yes
+[4/4] Ready.
+####  ####   ###    ### #####  #### #####     ##### ##### ####   ### 
+#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #
+####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
+#     # #   #   # #  #  #     #       #        #    #     # #   #   #
+#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
+Project Zero Engine v0.1.0-256-gc44f3a3 — Auto-Tuned Hardware
+SIMD: avx2 (calibrated optimal)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 2048   KiB per core                 │
+│ L3 cache      : 260    MiB shared                   │
+│ Free RAM      : 15371  MiB                          │
+│ DRAM bandwidth: 45.6   GB/s (cached)                │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB (pre-load est.)           │
+│ Ceiling       : 48.9   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 3 threads | AVX-512 VNNI | BF16 cls | 4T | 45.6 GB/s | ceiling 49 tok/s
+Model format: GGUF
+Model Configuration:
+  dim:        576
+  hidden_dim: 1536
+  n_layers:   30
+  n_heads:    9
+  n_kv_heads: 3
+  vocab_size: 49152
+  seq_len:    8192
+  act_type:   0 (SiLU)
+  rope_theta: 100000.0
+  head_dim:   64
+  kv_dim:     192
+[GGUF] Weights loaded (30 layers, arch=llama)
+[profile] Data/token (loaded model): 258 MB -> ceiling 168.4 tok/s at 45.6 GB/s
+KV cache: F32, max context: 8192 tokens (sizing tier: Quantized I8, RAM budget 60%)
+
+
+
+Lastly, consider the role of data in machine learning and its impact on decision-making. Discuss the importance of data quality, data preprocessing, and data visualization in machine learning.
+
+Throughout the discussion, provide clear and concise explanations of each concept, and use examples to illustrate the practical applications of each. By the end of the lecture, you should have a solid understanding of machine learning and its role in data analysis and decision-making.
+
+Please go ahead and present your lecture outline, and I'll be happy to help you refine your content and provide additional feedback.
+
+Best regards,
+Alex Johnson
+Data Scientist
+Machine Learning Engineer
+Data Science Academy
+
+What are the key differences between supervised and unsupervised learning? How do these two types of learning differ in terms of their goals and approaches? Provide examples of each type of learning and discuss their applications in real-world scenarios.
+
+Also, what are the main differences between reinforcement learning and deep learning? Discuss the role of reinforcement learning in computer vision and its applications in image recognition and object recognition.
+
+Lastly, what are the main differences between supervised and unsupervised learning? How do these two types of learning differ in terms of their goals and approaches? Provide examples of each type of learning and discuss their applications in real-world scenarios.
+
+Please go ahead and present your lecture outline, and I'll be happy to help you refine your content and provide additional feedback.
+
+Best regards,
+Alex Johnson
+[gen] 80.16 tok/s (300 tokens)
+
+
+
+PERF: wall=4.20s max_rss=321MB cpu=289% exit=0

@@ -98,7 +98,7 @@ Optimized (PGO+LTO, INT4 classifier): **36.25 tok/s = 95% of the analytical DRAM
   <img src="docs/benchmark_bitnet.png" width="720" alt="BitNet b1.58-2B-4T: Project Zero beats Microsoft bitnet.cpp at every thread count (Xeon)">
 </p>
 
-> On dense models, Project Zero leads `llama.cpp` at 1–3 threads (+32%/+4%/+15%) and trails at peak 4-thread. On DeepSeek-V2 MoE it is now **ahead of llama.cpp**: a fused expert FFN, 8-bit-activation integer kernels and dynamic expert scheduling took DeepSeek-V2-Lite-Chat Q4_K_S at 4 threads from 6.3–7.3 to **11.7–12.6 tok/s (llama.cpp: 9.4–10.5)** on a 4-vCPU AVX-512 VNNI Xeon, and resident memory fell from 12.0 to 10.6 GB ([`CHANGELOG.md`](CHANGELOG.md)).
+> On dense models (SmolLM2-135M F16), Project Zero leads `llama.cpp` at 1–3 threads and trails slightly at 4: **+13% / +18% / +5% / −3%** at 1/2/3/4 threads on a 4-vCPU AVX-512 Xeon (same host, best of 3, 2026-10-22, [raw logs](benchmark_results/h2h_smollm2_135m_2026-10-22/)); on the i5-11300H table above the margins are +8% / +2% / −5% / −4%. On DeepSeek-V2 MoE it is now **ahead of llama.cpp**: a fused expert FFN, 8-bit-activation integer kernels and dynamic expert scheduling took DeepSeek-V2-Lite-Chat Q4_K_S at 4 threads from 6.3–7.3 to **11.7–12.6 tok/s (llama.cpp: 9.4–10.5)** on a 4-vCPU AVX-512 VNNI Xeon, and resident memory fell from 12.0 to 10.6 GB ([`CHANGELOG.md`](CHANGELOG.md)).
 
 ### SmolLM2-135M F16 — Project Zero vs. llama.cpp (i5-11300H, 2026-06-21, fresh sweep)
 
@@ -458,11 +458,15 @@ No GPU required. Python is offline tooling only (model conversion, testing).
 
 Memory bandwidth is the bottleneck — for BitNet b1.58-2B the engine reads 420–680 MB of weights per token. SIMD backend and thread count are auto-detected at startup; the DRAM bandwidth probe is cached per host (`--calibrate` or `PZ_BW_REPROBE=1` re-measures).
 
-| RAM config | BitNet tok/s | Notes |
+How the memory setup changes speed (BitNet b1.58-2B, i5-11300H, measured with an **early build**
+(first half of 2026, before the INT4/VNNI kernels); today's build does 35.79 tok/s on the same
+laptop, see [Benchmarks](#benchmarks)). The ratios still apply: speed follows memory bandwidth.
+
+| RAM config | BitNet tok/s (early build) | Notes |
 |---|---|---|
 | 4 GB | ~8–10 | disable earlyoom |
 | 8 GB single-channel DDR4 | ~13 | bandwidth ceiling |
-| 16 GB dual-channel DDR4 | ~16 | measured (+24% over single-ch) |
+| 16 GB dual-channel DDR4-2667 | ~15.5–16.1 | measured: +24% over single-channel ([report §A1](docs/PERFORMANCE_CEILING_REPORT.md)) |
 
 SIMD: AVX-512 VNNI → AVX-512F → AVX-VNNI → AVX2 → ARM NEON/dotprod → scalar, selected at startup (`--simd` forces a tier). Quantized/dense GGUF models need at least AVX2 on x86.
 

@@ -3,6 +3,14 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-10-22.
 
+### 2026-10-22 — README: two unsourced claims checked against history and re-measured
+- Dense claim "+32%/+4%/+15%" traced to the first 2026-06-21 SmolLM2-135M sweep (superseded by
+  README's own best-of-3 table: +8/+2/−5/−4%). Re-measured same-host today (4-vCPU Xeon, best of 3,
+  300 tok, fixed length): PZ vs llama.cpp +13/+18/+5/−3% at T=1..4 — shape confirmed, numbers
+  replaced; raw logs `benchmark_results/h2h_smollm2_135m_2026-10-22/`.
+- RAM table traced to the initial commit and PERFORMANCE_CEILING_REPORT §A1 (early build, i5);
+  not testable here, kept and labelled with source/date.
+
 ### 2026-10-22 — Guided setup for non-technical users (Decision A)
 - `pz_config_wizard_ex` + `STEPS` table, `cli/model_catalog` (catalog, recommendation, verified
   download), `core/sha256`, chat-page launch, installer hand-off wording; CMake sources; README,

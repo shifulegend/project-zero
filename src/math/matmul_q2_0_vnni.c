@@ -35,6 +35,7 @@
 #include "math/matmul_q2_0.h"
 #include "math/quantize_i8.h"
 #include "math/bitunpack2_vnni.h"
+#include "memory/safe_alloc.h"   /* tn_size_mul3, tn_align_up */
 #include "threading/thread_pool.h"
 #include <immintrin.h>
 #include <string.h>
@@ -307,15 +308,30 @@ int parallel_matmul_q2_0_batch_vnni(float **outs, float **xs,
     int n_blocks = n / Q2_0V_BLOCK;
     size_t row_bytes = (size_t)n_blocks * Q2_0V_BYTES;
 
-    int8_t   *q_x_storage        = (int8_t  *)malloc((size_t)k * (size_t)n * sizeof(int8_t));
-    int32_t  *sum_qx_storage     = (int32_t *)malloc((size_t)k * (size_t)n_blocks * sizeof(int32_t));
-    float    *act_scales         = (float   *)malloc((size_t)k * sizeof(float));
-    const int8_t  **q_xs         = (const int8_t  **)malloc((size_t)k * sizeof(int8_t *));
-    const int32_t **sum_qx_ptrs  = (const int32_t **)malloc((size_t)k * sizeof(int32_t *));
-    if (!q_x_storage || !sum_qx_storage || !act_scales || !q_xs || !sum_qx_ptrs) {
-        free(q_x_storage); free(sum_qx_storage); free(act_scales); free(q_xs); free(sum_qx_ptrs);
-        return 0; /* caller falls back to the portable path on OOM too */
+    /* One checked allocation, carved — five per-call mallocs collapse to one
+     * (fewer allocator round-trips on the hot path). Sizes are overflow-checked
+     * end to end; on failure the caller still falls back to the portable path. */
+    size_t qx_bytes, sq_bytes, sc_bytes, ptr_bytes;
+    if (tn_size_mul3((size_t)k, (size_t)n, sizeof(int8_t), &qx_bytes) ||
+        tn_size_mul3((size_t)k, (size_t)n_blocks, sizeof(int32_t), &sq_bytes) ||
+        tn_size_mul_overflow((size_t)k, sizeof(float), &sc_bytes) ||
+        tn_size_mul_overflow((size_t)k, sizeof(void *), &ptr_bytes)) {
+        return 0;
     }
+    const size_t align = 16;
+    size_t off_qx = 0;
+    size_t off_sq = tn_align_up(off_qx + qx_bytes, align);
+    size_t off_sc = tn_align_up(off_sq + sq_bytes, align);
+    size_t off_px = tn_align_up(off_sc + sc_bytes, align);
+    size_t off_sp = tn_align_up(off_px + ptr_bytes, align);
+    size_t total  = off_sp + ptr_bytes;
+    unsigned char *blk = (unsigned char *)malloc(total);
+    if (!blk) return 0; /* caller falls back to the portable path on OOM too */
+    int8_t        *q_x_storage    = (int8_t  *)(blk + off_qx);
+    int32_t       *sum_qx_storage = (int32_t *)(blk + off_sq);
+    float         *act_scales     = (float   *)(blk + off_sc);
+    const int8_t **q_xs           = (const int8_t  **)(blk + off_px);
+    const int32_t **sum_qx_ptrs   = (const int32_t **)(blk + off_sp);
 
     for (int e = 0; e < k; e++) {
         int8_t  *qx = q_x_storage    + (size_t)e * (size_t)n;
@@ -336,7 +352,7 @@ int parallel_matmul_q2_0_batch_vnni(float **outs, float **xs,
     if (!tp) matmul_q2_0_batch_vnni_task(&args, 0, 0, k * d);
     else     threadpool_dispatch(tp, matmul_q2_0_batch_vnni_task, &args, k * d);
 
-    free(q_x_storage); free(sum_qx_storage); free(act_scales); free(q_xs); free(sum_qx_ptrs);
+    free(blk);
     return 1;
 }
 

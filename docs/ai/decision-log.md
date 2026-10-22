@@ -1163,3 +1163,19 @@ Taken from the plan's defaults while the owner's design answers were pending (an
   regression" by building HEAD vs a known-good commit on the same host and comparing tok/s +
   golden outputs, rather than comparing to the documented absolute numbers.
 - Rationale: absolute tok/s isn't portable across CPUs; relative A/B is.
+
+### 2026-10-07 — `safe_alloc`: checked allocating as the front door for required buffers
+- Decision: Add `memory/safe_alloc.{h,c}` — `tn_safe_malloc/calloc/realloc/aligned_alloc`
+  trap deterministically (one-line diagnostic + `abort`) on absurd size or allocation
+  failure instead of returning NULL. Generalize the private `run_state_alloc` OOM guard
+  into a shared `tn_alloc_too_large()`. Add the pow2/align bit helpers (`tn_is_pow2`,
+  `tn_next_pow2`, `tn_align_up`).
+- Rationale: `engineering-rules.md` already mandates trapping absurd allocations (macOS
+  over-commits; relying on NULL is not portable). The guard lived privately in
+  `run_state.c`; required buffers should never hand back NULL. No new allocator — a checked
+  front door onto the existing `tn_aligned_*` / `tn_size_mul*` helpers.
+- Adopt where the buffer is *required* (`generate` prompt tokens); keep NULL+fallback where
+  the caller can still degrade (the Q2_0 VNNI batch matmul).
+- Also: the Q2_0 VNNI batch matmul's five per-call `malloc`s collapse to one checked,
+  overflow-guarded carve — fewer allocator round-trips on the hot path.
+- Status: OPEN (PR to `master`).

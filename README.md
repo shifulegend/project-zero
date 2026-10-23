@@ -62,6 +62,16 @@ format; where the reference engine is faster, that is shown too.
 | Ternary-Bonsai-27B (Q2_0) | PrismML's llama.cpp fork | **4.2–4.8× faster** at every thread count | 2026-07-18 | [captures](benchmark_results/sweep3_2026-07-18/) |
 | Parallel serving, SmolLM2 135M / 1.7B | `--parallel 1` (one at a time) | **2.2–2.3×** aggregate tok/s with 4 clients, 2.4–2.7× with 8 | 2026-10-22 | [results + screenshots](benchmark_results/parallel_2026-10-22/) |
 
+<p align="center">
+  <img src="benchmark_results/sweep_h2h_2026-10-19/throughput_vs_threads.png" width="720" alt="Decode tok/s vs threads, 2026-10-19: Project Zero vs llama.cpp (SmolLM2-135M F16, SmolLM2-1.7B Q4_K_M) and bitnet.cpp (BitNet I2_S)">
+</p>
+
+Real terminal sessions (2026-10-22, SmolLM2-135M F16, 4 threads, 300 tokens, captured with `tools/screenshots/cli/capture.mjs`):
+
+| Project Zero · **104.1 tok/s** | llama.cpp · **87.9 tok/s** |
+|---|---|
+| ![Project Zero, SmolLM2-135M, 4 threads](benchmark_results/h2h_smollm2_135m_2026-10-22/screenshots/smollm2_135m_pz_t4.png) | ![llama.cpp, SmolLM2-135M, 4 threads](benchmark_results/h2h_smollm2_135m_2026-10-22/screenshots/smollm2_135m_llamacpp_t4.png) |
+
 Accuracy: perplexity matches llama.cpp within 0.7% on SmolLM2-135M/1.7B, Qwen2.5-0.5B, Qwen3-0.6B
 and Mamba-130m ([report](docs/reports/ACCURACY_PARITY_2026-10-19.md), 2026-10-19). All dated results:
 [`docs/BENCHMARK.md`](docs/BENCHMARK.md).
@@ -139,23 +149,12 @@ Same model, same machine, same prompt, 500 tokens, sequential, **best of 3 runs 
 
 **Update (2026-07-24) — RCA'd, fixed, and re-swept:** a follow-up single-sample comparison showed PZ measuring behind llama.cpp; root-caused instead of reacting to one sample — the F16/BF16 GEMV kernels (`src/math/matmul_f16.c`, `src/math/parallel_matmul.c`) were FMA-latency-bound (single accumulator per row, not throughput-bound), fixed by unrolling to 4 independent accumulators matching `ggml`'s kernel structure. Then ran a full 48-config `--threads`×`--simd`×`--classifier` sweep for PZ plus llama.cpp's 4 thread counts, all measured over 251 real generated tokens (an earlier pass measured over just 7 tokens before hitting EOS — a real methodology bug, documented and fixed): matched on threads, the two engines now land within ~3% of each other at every thread count. Full report, methodology, and raw data (in-repo, no external hosting): [`docs/design/reports/sweep-2026-07-24.html`](docs/design/reports/sweep-2026-07-24.html).
 
-**Peak-run screenshots — SmolLM2 (best-of-3):**
-
-| PZ BF16 · t=3 · **100.44 tok/s** | llama.cpp · t=3 · **106.20 tok/s** |
-|---|---|
-| ![PZ SmolLM2 peak](benchmark_results/sweep_2026-06-21/screenshots/smollm2_pz_t3.png) | ![llama.cpp SmolLM2 peak](benchmark_results/sweep_2026-06-21/screenshots/smollm2_llama_t3.png) |
-
-All 16 screenshots (t=1..8 × 2 engines): [`benchmark_results/sweep_2026-06-21/screenshots/`](benchmark_results/sweep_2026-06-21/screenshots/)
+June 2026 screenshots (t=1..8 × 2 engines): [`benchmark_results/sweep_2026-06-21/screenshots/`](benchmark_results/sweep_2026-06-21/screenshots/); newer real-session captures are in [Latest](#benchmarks) above.
 
 <p align="center">
   <img src="docs/benchmark_smollm2.png" width="720" alt="SmolLM2-135M F16: Project Zero vs llama.cpp t=1..8">
 </p>
 
-**Live terminal runs — Xeon (BitNet b1.58-2B-4T) and i5-11300H (SmolLM2-135M F16):**
-
-| BitNet b1.58-2B-4T (ternary, Xeon) | SmolLM2-135M (F16 dense, i5) |
-|---|---|
-| ![BitNet live run](docs/tty_bitnet.png) | ![SmolLM2 live run](docs/tty_smollm2.png) |
 
 **Xeon demo — 31-second live recording:**
 
@@ -585,9 +584,11 @@ the web UI title) as defaults for the next start (turn off with `--no-config-wri
 # open http://127.0.0.1:8080/ in a browser
 ```
 
-| Light | Dark |
+| Light (reply) | Dark (Settings) |
 |---|---|
-| ![Web UI — light theme](docs/design/screenshots/03-reply-light-2026-07-15T22-39-24-616Z.png) | ![Web UI — dark theme](docs/design/screenshots/05-dark-2026-07-15T22-39-24-616Z.png) |
+| ![Web UI — light theme, a reply](docs/design/screenshots/webui-reply-light-2026-10-23.png) | ![Web UI — dark theme, Settings panel](docs/design/screenshots/webui-settings-dark-2026-10-23.png) |
+
+*Captured 2026-10-23 from v0.2.0 (SmolLM2-1.7B Q4_K_M) with `tools/screenshots/webui/chat.spec.mjs`.*
 
 **CLI/REPL polish** — colored output (`--color auto\|always\|never`, respects `NO_COLOR`), a
 model-load progress indicator, a live tok/s status line during generation, and markdown/code

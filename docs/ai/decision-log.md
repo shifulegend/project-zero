@@ -26,8 +26,25 @@
     presented as a vulnerability users of a release were exposed to.
   - After publishing: dated notice on v0.1.0's notes ("superseded by v0.2.0 — affected by GHSA-…,
     GHSA-…; upgrade"), no 0.1.1 backport (pre-1.0, SECURITY.md: latest release only).
-- Status 2026-10-23: PR #53 merged (`a49b9a5`); CI, Independent Security Audit and nightly green on
-  it. Tag `v0.2.0` held until the owner decides on the advisories (drafts + IDs) or declines them.
+- Outcome (owner, 2026-10-22/23):
+  - v0.2.0 tagged on `a49b9a5` (CI, Independent Security Audit and nightly green on it), published
+    as a prerelease 2026-10-22 22:25 UTC by `release.yml` with notes from the `[0.2.0]` changelog
+    section.
+  - Advisories drafted privately, then published once v0.2.0 was verified:
+    [GHSA-6r45-5hm9-j4qc](https://github.com/shifulegend/project-zero/security/advisories/GHSA-6r45-5hm9-j4qc)
+    (prompt injection through chat messages, medium) and
+    [GHSA-j6vf-qvf9-fc89](https://github.com/shifulegend/project-zero/security/advisories/GHSA-j6vf-qvf9-fc89)
+    (`/agent` sandbox escape, low); both affect `<= 0.1.0`, fixed in `0.2.0`.
+  - v0.1.0's notes carry a dated notice (2026-10-23): superseded by v0.2.0, links to both advisories,
+    upgrade command; assets and original notes unchanged.
+  - The published v0.2.0 notes still list the `--static-dir` traversal under Security although no
+    release was affected; they are immutable (rule 2), so it stays, and this entry is the record.
+    The `[0.2.0]` section of `CHANGELOG.md` is left identical to the published notes.
+  - Post-release check (rule 8), 2026-10-23 03:38 UTC, clean directory: tarball, `install.sh` and
+    `SHA256SUMS` downloaded from the release, `sha256sum -c` OK for both; archive holds `pz`,
+    `adaptive_ai_engine` alias, `LICENSE`, `README.md`, `CHANGELOG.md`; `pz --version` →
+    `Project Zero v0.2.0`; `ldd` → libc/libm only; `install.sh --version 0.2.0` into a throwaway
+    `HOME` installs `pz`; the installed binary answers "The capital of France is Paris."
 
 ### 2026-10-22 — Parallel serving (Phase 23 stage 2b): one scheduler thread, slots, shared KV budget
 

@@ -18,7 +18,7 @@
 
 ---
 
-Pure C, single binary (`pz`). Runs Microsoft's BitNet b1.58 **5.4× faster than Microsoft's own `bitnet.cpp` at 4 threads (up to 8.3× single-threaded)**, PrismML's Bonsai-27B **4.2–4.8× faster than PrismML's own engine fork**, DeepSeek-V2-Lite **faster than llama.cpp**, and dense GGUF models — no GPU, no Python, no ML framework.
+C99 (plus one C++17 file for chat templates), single binary (`pz`). Runs Microsoft's BitNet b1.58 **5.4× faster than Microsoft's own `bitnet.cpp` at 4 threads (up to 8.3× single-threaded)** with its converted ternary weights and INT4 output layer, PrismML's Bonsai-27B **4.2–4.8× faster than PrismML's own engine fork**, DeepSeek-V2-Lite **faster than llama.cpp**, and dense GGUF models — no GPU, no Python, no ML framework.
 
 - **No third-party dependencies** — `make release`, one executable; the prebuilt release binary needs only libc/libm
 - **4.9–8.3× faster than bitnet.cpp on i5-11300H** (INT4, t=1..8) · **up to 1.83× faster on a 4-core Xeon** (best vs best at 4 threads: 36.25 vs 19.83 tok/s, [third-party verified on OpenBenchmarking.org ↓](#benchmarks))
@@ -47,6 +47,24 @@ curl -fL --create-dirs -o models/Ternary-Bonsai-27B-Q2_0.gguf \
 <a id="benchmarks"></a>
 
 ## Benchmarks
+
+### Latest same-host results (4-vCPU Intel Xeon, AVX-512 VNNI, October 2026)
+
+Decode tok/s, strictly sequential runs, temperature 0. Project Zero's lead depends on the model and
+format; where the reference engine is faster, that is shown too.
+
+| Model (format) | Compared with | Result (1 / 2 / 3 / 4 threads) | Date | Data |
+|---|---|---|---|---|
+| SmolLM2-135M (F16) | llama.cpp | **+13% / +18% / +5% / −3%** (best of 3) | 2026-10-22 | [logs + screenshots](benchmark_results/h2h_smollm2_135m_2026-10-22/) |
+| SmolLM2-1.7B (Q4_K_M) | llama.cpp | −8% / −8% / −7% / −12% | 2026-10-19 | [report §AL](docs/PERFORMANCE_CEILING_REPORT.md) · [logs](benchmark_results/sweep_h2h_2026-10-19/) |
+| BitNet b1.58 2B-4T (official I2_S GGUF, 16-bit output layer on both) | bitnet.cpp | −17% / −11% / −7% / −15% | 2026-10-19 | [report §AL](docs/PERFORMANCE_CEILING_REPORT.md) · [logs](benchmark_results/sweep_h2h_2026-10-19/) |
+| DeepSeek-V2-Lite-Chat (Q4_K_S, MoE + MLA) | llama.cpp | **11.7–12.6 vs 9.4–10.5** at 4 threads (64 tokens) | 2026-10-21 | [`CHANGELOG.md`](CHANGELOG.md) |
+| Ternary-Bonsai-27B (Q2_0) | PrismML's llama.cpp fork | **4.2–4.8× faster** at every thread count | 2026-07-18 | [captures](benchmark_results/sweep3_2026-07-18/) |
+| Parallel serving, SmolLM2 135M / 1.7B | `--parallel 1` (one at a time) | **2.2–2.3×** aggregate tok/s with 4 clients, 2.4–2.7× with 8 | 2026-10-22 | [results + screenshots](benchmark_results/parallel_2026-10-22/) |
+
+Accuracy: perplexity matches llama.cpp within 0.7% on SmolLM2-135M/1.7B, Qwen2.5-0.5B, Qwen3-0.6B
+and Mamba-130m ([report](docs/reports/ACCURACY_PARITY_2026-10-19.md), 2026-10-19). All dated results:
+[`docs/BENCHMARK.md`](docs/BENCHMARK.md).
 
 ### Intel i5-11300H @ 3.10 GHz · 16 GB DDR4 · AVX-512 VNNI (2026-06-21, fresh sweep)
 
@@ -98,7 +116,7 @@ Optimized (PGO+LTO, INT4 classifier): **36.25 tok/s = 95% of the analytical DRAM
   <img src="docs/benchmark_bitnet.png" width="720" alt="BitNet b1.58-2B-4T: Project Zero beats Microsoft bitnet.cpp at every thread count (Xeon)">
 </p>
 
-> On dense models (SmolLM2-135M F16), Project Zero leads `llama.cpp` at 1–3 threads and trails slightly at 4: **+13% / +18% / +5% / −3%** at 1/2/3/4 threads on a 4-vCPU AVX-512 Xeon (same host, best of 3, 2026-10-22 09:06–09:12 UTC: [raw logs](benchmark_results/h2h_smollm2_135m_2026-10-22/) · real terminal sessions of the same commands captured 2026-10-22 17:36–17:38 UTC, single runs: PZ 29.7 / 60.2 / 76.1 / 104.1 vs llama.cpp 25.6 / 46.5 / 65.5 / 87.9 tok/s — [PZ t=4](benchmark_results/h2h_smollm2_135m_2026-10-22/screenshots/smollm2_135m_pz_t4.png) / [llama.cpp t=4](benchmark_results/h2h_smollm2_135m_2026-10-22/screenshots/smollm2_135m_llamacpp_t4.png), [all](benchmark_results/h2h_smollm2_135m_2026-10-22/screenshots/)); on the i5-11300H table above the margins are +8% / +2% / −5% / −4%. On DeepSeek-V2 MoE it is now **ahead of llama.cpp**: a fused expert FFN, 8-bit-activation integer kernels and dynamic expert scheduling took DeepSeek-V2-Lite-Chat Q4_K_S at 4 threads from 6.3–7.3 to **11.7–12.6 tok/s (llama.cpp: 9.4–10.5)** on a 4-vCPU AVX-512 VNNI Xeon, and resident memory fell from 12.0 to 10.6 GB ([`CHANGELOG.md`](CHANGELOG.md)).
+> The October 2026 Xeon results above supersede the comparisons in this section; these are the original June 2026 runs.
 
 ### SmolLM2-135M F16 — Project Zero vs. llama.cpp (i5-11300H, 2026-06-21, fresh sweep)
 
@@ -117,7 +135,7 @@ Same model, same machine, same prompt, 500 tokens, sequential, **best of 3 runs 
 
 **Peak: PZ = 100.44 tok/s (t=3) · llama.cpp = 106.20 tok/s (t=3)**
 
-> PZ leads at t=1 (+8.4%) and t=2 (+2.2%), trails by 3–6% at peak. No fused Q4K matmul yet — see [Help Wanted ↓](#help-wanted). llama.cpp prompt eval is faster (700–1092 tok/s) because it batches the prompt; PZ does not yet report prompt eval speed separately.
+> PZ leads at t=1 (+8.4%) and t=2 (+2.2%), trails by 3–6% at peak. llama.cpp prompt eval is faster (700–1092 tok/s) because it batches the prompt; PZ does not yet report prompt eval speed separately.
 
 **Update (2026-07-24) — RCA'd, fixed, and re-swept:** a follow-up single-sample comparison showed PZ measuring behind llama.cpp; root-caused instead of reacting to one sample — the F16/BF16 GEMV kernels (`src/math/matmul_f16.c`, `src/math/parallel_matmul.c`) were FMA-latency-bound (single accumulator per row, not throughput-bound), fixed by unrolling to 4 independent accumulators matching `ggml`'s kernel structure. Then ran a full 48-config `--threads`×`--simd`×`--classifier` sweep for PZ plus llama.cpp's 4 thread counts, all measured over 251 real generated tokens (an earlier pass measured over just 7 tokens before hitting EOS — a real methodology bug, documented and fixed): matched on threads, the two engines now land within ~3% of each other at every thread count. Full report, methodology, and raw data (in-repo, no external hosting): [`docs/design/reports/sweep-2026-07-24.html`](docs/design/reports/sweep-2026-07-24.html).
 
@@ -241,8 +259,6 @@ The result contains a genuine surprise: INT8/INT4 are **faster** than the zero-c
 Screenshots: [`classifier_bf16.png`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/classifier_bf16.png) · [`classifier_int8.png`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/classifier_int8.png) · [`classifier_int4.png`](benchmark_results/qwen35_ternary_bonsai_2026-07-16/screenshots/classifier_int4.png)
 
 A second real, previously-hidden bug was found and fixed while collecting the classifier data: every `--classifier` run initially crashed with `SIGILL` on this host. Root cause — this virtualized (Firecracker) host's CPUID advertises AVX-512VBMI support that the underlying execution unit cannot actually retire; both this build's compile-time detection and the engine's own runtime CPUID probe agreed VBMI was available, but executing a VBMI instruction faulted. Fixed with a one-time, execution-verified startup check (a SIGILL-trapped self-test) that replaces blind CPUID trust with real verification before any code path uses VBMI. Full writeup in [`docs/ai/mistakes.md`](docs/ai/mistakes.md).
-
-Full interactive write-up (live charts, hover tooltips, full input/output transcripts for every run): see the benchmark artifact linked from this repo's PR/session history.
 
 ### Qwen3-8B (dense, Q4_K_M) — bringing up a previously-untested architecture, and an honest gap vs. llama.cpp
 
@@ -385,9 +401,8 @@ an AVX2 CPU (Haswell, 2013+); BitNet ternary runs on any x86-64-v2 CPU, and AVX-
 automatically when present.
 
 v0.1.0 (before the Phase 39 rename) shipped `adaptive_ai_engine-0.1.0-x86_64-linux.tar.gz` with an
-`adaptive_ai_engine` binary — same program, old name. The first release after the rename still
-includes an `adaptive_ai_engine` → `pz` alias symlink that prints a deprecation notice; it is
-removed in the release after that.
+`adaptive_ai_engine` binary — same program, old name. v0.2.0 still includes an
+`adaptive_ai_engine` → `pz` alias symlink that prints a deprecation notice; it is removed in v0.3.0.
 
 **Option B — build from source (60 seconds):**
 
@@ -448,6 +463,22 @@ Also included in the same binary: an OpenAI-compatible HTTP API with a built-in 
 
 Control tokens such as `<|im_start|>` typed or pasted into a chat message (or returned by a tool) are read as plain text, so a message cannot end its turn or forge a system turn.
 
+**Models tested** (each verified end to end on a real file; formats beyond these load through the
+same generic paths):
+
+| Model | Format | Verified by |
+|---|---|---|
+| BitNet b1.58 2B-4T | converted `.bin`, official I2_S GGUF | benchmarks vs bitnet.cpp, perplexity |
+| Falcon3-3B-Instruct-1.58bit | I2_S GGUF | chat output, end of turn (2026-10-22) |
+| Ternary-Bonsai-27B (Qwen 3.5 hybrid) | Q2_0 GGUF | benchmarks vs PrismML's fork |
+| DeepSeek-V2-Lite-Chat | Q4_K_S, Q2_K GGUF | golden output, benchmark vs llama.cpp |
+| Qwen3-8B | Q4_K_M GGUF | token-for-token vs llama.cpp, benchmark |
+| Qwen3-0.6B, Qwen2.5-0.5B-Instruct | Q8_0 GGUF | perplexity vs llama.cpp |
+| SmolLM2-135M / 1.7B-Instruct | F16, Q8_0 / Q4_K_M GGUF | benchmarks, perplexity, parallel serving |
+| Mamba-130m | F16 GGUF | perplexity vs llama.cpp, thread sweep |
+
+Qwen3-MoE GGUF loading is implemented but not yet verified on a real file.
+
 No GPU required. Python is offline tooling only (model conversion, testing).
 
 > ⚠️ **Before contributing:** read [`GOLDEN_RULES.md`](GOLDEN_RULES.md). No hardcoding. Test after every change.
@@ -502,7 +533,7 @@ make demo         # release build + SmolLM2-135M download + a test prompt
 make clean
 ```
 
-Requirements: GCC or Clang with its C++ compiler (one C++17 file, the chat-template renderer), pthreads, libm. No other dependencies. `make` also creates an `adaptive_ai_engine` → `pz` symlink, the deprecated old name, removed in the release after next.
+Requirements: GCC or Clang with its C++ compiler (one C++17 file, the chat-template renderer), pthreads, libm. No other dependencies. `make` also creates an `adaptive_ai_engine` → `pz` symlink, the deprecated old name, removed in v0.3.0.
 
 ---
 
@@ -587,7 +618,7 @@ animated indicator while it's actively working:
 off by default), Prometheus metrics (`--metrics` → `GET /metrics`), interactive docs
 (`GET /docs`, `GET /openapi.json`), and a cancel endpoint (`POST /v1/chat/completions/cancel`)
 that actually stops an in-flight generation, backed by a concurrency rearchitecture (per-
-connection threads + a generation mutex) so static/metrics/docs requests are never blocked
+connection threads + a generation queue) so static/metrics/docs requests are never blocked
 behind a running chat completion. By default one generation runs at a time; `--parallel N`
 serves up to N chat requests at once, batched into one forward pass per token (dense attention
 models; others stay sequential and `/v1/config` says why). With 4 clients at once, aggregate
@@ -622,5 +653,5 @@ during that review, not just cosmetic nits).
 
 ---
 
-*Phase 40 · BitNet b1.58-2B-4T · Falcon3-1.58bit · Ternary-Bonsai-27B · DeepSeek-V2-Lite-Chat (GGUF) · Qwen3-8B · SmolLM2-135M F16 · SigLIP vision*
+*v0.2.0 · BitNet b1.58-2B-4T · Falcon3-1.58bit · Ternary-Bonsai-27B · DeepSeek-V2-Lite-Chat · Qwen3-8B · Qwen3-0.6B · Qwen2.5-0.5B · SmolLM2-135M/1.7B · Mamba-130m · SigLIP vision*
 *Best: **35.79 tok/s** (BitNet INT4, i5-11300H, 500 tok, best-of-3) · **36.25 tok/s** (Xeon PGO+LTO) · **100.44 tok/s** (SmolLM2 F16) · **5.4× vs bitnet.cpp** (INT4 @ t=4) · **11.7–12.6 tok/s** (DeepSeek-V2-Lite, ahead of llama.cpp) · 95% DRAM ceiling*

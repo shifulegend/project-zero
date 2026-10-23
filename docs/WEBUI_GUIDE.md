@@ -61,8 +61,11 @@ after a change).
   so the model remembers earlier messages).
 - **Watermark** — paste text to check whether it carries this server's watermark (z-score
   against the threshold; uses `POST /v1/watermark/detect`).
-- **Reply footer** — completion/prompt token counts (with how many prompt tokens came from the
-  prompt cache) and why the reply ended (complete, hit max tokens, stopped).
+- **Reply footer** — reply and prompt token counts, e.g. "7 reply tokens · 37 prompt tokens"
+  (with how many prompt tokens came from the prompt cache) and why the reply ended (complete, hit
+  max tokens, stopped). The prompt count covers everything the model read before replying: the
+  whole conversation rendered through the chat template, which can add a system message and turn
+  markers, so a short question still counts dozens of tokens.
 - **Theme toggle** (top bar) — cycles dark → light → auto (follows OS preference).
 - **Image upload** (paperclip icon, composer) — only rendered when the server reports vision
   is configured; attach an image, then send a message referencing it. Requires starting the

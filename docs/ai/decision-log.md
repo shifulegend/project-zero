@@ -1,7 +1,50 @@
 # Decision Log — project-zero
 
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
-> Read at session start. Last updated: 2026-10-21.
+> Read at session start. Last updated: 2026-10-23.
+
+### 2026-10-23 — v0.1.0 security triage for the v0.2.0 release: advisories, CVEs, release notes
+
+- Checked against the v0.1.0 tag (`4fd4627`) which Security fixes in v0.2.0 reached a shipped release:
+  - **Prompt injection through chat messages** — affected. v0.1.0's encoder matched special tokens
+    anywhere in the rendered prompt, so `<|im_start|>`-style text inside message content became
+    real chat markup (forged system/assistant turns). Reachable via `--server` and the REPL; in
+    agent mode a forged turn could request tool runs.
+  - **Agent tool sandbox** (symlink escape, `PATH` hijacking, exit-code race) — affected. Fixed in
+    `ff83c25` / `402f11a`, both after v0.1.0. Reachable through the REPL's opt-in `/agent`.
+  - **Path traversal out of `--static-dir`** — not affected: `--static-dir` did not exist in
+    v0.1.0; the bug was introduced and fixed between releases.
+- Decision (best practice, RELEASING.md rule 4; recommended to the owner):
+  - One GitHub Security Advisory per affected issue (two), affected `<= 0.1.0`, patched `0.2.0`,
+    CWE-1427 (LLM prompt neutralization) and CWE-59/CWE-426 (link following / untrusted search
+    path); credit: found by the project's own audit. Request a CVE through the advisory for the
+    sandbox escape (crosses a command-execution boundary); optional for the injection.
+  - No embargo: both fixes are already public on `master`, so the advisories are published together
+    with v0.2.0, not held back, and v0.2.0 is not delayed for them.
+  - Drafts are created before tagging so their GHSA IDs can be linked from the v0.2.0 Security
+    notes (release notes are immutable once published). The `--static-dir` line should not be
+    presented as a vulnerability users of a release were exposed to.
+  - After publishing: dated notice on v0.1.0's notes ("superseded by v0.2.0 — affected by GHSA-…,
+    GHSA-…; upgrade"), no 0.1.1 backport (pre-1.0, SECURITY.md: latest release only).
+- Outcome (owner, 2026-10-22/23):
+  - v0.2.0 tagged on `a49b9a5` (CI, Independent Security Audit and nightly green on it), published
+    as a prerelease 2026-10-22 22:25 UTC by `release.yml` with notes from the `[0.2.0]` changelog
+    section.
+  - Advisories drafted privately, then published once v0.2.0 was verified:
+    [GHSA-6r45-5hm9-j4qc](https://github.com/shifulegend/project-zero/security/advisories/GHSA-6r45-5hm9-j4qc)
+    (prompt injection through chat messages, medium) and
+    [GHSA-j6vf-qvf9-fc89](https://github.com/shifulegend/project-zero/security/advisories/GHSA-j6vf-qvf9-fc89)
+    (`/agent` sandbox escape, low); both affect `<= 0.1.0`, fixed in `0.2.0`.
+  - v0.1.0's notes carry a dated notice (2026-10-23): superseded by v0.2.0, links to both advisories,
+    upgrade command; assets and original notes unchanged.
+  - The published v0.2.0 notes still list the `--static-dir` traversal under Security although no
+    release was affected; they are immutable (rule 2), so it stays, and this entry is the record.
+    The `[0.2.0]` section of `CHANGELOG.md` is left identical to the published notes.
+  - Post-release check (rule 8), 2026-10-23 03:38 UTC, clean directory: tarball, `install.sh` and
+    `SHA256SUMS` downloaded from the release, `sha256sum -c` OK for both; archive holds `pz`,
+    `adaptive_ai_engine` alias, `LICENSE`, `README.md`, `CHANGELOG.md`; `pz --version` →
+    `Project Zero v0.2.0`; `ldd` → libc/libm only; `install.sh --version 0.2.0` into a throwaway
+    `HOME` installs `pz`; the installed binary answers "The capital of France is Paris."
 
 ### 2026-10-22 — Parallel serving (Phase 23 stage 2b): one scheduler thread, slots, shared KV budget
 

@@ -1,7 +1,33 @@
 # Decision Log — project-zero
 
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
-> Read at session start. Last updated: 2026-10-21.
+> Read at session start. Last updated: 2026-10-23.
+
+### 2026-10-23 — v0.1.0 security triage for the v0.2.0 release: advisories, CVEs, release notes
+
+- Checked against the v0.1.0 tag (`4fd4627`) which Security fixes in v0.2.0 reached a shipped release:
+  - **Prompt injection through chat messages** — affected. v0.1.0's encoder matched special tokens
+    anywhere in the rendered prompt, so `<|im_start|>`-style text inside message content became
+    real chat markup (forged system/assistant turns). Reachable via `--server` and the REPL; in
+    agent mode a forged turn could request tool runs.
+  - **Agent tool sandbox** (symlink escape, `PATH` hijacking, exit-code race) — affected. Fixed in
+    `ff83c25` / `402f11a`, both after v0.1.0. Reachable through the REPL's opt-in `/agent`.
+  - **Path traversal out of `--static-dir`** — not affected: `--static-dir` did not exist in
+    v0.1.0; the bug was introduced and fixed between releases.
+- Decision (best practice, RELEASING.md rule 4; recommended to the owner):
+  - One GitHub Security Advisory per affected issue (two), affected `<= 0.1.0`, patched `0.2.0`,
+    CWE-1427 (LLM prompt neutralization) and CWE-59/CWE-426 (link following / untrusted search
+    path); credit: found by the project's own audit. Request a CVE through the advisory for the
+    sandbox escape (crosses a command-execution boundary); optional for the injection.
+  - No embargo: both fixes are already public on `master`, so the advisories are published together
+    with v0.2.0, not held back, and v0.2.0 is not delayed for them.
+  - Drafts are created before tagging so their GHSA IDs can be linked from the v0.2.0 Security
+    notes (release notes are immutable once published). The `--static-dir` line should not be
+    presented as a vulnerability users of a release were exposed to.
+  - After publishing: dated notice on v0.1.0's notes ("superseded by v0.2.0 — affected by GHSA-…,
+    GHSA-…; upgrade"), no 0.1.1 backport (pre-1.0, SECURITY.md: latest release only).
+- Status 2026-10-23: PR #53 merged (`a49b9a5`); CI, Independent Security Audit and nightly green on
+  it. Tag `v0.2.0` held until the owner decides on the advisories (drafts + IDs) or declines them.
 
 ### 2026-10-22 — Parallel serving (Phase 23 stage 2b): one scheduler thread, slots, shared KV budget
 

@@ -122,7 +122,7 @@ jobs:
       # immutable release artifact on Hugging Face, never rewritten in place.
       - name: Cache test model
         id: model-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: models/smollm2-q8_0.gguf
           key: smollm2-135m-instruct-q8_0-gguf

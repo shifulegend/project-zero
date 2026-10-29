@@ -17,3 +17,6 @@ Adapter for `docs/ai/` policy — read `docs/ai/tool-sync-policy.md` and `commit
 - **README review** (DoD #7): any commit with a user-facing change (it has a CHANGELOG
   `[Unreleased]` line) re-reads `README.md` and fixes what it made stale, in the same commit --
   flags vs `./pz --help`, links resolve, numbers match their source, phase status matches the plan.
+- **Reader-facing docs style** (`engineering-rules.md` DoD #7, 2026-10-29): README, BENCHMARK,
+  INSTALL and benchmark-folder READMEs say only what the reader needs. No "real"/"honest"/"genuine",
+  no investigation narrative or process detail (link the report), best-of-N numbers only.

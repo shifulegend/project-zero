@@ -76,6 +76,13 @@ A change is done only when:
    exists (`./pz --help`), each relative link resolves, numbers match the source report, and
    "coming soon"/phase-status lines match `IMPLEMENTATION_PLAN.md`. A "major commit" is any
    commit with a `CHANGELOG.md` `[Unreleased]` entry; pure refactors/tests/internal docs are exempt.
+   **Reader-facing docs style** (2026-10-29, owner's rule) for `README.md`, `docs/BENCHMARK.md`,
+   `docs/INSTALL.md` and `benchmark_results/*/README.md`: for every line ask what the reader needs
+   to know from it, and cut what fails. No "real", "honest", "genuine"; no investigation narrative
+   ("RCA'd", "root-caused instead of ..."), counts nobody needs ("all 24 screenshots") or
+   process detail (capture tool, minute-level timestamps) -- link the report or log instead.
+   Show best-of-N numbers, never single-run screenshot numbers in their place. Reference:
+   github.com/shifulegend/readme-guidance (private).
 - Never claim completion without stating what was verified and what remains UNVERIFIED.
 - `make test` runs **every** `tests/*.c` and aborts on the first failure — a green full run is
   the bar. It builds the library as the `debug` variant (ASan/UBSan on engine code too, since

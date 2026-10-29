@@ -1,8 +1,11 @@
 # Project Zero
 
 [![CI](https://github.com/shifulegend/project-zero/actions/workflows/ci.yml/badge.svg)](https://github.com/shifulegend/project-zero/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/shifulegend/project-zero)](https://github.com/shifulegend/project-zero/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Language: C](https://img.shields.io/badge/language-C99-blue.svg)](src/)
+[![SIMD](https://img.shields.io/badge/SIMD-AVX--512%20%7C%20AVX2%20%7C%20NEON-green)](src/math/)
+[![Benchmarks](https://img.shields.io/badge/Benchmarks-latest%20per%20system-orange)](#benchmarks)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 An LLM inference engine for CPUs, written from scratch in C. One binary (`pz`), no GPU, no Python,
 no third-party libraries. It runs ternary models (BitNet b1.58, Falcon3-1.58bit, Ternary-Bonsai),
@@ -71,8 +74,17 @@ Also on this machine:
 | 4 | **35.79** | 6.64 | 98.28 | **102.10** |
 | 8 | **32.03** | 6.04 | 83.32 | **86.30** |
 
-BitNet is 4.9–8.3× faster than bitnet.cpp across 1–8 threads. Every thread count and 40
-screenshots: [docs/BENCHMARK.md](docs/BENCHMARK.md) ·
+BitNet is 4.9–8.3× faster than bitnet.cpp across 1–8 threads.
+
+<p align="center">
+  <img src="docs/comparison_graph_i5.png" width="720" alt="Tok/s vs threads on the i5-11300H: Project Zero BF16 and INT4 against bitnet.cpp">
+</p>
+
+| Project Zero · 4 threads · **35.79 tok/s** | bitnet.cpp · 4 threads · **6.64 tok/s** |
+|---|---|
+| ![Project Zero running BitNet at 4 threads](benchmark_results/sweep_2026-06-21/screenshots/bitnet_pz_int4_t4.png) | ![bitnet.cpp running BitNet at 4 threads](benchmark_results/sweep_2026-06-21/screenshots/bitnet_msft_t4.png) |
+
+Every thread count: [docs/BENCHMARK.md](docs/BENCHMARK.md) ·
 [OpenBenchmarking.org result](https://openbenchmarking.org/result/2606208-SHIF-PROJECT03).
 
 ### Other machines
@@ -80,8 +92,12 @@ screenshots: [docs/BENCHMARK.md](docs/BENCHMARK.md) ·
 | Model | Result | Machine, date |
 |---|---|---|
 | Ternary-Bonsai-27B Q2_0 | 4.2–4.8× faster than PrismML's llama.cpp fork (4 threads: 2.97 vs 0.70 tok/s) | 4-core AVX-512 Xeon VM, 2026-07-18 ([captures](benchmark_results/sweep3_2026-07-18/)) |
-| Qwen3-8B Q4_K_M | 2.5–2.7 tok/s; llama.cpp 4.0–4.8 | AVX2-only VM, 2026-07-31 ([investigation](docs/BENCHMARK.md#qwen3-8b-dense-q4_k_m--bringing-up-a-previously-untested-architecture-and-an-honest-gap-vs-llamacpp)) |
+| Qwen3-8B Q4_K_M | 2.5–2.7 tok/s; llama.cpp 4.0–4.8 | AVX2-only VM, 2026-07-31 ([investigation](docs/BENCHMARK.md#qwen3-8b)) |
 | Ternary-Bonsai-27B Q2_0 | ~0.1 tok/s, reported by a user | i5-8350U, AVX2 ([report](https://old.reddit.com/r/LocalLLaMA/comments/1v3pn1w/built_a_fromscratch_bitnet_inference_engine_in/p0wktod/)) |
+
+<p align="center">
+  <img src="benchmark_results/sweep3_2026-07-18/comparison_infographic.png" width="860" alt="Ternary-Bonsai-27B: Project Zero 4.2–4.8× faster than PrismML's llama.cpp fork at every thread count">
+</p>
 
 Output quality: perplexity is within 0.7% of llama.cpp on SmolLM2-135M/1.7B, Qwen2.5-0.5B,
 Qwen3-0.6B and Mamba-130m ([report](docs/reports/ACCURACY_PARITY_2026-10-19.md)).
@@ -90,7 +106,7 @@ Post your own numbers in [Discussion #3](https://github.com/shifulegend/project-
 
 ## Models
 
-Tested end to end on a real file:
+Tested end to end:
 
 | Model | Format |
 |---|---|
@@ -103,7 +119,7 @@ Tested end to end on a real file:
 | Mamba-130m | F16 GGUF |
 
 Other models with these architectures load the same way. Qwen3-MoE loads but has not been tested
-on a real file yet. The official BitNet GGUF ships a broken chat template; pass
+yet. The official BitNet GGUF ships a broken chat template; pass
 `--chat-template-file docs/templates/bitnet-b1.58.jinja`.
 
 ## Features
@@ -118,6 +134,10 @@ on a real file yet. The official BitNet GGUF ships a broken chat template; pass
   or scalar
 
 Every flag: `pz --help`. Every web UI control and API route: [docs/WEBUI_GUIDE.md](docs/WEBUI_GUIDE.md).
+
+<p align="center">
+  <img src="docs/demo_banner_shimmer.gif" width="720" alt="The pz terminal banner">
+</p>
 
 | Web chat, light theme | Settings, dark theme |
 |---|---|
@@ -141,7 +161,7 @@ is welcome:
 
 - **Q4_K on dense models.** Qwen3-8B Q4_K_M is 1.6–1.9× slower than llama.cpp on the same machine.
   Six attempts are written up in the
-  [investigation](docs/BENCHMARK.md#qwen3-8b-dense-q4_k_m--bringing-up-a-previously-untested-architecture-and-an-honest-gap-vs-llamacpp).
+  [investigation](docs/BENCHMARK.md#qwen3-8b).
 - **INT8/INT4 output layer.** The fix for [issue #27](https://github.com/shifulegend/project-zero/issues/27)
   removed the VNNI fast path in [src/math/parallel_matmul.c](src/math/parallel_matmul.c), and its
   speed has not been measured since.

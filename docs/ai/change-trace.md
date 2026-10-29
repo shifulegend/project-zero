@@ -1591,3 +1591,12 @@
 - Areas: `include/memory/`, `src/memory/`, `src/core/run_state.c`,
   `src/math/matmul_q2_0_vnni.c`, `src/transformer/generate.c`, `tests/test_safe_alloc.c`.
 - Verified: `make release` clean for gcc and clang; `test_safe_alloc` 40/40 under ASan/UBSan.
+
+### 2026-10-29 — Reader-facing docs rewritten to the owner's style rule
+- What: `docs/BENCHMARK.md` rewritten (one section per machine, tables, links to data; investigation
+  narratives replaced by links to `mistakes.md` and the RCA report); "real" removed from README,
+  WEBUI_GUIDE and benchmark-folder READMEs; 2026-10-22 single-run screenshot numbers no longer
+  shown in place of best-of-3; rule added as DoD #7 "Reader-facing docs style".
+- Why: owner review — every line must say something the reader needs.
+- Areas: `README.md`, `docs/BENCHMARK.md`, `docs/WEBUI_GUIDE.md`, `benchmark_results/*/README.md`,
+  `docs/ai/engineering-rules.md`, `.claude/rules/docs.md`, `AGENTS.md`, `.github/copilot-instructions.md`.

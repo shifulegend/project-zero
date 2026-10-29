@@ -9,9 +9,7 @@ cache off), with `--parallel 1` (one at a time, the rest wait in the queue) vers
   (built before committing, so the banner reads `v0.1.0-263-ge2a95bd-dirty`).
 - Host: Intel Xeon @ 2.10 GHz, 4 vCPU, AVX-512 VNNI, 15 GB free RAM; `--threads 4`.
 - Runs strictly sequential, one server at a time, 5 s apart, nothing else on the CPU.
-- Every configuration is one real terminal session captured with
-  `tools/screenshots/cli/capture.mjs` (server banner, startup, per-request `[gen]` lines, then
-  the client-side result): `*/screenshots/p<parallel>_c<clients>.png`. Raw numbers:
+- Screenshots: `*/screenshots/p<parallel>_c<clients>.png`. Raw numbers:
   `*/p<parallel>_c<clients>.json`; tables: `*/summary.txt`. Reproduce with `./run.sh`.
 
 | Model | clients | `--parallel 1` | `--parallel N` (N = clients) | gain |

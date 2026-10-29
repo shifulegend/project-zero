@@ -98,7 +98,7 @@ the web UI only ever offers controls the running server can actually serve.
 ./pz --model models/smollm2.gguf
 ```
 
-With no `--prompt`, this drops into the interactive REPL. On a real terminal (TTY) you'll see,
+With no `--prompt`, this drops into the interactive REPL. In a terminal you'll see,
 in order: the animated "PROJECT ZERO" ASCII banner (bottom-up reveal + a brief shimmer), the
 hardware profile table, then the `> ` prompt.
 
@@ -155,7 +155,7 @@ Chat completion requests accept, besides `messages`/`stream`/`max_tokens`/`tempe
 `watermark: {"enabled", "key", "gamma", "delta"}`, `cache_prompt` (default from
 `--prompt-cache`, on) and `best_of` (default `--best-of`, capped by `--best-of-max`; the response
 then includes a `best_of` object with each candidate's score). Omitted fields use the server defaults
-(the CLI flags). Responses carry real `usage` token counts and `finish_reason`
+(the CLI flags). Responses carry `usage` token counts and `finish_reason`
 (`stop` | `length` | `cancelled`); the final streaming chunk includes `usage` too.
 
 CORS (`--cors`, `--cors-origin <origin>`, repeatable or `*`) and API-key auth (`--api-key

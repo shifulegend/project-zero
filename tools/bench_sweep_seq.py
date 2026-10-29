@@ -14,6 +14,8 @@ Usage:
 
 A suite is NAME:MODEL[:extra,args,comma,separated] (Project Zero). Reference engines:
   --ref-suite NAME:path/to/llama-completion:MODEL[:extra]   (llama.cpp / bitnet.cpp)
+  --cli-suite NAME:path/to/llama-cli:MODEL[:extra]          (ik_llama.cpp: non-interactive by
+                                                             default, has no -no-cnv flag)
 --fixed-length makes every engine do the same work: raw prompt, EOS ignored, exactly
 --tokens generated (PZ: --raw-prompt --ignore-eos; llama.cpp: -no-cnv --ignore-eos).
 """
@@ -91,6 +93,8 @@ def main():
                     help="Project Zero suite NAME:MODEL[:extra,args]")
     ap.add_argument("--ref-suite", action="append", default=[],
                     help="llama.cpp-family suite NAME:BINARY:MODEL[:extra,args] (llama-completion)")
+    ap.add_argument("--cli-suite", action="append", default=[],
+                    help="llama-cli suite without -no-cnv (ik_llama.cpp) NAME:BINARY:MODEL[:extra,args]")
     ap.add_argument("--fixed-length", action="store_true",
                     help="same work for every engine: raw prompt + ignore EOS (PZ --raw-prompt --ignore-eos)")
     ap.add_argument("--threads", default="1-4")
@@ -125,12 +129,13 @@ def main():
         parts = spec.split(":", 2)
         extra = parts[2].split(",") if len(parts) > 2 and parts[2] else []
         jobs.append((parts[0], "pz", ENGINE, parts[1], extra))
-    for spec in a.ref_suite:
-        parts = spec.split(":", 3)
-        extra = parts[3].split(",") if len(parts) > 3 and parts[3] else []
-        jobs.append((parts[0], "ref", parts[1], parts[2], extra))
+    for kind, specs in (("ref", a.ref_suite), ("cli", a.cli_suite)):
+        for spec in specs:
+            parts = spec.split(":", 3)
+            extra = parts[3].split(",") if len(parts) > 3 and parts[3] else []
+            jobs.append((parts[0], kind, parts[1], parts[2], extra))
     if not jobs:
-        ap.error("give at least one --suite or --ref-suite")
+        ap.error("give at least one --suite, --ref-suite or --cli-suite")
 
     for name, kind, binary, model, extra in jobs:
         meta["suites"][name] = {"engine": kind, "binary": binary, "model": model, "extra": extra}
@@ -150,7 +155,7 @@ def main():
                         cmd += ["--raw-prompt", "--ignore-eos"]
                 else:
                     cmd = [binary, "-m", model, "-p", a.prompt, "-n", str(a.tokens), "--temp", "0",
-                           "-t", str(t), "-no-cnv"] + extra
+                           "-t", str(t)] + (["-no-cnv"] if kind == "ref" else []) + extra
                     if a.fixed_length:
                         cmd += ["--ignore-eos"]
                 text, wall, rss, cpu, rc = run_once(cmd, None)

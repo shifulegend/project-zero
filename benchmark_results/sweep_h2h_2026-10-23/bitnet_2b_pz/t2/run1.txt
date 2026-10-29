@@ -1,0 +1,70 @@
+=== bitnet_2b_pz t=2 run 1 ===
+DATE: 2026-10-23 07:15:38 UTC
+HOST_CPU: Intel(R) Xeon(R) Processor @ 2.10GHz (model 207, 4 vCPU)
+CMD: ./pz --model models/bitnet-b1.58-2B-4T-i2_s.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --max-tokens 500 --temperature 0 --threads 2 --no-update-check --raw-prompt --ignore-eos
+PROMPT: Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+============================================================
+[1/4] Opening model file...
+[2/4] Loading weights...
+[3/4] Preparing runtime...
+[gguf-tok] Loaded 128256 tokens (gpt2, pre=default), 256 special — BOS=128000 EOS=128001 chat_template=yes
+[4/4] Ready.
+####  ####   ###    ### #####  #### #####     ##### ##### ####   ### 
+#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #
+####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
+#     # #   #   # #  #  #     #       #        #    #     # #   #   #
+#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
+Project Zero Engine v0.2.0-5-ge7500ba-dirty — Auto-Tuned Hardware
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 2048   KiB per core                 │
+│ L3 cache      : 260    MiB shared                   │
+│ Free RAM      : 15134  MiB                          │
+│ DRAM bandwidth: 41.3   GB/s (cached)                │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB (pre-load est.)           │
+│ Ceiling       : 44.3   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 2 threads | AVX-512 VNNI | BF16 cls | 4T | 41.3 GB/s | ceiling 44 tok/s
+Model format: GGUF
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+[GGUF] Weights loaded (30 layers, arch=bitnet-b1.58)
+[profile] Data/token (loaded model): 1133 MB -> ceiling 34.8 tok/s at 41.3 GB/s
+KV cache: F32, max context: 4096 tokens (sizing tier: Quantized I8, RAM budget 60%)
+
+ 
+
+Machine learning is a subset of artificial intelligence that involves the development of algorithms that allow computers to learn from data and make predictions or decisions without being explicitly programmed. It is a powerful tool for solving complex problems in various fields, including healthcare, finance, and marketing.
+
+Neural networks are a type of machine learning model that are inspired by the structure and function of the human brain. They consist of layers of interconnected nodes, or neurons, that process and transmit information. Neural networks can be trained on large datasets to recognize patterns and make predictions.
+
+Supervised learning is a type of machine learning where the model is trained on labeled data, meaning that the input data is paired with the correct output. The goal is for the model to learn the relationship between the input and output and make accurate predictions on new, unseen data. A real-world example of supervised learning is image recognition, where a neural network is trained on a dataset of labeled images to recognize objects.
+
+Unsupervised learning is a type of machine learning where the model is trained on unlabeled data, meaning that there is no corresponding output for each input. The goal is for the model to learn the underlying structure of the data and identify patterns or clusters. A real-world example of unsupervised learning is customer segmentation, where a neural network is trained on customer data to identify different segments based on their behavior and preferences.
+
+Reinforcement learning is a type of machine learning where the model learns by interacting with an environment and receiving feedback in the form of rewards or penalties. The goal is for the model to learn a policy that maximizes the cumulative reward over time. A real-world example of reinforcement learning is playing a video game, where a neural network is trained to play the game by learning from its mistakes and successes.
+
+In summary, machine learning is a powerful tool for solving complex problems, and neural networks are a type of machine learning model that can be trained on large datasets to recognize patterns and make predictions. Supervised learning, unsupervised learning, and reinforcement learning are three types of machine learning, each with its own strengths and applications.  Response: 1. Machine learning is a subset of artificial intelligence that involves the development of algorithms that allow computers to learn from data and make predictions or decisions without being explicitly programmed. 2. Neural networks are a type of machine learning model that are inspired by the structure and function of the human brain. 3. Supervised learning is a type of machine learning where the model is trained on labeled
+[gen] 11.64 tok/s (500 tokens)
+
+
+
+PERF: wall=50.22s max_rss=1768MB cpu=185% exit=0

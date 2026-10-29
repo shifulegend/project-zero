@@ -1,0 +1,86 @@
+=== smollm2_1p7b_q4km_llamacpp t=2 run 2 ===
+DATE: 2026-10-23 07:49:32 UTC
+HOST_CPU: Intel(R) Xeon(R) Processor @ 2.10GHz (model 207, 4 vCPU)
+CMD: /home/user/ext/llama.cpp/build/bin/llama-completion -m models/SmolLM2-1.7B-Instruct-Q4_K_M.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 --temp 0 -t 2 -no-cnv --ignore-eos
+PROMPT: Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+============================================================
+0.00.003.588 I llama_completion: llama backend init
+0.00.008.158 I llama_completion: load the model and apply lora adapter, if any
+0.07.506.878 I cmn          init: llama threadpool init, n_threads = 2
+0.07.830.979 I 
+0.07.831.131 I system_info: n_threads = 2 (n_threads_batch = 2) / 4 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | AVX512 = 1 | AVX512_VNNI = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 | 
+0.07.831.146 I 
+0.07.831.659 I sampler seed: 4294967295
+0.07.831.691 I sampler params: 
+	repeat_last_n = 64, repeat_penalty = 1.000, frequency_penalty = 0.000, presence_penalty = 0.000
+	dry_multiplier = 0.000, dry_base = 1.750, dry_allowed_length = 2, dry_penalty_last_n = 64
+	top_k = 40, top_p = 0.950, min_p = 0.050, xtc_probability = 0.000, xtc_threshold = 0.100, typical_p = 1.000, top_n_sigma = -1.000, temp = 0.000
+	mirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000, adaptive_target = -1.000, adaptive_decay = 0.900
+0.07.831.702 I sampler chain: logits -> logit-bias -> ?penalties -> ?dry -> ?top-n-sigma -> top-k -> ?typical -> top-p -> min-p -> ?xtc -> temp-ext -> greedy 
+0.07.831.704 I generate: n_ctx = 8192, n_batch = 2048, n_predict = 500, n_keep = 0
+0.07.831.704 I 
+Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+
+Machine learning is a subset of artificial intelligence that involves training algorithms to learn from data and make predictions or decisions without being explicitly programmed. It's a powerful tool for solving complex problems and making data-driven decisions.
+
+There are three main types of machine learning: supervised learning, unsupervised learning, and reinforcement learning.
+
+**Supervised Learning**
+
+In supervised learning, the algorithm is trained on labeled data, where the correct output is already known. The goal is to learn a mapping between input data and the corresponding output labels.
+
+Example: Image classification
+
+* Input: A picture of a dog
+* Output: The label "dog"
+
+Supervised learning algorithms learn to recognize patterns in the input data and make predictions on new, unseen data.
+
+**Unsupervised Learning**
+
+In unsupervised learning, the algorithm is trained on unlabeled data, and the goal is to discover patterns, relationships, or groupings in the data.
+
+Example: Customer segmentation
+
+* Input: Customer data (age, income, location)
+* Output: Clusters of similar customers
+
+Unsupervised learning algorithms identify hidden structures in the data and group similar customers together.
+
+**Reinforcement Learning**
+
+In reinforcement learning, the algorithm learns by interacting with an environment and receiving feedback in the form of rewards or penalties.
+
+Example: Game playing
+
+* Input: A game environment (game board, rules)
+* Output: The agent's actions
+
+Reinforcement learning algorithms learn to make decisions that maximize the cumulative reward over time.
+
+Real-world examples of each type of machine learning:
+
+* **Supervised Learning:**
+	+ Image recognition: Google's image recognition service uses supervised learning to identify objects in pictures.
+	+ Speech recognition: Siri and Google Assistant use supervised learning to recognize spoken words.
+* **Unsupervised Learning:**
+	+ Customer segmentation: Netflix uses unsupervised learning to segment customers based on viewing habits.
+	+ Clustering: K-means clustering is a popular unsupervised learning algorithm used in customer segmentation.
+* **Reinforcement Learning:**
+	+ Game playing: AlphaGo, a computer program, uses reinforcement learning to play Go at a world-champion level.
+	+ Robotics: Reinforcement learning is used in robotics to teach robots to navigate and interact with their environment.
+
+These are just a few examples of the many applications of
+
+1.02.357.693 I common_perf_print:    sampling time =     104.23 ms
+1.02.357.695 I common_perf_print:    samplers time =      24.39 ms /   529 tokens
+1.02.357.702 I common_perf_print:        load time =    7675.29 ms
+1.02.357.703 I common_perf_print: prompt eval time =     539.93 ms /    29 tokens (   18.62 ms per token,    53.71 tokens per second)
+1.02.357.704 I common_perf_print:        eval time =   53843.64 ms /   499 runs   (  107.90 ms per token,     9.27 tokens per second)
+1.02.357.705 I common_perf_print:       total time =   54526.73 ms /   528 tokens
+1.02.357.706 I common_perf_print: unaccounted time =      38.93 ms /   0.1 %      (total - sampling - prompt eval - eval) / (total)
+1.02.357.706 I common_perf_print:    graphs reused =        496
+1.02.357.706 I common_perf_print:   graph reallocs =          0    /     0        (same size) / (changed size)
+
+PERF: wall=62.51s max_rss=3309MB cpu=186% exit=0
+PROMPT_TPS: 53.71

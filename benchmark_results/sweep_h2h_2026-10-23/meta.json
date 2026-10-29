@@ -1,0 +1,61 @@
+{
+  "prompt": "Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.",
+  "max_tokens": 500,
+  "runs": 3,
+  "cooldown_s": 10.0,
+  "threads": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "suites": {
+    "smollm2_135m_pz": {
+      "engine": "pz",
+      "binary": "./pz",
+      "model": "models/SmolLM2-135M-Instruct-f16.gguf",
+      "extra": []
+    },
+    "smollm2_1p7b_q4km_pz": {
+      "engine": "pz",
+      "binary": "./pz",
+      "model": "models/SmolLM2-1.7B-Instruct-Q4_K_M.gguf",
+      "extra": []
+    },
+    "bitnet_2b_pz": {
+      "engine": "pz",
+      "binary": "./pz",
+      "model": "models/bitnet-b1.58-2B-4T-i2_s.gguf",
+      "extra": []
+    },
+    "bitnet_2b_pz_int4": {
+      "engine": "pz",
+      "binary": "./pz",
+      "model": "models/bitnet-b1.58-2B-4T-i2_s.gguf",
+      "extra": [
+        "--classifier",
+        "int4"
+      ]
+    },
+    "smollm2_135m_llamacpp": {
+      "engine": "ref",
+      "binary": "/home/user/ext/llama.cpp/build/bin/llama-completion",
+      "model": "models/SmolLM2-135M-Instruct-f16.gguf",
+      "extra": []
+    },
+    "smollm2_1p7b_q4km_llamacpp": {
+      "engine": "ref",
+      "binary": "/home/user/ext/llama.cpp/build/bin/llama-completion",
+      "model": "models/SmolLM2-1.7B-Instruct-Q4_K_M.gguf",
+      "extra": []
+    },
+    "bitnet_2b_bitnetcpp": {
+      "engine": "ref",
+      "binary": "/home/user/ext/BitNet/build/bin/llama-completion",
+      "model": "models/bitnet-b1.58-2B-4T-i2_s.gguf",
+      "extra": []
+    }
+  },
+  "started": "2026-10-23T06:49:23.444429+00:00",
+  "finished": "2026-10-23T08:11:28.176565+00:00"
+}

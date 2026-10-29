@@ -1,8 +1,11 @@
 # Project Zero
 
 [![CI](https://github.com/shifulegend/project-zero/actions/workflows/ci.yml/badge.svg)](https://github.com/shifulegend/project-zero/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/shifulegend/project-zero)](https://github.com/shifulegend/project-zero/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Language: C](https://img.shields.io/badge/language-C99-blue.svg)](src/)
+[![SIMD](https://img.shields.io/badge/SIMD-AVX--512%20%7C%20AVX2%20%7C%20NEON-green)](src/math/)
+[![Benchmarks](https://img.shields.io/badge/Benchmarks-latest%20per%20system-orange)](#benchmarks)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 An LLM inference engine for CPUs, written from scratch in C. One binary (`pz`), no GPU, no Python,
 no third-party libraries. It runs ternary models (BitNet b1.58, Falcon3-1.58bit, Ternary-Bonsai),

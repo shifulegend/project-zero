@@ -25,7 +25,7 @@
   </div>
   {#if role === 'assistant' && meta && !streaming}
     <div class="meta">
-      {#if meta.usage}{meta.usage.completion_tokens} tokens · {meta.usage.prompt_tokens} prompt{#if meta.usage.prompt_tokens_details?.cached_tokens}{' '}({meta.usage.prompt_tokens_details.cached_tokens} cached){/if}{/if}
+      {#if meta.usage}<span title="Prompt tokens count everything the model read before replying: the conversation so far, rendered through the model's chat template (which can add a system message and turn markers).">{meta.usage.completion_tokens} reply token{meta.usage.completion_tokens === 1 ? '' : 's'} · {meta.usage.prompt_tokens} prompt token{meta.usage.prompt_tokens === 1 ? '' : 's'}{#if meta.usage.prompt_tokens_details?.cached_tokens}{' '}({meta.usage.prompt_tokens_details.cached_tokens} cached){/if}</span>{/if}
       {#if meta.best_of_n > 1} · best of {meta.best_of_n}{/if}
       {#if meta.finish_reason}<span class:warn={meta.finish_reason === 'length'}> · {FINISH_LABEL[meta.finish_reason] ?? meta.finish_reason}</span>{/if}
     </div>

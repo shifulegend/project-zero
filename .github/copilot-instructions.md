@@ -28,7 +28,8 @@ OpenAI-compatible HTTP API. Build: `Makefile` (primary) + `CMakeLists.txt`. See 
 - Published releases are immutable — fixes ship as a new version; old notes only gain a dated
   notice. See `docs/RELEASING.md` § Maintaining published releases.
 - README reviewed before every major commit (DoD #7): user-facing change → fix what it made
-  stale in `README.md` in the same commit.
+  stale in `README.md` in the same commit. Reader-facing docs say only what the reader needs:
+  no "real"/"honest", no investigation narrative (link the report) — see `engineering-rules.md` DoD #7.
 - No AI signature or attribution (commit trailers, code comments, etc.) unless the user
   explicitly asks for it that time — see `docs/ai/commit-log-guidance.md`.
 - Third-party skill plugins **superpowers** and **mattpocock-skills** are used (per-tool install commands in `docs/ai/tool-sync-policy.md`); repo rules override them — see `docs/ai/tool-sync-policy.md` § Third-party skill plugins.

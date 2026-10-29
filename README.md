@@ -74,8 +74,17 @@ Also on this machine:
 | 4 | **35.79** | 6.64 | 98.28 | **102.10** |
 | 8 | **32.03** | 6.04 | 83.32 | **86.30** |
 
-BitNet is 4.9–8.3× faster than bitnet.cpp across 1–8 threads. Every thread count and 40
-screenshots: [docs/BENCHMARK.md](docs/BENCHMARK.md) ·
+BitNet is 4.9–8.3× faster than bitnet.cpp across 1–8 threads.
+
+<p align="center">
+  <img src="docs/comparison_graph_i5.png" width="720" alt="Tok/s vs threads on the i5-11300H: Project Zero BF16 and INT4 against bitnet.cpp">
+</p>
+
+| Project Zero · 4 threads · **35.79 tok/s** | bitnet.cpp · 4 threads · **6.64 tok/s** |
+|---|---|
+| ![Project Zero running BitNet at 4 threads](benchmark_results/sweep_2026-06-21/screenshots/bitnet_pz_int4_t4.png) | ![bitnet.cpp running BitNet at 4 threads](benchmark_results/sweep_2026-06-21/screenshots/bitnet_msft_t4.png) |
+
+Every thread count: [docs/BENCHMARK.md](docs/BENCHMARK.md) ·
 [OpenBenchmarking.org result](https://openbenchmarking.org/result/2606208-SHIF-PROJECT03).
 
 ### Other machines
@@ -85,6 +94,10 @@ screenshots: [docs/BENCHMARK.md](docs/BENCHMARK.md) ·
 | Ternary-Bonsai-27B Q2_0 | 4.2–4.8× faster than PrismML's llama.cpp fork (4 threads: 2.97 vs 0.70 tok/s) | 4-core AVX-512 Xeon VM, 2026-07-18 ([captures](benchmark_results/sweep3_2026-07-18/)) |
 | Qwen3-8B Q4_K_M | 2.5–2.7 tok/s; llama.cpp 4.0–4.8 | AVX2-only VM, 2026-07-31 ([investigation](docs/BENCHMARK.md#qwen3-8b)) |
 | Ternary-Bonsai-27B Q2_0 | ~0.1 tok/s, reported by a user | i5-8350U, AVX2 ([report](https://old.reddit.com/r/LocalLLaMA/comments/1v3pn1w/built_a_fromscratch_bitnet_inference_engine_in/p0wktod/)) |
+
+<p align="center">
+  <img src="benchmark_results/sweep3_2026-07-18/comparison_infographic.png" width="860" alt="Ternary-Bonsai-27B: Project Zero 4.2–4.8× faster than PrismML's llama.cpp fork at every thread count">
+</p>
 
 Output quality: perplexity is within 0.7% of llama.cpp on SmolLM2-135M/1.7B, Qwen2.5-0.5B,
 Qwen3-0.6B and Mamba-130m ([report](docs/reports/ACCURACY_PARITY_2026-10-19.md)).
@@ -121,6 +134,10 @@ yet. The official BitNet GGUF ships a broken chat template; pass
   or scalar
 
 Every flag: `pz --help`. Every web UI control and API route: [docs/WEBUI_GUIDE.md](docs/WEBUI_GUIDE.md).
+
+<p align="center">
+  <img src="docs/demo_banner_shimmer.gif" width="720" alt="The pz terminal banner">
+</p>
 
 | Web chat, light theme | Settings, dark theme |
 |---|---|

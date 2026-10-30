@@ -1,0 +1,41 @@
+{
+  "prompt": "Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.",
+  "max_tokens": 200,
+  "runs": 3,
+  "cooldown_s": 20.0,
+  "threads": [
+    4
+  ],
+  "suites": {
+    "deepseek_v2_lite_pz": {
+      "engine": "pz",
+      "binary": "./pz",
+      "model": "models/DeepSeek-V2-Lite-Chat.Q4_K_S.gguf",
+      "extra": []
+    },
+    "deepseek_v2_lite_llamacpp": {
+      "engine": "ref",
+      "binary": "/home/user/ext/llama.cpp/build/bin/llama-completion",
+      "model": "models/DeepSeek-V2-Lite-Chat.Q4_K_S.gguf",
+      "extra": [
+        "-c",
+        "1024"
+      ]
+    },
+    "deepseek_v2_lite_ik": {
+      "engine": "cli",
+      "binary": "/home/user/ext/ik_llama.cpp/build/bin/llama-cli",
+      "model": "models/DeepSeek-V2-Lite-Chat.Q4_K_S.gguf",
+      "extra": [
+        "-rtr",
+        "-c",
+        "1024"
+      ]
+    }
+  },
+  "started": "2026-10-30T02:17:54.157071+00:00",
+  "finished": "2026-10-30T02:54:22.531666+00:00",
+  "resumed": [
+    "2026-10-30T02:46:52.358404+00:00"
+  ]
+}

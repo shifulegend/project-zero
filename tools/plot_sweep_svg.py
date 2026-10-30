@@ -20,7 +20,7 @@ from collections import defaultdict
 
 BG, INK, MUTED, GRID = "#fcfcfb", "#1f1f1d", "#6b6a64", "#e7e6e1"
 # Engine colours: Project Zero first, references after (validated pair, CVD-safe).
-COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#8a5cd1"]
+COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#8a5cd1", "#c4972b"]
 
 
 def best_by_suite(summary):
@@ -50,7 +50,14 @@ def marker(i, x, y, c):
 
 
 def render(panels, best, title, subtitle):
-    pw, gap, left, top, ph = 330, 40, 50, 112, 260
+    # One colour per engine name across every panel (2026-10-30: colours were per panel position,
+    # so the same colour meant different engines in different panels); Project Zero series are
+    # drawn as circles, references as squares.
+    names = []
+    for _, series in panels:
+        names += [n for _, n in series if n not in names]
+    colour = {n: COLORS[i % len(COLORS)] for i, n in enumerate(names)}
+    pw, gap, left, top, ph = 360, 40, 50, 112, 260
     w = left + len(panels) * pw + (len(panels) - 1) * gap + 30
     h = top + ph + 70
     out = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}" '
@@ -62,7 +69,7 @@ def render(panels, best, title, subtitle):
         out.append(f'<text x="{left - 10}" y="{56 + 16 * li}" font-size="12" fill="{MUTED}">{line}</text>')
     for pi, (label, series) in enumerate(panels):
         x0 = left + pi * (pw + gap)
-        x1 = x0 + pw - 110                                  # room for end labels
+        x1 = x0 + pw - 150                                  # room for end labels
         y0, y1 = top + ph, top
         threads = sorted({t for s, _ in series for t in best.get(s, {})})
         vmax = max((v for s, _ in series for v in best.get(s, {}).values()), default=1.0)
@@ -82,7 +89,8 @@ def render(panels, best, title, subtitle):
             pts = [(xs[t], y0 - (y0 - y1) * v / ymax) for t, v in sorted(best.get(suite, {}).items())]
             if not pts:
                 continue
-            c = COLORS[si % len(COLORS)]
+            c = colour[name]
+            si = 0 if name.startswith("Project Zero") else 1
             out.append('<polyline points="' + " ".join(f"{x:.1f},{y:.1f}" for x, y in pts) +
                        f'" fill="none" stroke="{c}" stroke-width="2" stroke-linejoin="round"/>')
             out += [marker(si, x, y, c) for x, y in pts]

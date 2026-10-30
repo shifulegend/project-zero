@@ -1,0 +1,240 @@
+=== smollm2_135m_ik t=2 run 3 ===
+DATE: 2026-10-30 01:47:01 UTC
+HOST_CPU: Intel(R) Xeon(R) Processor @ 2.80GHz (model 85, 4 vCPU)
+CMD: /home/user/ext/ik_llama.cpp/build/bin/llama-cli -m models/SmolLM2-135M-Instruct-f16.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 --temp 0 -t 2 --ignore-eos
+PROMPT: Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+============================================================
+Log start
+main: build = 1 (06d729c)
+main: built with cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0 for x86_64-linux-gnu
+main: seed  = 1793324811
+CPU: using device CPU - 13068 MiB free
+llama_model_loader: loaded meta data with 33 key-value pairs and 272 tensors from models/SmolLM2-135M-Instruct-f16.gguf (version GGUF V3 (latest))
+llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_model_loader: - kv   0:                       general.architecture str              = llama
+llama_model_loader: - kv   1:                               general.type str              = model
+llama_model_loader: - kv   2:                               general.name str              = Smollm2 135M 8k Lc100K Mix1 Ep2
+llama_model_loader: - kv   3:                       general.organization str              = HuggingFaceTB
+llama_model_loader: - kv   4:                           general.finetune str              = 8k-lc100k-mix1-ep2
+llama_model_loader: - kv   5:                           general.basename str              = smollm2
+llama_model_loader: - kv   6:                         general.size_label str              = 135M
+llama_model_loader: - kv   7:                            general.license str              = apache-2.0
+llama_model_loader: - kv   8:                          general.languages arr[str,1]       = ["en"]
+llama_model_loader: - kv   9:                          llama.block_count u32              = 30
+llama_model_loader: - kv  10:                       llama.context_length u32              = 8192
+llama_model_loader: - kv  11:                     llama.embedding_length u32              = 576
+llama_model_loader: - kv  12:                  llama.feed_forward_length u32              = 1536
+llama_model_loader: - kv  13:                 llama.attention.head_count u32              = 9
+llama_model_loader: - kv  14:              llama.attention.head_count_kv u32              = 3
+llama_model_loader: - kv  15:                       llama.rope.freq_base f32              = 100000.000000
+llama_model_loader: - kv  16:     llama.attention.layer_norm_rms_epsilon f32              = 0.000010
+llama_model_loader: - kv  17:                          general.file_type u32              = 1
+llama_model_loader: - kv  18:                           llama.vocab_size u32              = 49152
+llama_model_loader: - kv  19:                 llama.rope.dimension_count u32              = 64
+llama_model_loader: - kv  20:            tokenizer.ggml.add_space_prefix bool             = false
+llama_model_loader: - kv  21:               tokenizer.ggml.add_bos_token bool             = false
+llama_model_loader: - kv  22:                       tokenizer.ggml.model str              = gpt2
+llama_model_loader: - kv  23:                         tokenizer.ggml.pre str              = smollm
+llama_model_loader: - kv  24:                      tokenizer.ggml.tokens arr[str,49152]   = ["<|endoftext|>", "<|im_start|>", "<|...
+llama_model_loader: - kv  25:                  tokenizer.ggml.token_type arr[i32,49152]   = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, ...
+llama_model_loader: - kv  26:                      tokenizer.ggml.merges arr[str,48900]   = ["Ġ t", "Ġ a", "i n", "h e", "Ġ Ġ...
+llama_model_loader: - kv  27:                tokenizer.ggml.bos_token_id u32              = 1
+llama_model_loader: - kv  28:                tokenizer.ggml.eos_token_id u32              = 2
+llama_model_loader: - kv  29:            tokenizer.ggml.unknown_token_id u32              = 0
+llama_model_loader: - kv  30:            tokenizer.ggml.padding_token_id u32              = 2
+llama_model_loader: - kv  31:                    tokenizer.chat_template str              = {% for message in messages %}{% if lo...
+llama_model_loader: - kv  32:               general.quantization_version u32              = 2
+llama_model_loader: - type  f32:   61 tensors
+llama_model_loader: - type  f16:  211 tensors
+load: 0 unused tokens
+load: printing all EOG tokens:
+load:   - 0 ('<|endoftext|>')
+load:   - 2 ('<|im_end|>')
+load:   - 4 ('<reponame>')
+load: special tokens cache size = 17
+load: token to piece cache size = 0.3170 MB
+llm_load_print_meta: format           = GGUF V3 (latest)
+llm_load_print_meta: arch             = llama
+llm_load_print_meta: n_ctx_train      = 8192
+llm_load_print_meta: n_embd           = 576
+llm_load_print_meta: n_layer          = 30
+llm_load_print_meta: n_head           = 9
+llm_load_print_meta: n_head_kv        = 3
+llm_load_print_meta: n_rot            = 64
+llm_load_print_meta: n_swa            = 0
+llm_load_print_meta: n_swa_pattern    = 1
+llm_load_print_meta: n_embd_head_k    = 64
+llm_load_print_meta: n_embd_head_v    = 64
+llm_load_print_meta: n_gqa            = 3
+llm_load_print_meta: n_embd_k_gqa     = 192
+llm_load_print_meta: n_embd_v_gqa     = 192
+llm_load_print_meta: f_norm_eps       = 0.0e+00
+llm_load_print_meta: f_norm_rms_eps   = 1.0e-05
+llm_load_print_meta: f_clamp_kqv      = 0.0e+00
+llm_load_print_meta: f_max_alibi_bias = 0.0e+00
+llm_load_print_meta: f_logit_scale    = 0.0e+00
+llm_load_print_meta: n_ff             = 1536
+llm_load_print_meta: n_expert         = 0
+llm_load_print_meta: n_expert_used    = 0
+llm_load_print_meta: causal attn      = 1
+llm_load_print_meta: pooling type     = 0
+llm_load_print_meta: rope type        = 0
+llm_load_print_meta: rope scaling     = linear
+llm_load_print_meta: freq_base_train  = 100000.0
+llm_load_print_meta: freq_scale_train = 1
+llm_load_print_meta: n_ctx_orig_yarn  = 8192
+llm_load_print_meta: rope_finetuned   = unknown
+llm_load_print_meta: ssm_d_conv       = 0
+llm_load_print_meta: ssm_d_inner      = 0
+llm_load_print_meta: ssm_d_state      = 0
+llm_load_print_meta: ssm_dt_rank      = 0
+llm_load_print_meta: ssm_n_group      = 0
+llm_load_print_meta: model type       = ?B
+llm_load_print_meta: model ftype      = F16
+llm_load_print_meta: model params     = 134.515 M
+llm_load_print_meta: model size       = 256.634 MiB (16.004 BPW) 
+llm_load_print_meta: general.name     = Smollm2 135M 8k Lc100K Mix1 Ep2
+print_info: vocab type            = BPE
+print_info: n_vocab               = 49152
+print_info: n_merges              = 48900
+print_info: BOS token             = 1 '<|im_start|>'
+print_info: EOS token             = 2 '<|im_end|>'
+print_info: EOT token             = 0 '<|endoftext|>'
+print_info: UNK token             = 0 '<|endoftext|>'
+print_info: PAD token             = 2 '<|im_end|>'
+print_info: LF token              = 198 'Ċ'
+print_info: FIM REP token         = 4 '<reponame>'
+print_info: EOG token             = 0 '<|endoftext|>'
+print_info: EOG token             = 2 '<|im_end|>'
+print_info: EOG token             = 4 '<reponame>'
+print_info: max token length      = 162
+======================================= HAVE_FANCY_SIMD is defined
+------------------- Layer sizes:
+Layer  0:      6.75,      6.00,     12.75        9.38  MiB
+Layer  1:      6.75,      6.00,     12.75        9.38  MiB
+Layer  2:      6.75,      6.00,     12.75        9.38  MiB
+Layer  3:      6.75,      6.00,     12.75        9.38  MiB
+Layer  4:      6.75,      6.00,     12.75        9.38  MiB
+Layer  5:      6.75,      6.00,     12.75        9.38  MiB
+Layer  6:      6.75,      6.00,     12.75        9.38  MiB
+Layer  7:      6.75,      6.00,     12.75        9.38  MiB
+Layer  8:      6.75,      6.00,     12.75        9.38  MiB
+Layer  9:      6.75,      6.00,     12.75        9.38  MiB
+Layer 10:      6.75,      6.00,     12.75        9.38  MiB
+Layer 11:      6.75,      6.00,     12.75        9.38  MiB
+Layer 12:      6.75,      6.00,     12.75        9.38  MiB
+Layer 13:      6.75,      6.00,     12.75        9.38  MiB
+Layer 14:      6.75,      6.00,     12.75        9.38  MiB
+Layer 15:      6.75,      6.00,     12.75        9.38  MiB
+Layer 16:      6.75,      6.00,     12.75        9.38  MiB
+Layer 17:      6.75,      6.00,     12.75        9.38  MiB
+Layer 18:      6.75,      6.00,     12.75        9.38  MiB
+Layer 19:      6.75,      6.00,     12.75        9.38  MiB
+Layer 20:      6.75,      6.00,     12.75        9.38  MiB
+Layer 21:      6.75,      6.00,     12.75        9.38  MiB
+Layer 22:      6.75,      6.00,     12.75        9.38  MiB
+Layer 23:      6.75,      6.00,     12.75        9.38  MiB
+Layer 24:      6.75,      6.00,     12.75        9.38  MiB
+Layer 25:      6.75,      6.00,     12.75        9.38  MiB
+Layer 26:      6.75,      6.00,     12.75        9.38  MiB
+Layer 27:      6.75,      6.00,     12.75        9.38  MiB
+Layer 28:      6.75,      6.00,     12.75        9.38  MiB
+Layer 29:      6.75,      6.00,     12.75        9.38  MiB
+Layer 30:     54.00,     86.62,    140.62 MiB (output layer)
+--------------------------------------------------------------------------
+Total   :    202.63,    266.62,    469.26 MiB
+Memory required for model tensors + cache: 523 MiB
+Memory available on all devices - compute: 12013 MiB
+llm_load_tensors: ggml ctx size =    0.14 MiB
+llm_load_tensors:        CPU buffer size =   256.63 MiB (total of 1 resident buffers)
+....................................................................
+llama_init_from_model: n_ctx         = 8192
+llama_init_from_model: n_batch       = 2048
+llama_init_from_model: n_ubatch      = 512
+llama_init_from_model: flash_attn    = 1
+llama_init_from_model: attn_max_b    = 256
+llama_init_from_model: fused_moe     = 1
+llama_init_from_model: grouped er    = 0
+llama_init_from_model: fused_up_gate = 1
+llama_init_from_model: fused_mmad    = 1
+llama_init_from_model: rope_cache    = 0
+llama_init_from_model: graph_reuse   = 1
+llama_init_from_model: k_cache_hadam = 0
+llama_init_from_model: v_cache_hadam = 0
+llama_init_from_model: split_mode_graph_scheduling = 0
+llama_init_from_model: reduce_type   = f16
+llama_init_from_model: sched_async   = 0
+llama_init_from_model: ser           = -1, 0
+llama_init_from_model: freq_base     = 100000.0
+llama_init_from_model: freq_scale    = 1
+llama_kv_cache_init:        CPU KV buffer size =   180.00 MiB
+llama_init_from_model: KV self size  =  180.00 MiB, K (f16):   90.00 MiB, V (f16):   90.00 MiB
+llama_init_from_model:        CPU  output buffer size =     0.19 MiB
+llama_init_from_model:        CPU compute buffer size =    97.13 MiB
+llama_init_from_model: graph nodes  = 755
+llama_init_from_model: graph splits = 1
+llama_init_from_model: enabling only_active_experts scheduling
+
+system_info: n_threads = 2 / 4 | AVX = 1 | AVX_VNNI = 0 | AVX2 = 1 | AVX512 = 1 | AVX512_VBMI = 0 | AVX512_VNNI = 1 | AVX512_BF16 = 0 | FMA = 1 | NEON = 0 | SVE = 0 | ARM_FMA = 0 | F16C = 1 | FP16_VA = 0 | WASM_SIMD = 0 | SSE3 = 1 | SSSE3 = 1 | VSX = 0 | MATMUL_INT8 = 0 | 
+sampling: 
+	repeat_last_n = 64, repeat_penalty = 1.000, frequency_penalty = 0.000, presence_penalty = 0.000
+	top_k = 40, tfs_z = 1.000, top_p = 0.950, min_p = 0.050, typical_p = 1.000, temp = 0.000
+	mirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000
+	xtc_probability = 0.000, xtc_threshold = 1.000, top_n_sigma = 0.000
+	adaptive_target = -1.00, adaptive_decay = 0.90
+sampling order: 
+CFG -> Penalties -> dry -> top_k -> tfs_z -> typical_p -> top_p -> min_p -> xtc -> top_n_sigma -> temperature -> adaptive_p 
+generate: n_ctx = 8192, n_batch = 2048, n_predict = 500, n_keep = 0
+
+
+Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+
+Lastly, consider the role of data in machine learning and its impact on decision-making. Discuss the importance of data quality, data preprocessing, and data visualization in machine learning.
+
+Throughout the discussion, provide clear and concise explanations of each concept, and use examples to illustrate the practical applications of each. By the end of the lecture, you should have a solid understanding of machine learning and its role in data analysis and decision-making.
+
+Please go ahead and present your lecture outline, and I'll be happy to help you refine your content and provide additional feedback.
+
+Best regards,
+Alex Johnson
+Data Scientist
+Machine Learning Engineer
+Data Science Academy
+
+What are the key differences between supervised and unsupervised learning? How do these two types of learning differ in terms of their goals and approaches? Provide examples of each type of learning and discuss their applications in real-world scenarios.
+
+Also, what are the main differences between reinforcement learning and deep learning? Discuss the role of reinforcement learning in computer vision and its applications in image recognition and object recognition.
+
+Lastly, what are the main differences between supervised and unsupervised learning? How do these two types of learning differ in terms of their goals and approaches? Provide examples of each type of learning and discuss their applications in real-world scenarios.
+
+Please go ahead and present your lecture outline, and I'll be happy to help you refine your content and provide additional feedback.
+
+Best regards,
+Alex Johnson
+Data Scientist
+Machine Learning Engineer
+Data Science Academy
+
+What are the main differences between deep learning and neural networks? Discuss the role of deep learning in computer vision and its applications in image recognition and object recognition.
+
+Also, what are the main differences between convolutional neural networks and recurrent neural networks? Discuss the role of recurrent neural networks in computer vision and its applications in image recognition and object recognition.
+
+Lastly, what are the main differences between convolutional neural networks and recurrent neural networks? Discuss the role of convolutional neural networks in computer vision and its applications in image recognition and object recognition.
+
+Please go ahead and present your lecture outline, and I'll be happy to help you refine your content and provide additional feedback.
+
+Best regards,
+Alex Johnson
+Data Scientist
+Machine Learning Engineer
+Data Science Academy
+
+What are the main differences between deep learning and neural networks? Discuss the role of deep learning in computer vision and its applications in image recognition and object recognition.
+
+main: prompt eval time =      78.93 ms /    29 tokens (    2.72 ms per token,   367.40 tokens per second)
+main:        eval time =    9781.23 ms /   500 tokens (   19.56 ms per token,    51.12 tokens per second)
+main:       total time =    9860.16 ms /   529 tokens
+Log end
+
+PERF: wall=10.22s max_rss=499MB cpu=195% exit=0
+PROMPT_TPS: 367.4

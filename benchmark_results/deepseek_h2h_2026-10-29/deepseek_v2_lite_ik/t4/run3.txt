@@ -1,0 +1,278 @@
+=== deepseek_v2_lite_ik t=4 run 3 ===
+DATE: 2026-10-30 02:53:42 UTC
+HOST_CPU: Intel(R) Xeon(R) Processor @ 2.80GHz (model 85, 4 vCPU)
+CMD: /home/user/ext/ik_llama.cpp/build/bin/llama-cli -m models/DeepSeek-V2-Lite-Chat.Q4_K_S.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 200 --temp 0 -t 4 -rtr -c 1024 --ignore-eos
+PROMPT: Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+============================================================
+Log start
+main: build = 1 (06d729c)
+main: built with cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0 for x86_64-linux-gnu
+main: seed  = 1793328791
+CPU: using device CPU - 11065 MiB free
+llama_model_loader: loaded meta data with 45 key-value pairs and 377 tensors from models/DeepSeek-V2-Lite-Chat.Q4_K_S.gguf (version GGUF V3 (latest))
+llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_model_loader: - kv   0:                       general.architecture str              = deepseek2
+llama_model_loader: - kv   1:                               general.name str              = DeepSeek-V2-Lite-Chat
+llama_model_loader: - kv   2:                      deepseek2.block_count u32              = 27
+llama_model_loader: - kv   3:                   deepseek2.context_length u32              = 163840
+llama_model_loader: - kv   4:                 deepseek2.embedding_length u32              = 2048
+llama_model_loader: - kv   5:              deepseek2.feed_forward_length u32              = 10944
+llama_model_loader: - kv   6:             deepseek2.attention.head_count u32              = 16
+llama_model_loader: - kv   7:          deepseek2.attention.head_count_kv u32              = 16
+llama_model_loader: - kv   8:                   deepseek2.rope.freq_base f32              = 10000.000000
+llama_model_loader: - kv   9: deepseek2.attention.layer_norm_rms_epsilon f32              = 0.000001
+llama_model_loader: - kv  10:                deepseek2.expert_used_count u32              = 6
+llama_model_loader: - kv  11:                          general.file_type u32              = 14
+llama_model_loader: - kv  12:        deepseek2.leading_dense_block_count u32              = 1
+llama_model_loader: - kv  13:                       deepseek2.vocab_size u32              = 102400
+llama_model_loader: - kv  14:           deepseek2.attention.kv_lora_rank u32              = 512
+llama_model_loader: - kv  15:             deepseek2.attention.key_length u32              = 192
+llama_model_loader: - kv  16:           deepseek2.attention.value_length u32              = 128
+llama_model_loader: - kv  17:       deepseek2.expert_feed_forward_length u32              = 1408
+llama_model_loader: - kv  18:                     deepseek2.expert_count u32              = 64
+llama_model_loader: - kv  19:              deepseek2.expert_shared_count u32              = 2
+llama_model_loader: - kv  20:             deepseek2.expert_weights_scale f32              = 1.000000
+llama_model_loader: - kv  21:             deepseek2.rope.dimension_count u32              = 64
+llama_model_loader: - kv  22:                deepseek2.rope.scaling.type str              = yarn
+llama_model_loader: - kv  23:              deepseek2.rope.scaling.factor f32              = 40.000000
+llama_model_loader: - kv  24: deepseek2.rope.scaling.original_context_length u32              = 4096
+llama_model_loader: - kv  25: deepseek2.rope.scaling.yarn_log_multiplier f32              = 0.070700
+llama_model_loader: - kv  26:                       tokenizer.ggml.model str              = gpt2
+llama_model_loader: - kv  27:                         tokenizer.ggml.pre str              = deepseek-llm
+llama_model_loader: - kv  28:                      tokenizer.ggml.tokens arr[str,102400]  = ["!", "\"", "#", "$", "%", "&", "'", ...
+llama_model_loader: - kv  29:                  tokenizer.ggml.token_type arr[i32,102400]  = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
+llama_model_loader: - kv  30:                      tokenizer.ggml.merges arr[str,99757]   = ["Ġ Ġ", "Ġ t", "Ġ a", "i n", "h e...
+llama_model_loader: - kv  31:                tokenizer.ggml.bos_token_id u32              = 100000
+llama_model_loader: - kv  32:                tokenizer.ggml.eos_token_id u32              = 100001
+llama_model_loader: - kv  33:            tokenizer.ggml.padding_token_id u32              = 100001
+llama_model_loader: - kv  34:               tokenizer.ggml.add_bos_token bool             = true
+llama_model_loader: - kv  35:               tokenizer.ggml.add_eos_token bool             = false
+llama_model_loader: - kv  36:                    tokenizer.chat_template str              = {% if not add_generation_prompt is de...
+llama_model_loader: - kv  37:               general.quantization_version u32              = 2
+llama_model_loader: - kv  38:                                general.url str              = https://huggingface.co/mradermacher/D...
+llama_model_loader: - kv  39:              mradermacher.quantize_version str              = 2
+llama_model_loader: - kv  40:                  mradermacher.quantized_by str              = mradermacher
+llama_model_loader: - kv  41:                  mradermacher.quantized_at str              = 2024-07-03T02:13:52+02:00
+llama_model_loader: - kv  42:                  mradermacher.quantized_on str              = kaos
+llama_model_loader: - kv  43:                         general.source.url str              = https://huggingface.co/deepseek-ai/De...
+llama_model_loader: - kv  44:                  mradermacher.convert_type str              = hf
+llama_model_loader: - type  f32:  108 tensors
+llama_model_loader: - type q5_0:   24 tensors
+llama_model_loader: - type q5_1:    3 tensors
+llama_model_loader: - type q4_K:  239 tensors
+llama_model_loader: - type q5_K:    2 tensors
+llama_model_loader: - type q6_K:    1 tensors
+================= Missing experts gating function -> set to softmax
+load: 0 unused tokens
+load: printing all EOG tokens:
+load:   - 100001 ('<｜end▁of▁sentence｜>')
+load: special tokens cache size = 2400
+load: token to piece cache size = 0.6659 MB
+llm_load_print_meta: format           = GGUF V3 (latest)
+llm_load_print_meta: arch             = deepseek2
+llm_load_print_meta: n_ctx_train      = 163840
+llm_load_print_meta: n_embd           = 2048
+llm_load_print_meta: n_layer          = 27
+llm_load_print_meta: n_head           = 16
+llm_load_print_meta: n_head_kv        = 16
+llm_load_print_meta: n_rot            = 64
+llm_load_print_meta: n_swa            = 0
+llm_load_print_meta: n_swa_pattern    = 1
+llm_load_print_meta: n_embd_head_k    = 192
+llm_load_print_meta: n_embd_head_v    = 128
+llm_load_print_meta: n_gqa            = 1
+llm_load_print_meta: n_embd_k_gqa     = 3072
+llm_load_print_meta: n_embd_v_gqa     = 2048
+llm_load_print_meta: f_norm_eps       = 0.0e+00
+llm_load_print_meta: f_norm_rms_eps   = 1.0e-06
+llm_load_print_meta: f_clamp_kqv      = 0.0e+00
+llm_load_print_meta: f_max_alibi_bias = 0.0e+00
+llm_load_print_meta: f_logit_scale    = 0.0e+00
+llm_load_print_meta: n_ff             = 10944
+llm_load_print_meta: n_expert         = 64
+llm_load_print_meta: n_expert_used    = 6
+llm_load_print_meta: causal attn      = 1
+llm_load_print_meta: pooling type     = 0
+llm_load_print_meta: rope type        = 0
+llm_load_print_meta: rope scaling     = yarn
+llm_load_print_meta: freq_base_train  = 10000.0
+llm_load_print_meta: freq_scale_train = 0.025
+llm_load_print_meta: n_ctx_orig_yarn  = 4096
+llm_load_print_meta: rope_finetuned   = unknown
+llm_load_print_meta: ssm_d_conv       = 0
+llm_load_print_meta: ssm_d_inner      = 0
+llm_load_print_meta: ssm_d_state      = 0
+llm_load_print_meta: ssm_dt_rank      = 0
+llm_load_print_meta: ssm_n_group      = 0
+llm_load_print_meta: model type       = 16B
+llm_load_print_meta: model ftype      = Q4_K - Small
+llm_load_print_meta: model params     = 15.706 B
+llm_load_print_meta: model size       = 8.875 GiB (4.854 BPW) 
+llm_load_print_meta: repeating layers = 8.605 GiB (4.835 BPW, 15.287 B parameters)
+llm_load_print_meta: general.name     = DeepSeek-V2-Lite-Chat
+llm_load_print_meta: n_layer_dense_lead   = 1
+llm_load_print_meta: n_lora_q             = 0
+llm_load_print_meta: n_lora_kv            = 512
+llm_load_print_meta: n_ff_exp             = 1408
+llm_load_print_meta: n_expert_shared      = 2
+llm_load_print_meta: expert_weights_scale = 1.0
+llm_load_print_meta: expert_weights_norm  = 0
+llm_load_print_meta: expert_gating_func   = softmax
+llm_load_print_meta: rope_yarn_log_mul    = 0.0707
+print_info: vocab type            = BPE
+print_info: n_vocab               = 102400
+print_info: n_merges              = 99757
+print_info: BOS token             = 100000 '<｜begin▁of▁sentence｜>'
+print_info: EOS token             = 100001 '<｜end▁of▁sentence｜>'
+print_info: EOT token             = 100001 '<｜end▁of▁sentence｜>'
+print_info: PAD token             = 100001 '<｜end▁of▁sentence｜>'
+print_info: LF token              = 185 'Ċ'
+print_info: EOG token             = 100001 '<｜end▁of▁sentence｜>'
+print_info: max token length      = 256
+======================================= HAVE_FANCY_SIMD is defined
+------------------- Layer sizes:
+Layer  0:     48.60,      1.12,     49.73       54.75  MiB
+Layer  1:    348.99,      1.12,    350.12       65.00  MiB
+Layer  2:    348.99,      1.12,    350.12       65.00  MiB
+Layer  3:    337.31,      1.12,    338.43       65.00  MiB
+Layer  4:    337.31,      1.12,    338.43       65.00  MiB
+Layer  5:    337.31,      1.12,    338.43       65.00  MiB
+Layer  6:    337.31,      1.12,    338.43       65.00  MiB
+Layer  7:    337.31,      1.12,    338.43       65.00  MiB
+Layer  8:    337.31,      1.12,    338.43       65.00  MiB
+Layer  9:    337.31,      1.12,    338.43       65.00  MiB
+Layer 10:    337.31,      1.12,    338.43       65.00  MiB
+Layer 11:    337.31,      1.12,    338.43       65.00  MiB
+Layer 12:    337.31,      1.12,    338.43       65.00  MiB
+Layer 13:    337.31,      1.12,    338.43       65.00  MiB
+Layer 14:    337.31,      1.12,    338.43       65.00  MiB
+Layer 15:    337.31,      1.12,    338.43       65.00  MiB
+Layer 16:    337.31,      1.12,    338.43       65.00  MiB
+Layer 17:    337.31,      1.12,    338.43       65.00  MiB
+Layer 18:    337.31,      1.12,    338.43       65.00  MiB
+Layer 19:    337.31,      1.12,    338.43       65.00  MiB
+Layer 20:    337.31,      1.12,    338.43       65.00  MiB
+Layer 21:    337.31,      1.12,    338.43       65.00  MiB
+Layer 22:    337.31,      1.12,    338.43       65.00  MiB
+Layer 23:    337.31,      1.12,    338.43       65.00  MiB
+Layer 24:    337.31,      1.12,    338.43       65.00  MiB
+Layer 25:    337.31,      1.12,    338.43       65.00  MiB
+Layer 26:    337.31,      1.12,    338.43       65.00  MiB
+Layer 27:    164.06,    135.00,    299.06 MiB (output layer)
+--------------------------------------------------------------------------
+Total   :   8841.95,    165.38,   9007.33 MiB
+Memory required for model tensors + cache: 9171 MiB
+Memory available on all devices - compute: 9933 MiB
+llm_load_tensors: ggml ctx size =    0.18 MiB
+llm_load_tensors:        CPU buffer size =  9088.15 MiB (total of 1 resident buffers)
+.........................................................................................
+============ llm_prepare_mla: need to compute 27 wk_b/wv_b tensors
+Computed blk.0.attn_k_b.weight as 128 x 512 x 16 of type q8_0 and stored in buffer CPU
+Computed blk.0.attn_v_b.weight as 512 x 128 x 16 of type q4_K and stored in buffer CPU
+Computed blk.1.attn_k_b.weight as 128 x 512 x 16 of type q8_0 and stored in buffer CPU
+Computed blk.1.attn_v_b.weight as 512 x 128 x 16 of type q4_K and stored in buffer CPU
+Computed blk.2.attn_k_b.weight as 128 x 512 x 16 of type q8_0 and stored in buffer CPU
+Computed blk.2.attn_v_b.weight as 512 x 128 x 16 of type q4_K and stored in buffer CPU
+Computed blk.3.attn_k_b.weight as 128 x 512 x 16 of type q8_0 and stored in buffer CPU
+Computed blk.3.attn_v_b.weight as 512 x 128 x 16 of type q4_K and stored in buffer CPU
+Computed blk.4.attn_k_b.weight as 128 x 512 x 16 of type q8_0 and stored in buffer CPU
+Computed blk.4.attn_v_b.weight as 512 x 128 x 16 of type q4_K and stored in buffer CPU
+Computed blk.5.attn_k_b.weight as 128 x 512 x 16 of type q8_0 and stored in buffer CPU
+Computed blk.5.attn_v_b.weight as 512 x 128 x 16 of type q4_K and stored in buffer CPU
+Computed blk.6.attn_k_b.weight as 128 x 512 x 16 of type q8_0 and stored in buffer CPU
+Computed blk.6.attn_v_b.weight as 512 x 128 x 16 of type q4_K and stored in buffer CPU
+Computed blk.7.attn_k_b.weight as 128 x 512 x 16 of type q8_0 and stored in buffer CPU
+Computed blk.7.attn_v_b.weight as 512 x 128 x 16 of type q4_K and stored in buffer CPU
+Computed blk.8.attn_k_b.weight as 128 x 512 x 16 of type q8_0 and stored in buffer CPU
+Computed blk.8.attn_v_b.weight as 512 x 128 x 16 of type q4_K and stored in buffer CPU
+Computed blk.9.attn_k_b.weight as 128 x 512 x 16 of type q8_0 and stored in buffer CPU
+Computed blk.9.attn_v_b.weight as 512 x 128 x 16 of type q4_K and stored in buffer CPU
+Computed blk.10.attn_k_b.weight as 128 x 512 x 16 of type q8_0 and stored in buffer CPU
+Computed blk.10.attn_v_b.weight as 512 x 128 x 16 of type q4_K and stored in buffer CPU
+Computed blk.11.attn_k_b.weight as 128 x 512 x 16 of type q8_0 and stored in buffer CPU
+Computed blk.11.attn_v_b.weight as 512 x 128 x 16 of type q4_K and stored in buffer CPU
+Computed blk.12.attn_k_b.weight as 128 x 512 x 16 of type q8_0 and stored in buffer CPU
+Computed blk.12.attn_v_b.weight as 512 x 128 x 16 of type q4_K and stored in buffer CPU
+Computed blk.13.attn_k_b.weight as 128 x 512 x 16 of type q8_0 and stored in buffer CPU
+Computed blk.13.attn_v_b.weight as 512 x 128 x 16 of type q4_K and stored in buffer CPU
+Computed blk.14.attn_k_b.weight as 128 x 512 x 16 of type q8_0 and stored in buffer CPU
+Computed blk.14.attn_v_b.weight as 512 x 128 x 16 of type q4_K and stored in buffer CPU
+Computed blk.15.attn_k_b.weight as 128 x 512 x 16 of type q8_0 and stored in buffer CPU
+Computed blk.15.attn_v_b.weight as 512 x 128 x 16 of type q4_K and stored in buffer CPU
+Computed blk.16.attn_k_b.weight as 128 x 512 x 16 of type q8_0 and stored in buffer CPU
+Computed blk.16.attn_v_b.weight as 512 x 128 x 16 of type q4_K and stored in buffer CPU
+Computed blk.17.attn_k_b.weight as 128 x 512 x 16 of type q8_0 and stored in buffer CPU
+Computed blk.17.attn_v_b.weight as 512 x 128 x 16 of type q4_K and stored in buffer CPU
+Computed blk.18.attn_k_b.weight as 128 x 512 x 16 of type q8_0 and stored in buffer CPU
+Computed blk.18.attn_v_b.weight as 512 x 128 x 16 of type q4_K and stored in buffer CPU
+Computed blk.19.attn_k_b.weight as 128 x 512 x 16 of type q8_0 and stored in buffer CPU
+Computed blk.19.attn_v_b.weight as 512 x 128 x 16 of type q4_K and stored in buffer CPU
+Computed blk.20.attn_k_b.weight as 128 x 512 x 16 of type q8_0 and stored in buffer CPU
+Computed blk.20.attn_v_b.weight as 512 x 128 x 16 of type q4_K and stored in buffer CPU
+Computed blk.21.attn_k_b.weight as 128 x 512 x 16 of type q8_0 and stored in buffer CPU
+Computed blk.21.attn_v_b.weight as 512 x 128 x 16 of type q4_K and stored in buffer CPU
+Computed blk.22.attn_k_b.weight as 128 x 512 x 16 of type q8_0 and stored in buffer CPU
+Computed blk.22.attn_v_b.weight as 512 x 128 x 16 of type q4_K and stored in buffer CPU
+Computed blk.23.attn_k_b.weight as 128 x 512 x 16 of type q8_0 and stored in buffer CPU
+Computed blk.23.attn_v_b.weight as 512 x 128 x 16 of type q4_K and stored in buffer CPU
+Computed blk.24.attn_k_b.weight as 128 x 512 x 16 of type q8_0 and stored in buffer CPU
+Computed blk.24.attn_v_b.weight as 512 x 128 x 16 of type q4_K and stored in buffer CPU
+Computed blk.25.attn_k_b.weight as 128 x 512 x 16 of type q8_0 and stored in buffer CPU
+Computed blk.25.attn_v_b.weight as 512 x 128 x 16 of type q4_K and stored in buffer CPU
+Computed blk.26.attn_k_b.weight as 128 x 512 x 16 of type q8_0 and stored in buffer CPU
+Computed blk.26.attn_v_b.weight as 512 x 128 x 16 of type q4_K and stored in buffer CPU
+============ Repacked 319 tensors (0 skipped file-aliased)
+llama_init_from_model: n_ctx         = 1024
+llama_init_from_model: n_batch       = 1024
+llama_init_from_model: n_ubatch      = 512
+llama_init_from_model: flash_attn    = 1
+llama_init_from_model: mla_attn      = 3
+llama_init_from_model: attn_max_b    = 256
+llama_init_from_model: fused_moe     = 1
+llama_init_from_model: grouped er    = 0
+llama_init_from_model: fused_up_gate = 1
+llama_init_from_model: fused_mmad    = 1
+llama_init_from_model: rope_cache    = 0
+llama_init_from_model: graph_reuse   = 1
+llama_init_from_model: k_cache_hadam = 0
+llama_init_from_model: v_cache_hadam = 0
+llama_init_from_model: split_mode_graph_scheduling = 0
+llama_init_from_model: reduce_type   = f16
+llama_init_from_model: sched_async   = 0
+llama_init_from_model: ser           = -1, 0
+llama_init_from_model: freq_base     = 10000.0
+llama_init_from_model: freq_scale    = 0.025
+llama_kv_cache_init:        CPU KV buffer size =    30.38 MiB
+llama_init_from_model: KV self size  =   30.38 MiB, c^KV (f16):   30.38 MiB, kv^T: not used
+llama_init_from_model:        CPU  output buffer size =     0.39 MiB
+llama_init_from_model:        CPU compute buffer size =   204.00 MiB
+llama_init_from_model: graph nodes  = 1236
+llama_init_from_model: graph splits = 1
+llama_init_from_model: enabling only_active_experts scheduling
+
+system_info: n_threads = 4 / 4 | AVX = 1 | AVX_VNNI = 0 | AVX2 = 1 | AVX512 = 1 | AVX512_VBMI = 0 | AVX512_VNNI = 1 | AVX512_BF16 = 0 | FMA = 1 | NEON = 0 | SVE = 0 | ARM_FMA = 0 | F16C = 1 | FP16_VA = 0 | WASM_SIMD = 0 | SSE3 = 1 | SSSE3 = 1 | VSX = 0 | MATMUL_INT8 = 0 | 
+sampling: 
+	repeat_last_n = 64, repeat_penalty = 1.000, frequency_penalty = 0.000, presence_penalty = 0.000
+	top_k = 40, tfs_z = 1.000, top_p = 0.950, min_p = 0.050, typical_p = 1.000, temp = 0.000
+	mirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000
+	xtc_probability = 0.000, xtc_threshold = 1.000, top_n_sigma = 0.000
+	adaptive_target = -1.00, adaptive_decay = 0.90
+sampling order: 
+CFG -> Penalties -> dry -> top_k -> tfs_z -> typical_p -> top_p -> min_p -> xtc -> top_n_sigma -> temperature -> adaptive_p 
+generate: n_ctx = 1024, n_batch = 2048, n_predict = 200, n_keep = 1
+
+
+Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+
+Machine Learning is a subfield of Artificial Intelligence (AI) that focuses on the development of algorithms and statistical models that enable computers to perform specific tasks without being explicitly programmed to perform those tasks. These algorithms improve their performance as they are exposed to more data through a process called learning.
+
+Neural Networks are a type of Machine Learning model inspired by the structure and function of biological neural networks. They are composed of interconnected nodes, or artificial neurons, which process and transmit information using weights. The network learns by adjusting these weights based on the input data and the desired output.
+
+Supervised Learning: In Supervised Learning, the model is trained on a labeled dataset, meaning the data is tagged with the correct output. The model learns to predict the output based on the input data. An example of this is a spam filter in an email client. The model is trained on emails that are already labeled as 'spam' or 'not spam', and it learns to predict whether new emails
+main: prompt eval time =     574.74 ms /    30 tokens (   19.16 ms per token,    52.20 tokens per second)
+main:        eval time =   14207.05 ms /   200 tokens (   71.04 ms per token,    14.08 tokens per second)
+main:       total time =   14781.78 ms /   230 tokens
+Log end
+
+PERF: wall=31.05s max_rss=9239MB cpu=353% exit=0
+PROMPT_TPS: 52.2

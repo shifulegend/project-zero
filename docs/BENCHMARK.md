@@ -4,17 +4,27 @@ Decode speed in tokens per second. Unless a section says otherwise: best of 3 ru
 count, 500 generated tokens, temperature 0, one engine at a time with nothing else running. Raw
 logs, the exact commands and the host's CPU details are in each linked folder.
 
-## Intel Xeon @ 2.80 GHz (Cascade Lake), 4 vCPU — 2026-10-19
+## Intel Xeon @ 2.80 GHz (Cascade Lake), 4 vCPU — 2026-10-29
 
-| Model | Project Zero, 1 / 2 / 3 / 4 threads | Compared with | Difference |
-|---|---|---|---|
-| SmolLM2-135M F16 | 28.98 / 49.42 / 65.79 / 77.13 | llama.cpp: 26.02 / 42.96 / 60.33 / 75.56 | 2–15% faster |
-| SmolLM2-1.7B Q4_K_M | 5.30 / 9.18 / 12.76 / 15.30 | llama.cpp: 5.78 / 10.01 / 13.79 / 17.41 | 7–12% slower |
-| BitNet b1.58 2B-4T, official I2_S GGUF | 4.20 / 7.63 / 10.94 / 12.27 | bitnet.cpp: 5.04 / 8.53 / 11.79 / 14.37 | 7–17% slower |
+Tok/s at 1 / 2 / 3 / 4 threads. ik_llama.cpp runs with `-rtr`; for BitNet it runs the same
+official I2_S GGUF converted to its IQ2_BN format (`llama-quantize --allow-requantize ... iq2_bn`).
 
-![Decode tok/s vs threads, 2026-10-19](../benchmark_results/sweep_h2h_2026-10-19/throughput_vs_threads.png)
+| Model | Project Zero | llama.cpp | ik_llama.cpp | bitnet.cpp |
+|---|---|---|---|---|
+| SmolLM2-135M F16 | 25.6 / 46.0 / 62.6 / 70.8 | 25.0 / 42.0 / 58.8 / 70.8 | **29.0 / 51.1 / 65.9 / 75.5** | – |
+| SmolLM2-1.7B Q4_K_M | 5.20 / 9.07 / 11.88 / 14.85 | 5.45 / 9.14 / **12.19** / 16.25 | **6.00 / 10.61** / 12.12 / **18.23** | – |
+| BitNet b1.58 2B-4T | 4.11 / 7.42 / 10.55 / 13.32 | – | **6.95 / 12.15 / 16.26 / 19.43** | 4.80 / 8.55 / 11.80 / 14.24 |
+| BitNet, Project Zero `--classifier int4` | 4.54 / 8.38 / 10.60 / 12.34 | – | – | – |
 
-Data: [benchmark_results/sweep_h2h_2026-10-19/](../benchmark_results/sweep_h2h_2026-10-19/).
+![Decode tok/s vs threads, 2026-10-29](../benchmark_results/sweep_h2h_2026-10-29/throughput_vs_threads.png)
+
+DeepSeek-V2-Lite-Chat Q4_K_S, 4 threads, 200 tokens: Project Zero 12.26, llama.cpp 11.48,
+ik_llama.cpp **14.16**. llama.cpp and ik_llama.cpp run with `-c 1024`: their default is the
+model's full 160K context, whose KV cache does not fit in this machine's 15 GB.
+
+Data and 4-thread screenshots: [sweep](../benchmark_results/sweep_h2h_2026-10-29/) ·
+[DeepSeek](../benchmark_results/deepseek_h2h_2026-10-29/). The 2026-10-19 run on this machine:
+[benchmark_results/sweep_h2h_2026-10-19/](../benchmark_results/sweep_h2h_2026-10-19/).
 
 ## Intel Xeon @ 2.10 GHz (model 207, AVX-512 BF16), 4 vCPU — 2026-10-23
 
@@ -24,6 +34,8 @@ Data: [benchmark_results/sweep_h2h_2026-10-19/](../benchmark_results/sweep_h2h_2
 | SmolLM2-1.7B Q4_K_M | 4.95 / 9.23 / 12.75 / 16.44 | llama.cpp: 5.01 / 9.27 / 13.40 / 17.65 | 0–7% slower |
 | BitNet b1.58 2B-4T, official I2_S GGUF | 6.42 / 11.64 / 16.31 / 19.71 | bitnet.cpp: 4.87 / 8.95 / 12.00 / 15.46 | 27–36% faster |
 | same, with `--classifier int4` | 7.74 / 14.10 / 18.48 / 24.72 | bitnet.cpp, as above | 54–60% faster |
+
+![Decode tok/s vs threads, 2026-10-23](../benchmark_results/sweep_h2h_2026-10-23/throughput_vs_threads.png)
 
 Data: [benchmark_results/sweep_h2h_2026-10-23/](../benchmark_results/sweep_h2h_2026-10-23/).
 

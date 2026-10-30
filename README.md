@@ -13,7 +13,7 @@ mixture-of-experts models (DeepSeek-V2, Qwen3-MoE) and ordinary GGUF models, and
 OpenAI-compatible API with a built-in web chat.
 
 <p align="center">
-  <img src="docs/demo_bitnet.gif" width="720" alt="pz generating text with BitNet b1.58-2B-4T in a terminal on an i5-11300H laptop">
+  <img src="docs/demo_bitnet.gif" width="720" alt="pz answering a question with BitNet b1.58-2B-4T on a 4-vCPU Xeon, 15 tok/s">
 </p>
 
 ## Quick start
@@ -45,6 +45,28 @@ Decode speed in tokens per second, best of 3 runs, temperature 0, nothing else r
 machine. Each machine shows its most recent run. Older runs and methods:
 [docs/BENCHMARK.md](docs/BENCHMARK.md).
 
+### Intel Xeon @ 2.80 GHz (Cascade Lake), 4 vCPU — 2026-10-29
+
+500 tokens per run (DeepSeek: 200). Tok/s at 4 threads; the chart has 1–4 threads.
+
+| Model | Project Zero | llama.cpp | ik_llama.cpp | bitnet.cpp |
+|---|---|---|---|---|
+| SmolLM2-135M F16 | 70.8 | 70.8 | **75.5** | – |
+| SmolLM2-1.7B Q4_K_M | 14.9 | 16.3 | **18.2** | – |
+| BitNet b1.58 2B-4T, official I2_S GGUF | 13.3 | – | **19.4** (converted to IQ2_BN) | 14.2 |
+| DeepSeek-V2-Lite-Chat Q4_K_S | 12.3 | 11.5 | **14.2** | – |
+
+<p align="center">
+  <img src="benchmark_results/sweep_h2h_2026-10-29/throughput_vs_threads.png" width="860" alt="Decode tok/s vs threads on the 2.80 GHz Xeon: Project Zero, llama.cpp, ik_llama.cpp and bitnet.cpp">
+</p>
+
+| Project Zero · BitNet · **13.3 tok/s** | bitnet.cpp · **14.2 tok/s** | ik_llama.cpp · **19.4 tok/s** |
+|---|---|---|
+| ![Project Zero running BitNet at 4 threads](benchmark_results/sweep_h2h_2026-10-29/screenshots/bitnet_2b_pz_t4.png) | ![bitnet.cpp running BitNet at 4 threads](benchmark_results/sweep_h2h_2026-10-29/screenshots/bitnet_2b_bitnetcpp_t4.png) | ![ik_llama.cpp running BitNet at 4 threads](benchmark_results/sweep_h2h_2026-10-29/screenshots/bitnet_2b_ik_iq2bn_t4.png) |
+
+ik_llama.cpp runs with `-rtr`; llama.cpp and ik_llama.cpp get `-c 1024` on DeepSeek. Logs and
+screenshots: [sweep](benchmark_results/sweep_h2h_2026-10-29/) · [DeepSeek](benchmark_results/deepseek_h2h_2026-10-29/).
+
 ### Intel Xeon @ 2.10 GHz (model 207, AVX-512 BF16), 4 vCPU — 2026-10-23
 
 500 tokens per run.
@@ -55,6 +77,10 @@ machine. Each machine shows its most recent run. Older runs and methods:
 | SmolLM2-1.7B Q4_K_M | 4.95 / 9.23 / 12.75 / 16.44 | llama.cpp: 5.01 / 9.27 / 13.40 / 17.65 | 0–7% slower |
 | BitNet b1.58 2B-4T, official I2_S GGUF | 6.42 / 11.64 / 16.31 / 19.71 | bitnet.cpp: 4.87 / 8.95 / 12.00 / 15.46 | 27–36% faster |
 | same, with `--classifier int4` | 7.74 / 14.10 / 18.48 / 24.72 | bitnet.cpp, as above | 54–60% faster |
+
+<p align="center">
+  <img src="benchmark_results/sweep_h2h_2026-10-23/throughput_vs_threads.png" width="860" alt="Decode tok/s vs threads on the 2.10 GHz Xeon: Project Zero, llama.cpp and bitnet.cpp">
+</p>
 
 Raw logs: [benchmark_results/sweep_h2h_2026-10-23/](benchmark_results/sweep_h2h_2026-10-23/).
 Also on this machine:
@@ -156,15 +182,17 @@ in [src/transformer/](src/transformer/), the server in [src/api/](src/api/) and 
 [webui/src/](webui/src/). How the kernels work: [docs/KERNEL_INTERNALS.md](docs/KERNEL_INTERNALS.md).
 What is done and planned: [docs/architecture/IMPLEMENTATION_PLAN.md](docs/architecture/IMPLEMENTATION_PLAN.md).
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Two open problems where help
-is welcome:
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Open problems where help is
+welcome:
 
 - **Q4_K on dense models.** Qwen3-8B Q4_K_M is 1.6–1.9× slower than llama.cpp on the same machine.
   Six attempts are written up in the
   [investigation](docs/BENCHMARK.md#qwen3-8b).
-- **INT8/INT4 output layer.** The fix for [issue #27](https://github.com/shifulegend/project-zero/issues/27)
-  removed the VNNI fast path in [src/math/parallel_matmul.c](src/math/parallel_matmul.c), and its
-  speed has not been measured since.
+- **INT8/INT4 output layer.** Since the fix for [issue #27](https://github.com/shifulegend/project-zero/issues/27)
+  removed the VNNI fast path in [src/math/parallel_matmul.c](src/math/parallel_matmul.c),
+  `--classifier int4` is slower than the default at 4 threads on the 2.80 GHz Xeon (12.3 vs 13.3 tok/s).
+- **Cascade Lake.** On the 2.80 GHz Xeon, which has no AVX-512 BF16, Project Zero trails
+  ik_llama.cpp on every model and bitnet.cpp on BitNet.
 
 Changes in each release: [CHANGELOG.md](CHANGELOG.md). Reporting a vulnerability: [SECURITY.md](SECURITY.md).
 

@@ -1,0 +1,41 @@
+=== bitnet_2b_bitnetcpp t=2 run 2 ===
+DATE: 2026-10-29 22:14:21 UTC
+HOST_CPU: Intel(R) Xeon(R) Processor @ 2.80GHz (model 85, 4 vCPU)
+CMD: /home/user/ext/BitNet/build/bin/llama-completion -m models/bitnet-b1.58-2B-4T-i2_s.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 --temp 0 -t 2 -no-cnv --ignore-eos
+PROMPT: Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+============================================================
+0.00.003.323 I llama_completion: llama backend init
+0.00.003.355 I llama_completion: load the model and apply lora adapter, if any
+0.00.864.179 W load: missing pre-tokenizer type, using: 'default'
+0.00.864.203 W load:                                             
+0.00.864.203 W load: ************************************        
+0.00.864.204 W load: GENERATION QUALITY WILL BE DEGRADED!        
+0.00.864.204 W load: CONSIDER REGENERATING THE MODEL             
+0.00.864.204 W load: ************************************        
+0.00.864.205 W load:                                             
+0.01.349.715 I llama_completion: llama threadpool init, n_threads = 2
+0.01.349.875 I 
+0.01.349.972 I system_info: n_threads = 2 (n_threads_batch = 2) / 4 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | AVX512 = 1 | AVX512_VNNI = 1 | LLAMAFILE = 1 | REPACK = 1 | 
+0.01.349.989 I 
+0.01.350.550 I sampler seed: 2562464275
+0.01.350.581 I sampler params: 
+	repeat_last_n = 64, repeat_penalty = 1.000, frequency_penalty = 0.000, presence_penalty = 0.000
+	dry_multiplier = 0.000, dry_base = 1.750, dry_allowed_length = 2, dry_penalty_last_n = -1
+	top_k = 40, top_p = 0.950, min_p = 0.050, xtc_probability = 0.000, xtc_threshold = 0.100, typical_p = 1.000, top_n_sigma = -1.000, temp = 0.000
+	mirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000, adaptive_target = -1.000, adaptive_decay = 0.900
+0.01.350.592 I sampler chain: logits -> logit-bias -> ?penalties -> ?dry -> ?top-n-sigma -> top-k -> ?typical -> top-p -> min-p -> ?xtc -> temp-ext -> dist 
+0.01.350.592 I generate: n_ctx = 4096, n_batch = 2048, n_predict = 500, n_keep = 1
+0.01.350.593 I 
+Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks, and reinforcement learning with real-world examples of each. Discuss neural networks, neural networks,
+
+1.01.070.418 I common_perf_print:    sampling time =     220.66 ms
+1.01.070.421 I common_perf_print:    samplers time =      68.74 ms /   533 tokens
+1.01.070.425 I common_perf_print:        load time =     635.84 ms
+1.01.070.426 I common_perf_print: prompt eval time =     453.48 ms /    33 tokens (   13.74 ms per token,    72.77 tokens per second)
+1.01.070.428 I common_perf_print:        eval time =   59000.67 ms /   499 runs   (  118.24 ms per token,     8.46 tokens per second)
+1.01.070.429 I common_perf_print:       total time =   59720.72 ms /   532 tokens
+1.01.070.431 I common_perf_print: unaccounted time =      45.92 ms /   0.1 %      (total - sampling - prompt eval - eval) / (total)
+1.01.070.431 I common_perf_print:    graphs reused =        496
+
+PERF: wall=61.21s max_rss=1509MB cpu=196% exit=0
+PROMPT_TPS: 72.77

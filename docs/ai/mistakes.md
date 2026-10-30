@@ -2923,3 +2923,14 @@ Installing llama.cpp and bitnet.cpp for head-to-head runs exposed nine pre-exist
 - Detection: cross-checking with `git diff --name-status` (no path filter).
 - Correction: always run an unfiltered name-status diff first, then drill down.
 - Prevention rule: verify branch parity with a full diff before concluding; recorded in decision-log.
+
+### 2026-10-30 — A detached benchmark chain died with the container
+- What: the ik_llama.cpp comparison was queued as a `setsid nohup` chain so it would outlive the
+  2-hour background-task limit. Once the last harness-tracked task ended (22:26 UTC), the session
+  had no tracked work, the container was reclaimed within minutes, and the chain died 1 minute into
+  the ik_llama.cpp build. ~3 hours lost before anyone noticed.
+- Fix: run long benchmark steps as harness-tracked background tasks, each within the 2-hour limit,
+  chained by the session (not by a detached process). Sweeps stay `--resume`able so a cut-off run
+  continues where it stopped.
+- Also fixed: `tools/bench_sweep_seq.py` printed `BEST None` for a fully resumed thread count (the
+  best was taken only from runs made in that pass); resumed runs now count.

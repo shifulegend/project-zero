@@ -110,12 +110,12 @@ def main():
     threads = parse_threads(a.threads)
     summary_path = os.path.join(a.out, "summary.csv")
     new = not os.path.exists(summary_path)
-    done = set()
+    done = {}   # (suite, threads, run) -> tok/s already recorded
     if a.resume and not new:
         with open(summary_path) as f:
             for row in csv.DictReader(f):
                 if row.get("gen_tok_s"):
-                    done.add((row["suite"], int(row["threads"]), int(row["run"])))
+                    done[(row["suite"], int(row["threads"]), int(row["run"]))] = float(row["gen_tok_s"])
     sf = open(summary_path, "a", newline="")
     sw = csv.writer(sf)
     if new:
@@ -147,6 +147,7 @@ def main():
             for r in range(1, a.runs + 1):
                 if (name, t, r) in done:
                     print(f"  t={t} run {r}: already recorded (resume)", flush=True)
+                    best = max(best or 0.0, done[(name, t, r)])
                     continue
                 if kind == "pz":
                     cmd = [binary, "--model", model, "--prompt", a.prompt, "--max-tokens", str(a.tokens),

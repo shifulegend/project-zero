@@ -88,7 +88,11 @@ async function main() {
     { stdio: 'ignore', timeout: parseInt(process.env.PZ_CAPTURE_TIMEOUT_MS || '60000', 10) },
   );
 
-  const raw = readFileSync(rawLogPath);
+  // script(1) writes a "Script started on ..." header line into the -O log that the -T timing
+  // file does not count; drop it so chunk offsets line up with the bytes the child wrote
+  // (2026-10-30: with the header kept, every frame lagged ~300 bytes behind the session).
+  let raw = readFileSync(rawLogPath);
+  if (raw.subarray(0, 14).toString() === 'Script started') raw = raw.subarray(raw.indexOf(10) + 1);
   const chunks = parseTiming(readFileSync(timingPath, 'utf8'));
 
   const full = !!process.env.PZ_GIF_FULL;
@@ -162,10 +166,11 @@ async function main() {
 
     const writeEnd = Math.min(chunkEnd, markerOffset);
     const slice = raw.subarray(offset, writeEnd);
-    await page.evaluate((b64) => {
+    // Wait for xterm.js to parse the write before screenshotting it.
+    await page.evaluate((b64) => new Promise((resolve) => {
       const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-      window.pzTerm.write(bytes);
-    }, slice.toString('base64'));
+      window.pzTerm.write(bytes, resolve);
+    }), slice.toString('base64'));
 
     // script(1) logs the delay *before* each write; a frame stays on screen until the next one.
     pendingMs += Math.max(20, Math.round(delaySec * 1000));

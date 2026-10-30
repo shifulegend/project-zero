@@ -3,7 +3,18 @@
 > Canonical, append-at-top (newest first). Read this at the start of every session.
 > Add an entry **immediately** when a mistake, false assumption, regression, or avoidable
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
-> Last updated: 2026-10-22.
+> Last updated: 2026-10-30.
+
+### 2026-10-30 — A detached benchmark chain died with the container
+- What: the ik_llama.cpp comparison was queued as a `setsid nohup` chain so it would outlive the
+  2-hour background-task limit. Once the last harness-tracked task ended (22:26 UTC), the session
+  had no tracked work, the container was reclaimed within minutes, and the chain died 1 minute into
+  the ik_llama.cpp build. ~3 hours lost before anyone noticed.
+- Fix: run long benchmark steps as harness-tracked background tasks, each within the 2-hour limit,
+  chained by the session (not by a detached process). Sweeps stay `--resume`able so a cut-off run
+  continues where it stopped.
+- Also fixed: `tools/bench_sweep_seq.py` printed `BEST None` for a fully resumed thread count (the
+  best was taken only from runs made in that pass); resumed runs now count.
 
 ### 2026-10-22 — Benchmark screenshots rendered from log text: no brand banner, not the real session
 

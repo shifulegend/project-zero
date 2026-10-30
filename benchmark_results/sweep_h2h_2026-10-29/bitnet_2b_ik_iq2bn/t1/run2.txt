@@ -1,0 +1,214 @@
+=== bitnet_2b_ik_iq2bn t=1 run 2 ===
+DATE: 2026-10-30 02:08:33 UTC
+HOST_CPU: Intel(R) Xeon(R) Processor @ 2.80GHz (model 85, 4 vCPU)
+CMD: /home/user/ext/ik_llama.cpp/build/bin/llama-cli -m models/bitnet-b1.58-2B-4T-iq2_bn.gguf -p Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. -n 500 --temp 0 -t 1 -rtr --ignore-eos
+PROMPT: Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+============================================================
+Log start
+main: build = 1 (06d729c)
+main: built with cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0 for x86_64-linux-gnu
+main: seed  = 1793326034
+CPU: using device CPU - 12070 MiB free
+llama_model_loader: loaded meta data with 24 key-value pairs and 332 tensors from models/bitnet-b1.58-2B-4T-iq2_bn.gguf (version GGUF V3 (latest))
+llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_model_loader: - kv   0:                       general.architecture str              = bitnet-b1.58
+llama_model_loader: - kv   1:                               general.name str              = bitnet2b
+llama_model_loader: - kv   2:                    bitnet-b1.58.vocab_size u32              = 128256
+llama_model_loader: - kv   3:                bitnet-b1.58.context_length u32              = 4096
+llama_model_loader: - kv   4:              bitnet-b1.58.embedding_length u32              = 2560
+llama_model_loader: - kv   5:                   bitnet-b1.58.block_count u32              = 30
+llama_model_loader: - kv   6:           bitnet-b1.58.feed_forward_length u32              = 6912
+llama_model_loader: - kv   7:          bitnet-b1.58.rope.dimension_count u32              = 128
+llama_model_loader: - kv   8:          bitnet-b1.58.attention.head_count u32              = 20
+llama_model_loader: - kv   9:       bitnet-b1.58.attention.head_count_kv u32              = 5
+llama_model_loader: - kv  10:               tokenizer.ggml.add_bos_token bool             = true
+llama_model_loader: - kv  11: bitnet-b1.58.attention.layer_norm_rms_epsilon f32              = 0.000010
+llama_model_loader: - kv  12:                bitnet-b1.58.rope.freq_base f32              = 500000.000000
+llama_model_loader: - kv  13:                          general.file_type u32              = 137
+llama_model_loader: - kv  14:                       tokenizer.ggml.model str              = gpt2
+llama_model_loader: - kv  15:                      tokenizer.ggml.tokens arr[str,128256]  = ["!", "\"", "#", "$", "%", "&", "'", ...
+llama_model_loader: - kv  16:                      tokenizer.ggml.scores arr[f32,128256]  = [0.000000, 0.000000, 0.000000, 0.0000...
+llama_model_loader: - kv  17:                  tokenizer.ggml.token_type arr[i32,128256]  = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
+llama_model_loader: - kv  18:                      tokenizer.ggml.merges arr[str,280147]  = ["Ġ Ġ", "Ġ ĠĠĠ", "ĠĠ ĠĠ", "...
+llama_model_loader: - kv  19:                tokenizer.ggml.bos_token_id u32              = 128000
+llama_model_loader: - kv  20:                tokenizer.ggml.eos_token_id u32              = 128001
+llama_model_loader: - kv  21:            tokenizer.ggml.padding_token_id u32              = 128001
+llama_model_loader: - kv  22:                    tokenizer.chat_template str              = {% for message in messages %}{% if lo...
+llama_model_loader: - kv  23:               general.quantization_version u32              = 2
+llama_model_loader: - type  f32:  121 tensors
+llama_model_loader: - type q6_K:    1 tensors
+llama_model_loader: - type iq2_bn:  210 tensors
+load: missing pre-tokenizer type, using: 'default'
+load:                                             
+load: ************************************        
+load: GENERATION QUALITY WILL BE DEGRADED!        
+load: CONSIDER REGENERATING THE MODEL             
+load: ************************************        
+load:                                             
+load: 0 unused tokens
+load: printing all EOG tokens:
+load:   - 128001 ('<|end_of_text|>')
+load:   - 128009 ('<|eot_id|>')
+load: special tokens cache size = 256
+load: token to piece cache size = 0.8000 MB
+llm_load_print_meta: format           = GGUF V3 (latest)
+llm_load_print_meta: arch             = bitnet-b1.58
+llm_load_print_meta: n_ctx_train      = 4096
+llm_load_print_meta: n_embd           = 2560
+llm_load_print_meta: n_layer          = 30
+llm_load_print_meta: n_head           = 20
+llm_load_print_meta: n_head_kv        = 5
+llm_load_print_meta: n_rot            = 128
+llm_load_print_meta: n_swa            = 0
+llm_load_print_meta: n_swa_pattern    = 1
+llm_load_print_meta: n_embd_head_k    = 128
+llm_load_print_meta: n_embd_head_v    = 128
+llm_load_print_meta: n_gqa            = 4
+llm_load_print_meta: n_embd_k_gqa     = 640
+llm_load_print_meta: n_embd_v_gqa     = 640
+llm_load_print_meta: f_norm_eps       = 0.0e+00
+llm_load_print_meta: f_norm_rms_eps   = 1.0e-05
+llm_load_print_meta: f_clamp_kqv      = 0.0e+00
+llm_load_print_meta: f_max_alibi_bias = 0.0e+00
+llm_load_print_meta: f_logit_scale    = 0.0e+00
+llm_load_print_meta: n_ff             = 6912
+llm_load_print_meta: n_expert         = 0
+llm_load_print_meta: n_expert_used    = 0
+llm_load_print_meta: causal attn      = 1
+llm_load_print_meta: pooling type     = 0
+llm_load_print_meta: rope type        = 2
+llm_load_print_meta: rope scaling     = linear
+llm_load_print_meta: freq_base_train  = 500000.0
+llm_load_print_meta: freq_scale_train = 1
+llm_load_print_meta: n_ctx_orig_yarn  = 4096
+llm_load_print_meta: rope_finetuned   = unknown
+llm_load_print_meta: ssm_d_conv       = 0
+llm_load_print_meta: ssm_d_inner      = 0
+llm_load_print_meta: ssm_d_state      = 0
+llm_load_print_meta: ssm_dt_rank      = 0
+llm_load_print_meta: ssm_n_group      = 0
+llm_load_print_meta: model type       = 2B
+llm_load_print_meta: model ftype      = IQ2_BN - 2.00 bpw Bitnet
+llm_load_print_meta: model params     = 2.413 B
+llm_load_print_meta: model size       = 758.022 MiB (2.635 BPW) 
+llm_load_print_meta: general.name     = bitnet2b
+print_info: vocab type            = BPE
+print_info: n_vocab               = 128256
+print_info: n_merges              = 280147
+print_info: BOS token             = 128000 '<|begin_of_text|>'
+print_info: EOS token             = 128001 '<|end_of_text|>'
+print_info: EOT token             = 128009 '<|eot_id|>'
+print_info: PAD token             = 128001 '<|end_of_text|>'
+print_info: LF token              = 198 'Ċ'
+print_info: EOG token             = 128001 '<|end_of_text|>'
+print_info: EOG token             = 128009 '<|eot_id|>'
+print_info: max token length      = 256
+======================================= HAVE_FANCY_SIMD is defined
+------------------- Layer sizes:
+Layer  0:     16.71,     10.00,     26.71       42.00  MiB
+Layer  1:     16.71,     10.00,     26.71       42.00  MiB
+Layer  2:     16.71,     10.00,     26.71       42.00  MiB
+Layer  3:     16.71,     10.00,     26.71       42.00  MiB
+Layer  4:     16.71,     10.00,     26.71       42.00  MiB
+Layer  5:     16.71,     10.00,     26.71       42.00  MiB
+Layer  6:     16.71,     10.00,     26.71       42.00  MiB
+Layer  7:     16.71,     10.00,     26.71       42.00  MiB
+Layer  8:     16.71,     10.00,     26.71       42.00  MiB
+Layer  9:     16.71,     10.00,     26.71       42.00  MiB
+Layer 10:     16.71,     10.00,     26.71       42.00  MiB
+Layer 11:     16.71,     10.00,     26.71       42.00  MiB
+Layer 12:     16.71,     10.00,     26.71       42.00  MiB
+Layer 13:     16.71,     10.00,     26.71       42.00  MiB
+Layer 14:     16.71,     10.00,     26.71       42.00  MiB
+Layer 15:     16.71,     10.00,     26.71       42.00  MiB
+Layer 16:     16.71,     10.00,     26.71       42.00  MiB
+Layer 17:     16.71,     10.00,     26.71       42.00  MiB
+Layer 18:     16.71,     10.00,     26.71       42.00  MiB
+Layer 19:     16.71,     10.00,     26.71       42.00  MiB
+Layer 20:     16.71,     10.00,     26.71       42.00  MiB
+Layer 21:     16.71,     10.00,     26.71       42.00  MiB
+Layer 22:     16.71,     10.00,     26.71       42.00  MiB
+Layer 23:     16.71,     10.00,     26.71       42.00  MiB
+Layer 24:     16.71,     10.00,     26.71       42.00  MiB
+Layer 25:     16.71,     10.00,     26.71       42.00  MiB
+Layer 26:     16.71,     10.00,     26.71       42.00  MiB
+Layer 27:     16.71,     10.00,     26.71       42.00  MiB
+Layer 28:     16.71,     10.00,     26.71       42.00  MiB
+Layer 29:     16.71,     10.00,     26.71       42.00  MiB
+Layer 30:    256.86,    208.50,    465.36 MiB (output layer)
+--------------------------------------------------------------------------
+Total   :    501.15,    508.50,   1009.65 MiB
+Memory required for model tensors + cache: 1267 MiB
+Memory available on all devices - compute: 10932 MiB
+llm_load_tensors: ggml ctx size =    0.17 MiB
+llm_load_tensors:        CPU buffer size =  1014.88 MiB (total of 1 resident buffers)
+...................................................
+============ Repacked 210 tensors (0 skipped file-aliased)
+llama_init_from_model: n_ctx         = 4096
+llama_init_from_model: n_batch       = 2048
+llama_init_from_model: n_ubatch      = 512
+llama_init_from_model: flash_attn    = 1
+llama_init_from_model: attn_max_b    = 256
+llama_init_from_model: fused_moe     = 1
+llama_init_from_model: grouped er    = 0
+llama_init_from_model: fused_up_gate = 1
+llama_init_from_model: fused_mmad    = 1
+llama_init_from_model: rope_cache    = 0
+llama_init_from_model: graph_reuse   = 1
+llama_init_from_model: k_cache_hadam = 0
+llama_init_from_model: v_cache_hadam = 0
+llama_init_from_model: split_mode_graph_scheduling = 0
+llama_init_from_model: reduce_type   = f16
+llama_init_from_model: sched_async   = 0
+llama_init_from_model: ser           = -1, 0
+llama_init_from_model: freq_base     = 500000.0
+llama_init_from_model: freq_scale    = 1
+llama_kv_cache_init:        CPU KV buffer size =   300.00 MiB
+llama_init_from_model: KV self size  =  300.00 MiB, K (f16):  150.00 MiB, V (f16):  150.00 MiB
+llama_init_from_model:        CPU  output buffer size =     0.49 MiB
+llama_init_from_model:        CPU compute buffer size =   260.50 MiB
+llama_init_from_model: graph nodes  = 875
+llama_init_from_model: graph splits = 1
+llama_init_from_model: enabling only_active_experts scheduling
+
+system_info: n_threads = 1 / 4 | AVX = 1 | AVX_VNNI = 0 | AVX2 = 1 | AVX512 = 1 | AVX512_VBMI = 0 | AVX512_VNNI = 1 | AVX512_BF16 = 0 | FMA = 1 | NEON = 0 | SVE = 0 | ARM_FMA = 0 | F16C = 1 | FP16_VA = 0 | WASM_SIMD = 0 | SSE3 = 1 | SSSE3 = 1 | VSX = 0 | MATMUL_INT8 = 0 | 
+sampling: 
+	repeat_last_n = 64, repeat_penalty = 1.000, frequency_penalty = 0.000, presence_penalty = 0.000
+	top_k = 40, tfs_z = 1.000, top_p = 0.950, min_p = 0.050, typical_p = 1.000, temp = 0.000
+	mirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000
+	xtc_probability = 0.000, xtc_threshold = 1.000, top_n_sigma = 0.000
+	adaptive_target = -1.00, adaptive_decay = 0.90
+sampling order: 
+CFG -> Penalties -> dry -> top_k -> tfs_z -> typical_p -> top_p -> min_p -> xtc -> top_n_sigma -> temperature -> adaptive_p 
+generate: n_ctx = 4096, n_batch = 2048, n_predict = 500, n_keep = 1
+
+
+Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. 
+
+Machine learning is a subset of artificial intelligence that involves training algorithms to make predictions or decisions based on data. It is a powerful tool for solving complex problems and has numerous applications in various fields, including healthcare, finance, and marketing.
+
+Neural networks are a type of machine learning model inspired by the structure and function of the human brain. They consist of interconnected nodes, or neurons, that process and transmit information. Neural networks can learn from data and improve their performance over time.
+
+Supervised learning is a type of machine learning where the algorithm is trained on labeled data. The goal is to learn a mapping between inputs and outputs, and the algorithm is provided with both the input data and the corresponding output labels. The algorithm learns to predict the output for new, unseen data. Real-world examples of supervised learning include:
+
+1. Image classification: A neural network can be trained to recognize objects in images, such as identifying whether a picture contains a cat or a dog.
+2. Speech recognition: A neural network can be trained to recognize spoken words, such as transcribing a conversation into text.
+3. Sentiment analysis: A neural network can be trained to analyze the sentiment of text, such as determining whether a tweet expresses positive or negative sentiment.
+
+Unsupervised learning is a type of machine learning where the algorithm is trained on unlabeled data. The goal is to identify patterns or structures in the data without any prior knowledge of what those patterns are. The algorithm learns to group similar data points together or to identify clusters in the data. Real-world examples of unsupervised learning include:
+
+1. Customer segmentation: A neural network can be trained to group customers based on their purchasing behavior, demographics, and other characteristics.
+2. Anomaly detection: A neural network can be trained to identify unusual patterns in data, such as detecting fraudulent transactions.
+3. Dimensionality reduction: A neural network can be trained to reduce the number of features in a dataset while preserving the most important information.
+
+Reinforcement learning is a type of machine learning where the algorithm learns to make decisions by interacting with an environment. The algorithm receives feedback in the form of rewards or penalties based on its actions, and it learns to maximize its cumulative reward over time. Real-world examples of reinforcement learning include:
+
+1. Game playing: A neural network can be trained to play games such as chess, Go, or poker, by learning from its successes and failures.
+2. Robotics: A neural network can be trained to control a robot's
+main: prompt eval time =     743.56 ms /    33 tokens (   22.53 ms per token,    44.38 tokens per second)
+main:        eval time =   74157.00 ms /   500 tokens (  148.31 ms per token,     6.74 tokens per second)
+main:       total time =   74900.55 ms /   533 tokens
+Log end
+
+PERF: wall=78.72s max_rss=1425MB cpu=100% exit=0
+PROMPT_TPS: 44.38

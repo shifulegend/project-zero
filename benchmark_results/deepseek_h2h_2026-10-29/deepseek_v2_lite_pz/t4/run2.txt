@@ -1,0 +1,99 @@
+=== deepseek_v2_lite_pz t=4 run 2 ===
+DATE: 2026-10-30 02:33:19 UTC
+HOST_CPU: Intel(R) Xeon(R) Processor @ 2.80GHz (model 85, 4 vCPU)
+CMD: ./pz --model models/DeepSeek-V2-Lite-Chat.Q4_K_S.gguf --prompt Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. --max-tokens 200 --temperature 0 --threads 4 --no-update-check --raw-prompt --ignore-eos
+PROMPT: Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+============================================================
+[1/4] Opening model file...
+[2/4] Loading weights...
+[3/4] Preparing runtime...
+[gguf-tok] Loaded 102400 tokens (gpt2, pre=default), 2400 special — BOS=100000 EOS=100001 chat_template=yes
+[4/4] Ready.
+####  ####   ###    ### #####  #### #####     ##### ##### ####   ### 
+#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #
+####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
+#     # #   #   # #  #  #     #       #        #    #     # #   #   #
+#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
+Project Zero Engine v0.2.0-8-gee1580e — Auto-Tuned Hardware
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 1024   KiB per core                 │
+│ L3 cache      : 33     MiB shared                   │
+│ Free RAM      : 15257  MiB                          │
+│ DRAM bandwidth: 33.1   GB/s (cached)                │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB (pre-load est.)           │
+│ Ceiling       : 28.3   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 4 threads | AVX-512 VNNI | BF16 cls | 4T | 33.1 GB/s | ceiling 28 tok/s
+Model format: GGUF
+Model Configuration:
+  dim:        2048
+  hidden_dim: 10944
+  n_layers:   27
+  n_heads:    16
+  n_kv_heads: 16
+  vocab_size: 102400
+  seq_len:    163840
+  act_type:   0 (SiLU)
+  rope_theta: 10000.0
+  head_dim:   128
+  kv_dim:     2048
+[MoE] num_experts=64  top_k=6  expert_hidden_dim=1408  first_k_dense=1  shared_experts=2 (hdim=2816)
+[MLA] kv_lora_rank=512  qk_nope_head_dim=128  qk_rope_head_dim=64  v_head_dim=128
+[GGUF-DS2] Weights loaded (27 layers, 1 dense + 26 MoE, 64 experts/layer, experts=quantized)
+[profile] Data/token (loaded model): 9092 MB -> ceiling 3.5 tok/s at 33.1 GB/s
+KV cache: F32, max context: 19337 tokens (sizing tier: Quantized I8, RAM budget 60%)
+
+
+
+Machine Learning is a subset of Artificial Intelligence that provides systems the ability to automatically learn and improve from experience without being explicitly programmed. It focuses on the development of computer programs that can access data and use it to learn for themselves.
+
+Neural Networks are a set of algorithms designed to recognize patterns. They interpret sensory data through a kind of machine perception, labeling or clustering raw input.
+
+Supervised Learning: In this type of learning, the model is trained on a labeled dataset. The model is given input data and the corresponding output data. The model learns to map inputs to outputs. For example, a spam filter in an email program uses supervised learning to identify spam emails based on a training set of emails that have been manually labeled as spam or not spam.
+
+Unsupervised Learning: In this type of learning, the model is trained on an unlabeled dataset. The model is not given the corresponding output data. It tries to find patterns and structures in the input data. For
+[gen] 12.26 tok/s (200 tokens)
+
+--- Expert Utilisation Summary (27 MoE layers × 64 experts) ---
+  L00:   0 unique / 64 total  (invocations:    0)  top:
+  L01:  63 unique / 64 total  (invocations: 1374)  top: E33(88) E32(54) E2(51) E11(46) E10(45)
+  L02:  63 unique / 64 total  (invocations: 1374)  top: E30(50) E45(43) E55(42) E15(40) E18(38)
+  L03:  63 unique / 64 total  (invocations: 1374)  top: E20(52) E63(50) E61(46) E28(45) E37(43)
+  L04:  62 unique / 64 total  (invocations: 1374)  top: E62(75) E48(73) E50(55) E24(45) E20(40)
+  L05:  64 unique / 64 total  (invocations: 1374)  top: E7(59) E34(55) E2(54) E3(54) E46(53)
+  L06:  62 unique / 64 total  (invocations: 1374)  top: E53(69) E2(57) E4(52) E7(48) E3(46)
+  L07:  63 unique / 64 total  (invocations: 1374)  top: E47(95) E11(73) E49(50) E54(46) E26(41)
+  L08:  61 unique / 64 total  (invocations: 1374)  top: E1(101) E5(69) E9(51) E14(50) E11(48)
+  L09:  62 unique / 64 total  (invocations: 1374)  top: E14(63) E9(56) E21(54) E61(54) E63(49)
+  L10:  60 unique / 64 total  (invocations: 1374)  top: E10(74) E35(67) E20(49) E49(49) E24(48)
+  L11:  61 unique / 64 total  (invocations: 1374)  top: E30(130) E39(73) E48(60) E20(50) E38(47)
+  L12:  59 unique / 64 total  (invocations: 1374)  top: E15(92) E10(81) E18(68) E63(47) E1(44)
+  L13:  57 unique / 64 total  (invocations: 1374)  top: E19(144) E49(130) E1(76) E55(55) E38(50)
+  L14:  61 unique / 64 total  (invocations: 1374)  top: E22(132) E1(68) E55(60) E34(53) E38(52)
+  L15:  61 unique / 64 total  (invocations: 1374)  top: E9(131) E18(107) E59(70) E48(56) E15(48)
+  L16:  60 unique / 64 total  (invocations: 1374)  top: E2(55) E48(53) E39(52) E25(48) E45(45)
+  L17:  64 unique / 64 total  (invocations: 1374)  top: E6(85) E36(68) E51(55) E50(53) E22(47)
+  L18:  61 unique / 64 total  (invocations: 1374)  top: E9(106) E43(89) E27(69) E5(50) E14(50)
+  L19:  63 unique / 64 total  (invocations: 1374)  top: E32(83) E20(56) E33(56) E5(54) E57(49)
+  L20:  64 unique / 64 total  (invocations: 1374)  top: E27(93) E59(69) E33(64) E39(58) E62(51)
+  L21:  62 unique / 64 total  (invocations: 1374)  top: E44(174) E32(59) E41(55) E50(54) E23(50)
+  L22:  63 unique / 64 total  (invocations: 1374)  top: E62(65) E13(55) E36(54) E28(51) E17(44)
+  L23:  61 unique / 64 total  (invocations: 1374)  top: E50(130) E31(76) E25(63) E51(53) E10(50)
+  L24:  62 unique / 64 total  (invocations: 1374)  top: E16(129) E46(68) E13(51) E39(49) E9(47)
+  L25:  62 unique / 64 total  (invocations: 1374)  top: E58(59) E14(54) E41(53) E53(52) E27(49)
+  L26:  64 unique / 64 total  (invocations: 1374)  top: E53(65) E47(63) E25(56) E23(52) E60(52)
+  Global: 64 / 64 experts activated (100.0%)
+---
+
+
+
+PERF: wall=24.83s max_rss=10888MB cpu=317% exit=0

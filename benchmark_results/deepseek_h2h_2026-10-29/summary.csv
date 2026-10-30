@@ -1,0 +1,16 @@
+suite,threads,run,gen_tok_s,tokens,wall_s,max_rss_mb,cpu_pct,exit
+deepseek_v2_lite_pz,4,1,7.9,200,880.54,10885,20,0
+deepseek_v2_lite_pz,4,2,12.26,200,24.83,10888,317,0
+deepseek_v2_lite_pz,4,3,11.81,200,23.58,10888,332,0
+deepseek_v2_lite_llamacpp,4,1,,,21.22,13612,92,-9
+deepseek_v2_lite_llamacpp,4,2,,,72.54,13635,90,-9
+deepseek_v2_lite_llamacpp,4,3,,,71.72,13636,91,-9
+deepseek_v2_lite_ik,4,1,,,27.40,13635,311,-9
+deepseek_v2_lite_ik,4,2,,,25.44,13635,306,-9
+deepseek_v2_lite_ik,4,3,,,25.71,13634,306,-9
+deepseek_v2_lite_llamacpp,4,1,10.31,200,88.88,13622,166,0
+deepseek_v2_lite_llamacpp,4,2,11.48,200,49.86,13576,205,0
+deepseek_v2_lite_llamacpp,4,3,11.34,200,57.22,13567,191,0
+deepseek_v2_lite_ik,4,1,14.07,201,31.06,9239,356,0
+deepseek_v2_lite_ik,4,2,14.16,201,32.08,9238,352,0
+deepseek_v2_lite_ik,4,3,14.08,201,31.05,9239,353,0

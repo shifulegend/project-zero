@@ -18,6 +18,10 @@ section becomes the version's entry and is published as its GitHub release notes
 
 - Label the web UI's per-reply usage line in tokens ("7 reply tokens · 37 prompt tokens" instead of "7 tokens · 37 prompt"); hovering it explains that the prompt count includes the chat template and any system message.
 
+### Fixed
+
+- Align the right border of the startup "Hardware Profile" box; rows were padded to different widths.
+
 ## [0.2.0] - 2026-10-22
 
 ### Changed

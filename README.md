@@ -2,10 +2,6 @@
 
 [![CI](https://github.com/shifulegend/project-zero/actions/workflows/ci.yml/badge.svg)](https://github.com/shifulegend/project-zero/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Language: C](https://img.shields.io/badge/language-C99-blue.svg)](src/)
-[![SIMD](https://img.shields.io/badge/SIMD-AVX--512%20%7C%20AVX2%20%7C%20NEON-green)](src/math/)
-[![Benchmarks](https://img.shields.io/badge/Benchmarks-latest%20per%20system-orange)](#benchmarks)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 An LLM inference engine for CPUs, written from scratch in C. One binary (`pz`), no GPU, no Python,
 no third-party libraries. It runs ternary models (BitNet b1.58, Falcon3-1.58bit, Ternary-Bonsai),
@@ -35,15 +31,14 @@ git clone https://github.com/shifulegend/project-zero.git && cd project-zero
 make demo   # builds, downloads SmolLM2-135M, prints "The capital of France is Paris."
 ```
 
-You need GCC or Clang (with its C++ compiler), make, pthreads and libm. GGUF models need a CPU with
-at least AVX2 on x86; BitNet runs on any x86-64-v2 CPU. Installer options, manual install and
+You need GCC or Clang (with its C++ compiler, for the chat-template parser), make, pthreads and
+libm. GGUF models need a CPU with at least AVX2 on x86; BitNet runs on any x86-64-v2 CPU. Installer options, manual install and
 `pz config` (saved settings): [docs/INSTALL.md](docs/INSTALL.md).
 
 ## Benchmarks
 
 Decode speed in tokens per second, best of 3 runs, temperature 0, nothing else running on the
-machine. Each machine shows its most recent run. Older runs and methods:
-[docs/BENCHMARK.md](docs/BENCHMARK.md).
+machine. Older runs, other machines and methods: [docs/BENCHMARK.md](docs/BENCHMARK.md).
 
 ### Intel Xeon @ 2.80 GHz (Cascade Lake), 4 vCPU — 2026-10-29
 
@@ -60,70 +55,11 @@ machine. Each machine shows its most recent run. Older runs and methods:
   <img src="benchmark_results/sweep_h2h_2026-10-29/throughput_vs_threads.png" width="860" alt="Decode tok/s vs threads on the 2.80 GHz Xeon: Project Zero, llama.cpp, ik_llama.cpp and bitnet.cpp">
 </p>
 
-| Project Zero · BitNet · **13.3 tok/s** | bitnet.cpp · **14.2 tok/s** | ik_llama.cpp · **19.4 tok/s** |
-|---|---|---|
-| ![Project Zero running BitNet at 4 threads](benchmark_results/sweep_h2h_2026-10-29/screenshots/bitnet_2b_pz_t4.png) | ![bitnet.cpp running BitNet at 4 threads](benchmark_results/sweep_h2h_2026-10-29/screenshots/bitnet_2b_bitnetcpp_t4.png) | ![ik_llama.cpp running BitNet at 4 threads](benchmark_results/sweep_h2h_2026-10-29/screenshots/bitnet_2b_ik_iq2bn_t4.png) |
+Logs and screenshots: [sweep](benchmark_results/sweep_h2h_2026-10-29/) ·
+[DeepSeek](benchmark_results/deepseek_h2h_2026-10-29/).
 
-ik_llama.cpp runs with `-rtr`; llama.cpp and ik_llama.cpp get `-c 1024` on DeepSeek. Logs and
-screenshots: [sweep](benchmark_results/sweep_h2h_2026-10-29/) · [DeepSeek](benchmark_results/deepseek_h2h_2026-10-29/).
-
-### Intel Xeon @ 2.10 GHz (model 207, AVX-512 BF16), 4 vCPU — 2026-10-23
-
-500 tokens per run.
-
-| Model | Project Zero, 1 / 2 / 3 / 4 threads | Compared with | Difference |
-|---|---|---|---|
-| SmolLM2-135M F16 | 29.4 / 59.0 / 81.2 / 106.3 | llama.cpp: 25.0 / 46.3 / 62.9 / 79.5 | 18–34% faster |
-| SmolLM2-1.7B Q4_K_M | 4.95 / 9.23 / 12.75 / 16.44 | llama.cpp: 5.01 / 9.27 / 13.40 / 17.65 | 0–7% slower |
-| BitNet b1.58 2B-4T, official I2_S GGUF | 6.42 / 11.64 / 16.31 / 19.71 | bitnet.cpp: 4.87 / 8.95 / 12.00 / 15.46 | 27–36% faster |
-| same, with `--classifier int4` | 7.74 / 14.10 / 18.48 / 24.72 | bitnet.cpp, as above | 54–60% faster |
-
-<p align="center">
-  <img src="benchmark_results/sweep_h2h_2026-10-23/throughput_vs_threads.png" width="860" alt="Decode tok/s vs threads on the 2.10 GHz Xeon: Project Zero, llama.cpp and bitnet.cpp">
-</p>
-
-Raw logs: [benchmark_results/sweep_h2h_2026-10-23/](benchmark_results/sweep_h2h_2026-10-23/).
-Also on this machine:
-
-- DeepSeek-V2-Lite-Chat Q4_K_S, 4 threads: 11.7–12.6 tok/s; llama.cpp 9.4–10.5 (2026-10-21).
-- `--parallel 4` with 4 chat clients: 2.2–2.3× the total throughput of serving them one at a time
-  ([results](benchmark_results/parallel_2026-10-22/), 2026-10-22).
-
-### Intel Core i5-11300H laptop, 4 cores / 8 threads — 2026-06-21
-
-500 tokens per run. BitNet uses converted weights with an INT4 output layer.
-
-| Threads | BitNet b1.58 2B-4T: Project Zero | bitnet.cpp | SmolLM2-135M F16: Project Zero | llama.cpp |
-|---|---|---|---|---|
-| 1 | **16.98** | 2.04 | **58.00** | 53.50 |
-| 2 | **27.99** | 3.76 | **86.03** | 84.20 |
-| 4 | **35.79** | 6.64 | 98.28 | **102.10** |
-| 8 | **32.03** | 6.04 | 83.32 | **86.30** |
-
-BitNet is 4.9–8.3× faster than bitnet.cpp across 1–8 threads.
-
-<p align="center">
-  <img src="docs/comparison_graph_i5.png" width="720" alt="Tok/s vs threads on the i5-11300H: Project Zero BF16 and INT4 against bitnet.cpp">
-</p>
-
-| Project Zero · 4 threads · **35.79 tok/s** | bitnet.cpp · 4 threads · **6.64 tok/s** |
-|---|---|
-| ![Project Zero running BitNet at 4 threads](benchmark_results/sweep_2026-06-21/screenshots/bitnet_pz_int4_t4.png) | ![bitnet.cpp running BitNet at 4 threads](benchmark_results/sweep_2026-06-21/screenshots/bitnet_msft_t4.png) |
-
-Every thread count: [docs/BENCHMARK.md](docs/BENCHMARK.md) ·
-[OpenBenchmarking.org result](https://openbenchmarking.org/result/2606208-SHIF-PROJECT03).
-
-### Other machines
-
-| Model | Result | Machine, date |
-|---|---|---|
-| Ternary-Bonsai-27B Q2_0 | 4.2–4.8× faster than PrismML's llama.cpp fork (4 threads: 2.97 vs 0.70 tok/s) | 4-core AVX-512 Xeon VM, 2026-07-18 ([captures](benchmark_results/sweep3_2026-07-18/)) |
-| Qwen3-8B Q4_K_M | 2.5–2.7 tok/s; llama.cpp 4.0–4.8 | AVX2-only VM, 2026-07-31 ([investigation](docs/BENCHMARK.md#qwen3-8b)) |
-| Ternary-Bonsai-27B Q2_0 | ~0.1 tok/s, reported by a user | i5-8350U, AVX2 ([report](https://old.reddit.com/r/LocalLLaMA/comments/1v3pn1w/built_a_fromscratch_bitnet_inference_engine_in/p0wktod/)) |
-
-<p align="center">
-  <img src="benchmark_results/sweep3_2026-07-18/comparison_infographic.png" width="860" alt="Ternary-Bonsai-27B: Project Zero 4.2–4.8× faster than PrismML's llama.cpp fork at every thread count">
-</p>
+On a 2.10 GHz Xeon with AVX-512 BF16 (2026-10-23), Project Zero was 27–36% faster than bitnet.cpp
+on BitNet (54–60% with `--classifier int4`) and 18–34% faster than llama.cpp on SmolLM2-135M.
 
 Output quality: perplexity is within 0.7% of llama.cpp on SmolLM2-135M/1.7B, Qwen2.5-0.5B,
 Qwen3-0.6B and Mamba-130m ([report](docs/reports/ACCURACY_PARITY_2026-10-19.md)).
@@ -152,18 +88,17 @@ yet. The official BitNet GGUF ships a broken chat template; pass
 
 - Web chat and an OpenAI-compatible `/v1/chat/completions`, with streaming, cancel, optional API
   key and CORS, `/metrics`, and `--parallel N` to serve several users at once
-- Sampling controls, JSON mode, speculative decoding, best-of-N and tree search
-- LoRA adapters, image input (`--vision`), RAG memory, an agent tool loop, watermarking
-- KV cache in f32, int8 or int4, on disk when RAM runs out, with prompt caching
+- Sampling controls, JSON mode (`--json`), speculative decoding (`--draft-model`), best-of-N
+  (`--best-of`) and tree search (`--mcts`)
+- LoRA adapters (`--lora`), image input (`--vision`), RAG memory (`--memory-db`), a tool-use agent
+  (`/agent` in the terminal chat), watermarking (`--watermark`)
+- KV cache in f32, int8 or int4 (`--kv-type`), on disk when RAM runs out (`--kv-offload`), with
+  prompt caching (`--prompt-cache`)
 - A model's layers split across machines (`--remote-layers`)
 - The fastest SIMD path picked at startup: AVX-512 VNNI, AVX-512, AVX-VNNI, AVX2, ARM NEON/dotprod
   or scalar
 
 Every flag: `pz --help`. Every web UI control and API route: [docs/WEBUI_GUIDE.md](docs/WEBUI_GUIDE.md).
-
-<p align="center">
-  <img src="docs/demo_banner_shimmer.gif" width="720" alt="The pz terminal banner">
-</p>
 
 | Web chat, light theme | Settings, dark theme |
 |---|---|
@@ -197,7 +132,7 @@ welcome:
 Changes in each release: [CHANGELOG.md](CHANGELOG.md). Reporting a vulnerability: [SECURITY.md](SECURITY.md).
 
 > If you like my work or if it helped you, buy me a coffee or A100😉
-> [![Sponsor Nitika](https://img.shields.io/badge/Sponsor-%E2%9D%A4-red)](https://github.com/sponsors/shifulegend)
+> [![Sponsor shifulegend](https://img.shields.io/badge/Sponsor-%E2%9D%A4-red)](https://github.com/sponsors/shifulegend)
 
 ## License
 

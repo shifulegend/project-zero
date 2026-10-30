@@ -3,7 +3,8 @@
 # ik_llama.cpp runs with -rtr (run-time repack, its recommended CPU setting) on quantized
 # models; BitNet is converted from the same official I2_S GGUF to its IQ2_BN format
 # (llama-quantize --allow-requantize ... iq2_bn, as its maintainer documents).
-# DeepSeek-V2-Lite: Project Zero vs llama.cpp vs ik_llama.cpp, 4 threads only.
+# DeepSeek-V2-Lite: Project Zero vs llama.cpp vs ik_llama.cpp, 4 threads only; the references get
+# -c 1024 (their default is the model's full 160K context, whose KV cache does not fit in 15 GB).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 O=benchmark_results/sweep_h2h_2026-10-29
@@ -22,6 +23,6 @@ mkdir -p "$D"
 python3 tools/bench_sweep_seq.py --out "$D" --threads 4 --runs 3 --tokens 200 --cooldown 20 \
   --fixed-length --resume \
   --suite deepseek_v2_lite_pz:models/DeepSeek-V2-Lite-Chat.Q4_K_S.gguf \
-  --ref-suite "deepseek_v2_lite_llamacpp:$L:models/DeepSeek-V2-Lite-Chat.Q4_K_S.gguf" \
-  --cli-suite "deepseek_v2_lite_ik:$K:models/DeepSeek-V2-Lite-Chat.Q4_K_S.gguf:-rtr" \
+  --ref-suite "deepseek_v2_lite_llamacpp:$L:models/DeepSeek-V2-Lite-Chat.Q4_K_S.gguf:-c,1024" \
+  --cli-suite "deepseek_v2_lite_ik:$K:models/DeepSeek-V2-Lite-Chat.Q4_K_S.gguf:-rtr,-c,1024" \
   >> "$D/sweep.log" 2>&1

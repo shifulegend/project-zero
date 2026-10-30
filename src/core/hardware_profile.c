@@ -5,6 +5,7 @@
 #include "math/cpu_features.h"
 #include "threading/cpu_probe.h"
 #include <stdint.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -617,37 +618,47 @@ void tn_hardware_profile_set_model_bytes(double weight_bytes_per_tok,
     rebuild_summary();
 }
 
+/* One row of the report box: label + value, padded to the frame's inner width so the right
+ * border lines up whatever the value's length (2026-10-30: rows used hand-counted widths and
+ * the border was ragged). */
+#define TN_HW_BOX_INNER 53
+#if defined(__GNUC__)
+__attribute__((format(printf, 2, 3)))
+#endif
+static void hw_box_row(const char *label, const char *fmt, ...) {
+    char value[128];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(value, sizeof value, fmt, ap);
+    va_end(ap);
+    /* " " + 14-char label + ": " = 17 columns, the value fills the rest. */
+    printf("│ %-14s: %-*.*s│\n", label, TN_HW_BOX_INNER - 17, TN_HW_BOX_INNER - 17, value);
+}
+
 void tn_hardware_profile_report(const TnHardwareProfile *hp) {
     printf("┌─────────────────────────────────────────────────────┐\n");
     printf("│          Hardware Profile (auto-detected)           │\n");
     printf("├─────────────────────────────────────────────────────┤\n");
-    printf("│ SIMD backend  : %-35s│\n", hp->cpu->best_backend);
-    printf("│ Cores         : %d physical / %d logical            ",
-           hp->physical_cores, hp->logical_cores);
-    printf("│\n");
-    printf("│ Threads       : %-35d│\n", hp->optimal_threads);
-    printf("│ L2 cache      : %-6zu KiB per core                 │\n",
-           hp->l2_cache_bytes / 1024);
-    printf("│ L3 cache      : %-6zu MiB shared                   │\n",
-           hp->l3_cache_bytes / (1024 * 1024));
-    printf("│ Free RAM      : %-6zu MiB                          │\n",
-           hp->free_ram_bytes / (1024 * 1024));
-    printf("│ DRAM bandwidth: %-6.1f GB/s %-24s│\n",
-           hp->measured_bw_gbps, hp->bw_cached ? "(cached)" : "(measured)");
+    hw_box_row("SIMD backend", "%s", hp->cpu->best_backend);
+    hw_box_row("Cores", "%d physical / %d logical", hp->physical_cores, hp->logical_cores);
+    hw_box_row("Threads", "%d", hp->optimal_threads);
+    hw_box_row("L2 cache", "%-6zu KiB per core", hp->l2_cache_bytes / 1024);
+    hw_box_row("L3 cache", "%-6zu MiB shared", hp->l3_cache_bytes / (1024 * 1024));
+    hw_box_row("Free RAM", "%-6zu MiB", hp->free_ram_bytes / (1024 * 1024));
+    hw_box_row("DRAM bandwidth", "%-6.1f GB/s %s", hp->measured_bw_gbps,
+               hp->bw_cached ? "(cached)" : "(measured)");
     printf("├─────────────────────────────────────────────────────┤\n");
     const char *cls_name = "BF16 (full precision)";
     if (hp->classifier_fmt == TN_CLS_INT8) cls_name = "INT8 (1 byte/weight)";
     if (hp->classifier_fmt == TN_CLS_INT4) cls_name = "INT4 (0.5 byte/weight)";
-    printf("│ Classifier    : %-35s│\n", cls_name);
-    printf("│ Prefetch rows : %-35d│\n", hp->prefetch_rows);
-    printf("│ Model in L3   : %-35s│\n", hp->model_fits_l3 ? "YES" : "no");
+    hw_box_row("Classifier", "%s", cls_name);
+    hw_box_row("Prefetch rows", "%d", hp->prefetch_rows);
+    hw_box_row("Model in L3", "%s", hp->model_fits_l3 ? "YES" : "no");
     /* Data/token + Ceiling are a pre-load estimate at this point in the
      * startup sequence (this report prints before the model file is read);
      * main.c re-derives both from the real loaded model and prints the
      * corrected figures after the weights are loaded. */
-    printf("│ Data/token    : %-6.0f MB (pre-load est.)           │\n",
-           hp->weight_bytes_per_tok / (1024.0 * 1024.0));
-    printf("│ Ceiling       : %-6.1f tok/s (at 100%% BW)          │\n",
-           hp->theoretical_ceiling);
+    hw_box_row("Data/token", "%-6.0f MB (pre-load est.)", hp->weight_bytes_per_tok / (1024.0 * 1024.0));
+    hw_box_row("Ceiling", "%-6.1f tok/s (at 100%% BW)", hp->theoretical_ceiling);
     printf("└─────────────────────────────────────────────────────┘\n");
 }

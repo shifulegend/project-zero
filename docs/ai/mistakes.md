@@ -17,6 +17,10 @@
 - Lesson: a red check on a change that cannot affect it is a toolchain drift signal — read the
   log before assuming the change broke it, and fix it in its own PR.
 
+### 2026-11-09 — Chat content arrays dropped earlier text
+- Cause: each text part replaced the accumulated message text, so only the last part reached the prompt.
+- Fix: append text parts in order and test a message with text on both sides of an image and a trailing empty part.
+
 ### 2026-10-30 — A detached benchmark chain died with the container
 - What: the ik_llama.cpp comparison was queued as a `setsid nohup` chain so it would outlive the
   2-hour background-task limit. Once the last harness-tracked task ended (22:26 UTC), the session

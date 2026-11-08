@@ -20,6 +20,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Fixed
 
+- Preserve all text parts in chat messages that send content as an array.
 - Align the right border of the startup "Hardware Profile" box; rows were padded to different widths.
 
 ## [0.2.0] - 2026-10-22

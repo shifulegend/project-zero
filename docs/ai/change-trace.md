@@ -1,7 +1,11 @@
 # Change Trace — project-zero
 
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
-> Update after each meaningful sub-step. Last updated: 2026-10-22.
+> Update after each meaningful sub-step. Last updated: 2026-11-09.
+
+### 2026-11-09 — Preserve text in chat content arrays
+- `src/api/json_parse.c` appends each text part to the message and keeps partially parsed messages available for cleanup.
+- `test_api_server` covers multiple text parts, an image, and a trailing empty part in one request.
 
 ### 2026-10-22 — Parallel serving: `--parallel N` (Phase 23 stage 2b, step 2)
 - New `api/batch_scheduler.{h,c}`; `transformer_forward_multi_ex` (logits row mask) +

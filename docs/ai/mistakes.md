@@ -3,7 +3,11 @@
 > Canonical, append-at-top (newest first). Read this at the start of every session.
 > Add an entry **immediately** when a mistake, false assumption, regression, or avoidable
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
-> Last updated: 2026-10-30.
+> Last updated: 2026-11-09.
+
+### 2026-11-09 — Chat content arrays dropped earlier text
+- Cause: each text part replaced the accumulated message text, so only the last part reached the prompt.
+- Fix: append text parts in order and test a message with text on both sides of an image and a trailing empty part.
 
 ### 2026-10-30 — A detached benchmark chain died with the container
 - What: the ik_llama.cpp comparison was queued as a `setsid nohup` chain so it would outlive the

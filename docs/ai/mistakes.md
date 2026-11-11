@@ -11,7 +11,8 @@
   `src/tokenizer/chat_template.cpp` as "function not hit but line N is" and aborts with an
   `inconsistent` error in `lcov --remove`.
 - Fix: the `coverage` target passes `--ignore-errors inconsistent` (lcov 2.x only, detected like
-  the existing `unused` case) to capture, remove and genhtml. The counts come from gcov; the
+  the existing `unused` case) to every lcov/genhtml call — capture, remove, genhtml and summary
+  (the first fix missed `--summary`, which also re-validates the trace file). The counts come from gcov; the
   report is unchanged apart from no longer aborting.
 - Lesson: a red check on a change that cannot affect it is a toolchain drift signal — read the
   log before assuming the change broke it, and fix it in its own PR.

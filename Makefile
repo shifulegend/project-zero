@@ -444,7 +444,7 @@ coverage:
 	lcov --remove build/coverage/coverage_raw.info '/usr/*' '*/tests/*' --output-file build/coverage/coverage.info --rc lcov_branch_coverage=1 $(LCOV_IGNORE_UNUSED)
 	genhtml build/coverage/coverage.info --output-directory build/coverage/html --rc lcov_branch_coverage=1 $(LCOV_IGNORE_INCONSISTENT)
 	@echo "=== Coverage summary ==="
-	lcov --summary build/coverage/coverage.info --rc lcov_branch_coverage=1
+	lcov --summary build/coverage/coverage.info --rc lcov_branch_coverage=1 $(LCOV_IGNORE_INCONSISTENT)
 	@echo "=== HTML report: build/coverage/html/index.html ==="
 
 bench: $(LIB_OBJS) tools/bench_simd.c

@@ -10,7 +10,8 @@
 - Generation flags (`--top-k --min-p --repeat-penalty --presence-penalty --frequency-penalty
   --repeat-last-n --seed --system-prompt --stop --watermark*`) fill `GenerationParams` via
   `args_fill_gen_params()`; in `--server` mode they are the defaults published by `/v1/config`.
-  A new knob must reach CLI + API + web UI (see `engineering-rules.md` § No hardcoding).
+  A new knob reaches CLI + API + web UI; one that stops at the CLI is invisible to API/web users
+  (see `engineering-rules.md` § No hardcoding).
 - Makefile tracks header deps (`-MMD -MP`); keep it.
 - Context sizing: `--ctx-size`, `--kv-ram-fraction`, `--kv-type f32|i8|i4`, `--kv-offload <dir>`
   (`KVStrategyOptions`; with offload the cap budgets free disk, not RAM).

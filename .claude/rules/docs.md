@@ -1,3 +1,8 @@
+---
+paths:
+  - "docs/**"
+  - "**/*.md"
+---
 # Claude rule: docs
 
 Adapter for `docs/ai/` policy — read `docs/ai/tool-sync-policy.md` and `commit-log-guidance.md`.
@@ -6,11 +11,13 @@ Adapter for `docs/ai/` policy — read `docs/ai/tool-sync-policy.md` and `commit
 - Document non-obvious decisions/risks/workarounds in code comments **with a timestamp**.
 - On a durable lesson: update `docs/ai/**` first → sync adapters → record in `change-trace.md`.
 - Keep docs concise, factual, repository-specific; follow existing report style.
-- Mark unknowns as TODO / UNKNOWN / ASSUMPTION; never invent commands/architecture.
+- Mark unknowns as TODO / UNKNOWN / ASSUMPTION rather than guessing a command or architecture
+  detail (a wrong doc misleads for longer than a gap does).
 - **Changelog** (`docs/ai/changelog-guidance.md`): every user-facing change adds one imperative line
   under `## [Unreleased]` in `CHANGELOG.md` in the same commit (Keep a Changelog sections, order
   Changed/Deprecated/Removed/Added/Fixed/Security; `**Breaking:**` prefix + what to do; deprecations
-  name replacement + removal release; perf claims carry numbers). `tools/changelog.py check` must pass.
+  name replacement + removal release; perf claims carry numbers). `tools/changelog.py check` passes
+  (it is a CI gate).
 - **Releases** (`docs/RELEASING.md` § Maintaining published releases): published releases are
   immutable (no asset replacement, tag moves or note rewrites — fixes ship as a new version);
   triage every landed fix against the latest release; security fixes via a private advisory.

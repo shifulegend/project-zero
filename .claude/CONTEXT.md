@@ -200,19 +200,19 @@ generate_with_callback(prompt, ...)
 **2026-03-24 — F16 prefetch investigation concluded:**
 - Software prefetch in `matmul_f16.c` causes regression (−8% T=1, −13% T=2)
 - Hardware prefetcher handles sequential access correctly for OS-page-cached model
-- ⚠️ Do NOT add `_mm_prefetch` calls to matmul loops
+- ⚠️ Default: no `_mm_prefetch` in matmul loops — it measured −8% / −13%; re-measure before trying again
 
 **2026-03-23 — INT8/INT4 classifier wrong weight source (FIXED):**
-- `weights_build_classifier_quant()` must read from `w->wcls`, NOT `token_embedding_table`
+- `weights_build_classifier_quant()` reads from `w->wcls`, not `token_embedding_table`
 - DeepSeek has separate `output.weight` → different pointer
 - See GOLDEN_RULES Historical Regressions table
 
 **2026-03-23 — MoE expert cache causes regression (FIXED/REVERTED):**
 - Routed-expert heap copies: `cache=0 → 1.055 tok/s`, `cache=1 → 0.810 tok/s` — worse
-- Do NOT add expert caching without a structural redesign
+- Expert caching stays off: the heap copies cost more than they save; only a structural redesign changes that
 
 **Earlier — MLA RoPE wrong frequency buffer (FIXED):**
-- `mla_attention_forward` must use `s->mla_rope_freq`, NOT `s->rope_freq`
+- `mla_attention_forward` uses `s->mla_rope_freq`, not `s->rope_freq`
 - `rope_freq` is computed for `head_dim=128`; MLA needs `qk_rope_head_dim=64`
 
 **Earlier — KV value vector wrong slot after sliding window wrap (FIXED):**
@@ -309,7 +309,7 @@ void tn_calibration_save(const TnCalibrationResult *result);
 ### How to add a new model architecture
 1. Create `src/core/moe_config.c` analogue for architecture-specific config
 2. Add arch-specific metadata key reading in `config_from_gguf()` (check GGUF `arch` field)
-3. All tensor name lookups must use `snprintf(name_buf, sizeof(name_buf), "%s.blk.%d.%s", arch, l, suffix)` — never hardcode
+3. Tensor name lookups go through `snprintf(name_buf, sizeof(name_buf), "%s.blk.%d.%s", arch, l, suffix)`; a literal name breaks on the next architecture
 4. If the architecture needs new attention variant: add `has_newattn` to `MoEConfig`, dispatch in `attention_forward()`
 5. Test with France→Paris, Germany→Berlin, and expert utilization stats (all layers active)
 

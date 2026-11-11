@@ -1,3 +1,8 @@
+---
+paths:
+  - "src/**"
+  - "include/**"
+---
 # Claude rule: core (engine / memory / safety)
 
 Adapter for `docs/ai/engineering-rules.md` — read the canonical file for full text.
@@ -7,8 +12,9 @@ Adapter for `docs/ai/engineering-rules.md` — read the canonical file for full 
 - No hardcoding: shape/tokens/quant/RoPE/MoE from GGUF metadata (`hdr->arch` prefix).
 - Memory safety: `memset` structs before partial init; overflow-checked size math; 64-byte
   aligned SIMD buffers; trap absurd allocations deterministically (not via malloc-NULL).
-- Cross-platform: x86 (AVX2..VNNI) + ARM (NEON/dotprod) + scalar must all compile; portable
-  prefetch `TN_PREFETCH_T1`; feature-gate with `TN_HAS_*`.
+- Cross-platform: x86 (AVX2..VNNI) + ARM (NEON/dotprod) + scalar all compile (CI builds each;
+  a change that builds on one tier alone breaks the others); portable prefetch
+  `TN_PREFETCH_T1`; feature-gate with `TN_HAS_*`.
 - No new compiler warnings (`-Wall -Wextra -Wpedantic`). Keep ASan/UBSan green.
 - Public repo: never commit secrets.
 - No Claude/AI signature or attribution (commit trailers, code comments, etc.) unless the user
@@ -24,27 +30,33 @@ Adapter for `docs/ai/engineering-rules.md` — read the canonical file for full 
   probes cached (`core/bw_cache`), large zeroed buffers lazily committed (`tn_aligned_calloc`
   uses `MADV_DONTNEED` on Linux — no full memset). Benchmarks report wall time + RSS too.
 - GGUF stop tokens: `tokenizer_collect_eog()` (declared EOS/EOT/EOM + end-of-turn control
-  tokens). Generation loops must check all of `tok->eos_list`, not just `eos_token_id`.
-- End of generation: always `tokenizer_is_eog()` (declared EOS + EOG set + chat-mode stops).
-  Chat generations own a `tokenizer_chat_stops_new(tok, template)` set (never stored in the
-  shared Tokenizer) and pass it to `tokenizer_is_eog`: a CONTROL token the
-  template never writes ends the turn (Falcon3 `>>UNUSED_1<<`); raw prompts pass NULL.
+  tokens). Generation loops check all of `tok->eos_list`, not just `eos_token_id`; otherwise a
+  model whose template ends turns with EOT runs on past the answer.
+- End of generation: `tokenizer_is_eog()` (declared EOS + EOG set + chat-mode stops) is the one
+  check that covers all three. Chat generations own a `tokenizer_chat_stops_new(tok, template)`
+  set (kept per generation, not in the shared Tokenizer, so concurrent chats with different
+  templates don't collide) and pass it to `tokenizer_is_eog`: a CONTROL token the template does
+  not emit ends the turn (Falcon3 `>>UNUSED_1<<`); raw prompts pass NULL.
 - Prompt-injection defence (2026-10-22): untrusted text -- chat message content, tool output,
   retrieved memories -- goes through `tokenizer_neutralize_control()` before it enters a prompt
   (CONTROL specials become placeholders that encode as plain text; USER_DEFINED like `<think>`
   stay tokens). Any new path that puts user/tool text into a prompt must do the same;
   `tests/test_prompt_injection.c` (CI golden job) guards it.
-- LoRA: every attention/FFN path that runs a projection must apply `s->active_lora` (single and
-  batched); Q width is `q_dim` (n_heads*head_dim) — not `dim` — on Qwen3.
+- LoRA: every attention/FFN path that runs a projection applies `s->active_lora` (single and
+  batched); a path that skips it silently ignores the adapter. Q width is `q_dim`
+  (n_heads*head_dim) — not `dim` — on Qwen3.
 - Generic KV may be quantized (`RunState.kv_type` I8 or I4: `key_cache` is NULL; row r =
   `KV_SCALE_IDX` lives at `key_cache_q + r*kv_row_bytes`, scales at `key_scale + r*kv_row_scales`;
-  use `kvq_store/kvq_dot_row/kvq_axpy_row`). Any new reader/writer of the dense KV cache must handle all.
+  use `kvq_store/kvq_dot_row/kvq_axpy_row`). Any new reader/writer of the dense KV cache handles
+  all three layouts, or the quantized modes read garbage.
 - Distributed (`--remote-layers`, Phase 28): layers can run in a worker process. Per-layer state
   that maps position → cache slot (sliding window) is part of the RPC contract; anything that
-  restores/copies KV for all layers (prompt snapshots) must be bypassed when `dist_plan_active()`.
+  restores/copies KV for all layers (prompt snapshots) is bypassed when `dist_plan_active()`,
+  because remote layers hold their own KV.
 - MoE experts run through `moe_experts_forward()` (2 dispatches/layer, Q8_0/Q8K activations
   quantized once). New expert weight types need a `rowdot()` case there, else the layer silently
   takes the slow legacy path. Q5_0/Q5_1/Q8_0 projections are zero-copy `WEIGHT_TYPE_Q5_0/Q5_1/Q8_0`
-  (integer kernels in `math/q8_0_act.c`) — never dequantize them to F32.
+  (integer kernels in `math/q8_0_act.c`); dequantizing them to F32 throws away the integer-kernel
+  speedup and the zero-copy mapping.
 - Anything that calls `transformer_forward()` directly gets a default sliding window if none was
   set, but should `sw_init()` itself when it owns a sequence (generate_ex, perplexity, worker).

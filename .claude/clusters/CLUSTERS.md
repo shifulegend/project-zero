@@ -76,7 +76,7 @@ TernaryError weights_map(TransformerWeights *w, const Config *cfg,
 void weights_build_classifier_quant(TransformerWeights *w, const Config *cfg);
 ```
 
-**⚠️ Critical rule:** All tensor name lookups must use runtime format strings. Never hardcode e.g. `"blk.0.attn_q.weight"`. Use `snprintf(buf, size, "blk.%d.attn_q.weight", l)`.
+**⚠️ Tensor names:** lookups use runtime format strings, e.g. `snprintf(buf, size, "blk.%d.attn_q.weight", l)`; a literal such as `"blk.0.attn_q.weight"` breaks for every other layer and architecture.
 
 ---
 
@@ -206,7 +206,7 @@ else if (WEIGHT_TYPE_F16)     → parallel_matmul_f16()
 else                          → parallel_matmul_float32()
 ```
 
-**⚠️ MLA critical detail:** MLA uses `s->mla_rope_freq` (size = qk_rope_head_dim/2 = 32), NOT `s->rope_freq` (size = head_dim/2 = 64). Using wrong buffer gives incorrect RoPE frequencies.
+**⚠️ MLA RoPE buffer:** MLA uses `s->mla_rope_freq` (size = qk_rope_head_dim/2 = 32), not `s->rope_freq` (size = head_dim/2 = 64): the wrong buffer gives incorrect RoPE frequencies.
 
 **⚠️ KV cache mapping:** All KV read/write uses `sw_map_position(&s->sw, hist_logical)`. Direct use of `t` as slot index is a bug (PRE10-BUG-004).
 
@@ -294,7 +294,7 @@ char *chat_template_apply(const char *tmpl, const char **roles,
     int add_gen_prompt);
 ```
 
-**⚠️ GGUF chat template path:** When `tok->chat_template` is non-NULL, the Jinja2 template renders BOS internally. Do NOT manually prepend BOS — double-BOS corrupts output.
+**⚠️ GGUF chat template path:** When `tok->chat_template` is non-NULL, the Jinja2 template renders BOS internally, so the caller leaves BOS to it: a second BOS corrupts output.
 
 ---
 

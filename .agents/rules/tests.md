@@ -3,7 +3,8 @@
 - `make test` builds & runs **every** `tests/*.c` under ASan/UBSan, aborting on first failure;
   the bar is a full green run on gcc **and** clang.
 - Zero structs before partial init in test setup; zero feature-selecting fields.
-- Asset/CPU/env-dependent tests skip gracefully; never hard-fail on a missing optional asset.
+- Asset/CPU/env-dependent tests skip gracefully rather than hard-failing on a missing optional
+  asset: CI and other hosts don't have the assets.
 - Verify the full CI sequence locally (release+test+debug, gcc+clang); expect a cascade when
   unblocking the first failing test. Add golden-output checks for behavior changes.
 - `make test` builds the library as the `debug` (ASan/UBSan) variant, so engine code is sanitized

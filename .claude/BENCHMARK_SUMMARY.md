@@ -126,7 +126,7 @@ At T=4 (4 logical on 2 physical): **PZ 33.73 tok/s vs bitnet/llama ~22 tok/s = +
 
 ---
 
-## Pre-Benchmark Environment Setup (MANDATORY)
+## Pre-Benchmark Environment Setup (do this first)
 
 ⚠️ Without these steps, results are 0.38–0.57 tok/s (7.3× below correct baseline) due to disk I/O stalls.
 

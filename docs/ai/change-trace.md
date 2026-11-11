@@ -3,6 +3,16 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-11.
 
+### 2026-11-11 — API: release the generation slot before the final response write
+- `src/api/http_server.c` `handle_chat_completions`: `release_generation_slot()` now precedes
+  `sse_write_done_ex()` / `send_response_ex()` (was after the frees, at function end), so strictly
+  sequential clients no longer get a spurious 429; final-JSON OOM now answers 500 instead of an
+  empty 200. 429-while-busy contract unchanged.
+- Tests: `tests/e2e_api_concurrency.sh` gained sequential streaming (20, stop at `[DONE]`) and
+  non-streaming (30) checks; CI golden-output job runs the script.
+- Evidence: `benchmark_results/slot_release_race_2026-11-11/` (race experiment R1–R5, verification
+  matrix, screenshots + transcripts).
+
 ### 2026-11-11 — AI instruction hygiene, session sync, generated rule adapters (PR #61)
 - Context hygiene: `CLAUDE.md` 702 → 614 words, `AGENTS.md` 676 → 487 (GitNexus block moved to
   `.claude/GITNEXUS.md`); `.claude/rules/*.md` gained `paths:` front matter; blanket non-safety

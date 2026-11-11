@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # e2e_api_concurrency.sh — TS-2.6: verify the API server's concurrency
-# contract. src/api/http_server.c serializes generation via
-# ctx->generation_mutex, acquired with pthread_mutex_trylock() -- a second
-# concurrent /v1/chat/completions request must get 429, never block or
-# queue. Also verifies no grammar (FSMState) contamination across requests:
+# contract. src/api/http_server.c admits generations through ctx->gen_queue
+# (default: one slot, no --queue-size) -- a second concurrent
+# /v1/chat/completions request must get 429, never block or queue, while
+# strictly sequential requests must never get 429 (the slot is released
+# before the final response write). Also verifies no grammar (FSMState)
+# contamination across requests:
 # FSMState is a stack-local per generate_with_callback() call
 # (src/transformer/generate.c), so back-to-back JSON-mode requests with
 # different structures must each independently produce valid JSON.
@@ -107,6 +109,55 @@ if echo "$content2" | is_valid_json; then
     pass "sequential JSON request #2 (different object shape) is independently valid JSON, no leak from #1"
 else
     fail "sequential JSON request #2 invalid (possible grammar-state leak): $content2"
+fi
+
+# --- Strictly sequential clients never see a spurious 429 (2026-11-11). ---
+# Each request is sent only after the previous answer was read; the server
+# must have freed the generation slot by then. The streaming client stops at
+# the "data: [DONE]" line (as SDKs do) instead of waiting for the close; the
+# slot used to be released only after that last write, so such back-to-back
+# requests could get 429 "Another generation is already in flight" (45% of
+# them on one host, ~1% on a 4-vCPU one: the rate depends on the host).
+# seq_requests <count> <stream 0|1> -> prints "<n_200> <other status codes>"
+seq_requests() {
+    python3 - "$PORT" "$1" "$2" <<'PY'
+import http.client, json, sys
+port, n, stream = int(sys.argv[1]), int(sys.argv[2]), sys.argv[3] == "1"
+body = json.dumps({"model": "m", "messages": [{"role": "user", "content": "Say hi"}],
+                   "max_tokens": 2, "temperature": 0, "stream": stream})
+ok, other = 0, []
+for _ in range(n):
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=60)
+    c.request("POST", "/v1/chat/completions", body, {"Content-Type": "application/json"})
+    r = c.getresponse()
+    if stream and r.status == 200:
+        while True:
+            line = r.fp.readline()
+            if not line or line.strip() == b"data: [DONE]":
+                break
+    else:
+        r.read()
+    c.close()
+    if r.status == 200:
+        ok += 1
+    else:
+        other.append(str(r.status))
+print(ok, ",".join(other) or "-")
+PY
+}
+
+read -r ok_s other_s <<< "$(seq_requests 20 1)"
+if [ "$ok_s" = "20" ]; then
+    pass "20 strictly sequential streaming requests (client stops at [DONE]) all got HTTP 200"
+else
+    fail "sequential streaming requests: ${ok_s:-0}/20 got 200, others: ${other_s:-?} (slot released after the final write?)"
+fi
+
+read -r ok_j other_j <<< "$(seq_requests 30 0)"
+if [ "$ok_j" = "30" ]; then
+    pass "30 strictly sequential non-streaming requests all got HTTP 200"
+else
+    fail "sequential non-streaming requests: ${ok_j:-0}/30 got 200, others: ${other_j:-?}"
 fi
 
 kill -TERM "$SERVER_PID" 2>/dev/null

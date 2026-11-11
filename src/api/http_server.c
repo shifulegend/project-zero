@@ -787,7 +787,17 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
         return;
     }
 
+    /* Release the engine BEFORE the last write of the response (2026-11-11).
+     * Once a client has read the final event / body it may send its next
+     * request at once; while the slot was still held at that point, a
+     * strictly sequential client got a spurious 429 (no free unit and no
+     * --queue-size), and a slow reader held the engine hostage. Nothing
+     * below touches engine state: generation has returned (the scheduler
+     * marks a job done only after it left its slot), the response is built
+     * from request-local buffers (st.accum_buf, gstats, bres, mres), and
+     * `finish_reason` is a static string. */
     if (req.stream) {
+        release_generation_slot(ctx, units, !batched);
         sse_write_done_ex(fd, id, finish_reason,
                           gstats.prompt_tokens, gstats.completion_tokens,
                           gstats.cached_tokens);
@@ -803,14 +813,15 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
                                                  gstats.cached_tokens);
         if (json && mopt.simulations > 0) json = append_mcts_json(json, &mres);
         else if (json && best_of > 1) json = append_best_of_json(json, &bres);
-        send_response_ex(fd, 200, "application/json", json, 0, extra_headers);
+        release_generation_slot(ctx, units, !batched);
+        if (json) send_response_ex(fd, 200, "application/json", json, 0, extra_headers);
+        else      send_error_ex(fd, 500, "OOM", extra_headers);
         free(json);
     }
 
     free(st.accum_buf);
     if (free_prompt) free(prompt);
     chat_request_free(&req);
-    release_generation_slot(ctx, units, !batched);
 }
 
 /* ── HTTP request parser ─────────────────────────────────────────────────── */

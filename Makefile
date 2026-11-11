@@ -429,14 +429,20 @@ test-tsan:
 # variant, which would wipe the coverage objects (CI reported 40 lines covered).
 # lcov 2.x fails on an exclude pattern that matched nothing (e.g. '/usr/*' when
 # no system header was instrumented); lcov 1.x rejects `--ignore-errors unused`.
-LCOV_IGNORE_UNUSED = $(if $(shell lcov --version 2>/dev/null | grep -E 'version [2-9]'),--ignore-errors unused)
+# 2026-11-11: gcc 15 + lcov 2.x report C++ lambdas as "function not hit but line N is"
+# (chat_template.cpp eval lambda) and abort with an `inconsistent` error; the counts are
+# gcov's, not ours, so lcov 2.x also ignores `inconsistent` (lcov 1.x has no such category).
+comma := ,
+LCOV2 := $(shell lcov --version 2>/dev/null | grep -E 'version [2-9]')
+LCOV_IGNORE_UNUSED = $(if $(LCOV2),--ignore-errors unused$(comma)inconsistent)
+LCOV_IGNORE_INCONSISTENT = $(if $(LCOV2),--ignore-errors inconsistent)
 coverage:
 	$(call ensure_variant,coverage)
 	$(MAKE) CFLAGS="$(CFLAGS_COVERAGE)" CXXFLAGS="$(CXXFLAGS_COVERAGE)" LDFLAGS="$(LDFLAGS) --coverage" run-tests
 	@mkdir -p build/coverage
-	lcov --capture --directory build --output-file build/coverage/coverage_raw.info --rc lcov_branch_coverage=1
+	lcov --capture --directory build --output-file build/coverage/coverage_raw.info --rc lcov_branch_coverage=1 $(LCOV_IGNORE_INCONSISTENT)
 	lcov --remove build/coverage/coverage_raw.info '/usr/*' '*/tests/*' --output-file build/coverage/coverage.info --rc lcov_branch_coverage=1 $(LCOV_IGNORE_UNUSED)
-	genhtml build/coverage/coverage.info --output-directory build/coverage/html --rc lcov_branch_coverage=1
+	genhtml build/coverage/coverage.info --output-directory build/coverage/html --rc lcov_branch_coverage=1 $(LCOV_IGNORE_INCONSISTENT)
 	@echo "=== Coverage summary ==="
 	lcov --summary build/coverage/coverage.info --rc lcov_branch_coverage=1
 	@echo "=== HTML report: build/coverage/html/index.html ==="

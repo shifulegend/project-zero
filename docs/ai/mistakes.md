@@ -3,7 +3,19 @@
 > Canonical, append-at-top (newest first). Read this at the start of every session.
 > Add an entry **immediately** when a mistake, false assumption, regression, or avoidable
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
-> Last updated: 2026-10-30.
+> Last updated: 2026-11-11.
+
+### 2026-11-11 — Coverage CI broke on a runner toolchain update, not on a code change
+- What: `Coverage (TS-5.5)` went red on a docs-only PR (#61) while the same job was green on
+  master on 2026-10-30. The runner now has gcc 15 + lcov 2.x, which reports C++ lambdas in
+  `src/tokenizer/chat_template.cpp` as "function not hit but line N is" and aborts with an
+  `inconsistent` error in `lcov --remove`.
+- Fix: the `coverage` target passes `--ignore-errors inconsistent` (lcov 2.x only, detected like
+  the existing `unused` case) to every lcov/genhtml call — capture, remove, genhtml and summary
+  (the first fix missed `--summary`, which also re-validates the trace file). The counts come from gcov; the
+  report is unchanged apart from no longer aborting.
+- Lesson: a red check on a change that cannot affect it is a toolchain drift signal — read the
+  log before assuming the change broke it, and fix it in its own PR.
 
 ### 2026-10-30 — A detached benchmark chain died with the container
 - What: the ik_llama.cpp comparison was queued as a `setsid nohup` chain so it would outlive the

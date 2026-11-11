@@ -7,5 +7,14 @@
   "enabledPlugins": {
     "superpowers@claude-plugins-official": true,
     "mattpocock-skills@claude-plugins-official": true
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/tools/git_sync_check.sh\"", "timeout": 30 }
+        ]
+      }
+    ]
   }
 }

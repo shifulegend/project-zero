@@ -2,6 +2,12 @@
 
 > Mandatory at the start of EVERY session, for every tool, before planning or coding.
 
+0. Sync with GitHub first (2026-11-11). GitHub `master` is the source of truth; every working
+   copy (a server, a laptop, a cloud session) is a temporary copy, and other sessions land work
+   there. Run `tools/git_sync_check.sh` (Claude Code runs it automatically at session start). If
+   `master` is behind and the tree is clean, `git pull --ff-only origin master`. Start new work
+   on a short-lived branch from the updated `master`; `master` is protected and only changes
+   through a PR with green CI.
 1. Read your tool's entrypoint + relevant scoped rules:
    - Claude Code: `CLAUDE.md` + `.claude/rules/*.md`
    - GitHub Copilot: `.github/copilot-instructions.md` + relevant `.github/instructions/*.instructions.md`
@@ -26,3 +32,5 @@
   `change-trace.md`.
 - Verify (`make release/test/debug` for gcc+clang; golden output) and state what is
   verified vs UNVERIFIED.
+- Before stopping: commit and push the branch (`git push -u origin <branch>`), so no work exists
+  only on one machine. A PR is opened when the owner asks; once it merges, delete the branch.

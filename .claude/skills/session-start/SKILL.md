@@ -5,6 +5,9 @@ description: Run the mandatory project-zero session-start routine — read tool 
 
 # Session Start
 
+0. Sync: read the `git sync:` lines from the SessionStart hook (or run `tools/git_sync_check.sh`).
+   Behind and clean → `git pull --ff-only origin master`; new work goes on a short-lived branch.
+   Push the branch before stopping.
 1. Read `CLAUDE.md` and the relevant `.claude/rules/*.md`.
 2. Read canonical memory: `docs/ai/project-overview.md`, `engineering-rules.md`, `mistakes.md`
    (newest first), `decision-log.md`, `tool-sync-policy.md`.

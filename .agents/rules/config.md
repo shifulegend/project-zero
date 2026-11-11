@@ -1,12 +1,19 @@
-# Antigravity scoped rules: config / build (adapter for docs/ai/engineering-rules.md)
+# Antigravity scoped rules: config (build + runtime configuration)
 
-- Two build systems: `Makefile` (primary; per-file SIMD flags) and `CMakeLists.txt` (audit CI);
-  keep both in sync when adding sources/flags.
-- Per-file SIMD flags in the Makefile overrides; 256-bit VNNI needs `-mavx512vnni -mavx512vl`
-  (clang strict); `debug` keeps `-march=native` and links the sanitizer runtime.
-- Runtime config via CLI/env, not literals (`--model --tokenizer --prompt --max-tokens
-  --temperature --top-p --seed --threads --simd --classifier --calibrate`).
-- Model config/tokenizer/quant from GGUF metadata; new tunables via flags/metadata.
+<!-- Generated from .claude/rules/config.md by tools/sync_ai_adapters.py; edit that file and re-run the script (CI checks this copy). -->
+
+Adapter for the configurability rules in `docs/ai/engineering-rules.md`.
+
+- Two build systems: `Makefile` (primary; per-file SIMD flags) and `CMakeLists.txt` (audit CI).
+  Keep both in sync when adding source files or flags.
+- Per-file SIMD flags live in the `Makefile` overrides section; 256-bit VNNI needs
+  `-mavx512vnni -mavx512vl` (clang is strict). `debug` keeps `-march=native` and links the
+  sanitizer runtime (ASan/UBSan runs need both).
+- Runtime config via CLI/env, not literals: `--model --tokenizer --prompt --max-tokens
+  --temperature --top-p --seed --threads --simd --classifier --calibrate`.
+- Model config/tokenizer/quant come from GGUF metadata, not literals (a literal silently breaks
+  the next model).
+- New tunables: prefer flags/metadata/feature-detection over magic numbers; document defaults.
 - Generation flags (`--top-k --min-p --repeat-penalty --presence-penalty --frequency-penalty
   --repeat-last-n --seed --system-prompt --stop --watermark*`) fill `GenerationParams` via
   `args_fill_gen_params()`; in `--server` mode they are the defaults published by `/v1/config`.

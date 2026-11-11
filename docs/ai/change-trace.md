@@ -1,7 +1,19 @@
 # Change Trace — project-zero
 
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
-> Update after each meaningful sub-step. Last updated: 2026-10-22.
+> Update after each meaningful sub-step. Last updated: 2026-11-11.
+
+### 2026-11-11 — AI instruction hygiene, session sync, generated rule adapters (PR #61)
+- Context hygiene: `CLAUDE.md` 702 → 614 words, `AGENTS.md` 676 → 487 (GitNexus block moved to
+  `.claude/GITNEXUS.md`); `.claude/rules/*.md` gained `paths:` front matter; blanket non-safety
+  rules rewritten as reason + default (hard-rule words 74 → 20; safety rules stay strict);
+  "Large tasks" section (user stories, checkpointed phases, `.claude/progress/<task>.md`).
+- Session sync: `tools/git_sync_check.sh` + SessionStart hook; step 0 in the session-start
+  checklist and the three tools' start-session adapters; push before stopping.
+- Generated adapters: `tools/sync_ai_adapters.py` writes `.agents/rules` and
+  `.github/instructions` from `.claude/rules`; CI step in the changelog job. Copilot `applyTo`
+  now matches the Claude `paths:` (api + `webui/**`; config + installer/config sources; tests +
+  `tools/screenshots/**`).
 
 ### 2026-10-22 — Parallel serving: `--parallel N` (Phase 23 stage 2b, step 2)
 - New `api/batch_scheduler.{h,c}`; `transformer_forward_multi_ex` (logits row mask) +

@@ -1,11 +1,19 @@
-# Antigravity scoped rules: docs (adapter for docs/ai/tool-sync-policy.md)
+# Antigravity scoped rules: docs
 
-- `docs/ai/**` is canonical; all instruction/rule/workflow files are dynamic — update proactively.
+<!-- Generated from .claude/rules/docs.md by tools/sync_ai_adapters.py; edit that file and re-run the script (CI checks this copy). -->
+
+Adapter for `docs/ai/` policy — read `docs/ai/tool-sync-policy.md` and `commit-log-guidance.md`.
+
+- `docs/ai/**` is canonical; this and all adapter files are dynamic — update proactively, no prompt needed.
+- Document non-obvious decisions/risks/workarounds in code comments **with a timestamp**.
 - On a durable lesson: update `docs/ai/**` first → sync adapters (Claude/Copilot/Antigravity,
   incl. keeping `gemini/GEMINI.md` ⇄ `AGENTS.md`) → record in `docs/ai/change-trace.md`.
-- Timestamp doc updates and non-obvious code comments (decisions/risks/workarounds).
-- Concise, factual, repository-specific. Mark unknowns TODO / UNKNOWN / ASSUMPTION rather than
-  guessing a command or architecture detail.
+- Scoped rules have one source: `.claude/rules/*.md`. `.agents/rules/*.md` and
+  `.github/instructions/*.instructions.md` are generated from it by `tools/sync_ai_adapters.py`
+  (CI runs `--check`), so edit the `.claude/rules` file and regenerate.
+- Keep docs concise, factual, repository-specific; follow existing report style.
+- Mark unknowns as TODO / UNKNOWN / ASSUMPTION rather than guessing a command or architecture
+  detail (a wrong doc misleads for longer than a gap does).
 - **Changelog** (`docs/ai/changelog-guidance.md`): every user-facing change adds one imperative line
   under `## [Unreleased]` in `CHANGELOG.md` in the same commit (Keep a Changelog sections, order
   Changed/Deprecated/Removed/Added/Fixed/Security; `**Breaking:**` prefix + what to do; deprecations

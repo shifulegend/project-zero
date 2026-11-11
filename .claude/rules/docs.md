@@ -9,7 +9,11 @@ Adapter for `docs/ai/` policy — read `docs/ai/tool-sync-policy.md` and `commit
 
 - `docs/ai/**` is canonical; this and all adapter files are dynamic — update proactively, no prompt needed.
 - Document non-obvious decisions/risks/workarounds in code comments **with a timestamp**.
-- On a durable lesson: update `docs/ai/**` first → sync adapters → record in `change-trace.md`.
+- On a durable lesson: update `docs/ai/**` first → sync adapters (Claude/Copilot/Antigravity,
+  incl. keeping `gemini/GEMINI.md` ⇄ `AGENTS.md`) → record in `docs/ai/change-trace.md`.
+- Scoped rules have one source: `.claude/rules/*.md`. `.agents/rules/*.md` and
+  `.github/instructions/*.instructions.md` are generated from it by `tools/sync_ai_adapters.py`
+  (CI runs `--check`), so edit the `.claude/rules` file and regenerate.
 - Keep docs concise, factual, repository-specific; follow existing report style.
 - Mark unknowns as TODO / UNKNOWN / ASSUMPTION rather than guessing a command or architecture
   detail (a wrong doc misleads for longer than a gap does).

@@ -1,28 +1,41 @@
-# Antigravity scoped rules: api / HTTP server (adapter for docs/ai/decision-log.md Phase 22, mistakes.md)
+# Antigravity scoped rules: api (HTTP server, src/api/)
 
-- Hand-rolled HTTP/1.1 over raw sockets, no external HTTP library; loopback-only by default.
-- CORS (`--cors`/`--cors-origin`) and auth (`--api-key`) are off by default — don't change; keeps
-  loopback experimentation open.
-- Admission via `ctx->gen_queue` units (capacity `--parallel`, default 1): plain chat = 1 unit in
-  `api/batch_scheduler`; image/best-of/MCTS/cache reset = all units + `generation_mutex`. No free
-  unit → `429` (or FIFO wait with `--queue-size`); other routes stay off units and the mutex, so
-  `/health` and friends keep answering during a long generation.
-- `src/api/webui_bundle_generated.c` is generated/committed — `make webui-bundle` overwrites it,
-  so edit `webui/src` and regenerate instead of the generated file.
+<!-- Generated from .claude/rules/api.md by tools/sync_ai_adapters.py; edit that file and re-run the script (CI checks this copy). -->
+
+Adapter for the API-layer decisions in `docs/ai/decision-log.md` (Phase 22) and
+`docs/ai/mistakes.md` (2026-07-15 socket-layer bugs; 2026-07-16 shutdown-path bugs).
+
+- Hand-rolled HTTP/1.1 over raw sockets — no external HTTP library. Loopback-only by default.
+- CORS (`--cors`/`--cors-origin`) and API-key auth (`--api-key`) are both **off by default** —
+  don't change this default; it exists so loopback experimentation stays open.
+- Generation admission goes through `ctx->gen_queue`, a FIFO of units (capacity = `--parallel`
+  slots, default 1). A plain chat request takes 1 unit and runs in `api/batch_scheduler` (Phase 23
+  stage 2b: one thread, per-slot RunState/prefix cache, one batched forward per step); image input,
+  best-of, tree search and cache reset take **all** units plus `ApiContext.generation_mutex`, so the
+  scheduler is idle while they use `ctx->run_state` (slot 0). No free unit → `429`, or FIFO wait
+  with `--queue-size N` (streaming waiters get `: queued N` comments). All other routes (static
+  assets, `/metrics`, `/docs`, `/health`, cancel) stay off units and that mutex: they would
+  otherwise block behind a long generation and `/health` would stop answering. The scheduler may
+  read slot state only while one of its own requests holds a unit.
+- The web UI bundle (`src/api/webui_bundle_generated.c`) is **generated and committed** —
+  `make webui-bundle` overwrites it, so edit `webui/src` and regenerate instead of hand-editing.
 - Image uploads (`image_url` content parts) decode via `src/api/data_url.c` and run through
-  `src/multimodal/vision_pipeline.c` (shared with the CLI's `--image`); needs `--vision`/`--proj`,
-  otherwise images are logged and ignored (text-only).
-- A component documented as "untested" is not verified — smoke-test real socket/HTTP code with
-  `curl`/`curl --raw` against a live server (2026-07-15: four real protocol bugs were hiding
-  behind that exact label).
-- `signal(SIGPIPE, SIG_IGN)` stays in `api_server_start()`: without it a client disconnect
+  `src/multimodal/vision_pipeline.c` (shared with the CLI's `--image`) — requires the server to
+  be started with `--vision`/`--proj`; otherwise images are logged and ignored (text-only).
+- A component documented as "untested" is not verified — real socket/HTTP code needs a live
+  `curl`/`curl --raw` smoke test, not just the pipe-based logic tests in `tests/test_api_server.c`
+  (see the 2026-07-15 mistakes.md entry: four real bugs hid behind that label).
+- `signal(SIGPIPE, SIG_IGN)` stays in `api_server_start()`: without it any client disconnect
   mid-write kills the whole process.
-- `api_server_stop()` cancels every generation (`cancel_registry_shutdown`), drains the queue and
-  stops the scheduler before returning (`main()` frees the model right after); it calls
-  `shutdown(ctx->server_fd, SHUT_RDWR)` before `close()`, because a bare `close()` from another
-  thread does not reliably wake a blocking `accept()` on Linux (2026-07-16 hang). `--server`
-  mode's Ctrl+C/SIGTERM path (`sigaction` handler + `while (!g_shutdown_requested) pause();`
-  loop, not a bare `pause()`) is what makes that cleanup reachable at all.
+- `api_server_stop()` cancels every generation (`cancel_registry_shutdown`), waits for the queue
+  to drain and stops the scheduler before returning — `main()` frees the model right after.
+- `api_server_stop()` calls `shutdown(ctx->server_fd, SHUT_RDWR)` **before** `close()` — a
+  bare `close()` from another thread does not reliably wake a concurrent blocking `accept()` on
+  Linux (confirmed by an actual hang, see the 2026-07-16 mistakes.md entry). `--server` mode's
+  Ctrl+C/SIGTERM handling in `main.c` (a `sigaction`-installed handler + a `while
+  (!g_shutdown_requested) pause();` loop, not a bare `pause()`) is what makes this path reachable
+  at all — don't revert to a bare `pause()`, it silently makes all of `api_server_stop()` and
+  `main()`'s later cleanup dead code again.
 - Chat template: `--chat-template-file` sets the server's; requests may override it with
   `"chat_template"` (≤ 64 KiB, `CHAT_SET_CHAT_TEMPLATE`) unless `--no-request-template`;
   `/v1/config chat_template {source,text,request_override,max_bytes}` feeds the web UI editor.
@@ -33,7 +46,7 @@
   feature flags; the web UI renders every control from it and hardcodes nothing. Requests
   override any subset (`set_mask` → `request_params_resolve()`); absent fields use the server
   default. Chat-template models receive the **full** message history (not just the last user
-  turn: the template needs the whole conversation). Each chat request resets
+  turn: the template needs the whole conversation to render correctly). Each chat request resets
   `run_state->current_pos` to 0.
 - `POST /v1/watermark/detect` and the discovery routes do without `generation_mutex`
   (tokenizer encode is read-only, so they stay responsive during generation).

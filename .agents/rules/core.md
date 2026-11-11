@@ -1,16 +1,25 @@
-# Antigravity scoped rules: core engine (adapter for docs/ai/engineering-rules.md)
+# Antigravity scoped rules: core (engine / memory / safety)
 
-- Small single-responsibility TUs; `src/<area>/x.c` ⇄ `include/<area>/x.h`. Reuse
-  `simd_dispatch`, GGUF reader, `tn_aligned_*`, `tn_size_mul*`, `tn_get_free_ram`.
+<!-- Generated from .claude/rules/core.md by tools/sync_ai_adapters.py; edit that file and re-run the script (CI checks this copy). -->
+
+Adapter for `docs/ai/engineering-rules.md` — read the canonical file for full text.
+
+- Modularity: small single-responsibility TUs; `src/<area>/x.c` ⇄ `include/<area>/x.h`.
+  Reuse `simd_dispatch`, GGUF reader, `tn_aligned_*`, `tn_size_mul*`, `tn_get_free_ram`.
 - No hardcoding: shape/tokens/quant/RoPE/MoE from GGUF metadata (`hdr->arch` prefix).
 - Memory safety: `memset` structs before partial init; overflow-checked size math; 64-byte
   aligned SIMD buffers; trap absurd allocations deterministically (not via malloc-NULL).
-- Cross-platform: AVX2..VNNI / NEON+dotprod / scalar all compile (CI builds each); `TN_HAS_*`
-  gates; portable `TN_PREFETCH_T1`. No new warnings; keep ASan/UBSan green.
-- Any bug found gets fixed in the same pass, even if pre-existing/unrelated to the task — log it
-  in `mistakes.md` too, but that's not a substitute for fixing. Only defer for genuinely
-  large architectural fixes, and flag those to the user explicitly. See `engineering-rules.md`
-  § Bug-fix policy.
+- Cross-platform: x86 (AVX2..VNNI) + ARM (NEON/dotprod) + scalar all compile (CI builds each;
+  a change that builds on one tier alone breaks the others); portable prefetch
+  `TN_PREFETCH_T1`; feature-gate with `TN_HAS_*`.
+- No new compiler warnings (`-Wall -Wextra -Wpedantic`). Keep ASan/UBSan green.
+- Public repo: never commit secrets.
+- No Claude/AI signature or attribution (commit trailers, code comments, etc.) unless the user
+  explicitly asks for it that time — see `docs/ai/commit-log-guidance.md`.
+- **Any bug found gets fixed in the same pass, even if pre-existing/unrelated to the task** —
+  document it in `mistakes.md` too, but documenting is not a substitute for fixing. Only defer
+  when the fix itself is a large architectural change; flag that to the user explicitly instead
+  of silently fixing or silently skipping. See `engineering-rules.md` § Bug-fix policy.
 - Attention heads run in parallel over the thread pool (`attn_heads_task`, threshold
   `--attn-parallel-min-ctx`): per-head code must only write its own `s->att` row and `s->xb`
   slice. Concurrency changes there need `make test-tsan` (test_forward is in TSAN_TESTS).

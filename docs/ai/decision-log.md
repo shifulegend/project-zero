@@ -1,7 +1,24 @@
 # Decision Log — project-zero
 
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
-> Read at session start. Last updated: 2026-10-23.
+> Read at session start. Last updated: 2026-11-11.
+
+### 2026-11-11 — GitHub master is the single source of truth; protected; sessions sync first
+
+- Context: the owner works from a server working copy and from cloud sessions. The server copy
+  was found 168 commits behind master (150 of them landed by other sessions), with two stale
+  clones beside it. Leading practice (GitHub Flow; trunk-based development; DORA) is one shared
+  trunk, short-lived branches merged by PR, and every working copy treated as disposable.
+- Decisions:
+  - `master` is protected: changes only through a PR with the CI checks green; no force push or
+    deletion; applies to admins too. Merged branches are deleted.
+  - Every session syncs first: `tools/git_sync_check.sh` (Claude Code SessionStart hook in
+    `.claude/settings.json`; step 0 of `session-start-checklist.md` for every tool) reports a
+    stale copy, a lagging branch, an unpushed branch or local changes. It never pulls by itself;
+    the session runs `git pull --ff-only` when clean.
+  - Work goes on a short-lived branch and is pushed before the session stops.
+  - Scoped rule adapters are generated from `.claude/rules/*.md` (`tools/sync_ai_adapters.py`,
+    CI `--check`), replacing three hand-synced copies (`tool-sync-policy.md`).
 
 ### 2026-10-23 — v0.1.0 security triage for the v0.2.0 release: advisories, CVEs, release notes
 

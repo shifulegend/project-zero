@@ -20,7 +20,7 @@ Canonical rules: `docs/ai/changelog-guidance.md` (read it first). Release steps:
    - Security → impact + affected versions; advisory link if any; no details before the fix ships.
    - Link the PR/issue in parentheses if one exists. No author names, no AI attribution.
 4. If the change revises something already under `[Unreleased]`, edit that line instead of adding one.
-5. `python3 tools/changelog.py check --require-unreleased` must pass.
+5. `python3 tools/changelog.py check --require-unreleased` passes (it is a CI gate).
 
 ## Preparing a release
 1. Choose the version by SemVer from the sections present (guidance §5).

@@ -1,7 +1,7 @@
 # Tool Sync Policy — project-zero
 
 > Defines canonical vs adapter files and how they stay synchronized.
-> Last updated: 2026-10-21.
+> Last updated: 2026-11-11.
 
 ## Canonical (source of truth)
 `docs/ai/**` — overview, engineering-rules, mistakes, decision-log, change-trace,
@@ -15,7 +15,16 @@ session-start-checklist, commit-log-guidance, changelog-guidance, this policy. D
 | Antigravity | `gemini/GEMINI.md` + `AGENTS.md` | `.agents/rules/{core,docs,tests,config,api}.md` | `.agents/workflows/*.md` |
 
 `AGENTS.md` is a portability mirror; keep it synchronized with `gemini/GEMINI.md` on durable
-repo-wide rules. (Both currently also carry the GitNexus MCP block — preserve it.)
+repo-wide rules. The GitNexus MCP reference lives in `.claude/GITNEXUS.md` (2026-11-11);
+`CLAUDE.md` and `AGENTS.md` carry a one-line pointer to it. `npx gitnexus analyze` may re-insert
+its `<!-- gitnexus:start -->` block into those files — move it back behind the pointer if it does.
+
+**Scoped rules are generated (2026-11-11).** `.claude/rules/*.md` is the one hand-edited copy
+(YAML `paths:` list + `# Claude rule: <title>`). `tools/sync_ai_adapters.py` writes
+`.agents/rules/*.md` and `.github/instructions/*.instructions.md` from it (Copilot `applyTo` is
+built from `paths:`); CI runs `--check` and fails on a stale copy. Before this, the three copies
+were edited by hand and drifted. Entry files and workflows/skills/prompts are still per-tool and
+hand-synced (their formats differ).
 
 ## Changelog workflow (2026-10-21)
 Rules: `docs/ai/changelog-guidance.md`. Per-tool workflow mirrors: `.claude/skills/update-changelog/SKILL.md`,
@@ -48,7 +57,8 @@ concurrency-rearchitecture surface). Adapters added: `.claude/rules/api.md`,
 
 ## Drift check
 At session start and before task completion, confirm adapters still match the canonical docs;
-if not, reconcile (canonical wins) and note it in `change-trace.md`.
+if not, reconcile (canonical wins) and note it in `change-trace.md`. For scoped rules this is
+`tools/sync_ai_adapters.py --check`.
 
 ## Third-party skill plugins (2026-10-21)
 Two external skill packs are part of the workflow. They are *plugins* (self-updating), never

@@ -1,3 +1,16 @@
+---
+paths:
+  - "Makefile"
+  - "CMakeLists.txt"
+  - "**/*.cmake"
+  - "**/*.mk"
+  - ".github/workflows/**"
+  - "src/config/**"
+  - "include/config/**"
+  - "src/cli/args.c"
+  - "install.sh"
+  - "tools/test_install.sh"
+---
 # Claude rule: config (build + runtime configuration)
 
 Adapter for the configurability rules in `docs/ai/engineering-rules.md`.
@@ -5,16 +18,18 @@ Adapter for the configurability rules in `docs/ai/engineering-rules.md`.
 - Two build systems: `Makefile` (primary; per-file SIMD flags) and `CMakeLists.txt` (audit CI).
   Keep both in sync when adding source files or flags.
 - Per-file SIMD flags live in the `Makefile` overrides section; 256-bit VNNI needs
-  `-mavx512vnni -mavx512vl` (clang is strict). `debug` must keep `-march=native` and link the
-  sanitizer runtime.
+  `-mavx512vnni -mavx512vl` (clang is strict). `debug` keeps `-march=native` and links the
+  sanitizer runtime (ASan/UBSan runs need both).
 - Runtime config via CLI/env, not literals: `--model --tokenizer --prompt --max-tokens
   --temperature --top-p --seed --threads --simd --classifier --calibrate`.
-- Model config/tokenizer/quant come from GGUF metadata, never hardcoded.
+- Model config/tokenizer/quant come from GGUF metadata, not literals (a literal silently breaks
+  the next model).
 - New tunables: prefer flags/metadata/feature-detection over magic numbers; document defaults.
 - Generation flags (`--top-k --min-p --repeat-penalty --presence-penalty --frequency-penalty
   --repeat-last-n --seed --system-prompt --stop --watermark*`) fill `GenerationParams` via
   `args_fill_gen_params()`; in `--server` mode they are the defaults published by `/v1/config`.
-  A new knob must reach CLI + API + web UI (see `engineering-rules.md` § No hardcoding).
+  A new knob reaches CLI + API + web UI; one that stops at the CLI is invisible to API/web users
+  (see `engineering-rules.md` § No hardcoding).
 - Makefile tracks header deps (`-MMD -MP`); keep it.
 - Context sizing: `--ctx-size`, `--kv-ram-fraction`, `--kv-type f32|i8|i4`, `--kv-offload <dir>`
   (`KVStrategyOptions`; with offload the cap budgets free disk, not RAM).

@@ -6,7 +6,7 @@
 > `docs/ai/decision-log.md`, `docs/ai/tool-sync-policy.md`.
 > `docs/ai/**` is the **canonical source of truth**; this file is a thin adapter.
 > Scoped rules: `.agents/rules/{core,docs,tests,config,api}.md`. Workflows: `.agents/workflows/*.md`.
-> **All of these are dynamic — update them proactively, without being asked.**
+> All of these are living files: update them proactively, without being asked.
 
 ## Durable rules (summary — full text in `docs/ai/engineering-rules.md`)
 - Extreme modularity; reuse existing patterns (`simd_dispatch`, GGUF reader, `tn_aligned_*`,
@@ -14,7 +14,7 @@
 - No hardcoding: model shape/tokens/quant from GGUF metadata; behavior via CLI/config.
 - `memset` structs before partial init; overflow-checked size math; trap absurd allocations
   deterministically (never rely on `calloc` returning NULL — macOS over-commits).
-- Cross-platform SIMD (x86 AVX2..VNNI / ARM NEON / scalar) must all compile; `TN_HAS_*` gates.
+- Cross-platform SIMD (x86 AVX2..VNNI / ARM NEON / scalar) all compile; `TN_HAS_*` gates.
 - Definition of done: `make release/test/debug` green for **gcc and clang**, golden output
   correct, no kernel perf regression (A/B), docs+adapters synced, user-facing changes logged
   under `[Unreleased]` in `CHANGELOG.md` per `docs/ai/changelog-guidance.md`, installer +
@@ -27,74 +27,23 @@
   no "real"/"honest", no investigation narrative (link the report) — see `engineering-rules.md` DoD #7.
 - No AI signature or attribution (commit trailers, code comments, etc.) unless the user
   explicitly asks for it that time — see `docs/ai/commit-log-guidance.md`.
+- Any bug found gets fixed in the same pass, even if pre-existing/unrelated to the task; a
+  `mistakes.md` entry records it but does not replace the fix. Defer only a genuinely large
+  architectural change, and say so to the user. See `engineering-rules.md` § Bug-fix policy.
 - Third-party skill plugins **superpowers** and **mattpocock-skills** are used (per-tool install commands in `docs/ai/tool-sync-policy.md`); repo rules override them — see `docs/ai/tool-sync-policy.md` § Third-party skill plugins.
 
 ## Build / run (verified)
 ```bash
 make release CC=gcc && make test CC=gcc && make debug CC=gcc   # repeat CC=clang
+make test-tsan CC=gcc     # concurrency changes only (thread pool / parallel matmul / API mutex)
 ./pz --model models/<m>.gguf --prompt "..." --max-tokens 16 --temperature 0 --threads 4
 ```
 
-<!-- gitnexus:start -->
-# GitNexus MCP
-
-This project is indexed by GitNexus as **project-zero** — a CPU-first LLM inference engine in C/C++ with BitNet/DeepSeek ternary weight support, MoE routing, MLA attention, and an HTTP API layer.
-
-> **Index not yet built.** Run `npx gitnexus analyze` in the project root to generate the live knowledge graph (`.gitnexus/`), populate symbol counts, and enable all MCP tools below.
-
-## Skills
-
-| Skill | When to use |
-|-------|-------------|
-| `gitnexus-exploring` | Understanding architecture, tracing execution flows |
-| `gitnexus-debugging` | Tracing bugs, finding callers, diagnosing failures |
-| `gitnexus-impact-analysis` | Blast-radius before changing code |
-| `gitnexus-refactoring` | Safe renames, extractions, restructuring |
-
-Skills live at `.claude/skills/gitnexus/*/SKILL.md`.
-
-## MCP Tools (available after `npx gitnexus mcp`)
-
-| Tool | Description |
-|------|-------------|
-| `gitnexus_query` | Semantic search → execution flows + symbols |
-| `gitnexus_context` | 360° view of a symbol (callers, callees, processes) |
-| `gitnexus_impact` | Upstream/downstream blast radius |
-| `gitnexus_detect_changes` | Map git-diff to affected execution flows |
-| `gitnexus_rename` | Multi-file symbol rename with dry-run preview |
-| `gitnexus_cypher` | Raw Cypher queries against the knowledge graph |
-
-## Resources
-
-| Resource | What you get |
-|----------|-------------|
-| `gitnexus://repos` | All indexed repos |
-| `gitnexus://repo/project-zero/context` | Stats + staleness check |
-| `gitnexus://repo/project-zero/clusters` | Functional areas with cohesion scores |
-| `gitnexus://repo/project-zero/processes` | All execution flows |
-| `gitnexus://repo/project-zero/process/{name}` | Step-by-step execution trace |
-
-## Graph Schema
-
-```
-(Symbol)-[:CodeRelation {type: 'CALLS' | 'IMPORTS' | 'IMPLEMENTS' | 'EXTENDS'}]->(Symbol)
-(Symbol)-[:BelongsTo]->(Cluster)
-(Symbol)-[:PartOf {step}]->(Process)
-```
-
-## Quick Start
-
-```bash
-# Build the index (first time or after significant changes)
-npx gitnexus analyze
-
-# Start MCP server (add to .mcp.json for persistent access)
-npx gitnexus mcp
-```
-<!-- gitnexus:end -->
-
-## Project Overview
-**project-zero** is a from-scratch, CPU-optimized LLM inference engine targeting BitNet b1.58
-ternary weights and DeepSeek-V2 (MoE + MLA), with an OpenAI-compatible HTTP API.
-Full architecture, directory map, terminology, and build/test/run details are canonical in
-**`docs/ai/project-overview.md`** — keep that file (not this section) authoritative.
+## Pointers (read only when needed)
+- **Project overview.** project-zero is a from-scratch, CPU-optimized LLM inference engine
+  targeting BitNet b1.58 ternary weights and DeepSeek-V2 (MoE + MLA), with an OpenAI-compatible
+  HTTP API. Architecture, directory map, terminology and build/test/run details are canonical in
+  `docs/ai/project-overview.md` — keep that file (not this one) authoritative.
+- **GitNexus MCP** (skills, tools, resources, graph schema, quick start): `.claude/GITNEXUS.md`.
+  Use it when exploring architecture, tracing a bug, sizing a blast radius or refactoring through
+  the knowledge graph; the gitnexus skills are in `.claude/skills/gitnexus/*/SKILL.md`.

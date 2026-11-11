@@ -3,6 +3,8 @@ mode: agent
 description: Start a project-zero session by loading canonical memory and summarizing context.
 ---
 Run the session-start routine in `docs/ai/session-start-checklist.md`:
+0. Sync: run `tools/git_sync_check.sh`. Behind and clean → `git pull --ff-only origin master`;
+   new work goes on a short-lived branch, pushed before stopping.
 1. Read `.github/copilot-instructions.md` + relevant `.github/instructions/*.instructions.md`.
 2. Read `docs/ai/project-overview.md`, `engineering-rules.md`, `mistakes.md` (newest first),
    `decision-log.md`, `tool-sync-policy.md`.

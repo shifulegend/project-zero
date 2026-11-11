@@ -22,6 +22,9 @@ jobs:
         run: |
           python3 tools/changelog.py check --require-unreleased
           python3 -I tools/test_changelog.py
+      # 2026-11-11: .agents/rules and .github/instructions are generated from .claude/rules.
+      - name: AI adapter files in sync with .claude/rules
+        run: python3 -I tools/sync_ai_adapters.py --check
 
   installer:
     name: Installer (install.sh, offline mirror)

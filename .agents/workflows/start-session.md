@@ -1,6 +1,8 @@
 # Workflow: start-session
 
 Run `docs/ai/session-start-checklist.md`:
+0. Sync: run `tools/git_sync_check.sh`. Behind and clean → `git pull --ff-only origin master`;
+   new work goes on a short-lived branch, pushed before stopping.
 1. Read `gemini/GEMINI.md`, `AGENTS.md`, relevant `.agents/rules/*.md`.
 2. Read `docs/ai/project-overview.md`, `engineering-rules.md`, `mistakes.md` (newest first),
    `decision-log.md`, `tool-sync-policy.md`.

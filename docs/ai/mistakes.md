@@ -5,6 +5,11 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-11-11.
 
+### 2026-11-11 — A repeated `content` key leaked the earlier message text
+- Cause: `parse_messages` assigned `msg->content` for the string and `null` forms without freeing the previous value, so a message with two `content` keys leaked the first (the array form already freed its own). Found while testing PR #60 with a standalone ASan harness; the only two sites in `json_parse.c` with this pattern.
+- Fix: free the old text at the start of the `content` branch, so the last key wins in every combination (string, array, null). Regression test `test_json_parse_duplicate_content_key_last_wins` fails on the old parser under LeakSanitizer (`make test`).
+- Lesson: a parser that assigns a heap pointer from a key must free the previous value; a repeated key is valid-looking input for a hostile client.
+
 ### 2026-11-11 — Coverage CI broke on a runner toolchain update, not on a code change
 - What: `Coverage (TS-5.5)` went red on a docs-only PR (#61) while the same job was green on
   master on 2026-10-30. The runner now has gcc 15 + lcov 2.x, which reports C++ lambdas in

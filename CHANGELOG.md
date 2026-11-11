@@ -20,6 +20,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Fixed
 
+- Release the earlier text when a chat message repeats its `content` key (the last key wins); each such request used to leak that text on the server.
 - Align the right border of the startup "Hardware Profile" box; rows were padded to different widths.
 
 ## [0.2.0] - 2026-10-22

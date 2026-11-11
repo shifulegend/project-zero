@@ -1,0 +1,36 @@
+Script started on 2026-11-11 18:15:25+00:00 [COMMAND="stty cols 100 rows 70 2>/dev/null; bash '/tmp/claude-0/-home-user-project-zero/a0327e33-cce3-548d-8bd8-43a00f566349/scratchpad/inner_M12_golden_regression.sh'" <not executed on terminal>]
+[1;32m[2026-11-11T18:15:25Z project-zero@19566e6 FIX]$[0m set -o pipefail; tests/golden_regression.sh ../models/smollm2-q8_0.gguf 2>&1 | tail -30
+  [PASS] simd=scalar threads=2 matches reference
+  [PASS] simd=scalar threads=2 content check (contains "Paris")
+  [PASS] simd=scalar threads=4 matches reference
+  [PASS] simd=scalar threads=4 content check (contains "Paris")
+  [PASS] simd=avx2 threads=1 matches reference
+  [PASS] simd=avx2 threads=1 content check (contains "Paris")
+  [PASS] simd=avx2 threads=2 matches reference
+  [PASS] simd=avx2 threads=2 content check (contains "Paris")
+  [PASS] simd=avx2 threads=4 matches reference
+  [PASS] simd=avx2 threads=4 content check (contains "Paris")
+  [PASS] simd=avx512f threads=1 matches reference
+  [PASS] simd=avx512f threads=1 content check (contains "Paris")
+  [PASS] simd=avx512f threads=2 matches reference
+  [PASS] simd=avx512f threads=2 content check (contains "Paris")
+  [PASS] simd=avx512f threads=4 matches reference
+  [PASS] simd=avx512f threads=4 content check (contains "Paris")
+  [PASS] simd=vnni threads=1 matches reference
+  [PASS] simd=vnni threads=1 content check (contains "Paris")
+  [PASS] simd=vnni threads=2 matches reference
+  [PASS] simd=vnni threads=2 content check (contains "Paris")
+  [PASS] simd=vnni threads=4 matches reference
+  [PASS] simd=vnni threads=4 content check (contains "Paris")
+--- Factual-completion prompt ---
+  [PASS] factual completion (contains "cold")
+--- JSON mode: syntactic validity ---
+  [PASS] json_mode output parses as valid JSON: {
+  "ok": true
+}
+
+=== 26 passed, 0 failed ===
+exit=0
+[1;32m[2026-11-11T18:16:01Z]$[0m echo exit=$?  # -> 0
+
+Script done on 2026-11-11 18:16:01+00:00 [COMMAND_EXIT_CODE="0"]

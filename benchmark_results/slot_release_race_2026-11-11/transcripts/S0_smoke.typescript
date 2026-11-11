@@ -1,0 +1,8 @@
+Script started on 2026-11-11 17:52:18+00:00 [COMMAND="stty cols 100 rows 70 2>/dev/null; bash '/tmp/claude-0/-home-user-project-zero/a0327e33-cce3-548d-8bd8-43a00f566349/scratchpad/inner_S0_smoke.sh'" <not executed on terminal>]
+[1;32m[2026-11-11T17:52:18Z project-zero@757b6b6-dirty capture smoke test]$[0m echo hello; date -u
+hello
+Wed Nov 11 17:52:19 UTC 2026
+exit=0
+[1;32m[2026-11-11T17:52:19Z]$[0m echo exit=$?  # -> 0
+
+Script done on 2026-11-11 17:52:19+00:00 [COMMAND_EXIT_CODE="0"]

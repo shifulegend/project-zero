@@ -1,0 +1,16 @@
+Script started on 2026-11-11 17:52:23+00:00 [COMMAND="stty cols 100 rows 70 2>/dev/null; bash '/tmp/claude-0/-home-user-project-zero/a0327e33-cce3-548d-8bd8-43a00f566349/scratchpad/inner_G1_guard_BASE.sh'" <not executed on terminal>]
+[1;32m[2026-11-11T17:52:23Z pz-base@757b6b6 BASE master build + new e2e_api_concurrency.sh]$[0m E2E_PORT=8301 bash /home/user/project-zero/tests/e2e_api_concurrency.sh ../models/smollm2-q8_0.gguf
+  [PASS] server ready on port 8301
+  [PASS] second concurrent request got 429 while the first was in flight
+  [PASS] the first (in-flight) request itself completed successfully (HTTP 200)
+  [PASS] sequential JSON request #1 (array shape) is independently valid JSON
+  [PASS] non-JSON request sandwiched between two JSON-mode requests is unaffected
+  [PASS] sequential JSON request #2 (different object shape) is independently valid JSON, no leak from #1
+  [FAIL] sequential streaming requests: 19/20 got 200, others: 429 (slot released after the final write?)
+  [PASS] 30 strictly sequential non-streaming requests all got HTTP 200
+
+=== 7 passed, 1 failed ===
+exit=1
+[1;32m[2026-11-11T17:52:56Z]$[0m echo exit=$?  # -> 1
+
+Script done on 2026-11-11 17:52:56+00:00 [COMMAND_EXIT_CODE="1"]

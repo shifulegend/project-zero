@@ -1,0 +1,14 @@
+Script started on 2026-11-11 18:19:19+00:00 [COMMAND="stty cols 100 rows 70 2>/dev/null; bash '/tmp/claude-0/-home-user-project-zero/a0327e33-cce3-548d-8bd8-43a00f566349/scratchpad/inner_M16_e2e_parallel.sh'" <not executed on terminal>]
+[1;32m[2026-11-11T18:19:19Z project-zero@19566e6 FIX]$[0m set -o pipefail; tests/e2e_parallel.sh ../models/smollm2-q8_0.gguf 2>&1 | tail -30
+  [PASS] /v1/config features.parallel.slots = 4
+  [PASS] /metrics project_zero_generation_slots 4
+  [PASS] 4 concurrent requests all answered 200 (none rejected)
+  [PASS] parallel text is identical to the sequential server's
+  [PASS] best_of request runs between batched ones (all 200)
+  [PASS] cancel stops only the named request
+
+=== 6 passed, 0 failed ===
+exit=0
+[1;32m[2026-11-11T18:19:47Z]$[0m echo exit=$?  # -> 0
+
+Script done on 2026-11-11 18:19:47+00:00 [COMMAND_EXIT_CODE="0"]

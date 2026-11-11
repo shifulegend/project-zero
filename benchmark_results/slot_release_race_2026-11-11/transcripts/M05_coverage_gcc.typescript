@@ -1,0 +1,31 @@
+Script started on 2026-11-11 18:09:02+00:00 [COMMAND="stty cols 100 rows 70 2>/dev/null; bash '/tmp/claude-0/-home-user-project-zero/a0327e33-cce3-548d-8bd8-43a00f566349/scratchpad/inner_M05_coverage_gcc.sh'" <not executed on terminal>]
+[1;32m[2026-11-11T18:09:02Z project-zero@19566e6 FIX]$[0m set -o pipefail; make coverage CC=gcc -j$(nproc) 2>&1 | tail -25
+  lines=234 hit=220 functions=17 hit=16 branches=446 hit=302
+Processing file sampling/fsm.c
+  lines=31 hit=31 functions=6 hit=6 branches=20 hit=17
+Processing file tokenizer/tokenizer_decode.c
+  lines=49 hit=46 functions=3 hit=3 branches=66 hit=46
+Processing file math/ternary_matmul_packed_avx_vnni.c
+  lines=90 hit=46 functions=2 hit=2 branches=30 hit=11
+Processing file math/ternary_matmul_packed_avx2.c
+  lines=71 hit=40 functions=2 hit=2 branches=26 hit=13
+Processing file math/elementwise_avx2.c
+  lines=68 hit=57 functions=7 hit=6 branches=28 hit=22
+Processing file math/matmul_q5_1.c
+  lines=82 hit=0 functions=6 hit=0 branches=18 hit=0
+Overall coverage rate:
+  lines......: 51.2% (13217 of 25791 lines)
+  functions......: 57.9% (972 of 1679 functions)
+  branches......: 37.4% (8171 of 21849 branches)
+=== Coverage summary ===
+lcov --summary build/coverage/coverage.info --rc lcov_branch_coverage=1 --ignore-errors inconsistent
+lcov: WARNING: RC option 'lcov_branch_coverage' is deprecated.  Consider using 'branch_coverage. instead.  (Backward-compatible support will be removed in the future
+Summary coverage rate:
+  lines......: 51.2% (13217 of 25791 lines)
+  functions..: 57.9% (972 of 1679 functions)
+  branches...: 37.4% (8171 of 21849 branches)
+=== HTML report: build/coverage/html/index.html ===
+exit=0
+[1;32m[2026-11-11T18:10:31Z]$[0m echo exit=$?  # -> 0
+
+Script done on 2026-11-11 18:10:31+00:00 [COMMAND_EXIT_CODE="0"]

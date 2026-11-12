@@ -1,0 +1,31 @@
+Script started on 2026-11-11 18:19:59+00:00 [COMMAND="stty cols 100 rows 70 2>/dev/null; bash '/tmp/claude-0/-home-user-project-zero/a0327e33-cce3-548d-8bd8-43a00f566349/scratchpad/inner_M18_test_install.sh'" <not executed on terminal>]
+[1;32m[2026-11-11T18:19:59Z project-zero@19566e6 FIX]$[0m set -o pipefail; sh tools/test_install.sh ./pz 2>&1 | tail -25
+  ok   docs + manifest installed
+  ok   checksum reported
+  ok   newest release (prerelease) discovered and upgraded in place
+  ok   tampered archive refused, nothing installed
+  ok   missing checksum entry refused
+  ok   unsupported platform: exit 2 + source hint
+  ok   invalid version refused
+  ok   --help
+  ok   --help when piped (curl | sh)
+  ok   uninstall removes only what it installed
+  ok   second uninstall reports nothing to remove
+== bash ==
+  ok   install a given version
+  ok   docs + manifest installed
+  ok   checksum reported
+  ok   newest release (prerelease) discovered and upgraded in place
+  ok   tampered archive refused, nothing installed
+  ok   missing checksum entry refused
+  ok   unsupported platform: exit 2 + source hint
+  ok   invalid version refused
+  ok   --help
+  ok   --help when piped (curl | sh)
+  ok   uninstall removes only what it installed
+  ok   second uninstall reports nothing to remove
+=== installer: 24 passed, 0 failed ===
+exit=0
+[1;32m[2026-11-11T18:20:01Z]$[0m echo exit=$?  # -> 0
+
+Script done on 2026-11-11 18:20:01+00:00 [COMMAND_EXIT_CODE="0"]

@@ -1,0 +1,12 @@
+Script started on 2026-11-11 18:16:53+00:00 [COMMAND="stty cols 100 rows 70 2>/dev/null; bash '/tmp/claude-0/-home-user-project-zero/a0327e33-cce3-548d-8bd8-43a00f566349/scratchpad/inner_M14_e2e_prompt_cache.sh'" <not executed on terminal>]
+[1;32m[2026-11-11T18:16:53Z project-zero@19566e6 FIX]$[0m set -o pipefail; tests/e2e_prompt_cache.sh ../models/smollm2-q8_0.gguf 2>&1 | tail -30
+  [PASS] interleaved conversations identical with/without cache
+  [PASS] returning to A/B reuses snapshots: cached=[239, 242, 309, 309]
+  [PASS] turn 1 identical with/without cache
+  [PASS] turn 2 identical with/without cache
+  [PASS] turn 3 identical with/without cache
+  [PASS] cached_tokens on=[0, 303, 369] off=[0, 0, 0]
+exit=0
+[1;32m[2026-11-11T18:18:56Z]$[0m echo exit=$?  # -> 0
+
+Script done on 2026-11-11 18:18:56+00:00 [COMMAND_EXIT_CODE="0"]

@@ -1,0 +1,11 @@
+Script started on 2026-11-11 18:14:57+00:00 [COMMAND="stty cols 100 rows 70 2>/dev/null; bash '/tmp/claude-0/-home-user-project-zero/a0327e33-cce3-548d-8bd8-43a00f566349/scratchpad/inner_M11_gcc_release_again.sh'" <not executed on terminal>]
+[1;32m[2026-11-11T18:14:57Z project-zero@19566e6 FIX]$[0m set -o pipefail; make release CC=gcc -j$(nproc) 2>&1 | tail -3; ./pz --version
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L  -MMD -MP   -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.2.0-11-g19566e6 -D_GNU_SOURCE -c -o build/memory/mapped_file.o src/memory/mapped_file.c
+g++ -std=c++17 -Wall -Wextra -Iinclude -D_POSIX_C_SOURCE=200809L  -MMD -MP -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.2.0-11-g19566e6 -c -o build/tokenizer/chat_template.o src/tokenizer/chat_template.cpp
+make[1]: Leaving directory '/home/user/project-zero'
+Project Zero v0.2.0-11-g19566e6
+SIMD backend (this CPU): AVX-512 VNNI
+exit=0
+[1;32m[2026-11-11T18:15:20Z]$[0m echo exit=$?  # -> 0
+
+Script done on 2026-11-11 18:15:20+00:00 [COMMAND_EXIT_CODE="0"]

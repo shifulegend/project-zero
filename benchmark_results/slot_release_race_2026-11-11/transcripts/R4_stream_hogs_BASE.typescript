@@ -1,0 +1,7 @@
+Script started on 2026-11-11 17:59:33+00:00 [COMMAND="stty cols 100 rows 70 2>/dev/null; bash '/tmp/claude-0/-home-user-project-zero/a0327e33-cce3-548d-8bd8-43a00f566349/scratchpad/inner_R4_stream_hogs_BASE.sh'" <not executed on terminal>]
+[1;32m[2026-11-11T17:59:33Z pz-base@757b6b6 BASE]$[0m timeout 200 python3 -c 'while True: pass' & h1=$!; timeout 200 python3 -c 'while True: pass' & h2=$!; python3 /home/user/project-zero/benchmark_results/slot_release_race_2026-11-11/race.py /home/user/pz-base 8504 200 stream_done; rc=$?; kill $h1 $h2; wait $h1 $h2; exit $rc
+pz-base stream_done N= 200 {200: 200} 429= 0
+exit=0
+[1;32m[2026-11-11T18:00:23Z]$[0m echo exit=$?  # -> 0
+
+Script done on 2026-11-11 18:00:23+00:00 [COMMAND_EXIT_CODE="0"]

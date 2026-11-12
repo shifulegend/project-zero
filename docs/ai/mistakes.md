@@ -9,6 +9,24 @@
 - Cause: `parse_messages` assigned `msg->content` for the string and `null` forms without freeing the previous value, so a message with two `content` keys leaked the first (the array form already freed its own). Found while testing PR #60 with a standalone ASan harness; the only two sites in `json_parse.c` with this pattern.
 - Fix: free the old text at the start of the `content` branch, so the last key wins in every combination (string, array, null). Regression test `test_json_parse_duplicate_content_key_last_wins` fails on the old parser under LeakSanitizer (`make test`).
 - Lesson: a parser that assigns a heap pointer from a key must free the previous value; a repeated key is valid-looking input for a hostile client.
+### 2026-11-11 — Generation slot released after the final write: spurious 429 for sequential clients
+- What: `handle_chat_completions` (`src/api/http_server.c`) wrote the last SSE event / the JSON body
+  and only then freed the request and called `release_generation_slot()`. A client that reads the
+  answer and sends its next request at once could reach `gen_queue_acquire_n()` while the slot was
+  still held; with the default server (no `--queue-size`) that is `GEN_QUEUE_FULL` → 429 "Another
+  generation is already in flight" although nothing was running. Streaming clients that stop at
+  `data: [DONE]` (SDK behaviour) hit it most; a slow reader also kept the engine busy.
+- Cause: "release last" treated the response write as part of the generation. The engine is
+  finished once generation returns (the scheduler marks a job done only after it left its slot,
+  `finish_done`), so the remaining work touches request-local data only.
+- Fix: release before the last write (streaming: before `sse_write_done_ex`; non-streaming: after
+  the body is built, before `send_response_ex`). Also fixed: an OOM while building the final JSON
+  sent `200` with an empty body; it now answers `500 OOM`. Regression checks in
+  `tests/e2e_api_concurrency.sh` (20 sequential streaming + 30 non-streaming requests, all 200),
+  now run in the CI golden-output job. Evidence: `benchmark_results/slot_release_race_2026-11-11/`.
+- Lesson: hand a shared resource back as soon as the last use of it ends, not at the end of the
+  function; whatever a client can observe (the final byte) must not precede the release it depends on.
+  A race test's failure rate depends on the host: measure it before claiming how often it fires.
 
 ### 2026-11-11 — Coverage CI broke on a runner toolchain update, not on a code change
 - What: `Coverage (TS-5.5)` went red on a docs-only PR (#61) while the same job was green on

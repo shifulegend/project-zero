@@ -1,0 +1,7 @@
+Script started on 2026-11-11 18:03:07+00:00 [COMMAND="stty cols 100 rows 70 2>/dev/null; bash '/tmp/claude-0/-home-user-project-zero/a0327e33-cce3-548d-8bd8-43a00f566349/scratchpad/inner_R3_stream_idle_FIX.sh'" <not executed on terminal>]
+[1;32m[2026-11-11T18:03:07Z project-zero@19b8156 FIX]$[0m python3 /home/user/project-zero/benchmark_results/slot_release_race_2026-11-11/race.py /home/user/project-zero 8507 200 stream_done
+project-zero stream_done N= 200 {200: 200} 429= 0
+exit=0
+[1;32m[2026-11-11T18:03:58Z]$[0m echo exit=$?  # -> 0
+
+Script done on 2026-11-11 18:03:58+00:00 [COMMAND_EXIT_CODE="0"]

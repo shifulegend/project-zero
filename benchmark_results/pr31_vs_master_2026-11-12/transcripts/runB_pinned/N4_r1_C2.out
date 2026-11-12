@@ -1,0 +1,76 @@
+Project Zero Engine v0.1.0-100-gf26f36e — Auto-Tuned Hardware
+SIMD override: vnni (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 2048   KiB per core                 │
+│ L3 cache      : 260    MiB shared                   │
+│ Free RAM      : 15000  MiB                          │
+│ DRAM bandwidth: 46.7   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB (pre-load est.)           │
+│ Ceiling       : 50.0   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 4 threads | AVX-512 VNNI | BF16 cls | 4T | 46.7 GB/s | ceiling 50 tok/s
+Model format: GGUF
+Model Configuration:
+  dim:        2048
+  hidden_dim: 10944
+  n_layers:   27
+  n_heads:    16
+  n_kv_heads: 16
+  vocab_size: 102400
+  seq_len:    163840
+  act_type:   0 (SiLU)
+  rope_theta: 10000.0
+  head_dim:   128
+  kv_dim:     2048
+[MoE] num_experts=64  top_k=6  expert_hidden_dim=1408  first_k_dense=1  shared_experts=2 (hdim=2816)
+[MLA] kv_lora_rank=512  qk_nope_head_dim=128  qk_rope_head_dim=64  v_head_dim=128
+[GGUF-DS2] Weights loaded (27 layers, 1 dense + 26 MoE, 64 experts/layer, experts=quantized)
+[profile] Data/token (loaded model): 9092 MB -> ceiling 4.9 tok/s at 46.7 GB/s
+KV Strategy: Quantized I8, max context: 16858 tokens
+
+ Machine Learning is a subset of artificial intelligence that focuses on building programs that can learn and make decisions on their own. It is a method of data analysis that automates data-driven predictions.
+
+There are three main types of machine learning: supervised learning, unsupervised learning, and reinforcement learning.
+
+Superv: Supervised
+--- Expert Utilisation Summary (27 MoE layers × 64 experts) ---
+  L00:   0 unique / 64 total  (invocations:    0)  top:
+  L01:  62 unique / 64 total  (invocations:  600)  top: E33(40) E32(27) E10(26) E8(25) E39(25)
+  L02:  64 unique / 64 total  (invocations:  600)  top: E2(22) E42(19) E35(18) E40(18) E28(17)
+  L03:  62 unique / 64 total  (invocations:  600)  top: E60(33) E63(24) E35(21) E9(19) E40(19)
+  L04:  63 unique / 64 total  (invocations:  600)  top: E62(35) E29(33) E48(32) E1(21) E50(20)
+  L05:  63 unique / 64 total  (invocations:  600)  top: E55(34) E7(28) E2(24) E34(24) E18(23)
+  L06:  59 unique / 64 total  (invocations:  600)  top: E37(32) E53(30) E3(23) E43(21) E57(19)
+  L07:  59 unique / 64 total  (invocations:  600)  top: E11(42) E47(38) E38(33) E8(28) E26(20)
+  L08:  58 unique / 64 total  (invocations:  600)  top: E11(30) E40(30) E13(29) E14(28) E1(27)
+  L09:  59 unique / 64 total  (invocations:  600)  top: E14(32) E0(31) E41(29) E63(28) E46(23)
+  L10:  60 unique / 64 total  (invocations:  600)  top: E49(32) E33(30) E10(26) E20(26) E60(24)
+  L11:  58 unique / 64 total  (invocations:  600)  top: E30(31) E16(26) E4(23) E38(22) E42(20)
+  L12:  55 unique / 64 total  (invocations:  600)  top: E18(29) E61(27) E15(26) E57(21) E10(20)
+  L13:  61 unique / 64 total  (invocations:  600)  top: E1(44) E49(38) E19(34) E26(30) E36(30)
+  L14:  55 unique / 64 total  (invocations:  600)  top: E22(50) E59(37) E55(30) E1(27) E38(26)
+  L15:  61 unique / 64 total  (invocations:  600)  top: E9(36) E14(27) E15(26) E18(26) E48(24)
+  L16:  59 unique / 64 total  (invocations:  600)  top: E45(24) E63(24) E32(23) E30(21) E47(21)
+  L17:  63 unique / 64 total  (invocations:  600)  top: E50(29) E1(21) E6(21) E24(21) E57(18)
+  L18:  60 unique / 64 total  (invocations:  600)  top: E9(26) E14(26) E43(26) E53(26) E5(20)
+  L19:  59 unique / 64 total  (invocations:  600)  top: E5(29) E1(24) E39(22) E47(19) E38(18)
+  L20:  60 unique / 64 total  (invocations:  600)  top: E7(34) E29(29) E39(28) E27(27) E62(23)
+  L21:  62 unique / 64 total  (invocations:  600)  top: E44(50) E32(24) E34(22) E2(19) E36(19)
+  L22:  62 unique / 64 total  (invocations:  600)  top: E62(33) E58(24) E61(21) E13(20) E50(20)
+  L23:  59 unique / 64 total  (invocations:  600)  top: E50(55) E31(25) E10(22) E13(20) E1(19)
+  L24:  63 unique / 64 total  (invocations:  600)  top: E16(52) E46(31) E20(28) E24(19) E51(18)
+  L25:  61 unique / 64 total  (invocations:  600)  top: E9(38) E41(27) E17(25) E23(24) E40(20)
+  L26:  64 unique / 64 total  (invocations:  600)  top: E25(28) E49(25) E39(24) E53(23) E26(18)
+  Global: 64 / 64 experts activated (100.0%)
+---
+
+

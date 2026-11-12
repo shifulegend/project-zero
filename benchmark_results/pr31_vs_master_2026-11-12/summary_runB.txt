@@ -1,0 +1,22 @@
+RUN B
+
+N=4 threads  (best-of-3)
+config                                       r1     r2     r3    best  median
+master fefa37e                            14.90  13.22  12.92   14.90   13.22
+pr31 default (rowsplit-fused) f26f36e      1.65   1.58   1.66    1.66    1.65
+pr31 --moe-threading legacy                2.71   2.68   2.76    2.76    2.71
+pr31base bf66526                           2.81   2.72   2.77    2.81    2.77
+pr31 --moe-threading rowsplit (extra)      2.36   2.37   2.38    2.38    2.37
+
+sha256 (first 12 hex) of the generated text only (between the KV line and expert summary), N=4, per round:
+C1 master fefa37e                           e71483bcf500 e71483bcf500 e71483bcf500  distinct=1
+C2 pr31 default (rowsplit-fused) f26f36e    f6316cf7b43f f6316cf7b43f f6316cf7b43f  distinct=1
+C3 pr31 --moe-threading legacy              3a61d0acb1dc 3a61d0acb1dc 3a61d0acb1dc  distinct=1
+C4 pr31base bf66526                         05c26b445cd9 05c26b445cd9 05c26b445cd9  distinct=1
+C5 pr31 --moe-threading rowsplit (extra)    3a61d0acb1dc 3a61d0acb1dc 3a61d0acb1dc  distinct=1
+
+first differing line vs C1 (round 1 text):
+C2: text line 1, first differing char 9
+C3: text line 1, first differing char 23
+C4: text line 1, first differing char 9
+C5: text line 1, first differing char 23

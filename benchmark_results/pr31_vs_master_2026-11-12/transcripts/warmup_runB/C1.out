@@ -1,0 +1,104 @@
+####  ####   ###    ### #####  #### #####     ##### ##### ####   ### 
+#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #
+####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
+#     # #   #   # #  #  #     #       #        #    #     # #   #   #
+#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
+Project Zero Engine v0.2.0-13-gfefa37e — Auto-Tuned Hardware
+SIMD override: vnni (user-selected)
+[Calibration] First run on this hardware — calibrating...
+┌──────────────────────────────────────────────────────────────────┐
+│  Auto-Calibration  —  first run, result cached for future use   │
+│  Re-triggers only when hardware changes.  ~40-60 seconds.       │
+├──────────────────────────────────────────────────────────────────┤
+│  Phase 1/2  SIMD backends at T=4  (thermal stabilisation)       │
+├──────────────────────────────────────────────────────────────────┤
+  auto=AVX-512 V bg:  0%  warmup[....] reps[.......]    68.9  [ 68.1 –  74.7] tok/s  ← BEST
+  scalar         bg:  0%  warmup[.] reps[.......]   103.8  [ 93.0 – 107.0] tok/s  ← BEST
+  avx2           bg:  0%  warmup[.] reps[.......]    87.2  [ 74.8 – 105.5] tok/s
+  avx512f        bg:  0%  warmup[.] reps[.......]    92.7  [ 81.0 – 101.2] tok/s
+  vnni256        bg:  0%  warmup[.] reps[.......]    84.4  [ 80.1 – 106.4] tok/s
+├──────────────────────────────────────────────────────────────────┤
+│  Phase 2/2  Thread sweep  (backend: scalar    )                │
+├──────────────────────────────────────────────────────────────────┤
+  T=1   bg:  0%  warmup[.] reps[.....]    27.5  [ 26.7 –  27.9] tok/s  ← PEAK
+  T=2   bg:  0%  warmup[.] reps[.....]    54.5  [ 52.3 –  55.0] tok/s  ← PEAK
+  T=3   bg:  0%  warmup[.] reps[.....]    78.7  [ 48.2 –  80.2] tok/s  ← PEAK
+  T=4   bg:  1%  warmup[.] reps[.....]    95.1  [ 84.0 – 100.0] tok/s  ← PEAK
+├──────────────────────────────────────────────────────────────────┤
+│  Result                                                          │
+│    SIMD      : scalar     (103.8 tok/s at T=4)                 │
+│    Threads   : T=4   ( 95.1 tok/s, swept T=1..4)           │
+│    Classifier: BF16 (default — full intelligence)               │
+│    Speed opt : --classifier auto-fast  (INT4, ~+86% est.)        │
+└──────────────────────────────────────────────────────────────────┘
+[Calibration] Saved to /root/h_C1/.project-zero/calibration.bin
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                        │
+│ Cores         : 4 physical / 4 logical              │
+│ Threads       : 4                                   │
+│ L2 cache      : 2048   KiB per core                 │
+│ L3 cache      : 260    MiB shared                   │
+│ Free RAM      : 15066  MiB                          │
+│ DRAM bandwidth: 43.6   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)               │
+│ Prefetch rows : 32                                  │
+│ Model in L3   : no                                  │
+│ Data/token    : 1149   MB (pre-load est.)           │
+│ Ceiling       : 46.8   tok/s (at 100% BW)           │
+└─────────────────────────────────────────────────────┘
+Active: 4 threads | AVX-512 VNNI | BF16 cls | 4T | 43.6 GB/s | ceiling 47 tok/s
+Model format: GGUF
+Model Configuration:
+  dim:        2048
+  hidden_dim: 10944
+  n_layers:   27
+  n_heads:    16
+  n_kv_heads: 16
+  vocab_size: 102400
+  seq_len:    163840
+  act_type:   0 (SiLU)
+  rope_theta: 10000.0
+  head_dim:   128
+  kv_dim:     2048
+[MoE] num_experts=64  top_k=6  expert_hidden_dim=1408  first_k_dense=1  shared_experts=2 (hdim=2816)
+[MLA] kv_lora_rank=512  qk_nope_head_dim=128  qk_rope_head_dim=64  v_head_dim=128
+[GGUF-DS2] Weights loaded (27 layers, 1 dense + 26 MoE, 64 experts/layer, experts=quantized)
+[profile] Data/token (loaded model): 9092 MB -> ceiling 4.6 tok/s at 43.6 GB/s
+KV cache: F32, max context: 19037 tokens (sizing tier: Quantized I8, RAM budget 60%)
+
+ Machine learning is a subset of artificial intelligence
+--- Expert Utilisation Summary (27 MoE layers × 64 experts) ---
+  L00:   0 unique / 64 total  (invocations:    0)  top:
+  L01:  55 unique / 64 total  (invocations:  258)  top: E8(24) E33(19) E10(11) E39(10) E26(9)
+  L02:  61 unique / 64 total  (invocations:  258)  top: E28(10) E42(9) E18(8) E27(8) E35(8)
+  L03:  55 unique / 64 total  (invocations:  258)  top: E9(12) E63(11) E21(9) E35(9) E25(8)
+  L04:  60 unique / 64 total  (invocations:  258)  top: E29(23) E62(16) E1(14) E41(12) E48(12)
+  L05:  55 unique / 64 total  (invocations:  258)  top: E6(12) E7(11) E56(11) E0(10) E2(10)
+  L06:  55 unique / 64 total  (invocations:  258)  top: E53(13) E57(12) E29(11) E3(10) E17(9)
+  L07:  53 unique / 64 total  (invocations:  258)  top: E11(18) E47(16) E39(11) E6(10) E44(10)
+  L08:  51 unique / 64 total  (invocations:  258)  top: E17(19) E11(15) E13(12) E33(12) E1(11)
+  L09:  50 unique / 64 total  (invocations:  258)  top: E14(14) E63(14) E7(12) E46(12) E9(10)
+  L10:  52 unique / 64 total  (invocations:  258)  top: E33(22) E49(14) E4(13) E20(12) E41(12)
+  L11:  50 unique / 64 total  (invocations:  258)  top: E16(24) E54(16) E42(11) E27(8) E38(8)
+  L12:  53 unique / 64 total  (invocations:  258)  top: E57(18) E18(14) E41(11) E8(10) E22(10)
+  L13:  48 unique / 64 total  (invocations:  258)  top: E26(20) E63(17) E36(16) E1(14) E41(13)
+  L14:  51 unique / 64 total  (invocations:  258)  top: E59(24) E22(20) E55(14) E38(10) E48(9)
+  L15:  51 unique / 64 total  (invocations:  258)  top: E14(15) E15(14) E49(14) E36(12) E17(11)
+  L16:  53 unique / 64 total  (invocations:  258)  top: E30(17) E63(14) E61(12) E6(11) E32(11)
+  L17:  55 unique / 64 total  (invocations:  258)  top: E50(15) E24(13) E1(12) E20(10) E45(9)
+  L18:  56 unique / 64 total  (invocations:  258)  top: E14(14) E35(13) E43(12) E50(12) E17(11)
+  L19:  54 unique / 64 total  (invocations:  258)  top: E53(19) E5(12) E39(12) E27(11) E1(10)
+  L20:  53 unique / 64 total  (invocations:  258)  top: E5(23) E7(20) E3(11) E62(11) E58(10)
+  L21:  51 unique / 64 total  (invocations:  258)  top: E44(16) E49(14) E18(13) E23(12) E32(12)
+  L22:  53 unique / 64 total  (invocations:  258)  top: E8(25) E62(18) E58(11) E6(10) E0(9)
+  L23:  56 unique / 64 total  (invocations:  258)  top: E50(25) E5(13) E46(11) E13(10) E36(10)
+  L24:  55 unique / 64 total  (invocations:  258)  top: E24(27) E16(23) E20(19) E46(11) E51(11)
+  L25:  56 unique / 64 total  (invocations:  258)  top: E41(16) E23(15) E58(12) E27(11) E63(10)
+  L26:  57 unique / 64 total  (invocations:  258)  top: E23(13) E39(12) E25(11) E28(11) E31(9)
+  Global: 64 / 64 experts activated (100.0%)
+---
+
+

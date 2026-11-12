@@ -1,0 +1,16 @@
+.github/workflows/ci.yml
+.gitignore
+include/cli/args.h
+include/core/platform.h
+include/math/matmul_q4k.h
+src/cli/args.c
+src/cli/main.c
+src/math/matmul_q4k.c
+src/math/parallel_matmul.c
+src/math/simd_dispatch.c
+src/threading/cpu_probe.c
+src/threading/thread_pool.c
+src/transformer/attention.c
+src/transformer/ffn.c
+src/transformer/generate.c
+src/transformer/moe_ffn.c

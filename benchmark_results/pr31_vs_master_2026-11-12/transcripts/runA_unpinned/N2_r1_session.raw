@@ -1,0 +1,25 @@
+Script started on 2026-11-12 15:45:24+00:00 [COMMAND="'bash' '-c' 'bash /root/evidence/tools/round.sh 2 1; echo exit=$?'" <not executed on terminal>]
+$ date -u
+Thu Nov 12 15:45:24 UTC 2026
+MASTER=fefa37e PR31=f26f36e PR31BASE=bf66526 | model DeepSeek-V2-Lite-Chat.Q4_K_S.gguf 9533608704 bytes
+N=2 threads  round=1   --max-tokens 64 --temperature 0
+$ uptime
+ 15:47:54 up  1:00,  0 user,  load average: 0.29, 1.29, 1.54
+stray pz procs: 0
+
+[C1] master fefa37e: pz --model <gguf> --prompt <ml-prompt> --max-tokens 64 --temperature 0 --threads 2 
+    exit=0 [gen] 8.44 tok/s (64 tokens)
+[C2] pr31 default f26f36e: adaptive_ai_engine --model <gguf> --prompt <ml-prompt> --max-tokens 64 --temperature 0 --threads 2 
+    exit=0 [gen] 1.54 tok/s (65 tokens)
+[C3] pr31 legacy f26f36e: adaptive_ai_engine --model <gguf> --prompt <ml-prompt> --max-tokens 64 --temperature 0 --threads 2 --moe-threading legacy
+    exit=0 [gen] 2.14 tok/s (65 tokens)
+[C4] pr31base bf66526: adaptive_ai_engine --model <gguf> --prompt <ml-prompt> --max-tokens 64 --temperature 0 --threads 2 
+    exit=0 [gen] 2.23 tok/s (65 tokens)
+[C5] pr31 rowsplit(extra) f26f36e: adaptive_ai_engine --model <gguf> --prompt <ml-prompt> --max-tokens 64 --temperature 0 --threads 2 --moe-threading rowsplit
+    exit=0 [gen] 1.77 tok/s (65 tokens)
+
+$ date -u
+Thu Nov 12 15:55:09 UTC 2026
+exit=0
+
+Script done on 2026-11-12 15:55:09+00:00 [COMMAND_EXIT_CODE="0"]

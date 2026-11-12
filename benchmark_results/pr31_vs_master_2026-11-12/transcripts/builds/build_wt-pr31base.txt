@@ -1,0 +1,122 @@
+make CFLAGS="-std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526" CXXFLAGS="-std=c++17 -Wall -Wextra -Iinclude -D_POSIX_C_SOURCE=200809L  -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526" all
+make[1]: Entering directory '/root/wt/wt-pr31base'
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/kv_cache/kv_strategy.o src/kv_cache/kv_strategy.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/kv_cache/kv_compress.o src/kv_cache/kv_compress.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/kv_cache/sliding_window.o src/kv_cache/sliding_window.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/reasoning/thought_filter.o src/reasoning/thought_filter.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/reasoning/reasoning_generate.o src/reasoning/reasoning_generate.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/reasoning/prompt_inject.o src/reasoning/prompt_inject.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -mavx2 -mfma -mf16c -mavx512f -mavx512bw -mavx512vl -mavx512dq -c -o build/math/softmax_avx512.o src/math/softmax_avx512.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -mavxvnni -c -o build/math/ternary_matmul_packed_avx_vnni.o src/math/ternary_matmul_packed_avx_vnni.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -mavx2 -mfma -mf16c -c -o build/math/matmul_q4k.o src/math/matmul_q4k.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -mavx2 -mfma -mf16c -c -o build/math/elementwise_avx2.o src/math/elementwise_avx2.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/math/rmsnorm.o src/math/rmsnorm.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -mavx2 -mfma -mf16c -c -o build/math/matmul_q2k.o src/math/matmul_q2k.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -mavx512vnni -c -o build/math/ternary_matmul_packed_vnni.o src/math/ternary_matmul_packed_vnni.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -mavx2 -mfma -mf16c -c -o build/math/matmul_q8_0.o src/math/matmul_q8_0.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -mavx2 -mfma -mf16c -mavx512f -mavx512bw -mavx512vl -mavx512dq -c -o build/math/ternary_matmul_lut_avx512bw.o src/math/ternary_matmul_lut_avx512bw.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -mavx2 -mfma -mf16c -mavx512f -mavx512bw -mavx512vl -mavx512dq -c -o build/math/elementwise_avx512.o src/math/elementwise_avx512.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -mavx2 -mfma -mf16c -c -o build/math/rmsnorm_avx2.o src/math/rmsnorm_avx2.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -mavx2 -mfma -mf16c -c -o build/math/matmul_f16.o src/math/matmul_f16.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -mavx2 -mfma -mf16c -c -o build/math/quantize_i8.o src/math/quantize_i8.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/math/elementwise.o src/math/elementwise.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -mavx2 -mfma -mf16c -c -o build/math/ternary_matmul_packed_avx2.o src/math/ternary_matmul_packed_avx2.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/math/softmax.o src/math/softmax.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -mavx2 -mfma -mf16c -c -o build/math/parallel_matmul.o src/math/parallel_matmul.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -mavx2 -mfma -mf16c -c -o build/math/softmax_avx2.o src/math/softmax_avx2.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -mavx2 -mfma -mf16c -c -o build/math/matmul_q5_1.o src/math/matmul_q5_1.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/math/rope.o src/math/rope.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -mavx2 -mfma -mf16c -c -o build/math/ternary_matmul_avx2.o src/math/ternary_matmul_avx2.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526  -c -o build/math/simd_dispatch.o src/math/simd_dispatch.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/math/cpu_features.o src/math/cpu_features.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/math/ternary_matmul_scalar.o src/math/ternary_matmul_scalar.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -mavx512vnni -mf16c -c -o build/math/matmul_q2_0_vnni.o src/math/matmul_q2_0_vnni.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/math/ternary_matmul_packed.o src/math/ternary_matmul_packed.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -mavx2 -mfma -mf16c -c -o build/math/matmul_q5k.o src/math/matmul_q5k.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -mavx512vnni -mavx512vl -c -o build/math/ternary_matmul_packed_vnni256.o src/math/ternary_matmul_packed_vnni256.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -mavx2 -mfma -mf16c -mavx512f -mavx512bw -mavx512vl -mavx512dq -c -o build/math/rmsnorm_avx512.o src/math/rmsnorm_avx512.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -mavx2 -mfma -mf16c -c -o build/math/matmul_q2_0.o src/math/matmul_q2_0.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -mavx2 -mfma -mf16c -c -o build/math/matmul_q5_0.o src/math/matmul_q5_0.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -mavx2 -mfma -mf16c -mavx512f -mavx512bw -mavx512vl -mavx512dq -c -o build/math/ternary_matmul_packed_avx512.o src/math/ternary_matmul_packed_avx512.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/math/ternary_matmul_packed_dotprod.o src/math/ternary_matmul_packed_dotprod.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/multimodal/image_load.o src/multimodal/image_load.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/multimodal/patch_extract.o src/multimodal/patch_extract.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/multimodal/vision_pipeline.o src/multimodal/vision_pipeline.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/multimodal/vision_encoder.o src/multimodal/vision_encoder.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/multimodal/vision_projector.o src/multimodal/vision_projector.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/multimodal/vision_weights_load.o src/multimodal/vision_weights_load.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/multimodal/vision_bridge.o src/multimodal/vision_bridge.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/rag/auto_retrieve.o src/rag/auto_retrieve.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/rag/similarity.o src/rag/similarity.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/rag/vector_db.o src/rag/vector_db.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/rag/memory_search.o src/rag/memory_search.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/rag/embedder.o src/rag/embedder.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/rag/auto_save.o src/rag/auto_save.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/agent/output_inject.o src/agent/output_inject.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/agent/user_approval.o src/agent/user_approval.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/agent/agent_loop.o src/agent/agent_loop.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/agent/cmd_exec.o src/agent/cmd_exec.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/agent/tool_interceptor.o src/agent/tool_interceptor.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/api/server_config.o src/api/server_config.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/api/webui_bundle_generated.o src/api/webui_bundle_generated.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/api/sse_stream.o src/api/sse_stream.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/api/openapi.o src/api/openapi.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/api/cancel.o src/api/cancel.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -D_GNU_SOURCE -c -o build/api/http_server.o src/api/http_server.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/api/data_url.o src/api/data_url.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/api/chat_compile.o src/api/chat_compile.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/api/cors.o src/api/cors.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/api/metrics.o src/api/metrics.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/api/json_parse.o src/api/json_parse.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/api/static_assets.o src/api/static_assets.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/api/auth.o src/api/auth.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/cli/color.o src/cli/color.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/cli/args.o src/cli/args.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/cli/timer.o src/cli/timer.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/cli/md_render.o src/cli/md_render.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/cli/banner.o src/cli/banner.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/cli/main.o src/cli/main.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/cli/live_stats.o src/cli/live_stats.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/cli/repl.o src/cli/repl.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/cli/progress.o src/cli/progress.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/tokenizer/tokenizer_gguf.o src/tokenizer/tokenizer_gguf.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/tokenizer/tokenizer_decode.o src/tokenizer/tokenizer_decode.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/tokenizer/tokenizer_encode.o src/tokenizer/tokenizer_encode.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/tokenizer/tokenizer_load.o src/tokenizer/tokenizer_load.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/transformer/mla_attention.o src/transformer/mla_attention.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/transformer/forward.o src/transformer/forward.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/transformer/moe_router.o src/transformer/moe_router.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/transformer/attention.o src/transformer/attention.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/transformer/qwen35_attention.o src/transformer/qwen35_attention.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/transformer/generate.o src/transformer/generate.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -D_GNU_SOURCE -c -o build/transformer/moe_ffn.o src/transformer/moe_ffn.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/transformer/ffn.o src/transformer/ffn.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/transformer/embedding.o src/transformer/embedding.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/threading/thread_pool.o src/threading/thread_pool.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/threading/cpu_probe.o src/threading/cpu_probe.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/core/mla_run_state.o src/core/mla_run_state.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/core/debug.o src/core/debug.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/core/step_timing.o src/core/step_timing.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/core/unpack.o src/core/unpack.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/core/error.o src/core/error.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/core/qwen35_run_state.o src/core/qwen35_run_state.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/core/moe_config.o src/core/moe_config.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/core/weights.o src/core/weights.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/core/moe_weights.o src/core/moe_weights.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -mavx2 -mfma -mf16c -c -o build/core/unpack_avx2.o src/core/unpack_avx2.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/core/hardware_profile.o src/core/hardware_profile.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/core/gguf_quant.o src/core/gguf_quant.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/core/config.o src/core/config.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/core/run_state.o src/core/run_state.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/core/calibration.o src/core/calibration.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/core/gguf_loader.o src/core/gguf_loader.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/core/gguf_reader.o src/core/gguf_reader.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/sampling/top_p.o src/sampling/top_p.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/sampling/rng.o src/sampling/rng.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/sampling/temperature.o src/sampling/temperature.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/sampling/argmax.o src/sampling/argmax.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/sampling/top_k.o src/sampling/top_k.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/memory/aligned_alloc.o src/memory/aligned_alloc.c
+gcc -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L    -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -D_GNU_SOURCE -c -o build/memory/mapped_file.o src/memory/mapped_file.c
+g++ -std=c++17 -Wall -Wextra -Iinclude -D_POSIX_C_SOURCE=200809L  -O3 -march=native -DNDEBUG -DPZ_VERSION=v0.1.0-76-gbf66526 -c -o build/tokenizer/chat_template.o src/tokenizer/chat_template.cpp
+make[1]: Leaving directory '/root/wt/wt-pr31base'

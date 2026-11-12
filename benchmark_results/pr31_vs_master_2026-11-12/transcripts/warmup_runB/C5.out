@@ -1,0 +1,98 @@
+Project Zero Engine v0.1.0-100-gf26f36e — Auto-Tuned Hardware
+SIMD override: vnni (user-selected)
+[Calibration] First run on this hardware — calibrating...
+┌──────────────────────────────────────────────────────────────────┐
+│  Auto-Calibration  —  first run, result cached for future use   │
+│  Re-triggers only when hardware changes.  ~40-60 seconds.       │
+├──────────────────────────────────────────────────────────────────┤
+│  Phase 1/2  SIMD backends at T=4  (thermal stabilisation)       │
+├──────────────────────────────────────────────────────────────────┤
+  scalar    bg:  0%  warmup[....] reps[.......]    69.5  [ 44.4 – 103.1] tok/s  ← BEST
+  avx2      bg:  0%  warmup[.] reps[.......]   103.0  [ 71.1 – 107.1] tok/s  ← BEST
+  avx512f   bg:  0%  warmup[.] reps[.......]    75.1  [ 58.9 –  93.8] tok/s
+  vnni      bg:  1%  warmup[.] reps[.......]   105.8  [ 99.5 – 108.7] tok/s  ← BEST
+├──────────────────────────────────────────────────────────────────┤
+│  Phase 2/2  Thread sweep  (backend: vnni      )                │
+├──────────────────────────────────────────────────────────────────┤
+  T=1   bg:  1%  warmup[.] reps[.....]    28.0  [ 25.0 –  28.2] tok/s  ← PEAK
+  T=2   bg:  0%  warmup[.] reps[.....]    55.8  [ 54.0 –  56.3] tok/s  ← PEAK
+  T=3   bg:  0%  warmup[.] reps[.....]    82.2  [ 80.7 –  83.4] tok/s  ← PEAK
+  T=4   bg:  0%  warmup[.] reps[.....]    95.8  [ 50.1 – 100.7] tok/s  ← PEAK
+├──────────────────────────────────────────────────────────────────┤
+│  Result                                                          │
+│    SIMD      : vnni       (105.8 tok/s at T=4)                 │
+│    Threads   : T=4   ( 95.8 tok/s, swept T=1..4)           │
+│    Classifier: BF16 (default — full intelligence)               │
+│    Speed opt : --classifier auto-fast  (INT4, ~+86% est.)        │
+└──────────────────────────────────────────────────────────────────┘
+[Calibration] Saved to /root/h_C5/.project-zero/calibration.bin
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                       │
+│ Cores         : 4 physical / 4 logical            │
+│ Threads       : 4                                  │
+│ L2 cache      : 2048   KiB per core                 │
+│ L3 cache      : 260    MiB shared                   │
+│ Free RAM      : 15066  MiB                          │
+│ DRAM bandwidth: 32.1   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)              │
+│ Prefetch rows : 32                                 │
+│ Model in L3   : no                                 │
+│ Data/token    : 1149   MB (pre-load est.)           │
+│ Ceiling       : 34.5   tok/s (at 100% BW)          │
+└─────────────────────────────────────────────────────┘
+Active: 4 threads | AVX-512 VNNI | BF16 cls | 4T | 32.1 GB/s | ceiling 34 tok/s
+Model format: GGUF
+Model Configuration:
+  dim:        2048
+  hidden_dim: 10944
+  n_layers:   27
+  n_heads:    16
+  n_kv_heads: 16
+  vocab_size: 102400
+  seq_len:    163840
+  act_type:   0 (SiLU)
+  rope_theta: 10000.0
+  head_dim:   128
+  kv_dim:     2048
+[MoE] num_experts=64  top_k=6  expert_hidden_dim=1408  first_k_dense=1  shared_experts=2 (hdim=2816)
+[MLA] kv_lora_rank=512  qk_nope_head_dim=128  qk_rope_head_dim=64  v_head_dim=128
+[GGUF-DS2] Weights loaded (27 layers, 1 dense + 26 MoE, 64 experts/layer, experts=quantized)
+[profile] Data/token (loaded model): 9092 MB -> ceiling 3.4 tok/s at 32.1 GB/s
+KV Strategy: Quantized I8, max context: 16961 tokens
+
+ Machine Learning is a subset of artificial intelligence that
+--- Expert Utilisation Summary (27 MoE layers × 64 experts) ---
+  L00:   0 unique / 64 total  (invocations:    0)  top:
+  L01:  54 unique / 64 total  (invocations:  264)  top: E33(21) E8(15) E39(12) E10(11) E32(11)
+  L02:  62 unique / 64 total  (invocations:  264)  top: E40(10) E28(9) E42(9) E2(8) E18(8)
+  L03:  54 unique / 64 total  (invocations:  264)  top: E60(16) E35(11) E9(10) E63(10) E21(9)
+  L04:  56 unique / 64 total  (invocations:  264)  top: E29(19) E62(16) E48(14) E1(12) E54(10)
+  L05:  55 unique / 64 total  (invocations:  264)  top: E34(13) E55(13) E7(12) E2(11) E0(10)
+  L06:  57 unique / 64 total  (invocations:  264)  top: E3(12) E29(10) E37(10) E53(10) E33(9)
+  L07:  55 unique / 64 total  (invocations:  264)  top: E11(19) E38(17) E47(17) E8(13) E27(10)
+  L08:  50 unique / 64 total  (invocations:  264)  top: E40(22) E11(17) E13(14) E17(14) E1(13)
+  L09:  50 unique / 64 total  (invocations:  264)  top: E0(22) E14(15) E46(15) E63(15) E41(14)
+  L10:  51 unique / 64 total  (invocations:  264)  top: E33(28) E49(14) E4(12) E16(12) E55(12)
+  L11:  53 unique / 64 total  (invocations:  264)  top: E16(24) E54(15) E4(12) E38(11) E42(10)
+  L12:  52 unique / 64 total  (invocations:  264)  top: E18(14) E61(14) E57(13) E22(11) E41(10)
+  L13:  56 unique / 64 total  (invocations:  264)  top: E63(19) E6(18) E26(17) E1(15) E36(15)
+  L14:  52 unique / 64 total  (invocations:  264)  top: E59(25) E22(20) E55(15) E5(10) E18(10)
+  L15:  55 unique / 64 total  (invocations:  264)  top: E14(14) E36(11) E49(11) E15(10) E48(9)
+  L16:  56 unique / 64 total  (invocations:  264)  top: E30(15) E63(13) E32(12) E45(11) E6(10)
+  L17:  59 unique / 64 total  (invocations:  264)  top: E50(15) E1(13) E20(10) E43(9) E46(9)
+  L18:  56 unique / 64 total  (invocations:  264)  top: E50(15) E14(12) E53(12) E17(11) E30(11)
+  L19:  57 unique / 64 total  (invocations:  264)  top: E5(12) E1(11) E12(11) E39(11) E42(10)
+  L20:  53 unique / 64 total  (invocations:  264)  top: E7(18) E5(16) E3(13) E33(12) E62(11)
+  L21:  59 unique / 64 total  (invocations:  264)  top: E44(16) E32(13) E2(11) E9(9) E25(9)
+  L22:  57 unique / 64 total  (invocations:  264)  top: E8(18) E61(17) E62(15) E56(12) E50(9)
+  L23:  54 unique / 64 total  (invocations:  264)  top: E50(24) E46(17) E1(12) E10(9) E31(9)
+  L24:  57 unique / 64 total  (invocations:  264)  top: E20(21) E16(19) E24(18) E46(12) E36(10)
+  L25:  56 unique / 64 total  (invocations:  264)  top: E17(15) E41(13) E50(13) E23(12) E6(9)
+  L26:  57 unique / 64 total  (invocations:  264)  top: E25(12) E39(12) E28(11) E56(11) E26(10)
+  Global: 64 / 64 experts activated (100.0%)
+---
+
+

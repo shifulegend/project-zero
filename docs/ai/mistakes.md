@@ -3,7 +3,12 @@
 > Canonical, append-at-top (newest first). Read this at the start of every session.
 > Add an entry **immediately** when a mistake, false assumption, regression, or avoidable
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
-> Last updated: 2026-11-11.
+> Last updated: 2026-11-12.
+
+### 2026-11-12 — A fixed `sleep` made the concurrency test fail on a fast CI runner
+- Cause: `tests/e2e_api_concurrency.sh` started a 150-token JSON-mode request, slept 0.5 s and expected a second request to get 429. On a fast runner the first request finished before the sleep ended, so the second got 200 (master CI, 2026-11-12, first run after #65 added the script to CI). The product code was unchanged.
+- Fix: the first request streams (400 tokens, no JSON mode) and the second is sent only after its first event has arrived; no fixed sleep.
+- Lesson: a test that needs two requests to overlap must wait for an observable event, never for a duration.
 
 ### 2026-11-11 — A repeated `content` key leaked the earlier message text
 - Cause: `parse_messages` assigned `msg->content` for the string and `null` forms without freeing the previous value, so a message with two `content` keys leaked the first (the array form already freed its own). Found while testing PR #60 with a standalone ASan harness; the only two sites in `json_parse.c` with this pattern.

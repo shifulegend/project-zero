@@ -149,7 +149,9 @@ static void test_json_parse_content_parts(void) {
     const char *json =
         "{\"messages\":[{\"role\":\"user\",\"content\":["
             "{\"type\":\"text\",\"text\":\"What is in this image?\"},"
-            "{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,QUJD\"}}"
+            "{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,QUJD\"}},"
+            "{\"type\":\"text\",\"text\":\"\\nAnswer in one sentence.\"},"
+            "{\"type\":\"text\",\"text\":\"\"}"
         "]}]}";
 
     ChatRequest req;
@@ -158,7 +160,8 @@ static void test_json_parse_content_parts(void) {
 
     if (err != TN_OK) { FAIL("json_parse_content_parts", "parse error"); goto done; }
     if (req.num_messages != 1) { FAIL("json_parse_content_parts", "wrong message count"); goto done; }
-    if (!req.messages[0].content || strcmp(req.messages[0].content, "What is in this image?") != 0)
+    if (!req.messages[0].content ||
+        strcmp(req.messages[0].content, "What is in this image?\nAnswer in one sentence.") != 0)
                                    { FAIL("json_parse_content_parts", "text part mismatch"); goto done; }
     if (!req.messages[0].image_data_url ||
         strcmp(req.messages[0].image_data_url, "data:image/png;base64,QUJD") != 0)
@@ -191,6 +194,33 @@ static void test_json_parse_content_parts_text_only_message_still_plain_string(v
     PASS("content_parts_mixed_with_plain_string");
 done:
     chat_request_free(&req);
+}
+
+/* A repeated "content" key: the last one wins and the earlier text is released.
+ * Before 2026-11-11 the earlier text leaked (LeakSanitizer in `make test` reports it). */
+static void test_json_parse_duplicate_content_key_last_wins(void) {
+    static const struct { const char *name; const char *json; const char *want; } cases[] = {
+        { "dup_content_string_then_array",
+          "{\"messages\":[{\"role\":\"user\",\"content\":\"AAAA\",\"content\":[{\"type\":\"text\",\"text\":\"B\"}]}]}", "B" },
+        { "dup_content_array_then_string",
+          "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"B\"}],\"content\":\"AAAA\"}]}", "AAAA" },
+        { "dup_content_string_then_string",
+          "{\"messages\":[{\"role\":\"user\",\"content\":\"A\",\"content\":\"B\"}]}", "B" },
+        { "dup_content_array_then_array",
+          "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"A\"}],\"content\":[{\"type\":\"text\",\"text\":\"B\"}]}]}", "B" },
+        { "dup_content_string_then_null",
+          "{\"messages\":[{\"role\":\"user\",\"content\":\"A\",\"content\":null}]}", "" },
+    };
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        ChatRequest req;
+        chat_request_init(&req);
+        TernaryError err = chat_request_parse(cases[i].json, &req);
+        if (err != TN_OK) FAIL(cases[i].name, "parse error");
+        else if (req.num_messages != 1 || !req.messages[0].content) FAIL(cases[i].name, "no content");
+        else if (strcmp(req.messages[0].content, cases[i].want) != 0) FAIL(cases[i].name, "last key did not win");
+        else PASS(cases[i].name);
+        chat_request_free(&req);
+    }
 }
 
 /* ── 7. chat_template_detect ─────────────────────────────────────────────── */
@@ -342,6 +372,7 @@ int main(void) {
     test_json_parse_malformed();
     test_json_parse_content_parts();
     test_json_parse_content_parts_text_only_message_still_plain_string();
+    test_json_parse_duplicate_content_key_last_wins();
     test_template_detect();
     test_compile_chatml();
     test_compile_llama3();

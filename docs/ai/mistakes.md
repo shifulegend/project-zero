@@ -5,6 +5,10 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-11-11.
 
+### 2026-11-11 — A repeated `content` key leaked the earlier message text
+- Cause: `parse_messages` assigned `msg->content` for the string and `null` forms without freeing the previous value, so a message with two `content` keys leaked the first (the array form already freed its own). Found while testing PR #60 with a standalone ASan harness; the only two sites in `json_parse.c` with this pattern.
+- Fix: free the old text at the start of the `content` branch, so the last key wins in every combination (string, array, null). Regression test `test_json_parse_duplicate_content_key_last_wins` fails on the old parser under LeakSanitizer (`make test`).
+- Lesson: a parser that assigns a heap pointer from a key must free the previous value; a repeated key is valid-looking input for a hostile client.
 ### 2026-11-11 — Generation slot released after the final write: spurious 429 for sequential clients
 - What: `handle_chat_completions` (`src/api/http_server.c`) wrote the last SSE event / the JSON body
   and only then freed the request and called `release_generation_slot()`. A client that reads the
@@ -35,6 +39,10 @@
   report is unchanged apart from no longer aborting.
 - Lesson: a red check on a change that cannot affect it is a toolchain drift signal — read the
   log before assuming the change broke it, and fix it in its own PR.
+
+### 2026-11-09 — Chat content arrays dropped earlier text
+- Cause: each text part replaced the accumulated message text, so only the last part reached the prompt.
+- Fix: append text parts in order and test a message with text on both sides of an image and a trailing empty part.
 
 ### 2026-10-30 — A detached benchmark chain died with the container
 - What: the ik_llama.cpp comparison was queued as a `setsid nohup` chain so it would outlive the

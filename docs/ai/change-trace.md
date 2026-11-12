@@ -3,6 +3,8 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-11.
 
+### 2026-11-11 — Free the old text when a `content` key repeats
+- `src/api/json_parse.c` releases the previous `msg->content` before parsing a repeated `content` key (last key wins); `tests/test_api_server.c` adds five duplicate-key cases that run under ASan/LSan in `make test`.
 ### 2026-11-11 — API: release the generation slot before the final response write
 - `src/api/http_server.c` `handle_chat_completions`: `release_generation_slot()` now precedes
   `sse_write_done_ex()` / `send_response_ex()` (was after the frees, at function end), so strictly
@@ -24,6 +26,10 @@
   `.github/instructions` from `.claude/rules`; CI step in the changelog job. Copilot `applyTo`
   now matches the Claude `paths:` (api + `webui/**`; config + installer/config sources; tests +
   `tools/screenshots/**`).
+
+### 2026-11-09 — Preserve text in chat content arrays
+- `src/api/json_parse.c` appends each text part to the message and keeps partially parsed messages available for cleanup.
+- `test_api_server` covers multiple text parts, an image, and a trailing empty part in one request.
 
 ### 2026-10-22 — Parallel serving: `--parallel N` (Phase 23 stage 2b, step 2)
 - New `api/batch_scheduler.{h,c}`; `transformer_forward_multi_ex` (logits row mask) +

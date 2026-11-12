@@ -20,6 +20,8 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Fixed
 
+- Preserve all text parts in chat messages that send content as an array.
+- Release the earlier text when a chat message repeats its `content` key (the last key wins); each such request used to leak that text on the server.
 - Stop answering `429 "Another generation is already in flight"` to a client that sends its next `/v1/chat/completions` request as soon as it has read the previous answer (most often a streaming client that stops at `data: [DONE]`); the server now frees the generation slot before it writes the end of the response.
 - Align the right border of the startup "Hardware Profile" box; rows were padded to different widths.
 

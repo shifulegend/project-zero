@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <ctype.h>
+#include <stdint.h>
 
 /* ── Internal helpers ────────────────────────────────────────────────────── */
 
@@ -220,13 +221,16 @@ static void skip_value(const char **p) {
  *     {"type": "text", "text": "..."},
  *     {"type": "image_url", "image_url": {"url": "data:image/...;base64,..."}}
  *   ]
- * Populates msg->content (from the text part) and msg->image_data_url (from
+ * Populates msg->content (from the text parts in order) and msg->image_data_url (from
  * the image_url part's nested "url" field). Assumes *p already points past
  * the "content": key, at the opening '['.
  */
 static TernaryError parse_content_parts(const char **p, ChatMessage *msg) {
     if (!expect_char(p, '[')) return TN_ERR_JSON_PARSE;
     skip_ws(p);
+
+    size_t text_len = msg->content ? strlen(msg->content) : 0;
+    size_t text_capacity = msg->content ? text_len + 1 : 0;
 
     while (**p && **p != ']') {
         if (!expect_char(p, '{')) return TN_ERR_JSON_PARSE;
@@ -243,8 +247,32 @@ static TernaryError parse_content_parts(const char **p, ChatMessage *msg) {
             if (strcmp(key, "text") == 0) {
                 char *text = parse_string_heap(p);
                 if (!text) return TN_ERR_JSON_PARSE;
-                free(msg->content);
-                msg->content = text;
+                size_t part_len = strlen(text);
+                if (!msg->content) {
+                    msg->content = text;
+                    text_len = part_len;
+                    text_capacity = text_len + 1;
+                } else {
+                    if (part_len > SIZE_MAX - text_len - 1) {
+                        free(text);
+                        return TN_ERR_OOM;
+                    }
+                    size_t required = text_len + part_len + 1;
+                    if (required > text_capacity) {
+                        size_t grown = text_capacity <= SIZE_MAX / 2 ? text_capacity * 2 : required;
+                        size_t capacity = required > grown ? required : grown;
+                        char *joined = realloc(msg->content, capacity);
+                        if (!joined) {
+                            free(text);
+                            return TN_ERR_OOM;
+                        }
+                        msg->content = joined;
+                        text_capacity = capacity;
+                    }
+                    memcpy(msg->content + text_len, text, part_len + 1);
+                    text_len += part_len;
+                    free(text);
+                }
             } else if (strcmp(key, "image_url") == 0 && **p == '{') {
                 (*p)++; /* enter the nested {"url": "..."} object */
                 while (**p && **p != '}') {
@@ -296,7 +324,8 @@ static TernaryError parse_messages(const char **p, ChatRequest *req) {
             break;
         }
 
-        ChatMessage *msg = &req->messages[req->num_messages];
+        /* Include partial messages so chat_request_free can release them on error. */
+        ChatMessage *msg = &req->messages[req->num_messages++];
         msg->role[0]        = '\0';
         msg->content        = NULL;
         msg->image_data_url = NULL;
@@ -316,6 +345,10 @@ static TernaryError parse_messages(const char **p, ChatRequest *req) {
                     return TN_ERR_JSON_PARSE;
             } else if (strcmp(key, "content") == 0) {
                 skip_ws(p);
+                /* A repeated "content" key replaces the earlier value (the last one
+                 * wins); release the old text first, or it leaks. */
+                free(msg->content);
+                msg->content = NULL;
                 if (**p == '[') {
                     /* Phase 22.2: OpenAI "content parts" array (text + image_url) */
                     TernaryError err = parse_content_parts(p, msg);
@@ -338,7 +371,6 @@ static TernaryError parse_messages(const char **p, ChatRequest *req) {
             if (**p == ',') { (*p)++; }
         }
         if (!expect_char(p, '}')) return TN_ERR_JSON_PARSE;
-        req->num_messages++;
 
         skip_ws(p);
         if (**p == ',') { (*p)++; skip_ws(p); }

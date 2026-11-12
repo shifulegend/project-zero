@@ -149,7 +149,9 @@ static void test_json_parse_content_parts(void) {
     const char *json =
         "{\"messages\":[{\"role\":\"user\",\"content\":["
             "{\"type\":\"text\",\"text\":\"What is in this image?\"},"
-            "{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,QUJD\"}}"
+            "{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,QUJD\"}},"
+            "{\"type\":\"text\",\"text\":\"\\nAnswer in one sentence.\"},"
+            "{\"type\":\"text\",\"text\":\"\"}"
         "]}]}";
 
     ChatRequest req;
@@ -158,7 +160,8 @@ static void test_json_parse_content_parts(void) {
 
     if (err != TN_OK) { FAIL("json_parse_content_parts", "parse error"); goto done; }
     if (req.num_messages != 1) { FAIL("json_parse_content_parts", "wrong message count"); goto done; }
-    if (!req.messages[0].content || strcmp(req.messages[0].content, "What is in this image?") != 0)
+    if (!req.messages[0].content ||
+        strcmp(req.messages[0].content, "What is in this image?\nAnswer in one sentence.") != 0)
                                    { FAIL("json_parse_content_parts", "text part mismatch"); goto done; }
     if (!req.messages[0].image_data_url ||
         strcmp(req.messages[0].image_data_url, "data:image/png;base64,QUJD") != 0)

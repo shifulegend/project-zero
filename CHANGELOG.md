@@ -20,6 +20,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Fixed
 
+- Preserve all text parts in chat messages that send content as an array.
 - Release the earlier text when a chat message repeats its `content` key (the last key wins); each such request used to leak that text on the server.
 - Align the right border of the startup "Hardware Profile" box; rows were padded to different widths.
 

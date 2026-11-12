@@ -49,16 +49,18 @@ if [ "$ready" != "1" ]; then
 fi
 pass "server ready on port $PORT"
 
-# --- Concurrency: fire a slow generation in the background, then a second
-# request almost immediately -- the second must get 429, not block. ------
+# --- Concurrency: fire a long streaming generation in the background, wait until
+# it has really started (its first event has arrived), then send a second request
+# -- the second must get 429, not block. A fixed sleep is not safe here: on a fast
+# machine a short generation can finish before the sleep ends (seen on CI). ------
 REQ_A_OUT=$(mktemp)
-(curl -s -o "$REQ_A_OUT" -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/v1/chat/completions" \
+(curl -s -N -o "$REQ_A_OUT" -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/v1/chat/completions" \
     -H "Content-Type: application/json" \
-    -d '{"model":"m","messages":[{"role":"user","content":"Count slowly from one to ten, one number per sentence, with a short explanation for each."}],"max_tokens":150,"temperature":0,"stream":false,"response_format":{"type":"json_object"}}' \
+    -d '{"model":"m","messages":[{"role":"user","content":"Count slowly from one to ten, one number per sentence, with a short explanation for each."}],"max_tokens":400,"temperature":0,"stream":true}' \
     > "${REQ_A_OUT}.code") &
 REQ_A_PID=$!
 
-sleep 0.5   # let request A actually acquire generation_mutex and start generating
+for _ in $(seq 1 100); do grep -q 'data:' "$REQ_A_OUT" 2>/dev/null && break; sleep 0.1; done   # A holds the slot and is streaming
 
 code_b=$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/v1/chat/completions" \
     -H "Content-Type: application/json" \

@@ -345,6 +345,10 @@ static TernaryError parse_messages(const char **p, ChatRequest *req) {
                     return TN_ERR_JSON_PARSE;
             } else if (strcmp(key, "content") == 0) {
                 skip_ws(p);
+                /* A repeated "content" key replaces the earlier value (the last one
+                 * wins); release the old text first, or it leaks. */
+                free(msg->content);
+                msg->content = NULL;
                 if (**p == '[') {
                     /* Phase 22.2: OpenAI "content parts" array (text + image_url) */
                     TernaryError err = parse_content_parts(p, msg);

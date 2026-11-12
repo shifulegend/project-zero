@@ -3,6 +3,9 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-11.
 
+### 2026-11-11 — Free the old text when a `content` key repeats
+- `src/api/json_parse.c` releases the previous `msg->content` before parsing a repeated `content` key (last key wins); `tests/test_api_server.c` adds five duplicate-key cases that run under ASan/LSan in `make test`.
+
 ### 2026-11-11 — AI instruction hygiene, session sync, generated rule adapters (PR #61)
 - Context hygiene: `CLAUDE.md` 702 → 614 words, `AGENTS.md` 676 → 487 (GitNexus block moved to
   `.claude/GITNEXUS.md`); `.claude/rules/*.md` gained `paths:` front matter; blanket non-safety

@@ -10,9 +10,10 @@ When something durable changes:
    - lesson/mistake → `mistakes.md` (use the template) and, if a rule, `engineering-rules.md`
    - decision → `decision-log.md`; notable change → `change-trace.md`
 2. Synchronize the adapters that the change touches:
-   - Claude: `CLAUDE.md`, `.claude/rules/*`
-   - Copilot: `.github/copilot-instructions.md`, `.github/instructions/*`
-   - Antigravity: `gemini/GEMINI.md`, `AGENTS.md`, `.agents/rules/*`
+   - Scoped rules: edit only `.claude/rules/*.md`, then regenerate `.agents/rules/*` and
+     `.github/instructions/*` with `tools/sync_ai_adapters.py` (CI fails on a stale copy).
+   - Entry files, synced by hand: `CLAUDE.md`, `.github/copilot-instructions.md`,
+     `gemini/GEMINI.md` + `AGENTS.md`.
 3. Record the sync in `change-trace.md`; propose the commit (see `commit-log-guidance.md`).
 Canonical wins on conflict. Do this proactively, no user prompt required.
 Full policy: `docs/ai/tool-sync-policy.md`.

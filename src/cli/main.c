@@ -19,6 +19,7 @@
 #include "kv_cache/kv_strategy.h"
 #include "threading/thread_pool.h"
 #include "threading/cpu_probe.h"
+#include "tokenizer/template_guard.h"
 #include "tokenizer/tokenizer.h"
 #include "tokenizer/tokenizer_gguf.h"
 #include "cli/program_name.h"
@@ -639,6 +640,24 @@ int main(int argc, char **argv) {
         }
     }
 
+    /* Known-broken embedded templates are replaced by a corrected built-in one
+     * (2026-11-16: the official BitNet b1.58 2B-4T template ends the prompt in
+     * EOS, so the model generated nothing). Order: --chat-template-file > this
+     * > the GGUF's template; a request's own template still wins per request. */
+    int chat_template_builtin = 0;
+    if (is_gguf && !chat_template_from_file && t.chat_template) {
+        const char *fix = tn_template_known_fix(gguf_hdr.arch, t.chat_template);
+        char *copy = fix ? strdup(fix) : NULL;
+        if (copy) {
+            free(t.chat_template);
+            t.chat_template = copy;
+            chat_template_builtin = 1;
+            fprintf(stderr, "[tokenizer] the model's chat template ends the prompt with the "
+                            "end-of-sequence token (known problem); using the built-in %s "
+                            "template. --chat-template-file overrides it.\n", gguf_hdr.arch);
+        }
+    }
+
     tn_progress_stage(4, 4, "Ready.", stdout_is_tty);
     tn_progress_done(stdout_is_tty);
 
@@ -895,7 +914,8 @@ int main(int argc, char **argv) {
         api_ctx.server_config.allow_request_template = args.no_request_template ? 0 : 1;
         api_ctx.server_config.allow_config_write = args.no_config_write ? 0 : 1;
         api_ctx.server_config.chat_template_source =
-            !t.chat_template ? "none" : (chat_template_from_file ? "file" : "gguf");
+            !t.chat_template ? "none"
+            : chat_template_from_file ? "file" : chat_template_builtin ? "builtin" : "gguf";
         api_ctx.server_config.best_of = args.best_of;
         api_ctx.server_config.queue_size = args.queue_size;
         api_ctx.server_config.queue_timeout_s = args.queue_timeout_s;

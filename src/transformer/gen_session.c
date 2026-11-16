@@ -17,6 +17,7 @@
 #include "cli/timer.h"
 #include "core/step_timing.h"
 #include "tokenizer/chat_template.h"
+#include "tokenizer/template_guard.h"
 #include "memory/safe_alloc.h"
 #include "core/debug.h"
 #include <math.h>
@@ -35,6 +36,23 @@
 static void report_encode_failure(const char *what, int seq_len) {
     fprintf(stderr, "[error] the %s does not fit in the model's context of %d tokens. "
                     "Nothing was generated; shorten it or raise --ctx-size.\n", what, seq_len);
+}
+
+static const char *token_text(const Tokenizer *tok, int id) {
+    return (tok && tok->vocab && id >= 0 && id < tok->vocab_size && tok->vocab[id]) ? tok->vocab[id]
+                                                                                    : "?";
+}
+
+/* 2026-11-16: the first token the model chose ended the turn, so nothing was
+ * generated. Leading servers (llama.cpp, Ollama) answer with an empty message
+ * and leave users to guess; name the evidence and the usual cause instead. */
+static void report_empty_generation(const Tokenizer *tok, int first_token, int last_prompt_token) {
+    fprintf(stderr, "[warn] no tokens were generated: the first token the model chose was %d (\"%s\"), "
+                    "a stop token; the prompt ended with token %d (\"%s\"). For a chat model this "
+                    "usually means a chat-template problem: check the template "
+                    "(--chat-template-file replaces it) or run with --verbose.\n",
+            first_token, token_text(tok, first_token), last_prompt_token,
+            token_text(tok, last_prompt_token));
 }
 
 /* Renders and tokenizes the prompt into g->prompt_tokens / g->n_prompt.
@@ -117,6 +135,10 @@ static int build_prompt(GenSession *g, const char *prompt) {
             memcpy(joined + fl, gp->assistant_prefix, al + 1);
             formatted = joined;
         }
+
+        /* A generation prompt that ends in the end-of-sequence token makes the
+         * model start a new document: generation stops at 0 tokens. */
+        if (tn_prompt_ends_with_token(formatted, eos_str)) tn_template_warn_eos_ending_once();
 
         t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
         n_prompt = tokenizer_encode(tok, formatted, strlen(formatted),
@@ -426,6 +448,11 @@ int gen_session_consume(GenSession *g, float *logits) {
         }
         if (is_eos) {
             g->finish = GEN_FINISH_STOP;
+            if (g->tokens_generated == 0 && n_prompt > 0) {
+                g->empty_stop = 1;
+                g->first_stop_token = g->next;
+                g->last_prompt_token = g->prompt_tokens[n_prompt - 1];
+            }
             if (gp->stats) gp->stats->hit_eos = true;
             g->done = 1;
             return 0;
@@ -468,6 +495,12 @@ void gen_session_end(GenSession *g) {
     free(g->chat_stops);
     g->gen_history = NULL; g->raw_logits = NULL; g->prompt_tokens = NULL; g->chat_stops = NULL;
     if (!g->started) return;
+
+    /* 0 tokens in chat mode is almost always a chat-template problem, and the
+     * API answer is an empty 200: say what happened (same style as
+     * report_encode_failure). */
+    if (g->empty_stop && g->tokens_generated == 0 && !(gp && gp->raw_prompt))
+        report_empty_generation(g->tok, g->first_stop_token, g->last_prompt_token);
 
     /* Report throughput to stderr (does not interfere with callback output) */
     double tok_per_sec = 0.0;

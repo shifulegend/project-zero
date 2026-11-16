@@ -3,7 +3,14 @@
 > Canonical, append-at-top (newest first). Read this at the start of every session.
 > Add an entry **immediately** when a mistake, false assumption, regression, or avoidable
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
-> Last updated: 2026-11-12.
+> Last updated: 2026-11-16.
+
+### 2026-11-16 — BitNet answered nothing: its GGUF template ends the prompt in EOS, and nothing said so
+- What: `pz --model bitnet-b1.58-2B-4T-i2_s.gguf --prompt ...` exited 0 with no output (API: HTTP 200, empty `content`, `finish_reason: "stop"`, 0 completion tokens).
+- Cause (proved with `--verbose`): the GGUF template renders `<|begin_of_text|>Human: ...\n\nBITNETAssistant: <|end_of_text|>` (it ignores `add_generation_prompt` and appends `eos_token`). The prompt ended in token 128001; the model's top prediction there was 128000 (BOS, logit 15.1, next best -1.1), and BOS is in the chat stop set (`tokenizer_chat_stops_new`), so the first sampled token ended the turn.
+- Why it stayed hidden: the 2026-10-19 entry fixed it only behind `--chat-template-file docs/templates/bitnet-b1.58.jinja`, which (a) the user must know to pass, (b) is not in the release tarball or `install.sh` (installed users have no `docs/`), and (c) nothing diagnosed a template that ends in EOS or a 0-token reply.
+- Fix: `src/tokenizer/template_guard.c` matches the template by metadata (architecture `bitnet*` + `BITNETAssistant:` followed by `eos_token`) and substitutes the built-in corrected template (precedence: `--chat-template-file` > built-in > GGUF; a request's own template still wins). Two stderr warnings: a rendered prompt ending in EOS, and a chat generation that ends with 0 tokens (first token id/text and last prompt token). Exit code and HTTP status are unchanged (llama.cpp and Ollama also answer an empty message with a stop reason; clients rely on that). `tests/test_template_guard.c`; the embedded text is checked against the docs file.
+- Lesson: a workaround that lives in a repo-only file is not a fix for installed users; a silent success with an empty result needs a diagnostic naming the evidence.
 
 ### 2026-11-12 — A fixed `sleep` made the concurrency test fail on a fast CI runner
 - Cause: `tests/e2e_api_concurrency.sh` started a 150-token JSON-mode request, slept 0.5 s and expected a second request to get 429. On a fast runner the first request finished before the sleep ended, so the second got 200 (master CI, 2026-11-12, first run after #65 added the script to CI). The product code was unchanged.

@@ -86,8 +86,8 @@ Tested end to end:
 | Mamba-130m | F16 GGUF |
 
 Other models with these architectures load the same way. Qwen3-MoE loads but has not been tested
-yet. The official BitNet GGUF ships a broken chat template; pass
-`--chat-template-file docs/templates/bitnet-b1.58.jinja`.
+yet. The official BitNet GGUF's own chat template makes the model generate nothing, so `pz` uses a
+built-in corrected one for it; `--chat-template-file` replaces either.
 
 ## Features
 

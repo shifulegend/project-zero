@@ -31,8 +31,10 @@ Adapter for the configurability rules in `docs/ai/engineering-rules.md`.
 - Phase 30 search: `--mcts N --mcts-expand --mcts-depth --mcts-step-tokens --mcts-c --mcts-temperature
   --mcts-delim --mcts-max`, judge `--prm <gguf> --prm-format --prm-good --prm-bad` (no hardcoded judge).
 - DRAM bandwidth is cached per host (`core/bw_cache`: `$PZ_CACHE_DIR|$XDG_CACHE_HOME/project-zero|~/.cache/project-zero/membw`, 30 days); `--calibrate` or `PZ_BW_REPROBE=1` re-measures.
-- `--chat-template-file <f>` replaces a GGUF's `tokenizer.chat_template` (CLI + `--server`);
-  `docs/templates/bitnet-b1.58.jinja` fixes the official BitNet GGUF's broken template.
+- `--chat-template-file <f>` replaces a GGUF's `tokenizer.chat_template` (CLI + `--server`). The
+  official BitNet GGUF's template ends the prompt in EOS (0 tokens generated); `tokenizer/template_guard.c`
+  swaps in a built-in copy of `docs/templates/bitnet-b1.58.jinja` (matched by arch + template text;
+  precedence: per-request > `--chat-template-file` > built-in > GGUF; `/v1/config` source `builtin`).
 - Calibration (`~/.project-zero/calibration.bin`, v3) only overrides the auto SIMD tier when a
   forced tier is clearly faster; bump `TN_CALIB_VERSION` whenever selection logic changes.
 - GGUF conventions follow llama.cpp: RoPE layout from the architecture (`--rope-layout` to

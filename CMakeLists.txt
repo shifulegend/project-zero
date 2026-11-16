@@ -218,6 +218,7 @@ set(THREADING_SOURCES
 
 set(TOKENIZER_SOURCES
     src/tokenizer/chat_template.cpp
+    src/tokenizer/template_guard.c
     src/tokenizer/tokenizer_load.c
     src/tokenizer/tokenizer_encode.c
     src/tokenizer/pretokenize.c

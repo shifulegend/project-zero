@@ -1,7 +1,11 @@
 # Change Trace — project-zero
 
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
-> Update after each meaningful sub-step. Last updated: 2026-11-11.
+> Update after each meaningful sub-step. Last updated: 2026-11-16.
+
+### 2026-11-16 — BitNet silent-output fix: built-in corrected template and empty-reply diagnostics
+- `src/tokenizer/template_guard.c` + `include/tokenizer/template_guard.h` (new; also in `CMakeLists.txt`): known-broken template detection and the corrected BitNet template; `src/cli/main.c` applies it after `--chat-template-file` and publishes `chat_template.source = "builtin"`; `src/transformer/gen_session.c` warns when the rendered prompt ends in EOS and when a chat generation ends with 0 tokens (`empty_stop` fields in `GenSession`).
+- Tests: `tests/test_template_guard.c`. Docs: README, `docs/WEBUI_GUIDE.md`, `--chat-template-file` help, CHANGELOG, mistakes, decision-log.
 
 ### 2026-11-11 — Free the old text when a `content` key repeats
 - `src/api/json_parse.c` releases the previous `msg->content` before parsing a repeated `content` key (last key wins); `tests/test_api_server.c` adds five duplicate-key cases that run under ASan/LSan in `make test`.

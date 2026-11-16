@@ -1,7 +1,13 @@
 # Decision Log — project-zero
 
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
-> Read at session start. Last updated: 2026-11-11.
+> Read at session start. Last updated: 2026-11-16.
+
+### 2026-11-16 — Known-broken GGUF chat templates are corrected by metadata, with a built-in copy
+
+- Context: the official BitNet b1.58 2B-4T template made the model generate nothing; the only remedy was a repo-relative `--chat-template-file` path that installed users do not have.
+- Decision: `template_guard.c` embeds the corrected template and applies it only when `general.architecture` starts with `bitnet` and the GGUF template contains `BITNETAssistant:` followed by `eos_token` (never by file name). Precedence: per-request template > `--chat-template-file` > built-in > GGUF. A generic warning (prompt ends in EOS) covers other models without rewriting their templates. Exit code and HTTP status for an empty reply stay as they are, matching llama.cpp and Ollama; the diagnostic carries the evidence.
+- Alternatives rejected: shipping `docs/templates/` in the tarball (the broken default would remain); a non-zero exit on 0 tokens (empty replies are valid for stop-sequence and base-model cases and would break clients).
 
 ### 2026-11-11 — GitHub master is the single source of truth; protected; sessions sync first
 

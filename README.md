@@ -9,6 +9,11 @@ mixture-of-experts models (DeepSeek-V2, Qwen3-MoE) and ordinary GGUF models, and
 OpenAI-compatible API with a built-in web chat.
 
 <p align="center">
+  <a href="docs/launch.mp4"><img src="docs/launch.jpg" width="720" alt="Project Zero in 20 seconds: an LLM on a CPU, no GPU (click to play)"></a><br>
+  <sub>Project Zero in 20 seconds. BitNet b1.58 2B at 25.2 tok/s and SmolLM2-135M at 151.8 tok/s on a 4-vCPU Xeon, 128 tokens, best of 3 (<a href="benchmark_results/launch_video_2026-11-16/README.md">details</a>).</sub>
+</p>
+
+<p align="center">
   <img src="docs/demo_bitnet.gif" width="720" alt="pz answering a question with BitNet b1.58-2B-4T on a 4-vCPU Xeon, 15 tok/s">
 </p>
 

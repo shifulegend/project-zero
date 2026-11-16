@@ -64,6 +64,10 @@ typedef struct {
     int prev_token, next;
     int tokens_generated;
     GenFinishReason finish;
+    /* Set when the very first sampled token ended the turn (0 tokens generated):
+     * gen_session_end reports it (2026-11-16, BitNet template bug). */
+    int empty_stop;
+    int first_stop_token, last_prompt_token;
     int64_t gen_start_us;
     int started;                   /* begin succeeded (end must flush/save) */
     int done;

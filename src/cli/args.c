@@ -33,7 +33,8 @@ void print_usage(const char *prog_name) {
     printf("                      -1 = all generated tokens, 0 = penalties off)\n");
     printf("  --system-prompt <s> System prompt for chat-template models (default: none)\n");
     printf("  --chat-template-file <f>  Jinja chat template replacing the model's own\n");
-    printf("                      (e.g. docs/templates/bitnet-b1.58.jinja); default: GGUF\n");
+    printf("                      (e.g. docs/templates/bitnet-b1.58.jinja); default: the GGUF's own\n");
+    printf("                      (BitNet's, which generates nothing, is replaced by a built-in)\n");
     printf("  --no-request-template  Server: ignore a request's \"chat_template\" field\n");
     printf("  --no-config-write   Server: the web UI may not save defaults to the config file\n");
     printf("  --stop <text>       Stop generation at this string; repeatable (max %d)\n", GEN_MAX_STOP);

@@ -43,11 +43,12 @@ after a change).
     tokens per step, exploration *c* and step temperature. Steps are scored by the server's `--prm`
     judge when one is loaded (named under the sliders), else by the model's own token probability.
     The reply arrives once the search has chosen a path.
-  - *Chat template*: the model's Jinja template as the server uses it (source: `gguf` or `file`).
+  - *Chat template*: the model's Jinja template as the server uses it (source: `gguf`, `file` or `builtin`).
     Edit it and every request carries your copy as `chat_template`; *Restore model template*
-    undoes it. Needed for GGUFs that ship a broken template (official BitNet b1.58 2B-4T — start
-    from `docs/templates/bitnet-b1.58.jinja`, or launch with `--chat-template-file`). Read-only
-    when the server runs `--no-request-template`.
+    undoes it. The official BitNet b1.58 2B-4T GGUF ships a template that makes the model answer
+    nothing; `pz` replaces it with a built-in one (source `builtin`), and you can start from
+    `docs/templates/bitnet-b1.58.jinja` or launch with `--chat-template-file` for any other
+    template. Read-only when the server runs `--no-request-template`.
   Your changes are remembered in this browser; the badge on **Settings** counts how many differ
   from the server defaults, and **Reset to server defaults** discards them.
   - *Server defaults* (Phase 40.3): which server values are not at their built-in default and

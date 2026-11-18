@@ -111,7 +111,9 @@ class RunDir:
     def create(self):
         for d in (self.path, self.raw, self.shots):
             d.mkdir(parents=True, exist_ok=True)
-        (self.path / "command.txt").write_text(shlex.join(["python3"] + [str(a) for a in self.argv]) + "\n")
+        cmdfile = self.path / "command.txt"          # a resumed run appends its command; the original stays
+        with open(cmdfile, "a") as f:
+            f.write(shlex.join(["python3"] + [str(a) for a in self.argv]) + "\n")
         self._log = open(self.path / "run.log", "a")
         return self
 

@@ -132,3 +132,6 @@ bitnet-2b,pz,4,3,22.86,500,25.63,1768,356,0,benchmark_results/h2h_20261118-05314
 bitnet-2b,pz-int4,4,3,26.57,500,29.15,1777,294,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/bitnet-2b__pz-int4/t4/run3.txt
 bitnet-2b,bitnetcpp,4,3,19.85,500,26.74,1508,384,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/bitnet-2b__bitnetcpp/t4/run3.txt
 bitnet-2b-iq2bn,ik,1,1,6.08,501,107.28,1422,81,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/bitnet-2b-iq2bn__ik/t1/run1.txt
+bitnet-2b-iq2bn,ik,2,1,11.21,501,46.81,1422,198,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/bitnet-2b-iq2bn__ik/t2/run1.txt
+bitnet-2b-iq2bn,ik,3,1,16.05,501,33.71,1422,290,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/bitnet-2b-iq2bn__ik/t3/run1.txt
+bitnet-2b-iq2bn,ik,4,1,20.81,501,26.30,1422,377,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/bitnet-2b-iq2bn__ik/t4/run1.txt

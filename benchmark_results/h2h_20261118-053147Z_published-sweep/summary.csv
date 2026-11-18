@@ -108,3 +108,11 @@ smollm2-135m,pz,3,3,72.35,500,7.41,321,288,0,benchmark_results/h2h_20261118-0531
 smollm2-135m,pz,4,3,93.65,500,5.73,321,379,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/smollm2-135m__pz/t4/run3.txt,PASS
 smollm2-135m,pz-int4,4,3,94.17,500,6.15,341,350,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/smollm2-135m__pz-int4/t4/run3.txt,APPROX
 smollm2-1.7b-q4km,pz-int4,1,1,6.91,500,79.07,2617,99,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/smollm2-1.7b-q4km__pz-int4/t1/run1.txt,APPROX
+smollm2-1.7b-q4km,pz,1,1,6.45,500,82.65,2449,99,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/smollm2-1.7b-q4km__pz/t1/run1.txt,PASS
+smollm2-1.7b-q4km,pz,2,1,10.91,500,49.36,2449,193,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/smollm2-1.7b-q4km__pz/t2/run1.txt,PASS
+smollm2-1.7b-q4km,pz-int4,2,1,11.4,500,49.08,2617,189,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/smollm2-1.7b-q4km__pz-int4/t2/run1.txt,APPROX
+smollm2-1.7b-q4km,pz,3,1,14.94,500,36.56,2449,283,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/smollm2-1.7b-q4km__pz/t3/run1.txt,PASS
+smollm2-1.7b-q4km,pz-int4,3,1,16.56,500,34.71,2617,276,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/smollm2-1.7b-q4km__pz-int4/t3/run1.txt,APPROX
+smollm2-1.7b-q4km,pz,4,1,18.36,500,29.95,2449,368,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/smollm2-1.7b-q4km__pz/t4/run1.txt,PASS
+smollm2-1.7b-q4km,pz-int4,4,1,18.36,500,31.66,2617,356,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/smollm2-1.7b-q4km__pz-int4/t4/run1.txt,APPROX
+smollm2-1.7b-q4km,pz,1,2,6.4,500,83.43,2449,99,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/smollm2-1.7b-q4km__pz/t1/run2.txt,PASS

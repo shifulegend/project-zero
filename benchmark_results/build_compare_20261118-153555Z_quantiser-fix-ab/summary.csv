@@ -7,3 +7,15 @@ bitnet-2b,new,4,3,21.32,128,9.21,1768,325,0,benchmark_results/build_compare_2026
 bitnet-2b,old,4,3,19.15,128,9.80,1768,329,0,benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab/raw/bitnet-2b__old/t4/run3.txt,INVALID
 bitnet-2b,old,4,4,19.31,128,9.92,1768,320,0,benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab/raw/bitnet-2b__old/t4/run4.txt,INVALID
 bitnet-2b,new,4,4,20.72,128,9.27,1768,323,0,benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab/raw/bitnet-2b__new/t4/run4.txt,REF
+bitnet-2b,new,4,5,19.08,128,9.99,1768,318,0,benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab/raw/bitnet-2b__new/t4/run5.txt,REF
+bitnet-2b,old,4,5,19.85,128,9.53,1768,327,0,benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab/raw/bitnet-2b__old/t4/run5.txt,INVALID
+smollm2-135m,new,4,1,81.3,128,1.99,321,377,0,benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab/raw/smollm2-135m__new/t4/run1.txt,REF
+smollm2-135m,old,4,1,76.83,128,2.11,321,362,0,benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab/raw/smollm2-135m__old/t4/run1.txt,PASS
+smollm2-135m,old,4,2,81.58,128,1.99,321,373,0,benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab/raw/smollm2-135m__old/t4/run2.txt,PASS
+smollm2-135m,new,4,2,90.81,128,1.86,321,365,0,benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab/raw/smollm2-135m__new/t4/run2.txt,REF
+smollm2-135m,new,4,3,77.98,128,2.11,321,351,0,benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab/raw/smollm2-135m__new/t4/run3.txt,REF
+smollm2-135m,old,4,3,87.72,128,1.88,321,366,0,benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab/raw/smollm2-135m__old/t4/run3.txt,PASS
+smollm2-135m,old,4,4,83.48,128,1.98,321,365,0,benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab/raw/smollm2-135m__old/t4/run4.txt,PASS
+smollm2-135m,new,4,4,83.69,128,2.01,321,368,0,benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab/raw/smollm2-135m__new/t4/run4.txt,REF
+smollm2-135m,new,4,5,85.77,128,1.95,321,373,0,benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab/raw/smollm2-135m__new/t4/run5.txt,REF
+smollm2-135m,old,4,5,86.17,128,1.95,321,363,0,benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab/raw/smollm2-135m__old/t4/run5.txt,PASS

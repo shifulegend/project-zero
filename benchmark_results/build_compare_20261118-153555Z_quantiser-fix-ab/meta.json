@@ -1,0 +1,92 @@
+{
+  "kind": "build_compare",
+  "gate": {
+    "mode": "strict",
+    "tolerance_pct": 1.0,
+    "text_sha256": "8512a15e3523b0ce71f9eeeeede880e2fee9d7529730af792ba89ad41a839367",
+    "verdicts": {
+      "bitnet-2b/new": "REF",
+      "bitnet-2b/old": "INVALID",
+      "smollm2-135m/new": "REF",
+      "smollm2-135m/old": "PASS"
+    }
+  },
+  "binaries": {
+    "old": {
+      "path": "./pz",
+      "exists": true,
+      "sha256_16": "6d168520c55b51a9",
+      "size": 1523408,
+      "version": ""
+    },
+    "new": {
+      "path": "/home/user/pz-fix/pz",
+      "exists": true,
+      "sha256_16": "e73cd329a2c8e76f",
+      "size": 1515264,
+      "version": "Project Zero v0.2.0-22-g5b3bdac"
+    }
+  },
+  "reference": "new",
+  "models": [
+    "bitnet-2b",
+    "smollm2-135m"
+  ],
+  "threads": [
+    4
+  ],
+  "rounds": 5,
+  "tokens": 128,
+  "order": "interleaved",
+  "calibration": "off",
+  "summary": [
+    {
+      "model": "bitnet-2b",
+      "variant": "new",
+      "threads": 4,
+      "gate": "REF",
+      "n": 5,
+      "best": 21.48,
+      "mean": 20.592,
+      "stdev": 0.958498826290362,
+      "ratio": 1.0
+    },
+    {
+      "model": "bitnet-2b",
+      "variant": "old",
+      "threads": 4,
+      "gate": "INVALID",
+      "n": 5,
+      "best": 20.03,
+      "mean": 19.664,
+      "stdev": 0.40556133938037164,
+      "ratio": 0.954933954933955
+    },
+    {
+      "model": "smollm2-135m",
+      "variant": "new",
+      "threads": 4,
+      "gate": "REF",
+      "n": 5,
+      "best": 90.81,
+      "mean": 83.91,
+      "stdev": 4.82428751216177,
+      "ratio": 1.0
+    },
+    {
+      "model": "smollm2-135m",
+      "variant": "old",
+      "threads": 4,
+      "gate": "PASS",
+      "n": 5,
+      "best": 87.72,
+      "mean": 83.156,
+      "stdev": 4.257972522222285,
+      "ratio": 0.9910141818615184
+    }
+  ],
+  "check_isa": {},
+  "screenshots": [],
+  "finished": "2026-11-18T15:46:50Z",
+  "started": "2026-11-18T15:35:55Z"
+}

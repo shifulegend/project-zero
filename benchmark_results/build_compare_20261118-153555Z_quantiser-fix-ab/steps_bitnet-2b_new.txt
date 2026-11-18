@@ -1,0 +1,27 @@
+step=1 name="Tokenization" total_ms=0.365041 count=1 avg_ms=0.365041
+step=2 name="BOS injection / chat template" total_ms=0.000086 count=1 avg_ms=0.000086
+step=3 name="Token embedding" total_ms=0.246519 count=96 avg_ms=0.002568
+step=4 name="Pre-attention RMSNorm" total_ms=6.571847 count=2880 avg_ms=0.002282
+step=5 name="Q projection" total_ms=473.896261 count=2880 avg_ms=0.164547
+step=6 name="KV-A compression" total_ms=0.000000 count=0 avg_ms=0.000000
+step=7 name="KV-A latent norm" total_ms=0.000000 count=0 avg_ms=0.000000
+step=8 name="KV-B expansion" total_ms=0.000000 count=0 avg_ms=0.000000
+step=9 name="YaRN RoPE" total_ms=38.988298 count=2880 avg_ms=0.013538
+step=10 name="KV cache write" total_ms=7.277731 count=2880 avg_ms=0.002527
+step=11 name="Attention score / softmax" total_ms=119.291871 count=2880 avg_ms=0.041421
+step=12 name="Post-attention output / residual" total_ms=258.808854 count=2880 avg_ms=0.089864
+step=13 name="Pre-FFN RMSNorm" total_ms=4.901485 count=2880 avg_ms=0.001702
+step=14 name="Dense FFN" total_ms=1704.310243 count=2880 avg_ms=0.591774
+step=15 name="MoE routing" total_ms=0.000000 count=0 avg_ms=0.000000
+step=16 name="MoE routed experts" total_ms=0.000000 count=0 avg_ms=0.000000
+step=17 name="Shared expert" total_ms=0.000000 count=0 avg_ms=0.000000
+step=18 name="Final RMSNorm" total_ms=0.185802 count=96 avg_ms=0.001935
+step=19 name="LM head" total_ms=2446.311451 count=96 avg_ms=25.482411
+step=20 name="Greedy sampling" total_ms=18.811293 count=64 avg_ms=0.293926
+step=21 name="EOS check" total_ms=0.023160 count=64 avg_ms=0.000362
+step=22 name="DeltaNet conv1d" total_ms=0.000000 count=0 avg_ms=0.000000
+step=23 name="DeltaNet delta-rule recurrence" total_ms=0.000000 count=0 avg_ms=0.000000
+step=24 name="Speculative: draft phase" total_ms=0.000000 count=0 avg_ms=0.000000
+step=25 name="Speculative: verify batch" total_ms=0.000000 count=0 avg_ms=0.000000
+step=26 name="Speculative: accept/reject" total_ms=0.000000 count=0 avg_ms=0.000000
+step=27 name="Speculative: commit" total_ms=0.000000 count=0 avg_ms=0.000000

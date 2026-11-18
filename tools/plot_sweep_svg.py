@@ -115,8 +115,32 @@ def find_chromium(explicit):
     if explicit:
         return explicit
     root = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "/opt/pw-browsers")
-    hits = sorted(glob.glob(os.path.join(root, "chromium-*", "chrome-linux", "chrome")))
+    hits = sorted(glob.glob(os.path.join(root, "chromium-*", "chrome-linux*", "chrome")))
+    if not hits and os.access(os.path.join(root, "chromium"), os.X_OK) and os.path.isfile(os.path.join(root, "chromium")):
+        hits = [os.path.join(root, "chromium")]
     return hits[-1] if hits else None
+
+
+def svg_to_png(svg, png_path, chrome):
+    """Rasterise the SVG with headless Chromium (2x) and crop to the SVG box."""
+    w = svg.split('width="', 1)[1].split('"', 1)[0]
+    h = svg.split('height="', 1)[1].split('"', 1)[0]
+    # Headless window sizes include browser chrome on some versions, so
+    # render into a taller window (2x scale) and crop to the SVG box.
+    html = png_path + ".html"
+    with open(html, "w") as f:
+        f.write('<html><body style="margin:0;background:%s">%s</body></html>' % (BG, svg))
+    try:
+        subprocess.run([chrome, "--headless", "--no-sandbox", "--disable-gpu", "--hide-scrollbars",
+                        "--force-device-scale-factor=2", f"--window-size={w},{int(h) + 200}",
+                        f"--screenshot={os.path.abspath(png_path)}", "file://" + os.path.abspath(html)],
+                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    finally:
+        os.remove(html)
+    from PIL import Image
+    im = Image.open(png_path)
+    im.crop((0, 0, int(w) * 2, int(h) * 2)).save(png_path)
+    return png_path
 
 
 def main():
@@ -145,25 +169,7 @@ def main():
         if not chrome:
             print("no chromium found; skipping PNG")
             return
-        w = svg.split('width="', 1)[1].split('"', 1)[0]
-        h = svg.split('height="', 1)[1].split('"', 1)[0]
-        png_path = os.path.join(a.sweep, a.out + ".png")
-        # Headless window sizes include browser chrome on some versions, so
-        # render into a taller window (2x scale) and crop to the SVG box.
-        html = os.path.join(a.sweep, "." + a.out + ".html")
-        with open(html, "w") as f:
-            f.write('<html><body style="margin:0;background:%s">%s</body></html>' % (BG, svg))
-        try:
-            subprocess.run([chrome, "--headless", "--no-sandbox", "--disable-gpu", "--hide-scrollbars",
-                            "--force-device-scale-factor=2", f"--window-size={w},{int(h) + 200}",
-                            f"--screenshot={os.path.abspath(png_path)}", "file://" + os.path.abspath(html)],
-                           check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        finally:
-            os.remove(html)
-        from PIL import Image
-        im = Image.open(png_path)
-        im.crop((0, 0, int(w) * 2, int(h) * 2)).save(png_path)
-        print("wrote", png_path)
+        print("wrote", svg_to_png(svg, os.path.join(a.sweep, a.out + ".png"), chrome))
 
 
 if __name__ == "__main__":

@@ -24,13 +24,16 @@ Selecting what runs
   --pz-extra "--kv-type i8 --simd vnni"                (extra pz flags for every pz variant)
   --fixed-length / --chat     fixed-length (default): raw prompt, EOS ignored, exactly --tokens generated
   --order interleaved|blocks  --cooldown S (default 5)   --resume (continue an interrupted run folder)
-  --screenshots none|summary|all   --shot-threads N   --shot-tokens N (default 64)
+  --screenshots none|summary|all   --shot-threads N   --shot-tokens N (default 0 = the model's full length)
+  --preset published   everything the published sweeps contained: all engines, all non-heavy models, threads 1-4,
+                       500 tokens, 3 rounds, 10 s cooldown, pz default + int4, a screenshot per run cell, chart
 Getting things (default never: the plan says what is missing)
   --engine-fetch never|missing|always   --model-fetch never|missing|always   --ref pinned|latest|<sha>
   --engine-dir DIR (default $PZ_BENCH_ENGINE_DIR or ~/ext)   --models-dir DIR (default models)
 
 Examples
   python3 tools/bench/h2h_bench.py --dry-run
+  python3 tools/bench/h2h_bench.py --preset published --engine-fetch missing --model-fetch missing
   python3 tools/bench/h2h_bench.py --engines pz --models smollm2-135m --threads 4 --rounds 3
   python3 tools/bench/h2h_bench.py --engines all --models all --threads 1-4 --engine-fetch missing --model-fetch missing
   python3 tools/bench/h2h_bench.py --engines pz --models bitnet-2b --pz-classifiers default,int4 --label classifiers
@@ -44,6 +47,13 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import benchlib as bl  # noqa: E402
 import hardware_profile as hp  # noqa: E402
 import setup_engines as se  # noqa: E402
+import chart  # noqa: E402
+
+# The bare minimum of a published sweep (2026-10-19 / 10-29): every engine on every model, 1..4 threads,
+# 500 tokens, 3 rounds with a 10 s cooldown, pz default plus INT4, a live-terminal screenshot of every run
+# cell at the full length, and the throughput-vs-threads chart. Heavy models (DeepSeek) stay opt-in.
+PRESETS = {"published": {"engines": "all", "models": "all-light", "threads": "1-4", "rounds": 3, "tokens": 500,
+                         "cooldown": 10.0, "pz_classifiers": "default,int4", "screenshots": "all"}}
 
 PZ_CLASSIFIERS = ["default", "auto", "bf16", "int8", "int4", "auto-fast"]
 
@@ -87,7 +97,7 @@ def build_variants(a, run, env):
 def select_models(a):
     models, missing = [], []
     allm = bl.load_models()
-    if a.models == "auto":
+    if a.models in ("auto", "all-light"):
         wanted = [k for k, m in allm.items() if not m.get("heavy")]
     else:
         wanted = bl.parse_list(a.models, list(allm), "model")
@@ -97,12 +107,14 @@ def select_models(a):
             p = se.ensure_model(k, a.models_dir, a.model_fetch, a.engine_dir, dry=a.dry_run)
         if p or (a.dry_run and a.model_fetch != "never"):
             models.append((k, allm[k], p or pathlib.Path(a.models_dir) / allm[k]["file"]))
-        elif a.models != "auto":
+        elif a.models not in ("auto", "all-light"):
             missing.append(("model", k))
     return models, missing
 
 
-def estimate_minutes(variants, models, threads, rounds, tokens, cooldown):
+def estimate_minutes(variants, models, threads, rounds, tokens, cooldown, shots="none", shot_tokens=0):
+    """Rough wall time: ~12 tok/s decode plus ~6 s load per run, the cooldown after each, and one more
+    run (no cooldown) per screenshot."""
     secs = 0
     for key, info, p in models:
         ntok = tokens or info["tokens"]
@@ -110,6 +122,8 @@ def estimate_minutes(variants, models, threads, rounds, tokens, cooldown):
             if v["cmd"](key, info, p, ntok, threads[0], True) is None:
                 continue
             secs += len(threads) * rounds * (ntok / 12.0 + 6 + cooldown)
+            if shots != "none":
+                secs += (len(threads) if shots == "all" else 1) * ((shot_tokens or ntok) / 12.0 + 8)
     return secs / 60.0
 
 
@@ -130,14 +144,20 @@ def main():
     ap.add_argument("--pz-extra", default="")
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--shot-threads", type=int, default=0)
-    ap.add_argument("--shot-tokens", type=int, default=64)
+    ap.add_argument("--shot-tokens", type=int, default=0)
     ap.add_argument("--engine-fetch", choices=["never", "missing", "always"], default="never")
     ap.add_argument("--model-fetch", choices=["never", "missing", "always"], default="never")
     ap.add_argument("--ref", default="pinned")
     ap.add_argument("--engine-dir", default=str(bl.default_engine_dir()))
     ap.add_argument("--models-dir", default="models")
-    ap.add_argument("--jobs", type=int, default=0)
+    ap.add_argument("--jobs", type=int, default=0, help="parallel jobs for building engines only; "
+                    "measured runs are always one process at a time")
+    ap.add_argument("--preset", choices=["published"], help="published: the full published sweep (see PRESETS)")
     a = ap.parse_args()
+    if a.preset:
+        for k, v in PRESETS[a.preset].items():
+            if getattr(a, k) == ap.get_default(k):      # an explicit flag still wins
+                setattr(a, k, v)
 
     threads = bl.parse_threads(a.threads)
     run = bl.RunDir("h2h", a.out, a.label)
@@ -146,7 +166,7 @@ def main():
     models, missing_m = select_models(a)
     missing += missing_m
 
-    est = estimate_minutes(variants, models, threads, a.rounds, a.tokens, a.cooldown) if models else 0
+    est = estimate_minutes(variants, models, threads, a.rounds, a.tokens, a.cooldown, a.screenshots, a.shot_tokens) if models else 0
     print(f"PLAN h2h -> {run.rel()}")
     print(f"  variants: {', '.join(v['label'] for v in variants) or '(none)'}")
     print(f"  models:   {', '.join(k for k, _, _ in models) or '(none)'}")
@@ -197,6 +217,9 @@ def main():
             shots += bl.take_screenshots(run, variants, models, t, a.shot_tokens, a.screenshots, a.shot_rows)
         md += ["", "## Screenshots", "", bl.md_table(["model", "variant", "threads", "screenshot"],
                [[s["model"], s["variant"], s["threads"], s["screenshot"]] for s in shots])]
+    charts = chart.make_chart(run.path, rounds=a.rounds)
+    if charts:
+        md += ["", "## Chart", "", *(f"![throughput vs threads]({c.name})" for c in charts if c.suffix == ".png")]
     run.write("summary.md", "\n".join(md) + "\n")
     print("\n" + bl.summary_md(summary, with_ratio=True))
     bl.finish(run, {"kind": "h2h", "variants": [v["label"] for v in variants], "models": [k for k, _, _ in models],

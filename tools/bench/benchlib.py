@@ -500,11 +500,11 @@ def take_screenshots(run, variants, models, shot_threads, tokens, mode, rows_ove
     out = []
     for key, info, mpath in models:
         for v in variants:
-            cmd = v["cmd"](key, info, mpath, tokens, shot_threads, True)
+            cmd = v["cmd"](key, info, mpath, tokens or info.get("tokens", 128), shot_threads, True)
             if cmd is None:
                 continue
             png, text = screenshot(run, f"{key}__{v['label']}_t{shot_threads}", cmd, v.get("env") or dict(os.environ),
-                                   rows=rows_override or 100, timeout_s=1800)
+                                   rows=rows_override or 130, timeout_s=1800)
             tps, ntok = gen_toks(text)
             out.append({"model": key, "variant": v["label"], "threads": shot_threads, "tok_s_in_screenshot_run": tps,
                         "screenshot": run.rel(png) if png else None})

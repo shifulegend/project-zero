@@ -127,5 +127,39 @@ class Matrix(unittest.TestCase):
                 run.close()
 
 
+class Chart(unittest.TestCase):
+    def test_chart_groups_panels_and_puts_pz_first(self):
+        import chart
+        with tempfile.TemporaryDirectory() as d:
+            d = pathlib.Path(d)
+            rows = [("bitnet-2b", "bitnetcpp", 1, 5.0), ("bitnet-2b", "pz", 1, 4.0), ("bitnet-2b", "pz", 2, 8.0),
+                    ("bitnet-2b-iq2bn", "ik", 1, 7.0), ("bitnet-2b-iq2bn", "ik", 2, 12.0), ("bitnet-2b", "bitnetcpp", 2, 9.0)]
+            with open(d / "summary.csv", "w") as f:
+                f.write(",".join(bl.SUMMARY_HEADER) + "\n")
+                for m, v, t, x in rows:
+                    f.write(f"{m},{v},{t},1,{x},500,10,300,100,0,log\n")
+            out = chart.make_chart(d, "T", "S")
+            svg = (d / "throughput_vs_threads.svg").read_text()
+            self.assertIn(out[0].name, "throughput_vs_threads.svg")
+            self.assertEqual(svg.count("IQ2_BN"), 1)               # iq2bn model drawn inside the BitNet panel
+            self.assertIn("#2a78d6", svg)                          # Project Zero is first, so it gets the first colour
+            self.assertIn("t=2", svg)
+
+
+class Preset(unittest.TestCase):
+    def test_published_preset_is_the_full_sweep(self):
+        import h2h_bench as h
+        p = h.PRESETS["published"]
+        self.assertEqual(bl.parse_threads(p["threads"]), [1, 2, 3, 4])
+        self.assertEqual((p["tokens"], p["rounds"], p["screenshots"]), (500, 3, "all"))
+        self.assertIn("int4", p["pz_classifiers"])
+
+    def test_measurements_never_overlap(self):
+        # one process at a time: run_cmd waits for its child; nothing in the matrix uses threads/pools.
+        src = (pathlib.Path(__file__).parent / "benchlib.py").read_text()
+        for bad in ("ThreadPool", "ProcessPool", "concurrent.futures", "multiprocessing", "asyncio"):
+            self.assertNotIn(bad, src)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

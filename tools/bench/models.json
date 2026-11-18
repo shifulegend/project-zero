@@ -4,46 +4,100 @@
     "file": "SmolLM2-135M-Instruct-f16.gguf",
     "url": "https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-f16.gguf",
     "size": 270885952,
-    "engines": ["pz", "llamacpp", "ik"],
+    "engines": [
+      "pz",
+      "llamacpp",
+      "ik"
+    ],
     "tokens": 500,
     "extra": {},
-    "sha256": ""
+    "sha256": "",
+    "title": "SmolLM2-135M F16"
   },
   "smollm2-1.7b-q4km": {
     "file": "SmolLM2-1.7B-Instruct-Q4_K_M.gguf",
     "url": "https://huggingface.co/bartowski/SmolLM2-1.7B-Instruct-GGUF/resolve/main/SmolLM2-1.7B-Instruct-Q4_K_M.gguf",
     "size": 1055609824,
-    "engines": ["pz", "llamacpp", "ik"],
+    "engines": [
+      "pz",
+      "llamacpp",
+      "ik"
+    ],
     "tokens": 500,
-    "extra": {"ik": ["-rtr"]},
-    "sha256": ""
+    "extra": {
+      "ik": [
+        "-rtr"
+      ]
+    },
+    "sha256": "",
+    "title": "SmolLM2-1.7B Q4_K_M"
   },
   "bitnet-2b": {
     "file": "bitnet-b1.58-2B-4T-i2_s.gguf",
     "url": "https://huggingface.co/microsoft/bitnet-b1.58-2B-4T-gguf/resolve/main/ggml-model-i2_s.gguf",
     "size": 1187801280,
-    "engines": ["pz", "bitnetcpp"],
+    "engines": [
+      "pz",
+      "bitnetcpp"
+    ],
     "tokens": 500,
     "extra": {},
-    "sha256": ""
+    "sha256": "",
+    "title": "BitNet b1.58 2B (ik_llama.cpp: IQ2_BN)"
   },
   "bitnet-2b-iq2bn": {
     "file": "bitnet-b1.58-2B-4T-iq2_bn.gguf",
     "derived_from": "bitnet-2b",
     "convert": "ik llama-quantize --allow-requantize <i2_s> <out> iq2_bn",
-    "engines": ["ik"],
+    "engines": [
+      "ik"
+    ],
     "tokens": 500,
-    "extra": {"ik": ["-rtr"]},
-    "sha256": ""
+    "extra": {
+      "ik": [
+        "-rtr"
+      ]
+    },
+    "sha256": "",
+    "title": "BitNet b1.58 2B (ik_llama.cpp: IQ2_BN)",
+    "chart_panel": "bitnet-2b"
+  },
+  "mamba-130m": {
+    "file": "mamba-130m-hf.f16.gguf",
+    "url": "https://huggingface.co/mradermacher/mamba-130m-hf-GGUF/resolve/main/mamba-130m-hf.f16.gguf",
+    "size": 261787232,
+    "engines": [
+      "pz",
+      "llamacpp"
+    ],
+    "tokens": 500,
+    "extra": {},
+    "sha256": "",
+    "title": "Mamba-130M F16"
   },
   "deepseek-v2-lite": {
     "file": "DeepSeek-V2-Lite-Chat.Q4_K_S.gguf",
     "url": "https://huggingface.co/mradermacher/DeepSeek-V2-Lite-Chat-GGUF/resolve/main/DeepSeek-V2-Lite-Chat.Q4_K_S.gguf",
     "size": 9533608704,
-    "engines": ["pz", "llamacpp", "ik"],
+    "engines": [
+      "pz",
+      "llamacpp",
+      "ik"
+    ],
     "tokens": 200,
     "heavy": true,
-    "extra": {"llamacpp": ["-c", "1024"], "ik": ["-rtr", "-c", "1024"]},
-    "sha256": ""
+    "extra": {
+      "llamacpp": [
+        "-c",
+        "1024"
+      ],
+      "ik": [
+        "-rtr",
+        "-c",
+        "1024"
+      ]
+    },
+    "sha256": "",
+    "title": "DeepSeek-V2-Lite Q4_K_S"
   }
 }

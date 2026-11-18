@@ -1,0 +1,108 @@
+{
+  "kind": "build_compare",
+  "binaries": {
+    "native": {
+      "path": "/home/user/project-zero/benchmark_results/build_compare_20261118-052242Z_native-vs-portable/bin/pz-native",
+      "exists": true,
+      "sha256_16": "6d168520c55b51a9",
+      "size": 1523408,
+      "version": "Project Zero v0.2.0-21-g864eeea-dirty"
+    },
+    "portable": {
+      "path": "/home/user/project-zero/benchmark_results/build_compare_20261118-052242Z_native-vs-portable/bin/pz-portable",
+      "exists": true,
+      "sha256_16": "a4626d097b272e49",
+      "size": 1695008,
+      "version": "Project Zero v0.2.0-21-g864eeea-dirty"
+    }
+  },
+  "reference": "native",
+  "models": [
+    "bitnet-2b",
+    "smollm2-135m"
+  ],
+  "threads": [
+    4
+  ],
+  "rounds": 5,
+  "tokens": 128,
+  "order": "interleaved",
+  "calibration": "isolated",
+  "summary": [
+    {
+      "model": "bitnet-2b",
+      "variant": "native",
+      "threads": 4,
+      "n": 5,
+      "best": 23.69,
+      "mean": 22.814,
+      "stdev": 0.6942838036422861,
+      "ratio": 1.0
+    },
+    {
+      "model": "bitnet-2b",
+      "variant": "portable",
+      "threads": 4,
+      "n": 5,
+      "best": 22.59,
+      "mean": 22.278,
+      "stdev": 0.3057286378473566,
+      "ratio": 0.9765056544227229
+    },
+    {
+      "model": "smollm2-135m",
+      "variant": "native",
+      "threads": 4,
+      "n": 5,
+      "best": 120.16,
+      "mean": 113.054,
+      "stdev": 4.671796228432913,
+      "ratio": 1.0
+    },
+    {
+      "model": "smollm2-135m",
+      "variant": "portable",
+      "threads": 4,
+      "n": 5,
+      "best": 105.28,
+      "mean": 100.292,
+      "stdev": 5.405309426850601,
+      "ratio": 0.8871158915208661
+    }
+  ],
+  "check_isa": {
+    "portable": 0
+  },
+  "screenshots": [
+    {
+      "model": "bitnet-2b",
+      "variant": "native",
+      "threads": 4,
+      "tok_s_in_screenshot_run": 23.5,
+      "screenshot": "benchmark_results/build_compare_20261118-052242Z_native-vs-portable/screenshots/20261118-052640Z_bitnet-2b__native_t4.png"
+    },
+    {
+      "model": "bitnet-2b",
+      "variant": "portable",
+      "threads": 4,
+      "tok_s_in_screenshot_run": 24.54,
+      "screenshot": "benchmark_results/build_compare_20261118-052242Z_native-vs-portable/screenshots/20261118-052646Z_bitnet-2b__portable_t4.png"
+    },
+    {
+      "model": "smollm2-135m",
+      "variant": "native",
+      "threads": 4,
+      "tok_s_in_screenshot_run": 112.9,
+      "screenshot": "benchmark_results/build_compare_20261118-052242Z_native-vs-portable/screenshots/20261118-052652Z_smollm2-135m__native_t4.png"
+    },
+    {
+      "model": "smollm2-135m",
+      "variant": "portable",
+      "threads": 4,
+      "tok_s_in_screenshot_run": 87.81,
+      "screenshot": "benchmark_results/build_compare_20261118-052242Z_native-vs-portable/screenshots/20261118-052655Z_smollm2-135m__portable_t4.png"
+    }
+  ],
+  "finished": "2026-11-18T05:26:57Z",
+  "started": "2026-11-18T05:22:42Z"
+}

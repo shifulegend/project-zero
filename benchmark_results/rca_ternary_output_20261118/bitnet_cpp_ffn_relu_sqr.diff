@@ -1,0 +1,11 @@
+--- /tmp/bitnet_graph_orig.cpp	2026-11-18 09:28:32.126328631 +0000
++++ models/bitnet.cpp	2026-11-18 09:28:32.128433813 +0000
+@@ -130,7 +130,7 @@
+                 model.layers[il].ffn_gate, NULL, model.layers[il].ffn_gate_s,
+                 NULL,                      NULL, NULL,
+                 NULL,
+-                LLM_FFN_SILU, LLM_FFN_PAR, il);
++                LLM_FFN_RELU_SQR, LLM_FFN_PAR, il);
+         cb(cur, "ffn_sub_out", il);
+ 
+         cur = build_norm(cur,

@@ -1,0 +1,4 @@
+smollm2-135m: models/SmolLM2-135M-Instruct-f16.gguf 270885952 bytes
+smollm2-1.7b-q4km: models/SmolLM2-1.7B-Instruct-Q4_K_M.gguf 1055609824 bytes
+bitnet-2b: models/bitnet-b1.58-2B-4T-i2_s.gguf 1187801280 bytes
+bitnet-2b-iq2bn: models/bitnet-b1.58-2B-4T-iq2_bn.gguf 803195520 bytes

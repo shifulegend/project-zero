@@ -1,0 +1,54 @@
+=== gate smollm2-135m/pz ===
+DATE: 2026-11-18T14:19:23Z
+CMD: ./pz --model models/SmolLM2-135M-Instruct-f16.gguf --perplexity /home/user/project-zero/tools/bench/gate_text.txt --ppl-ctx 512 --ppl-chunks 8 --threads 4 --no-update-check
+============================================================
+[1/4] Opening model file...
+[2/4] Loading weights...
+[3/4] Preparing runtime...
+[gguf-tok] Loaded 49152 tokens (gpt2, pre=smollm), 17 special — BOS=1 EOS=2 chat_template=yes
+[4/4] Ready.
+####  ####   ###    ### #####  #### #####     ##### ##### ####   ### 
+#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #
+####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
+#     # #   #   # #  #  #     #       #        #    #     # #   #   #
+#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
+Project Zero Engine v0.2.0-21-g864eeea-dirty — Auto-Tuned Hardware
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                        │
+│ Cores         : 4 physical / 4 logical              │
+│ Threads       : 4                                   │
+│ L2 cache      : 2048   KiB per core                 │
+│ L3 cache      : 260    MiB shared                   │
+│ Free RAM      : 15032  MiB                          │
+│ DRAM bandwidth: 46.8   GB/s (cached)                │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)               │
+│ Prefetch rows : 32                                  │
+│ Model in L3   : no                                  │
+│ Data/token    : 1149   MB (pre-load est.)           │
+│ Ceiling       : 50.1   tok/s (at 100% BW)           │
+└─────────────────────────────────────────────────────┘
+Active: 4 threads | AVX-512 VNNI | BF16 cls | 4T | 46.8 GB/s | ceiling 50 tok/s
+Model format: GGUF
+Model Configuration:
+  dim:        576
+  hidden_dim: 1536
+  n_layers:   30
+  n_heads:    9
+  n_kv_heads: 3
+  vocab_size: 49152
+  seq_len:    8192
+  act_type:   0 (SiLU)
+  rope_theta: 100000.0
+  head_dim:   64
+  kv_dim:     192
+[GGUF] Weights loaded (30 layers, arch=llama)
+[profile] Data/token (loaded model): 258 MB -> ceiling 172.6 tok/s at 46.8 GB/s
+KV cache: F32, max context: 8192 tokens (sizing tier: Quantized I8, RAM budget 60%)
+perplexity: 3627 tokens, n_ctx 512, 7 chunk(s)
+[1]16.5566,[2]11.7661,[3]9.8601,[4]7.6194,[5]7.0565,[6]7.5795,[7]8.0252,
+Final estimate: PPL = 8.0252 +/- 0.54098  (1785 tokens scored, 7 chunks, 48.4 s)
+
+

@@ -1,0 +1,45 @@
+=== smollm2-135m__llamacpp t=4 run 2 ===
+DATE: 2026-11-18T05:16:41Z
+HOST_CPU: Intel(R) Xeon(R) Processor @ 2.10GHz (4 vCPU)
+CMD: /root/ext/llama.cpp/build/bin/llama-completion -m models/SmolLM2-135M-Instruct-f16.gguf -p 'Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.' -n 128 --temp 0 -t 4 -no-cnv --ignore-eos
+PROMPT: Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+============================================================
+0.00.001.161 I llama_completion: llama backend init
+0.00.002.303 I llama_completion: load the model and apply lora adapter, if any
+0.00.468.689 I cmn          init: llama threadpool init, n_threads = 4
+0.00.505.255 I 
+0.00.505.370 I system_info: n_threads = 4 (n_threads_batch = 4) / 4 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX_VNNI = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | AVX512 = 1 | AVX512_VBMI = 1 | AVX512_VNNI = 1 | AVX512_BF16 = 1 | AMX_INT8 = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 | 
+0.00.505.370 I 
+0.00.505.697 I sampler seed: 4294967295
+0.00.505.719 I sampler params: 
+	repeat_last_n = 64, repeat_penalty = 1.000, frequency_penalty = 0.000, presence_penalty = 0.000
+	dry_multiplier = 0.000, dry_base = 1.750, dry_allowed_length = 2, dry_penalty_last_n = 64
+	top_k = 40, top_p = 0.950, min_p = 0.050, xtc_probability = 0.000, xtc_threshold = 0.100, typical_p = 1.000, top_n_sigma = -1.000, temp = 0.000
+	mirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000, adaptive_target = -1.000, adaptive_decay = 0.900
+0.00.505.729 I sampler chain: logits -> logit-bias -> ?penalties -> ?dry -> ?top-n-sigma -> top-k -> ?typical -> top-p -> min-p -> ?xtc -> temp-ext -> greedy 
+0.00.505.730 I generate: n_ctx = 8192, n_batch = 2048, n_predict = 128, n_keep = 0
+0.00.505.730 I 
+Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+
+Lastly, consider the role of data in machine learning and its impact on decision-making. Discuss the importance of data quality, data preprocessing, and data visualization in machine learning.
+
+Throughout the discussion, provide clear and concise explanations of each concept, and use examples to illustrate the practical applications of each. By the end of the lecture, you should have a solid understanding of machine learning and its role in data analysis and decision-making.
+
+Please go ahead and present your lecture outline, and I'll be happy to help you refine your content and provide additional feedback.
+
+Best regards,
+Alex Johnson
+Data Scientist
+
+0.01.968.179 I common_perf_print:    sampling time =      22.43 ms
+0.01.968.221 I common_perf_print:    samplers time =       5.96 ms /   157 tokens
+0.01.968.242 I common_perf_print:        load time =     382.32 ms
+0.01.968.258 I common_perf_print: prompt eval time =      55.65 ms /    29 tokens (    1.92 ms per token,   521.14 tokens per second)
+0.01.968.275 I common_perf_print:        eval time =    1374.08 ms /   127 runs   (   10.82 ms per token,    92.43 tokens per second)
+0.01.968.291 I common_perf_print:       total time =    1462.99 ms /   156 tokens
+0.01.968.307 I common_perf_print: unaccounted time =      10.84 ms /   0.7 %      (total - sampling - prompt eval - eval) / (total)
+0.01.968.322 I common_perf_print:    graphs reused =        126
+0.01.968.338 I common_perf_print:   graph reallocs =          0    /     0        (same size) / (changed size)
+
+PERF: wall=2.00s max_rss=729MB cpu=319% exit=0
+PROMPT_TPS: 521.14

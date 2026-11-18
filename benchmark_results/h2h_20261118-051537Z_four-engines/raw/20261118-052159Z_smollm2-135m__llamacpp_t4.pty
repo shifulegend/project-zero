@@ -1,0 +1,33 @@
+Script started on 2026-11-18 05:22:00+00:00 [COMMAND="'/root/ext/llama.cpp/build/bin/llama-completion' '-m' 'models/SmolLM2-135M-Instruct-f16.gguf' '-p' 'Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.' '-n' '64' '--temp' '0' '-t' '4' '-no-cnv' '--ignore-eos'" <not executed on terminal>]
+[34m0.00.001.497[0m [32mI [0mllama_completion: llama backend init
+[34m0.00.003.526[0m [32mI [0mllama_completion: load the model and apply lora adapter, if any
+[34m0.00.464.157[0m [32mI [0mcmn          init: llama threadpool init, n_threads = 4
+[34m0.00.505.821[0m [32mI [0m
+[34m0.00.505.974[0m [32mI [0msystem_info: n_threads = 4 (n_threads_batch = 4) / 4 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX_VNNI = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | AVX512 = 1 | AVX512_VBMI = 1 | AVX512_VNNI = 1 | AVX512_BF16 = 1 | AMX_INT8 = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 | 
+[34m0.00.505.974[0m [32mI [0m
+[34m0.00.506.360[0m [32mI [0msampler seed: 4294967295
+[34m0.00.506.390[0m [32mI [0msampler params: 
+	repeat_last_n = 64, repeat_penalty = 1.000, frequency_penalty = 0.000, presence_penalty = 0.000
+	dry_multiplier = 0.000, dry_base = 1.750, dry_allowed_length = 2, dry_penalty_last_n = 64
+	top_k = 40, top_p = 0.950, min_p = 0.050, xtc_probability = 0.000, xtc_threshold = 0.100, typical_p = 1.000, top_n_sigma = -1.000, temp = 0.000
+	mirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000, adaptive_target = -1.000, adaptive_decay = 0.900
+[34m0.00.506.402[0m [32mI [0msampler chain: logits -> logit-bias -> ?penalties -> ?dry -> ?top-n-sigma -> top-k -> ?typical -> top-p -> min-p -> ?xtc -> temp-ext -> greedy 
+[34m0.00.506.404[0m [32mI [0mgenerate: n_ctx = 8192, n_batch = 2048, n_predict = 64, n_keep = 0
+[34m0.00.506.404[0m [32mI [0m
+[33mExplain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.[0m
+
+Lastly, consider the role of data in machine learning and its impact on decision-making. Discuss the importance of data quality, data preprocessing, and data visualization in machine learning.
+
+Throughout the discussion, provide clear and concise explanations of each concept, and use examples to illustrate the practical applications of each. By
+
+[34m0.01.282.767[0m [32mI [0mcommon_perf_print:    sampling time =      11.62 ms
+[34m0.01.282.786[0m [32mI [0mcommon_perf_print:    samplers time =       2.99 ms /    93 tokens
+[34m0.01.282.811[0m [32mI [0mcommon_perf_print:        load time =     370.53 ms
+[34m0.01.282.831[0m [32mI [0mcommon_perf_print: prompt eval time =      74.32 ms /    29 tokens (    2.56 ms per token,   390.21 tokens per second)
+[34m0.01.282.843[0m [32mI [0mcommon_perf_print:        eval time =     684.15 ms /    63 runs   (   10.86 ms per token,    92.09 tokens per second)
+[34m0.01.282.853[0m [32mI [0mcommon_perf_print:       total time =     777.01 ms /    92 tokens
+[34m0.01.282.859[0m [32mI [0mcommon_perf_print: unaccounted time =       6.92 ms /   0.9 %      (total - sampling - prompt eval - eval) / (total)
+[34m0.01.282.865[0m [32mI [0mcommon_perf_print:    graphs reused =         62
+[34m0.01.282.871[0m [32mI [0mcommon_perf_print:   graph reallocs =          0    /     0        (same size) / (changed size)
+
+Script done on 2026-11-18 05:22:01+00:00 [COMMAND_EXIT_CODE="0"]

@@ -1,0 +1,75 @@
+=== mamba-130m__llamacpp t=1 run 3 ===
+DATE: 2026-11-18T08:33:15Z
+HOST_CPU: Intel(R) Xeon(R) Processor @ 2.10GHz (4 vCPU)
+CMD: /root/ext/llama.cpp/build/bin/llama-completion -m models/mamba-130m-hf.f16.gguf -p 'Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.' -n 500 --temp 0 -t 1 -no-cnv --ignore-eos
+PROMPT: Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+============================================================
+0.00.001.085 I llama_completion: llama backend init
+0.00.002.335 I llama_completion: load the model and apply lora adapter, if any
+0.00.326.918 I cmn          init: llama threadpool init, n_threads = 1
+0.00.383.840 I 
+0.00.383.949 I system_info: n_threads = 1 (n_threads_batch = 1) / 4 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX_VNNI = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | AVX512 = 1 | AVX512_VBMI = 1 | AVX512_VNNI = 1 | AVX512_BF16 = 1 | AMX_INT8 = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 | 
+0.00.383.950 I 
+0.00.384.212 I sampler seed: 4294967295
+0.00.384.234 I sampler params: 
+	repeat_last_n = 64, repeat_penalty = 1.000, frequency_penalty = 0.000, presence_penalty = 0.000
+	dry_multiplier = 0.000, dry_base = 1.750, dry_allowed_length = 2, dry_penalty_last_n = 64
+	top_k = 40, top_p = 0.950, min_p = 0.050, xtc_probability = 0.000, xtc_threshold = 0.100, typical_p = 1.000, top_n_sigma = -1.000, temp = 0.000
+	mirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000, adaptive_target = -1.000, adaptive_decay = 0.900
+0.00.384.242 I sampler chain: logits -> logit-bias -> ?penalties -> ?dry -> ?top-n-sigma -> top-k -> ?typical -> top-p -> min-p -> ?xtc -> temp-ext -> greedy 
+0.00.384.243 I generate: n_ctx = 1048576, n_batch = 2048, n_predict = 500, n_keep = 0
+0.00.384.243 I 
+Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+
+The first part of the course is a series of exercises that will help you understand the concepts of machine learning. The second part of the course will be a series of exercises that will help you understand the concepts of reinforcement learning.
+
+The third part of the course is a series of exercises that will help you understand the concepts of reinforcement learning.
+
+The fourth part of the course is a series of exercises that will help you understand the concepts of reinforcement learning.
+
+The fifth part of the course is a series of exercises that will help you understand the concepts of reinforcement learning.
+
+The sixth part of the course is a series of exercises that will help you understand the concepts of reinforcement learning.
+
+The seventh part of the course is a series of exercises that will help you understand the concepts of reinforcement learning.
+
+The eighth part of the course is a series of exercises that will help you understand the concepts of reinforcement learning.
+
+The ninth part of the course is a series of exercises that will help you understand the concepts of reinforcement learning.
+
+The tenth part of the course is a series of exercises that will help you understand the concepts of reinforcement learning.
+
+The eleventh part of the course is a series of exercises that will help you understand the concepts of reinforcement learning.
+
+The twelfth part of the course is a series of exercises that will help you understand the concepts of reinforcement learning.
+
+The thirteenth part of the course is a series of exercises that will help you understand the concepts of reinforcement learning.
+
+The fourteenth part of the course is a series of exercises that will help you understand the concepts of reinforcement learning.
+
+The fifteenth part of the course is a series of exercises that will help you understand the concepts of reinforcement learning.
+
+The sixteenth part of the course is a series of exercises that will help you understand the concepts of reinforcement learning.
+
+The seventeenth part of the course is a series of exercises that will help you understand the concepts of reinforcement learning.
+
+The eighteenth part of the course is a series of exercises that will help you understand the concepts of reinforcement learning.
+
+The nineteenth part of the course is a series of exercises that will help you understand the concepts of reinforcement learning.
+
+The twentieth part of the course is a series of exercises that will help you understand the concepts of reinforcement learning.
+
+The twenty-first part of the course is a series of exercises
+
+0.19.444.213 I common_perf_print:    sampling time =      97.41 ms
+0.19.444.215 I common_perf_print:    samplers time =      24.87 ms /   532 tokens
+0.19.444.221 I common_perf_print:        load time =     243.72 ms
+0.19.444.223 I common_perf_print: prompt eval time =     240.89 ms /    32 tokens (    7.53 ms per token,   132.84 tokens per second)
+0.19.444.224 I common_perf_print:        eval time =   18686.50 ms /   499 runs   (   37.45 ms per token,    26.70 tokens per second)
+0.19.444.224 I common_perf_print:       total time =   19060.39 ms /   531 tokens
+0.19.444.226 I common_perf_print: unaccounted time =      35.58 ms /   0.2 %      (total - sampling - prompt eval - eval) / (total)
+0.19.444.226 I common_perf_print:    graphs reused =        498
+0.19.444.226 I common_perf_print:   graph reallocs =          0    /     0        (same size) / (changed size)
+
+PERF: wall=19.47s max_rss=451MB cpu=99% exit=0
+PROMPT_TPS: 132.84

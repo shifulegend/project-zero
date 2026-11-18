@@ -1,0 +1,133 @@
+Script started on 2026-11-18 05:22:56+00:00 [COMMAND="'/home/user/project-zero/benchmark_results/build_compare_20261118-052242Z_native-vs-portable/bin/pz-native' '--model' 'models/SmolLM2-135M-Instruct-f16.gguf' '--prompt' 'Hello' '--max-tokens' '1' '--temperature' '0' '--threads' '4' '--no-update-check'" <not executed on terminal>]
+
+
+
+
+
+[5A[K
+[K
+[K
+[K
+[1m[32m#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### [0m[K
+[5A[K
+[K
+[K
+[1m[32m#     # #   #   # #  #  #     #       #        #    #     # #   #   #[0m[K
+[1m[32m#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### [0m[K
+[5A[K
+[K
+[1m[32m####  ####  #   #    #  ###   #       #         #   ###   ####  #   #[0m[K
+[1m[32m#     # #   #   # #  #  #     #       #        #    #     # #   #   #[0m[K
+[1m[32m#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### [0m[K
+[5A[K
+[1m[32m#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #[0m[K
+[1m[32m####  ####  #   #    #  ###   #       #         #   ###   ####  #   #[0m[K
+[1m[32m#     # #   #   # #  #  #     #       #        #    #     # #   #   #[0m[K
+[1m[32m#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### [0m[K
+[5A[1m[32m####  ####   ###    ### #####  #### #####     ##### ##### ####   ### [0m[K
+[1m[32m#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #[0m[K
+[1m[32m####  ####  #   #    #  ###   #       #         #   ###   ####  #   #[0m[K
+[1m[32m#     # #   #   # #  #  #     #       #        #    #     # #   #   #[0m[K
+[1m[32m#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### [0m[K
+[5A[2m[32m####  ####   ###    ### #####  #### #####     ##### ##### ####   ### [0m[K
+[2m[32m#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #[0m[K
+[2m[32m####  ####  #   #    #  ###   #       #         #   ###   ####  #   #[0m[K
+[2m[32m#     # #   #   # #  #  #     #       #        #    #     # #   #   #[0m[K
+[2m[32m#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### [0m[K
+[5A[1m[32m####  ####   ###    ### #####  #### #####     ##### ##### ####   ### [0m[K
+[1m[32m#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #[0m[K
+[1m[32m####  ####  #   #    #  ###   #       #         #   ###   ####  #   #[0m[K
+[1m[32m#     # #   #   # #  #  #     #       #        #    #     # #   #   #[0m[K
+[1m[32m#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### [0m[K
+[5A[2m[32m####  ####   ###    ### #####  #### #####     ##### ##### ####   ### [0m[K
+[2m[32m#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #[0m[K
+[2m[32m####  ####  #   #    #  ###   #       #         #   ###   ####  #   #[0m[K
+[2m[32m#     # #   #   # #  #  #     #       #        #    #     # #   #   #[0m[K
+[2m[32m#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### [0m[K
+[5A[1m[32m####  ####   ###    ### #####  #### #####     ##### ##### ####   ### [0m[K
+[1m[32m#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #[0m[K
+[1m[32m####  ####  #   #    #  ###   #       #         #   ###   ####  #   #[0m[K
+[1m[32m#     # #   #   # #  #  #     #       #        #    #     # #   #   #[0m[K
+[1m[32m#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### [0m[K
+[5A[2m[32m####  ####   ###    ### #####  #### #####     ##### ##### ####   ### [0m[K
+[2m[32m#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #[0m[K
+[2m[32m####  ####  #   #    #  ###   #       #         #   ###   ####  #   #[0m[K
+[2m[32m#     # #   #   # #  #  #     #       #        #    #     # #   #   #[0m[K
+[2m[32m#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### [0m[K
+[5A[1m[32m####  ####   ###    ### #####  #### #####     ##### ##### ####   ### [0m[K
+[1m[32m#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #[0m[K
+[1m[32m####  ####  #   #    #  ###   #       #         #   ###   ####  #   #[0m[K
+[1m[32m#     # #   #   # #  #  #     #       #        #    #     # #   #   #[0m[K
+[1m[32m#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### [0m[K
+
+Project Zero Engine v0.2.0-21-g864eeea-dirty — Auto-Tuned Hardware
+[Calibration] First run on this hardware — calibrating...
+┌──────────────────────────────────────────────────────────────────┐
+│  Auto-Calibration  —  first run, result cached for future use   │
+│  Re-triggers only when hardware changes.  ~40-60 seconds.       │
+├──────────────────────────────────────────────────────────────────┤
+│  Phase 1/2  SIMD backends at T=4  (thermal stabilisation)       │
+├──────────────────────────────────────────────────────────────────┤
+  auto = AVX-512 VNNI;  candidates: scalar avx2 avx512f vnni256
+  warmup[....]  rounds[...............]
+  auto             120.1  [ 85.7 – 126.6] tok/s  ← BEST
+  scalar             2.9  [  2.4 –   3.2] tok/s  beat auto in  0/15 rounds
+  avx2              18.0  [  7.9 –  18.5] tok/s  beat auto in  0/15 rounds
+  avx512f           32.1  [ 18.5 –  33.8] tok/s  beat auto in  0/15 rounds
+  vnni256           15.8  [ 14.2 –  16.0] tok/s  beat auto in  0/15 rounds
+├──────────────────────────────────────────────────────────────────┤
+│  Phase 2/2  Thread sweep  (backend: auto      )                │
+├──────────────────────────────────────────────────────────────────┤
+  T=1   bg:  0%  warmup[.] reps[.....]    32.5  [ 31.7 –  32.7] tok/s  ← PEAK
+  T=2   bg:  0%  warmup[.] reps[.....]    61.4  [ 56.8 –  62.0] tok/s  ← PEAK
+  T=3   bg:  0%  warmup[.] reps[.....]    91.1  [ 74.4 –  93.3] tok/s  ← PEAK
+  T=4   bg:  0%  warmup[.] reps[.....]    85.7  [ 66.2 –  97.6] tok/s
+├──────────────────────────────────────────────────────────────────┤
+│  Result                                                          │
+│    SIMD      : auto       (120.1 tok/s at T=4)                 │
+│    Threads   : T=4   ( 85.7 tok/s, swept T=1..4)           │
+│    Classifier: BF16 (default — full intelligence)               │
+│    Speed opt : --classifier auto-fast  (INT4, ~+86% est.)        │
+└──────────────────────────────────────────────────────────────────┘
+[Calibration] Saved to /home/user/project-zero/benchmark_results/build_compare_20261118-052242Z_native-vs-portable/pz_home_native/.project-zero/calibration.bin
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                        │
+│ Cores         : 4 physical / 4 logical              │
+│ Threads       : 4                                   │
+│ L2 cache      : 2048   KiB per core                 │
+│ L3 cache      : 260    MiB shared                   │
+│ Free RAM      : 15000  MiB                          │
+│ DRAM bandwidth: 51.2   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)               │
+│ Prefetch rows : 32                                  │
+│ Model in L3   : no                                  │
+│ Data/token    : 1149   MB (pre-load est.)           │
+│ Ceiling       : 54.9   tok/s (at 100% BW)           │
+└─────────────────────────────────────────────────────┘
+Active: 4 threads | AVX-512 VNNI | BF16 cls | 4T | 51.2 GB/s | ceiling 55 tok/s
+[1/4] Opening model file...[K[2/4] Loading weights...[KModel format: GGUF
+Model Configuration:
+  dim:        576
+  hidden_dim: 1536
+  n_layers:   30
+  n_heads:    9
+  n_kv_heads: 3
+  vocab_size: 49152
+  seq_len:    8192
+  act_type:   0 (SiLU)
+  rope_theta: 100000.0
+  head_dim:   64
+  kv_dim:     192
+[GGUF] Weights loaded (30 layers, arch=llama)
+[profile] Data/token (loaded model): 258 MB -> ceiling 189.0 tok/s at 51.2 GB/s
+[3/4] Preparing runtime...[KKV cache: F32, max context: 8192 tokens (sizing tier: Quantized I8, RAM budget 60%)
+[gguf-tok] Loaded 49152 tokens (gpt2, pre=smollm), 17 special — BOS=1 EOS=2 chat_template=yes
+[4/4] Ready.[K
+
+Hello
+
+
+Script done on 2026-11-18 05:23:19+00:00 [COMMAND_EXIT_CODE="0"]

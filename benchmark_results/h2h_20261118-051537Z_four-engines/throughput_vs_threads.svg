@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="442" viewBox="0 0 1240 442" font-family="ui-monospace,Menlo,Consolas,monospace">
+<rect width="1240" height="442" fill="#fcfcfb"/>
+<text x="40" y="34" font-size="18" fill="#1f1f1d" font-weight="600">Decode tok/s vs threads</text>
+<text x="40" y="56" font-size="12" fill="#6b6a64">Intel(R) Xeon(R) Processor @ 2.10GHz, 4 vCPU</text>
+<text x="40" y="72" font-size="12" fill="#6b6a64">20261118-051537Z UTC, best of 3, pz 1d42bc4</text>
+<text x="50" y="96" font-size="13" fill="#1f1f1d">SmolLM2-135M F16</text>
+<line x1="50" x2="260" y1="372.0" y2="372.0" stroke="#e7e6e1" stroke-width="1"/>
+<text x="44" y="376.0" font-size="11" fill="#6b6a64" text-anchor="end">0</text>
+<line x1="50" x2="260" y1="307.0" y2="307.0" stroke="#e7e6e1" stroke-width="1"/>
+<text x="44" y="311.0" font-size="11" fill="#6b6a64" text-anchor="end">50</text>
+<line x1="50" x2="260" y1="242.0" y2="242.0" stroke="#e7e6e1" stroke-width="1"/>
+<text x="44" y="246.0" font-size="11" fill="#6b6a64" text-anchor="end">100</text>
+<line x1="50" x2="260" y1="177.0" y2="177.0" stroke="#e7e6e1" stroke-width="1"/>
+<text x="44" y="181.0" font-size="11" fill="#6b6a64" text-anchor="end">150</text>
+<line x1="50" x2="260" y1="112.0" y2="112.0" stroke="#e7e6e1" stroke-width="1"/>
+<text x="44" y="116.0" font-size="11" fill="#6b6a64" text-anchor="end">200</text>
+<text x="50.0" y="390" font-size="11" fill="#6b6a64" text-anchor="middle">t=4</text>
+<polyline points="50.0,215.6" fill="none" stroke="#2a78d6" stroke-width="2" stroke-linejoin="round"/>
+<circle cx="50.0" cy="215.6" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<polyline points="50.0,236.5" fill="none" stroke="#eb6834" stroke-width="2" stroke-linejoin="round"/>
+<rect x="45.5" y="232.0" width="9" height="9" rx="1.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<polyline points="50.0,247.8" fill="none" stroke="#1baf7a" stroke-width="2" stroke-linejoin="round"/>
+<rect x="45.5" y="243.3" width="9" height="9" rx="1.5" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"/>
+<circle cx="274.0" cy="215.6" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<text x="284" y="218.6" font-size="11" fill="#1f1f1d">Project Zero</text>
+<text x="284" y="231.6" font-size="11" fill="#6b6a64">120.3 tok/s</text>
+<rect x="269.5" y="241.1" width="9" height="9" rx="1.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<text x="284" y="248.6" font-size="11" fill="#1f1f1d">llama.cpp</text>
+<text x="284" y="261.6" font-size="11" fill="#6b6a64">104.2 tok/s</text>
+<rect x="269.5" y="271.1" width="9" height="9" rx="1.5" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"/>
+<text x="284" y="278.6" font-size="11" fill="#1f1f1d">ik_llama.cpp</text>
+<text x="284" y="291.6" font-size="11" fill="#6b6a64">95.5 tok/s</text>
+<text x="450" y="96" font-size="13" fill="#1f1f1d">SmolLM2-1.7B Q4_K_M</text>
+<line x1="450" x2="660" y1="372.0" y2="372.0" stroke="#e7e6e1" stroke-width="1"/>
+<text x="444" y="376.0" font-size="11" fill="#6b6a64" text-anchor="end">0</text>
+<line x1="450" x2="660" y1="307.0" y2="307.0" stroke="#e7e6e1" stroke-width="1"/>
+<text x="444" y="311.0" font-size="11" fill="#6b6a64" text-anchor="end">10</text>
+<line x1="450" x2="660" y1="242.0" y2="242.0" stroke="#e7e6e1" stroke-width="1"/>
+<text x="444" y="246.0" font-size="11" fill="#6b6a64" text-anchor="end">20</text>
+<line x1="450" x2="660" y1="177.0" y2="177.0" stroke="#e7e6e1" stroke-width="1"/>
+<text x="444" y="181.0" font-size="11" fill="#6b6a64" text-anchor="end">30</text>
+<line x1="450" x2="660" y1="112.0" y2="112.0" stroke="#e7e6e1" stroke-width="1"/>
+<text x="444" y="116.0" font-size="11" fill="#6b6a64" text-anchor="end">40</text>
+<text x="450.0" y="390" font-size="11" fill="#6b6a64" text-anchor="middle">t=4</text>
+<polyline points="450.0,223.3" fill="none" stroke="#2a78d6" stroke-width="2" stroke-linejoin="round"/>
+<circle cx="450.0" cy="223.3" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<polyline points="450.0,238.6" fill="none" stroke="#eb6834" stroke-width="2" stroke-linejoin="round"/>
+<rect x="445.5" y="234.1" width="9" height="9" rx="1.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<polyline points="450.0,201.3" fill="none" stroke="#1baf7a" stroke-width="2" stroke-linejoin="round"/>
+<rect x="445.5" y="196.8" width="9" height="9" rx="1.5" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"/>
+<rect x="669.5" y="196.8" width="9" height="9" rx="1.5" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"/>
+<text x="684" y="204.3" font-size="11" fill="#1f1f1d">ik_llama.cpp</text>
+<text x="684" y="217.3" font-size="11" fill="#6b6a64">26.3 tok/s</text>
+<circle cx="674.0" cy="231.3" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<text x="684" y="234.3" font-size="11" fill="#1f1f1d">Project Zero</text>
+<text x="684" y="247.3" font-size="11" fill="#6b6a64">22.9 tok/s</text>
+<rect x="669.5" y="256.8" width="9" height="9" rx="1.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<text x="684" y="264.3" font-size="11" fill="#1f1f1d">llama.cpp</text>
+<text x="684" y="277.3" font-size="11" fill="#6b6a64">20.5 tok/s</text>
+<text x="850" y="96" font-size="13" fill="#1f1f1d">BitNet b1.58 2B (ik_llama.cpp: IQ2_BN)</text>
+<line x1="850" x2="1060" y1="372.0" y2="372.0" stroke="#e7e6e1" stroke-width="1"/>
+<text x="844" y="376.0" font-size="11" fill="#6b6a64" text-anchor="end">0</text>
+<line x1="850" x2="1060" y1="307.0" y2="307.0" stroke="#e7e6e1" stroke-width="1"/>
+<text x="844" y="311.0" font-size="11" fill="#6b6a64" text-anchor="end">10</text>
+<line x1="850" x2="1060" y1="242.0" y2="242.0" stroke="#e7e6e1" stroke-width="1"/>
+<text x="844" y="246.0" font-size="11" fill="#6b6a64" text-anchor="end">20</text>
+<line x1="850" x2="1060" y1="177.0" y2="177.0" stroke="#e7e6e1" stroke-width="1"/>
+<text x="844" y="181.0" font-size="11" fill="#6b6a64" text-anchor="end">30</text>
+<line x1="850" x2="1060" y1="112.0" y2="112.0" stroke="#e7e6e1" stroke-width="1"/>
+<text x="844" y="116.0" font-size="11" fill="#6b6a64" text-anchor="end">40</text>
+<text x="850.0" y="390" font-size="11" fill="#6b6a64" text-anchor="middle">t=4</text>
+<polyline points="850.0,208.3" fill="none" stroke="#2a78d6" stroke-width="2" stroke-linejoin="round"/>
+<circle cx="850.0" cy="208.3" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<polyline points="850.0,222.8" fill="none" stroke="#8a5cd1" stroke-width="2" stroke-linejoin="round"/>
+<rect x="845.5" y="218.3" width="9" height="9" rx="1.5" fill="#8a5cd1" stroke="#fcfcfb" stroke-width="2"/>
+<polyline points="850.0,259.6" fill="none" stroke="#1baf7a" stroke-width="2" stroke-linejoin="round"/>
+<rect x="845.5" y="255.1" width="9" height="9" rx="1.5" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"/>
+<circle cx="1074.0" cy="208.3" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<text x="1084" y="211.3" font-size="11" fill="#1f1f1d">Project Zero</text>
+<text x="1084" y="224.3" font-size="11" fill="#6b6a64">25.2 tok/s</text>
+<rect x="1069.5" y="233.8" width="9" height="9" rx="1.5" fill="#8a5cd1" stroke="#fcfcfb" stroke-width="2"/>
+<text x="1084" y="241.3" font-size="11" fill="#1f1f1d">bitnet.cpp</text>
+<text x="1084" y="254.3" font-size="11" fill="#6b6a64">23.0 tok/s</text>
+<rect x="1069.5" y="263.8" width="9" height="9" rx="1.5" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"/>
+<text x="1084" y="271.3" font-size="11" fill="#1f1f1d">ik_llama.cpp</text>
+<text x="1084" y="284.3" font-size="11" fill="#6b6a64">17.3 tok/s</text>
+<text x="40" y="426" font-size="11" fill="#6b6a64">decode tokens/s, best of N runs per thread count (higher is better)</text>
+</svg>

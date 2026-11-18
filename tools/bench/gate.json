@@ -1,0 +1,38 @@
+{
+  "_comment": "Defaults of the correctness gate. Every value can be overridden by a flag (--gate, --gate-tolerance, ...). The tolerance default mirrors pz's own `quality-tolerance` setting (src/config/pz_config.c); keep them equal. The text is a frozen copy so perplexity numbers stay comparable between runs (sha256 is recorded in every gate.json).",
+  "mode": "strict",
+  "tolerance_pct": 1.0,
+  "warn_factor": 2.0,
+  "approximate": {
+    "_comment": "Variants that are lossy by design (a documented speed/accuracy trade the user chooses). They are judged APPROX: shown with the measured gap, never excluded. Add `tolerance_pct` to an entry to make it a hard bound.",
+    "pz-int8": {
+      "why": "--classifier int8: 8-bit LM head"
+    },
+    "pz-int4": {
+      "why": "--classifier int4: 4-bit LM head"
+    },
+    "pz-auto-fast": {
+      "why": "--classifier auto-fast: picks the fastest LM-head precision"
+    }
+  },
+  "text": "tools/bench/gate_text.txt",
+  "ppl_ctx": 512,
+  "ppl_chunks": 8,
+  "ppl_regex": "Final estimate: PPL(?: over \\d+ chunks for n_ctx=\\d+)? = ([0-9.]+)",
+  "smoke": {
+    "prompt": "The capital of France is",
+    "tokens": 24,
+    "expect": [
+      "Paris"
+    ]
+  },
+  "verdicts": {
+    "PASS": "within tolerance of the reference",
+    "WARN": "within warn_factor x tolerance",
+    "INVALID": "outside warn_factor x tolerance, or the smoke answer is wrong",
+    "UNVERIFIED": "no reference result to compare with",
+    "REF": "the reference itself (must pass the smoke check)",
+    "OFF": "gate disabled",
+    "APPROX": "lossy by design (config `approximate`); the gap to the reference is reported, not judged"
+  }
+}

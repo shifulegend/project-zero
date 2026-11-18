@@ -22,6 +22,8 @@ jobs:
         run: |
           python3 tools/changelog.py check --require-unreleased
           python3 -I tools/test_changelog.py
+      - name: Benchmark scripts (tools/bench) unit tests
+        run: python3 tools/bench/test_bench.py
       # 2026-11-11: .agents/rules and .github/instructions are generated from .claude/rules.
       - name: AI adapter files in sync with .claude/rules
         run: python3 -I tools/sync_ai_adapters.py --check
@@ -33,7 +35,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
       - name: Lint (shellcheck)
-        run: shellcheck install.sh tools/test_install.sh
+        run: shellcheck install.sh tools/test_install.sh tools/check_dist_isa.sh
       - name: Build (release)
         run: make release CC=gcc
       - name: Install / upgrade / refuse tampered / uninstall (dash + bash)

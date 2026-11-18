@@ -70,3 +70,8 @@ smollm2-1.7b-q4km,pz-int4,1,2,5.33,500,101.97,2617,100,0,benchmark_results/h2h_2
 smollm2-1.7b-q4km,ik,2,2,12.08,501,43.84,2680,197,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/smollm2-1.7b-q4km__ik/t2/run2.txt
 smollm2-1.7b-q4km,pz,2,2,9.96,500,54.11,2449,197,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/smollm2-1.7b-q4km__pz/t2/run2.txt
 smollm2-1.7b-q4km,pz-int4,2,2,10.15,500,55.10,2617,193,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/smollm2-1.7b-q4km__pz-int4/t2/run2.txt
+smollm2-1.7b-q4km,llamacpp,2,2,9.16,500,78.16,3605,144,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/smollm2-1.7b-q4km__llamacpp/t2/run2.txt
+smollm2-1.7b-q4km,pz,3,2,13.51,500,40.26,2449,290,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/smollm2-1.7b-q4km__pz/t3/run2.txt
+smollm2-1.7b-q4km,pz-int4,3,2,14.36,500,39.87,2617,281,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/smollm2-1.7b-q4km__pz-int4/t3/run2.txt
+smollm2-1.7b-q4km,llamacpp,3,2,12.76,500,41.22,3605,292,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/smollm2-1.7b-q4km__llamacpp/t3/run2.txt
+smollm2-1.7b-q4km,ik,3,2,14.29,501,38.32,2680,282,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/smollm2-1.7b-q4km__ik/t3/run2.txt

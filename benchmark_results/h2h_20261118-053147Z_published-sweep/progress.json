@@ -1,7 +1,7 @@
 {
   "phase": "measuring",
-  "done": 55,
+  "done": 76,
   "total": 180,
-  "last": "(written by hand at checkpoint; the running process predates progress.json)",
-  "updated": "2026-11-18T06:54:09.546512Z"
+  "last": "smollm2-1.7b-q4km ik t=3 run 2",
+  "updated": "2026-11-18T07:16:17Z"
 }

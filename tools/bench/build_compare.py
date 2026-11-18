@@ -138,6 +138,7 @@ def main():
 
     variants = [bl.pz_variant(l, p, bl.pz_flags(a.calibration), envs[l]) for l, p in bins.items()]
     gcfg = gate.config_from_args(a)
+    dirty = gate.require_clean(bins, gcfg, a.allow_dirty_binary, run.log)
     gcfg["reference_override"] = a.gate_reference or ref          # every binary is judged against the reference binary
     g = gate.Gate(gcfg, run, a.models_dir, resume=a.resume or a.gate_only)
     g.check(variants, models, threads)
@@ -183,7 +184,7 @@ def main():
                [[s["model"], s["variant"], s["threads"], s["screenshot"]] for s in shots])]
     run.write("summary.md", "\n".join(md) + "\n")
     print("\n" + bl.summary_md(summary, with_ratio=True, hide_invalid=g.cfg["mode"] == "strict"))
-    bl.finish(run, {"kind": "build_compare", "gate": g.summary_for_meta(), "binaries": {l: bl.bin_info(p) for l, p in bins.items()}, "reference": ref,
+    bl.finish(run, {"kind": "build_compare", "gate": g.summary_for_meta(), "dirty_binaries": dirty, "binaries": {l: bl.bin_info(p) for l, p in bins.items()}, "reference": ref,
                     "models": [k for k, _, _ in models], "threads": threads, "rounds": a.rounds, "tokens": a.tokens,
                     "order": a.order, "calibration": a.calibration, "summary": summary, "check_isa": isa_results,
                     "screenshots": shots})

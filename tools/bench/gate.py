@@ -67,9 +67,29 @@ def add_args(ap):
     g.add_argument("--gate-chunks", type=int, help="perplexity chunks")
     g.add_argument("--gate-ctx", type=int, help="perplexity context length")
     g.add_argument("--gate-reference", metavar="VARIANT", help="variant to use as the reference for every model (default: models.json)")
+    g.add_argument("--allow-dirty-binary", action="store_true",
+                   help="benchmark a pz binary built from uncommitted state (its version ends in -dirty); the run is marked")
     g.add_argument("--gate-only", action="store_true",
                    help="run only the gate (and update summary.csv/summary.md of --out FOLDER if they exist), then exit")
     return ap
+
+
+def is_dirty(version):
+    """True for a version string of a build of uncommitted state (git describe --dirty)."""
+    return bool(re.search(r"-dirty\s*$", version or ""))
+
+
+def require_clean(binaries, cfg, allow=False, log=print):
+    """Refuse (SystemExit) to time binaries built from uncommitted state, which no one can reproduce.
+    binaries: {label: path}. With allow=True it only warns. Returns the labels that were dirty."""
+    dirty = [l for l, p in binaries.items() if is_dirty(bl.bin_info(p).get("version", ""))]
+    if dirty and cfg.get("require_clean_binary", True):
+        msg = (f"not reproducible: {', '.join(dirty)} {'is' if len(dirty) == 1 else 'are'} a build of uncommitted state "
+               "(version ends in -dirty). Commit or stash, rebuild (make clean && make release), or pass --allow-dirty-binary.")
+        if not allow:
+            raise SystemExit(msg)
+        log("WARNING: " + msg + "  (allowed; recorded in meta.json)")
+    return dirty
 
 
 def config_from_args(a):

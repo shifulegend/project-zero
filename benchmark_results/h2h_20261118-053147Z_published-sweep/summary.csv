@@ -85,3 +85,4 @@ smollm2-1.7b-q4km,pz-int4,1,3,5.1,500,106.55,2617,99,0,benchmark_results/h2h_202
 smollm2-1.7b-q4km,llamacpp,1,3,5.0,500,102.38,3605,100,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/smollm2-1.7b-q4km__llamacpp/t1/run3.txt
 smollm2-1.7b-q4km,pz,2,3,9.26,500,58.18,2449,195,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/smollm2-1.7b-q4km__pz/t2/run3.txt
 smollm2-1.7b-q4km,pz-int4,2,3,9.53,500,59.52,2617,190,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/smollm2-1.7b-q4km__pz-int4/t2/run3.txt
+smollm2-1.7b-q4km,llamacpp,2,3,8.88,500,58.96,3605,196,0,benchmark_results/h2h_20261118-053147Z_published-sweep/raw/smollm2-1.7b-q4km__llamacpp/t2/run3.txt

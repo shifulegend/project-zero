@@ -1,0 +1,1 @@
+deepseek-v2-lite: models/DeepSeek-V2-Lite-Chat.Q4_K_S.gguf 9533608704 bytes

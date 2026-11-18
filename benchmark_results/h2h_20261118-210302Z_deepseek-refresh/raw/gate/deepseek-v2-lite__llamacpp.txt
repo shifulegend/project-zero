@@ -1,0 +1,17 @@
+=== gate deepseek-v2-lite/llamacpp ===
+DATE: 2026-11-18T21:04:54Z
+CMD: /root/ext/llama.cpp/build/bin/llama-perplexity -m models/DeepSeek-V2-Lite-Chat.Q4_K_S.gguf -f /home/user/project-zero/tools/bench/gate_text.txt -c 512 --chunks 8 -t 4
+============================================================
+0.07.606.932 W llama_context: setting new yarn_attn_factor = 1.0000 (mscale == 0.7, mscale_all_dim = 0.7)
+0.07.920.111 I cmn          init: llama threadpool init, n_threads = 4
+0.08.232.950 I 
+0.08.233.109 I system_info: n_threads = 4 (n_threads_batch = 4) / 4 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX_VNNI = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | AVX512 = 1 | AVX512_VBMI = 1 | AVX512_VNNI = 1 | AVX512_BF16 = 1 | AMX_INT8 = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 | 
+0.08.233.135 I perplexity: tokenizing the input ..
+0.08.243.942 I perplexity: tokenization took 10.796 ms
+0.08.243.994 I perplexity: calculating perplexity over 6 chunks, n_ctx=512, batch_size=2048, n_seq=4
+0.49.819.020 I perplexity: 41.57 seconds per pass - ETA 1.03 minutes
+[1]10.9719,[2]8.5705,[3]7.9966,[4]5.9863,[5]6.1877,[6]6.6130,
+1.10.021.081 I Final estimate: PPL = 6.6130 +/- 0.50333
+
+
+

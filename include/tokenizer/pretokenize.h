@@ -25,7 +25,9 @@ typedef enum {
     PRETOK_GPT2,      /* "gpt2", "olmo", "mpt", ... */
     PRETOK_LLAMA3,    /* "llama3", "llama-bpe", "smaug-bpe", "falcon3", ... */
     PRETOK_QWEN2,     /* "qwen2", "stablelm2", "hunyuan" */
-    PRETOK_SMOLLM     /* "smollm", "codeshell", "exaone", "minerva" */
+    PRETOK_SMOLLM,    /* "smollm", "codeshell", "exaone", "minerva" */
+    PRETOK_DEEPSEEK_LLM,   /* "deepseek-llm" (DeepSeek-V2, DeepSeek-LLM) */
+    PRETOK_DEEPSEEK_CODER  /* "deepseek-coder" */
 } PretokType;
 
 /* tokenizer.ggml.pre value (NULL = key absent) -> type. Unknown names map to

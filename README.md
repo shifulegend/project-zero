@@ -59,6 +59,10 @@ methods: [docs/BENCHMARK.md](docs/BENCHMARK.md).
 | BitNet b1.58 2B-4T, official I2_S GGUF | 13.3 | – | **19.4** (converted to IQ2_BN) | 14.2 |
 | DeepSeek-V2-Lite-Chat Q4_K_S | 12.3 | 11.5 | **14.2** | – |
 
+The bitnet.cpp column is its released build, which computes the BitNet feed-forward block with SiLU instead
+of squared-ReLU and fails the correctness gate ([report](docs/rca/2026-11-18-ternary-output-correctness.md));
+with that one line fixed it ran within 1% of the released build's speed (20.2 vs 20.0 tok/s, 4 threads, 2.10 GHz Xeon).
+
 <p align="center">
   <img src="benchmark_results/sweep_h2h_2026-10-29/throughput_vs_threads.png" width="860" alt="Decode tok/s vs threads on the 2.80 GHz Xeon: Project Zero, llama.cpp, ik_llama.cpp and bitnet.cpp">
 </p>

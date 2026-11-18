@@ -229,6 +229,20 @@ class Gate(unittest.TestCase):
         rx = gate.load_config()["ppl_regex"]
         self.assertEqual(gate.parse_ppl("Final estimate: PPL over 7 chunks for n_ctx=512 = 8.0256 +/- 0.54101", rx), (8.0256, 0.54101))
 
+    def test_dirty_binaries_are_refused_unless_allowed(self):
+        import gate
+        self.assertTrue(gate.is_dirty("Project Zero v0.2.0-21-g864eeea-dirty"))
+        self.assertFalse(gate.is_dirty("Project Zero v0.2.0-23-g0148ad0"))
+        with tempfile.TemporaryDirectory() as d:
+            fake = pathlib.Path(d) / "pz"
+            fake.write_text("#!/bin/sh\necho 'Project Zero v0.2.0-1-gabc-dirty'\n")
+            fake.chmod(0o755)
+            cfg = {"require_clean_binary": True}
+            with self.assertRaises(SystemExit):
+                gate.require_clean({"pz": str(fake)}, cfg)
+            self.assertEqual(gate.require_clean({"pz": str(fake)}, cfg, allow=True, log=lambda m: None), ["pz"])
+            self.assertEqual(gate.require_clean({"pz": str(fake)}, {"require_clean_binary": False}), ["pz"])
+
     def test_config_overrides_and_frozen_text(self):
         import gate
         cfg = gate.load_config({"tolerance_pct": 0.5, "mode": None})

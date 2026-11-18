@@ -129,6 +129,7 @@ def main():
     small = hp.find_small_model(a.models_dir)
     if small is None:
         raise SystemExit("no model on disk: tools/bench/setup_engines.py --models smollm2-135m")
+    gate.require_clean({"pz": a.pz}, gate.config_from_args(a), a.allow_dirty_binary)
     run.create()
     env = bl.pz_env(run, a.calibration)
     run.write("system_info.txt", bl.system_info_text(run, {"PZ_BINARY": bl.bin_info(a.pz), "CALIBRATION": a.calibration}))

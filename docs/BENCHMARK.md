@@ -3,6 +3,7 @@
 Decode speed in tokens per second, measured with a native build (`make release`). Unless a section says
 otherwise: best of 3 runs per thread count, 500 generated tokens, temperature 0, one engine at a time with
 nothing else running. Raw logs, the exact commands and the host's CPU details are in each linked folder.
+Every new run is produced by the scripts in [tools/bench/](../tools/bench/README.md) (stamped result folders, raw output, hardware profile and live-terminal screenshots).
 The portable binary (`make dist`, what the installer fetches) against a native build on the same host:
 [benchmark_results/portable_vs_native_2026-11-18/](../benchmark_results/portable_vs_native_2026-11-18/README.md).
 

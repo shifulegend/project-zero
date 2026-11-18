@@ -1,0 +1,16 @@
+{
+  "kind": "hardware_profile",
+  "pz": {
+    "path": "./pz",
+    "exists": true,
+    "sha256_16": "6d168520c55b51a9",
+    "size": 1523408,
+    "version": ""
+  },
+  "model": "models/SmolLM2-135M-Instruct-f16.gguf",
+  "calibration": "isolated",
+  "screenshot": "benchmark_results/hardware_profile_20261118-044219Z/screenshots/20261118-044219Z_hardware_profile.png",
+  "profile_box_found": true,
+  "finished": "2026-11-18T04:42:43Z",
+  "started": "2026-11-18T04:42:19Z"
+}

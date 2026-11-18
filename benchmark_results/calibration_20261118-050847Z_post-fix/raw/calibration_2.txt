@@ -1,0 +1,136 @@
+Script started on 2026-11-18 05:09:43+00:00 [COMMAND="'./pz' '--model' 'models/SmolLM2-135M-Instruct-f16.gguf' '--calibrate' '--prompt' 'Hello' '--max-tokens' '1' '--temperature' '0' '--threads' '4' '--no-update-check'" <not executed on terminal>]
+
+
+
+
+
+
+
+
+
+#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
+
+
+
+#     # #   #   # #  #  #     #       #        #    #     # #   #   #
+#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
+
+
+####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
+#     # #   #   # #  #  #     #       #        #    #     # #   #   #
+#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
+
+#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #
+####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
+#     # #   #   # #  #  #     #       #        #    #     # #   #   #
+#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
+####  ####   ###    ### #####  #### #####     ##### ##### ####   ### 
+#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #
+####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
+#     # #   #   # #  #  #     #       #        #    #     # #   #   #
+#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
+####  ####   ###    ### #####  #### #####     ##### ##### ####   ### 
+#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #
+####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
+#     # #   #   # #  #  #     #       #        #    #     # #   #   #
+#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
+####  ####   ###    ### #####  #### #####     ##### ##### ####   ### 
+#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #
+####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
+#     # #   #   # #  #  #     #       #        #    #     # #   #   #
+#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
+####  ####   ###    ### #####  #### #####     ##### ##### ####   ### 
+#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #
+####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
+#     # #   #   # #  #  #     #       #        #    #     # #   #   #
+#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
+####  ####   ###    ### #####  #### #####     ##### ##### ####   ### 
+#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #
+####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
+#     # #   #   # #  #  #     #       #        #    #     # #   #   #
+#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
+####  ####   ###    ### #####  #### #####     ##### ##### ####   ### 
+#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #
+####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
+#     # #   #   # #  #  #     #       #        #    #     # #   #   #
+#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
+####  ####   ###    ### #####  #### #####     ##### ##### ####   ### 
+#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #
+####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
+#     # #   #   # #  #  #     #       #        #    #     # #   #   #
+#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
+
+Project Zero Engine v0.2.0-21-g864eeea-dirty — Auto-Tuned Hardware
+┌──────────────────────────────────────────────────────────────────┐
+│  Auto-Calibration  —  first run, result cached for future use   │
+│  Re-triggers only when hardware changes.  ~40-60 seconds.       │
+├──────────────────────────────────────────────────────────────────┤
+│  Phase 1/2  SIMD backends at T=4  (thermal stabilisation)       │
+├──────────────────────────────────────────────────────────────────┤
+  auto = AVX-512 VNNI;  candidates: scalar avx2 avx512f vnni256
+  warmup[....]  rounds[...............]
+  auto             111.7  [ 64.0 – 123.5] tok/s  ← BEST
+  scalar             2.8  [  2.4 –   3.0] tok/s  beat auto in  0/15 rounds
+  avx2              16.8  [  9.9 –  18.1] tok/s  beat auto in  0/15 rounds
+  avx512f           30.6  [ 25.8 –  34.5] tok/s  beat auto in  0/15 rounds
+  vnni256           15.8  [ 13.4 –  16.2] tok/s  beat auto in  0/15 rounds
+├──────────────────────────────────────────────────────────────────┤
+│  Phase 2/2  Thread sweep  (backend: auto      )                │
+├──────────────────────────────────────────────────────────────────┤
+  T=1   bg:  0%  warmup[.] reps[.....]    40.0  [ 39.3 –  41.3] tok/s  ← PEAK
+  T=2   bg:  0%  warmup[.] reps[.....]    65.7  [ 65.6 –  66.0] tok/s  ← PEAK
+  T=3   bg:  0%  warmup[.] reps[.....]    74.9  [ 68.4 –  78.1] tok/s  ← PEAK
+  T=4   bg:  0%  warmup[.] reps[.....]   105.2  [ 81.8 – 119.7] tok/s  ← PEAK
+├──────────────────────────────────────────────────────────────────┤
+│  Result                                                          │
+│    SIMD      : auto       (111.7 tok/s at T=4)                 │
+│    Threads   : T=4   (105.2 tok/s, swept T=1..4)           │
+│    Classifier: BF16 (default — full intelligence)               │
+│    Speed opt : --classifier auto-fast  (INT4, ~+86% est.)        │
+└──────────────────────────────────────────────────────────────────┘
+[Calibration] Saved to /home/user/project-zero/benchmark_results/calibration_20261118-050847Z_post-fix/pz_home/.project-zero/calibration.bin
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                        │
+│ Cores         : 4 physical / 4 logical              │
+│ Threads       : 4                                   │
+│ L2 cache      : 2048   KiB per core                 │
+│ L3 cache      : 260    MiB shared                   │
+│ Free RAM      : 15135  MiB                          │
+│ DRAM bandwidth: 56.2   GB/s (measured)              │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)               │
+│ Prefetch rows : 32                                  │
+│ Model in L3   : no                                  │
+│ Data/token    : 1149   MB (pre-load est.)           │
+│ Ceiling       : 60.3   tok/s (at 100% BW)           │
+└─────────────────────────────────────────────────────┘
+Active: 4 threads | AVX-512 VNNI | BF16 cls | 4T | 56.2 GB/s | ceiling 60 tok/s
+
+[1/4] Opening model file...
+[2/4] Loading weights...Model format: GGUF
+Model Configuration:
+  dim:        576
+  hidden_dim: 1536
+  n_layers:   30
+  n_heads:    9
+  n_kv_heads: 3
+  vocab_size: 49152
+  seq_len:    8192
+  act_type:   0 (SiLU)
+  rope_theta: 100000.0
+  head_dim:   64
+  kv_dim:     192
+[GGUF] Weights loaded (30 layers, arch=llama)
+[profile] Data/token (loaded model): 258 MB -> ceiling 207.4 tok/s at 56.2 GB/s
+
+[3/4] Preparing runtime...KV cache: F32, max context: 8192 tokens (sizing tier: Quantized I8, RAM budget 60%)
+[gguf-tok] Loaded 49152 tokens (gpt2, pre=smollm), 17 special — BOS=1 EOS=2 chat_template=yes
+
+[4/4] Ready.
+
+Hello
+
+
+Script done on 2026-11-18 05:10:05+00:00 [COMMAND_EXIT_CODE="0"]

@@ -286,7 +286,8 @@ build/core/calibration.o: src/core/calibration.c
 # -mavxvnni to a CPU that doesn't have them (prevents SIGILL and Clang errors).
 ifeq ($(UNAME_S),Linux)
   _HAS_AVX512VNNI := $(shell grep -qw avx512_vnni /proc/cpuinfo && echo 1 || echo 0)
-  _HAS_AVX512VBMI := $(shell grep -qw avx512_vbmi /proc/cpuinfo && echo 1 || echo 0)
+  # /proc/cpuinfo spells it "avx512vbmi" but "avx512_vnni": match both spellings (2026-11-18)
+  _HAS_AVX512VBMI := $(shell grep -qwE 'avx512_?vbmi' /proc/cpuinfo && echo 1 || echo 0)
   _HAS_AVXVNNI    := $(shell grep -qw avx_vnni    /proc/cpuinfo && echo 1 || echo 0)
 else ifeq ($(UNAME_S),Darwin)
   _HAS_AVX512VNNI := $(shell sysctl -n hw.optional.avx512vnni 2>/dev/null || echo 0)

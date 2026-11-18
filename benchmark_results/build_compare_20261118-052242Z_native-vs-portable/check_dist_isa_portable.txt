@@ -1,0 +1,9 @@
+check_dist_isa: /home/user/project-zero/benchmark_results/build_compare_20261118-052242Z_native-vs-portable/bin/pz-portable
+  ok    quantize_row_to_i8_avx512              zmm instructions (13)
+  ok    sum_i8_avx512                          zmm instructions (28)
+  ok    ternary_matmul_packed_vnni             vpdpbusd (2)
+  ok    ternary_matmul_packed_vnni_preq        vpdpbusd (2)
+  ok    ternary_matmul_packed_vnni_vbmi        vpmultishiftqb (2)
+  ok    ternary_matmul_packed_vnni_preq_vbmi   vpmultishiftqb (2)
+  ok    VBMI instructions only in *_vbmi functions
+check_dist_isa: ok

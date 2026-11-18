@@ -1,0 +1,1 @@
+python3 tools/bench/h2h_bench.py --engines all --models smollm2-135m,smollm2-1.7b-q4km,bitnet-2b,bitnet-2b-iq2bn --threads 4 --rounds 3 --tokens 128 --label four-engines

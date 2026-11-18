@@ -1,0 +1,132 @@
+{
+  "kind": "calibration",
+  "tests": [
+    "profile",
+    "sweeps",
+    "tiers"
+  ],
+  "calibration": "isolated",
+  "sweeps": {
+    "simd_picks": {
+      "auto": 3
+    },
+    "thread_picks": {
+      "4": 2,
+      "3": 1
+    }
+  },
+  "tiers": [
+    {
+      "model": "bitnet-2b",
+      "variant": "tier-avx2",
+      "threads": 4,
+      "n": 3,
+      "best": 7.82,
+      "mean": 7.733333333333333,
+      "stdev": 0.13316656236958788,
+      "ratio": 0.3059878659984173
+    },
+    {
+      "model": "bitnet-2b",
+      "variant": "tier-avx512f",
+      "threads": 4,
+      "n": 3,
+      "best": 12.94,
+      "mean": 12.923333333333334,
+      "stdev": 0.01527525231651914,
+      "ratio": 0.5113426536533896
+    },
+    {
+      "model": "bitnet-2b",
+      "variant": "tier-default",
+      "threads": 4,
+      "n": 3,
+      "best": 25.5,
+      "mean": 25.273333333333333,
+      "stdev": 0.3669241520169155,
+      "ratio": 1.0
+    },
+    {
+      "model": "bitnet-2b",
+      "variant": "tier-vnni",
+      "threads": 4,
+      "n": 3,
+      "best": 25.85,
+      "mean": 25.253333333333334,
+      "stdev": 0.5718682832028139,
+      "ratio": 0.9992086520706938
+    },
+    {
+      "model": "smollm2-135m",
+      "variant": "tier-avx2",
+      "threads": 4,
+      "n": 3,
+      "best": 109.4,
+      "mean": 107.64333333333333,
+      "stdev": 2.999438836404788,
+      "ratio": 0.9991027782934224
+    },
+    {
+      "model": "smollm2-135m",
+      "variant": "tier-avx512f",
+      "threads": 4,
+      "n": 3,
+      "best": 115.5,
+      "mean": 113.78,
+      "stdev": 2.044211339367827,
+      "ratio": 1.056060887321329
+    },
+    {
+      "model": "smollm2-135m",
+      "variant": "tier-default",
+      "threads": 4,
+      "n": 3,
+      "best": 110.19,
+      "mean": 107.74,
+      "stdev": 2.6246714080052,
+      "ratio": 1.0
+    },
+    {
+      "model": "smollm2-135m",
+      "variant": "tier-vnni",
+      "threads": 4,
+      "n": 3,
+      "best": 112.0,
+      "mean": 108.60333333333334,
+      "stdev": 5.762380873678285,
+      "ratio": 1.008013118000124
+    }
+  ],
+  "tiers_screenshots": [
+    {
+      "model": "bitnet-2b",
+      "variant": "tier-default",
+      "threads": 4,
+      "tok_s_in_screenshot_run": 26.15,
+      "screenshot": "benchmark_results/calibration_20261118-050847Z_post-fix/tiers/screenshots/20261118-051506Z_bitnet-2b__tier-default_t4.png"
+    },
+    {
+      "model": "bitnet-2b",
+      "variant": "tier-vnni",
+      "threads": 4,
+      "tok_s_in_screenshot_run": 26.5,
+      "screenshot": "benchmark_results/calibration_20261118-050847Z_post-fix/tiers/screenshots/20261118-051512Z_bitnet-2b__tier-vnni_t4.png"
+    },
+    {
+      "model": "bitnet-2b",
+      "variant": "tier-avx2",
+      "threads": 4,
+      "tok_s_in_screenshot_run": 7.77,
+      "screenshot": "benchmark_results/calibration_20261118-050847Z_post-fix/tiers/screenshots/20261118-051517Z_bitnet-2b__tier-avx2_t4.png"
+    },
+    {
+      "model": "bitnet-2b",
+      "variant": "tier-avx512f",
+      "threads": 4,
+      "tok_s_in_screenshot_run": 13.0,
+      "screenshot": "benchmark_results/calibration_20261118-050847Z_post-fix/tiers/screenshots/20261118-051529Z_bitnet-2b__tier-avx512f_t4.png"
+    }
+  ],
+  "finished": "2026-11-18T05:15:37Z",
+  "started": "2026-11-18T05:08:47Z"
+}

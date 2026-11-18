@@ -1,0 +1,1 @@
+python3 tools/bench/calibration_test.py --tests profile,sweeps,tiers --calibrations 3 --tiers default,vnni,avx2,avx512f --models bitnet-2b,smollm2-135m --rounds 3 --tokens 128 --label post-fix

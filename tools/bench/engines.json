@@ -1,0 +1,39 @@
+{
+  "_comment": "Reference engines for head-to-head runs. 'pin' is the commit the published 2026-10-29 sweep used (benchmark_results/sweep_h2h_2026-10-29/system_info.txt); setup_engines.py --ref latest|<sha> overrides it. 'runner' tells h2h_bench.py how to call the binary: ref = llama-completion style (-no-cnv), cli = llama-cli style (no -no-cnv flag).",
+  "llamacpp": {
+    "label": "llama.cpp",
+    "repo": "https://github.com/ggml-org/llama.cpp",
+    "pin": "ff5a233",
+    "dir": "llama.cpp",
+    "binary": "build/bin/llama-completion",
+    "runner": "ref",
+    "configure": ["cmake", "-B", "build", "-DCMAKE_BUILD_TYPE=Release", "-DGGML_NATIVE=ON"],
+    "targets": ["llama-completion"],
+    "recorded_build": "Release, GGML_NATIVE=ON"
+  },
+  "bitnetcpp": {
+    "label": "bitnet.cpp",
+    "repo": "https://github.com/microsoft/BitNet",
+    "pin": "0b341e5",
+    "recursive": true,
+    "dir": "BitNet",
+    "binary": "build/bin/llama-completion",
+    "runner": "ref",
+    "compiler": "clang",
+    "configure": ["cmake", "-B", "build", "-DCMAKE_BUILD_TYPE=Release", "-DBITNET_X86_TL2=OFF", "-DLLAMA_BUILD_COMMON=ON", "-DLLAMA_BUILD_TOOLS=ON", "-DLLAMA_BUILD_TESTS=OFF", "-DLLAMA_BUILD_EXAMPLES=OFF"],
+    "targets": ["llama-completion"],
+    "recorded_build": "Release, clang, BITNET_X86_TL2=OFF, i2_s"
+  },
+  "ik": {
+    "label": "ik_llama.cpp",
+    "repo": "https://github.com/ikawrakow/ik_llama.cpp",
+    "pin": "06d729c",
+    "dir": "ik_llama.cpp",
+    "binary": "build/bin/llama-cli",
+    "runner": "cli",
+    "configure": ["cmake", "-B", "build", "-DCMAKE_BUILD_TYPE=Release", "-DGGML_NATIVE=ON"],
+    "targets": ["llama-cli", "llama-quantize"],
+    "extra_binaries": {"quantize": "build/bin/llama-quantize"},
+    "recorded_build": "Release, GGML_NATIVE=ON; -rtr on quantized models; BitNet converted I2_S -> IQ2_BN"
+  }
+}

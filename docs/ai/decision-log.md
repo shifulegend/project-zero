@@ -3,6 +3,12 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-11-18.
 
+### 2026-11-18 — Benchmarks and calibration tests are scripts, not hand-run sessions
+
+- Context: every comparison so far (calibration sweeps, tier A/Bs, native vs portable, head-to-head) was designed and run by hand, with ad-hoc timestamps and no standard record. The owner asked for independent scripts that run the hardware profile, run the test with the full pz branding, capture live-terminal screenshots with date and time, and save them, with every choice a flag.
+- Decisions (owner's answers, 2026-11-18): separate independent scripts under `tools/bench/` (`hardware_profile.py`, `calibration_test.py`, `h2h_bench.py`, `build_compare.py`, `setup_engines.py`) sharing one small library; engines and models are selectable and either reused or fetched (`--engine-fetch`, `--model-fetch`, `--ref pinned|latest|<sha>`); results are saved under `benchmark_results/<kind>_<UTC stamp>/` in the working tree of the current branch, and the scripts never commit; pz runs calibrated in its own isolated HOME/cache by default (`--calibration off` for a fixed static choice).
+- Method: variants run interleaved (rotating start) so drift hits all alike; screenshots are live pty captures through `capture.mjs`, never images rendered from logs; the engine pins (llama.cpp `ff5a233`, bitnet.cpp `0b341e5`, ik_llama.cpp `06d729c`) and model sizes come from the published 2026-10-29 sweep and from URL checks. bitnet.cpp's fork builds its tools only with `-DLLAMA_BUILD_COMMON=ON -DLLAMA_BUILD_TOOLS=ON`.
+
 ### 2026-11-18 — ISA segregation: every tier is compiled into the portable binary and bound at runtime
 
 - Context: the release binary was 35% slower than a native build on BitNet 2B because AVX-512/VNNI/VBMI code sat behind compile-time guards in files built at a lower ISA (mistakes.md, 2026-11-18). Alternatives measured or weighed: raising the portable floor to x86-64-v3/v4 (does not help: 15.2 / 16.3 against native 22.8); several release assets per ISA level chosen by `install.sh` (works, but multiplies release assets, installer logic and CI; revisit only if the segregated build cannot close the gap); GCC `target_clones` (does not help code selected by `#if` on a macro).

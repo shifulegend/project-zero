@@ -1,0 +1,1 @@
+python3 tools/bench/build_compare.py --build native,portable --rounds 5 --label native-vs-portable

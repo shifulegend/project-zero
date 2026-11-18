@@ -19,5 +19,9 @@ Adapter for the verification section of `docs/ai/engineering-rules.md`.
 - `make test` builds the library as the `debug` (ASan/UBSan) variant, so engine code is sanitized
   too (2026-10-21); it replaces a release `./pz` — run `make release` again before benchmarking.
   The build stamp also tracks compiler and host ISA, so CPU/compiler changes force a clean rebuild.
+- Benchmarks and calibration tests run through `tools/bench/*.py` (`hardware_profile`, `calibration_test`,
+  `h2h_bench`, `build_compare`, `setup_engines`; `tools/bench/README.md`), not by hand: every result folder
+  is stamped `<kind>_<UTC>`, holds the raw output, the hardware profile and live-terminal screenshots, and
+  pz runs calibrated in an isolated HOME unless a flag says otherwise (2026-11-18). Add a flag, not a one-off script.
 - Benchmark screenshots are real terminal sessions captured with `tools/screenshots/cli/capture.mjs`
   (banner visible, numbers from that run) — never images rendered from logs (2026-10-22).

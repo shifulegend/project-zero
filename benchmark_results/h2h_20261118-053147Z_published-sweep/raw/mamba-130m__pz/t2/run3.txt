@@ -1,0 +1,88 @@
+=== mamba-130m__pz t=2 run 3 ===
+DATE: 2026-11-18T19:41:10Z
+HOST_CPU: Intel(R) Xeon(R) Processor @ 2.10GHz (4 vCPU)
+CMD: ./pz --model models/mamba-130m-hf.f16.gguf --prompt 'Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.' --max-tokens 500 --temperature 0 --threads 2 --no-update-check --raw-prompt --ignore-eos
+PROMPT: Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+============================================================
+[1/4] Opening model file...
+[2/4] Loading weights...
+[3/4] Preparing runtime...
+[gguf-tok] Loaded 50280 tokens (gpt2, pre=gpt2), 25 special — BOS=0 EOS=0 chat_template=no
+[4/4] Ready.
+####  ####   ###    ### #####  #### #####     ##### ##### ####   ### 
+#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #
+####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
+#     # #   #   # #  #  #     #       #        #    #     # #   #   #
+#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
+Project Zero Engine v0.2.0-26-gc1e63db — Auto-Tuned Hardware
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                        │
+│ Cores         : 4 physical / 4 logical              │
+│ Threads       : 4                                   │
+│ L2 cache      : 2048   KiB per core                 │
+│ L3 cache      : 260    MiB shared                   │
+│ Free RAM      : 15105  MiB                          │
+│ DRAM bandwidth: 46.8   GB/s (cached)                │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)               │
+│ Prefetch rows : 32                                  │
+│ Model in L3   : no                                  │
+│ Data/token    : 1149   MB (pre-load est.)           │
+│ Ceiling       : 50.1   tok/s (at 100% BW)           │
+└─────────────────────────────────────────────────────┘
+Active: 2 threads | AVX-512 VNNI | BF16 cls | 4T | 46.8 GB/s | ceiling 50 tok/s
+Model format: GGUF
+Model Configuration:
+  dim:        768
+  hidden_dim: 1536
+  n_layers:   24
+  n_heads:    1
+  n_kv_heads: 1
+  vocab_size: 50280
+  seq_len:    1048576
+  act_type:   0 (SiLU)
+  rope_theta: 10000.0
+  head_dim:   768
+  kv_dim:     768
+[Mamba] state-space model: d_inner=1536 d_state=16 d_conv=4 dt_rank=48
+[profile] Data/token (loaded model): 250 MB -> ceiling 178.6 tok/s at 46.8 GB/s
+KV cache: F32, max context: 63513 tokens (sizing tier: Quantized I8, RAM budget 60%)
+
+
+
+The first part of the course is a series of exercises that will help you understand the concepts of machine learning and how to use them to solve real-world problems.
+
+The second part of the course is a series of exercises that will help you understand the concepts of machine learning and how to use them to solve real-world problems.
+
+The third part of the course is a series of exercises that will help you understand the concepts of machine learning and how to use them to solve real-world problems.
+
+The fourth part of the course is a series of exercises that will help you understand the concepts of machine learning and how to use them to solve real-world problems.
+
+The fifth part of the course is a series of exercises that will help you understand the concepts of machine learning and how to use them to solve real-world problems.
+
+The sixth part of the course is a series of exercises that will help you understand the concepts of machine learning and how to use them to solve real-world problems.
+
+The seventh part of the course is a series of exercises that will help you understand the concepts of machine learning and how to use them to solve real-world problems.
+
+The eighth part of the course is a series of exercises that will help you understand the concepts of machine learning and how to use them to solve real-world problems.
+
+The ninth part of the course is a series of exercises that will help you understand the concepts of machine learning and how to use them to solve real-world problems.
+
+The tenth part of the course is a series of exercises that will help you understand the concepts of machine learning and how to use them to solve real-world problems.
+
+The eleventh part of the course is a series of exercises that will help you understand the concepts of machine learning and how to use them to solve real-world problems.
+
+The twelfth part of the course is a series of exercises that will help you understand the concepts of machine learning and how to use them to solve real-world problems.
+
+The thirteenth part of the course is a series of exercises that will help you understand the concepts of machine learning and how to use them to solve real-world problems.
+
+The fourteenth part of the course is a series of exercises that will help you understand the concepts of machine learning and how to use them to solve real-world problems.
+
+The fifteenth part
+[gen] 50.07 tok/s (500 tokens)
+
+
+
+PERF: wall=10.81s max_rss=485MB cpu=194% exit=0

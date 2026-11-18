@@ -26,7 +26,9 @@ float quantize_row_to_i8(const float *x, int8_t *q, int n) {
         /* Clamp to [-127, 127] — avoids -128 which would overflow on multiply */
         if      (v >  127.0f) v =  127.0f;
         else if (v < -127.0f) v = -127.0f;
-        q[i] = (int8_t)(int)v;  /* truncation toward zero (same as llama.cpp) */
+        /* Round to nearest, ties to even (the specification in quantize_i8.h). Truncation here, which
+         * this line did until 2026-11-18, gave ~10x the quantization error (docs/rca/...). */
+        q[i] = (int8_t)lrintf(v);
     }
 
     return scale;
@@ -92,8 +94,8 @@ float quantize_row_to_i8_avx2(const float *x, int8_t *q, int n) {
         v = _mm256_min_ps(v, vpos127);
         v = _mm256_max_ps(v, vneg127);
 
-        /* Pack float→int32→int8: float→i32 then two pack steps */
-        __m256i i32 = _mm256_cvttps_epi32(v);
+        /* Pack float→int32→int8: float→i32 (round to nearest even, MXCSR default) then two pack steps */
+        __m256i i32 = _mm256_cvtps_epi32(v);
         /* Pack int32→int16 (saturating signed) */
         __m128i lo_i32 = _mm256_castsi256_si128(i32);
         __m128i hi_i32 = _mm256_extracti128_si256(i32, 1);
@@ -108,7 +110,7 @@ float quantize_row_to_i8_avx2(const float *x, int8_t *q, int n) {
         float v = x[i] * inv_scale;
         if      (v >  127.0f) v =  127.0f;
         else if (v < -127.0f) v = -127.0f;
-        q[i] = (int8_t)(int)v;
+        q[i] = (int8_t)lrintf(v);
     }
 
     return scale;
@@ -121,3 +123,47 @@ float quantize_row_to_i8_avx2(const float *x, int8_t *q, int n) {
 }
 
 #endif /* TN_HAS_AVX2 */
+
+/* ── NEON (AArch64) ───────────────────────────────────────────────────────── */
+#if TN_HAS_NEON && defined(__aarch64__)
+#include <arm_neon.h>
+
+float quantize_row_to_i8_neon(const float *x, int8_t *q, int n) {
+    float32x4_t vmax = vdupq_n_f32(0.0f);
+    int i = 0;
+    for (; i + 3 < n; i += 4) vmax = vmaxq_f32(vmax, vabsq_f32(vld1q_f32(x + i)));
+    float abs_max = vmaxvq_f32(vmax);
+    for (; i < n; i++) {
+        float a = x[i] < 0.0f ? -x[i] : x[i];
+        if (a > abs_max) abs_max = a;
+    }
+    if (abs_max == 0.0f) {
+        memset(q, 0, (size_t)n);
+        return 0.0f;
+    }
+    float scale     = abs_max / 127.0f;
+    float inv_scale = 127.0f / abs_max;
+    const float32x4_t hi = vdupq_n_f32(127.0f), lo = vdupq_n_f32(-127.0f);
+    for (i = 0; i + 7 < n; i += 8) {
+        float32x4_t a = vminq_f32(vmaxq_f32(vmulq_n_f32(vld1q_f32(x + i),     inv_scale), lo), hi);
+        float32x4_t b = vminq_f32(vmaxq_f32(vmulq_n_f32(vld1q_f32(x + i + 4), inv_scale), lo), hi);
+        /* vcvtnq: float -> int32 round to nearest, ties to even (independent of FPCR) */
+        int16x8_t h = vcombine_s16(vqmovn_s32(vcvtnq_s32_f32(a)), vqmovn_s32(vcvtnq_s32_f32(b)));
+        vst1_s8(q + i, vqmovn_s16(h));
+    }
+    for (; i < n; i++) {
+        float v = x[i] * inv_scale;
+        if      (v >  127.0f) v =  127.0f;
+        else if (v < -127.0f) v = -127.0f;
+        q[i] = (int8_t)lrintf(v);
+    }
+    return scale;
+}
+
+#else /* no AArch64 NEON */
+
+float quantize_row_to_i8_neon(const float *x, int8_t *q, int n) {
+    return quantize_row_to_i8(x, q, n);
+}
+
+#endif

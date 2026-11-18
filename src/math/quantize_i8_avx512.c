@@ -56,8 +56,8 @@ float quantize_row_to_i8_avx512(const float *x, int8_t *q, int n) {
         v = _mm512_min_ps(v, vpos127);
         v = _mm512_max_ps(v, vneg127);
 
-        /* float → int32 (rounding toward zero) → pack to int8 */
-        __m512i i32 = _mm512_cvttps_epi32(v);
+        /* float → int32 (round to nearest even, MXCSR default; quantize_i8.h specification) → pack to int8 */
+        __m512i i32 = _mm512_cvtps_epi32(v);
 
         /* Pack 16 int32 → 16 int8 (values in [-127,127], safe truncation) */
         __m128i i8  = _mm512_cvtepi32_epi8(i32);
@@ -69,7 +69,7 @@ float quantize_row_to_i8_avx512(const float *x, int8_t *q, int n) {
         float v = x[i] * inv_scale;
         if      (v >  127.0f) v =  127.0f;
         else if (v < -127.0f) v = -127.0f;
-        q[i] = (int8_t)(int)v;
+        q[i] = (int8_t)lrintf(v);
     }
 
     return scale;

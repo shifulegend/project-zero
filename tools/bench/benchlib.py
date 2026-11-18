@@ -114,6 +114,12 @@ class RunDir:
         cmdfile = self.path / "command.txt"          # a resumed run appends its command; the original stays
         with open(cmdfile, "a") as f:
             f.write(shlex.join(["python3"] + [str(a) for a in self.argv]) + "\n")
+        partial = self.path / "PARTIAL.md"
+        if not (self.path / "meta.json").exists():      # meta.json is written only by finish()
+            partial.write_text("# INCOMPLETE RUN\n\nThis folder is a checkpoint of a run that has not finished (or was interrupted). "
+                               "Its numbers are partial; do not quote them.\n\nResume with the same command plus "
+                               f"`--out {self.rel()} --resume`:\n\n    {shlex.join(['python3'] + [str(a) for a in self.argv])}\n\n"
+                               "`progress.json` says how far it got. This file is deleted when the run finishes.\n")
         self._log = open(self.path / "run.log", "a")
         return self
 
@@ -333,6 +339,8 @@ def finish(run, meta):
     meta["finished"] = iso_utc()
     meta["started"] = iso_utc(run.t0)
     (run.path / "meta.json").write_text(json.dumps(meta, indent=2, default=str) + "\n")
+    (run.path / "PARTIAL.md").unlink(missing_ok=True)
+    (run.path / "progress.json").unlink(missing_ok=True)
     run.log(f"\nResults: {run.rel()}")
     run.close()
 
@@ -412,6 +420,12 @@ def load_rows(path):
     return rows
 
 
+def write_progress(run, phase, done, total, last=""):
+    """Checkpoint marker: how far the run got (readable by people and by the next session)."""
+    (run.path / "progress.json").write_text(json.dumps(
+        {"phase": phase, "done": done, "total": total, "last": last, "updated": iso_utc()}, indent=2) + "\n")
+
+
 def run_matrix(run, variants, models, threads, rounds, tokens=0, cooldown=5.0, order="interleaved",
                fixed_length=True, resume=False):
     """Measure every variant on every model.
@@ -431,6 +445,9 @@ def run_matrix(run, variants, models, threads, rounds, tokens=0, cooldown=5.0, o
     if new:
         w.writerow(SUMMARY_HEADER)
     rows = []
+    total = sum(sum(1 for v in variants if v["cmd"](k, i, p, tokens or i.get("tokens", 128), threads[0], fixed_length) is not None)
+                for k, i, p in models) * len(threads) * rounds
+    counter = [len(done)]
 
     def one(key, info, mpath, v, t, rnd, ntok):
         if (key, v["label"], t, rnd) in done:
@@ -446,6 +463,8 @@ def run_matrix(run, variants, models, threads, rounds, tokens=0, cooldown=5.0, o
         rows.append({"model": key, "variant": v["label"], "threads": t, "round": rnd, "gen_tok_s": res["tps"]})
         flag = "" if res["rc"] == 0 else f"  FAILED (exit {res['rc']})"
         run.log(f"  {key:<20} {v['label']:<26} t={t} run {rnd}: {fnum(res['tps'], 2):>8} tok/s  wall {res['wall']:.1f}s{flag}")
+        counter[0] += 1
+        write_progress(run, "measuring", counter[0], total, f"{key} {v['label']} t={t} run {rnd}")
         time.sleep(cooldown)
 
     for key, info, mpath in models:
@@ -505,8 +524,16 @@ def take_screenshots(run, variants, models, shot_threads, tokens, mode, rows_ove
             cmd = v["cmd"](key, info, mpath, tokens or info.get("tokens", 128), shot_threads, True)
             if cmd is None:
                 continue
-            png, text = screenshot(run, f"{key}__{v['label']}_t{shot_threads}", cmd, v.get("env") or dict(os.environ),
-                                   rows=rows_override or 130, timeout_s=1800)
+            name = f"{key}__{v['label']}_t{shot_threads}"
+            have = sorted(run.shots.glob(f"*_{name}.png"))           # a screenshot already taken (resumed run)
+            if have:
+                png = have[-1]
+                pty = run.raw / (png.stem + ".pty")
+                text = strip_ansi(pty.read_text(errors="replace")) if pty.exists() else ""
+                run.log(f"  screenshot {name}: exists, kept (resume)")
+            else:
+                png, text = screenshot(run, name, cmd, v.get("env") or dict(os.environ),
+                                       rows=rows_override or 130, timeout_s=1800)
             tps, ntok = gen_toks(text)
             out.append({"model": key, "variant": v["label"], "threads": shot_threads, "tok_s_in_screenshot_run": tps,
                         "screenshot": run.rel(png) if png else None})

@@ -1,0 +1,1 @@
+python3 tools/bench/build_compare.py --binaries old=./pz,new=/home/user/pz-fix/pz --reference new --models bitnet-2b,smollm2-135m --rounds 5 --tokens 128 --threads 4 --cooldown 5 --calibration off --screenshots none --label quantiser-fix-ab

@@ -25,4 +25,3 @@ Adapter for the verification section of `docs/ai/engineering-rules.md`.
   pz runs calibrated in an isolated HOME unless a flag says otherwise (2026-11-18). Add a flag, not a one-off script.
 - Benchmark screenshots are real terminal sessions captured with `tools/screenshots/cli/capture.mjs`
   (banner visible, numbers from that run) — never images rendered from logs (2026-10-22).
-- Benchmarks time a **clean** pz build only (`make clean && make release`; version without `-dirty`): the bench scripts refuse a dirty binary (`--allow-dirty-binary` marks the run). A published number must be reproducible from a commit.

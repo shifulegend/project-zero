@@ -6,5 +6,3 @@ python3 tools/bench/h2h_bench.py --preset published --label published-sweep --ou
 python3 tools/bench/h2h_bench.py --preset published --gate-only --out benchmark_results/h2h_20261118-053147Z_published-sweep --resume
 python3 tools/bench/h2h_bench.py --preset published --gate-only --out benchmark_results/h2h_20261118-053147Z_published-sweep --resume
 python3 tools/bench/h2h_bench.py --preset published --out benchmark_results/h2h_20261118-053147Z_published-sweep --resume
-python3 tools/bench/h2h_bench.py --preset published --out benchmark_results/h2h_20261118-053147Z_published-sweep --resume
-python3 tools/bench/h2h_bench.py --preset published --out benchmark_results/h2h_20261118-053147Z_published-sweep --resume

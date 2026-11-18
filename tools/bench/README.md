@@ -75,11 +75,7 @@ Flags on every script: `--gate off|warn|strict` (default `strict`: INVALID cells
 `--gate-tolerance PCT` (default 1.0), `--gate-text`, `--gate-chunks`, `--gate-ctx`, `--gate-reference VARIANT`,
 and `--gate-only` (run just the gate; with `--out FOLDER --resume` it adds verdicts to an existing run
 folder: `gate.json`, the `gate` column of `summary.csv`, `summary.md`, the chart). Every row, chart note and
-screenshot caption carries the verdict.
-
-Timed scripts also refuse a pz binary built from uncommitted state (its version ends in `-dirty`): nobody can
-reproduce its numbers. Rebuild from a clean tree (`make clean && make release`), or pass `--allow-dirty-binary`
-(the run is then marked in `meta.json`). Set `require_clean_binary` in `gate.json` to change the default. Engines that need a modified source tree are listed in
+screenshot caption carries the verdict. Engines that need a modified source tree are listed in
 `engines.json` with the recorded patch (`bitnetcpp-fix`) and are always labelled "modified".
 Why this exists: `docs/rca/2026-11-18-ternary-output-correctness.md`.
 

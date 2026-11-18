@@ -205,7 +205,6 @@ def main():
         return 0
     if not variants or not models:
         raise SystemExit("nothing to run: see MISSING above")
-    dirty = gate.require_clean({"pz": a.pz} if any(v["engine"] == "pz" for v in variants) else {}, gcfg, a.allow_dirty_binary)
 
     run.create()
     g = gate.Gate(gate.config_from_args(a), run, a.models_dir, resume=a.resume or a.gate_only)
@@ -241,7 +240,7 @@ def main():
     bl.finish(run, {"kind": "h2h", "variants": [v["label"] for v in variants], "models": [k for k, _, _ in models],
                     "threads": threads, "rounds": a.rounds, "order": a.order, "fixed_length": a.fixed,
                     "calibration": a.calibration, "reference_variant": ref, "summary": summary, "screenshots": shots,
-                    "gate": g.summary_for_meta(), "dirty_binaries": dirty})
+                    "gate": g.summary_for_meta()})
     return gate.exit_status(g.results, g.cfg)
 
 

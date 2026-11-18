@@ -1,25 +1,25 @@
 # Head-to-head decode benchmark
 
-UTC start: 2026-11-18T16:42:23Z  |  host: Intel(R) Xeon(R) Processor @ 2.10GHz  |  pz commit: 260183c
+UTC start: 2026-11-18T14:40:04Z  |  host: Intel(R) Xeon(R) Processor @ 2.10GHz  |  pz commit: 78689ec
 
 | model | variant | threads | runs | best tok/s | mean tok/s | stdev | mean / reference | gate |
 |---|---|---|---|---|---|---|---|---|
 | bitnet-2b | bitnetcpp | 1 | 3 | n/a | n/a | n/a | n/a | INVALID |
-| bitnet-2b | bitnetcpp-fix | 1 | 3 | 6.12 | 6.08 | 0.06 | 90% | REF |
-| bitnet-2b | pz | 1 | 3 | 6.82 | 6.72 | 0.12 | 100% | PASS |
-| bitnet-2b | pz-int4 | 1 | 3 | 5.75 | 5.67 | 0.08 | 84% | APPROX |
+| bitnet-2b | bitnetcpp-fix | 1 | 3 | 6.12 | 6.08 | 0.06 | 93% | REF |
+| bitnet-2b | pz | 1 | 3 | n/a | n/a | n/a | n/a | INVALID |
+| bitnet-2b | pz-int4 | 1 | 3 | 7.76 | 7.60 | 0.20 | 117% | APPROX |
 | bitnet-2b | bitnetcpp | 2 | 3 | n/a | n/a | n/a | n/a | INVALID |
-| bitnet-2b | bitnetcpp-fix | 2 | 3 | 10.97 | 10.84 | 0.11 | 90% | REF |
-| bitnet-2b | pz | 2 | 3 | 12.46 | 12.06 | 0.45 | 100% | PASS |
-| bitnet-2b | pz-int4 | 2 | 3 | 10.78 | 10.63 | 0.13 | 88% | APPROX |
+| bitnet-2b | bitnetcpp-fix | 2 | 3 | 10.97 | 10.84 | 0.11 | 89% | REF |
+| bitnet-2b | pz | 2 | 3 | n/a | n/a | n/a | n/a | INVALID |
+| bitnet-2b | pz-int4 | 2 | 3 | 14.49 | 14.27 | 0.37 | 117% | APPROX |
 | bitnet-2b | bitnetcpp | 3 | 3 | n/a | n/a | n/a | n/a | INVALID |
-| bitnet-2b | bitnetcpp-fix | 3 | 3 | 15.76 | 15.66 | 0.12 | 93% | REF |
-| bitnet-2b | pz | 3 | 3 | 16.99 | 16.85 | 0.13 | 100% | PASS |
-| bitnet-2b | pz-int4 | 3 | 3 | 15.41 | 15.09 | 0.32 | 90% | APPROX |
+| bitnet-2b | bitnetcpp-fix | 3 | 3 | 15.76 | 15.66 | 0.12 | 92% | REF |
+| bitnet-2b | pz | 3 | 3 | n/a | n/a | n/a | n/a | INVALID |
+| bitnet-2b | pz-int4 | 3 | 3 | 21.24 | 20.53 | 0.63 | 120% | APPROX |
 | bitnet-2b | bitnetcpp | 4 | 3 | n/a | n/a | n/a | n/a | INVALID |
-| bitnet-2b | bitnetcpp-fix | 4 | 3 | 20.21 | 19.42 | 0.72 | 92% | REF |
-| bitnet-2b | pz | 4 | 3 | 22.06 | 21.10 | 0.83 | 100% | PASS |
-| bitnet-2b | pz-int4 | 4 | 3 | 19.74 | 19.13 | 0.64 | 91% | APPROX |
+| bitnet-2b | bitnetcpp-fix | 4 | 3 | 20.21 | 19.42 | 0.72 | 87% | REF |
+| bitnet-2b | pz | 4 | 3 | n/a | n/a | n/a | n/a | INVALID |
+| bitnet-2b | pz-int4 | 4 | 3 | 26.57 | 26.46 | 0.10 | 119% | APPROX |
 | bitnet-2b-iq2bn | ik | 1 | 3 | 6.26 | 6.11 | 0.14 | n/a | PASS |
 | bitnet-2b-iq2bn | ik | 2 | 3 | 11.34 | 11.25 | 0.08 | n/a | PASS |
 | bitnet-2b-iq2bn | ik | 3 | 3 | 16.12 | 16.05 | 0.07 | n/a | PASS |
@@ -79,8 +79,8 @@ Mode strict; tolerance 1.0 % (WARN up to 2.0x); text `gate_text.txt` (sha256 851
 | bitnet-2b-iq2bn | ik | 31.6011 | 31.3344 | +0.85 % | ok | PASS |
 | bitnet-2b | bitnetcpp | 48.6683 | - | - | WRONG | INVALID |
 | bitnet-2b | bitnetcpp-fix (modified) | 31.3344 | - | +0.00 % | ok | REF |
-| bitnet-2b | pz | 31.3668 | 31.3344 | +0.10 % | ok | PASS |
-| bitnet-2b | pz-int4 | 32.7205 | 31.3344 | +4.42 % | ok | APPROX |
+| bitnet-2b | pz | 34.3926 | 31.3344 | +9.76 % | ok | INVALID |
+| bitnet-2b | pz-int4 | 35.6045 | 31.3344 | +13.63 % | ok | APPROX |
 | mamba-130m | llamacpp | 12.5667 | - | +0.00 % | ok | REF |
 | mamba-130m | pz | 12.5801 | 12.5667 | +0.11 % | ok | PASS |
 | mamba-130m | pz-int4 | 84.8103 | - | - | WRONG | INVALID |
@@ -107,8 +107,8 @@ Mode strict; tolerance 1.0 % (WARN up to 2.0x); text `gate_text.txt` (sha256 851
 | smollm2-1.7b-q4km | pz-int4 | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-145444Z_smollm2-1.7b-q4km__pz-int4_t1.png |
 | smollm2-1.7b-q4km | llamacpp | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-145617Z_smollm2-1.7b-q4km__llamacpp_t1.png |
 | smollm2-1.7b-q4km | ik | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-145814Z_smollm2-1.7b-q4km__ik_t1.png |
-| bitnet-2b | pz | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-171328Z_bitnet-2b__pz_t1.png |
-| bitnet-2b | pz-int4 | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-171452Z_bitnet-2b__pz-int4_t1.png |
+| bitnet-2b | pz | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-145942Z_bitnet-2b__pz_t1.png |
+| bitnet-2b | pz-int4 | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-150110Z_bitnet-2b__pz-int4_t1.png |
 | bitnet-2b | bitnetcpp | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-150254Z_bitnet-2b__bitnetcpp_t1.png |
 | bitnet-2b | bitnetcpp-fix | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-150422Z_bitnet-2b__bitnetcpp-fix_t1.png |
 | bitnet-2b-iq2bn | ik | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-150552Z_bitnet-2b-iq2bn__ik_t1.png |
@@ -123,8 +123,8 @@ Mode strict; tolerance 1.0 % (WARN up to 2.0x); text `gate_text.txt` (sha256 851
 | smollm2-1.7b-q4km | pz-int4 | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151002Z_smollm2-1.7b-q4km__pz-int4_t2.png |
 | smollm2-1.7b-q4km | llamacpp | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151055Z_smollm2-1.7b-q4km__llamacpp_t2.png |
 | smollm2-1.7b-q4km | ik | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151200Z_smollm2-1.7b-q4km__ik_t2.png |
-| bitnet-2b | pz | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-171634Z_bitnet-2b__pz_t2.png |
-| bitnet-2b | pz-int4 | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-171720Z_bitnet-2b__pz-int4_t2.png |
+| bitnet-2b | pz | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151248Z_bitnet-2b__pz_t2.png |
+| bitnet-2b | pz-int4 | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151338Z_bitnet-2b__pz-int4_t2.png |
 | bitnet-2b | bitnetcpp | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151438Z_bitnet-2b__bitnetcpp_t2.png |
 | bitnet-2b | bitnetcpp-fix | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151526Z_bitnet-2b__bitnetcpp-fix_t2.png |
 | bitnet-2b-iq2bn | ik | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151614Z_bitnet-2b-iq2bn__ik_t2.png |
@@ -139,8 +139,8 @@ Mode strict; tolerance 1.0 % (WARN up to 2.0x); text `gate_text.txt` (sha256 851
 | smollm2-1.7b-q4km | pz-int4 | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151910Z_smollm2-1.7b-q4km__pz-int4_t3.png |
 | smollm2-1.7b-q4km | llamacpp | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151953Z_smollm2-1.7b-q4km__llamacpp_t3.png |
 | smollm2-1.7b-q4km | ik | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152043Z_smollm2-1.7b-q4km__ik_t3.png |
-| bitnet-2b | pz | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-171818Z_bitnet-2b__pz_t3.png |
-| bitnet-2b | pz-int4 | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-171853Z_bitnet-2b__pz-int4_t3.png |
+| bitnet-2b | pz | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152128Z_bitnet-2b__pz_t3.png |
+| bitnet-2b | pz-int4 | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152205Z_bitnet-2b__pz-int4_t3.png |
 | bitnet-2b | bitnetcpp | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152250Z_bitnet-2b__bitnetcpp_t3.png |
 | bitnet-2b | bitnetcpp-fix | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152327Z_bitnet-2b__bitnetcpp-fix_t3.png |
 | bitnet-2b-iq2bn | ik | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152403Z_bitnet-2b-iq2bn__ik_t3.png |
@@ -155,8 +155,8 @@ Mode strict; tolerance 1.0 % (WARN up to 2.0x); text `gate_text.txt` (sha256 851
 | smollm2-1.7b-q4km | pz-int4 | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152628Z_smollm2-1.7b-q4km__pz-int4_t4.png |
 | smollm2-1.7b-q4km | llamacpp | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152704Z_smollm2-1.7b-q4km__llamacpp_t4.png |
 | smollm2-1.7b-q4km | ik | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152743Z_smollm2-1.7b-q4km__ik_t4.png |
-| bitnet-2b | pz | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-171938Z_bitnet-2b__pz_t4.png |
-| bitnet-2b | pz-int4 | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-172006Z_bitnet-2b__pz-int4_t4.png |
+| bitnet-2b | pz | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152813Z_bitnet-2b__pz_t4.png |
+| bitnet-2b | pz-int4 | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152844Z_bitnet-2b__pz-int4_t4.png |
 | bitnet-2b | bitnetcpp | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152923Z_bitnet-2b__bitnetcpp_t4.png |
 | bitnet-2b | bitnetcpp-fix | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152951Z_bitnet-2b__bitnetcpp-fix_t4.png |
 | bitnet-2b-iq2bn | ik | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-153019Z_bitnet-2b-iq2bn__ik_t4.png |

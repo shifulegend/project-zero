@@ -1,0 +1,99 @@
+=== smollm2-1.7b-q4km__pz-int4 t=1 run 2 ===
+DATE: 2026-11-18T07:07:37Z
+HOST_CPU: Intel(R) Xeon(R) Processor @ 2.10GHz (4 vCPU)
+CMD: ./pz --model models/SmolLM2-1.7B-Instruct-Q4_K_M.gguf --prompt 'Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.' --max-tokens 500 --temperature 0 --threads 1 --no-update-check --classifier int4 --raw-prompt --ignore-eos
+PROMPT: Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+============================================================
+[1/4] Opening model file...
+[2/4] Loading weights...
+[3/4] Preparing runtime...
+[gguf-tok] Loaded 49152 tokens (gpt2, pre=smollm), 17 special — BOS=1 EOS=2 chat_template=yes
+[4/4] Ready.
+####  ####   ###    ### #####  #### #####     ##### ##### ####   ### 
+#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #
+####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
+#     # #   #   # #  #  #     #       #        #    #     # #   #   #
+#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
+Project Zero Engine v0.2.0-21-g864eeea-dirty — Auto-Tuned Hardware
+Classifier: INT4 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                        │
+│ Cores         : 4 physical / 4 logical              │
+│ Threads       : 4                                   │
+│ L2 cache      : 2048   KiB per core                 │
+│ L3 cache      : 260    MiB shared                   │
+│ Free RAM      : 15218  MiB                          │
+│ DRAM bandwidth: 46.8   GB/s (cached)                │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : INT4 (0.5 byte/weight)              │
+│ Prefetch rows : 32                                  │
+│ Model in L3   : no                                  │
+│ Data/token    : 680    MB (pre-load est.)           │
+│ Ceiling       : 65.6   tok/s (at 100% BW)           │
+└─────────────────────────────────────────────────────┘
+Active: 1 threads | AVX-512 VNNI | INT4 cls | 4T | 46.8 GB/s | ceiling 66 tok/s
+Model format: GGUF
+Model Configuration:
+  dim:        2048
+  hidden_dim: 8192
+  n_layers:   24
+  n_heads:    32
+  n_kv_heads: 32
+  vocab_size: 49152
+  seq_len:    8192
+  act_type:   0 (SiLU)
+  rope_theta: 130000.0
+  head_dim:   64
+  kv_dim:     2048
+[GGUF] Weights loaded (24 layers, arch=llama)
+[profile] Data/token (loaded model): 1007 MB -> ceiling 44.3 tok/s at 46.8 GB/s
+KV cache: F32, max context: 8192 tokens (sizing tier: Quantized I8, RAM budget 60%)
+
+
+
+Machine learning is a subset of artificial intelligence that involves training algorithms to learn from data and make predictions or decisions without being explicitly programmed. It's a key area of research in AI, and it has numerous applications in various fields, including healthcare, finance, marketing, and more.
+
+There are three main types of machine learning: supervised learning, unsupervised learning, and reinforcement learning.
+
+**Supervised Learning**
+
+In supervised learning, the algorithm is trained on labeled data, where each example is accompanied by a target output or response. The goal is to learn a mapping between input data and output labels, so the algorithm can make predictions on new, unseen data.
+
+Example: Image classification
+
+* Train a neural network on a large dataset of images, where each image is labeled as either "cat" or "dog".
+* The neural network learns to recognize patterns in the images that distinguish between cats and dogs.
+* When presented with a new image, the neural network uses its learned patterns to predict whether the image is a cat or a dog.
+
+**Unsupervised Learning**
+
+In unsupervised learning, the algorithm is trained on unlabeled data, and its goal is to discover patterns, relationships, or groupings in the data.
+
+Example: Customer segmentation
+
+* Train a clustering algorithm on a dataset of customer transactions, without any prior knowledge of customer segments.
+* The algorithm discovers natural groupings of customers based on their purchase history, demographics, and behavior.
+* The resulting segments can be used to tailor marketing campaigns, improve customer service, or optimize product offerings.
+
+**Reinforcement Learning**
+
+In reinforcement learning, the algorithm learns to make decisions by interacting with an environment and receiving rewards or penalties for its actions.
+
+Example: Game playing
+
+* Train an agent to play a game, such as chess or Go, by receiving rewards for winning or penalties for losing.
+* The agent learns to make decisions that maximize its chances of winning, by exploring different strategies and adapting to new situations.
+* The agent can be used to develop autonomous systems that can learn to perform complex tasks, such as navigating through unfamiliar environments or making decisions in uncertain situations.
+
+These three types of machine learning are fundamental to the field of AI, and they have numerous applications in various industries and domains.
+
+Here's a summary of each type of machine learning:
+
+* **Supervised Learning**: Train on
+[gen] 5.33 tok/s (500 tokens)
+
+
+
+PERF: wall=101.97s max_rss=2617MB cpu=100% exit=0

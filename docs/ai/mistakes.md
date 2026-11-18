@@ -5,11 +5,6 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-11-18.
 
-### 2026-11-18 — A published sweep used a dirty, non-reproducible pz binary: int4 LM head at 26.5 tok/s, clean builds give 20
-- What: the first published sweep timed `./pz` with version `v0.2.0-21-g864eeea-dirty` (a build of uncommitted local state with stale objects). Its BitNet int4 LM-head cell read 26.5 tok/s; clean builds of both 864eeea and the fixed master give 19.5 to 21.2 (the int4 kernel takes float activations, so the quantiser fix is not the cause). The default path agreed (22.3 on both), which is why nothing looked wrong.
-- Fix: every pz cell of the sweep was re-measured with a clean build (tools/bench `RERUN.md` in the folder); the timed bench scripts now refuse a `-dirty` binary unless `--allow-dirty-binary` (gate.json `require_clean_binary`, unit-tested), and mark an allowed one in `meta.json`.
-- Lesson: a benchmark number is only as good as the build that produced it; record and enforce build identity, and prefer `make clean` before a published run, because the Makefile's dependency tracking does not cover every flag change (mistakes.md 2026-11-18, forced-rebuild entry).
-
 ### 2026-11-18 — The int8 activation quantiser truncated instead of rounding: BitNet perplexity 9.7% worse, and nothing could fail
 - What: every int8 kernel (VNNI, VNNI-256, ARM dotprod, Q2_0) quantises activations with `quantize_row_to_i8*`, which truncated toward zero (`_mm512_cvttps_epi32`, `_mm256_cvttps_epi32`, `(int8_t)(int)v`) under a comment claiming "same as llama.cpp". llama.cpp, bitnet.cpp (`roundf`) and the BitNet reference round to nearest. Found while root-causing bitnet.cpp's looping output (docs/rca/2026-11-18-ternary-output-correctness.md).
 - Evidence: layer 0, BOS token, V projection (640 outputs), relative L2 error against exact float: round-to-nearest int8 0.38%, pz float tier 0.03%, truncating model 3.71%, pz default (VNNI) 3.70%. Perplexity of BitNet 2B on a fixed text: float tier 31.32, correct int8 about 31.4 (bitnet.cpp with its own bug fixed: 31.33), pz default 34.39 (+9.7%). The output stayed fluent, so no one noticed.

@@ -19,7 +19,9 @@ every engine, 3 rounds. Everything runs **one process at a time**. Remove this f
   Container restarts kill background jobs (seen at 06:28 UTC) — just resume.
 - Resume command (run in the background, tracked):
   `python3 tools/bench/h2h_bench.py --preset published --label published-sweep --out benchmark_results/h2h_20261118-053147Z_published-sweep --resume`
-- After it finishes: remove nothing by hand (finish() deletes PARTIAL.md/progress.json); compare with the old
+- The running sweep process was started before the marker code existed, so `PARTIAL.md`/`progress.json` in its
+  folder were written by hand: delete both by hand when it finishes (resumed processes use the new code).
+- After it finishes: compare with the old
   sweeps cell by cell; run `python3 tools/bench/test_bench.py` (deferred while the sweep ran so tests do not
   disturb measurements); commit the folder, push, recheck CI, then the user decides on the merge.
 

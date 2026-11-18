@@ -187,6 +187,24 @@
       "ref_ppl": 8.0257,
       "verdict": "PASS",
       "delta_pct": -0.006229986169438317
+    },
+    "smollm2-135m/pz-int4": {
+      "model": "smollm2-135m",
+      "variant": "pz-int4",
+      "engine": "pz",
+      "modified": false,
+      "smoke_ok": true,
+      "smoke_tail": " 46.8 GB/s\nKV cache: F32, max context: 8192 tokens (sizing tier: Quantized I8, RAM budget 60%)\n\n Paris. Paris is the largest city in France and the capital of the French department of the Espace. Paris is known\n[gen] 99.94 tok/s (24 tokens)",
+      "ppl": 9.3956,
+      "ppl_err": 0.67091,
+      "ppl_wall_s": 41.9,
+      "ppl_rc": 0,
+      "log": "benchmark_results/h2h_20261118-053147Z_published-sweep/raw/gate/smollm2-135m__pz-int4.txt",
+      "ref": "smollm2-135m/llamacpp",
+      "ref_ppl": 8.0257,
+      "verdict": "APPROX",
+      "delta_pct": 17.068916107006235,
+      "approx_note": "--classifier int4: 4-bit LM head"
     }
   }
 }

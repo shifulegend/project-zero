@@ -161,6 +161,12 @@ def judge(results, cfg, reference_of):
     return results
 
 
+def should_time(verdict, cfg):
+    """False for a cell that fails the gate in strict mode (unless gate.json time_invalid): nothing is timed or
+    screenshotted for a wrong computation."""
+    return not (cfg["mode"] == "strict" and verdict == "INVALID" and not cfg.get("time_invalid", False))
+
+
 def blocked(res, cfg):
     """True when strict mode must keep this result out of charts and summaries."""
     return cfg["mode"] == "strict" and res and res.get("verdict") == "INVALID"
@@ -254,6 +260,10 @@ class Gate:
         return {"mode": self.cfg["mode"], "tolerance_pct": self.cfg["tolerance_pct"], "text_sha256": self.cfg["text_sha256"],
                 "verdicts": {k: r["verdict"] for k, r in sorted(self.results.items())}}
 
+    def timed(self, model, variant):
+        """Should this (model, variant) be timed and screenshotted? Used as the `skip_of` of run_matrix and screenshots."""
+        return should_time(self.verdict_of(model, variant), self.cfg)
+
     def verdict_of(self, model, variant):
         return self.results.get(f"{model}/{variant}", {}).get("verdict", "OFF" if not self.enabled else "UNVERIFIED")
 
@@ -274,12 +284,13 @@ def render_md(results, cfg):
         rows.append([r["model"], r["variant"] + (" (modified)" if r.get("modified") else ""), bl.fnum(r.get("ppl"), 4),
                      bl.fnum(r.get("ref_ppl"), 4) if r.get("ref") != key else "-",
                      "-" if r.get("delta_pct") is None else f"{r['delta_pct']:+.2f} %",
-                     "ok" if r.get("smoke_ok") else "WRONG", r["verdict"]])
+                     "ok" if r.get("smoke_ok") else "WRONG", r["verdict"],
+                     "yes" if should_time(r["verdict"], cfg) else "no (fails the gate)"])
     return ("## Correctness gate\n\n"
             f"Mode {cfg['mode']}; tolerance {cfg['tolerance_pct']} % (WARN up to {cfg['warn_factor']}x); "
             f"text `{pathlib.Path(cfg['text_path']).name}` (sha256 {cfg['text_sha256'][:12]}), "
             f"{cfg['ppl_chunks']} chunks of {cfg['ppl_ctx']}.\n\n"
-            + bl.md_table(["model", "variant", "ppl", "reference ppl", "delta", "smoke", "verdict"], rows) + "\n")
+            + bl.md_table(["model", "variant", "ppl", "reference ppl", "delta", "smoke", "verdict", "timed"], rows) + "\n")
 
 
 def finish_standalone(run, g):

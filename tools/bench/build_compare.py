@@ -144,7 +144,7 @@ def main():
     g.check(variants, models, threads)
     if a.gate_only:
         return gate.finish_standalone(run, g)
-    rows = bl.run_matrix(run, variants, models, threads, a.rounds, a.tokens, a.cooldown, a.order, True, a.resume, gate_of=g.verdict_of)
+    rows = bl.run_matrix(run, variants, models, threads, a.rounds, a.tokens, a.cooldown, a.order, True, a.resume, gate_of=g.verdict_of, skip_of=lambda k, v: not g.timed(k, v))
     summary = bl.summarize(rows, ref)
     md = [f"# Build comparison ({', '.join(labels)}; reference {ref})", "",
           f"UTC start: {bl.iso_utc(run.t0)}  |  host: {bl.cpu_model()}  |  pz commit: {bl.git_info()['commit']}", "",
@@ -179,7 +179,8 @@ def main():
     if a.screenshots != "none":
         run.log("\n== screenshots (live terminal) ==")
         shots = bl.take_screenshots(run, variants, models, max(threads), 32, a.screenshots, a.shot_rows,
-                                    note_of=lambda k, v: gate.caption_note(g.results.get(f"{k}/{v}")))
+                                    note_of=lambda k, v: gate.caption_note(g.results.get(f"{k}/{v}")),
+                                         skip_of=lambda k, v: not g.timed(k, v))
         md += ["", "## Screenshots", "", bl.md_table(["model", "binary", "threads", "screenshot"],
                [[s["model"], s["variant"], s["threads"], s["screenshot"]] for s in shots])]
     run.write("summary.md", "\n".join(md) + "\n")

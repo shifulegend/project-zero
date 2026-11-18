@@ -3,6 +3,8 @@
   "mode": "strict",
   "require_clean_binary": true,
   "_clean_note": "A pz binary whose version ends in -dirty is a build of uncommitted state that cannot be reproduced (docs/rca: the first published sweep ran int4 at 26.5 tok/s with one; clean builds give about 20). Timed runs refuse it unless --allow-dirty-binary.",
+  "time_invalid": false,
+  "_time_note": "A cell that fails the gate (INVALID) is neither timed nor screenshotted in strict mode: a speed for a wrong computation means nothing. Its verdict stays in gate.json and the summary lists it as not timed. Set true to time it anyway.",
   "tolerance_pct": 1.0,
   "warn_factor": 2.0,
   "approximate": {

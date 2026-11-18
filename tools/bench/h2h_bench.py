@@ -227,7 +227,7 @@ def main():
     g.check(variants, models, threads)
     if a.gate_only:
         return finish_gate_only(run, a, g)
-    bl.run_matrix(run, variants, models, threads, a.rounds, a.tokens, a.cooldown, a.order, a.fixed, a.resume, gate_of=g.verdict_of)
+    bl.run_matrix(run, variants, models, threads, a.rounds, a.tokens, a.cooldown, a.order, a.fixed, a.resume, gate_of=g.verdict_of, skip_of=lambda k, v: not g.timed(k, v))
     ref = variants[0]["label"]
     shots = []
     if a.screenshots != "none":
@@ -235,7 +235,8 @@ def main():
         sts = threads if a.screenshots == "all" else [a.shot_threads or max(threads)]
         for t in sts:
             shots += bl.take_screenshots(run, variants, models, t, a.shot_tokens, a.screenshots, a.shot_rows,
-                                         note_of=lambda k, v: gate.caption_note(g.results.get(f"{k}/{v}")))
+                                         note_of=lambda k, v: gate.caption_note(g.results.get(f"{k}/{v}")),
+                                         skip_of=lambda k, v: not g.timed(k, v))
     summary = build_report(run, a, g, shots, ref)
     print("\n" + bl.summary_md(summary, with_ratio=True, hide_invalid=g.cfg["mode"] == "strict"))
     bl.finish(run, {"kind": "h2h", "variants": [v["label"] for v in variants], "models": [k for k, _, _ in models],

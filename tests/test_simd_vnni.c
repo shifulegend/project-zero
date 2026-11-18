@@ -440,8 +440,13 @@ static void test_simd_init_vnni_selected_when_available(void) {
 #if TN_HAS_AVX512VNNI
         TEST_ASSERT(strcmp(backend, "AVX-512 VNNI") == 0,
                     "dispatch: AVX-512 VNNI selected on VNNI-capable CPU");
-        TEST_ASSERT(tn_ternary_matmul_packed == ternary_matmul_packed_vnni,
-                    "dispatch: packed_matmul pointer → ternary_matmul_packed_vnni");
+        /* The VNNI kernel exists twice since 2026-11-18: with the SSE unpack and, on a
+         * CPU whose VBMI is execution-verified, with the VBMI unpack (_vbmi). */
+        int is_vnni = tn_ternary_matmul_packed == ternary_matmul_packed_vnni;
+#if TN_HAS_AVX512VBMI
+        is_vnni = is_vnni || (f->avx512vbmi && tn_ternary_matmul_packed == ternary_matmul_packed_vnni_vbmi);
+#endif
+        TEST_ASSERT(is_vnni, "dispatch: packed_matmul pointer → a ternary_matmul_packed_vnni variant");
 #else
         /* VNNI runtime-capable but not compiled in — backend falls to lower tier */
         TEST_ASSERT(backend != NULL, "dispatch: backend string non-NULL on VNNI CPU");

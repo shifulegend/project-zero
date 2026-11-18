@@ -78,6 +78,11 @@ jobs:
           ./pz --version
           # Phase 39 transition alias (one release): must still run.
           ./adaptive_ai_engine --version
+          # The portable binary must really contain the AVX-512/VBMI tiers (a tier hidden behind a
+          # compile-time guard in a baseline file silently vanishes from it; docs/ai/mistakes.md,
+          # 2026-11-18) and no baseline file may carry such guards beyond the shrinking PENDING list.
+          sh tools/check_dist_isa.sh ./pz
+          python3 tools/check_isa_guards.py
 
   build-macos:
     name: Build & Test (macOS)

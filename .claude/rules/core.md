@@ -12,6 +12,15 @@ Adapter for `docs/ai/engineering-rules.md` — read the canonical file for full 
 - No hardcoding: shape/tokens/quant/RoPE/MoE from GGUF metadata (`hdr->arch` prefix).
 - Memory safety: `memset` structs before partial init; overflow-checked size math; 64-byte
   aligned SIMD buffers; trap absurd allocations deterministically (not via malloc-NULL).
+- **ISA segregation** (2026-11-18): AVX-512/VNNI/VBMI code lives only in files built with those flags
+  (Makefile `AVX512_TUS` / per-file rules, CMake lists), is compiled in EVERY x86 build, and is bound at
+  runtime from `simd_dispatch.c` (the one file built with `TN_FORCE_DISPATCH_ALL`) through dispatch
+  pointers. No `#if TN_HAS_AVX512*` in baseline/AVX2 files: `make dist` (the release binary) would
+  silently drop the tier or turn it into a scalar fallback, and run 20-35% slower than `make release`.
+  A kernel with a sub-feature path (VBMI) is compiled twice with a `_vbmi` suffix and bound on the
+  execution-verified CPU flag; never add the sub-feature flag to the whole base file (SIGILL on CPUs
+  without it). `tools/check_isa_guards.py` (PENDING list only shrinks) and `tools/check_dist_isa.sh ./pz`
+  (CI portable-build step) enforce it; a new kernel family gets a native-vs-portable A/B.
 - Cross-platform: x86 (AVX2..VNNI) + ARM (NEON/dotprod) + scalar all compile (CI builds each;
   a change that builds on one tier alone breaks the others); portable prefetch
   `TN_PREFETCH_T1`; feature-gate with `TN_HAS_*`.

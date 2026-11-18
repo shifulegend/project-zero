@@ -2,6 +2,7 @@
 #include "math/cpu_features.h"
 #include "math/ternary_matmul.h"
 #include "math/ternary_matmul_packed.h"
+#include "math/quantize_i8.h"
 #include "core/unpack.h"
 #include "math/rmsnorm.h"
 #include "math/softmax.h"
@@ -27,6 +28,8 @@
 #define TN_HAS_AVX512 1
 #undef  TN_HAS_AVX512VNNI
 #define TN_HAS_AVX512VNNI 1
+#undef  TN_HAS_AVX512VBMI
+#define TN_HAS_AVX512VBMI 1
 #undef  TN_HAS_AVXVNNI
 #define TN_HAS_AVXVNNI 1
 #endif
@@ -140,14 +143,15 @@ tn_vec_dot_fn        tn_vec_dot               = NULL;
 tn_kvq4_dot_fn       tn_kvq4_dot              = kvq4_dot_scalar;
 tn_kvq4_axpy_fn      tn_kvq4_axpy             = kvq4_axpy_scalar;
 tn_vec_saxpy_fn      tn_vec_saxpy             = NULL;
+tn_quantize_i8_fn    tn_quantize_act_i8       = NULL;
+tn_sum_i8_fn         tn_sum_act_i8            = NULL;
+tn_matmul_preq_fn    tn_ternary_matmul_preq   = NULL;
 
 /* Human-readable name of the selected backend (set by tn_simd_init) */
 static const char *g_backend_name = "Scalar";
-/* Set by tn_simd_init only when it binds the AVX-512 VNNI ternary kernel. */
-static int g_ternary_preq = 0;
 
 const char *tn_simd_backend_name(void) { return g_backend_name; }
-int tn_simd_ternary_preq(void) { return g_ternary_preq; }
+int tn_simd_ternary_preq(void) { return tn_ternary_matmul_preq != NULL; }
 
 const char *tn_simd_init(void) {
     /*
@@ -163,7 +167,10 @@ const char *tn_simd_init(void) {
      *     TN_FORCE_BACKEND=vnni256   — VNNI-256 int8 256-bit YMM via AVX-512VNNI (no throttle)
      * Unrecognised values are silently ignored and auto-detect proceeds.
      */
-    g_ternary_preq = 0;   /* re-derived below on every call */
+    /* Re-derived on every call: only the AVX-512 VNNI tier binds these. */
+    tn_quantize_act_i8     = NULL;
+    tn_sum_act_i8          = NULL;
+    tn_ternary_matmul_preq = NULL;
     const char *force = getenv("TN_FORCE_BACKEND");
     int force_scalar  = force && strcmp(force, "scalar")  == 0;
     int force_avx2    = force && strcmp(force, "avx2")    == 0;
@@ -255,7 +262,18 @@ const char *tn_simd_init(void) {
 #if TN_HAS_AVX512VNNI
     if (!force_scalar && !force_avx2 && !force_avx512f && !force_vnni256 && cpu->avx512vnni) {
         tn_ternary_matmul_packed = ternary_matmul_packed_vnni;
-        g_ternary_preq = 1;
+        tn_quantize_act_i8       = quantize_row_to_i8_avx512;
+        tn_sum_act_i8            = sum_i8_avx512;
+        tn_ternary_matmul_preq   = ternary_matmul_packed_vnni_preq;
+#if TN_HAS_AVX512VBMI
+        /* The same kernels built with VBMI (3-instruction unpack). cpu->avx512vbmi is
+         * execution-verified under a SIGILL trap (cpu_features.c), so this is safe on a
+         * hypervisor that advertises VBMI it cannot retire. */
+        if (cpu->avx512vbmi) {
+            tn_ternary_matmul_packed = ternary_matmul_packed_vnni_vbmi;
+            tn_ternary_matmul_preq   = ternary_matmul_packed_vnni_preq_vbmi;
+        }
+#endif
         g_backend_name = "AVX-512 VNNI";
         return g_backend_name;
     }

@@ -167,6 +167,8 @@ set(MATH_SOURCES
     src/math/matmul_q2_0_vnni.c
     src/math/parallel_matmul.c
     src/math/quantize_i8.c
+    src/math/quantize_i8_avx512.c
+    src/math/ternary_matmul_packed_vnni_vbmi.c
     src/math/rmsnorm.c
     src/math/rmsnorm_avx2.c
     src/math/rmsnorm_avx512.c
@@ -407,7 +409,7 @@ if(PZ_DIST AND NOT MSVC)
         src/math/q8_0_act.c src/math/kvq4_avx2.c)
     set(PZ_AVX512_SRCS
         src/math/ternary_matmul_packed_avx512.c src/math/ternary_matmul_lut_avx512bw.c
-        src/math/elementwise_avx512.c
+        src/math/elementwise_avx512.c src/math/quantize_i8_avx512.c
         src/math/rmsnorm_avx512.c src/math/softmax_avx512.c src/math/kvq4_avx512.c)
     set_source_files_properties(${PZ_AVX2_SRCS} PROPERTIES
         COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
@@ -420,6 +422,10 @@ if(PZ_DIST AND NOT MSVC)
         COMPILE_OPTIONS "-mavx512vnni;-mavx512vl")
     set_source_files_properties(src/math/matmul_q2_0_vnni.c PROPERTIES
         COMPILE_OPTIONS "-mavx512vnni;-mavx512vl;-mf16c")
+    # The same VNNI ternary kernels with the VBMI unpack (suffix _vbmi); -mavx512vbmi only
+    # here, so VBMI instructions exist only in code bound on a CPU with verified VBMI.
+    set_source_files_properties(src/math/ternary_matmul_packed_vnni_vbmi.c PROPERTIES
+        COMPILE_OPTIONS "-mavx512vnni;-mavx512vbmi;-mavx512vl")
     set_source_files_properties(src/math/ternary_matmul_packed_avx_vnni.c PROPERTIES
         COMPILE_OPTIONS "-mavxvnni")
     set_source_files_properties(src/math/simd_dispatch.c src/core/calibration.c PROPERTIES

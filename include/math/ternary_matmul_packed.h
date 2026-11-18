@@ -66,6 +66,18 @@ void ternary_matmul_packed_vnni_preq(float *out,
                                       int n, int d,
                                       const float *scales, int group_size);
 
+/* The same two kernels compiled with AVX-512 VBMI (ternary_matmul_packed_vnni_vbmi.c):
+ * bound by tn_simd_init() only on a CPU whose VBMI is execution-verified. They exist
+ * wherever the build has both VNNI and VBMI (TN_HAS_AVX512VNNI && TN_HAS_AVX512VBMI). */
+void ternary_matmul_packed_vnni_vbmi(float *out, const float *x, const tn_u8 *packed_w,
+                                      int n, int d, const float *scales, int group_size);
+void ternary_matmul_packed_vnni_preq_vbmi(float *out,
+                                      const int8_t *q_x, float act_scale,
+                                      int32_t sum_qx,
+                                      const tn_u8 *packed_w,
+                                      int n, int d,
+                                      const float *scales, int group_size);
+
 /**
  * AVX-VNNI 256-bit variant: int8 VNNI, 32 MACs/cycle (K-1b).
  * Targets Alder Lake, Raptor Lake, Arrow Lake, AMD Zen 3.

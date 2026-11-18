@@ -1,0 +1,9 @@
+model,variant,threads,round,gen_tok_s,tokens,wall_s,max_rss_mb,cpu_pct,exit,log,gate
+bitnet-2b,new,4,1,20.36,128,9.62,1768,328,0,benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab/raw/bitnet-2b__new/t4/run1.txt,REF
+bitnet-2b,old,4,1,19.98,128,9.69,1768,326,0,benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab/raw/bitnet-2b__old/t4/run1.txt,INVALID
+bitnet-2b,old,4,2,20.03,128,9.73,1768,323,0,benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab/raw/bitnet-2b__old/t4/run2.txt,INVALID
+bitnet-2b,new,4,2,21.48,128,9.10,1768,328,0,benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab/raw/bitnet-2b__new/t4/run2.txt,REF
+bitnet-2b,new,4,3,21.32,128,9.21,1768,325,0,benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab/raw/bitnet-2b__new/t4/run3.txt,REF
+bitnet-2b,old,4,3,19.15,128,9.80,1768,329,0,benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab/raw/bitnet-2b__old/t4/run3.txt,INVALID
+bitnet-2b,old,4,4,19.31,128,9.92,1768,320,0,benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab/raw/bitnet-2b__old/t4/run4.txt,INVALID
+bitnet-2b,new,4,4,20.72,128,9.27,1768,323,0,benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab/raw/bitnet-2b__new/t4/run4.txt,REF

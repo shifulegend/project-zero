@@ -1,0 +1,110 @@
+{
+  "config": {
+    "mode": "strict",
+    "tolerance_pct": 1.0,
+    "warn_factor": 2.0,
+    "approximate": {
+      "_comment": "Variants that are lossy by design (a documented speed/accuracy trade the user chooses). They are judged APPROX: shown with the measured gap, never excluded. Add `tolerance_pct` to an entry to make it a hard bound.",
+      "pz-int8": {
+        "why": "--classifier int8: 8-bit LM head"
+      },
+      "pz-int4": {
+        "why": "--classifier int4: 4-bit LM head"
+      },
+      "pz-auto-fast": {
+        "why": "--classifier auto-fast: picks the fastest LM-head precision"
+      }
+    },
+    "text": "tools/bench/gate_text.txt",
+    "ppl_ctx": 512,
+    "ppl_chunks": 8,
+    "ppl_regex": "Final estimate: PPL(?: over \\d+ chunks for n_ctx=\\d+)? = ([0-9.]+)",
+    "smoke": {
+      "prompt": "The capital of France is",
+      "tokens": 24,
+      "expect": [
+        "Paris"
+      ]
+    },
+    "verdicts": {
+      "PASS": "within tolerance of the reference",
+      "WARN": "within warn_factor x tolerance",
+      "INVALID": "outside warn_factor x tolerance, or the smoke answer is wrong",
+      "UNVERIFIED": "no reference result to compare with",
+      "REF": "the reference itself (must pass the smoke check)",
+      "OFF": "gate disabled",
+      "APPROX": "lossy by design (config `approximate`); the gap to the reference is reported, not judged"
+    },
+    "text_path": "/home/user/project-zero/tools/bench/gate_text.txt",
+    "text_sha256": "8512a15e3523b0ce71f9eeeeede880e2fee9d7529730af792ba89ad41a839367",
+    "reference_override": "new"
+  },
+  "results": {
+    "bitnet-2b/new": {
+      "model": "bitnet-2b",
+      "variant": "new",
+      "engine": "pz",
+      "modified": false,
+      "smoke_ok": true,
+      "smoke_tail": " tok/s at 46.3 GB/s\nKV cache: F32, max context: 4096 tokens (sizing tier: Quantized I8, RAM budget 60%)\n\n Paris. Paris is a city that is known for its rich history, culture, and architecture. It is also a major\n[gen] 20.85 tok/s (24 tokens)",
+      "ppl": 31.3668,
+      "ppl_err": 3.28929,
+      "ppl_wall_s": 159.8,
+      "ppl_rc": 0,
+      "log": "benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab/raw/gate/bitnet-2b__new.txt",
+      "ref": "bitnet-2b/new",
+      "verdict": "REF",
+      "delta_pct": 0.0
+    },
+    "bitnet-2b/old": {
+      "model": "bitnet-2b",
+      "variant": "old",
+      "engine": "pz",
+      "modified": false,
+      "smoke_ok": true,
+      "smoke_tail": "k/s at 46.3 GB/s\nKV cache: F32, max context: 4096 tokens (sizing tier: Quantized I8, RAM budget 60%)\n\n Paris. Paris is a city in the north of France. It is the largest city in France and the most important city\n[gen] 22.69 tok/s (24 tokens)",
+      "ppl": 34.3926,
+      "ppl_err": 3.70207,
+      "ppl_wall_s": 164.6,
+      "ppl_rc": 0,
+      "log": "benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab/raw/gate/bitnet-2b__old.txt",
+      "ref": "bitnet-2b/new",
+      "ref_ppl": 31.3668,
+      "verdict": "INVALID",
+      "delta_pct": 9.646505222081947
+    },
+    "smollm2-135m/new": {
+      "model": "smollm2-135m",
+      "variant": "new",
+      "engine": "pz",
+      "modified": false,
+      "smoke_ok": true,
+      "smoke_tail": "/s at 46.3 GB/s\nKV cache: F32, max context: 8192 tokens (sizing tier: Quantized I8, RAM budget 60%)\n\n Paris. Paris is the largest city in France and the capital of the French department of the Espace de Paris.\n\n[gen] 88.55 tok/s (24 tokens)",
+      "ppl": 8.0252,
+      "ppl_err": 0.54098,
+      "ppl_wall_s": 43.9,
+      "ppl_rc": 0,
+      "log": "benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab/raw/gate/smollm2-135m__new.txt",
+      "ref": "smollm2-135m/new",
+      "verdict": "REF",
+      "delta_pct": 0.0
+    },
+    "smollm2-135m/old": {
+      "model": "smollm2-135m",
+      "variant": "old",
+      "engine": "pz",
+      "modified": false,
+      "smoke_ok": true,
+      "smoke_tail": "/s at 46.3 GB/s\nKV cache: F32, max context: 8192 tokens (sizing tier: Quantized I8, RAM budget 60%)\n\n Paris. Paris is the largest city in France and the capital of the French department of the Espace de Paris.\n\n[gen] 87.41 tok/s (24 tokens)",
+      "ppl": 8.0252,
+      "ppl_err": 0.54098,
+      "ppl_wall_s": 47.2,
+      "ppl_rc": 0,
+      "log": "benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab/raw/gate/smollm2-135m__old.txt",
+      "ref": "smollm2-135m/new",
+      "ref_ppl": 8.0252,
+      "verdict": "PASS",
+      "delta_pct": 0.0
+    }
+  }
+}

@@ -36,6 +36,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import benchlib as bl  # noqa: E402
 import hardware_profile as hp  # noqa: E402
+import gate  # noqa: E402
 
 TESTS = ["profile", "sweeps", "tiers", "classifiers", "unit"]
 TIERS = ["default", "vnni", "avx2", "avx512f", "scalar", "vnni256"]
@@ -81,12 +82,7 @@ def test_sweeps(run, a, env, small):
 
 def variant_set(a, env, kind, labels):
     flag = {"tier": "--simd", "cls": "--classifier"}[kind]
-    out = []
-    for l in labels:
-        extra = [] if l == "default" else [flag, l]
-        out.append({"label": f"{kind}-{l}", "env": env,
-                    "cmd": (lambda key, info, path, tokens, t, fixed, _e=extra: bl.pz_cmd(a.pz, path, tokens, t, bl.pz_flags(a.calibration) + _e, fixed))})
-    return out
+    return [bl.pz_variant(f"{kind}-{l}", a.pz, bl.pz_flags(a.calibration) + ([] if l == "default" else [flag, l]), env) for l in labels]
 
 
 def test_unit(run, a):
@@ -139,6 +135,7 @@ def main():
     md = [f"# Calibration tests ({', '.join(tests)})", "", f"UTC start: {bl.iso_utc(run.t0)}  |  host: {bl.cpu_model()}  |  pz commit: {bl.git_info()['commit']}", ""]
     meta = {"kind": "calibration", "tests": tests, "calibration": a.calibration}
 
+    exit_code = 0
     calibrated = False
     if "profile" in tests or ("tiers" in tests or "classifiers" in tests) and a.calibration == "isolated":
         run.log("\n== hardware profile + first-run calibration ==")
@@ -156,12 +153,25 @@ def main():
             sub = bl.RunDir(name, run.path / name)
             sub.create()
             sub.t0 = run.t0
-            rows = bl.run_matrix(sub, variants, models, threads, a.rounds, a.tokens, a.cooldown, a.order, True)
+            gcfg = gate.config_from_args(a)
+            gcfg["reference_override"] = a.gate_reference or variants[0]["label"]   # every tier/classifier vs the default one
+            g = gate.Gate(gcfg, sub, a.models_dir, resume=a.gate_only)
+            g.check(variants, models, threads)
+            if a.gate_only:
+                exit_code |= gate.finish_standalone(sub, g)
+                continue
+            rows = bl.run_matrix(sub, variants, models, threads, a.rounds, a.tokens, a.cooldown, a.order, True, gate_of=g.verdict_of)
             summary = bl.summarize(rows, variants[0]["label"])
-            md += [f"## {name} (reference {variants[0]['label']})", "", bl.summary_md(summary, with_ratio=True)]
+            hide = g.cfg["mode"] == "strict"
+            md += [f"## {name} (reference {variants[0]['label']})", "", bl.summary_md(summary, with_ratio=True, hide_invalid=hide)]
+            if g.results:
+                md += ["", gate.render_md(g.results, g.cfg)]
             meta[name] = summary
+            meta[f"{name}_gate"] = g.summary_for_meta()
+            exit_code |= gate.exit_status(g.results, g.cfg)
             if a.screenshots != "none":
-                shots = bl.take_screenshots(sub, variants, models[:1], max(threads), 32, a.screenshots, a.shot_rows)
+                shots = bl.take_screenshots(sub, variants, models[:1], max(threads), 32, a.screenshots, a.shot_rows,
+                                            note_of=lambda k, v: gate.caption_note(g.results.get(f"{k}/{v}")))
                 meta[f"{name}_screenshots"] = shots
     if "unit" in tests:
         m, mm = test_unit(run, a)
@@ -170,7 +180,7 @@ def main():
     run.write("summary.md", "\n".join(md) + "\n")
     print("\n" + "\n".join(md))
     bl.finish(run, meta)
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":

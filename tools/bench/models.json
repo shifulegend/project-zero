@@ -12,7 +12,12 @@
     "tokens": 500,
     "extra": {},
     "sha256": "",
-    "title": "SmolLM2-135M F16"
+    "title": "SmolLM2-135M F16",
+    "gate": {
+      "reference": {
+        "variant": "llamacpp"
+      }
+    }
   },
   "smollm2-1.7b-q4km": {
     "file": "SmolLM2-1.7B-Instruct-Q4_K_M.gguf",
@@ -30,7 +35,12 @@
       ]
     },
     "sha256": "",
-    "title": "SmolLM2-1.7B Q4_K_M"
+    "title": "SmolLM2-1.7B Q4_K_M",
+    "gate": {
+      "reference": {
+        "variant": "llamacpp"
+      }
+    }
   },
   "bitnet-2b": {
     "file": "bitnet-b1.58-2B-4T-i2_s.gguf",
@@ -38,12 +48,18 @@
     "size": 1187801280,
     "engines": [
       "pz",
-      "bitnetcpp"
+      "bitnetcpp",
+      "bitnetcpp-fix"
     ],
     "tokens": 500,
     "extra": {},
     "sha256": "",
-    "title": "BitNet b1.58 2B (ik_llama.cpp: IQ2_BN)"
+    "title": "BitNet b1.58 2B (ik_llama.cpp: IQ2_BN)",
+    "gate": {
+      "reference": {
+        "variant": "bitnetcpp-fix"
+      }
+    }
   },
   "bitnet-2b-iq2bn": {
     "file": "bitnet-b1.58-2B-4T-iq2_bn.gguf",
@@ -60,7 +76,13 @@
     },
     "sha256": "",
     "title": "BitNet b1.58 2B (ik_llama.cpp: IQ2_BN)",
-    "chart_panel": "bitnet-2b"
+    "chart_panel": "bitnet-2b",
+    "gate": {
+      "reference": {
+        "model": "bitnet-2b",
+        "variant": "bitnetcpp-fix"
+      }
+    }
   },
   "mamba-130m": {
     "file": "mamba-130m-hf.f16.gguf",
@@ -73,7 +95,18 @@
     "tokens": 500,
     "extra": {},
     "sha256": "",
-    "title": "Mamba-130M F16"
+    "title": "Mamba-130M F16",
+    "gate": {
+      "reference": {
+        "variant": "llamacpp"
+      },
+      "extra": {
+        "llamacpp": [
+          "-b",
+          "512"
+        ]
+      }
+    }
   },
   "deepseek-v2-lite": {
     "file": "DeepSeek-V2-Lite-Chat.Q4_K_S.gguf",
@@ -98,6 +131,11 @@
       ]
     },
     "sha256": "",
-    "title": "DeepSeek-V2-Lite Q4_K_S"
+    "title": "DeepSeek-V2-Lite Q4_K_S",
+    "gate": {
+      "reference": {
+        "variant": "llamacpp"
+      }
+    }
   }
 }

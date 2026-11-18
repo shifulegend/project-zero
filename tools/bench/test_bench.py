@@ -161,5 +161,103 @@ class Preset(unittest.TestCase):
             self.assertNotIn(bad, src)
 
 
+class Gate(unittest.TestCase):
+    CFG = {"tolerance_pct": 1.0, "warn_factor": 2.0, "mode": "strict"}
+
+    def test_verdict_boundaries_are_two_sided(self):
+        import gate
+        v = lambda x: gate.verdict(x, 100.0, 1.0, 2.0)[0]                                   # noqa: E731
+        self.assertEqual([v(100.9), v(99.1), v(101.5), v(98.5), v(103.0), v(96.0)],
+                         ["PASS", "PASS", "WARN", "WARN", "INVALID", "INVALID"])
+        self.assertEqual(gate.verdict(None, 100.0, 1.0, 2.0)[0], "INVALID")
+        self.assertEqual(gate.verdict(5.0, None, 1.0, 2.0)[0], "UNVERIFIED")
+
+    def test_the_rca_numbers(self):
+        import gate
+        self.assertEqual(gate.verdict(34.3926, 31.4010, 1.0, 2.0)[0], "INVALID")     # pz int8 truncating quantiser
+        self.assertEqual(gate.verdict(48.6683, 31.4010, 1.0, 2.0)[0], "INVALID")     # bitnet.cpp SiLU graph
+        self.assertEqual(gate.verdict(31.3193, 31.4010, 1.0, 2.0)[0], "PASS")        # pz float activations
+        self.assertEqual(gate.verdict(12.5801, 12.5667, 1.0, 2.0)[0], "PASS")        # Mamba
+
+    def test_parse_ppl_and_answer_text(self):
+        import gate
+        rx = gate.load_config()["ppl_regex"]
+        self.assertEqual(gate.parse_ppl("x\n0.37.5 I Final estimate: PPL = 31.4010 +/- 3.30121\n", rx), (31.401, 3.30121))
+        self.assertEqual(gate.parse_ppl("no estimate", rx), (None, None))
+        self.assertEqual(gate.answer_text("0.01.282.588 I llama_completion: x\nThe capital of France is Paris.\n0.02.123.456 I common_perf_print: y"),
+                         "The capital of France is Paris.")
+
+    def test_smoke_rejects_an_expectation_that_is_in_the_prompt(self):
+        import gate
+        self.assertTrue(gate.smoke_ok("... is Paris.", ["Paris"], "The capital of France is"))
+        self.assertFalse(gate.smoke_ok("... is a small city", ["Paris"], "The capital of France is"))
+        with self.assertRaises(ValueError):
+            gate.smoke_ok("x", ["France"], "The capital of France is")
+
+    def test_judge_reference_unverified_and_wrong_smoke(self):
+        import gate
+        res = {"m/ref": {"model": "m", "variant": "ref", "ppl": 10.0, "smoke_ok": True},
+               "m/ok": {"model": "m", "variant": "ok", "ppl": 10.05, "smoke_ok": True},
+               "m/bad": {"model": "m", "variant": "bad", "ppl": 12.0, "smoke_ok": True},
+               "m/wrong": {"model": "m", "variant": "wrong", "ppl": 10.0, "smoke_ok": False},
+               "n/x": {"model": "n", "variant": "x", "ppl": 5.0, "smoke_ok": True}}
+        gate.judge(res, self.CFG, lambda m, v: "m/ref" if m == "m" else "n/missing")
+        self.assertEqual({k: r["verdict"] for k, r in res.items()},
+                         {"m/ref": "REF", "m/ok": "PASS", "m/bad": "INVALID", "m/wrong": "INVALID", "n/x": "UNVERIFIED"})
+        self.assertEqual(gate.exit_status(res, self.CFG), 1)
+        self.assertEqual(gate.exit_status(res, dict(self.CFG, mode="warn")), 0)
+        self.assertTrue(gate.blocked(res["m/bad"], self.CFG))
+        self.assertFalse(gate.blocked(res["m/ok"], self.CFG))
+
+    def test_config_overrides_and_frozen_text(self):
+        import gate
+        cfg = gate.load_config({"tolerance_pct": 0.5, "mode": None})
+        self.assertEqual((cfg["tolerance_pct"], cfg["mode"]), (0.5, "strict"))
+        self.assertEqual(len(cfg["text_sha256"]), 64)          # the frozen text exists and is hashed
+
+    def test_flags_exist_on_every_script(self):
+        import argparse
+        ap = bl.add_common_args(argparse.ArgumentParser(), "x")
+        a = ap.parse_args(["--gate", "warn", "--gate-tolerance", "2.5", "--gate-only", "--gate-reference", "pz"])
+        self.assertEqual((a.gate, a.gate_tolerance, a.gate_only, a.gate_reference), ("warn", 2.5, True, "pz"))
+
+    def test_summary_column_and_chart_hide_invalid(self):
+        import chart
+        import gate
+        with tempfile.TemporaryDirectory() as d:
+            d = pathlib.Path(d)
+            old = ["model", "variant", "threads", "round", "gen_tok_s", "tokens", "wall_s", "max_rss_mb", "cpu_pct", "exit", "log"]
+            bl.write_csv(d / "summary.csv", old, [["bitnet-2b", "pz", 1, 1, 4.0, 500, 1, 1, 1, 0, "l"],
+                                                  ["bitnet-2b", "bitnetcpp", 1, 1, 5.0, 500, 1, 1, 1, 0, "l"]])
+            bl.ensure_gate_column(d / "summary.csv")
+            gate.apply_to_summary(d / "summary.csv", {"bitnet-2b/pz": {"verdict": "PASS"}, "bitnet-2b/bitnetcpp": {"verdict": "INVALID"}})
+            rows = bl.load_rows(d / "summary.csv")
+            self.assertEqual([r["gate"] for r in rows], ["PASS", "INVALID"])
+            svg = chart.make_chart(d, "T", "S", hide_invalid=True)[0].read_text()
+            self.assertIn("Not shown (fail the correctness gate)", svg)
+            self.assertNotIn("5.0 tok/s", svg)
+            md = bl.summary_md(bl.summarize(rows), hide_invalid=True)
+            self.assertIn("n/a", md)
+
+    def test_variant_factories_and_registry(self):
+        info = {"engines": ["pz"], "gate": {}}
+        v = bl.pz_variant("pz", "./pz", ["--no-calibrate"], None)
+        self.assertIn("--perplexity", v["ppl"]("m", info, "m.gguf", "t.txt", 512, 8, 4))
+        self.assertIsNone(v["ppl"]("m", {"engines": ["ik"]}, "m.gguf", "t.txt", 512, 8, 4))
+        r = bl.ref_variant("llamacpp", "llamacpp", "/b/llama-completion", None)
+        self.assertIsNone(r["ppl"]("m", {"engines": ["llamacpp"]}, "m.gguf", "t.txt", 512, 8, 4))   # no perplexity tool
+        engines, models = bl.load_engines(), bl.load_models()
+        for k, m in models.items():                       # every gate reference names a real engine (or pz) that runs the model
+            spec = m["gate"]["reference"]
+            ref_model = models[spec.get("model", k)]
+            self.assertTrue(spec["variant"] in engines or spec["variant"].startswith("pz"), k)
+            self.assertIn(spec["variant"], ref_model["engines"], k)
+        for k, e in engines.items():
+            self.assertIn("perplexity", e, k)
+            for p in e.get("patches", []):
+                self.assertTrue((bl.ROOT / p["path"]).exists(), p["path"])
+        self.assertTrue(engines["bitnetcpp-fix"]["modified"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

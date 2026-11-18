@@ -37,6 +37,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import benchlib as bl  # noqa: E402
 import hardware_profile as hp  # noqa: E402
+import gate  # noqa: E402
 
 
 def parse_binaries(spec):
@@ -135,16 +136,20 @@ def main():
     for l, p in bins.items():
         hp.capture_profile(run, p, small, envs[l], a.calibration, rows=a.shot_rows, name=f"hardware_profile_{l}")
 
-    variants = []
-    for l, p in bins.items():
-        flags = bl.pz_flags(a.calibration)
-        variants.append({"label": l, "env": envs[l],
-                         "cmd": (lambda key, info, path, tokens, t, fixed, _p=p, _f=flags: bl.pz_cmd(_p, path, tokens, t, _f, fixed))})
-    rows = bl.run_matrix(run, variants, models, threads, a.rounds, a.tokens, a.cooldown, a.order, True, a.resume)
+    variants = [bl.pz_variant(l, p, bl.pz_flags(a.calibration), envs[l]) for l, p in bins.items()]
+    gcfg = gate.config_from_args(a)
+    gcfg["reference_override"] = a.gate_reference or ref          # every binary is judged against the reference binary
+    g = gate.Gate(gcfg, run, a.models_dir, resume=a.resume or a.gate_only)
+    g.check(variants, models, threads)
+    if a.gate_only:
+        return gate.finish_standalone(run, g)
+    rows = bl.run_matrix(run, variants, models, threads, a.rounds, a.tokens, a.cooldown, a.order, True, a.resume, gate_of=g.verdict_of)
     summary = bl.summarize(rows, ref)
     md = [f"# Build comparison ({', '.join(labels)}; reference {ref})", "",
           f"UTC start: {bl.iso_utc(run.t0)}  |  host: {bl.cpu_model()}  |  pz commit: {bl.git_info()['commit']}", "",
-          bl.summary_md(summary, with_ratio=True)]
+          bl.summary_md(summary, with_ratio=True, hide_invalid=g.cfg["mode"] == "strict")]
+    if g.results:
+        md += ["", gate.render_md(g.results, g.cfg)]
 
     if a.step_timing:
         key, info, path = models[0]
@@ -172,16 +177,17 @@ def main():
     shots = []
     if a.screenshots != "none":
         run.log("\n== screenshots (live terminal) ==")
-        shots = bl.take_screenshots(run, variants, models, max(threads), 32, a.screenshots, a.shot_rows)
+        shots = bl.take_screenshots(run, variants, models, max(threads), 32, a.screenshots, a.shot_rows,
+                                    note_of=lambda k, v: gate.caption_note(g.results.get(f"{k}/{v}")))
         md += ["", "## Screenshots", "", bl.md_table(["model", "binary", "threads", "screenshot"],
                [[s["model"], s["variant"], s["threads"], s["screenshot"]] for s in shots])]
     run.write("summary.md", "\n".join(md) + "\n")
-    print("\n" + bl.summary_md(summary, with_ratio=True))
-    bl.finish(run, {"kind": "build_compare", "binaries": {l: bl.bin_info(p) for l, p in bins.items()}, "reference": ref,
+    print("\n" + bl.summary_md(summary, with_ratio=True, hide_invalid=g.cfg["mode"] == "strict"))
+    bl.finish(run, {"kind": "build_compare", "gate": g.summary_for_meta(), "binaries": {l: bl.bin_info(p) for l, p in bins.items()}, "reference": ref,
                     "models": [k for k, _, _ in models], "threads": threads, "rounds": a.rounds, "tokens": a.tokens,
                     "order": a.order, "calibration": a.calibration, "summary": summary, "check_isa": isa_results,
                     "screenshots": shots})
-    return 0 if all(c == 0 for c in isa_results.values()) else 1
+    return 1 if (any(c != 0 for c in isa_results.values()) or gate.exit_status(g.results, g.cfg)) else 0
 
 
 if __name__ == "__main__":

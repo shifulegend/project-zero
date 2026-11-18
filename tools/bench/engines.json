@@ -7,9 +7,22 @@
     "dir": "llama.cpp",
     "binary": "build/bin/llama-completion",
     "runner": "ref",
-    "configure": ["cmake", "-B", "build", "-DCMAKE_BUILD_TYPE=Release", "-DGGML_NATIVE=ON"],
-    "targets": ["llama-completion"],
-    "recorded_build": "Release, GGML_NATIVE=ON"
+    "configure": [
+      "cmake",
+      "-B",
+      "build",
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DGGML_NATIVE=ON"
+    ],
+    "targets": [
+      "llama-completion",
+      "llama-perplexity"
+    ],
+    "recorded_build": "Release, GGML_NATIVE=ON",
+    "perplexity": {
+      "binary": "build/bin/llama-perplexity",
+      "target": "llama-perplexity"
+    }
   },
   "bitnetcpp": {
     "label": "bitnet.cpp",
@@ -20,9 +33,26 @@
     "binary": "build/bin/llama-completion",
     "runner": "ref",
     "compiler": "clang",
-    "configure": ["cmake", "-B", "build", "-DCMAKE_BUILD_TYPE=Release", "-DBITNET_X86_TL2=OFF", "-DLLAMA_BUILD_COMMON=ON", "-DLLAMA_BUILD_TOOLS=ON", "-DLLAMA_BUILD_TESTS=OFF", "-DLLAMA_BUILD_EXAMPLES=OFF"],
-    "targets": ["llama-completion"],
-    "recorded_build": "Release, clang, BITNET_X86_TL2=OFF, i2_s"
+    "configure": [
+      "cmake",
+      "-B",
+      "build",
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DBITNET_X86_TL2=OFF",
+      "-DLLAMA_BUILD_COMMON=ON",
+      "-DLLAMA_BUILD_TOOLS=ON",
+      "-DLLAMA_BUILD_TESTS=OFF",
+      "-DLLAMA_BUILD_EXAMPLES=OFF"
+    ],
+    "targets": [
+      "llama-completion",
+      "llama-perplexity"
+    ],
+    "recorded_build": "Release, clang, BITNET_X86_TL2=OFF, i2_s",
+    "perplexity": {
+      "binary": "build/bin/llama-perplexity",
+      "target": "llama-perplexity"
+    }
   },
   "ik": {
     "label": "ik_llama.cpp",
@@ -31,9 +61,65 @@
     "dir": "ik_llama.cpp",
     "binary": "build/bin/llama-cli",
     "runner": "cli",
-    "configure": ["cmake", "-B", "build", "-DCMAKE_BUILD_TYPE=Release", "-DGGML_NATIVE=ON"],
-    "targets": ["llama-cli", "llama-quantize"],
-    "extra_binaries": {"quantize": "build/bin/llama-quantize"},
-    "recorded_build": "Release, GGML_NATIVE=ON; -rtr on quantized models; BitNet converted I2_S -> IQ2_BN"
+    "configure": [
+      "cmake",
+      "-B",
+      "build",
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DGGML_NATIVE=ON"
+    ],
+    "targets": [
+      "llama-cli",
+      "llama-quantize",
+      "llama-perplexity"
+    ],
+    "extra_binaries": {
+      "quantize": "build/bin/llama-quantize"
+    },
+    "recorded_build": "Release, GGML_NATIVE=ON; -rtr on quantized models; BitNet converted I2_S -> IQ2_BN",
+    "perplexity": {
+      "binary": "build/bin/llama-perplexity",
+      "target": "llama-perplexity"
+    }
+  },
+  "bitnetcpp-fix": {
+    "label": "bitnet.cpp + FFN fix (modified)",
+    "repo": "https://github.com/microsoft/BitNet",
+    "pin": "0b341e5",
+    "recursive": true,
+    "dir": "BitNet-fix",
+    "binary": "build/bin/llama-completion",
+    "runner": "ref",
+    "compiler": "clang",
+    "configure": [
+      "cmake",
+      "-B",
+      "build",
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DBITNET_X86_TL2=OFF",
+      "-DLLAMA_BUILD_COMMON=ON",
+      "-DLLAMA_BUILD_TOOLS=ON",
+      "-DLLAMA_BUILD_TESTS=OFF",
+      "-DLLAMA_BUILD_EXAMPLES=OFF"
+    ],
+    "targets": [
+      "llama-completion",
+      "llama-perplexity"
+    ],
+    "recorded_build": "Release, clang, BITNET_X86_TL2=OFF, i2_s, + 1-line FFN activation fix (not upstream)",
+    "perplexity": {
+      "binary": "build/bin/llama-perplexity",
+      "target": "llama-perplexity"
+    },
+    "variant_of": "bitnetcpp",
+    "modified": true,
+    "patches": [
+      {
+        "path": "tools/bench/patches/bitnetcpp-ffn-relu-sqr.diff",
+        "apply_in": "3rdparty/llama.cpp",
+        "strip": 1,
+        "why": "models/bitnet.cpp builds the bitnet-b1.58 FFN with LLM_FFN_SILU; BitNet 2B-4T needs squared-ReLU (docs/rca/2026-11-18-ternary-output-correctness.md)"
+      }
+    ]
   }
 }

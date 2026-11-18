@@ -92,6 +92,8 @@ def add_common_args(ap, kind):
     g.add_argument("--calibration", choices=["isolated", "off", "existing"], default="isolated",
                    help="isolated: own empty HOME/cache, calibrates once like a first-time user (default); "
                         "off: --no-calibrate; existing: use the real ~/.project-zero")
+    import gate          # local import: gate.py imports this module
+    gate.add_args(ap)
     return ap
 
 
@@ -315,6 +317,11 @@ def write_csv(path, header, rows):
         w.writerows(rows)
 
 
+def read_csv_dicts(path):
+    with open(path, newline="") as f:
+        return list(csv.DictReader(f))
+
+
 def md_table(header, rows):
     out = ["| " + " | ".join(header) + " |", "|" + "|".join("---" for _ in header) + "|"]
     out += ["| " + " | ".join(str(c) for c in r) + " |" for r in rows]
@@ -381,6 +388,52 @@ def ref_cmd(binary, runner, model, tokens, threads, extra=(), fixed_length=True,
     return cmd
 
 
+def ppl_cmd_pz(pz, model, text, ctx, chunks, threads, extra=()):
+    """pz perplexity run (llama-perplexity's method, built into pz)."""
+    return [str(pz), "--model", str(model), "--perplexity", str(text), "--ppl-ctx", str(ctx), "--ppl-chunks", str(chunks),
+            "--threads", str(threads), "--no-update-check"] + list(extra)
+
+
+def ppl_cmd_ref(binary, model, text, ctx, chunks, threads, extra=()):
+    """llama-perplexity of the llama.cpp family."""
+    return [str(binary), "-m", str(model), "-f", str(text), "-c", str(ctx), "--chunks", str(chunks), "-t", str(threads)] + list(extra)
+
+
+def engine_ppl_binary(key, engine_dir):
+    spec = load_engines()[key].get("perplexity")
+    p = pathlib.Path(engine_dir) / load_engines()[key]["dir"] / spec["binary"] if spec else None
+    return p if p and p.exists() else None
+
+
+# A variant is one way of running a model: {label, engine, cmd, ppl, env[, modified]}.
+#   cmd(key, info, path, tokens, threads, fixed_length, prompt=PROMPT) -> argv | None   (generation)
+#   ppl(key, info, path, text, ctx, chunks, threads, extra=())        -> argv | None   (gate perplexity)
+# None = the variant cannot run that model. Every script builds its variants with these two factories,
+# so command construction exists once.
+def pz_variant(label, pz, flags=(), env=None):
+    def cmd(key, info, path, tokens, threads, fixed, prompt=PROMPT):
+        return pz_cmd(pz, path, tokens, threads, flags, fixed, prompt) if "pz" in info["engines"] else None
+
+    def ppl(key, info, path, text, ctx, chunks, threads, extra=()):
+        return ppl_cmd_pz(pz, path, text, ctx, chunks, threads, list(flags) + list(extra)) if "pz" in info["engines"] else None
+    return {"label": label, "engine": "pz", "cmd": cmd, "ppl": ppl, "env": env}
+
+
+def ref_variant(label, engine, binary, ppl_binary=None, env=None):
+    e = load_engines()[engine]
+
+    def cmd(key, info, path, tokens, threads, fixed, prompt=PROMPT):
+        if engine not in info["engines"]:
+            return None
+        return ref_cmd(binary, e["runner"], path, tokens, threads, info.get("extra", {}).get(engine, []), fixed, prompt)
+
+    def ppl(key, info, path, text, ctx, chunks, threads, extra=()):
+        if engine not in info["engines"] or not ppl_binary:
+            return None
+        return ppl_cmd_ref(ppl_binary, path, text, ctx, chunks, threads, extra)
+    return {"label": label, "engine": engine, "cmd": cmd, "ppl": ppl, "env": env, "modified": bool(e.get("modified"))}
+
+
 def measure(run, suite, threads, rnd, cmd, env=None, prompt=PROMPT):
     """One measured run: verbatim log under raw/<suite>/t<threads>/run<rnd>.txt, parsed numbers returned."""
     r = run_cmd(cmd, env)
@@ -406,7 +459,8 @@ def parse_step_timing(text):
 
 
 # ── the measurement matrix (shared by h2h_bench, build_compare, calibration_test) ──────────
-SUMMARY_HEADER = ["model", "variant", "threads", "round", "gen_tok_s", "tokens", "wall_s", "max_rss_mb", "cpu_pct", "exit", "log"]
+SUMMARY_HEADER = ["model", "variant", "threads", "round", "gen_tok_s", "tokens", "wall_s", "max_rss_mb", "cpu_pct", "exit", "log",
+                  "gate"]
 
 
 def load_rows(path):
@@ -426,8 +480,15 @@ def write_progress(run, phase, done, total, last=""):
         {"phase": phase, "done": done, "total": total, "last": last, "updated": iso_utc()}, indent=2) + "\n")
 
 
+def ensure_gate_column(path):
+    """A summary.csv written before the gate existed gets an empty `gate` column (so appended rows line up)."""
+    rows = read_csv_dicts(path)
+    if rows and "gate" not in rows[0]:
+        write_csv(path, SUMMARY_HEADER, [[r.get(h, "") for h in SUMMARY_HEADER] for r in rows])
+
+
 def run_matrix(run, variants, models, threads, rounds, tokens=0, cooldown=5.0, order="interleaved",
-               fixed_length=True, resume=False):
+               fixed_length=True, resume=False, gate_of=None):
     """Measure every variant on every model.
 
     variants: [{'label', 'cmd': f(model_key, model_info, path, tokens, threads, fixed_length) -> argv or None,
@@ -436,8 +497,11 @@ def run_matrix(run, variants, models, threads, rounds, tokens=0, cooldown=5.0, o
     order:    'interleaved' (default) -- inside each round every variant runs once, the starting
               variant rotating, so thermal drift and background load hit all variants alike;
               'blocks' -- all rounds of one variant, then the next (the published sweeps' layout).
+    gate_of:  optional f(model_key, variant_label) -> verdict string stored in the `gate` column.
     Rows are appended to summary.csv as they complete, so an interrupted run can be resumed."""
     path = run.path / "summary.csv"
+    if resume and path.exists():
+        ensure_gate_column(path)
     done = {(r["model"], r["variant"], r["threads"], r["round"]) for r in load_rows(path)} if resume else set()
     new = not path.exists() or not resume
     f = open(path, "a" if resume else "w", newline="")
@@ -458,7 +522,8 @@ def run_matrix(run, variants, models, threads, rounds, tokens=0, cooldown=5.0, o
             return
         res = measure(run, f"{key}__{v['label']}", t, rnd, cmd, v.get("env"))
         w.writerow([key, v["label"], t, rnd, res["tps"] if res["tps"] is not None else "", res["tokens"] or "",
-                    f"{res['wall']:.2f}", f"{res['rss_mb']:.0f}", f"{res['cpu_pct']:.0f}", res["rc"], res["log"]])
+                    f"{res['wall']:.2f}", f"{res['rss_mb']:.0f}", f"{res['cpu_pct']:.0f}", res["rc"], res["log"],
+                    gate_of(key, v["label"]) if gate_of else ""])
         f.flush()
         rows.append({"model": key, "variant": v["label"], "threads": t, "round": rnd, "gen_tok_s": res["tps"]})
         flag = "" if res["rc"] == 0 else f"  FAILED (exit {res['rc']})"
@@ -487,12 +552,13 @@ def run_matrix(run, variants, models, threads, rounds, tokens=0, cooldown=5.0, o
 
 def summarize(rows, reference=None):
     """-> list of dict per (model, variant, threads): n, best, mean, stdev, ratio_to_reference (mean/mean)."""
-    groups = {}
+    groups, verdicts = {}, {}
     for r in rows:
         groups.setdefault((r["model"], r["variant"], r["threads"]), []).append(r["gen_tok_s"])
+        verdicts.setdefault((r["model"], r["variant"], r["threads"]), r.get("gate", ""))
     out = []
     for (m, v, t), vals in groups.items():
-        out.append({"model": m, "variant": v, "threads": t, **stats(vals)})
+        out.append({"model": m, "variant": v, "threads": t, "gate": verdicts[(m, v, t)], **stats(vals)})
     if reference:
         ref = {(o["model"], o["threads"]): o["mean"] for o in out if o["variant"] == reference}
         for o in out:
@@ -501,18 +567,26 @@ def summarize(rows, reference=None):
     return sorted(out, key=lambda o: (o["model"], o["threads"], o["variant"]))
 
 
-def summary_md(summary, with_ratio=False):
-    header = ["model", "variant", "threads", "runs", "best tok/s", "mean tok/s", "stdev"] + (["mean / reference"] if with_ratio else [])
+def summary_md(summary, with_ratio=False, hide_invalid=False):
+    """hide_invalid (gate strict): INVALID cells show no throughput, only the verdict."""
+    show_gate = any(o.get("gate") for o in summary)
+    header = (["model", "variant", "threads", "runs", "best tok/s", "mean tok/s", "stdev"] + (["mean / reference"] if with_ratio else [])
+              + (["gate"] if show_gate else []))
     rows = []
     for o in summary:
-        r = [o["model"], o["variant"], o["threads"], o["n"], fnum(o["best"], 2), fnum(o["mean"], 2), fnum(o["stdev"], 2)]
+        hide = hide_invalid and o.get("gate") == "INVALID"
+        na = "n/a"
+        r = [o["model"], o["variant"], o["threads"], o["n"], na if hide else fnum(o["best"], 2),
+             na if hide else fnum(o["mean"], 2), na if hide else fnum(o["stdev"], 2)]
         if with_ratio:
-            r.append("-" if o.get("ratio") is None else f"{o['ratio'] * 100:.0f}%")
+            r.append(na if hide or o.get("ratio") is None else f"{o['ratio'] * 100:.0f}%")
+        if show_gate:
+            r.append(o.get("gate") or "-")
         rows.append(r)
     return md_table(header, rows)
 
 
-def take_screenshots(run, variants, models, shot_threads, tokens, mode, rows_override=0):
+def take_screenshots(run, variants, models, shot_threads, tokens, mode, rows_override=0, note_of=None):
     """One live-terminal screenshot per (model, variant) ('summary') after the measured runs. The run is
     a separate, shorter one (tokens capped) because a pty run prints the live tok/s display; its own
     tok/s is parsed from the captured bytes and returned for the record, not mixed into the statistics."""
@@ -533,7 +607,8 @@ def take_screenshots(run, variants, models, shot_threads, tokens, mode, rows_ove
                 run.log(f"  screenshot {name}: exists, kept (resume)")
             else:
                 png, text = screenshot(run, name, cmd, v.get("env") or dict(os.environ),
-                                       rows=rows_override or 130, timeout_s=1800)
+                                       rows=rows_override or 130, timeout_s=1800,
+                                       note=note_of(key, v["label"]) if note_of else "")
             tps, ntok = gen_toks(text)
             out.append({"model": key, "variant": v["label"], "threads": shot_threads, "tok_s_in_screenshot_run": tps,
                         "screenshot": run.rel(png) if png else None})

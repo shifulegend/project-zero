@@ -28,9 +28,11 @@ def variant_name(v):
     return ENGINE_NAMES.get(v, v)
 
 
-def make_chart(run_dir, title="Decode tok/s vs threads", subtitle=None, rounds=None):
+def make_chart(run_dir, title="Decode tok/s vs threads", subtitle=None, rounds=None, hide_invalid=False):
     run_dir = pathlib.Path(run_dir)
     rows = [r for r in bl.load_rows(run_dir / "summary.csv") if r["gen_tok_s"] is not None and r.get("exit", "0") == "0"]
+    dropped = sorted({f"{r['model']}/{variant_name(r['variant'])}" for r in rows if hide_invalid and r.get("gate") == "INVALID"})
+    rows = [r for r in rows if not (hide_invalid and r.get("gate") == "INVALID")]     # correctness gate, strict mode
     if not rows:
         return []
     models = bl.load_models()
@@ -61,6 +63,8 @@ def make_chart(run_dir, title="Decode tok/s vs threads", subtitle=None, rounds=N
         when = f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:8]} {stamp[9:11]}:{stamp[11:13]} UTC" if len(stamp) == 16 else stamp
         subtitle = (f"{bl.cpu_model()}, {bl.os.cpu_count()} vCPU | {when}, "
                     f"best of {rounds or meta.get('rounds', 'N')}, pz {bl.git_info()['commit']}")
+    if dropped:
+        subtitle += " | Not shown (fail the correctness gate): " + ", ".join(dropped)
     svg = ps.render(panels, best, title, subtitle)
     out = [run_dir / "throughput_vs_threads.svg"]
     out[0].write_text(svg)

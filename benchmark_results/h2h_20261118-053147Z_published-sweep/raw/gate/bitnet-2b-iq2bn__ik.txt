@@ -1,11 +1,11 @@
 === gate bitnet-2b-iq2bn/ik ===
-DATE: 2026-11-18T14:36:44Z
+DATE: 2026-11-18T14:39:33Z
 CMD: /root/ext/ik_llama.cpp/build/bin/llama-perplexity -m models/bitnet-b1.58-2B-4T-iq2_bn.gguf -f /home/user/project-zero/tools/bench/gate_text.txt -c 512 --chunks 8 -t 4
 ============================================================
 main: build = 5153 (06d729c5)
 main: built with cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0 for x86_64-linux-gnu
-main: seed  = 1795012573
-CPU: using device CPU - 10466 MiB free
+main: seed  = 1795012740
+CPU: using device CPU - 10400 MiB free
 llama_model_loader: loaded meta data with 24 key-value pairs and 332 tensors from models/bitnet-b1.58-2B-4T-iq2_bn.gguf (version GGUF V3 (latest))
 llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
 llama_model_loader: - kv   0:                       general.architecture str              = bitnet-b1.58
@@ -136,7 +136,7 @@ Layer 30:    256.86,    208.50,    465.36 MiB (output layer)
 --------------------------------------------------------------------------
 Total   :    501.15,    358.50,    859.65 MiB
 Memory required for model tensors + cache: 1117 MiB
-Memory available on all devices - compute: 9400 MiB
+Memory available on all devices - compute: 9327 MiB
 llm_load_tensors: ggml ctx size =    0.17 MiB
 llm_load_tensors:        CPU buffer size =   758.02 MiB (total of 1 resident buffers)
 ....................................................
@@ -169,15 +169,15 @@ llama_init_from_model: enabling only_active_experts scheduling
 
 system_info: n_threads = 4 / 4 | AVX = 1 | AVX_VNNI = 1 | AVX2 = 1 | AVX512 = 1 | AVX512_VBMI = 1 | AVX512_VNNI = 1 | AVX512_BF16 = 1 | FMA = 1 | NEON = 0 | SVE = 0 | ARM_FMA = 0 | F16C = 1 | FP16_VA = 0 | WASM_SIMD = 0 | SSE3 = 1 | SSSE3 = 1 | VSX = 0 | MATMUL_INT8 = 0 | 
 perplexity: tokenizing the input ..
-perplexity: tokenization took 4.896 ms
+perplexity: tokenization took 5.016 ms
 perplexity: calculating perplexity over 6 chunks, n_ctx=512, batch_size=2048, n_seq=4
-perplexity: 20.99 seconds per pass - ETA 0.52 minutes
+perplexity: 22.37 seconds per pass - ETA 0.55 minutes
 [1]49.1677,[2]40.1655,[3]33.5309,[4]24.6000,[5]27.9427,[6]31.6011,
-llama_print_timings:        load time =     198.40 ms
+llama_print_timings:        load time =     221.16 ms
 llama_print_timings:      sample time =       0.00 ms /     1 runs   (    0.00 ms per token,      inf tokens per second)
-llama_print_timings: prompt eval time =   30563.35 ms /  3072 tokens (    9.95 ms per token,   100.51 tokens per second)
+llama_print_timings: prompt eval time =   31468.65 ms /  3072 tokens (   10.24 ms per token,    97.62 tokens per second)
 llama_print_timings:        eval time =       0.00 ms /     1 runs   (    0.00 ms per token,      inf tokens per second)
-llama_print_timings:       total time =   30859.85 ms /  3073 tokens
+llama_print_timings:       total time =   31753.56 ms /  3073 tokens
 
 Final estimate: PPL over 6 chunks for n_ctx=512 = 31.6011 +/- 3.33246
 

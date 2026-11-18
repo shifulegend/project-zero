@@ -1,11 +1,11 @@
 === gate smollm2-135m/ik ===
-DATE: 2026-11-18T14:20:18Z
+DATE: 2026-11-18T14:38:30Z
 CMD: /root/ext/ik_llama.cpp/build/bin/llama-perplexity -m models/SmolLM2-135M-Instruct-f16.gguf -f /home/user/project-zero/tools/bench/gate_text.txt -c 512 --chunks 8 -t 4
 ============================================================
 main: build = 5153 (06d729c5)
 main: built with cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0 for x86_64-linux-gnu
-main: seed  = 1795011611
-CPU: using device CPU - 12335 MiB free
+main: seed  = 1795012705
+CPU: using device CPU - 10392 MiB free
 llama_model_loader: loaded meta data with 33 key-value pairs and 272 tensors from models/SmolLM2-135M-Instruct-f16.gguf (version GGUF V3 (latest))
 llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
 llama_model_loader: - kv   0:                       general.architecture str              = llama
@@ -141,10 +141,10 @@ Layer 30:     54.00,     86.62,    140.62 MiB (output layer)
 --------------------------------------------------------------------------
 Total   :    202.63,    131.62,    334.26 MiB
 Memory required for model tensors + cache: 388 MiB
-Memory available on all devices - compute: 11290 MiB
+Memory available on all devices - compute: 9359 MiB
 llm_load_tensors: ggml ctx size =    0.14 MiB
 llm_load_tensors:        CPU buffer size =   256.63 MiB (total of 1 resident buffers)
-...................................................................
+....................................................................
 llama_init_from_model: n_ctx         = 2048
 llama_init_from_model: n_batch       = 2048
 llama_init_from_model: n_ubatch      = 512
@@ -174,15 +174,15 @@ llama_init_from_model: enabling only_active_experts scheduling
 
 system_info: n_threads = 4 / 4 | AVX = 1 | AVX_VNNI = 1 | AVX2 = 1 | AVX512 = 1 | AVX512_VBMI = 1 | AVX512_VNNI = 1 | AVX512_BF16 = 1 | FMA = 1 | NEON = 0 | SVE = 0 | ARM_FMA = 0 | F16C = 1 | FP16_VA = 0 | WASM_SIMD = 0 | SSE3 = 1 | SSSE3 = 1 | VSX = 0 | MATMUL_INT8 = 0 | 
 perplexity: tokenizing the input ..
-perplexity: tokenization took 4.585 ms
+perplexity: tokenization took 3.418 ms
 perplexity: calculating perplexity over 7 chunks, n_ctx=512, batch_size=2048, n_seq=4
-perplexity: 3.65 seconds per pass - ETA 0.10 minutes
+perplexity: 3.33 seconds per pass - ETA 0.08 minutes
 [1]16.5576,[2]11.7663,[3]9.8604,[4]7.6196,[5]7.0567,[6]7.5798,[7]8.0256,
-llama_print_timings:        load time =      78.47 ms
+llama_print_timings:        load time =      94.81 ms
 llama_print_timings:      sample time =       0.00 ms /     1 runs   (    0.00 ms per token,      inf tokens per second)
-llama_print_timings: prompt eval time =    6210.86 ms /  3584 tokens (    1.73 ms per token,   577.05 tokens per second)
+llama_print_timings: prompt eval time =    5644.57 ms /  3584 tokens (    1.57 ms per token,   634.95 tokens per second)
 llama_print_timings:        eval time =       0.00 ms /     1 runs   (    0.00 ms per token,      inf tokens per second)
-llama_print_timings:       total time =    6357.28 ms /  3585 tokens
+llama_print_timings:       total time =    5775.92 ms /  3585 tokens
 
 Final estimate: PPL over 7 chunks for n_ctx=512 = 8.0256 +/- 0.54101
 

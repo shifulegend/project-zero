@@ -217,7 +217,8 @@ def main():
         run.write("system_info.txt", bl.system_info_text(run, ids))
         run.write("models.txt", "\n".join(f"{k}: {p} {p.stat().st_size if p.exists() else '?'} bytes" for k, _, p in models) + "\n")
 
-    if not a.gate_only and any(v["label"].startswith("pz") for v in variants):
+    profiled = a.resume and (run.path / "hardware_profile.txt").exists()     # a resumed run keeps its profile and calibration
+    if not a.gate_only and not profiled and any(v["label"].startswith("pz") for v in variants):
         small = hp.find_small_model(a.models_dir) or models[0][2]
         run.log("\n== hardware profile + first-run calibration (pz) ==")
         hp.capture_profile(run, a.pz, small, env, a.calibration, rows=a.shot_rows)

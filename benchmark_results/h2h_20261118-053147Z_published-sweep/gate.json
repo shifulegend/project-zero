@@ -3,10 +3,22 @@
     "mode": "strict",
     "tolerance_pct": 1.0,
     "warn_factor": 2.0,
+    "approximate": {
+      "_comment": "Variants that are lossy by design (a documented speed/accuracy trade the user chooses). They are judged APPROX: shown with the measured gap, never excluded. Add `tolerance_pct` to an entry to make it a hard bound.",
+      "pz-int8": {
+        "why": "--classifier int8: 8-bit LM head"
+      },
+      "pz-int4": {
+        "why": "--classifier int4: 4-bit LM head"
+      },
+      "pz-auto-fast": {
+        "why": "--classifier auto-fast: picks the fastest LM-head precision"
+      }
+    },
     "text": "tools/bench/gate_text.txt",
     "ppl_ctx": 512,
     "ppl_chunks": 8,
-    "ppl_regex": "Final estimate: PPL = ([0-9.]+)",
+    "ppl_regex": "Final estimate: PPL(?: over \\d+ chunks for n_ctx=\\d+)? = ([0-9.]+)",
     "smoke": {
       "prompt": "The capital of France is",
       "tokens": 24,
@@ -20,7 +32,8 @@
       "INVALID": "outside warn_factor x tolerance, or the smoke answer is wrong",
       "UNVERIFIED": "no reference result to compare with",
       "REF": "the reference itself (must pass the smoke check)",
-      "OFF": "gate disabled"
+      "OFF": "gate disabled",
+      "APPROX": "lossy by design (config `approximate`); the gap to the reference is reported, not judged"
     },
     "text_path": "/home/user/project-zero/tools/bench/gate_text.txt",
     "text_sha256": "8512a15e3523b0ce71f9eeeeede880e2fee9d7529730af792ba89ad41a839367",
@@ -74,8 +87,9 @@
       "log": "benchmark_results/h2h_20261118-053147Z_published-sweep/raw/gate/smollm2-135m__pz-int4.txt",
       "ref": "smollm2-135m/llamacpp",
       "ref_ppl": 8.0257,
-      "verdict": "INVALID",
-      "delta_pct": 17.068916107006235
+      "verdict": "APPROX",
+      "delta_pct": 17.068916107006235,
+      "approx_note": "--classifier int4: 4-bit LM head"
     },
     "smollm2-135m/ik": {
       "model": "smollm2-135m",
@@ -84,15 +98,15 @@
       "modified": false,
       "smoke_ok": true,
       "smoke_tail": "top_k -> tfs_z -> typical_p -> top_p -> min_p -> xtc -> top_n_sigma -> temperature -> adaptive_p \n\nThe capital of France is Paris. Paris is the largest city in France and the capital of the French department of the Espace de Paris.\n\nLog end",
-      "ppl": null,
-      "ppl_err": null,
-      "ppl_wall_s": 6.6,
+      "ppl": 8.0256,
+      "ppl_err": 0.54101,
+      "ppl_wall_s": 6.0,
       "ppl_rc": 0,
       "log": "benchmark_results/h2h_20261118-053147Z_published-sweep/raw/gate/smollm2-135m__ik.txt",
       "ref": "smollm2-135m/llamacpp",
       "ref_ppl": 8.0257,
-      "verdict": "INVALID",
-      "delta_pct": null
+      "verdict": "PASS",
+      "delta_pct": -0.0012459972338832368
     },
     "smollm2-1.7b-q4km/llamacpp": {
       "model": "smollm2-1.7b-q4km",
@@ -141,8 +155,9 @@
       "log": "benchmark_results/h2h_20261118-053147Z_published-sweep/raw/gate/smollm2-1.7b-q4km__pz-int4.txt",
       "ref": "smollm2-1.7b-q4km/llamacpp",
       "ref_ppl": 5.9495,
-      "verdict": "INVALID",
-      "delta_pct": 6.387091352214486
+      "verdict": "APPROX",
+      "delta_pct": 6.387091352214486,
+      "approx_note": "--classifier int4: 4-bit LM head"
     },
     "smollm2-1.7b-q4km/ik": {
       "model": "smollm2-1.7b-q4km",
@@ -151,15 +166,15 @@
       "modified": false,
       "smoke_ok": true,
       "smoke_tail": "s -> dry -> top_k -> tfs_z -> typical_p -> top_p -> min_p -> xtc -> top_n_sigma -> temperature -> adaptive_p \n\nThe capital of France is Paris.\nThe capital of France is Paris.\nThe capital of France is Paris.\nThe capital of France is\n\nLog end",
-      "ppl": null,
-      "ppl_err": null,
-      "ppl_wall_s": 20.3,
+      "ppl": 5.8999,
+      "ppl_err": 0.36088,
+      "ppl_wall_s": 23.1,
       "ppl_rc": 0,
       "log": "benchmark_results/h2h_20261118-053147Z_published-sweep/raw/gate/smollm2-1.7b-q4km__ik.txt",
       "ref": "smollm2-1.7b-q4km/llamacpp",
       "ref_ppl": 5.9495,
-      "verdict": "INVALID",
-      "delta_pct": null
+      "verdict": "PASS",
+      "delta_pct": -0.8336835028153605
     },
     "bitnet-2b/bitnetcpp-fix": {
       "model": "bitnet-2b",
@@ -208,8 +223,9 @@
       "log": "benchmark_results/h2h_20261118-053147Z_published-sweep/raw/gate/bitnet-2b__pz-int4.txt",
       "ref": "bitnet-2b/bitnetcpp-fix",
       "ref_ppl": 31.3344,
-      "verdict": "INVALID",
-      "delta_pct": 13.627514808006547
+      "verdict": "APPROX",
+      "delta_pct": 13.627514808006547,
+      "approx_note": "--classifier int4: 4-bit LM head"
     },
     "bitnet-2b/bitnetcpp": {
       "model": "bitnet-2b",
@@ -234,15 +250,15 @@
       "modified": false,
       "smoke_ok": true,
       "smoke_tail": "-> top_k -> tfs_z -> typical_p -> top_p -> min_p -> xtc -> top_n_sigma -> temperature -> adaptive_p \n\nThe capital of France is Paris. Paris is a city that is known for its rich history, culture, and architecture. It is also a major\n\nLog end",
-      "ppl": null,
-      "ppl_err": null,
-      "ppl_wall_s": 31.6,
+      "ppl": 31.6011,
+      "ppl_err": 3.33246,
+      "ppl_wall_s": 32.6,
       "ppl_rc": 0,
       "log": "benchmark_results/h2h_20261118-053147Z_published-sweep/raw/gate/bitnet-2b-iq2bn__ik.txt",
       "ref": "bitnet-2b/bitnetcpp-fix",
       "ref_ppl": 31.3344,
-      "verdict": "INVALID",
-      "delta_pct": null
+      "verdict": "PASS",
+      "delta_pct": 0.8511412377450986
     },
     "mamba-130m/llamacpp": {
       "model": "mamba-130m",

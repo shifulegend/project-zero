@@ -172,6 +172,23 @@
       "ref": "mamba-130m/llamacpp",
       "verdict": "REF",
       "delta_pct": 0.0
+    },
+    "smollm2-135m/pz": {
+      "model": "smollm2-135m",
+      "variant": "pz",
+      "engine": "pz",
+      "modified": false,
+      "smoke_ok": true,
+      "smoke_tail": "/s at 46.8 GB/s\nKV cache: F32, max context: 8192 tokens (sizing tier: Quantized I8, RAM budget 60%)\n\n Paris. Paris is the largest city in France and the capital of the French department of the Espace de Paris.\n\n[gen] 99.26 tok/s (24 tokens)",
+      "ppl": 8.0252,
+      "ppl_err": 0.54098,
+      "ppl_wall_s": 39.6,
+      "ppl_rc": 0,
+      "log": "benchmark_results/h2h_20261118-053147Z_published-sweep/raw/gate/smollm2-135m__pz.txt",
+      "ref": "smollm2-135m/llamacpp",
+      "ref_ppl": 8.0257,
+      "verdict": "PASS",
+      "delta_pct": -0.006229986169438317
     }
   }
 }

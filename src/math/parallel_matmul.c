@@ -502,59 +502,7 @@ typedef struct {
 static void matmul_i8_task(void *arg, int thread_id, int start, int end) {
     (void)thread_id;
     const ParallelMatmulI8Args *a = (const ParallelMatmulI8Args *)arg;
-    const int nb = a->n_blocks;
-
-    for (int i = start; i < end; i++) {
-        const tn_u8 *row = a->w + (size_t)i * a->n;
-        const float *row_scales = a->scales + (size_t)i * nb;
-        float total = 0.0f;
-
-        for (int b = 0; b < nb; b++) {
-            int blk_start = b * TN_CLS_QUANT_BLOCK;
-            int blk_len = a->n - blk_start;
-            if (blk_len > TN_CLS_QUANT_BLOCK) blk_len = TN_CLS_QUANT_BLOCK;
-            const tn_u8 *brow = row + blk_start;
-            const float *bx = a->x + blk_start;
-            int j = 0;
-            float val;
-
-#if TN_HAS_AVX512
-            __m512 acc512 = _mm512_setzero_ps();
-            for (; j + 15 < blk_len; j += 16) {
-                __m128i u8_16  = _mm_loadu_si128((const __m128i *)&brow[j]);
-                __m512i u32_16 = _mm512_cvtepu8_epi32(u8_16);
-                __m512i s32_16 = _mm512_sub_epi32(u32_16, _mm512_set1_epi32(128));
-                __m512  wv     = _mm512_cvtepi32_ps(s32_16);
-                __m512  xv     = _mm512_loadu_ps(&bx[j]);
-                acc512 = _mm512_fmadd_ps(wv, xv, acc512);
-            }
-            val = _mm512_reduce_add_ps(acc512);
-#elif TN_HAS_AVX2
-            __m256 acc = _mm256_setzero_ps();
-            for (; j + 7 < blk_len; j += 8) {
-                __m128i u8_8  = _mm_loadl_epi64((const __m128i *)&brow[j]);
-                __m256i u32_8 = _mm256_cvtepu8_epi32(u8_8);
-                __m256i s32_8 = _mm256_sub_epi32(u32_8, _mm256_set1_epi32(128));
-                __m256  wv    = _mm256_cvtepi32_ps(s32_8);
-                __m256  xv    = _mm256_loadu_ps(&bx[j]);
-                acc = _mm256_fmadd_ps(wv, xv, acc);
-            }
-            __m128 hi   = _mm256_extractf128_ps(acc, 1);
-            __m128 lo   = _mm256_castps256_ps128(acc);
-            __m128 sum4 = _mm_add_ps(lo, hi);
-            __m128 shuf = _mm_movehdup_ps(sum4);
-            __m128 sum2 = _mm_add_ps(sum4, shuf);
-            val = _mm_cvtss_f32(_mm_add_ss(sum2, _mm_movehl_ps(sum2, sum2)));
-#else
-            val = 0.0f;
-#endif
-            for (; j < blk_len; j++) {
-                val += (float)((int)brow[j] - 128) * bx[j];
-            }
-            total += val * row_scales[b];
-        }
-        a->out[i] = total;
-    }
+    tn_cls_i8_rows(a->out, a->x, a->w, a->scales, a->n, a->n_blocks, start, end);   /* math/cls_kernels.h */
 }
 
 /* ── INT4 classifier matmul ─────────────────────────────────────────────────
@@ -579,77 +527,7 @@ typedef struct {
 static void matmul_i4_task(void *arg, int thread_id, int start, int end) {
     (void)thread_id;
     const ParallelMatmulI4Args *a = (const ParallelMatmulI4Args *)arg;
-    size_t row_bytes = ((size_t)a->n + 1) / 2;
-    const int nb = a->n_blocks;
-
-    for (int i = start; i < end; i++) {
-        const tn_u8 *row = a->w + (size_t)i * row_bytes;
-        const float *row_scales = a->scales + (size_t)i * nb;
-        float total = 0.0f;
-
-        for (int b = 0; b < nb; b++) {
-            int blk_start = b * TN_CLS_QUANT_BLOCK;
-            int blk_len = a->n - blk_start;
-            if (blk_len > TN_CLS_QUANT_BLOCK) blk_len = TN_CLS_QUANT_BLOCK;
-            const float *bx = a->x + blk_start;
-            /* blk_start is always even (TN_CLS_QUANT_BLOCK=32), so
-             * blk_start/2 lands exactly on a packed-byte boundary. */
-            const tn_u8 *brow = row + blk_start / 2;
-            int j = 0;
-            float val;
-
-#if TN_HAS_AVX512
-            __m512 acc512 = _mm512_setzero_ps();
-            for (; j + 15 < blk_len; j += 16) {
-                __m128i packed8 = _mm_loadl_epi64((const __m128i *)(brow + j/2));
-                __m128i mask4 = _mm_set1_epi8(0x0F);
-                __m128i lo_8 = _mm_and_si128(packed8, mask4);
-                __m128i hi_8 = _mm_and_si128(_mm_srli_epi16(packed8, 4), mask4);
-                __m128i interleaved = _mm_unpacklo_epi8(lo_8, hi_8);
-                __m512i u32_16 = _mm512_cvtepu8_epi32(interleaved);
-                __m512i s32_16 = _mm512_sub_epi32(u32_16, _mm512_set1_epi32(8));
-                __m512  wv     = _mm512_cvtepi32_ps(s32_16);
-                __m512  xv     = _mm512_loadu_ps(&bx[j]);
-                acc512 = _mm512_fmadd_ps(wv, xv, acc512);
-            }
-            val = _mm512_reduce_add_ps(acc512);
-#elif TN_HAS_AVX2
-            __m256 acc = _mm256_setzero_ps();
-            for (; j + 7 < blk_len; j += 8) {
-                /* Unpack 8 INT4 values from 4 packed bytes */
-                tn_u32 packed4;
-                memcpy(&packed4, brow + j/2, 4);
-                __m128i packed8 = _mm_cvtsi32_si128((int)packed4);
-                __m128i mask4 = _mm_set1_epi8(0x0F);
-                __m128i lo_8 = _mm_and_si128(packed8, mask4);
-                __m128i hi_8 = _mm_and_si128(_mm_srli_epi16(packed8, 4), mask4);
-                __m128i interleaved = _mm_unpacklo_epi8(lo_8, hi_8); /* 8 uint4 as uint8 (low 8 bytes) */
-                __m256i u32_8 = _mm256_cvtepu8_epi32(interleaved);
-                __m256i s32_8 = _mm256_sub_epi32(u32_8, _mm256_set1_epi32(8));
-                __m256  wv    = _mm256_cvtepi32_ps(s32_8);
-                __m256  xv    = _mm256_loadu_ps(&bx[j]);
-                acc = _mm256_fmadd_ps(wv, xv, acc);
-            }
-            __m128 hi   = _mm256_extractf128_ps(acc, 1);
-            __m128 lo   = _mm256_castps256_ps128(acc);
-            __m128 sum4 = _mm_add_ps(lo, hi);
-            __m128 shuf = _mm_movehdup_ps(sum4);
-            __m128 sum2 = _mm_add_ps(sum4, shuf);
-            val = _mm_cvtss_f32(_mm_add_ss(sum2, _mm_movehl_ps(sum2, sum2)));
-#else
-            val = 0.0f;
-#endif
-            for (; j < blk_len; j++) {
-                int abs_j = blk_start + j;
-                int nibble;
-                if (abs_j & 1) nibble = (row[abs_j/2] >> 4) & 0x0F;
-                else nibble = row[abs_j/2] & 0x0F;
-                val += (float)(nibble - 8) * a->x[abs_j];
-            }
-            total += val * row_scales[b];
-        }
-        a->out[i] = total;
-    }
+    tn_cls_i4_rows(a->out, a->x, a->w, a->scales, a->n, a->n_blocks, start, end);   /* math/cls_kernels.h */
 }
 
 void parallel_matmul_i4(float *out, const float *x, const tn_u8 *w,

@@ -3,6 +3,11 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-18.
 
+### 2026-11-18 — Classifier (LM head) kernels: one reduction per row, AVX-512 versions dispatched
+- `include/math/cls_kernels.h` (new: contract, layout, shared scalar tails), `src/math/cls_kernels.c` (generic), `src/math/cls_kernels_avx512.c` (AVX-512, own flags; also CMake and `AVX512_TUS`), `include/math/simd_dispatch.h` + `src/math/simd_dispatch.c` (`tn_cls_i8_rows`, `tn_cls_i4_rows`), `src/math/parallel_matmul.c` (tasks call the pointers; ~125 lines of duplicated kernels removed).
+- Tests/guards: `tests/test_cls_kernels.c`, `tools/check_dist_isa.sh` (kernels present in the portable binary).
+- Why: mistakes.md 2026-11-18 (quantised heads slower than the BF16 default).
+
 ### 2026-11-18 — Activation quantiser: round to nearest, specification and oracle, NEON version, rounding lint
 - `include/math/quantize_i8.h` (specification), `src/math/quantize_i8.c` (scalar oracle with `lrintf`, AVX2 `cvtps`, new AArch64 NEON `quantize_row_to_i8_neon`), `src/math/quantize_i8_avx512.c` (`cvtps`), `src/math/ternary_matmul_packed_dotprod.c` (calls the NEON version).
 - Tests: `tests/test_quantize_i8_exact.c` (new: ties, tails, outliers, bit-exact tiers, half-step bound), `tests/test_simd_vnni.c` (bound `scale` -> `scale/2`). Guard: `tools/check_rounding.py` + CI step.

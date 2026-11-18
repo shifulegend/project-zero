@@ -2,6 +2,7 @@
 #define TN_SIMD_DISPATCH_H
 
 #include "math/kvq4_kernels.h"
+#include "math/cls_kernels.h"
 #include "core/platform.h"
 
 /**
@@ -69,6 +70,10 @@ extern tn_vec_saxpy_fn      tn_vec_saxpy;
 extern tn_quantize_i8_fn    tn_quantize_act_i8;
 extern tn_sum_i8_fn         tn_sum_act_i8;
 extern tn_matmul_preq_fn    tn_ternary_matmul_preq;
+/* INT8 / INT4 classifier (LM head) row kernels (math/cls_kernels.h). Generic (AVX2 or scalar) before
+ * tn_simd_init() and on lower or forced tiers; the AVX-512 version on AVX-512F CPUs. */
+extern tn_cls_rows_fn       tn_cls_i8_rows;
+extern tn_cls_rows_fn       tn_cls_i4_rows;
 
 /**
  * Initialize SIMD dispatch. Probes CPU features and sets function pointers

@@ -39,6 +39,8 @@ need() {  # function, instruction regex, label
 echo "check_dist_isa: $BIN"
 need quantize_row_to_i8_avx512                zmm             "zmm instructions"
 need sum_i8_avx512                            zmm             "zmm instructions"
+need tn_cls_i4_rows_avx512                    zmm             "zmm instructions"
+need tn_cls_i8_rows_avx512                    zmm             "zmm instructions"
 need ternary_matmul_packed_vnni               vpdpbusd        "vpdpbusd"
 need ternary_matmul_packed_vnni_preq          vpdpbusd        "vpdpbusd"
 need ternary_matmul_packed_vnni_vbmi          vpmultishiftqb  "vpmultishiftqb"

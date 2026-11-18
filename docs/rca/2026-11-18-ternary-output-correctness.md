@@ -53,6 +53,8 @@ where squared-ReLU would give `+0.0`).
 "The capital of France is Paris. Paris is a city that is known for its rich history, culture…"
 and perplexity 31.40 (was 48.67).
 
+Upstream: already reported as microsoft/BitNet #602 and #588 (see `2026-11-18-fix-and-gate-plan.md` § 3); `main` is still the commit tested here. The model's `config.json` says `hidden_act: relu2`.
+
 Secondary bug seen on the way: building bitnet.cpp with `GGML_LLAMAFILE=OFF` fails to compile
 (`ggml-cpu.c:1495: use of undeclared identifier 'src1_cont'`), so the non-llamafile I2_S path is dead code.
 

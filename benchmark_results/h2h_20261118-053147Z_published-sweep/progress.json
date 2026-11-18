@@ -1,7 +1,7 @@
 {
   "phase": "measuring",
-  "done": 120,
+  "done": 121,
   "total": 168,
-  "last": "smollm2-1.7b-q4km pz-int4 t=2 run 2",
-  "updated": "2026-11-18T19:04:48Z"
+  "last": "smollm2-1.7b-q4km pz t=3 run 2",
+  "updated": "2026-11-18T19:05:32Z"
 }

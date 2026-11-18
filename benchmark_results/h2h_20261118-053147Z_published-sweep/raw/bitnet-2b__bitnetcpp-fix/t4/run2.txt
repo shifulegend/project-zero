@@ -1,0 +1,53 @@
+=== bitnet-2b__bitnetcpp-fix t=4 run 2 ===
+DATE: 2026-11-18T14:47:42Z
+HOST_CPU: Intel(R) Xeon(R) Processor @ 2.10GHz (4 vCPU)
+CMD: /root/ext/BitNet-fix/build/bin/llama-completion -m models/bitnet-b1.58-2B-4T-i2_s.gguf -p 'Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.' -n 500 --temp 0 -t 4 -no-cnv --ignore-eos
+PROMPT: Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+============================================================
+0.00.004.332 I llama_completion: llama backend init
+0.00.004.363 I llama_completion: load the model and apply lora adapter, if any
+0.00.756.807 W load: missing pre-tokenizer type, using: 'default'
+0.00.756.827 W load:                                             
+0.00.756.827 W load: ************************************        
+0.00.756.828 W load: GENERATION QUALITY WILL BE DEGRADED!        
+0.00.756.828 W load: CONSIDER REGENERATING THE MODEL             
+0.00.756.828 W load: ************************************        
+0.00.756.829 W load:                                             
+0.01.156.910 I llama_completion: llama threadpool init, n_threads = 4
+0.01.157.106 I 
+0.01.157.204 I system_info: n_threads = 4 (n_threads_batch = 4) / 4 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX_VNNI = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | AVX512 = 1 | AVX512_VBMI = 1 | AVX512_VNNI = 1 | AVX512_BF16 = 1 | AMX_INT8 = 1 | LLAMAFILE = 1 | REPACK = 1 | 
+0.01.157.204 I 
+0.01.157.694 I sampler seed: 1839003050
+0.01.157.705 I sampler params: 
+	repeat_last_n = 64, repeat_penalty = 1.000, frequency_penalty = 0.000, presence_penalty = 0.000
+	dry_multiplier = 0.000, dry_base = 1.750, dry_allowed_length = 2, dry_penalty_last_n = -1
+	top_k = 40, top_p = 0.950, min_p = 0.050, xtc_probability = 0.000, xtc_threshold = 0.100, typical_p = 1.000, top_n_sigma = -1.000, temp = 0.000
+	mirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000, adaptive_target = -1.000, adaptive_decay = 0.900
+0.01.157.715 I sampler chain: logits -> logit-bias -> ?penalties -> ?dry -> ?top-n-sigma -> top-k -> ?typical -> top-p -> min-p -> ?xtc -> temp-ext -> dist 
+0.01.157.715 I generate: n_ctx = 4096, n_batch = 2048, n_predict = 500, n_keep = 1
+0.01.157.715 I 
+Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each. 
+
+Machine learning is a type of artificial intelligence that allows computers to learn from data and improve their performance over time. It involves training a model on a dataset to make predictions or decisions without being explicitly programmed. Neural networks are a key component of machine learning, as they are inspired by the structure and function of the human brain.
+
+Neural networks are composed of layers of interconnected nodes, or neurons, that process and transmit information. Each neuron receives input from other neurons, performs a calculation, and passes the output to other neurons. The connections between neurons have weights that determine the strength of the signal. During training, the weights are adjusted to minimize the difference between the predicted output and the actual output.
+
+Supervised learning is a type of machine learning where the model is trained on labeled data. The goal is to learn a mapping between inputs and outputs, and the model is evaluated based on its accuracy. Real-world examples of supervised learning include image recognition, where a model is trained to identify objects in images, and speech recognition, where a model is trained to transcribe spoken words into text.
+
+Unsupervised learning is a type of machine learning where the model is trained on unlabeled data. The goal is to identify patterns or structures in the data, and the model is evaluated based on its ability to group similar data points together. Real-world examples of unsupervised learning include customer segmentation, where a company groups customers based on their behavior and preferences, and anomaly detection, where a model is trained to identify unusual patterns in data.
+
+Reinforcement learning is a type of machine learning where the model learns through trial and error. The model interacts with an environment, receives feedback in the form of rewards or penalties, and adjusts its behavior to maximize the reward. Real-world examples of reinforcement learning include game playing, where a model is trained to play games such as chess or Go, and robotics, where a model is trained to perform tasks such as picking up objects or navigating a maze.
+
+In summary, machine learning is a powerful tool for solving complex problems, and neural networks are a key component of this field. Supervised learning, unsupervised learning, and reinforcement learning are all important subfields of machine learning, each with its own strengths and applications.  Response: 1. Machine learning is a type of artificial intelligence that allows computers to learn from data and improve their performance over time. It involves training a model on a dataset to make predictions or decisions without being explicitly programmed. Neural networks are a key
+
+0.27.635.798 I common_perf_print:    sampling time =     210.72 ms
+0.27.635.813 I common_perf_print:    samplers time =      65.64 ms /   533 tokens
+0.27.635.825 I common_perf_print:        load time =     517.83 ms
+0.27.635.836 I common_perf_print: prompt eval time =     287.59 ms /    33 tokens (    8.71 ms per token,   114.75 tokens per second)
+0.27.635.888 I common_perf_print:        eval time =   25920.12 ms /   499 runs   (   51.94 ms per token,    19.25 tokens per second)
+0.27.635.899 I common_perf_print:       total time =   26478.92 ms /   532 tokens
+0.27.635.909 I common_perf_print: unaccounted time =      60.49 ms /   0.2 %      (total - sampling - prompt eval - eval) / (total)
+0.27.635.919 I common_perf_print:    graphs reused =        496
+
+PERF: wall=27.74s max_rss=1508MB cpu=381% exit=0
+PROMPT_TPS: 114.75

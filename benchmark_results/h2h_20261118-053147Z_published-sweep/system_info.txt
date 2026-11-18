@@ -1,14 +1,15 @@
-DATE: 2026-11-18T09:11:37Z
+DATE: 2026-11-18T14:40:04Z
 HOST_CPU: Intel(R) Xeon(R) Processor @ 2.10GHz (4 vCPU)
 ISA: avx2 fma avx512f avx512bw avx512vl avx512_vnni avx_vnni avx512_vbmi avx512_bf16 amx_tile f16c
 MEM: 15.7 GiB
 KERNEL: Linux 6.18.44-fc-v595
-LOADAVG_AT_START: (3.36328125, 3.07568359375, 2.3134765625)
-PROJECT_ZERO_COMMIT: cbc1933 (dirty)  branch claude/great-cannon-ch0rtd
+LOADAVG_AT_START: (2.18017578125, 3.4736328125, 2.9345703125)
+PROJECT_ZERO_COMMIT: 03fb76c (dirty)  branch claude/great-cannon-ch0rtd
 PZ_BINARY: {'path': './pz', 'exists': True, 'sha256_16': '6d168520c55b51a9', 'size': 1523408, 'version': ''}
 ENGINE_llamacpp: ff5a23376 /root/ext/llama.cpp/build/bin/llama-completion
 ENGINE_bitnetcpp: 0b341e5 /root/ext/BitNet/build/bin/llama-completion
 ENGINE_ik: 06d729c5 /root/ext/ik_llama.cpp/build/bin/llama-cli
+ENGINE_bitnetcpp-fix: 0b341e5 /root/ext/BitNet-fix/build/bin/llama-completion
 --- lscpu
 Architecture:                            x86_64
 CPU op-mode(s):                          32-bit, 64-bit

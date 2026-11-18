@@ -1,0 +1,55 @@
+=== gate mamba-130m/pz-int4 ===
+DATE: 2026-11-18T14:38:16Z
+CMD: ./pz --model models/mamba-130m-hf.f16.gguf --perplexity /home/user/project-zero/tools/bench/gate_text.txt --ppl-ctx 512 --ppl-chunks 8 --threads 4 --no-update-check --classifier int4
+============================================================
+[1/4] Opening model file...
+[2/4] Loading weights...
+[3/4] Preparing runtime...
+[gguf-tok] Loaded 50280 tokens (gpt2, pre=gpt2), 25 special — BOS=0 EOS=0 chat_template=no
+[4/4] Ready.
+####  ####   ###    ### #####  #### #####     ##### ##### ####   ### 
+#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #
+####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
+#     # #   #   # #  #  #     #       #        #    #     # #   #   #
+#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
+Project Zero Engine v0.2.0-21-g864eeea-dirty — Auto-Tuned Hardware
+Classifier: INT4 (user-selected)
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                        │
+│ Cores         : 4 physical / 4 logical              │
+│ Threads       : 4                                   │
+│ L2 cache      : 2048   KiB per core                 │
+│ L3 cache      : 260    MiB shared                   │
+│ Free RAM      : 14899  MiB                          │
+│ DRAM bandwidth: 46.8   GB/s (cached)                │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : INT4 (0.5 byte/weight)              │
+│ Prefetch rows : 32                                  │
+│ Model in L3   : no                                  │
+│ Data/token    : 680    MB (pre-load est.)           │
+│ Ceiling       : 65.6   tok/s (at 100% BW)           │
+└─────────────────────────────────────────────────────┘
+Active: 4 threads | AVX-512 VNNI | INT4 cls | 4T | 46.8 GB/s | ceiling 66 tok/s
+Model format: GGUF
+Model Configuration:
+  dim:        768
+  hidden_dim: 1536
+  n_layers:   24
+  n_heads:    1
+  n_kv_heads: 1
+  vocab_size: 50280
+  seq_len:    1048576
+  act_type:   0 (SiLU)
+  rope_theta: 10000.0
+  head_dim:   768
+  kv_dim:     768
+[Mamba] state-space model: d_inner=1536 d_state=16 d_conv=4 dt_rank=48
+[profile] Data/token (loaded model): 250 MB -> ceiling 178.6 tok/s at 46.8 GB/s
+KV cache: F32, max context: 62366 tokens (sizing tier: Quantized I8, RAM budget 60%)
+perplexity: 2986 tokens, n_ctx 512, 5 chunk(s)
+[1]84.7214,[2]90.1392,[3]103.3157,[4]76.6499,[5]84.8103,
+Final estimate: PPL = 84.8103 +/- 9.95665  (1275 tokens scored, 5 chunks, 40.8 s)
+
+

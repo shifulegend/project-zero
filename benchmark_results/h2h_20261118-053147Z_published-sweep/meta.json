@@ -1050,5 +1050,28 @@
     }
   ],
   "finished": "2026-11-18T09:14:30Z",
-  "started": "2026-11-18T09:11:37Z"
+  "started": "2026-11-18T09:11:37Z",
+  "gate": {
+    "mode": "strict",
+    "tolerance_pct": 1.0,
+    "text_sha256": "8512a15e3523b0ce71f9eeeeede880e2fee9d7529730af792ba89ad41a839367",
+    "verdicts": {
+      "bitnet-2b-iq2bn/ik": "INVALID",
+      "bitnet-2b/bitnetcpp": "INVALID",
+      "bitnet-2b/bitnetcpp-fix": "REF",
+      "bitnet-2b/pz": "INVALID",
+      "bitnet-2b/pz-int4": "INVALID",
+      "mamba-130m/llamacpp": "REF",
+      "mamba-130m/pz": "PASS",
+      "mamba-130m/pz-int4": "INVALID",
+      "smollm2-1.7b-q4km/ik": "INVALID",
+      "smollm2-1.7b-q4km/llamacpp": "REF",
+      "smollm2-1.7b-q4km/pz": "PASS",
+      "smollm2-1.7b-q4km/pz-int4": "INVALID",
+      "smollm2-135m/ik": "INVALID",
+      "smollm2-135m/llamacpp": "REF",
+      "smollm2-135m/pz": "PASS",
+      "smollm2-135m/pz-int4": "INVALID"
+    }
+  }
 }

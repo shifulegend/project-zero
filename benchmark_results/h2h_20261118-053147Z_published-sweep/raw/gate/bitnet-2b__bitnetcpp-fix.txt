@@ -1,0 +1,22 @@
+=== gate bitnet-2b/bitnetcpp-fix ===
+DATE: 2026-11-18T14:29:14Z
+CMD: /root/ext/BitNet-fix/build/bin/llama-perplexity -m models/bitnet-b1.58-2B-4T-i2_s.gguf -f /home/user/project-zero/tools/bench/gate_text.txt -c 512 --chunks 8 -t 4
+============================================================
+0.00.731.929 W load: missing pre-tokenizer type, using: 'default'
+0.00.731.950 W load:                                             
+0.00.731.950 W load: ************************************        
+0.00.731.951 W load: GENERATION QUALITY WILL BE DEGRADED!        
+0.00.731.951 W load: CONSIDER REGENERATING THE MODEL             
+0.00.731.951 W load: ************************************        
+0.00.731.952 W load:                                             
+0.01.007.923 I 
+0.01.008.055 I system_info: n_threads = 4 (n_threads_batch = 4) / 4 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX_VNNI = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | AVX512 = 1 | AVX512_VBMI = 1 | AVX512_VNNI = 1 | AVX512_BF16 = 1 | AMX_INT8 = 1 | LLAMAFILE = 1 | REPACK = 1 | 
+0.01.008.075 I perplexity: tokenizing the input ..
+0.01.014.017 I perplexity: tokenization took 5.934 ms
+0.01.014.100 I perplexity: calculating perplexity over 6 chunks, n_ctx=512, batch_size=2048, n_seq=4
+0.17.311.327 I perplexity: 16.30 seconds per pass - ETA 0.40 minutes
+[1]48.0936,[2]39.6410,[3]33.0908,[4]24.3277,[5]27.6652,[6]31.3344,
+0.25.922.802 I Final estimate: PPL = 31.3344 +/- 3.29253
+
+
+

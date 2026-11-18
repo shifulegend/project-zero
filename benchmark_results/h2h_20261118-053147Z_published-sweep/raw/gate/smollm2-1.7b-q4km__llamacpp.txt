@@ -1,0 +1,16 @@
+=== gate smollm2-1.7b-q4km/llamacpp ===
+DATE: 2026-11-18T14:21:19Z
+CMD: /root/ext/llama.cpp/build/bin/llama-perplexity -m models/SmolLM2-1.7B-Instruct-Q4_K_M.gguf -f /home/user/project-zero/tools/bench/gate_text.txt -c 512 --chunks 8 -t 4
+============================================================
+0.00.629.079 I cmn          init: llama threadpool init, n_threads = 4
+0.00.784.627 I 
+0.00.784.840 I system_info: n_threads = 4 (n_threads_batch = 4) / 4 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX_VNNI = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | AVX512 = 1 | AVX512_VBMI = 1 | AVX512_VNNI = 1 | AVX512_BF16 = 1 | AMX_INT8 = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 | 
+0.00.784.868 I perplexity: tokenizing the input ..
+0.00.790.214 I perplexity: tokenization took 5.337 ms
+0.00.790.272 I perplexity: calculating perplexity over 7 chunks, n_ctx=512, batch_size=2048, n_seq=4
+0.14.188.687 I perplexity: 13.40 seconds per pass - ETA 0.38 minutes
+[1]11.6191,[2]8.7208,[3]7.4697,[4]5.7944,[5]5.3838,[6]5.6265,[7]5.9495,
+0.25.344.991 I Final estimate: PPL = 5.9495 +/- 0.36581
+
+
+

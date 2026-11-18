@@ -1,7 +1,7 @@
 # Plan: fix the ternary activation quantiser, add a correctness gate, decide the bitnet.cpp treatment
 
 Follows `2026-11-18-ternary-output-correctness.md` (the RCA). Nothing here is implemented yet.
-Open questions that need your answer are in § 5.
+Your decisions (2026-11-18) are recorded in § 5 and applied below.
 
 ## 1. Fix pz's activation quantisation (separate PR from master)
 
@@ -35,15 +35,22 @@ nearest-even), new NEON `vcvtnq_s32_f32`, scalar `nearbyintf` (identical in the 
 `tn_simd_init` asserts `fegetround() == FE_TONEAREST`). Same convention as the rounding already used in
 `q8_0_act.c`. It differs from bitnet.cpp's `roundf` (ties away from zero) only on exact `.5` products.
 
-**F2. One numerical definition for every tier (decision needed, § 5.2).** BitNet b1.58 is W1.58A8:
-activations are 8-bit in the model's definition (bitnet.cpp and the HF reference both quantise).
-Today `--simd scalar/avx2/avx512f` use *float* activations and only VNNI quantises, so the tiers
-compute slightly different functions. Proposal: every tier quantises with F1 and accumulates in
-exact integers (sums of up to 2560 values of magnitude 127 fit in float's 24 bits, so even float
-tiers are exact). Then tiers differ only in speed, and `tests/golden_regression.sh` (which already
-demands byte-identical output across `--simd`) becomes valid for BitNet. Measured: float tier PPL 31.32,
-correct int8 about 31.4 (bitnet.cpp with its bug fixed), so accuracy is not the argument; consistency
-and fidelity to the model definition are.
+**F2. Activation numerics are a setting, decided by the system, not hard-coded (your decision).**
+There are two legitimate ways to run a ternary matmul: int8 activations (the model's W1.58A8
+definition, used by bitnet.cpp and the HF reference, fastest on VNNI) and float activations (slightly
+more precise, slower). Today the choice is accidental: the dispatcher's tier decides it, and
+`--simd` therefore changes numerics as a side effect. Design:
+- New setting `act-quant = auto | int8 | float` (default `auto`), independent of `--simd`.
+- `auto` is resolved from the hardware, on first run where it applies, by the existing calibration:
+  candidates are timed as today, but a candidate is eligible only if its **in-engine accuracy probe**
+  (F6) is within `quality-tolerance` of the float path. The fastest eligible one wins. A path that is
+  fast and wrong can never be chosen. The result is cached under the existing calibration key,
+  extended with the act-quant mode and the tolerance.
+- Users override it in config, CLI and web UI (§ 6). `--no-calibrate` uses the static default for the
+  hardware (int8 on VNNI/dotprod, float otherwise) without a probe.
+- Every int8 path uses the one quantiser defined in F1; every tier that runs int8 is bit-identical to
+  the others (exact integer accumulation), so `tests/golden_regression.sh` stays valid per mode.
+  `--simd` selects speed only; the numerics follow `act-quant`.
 
 **F3. Tests that enforce it.**
 - `test_quantize_i8_exact`: every tier equals the oracle bit-exactly on random data, exact `.5`
@@ -59,6 +66,12 @@ and fidelity to the model definition are.
 **F4. Model-level check** (not in CI, no model there): the harness gate in § 2 (perplexity).
 Acceptance for BitNet 2B on the RCA text: PPL within 0.5 % of the float-activation value (31.3) and of
 bitnet.cpp-with-fix (31.4); today 34.39.
+
+**F6. In-engine accuracy probe** (what lets pz judge itself without another engine): run a short
+fixed built-in text (about 64 tokens, a few seconds) through the candidate path and through the
+float path of the same engine, compare logits (relative L2 error, top-1 agreement, KL). Used by
+calibration (F2), by `pz --self-check`, and surfaced in the API and web UI (§ 6). Would have flagged the
+truncating quantiser (3.7 % vs 0.4 % layer error) on day one.
 
 **F5. Rest of the PR.** `make release/test/debug` green on gcc and clang; ASan/UBSan; native-vs-portable
 A/B and tier A/B for speed (cvtps costs the same as cvttps; the NEON path is new work, so ARM CI must
@@ -106,11 +119,11 @@ runs before timing and its verdict is attached to every result.
 | `calibration_test.py` (forced tiers, classifiers) | every forced tier / classifier must keep PPL within tolerance; a fast-but-wrong tier fails |
 | `setup_engines.py` (fetch and build) | post-build smoke (check 2) so a broken engine build is rejected at install time |
 | `hardware_profile.py` | n/a (no model output) |
-Flags common to all: `--gate off|warn|strict` (default `strict`; `--preset published` forces `strict`),
-`--gate-text FILE`, `--gate-tolerance PCT`, `--gate-reference ENGINE`, `--gate-only` (run the checks
-and exit). Result files: `gate.json` per run folder, `valid` column in `summary.csv`, gate section in
-`summary.md`, `meta.json`.
-Whether "interfaces" also covers pz's own CLI, API and web UI is open (§ 5.1).
+Flags common to all scripts: `--gate off|warn|strict` (default `strict`; `--preset published` forces
+`strict`), `--gate-text FILE`, `--gate-tolerance PCT` (default read from pz's `quality-tolerance`, 1 %),
+`--gate-reference ENGINE`, `--gate-only`. Result files: `gate.json` per run folder, `valid` column in
+`summary.csv`, gate section in `summary.md`, `meta.json`.
+pz's own interfaces (your decision) are in § 6.
 
 ### 2.4 Tests
 Unit tests with synthetic perplexity outputs and synthetic degenerate text (INVALID/WARN/PASS
@@ -140,17 +153,34 @@ that the released engine is wrong. The patched build needs a reproducible patch 
 `engines.json` (`patches`), applied by `setup_engines.py`, never by hand.
 
 ## 4. Order of work (each step ends at a green checkpoint)
-1. Gate framework (this PR #74): § 2, then re-run the published sweep with the gate; bitnet.cpp and
-   ik_llama.cpp BitNet cells get their verdicts. Sweep results are not merged before this.
-2. pz fix PR (separate, from master): § 1; re-run the BitNet cells after it merges.
+1. Gate framework in the scripts (this PR #74): § 2; re-run the published sweep with it. bitnet.cpp and
+   ik_llama.cpp BitNet cells get their verdicts; sweep results are not merged before this.
+2. pz fix PR (separate, from master): § 1 (F1 quantiser + tests, F2 `act-quant` setting, F6 probe) and
+   § 6 (settings, CLI, API, web UI, installer, docs). Re-run the BitNet cells after it merges.
 3. Tracked items from § 1.4, one at a time.
 
-## 5. Questions for you
-1. "Added to all scenarios and interfaces": do you mean (a) every benchmark script and its flags and
-   outputs (my reading, § 2.3), or (b) also pz's own interfaces (CLI, HTTP API, web UI), for example a
-   `pz --self-check <model>` and a startup warning if a model's quality check fails? I also read
-   "financial addition" as "functional addition"; please correct me if you meant something else.
-2. F2: make every tier quantise activations (one numerical definition), or keep float tiers as the
-   more precise, non-reference path?
-3. Gate tolerance default: 1 % PPL (proposed) or tighter?
-4. bitnet.cpp rows: A, B or C (§ 3.1)?
+## 5. Decisions (2026-11-18)
+1. Gate scope: benchmark scripts **and** pz's own interfaces (CLI, API, web UI).
+2. Tier numerics: nothing hard-coded; the system decides from the hardware on first run where
+   applicable (calibration, accuracy-constrained), and users can change it in config, CLI and web UI.
+   My reading of this answer is F2; tell me if it is wrong.
+3. Gate tolerance: default 1 %, configurable in UI and CLI.
+4. bitnet.cpp rows: option C, both rows, clearly labelled (released = INVALID; patched = modified),
+   and the bug reported upstream.
+"Financial addition" was read as "functional addition".
+
+## 6. Settings and interfaces added by the fix and the gate (project DoD #6 and #7)
+| setting | values | default | CLI | `pz config` key | web UI | API |
+|---|---|---|---|---|---|---|
+| `act-quant` | auto, int8, float | auto | `--act-quant` | `act-quant` (group hardware) | Settings: hardware | `/v1/config` field; read-only `runtime.act_quant` (effective mode) |
+| `quality-tolerance` | percent, 0.1 to 10 | 1.0 | `--quality-tolerance` | `quality-tolerance` (new group quality) | Settings: quality | `/v1/config` field |
+| self-check | action | none | `pz --self-check <model>` (exit code 0/1, prints the F6 probe) | n/a | button plus last result badge in the model panel | `POST /v1/selfcheck`, last result in `/v1/config` `runtime.quality` |
+- Startup: when calibration runs, the probe result is stored with the calibration and printed in the
+  startup summary ("act-quant int8 (probe 0.4 % <= 1.0 %)"); a model whose chosen path exceeds the
+  tolerance prints a warning and falls back to the float path (`strict`) or just warns (`warn`).
+- Where: `src/config/pz_config.c` (`g_schema`), `src/cli/args.c`, `include/cli/args.h`,
+  `src/api/http_server.c` and `api_info.c`, `webui/src/lib/ModelInfoPanel.svelte` and settings view,
+  `src/core/calibration.c` (cache key and eligibility), installer defaults in `install.sh` if the
+  schema lists settings, README flag table, `docs/WEBUI_GUIDE.md`, CHANGELOG `Added`.
+- Tests: schema round-trip, CLI parse, API field and endpoint, calibration eligibility (a synthetic
+  fast-but-wrong path is rejected), web UI build check.

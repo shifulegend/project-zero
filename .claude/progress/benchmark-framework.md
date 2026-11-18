@@ -29,7 +29,8 @@ every engine, 3 rounds. Everything runs **one process at a time**. Remove this f
 - Sweep folder committed (180 runs, 60 screenshots, chart) but **not accepted**: RCA found bitnet.cpp computes SiLU
   instead of squared-ReLU (its BitNet cells and ik's iq2bn cells are unverified) and pz's int8 quantiser truncates.
   RCA: `docs/rca/2026-11-18-ternary-output-correctness.md`; plan: `docs/rca/2026-11-18-fix-and-gate-plan.md`.
-- Next: user answers § 5 of the plan; then build the correctness gate into every bench script, re-run the sweep
+- User decided (plan § 5): gate in scripts AND pz CLI/API/web UI; act-quant is an auto/hardware-decided setting; tolerance 1% configurable; bitnet.cpp rows option C.
+- Next: then build the correctness gate into every bench script, re-run the sweep
   with it, then the pz quantiser fix as a separate PR from master. Do not merge #74 before the gate exists.
 
 ## Open items

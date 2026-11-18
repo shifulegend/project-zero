@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="442" viewBox="0 0 440 442" font-family="ui-monospace,Menlo,Consolas,monospace">
+<rect width="440" height="442" fill="#fcfcfb"/>
+<text x="40" y="34" font-size="18" fill="#1f1f1d" font-weight="600">Decode tok/s vs threads</text>
+<text x="40" y="56" font-size="12" fill="#6b6a64">Intel(R) Xeon(R) Processor @ 2.10GHz, 4 vCPU</text>
+<text x="40" y="72" font-size="12" fill="#6b6a64">2026-11-18 21:03 UTC, best of 3, pz 93ba07f</text>
+<text x="50" y="96" font-size="13" fill="#1f1f1d">DeepSeek-V2-Lite Q4_K_S</text>
+<line x1="50" x2="260" y1="372.0" y2="372.0" stroke="#e7e6e1" stroke-width="1"/>
+<text x="44" y="376.0" font-size="11" fill="#6b6a64" text-anchor="end">0</text>
+<line x1="50" x2="260" y1="307.0" y2="307.0" stroke="#e7e6e1" stroke-width="1"/>
+<text x="44" y="311.0" font-size="11" fill="#6b6a64" text-anchor="end">5</text>
+<line x1="50" x2="260" y1="242.0" y2="242.0" stroke="#e7e6e1" stroke-width="1"/>
+<text x="44" y="246.0" font-size="11" fill="#6b6a64" text-anchor="end">10</text>
+<line x1="50" x2="260" y1="177.0" y2="177.0" stroke="#e7e6e1" stroke-width="1"/>
+<text x="44" y="181.0" font-size="11" fill="#6b6a64" text-anchor="end">15</text>
+<line x1="50" x2="260" y1="112.0" y2="112.0" stroke="#e7e6e1" stroke-width="1"/>
+<text x="44" y="116.0" font-size="11" fill="#6b6a64" text-anchor="end">20</text>
+<text x="50.0" y="390" font-size="11" fill="#6b6a64" text-anchor="middle">t=1</text>
+<text x="120.0" y="390" font-size="11" fill="#6b6a64" text-anchor="middle">t=2</text>
+<text x="190.0" y="390" font-size="11" fill="#6b6a64" text-anchor="middle">t=3</text>
+<text x="260.0" y="390" font-size="11" fill="#6b6a64" text-anchor="middle">t=4</text>
+<polyline points="50.0,306.2 120.0,257.6 190.0,217.8 260.0,178.8" fill="none" stroke="#2a78d6" stroke-width="2" stroke-linejoin="round"/>
+<circle cx="50.0" cy="306.2" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<circle cx="120.0" cy="257.6" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<circle cx="190.0" cy="217.8" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<circle cx="260.0" cy="178.8" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<polyline points="50.0,306.6 120.0,253.2 190.0,215.1 260.0,171.5" fill="none" stroke="#eb6834" stroke-width="2" stroke-linejoin="round"/>
+<rect x="45.5" y="302.1" width="9" height="9" rx="1.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<rect x="115.5" y="248.7" width="9" height="9" rx="1.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<rect x="185.5" y="210.6" width="9" height="9" rx="1.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<rect x="255.5" y="167.0" width="9" height="9" rx="1.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<polyline points="50.0,325.1 120.0,283.2 190.0,247.1 260.0,212.5" fill="none" stroke="#1baf7a" stroke-width="2" stroke-linejoin="round"/>
+<rect x="45.5" y="320.6" width="9" height="9" rx="1.5" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"/>
+<rect x="115.5" y="278.7" width="9" height="9" rx="1.5" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"/>
+<rect x="185.5" y="242.6" width="9" height="9" rx="1.5" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"/>
+<rect x="255.5" y="208.0" width="9" height="9" rx="1.5" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"/>
+<rect x="269.5" y="167.0" width="9" height="9" rx="1.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<text x="284" y="174.5" font-size="11" fill="#1f1f1d">ik_llama.cpp</text>
+<text x="284" y="187.5" font-size="11" fill="#6b6a64">15.4 tok/s</text>
+<circle cx="274.0" cy="201.5" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<text x="284" y="204.5" font-size="11" fill="#1f1f1d">Project Zero</text>
+<text x="284" y="217.5" font-size="11" fill="#6b6a64">14.9 tok/s</text>
+<rect x="269.5" y="227.0" width="9" height="9" rx="1.5" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"/>
+<text x="284" y="234.5" font-size="11" fill="#1f1f1d">llama.cpp</text>
+<text x="284" y="247.5" font-size="11" fill="#6b6a64">12.3 tok/s</text>
+<text x="40" y="426" font-size="11" fill="#6b6a64">decode tokens/s, best of N runs per thread count (higher is better)</text>
+</svg>

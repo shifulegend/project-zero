@@ -1,0 +1,1 @@
+python3 tools/bench/h2h_bench.py --models deepseek-v2-lite --engines pz,llamacpp,ik --threads 1-4 --rounds 3 --label deepseek-refresh --screenshots summary --shot-threads 4

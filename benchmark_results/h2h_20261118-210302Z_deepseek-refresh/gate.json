@@ -1,0 +1,96 @@
+{
+  "config": {
+    "mode": "strict",
+    "require_clean_binary": true,
+    "time_invalid": false,
+    "tolerance_pct": 1.0,
+    "warn_factor": 2.0,
+    "approximate": {
+      "_comment": "Variants that are lossy by design (a documented speed/accuracy trade the user chooses). They are judged APPROX: shown with the measured gap, never excluded. Add `tolerance_pct` to an entry to make it a hard bound.",
+      "pz-int8": {
+        "why": "--classifier int8: 8-bit LM head"
+      },
+      "pz-int4": {
+        "why": "--classifier int4: 4-bit LM head"
+      },
+      "pz-auto-fast": {
+        "why": "--classifier auto-fast: picks the fastest LM-head precision"
+      }
+    },
+    "text": "tools/bench/gate_text.txt",
+    "ppl_ctx": 512,
+    "ppl_chunks": 8,
+    "ppl_regex": "Final estimate: PPL(?: over \\d+ chunks for n_ctx=\\d+)? = ([0-9.]+)",
+    "smoke": {
+      "prompt": "The capital of France is",
+      "tokens": 24,
+      "expect": [
+        "Paris"
+      ]
+    },
+    "verdicts": {
+      "PASS": "within tolerance of the reference",
+      "WARN": "within warn_factor x tolerance",
+      "INVALID": "outside warn_factor x tolerance, or the smoke answer is wrong",
+      "UNVERIFIED": "no reference result to compare with",
+      "REF": "the reference itself (must pass the smoke check)",
+      "OFF": "gate disabled",
+      "APPROX": "lossy by design (config `approximate`); the gap to the reference is reported, not judged"
+    },
+    "text_path": "/home/user/project-zero/tools/bench/gate_text.txt",
+    "text_sha256": "8512a15e3523b0ce71f9eeeeede880e2fee9d7529730af792ba89ad41a839367",
+    "reference_override": null
+  },
+  "results": {
+    "deepseek-v2-lite/llamacpp": {
+      "model": "deepseek-v2-lite",
+      "variant": "llamacpp",
+      "engine": "llamacpp",
+      "modified": false,
+      "smoke_ok": true,
+      "smoke_tail": "a = -1.000, temp = 0.000\n\tmirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000, adaptive_target = -1.000, adaptive_decay = 0.900\n\nThe capital of France is Paris.\n\nThe official language is French.\n\nThe currency is the Euro (\u20ac).\n\nFrance is",
+      "ppl": 6.613,
+      "ppl_err": 0.50333,
+      "ppl_wall_s": 70.3,
+      "ppl_rc": 0,
+      "log": "benchmark_results/h2h_20261118-210302Z_deepseek-refresh/raw/gate/deepseek-v2-lite__llamacpp.txt",
+      "ref": "deepseek-v2-lite/llamacpp",
+      "verdict": "REF",
+      "delta_pct": 0.0
+    },
+    "deepseek-v2-lite/pz": {
+      "model": "deepseek-v2-lite",
+      "variant": "pz",
+      "engine": "pz",
+      "modified": false,
+      "smoke_ok": true,
+      "smoke_tail": " E28(7)\n  L25:  48 unique / 64 total  (invocations:  174)  top: E1(10) E12(10) E7(9) E23(9) E45(9)\n  L26:  48 unique / 64 total  (invocations:  174)  top: E26(11) E56(10) E51(9) E24(8) E52(8)\n  Global: 64 / 64 experts activated (100.0%)\n---",
+      "ppl": 6.6678,
+      "ppl_err": 0.50937,
+      "ppl_wall_s": 251.6,
+      "ppl_rc": 0,
+      "log": "benchmark_results/h2h_20261118-210302Z_deepseek-refresh/raw/gate/deepseek-v2-lite__pz.txt",
+      "ref": "deepseek-v2-lite/llamacpp",
+      "ref_ppl": 6.613,
+      "verdict": "PASS",
+      "delta_pct": 0.8286707999395024
+    },
+    "deepseek-v2-lite/ik": {
+      "model": "deepseek-v2-lite",
+      "variant": "ik",
+      "engine": "ik",
+      "modified": false,
+      "smoke_ok": true,
+      "smoke_tail": "G -> Penalties -> dry -> top_k -> tfs_z -> typical_p -> top_p -> min_p -> xtc -> top_n_sigma -> temperature -> adaptive_p \n\nThe capital of France is Paris.\n\nThe official language is French.\n\nThe currency is the Euro (\u20ac).\n\nFrance is\n\nLog end",
+      "ppl": 6.5933,
+      "ppl_err": 0.50038,
+      "ppl_wall_s": 33.4,
+      "ppl_rc": 0,
+      "log": "benchmark_results/h2h_20261118-210302Z_deepseek-refresh/raw/gate/deepseek-v2-lite__ik.txt",
+      "ref": "deepseek-v2-lite/llamacpp",
+      "ref_ppl": 6.613,
+      "verdict": "PASS",
+      "delta_pct": -0.2978980795403035
+    }
+  }
+}

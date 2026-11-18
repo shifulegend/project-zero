@@ -1,0 +1,192 @@
+{
+  "kind": "h2h",
+  "variants": [
+    "pz",
+    "llamacpp",
+    "ik"
+  ],
+  "models": [
+    "deepseek-v2-lite"
+  ],
+  "threads": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "rounds": 3,
+  "order": "interleaved",
+  "fixed_length": true,
+  "calibration": "isolated",
+  "reference_variant": "pz",
+  "summary": [
+    {
+      "model": "deepseek-v2-lite",
+      "variant": "ik",
+      "threads": 1,
+      "gate": "PASS",
+      "n": 3,
+      "best": 5.03,
+      "mean": 4.876666666666667,
+      "stdev": 0.1386842937514317,
+      "ratio": 0.972093023255814
+    },
+    {
+      "model": "deepseek-v2-lite",
+      "variant": "llamacpp",
+      "threads": 1,
+      "gate": "REF",
+      "n": 3,
+      "best": 3.61,
+      "mean": 3.55,
+      "stdev": 0.0721110255092796,
+      "ratio": 0.707641196013289
+    },
+    {
+      "model": "deepseek-v2-lite",
+      "variant": "pz",
+      "threads": 1,
+      "gate": "PASS",
+      "n": 3,
+      "best": 5.06,
+      "mean": 5.016666666666667,
+      "stdev": 0.04041451884327342,
+      "ratio": 1.0
+    },
+    {
+      "model": "deepseek-v2-lite",
+      "variant": "ik",
+      "threads": 2,
+      "gate": "PASS",
+      "n": 3,
+      "best": 9.14,
+      "mean": 8.983333333333333,
+      "stdev": 0.17785762095938867,
+      "ratio": 1.0212201591511936
+    },
+    {
+      "model": "deepseek-v2-lite",
+      "variant": "llamacpp",
+      "threads": 2,
+      "gate": "REF",
+      "n": 3,
+      "best": 6.83,
+      "mean": 6.65,
+      "stdev": 0.2306512518934162,
+      "ratio": 0.7559681697612732
+    },
+    {
+      "model": "deepseek-v2-lite",
+      "variant": "pz",
+      "threads": 2,
+      "gate": "PASS",
+      "n": 3,
+      "best": 8.8,
+      "mean": 8.796666666666667,
+      "stdev": 0.00577350269189716,
+      "ratio": 1.0
+    },
+    {
+      "model": "deepseek-v2-lite",
+      "variant": "ik",
+      "threads": 3,
+      "gate": "PASS",
+      "n": 3,
+      "best": 12.07,
+      "mean": 11.93,
+      "stdev": 0.1637070554374492,
+      "ratio": 1.0144557823129252
+    },
+    {
+      "model": "deepseek-v2-lite",
+      "variant": "llamacpp",
+      "threads": 3,
+      "gate": "REF",
+      "n": 3,
+      "best": 9.61,
+      "mean": 9.253333333333334,
+      "stdev": 0.31374086972106957,
+      "ratio": 0.7868480725623583
+    },
+    {
+      "model": "deepseek-v2-lite",
+      "variant": "pz",
+      "threads": 3,
+      "gate": "PASS",
+      "n": 3,
+      "best": 11.86,
+      "mean": 11.76,
+      "stdev": 0.09165151389911659,
+      "ratio": 1.0
+    },
+    {
+      "model": "deepseek-v2-lite",
+      "variant": "ik",
+      "threads": 4,
+      "gate": "PASS",
+      "n": 3,
+      "best": 15.42,
+      "mean": 15.096666666666668,
+      "stdev": 0.39954140377854863,
+      "ratio": 1.0370964048545914
+    },
+    {
+      "model": "deepseek-v2-lite",
+      "variant": "llamacpp",
+      "threads": 4,
+      "gate": "REF",
+      "n": 3,
+      "best": 12.27,
+      "mean": 11.543333333333333,
+      "stdev": 0.8037619879873228,
+      "ratio": 0.7929929013052438
+    },
+    {
+      "model": "deepseek-v2-lite",
+      "variant": "pz",
+      "threads": 4,
+      "gate": "PASS",
+      "n": 3,
+      "best": 14.86,
+      "mean": 14.556666666666667,
+      "stdev": 0.39501054838236066,
+      "ratio": 1.0
+    }
+  ],
+  "screenshots": [
+    {
+      "model": "deepseek-v2-lite",
+      "variant": "pz",
+      "threads": 4,
+      "tok_s_in_screenshot_run": 14.31,
+      "screenshot": "benchmark_results/h2h_20261118-210302Z_deepseek-refresh/screenshots/20261118-213324Z_deepseek-v2-lite__pz_t4.png"
+    },
+    {
+      "model": "deepseek-v2-lite",
+      "variant": "llamacpp",
+      "threads": 4,
+      "tok_s_in_screenshot_run": 11.82,
+      "screenshot": "benchmark_results/h2h_20261118-210302Z_deepseek-refresh/screenshots/20261118-213345Z_deepseek-v2-lite__llamacpp_t4.png"
+    },
+    {
+      "model": "deepseek-v2-lite",
+      "variant": "ik",
+      "threads": 4,
+      "tok_s_in_screenshot_run": 14.87,
+      "screenshot": "benchmark_results/h2h_20261118-210302Z_deepseek-refresh/screenshots/20261118-213411Z_deepseek-v2-lite__ik_t4.png"
+    }
+  ],
+  "gate": {
+    "mode": "strict",
+    "tolerance_pct": 1.0,
+    "text_sha256": "8512a15e3523b0ce71f9eeeeede880e2fee9d7529730af792ba89ad41a839367",
+    "verdicts": {
+      "deepseek-v2-lite/ik": "PASS",
+      "deepseek-v2-lite/llamacpp": "REF",
+      "deepseek-v2-lite/pz": "PASS"
+    }
+  },
+  "dirty_binaries": [],
+  "finished": "2026-11-18T21:34:34Z",
+  "started": "2026-11-18T21:03:02Z"
+}

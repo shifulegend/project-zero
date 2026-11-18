@@ -1,0 +1,44 @@
+=== deepseek-v2-lite__llamacpp t=2 run 2 ===
+DATE: 2026-11-18T21:21:57Z
+HOST_CPU: Intel(R) Xeon(R) Processor @ 2.10GHz (4 vCPU)
+CMD: /root/ext/llama.cpp/build/bin/llama-completion -m models/DeepSeek-V2-Lite-Chat.Q4_K_S.gguf -p 'Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.' -n 200 --temp 0 -t 2 -no-cnv -c 1024 --ignore-eos
+PROMPT: Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+============================================================
+0.00.003.074 I llama_completion: llama backend init
+0.00.004.260 I llama_completion: load the model and apply lora adapter, if any
+0.06.402.975 W llama_context: setting new yarn_attn_factor = 1.0000 (mscale == 0.7, mscale_all_dim = 0.7)
+0.06.569.077 I cmn          init: llama threadpool init, n_threads = 2
+0.06.894.062 I 
+0.06.894.186 I system_info: n_threads = 2 (n_threads_batch = 2) / 4 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX_VNNI = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | AVX512 = 1 | AVX512_VBMI = 1 | AVX512_VNNI = 1 | AVX512_BF16 = 1 | AMX_INT8 = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 | 
+0.06.894.187 I 
+0.06.894.695 I sampler seed: 4294967295
+0.06.894.718 I sampler params: 
+	repeat_last_n = 64, repeat_penalty = 1.000, frequency_penalty = 0.000, presence_penalty = 0.000
+	dry_multiplier = 0.000, dry_base = 1.750, dry_allowed_length = 2, dry_penalty_last_n = 64
+	top_k = 40, top_p = 0.950, min_p = 0.050, xtc_probability = 0.000, xtc_threshold = 0.100, typical_p = 1.000, top_n_sigma = -1.000, temp = 0.000
+	mirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000, adaptive_target = -1.000, adaptive_decay = 0.900
+0.06.894.726 I sampler chain: logits -> logit-bias -> ?penalties -> ?dry -> ?top-n-sigma -> top-k -> ?typical -> top-p -> min-p -> ?xtc -> temp-ext -> greedy 
+0.06.894.726 I generate: n_ctx = 1024, n_batch = 2048, n_predict = 200, n_keep = 1
+0.06.894.726 I 
+Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+
+Machine Learning is a subset of Artificial Intelligence (AI) that focuses on the development of algorithms and statistical models that enable computers to perform tasks without explicit instructions, relying on patterns and inference instead.
+
+Neural Networks are a key component of machine learning models. They are designed to simulate the human brain's neural networks, processing information in a way that is similar to the way our brains do. They consist of interconnected nodes, or neurons, which process information in layers.
+
+Supervised Learning: In this type of machine learning, the model is trained on a labeled dataset. The model learns to map input data to desired outputs. For example, a spam filter in an email program learns to identify spam based on examples of spam and non-spam emails.
+
+Unsupervised Learning: In this type of machine learning, the model is trained on an unlabeled dataset. The model learns to find patterns in the data without the guidance of a desired output. For example, clustering similar items
+
+0.38.234.443 I common_perf_print:    sampling time =      72.25 ms
+0.38.234.444 I common_perf_print:    samplers time =      18.22 ms /   230 tokens
+0.38.234.450 I common_perf_print:        load time =    6614.60 ms
+0.38.234.451 I common_perf_print: prompt eval time =    1694.29 ms /    30 tokens (   56.48 ms per token,    17.71 tokens per second)
+0.38.234.452 I common_perf_print:        eval time =   29554.85 ms /   199 runs   (  148.52 ms per token,     6.73 tokens per second)
+0.38.234.453 I common_perf_print:       total time =   31340.39 ms /   229 tokens
+0.38.234.454 I common_perf_print: unaccounted time =      19.01 ms /   0.1 %      (total - sampling - prompt eval - eval) / (total)
+0.38.234.454 I common_perf_print:    graphs reused =        198
+0.38.234.454 I common_perf_print:   graph reallocs =          0    /     0        (same size) / (changed size)
+
+PERF: wall=38.51s max_rss=13610MB cpu=180% exit=0
+PROMPT_TPS: 17.71

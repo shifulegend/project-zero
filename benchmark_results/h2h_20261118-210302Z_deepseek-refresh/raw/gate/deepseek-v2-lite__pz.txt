@@ -1,0 +1,56 @@
+=== gate deepseek-v2-lite/pz ===
+DATE: 2026-11-18T21:09:10Z
+CMD: ./pz --model models/DeepSeek-V2-Lite-Chat.Q4_K_S.gguf --perplexity /home/user/project-zero/tools/bench/gate_text.txt --ppl-ctx 512 --ppl-chunks 8 --threads 4 --no-update-check
+============================================================
+[1/4] Opening model file...
+[2/4] Loading weights...
+[3/4] Preparing runtime...
+[gguf-tok] Loaded 102400 tokens (gpt2, pre=deepseek-llm), 2400 special — BOS=100000 EOS=100001 chat_template=yes
+[4/4] Ready.
+####  ####   ###    ### #####  #### #####     ##### ##### ####   ### 
+#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #
+####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
+#     # #   #   # #  #  #     #       #        #    #     # #   #   #
+#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
+Project Zero Engine v0.2.0-26-g93ba07f — Auto-Tuned Hardware
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                        │
+│ Cores         : 4 physical / 4 logical              │
+│ Threads       : 4                                   │
+│ L2 cache      : 2048   KiB per core                 │
+│ L3 cache      : 260    MiB shared                   │
+│ Free RAM      : 15024  MiB                          │
+│ DRAM bandwidth: 36.4   GB/s (cached)                │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)               │
+│ Prefetch rows : 32                                  │
+│ Model in L3   : no                                  │
+│ Data/token    : 1149   MB (pre-load est.)           │
+│ Ceiling       : 39.1   tok/s (at 100% BW)           │
+└─────────────────────────────────────────────────────┘
+Active: 4 threads | AVX-512 VNNI | BF16 cls | 4T | 36.4 GB/s | ceiling 39 tok/s
+Model format: GGUF
+Model Configuration:
+  dim:        2048
+  hidden_dim: 10944
+  n_layers:   27
+  n_heads:    16
+  n_kv_heads: 16
+  vocab_size: 102400
+  seq_len:    163840
+  act_type:   0 (SiLU)
+  rope_theta: 10000.0
+  head_dim:   128
+  kv_dim:     2048
+[MoE] num_experts=64  top_k=6  expert_hidden_dim=1408  first_k_dense=1  shared_experts=2 (hdim=2816)
+[MLA] kv_lora_rank=512  qk_nope_head_dim=128  qk_rope_head_dim=64  v_head_dim=128
+[GGUF-DS2] Weights loaded (27 layers, 1 dense + 26 MoE, 64 experts/layer, experts=quantized)
+[profile] Data/token (loaded model): 9092 MB -> ceiling 3.8 tok/s at 36.4 GB/s
+KV cache: F32, max context: 18978 tokens (sizing tier: Quantized I8, RAM budget 60%)
+perplexity: 3557 tokens, n_ctx 512, 6 chunk(s)
+[1]11.0778,[2]8.5804,[3]8.0212,[4]6.0095,[5]6.2323,[6]6.6678,
+Final estimate: PPL = 6.6678 +/- 0.50937  (1530 tokens scored, 6 chunks, 250.2 s)
+
+

@@ -146,6 +146,8 @@ tn_vec_saxpy_fn      tn_vec_saxpy             = NULL;
 tn_quantize_i8_fn    tn_quantize_act_i8       = NULL;
 tn_sum_i8_fn         tn_sum_act_i8            = NULL;
 tn_matmul_preq_fn    tn_ternary_matmul_preq   = NULL;
+tn_cls_rows_fn       tn_cls_i8_rows           = tn_cls_i8_rows_generic;
+tn_cls_rows_fn       tn_cls_i4_rows           = tn_cls_i4_rows_generic;
 
 /* Human-readable name of the selected backend (set by tn_simd_init) */
 static const char *g_backend_name = "Scalar";
@@ -171,6 +173,8 @@ const char *tn_simd_init(void) {
     tn_quantize_act_i8     = NULL;
     tn_sum_act_i8          = NULL;
     tn_ternary_matmul_preq = NULL;
+    tn_cls_i8_rows         = tn_cls_i8_rows_generic;
+    tn_cls_i4_rows         = tn_cls_i4_rows_generic;
     const char *force = getenv("TN_FORCE_BACKEND");
     int force_scalar  = force && strcmp(force, "scalar")  == 0;
     int force_avx2    = force && strcmp(force, "avx2")    == 0;
@@ -197,6 +201,8 @@ const char *tn_simd_init(void) {
         tn_kvq4_dot  = kvq4_dot_avx512;
         tn_kvq4_axpy = kvq4_axpy_avx512;
         tn_vec_saxpy = vec_saxpy_avx512;
+        tn_cls_i8_rows = tn_cls_i8_rows_avx512;
+        tn_cls_i4_rows = tn_cls_i4_rows_avx512;
     } else
 #endif
 #if TN_HAS_AVX2

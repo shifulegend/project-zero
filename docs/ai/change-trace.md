@@ -1,7 +1,11 @@
 # Change Trace — project-zero
 
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
-> Update after each meaningful sub-step. Last updated: 2026-11-16.
+> Update after each meaningful sub-step. Last updated: 2026-11-18.
+
+### 2026-11-18 — Honest SIMD tiers, evidence-based calibration, `--no-calibrate`
+- `src/math/simd_dispatch.c` + header: `tn_simd_ternary_preq()`; `src/math/parallel_matmul.c`: both pre-quantising entry points consult it. `src/core/calibration.c` + header: interleaved paired rounds, pure `tn_calib_pick_simd` / `tn_calib_wins_needed`, physical-core preference for threads, `tn_calibration_isa_mask()` in the cache key, `TN_CALIB_VERSION` 4. `--no-calibrate`: `src/cli/args.c`, `include/cli/args.h`, `src/cli/main.c`, `src/config/pz_config.c` (`g_schema`).
+- Tests: `tests/test_simd_tier_kernel.c` (characterisation: failed before the fix), `tests/test_calibration_pick.c` (chooser, noise rate, cache key). Docs: README, `--help`, `.claude/rules/config.md` and generated adapters, CHANGELOG, mistakes, decision-log.
 
 ### 2026-11-16 — BitNet silent-output fix: built-in corrected template and empty-reply diagnostics
 - `src/tokenizer/template_guard.c` + `include/tokenizer/template_guard.h` (new; also in `CMakeLists.txt`): known-broken template detection and the corrected BitNet template; `src/cli/main.c` applies it after `--chat-template-file` and publishes `chat_template.source = "builtin"`; `src/transformer/gen_session.c` warns when the rendered prompt ends in EOS and when a chat generation ends with 0 tokens (`empty_stop` fields in `GenSession`).

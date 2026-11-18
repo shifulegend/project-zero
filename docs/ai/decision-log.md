@@ -1,7 +1,17 @@
 # Decision Log — project-zero
 
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
-> Read at session start. Last updated: 2026-11-16.
+> Read at session start. Last updated: 2026-11-18.
+
+### 2026-11-18 — A forced SIMD tier runs its own kernel; calibration decides on paired evidence; `--no-calibrate`
+
+- Context: forced tiers did not change the ternary matmul on VNNI native builds, so calibration picked a tier from noise (mistakes.md, 2026-11-18). Leading practice for tuners (Triton, PyTorch Inductor) keys the cache on device and software version; ggml selects CPU variants by CPUID feature score and does not benchmark.
+- Decisions:
+  - The pre-quantised VNNI path is taken only when `tn_simd_init` bound the AVX-512 VNNI kernel (`tn_simd_ternary_preq()`); a runtime fact from the one place that selects kernels, not a second compile-time guess. Cost: one predictable branch per matmul call; decode A/B unchanged (BitNet 25.0 / 24.6 / 24.4 tok/s default / `--simd vnni` / `--no-calibrate`, 5 interleaved rounds).
+  - Static CPUID choice stays the default; calibration overrides it only on strong evidence: interleaved rounds, one-sided sign test p <= 0.005 and a 5% median margin. Asymmetric costs: a wrong override costs speed, a missed small win costs almost nothing.
+  - Cache version bumped (3 to 4) rather than "ignore stale entries": the repo rule is to bump `TN_CALIB_VERSION` when selection logic changes, and a stale `avx2` would now be a real 3x slowdown. The key gains the compiled-ISA mask. The cost is one re-calibration (about a minute) per user.
+  - `--no-calibrate` (CLI, `PZ_NO_CALIBRATE=true`, `pz config` key) skips load, run and save. `--simd auto` is not redefined: it still means "automatic", so existing scripts and `config.toml` files behave as before.
+  - Booleans from the environment stay TOML-style (`true`/`false`), as for every other setting; `PZ_NO_CALIBRATE=1` is rejected with a warning by the existing config layer.
 
 ### 2026-11-16 — Known-broken GGUF chat templates are corrected by metadata, with a built-in copy
 

@@ -101,7 +101,8 @@ built-in corrected one for it; `--chat-template-file` replaces either.
   prompt caching (`--prompt-cache`)
 - A model's layers split across machines (`--remote-layers`)
 - The fastest SIMD path picked at startup: AVX-512 VNNI, AVX-512, AVX-VNNI, AVX2, ARM NEON/dotprod
-  or scalar
+  or scalar. A first-run calibration changes that choice only when it measures another path
+  clearly faster; `--no-calibrate` turns it off (for reproducible benchmarks).
 
 Every flag: `pz --help`. Every web UI control and API route: [docs/WEBUI_GUIDE.md](docs/WEBUI_GUIDE.md).
 

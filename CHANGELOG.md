@@ -16,15 +16,18 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Changed
 
+- Redo the first-run hardware calibration: SIMD tiers are compared in interleaved rounds and one replaces the default only when it wins a sign test and clears a 5% margin, and the thread count stays at the physical-core count unless another count is clearly faster. Existing calibration caches are discarded and rebuilt once on the next run (about a minute).
 - Label the web UI's per-reply usage line in tokens ("7 reply tokens · 37 prompt tokens" instead of "7 tokens · 37 prompt"); hovering it explains that the prompt count includes the chat template and any system message.
 
 ### Added
 
+- Add `--no-calibrate` (also `PZ_NO_CALIBRATE=true` or `pz config set no-calibrate true`): never load, run or save the hardware calibration, so a run uses the highest SIMD tier and the detected thread count.
 - Warn on stderr when a chat template renders a prompt that ends with the end-of-sequence token, and when a chat generation ends with 0 tokens; the second warning names the first token the model chose and the last prompt token.
 
 ### Fixed
 
 - Fix the official BitNet b1.58 2B-4T GGUF answering nothing (exit 0, empty `content` over the API): its chat template ended the prompt with the end-of-sequence token. `pz` now recognises that template from the model's metadata and uses a built-in corrected one (`/v1/config` `chat_template.source` is `builtin`); `--chat-template-file` still overrides it, so BitNet no longer needs the flag.
+- Fix `--simd scalar|avx2|avx512f` and the calibration sweep not changing the ternary matmul on builds with AVX-512 VNNI (`make release`, source builds): the matmul always ran the VNNI kernel, so calibration picked a tier from noise and the web UI could report AVX2 while VNNI ran. A forced tier now runs the kernel it names (BitNet 2B decodes at about 7.5 tok/s with `--simd avx2` against about 24.6 by default on a 4-vCPU Xeon).
 - Preserve all text parts in chat messages that send content as an array.
 - Release the earlier text when a chat message repeats its `content` key (the last key wins); each such request used to leak that text on the server.
 - Stop answering `429 "Another generation is already in flight"` to a client that sends its next `/v1/chat/completions` request as soon as it has read the previous answer (most often a streaming client that stops at `data: [DONE]`); the server now frees the generation slot before it writes the end of the response.

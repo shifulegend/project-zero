@@ -54,6 +54,29 @@ static void get_cpu_model(char *buf, size_t buflen) {
 #endif
 }
 
+unsigned tn_calibration_isa_mask(void) {
+    unsigned m = 0;
+#if TN_HAS_AVX2
+    m |= 1u << 0;
+#endif
+#if TN_HAS_AVX512
+    m |= 1u << 1;
+#endif
+#if TN_HAS_AVX512VNNI
+    m |= 1u << 2;
+#endif
+#if TN_HAS_AVXVNNI
+    m |= 1u << 3;
+#endif
+#if TN_HAS_NEON
+    m |= 1u << 4;
+#endif
+#if TN_HAS_ARM_DOTPROD
+    m |= 1u << 5;
+#endif
+    return m;
+}
+
 static bool fingerprint_matches(const TnCalibrationResult *cached,
                                  const TnHardwareProfile *hw) {
     char current_model[128];
@@ -64,6 +87,7 @@ static bool fingerprint_matches(const TnCalibrationResult *cached,
     if (cached->logical_cores != hw->logical_cores) return false;
     if (cached->l2_cache_bytes != hw->l2_cache_bytes) return false;
     if (cached->l3_cache_bytes != hw->l3_cache_bytes) return false;
+    if (cached->isa_mask != tn_calibration_isa_mask()) return false;
     return true;
 }
 
@@ -169,6 +193,45 @@ static int cmp_double_asc(const void *a, const void *b) {
     return (da > db) - (da < db);
 }
 
+typedef struct { float *x; tn_u8 *pw; float *outv; } BenchBuf;
+
+static bool bench_buf_alloc(BenchBuf *b) {
+    const int d = CALIB_DIM, n = CALIB_DIM, packed_bytes = d * (n / 4);
+    b->x    = (float *)malloc((size_t)n * sizeof(float));
+    b->pw   = (tn_u8 *)malloc((size_t)packed_bytes * sizeof(tn_u8));
+    b->outv = (float *)calloc((size_t)d, sizeof(float));
+    if (!b->x || !b->pw || !b->outv) {
+        free(b->x); free(b->pw); free(b->outv);
+        b->x = NULL; b->pw = NULL; b->outv = NULL;
+        return false;
+    }
+    /* Non-trivial data so SIMD kernels cannot short-circuit */
+    for (int i = 0; i < n; i++) b->x[i] = 0.01f * (float)((i % 100) + 1);
+    for (int i = 0; i < packed_bytes; i++) b->pw[i] = (tn_u8)((i & 0xFE) | 0x01);
+    return true;
+}
+
+static void bench_buf_free(BenchBuf *b) { free(b->x); free(b->pw); free(b->outv); b->x = NULL; b->pw = NULL; b->outv = NULL; }
+
+/* Time-based warmup: continuous matmuls for warmup_secs (one dot per second). */
+static void bench_warmup(ThreadPool *tp, const BenchBuf *b, double warmup_secs) {
+    int64_t warmup_end = now_ns() + (int64_t)(warmup_secs * 1.0e9);
+    int64_t next_dot   = now_ns() + 1000000000LL;
+    while (now_ns() < warmup_end) {
+        parallel_ternary_matmul_packed(b->outv, b->x, b->pw, CALIB_DIM, CALIB_DIM, 1.0f, tp);
+        if (now_ns() >= next_dot) { putchar('.'); fflush(stdout); next_dot += 1000000000LL; }
+    }
+}
+
+/* One timed repetition: CALIB_MATMULS_PER_TOK matmuls, returned as tokens/s. */
+static double bench_one_rep(ThreadPool *tp, const BenchBuf *b) {
+    int64_t t0 = now_ns();
+    for (int i = 0; i < CALIB_MATMULS_PER_TOK; i++)
+        parallel_ternary_matmul_packed(b->outv, b->x, b->pw, CALIB_DIM, CALIB_DIM, 1.0f, tp);
+    int64_t elapsed = now_ns() - t0;
+    return (elapsed > 0) ? (1.0e9 / (double)elapsed) : 0.0;
+}
+
 /*
  * Run a robust multi-threaded ternary matmul benchmark.
  *
@@ -196,63 +259,75 @@ static double bench_robust(ThreadPool *tp,
                             double warmup_secs,
                             int measure_reps,
                             double *out_min, double *out_max) {
-    const int d            = CALIB_DIM;
-    const int n            = CALIB_DIM;
-    const int packed_bytes = d * (n / 4);
+    BenchBuf b;
+    if (!bench_buf_alloc(&b)) { *out_min = *out_max = 0.0; return 0.0; }
 
-    float *x    = (float *)malloc((size_t)n * sizeof(float));
-    tn_u8 *pw   = (tn_u8 *)malloc((size_t)packed_bytes * sizeof(tn_u8));
-    float *outv = (float *)calloc((size_t)d, sizeof(float));
-
-    if (!x || !pw || !outv) {
-        free(x); free(pw); free(outv);
-        *out_min = *out_max = 0.0;
-        return 0.0;
-    }
-
-    /* Non-trivial data so SIMD kernels cannot short-circuit */
-    for (int i = 0; i < n; i++) x[i]  = 0.01f * (float)((i % 100) + 1);
-    for (int i = 0; i < packed_bytes; i++) pw[i] = (tn_u8)((i & 0xFE) | 0x01);
-
-    /* ── Thermal warmup ─────────────────────────────────────────────── */
-    int64_t warmup_end = now_ns() + (int64_t)(warmup_secs * 1.0e9);
-    int64_t next_dot   = now_ns() + 1000000000LL;
     printf("warmup[");
     fflush(stdout);
-    while (now_ns() < warmup_end) {
-        parallel_ternary_matmul_packed(outv, x, pw, n, d, 1.0f, tp);
-        if (now_ns() >= next_dot) {
-            putchar('.');
-            fflush(stdout);
-            next_dot += 1000000000LL;
-        }
-    }
+    bench_warmup(tp, &b, warmup_secs);
     printf("] reps[");
     fflush(stdout);
 
-    /* ── Per-rep timed measurement ──────────────────────────────────── */
     if (measure_reps < 1) measure_reps = 1;
     if (measure_reps > CALIB_MAX_REPS) measure_reps = CALIB_MAX_REPS;
 
     double samples[CALIB_MAX_REPS];
     for (int r = 0; r < measure_reps; r++) {
-        int64_t t0 = now_ns();
-        for (int i = 0; i < CALIB_MATMULS_PER_TOK; i++)
-            parallel_ternary_matmul_packed(outv, x, pw, n, d, 1.0f, tp);
-        int64_t elapsed = now_ns() - t0;
-        samples[r] = (elapsed > 0) ? (1.0e9 / (double)elapsed) : 0.0;
+        samples[r] = bench_one_rep(tp, &b);
         putchar('.');
         fflush(stdout);
     }
     printf("]");
     fflush(stdout);
 
-    free(x); free(pw); free(outv);
+    bench_buf_free(&b);
 
     qsort(samples, (size_t)measure_reps, sizeof(double), cmp_double_asc);
     *out_min = samples[0];
     *out_max = samples[measure_reps - 1];
     return samples[measure_reps / 2];   /* median */
+}
+
+/* ── Choosing a SIMD tier (pure; tests/test_calibration_pick.c) ─────────── */
+
+static double median_of(const double *v, int n) {
+    double t[TN_CALIB_MAX_ROUNDS];
+    for (int i = 0; i < n; i++) t[i] = v[i];
+    qsort(t, (size_t)n, sizeof(double), cmp_double_asc);
+    return t[n / 2];
+}
+
+int tn_calib_wins_needed(int n_rounds) {
+    if (n_rounds < 1 || n_rounds > TN_CALIB_MAX_ROUNDS) return n_rounds + 1;
+    /* P(X >= k) for X ~ Binomial(n, 1/2), smallest k with P <= 0.005. */
+    double c = 1.0;                     /* C(n, j), built downwards from j = n */
+    double tail = 0.0, total = 1.0;
+    for (int i = 0; i < n_rounds; i++) total *= 2.0;
+    int need = n_rounds + 1;
+    for (int j = n_rounds; j >= 0; j--) {
+        tail += c / total;
+        if (tail > 0.005) break;
+        need = j;
+        c = c * (double)j / (double)(n_rounds - j + 1);   /* C(n, j-1) from C(n, j) */
+    }
+    return need;
+}
+
+int tn_calib_pick_simd(const double samples[][TN_CALIB_MAX_ROUNDS], const bool avail[],
+                       int n_cand, int n_rounds, double margin) {
+    if (n_cand < 2 || n_rounds < 1 || n_rounds > TN_CALIB_MAX_ROUNDS || !avail[0]) return 0;
+    const int need = tn_calib_wins_needed(n_rounds);
+    const double med0 = median_of(samples[0], n_rounds);
+    int best = 0;
+    double best_med = med0;
+    for (int c = 1; c < n_cand; c++) {
+        if (!avail[c]) continue;
+        int wins = 0;
+        for (int r = 0; r < n_rounds; r++) if (samples[c][r] > samples[0][r]) wins++;
+        double med = median_of(samples[c], n_rounds);
+        if (wins >= need && med > med0 * margin && med > best_med) { best = c; best_med = med; }
+    }
+    return best;
 }
 
 /* ── Main calibration ─────────────────────────────────────────────────── */
@@ -266,6 +341,7 @@ void tn_calibrate(TnCalibrationResult *result, const TnHardwareProfile *hw) {
     result->logical_cores  = hw->logical_cores;
     result->l2_cache_bytes = hw->l2_cache_bytes;
     result->l3_cache_bytes = hw->l3_cache_bytes;
+    result->isa_mask       = tn_calibration_isa_mask();
 
     int phys  = hw->physical_cores > 0 ? hw->physical_cores : 1;
     int logi  = hw->logical_cores  > 0 ? hw->logical_cores  : phys;
@@ -307,53 +383,83 @@ void tn_calibrate(TnCalibrationResult *result, const TnHardwareProfile *hw) {
     if (cpu->avx512vnni) { avail[4] = true; avail[5] = true; }
 #endif
 
-    double best_simd_tokps = 0.0;
-    int    best_simd_idx   = 0;
-    bool   first_backend   = true;
-
+    /* ── Which candidates really differ from "auto"? ─────────────────────
+     * A forced value that lands on the same kernel as "auto" adds nothing. */
     for (int i = 0; i < TN_CALIB_SIMD_N; i++) {
-        if (!avail[i]) { result->simd_tokps[i] = 0.0; continue; }
-
+        if (!avail[i]) continue;
         if (i == 0) unsetenv("TN_FORCE_BACKEND");
         else        setenv("TN_FORCE_BACKEND", backends[i], 1);
         const char *picked = tn_simd_init();
-        /* A forced value that lands on the same kernel as "auto" adds nothing. */
-        if (i > 0 && strcmp(picked, result->auto_backend) == 0) { result->simd_tokps[i] = 0.0; continue; }
         if (i == 0) snprintf(result->auto_backend, sizeof(result->auto_backend), "%s", picked);
+        else if (strcmp(picked, result->auto_backend) == 0) avail[i] = false;
+    }
+    unsetenv("TN_FORCE_BACKEND");
+    tn_simd_init();
 
-        /* Sample background load BEFORE we start (our threads are idle) */
-        int bg = sample_background_load();
-        char bg_str[16];
-        if (bg >= 0) snprintf(bg_str, sizeof(bg_str), "%3d%%", bg);
-        else         snprintf(bg_str, sizeof(bg_str), " n/a");
+    int bg = sample_background_load();   /* before we start: our threads are idle */
+    bool noisy = (bg >= 0 && bg > 30);
+    result->simd_sweep_noisy = noisy;
+    printf("  auto = %s;  candidates:", result->auto_backend);
+    for (int i = 1; i < TN_CALIB_SIMD_N; i++) if (avail[i]) printf(" %s", backends[i]);
+    printf("\n");
 
-        if (i == 0) printf("  auto=%-9.9s bg:%4s  ", picked, bg_str);
-        else        printf("  %-14s bg:%4s  ", backends[i], bg_str);
+    /* ── Interleaved rounds ──────────────────────────────────────────────
+     * Every candidate once per round, the starting candidate rotating, so
+     * thermal drift and background load hit all of them alike (2026-11-18). */
+    static double samples[TN_CALIB_SIMD_N][TN_CALIB_MAX_ROUNDS];
+    memset(samples, 0, sizeof(samples));
+    int idx[TN_CALIB_SIMD_N], nc = 0;
+    for (int i = 0; i < TN_CALIB_SIMD_N; i++) if (avail[i]) idx[nc++] = i;
+
+    BenchBuf bb;
+    const int rounds = TN_CALIB_ROUNDS;
+    int best_simd_idx = 0;
+    if (nc >= 2 && bench_buf_alloc(&bb)) {
+        printf("  warmup[");
         fflush(stdout);
+        bench_warmup(tp_phys, &bb, 4.0);       /* "auto" is bound: the CPU starts cold */
+        printf("]  rounds[");
+        fflush(stdout);
+        for (int r = 0; r < rounds; r++) {
+            for (int k = 0; k < nc; k++) {
+                int c = idx[(k + r) % nc];
+                if (c == 0) unsetenv("TN_FORCE_BACKEND");
+                else        setenv("TN_FORCE_BACKEND", backends[c], 1);
+                tn_simd_init();
+                samples[c][r] = bench_one_rep(tp_phys, &bb);
+            }
+            putchar('.');
+            fflush(stdout);
+        }
+        printf("]\n");
+        bench_buf_free(&bb);
+        unsetenv("TN_FORCE_BACKEND");
+        tn_simd_init();
 
-        /*
-         * First backend gets 4 s warmup (CPU cold, in turbo boost window).
-         * Subsequent backends get 1.5 s — CPU is already at thermal steady
-         * state from the previous test, so less warmup is needed.
-         */
-        double lo, hi;
-        double tokps = bench_robust(tp_phys,
-                                    first_backend ? 4.0 : 1.5, 7, &lo, &hi);
-        first_backend = false;
-        result->simd_tokps[i] = tokps;
-
-        /* "auto" wins ties and noise; see TN_CALIB_OVERRIDE_MARGIN. */
-        bool is_best = (i == 0) ||
-                       (tokps > best_simd_tokps &&
-                        tokps > result->simd_tokps[0] * TN_CALIB_OVERRIDE_MARGIN &&
-                        lo > result->simd_tokps[0]);
-        if (is_best) { best_simd_tokps = tokps; best_simd_idx = i; }
-
-        bool noisy = (bg >= 0 && bg > 30);
-        printf("  %6.1f  [%5.1f – %5.1f] tok/s%s%s\n",
-               tokps, lo, hi,
-               is_best ? "  ← BEST" : "",
-               noisy   ? "  [!] high bg load" : "");
+        result->simd_rounds = rounds;
+        if (!noisy)
+            best_simd_idx = tn_calib_pick_simd((const double (*)[TN_CALIB_MAX_ROUNDS])samples,
+                                               avail, TN_CALIB_SIMD_N, rounds,
+                                               TN_CALIB_OVERRIDE_MARGIN);
+        for (int k = 0; k < nc; k++) {
+            int c = idx[k];
+            double lo = samples[c][0], hi = samples[c][0];
+            int wins = 0;
+            for (int r = 0; r < rounds; r++) {
+                if (samples[c][r] < lo) lo = samples[c][r];
+                if (samples[c][r] > hi) hi = samples[c][r];
+                if (c > 0 && samples[c][r] > samples[0][r]) wins++;
+            }
+            result->simd_tokps[c] = median_of(samples[c], rounds);
+            result->simd_wins[c]  = wins;
+            if (c == 0) printf("  %-14s %7.1f  [%5.1f – %5.1f] tok/s%s\n", "auto",
+                               result->simd_tokps[c], lo, hi, best_simd_idx == 0 ? "  ← BEST" : "");
+            else        printf("  %-14s %7.1f  [%5.1f – %5.1f] tok/s  beat auto in %2d/%d rounds%s\n",
+                               backends[c], result->simd_tokps[c], lo, hi, wins, rounds,
+                               c == best_simd_idx ? "  ← BEST" : "");
+        }
+        if (noisy)
+            printf("  [!] background load %d%%: keeping auto, no tier is overridden\n", bg);
         fflush(stdout);
     }
 
@@ -424,6 +530,17 @@ void tn_calibrate(TnCalibrationResult *result, const TnHardwareProfile *hw) {
         fflush(stdout);
     }
 
+    /* 2026-11-18: prefer the physical-core count unless another count is clearly
+     * faster (same margin and slowest-rep rule as the SIMD override): a T=3 sample
+     * range of 42-69 tok/s next to T=4 at 96 is noise, not a preference. */
+    int phys_t = phys < max_t ? phys : max_t;
+    if (best_thread_t != phys_t && result->thread_tokps_med[phys_t - 1] > 0.0) {
+        double pm = result->thread_tokps_med[phys_t - 1];
+        bool clear = best_thread_tokps > pm * TN_CALIB_OVERRIDE_MARGIN &&
+                     result->thread_tokps_min[best_thread_t - 1] > pm;
+        if (!clear) { best_thread_t = phys_t; best_thread_tokps = pm; }
+    }
+
     result->best_threads      = best_thread_t;
     result->best_thread_tokps = best_thread_tokps;
 
@@ -470,7 +587,7 @@ void tn_calibrate(TnCalibrationResult *result, const TnHardwareProfile *hw) {
     printf("├──────────────────────────────────────────────────────────────────┤\n");
     printf("│  Result                                                          │\n");
     printf("│    SIMD      : %-10s (%5.1f tok/s at T=%d)                 │\n",
-           result->best_simd_name, best_simd_tokps, phys);
+           result->best_simd_name, result->simd_tokps[result->best_simd_idx], phys);
     printf("│    Threads   : T=%-2d  (%5.1f tok/s, swept T=1..%d)           │\n",
            result->best_threads, result->best_thread_tokps, max_t);
     printf("│    Classifier: BF16 (default — full intelligence)               │\n");

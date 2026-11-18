@@ -35,6 +35,7 @@ static const PzCfgKey g_schema[] = {
     { "threads",         PZ_CFG_INT,    "hardware", "Worker threads (0 = auto)", NULL, 0, 1024, 0 },
     { "simd",            PZ_CFG_STRING, "hardware", "SIMD backend", "auto|avx2|avx512f|vnni|scalar", 0, 0, 0 },
     { "classifier",      PZ_CFG_STRING, "hardware", "LM-head precision", "auto|bf16|int8|int4|auto-fast", 0, 0, 0 },
+    { "no-calibrate",    PZ_CFG_BOOL,   "hardware", "Never run or use the hardware calibration (reproducible benchmarks)", NULL, 0, 0, 0 },
     /* memory / context */
     { "ctx-size",        PZ_CFG_INT,    "memory", "Context length in tokens (0 = sized from RAM)", NULL, 0, 16777216, 0 },
     { "kv-type",         PZ_CFG_STRING, "memory", "KV cache storage", "f32|i8|i4", 0, 0, 0 },

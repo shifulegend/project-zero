@@ -76,4 +76,12 @@ const char *tn_simd_init(void);
 /* Name of the backend selected by the last tn_simd_init() ("Scalar" before). */
 const char *tn_simd_backend_name(void);
 
+/* 1 when the last tn_simd_init() bound the AVX-512 VNNI ternary kernel, the one
+ * tier that has a pre-quantised-activation entry (parallel_matmul.c). Every other
+ * tier, whether forced (TN_FORCE_BACKEND, --simd, calibration) or simply lower,
+ * returns 0 so the matmul runs the kernel the tier names. 2026-11-16: the pre-quantised
+ * path used to be taken for every tier on a VNNI build, so forcing scalar/avx2/avx512f
+ * changed nothing for the ternary matmul (tests/test_simd_tier_kernel.c). */
+int tn_simd_ternary_preq(void);
+
 #endif /* TN_SIMD_DISPATCH_H */

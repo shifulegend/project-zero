@@ -10,7 +10,7 @@ Adapter for the configurability rules in `docs/ai/engineering-rules.md`.
   `-mavx512vnni -mavx512vl` (clang is strict). `debug` keeps `-march=native` and links the
   sanitizer runtime (ASan/UBSan runs need both).
 - Runtime config via CLI/env, not literals: `--model --tokenizer --prompt --max-tokens
-  --temperature --top-p --seed --threads --simd --classifier --calibrate`.
+  --temperature --top-p --seed --threads --simd --classifier --calibrate --no-calibrate`.
 - Model config/tokenizer/quant come from GGUF metadata, not literals (a literal silently breaks
   the next model).
 - New tunables: prefer flags/metadata/feature-detection over magic numbers; document defaults.
@@ -32,8 +32,13 @@ Adapter for the configurability rules in `docs/ai/engineering-rules.md`.
   official BitNet GGUF's template ends the prompt in EOS (0 tokens generated); `tokenizer/template_guard.c`
   swaps in a built-in copy of `docs/templates/bitnet-b1.58.jinja` (matched by arch + template text;
   precedence: per-request > `--chat-template-file` > built-in > GGUF; `/v1/config` source `builtin`).
-- Calibration (`~/.project-zero/calibration.bin`, v3) only overrides the auto SIMD tier when a
-  forced tier is clearly faster; bump `TN_CALIB_VERSION` whenever selection logic changes.
+- Calibration (`~/.project-zero/calibration.bin`, v4; key = CPU model, cores, caches, compiled-ISA
+  mask) measures tiers in interleaved rounds (`TN_CALIB_ROUNDS`) and overrides the auto tier only
+  when `tn_calib_pick_simd` finds a significant win (sign test p <= 0.005 and median > 1.05x auto);
+  bump `TN_CALIB_VERSION` whenever selection logic changes. A forced tier must run the kernel it
+  names: `tn_simd_ternary_preq()` gates the pre-quantised VNNI path (`tests/test_simd_tier_kernel.c`).
+  `--no-calibrate` / `PZ_NO_CALIBRATE=true` / `pz config set no-calibrate true` skips calibration
+  entirely (nothing loaded, run or saved); `--simd auto` still means "automatic", not "no calibration".
 - GGUF conventions follow llama.cpp: RoPE layout from the architecture (`--rope-layout` to
   override), BPE pre-tokenizer from `tokenizer.ggml.pre`. `--raw-prompt` skips the chat template
   (plain completion, for benchmarks vs llama-completion); `--perplexity <file>` (+`--ppl-ctx`,

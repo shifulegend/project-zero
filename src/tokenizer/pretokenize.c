@@ -208,7 +208,47 @@ static void split_llama3(Split *s, int max_digits) {
 
 /* Character-class patterns, matched like std::regex_search: matches become
  * pieces, the text between them stays as its own pieces. */
-typedef enum { CLS_NUMBER_ONE, CLS_NUMBER_RUN, CLS_PUNCT_RUN, CLS_DIGIT3 } ClassPat;
+typedef enum {
+    CLS_NUMBER_ONE, CLS_NUMBER_RUN, CLS_PUNCT_RUN, CLS_DIGIT3,
+    CLS_NEWLINE,        /* [\r\n]                                           */
+    CLS_DS_LETTERS,     /* \s?[A-Za-z..Latin/Greek/Cyrillic..]+  (deepseek-llm) */
+    CLS_DS_PUNCT,       /* \s?[!-/:-~！-／：-～‘-‟　-。]+            (deepseek-llm) */
+    CLS_TRAIL_SPACE,    /* \s+$   (end of the fragment being split)           */
+    CLS_CJK,            /* [一-龥ࠀ-一가-퟿]+                                  */
+    CLS_L_RUN,          /* \s?\p{L}+                       (deepseek-coder) */
+    CLS_P_RUN           /* \s?\p{P}+                       (deepseek-coder) */
+} ClassPat;
+
+/* The CJK / Thai / Hangul blocks the DeepSeek patterns split out as their own runs. */
+static int is_cjk(uint32_t c) { return in(c, 0x4E00, 0x9FA5) || in(c, 0x0800, 0x4E00) || in(c, 0xAC00, 0xD7FF); }
+
+/* Letter set of llama.cpp's deepseek-llm pattern: Latin, Greek, Cyrillic, Armenian,
+ * Georgian, Cherokee, the Latin/Greek extension blocks and fullwidth Latin (the ranges
+ * of its character class, collapsed; scripts outside it stay unsplit between matches). */
+static int ds_letter(uint32_t c) {
+    if (c < 0x80) return ((c | 0x20) >= 'a' && (c | 0x20) <= 'z');
+    if (c == 0xB5) return 1;
+    return (in(c, 0xC0, 0x2AF) && c != 0xD7 && c != 0xF7) || in(c, 0x370, 0x52F) || in(c, 0x531, 0x556) ||
+           in(c, 0x10A0, 0x10C5) || in(c, 0x13A0, 0x13FD) || in(c, 0x1D00, 0x1FFF) || in(c, 0x2C00, 0x2DFF) ||
+           in(c, 0xA640, 0xA7FF) || in(c, 0xFF21, 0xFF3A) || in(c, 0xFF41, 0xFF5A);
+}
+
+static int ds_punct(uint32_t c) {
+    return in(c, 0x21, 0x2F) || in(c, 0x3A, 0x7E) || in(c, 0xFF01, 0xFF0F) || in(c, 0xFF1A, 0xFF5E) ||
+           in(c, 0x2018, 0x201F) || in(c, 0x3000, 0x3002);
+}
+
+/* Run of characters accepted by `ok`, after one optional whitespace character. */
+static int opt_space_run(const Split *s, size_t pos, int (*ok)(uint32_t)) {
+    size_t q = pos;
+    if (get_fl(s, q) & F_SPACE) q++;
+    size_t b = q;
+    while (get_cp(s, q) != OUT_OF_RANGE && ok(get_cp(s, q))) q++;
+    return q > b ? (int)(q - pos) : 0;
+}
+
+static int cp_is_letter(uint32_t c) { return (cp_flags(c) & F_LETTER) != 0; }
+static int cp_is_punct(uint32_t c)  { return (cp_flags(c) & F_PUNCT) != 0; }
 
 static int cls_match(const Split *s, size_t pos, ClassPat p) {
     uint32_t c = get_cp(s, pos);
@@ -227,6 +267,17 @@ static int cls_match(const Split *s, size_t pos, ClassPat p) {
             else break;
         }
         return (int)(q - pos);
+    }
+    case CLS_NEWLINE: return (c == '\r' || c == '\n') ? 1 : 0;
+    case CLS_DS_LETTERS: return opt_space_run(s, pos, ds_letter);
+    case CLS_DS_PUNCT:   return opt_space_run(s, pos, ds_punct);
+    case CLS_L_RUN:      return opt_space_run(s, pos, cp_is_letter);
+    case CLS_P_RUN:      return opt_space_run(s, pos, cp_is_punct);
+    case CLS_CJK: { size_t q = pos; while (get_cp(s, q) != OUT_OF_RANGE && is_cjk(get_cp(s, q))) q++; return (int)(q - pos); }
+    case CLS_TRAIL_SPACE: {
+        size_t q = pos;
+        while (get_fl(s, q) & F_SPACE) q++;
+        return (q > pos && q == s->end) ? (int)(q - pos) : 0;
     }
     case CLS_DIGIT3: {
         for (int i = 0; i < 3; i++) {
@@ -255,7 +306,8 @@ static void split_class(Split *s, ClassPat p) {
 
 /* ── Pipeline ──────────────────────────────────────────────────────────── */
 
-typedef enum { STEP_GPT2, STEP_LLAMA3, STEP_QWEN2, STEP_NUM1, STEP_NUMRUN, STEP_PUNCT, STEP_DIG3 } Step;
+typedef enum { STEP_GPT2, STEP_LLAMA3, STEP_QWEN2, STEP_NUM1, STEP_NUMRUN, STEP_PUNCT, STEP_DIG3,
+              STEP_NL, STEP_DS_LETTERS, STEP_DS_PUNCT, STEP_TRAIL_SPACE, STEP_CJK, STEP_L_RUN, STEP_P_RUN } Step;
 
 /* Runs one step over the current piece list (lengths in code points). */
 static int run_step(const Cpts *c, Step st, size_t **pieces, int *n_pieces) {
@@ -274,6 +326,13 @@ static int run_step(const Cpts *c, Step st, size_t **pieces, int *n_pieces) {
         case STEP_NUMRUN: split_class(&s, CLS_NUMBER_RUN); break;
         case STEP_PUNCT:  split_class(&s, CLS_PUNCT_RUN); break;
         case STEP_DIG3:   split_class(&s, CLS_DIGIT3); break;
+        case STEP_NL:          split_class(&s, CLS_NEWLINE); break;
+        case STEP_DS_LETTERS:  split_class(&s, CLS_DS_LETTERS); break;
+        case STEP_DS_PUNCT:    split_class(&s, CLS_DS_PUNCT); break;
+        case STEP_TRAIL_SPACE: split_class(&s, CLS_TRAIL_SPACE); break;
+        case STEP_CJK:         split_class(&s, CLS_CJK); break;
+        case STEP_L_RUN:       split_class(&s, CLS_L_RUN); break;
+        case STEP_P_RUN:       split_class(&s, CLS_P_RUN); break;
         }
         if (s.overflow) { free(out); return -1; }
         n_out += s.n;
@@ -303,6 +362,9 @@ int pretokenize(PretokType type, const char *text, size_t len,
     static const Step LLAMA3_STEPS[]  = { STEP_LLAMA3 };
     static const Step QWEN2_STEPS[]   = { STEP_QWEN2 };
     static const Step SMOLLM_STEPS[]  = { STEP_NUM1, STEP_GPT2 };
+    /* llama.cpp deepseek-llm / deepseek-coder: each regex splits the pieces left by the one before */
+    static const Step DEEPSEEK_LLM_STEPS[]   = { STEP_NL, STEP_DS_LETTERS, STEP_DS_PUNCT, STEP_TRAIL_SPACE, STEP_CJK, STEP_NUMRUN };
+    static const Step DEEPSEEK_CODER_STEPS[] = { STEP_NL, STEP_L_RUN, STEP_P_RUN, STEP_CJK, STEP_NUM1 };
     const Step *steps = DEFAULT_STEPS;
     int n_steps = 4;
     switch (type) {
@@ -310,6 +372,8 @@ int pretokenize(PretokType type, const char *text, size_t len,
     case PRETOK_LLAMA3: steps = LLAMA3_STEPS; n_steps = 1; break;
     case PRETOK_QWEN2:  steps = QWEN2_STEPS;  n_steps = 1; break;
     case PRETOK_SMOLLM: steps = SMOLLM_STEPS; n_steps = 2; break;
+    case PRETOK_DEEPSEEK_LLM:   steps = DEEPSEEK_LLM_STEPS;   n_steps = 6; break;
+    case PRETOK_DEEPSEEK_CODER: steps = DEEPSEEK_CODER_STEPS; n_steps = 5; break;
     default: break;
     }
     int rc = 0;
@@ -341,6 +405,8 @@ PretokType pretok_type_from_name(const char *pre) {
     for (int i = 0; llama3[i]; i++) if (strcmp(pre, llama3[i]) == 0) return PRETOK_LLAMA3;
     for (int i = 0; qwen2[i]; i++)  if (strcmp(pre, qwen2[i]) == 0)  return PRETOK_QWEN2;
     for (int i = 0; smollm[i]; i++) if (strcmp(pre, smollm[i]) == 0) return PRETOK_SMOLLM;
+    if (strcmp(pre, "deepseek-llm") == 0)   return PRETOK_DEEPSEEK_LLM;
+    if (strcmp(pre, "deepseek-coder") == 0) return PRETOK_DEEPSEEK_CODER;
     return PRETOK_DEFAULT;
 }
 
@@ -351,6 +417,8 @@ const char *pretok_type_name(PretokType t) {
     case PRETOK_LLAMA3: return "llama3";
     case PRETOK_QWEN2:  return "qwen2";
     case PRETOK_SMOLLM: return "smollm";
+    case PRETOK_DEEPSEEK_LLM:   return "deepseek-llm";
+    case PRETOK_DEEPSEEK_CODER: return "deepseek-coder";
     default:            return "default";
     }
 }

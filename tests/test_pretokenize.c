@@ -1,7 +1,7 @@
 /*
  * tests/test_pretokenize.c — BPE pre-tokenization (tokenizer/pretokenize.c):
  * fragment boundaries for each llama.cpp pipeline (default, gpt2, llama3,
- * qwen2, smollm) on contractions, digits, punctuation, whitespace runs and
+ * qwen2, smollm, deepseek-llm/coder) on contractions, digits, punctuation, whitespace runs and
  * UTF-8, plus name mapping and capacity handling. Expected splits follow
  * llama.cpp's unicode_regex_split_custom_* behaviour.
  */
@@ -55,6 +55,22 @@ static void test_qwen2_smollm_default(void) {
     EXPECT(PRETOK_DEFAULT, "a+=b", "a|+=|b");                /* [\p{P}$+<=>^~|]+ first */
 }
 
+/* DeepSeek-V2 pre=deepseek-llm: a space joins the following letter or punctuation run, so
+ * " (`" is one piece; the default pipeline split it into " ", "(", "`" and the model saw
+ * token sequences it was never trained on (perplexity 11.5 against 6.6 in llama.cpp).
+ * Splits verified identical to llama.cpp's tokenizer on a 3556-token text. */
+static void test_deepseek(void) {
+    EXPECT(PRETOK_DEEPSEEK_LLM, "Hello, world!", "Hello|,| world|!");
+    EXPECT(PRETOK_DEEPSEEK_LLM, "x (`y`)", "x| (`|y|`)");
+    EXPECT(PRETOK_DEEPSEEK_LLM, "a 123", "a| |123");
+    EXPECT(PRETOK_DEEPSEEK_LLM, "a\n\nb", "a|\n|\n|b");
+    EXPECT(PRETOK_DEEPSEEK_LLM, "hi \xe4\xbd\xa0\xe5\xa5\xbd", "hi| |\xe4\xbd\xa0\xe5\xa5\xbd");
+    EXPECT(PRETOK_DEEPSEEK_LLM, "[a]", "[|a|]");
+    EXPECT(PRETOK_DEEPSEEK_CODER, "x (y)", "x| (|y|)");
+    EXPECT(PRETOK_DEEPSEEK_CODER, "a 12", "a| |1|2");          /* one digit per piece */
+    EXPECT(PRETOK_DEFAULT, "x (`y`)", "x| |(|`|y|`|)");        /* what pz did before */
+}
+
 static void test_utf8(void) {
     EXPECT(PRETOK_GPT2, "café naïve", "café| naïve");
     EXPECT(PRETOK_LLAMA3, "東京は首都", "東京は首都");
@@ -75,6 +91,8 @@ static void test_api(void) {
     TEST_ASSERT_EQ(pretok_type_from_name("qwen2"), PRETOK_QWEN2, "qwen2");
     TEST_ASSERT_EQ(pretok_type_from_name("llama-bpe"), PRETOK_LLAMA3, "llama-bpe");
     TEST_ASSERT_EQ(pretok_type_from_name("olmo"), PRETOK_GPT2, "olmo");
+    TEST_ASSERT_EQ(pretok_type_from_name("deepseek-llm"), PRETOK_DEEPSEEK_LLM, "deepseek-llm");
+    TEST_ASSERT_EQ(pretok_type_from_name("deepseek-coder"), PRETOK_DEEPSEEK_CODER, "deepseek-coder");
     TEST_ASSERT_EQ(pretok_type_from_name("brand-new"), PRETOK_DEFAULT, "unknown -> default");
     size_t st[2], ln[2];
     TEST_ASSERT_EQ(pretokenize(PRETOK_GPT2, "a b c d", 7, st, ln, 2), -1, "too few slots -> -1");
@@ -87,6 +105,7 @@ int main(void) {
     RUN_TEST(test_gpt2);
     RUN_TEST(test_llama3);
     RUN_TEST(test_qwen2_smollm_default);
+    RUN_TEST(test_deepseek);
     RUN_TEST(test_utf8);
     RUN_TEST(test_api);
     TEST_SUMMARY();

@@ -3,6 +3,11 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-18.
 
+### 2026-11-18 — Tokenizer: deepseek-llm / deepseek-coder pre-tokenizers
+- What: `PRETOK_DEEPSEEK_LLM` and `PRETOK_DEEPSEEK_CODER` in `src/tokenizer/pretokenize.c` and the header; unit tests in `tests/test_pretokenize.c`; mistakes.md entry; CHANGELOG `Fixed`.
+- Why: DeepSeek-V2-Lite failed the benchmark correctness gate (PPL 11.5 vs 6.6); root cause was an unmapped pre-tokenizer name.
+- Areas: `src/tokenizer/pretokenize.c`, `include/tokenizer/pretokenize.h`, `tests/test_pretokenize.c`, `docs/ai/mistakes.md`, `CHANGELOG.md`.
+
 ### 2026-11-18 — Classifier (LM head) kernels: one reduction per row, AVX-512 versions dispatched
 - `include/math/cls_kernels.h` (new: contract, layout, shared scalar tails), `src/math/cls_kernels.c` (generic), `src/math/cls_kernels_avx512.c` (AVX-512, own flags; also CMake and `AVX512_TUS`), `include/math/simd_dispatch.h` + `src/math/simd_dispatch.c` (`tn_cls_i8_rows`, `tn_cls_i4_rows`), `src/math/parallel_matmul.c` (tasks call the pointers; ~125 lines of duplicated kernels removed).
 - Tests/guards: `tests/test_cls_kernels.c`, `tools/check_dist_isa.sh` (kernels present in the portable binary).

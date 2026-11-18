@@ -1,0 +1,65 @@
+Script started on 2026-11-18 08:47:22+00:00 [COMMAND="'/root/ext/BitNet/build/bin/llama-completion' '-m' 'models/bitnet-b1.58-2B-4T-i2_s.gguf' '-p' 'Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.' '-n' '500' '--temp' '0' '-t' '1' '-no-cnv' '--ignore-eos'" <not executed on terminal>]
+[34m0.00.002.998[0m [32mI [0mllama_completion: llama backend init
+[34m0.00.003.016[0m [32mI [0mllama_completion: load the model and apply lora adapter, if any
+[34m0.00.647.397[0m [35mW load: missing pre-tokenizer type, using: 'default'
+[0m[34m0.00.647.420[0m [35mW load:                                             
+[0m[34m0.00.647.421[0m [35mW load: ************************************        
+[0m[34m0.00.647.421[0m [35mW load: GENERATION QUALITY WILL BE DEGRADED!        
+[0m[34m0.00.647.421[0m [35mW load: CONSIDER REGENERATING THE MODEL             
+[0m[34m0.00.647.422[0m [35mW load: ************************************        
+[0m[34m0.00.647.422[0m [35mW load:                                             
+[0m[34m0.01.282.588[0m [32mI [0mllama_completion: llama threadpool init, n_threads = 1
+[34m0.01.282.631[0m [32mI [0m
+[34m0.01.282.736[0m [32mI [0msystem_info: n_threads = 1 (n_threads_batch = 1) / 4 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX_VNNI = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | AVX512 = 1 | AVX512_VBMI = 1 | AVX512_VNNI = 1 | AVX512_BF16 = 1 | AMX_INT8 = 1 | LLAMAFILE = 1 | REPACK = 1 | 
+[34m0.01.282.736[0m [32mI [0m
+[34m0.01.283.934[0m [32mI [0msampler seed: 1404466225
+[34m0.01.283.959[0m [32mI [0msampler params: 
+	repeat_last_n = 64, repeat_penalty = 1.000, frequency_penalty = 0.000, presence_penalty = 0.000
+	dry_multiplier = 0.000, dry_base = 1.750, dry_allowed_length = 2, dry_penalty_last_n = -1
+	top_k = 40, top_p = 0.950, min_p = 0.050, xtc_probability = 0.000, xtc_threshold = 0.100, typical_p = 1.000, top_n_sigma = -1.000, temp = 0.000
+	mirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000, adaptive_target = -1.000, adaptive_decay = 0.900
+[34m0.01.283.969[0m [32mI [0msampler chain: logits -> logit-bias -> ?penalties -> ?dry -> ?top-n-sigma -> top-k -> ?typical -> top-p -> min-p -> ?xtc -> temp-ext -> dist 
+[34m0.01.283.969[0m [32mI [0mgenerate: n_ctx = 4096, n_batch = 2048, n_predict = 500, n_keep = 1
+[34m0.01.283.970[0m [32mI [0m
+[33mExplain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.[0m Explain what machine learning is and how neural networks work.Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+In the world of machine learning is and how neural networks work.
+Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+In the world of machine learning is and how neural networks work.
+Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+In the world of machine learning is and how neural networks work.
+Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+In the world of machine learning is and how neural networks work.
+Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+In the world of machine learning is and how neural networks work.
+Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+In the world of machine learning is and how neural networks work.
+Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+In the world of machine learning is and how neural networks work.
+Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+In the world of machine learning is and how neural networks work.
+Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+In the world of machine learning is and how neural networks work.
+Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+In the world of machine learning is and how neural networks work.
+Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+In the world of machine learning is and how neural networks work.
+Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+In the world of machine learning is and how neural networks work.
+Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+In the world of machine learning is and how neural networks work.
+Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+In the world of machine learning is and how neural networks work.
+Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
+In the world of machine learning is and how neural networks work.
+Discuss supervised learning, unsupervised learning,
+
+[34m1.35.256.124[0m [32mI [0mcommon_perf_print:    sampling time =     211.80 ms
+[34m1.35.256.126[0m [32mI [0mcommon_perf_print:    samplers time =      60.31 ms /   533 tokens
+[34m1.35.256.142[0m [32mI [0mcommon_perf_print:        load time =     726.34 ms
+[34m1.35.256.144[0m [32mI [0mcommon_perf_print: prompt eval time =     832.34 ms /    33 tokens (   25.22 ms per token,    39.65 tokens per second)
+[34m1.35.256.145[0m [32mI [0mcommon_perf_print:        eval time =   92889.26 ms /   499 runs   (  186.15 ms per token,     5.37 tokens per second)
+[34m1.35.256.145[0m [32mI [0mcommon_perf_print:       total time =   93973.56 ms /   532 tokens
+[34m1.35.256.146[0m [32mI [0mcommon_perf_print: unaccounted time =      40.16 ms /   0.0 %      (total - sampling - prompt eval - eval) / (total)
+[34m1.35.256.147[0m [32mI [0mcommon_perf_print:    graphs reused =        496
+
+Script done on 2026-11-18 08:48:58+00:00 [COMMAND_EXIT_CODE="0"]

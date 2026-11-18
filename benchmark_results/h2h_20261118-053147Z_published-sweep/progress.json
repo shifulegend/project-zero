@@ -1,7 +1,7 @@
 {
   "phase": "measuring",
-  "done": 136,
+  "done": 180,
   "total": 180,
-  "last": "bitnet-2b-iq2bn ik t=4 run 1",
-  "updated": "2026-11-18T08:15:37Z"
+  "last": "mamba-130m llamacpp t=4 run 3",
+  "updated": "2026-11-18T08:36:01Z"
 }

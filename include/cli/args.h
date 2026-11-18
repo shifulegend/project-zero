@@ -39,6 +39,7 @@ typedef struct {
                                   3 = auto-fast (let engine pick fastest quantized cls) */
     char *simd_override;      /* NULL = auto, or "avx2", "avx512f", "vnni", "scalar" */
     bool calibrate;           /* --calibrate: force re-calibration of optimal settings */
+    bool no_calibrate;        /* --no-calibrate / PZ_NO_CALIBRATE: never load, run or save a calibration */
     bool show_version;        /* --version/-v: print version + detected SIMD backend, exit 0 */
     /* Phase 38: update notifications (update/update_check.h) */
     bool check_update;        /* --check-update: check now, print, exit (no --model needed) */

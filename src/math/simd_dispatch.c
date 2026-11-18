@@ -143,8 +143,11 @@ tn_vec_saxpy_fn      tn_vec_saxpy             = NULL;
 
 /* Human-readable name of the selected backend (set by tn_simd_init) */
 static const char *g_backend_name = "Scalar";
+/* Set by tn_simd_init only when it binds the AVX-512 VNNI ternary kernel. */
+static int g_ternary_preq = 0;
 
 const char *tn_simd_backend_name(void) { return g_backend_name; }
+int tn_simd_ternary_preq(void) { return g_ternary_preq; }
 
 const char *tn_simd_init(void) {
     /*
@@ -160,6 +163,7 @@ const char *tn_simd_init(void) {
      *     TN_FORCE_BACKEND=vnni256   — VNNI-256 int8 256-bit YMM via AVX-512VNNI (no throttle)
      * Unrecognised values are silently ignored and auto-detect proceeds.
      */
+    g_ternary_preq = 0;   /* re-derived below on every call */
     const char *force = getenv("TN_FORCE_BACKEND");
     int force_scalar  = force && strcmp(force, "scalar")  == 0;
     int force_avx2    = force && strcmp(force, "avx2")    == 0;
@@ -251,6 +255,7 @@ const char *tn_simd_init(void) {
 #if TN_HAS_AVX512VNNI
     if (!force_scalar && !force_avx2 && !force_avx512f && !force_vnni256 && cpu->avx512vnni) {
         tn_ternary_matmul_packed = ternary_matmul_packed_vnni;
+        g_ternary_preq = 1;
         g_backend_name = "AVX-512 VNNI";
         return g_backend_name;
     }

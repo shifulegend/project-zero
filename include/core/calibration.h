@@ -35,7 +35,7 @@
  */
 
 #define TN_CALIB_MAGIC    0x505A4341  /* "PZCA" */
-#define TN_CALIB_VERSION  3           /* 3: "auto" candidate + override margin (2026-10-18) */
+#define TN_CALIB_VERSION  4           /* 4: interleaved paired rounds + sign test, ISA mask in the key (2026-11-18); 3: "auto" candidate + margin */
 
 #define TN_CALIB_MAX_THREADS 16       /* max thread counts tracked in sweep */
 
@@ -46,6 +46,15 @@
 #define TN_CALIB_SIMD_N          6
 #define TN_CALIB_OVERRIDE_MARGIN 1.05
 
+/* 2026-11-18: candidates are measured in interleaved rounds (every candidate once
+ * per round, rotating the order), so thermal drift and background load hit all of
+ * them alike. A forced tier replaces "auto" only if it ALSO beats auto's paired
+ * sample in enough rounds for a one-sided sign test at p <= 0.005 (13 of 15): a wrong override costs speed, a missed small win costs almost nothing, so the default wins ties and near-ties. The
+ * pre-2026-11-18 sweep ran each candidate in its own block and picked "avx2" on an
+ * AVX-512 VNNI host from noise (docs/ai/mistakes.md). */
+#define TN_CALIB_ROUNDS         15
+#define TN_CALIB_MAX_ROUNDS     31
+
 typedef struct {
     /* Hardware fingerprint (for cache invalidation) */
     char cpu_model[128];       /* /proc/cpuinfo model name */
@@ -53,9 +62,13 @@ typedef struct {
     int  logical_cores;
     size_t l2_cache_bytes;
     size_t l3_cache_bytes;
+    unsigned isa_mask;         /* tn_calibration_isa_mask() of the build that measured */
 
     /* SIMD backend comparison: median tok/s per backend (0 = not tested) */
     double simd_tokps[TN_CALIB_SIMD_N]; /* see tn_calibration_simd_names(); [0] = "auto" */
+    int    simd_wins[TN_CALIB_SIMD_N]; /* paired rounds each candidate beat "auto" in */
+    int    simd_rounds;        /* rounds measured (0 = sweep not run) */
+    int    simd_sweep_noisy;   /* 1 = high background load: "auto" kept, nothing overridden */
     int    best_simd_idx;      /* index into simd_tokps[] */
     char   best_simd_name[32]; /* "auto" = keep the dispatcher's own choice */
     char   auto_backend[32];   /* what "auto" resolved to, e.g. "AVX-VNNI" */
@@ -78,6 +91,30 @@ typedef struct {
     /* Metadata */
     int    valid;              /* 1 if calibration completed successfully */
 } TnCalibrationResult;
+
+/*
+ * Bit mask of the SIMD tiers this build can run (AVX2, AVX-512, AVX-512 VNNI,
+ * AVX-VNNI, NEON, dotprod). Part of the cache key: a result measured by a build
+ * with other tiers compiled in is never reused.
+ */
+unsigned tn_calibration_isa_mask(void);
+
+/*
+ * Smallest number of paired-round wins (out of n_rounds) that is significant in
+ * a one-sided sign test at p <= 0.005; n_rounds + 1 (unreachable) when n_rounds
+ * is too small for any result to be significant.
+ */
+int tn_calib_wins_needed(int n_rounds);
+
+/*
+ * Decide which SIMD candidate replaces "auto" (index 0). samples[c][r] is the
+ * tok/s of candidate c in round r (same round = measured back to back).
+ * Returns 0 (keep auto) unless a candidate has the best median AND a median above
+ * auto's median * margin AND beats auto's paired sample in at least
+ * tn_calib_wins_needed(n_rounds) rounds. Pure function: no I/O, no globals.
+ */
+int tn_calib_pick_simd(const double samples[][TN_CALIB_MAX_ROUNDS], const bool avail[],
+                       int n_cand, int n_rounds, double margin);
 
 /*
  * Run calibration micro-benchmarks.

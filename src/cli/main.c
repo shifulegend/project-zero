@@ -248,7 +248,12 @@ int main(int argc, char **argv) {
     TnCalibrationResult calib;
     bool have_calib = false;
 
-    if (args.calibrate) {
+    if (args.no_calibrate) {
+        /* 2026-11-18: no calibration at all -- nothing is loaded, run or saved, so
+         * the dispatcher's own tier and the detected thread count apply and a run
+         * does not depend on what an earlier run left in ~/.project-zero. */
+        printf("[Calibration] Skipped: --no-calibrate\n");
+    } else if (args.calibrate) {
         /* User explicitly requested calibration */
         tn_calibrate(&calib, hw);
         /* A sanitizer build measures 5-20x slower than release: never let

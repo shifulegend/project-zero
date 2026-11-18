@@ -98,11 +98,16 @@ void print_usage(const char *prog_name) {
     printf("                      int8/int4: faster but quantizes classifier weights.\n");
     printf("                      auto-fast: let engine pick fastest quantized mode.\n");
     printf("  --simd <backend>    Force SIMD backend: auto, avx2, avx512f, vnni, scalar\n");
-    printf("                      Default: auto (highest tier). Use avx2 on Tiger Lake\n");
-    printf("                      to avoid AVX-512 frequency throttle.\n");
+    printf("                      Default: auto = the highest tier the CPU supports, changed\n");
+    printf("                      only when calibration measures another tier clearly faster\n");
+    printf("                      (--no-calibrate: the highest tier, always). Use avx2 on Tiger\n");
+    printf("                      Lake to avoid AVX-512 frequency throttle.\n");
     printf("  --calibrate         Run micro-benchmarks to find optimal settings for\n");
     printf("                      this hardware. Results cached in ~/.project-zero/\n");
     printf("                      Runs automatically on first use or hardware change.\n");
+    printf("  --no-calibrate      Never load, run or save a calibration (also PZ_NO_CALIBRATE=true):\n");
+    printf("                      the highest SIMD tier and the detected thread count, for\n");
+    printf("                      reproducible benchmarks and throwaway containers.\n");
 
     printf("\nServer (OpenAI-compatible HTTP API):\n");
     printf("  --server            Run as an HTTP API server (--prompt is ignored).\n");
@@ -238,6 +243,7 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->classifier_override = -1; // auto (BF16)
     args->simd_override = NULL;     // auto
     args->calibrate = false;
+    args->no_calibrate = false;
     args->show_version = false;
     args->check_update = false;
     args->no_update_check = false;
@@ -608,6 +614,8 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             }
         } else if (strcmp(argv[i], "--calibrate") == 0) {
             args->calibrate = true;
+        } else if (strcmp(argv[i], "--no-calibrate") == 0) {
+            args->no_calibrate = true;
         } else if (strcmp(argv[i], "--reasoning") == 0) {
             args->enable_reasoning = true;
         } else if (strcmp(argv[i], "--json") == 0) {
@@ -710,6 +718,11 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             print_usage(argv[0]);
             return TN_ERR_INVALID_CONFIG;
         }
+    }
+
+    if (args->calibrate && args->no_calibrate) {
+        fprintf(stderr, "Error: --calibrate and --no-calibrate contradict each other; use one.\n");
+        return TN_ERR_INVALID_CONFIG;
     }
 
     if (args->check_update) return TN_OK; /* needs no model */

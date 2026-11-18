@@ -155,7 +155,9 @@ void parallel_ternary_matmul_packed(float *out, const float *x, const tn_u8 *w,
     int8_t *q_x = NULL;
     float act_scale = 0.0f;
     int32_t sum_qx = 0;
-    if (n <= 16384) {
+    /* Only the AVX-512 VNNI tier has a pre-quantised kernel; a forced or lower
+     * tier must run the kernel it names (tn_simd_ternary_preq). */
+    if (n <= 16384 && tn_simd_ternary_preq()) {
         act_scale = quantize_row_to_i8_avx512(x, q_x_buf, n);
         if (act_scale > 0.0f) {
             sum_qx = sum_i8_avx512(q_x_buf, n);
@@ -189,7 +191,7 @@ int tn_preq_prepare(TnPreqActivation *preq, int8_t *buf, const float *x, int n) 
     preq->act_scale = 0.0f;
     preq->sum_qx = 0;
 #if TN_HAS_AVX512VNNI
-    if (n <= 0 || n > 16384) return 0;
+    if (n <= 0 || n > 16384 || !tn_simd_ternary_preq()) return 0;
     float scale = quantize_row_to_i8_avx512(x, buf, n);
     if (scale <= 0.0f) return 0;
     preq->q_x      = buf;

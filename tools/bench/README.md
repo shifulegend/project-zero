@@ -21,7 +21,8 @@ Results are plain files in the working tree. Nothing here commits, pushes or edi
 | `calibration_test.py` | calibration sweeps and stability, SIMD tier A/B, classifier A/B, unit tests |
 | `h2h_bench.py` | head-to-head decode benchmark: pz, llama.cpp, bitnet.cpp, ik_llama.cpp |
 | `build_compare.py` | interleaved A/B of pz binaries (native vs portable, before vs after a change) |
-| `setup_engines.py` | fetch and build the reference engines, fetch and convert the models |
+| `setup_engines.py` | fetch and build the reference engines (also patched variants), fetch and convert the models; `--smoke` checks each engine answers correctly |
+| `gate.py` | the correctness gate used by every script above (a module, not run by hand) |
 
 Every script takes `--dry-run` (print the plan and exit), `--out`, `--label`, `--pz`, `--screenshots
 none|summary|all`, `--shot-rows`, and `--calibration isolated|off|existing`. `isolated` (default) gives pz
@@ -52,6 +53,32 @@ Nothing is assumed installed. Check with `python3 tools/bench/setup_engines.py -
 Model files, sizes and sources are in `models.json`; `deepseek-v2-lite` is 9.5 GB and is only included
 when named or with `--models all`.
 
+## The correctness gate
+
+A speed number is only meaningful when the same binary and flags also compute the model correctly, so every
+timed script runs a gate first (`gate.py`; defaults in `gate.json`, frozen text in `gate_text.txt`):
+
+1. **smoke**: a short greedy prompt ("The capital of France is") must contain the expected answer;
+2. **quality**: perplexity on the frozen text (llama-perplexity's method; `pz --perplexity` for pz) must be
+   within a tolerance of the **reference engine** of that model (`models.json` -> `gate.reference`; for
+   `build_compare` and `calibration_test` the reference is the first binary / the default tier).
+
+| verdict | meaning |
+|---|---|
+| `PASS` / `WARN` | within the tolerance / within 2x the tolerance |
+| `INVALID` | outside that, wrong smoke answer, or the engine failed |
+| `UNVERIFIED` | no reference result to compare with |
+| `REF` | the reference itself (it still has to pass the smoke check) |
+
+Flags on every script: `--gate off|warn|strict` (default `strict`: INVALID cells show no throughput in
+`summary.md`, are left out of the chart with a note, and the exit status is 1; `warn` only marks them),
+`--gate-tolerance PCT` (default 1.0), `--gate-text`, `--gate-chunks`, `--gate-ctx`, `--gate-reference VARIANT`,
+and `--gate-only` (run just the gate; with `--out FOLDER --resume` it adds verdicts to an existing run
+folder: `gate.json`, the `gate` column of `summary.csv`, `summary.md`, the chart). Every row, chart note and
+screenshot caption carries the verdict. Engines that need a modified source tree are listed in
+`engines.json` with the recorded patch (`bitnetcpp-fix`) and are always labelled "modified".
+Why this exists: `docs/rca/2026-11-18-ternary-output-correctness.md`.
+
 ## Common runs
 
 ```bash
@@ -75,6 +102,13 @@ python3 tools/bench/h2h_bench.py --engines all --models all --threads 1-4 --roun
 
 # 6. native vs portable build, with the per-step split and the ISA check
 python3 tools/bench/build_compare.py --build native,portable --rounds 5 --label native-vs-portable
+
+# 7. the published sweep (everything the published sweeps had, gate included)
+python3 tools/bench/h2h_bench.py --preset published --engine-fetch missing --model-fetch missing
+
+# 8. only the gate, on an existing run folder; or a quick install check of the engines
+python3 tools/bench/h2h_bench.py --preset published --gate-only --out benchmark_results/<folder> --resume
+python3 tools/bench/setup_engines.py --engines llamacpp,bitnetcpp,ik --engine-fetch never --smoke
 ```
 
 ## Method (the same as the published sweeps unless a flag says otherwise)

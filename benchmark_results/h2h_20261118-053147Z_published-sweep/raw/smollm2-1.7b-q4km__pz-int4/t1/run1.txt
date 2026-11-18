@@ -1,5 +1,5 @@
 === smollm2-1.7b-q4km__pz-int4 t=1 run 1 ===
-DATE: 2026-11-18T06:44:44Z
+DATE: 2026-11-18T18:53:30Z
 HOST_CPU: Intel(R) Xeon(R) Processor @ 2.10GHz (4 vCPU)
 CMD: ./pz --model models/SmolLM2-1.7B-Instruct-Q4_K_M.gguf --prompt 'Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.' --max-tokens 500 --temperature 0 --threads 1 --no-update-check --classifier int4 --raw-prompt --ignore-eos
 PROMPT: Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
@@ -14,7 +14,7 @@ PROMPT: Explain what machine learning is and how neural networks work. Discuss s
 ####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
 #     # #   #   # #  #  #     #       #        #    #     # #   #   #
 #     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
-Project Zero Engine v0.2.0-21-g864eeea-dirty — Auto-Tuned Hardware
+Project Zero Engine v0.2.0-26-gc1e63db — Auto-Tuned Hardware
 Classifier: INT4 (user-selected)
 ┌─────────────────────────────────────────────────────┐
 │          Hardware Profile (auto-detected)           │
@@ -24,7 +24,7 @@ Classifier: INT4 (user-selected)
 │ Threads       : 4                                   │
 │ L2 cache      : 2048   KiB per core                 │
 │ L3 cache      : 260    MiB shared                   │
-│ Free RAM      : 15240  MiB                          │
+│ Free RAM      : 15084  MiB                          │
 │ DRAM bandwidth: 46.8   GB/s (cached)                │
 ├─────────────────────────────────────────────────────┤
 │ Classifier    : INT4 (0.5 byte/weight)              │
@@ -92,8 +92,8 @@ These three types of machine learning are fundamental to the field of AI, and th
 Here's a summary of each type of machine learning:
 
 * **Supervised Learning**: Train on
-[gen] 5.05 tok/s (500 tokens)
+[gen] 6.91 tok/s (500 tokens)
 
 
 
-PERF: wall=140.85s max_rss=2617MB cpu=76% exit=0
+PERF: wall=79.07s max_rss=2617MB cpu=99% exit=0

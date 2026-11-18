@@ -129,6 +129,7 @@ def main():
     small = hp.find_small_model(a.models_dir)
     if small is None:
         raise SystemExit("no model on disk: tools/bench/setup_engines.py --models smollm2-135m")
+    gate.require_clean({"pz": a.pz}, gate.config_from_args(a), a.allow_dirty_binary)
     run.create()
     env = bl.pz_env(run, a.calibration)
     run.write("system_info.txt", bl.system_info_text(run, {"PZ_BINARY": bl.bin_info(a.pz), "CALIBRATION": a.calibration}))
@@ -160,7 +161,7 @@ def main():
             if a.gate_only:
                 exit_code |= gate.finish_standalone(sub, g)
                 continue
-            rows = bl.run_matrix(sub, variants, models, threads, a.rounds, a.tokens, a.cooldown, a.order, True, gate_of=g.verdict_of)
+            rows = bl.run_matrix(sub, variants, models, threads, a.rounds, a.tokens, a.cooldown, a.order, True, gate_of=g.verdict_of, skip_of=lambda k, v: not g.timed(k, v))
             summary = bl.summarize(rows, variants[0]["label"])
             hide = g.cfg["mode"] == "strict"
             md += [f"## {name} (reference {variants[0]['label']})", "", bl.summary_md(summary, with_ratio=True, hide_invalid=hide)]
@@ -171,7 +172,8 @@ def main():
             exit_code |= gate.exit_status(g.results, g.cfg)
             if a.screenshots != "none":
                 shots = bl.take_screenshots(sub, variants, models[:1], max(threads), 32, a.screenshots, a.shot_rows,
-                                            note_of=lambda k, v: gate.caption_note(g.results.get(f"{k}/{v}")))
+                                            note_of=lambda k, v: gate.caption_note(g.results.get(f"{k}/{v}")),
+                                         skip_of=lambda k, v: not g.timed(k, v))
                 meta[f"{name}_screenshots"] = shots
     if "unit" in tests:
         m, mm = test_unit(run, a)

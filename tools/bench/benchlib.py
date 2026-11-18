@@ -488,7 +488,7 @@ def ensure_gate_column(path):
 
 
 def run_matrix(run, variants, models, threads, rounds, tokens=0, cooldown=5.0, order="interleaved",
-               fixed_length=True, resume=False, gate_of=None):
+               fixed_length=True, resume=False, gate_of=None, skip_of=None):
     """Measure every variant on every model.
 
     variants: [{'label', 'cmd': f(model_key, model_info, path, tokens, threads, fixed_length) -> argv or None,
@@ -498,6 +498,7 @@ def run_matrix(run, variants, models, threads, rounds, tokens=0, cooldown=5.0, o
               variant rotating, so thermal drift and background load hit all variants alike;
               'blocks' -- all rounds of one variant, then the next (the published sweeps' layout).
     gate_of:  optional f(model_key, variant_label) -> verdict string stored in the `gate` column.
+    skip_of:  optional f(model_key, variant_label) -> True when that cell must not be timed (it failed the gate).
     Rows are appended to summary.csv as they complete, so an interrupted run can be resumed."""
     path = run.path / "summary.csv"
     if resume and path.exists():
@@ -509,7 +510,8 @@ def run_matrix(run, variants, models, threads, rounds, tokens=0, cooldown=5.0, o
     if new:
         w.writerow(SUMMARY_HEADER)
     rows = []
-    total = sum(sum(1 for v in variants if v["cmd"](k, i, p, tokens or i.get("tokens", 128), threads[0], fixed_length) is not None)
+    total = sum(sum(1 for v in variants if v["cmd"](k, i, p, tokens or i.get("tokens", 128), threads[0], fixed_length) is not None
+                    and not (skip_of and skip_of(k, v["label"])))
                 for k, i, p in models) * len(threads) * rounds
     counter = [len(done)]
 
@@ -520,6 +522,8 @@ def run_matrix(run, variants, models, threads, rounds, tokens=0, cooldown=5.0, o
         cmd = v["cmd"](key, info, mpath, ntok, t, fixed_length)
         if cmd is None:
             return
+        if skip_of and skip_of(key, v["label"]):
+            return                                  # reported once per cell below, not once per run
         res = measure(run, f"{key}__{v['label']}", t, rnd, cmd, v.get("env"))
         w.writerow([key, v["label"], t, rnd, res["tps"] if res["tps"] is not None else "", res["tokens"] or "",
                     f"{res['wall']:.2f}", f"{res['rss_mb']:.0f}", f"{res['cpu_pct']:.0f}", res["rc"], res["log"],
@@ -535,6 +539,10 @@ def run_matrix(run, variants, models, threads, rounds, tokens=0, cooldown=5.0, o
     for key, info, mpath in models:
         ntok = tokens or info.get("tokens", 128)
         usable = [v for v in variants if v["cmd"](key, info, mpath, ntok, threads[0], fixed_length) is not None]
+        for v in usable:
+            if skip_of and skip_of(key, v["label"]):
+                run.log(f"  {key} {v['label']}: not timed (fails the correctness gate)")
+        usable = [v for v in usable if not (skip_of and skip_of(key, v["label"]))]
         run.log(f"\n=== {key}: {len(usable)} variants, threads {threads}, {rounds} rounds, {ntok} tokens ===")
         if order == "blocks":
             for v in usable:
@@ -586,7 +594,7 @@ def summary_md(summary, with_ratio=False, hide_invalid=False):
     return md_table(header, rows)
 
 
-def take_screenshots(run, variants, models, shot_threads, tokens, mode, rows_override=0, note_of=None):
+def take_screenshots(run, variants, models, shot_threads, tokens, mode, rows_override=0, note_of=None, skip_of=None):
     """One live-terminal screenshot per (model, variant) ('summary') after the measured runs. The run is
     a separate, shorter one (tokens capped) because a pty run prints the live tok/s display; its own
     tok/s is parsed from the captured bytes and returned for the record, not mixed into the statistics."""
@@ -596,7 +604,7 @@ def take_screenshots(run, variants, models, shot_threads, tokens, mode, rows_ove
     for key, info, mpath in models:
         for v in variants:
             cmd = v["cmd"](key, info, mpath, tokens or info.get("tokens", 128), shot_threads, True)
-            if cmd is None:
+            if cmd is None or (skip_of and skip_of(key, v["label"])):
                 continue
             name = f"{key}__{v['label']}_t{shot_threads}"
             have = sorted(run.shots.glob(f"*_{name}.png"))           # a screenshot already taken (resumed run)

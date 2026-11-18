@@ -1,5 +1,5 @@
 === gate bitnet-2b/pz-int4 ===
-DATE: 2026-11-18T14:35:04Z
+DATE: 2026-11-18T18:43:19Z
 CMD: ./pz --model models/bitnet-b1.58-2B-4T-i2_s.gguf --perplexity /home/user/project-zero/tools/bench/gate_text.txt --ppl-ctx 512 --ppl-chunks 8 --threads 4 --no-update-check --classifier int4
 ============================================================
 [1/4] Opening model file...
@@ -13,7 +13,7 @@ CMD: ./pz --model models/bitnet-b1.58-2B-4T-i2_s.gguf --perplexity /home/user/pr
 ####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
 #     # #   #   # #  #  #     #       #        #    #     # #   #   #
 #     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
-Project Zero Engine v0.2.0-21-g864eeea-dirty — Auto-Tuned Hardware
+Project Zero Engine v0.2.0-26-gc1e63db — Auto-Tuned Hardware
 Classifier: INT4 (user-selected)
 ┌─────────────────────────────────────────────────────┐
 │          Hardware Profile (auto-detected)           │
@@ -23,7 +23,7 @@ Classifier: INT4 (user-selected)
 │ Threads       : 4                                   │
 │ L2 cache      : 2048   KiB per core                 │
 │ L3 cache      : 260    MiB shared                   │
-│ Free RAM      : 14972  MiB                          │
+│ Free RAM      : 15157  MiB                          │
 │ DRAM bandwidth: 46.8   GB/s (cached)                │
 ├─────────────────────────────────────────────────────┤
 │ Classifier    : INT4 (0.5 byte/weight)              │
@@ -50,7 +50,7 @@ Model Configuration:
 [profile] Data/token (loaded model): 1133 MB -> ceiling 39.4 tok/s at 46.8 GB/s
 KV cache: F32, max context: 4096 tokens (sizing tier: Quantized I8, RAM budget 60%)
 perplexity: 3429 tokens, n_ctx 512, 6 chunk(s)
-[1]56.8373,[2]46.5505,[3]38.3088,[4]27.7970,[5]31.6117,[6]35.6045,
-Final estimate: PPL = 35.6045 +/- 3.82867  (1530 tokens scored, 6 chunks, 169.5 s)
+[1]50.7784,[2]41.8149,[3]34.7017,[4]25.5194,[5]28.9352,[6]32.7205,
+Final estimate: PPL = 32.7205 +/- 3.43082  (1530 tokens scored, 6 chunks, 111.1 s)
 
 

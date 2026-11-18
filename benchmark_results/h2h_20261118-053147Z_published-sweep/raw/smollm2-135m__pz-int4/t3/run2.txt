@@ -1,5 +1,5 @@
 === smollm2-135m__pz-int4 t=3 run 2 ===
-DATE: 2026-11-18T06:24:41Z
+DATE: 2026-11-18T18:48:55Z
 HOST_CPU: Intel(R) Xeon(R) Processor @ 2.10GHz (4 vCPU)
 CMD: ./pz --model models/SmolLM2-135M-Instruct-f16.gguf --prompt 'Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.' --max-tokens 500 --temperature 0 --threads 3 --no-update-check --classifier int4 --raw-prompt --ignore-eos
 PROMPT: Explain what machine learning is and how neural networks work. Discuss supervised learning, unsupervised learning, and reinforcement learning with real-world examples of each.
@@ -14,7 +14,7 @@ PROMPT: Explain what machine learning is and how neural networks work. Discuss s
 ####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
 #     # #   #   # #  #  #     #       #        #    #     # #   #   #
 #     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
-Project Zero Engine v0.2.0-21-g864eeea-dirty — Auto-Tuned Hardware
+Project Zero Engine v0.2.0-26-gc1e63db — Auto-Tuned Hardware
 Classifier: INT4 (user-selected)
 ┌─────────────────────────────────────────────────────┐
 │          Hardware Profile (auto-detected)           │
@@ -24,7 +24,7 @@ Classifier: INT4 (user-selected)
 │ Threads       : 4                                   │
 │ L2 cache      : 2048   KiB per core                 │
 │ L3 cache      : 260    MiB shared                   │
-│ Free RAM      : 15232  MiB                          │
+│ Free RAM      : 15171  MiB                          │
 │ DRAM bandwidth: 46.8   GB/s (cached)                │
 ├─────────────────────────────────────────────────────┤
 │ Classifier    : INT4 (0.5 byte/weight)              │
@@ -82,8 +82,8 @@ The second section should discuss the importance of data quality and preprocessi
 The third section should discuss the importance of data quality and preprocessing in machine learning. Explain how data preprocessing techniques, such as data normalization and feature scaling, can improve the performance and accuracy of machine learning models.
 
 
-[gen] 96.56 tok/s (500 tokens)
+[gen] 88.63 tok/s (500 tokens)
 
 
 
-PERF: wall=6.12s max_rss=341MB cpu=276% exit=0
+PERF: wall=6.58s max_rss=341MB cpu=277% exit=0

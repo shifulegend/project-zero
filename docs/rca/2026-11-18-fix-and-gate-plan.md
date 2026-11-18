@@ -138,8 +138,13 @@ INVALID rows never reach the chart.
 | **llama.cpp** | Per-backend op tests against the CPU reference (`test-backend-ops`, NMSE <= 1e-7); SIMD quantisers against the reference C (`test-quantize-fns`, RMSE <= 1e-4) plus round-trip and dot-product error bounds per type; `llama-perplexity` with a KL-divergence mode (mean KLD, RMS dp, same-top-p) for quality; `ci/run.sh` runs perplexity per quantisation but only logs it. | `tests/test-backend-ops.cpp`, `tests/test-quantize-fns.cpp`, `tools/perplexity`, `ci/run.sh` |
 | **bitnet.cpp** | `utils/e2e_benchmark.py` runs `llama-bench` (speed only); `utils/test_perplexity.py` only reports numbers, "failed" means the process failed. No output check on the benchmark path, which is how a wrong FFN activation shipped. | `utils/e2e_benchmark.py`, `utils/test_perplexity.py` |
 | **ik_llama.cpp** | inherits the llama.cpp op tests; its BitNet graph uses squared-ReLU (`src/graphs/build_bitnet.cpp:234`). | source |
-Not found: an upstream bitnet.cpp issue about this bug (one web search; a third-party report blamed
-the tokenizer warning, which the RCA measured as not the cause). Report upstream after your decision.
+Upstream status of the bitnet.cpp finding (read on 2026-11-18; merge states of the PRs not confirmed): already reported as
+microsoft/BitNet issue #602 ("runs FFN with SiLU instead of relu2", open since 2026-08-08, same file and line) and #588
+(perplexity 99.8 vs 17.1); fix PRs #603 (converters write `hidden_activation=relu2`, closed) and #605 (config-based FFN
+activation). `main` is still the commit measured here (`0b341e5`). The model's own config (`hidden_act: relu2`) and card
+("squared ReLU (ReLU²) activation in FFN layers") confirm squared-ReLU is correct. A third-party report that blamed the
+tokenizer warning is not the cause (measured in the RCA). No new report is needed; a comment with the measurements here
+could still help.
 
 ### 3.1 What that implies for the bitnet.cpp rows (your decision)
 - **A. MLPerf rule**: an engine that fails the accuracy gate has no valid speed result. Report

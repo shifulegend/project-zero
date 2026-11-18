@@ -1,5 +1,5 @@
 === gate smollm2-1.7b-q4km/pz-int4 ===
-DATE: 2026-11-18T14:28:22Z
+DATE: 2026-11-18T18:38:46Z
 CMD: ./pz --model models/SmolLM2-1.7B-Instruct-Q4_K_M.gguf --perplexity /home/user/project-zero/tools/bench/gate_text.txt --ppl-ctx 512 --ppl-chunks 8 --threads 4 --no-update-check --classifier int4
 ============================================================
 [1/4] Opening model file...
@@ -12,7 +12,7 @@ CMD: ./pz --model models/SmolLM2-1.7B-Instruct-Q4_K_M.gguf --perplexity /home/us
 ####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
 #     # #   #   # #  #  #     #       #        #    #     # #   #   #
 #     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
-Project Zero Engine v0.2.0-21-g864eeea-dirty — Auto-Tuned Hardware
+Project Zero Engine v0.2.0-26-gc1e63db — Auto-Tuned Hardware
 Classifier: INT4 (user-selected)
 ┌─────────────────────────────────────────────────────┐
 │          Hardware Profile (auto-detected)           │
@@ -22,7 +22,7 @@ Classifier: INT4 (user-selected)
 │ Threads       : 4                                   │
 │ L2 cache      : 2048   KiB per core                 │
 │ L3 cache      : 260    MiB shared                   │
-│ Free RAM      : 15137  MiB                          │
+│ Free RAM      : 15074  MiB                          │
 │ DRAM bandwidth: 46.8   GB/s (cached)                │
 ├─────────────────────────────────────────────────────┤
 │ Classifier    : INT4 (0.5 byte/weight)              │
@@ -50,6 +50,6 @@ Model Configuration:
 KV cache: F32, max context: 8192 tokens (sizing tier: Quantized I8, RAM budget 60%)
 perplexity: 3627 tokens, n_ctx 512, 7 chunk(s)
 [1]12.3345,[2]9.3661,[3]8.0368,[4]6.1523,[5]5.6840,[6]5.9681,[7]6.3295,
-Final estimate: PPL = 6.3295 +/- 0.39587  (1785 tokens scored, 7 chunks, 204.2 s)
+Final estimate: PPL = 6.3295 +/- 0.39587  (1785 tokens scored, 7 chunks, 174.5 s)
 
 

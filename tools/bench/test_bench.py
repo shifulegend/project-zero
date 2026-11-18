@@ -229,6 +229,45 @@ class Gate(unittest.TestCase):
         rx = gate.load_config()["ppl_regex"]
         self.assertEqual(gate.parse_ppl("Final estimate: PPL over 7 chunks for n_ctx=512 = 8.0256 +/- 0.54101", rx), (8.0256, 0.54101))
 
+    def test_cells_that_fail_the_gate_are_not_timed(self):
+        import gate
+        strict, warn = {"mode": "strict"}, {"mode": "warn"}
+        self.assertFalse(gate.should_time("INVALID", strict))
+        self.assertTrue(gate.should_time("INVALID", warn))                   # warn only marks
+        self.assertTrue(gate.should_time("INVALID", dict(strict, time_invalid=True)))
+        for v in ("PASS", "WARN", "REF", "APPROX", "UNVERIFIED", "OFF"):
+            self.assertTrue(gate.should_time(v, strict), v)
+        with tempfile.TemporaryDirectory() as d:                              # run_matrix honours skip_of
+            run = bl.RunDir("t", d)
+            run.create()
+            seen = []
+            orig = bl.measure
+            bl.measure = lambda run_, suite, t, rnd, cmd, env=None, prompt=None: (
+                seen.append(suite) or {"tps": 1.0, "tokens": 1, "wall": 0.0, "rss_mb": 1, "cpu_pct": 1, "rc": 0, "log": "x"})
+            try:
+                vs = [{"label": l, "cmd": (lambda *a: ["x"]), "env": None} for l in ("ok", "bad")]
+                bl.run_matrix(run, vs, [("m", {"tokens": 4}, pathlib.Path("m.gguf"))], [4], 2, 0, 0.0,
+                              skip_of=lambda k, v: v == "bad")
+                self.assertEqual(sorted(set(seen)), ["m__ok"])
+                self.assertEqual(len(seen), 2)
+            finally:
+                bl.measure = orig
+                run.close()
+
+    def test_dirty_binaries_are_refused_unless_allowed(self):
+        import gate
+        self.assertTrue(gate.is_dirty("Project Zero v0.2.0-21-g864eeea-dirty"))
+        self.assertFalse(gate.is_dirty("Project Zero v0.2.0-23-g0148ad0"))
+        with tempfile.TemporaryDirectory() as d:
+            fake = pathlib.Path(d) / "pz"
+            fake.write_text("#!/bin/sh\necho 'Project Zero v0.2.0-1-gabc-dirty'\n")
+            fake.chmod(0o755)
+            cfg = {"require_clean_binary": True}
+            with self.assertRaises(SystemExit):
+                gate.require_clean({"pz": str(fake)}, cfg)
+            self.assertEqual(gate.require_clean({"pz": str(fake)}, cfg, allow=True, log=lambda m: None), ["pz"])
+            self.assertEqual(gate.require_clean({"pz": str(fake)}, {"require_clean_binary": False}), ["pz"])
+
     def test_config_overrides_and_frozen_text(self):
         import gate
         cfg = gate.load_config({"tolerance_pct": 0.5, "mode": None})

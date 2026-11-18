@@ -67,9 +67,29 @@ def add_args(ap):
     g.add_argument("--gate-chunks", type=int, help="perplexity chunks")
     g.add_argument("--gate-ctx", type=int, help="perplexity context length")
     g.add_argument("--gate-reference", metavar="VARIANT", help="variant to use as the reference for every model (default: models.json)")
+    g.add_argument("--allow-dirty-binary", action="store_true",
+                   help="benchmark a pz binary built from uncommitted state (its version ends in -dirty); the run is marked")
     g.add_argument("--gate-only", action="store_true",
                    help="run only the gate (and update summary.csv/summary.md of --out FOLDER if they exist), then exit")
     return ap
+
+
+def is_dirty(version):
+    """True for a version string of a build of uncommitted state (git describe --dirty)."""
+    return bool(re.search(r"-dirty\s*$", version or ""))
+
+
+def require_clean(binaries, cfg, allow=False, log=print):
+    """Refuse (SystemExit) to time binaries built from uncommitted state, which no one can reproduce.
+    binaries: {label: path}. With allow=True it only warns. Returns the labels that were dirty."""
+    dirty = [l for l, p in binaries.items() if is_dirty(bl.bin_info(p).get("version", ""))]
+    if dirty and cfg.get("require_clean_binary", True):
+        msg = (f"not reproducible: {', '.join(dirty)} {'is' if len(dirty) == 1 else 'are'} a build of uncommitted state "
+               "(version ends in -dirty). Commit or stash, rebuild (make clean && make release), or pass --allow-dirty-binary.")
+        if not allow:
+            raise SystemExit(msg)
+        log("WARNING: " + msg + "  (allowed; recorded in meta.json)")
+    return dirty
 
 
 def config_from_args(a):
@@ -139,6 +159,12 @@ def judge(results, cfg, reference_of):
                 if bound is None or abs(r["delta_pct"]) <= bound:
                     r["verdict"], r["approx_note"] = "APPROX", approx.get("why", "")
     return results
+
+
+def should_time(verdict, cfg):
+    """False for a cell that fails the gate in strict mode (unless gate.json time_invalid): nothing is timed or
+    screenshotted for a wrong computation."""
+    return not (cfg["mode"] == "strict" and verdict == "INVALID" and not cfg.get("time_invalid", False))
 
 
 def blocked(res, cfg):
@@ -234,6 +260,10 @@ class Gate:
         return {"mode": self.cfg["mode"], "tolerance_pct": self.cfg["tolerance_pct"], "text_sha256": self.cfg["text_sha256"],
                 "verdicts": {k: r["verdict"] for k, r in sorted(self.results.items())}}
 
+    def timed(self, model, variant):
+        """Should this (model, variant) be timed and screenshotted? Used as the `skip_of` of run_matrix and screenshots."""
+        return should_time(self.verdict_of(model, variant), self.cfg)
+
     def verdict_of(self, model, variant):
         return self.results.get(f"{model}/{variant}", {}).get("verdict", "OFF" if not self.enabled else "UNVERIFIED")
 
@@ -254,12 +284,13 @@ def render_md(results, cfg):
         rows.append([r["model"], r["variant"] + (" (modified)" if r.get("modified") else ""), bl.fnum(r.get("ppl"), 4),
                      bl.fnum(r.get("ref_ppl"), 4) if r.get("ref") != key else "-",
                      "-" if r.get("delta_pct") is None else f"{r['delta_pct']:+.2f} %",
-                     "ok" if r.get("smoke_ok") else "WRONG", r["verdict"]])
+                     "ok" if r.get("smoke_ok") else "WRONG", r["verdict"],
+                     "yes" if should_time(r["verdict"], cfg) else "no (fails the gate)"])
     return ("## Correctness gate\n\n"
             f"Mode {cfg['mode']}; tolerance {cfg['tolerance_pct']} % (WARN up to {cfg['warn_factor']}x); "
             f"text `{pathlib.Path(cfg['text_path']).name}` (sha256 {cfg['text_sha256'][:12]}), "
             f"{cfg['ppl_chunks']} chunks of {cfg['ppl_ctx']}.\n\n"
-            + bl.md_table(["model", "variant", "ppl", "reference ppl", "delta", "smoke", "verdict"], rows) + "\n")
+            + bl.md_table(["model", "variant", "ppl", "reference ppl", "delta", "smoke", "verdict", "timed"], rows) + "\n")
 
 
 def finish_standalone(run, g):

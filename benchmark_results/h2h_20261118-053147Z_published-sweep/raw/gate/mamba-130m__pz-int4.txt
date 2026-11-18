@@ -1,5 +1,5 @@
 === gate mamba-130m/pz-int4 ===
-DATE: 2026-11-18T14:38:16Z
+DATE: 2026-11-18T18:44:28Z
 CMD: ./pz --model models/mamba-130m-hf.f16.gguf --perplexity /home/user/project-zero/tools/bench/gate_text.txt --ppl-ctx 512 --ppl-chunks 8 --threads 4 --no-update-check --classifier int4
 ============================================================
 [1/4] Opening model file...
@@ -12,7 +12,7 @@ CMD: ./pz --model models/mamba-130m-hf.f16.gguf --perplexity /home/user/project-
 ####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
 #     # #   #   # #  #  #     #       #        #    #     # #   #   #
 #     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
-Project Zero Engine v0.2.0-21-g864eeea-dirty — Auto-Tuned Hardware
+Project Zero Engine v0.2.0-26-gc1e63db — Auto-Tuned Hardware
 Classifier: INT4 (user-selected)
 ┌─────────────────────────────────────────────────────┐
 │          Hardware Profile (auto-detected)           │
@@ -22,7 +22,7 @@ Classifier: INT4 (user-selected)
 │ Threads       : 4                                   │
 │ L2 cache      : 2048   KiB per core                 │
 │ L3 cache      : 260    MiB shared                   │
-│ Free RAM      : 14899  MiB                          │
+│ Free RAM      : 15009  MiB                          │
 │ DRAM bandwidth: 46.8   GB/s (cached)                │
 ├─────────────────────────────────────────────────────┤
 │ Classifier    : INT4 (0.5 byte/weight)              │
@@ -47,9 +47,9 @@ Model Configuration:
   kv_dim:     768
 [Mamba] state-space model: d_inner=1536 d_state=16 d_conv=4 dt_rank=48
 [profile] Data/token (loaded model): 250 MB -> ceiling 178.6 tok/s at 46.8 GB/s
-KV cache: F32, max context: 62366 tokens (sizing tier: Quantized I8, RAM budget 60%)
+KV cache: F32, max context: 62799 tokens (sizing tier: Quantized I8, RAM budget 60%)
 perplexity: 2986 tokens, n_ctx 512, 5 chunk(s)
-[1]84.7214,[2]90.1392,[3]103.3157,[4]76.6499,[5]84.8103,
-Final estimate: PPL = 84.8103 +/- 9.95665  (1275 tokens scored, 5 chunks, 40.8 s)
+[1]84.7214,[2]90.1392,[3]103.3157,[4]76.6499,[5]84.8102,
+Final estimate: PPL = 84.8102 +/- 9.95665  (1275 tokens scored, 5 chunks, 32.4 s)
 
 

@@ -5,13 +5,28 @@
 #include <stdint.h>
 
 /*
- * Activation quantization for VNNI / dotprod kernels (Phase 16-S.2)
+ * Activation quantization for the int8 kernels (VNNI, AVX-VNNI, dotprod, Q2_0).
  *
- * Dynamic per-vector quantization: find the absolute max of a float32 vector,
- * then scale all values to fit in int8 [-127, 127] (symmetric, avoiding -128
- * to keep multiplication results representable in int16).
+ * SPECIFICATION (2026-11-18). Every implementation below computes exactly this, bit for bit:
  *
- * The returned scale factor dequantizes: true_value ≈ q_value * scale.
+ *   abs_max   = max_i |x[i]|                       (float)
+ *   abs_max == 0  ->  q[i] = 0 for all i, scale = 0
+ *   scale     = abs_max / 127.0f                   (returned; true_value ~ q * scale)
+ *   inv_scale = 127.0f / abs_max
+ *   q[i]      = clamp( round_to_nearest_even( x[i] * inv_scale ), -127, +127 )
+ *
+ * The product x[i]*inv_scale is evaluated in float, the clamp is applied before rounding, and
+ * -128 is never produced (symmetric range, products stay representable in int16).
+ *
+ * Rounding is NEAREST, ties to even (the default IEEE mode: cvtps2dq, vcvtns, lrintf). It is not
+ * truncation: truncating shrinks every activation towards zero by half a step on average, a bias
+ * correlated with the sign of the activation that does not average out across a 2560-term dot
+ * product. Measured on BitNet b1.58 2B (docs/rca/2026-11-18-ternary-output-correctness.md): the V
+ * projection of layer 0 had 3.7 % relative error instead of 0.4 %, and perplexity rose 9.7 %.
+ * The maximum round-trip error is scale/2.
+ *
+ * The scalar function is the oracle. tests/test_quantize_i8_exact.c requires every tier to equal
+ * it exactly, and tools/check_rounding.py fails CI on a truncating convert in these files.
  *
  * Usage pattern (called once per matmul, before the row loop):
  *   int8_t  q_x[n];
@@ -22,14 +37,13 @@
  */
 
 /*
- * Scalar reference: quantize float32 vector x[n] → int8 q[n].
- * Returns the per-vector scale factor (abs_max / 127).
- * If abs_max == 0 (all-zero input), scale = 0 and q is all zeros.
+ * Scalar reference (the oracle): quantize float32 vector x[n] -> int8 q[n] per the specification.
+ * Returns the per-vector scale (abs_max / 127), 0 for an all-zero input.
  */
 float quantize_row_to_i8(const float *x, int8_t *q, int n);
 
 /*
- * AVX-512 accelerated version — same semantics, faster on AVX-512 CPUs.
+ * AVX-512 accelerated version, same specification, faster on AVX-512 CPUs.
  * Falls through to scalar on non-AVX-512 builds.
  */
 float quantize_row_to_i8_avx512(const float *x, int8_t *q, int n);
@@ -38,6 +52,12 @@ float quantize_row_to_i8_avx512(const float *x, int8_t *q, int n);
  * AVX2 accelerated version.
  */
 float quantize_row_to_i8_avx2(const float *x, int8_t *q, int n);
+
+/*
+ * NEON (AArch64) version of the same specification. On builds without NEON it is the scalar
+ * function, so callers never need a guard.
+ */
+float quantize_row_to_i8_neon(const float *x, int8_t *q, int n);
 
 /*
  * Sum all int8 values in arr[n].  Used for VNNI bias correction:

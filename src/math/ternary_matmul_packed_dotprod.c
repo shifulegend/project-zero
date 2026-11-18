@@ -68,7 +68,7 @@ void ternary_matmul_packed_dotprod(float *out, const float *x, const tn_u8 *pack
 
     /* Quantize activations once (reused for all d rows) */
     int8_t  q_x[TN_DOTPROD_MAX_N];
-    float   act_scale = quantize_row_to_i8(x, q_x, n);
+    float   act_scale = quantize_row_to_i8_neon(x, q_x, n);
 
     if (act_scale == 0.0f) {
         memset(out, 0, (size_t)d * sizeof(float));

@@ -3,6 +3,11 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-18.
 
+### 2026-11-18 — Activation quantiser: round to nearest, specification and oracle, NEON version, rounding lint
+- `include/math/quantize_i8.h` (specification), `src/math/quantize_i8.c` (scalar oracle with `lrintf`, AVX2 `cvtps`, new AArch64 NEON `quantize_row_to_i8_neon`), `src/math/quantize_i8_avx512.c` (`cvtps`), `src/math/ternary_matmul_packed_dotprod.c` (calls the NEON version).
+- Tests: `tests/test_quantize_i8_exact.c` (new: ties, tails, outliers, bit-exact tiers, half-step bound), `tests/test_simd_vnni.c` (bound `scale` -> `scale/2`). Guard: `tools/check_rounding.py` + CI step.
+- Why: docs/rca/2026-11-18-ternary-output-correctness.md (BitNet perplexity 34.39 -> expected about 31.4).
+
 ### 2026-11-18 — tools/bench: benchmark and calibration test scripts
 - `tools/bench/` (new): `benchlib.py`, `engines.json`, `models.json`, `hardware_profile.py`, `calibration_test.py`, `h2h_bench.py`, `build_compare.py`, `setup_engines.py`, `README.md`, `test_bench.py` (CI: Python tooling job). `Makefile`: `_HAS_AVX512VBMI` matches both cpuinfo spellings.
 

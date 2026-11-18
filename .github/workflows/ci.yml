@@ -85,6 +85,9 @@ jobs:
           # 2026-11-18) and no baseline file may carry such guards beyond the shrinking PENDING list.
           sh tools/check_dist_isa.sh ./pz
           python3 tools/check_isa_guards.py
+          # Quantisation must round to nearest, never truncate (docs/ai/mistakes.md, 2026-11-18).
+          python3 tools/check_rounding.py --self-test
+          python3 tools/check_rounding.py
 
   build-macos:
     name: Build & Test (macOS)

@@ -3,6 +3,13 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-11-18.
 
+### 2026-11-18 — Activation quantisation: one specification, scalar oracle, bit-exact tiers, lint
+
+- Context: the int8 activation quantiser truncated (mistakes.md, 2026-11-18); three copies of it existed and only their agreement with each other was tested.
+- Decision: the contract lives in `include/math/quantize_i8.h`: per-row abs_max, scale abs_max/127, `q = clamp(rint_even(x * 127/abs_max), -127, 127)`. The scalar function is the oracle; every tier (AVX2, AVX-512, NEON) must match it bit for bit (`tests/test_quantize_i8_exact.c`), and `tools/check_rounding.py` bans truncating converts in `src/` and `include/`. Ties go to even because that is what `cvtps2dq`, `vcvtn` and `lrintf` do by default and what `q8_0_act.c` already used.
+- Alternatives rejected: changing only the two truncating instructions (no spec, no enforcement, the next copy would drift); round half away from zero like bitnet.cpp's `roundf` (needs extra instructions in every SIMD tier to differ only on exact .5 products).
+- Follow-up (separate PR): activation numerics as a hardware-decided setting with an accuracy probe (docs/rca/2026-11-18-fix-and-gate-plan.md § 1.3 F2, F6).
+
 ### 2026-11-18 — Benchmarks and calibration tests are scripts, not hand-run sessions
 
 - Context: every comparison so far (calibration sweeps, tier A/Bs, native vs portable, head-to-head) was designed and run by hand, with ad-hoc timestamps and no standard record. The owner asked for independent scripts that run the hardware profile, run the test with the full pz branding, capture live-terminal screenshots with date and time, and save them, with every choice a flag.

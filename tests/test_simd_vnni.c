@@ -122,10 +122,11 @@ static void test_quantize_scale_consistency(void) {
         float err = fabsf((float)q[i] * scale - x[i]);
         if (err > max_err) max_err = err;
     }
-    /* Max quantization error ≤ scale (truncation toward zero loses at most 1 ULP).
-     * scale = max_abs / 127, so error is bounded by the quantization step size. */
-    TEST_ASSERT(max_err <= scale + 1e-5f,
-                "quantize: scale*q[i] ≈ x[i] within rounding");
+    /* Round to nearest: the error is at most HALF a step (scale = max_abs / 127). This bound was
+     * `<= scale` until 2026-11-18, which accepted a truncating quantiser (docs/rca/...);
+     * tests/test_quantize_i8_exact.c pins the full specification. */
+    TEST_ASSERT(max_err <= 0.5f * scale + 1e-5f,
+                "quantize: scale*q[i] ≈ x[i] within half a step");
 }
 
 #if TN_HAS_AVX512

@@ -21,6 +21,11 @@ Adapter for `docs/ai/engineering-rules.md` — read the canonical file for full 
   execution-verified CPU flag; never add the sub-feature flag to the whole base file (SIGILL on CPUs
   without it). `tools/check_isa_guards.py` (PENDING list only shrinks) and `tools/check_dist_isa.sh ./pz`
   (CI portable-build step) enforce it; a new kernel family gets a native-vs-portable A/B.
+- **Activation quantisation** (2026-11-18): `include/math/quantize_i8.h` is the specification (per-row
+  abs_max, scale abs_max/127, round to nearest ties-to-even, clamp +-127). The scalar function is the oracle;
+  every tier (AVX2, AVX-512, NEON) must equal it bit for bit (`tests/test_quantize_i8_exact.c`). Never
+  truncate (`cvtt*`, `(int8_t)(int)v`): `tools/check_rounding.py` (CI) fails on it. A new quantiser copy or
+  tier gets an exactness test, not just a tier-vs-tier comparison.
 - Cross-platform: x86 (AVX2..VNNI) + ARM (NEON/dotprod) + scalar all compile (CI builds each;
   a change that builds on one tier alone breaks the others); portable prefetch
   `TN_PREFETCH_T1`; feature-gate with `TN_HAS_*`.

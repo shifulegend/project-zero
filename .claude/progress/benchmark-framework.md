@@ -33,6 +33,18 @@ every engine, 3 rounds. Everything runs **one process at a time**. Remove this f
 - Next: then build the correctness gate into every bench script, re-run the sweep
   with it, then the pz quantiser fix as a separate PR from master. Do not merge #74 before the gate exists.
 
+## State 2026-11-18 evening
+- Gate framework done and pushed (gate.py, flags on every script, APPROX for lossy-by-design variants, setup_engines --smoke,
+  patched-engine support). 27 unit tests. Published sweep folder: 192 timed rows, 16 gate verdicts, 69 screenshots with verdict
+  captions, chart follows the gate mode.
+- pz quantiser fix (PR-A) is done and verified but only LOCAL: worktree /home/user/pz-fix, branch `pzfix-quantiser`
+  (2 commits on master 864eeea): `make release/test/debug` green on gcc and clang, check_dist_isa, check_isa_guards,
+  check_rounding. BitNet PPL 34.39 -> 31.37; speed 19.7 -> 20.6 tok/s (noise); evidence in
+  benchmark_results/build_compare_20261118-153555Z_quantiser-fix-ab. NOT pushed: a second branch needs the user's OK.
+- Decision pending from the user: (1) push `pzfix-quantiser` as its own branch, or merge #74 first and reuse this branch name;
+  (2) whether #74 may merge with the pz BitNet cells shown INVALID (re-timed after the pz fix lands).
+- PR-B (later): act-quant setting + in-engine probe + quality-tolerance + self-check across CLI/API/web UI (plan § 1.3 F2/F6, § 6).
+
 ## Open items
 - Unit tests for PARTIAL.md / progress.json / screenshot resume (add after the sweep, not during it).
 - Re-run `calibration_test.py` / `build_compare.py` only if their screenshot sets are judged short of the minimum.

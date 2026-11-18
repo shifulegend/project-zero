@@ -16,6 +16,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Changed
 
+- Speed up the quantised LM heads: `--classifier int8` decodes BitNet 2B-4T 44% faster (18.0 to 25.9 tok/s) and `--classifier int4` 30% faster (20.4 to 26.5 tok/s), 4 threads, 2.10 GHz Xeon, the default head unchanged at about 21.5; both now beat the default, and the portable release binary uses the same AVX-512 kernels as a native build.
 - Redo the first-run hardware calibration: SIMD tiers are compared in interleaved rounds and one replaces the default only when it wins a sign test and clears a 5% margin, and the thread count stays at the physical-core count unless another count is clearly faster. Existing calibration caches are discarded and rebuilt once on the next run (about a minute).
 - Label the web UI's per-reply usage line in tokens ("7 reply tokens · 37 prompt tokens" instead of "7 tokens · 37 prompt"); hovering it explains that the prompt count includes the chat template and any system message.
 

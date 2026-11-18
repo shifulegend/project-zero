@@ -1,0 +1,5 @@
+HOST_CPU: Intel(R) Xeon(R) Processor @ 2.10GHz (4 vCPU)
+DATE: 2026-11-18T04:11:38Z
+BINARY native: 29eea47b7d217cd0 pz-native-final
+BINARY portable_before: 8898bef0eeea51c6 pz-dist
+BINARY portable_after: e226739feb3ff4c6 pz-dist-final

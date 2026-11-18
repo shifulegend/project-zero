@@ -11,20 +11,12 @@
 #include <immintrin.h>
 #endif
 
-/* K-4 R-3: Pre-quantised dispatch path for VNNI backend */
-#if TN_HAS_AVX512VNNI
-#include "math/quantize_i8.h"
-#include "math/cpu_features.h"
-
-void ternary_matmul_packed_vnni_preq(float *out,
-                                      const int8_t *q_x, float act_scale,
-                                      int32_t sum_qx,
-                                      const tn_u8 *packed_w,
-                                      int n, int d,
-                                      const float *scales, int group_size);
-extern void ternary_matmul_packed_vnni(float *out, const float *x, const tn_u8 *packed_w,
-                                        int n, int d, const float *scales, int group_size);
-#endif
+/* K-4 R-3: Pre-quantised dispatch path for the AVX-512 VNNI tier. This file is
+ * built at the portable baseline ISA and holds no ISA-specific code or guards:
+ * the quantiser and the int8 kernel are dispatch pointers (math/simd_dispatch.h),
+ * bound by tn_simd_init only when that tier runs, so the path exists in every
+ * build (native and `make dist`) and a forced tier still runs its own kernel. */
+#define TN_PREQ_MAX_N 16384
 
 /**
  * Argument struct passed to each worker thread via the thread pool.
@@ -92,12 +84,10 @@ typedef struct {
     const tn_u8 *w;
     int n, d;
     float scale;
-#if TN_HAS_AVX512VNNI
-    /* K-4 R-3: pre-quantised activations (non-NULL when VNNI path is active) */
+    /* K-4 R-3: pre-quantised activations (non-NULL when the VNNI path is active) */
     const int8_t *q_x;
     float         act_scale;
     int32_t       sum_qx;
-#endif
 } ParallelMatmulPackedArgs;
 
 static void matmul_packed_task(void *arg, int thread_id, int start, int end) {
@@ -108,11 +98,11 @@ static void matmul_packed_task(void *arg, int thread_id, int start, int end) {
 
     size_t row_bytes = ((size_t)a->n + 3) >> 2;
 
-#if TN_HAS_AVX512VNNI
     /* K-4 R-3: use pre-quantised path when activations have been quantised
-     * once by the dispatcher before thread launch (VNNI backend only). */
-    if (a->q_x && a->act_scale > 0.0f) {
-        ternary_matmul_packed_vnni_preq(
+     * once by the dispatcher before thread launch (VNNI backend only; q_x is
+     * non-NULL only when tn_ternary_matmul_preq is bound). */
+    if (a->q_x && a->act_scale > 0.0f && tn_ternary_matmul_preq) {
+        tn_ternary_matmul_preq(
             a->out + start,
             a->q_x, a->act_scale, a->sum_qx,
             a->w + (size_t)start * row_bytes,
@@ -121,7 +111,6 @@ static void matmul_packed_task(void *arg, int thread_id, int start, int end) {
         );
         return;
     }
-#endif
 
     tn_ternary_matmul_packed(
         a->out + start,
@@ -141,7 +130,6 @@ void parallel_ternary_matmul_packed(float *out, const float *x, const tn_u8 *w,
         return;
     }
 
-#if TN_HAS_AVX512VNNI
     /*
      * Pre-quantize activations ONCE in the dispatcher, then pass to all
      * workers.  Without this, each of T workers independently quantizes
@@ -151,20 +139,19 @@ void parallel_ternary_matmul_packed(float *out, const float *x, const tn_u8 *w,
      * quantization entirely, saving stack allocation of q_x[16384] per
      * worker and improving instruction cache locality.
      */
-    int8_t q_x_buf[16384];
+    int8_t q_x_buf[TN_PREQ_MAX_N];
     int8_t *q_x = NULL;
     float act_scale = 0.0f;
     int32_t sum_qx = 0;
     /* Only the AVX-512 VNNI tier has a pre-quantised kernel; a forced or lower
      * tier must run the kernel it names (tn_simd_ternary_preq). */
-    if (n <= 16384 && tn_simd_ternary_preq()) {
-        act_scale = quantize_row_to_i8_avx512(x, q_x_buf, n);
+    if (n <= TN_PREQ_MAX_N && tn_simd_ternary_preq()) {
+        act_scale = tn_quantize_act_i8(x, q_x_buf, n);
         if (act_scale > 0.0f) {
-            sum_qx = sum_i8_avx512(q_x_buf, n);
+            sum_qx = tn_sum_act_i8(q_x_buf, n);
             q_x = q_x_buf;
         }
     }
-#endif
 
     ParallelMatmulPackedArgs args = {
         .out = out,
@@ -173,11 +160,9 @@ void parallel_ternary_matmul_packed(float *out, const float *x, const tn_u8 *w,
         .n = n,
         .d = d,
         .scale = scale,
-#if TN_HAS_AVX512VNNI
         .q_x = q_x,
         .act_scale = act_scale,
         .sum_qx = sum_qx
-#endif
     };
 
     threadpool_dispatch(tp, matmul_packed_task, &args, d);
@@ -190,19 +175,14 @@ int tn_preq_prepare(TnPreqActivation *preq, int8_t *buf, const float *x, int n) 
     preq->q_x = NULL;
     preq->act_scale = 0.0f;
     preq->sum_qx = 0;
-#if TN_HAS_AVX512VNNI
-    if (n <= 0 || n > 16384 || !tn_simd_ternary_preq()) return 0;
-    float scale = quantize_row_to_i8_avx512(x, buf, n);
+    if (n <= 0 || n > TN_PREQ_MAX_N || !tn_simd_ternary_preq()) return 0;
+    float scale = tn_quantize_act_i8(x, buf, n);
     if (scale <= 0.0f) return 0;
     preq->q_x      = buf;
     preq->act_scale = scale;
-    preq->sum_qx    = sum_i8_avx512(buf, n);
+    preq->sum_qx    = tn_sum_act_i8(buf, n);
     preq->valid     = 1;
     return 1;
-#else
-    (void)buf; (void)x; (void)n;
-    return 0;
-#endif
 }
 
 void parallel_ternary_matmul_packed_preq(float *out, const float *x, const tn_u8 *w,
@@ -214,8 +194,7 @@ void parallel_ternary_matmul_packed_preq(float *out, const float *x, const tn_u8
         return;
     }
 
-#if TN_HAS_AVX512VNNI
-    if (preq && preq->valid) {
+    if (preq && preq->valid && tn_ternary_matmul_preq) {
         /* Fast path: activations already quantised by caller — no re-quantisation */
         ParallelMatmulPackedArgs args = {
             .out       = out,
@@ -231,9 +210,6 @@ void parallel_ternary_matmul_packed_preq(float *out, const float *x, const tn_u8
         threadpool_dispatch(tp, matmul_packed_task, &args, d);
         return;
     }
-#else
-    (void)preq;
-#endif
 
     /* Fallback: standard quantise-per-call path */
     parallel_ternary_matmul_packed(out, x, w, n, d, scale, tp);

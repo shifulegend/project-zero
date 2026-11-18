@@ -3,6 +3,10 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-18.
 
+### 2026-11-18 — Portable binary parity, stage 1 (ternary path) and ISA-segregation guards
+- `src/math/quantize_i8_avx512.c` (new, AVX-512 flags; also CMake), `src/math/ternary_matmul_packed_vnni_vbmi.c` (new: the VNNI kernel compiled with VBMI, `_vbmi` suffix), `src/math/ternary_matmul_packed_vnni.c` (`TN_VNNI_KERNEL` name macro), `include/math/bitunpack2_vnni.h`, `src/math/simd_dispatch.c/.h` (dispatch pointers `tn_quantize_act_i8`, `tn_sum_act_i8`, `tn_ternary_matmul_preq`; `_vbmi` binding on `cpu->avx512vbmi`), `src/math/parallel_matmul.c` (pre-quantised path without ISA guards), `Makefile` (`_HAS_AVX512VBMI`, per-file rule, variant id), `CMakeLists.txt`.
+- Guards: `tools/check_isa_guards.py`, `tools/check_dist_isa.sh`, CI portable-build step. Tests: `tests/test_vnni_vbmi_parity.c`, `tests/test_simd_vnni.c` (dispatch accepts the `_vbmi` pair).
+
 ### 2026-11-18 — Honest SIMD tiers, evidence-based calibration, `--no-calibrate`
 - `src/math/simd_dispatch.c` + header: `tn_simd_ternary_preq()`; `src/math/parallel_matmul.c`: both pre-quantising entry points consult it. `src/core/calibration.c` + header: interleaved paired rounds, pure `tn_calib_pick_simd` / `tn_calib_wins_needed`, physical-core preference for threads, `tn_calibration_isa_mask()` in the cache key, `TN_CALIB_VERSION` 4. `--no-calibrate`: `src/cli/args.c`, `include/cli/args.h`, `src/cli/main.c`, `src/config/pz_config.c` (`g_schema`).
 - Tests: `tests/test_simd_tier_kernel.c` (characterisation: failed before the fix), `tests/test_calibration_pick.c` (chooser, noise rate, cache key). Docs: README, `--help`, `.claude/rules/config.md` and generated adapters, CHANGELOG, mistakes, decision-log.

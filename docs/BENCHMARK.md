@@ -1,8 +1,10 @@
 # Benchmarks
 
-Decode speed in tokens per second. Unless a section says otherwise: best of 3 runs per thread
-count, 500 generated tokens, temperature 0, one engine at a time with nothing else running. Raw
-logs, the exact commands and the host's CPU details are in each linked folder.
+Decode speed in tokens per second, measured with a native build (`make release`). Unless a section says
+otherwise: best of 3 runs per thread count, 500 generated tokens, temperature 0, one engine at a time with
+nothing else running. Raw logs, the exact commands and the host's CPU details are in each linked folder.
+The portable binary (`make dist`, what the installer fetches) against a native build on the same host:
+[benchmark_results/portable_vs_native_2026-11-18/](../benchmark_results/portable_vs_native_2026-11-18/README.md).
 
 ## Intel Xeon @ 2.80 GHz (Cascade Lake), 4 vCPU — 2026-10-29
 

@@ -3,6 +3,12 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-11-18.
 
+### 2026-11-18 — ISA segregation: every tier is compiled into the portable binary and bound at runtime
+
+- Context: the release binary was 35% slower than a native build on BitNet 2B because AVX-512/VNNI/VBMI code sat behind compile-time guards in files built at a lower ISA (mistakes.md, 2026-11-18). Alternatives measured or weighed: raising the portable floor to x86-64-v3/v4 (does not help: 15.2 / 16.3 against native 22.8); several release assets per ISA level chosen by `install.sh` (works, but multiplies release assets, installer logic and CI; revisit only if the segregated build cannot close the gap); GCC `target_clones` (does not help code selected by `#if` on a macro).
+- Decision: tier code lives only in files built with the tier's flags and is compiled in every x86 build; `tn_simd_init` (the only file built with `TN_FORCE_DISPATCH_ALL`) binds it through dispatch pointers; no `#if TN_HAS_AVX512*` in baseline/AVX2 files. A kernel with a sub-feature path (VBMI) is compiled twice with a name suffix and bound on the execution-verified CPU flag; the sub-feature flag is never applied to the whole base file. `tools/check_isa_guards.py` enforces it with a PENDING list that may only shrink; `tools/check_dist_isa.sh` inspects the portable binary in CI.
+- Staging: stage 1 is the ternary/BitNet path (measured 64% -> 92% of native). The remaining families are listed in PENDING and move one at a time, each with a native-vs-portable A/B.
+
 ### 2026-11-18 — A forced SIMD tier runs its own kernel; calibration decides on paired evidence; `--no-calibrate`
 
 - Context: forced tiers did not change the ternary matmul on VNNI native builds, so calibration picked a tier from noise (mistakes.md, 2026-11-18). Leading practice for tuners (Triton, PyTorch Inductor) keys the cache on device and software version; ggml selects CPU variants by CPUID feature score and does not benchmark.

@@ -63,7 +63,17 @@
  * for the derivation.
  */
 
-void ternary_matmul_packed_vnni(float *out, const float *x, const tn_u8 *packed_w,
+/* 2026-11-18: this file is compiled twice. Here (TN_VNNI_KERNEL(x) == x) at the
+ * VNNI baseline flags, where the bit-unpack uses the SSE path; and from
+ * ternary_matmul_packed_vnni_vbmi.c with AVX-512 VBMI enabled and the names
+ * suffixed _vbmi, where it uses the 3-instruction VBMI unpack. tn_simd_init()
+ * binds the _vbmi pair only on a CPU whose VBMI was execution-verified, so the
+ * VBMI instructions exist only in code that runs there. */
+#ifndef TN_VNNI_KERNEL
+#define TN_VNNI_KERNEL(name) name
+#endif
+
+void TN_VNNI_KERNEL(ternary_matmul_packed_vnni)(float *out, const float *x, const tn_u8 *packed_w,
                                  int n, int d, const float *scales, int group_size)
 {
     if (n > TN_VNNI_MAX_N) {
@@ -203,7 +213,7 @@ void ternary_matmul_packed_vnni(float *out, const float *x, const tn_u8 *packed_
  * than the standard path (T1/8 rows) since smaller lookahead fits better in
  * L1 (48 KB Tiger Lake) alongside the 2.5 KB activation vector.
  */
-void ternary_matmul_packed_vnni_preq(float *out,
+void TN_VNNI_KERNEL(ternary_matmul_packed_vnni_preq)(float *out,
                                       const int8_t *q_x, float act_scale,
                                       int32_t sum_qx,
                                       const tn_u8 *packed_w,

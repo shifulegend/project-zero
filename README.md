@@ -43,7 +43,10 @@ libm. GGUF models need a CPU with at least AVX2 on x86; BitNet runs on any x86-6
 ## Benchmarks
 
 Decode speed in tokens per second, best of 3 runs, temperature 0, nothing else running on the
-machine. Older runs, other machines and methods: [docs/BENCHMARK.md](docs/BENCHMARK.md).
+machine, measured with a native build (`make release`). The portable binary the installer fetches
+reaches 92% of that speed on BitNet 2B and about 89% on SmolLM2-135M F16 on an AVX-512 VNNI Xeon
+([details](benchmark_results/portable_vs_native_2026-11-18/README.md)). Older runs, other machines and
+methods: [docs/BENCHMARK.md](docs/BENCHMARK.md).
 
 ### Intel Xeon @ 2.80 GHz (Cascade Lake), 4 vCPU — 2026-10-29
 

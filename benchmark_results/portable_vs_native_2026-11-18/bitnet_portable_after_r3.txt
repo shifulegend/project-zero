@@ -1,0 +1,61 @@
+DATE: 2026-11-18T04:12:46Z
+HOST_CPU: Intel(R) Xeon(R) Processor @ 2.10GHz
+BUILD: portable_after (pz-dist-final)
+CMD: pz --model models/bitnet-b1.58-2B-4T-i2_s.gguf --chat-template-file docs/templates/bitnet-b1.58.jinja --prompt "Explain in two sentences why running an LLM on a CPU is useful." --max-tokens 128 --ignore-eos --temperature 0 --threads 4 --no-update-check --no-calibrate
+-----
+[1/4] Opening model file...
+[2/4] Loading weights...
+[3/4] Preparing runtime...
+[gguf-tok] Loaded 128256 tokens (gpt2, pre=default), 256 special — BOS=128000 EOS=128001 chat_template=yes
+[tokenizer] chat template from docs/templates/bitnet-b1.58.jinja (476 bytes)
+[4/4] Ready.
+####  ####   ###    ### #####  #### #####     ##### ##### ####   ### 
+#  #  #  #  #   #    #  #     #       #          #  #     #  #  #   #
+####  ####  #   #    #  ###   #       #         #   ###   ####  #   #
+#     # #   #   # #  #  #     #       #        #    #     # #   #   #
+#     #  #   ###   ##   #####  ####   #       ##### ##### #  #   ### 
+Project Zero Engine v0.2.0-20-g83af62a-dirty — Auto-Tuned Hardware
+[Calibration] Skipped: --no-calibrate
+┌─────────────────────────────────────────────────────┐
+│          Hardware Profile (auto-detected)           │
+├─────────────────────────────────────────────────────┤
+│ SIMD backend  : AVX-512 VNNI                        │
+│ Cores         : 4 physical / 4 logical              │
+│ Threads       : 4                                   │
+│ L2 cache      : 2048   KiB per core                 │
+│ L3 cache      : 260    MiB shared                   │
+│ Free RAM      : 15172  MiB                          │
+│ DRAM bandwidth: 46.3   GB/s (cached)                │
+├─────────────────────────────────────────────────────┤
+│ Classifier    : BF16 (full precision)               │
+│ Prefetch rows : 32                                  │
+│ Model in L3   : no                                  │
+│ Data/token    : 1149   MB (pre-load est.)           │
+│ Ceiling       : 49.7   tok/s (at 100% BW)           │
+└─────────────────────────────────────────────────────┘
+Active: 4 threads | AVX-512 VNNI | BF16 cls | 4T | 46.3 GB/s | ceiling 50 tok/s
+Model format: GGUF
+Model Configuration:
+  dim:        2560
+  hidden_dim: 6912
+  n_layers:   30
+  n_heads:    20
+  n_kv_heads: 5
+  vocab_size: 128256
+  seq_len:    4096
+  act_type:   1 (ReLU2)
+  rope_theta: 500000.0
+  head_dim:   128
+  kv_dim:     640
+[GGUF] Weights loaded (30 layers, arch=bitnet-b1.58)
+[profile] Data/token (loaded model): 1133 MB -> ceiling 39.0 tok/s at 46.3 GB/s
+KV cache: F32, max context: 4096 tokens (sizing tier: Quantized I8, RAM budget 60%)
+
+Running a Large Language Model (LLM) on a CPU is useful because it allows for relatively low-cost and accessible deployment, making it feasible for applications where high computational power is not a primary concern. Additionally, CPUs are widely available and can handle a variety of tasks efficiently, providing a good balance between performance and resource utilization. 
+
+However, it's worth noting that for more demanding LLMs, specialized hardware like GPUs or TPUs is often required to achieve acceptable performance and efficiency. 
+
+Would you like more detailed information on this topic? I can also provide information on how to optimize CPU usage for LLMs if you're interested.
+[gen] 23.82 tok/s (128 tokens)
+
+

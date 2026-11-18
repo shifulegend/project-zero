@@ -129,9 +129,15 @@ static inline __m512i tn_unpack64_to_wenc_u8_sse(const tn_u8 *row_j)
 static inline __m512i tn_unpack64_to_wenc_u8(const tn_u8 *row_j)
 {
 #if TN_HAS_AVX512VBMI
+#ifdef TN_VNNI_ASSUME_VBMI
+    /* ternary_matmul_packed_vnni_vbmi.c: the dispatcher binds this build only
+     * where VBMI is execution-verified, so no per-call check. */
+    return tn_unpack64_to_wenc_u8_vbmi(row_j);
+#else
     static int s_use_vbmi = -1;
     if (s_use_vbmi < 0) s_use_vbmi = tn_cpu_features_detect()->avx512vbmi ? 1 : 0;
     if (s_use_vbmi) return tn_unpack64_to_wenc_u8_vbmi(row_j);
+#endif
 #endif
     return tn_unpack64_to_wenc_u8_sse(row_j);
 }

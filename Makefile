@@ -123,7 +123,7 @@ all: $(TARGET)
 BUILD_STAMP := build/.variant
 HOST_ISA := $(shell $(CC) -march=native -dM -E - </dev/null 2>/dev/null | \
 	grep -E '__(AVX|SSE|FMA|F16C|BMI|AMX|ARM_FEATURE)' | sort | cksum | cut -d' ' -f1)
-VARIANT_ID = $(1) cc=$(notdir $(CC)) isa=$(HOST_ISA) vnni=$(_HAS_AVX512VNNI)$(_HAS_AVXVNNI)
+VARIANT_ID = $(1) cc=$(notdir $(CC)) isa=$(HOST_ISA) vnni=$(_HAS_AVX512VNNI)$(_HAS_AVXVNNI)$(_HAS_AVX512VBMI)
 define ensure_variant
 	@mkdir -p build
 	@if [ -f $(BUILD_STAMP) ] && [ "$$(cat $(BUILD_STAMP))" != "$(call VARIANT_ID,$(1))" ]; then \
@@ -149,7 +149,7 @@ debug:
 dist:
 	$(call ensure_variant,dist)
 	$(MAKE) CFLAGS="$(CFLAGS_DIST)" CXXFLAGS="$(CXXFLAGS_DIST)" LDFLAGS="$(LDFLAGS_DIST)" \
-	        _HAS_AVXVNNI=1 _HAS_AVX512VNNI=1 DISPATCH_DEFS=-DTN_FORCE_DISPATCH_ALL all
+	        _HAS_AVXVNNI=1 _HAS_AVX512VNNI=1 _HAS_AVX512VBMI=1 DISPATCH_DEFS=-DTN_FORCE_DISPATCH_ALL all
 
 # Build all object files without linking (useful when main.c doesn't exist yet)
 objs: $(OBJS)
@@ -211,6 +211,13 @@ build/math/ternary_matmul_packed_vnni.o: src/math/ternary_matmul_packed_vnni.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(if $(filter 1,$(_HAS_AVX512VNNI)),-mavx512vnni) -c -o $@ $<
 
+# The same kernels with the VBMI unpack (2026-11-18): the file is #included with the
+# names suffixed _vbmi. -mavx512vbmi is passed ONLY here, so VBMI instructions can exist
+# only in code that tn_simd_init() binds on a CPU with execution-verified VBMI.
+build/math/ternary_matmul_packed_vnni_vbmi.o: src/math/ternary_matmul_packed_vnni_vbmi.c src/math/ternary_matmul_packed_vnni.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(if $(and $(filter 1,$(_HAS_AVX512VNNI)),$(filter 1,$(_HAS_AVX512VBMI))),-mavx512vnni -mavx512vbmi) -c -o $@ $<
+
 # -mf16c: the optimized row dot uses _mm_cvtph_ps for the block scale; F16C
 # exists on every AVX-512VNNI CPU but is not implied by -mavx512vnni at the
 # x86-64-v2 dist baseline, so it must be requested explicitly (2026-07-17).
@@ -247,7 +254,7 @@ AVX2_TUS := math/ternary_matmul_avx2 math/ternary_matmul_packed_avx2 \
 AVX2_OBJS := $(addprefix build/,$(addsuffix .o,$(AVX2_TUS)))
 
 AVX512_TUS := math/ternary_matmul_packed_avx512 math/ternary_matmul_lut_avx512bw \
-              math/elementwise_avx512 \
+              math/elementwise_avx512 math/quantize_i8_avx512 \
               math/rmsnorm_avx512 math/softmax_avx512 math/kvq4_avx512
 AVX512_OBJS := $(addprefix build/,$(addsuffix .o,$(AVX512_TUS)))
 
@@ -279,12 +286,15 @@ build/core/calibration.o: src/core/calibration.c
 # -mavxvnni to a CPU that doesn't have them (prevents SIGILL and Clang errors).
 ifeq ($(UNAME_S),Linux)
   _HAS_AVX512VNNI := $(shell grep -qw avx512_vnni /proc/cpuinfo && echo 1 || echo 0)
+  _HAS_AVX512VBMI := $(shell grep -qw avx512_vbmi /proc/cpuinfo && echo 1 || echo 0)
   _HAS_AVXVNNI    := $(shell grep -qw avx_vnni    /proc/cpuinfo && echo 1 || echo 0)
 else ifeq ($(UNAME_S),Darwin)
   _HAS_AVX512VNNI := $(shell sysctl -n hw.optional.avx512vnni 2>/dev/null || echo 0)
+  _HAS_AVX512VBMI := $(shell sysctl -n hw.optional.avx512vbmi 2>/dev/null || echo 0)
   _HAS_AVXVNNI    := $(shell sysctl -n hw.optional.avxvnni    2>/dev/null || echo 0)
 else
   _HAS_AVX512VNNI := 0
+  _HAS_AVX512VBMI := 0
   _HAS_AVXVNNI    := 0
 endif
 

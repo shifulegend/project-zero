@@ -57,7 +57,9 @@ def render(panels, best, title, subtitle):
     for _, series in panels:
         names += [n for _, n in series if n not in names]
     colour = {n: COLORS[i % len(COLORS)] for i, n in enumerate(names)}
-    pw, gap, left, top, ph = 360, 40, 50, 112, 260
+    n_sub = len(subtitle.split(" | "))                       # every subtitle line pushes the panels down
+    wide = max(0, 7 * max(len(n) for n in names) - 130)       # long end labels get room instead of running into the next panel
+    pw, gap, left, top, ph = 360 + wide, 40, 50, 112 + 16 * max(0, n_sub - 2), 260
     w = left + len(panels) * pw + (len(panels) - 1) * gap + 30
     h = top + ph + 70
     out = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}" '

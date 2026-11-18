@@ -1,19 +1,23 @@
 # Head-to-head decode benchmark
 
-UTC start: 2026-11-18T14:38:24Z  |  host: Intel(R) Xeon(R) Processor @ 2.10GHz  |  pz commit: 9b01e1d
+UTC start: 2026-11-18T14:40:04Z  |  host: Intel(R) Xeon(R) Processor @ 2.10GHz  |  pz commit: 78689ec
 
 | model | variant | threads | runs | best tok/s | mean tok/s | stdev | mean / reference | gate |
 |---|---|---|---|---|---|---|---|---|
 | bitnet-2b | bitnetcpp | 1 | 3 | n/a | n/a | n/a | n/a | INVALID |
+| bitnet-2b | bitnetcpp-fix | 1 | 3 | 6.12 | 6.08 | 0.06 | 93% | REF |
 | bitnet-2b | pz | 1 | 3 | n/a | n/a | n/a | n/a | INVALID |
 | bitnet-2b | pz-int4 | 1 | 3 | 7.76 | 7.60 | 0.20 | 117% | APPROX |
 | bitnet-2b | bitnetcpp | 2 | 3 | n/a | n/a | n/a | n/a | INVALID |
+| bitnet-2b | bitnetcpp-fix | 2 | 3 | 10.97 | 10.84 | 0.11 | 89% | REF |
 | bitnet-2b | pz | 2 | 3 | n/a | n/a | n/a | n/a | INVALID |
 | bitnet-2b | pz-int4 | 2 | 3 | 14.49 | 14.27 | 0.37 | 117% | APPROX |
 | bitnet-2b | bitnetcpp | 3 | 3 | n/a | n/a | n/a | n/a | INVALID |
+| bitnet-2b | bitnetcpp-fix | 3 | 3 | 15.76 | 15.66 | 0.12 | 92% | REF |
 | bitnet-2b | pz | 3 | 3 | n/a | n/a | n/a | n/a | INVALID |
 | bitnet-2b | pz-int4 | 3 | 3 | 21.24 | 20.53 | 0.63 | 120% | APPROX |
 | bitnet-2b | bitnetcpp | 4 | 3 | n/a | n/a | n/a | n/a | INVALID |
+| bitnet-2b | bitnetcpp-fix | 4 | 3 | 20.21 | 19.42 | 0.72 | 87% | REF |
 | bitnet-2b | pz | 4 | 3 | n/a | n/a | n/a | n/a | INVALID |
 | bitnet-2b | pz-int4 | 4 | 3 | 26.57 | 26.46 | 0.10 | 119% | APPROX |
 | bitnet-2b-iq2bn | ik | 1 | 3 | 6.26 | 6.11 | 0.14 | n/a | PASS |
@@ -95,66 +99,70 @@ Mode strict; tolerance 1.0 % (WARN up to 2.0x); text `gate_text.txt` (sha256 851
 
 | model | variant | threads | screenshot |
 |---|---|---|---|
-| smollm2-135m | pz | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-083611Z_smollm2-135m__pz_t1.png |
-| smollm2-135m | pz-int4 | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-083635Z_smollm2-135m__pz-int4_t1.png |
-| smollm2-135m | llamacpp | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-083654Z_smollm2-135m__llamacpp_t1.png |
-| smollm2-135m | ik | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-083717Z_smollm2-135m__ik_t1.png |
-| smollm2-1.7b-q4km | pz | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-083737Z_smollm2-1.7b-q4km__pz_t1.png |
-| smollm2-1.7b-q4km | pz-int4 | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-083931Z_smollm2-1.7b-q4km__pz-int4_t1.png |
-| smollm2-1.7b-q4km | llamacpp | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-084123Z_smollm2-1.7b-q4km__llamacpp_t1.png |
-| smollm2-1.7b-q4km | ik | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-084309Z_smollm2-1.7b-q4km__ik_t1.png |
-| bitnet-2b | pz | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-084439Z_bitnet-2b__pz_t1.png |
-| bitnet-2b | pz-int4 | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-084603Z_bitnet-2b__pz-int4_t1.png |
-| bitnet-2b | bitnetcpp | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-084722Z_bitnet-2b__bitnetcpp_t1.png |
-| bitnet-2b-iq2bn | ik | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-084858Z_bitnet-2b-iq2bn__ik_t1.png |
-| mamba-130m | pz | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-085033Z_mamba-130m__pz_t1.png |
-| mamba-130m | pz-int4 | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-085056Z_mamba-130m__pz-int4_t1.png |
-| mamba-130m | llamacpp | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-085118Z_mamba-130m__llamacpp_t1.png |
-| smollm2-135m | pz | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-085139Z_smollm2-135m__pz_t2.png |
-| smollm2-135m | pz-int4 | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-085151Z_smollm2-135m__pz-int4_t2.png |
-| smollm2-135m | llamacpp | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-085202Z_smollm2-135m__llamacpp_t2.png |
-| smollm2-135m | ik | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-085217Z_smollm2-135m__ik_t2.png |
-| smollm2-1.7b-q4km | pz | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-085230Z_smollm2-1.7b-q4km__pz_t2.png |
-| smollm2-1.7b-q4km | pz-int4 | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-085339Z_smollm2-1.7b-q4km__pz-int4_t2.png |
-| smollm2-1.7b-q4km | llamacpp | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-085451Z_smollm2-1.7b-q4km__llamacpp_t2.png |
-| smollm2-1.7b-q4km | ik | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-085559Z_smollm2-1.7b-q4km__ik_t2.png |
-| bitnet-2b | pz | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-085651Z_bitnet-2b__pz_t2.png |
-| bitnet-2b | pz-int4 | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-085747Z_bitnet-2b__pz-int4_t2.png |
-| bitnet-2b | bitnetcpp | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-085838Z_bitnet-2b__bitnetcpp_t2.png |
-| bitnet-2b-iq2bn | ik | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-085933Z_bitnet-2b-iq2bn__ik_t2.png |
-| mamba-130m | pz | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-090023Z_mamba-130m__pz_t2.png |
-| mamba-130m | pz-int4 | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-090037Z_mamba-130m__pz-int4_t2.png |
-| mamba-130m | llamacpp | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-090051Z_mamba-130m__llamacpp_t2.png |
-| smollm2-135m | pz | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-090105Z_smollm2-135m__pz_t3.png |
-| smollm2-135m | pz-int4 | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-090114Z_smollm2-135m__pz-int4_t3.png |
-| smollm2-135m | llamacpp | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-090125Z_smollm2-135m__llamacpp_t3.png |
-| smollm2-135m | ik | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-090136Z_smollm2-135m__ik_t3.png |
-| smollm2-1.7b-q4km | pz | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-090145Z_smollm2-1.7b-q4km__pz_t3.png |
-| smollm2-1.7b-q4km | pz-int4 | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-090233Z_smollm2-1.7b-q4km__pz-int4_t3.png |
-| smollm2-1.7b-q4km | llamacpp | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-090322Z_smollm2-1.7b-q4km__llamacpp_t3.png |
-| smollm2-1.7b-q4km | ik | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-090409Z_smollm2-1.7b-q4km__ik_t3.png |
-| bitnet-2b | pz | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-090448Z_bitnet-2b__pz_t3.png |
-| bitnet-2b | pz-int4 | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-090524Z_bitnet-2b__pz-int4_t3.png |
-| bitnet-2b | bitnetcpp | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-090602Z_bitnet-2b__bitnetcpp_t3.png |
-| bitnet-2b-iq2bn | ik | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-090638Z_bitnet-2b-iq2bn__ik_t3.png |
-| mamba-130m | pz | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-090717Z_mamba-130m__pz_t3.png |
-| mamba-130m | pz-int4 | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-090729Z_mamba-130m__pz-int4_t3.png |
-| mamba-130m | llamacpp | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-090741Z_mamba-130m__llamacpp_t3.png |
-| smollm2-135m | pz | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-090751Z_smollm2-135m__pz_t4.png |
-| smollm2-135m | pz-int4 | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-090800Z_smollm2-135m__pz-int4_t4.png |
-| smollm2-135m | llamacpp | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-090809Z_smollm2-135m__llamacpp_t4.png |
-| smollm2-135m | ik | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-090820Z_smollm2-135m__ik_t4.png |
-| smollm2-1.7b-q4km | pz | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-090831Z_smollm2-1.7b-q4km__pz_t4.png |
-| smollm2-1.7b-q4km | pz-int4 | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-090916Z_smollm2-1.7b-q4km__pz-int4_t4.png |
-| smollm2-1.7b-q4km | llamacpp | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-090958Z_smollm2-1.7b-q4km__llamacpp_t4.png |
-| smollm2-1.7b-q4km | ik | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-091037Z_smollm2-1.7b-q4km__ik_t4.png |
-| bitnet-2b | pz | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-091139Z_bitnet-2b__pz_t4.png |
-| bitnet-2b | pz-int4 | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-091212Z_bitnet-2b__pz-int4_t4.png |
-| bitnet-2b | bitnetcpp | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-091246Z_bitnet-2b__bitnetcpp_t4.png |
-| bitnet-2b-iq2bn | ik | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-091319Z_bitnet-2b-iq2bn__ik_t4.png |
-| mamba-130m | pz | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-091354Z_mamba-130m__pz_t4.png |
-| mamba-130m | pz-int4 | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-091405Z_mamba-130m__pz-int4_t4.png |
-| mamba-130m | llamacpp | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-091417Z_mamba-130m__llamacpp_t4.png |
+| smollm2-135m | pz | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-145145Z_smollm2-135m__pz_t1.png |
+| smollm2-135m | pz-int4 | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-145204Z_smollm2-135m__pz-int4_t1.png |
+| smollm2-135m | llamacpp | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-145223Z_smollm2-135m__llamacpp_t1.png |
+| smollm2-135m | ik | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-145249Z_smollm2-135m__ik_t1.png |
+| smollm2-1.7b-q4km | pz | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-145312Z_smollm2-1.7b-q4km__pz_t1.png |
+| smollm2-1.7b-q4km | pz-int4 | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-145444Z_smollm2-1.7b-q4km__pz-int4_t1.png |
+| smollm2-1.7b-q4km | llamacpp | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-145617Z_smollm2-1.7b-q4km__llamacpp_t1.png |
+| smollm2-1.7b-q4km | ik | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-145814Z_smollm2-1.7b-q4km__ik_t1.png |
+| bitnet-2b | pz | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-145942Z_bitnet-2b__pz_t1.png |
+| bitnet-2b | pz-int4 | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-150110Z_bitnet-2b__pz-int4_t1.png |
+| bitnet-2b | bitnetcpp | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-150254Z_bitnet-2b__bitnetcpp_t1.png |
+| bitnet-2b | bitnetcpp-fix | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-150422Z_bitnet-2b__bitnetcpp-fix_t1.png |
+| bitnet-2b-iq2bn | ik | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-150552Z_bitnet-2b-iq2bn__ik_t1.png |
+| mamba-130m | pz | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-150713Z_mamba-130m__pz_t1.png |
+| mamba-130m | pz-int4 | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-150732Z_mamba-130m__pz-int4_t1.png |
+| mamba-130m | llamacpp | 1 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-150753Z_mamba-130m__llamacpp_t1.png |
+| smollm2-135m | pz | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-150814Z_smollm2-135m__pz_t2.png |
+| smollm2-135m | pz-int4 | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-150826Z_smollm2-135m__pz-int4_t2.png |
+| smollm2-135m | llamacpp | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-150839Z_smollm2-135m__llamacpp_t2.png |
+| smollm2-135m | ik | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-150856Z_smollm2-135m__ik_t2.png |
+| smollm2-1.7b-q4km | pz | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-150910Z_smollm2-1.7b-q4km__pz_t2.png |
+| smollm2-1.7b-q4km | pz-int4 | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151002Z_smollm2-1.7b-q4km__pz-int4_t2.png |
+| smollm2-1.7b-q4km | llamacpp | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151055Z_smollm2-1.7b-q4km__llamacpp_t2.png |
+| smollm2-1.7b-q4km | ik | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151200Z_smollm2-1.7b-q4km__ik_t2.png |
+| bitnet-2b | pz | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151248Z_bitnet-2b__pz_t2.png |
+| bitnet-2b | pz-int4 | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151338Z_bitnet-2b__pz-int4_t2.png |
+| bitnet-2b | bitnetcpp | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151438Z_bitnet-2b__bitnetcpp_t2.png |
+| bitnet-2b | bitnetcpp-fix | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151526Z_bitnet-2b__bitnetcpp-fix_t2.png |
+| bitnet-2b-iq2bn | ik | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151614Z_bitnet-2b-iq2bn__ik_t2.png |
+| mamba-130m | pz | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151707Z_mamba-130m__pz_t2.png |
+| mamba-130m | pz-int4 | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151721Z_mamba-130m__pz-int4_t2.png |
+| mamba-130m | llamacpp | 2 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151735Z_mamba-130m__llamacpp_t2.png |
+| smollm2-135m | pz | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151749Z_smollm2-135m__pz_t3.png |
+| smollm2-135m | pz-int4 | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151759Z_smollm2-135m__pz-int4_t3.png |
+| smollm2-135m | llamacpp | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151809Z_smollm2-135m__llamacpp_t3.png |
+| smollm2-135m | ik | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151822Z_smollm2-135m__ik_t3.png |
+| smollm2-1.7b-q4km | pz | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151832Z_smollm2-1.7b-q4km__pz_t3.png |
+| smollm2-1.7b-q4km | pz-int4 | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151910Z_smollm2-1.7b-q4km__pz-int4_t3.png |
+| smollm2-1.7b-q4km | llamacpp | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-151953Z_smollm2-1.7b-q4km__llamacpp_t3.png |
+| smollm2-1.7b-q4km | ik | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152043Z_smollm2-1.7b-q4km__ik_t3.png |
+| bitnet-2b | pz | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152128Z_bitnet-2b__pz_t3.png |
+| bitnet-2b | pz-int4 | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152205Z_bitnet-2b__pz-int4_t3.png |
+| bitnet-2b | bitnetcpp | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152250Z_bitnet-2b__bitnetcpp_t3.png |
+| bitnet-2b | bitnetcpp-fix | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152327Z_bitnet-2b__bitnetcpp-fix_t3.png |
+| bitnet-2b-iq2bn | ik | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152403Z_bitnet-2b-iq2bn__ik_t3.png |
+| mamba-130m | pz | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152446Z_mamba-130m__pz_t3.png |
+| mamba-130m | pz-int4 | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152457Z_mamba-130m__pz-int4_t3.png |
+| mamba-130m | llamacpp | 3 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152509Z_mamba-130m__llamacpp_t3.png |
+| smollm2-135m | pz | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152519Z_smollm2-135m__pz_t4.png |
+| smollm2-135m | pz-int4 | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152527Z_smollm2-135m__pz-int4_t4.png |
+| smollm2-135m | llamacpp | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152535Z_smollm2-135m__llamacpp_t4.png |
+| smollm2-135m | ik | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152545Z_smollm2-135m__ik_t4.png |
+| smollm2-1.7b-q4km | pz | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152554Z_smollm2-1.7b-q4km__pz_t4.png |
+| smollm2-1.7b-q4km | pz-int4 | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152628Z_smollm2-1.7b-q4km__pz-int4_t4.png |
+| smollm2-1.7b-q4km | llamacpp | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152704Z_smollm2-1.7b-q4km__llamacpp_t4.png |
+| smollm2-1.7b-q4km | ik | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152743Z_smollm2-1.7b-q4km__ik_t4.png |
+| bitnet-2b | pz | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152813Z_bitnet-2b__pz_t4.png |
+| bitnet-2b | pz-int4 | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152844Z_bitnet-2b__pz-int4_t4.png |
+| bitnet-2b | bitnetcpp | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152923Z_bitnet-2b__bitnetcpp_t4.png |
+| bitnet-2b | bitnetcpp-fix | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-152951Z_bitnet-2b__bitnetcpp-fix_t4.png |
+| bitnet-2b-iq2bn | ik | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-153019Z_bitnet-2b-iq2bn__ik_t4.png |
+| mamba-130m | pz | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-153057Z_mamba-130m__pz_t4.png |
+| mamba-130m | pz-int4 | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-153107Z_mamba-130m__pz-int4_t4.png |
+| mamba-130m | llamacpp | 4 | benchmark_results/h2h_20261118-053147Z_published-sweep/screenshots/20261118-153117Z_mamba-130m__llamacpp_t4.png |
 
 
 ## Chart

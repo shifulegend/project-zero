@@ -25,6 +25,13 @@ every engine, 3 rounds. Everything runs **one process at a time**. Remove this f
   sweeps cell by cell; run `python3 tools/bench/test_bench.py` (deferred while the sweep ran so tests do not
   disturb measurements); commit the folder, push, recheck CI, then the user decides on the merge.
 
+## Update 2026-11-18 (after the sweep)
+- Sweep folder committed (180 runs, 60 screenshots, chart) but **not accepted**: RCA found bitnet.cpp computes SiLU
+  instead of squared-ReLU (its BitNet cells and ik's iq2bn cells are unverified) and pz's int8 quantiser truncates.
+  RCA: `docs/rca/2026-11-18-ternary-output-correctness.md`; plan: `docs/rca/2026-11-18-fix-and-gate-plan.md`.
+- Next: user answers § 5 of the plan; then build the correctness gate into every bench script, re-run the sweep
+  with it, then the pz quantiser fix as a separate PR from master. Do not merge #74 before the gate exists.
+
 ## Open items
 - Unit tests for PARTIAL.md / progress.json / screenshot resume (add after the sweep, not during it).
 - Re-run `calibration_test.py` / `build_compare.py` only if their screenshot sets are judged short of the minimum.

@@ -209,6 +209,26 @@ class Gate(unittest.TestCase):
         self.assertTrue(gate.blocked(res["m/bad"], self.CFG))
         self.assertFalse(gate.blocked(res["m/ok"], self.CFG))
 
+    def test_approximate_variants_are_reported_not_judged(self):
+        import gate
+        cfg = dict(self.CFG, approximate={"lossy": {"why": "by design"}, "bounded": {"tolerance_pct": 5.0}})
+        res = {"m/ref": {"model": "m", "variant": "ref", "ppl": 10.0, "smoke_ok": True},
+               "m/lossy": {"model": "m", "variant": "lossy", "ppl": 12.0, "smoke_ok": True},
+               "m/bounded": {"model": "m", "variant": "bounded", "ppl": 10.4, "smoke_ok": True},
+               "m/bounded2": {"model": "m", "variant": "bounded", "ppl": 14.0, "smoke_ok": True},
+               "m/lossy_wrong": {"model": "m", "variant": "lossy", "ppl": 12.0, "smoke_ok": False}}
+        gate.judge(res, cfg, lambda m, v: "m/ref")
+        self.assertEqual(res["m/lossy"]["verdict"], "APPROX")
+        self.assertEqual(res["m/bounded"]["verdict"], "APPROX")          # 4 % off, inside its 5 % hard bound
+        self.assertEqual(res["m/bounded2"]["verdict"], "INVALID")        # 40 % off, beyond the 5 % hard bound
+        self.assertEqual(res["m/lossy_wrong"]["verdict"], "INVALID")     # a lossy variant must still answer correctly
+        self.assertIn("APPROX", gate.GOOD)
+
+    def test_ik_perplexity_format_is_parsed(self):
+        import gate
+        rx = gate.load_config()["ppl_regex"]
+        self.assertEqual(gate.parse_ppl("Final estimate: PPL over 7 chunks for n_ctx=512 = 8.0256 +/- 0.54101", rx), (8.0256, 0.54101))
+
     def test_config_overrides_and_frozen_text(self):
         import gate
         cfg = gate.load_config({"tolerance_pct": 0.5, "mode": None})

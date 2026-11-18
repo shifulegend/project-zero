@@ -11,6 +11,7 @@ correctly (MLPerf Inference rule). The gate therefore runs before timing and att
   INVALID     outside that, the answer to the smoke prompt is wrong, or the engine failed
   UNVERIFIED  no reference result to compare with
   REF         the reference itself (it still has to pass the smoke check)
+  APPROX      a variant that is lossy by design (gate.json `approximate`): the gap is reported, not judged
 
 Checks per (model, variant), both from gate.json (nothing hard-coded here):
   1. smoke:  a short greedy factual prompt must contain the expected answer;
@@ -37,7 +38,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import benchlib as bl  # noqa: E402
 
 CONFIG = bl.HERE / "gate.json"
-GOOD = ("PASS", "WARN", "REF")        # verdicts whose numbers may be published
+GOOD = ("PASS", "WARN", "REF", "APPROX")        # verdicts whose numbers may be published
 FLAG_TO_KEY = {"gate": "mode", "gate_tolerance": "tolerance_pct", "gate_text": "text",
                "gate_chunks": "ppl_chunks", "gate_ctx": "ppl_ctx"}
 
@@ -132,6 +133,11 @@ def judge(results, cfg, reference_of):
             ref_bad = ref is None or ref.get("smoke_ok") is False or ref.get("ppl") is None
             r["ref_ppl"] = None if ref_bad else ref["ppl"]
             r["verdict"], r["delta_pct"] = verdict(r.get("ppl"), r["ref_ppl"], cfg["tolerance_pct"], cfg["warn_factor"])
+            approx = cfg.get("approximate", {}).get(r["variant"])
+            if approx is not None and r["verdict"] in ("WARN", "INVALID") and r.get("ppl") is not None:
+                bound = approx.get("tolerance_pct")                       # optional hard bound for a lossy variant
+                if bound is None or abs(r["delta_pct"]) <= bound:
+                    r["verdict"], r["approx_note"] = "APPROX", approx.get("why", "")
     return results
 
 

@@ -1,6 +1,8 @@
 # Plan: fix the ternary activation quantiser, add a correctness gate, decide the bitnet.cpp treatment
 
-Follows `2026-11-18-ternary-output-correctness.md` (the RCA). Nothing here is implemented yet.
+Follows `2026-11-18-ternary-output-correctness.md` (the RCA).
+
+Status: implemented — F1 quantiser specification and exactness tests (#75), the correctness gate (§ 2, #74/#77) and the faster LM-head kernels (#76). Not implemented, deferred as a larger change: F2 `act-quant` setting, F6 in-engine accuracy probe, `pz --self-check`, `/v1/selfcheck` and web UI controls (§ 6). Today `--classifier int4` is a documented lossy option; on Mamba-130M it gives wrong output (perplexity 84.8 against 12.6), which the benchmark gate reports as INVALID.
 Your decisions (2026-11-18) are recorded in § 5 and applied below.
 
 ## 1. Fix pz's activation quantisation (separate PR from master)

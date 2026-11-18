@@ -1,6 +1,6 @@
 # RCA: wrong / degraded BitNet output (bitnet.cpp and pz), 2026-11-18
 
-Status: **findings verified, fixes NOT applied** (awaiting a decision; see § 7).
+Status: **fixed** — pz activation quantiser (#75), LM-head kernels (#76), correctness gate in the benchmark scripts (#74, #77). The bitnet.cpp finding is reported upstream (microsoft/BitNet #602). Still open: § 8 item 4 (SmolLM2-1.7B Q4_K_M, pz perplexity 0.46% below llama.cpp, not traced to a tensor).
 Evidence: `benchmark_results/rca_ternary_output_20261118/`, scripts in `tools/bench/verify/`.
 
 ## 1. Trigger

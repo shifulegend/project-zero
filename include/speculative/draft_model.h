@@ -1,7 +1,7 @@
 #ifndef TN_SPECULATIVE_DRAFT_MODEL_H
 #define TN_SPECULATIVE_DRAFT_MODEL_H
 
-#include "cli/model_load.h"
+#include "runtime/model_load.h"
 #include "core/config.h"
 #include "core/error.h"
 #include "core/moe_config.h"
@@ -14,7 +14,7 @@
 /**
  * Phase 18 (speculative decoding), Stage 5: a second, smaller GGUF model
  * loaded alongside the verifier. Implemented entirely via
- * cli/model_load.h's load_gguf_model() (is_primary=false) -- zero
+ * runtime/model_load.h's load_gguf_model() (is_primary=false) -- zero
  * duplicated GGUF-parsing code.
  */
 typedef struct {
@@ -39,7 +39,7 @@ typedef struct {
  *
  * @param max_seq_len_hint  Forwarded to load_gguf_model() -- the draft
  *                          model's context is sized from this hint, not a
- *                          free-RAM probe (see cli/model_load.h).
+ *                          free-RAM probe (see runtime/model_load.h).
  */
 TernaryError draft_model_load(DraftModel *dm, const char *draft_model_path,
                                int verifier_vocab_size, int max_seq_len_hint,

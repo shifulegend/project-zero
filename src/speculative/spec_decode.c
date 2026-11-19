@@ -6,7 +6,7 @@
 #include <string.h>
 #include <time.h>
 
-#include "cli/timer.h"
+#include "core/timer.h"
 #include "core/step_timing.h"
 #include "math/simd_dispatch.h"
 #include "sampling/rng.h"

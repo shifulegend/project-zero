@@ -299,14 +299,14 @@ set(CLI_SOURCES
     src/cli/config_cmd.c
     src/cli/model_catalog.c
     src/config/pz_config.c
-    src/cli/timer.c
+    src/core/timer.c
     src/cli/repl.c
     src/cli/color.c
-    src/cli/progress.c
+    src/core/progress.c
     src/cli/live_stats.c
     src/cli/md_render.c
     src/cli/banner.c
-    src/cli/model_load.c
+    src/runtime/model_load.c
 )
 
 set(API_SOURCES

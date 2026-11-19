@@ -1,5 +1,5 @@
-#ifndef TN_CLI_MODEL_LOAD_H
-#define TN_CLI_MODEL_LOAD_H
+#ifndef TN_RUNTIME_MODEL_LOAD_H
+#define TN_RUNTIME_MODEL_LOAD_H
 
 #include <stdbool.h>
 #include "core/config.h"
@@ -85,4 +85,4 @@ TernaryError load_gguf_model(LoadedModel *out, const char *model_path,
  */
 void loaded_model_free(LoadedModel *m);
 
-#endif /* TN_CLI_MODEL_LOAD_H */
+#endif /* TN_RUNTIME_MODEL_LOAD_H */

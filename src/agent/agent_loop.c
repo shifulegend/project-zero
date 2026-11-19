@@ -8,7 +8,7 @@
 #include "sampling/sampling.h"
 #include "sampling/rng.h"
 #include "tokenizer/tokenizer.h"
-#include "cli/timer.h"
+#include "core/timer.h"
 
 /* Phase 15 RAG */
 #include "rag/auto_save.h"

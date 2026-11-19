@@ -7,7 +7,7 @@
 
 #include <stdio.h>
 #include <string.h>
-#include "cli/progress.h"
+#include "core/progress.h"
 
 #define PASS(name)  printf("[PASS] %s\n", name)
 #define FAIL(name, msg) do { printf("[FAIL] %s: %s\n", name, msg); g_failures++; } while(0)

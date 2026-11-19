@@ -14,7 +14,7 @@
 #include "sampling/sampler_chain.h"
 #include "sampling/logprob.h"
 #include "distributed/dist_plan.h"
-#include "cli/timer.h"
+#include "core/timer.h"
 #include "core/step_timing.h"
 #include "tokenizer/chat_template.h"
 #include "tokenizer/template_guard.h"

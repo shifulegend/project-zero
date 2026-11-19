@@ -5,7 +5,7 @@
 
 #include "cli/live_stats.h"
 #include "cli/color.h"
-#include "cli/timer.h"
+#include "core/timer.h"
 #include <stdio.h>
 
 void tn_live_stats_init(TnLiveStats *ls) {

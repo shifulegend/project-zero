@@ -1,4 +1,4 @@
-#include "cli/model_load.h"
+#include "runtime/model_load.h"
 #include "transformer/mamba.h"
 
 #include <stdio.h>
@@ -7,14 +7,14 @@
 
 #include "core/hardware_profile.h"
 #include "core/moe_weights.h"
-#include "cli/progress.h"
+#include "core/progress.h"
 #include "kv_cache/kv_strategy.h"
 
 /* Phase 18 (speculative decoding) Stage 3: this file is the GGUF half of
  * main()'s original inline model-load block (roughly its old lines
  * 199-529), factored out unchanged in behavior so a second (draft) model
  * can reuse it. main()'s native raw-ternary `.bin` branch is NOT handled
- * here — draft models are GGUF-only (see include/cli/model_load.h) — and
+ * here — draft models are GGUF-only (see include/runtime/model_load.h) — and
  * stays fully inline in main() as its own separate path. */
 
 TernaryError load_gguf_model(LoadedModel *out, const char *model_path,

@@ -1,5 +1,5 @@
 #include "cli/repl.h"
-#include "cli/timer.h"
+#include "core/timer.h"
 #include "cli/color.h"
 #include "cli/live_stats.h"
 #include "cli/md_render.h"

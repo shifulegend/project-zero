@@ -1,5 +1,5 @@
-#ifndef TN_CLI_PROGRESS_H
-#define TN_CLI_PROGRESS_H
+#ifndef TN_CORE_PROGRESS_H
+#define TN_CORE_PROGRESS_H
 
 /*
  * Phase 22.3 — Coarse-grained model-load progress indicator.
@@ -27,4 +27,4 @@ void tn_progress_stage(int stage, int total_stages, const char *label, int is_tt
  * its own newline. */
 void tn_progress_done(int is_tty);
 
-#endif /* TN_CLI_PROGRESS_H */
+#endif /* TN_CORE_PROGRESS_H */

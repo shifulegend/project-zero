@@ -1,9 +1,9 @@
 /*
  * Phase 22.3 — src/cli/progress.c
- * See include/cli/progress.h for responsibility.
+ * See include/core/progress.h for responsibility.
  */
 
-#include "cli/progress.h"
+#include "core/progress.h"
 #include <stdio.h>
 
 size_t tn_progress_format(char *buf, size_t cap, int stage, int total_stages,

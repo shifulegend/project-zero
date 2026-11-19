@@ -50,7 +50,7 @@ static void test_mmap_nonexistent(void) {
  * fd == 0 (not -1) until mapped_file_open() has run — closing it on a
  * never-opened struct used to hit `if (mf->fd >= 0) close(mf->fd)` and
  * silently close fd 0 (stdin). Found while adding a second caller
- * (cli/model_load.c's loaded_model_free()) that actually exercises this
+ * (runtime/model_load.c's loaded_model_free()) that actually exercises this
  * exact zeroed-struct path. Verifies stdin's fd stays open and valid across
  * the call — the only way this bug can actually be observed from outside. */
 static void test_mmap_close_on_zeroed_struct_does_not_close_stdin(void) {

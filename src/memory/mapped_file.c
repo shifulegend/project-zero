@@ -106,7 +106,7 @@ void mapped_file_close(MappedFile *mf) {
      * function's "safe to call on a zeroed MappedFile" doc promise. Without
      * it, a zeroed struct has fd == 0, and `close(0)` would silently close
      * stdin instead of being the no-op callers rely on (2026-09-22: found
-     * while adding a caller — loaded_model_free() in cli/model_load.c — that
+     * while adding a caller — loaded_model_free() in runtime/model_load.c — that
      * is documented to make exactly this zeroed-struct call). */
     if (mf->data) {
         munmap(mf->data, mf->size);

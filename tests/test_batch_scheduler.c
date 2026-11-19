@@ -10,7 +10,7 @@
  */
 #include "test_harness.h"
 #include "api/batch_scheduler.h"
-#include "cli/model_load.h"
+#include "runtime/model_load.h"
 #include "threading/thread_pool.h"
 #include "math/simd_dispatch.h"
 #include "tokenizer/tokenizer_gguf.h"

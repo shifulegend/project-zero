@@ -35,9 +35,9 @@
 #include "update/update_check.h"
 #include "math/rope.h"
 #include "eval/perplexity.h"
-#include "cli/model_load.h"
+#include "runtime/model_load.h"
 #include "cli/repl.h"
-#include "cli/progress.h"
+#include "core/progress.h"
 #include "cli/banner.h"
 #include "cli/color.h"
 #include "transformer/generate.h"
@@ -519,7 +519,7 @@ int main(int argc, char **argv) {
          *
          * This is the native-format twin of load_gguf_model()'s identical KV-strategy/
          * RunState-allocation sequence (Phase 18 Stage 3) — native `.bin` models have no
-         * draft-model use case (see cli/model_load.h), so this stays inline here rather
+         * draft-model use case (see runtime/model_load.h), so this stays inline here rather
          * than sharing that GGUF-only helper. */
         {
             tn_i64 post_load_ram = tn_get_free_ram();

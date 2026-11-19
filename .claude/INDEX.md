@@ -28,7 +28,7 @@ Q8_0, F32), and DeepSeek-V2-style MoE/MLA models. The primary binary is `pz`.
 | `src/cli/main.c` | Entry point: parses CLI, loads model, dispatches to generate/REPL/server/agent |
 | `src/cli/args.c` | Argument parser for `--model`, `--prompt`, `--threads`, `--simd`, `--classifier`, etc. |
 | `src/cli/repl.c` | Interactive multi-turn REPL loop |
-| `src/cli/timer.c` | Wall-clock microsecond timer (`timer_now_us`, `timer_tokens_per_sec`) |
+| `src/core/timer.c` | Wall-clock microsecond timer (`timer_now_us`, `timer_tokens_per_sec`) |
 
 ### 📁 `src/core/` — Model Loading & Config
 | File | Description |

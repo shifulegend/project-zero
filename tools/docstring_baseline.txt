@@ -1,5 +1,4 @@
 # Public functions without a docstring, per file in tools/ (tools/check_docstrings.py); may only go down.
-tools/bench/benchlib.py 36
 tools/bench/build_compare.py 4
 tools/bench/calibration_test.py 5
 tools/bench/chart.py 1

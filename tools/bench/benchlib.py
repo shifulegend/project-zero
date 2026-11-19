@@ -43,6 +43,7 @@ ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07|\r")
 
 # ── time ────────────────────────────────────────────────────────────────────────────────────
 def utc_now():
+    """Current time as a timezone-aware UTC datetime."""
     return datetime.datetime.now(datetime.timezone.utc)
 
 
@@ -52,6 +53,7 @@ def utc_stamp(t=None):
 
 
 def iso_utc(t=None):
+    """Time (default: now) formatted as ISO 8601 UTC, e.g. 2026-11-19T20:00:00Z."""
     return (t or utc_now()).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
@@ -84,6 +86,7 @@ def parse_threads(spec):
 
 
 def add_common_args(ap, kind):
+    """Adds the flags every benchmark script shares (output folder, label, calibration, ...) to the parser `ap`; `kind` names the run folder."""
     g = ap.add_argument_group("run folder and output")
     g.add_argument(
         "--out", help=f"output folder (default: benchmark_results/{kind}_<UTC stamp>[_<label>])"
@@ -137,6 +140,7 @@ class RunDir:
         self._log = None
 
     def create(self):
+        """Creates the run folder with its raw/ and screenshot folders and records the command line."""
         for d in (self.path, self.raw, self.shots):
             d.mkdir(parents=True, exist_ok=True)
         cmdfile = self.path / "command.txt"  # a resumed run appends its command; the original stays
@@ -154,11 +158,13 @@ class RunDir:
         return self
 
     def close(self):
+        """Closes the run log."""
         if self._log:
             self._log.close()
             self._log = None
 
     def log(self, msg=""):
+        """Prints a message and appends it to the run log with a timestamp."""
         line = f"[{iso_utc()}] {msg}" if msg else ""
         print(msg, flush=True)
         if self._log:
@@ -166,12 +172,14 @@ class RunDir:
             self._log.flush()
 
     def write(self, rel, text):
+        """Writes text to a file under the run folder (creating directories) and returns its path."""
         p = self.path / rel
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(text)
         return p
 
     def rel(self, p=None):
+        """Path relative to the repository root, or as given when it lies outside it."""
         try:
             return str((p or self.path).resolve().relative_to(ROOT))
         except ValueError:
@@ -189,6 +197,7 @@ def _sh(cmd):
 
 
 def cpu_model():
+    """CPU model name from /proc/cpuinfo, or the processor name / "unknown" when it is not listed."""
     for line in pathlib.Path("/proc/cpuinfo").read_text(encoding="utf-8").splitlines():
         if line.startswith("model name"):
             return line.split(":", 1)[1].strip()
@@ -196,6 +205,7 @@ def cpu_model():
 
 
 def host_info():
+    """Host description for the run folder: CPU model, vCPU count, memory and the relevant CPU flags."""
     flags = ""
     for line in pathlib.Path("/proc/cpuinfo").read_text(encoding="utf-8").splitlines():
         if line.startswith("flags"):
@@ -233,6 +243,7 @@ def host_info():
 
 
 def git_info():
+    """Git state of the checkout: short commit, branch and whether tracked files are modified."""
     dirty = bool(_sh(["git", "-C", str(ROOT), "status", "--porcelain", "--untracked-files=no"]))
     return {
         "commit": _sh(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"]),
@@ -242,6 +253,7 @@ def git_info():
 
 
 def bin_info(path):
+    """Facts about a binary under test: path, whether it exists, size and a short SHA-256."""
     p = pathlib.Path(path)
     if not p.exists():
         return {"path": str(path), "exists": False}
@@ -257,6 +269,7 @@ def bin_info(path):
 
 
 def system_info_text(run, extra=None):
+    """Text of the run's system-info file: date, host CPU, git state and any `extra` lines."""
     h, g = host_info(), git_info()
     lines = [
         f"DATE: {iso_utc(run.t0)}",
@@ -292,6 +305,7 @@ def pz_env(run, calibration, tag=""):
 
 
 def pz_flags(calibration):
+    """Flags to pass to pz for a calibration mode ("off" adds --no-calibrate)."""
     return ["--no-calibrate"] if calibration == "off" else []
 
 
@@ -307,6 +321,7 @@ def _ensure_capture_deps():
 
 
 def strip_ansi(text):
+    """Removes ANSI escape sequences from terminal output."""
     return ANSI.sub("", text)
 
 
@@ -346,32 +361,38 @@ def screenshot(run, name, cmd, env, rows=0, timeout_s=600, note=""):
 
 # ── registries ──────────────────────────────────────────────────────────────────────────────
 def load_engines():
+    """Engines listed in engines.json, without the "_" comment keys."""
     d = json.loads((HERE / "engines.json").read_text())
     return {k: v for k, v in d.items() if not k.startswith("_")}
 
 
 def load_models():
+    """Models listed in models.json, without the "_" comment keys."""
     d = json.loads((HERE / "models.json").read_text())
     return {k: v for k, v in d.items() if not k.startswith("_")}
 
 
 def default_engine_dir():
+    """Directory holding the reference engines: $PZ_BENCH_ENGINE_DIR or ~/ext."""
     return pathlib.Path(os.environ.get("PZ_BENCH_ENGINE_DIR") or pathlib.Path.home() / "ext")
 
 
 def engine_binary(key, engine_dir):
+    """Path of the named engine's binary under `engine_dir`, or None if it is not built."""
     e = load_engines()[key]
     p = pathlib.Path(engine_dir) / e["dir"] / e["binary"]
     return p if p.exists() else None
 
 
 def model_path(key, models_dir="models"):
+    """Path of the named model file under `models_dir`, or None if it is not downloaded."""
     p = pathlib.Path(models_dir) / load_models()[key]["file"]
     return p if p.exists() else None
 
 
 # ── statistics / tables ─────────────────────────────────────────────────────────────────────
 def stats(vals):
+    """Summary of the non-None samples: count, best, mean and standard deviation (None values when empty)."""
     vals = [v for v in vals if v is not None]
     if not vals:
         return {"n": 0, "best": None, "mean": None, "stdev": None}
@@ -384,6 +405,7 @@ def stats(vals):
 
 
 def write_csv(path, header, rows):
+    """Writes `rows` to a CSV file with `header` as the first line (UTF-8)."""
     with open(path, "w", encoding="utf-8", newline="") as f:
         w = csv.writer(f)
         w.writerow(header)
@@ -391,17 +413,20 @@ def write_csv(path, header, rows):
 
 
 def read_csv_dicts(path):
+    """Reads a CSV file into a list of dicts keyed by the header."""
     with open(path, encoding="utf-8", newline="") as f:
         return list(csv.DictReader(f))
 
 
 def md_table(header, rows):
+    """Renders a Markdown table from a header and rows."""
     out = ["| " + " | ".join(header) + " |", "|" + "|".join("---" for _ in header) + "|"]
     out += ["| " + " | ".join(str(c) for c in r) + " |" for r in rows]
     return "\n".join(out) + "\n"
 
 
 def fnum(v, nd=1):
+    """Formats a number to `nd` decimals, or "-" for None."""
     return "-" if v is None else f"{v:.{nd}f}"
 
 
@@ -424,6 +449,7 @@ def save_run_log(run, relname, header_lines, text, tail_lines=()):
 
 
 def finish(run, meta):
+    """Writes meta.json with the start and finish times, removes the partial-run markers, logs the results folder and closes the run."""
     meta = dict(meta)
     meta["finished"] = iso_utc()
     meta["started"] = iso_utc(run.t0)
@@ -460,6 +486,7 @@ def run_cmd(cmd, env=None, timeout=None):
 
 
 def pz_cmd(pz, model, tokens, threads, extra=(), fixed_length=True, prompt=PROMPT, flags=()):
+    """Command line (list of arguments) that runs pz on a model with the given token count, threads and extra flags."""
     cmd = (
         [
             str(pz),
@@ -542,6 +569,7 @@ def ppl_cmd_ref(binary, model, text, ctx, chunks, threads, extra=()):
 
 
 def engine_ppl_binary(key, engine_dir):
+    """Path of the named engine's perplexity binary under `engine_dir`, or None when it has none or is not built."""
     spec = load_engines()[key].get("perplexity")
     p = pathlib.Path(engine_dir) / load_engines()[key]["dir"] / spec["binary"] if spec else None
     return p if p and p.exists() else None
@@ -553,7 +581,10 @@ def engine_ppl_binary(key, engine_dir):
 # None = the variant cannot run that model. Every script builds its variants with these two factories,
 # so command construction exists once.
 def pz_variant(label, pz, flags=(), env=None):
+    """Variant description for pz: its label, how to build the generation and perplexity commands, and the environment."""
+
     def cmd(key, info, path, tokens, threads, fixed, prompt=PROMPT):
+        """Generation command for this pz variant, or None when the model has no pz engine."""
         return (
             pz_cmd(pz, path, tokens, threads, flags, fixed, prompt)
             if "pz" in info["engines"]
@@ -561,6 +592,7 @@ def pz_variant(label, pz, flags=(), env=None):
         )
 
     def ppl(key, info, path, text, ctx, chunks, threads, extra=()):
+        """Perplexity command for this pz variant, or None when the model has no pz engine."""
         return (
             ppl_cmd_pz(pz, path, text, ctx, chunks, threads, list(flags) + list(extra))
             if "pz" in info["engines"]
@@ -571,9 +603,11 @@ def pz_variant(label, pz, flags=(), env=None):
 
 
 def ref_variant(label, engine, binary, ppl_binary=None, env=None):
+    """Variant description for a reference engine: label, command builders for generation and perplexity, and the environment."""
     e = load_engines()[engine]
 
     def cmd(key, info, path, tokens, threads, fixed, prompt=PROMPT):
+        """Generation command for this reference engine, or None when the model does not list it."""
         if engine not in info["engines"]:
             return None
         return ref_cmd(
@@ -588,6 +622,7 @@ def ref_variant(label, engine, binary, ppl_binary=None, env=None):
         )
 
     def ppl(key, info, path, text, ctx, chunks, threads, extra=()):
+        """Perplexity command for this reference engine, or None when it is not listed or has no perplexity binary."""
         if engine not in info["engines"] or not ppl_binary:
             return None
         return ppl_cmd_ref(ppl_binary, path, text, ctx, chunks, threads, extra)
@@ -658,6 +693,7 @@ SUMMARY_HEADER = [
 
 
 def load_rows(path):
+    """Rows of an earlier results CSV (an empty list when the file does not exist), used to resume a run."""
     rows = []
     if pathlib.Path(path).exists():
         with open(path, encoding="utf-8") as f:
@@ -742,6 +778,7 @@ def run_matrix(
     counter = [len(done)]
 
     def one(key, info, mpath, v, t, rnd, ntok):
+        """Measures one (model, variant, threads, round) cell and appends its row, unless it is already recorded, has no command or is skipped."""
         if (key, v["label"], t, rnd) in done:
             run.log(f"  {key} {v['label']} t={t} run {rnd}: recorded (resume)")
             return

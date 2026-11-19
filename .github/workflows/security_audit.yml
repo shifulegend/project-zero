@@ -4,7 +4,7 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: 3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install Dependencies
         run: |
           sudo apt-get update -q || { echo "apt-get update failed; dropping the runner's third-party Microsoft repo (unused) and retrying"; sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list /etc/apt/sources.list.d/*microsoft*; sudo apt-get update -q; }
@@ -32,7 +32,7 @@ jobs:
     name: ThreadSanitizer (TS-5.3)
     runs-on: ubuntu-latest
     steps:
-      - uses: 3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install Dependencies
         run: |
           sudo apt-get update -q || { echo "apt-get update failed; dropping the runner's third-party Microsoft repo (unused) and retrying"; sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list /etc/apt/sources.list.d/*microsoft*; sudo apt-get update -q; }

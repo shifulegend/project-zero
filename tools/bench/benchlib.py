@@ -35,7 +35,7 @@ import time
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
-from bench_sweep_seq import PROMPT, gen_toks, prompt_toks, run_once  # noqa: E402,F401  (reused, not copied)
+from bench_sweep_seq import PROMPT, gen_toks, prompt_toks, run_once  # noqa: F401  (reused, not copied)
 
 CAPTURE = ROOT / "tools" / "screenshots" / "cli" / "capture.mjs"
 ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07|\r")

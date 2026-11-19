@@ -97,7 +97,7 @@ def persona_drift():
     src_dir = ROOT / ".claude" / "agents"
     for src in sorted(src_dir.glob("*.md")) if src_dir.exists() else []:
         dst = ROOT / ".github" / "agents" / f"{src.stem}.agent.md"
-        body = lambda t: re.sub(r"^---\n.*?\n---\n", "", t, count=1, flags=re.S)  # noqa: E731
+        body = lambda t: re.sub(r"^---\n.*?\n---\n", "", t, count=1, flags=re.S)
         if not dst.exists():
             out.append(
                 f"{dst.relative_to(ROOT).as_posix()}: missing copy of {src.relative_to(ROOT).as_posix()}"

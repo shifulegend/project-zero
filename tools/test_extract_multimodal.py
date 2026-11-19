@@ -7,7 +7,7 @@ import unittest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 try:
-    import numpy  # noqa: F401
+    import numpy  # noqa: F401  (only probes that numpy is installed)
 
     import extract_multimodal as em
 except ImportError:  # numpy missing: nothing to test here

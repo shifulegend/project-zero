@@ -33,10 +33,15 @@ def count(text):
 
 
 def bare(text, kind):
-    """Lines with a blanket NOLINT: it must name the check it silences, NOLINT(check-name)."""
+    """Lines with a blanket NOLINT (it must name its check) or a noqa with no reason after its codes."""
     out = []
     for n, line in enumerate(text.splitlines(), 1):
         if kind == "NOLINT" and re.search(r"NOLINT(NEXTLINE)?(?!\()", line):
+            out.append(n)
+        # a noqa must say why: text after the rule codes ("# noqa: F401  (side-effect import)")
+        if kind == "noqa" and re.search(
+            r"#\s*noqa\b(?::\s*[A-Z]+[0-9]+(?:\s*,\s*[A-Z]+[0-9]+)*)?\s*$", line
+        ):
             out.append(n)
     return out
 
@@ -51,7 +56,7 @@ def totals():
         text = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
         for k, v in count(text).items():
             total[k] += v
-        bare_lines += [f"{rel}:{n}" for n in bare(text, "NOLINT")]
+        bare_lines += [f"{rel}:{n}" for n in bare(text, "NOLINT") + bare(text, "noqa")]
     return total, bare_lines
 
 
@@ -84,7 +89,7 @@ def main(argv):
         return 0
     bad = compare(cur, read_baseline())
     for n in bare_lines:
-        print(f"{n}: NOLINT without a check name")
+        print(f"{n}: suppression without a check name or a reason")
     for b in bad:
         print("more suppressions than the baseline:", b)
     print(f"suppressions: {cur}")

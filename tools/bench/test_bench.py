@@ -194,7 +194,7 @@ class Gate(unittest.TestCase):
     def test_verdict_boundaries_are_two_sided(self):
         import gate
 
-        v = lambda x: gate.verdict(x, 100.0, 1.0, 2.0)[0]  # noqa: E731
+        v = lambda x: gate.verdict(x, 100.0, 1.0, 2.0)[0]
         self.assertEqual(
             [v(100.9), v(99.1), v(101.5), v(98.5), v(103.0), v(96.0)],
             ["PASS", "PASS", "WARN", "WARN", "INVALID", "INVALID"],

@@ -17,6 +17,13 @@ class SuppressionTest(unittest.TestCase):
         text = "a // NOLINT\nb // NOLINT(x) -- reason\nc // NOLINTNEXTLINE\n"
         self.assertEqual(c.bare(text, "NOLINT"), [1, 3])
 
+    def test_noqa_needs_a_reason(self):
+        self.assertEqual(c.bare("import x  # noqa", "noqa"), [1])
+        self.assertEqual(c.bare("import x  # noqa: F401", "noqa"), [1])
+        self.assertEqual(c.bare("import x  # noqa: F401,E402", "noqa"), [1])
+        self.assertEqual(c.bare("import x  # noqa: F401  (side effect)", "noqa"), [])
+        self.assertEqual(c.bare("x = 1  # noqa: BLE001 -- keep going", "noqa"), [])
+
     def test_compare_reports_only_increases(self):
         base = {"NOLINT": 3, "noqa": 10, "pragma-diagnostic": 1}
         self.assertEqual(c.compare({"NOLINT": 3, "noqa": 9, "pragma-diagnostic": 1}, base), [])

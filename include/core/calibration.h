@@ -148,6 +148,12 @@ void tn_calibration_report(const TnCalibrationResult *result);
  */
 const char *tn_calibration_best_simd(const TnCalibrationResult *result);
 
+/* Activation numerics the calibrated tier runs, for --act-quant auto: "int8" when the tier quantises
+ * activations (vnni, vnni256), "float" for the float tiers (scalar, avx2, avx512f), NULL when the
+ * result is invalid or keeps the dispatcher's own choice ("auto"). The decision is the measured one:
+ * the sweep times the int8 tier against the float tiers and a float tier wins only on a clear margin. */
+const char *tn_calibration_act_quant(const TnCalibrationResult *result);
+
 /*
  * Get the recommended classifier for --classifier auto-fast.
  * Returns the fastest classifier format from calibration.

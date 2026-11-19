@@ -118,11 +118,29 @@ static void test_cache_key(void) {
     if (system(cmd) != 0) printf("cleanup of %s failed\n", dir);
 }
 
+static void test_act_quant_of_tier(void) {
+    TnCalibrationResult r;
+    memset(&r, 0, sizeof(r));
+    TEST_ASSERT(tn_calibration_act_quant(&r) == NULL, "invalid result: no decision");
+    r.valid = 1;
+    snprintf(r.best_simd_name, sizeof(r.best_simd_name), "auto");
+    TEST_ASSERT(tn_calibration_act_quant(&r) == NULL, "auto keeps the dispatcher's choice");
+    snprintf(r.best_simd_name, sizeof(r.best_simd_name), "vnni");
+    TEST_ASSERT(strcmp(tn_calibration_act_quant(&r), "int8") == 0, "vnni quantises activations");
+    snprintf(r.best_simd_name, sizeof(r.best_simd_name), "vnni256");
+    TEST_ASSERT(strcmp(tn_calibration_act_quant(&r), "int8") == 0, "vnni256 quantises activations");
+    snprintf(r.best_simd_name, sizeof(r.best_simd_name), "avx2");
+    TEST_ASSERT(strcmp(tn_calibration_act_quant(&r), "float") == 0, "avx2 keeps float activations");
+    snprintf(r.best_simd_name, sizeof(r.best_simd_name), "scalar");
+    TEST_ASSERT(strcmp(tn_calibration_act_quant(&r), "float") == 0, "scalar keeps float activations");
+}
+
 int main(void) {
     RUN_TEST(test_wins_needed);
     RUN_TEST(test_noise_never_wins);
     RUN_TEST(test_clear_win_and_clear_loss);
     RUN_TEST(test_margin_and_ties);
     RUN_TEST(test_cache_key);
+    RUN_TEST(test_act_quant_of_tier);
     TEST_SUMMARY();
 }

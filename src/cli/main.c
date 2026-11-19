@@ -289,6 +289,12 @@ int main(int argc, char **argv) {
             printf("SIMD: %s (calibrated optimal)\n", best);
         }
     }
+    /* --act-quant auto: the numerics are the calibrated tier's (measured int8 against float). */
+    if (have_calib && args.act_quant == 0) {
+        const char *aq = tn_calibration_act_quant(&calib);
+        printf("Activation quantization: %s (auto, %s)\n", aq ? aq : tn_act_quant_effective(),
+               aq ? "calibrated" : "highest tier");
+    }
 
     /* ── Classifier selection ───────────────────────────────────────────── */
     if (args.classifier_override == 3) {

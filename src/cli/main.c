@@ -240,6 +240,7 @@ int main(int argc, char **argv) {
     }
 
     tn_simd_init();
+    const int dispatcher_int8 = strcmp(tn_act_quant_effective(), "int8") == 0;   /* what "auto" runs, before calibration */
 
     /* Hardware Profile: auto-detect cores, cache, bandwidth, classifier format.
      * The DRAM bandwidth comes from a per-host cache (core/bw_cache.h);
@@ -293,8 +294,13 @@ int main(int argc, char **argv) {
     /* --act-quant auto: the numerics are the calibrated tier's (measured int8 against float). */
     if (have_calib && args.act_quant == 0) {
         const char *aq = tn_calibration_act_quant(&calib);
-        printf("Activation quantization: %s (auto, %s)\n", aq ? aq : tn_act_quant_effective(),
-               aq ? "calibrated" : "highest tier");
+        double t_i8 = 0, t_fl = 0;
+        if (tn_calibration_act_timing(&calib, dispatcher_int8, &t_i8, &t_fl))
+            printf("Activation quantization: %s (auto, %s; measured int8 tier %.1f vs float tier %.1f tok/s)\n",
+                   aq ? aq : tn_act_quant_effective(), aq ? "calibrated" : "highest tier", t_i8, t_fl);
+        else
+            printf("Activation quantization: %s (auto, %s)\n", aq ? aq : tn_act_quant_effective(),
+                   aq ? "calibrated" : "highest tier");
     }
 
     /* ── Classifier selection ───────────────────────────────────────────── */

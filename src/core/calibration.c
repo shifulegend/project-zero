@@ -730,6 +730,20 @@ const char *tn_calibration_act_quant(const TnCalibrationResult *result) {
     return "float";
 }
 
+int tn_calibration_act_timing(const TnCalibrationResult *result, int auto_is_int8, double *int8_tokps, double *float_tokps) {
+    if (!result || !result->valid) return 0;
+    /* indices follow tn_calibration_simd_names(): 0 auto, 1 scalar, 2 avx2, 3 avx512f, 4 vnni, 5 vnni256 */
+    double i8 = result->simd_tokps[4] > result->simd_tokps[5] ? result->simd_tokps[4] : result->simd_tokps[5];
+    double fl = result->simd_tokps[1];
+    if (auto_is_int8) { if (result->simd_tokps[0] > i8) i8 = result->simd_tokps[0]; }
+    else if (result->simd_tokps[0] > fl) fl = result->simd_tokps[0];
+    for (int i = 2; i <= 3; i++) if (result->simd_tokps[i] > fl) fl = result->simd_tokps[i];
+    if (!(i8 > 0.0) || !(fl > 0.0)) return 0;
+    if (int8_tokps) *int8_tokps = i8;
+    if (float_tokps) *float_tokps = fl;
+    return 1;
+}
+
 TnClassifierFormat tn_calibration_best_classifier(const TnCalibrationResult *result) {
     if (!result->valid) return TN_CLS_BF16;
     return (TnClassifierFormat)result->best_cls_idx;

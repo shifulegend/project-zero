@@ -15,8 +15,11 @@ endif
 # inside ServerConfig) left stale objects with the old layout linked into the
 # binary/tests — caught as an ASan SEGV reading a shifted field offset.
 DEPFLAGS        = -MMD -MP
-CFLAGS_COMMON   = -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L $(DARWIN_DEFS) $(DEPFLAGS)
-CXXFLAGS_COMMON = -std=c++17 -Wall -Wextra -Iinclude -D_POSIX_C_SOURCE=200809L $(DARWIN_DEFS) $(DEPFLAGS)
+# WERROR=1 turns every warning into an error (used by CI; off by default so a newer
+# compiler's new warnings never break a user's own build).
+WERROR_FLAG     = $(if $(filter 1,$(WERROR)),-Werror,)
+CFLAGS_COMMON   = -std=c99 -Wall -Wextra -Wpedantic $(WERROR_FLAG) -Iinclude -D_POSIX_C_SOURCE=200809L $(DARWIN_DEFS) $(DEPFLAGS)
+CXXFLAGS_COMMON = -std=c++17 -Wall -Wextra $(WERROR_FLAG) -Iinclude -D_POSIX_C_SOURCE=200809L $(DARWIN_DEFS) $(DEPFLAGS)
 # Version string baked into the binary (overridable; derived from git by default).
 # Used by --version and the startup banner; a #ifndef fallback in main.c covers
 # builds where it is not passed (e.g. plain `make debug`).

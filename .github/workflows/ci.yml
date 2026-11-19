@@ -64,13 +64,13 @@ jobs:
           sudo apt-get install -y -q gcc clang make
 
       - name: Build (release)
-        run: make release CC=${{ matrix.compiler }}
+        run: make release CC=${{ matrix.compiler }} WERROR=1   # warnings are errors in CI only
 
       - name: Run tests
-        run: make test CC=${{ matrix.compiler }}
+        run: make test CC=${{ matrix.compiler }} WERROR=1
 
       - name: Build (debug + sanitizers)
-        run: make debug CC=${{ matrix.compiler }}
+        run: make debug CC=${{ matrix.compiler }} WERROR=1
 
       - name: Build (portable dist) + smoke test
         run: |

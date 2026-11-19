@@ -73,6 +73,10 @@ typedef struct {
     float **q35_conv_state;  /* [n_layers] linear-attn: [conv_kernel-1][conv_dim] history */
     float **q35_recur_state; /* [n_layers] linear-attn: [n_v_heads][state_size][state_size] */
     float *q35_rope_freq;    /* [attn_rope_dim/2] shared partial-rotary freq table */
+    /* Single-token attention scratch for both layer kinds (full: q|gate, k, v, concat; linear:
+     * qkv, z, beta, alpha, decay, conv out, core out), sized from the model. Per RunState, so two
+     * RunStates never share it (it used to be function-local statics with fixed caps). */
+    float *q35_scratch;
 
     /* Qwen3-MoE attention state (see MoEConfig.has_qk_norm). NULL for all
    * other models. Same class of fix as q35_key_cache above: this arch's

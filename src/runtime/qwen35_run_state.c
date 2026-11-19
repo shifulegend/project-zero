@@ -166,6 +166,20 @@ TernaryError q35_run_state_alloc(RunState *s, const Config *cfg, const MoEConfig
     float theta = cfg->rope_theta > 0.0f ? cfg->rope_theta : 10000.0f;
     rope_precompute_freqs(s->q35_rope_freq, rope_dim, theta);
 
+    /* Attention scratch (see RunState.q35_scratch): both layer kinds' buffers, laid out by
+     * qwen35_attention.c from the same widths. */
+    {
+        size_t q_w     = (size_t)cfg->n_heads * (size_t)head_dim;
+        size_t kv_w    = (size_t)n_kv_h * (size_t)head_dim;
+        size_t full    = 2 * q_w + 2 * kv_w + q_w;
+        size_t lin     = (size_t)conv_dim * 2 + (size_t)value_dim * 2 + (size_t)n_v_heads * 3;
+        s->q35_scratch = (float *)tn_aligned_calloc(full + lin, sizeof(float), 64);
+        if (!s->q35_scratch) {
+            q35_run_state_free(s, cfg, mc);
+            return TN_ERR_OOM;
+        }
+    }
+
     return TN_OK;
 }
 
@@ -195,6 +209,10 @@ void q35_run_state_free(RunState *s, const Config *cfg, const MoEConfig *mc) {
     if (s->q35_rope_freq) {
         tn_aligned_free(s->q35_rope_freq);
         s->q35_rope_freq = NULL;
+    }
+    if (s->q35_scratch) {
+        tn_aligned_free(s->q35_scratch);
+        s->q35_scratch = NULL;
     }
     (void)mc;
 }

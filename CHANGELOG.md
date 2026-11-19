@@ -35,6 +35,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Fixed
 
+- Stop Qwen3.5/3.6 attention from sharing scratch buffers between concurrent callers: both the full-attention and the Gated-DeltaNet layers kept their buffers in function-local statics, so two requests running a forward pass at the same time could overwrite each other's values. The buffers now belong to each request's run state and are sized by the model, so the fixed width caps are gone too.
 - Make `install.sh` work from an offline `file://` mirror when only `wget` is installed (it passed the `file://` URL to wget, which cannot read it).
 - Refuse a non-numeric value for a numeric flag (`--rate-limit abc`, `--threads four`, `--temperature hot`, ...) with an error naming the flag; before, `atoi` turned it into 0, which silently switched off the rate limiter, the client timeout or the connection cap. Trailing junk (`64x`) and numbers outside the integer range are refused too.
 - Answer `501` to a request body sent with any `Transfer-Encoding` (gzip, deflate, ...), not only `chunked`; before, the server ignored the header and read the body as plain bytes.
@@ -130,6 +131,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Fixed
 
+- Stop Qwen3.5/3.6 attention from sharing scratch buffers between concurrent callers: both the full-attention and the Gated-DeltaNet layers kept their buffers in function-local statics, so two requests running a forward pass at the same time could overwrite each other's values. The buffers now belong to each request's run state and are sized by the model, so the fixed width caps are gone too.
 - Make `install.sh` work from an offline `file://` mirror when only `wget` is installed (it passed the `file://` URL to wget, which cannot read it).
 - Refuse a non-numeric value for a numeric flag (`--rate-limit abc`, `--threads four`, `--temperature hot`, ...) with an error naming the flag; before, `atoi` turned it into 0, which silently switched off the rate limiter, the client timeout or the connection cap. Trailing junk (`64x`) and numbers outside the integer range are refused too.
 - Answer `501` to a request body sent with any `Transfer-Encoding` (gzip, deflate, ...), not only `chunked`; before, the server ignored the header and read the body as plain bytes.
@@ -186,6 +188,7 @@ _First release with a prebuilt, portable x86-64 Linux binary (`adaptive_ai_engin
 
 ### Fixed
 
+- Stop Qwen3.5/3.6 attention from sharing scratch buffers between concurrent callers: both the full-attention and the Gated-DeltaNet layers kept their buffers in function-local statics, so two requests running a forward pass at the same time could overwrite each other's values. The buffers now belong to each request's run state and are sized by the model, so the fixed width caps are gone too.
 - Make `install.sh` work from an offline `file://` mirror when only `wget` is installed (it passed the `file://` URL to wget, which cannot read it).
 - Refuse a non-numeric value for a numeric flag (`--rate-limit abc`, `--threads four`, `--temperature hot`, ...) with an error naming the flag; before, `atoi` turned it into 0, which silently switched off the rate limiter, the client timeout or the connection cap. Trailing junk (`64x`) and numbers outside the integer range are refused too.
 - Answer `501` to a request body sent with any `Transfer-Encoding` (gzip, deflate, ...), not only `chunked`; before, the server ignored the header and read the body as plain bytes.

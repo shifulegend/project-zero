@@ -40,15 +40,8 @@
 #include "math/matmul_q2_0.h"
 #include "math/simd_dispatch.h"
 
-/* Generous fixed stack-buffer bounds for this arch's projection widths.
- * Validated (>0) at config-parse time in moe_config_from_gguf(); these
- * ceilings only need to exceed any real model's dims (Bonsai-27B's largest
- * is q_full=12288, conv_dim=10240) — mirrors ATTN_PREQ_BUF_SIZE's existing
- * "fixed generous buffer, no runtime malloc" convention in attention.c. */
-#define Q35_MAX_Q_WIDTH 16384
-#define Q35_MAX_KV_WIDTH 8192
-#define Q35_MAX_CONV_DIM 16384
-#define Q35_MAX_HEADS 128
+/* Stack bound for the per-head v_pred / delta temporaries of the delta rule (state size per head).
+ * The projection buffers live in RunState.q35_scratch and have no fixed cap. */
 #define Q35_MAX_HEAD_DIM 512
 
 /* ── Partial-rotary RoPE, NEOX/rotate-half pairing ───────────────────────
@@ -85,10 +78,11 @@ static void q35_full_attn_forward(RunState *s, const TransformerWeights *w, cons
     int kv_width = n_kv_h * head_dim;
     int max_seq  = s->max_seq_len;
 
-    static float q_full[Q35_MAX_Q_WIDTH];
-    static float k_buf[Q35_MAX_KV_WIDTH];
-    static float v_buf[Q35_MAX_KV_WIDTH];
-    static float attn_concat[Q35_MAX_HEADS * Q35_MAX_HEAD_DIM];
+    /* Per-RunState scratch (q35_run_state_alloc): no shared static, no width cap. */
+    float *q_full      = s->q35_scratch;
+    float *k_buf       = q_full + q_width;
+    float *v_buf       = k_buf + kv_width;
+    float *attn_concat = v_buf + kv_width;
 
     /* Step 1: RMSNorm */
     int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
@@ -199,13 +193,17 @@ static void q35_linear_attn_forward(RunState *s, const TransformerWeights *w, co
     int conv_dim  = key_dim * 2 + value_dim;
     float eps     = cfg->rms_norm_eps;
 
-    static float qkv_mixed[Q35_MAX_CONV_DIM];
-    static float z[Q35_MAX_KV_WIDTH];
-    static float beta[Q35_MAX_HEADS];
-    static float alpha[Q35_MAX_HEADS];
-    static float g_exp[Q35_MAX_HEADS];
-    static float conv_out[Q35_MAX_CONV_DIM];
-    static float core_out[Q35_MAX_KV_WIDTH];
+    /* Linear-attention part of the scratch, after the full-attention part (see q35_run_state_alloc):
+     * the full-attention part is q_full (2*n_heads*head_dim) + k + v (kv_width each) + concat. */
+    const size_t full_n = 3 * (size_t)cfg->n_heads * (size_t)mc->attn_head_dim +
+                          2 * (size_t)cfg->n_kv_heads * (size_t)mc->attn_head_dim;
+    float *qkv_mixed = s->q35_scratch + full_n;
+    float *z         = qkv_mixed + conv_dim;
+    float *beta      = z + value_dim;
+    float *alpha     = beta + n_v_heads;
+    float *g_exp     = alpha + n_v_heads;
+    float *conv_out  = g_exp + n_v_heads;
+    float *core_out  = conv_out + conv_dim;
 
     /* Step 1: RMSNorm */
     int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;

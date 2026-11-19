@@ -3058,7 +3058,7 @@ Installing llama.cpp and bitnet.cpp for head-to-head runs exposed nine pre-exist
 - Affected files/modules: `src/transformer/qwen3moe_attention.c`, `src/core/qwen3moe_run_state.c`, `include/core/run_state.h`.
 - Detection: the mutable-statics inventory; `tests/test_qwen3moe_concurrent.c` runs two threads and TSan reports 4 data races on the old code, none on the new.
 - Correction: the scratch lives in the RunState (`qwen3moe_scratch`, sized `2*q_width + 2*kv_width`); logits are bit-identical before and after (hash of the sequential test run).
-- Prevention rule: per-call scratch belongs to the caller's state, not a function-local static; a function that could run on two threads gets a two-thread test in the TSan set. Qwen3.5's attention (`qwen35_attention.c`, 12 statics) has the same problem and no model-less test yet.
+- Prevention rule: per-call scratch belongs to the caller's state, not a function-local static; a function that could run on two threads gets a two-thread test in the TSan set.
 
 ### 2026-11-19 — Matmul kernels shared one reallocated activation buffer across threads
 - Summary: `parallel_matmul_q4k()` (and the Q5_0/Q5_1/Q8_0 integer paths in `q8_0_act.c`) quantised the activation into a file-scope buffer that was freed and re-malloc'd whenever a larger input arrived; two threads calling at once could free the buffer the other was reading (use-after-free) or interleave their quantised data, and the buffer was never freed.
@@ -3075,3 +3075,11 @@ Installing llama.cpp and bitnet.cpp for head-to-head runs exposed nine pre-exist
 - Detection: TSan on the new two-thread tests: 23 races (experts), 15 (ffn + router) on the old code, none on the new.
 - Correction: per-thread scratch via `memory/tls_scratch.h`, handed to pool workers through the task argument struct (they run on other threads); the router array is per call; the Q8K pointer is NULL unless this call quantised the activation, so the shared expert falls back to the float path instead of reading stale data. `moe_experts_free()` now releases the calling thread's scratch. Single-thread outputs are bit-identical (hash of the batched path before and after).
 - Prevention rule: a "not re-entrant" comment is a defect to fix, not a contract; scratch that pool workers read must be passed to them, not looked up.
+
+### 2026-11-19 — Qwen3.5 attention scratch was function-local statics shared by every caller
+- Summary: `q35_full_attn_forward()` (4 buffers) and `q35_linear_attn_forward()` (7 buffers) kept their scratch in `static float` arrays with fixed caps, so concurrent forward passes on separate RunStates overwrote each other.
+- Root cause: same as the Qwen3-MoE and matmul cases; and there was no model-less test, so the layer code was never exercised by a test at all.
+- Affected files/modules: `src/transformer/qwen35_attention.c`, `src/runtime/qwen35_run_state.c`, `include/runtime/run_state.h`.
+- Detection: the mutable-statics inventory; the new `tests/test_qwen35_attention.c` (synthetic Q2_0 model with one DeltaNet and one full-attention layer) fails on the old code and TSan reports 36 races.
+- Correction: `RunState.q35_scratch` (sized from the model, allocated and freed with the other Qwen3.5 state); the single-thread output is bit-identical before and after (hash of the six-step run).
+- Prevention rule: every architecture's attention path gets a synthetic-model test (tests/synth_models.h pattern) and a two-thread case in the TSan set.

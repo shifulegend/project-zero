@@ -12,8 +12,9 @@
  */
 
 #include <pthread.h>
+#include "core/limits.h"
 
-#define CANCEL_MAX_ACTIVE 64
+#define CANCEL_MAX_ACTIVE PZ_PARALLEL_MAX   /* core/limits.h */
 
 typedef struct {
     char id[32];

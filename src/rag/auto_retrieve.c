@@ -1,6 +1,6 @@
 #include "rag/auto_retrieve.h"
 #include "rag/memory_search.h"
-#include "agent/output_inject.h"
+#include "transformer/output_inject.h"
 #include "memory/aligned_alloc.h"
 #include <stdio.h>
 #include <stdlib.h>

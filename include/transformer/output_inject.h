@@ -1,5 +1,5 @@
-#ifndef AGENT_OUTPUT_INJECT_H
-#define AGENT_OUTPUT_INJECT_H
+#ifndef TN_TRANSFORMER_OUTPUT_INJECT_H
+#define TN_TRANSFORMER_OUTPUT_INJECT_H
 
 #include "core/config.h"
 #include "core/weights.h"
@@ -19,4 +19,4 @@ int inject_text_into_kv(const char *text, const Config *cfg, const TransformerWe
 }
 #endif
 
-#endif /* AGENT_OUTPUT_INJECT_H */
+#endif /* TN_TRANSFORMER_OUTPUT_INJECT_H */

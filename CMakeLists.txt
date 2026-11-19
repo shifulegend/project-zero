@@ -369,7 +369,7 @@ set(UPDATE_SOURCES
 set(AGENT_SOURCES
     src/agent/agent_loop.c
     src/agent/cmd_exec.c
-    src/agent/output_inject.c
+    src/transformer/output_inject.c
     src/agent/tool_interceptor.c
     src/agent/user_approval.c
 )

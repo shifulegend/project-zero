@@ -1,9 +1,6 @@
 # Module include edges that lie inside a dependency cycle; this list may only shrink
 # (tools/check_include_layers.py).
-agent->rag
-api->config
 api->update
-config->api
 core->kv_cache
 core->math
 core->memory
@@ -22,7 +19,6 @@ math->memory
 math->threading
 memory->core
 memory->kv_cache
-rag->agent
 runtime->core
 runtime->kv_cache
 runtime->memory

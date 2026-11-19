@@ -4,8 +4,7 @@
 #include "config/pz_config.h"
 #include "core/platform.h"
 #include "core/fs_util.h"
-#include "reasoning/best_of.h"     /* BEST_OF_N_MAX, shared with parse_args */
-#include "api/server_config.h"   /* PZ_PARALLEL_* bounds shared with parse_args */
+#include "core/limits.h"          /* PZ_PARALLEL_*, BEST_OF_N_MAX: bounds shared with parse_args */
 
 #include <ctype.h>
 #include <errno.h>

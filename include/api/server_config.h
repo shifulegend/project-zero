@@ -8,16 +8,13 @@
  */
 
 #include "api/cancel.h"
+#include "core/limits.h"
 #include "transformer/gen_params.h"
 #include "reasoning/mcts_options.h"
 
 #define SERVER_CORS_MAX_ORIGINS 16
 
-/* Phase 23 stage 2b (2026-10-22): --parallel / --parallel-batch bounds and
- * defaults (the cancel registry holds one entry per parallel request). */
-#define PZ_PARALLEL_MAX            CANCEL_MAX_ACTIVE
-#define PZ_PARALLEL_BATCH_DEFAULT  128
-#define PZ_PARALLEL_BATCH_MAX      4096
+/* --parallel / --parallel-batch bounds and defaults: core/limits.h. */
 
 typedef struct {
     int   enabled;                          /* --cors */

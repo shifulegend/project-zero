@@ -130,7 +130,7 @@ Q8_0, F32), and DeepSeek-V2-style MoE/MLA models. The primary binary is `pz`.
 | `src/agent/agent_loop.c` | `run_agent_loop` — generation loop with tool call interception |
 | `src/agent/tool_interceptor.c` | Detect `<tool_call>` tags in generated text |
 | `src/agent/cmd_exec.c` | Execute shell commands from tool calls |
-| `src/agent/output_inject.c` | Inject tool output back into context |
+| `src/transformer/output_inject.c` | Inject tool output back into context |
 | `src/agent/user_approval.c` | Interactive approval prompt before executing commands |
 
 ### 📁 `src/rag/` — RAG Memory

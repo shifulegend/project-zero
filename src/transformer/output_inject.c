@@ -1,4 +1,4 @@
-#include "agent/output_inject.h"
+#include "transformer/output_inject.h"
 #include "transformer/forward.h"
 #include <string.h>
 #include <stdlib.h>

@@ -14,10 +14,9 @@
  */
 
 #include "transformer/generate.h"
+#include "core/limits.h"   /* BEST_OF_N_MAX */
 
 #define BEST_OF_MAX_DEFAULT 8
-/* Largest candidate count anywhere (flags, config schema, per-request cap). */
-#define BEST_OF_N_MAX 64
 
 typedef enum {
     BEST_OF_SCORE_MEAN_LOGPROB = 0, /* sum / tokens — default, length-fair */

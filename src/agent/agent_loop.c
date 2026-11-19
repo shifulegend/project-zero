@@ -1,7 +1,7 @@
 #include "agent/agent_loop.h"
 #include "agent/tool_interceptor.h"
 #include "agent/cmd_exec.h"
-#include "agent/output_inject.h"
+#include "transformer/output_inject.h"
 
 #include "transformer/forward.h"
 #include "math/simd_dispatch.h"

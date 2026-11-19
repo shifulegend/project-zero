@@ -135,6 +135,9 @@ static void run_perplexity(const CliArgs *args, const Config *p, const Transform
     free(toks);
 }
 
+/* Bytes in a GiB, for the --remote-layers per-node RAM sizes (given and printed in GB). */
+#define BYTES_PER_GIB 1073741824.0
+
 /* strdup() for a server setting that must not silently be missing: an
  * unchecked NULL api_key would start the server with authentication OFF. A
  * failed copy is fatal, like every other required allocation in the engine. */
@@ -836,14 +839,14 @@ int main(int argc, char **argv) {
         snprintf(buf, sizeof(buf), "%s", args.plan_layers);
         char *save = NULL;
         for (char *t = strtok_r(buf, ",", &save); t && n < DIST_MAX_NODES; t = strtok_r(NULL, ",", &save))
-            ram[n++] = (long long)(atof(t) * 1073741824.0);
+            ram[n++] = (long long)(atof(t) * BYTES_PER_GIB);
         if (n == 0) {
             fprintf(stderr, "Error: --plan-layers needs GB,GB,... (max %d nodes)\n", DIST_MAX_NODES);
         } else {
             dist_plan_layers_by_ram(p.n_layers, ram, n, starts, ends);
             printf("Layer plan for %d layers over %d node(s):\n", p.n_layers, n);
             for (int i = 0; i < n; i++)
-                printf("  node %d (%.1f GB): layers %d-%d%s\n", i, (double)ram[i] / 1073741824.0,
+                printf("  node %d (%.1f GB): layers %d-%d%s\n", i, (double)ram[i] / BYTES_PER_GIB,
                        starts[i], ends[i], i == 0 ? "  (coordinator)" : "");
             if (n > 1) {
                 printf("Coordinator: --remote-layers ");

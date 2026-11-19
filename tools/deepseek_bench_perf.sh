@@ -13,8 +13,9 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ENGINE="$REPO_DIR/pz"
 MODEL="$REPO_DIR/models/deepseek-v2-lite-chat-Q4_K_S.gguf"
-LLAMA_CLI="/home/ubuntu/llama.cpp/build/bin/llama-cli"
-LLAMA_BENCH="/home/ubuntu/llama.cpp/build/bin/llama-bench"
+LLAMA_CPP_DIR="${LLAMA_CPP_DIR:-$HOME/llama.cpp}"   # reference engine checkout
+LLAMA_CLI="$LLAMA_CPP_DIR/build/bin/llama-cli"
+LLAMA_BENCH="$LLAMA_CPP_DIR/build/bin/llama-bench"
 OUT_DIR="$REPO_DIR/benchmark_results"
 RAW_DIR="$OUT_DIR/perf_raw"
 mkdir -p "$RAW_DIR"

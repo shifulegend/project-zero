@@ -25,17 +25,17 @@
 
 typedef struct {
     char host[128];
-    int  port;
-    int  start, end;   /* layers [start, end) */
-    int  fd;           /* -1 until connected */
-    float *scratch;    /* dim + 1 floats: outgoing FORWARD payload */
+    int port;
+    int start, end; /* layers [start, end) */
+    int fd;         /* -1 until connected */
+    float *scratch; /* dim + 1 floats: outgoing FORWARD payload */
 } RemoteNode;
 
 typedef struct {
-    int        n;
+    int n;
     RemoteNode nodes[DIST_MAX_NODES];
-    int        dim;
-    int        failed;  /* set on any transport error; generation stops */
+    int dim;
+    int failed; /* set on any transport error; generation stops */
 } DistPlan;
 
 /* "host:port@A-B,host:port@C-D". Ranges must be within [0, n_layers), non-empty,
@@ -45,15 +45,15 @@ int dist_plan_parse(DistPlan *dp, const char *spec, int n_layers);
 /* 28.1: split n_layers over n_nodes proportionally to ram[i] (bytes; <= 0
  * counts as the average). Writes contiguous [starts[i], ends[i]) ranges that
  * cover every layer, each node >= 1 layer when n_layers >= n_nodes. */
-void dist_plan_layers_by_ram(int n_layers, const long long *ram, int n_nodes,
-                             int *starts, int *ends);
+void dist_plan_layers_by_ram(int n_layers, const long long *ram, int n_nodes, int *starts,
+                             int *ends);
 
 /* Connects to every node and validates its INFO handshake against cfg/mc. */
 TernaryError dist_plan_connect(DistPlan *dp, const Config *cfg, const MoEConfig *mc);
-void         dist_plan_close(DistPlan *dp);
+void dist_plan_close(DistPlan *dp);
 
 /* Process-wide plan used by transformer_forward() (NULL = all layers local). */
-void      dist_plan_set_active(DistPlan *dp);
+void dist_plan_set_active(DistPlan *dp);
 DistPlan *dist_plan_active(void);
 
 /* Node whose range starts at `layer`, else NULL. */
@@ -62,13 +62,12 @@ RemoteNode *dist_plan_node_starting_at(DistPlan *dp, int layer);
 /* Ships x[dim] through the node's layers at position pos (in place).
  * sw_pinned = the coordinator's sliding-window pinned length (s->sw), which
  * the worker mirrors so both sides map positions to the same KV slots. */
-TernaryError dist_forward_remote(DistPlan *dp, RemoteNode *node, float *x, int pos,
-                                 int sw_pinned);
+TernaryError dist_forward_remote(DistPlan *dp, RemoteNode *node, float *x, int pos, int sw_pinned);
 
 /* Worker loop: serves FORWARD requests for layers [start, end) forever
  * (one coordinator connection at a time). Returns only on listen failure. */
-TernaryError dist_worker_serve(int port, int loopback_only, int start, int end,
-                               const Config *cfg, const TransformerWeights *w, RunState *s,
-                               const MoEConfig *mc, ThreadPool *tp);
+TernaryError dist_worker_serve(int port, int loopback_only, int start, int end, const Config *cfg,
+                               const TransformerWeights *w, RunState *s, const MoEConfig *mc,
+                               ThreadPool *tp);
 
 #endif /* TN_DIST_PLAN_H */

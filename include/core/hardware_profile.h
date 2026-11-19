@@ -26,34 +26,34 @@
  */
 
 typedef enum {
-    TN_CLS_BF16 = 0,   /* 2 bytes/weight, full precision, any hardware */
-    TN_CLS_INT8 = 1,    /* 1 byte/weight, VNNI or ARM dotprod available */
-    TN_CLS_INT4 = 2     /* 0.5 bytes/weight, VNNI+VBMI for fast unpack */
+    TN_CLS_BF16 = 0, /* 2 bytes/weight, full precision, any hardware */
+    TN_CLS_INT8 = 1, /* 1 byte/weight, VNNI or ARM dotprod available */
+    TN_CLS_INT4 = 2  /* 0.5 bytes/weight, VNNI+VBMI for fast unpack */
 } TnClassifierFormat;
 
 typedef struct {
     /* ── Detected hardware ── */
     const TnCpuFeatures *cpu;
-    int    physical_cores;
-    int    logical_cores;
-    int    optimal_threads;
-    size_t l2_cache_bytes;       /* per-core L2 */
-    size_t l3_cache_bytes;       /* shared L3 (0 if not detected) */
+    int physical_cores;
+    int logical_cores;
+    int optimal_threads;
+    size_t l2_cache_bytes; /* per-core L2 */
+    size_t l3_cache_bytes; /* shared L3 (0 if not detected) */
     size_t free_ram_bytes;
-    double measured_bw_gbps;     /* DRAM bandwidth in GB/s */
-    bool   bw_cached;            /* measured_bw_gbps came from the per-host cache (core/bw_cache.h) */
+    double measured_bw_gbps; /* DRAM bandwidth in GB/s */
+    bool bw_cached;          /* measured_bw_gbps came from the per-host cache (core/bw_cache.h) */
 
     /* ── Derived tuning parameters ── */
     TnClassifierFormat classifier_fmt;
-    bool   classifier_explicit;  /* true only if the user passed --classifier
+    bool classifier_explicit; /* true only if the user passed --classifier
                                     (vs. classifier_fmt being an auto-picked
                                     default) — gates whether Q2_0-native models
                                     pay to materialize a separate classifier
                                     copy (see gguf_loader.c) instead of always
                                     doing so regardless of user intent. */
-    int    prefetch_rows;        /* rows to prefetch ahead in matmul */
-    bool   use_nt_stores;        /* non-temporal stores for large outputs */
-    bool   model_fits_l3;        /* true if ternary weights fit in L3 */
+    int prefetch_rows;        /* rows to prefetch ahead in matmul */
+    bool use_nt_stores;       /* non-temporal stores for large outputs */
+    bool model_fits_l3;       /* true if ternary weights fit in L3 */
 
     /* ── Performance projections ── */
     double weight_bytes_per_tok; /* total bytes read per token */
@@ -61,7 +61,7 @@ typedef struct {
     double theoretical_ceiling;  /* tok/s at 100% BW utilization */
 
     /* ── Backend name ── */
-    char   summary[128];         /* human-readable "AVX-512 VNNI | INT4 | 4T | 45.8 GB/s" */
+    char summary[128]; /* human-readable "AVX-512 VNNI | INT4 | 4T | 45.8 GB/s" */
 } TnHardwareProfile;
 
 /*
@@ -102,7 +102,6 @@ TnClassifierFormat tn_hardware_profile_swap_classifier(TnClassifierFormat fmt);
  * Must be called after tn_hardware_profile_init(); no-op on
  * weight_bytes_per_tok <= 0.
  */
-void tn_hardware_profile_set_model_bytes(double weight_bytes_per_tok,
-                                          double cls_bytes_per_tok);
+void tn_hardware_profile_set_model_bytes(double weight_bytes_per_tok, double cls_bytes_per_tok);
 
 #endif /* TN_HARDWARE_PROFILE_H */

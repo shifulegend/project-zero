@@ -1301,32 +1301,32 @@ Monkey testing injects completely random inputs to find unhandled exceptions and
 
 import subprocess, random, struct, os, time
 
+
 def random_config_file():
     """Generate a syntactically valid but semantically random config file."""
     magic = 0x594E5254
     version = 1
-    fields = [random.randint(-2**31, 2**31-1) for _ in range(7)]  # dim through seq_len
-    return struct.pack('<II7i', magic, version, *fields)
+    fields = [random.randint(-(2**31), 2**31 - 1) for _ in range(7)]  # dim through seq_len
+    return struct.pack("<II7i", magic, version, *fields)
+
 
 def random_binary_noise(size):
     return bytes(random.randint(0, 255) for _ in range(size))
 
+
 for trial in range(10000):
     # Write random config + random weights
-    with open('/tmp/fuzz_model.tn', 'wb') as f:
+    with open("/tmp/fuzz_model.tn", "wb") as f:
         f.write(random_config_file())
         f.write(random_binary_noise(random.randint(0, 65536)))
-    
+
     # Write random tokenizer vocab
-    with open('/tmp/fuzz_vocab.bin', 'wb') as f:
+    with open("/tmp/fuzz_vocab.bin", "wb") as f:
         f.write(random_binary_noise(random.randint(0, 4096)))
-    
+
     # Run engine with 5-second timeout
-    result = subprocess.run(
-        ['./test_config', '/tmp/fuzz_model.tn'],
-        timeout=5, capture_output=True
-    )
-    
+    result = subprocess.run(["./test_config", "/tmp/fuzz_model.tn"], timeout=5, capture_output=True)
+
     # Only crashes are failures — the engine MUST handle all inputs without crash
     if result.returncode < 0:  # Negative = killed by signal (crash)
         print(f"CRASH at trial {trial}: signal {-result.returncode}")

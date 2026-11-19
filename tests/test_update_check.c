@@ -8,7 +8,7 @@
 #include "test_harness.h"
 #include "update/semver.h"
 #include "update/update_check.h"
-#include "api/json_fields.h"
+#include "core/json_fields.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,9 +32,11 @@ static void test_semver(void) {
     TEST_ASSERT(semver_parse("1.2.3-", &a) != 0, "empty pre rejected");
 
     /* SemVer 2.0 §11 precedence chain. */
-    const char *chain[] = { "1.0.0-alpha", "1.0.0-alpha.1", "1.0.0-alpha.beta", "1.0.0-beta",
-                            "1.0.0-beta.2", "1.0.0-beta.11", "1.0.0-rc.1", "1.0.0", "1.0.1", "1.1.0", "2.0.0" };
-    int ok = 1;
+    const char *chain[] = {"1.0.0-alpha", "1.0.0-alpha.1", "1.0.0-alpha.beta",
+                           "1.0.0-beta",  "1.0.0-beta.2",  "1.0.0-beta.11",
+                           "1.0.0-rc.1",  "1.0.0",         "1.0.1",
+                           "1.1.0",       "2.0.0"};
+    int ok              = 1;
     for (size_t i = 0; i + 1 < sizeof(chain) / sizeof(chain[0]); i++) {
         semver_parse(chain[i], &a);
         semver_parse(chain[i + 1], &b);
@@ -50,18 +52,26 @@ static void test_semver(void) {
 static const char *RELEASES =
     "[{\"tag_name\":\"v0.3.0\",\"draft\":true,\"prerelease\":false,\"html_url\":\"https://x/d\"},"
     " {\"tag_name\":\"v0.2.0-rc.1\",\"draft\":false,\"prerelease\":true,"
-    "  \"html_url\":\"https://github.com/o/r/releases/tag/v0.2.0-rc.1\",\"published_at\":\"2026-10-01T00:00:00Z\","
-    "  \"body\":\"notes with \\\"quotes\\\", [brackets] and {braces}\",\"assets\":[{\"name\":\"a\"}]},"
+    "  "
+    "\"html_url\":\"https://github.com/o/r/releases/tag/"
+    "v0.2.0-rc.1\",\"published_at\":\"2026-10-01T00:00:00Z\","
+    "  \"body\":\"notes with \\\"quotes\\\", [brackets] and "
+    "{braces}\",\"assets\":[{\"name\":\"a\"}]},"
     " {\"tag_name\":\"v0.1.1\",\"draft\":false,\"prerelease\":false,"
-    "  \"html_url\":\"https://github.com/o/r/releases/tag/v0.1.1\",\"published_at\":\"2026-09-01T00:00:00Z\"},"
+    "  "
+    "\"html_url\":\"https://github.com/o/r/releases/tag/"
+    "v0.1.1\",\"published_at\":\"2026-09-01T00:00:00Z\"},"
     " {\"tag_name\":\"nightly\",\"draft\":false,\"prerelease\":true,\"html_url\":\"https://x/n\"},"
-    " {\"tag_name\":\"v0.1.0\",\"draft\":false,\"prerelease\":false,\"html_url\":\"javascript:alert(1)\"}]";
+    " {\"tag_name\":\"v0.1.0\",\"draft\":false,\"prerelease\":false,\"html_url\":\"javascript:"
+    "alert(1)\"}]";
 
 static void test_pick_latest(void) {
     UpdateInfo u;
     memset(&u, 0, sizeof(u));
-    TEST_ASSERT_EQ(update_pick_latest(RELEASES, "v0.1.0", UPDATE_CHANNEL_AUTO, &u), 0, "parse releases");
-    TEST_ASSERT(strcmp(u.latest, "v0.2.0-rc.1") == 0, "auto on 0.x includes pre-releases, skips drafts");
+    TEST_ASSERT_EQ(update_pick_latest(RELEASES, "v0.1.0", UPDATE_CHANNEL_AUTO, &u), 0,
+                   "parse releases");
+    TEST_ASSERT(strcmp(u.latest, "v0.2.0-rc.1") == 0,
+                "auto on 0.x includes pre-releases, skips drafts");
     TEST_ASSERT_EQ(u.status, UPDATE_STATUS_AVAILABLE, "newer -> available");
     TEST_ASSERT(u.latest_prerelease, "flagged pre-release");
     TEST_ASSERT(strcmp(u.published, "2026-10-01T00:00:00Z") == 0, "published_at");
@@ -83,7 +93,8 @@ static void test_pick_latest(void) {
     update_pick_latest("[{\"tag_name\":\"v0.1.0\",\"html_url\":\"javascript:alert(1)\"}]", "v0.0.1",
                        UPDATE_CHANNEL_AUTO, &u);
     TEST_ASSERT(u.url[0] == '\0', "non-https release URL dropped");
-    TEST_ASSERT(update_pick_latest("{\"message\":\"rate limited\"}", "v0.1.0", 0, &u) != 0, "non-array rejected");
+    TEST_ASSERT(update_pick_latest("{\"message\":\"rate limited\"}", "v0.1.0", 0, &u) != 0,
+                "non-array rejected");
     TEST_ASSERT_EQ(update_pick_latest("[]", "v0.1.0", 0, &u), 0, "empty list ok");
     TEST_ASSERT_EQ(u.status, UPDATE_STATUS_UNKNOWN, "no releases -> unknown");
 }
@@ -100,7 +111,9 @@ static void test_validation_and_env(void) {
     TEST_ASSERT_EQ(update_channel_parse("stable"), UPDATE_CHANNEL_STABLE, "channel parse");
     TEST_ASSERT_EQ(update_channel_parse("nope"), -1, "bad channel");
 
-    unsetenv("PZ_NO_UPDATE_CHECK"); unsetenv("DO_NOT_TRACK"); unsetenv("CI");
+    unsetenv("PZ_NO_UPDATE_CHECK");
+    unsetenv("DO_NOT_TRACK");
+    unsetenv("CI");
     TEST_ASSERT(update_env_opt_out() == NULL, "no opt-out env");
     setenv("CI", "true", 1);
     TEST_ASSERT(update_env_opt_out() && strcmp(update_env_opt_out(), "CI") == 0, "CI disables");
@@ -127,7 +140,10 @@ static int fake_fetch(const char *url, int timeout_s, const char *ua, char **bod
     g_fetches++;
     snprintf(g_seen_url, sizeof(g_seen_url), "%s", url);
     snprintf(g_seen_ua, sizeof(g_seen_ua), "%s", ua);
-    if (g_fail) { *body = NULL; return -1; }
+    if (g_fail) {
+        *body = NULL;
+        return -1;
+    }
     *body = strdup(RELEASES);
     return *body ? 0 : -1;
 }
@@ -145,11 +161,13 @@ static void test_check_and_cache(void) {
     UpdateInfo u;
     setup_opts(&o);
     update_set_fetcher(fake_fetch);
-    g_fetches = 0; g_fail = 0;
+    g_fetches = 0;
+    g_fail    = 0;
 
     TEST_ASSERT_EQ(update_check(&o, "v0.1.0", 0, &u), 0, "first check");
     TEST_ASSERT_EQ(g_fetches, 1, "fetched once");
-    TEST_ASSERT(strstr(g_seen_url, "https://api.github.com/repos/o/r/releases") == g_seen_url, "releases URL");
+    TEST_ASSERT(strstr(g_seen_url, "https://api.github.com/repos/o/r/releases") == g_seen_url,
+                "releases URL");
     TEST_ASSERT(strcmp(g_seen_ua, "project-zero/v0.1.0") == 0, "UA carries only the version");
     TEST_ASSERT_EQ(u.status, UPDATE_STATUS_AVAILABLE, "available");
     TEST_ASSERT(access(o.cache_path, R_OK) == 0, "cache written (parent dirs created)");
@@ -159,7 +177,8 @@ static void test_check_and_cache(void) {
     TEST_ASSERT(u.from_cache && strcmp(u.latest, "v0.2.0-rc.1") == 0, "cached answer");
 
     TEST_ASSERT_EQ(update_check(&o, "v0.2.0-rc.1", 0, &u), 0, "after upgrading");
-    TEST_ASSERT_EQ(u.status, UPDATE_STATUS_UP_TO_DATE, "status recomputed vs new current, no fetch");
+    TEST_ASSERT_EQ(u.status, UPDATE_STATUS_UP_TO_DATE,
+                   "status recomputed vs new current, no fetch");
     TEST_ASSERT_EQ(g_fetches, 1, "still no fetch");
 
     o.channel = UPDATE_CHANNEL_STABLE;
@@ -170,7 +189,8 @@ static void test_check_and_cache(void) {
     g_fail = 1;
     update_check(&o, "v0.1.0", 1, &u);
     TEST_ASSERT_EQ(g_fetches, 3, "forced check fetches");
-    TEST_ASSERT(u.error[0] && strcmp(u.latest, "v0.1.1") == 0, "failure keeps the last good answer");
+    TEST_ASSERT(u.error[0] && strcmp(u.latest, "v0.1.1") == 0,
+                "failure keeps the last good answer");
     TEST_ASSERT_EQ(u.status, UPDATE_STATUS_AVAILABLE, "known update stays visible offline");
     update_check(&o, "v0.1.0", 0, &u);
     TEST_ASSERT_EQ(g_fetches, 3, "failed check backs off");
@@ -179,7 +199,7 @@ static void test_check_and_cache(void) {
     update_check(&o, "v0.1.0", 0, &u);
     TEST_ASSERT_EQ(u.status, UPDATE_STATUS_DISABLED, "--no-update-check");
     TEST_ASSERT_EQ(g_fetches, 3, "disabled never fetches");
-    o.enabled = 1;
+    o.enabled        = 1;
     o.interval_hours = 0;
     update_check(&o, "v0.1.0", 0, &u);
     TEST_ASSERT_EQ(u.status, UPDATE_STATUS_DISABLED, "--update-interval 0");
@@ -188,7 +208,8 @@ static void test_check_and_cache(void) {
     memset(&u, 0, sizeof(u));
     update_pick_latest(RELEASES, "v0.1.0", UPDATE_CHANNEL_AUTO, &u);
     update_format_notice(&u, notice, sizeof(notice));
-    TEST_ASSERT(strstr(notice, "v0.1.0 -> v0.2.0-rc.1") && strstr(notice, "--no-update-check"), "notice text");
+    TEST_ASSERT(strstr(notice, "v0.1.0 -> v0.2.0-rc.1") && strstr(notice, "--no-update-check"),
+                "notice text");
     u.status = UPDATE_STATUS_UP_TO_DATE;
     update_format_notice(&u, notice, sizeof(notice));
     TEST_ASSERT(notice[0] == '\0', "silent when up to date");
@@ -201,7 +222,8 @@ static void test_service(void) {
     snprintf(o.cache_path, sizeof(o.cache_path), "%s/svc-cache", g_dir);
     unlink(o.cache_path);
     update_set_fetcher(fake_fetch);
-    g_fetches = 0; g_fail = 0;
+    g_fetches = 0;
+    g_fail    = 0;
 
     update_service_init(&o, "v0.1.0");
     update_service_get(&u);
@@ -217,7 +239,8 @@ static void test_service(void) {
 
     update_service_init(&o, "v0.1.0");
     update_service_get(&u);
-    TEST_ASSERT(u.from_cache && u.status == UPDATE_STATUS_AVAILABLE, "restart shows cached answer without network");
+    TEST_ASSERT(u.from_cache && u.status == UPDATE_STATUS_AVAILABLE,
+                "restart shows cached answer without network");
 
     o.enabled = 0;
     update_service_init(&o, "v0.1.0");
@@ -239,6 +262,7 @@ int main(void) {
     RUN_TEST(test_service);
     char cmd[300];
     snprintf(cmd, sizeof(cmd), "rm -rf '%s'", g_dir);
-    if (system(cmd) != 0) { /* best effort */ }
+    if (system(cmd) != 0) { /* best effort */
+    }
     TEST_SUMMARY();
 }

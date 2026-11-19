@@ -4,7 +4,9 @@
  */
 
 #include "api/static_assets.h"
+#include "api/net_io.h"
 #include "api/webui_bundle.h"
+#include "api/http_status.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,12 +17,12 @@ static const char *mime_for_path(const char *path) {
     const char *dot = strrchr(path, '.');
     if (!dot) return "application/octet-stream";
     if (strcmp(dot, ".html") == 0) return "text/html";
-    if (strcmp(dot, ".js") == 0)   return "application/javascript";
-    if (strcmp(dot, ".css") == 0)  return "text/css";
+    if (strcmp(dot, ".js") == 0) return "application/javascript";
+    if (strcmp(dot, ".css") == 0) return "text/css";
     if (strcmp(dot, ".json") == 0) return "application/json";
-    if (strcmp(dot, ".svg") == 0)  return "image/svg+xml";
-    if (strcmp(dot, ".png") == 0)  return "image/png";
-    if (strcmp(dot, ".ico") == 0)  return "image/x-icon";
+    if (strcmp(dot, ".svg") == 0) return "image/svg+xml";
+    if (strcmp(dot, ".png") == 0) return "image/png";
+    if (strcmp(dot, ".ico") == 0) return "image/x-icon";
     if (strcmp(dot, ".woff2") == 0) return "font/woff2";
     return "application/octet-stream";
 }
@@ -39,7 +41,7 @@ int static_assets_path_is_safe(const char *path) {
     const char *p = path;
     while (*p) {
         const char *seg_end = strchr(p, '/');
-        size_t seg_len = seg_end ? (size_t)(seg_end - p) : strlen(p);
+        size_t seg_len      = seg_end ? (size_t)(seg_end - p) : strlen(p);
         if (seg_len == 2 && p[0] == '.' && p[1] == '.') return 0;
         if (!seg_end) break;
         p = seg_end + 1;
@@ -48,34 +50,34 @@ int static_assets_path_is_safe(const char *path) {
 }
 
 static void write_headers(int fd, int status, const char *mime_type, size_t body_len,
-                           const char *extra_headers) {
+                          const char *extra_headers) {
     char hdr[512];
     int n = snprintf(hdr, sizeof(hdr),
-        "HTTP/1.1 %d %s\r\n"
-        "Content-Type: %s\r\n"
-        "Content-Length: %zu\r\n"
-        "Connection: close\r\n"
-        "%s"
-        "\r\n",
-        status, status == 200 ? "OK" : "Not Found", mime_type, body_len,
-        extra_headers ? extra_headers : "");
-    if (n > 0) { ssize_t r = write(fd, hdr, (size_t)n); (void)r; }
+                     "HTTP/1.1 %d %s\r\n"
+                     "Content-Type: %s\r\n"
+                     "Content-Length: %zu\r\n"
+                     "Connection: close\r\n"
+                     "%s"
+                     "\r\n",
+                     status, status == HTTP_OK ? "OK" : "Not Found", mime_type, body_len,
+                     extra_headers ? extra_headers : "");
+    if (n > 0) (void)net_write_all(fd, hdr, (size_t)n); /* peer gone: the body write fails too */
 }
 
 static void serve_404(int fd, const char *extra_headers) {
     const char *body = "Not found";
-    write_headers(fd, 404, "text/plain", strlen(body), extra_headers);
-    ssize_t r = write(fd, body, strlen(body)); (void)r;
+    write_headers(fd, HTTP_NOT_FOUND, "text/plain", strlen(body), extra_headers);
+    (void)net_write_all(fd, body, strlen(body));
 }
 
 /* ── Disk mode (--static-dir) ─────────────────────────────────────────────── */
 
 static int serve_from_disk(int fd, const char *static_dir, const char *path,
-                            const char *extra_headers) {
+                           const char *extra_headers) {
     char fs_path[1024];
     if (!static_assets_path_is_safe(path)) {
         serve_404(fd, extra_headers);
-        return 404;
+        return HTTP_NOT_FOUND;
     }
     if (strcmp(path, "/") == 0) {
         snprintf(fs_path, sizeof(fs_path), "%s/index.html", static_dir);
@@ -91,23 +93,31 @@ static int serve_from_disk(int fd, const char *static_dir, const char *path,
     }
     if (!f) {
         serve_404(fd, extra_headers);
-        return 404;
+        return HTTP_NOT_FOUND;
     }
 
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
     fseek(f, 0, SEEK_SET);
-    if (size < 0) { fclose(f); serve_404(fd, extra_headers); return 404; }
+    if (size < 0) {
+        fclose(f);
+        serve_404(fd, extra_headers);
+        return HTTP_NOT_FOUND;
+    }
 
     char *buf = (char *)malloc((size_t)size);
-    if (!buf) { fclose(f); serve_404(fd, extra_headers); return 404; }
+    if (!buf) {
+        fclose(f);
+        serve_404(fd, extra_headers);
+        return HTTP_NOT_FOUND;
+    }
     size_t nread = fread(buf, 1, (size_t)size, f);
     fclose(f);
 
-    write_headers(fd, 200, mime_for_path(fs_path), nread, extra_headers);
-    ssize_t r = write(fd, buf, nread); (void)r;
+    write_headers(fd, HTTP_OK, mime_for_path(fs_path), nread, extra_headers);
+    (void)net_write_all(fd, buf, nread);
     free(buf);
-    return 200;
+    return HTTP_OK;
 }
 
 /* ── Embedded-bundle mode (default) ──────────────────────────────────────── */
@@ -131,17 +141,17 @@ static int serve_from_bundle(int fd, const char *path, const char *extra_headers
     const WebuiAsset *asset = static_assets_find_in(g_webui_assets, g_webui_assets_count, path);
     if (!asset) {
         serve_404(fd, extra_headers);
-        return 404;
+        return HTTP_NOT_FOUND;
     }
-    write_headers(fd, 200, asset->mime_type, asset->len, extra_headers);
-    ssize_t r = write(fd, asset->data, asset->len); (void)r;
-    return 200;
+    write_headers(fd, HTTP_OK, asset->mime_type, asset->len, extra_headers);
+    (void)net_write_all(fd, asset->data, asset->len);
+    return HTTP_OK;
 }
 
 /* ── Public API ───────────────────────────────────────────────────────────── */
 
 int static_assets_serve(int fd, const char *path, const ServerConfig *cfg,
-                         const char *extra_headers) {
+                        const char *extra_headers) {
     if (cfg && cfg->static_dir) {
         return serve_from_disk(fd, cfg->static_dir, path, extra_headers);
     }

@@ -18,18 +18,24 @@ static int listen_any(int *server_fd) {
     return -1;
 }
 
-typedef struct { int server_fd; int ok; } EchoArgs;
+typedef struct {
+    int server_fd;
+    int ok;
+} EchoArgs;
 
 /* Echo server: replies to each FORWARD with the payload doubled; stops on BYE. */
 static void *echo_thread(void *arg) {
     EchoArgs *a = (EchoArgs *)arg;
-    int c = -1;
+    int c       = -1;
     if (rpc_accept(a->server_fd, &c) != TN_OK) return NULL;
     float buf[64];
     for (;;) {
         RpcHeader h;
         if (rpc_recv(c, &h, buf, 64) != TN_OK) break;
-        if (h.type == RPC_BYE) { a->ok = 1; break; }
+        if (h.type == RPC_BYE) {
+            a->ok = 1;
+            break;
+        }
         for (uint32_t i = 0; i < h.count; i++) buf[i] *= 2.0f;
         if (rpc_send(c, RPC_FORWARD, h.arg + 1, buf, h.count) != TN_OK) break;
     }
@@ -38,8 +44,8 @@ static void *echo_thread(void *arg) {
 }
 
 static void test_round_trip(void) {
-    EchoArgs a = { -1, 0 };
-    int port = listen_any(&a.server_fd);
+    EchoArgs a = {-1, 0};
+    int port   = listen_any(&a.server_fd);
     TEST_ASSERT(port > 0, "listen on a loopback port");
     if (port <= 0) return;
     pthread_t th;
@@ -56,7 +62,8 @@ static void test_round_trip(void) {
     TEST_ASSERT_EQ(h.arg, 42, "reply arg");
     TEST_ASSERT_EQ((int)h.count, 16, "reply count");
     int same = 1;
-    for (int i = 0; i < 16; i++) if (y[i] != 2.0f * x[i]) same = 0;
+    for (int i = 0; i < 16; i++)
+        if (y[i] != 2.0f * x[i]) same = 0;
     TEST_ASSERT(same, "payload round-trips bit-exactly");
 
     /* Reply larger than the caller's buffer must be refused, not overflow. */
@@ -67,23 +74,25 @@ static void test_round_trip(void) {
     rpc_close(a.server_fd);
 }
 
-typedef struct { int server_fd; } RawArgs;
+typedef struct {
+    int server_fd;
+} RawArgs;
 
 /* Writes a header with the wrong magic. */
 static void *bad_magic_thread(void *arg) {
     RawArgs *a = (RawArgs *)arg;
-    int c = -1;
+    int c      = -1;
     if (rpc_accept(a->server_fd, &c) != TN_OK) return NULL;
-    RpcHeader h = { 0xDEADBEEFu, RPC_FORWARD, 0, 0 };
-    ssize_t n = write(c, &h, sizeof(h));
+    RpcHeader h = {0xDEADBEEFu, RPC_FORWARD, 0, 0};
+    ssize_t n   = write(c, &h, sizeof(h));
     (void)n;
     rpc_close(c);
     return NULL;
 }
 
 static void test_bad_magic(void) {
-    RawArgs a = { -1 };
-    int port = listen_any(&a.server_fd);
+    RawArgs a = {-1};
+    int port  = listen_any(&a.server_fd);
     TEST_ASSERT(port > 0, "listen on a loopback port");
     if (port <= 0) return;
     pthread_t th;
@@ -119,8 +128,9 @@ static void test_plan_parse(void) {
     TEST_ASSERT_EQ(dist_plan_parse(&dp, "", 12), -1, "empty spec rejected");
 
     TEST_ASSERT(dist_plan_parse(&dp, "a:1@0-1,b:1@1-2", 2) == 0 &&
-                dist_plan_node_starting_at(&dp, 1) == &dp.nodes[1] &&
-                dist_plan_node_starting_at(&dp, 3) == NULL, "node lookup by start layer");
+                    dist_plan_node_starting_at(&dp, 1) == &dp.nodes[1] &&
+                    dist_plan_node_starting_at(&dp, 3) == NULL,
+                "node lookup by start layer");
 }
 
 static void check_cover(const int *s, const int *e, int n, int n_layers, const char *msg) {
@@ -134,21 +144,21 @@ static void check_cover(const int *s, const int *e, int n, int n_layers, const c
 
 static void test_layers_by_ram(void) {
     int s[4], e[4];
-    long long eq[2] = { 8LL << 30, 8LL << 30 };
+    long long eq[2] = {8LL << 30, 8LL << 30};
     dist_plan_layers_by_ram(30, eq, 2, s, e);
     check_cover(s, e, 2, 30, "equal RAM covers all layers");
     TEST_ASSERT_EQ(e[0], 15, "equal RAM splits in half");
 
-    long long skew[2] = { 24LL << 30, 8LL << 30 };
+    long long skew[2] = {24LL << 30, 8LL << 30};
     dist_plan_layers_by_ram(32, skew, 2, s, e);
     check_cover(s, e, 2, 32, "skewed RAM covers all layers");
     TEST_ASSERT_EQ(e[0], 24, "3:1 RAM gives 3/4 of the layers");
 
-    long long tiny[4] = { 1LL << 40, 1, 1, 1 };
+    long long tiny[4] = {1LL << 40, 1, 1, 1};
     dist_plan_layers_by_ram(4, tiny, 4, s, e);
     check_cover(s, e, 4, 4, "every node keeps at least one layer");
 
-    long long unknown[3] = { 0, -1, 0 };
+    long long unknown[3] = {0, -1, 0};
     dist_plan_layers_by_ram(9, unknown, 3, s, e);
     check_cover(s, e, 3, 9, "unknown RAM treated as average");
     TEST_ASSERT(e[0] == 3 && e[1] == 6, "unknown RAM splits evenly");

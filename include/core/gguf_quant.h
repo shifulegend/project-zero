@@ -13,7 +13,8 @@
  * proper PTQ (Q4_K / Q8_0) rather than ternary packing.
  * See CPU_LLM_TERNARY_ENGINE.md §"Category 3: Standard Models".
  */
-#pragma once
+#ifndef TN_CORE_GGUF_QUANT_H
+#define TN_CORE_GGUF_QUANT_H
 #include <stddef.h>
 
 void gguf_dequant_q8_0(float *out, const void *data, size_t n_elems);
@@ -39,3 +40,5 @@ void gguf_dequant_iq3_s(float *out, const void *data, size_t n_elems);
 void gguf_dequant_iq1_s(float *out, const void *data, size_t n_elems);
 void gguf_dequant_iq1_m(float *out, const void *data, size_t n_elems);
 void gguf_dequant_bf16(float *out, const void *data, size_t n_elems);
+
+#endif /* TN_CORE_GGUF_QUANT_H */

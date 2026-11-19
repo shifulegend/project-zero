@@ -14,52 +14,52 @@
  * This ensures all positions for a single head are contiguous,
  * enabling linear SIMD sweeps during attention score computation.
  */
-#define KV_CACHE_IDX(layer, head, pos, d, n_kv_heads, max_seq, head_dim)       \
-  ((size_t)(layer) * (n_kv_heads) * (max_seq) * (head_dim) +                   \
-   (size_t)(head) * (max_seq) * (head_dim) + (size_t)(pos) * (head_dim) + (d))
+#define KV_CACHE_IDX(layer, head, pos, d, n_kv_heads, max_seq, head_dim)                           \
+    ((size_t)(layer) * (n_kv_heads) * (max_seq) * (head_dim) +                                     \
+     (size_t)(head) * (max_seq) * (head_dim) + (size_t)(pos) * (head_dim) + (d))
 
 /* Row index of a (layer, kv_head, pos) entry in key_scale/value_scale. */
-#define KV_SCALE_IDX(layer, head, pos, n_kv_heads, max_seq)                       \
-  (((size_t)(layer) * (n_kv_heads) + (size_t)(head)) * (max_seq) + (size_t)(pos))
+#define KV_SCALE_IDX(layer, head, pos, n_kv_heads, max_seq)                                        \
+    (((size_t)(layer) * (n_kv_heads) + (size_t)(head)) * (max_seq) + (size_t)(pos))
 
 typedef struct {
-  /* Scratch vectors (dim) */
-  float *x;   /* current activation */
-  float *xb;  /* scratch after rmsnorm / attention output */
-  float *xb2; /* scratch for residual branch */
+    /* Scratch vectors (dim) */
+    float *x;   /* current activation */
+    float *xb;  /* scratch after rmsnorm / attention output */
+    float *xb2; /* scratch for residual branch */
 
-  /* FFN hidden buffers (hidden_dim) */
-  float *hb;  /* hidden state after gate + SiLU */
-  float *hb2; /* hidden state after up projection */
+    /* FFN hidden buffers (hidden_dim) */
+    float *hb;  /* hidden state after gate + SiLU */
+    float *hb2; /* hidden state after up projection */
 
-  /* Attention per-head buffers */
-  float *q; /* query vector (dim) */
+    /* Attention per-head buffers */
+    float *q; /* query vector (dim) */
 
-  /* Attention scores: n_heads * max_seq_len */
-  float *att;
+    /* Attention scores: n_heads * max_seq_len */
+    float *att;
 
-  /* Output logits: vocab_size */
-  float *logits;
+    /* Output logits: vocab_size */
+    float *logits;
 
-  /* KV Cache — transposed: [layer][head][pos][head_dim] */
-  float *key_cache;
-  float *value_cache;
+    /* KV Cache — transposed: [layer][head][pos][head_dim] */
+    float *key_cache;
+    float *value_cache;
 
-  /* Phase 17.7: MLA k_rope_cache — shared RoPE key cache for MLA models.
+    /* Phase 17.7: MLA k_rope_cache — shared RoPE key cache for MLA models.
    * Layout: k_rope_cache[layer][pos * qk_rope_head_dim]
    * NULL for non-MLA models (has_mla == 0); allocated by mla_run_state_alloc(). */
-  float **k_rope_cache;
+    float **k_rope_cache;
 
-  /* MLA RoPE frequency table computed for qk_rope_head_dim (NOT full head_dim).
+    /* MLA RoPE frequency table computed for qk_rope_head_dim (NOT full head_dim).
    * freq[i] = 1/pow(rope_theta, 2i/qk_rope_head_dim) for i in [0, rope_dim/2).
    * NULL for non-MLA models. Allocated by mla_run_state_alloc(). */
-  float *mla_rope_freq;
+    float *mla_rope_freq;
 
-  /* Precomputed RoPE frequency table: freq[i] = 1/pow(10000, 2i/head_dim) */
-  float *rope_freq;
-  int rope_freq_len; /* head_dim / 2 */
+    /* Precomputed RoPE frequency table: freq[i] = 1/pow(10000, 2i/head_dim) */
+    float *rope_freq;
+    int rope_freq_len; /* head_dim / 2 */
 
-  /* Qwen3.5/3.6 hybrid attention state (see MoEConfig.has_linear_attn).
+    /* Qwen3.5/3.6 hybrid attention state (see MoEConfig.has_linear_attn).
    * NULL for all other models. This arch's true attn_head_dim doesn't
    * divide evenly from dim/n_heads (unlike MLA's DeepSeek-Lite case), so
    * it CANNOT reuse key_cache/value_cache/rope_freq above — those are sized
@@ -67,28 +67,28 @@ typedef struct {
    * to a non-integer). Allocated by q35_run_state_alloc(). Per-layer arrays
    * follow the same NULL-for-inapplicable-layer-type convention as weights.h
    * (q35_key_cache[l] is NULL for linear-attention layers and vice versa). */
-  float **q35_key_cache;    /* [n_layers] full-attn: [n_kv_heads][max_seq][attn_head_dim] */
-  float **q35_value_cache;  /* [n_layers] full-attn: same shape */
-  float **q35_conv_state;   /* [n_layers] linear-attn: [conv_kernel-1][conv_dim] history */
-  float **q35_recur_state;  /* [n_layers] linear-attn: [n_v_heads][state_size][state_size] */
-  float  *q35_rope_freq;    /* [attn_rope_dim/2] shared partial-rotary freq table */
+    float **q35_key_cache;   /* [n_layers] full-attn: [n_kv_heads][max_seq][attn_head_dim] */
+    float **q35_value_cache; /* [n_layers] full-attn: same shape */
+    float **q35_conv_state;  /* [n_layers] linear-attn: [conv_kernel-1][conv_dim] history */
+    float **q35_recur_state; /* [n_layers] linear-attn: [n_v_heads][state_size][state_size] */
+    float *q35_rope_freq;    /* [attn_rope_dim/2] shared partial-rotary freq table */
 
-  /* Qwen3-MoE attention state (see MoEConfig.has_qk_norm). NULL for all
+    /* Qwen3-MoE attention state (see MoEConfig.has_qk_norm). NULL for all
    * other models. Same class of fix as q35_key_cache above: this arch's
    * head_dim is independent of dim/n_heads, so it cannot reuse
    * key_cache/value_cache/rope_freq. Allocated by qwen3moe_run_state_alloc(). */
-  float **qwen3moe_key_cache;    /* [n_layers] [n_kv_heads][max_seq][attn_head_dim] */
-  float **qwen3moe_value_cache;  /* [n_layers] same shape */
-  float  *qwen3moe_rope_freq;    /* [attn_head_dim/2] full-rotary freq table */
+    float **qwen3moe_key_cache;   /* [n_layers] [n_kv_heads][max_seq][attn_head_dim] */
+    float **qwen3moe_value_cache; /* [n_layers] same shape */
+    float *qwen3moe_rope_freq;    /* [attn_head_dim/2] full-rotary freq table */
 
-  /* State tracking */
-  int current_pos;
-  int max_seq_len;
+    /* State tracking */
+    int current_pos;
+    int max_seq_len;
 
-  /* Sliding Window state for circular KV cache mapping */
-  SlidingWindow sw;
+    /* Sliding Window state for circular KV cache mapping */
+    SlidingWindow sw;
 
-  /* Phase 19: LoRA adapter active for this RunState's generation, or NULL
+    /* Phase 19: LoRA adapter active for this RunState's generation, or NULL
    * (the default -- zeroed by run_state_alloc_ex()'s memset). Not owned:
    * points at a LoRAWeights the caller loaded and outlives this RunState.
    * Read directly by attention_forward()/ffn_forward() (single-token
@@ -96,32 +96,32 @@ typedef struct {
    * other RunState in the process (RAG's embedder, vision prefill, the
    * draft model's own state, every test) simply never sets this and pays
    * zero cost. */
-  const LoRAWeights *active_lora;
-  /* Phase 22-SSM: Mamba recurrent state (MoEConfig.is_ssm), NULL otherwise.
+    const LoRAWeights *active_lora;
+    /* Phase 22-SSM: Mamba recurrent state (MoEConfig.is_ssm), NULL otherwise.
    * Allocated by mamba_state_alloc() after run_state_alloc*(); released by
    * run_state_free(). */
-  struct MambaState *mamba;
-  /* Plan 8.5: int8 KV storage for the generic dense/GQA cache (--kv-type i8).
+    struct MambaState *mamba;
+    /* Plan 8.5: int8 KV storage for the generic dense/GQA cache (--kv-type i8).
    * When kv_type == KV_TYPE_I8, key_cache/value_cache are NULL and these hold
    * the same KV_CACHE_IDX layout as int8, plus one absmax scale per
    * (layer, kv_head, position) row at index KV_SCALE_IDX. */
-  int    kv_type;
-  int    kv_row_bytes;   /* quantized: data bytes per head_dim row (i8: hd, i4: hd/2) */
-  int    kv_row_scales;  /* quantized: F32 scales per row (i8: 1, i4: 2*hd/32); row r's
+    int kv_type;
+    int kv_row_bytes;  /* quantized: data bytes per head_dim row (i8: hd, i4: hd/2) */
+    int kv_row_scales; /* quantized: F32 scales per row (i8: 1, i4: 2*hd/32); row r's
                             data at key_cache_q + r*kv_row_bytes, scales at
                             key_scale + r*kv_row_scales, r = KV_SCALE_IDX(...) */
-  tn_i8 *key_cache_q;
-  tn_i8 *value_cache_q;
-  float *key_scale;
-  float *value_scale;
-  /* Phase 31: when --kv-offload DIR is set, the generic KV buffers above are
+    tn_i8 *key_cache_q;
+    tn_i8 *value_cache_q;
+    float *key_scale;
+    float *value_scale;
+    /* Phase 31: when --kv-offload DIR is set, the generic KV buffers above are
    * carved out of one disk-backed mapping (memory/file_backed.h) instead of
    * tn_aligned_calloc; run_state_free() unmaps it. NULL otherwise. */
-  void  *kv_offload_base;
-  size_t kv_offload_bytes;
-  /* Positions [0, kv_committed) of the generic KV cache are known resident
+    void *kv_offload_base;
+    size_t kv_offload_bytes;
+    /* Positions [0, kv_committed) of the generic KV cache are known resident
    * (run_state_kv_reserve); the buffers are committed lazily otherwise. */
-  int    kv_committed;
+    int kv_committed;
 } RunState;
 
 /**
@@ -151,7 +151,7 @@ TernaryError run_state_alloc(RunState *s, const Config *cfg, int max_seq_len);
  * Skipping the calloc entirely is the only way to avoid the spike.
  */
 TernaryError run_state_alloc_ex(RunState *s, const Config *cfg, int max_seq_len,
-                                 bool skip_kv_cache);
+                                bool skip_kv_cache);
 
 /**
  * Free all RunState buffers.
@@ -188,8 +188,8 @@ void run_state_kv_prefetch_layer(const RunState *s, const Config *cfg, int layer
  * k_rope_cache[l] has (max_seq_len * mc->qk_rope_head_dim) floats.
  * No-op (returns TN_OK) when mc == NULL or mc->has_mla == 0.
  */
-TernaryError mla_run_state_alloc(RunState *s, const Config *cfg,
-                                  const MoEConfig *mc, int max_seq_len);
+TernaryError mla_run_state_alloc(RunState *s, const Config *cfg, const MoEConfig *mc,
+                                 int max_seq_len);
 
 /**
  * Free k_rope_cache per-layer buffers.
@@ -205,8 +205,8 @@ void mla_run_state_free(RunState *s, int n_layers);
  * Must be called after run_state_alloc() when mc->has_linear_attn is true.
  * No-op (returns TN_OK) when mc == NULL or mc->has_linear_attn == 0.
  */
-TernaryError q35_run_state_alloc(RunState *s, const Config *cfg,
-                                  const MoEConfig *mc, int max_seq_len);
+TernaryError q35_run_state_alloc(RunState *s, const Config *cfg, const MoEConfig *mc,
+                                 int max_seq_len);
 
 /**
  * Free q35_key_cache/q35_value_cache/q35_conv_state/q35_recur_state/q35_rope_freq.
@@ -222,8 +222,8 @@ void q35_run_state_free(RunState *s, const Config *cfg, const MoEConfig *mc);
  * Must be called after run_state_alloc() when mc->has_qk_norm is true.
  * No-op (returns TN_OK) when mc == NULL or mc->has_qk_norm == 0.
  */
-TernaryError qwen3moe_run_state_alloc(RunState *s, const Config *cfg,
-                                       const MoEConfig *mc, int max_seq_len);
+TernaryError qwen3moe_run_state_alloc(RunState *s, const Config *cfg, const MoEConfig *mc,
+                                      int max_seq_len);
 
 /**
  * Free qwen3moe_key_cache/qwen3moe_value_cache/qwen3moe_rope_freq.

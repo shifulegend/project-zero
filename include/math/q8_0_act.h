@@ -28,8 +28,8 @@
 /* One 32-element activation block. s = d * sum(qs) feeds the Q5_1 min term
  * (and the unsigned-offset trick of the Q5_0 VNNI path). 40 bytes. */
 typedef struct {
-    float  d;
-    float  s;
+    float d;
+    float s;
     int8_t qs[TN_Q8_0_BLOCK];
 } TnQ8_0ActBlock;
 
@@ -51,13 +51,13 @@ int tn_q8_0_act_vnni_ok(void);
  * GGUF_TYPE_Q5_1 or GGUF_TYPE_Q8_0; n % 32 == 0). x is quantized to Q8_0
  * once, then rows are split across the pool. Main-thread only (module
  * scratch). Returns 0, or -1 for an unsupported type / OOM (out untouched). */
-int parallel_matmul_q8a(float *out, const float *x, const uint8_t *w,
-                        int gguf_type, int n, int d, ThreadPool *tp);
+int parallel_matmul_q8a(float *out, const float *x, const uint8_t *w, int gguf_type, int n, int d,
+                        ThreadPool *tp);
 
 /* Multi-token form: x [n_tokens][n] -> out [n_tokens][d]. Each weight row is
  * read once for all tokens (same per-token results as parallel_matmul_q8a).
  * Returns -1 on unsupported type/shape or allocation failure. */
-int parallel_matmul_q8a_tokens(float *out, const float *x, const uint8_t *w,
-                               int gguf_type, int n, int d, int n_tokens, ThreadPool *tp);
+int parallel_matmul_q8a_tokens(float *out, const float *x, const uint8_t *w, int gguf_type, int n,
+                               int d, int n_tokens, ThreadPool *tp);
 
 #endif /* TN_Q8_0_ACT_H */

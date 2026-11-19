@@ -20,23 +20,23 @@
 
 typedef struct {
     /* x86-64 features */
-    bool avx2;           /* AVX2 + FMA3 — Haswell 2013+ */
-    bool avx512f;        /* AVX-512 Foundation — Ice Lake 2019+, Skylake-X 2017+ */
-    bool avx512vnni;     /* AVX-512 VNNI int8 — Ice Lake 2019+, Zen4 2022+ */
-    bool avx_vnni;       /* AVX-VNNI 256-bit int8 — Alder Lake 2021+, Zen3 2020+ */
-    bool avx512bf16;     /* AVX-512 BF16 — Sapphire Rapids 2023+, Zen4 2022+ */
-    bool avx512fp16;     /* AVX-512 FP16 — Sapphire Rapids 2023+, Meteor Lake 2023+ */
-    bool avx512bw;       /* AVX-512 BW (byte/word) — Skylake-X 2017+, required for vpermt2w */
-    bool avx512vbmi;     /* AVX-512 VBMI (byte permute) — Ice Lake 2019+ */
+    bool avx2;       /* AVX2 + FMA3 — Haswell 2013+ */
+    bool avx512f;    /* AVX-512 Foundation — Ice Lake 2019+, Skylake-X 2017+ */
+    bool avx512vnni; /* AVX-512 VNNI int8 — Ice Lake 2019+, Zen4 2022+ */
+    bool avx_vnni;   /* AVX-VNNI 256-bit int8 — Alder Lake 2021+, Zen3 2020+ */
+    bool avx512bf16; /* AVX-512 BF16 — Sapphire Rapids 2023+, Zen4 2022+ */
+    bool avx512fp16; /* AVX-512 FP16 — Sapphire Rapids 2023+, Meteor Lake 2023+ */
+    bool avx512bw;   /* AVX-512 BW (byte/word) — Skylake-X 2017+, required for vpermt2w */
+    bool avx512vbmi; /* AVX-512 VBMI (byte permute) — Ice Lake 2019+ */
 
     /* ARM features */
-    bool neon;           /* NEON baseline — all ARMv8-A */
-    bool arm_dotprod;    /* SDOT/UDOT int8 — Cortex-A75+ 2017+, Apple M1+ */
-    bool arm_sve2;       /* SVE2 scalable vectors — Cortex-X4+, Apple M4+ */
-    bool arm_bf16;       /* ARM BF16 — Cortex-A78+, Apple M2+ */
+    bool neon;        /* NEON baseline — all ARMv8-A */
+    bool arm_dotprod; /* SDOT/UDOT int8 — Cortex-A75+ 2017+, Apple M1+ */
+    bool arm_sve2;    /* SVE2 scalable vectors — Cortex-X4+, Apple M4+ */
+    bool arm_bf16;    /* ARM BF16 — Cortex-A78+, Apple M2+ */
 
     /* Apple Silicon specific */
-    bool apple_silicon;  /* True if running on Apple M-series */
+    bool apple_silicon; /* True if running on Apple M-series */
 
     /* Populated name string for logging */
     char best_backend[32];

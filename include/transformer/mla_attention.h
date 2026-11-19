@@ -23,7 +23,7 @@
 #include "core/moe_config.h"
 #include "core/run_state.h"
 #include "core/weights.h"
-#include "speculative/spec_scratch.h"
+#include "core/batch_scratch_fwd.h"
 #include "threading/thread_pool.h"
 
 /**
@@ -31,9 +31,8 @@
  * Only called when mc->has_mla == 1.
  * Writes result to s->x (residual-added in place).
  */
-void mla_attention_forward(RunState *s, const TransformerWeights *w,
-                            const Config *cfg, const MoEConfig *mc,
-                            int layer, int pos, ThreadPool *tp);
+void mla_attention_forward(RunState *s, const TransformerWeights *w, const Config *cfg,
+                           const MoEConfig *mc, int layer, int pos, ThreadPool *tp);
 
 /**
  * Phase 18 (speculative decoding): batched multi-token MLA attention.
@@ -43,8 +42,8 @@ void mla_attention_forward(RunState *s, const TransformerWeights *w,
  * same write-phase/read-phase way as the generic dense/GQA path.
  */
 TernaryError mla_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
-                                          const TransformerWeights *w, const Config *cfg,
-                                          const MoEConfig *mc, int layer, int pos,
-                                          int n_tokens, ThreadPool *tp);
+                                         const TransformerWeights *w, const Config *cfg,
+                                         const MoEConfig *mc, int layer, int pos, int n_tokens,
+                                         ThreadPool *tp);
 
 #endif /* TN_MLA_ATTENTION_H */

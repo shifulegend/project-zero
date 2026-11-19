@@ -10,9 +10,9 @@
  */
 
 typedef struct {
-    int  major, minor, patch;
-    char pre[32];       /* pre-release identifiers ("rc.1"), "" for a release */
-    int  commits_ahead; /* git describe distance past the tag, 0 otherwise */
+    int major, minor, patch;
+    char pre[32];      /* pre-release identifiers ("rc.1"), "" for a release */
+    int commits_ahead; /* git describe distance past the tag, 0 otherwise */
 } SemVer;
 
 /* 0 on success, -1 if `s` is not a version. */

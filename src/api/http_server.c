@@ -60,6 +60,9 @@
 
 #include "api/config_endpoint.h"
 #include "api/api_server.h"
+#include "api/net_io.h"
+#include "api/rate_limit.h"
+#include "api/http_headers.h"
 #include "api/chat_request.h"
 #include "api/chat_compile.h"
 #include "api/sse_stream.h"
@@ -80,12 +83,15 @@
 #include "api/json_write.h"
 #include "api/gen_queue.h"
 #include "api/batch_scheduler.h"
+#include "api/http_status.h"
 #include "kv_cache/kv_strategy.h"
 #include "multimodal/vision_pipeline.h"
 #include "transformer/generate.h"
 #include "core/debug.h"
 
+#include <limits.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
@@ -99,17 +105,33 @@
 #include <signal.h>
 
 /* ── Tuning constants ────────────────────────────────────────────────────── */
-#define HTTP_RECV_BUF        8192       /* receive buffer per connection */
-#define HTTP_MAX_BODY_BYTES  (8*1024*1024) /* 8 MiB max request body — raised from
+#define HTTP_RECV_BUF 8192 /* receive buffer per connection */
+#define HTTP_MAX_BODY_BYTES                                                                        \
+    (8 * 1024 * 1024)                 /* 8 MiB max request body — raised from
                                              * 512 KiB (Phase 21) to fit base64
                                              * image uploads (Phase 22.2). */
-#define HTTP_MAX_PROMPT_BYTES (65536)   /* compiled prompt size cap       */
-#define HTTP_BACKLOG         16
+#define HTTP_MAX_PROMPT_BYTES (65536) /* compiled prompt size cap       */
+#define HTTP_BACKLOG 16
+
+/* Fixed buffer capacities (bytes). Each is the size of one stack/static array below. */
+#define HTTP_HDR_BUF 1024             /* one response header block */
+#define HTTP_ERR_BODY_BUF 256         /* JSON error body */
+#define HTTP_METRICS_BUF 4096         /* rendered /metrics text */
+#define HTTP_SSE_EVENT_BUF 160        /* one queue-failure SSE event */
+#define HTTP_STRIPPED_PROMPT_BUF 8192 /* user prompt with the image part removed */
+#define HTTP_PATH_MAX 256             /* request path */
+#define HTTP_ORIGIN_MAX 256           /* Origin header */
+#define HTTP_AUTH_MAX 512             /* Authorization header */
+#define HTTP_CTYPE_MAX 128            /* Content-Type header */
+#define HTTP_HOST_MAX 256             /* Host header */
+#define HTTP_EXTRA_HDRS_BUF 512       /* CORS headers added to a response */
+#define HTTP_RETRY_HDRS_BUF (HTTP_EXTRA_HDRS_BUF + 128) /* extra headers + Retry-After */
+#define HTTP_BUSY_REPLY_BUF 320 /* complete 503 reply to a refused connection */
 
 /* ── Simple unique ID generator ─────────────────────────────────────────── */
 static void make_id(char *buf, size_t cap) {
     static pthread_mutex_t id_lock = PTHREAD_MUTEX_INITIALIZER;
-    static unsigned long counter = 0;
+    static unsigned long counter   = 0;
     pthread_mutex_lock(&id_lock);
     unsigned long n = ++counter;
     pthread_mutex_unlock(&id_lock);
@@ -121,11 +143,10 @@ static void make_id(char *buf, size_t cap) {
 /* extra_headers, if non-NULL, must already be "\r\n"-terminated per line
  * (e.g. from cors_format_headers()) and is spliced in ahead of the blank
  * line that ends the header block. */
-static void send_response_ex(int fd, int status, const char *content_type,
-                              const char *body, int streaming,
-                              const char *extra_headers) {
-    char hdr[1024];
-    size_t body_len = body ? strlen(body) : 0;
+static void send_response_ex(int fd, int status, const char *content_type, const char *body,
+                             int streaming, const char *extra_headers) {
+    char hdr[HTTP_HDR_BUF];
+    size_t body_len   = body ? strlen(body) : 0;
     const char *extra = extra_headers ? extra_headers : "";
     int n;
     if (streaming) {
@@ -137,42 +158,44 @@ static void send_response_ex(int fd, int status, const char *content_type,
          * done, RFC 7230 §3.3.3 case 7 already lets EOF delimit the body —
          * no Transfer-Encoding header is needed at all. */
         n = snprintf(hdr, sizeof(hdr),
-            "HTTP/1.1 %d OK\r\n"
-            "Content-Type: %s\r\n"
-            "Cache-Control: no-cache\r\n"
-            "Connection: close\r\n"
-            "%s"
-            "\r\n", status, content_type, extra);
+                     "HTTP/1.1 %d OK\r\n"
+                     "Content-Type: %s\r\n"
+                     "Cache-Control: no-cache\r\n"
+                     "Connection: close\r\n"
+                     "%s"
+                     "\r\n",
+                     status, content_type, extra);
     } else {
         n = snprintf(hdr, sizeof(hdr),
-            "HTTP/1.1 %d OK\r\n"
-            "Content-Type: %s\r\n"
-            "Content-Length: %zu\r\n"
-            "Connection: close\r\n"
-            "%s"
-            "\r\n", status, content_type, body_len, extra);
+                     "HTTP/1.1 %d OK\r\n"
+                     "Content-Type: %s\r\n"
+                     "Content-Length: %zu\r\n"
+                     "Connection: close\r\n"
+                     "%s"
+                     "\r\n",
+                     status, content_type, body_len, extra);
     }
-    if (n > 0) { ssize_t r = write(fd, hdr, (size_t)n); (void)r; }
-    if (body && !streaming) { ssize_t r = write(fd, body, body_len); (void)r; }
+    if (n > 0 && net_write_all(fd, hdr, (size_t)n) != 0) return;
+    if (body && !streaming)
+        (void)net_write_all(fd, body, body_len); /* peer gone: nothing left to do */
 }
 
 static void send_error_ex(int fd, int status, const char *msg, const char *extra_headers) {
-    char body[256];
-    snprintf(body, sizeof(body),
-             "{\"error\":{\"message\":\"%s\",\"type\":\"server_error\"}}", msg);
+    char body[HTTP_ERR_BODY_BUF];
+    snprintf(body, sizeof(body), "{\"error\":{\"message\":\"%s\",\"type\":\"server_error\"}}", msg);
     const char *extra = extra_headers ? extra_headers : "";
-    char hdr[1024];
+    char hdr[HTTP_HDR_BUF];
     int n = snprintf(hdr, sizeof(hdr),
-        "HTTP/1.1 %d Error\r\n"
-        "Content-Type: application/json\r\n"
-        "Content-Length: %zu\r\n"
-        "Connection: close\r\n"
-        "%s"
-        "\r\n", status, strlen(body), extra);
+                     "HTTP/1.1 %d Error\r\n"
+                     "Content-Type: application/json\r\n"
+                     "Content-Length: %zu\r\n"
+                     "Connection: close\r\n"
+                     "%s"
+                     "\r\n",
+                     status, strlen(body), extra);
     if (n > 0) {
-        ssize_t r;
-        r = write(fd, hdr, (size_t)n); (void)r;
-        r = write(fd, body, strlen(body)); (void)r;
+        if (net_write_all(fd, hdr, (size_t)n) == 0)
+            (void)net_write_all(fd, body, strlen(body)); /* peer gone: nothing left to do */
     }
 }
 
@@ -183,14 +206,14 @@ static void send_error(int fd, int status, const char *msg) {
 /* ── Token streaming callback ────────────────────────────────────────────── */
 
 typedef struct {
-    int   conn_fd;       /* accepted socket */
-    char  id[32];        /* raw request ID — passed to sse_write_* (which
+    int conn_fd;        /* accepted socket */
+    char id[32];        /* raw request ID — passed to sse_write_* (which
                            * itself prepends "chatcmpl-") */
-    char  public_id[48]; /* "chatcmpl-"+id — what the client actually sees
+    char public_id[48]; /* "chatcmpl-"+id — what the client actually sees
                            * in the streamed JSON "id" field, and therefore
                            * what a client will send back to the cancel
                            * endpoint. Must match cancel_registry_begin(). */
-    int   is_streaming;  /* SSE mode flag   */
+    int is_streaming;   /* SSE mode flag   */
     /* For non-streaming mode, accumulate full text */
     char *accum_buf;
     size_t accum_len;
@@ -209,14 +232,23 @@ static char *append_best_of_json(char *json, const BestOfResult *r) {
     jb_init(&jb);
     json[len - 1] = '\0';
     jb_raw(&jb, json);
-    jb_raw(&jb, ",\"best_of\":{\"n\":"); jb_int(&jb, r->n);
-    jb_raw(&jb, ",\"chosen\":"); jb_int(&jb, r->chosen);
-    jb_raw(&jb, ",\"completion_tokens_total\":"); jb_int(&jb, r->tokens_total);
+    jb_raw(&jb, ",\"best_of\":{\"n\":");
+    jb_int(&jb, r->n);
+    jb_raw(&jb, ",\"chosen\":");
+    jb_int(&jb, r->chosen);
+    jb_raw(&jb, ",\"completion_tokens_total\":");
+    jb_int(&jb, r->tokens_total);
     jb_raw(&jb, ",\"scores\":[");
-    for (int i = 0; i < r->n && i < BEST_OF_N_MAX; i++) { if (i) jb_raw(&jb, ","); jb_num(&jb, r->scores[i]); }
+    for (int i = 0; i < r->n && i < BEST_OF_N_MAX; i++) {
+        if (i) jb_raw(&jb, ",");
+        jb_num(&jb, r->scores[i]);
+    }
     jb_raw(&jb, "]}}");
     char *out = jb_finish(&jb);
-    if (!out) { json[len - 1] = '}'; return json; }
+    if (!out) {
+        json[len - 1] = '}';
+        return json;
+    }
     free(json);
     return out;
 }
@@ -230,15 +262,24 @@ static char *append_mcts_json(char *json, const MctsResult *r) {
     jb_init(&jb);
     json[len - 1] = '\0';
     jb_raw(&jb, json);
-    jb_raw(&jb, ",\"mcts\":{\"simulations\":"); jb_int(&jb, r->simulations);
-    jb_raw(&jb, ",\"nodes\":"); jb_int(&jb, r->nodes);
-    jb_raw(&jb, ",\"steps\":"); jb_int(&jb, r->steps);
-    jb_raw(&jb, ",\"path_value\":"); jb_num(&jb, r->path_value);
-    jb_raw(&jb, ",\"scorer\":"); jb_str(&jb, r->used_prm ? "prm" : "self");
-    jb_raw(&jb, ",\"search_tokens\":"); jb_int(&jb, r->tokens_total);
+    jb_raw(&jb, ",\"mcts\":{\"simulations\":");
+    jb_int(&jb, r->simulations);
+    jb_raw(&jb, ",\"nodes\":");
+    jb_int(&jb, r->nodes);
+    jb_raw(&jb, ",\"steps\":");
+    jb_int(&jb, r->steps);
+    jb_raw(&jb, ",\"path_value\":");
+    jb_num(&jb, r->path_value);
+    jb_raw(&jb, ",\"scorer\":");
+    jb_str(&jb, r->used_prm ? "prm" : "self");
+    jb_raw(&jb, ",\"search_tokens\":");
+    jb_int(&jb, r->tokens_total);
     jb_raw(&jb, "}}");
     char *out = jb_finish(&jb);
-    if (!out) { json[len - 1] = '}'; return json; }
+    if (!out) {
+        json[len - 1] = '}';
+        return json;
+    }
     free(json);
     return out;
 }
@@ -280,16 +321,20 @@ static int streaming_token_callback(const char *piece, void *userdata) {
 /* ── Route handlers ──────────────────────────────────────────────────────── */
 
 static void send_json_heap(int fd, int status, char *body, const char *extra_headers) {
-    if (!body) { send_error_ex(fd, 500, "OOM", extra_headers); return; }
-    if (status == 200) send_response_ex(fd, 200, "application/json", body, 0, extra_headers);
+    if (!body) {
+        send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers);
+        return;
+    }
+    if (status == HTTP_OK)
+        send_response_ex(fd, HTTP_OK, "application/json", body, 0, extra_headers);
     else {
-        char hdr[1024];
+        char hdr[HTTP_HDR_BUF];
         int n = snprintf(hdr, sizeof(hdr),
-            "HTTP/1.1 %d Error\r\nContent-Type: application/json\r\n"
-            "Content-Length: %zu\r\nConnection: close\r\n%s\r\n",
-            status, strlen(body), extra_headers ? extra_headers : "");
-        if (n > 0) { ssize_t r = write(fd, hdr, (size_t)n); (void)r; }
-        ssize_t r = write(fd, body, strlen(body)); (void)r;
+                         "HTTP/1.1 %d Error\r\nContent-Type: application/json\r\n"
+                         "Content-Length: %zu\r\nConnection: close\r\n%s\r\n",
+                         status, strlen(body), extra_headers ? extra_headers : "");
+        if (n > 0 && net_write_all(fd, hdr, (size_t)n) != 0) return; /* peer gone */
+        (void)net_write_all(fd, body, strlen(body));
     }
     free(body);
 }
@@ -298,18 +343,20 @@ static void send_json_heap(int fd, int status, char *body, const char *extra_hea
  * "vision" flag, so the web UI's image-upload control (gated on
  * modelInfo.vision) could never appear even with --vision/--proj set. */
 static void handle_get_models(int fd, ApiContext *ctx, const char *extra_headers) {
-    send_json_heap(fd, 200, api_models_json(ctx), extra_headers);
+    send_json_heap(fd, HTTP_OK, api_models_json(ctx), extra_headers);
 }
 
 static void handle_get_config(int fd, ApiContext *ctx, const char *extra_headers) {
-    send_json_heap(fd, 200, api_config_json(ctx), extra_headers);
+    send_json_heap(fd, HTTP_OK, api_config_json(ctx), extra_headers);
 }
 
 /* Phase 23 stage 2b: a batched chat request holds one gen_queue unit (one
  * scheduler slot); anything that needs the whole engine — the sequential
  * generation path, image input, best-of, tree search, cache reset — holds
  * all of them plus generation_mutex, so the scheduler is idle meanwhile. */
-static int engine_units(ApiContext *ctx) { return gen_queue_capacity(&ctx->gen_queue); }
+static int engine_units(ApiContext *ctx) {
+    return gen_queue_capacity(&ctx->gen_queue);
+}
 
 /* Releases what handle_chat_completions() / prompt-cache clear took:
  * `units` gen_queue units, and generation_mutex when it held the engine. */
@@ -321,7 +368,7 @@ static void release_generation_slot(ApiContext *ctx, int units, int exclusive) {
 /* GET /v1/prompt_cache — Phase 26 store stats. Reads counters without the
  * generation mutex (word-sized, informational only). */
 static void handle_prompt_cache_stats(int fd, ApiContext *ctx, const char *extra_headers) {
-    send_json_heap(fd, 200, api_prompt_cache_json(ctx), extra_headers);
+    send_json_heap(fd, HTTP_OK, api_prompt_cache_json(ctx), extra_headers);
 }
 
 /* POST /v1/prompt_cache/clear — drops every snapshot and the live prefix
@@ -330,35 +377,38 @@ static void handle_prompt_cache_stats(int fd, ApiContext *ctx, const char *extra
 static int handle_prompt_cache_clear(int fd, ApiContext *ctx, const char *extra_headers) {
     int units = engine_units(ctx);
     if (gen_queue_try_acquire_n(&ctx->gen_queue, units) != GEN_QUEUE_OK) {
-        send_error_ex(fd, 429, "A generation is in flight", extra_headers);
-        return 429;
+        send_error_ex(fd, HTTP_TOO_MANY_REQUESTS, "A generation is in flight", extra_headers);
+        return HTTP_TOO_MANY_REQUESTS;
     }
     pthread_mutex_lock(&ctx->generation_mutex);
     prompt_store_clear(&ctx->prompt_store);
     prefix_cache_reset(&ctx->prefix_cache);
-    batch_scheduler_reset_caches(ctx->sched);   /* every parallel slot's prefix too */
+    batch_scheduler_reset_caches(ctx->sched); /* every parallel slot's prefix too */
     release_generation_slot(ctx, units, 1);
-    send_json_heap(fd, 200, api_prompt_cache_json(ctx), extra_headers);
-    return 200;
+    send_json_heap(fd, HTTP_OK, api_prompt_cache_json(ctx), extra_headers);
+    return HTTP_OK;
 }
 
 /* POST /v1/selfcheck — the accuracy probe on the loaded model. It runs forward passes on the
  * engine's own state, so like a cache reset it takes every generation unit plus the mutex
  * (429 while a generation is running) and drops the prefix caches that the probe overwrites. */
-static int handle_selfcheck(int fd, const char *body_start, size_t body_len,
-                            ApiContext *ctx, const char *extra_headers) {
+static int handle_selfcheck(int fd, const char *body_start, size_t body_len, ApiContext *ctx,
+                            const char *extra_headers) {
     char *body = (char *)malloc(body_len + 1);
-    if (!body) { send_error_ex(fd, 500, "OOM", extra_headers); return 500; }
+    if (!body) {
+        send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers);
+        return HTTP_INTERNAL_ERROR;
+    }
     memcpy(body, body_start, body_len);
     body[body_len] = '\0';
-    int units = engine_units(ctx);
+    int units      = engine_units(ctx);
     if (gen_queue_try_acquire_n(&ctx->gen_queue, units) != GEN_QUEUE_OK) {
         free(body);
-        send_error_ex(fd, 429, "A generation is in flight", extra_headers);
-        return 429;
+        send_error_ex(fd, HTTP_TOO_MANY_REQUESTS, "A generation is in flight", extra_headers);
+        return HTTP_TOO_MANY_REQUESTS;
     }
     pthread_mutex_lock(&ctx->generation_mutex);
-    int status = 500;
+    int status = HTTP_INTERNAL_ERROR;
     char *json = api_selfcheck(ctx, body, &status);
     prompt_store_clear(&ctx->prompt_store);
     prefix_cache_reset(&ctx->prefix_cache);
@@ -369,14 +419,17 @@ static int handle_selfcheck(int fd, const char *body_start, size_t body_len,
     return status;
 }
 
-static int handle_watermark_detect(int fd, const char *body_start, size_t body_len,
-                                   ApiContext *ctx, const char *extra_headers) {
+static int handle_watermark_detect(int fd, const char *body_start, size_t body_len, ApiContext *ctx,
+                                   const char *extra_headers) {
     char *body = (char *)malloc(body_len + 1);
-    if (!body) { send_error_ex(fd, 500, "OOM", extra_headers); return 500; }
+    if (!body) {
+        send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers);
+        return HTTP_INTERNAL_ERROR;
+    }
     memcpy(body, body_start, body_len);
     body[body_len] = '\0';
-    int status = 500;
-    char *json = api_watermark_detect(ctx, body, &status);
+    int status     = HTTP_INTERNAL_ERROR;
+    char *json     = api_watermark_detect(ctx, body, &status);
     free(body);
     send_json_heap(fd, status, json, extra_headers);
     return status;
@@ -388,34 +441,41 @@ static int handle_config_save(int fd, const char *body_start, size_t body_len,
                               const char *content_type, const char *origin, const char *host,
                               ApiContext *ctx, const char *extra_headers) {
     if (!api_config_write_allowed(content_type, origin, host, &ctx->server_config.cors)) {
-        send_error_ex(fd, 403, "Cross-site request refused (send Content-Type: application/json "
-                               "from the server's own origin)", extra_headers);
-        return 403;
+        send_error_ex(fd, HTTP_FORBIDDEN,
+                      "Cross-site request refused (send Content-Type: application/json "
+                      "from the server's own origin)",
+                      extra_headers);
+        return HTTP_FORBIDDEN;
     }
     char *body = (char *)malloc(body_len + 1);
-    if (!body) { send_error_ex(fd, 500, "OOM", extra_headers); return 500; }
+    if (!body) {
+        send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers);
+        return HTTP_INTERNAL_ERROR;
+    }
     memcpy(body, body_start, body_len);
     body[body_len] = '\0';
-    int status = 500;
-    char *json = api_config_save(ctx, body, &status);
+    int status     = HTTP_INTERNAL_ERROR;
+    char *json     = api_config_save(ctx, body, &status);
     free(body);
     send_json_heap(fd, status, json, extra_headers);
     return status;
 }
 
 static void handle_health(int fd, const char *extra_headers) {
-    send_response_ex(fd, 200, "application/json", "{\"status\":\"ok\"}", 0, extra_headers);
+    send_response_ex(fd, HTTP_OK, "application/json", "{\"status\":\"ok\"}", 0, extra_headers);
 }
 
 static void handle_get_metrics(int fd, ApiContext *ctx, const char *extra_headers) {
-    char buf[4096];
+    char buf[HTTP_METRICS_BUF];
     size_t n = metrics_render(&ctx->metrics, buf, sizeof(buf));
     /* Phase 23: generation slots (gen_queue units) and the parallel scheduler. */
     BatchSchedulerStats bst;
     batch_scheduler_stats(ctx->sched, &bst);
     if (n < sizeof(buf))
-        snprintf(buf + n, sizeof(buf) - n,
-            "# HELP project_zero_generation_slots Requests the server generates at once (--parallel).\n"
+        snprintf(
+            buf + n, sizeof(buf) - n,
+            "# HELP project_zero_generation_slots Requests the server generates at once "
+            "(--parallel).\n"
             "# TYPE project_zero_generation_slots gauge\n"
             "project_zero_generation_slots %d\n"
             "# HELP project_zero_generation_slots_busy Generation slots in use.\n"
@@ -427,18 +487,17 @@ static void handle_get_metrics(int fd, ApiContext *ctx, const char *extra_header
             "# HELP project_zero_parallel_kv_tokens KV-cache positions held by parallel slots.\n"
             "# TYPE project_zero_parallel_kv_tokens gauge\n"
             "project_zero_parallel_kv_tokens %lld\n",
-            ctx->parallel_slots > 0 ? ctx->parallel_slots : 1,
-            gen_queue_in_use(&ctx->gen_queue), gen_queue_waiting(&ctx->gen_queue),
-            bst.kv_committed_tokens);
-    send_response_ex(fd, 200, "text/plain; version=0.0.4", buf, 0, extra_headers);
+            ctx->parallel_slots > 0 ? ctx->parallel_slots : 1, gen_queue_in_use(&ctx->gen_queue),
+            gen_queue_waiting(&ctx->gen_queue), bst.kv_committed_tokens);
+    send_response_ex(fd, HTTP_OK, "text/plain; version=0.0.4", buf, 0, extra_headers);
 }
 
 static void handle_get_docs(int fd, const char *extra_headers) {
-    send_response_ex(fd, 200, "text/html", openapi_docs_html(), 0, extra_headers);
+    send_response_ex(fd, HTTP_OK, "text/html", openapi_docs_html(), 0, extra_headers);
 }
 
 static void handle_get_openapi(int fd, const char *extra_headers) {
-    send_response_ex(fd, 200, "application/json", openapi_json(), 0, extra_headers);
+    send_response_ex(fd, HTTP_OK, "application/json", openapi_json(), 0, extra_headers);
 }
 
 /* Minimal extraction of {"id":"..."} — the cancel endpoint's only field.
@@ -461,17 +520,20 @@ static int extract_id_field(const char *json_body, char *out, size_t out_cap) {
     return i > 0;
 }
 
-static void handle_cancel(int fd, const char *body_start, size_t body_len,
-                           ApiContext *ctx, const char *extra_headers) {
+static void handle_cancel(int fd, const char *body_start, size_t body_len, ApiContext *ctx,
+                          const char *extra_headers) {
     char *body = (char *)malloc(body_len + 1);
-    if (!body) { send_error_ex(fd, 500, "OOM", extra_headers); return; }
+    if (!body) {
+        send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers);
+        return;
+    }
     memcpy(body, body_start, body_len);
     body[body_len] = '\0';
 
     char id[32];
     if (!extract_id_field(body, id, sizeof(id))) {
         free(body);
-        send_error_ex(fd, 400, "Missing 'id' field", extra_headers);
+        send_error_ex(fd, HTTP_BAD_REQUEST, "Missing 'id' field", extra_headers);
         return;
     }
     free(body);
@@ -479,10 +541,9 @@ static void handle_cancel(int fd, const char *body_start, size_t body_len,
     int matched = cancel_registry_request(&ctx->cancel, id);
     if (matched) {
         metrics_record_cancel(&ctx->metrics);
-        send_response_ex(fd, 200, "application/json",
-                          "{\"cancelled\":true}", 0, extra_headers);
+        send_response_ex(fd, HTTP_OK, "application/json", "{\"cancelled\":true}", 0, extra_headers);
     } else {
-        send_error_ex(fd, 404, "No matching in-flight request", extra_headers);
+        send_error_ex(fd, HTTP_NOT_FOUND, "No matching in-flight request", extra_headers);
     }
 }
 
@@ -500,7 +561,7 @@ static int queue_wait_notify(int position, void *userdata) {
     QueueWaitCtx *w = (QueueWaitCtx *)userdata;
     if (!w->stream) return 0;
     if (!w->headers_sent) {
-        send_response_ex(w->fd, 200, "text/event-stream", NULL, 1, w->extra_headers);
+        send_response_ex(w->fd, HTTP_OK, "text/event-stream", NULL, 1, w->extra_headers);
         w->headers_sent = 1;
     }
     char line[64];
@@ -513,7 +574,10 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     /* Parse first — no shared state is touched — so the request's own
      * settings (stream) are known while it waits for the slot. */
     char *body = (char *)malloc(body_len + 1);
-    if (!body) { send_error_ex(fd, 500, "OOM", extra_headers); return; }
+    if (!body) {
+        send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers);
+        return;
+    }
     memcpy(body, body_start, body_len);
     body[body_len] = '\0';
 
@@ -523,14 +587,14 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     if (chat_request_parse(body, &req) != TN_OK) {
         free(body);
         chat_request_free(&req);
-        send_error_ex(fd, 400, "Invalid JSON in request body", extra_headers);
+        send_error_ex(fd, HTTP_BAD_REQUEST, "Invalid JSON in request body", extra_headers);
         return;
     }
     free(body);
 
     if (req.num_messages == 0) {
         chat_request_free(&req);
-        send_error_ex(fd, 400, "No messages in request", extra_headers);
+        send_error_ex(fd, HTTP_BAD_REQUEST, "No messages in request", extra_headers);
         return;
     }
 
@@ -549,35 +613,38 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     /* Phase 23 stage 2b: plain chat requests share the engine through the
      * parallel scheduler (one unit each); the rest need all of it. */
     int batched = ctx->sched && best_of <= 1 && mopt.simulations <= 0 && !wants_image;
-    int units = batched ? 1 : engine_units(ctx);
+    int units   = batched ? 1 : engine_units(ctx);
 
     /* With --parallel N, N batched requests run at once; otherwise one
      * generation at a time. With --queue-size N, up to N requests wait their
      * turn in arrival order (Phase 23 stage 1); otherwise (the default) a
      * busy server answers 429 immediately. Unrelated routes
      * (metrics/docs/static/cancel) never touch the queue. */
-    QueueWaitCtx qw = { fd, req.stream ? 1 : 0, 0, extra_headers };
-    GenQueueResult qr = gen_queue_acquire_n(&ctx->gen_queue, units,
-                                            ctx->server_config.queue_timeout_s * 1000,
-                                            queue_wait_notify, &qw);
-    if (qr == GEN_QUEUE_OK && !ctx->running) {   /* shutting down: don't start */
+    QueueWaitCtx qw   = {fd, req.stream ? 1 : 0, 0, extra_headers};
+    GenQueueResult qr = gen_queue_acquire_n(
+        &ctx->gen_queue, units, ctx->server_config.queue_timeout_s * 1000, queue_wait_notify, &qw);
+    if (qr == GEN_QUEUE_OK && !atomic_load(&ctx->running)) { /* shutting down: don't start */
         gen_queue_release_n(&ctx->gen_queue, units);
         chat_request_free(&req);
-        if (!qw.headers_sent) send_error_ex(fd, 503, "Server is shutting down", extra_headers);
+        if (!qw.headers_sent)
+            send_error_ex(fd, HTTP_SERVICE_UNAVAILABLE, "Server is shutting down", extra_headers);
         return;
     }
     if (qr != GEN_QUEUE_OK) {
         chat_request_free(&req);
         if (qr == GEN_QUEUE_ABORTED) return; /* client already gone */
         const char *why = qr == GEN_QUEUE_TIMEOUT ? "Timed out waiting for the generation queue"
-                        : ctx->server_config.queue_size > 0 ? "Generation queue is full"
-                        : "Another generation is already in flight";
+                          : ctx->server_config.queue_size > 0
+                              ? "Generation queue is full"
+                              : "Another generation is already in flight";
         if (qw.headers_sent) {
-            char ev[160];
-            int n = snprintf(ev, sizeof(ev), "data: {\"error\":{\"message\":\"%s\",\"type\":\"server_error\"}}\n\n", why);
-            ssize_t wr = write(fd, ev, (size_t)n); (void)wr;
+            char ev[HTTP_SSE_EVENT_BUF];
+            int n = snprintf(ev, sizeof(ev),
+                             "data: {\"error\":{\"message\":\"%s\",\"type\":\"server_error\"}}\n\n",
+                             why);
+            if (n > 0) (void)net_write_all(fd, ev, (size_t)n); /* peer gone: stream already ended */
         } else {
-            send_error_ex(fd, 429, why, extra_headers);
+            send_error_ex(fd, HTTP_TOO_MANY_REQUESTS, why, extra_headers);
         }
         return;
     }
@@ -585,94 +652,96 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     if (batched && !(ctx->server_config.vision_path && ctx->server_config.proj_path))
         for (int i = 0; i < req.num_messages; i++)
             if (strcmp(req.messages[i].role, "user") == 0 && req.messages[i].image_data_url) {
-                fprintf(stderr, "[vision] image_url provided but server has no --vision/--proj configured; ignoring image\n");
+                fprintf(stderr, "[vision] image_url provided but server has no --vision/--proj "
+                                "configured; ignoring image\n");
                 break;
             }
     if (!batched) {
-    pthread_mutex_lock(&ctx->generation_mutex); /* uncontended: the queue granted the engine */
+        pthread_mutex_lock(&ctx->generation_mutex); /* uncontended: the queue granted the engine */
 
-    /* Every request is a fresh conversation rendered from its full message
+        /* Every request is a fresh conversation rendered from its full message
      * history, so start from KV position 0. (2026-10-18: current_pos was
      * never reset — after one image request (vision prefill advances it) every
      * later text request silently started after the stale image prefix.) */
-    ctx->run_state->current_pos = 0;
+        ctx->run_state->current_pos = 0;
 
-    /* Phase 22.2: image upload via the web UI's image_url content parts —
+        /* Phase 22.2: image upload via the web UI's image_url content parts —
      * inject the vision pipeline into the KV cache before compiling/
      * generating the prompt, mirroring the CLI's --image handling.
      * Best-effort: an image sent to a server with no --vision/--proj
      * configured is logged and skipped (text-only fallback), matching the
      * CLI's own behavior when --image is given without --vision/--proj. */
-    for (int i = req.num_messages - 1; i >= 0; i--) {
-        if (strcmp(req.messages[i].role, "user") != 0 || !req.messages[i].image_data_url) continue;
+        for (int i = req.num_messages - 1; i >= 0; i--) {
+            if (strcmp(req.messages[i].role, "user") != 0 || !req.messages[i].image_data_url)
+                continue;
 
-        if (!ctx->server_config.vision_path || !ctx->server_config.proj_path) {
-            fprintf(stderr, "[vision] image_url provided but server has no --vision/--proj configured; ignoring image\n");
-            break;
-        }
+            if (!ctx->server_config.vision_path || !ctx->server_config.proj_path) {
+                fprintf(stderr, "[vision] image_url provided but server has no --vision/--proj "
+                                "configured; ignoring image\n");
+                break;
+            }
 
-        unsigned char *img_bytes = NULL;
-        size_t img_len = 0;
-        if (data_url_decode(req.messages[i].image_data_url, &img_bytes, &img_len) != TN_OK) {
-            fprintf(stderr, "[vision] failed to decode image_url data\n");
-            break;
-        }
+            unsigned char *img_bytes = NULL;
+            size_t img_len           = 0;
+            if (data_url_decode(req.messages[i].image_data_url, &img_bytes, &img_len) != TN_OK) {
+                fprintf(stderr, "[vision] failed to decode image_url data\n");
+                break;
+            }
 
-        char tmp_path[] = "/tmp/pz-vision-upload-XXXXXX";
-        int tmp_fd = mkstemp(tmp_path);
-        if (tmp_fd < 0) {
-            fprintf(stderr, "[vision] failed to create temp file for uploaded image\n");
+            char tmp_path[] = "/tmp/pz-vision-upload-XXXXXX";
+            int tmp_fd      = mkstemp(tmp_path);
+            if (tmp_fd < 0) {
+                fprintf(stderr, "[vision] failed to create temp file for uploaded image\n");
+                free(img_bytes);
+                break;
+            }
+            ssize_t written = write(tmp_fd, img_bytes, img_len);
+            close(tmp_fd);
             free(img_bytes);
-            break;
-        }
-        ssize_t written = write(tmp_fd, img_bytes, img_len);
-        close(tmp_fd);
-        free(img_bytes);
-        if (written < 0 || (size_t)written != img_len) {
-            fprintf(stderr, "[vision] failed to write temp image file\n");
-            unlink(tmp_path);
-            break;
-        }
+            if (written < 0 || (size_t)written != img_len) {
+                fprintf(stderr, "[vision] failed to write temp image file\n");
+                unlink(tmp_path);
+                break;
+            }
 
-        /* static: safe because only one generation runs at a time
+            /* static: safe because only one generation runs at a time
          * (generation_mutex, held for the whole of this function). */
-        static char stripped_prompt_buf[8192];
-        const char *stripped_prompt = req.messages[i].content;
-        /* cfg/weights are declared const in ApiContext (text generation
+            static char stripped_prompt_buf[HTTP_STRIPPED_PROMPT_BUF];
+            const char *stripped_prompt = req.messages[i].content;
+            /* cfg/weights are declared const in ApiContext (text generation
          * never mutates them); the vision pipeline's KV-cache injection
          * needs non-const pointers even though it doesn't rewrite either —
          * same underlying objects main.c's CLI path passes non-const. */
-        had_image = 1;
-        vision_pipeline_run(tmp_path, ctx->server_config.vision_path, ctx->server_config.proj_path,
-                            (Config *)ctx->cfg, (TransformerWeights *)ctx->weights, ctx->run_state,
-                            ctx->moe_cfg, ctx->tok, ctx->tp,
-                            req.messages[i].content, stripped_prompt_buf, sizeof(stripped_prompt_buf),
-                            &stripped_prompt);
-        unlink(tmp_path);
+            had_image = 1;
+            vision_pipeline_run(tmp_path, ctx->server_config.vision_path,
+                                ctx->server_config.proj_path, (Config *)ctx->cfg,
+                                (TransformerWeights *)ctx->weights, ctx->run_state, ctx->moe_cfg,
+                                ctx->tok, ctx->tp, req.messages[i].content, stripped_prompt_buf,
+                                sizeof(stripped_prompt_buf), &stripped_prompt);
+            unlink(tmp_path);
 
-        if (stripped_prompt != req.messages[i].content) {
-            char *new_content = strdup(stripped_prompt);
-            if (new_content) {
-                free(req.messages[i].content);
-                req.messages[i].content = new_content;
+            if (stripped_prompt != req.messages[i].content) {
+                char *new_content = strdup(stripped_prompt);
+                if (new_content) {
+                    free(req.messages[i].content);
+                    req.messages[i].content = new_content;
+                }
             }
+            break;
         }
-        break;
-    }
     } /* !batched */
 
     /* Compile messages into a single prompt.
      * If the tokenizer has an embedded chat template (GGUF), generate()
      * handles template application internally.  For legacy tokenizers without
      * a built-in template, we apply a template here. */
-    char *prompt = NULL;
+    char *prompt    = NULL;
     int free_prompt = 0;
 
     /* Resolve generation settings: server defaults (CLI flags) overlaid
      * with whatever the client sent, clamped to valid ranges. */
     GenerationParams gp;
-    request_params_resolve(&req, &ctx->server_config.gen_defaults,
-                           api_max_tokens_limit(ctx), &gp);
+    request_params_resolve(&req, &ctx->server_config.gen_defaults, api_max_tokens_limit(ctx), &gp);
 
     const char *roles[CHAT_MAX_MESSAGES];
     const char *contents[CHAT_MAX_MESSAGES];
@@ -689,20 +758,25 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
         int n = 0;
         for (int i = 0; i < req.num_messages && n < CHAT_MAX_MESSAGES; i++) {
             if (!req.messages[i].content) continue;
-            roles[n] = req.messages[i].role[0] ? req.messages[i].role : "user";
+            roles[n]      = req.messages[i].role[0] ? req.messages[i].role : "user";
             contents[n++] = req.messages[i].content;
         }
-        gp.roles = roles;
-        gp.contents = contents;
+        gp.roles      = roles;
+        gp.contents   = contents;
         gp.n_messages = n;
-        prompt = (char *)(n > 0 ? contents[n - 1] : "");
+        prompt        = (char *)(n > 0 ? contents[n - 1] : "");
     } else {
         /* Legacy tokenizer: compile all messages into a formatted prompt */
         char *compiled = (char *)malloc(HTTP_MAX_PROMPT_BYTES);
-        if (!compiled) { chat_request_free(&req); release_generation_slot(ctx, units, !batched); send_error_ex(fd, 500, "OOM", extra_headers); return; }
+        if (!compiled) {
+            chat_request_free(&req);
+            release_generation_slot(ctx, units, !batched);
+            send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers);
+            return;
+        }
         ChatTemplateType tmpl = ctx->server_config.chat_format >= 0
-                                ? (ChatTemplateType)ctx->server_config.chat_format
-                                : chat_template_detect_vocab(ctx->tok);
+                                    ? (ChatTemplateType)ctx->server_config.chat_format
+                                    : chat_template_detect_vocab(ctx->tok);
         /* Message text is content, never chat markup (prompt-injection
          * defence, 2026-10-22): neutralise control tokens before the
          * built-in formats wrap it in their own. */
@@ -710,7 +784,10 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
         for (int i = 0; i < req.num_messages && neutral_ok; i++) {
             if (!req.messages[i].content) continue;
             char *safe = tokenizer_neutralize_control(ctx->tok, req.messages[i].content);
-            if (!safe) { neutral_ok = 0; break; }   /* fail closed */
+            if (!safe) {
+                neutral_ok = 0;
+                break;
+            } /* fail closed */
             free(req.messages[i].content);
             req.messages[i].content = safe;
         }
@@ -718,17 +795,17 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
             free(compiled);
             chat_request_free(&req);
             release_generation_slot(ctx, units, !batched);
-            send_error_ex(fd, 500, "OOM", extra_headers);
+            send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers);
             return;
         }
         if (chat_compile_prompt(&req, tmpl, compiled, HTTP_MAX_PROMPT_BYTES) != TN_OK) {
             free(compiled);
             chat_request_free(&req);
             release_generation_slot(ctx, units, !batched);
-            send_error_ex(fd, 500, "Prompt compilation failed", extra_headers);
+            send_error_ex(fd, HTTP_INTERNAL_ERROR, "Prompt compilation failed", extra_headers);
             return;
         }
-        prompt     = compiled;
+        prompt      = compiled;
         free_prompt = 1;
     }
 
@@ -747,7 +824,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
 
     if (req.stream && !qw.headers_sent) {
         /* Send SSE headers before starting generation */
-        send_response_ex(fd, 200, "text/event-stream", NULL, 1, extra_headers);
+        send_response_ex(fd, HTTP_OK, "text/event-stream", NULL, 1, extra_headers);
     }
 
     /* Register under public_id — the same "chatcmpl-<id>" string the client
@@ -758,15 +835,15 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     /* Run inference */
     /* Phase 21.5: reuse the KV prefix shared with the previous request unless
      * disabled server-wide (--prompt-cache off) or for this request. */
-    int use_cache = (req.set_mask & CHAT_SET_CACHE_PROMPT) ? req.cache_prompt
-                                                           : ctx->server_config.prompt_cache;
+    int use_cache =
+        (req.set_mask & CHAT_SET_CACHE_PROMPT) ? req.cache_prompt : ctx->server_config.prompt_cache;
     if (!batched) {
         if (had_image) prefix_cache_reset(&ctx->prefix_cache); /* vision prefill rewrote KV */
         if (use_cache && ctx->prefix_cache.tokens) {
             gp.prefix_cache = &ctx->prefix_cache;
             gp.prompt_store = &ctx->prompt_store;
-        }
-        else prefix_cache_reset(&ctx->prefix_cache); /* KV is about to be overwritten */
+        } else
+            prefix_cache_reset(&ctx->prefix_cache); /* KV is about to be overwritten */
     }
 
     GenerationStats gstats;
@@ -777,8 +854,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     MctsResult mres;
     memset(&mres, 0, sizeof(mres));
     if (batched) {
-        batch_scheduler_generate(ctx->sched, prompt, &gp, use_cache,
-                                 streaming_token_callback, &st);
+        batch_scheduler_generate(ctx->sched, prompt, &gp, use_cache, streaming_token_callback, &st);
     } else if (mopt.simulations > 0) {
         const char *question = "";
         for (int i = req.num_messages - 1; i >= 0; i--)
@@ -788,16 +864,16 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
             }
         if (generate_mcts(ctx->cfg, ctx->weights, ctx->run_state, ctx->moe_cfg, ctx->tok, ctx->tp,
                           prompt, question, &gp, &mopt, ctx->prm, streaming_token_callback, &st,
-                          best_of_abort_check, &mres) != TN_OK && gstats.completion_tokens == 0)
+                          best_of_abort_check, &mres) != TN_OK &&
+            gstats.completion_tokens == 0)
             gstats.finish_reason = GEN_FINISH_ERROR;
     } else if (best_of > 1) {
-        generate_best_of(ctx->cfg, ctx->weights, ctx->run_state, ctx->moe_cfg,
-                         ctx->tok, ctx->tp, prompt, &gp, best_of, BEST_OF_SCORE_MEAN_LOGPROB,
-                         streaming_token_callback, &st, best_of_abort_check, &bres);
+        generate_best_of(ctx->cfg, ctx->weights, ctx->run_state, ctx->moe_cfg, ctx->tok, ctx->tp,
+                         prompt, &gp, best_of, BEST_OF_SCORE_MEAN_LOGPROB, streaming_token_callback,
+                         &st, best_of_abort_check, &bres);
     } else {
-        generate_ex(ctx->cfg, ctx->weights, ctx->run_state, ctx->moe_cfg,
-                    ctx->tok, ctx->tp, prompt, &gp,
-                    streaming_token_callback, &st);
+        generate_ex(ctx->cfg, ctx->weights, ctx->run_state, ctx->moe_cfg, ctx->tok, ctx->tp, prompt,
+                    &gp, streaming_token_callback, &st);
     }
     const char *finish_reason = gen_finish_reason_str(gstats.finish_reason);
 
@@ -812,7 +888,8 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
         if (free_prompt) free(prompt);
         chat_request_free(&req);
         release_generation_slot(ctx, units, !batched);
-        send_error_ex(fd, 400, "Prompt could not be tokenized for this model", extra_headers);
+        send_error_ex(fd, HTTP_BAD_REQUEST, "Prompt could not be tokenized for this model",
+                      extra_headers);
         return;
     }
 
@@ -827,8 +904,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
      * `finish_reason` is a static string. */
     if (req.stream) {
         release_generation_slot(ctx, units, !batched);
-        sse_write_done_ex(fd, id, finish_reason,
-                          gstats.prompt_tokens, gstats.completion_tokens,
+        sse_write_done_ex(fd, id, finish_reason, gstats.prompt_tokens, gstats.completion_tokens,
                           gstats.cached_tokens);
     } else {
         /* 2026-07-15: build the JSON body FIRST so Content-Length reflects
@@ -836,15 +912,17 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
          * body) and only then wrote the actual JSON via a second write() —
          * conformant HTTP clients stop reading at 0 bytes and never see it. */
         const char *text = st.accum_buf ? st.accum_buf : "";
-        char *json = sse_format_full_response_ex(id, text, finish_reason,
-                                                 gstats.prompt_tokens,
-                                                 gstats.completion_tokens,
-                                                 gstats.cached_tokens);
-        if (json && mopt.simulations > 0) json = append_mcts_json(json, &mres);
-        else if (json && best_of > 1) json = append_best_of_json(json, &bres);
+        char *json = sse_format_full_response_ex(id, text, finish_reason, gstats.prompt_tokens,
+                                                 gstats.completion_tokens, gstats.cached_tokens);
+        if (json && mopt.simulations > 0)
+            json = append_mcts_json(json, &mres);
+        else if (json && best_of > 1)
+            json = append_best_of_json(json, &bres);
         release_generation_slot(ctx, units, !batched);
-        if (json) send_response_ex(fd, 200, "application/json", json, 0, extra_headers);
-        else      send_error_ex(fd, 500, "OOM", extra_headers);
+        if (json)
+            send_response_ex(fd, HTTP_OK, "application/json", json, 0, extra_headers);
+        else
+            send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers);
         free(json);
     }
 
@@ -857,17 +935,16 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
 
 typedef struct {
     char method[16];
-    char path[256];
-    char *body;          /* pointer into recv_buf or separately allocated */
+    char path[HTTP_PATH_MAX];
+    char *body; /* pointer into recv_buf or separately allocated */
     size_t body_len;
-    int  content_length; /* from Content-Length header, -1 if not present */
-    int  is_chunked;
-    char origin[256];
-    char authorization[512];
-    char content_type[128];
-    char host[256];
-    int  has_origin;
-    int  has_authorization;
+    int content_length; /* from Content-Length header, -1 if not present */
+    char origin[HTTP_ORIGIN_MAX];
+    char authorization[HTTP_AUTH_MAX];
+    char content_type[HTTP_CTYPE_MAX];
+    char host[HTTP_HOST_MAX];
+    int has_origin;
+    int has_authorization;
 } HttpRequest;
 
 /* Copies a header value starting at *p up to (not including) \r or \n into
@@ -889,7 +966,7 @@ static int http_parse(const char *buf, size_t buf_len, HttpRequest *req) {
 
     /* Method */
     const char *p = buf;
-    size_t i = 0;
+    size_t i      = 0;
     while (*p && *p != ' ' && i < sizeof(req->method) - 1) req->method[i++] = *p++;
     req->method[i] = '\0';
     if (*p != ' ') return 0;
@@ -907,13 +984,20 @@ static int http_parse(const char *buf, size_t buf_len, HttpRequest *req) {
 
     /* Parse headers until blank line */
     while (*p) {
-        if (*p == '\r' && *(p+1) == '\n') { p += 2; break; }
-        if (*p == '\n') { p++; break; }
+        if (*p == '\r' && *(p + 1) == '\n') {
+            p += 2;
+            break;
+        }
+        if (*p == '\n') {
+            p++;
+            break;
+        }
 
         if (strncasecmp(p, "content-length:", 15) == 0) {
-            const char *v = p + 15;
-            while (*v == ' ') v++;
-            req->content_length = atoi(v);
+            size_t cl;
+            if (http_parse_content_length(p + 15, &cl) == 0 && cl <= (size_t)INT_MAX)
+                req->content_length =
+                    (int)cl; /* invalid values were already rejected in handle_connection */
         } else if (strncasecmp(p, "origin:", 7) == 0) {
             copy_header_value(p + 7, req->origin, sizeof(req->origin));
             req->has_origin = 1;
@@ -931,9 +1015,8 @@ static int http_parse(const char *buf, size_t buf_len, HttpRequest *req) {
     }
 
     /* Body starts at p */
-    req->body = (char *)p;
-    req->body_len = (buf_len > (size_t)(p - buf))
-                    ? buf_len - (size_t)(p - buf) : 0;
+    req->body     = (char *)p;
+    req->body_len = (buf_len > (size_t)(p - buf)) ? buf_len - (size_t)(p - buf) : 0;
 
     return 1;
 }
@@ -942,15 +1025,18 @@ static int http_parse(const char *buf, size_t buf_len, HttpRequest *req) {
 
 static void handle_connection(int fd, ApiContext *ctx) {
     /* Receive the full request (including body) */
-    char   *recv_buf = (char *)malloc(HTTP_RECV_BUF);
-    if (!recv_buf) { close(fd); return; }
-    size_t  total    = 0;
-    size_t  cap      = HTTP_RECV_BUF;
+    char *recv_buf = (char *)malloc(HTTP_RECV_BUF);
+    if (!recv_buf) {
+        close(fd);
+        return;
+    }
+    size_t total = 0;
+    size_t cap   = HTTP_RECV_BUF;
 
     /* Read until we have headers + full body */
-    int headers_done = 0;
+    int headers_done   = 0;
     int content_length = -1;
-    size_t header_end = 0;
+    size_t header_end  = 0;
 
     while (total < HTTP_MAX_BODY_BYTES + 4096) {
         ssize_t n = recv(fd, recv_buf + total, cap - total - 1, 0);
@@ -963,12 +1049,37 @@ static void handle_connection(int fd, ApiContext *ctx) {
             if (!hdrs_end) hdrs_end = strstr(recv_buf, "\n\n");
             if (hdrs_end) {
                 headers_done = 1;
-                header_end = (size_t)(hdrs_end - recv_buf)
-                             + (strstr(recv_buf, "\r\n\r\n") ? 4 : 2);
+                header_end = (size_t)(hdrs_end - recv_buf) + (strstr(recv_buf, "\r\n\r\n") ? 4 : 2);
 
-                /* Extract Content-Length from headers */
-                char *cl = strcasestr(recv_buf, "content-length:");
-                if (cl) content_length = atoi(cl + 15);
+                /* Strict framing: Content-Length is scanned only inside the
+                 * header block (never the body), must be plain digits, and
+                 * conflicting duplicates are refused. Chunked bodies are not
+                 * implemented, so they are refused instead of being read as
+                 * an empty or truncated body. */
+                HttpFraming fr;
+                http_scan_framing(recv_buf, header_end, &fr);
+                if (fr.content_length_invalid) {
+                    send_error(fd, HTTP_BAD_REQUEST, "Invalid Content-Length");
+                    free(recv_buf);
+                    close(fd);
+                    return;
+                }
+                if (fr.has_transfer_encoding && fr.chunked) {
+                    send_error(fd, HTTP_NOT_IMPLEMENTED,
+                               "Chunked request bodies are not supported; send Content-Length");
+                    free(recv_buf);
+                    close(fd);
+                    return;
+                }
+                if (fr.has_content_length) {
+                    if (fr.content_length > HTTP_MAX_BODY_BYTES) {
+                        send_error(fd, HTTP_PAYLOAD_TOO_LARGE, "Request body too large");
+                        free(recv_buf);
+                        close(fd);
+                        return;
+                    }
+                    content_length = (int)fr.content_length;
+                }
 
                 /* 2026-07-15: pre-existing bug — a request with no
                  * Content-Length (the normal case for GET/HEAD/OPTIONS, and
@@ -985,15 +1096,14 @@ static void handle_connection(int fd, ApiContext *ctx) {
                 if (total >= header_end + (size_t)content_length) break;
             }
         } else {
-            if (content_length >= 0 &&
-                total >= header_end + (size_t)content_length) break;
+            if (content_length >= 0 && total >= header_end + (size_t)content_length) break;
         }
 
         /* Grow buffer if needed */
         if (cap - total < 1024) {
             size_t new_cap = cap * 2;
             if (new_cap > HTTP_MAX_BODY_BYTES + 8192) {
-                send_error(fd, 413, "Request body too large");
+                send_error(fd, HTTP_PAYLOAD_TOO_LARGE, "Request body too large");
                 free(recv_buf);
                 close(fd);
                 return;
@@ -1001,70 +1111,109 @@ static void handle_connection(int fd, ApiContext *ctx) {
             char *new_buf = (char *)realloc(recv_buf, new_cap);
             if (!new_buf) break;
             recv_buf = new_buf;
-            cap = new_cap;
+            cap      = new_cap;
         }
     }
     recv_buf[total] = '\0';
 
     HttpRequest req;
     if (!http_parse(recv_buf, total, &req)) {
-        send_error(fd, 400, "Malformed HTTP request");
+        send_error(fd, HTTP_BAD_REQUEST, "Malformed HTTP request");
         free(recv_buf);
         close(fd);
         return;
     }
 
     /* ── CORS + auth gate (applied ahead of dispatch; /health always open) ── */
-    char extra_headers[512];
+    char extra_headers[HTTP_EXTRA_HDRS_BUF];
     extra_headers[0] = '\0';
     if (ctx->server_config.cors.enabled) {
-        cors_format_headers(&ctx->server_config.cors,
-                             req.has_origin ? req.origin : NULL,
-                             extra_headers, sizeof(extra_headers));
+        cors_format_headers(&ctx->server_config.cors, req.has_origin ? req.origin : NULL,
+                            extra_headers, sizeof(extra_headers));
     }
 
-    int is_health = (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/health") == 0);
+    int is_health    = (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/health") == 0);
     int is_preflight = (strcmp(req.method, "OPTIONS") == 0);
 
-    if (is_preflight) {
-        send_response_ex(fd, 204, "text/plain", NULL, 0, extra_headers);
+    /* DNS-rebinding guard (everything except /health, which monitors probe). */
+    if (!is_health && !api_host_allowed(req.host, &ctx->server_config.cors)) {
+        metrics_record_request(&ctx->metrics, HTTP_FORBIDDEN);
+        send_error_ex(fd, HTTP_FORBIDDEN,
+                      "Host not allowed (this server answers to localhost / 127.0.0.1; "
+                      "behind a proxy add its address with --cors --cors-origin)",
+                      extra_headers);
         free(recv_buf);
         close(fd);
         return;
     }
 
-    if (!is_health &&
-        !auth_check_request(&ctx->server_config.auth,
-                             req.has_authorization ? req.authorization : NULL)) {
-        metrics_record_request(&ctx->metrics, 401);
-        send_error_ex(fd, 401, "Unauthorized", extra_headers);
+    if (is_preflight) {
+        send_response_ex(fd, HTTP_NO_CONTENT, "text/plain", NULL, 0, extra_headers);
+        free(recv_buf);
+        close(fd);
+        return;
+    }
+
+    if (!is_health && !auth_check_request(&ctx->server_config.auth,
+                                          req.has_authorization ? req.authorization : NULL)) {
+        metrics_record_request(&ctx->metrics, HTTP_UNAUTHORIZED);
+        send_error_ex(fd, HTTP_UNAUTHORIZED, "Unauthorized", extra_headers);
+        free(recv_buf);
+        close(fd);
+        return;
+    }
+
+    /* Rate limit the cheap non-generation API routes (generation has its own
+     * queue; /health, /metrics and the web UI's static files are not limited). */
+    if (strncmp(req.path, "/v1/", 4) == 0 && strncmp(req.path, "/v1/chat/completions", 20) != 0) {
+        int retry = 1;
+        if (!rate_limit_take(&ctx->rate_limiter, rate_limit_now(), &retry)) {
+            char hdrs[HTTP_RETRY_HDRS_BUF];
+            snprintf(hdrs, sizeof hdrs, "%sRetry-After: %d\r\n", extra_headers, retry);
+            metrics_record_request(&ctx->metrics, HTTP_TOO_MANY_REQUESTS);
+            send_error_ex(fd, HTTP_TOO_MANY_REQUESTS, "Too many requests; slow down", hdrs);
+            free(recv_buf);
+            close(fd);
+            return;
+        }
+    }
+
+    /* Cross-site guard for every mutating route (the web UI and API clients
+     * pass; a foreign web page cannot, because browsers always attach Origin). */
+    if (strcmp(req.method, "POST") == 0 &&
+        !api_post_allowed(req.content_type, req.has_origin ? req.origin : NULL, req.host,
+                          &ctx->server_config.cors, req.body_len)) {
+        metrics_record_request(&ctx->metrics, HTTP_FORBIDDEN);
+        send_error_ex(fd, HTTP_FORBIDDEN,
+                      "Cross-site request refused (the Origin is not this server or "
+                      "an allowed --cors-origin)",
+                      extra_headers);
         free(recv_buf);
         close(fd);
         return;
     }
 
     /* ── Route dispatch ──────────────────────────────────────────────────── */
-    int status = 200;
+    int status = HTTP_OK;
     if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/models") == 0) {
         handle_get_models(fd, ctx, extra_headers);
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/config") == 0) {
         handle_get_config(fd, ctx, extra_headers);
     } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/config/defaults") == 0) {
-        status = handle_config_save(fd, req.body, req.body_len, req.content_type,
-                                    req.has_origin ? req.origin : NULL, req.host, ctx, extra_headers);
+        status =
+            handle_config_save(fd, req.body, req.body_len, req.content_type,
+                               req.has_origin ? req.origin : NULL, req.host, ctx, extra_headers);
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/update") == 0) {
-        send_json_heap(fd, 200, api_update_json(0), extra_headers);
+        send_json_heap(fd, HTTP_OK, api_update_json(0), extra_headers);
     } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/update/check") == 0) {
-        send_json_heap(fd, 200, api_update_json(1), extra_headers);
+        send_json_heap(fd, HTTP_OK, api_update_json(1), extra_headers);
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/prompt_cache") == 0) {
         handle_prompt_cache_stats(fd, ctx, extra_headers);
-    } else if (strcmp(req.method, "POST") == 0 &&
-               strcmp(req.path, "/v1/prompt_cache/clear") == 0) {
+    } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/prompt_cache/clear") == 0) {
         status = handle_prompt_cache_clear(fd, ctx, extra_headers);
     } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/selfcheck") == 0) {
         status = handle_selfcheck(fd, req.body, req.body_len, ctx, extra_headers);
-    } else if (strcmp(req.method, "POST") == 0 &&
-               strcmp(req.path, "/v1/watermark/detect") == 0) {
+    } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/watermark/detect") == 0) {
         status = handle_watermark_detect(fd, req.body, req.body_len, ctx, extra_headers);
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/health") == 0) {
         /* Always available, regardless of --web-ui — distinct from "/",
@@ -1074,28 +1223,27 @@ static void handle_connection(int fd, ApiContext *ctx) {
         if (ctx->server_config.metrics.enabled) {
             handle_get_metrics(fd, ctx, extra_headers);
         } else {
-            status = 404;
-            send_error_ex(fd, 404, "Metrics disabled (start with --metrics)", extra_headers);
+            status = HTTP_NOT_FOUND;
+            send_error_ex(fd, HTTP_NOT_FOUND, "Metrics disabled (start with --metrics)",
+                          extra_headers);
         }
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/docs") == 0) {
         handle_get_docs(fd, extra_headers);
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/openapi.json") == 0) {
         handle_get_openapi(fd, extra_headers);
-    } else if (strcmp(req.method, "POST") == 0 &&
-               strcmp(req.path, "/v1/chat/completions") == 0) {
+    } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/chat/completions") == 0) {
         handle_chat_completions(fd, req.body, req.body_len, ctx, extra_headers);
     } else if (strcmp(req.method, "POST") == 0 &&
                strcmp(req.path, "/v1/chat/completions/cancel") == 0) {
         handle_cancel(fd, req.body, req.body_len, ctx, extra_headers);
-    } else if (strcmp(req.method, "GET") == 0 &&
-               ctx->server_config.web_ui != WEBUI_MODE_OFF) {
+    } else if (strcmp(req.method, "GET") == 0 && ctx->server_config.web_ui != WEBUI_MODE_OFF) {
         /* Web UI (Phase 22.2): "/" and files under "/assets/", placed after
          * every API route so nothing above is ever shadowed. Any other
          * unmatched GET also falls through here for client-side SPA routing. */
         status = static_assets_serve(fd, req.path, &ctx->server_config, extra_headers);
     } else {
-        status = 404;
-        send_error_ex(fd, 404, "Not found", extra_headers);
+        status = HTTP_NOT_FOUND;
+        send_error_ex(fd, HTTP_NOT_FOUND, "Not found", extra_headers);
     }
     metrics_record_request(&ctx->metrics, status);
 
@@ -1106,7 +1254,7 @@ static void handle_connection(int fd, ApiContext *ctx) {
 /* ── Per-connection thread trampoline (Phase 22 concurrency rearchitecture) ── */
 
 typedef struct {
-    int         conn_fd;
+    int conn_fd;
     ApiContext *ctx;
 } ConnArgs;
 
@@ -1115,6 +1263,7 @@ static void *connection_thread_fn(void *arg) {
     metrics_connection_opened(&ca->ctx->metrics);
     handle_connection(ca->conn_fd, ca->ctx);
     metrics_connection_closed(&ca->ctx->metrics);
+    atomic_fetch_sub(&ca->ctx->active_connections, 1);
     free(ca);
     return NULL;
 }
@@ -1123,28 +1272,62 @@ static void *connection_thread_fn(void *arg) {
 
 static void *listener_thread_fn(void *arg) {
     ApiContext *ctx = (ApiContext *)arg;
+    /* api_server_stop() sets ctx->server_fd = -1 after closing it; read it once,
+     * here (ordered after api_server_start by pthread_create), so the accept
+     * loop never races with that write. */
+    const int listen_fd = ctx->server_fd;
 
-    while (ctx->running) {
+    while (atomic_load(&ctx->running)) {
         struct sockaddr_in client_addr;
         socklen_t addr_len = sizeof(client_addr);
-        int conn_fd = accept(ctx->server_fd,
-                             (struct sockaddr *)&client_addr, &addr_len);
+        int conn_fd        = accept(listen_fd, (struct sockaddr *)&client_addr, &addr_len);
         if (conn_fd < 0) {
-            if (!ctx->running) break;
+            if (!atomic_load(&ctx->running)) break;
             continue;
         }
 
         if (g_tn_verbose)
-            fprintf(stderr, "[API] Connection from %s\n",
-                    inet_ntoa(client_addr.sin_addr));
+            fprintf(stderr, "[API] Connection from %s\n", inet_ntoa(client_addr.sin_addr));
+
+        /* Bound the work a client can hold: a read/write timeout so a stalled
+         * (slowloris) peer cannot pin its thread forever, and a connection cap
+         * so a flood cannot spawn unbounded threads. 0 disables either. */
+        if (ctx->server_config.client_timeout_s > 0) {
+            struct timeval tv;
+            tv.tv_sec  = ctx->server_config.client_timeout_s;
+            tv.tv_usec = 0;
+            setsockopt(conn_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+            setsockopt(conn_fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+        }
+        int cap = ctx->server_config.max_connections;
+        if (cap > 0 && atomic_load(&ctx->active_connections) >= cap) {
+            static const char body[] =
+                "{\"error\":{\"message\":\"Too many open connections\",\"type\":\"server_error\"}}";
+            char busy[HTTP_BUSY_REPLY_BUF];
+            int bn = snprintf(busy, sizeof(busy),
+                              "HTTP/1.1 503 Service Unavailable\r\n"
+                              "Content-Type: application/json\r\n"
+                              "Retry-After: 1\r\n"
+                              "Connection: close\r\n"
+                              "Content-Length: %zu\r\n\r\n%s",
+                              sizeof(body) - 1, body);
+            if (bn > 0) (void)net_write_all(conn_fd, busy, (size_t)bn);
+            close(conn_fd);
+            continue;
+        }
 
         ConnArgs *ca = (ConnArgs *)malloc(sizeof(ConnArgs));
-        if (!ca) { close(conn_fd); continue; }
+        if (!ca) {
+            close(conn_fd);
+            continue;
+        }
         ca->conn_fd = conn_fd;
         ca->ctx     = ctx;
 
         pthread_t tid;
+        atomic_fetch_add(&ctx->active_connections, 1);
         if (pthread_create(&tid, NULL, connection_thread_fn, ca) != 0) {
+            atomic_fetch_sub(&ctx->active_connections, 1);
             close(conn_fd);
             free(ca);
             continue;
@@ -1156,23 +1339,19 @@ static void *listener_thread_fn(void *arg) {
 
 /* ── Public API ──────────────────────────────────────────────────────────── */
 
-void api_context_init(ApiContext *ctx,
-                      const Config *cfg,
-                      const TransformerWeights *weights,
-                      RunState *run_state,
-                      const MoEConfig *moe_cfg,
-                      Tokenizer *tok,
+void api_context_init(ApiContext *ctx, const Config *cfg, const TransformerWeights *weights,
+                      RunState *run_state, const MoEConfig *moe_cfg, Tokenizer *tok,
                       ThreadPool *tp) {
     if (!ctx) return;
     memset(ctx, 0, sizeof(*ctx));
-    ctx->cfg        = cfg;
-    ctx->weights    = weights;
-    ctx->run_state  = run_state;
-    ctx->moe_cfg    = moe_cfg;
-    ctx->tok        = tok;
-    ctx->tp         = tp;
-    ctx->server_fd  = -1;
-    ctx->running    = 0;
+    ctx->cfg       = cfg;
+    ctx->weights   = weights;
+    ctx->run_state = run_state;
+    ctx->moe_cfg   = moe_cfg;
+    ctx->tok       = tok;
+    ctx->tp        = tp;
+    ctx->server_fd = -1;
+    atomic_store(&ctx->running, 0);
     server_config_init(&ctx->server_config);
     metrics_init(&ctx->metrics);
     cancel_state_init(&ctx->cancel);
@@ -1226,27 +1405,31 @@ TernaryError api_server_start(int port, ApiContext *ctx) {
     if (!ctx->prompt_store_ready) {
         prompt_store_init(&ctx->prompt_store,
                           (size_t)(ctx->server_config.prompt_cache_mb > 0
-                                   ? ctx->server_config.prompt_cache_mb : 0) * 1024u * 1024u,
+                                       ? ctx->server_config.prompt_cache_mb
+                                       : 0) *
+                              1024u * 1024u,
                           ctx->server_config.prompt_cache_min_tokens);
         ctx->prompt_store_ready = 1;
     }
     start_parallel(ctx);
 
-    ctx->running = 1;
+    rate_limit_init(&ctx->rate_limiter, (double)ctx->server_config.rate_limit,
+                    2.0 * (double)ctx->server_config.rate_limit);
+    atomic_store(&ctx->running, 1);
 
     /* Spawn listener thread */
     pthread_t *tid = (pthread_t *)malloc(sizeof(pthread_t));
     if (!tid) {
         close(ctx->server_fd);
         ctx->server_fd = -1;
-        ctx->running = 0;
+        atomic_store(&ctx->running, 0);
         return TN_ERR_THREAD_CREATE;
     }
     if (pthread_create(tid, NULL, listener_thread_fn, ctx) != 0) {
         free(tid);
         close(ctx->server_fd);
         ctx->server_fd = -1;
-        ctx->running = 0;
+        atomic_store(&ctx->running, 0);
         return TN_ERR_THREAD_CREATE;
     }
     ctx->listener_thread = tid;
@@ -1275,25 +1458,25 @@ TernaryError api_server_start(int port, ApiContext *ctx) {
  * model can run batched; otherwise (or if it cannot be set up) the server
  * stays sequential and /v1/config says why. */
 static void start_parallel(ApiContext *ctx) {
-    int want = ctx->server_config.parallel;
+    int want            = ctx->server_config.parallel;
     ctx->parallel_slots = 1;
-    ctx->parallel_note = NULL;
+    ctx->parallel_note  = NULL;
     if (want > 1 && !batch_scheduler_supported(ctx->weights, ctx->moe_cfg)) {
         ctx->parallel_note = "this model architecture runs one request at a time "
                              "(batched serving covers dense attention models)";
     } else if (want > 1) {
         int rows = ctx->server_config.parallel_batch;
-        if (rows < want) rows = want;    /* every slot needs a row per step */
+        if (rows < want) rows = want; /* every slot needs a row per step */
         /* All slots share the KV budget one context was sized from, or
          * the larger pool --kv-ram-fraction of free memory holds. */
         long long budget = kv_strategy_budget_tokens(ctx->cfg, ctx->moe_cfg, tn_get_free_ram());
         if (budget < ctx->run_state->max_seq_len) budget = ctx->run_state->max_seq_len;
-        BatchSchedulerOptions o = { want, rows, budget };
-        ctx->sched = batch_scheduler_create(ctx->cfg, ctx->weights, ctx->run_state,
-                                            &ctx->prefix_cache, &ctx->prompt_store,
-                                            ctx->moe_cfg, ctx->tok, ctx->tp, &o);
+        BatchSchedulerOptions o = {want, rows, budget};
+        ctx->sched =
+            batch_scheduler_create(ctx->cfg, ctx->weights, ctx->run_state, &ctx->prefix_cache,
+                                   &ctx->prompt_store, ctx->moe_cfg, ctx->tok, ctx->tp, &o);
         if (ctx->sched) {
-            ctx->parallel_slots = want;
+            ctx->parallel_slots     = want;
             ctx->parallel_kv_budget = budget;
         } else {
             ctx->parallel_note = "could not allocate the parallel slots (out of memory?)";
@@ -1309,7 +1492,7 @@ static void start_parallel(ApiContext *ctx) {
 
 void api_server_stop(ApiContext *ctx) {
     if (!ctx || ctx->server_fd < 0) return;
-    ctx->running = 0;
+    atomic_store(&ctx->running, 0);
     /* Wake the blocking accept() in listener_thread_fn. close() alone is
      * *not* reliable here: POSIX explicitly leaves "another thread blocked
      * in accept() on an fd this thread closes" unspecified, and in practice
@@ -1319,7 +1502,7 @@ void api_server_stop(ApiContext *ctx) {
      * code, since main()'s pause() had no signal handler installed and so
      * never returned). shutdown(SHUT_RDWR) first reliably makes the
      * blocked accept() return (ECONNABORTED/EINVAL, both handled by the
-     * `if (!ctx->running) break;` check below) before the fd is closed. */
+     * `if (!atomic_load(&ctx->running)) break;` check below) before the fd is closed. */
     shutdown(ctx->server_fd, SHUT_RDWR);
     close(ctx->server_fd);
     ctx->server_fd = -1;
@@ -1333,19 +1516,39 @@ void api_server_stop(ApiContext *ctx) {
      * queue is empty, then stop the scheduler thread. 2026-10-22: before,
      * an in-flight request kept generating on freed weights at exit. */
     cancel_registry_shutdown(&ctx->cancel);
-    for (int waited_ms = 0; gen_queue_in_use(&ctx->gen_queue) > 0 || gen_queue_waiting(&ctx->gen_queue) > 0;
+    for (int waited_ms = 0;
+         gen_queue_in_use(&ctx->gen_queue) > 0 || gen_queue_waiting(&ctx->gen_queue) > 0;
          waited_ms += 10) {
-        if (waited_ms == 2000) fprintf(stderr, "[API] waiting for in-flight generations to stop...\n");
-        struct timespec ts = { 0, 10 * 1000000L };
+        if (waited_ms == 2000)
+            fprintf(stderr, "[API] waiting for in-flight generations to stop...\n");
+        struct timespec ts = {0, 10 * 1000000L};
         nanosleep(&ts, NULL);
     }
     batch_scheduler_stop(ctx->sched);
 
-    /* Deliberately NOT freeing server_config/cancel/generation_mutex here:
-     * detached per-connection threads spawned before the stop request may
-     * still be running and reference them. There is no drain/barrier to
-     * wait for them (this is a local single-operator dev server, not a
-     * service that needs clean reload), so these small, process-lifetime
-     * resources are left for the OS to reclaim at exit rather than risking
-     * a use-after-free race. */
+    /* Drain the detached connection threads: wait (bounded) until every one
+     * has finished. An idle client is dropped by its read timeout
+     * (--client-timeout), so the wait ends within that time; the cap keeps a
+     * long timeout from delaying exit more than a few seconds. */
+    {
+        int cap_ms = ctx->server_config.client_timeout_s > 0
+                         ? ctx->server_config.client_timeout_s * 1000 + HTTP_INTERNAL_ERROR
+                         : 0;
+        if (cap_ms > 5000 || cap_ms == 0) cap_ms = 5000;
+        int waited_ms = 0;
+        while (atomic_load(&ctx->active_connections) > 0 && waited_ms < cap_ms) {
+            struct timespec ts = {0, 10 * 1000000L};
+            nanosleep(&ts, NULL);
+            waited_ms += 10;
+        }
+        int left = atomic_load(&ctx->active_connections);
+        if (left > 0)
+            fprintf(stderr, "[API] %d connection(s) still open after %d ms; exiting anyway\n", left,
+                    cap_ms);
+    }
+
+    /* server_config/cancel/generation_mutex are still not freed here: a
+     * connection that outlived the wait above may reference them, so these
+     * small, process-lifetime resources are left for the OS to reclaim at
+     * exit rather than risking a use-after-free. */
 }

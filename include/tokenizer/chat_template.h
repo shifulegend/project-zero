@@ -63,12 +63,8 @@ extern "C" {
  * Returns malloc'd NUL-terminated rendered string, or NULL on error.
  * Caller must free() the result.
  */
-char *chat_template_apply(const char *tmpl,
-                          const char * const *roles,
-                          const char * const *contents,
-                          int n_messages,
-                          const char *bos_token_str,
-                          const char *eos_token_str,
+char *chat_template_apply(const char *tmpl, const char *const *roles, const char *const *contents,
+                          int n_messages, const char *bos_token_str, const char *eos_token_str,
                           int add_generation_prompt);
 
 #ifdef __cplusplus

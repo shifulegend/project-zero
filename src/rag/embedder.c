@@ -36,17 +36,15 @@ void embedder_free(Embedder *emb) {
     emb->initialised = 0;
 }
 
-int embedder_generate(Embedder *emb, float *out, const char *text,
-                      const Config *cfg, const TransformerWeights *w,
-                      Tokenizer *tok, ThreadPool *tp) {
-    if (!emb || !emb->initialised || !out || !text || !cfg || !w || !tok)
-        return -1;
+int embedder_generate(Embedder *emb, float *out, const char *text, const Config *cfg,
+                      const TransformerWeights *w, Tokenizer *tok, ThreadPool *tp) {
+    if (!emb || !emb->initialised || !out || !text || !cfg || !w || !tok) return -1;
 
     int dim = emb->embed_dim;
 
     /* Tokenise input text */
     int max_toks = EMBEDDER_MAX_SEQ;
-    int *tokens = (int *)malloc((size_t)max_toks * sizeof(int));
+    int *tokens  = (int *)malloc((size_t)max_toks * sizeof(int));
     if (!tokens) return -1;
 
     int n_tokens = tokenizer_encode(tok, text, strlen(text), tokens, max_toks);
@@ -57,10 +55,12 @@ int embedder_generate(Embedder *emb, float *out, const char *text,
 
     /* Reset the dedicated RunState — clear KV cache, reset position */
     RunState *es = emb->state;
-    memset(es->key_cache,   0, (size_t)cfg->n_layers * cfg->n_kv_heads *
-                               EMBEDDER_MAX_SEQ * (cfg->dim / cfg->n_heads) * sizeof(float));
-    memset(es->value_cache, 0, (size_t)cfg->n_layers * cfg->n_kv_heads *
-                               EMBEDDER_MAX_SEQ * (cfg->dim / cfg->n_heads) * sizeof(float));
+    memset(es->key_cache, 0,
+           (size_t)cfg->n_layers * cfg->n_kv_heads * EMBEDDER_MAX_SEQ * (cfg->dim / cfg->n_heads) *
+               sizeof(float));
+    memset(es->value_cache, 0,
+           (size_t)cfg->n_layers * cfg->n_kv_heads * EMBEDDER_MAX_SEQ * (cfg->dim / cfg->n_heads) *
+               sizeof(float));
     es->current_pos = 0;
     sw_init(&es->sw, EMBEDDER_MAX_SEQ, n_tokens);
 

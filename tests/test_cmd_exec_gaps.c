@@ -33,7 +33,7 @@
 static void test_path_hijacking_prevented(void) {
     const char *evil_dir = "test_gaps_evil_path_tmp";
     const char *evil_cat = "test_gaps_evil_path_tmp/cat";
-    const char *marker = "test_gaps_evil_marker_tmp";
+    const char *marker   = "test_gaps_evil_marker_tmp";
 
     unlink(marker);
     unlink(evil_cat);
@@ -55,7 +55,7 @@ static void test_path_hijacking_prevented(void) {
     fclose(f);
     chmod(evil_cat, 0755);
 
-    char *old_path = getenv("PATH");
+    char *old_path   = getenv("PATH");
     char *saved_path = old_path ? strdup(old_path) : NULL;
     char new_path[4096];
     snprintf(new_path, sizeof(new_path), "%s:%s", evil_dir, old_path ? old_path : "/usr/bin");
@@ -63,15 +63,19 @@ static void test_path_hijacking_prevented(void) {
 
     /* A real, harmless relative file to cat -- README.md, used elsewhere in
      * this test suite (tests/test_cmd_exec.c) as a known-present fixture. */
-    char *argv[] = {"cat", "README.md", NULL};
+    char *argv[]  = {"cat", "README.md", NULL};
     char out[256] = {0};
-    ExecResult r = execute_command(argv, 3, out, sizeof(out));
+    ExecResult r  = execute_command(argv, 3, out, sizeof(out));
 
-    if (saved_path) { setenv("PATH", saved_path, 1); free(saved_path); }
-    else unsetenv("PATH");
+    if (saved_path) {
+        setenv("PATH", saved_path, 1);
+        free(saved_path);
+    } else
+        unsetenv("PATH");
 
-    TEST_ASSERT(strstr(out, "HIJACKED") == NULL,
-                "the malicious PATH-earlier 'cat' never ran (execv against a trusted dir, not execvp)");
+    TEST_ASSERT(
+        strstr(out, "HIJACKED") == NULL,
+        "the malicious PATH-earlier 'cat' never ran (execv against a trusted dir, not execvp)");
     TEST_ASSERT(access(marker, F_OK) != 0,
                 "the malicious script's side effect (marker file) never happened");
     TEST_ASSERT(r.exit_code == 0, "the REAL cat still ran successfully on README.md");
@@ -90,13 +94,14 @@ static void test_auto_approve_does_not_weaken_policy(void) {
     setenv("PROJECT_ZERO_AGENT_AUTO_APPROVE", "1", 1);
 
     char *bad_argv[] = {"cat", "/etc/passwd", NULL};
-    char out[256] = {0};
-    ExecResult r = execute_command(bad_argv, 2, out, sizeof(out));
+    char out[256]    = {0};
+    ExecResult r     = execute_command(bad_argv, 2, out, sizeof(out));
     TEST_ASSERT(r.exit_code == 127, "absolute-path cat is still blocked with AUTO_APPROVE=1 set");
 
     char *good_argv[] = {"echo", "still fine", NULL};
-    ExecResult r2 = execute_command(good_argv, 2, out, sizeof(out));
-    TEST_ASSERT(r2.exit_code == 0, "an allow-listed command still runs normally with AUTO_APPROVE=1 set");
+    ExecResult r2     = execute_command(good_argv, 2, out, sizeof(out));
+    TEST_ASSERT(r2.exit_code == 0,
+                "an allow-listed command still runs normally with AUTO_APPROVE=1 set");
 
     unsetenv("PROJECT_ZERO_AGENT_AUTO_APPROVE");
 }

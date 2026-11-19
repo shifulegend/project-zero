@@ -17,3 +17,24 @@
 
 # Project memory / AI-dev system (canonical docs).
 /docs/ai/               @shifulegend
+
+# AI-assistant governance: entrypoints, rules, skills, tool configs and the
+# adapter generator. These steer every automated change, so they are named
+# explicitly instead of relying on the catch-all above.
+/CLAUDE.md                      @shifulegend
+/AGENTS.md                      @shifulegend
+/gemini/                        @shifulegend
+/.claude/                       @shifulegend
+/.agents/                       @shifulegend
+/.mcp.json                      @shifulegend
+/tools/sync_ai_adapters.py      @shifulegend
+
+# Security-sensitive code: network surface, agent command execution, updater,
+# installer and release packaging.
+/src/api/                       @shifulegend
+/src/agent/                     @shifulegend
+/src/update/                    @shifulegend
+/install.sh                     @shifulegend
+/src/config/                    @shifulegend
+/webui/                         @shifulegend
+/SECURITY.md                    @shifulegend

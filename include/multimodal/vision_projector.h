@@ -16,15 +16,16 @@
  *       hidden_dim is 0; w_down is NULL; w_up holds the single linear weight.
  */
 typedef struct {
-    int vision_dim;    /* Per-patch input dimension from encoder (e.g., 768) */
-    int llm_dim;       /* Output dimension matching LLM hidden size (e.g., 576) */
-    int hidden_dim;    /* Hidden dimension for 2-layer MLP; 0 for single-linear mode */
-    int scale_factor;  /* Pixel-shuffle scale (1 = no shuffle; 4 = SmolVLM-256M style) */
+    int vision_dim;   /* Per-patch input dimension from encoder (e.g., 768) */
+    int llm_dim;      /* Output dimension matching LLM hidden size (e.g., 576) */
+    int hidden_dim;   /* Hidden dimension for 2-layer MLP; 0 for single-linear mode */
+    int scale_factor; /* Pixel-shuffle scale (1 = no shuffle; 4 = SmolVLM-256M style) */
 
-    float *w_down;     /* 2-layer MLP: [hidden_dim * vision_dim]; NULL in single-linear mode */
-    float *w_up;       /* 2-layer MLP: [llm_dim * hidden_dim]; single-linear: [llm_dim * (vision_dim*s^2)] */
-    float *bias_down;  /* [hidden_dim] (optional, NULL if no bias or single-linear) */
-    float *bias_up;    /* [llm_dim] (optional, can be NULL) */
+    float *w_down; /* 2-layer MLP: [hidden_dim * vision_dim]; NULL in single-linear mode */
+    float *
+        w_up; /* 2-layer MLP: [llm_dim * hidden_dim]; single-linear: [llm_dim * (vision_dim*s^2)] */
+    float *bias_down; /* [hidden_dim] (optional, NULL if no bias or single-linear) */
+    float *bias_up;   /* [llm_dim] (optional, can be NULL) */
 } VisionProjector;
 
 /**
@@ -37,14 +38,16 @@ TernaryError vision_projector_load(VisionProjector *proj, const void *mapped_ptr
  * out: [llm_dim]
  * patch_embedding: [vision_dim]
  */
-void vision_projector_forward(float *out, const float *patch_embedding, const VisionProjector *proj, ThreadPool *tp);
+void vision_projector_forward(float *out, const float *patch_embedding, const VisionProjector *proj,
+                              ThreadPool *tp);
 
 /**
  * Runs the projection for a batch of encoder patches.
  * out:     [output_tokens * llm_dim]  — see vision_projector_output_tokens() for count
  * patches: [num_patches * vision_dim]
  */
-void vision_projector_forward_batch(float *out, const float *patches, int num_patches, const VisionProjector *proj, ThreadPool *tp);
+void vision_projector_forward_batch(float *out, const float *patches, int num_patches,
+                                    const VisionProjector *proj, ThreadPool *tp);
 
 /**
  * Returns the number of LLM tokens produced by the projector given num_encoder_patches.

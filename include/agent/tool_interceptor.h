@@ -1,5 +1,5 @@
-#ifndef AGENT_TOOL_INTERCEPTOR_H
-#define AGENT_TOOL_INTERCEPTOR_H
+#ifndef TN_AGENT_TOOL_INTERCEPTOR_H
+#define TN_AGENT_TOOL_INTERCEPTOR_H
 
 #include <stddef.h>
 
@@ -35,4 +35,4 @@ void ti_reset(void);
 }
 #endif
 
-#endif /* AGENT_TOOL_INTERCEPTOR_H */
+#endif /* TN_AGENT_TOOL_INTERCEPTOR_H */

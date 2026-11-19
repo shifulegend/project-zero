@@ -9,24 +9,24 @@
  */
 
 typedef struct {
-    int   simulations;   /* --mcts N: search iterations (0 = off) */
-    int   expand;        /* children per node before UCB descends (branching factor) */
-    int   max_depth;     /* steps per path */
-    int   step_tokens;   /* token cap per step */
-    float c_ucb;         /* exploration constant */
-    float temperature;   /* sampling temperature for expansions (> 0) */
+    int simulations;        /* --mcts N: search iterations (0 = off) */
+    int expand;             /* children per node before UCB descends (branching factor) */
+    int max_depth;          /* steps per path */
+    int step_tokens;        /* token cap per step */
+    float c_ucb;            /* exploration constant */
+    float temperature;      /* sampling temperature for expansions (> 0) */
     const char *step_delim; /* step boundary (default "\n") */
 } MctsOptions;
 
-#define MCTS_DEFAULT_EXPAND      3
-#define MCTS_DEFAULT_DEPTH       8
+#define MCTS_DEFAULT_EXPAND 3
+#define MCTS_DEFAULT_DEPTH 8
 #define MCTS_DEFAULT_STEP_TOKENS 64
-#define MCTS_DEFAULT_C           1.4f
+#define MCTS_DEFAULT_C 1.4f
 #define MCTS_DEFAULT_TEMPERATURE 0.8f
-#define MCTS_DEFAULT_DELIM       "\n"
+#define MCTS_DEFAULT_DELIM "\n"
 
-#define MCTS_MAX_EXPAND      16
-#define MCTS_MAX_DEPTH       256
+#define MCTS_MAX_EXPAND 16
+#define MCTS_MAX_DEPTH 256
 #define MCTS_MAX_STEP_TOKENS 4096
 #define MCTS_MAX_SIMULATIONS 4096
 

@@ -24,13 +24,13 @@
 #include "transformer/generate.h"
 
 typedef struct {
-    int    simulations;   /* run */
-    int    nodes;         /* tree size (excl. root) */
-    int    steps;         /* steps on the chosen path */
-    int    tokens_total;  /* policy tokens generated across the search */
-    float  path_value;    /* mean score of the chosen path's last searched node */
-    int    used_prm;      /* 1 when the external PRM scored steps */
-    int    path_tokens;   /* tokens of the chosen searched steps (part of the answer) */
+    int simulations;  /* run */
+    int nodes;        /* tree size (excl. root) */
+    int steps;        /* steps on the chosen path */
+    int tokens_total; /* policy tokens generated across the search */
+    float path_value; /* mean score of the chosen path's last searched node */
+    int used_prm;     /* 1 when the external PRM scored steps */
+    int path_tokens;  /* tokens of the chosen searched steps (part of the answer) */
 } MctsResult;
 
 typedef int (*MctsAbortFn)(void *userdata);
@@ -42,16 +42,15 @@ typedef int (*MctsAbortFn)(void *userdata);
  * NULL (self-scoring). Returns TN_OK, or an error if nothing could be generated.
  */
 TernaryError generate_mcts(const Config *cfg, const TransformerWeights *w, RunState *s,
-                           const MoEConfig *mc, Tokenizer *tok, ThreadPool *tp,
-                           const char *prompt, const char *question,
-                           const GenerationParams *base, const MctsOptions *opt,
-                           PrmModel *prm, TokenCallback callback, void *userdata,
-                           MctsAbortFn abort_fn, MctsResult *out);
+                           const MoEConfig *mc, Tokenizer *tok, ThreadPool *tp, const char *prompt,
+                           const char *question, const GenerationParams *base,
+                           const MctsOptions *opt, PrmModel *prm, TokenCallback callback,
+                           void *userdata, MctsAbortFn abort_fn, MctsResult *out);
 
 /* ── pure helpers (unit-tested) ── */
 /* UCB1 score; unvisited children score +inf (explored first). */
 double mcts_ucb(double value_sum, int visits, int parent_visits, double c);
 /* Self-score of a step from its stats: exp(mean log p), in (0, 1]. */
-float  mcts_self_score(const GenerationStats *st);
+float mcts_self_score(const GenerationStats *st);
 
 #endif /* TN_REASONING_MCTS_H */

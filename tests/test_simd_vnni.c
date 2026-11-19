@@ -30,7 +30,7 @@
 
 static void fill_random_float(float *arr, int n, unsigned int seed) {
     for (int i = 0; i < n; i++) {
-        seed = seed * 1103515245u + 12345u;
+        seed   = seed * 1103515245u + 12345u;
         arr[i] = ((float)(seed & 0x7FFFu) / 16384.0f) - 1.0f;
     }
 }
@@ -42,11 +42,11 @@ static void pack_ternary_to_u8(tn_u8 *out, const tn_i8 *w, int n, int d) {
     memset(out, 0, (size_t)d * row_bytes);
     for (int i = 0; i < d; i++) {
         for (int j = 0; j < n; j++) {
-            int enc = (int)w[i * n + j] + 1;  /* {-1,0,1} → {0,1,2} */
+            int enc = (int)w[i * n + j] + 1; /* {-1,0,1} → {0,1,2} */
             if (enc < 0) enc = 0;
             if (enc > 2) enc = 2;
-            size_t byte_off = (size_t)(i) * row_bytes + (size_t)(j >> 2);
-            int    bit_off  = (j & 3) << 1;
+            size_t byte_off = (size_t)(i)*row_bytes + (size_t)(j >> 2);
+            int bit_off     = (j & 3) << 1;
             out[byte_off] |= (tn_u8)(enc << bit_off);
         }
     }
@@ -76,7 +76,10 @@ static void test_quantize_scalar_range(void) {
      * needs checking. */
     int all_in_range = 1;
     for (int i = 0; i < n; i++) {
-        if (q[i] < -127) { all_in_range = 0; break; }
+        if (q[i] < -127) {
+            all_in_range = 0;
+            break;
+        }
     }
     TEST_ASSERT(all_in_range, "quantize_scalar: all outputs in [-127, 127]");
     TEST_ASSERT(scale >= 0.0f, "quantize_scalar: scale non-negative");
@@ -92,13 +95,18 @@ static void test_quantize_scalar_zero_input(void) {
 
     TEST_ASSERT(scale == 0.0f, "quantize_scalar: zero input → scale 0");
     int all_zero = 1;
-    for (int i = 0; i < n; i++) { if (q[i] != 0) { all_zero = 0; break; } }
+    for (int i = 0; i < n; i++) {
+        if (q[i] != 0) {
+            all_zero = 0;
+            break;
+        }
+    }
     TEST_ASSERT(all_zero, "quantize_scalar: zero input → all q = 0");
 }
 
 static void test_quantize_scalar_max_maps_to_127(void) {
     /* The maximum absolute value should map to ±127 */
-    float x[4] = { 1.0f, -1.0f, 0.5f, -0.5f };
+    float x[4] = {1.0f, -1.0f, 0.5f, -0.5f};
     int8_t q[4];
     float scale = quantize_row_to_i8(x, q, 4);
 
@@ -111,7 +119,7 @@ static void test_quantize_scalar_max_maps_to_127(void) {
 static void test_quantize_scale_consistency(void) {
     /* scale * q[i] ≈ x[i] for all i (within quantization error) */
     const int n = 256;
-    float  x[256];
+    float x[256];
     int8_t q[256];
     fill_random_float(x, n, 77);
 
@@ -125,14 +133,13 @@ static void test_quantize_scale_consistency(void) {
     /* Round to nearest: the error is at most HALF a step (scale = max_abs / 127). This bound was
      * `<= scale` until 2026-11-18, which accepted a truncating quantiser (docs/rca/...);
      * tests/test_quantize_i8_exact.c pins the full specification. */
-    TEST_ASSERT(max_err <= 0.5f * scale + 1e-5f,
-                "quantize: scale*q[i] ≈ x[i] within half a step");
+    TEST_ASSERT(max_err <= 0.5f * scale + 1e-5f, "quantize: scale*q[i] ≈ x[i] within half a step");
 }
 
 #if TN_HAS_AVX512
 static void test_quantize_avx512_matches_scalar(void) {
-    const int n = 300;  /* Non-multiple of 16 */
-    float  x[300];
+    const int n = 300; /* Non-multiple of 16 */
+    float x[300];
     int8_t q_scalar[300], q_avx512[300];
     fill_random_float(x, n, 55);
 
@@ -142,7 +149,10 @@ static void test_quantize_avx512_matches_scalar(void) {
     TEST_ASSERT_FLOAT_EQ(s0, s1, 1e-6f, "quantize_avx512: scale matches scalar");
     int all_match = 1;
     for (int i = 0; i < n; i++) {
-        if (q_avx512[i] != q_scalar[i]) { all_match = 0; break; }
+        if (q_avx512[i] != q_scalar[i]) {
+            all_match = 0;
+            break;
+        }
     }
     TEST_ASSERT(all_match, "quantize_avx512: q values match scalar");
 }
@@ -150,8 +160,8 @@ static void test_quantize_avx512_matches_scalar(void) {
 
 #if TN_HAS_AVX2
 static void test_quantize_avx2_matches_scalar(void) {
-    const int n = 73;  /* odd non-multiple-of-8 */
-    float  x[73];
+    const int n = 73; /* odd non-multiple-of-8 */
+    float x[73];
     int8_t q_scalar[73], q_avx2[73];
     fill_random_float(x, n, 88);
 
@@ -161,7 +171,10 @@ static void test_quantize_avx2_matches_scalar(void) {
     TEST_ASSERT_FLOAT_EQ(s0, s1, 1e-6f, "quantize_avx2: scale matches scalar");
     int all_match = 1;
     for (int i = 0; i < n; i++) {
-        if (q_avx2[i] != q_scalar[i]) { all_match = 0; break; }
+        if (q_avx2[i] != q_scalar[i]) {
+            all_match = 0;
+            break;
+        }
     }
     TEST_ASSERT(all_match, "quantize_avx2: q values match scalar");
 }
@@ -170,8 +183,8 @@ static void test_quantize_avx2_matches_scalar(void) {
 /* ─── sum_i8 tests ────────────────────────────────────────────────────────── */
 
 static void test_sum_i8_scalar(void) {
-    int8_t arr[8] = { 1, -2, 3, -4, 5, -6, 7, -8 };
-    int32_t expected = 1 - 2 + 3 - 4 + 5 - 6 + 7 - 8;  /* = -4 */
+    int8_t arr[8]    = {1, -2, 3, -4, 5, -6, 7, -8};
+    int32_t expected = 1 - 2 + 3 - 4 + 5 - 6 + 7 - 8; /* = -4 */
     TEST_ASSERT_EQ(sum_i8(arr, 8), expected, "sum_i8 scalar: small array");
 }
 
@@ -185,7 +198,7 @@ static void test_sum_i8_all_127(void) {
 
 #if TN_HAS_AVX512
 static void test_sum_i8_avx512_matches_scalar(void) {
-    const int n = 257;  /* Non-multiple of 64 */
+    const int n = 257; /* Non-multiple of 64 */
     int8_t arr[257];
     for (int i = 0; i < n; i++) arr[i] = (int8_t)((i % 13) - 6);
 
@@ -212,14 +225,13 @@ static void test_sum_i8_avx512_matches_scalar(void) {
  * We use 10% relative + 5% absolute to accommodate int8 quantization error
  * while still catching real kernel bugs (wrong formula, off-by-one, sign errors).
  */
-static int matmul_outputs_match(float *out_ref, float *out_new, int d,
-                                float rtol, float atol) {
+static int matmul_outputs_match(float *out_ref, float *out_new, int d, float rtol, float atol) {
     for (int i = 0; i < d; i++) {
-        float diff = fabsf(out_ref[i] - out_new[i]);
+        float diff    = fabsf(out_ref[i] - out_new[i]);
         float ref_abs = fabsf(out_ref[i]);
         if (diff > rtol * ref_abs + atol) {
-            printf("  mismatch at [%d]: ref=%.6f new=%.6f diff=%.6f\n",
-                   i, out_ref[i], out_new[i], diff);
+            printf("  mismatch at [%d]: ref=%.6f new=%.6f diff=%.6f\n", i, out_ref[i], out_new[i],
+                   diff);
             return 0;
         }
     }
@@ -230,18 +242,17 @@ static int matmul_outputs_match(float *out_ref, float *out_new, int d,
 static void test_vnni_vs_avx512_small(void) {
     /* Small matrix: 64 inputs × 16 outputs, per-matrix scale */
     const int n = 64, d = 16;
-    float   x[64], out_ref[16], out_vnni[16];
-    tn_i8   w_i8[64 * 16];
-    tn_u8  *packed = (tn_u8*)tn_aligned_calloc(
-                       (size_t)d * (((size_t)n + 3) >> 2), 1, 64);
-    float   scales[1] = { 0.5f };
+    float x[64], out_ref[16], out_vnni[16];
+    tn_i8 w_i8[64 * 16];
+    tn_u8 *packed   = (tn_u8 *)tn_aligned_calloc((size_t)d * (((size_t)n + 3) >> 2), 1, 64);
+    float scales[1] = {0.5f};
 
     fill_random_float(x, n, 11);
     fill_ternary_i8(w_i8, d * n, 22);
     pack_ternary_to_u8(packed, w_i8, n, d);
 
-    ternary_matmul_packed_avx512(out_ref,  x, packed, n, d, scales, 0);
-    ternary_matmul_packed_vnni  (out_vnni, x, packed, n, d, scales, 0);
+    ternary_matmul_packed_avx512(out_ref, x, packed, n, d, scales, 0);
+    ternary_matmul_packed_vnni(out_vnni, x, packed, n, d, scales, 0);
 
     TEST_ASSERT(matmul_outputs_match(out_ref, out_vnni, d, 0.10f, 0.05f),
                 "VNNI small (64×16): output matches AVX-512F reference within 5%");
@@ -251,33 +262,36 @@ static void test_vnni_vs_avx512_small(void) {
 static void test_vnni_vs_avx512_large(void) {
     /* Realistic dims: n=2048, d=256 (attention projection size) */
     const int n = 2048, d = 128;
-    float  *x       = (float*)tn_aligned_calloc(n, sizeof(float), 64);
-    float  *out_ref = (float*)tn_aligned_calloc(d, sizeof(float), 64);
-    float  *out_vnni= (float*)tn_aligned_calloc(d, sizeof(float), 64);
-    tn_i8  *w_i8    = (tn_i8*)tn_aligned_calloc((size_t)d*n, 1, 64);
+    float *x         = (float *)tn_aligned_calloc(n, sizeof(float), 64);
+    float *out_ref   = (float *)tn_aligned_calloc(d, sizeof(float), 64);
+    float *out_vnni  = (float *)tn_aligned_calloc(d, sizeof(float), 64);
+    tn_i8 *w_i8      = (tn_i8 *)tn_aligned_calloc((size_t)d * n, 1, 64);
     size_t row_bytes = ((size_t)n + 3) >> 2;
-    tn_u8  *packed   = (tn_u8*)tn_aligned_calloc((size_t)d * row_bytes, 1, 64);
-    float   scales[1] = { 0.125f };
+    tn_u8 *packed    = (tn_u8 *)tn_aligned_calloc((size_t)d * row_bytes, 1, 64);
+    float scales[1]  = {0.125f};
 
     fill_random_float(x, n, 33);
     fill_ternary_i8(w_i8, d * n, 44);
     pack_ternary_to_u8(packed, w_i8, n, d);
 
-    ternary_matmul_packed_avx512(out_ref,  x, packed, n, d, scales, 0);
-    ternary_matmul_packed_vnni  (out_vnni, x, packed, n, d, scales, 0);
+    ternary_matmul_packed_avx512(out_ref, x, packed, n, d, scales, 0);
+    ternary_matmul_packed_vnni(out_vnni, x, packed, n, d, scales, 0);
 
     TEST_ASSERT(matmul_outputs_match(out_ref, out_vnni, d, 0.10f, 0.05f),
                 "VNNI large (2048×128): output matches AVX-512F reference within 5%");
 
-    tn_aligned_free(x); tn_aligned_free(out_ref); tn_aligned_free(out_vnni);
-    tn_aligned_free(w_i8); tn_aligned_free(packed);
+    tn_aligned_free(x);
+    tn_aligned_free(out_ref);
+    tn_aligned_free(out_vnni);
+    tn_aligned_free(w_i8);
+    tn_aligned_free(packed);
 }
 
 static void test_vnni_all_zero_weights(void) {
     const int n = 128, d = 32;
     float x[128], out_vnni[32];
-    tn_u8 packed[128 * 32 / 4];   /* all zeros = all ternary 0 after decode... */
-    float scales[1] = { 1.0f };
+    tn_u8 packed[128 * 32 / 4]; /* all zeros = all ternary 0 after decode... */
+    float scales[1] = {1.0f};
     /* Note: all-zero packed bytes = 0b00000000 = w_enc=0 → ternary -1, not 0.
      * Use explicit encoding: ternary 0 = packed bits 01 = byte 0x55 pattern. */
     size_t row_bytes = ((size_t)n + 3) >> 2;
@@ -289,7 +303,10 @@ static void test_vnni_all_zero_weights(void) {
 
     int all_zero = 1;
     for (int i = 0; i < d; i++) {
-        if (fabsf(out_vnni[i]) > 1e-5f) { all_zero = 0; break; }
+        if (fabsf(out_vnni[i]) > 1e-5f) {
+            all_zero = 0;
+            break;
+        }
     }
     TEST_ASSERT(all_zero, "VNNI: all-zero weights → all-zero outputs");
 }
@@ -300,15 +317,15 @@ static void test_vnni_odd_n(void) {
     float x[37], out_ref[8], out_vnni[8];
     tn_i8 w_i8[37 * 8];
     size_t row_bytes = ((size_t)n + 3) >> 2;
-    tn_u8 *packed = (tn_u8*)tn_aligned_calloc((size_t)d * row_bytes, 1, 64);
-    float scales[1] = { 1.0f };
+    tn_u8 *packed    = (tn_u8 *)tn_aligned_calloc((size_t)d * row_bytes, 1, 64);
+    float scales[1]  = {1.0f};
 
     fill_random_float(x, n, 55);
     fill_ternary_i8(w_i8, d * n, 66);
     pack_ternary_to_u8(packed, w_i8, n, d);
 
-    ternary_matmul_packed_avx512(out_ref,  x, packed, n, d, scales, 0);
-    ternary_matmul_packed_vnni  (out_vnni, x, packed, n, d, scales, 0);
+    ternary_matmul_packed_avx512(out_ref, x, packed, n, d, scales, 0);
+    ternary_matmul_packed_vnni(out_vnni, x, packed, n, d, scales, 0);
 
     TEST_ASSERT(matmul_outputs_match(out_ref, out_vnni, d, 0.10f, 0.05f),
                 "VNNI odd n=37: scalar tail produces correct output");
@@ -319,26 +336,29 @@ static void test_vnni_odd_n(void) {
 #if TN_HAS_AVXVNNI
 static void test_avx_vnni_vs_avx2_medium(void) {
     const int n = 512, d = 64;
-    float  *x        = (float*)tn_aligned_calloc(n, sizeof(float), 32);
-    float  *out_ref  = (float*)tn_aligned_calloc(d, sizeof(float), 32);
-    float  *out_vnni = (float*)tn_aligned_calloc(d, sizeof(float), 32);
-    tn_i8  *w_i8     = (tn_i8*)tn_aligned_calloc((size_t)d*n, 1, 32);
+    float *x         = (float *)tn_aligned_calloc(n, sizeof(float), 32);
+    float *out_ref   = (float *)tn_aligned_calloc(d, sizeof(float), 32);
+    float *out_vnni  = (float *)tn_aligned_calloc(d, sizeof(float), 32);
+    tn_i8 *w_i8      = (tn_i8 *)tn_aligned_calloc((size_t)d * n, 1, 32);
     size_t row_bytes = ((size_t)n + 3) >> 2;
-    tn_u8  *packed   = (tn_u8*)tn_aligned_calloc((size_t)d * row_bytes, 1, 32);
-    float   scales[1] = { 0.25f };
+    tn_u8 *packed    = (tn_u8 *)tn_aligned_calloc((size_t)d * row_bytes, 1, 32);
+    float scales[1]  = {0.25f};
 
     fill_random_float(x, n, 77);
     fill_ternary_i8(w_i8, d * n, 88);
     pack_ternary_to_u8(packed, w_i8, n, d);
 
-    ternary_matmul_packed_avx2    (out_ref,  x, packed, n, d, scales, 0);
+    ternary_matmul_packed_avx2(out_ref, x, packed, n, d, scales, 0);
     ternary_matmul_packed_avx_vnni(out_vnni, x, packed, n, d, scales, 0);
 
     TEST_ASSERT(matmul_outputs_match(out_ref, out_vnni, d, 0.10f, 0.05f),
                 "AVX-VNNI (512×64): output matches AVX2 reference within 5%");
 
-    tn_aligned_free(x); tn_aligned_free(out_ref); tn_aligned_free(out_vnni);
-    tn_aligned_free(w_i8); tn_aligned_free(packed);
+    tn_aligned_free(x);
+    tn_aligned_free(out_ref);
+    tn_aligned_free(out_vnni);
+    tn_aligned_free(w_i8);
+    tn_aligned_free(packed);
 }
 
 static void test_avx_vnni_odd_n(void) {
@@ -346,14 +366,14 @@ static void test_avx_vnni_odd_n(void) {
     float x[53], out_ref[4], out_vnni[4];
     tn_i8 w_i8[53 * 4];
     size_t row_bytes = ((size_t)n + 3) >> 2;
-    tn_u8 *packed = (tn_u8*)tn_aligned_calloc((size_t)d * row_bytes, 1, 32);
-    float scales[1] = { 1.0f };
+    tn_u8 *packed    = (tn_u8 *)tn_aligned_calloc((size_t)d * row_bytes, 1, 32);
+    float scales[1]  = {1.0f};
 
     fill_random_float(x, n, 101);
     fill_ternary_i8(w_i8, d * n, 202);
     pack_ternary_to_u8(packed, w_i8, n, d);
 
-    ternary_matmul_packed_avx2    (out_ref,  x, packed, n, d, scales, 0);
+    ternary_matmul_packed_avx2(out_ref, x, packed, n, d, scales, 0);
     ternary_matmul_packed_avx_vnni(out_vnni, x, packed, n, d, scales, 0);
 
     TEST_ASSERT(matmul_outputs_match(out_ref, out_vnni, d, 0.10f, 0.05f),
@@ -374,7 +394,7 @@ static void test_cpu_features_detect(void) {
      * Just verify the struct is populated and consistent. */
     if (f->avx512vnni) {
         TEST_ASSERT(f->avx512f, "avx512vnni implies avx512f");
-        TEST_ASSERT(f->avx2,    "avx512vnni implies avx2");
+        TEST_ASSERT(f->avx2, "avx512vnni implies avx2");
     }
     if (f->avx512f) {
         TEST_ASSERT(f->avx2, "avx512f implies avx2");
@@ -396,7 +416,7 @@ static void test_cpu_features_cached(void) {
 
 static void test_cpu_best_backend_name(void) {
     const TnCpuFeatures *f = tn_cpu_features_detect();
-    const char *name = tn_cpu_best_backend_name(f);
+    const char *name       = tn_cpu_best_backend_name(f);
     TEST_ASSERT(name != NULL, "tn_cpu_best_backend_name: non-NULL");
     TEST_ASSERT(name[0] != '\0', "tn_cpu_best_backend_name: non-empty");
     printf("  Detected best backend: %s\n", name);
@@ -413,23 +433,23 @@ static void test_simd_init_returns_backend(void) {
 
 static void test_simd_init_all_pointers_set(void) {
     tn_simd_init();
-    TEST_ASSERT(tn_ternary_matmul        != NULL, "dispatch: tn_ternary_matmul set");
+    TEST_ASSERT(tn_ternary_matmul != NULL, "dispatch: tn_ternary_matmul set");
     TEST_ASSERT(tn_ternary_matmul_packed != NULL, "dispatch: tn_ternary_matmul_packed set");
-    TEST_ASSERT(tn_unpack_block          != NULL, "dispatch: tn_unpack_block set");
-    TEST_ASSERT(tn_rmsnorm               != NULL, "dispatch: tn_rmsnorm set");
-    TEST_ASSERT(tn_softmax               != NULL, "dispatch: tn_softmax set");
-    TEST_ASSERT(tn_vec_add               != NULL, "dispatch: tn_vec_add set");
-    TEST_ASSERT(tn_vec_mul               != NULL, "dispatch: tn_vec_mul set");
-    TEST_ASSERT(tn_vec_scale             != NULL, "dispatch: tn_vec_scale set");
-    TEST_ASSERT(tn_silu                  != NULL, "dispatch: tn_silu set");
-    TEST_ASSERT(tn_relu2                 != NULL, "dispatch: tn_relu2 set");
-    TEST_ASSERT(tn_vec_dot               != NULL, "dispatch: tn_vec_dot set");
-    TEST_ASSERT(tn_vec_saxpy             != NULL, "dispatch: tn_vec_saxpy set");
+    TEST_ASSERT(tn_unpack_block != NULL, "dispatch: tn_unpack_block set");
+    TEST_ASSERT(tn_rmsnorm != NULL, "dispatch: tn_rmsnorm set");
+    TEST_ASSERT(tn_softmax != NULL, "dispatch: tn_softmax set");
+    TEST_ASSERT(tn_vec_add != NULL, "dispatch: tn_vec_add set");
+    TEST_ASSERT(tn_vec_mul != NULL, "dispatch: tn_vec_mul set");
+    TEST_ASSERT(tn_vec_scale != NULL, "dispatch: tn_vec_scale set");
+    TEST_ASSERT(tn_silu != NULL, "dispatch: tn_silu set");
+    TEST_ASSERT(tn_relu2 != NULL, "dispatch: tn_relu2 set");
+    TEST_ASSERT(tn_vec_dot != NULL, "dispatch: tn_vec_dot set");
+    TEST_ASSERT(tn_vec_saxpy != NULL, "dispatch: tn_vec_saxpy set");
 }
 
 static void test_simd_init_vnni_selected_when_available(void) {
     const TnCpuFeatures *f = tn_cpu_features_detect();
-    const char *backend = tn_simd_init();
+    const char *backend    = tn_simd_init();
     /* Verify that the selected backend is consistent with what the CPU feature
      * detector reports as the best backend.  tn_simd_init() may select a lower
      * tier when the build was not compiled with the corresponding -m flag, so
@@ -445,9 +465,11 @@ static void test_simd_init_vnni_selected_when_available(void) {
          * CPU whose VBMI is execution-verified, with the VBMI unpack (_vbmi). */
         int is_vnni = tn_ternary_matmul_packed == ternary_matmul_packed_vnni;
 #if TN_HAS_AVX512VBMI
-        is_vnni = is_vnni || (f->avx512vbmi && tn_ternary_matmul_packed == ternary_matmul_packed_vnni_vbmi);
+        is_vnni = is_vnni ||
+                  (f->avx512vbmi && tn_ternary_matmul_packed == ternary_matmul_packed_vnni_vbmi);
 #endif
-        TEST_ASSERT(is_vnni, "dispatch: packed_matmul pointer → a ternary_matmul_packed_vnni variant");
+        TEST_ASSERT(is_vnni,
+                    "dispatch: packed_matmul pointer → a ternary_matmul_packed_vnni variant");
 #else
         /* VNNI runtime-capable but not compiled in — backend falls to lower tier */
         TEST_ASSERT(backend != NULL, "dispatch: backend string non-NULL on VNNI CPU");
@@ -461,8 +483,7 @@ static void test_simd_init_vnni_selected_when_available(void) {
 #endif
     } else if (f->avx512f) {
 #if TN_HAS_AVX512
-        TEST_ASSERT(strcmp(backend, "AVX-512F") == 0,
-                    "dispatch: AVX-512F selected as fallback");
+        TEST_ASSERT(strcmp(backend, "AVX-512F") == 0, "dispatch: AVX-512F selected as fallback");
 #else
         /* AVX-512F runtime-capable but build did not enable it — Scalar or AVX2 */
         TEST_ASSERT(backend != NULL, "dispatch: backend string non-NULL on AVX512F CPU");
@@ -481,58 +502,66 @@ static void test_kv_strategy_16gb_system(void) {
      * New thresholds: GB_8 is the cutoff — 8.5 GB > 8 GB → QUANT_I8. */
     Config cfg;
     memset(&cfg, 0, sizeof(cfg));
-    cfg.dim = 2048; cfg.n_heads = 32; cfg.n_kv_heads = 32; cfg.n_layers = 32;
-    cfg.seq_len = 4096;
+    cfg.dim        = 2048;
+    cfg.n_heads    = 32;
+    cfg.n_kv_heads = 32;
+    cfg.n_layers   = 32;
+    cfg.seq_len    = 4096;
 
-    tn_i64 free_ram_8_5gb = (tn_i64)8500 * 1024 * 1024;  /* 8.5 GB */
-    KVStrategyResult r = select_kv_strategy(&cfg, free_ram_8_5gb, NULL);
+    tn_i64 free_ram_8_5gb = (tn_i64)8500 * 1024 * 1024; /* 8.5 GB */
+    KVStrategyResult r    = select_kv_strategy(&cfg, free_ram_8_5gb, NULL);
 
     TEST_ASSERT(r.strategy == KV_QUANT_I8,
                 "KV strategy K-3: 16 GB system (8.5 GB avail) → KV_QUANT_I8");
-    TEST_ASSERT(r.max_seq_len == 4096,
-                "KV strategy K-3: full seq_len preserved for QUANT_I8");
+    TEST_ASSERT(r.max_seq_len == 4096, "KV strategy K-3: full seq_len preserved for QUANT_I8");
 }
 
 static void test_kv_strategy_8gb_system(void) {
     /* 8 GB system with ~5.5 GB available — should use sliding I8 */
     Config cfg;
     memset(&cfg, 0, sizeof(cfg));
-    cfg.dim = 2048; cfg.n_heads = 32; cfg.n_kv_heads = 32; cfg.n_layers = 32;
-    cfg.seq_len = 4096;
+    cfg.dim        = 2048;
+    cfg.n_heads    = 32;
+    cfg.n_kv_heads = 32;
+    cfg.n_layers   = 32;
+    cfg.seq_len    = 4096;
 
     tn_i64 free_ram_5_5gb = (tn_i64)5500 * 1024 * 1024;
-    KVStrategyResult r = select_kv_strategy(&cfg, free_ram_5_5gb, NULL);
+    KVStrategyResult r    = select_kv_strategy(&cfg, free_ram_5_5gb, NULL);
 
     TEST_ASSERT(r.strategy == KV_SLIDING_I8,
                 "KV strategy: 8 GB system (5.5 GB avail) → KV_SLIDING_I8");
-    TEST_ASSERT(r.max_seq_len == 1024,
-                "KV strategy: sliding window uses 1024 ctx");
+    TEST_ASSERT(r.max_seq_len == 1024, "KV strategy: sliding window uses 1024 ctx");
 }
 
 static void test_kv_strategy_4gb_system(void) {
     Config cfg;
     memset(&cfg, 0, sizeof(cfg));
-    cfg.dim = 2048; cfg.n_heads = 32; cfg.n_kv_heads = 32; cfg.n_layers = 32;
-    cfg.seq_len = 4096;
+    cfg.dim        = 2048;
+    cfg.n_heads    = 32;
+    cfg.n_kv_heads = 32;
+    cfg.n_layers   = 32;
+    cfg.seq_len    = 4096;
 
     tn_i64 free_ram_3gb = (tn_i64)3 * 1024 * 1024 * 1024;
-    KVStrategyResult r = select_kv_strategy(&cfg, free_ram_3gb, NULL);
+    KVStrategyResult r  = select_kv_strategy(&cfg, free_ram_3gb, NULL);
 
-    TEST_ASSERT(r.strategy == KV_SLIDING_I4,
-                "KV strategy: 4 GB system → KV_SLIDING_I4");
+    TEST_ASSERT(r.strategy == KV_SLIDING_I4, "KV strategy: 4 GB system → KV_SLIDING_I4");
 }
 
 static void test_kv_strategy_server(void) {
     Config cfg;
     memset(&cfg, 0, sizeof(cfg));
-    cfg.dim = 2048; cfg.n_heads = 32; cfg.n_kv_heads = 32; cfg.n_layers = 32;
-    cfg.seq_len = 4096;
+    cfg.dim        = 2048;
+    cfg.n_heads    = 32;
+    cfg.n_kv_heads = 32;
+    cfg.n_layers   = 32;
+    cfg.seq_len    = 4096;
 
     tn_i64 free_ram_64gb = (tn_i64)64 * 1024 * 1024 * 1024;
-    KVStrategyResult r = select_kv_strategy(&cfg, free_ram_64gb, NULL);
+    KVStrategyResult r   = select_kv_strategy(&cfg, free_ram_64gb, NULL);
 
-    TEST_ASSERT(r.strategy == KV_FULL_F32,
-                "KV strategy: server (64 GB) → KV_FULL_F32");
+    TEST_ASSERT(r.strategy == KV_FULL_F32, "KV strategy: server (64 GB) → KV_FULL_F32");
     TEST_ASSERT(r.max_seq_len == 4096, "KV strategy: server full seq_len");
 }
 
@@ -576,7 +605,8 @@ int main(void) {
     RUN_TEST(test_vnni_odd_n);
 #else
     printf("  (AVX-512 VNNI not available — tests skipped)\n");
-    tn_tests_run++; tn_tests_passed++;
+    tn_tests_run++;
+    tn_tests_passed++;
 #endif
 
     /* AVX-VNNI 256-bit matmul correctness */
@@ -586,7 +616,8 @@ int main(void) {
     RUN_TEST(test_avx_vnni_odd_n);
 #else
     printf("  (AVX-VNNI not available — tests skipped)\n");
-    tn_tests_run++; tn_tests_passed++;
+    tn_tests_run++;
+    tn_tests_passed++;
 #endif
 
     /* Runtime CPU detection */

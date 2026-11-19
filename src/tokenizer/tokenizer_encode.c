@@ -20,7 +20,13 @@
  * vocabulary, so every post-space word token fails to encode correctly.
  */
 /* GPT-2 byte-to-unicode table: maps each raw byte to its BPE vocab character (UTF-8 encoded). */
-static const struct { unsigned char u0; unsigned char u1; unsigned char u2; unsigned char u3; int len; } g_byte_unicode[256] = {
+static const struct {
+    unsigned char u0;
+    unsigned char u1;
+    unsigned char u2;
+    unsigned char u3;
+    int len;
+} g_byte_unicode[256] = {
     /*   0 */ {0xc4, 0x80, 0x00, 0x00, 2},
     /*   1 */ {0xc4, 0x81, 0x00, 0x00, 2},
     /*   2 */ {0xc4, 0x82, 0x00, 0x00, 2},
@@ -53,7 +59,7 @@ static const struct { unsigned char u0; unsigned char u1; unsigned char u2; unsi
     /*  29 */ {0xc4, 0x9d, 0x00, 0x00, 2},
     /*  30 */ {0xc4, 0x9e, 0x00, 0x00, 2},
     /*  31 */ {0xc4, 0x9f, 0x00, 0x00, 2},
-    /*  32 */ {0xc4, 0xa0, 0x00, 0x00, 2},  /* space → Ġ (U+0120) */
+    /*  32 */ {0xc4, 0xa0, 0x00, 0x00, 2}, /* space → Ġ (U+0120) */
     /*  33 */ {0x21, 0x00, 0x00, 0x00, 1},
     /*  34 */ {0x22, 0x00, 0x00, 0x00, 1},
     /*  35 */ {0x23, 0x00, 0x00, 0x00, 1},
@@ -148,7 +154,7 @@ static const struct { unsigned char u0; unsigned char u1; unsigned char u2; unsi
     /* 124 */ {0x7c, 0x00, 0x00, 0x00, 1},
     /* 125 */ {0x7d, 0x00, 0x00, 0x00, 1},
     /* 126 */ {0x7e, 0x00, 0x00, 0x00, 1},
-    /* 127 */ {0xc4, 0xa1, 0x00, 0x00, 2},  /* DEL → ġ (U+0121) */
+    /* 127 */ {0xc4, 0xa1, 0x00, 0x00, 2}, /* DEL → ġ (U+0121) */
     /* 128 */ {0xc4, 0xa2, 0x00, 0x00, 2},
     /* 129 */ {0xc4, 0xa3, 0x00, 0x00, 2},
     /* 130 */ {0xc4, 0xa4, 0x00, 0x00, 2},
@@ -182,7 +188,7 @@ static const struct { unsigned char u0; unsigned char u1; unsigned char u2; unsi
     /* 158 */ {0xc5, 0x80, 0x00, 0x00, 2},
     /* 159 */ {0xc5, 0x81, 0x00, 0x00, 2},
     /* 160 */ {0xc5, 0x82, 0x00, 0x00, 2},
-    /* 161 */ {0xc2, 0xa1, 0x00, 0x00, 2},  /* inverted ! (Latin-1 printable) */
+    /* 161 */ {0xc2, 0xa1, 0x00, 0x00, 2}, /* inverted ! (Latin-1 printable) */
     /* 162 */ {0xc2, 0xa2, 0x00, 0x00, 2},
     /* 163 */ {0xc2, 0xa3, 0x00, 0x00, 2},
     /* 164 */ {0xc2, 0xa4, 0x00, 0x00, 2},
@@ -194,7 +200,7 @@ static const struct { unsigned char u0; unsigned char u1; unsigned char u2; unsi
     /* 170 */ {0xc2, 0xaa, 0x00, 0x00, 2},
     /* 171 */ {0xc2, 0xab, 0x00, 0x00, 2},
     /* 172 */ {0xc2, 0xac, 0x00, 0x00, 2},
-    /* 173 */ {0xc5, 0x83, 0x00, 0x00, 2},  /* soft hyphen → Ń(U+0143) */
+    /* 173 */ {0xc5, 0x83, 0x00, 0x00, 2}, /* soft hyphen → Ń(U+0143) */
     /* 174 */ {0xc2, 0xae, 0x00, 0x00, 2},
     /* 175 */ {0xc2, 0xaf, 0x00, 0x00, 2},
     /* 176 */ {0xc2, 0xb0, 0x00, 0x00, 2},
@@ -287,49 +293,47 @@ static int tokenizer_lookup(const Tokenizer *t, const char *str) {
         int mid = lo + (hi - lo) / 2;
         int idx = t->sorted_vocab_indices[mid];
         int cmp = strcmp(str, t->vocab[idx]);
-        if (cmp == 0) return idx;
-        else if (cmp < 0) hi = mid - 1;
-        else lo = mid + 1;
+        if (cmp == 0)
+            return idx;
+        else if (cmp < 0)
+            hi = mid - 1;
+        else
+            lo = mid + 1;
     }
     return -1;
 }
 
 /* Encode a plain (non-special-token) text segment using byte-level BPE. */
-static int tokenizer_encode_segment(Tokenizer *t, const char *text, size_t len,
-                                    int *tokens, int max_tokens);
+static int tokenizer_encode_segment(Tokenizer *t, const char *text, size_t len, int *tokens,
+                                    int max_tokens);
 
 /* Static fallback special tokens for legacy .bin tokenizers (no token_type array). */
-static const struct { const char *str; int slen; } FALLBACK_SPECIALS[] = {
-    { "<|im_start|>",         12 },
-    { "<|im_end|>",           10 },
-    { "<end_of_utterance>",   18 },
-    { "<|endoftext|>",        13 },
-    { "<|begin_of_text|>",    17 },
-    { "<|end_of_text|>",      15 },
-    { "<|eot_id|>",           10 },
-    { "<|start_header_id|>",  19 },
-    { "<|end_header_id|>",    17 },
-    { "<|finetune_right_pad_id|>", 25 },
+static const struct {
+    const char *str;
+    int slen;
+} FALLBACK_SPECIALS[] = {
+    {"<|im_start|>", 12},       {"<|im_end|>", 10},
+    {"<end_of_utterance>", 18}, {"<|endoftext|>", 13},
+    {"<|begin_of_text|>", 17},  {"<|end_of_text|>", 15},
+    {"<|eot_id|>", 10},         {"<|start_header_id|>", 19},
+    {"<|end_header_id|>", 17},  {"<|finetune_right_pad_id|>", 25},
 };
 enum { N_FALLBACK_SPECIALS = 10 };
 
 /* Check if text[pos..] starts with any special token from the model's dynamic list
  * or the static fallback list. Returns matched length + fills *out_id.
  * Returns 0 if no match. */
-static size_t match_special_token(const Tokenizer *t,
-                                   const char *text, size_t pos, size_t text_len,
-                                   int *out_id)
-{
+static size_t match_special_token(const Tokenizer *t, const char *text, size_t pos, size_t text_len,
+                                  int *out_id) {
     size_t best_len = 0;
-    int    best_id  = -1;
+    int best_id     = -1;
 
     if (t->n_special > 0) {
         /* Dynamic list from GGUF token_type — covers all model-specific specials */
         for (int i = 0; i < t->n_special; i++) {
             size_t slen = strlen(t->special_tokens[i]);
             if (slen > 0 && pos + slen <= text_len &&
-                memcmp(text + pos, t->special_tokens[i], slen) == 0 &&
-                slen > best_len) {
+                memcmp(text + pos, t->special_tokens[i], slen) == 0 && slen > best_len) {
                 best_len = slen;
                 best_id  = t->special_token_ids[i];
             }
@@ -338,8 +342,7 @@ static size_t match_special_token(const Tokenizer *t,
         /* Fallback: static list for .bin tokenizers */
         for (int i = 0; i < N_FALLBACK_SPECIALS; i++) {
             size_t slen = (size_t)FALLBACK_SPECIALS[i].slen;
-            if (pos + slen <= text_len &&
-                memcmp(text + pos, FALLBACK_SPECIALS[i].str, slen) == 0) {
+            if (pos + slen <= text_len && memcmp(text + pos, FALLBACK_SPECIALS[i].str, slen) == 0) {
                 int id = tokenizer_lookup(t, FALLBACK_SPECIALS[i].str);
                 if (id >= 0 && slen > best_len) {
                     best_len = slen;
@@ -384,13 +387,17 @@ static int placeholder_at(const Tokenizer *t, const char *text, size_t pos, size
 }
 
 /* Longest CONTROL special at text[pos]: its length, index in *out_i. */
-static size_t match_control(const Tokenizer *t, const char *text, size_t pos, size_t len, int *out_i) {
+static size_t match_control(const Tokenizer *t, const char *text, size_t pos, size_t len,
+                            int *out_i) {
     size_t best = 0;
     for (int i = 0; i < special_count(t); i++) {
         if (!special_is_control(t, i)) continue;
         const char *lit = special_literal(t, i);
-        size_t l = strlen(lit);
-        if (l > best && pos + l <= len && memcmp(text + pos, lit, l) == 0) { best = l; *out_i = i; }
+        size_t l        = strlen(lit);
+        if (l > best && pos + l <= len && memcmp(text + pos, lit, l) == 0) {
+            best   = l;
+            *out_i = i;
+        }
     }
     return best;
 }
@@ -403,14 +410,14 @@ char *tokenizer_neutralize_control(const Tokenizer *t, const char *text) {
     if (!out) return NULL;
     size_t o = 0;
     for (size_t pos = 0; pos < len;) {
-        int i = -1;
+        int i    = -1;
         size_t m = (t && t->vocab && text[pos] != '\0') ? match_control(t, text, pos, len, &i) : 0;
         if (m > 0 && (unsigned)i < 0x20000u - 2) {
             unsigned cp = TN_PH_BASE + (unsigned)i;
-            out[o++] = (char)(0xF0 | (cp >> 18));
-            out[o++] = (char)(0x80 | ((cp >> 12) & 0x3F));
-            out[o++] = (char)(0x80 | ((cp >> 6) & 0x3F));
-            out[o++] = (char)(0x80 | (cp & 0x3F));
+            out[o++]    = (char)(0xF0 | (cp >> 18));
+            out[o++]    = (char)(0x80 | ((cp >> 12) & 0x3F));
+            out[o++]    = (char)(0x80 | ((cp >> 6) & 0x3F));
+            out[o++]    = (char)(0x80 | (cp & 0x3F));
             pos += m;
         } else {
             out[o++] = text[pos++];
@@ -424,18 +431,25 @@ char *tokenizer_neutralize_control(const Tokenizer *t, const char *text) {
  * run BPE inside each fragment, as llama.cpp does. 2026-10-18: segments used
  * to be merged whole, so BPE crossed word/digit/punctuation boundaries the
  * model never saw ("?\n\n" as one token instead of "?", "\n", "\n"). */
-static int tokenizer_encode_pretokenized(Tokenizer *t, const char *text, size_t len,
-                                         int *tokens, int max_tokens) {
+static int tokenizer_encode_pretokenized(Tokenizer *t, const char *text, size_t len, int *tokens,
+                                         int max_tokens) {
     if (t->pretok_type == PRETOK_NONE)
         return tokenizer_encode_segment(t, text, len, tokens, max_tokens);
     size_t *starts = (size_t *)malloc((len + 1) * sizeof(size_t));
-    size_t *lens = (size_t *)malloc((len + 1) * sizeof(size_t));
-    if (!starts || !lens) { free(starts); free(lens); return -1; }
+    size_t *lens   = (size_t *)malloc((len + 1) * sizeof(size_t));
+    if (!starts || !lens) {
+        free(starts);
+        free(lens);
+        return -1;
+    }
     int nf = pretokenize((PretokType)t->pretok_type, text, len, starts, lens, (int)(len + 1));
-    int n = 0;
+    int n  = 0;
     for (int i = 0; nf > 0 && i < nf; i++) {
         int k = tokenizer_encode_segment(t, text + starts[i], lens[i], tokens + n, max_tokens - n);
-        if (k < 0) { n = -1; break; }
+        if (k < 0) {
+            n = -1;
+            break;
+        }
         n += k;
     }
     free(starts);
@@ -443,7 +457,8 @@ static int tokenizer_encode_pretokenized(Tokenizer *t, const char *text, size_t 
     return nf < 0 ? -1 : n;
 }
 
-int tokenizer_encode(Tokenizer *t, const char *text, size_t prompt_len, int *tokens, int max_tokens) {
+int tokenizer_encode(Tokenizer *t, const char *text, size_t prompt_len, int *tokens,
+                     int max_tokens) {
     if (!text || !tokens || max_tokens <= 0) return -1;
     if (!t || !t->vocab) return -1;
 
@@ -454,21 +469,21 @@ int tokenizer_encode(Tokenizer *t, const char *text, size_t prompt_len, int *tok
      * Text reaching here unneutralised is trusted (chat template, operator
      * prompt); an unknown "<|...|>" in it is ordinary text. */
     int n_tokens = 0;
-    size_t pos = 0;
+    size_t pos   = 0;
     while (pos < prompt_len) {
         /* A neutralised control token: its characters, as plain text. */
         int ph = placeholder_at(t, text, pos, prompt_len);
         if (ph >= 0) {
             const char *lit = special_literal(t, ph);
-            int n = tokenizer_encode_pretokenized(t, lit, strlen(lit),
-                                                  tokens + n_tokens, max_tokens - n_tokens);
+            int n           = tokenizer_encode_pretokenized(t, lit, strlen(lit), tokens + n_tokens,
+                                                            max_tokens - n_tokens);
             if (n < 0) return -1;
             n_tokens += n;
             pos += 4;
             continue;
         }
         /* Try to match a special token at current position */
-        int sp_id = -1;
+        int sp_id     = -1;
         size_t sp_len = match_special_token(t, text, pos, prompt_len, &sp_id);
         if (sp_len > 0 && sp_id >= 0) {
             if (n_tokens >= max_tokens) return -1;
@@ -495,8 +510,8 @@ int tokenizer_encode(Tokenizer *t, const char *text, size_t prompt_len, int *tok
 }
 
 /* Byte-level BPE encoder for a plain text segment (no special tokens). */
-static int tokenizer_encode_segment(Tokenizer *t, const char *text, size_t prompt_len,
-                                    int *tokens, int max_tokens) {
+static int tokenizer_encode_segment(Tokenizer *t, const char *text, size_t prompt_len, int *tokens,
+                                    int max_tokens) {
     /* Step 1: Encode each byte of the input as an initial single-byte token.
      *
      * GPT-2 / Llama-3 tokenizers use a byte-level BPE scheme: every raw input
@@ -512,11 +527,11 @@ static int tokenizer_encode_segment(Tokenizer *t, const char *text, size_t promp
 
         /* Apply the GPT-2 byte-to-unicode mapping for this byte */
         char mapped[5];
-        int mlen = g_byte_unicode[c].len;
-        mapped[0] = (char)g_byte_unicode[c].u0;
-        mapped[1] = (char)g_byte_unicode[c].u1;
-        mapped[2] = (char)g_byte_unicode[c].u2;
-        mapped[3] = (char)g_byte_unicode[c].u3;
+        int mlen     = g_byte_unicode[c].len;
+        mapped[0]    = (char)g_byte_unicode[c].u0;
+        mapped[1]    = (char)g_byte_unicode[c].u1;
+        mapped[2]    = (char)g_byte_unicode[c].u2;
+        mapped[3]    = (char)g_byte_unicode[c].u3;
         mapped[mlen] = '\0';
 
         int id = tokenizer_lookup(t, mapped);
@@ -537,8 +552,8 @@ static int tokenizer_encode_segment(Tokenizer *t, const char *text, size_t promp
 
     for (;;) {
         float best_score = -1e10f;
-        int best_idx = -1;
-        int best_id = -1;
+        int best_idx     = -1;
+        int best_id      = -1;
 
         /* Scan all adjacent pairs */
         for (int i = 0; i < n_tokens - 1; i++) {
@@ -555,8 +570,8 @@ static int tokenizer_encode_segment(Tokenizer *t, const char *text, size_t promp
             int id = tokenizer_lookup(t, merge_buf);
             if (id != -1 && t->vocab_scores[id] > best_score) {
                 best_score = t->vocab_scores[id];
-                best_idx = i;
-                best_id = id;
+                best_idx   = i;
+                best_id    = id;
             }
         }
 

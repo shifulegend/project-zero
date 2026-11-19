@@ -12,19 +12,20 @@
  */
 
 #include <pthread.h>
+#include "core/limits.h"
 
-#define CANCEL_MAX_ACTIVE 64
+#define CANCEL_MAX_ACTIVE PZ_PARALLEL_MAX /* core/limits.h */
 
 typedef struct {
     char id[32];
-    int  active;            /* 1 while that generation is in flight */
-    int  cancel_requested;  /* 1 once cancel_registry_request() matched */
+    int active;           /* 1 while that generation is in flight */
+    int cancel_requested; /* 1 once cancel_registry_request() matched */
 } CancelEntry;
 
 typedef struct {
     pthread_mutex_t lock;
-    CancelEntry     entries[CANCEL_MAX_ACTIVE];
-    int             shutdown;       /* sticky: every check() reports cancelled */
+    CancelEntry entries[CANCEL_MAX_ACTIVE];
+    int shutdown; /* sticky: every check() reports cancelled */
 } CancelState;
 
 void cancel_state_init(CancelState *cs);

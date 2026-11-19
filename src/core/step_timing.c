@@ -45,7 +45,7 @@ static const char *g_step_names[TN_STEP_COUNT] = {
 
 int tn_step_timing_enabled(void) {
     if (g_step_timing_enabled < 0) {
-        const char *env = getenv("TN_STEP_TIMING");
+        const char *env       = getenv("TN_STEP_TIMING");
         g_step_timing_enabled = (env && env[0] == '1') ? 1 : 0;
     }
     return g_step_timing_enabled;
@@ -80,16 +80,10 @@ void tn_step_timing_report(FILE *out) {
     fprintf(out, "\n[STEP_TIMING_BEGIN]\n");
     for (int step = 1; step < TN_STEP_COUNT; step++) {
         double total_ms = (double)g_step_stats[step].total_ns / 1e6;
-        double avg_ms = g_step_stats[step].count > 0
-                      ? total_ms / (double)g_step_stats[step].count
-                      : 0.0;
-        fprintf(out,
-                "step=%d name=\"%s\" total_ms=%.6f count=%lld avg_ms=%.6f\n",
-                step,
-                g_step_names[step],
-                total_ms,
-                (long long)g_step_stats[step].count,
-                avg_ms);
+        double avg_ms =
+            g_step_stats[step].count > 0 ? total_ms / (double)g_step_stats[step].count : 0.0;
+        fprintf(out, "step=%d name=\"%s\" total_ms=%.6f count=%lld avg_ms=%.6f\n", step,
+                g_step_names[step], total_ms, (long long)g_step_stats[step].count, avg_ms);
     }
     fprintf(out, "[STEP_TIMING_END]\n");
 }

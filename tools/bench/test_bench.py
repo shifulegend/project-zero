@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Unit tests for tools/bench (parsers, argument handling, matrix bookkeeping). No pz run, no network."""
-import json
+
 import pathlib
 import sys
 import tempfile
@@ -96,8 +96,11 @@ class Commands(unittest.TestCase):
 
 class Matrix(unittest.TestCase):
     def test_summary_and_ratio(self):
-        rows = [{"model": "m", "variant": v, "threads": 4, "round": r, "gen_tok_s": x}
-                for v, xs in (("a", [10.0, 12.0]), ("b", [5.0, 6.0])) for r, x in enumerate(xs, 1)]
+        rows = [
+            {"model": "m", "variant": v, "threads": 4, "round": r, "gen_tok_s": x}
+            for v, xs in (("a", [10.0, 12.0]), ("b", [5.0, 6.0]))
+            for r, x in enumerate(xs, 1)
+        ]
         s = bl.summarize(rows, "a")
         by = {o["variant"]: o for o in s}
         self.assertAlmostEqual(by["a"]["mean"], 11.0)
@@ -112,7 +115,17 @@ class Matrix(unittest.TestCase):
             seen = []
             orig = bl.measure
             bl.measure = lambda run_, suite, t, rnd, cmd, env=None, prompt=None: (
-                seen.append((suite, rnd)) or {"tps": 1.0, "tokens": 1, "wall": 0.0, "rss_mb": 1, "cpu_pct": 1, "rc": 0, "log": "x"})
+                seen.append((suite, rnd))
+                or {
+                    "tps": 1.0,
+                    "tokens": 1,
+                    "wall": 0.0,
+                    "rss_mb": 1,
+                    "cpu_pct": 1,
+                    "rc": 0,
+                    "log": "x",
+                }
+            )
             try:
                 vs = [{"label": l, "cmd": (lambda *a: ["x"]), "env": None} for l in ("a", "b", "c")]
                 models = [("m", {"tokens": 4}, pathlib.Path("m.gguf"))]
@@ -130,25 +143,33 @@ class Matrix(unittest.TestCase):
 class Chart(unittest.TestCase):
     def test_chart_groups_panels_and_puts_pz_first(self):
         import chart
+
         with tempfile.TemporaryDirectory() as d:
             d = pathlib.Path(d)
-            rows = [("bitnet-2b", "bitnetcpp", 1, 5.0), ("bitnet-2b", "pz", 1, 4.0), ("bitnet-2b", "pz", 2, 8.0),
-                    ("bitnet-2b-iq2bn", "ik", 1, 7.0), ("bitnet-2b-iq2bn", "ik", 2, 12.0), ("bitnet-2b", "bitnetcpp", 2, 9.0)]
-            with open(d / "summary.csv", "w") as f:
+            rows = [
+                ("bitnet-2b", "bitnetcpp", 1, 5.0),
+                ("bitnet-2b", "pz", 1, 4.0),
+                ("bitnet-2b", "pz", 2, 8.0),
+                ("bitnet-2b-iq2bn", "ik", 1, 7.0),
+                ("bitnet-2b-iq2bn", "ik", 2, 12.0),
+                ("bitnet-2b", "bitnetcpp", 2, 9.0),
+            ]
+            with open(d / "summary.csv", "w", encoding="utf-8") as f:
                 f.write(",".join(bl.SUMMARY_HEADER) + "\n")
                 for m, v, t, x in rows:
                     f.write(f"{m},{v},{t},1,{x},500,10,300,100,0,log\n")
             out = chart.make_chart(d, "T", "S")
             svg = (d / "throughput_vs_threads.svg").read_text()
             self.assertIn(out[0].name, "throughput_vs_threads.svg")
-            self.assertEqual(svg.count("IQ2_BN"), 1)               # iq2bn model drawn inside the BitNet panel
-            self.assertIn("#2a78d6", svg)                          # Project Zero is first, so it gets the first colour
+            self.assertEqual(svg.count("IQ2_BN"), 1)  # iq2bn model drawn inside the BitNet panel
+            self.assertIn("#2a78d6", svg)  # Project Zero is first, so it gets the first colour
             self.assertIn("t=2", svg)
 
 
 class Preset(unittest.TestCase):
     def test_published_preset_is_the_full_sweep(self):
         import h2h_bench as h
+
         p = h.PRESETS["published"]
         self.assertEqual(bl.parse_threads(p["threads"]), [1, 2, 3, 4])
         self.assertEqual((p["tokens"], p["rounds"], p["screenshots"]), (500, 3, "all"))
@@ -157,7 +178,13 @@ class Preset(unittest.TestCase):
     def test_measurements_never_overlap(self):
         # one process at a time: run_cmd waits for its child; nothing in the matrix uses threads/pools.
         src = (pathlib.Path(__file__).parent / "benchlib.py").read_text()
-        for bad in ("ThreadPool", "ProcessPool", "concurrent.futures", "multiprocessing", "asyncio"):
+        for bad in (
+            "ThreadPool",
+            "ProcessPool",
+            "concurrent.futures",
+            "multiprocessing",
+            "asyncio",
+        ):
             self.assertNotIn(bad, src)
 
 
@@ -166,44 +193,76 @@ class Gate(unittest.TestCase):
 
     def test_verdict_boundaries_are_two_sided(self):
         import gate
-        v = lambda x: gate.verdict(x, 100.0, 1.0, 2.0)[0]                                   # noqa: E731
-        self.assertEqual([v(100.9), v(99.1), v(101.5), v(98.5), v(103.0), v(96.0)],
-                         ["PASS", "PASS", "WARN", "WARN", "INVALID", "INVALID"])
+
+        v = lambda x: gate.verdict(x, 100.0, 1.0, 2.0)[0]  # noqa: E731
+        self.assertEqual(
+            [v(100.9), v(99.1), v(101.5), v(98.5), v(103.0), v(96.0)],
+            ["PASS", "PASS", "WARN", "WARN", "INVALID", "INVALID"],
+        )
         self.assertEqual(gate.verdict(None, 100.0, 1.0, 2.0)[0], "INVALID")
         self.assertEqual(gate.verdict(5.0, None, 1.0, 2.0)[0], "UNVERIFIED")
 
     def test_the_rca_numbers(self):
         import gate
-        self.assertEqual(gate.verdict(34.3926, 31.4010, 1.0, 2.0)[0], "INVALID")     # pz int8 truncating quantiser
-        self.assertEqual(gate.verdict(48.6683, 31.4010, 1.0, 2.0)[0], "INVALID")     # bitnet.cpp SiLU graph
-        self.assertEqual(gate.verdict(31.3193, 31.4010, 1.0, 2.0)[0], "PASS")        # pz float activations
-        self.assertEqual(gate.verdict(12.5801, 12.5667, 1.0, 2.0)[0], "PASS")        # Mamba
+
+        self.assertEqual(
+            gate.verdict(34.3926, 31.4010, 1.0, 2.0)[0], "INVALID"
+        )  # pz int8 truncating quantiser
+        self.assertEqual(
+            gate.verdict(48.6683, 31.4010, 1.0, 2.0)[0], "INVALID"
+        )  # bitnet.cpp SiLU graph
+        self.assertEqual(
+            gate.verdict(31.3193, 31.4010, 1.0, 2.0)[0], "PASS"
+        )  # pz float activations
+        self.assertEqual(gate.verdict(12.5801, 12.5667, 1.0, 2.0)[0], "PASS")  # Mamba
 
     def test_parse_ppl_and_answer_text(self):
         import gate
+
         rx = gate.load_config()["ppl_regex"]
-        self.assertEqual(gate.parse_ppl("x\n0.37.5 I Final estimate: PPL = 31.4010 +/- 3.30121\n", rx), (31.401, 3.30121))
+        self.assertEqual(
+            gate.parse_ppl("x\n0.37.5 I Final estimate: PPL = 31.4010 +/- 3.30121\n", rx),
+            (31.401, 3.30121),
+        )
         self.assertEqual(gate.parse_ppl("no estimate", rx), (None, None))
-        self.assertEqual(gate.answer_text("0.01.282.588 I llama_completion: x\nThe capital of France is Paris.\n0.02.123.456 I common_perf_print: y"),
-                         "The capital of France is Paris.")
+        self.assertEqual(
+            gate.answer_text(
+                "0.01.282.588 I llama_completion: x\nThe capital of France is Paris.\n0.02.123.456 I common_perf_print: y"
+            ),
+            "The capital of France is Paris.",
+        )
 
     def test_smoke_rejects_an_expectation_that_is_in_the_prompt(self):
         import gate
+
         self.assertTrue(gate.smoke_ok("... is Paris.", ["Paris"], "The capital of France is"))
-        self.assertFalse(gate.smoke_ok("... is a small city", ["Paris"], "The capital of France is"))
+        self.assertFalse(
+            gate.smoke_ok("... is a small city", ["Paris"], "The capital of France is")
+        )
         with self.assertRaises(ValueError):
             gate.smoke_ok("x", ["France"], "The capital of France is")
 
     def test_judge_reference_unverified_and_wrong_smoke(self):
         import gate
-        res = {"m/ref": {"model": "m", "variant": "ref", "ppl": 10.0, "smoke_ok": True},
-               "m/ok": {"model": "m", "variant": "ok", "ppl": 10.05, "smoke_ok": True},
-               "m/bad": {"model": "m", "variant": "bad", "ppl": 12.0, "smoke_ok": True},
-               "m/wrong": {"model": "m", "variant": "wrong", "ppl": 10.0, "smoke_ok": False},
-               "n/x": {"model": "n", "variant": "x", "ppl": 5.0, "smoke_ok": True}}
+
+        res = {
+            "m/ref": {"model": "m", "variant": "ref", "ppl": 10.0, "smoke_ok": True},
+            "m/ok": {"model": "m", "variant": "ok", "ppl": 10.05, "smoke_ok": True},
+            "m/bad": {"model": "m", "variant": "bad", "ppl": 12.0, "smoke_ok": True},
+            "m/wrong": {"model": "m", "variant": "wrong", "ppl": 10.0, "smoke_ok": False},
+            "n/x": {"model": "n", "variant": "x", "ppl": 5.0, "smoke_ok": True},
+        }
         gate.judge(res, self.CFG, lambda m, v: "m/ref" if m == "m" else "n/missing")
-        self.assertEqual({k: r["verdict"] for k, r in res.items()},
-                         {"m/ref": "REF", "m/ok": "PASS", "m/bad": "INVALID", "m/wrong": "INVALID", "n/x": "UNVERIFIED"})
+        self.assertEqual(
+            {k: r["verdict"] for k, r in res.items()},
+            {
+                "m/ref": "REF",
+                "m/ok": "PASS",
+                "m/bad": "INVALID",
+                "m/wrong": "INVALID",
+                "n/x": "UNVERIFIED",
+            },
+        )
         self.assertEqual(gate.exit_status(res, self.CFG), 1)
         self.assertEqual(gate.exit_status(res, dict(self.CFG, mode="warn")), 0)
         self.assertTrue(gate.blocked(res["m/bad"], self.CFG))
@@ -211,43 +270,79 @@ class Gate(unittest.TestCase):
 
     def test_approximate_variants_are_reported_not_judged(self):
         import gate
-        cfg = dict(self.CFG, approximate={"lossy": {"why": "by design"}, "bounded": {"tolerance_pct": 5.0}})
-        res = {"m/ref": {"model": "m", "variant": "ref", "ppl": 10.0, "smoke_ok": True},
-               "m/lossy": {"model": "m", "variant": "lossy", "ppl": 12.0, "smoke_ok": True},
-               "m/bounded": {"model": "m", "variant": "bounded", "ppl": 10.4, "smoke_ok": True},
-               "m/bounded2": {"model": "m", "variant": "bounded", "ppl": 14.0, "smoke_ok": True},
-               "m/lossy_wrong": {"model": "m", "variant": "lossy", "ppl": 12.0, "smoke_ok": False}}
+
+        cfg = dict(
+            self.CFG, approximate={"lossy": {"why": "by design"}, "bounded": {"tolerance_pct": 5.0}}
+        )
+        res = {
+            "m/ref": {"model": "m", "variant": "ref", "ppl": 10.0, "smoke_ok": True},
+            "m/lossy": {"model": "m", "variant": "lossy", "ppl": 12.0, "smoke_ok": True},
+            "m/bounded": {"model": "m", "variant": "bounded", "ppl": 10.4, "smoke_ok": True},
+            "m/bounded2": {"model": "m", "variant": "bounded", "ppl": 14.0, "smoke_ok": True},
+            "m/lossy_wrong": {"model": "m", "variant": "lossy", "ppl": 12.0, "smoke_ok": False},
+        }
         gate.judge(res, cfg, lambda m, v: "m/ref")
         self.assertEqual(res["m/lossy"]["verdict"], "APPROX")
-        self.assertEqual(res["m/bounded"]["verdict"], "APPROX")          # 4 % off, inside its 5 % hard bound
-        self.assertEqual(res["m/bounded2"]["verdict"], "INVALID")        # 40 % off, beyond the 5 % hard bound
-        self.assertEqual(res["m/lossy_wrong"]["verdict"], "INVALID")     # a lossy variant must still answer correctly
+        self.assertEqual(
+            res["m/bounded"]["verdict"], "APPROX"
+        )  # 4 % off, inside its 5 % hard bound
+        self.assertEqual(
+            res["m/bounded2"]["verdict"], "INVALID"
+        )  # 40 % off, beyond the 5 % hard bound
+        self.assertEqual(
+            res["m/lossy_wrong"]["verdict"], "INVALID"
+        )  # a lossy variant must still answer correctly
         self.assertIn("APPROX", gate.GOOD)
 
     def test_ik_perplexity_format_is_parsed(self):
         import gate
+
         rx = gate.load_config()["ppl_regex"]
-        self.assertEqual(gate.parse_ppl("Final estimate: PPL over 7 chunks for n_ctx=512 = 8.0256 +/- 0.54101", rx), (8.0256, 0.54101))
+        self.assertEqual(
+            gate.parse_ppl(
+                "Final estimate: PPL over 7 chunks for n_ctx=512 = 8.0256 +/- 0.54101", rx
+            ),
+            (8.0256, 0.54101),
+        )
 
     def test_cells_that_fail_the_gate_are_not_timed(self):
         import gate
+
         strict, warn = {"mode": "strict"}, {"mode": "warn"}
         self.assertFalse(gate.should_time("INVALID", strict))
-        self.assertTrue(gate.should_time("INVALID", warn))                   # warn only marks
+        self.assertTrue(gate.should_time("INVALID", warn))  # warn only marks
         self.assertTrue(gate.should_time("INVALID", dict(strict, time_invalid=True)))
         for v in ("PASS", "WARN", "REF", "APPROX", "UNVERIFIED", "OFF"):
             self.assertTrue(gate.should_time(v, strict), v)
-        with tempfile.TemporaryDirectory() as d:                              # run_matrix honours skip_of
+        with tempfile.TemporaryDirectory() as d:  # run_matrix honours skip_of
             run = bl.RunDir("t", d)
             run.create()
             seen = []
             orig = bl.measure
             bl.measure = lambda run_, suite, t, rnd, cmd, env=None, prompt=None: (
-                seen.append(suite) or {"tps": 1.0, "tokens": 1, "wall": 0.0, "rss_mb": 1, "cpu_pct": 1, "rc": 0, "log": "x"})
+                seen.append(suite)
+                or {
+                    "tps": 1.0,
+                    "tokens": 1,
+                    "wall": 0.0,
+                    "rss_mb": 1,
+                    "cpu_pct": 1,
+                    "rc": 0,
+                    "log": "x",
+                }
+            )
             try:
                 vs = [{"label": l, "cmd": (lambda *a: ["x"]), "env": None} for l in ("ok", "bad")]
-                bl.run_matrix(run, vs, [("m", {"tokens": 4}, pathlib.Path("m.gguf"))], [4], 2, 0, 0.0,
-                              skip_of=lambda k, v: v == "bad")
+                bl.run_matrix(
+                    run,
+                    vs,
+                    [("m", {"tokens": 4}, pathlib.Path("m.gguf"))],
+                    [4],
+                    2,
+                    0,
+                    0.0,
+                    skip_of=lambda k, v: v == "bad",
+                )
                 self.assertEqual(sorted(set(seen)), ["m__ok"])
                 self.assertEqual(len(seen), 2)
             finally:
@@ -256,6 +351,7 @@ class Gate(unittest.TestCase):
 
     def test_dirty_binaries_are_refused_unless_allowed(self):
         import gate
+
         self.assertTrue(gate.is_dirty("Project Zero v0.2.0-21-g864eeea-dirty"))
         self.assertFalse(gate.is_dirty("Project Zero v0.2.0-23-g0148ad0"))
         with tempfile.TemporaryDirectory() as d:
@@ -265,31 +361,66 @@ class Gate(unittest.TestCase):
             cfg = {"require_clean_binary": True}
             with self.assertRaises(SystemExit):
                 gate.require_clean({"pz": str(fake)}, cfg)
-            self.assertEqual(gate.require_clean({"pz": str(fake)}, cfg, allow=True, log=lambda m: None), ["pz"])
-            self.assertEqual(gate.require_clean({"pz": str(fake)}, {"require_clean_binary": False}), ["pz"])
+            self.assertEqual(
+                gate.require_clean({"pz": str(fake)}, cfg, allow=True, log=lambda m: None), ["pz"]
+            )
+            self.assertEqual(
+                gate.require_clean({"pz": str(fake)}, {"require_clean_binary": False}), ["pz"]
+            )
 
     def test_config_overrides_and_frozen_text(self):
         import gate
+
         cfg = gate.load_config({"tolerance_pct": 0.5, "mode": None})
         self.assertEqual((cfg["tolerance_pct"], cfg["mode"]), (0.5, "strict"))
-        self.assertEqual(len(cfg["text_sha256"]), 64)          # the frozen text exists and is hashed
+        self.assertEqual(len(cfg["text_sha256"]), 64)  # the frozen text exists and is hashed
 
     def test_flags_exist_on_every_script(self):
         import argparse
+
         ap = bl.add_common_args(argparse.ArgumentParser(), "x")
-        a = ap.parse_args(["--gate", "warn", "--gate-tolerance", "2.5", "--gate-only", "--gate-reference", "pz"])
-        self.assertEqual((a.gate, a.gate_tolerance, a.gate_only, a.gate_reference), ("warn", 2.5, True, "pz"))
+        a = ap.parse_args(
+            ["--gate", "warn", "--gate-tolerance", "2.5", "--gate-only", "--gate-reference", "pz"]
+        )
+        self.assertEqual(
+            (a.gate, a.gate_tolerance, a.gate_only, a.gate_reference), ("warn", 2.5, True, "pz")
+        )
 
     def test_summary_column_and_chart_hide_invalid(self):
         import chart
         import gate
+
         with tempfile.TemporaryDirectory() as d:
             d = pathlib.Path(d)
-            old = ["model", "variant", "threads", "round", "gen_tok_s", "tokens", "wall_s", "max_rss_mb", "cpu_pct", "exit", "log"]
-            bl.write_csv(d / "summary.csv", old, [["bitnet-2b", "pz", 1, 1, 4.0, 500, 1, 1, 1, 0, "l"],
-                                                  ["bitnet-2b", "bitnetcpp", 1, 1, 5.0, 500, 1, 1, 1, 0, "l"]])
+            old = [
+                "model",
+                "variant",
+                "threads",
+                "round",
+                "gen_tok_s",
+                "tokens",
+                "wall_s",
+                "max_rss_mb",
+                "cpu_pct",
+                "exit",
+                "log",
+            ]
+            bl.write_csv(
+                d / "summary.csv",
+                old,
+                [
+                    ["bitnet-2b", "pz", 1, 1, 4.0, 500, 1, 1, 1, 0, "l"],
+                    ["bitnet-2b", "bitnetcpp", 1, 1, 5.0, 500, 1, 1, 1, 0, "l"],
+                ],
+            )
             bl.ensure_gate_column(d / "summary.csv")
-            gate.apply_to_summary(d / "summary.csv", {"bitnet-2b/pz": {"verdict": "PASS"}, "bitnet-2b/bitnetcpp": {"verdict": "INVALID"}})
+            gate.apply_to_summary(
+                d / "summary.csv",
+                {
+                    "bitnet-2b/pz": {"verdict": "PASS"},
+                    "bitnet-2b/bitnetcpp": {"verdict": "INVALID"},
+                },
+            )
             rows = bl.load_rows(d / "summary.csv")
             self.assertEqual([r["gate"] for r in rows], ["PASS", "INVALID"])
             svg = chart.make_chart(d, "T", "S", hide_invalid=True)[0].read_text()
@@ -304,9 +435,14 @@ class Gate(unittest.TestCase):
         self.assertIn("--perplexity", v["ppl"]("m", info, "m.gguf", "t.txt", 512, 8, 4))
         self.assertIsNone(v["ppl"]("m", {"engines": ["ik"]}, "m.gguf", "t.txt", 512, 8, 4))
         r = bl.ref_variant("llamacpp", "llamacpp", "/b/llama-completion", None)
-        self.assertIsNone(r["ppl"]("m", {"engines": ["llamacpp"]}, "m.gguf", "t.txt", 512, 8, 4))   # no perplexity tool
+        self.assertIsNone(
+            r["ppl"]("m", {"engines": ["llamacpp"]}, "m.gguf", "t.txt", 512, 8, 4)
+        )  # no perplexity tool
         engines, models = bl.load_engines(), bl.load_models()
-        for k, m in models.items():                       # every gate reference names a real engine (or pz) that runs the model
+        for (
+            k,
+            m,
+        ) in models.items():  # every gate reference names a real engine (or pz) that runs the model
             spec = m["gate"]["reference"]
             ref_model = models[spec.get("model", k)]
             self.assertTrue(spec["variant"] in engines or spec["variant"].startswith("pz"), k)

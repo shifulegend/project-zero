@@ -27,7 +27,7 @@ package() {   # package <version> [corrupt]
     mkdir -p "$d" "$W/pkg/$name"
     cp "$BIN" "$W/pkg/$name/pz"
     ln -sf pz "$W/pkg/$name/adaptive_ai_engine"
-    cp "$ROOT/LICENSE" "$ROOT/README.md" "$ROOT/CHANGELOG.md" "$W/pkg/$name/"
+    cp "$ROOT/LICENSE" "$ROOT/NOTICE" "$ROOT/LICENSE-LGPL-3.0.txt" "$ROOT/README.md" "$ROOT/CHANGELOG.md" "$W/pkg/$name/"
     tar -C "$W/pkg" -czf "$d/$name.tar.gz" "$name"
     (cd "$d" && sha256sum "$name.tar.gz" > SHA256SUMS)
 }
@@ -53,6 +53,13 @@ for SH in dash bash; do
     else bad "install a given version"; cat "$W/out"; fi
     [ -f "$P/share/doc/project-zero/LICENSE" ] && [ -f "$P/share/project-zero/install-manifest" ] &&
         ok "docs + manifest installed" || bad "docs + manifest installed"
+    # LGPL-3.0-or-later kernel is linked into pz: notice + licence text must be installed byte-identical.
+    if cmp -s "$ROOT/NOTICE" "$P/share/doc/project-zero/NOTICE" &&
+       cmp -s "$ROOT/LICENSE-LGPL-3.0.txt" "$P/share/doc/project-zero/LICENSE-LGPL-3.0.txt" &&
+       grep -q "/NOTICE\$" "$P/share/project-zero/install-manifest" &&
+       grep -q "/LICENSE-LGPL-3.0.txt\$" "$P/share/project-zero/install-manifest"; then
+        ok "NOTICE + LICENSE-LGPL-3.0.txt installed and recorded in the manifest"
+    else bad "NOTICE + LICENSE-LGPL-3.0.txt installed and recorded in the manifest"; fi
     grep -q "Checksum verified" "$W/out" && ok "checksum reported" || bad "checksum reported"
 
     if "$SH" "$ROOT/install.sh" --prefix "$P" --yes > "$W/out" 2>&1 &&
@@ -77,6 +84,16 @@ for SH in dash bash; do
         bad "missing checksum entry refused"
     else grep -q "no entry" "$W/out" && ok "missing checksum entry refused" || bad "missing entry message"; fi
 
+    # plain http:// downloads are refused (curl: protocol disabled), nothing installed
+    if command -v curl >/dev/null 2>&1; then
+        if PZ_INSTALL_BASE_URL="http://127.0.0.1:9" "$SH" "$ROOT/install.sh" --version 0.0.1-test \
+             --prefix "$W/http-$SH" --yes > "$W/out" 2>&1; then
+            bad "http:// download refused"
+        else
+            [ ! -e "$W/http-$SH/bin/pz" ] && ok "http:// download refused, nothing installed" || bad "http:// download refused"
+        fi
+    fi
+
     if PZ_INSTALL_ARCH=aarch64 "$SH" "$ROOT/install.sh" --prefix "$W/arm-$SH" --yes > "$W/out" 2>&1; then
         bad "unsupported platform refused"
     else
@@ -94,7 +111,8 @@ for SH in dash bash; do
 
     touch "$P/bin/other-tool"
     if "$SH" "$ROOT/install.sh" --uninstall --prefix "$P" > "$W/out" 2>&1 &&
-       [ ! -e "$P/bin/pz" ] && [ ! -e "$P/share/doc/project-zero/LICENSE" ] && [ -e "$P/bin/other-tool" ]; then
+       [ ! -e "$P/bin/pz" ] && [ ! -e "$P/share/doc/project-zero/LICENSE" ] && [ ! -e "$P/share/doc/project-zero/NOTICE" ] &&
+       [ ! -e "$P/share/doc/project-zero/LICENSE-LGPL-3.0.txt" ] && [ -e "$P/bin/other-tool" ]; then
         ok "uninstall removes only what it installed"
     else bad "uninstall"; cat "$W/out"; fi
     if "$SH" "$ROOT/install.sh" --uninstall --prefix "$P" > "$W/out" 2>&1; then

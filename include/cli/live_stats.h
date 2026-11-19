@@ -3,7 +3,7 @@
 
 /*
  * Phase 22.3 — Live tok/s indicator for the REPL, updated once per streamed
- * token. Reuses cli/timer.h (timer_now_us/timer_tokens_per_sec) rather than
+ * token. Reuses core/timer.h (timer_now_us/timer_tokens_per_sec) rather than
  * reimplementing rate math. TTY-gated (real call sites in repl.c pass
  * isatty(fileno(stdout))); non-TTY runs keep the existing end-of-generation
  * stderr summary line from generate_with_callback, so this is purely

@@ -5,8 +5,10 @@
 
 set -euo pipefail
 ENGINE="./pz"
-CSV="benchmark_full_results.csv"
-REPORT_MD="BENCHMARK_FULL_REPORT.md"
+OUT_DIR="benchmark_results/full_sweep"   # results live under benchmark_results/, never at the repo root
+mkdir -p "$OUT_DIR"
+CSV="$OUT_DIR/benchmark_full_results.csv"
+REPORT_MD="$OUT_DIR/BENCHMARK_FULL_REPORT.md"
 
 SIMDS=("avx512f" "vnni" "avx2" "scalar")
 CLASSIFIERS=("bf16" "int8" "int4")

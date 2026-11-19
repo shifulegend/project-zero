@@ -54,18 +54,18 @@
 #include "multimodal/vision_projector.h"
 #include "memory/mapped_file.h"
 
-#define VISION_BIN_MAGIC    0x57535956u  /* "VISW" LE */
-#define PROJECTOR_BIN_MAGIC 0x4A4F5250u  /* "PROJ" LE */
+#define VISION_BIN_MAGIC 0x57535956u    /* "VISW" LE */
+#define PROJECTOR_BIN_MAGIC 0x4A4F5250u /* "PROJ" LE */
 
 /* Loaded state: owns the mmap, VisionWeights and VisionProjector point into it. */
 typedef struct {
-    MappedFile    vision_mf;
-    MappedFile    proj_mf;
-    VisionConfig  cfg;        /* populated from vision.bin header */
-    VisionWeights weights;    /* pointers into vision_mf.data */
-    VisionProjector proj;     /* pointers into proj_mf.data */
-    int           vision_loaded;
-    int           proj_loaded;
+    MappedFile vision_mf;
+    MappedFile proj_mf;
+    VisionConfig cfg;      /* populated from vision.bin header */
+    VisionWeights weights; /* pointers into vision_mf.data */
+    VisionProjector proj;  /* pointers into proj_mf.data */
+    int vision_loaded;
+    int proj_loaded;
 } VisionModel;
 
 /**

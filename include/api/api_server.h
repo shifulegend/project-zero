@@ -17,7 +17,9 @@
  *   api_server_stop(&ctx);
  */
 
+#include <stdatomic.h>
 #include "core/error.h"
+#include "api/rate_limit.h"
 #include "core/config.h"
 #include "core/moe_config.h"
 #include "core/run_state.h"
@@ -34,53 +36,52 @@
 
 /* ── Inference context passed from main to API handler ──────────────────── */
 typedef struct {
-    const Config           *cfg;
+    const Config *cfg;
     const TransformerWeights *weights;
-    RunState               *run_state;
-    const MoEConfig        *moe_cfg;
-    Tokenizer              *tok;
-    ThreadPool             *tp;
-    struct PrmModel        *prm;   /* Phase 30 judge for "mcts" requests; NULL = self-scored */
+    RunState *run_state;
+    const MoEConfig *moe_cfg;
+    Tokenizer *tok;
+    ThreadPool *tp;
+    struct PrmModel *prm; /* Phase 30 judge for "mcts" requests; NULL = self-scored */
 
     /* Phase 22: server hardening state. server_config may be populated by
      * the caller (main.c) any time before api_server_start(); the others are
      * initialised internally by api_context_init(). */
-    ServerConfig    server_config;
-    MetricsState    metrics;
-    CancelState     cancel;
+    ServerConfig server_config;
+    MetricsState metrics;
+    CancelState cancel;
     pthread_mutex_t generation_mutex; /* serializes generate_with_callback calls */
     /* Phase 23 stage 1: FIFO admission to the generation slot (max_waiting =
      * --queue-size; 0 keeps the 429-when-busy behaviour). */
-    GenQueue        gen_queue;
+    GenQueue gen_queue;
     /* Phase 21.5: which tokens currently sit in run_state's KV cache, so the
      * next request can skip its shared prefix. Allocated lazily by the chat
      * handler (under generation_mutex); process-lifetime like the rest. */
-    PrefixCache     prefix_cache;
+    PrefixCache prefix_cache;
     /* Phase 26: snapshots of several sequences (LRU, byte budget from
      * --prompt-cache-mb). Lazily initialised with prefix_cache. */
-    PromptStore     prompt_store;
-    int             prompt_store_ready;
+    PromptStore prompt_store;
+    int prompt_store_ready;
     /* Phase 23 stage 2b: the --parallel scheduler (NULL = sequential) and
      * what it ended up running: slots, and why fewer than requested. */
     struct BatchScheduler *sched;
-    int             parallel_slots;
-    const char     *parallel_note;
-    long long       parallel_kv_budget;
+    int parallel_slots;
+    const char *parallel_note;
+    long long parallel_kv_budget;
 
     /* Server state (filled by api_server_start) */
-    int   server_fd;            /* listening socket fd, -1 when stopped */
-    void *listener_thread;      /* pthread_t, opaque */
-    volatile int running;       /* 1 = running, 0 = stop requested */
+    int server_fd;                 /* listening socket fd, -1 when stopped */
+    void *listener_thread;         /* pthread_t, opaque */
+    RateLimiter rate_limiter;      /* non-generation routes (--rate-limit) */
+    atomic_int active_connections; /* connection threads alive (listener +1, thread exit -1) */
+    atomic_int
+        running; /* 1 = running, 0 = stop requested (read by the listener and connection threads) */
 } ApiContext;
 
 /* Initialise an ApiContext with all inference state.
  * Does NOT start the server. */
-void api_context_init(ApiContext *ctx,
-                      const Config *cfg,
-                      const TransformerWeights *weights,
-                      RunState *run_state,
-                      const MoEConfig *moe_cfg,
-                      Tokenizer *tok,
+void api_context_init(ApiContext *ctx, const Config *cfg, const TransformerWeights *weights,
+                      RunState *run_state, const MoEConfig *moe_cfg, Tokenizer *tok,
                       ThreadPool *tp);
 
 /* Start the HTTP listener on the given port.

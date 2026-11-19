@@ -129,6 +129,7 @@ set(CORE_SOURCES
     src/core/gguf_quant.c
     src/core/hardware_profile.c
     src/core/bw_cache.c
+    src/core/fs_util.c
     src/core/sha256.c
     src/core/text_file.c
     src/core/calibration.c
@@ -298,20 +299,23 @@ set(CLI_SOURCES
     src/cli/config_cmd.c
     src/cli/model_catalog.c
     src/config/pz_config.c
-    src/cli/timer.c
+    src/core/timer.c
     src/cli/repl.c
     src/cli/color.c
-    src/cli/progress.c
+    src/core/progress.c
     src/cli/live_stats.c
     src/cli/md_render.c
     src/cli/banner.c
-    src/cli/model_load.c
+    src/runtime/model_load.c
 )
 
 set(API_SOURCES
     src/api/chat_compile.c
     src/api/http_server.c
+    src/api/http_headers.c
     src/api/json_parse.c
+    src/api/net_io.c
+    src/api/rate_limit.c
     src/api/sse_stream.c
     src/api/server_config.c
     src/api/cors.c
@@ -365,7 +369,7 @@ set(UPDATE_SOURCES
 set(AGENT_SOURCES
     src/agent/agent_loop.c
     src/agent/cmd_exec.c
-    src/agent/output_inject.c
+    src/transformer/output_inject.c
     src/agent/tool_interceptor.c
     src/agent/user_approval.c
 )

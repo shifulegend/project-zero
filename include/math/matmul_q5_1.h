@@ -1,4 +1,5 @@
-#pragma once
+#ifndef TN_MATH_MATMUL_Q5_1_H
+#define TN_MATH_MATMUL_Q5_1_H
 /*
  * parallel_matmul_q5_1 — fused Q5_1 × F32 activation matmul (gemv).
  *
@@ -27,8 +28,8 @@ extern "C" {
  *   d     : output dim
  *   tp    : thread pool (may be NULL for single-threaded)
  */
-void parallel_matmul_q5_1(float *out, const float *x, const uint8_t *w_q51,
-                           int n, int d, ThreadPool *tp);
+void parallel_matmul_q5_1(float *out, const float *x, const uint8_t *w_q51, int n, int d,
+                          ThreadPool *tp);
 
 /*
  * parallel_matmul_q5_1_batch — batched Q5_1 × F32 GEMV for k weight matrices.
@@ -44,10 +45,11 @@ void parallel_matmul_q5_1(float *out, const float *x, const uint8_t *w_q51,
  *   k:     number of experts
  *   tp:    thread pool (may be NULL)
  */
-void parallel_matmul_q5_1_batch(float **outs, float **xs,
-                                 const uint8_t * const *ws,
-                                 int n, int d, int k, ThreadPool *tp);
+void parallel_matmul_q5_1_batch(float **outs, float **xs, const uint8_t *const *ws, int n, int d,
+                                int k, ThreadPool *tp);
 
 #ifdef __cplusplus
 }
 #endif
+
+#endif /* TN_MATH_MATMUL_Q5_1_H */

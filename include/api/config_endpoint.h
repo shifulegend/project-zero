@@ -37,8 +37,26 @@ void api_config_sources_json(JsonBuf *jb, const ApiContext *ctx);
  * cross-origin without a CORS preflight, which only --cors answers), and an
  * Origin header, when present, must match Host or be a CORS-allowed origin.
  * Returns 1 when allowed. Any argument may be NULL. */
-int api_config_write_allowed(const char *content_type, const char *origin,
-                             const char *host, const CorsConfig *cors);
+int api_config_write_allowed(const char *content_type, const char *origin, const char *host,
+                             const CorsConfig *cors);
+
+/* Cross-site guard for EVERY mutating (POST) route. A browser always sends an
+ * Origin header on a cross-site POST, and a web page cannot forge it. So:
+ *   - no Origin                      -> non-browser client (curl, SDKs): allowed;
+ *   - Origin equal to Host           -> the server's own page (web UI): allowed;
+ *   - Origin allowed by --cors-origin -> allowed, but a body must be application/json;
+ *   - any other Origin               -> refused (returns 0).
+ * `body_len` is the request body size (bodyless POSTs need no Content-Type). */
+int api_post_allowed(const char *content_type, const char *origin, const char *host,
+                     const CorsConfig *cors, size_t body_len);
+
+/* DNS-rebinding guard: the server listens on 127.0.0.1, so a legitimate request
+ * names a loopback host in its Host header (localhost, 127.0.0.1, [::1], any
+ * port). A page on evil.example whose DNS is rebound to 127.0.0.1 still sends
+ * "Host: evil.example" and is refused. Returns 1 when the Host is acceptable:
+ * missing/empty (HTTP/1.0), loopback, or the authority of an allowed
+ * --cors-origin (for reverse proxies). */
+int api_host_allowed(const char *host, const CorsConfig *cors);
 
 /* Returns a heap JSON body (caller frees) and sets *status (200/400/403/500). */
 char *api_config_save(const ApiContext *ctx, const char *json_body, int *status);

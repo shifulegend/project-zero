@@ -1,5 +1,5 @@
 #include "memory/safe_alloc.h"
-#include "kv_cache/kv_strategy.h"  /* tn_get_free_ram() */
+#include "kv_cache/kv_strategy.h" /* tn_get_free_ram() */
 #include "core/platform.h"
 #if TN_POSIX
 #include <unistd.h>
@@ -75,7 +75,10 @@ void *tn_safe_calloc(size_t count, size_t elem_size, const char *what) {
 }
 
 void *tn_safe_realloc(void *ptr, size_t size, const char *what) {
-    if (size == 0) { free(ptr); return NULL; }
+    if (size == 0) {
+        free(ptr);
+        return NULL;
+    }
     if (ptr == NULL) return tn_safe_malloc(size, what);
     if (too_large_checked(1, size)) tn_alloc_fail(what, size);
     void *p = realloc(ptr, size);

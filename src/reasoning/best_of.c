@@ -4,21 +4,24 @@
 #include <time.h>
 
 typedef struct {
-    char  *buf;
+    char *buf;
     size_t len, cap;
     BestOfAbortFn abort_fn;
-    void  *abort_ud;
-    int    oom;
+    void *abort_ud;
+    int oom;
 } Collector;
 
 static int collect_cb(const char *piece, void *ud) {
     Collector *c = (Collector *)ud;
-    size_t pl = strlen(piece);
+    size_t pl    = strlen(piece);
     if (c->len + pl + 1 > c->cap) {
         size_t nc = c->cap ? c->cap * 2 : 1024;
         while (nc < c->len + pl + 1) nc *= 2;
         char *nb = (char *)realloc(c->buf, nc);
-        if (!nb) { c->oom = 1; return 1; }
+        if (!nb) {
+            c->oom = 1;
+            return 1;
+        }
         c->buf = nb;
         c->cap = nc;
     }
@@ -33,11 +36,10 @@ double best_of_score(const GenerationStats *st, BestOfScore mode) {
     return st->sum_logprob / (double)st->completion_tokens;
 }
 
-TernaryError generate_best_of(const Config *cfg, const TransformerWeights *w,
-                              RunState *s, const MoEConfig *mc,
-                              Tokenizer *tok, ThreadPool *tp, const char *prompt,
-                              const GenerationParams *gp, int n, BestOfScore mode,
-                              TokenCallback callback, void *userdata,
+TernaryError generate_best_of(const Config *cfg, const TransformerWeights *w, RunState *s,
+                              const MoEConfig *mc, Tokenizer *tok, ThreadPool *tp,
+                              const char *prompt, const GenerationParams *gp, int n,
+                              BestOfScore mode, TokenCallback callback, void *userdata,
                               BestOfAbortFn abort_fn, BestOfResult *out) {
     if (!cfg || !w || !s || !tok || !gp || !out) return TN_ERR_INVALID_ARGS;
     if (n < 1) n = 1;
@@ -51,22 +53,23 @@ TernaryError generate_best_of(const Config *cfg, const TransformerWeights *w,
     int own_cache = 0;
     if (!gp->prefix_cache && prefix_cache_init(&tmp_cache, s->max_seq_len) == 0) own_cache = 1;
 
-    char *best_text = NULL;
+    char *best_text   = NULL;
     double best_score = -1e300;
     int best_complete = 0;
-    unsigned long long base = gp->seed >= 0 ? (unsigned long long)gp->seed
-                                            : (unsigned long long)time(NULL);
+    unsigned long long base =
+        gp->seed >= 0 ? (unsigned long long)gp->seed : (unsigned long long)time(NULL);
     for (int i = 0; i < n; i++) {
         GenerationParams cp = *gp;
         GenerationStats st;
-        cp.seed = (long long)(base + (unsigned long long)i);
+        cp.seed             = (long long)(base + (unsigned long long)i);
         cp.compute_logprobs = true;
-        cp.stats = &st;
+        cp.stats            = &st;
         if (own_cache) cp.prefix_cache = &tmp_cache;
-        Collector col = { NULL, 0, 0, abort_fn, userdata, 0 };
+        Collector col = {NULL, 0, 0, abort_fn, userdata, 0};
         generate_ex(cfg, w, s, mc, tok, tp, prompt, &cp, collect_cb, &col);
         if (col.oom) {
-            free(col.buf); free(best_text);
+            free(col.buf);
+            free(best_text);
             if (own_cache) prefix_cache_free(&tmp_cache);
             return TN_ERR_OOM;
         }
@@ -81,10 +84,10 @@ TernaryError generate_best_of(const Config *cfg, const TransformerWeights *w,
         int complete = st.finish_reason == GEN_FINISH_STOP;
         if (out->chosen < 0 || complete > best_complete ||
             (complete == best_complete && sc > best_score)) {
-            best_score = sc;
+            best_score    = sc;
             best_complete = complete;
-            out->chosen = i;
-            out->winner = st;
+            out->chosen   = i;
+            out->winner   = st;
             free(best_text);
             best_text = col.buf ? col.buf : strdup("");
         } else {

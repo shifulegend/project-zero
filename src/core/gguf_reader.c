@@ -40,7 +40,7 @@ static int read_str(const uint8_t **p, const uint8_t *end, char *out, size_t out
     size_t copy_len = (len < out_sz - 1) ? (size_t)len : out_sz - 1;
     memcpy(out, *p, copy_len);
     out[copy_len] = '\0';
-    *p += len;   /* advance by full on-disk length, not truncated copy */
+    *p += len; /* advance by full on-disk length, not truncated copy */
     return 0;
 }
 
@@ -50,10 +50,25 @@ static int skip_meta_value(const uint8_t **p, const uint8_t *end, GGUFValType vt
 static int skip_meta_value(const uint8_t **p, const uint8_t *end, GGUFValType vtype) {
     if (*p >= end) return -1;
     switch (vtype) {
-        case GGUF_VAL_UINT8:  case GGUF_VAL_INT8:  case GGUF_VAL_BOOL: *p += 1; break;
-        case GGUF_VAL_UINT16: case GGUF_VAL_INT16:                      *p += 2; break;
-        case GGUF_VAL_UINT32: case GGUF_VAL_INT32: case GGUF_VAL_FLOAT32: *p += 4; break;
-        case GGUF_VAL_UINT64: case GGUF_VAL_INT64: case GGUF_VAL_FLOAT64: *p += 8; break;
+        case GGUF_VAL_UINT8:
+        case GGUF_VAL_INT8:
+        case GGUF_VAL_BOOL:
+            *p += 1;
+            break;
+        case GGUF_VAL_UINT16:
+        case GGUF_VAL_INT16:
+            *p += 2;
+            break;
+        case GGUF_VAL_UINT32:
+        case GGUF_VAL_INT32:
+        case GGUF_VAL_FLOAT32:
+            *p += 4;
+            break;
+        case GGUF_VAL_UINT64:
+        case GGUF_VAL_INT64:
+        case GGUF_VAL_FLOAT64:
+            *p += 8;
+            break;
         case GGUF_VAL_STRING: {
             /* Skip string bytes without copying — just advance past them. */
             if (*p + 8 > end) return -1;
@@ -65,13 +80,14 @@ static int skip_meta_value(const uint8_t **p, const uint8_t *end, GGUFValType vt
         case GGUF_VAL_ARRAY: {
             if (*p + 12 > end) return -1;
             GGUFValType elem_type = (GGUFValType)read_u32(p);
-            uint64_t count = read_u64(p);
+            uint64_t count        = read_u64(p);
             for (uint64_t i = 0; i < count; i++) {
                 if (skip_meta_value(p, end, elem_type)) return -1;
             }
             break;
         }
-        default: return -1;
+        default:
+            return -1;
     }
     return 0;
 }
@@ -83,17 +99,41 @@ static int parse_meta_entry(const uint8_t **p, const uint8_t *end, GGUFMeta *m) 
     m->val_type = (GGUFValType)read_u32(p);
 
     switch (m->val_type) {
-        case GGUF_VAL_UINT8:    m->val.u8  = read_u8(p);  break;
-        case GGUF_VAL_INT8:     m->val.i8  = (int8_t)read_u8(p); break;
-        case GGUF_VAL_UINT16:   m->val.u16 = read_u16(p); break;
-        case GGUF_VAL_INT16:    m->val.i16 = (int16_t)read_u16(p); break;
-        case GGUF_VAL_UINT32:   m->val.u32 = read_u32(p); break;
-        case GGUF_VAL_INT32:    m->val.i32 = (int32_t)read_u32(p); break;
-        case GGUF_VAL_FLOAT32:  memcpy(&m->val.f32, *p, 4); *p += 4; break;
-        case GGUF_VAL_BOOL:     m->val.boolean = read_u8(p); break;
-        case GGUF_VAL_UINT64:   m->val.u64 = read_u64(p); break;
-        case GGUF_VAL_INT64:    m->val.i64 = (int64_t)read_u64(p); break;
-        case GGUF_VAL_FLOAT64:  memcpy(&m->val.f64, *p, 8); *p += 8; break;
+        case GGUF_VAL_UINT8:
+            m->val.u8 = read_u8(p);
+            break;
+        case GGUF_VAL_INT8:
+            m->val.i8 = (int8_t)read_u8(p);
+            break;
+        case GGUF_VAL_UINT16:
+            m->val.u16 = read_u16(p);
+            break;
+        case GGUF_VAL_INT16:
+            m->val.i16 = (int16_t)read_u16(p);
+            break;
+        case GGUF_VAL_UINT32:
+            m->val.u32 = read_u32(p);
+            break;
+        case GGUF_VAL_INT32:
+            m->val.i32 = (int32_t)read_u32(p);
+            break;
+        case GGUF_VAL_FLOAT32:
+            memcpy(&m->val.f32, *p, 4);
+            *p += 4;
+            break;
+        case GGUF_VAL_BOOL:
+            m->val.boolean = read_u8(p);
+            break;
+        case GGUF_VAL_UINT64:
+            m->val.u64 = read_u64(p);
+            break;
+        case GGUF_VAL_INT64:
+            m->val.i64 = (int64_t)read_u64(p);
+            break;
+        case GGUF_VAL_FLOAT64:
+            memcpy(&m->val.f64, *p, 8);
+            *p += 8;
+            break;
         case GGUF_VAL_STRING: {
             if (*p + 8 > end) return -1;
             uint64_t slen = read_u64(p);
@@ -111,11 +151,11 @@ static int parse_meta_entry(const uint8_t **p, const uint8_t *end, GGUFMeta *m) 
         }
         case GGUF_VAL_ARRAY: {
             if (*p + 12 > end) return -1;
-            GGUFValType elem_type = (GGUFValType)read_u32(p);
-            uint64_t count        = read_u64(p);
+            GGUFValType elem_type  = (GGUFValType)read_u32(p);
+            uint64_t count         = read_u64(p);
             m->val.array.elem_type = elem_type;
             m->val.array.count     = count;
-            m->val.array.data      = *p;   /* zero-copy pointer into mmap */
+            m->val.array.data      = *p; /* zero-copy pointer into mmap */
             /* Advance cursor past all array elements */
             for (uint64_t i = 0; i < count; i++) {
                 if (skip_meta_value(p, end, elem_type)) return -1;
@@ -131,67 +171,112 @@ static int parse_meta_entry(const uint8_t **p, const uint8_t *end, GGUFMeta *m) 
 /* ── Block sizes for quantized types (bytes per block) ──────────────────── */
 static size_t gguf_block_size(GGUFType t) {
     switch (t) {
-        case GGUF_TYPE_F32:  return 4;
-        case GGUF_TYPE_F16:  return 2;
-        case GGUF_TYPE_BF16: return 2;
-        case GGUF_TYPE_Q4_0: return 2 + 16;   /* scale(f16) + 16 bytes = 32 weights */
-        case GGUF_TYPE_Q4_1: return 4 + 16;
-        case GGUF_TYPE_Q5_0: return 2 + 4 + 16;
-        case GGUF_TYPE_Q5_1: return 4 + 4 + 16;
-        case GGUF_TYPE_Q8_0: return 2 + 32;   /* scale(f16) + 32 bytes */
-        case GGUF_TYPE_Q8_1: return 4 + 32;   /* d+s as fp16 pair (2+2=4) + 32 bytes int8 —
+        case GGUF_TYPE_F32:
+            return 4;
+        case GGUF_TYPE_F16:
+            return 2;
+        case GGUF_TYPE_BF16:
+            return 2;
+        case GGUF_TYPE_Q4_0:
+            return 2 + 16; /* scale(f16) + 16 bytes = 32 weights */
+        case GGUF_TYPE_Q4_1:
+            return 4 + 16;
+        case GGUF_TYPE_Q5_0:
+            return 2 + 4 + 16;
+        case GGUF_TYPE_Q5_1:
+            return 4 + 4 + 16;
+        case GGUF_TYPE_Q8_0:
+            return 2 + 32; /* scale(f16) + 32 bytes */
+        case GGUF_TYPE_Q8_1:
+            return 4 + 32; /* d+s as fp16 pair (2+2=4) + 32 bytes int8 —
                                                    bug fix 2026-09-17: was 4+4+32=40, but
                                                    ggml's block_q8_1 has no qh field like
                                                    Q5_1 does; correct size is 36, verified
                                                    against llama.cpp's block_q8_1 struct */
-        case GGUF_TYPE_Q2_K: return 84;   /* scales[16]+qs[64]+d(fp16)+dmin(fp16) */
-        case GGUF_TYPE_Q3_K: return 110;
-        case GGUF_TYPE_Q4_K: return 144;
-        case GGUF_TYPE_Q5_K: return 176;
-        case GGUF_TYPE_Q6_K: return 210;
-        case GGUF_TYPE_Q8_K: return 292;
-        case GGUF_TYPE_IQ4_NL: return 18; /* d(fp16) + qs[16] nibbles = 32 weights */
+        case GGUF_TYPE_Q2_K:
+            return 84; /* scales[16]+qs[64]+d(fp16)+dmin(fp16) */
+        case GGUF_TYPE_Q3_K:
+            return 110;
+        case GGUF_TYPE_Q4_K:
+            return 144;
+        case GGUF_TYPE_Q5_K:
+            return 176;
+        case GGUF_TYPE_Q6_K:
+            return 210;
+        case GGUF_TYPE_Q8_K:
+            return 292;
+        case GGUF_TYPE_IQ4_NL:
+            return 18; /* d(fp16) + qs[16] nibbles = 32 weights */
         /* Byte counts below verified 2026-09-17 against llama.cpp's real block_iq*
          * structs in ggml-common.h (Phase 37 enum-completeness pass) — the plan
          * doc's own byte counts for IQ1_S (said 26) and IQ1_M (said 37) were wrong;
          * corrected here to the real 50 and 56. */
-        case GGUF_TYPE_IQ2_XXS: return 66;  /* d(2) + qs[32]*u16(64) */
-        case GGUF_TYPE_IQ2_XS:  return 74;  /* d(2) + qs[32]*u16(64) + scales[8] */
-        case GGUF_TYPE_IQ2_S:   return 82;  /* d(2) + qs[64] + qh[8] + scales[8] */
-        case GGUF_TYPE_IQ3_XXS: return 98;  /* d(2) + qs[96] */
-        case GGUF_TYPE_IQ3_S:   return 110; /* d(2) + qs[64] + qh[8] + signs[32] + scales[4] */
-        case GGUF_TYPE_IQ1_S:   return 50;  /* d(2) + qs[32] + qh[8]*u16(16) */
-        case GGUF_TYPE_IQ1_M:   return 56;  /* qs[32] + qh[16] + scales[8], no top-level d */
-        case GGUF_TYPE_IQ4_XS:  return 136; /* d(2) + scales_h(2) + scales_l[4] + qs[128] */
+        case GGUF_TYPE_IQ2_XXS:
+            return 66; /* d(2) + qs[32]*u16(64) */
+        case GGUF_TYPE_IQ2_XS:
+            return 74; /* d(2) + qs[32]*u16(64) + scales[8] */
+        case GGUF_TYPE_IQ2_S:
+            return 82; /* d(2) + qs[64] + qh[8] + scales[8] */
+        case GGUF_TYPE_IQ3_XXS:
+            return 98; /* d(2) + qs[96] */
+        case GGUF_TYPE_IQ3_S:
+            return 110; /* d(2) + qs[64] + qh[8] + signs[32] + scales[4] */
+        case GGUF_TYPE_IQ1_S:
+            return 50; /* d(2) + qs[32] + qh[8]*u16(16) */
+        case GGUF_TYPE_IQ1_M:
+            return 56; /* qs[32] + qh[16] + scales[8], no top-level d */
+        case GGUF_TYPE_IQ4_XS:
+            return 136; /* d(2) + scales_h(2) + scales_l[4] + qs[128] */
         /* PrismML's group-128 packing (see gguf_quant.c's gguf_dequant_q2_0
          * comment) — NOT mainline ggml's canonical group-64 block_q2_0.
          * size_bytes computed here is informational only (t->data is
          * located via the offset stored in the file, not via this table). */
-        case GGUF_TYPE_Q2_0: return 2 + 32;  /* scale(f16) + 32 bytes (2 bits × 128) = 128 weights */
-        case GGUF_TYPE_I8:   return 1;
-        case GGUF_TYPE_I16:  return 2;
-        case GGUF_TYPE_I32:  return 4;
-        case GGUF_TYPE_I64:  return 8;
-        case GGUF_TYPE_F64:  return 8;
-        default:             return 0;
+        case GGUF_TYPE_Q2_0:
+            return 2 + 32; /* scale(f16) + 32 bytes (2 bits × 128) = 128 weights */
+        case GGUF_TYPE_I8:
+            return 1;
+        case GGUF_TYPE_I16:
+            return 2;
+        case GGUF_TYPE_I32:
+            return 4;
+        case GGUF_TYPE_I64:
+            return 8;
+        case GGUF_TYPE_F64:
+            return 8;
+        default:
+            return 0;
     }
 }
 
 static size_t gguf_block_elems(GGUFType t) {
     switch (t) {
-        case GGUF_TYPE_Q4_0: case GGUF_TYPE_Q4_1:
-        case GGUF_TYPE_Q5_0: case GGUF_TYPE_Q5_1:
-        case GGUF_TYPE_Q8_0: case GGUF_TYPE_Q8_1:
-        case GGUF_TYPE_IQ4_NL: return 32;
-        case GGUF_TYPE_Q2_0: return 128;
-        case GGUF_TYPE_Q2_K: case GGUF_TYPE_Q3_K:
-        case GGUF_TYPE_Q4_K: case GGUF_TYPE_Q5_K:
-        case GGUF_TYPE_Q6_K: case GGUF_TYPE_Q8_K:
-        case GGUF_TYPE_IQ2_XXS: case GGUF_TYPE_IQ2_XS: case GGUF_TYPE_IQ2_S:
-        case GGUF_TYPE_IQ3_XXS: case GGUF_TYPE_IQ3_S:
-        case GGUF_TYPE_IQ1_S: case GGUF_TYPE_IQ1_M:
-        case GGUF_TYPE_IQ4_XS: return 256;
-        default: return 1;
+        case GGUF_TYPE_Q4_0:
+        case GGUF_TYPE_Q4_1:
+        case GGUF_TYPE_Q5_0:
+        case GGUF_TYPE_Q5_1:
+        case GGUF_TYPE_Q8_0:
+        case GGUF_TYPE_Q8_1:
+        case GGUF_TYPE_IQ4_NL:
+            return 32;
+        case GGUF_TYPE_Q2_0:
+            return 128;
+        case GGUF_TYPE_Q2_K:
+        case GGUF_TYPE_Q3_K:
+        case GGUF_TYPE_Q4_K:
+        case GGUF_TYPE_Q5_K:
+        case GGUF_TYPE_Q6_K:
+        case GGUF_TYPE_Q8_K:
+        case GGUF_TYPE_IQ2_XXS:
+        case GGUF_TYPE_IQ2_XS:
+        case GGUF_TYPE_IQ2_S:
+        case GGUF_TYPE_IQ3_XXS:
+        case GGUF_TYPE_IQ3_S:
+        case GGUF_TYPE_IQ1_S:
+        case GGUF_TYPE_IQ1_M:
+        case GGUF_TYPE_IQ4_XS:
+            return 256;
+        default:
+            return 1;
     }
 }
 
@@ -209,14 +294,11 @@ static size_t tensor_size_bytes(const GGUFTensor *t) {
 
 /* ── Vision tensor name patterns ────────────────────────────────────────── */
 static const char *const VISION_PREFIXES[] = {
-    "v.blk.", "vision_model.", "vision_tower.", "encoder.",
-    "mm.", "vlm.", "image_encoder.", NULL
-};
+    "v.blk.", "vision_model.", "vision_tower.", "encoder.", "mm.", "vlm.", "image_encoder.", NULL};
 
 static int looks_like_vision_tensor(const char *name) {
     for (int i = 0; VISION_PREFIXES[i]; i++) {
-        if (strncmp(name, VISION_PREFIXES[i], strlen(VISION_PREFIXES[i])) == 0)
-            return 1;
+        if (strncmp(name, VISION_PREFIXES[i], strlen(VISION_PREFIXES[i])) == 0) return 1;
     }
     return 0;
 }
@@ -263,8 +345,8 @@ TernaryError gguf_read_header(GGUFHeader *hdr, const void *mapped_ptr, size_t ma
 
         /* Extract convenience fields */
         if (strcmp(m->key, "general.architecture") == 0 && m->val_type == GGUF_VAL_STRING) {
-            size_t n = m->val.string.len < sizeof(hdr->arch) - 1
-                     ? m->val.string.len : sizeof(hdr->arch) - 1;
+            size_t n = m->val.string.len < sizeof(hdr->arch) - 1 ? m->val.string.len
+                                                                 : sizeof(hdr->arch) - 1;
             memcpy(hdr->arch, m->val.string.str, n);
             hdr->arch[n] = '\0';
         }
@@ -279,7 +361,9 @@ TernaryError gguf_read_header(GGUFHeader *hdr, const void *mapped_ptr, size_t ma
         }
         if (p + 4 > end) return TN_ERR_INVALID_ARGS;
         t->n_dims = read_u32(&p);
-        if (t->n_dims > 4) { t->n_dims = 4; }  /* cap at 4 for safety */
+        if (t->n_dims > 4) {
+            t->n_dims = 4;
+        } /* cap at 4 for safety */
         for (uint32_t d = 0; d < t->n_dims; d++) {
             if (p + 8 > end) return TN_ERR_INVALID_ARGS;
             t->dims[d] = read_u64(&p);
@@ -304,7 +388,7 @@ TernaryError gguf_read_header(GGUFHeader *hdr, const void *mapped_ptr, size_t ma
     /* Resolve tensor data pointers */
     for (uint64_t i = 0; i < hdr->n_tensors; i++) {
         GGUFTensor *t = &hdr->tensors[i];
-        size_t sz = tensor_size_bytes(t);
+        size_t sz     = tensor_size_bytes(t);
         /* 2026-10-18: also require the whole tensor to fit. Only the start
          * offset was checked, so a truncated file handed kernels a pointer
          * whose tail ran past the mapping. Q2_0's size is informational
@@ -313,11 +397,13 @@ TernaryError gguf_read_header(GGUFHeader *hdr, const void *mapped_ptr, size_t ma
                    (t->type == GGUF_TYPE_Q2_0 || sz <= hdr->data_region_size - t->offset);
         if (!fits) {
             if (t->offset <= hdr->data_region_size)
-                fprintf(stderr, "[gguf] tensor '%s' extends past the end of the file (truncated?)\n", t->name);
-            t->data = NULL;
+                fprintf(stderr,
+                        "[gguf] tensor '%s' extends past the end of the file (truncated?)\n",
+                        t->name);
+            t->data       = NULL;
             t->size_bytes = 0;
         } else {
-            t->data = (const uint8_t *)hdr->data_region + t->offset;
+            t->data       = (const uint8_t *)hdr->data_region + t->offset;
             t->size_bytes = sz;
         }
     }
@@ -334,13 +420,11 @@ const GGUFTensor *gguf_find_tensor(const GGUFHeader *hdr, const char *name) {
 
 const char *gguf_meta_str(const GGUFHeader *hdr, const char *key) {
     for (uint64_t i = 0; i < hdr->n_meta; i++) {
-        if (strcmp(hdr->meta[i].key, key) == 0 &&
-            hdr->meta[i].val_type == GGUF_VAL_STRING) {
+        if (strcmp(hdr->meta[i].key, key) == 0 && hdr->meta[i].val_type == GGUF_VAL_STRING) {
             /* Return a null-terminated version if space allows */
             static char buf[GGUF_MAX_KEY_LEN];
             const GGUFMeta *m = &hdr->meta[i];
-            size_t n = m->val.string.len < sizeof(buf) - 1
-                     ? m->val.string.len : sizeof(buf) - 1;
+            size_t n = m->val.string.len < sizeof(buf) - 1 ? m->val.string.len : sizeof(buf) - 1;
             memcpy(buf, m->val.string.str, n);
             buf[n] = '\0';
             return buf;
@@ -354,10 +438,14 @@ uint32_t gguf_meta_u32(const GGUFHeader *hdr, const char *key, uint32_t default_
         if (strcmp(hdr->meta[i].key, key) == 0) {
             const GGUFMeta *m = &hdr->meta[i];
             switch (m->val_type) {
-                case GGUF_VAL_UINT32: return m->val.u32;
-                case GGUF_VAL_INT32:  return (uint32_t)m->val.i32;
-                case GGUF_VAL_UINT64: return (uint32_t)m->val.u64;
-                default: break;
+                case GGUF_VAL_UINT32:
+                    return m->val.u32;
+                case GGUF_VAL_INT32:
+                    return (uint32_t)m->val.i32;
+                case GGUF_VAL_UINT64:
+                    return (uint32_t)m->val.u64;
+                default:
+                    break;
             }
         }
     }
@@ -369,10 +457,14 @@ int32_t gguf_meta_i32(const GGUFHeader *hdr, const char *key, int32_t default_va
         if (strcmp(hdr->meta[i].key, key) == 0) {
             const GGUFMeta *m = &hdr->meta[i];
             switch (m->val_type) {
-                case GGUF_VAL_INT32:  return m->val.i32;
-                case GGUF_VAL_UINT32: return (int32_t)m->val.u32;
-                case GGUF_VAL_INT64:  return (int32_t)m->val.i64;
-                default: break;
+                case GGUF_VAL_INT32:
+                    return m->val.i32;
+                case GGUF_VAL_UINT32:
+                    return (int32_t)m->val.u32;
+                case GGUF_VAL_INT64:
+                    return (int32_t)m->val.i64;
+                default:
+                    break;
             }
         }
     }
@@ -384,12 +476,18 @@ float gguf_meta_f32(const GGUFHeader *hdr, const char *key, float default_val) {
         if (strcmp(hdr->meta[i].key, key) == 0) {
             const GGUFMeta *m = &hdr->meta[i];
             switch (m->val_type) {
-                case GGUF_VAL_FLOAT32: return m->val.f32;
-                case GGUF_VAL_FLOAT64: return (float)m->val.f64;
-                case GGUF_VAL_UINT32:  return (float)m->val.u32;
-                case GGUF_VAL_INT32:   return (float)m->val.i32;
-                case GGUF_VAL_UINT64:  return (float)m->val.u64;
-                default: break;
+                case GGUF_VAL_FLOAT32:
+                    return m->val.f32;
+                case GGUF_VAL_FLOAT64:
+                    return (float)m->val.f64;
+                case GGUF_VAL_UINT32:
+                    return (float)m->val.u32;
+                case GGUF_VAL_INT32:
+                    return (float)m->val.i32;
+                case GGUF_VAL_UINT64:
+                    return (float)m->val.u64;
+                default:
+                    break;
             }
         }
     }
@@ -410,7 +508,7 @@ uint64_t gguf_meta_array_count(const GGUFHeader *hdr, const char *key) {
 }
 
 const void *gguf_meta_array_data(const GGUFHeader *hdr, const char *key,
-                                  GGUFValType *elem_type_out) {
+                                 GGUFValType *elem_type_out) {
     const GGUFMeta *m = gguf_meta_find(hdr, key);
     if (!m || m->val_type != GGUF_VAL_ARRAY) return NULL;
     if (elem_type_out) *elem_type_out = m->val.array.elem_type;
@@ -419,38 +517,70 @@ const void *gguf_meta_array_data(const GGUFHeader *hdr, const char *key,
 
 const char *gguf_type_name(GGUFType t) {
     switch (t) {
-        case GGUF_TYPE_F32:  return "F32";
-        case GGUF_TYPE_F16:  return "F16";
-        case GGUF_TYPE_BF16: return "BF16";
-        case GGUF_TYPE_I2_S: return "I2_S";
-        case GGUF_TYPE_Q4_0: return "Q4_0";
-        case GGUF_TYPE_Q4_1: return "Q4_1";
-        case GGUF_TYPE_Q5_0: return "Q5_0";
-        case GGUF_TYPE_Q5_1: return "Q5_1";
-        case GGUF_TYPE_Q8_0: return "Q8_0";
-        case GGUF_TYPE_Q8_1: return "Q8_1";
-        case GGUF_TYPE_Q2_K: return "Q2_K";
-        case GGUF_TYPE_Q3_K: return "Q3_K";
-        case GGUF_TYPE_Q4_K: return "Q4_K";
-        case GGUF_TYPE_Q5_K: return "Q5_K";
-        case GGUF_TYPE_Q6_K: return "Q6_K";
-        case GGUF_TYPE_Q8_K: return "Q8_K";
-        case GGUF_TYPE_IQ2_XXS: return "IQ2_XXS";
-        case GGUF_TYPE_IQ2_XS:  return "IQ2_XS";
-        case GGUF_TYPE_IQ2_S:   return "IQ2_S";
-        case GGUF_TYPE_IQ3_XXS: return "IQ3_XXS";
-        case GGUF_TYPE_IQ3_S:   return "IQ3_S";
-        case GGUF_TYPE_IQ1_S:   return "IQ1_S";
-        case GGUF_TYPE_IQ1_M:   return "IQ1_M";
-        case GGUF_TYPE_IQ4_XS:  return "IQ4_XS";
-        case GGUF_TYPE_IQ4_NL: return "IQ4_NL";
-        case GGUF_TYPE_Q2_0: return "Q2_0";
-        case GGUF_TYPE_I8:   return "I8";
-        case GGUF_TYPE_I16:  return "I16";
-        case GGUF_TYPE_I32:  return "I32";
-        case GGUF_TYPE_I64:  return "I64";
-        case GGUF_TYPE_F64:  return "F64";
-        default:             return "UNKNOWN";
+        case GGUF_TYPE_F32:
+            return "F32";
+        case GGUF_TYPE_F16:
+            return "F16";
+        case GGUF_TYPE_BF16:
+            return "BF16";
+        case GGUF_TYPE_I2_S:
+            return "I2_S";
+        case GGUF_TYPE_Q4_0:
+            return "Q4_0";
+        case GGUF_TYPE_Q4_1:
+            return "Q4_1";
+        case GGUF_TYPE_Q5_0:
+            return "Q5_0";
+        case GGUF_TYPE_Q5_1:
+            return "Q5_1";
+        case GGUF_TYPE_Q8_0:
+            return "Q8_0";
+        case GGUF_TYPE_Q8_1:
+            return "Q8_1";
+        case GGUF_TYPE_Q2_K:
+            return "Q2_K";
+        case GGUF_TYPE_Q3_K:
+            return "Q3_K";
+        case GGUF_TYPE_Q4_K:
+            return "Q4_K";
+        case GGUF_TYPE_Q5_K:
+            return "Q5_K";
+        case GGUF_TYPE_Q6_K:
+            return "Q6_K";
+        case GGUF_TYPE_Q8_K:
+            return "Q8_K";
+        case GGUF_TYPE_IQ2_XXS:
+            return "IQ2_XXS";
+        case GGUF_TYPE_IQ2_XS:
+            return "IQ2_XS";
+        case GGUF_TYPE_IQ2_S:
+            return "IQ2_S";
+        case GGUF_TYPE_IQ3_XXS:
+            return "IQ3_XXS";
+        case GGUF_TYPE_IQ3_S:
+            return "IQ3_S";
+        case GGUF_TYPE_IQ1_S:
+            return "IQ1_S";
+        case GGUF_TYPE_IQ1_M:
+            return "IQ1_M";
+        case GGUF_TYPE_IQ4_XS:
+            return "IQ4_XS";
+        case GGUF_TYPE_IQ4_NL:
+            return "IQ4_NL";
+        case GGUF_TYPE_Q2_0:
+            return "Q2_0";
+        case GGUF_TYPE_I8:
+            return "I8";
+        case GGUF_TYPE_I16:
+            return "I16";
+        case GGUF_TYPE_I32:
+            return "I32";
+        case GGUF_TYPE_I64:
+            return "I64";
+        case GGUF_TYPE_F64:
+            return "F64";
+        default:
+            return "UNKNOWN";
     }
 }
 

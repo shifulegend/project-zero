@@ -10,7 +10,7 @@
 
 /* usleep() is not in POSIX.1-2008 (the build's -D_POSIX_C_SOURCE level). */
 static void sleep_ms(int ms) {
-    struct timespec ts = { ms / 1000, (long)(ms % 1000) * 1000000L };
+    struct timespec ts = {ms / 1000, (long)(ms % 1000) * 1000000L};
     nanosleep(&ts, NULL);
 }
 
@@ -19,7 +19,10 @@ static int g_order[8];
 static int g_order_n;
 static pthread_mutex_t g_order_mu = PTHREAD_MUTEX_INITIALIZER;
 
-typedef struct { int id; int last_pos; } Waiter;
+typedef struct {
+    int id;
+    int last_pos;
+} Waiter;
 
 /* The waiter thread writes last_pos from the queue callback and the main thread reads it: both go
  * through g_order_mu (an unsynchronised int was a data race TSan reported intermittently in CI). */
@@ -56,7 +59,8 @@ static void wait_for_waiting(int n) {
 static void test_disabled_rejects(void) {
     gen_queue_init(&Q, 0);
     TEST_ASSERT_EQ(gen_queue_acquire(&Q, 100, NULL, NULL), GEN_QUEUE_OK, "free slot taken");
-    TEST_ASSERT_EQ(gen_queue_acquire(&Q, 100, NULL, NULL), GEN_QUEUE_FULL, "busy + no queue -> FULL (429)");
+    TEST_ASSERT_EQ(gen_queue_acquire(&Q, 100, NULL, NULL), GEN_QUEUE_FULL,
+                   "busy + no queue -> FULL (429)");
     TEST_ASSERT_EQ(gen_queue_try_acquire(&Q), GEN_QUEUE_FULL, "try while busy");
     gen_queue_release(&Q);
     TEST_ASSERT_EQ(gen_queue_try_acquire(&Q), GEN_QUEUE_OK, "try when free");
@@ -70,12 +74,12 @@ static void test_fifo_order(void) {
     TEST_ASSERT_EQ(gen_queue_acquire(&Q, 0, NULL, NULL), GEN_QUEUE_OK, "holder takes slot");
     pthread_t th[3];
     Waiter w[3] = {{1, 0}, {2, 0}, {3, 0}};
-    for (int i = 0; i < 3; i++) {   /* start one at a time so arrival order is known */
+    for (int i = 0; i < 3; i++) { /* start one at a time so arrival order is known */
         pthread_create(&th[i], NULL, waiter_thread, &w[i]);
         wait_for_waiting(i + 1);
     }
     TEST_ASSERT_EQ(gen_queue_waiting(&Q), 3, "three waiting");
-    gen_queue_release(&Q);  /* holder done: hands the slot to waiter 1 */
+    gen_queue_release(&Q); /* holder done: hands the slot to waiter 1 */
     for (int i = 0; i < 3; i++) pthread_join(th[i], NULL);
     TEST_ASSERT_EQ(g_order_n, 3, "all three ran");
     TEST_ASSERT(g_order[0] == 1 && g_order[1] == 2 && g_order[2] == 3, "served in arrival order");
@@ -84,17 +88,24 @@ static void test_fifo_order(void) {
     gen_queue_destroy(&Q);
 }
 
-static int abort_now(int pos, void *ud) { (void)pos; (void)ud; return 1; }
+static int abort_now(int pos, void *ud) {
+    (void)pos;
+    (void)ud;
+    return 1;
+}
 
 static void test_full_timeout_abort(void) {
     gen_queue_init(&Q, 1);
     TEST_ASSERT_EQ(gen_queue_acquire(&Q, 0, NULL, NULL), GEN_QUEUE_OK, "holder");
-    TEST_ASSERT_EQ(gen_queue_acquire(&Q, 150, NULL, NULL), GEN_QUEUE_TIMEOUT, "times out at the front");
+    TEST_ASSERT_EQ(gen_queue_acquire(&Q, 150, NULL, NULL), GEN_QUEUE_TIMEOUT,
+                   "times out at the front");
     TEST_ASSERT_EQ(gen_queue_waiting(&Q), 0, "timed-out waiter left the list");
-    TEST_ASSERT_EQ(gen_queue_acquire(&Q, 1000, abort_now, NULL), GEN_QUEUE_ABORTED, "callback abort");
+    TEST_ASSERT_EQ(gen_queue_acquire(&Q, 1000, abort_now, NULL), GEN_QUEUE_ABORTED,
+                   "callback abort");
     TEST_ASSERT_EQ(gen_queue_waiting(&Q), 0, "aborted waiter left the list");
 
-    pthread_t th; Waiter w = {7, 0};
+    pthread_t th;
+    Waiter w = {7, 0};
     pthread_create(&th, NULL, waiter_thread, &w);
     wait_for_waiting(1);
     TEST_ASSERT_EQ(gen_queue_acquire(&Q, 100, NULL, NULL), GEN_QUEUE_FULL, "queue of 1 is full");
@@ -104,7 +115,10 @@ static void test_full_timeout_abort(void) {
     gen_queue_destroy(&Q);
 }
 
-typedef struct { int id; int units; } UnitWaiter;
+typedef struct {
+    int id;
+    int units;
+} UnitWaiter;
 
 static void *unit_waiter(void *arg) {
     UnitWaiter *w = (UnitWaiter *)arg;
@@ -127,7 +141,8 @@ static void test_units(void) {
     TEST_ASSERT_EQ(gen_queue_try_acquire(&Q), GEN_QUEUE_OK, "unit 2");
     TEST_ASSERT_EQ(gen_queue_try_acquire_n(&Q, 3), GEN_QUEUE_FULL, "whole engine busy -> FULL");
     TEST_ASSERT_EQ(gen_queue_acquire(&Q, 0, NULL, NULL), GEN_QUEUE_OK, "unit 3");
-    TEST_ASSERT_EQ(gen_queue_acquire(&Q, 100, NULL, NULL), GEN_QUEUE_FULL, "all units held, no queue -> FULL");
+    TEST_ASSERT_EQ(gen_queue_acquire(&Q, 100, NULL, NULL), GEN_QUEUE_FULL,
+                   "all units held, no queue -> FULL");
     TEST_ASSERT_EQ(gen_queue_in_use(&Q), 3, "3 units held");
     gen_queue_release_n(&Q, 3);
     TEST_ASSERT_EQ(gen_queue_in_use(&Q), 0, "all released");
@@ -158,13 +173,14 @@ static void test_units(void) {
 
     /* A whole-engine waiter that times out lets the smaller one behind it in. */
     TEST_ASSERT_EQ(gen_queue_acquire(&Q, 0, NULL, NULL), GEN_QUEUE_OK, "holder again");
-    g_order_n = 0;
+    g_order_n    = 0;
     UnitWaiter c = {3, 1};
     pthread_t tc;
-    pthread_create(&tc, NULL, unit_waiter, &c);   /* fits now: runs immediately */
+    pthread_create(&tc, NULL, unit_waiter, &c); /* fits now: runs immediately */
     pthread_join(tc, NULL);
     TEST_ASSERT_EQ(g_order_n, 1, "1-unit request runs alongside the holder");
-    TEST_ASSERT_EQ(gen_queue_acquire_n(&Q, 3, 50, NULL, NULL), GEN_QUEUE_TIMEOUT, "whole engine times out");
+    TEST_ASSERT_EQ(gen_queue_acquire_n(&Q, 3, 50, NULL, NULL), GEN_QUEUE_TIMEOUT,
+                   "whole engine times out");
     TEST_ASSERT_EQ(gen_queue_try_acquire(&Q), GEN_QUEUE_OK, "queue unblocked after the timeout");
     gen_queue_release_n(&Q, 2);
     gen_queue_destroy(&Q);

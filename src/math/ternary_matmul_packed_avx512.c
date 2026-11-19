@@ -16,8 +16,7 @@
  * then uses FMA, avoiding masked-move overhead and keeping the pipeline full.
  */
 
-static inline __m512i unpack16_to_epi32(const tn_u8 *row, int j)
-{
+static inline __m512i unpack16_to_epi32(const tn_u8 *row, int j) {
     /*
      * 16 weights occupy 32 bits (4 bytes): 2 bits each at positions 0,2,...,30.
      * We broadcast those 32 bits into all 16 lanes, then variable-shift each
@@ -28,10 +27,9 @@ static inline __m512i unpack16_to_epi32(const tn_u8 *row, int j)
     memcpy(&bits, row + (j >> 2), sizeof(bits));
 
     __m512i v      = _mm512_set1_epi32((int)bits);
-    __m512i shifts = _mm512_setr_epi32(0, 2, 4, 6, 8, 10, 12, 14,
-                                        16, 18, 20, 22, 24, 26, 28, 30);
-    v = _mm512_srlv_epi32(v, shifts);
-    v = _mm512_and_si512(v, _mm512_set1_epi32(3));
+    __m512i shifts = _mm512_setr_epi32(0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30);
+    v              = _mm512_srlv_epi32(v, shifts);
+    v              = _mm512_and_si512(v, _mm512_set1_epi32(3));
     return _mm512_sub_epi32(v, _mm512_set1_epi32(1));
 }
 
@@ -44,9 +42,8 @@ static inline __m512i unpack16_to_epi32(const tn_u8 *row, int j)
  */
 #define TN_PREFETCH_ROWS 8
 
-void ternary_matmul_packed_avx512(float *out, const float *x, const tn_u8 *packed_w,
-                                   int n, int d, const float *scales, int group_size)
-{
+void ternary_matmul_packed_avx512(float *out, const float *x, const tn_u8 *packed_w, int n, int d,
+                                  const float *scales, int group_size) {
     size_t row_bytes = ((size_t)n + 3) >> 2;
 
     for (int i = 0; i < d; i++) {
@@ -64,14 +61,14 @@ void ternary_matmul_packed_avx512(float *out, const float *x, const tn_u8 *packe
         if (group_size <= 0) {
             /* -------- per-matrix scale -------- */
             __m512 acc512 = _mm512_setzero_ps();
-            int j = 0;
+            int j         = 0;
 
             /* 16-wide AVX-512 loop */
             for (; j + 15 < n; j += 16) {
-                __m512  xv  = _mm512_loadu_ps(&x[j]);
+                __m512 xv   = _mm512_loadu_ps(&x[j]);
                 __m512i w32 = unpack16_to_epi32(row, j);
-                __m512  wf  = _mm512_cvtepi32_ps(w32);
-                acc512 = _mm512_fmadd_ps(wf, xv, acc512);
+                __m512 wf   = _mm512_cvtepi32_ps(w32);
+                acc512      = _mm512_fmadd_ps(wf, xv, acc512);
             }
 
             float val = _mm512_reduce_add_ps(acc512);
@@ -95,13 +92,13 @@ void ternary_matmul_packed_avx512(float *out, const float *x, const tn_u8 *packe
                 if (g_end > n) g_end = n;
 
                 __m512 acc512 = _mm512_setzero_ps();
-                int j = g_start;
+                int j         = g_start;
 
                 for (; j + 15 < g_end; j += 16) {
-                    __m512  xv  = _mm512_loadu_ps(&x[j]);
+                    __m512 xv   = _mm512_loadu_ps(&x[j]);
                     __m512i w32 = unpack16_to_epi32(row, j);
-                    __m512  wf  = _mm512_cvtepi32_ps(w32);
-                    acc512 = _mm512_fmadd_ps(wf, xv, acc512);
+                    __m512 wf   = _mm512_cvtepi32_ps(w32);
+                    acc512      = _mm512_fmadd_ps(wf, xv, acc512);
                 }
 
                 float partial = _mm512_reduce_add_ps(acc512);

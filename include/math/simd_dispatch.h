@@ -15,8 +15,7 @@
  */
 
 /* Ternary matmul function pointer type */
-typedef void (*tn_matmul_fn)(float *out, const float *x, const tn_i8 *w,
-                              int n, int d, float scale);
+typedef void (*tn_matmul_fn)(float *out, const float *x, const tn_i8 *w, int n, int d, float scale);
 
 /* RMSNorm function pointer type */
 typedef void (*tn_rmsnorm_fn)(float *out, const float *x, const float *weight, int size, float eps);
@@ -25,55 +24,55 @@ typedef void (*tn_rmsnorm_fn)(float *out, const float *x, const float *weight, i
 typedef void (*tn_softmax_fn)(float *x, int size);
 
 /* Packed ternary matmul function pointer type (Phase 10) */
-typedef void (*tn_matmul_packed_fn)(float *out, const float *x, const tn_u8 *packed_w,
-                                     int n, int d, const float *scales, int group_size);
+typedef void (*tn_matmul_packed_fn)(float *out, const float *x, const tn_u8 *packed_w, int n, int d,
+                                    const float *scales, int group_size);
 
 /* Ternary block unpacker function pointer type (Phase 10) */
 typedef void (*tn_unpack_fn)(tn_i8 *out, const tn_u8 *packed, int count);
 
 /* Element-wise function pointer types */
-typedef void  (*tn_vec_add_fn)(float *out, const float *a, const float *b, int n);
-typedef void  (*tn_vec_mul_fn)(float *out, const float *a, const float *b, int n);
-typedef void  (*tn_vec_scale_fn)(float *x, float s, int n);
-typedef void  (*tn_silu_fn)(float *x, int n);
-typedef void  (*tn_relu2_fn)(float *x, int n);
+typedef void (*tn_vec_add_fn)(float *out, const float *a, const float *b, int n);
+typedef void (*tn_vec_mul_fn)(float *out, const float *a, const float *b, int n);
+typedef void (*tn_vec_scale_fn)(float *x, float s, int n);
+typedef void (*tn_silu_fn)(float *x, int n);
+typedef void (*tn_relu2_fn)(float *x, int n);
 typedef float (*tn_vec_dot_fn)(const float *a, const float *b, int n);
 /* SAXPY: out[i] += scale * v[i]  — fused scale+accumulate for attention values */
-typedef void  (*tn_vec_saxpy_fn)(float *out, float scale, const float *v, int n);
+typedef void (*tn_vec_saxpy_fn)(float *out, float scale, const float *v, int n);
 
 /* Pre-quantised ternary path (AVX-512 VNNI tier only, parallel_matmul.c): the
  * activation quantiser, its int8 sum, and the matmul that consumes int8
  * activations. NULL unless tn_simd_init bound the AVX-512 VNNI tier. */
-typedef float   (*tn_quantize_i8_fn)(const float *x, int8_t *q, int n);
+typedef float (*tn_quantize_i8_fn)(const float *x, int8_t *q, int n);
 typedef int32_t (*tn_sum_i8_fn)(const int8_t *arr, int n);
-typedef void    (*tn_matmul_preq_fn)(float *out, const int8_t *q_x, float act_scale,
-                                     int32_t sum_qx, const tn_u8 *packed_w,
-                                     int n, int d, const float *scales, int group_size);
+typedef void (*tn_matmul_preq_fn)(float *out, const int8_t *q_x, float act_scale, int32_t sum_qx,
+                                  const tn_u8 *packed_w, int n, int d, const float *scales,
+                                  int group_size);
 
 /* Global dispatch table */
-extern tn_matmul_fn         tn_ternary_matmul;
-extern tn_matmul_packed_fn  tn_ternary_matmul_packed;
-extern tn_unpack_fn         tn_unpack_block;
-extern tn_rmsnorm_fn        tn_rmsnorm;
-extern tn_softmax_fn        tn_softmax;
-extern tn_vec_add_fn        tn_vec_add;
-extern tn_vec_mul_fn        tn_vec_mul;
-extern tn_vec_scale_fn      tn_vec_scale;
-extern tn_silu_fn           tn_silu;
-extern tn_relu2_fn          tn_relu2;
-extern tn_vec_dot_fn        tn_vec_dot;
+extern tn_matmul_fn tn_ternary_matmul;
+extern tn_matmul_packed_fn tn_ternary_matmul_packed;
+extern tn_unpack_fn tn_unpack_block;
+extern tn_rmsnorm_fn tn_rmsnorm;
+extern tn_softmax_fn tn_softmax;
+extern tn_vec_add_fn tn_vec_add;
+extern tn_vec_mul_fn tn_vec_mul;
+extern tn_vec_scale_fn tn_vec_scale;
+extern tn_silu_fn tn_silu;
+extern tn_relu2_fn tn_relu2;
+extern tn_vec_dot_fn tn_vec_dot;
 /* int4 KV-cache row kernels (math/kvq4_kernels.h); default to scalar before
  * tn_simd_init() so callers that never init still get correct results. */
-extern tn_kvq4_dot_fn       tn_kvq4_dot;
-extern tn_kvq4_axpy_fn      tn_kvq4_axpy;
-extern tn_vec_saxpy_fn      tn_vec_saxpy;
-extern tn_quantize_i8_fn    tn_quantize_act_i8;
-extern tn_sum_i8_fn         tn_sum_act_i8;
-extern tn_matmul_preq_fn    tn_ternary_matmul_preq;
+extern tn_kvq4_dot_fn tn_kvq4_dot;
+extern tn_kvq4_axpy_fn tn_kvq4_axpy;
+extern tn_vec_saxpy_fn tn_vec_saxpy;
+extern tn_quantize_i8_fn tn_quantize_act_i8;
+extern tn_sum_i8_fn tn_sum_act_i8;
+extern tn_matmul_preq_fn tn_ternary_matmul_preq;
 /* INT8 / INT4 classifier (LM head) row kernels (math/cls_kernels.h). Generic (AVX2 or scalar) before
  * tn_simd_init() and on lower or forced tiers; the AVX-512 version on AVX-512F CPUs. */
-extern tn_cls_rows_fn       tn_cls_i8_rows;
-extern tn_cls_rows_fn       tn_cls_i4_rows;
+extern tn_cls_rows_fn tn_cls_i8_rows;
+extern tn_cls_rows_fn tn_cls_i4_rows;
 
 /**
  * Initialize SIMD dispatch. Probes CPU features and sets function pointers
@@ -112,10 +111,10 @@ int tn_simd_ternary_preq(void);
  * AUTO takes INT8 where the CPU has an int8 dot product and FLOAT elsewhere, i.e. what the
  * dispatcher always did. Setting a mode re-binds the kernels (tn_simd_init). */
 typedef enum { TN_ACT_AUTO = 0, TN_ACT_INT8, TN_ACT_FLOAT } TnActQuant;
-int         tn_act_quant_parse(const char *name, TnActQuant *out);   /* 0 = ok, -1 = unknown */
+int tn_act_quant_parse(const char *name, TnActQuant *out); /* 0 = ok, -1 = unknown */
 const char *tn_act_quant_name(TnActQuant m);
-void        tn_act_quant_set(TnActQuant m);
-TnActQuant  tn_act_quant_get(void);
+void tn_act_quant_set(TnActQuant m);
+TnActQuant tn_act_quant_get(void);
 /* "int8" or "float": what the ternary matmul actually runs after tier selection. */
 const char *tn_act_quant_effective(void);
 

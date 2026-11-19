@@ -35,8 +35,7 @@ int semver_parse(const char *s, SemVer *out) {
     memset(out, 0, sizeof(*out));
     const char *p = s;
     if (*p == 'v' || *p == 'V') p++;
-    if (parse_num(&p, &out->major) || *p++ != '.' ||
-        parse_num(&p, &out->minor) || *p++ != '.' ||
+    if (parse_num(&p, &out->major) || *p++ != '.' || parse_num(&p, &out->minor) || *p++ != '.' ||
         parse_num(&p, &out->patch))
         return -1;
     if (*p == '\0') return 0;
@@ -66,7 +65,8 @@ int semver_parse(const char *s, SemVer *out) {
 
 static int is_numeric(const char *s, size_t n) {
     if (n == 0) return 0;
-    for (size_t i = 0; i < n; i++) if (!isdigit((unsigned char)s[i])) return 0;
+    for (size_t i = 0; i < n; i++)
+        if (!isdigit((unsigned char)s[i])) return 0;
     return 1;
 }
 
@@ -89,11 +89,12 @@ static int cmp_pre(const char *a, const char *b) {
             c = na ? -1 : 1;
         } else {
             size_t m = la < lb ? la : lb;
-            c = strncmp(a, b, m);
+            c        = strncmp(a, b, m);
             if (c == 0) c = (la > lb) - (la < lb);
         }
         if (c) return c;
-        a += la; b += lb;
+        a += la;
+        b += lb;
         if (*a == '.') a++;
         if (*b == '.') b++;
     }
@@ -109,6 +110,8 @@ int semver_cmp(const SemVer *a, const SemVer *b) {
 
 void semver_format(const SemVer *v, char *buf, int buf_size) {
     if (!buf || buf_size <= 0) return;
-    if (v->pre[0]) snprintf(buf, (size_t)buf_size, "%d.%d.%d-%s", v->major, v->minor, v->patch, v->pre);
-    else           snprintf(buf, (size_t)buf_size, "%d.%d.%d", v->major, v->minor, v->patch);
+    if (v->pre[0])
+        snprintf(buf, (size_t)buf_size, "%d.%d.%d-%s", v->major, v->minor, v->patch, v->pre);
+    else
+        snprintf(buf, (size_t)buf_size, "%d.%d.%d", v->major, v->minor, v->patch);
 }

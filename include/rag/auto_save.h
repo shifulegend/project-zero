@@ -43,13 +43,8 @@ extern "C" {
  *          1 = duplicate detected, skipped
  *         -1 = error (embedding or DB write failed)
  */
-int auto_save_memory(const char *text,
-                     VectorDB *db,
-                     const Config *cfg,
-                     const TransformerWeights *w,
-                     Embedder *emb,
-                     Tokenizer *tok,
-                     ThreadPool *tp);
+int auto_save_memory(const char *text, VectorDB *db, const Config *cfg, const TransformerWeights *w,
+                     Embedder *emb, Tokenizer *tok, ThreadPool *tp);
 
 #ifdef __cplusplus
 }

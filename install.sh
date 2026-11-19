@@ -99,9 +99,18 @@ esac
 
 # ── tools ────────────────────────────────────────────────────────────────
 if command -v curl >/dev/null 2>&1; then
-    fetch() { curl -fsSL --retry 3 -o "$2" "$1"; }
+    # Remote downloads: https only (also across redirects), and bounded in time
+    # so a stalled server cannot hang the installer. file:// stays allowed for
+    # a local mirror (used by tools/test_install.sh).
+    fetch() {
+        case "$1" in
+            file://*) curl -fsSL --retry 3 -o "$2" "$1" ;;
+            *) curl -fsSL --proto '=https' --proto-redir '=https' --retry 3 \
+                    --connect-timeout 20 --max-time 600 -o "$2" "$1" ;;
+        esac
+    }
 elif command -v wget >/dev/null 2>&1; then
-    fetch() { wget -q -O "$2" "$1"; }
+    fetch() { wget -q --https-only --timeout=60 --tries=3 -O "$2" "$1"; }
 else
     die "need curl or wget to download"
 fi
@@ -165,7 +174,7 @@ cp "$SRC/pz" "$BIN_DIR/.pz.new"
 chmod 0755 "$BIN_DIR/.pz.new"
 mv -f "$BIN_DIR/.pz.new" "$BIN_DIR/pz"          # atomic: a running pz keeps its old file
 printf '%s\n' "$BIN_DIR/pz" > "$MANIFEST.new"
-for f in LICENSE README.md CHANGELOG.md; do
+for f in LICENSE NOTICE LICENSE-LGPL-3.0.txt README.md CHANGELOG.md; do
     if [ -f "$SRC/$f" ]; then
         cp "$SRC/$f" "$DOC_DIR/$f"
         printf '%s\n' "$DOC_DIR/$f" >> "$MANIFEST.new"

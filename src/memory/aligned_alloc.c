@@ -19,12 +19,12 @@ void *tn_aligned_alloc(size_t size, size_t alignment) {
     if (size == 0 || !alignment_valid(alignment)) return NULL;
     if (size > (size_t)-1 - alignment) return NULL;
     void *ptr = NULL;
-    int ret = posix_memalign(&ptr, alignment, size);
+    int ret   = posix_memalign(&ptr, alignment, size);
     return (ret == 0) ? ptr : NULL;
 }
 
 void tn_aligned_free(void *ptr) {
-    free(ptr);  /* posix_memalign pointers are free()-compatible */
+    free(ptr); /* posix_memalign pointers are free()-compatible */
 }
 
 #elif TN_WIN32
@@ -37,7 +37,7 @@ void *tn_aligned_alloc(size_t size, size_t alignment) {
 }
 
 void tn_aligned_free(void *ptr) {
-    _aligned_free(ptr);  /* MUST use _aligned_free, not free() */
+    _aligned_free(ptr); /* MUST use _aligned_free, not free() */
 }
 
 #endif
@@ -104,7 +104,7 @@ void tn_mem_commit(void *p, size_t n) {
             uintptr_t a = (uintptr_t)p & ~((uintptr_t)pg - 1);
             uintptr_t e = ((uintptr_t)p + n + (uintptr_t)pg - 1) & ~((uintptr_t)pg - 1);
             if (madvise((void *)a, e - a, MADV_POPULATE_WRITE) == 0) return;
-        }   /* EINVAL on kernels < 5.14: fall through to touching */
+        } /* EINVAL on kernels < 5.14: fall through to touching */
     }
 #endif
     volatile unsigned char *b = (volatile unsigned char *)p;

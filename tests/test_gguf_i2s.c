@@ -16,14 +16,17 @@
 #include <string.h>
 
 static uint32_t rng = 12345u;
-static int next_tern(void) { rng = rng * 1664525u + 1013904223u; return (int)((rng >> 16) % 3u) - 1; }
+static int next_tern(void) {
+    rng = rng * 1664525u + 1013904223u;
+    return (int)((rng >> 16) % 3u) - 1;
+}
 
 static void test_repack_roundtrip(void) {
     const int d = 6, n = 256;
-    size_t nel = (size_t)d * n;
+    size_t nel   = (size_t)d * n;
     int8_t *vals = (int8_t *)malloc(nel);
     uint8_t *i2s = (uint8_t *)malloc(tn_i2s_tensor_bytes(nel));
-    uint8_t *pk = (uint8_t *)malloc((size_t)d * packed_bytes(n));
+    uint8_t *pk  = (uint8_t *)malloc((size_t)d * packed_bytes(n));
     for (size_t i = 0; i < nel; i++) vals[i] = (int8_t)next_tern();
     tn_i2s_pack_reference(i2s, vals, nel, 0.75f);
     float sc = 0.0f;
@@ -32,7 +35,8 @@ static void test_repack_roundtrip(void) {
     int same = 1;
     for (int r = 0; r < d; r++)
         for (int j = 0; j < n; j++)
-            if (unpack_ternary(pk + (size_t)r * packed_bytes(n), j) != vals[(size_t)r * n + j]) same = 0;
+            if (unpack_ternary(pk + (size_t)r * packed_bytes(n), j) != vals[(size_t)r * n + j])
+                same = 0;
     TEST_ASSERT(same, "every weight survives the repack (row-major, packed_bytes rows)");
 
     /* Matmul on the repacked weights == float reference sum_j w*x * scale. */
@@ -47,7 +51,9 @@ static void test_repack_roundtrip(void) {
         if (fabsf(ref[r] - out[r]) > 1e-4f) close = 0;
     }
     TEST_ASSERT(close, "ternary matmul on repacked I2_S matches float reference");
-    free(vals); free(i2s); free(pk);
+    free(vals);
+    free(i2s);
+    free(pk);
 }
 
 static void test_repack_rejects(void) {
@@ -58,11 +64,12 @@ static void test_repack_rejects(void) {
     tn_i2s_pack_reference(src, vals, 128, 1.0f);
     TEST_ASSERT_EQ(tn_i2s_repack(dst, &sc, src, 1, 128), 0, "valid single block");
     TEST_ASSERT_EQ(tn_i2s_repack(dst, &sc, src, 2, 64), -1, "columns not multiple of 128");
-    src[5] = 0xFF;                                    /* code 3 = invalid */
+    src[5] = 0xFF; /* code 3 = invalid */
     TEST_ASSERT_EQ(tn_i2s_repack(dst, &sc, src, 1, 128), -1, "invalid code 3 refused");
     tn_i2s_pack_reference(src, vals, 128, NAN);
     TEST_ASSERT_EQ(tn_i2s_repack(dst, &sc, src, 1, 128), -1, "non-finite scale refused");
-    TEST_ASSERT_EQ((int)tn_i2s_tensor_bytes(2560 * 640), 2560 * 640 / 4 + 32, "tensor size formula");
+    TEST_ASSERT_EQ((int)tn_i2s_tensor_bytes(2560 * 640), 2560 * 640 / 4 + 32,
+                   "tensor size formula");
 }
 
 static void test_rope_neox(void) {
@@ -72,19 +79,28 @@ static void test_rope_neox(void) {
     float v[HD], perm[HD], kk[HD], kp[HD];
     for (int i = 0; i < HD; i++) v[i] = (float)(i + 1) * 0.3f - 1.0f;
     /* de-interleave: perm[2i] = v[i], perm[2i+1] = v[i + HD/2] */
-    for (int i = 0; i < HD / 2; i++) { perm[2 * i] = v[i]; perm[2 * i + 1] = v[i + HD / 2]; }
+    for (int i = 0; i < HD / 2; i++) {
+        perm[2 * i]     = v[i];
+        perm[2 * i + 1] = v[i + HD / 2];
+    }
     memcpy(kk, v, sizeof(v));
     memcpy(kp, perm, sizeof(perm));
-    const float corr[2] = { 0.0f, 0.0f };
+    const float corr[2] = {0.0f, 0.0f};
     apply_rope_ex(v, kk, freq, HD, 7, 1, 1, 1.0f, 0.0f, 1.0f, corr, ROPE_LAYOUT_NEOX);
     apply_rope_ex(perm, kp, freq, HD, 7, 1, 1, 1.0f, 0.0f, 1.0f, corr, ROPE_LAYOUT_NORM);
     int ok = 1;
     for (int i = 0; i < HD / 2; i++)
-        if (fabsf(v[i] - perm[2 * i]) > 1e-6f || fabsf(v[i + HD / 2] - perm[2 * i + 1]) > 1e-6f) ok = 0;
+        if (fabsf(v[i] - perm[2 * i]) > 1e-6f || fabsf(v[i + HD / 2] - perm[2 * i + 1]) > 1e-6f)
+            ok = 0;
     TEST_ASSERT(ok, "NEOX == NORM on the de-interleaved vector");
     float n2a = 0, n2b = 0;
-    for (int i = 0; i < HD; i++) { n2a += kk[i] * kk[i]; }
-    for (int i = 0; i < HD; i++) { float t = (float)(i + 1) * 0.3f - 1.0f; n2b += t * t; }
+    for (int i = 0; i < HD; i++) {
+        n2a += kk[i] * kk[i];
+    }
+    for (int i = 0; i < HD; i++) {
+        float t = (float)(i + 1) * 0.3f - 1.0f;
+        n2b += t * t;
+    }
     TEST_ASSERT_FLOAT_EQ(n2a, n2b, 1e-4f, "rotation preserves the norm");
 
     TEST_ASSERT_EQ(rope_layout_for_arch("llama"), ROPE_LAYOUT_NORM, "llama -> norm");

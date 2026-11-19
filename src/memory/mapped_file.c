@@ -57,8 +57,7 @@ TernaryError mapped_file_open(MappedFile *mf, const char *path) {
 #ifndef MAP_POPULATE
 #define MAP_POPULATE 0
 #endif
-    void *data = mmap(NULL, file_size, PROT_READ,
-                      MAP_PRIVATE | MAP_POPULATE, fd, 0);
+    void *data = mmap(NULL, file_size, PROT_READ, MAP_PRIVATE | MAP_POPULATE, fd, 0);
     if (data == MAP_FAILED) {
         flock(fd, LOCK_UN);
         close(fd);
@@ -106,7 +105,7 @@ void mapped_file_close(MappedFile *mf) {
      * function's "safe to call on a zeroed MappedFile" doc promise. Without
      * it, a zeroed struct has fd == 0, and `close(0)` would silently close
      * stdin instead of being the no-op callers rely on (2026-09-22: found
-     * while adding a caller — loaded_model_free() in cli/model_load.c — that
+     * while adding a caller — loaded_model_free() in runtime/model_load.c — that
      * is documented to make exactly this zeroed-struct call). */
     if (mf->data) {
         munmap(mf->data, mf->size);
@@ -126,8 +125,8 @@ void mapped_file_close(MappedFile *mf) {
 TernaryError mapped_file_open(MappedFile *mf, const char *path) {
     memset(mf, 0, sizeof(*mf));
 
-    HANDLE hFile = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ,
-                               NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    HANDLE hFile = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING,
+                               FILE_ATTRIBUTE_NORMAL, NULL);
     TN_CHECK(hFile != INVALID_HANDLE_VALUE, TN_ERR_FILE_OPEN);
 
     LARGE_INTEGER file_size;
@@ -151,7 +150,7 @@ TernaryError mapped_file_open(MappedFile *mf, const char *path) {
 
     mf->data   = data;
     mf->size   = (size_t)file_size.QuadPart;
-    mf->handle = hFile;  /* store native HANDLE without truncation (QA-BUG-003) */
+    mf->handle = hFile; /* store native HANDLE without truncation (QA-BUG-003) */
     return TN_OK;
 }
 
@@ -178,6 +177,7 @@ void mapped_file_release(const void *p, size_t n) {
      * next access refaults them from the file, never zero-fills. */
     if (hi > lo) (void)madvise((void *)lo, hi - lo, MADV_DONTNEED);
 #else
-    (void)p; (void)n;
+    (void)p;
+    (void)n;
 #endif
 }

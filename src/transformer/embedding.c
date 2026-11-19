@@ -11,14 +11,12 @@
 #define Q35_EMBED_Q2_0_BYTES 34
 
 void embed_token_q2_0(float *out, int token, const void *embd_q2_0_raw, int dim) {
-    size_t row_bytes = (size_t)(dim / Q35_EMBED_Q2_0_BLOCK) * Q35_EMBED_Q2_0_BYTES;
+    size_t row_bytes   = (size_t)(dim / Q35_EMBED_Q2_0_BLOCK) * Q35_EMBED_Q2_0_BYTES;
     const uint8_t *row = (const uint8_t *)embd_q2_0_raw + (size_t)token * row_bytes;
     gguf_dequant_q2_0(out, row, (size_t)dim);
 }
 
-void embed_token(float *out, int token,
-                 const float *embd_f32,
-                 const tn_u16 *embedding_table,
+void embed_token(float *out, int token, const float *embd_f32, const tn_u16 *embedding_table,
                  int dim) {
     if (embd_f32) {
         /* F32 path: direct copy — matches llama.cpp's ggml_get_rows().

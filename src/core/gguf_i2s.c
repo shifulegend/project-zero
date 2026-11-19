@@ -3,10 +3,11 @@
 #include <stdint.h>
 #include <string.h>
 
-size_t tn_i2s_tensor_bytes(size_t n_elems) { return n_elems / 4 + 32; }
+size_t tn_i2s_tensor_bytes(size_t n_elems) {
+    return n_elems / 4 + 32;
+}
 
-int tn_i2s_repack(uint8_t *dst, float *scale_out, const uint8_t *src,
-                  int d_rows, int n_inner) {
+int tn_i2s_repack(uint8_t *dst, float *scale_out, const uint8_t *src, int d_rows, int n_inner) {
     if (!dst || !scale_out || !src || d_rows <= 0 || n_inner <= 0 || n_inner % TN_I2S_BLOCK != 0)
         return -1;
     size_t n = (size_t)d_rows * (size_t)n_inner;
@@ -26,9 +27,9 @@ int tn_i2s_repack(uint8_t *dst, float *scale_out, const uint8_t *src,
         uint8_t *out = dst + b * 32;
         for (int q = 0; q < 8; q++) {
             const uint8_t *w4 = in + 4 * q;
-            uint32_t w = (uint32_t)w4[0] | ((uint32_t)w4[1] << 8) |
-                         ((uint32_t)w4[2] << 16) | ((uint32_t)w4[3] << 24);
-            bad |= w & (w >> 1) & 0x55555555u;          /* any code 3 (0b11) */
+            uint32_t w        = (uint32_t)w4[0] | ((uint32_t)w4[1] << 8) | ((uint32_t)w4[2] << 16) |
+                         ((uint32_t)w4[3] << 24);
+            bad |= w & (w >> 1) & 0x55555555u; /* any code 3 (0b11) */
             for (int g = 0; g < 4; g++) {
                 uint32_t f = (w >> (6 - 2 * g)) & 0x03030303u;
                 f |= f >> 6;

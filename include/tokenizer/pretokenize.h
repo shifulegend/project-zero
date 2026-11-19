@@ -20,14 +20,14 @@
 #include <stddef.h>
 
 typedef enum {
-    PRETOK_NONE = 0,  /* no split (SentencePiece models, legacy .bin tokenizers) */
-    PRETOK_DEFAULT,   /* GGUF without tokenizer.ggml.pre (llama.cpp "default") */
-    PRETOK_GPT2,      /* "gpt2", "olmo", "mpt", ... */
-    PRETOK_LLAMA3,    /* "llama3", "llama-bpe", "smaug-bpe", "falcon3", ... */
-    PRETOK_QWEN2,     /* "qwen2", "stablelm2", "hunyuan" */
-    PRETOK_SMOLLM,    /* "smollm", "codeshell", "exaone", "minerva" */
-    PRETOK_DEEPSEEK_LLM,   /* "deepseek-llm" (DeepSeek-V2, DeepSeek-LLM) */
-    PRETOK_DEEPSEEK_CODER  /* "deepseek-coder" */
+    PRETOK_NONE = 0,      /* no split (SentencePiece models, legacy .bin tokenizers) */
+    PRETOK_DEFAULT,       /* GGUF without tokenizer.ggml.pre (llama.cpp "default") */
+    PRETOK_GPT2,          /* "gpt2", "olmo", "mpt", ... */
+    PRETOK_LLAMA3,        /* "llama3", "llama-bpe", "smaug-bpe", "falcon3", ... */
+    PRETOK_QWEN2,         /* "qwen2", "stablelm2", "hunyuan" */
+    PRETOK_SMOLLM,        /* "smollm", "codeshell", "exaone", "minerva" */
+    PRETOK_DEEPSEEK_LLM,  /* "deepseek-llm" (DeepSeek-V2, DeepSeek-LLM) */
+    PRETOK_DEEPSEEK_CODER /* "deepseek-coder" */
 } PretokType;
 
 /* tokenizer.ggml.pre value (NULL = key absent) -> type. Unknown names map to
@@ -39,7 +39,7 @@ const char *pretok_type_name(PretokType t);
  * byte pairs into starts/lens and returns the fragment count, or -1 when
  * max_frags is too small. Fragments cover the input exactly, in order, and
  * never split a UTF-8 sequence. */
-int pretokenize(PretokType type, const char *text, size_t len,
-                size_t *starts, size_t *lens, int max_frags);
+int pretokenize(PretokType type, const char *text, size_t len, size_t *starts, size_t *lens,
+                int max_frags);
 
 #endif /* TN_PRETOKENIZE_H */

@@ -36,9 +36,9 @@ extern "C" {
  * Shared (non-owned) references to weights, config, tokenizer, thread pool.
  */
 typedef struct {
-    RunState  *state;     /* dedicated embedding RunState (owned) */
-    int        embed_dim; /* = cfg->dim */
-    int        initialised;
+    RunState *state; /* dedicated embedding RunState (owned) */
+    int embed_dim;   /* = cfg->dim */
+    int initialised;
 } Embedder;
 
 /**
@@ -75,9 +75,8 @@ void embedder_free(Embedder *emb);
  * @param tp    Thread pool (may be NULL for single-threaded)
  * @return      Number of tokens processed (> 0), or -1 on error.
  */
-int embedder_generate(Embedder *emb, float *out, const char *text,
-                      const Config *cfg, const TransformerWeights *w,
-                      Tokenizer *tok, ThreadPool *tp);
+int embedder_generate(Embedder *emb, float *out, const char *text, const Config *cfg,
+                      const TransformerWeights *w, Tokenizer *tok, ThreadPool *tp);
 
 #ifdef __cplusplus
 }

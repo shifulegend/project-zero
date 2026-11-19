@@ -31,7 +31,7 @@ static const char *allowlist[] = {"echo", "ls", "cat", "pwd", "uname", "date", "
  * or not /bin is itself a symlink to /usr/bin) and macOS -- every
  * allow-listed command is always in one of them. (2026-09-19: see
  * docs/ai/mistakes.md for the differential run that flagged this gap.) */
-static const char *trusted_bin_dirs[] = { "/bin", "/usr/bin", NULL };
+static const char *trusted_bin_dirs[] = {"/bin", "/usr/bin", NULL};
 
 /* Resolves `cmd_name` to an absolute, executable path inside
  * trusted_bin_dirs. Returns 1 and NUL-terminates `out` on success, 0 if no
@@ -91,11 +91,14 @@ static int path_arg_is_safe(const char *arg) {
 static int path_escapes_cwd_via_symlink(const char *arg) {
     char resolved[PATH_MAX];
     char cwd[PATH_MAX];
-    if (!realpath(arg, resolved)) return 0;      /* doesn't exist -- not this check's problem */
-    if (!getcwd(cwd, sizeof(cwd))) return 0;      /* can't determine CWD -- don't false-block */
+    /* Fail closed: if the CWD cannot be determined (deleted, unreadable) there
+     * is no subtree to confine to, so the argument is refused. */
+    if (!getcwd(cwd, sizeof(cwd))) return 1;
+    if (!realpath(arg, resolved)) return 0; /* doesn't exist -- not this check's problem */
     size_t cwd_len = strlen(cwd);
-    if (strncmp(resolved, cwd, cwd_len) != 0) return 1;         /* escaped */
-    if (resolved[cwd_len] != '\0' && resolved[cwd_len] != '/') return 1; /* e.g. cwd="/a/b", resolved="/a/bc" */
+    if (strncmp(resolved, cwd, cwd_len) != 0) return 1; /* escaped */
+    if (resolved[cwd_len] != '\0' && resolved[cwd_len] != '/')
+        return 1; /* e.g. cwd="/a/b", resolved="/a/bc" */
     return 0;
 }
 
@@ -123,8 +126,28 @@ int exec_policy_allows_args(char *const argv[]) {
     return 1;
 }
 
-ExecResult execute_command(char *const argv[], int timeout_sec, char *out_buf, size_t out_buf_size) {
-    ExecResult res = { .exit_code = -1, .timed_out = 0, .stdout_len = 0 };
+extern char **environ;
+
+size_t exec_build_child_env(char *out[], size_t cap) {
+    static char path_entry[] = "PATH=/usr/bin:/bin";
+    size_t n                 = 0;
+    if (cap < 2) {
+        if (cap) out[0] = NULL;
+        return 0;
+    }
+    out[n++] = path_entry;
+    for (char **e = environ; e && *e && n + 1 < cap; e++) {
+        if (strncmp(*e, "TZ=", 3) == 0 || strncmp(*e, "LANG=", 5) == 0 ||
+            strncmp(*e, "LC_", 3) == 0)
+            out[n++] = *e;
+    }
+    out[n] = NULL;
+    return n;
+}
+
+ExecResult execute_command(char *const argv[], int timeout_sec, char *out_buf,
+                           size_t out_buf_size) {
+    ExecResult res = {.exit_code = -1, .timed_out = 0, .stdout_len = 0};
     if (!argv || !argv[0]) return res;
     if (!exec_policy_allows_args(argv)) {
         res.exit_code = 127; /* policy denied */
@@ -136,9 +159,14 @@ ExecResult execute_command(char *const argv[], int timeout_sec, char *out_buf, s
         return res;
     }
 
+    /* Built before fork(): the child must not allocate or call getenv(). */
+    char *child_env[64];
+    exec_build_child_env(child_env, sizeof(child_env) / sizeof(child_env[0]));
+
     pid_t pid = fork();
     if (pid < 0) {
-        close(pipefd[0]); close(pipefd[1]);
+        close(pipefd[0]);
+        close(pipefd[1]);
         return res;
     }
 
@@ -146,7 +174,8 @@ ExecResult execute_command(char *const argv[], int timeout_sec, char *out_buf, s
         /* child */
         dup2(pipefd[1], STDOUT_FILENO);
         dup2(pipefd[1], STDERR_FILENO);
-        close(pipefd[0]); close(pipefd[1]);
+        close(pipefd[0]);
+        close(pipefd[1]);
 
         /* Defense-in-depth resource caps, independent of the parent's own
          * timeout/SIGKILL loop below (which is cooperative and could be
@@ -182,7 +211,7 @@ ExecResult execute_command(char *const argv[], int timeout_sec, char *out_buf, s
         {
             char resolved[PATH_MAX];
             if (resolve_trusted_path(argv[0], resolved, sizeof(resolved))) {
-                execv(resolved, argv);
+                execve(resolved, argv, child_env);
             }
             /* Not found in a trusted directory, or exec itself failed --
              * never fall back to execvp()'s $PATH search here. */
@@ -198,19 +227,20 @@ ExecResult execute_command(char *const argv[], int timeout_sec, char *out_buf, s
     fcntl(pipefd[0], F_SETFL, flags | O_NONBLOCK);
 
     size_t total_read = 0;
-    int status = 0;
-    time_t start = time(NULL);
+    int status        = 0;
+    time_t start      = time(NULL);
 
     while (1) {
         fd_set rfds;
         FD_ZERO(&rfds);
         FD_SET(pipefd[0], &rfds);
         struct timeval tv;
-        tv.tv_sec = 0;
+        tv.tv_sec  = 0;
         tv.tv_usec = 100000; /* 100ms polling */
-        int rv = select(pipefd[0] + 1, &rfds, NULL, NULL, &tv);
+        int rv     = select(pipefd[0] + 1, &rfds, NULL, NULL, &tv);
         if (rv > 0 && FD_ISSET(pipefd[0], &rfds)) {
-            ssize_t r = read(pipefd[0], (out_buf ? out_buf + total_read : NULL), (out_buf_size > total_read ? out_buf_size - total_read - 1 : 0));
+            ssize_t r = read(pipefd[0], (out_buf ? out_buf + total_read : NULL),
+                             (out_buf_size > total_read ? out_buf_size - total_read - 1 : 0));
             if (r > 0) {
                 total_read += (size_t)r;
                 if (total_read >= out_buf_size - 1) break;
@@ -240,7 +270,8 @@ ExecResult execute_command(char *const argv[], int timeout_sec, char *out_buf, s
     }
 
     close(pipefd[0]);
-    if (out_buf && out_buf_size > 0) out_buf[total_read < out_buf_size ? total_read : out_buf_size - 1] = '\0';
+    if (out_buf && out_buf_size > 0)
+        out_buf[total_read < out_buf_size ? total_read : out_buf_size - 1] = '\0';
     res.stdout_len = total_read;
     if (!res.timed_out) {
         if (WIFEXITED(status)) res.exit_code = WEXITSTATUS(status);

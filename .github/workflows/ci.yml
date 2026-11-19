@@ -11,29 +11,110 @@ on:
                           # master/main, so a direct push to another branch
                           # never runs this workflow on its own)
 
+# Least privilege: read-only token; no job here writes to the repository.
+permissions:
+  contents: read
+
 jobs:
   changelog:
     name: Changelog format (Keep a Changelog + SemVer)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Lint CHANGELOG.md and test the tool
         run: |
           python3 tools/changelog.py check --require-unreleased
           python3 -I tools/test_changelog.py
+      - name: Header include guards (TN_..._H, no #pragma once)
+        run: |
+          python3 -I tools/test_check_header_guards.py
+          python3 -I tools/check_header_guards.py
+      - name: Every header compiles on its own
+        run: |
+          sh tools/test_check_headers_standalone.sh
+          sh tools/check_headers_standalone.sh gcc
+      - name: Module include cycles (no new coupling inside a cycle)
+        run: |
+          python3 -I tools/check_include_layers.py --self-test
+          python3 -I tools/check_include_layers.py
+      - name: No stray files at the repository root
+        run: |
+          sh tools/test_check_root_files.sh
+          sh tools/check_root_files.sh
+      - name: SBOM generator tests
+        run: python3 -I tools/test_gen_sbom.py
       - name: Benchmark scripts (tools/bench) unit tests
         run: python3 tools/bench/test_bench.py
+      - name: Python lint (ruff, syntax errors and unused or undefined names)
+        run: |
+          pip install --quiet ruff==0.16.9
+          ruff check .
+          ruff format --check .
       # 2026-11-11: .agents/rules and .github/instructions are generated from .claude/rules.
       - name: AI adapter files in sync with .claude/rules
         run: python3 -I tools/sync_ai_adapters.py --check
+
+  pr-size:
+    name: Pull request size (max 400 changed lines)
+    if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'size-override')
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Count changed lines against the base branch
+        run: |
+          python3 -I tools/test_check_pr_size.py
+          python3 -I tools/check_pr_size.py "origin/${{ github.base_ref }}"
+
+  format:
+    name: C/C++ formatting (clang-format 18)
+    runs-on: ubuntu-24.04            # pinned image: its clang-format-18 is the one the tree was formatted with
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install clang-format 18
+        run: sudo apt-get install -y -q clang-format-18
+      - name: Check formatting (make check-format)
+        run: make check-format CLANG_FORMAT=clang-format-18
+
+  static-analysis:
+    name: clang-tidy ratchet (bugprone, cert, clang-analyzer)
+    runs-on: ubuntu-24.04            # pinned image: clang-tidy-18 gives the same count as the committed baseline
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install clang-tidy 18
+        run: sudo apt-get install -y -q clang-tidy-18
+      - name: No new findings (tools/clang_tidy_baseline.txt)
+        run: sh tools/check_clang_tidy.sh
+
+  npm-audit:
+    name: npm audit (web UI and screenshot tooling)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Production dependencies must have no known vulnerabilities (blocking)
+        run: |
+          for d in webui tools/screenshots/cli; do
+            echo "== $d"; (cd "$d" && npm audit --omit=dev --audit-level=low)
+          done
+      - name: Build-time (dev) dependencies, for information
+        continue-on-error: true      # vite 5 / svelte 4 advisories need a major upgrade
+        run: |
+          for d in webui tools/screenshots/cli; do
+            echo "== $d"; (cd "$d" && npm audit --audit-level=high)
+          done
 
   installer:
     name: Installer (install.sh, offline mirror)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Lint (shellcheck)
         run: shellcheck install.sh tools/test_install.sh tools/check_dist_isa.sh
       - name: Build (release)
@@ -52,7 +133,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install dependencies
         run: |
@@ -60,13 +141,13 @@ jobs:
           sudo apt-get install -y -q gcc clang make
 
       - name: Build (release)
-        run: make release CC=${{ matrix.compiler }}
+        run: make release CC=${{ matrix.compiler }} WERROR=1   # warnings are errors in CI only
 
       - name: Run tests
-        run: make test CC=${{ matrix.compiler }}
+        run: make test CC=${{ matrix.compiler }} WERROR=1
 
       - name: Build (debug + sanitizers)
-        run: make debug CC=${{ matrix.compiler }}
+        run: make debug CC=${{ matrix.compiler }} WERROR=1
 
       - name: Build (portable dist) + smoke test
         run: |
@@ -95,7 +176,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Build (release)
         run: make release
@@ -108,7 +189,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Configure
         run: cmake -B build_cmake -DCMAKE_BUILD_TYPE=Release
@@ -121,7 +202,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install dependencies
         run: |
@@ -135,7 +216,7 @@ jobs:
       # immutable release artifact on Hugging Face, never rewritten in place.
       - name: Cache test model
         id: model-cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: models/smollm2-q8_0.gguf
           key: smollm2-135m-instruct-q8_0-gguf
@@ -166,7 +247,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install dependencies
         run: |
@@ -177,7 +258,7 @@ jobs:
         run: make coverage CC=gcc
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: coverage-report
           path: build/coverage/html

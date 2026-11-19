@@ -4,7 +4,11 @@
 #include "test_harness.h"
 #include "transformer/stop_seq.h"
 
-typedef struct { char out[512]; int calls; int stop_after; } Sink;
+typedef struct {
+    char out[512];
+    int calls;
+    int stop_after;
+} Sink;
 
 static int sink_emit(const char *text, void *ud) {
     Sink *s = (Sink *)ud;
@@ -21,8 +25,9 @@ static int feed_all(StopMatcher *m, const char *const *pieces, int n, Sink *s) {
 }
 
 static void test_passthrough_without_stops(void) {
-    StopMatcher m; stop_matcher_init(&m, NULL, 0);
-    Sink s = {{0}, 0, 0};
+    StopMatcher m;
+    stop_matcher_init(&m, NULL, 0);
+    Sink s          = {{0}, 0, 0};
     const char *p[] = {"Hello", ", ", "world"};
     TEST_ASSERT_EQ(feed_all(&m, p, 3, &s), 0, "never stops");
     TEST_ASSERT(strcmp(s.out, "Hello, world") == 0, "text forwarded unchanged");
@@ -31,8 +36,9 @@ static void test_passthrough_without_stops(void) {
 
 static void test_stop_across_pieces(void) {
     const char *stops[] = {"\nUser:"};
-    StopMatcher m; stop_matcher_init(&m, stops, 1);
-    Sink s = {{0}, 0, 0};
+    StopMatcher m;
+    stop_matcher_init(&m, stops, 1);
+    Sink s          = {{0}, 0, 0};
     const char *p[] = {"Answer", " is 4.", "\nUs", "er:", " more"};
     TEST_ASSERT_EQ(feed_all(&m, p, 5, &s), 1, "stop detected across pieces");
     TEST_ASSERT(strcmp(s.out, "Answer is 4.") == 0, "stop text and later text not emitted");
@@ -41,16 +47,17 @@ static void test_stop_across_pieces(void) {
 
 static void test_false_prefix_released(void) {
     const char *stops[] = {"END"};
-    StopMatcher m; stop_matcher_init(&m, stops, 1);
-    Sink s = {{0}, 0, 0};
-    const char *p[] = {"the EN", "D", "ING"};   /* "END" appears -> stop */
+    StopMatcher m;
+    stop_matcher_init(&m, stops, 1);
+    Sink s          = {{0}, 0, 0};
+    const char *p[] = {"the EN", "D", "ING"}; /* "END" appears -> stop */
     TEST_ASSERT_EQ(feed_all(&m, p, 3, &s), 1, "stops on END");
     TEST_ASSERT(strcmp(s.out, "the ") == 0, "only text before stop");
     stop_matcher_free(&m);
 
     stop_matcher_init(&m, stops, 1);
-    Sink t = {{0}, 0, 0};
-    const char *q[] = {"the EN", "ergy"};       /* held "EN" released once disambiguated */
+    Sink t          = {{0}, 0, 0};
+    const char *q[] = {"the EN", "ergy"}; /* held "EN" released once disambiguated */
     TEST_ASSERT_EQ(feed_all(&m, q, 2, &t), 0, "no stop");
     TEST_ASSERT(strcmp(t.out, "the ENergy") == 0, "held prefix released intact");
     stop_matcher_free(&m);
@@ -58,8 +65,9 @@ static void test_false_prefix_released(void) {
 
 static void test_flush_emits_held_tail(void) {
     const char *stops[] = {"###"};
-    StopMatcher m; stop_matcher_init(&m, stops, 1);
-    Sink s = {{0}, 0, 0};
+    StopMatcher m;
+    stop_matcher_init(&m, stops, 1);
+    Sink s          = {{0}, 0, 0};
     const char *p[] = {"done #"};
     TEST_ASSERT_EQ(feed_all(&m, p, 1, &s), 0, "no stop");
     TEST_ASSERT(strcmp(s.out, "done #") == 0, "flush emits the held '#'");
@@ -68,9 +76,10 @@ static void test_flush_emits_held_tail(void) {
 
 static void test_earliest_of_multiple(void) {
     const char *stops[] = {"zzz", "b", ""};
-    StopMatcher m; stop_matcher_init(&m, stops, 3);
+    StopMatcher m;
+    stop_matcher_init(&m, stops, 3);
     TEST_ASSERT_EQ(m.n_seqs, 2, "empty stop ignored");
-    Sink s = {{0}, 0, 0};
+    Sink s          = {{0}, 0, 0};
     const char *p[] = {"aab zzz"};
     TEST_ASSERT_EQ(feed_all(&m, p, 1, &s), 1, "stops");
     TEST_ASSERT(strcmp(s.out, "aa") == 0, "earliest match wins");
@@ -78,7 +87,8 @@ static void test_earliest_of_multiple(void) {
 }
 
 static void test_emit_requested_stop_propagates(void) {
-    StopMatcher m; stop_matcher_init(&m, NULL, 0);
+    StopMatcher m;
+    stop_matcher_init(&m, NULL, 0);
     Sink s = {{0}, 0, 1};
     TEST_ASSERT_EQ(stop_matcher_feed(&m, "x", sink_emit, &s), 1, "callback stop honored");
     stop_matcher_free(&m);

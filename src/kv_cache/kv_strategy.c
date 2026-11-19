@@ -50,9 +50,9 @@
  * on a 16 GB laptop (i5-11300H) due to calloc touching all pages at init.
  */
 #define GB_32 ((tn_i64)32 * 1024 * 1024 * 1024)
-#define GB_8  ((tn_i64) 8 * 1024 * 1024 * 1024)   /* K-3: was GB_12 (too high for 16 GB) */
-#define GB_5  ((tn_i64) 5 * 1024 * 1024 * 1024)   /* K-3: was GB_10 */
-#define GB_2  ((tn_i64) 2 * 1024 * 1024 * 1024)
+#define GB_8 ((tn_i64)8 * 1024 * 1024 * 1024) /* K-3: was GB_12 (too high for 16 GB) */
+#define GB_5 ((tn_i64)5 * 1024 * 1024 * 1024) /* K-3: was GB_10 */
+#define GB_2 ((tn_i64)2 * 1024 * 1024 * 1024)
 
 /* Default sliding window sizes */
 #define SW_WINDOW_LARGE 1024
@@ -60,7 +60,7 @@
 
 tn_i64 tn_get_free_ram(void) {
 #if TN_POSIX
-  /*
+    /*
    * Use MemAvailable from /proc/meminfo, not _SC_AVPHYS_PAGES.
    *
    * _SC_AVPHYS_PAGES returns MemFree — only pages with no current owner.
@@ -75,143 +75,148 @@ tn_i64 tn_get_free_ram(void) {
    * any kernel we care about. Fall back to _SC_AVPHYS_PAGES only if the
    * parse fails.
    */
-  FILE *f = fopen("/proc/meminfo", "r");
-  if (f) {
-    char line[128];
-    while (fgets(line, sizeof(line), f)) {
-      long long kb = 0;
-      if (sscanf(line, "MemAvailable: %lld kB", &kb) == 1) {
+    FILE *f = fopen("/proc/meminfo", "r");
+    if (f) {
+        char line[128];
+        while (fgets(line, sizeof(line), f)) {
+            long long kb = 0;
+            if (sscanf(line, "MemAvailable: %lld kB", &kb) == 1) {
+                fclose(f);
+                return (tn_i64)kb * 1024LL;
+            }
+        }
         fclose(f);
-        return (tn_i64)kb * 1024LL;
-      }
     }
-    fclose(f);
-  }
-  /* Fallback: use page count * page size.
+    /* Fallback: use page count * page size.
    * _SC_AVPHYS_PAGES (free pages) is Linux/glibc; on macOS use _SC_PHYS_PAGES
    * (total) as a conservative over-estimate — the vm_stat path above is the
    * accurate macOS path, so reaching here means vm_stat also failed. */
 #if defined(_SC_AVPHYS_PAGES)
-  long pages = sysconf(_SC_AVPHYS_PAGES);
+    long pages = sysconf(_SC_AVPHYS_PAGES);
 #else
-  long pages = sysconf(_SC_PHYS_PAGES);  /* macOS fallback — total, not free */
+    long pages = sysconf(_SC_PHYS_PAGES); /* macOS fallback — total, not free */
 #endif
-  long page_size = sysconf(_SC_PAGESIZE);
-  if (pages > 0 && page_size > 0) {
-    return (tn_i64)pages * (tn_i64)page_size;
-  }
-  return -1;
+    long page_size = sysconf(_SC_PAGESIZE);
+    if (pages > 0 && page_size > 0) {
+        return (tn_i64)pages * (tn_i64)page_size;
+    }
+    return -1;
 #elif TN_WIN32
-  MEMORYSTATUSEX ms;
-  ms.dwLength = sizeof(ms);
-  if (GlobalMemoryStatusEx(&ms)) {
-    return (tn_i64)ms.ullAvailPhys;
-  }
-  return -1;
+    MEMORYSTATUSEX ms;
+    ms.dwLength = sizeof(ms);
+    if (GlobalMemoryStatusEx(&ms)) {
+        return (tn_i64)ms.ullAvailPhys;
+    }
+    return -1;
 #else
-  return -1;
+    return -1;
 #endif
 }
 
 static KVStrategyOptions g_kv_opts; /* zero = automatic */
 
 void kv_strategy_set_options(const KVStrategyOptions *opt) {
-  if (opt) g_kv_opts = *opt;
-  else memset(&g_kv_opts, 0, sizeof(g_kv_opts));
+    if (opt)
+        g_kv_opts = *opt;
+    else
+        memset(&g_kv_opts, 0, sizeof(g_kv_opts));
 }
 
-int kv_strategy_kv_type(void) { return g_kv_opts.kv_type; }
-const char *kv_strategy_offload_dir(void) { return g_kv_opts.offload_dir; }
+int kv_strategy_kv_type(void) {
+    return g_kv_opts.kv_type;
+}
+const char *kv_strategy_offload_dir(void) {
+    return g_kv_opts.offload_dir;
+}
 
 /* Bytes one position costs across all layers and KV heads (K + V).
  * Per head_dim row: F32 = 4/element; quantized (--kv-type i8|i4) = data
  * bytes + F32 scales (kvq_row_layout; i4 falls back to i8). */
 static tn_i64 kv_bytes_per_token(const Config *cfg, const MoEConfig *mc, int kv_type) {
-  int head_dim = (mc && mc->attn_head_dim > 0) ? mc->attn_head_dim : config_head_dim(cfg);
-  tn_i64 row_bytes = (tn_i64)head_dim * (tn_i64)sizeof(float);
-  if (kv_type != KV_TYPE_F32) {
-    int rb = 0, rs = 0;
-    if (kvq_row_layout((KVCacheType)kv_type, head_dim, &rb, &rs) != 0)
-      kvq_row_layout(KV_TYPE_I8, head_dim, &rb, &rs);
-    row_bytes = (tn_i64)rb + (tn_i64)rs * (tn_i64)sizeof(float);
-  }
-  return (tn_i64)cfg->n_layers * (tn_i64)(cfg->n_kv_heads > 0 ? cfg->n_kv_heads : cfg->n_heads)
-         * row_bytes * 2;
+    int head_dim     = (mc && mc->attn_head_dim > 0) ? mc->attn_head_dim : config_head_dim(cfg);
+    tn_i64 row_bytes = (tn_i64)head_dim * (tn_i64)sizeof(float);
+    if (kv_type != KV_TYPE_F32) {
+        int rb = 0, rs = 0;
+        if (kvq_row_layout((KVCacheType)kv_type, head_dim, &rb, &rs) != 0)
+            kvq_row_layout(KV_TYPE_I8, head_dim, &rb, &rs);
+        row_bytes = (tn_i64)rb + (tn_i64)rs * (tn_i64)sizeof(float);
+    }
+    return (tn_i64)cfg->n_layers * (tn_i64)(cfg->n_kv_heads > 0 ? cfg->n_kv_heads : cfg->n_heads) *
+           row_bytes * 2;
 }
 
 tn_i64 kv_strategy_bytes_per_token(const Config *cfg, const MoEConfig *mc) {
-  return cfg ? kv_bytes_per_token(cfg, mc, g_kv_opts.kv_type) : 0;
+    return cfg ? kv_bytes_per_token(cfg, mc, g_kv_opts.kv_type) : 0;
 }
 
 tn_i64 kv_strategy_budget_tokens(const Config *cfg, const MoEConfig *mc, tn_i64 free_ram) {
-  tn_i64 per_token = kv_strategy_bytes_per_token(cfg, mc);
-  if (per_token <= 0 || free_ram <= 0) return 0;
-  float frac = g_kv_opts.ram_fraction > 0.0f ? g_kv_opts.ram_fraction : KV_DEFAULT_RAM_FRACTION;
-  if (frac > 0.95f) frac = 0.95f;
-  tn_i64 base = free_ram;
-  if (g_kv_opts.offload_dir) {
-    tn_i64 disk = file_backed_free_space(g_kv_opts.offload_dir);
-    if (disk > 0) base = disk;
-  }
-  return (tn_i64)((double)base * (double)frac) / per_token;
+    tn_i64 per_token = kv_strategy_bytes_per_token(cfg, mc);
+    if (per_token <= 0 || free_ram <= 0) return 0;
+    float frac = g_kv_opts.ram_fraction > 0.0f ? g_kv_opts.ram_fraction : KV_DEFAULT_RAM_FRACTION;
+    if (frac > 0.95f) frac = 0.95f;
+    tn_i64 base = free_ram;
+    if (g_kv_opts.offload_dir) {
+        tn_i64 disk = file_backed_free_space(g_kv_opts.offload_dir);
+        if (disk > 0) base = disk;
+    }
+    return (tn_i64)((double)base * (double)frac) / per_token;
 }
 
 KVStrategyResult select_kv_strategy(const Config *cfg, tn_i64 free_ram, const MoEConfig *mc) {
-  return select_kv_strategy_ex(cfg, free_ram, mc, &g_kv_opts);
+    return select_kv_strategy_ex(cfg, free_ram, mc, &g_kv_opts);
 }
 
 void kv_strategy_print(const KVStrategyResult *r, int max_seq_len) {
-  /* 2026-10-18: this used to print e.g. "KV Strategy: Quantized I8" although
+    /* 2026-10-18: this used to print e.g. "KV Strategy: Quantized I8" although
    * no attention path read a quantized cache. It now reports the storage the
    * generic cache really uses (--kv-type) and the tier for what it is: the
    * context-sizing tier. */
-  float frac = g_kv_opts.ram_fraction > 0.0f ? g_kv_opts.ram_fraction : KV_DEFAULT_RAM_FRACTION;
-  printf("KV cache: %s%s%s, max context: %d tokens (sizing tier: %s%s, %s budget %.0f%%)\n",
-         kv_type_name((KVCacheType)g_kv_opts.kv_type),
-         g_kv_opts.offload_dir ? " on disk in " : "",
-         g_kv_opts.offload_dir ? g_kv_opts.offload_dir : "",
-         max_seq_len, r ? kv_strategy_name(r->strategy) : "n/a",
-         g_kv_opts.ctx_size > 0 ? ", --ctx-size" : "",
-         g_kv_opts.offload_dir ? "disk" : "RAM", frac * 100.0f);
+    float frac = g_kv_opts.ram_fraction > 0.0f ? g_kv_opts.ram_fraction : KV_DEFAULT_RAM_FRACTION;
+    printf("KV cache: %s%s%s, max context: %d tokens (sizing tier: %s%s, %s budget %.0f%%)\n",
+           kv_type_name((KVCacheType)g_kv_opts.kv_type),
+           g_kv_opts.offload_dir ? " on disk in " : "",
+           g_kv_opts.offload_dir ? g_kv_opts.offload_dir : "", max_seq_len,
+           r ? kv_strategy_name(r->strategy) : "n/a", g_kv_opts.ctx_size > 0 ? ", --ctx-size" : "",
+           g_kv_opts.offload_dir ? "disk" : "RAM", frac * 100.0f);
 }
 
 KVStrategyResult select_kv_strategy_ex(const Config *cfg, tn_i64 free_ram, const MoEConfig *mc,
                                        const KVStrategyOptions *opt) {
-  KVStrategyResult result;
-  int seq_len = cfg->seq_len;
+    KVStrategyResult result;
+    int seq_len = cfg->seq_len;
 
-  if (free_ram > GB_32) {
-    /* Server / workstation (>32 GB avail) — full float32 KV cache */
-    result.strategy = KV_FULL_F32;
-    result.max_seq_len = seq_len;
-  } else if (free_ram > GB_8) {
-    /* ≥16 GB desktop with >8 GB avail — full context, int8 KV quality.
+    if (free_ram > GB_32) {
+        /* Server / workstation (>32 GB avail) — full float32 KV cache */
+        result.strategy    = KV_FULL_F32;
+        result.max_seq_len = seq_len;
+    } else if (free_ram > GB_8) {
+        /* ≥16 GB desktop with >8 GB avail — full context, int8 KV quality.
      * K-3 fix: was GB_12 which excluded 16 GB machines (typically 7–9 GB avail).
      * Lowering to GB_8 allows 16 GB systems to use full context correctly. */
-    result.strategy = KV_QUANT_I8;
-    result.max_seq_len = seq_len;
-  } else if (free_ram > GB_5) {
-    /* 8–16 GB machines with 5–8 GB avail — sliding int8, 1024 ctx.
+        result.strategy    = KV_QUANT_I8;
+        result.max_seq_len = seq_len;
+    } else if (free_ram > GB_5) {
+        /* 8–16 GB machines with 5–8 GB avail — sliding int8, 1024 ctx.
      * K-3 fix: was GB_10 — same rationale, range adjusted down. */
-    result.strategy = KV_SLIDING_I8;
-    result.max_seq_len = seq_len < SW_WINDOW_LARGE ? seq_len : SW_WINDOW_LARGE;
-  } else if (free_ram > GB_2) {
-    /* 4–8 GB machines — sliding int4, 1024 ctx.
+        result.strategy    = KV_SLIDING_I8;
+        result.max_seq_len = seq_len < SW_WINDOW_LARGE ? seq_len : SW_WINDOW_LARGE;
+    } else if (free_ram > GB_2) {
+        /* 4–8 GB machines — sliding int4, 1024 ctx.
      * I4 uses half the KV bandwidth — faster on bandwidth-limited hardware. */
-    result.strategy = KV_SLIDING_I4;
-    result.max_seq_len = seq_len < SW_WINDOW_LARGE ? seq_len : SW_WINDOW_LARGE;
-  } else {
-    /* Very low RAM (<2 GB avail) — sliding int4, 512 ctx */
-    result.strategy = KV_SLIDING_I4;
-    result.max_seq_len = seq_len < 512 ? seq_len : 512;
-  }
+        result.strategy    = KV_SLIDING_I4;
+        result.max_seq_len = seq_len < SW_WINDOW_LARGE ? seq_len : SW_WINDOW_LARGE;
+    } else {
+        /* Very low RAM (<2 GB avail) — sliding int4, 512 ctx */
+        result.strategy    = KV_SLIDING_I4;
+        result.max_seq_len = seq_len < 512 ? seq_len : 512;
+    }
 
-  /* Explicit --ctx-size replaces the tier's default window (still bounded by
+    /* Explicit --ctx-size replaces the tier's default window (still bounded by
    * the model's own context and the RAM safety cap below). */
-  if (opt && opt->ctx_size > 0)
-    result.max_seq_len = opt->ctx_size < seq_len ? opt->ctx_size : seq_len;
+    if (opt && opt->ctx_size > 0)
+        result.max_seq_len = opt->ctx_size < seq_len ? opt->ctx_size : seq_len;
 
-  /*
+    /*
    * Safety cap: compute the actual F32 KV cache cost for the chosen max_seq_len
    * and reduce it if the allocation would exceed 60% of free_ram.
    * This guards against models with large native seq_len (e.g. DeepSeek 163840)
@@ -233,42 +238,42 @@ KVStrategyResult select_kv_strategy_ex(const Config *cfg, tn_i64 free_ram, const
    * not unsafe) rather than under-clamps; see kv_strategy.h for why that's
    * left as a separate follow-up.
    */
-  {
-    tn_i64 per_token = kv_bytes_per_token(cfg, mc, opt ? opt->kv_type : KV_TYPE_F32);
-    if (per_token > 0) {
-      float frac = (opt && opt->ram_fraction > 0.0f) ? opt->ram_fraction : KV_DEFAULT_RAM_FRACTION;
-      if (frac > 0.95f) frac = 0.95f;
-      /* Phase 31: a disk-backed cache is bounded by free disk space instead
+    {
+        tn_i64 per_token = kv_bytes_per_token(cfg, mc, opt ? opt->kv_type : KV_TYPE_F32);
+        if (per_token > 0) {
+            float frac =
+                (opt && opt->ram_fraction > 0.0f) ? opt->ram_fraction : KV_DEFAULT_RAM_FRACTION;
+            if (frac > 0.95f) frac = 0.95f;
+            /* Phase 31: a disk-backed cache is bounded by free disk space instead
        * (RAM then only holds the hot pages). Unknown disk space keeps RAM. */
-      tn_i64 base = free_ram;
-      if (opt && opt->offload_dir) {
-        tn_i64 disk = file_backed_free_space(opt->offload_dir);
-        if (disk > 0) base = disk;
-      }
-      tn_i64 budget        = (tn_i64)((double)base * (double)frac);
-      tn_i64 max_safe_ctx  = budget / per_token;
-      if (max_safe_ctx < 512) max_safe_ctx = 512;  /* never below 512 */
-      if (result.max_seq_len > (int)max_safe_ctx)
-        result.max_seq_len = (int)max_safe_ctx;
+            tn_i64 base = free_ram;
+            if (opt && opt->offload_dir) {
+                tn_i64 disk = file_backed_free_space(opt->offload_dir);
+                if (disk > 0) base = disk;
+            }
+            tn_i64 budget       = (tn_i64)((double)base * (double)frac);
+            tn_i64 max_safe_ctx = budget / per_token;
+            if (max_safe_ctx < 512) max_safe_ctx = 512; /* never below 512 */
+            if (result.max_seq_len > (int)max_safe_ctx) result.max_seq_len = (int)max_safe_ctx;
+        }
     }
-  }
 
-  return result;
+    return result;
 }
 
 const char *kv_strategy_name(KVStrategy s) {
-  switch (s) {
-  case KV_FULL_F32:
-    return "Full F32";
-  case KV_QUANT_I8:
-    return "Quantized I8";
-  case KV_QUANT_I4:
-    return "Quantized I4";
-  case KV_SLIDING_I8:
-    return "Sliding Window I8";
-  case KV_SLIDING_I4:
-    return "Sliding Window I4";
-  default:
-    return "Unknown";
-  }
+    switch (s) {
+        case KV_FULL_F32:
+            return "Full F32";
+        case KV_QUANT_I8:
+            return "Quantized I8";
+        case KV_QUANT_I4:
+            return "Quantized I4";
+        case KV_SLIDING_I8:
+            return "Sliding Window I8";
+        case KV_SLIDING_I4:
+            return "Sliding Window I4";
+        default:
+            return "Unknown";
+    }
 }

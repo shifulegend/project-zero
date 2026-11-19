@@ -25,7 +25,7 @@ void prefix_cache_reset(PrefixCache *pc) {
 int prefix_cache_match(const PrefixCache *pc, const int *tokens, int n) {
     if (!pc || !pc->tokens || !tokens || n <= 0) return 0;
     int lim = n < pc->n ? n : pc->n;
-    int i = 0;
+    int i   = 0;
     while (i < lim && pc->tokens[i] == tokens[i]) i++;
     return i;
 }
@@ -38,7 +38,10 @@ void prefix_cache_truncate(PrefixCache *pc, int len) {
 
 void prefix_cache_set(PrefixCache *pc, int pos, int token) {
     if (!pc || !pc->tokens) return;
-    if (pos < 0 || pos >= pc->capacity || pos > pc->n) { pc->n = 0; return; }
+    if (pos < 0 || pos >= pc->capacity || pos > pc->n) {
+        pc->n = 0;
+        return;
+    }
     pc->tokens[pos] = token;
-    pc->n = pos + 1;
+    pc->n           = pos + 1;
 }

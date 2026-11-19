@@ -32,6 +32,9 @@ OpenAI-compatible HTTP API. Build: `Makefile` (primary) + `CMakeLists.txt`. See 
   no "real"/"honest", no investigation narrative (link the report) — see `engineering-rules.md` DoD #7.
 - No AI signature or attribution (commit trailers, code comments, etc.) unless the user
   explicitly asks for it that time — see `docs/ai/commit-log-guidance.md`.
+- Any bug found gets fixed in the same pass, even if pre-existing/unrelated to the task; a
+  `mistakes.md` entry records it but does not replace the fix. Defer only a genuinely large
+  architectural change, and say so to the user. See `engineering-rules.md` § Bug-fix policy.
 - Third-party skill plugins **superpowers** and **mattpocock-skills** are used (per-tool install commands in `docs/ai/tool-sync-policy.md`); repo rules override them — see `docs/ai/tool-sync-policy.md` § Third-party skill plugins.
 
 ## Scoped rules & workflows

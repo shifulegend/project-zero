@@ -11,9 +11,9 @@
 
 typedef struct {
     uint32_t h[8];
-    uint64_t len;          /* bytes hashed so far */
+    uint64_t len; /* bytes hashed so far */
     unsigned char buf[64];
-    size_t   nbuf;
+    size_t nbuf;
 } Sha256;
 
 void sha256_init(Sha256 *s);

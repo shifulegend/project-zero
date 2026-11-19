@@ -16,7 +16,7 @@ import sys
 import numpy as np
 
 try:
-    import ml_dtypes
+    import ml_dtypes  # noqa: F401  (registers bfloat16 with numpy as a side effect)
 except ImportError:
     print("Warning: ml_dtypes not found. bfloat16 support might be limited.")
 
@@ -28,9 +28,10 @@ from pack_ternary import pack_ternary_array, TN_MAGIC, TN_VERSION
 def get_tensor_map(model_path):
     """Scan safetensors files and build a key -> filename map."""
     from safetensors import safe_open
+
     tensor_map = {}
     for fname in sorted(os.listdir(model_path)):
-        if fname.endswith('.safetensors'):
+        if fname.endswith(".safetensors"):
             filepath = os.path.join(model_path, fname)
             with safe_open(filepath, framework="numpy") as f:
                 for key in f.keys():
@@ -41,6 +42,7 @@ def get_tensor_map(model_path):
 def load_tensor(tensor_map, key):
     """Load a single small tensor (e.g., norm weights) from the correct shard."""
     from safetensors import safe_open
+
     if key not in tensor_map:
         return None
     filepath = tensor_map[key]
@@ -51,15 +53,16 @@ def load_tensor(tensor_map, key):
 def load_tensor_chunked(tensor_map, key, chunk_size=10000):
     """Generator that yields chunks of a tensor to save memory."""
     from safetensors import safe_open
+
     if key not in tensor_map:
         return
-    
+
     filepath = tensor_map[key]
     with safe_open(filepath, framework="numpy") as f:
         tslice = f.get_slice(key)
         shape = tslice.get_shape()
         rows = shape[0]
-        
+
         for start in range(0, rows, chunk_size):
             end = min(start + chunk_size, rows)
             chunk = tslice[start:end]
@@ -112,9 +115,9 @@ def process_and_write_packed(f, tensor_map, key, chunk_size=10000):
     full_tensor = load_tensor(tensor_map, key)
     if full_tensor is None:
         return
-    
-    is_already_packed = (full_tensor.dtype == np.uint8)
-    
+
+    is_already_packed = full_tensor.dtype == np.uint8
+
     if is_already_packed:
         # Already packed uint8 in Microsoft's row-packed format
         scale_key = key + "_scale"
@@ -130,7 +133,7 @@ def process_and_write_packed(f, tensor_map, key, chunk_size=10000):
                 print(f"  Found external scale for {key}: {external_scale:.4f} (1/absmean)")
 
         scale = external_scale if external_scale is not None else 1.0
-        
+
         # Unpack Microsoft's format → ternary matrix → repack in our flat format
         # unpack_ms_packed handles the official 0->-1, 1->0, 2->1 mapping via (val - 1).
         print(f"  {key}: Repacking (scale={scale:.4f})...")
@@ -151,8 +154,8 @@ def process_and_write_packed(f, tensor_map, key, chunk_size=10000):
         w = validate_and_quantize_ternary(full_tensor, scale)
         f.write(pack_ternary_array(w))
         del w
-        
-    f.write(struct.pack('<f', scale))
+
+    f.write(struct.pack("<f", scale))
     print(f"    Done. Scale (absmean): {scale:.4f}")
     del full_tensor
 
@@ -162,7 +165,7 @@ def process_and_write_raw(f, tensor_map, key, chunk_size=10000):
     if key not in tensor_map:
         print(f"    Warning: {key} not found")
         return
-    
+
     print(f"  Writing {key} as float32...")
     for chunk in load_tensor_chunked(tensor_map, key, chunk_size):
         # Convert to float32 (handling bfloat16 if needed)
@@ -200,22 +203,22 @@ def process_and_write_bf16(f, tensor_map, key, chunk_size=10000):
 
 def extract_config(model_path):
     """Read config.json from model directory."""
-    config_path = os.path.join(model_path, 'config.json')
+    config_path = os.path.join(model_path, "config.json")
     if not os.path.exists(config_path):
         print(f"Error: config.json not found in {model_path}", file=sys.stderr)
         sys.exit(1)
 
-    with open(config_path, 'r') as f:
+    with open(config_path, "r", encoding="utf-8") as f:
         cfg = json.load(f)
 
     config = {
-        'dim': cfg.get('hidden_size', cfg.get('d_model')),
-        'hidden_dim': cfg.get('intermediate_size'),
-        'n_layers': cfg.get('num_hidden_layers'),
-        'n_heads': cfg.get('num_attention_heads'),
-        'n_kv_heads': cfg.get('num_key_value_heads', cfg.get('num_attention_heads')),
-        'vocab_size': cfg.get('vocab_size'),
-        'seq_len': cfg.get('max_position_embeddings', 2048),
+        "dim": cfg.get("hidden_size", cfg.get("d_model")),
+        "hidden_dim": cfg.get("intermediate_size"),
+        "n_layers": cfg.get("num_hidden_layers"),
+        "n_heads": cfg.get("num_attention_heads"),
+        "n_kv_heads": cfg.get("num_key_value_heads", cfg.get("num_attention_heads")),
+        "vocab_size": cfg.get("vocab_size"),
+        "seq_len": cfg.get("max_position_embeddings", 2048),
     }
     return config
 
@@ -225,107 +228,128 @@ def pad_file(f, alignment=64):
     current_pos = f.tell()
     padding = (alignment - (current_pos % alignment)) % alignment
     if padding > 0:
-        f.write(b'\x00' * padding)
+        f.write(b"\x00" * padding)
 
 
 def convert(model_path, output_path):
     """Convert a model to packed binary format in a memory-efficient way."""
-    print(f"Loading config...")
+    print("Loading config...")
     config = extract_config(model_path)
     print(f"Config: {config}")
 
-    print(f"Scanning shards...")
+    print("Scanning shards...")
     tensor_map = get_tensor_map(model_path)
     if not tensor_map:
         print("Error: No tensors found", file=sys.stderr)
         sys.exit(1)
 
-    dim = config['dim']
-    hidden_dim = config['hidden_dim']
-    n_layers = config['n_layers']
-    vocab_size = config['vocab_size']
+    dim = config["dim"]
+    hidden_dim = config["hidden_dim"]
+    n_layers = config["n_layers"]
+    vocab_size = config["vocab_size"]
 
     print(f"\nStreaming production-ready packed model to {output_path}...")
 
-    with open(output_path, 'wb') as f:
+    with open(output_path, "wb") as f:
         # Header (41 bytes + padding to 64)
-        f.write(struct.pack('<I', TN_MAGIC))
-        f.write(struct.pack('<I', TN_VERSION))
-        f.write(struct.pack('<iiiiiiii f i', dim, hidden_dim, n_layers,
-                            config['n_heads'], config['n_kv_heads'], vocab_size,
-                            config['seq_len'], 1, 500000.0, 0)) # act_type=1, rope_theta, scale_mode=0
-        pad_file(f) # Finalize header at 64-byte boundary
+        f.write(struct.pack("<I", TN_MAGIC))
+        f.write(struct.pack("<I", TN_VERSION))
+        f.write(
+            struct.pack(
+                "<iiiiiiii f i",
+                dim,
+                hidden_dim,
+                n_layers,
+                config["n_heads"],
+                config["n_kv_heads"],
+                vocab_size,
+                config["seq_len"],
+                1,
+                500000.0,
+                0,
+            )
+        )  # act_type=1, rope_theta, scale_mode=0
+        pad_file(f)  # Finalize header at 64-byte boundary
 
         # Token embedding — stored as bfloat16 to save ~650 MB vs float32.
         # Zero precision loss: native HF format is bf16.
-        process_and_write_bf16(f, tensor_map, 'model.embed_tokens.weight')
+        process_and_write_bf16(f, tensor_map, "model.embed_tokens.weight")
         pad_file(f)
 
         for l in range(n_layers):
-            prefix = f'model.layers.{l}'
+            prefix = f"model.layers.{l}"
             print(f"  Layer {l}/{n_layers}...")
 
             # Norms (Must be raw float32)
-            for norm_name in [f'{prefix}.input_layernorm.weight', f'{prefix}.post_attention_layernorm.weight']:
+            for norm_name in [
+                f"{prefix}.input_layernorm.weight",
+                f"{prefix}.post_attention_layernorm.weight",
+            ]:
                 process_and_write_raw(f, tensor_map, norm_name)
                 pad_file(f)
 
             # Attention projections: Q, K, V (Packed ternary)
-            for suffix in ['self_attn.q_proj.weight', 'self_attn.k_proj.weight', 'self_attn.v_proj.weight']:
-                process_and_write_packed(f, tensor_map, f'{prefix}.{suffix}')
+            for suffix in [
+                "self_attn.q_proj.weight",
+                "self_attn.k_proj.weight",
+                "self_attn.v_proj.weight",
+            ]:
+                process_and_write_packed(f, tensor_map, f"{prefix}.{suffix}")
                 pad_file(f)
 
             # BitNet attn_sub_norm (between QKV and O projection)
-            attn_sub = f'{prefix}.self_attn.attn_sub_norm.weight'
+            attn_sub = f"{prefix}.self_attn.attn_sub_norm.weight"
             if attn_sub in tensor_map:
                 process_and_write_raw(f, tensor_map, attn_sub)
                 pad_file(f)
 
             # O projection
-            process_and_write_packed(f, tensor_map, f'{prefix}.self_attn.o_proj.weight')
+            process_and_write_packed(f, tensor_map, f"{prefix}.self_attn.o_proj.weight")
             pad_file(f)
 
             # FFN: gate, up projections (Packed ternary)
-            process_and_write_packed(f, tensor_map, f'{prefix}.mlp.gate_proj.weight')
+            process_and_write_packed(f, tensor_map, f"{prefix}.mlp.gate_proj.weight")
             pad_file(f)
-            process_and_write_packed(f, tensor_map, f'{prefix}.mlp.up_proj.weight')
+            process_and_write_packed(f, tensor_map, f"{prefix}.mlp.up_proj.weight")
             pad_file(f)
 
             # BitNet ffn_sub_norm (between gate*up and down projection)
-            ffn_sub = f'{prefix}.mlp.ffn_sub_norm.weight'
+            ffn_sub = f"{prefix}.mlp.ffn_sub_norm.weight"
             if ffn_sub in tensor_map:
                 process_and_write_raw(f, tensor_map, ffn_sub)
                 pad_file(f)
 
             # Down projection
-            process_and_write_packed(f, tensor_map, f'{prefix}.mlp.down_proj.weight')
+            process_and_write_packed(f, tensor_map, f"{prefix}.mlp.down_proj.weight")
             pad_file(f)
 
         # Final norm (Must be raw float32)
-        process_and_write_raw(f, tensor_map, 'model.norm.weight')
+        process_and_write_raw(f, tensor_map, "model.norm.weight")
         pad_file(f)
 
         # Output classifier (Only if explicitly in shards, otherwise engine ties to embeddings)
-        if 'lm_head.weight' in tensor_map:
-            process_and_write_packed(f, tensor_map, 'lm_head.weight')
+        if "lm_head.weight" in tensor_map:
+            process_and_write_packed(f, tensor_map, "lm_head.weight")
             pad_file(f)
 
         # Add fast global length footprint and metadata checksum
         written_bytes = f.tell()
         # Create a simple checksum of the metadata config values
-        meta_checksum = (dim ^ config['hidden_dim'] ^ n_layers ^ config['n_heads'] ^ vocab_size) & 0xFFFFFFFF
-        f.write(struct.pack('<QI', written_bytes, meta_checksum))
+        meta_checksum = (
+            dim ^ config["hidden_dim"] ^ n_layers ^ config["n_heads"] ^ vocab_size
+        ) & 0xFFFFFFFF
+        f.write(struct.pack("<QI", written_bytes, meta_checksum))
 
     print(f"\nDone! Output: {output_path} ({os.path.getsize(output_path):,} bytes)")
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Memory-efficient model converter')
-    parser.add_argument('--model', required=True, help='Model directory')
-    parser.add_argument('--output', required=True, help='Output .bin file')
+    parser = argparse.ArgumentParser(description="Memory-efficient model converter")
+    parser.add_argument("--model", required=True, help="Model directory")
+    parser.add_argument("--output", required=True, help="Output .bin file")
     args = parser.parse_args()
     convert(args.model, args.output)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

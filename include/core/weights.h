@@ -9,20 +9,23 @@
 
 /* Per-projection weight storage type constants (wq_type / wk_type / ... below).
  * Dispatch is purely data-driven — no model-name checks anywhere. */
-#define WEIGHT_TYPE_F32  0   /* F32 heap or mmap — existing fallback path */
-#define WEIGHT_TYPE_F16  1   /* F16 mmap zero-copy — 2× bandwidth vs F32  */
-#define WEIGHT_TYPE_Q4K  3   /* Q4_K mmap zero-copy — fused matmul kernel  */
-#define WEIGHT_TYPE_Q2_0 4   /* Q2_0 mmap zero-copy — fused matmul kernel (Qwen3.5/3.6 ternary) */
-#define WEIGHT_TYPE_Q4K_X8 5 /* Q4_K repacked into llama.cpp's block_q4_Kx8 interleaved layout at
+#define WEIGHT_TYPE_F32 0  /* F32 heap or mmap — existing fallback path */
+#define WEIGHT_TYPE_F16 1  /* F16 mmap zero-copy — 2× bandwidth vs F32  */
+#define WEIGHT_TYPE_Q4K 3  /* Q4_K mmap zero-copy — fused matmul kernel  */
+#define WEIGHT_TYPE_Q2_0 4 /* Q2_0 mmap zero-copy — fused matmul kernel (Qwen3.5/3.6 ternary) */
+#define WEIGHT_TYPE_Q4K_X8                                                                         \
+    5 /* Q4_K repacked into llama.cpp's block_q4_Kx8 interleaved layout at
                               * load time — real multi-row SIMD-lane GEMV kernel (matmul_q4k_x8.c),
                               * not just independent-accumulator ILP (see docs/ai/mistakes.md,
                               * 2026-07-31 "attempt 6"). Only used when a projection's output
                               * dimension is a multiple of 8; falls back to WEIGHT_TYPE_Q4K
                               * otherwise (set per-projection at load time, gguf_loader.c). */
-#define WEIGHT_TYPE_Q6K  6   /* Q6_K mmap zero-copy — fused matmul kernel (matmul_q6k.c); Q4_K_M
+#define WEIGHT_TYPE_Q6K                                                                            \
+    6 /* Q6_K mmap zero-copy — fused matmul kernel (matmul_q6k.c); Q4_K_M
                               * files use it for attn_v/ffn_down. Was dequantised to F32 before
                               * 2026-10-18 (~4.9x the bytes per weight). */
-#define WEIGHT_TYPE_TERNARY 7 /* packed ternary rows (core/unpack.h) repacked at load time from a
+#define WEIGHT_TYPE_TERNARY                                                                        \
+    7 /* packed ternary rows (core/unpack.h) repacked at load time from a
                               * BitNet I2_S GGUF tensor; selects layers_are_ternary. */
 /* 2026-10-21: legacy 32-element GGUF quants kept zero-copy and run by the
  * Q8_0-activation integer kernels (math/q8_0_act.c) instead of being
@@ -50,34 +53,34 @@ typedef struct {
      * token_embd.weight is quantized (Q4_K etc.). Matches llama.cpp's
      * ggml_get_rows() path: Q4_K → F32 directly, no BF16 intermediate.
      * NULL for .bin format models and BF16/F16/F32 GGUF embeddings. */
-    float  *embd_f32;
+    float *embd_f32;
 
     /* Per-layer attention weights (arrays of n_layers pointers) */
-    tn_i8 **wq;          /* Query:  dim * dim */
-    tn_i8 **wk;          /* Key:    dim * kv_dim */
-    tn_i8 **wv;          /* Value:  dim * kv_dim */
-    tn_i8 **wo;          /* Output: dim * dim */
-    float  *sq, *sk, *sv, *so;  /* per-layer scales */
+    tn_i8 **wq;               /* Query:  dim * dim */
+    tn_i8 **wk;               /* Key:    dim * kv_dim */
+    tn_i8 **wv;               /* Value:  dim * kv_dim */
+    tn_i8 **wo;               /* Output: dim * dim */
+    float *sq, *sk, *sv, *so; /* per-layer scales */
 
     /* Per-layer FFN weights */
     tn_i8 **w1;          /* Gate:   dim * hidden_dim */
     tn_i8 **w2;          /* Down:   hidden_dim * dim */
     tn_i8 **w3;          /* Up:     dim * hidden_dim */
-    float  *s1, *s2, *s3;       /* per-layer scales */
+    float *s1, *s2, *s3; /* per-layer scales */
 
     /* Per-layer normalization (kept as float for stability) */
-    float **rms_att_weight;      /* dim per layer (input_layernorm) */
-    float **rms_ffn_weight;      /* dim per layer (post_attention_layernorm) */
-    float **rms_attn_sub_norm;   /* dim per layer (BitNet attn_sub_norm, may be NULL) */
-    float **rms_ffn_sub_norm;    /* hidden_dim per layer (BitNet ffn_sub_norm, may be NULL) */
-    float  *rms_final_weight;    /* dim */
+    float **rms_att_weight;    /* dim per layer (input_layernorm) */
+    float **rms_ffn_weight;    /* dim per layer (post_attention_layernorm) */
+    float **rms_attn_sub_norm; /* dim per layer (BitNet attn_sub_norm, may be NULL) */
+    float **rms_ffn_sub_norm;  /* hidden_dim per layer (BitNet ffn_sub_norm, may be NULL) */
+    float *rms_final_weight;   /* dim */
 
     /* Output classifier: dim * vocab_size.
      * Weight-tied to token_embedding_table when wcls_is_ternary is false. */
     tn_u16 *wcls;
-    float   wcls_scale;
-    bool    wcls_is_ternary; /* true = separate packed ternary lm_head */
-    bool    layers_are_ternary;
+    float wcls_scale;
+    bool wcls_is_ternary; /* true = separate packed ternary lm_head */
+    bool layers_are_ternary;
 
     /* Per-layer, per-projection weight storage type for non-ternary GGUF
      * models: arrays of n_layers ints, set at load time by gguf_loader from
@@ -103,8 +106,8 @@ typedef struct {
      *     before producing an actual NaN/Inf that then poisoned the rest of
      *     the forward pass. Confirmed via --dump-tensors: l_out absmax grew
      *     14 -> 53 -> 71 -> 75 over layers 0-3, then NaN from layer 4 on. */
-    int     *wq_type, *wk_type, *wv_type, *wo_type;  /* [n_layers], attention */
-    int     *w1_type, *w2_type, *w3_type;            /* [n_layers], FFN gate/down/up */
+    int *wq_type, *wk_type, *wv_type, *wo_type; /* [n_layers], attention */
+    int *w1_type, *w2_type, *w3_type;           /* [n_layers], FFN gate/down/up */
 
     /*
      * INT8 quantized classifier (computed at load time from BF16 wcls).
@@ -124,8 +127,8 @@ typedef struct {
      * bias correction that doesn't hold per-block, was dropped in favor of
      * the portable FMA path applied per block).
      */
-    tn_u8  *wcls_i8;        /* vocab_size * dim unsigned (biased +128), or NULL */
-    float  *wcls_i8_scales;  /* vocab_size * ceil(dim/TN_CLS_QUANT_BLOCK) block scales, or NULL */
+    tn_u8 *wcls_i8;        /* vocab_size * dim unsigned (biased +128), or NULL */
+    float *wcls_i8_scales; /* vocab_size * ceil(dim/TN_CLS_QUANT_BLOCK) block scales, or NULL */
 
     /*
      * INT4 quantized classifier (computed at load time from BF16 wcls).
@@ -136,8 +139,8 @@ typedef struct {
      * this was the specific path GitHub issue #27 called out ("maximum
      * reduction to INT4 as a mere casting").
      */
-    tn_u8  *wcls_i4;        /* vocab_size * ceil(dim/2) packed, or NULL */
-    float  *wcls_i4_scales;  /* vocab_size * ceil(dim/TN_CLS_QUANT_BLOCK) block scales, or NULL */
+    tn_u8 *wcls_i4;        /* vocab_size * ceil(dim/2) packed, or NULL */
+    float *wcls_i4_scales; /* vocab_size * ceil(dim/TN_CLS_QUANT_BLOCK) block scales, or NULL */
 
     /*
      * Phase 17: Mixture of Experts (MoE) weights.
@@ -154,21 +157,21 @@ typedef struct {
      *   moe_shared_s{1,2,3}[layer] → shared expert scales
      *   NULL when MoEConfig.n_shared_experts == 0
      */
-    tn_i8  **moe_gate_w;         /* [n_layers] gate matrix pointers           */
-    float   *moe_gate_s;         /* [n_layers] gate scale factors             */
-    tn_i8 ***moe_w1;             /* [n_layers][num_experts] gate/up proj      */
-    tn_i8 ***moe_w2;             /* [n_layers][num_experts] down proj         */
-    tn_i8 ***moe_w3;             /* [n_layers][num_experts] up proj           */
-    float  **moe_s1;             /* [n_layers][num_experts] w1 scales         */
-    float  **moe_s2;             /* [n_layers][num_experts] w2 scales         */
-    float  **moe_s3;             /* [n_layers][num_experts] w3 scales         */
+    tn_i8 **moe_gate_w; /* [n_layers] gate matrix pointers           */
+    float *moe_gate_s;  /* [n_layers] gate scale factors             */
+    tn_i8 ***moe_w1;    /* [n_layers][num_experts] gate/up proj      */
+    tn_i8 ***moe_w2;    /* [n_layers][num_experts] down proj         */
+    tn_i8 ***moe_w3;    /* [n_layers][num_experts] up proj           */
+    float **moe_s1;     /* [n_layers][num_experts] w1 scales         */
+    float **moe_s2;     /* [n_layers][num_experts] w2 scales         */
+    float **moe_s3;     /* [n_layers][num_experts] w3 scales         */
     /* Shared experts (DeepSeek-V2): always-active FFN per MoE layer */
-    tn_i8  **moe_shared_w1;      /* [n_layers] shared gate_proj              */
-    tn_i8  **moe_shared_w2;      /* [n_layers] shared down_proj              */
-    tn_i8  **moe_shared_w3;      /* [n_layers] shared up_proj                */
-    float   *moe_shared_s1;      /* [n_layers] shared w1 scale               */
-    float   *moe_shared_s2;      /* [n_layers] shared w2 scale               */
-    float   *moe_shared_s3;      /* [n_layers] shared w3 scale               */
+    tn_i8 **moe_shared_w1; /* [n_layers] shared gate_proj              */
+    tn_i8 **moe_shared_w2; /* [n_layers] shared down_proj              */
+    tn_i8 **moe_shared_w3; /* [n_layers] shared up_proj                */
+    float *moe_shared_s1;  /* [n_layers] shared w1 scale               */
+    float *moe_shared_s2;  /* [n_layers] shared w2 scale               */
+    float *moe_shared_s3;  /* [n_layers] shared w3 scale               */
 
     /* Phase 17.6: MLA (Multi-head Latent Attention) weight pointers.
      * All NULL for non-MLA models — zero memory overhead.
@@ -182,12 +185,12 @@ typedef struct {
      *   mla_wkv_b[layer] → packed ternary [n_kv_heads*(qk_nope+v_head) × kv_lora_rank]
      *                       e.g. [4096 × 512]
      */
-    tn_i8  **mla_wq;             /* [n_layers] full Q projection              */
-    tn_i8  **mla_wkv_a;          /* [n_layers] KV compress projection         */
-    tn_i8  **mla_wkv_b;          /* [n_layers] KV expand projection           */
-    float   *mla_sq;             /* [n_layers] Q projection scale             */
-    float   *mla_skv_a;          /* [n_layers] KV compress scale              */
-    float   *mla_skv_b;          /* [n_layers] KV expand scale                */
+    tn_i8 **mla_wq;    /* [n_layers] full Q projection              */
+    tn_i8 **mla_wkv_a; /* [n_layers] KV compress projection         */
+    tn_i8 **mla_wkv_b; /* [n_layers] KV expand projection           */
+    float *mla_sq;     /* [n_layers] Q projection scale             */
+    float *mla_skv_a;  /* [n_layers] KV compress scale              */
+    float *mla_skv_b;  /* [n_layers] KV expand scale                */
 
     /* GGUF DeepSeek: routed expert weights kept in quantized form to avoid
      * dequantizing ~50 GB of expert data upfront. When has_expert_quant=true:
@@ -195,25 +198,25 @@ typedef struct {
      *   moe_w2[l][e]     → raw quantized bytes (mmap pointer, NOT heap)
      *   moe_s{1,2,3}[l][e] unused (set to 0.0f)
      * Dequantization happens per-expert at inference time in moe_ffn.c. */
-    bool    has_expert_quant;           /* true = routed expert weights are quantized */
-    int     expert_w13_quant_type;      /* GGUFType for w1/w3 — fallback when per_layer is NULL */
-    int     expert_w2_quant_type;       /* GGUFType for w2 (down experts) — layer 0 fallback   */
-    int    *expert_w13_quant_per_layer; /* per-layer GGUFType for w1/w3; NULL=use above */
-    int    *expert_w2_quant_per_layer;  /* per-layer GGUFType for w2;    NULL=use above */
+    bool has_expert_quant;           /* true = routed expert weights are quantized */
+    int expert_w13_quant_type;       /* GGUFType for w1/w3 — fallback when per_layer is NULL */
+    int expert_w2_quant_type;        /* GGUFType for w2 (down experts) — layer 0 fallback   */
+    int *expert_w13_quant_per_layer; /* per-layer GGUFType for w1/w3; NULL=use above */
+    int *expert_w2_quant_per_layer;  /* per-layer GGUFType for w2;    NULL=use above */
     /* true = MLA projection weights (wq/wkv_a/wkv_b/wo) are stored as raw
      * quantized bytes (heap copy) rather than dequantized F32.
      * When set, mla_wq/mla_wkv_a/mla_wkv_b/wo store raw Q4_K bytes. */
-    bool    has_mla_quant;
+    bool has_mla_quant;
     /* Per-layer quant type for shared expert projections.
      * GGUF type code stored per layer: 12=Q4_K (use parallel_matmul_q4k),
      * 13=Q5_K→F32 (use parallel_matmul_float32), 0=F32.
      * NULL when all layers use the same type (use scalar has_shared_w*_quant).
      * Follows the expert_w2_quant_per_layer pattern for consistency. */
-    int    *shared_w1_type_per_layer;  /* per-layer GGUF type for gate proj */
-    int    *shared_w2_type_per_layer;  /* per-layer GGUF type for down proj */
-    int    *shared_w3_type_per_layer;  /* per-layer GGUF type for up   proj */
+    int *shared_w1_type_per_layer; /* per-layer GGUF type for gate proj */
+    int *shared_w2_type_per_layer; /* per-layer GGUF type for down proj */
+    int *shared_w3_type_per_layer; /* per-layer GGUF type for up   proj */
 
-    int      moe_alloc_layers;         /* number of layers allocated for MoE arrays */
+    int moe_alloc_layers; /* number of layers allocated for MoE arrays */
 
     /*
      * Qwen3.5/3.6 hybrid Gated-DeltaNet + Gated-Attention weights (see
@@ -230,21 +233,21 @@ typedef struct {
      * wq/wk/wv/wo stay NULL for those layers (same NULL-for-inapplicable-
      * layer-type convention already used by MLA's wq/wk/wv vs mla_wq).
      */
-    float **q35_attn_q_norm;   /* [n_layers] full-attn: RMSNorm weight, len=attn_head_dim */
-    float **q35_attn_k_norm;   /* [n_layers] full-attn: RMSNorm weight, len=attn_head_dim */
+    float **q35_attn_q_norm; /* [n_layers] full-attn: RMSNorm weight, len=attn_head_dim */
+    float **q35_attn_k_norm; /* [n_layers] full-attn: RMSNorm weight, len=attn_head_dim */
 
-    tn_i8 **q35_ssm_qkv;       /* [n_layers] linear-attn: combined q+k+v proj (pre-conv) */
-    tn_i8 **q35_ssm_gate;      /* [n_layers] linear-attn: z output-gate proj */
-    float **q35_ssm_conv1d;    /* [n_layers] linear-attn: depthwise causal conv kernel, F32,
+    tn_i8 **q35_ssm_qkv;     /* [n_layers] linear-attn: combined q+k+v proj (pre-conv) */
+    tn_i8 **q35_ssm_gate;    /* [n_layers] linear-attn: z output-gate proj */
+    float **q35_ssm_conv1d;  /* [n_layers] linear-attn: depthwise causal conv kernel, F32,
                                    [conv_kernel][key_dim*2+value_dim] */
-    float **q35_ssm_dt_bias;   /* [n_layers] linear-attn: dt bias, F32, [ssm_time_step_rank] */
-    float **q35_ssm_a;         /* [n_layers] linear-attn: per-head decay param, F32,
+    float **q35_ssm_dt_bias; /* [n_layers] linear-attn: dt bias, F32, [ssm_time_step_rank] */
+    float **q35_ssm_a;       /* [n_layers] linear-attn: per-head decay param, F32,
                                    [ssm_time_step_rank] */
-    tn_i8 **q35_ssm_alpha;     /* [n_layers] linear-attn: alpha (dt) proj, dim -> ssm_time_step_rank */
-    tn_i8 **q35_ssm_beta;      /* [n_layers] linear-attn: beta (write-strength) proj, same shape */
-    float **q35_ssm_norm;      /* [n_layers] linear-attn: gated RMSNorm weight, F32,
+    tn_i8 **q35_ssm_alpha; /* [n_layers] linear-attn: alpha (dt) proj, dim -> ssm_time_step_rank */
+    tn_i8 **q35_ssm_beta;  /* [n_layers] linear-attn: beta (write-strength) proj, same shape */
+    float **q35_ssm_norm;  /* [n_layers] linear-attn: gated RMSNorm weight, F32,
                                    [ssm_state_size] (== head_v_dim) */
-    tn_i8 **q35_ssm_out;       /* [n_layers] linear-attn: output proj, ssm_inner_size -> dim */
+    tn_i8 **q35_ssm_out;   /* [n_layers] linear-attn: output proj, ssm_inner_size -> dim */
 
     /*
      * Qwen3-MoE per-head QK-norm weights (see MoEConfig.has_qk_norm). All
@@ -253,8 +256,8 @@ typedef struct {
      * attention.c) — arch-prefixed like q35_attn_q_norm/k_norm above,
      * since both are per-arch-specific-function state, not shared code.
      */
-    float **qwen3moe_attn_q_norm;  /* [n_layers] RMSNorm weight, len=attn_head_dim */
-    float **qwen3moe_attn_k_norm;  /* [n_layers] RMSNorm weight, len=attn_head_dim */
+    float **qwen3moe_attn_q_norm; /* [n_layers] RMSNorm weight, len=attn_head_dim */
+    float **qwen3moe_attn_k_norm; /* [n_layers] RMSNorm weight, len=attn_head_dim */
 
     /* Optional Q/K/V projection biases (Qwen2/2.5 "attn_{q,k,v}.bias"),
      * [n_layers] pointers, NULL entries when the model has none. Added after
@@ -264,7 +267,7 @@ typedef struct {
     /* Zero-copy Q2_0 embedding / LM-head tables (used instead of embd_f32 /
      * token_embedding_table / wcls when q35_is_q2_0_model is set — Q2_0 is
      * too large to dequantize upfront: ~5 GB each for a 27B-class model). */
-    bool        q35_is_q2_0_model;
+    bool q35_is_q2_0_model;
 
     /* Phase 22-SSM: Mamba block weights (MoEConfig.is_ssm). NULL for every
      * other model; owned here and released by weights_free_pointers(). */
@@ -279,7 +282,7 @@ typedef struct {
      * whenever non-NULL and the user did not pass --classifier. Points into
      * the mmap; never freed. */
     const void *wcls_raw;
-    int         wcls_raw_type;   /* GGUF_TYPE_Q4_K or GGUF_TYPE_Q6_K */
+    int wcls_raw_type; /* GGUF_TYPE_Q4_K or GGUF_TYPE_Q6_K */
 } TransformerWeights;
 
 /**
@@ -304,9 +307,8 @@ void weights_free_pointers(TransformerWeights *w);
  *   [128+]     Per-layer weights (attention only for MoE layers)
  *   [after]    MoE block (gate + per-expert FFNs + optional shared expert)
  */
-TernaryError weights_map(TransformerWeights *w, const Config *cfg,
-                         const MoEConfig *mc,
-                         tn_i8 *data, size_t data_size);
+TernaryError weights_map(TransformerWeights *w, const Config *cfg, const MoEConfig *mc, tn_i8 *data,
+                         size_t data_size);
 
 /**
  * Build INT8 and INT4 quantized classifier variants from the BF16 wcls table.

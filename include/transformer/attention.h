@@ -6,7 +6,7 @@
 #include "core/moe_config.h"
 #include "core/run_state.h"
 #include "core/weights.h"
-#include "speculative/spec_scratch.h"
+#include "core/batch_scratch_fwd.h"
 #include "threading/thread_pool.h"
 
 /**
@@ -31,9 +31,8 @@
  *
  * Supports Grouped Query Attention (GQA) when n_kv_heads < n_heads.
  */
-void attention_forward(RunState *s, const TransformerWeights *w,
-                       const Config *cfg, const MoEConfig *mc,
-                       int layer, int pos, ThreadPool *tp);
+void attention_forward(RunState *s, const TransformerWeights *w, const Config *cfg,
+                       const MoEConfig *mc, int layer, int pos, ThreadPool *tp);
 
 /**
  * Phase 18 (speculative decoding): batched multi-token attention forward
@@ -51,10 +50,9 @@ void attention_forward(RunState *s, const TransformerWeights *w,
  *
  * sb must be sized for exactly n_tokens (spec_batch_scratch_alloc()).
  */
-TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb,
-                                      const TransformerWeights *w, const Config *cfg,
-                                      const MoEConfig *mc, int layer, int pos,
-                                      int n_tokens, ThreadPool *tp);
+TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb, const TransformerWeights *w,
+                                     const Config *cfg, const MoEConfig *mc, int layer, int pos,
+                                     int n_tokens, ThreadPool *tp);
 
 /*
  * Phase 23 (2026-10-19): one attention step over rows from several sequences

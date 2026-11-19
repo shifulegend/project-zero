@@ -17,21 +17,21 @@
 void rmsnorm_avx2(float *out, const float *x, const float *weight, int size, float eps) {
     /* Pass 1: Sum of squares with AVX2 */
     __m256 ss_vec = _mm256_setzero_ps();
-    int i = 0;
+    int i         = 0;
 
     for (; i + 7 < size; i += 8) {
         __m256 xv = _mm256_loadu_ps(&x[i]);
-        ss_vec = _mm256_fmadd_ps(xv, xv, ss_vec);
+        ss_vec    = _mm256_fmadd_ps(xv, xv, ss_vec);
     }
 
     /* Horizontal sum */
-    __m128 hi = _mm256_extractf128_ps(ss_vec, 1);
-    __m128 lo = _mm256_castps256_ps128(ss_vec);
-    __m128 sum4 = _mm_add_ps(lo, hi);
-    __m128 shuf = _mm_movehdup_ps(sum4);
-    __m128 sum2 = _mm_add_ps(sum4, shuf);
+    __m128 hi    = _mm256_extractf128_ps(ss_vec, 1);
+    __m128 lo    = _mm256_castps256_ps128(ss_vec);
+    __m128 sum4  = _mm_add_ps(lo, hi);
+    __m128 shuf  = _mm_movehdup_ps(sum4);
+    __m128 sum2  = _mm_add_ps(sum4, shuf);
     __m128 final = _mm_add_ss(sum2, _mm_movehl_ps(sum2, sum2));
-    float ss = _mm_cvtss_f32(final);
+    float ss     = _mm_cvtss_f32(final);
 
     /* Scalar tail for sum of squares */
     for (; i < size; i++) {
@@ -40,7 +40,7 @@ void rmsnorm_avx2(float *out, const float *x, const float *weight, int size, flo
 
     /* Compute normalization factor: 1 / sqrt(mean + eps) */
     ss /= size;
-    ss = 1.0f / sqrtf(ss + eps);
+    ss                  = 1.0f / sqrtf(ss + eps);
     __m256 ss_broadcast = _mm256_set1_ps(ss);
 
     /* Pass 2: Normalize and scale with AVX2 */

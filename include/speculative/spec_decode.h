@@ -40,16 +40,14 @@
  *     a warning and proceeds with plain temperature/top_p sampling.
  */
 void speculative_generate(const Config *cfg, const TransformerWeights *w, RunState *s,
-                           const MoEConfig *mc, Tokenizer *tok, ThreadPool *tp,
-                           const char *prompt, int max_tokens, float temperature,
-                           float top_p, bool json_mode,
-                           DraftModel *draft, int spec_length);
+                          const MoEConfig *mc, Tokenizer *tok, ThreadPool *tp, const char *prompt,
+                          int max_tokens, float temperature, float top_p, bool json_mode,
+                          DraftModel *draft, int spec_length);
 
-void speculative_generate_with_callback(const Config *cfg, const TransformerWeights *w,
-                                         RunState *s, const MoEConfig *mc,
-                                         Tokenizer *tok, ThreadPool *tp, const char *prompt,
-                                         int max_tokens, float temperature, float top_p,
-                                         bool json_mode, DraftModel *draft, int spec_length,
-                                         TokenCallback callback, void *userdata);
+void speculative_generate_with_callback(const Config *cfg, const TransformerWeights *w, RunState *s,
+                                        const MoEConfig *mc, Tokenizer *tok, ThreadPool *tp,
+                                        const char *prompt, int max_tokens, float temperature,
+                                        float top_p, bool json_mode, DraftModel *draft,
+                                        int spec_length, TokenCallback callback, void *userdata);
 
 #endif /* TN_SPECULATIVE_SPEC_DECODE_H */

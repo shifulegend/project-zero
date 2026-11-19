@@ -21,7 +21,6 @@
 #include "core/platform.h"
 #include "threading/thread_pool.h"
 
-void parallel_matmul_f16(float *out, const float *x, const tn_u16 *w,
-                          int n, int d, ThreadPool *tp);
+void parallel_matmul_f16(float *out, const float *x, const tn_u16 *w, int n, int d, ThreadPool *tp);
 
 #endif /* TN_MATMUL_F16_H */

@@ -18,14 +18,14 @@
 
 float quantize_row_to_i8_avx512(const float *x, int8_t *q, int n) {
     /* ── Pass 1: find absolute maximum using AVX-512 ── */
-    __m512 vmax = _mm512_setzero_ps();
-    const __m512 sign_mask = _mm512_set1_ps(-0.0f);  /* 0x80000000 per lane */
-    int i = 0;
+    __m512 vmax            = _mm512_setzero_ps();
+    const __m512 sign_mask = _mm512_set1_ps(-0.0f); /* 0x80000000 per lane */
+    int i                  = 0;
 
     for (; i + 15 < n; i += 16) {
         __m512 v = _mm512_loadu_ps(&x[i]);
-        v = _mm512_andnot_ps(sign_mask, v);  /* abs */
-        vmax = _mm512_max_ps(vmax, v);
+        v        = _mm512_andnot_ps(sign_mask, v); /* abs */
+        vmax     = _mm512_max_ps(vmax, v);
     }
 
     float abs_max = _mm512_reduce_max_ps(vmax);
@@ -45,30 +45,32 @@ float quantize_row_to_i8_avx512(const float *x, int8_t *q, int n) {
     float inv_scale = 127.0f / abs_max;
 
     /* ── Pass 2: quantize using AVX-512 ── */
-    __m512 vscale   = _mm512_set1_ps(inv_scale);
-    __m512 vpos127  = _mm512_set1_ps( 127.0f);
-    __m512 vneg127  = _mm512_set1_ps(-127.0f);
+    __m512 vscale  = _mm512_set1_ps(inv_scale);
+    __m512 vpos127 = _mm512_set1_ps(127.0f);
+    __m512 vneg127 = _mm512_set1_ps(-127.0f);
 
     i = 0;
     for (; i + 15 < n; i += 16) {
         __m512 v = _mm512_loadu_ps(&x[i]);
-        v = _mm512_mul_ps(v, vscale);
-        v = _mm512_min_ps(v, vpos127);
-        v = _mm512_max_ps(v, vneg127);
+        v        = _mm512_mul_ps(v, vscale);
+        v        = _mm512_min_ps(v, vpos127);
+        v        = _mm512_max_ps(v, vneg127);
 
         /* float → int32 (round to nearest even, MXCSR default; quantize_i8.h specification) → pack to int8 */
         __m512i i32 = _mm512_cvtps_epi32(v);
 
         /* Pack 16 int32 → 16 int8 (values in [-127,127], safe truncation) */
-        __m128i i8  = _mm512_cvtepi32_epi8(i32);
-        _mm_storeu_si128((__m128i*)(q + i), i8);
+        __m128i i8 = _mm512_cvtepi32_epi8(i32);
+        _mm_storeu_si128((__m128i *)(q + i), i8);
     }
 
     /* Scalar tail */
     for (; i < n; i++) {
         float v = x[i] * inv_scale;
-        if      (v >  127.0f) v =  127.0f;
-        else if (v < -127.0f) v = -127.0f;
+        if (v > 127.0f)
+            v = 127.0f;
+        else if (v < -127.0f)
+            v = -127.0f;
         q[i] = (int8_t)lrintf(v);
     }
 
@@ -82,10 +84,10 @@ int32_t sum_i8_avx512(const int8_t *arr, int n) {
      * to avoid overflow on long vectors.
      */
     __m512i acc = _mm512_setzero_si512();
-    int i = 0;
+    int i       = 0;
 
     for (; i + 63 < n; i += 64) {
-        __m512i v = _mm512_loadu_si512((const __m512i*)(arr + i));
+        __m512i v = _mm512_loadu_si512((const __m512i *)(arr + i));
 
         /* Widen each int8 lane to int16, accumulate into int32 accumulators.
          * We split the 64 bytes into 4 groups of 16, extend each to 32-bit. */

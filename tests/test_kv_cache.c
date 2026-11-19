@@ -28,94 +28,94 @@
  * ================================================================ */
 
 static void test_kv_i8_roundtrip(void) {
-  int dim = 16;
-  float src[16] = {1.0f, -2.0f, 3.0f, -4.0f, 5.0f,  -6.0f, 7.0f,  -8.0f,
-                   0.5f, -0.5f, 0.0f, 1.5f,  -1.5f, 2.5f,  -2.5f, 3.5f};
+    int dim       = 16;
+    float src[16] = {1.0f, -2.0f, 3.0f, -4.0f, 5.0f,  -6.0f, 7.0f,  -8.0f,
+                     0.5f, -0.5f, 0.0f, 1.5f,  -1.5f, 2.5f,  -2.5f, 3.5f};
 
-  CompressedKVSlot slot;
-  slot.data = (tn_i8 *)calloc(dim, sizeof(tn_i8));
+    CompressedKVSlot slot;
+    slot.data = (tn_i8 *)calloc(dim, sizeof(tn_i8));
 
-  kv_compress_to_8bit(src, &slot, dim);
+    kv_compress_to_8bit(src, &slot, dim);
 
-  /* Scale should be max(|src|) / 127 = 8.0 / 127 */
-  float expected_scale = 8.0f / 127.0f;
-  TEST_ASSERT_FLOAT_EQ(slot.scale, expected_scale, 1e-5f, "i8 scale correct");
+    /* Scale should be max(|src|) / 127 = 8.0 / 127 */
+    float expected_scale = 8.0f / 127.0f;
+    TEST_ASSERT_FLOAT_EQ(slot.scale, expected_scale, 1e-5f, "i8 scale correct");
 
-  float dst[16];
-  kv_decompress_from_8bit(dst, &slot, dim);
+    float dst[16];
+    kv_decompress_from_8bit(dst, &slot, dim);
 
-  /* Roundtrip error should be small (within quantization error) */
-  for (int i = 0; i < dim; i++) {
-    float err = fabsf(dst[i] - src[i]);
-    /* Max quantization error = scale / 2 = (8/127)/2 ≈ 0.031 */
-    TEST_ASSERT(err < 0.1f, "i8 roundtrip error within tolerance");
-  }
+    /* Roundtrip error should be small (within quantization error) */
+    for (int i = 0; i < dim; i++) {
+        float err = fabsf(dst[i] - src[i]);
+        /* Max quantization error = scale / 2 = (8/127)/2 ≈ 0.031 */
+        TEST_ASSERT(err < 0.1f, "i8 roundtrip error within tolerance");
+    }
 
-  free(slot.data);
+    free(slot.data);
 }
 
 static void test_kv_i8_zero_vector(void) {
-  int dim = 8;
-  float src[8] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    int dim      = 8;
+    float src[8] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 
-  CompressedKVSlot slot;
-  slot.data = (tn_i8 *)calloc(dim, sizeof(tn_i8));
+    CompressedKVSlot slot;
+    slot.data = (tn_i8 *)calloc(dim, sizeof(tn_i8));
 
-  kv_compress_to_8bit(src, &slot, dim);
+    kv_compress_to_8bit(src, &slot, dim);
 
-  TEST_ASSERT_FLOAT_EQ(slot.scale, 0.0f, 1e-9f, "i8 zero vector scale = 0");
+    TEST_ASSERT_FLOAT_EQ(slot.scale, 0.0f, 1e-9f, "i8 zero vector scale = 0");
 
-  float dst[8];
-  kv_decompress_from_8bit(dst, &slot, dim);
-  for (int i = 0; i < dim; i++) {
-    TEST_ASSERT_FLOAT_EQ(dst[i], 0.0f, 1e-9f, "i8 zero roundtrip = 0");
-  }
+    float dst[8];
+    kv_decompress_from_8bit(dst, &slot, dim);
+    for (int i = 0; i < dim; i++) {
+        TEST_ASSERT_FLOAT_EQ(dst[i], 0.0f, 1e-9f, "i8 zero roundtrip = 0");
+    }
 
-  free(slot.data);
+    free(slot.data);
 }
 
 static void test_kv_i8_negative_values(void) {
-  int dim = 4;
-  float src[4] = {-10.0f, -5.0f, -1.0f, -0.1f};
+    int dim      = 4;
+    float src[4] = {-10.0f, -5.0f, -1.0f, -0.1f};
 
-  CompressedKVSlot slot;
-  slot.data = (tn_i8 *)calloc(dim, sizeof(tn_i8));
+    CompressedKVSlot slot;
+    slot.data = (tn_i8 *)calloc(dim, sizeof(tn_i8));
 
-  kv_compress_to_8bit(src, &slot, dim);
+    kv_compress_to_8bit(src, &slot, dim);
 
-  /* All quantized values should be negative */
-  for (int i = 0; i < dim; i++) {
-    TEST_ASSERT(slot.data[i] <= 0, "i8 negative values quantize negative");
-  }
+    /* All quantized values should be negative */
+    for (int i = 0; i < dim; i++) {
+        TEST_ASSERT(slot.data[i] <= 0, "i8 negative values quantize negative");
+    }
 
-  float dst[4];
-  kv_decompress_from_8bit(dst, &slot, dim);
-  for (int i = 0; i < dim; i++) {
-    TEST_ASSERT(dst[i] <= 0.0f, "i8 decompressed negatives are negative");
-    float err = fabsf(dst[i] - src[i]);
-    TEST_ASSERT(err < 0.2f, "i8 negative roundtrip within tolerance");
-  }
+    float dst[4];
+    kv_decompress_from_8bit(dst, &slot, dim);
+    for (int i = 0; i < dim; i++) {
+        TEST_ASSERT(dst[i] <= 0.0f, "i8 decompressed negatives are negative");
+        float err = fabsf(dst[i] - src[i]);
+        TEST_ASSERT(err < 0.2f, "i8 negative roundtrip within tolerance");
+    }
 
-  free(slot.data);
+    free(slot.data);
 }
 
 static void test_kv_i8_preserves_sign(void) {
-  int dim = 6;
-  float src[6] = {1.0f, -1.0f, 2.0f, -2.0f, 0.0f, 3.0f};
+    int dim      = 6;
+    float src[6] = {1.0f, -1.0f, 2.0f, -2.0f, 0.0f, 3.0f};
 
-  CompressedKVSlot slot;
-  slot.data = (tn_i8 *)calloc(dim, sizeof(tn_i8));
-  kv_compress_to_8bit(src, &slot, dim);
+    CompressedKVSlot slot;
+    slot.data = (tn_i8 *)calloc(dim, sizeof(tn_i8));
+    kv_compress_to_8bit(src, &slot, dim);
 
-  float dst[6];
-  kv_decompress_from_8bit(dst, &slot, dim);
+    float dst[6];
+    kv_decompress_from_8bit(dst, &slot, dim);
 
-  TEST_ASSERT(dst[0] > 0.0f, "positive stays positive");
-  TEST_ASSERT(dst[1] < 0.0f, "negative stays negative");
-  TEST_ASSERT(dst[2] > 0.0f, "positive stays positive (2)");
-  TEST_ASSERT(dst[3] < 0.0f, "negative stays negative (2)");
+    TEST_ASSERT(dst[0] > 0.0f, "positive stays positive");
+    TEST_ASSERT(dst[1] < 0.0f, "negative stays negative");
+    TEST_ASSERT(dst[2] > 0.0f, "positive stays positive (2)");
+    TEST_ASSERT(dst[3] < 0.0f, "negative stays negative (2)");
 
-  free(slot.data);
+    free(slot.data);
 }
 
 /* ================================================================
@@ -123,93 +123,93 @@ static void test_kv_i8_preserves_sign(void) {
  * ================================================================ */
 
 static void test_kv_i4_roundtrip(void) {
-  int dim = 8;
-  float src[8] = {1.0f, -1.0f, 2.0f, -2.0f, 3.0f, -3.0f, 0.5f, -0.5f};
+    int dim      = 8;
+    float src[8] = {1.0f, -1.0f, 2.0f, -2.0f, 3.0f, -3.0f, 0.5f, -0.5f};
 
-  int packed_len = (dim + 1) / 2;
-  tn_u8 *packed = (tn_u8 *)calloc(packed_len, 1);
-  float scale;
+    int packed_len = (dim + 1) / 2;
+    tn_u8 *packed  = (tn_u8 *)calloc(packed_len, 1);
+    float scale;
 
-  kv_compress_to_4bit(src, packed, &scale, dim);
+    kv_compress_to_4bit(src, packed, &scale, dim);
 
-  /* Scale = max(|src|)/7 = 3.0/7 ≈ 0.4286 */
-  TEST_ASSERT(scale > 0.0f, "i4 scale is positive");
-  TEST_ASSERT_FLOAT_EQ(scale, 3.0f / 7.0f, 1e-5f, "i4 scale correct");
+    /* Scale = max(|src|)/7 = 3.0/7 ≈ 0.4286 */
+    TEST_ASSERT(scale > 0.0f, "i4 scale is positive");
+    TEST_ASSERT_FLOAT_EQ(scale, 3.0f / 7.0f, 1e-5f, "i4 scale correct");
 
-  float dst[8];
-  kv_decompress_from_4bit(dst, packed, scale, dim);
+    float dst[8];
+    kv_decompress_from_4bit(dst, packed, scale, dim);
 
-  for (int i = 0; i < dim; i++) {
-    float err = fabsf(dst[i] - src[i]);
-    /* int4 has coarser quantization (7 levels), so larger error */
-    TEST_ASSERT(err < 0.5f, "i4 roundtrip within tolerance");
-  }
+    for (int i = 0; i < dim; i++) {
+        float err = fabsf(dst[i] - src[i]);
+        /* int4 has coarser quantization (7 levels), so larger error */
+        TEST_ASSERT(err < 0.5f, "i4 roundtrip within tolerance");
+    }
 
-  free(packed);
+    free(packed);
 }
 
 static void test_kv_i4_zero_vector(void) {
-  int dim = 4;
-  float src[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    int dim      = 4;
+    float src[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 
-  int packed_len = (dim + 1) / 2;
-  tn_u8 *packed = (tn_u8 *)calloc(packed_len, 1);
-  float scale;
+    int packed_len = (dim + 1) / 2;
+    tn_u8 *packed  = (tn_u8 *)calloc(packed_len, 1);
+    float scale;
 
-  kv_compress_to_4bit(src, packed, &scale, dim);
+    kv_compress_to_4bit(src, packed, &scale, dim);
 
-  TEST_ASSERT_FLOAT_EQ(scale, 0.0f, 1e-9f, "i4 zero scale = 0");
+    TEST_ASSERT_FLOAT_EQ(scale, 0.0f, 1e-9f, "i4 zero scale = 0");
 
-  float dst[4];
-  kv_decompress_from_4bit(dst, packed, scale, dim);
-  for (int i = 0; i < dim; i++) {
-    TEST_ASSERT_FLOAT_EQ(dst[i], 0.0f, 1e-9f, "i4 zero roundtrip = 0");
-  }
+    float dst[4];
+    kv_decompress_from_4bit(dst, packed, scale, dim);
+    for (int i = 0; i < dim; i++) {
+        TEST_ASSERT_FLOAT_EQ(dst[i], 0.0f, 1e-9f, "i4 zero roundtrip = 0");
+    }
 
-  free(packed);
+    free(packed);
 }
 
 static void test_kv_i4_odd_dimension(void) {
-  /* Odd dim means the last byte has one valid nibble */
-  int dim = 7;
-  float src[7] = {1.0f, -1.0f, 2.0f, -2.0f, 3.0f, -3.0f, 0.5f};
+    /* Odd dim means the last byte has one valid nibble */
+    int dim      = 7;
+    float src[7] = {1.0f, -1.0f, 2.0f, -2.0f, 3.0f, -3.0f, 0.5f};
 
-  int packed_len = (dim + 1) / 2; /* = 4 bytes */
-  tn_u8 *packed = (tn_u8 *)calloc(packed_len, 1);
-  float scale;
+    int packed_len = (dim + 1) / 2; /* = 4 bytes */
+    tn_u8 *packed  = (tn_u8 *)calloc(packed_len, 1);
+    float scale;
 
-  kv_compress_to_4bit(src, packed, &scale, dim);
+    kv_compress_to_4bit(src, packed, &scale, dim);
 
-  float dst[7];
-  kv_decompress_from_4bit(dst, packed, scale, dim);
+    float dst[7];
+    kv_decompress_from_4bit(dst, packed, scale, dim);
 
-  for (int i = 0; i < dim; i++) {
-    float err = fabsf(dst[i] - src[i]);
-    TEST_ASSERT(err < 0.5f, "i4 odd dim roundtrip within tolerance");
-  }
+    for (int i = 0; i < dim; i++) {
+        float err = fabsf(dst[i] - src[i]);
+        TEST_ASSERT(err < 0.5f, "i4 odd dim roundtrip within tolerance");
+    }
 
-  free(packed);
+    free(packed);
 }
 
 static void test_kv_i4_preserves_sign(void) {
-  int dim = 4;
-  float src[4] = {5.0f, -5.0f, 3.0f, -3.0f};
+    int dim      = 4;
+    float src[4] = {5.0f, -5.0f, 3.0f, -3.0f};
 
-  int packed_len = (dim + 1) / 2;
-  tn_u8 *packed = (tn_u8 *)calloc(packed_len, 1);
-  float scale;
+    int packed_len = (dim + 1) / 2;
+    tn_u8 *packed  = (tn_u8 *)calloc(packed_len, 1);
+    float scale;
 
-  kv_compress_to_4bit(src, packed, &scale, dim);
+    kv_compress_to_4bit(src, packed, &scale, dim);
 
-  float dst[4];
-  kv_decompress_from_4bit(dst, packed, scale, dim);
+    float dst[4];
+    kv_decompress_from_4bit(dst, packed, scale, dim);
 
-  TEST_ASSERT(dst[0] > 0.0f, "i4 positive stays positive");
-  TEST_ASSERT(dst[1] < 0.0f, "i4 negative stays negative");
-  TEST_ASSERT(dst[2] > 0.0f, "i4 positive stays positive (2)");
-  TEST_ASSERT(dst[3] < 0.0f, "i4 negative stays negative (2)");
+    TEST_ASSERT(dst[0] > 0.0f, "i4 positive stays positive");
+    TEST_ASSERT(dst[1] < 0.0f, "i4 negative stays negative");
+    TEST_ASSERT(dst[2] > 0.0f, "i4 positive stays positive (2)");
+    TEST_ASSERT(dst[3] < 0.0f, "i4 negative stays negative (2)");
 
-  free(packed);
+    free(packed);
 }
 
 /* ================================================================
@@ -217,80 +217,75 @@ static void test_kv_i4_preserves_sign(void) {
  * ================================================================ */
 
 static void test_sw_init(void) {
-  SlidingWindow sw;
-  sw_init(&sw, 64, 8);
+    SlidingWindow sw;
+    sw_init(&sw, 64, 8);
 
-  TEST_ASSERT_EQ(sw.window_size, 64, "window_size = 64");
-  TEST_ASSERT_EQ(sw.system_prompt_len, 8, "system_prompt_len = 8");
-  TEST_ASSERT_EQ(sw.write_head, 8, "write_head starts at spl");
-  TEST_ASSERT(sw.wrapped == false, "not wrapped initially");
+    TEST_ASSERT_EQ(sw.window_size, 64, "window_size = 64");
+    TEST_ASSERT_EQ(sw.system_prompt_len, 8, "system_prompt_len = 8");
+    TEST_ASSERT_EQ(sw.write_head, 8, "write_head starts at spl");
+    TEST_ASSERT(sw.wrapped == false, "not wrapped initially");
 }
 
 static void test_sw_pinned_positions(void) {
-  SlidingWindow sw;
-  sw_init(&sw, 32, 4);
+    SlidingWindow sw;
+    sw_init(&sw, 32, 4);
 
-  /* System prompt positions should map to themselves */
-  for (int i = 0; i < 4; i++) {
-    TEST_ASSERT_EQ(sw_map_position(&sw, i), i, "pinned position is identity");
-  }
+    /* System prompt positions should map to themselves */
+    for (int i = 0; i < 4; i++) {
+        TEST_ASSERT_EQ(sw_map_position(&sw, i), i, "pinned position is identity");
+    }
 }
 
 static void test_sw_non_prompt_mapping(void) {
-  SlidingWindow sw;
-  sw_init(&sw, 16, 4);
+    SlidingWindow sw;
+    sw_init(&sw, 16, 4);
 
-  /* Positions 4..15 should map into [4, 16) */
-  for (int i = 4; i < 16; i++) {
-    int mapped = sw_map_position(&sw, i);
-    TEST_ASSERT(mapped >= 4, "mapped >= spl");
-    TEST_ASSERT(mapped < 16, "mapped < window_size");
-  }
+    /* Positions 4..15 should map into [4, 16) */
+    for (int i = 4; i < 16; i++) {
+        int mapped = sw_map_position(&sw, i);
+        TEST_ASSERT(mapped >= 4, "mapped >= spl");
+        TEST_ASSERT(mapped < 16, "mapped < window_size");
+    }
 }
 
 static void test_sw_wraparound(void) {
-  SlidingWindow sw;
-  sw_init(&sw, 8, 2); /* 6 circular slots */
+    SlidingWindow sw;
+    sw_init(&sw, 8, 2); /* 6 circular slots */
 
-  /* Advance 6 times to fill, then 1 more to wrap */
-  for (int i = 0; i < 7; i++) {
-    sw_advance(&sw);
-  }
-  TEST_ASSERT(sw.wrapped == true, "should wrap after filling circular region");
+    /* Advance 6 times to fill, then 1 more to wrap */
+    for (int i = 0; i < 7; i++) {
+        sw_advance(&sw);
+    }
+    TEST_ASSERT(sw.wrapped == true, "should wrap after filling circular region");
 
-  /* Position well beyond window should still map validly */
-  int mapped = sw_map_position(&sw, 100);
-  TEST_ASSERT(mapped >= 2 && mapped < 8,
-              "wrapped position maps to valid range");
+    /* Position well beyond window should still map validly */
+    int mapped = sw_map_position(&sw, 100);
+    TEST_ASSERT(mapped >= 2 && mapped < 8, "wrapped position maps to valid range");
 }
 
 static void test_sw_valid_count(void) {
-  SlidingWindow sw;
-  sw_init(&sw, 16, 4);
+    SlidingWindow sw;
+    sw_init(&sw, 16, 4);
 
-  /* Before filling anything past prompt */
-  TEST_ASSERT_EQ(sw_valid_count(&sw, 1), 2,
-                 "logical pos 1 (2 tokens) = 2 valid");
-  TEST_ASSERT_EQ(sw_valid_count(&sw, 3), 4,
-                 "logical pos 3 (4 tokens) = prompt filled");
+    /* Before filling anything past prompt */
+    TEST_ASSERT_EQ(sw_valid_count(&sw, 1), 2, "logical pos 1 (2 tokens) = 2 valid");
+    TEST_ASSERT_EQ(sw_valid_count(&sw, 3), 4, "logical pos 3 (4 tokens) = prompt filled");
 
-  /* Partially filling circular region */
-  TEST_ASSERT_EQ(sw_valid_count(&sw, 6), 7,
-                 "logical pos 6 (7 tokens) = 4 pinned + 3 circular");
+    /* Partially filling circular region */
+    TEST_ASSERT_EQ(sw_valid_count(&sw, 6), 7, "logical pos 6 (7 tokens) = 4 pinned + 3 circular");
 
-  /* Full window */
-  TEST_ASSERT_EQ(sw_valid_count(&sw, 20), 16,
-                 "past window capacity = window_size");
+    /* Full window */
+    TEST_ASSERT_EQ(sw_valid_count(&sw, 20), 16, "past window capacity = window_size");
 }
 
 static void test_sw_no_prompt(void) {
-  SlidingWindow sw;
-  sw_init(&sw, 8, 0); /* No pinned slots */
+    SlidingWindow sw;
+    sw_init(&sw, 8, 0); /* No pinned slots */
 
-  TEST_ASSERT_EQ(sw.write_head, 0, "write_head starts at 0 with no prompt");
+    TEST_ASSERT_EQ(sw.write_head, 0, "write_head starts at 0 with no prompt");
 
-  int mapped = sw_map_position(&sw, 5);
-  TEST_ASSERT(mapped >= 0 && mapped < 8, "no-prompt mapping is valid");
+    int mapped = sw_map_position(&sw, 5);
+    TEST_ASSERT(mapped >= 0 && mapped < 8, "no-prompt mapping is valid");
 }
 
 /* ================================================================
@@ -299,128 +294,133 @@ static void test_sw_no_prompt(void) {
 
 /* --ctx-size / --kv-ram-fraction overrides (KVStrategyOptions). */
 static void test_strategy_options(void) {
-  Config cfg = {.dim = 4096, .hidden_dim = 11008, .n_layers = 32, .n_heads = 32,
-                .n_kv_heads = 8, .vocab_size = 32000, .seq_len = 4096};
-  tn_i64 ram = (tn_i64)3 * 1024 * 1024 * 1024; /* 3 GB: sliding tier, 1024 window */
-  KVStrategyOptions none = {0, 0.0f, 0, NULL};
-  KVStrategyResult a = select_kv_strategy_ex(&cfg, ram, NULL, &none);
-  KVStrategyResult b = select_kv_strategy(&cfg, ram, NULL);
-  TEST_ASSERT_EQ(a.max_seq_len, b.max_seq_len, "zero options == automatic");
-  TEST_ASSERT_EQ(a.max_seq_len, 1024, "tier default window");
+    Config cfg             = {.dim        = 4096,
+                              .hidden_dim = 11008,
+                              .n_layers   = 32,
+                              .n_heads    = 32,
+                              .n_kv_heads = 8,
+                              .vocab_size = 32000,
+                              .seq_len    = 4096};
+    tn_i64 ram             = (tn_i64)3 * 1024 * 1024 * 1024; /* 3 GB: sliding tier, 1024 window */
+    KVStrategyOptions none = {0, 0.0f, 0, NULL};
+    KVStrategyResult a     = select_kv_strategy_ex(&cfg, ram, NULL, &none);
+    KVStrategyResult b     = select_kv_strategy(&cfg, ram, NULL);
+    TEST_ASSERT_EQ(a.max_seq_len, b.max_seq_len, "zero options == automatic");
+    TEST_ASSERT_EQ(a.max_seq_len, 1024, "tier default window");
 
-  KVStrategyOptions big = {3000, 0.0f, 0, NULL};
-  KVStrategyResult c = select_kv_strategy_ex(&cfg, ram, NULL, &big);
-  TEST_ASSERT_EQ(c.max_seq_len, 3000, "--ctx-size replaces the tier window");
+    KVStrategyOptions big = {3000, 0.0f, 0, NULL};
+    KVStrategyResult c    = select_kv_strategy_ex(&cfg, ram, NULL, &big);
+    TEST_ASSERT_EQ(c.max_seq_len, 3000, "--ctx-size replaces the tier window");
 
-  KVStrategyOptions huge = {100000, 0.0f, 0, NULL};
-  KVStrategyResult d = select_kv_strategy_ex(&cfg, ram, NULL, &huge);
-  TEST_ASSERT_EQ(d.max_seq_len, 4096, "--ctx-size capped at model seq_len");
+    KVStrategyOptions huge = {100000, 0.0f, 0, NULL};
+    KVStrategyResult d     = select_kv_strategy_ex(&cfg, ram, NULL, &huge);
+    TEST_ASSERT_EQ(d.max_seq_len, 4096, "--ctx-size capped at model seq_len");
 
-  /* per-token F32 KV = 32*8*128*2*4 = 256 KiB; 10% of 3 GB = ~1228 tokens */
-  KVStrategyOptions tight = {4096, 0.10f, 0, NULL};
-  KVStrategyResult e = select_kv_strategy_ex(&cfg, ram, NULL, &tight);
-  TEST_ASSERT(e.max_seq_len < 4096 && e.max_seq_len >= 512, "RAM fraction caps the context");
+    /* per-token F32 KV = 32*8*128*2*4 = 256 KiB; 10% of 3 GB = ~1228 tokens */
+    KVStrategyOptions tight = {4096, 0.10f, 0, NULL};
+    KVStrategyResult e      = select_kv_strategy_ex(&cfg, ram, NULL, &tight);
+    TEST_ASSERT(e.max_seq_len < 4096 && e.max_seq_len >= 512, "RAM fraction caps the context");
 
-  kv_strategy_set_options(&big);
-  TEST_ASSERT_EQ(select_kv_strategy(&cfg, ram, NULL).max_seq_len, 3000, "process-wide options apply");
-  kv_strategy_set_options(NULL);
-  TEST_ASSERT_EQ(select_kv_strategy(&cfg, ram, NULL).max_seq_len, 1024, "NULL restores automatic");
+    kv_strategy_set_options(&big);
+    TEST_ASSERT_EQ(select_kv_strategy(&cfg, ram, NULL).max_seq_len, 3000,
+                   "process-wide options apply");
+    kv_strategy_set_options(NULL);
+    TEST_ASSERT_EQ(select_kv_strategy(&cfg, ram, NULL).max_seq_len, 1024,
+                   "NULL restores automatic");
 }
 
 static void test_strategy_full_f32(void) {
-  Config cfg = {.dim = 4096,
-                .hidden_dim = 11008,
-                .n_layers = 32,
-                .n_heads = 32,
-                .n_kv_heads = 8,
-                .vocab_size = 32000,
-                .seq_len = 4096};
+    Config cfg = {.dim        = 4096,
+                  .hidden_dim = 11008,
+                  .n_layers   = 32,
+                  .n_heads    = 32,
+                  .n_kv_heads = 8,
+                  .vocab_size = 32000,
+                  .seq_len    = 4096};
 
-  /* 36 GB free RAM → should choose full F32 (K-3 threshold: > GB_32 = 32 GB) */
-  tn_i64 ram = (tn_i64)36 * 1024 * 1024 * 1024;
-  KVStrategyResult r = select_kv_strategy(&cfg, ram, NULL);
-  TEST_ASSERT(r.strategy == KV_FULL_F32, "36GB → full F32");
-  TEST_ASSERT_EQ(r.max_seq_len, 4096, "full F32 uses full seq_len");
+    /* 36 GB free RAM → should choose full F32 (K-3 threshold: > GB_32 = 32 GB) */
+    tn_i64 ram         = (tn_i64)36 * 1024 * 1024 * 1024;
+    KVStrategyResult r = select_kv_strategy(&cfg, ram, NULL);
+    TEST_ASSERT(r.strategy == KV_FULL_F32, "36GB → full F32");
+    TEST_ASSERT_EQ(r.max_seq_len, 4096, "full F32 uses full seq_len");
 }
 
 static void test_strategy_quant_i8(void) {
-  Config cfg = {.dim = 4096,
-                .hidden_dim = 11008,
-                .n_layers = 32,
-                .n_heads = 32,
-                .n_kv_heads = 8,
-                .vocab_size = 32000,
-                .seq_len = 4096};
+    Config cfg = {.dim        = 4096,
+                  .hidden_dim = 11008,
+                  .n_layers   = 32,
+                  .n_heads    = 32,
+                  .n_kv_heads = 8,
+                  .vocab_size = 32000,
+                  .seq_len    = 4096};
 
-  /* 10 GB free RAM → should choose quantized I8 (K-3 threshold: GB_8 < ram ≤ GB_32) */
-  tn_i64 ram = (tn_i64)10 * 1024 * 1024 * 1024;
-  KVStrategyResult r = select_kv_strategy(&cfg, ram, NULL);
-  TEST_ASSERT(r.strategy == KV_QUANT_I8, "10GB → quant I8");
-  TEST_ASSERT_EQ(r.max_seq_len, 4096, "quant I8 uses full seq_len");
+    /* 10 GB free RAM → should choose quantized I8 (K-3 threshold: GB_8 < ram ≤ GB_32) */
+    tn_i64 ram         = (tn_i64)10 * 1024 * 1024 * 1024;
+    KVStrategyResult r = select_kv_strategy(&cfg, ram, NULL);
+    TEST_ASSERT(r.strategy == KV_QUANT_I8, "10GB → quant I8");
+    TEST_ASSERT_EQ(r.max_seq_len, 4096, "quant I8 uses full seq_len");
 }
 
 static void test_strategy_sliding_i8(void) {
-  Config cfg = {.dim = 4096,
-                .hidden_dim = 11008,
-                .n_layers = 32,
-                .n_heads = 32,
-                .n_kv_heads = 8,
-                .vocab_size = 32000,
-                .seq_len = 4096};
+    Config cfg = {.dim        = 4096,
+                  .hidden_dim = 11008,
+                  .n_layers   = 32,
+                  .n_heads    = 32,
+                  .n_kv_heads = 8,
+                  .vocab_size = 32000,
+                  .seq_len    = 4096};
 
-  /* 6 GB free RAM → sliding window I8 (K-3 threshold: GB_5 < ram ≤ GB_8) */
-  tn_i64 ram = (tn_i64)6 * 1024 * 1024 * 1024;
-  KVStrategyResult r = select_kv_strategy(&cfg, ram, NULL);
-  TEST_ASSERT(r.strategy == KV_SLIDING_I8, "6GB → sliding I8");
-  TEST_ASSERT(r.max_seq_len <= 2048, "sliding I8 limits seq_len to window");
+    /* 6 GB free RAM → sliding window I8 (K-3 threshold: GB_5 < ram ≤ GB_8) */
+    tn_i64 ram         = (tn_i64)6 * 1024 * 1024 * 1024;
+    KVStrategyResult r = select_kv_strategy(&cfg, ram, NULL);
+    TEST_ASSERT(r.strategy == KV_SLIDING_I8, "6GB → sliding I8");
+    TEST_ASSERT(r.max_seq_len <= 2048, "sliding I8 limits seq_len to window");
 }
 
 static void test_strategy_sliding_i4(void) {
-  Config cfg = {.dim = 4096,
-                .hidden_dim = 11008,
-                .n_layers = 32,
-                .n_heads = 32,
-                .n_kv_heads = 8,
-                .vocab_size = 32000,
-                .seq_len = 4096};
+    Config cfg = {.dim        = 4096,
+                  .hidden_dim = 11008,
+                  .n_layers   = 32,
+                  .n_heads    = 32,
+                  .n_kv_heads = 8,
+                  .vocab_size = 32000,
+                  .seq_len    = 4096};
 
-  /* 512 MB free RAM → sliding window I4 */
-  tn_i64 ram = (tn_i64)512 * 1024 * 1024;
-  KVStrategyResult r = select_kv_strategy(&cfg, ram, NULL);
-  TEST_ASSERT(r.strategy == KV_SLIDING_I4, "512MB → sliding I4");
-  TEST_ASSERT(r.max_seq_len <= 1024, "sliding I4 limits to small window");
+    /* 512 MB free RAM → sliding window I4 */
+    tn_i64 ram         = (tn_i64)512 * 1024 * 1024;
+    KVStrategyResult r = select_kv_strategy(&cfg, ram, NULL);
+    TEST_ASSERT(r.strategy == KV_SLIDING_I4, "512MB → sliding I4");
+    TEST_ASSERT(r.max_seq_len <= 1024, "sliding I4 limits to small window");
 }
 
 static void test_strategy_names(void) {
-  TEST_ASSERT(strcmp(kv_strategy_name(KV_FULL_F32), "Full F32") == 0,
-              "name: Full F32");
-  TEST_ASSERT(strcmp(kv_strategy_name(KV_QUANT_I8), "Quantized I8") == 0,
-              "name: Quantized I8");
-  TEST_ASSERT(strcmp(kv_strategy_name(KV_SLIDING_I4), "Sliding Window I4") == 0,
-              "name: Sliding Window I4");
+    TEST_ASSERT(strcmp(kv_strategy_name(KV_FULL_F32), "Full F32") == 0, "name: Full F32");
+    TEST_ASSERT(strcmp(kv_strategy_name(KV_QUANT_I8), "Quantized I8") == 0, "name: Quantized I8");
+    TEST_ASSERT(strcmp(kv_strategy_name(KV_SLIDING_I4), "Sliding Window I4") == 0,
+                "name: Sliding Window I4");
 }
 
 static void test_strategy_short_seq_len(void) {
-  /* Model with very short seq_len shouldn't be enlarged by sliding window */
-  Config cfg = {.dim = 256,
-                .hidden_dim = 512,
-                .n_layers = 4,
-                .n_heads = 4,
-                .n_kv_heads = 2,
-                .vocab_size = 1000,
-                .seq_len = 128};
+    /* Model with very short seq_len shouldn't be enlarged by sliding window */
+    Config cfg = {.dim        = 256,
+                  .hidden_dim = 512,
+                  .n_layers   = 4,
+                  .n_heads    = 4,
+                  .n_kv_heads = 2,
+                  .vocab_size = 1000,
+                  .seq_len    = 128};
 
-  tn_i64 ram = (tn_i64)2 * 1024 * 1024 * 1024;
-  KVStrategyResult r = select_kv_strategy(&cfg, ram, NULL);
-  TEST_ASSERT(r.max_seq_len <= 128, "short seq_len not enlarged");
+    tn_i64 ram         = (tn_i64)2 * 1024 * 1024 * 1024;
+    KVStrategyResult r = select_kv_strategy(&cfg, ram, NULL);
+    TEST_ASSERT(r.max_seq_len <= 128, "short seq_len not enlarged");
 }
 
 static void test_get_free_ram(void) {
-  tn_i64 ram = tn_get_free_ram();
-  /* On Linux, this should return a positive value */
-  TEST_ASSERT(ram > 0, "tn_get_free_ram returns positive on Linux");
-  /* Sanity: should be at least 100 MB on any reasonable system */
-  TEST_ASSERT(ram > 100 * 1024 * 1024, "at least 100MB available");
+    tn_i64 ram = tn_get_free_ram();
+    /* On Linux, this should return a positive value */
+    TEST_ASSERT(ram > 0, "tn_get_free_ram returns positive on Linux");
+    /* Sanity: should be at least 100 MB on any reasonable system */
+    TEST_ASSERT(ram > 100 * 1024 * 1024, "at least 100MB available");
 }
 
 /* ================================================================
@@ -438,94 +438,92 @@ static void test_get_free_ram(void) {
  * ================================================================ */
 
 static void test_strategy_moe_head_dim_safety_cap(void) {
-  Config cfg = {.dim = 2048,
-                .hidden_dim = 6144,
-                .n_layers = 48,
-                .n_heads = 32,      /* naive head_dim = 2048/32 = 64 */
-                .n_kv_heads = 4,
-                .vocab_size = 151936,
-                .seq_len = 40960};  /* native context, matches the real file */
+    Config cfg = {.dim        = 2048,
+                  .hidden_dim = 6144,
+                  .n_layers   = 48,
+                  .n_heads    = 32, /* naive head_dim = 2048/32 = 64 */
+                  .n_kv_heads = 4,
+                  .vocab_size = 151936,
+                  .seq_len    = 40960}; /* native context, matches the real file */
 
-  MoEConfig mc;
-  memset(&mc, 0, sizeof(mc));
-  mc.is_moe = true;
-  mc.has_qk_norm = true;   /* qwen3moe */
-  mc.attn_head_dim = 128;  /* real head_dim, from attention.key_length */
+    MoEConfig mc;
+    memset(&mc, 0, sizeof(mc));
+    mc.is_moe        = true;
+    mc.has_qk_norm   = true; /* qwen3moe */
+    mc.attn_head_dim = 128;  /* real head_dim, from attention.key_length */
 
-  /* 8.5 GB free: passes the KV_QUANT_I8 tier threshold (full seq_len
+    /* 8.5 GB free: passes the KV_QUANT_I8 tier threshold (full seq_len
    * before the safety cap), but tight enough that the safety cap must
    * actually reduce max_seq_len once the TRUE (128) head_dim is used.
    * (The double multiplication must happen before the cast to tn_i64 --
    * (tn_i64)8.5 truncates to 8 first, silently landing in the wrong RAM
    * tier entirely.) */
-  tn_i64 ram = (tn_i64)(8.5 * 1024.0 * 1024.0 * 1024.0);
+    tn_i64 ram = (tn_i64)(8.5 * 1024.0 * 1024.0 * 1024.0);
 
-  KVStrategyResult without_fix = select_kv_strategy(&cfg, ram, NULL);
-  KVStrategyResult with_fix    = select_kv_strategy(&cfg, ram, &mc);
+    KVStrategyResult without_fix = select_kv_strategy(&cfg, ram, NULL);
+    KVStrategyResult with_fix    = select_kv_strategy(&cfg, ram, &mc);
 
-  /* Without the real head_dim, the safety cap underestimates cost and
+    /* Without the real head_dim, the safety cap underestimates cost and
    * doesn't clamp at all here -- reproducing the unsafe pre-fix behavior
    * (this assertion documents the bug, not just checks the fix). */
-  TEST_ASSERT_EQ(without_fix.max_seq_len, 40960,
-                 "pre-fix behavior: naive head_dim under-clamps to full seq_len");
+    TEST_ASSERT_EQ(without_fix.max_seq_len, 40960,
+                   "pre-fix behavior: naive head_dim under-clamps to full seq_len");
 
-  /* With the real head_dim, the cap must actually reduce max_seq_len --
+    /* With the real head_dim, the cap must actually reduce max_seq_len --
    * the direct, observable signature of the fix. */
-  TEST_ASSERT(with_fix.max_seq_len < 40960,
-              "fixed: real head_dim clamps below native seq_len");
+    TEST_ASSERT(with_fix.max_seq_len < 40960, "fixed: real head_dim clamps below native seq_len");
 
-  /* The critical safety property: an allocation sized with the TRUE
+    /* The critical safety property: an allocation sized with the TRUE
    * head_dim at with_fix.max_seq_len must fit within the 60% budget --
    * i.e. this max_seq_len is actually safe to allocate, not just smaller
    * than before. */
-  double true_kv_bytes = (double)cfg.n_layers * mc.attn_head_dim
-                        * cfg.n_kv_heads * 2.0 * sizeof(float)
-                        * (double)with_fix.max_seq_len;
-  double budget = (double)ram * 0.6;
-  char msg[160];
-  snprintf(msg, sizeof(msg),
-           "clamped max_seq_len=%d gives a real KV cache (%.2f GB) within the 60%% budget (%.2f GB)",
-           with_fix.max_seq_len, true_kv_bytes / 1e9, budget / 1e9);
-  TEST_ASSERT(true_kv_bytes <= budget * 1.01 /* float rounding slack */, msg);
+    double true_kv_bytes = (double)cfg.n_layers * mc.attn_head_dim * cfg.n_kv_heads * 2.0 *
+                           sizeof(float) * (double)with_fix.max_seq_len;
+    double budget = (double)ram * 0.6;
+    char msg[160];
+    snprintf(
+        msg, sizeof(msg),
+        "clamped max_seq_len=%d gives a real KV cache (%.2f GB) within the 60%% budget (%.2f GB)",
+        with_fix.max_seq_len, true_kv_bytes / 1e9, budget / 1e9);
+    TEST_ASSERT(true_kv_bytes <= budget * 1.01 /* float rounding slack */, msg);
 
-  /* And confirm the UNFIXED number really would have exceeded budget --
+    /* And confirm the UNFIXED number really would have exceeded budget --
    * proving this test scenario genuinely reproduces the OOM risk. */
-  double unsafe_kv_bytes = (double)cfg.n_layers * mc.attn_head_dim
-                          * cfg.n_kv_heads * 2.0 * sizeof(float)
-                          * (double)without_fix.max_seq_len;
-  TEST_ASSERT(unsafe_kv_bytes > budget,
-              "pre-fix max_seq_len would have exceeded the RAM budget (the real bug)");
+    double unsafe_kv_bytes = (double)cfg.n_layers * mc.attn_head_dim * cfg.n_kv_heads * 2.0 *
+                             sizeof(float) * (double)without_fix.max_seq_len;
+    TEST_ASSERT(unsafe_kv_bytes > budget,
+                "pre-fix max_seq_len would have exceeded the RAM budget (the real bug)");
 }
 
 /* ================================================================ */
 
 int main(void) {
-  RUN_TEST(test_kv_i8_roundtrip);
-  RUN_TEST(test_kv_i8_zero_vector);
-  RUN_TEST(test_kv_i8_negative_values);
-  RUN_TEST(test_kv_i8_preserves_sign);
+    RUN_TEST(test_kv_i8_roundtrip);
+    RUN_TEST(test_kv_i8_zero_vector);
+    RUN_TEST(test_kv_i8_negative_values);
+    RUN_TEST(test_kv_i8_preserves_sign);
 
-  RUN_TEST(test_kv_i4_roundtrip);
-  RUN_TEST(test_kv_i4_zero_vector);
-  RUN_TEST(test_kv_i4_odd_dimension);
-  RUN_TEST(test_kv_i4_preserves_sign);
+    RUN_TEST(test_kv_i4_roundtrip);
+    RUN_TEST(test_kv_i4_zero_vector);
+    RUN_TEST(test_kv_i4_odd_dimension);
+    RUN_TEST(test_kv_i4_preserves_sign);
 
-  RUN_TEST(test_sw_init);
-  RUN_TEST(test_sw_pinned_positions);
-  RUN_TEST(test_sw_non_prompt_mapping);
-  RUN_TEST(test_sw_wraparound);
-  RUN_TEST(test_sw_valid_count);
-  RUN_TEST(test_sw_no_prompt);
+    RUN_TEST(test_sw_init);
+    RUN_TEST(test_sw_pinned_positions);
+    RUN_TEST(test_sw_non_prompt_mapping);
+    RUN_TEST(test_sw_wraparound);
+    RUN_TEST(test_sw_valid_count);
+    RUN_TEST(test_sw_no_prompt);
 
-  RUN_TEST(test_strategy_full_f32);
-  RUN_TEST(test_strategy_quant_i8);
-  RUN_TEST(test_strategy_sliding_i8);
-  RUN_TEST(test_strategy_sliding_i4);
-  RUN_TEST(test_strategy_names);
-  RUN_TEST(test_strategy_short_seq_len);
-  RUN_TEST(test_strategy_moe_head_dim_safety_cap);
-  RUN_TEST(test_strategy_options);
-  RUN_TEST(test_get_free_ram);
+    RUN_TEST(test_strategy_full_f32);
+    RUN_TEST(test_strategy_quant_i8);
+    RUN_TEST(test_strategy_sliding_i8);
+    RUN_TEST(test_strategy_sliding_i4);
+    RUN_TEST(test_strategy_names);
+    RUN_TEST(test_strategy_short_seq_len);
+    RUN_TEST(test_strategy_moe_head_dim_safety_cap);
+    RUN_TEST(test_strategy_options);
+    RUN_TEST(test_get_free_ram);
 
-  TEST_SUMMARY();
+    TEST_SUMMARY();
 }

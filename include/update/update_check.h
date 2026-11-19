@@ -29,7 +29,7 @@ typedef enum {
 } UpdateChannel;
 
 typedef enum {
-    UPDATE_STATUS_UNKNOWN = 0,  /* not checked yet, or local version unknown */
+    UPDATE_STATUS_UNKNOWN = 0, /* not checked yet, or local version unknown */
     UPDATE_STATUS_DISABLED,
     UPDATE_STATUS_UP_TO_DATE,
     UPDATE_STATUS_AVAILABLE,
@@ -37,34 +37,35 @@ typedef enum {
 } UpdateStatus;
 
 typedef struct {
-    int  enabled;             /* 0: --no-update-check */
+    int enabled;              /* 0: --no-update-check */
     char repo[128];           /* "owner/name" */
     char api_base[128];       /* "https://api.github.com" (GHE / mirror override) */
-    int  interval_hours;      /* between network checks; 0 disables (default 24) */
-    int  channel;             /* UpdateChannel */
-    int  timeout_s;           /* network timeout (default 5) */
-    int  force_min_interval_s;/* spacing for forced checks, e.g. UI "check now" (60) */
-    char cache_path[512];     /* "" = $PZ_CACHE_DIR | $XDG_CACHE_HOME | ~/.cache /project-zero/update-check */
+    int interval_hours;       /* between network checks; 0 disables (default 24) */
+    int channel;              /* UpdateChannel */
+    int timeout_s;            /* network timeout (default 5) */
+    int force_min_interval_s; /* spacing for forced checks, e.g. UI "check now" (60) */
+    char cache_path
+        [512]; /* "" = $PZ_CACHE_DIR | $XDG_CACHE_HOME | ~/.cache /project-zero/update-check */
 } UpdateOptions;
 
 typedef struct {
-    int       status;          /* UpdateStatus */
-    char      current[64];     /* running build's version string */
-    char      latest[64];      /* newest eligible release tag, "" if none */
-    char      url[256];        /* its release page */
-    char      published[32];   /* ISO-8601 publish time */
-    int       latest_prerelease;
-    long long checked_at;      /* epoch seconds of the last network attempt */
-    int       channel;         /* channel the cached result was fetched for */
-    char      repo[128];       /* repo the cached result was fetched for */
-    char      error[96];       /* last failure, "" on success */
-    int       from_cache;
+    int status;         /* UpdateStatus */
+    char current[64];   /* running build's version string */
+    char latest[64];    /* newest eligible release tag, "" if none */
+    char url[256];      /* its release page */
+    char published[32]; /* ISO-8601 publish time */
+    int latest_prerelease;
+    long long checked_at; /* epoch seconds of the last network attempt */
+    int channel;          /* channel the cached result was fetched for */
+    char repo[128];       /* repo the cached result was fetched for */
+    char error[96];       /* last failure, "" on success */
+    int from_cache;
 } UpdateInfo;
 
 #define UPDATE_DEFAULT_INTERVAL_H 24
-#define UPDATE_DEFAULT_TIMEOUT_S  5
-#define UPDATE_ERROR_RETRY_S      3600
-#define UPDATE_MAX_BODY           (2u * 1024u * 1024u)
+#define UPDATE_DEFAULT_TIMEOUT_S 5
+#define UPDATE_ERROR_RETRY_S 3600
+#define UPDATE_MAX_BODY (2u * 1024u * 1024u)
 
 /* Defaults: enabled, PZ_UPDATE_REPO (build-time) or the upstream repo, 24 h. */
 void update_options_default(UpdateOptions *o);
@@ -79,7 +80,7 @@ const char *update_env_opt_out(void);
 
 const char *update_status_name(int status);
 const char *update_channel_name(int channel);
-int         update_channel_parse(const char *s); /* -1 on error */
+int update_channel_parse(const char *s); /* -1 on error */
 
 /* Pure: pick the newest eligible release from a GitHub /releases JSON array
  * and set latest/url/published/latest_prerelease + status vs `current`.
@@ -105,10 +106,10 @@ int update_check(const UpdateOptions *o, const char *current, int force, UpdateI
 void update_service_init(const UpdateOptions *o, const char *current);
 /* Starts a background check when stale (or forced and the last attempt is
  * older than force_min_interval_s). Returns 1 if a check was started. */
-int  update_service_poll(int force);
+int update_service_poll(int force);
 void update_service_get(UpdateInfo *out);
-int  update_service_options(UpdateOptions *out); /* 0 if not initialised */
-void update_service_wait(void);   /* join an in-flight check (tests, exit) */
+int update_service_options(UpdateOptions *out); /* 0 if not initialised */
+void update_service_wait(void);                 /* join an in-flight check (tests, exit) */
 
 /* One-line notice for stderr, or "" when nothing to say. */
 void update_format_notice(const UpdateInfo *in, char *buf, size_t n);

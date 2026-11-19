@@ -1,6 +1,7 @@
 #ifndef TN_SPEC_SCRATCH_H
 #define TN_SPEC_SCRATCH_H
 
+#include "core/batch_scratch_fwd.h"
 #include "core/config.h"
 #include "core/error.h"
 
@@ -21,18 +22,18 @@
  * attention_forward() — kv_dim <= dim <= width(xb2), kv_dim <= hidden_dim
  * <= width(hb2)); the same reuse trick applies here, just N-wide.
  */
-typedef struct {
+struct SpecBatchScratch {
     int n_tokens;
     int dim;
     int hidden_dim;
     int vocab_size;
 
-    float *x;      /* [n_tokens][dim]        post-embedding / residual stream */
-    float *xb;     /* [n_tokens][dim]        rmsnorm / attention-out scratch */
-    float *xb2;     /* [n_tokens][dim]        residual branch scratch; doubles as k_buf */
-    float *hb;      /* [n_tokens][hidden_dim] FFN gate; doubles as MLA kv_full/q_full */
-    float *hb2;      /* [n_tokens][hidden_dim] FFN up; doubles as v_buf / MLA kv-compress */
-    float *q;       /* [n_tokens][dim]        query projections (all heads) */
+    float *x;   /* [n_tokens][dim]        post-embedding / residual stream */
+    float *xb;  /* [n_tokens][dim]        rmsnorm / attention-out scratch */
+    float *xb2; /* [n_tokens][dim]        residual branch scratch; doubles as k_buf */
+    float *hb;  /* [n_tokens][hidden_dim] FFN gate; doubles as MLA kv_full/q_full */
+    float *hb2; /* [n_tokens][hidden_dim] FFN up; doubles as v_buf / MLA kv-compress */
+    float *q;   /* [n_tokens][dim]        query projections (all heads) */
     /* No logits buffer here: transformer_forward_batch() always writes the
      * classifier output to its own explicit `logits_out` parameter (a
      * separate caller-owned [n_tokens][vocab_size] buffer, per
@@ -40,7 +41,7 @@ typedef struct {
      * allocated an unused `logits` field here that nothing ever read or
      * wrote (2026-09-22, see docs/ai/mistakes.md); removed rather than
      * left as dead weight. */
-} SpecBatchScratch;
+};
 
 /**
  * Allocate all buffers for a batch width of `n_tokens`. Returns TN_ERR_OOM

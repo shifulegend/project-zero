@@ -26,6 +26,19 @@ Include:
 
 We will acknowledge your report within 72 hours and aim to release a fix within 14 days for critical issues.
 
+## If a credential is exposed
+
+A secret scan (Gitleaks) runs on every push and pull request. If a token, API key or password is
+found in the repository, its history or a release asset:
+
+1. The credential is treated as compromised and revoked at its provider within 24 hours of the
+   finding being confirmed.
+2. A replacement is issued and any affected automation is updated.
+3. The file is fixed in a new commit; if a published release is affected, its notes gain a dated
+   notice and the fix ships as a new release (published releases are never modified).
+
+Please report a suspected exposure through the Security Advisory link above.
+
 ## Scope
 
 Security issues relevant to this project include:

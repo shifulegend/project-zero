@@ -30,6 +30,7 @@
 
 #if TN_HAS_AVX2
 #include <immintrin.h>
+#include "core/fp16.h"
 #endif
 
 /* ── Q2_0 constants ──────────────────────────────────────────────────────────
@@ -44,25 +45,15 @@
  * The per-value decode formula is unchanged (see gguf_quant.c's
  * gguf_dequant_q2_0): only the group size and per-block byte count differ. */
 #define Q2_0_BLOCK 128
-#define Q2_0_BYTES 34   /* bytes per 128-element block: 2 (fp16 scale) + 32 (2-bit codes) */
+#define Q2_0_BYTES 34 /* bytes per 128-element block: 2 (fp16 scale) + 32 (2-bit codes) */
 
-static inline float q2_0_f16_to_f32(uint16_t h) {
-    uint32_t sign = (uint32_t)(h >> 15) << 31;
-    uint32_t exp  = (h >> 10) & 0x1f;
-    uint32_t mant = (uint32_t)(h & 0x3ff) << 13;
-    uint32_t bits;
-    if      (exp == 0)  bits = sign | mant;
-    else if (exp == 31) bits = sign | 0x7f800000u | mant;
-    else                bits = sign | ((exp + 112) << 23) | mant;
-    float f; memcpy(&f, &bits, 4); return f;
-}
 
 /*
  * dot_q2_0_row: fused dot product of one Q2_0-encoded row with float32 x.
  */
 static float dot_q2_0_row(const uint8_t *row_q2_0, const float *x, int n) {
     int n_blocks = n / Q2_0_BLOCK;
-    float total = 0.0f;
+    float total  = 0.0f;
 
 #if TN_HAS_AVX2
     __m256 acc = _mm256_setzero_ps();
@@ -70,17 +61,18 @@ static float dot_q2_0_row(const uint8_t *row_q2_0, const float *x, int n) {
 
     for (int b = 0; b < n_blocks; b++) {
         const uint8_t *blk = row_q2_0 + (size_t)b * Q2_0_BYTES;
-        uint16_t d_bits; memcpy(&d_bits, blk, 2);
-        float d = q2_0_f16_to_f32(d_bits);
-        const uint8_t *qs = blk + 2;   /* 16 bytes, 64 × 2-bit codes */
-        const float *xb = x + (size_t)b * Q2_0_BLOCK;
+        uint16_t d_bits;
+        memcpy(&d_bits, blk, 2);
+        float d           = tn_fp16_to_f32(d_bits);
+        const uint8_t *qs = blk + 2; /* 16 bytes, 64 × 2-bit codes */
+        const float *xb   = x + (size_t)b * Q2_0_BLOCK;
 
         float decoded[Q2_0_BLOCK];
         for (int j = 0; j < Q2_0_BLOCK; j++) {
             int byte_index = j >> 2;
             int bit_offset = (j & 3) * 2;
-            int code = (qs[byte_index] >> bit_offset) & 0x3;
-            decoded[j] = (float)(code - 1);
+            int code       = (qs[byte_index] >> bit_offset) & 0x3;
+            decoded[j]     = (float)(code - 1);
         }
 
 #if TN_HAS_AVX2
@@ -88,7 +80,7 @@ static float dot_q2_0_row(const uint8_t *row_q2_0, const float *x, int n) {
         for (int k = 0; k < Q2_0_BLOCK; k += 8) {
             __m256 wv = _mm256_loadu_ps(&decoded[k]);
             __m256 xv = _mm256_loadu_ps(&xb[k]);
-            acc = _mm256_fmadd_ps(_mm256_mul_ps(dv, wv), xv, acc);
+            acc       = _mm256_fmadd_ps(_mm256_mul_ps(dv, wv), xv, acc);
         }
 #else
         for (int j = 0; j < Q2_0_BLOCK; j++) total += d * decoded[j] * xb[j];
@@ -99,8 +91,8 @@ static float dot_q2_0_row(const uint8_t *row_q2_0, const float *x, int n) {
     __m128 lo = _mm256_castps256_ps128(acc);
     __m128 hi = _mm256_extractf128_ps(acc, 1);
     __m128 s  = _mm_add_ps(lo, hi);
-    s = _mm_add_ps(s, _mm_movehl_ps(s, s));
-    total = _mm_cvtss_f32(_mm_add_ss(s, _mm_movehdup_ps(s)));
+    s         = _mm_add_ps(s, _mm_movehl_ps(s, s));
+    total     = _mm_cvtss_f32(_mm_add_ss(s, _mm_movehdup_ps(s)));
 #endif
     return total;
 }
@@ -108,8 +100,8 @@ static float dot_q2_0_row(const uint8_t *row_q2_0, const float *x, int n) {
 /* ── Single-matrix thread pool dispatch ─────────────────────────────────── */
 
 typedef struct {
-    float         *out;
-    const float   *x;
+    float *out;
+    const float *x;
     const uint8_t *w;
     int n, d;
     size_t row_bytes;
@@ -128,8 +120,8 @@ static void matmul_q2_0_task(void *arg, int thread_id, int start, int end) {
  * handled the call, 0 if the caller should use the portable path below
  * (n not a multiple of 128, or larger than its stack-buffer ceiling —
  * never happens for this model's actual dims). */
-extern int parallel_matmul_q2_0_vnni(float *out, const float *x, const uint8_t *w_q2_0,
-                                      int n, int d, ThreadPool *tp);
+extern int parallel_matmul_q2_0_vnni(float *out, const float *x, const uint8_t *w_q2_0, int n,
+                                     int d, ThreadPool *tp);
 #endif
 
 /* 2026-10-21: single source of truth for which path parallel_matmul_q2_0()
@@ -146,8 +138,8 @@ int matmul_q2_0_uses_vnni(void) {
 #endif
 }
 
-void parallel_matmul_q2_0(float *out, const float *x, const uint8_t *w_q2_0,
-                           int n, int d, ThreadPool *tp) {
+void parallel_matmul_q2_0(float *out, const float *x, const uint8_t *w_q2_0, int n, int d,
+                          ThreadPool *tp) {
 #if TN_HAS_AVX512VNNI
     /* Gated on the verified-executable runtime flag, not just the
      * TN_HAS_AVX512VNNI compile-time macro: a hypervisor can advertise
@@ -155,13 +147,14 @@ void parallel_matmul_q2_0(float *out, const float *x, const uint8_t *w_q2_0,
      * a real vpdpbusds, same class of bug as bitunpack2_vnni.h's VBMI
      * check (see cpu_features.c's verify_avx512vnni_executable() and
      * docs/ai/mistakes.md, 2026-09-24 entry). */
-    if (matmul_q2_0_uses_vnni() &&
-        parallel_matmul_q2_0_vnni(out, x, w_q2_0, n, d, tp)) return;
+    if (matmul_q2_0_uses_vnni() && parallel_matmul_q2_0_vnni(out, x, w_q2_0, n, d, tp)) return;
 #endif
-    size_t row_bytes = (size_t)(n / Q2_0_BLOCK) * Q2_0_BYTES;
-    MatmulQ2_0Args args = { .out = out, .x = x, .w = w_q2_0,
-                             .n = n, .d = d, .row_bytes = row_bytes };
-    if (!tp) { matmul_q2_0_task(&args, 0, 0, d); return; }
+    size_t row_bytes    = (size_t)(n / Q2_0_BLOCK) * Q2_0_BYTES;
+    MatmulQ2_0Args args = {.out = out, .x = x, .w = w_q2_0, .n = n, .d = d, .row_bytes = row_bytes};
+    if (!tp) {
+        matmul_q2_0_task(&args, 0, 0, d);
+        return;
+    }
     threadpool_dispatch(tp, matmul_q2_0_task, &args, d);
 }
 
@@ -178,14 +171,13 @@ void parallel_matmul_q2_0(float *out, const float *x, const uint8_t *w_q2_0,
  * not measured speedup, since there's no real hot-path call site today. */
 
 #if TN_HAS_AVX512VNNI
-extern int parallel_matmul_q2_0_batch_vnni(float **outs, float **xs,
-                                            const uint8_t * const *ws,
-                                            int n, int d, int k, ThreadPool *tp);
+extern int parallel_matmul_q2_0_batch_vnni(float **outs, float **xs, const uint8_t *const *ws,
+                                           int n, int d, int k, ThreadPool *tp);
 #endif
 
 typedef struct {
-    float        **outs;
-    float        **xs;
+    float **outs;
+    float **xs;
     const uint8_t *const *ws;
     int n_in, n_out, k;
     size_t row_bytes;
@@ -194,30 +186,35 @@ typedef struct {
 static void matmul_q2_0_batch_task(void *arg, int thread_id, int start, int end) {
     (void)thread_id;
     MatmulQ2_0BatchArgs *a = (MatmulQ2_0BatchArgs *)arg;
-    int n_out = a->n_out;
+    int n_out              = a->n_out;
     for (int r = start; r < end; r++) {
-        int ei = r / n_out;
-        int ri = r % n_out;
-        a->outs[ei][ri] = dot_q2_0_row(a->ws[ei] + (size_t)ri * a->row_bytes,
-                                        a->xs[ei], a->n_in);
+        int ei          = r / n_out;
+        int ri          = r % n_out;
+        a->outs[ei][ri] = dot_q2_0_row(a->ws[ei] + (size_t)ri * a->row_bytes, a->xs[ei], a->n_in);
     }
 }
 
-void parallel_matmul_q2_0_batch(float **outs, float **xs,
-                                 const uint8_t * const *ws,
-                                 int n, int d, int k, ThreadPool *tp) {
+void parallel_matmul_q2_0_batch(float **outs, float **xs, const uint8_t *const *ws, int n, int d,
+                                int k, ThreadPool *tp) {
 #if TN_HAS_AVX512VNNI
     /* See parallel_matmul_q2_0()'s comment above: verified-executable
      * runtime flag, not just the compile-time macro. */
-    if (matmul_q2_0_uses_vnni() &&
-        parallel_matmul_q2_0_batch_vnni(outs, xs, ws, n, d, k, tp)) return;
+    if (matmul_q2_0_uses_vnni() && parallel_matmul_q2_0_batch_vnni(outs, xs, ws, n, d, k, tp))
+        return;
 #endif
-    size_t row_bytes = (size_t)(n / Q2_0_BLOCK) * Q2_0_BYTES;
+    size_t row_bytes         = (size_t)(n / Q2_0_BLOCK) * Q2_0_BYTES;
     MatmulQ2_0BatchArgs args = {
-        .outs = outs, .xs = xs, .ws = ws,
-        .n_in = n, .n_out = d, .k = k,
+        .outs      = outs,
+        .xs        = xs,
+        .ws        = ws,
+        .n_in      = n,
+        .n_out     = d,
+        .k         = k,
         .row_bytes = row_bytes,
     };
-    if (!tp) { matmul_q2_0_batch_task(&args, 0, 0, k * d); return; }
+    if (!tp) {
+        matmul_q2_0_batch_task(&args, 0, 0, k * d);
+        return;
+    }
     threadpool_dispatch(tp, matmul_q2_0_batch_task, &args, k * d);
 }

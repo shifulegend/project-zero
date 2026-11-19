@@ -14,10 +14,10 @@
  * instructions.
  */
 typedef struct {
-  int window_size;       /* Total physical slots available */
-  int system_prompt_len; /* Number of pinned system prompt slots */
-  int write_head;        /* Next write position in the circular region */
-  bool wrapped;          /* Whether the circular region has wrapped around */
+    int window_size;       /* Total physical slots available */
+    int system_prompt_len; /* Number of pinned system prompt slots */
+    int write_head;        /* Next write position in the circular region */
+    bool wrapped;          /* Whether the circular region has wrapped around */
 } SlidingWindow;
 
 /**

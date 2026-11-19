@@ -16,12 +16,16 @@ on:
     - cron: '0 3 * * *'   # 03:00 UTC daily
   workflow_dispatch: {}
 
+# Least privilege: read-only token; no job here writes to the repository.
+permissions:
+  contents: read
+
 jobs:
   extended-grammar-fuzz:
     name: Extended grammar differential fuzzing (TS-2.1)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install dependencies
         run: |
           sudo apt-get update -q || { echo "apt-get update failed; dropping the runner's third-party Microsoft repo (unused) and retrying"; sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list /etc/apt/sources.list.d/*microsoft*; sudo apt-get update -q; }
@@ -37,7 +41,7 @@ jobs:
     name: Differential dequant vs real ggml (TS-1.1)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install dependencies
         run: |
           sudo apt-get update -q || { echo "apt-get update failed; dropping the runner's third-party Microsoft repo (unused) and retrying"; sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list /etc/apt/sources.list.d/*microsoft*; sudo apt-get update -q; }

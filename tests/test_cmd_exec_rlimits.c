@@ -46,7 +46,8 @@ static void test_timeout_kills_blocking_read(void) {
     time_t elapsed = time(NULL) - start;
 
     TEST_ASSERT(r.timed_out == 1, "cat on an empty FIFO with no writer times out (timed_out=1)");
-    TEST_ASSERT(elapsed >= 1 && elapsed <= 6, "timeout fires close to the requested 2s, not immediately or never");
+    TEST_ASSERT(elapsed >= 1 && elapsed <= 6,
+                "timeout fires close to the requested 2s, not immediately or never");
 
     unlink(fifo_name);
 }
@@ -56,14 +57,15 @@ static void test_zero_and_negative_timeout_no_hang(void) {
     char *argv[] = {"echo", "hello", NULL};
     char out[64] = {0};
 
-    time_t start = time(NULL);
-    ExecResult r0 = execute_command(argv, 0, out, sizeof(out));
+    time_t start    = time(NULL);
+    ExecResult r0   = execute_command(argv, 0, out, sizeof(out));
     time_t elapsed0 = time(NULL) - start;
     TEST_ASSERT(r0.exit_code == 0, "timeout_sec=0: fast command still completes normally");
-    TEST_ASSERT(elapsed0 <= 3, "timeout_sec=0: does not hang waiting for a timeout that will never fire");
+    TEST_ASSERT(elapsed0 <= 3,
+                "timeout_sec=0: does not hang waiting for a timeout that will never fire");
 
-    start = time(NULL);
-    ExecResult rneg = execute_command(argv, -5, out, sizeof(out));
+    start             = time(NULL);
+    ExecResult rneg   = execute_command(argv, -5, out, sizeof(out));
     time_t elapsedneg = time(NULL) - start;
     TEST_ASSERT(rneg.exit_code == 0, "timeout_sec=-5: fast command still completes normally");
     TEST_ASSERT(elapsedneg <= 3, "timeout_sec=-5: does not hang");
@@ -77,7 +79,8 @@ static void test_output_truncation_no_oob(void) {
      * any out-of-bounds write here. */
     char *argv[] = {"ls", "-la", NULL};
     char out[64];
-    memset(out, 'X', sizeof(out)); /* sentinel: unwritten bytes stay 'X', not garbage-looking-valid */
+    memset(out, 'X',
+           sizeof(out)); /* sentinel: unwritten bytes stay 'X', not garbage-looking-valid */
     ExecResult r = execute_command(argv, 2, out, sizeof(out));
 
     TEST_ASSERT(r.exit_code == 0, "ls -la exits 0 despite truncated output capture");
@@ -90,7 +93,10 @@ static void test_output_truncation_no_oob(void) {
 /* ── Case: RLIMIT_CPU actually fires (real OS mechanism, not execute_command) */
 static void test_rlimit_cpu_actually_enforced(void) {
     pid_t pid = fork();
-    if (pid < 0) { TEST_ASSERT(0, "fork() failed"); return; }
+    if (pid < 0) {
+        TEST_ASSERT(0, "fork() failed");
+        return;
+    }
     if (pid == 0) {
         /* child: same shape of limit cmd_exec.c sets (a low CPU-time cap),
          * then exec a real CPU-burning process -- a tight low-level busy
@@ -108,26 +114,29 @@ static void test_rlimit_cpu_actually_enforced(void) {
      * default) well before a generous wall-clock ceiling -- if RLIMIT_CPU
      * were silently not enforced, this would spin until the outer test
      * timeout, which is exactly the failure mode this test exists to catch. */
-    int status = 0;
+    int status   = 0;
     time_t start = time(NULL);
     pid_t wp;
     do {
         wp = waitpid(pid, &status, WNOHANG);
         if (wp == pid) break;
-        struct timespec ts = { 0, 50 * 1000 * 1000 };
+        struct timespec ts = {0, 50 * 1000 * 1000};
         nanosleep(&ts, NULL);
     } while (time(NULL) - start < 10);
 
     if (wp != pid) {
         kill(pid, SIGKILL);
         waitpid(pid, &status, 0);
-        TEST_ASSERT(0, "RLIMIT_CPU did NOT stop the child within 10s wall-clock (limit not enforced!)");
+        TEST_ASSERT(
+            0, "RLIMIT_CPU did NOT stop the child within 10s wall-clock (limit not enforced!)");
         return;
     }
-    TEST_ASSERT(WIFSIGNALED(status), "RLIMIT_CPU-limited child was killed by a signal, not a clean exit");
+    TEST_ASSERT(WIFSIGNALED(status),
+                "RLIMIT_CPU-limited child was killed by a signal, not a clean exit");
     if (WIFSIGNALED(status)) {
-        TEST_ASSERT(WTERMSIG(status) == SIGXCPU || WTERMSIG(status) == SIGKILL,
-                     "killed by SIGXCPU (or SIGKILL under a stricter runtime), not something unrelated");
+        TEST_ASSERT(
+            WTERMSIG(status) == SIGXCPU || WTERMSIG(status) == SIGKILL,
+            "killed by SIGXCPU (or SIGKILL under a stricter runtime), not something unrelated");
     }
 }
 
@@ -143,11 +152,15 @@ static void test_rlimit_as_actually_enforced(void) {
      * known negative, or hard-failing CI for a platform limitation this
      * pass doesn't fix -- matching this project's existing convention for
      * env-dependent tests (see test_vision_components/test_vision_e2e). */
-    printf("  SKIP: RLIMIT_AS is not enforced on macOS/Darwin (known platform gap, not a bug here)\n");
+    printf(
+        "  SKIP: RLIMIT_AS is not enforced on macOS/Darwin (known platform gap, not a bug here)\n");
     return;
 #endif
     pid_t pid = fork();
-    if (pid < 0) { TEST_ASSERT(0, "fork() failed"); return; }
+    if (pid < 0) {
+        TEST_ASSERT(0, "fork() failed");
+        return;
+    }
     if (pid == 0) {
         /* child: a deliberately small AS cap (not production's 256 MiB --
          * this test just needs the mechanism to trip fast), then exec a
@@ -159,24 +172,26 @@ static void test_rlimit_as_actually_enforced(void) {
         setrlimit(RLIMIT_AS, &as_limit);
         execl("/bin/sh", "sh", "-c",
               "a=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA; "
-              "while :; do a=\"$a$a\"; done", (char *)NULL);
+              "while :; do a=\"$a$a\"; done",
+              (char *)NULL);
         _exit(127);
     }
 
-    int status = 0;
+    int status   = 0;
     time_t start = time(NULL);
     pid_t wp;
     do {
         wp = waitpid(pid, &status, WNOHANG);
         if (wp == pid) break;
-        struct timespec ts = { 0, 50 * 1000 * 1000 };
+        struct timespec ts = {0, 50 * 1000 * 1000};
         nanosleep(&ts, NULL);
     } while (time(NULL) - start < 15);
 
     if (wp != pid) {
         kill(pid, SIGKILL);
         waitpid(pid, &status, 0);
-        TEST_ASSERT(0, "RLIMIT_AS did NOT stop the child within 15s (unbounded allocation not capped!)");
+        TEST_ASSERT(
+            0, "RLIMIT_AS did NOT stop the child within 15s (unbounded allocation not capped!)");
         return;
     }
     /* Either the shell's own malloc/fork failed cleanly (nonzero exit) or
@@ -184,7 +199,8 @@ static void test_rlimit_as_actually_enforced(void) {
      * the child never grew to consume unbounded host memory. A clean exit
      * code 0 would mean the loop somehow finished, which it never does. */
     int capped = (WIFSIGNALED(status)) || (WIFEXITED(status) && WEXITSTATUS(status) != 0);
-    TEST_ASSERT(capped, "RLIMIT_AS-limited child did not run away with unbounded memory (killed or failed, not a clean 0 exit)");
+    TEST_ASSERT(capped, "RLIMIT_AS-limited child did not run away with unbounded memory (killed or "
+                        "failed, not a clean 0 exit)");
 }
 
 int main(void) {

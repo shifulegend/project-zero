@@ -23,8 +23,8 @@
 
 /* ── BF16 ────────────────────────────────────────────────────────────────── */
 
-void tn_matmul_bf16_batch(float *out, const float *x, const tn_u16 *w,
-                           int n, int d, int n_tokens, ThreadPool *tp) {
+void tn_matmul_bf16_batch(float *out, const float *x, const tn_u16 *w, int n, int d, int n_tokens,
+                          ThreadPool *tp) {
     /* 2026-10-22: the fused SIMD kernel in parallel_matmul.c (an AVX2 TU)
      * replaces the convert-then-dot task below, which was ~20x slower than
      * the single-token kernel at one row (Phase 23 batched decode). */
@@ -34,7 +34,7 @@ void tn_matmul_bf16_batch(float *out, const float *x, const tn_u16 *w,
 /* ── INT8, block-quantized (TN_CLS_QUANT_BLOCK elements/block) ────────────── */
 
 typedef struct {
-    float       *out;
+    float *out;
     const float *x;
     const tn_u8 *w;
     const float *scales;
@@ -44,23 +44,23 @@ typedef struct {
 static void matmul_i8_batch_task(void *arg, int thread_id, int start, int end) {
     (void)thread_id;
     const I8BatchArgs *a = (const I8BatchArgs *)arg;
-    const int nb = a->n_blocks;
+    const int nb         = a->n_blocks;
 
     float *row_f32 = (float *)malloc((size_t)a->n * sizeof(float));
     if (!row_f32) {
         for (int i = start; i < end; i++) {
-            const tn_u8 *row = a->w + (size_t)i * a->n;
+            const tn_u8 *row        = a->w + (size_t)i * a->n;
             const float *row_scales = a->scales + (size_t)i * nb;
             for (int k = 0; k < a->n_tokens; k++) {
                 const float *xk = a->x + (size_t)k * a->n;
-                float total = 0.0f;
+                float total     = 0.0f;
                 for (int b = 0; b < nb; b++) {
                     int blk_start = b * TN_CLS_QUANT_BLOCK;
-                    int blk_len = a->n - blk_start;
+                    int blk_len   = a->n - blk_start;
                     if (blk_len > TN_CLS_QUANT_BLOCK) blk_len = TN_CLS_QUANT_BLOCK;
                     const tn_u8 *brow = row + blk_start;
-                    const float *bx = xk + blk_start;
-                    float val = 0.0f;
+                    const float *bx   = xk + blk_start;
+                    float val         = 0.0f;
                     for (int j = 0; j < blk_len; j++) {
                         val += (float)((int)brow[j] - 128) * bx[j];
                     }
@@ -73,7 +73,7 @@ static void matmul_i8_batch_task(void *arg, int thread_id, int start, int end) {
     }
 
     for (int i = start; i < end; i++) {
-        const tn_u8 *row = a->w + (size_t)i * a->n;
+        const tn_u8 *row        = a->w + (size_t)i * a->n;
         const float *row_scales = a->scales + (size_t)i * nb;
         /* Dequantize this row to F32 ONCE, folding each block's scale in
          * directly -- turns the per-token cost below into a single plain
@@ -81,7 +81,7 @@ static void matmul_i8_batch_task(void *arg, int thread_id, int start, int end) {
          * repeated per token. */
         for (int b = 0; b < nb; b++) {
             int blk_start = b * TN_CLS_QUANT_BLOCK;
-            int blk_len = a->n - blk_start;
+            int blk_len   = a->n - blk_start;
             if (blk_len > TN_CLS_QUANT_BLOCK) blk_len = TN_CLS_QUANT_BLOCK;
             float s = row_scales[b];
             for (int j = 0; j < blk_len; j++) {
@@ -89,20 +89,24 @@ static void matmul_i8_batch_task(void *arg, int thread_id, int start, int end) {
             }
         }
         for (int k = 0; k < a->n_tokens; k++) {
-            const float *xk = a->x + (size_t)k * a->n;
+            const float *xk              = a->x + (size_t)k * a->n;
             a->out[(size_t)k * a->d + i] = tn_vec_dot(row_f32, xk, a->n);
         }
     }
     free(row_f32);
 }
 
-void tn_matmul_i8_batch(float *out, const float *x, const tn_u8 *w,
-                         const float *scales, int n, int d, int n_tokens, ThreadPool *tp) {
-    int n_blocks = (n + TN_CLS_QUANT_BLOCK - 1) / TN_CLS_QUANT_BLOCK;
-    I8BatchArgs args = {
-        .out = out, .x = x, .w = w, .scales = scales,
-        .n = n, .d = d, .n_tokens = n_tokens, .n_blocks = n_blocks
-    };
+void tn_matmul_i8_batch(float *out, const float *x, const tn_u8 *w, const float *scales, int n,
+                        int d, int n_tokens, ThreadPool *tp) {
+    int n_blocks     = (n + TN_CLS_QUANT_BLOCK - 1) / TN_CLS_QUANT_BLOCK;
+    I8BatchArgs args = {.out      = out,
+                        .x        = x,
+                        .w        = w,
+                        .scales   = scales,
+                        .n        = n,
+                        .d        = d,
+                        .n_tokens = n_tokens,
+                        .n_blocks = n_blocks};
     if (!tp) {
         matmul_i8_batch_task(&args, 0, 0, d);
         return;
@@ -114,7 +118,7 @@ void tn_matmul_i8_batch(float *out, const float *x, const tn_u8 *w,
  * Unsigned storage with +8 bias: signed value + 8 -> [1, 15]. */
 
 typedef struct {
-    float       *out;
+    float *out;
     const float *x;
     const tn_u8 *w;
     const float *scales;
@@ -124,28 +128,30 @@ typedef struct {
 static void matmul_i4_batch_task(void *arg, int thread_id, int start, int end) {
     (void)thread_id;
     const I4BatchArgs *a = (const I4BatchArgs *)arg;
-    size_t row_bytes = ((size_t)a->n + 1) / 2;
-    const int nb = a->n_blocks;
+    size_t row_bytes     = ((size_t)a->n + 1) / 2;
+    const int nb         = a->n_blocks;
 
     float *row_f32 = (float *)malloc((size_t)a->n * sizeof(float));
     if (!row_f32) {
         for (int i = start; i < end; i++) {
-            const tn_u8 *row = a->w + (size_t)i * row_bytes;
+            const tn_u8 *row        = a->w + (size_t)i * row_bytes;
             const float *row_scales = a->scales + (size_t)i * nb;
             for (int k = 0; k < a->n_tokens; k++) {
                 const float *xk = a->x + (size_t)k * a->n;
-                float total = 0.0f;
+                float total     = 0.0f;
                 for (int b = 0; b < nb; b++) {
                     int blk_start = b * TN_CLS_QUANT_BLOCK;
-                    int blk_len = a->n - blk_start;
+                    int blk_len   = a->n - blk_start;
                     if (blk_len > TN_CLS_QUANT_BLOCK) blk_len = TN_CLS_QUANT_BLOCK;
                     const float *bx = xk + blk_start;
-                    float val = 0.0f;
+                    float val       = 0.0f;
                     for (int j = 0; j < blk_len; j++) {
                         int abs_j = blk_start + j;
                         int nibble;
-                        if (abs_j & 1) nibble = (row[abs_j / 2] >> 4) & 0x0F;
-                        else nibble = row[abs_j / 2] & 0x0F;
+                        if (abs_j & 1)
+                            nibble = (row[abs_j / 2] >> 4) & 0x0F;
+                        else
+                            nibble = row[abs_j / 2] & 0x0F;
                         val += (float)(nibble - 8) * bx[j];
                     }
                     total += val * row_scales[b];
@@ -157,36 +163,42 @@ static void matmul_i4_batch_task(void *arg, int thread_id, int start, int end) {
     }
 
     for (int i = start; i < end; i++) {
-        const tn_u8 *row = a->w + (size_t)i * row_bytes;
+        const tn_u8 *row        = a->w + (size_t)i * row_bytes;
         const float *row_scales = a->scales + (size_t)i * nb;
         for (int b = 0; b < nb; b++) {
             int blk_start = b * TN_CLS_QUANT_BLOCK;
-            int blk_len = a->n - blk_start;
+            int blk_len   = a->n - blk_start;
             if (blk_len > TN_CLS_QUANT_BLOCK) blk_len = TN_CLS_QUANT_BLOCK;
             float s = row_scales[b];
             for (int j = 0; j < blk_len; j++) {
                 int abs_j = blk_start + j;
                 int nibble;
-                if (abs_j & 1) nibble = (row[abs_j / 2] >> 4) & 0x0F;
-                else nibble = row[abs_j / 2] & 0x0F;
+                if (abs_j & 1)
+                    nibble = (row[abs_j / 2] >> 4) & 0x0F;
+                else
+                    nibble = row[abs_j / 2] & 0x0F;
                 row_f32[abs_j] = (float)(nibble - 8) * s;
             }
         }
         for (int k = 0; k < a->n_tokens; k++) {
-            const float *xk = a->x + (size_t)k * a->n;
+            const float *xk              = a->x + (size_t)k * a->n;
             a->out[(size_t)k * a->d + i] = tn_vec_dot(row_f32, xk, a->n);
         }
     }
     free(row_f32);
 }
 
-void tn_matmul_i4_batch(float *out, const float *x, const tn_u8 *w,
-                         const float *scales, int n, int d, int n_tokens, ThreadPool *tp) {
-    int n_blocks = (n + TN_CLS_QUANT_BLOCK - 1) / TN_CLS_QUANT_BLOCK;
-    I4BatchArgs args = {
-        .out = out, .x = x, .w = w, .scales = scales,
-        .n = n, .d = d, .n_tokens = n_tokens, .n_blocks = n_blocks
-    };
+void tn_matmul_i4_batch(float *out, const float *x, const tn_u8 *w, const float *scales, int n,
+                        int d, int n_tokens, ThreadPool *tp) {
+    int n_blocks     = (n + TN_CLS_QUANT_BLOCK - 1) / TN_CLS_QUANT_BLOCK;
+    I4BatchArgs args = {.out      = out,
+                        .x        = x,
+                        .w        = w,
+                        .scales   = scales,
+                        .n        = n,
+                        .d        = d,
+                        .n_tokens = n_tokens,
+                        .n_blocks = n_blocks};
     if (!tp) {
         matmul_i4_batch_task(&args, 0, 0, d);
         return;

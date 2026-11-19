@@ -9,8 +9,8 @@
  * Memory savings: 4x vs float32.
  */
 typedef struct {
-  tn_i8 *data; /* Quantized int8 values */
-  float scale; /* Absmax scale factor: max(|src|) / 127 */
+    tn_i8 *data; /* Quantized int8 values */
+    float scale; /* Absmax scale factor: max(|src|) / 127 */
 } CompressedKVSlot;
 
 /**
@@ -18,8 +18,8 @@ typedef struct {
  * Memory savings: 8x vs float32.
  */
 typedef struct {
-  tn_u8 *data; /* Packed int4 values (2 per byte) */
-  float scale; /* Absmax scale factor: max(|src|) / 7 */
+    tn_u8 *data; /* Packed int4 values (2 per byte) */
+    float scale; /* Absmax scale factor: max(|src|) / 7 */
 } CompressedKV4Slot;
 
 /**
@@ -72,7 +72,6 @@ void kv_compress_to_4bit(const float *src, tn_u8 *dst, float *scale, int dim);
  * @param scale Scale factor from compression
  * @param dim   Number of elements
  */
-void kv_decompress_from_4bit(float *dst, const tn_u8 *src, float scale,
-                             int dim);
+void kv_decompress_from_4bit(float *dst, const tn_u8 *src, float scale, int dim);
 
 #endif /* TN_KV_COMPRESS_H */

@@ -21,19 +21,19 @@
  */
 
 typedef struct {
-    int *tokens;   /* tokens[i] = token whose K/V is stored at position i */
-    int  n;        /* valid record length */
-    int  capacity; /* KV window size; positions >= capacity invalidate */
+    int *tokens;  /* tokens[i] = token whose K/V is stored at position i */
+    int n;        /* valid record length */
+    int capacity; /* KV window size; positions >= capacity invalidate */
 } PrefixCache;
 
 /* Allocates room for `capacity` positions. Returns 0 on success, -1 on OOM
  * or capacity <= 0 (the cache is then inert: match() always returns 0). */
-int  prefix_cache_init(PrefixCache *pc, int capacity);
+int prefix_cache_init(PrefixCache *pc, int capacity);
 void prefix_cache_free(PrefixCache *pc);
 void prefix_cache_reset(PrefixCache *pc);
 
 /* Longest common prefix between the record and tokens[0..n). */
-int  prefix_cache_match(const PrefixCache *pc, const int *tokens, int n);
+int prefix_cache_match(const PrefixCache *pc, const int *tokens, int n);
 
 /* Drop everything at positions >= len. */
 void prefix_cache_truncate(PrefixCache *pc, int len);

@@ -16,7 +16,8 @@ static void test_defaults_and_sanitize(void) {
     TEST_ASSERT(!wm.enabled, "disabled by default");
     TEST_ASSERT_FLOAT_EQ(wm.gamma, WATERMARK_DEFAULT_GAMMA, 1e-6, "default gamma");
     TEST_ASSERT_FLOAT_EQ(wm.delta, WATERMARK_DEFAULT_DELTA, 1e-6, "default delta");
-    wm.gamma = 5.0f; wm.delta = -3.0f;
+    wm.gamma = 5.0f;
+    wm.delta = -3.0f;
     watermark_config_sanitize(&wm);
     TEST_ASSERT_FLOAT_EQ(wm.gamma, 0.99f, 1e-6, "gamma clamped high");
     TEST_ASSERT_FLOAT_EQ(wm.delta, 0.0f, 1e-6, "delta clamped low");
@@ -29,13 +30,14 @@ static void test_key_from_string(void) {
     TEST_ASSERT_EQ(watermark_key_from_string(NULL), 0u, "NULL -> 0");
     TEST_ASSERT_EQ(watermark_key_from_string(""), 0u, "empty -> 0");
     TEST_ASSERT(watermark_key_from_string("a") != watermark_key_from_string("b"), "distinct keys");
-    TEST_ASSERT(watermark_key_from_string("abc") == watermark_key_from_string("abc"), "deterministic");
+    TEST_ASSERT(watermark_key_from_string("abc") == watermark_key_from_string("abc"),
+                "deterministic");
 }
 
 static void test_green_fraction_matches_gamma(void) {
     WatermarkConfig wm;
     watermark_config_default(&wm);
-    wm.key = 1234;
+    wm.key    = 1234;
     int green = 0, total = 0;
     for (int prev = 0; prev < 64; prev++)
         for (int t = 0; t < VOCAB; t++, total++) green += watermark_is_green(&wm, prev, t);
@@ -46,7 +48,7 @@ static void test_green_fraction_matches_gamma(void) {
 static void test_bias_only_green_when_enabled(void) {
     WatermarkConfig wm;
     watermark_config_default(&wm);
-    wm.key = 99;
+    wm.key              = 99;
     float logits[VOCAB] = {0};
     watermark_bias_logits(&wm, logits, VOCAB, 5);
     int changed = 0;
@@ -74,7 +76,7 @@ static void test_detect_separates_populations(void) {
 
     enum { N = 200, TRIALS = 200 };
     int toks[N];
-    int false_pos = 0;
+    int false_pos     = 0;
     double max_null_z = -1e9;
     for (int t = 0; t < TRIALS; t++) {
         for (int i = 0; i < N; i++) toks[i] = (int)(rng_float(&rng) * VOCAB) % VOCAB;
@@ -96,7 +98,7 @@ static void test_detect_separates_populations(void) {
             float logits[VOCAB];
             for (int v = 0; v < VOCAB; v++) logits[v] = 0.0f;
             toks[i] = sampler_chain_sample(logits, VOCAB, &ss, NULL, 0, &wm, prev, &rng);
-            prev = toks[i];
+            prev    = toks[i];
         }
         WatermarkResult r;
         watermark_detect(&wm, toks, N, &r);
@@ -111,7 +113,8 @@ static void test_detect_dedups_repeated_bigrams(void) {
     wm.key = 7;
     /* Find one green bigram and repeat it: must count once, not 100 times. */
     int a = 0, b = 0;
-    for (b = 0; b < VOCAB && !watermark_is_green(&wm, a, b); b++) {}
+    for (b = 0; b < VOCAB && !watermark_is_green(&wm, a, b); b++) {
+    }
     int toks[201];
     for (int i = 0; i < 201; i++) toks[i] = (i % 2 == 0) ? a : b;
     WatermarkResult r;

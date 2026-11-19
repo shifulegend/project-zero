@@ -30,12 +30,15 @@ static void test_golden(void) {
 static void test_raw_and_limits(void) {
     char buf[256];
     TEST_ASSERT(tn_block_font_render("ZE", buf, sizeof(buf), 1) > 0, "raw render");
-    TEST_ASSERT(strncmp(buf, "#####.#####\n", 12) == 0, "raw keeps '.' blanks and the 1-column gap");
-    TEST_ASSERT(tn_block_font_render("PROJECT X", buf, sizeof(buf), 0) == 0, "unsupported letter -> 0");
+    TEST_ASSERT(strncmp(buf, "#####.#####\n", 12) == 0,
+                "raw keeps '.' blanks and the 1-column gap");
+    TEST_ASSERT(tn_block_font_render("PROJECT X", buf, sizeof(buf), 0) == 0,
+                "unsupported letter -> 0");
     TEST_ASSERT(!tn_block_font_supports("HELLO"), "H/L unsupported");
     TEST_ASSERT(tn_block_font_supports("zero"), "supported subset");
     TEST_ASSERT(tn_block_font_render("", buf, sizeof(buf), 0) == 0, "empty -> 0");
-    TEST_ASSERT(tn_block_font_render("PROJECT ZERO", buf, 40, 0) == 0, "too-small buffer -> 0, no overflow");
+    TEST_ASSERT(tn_block_font_render("PROJECT ZERO", buf, 40, 0) == 0,
+                "too-small buffer -> 0, no overflow");
     TEST_ASSERT(buf[0] == '\0', "buffer left empty on failure");
 }
 

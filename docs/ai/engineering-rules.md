@@ -24,6 +24,23 @@
 - Build: the Makefile tracks header dependencies (`-MMD -MP`, 2026-10-18); don't remove it —
   stale objects with old struct layouts were linked silently before.
 
+## Formatting
+- C/C++ is formatted with clang-format 18 using `.clang-format` (4 spaces, attached braces, 100
+  columns). `make format` rewrites, `make check-format` is the CI gate (job "format"). Vendored and
+  generated files are listed in `.clang-format-ignore`. A macro whose argument is stringified
+  (`#x`) must be wrapped in `// clang-format off` / `on`, as `PZ_UPDATE_REPO` is.
+
+## Header guards
+- Every header under `include/` has a classic guard named `TN_<NAME>_H` (`#ifndef` / `#define` /
+  `#endif`); no `#pragma once`, no other prefixes. CI: `tools/check_header_guards.py`
+  (`--fix` renames a non-conforming guard to `TN_<DIR>_<FILE>_H`). Vendored `stb_*` are exempt.
+
+## Repository root stays clean
+- Tracked files at the repository root are limited to the list in `tools/root_allowlist.txt`
+  (CI: `tools/check_root_files.sh`). Analysis notes go under `docs/`, test inputs under
+  `tests/fixtures/`, benchmark outputs under `benchmark_results/`. Adding a genuine root file
+  means adding it to that list in the same commit.
+
 ## Memory & safety (hard rules, learned from real bugs)
 - **Zero structs before partial population.** Always `memset(&x, 0, sizeof(x))` before
   `weights_alloc_pointers()` / `run_state_alloc()`-style fillers. `weights_free_pointers()`
@@ -113,6 +130,12 @@ A change is done only when:
   condition, an off-by-one) never need to wait for permission.
 - Re-run the full verification cycle (`## Verification` above) after any bug fix, same as for
   planned work — a fix that isn't verified is just a different unverified change.
+
+## Test-first (Red -> Green -> Refactor)
+- A behaviour change or bug fix starts with a test that fails for the right reason, then the smallest
+  change that makes it pass, then cleanup with the tests green. State in the commit or PR which
+  test failed first. Pure refactors keep the existing tests green and, where the code generator is
+  deterministic, compare the compiled objects before and after. Documentation-only changes are exempt.
 
 ## Version control & branch hygiene
 - Integrate into `master` via small PRs (don't push directly); keep each PR's branch short-lived.

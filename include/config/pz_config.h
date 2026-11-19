@@ -1,5 +1,5 @@
-#ifndef PZ_CONFIG_H
-#define PZ_CONFIG_H
+#ifndef TN_CONFIG_PZ_CONFIG_H
+#define TN_CONFIG_PZ_CONFIG_H
 
 /*
  * config/pz_config — persistent configuration (Phase 40.1, 2026-10-21).
@@ -25,42 +25,37 @@ typedef enum {
     PZ_CFG_STRING = 0,
     PZ_CFG_INT,
     PZ_CFG_FLOAT,
-    PZ_CFG_BOOL,      /* true -> the flag is passed; false -> omitted */
-    PZ_CFG_LIST       /* repeatable flag: one token pair per item */
+    PZ_CFG_BOOL, /* true -> the flag is passed; false -> omitted */
+    PZ_CFG_LIST  /* repeatable flag: one token pair per item */
 } PzCfgType;
 
 typedef struct {
-    const char *key;        /* flag name without "--" */
-    PzCfgType   type;
-    const char *group;      /* "model", "generation", "server", ... (list/wizard grouping) */
+    const char *key; /* flag name without "--" */
+    PzCfgType type;
+    const char *group; /* "model", "generation", "server", ... (list/wizard grouping) */
     const char *help;
-    const char *choices;    /* "|"-separated allowed values, or NULL */
-    double      min, max;   /* numeric range when min < max */
-    int         secret;     /* value masked by `pz config list` */
+    const char *choices; /* "|"-separated allowed values, or NULL */
+    double min, max;     /* numeric range when min < max */
+    int secret;          /* value masked by `pz config list` */
 } PzCfgKey;
 
-#define PZ_CFG_MAX_VALUE 65536   /* bytes per value (a system prompt can be long) */
-#define PZ_CFG_MAX_ITEMS 16      /* items per list key */
+#define PZ_CFG_MAX_VALUE 65536 /* bytes per value (a system prompt can be long) */
+#define PZ_CFG_MAX_ITEMS 16    /* items per list key */
 
 /* Where a setting's effective value comes from (Phase 40.3, 2026-10-22). */
-typedef enum {
-    PZ_SRC_DEFAULT = 0,
-    PZ_SRC_FILE,
-    PZ_SRC_ENV,
-    PZ_SRC_CLI
-} PzCfgSource;
+typedef enum { PZ_SRC_DEFAULT = 0, PZ_SRC_FILE, PZ_SRC_ENV, PZ_SRC_CLI } PzCfgSource;
 
 typedef struct {
     const PzCfgKey *key;
-    int   set;                     /* value present */
-    int   src;                     /* PzCfgSource of the value (CLI: flag given, value not held) */
-    int   n;                       /* items (1 for scalars) */
-    char *v[PZ_CFG_MAX_ITEMS];     /* malloc'd raw values (strings unquoted) */
+    int set;                   /* value present */
+    int src;                   /* PzCfgSource of the value (CLI: flag given, value not held) */
+    int n;                     /* items (1 for scalars) */
+    char *v[PZ_CFG_MAX_ITEMS]; /* malloc'd raw values (strings unquoted) */
 } PzCfgEntry;
 
 typedef struct {
-    PzCfgEntry *entries;    /* one per schema key, schema order */
-    int         n;
+    PzCfgEntry *entries; /* one per schema key, schema order */
+    int n;
 } PzConfig;
 
 /* Schema (static table). */
@@ -70,7 +65,7 @@ const PzCfgKey *pz_config_find_key(const char *key);
 /* Default file path. Returns 0, or -1 when no location can be derived. */
 int pz_config_path(char *buf, size_t n);
 
-int  pz_config_init(PzConfig *c);           /* all unset */
+int pz_config_init(PzConfig *c); /* all unset */
 void pz_config_free(PzConfig *c);
 
 /* Validates one value for a key (type, choices, range). Returns 0, or -1 and
@@ -124,4 +119,4 @@ const char *pz_config_active_path(void);
 /* 1 when the published config read the file and environment. */
 int pz_config_active_file_used(void);
 
-#endif /* PZ_CONFIG_H */
+#endif /* TN_CONFIG_PZ_CONFIG_H */

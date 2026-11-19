@@ -936,6 +936,7 @@ import argparse
 import numpy as np
 from transformers import AutoModelForCausalLM, AutoConfig
 
+
 def pack_ternary_weights(tensor):
     """
     Takes a massive array of -1, 0, and 1 floating point weights.
@@ -948,44 +949,52 @@ def pack_ternary_weights(tensor):
     # 2. Map values to 2-bit unsigned integers
     mapped = np.zeros_like(flat_array, dtype=np.uint8)
     mapped[flat_array == -1] = 0
-    mapped[flat_array == 0]  = 1
-    mapped[flat_array == 1]  = 2
+    mapped[flat_array == 0] = 1
+    mapped[flat_array == 1] = 2
 
     # Pad array to ensure it's a multiple of 4
     remainder = len(mapped) % 4
     if remainder != 0:
-        mapped = np.pad(mapped, (0, 4 - remainder), 'constant', constant_values=1)
+        mapped = np.pad(mapped, (0, 4 - remainder), "constant", constant_values=1)
 
     # 3. The Bitwise Packing Magic
-    packed = (mapped[0::4] & 0x03) | \
-             ((mapped[1::4] & 0x03) << 2) | \
-             ((mapped[2::4] & 0x03) << 4) | \
-             ((mapped[3::4] & 0x03) << 6)
+    packed = (
+        (mapped[0::4] & 0x03)
+        | ((mapped[1::4] & 0x03) << 2)
+        | ((mapped[2::4] & 0x03) << 4)
+        | ((mapped[3::4] & 0x03) << 6)
+    )
 
     return packed.astype(np.uint8)
+
 
 def write_binary(model_id, output_path):
     print(f"Loading {model_id} from Hugging Face into RAM...")
 
     config = AutoConfig.from_pretrained(model_id)
-    model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.float16, device_map="cpu")
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id, torch_dtype=torch.float16, device_map="cpu"
+    )
 
     print(f"Model loaded. Beginning C-Binary extraction to {output_path}...")
 
-    with open(output_path, 'wb') as f:
+    with open(output_path, "wb") as f:
         # --- PHASE 1: THE C-HEADER ---
-        f.write(struct.pack('4s', b'TNRY'))
-        f.write(struct.pack('i', 1))
+        f.write(struct.pack("4s", b"TNRY"))
+        f.write(struct.pack("i", 1))
 
-        f.write(struct.pack('iiiiiii',
-            config.hidden_size,
-            config.intermediate_size,
-            config.num_hidden_layers,
-            config.num_attention_heads,
-            getattr(config, "num_key_value_heads", config.num_attention_heads),
-            config.vocab_size,
-            config.max_position_embeddings
-        ))
+        f.write(
+            struct.pack(
+                "iiiiiii",
+                config.hidden_size,
+                config.intermediate_size,
+                config.num_hidden_layers,
+                config.num_attention_heads,
+                getattr(config, "num_key_value_heads", config.num_attention_heads),
+                config.vocab_size,
+                config.max_position_embeddings,
+            )
+        )
 
         print("Header and Config written.")
 
@@ -994,7 +1003,7 @@ def write_binary(model_id, output_path):
 
         # 1. Token Embeddings (High precision, not ternary)
         print("Writing Token Embeddings...")
-        embeds = state_dict['model.embed_tokens.weight'].float().cpu().numpy()
+        embeds = state_dict["model.embed_tokens.weight"].float().cpu().numpy()
         f.write(embeds.tobytes())
 
         # 2. The Neural Network Layers
@@ -1002,26 +1011,39 @@ def write_binary(model_id, output_path):
             print(f"Packing Layer {layer_i} / {config.num_hidden_layers}...")
             prefix = f"model.layers.{layer_i}."
 
-            for proj in ['self_attn.q_proj', 'self_attn.k_proj', 'self_attn.v_proj', 'self_attn.o_proj',
-                         'mlp.gate_proj', 'mlp.down_proj', 'mlp.up_proj']:
-
-                weight_tensor = state_dict[f'{prefix}{proj}.weight']
+            for proj in [
+                "self_attn.q_proj",
+                "self_attn.k_proj",
+                "self_attn.v_proj",
+                "self_attn.o_proj",
+                "mlp.gate_proj",
+                "mlp.down_proj",
+                "mlp.up_proj",
+            ]:
+                weight_tensor = state_dict[f"{prefix}{proj}.weight"]
                 packed_bytes = pack_ternary_weights(weight_tensor)
                 f.write(packed_bytes.tobytes())
 
-            f.write(state_dict[f'{prefix}input_layernorm.weight'].float().cpu().numpy().tobytes())
-            f.write(state_dict[f'{prefix}post_attention_layernorm.weight'].float().cpu().numpy().tobytes())
+            f.write(state_dict[f"{prefix}input_layernorm.weight"].float().cpu().numpy().tobytes())
+            f.write(
+                state_dict[f"{prefix}post_attention_layernorm.weight"]
+                .float()
+                .cpu()
+                .numpy()
+                .tobytes()
+            )
 
         # 3. Final Output Classifier
         print("Writing Final Output Projections...")
-        f.write(state_dict['model.norm.weight'].float().cpu().numpy().tobytes())
+        f.write(state_dict["model.norm.weight"].float().cpu().numpy().tobytes())
 
-        final_cls = state_dict['lm_head.weight']
+        final_cls = state_dict["lm_head.weight"]
         packed_cls = pack_ternary_weights(final_cls)
         f.write(packed_cls.tobytes())
 
     print(f"\nSUCCESS: Model successfully crushed and packed into {output_path}!")
     print("You can now map this directly into your C engine.")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert HuggingFace BitNet to Custom C Binary")

@@ -52,11 +52,9 @@ char *sse_format_full_response(const char *id, const char *full_text);
  * and token usage (cached_tokens = prompt tokens reused from the Phase 21.5
  * prefix cache, as usage.prompt_tokens_details.cached_tokens). The streaming done event also includes a "usage" object
  * (OpenAI's stream_options.include_usage shape). */
-int   sse_write_done_ex(int fd, const char *id, const char *finish_reason,
-                        int prompt_tokens, int completion_tokens, int cached_tokens);
-char *sse_format_full_response_ex(const char *id, const char *full_text,
-                                  const char *finish_reason,
-                                  int prompt_tokens, int completion_tokens,
-                                  int cached_tokens);
+int sse_write_done_ex(int fd, const char *id, const char *finish_reason, int prompt_tokens,
+                      int completion_tokens, int cached_tokens);
+char *sse_format_full_response_ex(const char *id, const char *full_text, const char *finish_reason,
+                                  int prompt_tokens, int completion_tokens, int cached_tokens);
 
 #endif /* TN_SSE_STREAM_H */

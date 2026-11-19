@@ -10,15 +10,10 @@ float rag_cosine_similarity(const float *a, const float *b, int dim) {
 
 /* Simple insertion-sort into a fixed-size top-k array (descending by score).
  * O(n·k) — fine for k ≤ 10 and n ≤ 100K. */
-int rag_find_top_k(const float *query,
-                   const float *embeddings,
-                   int n_entries,
-                   int dim,
-                   int k,
-                   int *out_indices,
-                   float *out_scores) {
-    if (!query || !embeddings || n_entries <= 0 || dim <= 0 || k <= 0 ||
-        !out_indices || !out_scores)
+int rag_find_top_k(const float *query, const float *embeddings, int n_entries, int dim, int k,
+                   int *out_indices, float *out_scores) {
+    if (!query || !embeddings || n_entries <= 0 || dim <= 0 || k <= 0 || !out_indices ||
+        !out_scores)
         return 0;
 
     /* Clamp k to available entries */

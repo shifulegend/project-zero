@@ -14,17 +14,17 @@
 #include <stddef.h>
 
 #define STOP_MAX_SEQS 8
-#define STOP_MAX_LEN  128
+#define STOP_MAX_LEN 128
 
 /* Same shape as generate.h's TokenCallback: nonzero return = stop requested. */
 typedef int (*StopEmitFn)(const char *text, void *userdata);
 
 typedef struct {
-    char   seqs[STOP_MAX_SEQS][STOP_MAX_LEN];
-    int    n_seqs;
-    char  *pending;   /* held-back tail that may begin a stop sequence */
+    char seqs[STOP_MAX_SEQS][STOP_MAX_LEN];
+    int n_seqs;
+    char *pending; /* held-back tail that may begin a stop sequence */
     size_t len, cap;
-    int    stopped;   /* 1 once a stop sequence matched */
+    int stopped; /* 1 once a stop sequence matched */
 } StopMatcher;
 
 /* Copies up to STOP_MAX_SEQS non-empty strings (each truncated to

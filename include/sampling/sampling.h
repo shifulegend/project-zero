@@ -33,8 +33,7 @@ void apply_temperature(float *logits, int vocab_size, float temperature);
  * @param rng_state   Pointer to RNG state
  * @return            Sampled token index
  */
-int sample_top_p(float *logits, int vocab_size, float top_p,
-                 unsigned long long *rng_state);
+int sample_top_p(float *logits, int vocab_size, float top_p, unsigned long long *rng_state);
 
 /**
  * Top-k sampling.
@@ -46,7 +45,6 @@ int sample_top_p(float *logits, int vocab_size, float top_p,
  * @param rng_state   Pointer to RNG state
  * @return            Sampled token index
  */
-int sample_top_k(float *logits, int vocab_size, int k,
-                 unsigned long long *rng_state);
+int sample_top_k(float *logits, int vocab_size, int k, unsigned long long *rng_state);
 
 #endif /* TN_SAMPLING_H */

@@ -29,8 +29,8 @@ typedef struct {
 #if TN_POSIX
     pthread_t *threads;
     pthread_mutex_t mutex;
-    pthread_cond_t cond_work;   /* wake sleeping workers */
-    pthread_cond_t cond_done;   /* wake sleeping dispatcher */
+    pthread_cond_t cond_work; /* wake sleeping workers */
+    pthread_cond_t cond_done; /* wake sleeping dispatcher */
 #endif
     int num_threads;
 
@@ -51,16 +51,16 @@ typedef struct {
      * fall back to condition variables so idle periods don't burn 100% CPU.
      */
     atomic_uint spin_epoch;
-    atomic_int  spin_claimed;
-    atomic_int  spin_remaining;
+    atomic_int spin_claimed;
+    atomic_int spin_remaining;
 
     /* K-5: caller-participates design.
      * num_threads  = total parallelism (N slices of work, indices 0..N-1)
      * num_workers  = N-1 OS threads (indices 0..N-2)
      * Calling thread (main/dispatcher) executes slice N-1 directly.
      * Total OS threads on HW = N, not N+1 — oversubscription eliminated. */
-    int num_workers;     /* = num_threads - 1; OS threads actually created */
-    int physical_cores;  /* distinct (physical_id, core_id) pairs on this CPU */
+    int num_workers;    /* = num_threads - 1; OS threads actually created */
+    int physical_cores; /* distinct (physical_id, core_id) pairs on this CPU */
 
     /*
      * When n_threads >= physical_cores * 2 (all HT siblings active),
@@ -107,8 +107,7 @@ void threadpool_dispatch(ThreadPool *tp, tn_task_fn fn, void *arg, int total);
  * claiming slice. chunk <= 0 picks threadpool_chunk_size(tp, total). tp may
  * be NULL (runs fn(arg, 0, 0, total) inline).
  */
-void threadpool_dispatch_chunked(ThreadPool *tp, tn_task_fn fn, void *arg,
-                                 int total, int chunk);
+void threadpool_dispatch_chunked(ThreadPool *tp, tn_task_fn fn, void *arg, int total, int chunk);
 
 /** ~8 chunks per slice, a multiple of 8 items, at least 8. */
 int threadpool_chunk_size(const ThreadPool *tp, int total);

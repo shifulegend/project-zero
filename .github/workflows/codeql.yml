@@ -1,0 +1,49 @@
+name: CodeQL
+
+# Code scanning for the C/C++ engine, the Python tools and the web UI JavaScript.
+# Results appear under Security > Code scanning. To block merges on new High/Critical alerts,
+# require the "CodeQL" code-scanning check in the branch ruleset (a repository setting).
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+  schedule:
+    - cron: "17 3 * * 1"      # weekly, Monday 03:17 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write   # upload the SARIF results
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: c-cpp
+            build-mode: manual
+          - language: python
+            build-mode: none
+          - language: javascript-typescript
+            build-mode: none
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@096a89ea781ad15884828b1490898d6948bd1605 # v3.39.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+      - name: Build the engine (C/C++ only)
+        if: matrix.language == 'c-cpp'
+        run: make release CC=gcc
+      - name: Analyze
+        uses: github/codeql-action/analyze@096a89ea781ad15884828b1490898d6948bd1605 # v3.39.3
+        with:
+          category: "/language:${{ matrix.language }}"

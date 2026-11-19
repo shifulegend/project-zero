@@ -19,16 +19,17 @@
 
 /* ── Q2K constants (must match matmul_q2k.c) ───────────────────────────────── */
 #define Q2K_SUPER 256
-#define Q2K_BYTES  84
+#define Q2K_BYTES 84
 
 /* ── fp16 helpers ─────────────────────────────────────────────────────────── */
 static uint16_t f32_to_fp16(float f) {
-    uint32_t u; memcpy(&u, &f, 4);
-    uint32_t sign  = (u >> 16) & 0x8000;
-    uint32_t exp   = ((u >> 23) & 0xFF);
-    uint32_t mant  = u & 0x7FFFFF;
+    uint32_t u;
+    memcpy(&u, &f, 4);
+    uint32_t sign = (u >> 16) & 0x8000;
+    uint32_t exp  = ((u >> 23) & 0xFF);
+    uint32_t mant = u & 0x7FFFFF;
     if (exp >= 143) return (uint16_t)(sign | 0x7BFF); /* clamp to max fp16 */
-    if (exp <= 102) return (uint16_t) sign;            /* underflow → zero   */
+    if (exp <= 102) return (uint16_t)sign;            /* underflow → zero   */
     return (uint16_t)(sign | ((exp - 112) << 10) | (mant >> 13));
 }
 
@@ -46,11 +47,11 @@ static float ref_dot_q2k_row(const uint8_t *row, const float *inp, int in_dim) {
 /* ── Build one Q2K super-block deterministically ─────────────────────────── */
 static void make_q2k_block(uint8_t *blk, int seed) {
     /* d, dmin: small positive fp16 values */
-    float d_f    = 0.02f + (seed & 0xF) * 0.003f;
-    float dmin_f = 0.01f + (seed & 0x7) * 0.002f;
+    float d_f       = 0.02f + (seed & 0xF) * 0.003f;
+    float dmin_f    = 0.01f + (seed & 0x7) * 0.002f;
     uint16_t d_h    = f32_to_fp16(d_f);
     uint16_t dmin_h = f32_to_fp16(dmin_f);
-    memcpy(blk + 80, &d_h,    2);
+    memcpy(blk + 80, &d_h, 2);
     memcpy(blk + 82, &dmin_h, 2);
 
     /* scales[16]: deterministic mix of low/high nibbles */
@@ -58,8 +59,7 @@ static void make_q2k_block(uint8_t *blk, int seed) {
         blk[i] = (uint8_t)(((i * 3 + seed) & 0xF) | (((i + seed + 1) & 0xF) << 4));
 
     /* qs[64]: fill with pseudo-random 2-bit values */
-    for (int i = 0; i < 64; i++)
-        blk[16 + i] = (uint8_t)((i * 7 + seed * 13) & 0xFF);
+    for (int i = 0; i < 64; i++) blk[16 + i] = (uint8_t)((i * 7 + seed * 13) & 0xFF);
 }
 
 /* ── Tests ─────────────────────────────────────────────────────────────────── */
@@ -104,13 +104,13 @@ static void test_q2k_four_rows(void) {
     for (int i = 0; i < IN; i++) inp[i] = cosf((float)i * 0.1f) * 0.5f;
 
     float ref[4], got[4];
-    for (int r = 0; r < OUT; r++)
-        ref[r] = ref_dot_q2k_row(w + r * Q2K_BYTES, inp, IN);
+    for (int r = 0; r < OUT; r++) ref[r] = ref_dot_q2k_row(w + r * Q2K_BYTES, inp, IN);
 
     parallel_matvec_q2k(got, inp, w, IN, OUT, NULL);
 
     for (int r = 0; r < OUT; r++) {
-        char msg[64]; snprintf(msg, sizeof(msg), "row %d matches ref", r);
+        char msg[64];
+        snprintf(msg, sizeof(msg), "row %d matches ref", r);
         TEST_ASSERT_FLOAT_EQ(got[r], ref[r], 1e-4f, msg);
     }
 }
@@ -120,7 +120,8 @@ static void test_q2k_zero_input(void) {
     uint8_t w[Q2K_BYTES];
     make_q2k_block(w, 99);
 
-    float inp[256]; memset(inp, 0, sizeof(inp));
+    float inp[256];
+    memset(inp, 0, sizeof(inp));
     float got = 99.0f;
     parallel_matvec_q2k(&got, inp, w, 256, 1, NULL);
     /* With zero input, sum += dl*0 - ml*0 = 0 for all elements */
@@ -129,10 +130,11 @@ static void test_q2k_zero_input(void) {
 
 /* Test 5: all weights = 0 (zero qs bytes, non-zero scales) */
 static void test_q2k_zero_weights(void) {
-    uint8_t w[Q2K_BYTES]; memset(w, 0, sizeof(w));
+    uint8_t w[Q2K_BYTES];
+    memset(w, 0, sizeof(w));
     /* d=1.0, dmin=0.5 but all qs=0 → all q values = 0 → out = 0 - 0.5*inp */
     uint16_t d_h = f32_to_fp16(1.0f), dm_h = f32_to_fp16(0.0f);
-    memcpy(w + 80, &d_h,  2);
+    memcpy(w + 80, &d_h, 2);
     memcpy(w + 82, &dm_h, 2);
 
     float inp[256];

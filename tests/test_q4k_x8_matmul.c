@@ -23,14 +23,15 @@
 #include <math.h>
 
 #define Q4K_SUPER 256
-#define Q4K_NSUB  8
+#define Q4K_NSUB 8
 #define Q4K_BYTES 144
 
 static uint16_t f32_to_fp16(float f) {
-    uint32_t u; memcpy(&u, &f, 4);
-    uint32_t sign  = (u >> 16) & 0x8000;
-    uint32_t exp   = ((u >> 23) & 0xFF);
-    uint32_t mant  = u & 0x7FFFFF;
+    uint32_t u;
+    memcpy(&u, &f, 4);
+    uint32_t sign = (u >> 16) & 0x8000;
+    uint32_t exp  = ((u >> 23) & 0xFF);
+    uint32_t mant = u & 0x7FFFFF;
     if (exp >= 143) return (uint16_t)(sign | 0x7BFF);
     if (exp <= 102) return (uint16_t)sign;
     return (uint16_t)(sign | ((exp - 112) << 10) | (mant >> 13));
@@ -47,11 +48,11 @@ static void pack_scales(uint8_t *sc12, const uint8_t *sc, const uint8_t *mn) {
 }
 
 static void make_q4k_block(uint8_t *blk, int seed) {
-    float d    = 0.01f + (float)(seed % 11) * 0.011f;
-    float dmin = 0.002f + (float)(seed % 7) * 0.003f;
+    float d         = 0.01f + (float)(seed % 11) * 0.011f;
+    float dmin      = 0.002f + (float)(seed % 7) * 0.003f;
     uint16_t d_h    = f32_to_fp16(d);
     uint16_t dmin_h = f32_to_fp16(dmin);
-    memcpy(blk,     &d_h,    2);
+    memcpy(blk, &d_h, 2);
     memcpy(blk + 2, &dmin_h, 2);
 
     uint8_t sc[Q4K_NSUB], mn[Q4K_NSUB];
@@ -65,7 +66,7 @@ static void make_q4k_block(uint8_t *blk, int seed) {
     for (int i = 0; i < 128; i++) {
         int lo = (i * 5 + seed) & 0xF;
         int hi = (i * 7 + seed + 3) & 0xF;
-        qs[i] = (uint8_t)(lo | (hi << 4));
+        qs[i]  = (uint8_t)(lo | (hi << 4));
     }
 }
 
@@ -76,9 +77,9 @@ static float ref_dot_q4k_row(const uint8_t *row, const TnQ8KActBlock *acts, int 
     float dot = 0.0f;
 
     for (int b = 0; b < n_blocks; b++) {
-        const uint8_t *blk = row + (size_t)b * Q4K_BYTES;
+        const uint8_t *blk       = row + (size_t)b * Q4K_BYTES;
         const TnQ8KActBlock *act = acts + b;
-        float d_a = act->d;
+        float d_a                = act->d;
         if (d_a == 0.0f) continue;
 
         uint16_t d_bits, dmin_bits;
@@ -87,22 +88,27 @@ static float ref_dot_q4k_row(const uint8_t *row, const TnQ8KActBlock *acts, int 
         uint32_t sign = (uint32_t)(d_bits >> 15) << 31;
         uint32_t exp  = (d_bits >> 10) & 0x1f;
         uint32_t bits = sign | ((exp + 112u) << 23) | ((uint32_t)(d_bits & 0x3ff) << 13);
-        float d_w; memcpy(&d_w, &bits, 4);
+        float d_w;
+        memcpy(&d_w, &bits, 4);
         sign = (uint32_t)(dmin_bits >> 15) << 31;
         exp  = (dmin_bits >> 10) & 0x1f;
         bits = sign | ((exp + 112u) << 23) | ((uint32_t)(dmin_bits & 0x3ff) << 13);
-        float dmin_w; memcpy(&dmin_w, &bits, 4);
+        float dmin_w;
+        memcpy(&dmin_w, &bits, 4);
 
         uint32_t utmp[4];
         memcpy(utmp, blk + 4, 12);
-        utmp[3] = ((utmp[2] >> 4) & kmask2) | (((utmp[1] >> 6) & kmask3) << 4);
+        utmp[3]       = ((utmp[2] >> 4) & kmask2) | (((utmp[1] >> 6) & kmask3) << 4);
         uint32_t uaux = utmp[1] & kmask1;
-        utmp[1] = (utmp[2] & kmask2) | (((utmp[0] >> 6) & kmask3) << 4);
-        utmp[2] = uaux;
+        utmp[1]       = (utmp[2] & kmask2) | (((utmp[0] >> 6) & kmask3) << 4);
+        utmp[2]       = uaux;
         utmp[0] &= kmask1;
         const uint8_t *sc8 = (const uint8_t *)utmp;
         uint8_t raw_sc[8], raw_mn[8];
-        for (int j = 0; j < 8; j++) { raw_sc[j] = sc8[j]; raw_mn[j] = sc8[j + 8]; }
+        for (int j = 0; j < 8; j++) {
+            raw_sc[j] = sc8[j];
+            raw_mn[j] = sc8[j + 8];
+        }
 
         const uint8_t *qs = blk + 16;
         int32_t int_dot = 0, int_min = 0;
@@ -113,9 +119,9 @@ static float ref_dot_q4k_row(const uint8_t *row, const TnQ8KActBlock *acts, int 
             int32_t sum_lo = 0, sum_hi = 0;
             for (int l = 0; l < 32; l++) {
                 sum_lo += (int32_t)(q[l] & 0x0F) * (int32_t)al[l];
-                sum_hi += (int32_t)(q[l] >>    4) * (int32_t)ah[l];
+                sum_hi += (int32_t)(q[l] >> 4) * (int32_t)ah[l];
             }
-            int_dot += (int32_t)raw_sc[2 * g]     * sum_lo;
+            int_dot += (int32_t)raw_sc[2 * g] * sum_lo;
             int_dot += (int32_t)raw_sc[2 * g + 1] * sum_hi;
         }
         for (int j = 0; j < 8; j++) {
@@ -129,8 +135,7 @@ static float ref_dot_q4k_row(const uint8_t *row, const TnQ8KActBlock *acts, int 
 
 static void make_q8k_block(TnQ8KActBlock *blk, int seed) {
     blk->d = 0.005f + (float)(seed % 9) * 0.0017f;
-    for (int i = 0; i < 256; i++)
-        blk->qs[i] = (int8_t)(((i * 13 + seed * 37) % 255) - 127);
+    for (int i = 0; i < 256; i++) blk->qs[i] = (int8_t)(((i * 13 + seed * 37) % 255) - 127);
     for (int j = 0; j < 16; j++) {
         int16_t s = 0;
         for (int k = 0; k < 16; k++) s += blk->qs[j * 16 + k];
@@ -141,16 +146,16 @@ static void make_q8k_block(TnQ8KActBlock *blk, int seed) {
 /* d = number of output rows (multiple of 8); n_blocks = super-blocks/row. */
 static void run_case(int n_blocks, int d, const char *label) {
     size_t row_bytes = (size_t)n_blocks * Q4K_BYTES;
-    int groups = d / 8;
+    int groups       = d / 8;
 
-    uint8_t *w = (uint8_t *)malloc(row_bytes * (size_t)d);
+    uint8_t *w          = (uint8_t *)malloc(row_bytes * (size_t)d);
     TnQ8KActBlock *acts = (TnQ8KActBlock *)malloc((size_t)n_blocks * sizeof(TnQ8KActBlock));
-    TnQ4KX8Block *repacked = (TnQ4KX8Block *)malloc((size_t)groups * n_blocks * sizeof(TnQ4KX8Block));
+    TnQ4KX8Block *repacked =
+        (TnQ4KX8Block *)malloc((size_t)groups * n_blocks * sizeof(TnQ4KX8Block));
     float *out = (float *)malloc((size_t)d * sizeof(float));
     float *ref = (float *)malloc((size_t)d * sizeof(float));
 
-    for (int b = 0; b < n_blocks; b++)
-        make_q8k_block(&acts[b], b + 1);
+    for (int b = 0; b < n_blocks; b++) make_q8k_block(&acts[b], b + 1);
 
     for (int r = 0; r < d; r++)
         for (int b = 0; b < n_blocks; b++)
@@ -158,33 +163,45 @@ static void run_case(int n_blocks, int d, const char *label) {
 
     for (int g = 0; g < groups; g++) {
         const uint8_t *rows[8];
-        for (int i = 0; i < 8; i++)
-            rows[i] = w + (size_t)(g * 8 + i) * row_bytes;
+        for (int i = 0; i < 8; i++) rows[i] = w + (size_t)(g * 8 + i) * row_bytes;
         tn_q4k_repack_x8(repacked + (size_t)g * n_blocks, rows, n_blocks);
     }
 
-    for (int r = 0; r < d; r++)
-        ref[r] = ref_dot_q4k_row(w + (size_t)r * row_bytes, acts, n_blocks);
+    for (int r = 0; r < d; r++) ref[r] = ref_dot_q4k_row(w + (size_t)r * row_bytes, acts, n_blocks);
 
     parallel_matmul_q4k_x8_preq(out, acts, repacked, n_blocks, d, NULL);
 
     for (int r = 0; r < d; r++) {
-        float scale = fabsf(ref[r]) > 1.0f ? fabsf(ref[r]) : 1.0f;
+        float scale   = fabsf(ref[r]) > 1.0f ? fabsf(ref[r]) : 1.0f;
         float rel_err = fabsf(out[r] - ref[r]) / scale;
         char msg[160];
-        snprintf(msg, sizeof(msg), "%s row %d: kernel=%.6f ref=%.6f rel_err=%.6f",
-                 label, r, out[r], ref[r], rel_err);
+        snprintf(msg, sizeof(msg), "%s row %d: kernel=%.6f ref=%.6f rel_err=%.6f", label, r, out[r],
+                 ref[r], rel_err);
         TEST_ASSERT(rel_err < 1e-3f, msg);
     }
 
-    free(w); free(acts); free(repacked); free(out); free(ref);
+    free(w);
+    free(acts);
+    free(repacked);
+    free(out);
+    free(ref);
 }
 
-static void test_one_group(void)        { run_case(1,  8,  "n=256 (1 block), 1 group"); }
-static void test_few_blocks(void)       { run_case(4,  8,  "n=1024 (4 blocks), 1 group"); }
-static void test_two_groups(void)       { run_case(2,  16, "n=512 (2 blocks), 2 groups"); }
-static void test_real_attn_dim(void)    { run_case(16, 8,  "n=4096 (16 blocks, real attn dim), 1 group"); }
-static void test_real_ffn_hidden_dim(void) { run_case(48, 16, "n=12288 (48 blocks, real ffn hidden_dim), 2 groups"); }
+static void test_one_group(void) {
+    run_case(1, 8, "n=256 (1 block), 1 group");
+}
+static void test_few_blocks(void) {
+    run_case(4, 8, "n=1024 (4 blocks), 1 group");
+}
+static void test_two_groups(void) {
+    run_case(2, 16, "n=512 (2 blocks), 2 groups");
+}
+static void test_real_attn_dim(void) {
+    run_case(16, 8, "n=4096 (16 blocks, real attn dim), 1 group");
+}
+static void test_real_ffn_hidden_dim(void) {
+    run_case(48, 16, "n=12288 (48 blocks, real ffn hidden_dim), 2 groups");
+}
 
 int main(void) {
     RUN_TEST(test_one_group);

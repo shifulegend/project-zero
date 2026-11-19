@@ -30,8 +30,12 @@
 static int g_pass = 0, g_fail = 0;
 
 static void check(int cond, const char *msg) {
-    if (cond) { g_pass++; }
-    else { g_fail++; printf("  [FAIL] %s\n", msg); }
+    if (cond) {
+        g_pass++;
+    } else {
+        g_fail++;
+        printf("  [FAIL] %s\n", msg);
+    }
 }
 
 /* Realistic JSON documents spanning object/array nesting, all number forms,
@@ -68,7 +72,7 @@ static void check_one_document(Tokenizer *t, const char *doc) {
 
     FSMState fsm;
     fsm_init(&fsm);
-    int prev = -1;
+    int prev      = -1;
     float *logits = malloc((size_t)t->vocab_size * sizeof(float));
 
     for (int i = 0; i < n; i++) {
@@ -84,15 +88,17 @@ static void check_one_document(Tokenizer *t, const char *doc) {
         /* No-deadlock invariant: at least one unmasked token. */
         int any_unmasked = 0;
         for (int k = 0; k < t->vocab_size; k++) {
-            if (logits[k] > -1e29f) { any_unmasked = 1; break; }
+            if (logits[k] > -1e29f) {
+                any_unmasked = 1;
+                break;
+            }
         }
         check(any_unmasked, "at least one token is left unmasked (no-deadlock invariant)");
 
         /* The real next token of this valid document must never be masked
          * -- if it were, real generation could never produce this document. */
         int next_tok = tokens[i];
-        check(logits[next_tok] > -1e29f,
-              "the real next token of a valid document is not masked");
+        check(logits[next_tok] > -1e29f, "the real next token of a valid document is not masked");
 
         /* EOS gating: exactly the plan's stated invariant -- unmasked IFF
          * a trial-finalize of the CURRENT state (before feeding token i)
@@ -108,7 +114,7 @@ static void check_one_document(Tokenizer *t, const char *doc) {
             JsonGrammarState scratch = fsm.json;
             json_grammar_finalize(&scratch);
             int expected_complete = json_grammar_is_complete(&scratch);
-            int eos_unmasked = logits[t->eos_token_id] > -1e29f;
+            int eos_unmasked      = logits[t->eos_token_id] > -1e29f;
             check((expected_complete && eos_unmasked) || (!expected_complete && !eos_unmasked),
                   "EOS unmasked iff a trial-finalize of the current state is already complete");
         }
@@ -128,11 +134,13 @@ static void check_one_document(Tokenizer *t, const char *doc) {
      * checking is_complete() without a prior finalize (as this test
      * originally did) is not how any real caller uses it. */
     json_grammar_finalize(&fsm.json);
-    check(json_grammar_is_complete(&fsm.json), "grammar is complete after the full document + finalize");
+    check(json_grammar_is_complete(&fsm.json),
+          "grammar is complete after the full document + finalize");
     for (int k = 0; k < t->vocab_size; k++) logits[k] = 0.0f;
     fsm_compute_token_mask(&fsm, t, prev, logits, t->vocab_size);
     if (t->eos_token_id >= 0) {
-        check(logits[t->eos_token_id] > -1e29f, "EOS unmasked once the document is grammar-complete");
+        check(logits[t->eos_token_id] > -1e29f,
+              "EOS unmasked once the document is grammar-complete");
     }
     for (int e = 0; e < t->n_eos; e++) {
         check(logits[t->eos_list[e]] > -1e29f, "every eos_list entry unmasked once complete");
@@ -152,15 +160,22 @@ static void check_multibyte_tokens_no_crash(Tokenizer *t) {
 
     float *logits1 = malloc((size_t)t->vocab_size * sizeof(float));
     float *logits2 = malloc((size_t)t->vocab_size * sizeof(float));
-    for (int k = 0; k < t->vocab_size; k++) { logits1[k] = 0.0f; logits2[k] = 0.0f; }
+    for (int k = 0; k < t->vocab_size; k++) {
+        logits1[k] = 0.0f;
+        logits2[k] = 0.0f;
+    }
 
     fsm_compute_token_mask(&fsm, t, 0, logits1, t->vocab_size);
     fsm_compute_token_mask(&fsm, t, 0, logits2, t->vocab_size);
     int consistent = 1;
     for (int k = 0; k < t->vocab_size; k++) {
-        if ((logits1[k] < -1e29f) != (logits2[k] < -1e29f)) { consistent = 0; break; }
+        if ((logits1[k] < -1e29f) != (logits2[k] < -1e29f)) {
+            consistent = 0;
+            break;
+        }
     }
-    check(consistent, "masking the whole real vocab (incl. multi-byte/raw-byte tokens) twice gives the same result");
+    check(consistent, "masking the whole real vocab (incl. multi-byte/raw-byte tokens) twice gives "
+                      "the same result");
     free(logits1);
     free(logits2);
 }

@@ -14,31 +14,32 @@
  * judge is hardcoded: format, good, bad come from CLI flags.
  */
 
-#include "cli/model_load.h"
+#include "runtime/model_load.h"
 #include "core/error.h"
 #include "threading/thread_pool.h"
 #include "tokenizer/tokenizer.h"
 
-#define PRM_DEFAULT_FORMAT \
-    "Question: {question}\nSolution so far:\n{steps}\nIs the last step correct? Answer Yes or No.\nAnswer:"
+#define PRM_DEFAULT_FORMAT                                                                         \
+    "Question: {question}\nSolution so far:\n{steps}\nIs the last step correct? Answer Yes or "    \
+    "No.\nAnswer:"
 #define PRM_DEFAULT_GOOD " Yes"
-#define PRM_DEFAULT_BAD  " No"
+#define PRM_DEFAULT_BAD " No"
 
 typedef struct PrmModel {
     LoadedModel model;
-    Tokenizer   tok;
+    Tokenizer tok;
     ThreadPool *tp;
-    char       *format;
-    int         good_id, bad_id;
-    int        *prev;      /* tokens currently in the judge's KV (prefix reuse) */
-    int         n_prev;
-    int         loaded;
+    char *format;
+    int good_id, bad_id;
+    int *prev; /* tokens currently in the judge's KV (prefix reuse) */
+    int n_prev;
+    int loaded;
 } PrmModel;
 
 /* Loads the judge and resolves good/bad tokens (NULL = defaults above). */
-TernaryError prm_load(PrmModel *pm, const char *path, const char *format,
-                      const char *good, const char *bad, int max_seq_len, ThreadPool *tp);
-void         prm_free(PrmModel *pm);
+TernaryError prm_load(PrmModel *pm, const char *path, const char *format, const char *good,
+                      const char *bad, int max_seq_len, ThreadPool *tp);
+void prm_free(PrmModel *pm);
 
 /* Score of the last step of `steps` for `question`: [0, 1], or -1 on error. */
 float prm_score(PrmModel *pm, const char *question, const char *steps);

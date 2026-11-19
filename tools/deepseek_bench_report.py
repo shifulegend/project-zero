@@ -17,21 +17,21 @@ Writes:
   BENCHMARK_REPORT.md
 """
 
-import csv, os, sys, re, io
-from collections import defaultdict
+import csv, os, re, io
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_DIR = os.path.join(REPO, "benchmark_results")
 REPORT = os.path.join(REPO, "BENCHMARK_REPORT.md")
 
+
 def read_csv(path):
     """Read CSV, tolerating continuation lines (bash printf newline bug)."""
     if not os.path.exists(path):
         return []
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         raw = f.read()
     # Fix: join lines that don't start with a date prefix or 'date' header
-    fixed = re.sub(r'\n(?!20[0-9]|date)', ',', raw)
+    fixed = re.sub(r"\n(?!20[0-9]|date)", ",", raw)
     rows = []
     reader = csv.DictReader(io.StringIO(fixed))
     for row in reader:
@@ -39,24 +39,28 @@ def read_csv(path):
         rows.append({k: v.strip() for k, v in row.items() if k is not None})
     return rows
 
+
 def read_llama_csv(path):
     """Read llama-bench CSV (clean format, no fixing needed)."""
     if not os.path.exists(path):
         return []
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return list(csv.DictReader(f))
+
 
 def read_file(path):
     if not os.path.exists(path):
         return "(not found)"
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return f.read()
+
 
 def safe_float(v, default=0.0):
     try:
         return float(v)
-    except:
+    except (TypeError, ValueError):
         return default
+
 
 def fmt_tps(v):
     f = safe_float(v)
@@ -64,14 +68,18 @@ def fmt_tps(v):
         return "N/A"
     return f"{f:.3f}"
 
+
 def speedup(our, llama):
     o = safe_float(our)
     l = safe_float(llama)
     if o == 0 or l == 0:
         return "N/A"
-    return f"{l/o:.1f}×"
+    return f"{l / o:.1f}×"
+
 
 lines = []
+
+
 def w(s=""):
     lines.append(s)
 
@@ -88,17 +96,17 @@ def generate_regression_section(out_lines):
     def sweep_tables(sweep, label):
         """Render 1a/1b-style tables for a regression sweep CSV."""
         if not sweep:
-            emit(f"*No data — run `tools/regression_bench.sh` first.*")
+            emit("*No data — run `tools/regression_bench.sh` first.*")
             emit()
             return None  # no best row
 
         simd_modes, classifiers, threads = [], [], []
         tps_map = {}
         for row in sweep:
-            t = int(row.get('threads', 0))
-            s = row.get('simd', '')
-            c = row.get('classifier', '')
-            tps = safe_float(row.get('tok_s', 0))
+            t = int(row.get("threads", 0))
+            s = row.get("simd", "")
+            c = row.get("classifier", "")
+            tps = safe_float(row.get("tok_s", 0))
             if t not in threads:
                 threads.append(t)
             if s not in simd_modes:
@@ -108,7 +116,7 @@ def generate_regression_section(out_lines):
             tps_map[(t, s, c)] = tps
         threads.sort()
 
-        emit(f"#### tok/s by Threads × SIMD (best classifier per cell)")
+        emit("#### tok/s by Threads × SIMD (best classifier per cell)")
         emit()
         header = "| Threads |" + "".join(f" {s:^11} |" for s in simd_modes)
         emit(header)
@@ -122,26 +130,29 @@ def generate_regression_section(out_lines):
             emit(row_str)
         emit()
 
-        emit(f"#### tok/s by Threads × Classifier (SIMD=auto)")
+        emit("#### tok/s by Threads × Classifier (SIMD=auto)")
         emit()
         header = "| Threads |" + "".join(f" {c:^10} |" for c in classifiers)
         emit(header)
         emit("|---------|" + "".join("-" * 12 + "|" for _ in classifiers))
-        auto_simd_candidates = [s for s in simd_modes if s in ('auto', 'vnni')]
+        auto_simd_candidates = [s for s in simd_modes if s in ("auto", "vnni")]
         auto_simd = auto_simd_candidates[0] if auto_simd_candidates else simd_modes[-1]
         for t in threads:
             row_str = f"| T={t:<5} |" + "".join(
-                f" {fmt_tps(tps_map.get((t, auto_simd, c), 0)):^10} |" for c in classifiers)
+                f" {fmt_tps(tps_map.get((t, auto_simd, c), 0)):^10} |" for c in classifiers
+            )
             emit(row_str)
         emit()
 
-        valid = [r for r in sweep if safe_float(r.get('tok_s', 0)) > 0]
+        valid = [r for r in sweep if safe_float(r.get("tok_s", 0)) > 0]
         if valid:
-            best_row = max(valid, key=lambda r: safe_float(r['tok_s']))
-            emit(f"**Best config**: T={best_row['threads']}, SIMD={best_row['simd']}, "
-                 f"CLS={best_row['classifier']} → **{fmt_tps(best_row['tok_s'])} tok/s**  ")
-            emit(f"Performance ceiling (from engine header): N/A  ")
-            emit(f"Headroom: N/A")
+            best_row = max(valid, key=lambda r: safe_float(r["tok_s"]))
+            emit(
+                f"**Best config**: T={best_row['threads']}, SIMD={best_row['simd']}, "
+                f"CLS={best_row['classifier']} → **{fmt_tps(best_row['tok_s'])} tok/s**  "
+            )
+            emit("Performance ceiling (from engine header): N/A  ")
+            emit("Headroom: N/A")
             emit()
             return best_row
         else:
@@ -157,20 +168,22 @@ def generate_regression_section(out_lines):
             return
         emit("| Threads | tok/s | Load (ms) | RSS (MB) | Speedup vs T=1 |")
         emit("|---------|-------|-----------|----------|----------------|")
-        base_tps = safe_float(tsweep[0]['tok_s']) if tsweep else 1.0
+        base_tps = safe_float(tsweep[0]["tok_s"]) if tsweep else 1.0
         for row in tsweep:
-            tps = safe_float(row['tok_s'])
-            sp = f"{tps/base_tps:.2f}×" if base_tps > 0 and tps > 0 else "N/A"
-            rss_mb = int(safe_float(row.get('rss_kb', 0)) / 1024)
-            emit(f"| T={row['threads']:<5} | {fmt_tps(tps):>5} | "
-                 f"{row.get('load_ms','?'):>9} | {rss_mb:>8} | {sp:>14} |")
+            tps = safe_float(row["tok_s"])
+            sp = f"{tps / base_tps:.2f}×" if base_tps > 0 and tps > 0 else "N/A"
+            rss_mb = int(safe_float(row.get("rss_kb", 0)) / 1024)
+            emit(
+                f"| T={row['threads']:<5} | {fmt_tps(tps):>5} | "
+                f"{row.get('load_ms', '?'):>9} | {rss_mb:>8} | {sp:>14} |"
+            )
         emit()
 
     # Load regression CSVs
-    smollm_sweep   = read_reg_csv("smollm_sweep.csv")
-    smollm_thread  = read_reg_csv("smollm_threadsweep.csv")
-    bitnet_sweep   = read_reg_csv("bitnet_sweep.csv")
-    bitnet_thread  = read_reg_csv("bitnet_threadsweep.csv")
+    smollm_sweep = read_reg_csv("smollm_sweep.csv")
+    smollm_thread = read_reg_csv("smollm_threadsweep.csv")
+    bitnet_sweep = read_reg_csv("bitnet_sweep.csv")
+    bitnet_thread = read_reg_csv("bitnet_threadsweep.csv")
 
     have_any = any([smollm_sweep, smollm_thread, bitnet_sweep, bitnet_thread])
 
@@ -220,12 +233,12 @@ def generate_regression_section(out_lines):
 
     for mlabel, sweep_data, thread_data in [
         ("SmolLM2-135M-Instruct-f16", smollm_sweep, smollm_thread),
-        ("Bitnet-b1.58-2B-4T",        bitnet_sweep,  bitnet_thread),
+        ("Bitnet-b1.58-2B-4T", bitnet_sweep, bitnet_thread),
     ]:
         total = len(sweep_data) + len(thread_data)
-        garbled = sum(1 for r in sweep_data + thread_data if safe_float(r.get('tok_s', 0)) == 0)
+        garbled = sum(1 for r in sweep_data + thread_data if safe_float(r.get("tok_s", 0)) == 0)
         passed = total - garbled
-        rate = f"{passed/total*100:.0f}%" if total > 0 else "N/A"
+        rate = f"{passed / total * 100:.0f}%" if total > 0 else "N/A"
         emit(f"| {mlabel} | {total} | {passed} | {garbled} | {rate} |")
 
     emit()
@@ -238,11 +251,11 @@ def generate_regression_section(out_lines):
 
     for mlabel, best_row in [
         ("SmolLM2-135M-Instruct-f16", smollm_best),
-        ("Bitnet-b1.58-2B-4T",        bitnet_best),
+        ("Bitnet-b1.58-2B-4T", bitnet_best),
     ]:
         prev = "None (initial baseline)"
         if best_row is not None:
-            current = fmt_tps(best_row['tok_s'])
+            current = fmt_tps(best_row["tok_s"])
             delta = "N/A (first run)"
             status = "✅ Baseline established"
         else:
@@ -255,6 +268,7 @@ def generate_regression_section(out_lines):
     emit("> **Note**: Previous best is `None` — this is the initial baseline run.")
     emit("> On subsequent runs, compare current best tok/s against these baselines.")
     emit()
+
 
 # ── Title ────────────────────────────────────────────────────────────
 w("# DeepSeek-V2-Lite Inference Benchmark Report")
@@ -277,13 +291,13 @@ for ln in sysinfo.splitlines():
 
 w("## System Under Test")
 w()
-w(f"| Parameter | Value |")
-w(f"|-----------|-------|")
+w("| Parameter | Value |")
+w("|-----------|-------|")
 w(f"| CPU | {cpu_line or 'See system_info.txt'} |")
 w(f"| RAM | {ram_line or 'See system_info.txt'} |")
-w(f"| Model | DeepSeek-V2-Lite-Chat Q4_K_S GGUF |")
-w(f"| Engine | Project Zero (F32 dequant path) |")
-w(f"| Reference | llama.cpp (Q4_K on-the-fly) |")
+w("| Model | DeepSeek-V2-Lite-Chat Q4_K_S GGUF |")
+w("| Engine | Project Zero (F32 dequant path) |")
+w("| Reference | llama.cpp (Q4_K on-the-fly) |")
 w()
 
 # ── Engine sweep ─────────────────────────────────────────────────────
@@ -301,13 +315,16 @@ if sweep:
     threads = []
     tps_map = {}
     for row in sweep:
-        t = int(row['threads'])
-        s = row['simd']
-        c = row['classifier']
-        tps = safe_float(row['tok_s'])
-        if t not in threads: threads.append(t)
-        if s not in simd_modes: simd_modes.append(s)
-        if c not in classifiers: classifiers.append(c)
+        t = int(row["threads"])
+        s = row["simd"]
+        c = row["classifier"]
+        tps = safe_float(row["tok_s"])
+        if t not in threads:
+            threads.append(t)
+        if s not in simd_modes:
+            simd_modes.append(s)
+        if c not in classifiers:
+            classifiers.append(c)
         tps_map[(t, s, c)] = tps
     threads.sort()
 
@@ -332,18 +349,21 @@ if sweep:
     header = "| Threads |" + "".join(f" {c:^10} |" for c in classifiers)
     w(header)
     w("|---------|" + "".join("-" * 12 + "|" for _ in classifiers))
-    auto_simd = [s for s in simd_modes if s in ('auto', 'vnni')]
+    auto_simd = [s for s in simd_modes if s in ("auto", "vnni")]
     auto_simd = auto_simd[0] if auto_simd else simd_modes[-1]
     for t in threads:
         row_str = f"| T={t:<5} |" + "".join(
-            f" {fmt_tps(tps_map.get((t, auto_simd, c), 0)):^10} |" for c in classifiers)
+            f" {fmt_tps(tps_map.get((t, auto_simd, c), 0)):^10} |" for c in classifiers
+        )
         w(row_str)
     w()
 
     # Best config
-    best_row = max(sweep, key=lambda r: safe_float(r['tok_s']))
-    w(f"**Best configuration**: T={best_row['threads']}, SIMD={best_row['simd']}, "
-      f"CLS={best_row['classifier']} → **{fmt_tps(best_row['tok_s'])} tok/s**")
+    best_row = max(sweep, key=lambda r: safe_float(r["tok_s"]))
+    w(
+        f"**Best configuration**: T={best_row['threads']}, SIMD={best_row['simd']}, "
+        f"CLS={best_row['classifier']} → **{fmt_tps(best_row['tok_s'])} tok/s**"
+    )
     w()
 
 # ── Thread sweep ─────────────────────────────────────────────────────
@@ -353,12 +373,14 @@ if tsweep:
     w()
     w("| Threads | tok/s | Load (ms) | RSS (MB) | Speedup vs T=1 |")
     w("|---------|-------|-----------|----------|----------------|")
-    base_tps = safe_float(tsweep[0]['tok_s']) if tsweep else 1.0
+    base_tps = safe_float(tsweep[0]["tok_s"]) if tsweep else 1.0
     for row in tsweep:
-        tps = safe_float(row['tok_s'])
-        sp = f"{tps/base_tps:.2f}×" if base_tps > 0 else "N/A"
-        rss = safe_float(row.get('rss_kb', 0)) / 1024
-        w(f"| T={row['threads']:<5} | {fmt_tps(tps):>5} | {row.get('load_ms','?'):>9} | {int(rss):>8} | {sp:>14} |")
+        tps = safe_float(row["tok_s"])
+        sp = f"{tps / base_tps:.2f}×" if base_tps > 0 else "N/A"
+        rss = safe_float(row.get("rss_kb", 0)) / 1024
+        w(
+            f"| T={row['threads']:<5} | {fmt_tps(tps):>5} | {row.get('load_ms', '?'):>9} | {int(rss):>8} | {sp:>14} |"
+        )
     w()
 
 # ── llama.cpp reference ───────────────────────────────────────────────
@@ -372,10 +394,10 @@ if llama:
     pp_by_t = {}
     tg_by_t = {}
     for row in llama:
-        t = int(row.get('n_threads', 0))
-        np_ = int(row.get('n_prompt', 0))
-        ng_ = int(row.get('n_gen', 0))
-        tps = safe_float(row.get('avg_ts', 0))
+        t = int(row.get("n_threads", 0))
+        np_ = int(row.get("n_prompt", 0))
+        ng_ = int(row.get("n_gen", 0))
+        tps = safe_float(row.get("avg_ts", 0))
         if np_ > 0 and ng_ == 0:
             pp_by_t[t] = tps
         elif ng_ > 0 and np_ == 0:
@@ -388,12 +410,12 @@ if llama:
     for t in sorted(set(list(pp_by_t.keys()) + list(tg_by_t.keys()))):
         pp = pp_by_t.get(t, 0)
         tg = tg_by_t.get(t, 0)
-        pp_sp = f"{pp/pp1:.1f}×" if pp1 > 0 else "N/A"
-        tg_sp = f"{tg/tg1:.1f}×" if tg1 > 0 else "N/A"
+        pp_sp = f"{pp / pp1:.1f}×" if pp1 > 0 else "N/A"
+        tg_sp = f"{tg / tg1:.1f}×" if tg1 > 0 else "N/A"
         w(f"| T={t:<5} | {fmt_tps(pp):>8} | {fmt_tps(tg):>8} | {pp_sp:>17} | {tg_sp:>18} |")
     w()
-    w(f"> Note: T=8 TG drops vs T=4 — hyperthreading hurts memory-bound token generation.")
-    w(f"> T=4 is the sweet spot for TG on this 4-core/8-thread i5-11300H.")
+    w("> Note: T=8 TG drops vs T=4 — hyperthreading hurts memory-bound token generation.")
+    w("> T=4 is the sweet spot for TG on this 4-core/8-thread i5-11300H.")
     w()
 
 # ── Engine vs llama comparison ────────────────────────────────────────
@@ -406,9 +428,9 @@ w("|---------|----------|----------------|---------------------|")
 
 # Map our best tps per thread
 our_by_t = {}
-for row in (tsweep or sweep):
-    t = int(row['threads'])
-    tps = safe_float(row['tok_s'])
+for row in tsweep or sweep:
+    t = int(row["threads"])
+    tps = safe_float(row["tok_s"])
     if t not in our_by_t or tps > our_by_t[t]:
         our_by_t[t] = tps
 
@@ -419,7 +441,7 @@ matched_ts = sorted(set(our_by_t.keys()) & set(llama_by_t.keys()))
 for t in matched_ts:
     our = our_by_t[t]
     lma = llama_by_t[t]
-    ratio = f"{lma/our:.1f}×" if our > 0 else "N/A"
+    ratio = f"{lma / our:.1f}×" if our > 0 else "N/A"
     w(f"| T={t:<5} | {fmt_tps(our):>8} | {fmt_tps(lma):>14} | {ratio:>19} |")
 
 if not matched_ts:
@@ -443,31 +465,37 @@ if perf:
     w("| Engine | T | IPC | Cache Miss% | Branch Miss% | Ctx Switches | Page Faults | CPU MHz |")
     w("|--------|---|-----|-------------|--------------|--------------|-------------|---------|")
     for row in perf:
-        eng = row.get('engine', '?')
-        t = row.get('threads', '?')
-        ipc = row.get('ipc', '?')
-        cmiss = row.get('cache_miss_pct', '?')
-        bmiss = row.get('branch_miss_pct', '?')
-        ctx = row.get('ctx_switches', '?')
-        page = row.get('page_faults', '?')
-        freq = row.get('cpu_freq_mhz', '?')
-        w(f"| {eng:<14} | {t} | {ipc:>4} | {cmiss:>11} | {bmiss:>12} | {ctx:>12} | {page:>11} | {freq:>7} |")
+        eng = row.get("engine", "?")
+        t = row.get("threads", "?")
+        ipc = row.get("ipc", "?")
+        cmiss = row.get("cache_miss_pct", "?")
+        bmiss = row.get("branch_miss_pct", "?")
+        ctx = row.get("ctx_switches", "?")
+        page = row.get("page_faults", "?")
+        freq = row.get("cpu_freq_mhz", "?")
+        w(
+            f"| {eng:<14} | {t} | {ipc:>4} | {cmiss:>11} | {bmiss:>12} | {ctx:>12} | {page:>11} | {freq:>7} |"
+        )
     w()
 
     w("### IPC Analysis")
     w()
-    pz_rows = [r for r in perf if 'project' in r.get('engine', '').lower()]
-    ll_rows = [r for r in perf if 'llama' in r.get('engine', '').lower()]
+    pz_rows = [r for r in perf if "project" in r.get("engine", "").lower()]
+    ll_rows = [r for r in perf if "llama" in r.get("engine", "").lower()]
 
     if pz_rows and ll_rows:
-        pz_ipc = [safe_float(r['ipc']) for r in pz_rows if safe_float(r['ipc']) > 0]
-        ll_ipc = [safe_float(r['ipc']) for r in ll_rows if safe_float(r['ipc']) > 0]
+        pz_ipc = [safe_float(r["ipc"]) for r in pz_rows if safe_float(r["ipc"]) > 0]
+        ll_ipc = [safe_float(r["ipc"]) for r in ll_rows if safe_float(r["ipc"]) > 0]
         if pz_ipc:
-            w(f"- **Project Zero avg IPC**: {sum(pz_ipc)/len(pz_ipc):.2f} "
-              f"(range {min(pz_ipc):.2f}–{max(pz_ipc):.2f})")
+            w(
+                f"- **Project Zero avg IPC**: {sum(pz_ipc) / len(pz_ipc):.2f} "
+                f"(range {min(pz_ipc):.2f}–{max(pz_ipc):.2f})"
+            )
         if ll_ipc:
-            w(f"- **llama.cpp avg IPC**: {sum(ll_ipc)/len(ll_ipc):.2f} "
-              f"(range {min(ll_ipc):.2f}–{max(ll_ipc):.2f})")
+            w(
+                f"- **llama.cpp avg IPC**: {sum(ll_ipc) / len(ll_ipc):.2f} "
+                f"(range {min(ll_ipc):.2f}–{max(ll_ipc):.2f})"
+            )
         w()
         w("IPC < 1.0 indicates memory-bound workload (stalls waiting for data from RAM/cache).")
         w("Higher IPC = better instruction-level parallelism from SIMD + cache efficiency.")
@@ -507,11 +535,11 @@ w()
 w("### 6.3 Thread Scaling Efficiency")
 w()
 if tsweep:
-    base = safe_float(tsweep[0]['tok_s']) if tsweep else 1.0
+    base = safe_float(tsweep[0]["tok_s"]) if tsweep else 1.0
     prev = base
     for row in tsweep[1:]:
-        tps = safe_float(row['tok_s'])
-        t = int(row['threads'])
+        tps = safe_float(row["tok_s"])
+        t = int(row["threads"])
         if prev > 0 and tps > 0:
             eff = (tps / t) / (base / 1) * 100
             w(f"- T={t}: {fmt_tps(tps)} tok/s — {eff:.0f}% parallel efficiency")
@@ -527,13 +555,13 @@ if tsweep:
     w("| Threads | Load (ms) | Inference (ms) | Load/Total ratio |")
     w("|---------|-----------|----------------|------------------|")
     for row in tsweep:
-        t = row['threads']
-        load = safe_float(row.get('load_ms', 0))
-        tps = safe_float(row['tok_s'])
-        ntoks = safe_float(row.get('ntoks', 5))
+        t = row["threads"]
+        load = safe_float(row.get("load_ms", 0))
+        tps = safe_float(row["tok_s"])
+        ntoks = safe_float(row.get("ntoks", 5))
         infer = (ntoks / tps * 1000) if tps > 0 else 0
         total = load + infer
-        ratio = f"{load/total*100:.0f}%" if total > 0 else "N/A"
+        ratio = f"{load / total * 100:.0f}%" if total > 0 else "N/A"
         w(f"| T={t:<5} | {int(load):>9} | {int(infer):>14} | {ratio:>16} |")
     w()
     w("Model load is dominated by Q4_K→F32 dequantization at engine startup.")
@@ -578,15 +606,15 @@ w()
 w("---")
 w()
 w("*Report generated by `tools/deepseek_bench_report.py`*  ")
-w(f"*Raw results in `benchmark_results/`*  ")
+w("*Raw results in `benchmark_results/`*  ")
 w("*See `DEBUGGING_JOURNAL.md` for pipeline correctness verification.*")
 
 # ── Section 8: Regression benchmark ──────────────────────────────────
 generate_regression_section(lines)
 
 # Write report
-with open(REPORT, 'w') as f:
-    f.write('\n'.join(lines))
+with open(REPORT, "w", encoding="utf-8") as f:
+    f.write("\n".join(lines))
 
 print(f"✅ Report written to: {REPORT}")
 print(f"   Lines: {len(lines)}")

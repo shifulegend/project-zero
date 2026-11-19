@@ -148,4 +148,4 @@ Changes in each release: [CHANGELOG.md](CHANGELOG.md). Reporting a vulnerability
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE), except `src/math/ternary_matmul_lut_avx512bw.c`, which is LGPL-3.0-or-later (see [NOTICE](NOTICE) and [LICENSE-LGPL-3.0.txt](LICENSE-LGPL-3.0.txt)).

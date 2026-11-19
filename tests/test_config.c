@@ -12,15 +12,20 @@ static void test_config_read_valid(void) {
 
     /* Magic */
     tn_u32 magic = TN_MAGIC;
-    memcpy(p, &magic, sizeof(magic)); p += sizeof(magic);
+    memcpy(p, &magic, sizeof(magic));
+    p += sizeof(magic);
     /* Version */
     tn_u32 version = TN_VERSION;
-    memcpy(p, &version, sizeof(version)); p += sizeof(version);
+    memcpy(p, &version, sizeof(version));
+    p += sizeof(version);
     /* Config */
-    Config cfg_in = {
-        .dim = 256, .hidden_dim = 512, .n_layers = 4,
-        .n_heads = 4, .n_kv_heads = 2, .vocab_size = 1000, .seq_len = 512
-    };
+    Config cfg_in = {.dim        = 256,
+                     .hidden_dim = 512,
+                     .n_layers   = 4,
+                     .n_heads    = 4,
+                     .n_kv_heads = 2,
+                     .vocab_size = 1000,
+                     .seq_len    = 512};
     memcpy(p, &cfg_in, sizeof(Config));
 
     Config cfg_out;
@@ -50,15 +55,20 @@ static void test_config_invalid_fields(void) {
     tn_u8 *p = blob;
 
     tn_u32 magic = TN_MAGIC;
-    memcpy(p, &magic, sizeof(magic)); p += sizeof(magic);
+    memcpy(p, &magic, sizeof(magic));
+    p += sizeof(magic);
     tn_u32 version = TN_VERSION;
-    memcpy(p, &version, sizeof(version)); p += sizeof(version);
+    memcpy(p, &version, sizeof(version));
+    p += sizeof(version);
 
     /* Invalid: dim not divisible by n_heads */
-    Config cfg_in = {
-        .dim = 255, .hidden_dim = 512, .n_layers = 4,
-        .n_heads = 4, .n_kv_heads = 2, .vocab_size = 1000, .seq_len = 512
-    };
+    Config cfg_in = {.dim        = 255,
+                     .hidden_dim = 512,
+                     .n_layers   = 4,
+                     .n_heads    = 4,
+                     .n_kv_heads = 2,
+                     .vocab_size = 1000,
+                     .seq_len    = 512};
     memcpy(p, &cfg_in, sizeof(Config));
 
     Config cfg;
@@ -67,10 +77,13 @@ static void test_config_invalid_fields(void) {
 }
 
 static void test_run_state_alloc_free(void) {
-    Config cfg = {
-        .dim = 64, .hidden_dim = 128, .n_layers = 2,
-        .n_heads = 4, .n_kv_heads = 2, .vocab_size = 100, .seq_len = 256
-    };
+    Config cfg = {.dim        = 64,
+                  .hidden_dim = 128,
+                  .n_layers   = 2,
+                  .n_heads    = 4,
+                  .n_kv_heads = 2,
+                  .vocab_size = 100,
+                  .seq_len    = 256};
     RunState s;
     TernaryError err = run_state_alloc(&s, &cfg, 128);
     TEST_ASSERT_EQ(err, TN_OK, "run_state_alloc OK");
@@ -86,8 +99,8 @@ static void test_run_state_alloc_free(void) {
 
     /* Verify KV cache layout: contiguous positions for a single head */
     int head_dim = config_head_dim(&cfg);
-    int idx0 = KV_CACHE_IDX(0, 0, 0, 0, cfg.n_kv_heads, 128, head_dim);
-    int idx1 = KV_CACHE_IDX(0, 0, 1, 0, cfg.n_kv_heads, 128, head_dim);
+    int idx0     = KV_CACHE_IDX(0, 0, 0, 0, cfg.n_kv_heads, 128, head_dim);
+    int idx1     = KV_CACHE_IDX(0, 0, 1, 0, cfg.n_kv_heads, 128, head_dim);
     TEST_ASSERT_EQ(idx1 - idx0, head_dim, "positions are head_dim apart (contiguous)");
 
     run_state_free(&s);

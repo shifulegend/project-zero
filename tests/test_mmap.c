@@ -10,7 +10,7 @@
 static void test_mmap_roundtrip(void) {
     /* Write a temp file */
     const char *tmppath = "/tmp/tn_test_mmap.bin";
-    FILE *f = fopen(tmppath, "wb");
+    FILE *f             = fopen(tmppath, "wb");
     TEST_ASSERT(f != NULL, "create temp file");
 
     tn_u8 data[256];
@@ -27,9 +27,12 @@ static void test_mmap_roundtrip(void) {
 
     /* Read back */
     tn_u8 *mapped = (tn_u8 *)mf.data;
-    int match = 1;
+    int match     = 1;
     for (int i = 0; i < 256; i++) {
-        if (mapped[i] != (tn_u8)i) { match = 0; break; }
+        if (mapped[i] != (tn_u8)i) {
+            match = 0;
+            break;
+        }
     }
     TEST_ASSERT(match, "mapped data matches written data");
 
@@ -50,7 +53,7 @@ static void test_mmap_nonexistent(void) {
  * fd == 0 (not -1) until mapped_file_open() has run — closing it on a
  * never-opened struct used to hit `if (mf->fd >= 0) close(mf->fd)` and
  * silently close fd 0 (stdin). Found while adding a second caller
- * (cli/model_load.c's loaded_model_free()) that actually exercises this
+ * (runtime/model_load.c's loaded_model_free()) that actually exercises this
  * exact zeroed-struct path. Verifies stdin's fd stays open and valid across
  * the call — the only way this bug can actually be observed from outside. */
 static void test_mmap_close_on_zeroed_struct_does_not_close_stdin(void) {

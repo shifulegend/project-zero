@@ -23,14 +23,13 @@
  * EXACTLY the same. The per-matrix `scale` parameter will also change to a
  * `const float *scales` array for per-group scale factors (see Phase 10.1).
  */
-void ternary_matmul_avx2(float *out, const float *x, const tn_i8 *w,
-                          int n, int d, float scale) {
-    const __m256i ones  = _mm256_set1_epi32(1);
-    const __m256i neg1  = _mm256_set1_epi32(-1);
+void ternary_matmul_avx2(float *out, const float *x, const tn_i8 *w, int n, int d, float scale) {
+    const __m256i ones = _mm256_set1_epi32(1);
+    const __m256i neg1 = _mm256_set1_epi32(-1);
 
     for (int i = 0; i < d; i++) {
         const tn_i8 *row = w + (size_t)i * n;
-        __m256 accum = _mm256_setzero_ps();
+        __m256 accum     = _mm256_setzero_ps();
 
         int j = 0;
         /* Main AVX2 loop: 8 elements per iteration */
@@ -60,14 +59,14 @@ void ternary_matmul_avx2(float *out, const float *x, const tn_i8 *w,
 
         /* Horizontal sum of 8 floats in accumulator */
         /* [a0 a1 a2 a3 | a4 a5 a6 a7] */
-        __m128 hi = _mm256_extractf128_ps(accum, 1);
-        __m128 lo = _mm256_castps256_ps128(accum);
+        __m128 hi   = _mm256_extractf128_ps(accum, 1);
+        __m128 lo   = _mm256_castps256_ps128(accum);
         __m128 sum4 = _mm_add_ps(lo, hi);
         /* [s0 s1 s2 s3] -> [s2 s3 s0 s1] */
-        __m128 shuf = _mm_movehdup_ps(sum4);
-        __m128 sum2 = _mm_add_ps(sum4, shuf);
+        __m128 shuf  = _mm_movehdup_ps(sum4);
+        __m128 sum2  = _mm_add_ps(sum4, shuf);
         __m128 final = _mm_add_ss(sum2, _mm_movehl_ps(sum2, sum2));
-        float val = _mm_cvtss_f32(final);
+        float val    = _mm_cvtss_f32(final);
 
         /* Scalar tail: process remaining elements (n % 8 != 0) */
         for (; j < n; j++) {

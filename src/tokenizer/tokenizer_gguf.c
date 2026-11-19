@@ -32,13 +32,18 @@
 
 /* ── Internal sort (duplicated from tokenizer_load.c for independence) ──── */
 
-static void swap_int_g(int *a, int *b) { int t = *a; *a = *b; *b = t; }
+static void swap_int_g(int *a, int *b) {
+    int t = *a;
+    *a    = *b;
+    *b    = t;
+}
 
 static void vocab_isort(int *arr, int n, char **vocab) {
     for (int i = 1; i < n; i++) {
         int key = arr[i], j = i - 1;
         while (j >= 0 && strcmp(vocab[arr[j]], vocab[key]) > 0) {
-            arr[j + 1] = arr[j]; j--;
+            arr[j + 1] = arr[j];
+            j--;
         }
         arr[j + 1] = key;
     }
@@ -47,20 +52,28 @@ static void vocab_isort(int *arr, int n, char **vocab) {
 static void vocab_qsort(int *arr, int n, char **vocab) {
     while (n > 16) {
         int mid = n / 2;
-        if (strcmp(vocab[arr[0]], vocab[arr[mid]])   > 0) swap_int_g(&arr[0], &arr[mid]);
-        if (strcmp(vocab[arr[0]], vocab[arr[n-1]])   > 0) swap_int_g(&arr[0], &arr[n-1]);
-        if (strcmp(vocab[arr[mid]], vocab[arr[n-1]]) > 0) swap_int_g(&arr[mid], &arr[n-1]);
-        swap_int_g(&arr[mid], &arr[n-2]);
-        int pivot = arr[n-2], i = 0, j = n-2;
+        if (strcmp(vocab[arr[0]], vocab[arr[mid]]) > 0) swap_int_g(&arr[0], &arr[mid]);
+        if (strcmp(vocab[arr[0]], vocab[arr[n - 1]]) > 0) swap_int_g(&arr[0], &arr[n - 1]);
+        if (strcmp(vocab[arr[mid]], vocab[arr[n - 1]]) > 0) swap_int_g(&arr[mid], &arr[n - 1]);
+        swap_int_g(&arr[mid], &arr[n - 2]);
+        int pivot = arr[n - 2], i = 0, j = n - 2;
         for (;;) {
-            while (strcmp(vocab[arr[++i]], vocab[pivot]) < 0) {}
-            while (strcmp(vocab[arr[--j]], vocab[pivot]) > 0) {}
+            while (strcmp(vocab[arr[++i]], vocab[pivot]) < 0) {
+            }
+            while (strcmp(vocab[arr[--j]], vocab[pivot]) > 0) {
+            }
             if (i >= j) break;
             swap_int_g(&arr[i], &arr[j]);
         }
-        swap_int_g(&arr[i], &arr[n-2]);
-        if (i < n - i - 1) { vocab_qsort(arr, i, vocab); arr += i+1; n -= i+1; }
-        else                { vocab_qsort(arr+i+1, n-i-1, vocab); n = i; }
+        swap_int_g(&arr[i], &arr[n - 2]);
+        if (i < n - i - 1) {
+            vocab_qsort(arr, i, vocab);
+            arr += i + 1;
+            n -= i + 1;
+        } else {
+            vocab_qsort(arr + i + 1, n - i - 1, vocab);
+            n = i;
+        }
     }
     vocab_isort(arr, n, vocab);
 }
@@ -77,15 +90,15 @@ static void build_sorted(Tokenizer *t) {
  * Returns the idx-th string as a malloc'd NUL-terminated copy.
  * Elements must be read sequentially (cursor-style) for O(n) total cost. */
 typedef struct {
-    const uint8_t *p;     /* current cursor position within mmap */
-    uint64_t       count; /* total elements */
-    uint64_t       cur;   /* current index */
+    const uint8_t *p; /* current cursor position within mmap */
+    uint64_t count;   /* total elements */
+    uint64_t cur;     /* current index */
 } StrArrayCursor;
 
 static void str_cursor_init(StrArrayCursor *c, const void *data, uint64_t count) {
-    c->p = (const uint8_t *)data;
+    c->p     = (const uint8_t *)data;
     c->count = count;
-    c->cur = 0;
+    c->cur   = 0;
 }
 
 /* Advance cursor by one string element, returning it as a heap-allocated copy. */
@@ -115,9 +128,15 @@ static int find_vocab_token(const Tokenizer *t, const char *s) {
     const int *ix = t->sorted_vocab_indices;
     while (lo <= hi) {
         int mid = lo + (hi - lo) / 2;
-        int c = strcmp(t->vocab[ix[mid]], s);
-        if (c == 0) { hit = mid; break; }
-        if (c < 0) lo = mid + 1; else hi = mid - 1;
+        int c   = strcmp(t->vocab[ix[mid]], s);
+        if (c == 0) {
+            hit = mid;
+            break;
+        }
+        if (c < 0)
+            lo = mid + 1;
+        else
+            hi = mid - 1;
     }
     if (hit < 0) return -1;
     int best = ix[hit];
@@ -140,12 +159,12 @@ TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
     const char *tok_model = tok_model_buf; /* "llama" = safe default */
 
     int is_bpe = (strcmp(tok_model, "gpt2") == 0);
-    int is_spm = (!is_bpe);  /* SPM, WPM, UGM, RWKV — all use scores array */
+    int is_spm = (!is_bpe); /* SPM, WPM, UGM, RWKV — all use scores array */
 
     /* 2. Load vocab tokens array */
-    GGUFValType elem_type = GGUF_VAL_STRING;
+    GGUFValType elem_type   = GGUF_VAL_STRING;
     const void *tokens_data = gguf_meta_array_data(hdr, "tokenizer.ggml.tokens", &elem_type);
-    uint64_t    vocab_count = gguf_meta_array_count(hdr, "tokenizer.ggml.tokens");
+    uint64_t vocab_count    = gguf_meta_array_count(hdr, "tokenizer.ggml.tokens");
 
     if (!tokens_data || vocab_count == 0) {
         fprintf(stderr, "[gguf-tok] ERROR: no tokenizer.ggml.tokens array found in GGUF\n");
@@ -156,9 +175,9 @@ TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
         return TN_ERR_INVALID_ARGS;
     }
 
-    t->vocab_size = (int)vocab_count;
-    t->vocab      = (char **)calloc((size_t)vocab_count, sizeof(char *));
-    t->vocab_scores       = (float *)calloc((size_t)vocab_count, sizeof(float));
+    t->vocab_size           = (int)vocab_count;
+    t->vocab                = (char **)calloc((size_t)vocab_count, sizeof(char *));
+    t->vocab_scores         = (float *)calloc((size_t)vocab_count, sizeof(float));
     t->sorted_vocab_indices = (int *)calloc((size_t)vocab_count, sizeof(int));
 
     if (!t->vocab || !t->vocab_scores || !t->sorted_vocab_indices) {
@@ -178,15 +197,15 @@ TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
             return TN_ERR_OOM;
         }
         t->vocab[i] = s;
-        int slen = (int)strlen(s);
+        int slen    = (int)strlen(s);
         if (slen > t->max_token_len) t->max_token_len = slen;
     }
 
     /* 3a. SPM path: read scores array */
     if (is_spm) {
-        GGUFValType stype = GGUF_VAL_FLOAT32;
+        GGUFValType stype       = GGUF_VAL_FLOAT32;
         const void *scores_data = gguf_meta_array_data(hdr, "tokenizer.ggml.scores", &stype);
-        uint64_t    scores_count = gguf_meta_array_count(hdr, "tokenizer.ggml.scores");
+        uint64_t scores_count   = gguf_meta_array_count(hdr, "tokenizer.ggml.scores");
 
         if (scores_data && stype == GGUF_VAL_FLOAT32 && scores_count == vocab_count) {
             /* Packed float32 in mmap, but NOT necessarily 4-byte aligned —
@@ -206,7 +225,8 @@ TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
                 t->vocab_scores[i] = sc;
             }
         } else if (scores_count > 0) {
-            fprintf(stderr, "[gguf-tok] WARN: scores array type mismatch or wrong count "
+            fprintf(stderr,
+                    "[gguf-tok] WARN: scores array type mismatch or wrong count "
                     "(%llu vs %llu vocab), using zeros\n",
                     (unsigned long long)scores_count, (unsigned long long)vocab_count);
             /* scores remain zero-initialized */
@@ -219,9 +239,9 @@ TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
 
     /* 3b. BPE path: read merges array, compute scores from merge ranks */
     if (is_bpe) {
-        GGUFValType mtype = GGUF_VAL_STRING;
+        GGUFValType mtype       = GGUF_VAL_STRING;
         const void *merges_data = gguf_meta_array_data(hdr, "tokenizer.ggml.merges", &mtype);
-        uint64_t    merges_count = gguf_meta_array_count(hdr, "tokenizer.ggml.merges");
+        uint64_t merges_count   = gguf_meta_array_count(hdr, "tokenizer.ggml.merges");
 
         if (merges_data && mtype == GGUF_VAL_STRING && merges_count > 0) {
             /* scores start at 0.0f; merged tokens get -(float)rank so lower-rank
@@ -235,12 +255,15 @@ TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
 
                 /* Merge format: "token_a token_b" separated by a single space */
                 char *space = strchr(merge_str, ' ');
-                if (!space) { free(merge_str); continue; }
+                if (!space) {
+                    free(merge_str);
+                    continue;
+                }
 
                 /* Build merged token string by concatenating token_a + token_b */
-                size_t la = (size_t)(space - merge_str);
-                size_t lb = strlen(space + 1);
-                size_t lm = la + lb;
+                size_t la    = (size_t)(space - merge_str);
+                size_t lb    = strlen(space + 1);
+                size_t lm    = la + lb;
                 char *merged = (char *)malloc(lm + 1);
                 if (merged) {
                     memcpy(merged, merge_str, la);
@@ -250,8 +273,7 @@ TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
                     int id = find_vocab_token(t, merged);
                     if (id >= 0) {
                         /* Only update if not already set (keep highest-priority merge) */
-                        if (t->vocab_scores[id] == 0.0f)
-                            t->vocab_scores[id] = -(float)rank;
+                        if (t->vocab_scores[id] == 0.0f) t->vocab_scores[id] = -(float)rank;
                     }
                     free(merged);
                 }
@@ -259,7 +281,7 @@ TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
             }
         } else {
             fprintf(stderr, "[gguf-tok] WARN: BPE tokenizer but no tokenizer.ggml.merges "
-                    "array — BPE merge scores will be zero\n");
+                            "array — BPE merge scores will be zero\n");
         }
     }
 
@@ -308,10 +330,10 @@ TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
              * byte-tight packing gives no alignment guarantee for this
              * array's start offset, so index via memcpy, not a raw
              * (const int32_t *) cast + subscript. */
-            const char *tt_bytes = (const char *)tt_data;
-            int cap = 128;
-            t->special_tokens    = (char **)malloc((size_t)cap * sizeof(char *));
-            t->special_token_ids = (int *)   malloc((size_t)cap * sizeof(int));
+            const char *tt_bytes  = (const char *)tt_data;
+            int cap               = 128;
+            t->special_tokens     = (char **)malloc((size_t)cap * sizeof(char *));
+            t->special_token_ids  = (int *)malloc((size_t)cap * sizeof(int));
             t->special_is_control = (unsigned char *)malloc((size_t)cap);
             if (t->special_tokens && t->special_token_ids && t->special_is_control) {
                 for (int i = 0; i < t->vocab_size && (uint64_t)i < tt_count; i++) {
@@ -326,19 +348,24 @@ TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
                              * result in place leaked the old arrays and left
                              * NULLs that tokenizer_free then walked). */
                             int ncap = cap * 2;
-                            char **ns = (char **)realloc(t->special_tokens, (size_t)ncap * sizeof(char *));
+                            char **ns =
+                                (char **)realloc(t->special_tokens, (size_t)ncap * sizeof(char *));
                             if (ns) t->special_tokens = ns;
-                            int *ni = ns ? (int *)realloc(t->special_token_ids, (size_t)ncap * sizeof(int)) : NULL;
+                            int *ni = ns ? (int *)realloc(t->special_token_ids,
+                                                          (size_t)ncap * sizeof(int))
+                                         : NULL;
                             if (ni) t->special_token_ids = ni;
-                            unsigned char *nc = ni ? (unsigned char *)realloc(t->special_is_control, (size_t)ncap) : NULL;
+                            unsigned char *nc =
+                                ni ? (unsigned char *)realloc(t->special_is_control, (size_t)ncap)
+                                   : NULL;
                             if (nc) t->special_is_control = nc;
                             if (!nc) break;
                             cap = ncap;
                         }
                         char *dup = strdup(t->vocab[i]);
-                        if (!dup) break;   /* match_special_token strlen()s every entry */
-                        t->special_tokens[t->n_special]    = dup;
-                        t->special_token_ids[t->n_special] = i;
+                        if (!dup) break; /* match_special_token strlen()s every entry */
+                        t->special_tokens[t->n_special]     = dup;
+                        t->special_token_ids[t->n_special]  = i;
                         t->special_is_control[t->n_special] = (unsigned char)(ttype == 3);
                         t->n_special++;
                     }
@@ -351,12 +378,11 @@ TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
      * "default" pipeline (what the reference runtimes use for such files). */
     if (is_bpe) {
         const char *pre = gguf_meta_str(hdr, "tokenizer.ggml.pre");
-        t->pretok_type = (int)pretok_type_from_name(pre);
+        t->pretok_type  = (int)pretok_type_from_name(pre);
     }
     /* Missing add_bos_token: llama.cpp adds BOS for SentencePiece and for
      * Llama-3-style BPE, not for other BPE vocabularies (Qwen, SmolLM, ...). */
-    if (t->add_bos_token < 0)
-        t->add_bos_token = is_bpe ? (t->pretok_type == PRETOK_LLAMA3) : 1;
+    if (t->add_bos_token < 0) t->add_bos_token = is_bpe ? (t->pretok_type == PRETOK_LLAMA3) : 1;
 
     /* 7. End-of-generation set: declared EOS/EOT/EOM + end-of-turn control
      * tokens (a Llama-3-vocab model whose eos is <|end_of_text|> must still
@@ -372,10 +398,11 @@ TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
     }
 
     /* 8. Log summary */
-    fprintf(stderr, "[gguf-tok] Loaded %d tokens (%s, pre=%s), %d special — BOS=%d EOS=%d chat_template=%s\n",
-            t->vocab_size, tok_model, pretok_type_name((PretokType)t->pretok_type), t->n_special,
-            t->bos_token_id, t->eos_token_id,
-            t->chat_template ? "yes" : "no");
+    fprintf(
+        stderr,
+        "[gguf-tok] Loaded %d tokens (%s, pre=%s), %d special — BOS=%d EOS=%d chat_template=%s\n",
+        t->vocab_size, tok_model, pretok_type_name((PretokType)t->pretok_type), t->n_special,
+        t->bos_token_id, t->eos_token_id, t->chat_template ? "yes" : "no");
 
     return TN_OK;
 }

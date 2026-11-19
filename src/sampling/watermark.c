@@ -23,10 +23,10 @@ uint64_t watermark_key_from_string(const char *passphrase) {
 
 WatermarkConfig *watermark_config_sanitize(WatermarkConfig *wm) {
     if (!wm) return wm;
-    if (!(wm->gamma >= 0.01f)) wm->gamma = 0.01f;   /* also catches NaN */
-    if (wm->gamma > 0.99f)     wm->gamma = 0.99f;
-    if (!(wm->delta >= 0.0f))  wm->delta = 0.0f;
-    if (wm->delta > 20.0f)     wm->delta = 20.0f;
+    if (!(wm->gamma >= 0.01f)) wm->gamma = 0.01f; /* also catches NaN */
+    if (wm->gamma > 0.99f) wm->gamma = 0.99f;
+    if (!(wm->delta >= 0.0f)) wm->delta = 0.0f;
+    if (wm->delta > 20.0f) wm->delta = 20.0f;
     return wm;
 }
 
@@ -59,8 +59,8 @@ int watermark_is_green(const WatermarkConfig *wm, int prev_token, int token) {
     return is_green_seeded(context_seed(wm, prev_token), token, gamma_threshold(wm->gamma));
 }
 
-void watermark_bias_logits(const WatermarkConfig *wm, float *logits,
-                           int vocab_size, int prev_token) {
+void watermark_bias_logits(const WatermarkConfig *wm, float *logits, int vocab_size,
+                           int prev_token) {
     if (!wm || !wm->enabled || !logits || vocab_size <= 0 || wm->delta == 0.0f) return;
     uint64_t seed = context_seed(wm, prev_token);
     uint64_t thr  = gamma_threshold(wm->gamma);
@@ -77,9 +77,9 @@ static int cmp_u64(const void *a, const void *b) {
 void watermark_detect(const WatermarkConfig *wm, const int *tokens, int n_tokens,
                       WatermarkResult *out) {
     if (!out) return;
-    out->n_scored = 0;
-    out->n_green = 0;
-    out->z_score = 0.0;
+    out->n_scored       = 0;
+    out->n_green        = 0;
+    out->z_score        = 0.0;
     out->green_fraction = 0.0;
     if (!wm || !tokens || n_tokens < 2) return;
 
@@ -87,7 +87,7 @@ void watermark_detect(const WatermarkConfig *wm, const int *tokens, int n_tokens
      * common in model output and would otherwise count the same green/red
      * draw many times, breaking the independence the z-test assumes
      * (2026-10-18: un-watermarked repetitive text scored z≈4.6 before this). */
-    int n_pairs = n_tokens - 1;
+    int n_pairs     = n_tokens - 1;
     uint64_t *pairs = (uint64_t *)malloc((size_t)n_pairs * sizeof(uint64_t));
     if (!pairs) return;
     for (int i = 0; i < n_pairs; i++)
@@ -104,9 +104,9 @@ void watermark_detect(const WatermarkConfig *wm, const int *tokens, int n_tokens
     }
     free(pairs);
 
-    double n = (double)out->n_scored;
-    double g = (double)wm->gamma;
+    double n            = (double)out->n_scored;
+    double g            = (double)wm->gamma;
     out->green_fraction = (double)out->n_green / n;
-    double denom = sqrt(n * g * (1.0 - g));
-    out->z_score = denom > 0.0 ? ((double)out->n_green - g * n) / denom : 0.0;
+    double denom        = sqrt(n * g * (1.0 - g));
+    out->z_score        = denom > 0.0 ? ((double)out->n_green - g * n) / denom : 0.0;
 }

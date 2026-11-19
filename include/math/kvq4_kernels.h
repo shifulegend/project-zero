@@ -1,5 +1,5 @@
-#ifndef PZ_KVQ4_KERNELS_H
-#define PZ_KVQ4_KERNELS_H
+#ifndef TN_MATH_KVQ4_KERNELS_H
+#define TN_MATH_KVQ4_KERNELS_H
 
 /*
  * math/kvq4_kernels — int4 KV-cache row kernels (2026-10-21).
@@ -23,12 +23,12 @@ typedef float (*tn_kvq4_dot_fn)(const float *q, const uint8_t *k, const float *s
 typedef void (*tn_kvq4_axpy_fn)(float *out, float a, const uint8_t *v, const float *scales, int n);
 
 float kvq4_dot_scalar(const float *q, const uint8_t *k, const float *scales, int n);
-void  kvq4_axpy_scalar(float *out, float a, const uint8_t *v, const float *scales, int n);
+void kvq4_axpy_scalar(float *out, float a, const uint8_t *v, const float *scales, int n);
 
 float kvq4_dot_avx2(const float *q, const uint8_t *k, const float *scales, int n);
-void  kvq4_axpy_avx2(float *out, float a, const uint8_t *v, const float *scales, int n);
+void kvq4_axpy_avx2(float *out, float a, const uint8_t *v, const float *scales, int n);
 
 float kvq4_dot_avx512(const float *q, const uint8_t *k, const float *scales, int n);
-void  kvq4_axpy_avx512(float *out, float a, const uint8_t *v, const float *scales, int n);
+void kvq4_axpy_avx512(float *out, float a, const uint8_t *v, const float *scales, int n);
 
-#endif /* PZ_KVQ4_KERNELS_H */
+#endif /* TN_MATH_KVQ4_KERNELS_H */

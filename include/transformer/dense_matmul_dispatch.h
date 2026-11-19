@@ -26,41 +26,40 @@
  * ffn.c) expressed in 256-element Q8K blocks. */
 #define TN_DENSE_DISPATCH_MAX_Q8K_BLOCKS 64
 
-static inline void tn_dense_matmul_dispatch(float *out, const float *x,
-                                             const tn_i8 *w, int wtype,
-                                             int n, int d, ThreadPool *tp) {
+static inline void tn_dense_matmul_dispatch(float *out, const float *x, const tn_i8 *w, int wtype,
+                                            int n, int d, ThreadPool *tp) {
     switch (wtype) {
-    case WEIGHT_TYPE_F16:
-        parallel_matmul_f16(out, x, (const tn_u16 *)w, n, d, tp);
-        break;
-    case WEIGHT_TYPE_Q4K:
-        parallel_matmul_q4k(out, x, (const uint8_t *)w, n, d, tp);
-        break;
-    case WEIGHT_TYPE_Q4K_X8: {
-        int n_blocks = n / 256;
-        TnQ8KActBlock acts[TN_DENSE_DISPATCH_MAX_Q8K_BLOCKS];
-        tn_quantize_q8k(acts, x, n_blocks);
-        parallel_matmul_q4k_x8_preq(out, acts, (const TnQ4KX8Block *)w, n_blocks, d, tp);
-        break;
-    }
-    case WEIGHT_TYPE_Q2_0:
-        parallel_matmul_q2_0(out, x, (const uint8_t *)w, n, d, tp);
-        break;
-    case WEIGHT_TYPE_Q6K:
-        parallel_matmul_q6k(out, x, (const uint8_t *)w, n, d, tp);
-        break;
-    case WEIGHT_TYPE_Q5_0:
-        parallel_matmul_q8a(out, x, (const uint8_t *)w, GGUF_TYPE_Q5_0, n, d, tp);
-        break;
-    case WEIGHT_TYPE_Q5_1:
-        parallel_matmul_q8a(out, x, (const uint8_t *)w, GGUF_TYPE_Q5_1, n, d, tp);
-        break;
-    case WEIGHT_TYPE_Q8_0:
-        parallel_matmul_q8a(out, x, (const uint8_t *)w, GGUF_TYPE_Q8_0, n, d, tp);
-        break;
-    default: /* WEIGHT_TYPE_F32 */
-        parallel_matmul_float32(out, x, (const float *)w, n, d, tp);
-        break;
+        case WEIGHT_TYPE_F16:
+            parallel_matmul_f16(out, x, (const tn_u16 *)w, n, d, tp);
+            break;
+        case WEIGHT_TYPE_Q4K:
+            parallel_matmul_q4k(out, x, (const uint8_t *)w, n, d, tp);
+            break;
+        case WEIGHT_TYPE_Q4K_X8: {
+            int n_blocks = n / 256;
+            TnQ8KActBlock acts[TN_DENSE_DISPATCH_MAX_Q8K_BLOCKS];
+            tn_quantize_q8k(acts, x, n_blocks);
+            parallel_matmul_q4k_x8_preq(out, acts, (const TnQ4KX8Block *)w, n_blocks, d, tp);
+            break;
+        }
+        case WEIGHT_TYPE_Q2_0:
+            parallel_matmul_q2_0(out, x, (const uint8_t *)w, n, d, tp);
+            break;
+        case WEIGHT_TYPE_Q6K:
+            parallel_matmul_q6k(out, x, (const uint8_t *)w, n, d, tp);
+            break;
+        case WEIGHT_TYPE_Q5_0:
+            parallel_matmul_q8a(out, x, (const uint8_t *)w, GGUF_TYPE_Q5_0, n, d, tp);
+            break;
+        case WEIGHT_TYPE_Q5_1:
+            parallel_matmul_q8a(out, x, (const uint8_t *)w, GGUF_TYPE_Q5_1, n, d, tp);
+            break;
+        case WEIGHT_TYPE_Q8_0:
+            parallel_matmul_q8a(out, x, (const uint8_t *)w, GGUF_TYPE_Q8_0, n, d, tp);
+            break;
+        default: /* WEIGHT_TYPE_F32 */
+            parallel_matmul_float32(out, x, (const float *)w, n, d, tp);
+            break;
     }
 }
 
@@ -75,8 +74,8 @@ static inline int tn_is_q4k_family(int wtype) {
 /* Like tn_dense_matmul_dispatch but takes pre-quantized Q8K activation
  * blocks — caller must have already checked tn_is_q4k_family(wtype). */
 static inline void tn_dense_matmul_dispatch_preq(float *out, const TnQ8KActBlock *acts,
-                                                  const tn_i8 *w, int wtype,
-                                                  int n, int d, ThreadPool *tp) {
+                                                 const tn_i8 *w, int wtype, int n, int d,
+                                                 ThreadPool *tp) {
     if (wtype == WEIGHT_TYPE_Q4K_X8) {
         parallel_matmul_q4k_x8_preq(out, acts, (const TnQ4KX8Block *)w, n / 256, d, tp);
     } else {
@@ -96,10 +95,9 @@ static inline void tn_dense_matmul_dispatch_preq(float *out, const TnQ8KActBlock
  * win for those formats. Documented Phase 18-B follow-up, not silently
  * accepted -- see docs/architecture/IMPLEMENTATION_PLAN.md's Phase 18
  * section and docs/ai/decision-log.md. */
-static inline void tn_dense_matmul_dispatch_batch(float *out, const float *x,
-                                                    const tn_i8 *w, int wtype,
-                                                    int n, int d, int n_tokens,
-                                                    ThreadPool *tp) {
+static inline void tn_dense_matmul_dispatch_batch(float *out, const float *x, const tn_i8 *w,
+                                                  int wtype, int n, int d, int n_tokens,
+                                                  ThreadPool *tp) {
     if (wtype == WEIGHT_TYPE_F16) {
         tn_matmul_f16_batch(out, x, (const tn_u16 *)w, n, d, n_tokens, tp);
         return;
@@ -121,19 +119,21 @@ static inline void tn_dense_matmul_dispatch_batch(float *out, const float *x,
     /* 2026-10-22 (Phase 23 batched decode): Q8_0/Q5_0/Q5_1 read each weight
      * row once per batch as well. */
     if (wtype == WEIGHT_TYPE_Q8_0 || wtype == WEIGHT_TYPE_Q5_0 || wtype == WEIGHT_TYPE_Q5_1) {
-        int gt = wtype == WEIGHT_TYPE_Q8_0 ? GGUF_TYPE_Q8_0
-               : wtype == WEIGHT_TYPE_Q5_0 ? GGUF_TYPE_Q5_0 : GGUF_TYPE_Q5_1;
+        int gt = wtype == WEIGHT_TYPE_Q8_0   ? GGUF_TYPE_Q8_0
+                 : wtype == WEIGHT_TYPE_Q5_0 ? GGUF_TYPE_Q5_0
+                                             : GGUF_TYPE_Q5_1;
         if (parallel_matmul_q8a_tokens(out, x, (const uint8_t *)w, gt, n, d, n_tokens, tp) == 0)
             return;
     }
     if (wtype == WEIGHT_TYPE_Q4K_X8) {
         int n_blocks = n / 256;
-        TnQ8KActBlock *acts = (TnQ8KActBlock *)malloc((size_t)n_tokens * n_blocks * sizeof(TnQ8KActBlock));
+        TnQ8KActBlock *acts =
+            (TnQ8KActBlock *)malloc((size_t)n_tokens * n_blocks * sizeof(TnQ8KActBlock));
         if (acts) {
             for (int k = 0; k < n_tokens; k++)
                 tn_quantize_q8k(acts + (size_t)k * n_blocks, x + (size_t)k * n, n_blocks);
-            parallel_matmul_q4k_x8_tokens_preq(out, acts, (const TnQ4KX8Block *)w,
-                                               n_blocks, d, n_tokens, tp);
+            parallel_matmul_q4k_x8_tokens_preq(out, acts, (const TnQ4KX8Block *)w, n_blocks, d,
+                                               n_tokens, tp);
             free(acts);
             return;
         }

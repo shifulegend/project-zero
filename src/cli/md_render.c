@@ -21,10 +21,10 @@
 #define MD_MAX_PENDING_UNCLOSED 4096
 
 void md_render_init(MdRenderState *st, FILE *out, int color_enabled) {
-    st->buf = (char *)malloc(MD_INITIAL_CAP);
-    st->len = 0;
-    st->cap = st->buf ? MD_INITIAL_CAP : 0;
-    st->out = out;
+    st->buf           = (char *)malloc(MD_INITIAL_CAP);
+    st->len           = 0;
+    st->cap           = st->buf ? MD_INITIAL_CAP : 0;
+    st->out           = out;
     st->color_enabled = color_enabled;
 }
 
@@ -59,7 +59,7 @@ static long md_find(const char *buf, size_t len, const char *needle, size_t nlen
 static long md_find_single_backtick(const char *buf, size_t len, size_t start) {
     for (size_t i = start; i < len; i++) {
         if (buf[i] != '`') continue;
-        int is_fence = (i + 2 < len && buf[i+1] == '`' && buf[i+2] == '`');
+        int is_fence = (i + 2 < len && buf[i + 1] == '`' && buf[i + 2] == '`');
         if (!is_fence) return (long)i;
         i += 2; /* skip the rest of the fence marker */
     }
@@ -78,7 +78,10 @@ static void md_emit_styled(MdRenderState *st, const char *s, size_t n, const cha
 
 /* Removes the first n bytes from the pending buffer (already emitted). */
 static void md_consume(MdRenderState *st, size_t n) {
-    if (n >= st->len) { st->len = 0; return; }
+    if (n >= st->len) {
+        st->len = 0;
+        return;
+    }
     memmove(st->buf, st->buf + n, st->len - n);
     st->len -= n;
 }
@@ -92,12 +95,24 @@ static void md_process(MdRenderState *st) {
         long pos_code  = md_find_single_backtick(st->buf, st->len, 0);
 
         /* Pick the earliest candidate opening marker. */
-        long pos = -1;
-        size_t mark_len = 0;
+        long pos           = -1;
+        size_t mark_len    = 0;
         const char *marker = NULL;
-        if (pos_fence >= 0 && (pos < 0 || pos_fence < pos)) { pos = pos_fence; mark_len = 3; marker = "```"; }
-        if (pos_bold  >= 0 && (pos < 0 || pos_bold  < pos)) { pos = pos_bold;  mark_len = 2; marker = "**"; }
-        if (pos_code  >= 0 && (pos < 0 || pos_code  < pos)) { pos = pos_code;  mark_len = 1; marker = "`"; }
+        if (pos_fence >= 0 && (pos < 0 || pos_fence < pos)) {
+            pos      = pos_fence;
+            mark_len = 3;
+            marker   = "```";
+        }
+        if (pos_bold >= 0 && (pos < 0 || pos_bold < pos)) {
+            pos      = pos_bold;
+            mark_len = 2;
+            marker   = "**";
+        }
+        if (pos_code >= 0 && (pos < 0 || pos_code < pos)) {
+            pos      = pos_code;
+            mark_len = 1;
+            marker   = "`";
+        }
 
         if (pos < 0) {
             /* No opening marker anywhere in the buffer. Emit everything
@@ -105,7 +120,7 @@ static void md_process(MdRenderState *st) {
              * a multi-char marker split across the boundary (worst case:
              * "``" pending, "`" arrives next to complete "```"). */
             size_t hold_back = (st->len > 2) ? 2 : st->len;
-            size_t emit_len = st->len - hold_back;
+            size_t emit_len  = st->len - hold_back;
             md_emit_raw(st, st->buf, emit_len);
             md_consume(st, emit_len);
             return;
@@ -133,9 +148,9 @@ static void md_process(MdRenderState *st) {
         md_emit_raw(st, st->buf, (size_t)pos);
         size_t content_start = (size_t)pos + mark_len;
         size_t content_len   = (size_t)close - content_start;
-        const char *style = (mark_len == 3) ? TN_ANSI_GREEN
-                           : (mark_len == 2) ? TN_ANSI_BOLD
-                           : TN_ANSI_CYAN;
+        const char *style    = (mark_len == 3)   ? TN_ANSI_GREEN
+                               : (mark_len == 2) ? TN_ANSI_BOLD
+                                                 : TN_ANSI_CYAN;
         md_emit_styled(st, st->buf + content_start, content_len, style);
         md_consume(st, (size_t)close + mark_len);
         /* Loop again — more constructs may follow in the remaining buffer. */

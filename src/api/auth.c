@@ -33,6 +33,5 @@ int auth_check_request(const AuthConfig *cfg, const char *authorization_header_v
     if (strncmp(authorization_header_value, BEARER_PREFIX, prefix_len) != 0) return 0;
 
     const char *presented = authorization_header_value + prefix_len;
-    return constant_time_eq(presented, strlen(presented),
-                             cfg->api_key, strlen(cfg->api_key));
+    return constant_time_eq(presented, strlen(presented), cfg->api_key, strlen(cfg->api_key));
 }

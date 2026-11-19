@@ -25,16 +25,16 @@
 #define WATERMARK_DEFAULT_DELTA 2.0f
 
 typedef struct {
-    bool     enabled;
-    uint64_t key;    /* secret key; derive from a passphrase via watermark_key_from_string() */
-    float    gamma;  /* green-list fraction, (0, 1) */
-    float    delta;  /* logit bias added to green tokens, >= 0 */
+    bool enabled;
+    uint64_t key; /* secret key; derive from a passphrase via watermark_key_from_string() */
+    float gamma;  /* green-list fraction, (0, 1) */
+    float delta;  /* logit bias added to green tokens, >= 0 */
 } WatermarkConfig;
 
 typedef struct {
-    int    n_scored; /* distinct (prev, token) bigrams scored (repeats count once) */
-    int    n_green;  /* how many of those were green */
-    double z_score;  /* (n_green - gamma*n) / sqrt(n*gamma*(1-gamma)); 0 when n_scored == 0 */
+    int n_scored;   /* distinct (prev, token) bigrams scored (repeats count once) */
+    int n_green;    /* how many of those were green */
+    double z_score; /* (n_green - gamma*n) / sqrt(n*gamma*(1-gamma)); 0 when n_scored == 0 */
     double green_fraction;
 } WatermarkResult;
 
@@ -51,8 +51,8 @@ WatermarkConfig *watermark_config_sanitize(WatermarkConfig *wm);
 int watermark_is_green(const WatermarkConfig *wm, int prev_token, int token);
 
 /* Adds wm->delta to every green logit in place. No-op when !wm->enabled. */
-void watermark_bias_logits(const WatermarkConfig *wm, float *logits,
-                           int vocab_size, int prev_token);
+void watermark_bias_logits(const WatermarkConfig *wm, float *logits, int vocab_size,
+                           int prev_token);
 
 /* Scores a token sequence. Works regardless of wm->enabled (only key/gamma are used). */
 void watermark_detect(const WatermarkConfig *wm, const int *tokens, int n_tokens,

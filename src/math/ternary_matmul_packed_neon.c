@@ -42,9 +42,9 @@ static inline int32x4_t unpack4_to_epi32(const tn_u8 *row, int j) {
     uint8_t byte;
     memcpy(&byte, row + (j >> 2), sizeof(byte));
 
-    int32x4_t v = vdupq_n_s32((int32_t)byte);
+    int32x4_t v                        = vdupq_n_s32((int32_t)byte);
     static const int32_t shift_vals[4] = {0, -2, -4, -6}; /* negative = right shift */
-    int32x4_t shifts = vld1q_s32(shift_vals);
+    int32x4_t shifts                   = vld1q_s32(shift_vals);
 
     v = vshlq_s32(v, shifts);
     v = vandq_s32(v, vdupq_n_s32(3));
@@ -54,14 +54,14 @@ static inline int32x4_t unpack4_to_epi32(const tn_u8 *row, int j) {
 
 static inline float horizontal_sum_f32(float32x4_t v) {
     float32x2_t sum2 = vadd_f32(vget_low_f32(v), vget_high_f32(v));
-    sum2 = vpadd_f32(sum2, sum2);
+    sum2             = vpadd_f32(sum2, sum2);
     return vget_lane_f32(sum2, 0);
 }
 
 #define TN_PREFETCH_ROWS 8
 
-void ternary_matmul_packed_neon(float *out, const float *x, const tn_u8 *packed_w,
-                                 int n, int d, const float *scales, int group_size) {
+void ternary_matmul_packed_neon(float *out, const float *x, const tn_u8 *packed_w, int n, int d,
+                                const float *scales, int group_size) {
     size_t row_bytes = ((size_t)n + 3) >> 2;
 
     const int32x4_t ones = vdupq_n_s32(1);
@@ -77,19 +77,19 @@ void ternary_matmul_packed_neon(float *out, const float *x, const tn_u8 *packed_
         if (group_size <= 0) {
             /* Per-matrix scale mode */
             float32x4_t accum = vdupq_n_f32(0.0f);
-            int j = 0;
+            int j             = 0;
 
             for (; j + 3 < n; j += 4) {
                 float32x4_t x_vec = vld1q_f32(&x[j]);
-                int32x4_t w32 = unpack4_to_epi32(row, j);
+                int32x4_t w32     = unpack4_to_epi32(row, j);
 
                 uint32x4_t mask_pos = vceqq_s32(w32, ones);
                 uint32x4_t mask_neg = vceqq_s32(w32, neg1);
 
-                float32x4_t to_add = vreinterpretq_f32_u32(
-                    vandq_u32(vreinterpretq_u32_f32(x_vec), mask_pos));
-                float32x4_t to_sub = vreinterpretq_f32_u32(
-                    vandq_u32(vreinterpretq_u32_f32(x_vec), mask_neg));
+                float32x4_t to_add =
+                    vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(x_vec), mask_pos));
+                float32x4_t to_sub =
+                    vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(x_vec), mask_neg));
 
                 accum = vaddq_f32(accum, to_add);
                 accum = vsubq_f32(accum, to_sub);
@@ -100,36 +100,38 @@ void ternary_matmul_packed_neon(float *out, const float *x, const tn_u8 *packed_
             /* Scalar tail */
             for (; j < n; j++) {
                 tn_i8 w = unpack_ternary(row, j);
-                if (w == 1) val += x[j];
-                else if (w == -1) val -= x[j];
+                if (w == 1)
+                    val += x[j];
+                else if (w == -1)
+                    val -= x[j];
             }
 
             out[i] = val * scales[0];
 
         } else {
             /* Per-group scale mode */
-            float total = 0.0f;
+            float total  = 0.0f;
             int n_groups = (n + group_size - 1) / group_size;
 
             for (int g = 0; g < n_groups; g++) {
                 int start = g * group_size;
-                int end = start + group_size;
+                int end   = start + group_size;
                 if (end > n) end = n;
 
                 float32x4_t accum = vdupq_n_f32(0.0f);
-                int j = start;
+                int j             = start;
 
                 for (; j + 3 < end; j += 4) {
                     float32x4_t x_vec = vld1q_f32(&x[j]);
-                    int32x4_t w32 = unpack4_to_epi32(row, j);
+                    int32x4_t w32     = unpack4_to_epi32(row, j);
 
                     uint32x4_t mask_pos = vceqq_s32(w32, ones);
                     uint32x4_t mask_neg = vceqq_s32(w32, neg1);
 
-                    float32x4_t to_add = vreinterpretq_f32_u32(
-                        vandq_u32(vreinterpretq_u32_f32(x_vec), mask_pos));
-                    float32x4_t to_sub = vreinterpretq_f32_u32(
-                        vandq_u32(vreinterpretq_u32_f32(x_vec), mask_neg));
+                    float32x4_t to_add =
+                        vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(x_vec), mask_pos));
+                    float32x4_t to_sub =
+                        vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(x_vec), mask_neg));
 
                     accum = vaddq_f32(accum, to_add);
                     accum = vsubq_f32(accum, to_sub);
@@ -140,8 +142,10 @@ void ternary_matmul_packed_neon(float *out, const float *x, const tn_u8 *packed_
                 /* Scalar tail for this group */
                 for (; j < end; j++) {
                     tn_i8 w = unpack_ternary(row, j);
-                    if (w == 1) group_sum += x[j];
-                    else if (w == -1) group_sum -= x[j];
+                    if (w == 1)
+                        group_sum += x[j];
+                    else if (w == -1)
+                        group_sum -= x[j];
                 }
 
                 int scale_idx = i * n_groups + g;

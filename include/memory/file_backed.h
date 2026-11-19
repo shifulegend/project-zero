@@ -17,12 +17,12 @@
 #include "core/platform.h"
 
 typedef struct {
-    void  *base;   /* page-aligned mapping, NULL when unused */
+    void *base; /* page-aligned mapping, NULL when unused */
     size_t bytes;
 } FileBacked;
 
 TernaryError file_backed_alloc(FileBacked *fb, const char *dir, size_t bytes);
-void         file_backed_free(FileBacked *fb);
+void file_backed_free(FileBacked *fb);
 
 /* Bytes available to an unprivileged writer in `dir`, or -1 if unknown. */
 tn_i64 file_backed_free_space(const char *dir);

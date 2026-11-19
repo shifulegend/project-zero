@@ -1,0 +1,14 @@
+# Python lint and format (CI changelog job). Real-bug rules: syntax errors (E9), pyflakes
+# (F: undefined names, unused imports/variables, ...), and bare/blind except
+# (E722, BLE001; a deliberate broad catch needs a noqa with its reason). Pinned ruff
+# version: see .github/workflows/ci.yml.
+line-length = 100
+extend-exclude = ["benchmark_results"]
+
+[lint]
+preview = true
+explicit-preview-rules = true   # only the preview rules named below
+select = ["E9", "F", "E722", "BLE001", "PLW1514"]   # PLW1514: text-mode open() must say encoding=
+
+[format]
+quote-style = "double"

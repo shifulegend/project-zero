@@ -31,8 +31,8 @@ extern "C" {
  * A single search result.
  */
 typedef struct {
-    const char *text;   /* pointer into VectorDB text pool (do not free) */
-    float       score;  /* cosine similarity score in [0, 1] */
+    const char *text; /* pointer into VectorDB text pool (do not free) */
+    float score;      /* cosine similarity score in [0, 1] */
 } MemoryResult;
 
 /**
@@ -55,15 +55,9 @@ typedef struct {
  * @param max_results Maximum number of results to return (≤ MEMORY_SEARCH_MAX_K)
  * @return            Number of results filled in `results` (≥ 0), or -1 on error.
  */
-int memory_search(VectorDB *db,
-                  const char *query_text,
-                  const Config *cfg,
-                  const TransformerWeights *w,
-                  Embedder *emb,
-                  Tokenizer *tok,
-                  ThreadPool *tp,
-                  MemoryResult *results,
-                  int max_results);
+int memory_search(VectorDB *db, const char *query_text, const Config *cfg,
+                  const TransformerWeights *w, Embedder *emb, Tokenizer *tok, ThreadPool *tp,
+                  MemoryResult *results, int max_results);
 
 #ifdef __cplusplus
 }

@@ -15,8 +15,11 @@ endif
 # inside ServerConfig) left stale objects with the old layout linked into the
 # binary/tests — caught as an ASan SEGV reading a shifted field offset.
 DEPFLAGS        = -MMD -MP
-CFLAGS_COMMON   = -std=c99 -Wall -Wextra -Wpedantic -Iinclude -D_POSIX_C_SOURCE=200809L $(DARWIN_DEFS) $(DEPFLAGS)
-CXXFLAGS_COMMON = -std=c++17 -Wall -Wextra -Iinclude -D_POSIX_C_SOURCE=200809L $(DARWIN_DEFS) $(DEPFLAGS)
+# WERROR=1 turns every warning into an error (used by CI; off by default so a newer
+# compiler's new warnings never break a user's own build).
+WERROR_FLAG     = $(if $(filter 1,$(WERROR)),-Werror,)
+CFLAGS_COMMON   = -std=c99 -Wall -Wextra -Wpedantic $(WERROR_FLAG) -Iinclude -D_POSIX_C_SOURCE=200809L $(DARWIN_DEFS) $(DEPFLAGS)
+CXXFLAGS_COMMON = -std=c++17 -Wall -Wextra $(WERROR_FLAG) -Iinclude -D_POSIX_C_SOURCE=200809L $(DARWIN_DEFS) $(DEPFLAGS)
 # Version string baked into the binary (overridable; derived from git by default).
 # Used by --version and the startup banner; a #ifndef fallback in main.c covers
 # builds where it is not passed (e.g. plain `make debug`).
@@ -102,7 +105,18 @@ TARGET = pz
 # notice when run through it); drop LEGACY_TARGET the release after.
 LEGACY_TARGET = adaptive_ai_engine
 
-.PHONY: all clean debug release dist test run-tests test-tsan coverage objs demo webui-bundle screenshots
+# ── Formatting (clang-format, style in .clang-format; vendored/generated files in .clang-format-ignore) ──
+CLANG_FORMAT ?= clang-format
+FORMAT_FILES  = $(shell git ls-files '*.c' '*.h' '*.cpp' | grep -vE '^(include/stb_|src/api/webui_bundle_generated|benchmark_results/)')
+format:
+	$(CLANG_FORMAT) -i $(FORMAT_FILES)
+check-headers:
+	sh tools/check_headers_standalone.sh $(CC)
+
+check-format:
+	$(CLANG_FORMAT) --dry-run -Werror $(FORMAT_FILES)
+
+.PHONY: format check-format check-headers all clean debug release dist test run-tests test-tsan coverage objs demo webui-bundle screenshots
 
 all: $(TARGET)
 
@@ -416,7 +430,7 @@ run-tests: $(LIB_OBJS) $(TEST_BINS)
 # driver file directly with CFLAGS_TSAN/LDFLAGS_TSAN -- the generic
 # build/tests/% rule hardcodes CFLAGS_DEBUG (ASan/UBSan) for the driver file,
 # which cannot be linked into a TSan binary.
-TSAN_TESTS = audit_threadpool_stress test_threading test_moe_experts test_api_server test_q4k_x8_matmul test_q2_0_matmul test_forward test_gen_queue test_batch_scheduler test_cancel test_tensor_rpc test_update_check
+TSAN_TESTS = audit_threadpool_stress test_threading test_moe_experts test_api_server test_q4k_x8_matmul test_q2_0_matmul test_forward test_gen_queue test_batch_scheduler test_cancel test_tensor_rpc test_update_check test_net_io test_http_limits test_rate_limit
 
 test-tsan:
 	$(call ensure_variant,tsan)

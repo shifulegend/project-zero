@@ -13,6 +13,7 @@ Usage:
 Before 2026-11-11 the three copies were edited by hand and drifted (bullets present in one
 tool's copy only). Edit the .claude/rules file, then run this script.
 """
+
 import pathlib
 import re
 import sys
@@ -24,8 +25,10 @@ COPILOT_DIR = ROOT / ".github" / "instructions"
 
 
 def note(src_rel):
-    return (f"<!-- Generated from {src_rel} by tools/sync_ai_adapters.py; "
-            f"edit that file and re-run the script (CI checks this copy). -->")
+    return (
+        f"<!-- Generated from {src_rel} by tools/sync_ai_adapters.py; "
+        f"edit that file and re-run the script (CI checks this copy). -->"
+    )
 
 
 def parse(path):
@@ -44,13 +47,13 @@ def parse(path):
                 paths.append(item.group(1))
             elif line and not line.startswith(" "):
                 in_paths = False
-        text = text[m.end():]
+        text = text[m.end() :]
     lines = text.split("\n")
     while lines and not lines[0].strip():
         lines.pop(0)
     if not lines or not lines[0].startswith("# Claude rule:"):
         sys.exit(f"{path}: expected a '# Claude rule: <title>' heading after the front matter")
-    title = lines[0][len("# Claude rule:"):].strip()
+    title = lines[0][len("# Claude rule:") :].strip()
     body = "\n".join(lines[1:]).strip("\n") + "\n"
     return paths, title, body
 
@@ -62,14 +65,41 @@ def render(path):
     src_rel = path.relative_to(ROOT).as_posix()
     scope = path.stem
     agents = f"# Antigravity scoped rules: {title}\n\n{note(src_rel)}\n\n{body}"
-    copilot = ("---\n"
-               f'applyTo: "{",".join(paths)}"\n'
-               "---\n"
-               f"# Copilot scoped rules: {title}\n\n{note(src_rel)}\n\n{body}")
+    copilot = (
+        "---\n"
+        f'applyTo: "{",".join(paths)}"\n'
+        "---\n"
+        f"# Copilot scoped rules: {title}\n\n{note(src_rel)}\n\n{body}"
+    )
     return {
         AGENTS_DIR / f"{scope}.md": agents,
         COPILOT_DIR / f"{scope}.instructions.md": copilot,
     }
+
+
+# Durable rules every root entrypoint must carry (a one-line mention each is enough; the full
+# text lives in docs/ai/engineering-rules.md). Added 2026-11-19 after GEMINI.md and the Copilot
+# file had silently lost several of them.
+ENTRYPOINTS = ["CLAUDE.md", "AGENTS.md", "gemini/GEMINI.md", ".github/copilot-instructions.md"]
+REQUIRED_RULES = [
+    ("definition of done (gcc and clang)", r"gcc and clang"),
+    ("installer + pz config schema (DoD #6)", r"DoD #6"),
+    ("README review (DoD #7)", r"DoD #7"),
+    ("immutable published releases", r"Published releases are immutable"),
+    ("no AI attribution", r"[Aa]ttribution"),
+    ("bug-fix policy", r"Any bug found gets fixed"),
+]
+
+
+def missing_rules():
+    out = []
+    for ep in ENTRYPOINTS:
+        path = ROOT / ep
+        text = path.read_text(encoding="utf-8") if path.exists() else ""
+        for label, pat in REQUIRED_RULES:
+            if not re.search(pat, text):
+                out.append(f"{ep}: missing durable rule '{label}'")
+    return out
 
 
 def main(argv):
@@ -87,9 +117,18 @@ def main(argv):
             if not check:
                 out.parent.mkdir(parents=True, exist_ok=True)
                 out.write_text(content, encoding="utf-8")
+    gaps = missing_rules() if check else []
+    if check and gaps:
+        print("Root adapter files lost a durable rule (copy it from CLAUDE.md / AGENTS.md):")
+        for g in gaps:
+            print(f"  {g}")
+        if not stale:
+            return 1
     if check and stale:
-        print("Stale generated adapter files (edit .claude/rules/*.md, then run "
-              "tools/sync_ai_adapters.py):")
+        print(
+            "Stale generated adapter files (edit .claude/rules/*.md, then run "
+            "tools/sync_ai_adapters.py):"
+        )
         for s in stale:
             print(f"  {s}")
         return 1

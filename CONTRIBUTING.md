@@ -96,8 +96,17 @@ These phases are completely spec'd in [`IMPLEMENTATION_PLAN.md`](docs/architectu
 - **Memory:** Use `tn_aligned_calloc()` for SIMD buffers (64-byte aligned). No `malloc` in hot paths.
 - **SIMD:** Always add a scalar fallback path. Wrap AVX-512 code in `#ifdef __AVX512F__`.
 - **Documentation:** Update the relevant `.md` file. Benchmark before and after for perf changes.
+- **One logical change per PR, at most 400 changed lines.** Generated, vendored and data files do not count; a mechanical change (reformat, rename) goes in its own PR and may carry the `size-override` label. CI (`tools/check_pr_size.py`) enforces the limit.
+- **Test first for behaviour changes and bug fixes:** write the failing test, make it pass, then clean up (Red -> Green -> Refactor), and say so in the PR.
+- **Review comments:** prefix a non-blocking remark with `Nit:`; it never blocks a merge. Review the whole file's context, not only the diff hunk.
 
 ---
+
+## 👀 Review & hotfixes
+
+- **Turnaround:** the maintainer aims to give a first response to a pull request within 7 days. This is a goal, not a guarantee.
+- **Hotfixes:** a change merged outside the normal checks (for example an urgent fix with a test left for later) opens a follow-up issue in the same hour, labelled `hotfix-followup`, listing what was skipped; it is closed within 14 days.
+- **Nit:** comments are non-blocking (see Code Standards above).
 
 ## 🔀 Branch Naming
 

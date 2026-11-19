@@ -15,8 +15,7 @@ static const uint32_t K[64] = {
     0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
     0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
     0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
-};
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
 
 #define ROR(x, n) (((x) >> (n)) | ((x) << (32 - (n))))
 
@@ -28,24 +27,38 @@ static void block(Sha256 *s, const unsigned char *p) {
     for (int i = 16; i < 64; i++) {
         uint32_t s0 = ROR(w[i - 15], 7) ^ ROR(w[i - 15], 18) ^ (w[i - 15] >> 3);
         uint32_t s1 = ROR(w[i - 2], 17) ^ ROR(w[i - 2], 19) ^ (w[i - 2] >> 10);
-        w[i] = w[i - 16] + s0 + w[i - 7] + s1;
+        w[i]        = w[i - 16] + s0 + w[i - 7] + s1;
     }
     uint32_t a = s->h[0], b = s->h[1], c = s->h[2], d = s->h[3];
     uint32_t e = s->h[4], f = s->h[5], g = s->h[6], h = s->h[7];
     for (int i = 0; i < 64; i++) {
-        uint32_t t1 = h + (ROR(e, 6) ^ ROR(e, 11) ^ ROR(e, 25)) + ((e & f) ^ (~e & g)) + K[i] + w[i];
+        uint32_t t1 =
+            h + (ROR(e, 6) ^ ROR(e, 11) ^ ROR(e, 25)) + ((e & f) ^ (~e & g)) + K[i] + w[i];
         uint32_t t2 = (ROR(a, 2) ^ ROR(a, 13) ^ ROR(a, 22)) + ((a & b) ^ (a & c) ^ (b & c));
-        h = g; g = f; f = e; e = d + t1; d = c; c = b; b = a; a = t1 + t2;
+        h           = g;
+        g           = f;
+        f           = e;
+        e           = d + t1;
+        d           = c;
+        c           = b;
+        b           = a;
+        a           = t1 + t2;
     }
-    s->h[0] += a; s->h[1] += b; s->h[2] += c; s->h[3] += d;
-    s->h[4] += e; s->h[5] += f; s->h[6] += g; s->h[7] += h;
+    s->h[0] += a;
+    s->h[1] += b;
+    s->h[2] += c;
+    s->h[3] += d;
+    s->h[4] += e;
+    s->h[5] += f;
+    s->h[6] += g;
+    s->h[7] += h;
 }
 
 void sha256_init(Sha256 *s) {
-    static const uint32_t H0[8] = { 0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
-                                    0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19 };
+    static const uint32_t H0[8] = {0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+                                   0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
     memcpy(s->h, H0, sizeof(H0));
-    s->len = 0;
+    s->len  = 0;
     s->nbuf = 0;
 }
 
@@ -59,12 +72,15 @@ void sha256_update(Sha256 *s, const void *data, size_t n) {
         s->nbuf += k;
         p += k;
         n -= k;
-        if (s->nbuf == 64) { block(s, s->buf); s->nbuf = 0; }
+        if (s->nbuf == 64) {
+            block(s, s->buf);
+            s->nbuf = 0;
+        }
     }
 }
 
 void sha256_final(Sha256 *s, unsigned char out[32]) {
-    uint64_t bits = s->len * 8;
+    uint64_t bits     = s->len * 8;
     unsigned char pad = 0x80;
     sha256_update(s, &pad, 1);
     unsigned char zero = 0;
@@ -73,7 +89,7 @@ void sha256_final(Sha256 *s, unsigned char out[32]) {
     for (int i = 0; i < 8; i++) lenb[i] = (unsigned char)(bits >> (56 - 8 * i));
     sha256_update(s, lenb, 8);
     for (int i = 0; i < 8; i++) {
-        out[4 * i] = (unsigned char)(s->h[i] >> 24);
+        out[4 * i]     = (unsigned char)(s->h[i] >> 24);
         out[4 * i + 1] = (unsigned char)(s->h[i] >> 16);
         out[4 * i + 2] = (unsigned char)(s->h[i] >> 8);
         out[4 * i + 3] = (unsigned char)s->h[i];
@@ -82,7 +98,10 @@ void sha256_final(Sha256 *s, unsigned char out[32]) {
 
 void sha256_to_hex(const unsigned char d[32], char hex[65]) {
     static const char *x = "0123456789abcdef";
-    for (int i = 0; i < 32; i++) { hex[2 * i] = x[d[i] >> 4]; hex[2 * i + 1] = x[d[i] & 15]; }
+    for (int i = 0; i < 32; i++) {
+        hex[2 * i]     = x[d[i] >> 4];
+        hex[2 * i + 1] = x[d[i] & 15];
+    }
     hex[64] = '\0';
 }
 
@@ -90,7 +109,10 @@ int sha256_file_hex(const char *path, char hex[65]) {
     FILE *f = path ? fopen(path, "rb") : NULL;
     if (!f) return -1;
     unsigned char *buf = (unsigned char *)malloc(1 << 20);
-    if (!buf) { fclose(f); return -1; }
+    if (!buf) {
+        fclose(f);
+        return -1;
+    }
     Sha256 s;
     sha256_init(&s);
     size_t n;

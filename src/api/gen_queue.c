@@ -1,4 +1,5 @@
 #include "api/gen_queue.h"
+#include "core/clamp.h"
 #include <errno.h>
 #include <time.h>
 
@@ -6,10 +7,10 @@ void gen_queue_init(GenQueue *q, int max_waiting) {
     pthread_mutex_init(&q->mu, NULL);
     pthread_cond_init(&q->cv, NULL);
     q->capacity = 1;
-    q->in_use = 0;
+    q->in_use   = 0;
     q->head = q->tail = NULL;
-    q->n_waiting = 0;
-    q->max_waiting = max_waiting > 0 ? max_waiting : 0;
+    q->n_waiting      = 0;
+    q->max_waiting    = max_waiting > 0 ? max_waiting : 0;
 }
 
 void gen_queue_destroy(GenQueue *q) {
@@ -37,19 +38,24 @@ int gen_queue_capacity(GenQueue *q) {
 }
 
 static int clamp_units(const GenQueue *q, int units) {
-    return units < 1 ? 1 : (units > q->capacity ? q->capacity : units);
+    return tn_clampi(units, 1, q->capacity);
 }
 
 GenQueueResult gen_queue_try_acquire_n(GenQueue *q, int units) {
     pthread_mutex_lock(&q->mu);
-    units = clamp_units(q, units);
+    units            = clamp_units(q, units);
     GenQueueResult r = GEN_QUEUE_FULL;
-    if (!q->head && q->in_use + units <= q->capacity) { q->in_use += units; r = GEN_QUEUE_OK; }
+    if (!q->head && q->in_use + units <= q->capacity) {
+        q->in_use += units;
+        r = GEN_QUEUE_OK;
+    }
     pthread_mutex_unlock(&q->mu);
     return r;
 }
 
-GenQueueResult gen_queue_try_acquire(GenQueue *q) { return gen_queue_try_acquire_n(q, 1); }
+GenQueueResult gen_queue_try_acquire(GenQueue *q) {
+    return gen_queue_try_acquire_n(q, 1);
+}
 
 static int position_of(const GenQueue *q, const GenWaiter *w) {
     int pos = 1;
@@ -61,7 +67,10 @@ static void unlink_waiter(GenQueue *q, GenWaiter *w) {
     GenWaiter *prev = NULL;
     for (GenWaiter *it = q->head; it; prev = it, it = it->next) {
         if (it != w) continue;
-        if (prev) prev->next = it->next; else q->head = it->next;
+        if (prev)
+            prev->next = it->next;
+        else
+            q->head = it->next;
         if (q->tail == it) q->tail = prev;
         q->n_waiting--;
         return;
@@ -79,23 +88,23 @@ static void grant_waiters(GenQueue *q) {
     int granted = 0;
     while (q->head && q->in_use + q->head->units <= q->capacity) {
         GenWaiter *w = q->head;
-        q->head = w->next;
+        q->head      = w->next;
         if (!q->head) q->tail = NULL;
         q->n_waiting--;
         q->in_use += w->units;
         w->granted = 1;
-        granted = 1;
+        granted    = 1;
     }
     if (granted) pthread_cond_broadcast(&q->cv);
 }
 
-GenQueueResult gen_queue_acquire(GenQueue *q, int timeout_ms,
-                                 GenQueueWaitFn on_wait, void *userdata) {
+GenQueueResult gen_queue_acquire(GenQueue *q, int timeout_ms, GenQueueWaitFn on_wait,
+                                 void *userdata) {
     return gen_queue_acquire_n(q, 1, timeout_ms, on_wait, userdata);
 }
 
-GenQueueResult gen_queue_acquire_n(GenQueue *q, int units, int timeout_ms,
-                                   GenQueueWaitFn on_wait, void *userdata) {
+GenQueueResult gen_queue_acquire_n(GenQueue *q, int units, int timeout_ms, GenQueueWaitFn on_wait,
+                                   void *userdata) {
     pthread_mutex_lock(&q->mu);
     units = clamp_units(q, units);
     if (!q->head && q->in_use + units <= q->capacity) {
@@ -107,12 +116,15 @@ GenQueueResult gen_queue_acquire_n(GenQueue *q, int units, int timeout_ms,
         pthread_mutex_unlock(&q->mu);
         return GEN_QUEUE_FULL;
     }
-    GenWaiter me = { NULL, units, 0 };
-    if (q->tail) q->tail->next = &me; else q->head = &me;
+    GenWaiter me = {NULL, units, 0};
+    if (q->tail)
+        q->tail->next = &me;
+    else
+        q->head = &me;
     q->tail = &me;
     q->n_waiting++;
 
-    long long deadline = timeout_ms > 0 ? now_ms() + timeout_ms : 0;
+    long long deadline    = timeout_ms > 0 ? now_ms() + timeout_ms : 0;
     GenQueueResult result = GEN_QUEUE_OK;
     while (!me.granted) {
         int pos = position_of(q, &me);
@@ -123,7 +135,7 @@ GenQueueResult gen_queue_acquire_n(GenQueue *q, int units, int timeout_ms,
             pthread_mutex_lock(&q->mu);
             if (stop && !me.granted) {
                 unlink_waiter(q, &me);
-                grant_waiters(q);   /* it may have been holding back smaller requests */
+                grant_waiters(q); /* it may have been holding back smaller requests */
                 result = GEN_QUEUE_ABORTED;
                 break;
             }
@@ -131,7 +143,7 @@ GenQueueResult gen_queue_acquire_n(GenQueue *q, int units, int timeout_ms,
         }
         long long wake = now_ms() + 1000;
         if (deadline && wake > deadline) wake = deadline;
-        struct timespec ts = { (time_t)(wake / 1000), (long)((wake % 1000) * 1000000L) };
+        struct timespec ts = {(time_t)(wake / 1000), (long)((wake % 1000) * 1000000L)};
         pthread_cond_timedwait(&q->cv, &q->mu, &ts);
         if (!me.granted && deadline && now_ms() >= deadline) {
             unlink_waiter(q, &me);
@@ -144,13 +156,15 @@ GenQueueResult gen_queue_acquire_n(GenQueue *q, int units, int timeout_ms,
     return result;
 }
 
-void gen_queue_release(GenQueue *q) { gen_queue_release_n(q, 1); }
+void gen_queue_release(GenQueue *q) {
+    gen_queue_release_n(q, 1);
+}
 
 void gen_queue_release_n(GenQueue *q, int units) {
     pthread_mutex_lock(&q->mu);
     q->in_use -= clamp_units(q, units);
     if (q->in_use < 0) q->in_use = 0;
-    grant_waiters(q);              /* units pass straight to the waiters in order */
+    grant_waiters(q); /* units pass straight to the waiters in order */
     pthread_mutex_unlock(&q->mu);
 }
 

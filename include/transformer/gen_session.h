@@ -46,7 +46,7 @@ typedef struct {
     int json_mode;
     StopMatcher stop;
     FSMState json_fsm;
-    unsigned char *chat_stops;     /* this generation's chat-mode turn ends */
+    unsigned char *chat_stops; /* this generation's chat-mode turn ends */
 
     int *prompt_tokens;
     int n_prompt;
@@ -69,7 +69,7 @@ typedef struct {
     int empty_stop;
     int first_stop_token, last_prompt_token;
     int64_t gen_start_us;
-    int started;                   /* begin succeeded (end must flush/save) */
+    int started; /* begin succeeded (end must flush/save) */
     int done;
 } GenSession;
 
@@ -77,10 +77,9 @@ typedef struct {
  * seeds sampling, reuses cached prefix K/V. Returns 0 when there is work to
  * do, -1 when nothing can be generated (stats say why); call
  * gen_session_end() either way. All pointers must stay valid until then. */
-int gen_session_begin(GenSession *g, const Config *cfg, const TransformerWeights *w,
-                      RunState *s, const MoEConfig *mc, Tokenizer *tok, ThreadPool *tp,
-                      const char *prompt, const GenerationParams *gp,
-                      TokenCallback callback, void *userdata);
+int gen_session_begin(GenSession *g, const Config *cfg, const TransformerWeights *w, RunState *s,
+                      const MoEConfig *mc, Tokenizer *tok, ThreadPool *tp, const char *prompt,
+                      const GenerationParams *gp, TokenCallback callback, void *userdata);
 
 /* The two halves of begin, for schedulers that pick the RunState after
  * seeing the prompt: prepare renders and tokenizes (no RunState touched;
@@ -88,9 +87,8 @@ int gen_session_begin(GenSession *g, const Config *cfg, const TransformerWeights
  * and reuses cached prefix K/V from pcache/pstore (either may be NULL).
  * begin(s) == prepare + start(s, gp->prefix_cache, gp->prompt_store). */
 int gen_session_prepare(GenSession *g, const Config *cfg, const TransformerWeights *w,
-                        const MoEConfig *mc, Tokenizer *tok, ThreadPool *tp,
-                        const char *prompt, const GenerationParams *gp,
-                        TokenCallback callback, void *userdata);
+                        const MoEConfig *mc, Tokenizer *tok, ThreadPool *tp, const char *prompt,
+                        const GenerationParams *gp, TokenCallback callback, void *userdata);
 int gen_session_start(GenSession *g, RunState *s, PrefixCache *pcache, PromptStore *pstore);
 
 /* 1 and the token/position to forward next, or 0 when the session is done. */

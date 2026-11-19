@@ -24,8 +24,10 @@ git push origin v0.2.0   # tag push triggers .github/workflows/release.yml
 
 The workflow then: refuses the tag if `CHANGELOG.md` has no section for it, runs the full test suite (gcc + clang), builds the portable
 binary (`make dist`), packages it, smoke-tests it, runs it on a clean minimal
-container, attempts a real-model golden check, and publishes a **prerelease**
+container, runs a real-model golden check (a failure blocks publishing; re-run the workflow if Hugging Face was unreachable), and publishes a **prerelease**
 with the `.tar.gz` and `SHA256SUMS` attached and that changelog section as its release notes.
+
+The publish job runs in the GitHub Environment `release`. To require a human approval before anything is published, add required reviewers to that environment (repository **Settings → Environments → release**); without that setting the environment exists but does not gate.
 
 To test the build **without publishing**, run the workflow via
 **Actions → Release → Run workflow** (`workflow_dispatch`); the publish job only
@@ -53,7 +55,7 @@ runs on a `v*` tag push.
 
 | Asset | Contents |
 |-------|----------|
-| `project-zero-<version>-x86_64-unknown-linux-gnu.tar.gz` | unpacks to `project-zero-<version>-x86_64-unknown-linux-gnu/`: `pz` + `LICENSE` + `README.md` + `CHANGELOG.md` (+ the `adaptive_ai_engine → pz` alias symlink, first release after the rename only) |
+| `project-zero-<version>-x86_64-unknown-linux-gnu.tar.gz` | unpacks to `project-zero-<version>-x86_64-unknown-linux-gnu/`: `pz` + `LICENSE` + `NOTICE` + `LICENSE-LGPL-3.0.txt` + `README.md` + `CHANGELOG.md` (+ the `adaptive_ai_engine → pz` alias symlink, first release after the rename only) |
 | `install.sh` | the installer (Phase 40.4): picks the asset for the machine, verifies it against `SHA256SUMS`, installs `pz` to `~/.local/bin` |
 | `SHA256SUMS` | checksums of the tarball and `install.sh` (`sha256sum -c --ignore-missing SHA256SUMS` to verify what you downloaded) |
 
@@ -187,6 +189,18 @@ MUST NOT be modified; any modifications MUST be released as a new version"), Kee
 9. **Deprecations** follow the changelog guidance: announce in release N, remove no earlier than
    N+1 and name that release in the deprecation (the `adaptive_ai_engine` alias: deprecated in
    0.2.0, removed in 0.3.0 per the Phase 39 decision), and say so in both releases' notes.
+
+## Verifying a download
+
+Every release archive and `install.sh` carries a signed build-provenance attestation (GitHub /
+Sigstore, created by the publish job). Beyond the `SHA256SUMS` check that `install.sh` always does,
+anyone can verify where a file was built:
+
+```bash
+gh attestation verify project-zero-<version>-x86_64-unknown-linux-gnu.tar.gz --repo shifulegend/project-zero
+```
+
+`install.sh` does not require this (it would need the `gh` CLI); it is an extra check for people who want one.
 
 ## Hardening note
 

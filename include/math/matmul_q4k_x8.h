@@ -36,8 +36,8 @@
 typedef struct {
     uint16_t d[8];
     uint16_t dmin[8];
-    uint8_t  scales[96];
-    uint8_t  qs[1024];
+    uint8_t scales[96];
+    uint8_t qs[1024];
 } TnQ4KX8Block;
 
 /*
@@ -64,8 +64,7 @@ void tn_q4k_repack_x8(TnQ4KX8Block *out, const uint8_t *rows[8], int n_blocks);
  *   tp:       thread pool (NULL = single-threaded)
  */
 void parallel_matmul_q4k_x8_preq(float *out, const TnQ8KActBlock *acts,
-                                  const TnQ4KX8Block *repacked,
-                                  int n_blocks, int d, ThreadPool *tp);
+                                 const TnQ4KX8Block *repacked, int n_blocks, int d, ThreadPool *tp);
 
 /*
  * Phase 18-B: same as parallel_matmul_q4k_x8_preq for n_tokens activation
@@ -73,7 +72,7 @@ void parallel_matmul_q4k_x8_preq(float *out, const TnQ8KActBlock *acts,
  * repacked group streams from RAM once. Bit-identical to per-token calls.
  */
 void parallel_matmul_q4k_x8_tokens_preq(float *out, const TnQ8KActBlock *acts,
-                                        const TnQ4KX8Block *repacked,
-                                        int n_blocks, int d, int n_tokens, ThreadPool *tp);
+                                        const TnQ4KX8Block *repacked, int n_blocks, int d,
+                                        int n_tokens, ThreadPool *tp);
 
 #endif /* TN_MATMUL_Q4K_X8_H */

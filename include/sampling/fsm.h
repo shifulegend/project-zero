@@ -40,8 +40,8 @@ void fsm_init(FSMState *fsm);
  * terminate once the JSON is complete, and forces it to keep going
  * otherwise.
  */
-void fsm_compute_token_mask(const FSMState *fsm, Tokenizer *t, int prev_token,
-                             float *logits, int vocab_size);
+void fsm_compute_token_mask(const FSMState *fsm, Tokenizer *t, int prev_token, float *logits,
+                            int vocab_size);
 
 /*
  * Advances the real grammar state by the token actually chosen. Call this

@@ -1,21 +1,25 @@
-#include "agent/output_inject.h"
+#include "transformer/output_inject.h"
 #include "transformer/forward.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 
-int inject_text_into_kv(const char *text, const Config *cfg, const TransformerWeights *w, RunState *s, Tokenizer *tok, ThreadPool *tp) {
+int inject_text_into_kv(const char *text, const Config *cfg, const TransformerWeights *w,
+                        RunState *s, Tokenizer *tok, ThreadPool *tp) {
     if (!text || !cfg || !w || !s || !tok) return -1;
 
     /* Heuristic max tokens for the injected text */
     const int MAX_INJECT = 4096;
-    int *tokens = (int *)calloc(MAX_INJECT, sizeof(int));
+    int *tokens          = (int *)calloc(MAX_INJECT, sizeof(int));
     if (!tokens) return -1;
 
     /* Tool output and retrieved memories are untrusted: their control-token
      * strings must stay text (2026-10-22, prompt-injection defence). */
     char *safe = tokenizer_neutralize_control(tok, text);
-    if (!safe) { free(tokens); return -1; }
+    if (!safe) {
+        free(tokens);
+        return -1;
+    }
     int n = tokenizer_encode(tok, safe, strlen(safe), tokens, MAX_INJECT);
     free(safe);
     if (n < 0) {

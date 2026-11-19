@@ -18,6 +18,7 @@ Examples:
   python3 tools/bench/hardware_profile.py --pz ./pz-dist --label portable --calibration off
   python3 tools/bench/hardware_profile.py --model models/bitnet-b1.58-2B-4T-i2_s.gguf --dry-run
 """
+
 import argparse
 import pathlib
 import re
@@ -47,11 +48,24 @@ def profile_box(text):
 
 
 def capture_profile(run, pz, model, env, calibration, rows=0, name="hardware_profile"):
-    cmd = [pz, "--model", str(model), "--prompt", "Hello", "--max-tokens", "1", "--temperature", "0",
-           "--threads", str(bl.os.cpu_count() or 1), "--no-update-check"] + bl.pz_flags(calibration)
+    cmd = [
+        pz,
+        "--model",
+        str(model),
+        "--prompt",
+        "Hello",
+        "--max-tokens",
+        "1",
+        "--temperature",
+        "0",
+        "--threads",
+        str(bl.os.cpu_count() or 1),
+        "--no-update-check",
+    ] + bl.pz_flags(calibration)
     run.log(f"capturing the pz hardware profile: {bl.shlex.join(cmd)}")
-    png, text = bl.screenshot(run, name, cmd, env, rows=rows or 100, timeout_s=900,
-                              note=f"calibration={calibration}")
+    png, text = bl.screenshot(
+        run, name, cmd, env, rows=rows or 100, timeout_s=900, note=f"calibration={calibration}"
+    )
     box = profile_box(text)
     if box:
         run.write("hardware_profile.txt", box + "\n")
@@ -59,29 +73,47 @@ def capture_profile(run, pz, model, env, calibration, rows=0, name="hardware_pro
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     bl.add_common_args(ap, "hardware_profile")
-    ap.add_argument("--model", help="model to start pz with (default: the smallest known model in --models-dir)")
+    ap.add_argument(
+        "--model", help="model to start pz with (default: the smallest known model in --models-dir)"
+    )
     ap.add_argument("--models-dir", default="models")
     a = ap.parse_args()
 
     model = a.model or find_small_model(a.models_dir)
     run = bl.RunDir("hardware_profile", a.out, a.label)
     if a.dry_run:
-        print(f"PLAN hardware_profile -> {run.rel()}\n  pz={a.pz} calibration={a.calibration} model={model}")
-        print("  1 pz startup run captured in a real terminal (screenshot + raw bytes), host details, binary checksum")
+        print(
+            f"PLAN hardware_profile -> {run.rel()}\n  pz={a.pz} calibration={a.calibration} model={model}"
+        )
+        print(
+            "  1 pz startup run captured in a real terminal (screenshot + raw bytes), host details, binary checksum"
+        )
         return 0
     if model is None:
-        raise SystemExit("no model found: pass --model or fetch one with tools/bench/setup_engines.py --models smollm2-135m")
+        raise SystemExit(
+            "no model found: pass --model or fetch one with tools/bench/setup_engines.py --models smollm2-135m"
+        )
     run.create()
     env = bl.pz_env(run, a.calibration)
     info = {"PZ_BINARY": f"{bl.bin_info(a.pz)}", "CALIBRATION": a.calibration, "MODEL": model}
     run.write("system_info.txt", bl.system_info_text(run, info))
     png, text, box = capture_profile(run, a.pz, model, env, a.calibration, rows=a.shot_rows)
     run.log(box or "(no hardware-profile box found in the terminal output)")
-    bl.finish(run, {"kind": "hardware_profile", "pz": bl.bin_info(a.pz), "model": str(model),
-                    "calibration": a.calibration, "screenshot": run.rel(png) if png else None,
-                    "profile_box_found": bool(box)})
+    bl.finish(
+        run,
+        {
+            "kind": "hardware_profile",
+            "pz": bl.bin_info(a.pz),
+            "model": str(model),
+            "calibration": a.calibration,
+            "screenshot": run.rel(png) if png else None,
+            "profile_box_found": bool(box),
+        },
+    )
     return 0 if (box or a.screenshots == "none") else 1
 
 

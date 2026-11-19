@@ -5,27 +5,19 @@
 #include <string.h>
 #include <stdio.h>
 
-int memory_search(VectorDB *db,
-                  const char *query_text,
-                  const Config *cfg,
-                  const TransformerWeights *w,
-                  Embedder *emb,
-                  Tokenizer *tok,
-                  ThreadPool *tp,
-                  MemoryResult *results,
-                  int max_results) {
-    if (!db || !query_text || !cfg || !w || !emb || !tok || !results)
-        return -1;
+int memory_search(VectorDB *db, const char *query_text, const Config *cfg,
+                  const TransformerWeights *w, Embedder *emb, Tokenizer *tok, ThreadPool *tp,
+                  MemoryResult *results, int max_results) {
+    if (!db || !query_text || !cfg || !w || !emb || !tok || !results) return -1;
     if (db->num_entries == 0) return 0;
 
     /* Clamp k */
     int k = max_results;
     if (k > MEMORY_SEARCH_MAX_K) k = MEMORY_SEARCH_MAX_K;
-    if (k > db->num_entries)     k = db->num_entries;
+    if (k > db->num_entries) k = db->num_entries;
 
     /* Generate query embedding */
-    float *query_vec = (float *)tn_aligned_calloc((size_t)emb->embed_dim,
-                                                   sizeof(float), 64);
+    float *query_vec = (float *)tn_aligned_calloc((size_t)emb->embed_dim, sizeof(float), 64);
     if (!query_vec) return -1;
 
     int n_toks = embedder_generate(emb, query_vec, query_text, cfg, w, tok, tp);
@@ -35,8 +27,8 @@ int memory_search(VectorDB *db,
     }
 
     /* Top-k search */
-    int   *top_indices = (int   *)malloc((size_t)k * sizeof(int));
-    float *top_scores  = (float *)malloc((size_t)k * sizeof(float));
+    int *top_indices  = (int *)malloc((size_t)k * sizeof(int));
+    float *top_scores = (float *)malloc((size_t)k * sizeof(float));
     if (!top_indices || !top_scores) {
         free(top_indices);
         free(top_scores);
@@ -44,13 +36,8 @@ int memory_search(VectorDB *db,
         return -1;
     }
 
-    int found = rag_find_top_k(query_vec,
-                                vector_db_embeddings(db),
-                                db->num_entries,
-                                db->embed_dim,
-                                k,
-                                top_indices,
-                                top_scores);
+    int found = rag_find_top_k(query_vec, vector_db_embeddings(db), db->num_entries, db->embed_dim,
+                               k, top_indices, top_scores);
 
     /* Filter by minimum score and fill results */
     int n_results = 0;

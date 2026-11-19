@@ -1,5 +1,5 @@
 #include "cli/repl.h"
-#include "cli/timer.h"
+#include "core/timer.h"
 #include "cli/color.h"
 #include "cli/live_stats.h"
 #include "cli/md_render.h"
@@ -21,9 +21,9 @@
  * tracks a live tok/s indicator. REPL never requests early cancellation. */
 typedef struct {
     MdRenderState md;
-    TnLiveStats   live;
-    int           is_tty;
-    int           color_enabled;
+    TnLiveStats live;
+    int is_tty;
+    int color_enabled;
 } ReplGenContext;
 
 static int repl_token_callback(const char *piece, void *userdata) {
@@ -56,18 +56,18 @@ static void print_memory_list(RagContext *rag) {
     }
 }
 
-void run_repl(Config *p, TransformerWeights *w,
-              const MoEConfig *mc,
-              VisionConfig *vc, VisionWeights *vw, VisionProjector *vp,
-              RunState *s, Tokenizer *t, ThreadPool *tp,
+void run_repl(Config *p, TransformerWeights *w, const MoEConfig *mc, VisionConfig *vc,
+              VisionWeights *vw, VisionProjector *vp, RunState *s, Tokenizer *t, ThreadPool *tp,
               CliArgs *args, RagContext *rag, DraftModel *draft) {
-    (void)vc; (void)vw; (void)vp; /* multimodal stubs — unused */
+    (void)vc;
+    (void)vw;
+    (void)vp; /* multimodal stubs — unused */
 
     char line[MAX_REPL_LINE];
     printf("\n--- Project Zero Interactive REPL ---\n");
     if (rag && rag->enabled) {
-        printf("[Memory] RAG enabled — %d memories loaded from '%s'\n",
-               rag->db.num_entries, rag->db.path);
+        printf("[Memory] RAG enabled — %d memories loaded from '%s'\n", rag->db.num_entries,
+               rag->db.path);
     }
     printf("Type /quit to exit, /help for commands.\n");
 
@@ -79,8 +79,8 @@ void run_repl(Config *p, TransformerWeights *w,
 
         /* Strip trailing newline */
         size_t len = strlen(line);
-        if (len > 0 && line[len-1] == '\n') {
-            line[len-1] = '\0';
+        if (len > 0 && line[len - 1] == '\n') {
+            line[len - 1] = '\0';
         }
 
         if (strlen(line) == 0) continue;
@@ -132,8 +132,7 @@ void run_repl(Config *p, TransformerWeights *w,
             } else {
                 const char *query = line + 15;
                 MemoryResult results[5];
-                int n = memory_search(&rag->db, query, p, w, &rag->emb, t, tp,
-                                      results, 5);
+                int n = memory_search(&rag->db, query, p, w, &rag->emb, t, tp, results, 5);
                 if (n <= 0) {
                     printf("[Memory] No results for: %s\n", query);
                 } else {
@@ -153,8 +152,7 @@ void run_repl(Config *p, TransformerWeights *w,
                 printf("[Memory] RAG not enabled (pass --memory-db <path> to enable).\n");
             } else {
                 const char *save_text = line + 13;
-                int ret = auto_save_memory(save_text, &rag->db, p, w,
-                                           &rag->emb, t, tp);
+                int ret = auto_save_memory(save_text, &rag->db, p, w, &rag->emb, t, tp);
                 if (ret == 0)
                     printf("[Memory] Saved: \"%s\"\n", save_text);
                 else if (ret == 1)
@@ -168,42 +166,41 @@ void run_repl(Config *p, TransformerWeights *w,
         /* /agent <prompt> */
         if (strncmp(line, "/agent ", 7) == 0 || strcmp(line, "/agent") == 0) {
             const char *agent_prompt = (strncmp(line, "/agent ", 7) == 0) ? (line + 7) : "";
-            run_agent_loop(agent_prompt, p, w, s, t, tp,
-                           args->max_tokens, args->temperature, args->top_p, rag);
+            run_agent_loop(agent_prompt, p, w, s, t, tp, args->max_tokens, args->temperature,
+                           args->top_p, rag);
             continue;
         }
 
         /* Standard generation — optionally prepend retrieved memories */
         if (rag && rag->enabled) {
-            int injected = auto_retrieve_and_inject(line, &rag->db, p, w, s,
-                                                    &rag->emb, t, tp);
+            int injected = auto_retrieve_and_inject(line, &rag->db, p, w, s, &rag->emb, t, tp);
             if (injected > 0 && args->verbose) {
                 printf("[Memory] Injected %d tokens of relevant context.\n", injected);
             }
         }
 
-        int is_tty = isatty(fileno(stdout));
+        int is_tty        = isatty(fileno(stdout));
         int color_enabled = tn_color_resolve(args->color_mode, is_tty, getenv("NO_COLOR"));
 
         ReplGenContext rc;
         md_render_init(&rc.md, stdout, color_enabled);
         tn_live_stats_init(&rc.live);
-        rc.is_tty = is_tty;
+        rc.is_tty        = is_tty;
         rc.color_enabled = color_enabled;
 
         int64_t start_time = timer_now_us();
         if (draft) {
-            speculative_generate_with_callback(p, w, s, mc, t, tp, line,
-                                                args->max_tokens, args->temperature, args->top_p,
-                                                args->json_mode, draft, args->spec_length,
-                                                repl_token_callback, &rc);
+            speculative_generate_with_callback(p, w, s, mc, t, tp, line, args->max_tokens,
+                                               args->temperature, args->top_p, args->json_mode,
+                                               draft, args->spec_length, repl_token_callback, &rc);
         } else {
             GenerationParams gp;
             args_fill_gen_params(args, &gp);
             generate_ex(p, w, s, mc, t, tp, line, &gp, repl_token_callback, &rc);
         }
         md_render_flush(&rc.md);
-        if (rc.is_tty && rc.live.count >= 2) fprintf(stderr, "\n"); /* move past the live tok/s line */
+        if (rc.is_tty && rc.live.count >= 2)
+            fprintf(stderr, "\n"); /* move past the live tok/s line */
         md_render_free(&rc.md);
         int64_t end_time = timer_now_us();
         printf("\n");
@@ -211,6 +208,5 @@ void run_repl(Config *p, TransformerWeights *w,
         if (args->verbose) {
             printf("\n[Generation took %.2fs]\n", (end_time - start_time) / 1000000.0);
         }
-
     }
 }

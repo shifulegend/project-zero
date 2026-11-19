@@ -19,6 +19,7 @@ A suite is NAME:MODEL[:extra,args,comma,separated] (Project Zero). Reference eng
 --fixed-length makes every engine do the same work: raw prompt, EOS ignored, exactly
 --tokens generated (PZ: --raw-prompt --ignore-eos; llama.cpp: -no-cnv --ignore-eos).
 """
+
 import argparse
 import csv
 import datetime
@@ -29,8 +30,10 @@ import subprocess
 import sys
 import time
 
-PROMPT = ("Explain what machine learning is and how neural networks work. Discuss supervised "
-          "learning, unsupervised learning, and reinforcement learning with real-world examples of each.")
+PROMPT = (
+    "Explain what machine learning is and how neural networks work. Discuss supervised "
+    "learning, unsupervised learning, and reinforcement learning with real-world examples of each."
+)
 ENGINE = "./pz"
 
 
@@ -38,9 +41,9 @@ def host_cpu():
     """CPU model string — recorded per run because cloud containers can be moved to
     different hardware by a restart (2026-10-19: a sweep's host changed mid-way)."""
     try:
-        with open("/proc/cpuinfo") as f:
+        with open("/proc/cpuinfo", encoding="utf-8") as f:
             name = next((l.split(":", 1)[1].strip() for l in f if l.startswith("model name")), "?")
-        with open("/proc/cpuinfo") as f:
+        with open("/proc/cpuinfo", encoding="utf-8") as f:
             model = next((l.split(":", 1)[1].strip() for l in f if l.startswith("model\t")), "?")
         return f"{name} (model {model}, {os.cpu_count()} vCPU)"
     except OSError:
@@ -60,8 +63,9 @@ def parse_threads(spec):
 def run_once(cmd, log_path):
     """Run cmd, capture stdout+stderr, return (text, wall_s, maxrss_mb, cpu_pct)."""
     t0 = time.monotonic()
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            stdin=subprocess.DEVNULL)
+    proc = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL
+    )
     out = proc.stdout.read()
     _, status, ru = os.wait4(proc.pid, 0)
     proc.returncode = os.waitstatus_to_exitcode(status)
@@ -75,54 +79,96 @@ def gen_toks(text):
     if m:
         return float(m.group(1)), int(m.group(2))
     # llama.cpp / bitnet.cpp (common_perf_print): "eval time = X ms / N runs (... , T tokens per second)"
-    m = re.search(r"(?<!prompt )\beval time =\s*[\d.]+ ms /\s*(\d+) (?:runs|tokens)\s*\([^,]+,\s*([\d.]+) tokens per second", text)
+    m = re.search(
+        r"(?<!prompt )\beval time =\s*[\d.]+ ms /\s*(\d+) (?:runs|tokens)\s*\([^,]+,\s*([\d.]+) tokens per second",
+        text,
+    )
     if m:
-        return float(m.group(2)), int(m.group(1)) + 1   # + the token sampled from the prompt pass
+        return float(m.group(2)), int(m.group(1)) + 1  # + the token sampled from the prompt pass
     return None, None
 
 
 def prompt_toks(text):
-    m = re.search(r"prompt eval time =\s*[\d.]+ ms /\s*\d+ tokens\s*\([^,]+,\s*([\d.]+) tokens per second", text)
+    m = re.search(
+        r"prompt eval time =\s*[\d.]+ ms /\s*\d+ tokens\s*\([^,]+,\s*([\d.]+) tokens per second",
+        text,
+    )
     return float(m.group(1)) if m else None
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
-    ap.add_argument("--suite", action="append", default=[],
-                    help="Project Zero suite NAME:MODEL[:extra,args]")
-    ap.add_argument("--ref-suite", action="append", default=[],
-                    help="llama.cpp-family suite NAME:BINARY:MODEL[:extra,args] (llama-completion)")
-    ap.add_argument("--cli-suite", action="append", default=[],
-                    help="llama-cli suite without -no-cnv (ik_llama.cpp) NAME:BINARY:MODEL[:extra,args]")
-    ap.add_argument("--fixed-length", action="store_true",
-                    help="same work for every engine: raw prompt + ignore EOS (PZ --raw-prompt --ignore-eos)")
+    ap.add_argument(
+        "--suite", action="append", default=[], help="Project Zero suite NAME:MODEL[:extra,args]"
+    )
+    ap.add_argument(
+        "--ref-suite",
+        action="append",
+        default=[],
+        help="llama.cpp-family suite NAME:BINARY:MODEL[:extra,args] (llama-completion)",
+    )
+    ap.add_argument(
+        "--cli-suite",
+        action="append",
+        default=[],
+        help="llama-cli suite without -no-cnv (ik_llama.cpp) NAME:BINARY:MODEL[:extra,args]",
+    )
+    ap.add_argument(
+        "--fixed-length",
+        action="store_true",
+        help="same work for every engine: raw prompt + ignore EOS (PZ --raw-prompt --ignore-eos)",
+    )
     ap.add_argument("--threads", default="1-4")
     ap.add_argument("--runs", type=int, default=3)
     ap.add_argument("--tokens", type=int, default=500)
     ap.add_argument("--cooldown", type=float, default=10.0)
     ap.add_argument("--prompt", default=PROMPT)
-    ap.add_argument("--resume", action="store_true",
-                    help="skip (suite, threads, run) rows already in OUT/summary.csv (after a restart)")
+    ap.add_argument(
+        "--resume",
+        action="store_true",
+        help="skip (suite, threads, run) rows already in OUT/summary.csv (after a restart)",
+    )
     a = ap.parse_args()
 
     os.makedirs(a.out, exist_ok=True)
     threads = parse_threads(a.threads)
     summary_path = os.path.join(a.out, "summary.csv")
     new = not os.path.exists(summary_path)
-    done = {}   # (suite, threads, run) -> tok/s already recorded
+    done = {}  # (suite, threads, run) -> tok/s already recorded
     if a.resume and not new:
-        with open(summary_path) as f:
+        with open(summary_path, encoding="utf-8") as f:
             for row in csv.DictReader(f):
                 if row.get("gen_tok_s"):
-                    done[(row["suite"], int(row["threads"]), int(row["run"]))] = float(row["gen_tok_s"])
-    sf = open(summary_path, "a", newline="")
+                    done[(row["suite"], int(row["threads"]), int(row["run"]))] = float(
+                        row["gen_tok_s"]
+                    )
+    sf = open(summary_path, "a", encoding="utf-8", newline="")
     sw = csv.writer(sf)
     if new:
-        sw.writerow(["suite", "threads", "run", "gen_tok_s", "tokens", "wall_s", "max_rss_mb", "cpu_pct", "exit"])
+        sw.writerow(
+            [
+                "suite",
+                "threads",
+                "run",
+                "gen_tok_s",
+                "tokens",
+                "wall_s",
+                "max_rss_mb",
+                "cpu_pct",
+                "exit",
+            ]
+        )
 
-    meta = {"prompt": a.prompt, "max_tokens": a.tokens, "runs": a.runs, "cooldown_s": a.cooldown,
-            "threads": threads, "suites": {}, "started": datetime.datetime.now().astimezone().isoformat()}
+    meta = {
+        "prompt": a.prompt,
+        "max_tokens": a.tokens,
+        "runs": a.runs,
+        "cooldown_s": a.cooldown,
+        "threads": threads,
+        "suites": {},
+        "started": datetime.datetime.now().astimezone().isoformat(),
+    }
 
     jobs = []
     for spec in a.suite:
@@ -150,30 +196,73 @@ def main():
                     best = max(best or 0.0, done[(name, t, r)])
                     continue
                 if kind == "pz":
-                    cmd = [binary, "--model", model, "--prompt", a.prompt, "--max-tokens", str(a.tokens),
-                           "--temperature", "0", "--threads", str(t), "--no-update-check"] + extra
+                    cmd = [
+                        binary,
+                        "--model",
+                        model,
+                        "--prompt",
+                        a.prompt,
+                        "--max-tokens",
+                        str(a.tokens),
+                        "--temperature",
+                        "0",
+                        "--threads",
+                        str(t),
+                        "--no-update-check",
+                    ] + extra
                     if a.fixed_length:
                         cmd += ["--raw-prompt", "--ignore-eos"]
                 else:
-                    cmd = [binary, "-m", model, "-p", a.prompt, "-n", str(a.tokens), "--temp", "0",
-                           "-t", str(t)] + (["-no-cnv"] if kind == "ref" else []) + extra
+                    cmd = (
+                        [
+                            binary,
+                            "-m",
+                            model,
+                            "-p",
+                            a.prompt,
+                            "-n",
+                            str(a.tokens),
+                            "--temp",
+                            "0",
+                            "-t",
+                            str(t),
+                        ]
+                        + (["-no-cnv"] if kind == "ref" else [])
+                        + extra
+                    )
                     if a.fixed_length:
                         cmd += ["--ignore-eos"]
                 text, wall, rss, cpu, rc = run_once(cmd, None)
                 tps, ntok = gen_toks(text)
                 ptps = prompt_toks(text)
                 stamp = datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
-                with open(os.path.join(tdir, f"run{r}.txt"), "w") as f:
-                    f.write(f"=== {name} t={t} run {r} ===\nDATE: {stamp}\nHOST_CPU: {HOST_CPU}\nCMD: {' '.join(cmd)}\n"
-                            f"PROMPT: {a.prompt}\n{'=' * 60}\n{text}\n"
-                            f"PERF: wall={wall:.2f}s max_rss={rss:.0f}MB cpu={cpu:.0f}% exit={rc}\n"
-                            + (f"PROMPT_TPS: {ptps}\n" if ptps else ""))
-                sw.writerow([name, t, r, tps if tps is not None else "", ntok or "", f"{wall:.2f}",
-                             f"{rss:.0f}", f"{cpu:.0f}", rc])
+                with open(os.path.join(tdir, f"run{r}.txt"), "w", encoding="utf-8") as f:
+                    f.write(
+                        f"=== {name} t={t} run {r} ===\nDATE: {stamp}\nHOST_CPU: {HOST_CPU}\nCMD: {' '.join(cmd)}\n"
+                        f"PROMPT: {a.prompt}\n{'=' * 60}\n{text}\n"
+                        f"PERF: wall={wall:.2f}s max_rss={rss:.0f}MB cpu={cpu:.0f}% exit={rc}\n"
+                        + (f"PROMPT_TPS: {ptps}\n" if ptps else "")
+                    )
+                sw.writerow(
+                    [
+                        name,
+                        t,
+                        r,
+                        tps if tps is not None else "",
+                        ntok or "",
+                        f"{wall:.2f}",
+                        f"{rss:.0f}",
+                        f"{cpu:.0f}",
+                        rc,
+                    ]
+                )
                 sf.flush()
                 status = "" if rc == 0 else f"  FAILED (exit {rc}{', signal' if rc < 0 else ''})"
-                print(f"  t={t} run {r}: {tps} tok/s ({ntok} tok)  wall {wall:.1f}s  rss {rss:.0f}MB  "
-                      f"cpu {cpu:.0f}%{status}", flush=True)
+                print(
+                    f"  t={t} run {r}: {tps} tok/s ({ntok} tok)  wall {wall:.1f}s  rss {rss:.0f}MB  "
+                    f"cpu {cpu:.0f}%{status}",
+                    flush=True,
+                )
                 if tps is not None and (best is None or tps > best):
                     best = tps
                 time.sleep(a.cooldown)
@@ -184,14 +273,14 @@ def main():
     # Resumed sweeps (same --out) merge into the existing meta.json.
     mpath = os.path.join(a.out, "meta.json")
     if os.path.exists(mpath):
-        with open(mpath) as f:
+        with open(mpath, encoding="utf-8") as f:
             old = json.load(f)
         old["suites"].update(meta["suites"])
         old["threads"] = sorted(set(old.get("threads", [])) | set(threads))
         old["finished"] = meta["finished"]
         old.setdefault("resumed", []).append(meta["started"])
         meta = old
-    with open(mpath, "w") as f:
+    with open(mpath, "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2)
     sf.close()
 

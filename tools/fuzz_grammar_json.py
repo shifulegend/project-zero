@@ -24,12 +24,12 @@ Usage: tools/fuzz_grammar_json.py [--n N] [--seed S] [--harness PATH]
 Builds the C harness on the fly if --harness is not given and no built copy
 is found at the default cache path.
 """
+
 import argparse
 import base64
 import json
 import os
 import random
-import string
 import subprocess
 import sys
 
@@ -40,10 +40,27 @@ DEFAULT_HARNESS_BIN = "/tmp/grammar_json_verdict_fuzz"
 JSON_ALPHABET = '{}[]",:0123456789abcdefghijklmnopqrstuvwxyz \t\n-+.eE\\'
 
 VALID_SEEDS = [
-    "null", "true", "false", "0", "-0", "42", "-17", "3.14", "1e10", "-2.5e-3",
-    '""', '"hello"', '"a\\nb\\"c"', '"\\u0041"',
-    "[]", "[1,2,3]", "[[1],[2,[3]]]", "[null,true,false]",
-    "{}", '{"a":1}', '{"a":1,"b":[1,2,{"c":true}]}',
+    "null",
+    "true",
+    "false",
+    "0",
+    "-0",
+    "42",
+    "-17",
+    "3.14",
+    "1e10",
+    "-2.5e-3",
+    '""',
+    '"hello"',
+    '"a\\nb\\"c"',
+    '"\\u0041"',
+    "[]",
+    "[1,2,3]",
+    "[[1],[2,[3]]]",
+    "[null,true,false]",
+    "{}",
+    '{"a":1}',
+    '{"a":1,"b":[1,2,{"c":true}]}',
     '{"nested":{"deep":{"deeper":{"deepest":[1,2,3]}}}}',
     '[1, 2, 3.5, "x", null, true, false, {"k":"v"}]',
 ]
@@ -53,11 +70,19 @@ def build_harness(path):
     if os.path.exists(path):
         return path
     cc = os.environ.get("CC", "gcc")
-    cmd = [cc, "-std=c99", "-Wall", "-Wextra", "-Iinclude",
-           "-D_POSIX_C_SOURCE=200809L", "-O2",
-           "-o", path,
-           os.path.join(REPO_ROOT, "tools", "grammar_json_verdict.c"),
-           os.path.join(REPO_ROOT, "src", "sampling", "grammar_json.c")]
+    cmd = [
+        cc,
+        "-std=c99",
+        "-Wall",
+        "-Wextra",
+        "-Iinclude",
+        "-D_POSIX_C_SOURCE=200809L",
+        "-O2",
+        "-o",
+        path,
+        os.path.join(REPO_ROOT, "tools", "grammar_json_verdict.c"),
+        os.path.join(REPO_ROOT, "src", "sampling", "grammar_json.c"),
+    ]
     subprocess.run(cmd, cwd=REPO_ROOT, check=True)
     return path
 
@@ -124,7 +149,7 @@ def json_loads_verdict(raw):
     try:
         json.loads(raw.decode("utf-8", errors="surrogateescape"))
         return True
-    except Exception:
+    except (ValueError, RecursionError):  # invalid JSON, bad UTF-8, or nested too deeply
         return False
 
 
@@ -170,22 +195,28 @@ def main():
 
     all_fail = False
 
-    for label, candidates in (("uniform random", uniform),
-                               ("JSON-alphabet random", alphabet),
-                               ("mutated valid JSON", mutated)):
+    for label, candidates in (
+        ("uniform random", uniform),
+        ("JSON-alphabet random", alphabet),
+        ("mutated valid JSON", mutated),
+    ):
         results = run_harness(harness, candidates)
         false_accepts, false_rejects = check_differential(results)
         status = "PASS" if not false_accepts and not false_rejects else "FAIL"
         if status == "FAIL":
             all_fail = True
-        print(f"  [{status}] {label}: {len(candidates)} candidates, "
-              f"{len(false_accepts)} false-accepts, {len(false_rejects)} false-rejects")
+        print(
+            f"  [{status}] {label}: {len(candidates)} candidates, "
+            f"{len(false_accepts)} false-accepts, {len(false_rejects)} false-rejects"
+        )
         for raw, off in false_accepts[:5]:
             print(f"      FALSE ACCEPT: our=DONE json.loads=raises  bytes={raw!r}")
         for raw, off in false_rejects[:5]:
             print(f"      FALSE REJECT: our=INVALID(@{off}) json.loads=parses  bytes={raw!r}")
 
-    print(f"--- Prefix-truncation asymmetry check ({len(prefixes)} prefixes of {len(VALID_SEEDS)} valid seeds) ---")
+    print(
+        f"--- Prefix-truncation asymmetry check ({len(prefixes)} prefixes of {len(VALID_SEEDS)} valid seeds) ---"
+    )
     prefix_results = run_harness(harness, prefixes)
     bad_prefixes = check_prefix_asymmetry(prefix_results)
     status = "PASS" if not bad_prefixes else "FAIL"

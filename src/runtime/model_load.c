@@ -1,4 +1,4 @@
-#include "cli/model_load.h"
+#include "runtime/model_load.h"
 #include "transformer/mamba.h"
 
 #include <stdio.h>
@@ -7,19 +7,18 @@
 
 #include "core/hardware_profile.h"
 #include "core/moe_weights.h"
-#include "cli/progress.h"
+#include "core/progress.h"
 #include "kv_cache/kv_strategy.h"
 
 /* Phase 18 (speculative decoding) Stage 3: this file is the GGUF half of
  * main()'s original inline model-load block (roughly its old lines
  * 199-529), factored out unchanged in behavior so a second (draft) model
  * can reuse it. main()'s native raw-ternary `.bin` branch is NOT handled
- * here — draft models are GGUF-only (see include/cli/model_load.h) — and
+ * here — draft models are GGUF-only (see include/runtime/model_load.h) — and
  * stays fully inline in main() as its own separate path. */
 
-TernaryError load_gguf_model(LoadedModel *out, const char *model_path,
-                              bool is_primary, int max_seq_len_hint,
-                              ThreadPool *tp, bool stdout_is_tty) {
+TernaryError load_gguf_model(LoadedModel *out, const char *model_path, bool is_primary,
+                             int max_seq_len_hint, ThreadPool *tp, bool stdout_is_tty) {
     memset(out, 0, sizeof(*out));
     moe_config_init_dense(&out->moe_config); /* dense by default; overridden below for MoE models */
     (void)tp; /* not currently consumed by weights_from_gguf() (which takes no ThreadPool
@@ -61,9 +60,9 @@ TernaryError load_gguf_model(LoadedModel *out, const char *model_path,
             mapped_file_close(&out->mf);
             return TN_ERR_INVALID_ARGS;
         }
-        if (is_primary && (out->moe_config.is_moe || out->moe_config.has_mla ||
-                           out->moe_config.has_linear_attn || out->moe_config.has_qk_norm ||
-                           out->moe_config.is_ssm))
+        if (is_primary &&
+            (out->moe_config.is_moe || out->moe_config.has_mla || out->moe_config.has_linear_attn ||
+             out->moe_config.has_qk_norm || out->moe_config.is_ssm))
             moe_config_print(&out->moe_config);
     }
 
@@ -112,20 +111,23 @@ TernaryError load_gguf_model(LoadedModel *out, const char *model_path,
      * loaded alongside it must not overwrite the profiler's ceiling display
      * with its own (much smaller) bytes/token. */
     if (is_primary) {
-        double per_tok = (double)out->mf.size;
-        double cls_bytes = 0.0;
+        double per_tok                = (double)out->mf.size;
+        double cls_bytes              = 0.0;
         const TnHardwareProfile *hp_m = tn_hardware_profile_get();
         if (out->weights.q35_is_q2_0_model) {
             double q2_row = (double)out->config.vocab_size * out->config.dim * (34.0 / 128.0);
-            cls_bytes = q2_row; /* zero-copy raw Q2_0 head (default) */
+            cls_bytes     = q2_row; /* zero-copy raw Q2_0 head (default) */
             if (hp_m && hp_m->classifier_explicit) {
                 switch (hp_m->classifier_fmt) {
-                case TN_CLS_INT4:
-                    cls_bytes = (double)out->config.vocab_size * out->config.dim * 0.5; break;
-                case TN_CLS_INT8:
-                    cls_bytes = (double)out->config.vocab_size * out->config.dim;       break;
-                default:
-                    cls_bytes = (double)out->config.vocab_size * out->config.dim * 2.0; break;
+                    case TN_CLS_INT4:
+                        cls_bytes = (double)out->config.vocab_size * out->config.dim * 0.5;
+                        break;
+                    case TN_CLS_INT8:
+                        cls_bytes = (double)out->config.vocab_size * out->config.dim;
+                        break;
+                    default:
+                        cls_bytes = (double)out->config.vocab_size * out->config.dim * 2.0;
+                        break;
                 }
             }
             /* drop embedding (one row/token) + in-file head, add the
@@ -137,8 +139,7 @@ TernaryError load_gguf_model(LoadedModel *out, const char *model_path,
         if (hp_m) {
             printf("[profile] Data/token (loaded model): %.0f MB -> "
                    "ceiling %.1f tok/s at %.1f GB/s\n",
-                   per_tok / (1024.0 * 1024.0),
-                   hp_m->theoretical_ceiling, hp_m->measured_bw_gbps);
+                   per_tok / (1024.0 * 1024.0), hp_m->theoretical_ceiling, hp_m->measured_bw_gbps);
         }
     }
 
@@ -156,9 +157,9 @@ TernaryError load_gguf_model(LoadedModel *out, const char *model_path,
      * and a second independent free-RAM probe during the same startup would
      * double-count RAM the primary model's own sizing already accounted for. */
     if (is_primary) {
-        tn_i64 post_load_ram = tn_get_free_ram();
+        tn_i64 post_load_ram    = tn_get_free_ram();
         KVStrategyResult kv_res = select_kv_strategy(&out->config, post_load_ram, &out->moe_config);
-        out->config.seq_len = kv_res.max_seq_len;
+        out->config.seq_len     = kv_res.max_seq_len;
         /* Qwen35 hybrid models keep their own F32 K/V caches
          * (q35_key_cache/q35_value_cache, only the full-attention layers) —
          * the quantized-KV strategy machinery is not wired into that path,
@@ -192,8 +193,8 @@ TernaryError load_gguf_model(LoadedModel *out, const char *model_path,
      * multi-GB calloc+memset for those models' context. See
      * run_state_alloc_ex's header comment and docs/ai/mistakes.md. */
     if (run_state_alloc_ex(out->state, &out->config, out->config.seq_len,
-                            out->moe_config.has_linear_attn || out->moe_config.has_qk_norm ||
-                            out->moe_config.is_ssm) != TN_OK) {
+                           out->moe_config.has_linear_attn || out->moe_config.has_qk_norm ||
+                               out->moe_config.is_ssm) != TN_OK) {
         fprintf(stderr, "Failed to allocate RunState buffers.\n");
         free(out->state);
         out->state = NULL;
@@ -207,7 +208,8 @@ TernaryError load_gguf_model(LoadedModel *out, const char *model_path,
 
     /* Phase 17.7: MLA k_rope_cache (allocated only when has_mla=1) */
     if (out->moe_config.has_mla) {
-        if (mla_run_state_alloc(out->state, &out->config, &out->moe_config, out->config.seq_len) != TN_OK) {
+        if (mla_run_state_alloc(out->state, &out->config, &out->moe_config, out->config.seq_len) !=
+            TN_OK) {
             fprintf(stderr, "Failed to allocate MLA k_rope_cache.\n");
             run_state_free(out->state);
             free(out->state);
@@ -223,7 +225,8 @@ TernaryError load_gguf_model(LoadedModel *out, const char *model_path,
 
     /* Phase 22-SSM: Mamba recurrent state (freed by run_state_free). */
     if (out->moe_config.is_ssm) {
-        if (mamba_state_alloc(&out->state->mamba, out->config.n_layers, &out->moe_config) != TN_OK) {
+        if (mamba_state_alloc(&out->state->mamba, out->config.n_layers, &out->moe_config) !=
+            TN_OK) {
             fprintf(stderr, "Failed to allocate Mamba SSM state.\n");
             run_state_free(out->state);
             free(out->state);
@@ -238,7 +241,8 @@ TernaryError load_gguf_model(LoadedModel *out, const char *model_path,
 
     /* Qwen3.5/3.6 hybrid attention state (allocated only when has_linear_attn=1) */
     if (out->moe_config.has_linear_attn) {
-        if (q35_run_state_alloc(out->state, &out->config, &out->moe_config, out->config.seq_len) != TN_OK) {
+        if (q35_run_state_alloc(out->state, &out->config, &out->moe_config, out->config.seq_len) !=
+            TN_OK) {
             fprintf(stderr, "Failed to allocate Qwen3.5/3.6 hybrid attention state.\n");
             if (out->moe_config.has_mla) mla_run_state_free(out->state, out->config.n_layers);
             run_state_free(out->state);
@@ -255,10 +259,12 @@ TernaryError load_gguf_model(LoadedModel *out, const char *model_path,
 
     /* Qwen3-MoE attention state (allocated only when has_qk_norm=1) */
     if (out->moe_config.has_qk_norm) {
-        if (qwen3moe_run_state_alloc(out->state, &out->config, &out->moe_config, out->config.seq_len) != TN_OK) {
+        if (qwen3moe_run_state_alloc(out->state, &out->config, &out->moe_config,
+                                     out->config.seq_len) != TN_OK) {
             fprintf(stderr, "Failed to allocate Qwen3-MoE attention state.\n");
             if (out->moe_config.has_mla) mla_run_state_free(out->state, out->config.n_layers);
-            if (out->moe_config.has_linear_attn) q35_run_state_free(out->state, &out->config, &out->moe_config);
+            if (out->moe_config.has_linear_attn)
+                q35_run_state_free(out->state, &out->config, &out->moe_config);
             run_state_free(out->state);
             free(out->state);
             out->state = NULL;

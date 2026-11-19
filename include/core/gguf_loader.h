@@ -23,8 +23,8 @@ TernaryError moe_config_from_gguf(MoEConfig *mc, const GGUFHeader *hdr);
  * Supported tensor types: F32, F16, BF16 (others emit error and return TN_ERR).
  * F16/BF16 tensors are dequantized to float32 at load time (heap-allocated).
  * *store is set to a handle that must be freed with weights_free_gguf(). */
-TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
-                                const GGUFHeader *hdr, GGUFWeightStore **store);
+TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg, const GGUFHeader *hdr,
+                               GGUFWeightStore **store);
 
 /* Free all dequantized buffers allocated by weights_from_gguf(). */
 void weights_free_gguf(GGUFWeightStore *store);

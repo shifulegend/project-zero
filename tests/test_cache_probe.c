@@ -25,7 +25,8 @@ static void test_probe_sane(void) {
     TEST_ASSERT(ci->line_bytes >= 16 && ci->line_bytes <= 512, "line size plausible");
     TEST_ASSERT(tn_cache_info() == ci, "probed once, cached");
     TEST_ASSERT(tn_cache_rows_fitting_l1(1 << 30, 0.5) == 1, "at least one row");
-    TEST_ASSERT(tn_cache_rows_fitting_l1(512, 0.5) == ci->l1d_bytes / 2 / 512, "rows = fraction * L1d / row");
+    TEST_ASSERT(tn_cache_rows_fitting_l1(512, 0.5) == ci->l1d_bytes / 2 / 512,
+                "rows = fraction * L1d / row");
 }
 
 static void standard(float *out, const float *q, const float *K, const float *V, int hd,
@@ -51,7 +52,10 @@ static void check_attn(int window, int pinned, int pos, int tile) {
     float *K = (float *)malloc((size_t)window * HD * sizeof(float));
     float *V = (float *)malloc((size_t)window * HD * sizeof(float));
     float q[HD], a[HD], b[HD];
-    for (int i = 0; i < window * HD; i++) { K[i] = rng_float(&rng) * 4 - 2; V[i] = rng_float(&rng) * 2 - 1; }
+    for (int i = 0; i < window * HD; i++) {
+        K[i] = rng_float(&rng) * 4 - 2;
+        V[i] = rng_float(&rng) * 2 - 1;
+    }
     for (int i = 0; i < HD; i++) q[i] = rng_float(&rng) * 2 - 1;
     SlidingWindow sw;
     sw_init(&sw, window, pinned);
@@ -59,11 +63,15 @@ static void check_attn(int window, int pinned, int pos, int tile) {
     standard(a, q, K, V, HD, &sw, pos, n, 0.125f);
     attn_head_tiled(b, q, K, V, HD, &sw, pos, n, 0.125f, tile);
     float md = 0;
-    for (int i = 0; i < HD; i++) { float e = fabsf(a[i] - b[i]); if (e > md) md = e; }
+    for (int i = 0; i < HD; i++) {
+        float e = fabsf(a[i] - b[i]);
+        if (e > md) md = e;
+    }
     char msg[96];
     snprintf(msg, sizeof(msg), "window=%d pos=%d tile=%d maxdiff=%g", window, pos, tile, md);
     TEST_ASSERT(md < 1e-5f, msg);
-    free(K); free(V);
+    free(K);
+    free(V);
 }
 
 static void test_tiled_matches_standard(void) {

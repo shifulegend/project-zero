@@ -15,7 +15,7 @@
 
 #define GLYPH_ROWS TN_BLOCK_FONT_ROWS
 
-#define BANNER_TEXT   "PROJECT ZERO"
+#define BANNER_TEXT "PROJECT ZERO"
 #define BANNER_BUF_CAP 128
 
 /* Composes GLYPH_ROWS output strings (one per font row) from the shared
@@ -54,17 +54,18 @@ static void print_glyph_row(const char *row, int color_enabled, int dim) {
  * cursor back to the top — shared by the reveal loop and the post-reveal
  * pulse so both redraw identically. */
 static void redraw_block(char rows[GLYPH_ROWS][BANNER_BUF_CAP], int first_visible,
-                          int color_enabled, int dim) {
+                         int color_enabled, int dim) {
     printf("\x1b[%dA", GLYPH_ROWS); /* cursor up to the top of the reserved block */
     for (int row = 0; row < GLYPH_ROWS; row++) {
         if (row >= first_visible) print_glyph_row(rows[row], color_enabled, dim);
-        fputs("\x1b[K\n", stdout); /* clear any leftover chars from a previous frame, then newline */
+        fputs("\x1b[K\n",
+              stdout); /* clear any leftover chars from a previous frame, then newline */
     }
     fflush(stdout);
 }
 
 static void banner_sleep_ms(long ms) {
-    struct timespec ts = { .tv_sec = 0, .tv_nsec = ms * 1000000L };
+    struct timespec ts = {.tv_sec = 0, .tv_nsec = ms * 1000000L};
     nanosleep(&ts, NULL);
 }
 
@@ -77,10 +78,16 @@ size_t tn_banner_format_plain(char *buf, size_t cap) {
     size_t n = 0;
     for (int r = 0; r < GLYPH_ROWS; r++) {
         for (const char *c = rows[r]; *c; c++) {
-            if (n + 1 >= cap) { buf[n] = '\0'; return n; }
+            if (n + 1 >= cap) {
+                buf[n] = '\0';
+                return n;
+            }
             buf[n++] = (*c == '.') ? ' ' : '#';
         }
-        if (n + 1 >= cap) { buf[n] = '\0'; return n; }
+        if (n + 1 >= cap) {
+            buf[n] = '\0';
+            return n;
+        }
         buf[n++] = '\n';
     }
     buf[n] = '\0';

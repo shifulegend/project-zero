@@ -29,12 +29,12 @@
 #include <stdint.h>
 
 typedef struct {
-    const uint8_t *w_gate;   /* hdim rows x dim cols, type gate_type */
-    const uint8_t *w_up;     /* hdim rows x dim cols, type up_type   */
-    const uint8_t *w_down;   /* dim rows x hdim cols, type down_type */
-    int   gate_type, up_type, down_type;   /* GGUFType values */
-    int   hdim;
-    float weight;            /* routing weight (1.0 for a shared expert) */
+    const uint8_t *w_gate;             /* hdim rows x dim cols, type gate_type */
+    const uint8_t *w_up;               /* hdim rows x dim cols, type up_type   */
+    const uint8_t *w_down;             /* dim rows x hdim cols, type down_type */
+    int gate_type, up_type, down_type; /* GGUFType values */
+    int hdim;
+    float weight; /* routing weight (1.0 for a shared expert) */
 } TnMoEExpertJob;
 
 /* 1 if a weight of GGUF type `type` with `n_inner` columns has a row-dot
@@ -52,9 +52,8 @@ int moe_experts_job_ok(const TnMoEExpertJob *job, int dim);
  * unchanged and the caller should fall back to the legacy path).
  * Not re-entrant (module scratch), like moe_ffn_forward().
  */
-int moe_experts_forward(float *out, const float *x,
-                        const TnMoEExpertJob *jobs, int n_jobs,
-                        int dim, int act_type, ThreadPool *tp);
+int moe_experts_forward(float *out, const float *x, const TnMoEExpertJob *jobs, int n_jobs, int dim,
+                        int act_type, ThreadPool *tp);
 
 /* Release the module scratch (optional; called at model unload). */
 void moe_experts_free(void);

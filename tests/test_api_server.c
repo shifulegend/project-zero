@@ -12,15 +12,19 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include <unistd.h>   /* pipe(), read() */
+#include <unistd.h> /* pipe(), read() */
 
 #include "api/chat_request.h"
 #include "api/chat_compile.h"
 #include "api/sse_stream.h"
 
 /* ── Test helpers ────────────────────────────────────────────────────────── */
-#define PASS(name)  printf("[PASS] %s\n", name)
-#define FAIL(name, msg) do { printf("[FAIL] %s: %s\n", name, msg); g_failures++; } while(0)
+#define PASS(name) printf("[PASS] %s\n", name)
+#define FAIL(name, msg)                                                                            \
+    do {                                                                                           \
+        printf("[FAIL] %s: %s\n", name, msg);                                                      \
+        g_failures++;                                                                              \
+    } while (0)
 
 static int g_failures = 0;
 
@@ -29,37 +33,58 @@ static void test_chat_request_init(void) {
     ChatRequest req;
     chat_request_init(&req);
     assert(req.num_messages == 0);
-    assert(req.temperature  == 1.0f);
-    assert(req.top_p        == 1.0f);
-    assert(req.max_tokens   == 512);
-    assert(req.stream       == 0);
+    assert(req.temperature == 1.0f);
+    assert(req.top_p == 1.0f);
+    assert(req.max_tokens == 512);
+    assert(req.stream == 0);
     chat_request_free(&req);
     PASS("chat_request_init");
 }
 
 /* ── 2. JSON parse: minimal request ─────────────────────────────────────── */
 static void test_json_parse_basic(void) {
-    const char *json =
-        "{\"model\":\"gpt-test\","
-         "\"messages\":[{\"role\":\"user\",\"content\":\"Hello world\"}],"
-         "\"temperature\":0.7,"
-         "\"max_tokens\":64,"
-         "\"stream\":true}";
+    const char *json = "{\"model\":\"gpt-test\","
+                       "\"messages\":[{\"role\":\"user\",\"content\":\"Hello world\"}],"
+                       "\"temperature\":0.7,"
+                       "\"max_tokens\":64,"
+                       "\"stream\":true}";
 
     ChatRequest req;
     chat_request_init(&req);
     TernaryError err = chat_request_parse(json, &req);
 
-    if (err != TN_OK)              { FAIL("json_parse_basic", "parse returned error"); goto done; }
-    if (strcmp(req.model, "gpt-test") != 0) { FAIL("json_parse_basic", "model mismatch"); goto done; }
-    if (req.num_messages != 1)     { FAIL("json_parse_basic", "wrong message count"); goto done; }
-    if (strcmp(req.messages[0].role, "user") != 0)
-                                   { FAIL("json_parse_basic", "role mismatch"); goto done; }
-    if (strcmp(req.messages[0].content, "Hello world") != 0)
-                                   { FAIL("json_parse_basic", "content mismatch"); goto done; }
-    if (req.temperature != 0.7f)   { FAIL("json_parse_basic", "temperature mismatch"); goto done; }
-    if (req.max_tokens  != 64)     { FAIL("json_parse_basic", "max_tokens mismatch"); goto done; }
-    if (!req.stream)               { FAIL("json_parse_basic", "stream flag mismatch"); goto done; }
+    if (err != TN_OK) {
+        FAIL("json_parse_basic", "parse returned error");
+        goto done;
+    }
+    if (strcmp(req.model, "gpt-test") != 0) {
+        FAIL("json_parse_basic", "model mismatch");
+        goto done;
+    }
+    if (req.num_messages != 1) {
+        FAIL("json_parse_basic", "wrong message count");
+        goto done;
+    }
+    if (strcmp(req.messages[0].role, "user") != 0) {
+        FAIL("json_parse_basic", "role mismatch");
+        goto done;
+    }
+    if (strcmp(req.messages[0].content, "Hello world") != 0) {
+        FAIL("json_parse_basic", "content mismatch");
+        goto done;
+    }
+    if (req.temperature != 0.7f) {
+        FAIL("json_parse_basic", "temperature mismatch");
+        goto done;
+    }
+    if (req.max_tokens != 64) {
+        FAIL("json_parse_basic", "max_tokens mismatch");
+        goto done;
+    }
+    if (!req.stream) {
+        FAIL("json_parse_basic", "stream flag mismatch");
+        goto done;
+    }
     PASS("json_parse_basic");
 done:
     chat_request_free(&req);
@@ -67,26 +92,35 @@ done:
 
 /* ── 3. JSON parse: multi-turn conversation ─────────────────────────────── */
 static void test_json_parse_multiturn(void) {
-    const char *json =
-        "{"
-          "\"messages\":["
-            "{\"role\":\"system\",\"content\":\"You are helpful.\"},"
-            "{\"role\":\"user\",\"content\":\"What is 2+2?\"},"
-            "{\"role\":\"assistant\",\"content\":\"4.\"},"
-            "{\"role\":\"user\",\"content\":\"And 3+3?\"}"
-          "]"
-        "}";
+    const char *json = "{"
+                       "\"messages\":["
+                       "{\"role\":\"system\",\"content\":\"You are helpful.\"},"
+                       "{\"role\":\"user\",\"content\":\"What is 2+2?\"},"
+                       "{\"role\":\"assistant\",\"content\":\"4.\"},"
+                       "{\"role\":\"user\",\"content\":\"And 3+3?\"}"
+                       "]"
+                       "}";
 
     ChatRequest req;
     chat_request_init(&req);
     TernaryError err = chat_request_parse(json, &req);
 
-    if (err != TN_OK)            { FAIL("json_parse_multiturn", "parse error"); goto done; }
-    if (req.num_messages != 4)   { FAIL("json_parse_multiturn", "wrong count"); goto done; }
-    if (strcmp(req.messages[0].role, "system") != 0)
-                                 { FAIL("json_parse_multiturn", "msg0 role"); goto done; }
-    if (strcmp(req.messages[3].content, "And 3+3?") != 0)
-                                 { FAIL("json_parse_multiturn", "msg3 content"); goto done; }
+    if (err != TN_OK) {
+        FAIL("json_parse_multiturn", "parse error");
+        goto done;
+    }
+    if (req.num_messages != 4) {
+        FAIL("json_parse_multiturn", "wrong count");
+        goto done;
+    }
+    if (strcmp(req.messages[0].role, "system") != 0) {
+        FAIL("json_parse_multiturn", "msg0 role");
+        goto done;
+    }
+    if (strcmp(req.messages[3].content, "And 3+3?") != 0) {
+        FAIL("json_parse_multiturn", "msg3 content");
+        goto done;
+    }
     PASS("json_parse_multiturn");
 done:
     chat_request_free(&req);
@@ -94,20 +128,34 @@ done:
 
 /* ── 4. JSON parse: escape sequences in content ─────────────────────────── */
 static void test_json_parse_escapes(void) {
-    const char *json =
-        "{\"messages\":[{\"role\":\"user\","
-                        "\"content\":\"line1\\nline2\\ttabbed\"}]}";
+    const char *json = "{\"messages\":[{\"role\":\"user\","
+                       "\"content\":\"line1\\nline2\\ttabbed\"}]}";
 
     ChatRequest req;
     chat_request_init(&req);
     TernaryError err = chat_request_parse(json, &req);
 
-    if (err != TN_OK) { FAIL("json_parse_escapes", "parse error"); goto done; }
-    if (req.num_messages != 1) { FAIL("json_parse_escapes", "count"); goto done; }
+    if (err != TN_OK) {
+        FAIL("json_parse_escapes", "parse error");
+        goto done;
+    }
+    if (req.num_messages != 1) {
+        FAIL("json_parse_escapes", "count");
+        goto done;
+    }
     const char *c = req.messages[0].content;
-    if (!c) { FAIL("json_parse_escapes", "null content"); goto done; }
-    if (c[5] != '\n') { FAIL("json_parse_escapes", "\\n not decoded"); goto done; }
-    if (c[11] != '\t') { FAIL("json_parse_escapes", "\\t not decoded"); goto done; }
+    if (!c) {
+        FAIL("json_parse_escapes", "null content");
+        goto done;
+    }
+    if (c[5] != '\n') {
+        FAIL("json_parse_escapes", "\\n not decoded");
+        goto done;
+    }
+    if (c[11] != '\t') {
+        FAIL("json_parse_escapes", "\\t not decoded");
+        goto done;
+    }
     PASS("json_parse_escapes");
 done:
     chat_request_free(&req);
@@ -115,20 +163,27 @@ done:
 
 /* ── 5. JSON parse: unknown keys are silently skipped ────────────────────── */
 static void test_json_parse_unknown_keys(void) {
-    const char *json =
-        "{\"future_field\":\"ignored\","
-         "\"messages\":[{\"role\":\"user\",\"content\":\"hi\","
-                         "\"extra\":42}],"
-         "\"some_list\":[1,2,3]}";
+    const char *json = "{\"future_field\":\"ignored\","
+                       "\"messages\":[{\"role\":\"user\",\"content\":\"hi\","
+                       "\"extra\":42}],"
+                       "\"some_list\":[1,2,3]}";
 
     ChatRequest req;
     chat_request_init(&req);
     TernaryError err = chat_request_parse(json, &req);
 
-    if (err != TN_OK)          { FAIL("json_parse_unknown", "parse error"); goto done; }
-    if (req.num_messages != 1) { FAIL("json_parse_unknown", "count"); goto done; }
-    if (strcmp(req.messages[0].content, "hi") != 0)
-                               { FAIL("json_parse_unknown", "content"); goto done; }
+    if (err != TN_OK) {
+        FAIL("json_parse_unknown", "parse error");
+        goto done;
+    }
+    if (req.num_messages != 1) {
+        FAIL("json_parse_unknown", "count");
+        goto done;
+    }
+    if (strcmp(req.messages[0].content, "hi") != 0) {
+        FAIL("json_parse_unknown", "content");
+        goto done;
+    }
     PASS("json_parse_unknown_keys");
 done:
     chat_request_free(&req);
@@ -139,8 +194,10 @@ static void test_json_parse_malformed(void) {
     ChatRequest req;
     chat_request_init(&req);
     TernaryError err = chat_request_parse("not json at all {{{", &req);
-    if (err == TN_OK) { FAIL("json_parse_malformed", "expected error"); }
-    else PASS("json_parse_malformed");
+    if (err == TN_OK) {
+        FAIL("json_parse_malformed", "expected error");
+    } else
+        PASS("json_parse_malformed");
     chat_request_free(&req);
 }
 
@@ -148,24 +205,34 @@ static void test_json_parse_malformed(void) {
 static void test_json_parse_content_parts(void) {
     const char *json =
         "{\"messages\":[{\"role\":\"user\",\"content\":["
-            "{\"type\":\"text\",\"text\":\"What is in this image?\"},"
-            "{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,QUJD\"}},"
-            "{\"type\":\"text\",\"text\":\"\\nAnswer in one sentence.\"},"
-            "{\"type\":\"text\",\"text\":\"\"}"
+        "{\"type\":\"text\",\"text\":\"What is in this image?\"},"
+        "{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,QUJD\"}},"
+        "{\"type\":\"text\",\"text\":\"\\nAnswer in one sentence.\"},"
+        "{\"type\":\"text\",\"text\":\"\"}"
         "]}]}";
 
     ChatRequest req;
     chat_request_init(&req);
     TernaryError err = chat_request_parse(json, &req);
 
-    if (err != TN_OK) { FAIL("json_parse_content_parts", "parse error"); goto done; }
-    if (req.num_messages != 1) { FAIL("json_parse_content_parts", "wrong message count"); goto done; }
+    if (err != TN_OK) {
+        FAIL("json_parse_content_parts", "parse error");
+        goto done;
+    }
+    if (req.num_messages != 1) {
+        FAIL("json_parse_content_parts", "wrong message count");
+        goto done;
+    }
     if (!req.messages[0].content ||
-        strcmp(req.messages[0].content, "What is in this image?\nAnswer in one sentence.") != 0)
-                                   { FAIL("json_parse_content_parts", "text part mismatch"); goto done; }
+        strcmp(req.messages[0].content, "What is in this image?\nAnswer in one sentence.") != 0) {
+        FAIL("json_parse_content_parts", "text part mismatch");
+        goto done;
+    }
     if (!req.messages[0].image_data_url ||
-        strcmp(req.messages[0].image_data_url, "data:image/png;base64,QUJD") != 0)
-                                   { FAIL("json_parse_content_parts", "image_url mismatch"); goto done; }
+        strcmp(req.messages[0].image_data_url, "data:image/png;base64,QUJD") != 0) {
+        FAIL("json_parse_content_parts", "image_url mismatch");
+        goto done;
+    }
     PASS("json_parse_content_parts");
 done:
     chat_request_free(&req);
@@ -175,22 +242,37 @@ done:
 static void test_json_parse_content_parts_text_only_message_still_plain_string(void) {
     const char *json =
         "{\"messages\":["
-          "{\"role\":\"user\",\"content\":["
-            "{\"type\":\"text\",\"text\":\"describe it\"},"
-            "{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/jpeg;base64,Zm9v\"}}"
-          "]},"
-          "{\"role\":\"assistant\",\"content\":\"plain reply\"}"
+        "{\"role\":\"user\",\"content\":["
+        "{\"type\":\"text\",\"text\":\"describe it\"},"
+        "{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/jpeg;base64,Zm9v\"}}"
+        "]},"
+        "{\"role\":\"assistant\",\"content\":\"plain reply\"}"
         "]}";
 
     ChatRequest req;
     chat_request_init(&req);
     TernaryError err = chat_request_parse(json, &req);
 
-    if (err != TN_OK) { FAIL("content_parts_mixed_with_plain_string", "parse error"); goto done; }
-    if (req.num_messages != 2) { FAIL("content_parts_mixed_with_plain_string", "wrong count"); goto done; }
-    if (!req.messages[0].image_data_url) { FAIL("content_parts_mixed_with_plain_string", "msg0 missing image"); goto done; }
-    if (req.messages[1].image_data_url != NULL) { FAIL("content_parts_mixed_with_plain_string", "msg1 must have no image"); goto done; }
-    if (strcmp(req.messages[1].content, "plain reply") != 0) { FAIL("content_parts_mixed_with_plain_string", "msg1 content mismatch"); goto done; }
+    if (err != TN_OK) {
+        FAIL("content_parts_mixed_with_plain_string", "parse error");
+        goto done;
+    }
+    if (req.num_messages != 2) {
+        FAIL("content_parts_mixed_with_plain_string", "wrong count");
+        goto done;
+    }
+    if (!req.messages[0].image_data_url) {
+        FAIL("content_parts_mixed_with_plain_string", "msg0 missing image");
+        goto done;
+    }
+    if (req.messages[1].image_data_url != NULL) {
+        FAIL("content_parts_mixed_with_plain_string", "msg1 must have no image");
+        goto done;
+    }
+    if (strcmp(req.messages[1].content, "plain reply") != 0) {
+        FAIL("content_parts_mixed_with_plain_string", "msg1 content mismatch");
+        goto done;
+    }
     PASS("content_parts_mixed_with_plain_string");
 done:
     chat_request_free(&req);
@@ -199,37 +281,51 @@ done:
 /* A repeated "content" key: the last one wins and the earlier text is released.
  * Before 2026-11-11 the earlier text leaked (LeakSanitizer in `make test` reports it). */
 static void test_json_parse_duplicate_content_key_last_wins(void) {
-    static const struct { const char *name; const char *json; const char *want; } cases[] = {
-        { "dup_content_string_then_array",
-          "{\"messages\":[{\"role\":\"user\",\"content\":\"AAAA\",\"content\":[{\"type\":\"text\",\"text\":\"B\"}]}]}", "B" },
-        { "dup_content_array_then_string",
-          "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"B\"}],\"content\":\"AAAA\"}]}", "AAAA" },
-        { "dup_content_string_then_string",
-          "{\"messages\":[{\"role\":\"user\",\"content\":\"A\",\"content\":\"B\"}]}", "B" },
-        { "dup_content_array_then_array",
-          "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"A\"}],\"content\":[{\"type\":\"text\",\"text\":\"B\"}]}]}", "B" },
-        { "dup_content_string_then_null",
-          "{\"messages\":[{\"role\":\"user\",\"content\":\"A\",\"content\":null}]}", "" },
+    static const struct {
+        const char *name;
+        const char *json;
+        const char *want;
+    } cases[] = {
+        {"dup_content_string_then_array",
+         "{\"messages\":[{\"role\":\"user\",\"content\":\"AAAA\",\"content\":[{\"type\":\"text\","
+         "\"text\":\"B\"}]}]}",
+         "B"},
+        {"dup_content_array_then_string",
+         "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"B\"}],"
+         "\"content\":\"AAAA\"}]}",
+         "AAAA"},
+        {"dup_content_string_then_string",
+         "{\"messages\":[{\"role\":\"user\",\"content\":\"A\",\"content\":\"B\"}]}", "B"},
+        {"dup_content_array_then_array",
+         "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"A\"}],"
+         "\"content\":[{\"type\":\"text\",\"text\":\"B\"}]}]}",
+         "B"},
+        {"dup_content_string_then_null",
+         "{\"messages\":[{\"role\":\"user\",\"content\":\"A\",\"content\":null}]}", ""},
     };
     for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
         ChatRequest req;
         chat_request_init(&req);
         TernaryError err = chat_request_parse(cases[i].json, &req);
-        if (err != TN_OK) FAIL(cases[i].name, "parse error");
-        else if (req.num_messages != 1 || !req.messages[0].content) FAIL(cases[i].name, "no content");
-        else if (strcmp(req.messages[0].content, cases[i].want) != 0) FAIL(cases[i].name, "last key did not win");
-        else PASS(cases[i].name);
+        if (err != TN_OK)
+            FAIL(cases[i].name, "parse error");
+        else if (req.num_messages != 1 || !req.messages[0].content)
+            FAIL(cases[i].name, "no content");
+        else if (strcmp(req.messages[0].content, cases[i].want) != 0)
+            FAIL(cases[i].name, "last key did not win");
+        else
+            PASS(cases[i].name);
         chat_request_free(&req);
     }
 }
 
 /* ── 7. chat_template_detect ─────────────────────────────────────────────── */
 static void test_template_detect(void) {
-    assert(chat_template_detect("llama-3-8b")    == CHAT_TMPL_LLAMA3);
-    assert(chat_template_detect("Mistral-7B")    == CHAT_TMPL_MISTRAL);
-    assert(chat_template_detect("deepseek-r1")   == CHAT_TMPL_DEEPSEEK);
-    assert(chat_template_detect("SmolLM")        == CHAT_TMPL_CHATML);
-    assert(chat_template_detect(NULL)            == CHAT_TMPL_CHATML);
+    assert(chat_template_detect("llama-3-8b") == CHAT_TMPL_LLAMA3);
+    assert(chat_template_detect("Mistral-7B") == CHAT_TMPL_MISTRAL);
+    assert(chat_template_detect("deepseek-r1") == CHAT_TMPL_DEEPSEEK);
+    assert(chat_template_detect("SmolLM") == CHAT_TMPL_CHATML);
+    assert(chat_template_detect(NULL) == CHAT_TMPL_CHATML);
     PASS("chat_template_detect");
 }
 
@@ -237,22 +333,30 @@ static void test_template_detect(void) {
 static void test_compile_chatml(void) {
     ChatRequest req;
     chat_request_init(&req);
-    const char *json =
-        "{\"messages\":["
-          "{\"role\":\"system\",\"content\":\"Be helpful.\"},"
-          "{\"role\":\"user\",\"content\":\"Hello!\"}"
-        "]}";
+    const char *json = "{\"messages\":["
+                       "{\"role\":\"system\",\"content\":\"Be helpful.\"},"
+                       "{\"role\":\"user\",\"content\":\"Hello!\"}"
+                       "]}";
     chat_request_parse(json, &req);
 
     char out[4096];
     TernaryError err = chat_compile_prompt(&req, CHAT_TMPL_CHATML, out, sizeof(out));
-    if (err != TN_OK) { FAIL("compile_chatml", "compile error"); goto done; }
-    if (!strstr(out, "<|im_start|>system\nBe helpful."))
-                       { FAIL("compile_chatml", "missing system block"); goto done; }
-    if (!strstr(out, "<|im_start|>user\nHello!"))
-                       { FAIL("compile_chatml", "missing user block"); goto done; }
-    if (!strstr(out, "<|im_start|>assistant"))
-                       { FAIL("compile_chatml", "missing assistant prompt"); goto done; }
+    if (err != TN_OK) {
+        FAIL("compile_chatml", "compile error");
+        goto done;
+    }
+    if (!strstr(out, "<|im_start|>system\nBe helpful.")) {
+        FAIL("compile_chatml", "missing system block");
+        goto done;
+    }
+    if (!strstr(out, "<|im_start|>user\nHello!")) {
+        FAIL("compile_chatml", "missing user block");
+        goto done;
+    }
+    if (!strstr(out, "<|im_start|>assistant")) {
+        FAIL("compile_chatml", "missing assistant prompt");
+        goto done;
+    }
     PASS("compile_chatml");
 done:
     chat_request_free(&req);
@@ -262,19 +366,27 @@ done:
 static void test_compile_llama3(void) {
     ChatRequest req;
     chat_request_init(&req);
-    const char *json =
-        "{\"messages\":[{\"role\":\"user\",\"content\":\"What is AI?\"}]}";
+    const char *json = "{\"messages\":[{\"role\":\"user\",\"content\":\"What is AI?\"}]}";
     chat_request_parse(json, &req);
 
     char out[4096];
     TernaryError err = chat_compile_prompt(&req, CHAT_TMPL_LLAMA3, out, sizeof(out));
-    if (err != TN_OK) { FAIL("compile_llama3", "compile error"); goto done; }
-    if (!strstr(out, "<|begin_of_text|>"))
-                       { FAIL("compile_llama3", "missing begin_of_text"); goto done; }
-    if (!strstr(out, "<|start_header_id|>user<|end_header_id|>"))
-                       { FAIL("compile_llama3", "missing header"); goto done; }
-    if (!strstr(out, "What is AI?"))
-                       { FAIL("compile_llama3", "missing content"); goto done; }
+    if (err != TN_OK) {
+        FAIL("compile_llama3", "compile error");
+        goto done;
+    }
+    if (!strstr(out, "<|begin_of_text|>")) {
+        FAIL("compile_llama3", "missing begin_of_text");
+        goto done;
+    }
+    if (!strstr(out, "<|start_header_id|>user<|end_header_id|>")) {
+        FAIL("compile_llama3", "missing header");
+        goto done;
+    }
+    if (!strstr(out, "What is AI?")) {
+        FAIL("compile_llama3", "missing content");
+        goto done;
+    }
     PASS("compile_llama3");
 done:
     chat_request_free(&req);
@@ -284,30 +396,55 @@ done:
 static void test_sse_write_token(void) {
     /* Use a pipe to capture output without a real socket */
     int pipefd[2];
-    if (pipe(pipefd) < 0) { FAIL("sse_write_token", "pipe failed"); return; }
+    if (pipe(pipefd) < 0) {
+        FAIL("sse_write_token", "pipe failed");
+        return;
+    }
 
     int written = sse_write_token(pipefd[1], "req001", "Hello");
     close(pipefd[1]);
 
-    if (written <= 0) { close(pipefd[0]); FAIL("sse_write_token", "write failed"); return; }
+    if (written <= 0) {
+        close(pipefd[0]);
+        FAIL("sse_write_token", "write failed");
+        return;
+    }
 
     char buf[1024];
     ssize_t n = read(pipefd[0], buf, sizeof(buf) - 1);
     close(pipefd[0]);
-    if (n <= 0) { FAIL("sse_write_token", "read failed"); return; }
+    if (n <= 0) {
+        FAIL("sse_write_token", "read failed");
+        return;
+    }
     buf[n] = '\0';
 
-    if (!strstr(buf, "data: "))         { FAIL("sse_write_token", "missing 'data: '"); return; }
-    if (!strstr(buf, "chatcmpl-req001")) { FAIL("sse_write_token", "missing id"); return; }
-    if (!strstr(buf, "Hello"))           { FAIL("sse_write_token", "missing token"); return; }
-    if (!strstr(buf, "\n\n"))            { FAIL("sse_write_token", "missing \\n\\n"); return; }
+    if (!strstr(buf, "data: ")) {
+        FAIL("sse_write_token", "missing 'data: '");
+        return;
+    }
+    if (!strstr(buf, "chatcmpl-req001")) {
+        FAIL("sse_write_token", "missing id");
+        return;
+    }
+    if (!strstr(buf, "Hello")) {
+        FAIL("sse_write_token", "missing token");
+        return;
+    }
+    if (!strstr(buf, "\n\n")) {
+        FAIL("sse_write_token", "missing \\n\\n");
+        return;
+    }
     PASS("sse_write_token");
 }
 
 /* ── 11. sse_write_done writes [DONE] terminator ────────────────────────── */
 static void test_sse_write_done(void) {
     int pipefd[2];
-    if (pipe(pipefd) < 0) { FAIL("sse_write_done", "pipe failed"); return; }
+    if (pipe(pipefd) < 0) {
+        FAIL("sse_write_done", "pipe failed");
+        return;
+    }
 
     sse_write_done(pipefd[1], "req002");
     close(pipefd[1]);
@@ -315,18 +452,30 @@ static void test_sse_write_done(void) {
     char buf[1024];
     ssize_t n = read(pipefd[0], buf, sizeof(buf) - 1);
     close(pipefd[0]);
-    if (n <= 0) { FAIL("sse_write_done", "read failed"); return; }
+    if (n <= 0) {
+        FAIL("sse_write_done", "read failed");
+        return;
+    }
     buf[n] = '\0';
 
-    if (!strstr(buf, "[DONE]")) { FAIL("sse_write_done", "missing [DONE]"); return; }
-    if (!strstr(buf, "stop"))   { FAIL("sse_write_done", "missing stop reason"); return; }
+    if (!strstr(buf, "[DONE]")) {
+        FAIL("sse_write_done", "missing [DONE]");
+        return;
+    }
+    if (!strstr(buf, "stop")) {
+        FAIL("sse_write_done", "missing stop reason");
+        return;
+    }
     PASS("sse_write_done");
 }
 
 /* ── 12. sse JSON escaping of special chars ──────────────────────────────── */
 static void test_sse_json_escaping(void) {
     int pipefd[2];
-    if (pipe(pipefd) < 0) { FAIL("sse_json_escaping", "pipe failed"); return; }
+    if (pipe(pipefd) < 0) {
+        FAIL("sse_json_escaping", "pipe failed");
+        return;
+    }
 
     sse_write_token(pipefd[1], "r", "say \"hello\"");
     close(pipefd[1]);
@@ -334,11 +483,17 @@ static void test_sse_json_escaping(void) {
     char buf[2048];
     ssize_t n = read(pipefd[0], buf, sizeof(buf) - 1);
     close(pipefd[0]);
-    if (n <= 0) { FAIL("sse_json_escaping", "read failed"); return; }
+    if (n <= 0) {
+        FAIL("sse_json_escaping", "read failed");
+        return;
+    }
     buf[n] = '\0';
 
     /* The raw " must be escaped as \" in the JSON payload */
-    if (!strstr(buf, "\\\"hello\\\"")) { FAIL("sse_json_escaping", "quotes not escaped"); return; }
+    if (!strstr(buf, "\\\"hello\\\"")) {
+        FAIL("sse_json_escaping", "quotes not escaped");
+        return;
+    }
     PASS("sse_json_escaping");
 }
 

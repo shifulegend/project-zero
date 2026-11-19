@@ -8,8 +8,8 @@
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT="/home/<USER>/Documents/project-zero"
-LLAMA="/home/ubuntu/llama.cpp"
+PROJECT="${PZ_PROJECT:-$(cd "$DIR/../.." && pwd)}"
+LLAMA="${LLAMA_CPP_DIR:-$HOME/llama.cpp}"
 MODEL="${PROJECT}/models/deepseek-v2-lite-chat-Q4_K_S.gguf"
 TOKENIZER="${PROJECT}/models/deepseek-tokenizer-gguf.bin"
 

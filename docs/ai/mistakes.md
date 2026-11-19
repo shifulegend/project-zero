@@ -3035,3 +3035,11 @@ Installing llama.cpp and bitnet.cpp for head-to-head runs exposed nine pre-exist
 - Detection: cross-checking with `git diff --name-status` (no path filter).
 - Correction: always run an unfiltered name-status diff first, then drill down.
 - Prevention rule: verify branch parity with a full diff before concluding; recorded in decision-log.
+
+### 2026-11-19 — Fifteen private copies of the fp16 converter; most flushed subnormals
+- Summary: `matmul_q8_0.c`, `matmul_f16.c`, `batched_matmul_f16.c`, `matmul_q5_0.c`, `matmul_q5_1.c`, `matmul_q5k.c`, `matmul_q2_0*.c`, `lora_load.c`, `gguf_loader.c` and `matmul_q4k_x8.c` converted an fp16 subnormal (exponent 0, non-zero mantissa) to a value near zero instead of `mant * 2^-24`; `q4k`, `q2k`, `q6k`, `gguf_quant.c` and `q8_0_act.c` converted it correctly, so the same weight decoded differently depending on the kernel.
+- Root cause: each kernel TU carried its own "small static copy" and they were never compared.
+- Affected files/modules: the files above; fixed by one shared `include/core/fp16.h` (`tn_fp16_to_f32`).
+- Detection: code review of the duplicated helpers; `tests/test_fp16.c` checks all 65536 bit patterns.
+- Correction: every copy now calls the shared helper. Normal values, infinities and NaNs convert exactly as before; subnormals are now exact.
+- Prevention rule: shared numeric helpers live in one header with an exhaustive test; do not copy a conversion into a kernel.

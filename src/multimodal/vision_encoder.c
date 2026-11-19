@@ -13,20 +13,20 @@
 /* AVX2 vectorized float matmul: out = x * W^T + b
  * x is [in_dim], W is [out_dim x in_dim] (row-major), b is [out_dim] (nullable).
  * ~8× faster than scalar for large in_dim (e.g. 768, 3072). */
-static void float_matmul(float *out, const float *x, const float *w,
-                         const float *b, int in_dim, int out_dim) {
+static void float_matmul(float *out, const float *x, const float *w, const float *b, int in_dim,
+                         int out_dim) {
     for (int i = 0; i < out_dim; i++) {
-        __m256 acc = _mm256_setzero_ps();
+        __m256 acc      = _mm256_setzero_ps();
         const float *wi = w + (size_t)i * in_dim;
-        int j = 0;
+        int j           = 0;
         for (; j + 8 <= in_dim; j += 8)
             acc = _mm256_fmadd_ps(_mm256_loadu_ps(x + j), _mm256_loadu_ps(wi + j), acc);
         /* horizontal reduce */
         __m128 lo = _mm256_castps256_ps128(acc);
         __m128 hi = _mm256_extractf128_ps(acc, 1);
-        lo = _mm_add_ps(lo, hi);
-        lo = _mm_hadd_ps(lo, lo);
-        lo = _mm_hadd_ps(lo, lo);
+        lo        = _mm_add_ps(lo, hi);
+        lo        = _mm_hadd_ps(lo, lo);
+        lo        = _mm_hadd_ps(lo, lo);
         float val = _mm_cvtss_f32(lo);
         /* scalar tail */
         for (; j < in_dim; j++) val += x[j] * wi[j];
@@ -37,12 +37,11 @@ static void float_matmul(float *out, const float *x, const float *w,
 #else /* scalar fallback */
 
 /* out = x * W^T + b.   x is [1 x in_dim], W is [out_dim x in_dim], b is [out_dim] */
-static void float_matmul(float *out, const float *x, const float *w,
-                         const float *b, int in_dim, int out_dim) {
+static void float_matmul(float *out, const float *x, const float *w, const float *b, int in_dim,
+                         int out_dim) {
     for (int i = 0; i < out_dim; i++) {
         float val = b ? b[i] : 0.0f;
-        for (int j = 0; j < in_dim; j++)
-            val += x[j] * w[(size_t)i * in_dim + j];
+        for (int j = 0; j < in_dim; j++) val += x[j] * w[(size_t)i * in_dim + j];
         out[i] = val;
     }
 }
@@ -50,15 +49,16 @@ static void float_matmul(float *out, const float *x, const float *w,
 #endif /* __AVX2__ */
 
 // Bidirectional Multi-Head Attention for Vision Encoder
-static void vision_attention(float *x, const VisionConfig *cfg, const VisionWeights *w, int layer, float *scratch) {
-    int P = cfg->num_patches;
-    int D = cfg->embed_dim;
-    int H = cfg->n_heads;
+static void vision_attention(float *x, const VisionConfig *cfg, const VisionWeights *w, int layer,
+                             float *scratch) {
+    int P        = cfg->num_patches;
+    int D        = cfg->embed_dim;
+    int H        = cfg->n_heads;
     int head_dim = D / H;
 
-    float *q = scratch;
-    float *k = q + P * D;
-    float *v = k + P * D;
+    float *q   = scratch;
+    float *k   = q + P * D;
+    float *v   = k + P * D;
     float *att = v + P * D; // P * P per head, we can process one head at a time
     float *out = att + P * P;
 
@@ -102,14 +102,15 @@ static void vision_attention(float *x, const VisionConfig *cfg, const VisionWeig
     }
 }
 
-static void vision_ffn(float *x, const VisionConfig *cfg, const VisionWeights *w, int layer, float *scratch) {
-    int P = cfg->num_patches;
-    int D = cfg->embed_dim;
+static void vision_ffn(float *x, const VisionConfig *cfg, const VisionWeights *w, int layer,
+                       float *scratch) {
+    int P  = cfg->num_patches;
+    int D  = cfg->embed_dim;
     int HD = cfg->hidden_dim;
 
     float *gate = scratch;
-    float *up = gate + P * HD;
-    float *out = up + P * HD;
+    float *up   = gate + P * HD;
+    float *out  = up + P * HD;
 
     for (int p = 0; p < P; p++) {
         float_matmul(&gate[p * HD], &x[p * D], w->w1[layer], NULL, D, HD);
@@ -125,15 +126,17 @@ static void vision_ffn(float *x, const VisionConfig *cfg, const VisionWeights *w
     }
 }
 
-void vision_encoder_forward(float *out_embeddings, const float *patches, const VisionConfig *cfg, const VisionWeights *w, ThreadPool *tp) {
+void vision_encoder_forward(float *out_embeddings, const float *patches, const VisionConfig *cfg,
+                            const VisionWeights *w, ThreadPool *tp) {
     (void)tp; // Single threaded for simple implementation
-    int P = cfg->num_patches;
-    int D = cfg->embed_dim;
+    int P         = cfg->num_patches;
+    int D         = cfg->embed_dim;
     int patch_dim = cfg->patch_dim;
 
     // Compute patch embeddings
     for (int p = 0; p < P; p++) {
-        float_matmul(&out_embeddings[p * D], &patches[p * patch_dim], w->patch_proj_w, w->patch_proj_b, patch_dim, D);
+        float_matmul(&out_embeddings[p * D], &patches[p * patch_dim], w->patch_proj_w,
+                     w->patch_proj_b, patch_dim, D);
         // Add positional embeddings
         for (int d = 0; d < D; d++) {
             out_embeddings[p * D + d] += w->pos_embed[p * D + d];
@@ -145,8 +148,8 @@ void vision_encoder_forward(float *out_embeddings, const float *patches, const V
     if (scratch_size < (size_t)(P * D * 3 + P * P + P * D)) {
         scratch_size = P * D * 3 + P * P + P * D;
     }
-    float *scratch = (float*)tn_aligned_alloc(scratch_size * sizeof(float), 64);
-    float *normed = (float*)tn_aligned_alloc(P * D * sizeof(float), 64);
+    float *scratch = (float *)tn_aligned_alloc(scratch_size * sizeof(float), 64);
+    float *normed  = (float *)tn_aligned_alloc(P * D * sizeof(float), 64);
 
     if (!scratch || !normed) {
         if (scratch) tn_aligned_free(scratch);
@@ -156,7 +159,8 @@ void vision_encoder_forward(float *out_embeddings, const float *patches, const V
 
     for (int l = 0; l < cfg->n_layers; l++) {
         // Attention Norm
-        for (int p = 0; p < P; p++) rmsnorm(&normed[p * D], &out_embeddings[p * D], w->rms_att_weight[l], D, 1e-6f);
+        for (int p = 0; p < P; p++)
+            rmsnorm(&normed[p * D], &out_embeddings[p * D], w->rms_att_weight[l], D, 1e-6f);
 
         // Attention (modifies normed to hold attention output or returns it in a scratch buffer)
         // Let's pass 'scratch + P*D*3' or similar. Wait, vision_attention overwrites q,k,v.
@@ -168,10 +172,11 @@ void vision_encoder_forward(float *out_embeddings, const float *patches, const V
         vision_attention(normed, cfg, w, l, scratch);
         // Add residual
         for (int p = 0; p < P; p++) {
-           for(int d=0; d<D; d++) out_embeddings[p*D+d] += att_out[p*D+d];
+            for (int d = 0; d < D; d++) out_embeddings[p * D + d] += att_out[p * D + d];
         }
 
-        for (int p = 0; p < P; p++) rmsnorm(&normed[p * D], &out_embeddings[p * D], w->rms_ffn_weight[l], D, 1e-6f);
+        for (int p = 0; p < P; p++)
+            rmsnorm(&normed[p * D], &out_embeddings[p * D], w->rms_ffn_weight[l], D, 1e-6f);
 
         // FFN
         float *ffn_out = scratch + P * cfg->hidden_dim * 2; // same as 'out' in vision_ffn
@@ -179,12 +184,13 @@ void vision_encoder_forward(float *out_embeddings, const float *patches, const V
 
         // Add residual
         for (int p = 0; p < P; p++) {
-           for(int d=0; d<D; d++) out_embeddings[p*D+d] += ffn_out[p*D+d];
+            for (int d = 0; d < D; d++) out_embeddings[p * D + d] += ffn_out[p * D + d];
         }
     }
 
     // Final norm
-    for (int p = 0; p < P; p++) rmsnorm(&out_embeddings[p * D], &out_embeddings[p * D], w->rms_final_weight, D, 1e-6f);
+    for (int p = 0; p < P; p++)
+        rmsnorm(&out_embeddings[p * D], &out_embeddings[p * D], w->rms_final_weight, D, 1e-6f);
 
     tn_aligned_free(scratch);
     tn_aligned_free(normed);

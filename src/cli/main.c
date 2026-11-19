@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>   /* pause() for --server mode */
-#include <signal.h>   /* SIGINT/SIGTERM graceful-shutdown handler, --server mode */
+#include <unistd.h> /* pause() for --server mode */
+#include <signal.h> /* SIGINT/SIGTERM graceful-shutdown handler, --server mode */
 #include "core/platform.h"
 #include "core/config.h"
 #include "core/moe_config.h"
@@ -35,9 +35,9 @@
 #include "update/update_check.h"
 #include "math/rope.h"
 #include "eval/perplexity.h"
-#include "cli/model_load.h"
+#include "runtime/model_load.h"
 #include "cli/repl.h"
-#include "cli/progress.h"
+#include "core/progress.h"
 #include "cli/banner.h"
 #include "cli/color.h"
 #include "transformer/generate.h"
@@ -62,6 +62,7 @@
 /* Phase 21: OpenAI-compatible API server */
 #include "api/api_server.h"
 #include "eval/selfcheck.h"
+#include "core/clamp.h"
 #include <sys/stat.h>
 
 /* Version is injected unquoted by the build (-DPZ_VERSION, see Makefile) and
@@ -105,27 +106,35 @@ static void ppl_progress(int chunk, const PplResult *r, void *user) {
 
 static void run_perplexity(const CliArgs *args, const Config *p, const TransformerWeights *w,
                            RunState *s, const MoEConfig *mc, Tokenizer *t, ThreadPool *tp) {
-    size_t rd = 0;
+    size_t rd  = 0;
     char *text = tn_read_text_file(args->perplexity_file, (size_t)64 << 20, &rd);
-    if (!text) { fprintf(stderr, "Error: cannot read %s (must be 1 B..64 MiB)\n", args->perplexity_file); return; }
+    if (!text) {
+        fprintf(stderr, "Error: cannot read %s (must be 1 B..64 MiB)\n", args->perplexity_file);
+        return;
+    }
     int *toks = (int *)malloc((rd + 2) * sizeof(int));
-    if (!toks) { free(text); return; }
+    if (!toks) {
+        free(text);
+        return;
+    }
     int bos = !t->add_bos_token ? -1 : (p->bos_token_id >= 0 ? p->bos_token_id : t->bos_token_id);
-    int n = 0;
+    int n   = 0;
     if (bos >= 0) toks[n++] = bos;
     int k = tokenizer_encode(t, text, rd, toks + n, (int)rd + 1);
     if (k < 0) {
         fprintf(stderr, "Error: could not tokenize %s\n", args->perplexity_file);
     } else {
         n += k;
-        PplOptions opt = { args->ppl_ctx, args->ppl_chunks, bos };
+        PplOptions opt = {args->ppl_ctx, args->ppl_chunks, bos};
         PplResult r;
         printf("perplexity: %d tokens, n_ctx %d, %d chunk(s)\n", n,
                opt.n_ctx < s->max_seq_len ? opt.n_ctx : s->max_seq_len,
-               args->ppl_chunks > 0 && args->ppl_chunks < n / opt.n_ctx ? args->ppl_chunks : n / opt.n_ctx);
+               args->ppl_chunks > 0 && args->ppl_chunks < n / opt.n_ctx ? args->ppl_chunks
+                                                                        : n / opt.n_ctx);
         TernaryError e = perplexity_eval(toks, n, &opt, p, w, s, mc, tp, ppl_progress, NULL, &r);
         if (e != TN_OK) {
-            fprintf(stderr, "\nError: perplexity needs at least --ppl-ctx (%d) tokens\n", opt.n_ctx);
+            fprintf(stderr, "\nError: perplexity needs at least --ppl-ctx (%d) tokens\n",
+                    opt.n_ctx);
         } else {
             printf("\nFinal estimate: PPL = %.4f +/- %.5f  (%d tokens scored, %d chunks, %.1f s)\n",
                    r.ppl, r.ppl_err, r.n_scored, r.n_chunks, r.seconds);
@@ -135,21 +144,39 @@ static void run_perplexity(const CliArgs *args, const Config *p, const Transform
     free(toks);
 }
 
+/* Buffer capacities (bytes). */
+#define VIS_PROMPT_BUF 8192   /* prompt with the image part removed */
+#define UPDATE_NOTICE_BUF 512 /* one-line update notice */
+
+/* Bytes in a GiB, for the --remote-layers per-node RAM sizes (given and printed in GB). */
+#define BYTES_PER_GIB 1073741824.0
+
+/* strdup() for a server setting that must not silently be missing: an
+ * unchecked NULL api_key would start the server with authentication OFF. A
+ * failed copy is fatal, like every other required allocation in the engine. */
+static char *dup_setting(const char *s) {
+    char *c = strdup(s);
+    if (!c) {
+        fprintf(stderr, "Error: out of memory copying a server setting\n");
+        exit(1);
+    }
+    return c;
+}
+
 int main(int argc, char **argv) {
     pz_warn_if_legacy_invocation(argc > 0 ? argv[0] : NULL);
     /* Phase 40: `pz config ...` manages the settings file; every other run
      * reads it (and PZ_* env) as defaults placed before the user's flags. */
-    if (argc > 1 && strcmp(argv[1], "config") == 0)
-        return pz_config_command(argc - 1, argv + 1);
-    argc = pz_config_prepare_argv(argc, argv, &argv);
+    if (argc > 1 && strcmp(argv[1], "config") == 0) return pz_config_command(argc - 1, argv + 1);
+    argc          = pz_config_prepare_argv(argc, argv, &argv);
     int exit_code = 0;
     CliArgs args;
     if (parse_args(&args, argc, argv) != TN_OK) {
         return 1;
     }
     {
-        KVStrategyOptions kv_opt = { args.ctx_size, args.kv_ram_fraction, args.kv_type,
-                                     args.kv_offload_dir };
+        KVStrategyOptions kv_opt = {args.ctx_size, args.kv_ram_fraction, args.kv_type,
+                                    args.kv_offload_dir};
         kv_strategy_set_options(&kv_opt);
     }
     (void)tn_cache_info(); /* Phase 27.1: probe once, before any worker threads */
@@ -172,12 +199,14 @@ int main(int argc, char **argv) {
         printf("latest  : %s%s\n", ui.latest[0] ? ui.latest : "(none found)",
                ui.latest_prerelease ? " (pre-release)" : "");
         printf("channel : %s   repo: %s\n", update_channel_name(uo.channel), uo.repo);
-        printf("status  : %s%s%s\n", update_status_name(ui.status),
-               ui.error[0] ? " - " : "", ui.error);
+        printf("status  : %s%s%s\n", update_status_name(ui.status), ui.error[0] ? " - " : "",
+               ui.error);
         if (ui.url[0]) printf("release : %s\n", ui.url);
         if (ui.status == UPDATE_STATUS_AVAILABLE)
             printf("verify the download with the release's SHA256SUMS (sha256sum -c SHA256SUMS)\n");
-        return ui.status == UPDATE_STATUS_AVAILABLE ? 3 : ui.status == UPDATE_STATUS_ERROR ? 1 : 0;
+        if (ui.status == UPDATE_STATUS_AVAILABLE) return 3;
+        if (ui.status == UPDATE_STATUS_ERROR) return 1;
+        return 0;
     }
 
     if (args.verbose) g_tn_verbose = 1;
@@ -206,7 +235,7 @@ int main(int argc, char **argv) {
      * piped/redirected captures (e.g. benchmark screenshots built from
      * tools/make_screenshot.py) are self-identifying too, not just plain
      * generation output. */
-    int stdout_is_tty = isatty(fileno(stdout));
+    int stdout_is_tty       = isatty(fileno(stdout));
     int color_enabled_early = tn_color_resolve(args.color_mode, stdout_is_tty, getenv("NO_COLOR"));
     tn_banner_print(stdout_is_tty, color_enabled_early);
 
@@ -226,7 +255,7 @@ int main(int argc, char **argv) {
             return 1;
         }
         uint32_t file_magic = 0;
-        size_t n = fread(&file_magic, 1, sizeof(file_magic), magic_f);
+        size_t n            = fread(&file_magic, 1, sizeof(file_magic), magic_f);
         fclose(magic_f);
         is_gguf = (n == sizeof(file_magic) && file_magic == GGUF_MAGIC);
     }
@@ -240,7 +269,8 @@ int main(int argc, char **argv) {
     }
 
     tn_simd_init();
-    const int dispatcher_int8 = strcmp(tn_act_quant_effective(), "int8") == 0;   /* what "auto" runs, before calibration */
+    const int dispatcher_int8 =
+        strcmp(tn_act_quant_effective(), "int8") == 0; /* what "auto" runs, before calibration */
 
     /* Hardware Profile: auto-detect cores, cache, bandwidth, classifier format.
      * The DRAM bandwidth comes from a per-host cache (core/bw_cache.h);
@@ -296,8 +326,10 @@ int main(int argc, char **argv) {
         const char *aq = tn_calibration_act_quant(&calib);
         double t_i8 = 0, t_fl = 0;
         if (tn_calibration_act_timing(&calib, dispatcher_int8, &t_i8, &t_fl))
-            printf("Activation quantization: %s (auto, %s; measured int8 tier %.1f vs float tier %.1f tok/s)\n",
-                   aq ? aq : tn_act_quant_effective(), aq ? "calibrated" : "highest tier", t_i8, t_fl);
+            printf("Activation quantization: %s (auto, %s; measured int8 tier %.1f vs float tier "
+                   "%.1f tok/s)\n",
+                   aq ? aq : tn_act_quant_effective(), aq ? "calibrated" : "highest tier", t_i8,
+                   t_fl);
         else
             printf("Activation quantization: %s (auto, %s)\n", aq ? aq : tn_act_quant_effective(),
                    aq ? "calibrated" : "highest tier");
@@ -306,25 +338,25 @@ int main(int argc, char **argv) {
     /* ── Classifier selection ───────────────────────────────────────────── */
     if (args.classifier_override == 3) {
         /* --classifier auto-fast: use calibration's fastest classifier */
-        TnClassifierFormat fast_cls = have_calib
-            ? tn_calibration_best_classifier(&calib)
-            : (hw->cpu->avx512vnni || hw->cpu->avx_vnni || hw->cpu->arm_dotprod)
-                ? TN_CLS_INT8 : TN_CLS_BF16;
+        TnClassifierFormat fast_cls =
+            have_calib ? tn_calibration_best_classifier(&calib)
+            : (hw->cpu->avx512vnni || hw->cpu->avx_vnni || hw->cpu->arm_dotprod) ? TN_CLS_INT8
+                                                                                 : TN_CLS_BF16;
         tn_hardware_profile_set_classifier(fast_cls);
         const char *names[] = {"BF16", "INT8", "INT4"};
         printf("Classifier: %s (auto-fast, calibrated)\n", names[fast_cls]);
     } else if (args.classifier_override >= 0 && args.classifier_override <= 2) {
         tn_hardware_profile_set_classifier((TnClassifierFormat)args.classifier_override);
         const char *names[] = {"BF16", "INT8", "INT4"};
-        printf("Classifier: %s (user-selected)\n",
-               names[args.classifier_override]);
+        printf("Classifier: %s (user-selected)\n", names[args.classifier_override]);
     }
     /* else: default BF16 (from hardware_profile.c select_classifier) */
 
     /* ── Activation numerics ────────────────────────────────────────────── */
     if (args.act_quant != 0) {
         tn_act_quant_set((TnActQuant)args.act_quant);
-        printf("Activation quantization: %s (user-selected)\n", tn_act_quant_name((TnActQuant)args.act_quant));
+        printf("Activation quantization: %s (user-selected)\n",
+               tn_act_quant_name((TnActQuant)args.act_quant));
     }
 
     tn_hardware_profile_report(hw);
@@ -365,7 +397,7 @@ int main(int argc, char **argv) {
 
     Config p;
     TransformerWeights w;
-    memset(&w, 0, sizeof(w));   /* required before weights_alloc_pointers */
+    memset(&w, 0, sizeof(w)); /* required before weights_alloc_pointers */
     MoEConfig mc;
     moe_config_init_dense(&mc); /* initialise to dense; overridden below for MoE models */
     GGUFHeader gguf_hdr;
@@ -376,19 +408,19 @@ int main(int argc, char **argv) {
 
     if (is_gguf) {
         LoadedModel lm;
-        TernaryError lerr = load_gguf_model(&lm, args.model_path, /*is_primary=*/true,
-                                             0, tp, stdout_is_tty);
+        TernaryError lerr =
+            load_gguf_model(&lm, args.model_path, /*is_primary=*/true, 0, tp, stdout_is_tty);
         if (lerr != TN_OK) {
             fprintf(stderr, "Failed to load model: %s\n", tn_error_str(lerr));
             threadpool_destroy(tp);
             return 1;
         }
-        p = lm.config;
-        w = lm.weights;
-        mc = lm.moe_config;
-        s = lm.state;
-        mf = lm.mf;
-        gguf_hdr = lm.gguf_hdr;
+        p          = lm.config;
+        w          = lm.weights;
+        mc         = lm.moe_config;
+        s          = lm.state;
+        mf         = lm.mf;
+        gguf_hdr   = lm.gguf_hdr;
         gguf_store = lm.gguf_store;
     } else {
         printf("Model format: native ternary\n");
@@ -423,7 +455,8 @@ int main(int argc, char **argv) {
             }
             size_t moe_size = mf.size - MOE_HDR_OFFSET;
             size_t moe_off  = 0;
-            if (moe_config_read(&mc, (char *)mf.data + MOE_HDR_OFFSET, moe_size, &moe_off) != TN_OK) {
+            if (moe_config_read(&mc, (char *)mf.data + MOE_HDR_OFFSET, moe_size, &moe_off) !=
+                TN_OK) {
                 fprintf(stderr, "Failed to read MoE config header.\n");
                 mapped_file_close(&mf);
                 threadpool_destroy(tp);
@@ -474,9 +507,9 @@ int main(int argc, char **argv) {
          * INT8/INT4 = half/quarter). Native MoE (scale_mode==2) overcounts
          * inactive experts here — same TODO as the GGUF branch. */
         {
-            double embed_bytes = (double)p.vocab_size * p.dim * 2.0;
+            double embed_bytes            = (double)p.vocab_size * p.dim * 2.0;
             const TnHardwareProfile *hp_n = tn_hardware_profile_get();
-            double cls_bytes = embed_bytes; /* BF16 default */
+            double cls_bytes              = embed_bytes; /* BF16 default */
             if (hp_n && hp_n->classifier_fmt == TN_CLS_INT8) cls_bytes = embed_bytes / 2.0;
             if (hp_n && hp_n->classifier_fmt == TN_CLS_INT4) cls_bytes = embed_bytes / 4.0;
             double per_tok = ((double)data_size - embed_bytes) + cls_bytes;
@@ -484,8 +517,8 @@ int main(int argc, char **argv) {
             if (hp_n && per_tok > 0.0) {
                 printf("[profile] Data/token (loaded model): %.0f MB -> "
                        "ceiling %.1f tok/s at %.1f GB/s\n",
-                       per_tok / (1024.0 * 1024.0),
-                       hp_n->theoretical_ceiling, hp_n->measured_bw_gbps);
+                       per_tok / (1024.0 * 1024.0), hp_n->theoretical_ceiling,
+                       hp_n->measured_bw_gbps);
             }
         }
 
@@ -500,12 +533,12 @@ int main(int argc, char **argv) {
          *
          * This is the native-format twin of load_gguf_model()'s identical KV-strategy/
          * RunState-allocation sequence (Phase 18 Stage 3) — native `.bin` models have no
-         * draft-model use case (see cli/model_load.h), so this stays inline here rather
+         * draft-model use case (see runtime/model_load.h), so this stays inline here rather
          * than sharing that GGUF-only helper. */
         {
-            tn_i64 post_load_ram = tn_get_free_ram();
+            tn_i64 post_load_ram    = tn_get_free_ram();
             KVStrategyResult kv_res = select_kv_strategy(&p, post_load_ram, &mc);
-            p.seq_len = kv_res.max_seq_len;
+            p.seq_len               = kv_res.max_seq_len;
             kv_strategy_print(&kv_res, p.seq_len);
         }
 
@@ -622,17 +655,21 @@ int main(int argc, char **argv) {
              * model's vocabulary, e.g. DeepSeek uses <｜begin▁of▁sentence｜>
              * which is not in the generic candidate lists). */
             if (t.bos_token_id < 0)
-                t.bos_token_id = (int)gguf_meta_u32(&gguf_hdr, "tokenizer.ggml.bos_token_id", (uint32_t)-1);
+                t.bos_token_id =
+                    (int)gguf_meta_u32(&gguf_hdr, "tokenizer.ggml.bos_token_id", (uint32_t)-1);
             if (t.eos_token_id < 0) {
-                t.eos_token_id = (int)gguf_meta_u32(&gguf_hdr, "tokenizer.ggml.eos_token_id", (uint32_t)-1);
+                t.eos_token_id =
+                    (int)gguf_meta_u32(&gguf_hdr, "tokenizer.ggml.eos_token_id", (uint32_t)-1);
                 /* Ensure eos_list is populated so agent_loop.c EOS detection
                  * also fires — agent_loop only iterates eos_list, not eos_token_id */
                 if (t.eos_token_id >= 0 && t.n_eos < TN_TOKENIZER_MAX_EOG) {
                     int already = 0;
                     for (int _i = 0; _i < t.n_eos; _i++)
-                        if (t.eos_list[_i] == t.eos_token_id) { already = 1; break; }
-                    if (!already)
-                        t.eos_list[t.n_eos++] = t.eos_token_id;
+                        if (t.eos_list[_i] == t.eos_token_id) {
+                            already = 1;
+                            break;
+                        }
+                    if (!already) t.eos_list[t.n_eos++] = t.eos_token_id;
                 }
             }
         }
@@ -640,8 +677,10 @@ int main(int argc, char **argv) {
         /* Phase 34.5: Auto-load tokenizer from GGUF when no external file given */
         TernaryError terr = tokenizer_load_from_gguf(&t, &gguf_hdr);
         if (terr != TN_OK) {
-            fprintf(stderr, "[WARN] GGUF tokenizer load failed (err=%d). "
-                    "Run with --tokenizer <path> to specify one.\n", (int)terr);
+            fprintf(stderr,
+                    "[WARN] GGUF tokenizer load failed (err=%d). "
+                    "Run with --tokenizer <path> to specify one.\n",
+                    (int)terr);
             /* Non-fatal: engine can still run if tokens passed externally */
         }
     }
@@ -652,14 +691,16 @@ int main(int argc, char **argv) {
      * after the generation prompt (2026-10-19). */
     int chat_template_from_file = 0;
     if (args.chat_template_file) {
-        size_t tl = 0;
+        size_t tl  = 0;
         char *tmpl = tn_read_text_file(args.chat_template_file, (size_t)1 << 20, &tl);
         if (!tmpl) {
-            fprintf(stderr, "[WARN] cannot read --chat-template-file '%s' (1 B..1 MiB); "
-                    "keeping the model's template\n", args.chat_template_file);
+            fprintf(stderr,
+                    "[WARN] cannot read --chat-template-file '%s' (1 B..1 MiB); "
+                    "keeping the model's template\n",
+                    args.chat_template_file);
         } else {
             free(t.chat_template);
-            t.chat_template = tmpl;
+            t.chat_template         = tmpl;
             chat_template_from_file = 1;
             fprintf(stderr, "[tokenizer] chat template from %s (%zu bytes)\n",
                     args.chat_template_file, tl);
@@ -673,14 +714,16 @@ int main(int argc, char **argv) {
     int chat_template_builtin = 0;
     if (is_gguf && !chat_template_from_file && t.chat_template) {
         const char *fix = tn_template_known_fix(gguf_hdr.arch, t.chat_template);
-        char *copy = fix ? strdup(fix) : NULL;
+        char *copy      = fix ? strdup(fix) : NULL;
         if (copy) {
             free(t.chat_template);
-            t.chat_template = copy;
+            t.chat_template       = copy;
             chat_template_builtin = 1;
-            fprintf(stderr, "[tokenizer] the model's chat template ends the prompt with the "
-                            "end-of-sequence token (known problem); using the built-in %s "
-                            "template. --chat-template-file overrides it.\n", gguf_hdr.arch);
+            fprintf(stderr,
+                    "[tokenizer] the model's chat template ends the prompt with the "
+                    "end-of-sequence token (known problem); using the built-in %s "
+                    "template. --chat-template-file overrides it.\n",
+                    gguf_hdr.arch);
         }
     }
 
@@ -695,7 +738,7 @@ int main(int argc, char **argv) {
     bool draft_active = false;
     if (args.draft_model_path) {
         if (draft_model_load(&draft_model, args.draft_model_path, p.vocab_size,
-                              args.max_tokens + args.spec_length + 64, tp) != TN_OK) {
+                             args.max_tokens + args.spec_length + 64, tp) != TN_OK) {
             fprintf(stderr, "Error: failed to load --draft-model '%s'.\n", args.draft_model_path);
             tokenizer_free(&t);
             if (mc.has_mla) mla_run_state_free(s, p.n_layers);
@@ -718,9 +761,8 @@ int main(int argc, char **argv) {
     mcts_options_defaults(&args.mcts);
     PrmModel prm;
     memset(&prm, 0, sizeof(prm));
-    if (args.prm_path &&
-        prm_load(&prm, args.prm_path, args.prm_format, args.prm_good, args.prm_bad,
-                 s->max_seq_len, tp) != TN_OK) {
+    if (args.prm_path && prm_load(&prm, args.prm_path, args.prm_format, args.prm_good, args.prm_bad,
+                                  s->max_seq_len, tp) != TN_OK) {
         fprintf(stderr, "[prm] continuing without a PRM: steps are scored by the model itself\n");
     }
 
@@ -739,10 +781,11 @@ int main(int argc, char **argv) {
     if (args.lora_path) {
         /* Qwen3 (QK-norm path) has head_dim from GGUF key_length, so its Q
          * is n_heads*head_dim wide, not dim (Phase 19-B, 2026-10-19). */
-        int lhd = (mc.has_qk_norm && mc.attn_head_dim > 0) ? mc.attn_head_dim : 0;
-        int l_q_dim = lhd ? p.n_heads * lhd : p.dim;
+        int lhd      = (mc.has_qk_norm && mc.attn_head_dim > 0) ? mc.attn_head_dim : 0;
+        int l_q_dim  = lhd ? p.n_heads * lhd : p.dim;
         int l_kv_dim = lhd ? p.n_kv_heads * lhd : config_kv_dim(&p);
-        if (lora_load_ex(&lora, args.lora_path, p.dim, l_q_dim, l_kv_dim, p.hidden_dim, p.n_layers) != TN_OK) {
+        if (lora_load_ex(&lora, args.lora_path, p.dim, l_q_dim, l_kv_dim, p.hidden_dim,
+                         p.n_layers) != TN_OK) {
             fprintf(stderr, "Error: failed to load --lora '%s'.\n", args.lora_path);
             if (draft_active) draft_model_free(&draft_model);
             prm_free(&prm);
@@ -760,7 +803,7 @@ int main(int argc, char **argv) {
             threadpool_destroy(tp);
             return 1;
         }
-        lora_active = true;
+        lora_active    = true;
         s->active_lora = &lora;
         fprintf(stderr, "[lora] '%s' active (rank %d, alpha %.1f, q_dim %d, kv_dim %d)\n",
                 args.lora_path, lora.rank, (double)lora.alpha, l_q_dim, l_kv_dim);
@@ -774,19 +817,23 @@ int main(int argc, char **argv) {
     if (args.memory_db_path) {
         TernaryError err = vector_db_open(&rag.db, args.memory_db_path, p.dim);
         if (err != TN_OK) {
-            fprintf(stderr, "[RAG] Warning: could not open vector DB '%s' (err=%d). "
-                    "Memory features disabled.\n", args.memory_db_path, (int)err);
+            fprintf(stderr,
+                    "[RAG] Warning: could not open vector DB '%s' (err=%d). "
+                    "Memory features disabled.\n",
+                    args.memory_db_path, (int)err);
         } else {
             err = embedder_init(&rag.emb, &p);
             if (err != TN_OK) {
-                fprintf(stderr, "[RAG] Warning: could not initialise embedder (err=%d). "
-                        "Memory features disabled.\n", (int)err);
+                fprintf(stderr,
+                        "[RAG] Warning: could not initialise embedder (err=%d). "
+                        "Memory features disabled.\n",
+                        (int)err);
                 vector_db_close(&rag.db);
             } else {
                 rag.enabled = 1;
-                rag_ok = 1;
-                printf("[RAG] Memory enabled — %d entries in '%s'\n",
-                       rag.db.num_entries, args.memory_db_path);
+                rag_ok      = 1;
+                printf("[RAG] Memory enabled — %d entries in '%s'\n", rag.db.num_entries,
+                       args.memory_db_path);
             }
         }
     }
@@ -794,12 +841,11 @@ int main(int argc, char **argv) {
 
     /* ── Phase 34: Vision pipeline (extracted to multimodal/vision_pipeline.c
      * in Phase 22.2 so the HTTP API can reuse it for image_url uploads) ──── */
-    static char vis_prompt_buf[8192];
+    static char vis_prompt_buf[VIS_PROMPT_BUF];
     if (args.image_path) {
         const char *stripped_prompt = args.prompt;
-        vision_pipeline_run(args.image_path, args.vision_path, args.proj_path,
-                            &p, &w, s, &mc, &t, tp,
-                            args.prompt, vis_prompt_buf, sizeof(vis_prompt_buf),
+        vision_pipeline_run(args.image_path, args.vision_path, args.proj_path, &p, &w, s, &mc, &t,
+                            tp, args.prompt, vis_prompt_buf, sizeof(vis_prompt_buf),
                             &stripped_prompt);
         args.prompt = (char *)stripped_prompt;
     }
@@ -811,7 +857,8 @@ int main(int argc, char **argv) {
     attn_parallel_min_ctx_set(args.attn_parallel_min_ctx);
     if (args.verbose || args.attn_kernel) {
         const CacheInfo *ci = tn_cache_info();
-        printf("Attention: %s kernel (tile %d), heads parallel from %d ctx; L1d %d KiB, L2 %d KiB (%s)\n",
+        printf("Attention: %s kernel (tile %d), heads parallel from %d ctx; L1d %d KiB, L2 %d KiB "
+               "(%s)\n",
                attn_kernel_name(attn_kernel_get()), attn_tile_get(), attn_parallel_min_ctx_get(),
                ci->l1d_bytes / 1024, ci->l2_bytes / 1024, tn_cache_source_name(ci->source));
     }
@@ -823,15 +870,17 @@ int main(int argc, char **argv) {
         char buf[256];
         snprintf(buf, sizeof(buf), "%s", args.plan_layers);
         char *save = NULL;
-        for (char *t = strtok_r(buf, ",", &save); t && n < DIST_MAX_NODES; t = strtok_r(NULL, ",", &save))
-            ram[n++] = (long long)(atof(t) * 1073741824.0);
+        for (char *t = strtok_r(buf, ",", &save); t && n < DIST_MAX_NODES;
+             t       = strtok_r(NULL, ",", &save))
+            ram[n++] = (long long)(atof(t) * BYTES_PER_GIB);
         if (n == 0) {
-            fprintf(stderr, "Error: --plan-layers needs GB,GB,... (max %d nodes)\n", DIST_MAX_NODES);
+            fprintf(stderr, "Error: --plan-layers needs GB,GB,... (max %d nodes)\n",
+                    DIST_MAX_NODES);
         } else {
             dist_plan_layers_by_ram(p.n_layers, ram, n, starts, ends);
             printf("Layer plan for %d layers over %d node(s):\n", p.n_layers, n);
             for (int i = 0; i < n; i++)
-                printf("  node %d (%.1f GB): layers %d-%d%s\n", i, (double)ram[i] / 1073741824.0,
+                printf("  node %d (%.1f GB): layers %d-%d%s\n", i, (double)ram[i] / BYTES_PER_GIB,
                        starts[i], ends[i], i == 0 ? "  (coordinator)" : "");
             if (n > 1) {
                 printf("Coordinator: --remote-layers ");
@@ -840,7 +889,7 @@ int main(int argc, char **argv) {
                 printf("\nWorker i:    --rpc-worker PORT --layers <its range>\n");
             }
         }
-        args.prompt = NULL;
+        args.prompt      = NULL;
         args.server_mode = 0;
         goto cleanup_after_run;
     }
@@ -848,13 +897,13 @@ int main(int argc, char **argv) {
     /* Phase 28: worker mode serves a layer range and never generates. */
     if (args.rpc_worker_port > 0) {
         int a = 0, b = p.n_layers;
-        if (!args.worker_layers || sscanf(args.worker_layers, "%d-%d", &a, &b) != 2 ||
-            a < 0 || b > p.n_layers || a >= b) {
+        if (!args.worker_layers || sscanf(args.worker_layers, "%d-%d", &a, &b) != 2 || a < 0 ||
+            b > p.n_layers || a >= b) {
             fprintf(stderr, "Error: --rpc-worker needs --layers A-B within 0-%d\n", p.n_layers);
         } else {
             dist_worker_serve(args.rpc_worker_port, !args.rpc_bind_all, a, b, &p, &w, s, &mc, tp);
         }
-        args.prompt = NULL;
+        args.prompt      = NULL;
         args.server_mode = 0;
         goto cleanup_after_run;
     }
@@ -895,16 +944,19 @@ int main(int argc, char **argv) {
     {
         const TnHardwareProfile *hpc = tn_hardware_profile_get();
         int lossy_head = hpc && hpc->classifier_explicit && hpc->classifier_fmt != TN_CLS_BF16;
-        if (lossy_head && args.quality_tolerance > 0.0 && !args.self_check && !args.perplexity_file &&
-            !args.watermark_detect) {
-            SelfCheckOptions so = { args.quality_tolerance, args.self_check_tokens };
+        if (lossy_head && args.quality_tolerance > 0.0 && !args.self_check &&
+            !args.perplexity_file && !args.watermark_detect) {
+            SelfCheckOptions so = {args.quality_tolerance, args.self_check_tokens};
             SelfCheckResult sr;
             if (selfcheck_run(&so, &p, &w, s, &mc, &t, tp, &sr) == TN_OK && sr.verdict == SC_FAIL) {
                 char line[300];
                 selfcheck_format(&sr, line, sizeof(line));
-                fprintf(stderr, "[%s]\n[self-check] the %s LM head costs more than --quality-tolerance on this "
-                        "model: using a BF16 head. Keep the request with a higher --quality-tolerance "
-                        "(0 = no bar).\n", line, sr.classifier);
+                fprintf(
+                    stderr,
+                    "[%s]\n[self-check] the %s LM head costs more than --quality-tolerance on this "
+                    "model: using a BF16 head. Keep the request with a higher --quality-tolerance "
+                    "(0 = no bar).\n",
+                    line, sr.classifier);
                 tn_hardware_profile_swap_classifier(TN_CLS_BF16);
             }
         }
@@ -913,14 +965,19 @@ int main(int argc, char **argv) {
     /* --act-quant auto on a ternary model: the int8 numerics are accuracy-checked once per model
      * and setting (verdict cached in ~/.project-zero/selfcheck.txt), and float activations take
      * over if they fail. --no-calibrate, sanitizer builds and an explicit --act-quant skip it. */
-    SelfCheckAutoCtx auto_ctx = { args.act_quant, w.layers_are_ternary, args.no_calibrate, TN_SANITIZED,
-                                  args.quality_tolerance,
-                                  args.self_check || args.perplexity_file || args.watermark_detect,
-                                  strcmp(tn_act_quant_effective(), "int8") == 0 };
+    SelfCheckAutoCtx auto_ctx = {args.act_quant,
+                                 w.layers_are_ternary,
+                                 args.no_calibrate,
+                                 TN_SANITIZED,
+                                 args.quality_tolerance,
+                                 args.self_check || args.perplexity_file || args.watermark_detect,
+                                 strcmp(tn_act_quant_effective(), "int8") == 0};
     if (selfcheck_auto_applies(&auto_ctx)) {
         const TnHardwareProfile *hpa = tn_hardware_profile_get();
-        const char *cls = !hpa ? "bf16" : hpa->classifier_fmt == TN_CLS_INT4 ? "int4"
-                          : hpa->classifier_fmt == TN_CLS_INT8 ? "int8" : "bf16";
+        const char *cls              = !hpa                                 ? "bf16"
+                                       : hpa->classifier_fmt == TN_CLS_INT4 ? "int4"
+                                       : hpa->classifier_fmt == TN_CLS_INT8 ? "int8"
+                                                                            : "bf16";
         struct stat mst;
         if (stat(args.model_path, &mst) == 0) {
             char key[400];
@@ -929,12 +986,14 @@ int main(int argc, char **argv) {
                                 args.self_check_tokens);
             SelfCheckVerdict cv;
             if (!selfcheck_cache_load(key, &cv)) {
-                printf("[self-check] first run of this model with int8 activations: checking accuracy "
-                       "(cached afterwards)...\n");
+                printf(
+                    "[self-check] first run of this model with int8 activations: checking accuracy "
+                    "(cached afterwards)...\n");
                 fflush(stdout);
-                SelfCheckOptions so = { args.quality_tolerance, args.self_check_tokens };
+                SelfCheckOptions so = {args.quality_tolerance, args.self_check_tokens};
                 SelfCheckResult sr;
-                if (selfcheck_run(&so, &p, &w, s, &mc, &t, tp, &sr) == TN_OK && sr.verdict != SC_SKIPPED) {
+                if (selfcheck_run(&so, &p, &w, s, &mc, &t, tp, &sr) == TN_OK &&
+                    sr.verdict != SC_SKIPPED) {
                     char line[300];
                     selfcheck_format(&sr, line, sizeof(line));
                     printf("%s\n", line);
@@ -946,7 +1005,8 @@ int main(int argc, char **argv) {
             }
             if (selfcheck_auto_numerics(cv) == TN_ACT_FLOAT) {
                 tn_act_quant_set(TN_ACT_FLOAT);
-                fprintf(stderr, "[self-check] int8 activations cost more than --quality-tolerance on this "
+                fprintf(stderr,
+                        "[self-check] int8 activations cost more than --quality-tolerance on this "
                         "model: using float activations.\n");
             }
         }
@@ -954,7 +1014,7 @@ int main(int argc, char **argv) {
 
     /* Execution Mode */
     if (args.self_check) {
-        SelfCheckOptions so = { args.quality_tolerance, args.self_check_tokens };
+        SelfCheckOptions so = {args.quality_tolerance, args.self_check_tokens};
         SelfCheckResult sr;
         TernaryError se = selfcheck_run(&so, &p, &w, s, &mc, &t, tp, &sr);
         if (se != TN_OK) {
@@ -991,58 +1051,62 @@ int main(int argc, char **argv) {
         for (int ci = 0; ci < args.num_cors_origins; ci++) {
             server_config_add_cors_origin(&api_ctx.server_config, args.cors_origins[ci]);
         }
-        if (args.api_key) api_ctx.server_config.auth.api_key = strdup(args.api_key);
-        api_ctx.server_config.metrics.enabled = args.metrics_enabled;
-        api_ctx.server_config.web_ui = args.web_ui_mode;
-        api_ctx.server_config.act_quant = args.act_quant;
+        if (args.api_key) api_ctx.server_config.auth.api_key = dup_setting(args.api_key);
+        api_ctx.server_config.metrics.enabled   = args.metrics_enabled;
+        api_ctx.server_config.web_ui            = args.web_ui_mode;
+        api_ctx.server_config.act_quant         = args.act_quant;
         api_ctx.server_config.quality_tolerance = args.quality_tolerance;
         api_ctx.server_config.self_check_tokens = args.self_check_tokens;
         /* Generation flags become the server-side defaults every request
          * (and the web UI, via GET /v1/config) starts from. */
         args_fill_gen_params(&args, &api_ctx.server_config.gen_defaults);
         /* Phase 30: --mcts* are the request defaults; --prm the judge. */
-        api_ctx.server_config.mcts = args.mcts;
+        api_ctx.server_config.mcts     = args.mcts;
         api_ctx.server_config.mcts_max = args.mcts_max;
         if (prm.loaded) {
-            const char *pb = strrchr(args.prm_path, '/');
-            api_ctx.prm = &prm;
+            const char *pb                  = strrchr(args.prm_path, '/');
+            api_ctx.prm                     = &prm;
             api_ctx.server_config.prm_model = pb ? pb + 1 : args.prm_path;
         }
         {
-            const char *base = strrchr(args.model_path, '/');
-            api_ctx.server_config.model_id = strdup(base ? base + 1 : args.model_path);
+            const char *base               = strrchr(args.model_path, '/');
+            api_ctx.server_config.model_id = dup_setting(base ? base + 1 : args.model_path);
         }
-        if (args.ui_title) api_ctx.server_config.ui_title = strdup(args.ui_title);
-        api_ctx.server_config.ui_logo = args.ui_logo;
-        api_ctx.server_config.prompt_cache = args.prompt_cache ? 1 : 0;
-        api_ctx.server_config.chat_format = args.chat_format;
+        if (args.ui_title) api_ctx.server_config.ui_title = dup_setting(args.ui_title);
+        api_ctx.server_config.ui_logo                = args.ui_logo;
+        api_ctx.server_config.prompt_cache           = args.prompt_cache ? 1 : 0;
+        api_ctx.server_config.chat_format            = args.chat_format;
         api_ctx.server_config.allow_request_template = args.no_request_template ? 0 : 1;
-        api_ctx.server_config.allow_config_write = args.no_config_write ? 0 : 1;
-        api_ctx.server_config.chat_template_source =
-            !t.chat_template ? "none"
-            : chat_template_from_file ? "file" : chat_template_builtin ? "builtin" : "gguf";
-        api_ctx.server_config.best_of = args.best_of;
-        api_ctx.server_config.queue_size = args.queue_size;
-        api_ctx.server_config.queue_timeout_s = args.queue_timeout_s;
-        api_ctx.server_config.parallel = args.parallel;
-        api_ctx.server_config.parallel_batch = args.parallel_batch;
+        api_ctx.server_config.allow_config_write     = args.no_config_write ? 0 : 1;
+        api_ctx.server_config.chat_template_source   = !t.chat_template          ? "none"
+                                                       : chat_template_from_file ? "file"
+                                                       : chat_template_builtin   ? "builtin"
+                                                                                 : "gguf";
+        api_ctx.server_config.best_of                = args.best_of;
+        api_ctx.server_config.queue_size             = args.queue_size;
+        api_ctx.server_config.queue_timeout_s        = args.queue_timeout_s;
+        api_ctx.server_config.rate_limit             = args.rate_limit;
+        api_ctx.server_config.client_timeout_s       = args.client_timeout_s;
+        api_ctx.server_config.max_connections        = args.max_connections;
+        api_ctx.server_config.parallel               = args.parallel;
+        api_ctx.server_config.parallel_batch         = args.parallel_batch;
         gen_queue_set_max_waiting(&api_ctx.gen_queue, args.queue_size);
-        api_ctx.server_config.best_of_max = args.best_of_max;
-        api_ctx.server_config.prompt_cache_mb = args.prompt_cache_mb;
+        api_ctx.server_config.best_of_max             = args.best_of_max;
+        api_ctx.server_config.prompt_cache_mb         = args.prompt_cache_mb;
         api_ctx.server_config.prompt_cache_min_tokens = args.prompt_cache_min_tokens;
         api_ctx.server_config.max_tokens_limit =
-            (args.max_tokens_limit > 0 && args.max_tokens_limit < p.seq_len)
-                ? args.max_tokens_limit : p.seq_len;
-        if (args.static_dir) api_ctx.server_config.static_dir = strdup(args.static_dir);
+            (args.max_tokens_limit > 0 && args.max_tokens_limit < p.seq_len) ? args.max_tokens_limit
+                                                                             : p.seq_len;
+        if (args.static_dir) api_ctx.server_config.static_dir = dup_setting(args.static_dir);
         if (args.vision_path && args.proj_path) {
-            api_ctx.server_config.vision_path = strdup(args.vision_path);
-            api_ctx.server_config.proj_path   = strdup(args.proj_path);
+            api_ctx.server_config.vision_path = dup_setting(args.vision_path);
+            api_ctx.server_config.proj_path   = dup_setting(args.proj_path);
         }
 
         TernaryError api_err = api_server_start(args.server_port, &api_ctx);
         if (api_err != TN_OK) {
-            fprintf(stderr, "Error: Failed to start API server on port %d: %s\n",
-                    args.server_port, tn_error_str(api_err));
+            fprintf(stderr, "Error: Failed to start API server on port %d: %s\n", args.server_port,
+                    tn_error_str(api_err));
         } else {
             printf("Press Ctrl+C to stop.\n");
 
@@ -1077,28 +1141,31 @@ int main(int argc, char **argv) {
         printf("\n");
         if (draft_active) {
             speculative_generate(&p, &w, s, &mc, &t, tp, args.prompt, args.max_tokens,
-                                  args.temperature, args.top_p, args.json_mode,
-                                  &draft_model, args.spec_length);
+                                 args.temperature, args.top_p, args.json_mode, &draft_model,
+                                 args.spec_length);
         } else {
             GenerationParams gp;
             args_fill_gen_params(&args, &gp);
             if (args.mcts.simulations > 0) {
                 MctsResult mr;
-                TernaryError me = generate_mcts(&p, &w, s, &mc, &t, tp, args.prompt, args.prompt, &gp,
-                                                &args.mcts, prm.loaded ? &prm : NULL,
-                                                stdout_piece_callback, NULL, NULL, &mr);
+                TernaryError me =
+                    generate_mcts(&p, &w, s, &mc, &t, tp, args.prompt, args.prompt, &gp, &args.mcts,
+                                  prm.loaded ? &prm : NULL, stdout_piece_callback, NULL, NULL, &mr);
                 printf("\n");
-                fprintf(stderr, "[mcts] %d simulations, %d nodes, %d-step path (value %.3f, %s), %d search tokens%s\n",
+                fprintf(stderr,
+                        "[mcts] %d simulations, %d nodes, %d-step path (value %.3f, %s), %d search "
+                        "tokens%s\n",
                         mr.simulations, mr.nodes, mr.steps, (double)mr.path_value,
                         mr.used_prm ? "PRM" : "self-scored", mr.tokens_total,
                         me == TN_OK ? "" : " (failed)");
             } else if (args.best_of > 1) {
                 BestOfResult br;
                 generate_best_of(&p, &w, s, &mc, &t, tp, args.prompt, &gp, args.best_of,
-                                 BEST_OF_SCORE_MEAN_LOGPROB, stdout_piece_callback, NULL, NULL, &br);
+                                 BEST_OF_SCORE_MEAN_LOGPROB, stdout_piece_callback, NULL, NULL,
+                                 &br);
                 printf("\n");
-                fprintf(stderr, "[best-of] %d candidates, chose #%d (mean log-prob %.3f)\n",
-                        br.n, br.chosen, br.chosen >= 0 ? br.scores[br.chosen] : 0.0);
+                fprintf(stderr, "[best-of] %d candidates, chose #%d (mean log-prob %.3f)\n", br.n,
+                        br.chosen, br.chosen >= 0 ? br.scores[br.chosen] : 0.0);
             } else {
                 generate_params(&p, &w, s, &mc, &t, tp, args.prompt, &gp);
             }
@@ -1115,7 +1182,7 @@ int main(int argc, char **argv) {
      * (an in-flight check is not waited for — it lands in the cache for next time). */
     if (update_notice) {
         UpdateInfo ui;
-        char notice[512];
+        char notice[UPDATE_NOTICE_BUF];
         update_service_get(&ui);
         update_format_notice(&ui, notice, sizeof(notice));
         if (notice[0]) fprintf(stderr, "\n%s", notice);

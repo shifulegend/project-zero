@@ -8,21 +8,18 @@
  */
 
 #include "api/cancel.h"
+#include "core/limits.h"
 #include "transformer/gen_params.h"
 #include "reasoning/mcts_options.h"
 
 #define SERVER_CORS_MAX_ORIGINS 16
 
-/* Phase 23 stage 2b (2026-10-22): --parallel / --parallel-batch bounds and
- * defaults (the cancel registry holds one entry per parallel request). */
-#define PZ_PARALLEL_MAX            CANCEL_MAX_ACTIVE
-#define PZ_PARALLEL_BATCH_DEFAULT  128
-#define PZ_PARALLEL_BATCH_MAX      4096
+/* --parallel / --parallel-batch bounds and defaults: core/limits.h. */
 
 typedef struct {
-    int   enabled;                          /* --cors */
+    int enabled;                            /* --cors */
     char *origins[SERVER_CORS_MAX_ORIGINS]; /* --cors-origin (repeatable); "*" = any */
-    int   num_origins;
+    int num_origins;
 } CorsConfig;
 
 typedef struct {
@@ -40,47 +37,51 @@ typedef enum {
 } WebUiMode;
 
 typedef struct {
-    CorsConfig    cors;
-    AuthConfig    auth;
+    CorsConfig cors;
+    AuthConfig auth;
     MetricsConfig metrics;
-    WebUiMode     web_ui;
-    char         *static_dir;  /* --static-dir: serve UI from disk instead of the embedded bundle */
+    WebUiMode web_ui;
+    char *static_dir; /* --static-dir: serve UI from disk instead of the embedded bundle */
     /* Phase 22.2: image uploads via the web UI's image_url content parts.
      * Mirrors CliArgs.vision_path/proj_path — NULL means vision is disabled
      * for --server mode, matching the CLI's own --image/--vision/--proj
      * requirement (both must be set). */
-    char         *vision_path;
-    char         *proj_path;
+    char *vision_path;
+    char *proj_path;
     /* Generation defaults every request starts from (CLI generation flags,
      * see args_fill_gen_params) and the per-request max_tokens cap. Both are
      * published to clients via GET /v1/config so the web UI renders its
      * controls from the server's real values instead of hardcoded ones.
      * Pointer fields (system_prompt, stop) borrow argv. */
     GenerationParams gen_defaults;
-    int              max_tokens_limit;
-    char            *model_id;  /* reported by /v1/models; main.c sets the model file's basename */
-    char            *ui_title;  /* --ui-title: web UI brand name (default "project-zero") */
-    int              ui_logo;   /* --ui-logo: 0 = ascii block wordmark of ui_title (default), 1 = text */
-    int              prompt_cache; /* --prompt-cache on|off: default for KV prefix reuse (1) */
-    int              prompt_cache_mb;         /* --prompt-cache-mb: Phase 26 snapshot budget (0 = off) */
-    int              prompt_cache_min_tokens; /* --prompt-cache-min-tokens: shortest stored sequence */
-    int              queue_size;      /* --queue-size: requests that may wait for the slot (0 = 429) */
-    int              queue_timeout_s; /* --queue-timeout: seconds a queued request waits */
-    int              parallel;        /* --parallel: chat requests served at once (1 = sequential) */
-    int              parallel_batch;  /* --parallel-batch: rows per batched forward pass */
-    int              best_of;     /* --best-of: default candidates per request (1 = off) */
-    int              best_of_max; /* --best-of-max: per-request cap */
-    int              chat_format; /* --chat-format: -1 = auto (from vocabulary), else ChatTemplateType;
+    int max_tokens_limit;
+    char *model_id;      /* reported by /v1/models; main.c sets the model file's basename */
+    char *ui_title;      /* --ui-title: web UI brand name (default "project-zero") */
+    int ui_logo;         /* --ui-logo: 0 = ascii block wordmark of ui_title (default), 1 = text */
+    int prompt_cache;    /* --prompt-cache on|off: default for KV prefix reuse (1) */
+    int prompt_cache_mb; /* --prompt-cache-mb: Phase 26 snapshot budget (0 = off) */
+    int prompt_cache_min_tokens; /* --prompt-cache-min-tokens: shortest stored sequence */
+    int queue_size;              /* --queue-size: requests that may wait for the slot (0 = 429) */
+    int queue_timeout_s;         /* --queue-timeout: seconds a queued request waits */
+    int rate_limit; /* --rate-limit: requests/second allowed on non-generation routes (0 = off) */
+    int client_timeout_s; /* --client-timeout: socket read/write timeout in seconds (0 = none) */
+    int max_connections;  /* --max-connections: simultaneous client connections (0 = unlimited) */
+    int parallel;         /* --parallel: chat requests served at once (1 = sequential) */
+    int parallel_batch;   /* --parallel-batch: rows per batched forward pass */
+    int best_of;          /* --best-of: default candidates per request (1 = off) */
+    int best_of_max;      /* --best-of-max: per-request cap */
+    int chat_format;      /* --chat-format: -1 = auto (from vocabulary), else ChatTemplateType;
                                      only used when the model has no embedded chat template */
-    int              allow_request_template; /* requests may send "chat_template" (1; --no-request-template = 0) */
-    int              allow_config_write;     /* POST /v1/config/defaults may save (1; --no-config-write = 0) */
-    int              act_quant;              /* --act-quant as requested: 0 auto, 1 int8, 2 float */
-    double           quality_tolerance;      /* --quality-tolerance: allowed perplexity increase, percent */
-    int              self_check_tokens;      /* --self-check-tokens: length of POST /v1/selfcheck's probe */
-    const char      *chat_template_source;   /* "gguf" | "file" | "builtin" | "none" — published by /v1/config */
-    MctsOptions      mcts;        /* Phase 30: --mcts* defaults every request starts from */
-    int              mcts_max;    /* --mcts-max: per-request simulation cap (0 = search disabled) */
-    const char      *prm_model;   /* basename of --prm, NULL when steps are self-scored */
+    int allow_request_template; /* requests may send "chat_template" (1; --no-request-template = 0) */
+    int allow_config_write;     /* POST /v1/config/defaults may save (1; --no-config-write = 0) */
+    int act_quant;              /* --act-quant as requested: 0 auto, 1 int8, 2 float */
+    double quality_tolerance;   /* --quality-tolerance: allowed perplexity increase, percent */
+    int self_check_tokens;      /* --self-check-tokens: length of POST /v1/selfcheck's probe */
+    const char
+        *chat_template_source; /* "gguf" | "file" | "builtin" | "none" — published by /v1/config */
+    MctsOptions mcts;          /* Phase 30: --mcts* defaults every request starts from */
+    int mcts_max;              /* --mcts-max: per-request simulation cap (0 = search disabled) */
+    const char *prm_model;     /* basename of --prm, NULL when steps are self-scored */
 } ServerConfig;
 
 /* Zero-initialise. Must be called before use. */

@@ -1,5 +1,5 @@
-#ifndef PROJECT_ZERO_REPL_H
-#define PROJECT_ZERO_REPL_H
+#ifndef TN_CLI_REPL_H
+#define TN_CLI_REPL_H
 
 #include "core/config.h"
 #include "core/moe_config.h"
@@ -10,8 +10,8 @@
 #include "cli/args.h"
 #include "multimodal/vision_encoder.h"
 #include "multimodal/vision_projector.h"
-#include "rag/rag_context.h"  /* Phase 15 */
-#include "speculative/draft_model.h"  /* Phase 18 */
+#include "rag/rag_context.h"         /* Phase 15 */
+#include "speculative/draft_model.h" /* Phase 18 */
 
 /**
  * Run the interactive Read-Eval-Print-Loop (REPL).
@@ -22,10 +22,8 @@
  *               Pass NULL to use plain generation (the default —
  *               speculative decoding is opt-in only via --draft-model).
  */
-void run_repl(Config *p, TransformerWeights *w,
-              const MoEConfig *mc,
-              VisionConfig *vc, VisionWeights *vw, VisionProjector *vp,
-              RunState *s, Tokenizer *t, ThreadPool *tp,
+void run_repl(Config *p, TransformerWeights *w, const MoEConfig *mc, VisionConfig *vc,
+              VisionWeights *vw, VisionProjector *vp, RunState *s, Tokenizer *t, ThreadPool *tp,
               CliArgs *args, RagContext *rag, DraftModel *draft);
 
-#endif // PROJECT_ZERO_REPL_H
+#endif // TN_CLI_REPL_H

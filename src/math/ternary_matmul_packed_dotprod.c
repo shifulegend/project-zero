@@ -40,8 +40,7 @@
  * Unpack 16 packed 2-bit weights (4 bytes) into a signed int8x16_t
  * with values {-1, 0, +1} directly (no w_enc bias needed for ARM).
  */
-static inline int8x16_t unpack16_to_i8(const tn_u8 *row, int j)
-{
+static inline int8x16_t unpack16_to_i8(const tn_u8 *row, int j) {
     uint32_t bits;
     memcpy(&bits, row + (j >> 2), sizeof(bits));
 
@@ -53,22 +52,21 @@ static inline int8x16_t unpack16_to_i8(const tn_u8 *row, int j)
     return vld1q_s8(buf);
 }
 
-void ternary_matmul_packed_dotprod(float *out, const float *x, const tn_u8 *packed_w,
-                                    int n, int d, const float *scales, int group_size)
-{
+void ternary_matmul_packed_dotprod(float *out, const float *x, const tn_u8 *packed_w, int n, int d,
+                                   const float *scales, int group_size) {
     if (n > TN_DOTPROD_MAX_N) {
         /* Fallback to portable scalar kernel when n exceeds dotprod buffer.
          * ternary_matmul_packed() handles all input sizes correctly on
          * all platforms (x86, ARM, etc.) — no platform-specific symbol. */
-        extern void ternary_matmul_packed(float*, const float*, const tn_u8*,
-                                          int, int, const float*, int);
+        extern void ternary_matmul_packed(float *, const float *, const tn_u8 *, int, int,
+                                          const float *, int);
         ternary_matmul_packed(out, x, packed_w, n, d, scales, group_size);
         return;
     }
 
     /* Quantize activations once (reused for all d rows) */
-    int8_t  q_x[TN_DOTPROD_MAX_N];
-    float   act_scale = quantize_row_to_i8_neon(x, q_x, n);
+    int8_t q_x[TN_DOTPROD_MAX_N];
+    float act_scale = quantize_row_to_i8_neon(x, q_x, n);
 
     if (act_scale == 0.0f) {
         memset(out, 0, (size_t)d * sizeof(float));
@@ -91,13 +89,13 @@ void ternary_matmul_packed_dotprod(float *out, const float *x, const tn_u8 *pack
             }
 
             int32x4_t acc = vdupq_n_s32(0);
-            int j = 0;
+            int j         = 0;
 
             /* 16-weight dotprod loop */
             for (; j + 15 < n; j += 16) {
                 int8x16_t w_i8  = unpack16_to_i8(row, j);
                 int8x16_t qx_i8 = vld1q_s8(q_x + j);
-                acc = vdotq_s32(acc, w_i8, qx_i8);
+                acc             = vdotq_s32(acc, w_i8, qx_i8);
             }
 
             /* Horizontal sum of 4 int32 lanes */
@@ -130,12 +128,12 @@ void ternary_matmul_packed_dotprod(float *out, const float *x, const tn_u8 *pack
                 if (ge > n) ge = n;
 
                 int32x4_t acc = vdupq_n_s32(0);
-                int j = gs;
+                int j         = gs;
 
                 for (; j + 15 < ge; j += 16) {
                     int8x16_t w_i8  = unpack16_to_i8(row, j);
                     int8x16_t qx_i8 = vld1q_s8(q_x + j);
-                    acc = vdotq_s32(acc, w_i8, qx_i8);
+                    acc             = vdotq_s32(acc, w_i8, qx_i8);
                 }
 
                 int32_t result = vaddvq_s32(acc);

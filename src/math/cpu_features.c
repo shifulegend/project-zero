@@ -34,18 +34,18 @@ static void detect_x86(TnCpuFeatures *f) {
 
     /* Leaf 7, sub-leaf 0 — extended features */
     if (__get_cpuid_count(7, 0, &eax, &ebx, &ecx, &edx)) {
-        f->avx2        = (ebx >> 5)  & 1;
-        f->avx512f     = (ebx >> 16) & 1;
-        f->avx512bw    = (ebx >> 30) & 1;
-        f->avx512vnni  = (ecx >> 11) & 1;
-        f->avx512vbmi  = (ecx >> 1)  & 1;
-        f->avx512fp16  = (edx >> 23) & 1;
+        f->avx2       = (ebx >> 5) & 1;
+        f->avx512f    = (ebx >> 16) & 1;
+        f->avx512bw   = (ebx >> 30) & 1;
+        f->avx512vnni = (ecx >> 11) & 1;
+        f->avx512vbmi = (ecx >> 1) & 1;
+        f->avx512fp16 = (edx >> 23) & 1;
     }
 
     /* Leaf 7, sub-leaf 1 — additional extended features */
     if (__get_cpuid_count(7, 1, &eax, &ebx, &ecx, &edx)) {
-        f->avx_vnni    = (eax >> 4) & 1;
-        f->avx512bf16  = (eax >> 5) & 1;
+        f->avx_vnni   = (eax >> 4) & 1;
+        f->avx512bf16 = (eax >> 5) & 1;
     }
 }
 
@@ -131,7 +131,7 @@ static bool verify_avx512vnni_executable(void) {
         __m512i acc = _mm512_setzero_si512();
         __m512i a   = _mm512_set1_epi8(1);
         __m512i b   = _mm512_set1_epi8(1);
-        acc = _mm512_dpbusds_epi32(acc, a, b);
+        acc         = _mm512_dpbusds_epi32(acc, a, b);
         int32_t buf[16];
         _mm512_storeu_si512((void *)buf, acc);
         /* vpdpbusd sums the FOUR adjacent u8*s8 products of each 32-bit
@@ -157,26 +157,26 @@ static bool verify_avx512vnni_executable(void) {
 
 /* HWCAP bit positions — from <asm/hwcap.h> on Linux ARM64 */
 #ifndef HWCAP_ASIMDDP
-    #define HWCAP_ASIMDDP (1 << 20)  /* SDOT/UDOT dotprod */
+#define HWCAP_ASIMDDP (1 << 20) /* SDOT/UDOT dotprod */
 #endif
 #ifndef HWCAP_SVE
-    #define HWCAP_SVE     (1 << 22)
+#define HWCAP_SVE (1 << 22)
 #endif
 #ifndef HWCAP2_SVE2
-    #define HWCAP2_SVE2   (1 << 1)
+#define HWCAP2_SVE2 (1 << 1)
 #endif
 #ifndef HWCAP2_BF16
-    #define HWCAP2_BF16   (1 << 14)
+#define HWCAP2_BF16 (1 << 14)
 #endif
 
 static void detect_arm_linux(TnCpuFeatures *f) {
     unsigned long hwcap  = getauxval(AT_HWCAP);
     unsigned long hwcap2 = getauxval(AT_HWCAP2);
 
-    f->neon        = true;  /* mandatory on AArch64 */
+    f->neon        = true; /* mandatory on AArch64 */
     f->arm_dotprod = (hwcap & HWCAP_ASIMDDP) != 0;
-    f->arm_sve2    = (hwcap2 & HWCAP2_SVE2)  != 0;
-    f->arm_bf16    = (hwcap2 & HWCAP2_BF16)  != 0;
+    f->arm_sve2    = (hwcap2 & HWCAP2_SVE2) != 0;
+    f->arm_bf16    = (hwcap2 & HWCAP2_BF16) != 0;
 }
 #endif /* TN_POSIX && !TN_APPLE */
 
@@ -184,16 +184,16 @@ static void detect_arm_linux(TnCpuFeatures *f) {
 #include <sys/sysctl.h>
 
 static bool sysctl_bool(const char *name) {
-    int val = 0;
+    int val   = 0;
     size_t sz = sizeof(val);
     return sysctlbyname(name, &val, &sz, NULL, 0) == 0 && val != 0;
 }
 
 static void detect_arm_apple(TnCpuFeatures *f) {
-    f->neon          = true;   /* baseline on all Apple Silicon */
+    f->neon          = true; /* baseline on all Apple Silicon */
     f->apple_silicon = true;
     f->arm_dotprod   = sysctl_bool("hw.optional.arm.FEAT_DotProd");
-    f->arm_sve2      = false;  /* Apple does not expose SVE2 */
+    f->arm_sve2      = false; /* Apple does not expose SVE2 */
     f->arm_bf16      = sysctl_bool("hw.optional.arm.FEAT_BF16");
 }
 #endif /* TN_APPLE */
@@ -202,7 +202,7 @@ static void detect_arm_apple(TnCpuFeatures *f) {
 
 /* ── Cached result ────────────────────────────────────────────────────────── */
 static TnCpuFeatures g_features;
-static bool          g_detected = false;
+static bool g_detected = false;
 
 const TnCpuFeatures *tn_cpu_features_detect(void) {
     if (g_detected) return &g_features;
@@ -229,11 +229,11 @@ const TnCpuFeatures *tn_cpu_features_detect(void) {
 #endif
 
 #if TN_ARCH_ARM
-#  if TN_APPLE
+#if TN_APPLE
     detect_arm_apple(&g_features);
-#  elif TN_POSIX
+#elif TN_POSIX
     detect_arm_linux(&g_features);
-#  endif
+#endif
 #endif
 
     /* Populate best_backend name */
@@ -248,13 +248,13 @@ const TnCpuFeatures *tn_cpu_features_detect(void) {
 const char *tn_cpu_best_backend_name(const TnCpuFeatures *f) {
     /* x86 priority: AVX-512 VNNI > AVX-VNNI > AVX-512F > AVX2 > Scalar */
     if (f->avx512vnni) return "AVX-512 VNNI";
-    if (f->avx_vnni)   return "AVX-VNNI";
-    if (f->avx512f)    return "AVX-512F";
-    if (f->avx2)       return "AVX2";
+    if (f->avx_vnni) return "AVX-VNNI";
+    if (f->avx512f) return "AVX-512F";
+    if (f->avx2) return "AVX2";
 
     /* ARM priority: DOTPROD > NEON > Scalar */
     if (f->arm_dotprod) return "NEON+dotprod";
-    if (f->neon)        return "NEON";
+    if (f->neon) return "NEON";
 
     return "Scalar";
 }
@@ -263,26 +263,26 @@ void tn_cpu_features_report(const TnCpuFeatures *f) {
     printf("CPU Feature Detection:\n");
 #if TN_ARCH_X86
     printf("  [x86-64]\n");
-    printf("  AVX2         : %s\n", f->avx2        ? "YES" : "no");
-    printf("  AVX-512F     : %s\n", f->avx512f     ? "YES" : "no");
+    printf("  AVX2         : %s\n", f->avx2 ? "YES" : "no");
+    printf("  AVX-512F     : %s\n", f->avx512f ? "YES" : "no");
     printf("  AVX-512 BW   : %s  <-- byte/word ops, vpermt2w LUT kernel\n",
-           f->avx512bw    ? "YES" : "no");
+           f->avx512bw ? "YES" : "no");
     printf("  AVX-512 VNNI : %s  <-- ternary int8 kernel (64 MACs/cycle)\n",
-           f->avx512vnni  ? "YES" : "no");
+           f->avx512vnni ? "YES" : "no");
     printf("  AVX-VNNI     : %s  <-- 256-bit int8 kernel (32 MACs/cycle)\n",
-           f->avx_vnni    ? "YES" : "no");
-    printf("  AVX-512 BF16 : %s\n", f->avx512bf16  ? "YES" : "no");
-    printf("  AVX-512 FP16 : %s\n", f->avx512fp16  ? "YES" : "no");
-    printf("  AVX-512 VBMI : %s\n", f->avx512vbmi  ? "YES" : "no");
+           f->avx_vnni ? "YES" : "no");
+    printf("  AVX-512 BF16 : %s\n", f->avx512bf16 ? "YES" : "no");
+    printf("  AVX-512 FP16 : %s\n", f->avx512fp16 ? "YES" : "no");
+    printf("  AVX-512 VBMI : %s\n", f->avx512vbmi ? "YES" : "no");
 #endif
 #if TN_ARCH_ARM
     printf("  [ARM]\n");
-    printf("  NEON         : %s\n", f->neon         ? "YES" : "no");
+    printf("  NEON         : %s\n", f->neon ? "YES" : "no");
     printf("  Dotprod      : %s  <-- SDOT int8 kernel (ARM VNNI equiv)\n",
-           f->arm_dotprod  ? "YES" : "no");
-    printf("  SVE2         : %s\n", f->arm_sve2     ? "YES" : "no");
-    printf("  BF16         : %s\n", f->arm_bf16     ? "YES" : "no");
-    printf("  Apple Silicon: %s\n", f->apple_silicon? "YES" : "no");
+           f->arm_dotprod ? "YES" : "no");
+    printf("  SVE2         : %s\n", f->arm_sve2 ? "YES" : "no");
+    printf("  BF16         : %s\n", f->arm_bf16 ? "YES" : "no");
+    printf("  Apple Silicon: %s\n", f->apple_silicon ? "YES" : "no");
 #endif
     printf("  Best backend : %s\n", tn_cpu_best_backend_name(f));
 }

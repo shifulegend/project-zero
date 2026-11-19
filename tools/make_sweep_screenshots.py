@@ -15,28 +15,28 @@ import argparse
 import json
 import os
 import re
-import sys
 from PIL import Image, ImageDraw, ImageFont
 
 # ── colour palette ────────────────────────────────────────────────────────────
-BG       = (15,  15,  20)
-FG       = (204, 204, 204)
-GREEN    = (78,  200, 78)
-CYAN     = (86,  218, 220)
-YELLOW   = (255, 215, 0)
-WHITE    = (255, 255, 255)
-DIM      = (100, 100, 110)
-ORANGE   = (230, 140, 30)
-TITLE_BG = (25,  25,  35)
-BLUE     = (100, 149, 237)
+BG = (15, 15, 20)
+FG = (204, 204, 204)
+GREEN = (78, 200, 78)
+CYAN = (86, 218, 220)
+YELLOW = (255, 215, 0)
+WHITE = (255, 255, 255)
+DIM = (100, 100, 110)
+ORANGE = (230, 140, 30)
+TITLE_BG = (25, 25, 35)
+BLUE = (100, 149, 237)
 
 PADDING = 28
-LINE_H  = 21
-WIDTH   = 1000
+LINE_H = 21
+WIDTH = 1000
 
-PROJECT = "/home/ubuntu/project-zero"
-SWEEP   = f"{PROJECT}/benchmark_results/sweep_2026-06-21"
-SS_DIR  = f"{SWEEP}/screenshots"
+PROJECT = os.environ.get("PZ_PROJECT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+SWEEP = f"{PROJECT}/benchmark_results/sweep_2026-06-21"
+SS_DIR = f"{SWEEP}/screenshots"
+
 
 # ── font ──────────────────────────────────────────────────────────────────────
 def load_font(size=14):
@@ -49,81 +49,99 @@ def load_font(size=14):
             return ImageFont.truetype(path, size)
     return ImageFont.load_default()
 
-FONT       = load_font(14)
-FONT_BOLD  = load_font(15)
+
+FONT = load_font(14)
+FONT_BOLD = load_font(15)
 FONT_SMALL = load_font(12)
+
 
 def text_w(text, font=FONT):
     bbox = font.getbbox(text)
     return bbox[2] - bbox[0]
+
 
 # ── draw helpers ──────────────────────────────────────────────────────────────
 def draw_line(draw, y, text, colour=FG, font=FONT, x=PADDING):
     draw.text((x, y), text, fill=colour, font=font)
     return y + LINE_H
 
+
 def draw_separator(draw, y, colour=DIM):
-    draw.line([(PADDING, y + LINE_H//2), (WIDTH - PADDING, y + LINE_H//2)],
-              fill=colour, width=1)
+    draw.line(
+        [(PADDING, y + LINE_H // 2), (WIDTH - PADDING, y + LINE_H // 2)], fill=colour, width=1
+    )
     return y + LINE_H
+
 
 # ── content extractors ────────────────────────────────────────────────────────
 def extract_gen_toks(text):
-    m = re.search(r'\[gen\]\s+([\d.]+)\s+tok/s', text)
+    m = re.search(r"\[gen\]\s+([\d.]+)\s+tok/s", text)
     return m.group(1) if m else "N/A"
+
 
 def extract_prompt_toks_msft(text):
     # Order: sampling → prompt eval → eval; second-to-last is prompt eval
-    vals = re.findall(r'([\d.]+) tokens per second', text)
+    vals = re.findall(r"([\d.]+) tokens per second", text)
     return vals[-2] if len(vals) >= 2 else "N/A"
+
 
 def extract_eval_toks_msft(text):
     # Last entry is generation eval speed
-    vals = re.findall(r'([\d.]+) tokens per second', text)
+    vals = re.findall(r"([\d.]+) tokens per second", text)
     return vals[-1] if vals else "N/A"
 
+
 def extract_llama_speeds(text):
-    m = re.search(r'Prompt:\s*([\d.]+)\s*t/s\s*\|\s*Generation:\s*([\d.]+)\s*t/s', text)
+    m = re.search(r"Prompt:\s*([\d.]+)\s*t/s\s*\|\s*Generation:\s*([\d.]+)\s*t/s", text)
     if m:
         return m.group(1), m.group(2)
     return "N/A", "N/A"
 
+
 def extract_perf_print(text):
     """llama.cpp / bitnet.cpp common_perf_print: (prompt tok/s, generation tok/s)."""
-    p = re.search(r'prompt eval time =.*?([\d.]+) tokens per second', text)
-    g = re.search(r'(?<!prompt )\beval time =\s*[\d.]+ ms /\s*\d+ (?:runs|tokens).*?([\d.]+) tokens per second', text)
+    p = re.search(r"prompt eval time =.*?([\d.]+) tokens per second", text)
+    g = re.search(
+        r"(?<!prompt )\beval time =\s*[\d.]+ ms /\s*\d+ (?:runs|tokens).*?([\d.]+) tokens per second",
+        text,
+    )
     return (p.group(1) if p else "N/A"), (g.group(1) if g else "N/A")
 
+
 def extract_date(text):
-    m = re.search(r'DATE:\s*(.+)', text)
+    m = re.search(r"DATE:\s*(.+)", text)
     return m.group(1).strip() if m else "2026-06-21"
 
+
 def extract_cmd(text):
-    m = re.search(r'CMD:\s*(.+)', text)
+    m = re.search(r"CMD:\s*(.+)", text)
     return m.group(1).strip() if m else ""
+
 
 def shorten_cmd(cmd, max_len=90):
     if len(cmd) <= max_len:
         return cmd
     # shorten model paths
-    cmd = re.sub(r'/home/ubuntu/project-zero/', '', cmd)
-    cmd = re.sub(r'/home/ubuntu/bitnet-cpp/', '[bitnet-cpp]/', cmd)
-    cmd = re.sub(r'/home/ubuntu/llama\.cpp/build/bin/', '[llama.cpp]/', cmd)
-    cmd = re.sub(r'models/', 'm/', cmd)
+    cmd = cmd.replace(PROJECT + "/", "")
+    cmd = re.sub(r"/home/ubuntu/project-zero/", "", cmd)  # paths already recorded in old sweep logs
+    cmd = re.sub(r"/home/ubuntu/bitnet-cpp/", "[bitnet-cpp]/", cmd)
+    cmd = re.sub(r"/home/ubuntu/llama\.cpp/build/bin/", "[llama.cpp]/", cmd)
+    cmd = re.sub(r"models/", "m/", cmd)
     if len(cmd) > max_len:
-        cmd = cmd[:max_len-3] + "..."
+        cmd = cmd[: max_len - 3] + "..."
     return cmd
+
 
 # ── main screenshot renderer ──────────────────────────────────────────────────
 def make_screenshot(suite_name, t, run_text, out_path, run_num=None):
     """Render one benchmark run as a PNG screenshot."""
-    is_ref   = REF_SUITES.get(suite_name, False)
-    is_msft  = "msft"  in suite_name and not is_ref
+    is_ref = REF_SUITES.get(suite_name, False)
+    is_msft = "msft" in suite_name and not is_ref
     is_llama = "llama" in suite_name and not is_ref
-    is_pz    = not is_msft and not is_llama and not is_ref
+    is_pz = not is_msft and not is_llama and not is_ref
 
     date_str = extract_date(run_text)
-    cmd_str  = shorten_cmd(extract_cmd(run_text))
+    cmd_str = shorten_cmd(extract_cmd(run_text))
 
     if is_pz:
         gen_speed = extract_gen_toks(run_text)
@@ -140,26 +158,53 @@ def make_screenshot(suite_name, t, run_text, out_path, run_num=None):
     output_lines = []
     in_output = False
     for line in run_text.splitlines():
-        if line.startswith("===") or line.startswith("DATE:") or \
-           line.startswith("CMD:") or line.startswith("PROMPT:") or line.startswith("HOST_CPU:") or \
-           line.startswith("="):
+        if (
+            line.startswith("===")
+            or line.startswith("DATE:")
+            or line.startswith("CMD:")
+            or line.startswith("PROMPT:")
+            or line.startswith("HOST_CPU:")
+            or line.startswith("=")
+        ):
             if "===" in line and in_output:
                 break
             continue
-        if "[gen]" in line or "llama_perf" in line or "[ Prompt:" in line or line.startswith("PERF:") \
-                or "common_perf_print" in line:
+        if (
+            "[gen]" in line
+            or "llama_perf" in line
+            or "[ Prompt:" in line
+            or line.startswith("PERF:")
+            or "common_perf_print" in line
+        ):
             break
         # reference-engine log lines ("0.00.123.456 I ...", "llama_model_loader: ...") are not output
-        if is_ref and (re.match(r'^\d+\.\d+\.\d+\.\d+ [IWED] ', line) or re.match(r'^[a-z_]+: ', line)
-                       or re.match(r'^\t[a-z_]+ = ', line)):        # sampler settings dump
+        if is_ref and (
+            re.match(r"^\d+\.\d+\.\d+\.\d+ [IWED] ", line)
+            or re.match(r"^[a-z_]+: ", line)
+            or re.match(r"^\t[a-z_]+ = ", line)
+        ):  # sampler settings dump
             continue
         line = line.expandtabs(4)
         # engine start-up chatter (profile box, loader steps) is not model output
-        if is_pz and (line[:1] in "│┌├└#" or line.startswith(("[", "Active:", "KV cache", "SIMD", "Classifier",
-                                                                 "Attention:", "Hardware", "Calibration",
-                                                                 "Project Zero Engine", "Model format",
-                                                                 "Model Configuration"))
-                      or re.match(r'^  [a-z_]+:\s', line)):
+        if is_pz and (
+            line[:1] in "│┌├└#"
+            or line.startswith(
+                (
+                    "[",
+                    "Active:",
+                    "KV cache",
+                    "SIMD",
+                    "Classifier",
+                    "Attention:",
+                    "Hardware",
+                    "Calibration",
+                    "Project Zero Engine",
+                    "Model format",
+                    "Model Configuration",
+                )
+            )
+            or re.match(r"^  [a-z_]+:\s", line)
+        ):
             continue
         if line.strip():
             in_output = True
@@ -174,21 +219,26 @@ def make_screenshot(suite_name, t, run_text, out_path, run_num=None):
     engine_label = {
         "bitnet_pz_bf16": "Project Zero  BF16  (ternary BitNet b1.58-2B-4T)",
         "bitnet_pz_int4": "Project Zero  INT4  (ternary BitNet b1.58-2B-4T)",
-        "bitnet_msft":    "Microsoft bitnet.cpp  i2_s  (BitNet b1.58-2B-4T)",
-        "smollm2_pz":     "Project Zero  BF16  (SmolLM2-135M-Instruct F16)",
-        "smollm2_llama":  "llama.cpp  (SmolLM2-135M-Instruct F16)",
+        "bitnet_msft": "Microsoft bitnet.cpp  i2_s  (BitNet b1.58-2B-4T)",
+        "smollm2_pz": "Project Zero  BF16  (SmolLM2-135M-Instruct F16)",
+        "smollm2_llama": "llama.cpp  (SmolLM2-135M-Instruct F16)",
     }.get(suite_name, suite_name)
 
     engine_label = LABELS.get(suite_name, engine_label)
-    perf = re.search(r'PERF:\s*(.+)', run_text)
+    perf = re.search(r"PERF:\s*(.+)", run_text)
     header_rows = [
-        ("date",    "Date/Time",        date_str,               CYAN),
-        ("hw",      "Hardware",         HARDWARE,               FG),
-        ("engine",  "Engine",           engine_label,           GREEN),
-        ("threads", "Threads",          str(t),                 YELLOW),
-        ("tokens",  "Max tokens",       str(MAX_TOKENS),        FG),
-        ("prompt",  "Prompt tok/s",     pmt_speed,              BLUE if pmt_speed != "N/A (not reported by PZ)" else DIM),
-        ("gen",     "Generation tok/s", gen_speed + " tok/s",   YELLOW),
+        ("date", "Date/Time", date_str, CYAN),
+        ("hw", "Hardware", HARDWARE, FG),
+        ("engine", "Engine", engine_label, GREEN),
+        ("threads", "Threads", str(t), YELLOW),
+        ("tokens", "Max tokens", str(MAX_TOKENS), FG),
+        (
+            "prompt",
+            "Prompt tok/s",
+            pmt_speed,
+            BLUE if pmt_speed != "N/A (not reported by PZ)" else DIM,
+        ),
+        ("gen", "Generation tok/s", gen_speed + " tok/s", YELLOW),
     ]
     if perf:
         header_rows.append(("perf", "Wall / RSS / CPU", perf.group(1), FG))
@@ -197,16 +247,18 @@ def make_screenshot(suite_name, t, run_text, out_path, run_num=None):
 
     # estimate height
     n_rows = (
-        1 +                          # title bar
-        2 +                          # separator + cmd
-        len(header_rows) + 2 +       # header box
-        1 +                          # output header
-        len(output_lines) + 2 +      # output
-        3                            # bottom margin
+        1  # title bar
+        + 2  # separator + cmd
+        + len(header_rows)
+        + 2  # header box
+        + 1  # output header
+        + len(output_lines)
+        + 2  # output
+        + 3  # bottom margin
     )
     height = n_rows * LINE_H + PADDING * 2
 
-    img  = Image.new("RGB", (WIDTH, height), BG)
+    img = Image.new("RGB", (WIDTH, height), BG)
     draw = ImageDraw.Draw(img)
 
     # title bar
@@ -221,19 +273,24 @@ def make_screenshot(suite_name, t, run_text, out_path, run_num=None):
     y += LINE_H + 4
 
     # separator
-    draw.line([(PADDING, y), (WIDTH-PADDING, y)], fill=DIM, width=1)
+    draw.line([(PADDING, y), (WIDTH - PADDING, y)], fill=DIM, width=1)
     y += 8
 
     # header box
     label_w = 22 * 8  # ~22 chars
     for _, label, value, colour in header_rows:
-        draw.text((PADDING, y),              f"{label:<22}", fill=DIM,    font=FONT)
-        draw.text((PADDING + label_w, y),    value,          fill=colour, font=FONT_BOLD if label in ("Generation tok/s", "Engine") else FONT)
+        draw.text((PADDING, y), f"{label:<22}", fill=DIM, font=FONT)
+        draw.text(
+            (PADDING + label_w, y),
+            value,
+            fill=colour,
+            font=FONT_BOLD if label in ("Generation tok/s", "Engine") else FONT,
+        )
         y += LINE_H
 
     # separator
     y += 4
-    draw.line([(PADDING, y), (WIDTH-PADDING, y)], fill=DIM, width=1)
+    draw.line([(PADDING, y), (WIDTH - PADDING, y)], fill=DIM, width=1)
     y += 10
 
     # output section
@@ -246,7 +303,7 @@ def make_screenshot(suite_name, t, run_text, out_path, run_num=None):
 
     # bottom tok/s highlight
     y += 6
-    draw.line([(PADDING, y), (WIDTH-PADDING, y)], fill=DIM, width=1)
+    draw.line([(PADDING, y), (WIDTH - PADDING, y)], fill=DIM, width=1)
     y += 8
     speed_text = f"Generation: {gen_speed} tok/s"
     if pmt_speed not in ("N/A", "N/A (not reported by PZ)"):
@@ -256,6 +313,7 @@ def make_screenshot(suite_name, t, run_text, out_path, run_num=None):
     img.save(out_path)
     print(f"  Saved: {out_path}")
 
+
 # ── process all suites ────────────────────────────────────────────────────────
 def find_best_run(suite_name, t):
     """Return (run_num, text) of the best run (highest gen tok/s)."""
@@ -263,8 +321,8 @@ def find_best_run(suite_name, t):
     if not os.path.isdir(t_dir):
         return None, None
 
-    is_ref   = REF_SUITES.get(suite_name, False)
-    is_msft  = "msft"  in suite_name and not is_ref
+    is_ref = REF_SUITES.get(suite_name, False)
+    is_msft = "msft" in suite_name and not is_ref
     is_llama = "llama" in suite_name and not is_ref
 
     best_val, best_r, best_text = -1, None, None
@@ -272,26 +330,27 @@ def find_best_run(suite_name, t):
         fpath = f"{t_dir}/run{r}.txt"
         if not os.path.exists(fpath):
             continue
-        with open(fpath) as f:
+        with open(fpath, encoding="utf-8") as f:
             text = f.read()
         if is_ref:
             g = extract_perf_print(text)[1]
             val = float(g) if g != "N/A" else None
         elif is_msft:
             # last entry in 'X tokens per second' sequence is gen speed
-            vals = re.findall(r'([\d.]+) tokens per second', text)
+            vals = re.findall(r"([\d.]+) tokens per second", text)
             val = float(vals[-1]) if vals else None
         elif is_llama:
-            m = re.search(r'Generation:\s*([\d.]+)\s*t/s', text)
+            m = re.search(r"Generation:\s*([\d.]+)\s*t/s", text)
             val = float(m.group(1)) if m else None
         else:
-            m = re.search(r'\[gen\]\s+([\d.]+)\s+tok/s', text)
+            m = re.search(r"\[gen\]\s+([\d.]+)\s+tok/s", text)
             val = float(m.group(1)) if m else None
         if val is not None and val > best_val:
-            best_val  = val
-            best_r    = r
+            best_val = val
+            best_r = r
             best_text = text
     return best_r, best_text
+
 
 SUITES = ["bitnet_pz_bf16", "bitnet_pz_int4", "bitnet_msft", "smollm2_pz", "smollm2_llama"]
 HARDWARE = "i5-11300H @ 3.10GHz · 4c/8t · 16GB DDR4 · AVX-512 VNNI"
@@ -299,7 +358,7 @@ MAX_TOKENS = 500
 RUNS = 3
 THREADS = list(range(1, 9))
 LABELS = {}
-REF_SUITES = {}   # suite -> True for llama.cpp-family runs (from meta.json "engine": "ref")
+REF_SUITES = {}  # suite -> True for llama.cpp-family runs (from meta.json "engine": "ref")
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
@@ -312,7 +371,7 @@ if __name__ == "__main__":
         SS_DIR = os.path.join(SWEEP, "screenshots")
         meta_path = os.path.join(SWEEP, "meta.json")
         if os.path.exists(meta_path):
-            with open(meta_path) as f:
+            with open(meta_path, encoding="utf-8") as f:
                 meta = json.load(f)
             MAX_TOKENS = meta.get("max_tokens", MAX_TOKENS)
             RUNS = meta.get("runs", RUNS)

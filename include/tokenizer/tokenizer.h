@@ -8,8 +8,8 @@
 
 typedef struct {
     /* Core vocabulary (BPE) */
-    char **vocab;              /* Array of token strings */
-    float *vocab_scores;       /* Merge priority scores (BPE) */
+    char **vocab;        /* Array of token strings */
+    float *vocab_scores; /* Merge priority scores (BPE) */
     int vocab_size;
     int max_token_len;         /* Longest token string length */
     int *sorted_vocab_indices; /* Indices sorted by token string for binary search */
@@ -19,16 +19,17 @@ typedef struct {
     char *chat_template;
 
     /* Special tokens (read from GGUF tokenizer.ggml.{bos,eos}_token_id) */
-    int bos_token_id;          /* -1 if not set */
-    int eos_token_id;          /* -1 if not set */
-    int add_bos_token;         /* 1 = prepend BOS at encode time */
+    int bos_token_id;  /* -1 if not set */
+    int eos_token_id;  /* -1 if not set */
+    int add_bos_token; /* 1 = prepend BOS at encode time */
 
     /* Dynamic special-tokens list built from tokenizer.ggml.token_type.
      * Any token with type != 1 (NORMAL) is matched verbatim before BPE. */
-    char **special_tokens;     /* malloc'd array of token strings (owned) */
-    int   *special_token_ids;  /* corresponding token IDs */
-    unsigned char *special_is_control; /* 1 = GGUF CONTROL type (e.g. <|im_start|>), 0 = USER_DEFINED */
-    int    n_special;          /* count */
+    char **special_tokens;  /* malloc'd array of token strings (owned) */
+    int *special_token_ids; /* corresponding token IDs */
+    unsigned char
+        *special_is_control; /* 1 = GGUF CONTROL type (e.g. <|im_start|>), 0 = USER_DEFINED */
+    int n_special;           /* count */
 
     /* End-of-generation token IDs (tokenizer_collect_eog): the declared
      * EOS/EOT/EOM ids plus known end-of-turn tokens (<|eot_id|>, <|im_end|>,
@@ -95,7 +96,8 @@ void tokenizer_free(Tokenizer *t);
  * Returns number of tokens written, or negative on error.
  * Tokens are written to `tokens[]`, up to `max_tokens`.
  */
-int tokenizer_encode(Tokenizer *t, const char *text, size_t prompt_len, int *tokens, int max_tokens);
+int tokenizer_encode(Tokenizer *t, const char *text, size_t prompt_len, int *tokens,
+                     int max_tokens);
 
 /**
  * Prompt-injection defence (2026-10-22). Returns a malloc'd copy of untrusted

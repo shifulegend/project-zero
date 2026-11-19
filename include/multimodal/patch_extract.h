@@ -11,6 +11,7 @@
  * @param patch_size  The size of each square patch (e.g., 14 or 16).
  * @param num_patches An output pointer that receives the total number of patches extracted.
  */
-void extract_patches(const float *image, float *patches, int img_size, int patch_size, int *num_patches);
+void extract_patches(const float *image, float *patches, int img_size, int patch_size,
+                     int *num_patches);
 
 #endif /* TN_PATCH_EXTRACT_H */

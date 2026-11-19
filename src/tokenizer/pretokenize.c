@@ -8,29 +8,39 @@
 #define OUT_OF_RANGE 0xFFFFFFFFu
 
 typedef struct {
-    uint32_t *cp;      /* code points */
-    size_t   *off;     /* byte offset of each code point (n + 1 entries) */
-    size_t    n;
+    uint32_t *cp; /* code points */
+    size_t *off;  /* byte offset of each code point (n + 1 entries) */
+    size_t n;
 } Cpts;
 
 static int cpts_decode(Cpts *c, const char *s, size_t len) {
-    c->cp = (uint32_t *)malloc((len + 1) * sizeof(uint32_t));
+    c->cp  = (uint32_t *)malloc((len + 1) * sizeof(uint32_t));
     c->off = (size_t *)malloc((len + 1) * sizeof(size_t));
-    c->n = 0;
-    if (!c->cp || !c->off) { free(c->cp); free(c->off); return -1; }
+    c->n   = 0;
+    if (!c->cp || !c->off) {
+        free(c->cp);
+        free(c->off);
+        return -1;
+    }
     const unsigned char *u = (const unsigned char *)s;
-    size_t i = 0;
+    size_t i               = 0;
     while (i < len) {
         uint32_t v = u[i];
-        size_t k = 1;
-        if (v >= 0xF0 && i + 3 < len + 0 && (u[i+1] & 0xC0) == 0x80 && (u[i+2] & 0xC0) == 0x80 && (u[i+3] & 0xC0) == 0x80) {
-            v = ((v & 0x07u) << 18) | ((u[i+1] & 0x3Fu) << 12) | ((u[i+2] & 0x3Fu) << 6) | (u[i+3] & 0x3Fu); k = 4;
-        } else if (v >= 0xE0 && i + 2 < len && (u[i+1] & 0xC0) == 0x80 && (u[i+2] & 0xC0) == 0x80) {
-            v = ((v & 0x0Fu) << 12) | ((u[i+1] & 0x3Fu) << 6) | (u[i+2] & 0x3Fu); k = 3;
-        } else if (v >= 0xC0 && i + 1 < len && (u[i+1] & 0xC0) == 0x80) {
-            v = ((v & 0x1Fu) << 6) | (u[i+1] & 0x3Fu); k = 2;
+        size_t k   = 1;
+        if (v >= 0xF0 && i + 3 < len + 0 && (u[i + 1] & 0xC0) == 0x80 &&
+            (u[i + 2] & 0xC0) == 0x80 && (u[i + 3] & 0xC0) == 0x80) {
+            v = ((v & 0x07u) << 18) | ((u[i + 1] & 0x3Fu) << 12) | ((u[i + 2] & 0x3Fu) << 6) |
+                (u[i + 3] & 0x3Fu);
+            k = 4;
+        } else if (v >= 0xE0 && i + 2 < len && (u[i + 1] & 0xC0) == 0x80 &&
+                   (u[i + 2] & 0xC0) == 0x80) {
+            v = ((v & 0x0Fu) << 12) | ((u[i + 1] & 0x3Fu) << 6) | (u[i + 2] & 0x3Fu);
+            k = 3;
+        } else if (v >= 0xC0 && i + 1 < len && (u[i + 1] & 0xC0) == 0x80) {
+            v = ((v & 0x1Fu) << 6) | (u[i + 1] & 0x3Fu);
+            k = 2;
         } /* else: ASCII or a stray byte, taken as one unit */
-        c->off[c->n] = i;
+        c->off[c->n]  = i;
         c->cp[c->n++] = v;
         i += k;
     }
@@ -38,13 +48,18 @@ static int cpts_decode(Cpts *c, const char *s, size_t len) {
     return 0;
 }
 
-static void cpts_free(Cpts *c) { free(c->cp); free(c->off); }
+static void cpts_free(Cpts *c) {
+    free(c->cp);
+    free(c->off);
+}
 
 /* ── Character classes ─────────────────────────────────────────────────── */
 
 enum { F_LETTER = 1, F_NUMBER = 2, F_SPACE = 4, F_PUNCT = 8, F_SYMBOL = 16, F_OTHER = 32 };
 
-static int in(uint32_t c, uint32_t a, uint32_t b) { return c >= a && c <= b; }
+static int in(uint32_t c, uint32_t a, uint32_t b) {
+    return c >= a && c <= b;
+}
 
 static int cp_flags(uint32_t c) {
     if (c == OUT_OF_RANGE) return 0;
@@ -53,32 +68,36 @@ static int cp_flags(uint32_t c) {
         if ((c | 0x20) >= 'a' && (c | 0x20) <= 'z') return F_LETTER;
         if (c == ' ' || (c >= 0x09 && c <= 0x0D)) return F_SPACE;
         if (strchr("$+<=>^`|~", (int)c)) return F_SYMBOL;
-        if (c >= 0x21 && c <= 0x7E) return F_PUNCT;   /* remaining ASCII punctuation */
-        return F_OTHER;                               /* control characters */
+        if (c >= 0x21 && c <= 0x7E) return F_PUNCT; /* remaining ASCII punctuation */
+        return F_OTHER;                             /* control characters */
     }
     /* whitespace */
     if (c == 0x85 || c == 0xA0 || c == 0x1680 || in(c, 0x2000, 0x200A) || c == 0x2028 ||
-        c == 0x2029 || c == 0x202F || c == 0x205F || c == 0x3000) return F_SPACE;
+        c == 0x2029 || c == 0x202F || c == 0x205F || c == 0x3000)
+        return F_SPACE;
     if (in(c, 0x80, 0x9F) || in(c, 0x200B, 0x200F) || c == 0xFEFF) return F_OTHER;
     /* numbers (Nd / Nl / No in common blocks) */
     if (c == 0xB2 || c == 0xB3 || c == 0xB9 || in(c, 0xBC, 0xBE) || in(c, 0x660, 0x669) ||
-        in(c, 0x6F0, 0x6F9) || in(c, 0x966, 0x96F) || in(c, 0x2070, 0x2079) || in(c, 0x2080, 0x2089) ||
-        in(c, 0x2150, 0x2189) || in(c, 0x2460, 0x249B) || in(c, 0x2776, 0x2793) || c == 0x3007 ||
-        in(c, 0x3021, 0x3029) || in(c, 0xFF10, 0xFF19)) return F_NUMBER;
+        in(c, 0x6F0, 0x6F9) || in(c, 0x966, 0x96F) || in(c, 0x2070, 0x2079) ||
+        in(c, 0x2080, 0x2089) || in(c, 0x2150, 0x2189) || in(c, 0x2460, 0x249B) ||
+        in(c, 0x2776, 0x2793) || c == 0x3007 || in(c, 0x3021, 0x3029) || in(c, 0xFF10, 0xFF19))
+        return F_NUMBER;
     /* punctuation */
     if (c == 0xA1 || c == 0xA7 || c == 0xAB || c == 0xB6 || c == 0xB7 || c == 0xBB || c == 0xBF ||
-        c == 0x37E || c == 0x387 || in(c, 0x55A, 0x55F) || in(c, 0x589, 0x58A) || in(c, 0x60C, 0x60D) ||
-        c == 0x61B || c == 0x61F || c == 0x6D4 || in(c, 0x964, 0x965) || in(c, 0x2010, 0x2027) ||
-        in(c, 0x2030, 0x2043) || in(c, 0x2045, 0x2051) || in(c, 0x2053, 0x205E) ||
-        in(c, 0x3001, 0x3003) || in(c, 0x3008, 0x3011) || in(c, 0x3014, 0x301F) || c == 0x30FB ||
-        in(c, 0xFF01, 0xFF03) || in(c, 0xFF05, 0xFF0A) || in(c, 0xFF0C, 0xFF0F) || in(c, 0xFF1A, 0xFF1B) ||
-        in(c, 0xFF1F, 0xFF20) || in(c, 0xFF3B, 0xFF3D) || c == 0xFF3F || c == 0xFF5B || c == 0xFF5D)
+        c == 0x37E || c == 0x387 || in(c, 0x55A, 0x55F) || in(c, 0x589, 0x58A) ||
+        in(c, 0x60C, 0x60D) || c == 0x61B || c == 0x61F || c == 0x6D4 || in(c, 0x964, 0x965) ||
+        in(c, 0x2010, 0x2027) || in(c, 0x2030, 0x2043) || in(c, 0x2045, 0x2051) ||
+        in(c, 0x2053, 0x205E) || in(c, 0x3001, 0x3003) || in(c, 0x3008, 0x3011) ||
+        in(c, 0x3014, 0x301F) || c == 0x30FB || in(c, 0xFF01, 0xFF03) || in(c, 0xFF05, 0xFF0A) ||
+        in(c, 0xFF0C, 0xFF0F) || in(c, 0xFF1A, 0xFF1B) || in(c, 0xFF1F, 0xFF20) ||
+        in(c, 0xFF3B, 0xFF3D) || c == 0xFF3F || c == 0xFF5B || c == 0xFF5D)
         return F_PUNCT;
     /* symbols and marks: [^\s\p{L}\p{N}] in every pattern below */
-    if (in(c, 0xA2, 0xA6) || c == 0xA8 || c == 0xA9 || c == 0xAC || in(c, 0xAE, 0xB1) || c == 0xB4 ||
-        c == 0xB8 || c == 0xD7 || c == 0xF7 || in(c, 0x2C2, 0x2C5) || in(c, 0x2D2, 0x2DF) ||
-        in(c, 0x300, 0x36F) || in(c, 0x20A0, 0x20CF) || in(c, 0x2190, 0x23FF) || in(c, 0x2500, 0x27BF) ||
-        in(c, 0x2900, 0x2BFF) || in(c, 0x1F000, 0x1FAFF) || in(c, 0xFE00, 0xFE0F) || in(c, 0xFFE0, 0xFFEE))
+    if (in(c, 0xA2, 0xA6) || c == 0xA8 || c == 0xA9 || c == 0xAC || in(c, 0xAE, 0xB1) ||
+        c == 0xB4 || c == 0xB8 || c == 0xD7 || c == 0xF7 || in(c, 0x2C2, 0x2C5) ||
+        in(c, 0x2D2, 0x2DF) || in(c, 0x300, 0x36F) || in(c, 0x20A0, 0x20CF) ||
+        in(c, 0x2190, 0x23FF) || in(c, 0x2500, 0x27BF) || in(c, 0x2900, 0x2BFF) ||
+        in(c, 0x1F000, 0x1FAFF) || in(c, 0xFE00, 0xFE0F) || in(c, 0xFFE0, 0xFFEE))
         return F_SYMBOL;
     return F_LETTER;
 }
@@ -87,28 +106,34 @@ static int cp_flags(uint32_t c) {
 
 typedef struct {
     const Cpts *c;
-    size_t ini, end;        /* code-point range of the fragment being split */
-    size_t prev;            /* end of the last emitted piece */
-    size_t *out;            /* piece lengths in code points */
+    size_t ini, end; /* code-point range of the fragment being split */
+    size_t prev;     /* end of the last emitted piece */
+    size_t *out;     /* piece lengths in code points */
     int n, cap, overflow;
 } Split;
 
 static uint32_t get_cp(const Split *s, size_t pos) {
     return (pos >= s->ini && pos < s->end) ? s->c->cp[pos] : OUT_OF_RANGE;
 }
-static int get_fl(const Split *s, size_t pos) { return cp_flags(get_cp(s, pos)); }
+static int get_fl(const Split *s, size_t pos) {
+    return cp_flags(get_cp(s, pos));
+}
 
 static size_t add_tok(Split *s, size_t end) {
     size_t len = end - s->prev;
     if (len > 0) {
-        if (s->n < s->cap) s->out[s->n++] = len;
-        else s->overflow = 1;
+        if (s->n < s->cap)
+            s->out[s->n++] = len;
+        else
+            s->overflow = 1;
     }
     s->prev = end;
     return len;
 }
 
-static int lower(uint32_t c) { return (c >= 'A' && c <= 'Z') ? (int)(c | 0x20) : (int)c; }
+static int lower(uint32_t c) {
+    return (c >= 'A' && c <= 'Z') ? (int)(c | 0x20) : (int)c;
+}
 
 /* Contractions 's 't 're 've 'm 'll 'd (case-insensitive when ci). Returns the
  * match length or 0. */
@@ -128,9 +153,12 @@ static size_t contraction(const Split *s, size_t pos, int ci) {
 static void split_gpt2(Split *s) {
     for (size_t pos = s->ini; pos < s->end;) {
         uint32_t cpt = get_cp(s, pos);
-        int fl = get_fl(s, pos);
-        size_t k = contraction(s, pos, 0);
-        if (k) { pos += add_tok(s, pos + k); continue; }
+        int fl       = get_fl(s, pos);
+        size_t k     = contraction(s, pos, 0);
+        if (k) {
+            pos += add_tok(s, pos + k);
+            continue;
+        }
         int fl2 = (cpt == ' ') ? get_fl(s, pos + 1) : fl;
         if (fl2 & F_LETTER) {
             pos += (cpt == ' ');
@@ -152,8 +180,16 @@ static void split_gpt2(Split *s) {
         }
         size_t nws = 0;
         while (get_fl(s, pos + nws) & F_SPACE) nws++;
-        if (nws > 1 && get_cp(s, pos + nws) != OUT_OF_RANGE) { pos += nws - 1; add_tok(s, pos); continue; }
-        if (nws > 0) { pos += nws; add_tok(s, pos); continue; }
+        if (nws > 1 && get_cp(s, pos + nws) != OUT_OF_RANGE) {
+            pos += nws - 1;
+            add_tok(s, pos);
+            continue;
+        }
+        if (nws > 0) {
+            pos += nws;
+            add_tok(s, pos);
+            continue;
+        }
         add_tok(s, ++pos);
     }
 }
@@ -165,9 +201,12 @@ static void split_gpt2(Split *s) {
 static void split_llama3(Split *s, int max_digits) {
     for (size_t pos = s->ini; pos < s->end;) {
         uint32_t cpt = get_cp(s, pos);
-        int fl = get_fl(s, pos);
-        size_t k = contraction(s, pos, 1);
-        if (k) { pos += add_tok(s, pos + k); continue; }
+        int fl       = get_fl(s, pos);
+        size_t k     = contraction(s, pos, 1);
+        if (k) {
+            pos += add_tok(s, pos + k);
+            continue;
+        }
         if (!(cpt == '\r' || cpt == '\n' || (fl & F_NUMBER))) {
             if ((fl & F_LETTER) || (get_fl(s, pos + 1) & F_LETTER)) {
                 pos++;
@@ -179,7 +218,10 @@ static void split_llama3(Split *s, int max_digits) {
         if (fl & F_NUMBER) {
             size_t ini = pos;
             while (get_fl(s, pos) & F_NUMBER) {
-                if (++pos - ini >= (size_t)max_digits) { add_tok(s, pos); ini = pos; }
+                if (++pos - ini >= (size_t)max_digits) {
+                    add_tok(s, pos);
+                    ini = pos;
+                }
             }
             add_tok(s, pos);
             continue;
@@ -199,9 +241,21 @@ static void split_llama3(Split *s, int max_digits) {
             if (c2 == '\r' || c2 == '\n') last_rn = pos + nws + 1;
             nws++;
         }
-        if (last_rn > 0) { pos = last_rn; add_tok(s, pos); continue; }
-        if (nws > 1 && get_cp(s, pos + nws) != OUT_OF_RANGE) { pos += nws - 1; add_tok(s, pos); continue; }
-        if (nws > 0) { pos += nws; add_tok(s, pos); continue; }
+        if (last_rn > 0) {
+            pos = last_rn;
+            add_tok(s, pos);
+            continue;
+        }
+        if (nws > 1 && get_cp(s, pos + nws) != OUT_OF_RANGE) {
+            pos += nws - 1;
+            add_tok(s, pos);
+            continue;
+        }
+        if (nws > 0) {
+            pos += nws;
+            add_tok(s, pos);
+            continue;
+        }
         add_tok(s, ++pos);
     }
 }
@@ -209,18 +263,23 @@ static void split_llama3(Split *s, int max_digits) {
 /* Character-class patterns, matched like std::regex_search: matches become
  * pieces, the text between them stays as its own pieces. */
 typedef enum {
-    CLS_NUMBER_ONE, CLS_NUMBER_RUN, CLS_PUNCT_RUN, CLS_DIGIT3,
-    CLS_NEWLINE,        /* [\r\n]                                           */
-    CLS_DS_LETTERS,     /* \s?[A-Za-z..Latin/Greek/Cyrillic..]+  (deepseek-llm) */
-    CLS_DS_PUNCT,       /* \s?[!-/:-~！-／：-～‘-‟　-。]+            (deepseek-llm) */
-    CLS_TRAIL_SPACE,    /* \s+$   (end of the fragment being split)           */
-    CLS_CJK,            /* [一-龥ࠀ-一가-퟿]+                                  */
-    CLS_L_RUN,          /* \s?\p{L}+                       (deepseek-coder) */
-    CLS_P_RUN           /* \s?\p{P}+                       (deepseek-coder) */
+    CLS_NUMBER_ONE,
+    CLS_NUMBER_RUN,
+    CLS_PUNCT_RUN,
+    CLS_DIGIT3,
+    CLS_NEWLINE,     /* [\r\n]                                           */
+    CLS_DS_LETTERS,  /* \s?[A-Za-z..Latin/Greek/Cyrillic..]+  (deepseek-llm) */
+    CLS_DS_PUNCT,    /* \s?[!-/:-~！-／：-～‘-‟　-。]+            (deepseek-llm) */
+    CLS_TRAIL_SPACE, /* \s+$   (end of the fragment being split)           */
+    CLS_CJK,         /* [一-龥ࠀ-一가-퟿]+                                  */
+    CLS_L_RUN,       /* \s?\p{L}+                       (deepseek-coder) */
+    CLS_P_RUN        /* \s?\p{P}+                       (deepseek-coder) */
 } ClassPat;
 
 /* The CJK / Thai / Hangul blocks the DeepSeek patterns split out as their own runs. */
-static int is_cjk(uint32_t c) { return in(c, 0x4E00, 0x9FA5) || in(c, 0x0800, 0x4E00) || in(c, 0xAC00, 0xD7FF); }
+static int is_cjk(uint32_t c) {
+    return in(c, 0x4E00, 0x9FA5) || in(c, 0x0800, 0x4E00) || in(c, 0xAC00, 0xD7FF);
+}
 
 /* Letter set of llama.cpp's deepseek-llm pattern: Latin, Greek, Cyrillic, Armenian,
  * Georgian, Cherokee, the Latin/Greek extension blocks and fullwidth Latin (the ranges
@@ -228,14 +287,15 @@ static int is_cjk(uint32_t c) { return in(c, 0x4E00, 0x9FA5) || in(c, 0x0800, 0x
 static int ds_letter(uint32_t c) {
     if (c < 0x80) return ((c | 0x20) >= 'a' && (c | 0x20) <= 'z');
     if (c == 0xB5) return 1;
-    return (in(c, 0xC0, 0x2AF) && c != 0xD7 && c != 0xF7) || in(c, 0x370, 0x52F) || in(c, 0x531, 0x556) ||
-           in(c, 0x10A0, 0x10C5) || in(c, 0x13A0, 0x13FD) || in(c, 0x1D00, 0x1FFF) || in(c, 0x2C00, 0x2DFF) ||
-           in(c, 0xA640, 0xA7FF) || in(c, 0xFF21, 0xFF3A) || in(c, 0xFF41, 0xFF5A);
+    return (in(c, 0xC0, 0x2AF) && c != 0xD7 && c != 0xF7) || in(c, 0x370, 0x52F) ||
+           in(c, 0x531, 0x556) || in(c, 0x10A0, 0x10C5) || in(c, 0x13A0, 0x13FD) ||
+           in(c, 0x1D00, 0x1FFF) || in(c, 0x2C00, 0x2DFF) || in(c, 0xA640, 0xA7FF) ||
+           in(c, 0xFF21, 0xFF3A) || in(c, 0xFF41, 0xFF5A);
 }
 
 static int ds_punct(uint32_t c) {
-    return in(c, 0x21, 0x2F) || in(c, 0x3A, 0x7E) || in(c, 0xFF01, 0xFF0F) || in(c, 0xFF1A, 0xFF5E) ||
-           in(c, 0x2018, 0x201F) || in(c, 0x3000, 0x3002);
+    return in(c, 0x21, 0x2F) || in(c, 0x3A, 0x7E) || in(c, 0xFF01, 0xFF0F) ||
+           in(c, 0xFF1A, 0xFF5E) || in(c, 0x2018, 0x201F) || in(c, 0x3000, 0x3002);
 }
 
 /* Run of characters accepted by `ok`, after one optional whitespace character. */
@@ -247,45 +307,65 @@ static int opt_space_run(const Split *s, size_t pos, int (*ok)(uint32_t)) {
     return q > b ? (int)(q - pos) : 0;
 }
 
-static int cp_is_letter(uint32_t c) { return (cp_flags(c) & F_LETTER) != 0; }
-static int cp_is_punct(uint32_t c)  { return (cp_flags(c) & F_PUNCT) != 0; }
+static int cp_is_letter(uint32_t c) {
+    return (cp_flags(c) & F_LETTER) != 0;
+}
+static int cp_is_punct(uint32_t c) {
+    return (cp_flags(c) & F_PUNCT) != 0;
+}
 
 static int cls_match(const Split *s, size_t pos, ClassPat p) {
     uint32_t c = get_cp(s, pos);
-    int fl = cp_flags(c);
+    int fl     = cp_flags(c);
     switch (p) {
-    case CLS_NUMBER_ONE: return (fl & F_NUMBER) ? 1 : 0;
-    case CLS_NUMBER_RUN: { size_t q = pos; while (get_fl(s, q) & F_NUMBER) q++; return (int)(q - pos); }
-    case CLS_PUNCT_RUN: {
-        /* [\p{P}\$\+<=>\^~\|]+ */
-        size_t q = pos;
-        for (;;) {
-            uint32_t d = get_cp(s, q);
-            int f = cp_flags(d);
-            if ((f & F_PUNCT) || d == '$' || d == '+' || d == '<' || d == '=' || d == '>' ||
-                d == '^' || d == '~' || d == '|') q++;
-            else break;
+        case CLS_NUMBER_ONE:
+            return (fl & F_NUMBER) ? 1 : 0;
+        case CLS_NUMBER_RUN: {
+            size_t q = pos;
+            while (get_fl(s, q) & F_NUMBER) q++;
+            return (int)(q - pos);
         }
-        return (int)(q - pos);
-    }
-    case CLS_NEWLINE: return (c == '\r' || c == '\n') ? 1 : 0;
-    case CLS_DS_LETTERS: return opt_space_run(s, pos, ds_letter);
-    case CLS_DS_PUNCT:   return opt_space_run(s, pos, ds_punct);
-    case CLS_L_RUN:      return opt_space_run(s, pos, cp_is_letter);
-    case CLS_P_RUN:      return opt_space_run(s, pos, cp_is_punct);
-    case CLS_CJK: { size_t q = pos; while (get_cp(s, q) != OUT_OF_RANGE && is_cjk(get_cp(s, q))) q++; return (int)(q - pos); }
-    case CLS_TRAIL_SPACE: {
-        size_t q = pos;
-        while (get_fl(s, q) & F_SPACE) q++;
-        return (q > pos && q == s->end) ? (int)(q - pos) : 0;
-    }
-    case CLS_DIGIT3: {
-        for (int i = 0; i < 3; i++) {
-            uint32_t d = get_cp(s, pos + (size_t)i);
-            if (d < '0' || d > '9') return 0;
+        case CLS_PUNCT_RUN: {
+            /* [\p{P}\$\+<=>\^~\|]+ */
+            size_t q = pos;
+            for (;;) {
+                uint32_t d = get_cp(s, q);
+                int f      = cp_flags(d);
+                if ((f & F_PUNCT) || d == '$' || d == '+' || d == '<' || d == '=' || d == '>' ||
+                    d == '^' || d == '~' || d == '|')
+                    q++;
+                else
+                    break;
+            }
+            return (int)(q - pos);
         }
-        return 3;
-    }
+        case CLS_NEWLINE:
+            return (c == '\r' || c == '\n') ? 1 : 0;
+        case CLS_DS_LETTERS:
+            return opt_space_run(s, pos, ds_letter);
+        case CLS_DS_PUNCT:
+            return opt_space_run(s, pos, ds_punct);
+        case CLS_L_RUN:
+            return opt_space_run(s, pos, cp_is_letter);
+        case CLS_P_RUN:
+            return opt_space_run(s, pos, cp_is_punct);
+        case CLS_CJK: {
+            size_t q = pos;
+            while (get_cp(s, q) != OUT_OF_RANGE && is_cjk(get_cp(s, q))) q++;
+            return (int)(q - pos);
+        }
+        case CLS_TRAIL_SPACE: {
+            size_t q = pos;
+            while (get_fl(s, q) & F_SPACE) q++;
+            return (q > pos && q == s->end) ? (int)(q - pos) : 0;
+        }
+        case CLS_DIGIT3: {
+            for (int i = 0; i < 3; i++) {
+                uint32_t d = get_cp(s, pos + (size_t)i);
+                if (d < '0' || d > '9') return 0;
+            }
+            return 3;
+        }
     }
     return 0;
 }
@@ -294,7 +374,7 @@ static void split_class(Split *s, ClassPat p) {
     for (size_t pos = s->ini; pos < s->end;) {
         int m = cls_match(s, pos, p);
         if (m > 0) {
-            add_tok(s, pos);                 /* unmatched text before the match */
+            add_tok(s, pos); /* unmatched text before the match */
             pos += (size_t)m;
             add_tok(s, pos);
         } else {
@@ -306,75 +386,149 @@ static void split_class(Split *s, ClassPat p) {
 
 /* ── Pipeline ──────────────────────────────────────────────────────────── */
 
-typedef enum { STEP_GPT2, STEP_LLAMA3, STEP_QWEN2, STEP_NUM1, STEP_NUMRUN, STEP_PUNCT, STEP_DIG3,
-              STEP_NL, STEP_DS_LETTERS, STEP_DS_PUNCT, STEP_TRAIL_SPACE, STEP_CJK, STEP_L_RUN, STEP_P_RUN } Step;
+typedef enum {
+    STEP_GPT2,
+    STEP_LLAMA3,
+    STEP_QWEN2,
+    STEP_NUM1,
+    STEP_NUMRUN,
+    STEP_PUNCT,
+    STEP_DIG3,
+    STEP_NL,
+    STEP_DS_LETTERS,
+    STEP_DS_PUNCT,
+    STEP_TRAIL_SPACE,
+    STEP_CJK,
+    STEP_L_RUN,
+    STEP_P_RUN
+} Step;
 
 /* Runs one step over the current piece list (lengths in code points). */
 static int run_step(const Cpts *c, Step st, size_t **pieces, int *n_pieces) {
-    size_t cap = c->n + 1;
+    size_t cap  = c->n + 1;
     size_t *out = (size_t *)malloc(cap * sizeof(size_t));
     if (!out) return -1;
-    int n_out = 0;
+    int n_out    = 0;
     size_t start = 0;
     for (int i = 0; i < *n_pieces; i++) {
-        Split s = { c, start, start + (*pieces)[i], start, out + n_out, 0, (int)(cap - (size_t)n_out), 0 };
+        Split s = {c,           start, start + (*pieces)[i],       start,
+                   out + n_out, 0,     (int)(cap - (size_t)n_out), 0};
         switch (st) {
-        case STEP_GPT2:   split_gpt2(&s); break;
-        case STEP_LLAMA3: split_llama3(&s, 3); break;
-        case STEP_QWEN2:  split_llama3(&s, 1); break;
-        case STEP_NUM1:   split_class(&s, CLS_NUMBER_ONE); break;
-        case STEP_NUMRUN: split_class(&s, CLS_NUMBER_RUN); break;
-        case STEP_PUNCT:  split_class(&s, CLS_PUNCT_RUN); break;
-        case STEP_DIG3:   split_class(&s, CLS_DIGIT3); break;
-        case STEP_NL:          split_class(&s, CLS_NEWLINE); break;
-        case STEP_DS_LETTERS:  split_class(&s, CLS_DS_LETTERS); break;
-        case STEP_DS_PUNCT:    split_class(&s, CLS_DS_PUNCT); break;
-        case STEP_TRAIL_SPACE: split_class(&s, CLS_TRAIL_SPACE); break;
-        case STEP_CJK:         split_class(&s, CLS_CJK); break;
-        case STEP_L_RUN:       split_class(&s, CLS_L_RUN); break;
-        case STEP_P_RUN:       split_class(&s, CLS_P_RUN); break;
+            case STEP_GPT2:
+                split_gpt2(&s);
+                break;
+            case STEP_LLAMA3:
+                split_llama3(&s, 3);
+                break;
+            case STEP_QWEN2:
+                split_llama3(&s, 1);
+                break;
+            case STEP_NUM1:
+                split_class(&s, CLS_NUMBER_ONE);
+                break;
+            case STEP_NUMRUN:
+                split_class(&s, CLS_NUMBER_RUN);
+                break;
+            case STEP_PUNCT:
+                split_class(&s, CLS_PUNCT_RUN);
+                break;
+            case STEP_DIG3:
+                split_class(&s, CLS_DIGIT3);
+                break;
+            case STEP_NL:
+                split_class(&s, CLS_NEWLINE);
+                break;
+            case STEP_DS_LETTERS:
+                split_class(&s, CLS_DS_LETTERS);
+                break;
+            case STEP_DS_PUNCT:
+                split_class(&s, CLS_DS_PUNCT);
+                break;
+            case STEP_TRAIL_SPACE:
+                split_class(&s, CLS_TRAIL_SPACE);
+                break;
+            case STEP_CJK:
+                split_class(&s, CLS_CJK);
+                break;
+            case STEP_L_RUN:
+                split_class(&s, CLS_L_RUN);
+                break;
+            case STEP_P_RUN:
+                split_class(&s, CLS_P_RUN);
+                break;
         }
-        if (s.overflow) { free(out); return -1; }
+        if (s.overflow) {
+            free(out);
+            return -1;
+        }
         n_out += s.n;
         start += (*pieces)[i];
     }
     free(*pieces);
-    *pieces = out;
+    *pieces   = out;
     *n_pieces = n_out;
     return 0;
 }
 
-int pretokenize(PretokType type, const char *text, size_t len,
-                size_t *starts, size_t *lens, int max_frags) {
+int pretokenize(PretokType type, const char *text, size_t len, size_t *starts, size_t *lens,
+                int max_frags) {
     if (!text || !starts || !lens || max_frags <= 0) return -1;
     if (len == 0) return 0;
-    if (type == PRETOK_NONE) { starts[0] = 0; lens[0] = len; return 1; }
+    if (type == PRETOK_NONE) {
+        starts[0] = 0;
+        lens[0]   = len;
+        return 1;
+    }
 
     Cpts c;
     if (cpts_decode(&c, text, len) != 0) return -1;
     size_t *pieces = (size_t *)malloc(sizeof(size_t));
-    if (!pieces) { cpts_free(&c); return -1; }
+    if (!pieces) {
+        cpts_free(&c);
+        return -1;
+    }
     pieces[0] = c.n;
-    int n = 1;
+    int n     = 1;
 
-    static const Step DEFAULT_STEPS[] = { STEP_PUNCT, STEP_GPT2, STEP_NUMRUN, STEP_DIG3 };
-    static const Step GPT2_STEPS[]    = { STEP_GPT2 };
-    static const Step LLAMA3_STEPS[]  = { STEP_LLAMA3 };
-    static const Step QWEN2_STEPS[]   = { STEP_QWEN2 };
-    static const Step SMOLLM_STEPS[]  = { STEP_NUM1, STEP_GPT2 };
+    static const Step DEFAULT_STEPS[] = {STEP_PUNCT, STEP_GPT2, STEP_NUMRUN, STEP_DIG3};
+    static const Step GPT2_STEPS[]    = {STEP_GPT2};
+    static const Step LLAMA3_STEPS[]  = {STEP_LLAMA3};
+    static const Step QWEN2_STEPS[]   = {STEP_QWEN2};
+    static const Step SMOLLM_STEPS[]  = {STEP_NUM1, STEP_GPT2};
     /* llama.cpp deepseek-llm / deepseek-coder: each regex splits the pieces left by the one before */
-    static const Step DEEPSEEK_LLM_STEPS[]   = { STEP_NL, STEP_DS_LETTERS, STEP_DS_PUNCT, STEP_TRAIL_SPACE, STEP_CJK, STEP_NUMRUN };
-    static const Step DEEPSEEK_CODER_STEPS[] = { STEP_NL, STEP_L_RUN, STEP_P_RUN, STEP_CJK, STEP_NUM1 };
-    const Step *steps = DEFAULT_STEPS;
-    int n_steps = 4;
+    static const Step DEEPSEEK_LLM_STEPS[]   = {STEP_NL,          STEP_DS_LETTERS, STEP_DS_PUNCT,
+                                                STEP_TRAIL_SPACE, STEP_CJK,        STEP_NUMRUN};
+    static const Step DEEPSEEK_CODER_STEPS[] = {STEP_NL, STEP_L_RUN, STEP_P_RUN, STEP_CJK,
+                                                STEP_NUM1};
+    const Step *steps                        = DEFAULT_STEPS;
+    int n_steps                              = 4;
     switch (type) {
-    case PRETOK_GPT2:   steps = GPT2_STEPS;   n_steps = 1; break;
-    case PRETOK_LLAMA3: steps = LLAMA3_STEPS; n_steps = 1; break;
-    case PRETOK_QWEN2:  steps = QWEN2_STEPS;  n_steps = 1; break;
-    case PRETOK_SMOLLM: steps = SMOLLM_STEPS; n_steps = 2; break;
-    case PRETOK_DEEPSEEK_LLM:   steps = DEEPSEEK_LLM_STEPS;   n_steps = 6; break;
-    case PRETOK_DEEPSEEK_CODER: steps = DEEPSEEK_CODER_STEPS; n_steps = 5; break;
-    default: break;
+        case PRETOK_GPT2:
+            steps   = GPT2_STEPS;
+            n_steps = 1;
+            break;
+        case PRETOK_LLAMA3:
+            steps   = LLAMA3_STEPS;
+            n_steps = 1;
+            break;
+        case PRETOK_QWEN2:
+            steps   = QWEN2_STEPS;
+            n_steps = 1;
+            break;
+        case PRETOK_SMOLLM:
+            steps   = SMOLLM_STEPS;
+            n_steps = 2;
+            break;
+        case PRETOK_DEEPSEEK_LLM:
+            steps   = DEEPSEEK_LLM_STEPS;
+            n_steps = 6;
+            break;
+        case PRETOK_DEEPSEEK_CODER:
+            steps   = DEEPSEEK_CODER_STEPS;
+            n_steps = 5;
+            break;
+        default:
+            break;
     }
     int rc = 0;
     for (int i = 0; i < n_steps && rc == 0; i++) rc = run_step(&c, steps[i], &pieces, &n);
@@ -384,7 +538,7 @@ int pretokenize(PretokType type, const char *text, size_t len,
         size_t cp = 0;
         for (int i = 0; i < n; i++) {
             starts[i] = c.off[cp];
-            lens[i] = c.off[cp + pieces[i]] - c.off[cp];
+            lens[i]   = c.off[cp + pieces[i]] - c.off[cp];
             cp += pieces[i];
         }
         out = n;
@@ -396,29 +550,43 @@ int pretokenize(PretokType type, const char *text, size_t len,
 
 PretokType pretok_type_from_name(const char *pre) {
     if (!pre || !*pre || strcmp(pre, "default") == 0) return PRETOK_DEFAULT;
-    static const char *const gpt2[]   = { "gpt-2", "gpt2", "olmo", "mpt", "jais", "trillion", "granite-docling", NULL };
-    static const char *const llama3[] = { "llama3", "llama-v3", "llama-bpe", "smaug-bpe", "falcon3",
-                                          "falcon-h1", "pixtral", "midm-2.0", "lfm2", NULL };
-    static const char *const qwen2[]  = { "qwen2", "stablelm2", "hunyuan", "deepseek-r1-qwen", NULL };
-    static const char *const smollm[] = { "smollm", "codeshell", "exaone", "minerva-7b", NULL };
-    for (int i = 0; gpt2[i]; i++)   if (strcmp(pre, gpt2[i]) == 0)   return PRETOK_GPT2;
-    for (int i = 0; llama3[i]; i++) if (strcmp(pre, llama3[i]) == 0) return PRETOK_LLAMA3;
-    for (int i = 0; qwen2[i]; i++)  if (strcmp(pre, qwen2[i]) == 0)  return PRETOK_QWEN2;
-    for (int i = 0; smollm[i]; i++) if (strcmp(pre, smollm[i]) == 0) return PRETOK_SMOLLM;
-    if (strcmp(pre, "deepseek-llm") == 0)   return PRETOK_DEEPSEEK_LLM;
+    static const char *const gpt2[] = {"gpt-2",           "gpt2", "olmo", "mpt", "jais", "trillion",
+                                       "granite-docling", NULL};
+    static const char *const llama3[] = {"llama3",  "llama-v3",  "llama-bpe", "smaug-bpe",
+                                         "falcon3", "falcon-h1", "pixtral",   "midm-2.0",
+                                         "lfm2",    NULL};
+    static const char *const qwen2[]  = {"qwen2", "stablelm2", "hunyuan", "deepseek-r1-qwen", NULL};
+    static const char *const smollm[] = {"smollm", "codeshell", "exaone", "minerva-7b", NULL};
+    for (int i = 0; gpt2[i]; i++)
+        if (strcmp(pre, gpt2[i]) == 0) return PRETOK_GPT2;
+    for (int i = 0; llama3[i]; i++)
+        if (strcmp(pre, llama3[i]) == 0) return PRETOK_LLAMA3;
+    for (int i = 0; qwen2[i]; i++)
+        if (strcmp(pre, qwen2[i]) == 0) return PRETOK_QWEN2;
+    for (int i = 0; smollm[i]; i++)
+        if (strcmp(pre, smollm[i]) == 0) return PRETOK_SMOLLM;
+    if (strcmp(pre, "deepseek-llm") == 0) return PRETOK_DEEPSEEK_LLM;
     if (strcmp(pre, "deepseek-coder") == 0) return PRETOK_DEEPSEEK_CODER;
     return PRETOK_DEFAULT;
 }
 
 const char *pretok_type_name(PretokType t) {
     switch (t) {
-    case PRETOK_NONE:   return "none";
-    case PRETOK_GPT2:   return "gpt2";
-    case PRETOK_LLAMA3: return "llama3";
-    case PRETOK_QWEN2:  return "qwen2";
-    case PRETOK_SMOLLM: return "smollm";
-    case PRETOK_DEEPSEEK_LLM:   return "deepseek-llm";
-    case PRETOK_DEEPSEEK_CODER: return "deepseek-coder";
-    default:            return "default";
+        case PRETOK_NONE:
+            return "none";
+        case PRETOK_GPT2:
+            return "gpt2";
+        case PRETOK_LLAMA3:
+            return "llama3";
+        case PRETOK_QWEN2:
+            return "qwen2";
+        case PRETOK_SMOLLM:
+            return "smollm";
+        case PRETOK_DEEPSEEK_LLM:
+            return "deepseek-llm";
+        case PRETOK_DEEPSEEK_CODER:
+            return "deepseek-coder";
+        default:
+            return "default";
     }
 }

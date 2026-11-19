@@ -5,12 +5,12 @@
 #include <stddef.h>
 
 typedef struct {
-    void  *data;    /* pointer to mapped region */
-    size_t size;    /* file size in bytes */
+    void *data;  /* pointer to mapped region */
+    size_t size; /* file size in bytes */
 #ifdef _WIN32
-    void  *handle;  /* Windows HANDLE (pointer-sized, avoids truncation on x64) */
+    void *handle; /* Windows HANDLE (pointer-sized, avoids truncation on x64) */
 #else
-    int    fd;      /* POSIX file descriptor */
+    int fd; /* POSIX file descriptor */
 #endif
 } MappedFile;
 

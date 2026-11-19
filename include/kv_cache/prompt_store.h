@@ -29,20 +29,20 @@
 #include "kv_cache/prefix_cache.h"
 
 typedef struct {
-    int     *tokens;
-    int      len;
-    float   *k;          /* [n_layers][n_kv_heads][len][head_dim] */
-    float   *v;
-    size_t   bytes;
+    int *tokens;
+    int len;
+    float *k; /* [n_layers][n_kv_heads][len][head_dim] */
+    float *v;
+    size_t bytes;
     unsigned long long last_used;
 } PromptStoreEntry;
 
 typedef struct {
     PromptStoreEntry *entries;
-    int      n, cap;
-    size_t   bytes_used;
-    size_t   budget_bytes;   /* 0 = store disabled */
-    int      min_tokens;     /* sequences shorter than this are not stored */
+    int n, cap;
+    size_t bytes_used;
+    size_t budget_bytes; /* 0 = store disabled */
+    int min_tokens;      /* sequences shorter than this are not stored */
     unsigned long long clock;
     /* stats */
     unsigned long long hits, misses, evictions;
@@ -63,8 +63,8 @@ size_t prompt_store_bytes_per_token(const Config *cfg);
  * (the live PrefixCache's match), copy its first `lcp` positions into the
  * RunState, rewrite `live` to those tokens and return lcp; else return
  * live_match unchanged. Positions must fit in s->max_seq_len. */
-int prompt_store_restore(PromptStore *ps, const Config *cfg, RunState *s,
-                         PrefixCache *live, const int *tokens, int n, int live_match);
+int prompt_store_restore(PromptStore *ps, const Config *cfg, RunState *s, PrefixCache *live,
+                         const int *tokens, int n, int live_match);
 
 /* Snapshot the live sequence (live->tokens[0..live->n)) from the RunState.
  * Replaces entries that are a prefix of it; evicts LRU entries to fit. */

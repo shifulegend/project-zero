@@ -30,16 +30,16 @@
 static inline __m512 avx512_exp_ps(__m512 x) {
     const __m512 ln2     = _mm512_set1_ps(0.693147180559945f);
     const __m512 inv_ln2 = _mm512_set1_ps(1.44269504088896f);
-    const __m512 max_x   = _mm512_set1_ps( 88.3762626647950f);
+    const __m512 max_x   = _mm512_set1_ps(88.3762626647950f);
     const __m512 min_x   = _mm512_set1_ps(-88.3762626647950f);
 
     /* Clamp to float32 exp range */
     x = _mm512_min_ps(_mm512_max_ps(x, min_x), max_x);
 
     /* n = round(x / ln2) */
-    __m512 z    = _mm512_mul_ps(x, inv_ln2);
-    __m512i n   = _mm512_cvtps_epi32(z);       /* nearest int (rounds ties to even) */
-    __m512  n_f = _mm512_cvtepi32_ps(n);
+    __m512 z   = _mm512_mul_ps(x, inv_ln2);
+    __m512i n  = _mm512_cvtps_epi32(z); /* nearest int (rounds ties to even) */
+    __m512 n_f = _mm512_cvtepi32_ps(n);
 
     /* Reduced argument: r = x - n*ln2  (|r| <= ln2/2 ≈ 0.347) */
     __m512 r = _mm512_fnmadd_ps(n_f, ln2, x);
@@ -47,15 +47,15 @@ static inline __m512 avx512_exp_ps(__m512 x) {
     /* Polynomial for exp(r): 1 + r*(1 + r*(0.5 + r*(1/6 + r/24)))
      * Horner: p = 1/24; p = p*r + 1/6; p = p*r + 0.5; p = p*r + 1; p = p*r + 1 */
     __m512 p = _mm512_set1_ps(1.0f / 24.0f);
-    p = _mm512_fmadd_ps(p, r, _mm512_set1_ps(1.0f / 6.0f));
-    p = _mm512_fmadd_ps(p, r, _mm512_set1_ps(0.5f));
-    p = _mm512_fmadd_ps(p, r, _mm512_set1_ps(1.0f));
-    p = _mm512_fmadd_ps(p, r, _mm512_set1_ps(1.0f));
+    p        = _mm512_fmadd_ps(p, r, _mm512_set1_ps(1.0f / 6.0f));
+    p        = _mm512_fmadd_ps(p, r, _mm512_set1_ps(0.5f));
+    p        = _mm512_fmadd_ps(p, r, _mm512_set1_ps(1.0f));
+    p        = _mm512_fmadd_ps(p, r, _mm512_set1_ps(1.0f));
 
     /* Scale by 2^n: add n to float32 biased exponent field */
     __m512i exp_bits = _mm512_add_epi32(_mm512_set1_epi32(127), n);
-    exp_bits = _mm512_slli_epi32(exp_bits, 23);
-    __m512 scale = _mm512_castsi512_ps(exp_bits);
+    exp_bits         = _mm512_slli_epi32(exp_bits, 23);
+    __m512 scale     = _mm512_castsi512_ps(exp_bits);
 
     return _mm512_mul_ps(p, scale);
 }
@@ -63,12 +63,10 @@ static inline __m512 avx512_exp_ps(__m512 x) {
 void vec_add_avx512(float *out, const float *a, const float *b, int n) {
     int i = 0;
     for (; i + 15 < n; i += 16) {
-        _mm512_storeu_ps(&out[i],
-            _mm512_add_ps(_mm512_loadu_ps(&a[i]), _mm512_loadu_ps(&b[i])));
+        _mm512_storeu_ps(&out[i], _mm512_add_ps(_mm512_loadu_ps(&a[i]), _mm512_loadu_ps(&b[i])));
     }
     for (; i + 7 < n; i += 8) {
-        _mm256_storeu_ps(&out[i],
-            _mm256_add_ps(_mm256_loadu_ps(&a[i]), _mm256_loadu_ps(&b[i])));
+        _mm256_storeu_ps(&out[i], _mm256_add_ps(_mm256_loadu_ps(&a[i]), _mm256_loadu_ps(&b[i])));
     }
     for (; i < n; i++) out[i] = a[i] + b[i];
 }
@@ -76,12 +74,10 @@ void vec_add_avx512(float *out, const float *a, const float *b, int n) {
 void vec_mul_avx512(float *out, const float *a, const float *b, int n) {
     int i = 0;
     for (; i + 15 < n; i += 16) {
-        _mm512_storeu_ps(&out[i],
-            _mm512_mul_ps(_mm512_loadu_ps(&a[i]), _mm512_loadu_ps(&b[i])));
+        _mm512_storeu_ps(&out[i], _mm512_mul_ps(_mm512_loadu_ps(&a[i]), _mm512_loadu_ps(&b[i])));
     }
     for (; i + 7 < n; i += 8) {
-        _mm256_storeu_ps(&out[i],
-            _mm256_mul_ps(_mm256_loadu_ps(&a[i]), _mm256_loadu_ps(&b[i])));
+        _mm256_storeu_ps(&out[i], _mm256_mul_ps(_mm256_loadu_ps(&a[i]), _mm256_loadu_ps(&b[i])));
     }
     for (; i < n; i++) out[i] = a[i] * b[i];
 }
@@ -89,7 +85,7 @@ void vec_mul_avx512(float *out, const float *a, const float *b, int n) {
 void vec_scale_avx512(float *x, float s, int n) {
     __m512 sv16 = _mm512_set1_ps(s);
     __m256 sv8  = _mm256_set1_ps(s);
-    int i = 0;
+    int i       = 0;
     for (; i + 15 < n; i += 16) {
         _mm512_storeu_ps(&x[i], _mm512_mul_ps(_mm512_loadu_ps(&x[i]), sv16));
     }
@@ -114,25 +110,24 @@ void vec_scale_avx512(float *x, float s, int n) {
  * VNNI matmul and the second FFN projection).
  */
 void silu_avx512(float *x, int n) {
-    const __m512 one = _mm512_set1_ps(1.0f);
+    const __m512 one  = _mm512_set1_ps(1.0f);
     const __m512 zero = _mm512_setzero_ps();
-    int i = 0;
+    int i             = 0;
     for (; i + 15 < n; i += 16) {
         __m512 xv      = _mm512_loadu_ps(&x[i]);
-        __m512 neg_xv  = _mm512_sub_ps(zero, xv);     /* -x */
-        __m512 e       = avx512_exp_ps(neg_xv);        /* exp(-x) */
+        __m512 neg_xv  = _mm512_sub_ps(zero, xv); /* -x */
+        __m512 e       = avx512_exp_ps(neg_xv);   /* exp(-x) */
         __m512 sigmoid = _mm512_div_ps(one, _mm512_add_ps(one, e));
         _mm512_storeu_ps(&x[i], _mm512_mul_ps(xv, sigmoid));
     }
-    for (; i < n; i++)
-        x[i] = x[i] / (1.0f + expf(-x[i]));
+    for (; i < n; i++) x[i] = x[i] / (1.0f + expf(-x[i]));
 }
 
 /* ReLU²: max(x, 0)² — 16-wide */
 void relu2_avx512(float *x, int n) {
     __m512 zero16 = _mm512_setzero_ps();
     __m256 zero8  = _mm256_setzero_ps();
-    int i = 0;
+    int i         = 0;
     for (; i + 15 < n; i += 16) {
         __m512 v = _mm512_max_ps(_mm512_loadu_ps(&x[i]), zero16);
         _mm512_storeu_ps(&x[i], _mm512_mul_ps(v, v));
@@ -143,24 +138,22 @@ void relu2_avx512(float *x, int n) {
     }
     for (; i < n; i++) {
         float v = x[i] < 0.0f ? 0.0f : x[i];
-        x[i] = v * v;
+        x[i]    = v * v;
     }
 }
 
 /* Dot product with FMA — 16-wide, AVX2 tail */
 float vec_dot_avx512(const float *a, const float *b, int n) {
     __m512 acc16 = _mm512_setzero_ps();
-    int i = 0;
+    int i        = 0;
     for (; i + 15 < n; i += 16) {
-        acc16 = _mm512_fmadd_ps(_mm512_loadu_ps(&a[i]),
-                                _mm512_loadu_ps(&b[i]), acc16);
+        acc16 = _mm512_fmadd_ps(_mm512_loadu_ps(&a[i]), _mm512_loadu_ps(&b[i]), acc16);
     }
     float result = _mm512_reduce_add_ps(acc16);
 
     __m256 acc8 = _mm256_setzero_ps();
     for (; i + 7 < n; i += 8) {
-        acc8 = _mm256_fmadd_ps(_mm256_loadu_ps(&a[i]),
-                               _mm256_loadu_ps(&b[i]), acc8);
+        acc8 = _mm256_fmadd_ps(_mm256_loadu_ps(&a[i]), _mm256_loadu_ps(&b[i]), acc8);
     }
     /* Horizontal sum of acc8 */
     __m128 hi = _mm256_extractf128_ps(acc8, 1);
@@ -189,7 +182,7 @@ float vec_dot_avx512(const float *a, const float *b, int n) {
 void vec_saxpy_avx512(float *out, float scale, const float *v, int n) {
     __m512 sv16 = _mm512_set1_ps(scale);
     __m256 sv8  = _mm256_set1_ps(scale);
-    int i = 0;
+    int i       = 0;
     for (; i + 15 < n; i += 16) {
         __m512 ov = _mm512_loadu_ps(&out[i]);
         __m512 vv = _mm512_loadu_ps(&v[i]);

@@ -17,9 +17,9 @@ void stop_matcher_init(StopMatcher *m, const char *const *seqs, int n) {
 static int emit_prefix(StopMatcher *m, size_t n, StopEmitFn emit, void *ud) {
     int rc = 0;
     if (n > 0 && emit) {
-        char saved = m->pending[n];
+        char saved    = m->pending[n];
         m->pending[n] = '\0';
-        rc = emit(m->pending, ud);
+        rc            = emit(m->pending, ud);
         m->pending[n] = saved;
     }
     memmove(m->pending, m->pending + n, m->len - n + 1);
@@ -31,10 +31,13 @@ static int emit_prefix(StopMatcher *m, size_t n, StopEmitFn emit, void *ud) {
 static size_t held_suffix_len(const StopMatcher *m) {
     size_t best = 0;
     for (int s = 0; s < m->n_seqs; s++) {
-        size_t sl = strlen(m->seqs[s]);
+        size_t sl  = strlen(m->seqs[s]);
         size_t max = sl - 1 < m->len ? sl - 1 : m->len;
         for (size_t k = max; k > best; k--) {
-            if (memcmp(m->pending + m->len - k, m->seqs[s], k) == 0) { best = k; break; }
+            if (memcmp(m->pending + m->len - k, m->seqs[s], k) == 0) {
+                best = k;
+                break;
+            }
         }
     }
     return best;
@@ -48,10 +51,10 @@ int stop_matcher_feed(StopMatcher *m, const char *piece, StopEmitFn emit, void *
     size_t pl = strlen(piece);
     if (m->len + pl + 1 > m->cap) {
         size_t nc = (m->len + pl + 1) * 2;
-        char *nb = (char *)realloc(m->pending, nc);
+        char *nb  = (char *)realloc(m->pending, nc);
         if (!nb) return emit ? (emit(piece, ud) != 0) : 0; /* degrade: no matching */
         m->pending = nb;
-        m->cap = nc;
+        m->cap     = nc;
     }
     memcpy(m->pending + m->len, piece, pl + 1);
     m->len += pl;
@@ -64,9 +67,9 @@ int stop_matcher_feed(StopMatcher *m, const char *piece, StopEmitFn emit, void *
     }
     if (hit != (size_t)-1) {
         emit_prefix(m, hit, emit, ud);
-        m->len = 0;
+        m->len        = 0;
         m->pending[0] = '\0';
-        m->stopped = 1;
+        m->stopped    = 1;
         return 1;
     }
     size_t hold = held_suffix_len(m);

@@ -22,7 +22,7 @@
  */
 
 typedef struct {
-    float       *out;
+    float *out;
     const float *x;
     const tn_u8 *packed_w;
     int n, d, n_tokens;
@@ -32,22 +32,25 @@ typedef struct {
 static void ternary_matmul_packed_batch_task(void *arg, int thread_id, int start, int end) {
     (void)thread_id;
     TernaryBatchArgs *a = (TernaryBatchArgs *)arg;
-    size_t row_bytes = packed_bytes(a->n);
+    size_t row_bytes    = packed_bytes(a->n);
 
-    tn_i8 *row_i8 = (tn_i8 *)malloc((size_t)a->n * sizeof(tn_i8));
+    tn_i8 *row_i8  = (tn_i8 *)malloc((size_t)a->n * sizeof(tn_i8));
     float *row_f32 = (float *)malloc((size_t)a->n * sizeof(float));
     if (!row_i8 || !row_f32) {
-        free(row_i8); free(row_f32);
+        free(row_i8);
+        free(row_f32);
         /* OOM fallback: original scalar-per-token path, still correct. */
         for (int i = start; i < end; i++) {
             const tn_u8 *row = a->packed_w + (size_t)i * row_bytes;
             for (int k = 0; k < a->n_tokens; k++) {
                 const float *xk = a->x + (size_t)k * a->n;
-                float val = 0.0f;
+                float val       = 0.0f;
                 for (int j = 0; j < a->n; j++) {
                     tn_i8 w = unpack_ternary(row, j);
-                    if (w == 1) val += xk[j];
-                    else if (w == -1) val -= xk[j];
+                    if (w == 1)
+                        val += xk[j];
+                    else if (w == -1)
+                        val -= xk[j];
                 }
                 a->out[(size_t)k * a->d + i] = val * a->scale;
             }
@@ -69,7 +72,7 @@ static void ternary_matmul_packed_batch_task(void *arg, int thread_id, int start
         for (int j = 0; j < a->n; j++) row_f32[j] = (float)row_i8[j];
 
         for (int k = 0; k < a->n_tokens; k++) {
-            const float *xk = a->x + (size_t)k * a->n;
+            const float *xk              = a->x + (size_t)k * a->n;
             a->out[(size_t)k * a->d + i] = tn_vec_dot(row_f32, xk, a->n) * a->scale;
         }
     }
@@ -77,12 +80,15 @@ static void ternary_matmul_packed_batch_task(void *arg, int thread_id, int start
     free(row_f32);
 }
 
-void tn_ternary_matmul_packed_batch(float *out, const float *x, const tn_u8 *packed_w,
-                                     int n, int d, float scale, int n_tokens, ThreadPool *tp) {
-    TernaryBatchArgs args = {
-        .out = out, .x = x, .packed_w = packed_w,
-        .n = n, .d = d, .n_tokens = n_tokens, .scale = scale
-    };
+void tn_ternary_matmul_packed_batch(float *out, const float *x, const tn_u8 *packed_w, int n, int d,
+                                    float scale, int n_tokens, ThreadPool *tp) {
+    TernaryBatchArgs args = {.out      = out,
+                             .x        = x,
+                             .packed_w = packed_w,
+                             .n        = n,
+                             .d        = d,
+                             .n_tokens = n_tokens,
+                             .scale    = scale};
     if (!tp) {
         ternary_matmul_packed_batch_task(&args, 0, 0, d);
         return;
@@ -97,7 +103,9 @@ void tn_ternary_matmul_packed_batch(float *out, const float *x, const tn_u8 *pac
  * dotted against all n_tokens activations with the same tn_vec_dot() the
  * single-token parallel_matmul_float32() path uses. */
 typedef struct {
-    float *out; const float *x; const float *w;
+    float *out;
+    const float *x;
+    const float *w;
     int n, d, n_tokens;
 } F32BatchArgs;
 
@@ -111,9 +119,12 @@ static void matmul_f32_batch_task(void *arg, int thread_id, int start, int end) 
     }
 }
 
-void tn_matmul_f32_batch(float *out, const float *x, const float *w,
-                         int n, int d, int n_tokens, ThreadPool *tp) {
-    F32BatchArgs args = { out, x, w, n, d, n_tokens };
-    if (!tp) { matmul_f32_batch_task(&args, 0, 0, d); return; }
+void tn_matmul_f32_batch(float *out, const float *x, const float *w, int n, int d, int n_tokens,
+                         ThreadPool *tp) {
+    F32BatchArgs args = {out, x, w, n, d, n_tokens};
+    if (!tp) {
+        matmul_f32_batch_task(&args, 0, 0, d);
+        return;
+    }
     threadpool_dispatch(tp, matmul_f32_batch_task, &args, d);
 }

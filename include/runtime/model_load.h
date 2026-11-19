@@ -1,5 +1,5 @@
-#ifndef TN_CLI_MODEL_LOAD_H
-#define TN_CLI_MODEL_LOAD_H
+#ifndef TN_RUNTIME_MODEL_LOAD_H
+#define TN_RUNTIME_MODEL_LOAD_H
 
 #include <stdbool.h>
 #include "core/config.h"
@@ -70,9 +70,8 @@ typedef struct {
  *                          to tn_progress_stage()/tn_progress_done() for
  *                          the in-place vs. line-per-stage progress output.
  */
-TernaryError load_gguf_model(LoadedModel *out, const char *model_path,
-                              bool is_primary, int max_seq_len_hint,
-                              ThreadPool *tp, bool stdout_is_tty);
+TernaryError load_gguf_model(LoadedModel *out, const char *model_path, bool is_primary,
+                             int max_seq_len_hint, ThreadPool *tp, bool stdout_is_tty);
 
 /**
  * Frees everything load_gguf_model() allocated into `*m` on a TN_OK return,
@@ -85,4 +84,4 @@ TernaryError load_gguf_model(LoadedModel *out, const char *model_path,
  */
 void loaded_model_free(LoadedModel *m);
 
-#endif /* TN_CLI_MODEL_LOAD_H */
+#endif /* TN_RUNTIME_MODEL_LOAD_H */

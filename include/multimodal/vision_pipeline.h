@@ -47,18 +47,10 @@
  *         *out_prompt is still set to prompt_text so the caller can
  *         degrade gracefully to text-only generation.
  */
-TernaryError vision_pipeline_run(const char *image_path,
-                                  const char *vision_path,
-                                  const char *proj_path,
-                                  Config *cfg,
-                                  TransformerWeights *w,
-                                  RunState *s,
-                                  const MoEConfig *mc,
-                                  Tokenizer *tok,
-                                  ThreadPool *tp,
-                                  const char *prompt_text,
-                                  char *stripped_prompt_buf,
-                                  size_t stripped_prompt_buf_cap,
-                                  const char **out_prompt);
+TernaryError vision_pipeline_run(const char *image_path, const char *vision_path,
+                                 const char *proj_path, Config *cfg, TransformerWeights *w,
+                                 RunState *s, const MoEConfig *mc, Tokenizer *tok, ThreadPool *tp,
+                                 const char *prompt_text, char *stripped_prompt_buf,
+                                 size_t stripped_prompt_buf_cap, const char **out_prompt);
 
 #endif /* TN_VISION_PIPELINE_H */

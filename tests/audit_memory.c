@@ -11,13 +11,13 @@
  * invoking UB in posix_memalign or crashing the custom wrappers.
  */
 static void aud_mem_zero_size(void) {
-  void *ptr = tn_aligned_alloc(0, TN_SIMD_ALIGN);
-  void *ptr2 = tn_aligned_calloc(0, sizeof(float), TN_SIMD_ALIGN);
-  void *ptr3 = tn_aligned_calloc(10, 0, TN_SIMD_ALIGN);
+    void *ptr  = tn_aligned_alloc(0, TN_SIMD_ALIGN);
+    void *ptr2 = tn_aligned_calloc(0, sizeof(float), TN_SIMD_ALIGN);
+    void *ptr3 = tn_aligned_calloc(10, 0, TN_SIMD_ALIGN);
 
-  TEST_ASSERT(ptr == NULL, "tn_aligned_alloc(0) returns NULL");
-  TEST_ASSERT(ptr2 == NULL, "tn_aligned_calloc(0, size) returns NULL");
-  TEST_ASSERT(ptr3 == NULL, "tn_aligned_calloc(count, 0) returns NULL");
+    TEST_ASSERT(ptr == NULL, "tn_aligned_alloc(0) returns NULL");
+    TEST_ASSERT(ptr2 == NULL, "tn_aligned_calloc(0, size) returns NULL");
+    TEST_ASSERT(ptr3 == NULL, "tn_aligned_calloc(count, 0) returns NULL");
 }
 
 /**
@@ -26,14 +26,13 @@ static void aud_mem_zero_size(void) {
  * Passing an invalid alignment like 3 or 10 should gracefully fail.
  */
 static void aud_mem_invalid_align(void) {
-  void *ptr1 = tn_aligned_alloc(1024, 3);
-  void *ptr2 = tn_aligned_alloc(1024, 10);
-  void *ptr3 =
-      tn_aligned_alloc(1024, sizeof(void *) / 2); // Less than pointer size
+    void *ptr1 = tn_aligned_alloc(1024, 3);
+    void *ptr2 = tn_aligned_alloc(1024, 10);
+    void *ptr3 = tn_aligned_alloc(1024, sizeof(void *) / 2); // Less than pointer size
 
-  TEST_ASSERT(ptr1 == NULL, "Invalid alignment (3) returns NULL");
-  TEST_ASSERT(ptr2 == NULL, "Invalid alignment (10) returns NULL");
-  TEST_ASSERT(ptr3 == NULL, "Invalid alignment (< ptr_size) returns NULL");
+    TEST_ASSERT(ptr1 == NULL, "Invalid alignment (3) returns NULL");
+    TEST_ASSERT(ptr2 == NULL, "Invalid alignment (10) returns NULL");
+    TEST_ASSERT(ptr3 == NULL, "Invalid alignment (< ptr_size) returns NULL");
 }
 
 /**
@@ -42,17 +41,17 @@ static void aud_mem_invalid_align(void) {
  * rather than attempting to allocate a tiny wrapped-around amount.
  */
 static void aud_mem_calloc_overflow(void) {
-  size_t gigantic_count = SIZE_MAX / 2 + 100;
-  size_t size = 4;
+    size_t gigantic_count = SIZE_MAX / 2 + 100;
+    size_t size           = 4;
 
-  // gigantic_count * 4 > SIZE_MAX, should wrap around to a small number
-  void *ptr = tn_aligned_calloc(gigantic_count, size, TN_SIMD_ALIGN);
-  TEST_ASSERT(ptr == NULL, "tn_aligned_calloc traps integer overflow");
+    // gigantic_count * 4 > SIZE_MAX, should wrap around to a small number
+    void *ptr = tn_aligned_calloc(gigantic_count, size, TN_SIMD_ALIGN);
+    TEST_ASSERT(ptr == NULL, "tn_aligned_calloc traps integer overflow");
 }
 
 int main(void) {
-  RUN_TEST(aud_mem_zero_size);
-  RUN_TEST(aud_mem_invalid_align);
-  RUN_TEST(aud_mem_calloc_overflow);
-  TEST_SUMMARY();
+    RUN_TEST(aud_mem_zero_size);
+    RUN_TEST(aud_mem_invalid_align);
+    RUN_TEST(aud_mem_calloc_overflow);
+    TEST_SUMMARY();
 }

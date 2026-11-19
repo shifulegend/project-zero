@@ -41,13 +41,8 @@ float rag_cosine_similarity(const float *a, const float *b, int dim);
  * @param out_scores   Output: cosine scores of top-k entries (size k)
  * @return             Actual number of results filled (≤ k).
  */
-int rag_find_top_k(const float *query,
-                   const float *embeddings,
-                   int n_entries,
-                   int dim,
-                   int k,
-                   int *out_indices,
-                   float *out_scores);
+int rag_find_top_k(const float *query, const float *embeddings, int n_entries, int dim, int k,
+                   int *out_indices, float *out_scores);
 
 #ifdef __cplusplus
 }

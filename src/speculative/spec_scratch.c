@@ -17,12 +17,12 @@ TernaryError spec_batch_scratch_alloc(SpecBatchScratch *sb, const Config *cfg, i
         return TN_ERR_OOM;
     }
 
-    sb->x      = (float *)tn_aligned_calloc(dim_count, sizeof(float), TN_SIMD_ALIGN);
-    sb->xb     = (float *)tn_aligned_calloc(dim_count, sizeof(float), TN_SIMD_ALIGN);
-    sb->xb2    = (float *)tn_aligned_calloc(dim_count, sizeof(float), TN_SIMD_ALIGN);
-    sb->hb     = (float *)tn_aligned_calloc(hidden_count, sizeof(float), TN_SIMD_ALIGN);
-    sb->hb2    = (float *)tn_aligned_calloc(hidden_count, sizeof(float), TN_SIMD_ALIGN);
-    sb->q      = (float *)tn_aligned_calloc(dim_count, sizeof(float), TN_SIMD_ALIGN);
+    sb->x   = (float *)tn_aligned_calloc(dim_count, sizeof(float), TN_SIMD_ALIGN);
+    sb->xb  = (float *)tn_aligned_calloc(dim_count, sizeof(float), TN_SIMD_ALIGN);
+    sb->xb2 = (float *)tn_aligned_calloc(dim_count, sizeof(float), TN_SIMD_ALIGN);
+    sb->hb  = (float *)tn_aligned_calloc(hidden_count, sizeof(float), TN_SIMD_ALIGN);
+    sb->hb2 = (float *)tn_aligned_calloc(hidden_count, sizeof(float), TN_SIMD_ALIGN);
+    sb->q   = (float *)tn_aligned_calloc(dim_count, sizeof(float), TN_SIMD_ALIGN);
 
     if (!sb->x || !sb->xb || !sb->xb2 || !sb->hb || !sb->hb2 || !sb->q) {
         spec_batch_scratch_free(sb);

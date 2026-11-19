@@ -1,14 +1,19 @@
 name: Independent Security Audit CI
 on: [push, pull_request]
+
+# Least privilege: read-only token; no job here writes to the repository.
+permissions:
+  contents: read
+
 jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install Dependencies
         run: |
           sudo apt-get update -q || { echo "apt-get update failed; dropping the runner's third-party Microsoft repo (unused) and retrying"; sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list /etc/apt/sources.list.d/*microsoft*; sudo apt-get update -q; }
-          sudo apt-get install -y cmake clang valgrind python3
+          sudo apt-get install -y cmake clang python3
       - name: Build with ASan/UBSan
         run: |
           mkdir build && cd build
@@ -32,7 +37,7 @@ jobs:
     name: ThreadSanitizer (TS-5.3)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install Dependencies
         run: |
           sudo apt-get update -q || { echo "apt-get update failed; dropping the runner's third-party Microsoft repo (unused) and retrying"; sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list /etc/apt/sources.list.d/*microsoft*; sudo apt-get update -q; }

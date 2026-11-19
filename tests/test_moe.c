@@ -33,7 +33,7 @@ static void fill_f32(float *buf, int n, float val) {
  * Returns a calloc'd buffer of packed_bytes(count) bytes.
  */
 static tn_u8 *alloc_packed_ternary(size_t count, int seed) {
-    size_t pb = packed_bytes((int)count);
+    size_t pb  = packed_bytes((int)count);
     tn_u8 *buf = (tn_u8 *)calloc(pb, 1);
     if (!buf) return NULL;
     for (size_t i = 0; i < count; i++) {
@@ -64,16 +64,19 @@ static Config tiny_config(void) {
 static void alloc_dense_layer(TransformerWeights *w, const Config *cfg, int l) {
     int dim        = cfg->dim;
     int hidden_dim = cfg->hidden_dim;
-    size_t gate  = (size_t)dim * hidden_dim;  /* number of weights */
-    size_t down  = (size_t)hidden_dim * dim;
+    size_t gate    = (size_t)dim * hidden_dim; /* number of weights */
+    size_t down    = (size_t)hidden_dim * dim;
 
     w->rms_ffn_weight[l] = (float *)calloc(dim, sizeof(float));
     fill_f32(w->rms_ffn_weight[l], dim, 1.0f);
 
     /* packed_bytes() buffers — 4 ternary weights per byte */
-    w->w1[l] = (tn_i8 *)alloc_packed_ternary(gate, l*100+5); w->s1[l] = 1.0f;
-    w->w2[l] = (tn_i8 *)alloc_packed_ternary(down, l*100+6); w->s2[l] = 1.0f;
-    w->w3[l] = (tn_i8 *)alloc_packed_ternary(gate, l*100+7); w->s3[l] = 1.0f;
+    w->w1[l] = (tn_i8 *)alloc_packed_ternary(gate, l * 100 + 5);
+    w->s1[l] = 1.0f;
+    w->w2[l] = (tn_i8 *)alloc_packed_ternary(down, l * 100 + 6);
+    w->s2[l] = 1.0f;
+    w->w3[l] = (tn_i8 *)alloc_packed_ternary(gate, l * 100 + 7);
+    w->s3[l] = 1.0f;
 }
 
 /* ================================================================
@@ -106,11 +109,10 @@ static void test_moe_router_topk(void) {
 
     float x[4] = {1.0f, 1.0f, 1.0f, 1.0f};
     float expert_scores[8];
-    int   selected[2];
+    int selected[2];
     float sel_scores[2];
 
-    moe_router_forward(expert_scores, selected, sel_scores,
-                       x, gate_w, dim, ne, top_k, NULL);
+    moe_router_forward(expert_scores, selected, sel_scores, x, gate_w, dim, ne, top_k, NULL);
 
     int got6 = (selected[0] == 6 || selected[1] == 6);
     int got2 = (selected[0] == 2 || selected[1] == 2);
@@ -132,13 +134,13 @@ static void test_moe_router_scores_sum_1(void) {
         for (int j = 0; j < dim; j++)
             gate_w[e * dim + j] = (float)((e % 3 == 0) ? 1.0f : ((e % 3 == 1) ? 0.0f : -1.0f));
 
-    float x[8]; fill_f32(x, dim, 1.0f);
+    float x[8];
+    fill_f32(x, dim, 1.0f);
     float expert_scores[6];
-    int   selected[3];
+    int selected[3];
     float sel_scores[3];
 
-    moe_router_forward(expert_scores, selected, sel_scores,
-                       x, gate_w, dim, ne, top_k, NULL);
+    moe_router_forward(expert_scores, selected, sel_scores, x, gate_w, dim, ne, top_k, NULL);
 
     float sum = 0.0f;
     for (int i = 0; i < top_k; i++) sum += sel_scores[i];
@@ -162,27 +164,27 @@ static void test_moe_ffn_output_finite(void) {
     tn_simd_init();
     Config cfg = tiny_config();
     MoEConfig mc;
-    mc.is_moe = true;
-    mc.num_experts = 4;
-    mc.num_experts_per_tok = 2;
-    mc.expert_hidden_dim = cfg.hidden_dim;
+    mc.is_moe                = true;
+    mc.num_experts           = 4;
+    mc.num_experts_per_tok   = 2;
+    mc.expert_hidden_dim     = cfg.hidden_dim;
     mc.first_k_dense_replace = 0;
 
     TransformerWeights w;
     memset(&w, 0, sizeof(w));
     weights_alloc_pointers(&w, &cfg);
-    w.layers_are_ternary = true;   /* set after alloc_pointers (modular ordering) */
+    w.layers_are_ternary = true; /* set after alloc_pointers (modular ordering) */
     alloc_dense_layer(&w, &cfg, 0);
 
     int nl = cfg.n_layers, ne = mc.num_experts, ehdim = mc.expert_hidden_dim;
     w.moe_gate_w = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
     w.moe_gate_s = (float *)calloc(nl, sizeof(float));
-    w.moe_w1 = (tn_i8 ***)calloc(nl, sizeof(tn_i8 **));
-    w.moe_w2 = (tn_i8 ***)calloc(nl, sizeof(tn_i8 **));
-    w.moe_w3 = (tn_i8 ***)calloc(nl, sizeof(tn_i8 **));
-    w.moe_s1 = (float **)calloc(nl, sizeof(float *));
-    w.moe_s2 = (float **)calloc(nl, sizeof(float *));
-    w.moe_s3 = (float **)calloc(nl, sizeof(float *));
+    w.moe_w1     = (tn_i8 ***)calloc(nl, sizeof(tn_i8 **));
+    w.moe_w2     = (tn_i8 ***)calloc(nl, sizeof(tn_i8 **));
+    w.moe_w3     = (tn_i8 ***)calloc(nl, sizeof(tn_i8 **));
+    w.moe_s1     = (float **)calloc(nl, sizeof(float *));
+    w.moe_s2     = (float **)calloc(nl, sizeof(float *));
+    w.moe_s3     = (float **)calloc(nl, sizeof(float *));
 
     for (int l = 0; l < nl; l++) {
         /* moe_gate_w is stored as a tn_i8* pointer but holds raw F32 gate
@@ -195,17 +197,19 @@ static void test_moe_ffn_output_finite(void) {
          * F32 SIMD load read past this buffer's true (undersized) end. */
         w.moe_gate_w[l] = (tn_i8 *)calloc((size_t)cfg.dim * ne, sizeof(float));
         w.moe_gate_s[l] = 1.0f;
-        w.moe_w1[l] = (tn_i8 **)calloc(ne, sizeof(tn_i8 *));
-        w.moe_w2[l] = (tn_i8 **)calloc(ne, sizeof(tn_i8 *));
-        w.moe_w3[l] = (tn_i8 **)calloc(ne, sizeof(tn_i8 *));
-        w.moe_s1[l] = (float *)calloc(ne, sizeof(float));
-        w.moe_s2[l] = (float *)calloc(ne, sizeof(float));
-        w.moe_s3[l] = (float *)calloc(ne, sizeof(float));
+        w.moe_w1[l]     = (tn_i8 **)calloc(ne, sizeof(tn_i8 *));
+        w.moe_w2[l]     = (tn_i8 **)calloc(ne, sizeof(tn_i8 *));
+        w.moe_w3[l]     = (tn_i8 **)calloc(ne, sizeof(tn_i8 *));
+        w.moe_s1[l]     = (float *)calloc(ne, sizeof(float));
+        w.moe_s2[l]     = (float *)calloc(ne, sizeof(float));
+        w.moe_s3[l]     = (float *)calloc(ne, sizeof(float));
         for (int e = 0; e < ne; e++) {
             w.moe_w1[l][e] = (tn_i8 *)calloc((size_t)cfg.dim * ehdim, sizeof(tn_i8));
             w.moe_w2[l][e] = (tn_i8 *)calloc((size_t)ehdim * cfg.dim, sizeof(tn_i8));
             w.moe_w3[l][e] = (tn_i8 *)calloc((size_t)cfg.dim * ehdim, sizeof(tn_i8));
-            w.moe_s1[l][e] = 1.0f; w.moe_s2[l][e] = 1.0f; w.moe_s3[l][e] = 1.0f;
+            w.moe_s1[l][e] = 1.0f;
+            w.moe_s2[l][e] = 1.0f;
+            w.moe_s3[l][e] = 1.0f;
         }
     }
 
@@ -220,15 +224,29 @@ static void test_moe_ffn_output_finite(void) {
     for (int l = 0; l < nl; l++) {
         free(w.moe_gate_w[l]);
         for (int e = 0; e < ne; e++) {
-            free(w.moe_w1[l][e]); free(w.moe_w2[l][e]); free(w.moe_w3[l][e]);
+            free(w.moe_w1[l][e]);
+            free(w.moe_w2[l][e]);
+            free(w.moe_w3[l][e]);
         }
-        free(w.moe_w1[l]); free(w.moe_w2[l]); free(w.moe_w3[l]);
-        free(w.moe_s1[l]); free(w.moe_s2[l]); free(w.moe_s3[l]);
-        free(w.rms_ffn_weight[l]); free(w.w1[l]); free(w.w2[l]); free(w.w3[l]);
+        free(w.moe_w1[l]);
+        free(w.moe_w2[l]);
+        free(w.moe_w3[l]);
+        free(w.moe_s1[l]);
+        free(w.moe_s2[l]);
+        free(w.moe_s3[l]);
+        free(w.rms_ffn_weight[l]);
+        free(w.w1[l]);
+        free(w.w2[l]);
+        free(w.w3[l]);
     }
-    free(w.moe_gate_w); free(w.moe_gate_s);
-    free(w.moe_w1); free(w.moe_w2); free(w.moe_w3);
-    free(w.moe_s1); free(w.moe_s2); free(w.moe_s3);
+    free(w.moe_gate_w);
+    free(w.moe_gate_s);
+    free(w.moe_w1);
+    free(w.moe_w2);
+    free(w.moe_w3);
+    free(w.moe_s1);
+    free(w.moe_s2);
+    free(w.moe_s3);
     weights_free_pointers(&w);
 }
 
@@ -245,7 +263,7 @@ static void test_moe_dense_unchanged(void) {
      * that function no longer does a memset, so this ordering is safe. */
     weights_alloc_pointers(&w, &cfg);
     w.layers_are_ternary = true;
-    alloc_dense_layer(&w, &cfg, 0);  /* allocates proper packed ternary */
+    alloc_dense_layer(&w, &cfg, 0); /* allocates proper packed ternary */
 
     RunState s1, s2;
     run_state_alloc(&s1, &cfg, cfg.seq_len);
@@ -256,13 +274,18 @@ static void test_moe_dense_unchanged(void) {
     /* Case 1: mc == NULL  (dense path) */
     ffn_forward(&s1, &w, &cfg, NULL, 0, NULL);
     /* Case 2: mc->is_moe == false  (same dense path) */
-    MoEConfig mc_dense; moe_config_init_dense(&mc_dense);
+    MoEConfig mc_dense;
+    moe_config_init_dense(&mc_dense);
     ffn_forward(&s2, &w, &cfg, &mc_dense, 0, NULL);
 
     for (int i = 0; i < cfg.dim; i++) TEST_ASSERT_FLOAT_EQ(s1.x[i], s2.x[i], 1e-7f, "Paths match");
 
-    run_state_free(&s1); run_state_free(&s2);
-    free(w.rms_ffn_weight[0]); free(w.w1[0]); free(w.w2[0]); free(w.w3[0]);
+    run_state_free(&s1);
+    run_state_free(&s2);
+    free(w.rms_ffn_weight[0]);
+    free(w.w1[0]);
+    free(w.w2[0]);
+    free(w.w3[0]);
     weights_free_pointers(&w);
 }
 

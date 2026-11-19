@@ -18,10 +18,9 @@
  *   - The accumulation becomes: out[i] = sum_g( scale[g] * sum_j_in_g(...) )
  * For now, per-matrix scale is correct for unpacked int8 ternary weights.
  */
-void ternary_matmul(float *out, const float *x, const tn_i8 *w,
-                    int n, int d, float scale) {
+void ternary_matmul(float *out, const float *x, const tn_i8 *w, int n, int d, float scale) {
     for (int i = 0; i < d; i++) {
-        float val = 0.0f;
+        float val        = 0.0f;
         const tn_i8 *row = w + (size_t)i * n;
 
         for (int j = 0; j < n; j++) {

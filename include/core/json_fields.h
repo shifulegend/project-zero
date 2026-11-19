@@ -1,10 +1,11 @@
-#ifndef TN_JSON_FIELDS_H
-#define TN_JSON_FIELDS_H
+#ifndef TN_CORE_JSON_FIELDS_H
+#define TN_CORE_JSON_FIELDS_H
 
 /*
  * json_fields.h — read individual top-level fields of a small JSON object
  * (for the simple endpoints: watermark detect, config). Shares the
- * string/number decoding of json_parse.c.
+ * string/number decoding of src/api/json_parse.c, which implements these
+ * functions (the header is in core/ so update/ can use it without including api/).
  */
 
 /* Heap copy of a top-level string field, or NULL if absent / not a string. */
@@ -24,4 +25,4 @@ char *json_field_number_text(const char *json_body, const char *key);
  * count, or -1 if absent / not an array of strings (nothing allocated). */
 int json_field_string_list(const char *json_body, const char *key, char **out, int max);
 
-#endif /* TN_JSON_FIELDS_H */
+#endif /* TN_CORE_JSON_FIELDS_H */

@@ -135,6 +135,25 @@ static void test_act_quant_of_tier(void) {
     TEST_ASSERT(strcmp(tn_calibration_act_quant(&r), "float") == 0, "scalar keeps float activations");
 }
 
+static void test_act_timing(void) {
+    TnCalibrationResult r;
+    memset(&r, 0, sizeof(r));
+    double a = 0, b = 0;
+    TEST_ASSERT_EQ(tn_calibration_act_timing(&r, 0, &a, &b), 0, "invalid result");
+    r.valid = 1;
+    TEST_ASSERT_EQ(tn_calibration_act_timing(&r, 0, &a, &b), 0, "nothing measured");
+    r.simd_tokps[1] = 70; r.simd_tokps[2] = 90; r.simd_tokps[3] = 85;
+    TEST_ASSERT_EQ(tn_calibration_act_timing(&r, 0, &a, &b), 0, "no int8 tier measured");
+    r.simd_tokps[4] = 116; r.simd_tokps[5] = 110;
+    TEST_ASSERT_EQ(tn_calibration_act_timing(&r, 0, &a, &b), 1, "both groups measured");
+    TEST_ASSERT(a == 116 && b == 90, "best of each group");
+    r.simd_tokps[0] = 120;
+    TEST_ASSERT_EQ(tn_calibration_act_timing(&r, 1, &a, &b), 1, "auto counted with the int8 tiers");
+    TEST_ASSERT(a == 120 && b == 90, "auto is int8 here");
+    TEST_ASSERT_EQ(tn_calibration_act_timing(&r, 0, &a, &b), 1, "auto counted with the float tiers");
+    TEST_ASSERT(a == 116 && b == 120, "auto is float here");
+}
+
 int main(void) {
     RUN_TEST(test_wins_needed);
     RUN_TEST(test_noise_never_wins);
@@ -142,5 +161,6 @@ int main(void) {
     RUN_TEST(test_margin_and_ties);
     RUN_TEST(test_cache_key);
     RUN_TEST(test_act_quant_of_tier);
+    RUN_TEST(test_act_timing);
     TEST_SUMMARY();
 }

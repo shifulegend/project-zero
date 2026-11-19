@@ -154,6 +154,12 @@ const char *tn_calibration_best_simd(const TnCalibrationResult *result);
  * the sweep times the int8 tier against the float tiers and a float tier wins only on a clear margin. */
 const char *tn_calibration_act_quant(const TnCalibrationResult *result);
 
+/* The measured evidence behind that choice: the best median tok/s among the int8 tiers (vnni, vnni256 and,
+ * when the dispatcher's own choice "auto" quantises activations, auto) and among the float tiers (scalar,
+ * avx2, avx512f and, otherwise, auto) of the sweep. Returns 1 and fills both when the
+ * result is valid and both groups were measured, else 0. */
+int tn_calibration_act_timing(const TnCalibrationResult *result, int auto_is_int8, double *int8_tokps, double *float_tokps);
+
 /*
  * Get the recommended classifier for --classifier auto-fast.
  * Returns the fastest classifier format from calibration.

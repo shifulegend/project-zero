@@ -2,7 +2,7 @@
 
 Follows `2026-11-18-ternary-output-correctness.md` (the RCA).
 
-Status: implemented — F1 quantiser specification and exactness tests (#75), the correctness gate (§ 2, #74/#77) and the faster LM-head kernels (#76). Also implemented: F2 `--act-quant`, F6 the in-engine probe (`eval/selfcheck.c`), `pz --self-check`, `POST /v1/selfcheck`, the web UI panel and `--quality-tolerance`; an explicit lossy LM head that fails the probe falls back to BF16. Not implemented: choosing `act-quant` from calibration timing.
+Status: implemented — F1 quantiser specification and exactness tests (#75), the correctness gate (§ 2, #74/#77) and the faster LM-head kernels (#76). Also implemented: F2 `--act-quant`, F6 the in-engine probe (`eval/selfcheck.c`), `pz --self-check`, `POST /v1/selfcheck`, the web UI panel and `--quality-tolerance`; an explicit lossy LM head that fails the probe falls back to BF16.  `auto` is decided by calibration timing (int8 tier against the float tiers, existing sign test); the probe is the on-demand accuracy check.
 Your decisions (2026-11-18) are recorded in § 5 and applied below.
 
 ## 1. Fix pz's activation quantisation (separate PR from master)

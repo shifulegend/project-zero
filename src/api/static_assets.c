@@ -6,6 +6,7 @@
 #include "api/static_assets.h"
 #include "api/net_io.h"
 #include "api/webui_bundle.h"
+#include "api/http_status.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -58,14 +59,14 @@ static void write_headers(int fd, int status, const char *mime_type, size_t body
         "Connection: close\r\n"
         "%s"
         "\r\n",
-        status, status == 200 ? "OK" : "Not Found", mime_type, body_len,
+        status, status == HTTP_OK ? "OK" : "Not Found", mime_type, body_len,
         extra_headers ? extra_headers : "");
     if (n > 0) (void)net_write_all(fd, hdr, (size_t)n);   /* peer gone: the body write fails too */
 }
 
 static void serve_404(int fd, const char *extra_headers) {
     const char *body = "Not found";
-    write_headers(fd, 404, "text/plain", strlen(body), extra_headers);
+    write_headers(fd, HTTP_NOT_FOUND, "text/plain", strlen(body), extra_headers);
     (void)net_write_all(fd, body, strlen(body));
 }
 
@@ -76,7 +77,7 @@ static int serve_from_disk(int fd, const char *static_dir, const char *path,
     char fs_path[1024];
     if (!static_assets_path_is_safe(path)) {
         serve_404(fd, extra_headers);
-        return 404;
+        return HTTP_NOT_FOUND;
     }
     if (strcmp(path, "/") == 0) {
         snprintf(fs_path, sizeof(fs_path), "%s/index.html", static_dir);
@@ -92,23 +93,23 @@ static int serve_from_disk(int fd, const char *static_dir, const char *path,
     }
     if (!f) {
         serve_404(fd, extra_headers);
-        return 404;
+        return HTTP_NOT_FOUND;
     }
 
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
     fseek(f, 0, SEEK_SET);
-    if (size < 0) { fclose(f); serve_404(fd, extra_headers); return 404; }
+    if (size < 0) { fclose(f); serve_404(fd, extra_headers); return HTTP_NOT_FOUND; }
 
     char *buf = (char *)malloc((size_t)size);
-    if (!buf) { fclose(f); serve_404(fd, extra_headers); return 404; }
+    if (!buf) { fclose(f); serve_404(fd, extra_headers); return HTTP_NOT_FOUND; }
     size_t nread = fread(buf, 1, (size_t)size, f);
     fclose(f);
 
-    write_headers(fd, 200, mime_for_path(fs_path), nread, extra_headers);
+    write_headers(fd, HTTP_OK, mime_for_path(fs_path), nread, extra_headers);
     (void)net_write_all(fd, buf, nread);
     free(buf);
-    return 200;
+    return HTTP_OK;
 }
 
 /* ── Embedded-bundle mode (default) ──────────────────────────────────────── */
@@ -132,11 +133,11 @@ static int serve_from_bundle(int fd, const char *path, const char *extra_headers
     const WebuiAsset *asset = static_assets_find_in(g_webui_assets, g_webui_assets_count, path);
     if (!asset) {
         serve_404(fd, extra_headers);
-        return 404;
+        return HTTP_NOT_FOUND;
     }
-    write_headers(fd, 200, asset->mime_type, asset->len, extra_headers);
+    write_headers(fd, HTTP_OK, asset->mime_type, asset->len, extra_headers);
     (void)net_write_all(fd, asset->data, asset->len);
-    return 200;
+    return HTTP_OK;
 }
 
 /* ── Public API ───────────────────────────────────────────────────────────── */

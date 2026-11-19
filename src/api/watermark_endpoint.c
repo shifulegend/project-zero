@@ -1,6 +1,7 @@
 #include "api/watermark_endpoint.h"
 #include "api/json_fields.h"
 #include "api/json_write.h"
+#include "api/http_status.h"
 #include "sampling/watermark_text.h"
 #include <stdlib.h>
 #include <string.h>
@@ -17,10 +18,10 @@ static char *error_body(const char *msg) {
 char *api_watermark_detect(const ApiContext *ctx, const char *json_body, int *status) {
     int st_dummy;
     if (!status) status = &st_dummy;
-    if (!ctx || !ctx->tok) { *status = 500; return error_body("No tokenizer loaded"); }
+    if (!ctx || !ctx->tok) { *status = HTTP_INTERNAL_ERROR; return error_body("No tokenizer loaded"); }
 
     char *text = json_field_string(json_body, "text");
-    if (!text) { *status = 400; return error_body("Missing 'text' string field"); }
+    if (!text) { *status = HTTP_BAD_REQUEST; return error_body("Missing 'text' string field"); }
 
     WatermarkConfig wm = ctx->server_config.gen_defaults.watermark;
     char *key = json_field_string(json_body, "key");
@@ -34,7 +35,7 @@ char *api_watermark_detect(const ApiContext *ctx, const char *json_body, int *st
     WatermarkResult wr;
     TernaryError err = watermark_detect_text(&wm, ctx->tok, text, &wr);
     free(text);
-    if (err != TN_OK) { *status = 500; return error_body("Tokenization failed"); }
+    if (err != TN_OK) { *status = HTTP_INTERNAL_ERROR; return error_body("Tokenization failed"); }
 
     JsonBuf jb;
     jb_init(&jb);
@@ -47,6 +48,6 @@ char *api_watermark_detect(const ApiContext *ctx, const char *json_body, int *st
     jb_raw(&jb, ","); jb_key(&jb, "watermarked");    jb_bool(&jb, wr.n_scored > 0 && wr.z_score >= z_thr);
     jb_raw(&jb, "}");
     char *out = jb_finish(&jb);
-    *status = out ? 200 : 500;
+    *status = out ? HTTP_OK : HTTP_INTERNAL_ERROR;
     return out;
 }

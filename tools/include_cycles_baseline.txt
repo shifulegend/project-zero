@@ -4,7 +4,6 @@ core->kv_cache
 core->math
 core->memory
 core->threading
-distributed->transformer
 kv_cache->core
 kv_cache->math
 kv_cache->memory
@@ -16,4 +15,3 @@ memory->core
 memory->kv_cache
 threading->core
 threading->math
-transformer->distributed

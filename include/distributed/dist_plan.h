@@ -64,10 +64,4 @@ RemoteNode *dist_plan_node_starting_at(DistPlan *dp, int layer);
  * the worker mirrors so both sides map positions to the same KV slots. */
 TernaryError dist_forward_remote(DistPlan *dp, RemoteNode *node, float *x, int pos, int sw_pinned);
 
-/* Worker loop: serves FORWARD requests for layers [start, end) forever
- * (one coordinator connection at a time). Returns only on listen failure. */
-TernaryError dist_worker_serve(int port, int loopback_only, int start, int end, const Config *cfg,
-                               const TransformerWeights *w, RunState *s, const MoEConfig *mc,
-                               ThreadPool *tp);
-
 #endif /* TN_DIST_PLAN_H */

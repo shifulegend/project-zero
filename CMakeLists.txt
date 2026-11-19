@@ -257,6 +257,7 @@ set(TRANSFORMER_SOURCES
     src/transformer/stop_seq.c
     src/transformer/attn_tiled.c
     src/transformer/mamba.c
+    src/transformer/dist_worker.c
 )
 
 set(SAMPLING_SOURCES

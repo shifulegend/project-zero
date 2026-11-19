@@ -32,6 +32,7 @@
 #include "reasoning/mcts.h"
 #include "reasoning/prm.h"
 #include "distributed/dist_plan.h"
+#include "transformer/dist_worker.h"
 #include "update/update_check.h"
 #include "math/rope.h"
 #include "eval/perplexity.h"
@@ -45,7 +46,6 @@
 #include "speculative/draft_model.h"
 #include "speculative/spec_decode.h"
 #include "math/simd_dispatch.h"
-
 /* Phase 15 RAG */
 #include "rag/rag_context.h"
 #include "rag/vector_db.h"

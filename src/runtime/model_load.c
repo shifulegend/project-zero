@@ -1,5 +1,5 @@
 #include "runtime/model_load.h"
-#include "transformer/mamba.h"
+#include "core/mamba_state.h"
 
 #include <stdio.h>
 #include <stdlib.h>

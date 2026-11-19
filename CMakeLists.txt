@@ -149,6 +149,7 @@ set(CORE_SOURCES
     src/core/gguf_i2s.c
     src/core/gguf_loader.c
     src/core/mamba_state.c
+    src/core/spec_scratch.c
     src/core/gguf_config.c
     src/core/lora_load.c
 )
@@ -287,7 +288,6 @@ set(KV_CACHE_SOURCES
 )
 
 set(SPECULATIVE_SOURCES
-    src/speculative/spec_scratch.c
     src/speculative/draft_model.c
     src/speculative/accept_reject.c
     src/speculative/spec_decode.c

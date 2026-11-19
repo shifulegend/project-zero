@@ -10,7 +10,7 @@
 #include "core/moe_weights.h"
 #include "core/unpack.h"
 #include "math/simd_dispatch.h"
-#include "speculative/spec_scratch.h"
+#include "core/spec_scratch.h"
 #include "transformer/forward.h"
 #include "core/lora.h"
 #include <pthread.h>

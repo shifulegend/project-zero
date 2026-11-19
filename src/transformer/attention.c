@@ -10,7 +10,7 @@
 #include "math/simd_dispatch.h"
 #include "math/batched_matmul.h"
 #include "math/lora_matmul.h"
-#include "speculative/spec_scratch.h"
+#include "core/spec_scratch.h"
 #include "core/platform.h"
 #include "core/weights.h"
 #include "core/step_timing.h"

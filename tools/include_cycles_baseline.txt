@@ -14,11 +14,6 @@ math->memory
 math->threading
 memory->core
 memory->kv_cache
-runtime->transformer
-speculative->distributed
-speculative->runtime
-speculative->transformer
 threading->core
 threading->math
 transformer->distributed
-transformer->speculative

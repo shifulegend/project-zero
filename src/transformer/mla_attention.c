@@ -26,7 +26,7 @@
 #include "core/debug.h"
 #include "core/step_timing.h"
 #include "core/clamp.h"
-#include "speculative/spec_scratch.h" /* reads the batch scratch fields */
+#include "core/spec_scratch.h" /* reads the batch scratch fields */
 
 #include <math.h>
 #include <string.h>

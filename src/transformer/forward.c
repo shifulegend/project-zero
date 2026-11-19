@@ -20,7 +20,7 @@
 #include "transformer/embedding.h"
 #include "transformer/ffn.h"
 #include "core/hardware_profile.h"
-#include "speculative/spec_scratch.h" /* reads the batch scratch fields */
+#include "core/spec_scratch.h" /* reads the batch scratch fields */
 
 /*
  * Lightweight per-component profiling, activated by TN_PROFILE=1.

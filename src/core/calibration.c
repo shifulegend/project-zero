@@ -723,6 +723,13 @@ const char *tn_calibration_best_simd(const TnCalibrationResult *result) {
     return result->best_simd_name;
 }
 
+const char *tn_calibration_act_quant(const TnCalibrationResult *result) {
+    const char *t = tn_calibration_best_simd(result);
+    if (!t) return NULL;
+    if (strcmp(t, "vnni") == 0 || strcmp(t, "vnni256") == 0) return "int8";
+    return "float";
+}
+
 TnClassifierFormat tn_calibration_best_classifier(const TnCalibrationResult *result) {
     if (!result->valid) return TN_CLS_BF16;
     return (TnClassifierFormat)result->best_cls_idx;

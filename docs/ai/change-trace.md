@@ -3,6 +3,11 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-18.
 
+### 2026-11-18 — act-quant setting, accuracy probe, self-check (CLI, API, web UI)
+- What: `TnActQuant` in `simd_dispatch.c`; `src/eval/selfcheck.c`; `--act-quant`, `--quality-tolerance`, `--self-check`, `--self-check-tokens` (args, `pz config` schema); startup fallback in `main.c`; `POST /v1/selfcheck`, `runtime` fields and saveable keys in `/v1/config`; `AccuracyCheck.svelte` and the regenerated bundle; `tests/test_selfcheck.c`.
+- Why: numerics were a side effect of the SIMD tier and nothing judged a fast setting's accuracy; the gate found a quantised head giving wrong answers.
+- Areas: `src/math/simd_dispatch.c`, `src/eval/selfcheck.c`, `src/cli/`, `src/api/`, `webui/src`, `docs/ai/decision-log.md`, `.claude/rules/config.md` (+ adapters), `README.md`, `docs/WEBUI_GUIDE.md`.
+
 ### 2026-11-18 — Tokenizer: deepseek-llm / deepseek-coder pre-tokenizers
 - What: `PRETOK_DEEPSEEK_LLM` and `PRETOK_DEEPSEEK_CODER` in `src/tokenizer/pretokenize.c` and the header; unit tests in `tests/test_pretokenize.c`; mistakes.md entry; CHANGELOG `Fixed`.
 - Why: DeepSeek-V2-Lite failed the benchmark correctness gate (PPL 11.5 vs 6.6); root cause was an unmapped pre-tokenizer name.

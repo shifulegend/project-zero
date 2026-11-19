@@ -1,4 +1,5 @@
 #include "cli/args.h"
+#include "math/simd_dispatch.h"
 #include "transformer/attn_tiled.h"
 #include "kv_cache/kv_quant_ops.h"
 #include "api/chat_compile.h"
@@ -102,6 +103,16 @@ void print_usage(const char *prog_name) {
     printf("                      only when calibration measures another tier clearly faster\n");
     printf("                      (--no-calibrate: the highest tier, always). Use avx2 on Tiger\n");
     printf("                      Lake to avoid AVX-512 frequency throttle.\n");
+    printf("  --act-quant <m>     Activation numerics of ternary matmuls: auto (default), int8\n");
+    printf("                      (the BitNet W1.58A8 definition; fastest with VNNI/dotprod) or\n");
+    printf("                      float (float32 activations, slower). Independent of --simd.\n");
+    printf("  --quality-tolerance <pct>  Largest perplexity increase (percent, default 1.0) a\n");
+    printf("                      fast setting may cost against float activations and a BF16\n");
+    printf("                      head. An explicit --classifier int8/int4/auto-fast that\n");
+    printf("                      exceeds it falls back to bf16 at startup; 0 = no bar.\n");
+    printf("  --self-check        Run the accuracy probe on this model and these settings,\n");
+    printf("                      print the result and exit (status 1 when over the tolerance).\n");
+    printf("  --self-check-tokens <n>  Probe length in tokens (default 96).\n");
     printf("  --calibrate         Run micro-benchmarks to find optimal settings for\n");
     printf("                      this hardware. Results cached in ~/.project-zero/\n");
     printf("                      Runs automatically on first use or hardware change.\n");
@@ -244,6 +255,10 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->simd_override = NULL;     // auto
     args->calibrate = false;
     args->no_calibrate = false;
+    args->act_quant = 0;
+    args->quality_tolerance = 1.0;
+    args->self_check_tokens = 96;
+    args->self_check = false;
     args->show_version = false;
     args->check_update = false;
     args->no_update_check = false;
@@ -616,6 +631,27 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             args->calibrate = true;
         } else if (strcmp(argv[i], "--no-calibrate") == 0) {
             args->no_calibrate = true;
+        } else if (strcmp(argv[i], "--act-quant") == 0 && i + 1 < argc) {
+            TnActQuant m;
+            if (tn_act_quant_parse(argv[++i], &m) != 0) {
+                fprintf(stderr, "Error: --act-quant must be one of: auto, int8, float\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+            args->act_quant = (int)m;
+        } else if (strcmp(argv[i], "--quality-tolerance") == 0 && i + 1 < argc) {
+            args->quality_tolerance = atof(argv[++i]);
+            if (!(args->quality_tolerance >= 0.0 && args->quality_tolerance <= 100.0)) {
+                fprintf(stderr, "Error: --quality-tolerance must be 0..100 (percent)\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--self-check-tokens") == 0 && i + 1 < argc) {
+            args->self_check_tokens = atoi(argv[++i]);
+            if (args->self_check_tokens < 16 || args->self_check_tokens > 4096) {
+                fprintf(stderr, "Error: --self-check-tokens must be 16..4096\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--self-check") == 0) {
+            args->self_check = true;
         } else if (strcmp(argv[i], "--reasoning") == 0) {
             args->enable_reasoning = true;
         } else if (strcmp(argv[i], "--json") == 0) {

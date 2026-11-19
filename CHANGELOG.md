@@ -22,6 +22,9 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Added
 
+- Add `--act-quant auto|int8|float` (also `PZ_ACT_QUANT` and `pz config set act-quant`): choose the activation numerics of ternary (BitNet) matmuls independently of `--simd`; `float` skips the int8 tiers (VNNI, AVX-VNNI, dotprod) and runs float32 activations.
+- Add an accuracy probe: `pz --self-check` scores a built-in passage with the configured numerics and LM head against float activations and a BF16 head and exits 1 when perplexity rises by more than `--quality-tolerance` percent (default 1.0, `pz config set quality-tolerance`); `--self-check-tokens` sets its length. An explicit `--classifier int8`, `int4` or `auto-fast` that fails it falls back to a BF16 head at startup with a message (`--quality-tolerance 0` keeps the request as given): Mamba-130M with `--classifier int4` answers correctly again instead of producing gibberish.
+- Add `POST /v1/selfcheck` and a Settings → Server defaults panel in the web UI that shows the active numerics, runs the probe and saves `act_quant` and `quality_tolerance` for the next start; `GET /v1/config` reports them under `runtime`.
 - Add `--no-calibrate` (also `PZ_NO_CALIBRATE=true` or `pz config set no-calibrate true`): never load, run or save the hardware calibration, so a run uses the highest SIMD tier and the detected thread count.
 - Warn on stderr when a chat template renders a prompt that ends with the end-of-sequence token, and when a chat generation ends with 0 tokens; the second warning names the first token the model chose and the last prompt token.
 

@@ -36,6 +36,9 @@ static const PzCfgKey g_schema[] = {
     { "simd",            PZ_CFG_STRING, "hardware", "SIMD backend", "auto|avx2|avx512f|vnni|scalar", 0, 0, 0 },
     { "classifier",      PZ_CFG_STRING, "hardware", "LM-head precision", "auto|bf16|int8|int4|auto-fast", 0, 0, 0 },
     { "no-calibrate",    PZ_CFG_BOOL,   "hardware", "Never run or use the hardware calibration (reproducible benchmarks)", NULL, 0, 0, 0 },
+    { "act-quant",       PZ_CFG_STRING, "hardware", "Activation numerics of ternary matmuls", "auto|int8|float", 0, 0, 0 },
+    { "quality-tolerance", PZ_CFG_FLOAT, "hardware", "Largest perplexity increase (%) a fast setting may cost; 0 = no bar", NULL, 0, 100, 0 },
+    { "self-check-tokens", PZ_CFG_INT,  "hardware", "Length of the accuracy probe in tokens", NULL, 16, 4096, 0 },
     /* memory / context */
     { "ctx-size",        PZ_CFG_INT,    "memory", "Context length in tokens (0 = sized from RAM)", NULL, 0, 16777216, 0 },
     { "kv-type",         PZ_CFG_STRING, "memory", "KV cache storage", "f32|i8|i4", 0, 0, 0 },

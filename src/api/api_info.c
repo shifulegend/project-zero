@@ -1,5 +1,6 @@
 #include "api/config_endpoint.h"
 #include "api/api_info.h"
+#include "core/hardware_profile.h"
 #include <string.h>
 #include "api/json_write.h"
 #include "api/chat_compile.h"
@@ -173,6 +174,18 @@ char *api_config_json(const ApiContext *ctx) {
         jb_key(&jb, "runtime"); jb_raw(&jb, "{");
         jb_key(&jb, "simd"); jb_str(&jb, tn_simd_backend_name());
         jb_raw(&jb, ","); jb_key(&jb, "threads"); jb_int(&jb, ctx && ctx->tp ? ctx->tp->num_threads : 1);
+        /* Activation numerics and the quality bar a fast setting must clear (eval/selfcheck.h). */
+        {
+            const TnHardwareProfile *hp = tn_hardware_profile_get();
+            jb_raw(&jb, ","); jb_key(&jb, "act_quant"); jb_raw(&jb, "{");
+            jb_key(&jb, "requested"); jb_str(&jb, tn_act_quant_name(ctx ? (TnActQuant)ctx->server_config.act_quant : TN_ACT_AUTO));
+            jb_raw(&jb, ","); jb_key(&jb, "effective"); jb_str(&jb, tn_act_quant_effective());
+            jb_raw(&jb, "}");
+            jb_raw(&jb, ","); jb_key(&jb, "classifier");
+            jb_str(&jb, !hp ? "bf16" : hp->classifier_fmt == TN_CLS_INT4 ? "int4" : hp->classifier_fmt == TN_CLS_INT8 ? "int8" : "bf16");
+            jb_raw(&jb, ","); jb_key(&jb, "quality_tolerance"); jb_num(&jb, ctx ? ctx->server_config.quality_tolerance : 1.0);
+            jb_raw(&jb, ","); jb_key(&jb, "self_check_tokens"); jb_int(&jb, ctx ? ctx->server_config.self_check_tokens : 96);
+        }
         jb_raw(&jb, ","); jb_key(&jb, "kv_type");
         jb_str(&jb, !(ctx && ctx->run_state) ? "f32" : ctx->run_state->kv_type == KV_TYPE_I8 ? "i8"
                : ctx->run_state->kv_type == KV_TYPE_I4 ? "i4" : "f32");

@@ -8,6 +8,7 @@
 #include "math/softmax.h"
 #include "math/elementwise.h"
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 
 /*
@@ -155,6 +156,34 @@ static const char *g_backend_name = "Scalar";
 const char *tn_simd_backend_name(void) { return g_backend_name; }
 int tn_simd_ternary_preq(void) { return tn_ternary_matmul_preq != NULL; }
 
+static TnActQuant g_act_quant = TN_ACT_AUTO;
+static int g_ternary_int8 = 0;   /* the bound ternary kernel quantises its activations to int8 */
+static char g_last_force[16] = "";   /* TN_FORCE_BACKEND of the last tn_simd_init ("" = none) */
+
+int tn_act_quant_parse(const char *name, TnActQuant *out) {
+    if (!name || !out) return -1;
+    if (strcmp(name, "auto") == 0)  { *out = TN_ACT_AUTO;  return 0; }
+    if (strcmp(name, "int8") == 0)  { *out = TN_ACT_INT8;  return 0; }
+    if (strcmp(name, "float") == 0) { *out = TN_ACT_FLOAT; return 0; }
+    return -1;
+}
+const char *tn_act_quant_name(TnActQuant m) {
+    return m == TN_ACT_INT8 ? "int8" : m == TN_ACT_FLOAT ? "float" : "auto";
+}
+TnActQuant tn_act_quant_get(void) { return g_act_quant; }
+const char *tn_act_quant_effective(void) { return g_ternary_int8 ? "int8" : "float"; }
+void tn_act_quant_set(TnActQuant m) {
+    if (m == g_act_quant) return;
+    g_act_quant = m;
+    /* Re-bind on the same tier: a calibrated or --simd tier is applied through TN_FORCE_BACKEND
+     * for the duration of one tn_simd_init() and is not in the environment afterwards. */
+    const char *cur = getenv("TN_FORCE_BACKEND");
+    int tmp = (!cur && g_last_force[0]);
+    if (tmp) setenv("TN_FORCE_BACKEND", g_last_force, 1);
+    (void)tn_simd_init();
+    if (tmp) unsetenv("TN_FORCE_BACKEND");
+}
+
 const char *tn_simd_init(void) {
     /*
      * Runtime probe the CPU, then select the best compiled-in kernel.
@@ -176,6 +205,7 @@ const char *tn_simd_init(void) {
     tn_cls_i8_rows         = tn_cls_i8_rows_generic;
     tn_cls_i4_rows         = tn_cls_i4_rows_generic;
     const char *force = getenv("TN_FORCE_BACKEND");
+    snprintf(g_last_force, sizeof(g_last_force), "%s", force ? force : "");
     int force_scalar  = force && strcmp(force, "scalar")  == 0;
     int force_avx2    = force && strcmp(force, "avx2")    == 0;
     int force_avx512f = force && strcmp(force, "avx512f") == 0;
@@ -186,6 +216,11 @@ const char *tn_simd_init(void) {
     (void)force_avx2; (void)force_avx512f; (void)force_vnni256;
 
     const TnCpuFeatures *cpu = tn_cpu_features_detect();
+    /* act-quant float: the tiers whose ternary kernel quantises activations to int8
+     * (VNNI, VNNI-256, AVX-VNNI, ARM dotprod) are skipped; the next float tier runs. */
+    const int float_act = (g_act_quant == TN_ACT_FLOAT);
+    g_ternary_int8 = 0;
+    (void)float_act;   /* unused when the build has no int8 tier */
 
     /* ── Utility ops: best float SIMD available ── */
 #if TN_HAS_AVX512
@@ -266,7 +301,8 @@ const char *tn_simd_init(void) {
      */
 
 #if TN_HAS_AVX512VNNI
-    if (!force_scalar && !force_avx2 && !force_avx512f && !force_vnni256 && cpu->avx512vnni) {
+    if (!float_act && !force_scalar && !force_avx2 && !force_avx512f && !force_vnni256 && cpu->avx512vnni) {
+        g_ternary_int8 = 1;
         tn_ternary_matmul_packed = ternary_matmul_packed_vnni;
         tn_quantize_act_i8       = quantize_row_to_i8_avx512;
         tn_sum_act_i8            = sum_i8_avx512;
@@ -284,7 +320,8 @@ const char *tn_simd_init(void) {
         return g_backend_name;
     }
     /* vnni256: 256-bit EVEX VNNI — same CPU, no ZMM, no frequency throttle */
-    if (!force_scalar && !force_avx2 && !force_avx512f && force_vnni256 && cpu->avx512vnni) {
+    if (!float_act && !force_scalar && !force_avx2 && !force_avx512f && force_vnni256 && cpu->avx512vnni) {
+        g_ternary_int8 = 1;
         tn_ternary_matmul_packed = ternary_matmul_packed_vnni256;
         g_backend_name = "VNNI-256 (no throttle)";
         return g_backend_name;
@@ -292,7 +329,8 @@ const char *tn_simd_init(void) {
 #endif
 
 #if TN_HAS_AVXVNNI
-    if (!force_scalar && !force_avx2 && !force_avx512f && !force_vnni256 && cpu->avx_vnni) {
+    if (!float_act && !force_scalar && !force_avx2 && !force_avx512f && !force_vnni256 && cpu->avx_vnni) {
+        g_ternary_int8 = 1;
         tn_ternary_matmul_packed = ternary_matmul_packed_avx_vnni;
         g_backend_name = "AVX-VNNI";
         return g_backend_name;
@@ -316,7 +354,8 @@ const char *tn_simd_init(void) {
 #endif
 
 #if TN_HAS_ARM_DOTPROD
-    if (cpu->arm_dotprod) {
+    if (!float_act && cpu->arm_dotprod) {
+        g_ternary_int8 = 1;
         tn_ternary_matmul_packed = ternary_matmul_packed_dotprod;
         g_backend_name = "NEON+dotprod";
         return g_backend_name;

@@ -70,7 +70,7 @@ Logs and screenshots: [sweep](benchmark_results/h2h_20261118-053147Z_published-s
 [DeepSeek](benchmark_results/h2h_20261118-210302Z_deepseek-refresh/).
 
 `--classifier int4` (4-bit output layer) runs BitNet 2B-4T at 26.7 tok/s, 28% above the default, for
-4.4% higher perplexity.
+4.4% higher perplexity; add `--quality-tolerance 5` to keep it (the default bar is 1%).
 
 Output quality: perplexity is within 0.9% of llama.cpp on SmolLM2-135M and 1.7B, Mamba-130m and
 DeepSeek-V2-Lite ([results](benchmark_results/h2h_20261118-053147Z_published-sweep/summary.md),
@@ -110,6 +110,9 @@ built-in corrected one for it; `--chat-template-file` replaces either.
 - The fastest SIMD path picked at startup: AVX-512 VNNI, AVX-512, AVX-VNNI, AVX2, ARM NEON/dotprod
   or scalar. A first-run calibration changes that choice only when it measures another path
   clearly faster; `--no-calibrate` turns it off (for reproducible benchmarks).
+- An accuracy probe (`pz --self-check`, `POST /v1/selfcheck`, Settings in the web UI): a quantised LM
+  head (`--classifier int8|int4`) that costs more than `--quality-tolerance` percent perplexity
+  (default 1) falls back to BF16; `--act-quant` picks int8 or float activations for ternary models.
 
 Every flag: `pz --help`. Every web UI control and API route: [docs/WEBUI_GUIDE.md](docs/WEBUI_GUIDE.md).
 

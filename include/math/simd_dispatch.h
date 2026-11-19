@@ -81,7 +81,7 @@ extern tn_cls_rows_fn tn_cls_i4_rows;
  * Returns a human-readable string describing the selected backend
  * (e.g., "AVX2", "Scalar").
  *
- * TODO (QA-ISS-005): SIMD availability is currently determined at compile time
+ * TODO(QA-ISS-005): SIMD availability is currently determined at compile time
  * via preprocessor flags (#ifdef __AVX2__, etc.). On machines without the
  * required ISA but compiled with those flags, this will crash with SIGILL.
  * A future version should add runtime CPUID detection to select the correct

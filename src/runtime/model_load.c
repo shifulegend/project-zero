@@ -104,7 +104,7 @@ TernaryError load_gguf_model(LoadedModel *out, const char *model_path, bool is_p
      * bills the full embedding table, since its tensor format (and thus
      * byte size) isn't known generically here; tight for tied-embedding
      * models, conservative otherwise. MoE models overcount (all experts,
-     * not just routed) — TODO: subtract inactive-expert bytes via
+     * not just routed) — TODO(PZ-TODO-1): subtract inactive-expert bytes via
      * MoEConfig.
      *
      * Only ever measured for the primary (verifier) model — a draft model

@@ -505,7 +505,7 @@ int main(int argc, char **argv) {
          * row per token) + the classifier at its selected precision (the
          * classifier is derived from that embedding: BF16 = full table,
          * INT8/INT4 = half/quarter). Native MoE (scale_mode==2) overcounts
-         * inactive experts here — same TODO as the GGUF branch. */
+         * inactive experts here — same TODO(PZ-TODO-1) as the GGUF branch. */
         {
             double embed_bytes            = (double)p.vocab_size * p.dim * 2.0;
             const TnHardwareProfile *hp_n = tn_hardware_profile_get();

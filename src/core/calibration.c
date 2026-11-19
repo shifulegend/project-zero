@@ -597,7 +597,7 @@ void tn_calibrate(TnCalibrationResult *result, const TnHardwareProfile *hw) {
      * docs/architecture/CEILING_CALCULATION.md §4 site 4). The *ranking*
      * between formats (what --classifier auto-fast consumes via best_cls_idx)
      * only depends on the relative classifier byte sizes, so it survives the
-     * wrong absolute base better than the tok/s figures do. TODO: make this
+     * wrong absolute base better than the tok/s figures do. TODO(PZ-TODO-2): make this
      * model-aware (needs a calibration redesign — the cache is keyed on
      * hardware, not model). */
     double base_bw = hw->measured_bw_gbps;

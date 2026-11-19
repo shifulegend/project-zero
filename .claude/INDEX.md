@@ -122,6 +122,7 @@ Q8_0, F32), and DeepSeek-V2-style MoE/MLA models. The primary binary is `pz`.
 | `src/api/http_server.c` | Embedded HTTP server: listens on port, dispatches to handlers |
 | `src/api/http_response.c` | Response writers (plain, SSE headers, JSON error) |
 | `src/api/http_routes.c` | Small route handlers: models, config, prompt cache, self-check, watermark, health, metrics, docs, OpenAPI, cancel |
+| `src/api/http_request.c` | Reading one request off a socket with strict framing; the HTTP/1.1 request parser |
 | `src/api/chat_compile.c` | Compile `messages[]` array → single prompt string |
 | `src/api/json_parse.c` | Minimal JSON parser for OpenAI-format requests |
 | `src/api/sse_stream.c` | Server-Sent Events (SSE) streaming for token-by-token output |

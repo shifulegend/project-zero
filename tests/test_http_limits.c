@@ -7,6 +7,7 @@
 #include <poll.h>
 #include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <time.h>
@@ -168,6 +169,32 @@ int main(void) {
                   strncmp(buf, "HTTP/1.1 501", 12) != 0 && strncmp(buf, "HTTP/1.1", 8) == 0,
               "well-formed POST with a body is still handled");
         close(c);
+    }
+
+    { /* a body far larger than the initial receive buffer is read in full (buffer growth) */
+        enum { BODY_N = 200000 };
+        char *body = (char *)malloc(BODY_N + 64);
+        char *req  = (char *)malloc(BODY_N + 512);
+        int len    = snprintf(body, BODY_N + 64, "{\"id\":\"");
+        memset(body + len, 'a', BODY_N);
+        len += BODY_N;
+        len += snprintf(body + len, 64, "\"}");
+        int hl = snprintf(
+            req, 512,
+            "POST /v1/chat/completions/cancel HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: "
+            "application/json\r\nContent-Length: %d\r\n\r\n",
+            len);
+        memcpy(req + hl, body, (size_t)len);
+        req[hl + len] = '\0';
+        int c         = dial(port);
+        send_str(c, req);
+        slurp(c, buf, sizeof buf, 5000, &eof);
+        CHECK(strncmp(buf, "HTTP/1.1 400", 12) != 0 && strncmp(buf, "HTTP/1.1 413", 12) != 0 &&
+                  strncmp(buf, "HTTP/1.1", 8) == 0,
+              "a 200 KB body is read in full and handled");
+        close(c);
+        free(body);
+        free(req);
     }
 
     { /* cross-site guard on every POST route */

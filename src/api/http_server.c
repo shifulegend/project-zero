@@ -61,6 +61,7 @@
 #include "api/config_endpoint.h"
 #include "api/http_response.h"
 #include "api/http_routes.h"
+#include "api/http_request.h"
 #include "api/chat_image.h"
 #include "api/api_server.h"
 #include "api/net_io.h"
@@ -108,21 +109,11 @@
 #include <signal.h>
 
 /* ── Tuning constants ────────────────────────────────────────────────────── */
-#define HTTP_RECV_BUF 8192 /* receive buffer per connection */
-#define HTTP_MAX_BODY_BYTES                                                                        \
-    (8 * 1024 * 1024)                 /* 8 MiB max request body — raised from
-                                             * 512 KiB (Phase 21) to fit base64
-                                             * image uploads (Phase 22.2). */
 #define HTTP_MAX_PROMPT_BYTES (65536) /* compiled prompt size cap       */
 #define HTTP_BACKLOG 16
 
 /* Fixed buffer capacities (bytes). Each is the size of one stack/static array below. */
 #define HTTP_SSE_EVENT_BUF 160                          /* one queue-failure SSE event */
-#define HTTP_PATH_MAX 256                               /* request path */
-#define HTTP_ORIGIN_MAX 256                             /* Origin header */
-#define HTTP_AUTH_MAX 512                               /* Authorization header */
-#define HTTP_CTYPE_MAX 128                              /* Content-Type header */
-#define HTTP_HOST_MAX 256                               /* Host header */
 #define HTTP_EXTRA_HDRS_BUF 512                         /* CORS headers added to a response */
 #define HTTP_RETRY_HDRS_BUF (HTTP_EXTRA_HDRS_BUF + 128) /* extra headers + Retry-After */
 #define HTTP_BUSY_REPLY_BUF 320 /* complete 503 reply to a refused connection */
@@ -575,190 +566,19 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     chat_request_free(&req);
 }
 
-/* ── HTTP request parser ─────────────────────────────────────────────────── */
-
-typedef struct {
-    char method[16];
-    char path[HTTP_PATH_MAX];
-    char *body; /* pointer into recv_buf or separately allocated */
-    size_t body_len;
-    int content_length; /* from Content-Length header, -1 if not present */
-    char origin[HTTP_ORIGIN_MAX];
-    char authorization[HTTP_AUTH_MAX];
-    char content_type[HTTP_CTYPE_MAX];
-    char host[HTTP_HOST_MAX];
-    int has_origin;
-    int has_authorization;
-} HttpRequest;
-
-/* Copies a header value starting at *p up to (not including) \r or \n into
- * dst (NUL-terminated, truncated to dst_cap - 1). */
-static void copy_header_value(const char *p, char *dst, size_t dst_cap) {
-    size_t i = 0;
-    while (*p == ' ') p++;
-    while (*p && *p != '\r' && *p != '\n' && i < dst_cap - 1) dst[i++] = *p++;
-    dst[i] = '\0';
-}
-
-/*
- * Parse a minimal HTTP/1.1 request from a NUL-terminated buffer.
- * Returns 1 on success, 0 on parse failure.
- */
-static int http_parse(const char *buf, size_t buf_len, HttpRequest *req) {
-    memset(req, 0, sizeof(*req));
-    req->content_length = -1;
-
-    /* Method */
-    const char *p = buf;
-    size_t i      = 0;
-    while (*p && *p != ' ' && i < sizeof(req->method) - 1) req->method[i++] = *p++;
-    req->method[i] = '\0';
-    if (*p != ' ') return 0;
-    p++;
-
-    /* Path */
-    i = 0;
-    while (*p && *p != ' ' && *p != '\r' && i < sizeof(req->path) - 1) req->path[i++] = *p++;
-    req->path[i] = '\0';
-    if (*p != ' ') return 0;
-
-    /* Skip to end of request line */
-    while (*p && *p != '\n') p++;
-    if (*p) p++;
-
-    /* Parse headers until blank line */
-    while (*p) {
-        if (*p == '\r' && *(p + 1) == '\n') {
-            p += 2;
-            break;
-        }
-        if (*p == '\n') {
-            p++;
-            break;
-        }
-
-        if (strncasecmp(p, "content-length:", 15) == 0) {
-            size_t cl;
-            if (http_parse_content_length(p + 15, &cl) == 0 && cl <= (size_t)INT_MAX)
-                req->content_length =
-                    (int)cl; /* invalid values were already rejected in handle_connection */
-        } else if (strncasecmp(p, "origin:", 7) == 0) {
-            copy_header_value(p + 7, req->origin, sizeof(req->origin));
-            req->has_origin = 1;
-        } else if (strncasecmp(p, "authorization:", 14) == 0) {
-            copy_header_value(p + 14, req->authorization, sizeof(req->authorization));
-            req->has_authorization = 1;
-        } else if (strncasecmp(p, "content-type:", 13) == 0) {
-            copy_header_value(p + 13, req->content_type, sizeof(req->content_type));
-        } else if (strncasecmp(p, "host:", 5) == 0) {
-            copy_header_value(p + 5, req->host, sizeof(req->host));
-        }
-        /* Skip to next line */
-        while (*p && *p != '\n') p++;
-        if (*p) p++;
-    }
-
-    /* Body starts at p */
-    req->body     = (char *)p;
-    req->body_len = (buf_len > (size_t)(p - buf)) ? buf_len - (size_t)(p - buf) : 0;
-
-    return 1;
-}
-
 /* ── Per-connection handler ──────────────────────────────────────────────── */
 
 static void handle_connection(int fd, ApiContext *ctx) {
-    /* Receive the full request (including body) */
-    char *recv_buf = (char *)malloc(HTTP_RECV_BUF);
-    if (!recv_buf) {
+    /* Receive the full request (headers and body), framing validated on the way. */
+    char *recv_buf       = NULL;
+    size_t total         = 0;
+    const char *read_err = NULL;
+    int read_status      = http_request_read(fd, &recv_buf, &total, &read_err);
+    if (read_status != 0) {
+        if (read_status > 0) http_send_error(fd, read_status, read_err);
         close(fd);
         return;
     }
-    size_t total = 0;
-    size_t cap   = HTTP_RECV_BUF;
-
-    /* Read until we have headers + full body */
-    int headers_done   = 0;
-    int content_length = -1;
-    size_t header_end  = 0;
-
-    while (total < HTTP_MAX_BODY_BYTES + 4096) {
-        ssize_t n = recv(fd, recv_buf + total, cap - total - 1, 0);
-        if (n <= 0) break;
-        total += (size_t)n;
-        recv_buf[total] = '\0';
-
-        if (!headers_done) {
-            char *hdrs_end = strstr(recv_buf, "\r\n\r\n");
-            if (!hdrs_end) hdrs_end = strstr(recv_buf, "\n\n");
-            if (hdrs_end) {
-                headers_done = 1;
-                header_end = (size_t)(hdrs_end - recv_buf) + (strstr(recv_buf, "\r\n\r\n") ? 4 : 2);
-
-                /* Strict framing: Content-Length is scanned only inside the
-                 * header block (never the body), must be plain digits, and
-                 * conflicting duplicates are refused. Chunked bodies are not
-                 * implemented, so they are refused instead of being read as
-                 * an empty or truncated body. */
-                HttpFraming fr;
-                http_scan_framing(recv_buf, header_end, &fr);
-                if (fr.content_length_invalid) {
-                    http_send_error(fd, HTTP_BAD_REQUEST, "Invalid Content-Length");
-                    free(recv_buf);
-                    close(fd);
-                    return;
-                }
-                if (fr.has_transfer_encoding) { /* chunked, gzip, ...: none is implemented */
-                    http_send_error(fd, HTTP_NOT_IMPLEMENTED,
-                                    "Transfer-Encoding is not supported; send Content-Length");
-                    free(recv_buf);
-                    close(fd);
-                    return;
-                }
-                if (fr.has_content_length) {
-                    if (fr.content_length > HTTP_MAX_BODY_BYTES) {
-                        http_send_error(fd, HTTP_PAYLOAD_TOO_LARGE, "Request body too large");
-                        free(recv_buf);
-                        close(fd);
-                        return;
-                    }
-                    content_length = (int)fr.content_length;
-                }
-
-                /* 2026-07-15: pre-existing bug — a request with no
-                 * Content-Length (the normal case for GET/HEAD/OPTIONS, and
-                 * any bodyless POST) has content_length == -1 forever, so
-                 * the old "stop once we have the full body" check below
-                 * never fired and recv() blocked indefinitely waiting for
-                 * bytes that were never coming (client already sent its
-                 * full request and is waiting on OUR response). No
-                 * Content-Length means no body is expected — stop reading
-                 * as soon as headers are complete. */
-                if (content_length < 0) break;
-
-                /* If we already have the full body, stop reading */
-                if (total >= header_end + (size_t)content_length) break;
-            }
-        } else {
-            if (content_length >= 0 && total >= header_end + (size_t)content_length) break;
-        }
-
-        /* Grow buffer if needed */
-        if (cap - total < 1024) {
-            size_t new_cap = cap * 2;
-            if (new_cap > HTTP_MAX_BODY_BYTES + 8192) {
-                http_send_error(fd, HTTP_PAYLOAD_TOO_LARGE, "Request body too large");
-                free(recv_buf);
-                close(fd);
-                return;
-            }
-            char *new_buf = (char *)realloc(recv_buf, new_cap);
-            if (!new_buf) break;
-            recv_buf = new_buf;
-            cap      = new_cap;
-        }
-    }
-    recv_buf[total] = '\0';
 
     HttpRequest req;
     if (!http_parse(recv_buf, total, &req)) {

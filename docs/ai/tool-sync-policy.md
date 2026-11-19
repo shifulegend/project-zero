@@ -60,6 +60,16 @@ At session start and before task completion, confirm adapters still match the ca
 if not, reconcile (canonical wins) and note it in `change-trace.md`. For scoped rules this is
 `tools/sync_ai_adapters.py --check`.
 
+## Committed traces and transcripts: redaction policy
+- Session transcripts, terminal logs and tool traces are not committed to this public repository.
+  Keep them outside the repo (a private archive); commit a short written summary instead.
+- If a trace must be committed, remove first: absolute paths on a developer's machine (`/home/<name>/`,
+  `/Users/<name>/`, mounted-drive paths), session or conversation identifiers, hostnames, tokens and the names
+  of private repositories. Replace them with placeholders such as `<HOME>` or `<model-dir>`.
+- Never name a private repository or tool in a committed file (describe the rule it holds instead).
+- `tools/check_path_leaks.py` (CI) enforces the path and identifier part for `docs/ai/`, the root
+  Markdown files and `.claude/rules/`; a real secret is also caught by the Gitleaks scan.
+
 ## Third-party skill plugins (2026-10-21)
 Two external skill packs are part of the workflow. They are *plugins* (self-updating), never
 vendored copies — installing both a plugin and copies duplicates every skill.

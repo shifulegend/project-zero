@@ -20,7 +20,6 @@ EXCLUDE = [
     "src/api/webui_bundle_generated.c",
     "include/stb_*.h",
     "benchmark_results/*",
-    "docs/session_audit/*",
     "*.svg",
     "*.png",
     "*.jpg",

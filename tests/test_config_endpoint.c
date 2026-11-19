@@ -6,7 +6,7 @@
 #include "test_harness.h"
 #include "api/api_info.h"
 #include "api/config_endpoint.h"
-#include "api/json_fields.h"
+#include "core/json_fields.h"
 #include "config/pz_config.h"
 #include <stdio.h>
 #include <stdlib.h>

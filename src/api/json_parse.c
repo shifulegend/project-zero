@@ -23,7 +23,7 @@
  */
 
 #include "api/chat_request.h"
-#include "api/json_fields.h"
+#include "core/json_fields.h"
 #include "core/error.h"
 #include <string.h>
 #include <stdlib.h>
@@ -664,7 +664,7 @@ TernaryError chat_request_parse(const char *json_body, ChatRequest *req) {
     return TN_OK;
 }
 
-/* ── Generic top-level field access (api/json_fields.h) ──────────────────── */
+/* ── Generic top-level field access (core/json_fields.h) ──────────────────── */
 
 /* Positions *p at the value of top-level `key`. Returns 1 if found. */
 static int find_top_level(const char *json_body, const char *key, const char **p) {

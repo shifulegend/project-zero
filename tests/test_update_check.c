@@ -8,7 +8,7 @@
 #include "test_harness.h"
 #include "update/semver.h"
 #include "update/update_check.h"
-#include "api/json_fields.h"
+#include "core/json_fields.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

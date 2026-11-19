@@ -3,7 +3,7 @@
  */
 #include "api/config_endpoint.h"
 #include "api/cors.h"
-#include "api/json_fields.h"
+#include "core/json_fields.h"
 #include "api/http_status.h"
 #include "config/pz_config.h"
 #include "transformer/gen_params.h"

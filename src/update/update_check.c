@@ -1,6 +1,6 @@
 #include "update/update_check.h"
 #include "update/semver.h"
-#include "api/json_fields.h"
+#include "core/json_fields.h"
 #include "core/platform.h"
 #include "core/fs_util.h"
 #include <ctype.h>

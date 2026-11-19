@@ -1,6 +1,5 @@
 # Module include edges that lie inside a dependency cycle; this list may only shrink
 # (tools/check_include_layers.py).
-api->update
 core->kv_cache
 core->math
 core->memory
@@ -48,4 +47,3 @@ transformer->sampling
 transformer->speculative
 transformer->threading
 transformer->tokenizer
-update->api

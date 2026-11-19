@@ -5,7 +5,7 @@
 #include "test_harness.h"
 #include "api/chat_request.h"
 #include "api/request_params.h"
-#include "api/json_fields.h"
+#include "core/json_fields.h"
 #include "api/chat_compile.h"
 #include "reasoning/best_of.h"
 

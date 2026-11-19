@@ -2,7 +2,7 @@
  * api/selfcheck_endpoint.c — see api/selfcheck_endpoint.h.
  */
 #include "api/selfcheck_endpoint.h"
-#include "api/json_fields.h"
+#include "core/json_fields.h"
 #include "api/json_write.h"
 #include "api/http_status.h"
 #include "eval/selfcheck.h"

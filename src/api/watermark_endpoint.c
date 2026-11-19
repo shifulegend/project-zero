@@ -1,5 +1,5 @@
 #include "api/watermark_endpoint.h"
-#include "api/json_fields.h"
+#include "core/json_fields.h"
 #include "api/json_write.h"
 #include "api/http_status.h"
 #include "sampling/watermark_text.h"

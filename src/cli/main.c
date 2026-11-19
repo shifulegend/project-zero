@@ -62,6 +62,7 @@
 /* Phase 21: OpenAI-compatible API server */
 #include "api/api_server.h"
 #include "eval/selfcheck.h"
+#include "core/clamp.h"
 #include <sys/stat.h>
 
 /* Version is injected unquoted by the build (-DPZ_VERSION, see Makefile) and
@@ -203,7 +204,9 @@ int main(int argc, char **argv) {
         if (ui.url[0]) printf("release : %s\n", ui.url);
         if (ui.status == UPDATE_STATUS_AVAILABLE)
             printf("verify the download with the release's SHA256SUMS (sha256sum -c SHA256SUMS)\n");
-        return ui.status == UPDATE_STATUS_AVAILABLE ? 3 : ui.status == UPDATE_STATUS_ERROR ? 1 : 0;
+        if (ui.status == UPDATE_STATUS_AVAILABLE) return 3;
+        if (ui.status == UPDATE_STATUS_ERROR) return 1;
+        return 0;
     }
 
     if (args.verbose) g_tn_verbose = 1;

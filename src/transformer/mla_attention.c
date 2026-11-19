@@ -25,6 +25,7 @@
 #include "core/run_state.h"
 #include "core/debug.h"
 #include "core/step_timing.h"
+#include "core/clamp.h"
 #include "speculative/spec_scratch.h" /* reads the batch scratch fields */
 
 #include <math.h>
@@ -54,8 +55,8 @@ static void yarn_corr_dims(int n_dims, int n_ctx_orig, float freq_base, float be
                          (2.0f * log_base));
     float end   = ceilf((float)n_dims * logf((float)n_ctx_orig / (beta_slow * 2.0f * M_PI_F)) /
                         (2.0f * log_base));
-    corr[0] = (start < 0.0f) ? 0.0f : (start > (float)(n_dims - 1) ? (float)(n_dims - 1) : start);
-    corr[1] = (end < 0.0f) ? 0.0f : (end > (float)(n_dims - 1) ? (float)(n_dims - 1) : end);
+    corr[0]     = tn_clampf(start, 0.0f, (float)(n_dims - 1));
+    corr[1]     = tn_clampf(end, 0.0f, (float)(n_dims - 1));
 }
 
 /*

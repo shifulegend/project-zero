@@ -1,5 +1,6 @@
 #include "threading/cache_probe.h"
 #include "core/platform.h"
+#include "core/clamp.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -120,7 +121,9 @@ int tn_cache_rows_fitting_l1(int row_bytes, double fraction) {
     if (row_bytes <= 0) return 1;
     if (fraction <= 0.0) fraction = 0.5;
     long long rows = (long long)((double)tn_cache_info()->l1d_bytes * fraction) / row_bytes;
-    return rows < 1 ? 1 : (rows > 1 << 20 ? 1 << 20 : (int)rows);
+    if (rows < 1) return 1;
+    if (rows > (1 << 20)) return 1 << 20;
+    return (int)rows;
 }
 
 const char *tn_cache_source_name(int source) {

@@ -1,4 +1,5 @@
 #include "api/gen_queue.h"
+#include "core/clamp.h"
 #include <errno.h>
 #include <time.h>
 
@@ -37,7 +38,7 @@ int gen_queue_capacity(GenQueue *q) {
 }
 
 static int clamp_units(const GenQueue *q, int units) {
-    return units < 1 ? 1 : (units > q->capacity ? q->capacity : units);
+    return tn_clampi(units, 1, q->capacity);
 }
 
 GenQueueResult gen_queue_try_acquire_n(GenQueue *q, int units) {

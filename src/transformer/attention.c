@@ -14,6 +14,7 @@
 #include "core/platform.h"
 #include "core/weights.h"
 #include "core/step_timing.h"
+#include "core/clamp.h"
 #include <math.h>
 #include <string.h>
 #if TN_HAS_AVX512
@@ -306,11 +307,8 @@ void attention_forward(RunState *s, const TransformerWeights *w, const Config *c
                 (float)head_dim *
                 logf((float)cfg->rope_orig_ctx_len / (cfg->rope_yarn_beta_slow * 2.0f * M_PI_F)) /
                 (2.0f * log_base));
-            corr[0] = start < 0.0f
-                          ? 0.0f
-                          : (start > (float)(head_dim - 1) ? (float)(head_dim - 1) : start);
-            corr[1] =
-                end < 0.0f ? 0.0f : (end > (float)(head_dim - 1) ? (float)(head_dim - 1) : end);
+            corr[0] = tn_clampf(start, 0.0f, (float)(head_dim - 1));
+            corr[1] = tn_clampf(end, 0.0f, (float)(head_dim - 1));
         }
         apply_rope_ex(s->q, k_buf, s->rope_freq, head_dim, pos, n_heads, n_kv_heads, freq_scale,
                       ext_factor, attn_factor, corr, cfg->rope_layout);
@@ -604,11 +602,8 @@ static TernaryError attention_forward_rows(RunState *const *states, const int *p
                 (float)head_dim *
                 logf((float)cfg->rope_orig_ctx_len / (cfg->rope_yarn_beta_slow * 2.0f * M_PI_F)) /
                 (2.0f * log_base));
-            corr[0] = start < 0.0f
-                          ? 0.0f
-                          : (start > (float)(head_dim - 1) ? (float)(head_dim - 1) : start);
-            corr[1] =
-                end < 0.0f ? 0.0f : (end > (float)(head_dim - 1) ? (float)(head_dim - 1) : end);
+            corr[0] = tn_clampf(start, 0.0f, (float)(head_dim - 1));
+            corr[1] = tn_clampf(end, 0.0f, (float)(head_dim - 1));
         }
         apply_rope_ex(q_k, kbuf_k, states[k]->rope_freq, head_dim, tok_pos, n_heads, n_kv_heads,
                       freq_scale, ext_factor, attn_factor, corr, cfg->rope_layout);

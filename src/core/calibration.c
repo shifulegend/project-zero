@@ -18,6 +18,7 @@
 #include "math/parallel_matmul.h"
 #include "threading/thread_pool.h"
 #include "threading/cpu_probe.h"
+#include "core/clamp.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -172,7 +173,7 @@ static int sample_background_load(void) {
     long long total = busy + idle;
     if (total <= 0) return -1;
     int pct = (int)(busy * 100LL / total);
-    return pct < 0 ? 0 : (pct > 100 ? 100 : pct);
+    return tn_clampi(pct, 0, 100);
 #else
     return -1;
 #endif

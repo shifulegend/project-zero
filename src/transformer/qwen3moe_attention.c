@@ -31,6 +31,7 @@
 #include "transformer/dense_matmul_dispatch.h"
 #include "math/lora_matmul.h"
 #include "core/lora.h"
+#include "core/clamp.h"
 #include "speculative/spec_scratch.h" /* reads the batch scratch fields */
 #include <math.h>
 #include <string.h>
@@ -129,11 +130,8 @@ void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w, const 
                 (float)head_dim *
                 logf((float)cfg->rope_orig_ctx_len / (cfg->rope_yarn_beta_slow * 2.0f * M_PI_F)) /
                 (2.0f * log_base));
-            corr[0] = start < 0.0f
-                          ? 0.0f
-                          : (start > (float)(head_dim - 1) ? (float)(head_dim - 1) : start);
-            corr[1] =
-                end < 0.0f ? 0.0f : (end > (float)(head_dim - 1) ? (float)(head_dim - 1) : end);
+            corr[0] = tn_clampf(start, 0.0f, (float)(head_dim - 1));
+            corr[1] = tn_clampf(end, 0.0f, (float)(head_dim - 1));
         }
         apply_rope_ex(q_buf, k_buf, s->qwen3moe_rope_freq, head_dim, pos, n_heads, n_kv_h,
                       freq_scale, ext_factor, attn_factor, corr, cfg->rope_layout);
@@ -325,11 +323,8 @@ TernaryError qwen3moe_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
                 (float)head_dim *
                 logf((float)cfg->rope_orig_ctx_len / (cfg->rope_yarn_beta_slow * 2.0f * M_PI_F)) /
                 (2.0f * log_base));
-            corr[0] = start < 0.0f
-                          ? 0.0f
-                          : (start > (float)(head_dim - 1) ? (float)(head_dim - 1) : start);
-            corr[1] =
-                end < 0.0f ? 0.0f : (end > (float)(head_dim - 1) ? (float)(head_dim - 1) : end);
+            corr[0] = tn_clampf(start, 0.0f, (float)(head_dim - 1));
+            corr[1] = tn_clampf(end, 0.0f, (float)(head_dim - 1));
         }
         apply_rope_ex(q_k, k_k, s->qwen3moe_rope_freq, head_dim, tok_pos, n_heads, n_kv_h,
                       freq_scale, ext_factor, attn_factor, corr, cfg->rope_layout);

@@ -1,6 +1,7 @@
 #include "kv_cache/kv_quant_ops.h"
 #include "math/kvq4_kernels.h"
 #include "math/simd_dispatch.h"
+#include "core/clamp.h"
 #include <math.h>
 #include <stdint.h>
 #include <string.h>
@@ -70,8 +71,8 @@ static void kvq4_store(uint8_t *dst, float *scales, const float *src, int n) {
         uint8_t *o = dst + g * H;
         for (int i = 0; i < H; i++) {
             int q0 = (int)lrintf((x[i] - lo) * inv), q1 = (int)lrintf((x[i + H] - lo) * inv);
-            q0   = q0 < 0 ? 0 : q0 > 15 ? 15 : q0;
-            q1   = q1 < 0 ? 0 : q1 > 15 ? 15 : q1;
+            q0   = tn_clampi(q0, 0, 15);
+            q1   = tn_clampi(q1, 0, 15);
             o[i] = (uint8_t)(q0 | (q1 << 4));
         }
         scales[2 * g]     = d;

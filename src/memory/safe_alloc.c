@@ -1,5 +1,5 @@
 #include "memory/safe_alloc.h"
-#include "kv_cache/kv_strategy.h" /* tn_get_free_ram() */
+#include "memory/free_ram.h"
 #include "core/platform.h"
 #if TN_POSIX
 #include <unistd.h>

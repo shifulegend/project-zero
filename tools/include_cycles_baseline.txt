@@ -12,6 +12,5 @@ math->kv_cache
 math->memory
 math->threading
 memory->core
-memory->kv_cache
 threading->core
 threading->math

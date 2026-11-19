@@ -4,6 +4,7 @@
 #include "core/config.h"
 #include "core/moe_config.h"
 #include "core/platform.h"
+#include "memory/free_ram.h" /* tn_get_free_ram() (callers of this header expect it) */
 
 /**
  * KV cache strategy tiers, ordered by memory usage (low → high quality).
@@ -112,11 +113,5 @@ void kv_strategy_print(const KVStrategyResult *r, int max_seq_len);
  * Get a human-readable name for a KV strategy.
  */
 const char *kv_strategy_name(KVStrategy s);
-
-/**
- * Probe available system RAM.
- * Returns bytes of free RAM, or -1 on failure.
- */
-tn_i64 tn_get_free_ram(void);
 
 #endif /* TN_KV_STRATEGY_H */

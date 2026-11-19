@@ -81,6 +81,7 @@ find_package(Threads REQUIRED)
 # ---------------------------------------------------------------------------
 if(MSVC)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /W4")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4")
     set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} /O2 /DNDEBUG")
     set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} /Od /Zi")
     if(ENABLE_AVX2)
@@ -90,6 +91,7 @@ if(MSVC)
     endif()
 else()
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wpedantic")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra") # the chat-template engine is C++17
     # Elara Audit: Added OS-level stack protection, PIE, and Fortify Source
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fstack-protector-strong -fPIE")
     # -z,relro,-z,now are Linux ld-only; macOS ld ignores / rejects them

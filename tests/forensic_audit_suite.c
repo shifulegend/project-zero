@@ -109,6 +109,7 @@ static void vocab_quicksort_test(int *arr, int n, char **vocab) {
 
 void test_blackbox_config_validation(void) {
     Config cfg;
+    (void)cfg; /* only read inside assert(), which NDEBUG (release builds) compiles out */
     unsigned char buffer[1024];
     memset(buffer, 0, 1024);
     uint32_t magic = 0xBAD12345;

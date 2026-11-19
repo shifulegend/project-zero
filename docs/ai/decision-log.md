@@ -6,7 +6,7 @@
 ### 2026-11-18 — Numerics and quality are settings with one probe, not side effects
 - Decision: `--act-quant auto|int8|float` selects the ternary activation numerics independently of the SIMD tier; `eval/selfcheck.c` scores a built-in passage as configured against float activations and a BF16 head; `--quality-tolerance` (default 1.0 %, 0 = no bar) is the bar. An explicitly requested quantised LM head that fails it falls back to BF16 at startup; `--self-check`, `POST /v1/selfcheck` and the web UI run the same probe on demand.
 - Why: the int8 numerics were an accident of the dispatcher's tier (`--simd` changed them) and nothing checked that a fast setting still computed the model (`--classifier int4` on Mamba-130M: perplexity 84.8 vs 12.6). Owner decisions: nothing hard-coded, decided by the system and overridable in config, CLI and UI; tolerance 1 % default.
-- Consequence: `--classifier int4` on BitNet (about +4 % perplexity) needs `--quality-tolerance 5` or more. Not done: choosing `act-quant` by calibration timing; the probe runs only on request or for an explicit lossy head (it costs two short passes).
+- Consequence: `--classifier int4` on BitNet (about +4 % perplexity) needs `--quality-tolerance 10` or more (the short probe reads about +9 %, the 8-chunk gate text +4.4 %). `auto` is decided by timing already: calibration times the int8 tier (VNNI) against the float tiers (scalar, AVX2, AVX-512F) and replaces the default only on a clear win; the probe is the accuracy check (`--self-check`). The probe runs only on request or for an explicit lossy head (it costs two short passes).
 
 ### 2026-11-18 — Activation quantisation: one specification, scalar oracle, bit-exact tiers, lint
 

@@ -254,11 +254,11 @@ Total:
 
 After reading this, check:
 
-1. **QUICK_SUMMARY.txt** - 10-point quick reference
+1. [**QUICK_SUMMARY.txt**](QUICK_SUMMARY.txt) - 10-point quick reference
 2. **WEIGHT_LOADING_REFERENCE.md** - Complete technical spec
-3. **VISUAL_WEIGHT_LOADING_FLOW.txt** - Flowcharts and diagrams
-4. **offset_calculation_sequence.txt** - Offset calculation walkthrough
-5. **SOURCE_CODE_WITH_LINE_NUMBERS.txt** - Full annotated source
+3. [**VISUAL_WEIGHT_LOADING_FLOW.txt**](VISUAL_WEIGHT_LOADING_FLOW.txt) - Flowcharts and diagrams
+4. [**offset_calculation_sequence.txt**](offset_calculation_sequence.txt) - Offset calculation walkthrough
+5. [**SOURCE_CODE_WITH_LINE_NUMBERS.txt**](SOURCE_CODE_WITH_LINE_NUMBERS.txt) - Full annotated source (a dated snapshot; `weights_map()` has since moved, see `src/core/weights.c`)
 6. **WEIGHT_LOADING_ANALYSIS_INDEX.md** - Navigation guide
 
 ---

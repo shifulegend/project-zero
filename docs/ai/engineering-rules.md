@@ -24,6 +24,12 @@
 - Build: the Makefile tracks header dependencies (`-MMD -MP`, 2026-10-18); don't remove it —
   stale objects with old struct layouts were linked silently before.
 
+## Repository root stays clean
+- Tracked files at the repository root are limited to the list in `tools/root_allowlist.txt`
+  (CI: `tools/check_root_files.sh`). Analysis notes go under `docs/`, test inputs under
+  `tests/fixtures/`, benchmark outputs under `benchmark_results/`. Adding a genuine root file
+  means adding it to that list in the same commit.
+
 ## Memory & safety (hard rules, learned from real bugs)
 - **Zero structs before partial population.** Always `memset(&x, 0, sizeof(x))` before
   `weights_alloc_pointers()` / `run_state_alloc()`-style fillers. `weights_free_pointers()`

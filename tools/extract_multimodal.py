@@ -461,7 +461,7 @@ def main():
     print('        --tokenizer models/bitnet-b1.58-2B-4T_tokenizer_proper.bin \\')
     print(f'        --vision {vision_out} \\')
     print(f'        --proj   {proj_out} \\')
-    print('        --image  strawberry.jpg \\')
+    print('        --image  tests/fixtures/strawberry.jpg \\')
     print('        --prompt "What do you see in this image?"')
 
 

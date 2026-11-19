@@ -9,7 +9,7 @@ This directory contains comprehensive analysis of the BitNet-2B weight loading m
    - Exact reading order (1-14)
    - Key assertions for validation
    - 10-point checklist
-   - File: `/home/<USER>/Documents/project-zero/QUICK_SUMMARY.txt`
+   - File: `docs/weight-loading/QUICK_SUMMARY.txt`
 
 ### 2. **WEIGHT_LOADING_REFERENCE.md** (Comprehensive)
    - Complete technical specification
@@ -21,7 +21,7 @@ This directory contains comprehensive analysis of the BitNet-2B weight loading m
    - Bounds checking & validation
    - Ternary unpacking format
    - Integration example
-   - File: `/home/<USER>/Documents/project-zero/WEIGHT_LOADING_REFERENCE.md`
+   - File: `docs/weight-loading/WEIGHT_LOADING_REFERENCE.md`
 
 ### 3. **weight_loading_summary.md**
    - File locations
@@ -29,7 +29,7 @@ This directory contains comprehensive analysis of the BitNet-2B weight loading m
    - Per-layer weight breakdown
    - Memory mapping details
    - Example size calculations
-   - File: `/home/<USER>/Documents/project-zero/weight_loading_summary.md`
+   - File: `docs/weight-loading/weight_loading_summary.md`
 
 ### 4. **offset_calculation_sequence.txt**
    - Detailed offset calculation walkthrough
@@ -37,7 +37,7 @@ This directory contains comprehensive analysis of the BitNet-2B weight loading m
    - Read macros (MAP_PTR, ALIGN64, COPY_VAL_ALIGN)
    - Layer-by-layer sequence with actual calculations
    - Bounds checking throughout
-   - File: `/home/<USER>/Documents/project-zero/offset_calculation_sequence.txt`
+   - File: `docs/weight-loading/offset_calculation_sequence.txt`
 
 ## 🎯 Key Findings
 

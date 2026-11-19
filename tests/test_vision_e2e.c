@@ -10,7 +10,7 @@
  *
  * Usage:
  *   build/test_vision_e2e <image_path>
- *   build/test_vision_e2e strawberry.jpg
+ *   build/test_vision_e2e tests/fixtures/strawberry.jpg
  */
 
 #include <stdio.h>
@@ -44,7 +44,7 @@ static void init_weights_ones(float *w, int n) {
 }
 
 int main(int argc, char **argv) {
-    const char *img_path = (argc > 1) ? argv[1] : "strawberry.jpg";
+    const char *img_path = (argc > 1) ? argv[1] : "tests/fixtures/strawberry.jpg";
 
     printf("=======================================================\n");
     printf("  Project Zero — Phase 11 Vision Pipeline Benchmark\n");

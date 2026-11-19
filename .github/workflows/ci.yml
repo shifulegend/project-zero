@@ -26,6 +26,10 @@ jobs:
         run: |
           python3 tools/changelog.py check --require-unreleased
           python3 -I tools/test_changelog.py
+      - name: No stray files at the repository root
+        run: |
+          sh tools/test_check_root_files.sh
+          sh tools/check_root_files.sh
       - name: Benchmark scripts (tools/bench) unit tests
         run: python3 tools/bench/test_bench.py
       - name: Python lint (ruff, syntax errors and unused or undefined names)

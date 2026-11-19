@@ -48,6 +48,7 @@ HEADER_SIZE = 64  # padded to 64 bytes
 
 
 def write_header_vision(f, n_layers, embed_dim, hidden_dim, n_heads, patch_dim, num_patches):
+    """Writes the vision-weights file header (magic, version and the encoder dimensions) to `f`."""
     hdr = struct.pack(
         "<IIiiiiii",
         VISION_MAGIC,
@@ -67,6 +68,7 @@ def write_header_proj(f, vision_dim, llm_dim, hidden_dim, has_bias, scale_factor
     # [0:24] magic, version, vision_dim, llm_dim, hidden_dim, has_bias
     # [24:28] scale_factor (new field; 1 = 2-layer MLP, >1 = pixel-shuffle + single linear)
     # [28:64] reserved
+    """Writes the projector-weights file header (magic, version, dimensions, bias flag and scale factor) to `f`."""
     hdr = struct.pack(
         "<IIiiiiii",
         PROJECTOR_MAGIC,
@@ -99,6 +101,7 @@ class ModelAdapter(ABC):
         self.config = config
 
     def get(self, name):
+        """The named tensor from the checkpoint; raises KeyError when it is missing."""
         t = self.tensors.get(name)
         if t is None:
             raise KeyError(f"tensor not found: {name!r}")
@@ -111,10 +114,12 @@ class ModelAdapter(ABC):
 
     @abstractmethod
     def write_vision_weights(self, f):
+        """Writes the vision encoder weights to `f` in pz's binary layout."""
         raise NotImplementedError
 
     @abstractmethod
     def write_proj_weights(self, f):
+        """Writes the projector weights to `f` in pz's binary layout."""
         raise NotImplementedError
 
 
@@ -128,6 +133,7 @@ class Moondream2Adapter(ModelAdapter):
     PREFIX_PROJ = "vision_projection."
 
     def vision_config(self):
+        """Vision encoder shape (layers, embed dim, hidden dim, heads, patch size) from the config, with Moondream2 defaults."""
         vcfg = self.config.get("vision_config", self.config)
         n_layers = vcfg.get("num_hidden_layers", 27)
         embed_dim = vcfg.get("hidden_size", 1152)
@@ -140,6 +146,7 @@ class Moondream2Adapter(ModelAdapter):
         return f"{self.PREFIX_ENC}{l}.{sub}"
 
     def write_vision_weights(self, f):
+        """Writes the Moondream2 vision encoder weights (patch projection, position embeddings and transformer blocks)."""
         n_layers, embed_dim, hidden_dim, n_heads, patch_size = self.vision_config()
         patch_dim = patch_size * patch_size * 3
         num_patches = (384 // patch_size) ** 2
@@ -178,6 +185,7 @@ class Moondream2Adapter(ModelAdapter):
             write_f32(f, np.zeros((hidden_dim, embed_dim), dtype=np.float32))
 
     def write_proj_weights(self, f):
+        """Writes the Moondream2 projector (a two-layer MLP, fc1 and fc2)."""
         n_layers, embed_dim, _, _, _ = self.vision_config()
         text_cfg = self.config.get("text_config", self.config)
         llm_dim = text_cfg.get("hidden_size", 2048)
@@ -212,6 +220,7 @@ class SmolVLMAdapter(ModelAdapter):
     PREFIX_PROJ = "model.connector."
 
     def vision_config(self):
+        """Vision encoder shape from the config, with SmolVLM defaults."""
         vcfg = self.config.get("vision_config", {})
         n_layers = vcfg.get("num_hidden_layers", 27)
         embed_dim = vcfg.get("hidden_size", 1152)
@@ -221,6 +230,7 @@ class SmolVLMAdapter(ModelAdapter):
         return n_layers, embed_dim, hidden_dim, n_heads, patch_size
 
     def write_vision_weights(self, f):
+        """Writes the SmolVLM vision encoder weights."""
         n_layers, embed_dim, hidden_dim, n_heads, patch_size = self.vision_config()
         patch_dim = patch_size * patch_size * 3
         num_patches = (384 // patch_size) ** 2
@@ -256,6 +266,7 @@ class SmolVLMAdapter(ModelAdapter):
             write_f32(f, np.zeros((hidden_dim, embed_dim), dtype=np.float32))
 
     def write_proj_weights(self, f):
+        """Writes the SmolVLM projector (single linear after pixel shuffle when scale_factor > 1, else a two-layer MLP)."""
         n_layers, embed_dim, _, _, _ = self.vision_config()
         tcfg = self.config.get("text_config", {})
         llm_dim = tcfg.get("hidden_size", 576)
@@ -302,9 +313,11 @@ class LLaVAAdapter(ModelAdapter):
 
     def vision_config(self):
         # ViT-L/14: 24 layers, 1024 dim, 4096 hidden, 16 heads, patch=14
+        """Fixed LLaVA vision encoder shape: ViT-L/14 (24 layers, 1024 dim, 4096 hidden, 16 heads, patch 14)."""
         return 24, 1024, 4096, 16, 14
 
     def write_vision_weights(self, f):
+        """Writes the LLaVA vision encoder weights (336 px input)."""
         n_layers, embed_dim, hidden_dim, n_heads, patch_size = self.vision_config()
         patch_dim = patch_size * patch_size * 3
         num_patches = (336 // patch_size) ** 2  # LLaVA uses 336px
@@ -332,6 +345,7 @@ class LLaVAAdapter(ModelAdapter):
             write_f32(f, np.zeros((hidden_dim, embed_dim), dtype=np.float32))
 
     def write_proj_weights(self, f):
+        """Writes the LLaVA projector (two-layer MLP)."""
         _, embed_dim, _, _, _ = self.vision_config()
         tcfg = self.config.get("text_config", {})
         llm_dim = tcfg.get("hidden_size", 4096)
@@ -354,6 +368,7 @@ class LLaVAAdapter(ModelAdapter):
 
 
 def detect_adapter(config, tensors):
+    """Picks the adapter class for a checkpoint from its config (Moondream2, SmolVLM or LLaVA) and returns it; raises ValueError when the model type is not supported."""
     model_type = config.get("model_type", "").lower()
     arch = config.get("architectures", [""])[0].lower()
 
@@ -434,6 +449,7 @@ def load_tensors_from_hf(repo_id, cache_dir=None):
 
 
 def main():
+    """Command-line entry point: downloads or reads a multimodal checkpoint and writes the vision encoder and projector files."""
     parser = argparse.ArgumentParser(
         description="Extract vision encoder + projector from a multimodal HF model"
     )

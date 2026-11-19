@@ -33,13 +33,11 @@ tools/convert_hf_bitnet.py 1
 tools/convert_lora.py 3
 tools/convert_tokenizer.py 1
 tools/deepseek_bench_report.py 7
-tools/extract_multimodal.py 16
 tools/fuzz_config.py 2
 tools/fuzz_grammar_json.py 7
 tools/gen_sbom.py 3
 tools/import_model.py 3
 tools/make_screenshot.py 3
-tools/make_sweep_screenshots.py 11
 tools/mamba_reference.py 6
 tools/pack_ternary.py 1
 tools/plot_benchmark.py 1

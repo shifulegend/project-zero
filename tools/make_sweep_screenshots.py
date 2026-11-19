@@ -40,6 +40,7 @@ SS_DIR = f"{SWEEP}/screenshots"
 
 # ── font ──────────────────────────────────────────────────────────────────────
 def load_font(size=14):
+    """Loads the first available monospace TrueType font at `size`, falling back to PIL's default font."""
     for path in [
         "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
         "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
@@ -56,17 +57,20 @@ FONT_SMALL = load_font(12)
 
 
 def text_w(text, font=FONT):
+    """Pixel width of `text` in `font`."""
     bbox = font.getbbox(text)
     return bbox[2] - bbox[0]
 
 
 # ── draw helpers ──────────────────────────────────────────────────────────────
 def draw_line(draw, y, text, colour=FG, font=FONT, x=PADDING):
+    """Draws one line of text at (x, y) and returns the y of the next line."""
     draw.text((x, y), text, fill=colour, font=font)
     return y + LINE_H
 
 
 def draw_separator(draw, y, colour=DIM):
+    """Draws a horizontal rule across the image and returns the y of the next line."""
     draw.line(
         [(PADDING, y + LINE_H // 2), (WIDTH - PADDING, y + LINE_H // 2)], fill=colour, width=1
     )
@@ -75,23 +79,27 @@ def draw_separator(draw, y, colour=DIM):
 
 # ── content extractors ────────────────────────────────────────────────────────
 def extract_gen_toks(text):
+    """pz generation speed (tok/s) from a sweep log, or "N/A"."""
     m = re.search(r"\[gen\]\s+([\d.]+)\s+tok/s", text)
     return m.group(1) if m else "N/A"
 
 
 def extract_prompt_toks_msft(text):
     # Order: sampling → prompt eval → eval; second-to-last is prompt eval
+    """Prompt-evaluation speed from a Microsoft BitNet log (second-to-last "tokens per second" value), or "N/A"."""
     vals = re.findall(r"([\d.]+) tokens per second", text)
     return vals[-2] if len(vals) >= 2 else "N/A"
 
 
 def extract_eval_toks_msft(text):
     # Last entry is generation eval speed
+    """Generation speed from a Microsoft BitNet log (last "tokens per second" value), or "N/A"."""
     vals = re.findall(r"([\d.]+) tokens per second", text)
     return vals[-1] if vals else "N/A"
 
 
 def extract_llama_speeds(text):
+    """(prompt, generation) speeds in t/s from a llama.cpp summary line, or ("N/A", "N/A")."""
     m = re.search(r"Prompt:\s*([\d.]+)\s*t/s\s*\|\s*Generation:\s*([\d.]+)\s*t/s", text)
     if m:
         return m.group(1), m.group(2)
@@ -109,16 +117,19 @@ def extract_perf_print(text):
 
 
 def extract_date(text):
+    """The DATE line of a sweep log, or the default date when it is absent."""
     m = re.search(r"DATE:\s*(.+)", text)
     return m.group(1).strip() if m else "2026-06-21"
 
 
 def extract_cmd(text):
+    """The CMD line of a sweep log, or an empty string."""
     m = re.search(r"CMD:\s*(.+)", text)
     return m.group(1).strip() if m else ""
 
 
 def shorten_cmd(cmd, max_len=90):
+    """Shortens a command line for display: unchanged if it fits `max_len`, else known path prefixes are abbreviated and the rest is truncated."""
     if len(cmd) <= max_len:
         return cmd
     # shorten model paths

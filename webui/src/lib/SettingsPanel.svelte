@@ -5,6 +5,7 @@
   import NumberField from './NumberField.svelte';
   import PromptCacheStatus from './PromptCacheStatus.svelte';
   import UpdateStatus from './UpdateStatus.svelte';
+  import AccuracyCheck from './AccuracyCheck.svelte';
   import { serverDefaultChanges, sourcesSummary } from './settings.js';
   import { saveServerDefault } from './api.js';
 
@@ -208,6 +209,7 @@
                   title="Write to {cfgInfo.path}; applies when the server restarts">Save for next start</button>
         </div>
       {/if}
+      <AccuracyCheck runtime={config?.runtime} writable={cfgInfo.writable} {saving} onSave={saveAll} />
       {#if cfgInfo.writable}
         <label class="text">
           <span>Web UI title <span class="dim">(also drawn as the wordmark)</span></span>

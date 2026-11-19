@@ -326,6 +326,7 @@ set(API_SOURCES
     src/api/request_params.c
     src/api/api_info.c
     src/api/watermark_endpoint.c
+    src/api/selfcheck_endpoint.c
     src/api/config_endpoint.c
     src/api/update_endpoint.c
     src/api/gen_queue.c
@@ -348,6 +349,7 @@ set(DISTRIBUTED_SOURCES
 
 set(EVAL_SOURCES
     src/eval/perplexity.c
+    src/eval/selfcheck.c
 )
 
 set(BRAND_SOURCES

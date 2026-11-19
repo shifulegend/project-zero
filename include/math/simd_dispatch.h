@@ -105,4 +105,18 @@ const char *tn_simd_backend_name(void);
  * guards (tools/check_isa_guards.py). */
 int tn_simd_ternary_preq(void);
 
+/* Activation numerics of the ternary matmul, independent of which SIMD tier runs
+ * (2026-11-18). INT8 is the W1.58A8 definition (per-row abs_max int8, include/math/
+ * quantize_i8.h), used by bitnet.cpp and the reference model and fastest where VNNI or
+ * dotprod exist; FLOAT keeps activations in float32 (slightly more precise, slower).
+ * AUTO takes INT8 where the CPU has an int8 dot product and FLOAT elsewhere, i.e. what the
+ * dispatcher always did. Setting a mode re-binds the kernels (tn_simd_init). */
+typedef enum { TN_ACT_AUTO = 0, TN_ACT_INT8, TN_ACT_FLOAT } TnActQuant;
+int         tn_act_quant_parse(const char *name, TnActQuant *out);   /* 0 = ok, -1 = unknown */
+const char *tn_act_quant_name(TnActQuant m);
+void        tn_act_quant_set(TnActQuant m);
+TnActQuant  tn_act_quant_get(void);
+/* "int8" or "float": what the ternary matmul actually runs after tier selection. */
+const char *tn_act_quant_effective(void);
+
 #endif /* TN_SIMD_DISPATCH_H */

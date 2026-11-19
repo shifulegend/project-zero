@@ -61,6 +61,7 @@
 
 /* Phase 21: OpenAI-compatible API server */
 #include "api/api_server.h"
+#include "eval/selfcheck.h"
 
 /* Version is injected unquoted by the build (-DPZ_VERSION, see Makefile) and
  * stringified here; falls back to "dev" for builds that don't pass it
@@ -140,6 +141,7 @@ int main(int argc, char **argv) {
     if (argc > 1 && strcmp(argv[1], "config") == 0)
         return pz_config_command(argc - 1, argv + 1);
     argc = pz_config_prepare_argv(argc, argv, &argv);
+    int exit_code = 0;
     CliArgs args;
     if (parse_args(&args, argc, argv) != TN_OK) {
         return 1;
@@ -305,6 +307,12 @@ int main(int argc, char **argv) {
                names[args.classifier_override]);
     }
     /* else: default BF16 (from hardware_profile.c select_classifier) */
+
+    /* ── Activation numerics ────────────────────────────────────────────── */
+    if (args.act_quant != 0) {
+        tn_act_quant_set((TnActQuant)args.act_quant);
+        printf("Activation quantization: %s (user-selected)\n", tn_act_quant_name((TnActQuant)args.act_quant));
+    }
 
     tn_hardware_profile_report(hw);
 
@@ -868,8 +876,42 @@ int main(int argc, char **argv) {
         update_notice = !args.server_mode;
     }
 
+    /* Accuracy probe (2026-11-18): a LM head the user asked to be quantised must still compute
+     * the model. Over --quality-tolerance it falls back to BF16, loudly; --quality-tolerance 0
+     * keeps the request as given. --self-check below runs the same probe on demand. */
+    {
+        const TnHardwareProfile *hpc = tn_hardware_profile_get();
+        int lossy_head = hpc && hpc->classifier_explicit && hpc->classifier_fmt != TN_CLS_BF16;
+        if (lossy_head && args.quality_tolerance > 0.0 && !args.self_check && !args.perplexity_file &&
+            !args.watermark_detect) {
+            SelfCheckOptions so = { args.quality_tolerance, args.self_check_tokens };
+            SelfCheckResult sr;
+            if (selfcheck_run(&so, &p, &w, s, &mc, &t, tp, &sr) == TN_OK && sr.verdict == SC_FAIL) {
+                char line[300];
+                selfcheck_format(&sr, line, sizeof(line));
+                fprintf(stderr, "[%s]\n[self-check] the %s LM head costs more than --quality-tolerance on this "
+                        "model: using a BF16 head. Keep the request with a higher --quality-tolerance "
+                        "(0 = no bar).\n", line, sr.classifier);
+                tn_hardware_profile_swap_classifier(TN_CLS_BF16);
+            }
+        }
+    }
+
     /* Execution Mode */
-    if (args.perplexity_file) {
+    if (args.self_check) {
+        SelfCheckOptions so = { args.quality_tolerance, args.self_check_tokens };
+        SelfCheckResult sr;
+        TernaryError se = selfcheck_run(&so, &p, &w, s, &mc, &t, tp, &sr);
+        if (se != TN_OK) {
+            fprintf(stderr, "Error: self-check failed (%s)\n", tn_error_str(se));
+            exit_code = 1;
+        } else {
+            char line[300];
+            selfcheck_format(&sr, line, sizeof(line));
+            printf("%s\n", line);
+            if (sr.verdict == SC_FAIL) exit_code = 1;
+        }
+    } else if (args.perplexity_file) {
         run_perplexity(&args, &p, &w, s, &mc, &t, tp);
     } else if (args.watermark_detect) {
         /* Phase 33: offline watermark detection — tokenize the text with this
@@ -897,6 +939,9 @@ int main(int argc, char **argv) {
         if (args.api_key) api_ctx.server_config.auth.api_key = strdup(args.api_key);
         api_ctx.server_config.metrics.enabled = args.metrics_enabled;
         api_ctx.server_config.web_ui = args.web_ui_mode;
+        api_ctx.server_config.act_quant = args.act_quant;
+        api_ctx.server_config.quality_tolerance = args.quality_tolerance;
+        api_ctx.server_config.self_check_tokens = args.self_check_tokens;
         /* Generation flags become the server-side defaults every request
          * (and the web UI, via GET /v1/config) starts from. */
         args_fill_gen_params(&args, &api_ctx.server_config.gen_defaults);
@@ -1057,5 +1102,5 @@ cleanup_after_run:
     mapped_file_close(&mf);
     threadpool_destroy(tp);
 
-    return 0;
+    return exit_code;
 }

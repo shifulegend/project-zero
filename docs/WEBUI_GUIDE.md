@@ -174,6 +174,13 @@ position). `/metrics` reports `project_zero_generation_slots`, `_slots_busy`, `q
 `dist N nodes` tag in the header; hover it for each node's layer range. `--kv-offload <dir>` (Phase 31)
 shows a `KV on disk` tag.
 
+Settings → Server defaults also shows the activation numerics of ternary models (`--act-quant`) and
+the LM-head format, saves `act_quant` and `quality_tolerance` for the next start, and has a "Run
+accuracy self-check" button (`POST /v1/selfcheck`, optional body `{"tolerance", "tokens"}`): it scores
+a short built-in passage under the configured settings and under float activations with a BF16 head
+and reports the perplexity change. It waits for any running reply and answers `429` while one is in
+flight.
+
 **Update notices (Phase 38).** The server checks this project's GitHub Releases in the background
 at most once a day and the UI shows `>_ update available vX → vY · release notes · dismiss` when a
 newer release exists (dismissed per version). Settings → Updates shows the status, the server's

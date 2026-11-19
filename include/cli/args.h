@@ -40,6 +40,10 @@ typedef struct {
     char *simd_override;      /* NULL = auto, or "avx2", "avx512f", "vnni", "scalar" */
     bool calibrate;           /* --calibrate: force re-calibration of optimal settings */
     bool no_calibrate;        /* --no-calibrate / PZ_NO_CALIBRATE: never load, run or save a calibration */
+    int  act_quant;           /* --act-quant: TnActQuant (0 auto, 1 int8, 2 float) */
+    double quality_tolerance; /* --quality-tolerance: allowed perplexity increase in percent (0 = no bar) */
+    int  self_check_tokens;   /* --self-check-tokens: length of the accuracy probe */
+    bool self_check;          /* --self-check: run the accuracy probe, print, exit */
     bool show_version;        /* --version/-v: print version + detected SIMD backend, exit 0 */
     /* Phase 38: update notifications (update/update_check.h) */
     bool check_update;        /* --check-update: check now, print, exit (no --model needed) */

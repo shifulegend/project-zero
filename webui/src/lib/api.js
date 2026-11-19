@@ -192,3 +192,15 @@ export async function saveServerDefault(key, value) {
   if (!res.ok) throw new Error(json?.error?.message ?? `save failed: ${res.status}`);
   return json;
 }
+
+/**
+ * POST /v1/selfcheck — the engine's accuracy probe on the loaded model: perplexity of a built-in
+ * passage under the configured numerics against float activations and a BF16 head.
+ * @returns {Promise<{verdict: string, act_quant: string, classifier: string, delta_pct: number, tolerance_pct: number, perplexity: {reference: number, configured: number}, note: string}>}
+ */
+export async function runSelfCheck() {
+  const res = await fetch('/v1/selfcheck', { method: 'POST' });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json?.error?.message ?? `self-check failed: ${res.status}`);
+  return json;
+}

@@ -88,6 +88,12 @@ const TnHardwareProfile *tn_hardware_profile_get(void);
  */
 void tn_hardware_profile_set_classifier(TnClassifierFormat fmt);
 
+/* Switch the LM-head format a forward pass uses without recording a user choice
+ * (no `classifier_explicit`, no projection update): the accuracy probe runs the
+ * same text under two heads and puts the original back. Returns the previous
+ * format; TN_CLS_BF16 when no profile exists. */
+TnClassifierFormat tn_hardware_profile_swap_classifier(TnClassifierFormat fmt);
+
 /*
  * Correct the per-token weight-traffic estimate with the REAL loaded model
  * (init runs pre-load and seeds it with compile-time BitNet-2B constants —

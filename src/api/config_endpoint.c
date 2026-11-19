@@ -30,6 +30,9 @@ static const struct { const char *json, *key; } g_map[] = {
     { "ui_title",           "ui-title" },
     { "parallel",           "parallel" },
     { "parallel_batch",     "parallel-batch" },
+    { "act_quant",          "act-quant" },
+    { "quality_tolerance",  "quality-tolerance" },
+    { "self_check_tokens",  "self-check-tokens" },
 };
 #define N_MAP ((int)(sizeof(g_map) / sizeof(g_map[0])))
 

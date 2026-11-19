@@ -4,8 +4,12 @@
  */
 
 #include "api/openapi.h"
+#include <pthread.h>
+#include <string.h>
 
-static const char OPENAPI_JSON[] =
+/* One string literal may not exceed 4095 characters (C99 5.2.4.1, -Wpedantic): the document is
+ * two literals joined once, on first use. */
+static const char OPENAPI_JSON_A[] =
 "{"
   "\"openapi\":\"3.0.0\","
   "\"info\":{\"title\":\"project-zero API\",\"version\":\"1.0.0\","
@@ -27,6 +31,12 @@ static const char OPENAPI_JSON[] =
     "\"/v1/watermark/detect\":{\"post\":{\"summary\":\"Score text for the output watermark\","
       "\"description\":\"Body: {text, key?, gamma?, z_threshold?}. Returns tokens_scored, green_tokens, z_score, watermarked.\","
       "\"responses\":{\"200\":{\"description\":\"OK\"},\"400\":{\"description\":\"Missing text\"}}}},"
+    "\"/v1/selfcheck\":{\"post\":{\"summary\":\"Accuracy probe: perplexity of a built-in passage under the configured activation numerics and LM head against float activations and a BF16 head\","
+      "\"description\":\"Body (optional): {tolerance?, tokens?}, defaults --quality-tolerance and --self-check-tokens. Returns verdict (PASS/FAIL/SKIPPED), act_quant, classifier, perplexity {reference, configured}, delta_pct, tolerance_pct. Takes the engine like a cache reset.\","
+      "\"responses\":{\"200\":{\"description\":\"OK\"},\"400\":{\"description\":\"Invalid tolerance or tokens\"},\"429\":{\"description\":\"A generation is in flight\"}}}},"
+    ;
+
+static const char OPENAPI_JSON_B[] =
     "\"/v1/prompt_cache\":{\"get\":{\"summary\":\"Prompt-cache snapshot stats (entries, bytes, hits, misses, evictions)\","
       "\"responses\":{\"200\":{\"description\":\"OK\"}}}},"
     "\"/v1/prompt_cache/clear\":{\"post\":{\"summary\":\"Drop all cached prompt snapshots\","
@@ -78,5 +88,14 @@ static const char OPENAPI_DOCS_HTML[] =
 "</script>"
 "</body></html>";
 
-const char *openapi_json(void) { return OPENAPI_JSON; }
+static char g_openapi_json[sizeof(OPENAPI_JSON_A) + sizeof(OPENAPI_JSON_B)];
+static pthread_once_t g_openapi_once = PTHREAD_ONCE_INIT;
+static void openapi_join(void) {
+    memcpy(g_openapi_json, OPENAPI_JSON_A, sizeof(OPENAPI_JSON_A) - 1);
+    memcpy(g_openapi_json + sizeof(OPENAPI_JSON_A) - 1, OPENAPI_JSON_B, sizeof(OPENAPI_JSON_B));
+}
+const char *openapi_json(void) {
+    pthread_once(&g_openapi_once, openapi_join);
+    return g_openapi_json;
+}
 const char *openapi_docs_html(void) { return OPENAPI_DOCS_HTML; }

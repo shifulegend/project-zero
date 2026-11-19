@@ -17,6 +17,7 @@
  *   POST /v1/config/defaults              → Phase 40.3 save one default to the
  *                                            `pz config` file (next start)
  *   POST /v1/watermark/detect             → Phase 33 watermark z-score for text
+ *   POST /v1/selfcheck                    → accuracy probe of the loaded model and settings
  *   GET  /v1/prompt_cache                 → Phase 26 prompt-cache stats
  *   POST /v1/prompt_cache/clear           → drop all cached prompt snapshots
  *   GET  /v1/update                       → Phase 38 update-check state (notify only)
@@ -73,6 +74,7 @@
 #include "api/update_endpoint.h"
 #include "api/request_params.h"
 #include "api/watermark_endpoint.h"
+#include "api/selfcheck_endpoint.h"
 #include "reasoning/best_of.h"
 #include "reasoning/mcts.h"
 #include "api/json_write.h"
@@ -338,6 +340,33 @@ static int handle_prompt_cache_clear(int fd, ApiContext *ctx, const char *extra_
     release_generation_slot(ctx, units, 1);
     send_json_heap(fd, 200, api_prompt_cache_json(ctx), extra_headers);
     return 200;
+}
+
+/* POST /v1/selfcheck — the accuracy probe on the loaded model. It runs forward passes on the
+ * engine's own state, so like a cache reset it takes every generation unit plus the mutex
+ * (429 while a generation is running) and drops the prefix caches that the probe overwrites. */
+static int handle_selfcheck(int fd, const char *body_start, size_t body_len,
+                            ApiContext *ctx, const char *extra_headers) {
+    char *body = (char *)malloc(body_len + 1);
+    if (!body) { send_error_ex(fd, 500, "OOM", extra_headers); return 500; }
+    memcpy(body, body_start, body_len);
+    body[body_len] = '\0';
+    int units = engine_units(ctx);
+    if (gen_queue_try_acquire_n(&ctx->gen_queue, units) != GEN_QUEUE_OK) {
+        free(body);
+        send_error_ex(fd, 429, "A generation is in flight", extra_headers);
+        return 429;
+    }
+    pthread_mutex_lock(&ctx->generation_mutex);
+    int status = 500;
+    char *json = api_selfcheck(ctx, body, &status);
+    prompt_store_clear(&ctx->prompt_store);
+    prefix_cache_reset(&ctx->prefix_cache);
+    batch_scheduler_reset_caches(ctx->sched);
+    release_generation_slot(ctx, units, 1);
+    free(body);
+    send_json_heap(fd, status, json, extra_headers);
+    return status;
 }
 
 static int handle_watermark_detect(int fd, const char *body_start, size_t body_len,
@@ -1032,6 +1061,8 @@ static void handle_connection(int fd, ApiContext *ctx) {
     } else if (strcmp(req.method, "POST") == 0 &&
                strcmp(req.path, "/v1/prompt_cache/clear") == 0) {
         status = handle_prompt_cache_clear(fd, ctx, extra_headers);
+    } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/selfcheck") == 0) {
+        status = handle_selfcheck(fd, req.body, req.body_len, ctx, extra_headers);
     } else if (strcmp(req.method, "POST") == 0 &&
                strcmp(req.path, "/v1/watermark/detect") == 0) {
         status = handle_watermark_detect(fd, req.body, req.body_len, ctx, extra_headers);

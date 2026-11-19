@@ -597,6 +597,13 @@ void tn_hardware_profile_set_classifier(TnClassifierFormat fmt) {
     rebuild_summary();
 }
 
+TnClassifierFormat tn_hardware_profile_swap_classifier(TnClassifierFormat fmt) {
+    if (!g_initialized) return TN_CLS_BF16;
+    TnClassifierFormat old = g_profile.classifier_fmt;
+    g_profile.classifier_fmt = fmt;
+    return old;
+}
+
 void tn_hardware_profile_set_model_bytes(double weight_bytes_per_tok,
                                           double cls_bytes_per_tok) {
     if (!g_initialized || weight_bytes_per_tok <= 0.0) return;

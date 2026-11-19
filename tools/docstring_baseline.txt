@@ -8,7 +8,6 @@ tools/bench/setup_engines.py 5
 tools/bench/verify/bitnet_layer0.py 5
 tools/bench/verify/gguf_min.py 5
 tools/bench_parallel.py 5
-tools/bench_phase34.py 10
 tools/bench_sweep_seq.py 4
 tools/build_llama3_tokenizer.py 1
 tools/changelog.py 3
@@ -28,7 +27,6 @@ tools/check_suppressions.py 5
 tools/check_todos.py 3
 tools/compare_dump/compare_tensors.py 3
 tools/compare_dump/parse_llama_log.py 1
-tools/convert_hf.py 9
 tools/convert_hf_bitnet.py 1
 tools/convert_lora.py 3
 tools/convert_tokenizer.py 1
@@ -43,6 +41,5 @@ tools/pack_ternary.py 1
 tools/plot_benchmark.py 1
 tools/plot_sweep_svg.py 6
 tools/run_perf_runs.py 1
-tools/run_sweep.py 9
 tools/sync_ai_adapters.py 4
 tools/update_docs_from_sweep.py 2

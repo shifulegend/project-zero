@@ -51,6 +51,7 @@ PROMPT = (
 
 # ── command builders ──────────────────────────────────────────────────────────
 def cmd_pz_bitnet(t, classifier="bf16"):
+    """Command line for pz on the BitNet model with `t` threads and the given classifier format."""
     return [
         PZ,
         "--model",
@@ -71,6 +72,7 @@ def cmd_pz_bitnet(t, classifier="bf16"):
 
 
 def cmd_pz_smol(t):
+    """Command line for pz on the SmolLM2 model with `t` threads."""
     return [
         PZ,
         "--model",
@@ -89,6 +91,7 @@ def cmd_pz_smol(t):
 
 
 def cmd_msft(t):
+    """Command line for Microsoft's BitNet reference engine with `t` threads."""
     return [
         "python3",
         "run_inference.py",
@@ -104,6 +107,7 @@ def cmd_msft(t):
 
 
 def cmd_llama_smol(t):
+    """Command line for llama.cpp on the SmolLM2 model with `t` threads."""
     return [
         LLAMA,
         "--model",
@@ -123,23 +127,27 @@ def cmd_llama_smol(t):
 
 # ── parsers ───────────────────────────────────────────────────────────────────
 def parse_pz(text):
+    """(generation tok/s, None) from a pz log; pz prints no prompt rate."""
     m = re.search(r"\[gen\]\s+([\d.]+)\s+tok/s", text)
     return (float(m.group(1)), None) if m else (None, None)
 
 
 def parse_msft(text):
+    """(generation, prompt) tok/s from a Microsoft BitNet log."""
     gen = re.search(r"eval time\s*=.*?\(\s*([\d.]+)\s+tokens per second\)", text)
     prmpt = re.search(r"prompt eval time\s*=.*?\(\s*([\d.]+)\s+tokens per second\)", text)
     return (float(gen.group(1)) if gen else None, float(prmpt.group(1)) if prmpt else None)
 
 
 def parse_llama(text):
+    """(generation, prompt) tok/s from a llama.cpp summary line."""
     m = re.search(r"Prompt:\s*([\d.]+)\s*t/s\s*\|\s*Generation:\s*([\d.]+)\s*t/s", text)
     return (float(m.group(2)), float(m.group(1))) if m else (None, None)
 
 
 # ── run one benchmark ─────────────────────────────────────────────────────────
 def run_one(label, cmd, t, r, cwd=None, parser=parse_pz):
+    """Runs one command, prints its speeds and returns (output, generation tok/s, prompt tok/s); a timeout or error gives empty results."""
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"\n[{now}]  {label}  t={t}  run {r}/{N_RUNS}")
     print(f"  CMD: {' '.join(cmd)}")
@@ -162,6 +170,7 @@ def run_one(label, cmd, t, r, cwd=None, parser=parse_pz):
 
 # ── suite runner ──────────────────────────────────────────────────────────────
 def run_suite(suite_name, cmd_fn, parser, t_list=THREADS, cwd=None):
+    """Runs `N_RUNS` runs at each thread count for one suite, saves each run's log and returns the per-thread summary."""
     suite_dir = f"{OUT_DIR}/{suite_name}"
     os.makedirs(suite_dir, exist_ok=True)
     summary = {}

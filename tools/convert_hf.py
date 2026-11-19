@@ -40,6 +40,7 @@ TN_VERSION = 1
 
 
 def align64(f):
+    """Pads the output file with zeros up to the next 64-byte boundary."""
     pos = f.tell()
     rem = pos % 64
     if rem:
@@ -107,6 +108,7 @@ def write_bf16_block(f, w: np.ndarray):
 
 
 def build_weight_map(model_dir):
+    """Maps tensor names to safetensors shard files from the model's index (empty when the model is a single file)."""
     index_path = os.path.join(model_dir, "model.safetensors.index.json")
     weight_map = {}
     if os.path.exists(index_path):
@@ -124,6 +126,7 @@ def build_weight_map(model_dir):
 
 
 def get_tensor(model_dir, weight_map, name):
+    """Reads one tensor as a numpy array from its shard, or None when the name is not in the weight map."""
     shard = weight_map.get(name)
     if not shard:
         return None
@@ -196,6 +199,7 @@ def write_mla_attention(f, model_dir, weight_map, layer, cfg_hf):
 
 
 def convert_dense(args):
+    """Converts a dense (non-MoE) model directory to the pz .bin format."""
     with open(os.path.join(args.model, "config.json"), encoding="utf-8") as fh:
         cfg = json.load(fh)
 
@@ -214,6 +218,7 @@ def convert_dense(args):
     weight_map = build_weight_map(args.model)
 
     def get(name):
+        """Reads a tensor of the model being converted."""
         return get_tensor(args.model, weight_map, name)
 
     with open(args.output, "wb") as f:
@@ -237,6 +242,7 @@ def convert_dense(args):
         align64(f)  # pad to 64
 
         def write_fp32(name):
+            """Writes a tensor as float32, 64-byte aligned; a missing tensor is skipped (with a warning, except lm_head.weight, which may be absent)."""
             arr = get(name)
             if arr is None:
                 if name != "lm_head.weight":
@@ -278,6 +284,7 @@ def convert_dense(args):
 
 
 def convert_moe(args):
+    """Converts a Mixture-of-Experts model directory to the pz .bin format (ternary experts, no sub-norms)."""
     with open(os.path.join(args.model, "config.json"), encoding="utf-8") as fh:
         cfg_hf = json.load(fh)
 
@@ -321,6 +328,7 @@ def convert_moe(args):
     weight_map = build_weight_map(args.model)
 
     def get(name):
+        """Reads a tensor of the model being converted."""
         return get_tensor(args.model, weight_map, name)
 
     with open(args.output, "wb") as f:
@@ -460,6 +468,7 @@ def convert_moe(args):
 
 
 def main():
+    """Command-line entry point: parses the options and runs the dense or MoE conversion."""
     parser = ArgumentParser(description="Convert HuggingFace model to project-zero .bin format")
     parser.add_argument("--model", type=str, required=True, help="HF model directory")
     parser.add_argument("--output", type=str, required=True, help="Output .bin file path")

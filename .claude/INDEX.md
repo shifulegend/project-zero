@@ -227,7 +227,7 @@ Key fields:
 - `layer_weight_type` — `WEIGHT_TYPE_F32/F16/Q4K` for GGUF models
 - `has_expert_quant`, `has_mla_quant` — GGUF quantised expert/MLA flags
 
-### `RunState` (`include/core/run_state.h`)
+### `RunState` (`include/runtime/run_state.h`)
 - `x/xb/xb2` — activation scratch buffers (dim floats)
 - `hb/hb2` — FFN hidden state buffers (hidden_dim floats)
 - `q` — query vector (dim floats)

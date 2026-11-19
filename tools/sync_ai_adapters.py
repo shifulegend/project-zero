@@ -72,6 +72,31 @@ def render(path):
     }
 
 
+# Durable rules every root entrypoint must carry (a one-line mention each is enough; the full
+# text lives in docs/ai/engineering-rules.md). Added 2026-11-19 after GEMINI.md and the Copilot
+# file had silently lost several of them.
+ENTRYPOINTS = ["CLAUDE.md", "AGENTS.md", "gemini/GEMINI.md", ".github/copilot-instructions.md"]
+REQUIRED_RULES = [
+    ("definition of done (gcc and clang)", r"gcc and clang"),
+    ("installer + pz config schema (DoD #6)", r"DoD #6"),
+    ("README review (DoD #7)", r"DoD #7"),
+    ("immutable published releases", r"Published releases are immutable"),
+    ("no AI attribution", r"[Aa]ttribution"),
+    ("bug-fix policy", r"Any bug found gets fixed"),
+]
+
+
+def missing_rules():
+    out = []
+    for ep in ENTRYPOINTS:
+        path = ROOT / ep
+        text = path.read_text(encoding="utf-8") if path.exists() else ""
+        for label, pat in REQUIRED_RULES:
+            if not re.search(pat, text):
+                out.append(f"{ep}: missing durable rule '{label}'")
+    return out
+
+
 def main(argv):
     check = "--check" in argv[1:]
     sources = sorted(SRC_DIR.glob("*.md"))
@@ -87,6 +112,13 @@ def main(argv):
             if not check:
                 out.parent.mkdir(parents=True, exist_ok=True)
                 out.write_text(content, encoding="utf-8")
+    gaps = missing_rules() if check else []
+    if check and gaps:
+        print("Root adapter files lost a durable rule (copy it from CLAUDE.md / AGENTS.md):")
+        for g in gaps:
+            print(f"  {g}")
+        if not stale:
+            return 1
     if check and stale:
         print("Stale generated adapter files (edit .claude/rules/*.md, then run "
               "tools/sync_ai_adapters.py):")

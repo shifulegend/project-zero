@@ -3,11 +3,12 @@
  *
  * Image upload for a chat request: decodes the newest user message's image_url data URL and runs
  * the vision pipeline into the engine's KV cache, mirroring the CLI's --image handling.
- * Split out of http_server.c; the code is unchanged.
+ * Split out of http_server.c; the partial-write loop is net_write_all().
  */
 
 #include "api/chat_image.h"
 #include "api/data_url.h"
+#include "api/net_io.h"
 #include "multimodal/vision_pipeline.h"
 
 #include <stdio.h>
@@ -43,10 +44,11 @@ int chat_apply_image(ApiContext *ctx, ChatRequest *req) {
             free(img_bytes);
             break;
         }
-        ssize_t written = write(tmp_fd, img_bytes, img_len);
+        int wrote_all =
+            net_write_all(tmp_fd, img_bytes, img_len) == 0; /* loops on short writes and EINTR */
         close(tmp_fd);
         free(img_bytes);
-        if (written < 0 || (size_t)written != img_len) {
+        if (!wrote_all) {
             fprintf(stderr, "[vision] failed to write temp image file\n");
             unlink(tmp_path);
             break;

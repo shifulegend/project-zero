@@ -1,6 +1,9 @@
 #include "api/net_io.h"
 
+#include <arpa/inet.h>
 #include <errno.h>
+#include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 
 int net_write_all(int fd, const void *buf, size_t len) {
@@ -16,4 +19,21 @@ int net_write_all(int fd, const void *buf, size_t len) {
         len -= (size_t)n;
     }
     return 0;
+}
+
+void net_format_peer_masked(const struct in_addr *addr, char *out, size_t cap) {
+    if (!out || cap == 0) return;
+    char full[INET_ADDRSTRLEN];
+    if (!addr || !inet_ntop(AF_INET, addr, full, sizeof(full))) {
+        snprintf(out, cap, "?");
+        return;
+    }
+    char *dot = strrchr(full, '.');
+    if (!dot) {
+        snprintf(out, cap, "?");
+        return;
+    }
+    dot[1] = 'x';
+    dot[2] = '\0';
+    snprintf(out, cap, "%s", full);
 }

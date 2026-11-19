@@ -941,8 +941,12 @@ static void *listener_thread_fn(void *arg) {
             continue;
         }
 
-        if (g_tn_verbose)
-            fprintf(stderr, "[API] Connection from %s\n", inet_ntoa(client_addr.sin_addr));
+        if (g_tn_verbose) {
+            /* The last octet is masked: the log names the network, not the client. */
+            char peer[INET_ADDRSTRLEN + 2];
+            net_format_peer_masked(&client_addr.sin_addr, peer, sizeof(peer));
+            fprintf(stderr, "[API] Connection from %s\n", peer);
+        }
 
         /* Bound the work a client can hold: a read/write timeout so a stalled
          * (slowloris) peer cannot pin its thread forever, and a connection cap

@@ -10,63 +10,63 @@
 #include <math.h>
 
 TernaryError weights_alloc_pointers(TransformerWeights *w, const Config *cfg) {
-    int nl = cfg->n_layers;
+    int n_layers = cfg->n_layers;
     /* Callers are responsible for zeroing the struct (memset(w, 0, sizeof(*w)))
      * before calling this function.  Doing it here would clobber fields the
      * caller may have set (e.g. layers_are_ternary) — violating modularity. */
 
-    w->wq = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
-    w->wk = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
-    w->wv = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
-    w->wo = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
-    w->sq = (float *)calloc(nl, sizeof(float));
-    w->sk = (float *)calloc(nl, sizeof(float));
-    w->sv = (float *)calloc(nl, sizeof(float));
-    w->so = (float *)calloc(nl, sizeof(float));
-    w->w1 = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
-    w->w2 = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
-    w->w3 = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
-    w->s1 = (float *)calloc(nl, sizeof(float));
-    w->s2 = (float *)calloc(nl, sizeof(float));
-    w->s3 = (float *)calloc(nl, sizeof(float));
-    w->rms_att_weight = (float **)calloc(nl, sizeof(float *));
-    w->rms_ffn_weight = (float **)calloc(nl, sizeof(float *));
-    w->rms_attn_sub_norm = (float **)calloc(nl, sizeof(float *));
-    w->rms_ffn_sub_norm = (float **)calloc(nl, sizeof(float *));
+    w->wq = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
+    w->wk = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
+    w->wv = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
+    w->wo = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
+    w->sq = (float *)calloc(n_layers, sizeof(float));
+    w->sk = (float *)calloc(n_layers, sizeof(float));
+    w->sv = (float *)calloc(n_layers, sizeof(float));
+    w->so = (float *)calloc(n_layers, sizeof(float));
+    w->w1 = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
+    w->w2 = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
+    w->w3 = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
+    w->s1 = (float *)calloc(n_layers, sizeof(float));
+    w->s2 = (float *)calloc(n_layers, sizeof(float));
+    w->s3 = (float *)calloc(n_layers, sizeof(float));
+    w->rms_att_weight = (float **)calloc(n_layers, sizeof(float *));
+    w->rms_ffn_weight = (float **)calloc(n_layers, sizeof(float *));
+    w->rms_attn_sub_norm = (float **)calloc(n_layers, sizeof(float *));
+    w->rms_ffn_sub_norm = (float **)calloc(n_layers, sizeof(float *));
 
     /* Per-layer, per-projection weight type (WEIGHT_TYPE_*) — see weights.h
      * for why this can't be a single shared flag. */
-    w->wq_type = (int *)calloc(nl, sizeof(int));
-    w->wk_type = (int *)calloc(nl, sizeof(int));
-    w->wv_type = (int *)calloc(nl, sizeof(int));
-    w->wo_type = (int *)calloc(nl, sizeof(int));
-    w->w1_type = (int *)calloc(nl, sizeof(int));
-    w->w2_type = (int *)calloc(nl, sizeof(int));
-    w->w3_type = (int *)calloc(nl, sizeof(int));
+    w->wq_type = (int *)calloc(n_layers, sizeof(int));
+    w->wk_type = (int *)calloc(n_layers, sizeof(int));
+    w->wv_type = (int *)calloc(n_layers, sizeof(int));
+    w->wo_type = (int *)calloc(n_layers, sizeof(int));
+    w->w1_type = (int *)calloc(n_layers, sizeof(int));
+    w->w2_type = (int *)calloc(n_layers, sizeof(int));
+    w->w3_type = (int *)calloc(n_layers, sizeof(int));
 
     /* Qwen3.5/3.6 hybrid attention — cheap per-layer pointer arrays,
      * always allocated (NULL contents) like rms_attn_sub_norm above;
      * populated only when MoEConfig.has_linear_attn is set. */
-    w->q35_attn_q_norm = (float **)calloc(nl, sizeof(float *));
-    w->q35_attn_k_norm = (float **)calloc(nl, sizeof(float *));
-    w->q35_ssm_qkv     = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
-    w->q35_ssm_gate    = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
-    w->q35_ssm_conv1d  = (float **)calloc(nl, sizeof(float *));
-    w->q35_ssm_dt_bias = (float **)calloc(nl, sizeof(float *));
-    w->q35_ssm_a       = (float **)calloc(nl, sizeof(float *));
-    w->q35_ssm_alpha   = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
-    w->q35_ssm_beta    = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
-    w->q35_ssm_norm    = (float **)calloc(nl, sizeof(float *));
-    w->q35_ssm_out     = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
+    w->q35_attn_q_norm = (float **)calloc(n_layers, sizeof(float *));
+    w->q35_attn_k_norm = (float **)calloc(n_layers, sizeof(float *));
+    w->q35_ssm_qkv     = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
+    w->q35_ssm_gate    = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
+    w->q35_ssm_conv1d  = (float **)calloc(n_layers, sizeof(float *));
+    w->q35_ssm_dt_bias = (float **)calloc(n_layers, sizeof(float *));
+    w->q35_ssm_a       = (float **)calloc(n_layers, sizeof(float *));
+    w->q35_ssm_alpha   = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
+    w->q35_ssm_beta    = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
+    w->q35_ssm_norm    = (float **)calloc(n_layers, sizeof(float *));
+    w->q35_ssm_out     = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
 
     /* Qwen3-MoE QK-norm — cheap per-layer pointer arrays, always allocated
      * (NULL contents) like q35_attn_q_norm above; populated only when
      * MoEConfig.has_qk_norm is set. */
-    w->qwen3moe_attn_q_norm = (float **)calloc(nl, sizeof(float *));
-    w->qwen3moe_attn_k_norm = (float **)calloc(nl, sizeof(float *));
-    w->bq = (float **)calloc(nl, sizeof(float *));
-    w->bk = (float **)calloc(nl, sizeof(float *));
-    w->bv = (float **)calloc(nl, sizeof(float *));
+    w->qwen3moe_attn_q_norm = (float **)calloc(n_layers, sizeof(float *));
+    w->qwen3moe_attn_k_norm = (float **)calloc(n_layers, sizeof(float *));
+    w->bq = (float **)calloc(n_layers, sizeof(float *));
+    w->bk = (float **)calloc(n_layers, sizeof(float *));
+    w->bv = (float **)calloc(n_layers, sizeof(float *));
 
     if (!w->wq || !w->wk || !w->wv || !w->wo ||
         !w->sq || !w->sk || !w->sv || !w->so ||
@@ -151,7 +151,7 @@ TernaryError weights_map(TransformerWeights *w, const Config *cfg,
     int dim = cfg->dim;
     int hidden_dim = cfg->hidden_dim;
     int kv_dim = config_kv_dim(cfg);
-    int nl = cfg->n_layers;
+    int n_layers = cfg->n_layers;
 
     /* scale_mode=0: ternary + sub_norms (BitNet)
      * scale_mode=2: ternary + MoE, NO sub_norms (DeepSeek) */
@@ -191,7 +191,7 @@ TernaryError weights_map(TransformerWeights *w, const Config *cfg,
     w->layers_are_ternary = (cfg->scale_mode == 0 || cfg->scale_mode == 2);
 
     /* 2. Per-layer weights (DEFINITELY CONFIRMED Microsoft BitNet-b1.58-2B-4T Sequence) */
-    for (int l = 0; l < nl; l++) {
+    for (int l = 0; l < n_layers; l++) {
         /* Input Norms (Both present) */
         MAP_PTR(w->rms_att_weight[l], (size_t)dim * sizeof(float)); ALIGN64();
         MAP_PTR(w->rms_ffn_weight[l], (size_t)dim * sizeof(float)); ALIGN64();

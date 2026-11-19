@@ -354,21 +354,21 @@ typedef struct {
 
 static void tp_chunked_trampoline(void *opaque, int thread_id, int start, int end) {
     (void)start; (void)end;
-    TpChunkedArgs *c = (TpChunkedArgs *)opaque;
+    TpChunkedArgs *args = (TpChunkedArgs *)opaque;
     for (;;) {
-        int k  = atomic_fetch_add_explicit(&c->next, 1, memory_order_relaxed);
-        long s = (long)k * c->chunk;
-        if (s >= c->total) break;
-        int e = (int)(s + c->chunk < c->total ? s + c->chunk : c->total);
-        c->fn(c->arg, thread_id, (int)s, e);
+        int chunk_idx = atomic_fetch_add_explicit(&args->next, 1, memory_order_relaxed);
+        long chunk_begin = (long)chunk_idx * args->chunk;
+        if (chunk_begin >= args->total) break;
+        int chunk_end = (int)(chunk_begin + args->chunk < args->total ? chunk_begin + args->chunk : args->total);
+        args->fn(args->arg, thread_id, (int)chunk_begin, chunk_end);
     }
 }
 
 int threadpool_chunk_size(const ThreadPool *tp, int total) {
-    int nt = tp ? tp->num_threads : 1;
-    int c = total / (nt * 8);
-    c = (c + 7) & ~7;
-    return c < 8 ? 8 : c;
+    int num_threads = tp ? tp->num_threads : 1;
+    int chunk = total / (num_threads * 8);
+    chunk = (chunk + 7) & ~7;
+    return chunk < 8 ? 8 : chunk;
 }
 
 void threadpool_dispatch_chunked(ThreadPool *tp, tn_task_fn fn, void *arg,

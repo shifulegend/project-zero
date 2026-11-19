@@ -117,7 +117,7 @@ static void run_perplexity(const CliArgs *args, const Config *p, const Transform
         free(text);
         return;
     }
-    int bos = !t->add_bos_token ? -1 : (p->bos_token_id >= 0 ? p->bos_token_id : t->bos_token_id);
+    int bos = tokenizer_bos_to_prepend(t, p->bos_token_id);
     int n   = 0;
     if (bos >= 0) toks[n++] = bos;
     int k = tokenizer_encode(t, text, rd, toks + n, (int)rd + 1);

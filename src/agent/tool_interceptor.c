@@ -50,9 +50,9 @@ TI_Tag ti_process_piece(const char *piece, char *out_buf, size_t out_buf_size) {
         /* Extract inner content */
         char *start      = open + strlen(tags[i].open);
         size_t inner_len = (size_t)(close - start);
-        size_t copy_len  = (out_buf_size > 0)
-                               ? (inner_len < (out_buf_size - 1) ? inner_len : (out_buf_size - 1))
-                               : 0;
+        size_t copy_len  = 0;
+        if (out_buf_size > 0)
+            copy_len = inner_len < out_buf_size - 1 ? inner_len : out_buf_size - 1;
         if (out_buf && out_buf_size > 0) {
             if (copy_len > 0) memcpy(out_buf, start, copy_len);
             out_buf[copy_len] = '\0';

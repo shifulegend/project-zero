@@ -31,7 +31,7 @@
 #include "memory/tls_scratch.h"
 #include "threading/thread_pool.h"
 #include "core/platform.h"
-#include "math/cpu_features.h"
+#include "core/cpu_features.h"
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>

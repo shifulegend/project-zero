@@ -17,7 +17,7 @@
  */
 
 #include "math/q8_0_act.h"
-#include "math/cpu_features.h"
+#include "core/cpu_features.h"
 #include "core/gguf_reader.h"
 #include "memory/tls_scratch.h"
 #include <math.h>

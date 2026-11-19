@@ -10,7 +10,7 @@
 #include "sampling/rng.h"
 #include "math/kvq4_kernels.h"
 #include "math/simd_dispatch.h"
-#include "math/cpu_features.h"
+#include "core/cpu_features.h"
 #include "core/platform.h"
 
 static void test_store_roundtrip_error(void) {

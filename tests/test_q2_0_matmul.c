@@ -14,7 +14,7 @@
 #include "math/matmul_q2_0.h"
 #include "core/gguf_quant.h"
 #include "core/platform.h"
-#include "math/cpu_features.h"
+#include "core/cpu_features.h"
 #include "math/quantize_i8.h"
 #include "test_harness.h"
 

@@ -31,7 +31,7 @@
 #include "core/platform.h"
 #include "core/run_state.h"
 #include "core/weights.h"
-#include "math/cpu_features.h"
+#include "core/cpu_features.h"
 #include "math/simd_dispatch.h"
 #include "memory/mapped_file.h"
 #include "threading/thread_pool.h"

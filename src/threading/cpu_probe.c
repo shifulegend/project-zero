@@ -1,5 +1,5 @@
 #include "threading/cpu_probe.h"
-#include "math/cpu_features.h"
+#include "core/cpu_features.h"
 #include "core/platform.h"
 #include <string.h>
 #include <stdlib.h>

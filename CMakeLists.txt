@@ -155,7 +155,7 @@ set(CORE_SOURCES
 )
 
 set(MATH_SOURCES
-    src/math/cpu_features.c
+    src/core/cpu_features.c
     src/math/elementwise.c
     src/math/elementwise_avx2.c
     src/math/elementwise_avx512.c

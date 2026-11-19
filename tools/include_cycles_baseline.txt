@@ -12,4 +12,3 @@ math->memory
 math->threading
 memory->core
 threading->core
-threading->math

@@ -14,7 +14,7 @@
 
 #include "test_harness.h"
 #include "core/platform.h"
-#include "math/cpu_features.h"
+#include "core/cpu_features.h"
 #include "math/quantize_i8.h"
 #include "math/ternary_matmul_packed.h"
 #include "math/simd_dispatch.h"

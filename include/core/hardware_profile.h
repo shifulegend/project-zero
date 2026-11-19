@@ -2,7 +2,7 @@
 #define TN_HARDWARE_PROFILE_H
 
 #include "core/platform.h"
-#include "math/cpu_features.h"
+#include "core/cpu_features.h"
 #include <stdbool.h>
 
 /*

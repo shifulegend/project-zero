@@ -7,11 +7,11 @@
  * same 2-bit codes and run the same VNNI accumulation, so the outputs must be
  * bit-identical for every size, including tails that are not a multiple of 64.
  * Skips when the build has no VBMI variant or the CPU's VBMI is not execution-
- * verified (math/cpu_features.c): then tn_simd_init never binds the _vbmi pair.
+ * verified (core/cpu_features.c): then tn_simd_init never binds the _vbmi pair.
  */
 #include "test_harness.h"
 #include "core/platform.h"
-#include "math/cpu_features.h"
+#include "core/cpu_features.h"
 #include "math/quantize_i8.h"
 #include "math/ternary_matmul_packed.h"
 #include <stdint.h>

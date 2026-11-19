@@ -15,7 +15,7 @@
  */
 #include "test_harness.h"
 #include "core/platform.h"
-#include "math/cpu_features.h"
+#include "core/cpu_features.h"
 #include "math/parallel_matmul.h"
 #include "math/simd_dispatch.h"
 #include "math/ternary_matmul_packed.h"

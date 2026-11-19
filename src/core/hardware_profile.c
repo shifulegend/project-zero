@@ -2,7 +2,7 @@
 #include "core/bw_cache.h"
 #include "threading/cache_probe.h"
 #include "kv_cache/kv_strategy.h"
-#include "math/cpu_features.h"
+#include "core/cpu_features.h"
 #include "threading/cpu_probe.h"
 #include <stdint.h>
 #include <stdarg.h>

@@ -13,7 +13,7 @@
 #undef TN_HAS_AVX512VNNI
 #define TN_HAS_AVX512VNNI 1
 #endif
-#include "math/cpu_features.h"
+#include "core/cpu_features.h"
 #include "math/simd_dispatch.h"
 #include "math/parallel_matmul.h"
 #include "threading/thread_pool.h"

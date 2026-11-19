@@ -137,7 +137,6 @@ jobs:
     name: Golden output (real model)
     needs: build
     runs-on: ubuntu-22.04
-    continue-on-error: true         # gated by network policy / model availability
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with: { name: dist, path: dist }
@@ -147,7 +146,7 @@ jobs:
           BIN="$(find dist -name pz -type f | head -1)"; chmod +x "$BIN"
           mkdir -p models
           URL="https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-f16.gguf"
-          curl -fsSL -o models/smollm2.gguf "$URL"
+          curl -fsSL --retry 3 --retry-delay 5 -o models/smollm2.gguf "$URL"
           # Record all flags (GOLDEN_RULES Rule 8). Greedy decode -> deterministic.
           OUT="$("$BIN" --model models/smollm2.gguf --prompt 'What is the capital of France?' \
                   --max-tokens 30 --temperature 0 --threads 2)"
@@ -157,7 +156,7 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    needs: [build, verify-clean]
+    needs: [build, verify-clean, golden]   # a failing or unreachable golden check blocks publishing; re-run the workflow
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-22.04
     permissions:

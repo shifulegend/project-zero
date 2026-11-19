@@ -116,7 +116,13 @@ export function streamChatCompletion({ messages, options = {}, imageDataUrl }, o
           if (payload === '[DONE]') continue;
 
           let evt;
-          try { evt = JSON.parse(payload); } catch { continue; }
+          try {
+            evt = JSON.parse(payload);
+          } catch (e) {
+            // A malformed stream event is skipped, but not silently: it points at a server or proxy bug.
+            console.warn('Skipping an unparseable stream event:', payload.slice(0, 80), e);
+            continue;
+          }
 
           if (evt.error) throw new Error(evt.error.message ?? 'server error');
           if (!idResolved && evt.id) { idResolved = true; resolveId(evt.id); onStatus({ queued: 0 }); }

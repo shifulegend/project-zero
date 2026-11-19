@@ -3,6 +3,7 @@
  */
 #include "core/bw_cache.h"
 #include "core/platform.h"
+#include "core/fs_util.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -87,24 +88,11 @@ int tn_bw_cache_load(const char *path, const char *key, long long now, long max_
     return hit;
 }
 
-#if TN_POSIX
-static void mkdir_parents(const char *path) {
-    char tmp[512];
-    snprintf(tmp, sizeof(tmp), "%s", path);
-    for (char *p = tmp + 1; *p; p++) {
-        if (*p != '/') continue;
-        *p = '\0';
-        mkdir(tmp, 0700);
-        *p = '/';
-    }
-}
-#endif
-
 int tn_bw_cache_save(const char *path, const char *key, double gbps, long long now) {
     if (!path || !key || !isfinite(gbps) || gbps <= 0.0) return -1;
     if (strchr(key, '\t') || strchr(key, '\n')) return -1;
 #if TN_POSIX
-    mkdir_parents(path);
+    tn_mkdir_parents(path);
 #endif
     char tmp[600];
     snprintf(tmp, sizeof(tmp), "%s.tmp", path);

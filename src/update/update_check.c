@@ -2,6 +2,7 @@
 #include "update/semver.h"
 #include "api/json_fields.h"
 #include "core/platform.h"
+#include "core/fs_util.h"
 #include <ctype.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -224,19 +225,6 @@ int update_cache_load(const char *path, UpdateInfo *out) {
     return ok ? 0 : -1;
 }
 
-#if TN_POSIX
-static void mkdir_parents(const char *path) {
-    char tmp[512];
-    copy_str(tmp, sizeof(tmp), path);
-    for (char *p = tmp + 1; *p; p++) {
-        if (*p != '/') continue;
-        *p = '\0';
-        mkdir(tmp, 0700);
-        *p = '/';
-    }
-}
-#endif
-
 static void sanitize_line(char *dst, size_t n, const char *src) {
     size_t i = 0;
     for (; src && *src && i + 1 < n; src++)
@@ -247,7 +235,7 @@ static void sanitize_line(char *dst, size_t n, const char *src) {
 int update_cache_save(const char *path, const UpdateInfo *in) {
     if (!path || !in) return -1;
 #if TN_POSIX
-    mkdir_parents(path);
+    tn_mkdir_parents(path);
 #endif
     char tmp[600];
     snprintf(tmp, sizeof(tmp), "%s.tmp", path);

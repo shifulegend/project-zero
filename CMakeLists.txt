@@ -129,6 +129,7 @@ set(CORE_SOURCES
     src/core/gguf_quant.c
     src/core/hardware_profile.c
     src/core/bw_cache.c
+    src/core/fs_util.c
     src/core/sha256.c
     src/core/text_file.c
     src/core/calibration.c
@@ -314,6 +315,7 @@ set(API_SOURCES
     src/api/http_headers.c
     src/api/json_parse.c
     src/api/net_io.c
+    src/api/rate_limit.c
     src/api/sse_stream.c
     src/api/server_config.c
     src/api/cors.c

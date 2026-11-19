@@ -3,6 +3,7 @@
  */
 #include "config/pz_config.h"
 #include "core/platform.h"
+#include "core/fs_util.h"
 #include "reasoning/best_of.h"     /* BEST_OF_N_MAX, shared with parse_args */
 #include "api/server_config.h"   /* PZ_PARALLEL_* bounds shared with parse_args */
 
@@ -434,19 +435,6 @@ fail:
 }
 
 #if TN_POSIX
-static void mkdir_parents(const char *path) {
-    char tmp[1024];
-    snprintf(tmp, sizeof(tmp), "%s", path);
-    for (char *p = tmp + 1; *p; p++) {
-        if (*p != '/') continue;
-        *p = '\0';
-        mkdir(tmp, 0700);
-        *p = '/';
-    }
-}
-#endif
-
-#if TN_POSIX
 /* fsync the directory holding `path` so the rename itself survives a power loss. */
 static void fsync_parent_dir(const char *path) {
     char dir[1100];
@@ -465,7 +453,7 @@ int pz_config_save(const PzConfig *c, const char *path) {
     char *text = pz_config_format(c);
     if (!text) return -1;
 #if TN_POSIX
-    mkdir_parents(path);
+    tn_mkdir_parents(path);
 #endif
     char tmp[1100];
     snprintf(tmp, sizeof(tmp), "%s.tmp", path);

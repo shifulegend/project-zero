@@ -40,6 +40,7 @@ def variant_name(v):
 def make_chart(
     run_dir, title="Decode tok/s vs threads", subtitle=None, rounds=None, hide_invalid=None
 ):
+    """Draws the decode tok/s versus threads chart for a run folder and returns the written paths (the SVG, plus a PNG when a browser is available), or [] when there is nothing to draw; INVALID series are hidden when the gate mode says so."""
     run_dir = pathlib.Path(run_dir)
     if (
         hide_invalid is None

@@ -41,6 +41,7 @@ import gate
 
 
 def parse_binaries(spec):
+    """Parses "label=path,label=path" into {label: path}."""
     out = {}
     for item in [s for s in spec.split(",") if s.strip()]:
         if "=" not in item:
@@ -51,6 +52,7 @@ def parse_binaries(spec):
 
 
 def build_binaries(run, kinds, cc):
+    """Builds pz (native and/or portable) with the compiler `cc`, one binary per kind, and returns {kind: path}."""
     bins = {}
     for kind in kinds:
         target = {"native": "release", "portable": "dist"}[kind]
@@ -73,6 +75,7 @@ def build_binaries(run, kinds, cc):
 
 
 def step_table(runs_text, reference):
+    """Markdown table of per-step timings of every run against the reference run."""
     steps = {lbl: bl.parse_step_timing(t) for lbl, t in runs_text.items()}
     names = [n for n in steps[reference]]
     header = (
@@ -92,6 +95,7 @@ def step_table(runs_text, reference):
 
 
 def main():
+    """Command-line entry point: builds the binaries, runs them with identical settings and writes the comparison."""
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )

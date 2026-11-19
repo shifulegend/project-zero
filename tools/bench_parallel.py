@@ -49,6 +49,7 @@ PROMPTS = [
 
 
 def post(port, body, timeout=3600):
+    """POSTs a chat-completions body to the local server and returns (response, seconds)."""
     req = urllib.request.Request(
         f"http://127.0.0.1:{port}/v1/chat/completions",
         data=json.dumps(body).encode(),
@@ -61,6 +62,7 @@ def post(port, body, timeout=3600):
 
 
 def wait_ready(port, proc, seconds=300):
+    """Waits until the server answers /health; False if the process exits or the time runs out."""
     for _ in range(seconds * 4):
         if proc.poll() is not None:
             return False
@@ -73,6 +75,7 @@ def wait_ready(port, proc, seconds=300):
 
 
 def run_config(a, parallel, clients, port):
+    """Starts the server with the given parallel slots, runs concurrent clients and returns their throughput figures."""
     cmd = [
         a.bin,
         "--model",
@@ -108,6 +111,7 @@ def run_config(a, parallel, clients, port):
         start = threading.Barrier(clients + 1)
 
         def client(i):
+            """One client: waits for the start signal, sends its prompt and records the result."""
             body = dict(base, messages=[{"role": "user", "content": PROMPTS[i % len(PROMPTS)]}])
             start.wait()
             data, dt = post(port, body)
@@ -147,6 +151,7 @@ def run_config(a, parallel, clients, port):
 
 
 def main():
+    """Command-line entry point for the parallel-slots benchmark."""
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )

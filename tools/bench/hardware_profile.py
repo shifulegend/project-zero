@@ -48,6 +48,7 @@ def profile_box(text):
 
 
 def capture_profile(run, pz, model, env, calibration, rows=0, name="hardware_profile"):
+    """Runs a one-token pz generation, screenshots its startup output and saves the hardware-profile box from it in the run folder."""
     cmd = [
         pz,
         "--model",
@@ -73,6 +74,7 @@ def capture_profile(run, pz, model, env, calibration, rows=0, name="hardware_pro
 
 
 def main():
+    """Command-line entry point: captures the hardware profile of this machine."""
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )

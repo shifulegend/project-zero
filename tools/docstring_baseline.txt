@@ -1,14 +1,4 @@
 # Public functions without a docstring, per file in tools/ (tools/check_docstrings.py); may only go down.
-tools/bench/build_compare.py 4
-tools/bench/calibration_test.py 5
-tools/bench/chart.py 1
-tools/bench/h2h_bench.py 3
-tools/bench/hardware_profile.py 2
-tools/bench/setup_engines.py 5
-tools/bench/verify/bitnet_layer0.py 5
-tools/bench/verify/gguf_min.py 5
-tools/bench_parallel.py 5
-tools/bench_sweep_seq.py 4
 tools/build_llama3_tokenizer.py 1
 tools/changelog.py 3
 tools/check_coverage.py 3

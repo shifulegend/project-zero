@@ -56,6 +56,7 @@ PICK_THREADS = re.compile(r"Threads\s*:\s*T=(\d+)")
 
 
 def parse_sweep(text):
+    """Candidates and thread picks reported by one calibration run's output."""
     return {
         "candidates": [m.groups() for m in CAND.finditer(text)],
         "threads": [m.groups() for m in THREAD.finditer(text)],
@@ -65,6 +66,7 @@ def parse_sweep(text):
 
 
 def test_sweeps(run, a, env, small):
+    """Runs calibration repeatedly and records which tiers and thread counts it picks and how stable the picks are."""
     rows, picks, tpicks = [], collections.Counter(), collections.Counter()
     for i in range(1, a.calibrations + 1):
         run.log(f"\n-- forced calibration {i}/{a.calibrations}")
@@ -121,6 +123,7 @@ def test_sweeps(run, a, env, small):
 
 
 def variant_set(a, env, kind, labels):
+    """Variants forcing each tier (kind "tier") or classifier format (kind "cls") in `labels`."""
     flag = {"tier": "--simd", "cls": "--classifier"}[kind]
     return [
         bl.pz_variant(
@@ -134,6 +137,7 @@ def variant_set(a, env, kind, labels):
 
 
 def test_unit(run, a):
+    """Runs the unit tests (make test) and logs the outcome; note that it rebuilds in the debug variant."""
     run.log(
         f"\n-- unit tests: make test CC={a.cc} (rebuilds in the debug variant; ./pz is replaced, run `make release` after)"
     )
@@ -153,6 +157,7 @@ def test_unit(run, a):
 
 
 def main():
+    """Command-line entry point for the calibration test."""
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )

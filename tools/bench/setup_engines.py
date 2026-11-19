@@ -37,6 +37,7 @@ import benchlib as bl
 
 
 def sh(cmd, cwd=None, env=None, log=print, dry=False, check=True):
+    """Runs a command (or only logs it with `dry`); raises SystemExit when it fails and `check` is set; returns the exit code."""
     log("  $ " + bl.shlex.join(cmd) + (f"   (in {cwd})" if cwd else ""))
     if dry:
         return 0
@@ -47,6 +48,7 @@ def sh(cmd, cwd=None, env=None, log=print, dry=False, check=True):
 
 
 def engine_commit(key, engine_dir):
+    """Short commit of the named engine's checkout, or an empty string when it is not cloned."""
     d = pathlib.Path(engine_dir) / bl.load_engines()[key]["dir"]
     return bl._sh(["git", "-C", str(d), "rev-parse", "--short", "HEAD"]) if d.exists() else ""
 
@@ -170,6 +172,7 @@ def ensure_engine(key, engine_dir, fetch="missing", ref="pinned", jobs=0, dry=Fa
 
 
 def sha256_file(p, chunk=1 << 22):
+    """SHA-256 of a file, read in chunks."""
     h = hashlib.sha256()
     with open(p, "rb") as f:
         while True:
@@ -257,6 +260,7 @@ def smoke_engines(a, engines):
 
 
 def status_table(engine_dir, models_dir):
+    """Table of every engine and model with whether it is built or downloaded."""
     rows = []
     for k, e in bl.load_engines().items():
         b = bl.engine_binary(k, engine_dir)
@@ -284,6 +288,7 @@ def status_table(engine_dir, models_dir):
 
 
 def main():
+    """Command-line entry point: clones, builds and checks the reference engines and models."""
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )

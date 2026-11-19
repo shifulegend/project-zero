@@ -12,6 +12,7 @@ EPS = g.kv["bitnet-b1.58.attention.layer_norm_rms_epsilon"]
 
 
 def f32(name):
+    """The named F32 tensor as a float64 vector."""
     d, ty, off = g.t[name]
     n = int(np.prod(d))
     assert ty == 0
@@ -19,6 +20,7 @@ def f32(name):
 
 
 def embd(tok):
+    """The F16 embedding row of token `tok` as a float64 vector."""
     d, ty, off = g.t["token_embd.weight"]
     assert ty == 1
     row = np.frombuffer(g.raw("token_embd.weight", d[0] * d[1] * 2), dtype="<f2").reshape(
@@ -28,6 +30,7 @@ def embd(tok):
 
 
 def rms(x, w):
+    """RMS norm of `x` with weight `w`."""
     return x / np.sqrt(np.mean(x * x) + EPS) * w
 
 
@@ -58,6 +61,7 @@ def i2s_matrix(name, layout="A"):
 
 
 def bitlinear(x, name, layout="A", actq=True):
+    """BitNet linear layer: ternary I2_S matrix times `x` (activation-quantised to int8 when `actq`), scaled."""
     W, scale = i2s_matrix(name, layout)
     if actq:
         s = 127.0 / np.max(np.abs(x))
@@ -67,6 +71,7 @@ def bitlinear(x, name, layout="A", actq=True):
 
 
 def show(tag, v):
+    """Prints a tag, the first three values and the RMS of a vector."""
     print(
         f"{tag:<26}",
         np.array2string(v[:3], precision=4, floatmode="fixed"),

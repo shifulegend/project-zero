@@ -54,6 +54,7 @@ HOST_CPU = host_cpu()
 
 
 def parse_threads(spec):
+    """Thread counts from "N", "A-B" or "a,b,c"."""
     if "-" in spec:
         a, b = spec.split("-", 1)
         return list(range(int(a), int(b) + 1))
@@ -75,6 +76,7 @@ def run_once(cmd, log_path):
 
 
 def gen_toks(text):
+    """(generation tok/s, token count) from a pz or llama.cpp/bitnet.cpp log, or (None, None)."""
     m = re.search(r"\[gen\]\s+([\d.]+)\s+tok/s\s+\((\d+) tokens\)", text)
     if m:
         return float(m.group(1)), int(m.group(2))
@@ -89,6 +91,7 @@ def gen_toks(text):
 
 
 def prompt_toks(text):
+    """Prompt-evaluation tok/s from a llama.cpp-style log, or None."""
     m = re.search(
         r"prompt eval time =\s*[\d.]+ ms /\s*\d+ tokens\s*\([^,]+,\s*([\d.]+) tokens per second",
         text,
@@ -97,6 +100,7 @@ def prompt_toks(text):
 
 
 def main():
+    """Command-line entry point: runs the thread sweep and writes the results."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
     ap.add_argument(

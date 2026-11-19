@@ -74,6 +74,7 @@ PZ_CLASSIFIERS = ["default", "auto", "bf16", "int8", "int4", "auto-fast"]
 
 
 def build_variants(a, run, env):
+    """Variant list (pz and the reference engines) selected by the options; also returns the ones that are not available."""
     variants, missing = [], []
     engines = bl.load_engines()
     wanted = (
@@ -144,6 +145,7 @@ def build_report(run, a, g, shots, ref="pz"):
 
 
 def select_models(a):
+    """Models selected by the options ("auto" and "all-light" pick the light ones); also returns the missing ones."""
     models, missing = [], []
     allm = bl.load_models()
     if a.models in ("auto", "all-light"):
@@ -179,6 +181,7 @@ def estimate_minutes(
 
 
 def main():
+    """Command-line entry point for the head-to-head benchmark."""
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )

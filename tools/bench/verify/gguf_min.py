@@ -31,18 +31,21 @@ class G:
         s.data0 = (s.o + s.align - 1) // s.align * s.align
 
     def u(s, fmt):
+        """Reads one little-endian value of struct format `fmt` and advances the offset."""
         sz = struct.calcsize("<" + fmt)
         r = struct.unpack_from("<" + fmt, s.m, s.o)
         s.o += sz
         return r
 
     def s(s_):
+        """Reads a length-prefixed UTF-8 string and advances the offset."""
         (n,) = s_.u("Q")
         v = bytes(s_.m[s_.o : s_.o + n]).decode("utf8", "replace")
         s_.o += n
         return v
 
     def val(s, t):
+        """Reads a metadata value of GGUF type `t` (scalar, string or array)."""
         if t == 8:
             return s.s()
         if t == 9:
@@ -69,6 +72,7 @@ class G:
         return s.u(fm)[0]
 
     def skip(s, et, c):
+        """Skips `c` array elements of GGUF type `et`."""
         if et == 8:
             for _ in range(c):
                 s.s()
@@ -91,6 +95,7 @@ class G:
             )
 
     def raw(s, name, nbytes):
+        """The raw bytes of a tensor's data (the first `nbytes`)."""
         dims, ty, off = s.t[name]
         a = s.data0 + off
         return s.m[a : a + nbytes]

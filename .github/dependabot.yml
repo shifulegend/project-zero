@@ -1,6 +1,7 @@
 # Dependabot configuration.
 # The engine has no package-manager dependencies (pure C + libm + pthreads),
-# so the only ecosystem to keep current is the GitHub Actions used in CI.
+# so the ecosystems to keep current are the GitHub Actions used in CI and the
+# npm lockfiles of the web UI build and the opt-in screenshot tooling.
 # Docs: https://docs.github.com/code-security/dependabot/dependabot-version-updates
 version: 2
 updates:
@@ -13,3 +14,29 @@ updates:
     labels:
       - "dependencies"
       - "ci"
+
+  # npm lockfiles that were not monitored before: the web UI build and the
+  # opt-in screenshot tooling. Minor/patch bumps are grouped to limit PR noise.
+  - package-ecosystem: "npm"
+    directory: "/webui"
+    schedule:
+      interval: "weekly"
+    groups:
+      webui-npm:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "deps"
+    labels:
+      - "dependencies"
+
+  - package-ecosystem: "npm"
+    directory: "/tools/screenshots/cli"
+    schedule:
+      interval: "weekly"
+    groups:
+      screenshots-npm:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "deps"
+    labels:
+      - "dependencies"

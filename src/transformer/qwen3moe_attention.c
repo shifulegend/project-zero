@@ -16,8 +16,8 @@
  * would silently overflow them whenever n_heads*attn_head_dim > dim. Same
  * class of bug already fixed for MLA (mla_run_state.c) and Qwen3.5/3.6
  * (qwen35_run_state.c) — see docs/ai/mistakes.md. Mirrors
- * qwen35_attention.c's q35_full_attn_forward() pattern (fixed generous
- * static buffers, own correctly-sized KV cache) minus the gate-doubling,
+ * qwen35_attention.c's q35_full_attn_forward() pattern (own correctly-sized
+ * KV cache and scratch in the RunState) minus the gate-doubling,
  * partial-rotary, and Q2_0-only quant specifics that don't apply here.
  */
 
@@ -37,14 +37,6 @@
 #include <string.h>
 #include <stdlib.h>
 
-/* Generous fixed stack-buffer bounds, mirroring qwen35_attention.c's
- * Q35_MAX_* convention (fixed generous buffer, no runtime malloc). Sized
- * well beyond real Qwen3-MoE shapes (e.g. Qwen3-30B-A3B: q_width=32*128=
- * 4096, kv_width=4*128=512) with headroom for larger variants. */
-#define QWEN3MOE_MAX_Q_WIDTH 16384
-#define QWEN3MOE_MAX_KV_WIDTH 8192
-#define QWEN3MOE_MAX_HEADS 128
-#define QWEN3MOE_MAX_HEAD_DIM 512
 #define QWEN3MOE_PREQ_BUF_SIZE 16384
 
 void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w, const Config *cfg,
@@ -58,10 +50,11 @@ void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w, const 
     int kv_width = n_kv_h * head_dim;
     int max_seq  = s->max_seq_len;
 
-    static float q_buf[QWEN3MOE_MAX_Q_WIDTH];
-    static float k_buf[QWEN3MOE_MAX_KV_WIDTH];
-    static float v_buf[QWEN3MOE_MAX_KV_WIDTH];
-    static float attn_concat[QWEN3MOE_MAX_HEADS * QWEN3MOE_MAX_HEAD_DIM];
+    /* Per-RunState scratch (qwen3moe_run_state_alloc): no shared static, no width cap. */
+    float *q_buf       = s->qwen3moe_scratch;
+    float *k_buf       = q_buf + q_width;
+    float *v_buf       = k_buf + kv_width;
+    float *attn_concat = v_buf + kv_width;
 
     /* Step 1: RMSNorm */
     int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
@@ -218,8 +211,7 @@ void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w, const 
  * SpecBatchScratch's generic dim/hidden_dim-wide buffers the way the dense
  * and MLA batched paths do. Instead it heap-allocates its own N-wide Q/K/V/
  * attention-output scratch here, sized by this layer's *actual* q_width/
- * kv_width (not the QWEN3MOE_MAX_* stack-buffer bounds the single-token
- * path uses) -- freed at the end of this call. */
+ * kv_width -- freed at the end of this call. */
 TernaryError qwen3moe_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
                                               const TransformerWeights *w, const Config *cfg,
                                               const MoEConfig *mc, int layer, int pos, int n_tokens,

@@ -26,5 +26,4 @@ src/transformer/moe_experts.c 10
 src/transformer/moe_ffn.c 15
 src/transformer/moe_router.c 1
 src/transformer/qwen35_attention.c 11
-src/transformer/qwen3moe_attention.c 4
 src/update/update_check.c 8

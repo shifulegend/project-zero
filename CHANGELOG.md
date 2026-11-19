@@ -34,6 +34,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Fixed
 
+- Stop Qwen3-MoE attention from sharing scratch buffers between concurrent callers: two requests running a forward pass at the same time could overwrite each other's Q/K/V values. The buffers now belong to each request's run state and are sized by the model, so the old 16384-wide Q and 8192-wide K/V caps are gone too.
 - Answer `400` to a chat request whose `response_format.type` is `json_schema` or anything other than `text` or `json_object`; before, the server returned `200` with free text, so a client relying on schema-conformant output was never told it was not getting it.
 
 - Make nucleus (`top_p`) sampling safe when several requests sample at the same time, and apply it to vocabularies larger than 200,000 tokens (those silently fell back to greedy decoding before).
@@ -120,6 +121,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Fixed
 
+- Stop Qwen3-MoE attention from sharing scratch buffers between concurrent callers: two requests running a forward pass at the same time could overwrite each other's Q/K/V values. The buffers now belong to each request's run state and are sized by the model, so the old 16384-wide Q and 8192-wide K/V caps are gone too.
 - Fix chat replies running past the end of the answer when a model ends its turn with a control token its metadata does not declare (e.g. Falcon3-1.58bit's `>>UNUSED_1<<`): in chat mode any control token the chat template never writes now ends the turn, so no `--stop` workaround is needed.
 - Fix BitNet I2_S GGUF files (the official BitNet b1.58 2B-4T GGUF, Falcon3-1.58bit) producing incoherent text: weights are now read in bitnet.cpp's interleaved 128-weight layout with the per-tensor scale stored after the packed data.
 - Fix `pz config set repeat-last-n -1` being rejected although `--repeat-last-n -1` is valid.
@@ -167,6 +169,7 @@ _First release with a prebuilt, portable x86-64 Linux binary (`adaptive_ai_engin
 
 ### Fixed
 
+- Stop Qwen3-MoE attention from sharing scratch buffers between concurrent callers: two requests running a forward pass at the same time could overwrite each other's Q/K/V values. The buffers now belong to each request's run state and are sized by the model, so the old 16384-wide Q and 8192-wide K/V caps are gone too.
 - Fix a stack overflow in top-k sampling and a buffer overflow in the thought filter.
 - Fix file-handle and descriptor leaks in model and tokenizer loading.
 - Fix a NULL dereference in token decoding.

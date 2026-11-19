@@ -67,6 +67,13 @@ TernaryError qwen3moe_run_state_alloc(RunState *s, const Config *cfg, const MoEC
         qwen3moe_run_state_free(s, cfg);
         return TN_ERR_OOM;
     }
+    size_t q_width      = (size_t)cfg->n_heads * (size_t)head_dim;
+    size_t kv_width     = (size_t)n_kv_h * (size_t)head_dim;
+    s->qwen3moe_scratch = (float *)tn_aligned_calloc(2 * q_width + 2 * kv_width, sizeof(float), 64);
+    if (!s->qwen3moe_scratch) {
+        qwen3moe_run_state_free(s, cfg);
+        return TN_ERR_OOM;
+    }
     float theta = cfg->rope_theta > 0.0f ? cfg->rope_theta : 10000.0f;
     rope_precompute_freqs(s->qwen3moe_rope_freq, head_dim, theta);
 
@@ -89,5 +96,9 @@ void qwen3moe_run_state_free(RunState *s, const Config *cfg) {
     if (s->qwen3moe_rope_freq) {
         tn_aligned_free(s->qwen3moe_rope_freq);
         s->qwen3moe_rope_freq = NULL;
+    }
+    if (s->qwen3moe_scratch) {
+        tn_aligned_free(s->qwen3moe_scratch);
+        s->qwen3moe_scratch = NULL;
     }
 }

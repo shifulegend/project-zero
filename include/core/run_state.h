@@ -80,6 +80,10 @@ typedef struct {
     float **qwen3moe_key_cache;   /* [n_layers] [n_kv_heads][max_seq][attn_head_dim] */
     float **qwen3moe_value_cache; /* [n_layers] same shape */
     float *qwen3moe_rope_freq;    /* [attn_head_dim/2] full-rotary freq table */
+    /* Single-token attention scratch: q [q_width] | k [kv_width] | v [kv_width] | concat [q_width],
+     * q_width = n_heads*attn_head_dim, kv_width = n_kv_heads*attn_head_dim. Per RunState, so two
+     * RunStates (server slots) never share it, and sized by the model, so no width cap. */
+    float *qwen3moe_scratch;
 
     /* State tracking */
     int current_pos;

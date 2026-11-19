@@ -24,8 +24,10 @@ git push origin v0.2.0   # tag push triggers .github/workflows/release.yml
 
 The workflow then: refuses the tag if `CHANGELOG.md` has no section for it, runs the full test suite (gcc + clang), builds the portable
 binary (`make dist`), packages it, smoke-tests it, runs it on a clean minimal
-container, attempts a real-model golden check, and publishes a **prerelease**
+container, runs a real-model golden check (a failure blocks publishing; re-run the workflow if Hugging Face was unreachable), and publishes a **prerelease**
 with the `.tar.gz` and `SHA256SUMS` attached and that changelog section as its release notes.
+
+The publish job runs in the GitHub Environment `release`. To require a human approval before anything is published, add required reviewers to that environment (repository **Settings → Environments → release**); without that setting the environment exists but does not gate.
 
 To test the build **without publishing**, run the workflow via
 **Actions → Release → Run workflow** (`workflow_dispatch`); the publish job only

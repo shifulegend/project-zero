@@ -159,6 +159,7 @@ jobs:
     needs: [build, verify-clean, golden]   # a failing or unreachable golden check blocks publishing; re-run the workflow
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-22.04
+    environment: release            # add required reviewers to this environment (Settings > Environments) to gate publishing
     permissions:
       contents: write               # least privilege: only this job writes releases
     steps:

@@ -41,3 +41,18 @@ Full license text: LICENSE-LGPL-3.0.txt
 
 Credit: algorithm design and reference implementation by tommyyliu
 (lut_mm, ternary_mm_avx512.cpp). C99 port by Project Zero contributors.
+
+Vendored third-party code
+-------------------------
+Both files are single-file libraries by Sean Barrett and contributors
+(https://github.com/nothings/stb), dual-licensed public domain / MIT. They are
+copied unmodified; the versions below are what tools/gen_sbom.py reads from the
+headers and lists in each release's SBOM.
+
+  include/stb_image.h           v2.30
+  include/stb_image_resize2.h   v2.18
+
+To update one: replace the header with the upstream file, check the stb
+repository's issues for fixed memory-safety bugs since the old version, run
+`make test`, and bump the version here only if the header's own version line
+changed (the SBOM follows the header).

@@ -34,6 +34,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Fixed
 
+- List `GET /openapi.json` in the OpenAPI document it serves; the route existed but was missing from its own description.
 - Stop the Mixture-of-Experts layers (expert kernels, the batched expert path and the router's top-k selection) from sharing scratch memory between threads: two requests running an MoE layer at once could corrupt each other's expert selection and outputs. Each calling thread now has its own scratch.
 - Stop the Q4_K, Q5_0, Q5_1 and Q8_0 matrix kernels from sharing one activation buffer between threads: two requests multiplying at the same time could free the buffer under each other. Each thread now has its own, released when the thread exits (before, the shared buffer was also never freed).
 - Stop Qwen3-MoE attention from sharing scratch buffers between concurrent callers: two requests running a forward pass at the same time could overwrite each other's Q/K/V values. The buffers now belong to each request's run state and are sized by the model, so the old 16384-wide Q and 8192-wide K/V caps are gone too.
@@ -123,6 +124,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Fixed
 
+- List `GET /openapi.json` in the OpenAPI document it serves; the route existed but was missing from its own description.
 - Stop the Mixture-of-Experts layers (expert kernels, the batched expert path and the router's top-k selection) from sharing scratch memory between threads: two requests running an MoE layer at once could corrupt each other's expert selection and outputs. Each calling thread now has its own scratch.
 - Stop the Q4_K, Q5_0, Q5_1 and Q8_0 matrix kernels from sharing one activation buffer between threads: two requests multiplying at the same time could free the buffer under each other. Each thread now has its own, released when the thread exits (before, the shared buffer was also never freed).
 - Stop Qwen3-MoE attention from sharing scratch buffers between concurrent callers: two requests running a forward pass at the same time could overwrite each other's Q/K/V values. The buffers now belong to each request's run state and are sized by the model, so the old 16384-wide Q and 8192-wide K/V caps are gone too.
@@ -173,6 +175,7 @@ _First release with a prebuilt, portable x86-64 Linux binary (`adaptive_ai_engin
 
 ### Fixed
 
+- List `GET /openapi.json` in the OpenAPI document it serves; the route existed but was missing from its own description.
 - Stop the Mixture-of-Experts layers (expert kernels, the batched expert path and the router's top-k selection) from sharing scratch memory between threads: two requests running an MoE layer at once could corrupt each other's expert selection and outputs. Each calling thread now has its own scratch.
 - Stop the Q4_K, Q5_0, Q5_1 and Q8_0 matrix kernels from sharing one activation buffer between threads: two requests multiplying at the same time could free the buffer under each other. Each thread now has its own, released when the thread exits (before, the shared buffer was also never freed).
 - Stop Qwen3-MoE attention from sharing scratch buffers between concurrent callers: two requests running a forward pass at the same time could overwrite each other's Q/K/V values. The buffers now belong to each request's run state and are sized by the model, so the old 16384-wide Q and 8192-wide K/V caps are gone too.

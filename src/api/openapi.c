@@ -83,6 +83,8 @@ static const char OPENAPI_JSON_B[] =
     "--metrics)\"}}}},"
     "\"/docs\":{\"get\":{\"summary\":\"This documentation page\","
     "\"responses\":{\"200\":{\"description\":\"OK\"}}}},"
+    "\"/openapi.json\":{\"get\":{\"summary\":\"This OpenAPI description\","
+    "\"responses\":{\"200\":{\"description\":\"OK\"}}}},"
     "\"/\":{\"get\":{\"summary\":\"Web chat UI\","
     "\"responses\":{\"200\":{\"description\":\"OK\"}}}}"
     "}"

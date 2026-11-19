@@ -52,6 +52,10 @@ jobs:
           python3 -I tools/check_file_sizes.py
       - name: Coverage floor check (unit tests)
         run: python3 -I tools/test_check_coverage.py
+      - name: OpenAPI document matches the routes the server handles
+        run: |
+          python3 -I tools/test_check_openapi_routes.py
+          python3 -I tools/check_openapi_routes.py
       - name: Header include guards (TN_..._H, no #pragma once)
         run: |
           python3 -I tools/test_check_header_guards.py

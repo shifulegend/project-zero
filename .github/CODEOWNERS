@@ -35,3 +35,6 @@
 /src/agent/                     @shifulegend
 /src/update/                    @shifulegend
 /install.sh                     @shifulegend
+/src/config/                    @shifulegend
+/webui/                         @shifulegend
+/SECURITY.md                    @shifulegend

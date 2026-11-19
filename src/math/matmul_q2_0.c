@@ -25,12 +25,12 @@
 #include "threading/thread_pool.h"
 #include "core/platform.h"
 #include "math/cpu_features.h"
+#include "core/fp16.h" /* tn_fp16_to_f32: used by the scalar path too, so not under TN_HAS_AVX2 */
 #include <stdint.h>
 #include <string.h>
 
 #if TN_HAS_AVX2
 #include <immintrin.h>
-#include "core/fp16.h"
 #endif
 
 /* ── Q2_0 constants ──────────────────────────────────────────────────────────

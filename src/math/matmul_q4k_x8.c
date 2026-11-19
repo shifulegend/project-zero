@@ -27,11 +27,11 @@
 
 #include "math/matmul_q4k_x8.h"
 #include "core/platform.h"
+#include "core/fp16.h"
 #include <string.h>
 
 #if TN_HAS_AVX2
 #include <immintrin.h>
-#include "core/fp16.h"
 #endif
 
 #define Q4K_BYTES 144

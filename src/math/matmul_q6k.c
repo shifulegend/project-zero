@@ -1,10 +1,10 @@
 #include "math/matmul_q6k.h"
 #include "core/platform.h"
+#include "core/fp16.h"
 #include <stdlib.h>
 #include <string.h>
 #if TN_HAS_AVX2
 #include <immintrin.h>
-#include "core/fp16.h"
 #endif
 
 /* Block layout (ggml block_q6_K): ql[128] low nibbles, qh[64] high 2-bit

@@ -57,7 +57,8 @@ bool thought_filter_process(ThoughtFilter *f, const char *token_str, char *outpu
                     /* Full match: enter thinking mode */
                     f->state   = FILTER_THINKING;
                     f->tag_pos = 0;
-                } else if (f->tag_pos > 0 && OPEN_TAG[f->tag_pos - 1] != c) {
+                } else if (f->tag_pos > 0 && (f->tag_pos > (int)sizeof(OPEN_TAG) - 1 ||
+                                              OPEN_TAG[f->tag_pos - 1] != c)) {
                     /* Mismatch: flush buffered chars as output, return to passthrough */
                     int out_len = (int)strlen(output_buf);
                     /* Bounds check: ensure tag_buffer flush fits (QA-BUG-002) */
@@ -95,7 +96,8 @@ bool thought_filter_process(ThoughtFilter *f, const char *token_str, char *outpu
                     /* Full match: exit thinking mode */
                     f->state   = FILTER_OUTPUT;
                     f->tag_pos = 0;
-                } else if (f->tag_pos > 0 && CLOSE_TAG[f->tag_pos - 1] != c) {
+                } else if (f->tag_pos > 0 && (f->tag_pos > (int)sizeof(CLOSE_TAG) - 1 ||
+                                              CLOSE_TAG[f->tag_pos - 1] != c)) {
                     /* Mismatch: stay in thinking mode */
                     f->state   = FILTER_THINKING;
                     f->tag_pos = 0;

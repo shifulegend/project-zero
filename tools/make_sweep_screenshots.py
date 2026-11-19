@@ -33,7 +33,7 @@ PADDING = 28
 LINE_H  = 21
 WIDTH   = 1000
 
-PROJECT = "/home/ubuntu/project-zero"
+PROJECT = os.environ.get("PZ_PROJECT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SWEEP   = f"{PROJECT}/benchmark_results/sweep_2026-06-21"
 SS_DIR  = f"{SWEEP}/screenshots"
 
@@ -105,7 +105,8 @@ def shorten_cmd(cmd, max_len=90):
     if len(cmd) <= max_len:
         return cmd
     # shorten model paths
-    cmd = re.sub(r'/home/ubuntu/project-zero/', '', cmd)
+    cmd = cmd.replace(PROJECT + '/', '')
+    cmd = re.sub(r'/home/ubuntu/project-zero/', '', cmd)   # paths already recorded in old sweep logs
     cmd = re.sub(r'/home/ubuntu/bitnet-cpp/', '[bitnet-cpp]/', cmd)
     cmd = re.sub(r'/home/ubuntu/llama\.cpp/build/bin/', '[llama.cpp]/', cmd)
     cmd = re.sub(r'models/', 'm/', cmd)

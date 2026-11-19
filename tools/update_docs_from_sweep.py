@@ -9,7 +9,7 @@ Run AFTER run_sweep.py and run_perf_runs.py have completed.
 import os
 import re
 
-PROJECT = "/home/ubuntu/project-zero"
+PROJECT = os.environ.get("PZ_PROJECT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SWEEP   = f"{PROJECT}/benchmark_results/sweep_2026-06-21"
 
 # ── load summaries ────────────────────────────────────────────────────────────

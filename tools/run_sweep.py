@@ -21,15 +21,17 @@ import sys
 import time
 
 # ── paths ─────────────────────────────────────────────────────────────────────
-PROJECT       = "/home/ubuntu/project-zero"
+# Locations are not hardcoded: the project is the checkout this script lives in; the external
+# reference engines come from BITNET_CPP_DIR / LLAMA_CPP_DIR (default: ~/bitnet-cpp, ~/llama.cpp).
+PROJECT       = os.environ.get("PZ_PROJECT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PZ            = f"{PROJECT}/pz"
 PZ_BITNET     = f"{PROJECT}/models/bitnet-b1.58-2B-4T.bin"
 PZ_BITNET_TOK = f"{PROJECT}/models/bitnet-b1.58-2B-4T_tokenizer_proper.bin"
 PZ_SMOL       = f"{PROJECT}/models/SmolLM2-135M-Instruct-f16.gguf"
 PZ_SMOL_TOK   = f"{PROJECT}/models/smollm2-135m-tokenizer.bin"
-MSFT_DIR      = "/home/ubuntu/bitnet-cpp"
+MSFT_DIR      = os.environ.get("BITNET_CPP_DIR", os.path.expanduser("~/bitnet-cpp"))
 MSFT_GGUF     = f"{MSFT_DIR}/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf"
-LLAMA         = "/home/ubuntu/llama.cpp/build/bin/llama-cli"
+LLAMA         = os.path.join(os.environ.get("LLAMA_CPP_DIR", os.path.expanduser("~/llama.cpp")), "build", "bin", "llama-cli")
 OUT_DIR       = f"{PROJECT}/benchmark_results/sweep_2026-06-21"
 
 # ── benchmark config ──────────────────────────────────────────────────────────

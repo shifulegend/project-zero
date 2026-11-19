@@ -30,6 +30,7 @@ Binary format is documented in include/multimodal/vision_weights_load.h.
 """
 
 import argparse
+from abc import ABC, abstractmethod
 import json
 import os
 import struct
@@ -90,8 +91,8 @@ def write_f32(f, tensor):
 # ── Model-specific extractors ───────────────────────────────────────────────
 
 
-class ModelAdapter:
-    """Base class — subclasses implement get_vision_tensors / get_proj_tensors."""
+class ModelAdapter(ABC):
+    """Base class — subclasses implement vision_config / write_vision_weights / write_proj_weights."""
 
     def __init__(self, tensors, config):
         self.tensors = tensors  # dict: name -> numpy array
@@ -103,13 +104,16 @@ class ModelAdapter:
             raise KeyError(f"tensor not found: {name!r}")
         return t
 
+    @abstractmethod
     def vision_config(self):
         """Return (n_layers, embed_dim, hidden_dim, n_heads, patch_size)."""
         raise NotImplementedError
 
+    @abstractmethod
     def write_vision_weights(self, f):
         raise NotImplementedError
 
+    @abstractmethod
     def write_proj_weights(self, f):
         raise NotImplementedError
 

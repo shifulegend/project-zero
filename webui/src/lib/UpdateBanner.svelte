@@ -3,10 +3,12 @@
   // Dismissal is remembered per version, so the next release shows again.
   import { onMount } from 'svelte';
   import { updateInfo, showBanner, dismissedVersion, refreshUpdate } from './update.js';
+  import { safeHttpsUrl } from './safeUrl.js';
 
   onMount(refreshUpdate);
 
   $: info = $updateInfo;
+  $: notesUrl = safeHttpsUrl(info?.url);
   $: visible = info?.status === 'available' && $showBanner && $dismissedVersion !== info.latest;
 </script>
 
@@ -16,8 +18,8 @@
     <span>update available</span>
     <span class="mono">{info.current} → {info.latest}</span>
     {#if info.prerelease}<span class="tag">pre-release</span>{/if}
-    {#if info.url}
-      <a class="link" href={info.url} target="_blank" rel="noopener noreferrer">release notes</a>
+    {#if notesUrl}
+      <a class="link" href={notesUrl} target="_blank" rel="noopener noreferrer">release notes</a>
     {/if}
     <span class="dim hint">verify with SHA256SUMS before installing</span>
     <button class="dismiss" on:click={() => dismissedVersion.set(info.latest)} title="Hide until the next release">dismiss</button>

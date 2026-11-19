@@ -51,6 +51,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Security
 
+- Only show the web UI's release-notes and changelog links when the server gives an `https://` URL; a `javascript:`, `data:` or `http:` value is no longer put into a link.
 - Refuse requests whose `Host` header is not `localhost`, `127.0.0.1` or `[::1]` with `403` (except `/health`), which stops DNS-rebinding attacks where a web page's hostname is re-pointed at your local server. Behind a reverse proxy, add the proxy's address with `--cors --cors-origin`.
 - Run the agent's shell commands with a minimal environment: only a fixed `PATH`, `TZ`, `LANG` and `LC_*` are passed on, so API keys, tokens and other `PZ_*` / cloud credentials in the server's environment can no longer be read by the commands the model runs.
 - Make the agent's file-reading commands (`cat`, `ls`) refuse a path argument when the working directory can no longer be determined (for example because it was deleted), instead of allowing it unchecked.

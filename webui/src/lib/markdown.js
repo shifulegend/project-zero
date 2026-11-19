@@ -10,34 +10,33 @@ function escapeHtml(s) {
     .replace(/>/g, '&gt;');
 }
 
+// Inline transforms for text outside a fenced code block.
+function renderInline(text) {
+  return text
+    // Inline code: `code`
+    .replace(/`([^`\n]+)`/g, '<code class="md-inline-code">$1</code>')
+    // Bold: **text**
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    // Line breaks
+    .replace(/\n/g, '<br>');
+}
+
 /** @param {string} text @returns {string} sanitized HTML */
 export function renderMarkdown(text) {
-  let escaped = escapeHtml(text ?? '');
+  const escaped = escapeHtml(text ?? '');
 
-  // Fenced code blocks: ```lang\ncode``` — rendered first so ** or ` inside
-  // a code block isn't further transformed.
-  escaped = escaped.replace(/```([a-zA-Z0-9_+-]*)\n?([\s\S]*?)```/g, (_m, lang, code) => {
-    const langAttr = lang ? ` data-lang="${lang}"` : '';
-    return `<pre class="md-code-block"${langAttr}><code>${code}</code></pre>`;
-  });
-
-  // Inline code: `code`
-  escaped = escaped.replace(/`([^`\n]+)`/g, '<code class="md-inline-code">$1</code>');
-
-  // Bold: **text**
-  escaped = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-
-  // Line breaks, except inside <pre>...</pre> spans, whose newlines are kept as written. One pass
-  // over the <pre> spans, so the cost grows linearly with the text (this runs on every streamed
-  // token; an earlier version rescanned the whole prefix for every newline).
+  // Fenced code blocks: ```lang\ncode```. Their content is emitted as written (escaped, with its
+  // newlines): ** and ` inside a code block are not transformed. Everything between blocks gets the
+  // inline transforms. One pass, so the cost grows linearly with the text (this runs on every
+  // streamed token).
   const parts = [];
   let last = 0;
-  for (const m of escaped.matchAll(/<pre[\s\S]*?<\/pre>/g)) {
-    parts.push(escaped.slice(last, m.index).replace(/\n/g, '<br>'), m[0]);
+  for (const m of escaped.matchAll(/```([a-zA-Z0-9_+-]*)\n?([\s\S]*?)```/g)) {
+    parts.push(renderInline(escaped.slice(last, m.index)));
+    const langAttr = m[1] ? ` data-lang="${m[1]}"` : '';
+    parts.push(`<pre class="md-code-block"${langAttr}><code>${m[2]}</code></pre>`);
     last = m.index + m[0].length;
   }
-  parts.push(escaped.slice(last).replace(/\n/g, '<br>'));
-  escaped = parts.join('');
-
-  return escaped;
+  parts.push(renderInline(escaped.slice(last)));
+  return parts.join('');
 }

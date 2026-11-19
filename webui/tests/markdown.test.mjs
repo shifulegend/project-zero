@@ -18,6 +18,19 @@ test('inline code and bold are rendered', () => {
   assert.equal(renderMarkdown('**b** `c`'), '<strong>b</strong> <code class="md-inline-code">c</code>');
 });
 
+test('bold and inline code inside a fenced block are left as written', () => {
+  const out = renderMarkdown('```\n**not bold** and `not code`\n```');
+  assert.equal(out, '<pre class="md-code-block"><code>**not bold** and `not code`\n</code></pre>');
+});
+
+test('bold and inline code next to a fenced block still render', () => {
+  const out = renderMarkdown('**a**\n```\nx\n```\n`b`');
+  assert.equal(
+    out,
+    '<strong>a</strong><br><pre class="md-code-block"><code>x\n</code></pre><br><code class="md-inline-code">b</code>',
+  );
+});
+
 test('HTML in the text is escaped, never rendered', () => {
   const out = renderMarkdown('<script>alert(1)</script><img src=x onerror=alert(1)>');
   assert.ok(!out.includes('<script'));
@@ -43,8 +56,8 @@ test('null and undefined render as empty', () => {
   assert.equal(renderMarkdown(undefined), '');
 });
 
-test('output is identical to the previous implementation on 20000 random inputs', () => {
-  const frag = ['a', 'b c', '\n', '\n\n', '```', '```js\n', '`', '**', '*', '<', '>', '&', '<pre>', '</pre>', '"', "'", 'x\ny'];
+test('output is identical to the previous implementation on 20000 random inputs without ** or ` (those differ by design inside code blocks)', () => {
+  const frag = ['a', 'b c', '\n', '\n\n', '```', '```js\n', '<', '>', '&', '<pre>', '</pre>', '"', "'", 'x\ny'];
   let seed = 12345;
   const rnd = (n) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
   for (let i = 0; i < 20000; i++) {

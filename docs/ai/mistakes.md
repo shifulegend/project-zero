@@ -3043,3 +3043,11 @@ Installing llama.cpp and bitnet.cpp for head-to-head runs exposed nine pre-exist
 - Detection: code review of the duplicated helpers; `tests/test_fp16.c` checks all 65536 bit patterns.
 - Correction: every copy now calls the shared helper. Normal values, infinities and NaNs convert exactly as before; subnormals are now exact.
 - Prevention rule: shared numeric helpers live in one header with an exhaustive test; do not copy a conversion into a kernel.
+
+### 2026-11-19 — Web UI markdown applied bold/inline code inside fenced code blocks
+- Summary: `renderMarkdown()` replaced fenced blocks first and then ran the bold and inline-code replacements over the whole string, including the new `<pre>` content, so `**x**` inside a code block became `<strong>`. A comment claimed the opposite.
+- Root cause: the transforms ran sequentially on one string with no notion of where the code blocks were.
+- Affected files/modules: `webui/src/lib/markdown.js` (and the embedded bundle).
+- Detection: writing the XSS/equivalence tests for the renderer showed the comment and the behaviour disagreed.
+- Correction: code blocks are split out first; only the text between them gets inline transforms.
+- Prevention rule: renderer tests (`webui/tests/markdown.test.mjs`) cover code-block content; a comment that states a guarantee needs a test.

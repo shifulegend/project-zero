@@ -91,6 +91,39 @@ int api_post_allowed(const char *content_type, const char *origin, const char *h
            (content_type && strncasecmp(content_type, "application/json", 16) == 0);
 }
 
+/* Host header without its port: "localhost:8080" -> "localhost", "[::1]:80" -> "[::1]". */
+static size_t host_name_len(const char *host) {
+    if (host[0] == '[') {
+        const char *e = strchr(host, ']');
+        return e ? (size_t)(e - host) + 1 : strlen(host);
+    }
+    const char *c = strchr(host, ':');
+    return c ? (size_t)(c - host) : strlen(host);
+}
+
+int api_host_allowed(const char *host, const CorsConfig *cors) {
+    if (!host || !*host) return 1;
+    size_t n = host_name_len(host);
+    static const char *const loop[] = { "localhost", "127.0.0.1", "[::1]" };
+    for (size_t i = 0; i < sizeof loop / sizeof loop[0]; i++)
+        if (strlen(loop[i]) == n && strncasecmp(host, loop[i], n) == 0) return 1;
+    if (cors && cors->enabled) {
+        size_t hl = strlen(host);
+        for (int i = 0; i < cors->num_origins; i++) {
+            const char *o = cors->origins[i];
+            if (strcmp(o, "*") == 0) return 1;
+            const char *a = strstr(o, "://");
+            if (!a) continue;
+            a += 3;
+            size_t al = strlen(a);
+            while (al && a[al - 1] == '/') al--;
+            if (al == hl && strncasecmp(a, host, hl) == 0) return 1;                 /* host:port */
+            if (al == n && strncasecmp(a, host, n) == 0 && host[n] == ':') return 1; /* origin without port */
+        }
+    }
+    return 0;
+}
+
 static char *error_body(const char *msg, int status, int *out_status) {
     *out_status = status;
     JsonBuf jb;

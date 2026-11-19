@@ -50,6 +50,14 @@ int api_config_write_allowed(const char *content_type, const char *origin,
 int api_post_allowed(const char *content_type, const char *origin, const char *host,
                      const CorsConfig *cors, size_t body_len);
 
+/* DNS-rebinding guard: the server listens on 127.0.0.1, so a legitimate request
+ * names a loopback host in its Host header (localhost, 127.0.0.1, [::1], any
+ * port). A page on evil.example whose DNS is rebound to 127.0.0.1 still sends
+ * "Host: evil.example" and is refused. Returns 1 when the Host is acceptable:
+ * missing/empty (HTTP/1.0), loopback, or the authority of an allowed
+ * --cors-origin (for reverse proxies). */
+int api_host_allowed(const char *host, const CorsConfig *cors);
+
 /* Returns a heap JSON body (caller frees) and sets *status (200/400/403/500). */
 char *api_config_save(const ApiContext *ctx, const char *json_body, int *status);
 

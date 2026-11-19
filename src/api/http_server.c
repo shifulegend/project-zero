@@ -1047,6 +1047,16 @@ static void handle_connection(int fd, ApiContext *ctx) {
     int is_health = (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/health") == 0);
     int is_preflight = (strcmp(req.method, "OPTIONS") == 0);
 
+    /* DNS-rebinding guard (everything except /health, which monitors probe). */
+    if (!is_health && !api_host_allowed(req.host, &ctx->server_config.cors)) {
+        metrics_record_request(&ctx->metrics, 403);
+        send_error_ex(fd, 403, "Host not allowed (this server answers to localhost / 127.0.0.1; "
+                               "behind a proxy add its address with --cors --cors-origin)", extra_headers);
+        free(recv_buf);
+        close(fd);
+        return;
+    }
+
     if (is_preflight) {
         send_response_ex(fd, 204, "text/plain", NULL, 0, extra_headers);
         free(recv_buf);

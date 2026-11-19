@@ -70,18 +70,18 @@ int main(void) {
     char buf[2048]; int eof;
 
     int ok = dial(port);
-    send_str(ok, "GET /health HTTP/1.1\r\nHost: x\r\n\r\n");
+    send_str(ok, "GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
     slurp(ok, buf, sizeof buf, 3000, &eof);
     CHECK(strstr(buf, "200") && strstr(buf, "\"ok\""), "normal /health request is served");
     close(ok);
 
     /* request framing is validated before any body is read */
     struct { const char *req; const char *want; const char *what; } fr[] = {
-        { "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n", "HTTP/1.1 501", "chunked body refused with 501" },
-        { "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nContent-Length: abc\r\n\r\n", "HTTP/1.1 400", "non-numeric Content-Length refused with 400" },
-        { "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nContent-Length: 5\r\nContent-Length: 6\r\n\r\n", "HTTP/1.1 400", "conflicting Content-Length refused with 400" },
-        { "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nContent-Length: 99999999999\r\n\r\n", "HTTP/1.1 400", "overflowing Content-Length refused" },
-        { "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nContent-Length: 9000000\r\n\r\n", "HTTP/1.1 413", "oversized Content-Length refused with 413" },
+        { "POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n", "HTTP/1.1 501", "chunked body refused with 501" },
+        { "POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: abc\r\n\r\n", "HTTP/1.1 400", "non-numeric Content-Length refused with 400" },
+        { "POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 5\r\nContent-Length: 6\r\n\r\n", "HTTP/1.1 400", "conflicting Content-Length refused with 400" },
+        { "POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 99999999999\r\n\r\n", "HTTP/1.1 400", "overflowing Content-Length refused" },
+        { "POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 9000000\r\n\r\n", "HTTP/1.1 413", "oversized Content-Length refused with 413" },
     };
     for (size_t i = 0; i < sizeof fr / sizeof fr[0]; i++) {
         int c = dial(port);
@@ -95,7 +95,7 @@ int main(void) {
          * "content-length:" inside the body does not confuse the framing) */
         const char *body = "{\"id\":\"content-length: 1\"}";
         char req[512];
-        snprintf(req, sizeof req, "POST /v1/chat/completions/cancel HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: %zu\r\n\r\n%s", strlen(body), body);
+        snprintf(req, sizeof req, "POST /v1/chat/completions/cancel HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: %zu\r\n\r\n%s", strlen(body), body);
         int c = dial(port);
         send_str(c, req);
         slurp(c, buf, sizeof buf, 3000, &eof);
@@ -125,6 +125,31 @@ int main(void) {
             CHECK(is403 == cs[i].want403 && strncmp(buf, "HTTP/1.1", 8) == 0, cs[i].what);
             close(c);
         }
+        {   /* DNS rebinding: a non-loopback Host is refused on every route except /health */
+            struct { const char *host; int want403; const char *path; const char *what; } hh[] = {
+                { "evil.example", 1, "/v1/models", "Host: evil.example is refused (DNS rebinding)" },
+                { "evil.example:8080", 1, "/v1/models", "Host: evil.example:8080 is refused" },
+                { "localhost:8080", 0, "/v1/models", "Host: localhost:8080 is allowed" },
+                { "[::1]:8080", 0, "/v1/models", "Host: [::1]:8080 is allowed" },
+                { "LOCALHOST", 0, "/v1/models", "Host name match is case-insensitive" },
+                { "evil.example", 0, "/health", "/health is exempt (monitors)" },
+            };
+            for (size_t i = 0; i < sizeof hh / sizeof hh[0]; i++) {
+                snprintf(req, sizeof req, "GET %s HTTP/1.1\r\nHost: %s\r\n\r\n", hh[i].path, hh[i].host);
+                int c = dial(port);
+                send_str(c, req);
+                slurp(c, buf, sizeof buf, 3000, &eof);
+                int is403 = strncmp(buf, "HTTP/1.1 403", 12) == 0;
+                CHECK(is403 == hh[i].want403 && strncmp(buf, "HTTP/1.1", 8) == 0, hh[i].what);
+                close(c);
+            }
+            CorsConfig cc; memset(&cc, 0, sizeof cc);
+            cc.enabled = 1; cc.num_origins = 1; cc.origins[0] = (char *)"https://pz.example.com";
+            CHECK(api_host_allowed("pz.example.com", &cc) == 1, "unit: host of an allowed --cors-origin is allowed");
+            CHECK(api_host_allowed("other.example.com", &cc) == 0, "unit: other host still refused");
+            CHECK(api_host_allowed(NULL, &cc) == 1 && api_host_allowed("", &cc) == 1, "unit: missing Host (HTTP/1.0) allowed");
+            CHECK(api_host_allowed("pz.example.com", NULL) == 0, "unit: no CORS config, foreign host refused");
+        }
         CorsConfig none; memset(&none, 0, sizeof none);
         CHECK(api_post_allowed("text/plain", "http://evil.example", "127.0.0.1:1", &none, 5) == 0, "unit: foreign origin refused");
         CHECK(api_post_allowed(NULL, NULL, "127.0.0.1:1", &none, 5) == 1, "unit: no origin allowed");
@@ -150,7 +175,7 @@ int main(void) {
 
     /* capacity is released again */
     int again = dial(port);
-    send_str(again, "GET /health HTTP/1.1\r\nHost: x\r\n\r\n");
+    send_str(again, "GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
     slurp(again, buf, sizeof buf, 3000, &eof);
     CHECK(strstr(buf, "200") != NULL, "capacity is released after the stalled clients leave");
     close(again);

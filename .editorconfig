@@ -9,10 +9,11 @@ trim_trailing_whitespace = true
 indent_style = space
 indent_size = 4
 
-# C / C++ engine sources.
+# C / C++ engine sources (100 columns, as in .clang-format).
 [*.{c,h,cpp,hpp}]
 indent_style = space
 indent_size = 4
+max_line_length = 100
 
 # Makefiles require literal tabs for recipe lines.
 [Makefile]
@@ -21,6 +22,7 @@ indent_style = tab
 # Python tooling follows PEP 8 (4-space, already the default above).
 [*.py]
 indent_size = 4
+max_line_length = 100
 
 # Markdown: keep trailing whitespace (two spaces = hard line break).
 [*.md]

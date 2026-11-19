@@ -98,6 +98,7 @@ These phases are completely spec'd in [`IMPLEMENTATION_PLAN.md`](docs/architectu
 - **Documentation:** Update the relevant `.md` file. Benchmark before and after for perf changes.
 - **One logical change per PR, at most 400 changed lines.** Generated, vendored and data files do not count; a mechanical change (reformat, rename) goes in its own PR and may carry the `size-override` label. CI (`tools/check_pr_size.py`) enforces the limit.
 - **Test first for behaviour changes and bug fixes:** write the failing test, make it pass, then clean up (Red -> Green -> Refactor), and say so in the PR.
+- **Local checks (optional):** `pip install pre-commit && pre-commit install` runs `ruff`, `clang-format` and the repository checks (TODO register, Markdown fences, header guards, file sizes, root files) before each commit; the config is `.pre-commit-config.yaml`, and CI runs the same checks. Editors that read `.editorconfig` get the 100-column limit.
 - **Review comments:** prefix a non-blocking remark with `Nit:`; it never blocks a merge. Review the whole file's context, not only the diff hunk.
 
 ---

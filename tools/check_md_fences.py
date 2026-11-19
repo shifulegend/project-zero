@@ -34,6 +34,7 @@ def untagged(lines):
 
 
 def fix_text(text):
+    """Returns `text` with every untagged code fence tagged as `text`."""
     lines = text.split("\n")
     for i in untagged(lines):
         lines[i] = lines[i].rstrip() + "text"
@@ -41,6 +42,7 @@ def fix_text(text):
 
 
 def main(argv):
+    """Entry point: reports untagged fences in tracked Markdown files (and tags them with --fix); returns the exit code."""
     do_fix = "--fix" in argv
     files = subprocess.check_output(["git", "ls-files", "*.md"], cwd=ROOT, text=True).split()
     bad = 0

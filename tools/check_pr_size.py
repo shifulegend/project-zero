@@ -28,6 +28,7 @@ EXCLUDE = [
 
 
 def excluded(path):
+    """True when a changed path does not count towards the size limit (lockfiles, generated and vendored files)."""
     return any(fnmatch.fnmatch(path, pat) for pat in EXCLUDE)
 
 
@@ -50,6 +51,7 @@ def count(numstat_text):
 
 
 def main(argv):
+    """Entry point: sums the changed lines against the base ref and returns 1 over the limit."""
     if len(argv) < 2:
         sys.exit(__doc__)
     limit = LIMIT

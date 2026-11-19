@@ -12,7 +12,7 @@ src/core/gguf_loader.c 1510
 src/core/gguf_quant_iq.c 1586
 src/core/gguf_reader.c 604
 src/core/hardware_profile.c 696
-src/math/matmul_q4k.c 692
+src/math/matmul_q4k.c 688
 src/math/matmul_q4k_x8.c 652
 src/math/parallel_matmul.c 564
 src/tokenizer/pretokenize.c 592
@@ -20,7 +20,7 @@ src/tokenizer/tokenizer_encode.c 591
 src/transformer/attention.c 754
 src/transformer/gen_session.c 543
 src/transformer/mla_attention.c 586
-src/transformer/moe_ffn.c 707
+src/transformer/moe_ffn.c 690
 src/update/update_check.c 614
 tests/test_api_server.c 547
 tests/test_forward.c 670
@@ -30,5 +30,5 @@ tests/test_kv_cache.c 529
 tests/test_lora.c 654
 tests/test_packed_weights.c 504
 tests/test_simd_vnni.c 643
-tools/bench/benchlib.py 910
-tools/deepseek_bench_report.py 620
+tools/bench/benchlib.py 859
+tools/deepseek_bench_report.py 598

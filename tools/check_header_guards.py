@@ -16,10 +16,12 @@ SKIP = ("stb_",)
 
 
 def expected(rel):
+    """The guard name a header must use: TN_ plus its path under include/, upper-cased."""
     return "TN_" + re.sub(r"[^A-Za-z0-9]", "_", rel.as_posix()).upper()
 
 
 def guard_of(text):
+    """(ifndef name, define name) of the header's include guard, or None when it has none."""
     m = re.search(r"^\s*#\s*ifndef\s+(\w+)\s*\n\s*#\s*define\s+(\w+)", text, re.M)
     return (m.group(1), m.group(2)) if m else None
 
@@ -40,6 +42,7 @@ def check(text, rel):
 
 
 def fix(text, rel):
+    """Returns `text` with its guard (or #pragma once) rewritten to the expected TN_ guard for header `rel`."""
     want = expected(rel)
     g = guard_of(text)
     if re.search(r"^\s*#\s*pragma\s+once\s*\n", text, re.M):
@@ -57,6 +60,7 @@ def fix(text, rel):
 
 
 def main(argv):
+    """Entry point: checks every header under include/ (and rewrites them with --fix); returns the exit code."""
     do_fix = "--fix" in argv
     seen, bad = {}, 0
     for f in sorted((ROOT / "include").rglob("*.h")):

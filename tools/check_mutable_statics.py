@@ -23,6 +23,7 @@ SKIP = ("src/api/webui_bundle_generated.c",)
 
 
 def count(text):
+    """Number of mutable static variable declarations in `text`."""
     n = 0
     for line in text.splitlines():
         s = line.strip()
@@ -35,6 +36,7 @@ def count(text):
 
 
 def counts():
+    """Mutable static counts per file for every tracked file under src/."""
     files = subprocess.check_output(["git", "ls-files", "src"], cwd=ROOT, text=True).split()
     out = {}
     for rel in files:
@@ -47,6 +49,7 @@ def counts():
 
 
 def read_baseline():
+    """Per-file counts from tools/mutable_statics_baseline.txt."""
     out = {}
     if BASELINE.exists():
         for line in BASELINE.read_text(encoding="utf-8").splitlines():
@@ -57,6 +60,7 @@ def read_baseline():
 
 
 def compare(cur, base):
+    """Messages for every file whose count exceeds its baseline."""
     return [
         f"{k}: {v} mutable static(s), baseline {base.get(k, 0)}"
         for k, v in sorted(cur.items())
@@ -65,6 +69,7 @@ def compare(cur, base):
 
 
 def main(argv):
+    """Entry point: writes the baseline with --update, else checks the tree; returns the exit code."""
     cur = counts()
     if "--update" in argv:
         BASELINE.write_text(

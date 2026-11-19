@@ -25,6 +25,11 @@ class SizeTest(unittest.TestCase):
         self.assertEqual(len(out), 1)
         self.assertIn("grew", out[0])
 
+    def test_docstring_lines_are_not_counted(self):
+        src = '"""Module\ndoc."""\n\ndef f():\n    """One."""\n    return 1\n\nclass K:\n    """A\n    B."""\n'
+        self.assertEqual(c.docstring_lines(src), 2 + 1 + 2)
+        self.assertEqual(c.docstring_lines("def broken(:"), 0)
+
     def test_the_real_tree_is_within_the_baseline(self):
         self.assertEqual(c.main([]), 0)
 

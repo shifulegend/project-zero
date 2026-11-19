@@ -87,6 +87,7 @@
 #include "core/debug.h"
 
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
@@ -1115,6 +1116,7 @@ static void *connection_thread_fn(void *arg) {
     metrics_connection_opened(&ca->ctx->metrics);
     handle_connection(ca->conn_fd, ca->ctx);
     metrics_connection_closed(&ca->ctx->metrics);
+    atomic_fetch_sub(&ca->ctx->active_connections, 1);
     free(ca);
     return NULL;
 }
@@ -1123,11 +1125,15 @@ static void *connection_thread_fn(void *arg) {
 
 static void *listener_thread_fn(void *arg) {
     ApiContext *ctx = (ApiContext *)arg;
+    /* api_server_stop() sets ctx->server_fd = -1 after closing it; read it once,
+     * here (ordered after api_server_start by pthread_create), so the accept
+     * loop never races with that write. */
+    const int listen_fd = ctx->server_fd;
 
     while (atomic_load(&ctx->running)) {
         struct sockaddr_in client_addr;
         socklen_t addr_len = sizeof(client_addr);
-        int conn_fd = accept(ctx->server_fd,
+        int conn_fd = accept(listen_fd,
                              (struct sockaddr *)&client_addr, &addr_len);
         if (conn_fd < 0) {
             if (!atomic_load(&ctx->running)) break;
@@ -1138,13 +1144,41 @@ static void *listener_thread_fn(void *arg) {
             fprintf(stderr, "[API] Connection from %s\n",
                     inet_ntoa(client_addr.sin_addr));
 
+        /* Bound the work a client can hold: a read/write timeout so a stalled
+         * (slowloris) peer cannot pin its thread forever, and a connection cap
+         * so a flood cannot spawn unbounded threads. 0 disables either. */
+        if (ctx->server_config.client_timeout_s > 0) {
+            struct timeval tv;
+            tv.tv_sec  = ctx->server_config.client_timeout_s;
+            tv.tv_usec = 0;
+            setsockopt(conn_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+            setsockopt(conn_fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+        }
+        int cap = ctx->server_config.max_connections;
+        if (cap > 0 && atomic_load(&ctx->active_connections) >= cap) {
+            static const char body[] =
+                "{\"error\":{\"message\":\"Too many open connections\",\"type\":\"server_error\"}}";
+            char busy[320];
+            int bn = snprintf(busy, sizeof(busy),
+                "HTTP/1.1 503 Service Unavailable\r\n"
+                "Content-Type: application/json\r\n"
+                "Retry-After: 1\r\n"
+                "Connection: close\r\n"
+                "Content-Length: %zu\r\n\r\n%s", sizeof(body) - 1, body);
+            if (bn > 0) (void)net_write_all(conn_fd, busy, (size_t)bn);
+            close(conn_fd);
+            continue;
+        }
+
         ConnArgs *ca = (ConnArgs *)malloc(sizeof(ConnArgs));
         if (!ca) { close(conn_fd); continue; }
         ca->conn_fd = conn_fd;
         ca->ctx     = ctx;
 
         pthread_t tid;
+        atomic_fetch_add(&ctx->active_connections, 1);
         if (pthread_create(&tid, NULL, connection_thread_fn, ca) != 0) {
+            atomic_fetch_sub(&ctx->active_connections, 1);
             close(conn_fd);
             free(ca);
             continue;

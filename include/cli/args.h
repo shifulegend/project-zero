@@ -113,6 +113,8 @@ typedef struct {
     char  *plan_layers;        /* --plan-layers GB,GB,...: print a RAM split    */
     int    queue_size;         /* --queue-size <N>: waiting chat requests (0)   */
     int    queue_timeout_s;    /* --queue-timeout <s>: max wait (120)           */
+    int    client_timeout_s;   /* --client-timeout <s>: socket I/O timeout (30) */
+    int    max_connections;    /* --max-connections <N>: open connections (64)  */
     int    parallel;           /* --parallel <N>: chat requests served at once (1) */
     int    parallel_batch;     /* --parallel-batch <N>: rows per batched pass (128) */
     int    best_of;            /* --best-of <N>: candidates, keep most likely (1) */

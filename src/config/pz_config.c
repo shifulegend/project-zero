@@ -69,6 +69,8 @@ static const PzCfgKey g_schema[] = {
     { "metrics",         PZ_CFG_BOOL,   "server", "Expose /metrics", NULL, 0, 0, 0 },
     { "queue-size",      PZ_CFG_INT,    "server", "Requests that may wait for the generation slot", NULL, 0, 1048576, 0 },
     { "queue-timeout",   PZ_CFG_INT,    "server", "Seconds a queued request waits", NULL, 0, 86400, 0 },
+    { "client-timeout",  PZ_CFG_INT,    "server", "Seconds a silent client may hold a connection (0 = never)", NULL, 0, 86400, 0 },
+    { "max-connections", PZ_CFG_INT,    "server", "Open client connections at once; more get 503 (0 = unlimited)", NULL, 0, 1048576, 0 },
     { "parallel",        PZ_CFG_INT,    "server", "Chat requests served at once (1 = one at a time)", NULL, 1, PZ_PARALLEL_MAX, 0 },
     { "parallel-batch",  PZ_CFG_INT,    "server", "Tokens per batched forward pass with --parallel", NULL, 1, PZ_PARALLEL_BATCH_MAX, 0 },
     { "max-tokens-limit", PZ_CFG_INT,   "server", "Per-request max_tokens cap (0 = context)", NULL, 0, 16777216, 0 },

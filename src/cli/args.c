@@ -136,6 +136,8 @@ void print_usage(const char *prog_name) {
     printf("  --queue-size <N>    Let up to N chat requests wait (in order) while one is\n");
     printf("                      generating, instead of answering 429 (default: 0)\n");
     printf("  --queue-timeout <s> Seconds a queued request waits before giving up (120)\n");
+    printf("  --client-timeout <s> Drop a client that sends or reads nothing for this many seconds (30; 0 = never)\n");
+    printf("  --max-connections <N> Open client connections at once; more get 503 (64; 0 = unlimited)\n");
     printf("  --parallel <N>      Serve up to N chat requests at once, batched into one\n");
     printf("                      forward pass per token (default: 1 = one at a time;\n");
     printf("                      max %d). Dense models only; others stay sequential.\n", PZ_PARALLEL_MAX);
@@ -312,6 +314,8 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->remote_layers = NULL;
     args->plan_layers = NULL;
     args->queue_timeout_s = 120;
+    args->client_timeout_s = 30;
+    args->max_connections = 64;
     args->parallel = 1;
     args->parallel_batch = PZ_PARALLEL_BATCH_DEFAULT;
     args->best_of_max = BEST_OF_MAX_DEFAULT;
@@ -495,6 +499,18 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             args->queue_timeout_s = atoi(argv[++i]);
             if (args->queue_timeout_s < 1) {
                 fprintf(stderr, "Error: --queue-timeout must be >= 1 second\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--client-timeout") == 0 && i + 1 < argc) {
+            args->client_timeout_s = atoi(argv[++i]);
+            if (args->client_timeout_s < 0 || args->client_timeout_s > 86400) {
+                fprintf(stderr, "Error: --client-timeout must be 0..86400 seconds\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--max-connections") == 0 && i + 1 < argc) {
+            args->max_connections = atoi(argv[++i]);
+            if (args->max_connections < 0 || args->max_connections > 1048576) {
+                fprintf(stderr, "Error: --max-connections must be 0..1048576\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--parallel") == 0 && i + 1 < argc) {

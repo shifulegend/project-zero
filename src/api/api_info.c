@@ -228,6 +228,8 @@ char *api_config_json(const ApiContext *ctx) {
     if (ctx && ctx->prm && ctx->server_config.prm_model) jb_str(&jb, ctx->server_config.prm_model);
     else jb_raw(&jb, "null");
     jb_raw(&jb, ","); jb_key(&jb, "queue_size"); jb_int(&jb, ctx ? ctx->server_config.queue_size : 0);
+    jb_raw(&jb, ","); jb_key(&jb, "client_timeout_s"); jb_int(&jb, ctx ? ctx->server_config.client_timeout_s : 0);
+    jb_raw(&jb, ","); jb_key(&jb, "max_connections"); jb_int(&jb, ctx ? ctx->server_config.max_connections : 0);
     /* Phase 23 stage 2b: requests served at once, what was asked for, and
      * why fewer when the model or memory cannot do it. */
     jb_raw(&jb, ","); jb_key(&jb, "parallel"); jb_raw(&jb, "{");

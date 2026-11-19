@@ -3,7 +3,7 @@ src/api/api_info.c 546
 src/api/batch_scheduler.c 568
 src/api/http_server.c 1014
 src/api/json_parse.c 852
-src/cli/args.c 882
+src/cli/args.c 647
 src/cli/config_cmd.c 529
 src/cli/main.c 1228
 src/config/pz_config.c 743

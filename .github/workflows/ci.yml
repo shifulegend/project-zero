@@ -60,6 +60,10 @@ jobs:
         run: |
           python3 -I tools/test_check_docstrings.py
           python3 -I tools/check_docstrings.py
+      - name: Every command-line flag is described in --help
+        run: |
+          python3 -I tools/test_check_help_flags.py
+          python3 -I tools/check_help_flags.py
       - name: OpenAPI document matches the routes the server handles
         run: |
           python3 -I tools/test_check_openapi_routes.py

@@ -298,6 +298,7 @@ set(REASONING_SOURCES
 
 set(CLI_SOURCES
     src/cli/args.c
+    src/cli/args_usage.c
     src/cli/arg_values.c
     src/cli/program_name.c
     src/cli/config_cmd.c

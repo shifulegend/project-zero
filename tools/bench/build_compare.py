@@ -29,7 +29,6 @@ Examples
 """
 import argparse
 import pathlib
-import shlex
 import shutil
 import subprocess
 import sys

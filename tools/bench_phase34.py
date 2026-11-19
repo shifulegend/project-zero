@@ -18,7 +18,6 @@ import math
 import multiprocessing
 import os
 import re
-import signal
 import subprocess
 import sys
 import threading
@@ -141,9 +140,6 @@ def run_once(n_threads: int, extra_flags=None) -> dict:
     stop_evt.set()
     mon.join(timeout=2)
 
-    # Post-run snapshot
-    snap_post = system_snapshot()
-
     stdout = proc.stdout + proc.stderr
     toks   = extract_toks(stdout)
 
@@ -193,7 +189,7 @@ def run_suite(thread_counts, label, extra_flags=None):
         print(f"\n  T={t} ... ", end="", flush=True)
         r = run_once(t, extra_flags)
         if "error" in r:
-            print(f"TIMEOUT")
+            print("TIMEOUT")
         else:
             print(f"{r['toks_s']:.2f} tok/s  |  CPU {r['cpu_mean_pct']:.1f}%  "
                   f"RAM {r['ram_used_gb']:.2f}GB used  load {r['load_1m']:.2f}")
@@ -208,8 +204,8 @@ def run_suite(thread_counts, label, extra_flags=None):
 # ── Table printer ─────────────────────────────────────────────────────────────
 def print_table(results, label):
     print(f"\n### {label}\n")
-    print(f"| T | tok/s | CPU% | RAM used | RAM avail | load 1m | elapsed |")
-    print(f"|---|-------|------|----------|-----------|---------|---------|")
+    print("| T | tok/s | CPU% | RAM used | RAM avail | load 1m | elapsed |")
+    print("|---|-------|------|----------|-----------|---------|---------|")
     for r in results:
         if "error" in r:
             print(f"| {r['n_threads']} | TIMEOUT | — | — | — | — | — |")

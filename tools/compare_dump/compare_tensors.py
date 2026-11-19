@@ -14,10 +14,8 @@ The script matches rows by (layer, step) and reports:
   - A side-by-side diff for any mismatch
 """
 
-import sys
 import csv
 import argparse
-import math
 
 # Tolerance for float comparison (relative error threshold)
 REL_TOL  = 1e-3   # 0.1% relative error

@@ -1,7 +1,5 @@
 import json
 import struct
-import sys
-import os
 
 def build_tokenizer():
     input_path = "/tmp/tokenizer.json"

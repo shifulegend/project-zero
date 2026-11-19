@@ -19,7 +19,6 @@ Usage:
 import sys
 import re
 import csv
-import math
 
 # Tensor names we care about (must match CAPTURE_PATTERNS in compare_tensors.py)
 KEEP = {

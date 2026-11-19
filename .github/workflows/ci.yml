@@ -28,6 +28,10 @@ jobs:
           python3 -I tools/test_changelog.py
       - name: Benchmark scripts (tools/bench) unit tests
         run: python3 tools/bench/test_bench.py
+      - name: Python lint (ruff, syntax errors and unused or undefined names)
+        run: |
+          pip install --quiet ruff==0.16.9
+          ruff check .
       # 2026-11-11: .agents/rules and .github/instructions are generated from .claude/rules.
       - name: AI adapter files in sync with .claude/rules
         run: python3 -I tools/sync_ai_adapters.py --check

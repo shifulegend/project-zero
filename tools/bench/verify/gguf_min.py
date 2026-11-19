@@ -1,5 +1,5 @@
 """Minimal GGUF reader (header, kv, tensor infos, mmap) for the numpy reference. No pz or llama.cpp code used."""
-import struct, mmap, numpy as np
+import struct, mmap
 class G:
     def __init__(s, path):
         s.f = open(path, 'rb'); s.m = mmap.mmap(s.f.fileno(), 0, access=mmap.ACCESS_READ)

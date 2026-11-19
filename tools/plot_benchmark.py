@@ -12,8 +12,6 @@ import os
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-import numpy as np
 
 # ── Measured data (i5-11300H, AVX-512 VNNI, 2026-06-21) ──────────────────────
 threads   = [1, 2, 3, 4, 5, 6, 7, 8]
@@ -154,7 +152,7 @@ plt.close()
 print(f'Saved: {out}')
 
 print('\nAll graphs generated successfully.')
-print(f'\nKey results (i5-11300H, 2026-06-21):')
+print('\nKey results (i5-11300H, 2026-06-21):')
 print(f'  PZ INT4 peak  : {pk_int4:.2f} tok/s')
 print(f'  PZ BF16 peak  : {pk_bf16:.2f} tok/s')
 print(f'  MSFT peak     : {pk_msft:.2f} tok/s')

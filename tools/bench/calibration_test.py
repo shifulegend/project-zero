@@ -137,11 +137,9 @@ def main():
     meta = {"kind": "calibration", "tests": tests, "calibration": a.calibration}
 
     exit_code = 0
-    calibrated = False
     if "profile" in tests or ("tiers" in tests or "classifiers" in tests) and a.calibration == "isolated":
         run.log("\n== hardware profile + first-run calibration ==")
         _, _, box = hp.capture_profile(run, a.pz, small, env, a.calibration, rows=a.shot_rows)
-        calibrated = True
         md += ["## Hardware profile", "", "```", box, "```", ""]
     if "sweeps" in tests:
         m, mm = test_sweeps(run, a, env, small)

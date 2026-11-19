@@ -1,7 +1,6 @@
 import subprocess
 import os
 import random
-import time
 
 def run_with_timeout(cmd, timeout_sec):
     try:

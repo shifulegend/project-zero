@@ -8,7 +8,6 @@ Run AFTER run_sweep.py and run_perf_runs.py have completed.
 
 import os
 import re
-import sys
 
 PROJECT = "/home/ubuntu/project-zero"
 SWEEP   = f"{PROJECT}/benchmark_results/sweep_2026-06-21"

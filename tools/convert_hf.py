@@ -24,9 +24,9 @@ Binary format (ternary MoE, scale_mode=2):
                 [Per expert]: w1+s1, w3+s3, w2+s2
                 [Shared expert]: sw1+ss1, sw3+ss3, sw2+ss2
 """
-import os, sys, struct, json, math
+import os, struct, json
 import numpy as np
-import ml_dtypes  # registers bfloat16 with numpy
+import ml_dtypes  # noqa: F401  (registers bfloat16 with numpy as a side effect)
 from safetensors import safe_open
 from argparse import ArgumentParser
 

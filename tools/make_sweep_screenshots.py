@@ -15,7 +15,6 @@ import argparse
 import json
 import os
 import re
-import sys
 from PIL import Image, ImageDraw, ImageFont
 
 # ── colour palette ────────────────────────────────────────────────────────────

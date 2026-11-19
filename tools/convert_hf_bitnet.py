@@ -16,7 +16,7 @@ import sys
 import numpy as np
 
 try:
-    import ml_dtypes
+    import ml_dtypes  # noqa: F401  (registers bfloat16 with numpy as a side effect)
 except ImportError:
     print("Warning: ml_dtypes not found. bfloat16 support might be limited.")
 
@@ -230,11 +230,11 @@ def pad_file(f, alignment=64):
 
 def convert(model_path, output_path):
     """Convert a model to packed binary format in a memory-efficient way."""
-    print(f"Loading config...")
+    print("Loading config...")
     config = extract_config(model_path)
     print(f"Config: {config}")
 
-    print(f"Scanning shards...")
+    print("Scanning shards...")
     tensor_map = get_tensor_map(model_path)
     if not tensor_map:
         print("Error: No tensors found", file=sys.stderr)

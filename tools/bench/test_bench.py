@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Unit tests for tools/bench (parsers, argument handling, matrix bookkeeping). No pz run, no network."""
-import json
 import pathlib
 import sys
 import tempfile

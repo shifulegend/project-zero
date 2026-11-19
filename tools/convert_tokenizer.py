@@ -73,7 +73,6 @@ def convert_hf_tokenizer(input_path, output_path):
             scores[token_id] = 0.0
 
     # Assign scores from merge order (if BPE)
-    merge_vocab = {}
     for i, merge in enumerate(merges):
         merged_token = (merge if isinstance(merge, str) else ''.join(merge)).replace(' ', '')
         if merged_token in vocab:

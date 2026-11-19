@@ -1,0 +1,7 @@
+# Python lint (CI job "lint"). Real-bug rules only: syntax errors (E9) and
+# pyflakes (F: undefined names, unused imports/variables, ...). Pinned ruff
+# version: see .github/workflows/ci.yml.
+extend-exclude = ["benchmark_results"]
+
+[lint]
+select = ["E9", "F"]

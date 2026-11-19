@@ -199,7 +199,7 @@ if __name__ == "__main__":
         all_results[sname] = run_suite(sname, cmd_fn, parse_fn, t_list, cwd)
 
         if idx < len(suites_to_run) - 1:
-            print(f"\n  *** SUITE DONE — 30s cooldown before next suite ***")
+            print("\n  *** SUITE DONE — 30s cooldown before next suite ***")
             time.sleep(30)
 
     print(f"\n{'='*70}")

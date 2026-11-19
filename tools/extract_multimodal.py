@@ -31,7 +31,6 @@ Binary format is documented in include/multimodal/vision_weights_load.h.
 
 import argparse
 import json
-import math
 import os
 import struct
 import sys
@@ -279,7 +278,6 @@ class LLaVAAdapter(ModelAdapter):
     PREFIX_PROJ = 'model.mm_projector.'
 
     def vision_config(self):
-        vcfg = self.config.get('mm_vision_tower', 'openai/clip-vit-large-patch14-336')
         # ViT-L/14: 24 layers, 1024 dim, 4096 hidden, 16 heads, patch=14
         return 24, 1024, 4096, 16, 14
 
@@ -333,18 +331,18 @@ def detect_adapter(config, tensors):
     arch       = config.get('architectures', [''])[0].lower()
 
     if 'moondream' in model_type or 'moondream' in arch:
-        print(f'  Detected: Moondream2')
+        print('  Detected: Moondream2')
         return Moondream2Adapter(tensors, config)
     if 'smolvlm' in model_type or 'idefics3' in model_type or 'smolvlm' in arch:
-        print(f'  Detected: SmolVLM')
+        print('  Detected: SmolVLM')
         return SmolVLMAdapter(tensors, config)
     if 'llava' in model_type or 'llava' in arch:
-        print(f'  Detected: LLaVA-1.5')
+        print('  Detected: LLaVA-1.5')
         return LLaVAAdapter(tensors, config)
 
     # Fallback heuristic: try SmolVLM layout
     if any('vision_model' in k for k in tensors):
-        print(f'  Detected: Generic SigLIP-style (SmolVLM layout assumed)')
+        print('  Detected: Generic SigLIP-style (SmolVLM layout assumed)')
         return SmolVLMAdapter(tensors, config)
 
     raise ValueError(
@@ -455,16 +453,16 @@ def main():
     print(f'  Done: {proj_size / 1e6:.1f} MB')
 
     n_layers, embed_dim, hidden_dim, n_heads, patch_size = adapter.vision_config()
-    print(f'\nSummary:')
+    print('\nSummary:')
     print(f'  Vision encoder: {n_layers}L × {embed_dim}d × {n_heads}h, patch={patch_size}px')
-    print(f'  Run with:')
-    print(f'    ./pz \\')
-    print(f'        --model  models/bitnet-b1.58-2B-4T.bin \\')
-    print(f'        --tokenizer models/bitnet-b1.58-2B-4T_tokenizer_proper.bin \\')
+    print('  Run with:')
+    print('    ./pz \\')
+    print('        --model  models/bitnet-b1.58-2B-4T.bin \\')
+    print('        --tokenizer models/bitnet-b1.58-2B-4T_tokenizer_proper.bin \\')
     print(f'        --vision {vision_out} \\')
     print(f'        --proj   {proj_out} \\')
-    print(f'        --image  strawberry.jpg \\')
-    print(f'        --prompt "What do you see in this image?"')
+    print('        --image  strawberry.jpg \\')
+    print('        --prompt "What do you see in this image?"')
 
 
 if __name__ == '__main__':

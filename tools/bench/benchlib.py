@@ -22,6 +22,7 @@ import hashlib
 import json
 import os
 import pathlib
+import platform
 import re
 import shlex
 import shutil
@@ -162,7 +163,7 @@ def cpu_model():
     for line in pathlib.Path("/proc/cpuinfo").read_text().splitlines():
         if line.startswith("model name"):
             return line.split(":", 1)[1].strip()
-    return platform.processor() if "platform" in globals() else "unknown"
+    return platform.processor() or "unknown"
 
 
 def host_info():

@@ -13,7 +13,6 @@ Usage:
 import argparse
 import os
 import re
-import sys
 from PIL import Image, ImageDraw, ImageFont
 
 # Terminal colour palette (dark theme)

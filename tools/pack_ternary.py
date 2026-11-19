@@ -23,7 +23,6 @@ import argparse
 import struct
 import numpy as np
 import os
-import sys
 
 # Magic and version must match TN_MAGIC / TN_VERSION in platform.h
 TN_MAGIC = 0x594E5254  # "TNRY" in little-endian

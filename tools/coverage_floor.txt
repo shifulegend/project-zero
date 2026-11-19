@@ -1,0 +1,6 @@
+# Minimum coverage (percent) that tools/check_coverage.py enforces on the CI coverage job.
+# Measured 2026-11-19 without a model: lines 53.8, branches 39.9. The floors sit a few points
+# lower because a runner whose CPU lacks AVX-512/VNNI runs fewer kernel paths. Raise them when
+# coverage rises; lowering one needs a reason in the commit message.
+lines 50
+branches 35

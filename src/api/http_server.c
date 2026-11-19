@@ -1437,11 +1437,27 @@ void api_server_stop(ApiContext *ctx) {
     }
     batch_scheduler_stop(ctx->sched);
 
-    /* Deliberately NOT freeing server_config/cancel/generation_mutex here:
-     * detached per-connection threads spawned before the stop request may
-     * still be running and reference them. There is no drain/barrier to
-     * wait for them (this is a local single-operator dev server, not a
-     * service that needs clean reload), so these small, process-lifetime
-     * resources are left for the OS to reclaim at exit rather than risking
-     * a use-after-free race. */
+    /* Drain the detached connection threads: wait (bounded) until every one
+     * has finished. An idle client is dropped by its read timeout
+     * (--client-timeout), so the wait ends within that time; the cap keeps a
+     * long timeout from delaying exit more than a few seconds. */
+    {
+        int cap_ms = ctx->server_config.client_timeout_s > 0
+                         ? ctx->server_config.client_timeout_s * 1000 + 500 : 0;
+        if (cap_ms > 5000 || cap_ms == 0) cap_ms = 5000;
+        int waited_ms = 0;
+        while (atomic_load(&ctx->active_connections) > 0 && waited_ms < cap_ms) {
+            struct timespec ts = { 0, 10 * 1000000L };
+            nanosleep(&ts, NULL);
+            waited_ms += 10;
+        }
+        int left = atomic_load(&ctx->active_connections);
+        if (left > 0)
+            fprintf(stderr, "[API] %d connection(s) still open after %d ms; exiting anyway\n", left, cap_ms);
+    }
+
+    /* server_config/cancel/generation_mutex are still not freed here: a
+     * connection that outlived the wait above may reference them, so these
+     * small, process-lifetime resources are left for the OS to reclaim at
+     * exit rather than risking a use-after-free. */
 }

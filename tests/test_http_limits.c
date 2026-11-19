@@ -12,6 +12,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <stdatomic.h>
 #include "api/api_server.h"
 #include "api/config_endpoint.h"
 
@@ -181,6 +182,27 @@ int main(void) {
     close(again);
 
     api_server_stop(&ctx);
+
+    /* shutdown drains connection threads: a stalled client is gone when stop returns */
+    {
+        int port3 = free_port();
+        ApiContext dc;
+        api_context_init(&dc, NULL, NULL, NULL, NULL, NULL, NULL);
+        dc.server_config.client_timeout_s = 1;
+        if (port3 > 0 && api_server_start(port3, &dc) == TN_OK) {
+            nap_ms(100);
+            int stalled = dial(port3);
+            send_str(stalled, "GET /hea");
+            nap_ms(200);
+            CHECK(atomic_load(&dc.active_connections) == 1, "one connection thread is alive before stop");
+            double t0 = now_s();
+            api_server_stop(&dc);
+            double dt = now_s() - t0;
+            CHECK(atomic_load(&dc.active_connections) == 0, "stop returns only after the connection thread has finished");
+            CHECK(dt < 4.0, "and within the bounded wait (client timeout 1 s)");
+            close(stalled);
+        } else { printf("FAIL: third server did not start\n"); g_fail++; }
+    }
 
     /* rate limit: a second server allowing 2 req/s (burst 4) on the non-generation routes */
     {

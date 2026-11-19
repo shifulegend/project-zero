@@ -59,6 +59,11 @@
   allocating, refuse what cannot be honoured with a clear error instead of ignoring it (a `400`,
   not a silent default), and fail closed when a check cannot run. Examples already in the tree:
   `api/http_headers.c`, the JSON depth cap, `response_format` types, `cmd_exec` path checks.
+- **Logs:** never print a client-supplied string without escaping control characters (a CR/LF in
+  a header value forges a log line), and never pass a credential to a print call: CI
+  (`tools/check_log_secrets.py`) fails on `api_key`, `authorization`, `password` and the like inside
+  `printf`/`fprintf`/`puts`/`perror`. Nothing client-controlled is logged today; the first log line
+  that includes one adds the escaping helper with it.
 
 ## Memory & safety (hard rules, learned from real bugs)
 - **Zero structs before partial population.** Always `memset(&x, 0, sizeof(x))` before

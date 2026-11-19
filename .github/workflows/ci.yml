@@ -52,6 +52,10 @@ jobs:
           python3 -I tools/check_file_sizes.py
       - name: Coverage floor check (unit tests)
         run: python3 -I tools/test_check_coverage.py
+      - name: No credential variable reaches a print call
+        run: |
+          python3 -I tools/test_check_log_secrets.py
+          python3 -I tools/check_log_secrets.py
       - name: OpenAPI document matches the routes the server handles
         run: |
           python3 -I tools/test_check_openapi_routes.py

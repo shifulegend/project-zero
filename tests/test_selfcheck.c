@@ -72,10 +72,30 @@ static void test_act_quant_modes(void) {
     tn_simd_init();   /* back to auto for the tests that follow */
 }
 
+static void test_cache(void) {
+    char k1[300], k2[300], k3[300];
+    selfcheck_cache_key(k1, sizeof(k1), "/models/bitnet.gguf", 1187801280LL, 1700000000LL, "int8", "bf16", 1.0, 96);
+    selfcheck_cache_key(k2, sizeof(k2), "/other/dir/bitnet.gguf", 1187801280LL, 1700000000LL, "int8", "bf16", 1.0, 96);
+    selfcheck_cache_key(k3, sizeof(k3), "/models/bitnet.gguf", 1187801280LL, 1700000001LL, "int8", "bf16", 1.0, 96);
+    TEST_ASSERT(strcmp(k1, k2) == 0, "same file name, size and mtime: same key wherever it lives");
+    TEST_ASSERT(strcmp(k1, k3) != 0, "a changed mtime is another file");
+    char text[1024];
+    snprintf(text, sizeof(text), "%s\tFAIL\nother\tPASS\n%s\tPASS\n", k3, k1);
+    SelfCheckVerdict v = SC_SKIPPED;
+    TEST_ASSERT_EQ(selfcheck_cache_find(text, k1, &v), 1, "found");
+    TEST_ASSERT_EQ(v, SC_PASS, "verdict of the matching line");
+    TEST_ASSERT_EQ(selfcheck_cache_find(text, k3, &v), 1, "other key found");
+    TEST_ASSERT_EQ(v, SC_FAIL, "FAIL read back");
+    TEST_ASSERT_EQ(selfcheck_cache_find(text, "missing", &v), 0, "miss");
+    TEST_ASSERT_EQ(selfcheck_cache_find("", k1, &v), 0, "empty cache");
+    TEST_ASSERT_EQ(selfcheck_cache_find(k1, k1, &v), 0, "a key without a verdict is a miss");
+}
+
 int main(void) {
     printf("=== Self-check / act-quant Tests ===\n");
     RUN_TEST(test_delta_and_judge);
     RUN_TEST(test_format_and_text);
     RUN_TEST(test_act_quant_modes);
+    RUN_TEST(test_cache);
     TEST_SUMMARY();
 }

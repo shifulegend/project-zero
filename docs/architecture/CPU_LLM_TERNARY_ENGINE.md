@@ -35,7 +35,7 @@ Your incredibly heavy mathematical engine has just been reduced to pure, lightni
 
 To implement this mathematically in your training/conversion phase, the quantization function looks like this:
 
-```
+```text
 W_q = round(W / gamma)
 ```
 
@@ -360,7 +360,7 @@ The KV Cache solves this. Every time the AI calculates a word, it saves the "Key
 
 Every single word (token) the AI remembers takes up a specific amount of RAM. The formula is:
 
-```
+```text
 2 * Number_of_Layers * KV_Heads * Head_Dimension * 2 bytes (if using 16-bit math)
 ```
 
@@ -1173,7 +1173,7 @@ If the API receives:
 
 The C Compiler translates it into the Llama 3 format:
 
-```
+```text
 <|start_header_id|>system<|end_header_id|>\nYou are a coder.<|eot_id|>
 <|start_header_id|>user<|end_header_id|>\nWrite a loop.<|eot_id|>
 <|start_header_id|>assistant<|end_header_id|>\n
@@ -1187,7 +1187,7 @@ We hook the HTTP server directly into the `generate()` loop:
 
 * The CPU calculates the next word (e.g., `for`).
 * Instead of `printf("for")` to the terminal, the C engine wraps it in OpenAI's streaming format:
-  ```
+  ```text
   data: {"choices": [{"delta": {"content": "for"}}]}\n\n
   ```
 * It immediately flushes this packet over the TCP socket to Cline.
@@ -1423,7 +1423,7 @@ The DRAM bandwidth ceiling (~33–37 tok/s) has not been hit by any engine on th
 
 #### 16.2.1 Architecture
 
-```
+```text
 Current data flow per token:
   x (float32) ──► matmul_packed_avx512 ──► out (float32)
                    [unpack 2-bit → int32 → float32 → FMA]
@@ -1478,7 +1478,7 @@ Total inference footprint after Phase K-1: ~1.7 GB (up from ~1.2 GB). With 16 GB
 
 #### 16.2.5 Dispatch Tier Addition
 
-```
+```text
 Priority: AVX-512 VNNI > AVX-512F > AVX2 > Scalar
 
 New simd_dispatch.c tier:
@@ -1680,7 +1680,7 @@ that select the best kernel at startup even on CPUs unknown at compile time.
 
 **Dispatch priority chain** (`src/math/simd_dispatch.c`):
 
-```
+```text
 AVX-512 VNNI (64 MACs/cycle)  ← avx512vnni=1 (Ice Lake+, Zen 4+)
     ↓
 AVX-VNNI 256-bit (32 MACs/cycle) ← avx_vnni=1, no avx512 (Alder Lake, Zen 3)
@@ -1707,7 +1707,7 @@ must be **unsigned** int8. Ternary weights w ∈ {-1, 0, 1} cannot be stored as 
 
 **Solution:** Pack weights as `w_enc = w + 1 ∈ {0, 1, 2}` (always uint8-safe).
 
-```
+```text
 dpbusds(w_enc, q_x) = Σ (w+1) * q_x = Σ w*q_x + Σ q_x
                     = true_dot_product + sum_qx
 
@@ -1724,7 +1724,7 @@ directly — no bias correction needed.
 
 Run `make bench` to reproduce. Results on Intel Xeon @ 2.80 GHz (avx512_vnni):
 
-```
+```text
 === Phase 16-S SIMD Kernel Microbenchmarks ===
     Matrix dims: 2048 × 2048  (N=input, D=output)
     Warmup: 5 iters, Measured: 50 iters
@@ -1791,7 +1791,7 @@ The original thread pool used a "boss-waits" model: main thread dispatches work 
 and spins/sleeps until all workers report done. Phase K-5 replaced this with
 **caller-participates dispatch**:
 
-```
+```text
 Old model:
   main → [dispatch] → worker_0, worker_1, worker_2, worker_3
   main → [spins waiting on barrier]         ← wasted core
@@ -1864,7 +1864,7 @@ directly. If not (first run, or hardware changed), `tn_calibrate()` runs.
 
 **Two-phase benchmark (`bench_robust`):**
 
-```
+```text
 Phase 1 — SIMD comparison (all available backends, T=4):
     warmup: run matmul for 4 seconds (first), 1.5 s (subsequent) — covers PL2 window
     measure: time individual reps, take median of 20 reps
@@ -1902,7 +1902,7 @@ quality is preserved by per-row dynamic scale factors (`scale = max_abs / 127`).
 
 VNNI `_mm512_dpbusds_epi32` requires unsigned × signed operands. Since ternary weights
 {-1, 0, +1} encode to {0, 1, 2} (`w_enc = w + 1`), the kernel corrects:
-```
+```text
 true_dot = dpbusds(w_enc_u8, q_x_i8) - 128 * sum(q_x_i8)
 ```
 `sum_i8_avx512()` uses `_mm512_cvtepi8_epi32` in four quarters to avoid signed-overflow.
@@ -2303,7 +2303,7 @@ On CPU:
 
 ### Practical Recommendation
 
-```
+```text
 User has GPTQ/AWQ model on disk
         │
         ├─ GPU available? → Use ExLlama2 / vLLM natively (fastest)
@@ -2424,7 +2424,7 @@ perfectly functional model.
 
 ### The Three Alignment Tiers
 
-```
+```text
 Raw pretrained             +SFT                    +RLHF / DPO
 ─────────────────────────────────────────────────────────────────
 Base Model          →    Instruct Model     →    Chat Model
@@ -2438,12 +2438,12 @@ of questions, answers, or roles.
 
 **Correct usage:** Provide a continuation prompt. Do NOT use chat markers.
 
-```
+```text
 Prompt:  "The capital of France is"
 Output:  " Paris, located on the banks of the Seine river, and home to…"
 ```
 
-```
+```text
 Prompt:  "def fibonacci(n):"
 Output:  "\n    if n <= 1: return n\n    return fibonacci(n-1) + fibonacci(n-2)"
 ```
@@ -2458,7 +2458,7 @@ use a simple prompt format.
 **Correct usage:** Use the specific prompt template documented by the model. Many use
 plain `### Human:` / `### Assistant:` markers.
 
-```
+```text
 [INST] What is the capital of France? [/INST]
 ```
 
@@ -2534,7 +2534,7 @@ flowchart TD
 DeepSeek-V2-Lite-Chat is a **Tier 3 Chat model** (MLA+MoE architecture, SFT+RLHF).  
 The required chat template for all DeepSeek-V2/V3 chat models:
 
-```
+```text
 <|im_start|>system
 You are a helpful assistant<|im_end|>
 <|im_start|>user

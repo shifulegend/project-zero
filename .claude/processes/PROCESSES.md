@@ -7,7 +7,7 @@
 
 ## Flow 1: TokenGenerationFlow — CLI Invocation to First Output Token
 
-```
+```text
 ./pz --model foo.gguf --prompt "Hello" --threads 4
 
 main()
@@ -76,7 +76,7 @@ main()
 
 ## Flow 2: DecodingLoop — Per-Token Decode: Embedding → Forward → Sample → Output
 
-```
+```text
 for step = n_prompt-1 to max_steps:
 
   token = (step < n_prompt) ? prompt_tokens[step] : next_sampled
@@ -122,7 +122,7 @@ fprintf(stderr, "\n[gen] %.2f tok/s (%d tokens)\n", ...)
 
 ## Flow 3: ForwardPassDense — Dense Model (SmolLM2 F16) Forward
 
-```
+```text
 transformer_forward(token=T, pos=P, cfg, w, s, mc=dense, tp)
 
   ── Step 1: Token embedding ──
@@ -172,7 +172,7 @@ transformer_forward(token=T, pos=P, cfg, w, s, mc=dense, tp)
 
 ## Flow 4: ForwardPassDeepSeek — DeepSeek-V2-Lite: embed → MLA_attn → MoE_FFN → norm
 
-```
+```text
 transformer_forward(token=T, pos=P, cfg, w, s, mc, tp)
   // cfg: dim=2048, n_layers=27, n_heads=16, hidden_dim=11008
   // mc: is_moe=1, first_k_dense=1, has_mla=1, lora=512, rope=64, nope=128
@@ -199,7 +199,7 @@ transformer_forward(token=T, pos=P, cfg, w, s, mc, tp)
 
 ## Flow 5: WeightLoadFlow — mmap GGUF file → parse metadata → set weight pointers
 
-```
+```text
 mapped_file_open("model.gguf")
   open(path, O_RDONLY)
   fstat() → file size
@@ -256,7 +256,7 @@ weights_build_classifier_quant(&w, &cfg)
 
 ## Flow 6: SIMDAutoSelect — cpuid → feature flags → dispatch table init → runtime dispatch
 
-```
+```text
 main()
   setenv("TN_FORCE_BACKEND", args.simd_override)  // optional user override
 
@@ -323,7 +323,7 @@ tn_ternary_matmul_packed(out, x, w, n, d, &scale, 0)
 
 ## Flow 7: F16MatmulPath — parallel_matmul_f16 → thread dispatch → AVX2 8-wide FMA loop
 
-```
+```text
 parallel_matmul_f16(out, x, w_f16, n=576, d=576, tp)
   MatmulF16Args args = {out, x, w, n=576, d=576}
   threadpool_dispatch(tp, matmul_f16_task, &args, d=576)
@@ -353,7 +353,7 @@ matmul_f16_task(&args, thread_id=?, start=0, end=144)
 
 ## Flow 8: TernaryMatmulPath — tn_ternary_matmul → pack → SIMD variant → scale
 
-```
+```text
 // Weight format: packed ternary, 2 bits per weight, stored in tn_u8
 // Each byte encodes 4 weights: {-1,0,+1} → 2-bit encoding
 // scale: single float scale factor (or per-group for group_size > 0)
@@ -396,7 +396,7 @@ for i = start to end:
 
 ## Flow 9: KVCacheFlow — Strategy select → per-layer KV alloc → compress/sliding window
 
-```
+```text
 kv_strategy_select(cfg, hw, &max_seq_len)
   free_ram = hw->free_ram_bytes
   full_kv_bytes = n_layers * n_kv_heads * cfg.seq_len * head_dim * 4 * 2  // K+V
@@ -435,7 +435,7 @@ for t = 0 to valid_ctx-1:
 
 ## Flow 10: CalibrationFlow — hardware_profile → thread sweep → SIMD select → optimal config
 
-```
+```text
 tn_calibrate(&calib, hw)
   // Step 1: Check background CPU load
   bg_load = sample_background_load()   // reads /proc/stat for 500ms
@@ -483,7 +483,7 @@ tn_calibration_load(&calib, hw)
 
 ## Flow 11: APIServerFlow — http_server → parse OpenAI request → generate_with_callback → SSE stream
 
-```
+```text
 api_server_start(port=8080, &ctx)
   bind + listen(sock, port)
   pthread_create(&listener_thread, api_listener_fn, &ctx)
@@ -526,7 +526,7 @@ api_listener_fn(&ctx):
 
 ## Flow 12: AgentToolFlow — agent_loop → intercept tool call → cmd_exec → inject output
 
-```
+```text
 run_agent_loop(prompt, cfg, w, s, tok, tp, max_tokens, temp, top_p, rag)
 
   // Optional RAG: auto-retrieve memories

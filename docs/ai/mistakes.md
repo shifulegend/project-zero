@@ -2582,7 +2582,7 @@ Installing llama.cpp and bitnet.cpp for head-to-head runs exposed nine pre-exist
   staleness tracking.
 
 ## Entry template (copy this)
-```
+```text
 ### YYYY-MM-DD — <short title>
 - Summary: <what went wrong>
 - Root cause: <why>

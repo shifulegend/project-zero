@@ -44,7 +44,7 @@ flowchart LR
 
 ## Performance Snapshot
 
-```
+```text
 Hardware          Model                     tok/s    vs DRAM ceil
 ─────────────────────────────────────────────────────────────────
 i5-5250U (T=4)    SmolLM2-135M F16 (dense)   83.79   peak (VNNI, INT4 head)

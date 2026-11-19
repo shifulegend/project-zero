@@ -47,7 +47,7 @@ This directory contains comprehensive analysis of the BitNet-2B weight loading m
 - **Lines**: 52-140
 
 ### Exact Weight Reading Order (Sequential, No Exceptions)
-```
+```text
 BEFORE LAYERS:
   1. Token Embedding Table (float32, vocab_size × dim)
 

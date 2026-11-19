@@ -19,7 +19,7 @@
 - [ ] `make release` succeeds
 - [ ] `make test` passes (all tests green)
 - [ ] Ran inference manually and output is correct:
-  ```
+  ```text
   # paste a sample run here
   ./pz --model ... --prompt "What is the capital of France?" --max-tokens 10
   # Output: ...

@@ -224,7 +224,7 @@ Project-Zero (PZ) is a from-scratch CPU LLM inference engine in C. It supports D
 
 **Source evidence:** DEEPSEEK_Q8_HANDOVER.md:128-143, confirmed by GGUF metadata in DEBUGGING_JOURNAL.md:200-208.
 
-```
+```text
 dim               = 2048
 n_layers          = 27
 n_heads           = 16
@@ -245,7 +245,7 @@ first_moe_layer   = 1 (layer 0 is dense; layers 1-26 are MoE)
 
 **Source evidence:** src/transformer/forward.c:64-70, src/transformer/ffn.c, src/transformer/moe_ffn.c:133-477.
 
-```
+```text
 transformer_forward(token, pos)
   └─ for each layer l in 0..26:
        ├─ attention_forward() → mla_attention_forward()
@@ -748,7 +748,7 @@ The most significant difference between llama.cpp and PZ is how expert weights a
 
 **Source:** DEBUGGING_JOURNAL.md:1348-1353.
 
-```
+```text
 Theoretical ceiling = DRAM_BW / bytes_per_token
                     = 11.7 GB/s / 1.19 GB/tok
                     = 9.8 tok/s
@@ -1037,7 +1037,7 @@ Warning now only fires for non-GGUF models; GGUF models auto-load tokenizer from
 
 
 
-```
+```text
 Phase 1 (Quick wins, no API changes):
   P1: Eliminate redundant Q8K quantization [1-2 days]
   P2: Fuse shared expert gate+up dispatch [0.5 day]

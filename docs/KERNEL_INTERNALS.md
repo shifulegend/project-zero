@@ -8,7 +8,7 @@ A technical reference for contributors who want to understand how the fast paths
 
 BitNet b1.58-2B-4T weights are **ternary**: each weight is one of {−1, 0, +1}. This creates an unusual arithmetic situation — the dominant operation in a transformer forward pass (dense matrix-vector multiply) reduces to:
 
-```
+```text
 output[i] = sum_j (w[i][j] * x[j])   where w[i][j] ∈ {-1, 0, +1}
 ```
 
@@ -17,7 +17,7 @@ Multiplication by ternary values is not multiplication at all: it's either a neg
 ### Packing
 
 Project Zero packs 4 ternary weights per byte using a 2-bit encoding:
-```
+```text
 0b00 = −1
 0b01 =  0
 0b10 = +1
@@ -128,7 +128,7 @@ With FP16 KV cache at 2048 head_dim, 64 heads, 32 layers, 4096 context:
 
 Each MoE layer selects 6 of 64 experts based on router logits. In a GGUF file, expert weights are stored in expert-index order: expert_0 weights, expert_1 weights, ..., expert_63 weights. For any given token, the 6 activated experts are scattered at non-contiguous DRAM offsets with gaps of ~140MB between each.
 
-```
+```text
 Expert 0: offset 0x0000_0000 (unused)
 Expert 1: offset 0x0880_0000 (unused)
 Expert 7: offset 0x3980_0000 ← activated

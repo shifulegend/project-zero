@@ -84,7 +84,7 @@ discussion) are the two halves.
 The whole problem is one inequality: a token's top-k access must present **fewer
 concurrent streams than the prefetcher can track** (~8–10).
 
-```
+```text
 per-token scattered reads  = 6 experts × 26 MoE layers      = 156
 concurrently live streams  = 6 experts × 4 threads          = 24   (prefetcher: ~8–10)
 →  prefetcher overwhelmed  →  BW 11.7 GB/s (practical)  →  2–3 GB/s (scattered regime)

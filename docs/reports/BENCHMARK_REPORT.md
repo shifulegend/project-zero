@@ -746,7 +746,7 @@ This is a matrix-vector product where:
 - `y`: F32 output (length = rows)
 
 **Algorithm (per output row):**
-```
+```text
 1. quantize x[] to Q8 (int8, per 32-element groups with scale)
 2. for each superblock in the weight row:
    a. load 32 bytes (64 Q4 nibbles) → split lo/hi → two __m256i
@@ -1495,7 +1495,7 @@ PZ run samples: T=1 (27.75/26.40/29.06), T=2 (41.44/41.63/42.18), T=3 (27.81/26.
 
 **Finding:** llama.cpp and bitnet.cpp were compiled with **Apple Accelerate BLAS**:
 
-```
+```text
 GGML_BLAS: ON
 GGML_BLAS_VENDOR: Apple
 libggml-blas.0.dylib → links to Accelerate.framework

@@ -283,7 +283,7 @@ KV cache at position 50: 30 layers × 5 kv_heads × 50 positions × 128 head_dim
 
 ### 3.2 Bandwidth Calculation
 
-```
+```text
 Per-token data = 1,178.6 MB ≈ 1,179 MB
 
 Measured effective bandwidth = 15.4 GB/s = 15,770 MB/s
@@ -363,7 +363,7 @@ The chart shows three panels:
 
 ### 6.2 Expected Inference Speed
 
-```
+```text
 Per-token data read        = 1,179 MB
 New effective bandwidth    = 23.0 GB/s
 New bandwidth time/token   = 1,179 / 23,000 = 51.2 ms
@@ -664,7 +664,7 @@ must be subtracted when computing true inference RAM overhead.
 
 ### B3. Per-Core Utilisation (Run 3 — representative)
 
-```
+```text
 C0:  30.6%  ██████
 C1:  63.6%  ████████████
 C2:  48.9%  █████████
@@ -932,7 +932,7 @@ pie title Phase Validation Test Results (Session 2026-03-16)
 
 #### Phase 14 Live Agent Test
 
-```
+```text
 Input:  /agent <exec>uname -s</exec>
 Output: [AGENT] exec: uname -s → Linux
 ```
@@ -1208,7 +1208,7 @@ Addendum D reported Project Zero at **2.56 tok/s** — a 6× regression from the
 
 #### E.1.1 Source code diff — zero regression in inference code
 
-```
+```text
 git diff 54340c2 HEAD -- src/transformer/ src/math/ src/kv_cache/ src/threading/ src/core/
 (empty output — 0 lines changed)
 ```
@@ -1355,7 +1355,7 @@ the `_mm512_reduce_add_ps` horizontal reduction and per-row loop overhead in
 
 BitNet.cpp GGUF model: **1.2 GB**. At 22.35 tok/s:
 
-```
+```text
 DRAM utilized = 22.35 × 1.2 GB/token ≈ 26.8 GB/s = 80% of 33.58 GB/s
 ```
 
@@ -1479,7 +1479,7 @@ xychart-beta
 All 8 logical CPUs (4 physical + 4 HT siblings, labelled CPU0–CPU7).
 
 **T=4 (physical cores only, IPC=1.27):**
-```
+```text
 CPU0: 56%  CPU1: 50%  CPU2: 44%  CPU3: 88%
 CPU4: 55%  CPU5: 91%  CPU6: 88%  CPU7: 62%
 ```
@@ -1488,7 +1488,7 @@ CPU4: 55%  CPU5: 91%  CPU6: 88%  CPU7: 62%
 > uneven distribution. No `taskset` used.
 
 **T=6 sweet spot (2 HT pairs, IPC=0.98):**
-```
+```text
 CPU0: 87%  CPU1: 86%  CPU2: 87%  CPU3: 91%
 CPU4: 91%  CPU5: 87%  CPU6: 92%  CPU7: 89%
 ```
@@ -1497,14 +1497,14 @@ CPU4: 91%  CPU5: 87%  CPU6: 92%  CPU7: 89%
 > outstanding load requests) without triggering the full AVX-512 throttle cliff.
 
 **T=7 (3 HT pairs, IPC=0.72 — throttle begins):**
-```
+```text
 CPU0–CPU7: all ~94%  (all cores saturated)
 ```
 > CPU saturated but IPC collapses: 3 simultaneous AVX-512 HT pairs start triggering
 > Intel frequency scaling. tok/s drops from 14.66 → 11.22 (−23%).
 
 **T=8 (all 4 physical cores dual-threaded, IPC=0.20 — cliff):**
-```
+```text
 CPU0–CPU7: all ~90%  (all cores saturated, clock throttled)
 ```
 > Full cliff. IPC = 0.20 (6.5× worse than T=6). Wall time 41.6s vs 7.1s at T=6.
@@ -1513,7 +1513,7 @@ CPU0–CPU7: all ~90%  (all cores saturated, clock throttled)
 
 ### F.4 Disk I/O (nvme0n1 during inference, all thread counts)
 
-```
+```text
 T=1:  read 0.0 kB/s  write 0.9 kB/s
 T=2:  read 0.0 kB/s  write 1.6 kB/s
 T=3:  read 0.0 kB/s  write 1.9 kB/s
@@ -1532,7 +1532,7 @@ T=8:  read 0.0 kB/s  write 0.4 kB/s
 
 ### F.5 RAM Snapshot (at inference time)
 
-```
+```text
 System:           15,775 MB total
 In use:           ~8,000 MB
 MemAvailable:     ~7,771 MB  (parsed correctly by fixed /proc/meminfo probe)
@@ -1688,7 +1688,7 @@ All 6 answers factually correct ✅
 *(Collected with `perf stat -e instructions,cycles,cache-misses,cache-references,LLC-load-misses,LLC-loads,LLC-store-misses,LLC-stores,dTLB-load-misses,dTLB-loads,iTLB-load-misses,branch-misses,branches,context-switches,minor-faults,major-faults`)*
 
 #### Prompt 1 — "The capital of France is" (14.26 tok/s, 3.77s)
-```
+```text
     87,968,232,890  instructions           #  1.30 insn per cycle
     67,875,522,262  cycles
        600,333,644  cache-misses           # 63.42% of all cache refs
@@ -1709,7 +1709,7 @@ All 6 answers factually correct ✅
 ```
 
 #### Prompt 2 — "The boiling point of water is" (14.37 tok/s, 3.67s)
-```
+```text
     87,657,871,905  instructions           #  1.33 insn per cycle
     65,969,342,734  cycles
        616,937,239  cache-misses           # 65.24% of all cache refs
@@ -1730,7 +1730,7 @@ All 6 answers factually correct ✅
 ```
 
 #### Prompt 3 — "The largest planet in our solar system is" (15.01 tok/s, 3.60s)
-```
+```text
     87,204,319,634  instructions           #  1.34 insn per cycle
     65,031,471,988  cycles
        622,747,064  cache-misses           # 65.68% of all cache refs
@@ -1751,7 +1751,7 @@ All 6 answers factually correct ✅
 ```
 
 #### Prompt 4 — "Albert Einstein was born in" (13.66 tok/s, 3.91s)
-```
+```text
     88,057,111,164  instructions           #  1.24 insn per cycle
     70,831,202,476  cycles
        544,707,929  cache-misses           # 58.83% of all cache refs
@@ -1772,7 +1772,7 @@ All 6 answers factually correct ✅
 ```
 
 #### Prompt 5 — "The chemical symbol for gold is" (15.11 tok/s, 3.50s)
-```
+```text
     86,737,344,202  instructions           #  1.37 insn per cycle
     63,340,838,531  cycles
        630,725,600  cache-misses           # 66.77% of all cache refs
@@ -1793,7 +1793,7 @@ All 6 answers factually correct ✅
 ```
 
 #### Prompt 6 — "The speed of light is approximately" (14.12 tok/s, 3.73s)
-```
+```text
     87,386,875,414  instructions           #  1.30 insn per cycle
     67,290,985,286  cycles
        612,814,232  cache-misses           # 64.62% of all cache refs
@@ -1839,7 +1839,7 @@ All CPUs are logical: CPU0–CPU3 and CPU4–CPU7 are HT pairs of physical cores
 4 compute threads are dispatched; remaining CPUs handle OS + page-fault machinery.
 
 #### Prompt 1 — "The capital of France is"
-```
+```text
 CPU0: avg 43.6%  max  91.0%    CPU4: avg 96.3%  max 100.0%
 CPU1: avg 30.1%  max  36.0%    CPU5: avg 60.5%  max  83.0%
 CPU2: avg 33.9%  max  59.6%    CPU6: avg 80.5%  max  88.1%
@@ -1847,7 +1847,7 @@ CPU3: avg 95.0%  max 100.0%    CPU7: avg 73.3%  max  78.0%
 ```
 
 #### Prompt 2 — "The boiling point of water is"
-```
+```text
 CPU0: avg 39.0%  max  72.0%    CPU4: avg 80.8%  max  98.0%
 CPU1: avg 22.7%  max  32.7%    CPU5: avg 95.1%  max  99.0%
 CPU2: avg 83.3%  max  99.0%    CPU6: avg 77.3%  max  88.0%
@@ -1855,7 +1855,7 @@ CPU3: avg 91.4%  max  99.0%    CPU7: avg 33.2%  max  58.6%
 ```
 
 #### Prompt 3 — "The largest planet in our solar system is"
-```
+```text
 CPU0: avg 65.9%  max  71.6%    CPU4: avg 67.2%  max  74.8%
 CPU1: avg 26.9%  max  30.0%    CPU5: avg 84.0%  max  99.0%
 CPU2: avg 77.6%  max  81.8%    CPU6: avg 47.5%  max  56.0%
@@ -1863,7 +1863,7 @@ CPU3: avg 60.0%  max  76.0%    CPU7: avg 96.4%  max 100.0%
 ```
 
 #### Prompt 4 — "Albert Einstein was born in"
-```
+```text
 CPU0: avg 63.0%  max  97.0%    CPU4: avg 70.0%  max 100.0%
 CPU1: avg 46.7%  max  55.0%    CPU5: avg 47.8%  max  64.7%
 CPU2: avg 46.2%  max  67.3%    CPU6: avg 70.2%  max  89.9%
@@ -1871,7 +1871,7 @@ CPU3: avg 89.0%  max 100.0%    CPU7: avg 91.4%  max 100.0%
 ```
 
 #### Prompt 5 — "The chemical symbol for gold is"
-```
+```text
 CPU0: avg 56.1%  max  69.0%    CPU4: avg 89.3%  max  99.0%
 CPU1: avg 33.7%  max  62.4%    CPU5: avg 94.6%  max  99.0%
 CPU2: avg 94.3%  max 100.0%    CPU6: avg 19.1%  max  22.2%
@@ -1879,7 +1879,7 @@ CPU3: avg 41.7%  max  85.9%    CPU7: avg 81.0%  max  92.0%
 ```
 
 #### Prompt 6 — "The speed of light is approximately"
-```
+```text
 CPU0: avg 92.7%  max  95.0%    CPU4: avg 48.4%  max 100.0%
 CPU1: avg 30.4%  max  53.5%    CPU5: avg 81.0%  max 100.0%
 CPU2: avg 57.8%  max  90.0%    CPU6: avg 59.8%  max  78.2%
@@ -2131,7 +2131,7 @@ confirming the model executes identical work regardless of parallelism — throu
 differences are purely scheduler and memory-subsystem effects.**
 
 #### T=6 representative raw perf (P1 "The capital of France is"):
-```
+```text
 87,863,321,990  instructions    #  1.11 insn per cycle
 78,855,098,240  cycles
    935,118,099  cache-references
@@ -2145,7 +2145,7 @@ differences are purely scheduler and memory-subsystem effects.**
 ```
 
 #### T=8 representative raw perf (P1 "The capital of France is"):
-```
+```text
 113,208,203,012  instructions    #  0.20 insn per cycle
 561,045,361,236  cycles
   1,021,532,776  cache-references
@@ -2166,7 +2166,7 @@ extra 482 B cycles are entirely wasted stalls waiting for the shared AVX-512 FMA
 ### H.5 Per-CPU Utilisation Snapshots (Pass 3)
 
 #### T=1 — Single active core, 7 mostly idle
-```
+```text
 P1: CPU3: 36%/100%  CPU7: 72%/100%  — rest ≤36%
     Freq: CPU3:4.00  CPU7:4.00  — idle cores 3.08–3.84 GHz (P-state scale-down)
 ```
@@ -2174,7 +2174,7 @@ One thread migrates across logical CPUs. Only 1–2 LPUs show elevated util; idl
 throttle below turbo frequency.
 
 #### T=4 — Four threads, moderate spread
-```
+```text
 P6: CPU0:61%/86%  CPU1:60%/76%  CPU2:71%/96%  CPU3:61%/88%
     CPU4:46%/85%  CPU5:86%/99%  CPU6:85%/98%  CPU7:53%/99%
     Freq: 3.98–4.00 GHz (all)
@@ -2183,7 +2183,7 @@ OS distributes 4 threads unevenly across 8 LPUs; some hit 99% while others idle.
 Turbo maintained throughout.
 
 #### T=5 — Five threads, high utilisation
-```
+```text
 P1: CPU0:35%/40%  CPU1:58%/68%  CPU2:92%/100%  CPU3:97%/100%
     CPU4:64%/88%  CPU5:78%/92%  CPU6:96%/100%  CPU7:97%/100%
     Freq: 3.98–4.00 GHz (all)
@@ -2191,7 +2191,7 @@ P1: CPU0:35%/40%  CPU1:58%/68%  CPU2:92%/100%  CPU3:97%/100%
 Busy cores (CPU2,3,5,6,7) run 80–97%. IPC=1.11 — partial bandwidth saturation.
 
 #### T=6 — Six threads, optimal loading (SWEET SPOT)
-```
+```text
 P2: CPU0:90%/93%  CPU1:87%/99%  CPU2:92%/96%  CPU3:80%/82%
     CPU4:93%/99%  CPU5:95%/99%  CPU6:97%/100% CPU7:76%/81%
     Freq: 4.00 GHz (all)
@@ -2203,7 +2203,7 @@ All 8 LPUs loaded 76–97%. Both HT siblings of every physical core are actively
 used. IPC drops to ~1.0 — DRAM bandwidth at saturation point.
 
 #### T=7 — HT contention begins
-```
+```text
 P2: CPU0:95%/100% CPU1:96%/100% CPU2:94%/99%  CPU3:94%/99%
     CPU4:96%/100% CPU5:96%/99%  CPU6:94%/99%  CPU7:95%/98%
     Freq: 4.00 GHz (all)   IPC: 0.66   Wall: 6.02 s
@@ -2213,7 +2213,7 @@ core to run 3 compute threads (1 HT pair + 1 extra migrated thread). AVX-512 FMA
 port contended; wall time 6.02 s vs T=6's 3.44 s — same prompt, same work.
 
 #### T=8 — Full AVX-512 cliff
-```
+```text
 P1: CPU0:91%/94%  CPU1:90%/93%  CPU2:90%/94%  CPU3:91%/94%
     CPU4:90%/94%  CPU5:90%/93%  CPU6:90%/94%  CPU7:90%/93%
     Freq: 3.96–4.00 GHz (all)  IPC: 0.20   CTX-SW: 94,878
@@ -2296,7 +2296,7 @@ in §A6. Pass 1 and Pass 2 clean readings for this prompt were 15.38 and 15.42 t
 
 ### H.8 Thread Scaling Curve
 
-```
+```text
 tok/s
  15.5 |              ████ T=6 (15.29)
       |         ████ T=5 (14.70)
@@ -2708,7 +2708,7 @@ models/qwen2.5-7b.bin
 
 TG throughput is DRAM-bandwidth-bound (one row of the weight matrix streamed per token per layer):
 
-```
+```text
 T=1 → T=3: near-linear scaling (+85%) — memory-level parallelism in DRAM row fetches
 T=3 → T=6: diminishing returns (+9%) — DRAM bandwidth saturation approaching
 T=6:        22.48 t/s ← PEAK — same physical sweet spot as Project Zero
@@ -2720,7 +2720,7 @@ T=8:        −24.3% vs T=6 — all 4 HT pairs active, AVX-512 FMA port fully co
 
 Prefill is compute-bound (matmul over full 32-token prompt context, highly parallelisable):
 
-```
+```text
 T=1 → T=4: near-linear (+213%) — each physical core adds a complete AVX-512 FMA pipeline
 T=5:        −25% vs T=4 (anomaly) — HT activation causes frequency drop, cold pp32 sensitive
 T=6:        −7.5% vs T=4 — partial recovery (3 full physical cores + 3 HT)
@@ -2807,7 +2807,7 @@ the Addendum H sweep finding.
 
 The hardware ceiling for autoregressive TG on this machine at this model size is:
 
-```
+```text
 ~22–23 tok/s  (any engine using AVX-512 VNNI at T=6)
 ~15–16 tok/s  (AVX-512F without VNNI preprocessing, T=6)
 ~13.6 GB/s    DRAM bandwidth (DDR4-2667 dual-channel theoretical)
@@ -2944,7 +2944,7 @@ which is precomputed once per weight row during model load.
 
 **Practical measurement (CI Xeon, N=2560 D=6912):**
 
-```
+```text
 Float32 FMA (current):  1.467 ms  24.1 GOPS
 VNNI int8 (candidate):  0.636 ms  55.6 GOPS
 Speedup:                2.31x (measured; 4x theoretical — gap from quant overhead)
@@ -3041,7 +3041,7 @@ appeared in Sapphire Rapids (4th gen Xeon) and Zen 4 (AMD). The CI Xeon environm
 it, but the user's i5-11300H does not.
 
 **Practical CI measurement:**
-```
+```text
 AVX-512 BF16 dpbf16 (CI Xeon):  0.568 ms  23.1 GOPS (vs Float32: 0.540 ms 24.3 GOPS)
 ```
 Notably, BF16 dpbf16 is NOT faster than float32 FMA on the CI Xeon for this workload.
@@ -3600,7 +3600,7 @@ if the engine is ever ported.
 
 **Step-by-step implementation:**
 
-```
+```text
 Step 1: Weight expansion at load time
   - After weights_map(): for each layer, allocate int8 weights
   - Convert packed ternary → int8: {0b00→-1, 0b01→0, 0b10→+1}
@@ -3627,7 +3627,7 @@ Step 5: Integration in forward.c
 
 **Estimated throughput after Phase K-1:**
 
-```
+```text
 Current:           15.29 tok/s (AVX-512F, T=6)
 VNNI speedup:      ×1.5 (conservative; BitNet.cpp demonstrates this ceiling)
 Expected:          ~22–24 tok/s
@@ -3701,7 +3701,7 @@ These are the highest-effort items and best deferred until K-1 through K-3 are v
 
 Addendum J's §J.5 established:
 
-```
+```text
 ~22–23 tok/s  (AVX-512 VNNI at T=6, BitNet.cpp demonstrates this)
 ~15–16 tok/s  (AVX-512F float32 FMA, pre-VNNI Project Zero; see Addendum P for current 21.57 tok/s)
 ~33–37 tok/s  (DRAM bandwidth ceiling, neither engine reaches it)
@@ -3731,7 +3731,7 @@ Our advantages over BitNet.cpp's architecture:
 
 **Theoretical path to 30+ tok/s:**
 
-```
+```text
 Current:            15.29 tok/s (AVX-512F, T=6)
 
 Phase K-1 (VNNI):   +7–10 tok/s  → ~22–25 tok/s
@@ -3997,7 +3997,7 @@ gantt
 
 ### L.7 Ceiling Arithmetic Update
 
-```
+```text
 Hardware ceiling (DRAM bandwidth):
   Sequential BW (4T):       33.58 GB/s       (measured §C.7)
   Effective bytes/token:     0.91 GB          (measured §A.2, 1.1 GB model)
@@ -4071,7 +4071,7 @@ The FFN block uses `SiLU(x) = x * sigmoid(x) = x / (1 + exp(-x))`. The scalar `e
 `perf stat` conclusively shows T=4 (physical core count) outperforms T=6 (1.12 IPC vs 0.91 IPC) and T=8 (catastrophic 0.16 IPC). The thread auto-detection logic in `src/threading/cpu_probe.c` currently returns the logical CPU count (8). It should query `/sys/devices/system/cpu/cpu*/topology/core_id` to detect physical core count and default to that. For this CPU, the correct default is 4, not 8.
 
 **Expected combined K-2 + R-5 impact:**
-```
+```text
 Current baseline (T=4, VNNI):   19.7 tok/s
 + Default T=4 (R-5):           ~19.7 tok/s  (no regression on already-optimal config)
 + LTO+PGO (R-1):               ~21–22 tok/s
@@ -4197,7 +4197,7 @@ FFN projection. For BitNet 2B with `hidden_dim=5632`, each FFN block calls `silu
 calls per token.
 
 **Fix:** 16-wide AVX-512 polynomial exp approximation (degree-4, Horner form):
-```
+```text
 exp(r) ≈ 1 + r*(1 + r*(0.5 + r*(1/6 + r/24)))
 where r = x - round(x/ln2)*ln2  (|r| <= 0.347)
 ```
@@ -4313,7 +4313,7 @@ throughput saturates the memory bus at 4 threads, making HT siblings net-negativ
 
 #### LTO Linker Error (fatal)
 
-```
+```text
 src/agent/agent_loop.c:169:21: error: variable 'tn_softmax' redeclared as function
   169 |   tn_softmax(logits, cfg->vocab_size);
 src/math/simd_dispatch.c:97:22: note: previously declared here
@@ -4357,7 +4357,7 @@ PGO branch hints + cross-module inlining: +0.5–1.5 tok/s.
 
 #### Memory hierarchy analysis
 
-```
+```text
 attention_forward:
   tn_rmsnorm(xb, x, rms_att_weight, dim)   ← writes xb (2560 floats = 10 KB)
   tn_matmul(q, xb, wq, ...)                ← reads xb  (L1 hit — 48 KB L1D)
@@ -4507,7 +4507,7 @@ T=4 leads T=6 by +0.34 tok/s (+1.8%) consistently across all 3 passes.
 
 #### P3: "Explain how the immune system works" — full perf monitoring at T=4 and T=6
 
-```
+```text
 perf stat events: cycles, instructions, cache-misses, cache-references,
   LLC-loads, LLC-load-misses, branches, branch-misses, cpu-migrations,
   context-switches, task-clock
@@ -4999,7 +4999,7 @@ warm-state readings are the correct performance reference.*
 
 #### O.6.1 Cause 1 — Context-Switch Explosion (Primary, T>4)
 
-```
+```text
 PZ ctx-sw:  T=4: 1,148  T=6: 13,160  T=8: 44,525
 BC ctx-sw:  T=4:   208  T=6:    419  T=8:  1,449
 ```
@@ -5035,7 +5035,7 @@ only 1,449 at T=8 (≈750/s vs PZ's 2,880/s).
 
 #### O.6.2 Cause 2 — Per-Token Runtime Quantisation Overhead
 
-```
+```text
 PZ instructions/token at T=4:  2.27 billion
 BC instructions/token at T=4:  0.90 billion
 Excess instructions in PZ:     1.37 billion/token  (+152%)
@@ -5061,7 +5061,7 @@ quantisation pipeline from the hot path.
 
 #### O.6.3 Cause 3 — Weight File Inefficiency (Counter-Intuitive)
 
-```
+```text
 PZ model size:  1.18 GiB  (1.58-bit packed ternary)
 BC model size:  1.71 GiB  (I2_S GGUF with FP16 scales + metadata)
 BC LLC misses at T=4:  84.8M  (2.24× more than PZ's 37.8M)
@@ -5157,7 +5157,7 @@ was wrong** and **what the reality turned out to be**.
 #### O.8.1 Phase K-1: AVX-512 VNNI Core Kernel
 
 **Planning assumption (§K.6):**
-```
+```text
 Current (AVX-512F, T=6):   15.29 tok/s
 VNNI speedup:               ×1.5  (conservative)
 Expected after K-1:         ~22–24 tok/s
@@ -5166,7 +5166,7 @@ Reasoning: 2.3× compute speedup × DRAM-bound saturation → 1.5× net
 ```
 
 **Measured reality:**
-```
+```text
 After K-1 (VNNI, T=4):     19.48 tok/s  (Addendum M)
 Actual speedup:             ×1.27  (vs 15.29)
 Gap to prediction:          −2.5 to −4.5 tok/s
@@ -5191,7 +5191,7 @@ overhead. In real inference, that overhead costs 1.37 billion extra instructions
 (Addendum O §O.5), absorbing 30–40% of the VNNI compute gain.
 
 *The correct K-1 math should have been:*
-```
+```text
 AVX-512F ceiling:           15.29 tok/s  (T=6, pre-K-1)
 VNNI raw compute gain:      ×5.3 (microbenchmark)
 DRAM bandwidth limit:       ~37 tok/s theoretical
@@ -5207,7 +5207,7 @@ Actual result:              19.48 tok/s ← within corrected range
 #### O.8.2 Phase K-2: Kernel Fusion + Loop Optimisation
 
 **Planning assumption (§K.6):**
-```
+```text
 Target:                     ~26–30 tok/s  (+3–5 tok/s on K-1)
 Items:
   - Fused RMSNorm+MatMul:   saves 1.2 MB DRAM/token  → +1–2 tok/s
@@ -5216,7 +5216,7 @@ Items:
 ```
 
 **Measured reality:**
-```
+```text
 LTO+PGO result:             −0.6%  (Addendum M §M.6)
 Fused RMSNorm+MatMul:       NOT IMPLEMENTED (assessed as too complex)
 Loop unrolling:             NOT IMPLEMENTED (assessed as < 0.1 tok/s gain)
@@ -5260,7 +5260,7 @@ Correct prediction: < 0.5 tok/s, measured: 0 tok/s. No regression, but also no g
 #### O.8.3 Phase K-3: RAM Optimisations
 
 **Planning assumption (§K.6):**
-```
+```text
 Target:                     ~28–33 tok/s  (+1–2 tok/s on K-2)
 Items:
   - NT stores for KV cache: protects weight stream from KV pollution
@@ -5269,7 +5269,7 @@ Items:
 ```
 
 **Measured reality:**
-```
+```text
 NT stores (K-3 R-3):        Implemented; estimated +0.3 tok/s from IPC +14.3%
 Vectorised SiLU (K-3 R-4):  Implemented; estimated < 0.2 tok/s
 MADV_HUGEPAGE:              NOT IMPLEMENTED
@@ -5316,7 +5316,7 @@ The planning model (§K.5–K.7) was built on:
 
 The correct model (post-measurement) is:
 
-```
+```text
 Token generation = DRAM bandwidth limited
 Weight traffic per token = 300 MB (30 layers × ~10 MB weight matrices per layer)
 Effective DRAM bandwidth = ~6.1 GB/s per token (300 MB ÷ 49 ms/token)
@@ -5377,7 +5377,7 @@ K-4 must target the actual bottleneck: **DRAM bandwidth utilisation efficiency**
 | **K-4 ceiling** | | **28–36 tok/s** | matches DRAM ceiling |
 
 The correct 33 tok/s plan is:
-```
+```text
 Current:              19.5 tok/s
 K-4 R-2 (barriers):  +1 tok/s → 20.5 tok/s
 K-4 R-3 (no quant):  +3 tok/s → 23.5 tok/s  ← matches BitNet.cpp current
@@ -5668,7 +5668,7 @@ From Addendum O: BC executes **0.90B instructions/token** vs our **2.27B**. Our 
 ### P.9 Why We Have Not Reached 33 tok/s
 
 The 33 tok/s plan from Addendum O:
-```
+```text
 Current:          19.5 tok/s  (Addendum M baseline)
 K-4 R-2:          +1.0 tok/s → 20.5 tok/s  ← partially realised
 K-4 R-3 (quant):  +3.0 tok/s → 23.5 tok/s  ← NOT achieved (cross-core cache problem)
@@ -5734,7 +5734,7 @@ All 188 tests pass (170 unit + 18 config/run-state).
 
 The key difference vs our format:
 
-```
+```text
 Our format (4 weights per byte, row-major):
   byte[col/4] = w[col+0] | w[col+1]<<2 | w[col+2]<<4 | w[col+3]<<6  <- weights of ROW i
 
@@ -5859,7 +5859,7 @@ Run 3 prompts × T=1..8 × both engines × (perf on + perf off). Record exact ou
 
 ## Q.6 Path to 33 tok/s
 
-```
+```text
 Current T=4:              21.0 tok/s
 + Switch to AVX2:         +4.0  (20% freq uplift: 3.5→4.2 GHz)
 + Layer pre-quant:        +2.5  (eliminate 2-3 redundant quants/layer)
@@ -6021,7 +6021,7 @@ non-HT systems get full core utilization.
 to per-row symmetric INT8 (unsigned uint8 with +128 bias for VNNI dpbusds).
 At inference time, use a VNNI dpbusds classifier kernel:
 
-```
+```text
 Quantize activations to int8 (once per token, in dispatcher):
     q_x = quantize_symmetric_int8(x)
     sum_qx = sum(q_x)
@@ -6082,7 +6082,7 @@ explicit SIMD intrinsics that PGO cannot further optimize).
 
 The system is deeply memory-bandwidth-bound. At 45.85 GB/s DRAM bandwidth:
 
-```
+```text
 100 tok/s requires: 45.85 GB/s ÷ 100 = 458 MB/token
 Current optimized:  522 MB (ternary) + 328 MB (INT8 LM head) = 850 MB/token
 Data reduction needed: 850 → 458 MB = 46% reduction
@@ -6300,7 +6300,7 @@ comes from DRAM, ignoring L3 caching. In steady-state autoregressive inference:
 
 The hardware profile now includes this L3-aware calculation:
 
-```
+```text
 Ceiling = DRAM_BW / (weight_bytes_per_tok − L3_cached_bytes)
 ```
 
@@ -6383,7 +6383,7 @@ so T=4 is the maximum.
 
 The 66.8 tok/s target from Addendum S was derived from an incorrect bandwidth measurement:
 
-```
+```text
 Addendum S:   45.85 GB/s (measured with 64 MB buffer → L3 cache, NOT DRAM)
 Addendum T:   16.0 GB/s  (measured with 4×512 MB buffer → actual DRAM)
 ```
@@ -6462,7 +6462,7 @@ The engine auto-detects and configures all performance-critical parameters at st
 
 ### Classifier Auto-Selection
 
-```
+```text
 if (VNNI available)     → INT8  (halves LM head DRAM traffic)
 else if (ARM dotprod)   → INT8
 else                    → BF16  (full precision, no quantization)
@@ -6472,7 +6472,7 @@ else                    → BF16  (full precision, no quantization)
 
 ### Thread Count Auto-Selection
 
-```
+```text
 AVX-512 + HT present:  T = physical_cores  (HT causes AVX-512 port contention)
 AVX-512 + no HT:       T = all_cores       (no contention to avoid)
 ARM (Apple Silicon):    T = all_cores       (big.LITTLE scheduler handles it)
@@ -6716,7 +6716,7 @@ done
 **What it is:** BitNet.cpp's key advantage. Instead of unpacking 2-bit weights and doing
 integer multiply-accumulate, precompute a 4-entry lookup table per activation group:
 
-```
+```text
 LUT[0] = 0           (weight = 0, ternary: zero)
 LUT[1] = +act_val    (weight = +1)
 LUT[2] = -act_val    (weight = -1)
@@ -6929,7 +6929,7 @@ The cache is invalidated when any of these change:
 
 ### Priority Order (from highest to lowest)
 
-```
+```text
 SIMD:       --simd flag > TN_FORCE_BACKEND env > calibration cache > auto-detect
 Classifier: --classifier flag > default BF16
 Threads:    --threads flag > calibration cache > hardware profile auto-detect
@@ -6971,7 +6971,7 @@ Threads:    --threads flag > calibration cache > hardware profile auto-detect
 
 After switching to branch `af57e2c` (`bitnet-performance-optimization-2eqV8`), the KV strategy regressed from:
 
-```
+```text
 KV Strategy: Quantized I8, max context: 4096 tokens   ← correct (a380cfc)
 KV Strategy: Sliding Window I4, max context: 1024 tokens  ← broken (af57e2c)
 ```
@@ -7005,7 +7005,7 @@ if (mem_avail > 0)
 Also added `#include "kv_cache/kv_strategy.h"` to hardware_profile.c to expose `tn_get_free_ram()`.
 
 **Result after fix:**
-```
+```text
 │ Free RAM      : 11969  MiB                          │
 KV Strategy: Quantized I8, max context: 4096 tokens  ← restored
 ```
@@ -7073,7 +7073,7 @@ All outputs correct and coherent. No quality regression.
 
 ## W.4 — Benchmark with Performance Monitoring (T=4, fixed engine)
 
-```
+```text
 perf stat: T=4, af57e2c+W, BF16, 4096 ctx
   tok/s:              22.51 (under perf)
   Cycles:             32.3B
@@ -7085,7 +7085,7 @@ perf stat: T=4, af57e2c+W, BF16, 4096 ctx
 ```
 
 vs OLD engine T=4:
-```
+```text
   tok/s:              14.98
   Instructions:       28.5B
   IPC:                0.85
@@ -7113,7 +7113,7 @@ Fixed new engine uses **29% fewer instructions** per token and runs **50% faster
 
 ## W.6 — Remaining Gap to 33 tok/s (Updated)
 
-```
+```text
 Current (BF16, fixed):   20.86 tok/s
 + INT8 classifier:       +8-10 tok/s  (836 MB/token vs 1149 MB/token)
 + AVX2 (no throttle):    +4 tok/s     (4.2 GHz vs 3.5 GHz)
@@ -7543,7 +7543,7 @@ No thread count where BitNet.cpp leads. Goal achieved.
 
 ### Architecture Summary (K-5, post all fixes)
 
-```
+```text
 threadpool_create(N):
   physical_cores = parse /proc/cpuinfo unique (phys_id, core_id) pairs
   use_blocking_wait = (N >= physical_cores * 2)
@@ -7885,7 +7885,7 @@ Each benchmark point (per backend and per T) now:
 
 ### Calibration Output (Live Run — 2026-03-19)
 
-```
+```text
 ┌──────────────────────────────────────────────────────────────────┐
 │  Auto-Calibration  —  first run, result cached for future use   │
 │  Re-triggers only when hardware changes.  ~40-60 seconds.       │
@@ -8189,7 +8189,7 @@ This fix applies to all models with BF16 weights (Qwen, LLaMA, Mistral, etc.).
 
 ### Phase 34.3: Extraction Results
 
-```
+```text
 python tools/extract_multimodal.py --repo HuggingFaceTB/SmolVLM-256M-Instruct --out models/
 ```
 
@@ -8205,7 +8205,7 @@ New `scale_factor` field added to projector.bin header (bytes [24:28], previousl
 
 `vision_model_load_encoder()` and `vision_model_load_projector()` both loaded successfully:
 
-```
+```text
 Vision Model:
   Encoder: 12 layers, embed=768, hidden=3072, heads=12, patches=576
   Patch dim: 768  (patch_size=16 px)
@@ -8229,7 +8229,7 @@ The loader correctly read `scale_factor=4` and entered the single-linear loading
 ```
 
 Pipeline execution log:
-```
+```text
   Image loaded: 384×384 (SigLIP-normalized)
   Extracted 576 patches (patch_size=16)
   Running vision encoder (12 layers)...
@@ -8605,7 +8605,7 @@ Monitors: `vmstat 1`, `mpstat -P ALL 1`, `iostat -x 1` running in background.
 
 #### AF.5.1 Memory (vmstat)
 
-```
+```text
 procs -----------memory---------- ---swap-- -----io---- -system-- -------cpu-------
  r  b   swpd   free   buff  cache   si   so    bi    bo   in   cs us sy id wa st gu
  7  0    232 1024564 1462100 8095840    0    0     0     0 5000 7207 28  7 65  0  0  0

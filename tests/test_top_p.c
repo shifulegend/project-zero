@@ -110,6 +110,22 @@ int main(void) {
     }
     CHECK(same, "400 random draws match the reference implementation");
 
+    /* non-finite logits: +inf makes exp(logit - max) NaN; the result must be the argmax, not UB */
+    {
+        float bad[6]          = {0.5f, 1.0f, INFINITY, -2.0f, 0.1f, INFINITY};
+        unsigned long long rs = 5;
+        int pick              = sample_top_p(bad, 6, 0.9f, &rs);
+        CHECK(pick == 2, "a +inf logit falls back to argmax (first maximum)");
+        float nanv[4] = {NAN, 1.0f, 2.0f, 3.0f};
+        rs            = 6;
+        pick          = sample_top_p(nanv, 4, 0.9f, &rs);
+        CHECK(pick >= 0 && pick < 4, "a NaN logit returns a valid index");
+        float ninf[3] = {-INFINITY, -INFINITY, -INFINITY};
+        rs            = 7;
+        pick          = sample_top_p(ninf, 3, 0.9f, &rs);
+        CHECK(pick >= 0 && pick < 3, "all -inf logits return a valid index");
+    }
+
     fill(l, 60000, &s, 0.001f); /* flat: all 60000 are candidates */
     unsigned long long r1 = 5, r2 = 5;
     int a = sample_top_p(l, 60000, 0.95f, &r1), b = reference(l, 60000, 0.95f, &r2);

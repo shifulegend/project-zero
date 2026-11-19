@@ -71,6 +71,13 @@ int sample_top_p(float *logits, int vocab_size, float top_p, unsigned long long 
         }
     }
 
+    /* A +inf logit makes exp(logit - max) NaN: no usable distribution, so stay deterministic
+     * (2026-11-19). Finite logits always give sum >= 1 (the max itself contributes exp(0)). */
+    if (!(sum > 0.0f) || !isfinite(sum)) {
+        if (cand != stack_candidates) free(cand);
+        return sample_argmax(logits, vocab_size);
+    }
+
     /* Normalize to probabilities */
     float inv_sum = 1.0f / sum;
     for (int i = 0; i < n; i++) cand[i].prob *= inv_sum;

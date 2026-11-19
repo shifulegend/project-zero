@@ -30,6 +30,10 @@ jobs:
         run: |
           python3 -I tools/test_check_header_guards.py
           python3 -I tools/check_header_guards.py
+      - name: Every header compiles on its own
+        run: |
+          sh tools/test_check_headers_standalone.sh
+          sh tools/check_headers_standalone.sh gcc
       - name: Module include cycles (no new coupling inside a cycle)
         run: |
           python3 -I tools/check_include_layers.py --self-test

@@ -110,10 +110,13 @@ CLANG_FORMAT ?= clang-format
 FORMAT_FILES  = $(shell git ls-files '*.c' '*.h' '*.cpp' | grep -vE '^(include/stb_|src/api/webui_bundle_generated|benchmark_results/)')
 format:
 	$(CLANG_FORMAT) -i $(FORMAT_FILES)
+check-headers:
+	sh tools/check_headers_standalone.sh $(CC)
+
 check-format:
 	$(CLANG_FORMAT) --dry-run -Werror $(FORMAT_FILES)
 
-.PHONY: format check-format all clean debug release dist test run-tests test-tsan coverage objs demo webui-bundle screenshots
+.PHONY: format check-format check-headers all clean debug release dist test run-tests test-tsan coverage objs demo webui-bundle screenshots
 
 all: $(TARGET)
 

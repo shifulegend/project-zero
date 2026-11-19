@@ -721,9 +721,9 @@ TernaryError chat_request_parse(const char *json_body, ChatRequest *req) {
             if (b < 0) return TN_ERR_JSON_PARSE;
             req->stream = (b == 1);
         } else if (strcmp(key, "response_format") == 0) {
-            /* {"type": "json_object"} -- only key this project's grammar
-             * engine can honor; any other response_format value (or the
-             * default absence of one) leaves json_mode false. */
+            /* {"type": "json_object"} -- the only mode this project's grammar
+             * engine can honor; "text" (or no response_format) leaves json_mode
+             * false and any other type is rejected below. */
             skip_ws(&p);
             if (*p == '{') {
                 p++;
@@ -737,6 +737,12 @@ TernaryError chat_request_parse(const char *json_body, ChatRequest *req) {
                     if (strcmp(rf_key, "type") == 0) {
                         char type_val[32];
                         if (!parse_string(&p, type_val, sizeof(type_val))) return TN_ERR_JSON_PARSE;
+                        /* 2026-11-19: "json_schema" (and any unknown type) used to be
+                         * accepted and ignored, so a client relying on schema-conformant
+                         * output got free text with a 200. Refuse what the engine cannot
+                         * honour: only "text" and "json_object" are supported. */
+                        if (strcmp(type_val, "json_object") != 0 && strcmp(type_val, "text") != 0)
+                            return TN_ERR_INVALID_ARGS;
                         req->json_mode = (strcmp(type_val, "json_object") == 0);
                         req->set_mask |= CHAT_SET_JSON_MODE;
                     } else {

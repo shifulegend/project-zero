@@ -290,10 +290,16 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     ChatRequest req;
     chat_request_init(&req);
 
-    if (chat_request_parse(body, &req) != TN_OK) {
+    TernaryError parse_err = chat_request_parse(body, &req);
+    if (parse_err != TN_OK) {
         free(body);
         chat_request_free(&req);
-        http_send_error_ex(fd, HTTP_BAD_REQUEST, "Invalid JSON in request body", extra_headers);
+        http_send_error_ex(fd, HTTP_BAD_REQUEST,
+                           parse_err == TN_ERR_INVALID_ARGS
+                               ? "Unsupported value in request (response_format.type must be "
+                                 "'text' or 'json_object'; chat_template is capped at 64 KiB)"
+                               : "Invalid JSON in request body",
+                           extra_headers);
         return;
     }
     free(body);

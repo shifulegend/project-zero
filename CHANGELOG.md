@@ -33,6 +33,8 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Fixed
 
+- Answer `400` to a chat request whose `response_format.type` is `json_schema` or anything other than `text` or `json_object`; before, the server returned `200` with free text, so a client relying on schema-conformant output was never told it was not getting it.
+
 - Make nucleus (`top_p`) sampling safe when several requests sample at the same time, and apply it to vocabularies larger than 200,000 tokens (those silently fell back to greedy decoding before).
 - Show fenced code blocks in the web UI exactly as written: `**text**` and `` `text` `` inside a ``` block were turned into bold and inline code. Long replies also render faster, because line breaks are now handled in one pass instead of rescanning the whole text for every newline.
 - Decode half-precision (fp16) values the same way everywhere: the Q8_0, Q5_0, Q5_1, Q5_K, Q2_0, F16 and LoRA paths and the model loader turned a very small (subnormal) fp16 value into roughly zero, while the Q4_K, Q2_K, Q6_K paths decoded it correctly. All paths now share one exact converter; values that are not subnormal decode exactly as before.

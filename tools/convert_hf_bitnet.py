@@ -344,6 +344,7 @@ def convert(model_path, output_path):
 
 
 def main():
+    """Command-line entry point: converts a HuggingFace BitNet checkpoint to the pz .bin format with bounded memory."""
     parser = argparse.ArgumentParser(description="Memory-efficient model converter")
     parser.add_argument("--model", required=True, help="Model directory")
     parser.add_argument("--output", required=True, help="Output .bin file")

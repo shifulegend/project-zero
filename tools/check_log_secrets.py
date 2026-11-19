@@ -30,6 +30,7 @@ def strip(text):
     """Blanks comments and string literals but keeps line numbers."""
 
     def blank(m):
+        """Replaces the matched text with spaces, keeping line breaks so line numbers stay right."""
         return re.sub(r"[^\n]", " ", m.group(0))
 
     return STRING.sub(blank, COMMENT.sub(blank, text))
@@ -49,6 +50,7 @@ def violations(text):
 
 
 def main():
+    """Entry point: scans src/ for credential variables passed to print calls and returns 1 when any is found."""
     files = subprocess.check_output(["git", "ls-files", "src"], cwd=ROOT, text=True).split()
     bad = []
     for rel in files:

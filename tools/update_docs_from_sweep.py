@@ -97,6 +97,7 @@ def make_prompt_speed_table(pz_bf16, pz_int4, msft, pz_smol, llama):
     rows = ["| Engine | Model | t=best | Prompt tok/s | Gen tok/s |", "|---|---|---|---|---|"]
 
     def best_row(data, label, model):
+        """Table row for the thread count with the best generation speed, or None when there is no data."""
         if not data:
             return None
         t = max(data, key=lambda x: data[x].get("best_gen") or 0)
@@ -134,6 +135,7 @@ if __name__ == "__main__":
     perf_llama = load_perf("smollm2_llama")
 
     def peak(data):
+        """(thread count, speed) of the best generation run, or (None, None)."""
         if not data:
             return (None, None)
         t = max(data, key=lambda x: data[x].get("best_gen") or 0)

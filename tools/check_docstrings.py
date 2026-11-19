@@ -69,6 +69,7 @@ def compare(current, baseline):
 
 
 def main(argv):
+    """Entry point: writes the baseline with --update, else checks the tree; returns the exit code."""
     current = counts()
     if "--update" in argv:
         body = "".join(f"{p} {n}\n" for p, n in sorted(current.items()))

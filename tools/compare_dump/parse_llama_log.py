@@ -60,6 +60,7 @@ def extract_layer(name):
 
 
 def main():
+    """Command-line entry point: converts a raw llama.cpp tensor log into a CSV."""
     if len(sys.argv) < 3:
         print(f"Usage: {sys.argv[0]} llama_raw.txt llama_tensors.csv")
         sys.exit(1)

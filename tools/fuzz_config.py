@@ -6,6 +6,7 @@ import subprocess
 
 def create_fuzzed_model(filename, vocab_size, dim):
     # Magic TNRY, Version 1
+    """Writes a model file with a valid header and the given (possibly hostile) vocab size and dimension."""
     magic = 0x594E5254
     version = 1
     # Config: dim, hidden_dim, n_layers, n_heads, n_kv_heads, vocab_size, seq_len
@@ -25,6 +26,7 @@ TIMEOUT_S = int(os.environ.get("PZ_FUZZ_TIMEOUT", "60"))
 
 
 def run_fuzz_test(vocab_size, dim):
+    """Runs pz on one fuzzed model and checks that it is rejected gracefully (no crash or hang)."""
     filename = f"fuzz_{vocab_size}_{dim}.bin"
     create_fuzzed_model(filename, vocab_size, dim)
     print(f"Testing vocab_size={vocab_size}, dim={dim}...")

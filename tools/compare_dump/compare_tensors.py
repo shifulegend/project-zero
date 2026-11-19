@@ -70,6 +70,7 @@ def load_csv(path):
 
 
 def rel_err(a, b):
+    """Relative error of two values (denominator floored at 1e-10)."""
     denom = max(abs(a), abs(b), 1e-10)
     return abs(a - b) / denom
 
@@ -102,6 +103,7 @@ def check_match(a, b, label):
 
 
 def compare(llama_csv, ours_csv, filter_layer=None, filter_step=None):
+    """Compares the llama.cpp and pz tensor dumps step by step (optionally one layer or step) and prints a coloured report."""
     print(f"\n{ANSI_CYAN}Loading llama.cpp dump:{ANSI_RESET} {llama_csv}")
     llama = load_csv(llama_csv)
     print(f"{ANSI_CYAN}Loading our engine dump:{ANSI_RESET} {ours_csv}")
@@ -172,6 +174,7 @@ def compare(llama_csv, ours_csv, filter_layer=None, filter_step=None):
 
 
 def main():
+    """Command-line entry point for the tensor-dump comparison."""
     ap = argparse.ArgumentParser(description="Compare tensor dumps from llama.cpp and our engine")
     ap.add_argument("llama_csv", help="CSV dump from llama_dump (llama.cpp)")
     ap.add_argument("ours_csv", help="CSV dump from our engine (--dump-tensors)")

@@ -75,6 +75,7 @@ def strip_comments(text):
 
 
 def main():
+    """Entry point: checks that AVX-512/VNNI code only appears in files built with those ISA flags (and that the pending list has no stale entries); returns the exit code."""
     flagged = isa_flagged_files()
     if not flagged:
         print("check_isa_guards: could not read the ISA file lists from the Makefile")

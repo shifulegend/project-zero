@@ -24,11 +24,13 @@ def totals(text):
 
 
 def percent(hit_found):
+    """Percentage for a (hit, found) pair; 0 when nothing was found."""
     hit, found = hit_found
     return 100.0 * hit / found if found else 0.0
 
 
 def read_floor(text):
+    """Parses the floor file into {metric: minimum percent}, ignoring comments."""
     floor = {}
     for raw in text.splitlines():
         line = raw.split("#", 1)[0].strip()
@@ -56,6 +58,7 @@ def check(info_text, floor):
 
 
 def main(argv):
+    """Entry point: compares the tracefile's coverage with the floor and returns the exit code."""
     info = pathlib.Path(argv[1]) if len(argv) > 1 else DEFAULT_INFO
     if not info.exists():
         print(f"coverage tracefile not found: {info} (run `make coverage` first)")

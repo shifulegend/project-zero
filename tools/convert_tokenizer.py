@@ -138,6 +138,7 @@ def convert_sentencepiece(input_path, output_path):
 
 
 def main():
+    """Command-line entry point: converts a tokenizer to pz's binary format."""
     parser = argparse.ArgumentParser(description="Convert tokenizer to binary format")
     parser.add_argument("--input", required=True, help="Input tokenizer.json or .model file")
     parser.add_argument("--output", required=True, help="Output binary file path")

@@ -77,6 +77,7 @@ def _key(v):
 
 
 def check(text, require_unreleased=False):
+    """Problems found in a CHANGELOG (structure, [Unreleased] placement, links); `require_unreleased` also demands a non-empty [Unreleased] section."""
     entries, links, errors = parse(text)
     names = [e[0] for e in entries]
     if names.count("Unreleased") > 1:
@@ -103,6 +104,7 @@ def check(text, require_unreleased=False):
 
 
 def notes(text, version):
+    """Release notes for `version` (its section plus the full-changes link), or None when the section is absent or empty."""
     v = version[1:] if version[:1] in "vV" and version[1:2].isdigit() else version
     entries, links, _ = parse(text)
     for name, _date, _n, body in entries:
@@ -117,6 +119,7 @@ def notes(text, version):
 
 
 def main(argv=None):
+    """Command-line entry point: the check and notes subcommands."""
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("check")

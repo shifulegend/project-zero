@@ -25,6 +25,7 @@ COPILOT_DIR = ROOT / ".github" / "instructions"
 
 
 def note(src_rel):
+    """The "generated from" header placed on every adapter file."""
     return (
         f"<!-- Generated from {src_rel} by tools/sync_ai_adapters.py; "
         f"edit that file and re-run the script (CI checks this copy). -->"
@@ -59,6 +60,7 @@ def parse(path):
 
 
 def render(path):
+    """Renders one source rule file into its adapter text (Copilot or Antigravity form)."""
     paths, title, body = parse(path)
     if not paths:
         sys.exit(f"{path}: needs a non-empty `paths:` list (Copilot applyTo is built from it)")
@@ -110,6 +112,7 @@ def persona_drift():
 
 
 def missing_rules():
+    """Entry points (CLAUDE.md, AGENTS.md, ...) that are missing a durable rule."""
     out = []
     for ep in ENTRYPOINTS:
         path = ROOT / ep
@@ -121,6 +124,7 @@ def missing_rules():
 
 
 def main(argv):
+    """Entry point: regenerates the adapter files, or with --check verifies they are current; returns the exit code."""
     check = "--check" in argv[1:]
     sources = sorted(SRC_DIR.glob("*.md"))
     if not sources:

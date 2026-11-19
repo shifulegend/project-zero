@@ -67,6 +67,7 @@ VALID_SEEDS = [
 
 
 def build_harness(path):
+    """Path of the compiled fuzz harness, building it when it does not exist yet."""
     if os.path.exists(path):
         return path
     cc = os.environ.get("CC", "gcc")
@@ -88,6 +89,7 @@ def build_harness(path):
 
 
 def gen_uniform_random(rng, n, maxlen=40):
+    """`n` random strings of random bytes."""
     out = []
     for _ in range(n):
         length = rng.randint(0, maxlen)
@@ -96,6 +98,7 @@ def gen_uniform_random(rng, n, maxlen=40):
 
 
 def gen_alphabet_random(rng, n, maxlen=60):
+    """`n` random strings over a small JSON-like alphabet."""
     out = []
     for _ in range(n):
         length = rng.randint(0, maxlen)
@@ -104,6 +107,7 @@ def gen_alphabet_random(rng, n, maxlen=60):
 
 
 def gen_mutated_valid(rng, n):
+    """`n` strings made by mutating valid JSON seeds."""
     out = []
     for _ in range(n):
         s = list(rng.choice(VALID_SEEDS))
@@ -146,6 +150,7 @@ def run_harness(harness, candidates):
 
 
 def json_loads_verdict(raw):
+    """Whether Python's json module accepts the bytes (the reference verdict)."""
     try:
         json.loads(raw.decode("utf-8", errors="surrogateescape"))
         return True
@@ -154,6 +159,7 @@ def json_loads_verdict(raw):
 
 
 def check_differential(results):
+    """Compares the grammar's verdicts with Python's and reports false accepts and false rejects."""
     false_accepts = []
     false_rejects = []
     for verdict, offset, raw in results:
@@ -177,6 +183,7 @@ def check_prefix_asymmetry(results):
 
 
 def main():
+    """Command-line entry point for the grammar fuzzer."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=3000, help="candidates per generator (default 3000)")
     ap.add_argument("--seed", type=int, default=1234)

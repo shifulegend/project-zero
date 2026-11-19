@@ -185,6 +185,7 @@ def write_packed_model(output_path, config, weights_dict, scale_mode=0, group_si
 
 
 def main():
+    """Command-line entry point: packs ternary weights into the 2-bit format."""
     parser = argparse.ArgumentParser(description="Pack ternary weights into 2-bit format")
     parser.add_argument("--input", required=True, help="Directory containing .npy weight files")
     parser.add_argument("--output", required=True, help="Output .bin file path")

@@ -25,10 +25,12 @@ FALLBACK = {("GET", "/")}  # documented, served by the static-asset fallback
 
 
 def routed_routes(text):
+    """(method, path) pairs the router matches in http_server.c."""
     return {(m.upper(), p) for m, p in ROUTED.findall(text)}
 
 
 def documented_routes(text):
+    """(method, path) pairs the OpenAPI document describes."""
     return {(m.upper(), p) for p, m in DOCUMENTED.findall(text)}
 
 
@@ -43,6 +45,7 @@ def compare(routed, documented):
 
 
 def main():
+    """Entry point: compares the two sets and returns 1 on any difference."""
     routed = routed_routes(SERVER.read_text(encoding="utf-8"))
     documented = documented_routes(OPENAPI.read_text(encoding="utf-8"))
     if not routed or not documented:

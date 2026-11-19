@@ -20,6 +20,7 @@ off = 0
 
 
 def rd(fmt):
+    """Reads one value of struct format `fmt` from the GGUF data at the global offset and advances it."""
     global off
     v = struct.unpack_from(fmt, data, off)
     off += struct.calcsize(fmt)
@@ -27,6 +28,7 @@ def rd(fmt):
 
 
 def rs():
+    """Reads a length-prefixed string."""
     n = rd("<Q")
     global off
     s = data[off : off + n].decode()
@@ -50,6 +52,7 @@ T = {
 
 
 def rv(t):
+    """Reads a metadata value of GGUF type `t`."""
     global off
     if t in T:
         return rd(T[t])
@@ -83,6 +86,7 @@ base = (off + align - 1) // align * align
 
 
 def get(name):
+    """The named tensor as a float array."""
     dims, typ, o = tensors[name]
     n = int(np.prod(dims))
     dt = {0: np.float32, 1: np.float16}[typ]
@@ -121,6 +125,7 @@ ssm = [np.zeros((di, ds), np.float32) for _ in range(L)]
 
 
 def rms(x, w):
+    """RMS norm of `x` with weight `w`."""
     return x / np.sqrt(np.mean(x * x) + eps) * w
 
 
@@ -129,6 +134,7 @@ softplus = lambda v: np.where(v > 20, v, np.log1p(np.exp(v)))
 
 
 def step(tok):
+    """Runs one token through every Mamba layer and returns the output logits."""
     x = emb[tok].copy()
     for l in range(L):
         w = W[l]

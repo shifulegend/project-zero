@@ -29,6 +29,7 @@ TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 def run(script, extra_args):
+    """Runs a conversion script with the given arguments and exits with its code when it fails."""
     cmd = [sys.executable, os.path.join(TOOLS_DIR, script)] + extra_args
     print(f"\n  → Running: {' '.join(cmd)}\n")
     result = subprocess.run(cmd)
@@ -99,6 +100,7 @@ def detect_model_class(config, model_dir):
 
 
 def load_config(path):
+    """The model directory's config.json as a dict (empty when it has none)."""
     config_path = os.path.join(path, "config.json")
     if not os.path.exists(config_path):
         return {}
@@ -122,6 +124,7 @@ def hf_download(repo_id, cache_dir):
 
 
 def main():
+    """Command-line entry point: detects the model format and runs the matching converter."""
     parser = argparse.ArgumentParser(description="Universal model importer for Project Zero")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--repo", help="HuggingFace repo ID")

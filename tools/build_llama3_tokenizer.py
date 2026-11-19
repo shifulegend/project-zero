@@ -3,6 +3,7 @@ import struct
 
 
 def build_tokenizer():
+    """Converts a Llama-3 tiktoken-style tokenizer.json into the binary tokenizer file used by pz."""
     input_path = "/tmp/tokenizer.json"
     output_path = "models/bitnet-b1.58-2B-4T_tokenizer_proper.bin"
 

@@ -32,6 +32,7 @@ IMG_WIDTH = 900
 
 
 def load_font(size: int):
+    """Loads the first available monospace font at `size`."""
     candidates = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
         "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
@@ -74,6 +75,7 @@ def colour_line(line: str):
 
 
 def render(text: str, title: str, command: str, output_path: str):
+    """Renders text, a title and the command as a terminal-style PNG at `output_path`."""
     font = load_font(FONT_SIZE)
     bold_font = load_font(FONT_SIZE)  # same size; bold not critical
 
@@ -127,6 +129,7 @@ def render(text: str, title: str, command: str, output_path: str):
 
 
 def main():
+    """Command-line entry point: renders benchmark output as a PNG."""
     parser = argparse.ArgumentParser(description="Render benchmark output as terminal PNG")
     parser.add_argument("--input", required=True, help="Input benchmark .txt file")
     parser.add_argument("--output", required=True, help="Output PNG path")

@@ -55,6 +55,7 @@ def read_best_thread(suite_name):
 
 
 def build_cmd(suite_name, t):
+    """Command line for a perf-run suite at `t` threads."""
     if suite_name == "bitnet_pz_bf16":
         return (
             [

@@ -25,6 +25,7 @@ COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#8a5cd1", "#c4972b"]
 
 
 def best_by_suite(summary):
+    """Best generation tok/s per suite and thread count from the sweep summary CSV."""
     best = defaultdict(dict)
     with open(summary, encoding="utf-8") as f:
         for r in csv.DictReader(f):
@@ -37,6 +38,7 @@ def best_by_suite(summary):
 
 
 def nice_max(v):
+    """Axis maximum and tick step for a value (the first step that gives at most four ticks)."""
     for step in (1, 2, 2.5, 5, 10, 20, 25, 50, 100):
         if v <= step * 4:
             return step * 4, step
@@ -44,6 +46,7 @@ def nice_max(v):
 
 
 def marker(i, x, y, c):
+    """SVG marker for series `i` at (x, y) in colour `c`."""
     if i == 0:
         return (
             f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4.5" fill="{c}" stroke="{BG}" stroke-width="2"/>'
@@ -58,6 +61,7 @@ def render(panels, best, title, subtitle):
     # One colour per engine name across every panel (2026-10-30: colours were per panel position,
     # so the same colour meant different engines in different panels); Project Zero series are
     # drawn as circles, references as squares.
+    """The chart as an SVG string for the given panels, best values, title and subtitle."""
     names = []
     for _, series in panels:
         names += [n for _, n in series if n not in names]
@@ -141,6 +145,7 @@ def render(panels, best, title, subtitle):
 
 
 def find_chromium(explicit):
+    """Path of a Chromium binary: the explicit one, else one found under the Playwright browsers folder."""
     if explicit:
         return explicit
     root = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "/opt/pw-browsers")
@@ -190,6 +195,7 @@ def svg_to_png(svg, png_path, chrome):
 
 
 def main():
+    """Command-line entry point: renders the sweep chart as SVG and, when a browser is available, PNG."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--sweep", required=True)
     ap.add_argument(

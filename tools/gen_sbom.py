@@ -33,6 +33,7 @@ VENDORED = [
 
 
 def vendored_components():
+    """CycloneDX components for the vendored headers, with versions read from the headers themselves."""
     out = []
     for name, rel, pattern, url in VENDORED:
         text = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
@@ -55,6 +56,7 @@ def vendored_components():
 
 
 def build(version):
+    """The CycloneDX 1.5 document for release `version`."""
     comps = vendored_components()
     return {
         "bomFormat": "CycloneDX",
@@ -79,6 +81,7 @@ def build(version):
 
 
 def main(argv):
+    """Entry point: prints the SBOM for the version given on the command line."""
     if len(argv) < 2:
         sys.exit(__doc__)
     text = json.dumps(build(argv[1].lstrip("v")), indent=2) + "\n"

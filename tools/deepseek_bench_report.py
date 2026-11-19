@@ -49,6 +49,7 @@ def read_llama_csv(path):
 
 
 def read_file(path):
+    """Contents of a file, or "(not found)" when it does not exist."""
     if not os.path.exists(path):
         return "(not found)"
     with open(path, encoding="utf-8") as f:
@@ -56,6 +57,7 @@ def read_file(path):
 
 
 def safe_float(v, default=0.0):
+    """`v` as a float, or `default` when it is missing or not a number."""
     try:
         return float(v)
     except (TypeError, ValueError):
@@ -63,6 +65,7 @@ def safe_float(v, default=0.0):
 
 
 def fmt_tps(v):
+    """A tok/s value formatted for the report, "N/A" when missing or zero."""
     f = safe_float(v)
     if f == 0:
         return "N/A"
@@ -70,6 +73,7 @@ def fmt_tps(v):
 
 
 def speedup(our, llama):
+    """Speed-up of the first value over the second as "N.N×", "N/A" when either is missing."""
     o = safe_float(our)
     l = safe_float(llama)
     if o == 0 or l == 0:
@@ -81,6 +85,7 @@ lines = []
 
 
 def w(s=""):
+    """Appends a line to the report."""
     lines.append(s)
 
 
@@ -88,9 +93,11 @@ def generate_regression_section(out_lines):
     """Append Section 8 (Regression Benchmark — Bitnet & SmolLM2) to out_lines."""
 
     def emit(s=""):
+        """Appends a line to the section being generated."""
         out_lines.append(s)
 
     def read_reg_csv(name):
+        """Reads a regression-benchmark CSV from the output folder."""
         return read_csv(os.path.join(OUT_DIR, name))
 
     def sweep_tables(sweep, label):

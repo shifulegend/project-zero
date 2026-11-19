@@ -52,6 +52,7 @@ TARGETS = [
 
 
 def find_adapter_weights_file(adapter_dir):
+    """Path of the adapter's safetensors weights file inside the adapter directory."""
     for name in ("adapter_model.safetensors",):
         path = os.path.join(adapter_dir, name)
         if os.path.exists(path):
@@ -86,10 +87,12 @@ def find_lora_key(keys, layer, hf_module_name, matrix):
 
 
 def write_f16_block(f, arr: np.ndarray):
+    """Writes an array to `f` as float16."""
     f.write(arr.astype(np.float32).astype(np.float16).tobytes())
 
 
 def main():
+    """Command-line entry point: converts a PEFT LoRA adapter to the pz .lora.bin format."""
     parser = ArgumentParser(
         description="Convert a HuggingFace PEFT LoRA adapter to project-zero's .lora.bin format"
     )

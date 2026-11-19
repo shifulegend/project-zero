@@ -45,6 +45,7 @@ RULES = [
 
 
 def strip_comment(line):
+    """The line without its block comment and trailing // comment."""
     return re.sub(r"/\*.*?\*/", "", line).split("//")[0]
 
 
@@ -64,6 +65,7 @@ def scan_text(text):
 
 
 def self_test():
+    """Runs the rule on known-bad and known-good snippets and exits when they are not classified as expected."""
     bad = [
         "__m512i i = _mm512_cvttps_epi32(v);",
         "q[i] = (int8_t)(int)v;",
@@ -83,6 +85,7 @@ def self_test():
 
 
 def main():
+    """Entry point: --self-test, else scans the kernels for truncating float-to-int conversions and returns the exit code."""
     if "--self-test" in sys.argv:
         self_test()
         return 0

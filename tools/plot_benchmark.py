@@ -36,6 +36,7 @@ FG = "#CCCCCC"
 
 
 def apply_dark(ax, fig):
+    """Applies the dark theme colours to a matplotlib figure and axes."""
     fig.patch.set_facecolor(BG)
     ax.set_facecolor(BG)
     ax.tick_params(colors=FG)

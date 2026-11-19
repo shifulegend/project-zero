@@ -319,6 +319,7 @@ set(API_SOURCES
     src/api/net_io.c
     src/api/http_response.c
     src/api/http_routes.c
+    src/api/chat_image.c
     src/api/rate_limit.c
     src/api/sse_stream.c
     src/api/server_config.c

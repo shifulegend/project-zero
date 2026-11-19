@@ -110,5 +110,5 @@ if __name__ == "__main__":
                 for line in out.splitlines():
                     if kw in line:
                         print(f"  {line.strip()}")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 -- keep the remaining runs going; the error is printed
             print(f"  ERROR: {e}")

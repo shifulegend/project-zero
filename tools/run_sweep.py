@@ -97,7 +97,7 @@ def run_one(label, cmd, t, r, cwd=None, parser=parse_pz):
     except subprocess.TimeoutExpired:
         print("  ERROR: timeout")
         return "", None, None
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 -- keep the sweep going; the error is printed
         print(f"  ERROR: {e}")
         return "", None, None
 

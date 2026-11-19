@@ -27,6 +27,7 @@ Usage:
 """
 
 import argparse
+import http.client
 import json
 import os
 import subprocess
@@ -64,7 +65,7 @@ def wait_ready(port, proc, seconds=300):
         try:
             urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=1).read()
             return True
-        except Exception:
+        except (OSError, http.client.HTTPException):   # not up yet: refused, reset, timed out
             time.sleep(0.25)
     return False
 

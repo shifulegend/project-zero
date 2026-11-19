@@ -77,8 +77,8 @@ def detect_model_class(config, model_dir):
                         # Ternary packed: values are combinations of {0,1,2} per 2-bit nibble
                         if unique.issubset({0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}):
                             return 'ternary_bitnet'
-    except Exception:
-        pass
+    except Exception as e:  # noqa: BLE001 -- unreadable/odd checkpoint: fall back to the default type, but say so
+        print(f"warning: could not inspect safetensors in {model_dir}: {e}", file=sys.stderr)
 
     return 'standard_float'
 

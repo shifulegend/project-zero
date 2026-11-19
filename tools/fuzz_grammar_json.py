@@ -123,7 +123,7 @@ def json_loads_verdict(raw):
     try:
         json.loads(raw.decode("utf-8", errors="surrogateescape"))
         return True
-    except Exception:
+    except (ValueError, RecursionError):   # invalid JSON, bad UTF-8, or nested too deeply
         return False
 
 

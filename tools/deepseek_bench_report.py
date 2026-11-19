@@ -54,7 +54,7 @@ def read_file(path):
 def safe_float(v, default=0.0):
     try:
         return float(v)
-    except:
+    except (TypeError, ValueError):
         return default
 
 def fmt_tps(v):

@@ -97,7 +97,7 @@ def main():
                 print("\n[TIMEOUT] killing engine", file=sys.stderr)
                 try:
                     os.kill(pid, 9)
-                except Exception:
+                except OSError:      # already exited
                     pass
                 break
 

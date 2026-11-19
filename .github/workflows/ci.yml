@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: 3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Lint CHANGELOG.md and test the tool
         run: |
           python3 tools/changelog.py check --require-unreleased
@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: 3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Lint (shellcheck)
         run: shellcheck install.sh tools/test_install.sh tools/check_dist_isa.sh
       - name: Build (release)
@@ -52,7 +52,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: 3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install dependencies
         run: |
@@ -95,7 +95,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: 3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Build (release)
         run: make release
@@ -108,7 +108,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: 3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Configure
         run: cmake -B build_cmake -DCMAKE_BUILD_TYPE=Release
@@ -121,7 +121,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: 3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install dependencies
         run: |
@@ -135,7 +135,7 @@ jobs:
       # immutable release artifact on Hugging Face, never rewritten in place.
       - name: Cache test model
         id: model-cache
-        uses: actions/cache@v6
+        uses: 55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: models/smollm2-q8_0.gguf
           key: smollm2-135m-instruct-q8_0-gguf
@@ -166,7 +166,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: 3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install dependencies
         run: |
@@ -177,7 +177,7 @@ jobs:
         run: make coverage CC=gcc
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v4
+        uses: ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: coverage-report
           path: build/coverage/html

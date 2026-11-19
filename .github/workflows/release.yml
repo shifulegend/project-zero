@@ -32,7 +32,7 @@ jobs:
     name: Build & verify portable binary
     runs-on: ubuntu-22.04          # glibc 2.35 — forward-compatible floor
     steps:
-      - uses: actions/checkout@v7
+      - uses: 3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0           # tags needed for the embedded version string
 
@@ -110,7 +110,7 @@ jobs:
             TN_FORCE_BACKEND=$b "$BIN" --version | sed "s/^/[$b] /"
           done
 
-      - uses: actions/upload-artifact@v7
+      - uses: cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: dist
           path: dist/
@@ -122,7 +122,7 @@ jobs:
     runs-on: ubuntu-22.04
     container: debian:12-slim       # glibc 2.36 (>= build), no dev tools/libstdc++ preinstalled
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: 9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with: { name: dist, path: dist }
       - name: Extract and run on a stock image
         run: |
@@ -139,7 +139,7 @@ jobs:
     runs-on: ubuntu-22.04
     continue-on-error: true         # gated by network policy / model availability
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: 9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with: { name: dist, path: dist }
       - name: Download SmolLM2-135M and assert France -> Paris
         run: |
@@ -163,8 +163,8 @@ jobs:
     permissions:
       contents: write               # least privilege: only this job writes releases
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - uses: 3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: 9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with: { name: dist, path: dist }
       - name: Create release and upload assets
         env:

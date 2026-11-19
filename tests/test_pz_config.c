@@ -157,13 +157,76 @@ static void test_merge_argv(void) {
     pz_config_free(&c);
 }
 
+#if TN_POSIX
+static void test_save_is_private_and_safe(void) {
+    PzConfig c; pz_config_init(&c);
+    char err[256];
+    pz_config_set(&c, "api-key", "s3cret", err, sizeof(err));
+    char dir[] = "/tmp/pz_cfg_priv_XXXXXX";
+    TEST_ASSERT(mkdtemp(dir) != NULL, "temp dir");
+    char path[256], tmp[300], victim[256];
+    snprintf(path, sizeof(path), "%s/config.toml", dir);
+    snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+    snprintf(victim, sizeof(victim), "%s/victim.txt", dir);
+
+    /* a hostile pre-planted symlink at the predictable temp name must not be followed */
+    FILE *v = fopen(victim, "w"); fputs("untouched", v); fclose(v);
+    TEST_ASSERT(symlink(victim, tmp) == 0, "plant symlink at the temp name");
+    mode_t old = umask(0);   /* worst case: a umask that would make files world-readable */
+    TEST_ASSERT(pz_config_save(&c, path) == 0, "save succeeds despite the planted temp name");
+    umask(old);
+    struct stat st;
+    TEST_ASSERT(stat(path, &st) == 0 && (st.st_mode & 0777) == 0600, "config is exactly 0600 even with umask 0");
+    char buf[32] = {0};
+    v = fopen(victim, "r"); size_t n = fread(buf, 1, sizeof(buf) - 1, v); fclose(v); (void)n;
+    TEST_ASSERT(strcmp(buf, "untouched") == 0, "symlink target was not written through");
+    TEST_ASSERT(access(tmp, F_OK) != 0, "no temp file is left behind");
+
+    /* a stale world-readable temp file from a crashed save is replaced, not reused */
+    FILE *s = fopen(tmp, "w"); fputs("stale", s); fclose(s); chmod(tmp, 0644);
+    TEST_ASSERT(pz_config_save(&c, path) == 0, "save over a stale temp file");
+    TEST_ASSERT(stat(path, &st) == 0 && (st.st_mode & 0777) == 0600, "still 0600 after a stale temp file");
+    char cmd[300];
+    snprintf(cmd, sizeof(cmd), "rm -rf '%s'", dir);
+    TEST_ASSERT(system(cmd) == 0, "cleanup");
+    pz_config_free(&c);
+}
+#endif
+
+/* config.toml.example must stay in step with the schema: every commented
+ * "key = value" line is a real key whose value passes validation. */
+static void test_example_file_matches_schema(void) {
+    FILE *f = fopen("config.toml.example", "r");
+    TEST_ASSERT(f != NULL, "config.toml.example exists (tests run from the repo root)");
+    if (!f) return;
+    char line[512]; int checked = 0, bad = 0;
+    PzConfig c; pz_config_init(&c);
+    while (fgets(line, sizeof(line), f)) {
+        if (strncmp(line, "# ", 2) != 0) continue;
+        char key[64], val[256];
+        if (sscanf(line + 2, "%63s = %255[^\n]", key, val) != 2) continue;
+        size_t vl = strlen(val);
+        if (vl >= 2 && val[0] == '"' && val[vl - 1] == '"') { val[vl - 1] = 0; memmove(val, val + 1, vl - 1); }
+        char err[256];
+        checked++;
+        if (pz_config_set(&c, key, val, err, sizeof(err)) != 0) { printf("  bad example line: %s", line); bad++; }
+    }
+    fclose(f);
+    TEST_ASSERT(checked >= 8 && bad == 0, "every example setting is a valid key and value");
+    pz_config_free(&c);
+}
+
 int main(void) {
     printf("=== pz config (Phase 40.1) ===\n");
     RUN_TEST(test_schema_and_validate);
     RUN_TEST(test_set_add_unset);
     RUN_TEST(test_parse);
     RUN_TEST(test_round_trip_and_save);
+#if TN_POSIX
+    RUN_TEST(test_save_is_private_and_safe);
+#endif
     RUN_TEST(test_env_and_path);
+    RUN_TEST(test_example_file_matches_schema);
     RUN_TEST(test_merge_argv);
     TEST_SUMMARY();
 }

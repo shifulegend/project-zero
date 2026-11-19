@@ -68,3 +68,11 @@ QUICK_SUMMARY 2.txt
 
 # Agent worktrees (local only)
 .claude/worktrees/
+
+# Local secrets and per-machine config: never commit (config.toml may hold the API key)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+config.toml

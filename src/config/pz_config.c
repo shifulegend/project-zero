@@ -8,6 +8,7 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -444,6 +445,20 @@ static void mkdir_parents(const char *path) {
 }
 #endif
 
+#if TN_POSIX
+/* fsync the directory holding `path` so the rename itself survives a power loss. */
+static void fsync_parent_dir(const char *path) {
+    char dir[1100];
+    snprintf(dir, sizeof(dir), "%s", path);
+    char *slash = strrchr(dir, '/');
+    if (!slash) snprintf(dir, sizeof(dir), ".");
+    else if (slash == dir) dir[1] = '\0';
+    else *slash = '\0';
+    int dfd = open(dir, O_RDONLY);
+    if (dfd >= 0) { (void)fsync(dfd); close(dfd); }
+}
+#endif
+
 int pz_config_save(const PzConfig *c, const char *path) {
     if (!c || !path) return -1;
     char *text = pz_config_format(c);
@@ -453,15 +468,32 @@ int pz_config_save(const PzConfig *c, const char *path) {
 #endif
     char tmp[1100];
     snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+#if TN_POSIX
+    /* The file may hold an API key: create it already 0600 (no window with
+     * umask-derived permissions), refuse to follow a pre-planted file or
+     * symlink at the predictable temp name (O_EXCL after unlinking a stale one),
+     * and fsync before the rename so a crash leaves the old or the new file,
+     * never an empty one. */
+    (void)unlink(tmp);
+    int fd = open(tmp, O_WRONLY | O_CREAT | O_EXCL, 0600);
+    if (fd < 0) { free(text); return -1; }
+    FILE *f = fdopen(fd, "wb");
+    if (!f) { close(fd); remove(tmp); free(text); return -1; }
+    int ok = fputs(text, f) >= 0;
+    ok = (fflush(f) == 0) && ok;
+    ok = (fsync(fd) == 0) && ok;
+    ok = (fclose(f) == 0) && ok;
+#else
     FILE *f = fopen(tmp, "wb");
     if (!f) { free(text); return -1; }
-#if TN_POSIX
-    chmod(tmp, 0600);   /* may hold an API key */
-#endif
     int ok = fputs(text, f) >= 0;
     ok = (fclose(f) == 0) && ok;
+#endif
     free(text);
     if (!ok || rename(tmp, path) != 0) { remove(tmp); return -1; }
+#if TN_POSIX
+    fsync_parent_dir(path);
+#endif
     return 0;
 }
 

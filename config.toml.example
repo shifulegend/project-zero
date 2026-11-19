@@ -1,0 +1,16 @@
+# Project Zero settings file. Copy to ~/.config/project-zero/config.toml
+# (or point PZ_CONFIG at it), or manage it with `pz config`.
+# Precedence: command-line flag > PZ_* environment variable > this file > built-in default.
+# The file may hold an API key: keep it private (pz writes it with mode 0600) and never commit it.
+# Every line below is optional; uncomment to change a setting.
+
+# model = "/path/to/model.gguf"
+# threads = 4
+# port = 8080
+# web-ui = "auto"
+# api-key = "choose-a-long-random-token"
+# cors = false
+# queue-size = 0
+# client-timeout = 30
+# max-connections = 64
+# temperature = 0.7

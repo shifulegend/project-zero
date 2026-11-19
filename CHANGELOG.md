@@ -46,6 +46,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Security
 
+- Save the settings file (`pz config`, the web UI's save-defaults) safely: it is created private (mode 0600) from the first byte, a pre-planted file or symlink at the temporary name is not followed, and the data is synced to disk before the rename so a crash or power loss leaves the old or the new file, never an empty one. `.env*`, `*.key`, `*.pem` and `config.toml` are now git-ignored, and `config.toml.example` shows the available settings.
 - Make `install.sh` download over HTTPS only (curl `--proto =https`, wget `--https-only`, including redirects) with a connection timeout and a 10-minute cap, so a plain-http mirror or a stalled server can no longer feed or hang the installer. A local `file://` mirror still works.
 - Reject chat requests whose JSON nests objects or arrays more than 256 levels deep with `400`, instead of scanning an arbitrarily deep body.
 - Refuse cross-site POSTs on every API route, not only `/v1/config/defaults`: a POST carrying a browser `Origin` that is neither this server nor an allowed `--cors-origin` now gets `403`. Requests without an `Origin` (curl, SDKs) and the web UI are unaffected; behind a proxy that rewrites `Host`, add the public origin with `--cors --cors-origin`. Before, any web page you visited could trigger chat generations, `/v1/update/check`, cache clears or cancel another request on `127.0.0.1`.

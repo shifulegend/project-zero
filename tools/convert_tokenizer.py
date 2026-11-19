@@ -27,43 +27,42 @@ import sys
 def convert_hf_tokenizer(input_path, output_path):
     """Convert HuggingFace tokenizer.json to binary format."""
 
-    with open(input_path, 'r', encoding='utf-8') as f:
+    with open(input_path, "r", encoding="utf-8") as f:
         tok_data = json.load(f)
 
     # Extract vocabulary
     vocab = {}
-    if 'model' in tok_data and 'vocab' in tok_data['model']:
-        vocab = tok_data['model']['vocab']
-    elif 'added_tokens' in tok_data:
+    if "model" in tok_data and "vocab" in tok_data["model"]:
+        vocab = tok_data["model"]["vocab"]
+    elif "added_tokens" in tok_data:
         # Some tokenizers only have added_tokens
-        for entry in tok_data['added_tokens']:
-            vocab[entry['content']] = entry['id']
+        for entry in tok_data["added_tokens"]:
+            vocab[entry["content"]] = entry["id"]
 
     if not vocab:
-        print("Error: Could not find vocabulary in tokenizer.json",
-              file=sys.stderr)
+        print("Error: Could not find vocabulary in tokenizer.json", file=sys.stderr)
         sys.exit(1)
 
     # Also include added_tokens (e.g. BOS/EOS special tokens with IDs >= base vocab size)
-    if 'added_tokens' in tok_data:
+    if "added_tokens" in tok_data:
         existing_ids = set(vocab.values())
-        for entry in tok_data['added_tokens']:
-            token_id = entry['id']
-            content = entry['content']
+        for entry in tok_data["added_tokens"]:
+            token_id = entry["id"]
+            content = entry["content"]
             if token_id not in existing_ids:
                 vocab[content] = token_id
                 existing_ids.add(token_id)
 
     # Extract merge scores if available (BPE models)
     merges = []
-    if 'model' in tok_data and 'merges' in tok_data['model']:
-        merges = tok_data['model']['merges']
+    if "model" in tok_data and "merges" in tok_data["model"]:
+        merges = tok_data["model"]["merges"]
 
     vocab_size = max(vocab.values()) + 1
-    max_token_len = max(len(token.encode('utf-8')) for token in vocab)
+    max_token_len = max(len(token.encode("utf-8")) for token in vocab)
 
     # Build token array indexed by ID
-    tokens = [''] * vocab_size
+    tokens = [""] * vocab_size
     scores = [0.0] * vocab_size
 
     for token_str, token_id in vocab.items():
@@ -74,20 +73,20 @@ def convert_hf_tokenizer(input_path, output_path):
 
     # Assign scores from merge order (if BPE)
     for i, merge in enumerate(merges):
-        merged_token = (merge if isinstance(merge, str) else ''.join(merge)).replace(' ', '')
+        merged_token = (merge if isinstance(merge, str) else "".join(merge)).replace(" ", "")
         if merged_token in vocab:
             # Higher priority merges get higher (less negative) scores
             scores[vocab[merged_token]] = -(i + 1)
 
     # Write binary file
-    with open(output_path, 'wb') as f:
-        f.write(struct.pack('<i', vocab_size))
-        f.write(struct.pack('<i', max_token_len))
+    with open(output_path, "wb") as f:
+        f.write(struct.pack("<i", vocab_size))
+        f.write(struct.pack("<i", max_token_len))
 
         for i in range(vocab_size):
-            token_bytes = tokens[i].encode('utf-8')
-            f.write(struct.pack('<f', scores[i]))
-            f.write(struct.pack('<i', len(token_bytes)))
+            token_bytes = tokens[i].encode("utf-8")
+            f.write(struct.pack("<f", scores[i]))
+            f.write(struct.pack("<i", len(token_bytes)))
             f.write(token_bytes)
 
     file_size = os.path.getsize(output_path)
@@ -102,8 +101,7 @@ def convert_sentencepiece(input_path, output_path):
     try:
         import sentencepiece as spm
     except ImportError:
-        print("Error: sentencepiece package required for .model files",
-              file=sys.stderr)
+        print("Error: sentencepiece package required for .model files", file=sys.stderr)
         print("Install with: pip install sentencepiece", file=sys.stderr)
         sys.exit(1)
 
@@ -118,18 +116,18 @@ def convert_sentencepiece(input_path, output_path):
     for i in range(vocab_size):
         piece = sp.id_to_piece(i)
         score = sp.get_score(i)
-        piece_bytes = piece.encode('utf-8')
+        piece_bytes = piece.encode("utf-8")
         max_token_len = max(max_token_len, len(piece_bytes))
         tokens.append(piece_bytes)
         scores.append(score)
 
-    with open(output_path, 'wb') as f:
-        f.write(struct.pack('<i', vocab_size))
-        f.write(struct.pack('<i', max_token_len))
+    with open(output_path, "wb") as f:
+        f.write(struct.pack("<i", vocab_size))
+        f.write(struct.pack("<i", max_token_len))
 
         for i in range(vocab_size):
-            f.write(struct.pack('<f', scores[i]))
-            f.write(struct.pack('<i', len(tokens[i])))
+            f.write(struct.pack("<f", scores[i]))
+            f.write(struct.pack("<i", len(tokens[i])))
             f.write(tokens[i])
 
     file_size = os.path.getsize(output_path)
@@ -140,22 +138,19 @@ def convert_sentencepiece(input_path, output_path):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description='Convert tokenizer to binary format')
-    parser.add_argument('--input', required=True,
-                        help='Input tokenizer.json or .model file')
-    parser.add_argument('--output', required=True,
-                        help='Output binary file path')
+    parser = argparse.ArgumentParser(description="Convert tokenizer to binary format")
+    parser.add_argument("--input", required=True, help="Input tokenizer.json or .model file")
+    parser.add_argument("--output", required=True, help="Output binary file path")
     args = parser.parse_args()
 
-    if args.input.endswith('.json'):
+    if args.input.endswith(".json"):
         convert_hf_tokenizer(args.input, args.output)
-    elif args.input.endswith('.model'):
+    elif args.input.endswith(".model"):
         convert_sentencepiece(args.input, args.output)
     else:
         print("Error: Input must be .json or .model file", file=sys.stderr)
         sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

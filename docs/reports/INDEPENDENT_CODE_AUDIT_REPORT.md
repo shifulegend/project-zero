@@ -133,8 +133,9 @@ void test_sanity_accumulator() {
 ```python
 import subprocess
 
+
 def test_e2e_generation():
-    result = subprocess.run(['./project-zero', '--prompt', '2+2='], capture_output=True, text=True)
+    result = subprocess.run(["./project-zero", "--prompt", "2+2="], capture_output=True, text=True)
     assert "4" in result.stdout
 ```
 
@@ -229,9 +230,10 @@ void test_boundaries() {
 **Script**:
 ```python
 import random, subprocess
+
 for _ in range(100):
     p = "".join(chr(random.randint(0, 255)) for _ in range(50))
-    subprocess.run(['./project-zero', '--prompt', p])
+    subprocess.run(["./project-zero", "--prompt", p])
 ```
 
 ### Fuzz Testing

@@ -20,6 +20,7 @@ Expected output excerpt:
     [AGENT] Output:
     AGENT-TEST
 """
+
 import os
 import pty
 import select
@@ -27,10 +28,10 @@ import sys
 import time
 
 ENGINE = "./pz"
-MODEL  = "models/bitnet-b1.58-2B-4T.bin"
+MODEL = "models/bitnet-b1.58-2B-4T.bin"
 TOKENIZER = "models/bitnet-b1.58-2B-4T_tokenizer_proper.bin"
 LOG_PATH = "/tmp/agent_pty_run.log"
-TIMEOUT  = 120  # seconds
+TIMEOUT = 120  # seconds
 
 PROMPT = (
     "/agent You are a focused assistant. For your next single output, print EXACTLY "
@@ -38,18 +39,16 @@ PROMPT = (
     "<exec>echo AGENT-TEST</exec>\n"
 )
 
-CMD = [ENGINE,
-       "--model", MODEL,
-       "--tokenizer", TOKENIZER,
-       "--max-tokens", "64",
-       "--verbose"]
+CMD = [ENGINE, "--model", MODEL, "--tokenizer", TOKENIZER, "--max-tokens", "64", "--verbose"]
 
 
 def main():
     auto = os.environ.get("PROJECT_ZERO_AGENT_AUTO_APPROVE", "")
     if not auto:
-        print("WARNING: PROJECT_ZERO_AGENT_AUTO_APPROVE not set — "
-              "you will need to type y manually.", file=sys.stderr)
+        print(
+            "WARNING: PROJECT_ZERO_AGENT_AUTO_APPROVE not set — you will need to type y manually.",
+            file=sys.stderr,
+        )
 
     pid, fd = pty.fork()
     if pid == 0:
@@ -97,7 +96,7 @@ def main():
                 print("\n[TIMEOUT] killing engine", file=sys.stderr)
                 try:
                     os.kill(pid, 9)
-                except OSError:      # already exited
+                except OSError:  # already exited
                     pass
                 break
 
@@ -106,8 +105,10 @@ def main():
         print(f"\n\n[PASS] Agentic exec test passed. Log: {LOG_PATH}")
         sys.exit(0)
     else:
-        print(f"\n\n[FAIL] Expected 'AGENT-TEST' and 'Command exit=0' in output. Log: {LOG_PATH}",
-              file=sys.stderr)
+        print(
+            f"\n\n[FAIL] Expected 'AGENT-TEST' and 'Command exit=0' in output. Log: {LOG_PATH}",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
 

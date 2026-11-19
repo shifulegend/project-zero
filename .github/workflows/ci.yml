@@ -40,6 +40,7 @@ jobs:
         run: |
           pip install --quiet ruff==0.16.9
           ruff check .
+          ruff format --check .
       # 2026-11-11: .agents/rules and .github/instructions are generated from .claude/rules.
       - name: AI adapter files in sync with .claude/rules
         run: python3 -I tools/sync_ai_adapters.py --check

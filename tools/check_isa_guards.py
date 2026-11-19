@@ -21,6 +21,7 @@ that is clean but still listed fails the check, so the list stays honest.
 
 Usage: python3 tools/check_isa_guards.py            (exit 1 on a violation)
 """
+
 import pathlib
 import re
 import sys
@@ -31,24 +32,24 @@ USE = re.compile(r"_mm512_|__AVX512|TN_HAS_AVX512|TN_HAS_AVXVNNI|__AVXVNNI__")
 # Files that legitimately reference the macros without being AVX-512 kernels.
 EXEMPT = {
     "src/math/simd_dispatch.c": "built with TN_FORCE_DISPATCH_ALL; the only file that references every tier",
-    "src/core/calibration.c":   "built with TN_FORCE_DISPATCH_ALL; decides which tiers exist to benchmark",
-    "src/math/cpu_features.c":  "CPUID probe and execution-verification of VBMI/VNNI, no tier kernels",
+    "src/core/calibration.c": "built with TN_FORCE_DISPATCH_ALL; decides which tiers exist to benchmark",
+    "src/math/cpu_features.c": "CPUID probe and execution-verification of VBMI/VNNI, no tier kernels",
 }
 
 # Known offenders still to be split into ISA-flagged files. Shrink only.
 PENDING = {
-    "src/math/parallel_matmul.c":     "AVX-512 BF16 LM-head and Q8/Q4 dequant matvec sections behind TN_HAS_AVX512",
-    "src/math/matmul_q5_1.c":         "mentions TN_HAS_AVX512 in a guard only (no AVX-512 code): simplify with the rest",
-    "src/math/matmul_f16.c":          "AVX-512 F16 matvec behind TN_HAS_AVX512 in an AVX2-flagged file",
-    "src/math/batched_matmul_f16.c":  "AVX-512 F16 convert behind TN_HAS_AVX512",
-    "src/math/matmul_q8_0.c":         "AVX-512 section behind TN_HAS_AVX512",
-    "src/math/matmul_q5k.c":          "AVX-512 section behind TN_HAS_AVX512",
-    "src/math/matmul_q5_0.c":         "AVX-512 section behind TN_HAS_AVX512",
-    "src/math/matmul_q4k.c":          "AVX2+VNNI dot path behind TN_HAS_AVX512VNNI",
-    "src/math/q8_0_act.c":            "AVX2+VNNI path behind TN_HAS_AVX512VNNI",
-    "src/math/matmul_q2_0.c":         "VNNI dispatch behind TN_HAS_AVX512VNNI (kernel is in matmul_q2_0_vnni.c)",
-    "src/transformer/attention.c":    "AVX-512 section in a baseline file",
-    "src/sampling/temperature.c":     "AVX-512 section in a baseline file",
+    "src/math/parallel_matmul.c": "AVX-512 BF16 LM-head and Q8/Q4 dequant matvec sections behind TN_HAS_AVX512",
+    "src/math/matmul_q5_1.c": "mentions TN_HAS_AVX512 in a guard only (no AVX-512 code): simplify with the rest",
+    "src/math/matmul_f16.c": "AVX-512 F16 matvec behind TN_HAS_AVX512 in an AVX2-flagged file",
+    "src/math/batched_matmul_f16.c": "AVX-512 F16 convert behind TN_HAS_AVX512",
+    "src/math/matmul_q8_0.c": "AVX-512 section behind TN_HAS_AVX512",
+    "src/math/matmul_q5k.c": "AVX-512 section behind TN_HAS_AVX512",
+    "src/math/matmul_q5_0.c": "AVX-512 section behind TN_HAS_AVX512",
+    "src/math/matmul_q4k.c": "AVX2+VNNI dot path behind TN_HAS_AVX512VNNI",
+    "src/math/q8_0_act.c": "AVX2+VNNI path behind TN_HAS_AVX512VNNI",
+    "src/math/matmul_q2_0.c": "VNNI dispatch behind TN_HAS_AVX512VNNI (kernel is in matmul_q2_0_vnni.c)",
+    "src/transformer/attention.c": "AVX-512 section in a baseline file",
+    "src/sampling/temperature.c": "AVX-512 section in a baseline file",
 }
 
 
@@ -94,15 +95,19 @@ def main():
         print("AVX-512/VNNI code or guards in files built without those ISA flags:")
         for f in bad:
             print(f"  {f}")
-        print("Move the tier into an ISA-flagged file and bind it from simd_dispatch.c "
-              "(see the header of this script).")
+        print(
+            "Move the tier into an ISA-flagged file and bind it from simd_dispatch.c "
+            "(see the header of this script)."
+        )
     if stale:
         ok = False
         print("Listed in PENDING but clean now -- remove from tools/check_isa_guards.py:")
         for f in stale:
             print(f"  {f}")
-    print(f"check_isa_guards: {'ok' if ok else 'FAILED'} "
-          f"({len(flagged)} ISA-flagged files, {len(PENDING)} pending split)")
+    print(
+        f"check_isa_guards: {'ok' if ok else 'FAILED'} "
+        f"({len(flagged)} ISA-flagged files, {len(PENDING)} pending split)"
+    )
     return 0 if ok else 1
 
 

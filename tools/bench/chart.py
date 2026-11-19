@@ -9,6 +9,7 @@ run it by hand to redraw an existing folder:
 
   python3 tools/bench/chart.py benchmark_results/h2h_20261118-051537Z_four-engines
 """
+
 import json
 import pathlib
 import subprocess
@@ -21,25 +22,48 @@ import benchlib as bl  # noqa: E402
 import gate  # noqa: E402
 import plot_sweep_svg as ps  # noqa: E402
 
+
 def variant_name(v):
     """Display name: pz variants as 'Project Zero <CLASSIFIER>', engines by their registry label, lossy-by-design
     variants (gate.json `approximate`) marked so a chart never presents them as the exact computation."""
     engines = bl.load_engines()
-    name = f"Project Zero {v[3:].upper()}" if v.startswith("pz-") else "Project Zero" if v == "pz" else engines.get(v, {}).get("label", v)
+    name = (
+        f"Project Zero {v[3:].upper()}"
+        if v.startswith("pz-")
+        else "Project Zero"
+        if v == "pz"
+        else engines.get(v, {}).get("label", v)
+    )
     return name + (" (approx.)" if v in gate.load_config().get("approximate", {}) else "")
 
 
-def make_chart(run_dir, title="Decode tok/s vs threads", subtitle=None, rounds=None, hide_invalid=None):
+def make_chart(
+    run_dir, title="Decode tok/s vs threads", subtitle=None, rounds=None, hide_invalid=None
+):
     run_dir = pathlib.Path(run_dir)
-    if hide_invalid is None:         # follow the gate mode the run was made with (strict hides INVALID series)
+    if (
+        hide_invalid is None
+    ):  # follow the gate mode the run was made with (strict hides INVALID series)
         try:
             mode = json.loads((run_dir / "gate.json").read_text())["config"]["mode"]
         except (OSError, ValueError, KeyError):
             mode = gate.load_config()["mode"]
         hide_invalid = mode == "strict"
-    rows = [r for r in bl.load_rows(run_dir / "summary.csv") if r["gen_tok_s"] is not None and r.get("exit", "0") == "0"]
-    dropped = sorted({f"{r['model']}/{variant_name(r['variant'])}" for r in rows if hide_invalid and r.get("gate") == "INVALID"})
-    rows = [r for r in rows if not (hide_invalid and r.get("gate") == "INVALID")]     # correctness gate, strict mode
+    rows = [
+        r
+        for r in bl.load_rows(run_dir / "summary.csv")
+        if r["gen_tok_s"] is not None and r.get("exit", "0") == "0"
+    ]
+    dropped = sorted(
+        {
+            f"{r['model']}/{variant_name(r['variant'])}"
+            for r in rows
+            if hide_invalid and r.get("gate") == "INVALID"
+        }
+    )
+    rows = [
+        r for r in rows if not (hide_invalid and r.get("gate") == "INVALID")
+    ]  # correctness gate, strict mode
     if not rows:
         return []
     models = bl.load_models()
@@ -57,8 +81,16 @@ def make_chart(run_dir, title="Decode tok/s vs threads", subtitle=None, rounds=N
     grouped = {}
     for m, vs in order.items():
         grouped.setdefault(host[m], []).extend((f"{m}__{v}", variant_name(v)) for v in vs)
-    panels = [(models.get(h, {}).get("title", h), sorted(series, key=lambda s: (not s[1].startswith("Project Zero"), s[1] != "Project Zero", s[1])))
-              for h, series in grouped.items()]
+    panels = [
+        (
+            models.get(h, {}).get("title", h),
+            sorted(
+                series,
+                key=lambda s: (not s[1].startswith("Project Zero"), s[1] != "Project Zero", s[1]),
+            ),
+        )
+        for h, series in grouped.items()
+    ]
     if subtitle is None:
         meta = {}
         try:
@@ -66,9 +98,15 @@ def make_chart(run_dir, title="Decode tok/s vs threads", subtitle=None, rounds=N
         except (OSError, ValueError):
             pass
         stamp = run_dir.name.split("_")[1] if "_" in run_dir.name else ""
-        when = f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:8]} {stamp[9:11]}:{stamp[11:13]} UTC" if len(stamp) == 16 else stamp
-        subtitle = (f"{bl.cpu_model()}, {bl.os.cpu_count()} vCPU | {when}, "
-                    f"best of {rounds or meta.get('rounds', 'N')}, pz {bl.git_info()['commit']}")
+        when = (
+            f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:8]} {stamp[9:11]}:{stamp[11:13]} UTC"
+            if len(stamp) == 16
+            else stamp
+        )
+        subtitle = (
+            f"{bl.cpu_model()}, {bl.os.cpu_count()} vCPU | {when}, "
+            f"best of {rounds or meta.get('rounds', 'N')}, pz {bl.git_info()['commit']}"
+        )
     if dropped:
         subtitle += " | Not shown (fail the correctness gate): " + ", ".join(dropped)
     svg = ps.render(panels, best, title, subtitle)
@@ -77,7 +115,9 @@ def make_chart(run_dir, title="Decode tok/s vs threads", subtitle=None, rounds=N
     chrome = ps.find_chromium(None)
     if chrome:
         try:
-            out.append(pathlib.Path(ps.svg_to_png(svg, str(run_dir / "throughput_vs_threads.png"), chrome)))
+            out.append(
+                pathlib.Path(ps.svg_to_png(svg, str(run_dir / "throughput_vs_threads.png"), chrome))
+            )
         except (subprocess.CalledProcessError, OSError, ImportError) as e:
             print(f"(PNG skipped: {e})")
     else:

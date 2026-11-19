@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Unit tests for tools/changelog.py (run: python3 tools/test_changelog.py)."""
+
 import os
 import sys
 import unittest
@@ -44,14 +45,16 @@ class Check(unittest.TestCase):
 
     def test_unreleased_must_be_first_and_unique(self):
         t = GOOD.replace("## [Unreleased]\n", "", 1).replace(
-            "## [0.1.0]", "## [Unreleased]\n\n## [0.1.0]")
+            "## [0.1.0]", "## [Unreleased]\n\n## [0.1.0]"
+        )
         self.assertTrue(any("first" in e for e in changelog.check(t)))
         t2 = GOOD.replace("## [0.2.0] - 2026-11-01", "## [Unreleased]")
         self.assertTrue(any("more than one" in e for e in changelog.check(t2)))
 
     def test_order_dates_duplicates(self):
         t = GOOD.replace("[0.2.0] - 2026-11-01", "[0.0.9] - 2026-11-01").replace(
-            "[0.2.0]: ", "[0.0.9]: ")
+            "[0.2.0]: ", "[0.0.9]: "
+        )
         self.assertTrue(any("newest first" in e for e in changelog.check(t)))
         t = GOOD.replace("[0.1.0] - 2026-06-20", "[0.1.0] - 2026-12-20")
         self.assertTrue(any("later than" in e for e in changelog.check(t)))
@@ -60,24 +63,32 @@ class Check(unittest.TestCase):
 
     def test_bad_heading_subsection_link(self):
         self.assertTrue(changelog.check(GOOD.replace("[0.1.0] - 2026-06-20", "0.1.0 (June)")))
-        self.assertTrue(any("subsection" in e for e in
-                            changelog.check(GOOD.replace("### Fixed", "### Bugs"))))
-        self.assertTrue(any("link reference" in e for e in
-                            changelog.check(GOOD.replace("[0.1.0]: https://x/releases/tag/v0.1.0\n", ""))))
+        self.assertTrue(
+            any("subsection" in e for e in changelog.check(GOOD.replace("### Fixed", "### Bugs")))
+        )
+        self.assertTrue(
+            any(
+                "link reference" in e
+                for e in changelog.check(
+                    GOOD.replace("[0.1.0]: https://x/releases/tag/v0.1.0\n", "")
+                )
+            )
+        )
 
     def test_prerelease_sorts_below_release(self):
         t = GOOD.replace("[0.2.0] - 2026-11-01", "[0.2.0-rc.1] - 2026-11-01").replace(
-            "[0.2.0]: ", "[0.2.0-rc.1]: ")
+            "[0.2.0]: ", "[0.2.0-rc.1]: "
+        )
         self.assertEqual(changelog.check(t), [])
 
 
 class SectionsAndYanked(unittest.TestCase):
     def test_section_order_and_repeat(self):
-        t = GOOD.replace("### Added\n\n- new thing\n",
-                         "### Added\n\n- new thing\n\n### Changed\n\n- x\n")
+        t = GOOD.replace(
+            "### Added\n\n- new thing\n", "### Added\n\n- new thing\n\n### Changed\n\n- x\n"
+        )
         self.assertTrue(any("out of order" in e for e in changelog.check(t)))
-        t = GOOD.replace("### Added\n\n- new thing\n",
-                         "### Added\n\n- a\n\n### Added\n\n- b\n")
+        t = GOOD.replace("### Added\n\n- new thing\n", "### Added\n\n- a\n\n### Added\n\n- b\n")
         self.assertTrue(any("repeated" in e for e in changelog.check(t)))
 
     def test_yanked_heading(self):

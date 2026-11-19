@@ -22,21 +22,33 @@ import csv
 
 # Tensor names we care about (must match CAPTURE_PATTERNS in compare_tensors.py)
 KEEP = {
-    "attn_norm", "ffn_norm", "kv_cmpr", "kv", "q", "q_pe", "k_pe",
-    "Qcur", "Kcur", "Vcur_cont", "Vcur",
-    "ffn_moe_logits", "ffn_moe_probs", "ffn_moe_out",
-    "ffn_shexp", "ffn_out", "l_out",
-    "result_norm", "result_output",
+    "attn_norm",
+    "ffn_norm",
+    "kv_cmpr",
+    "kv",
+    "q",
+    "q_pe",
+    "k_pe",
+    "Qcur",
+    "Kcur",
+    "Vcur_cont",
+    "Vcur",
+    "ffn_moe_logits",
+    "ffn_moe_probs",
+    "ffn_moe_out",
+    "ffn_shexp",
+    "ffn_out",
+    "l_out",
+    "result_norm",
+    "result_output",
 }
 
 # Matches the header line for each tensor
-RE_HEADER = re.compile(
-    r"common_debug_cb_eval:\s+(\S+)\s+=\s+\((\w+)\).*?=\s+\{([^}]+)\}"
-)
+RE_HEADER = re.compile(r"common_debug_cb_eval:\s+(\S+)\s+=\s+\((\w+)\).*?=\s+\{([^}]+)\}")
 # Matches float values in content lines
-RE_FLOAT  = re.compile(r"[-+]?(?:\d+\.\d*|\.\d+)(?:[eE][+-]?\d+)?")
+RE_FLOAT = re.compile(r"[-+]?(?:\d+\.\d*|\.\d+)(?:[eE][+-]?\d+)?")
 # Matches the sum line
-RE_SUM    = re.compile(r"\bsum\s*=\s*([-+]?(?:\d+\.\d*|\.\d+)(?:[eE][+-]?\d+)?)")
+RE_SUM = re.compile(r"\bsum\s*=\s*([-+]?(?:\d+\.\d*|\.\d+)(?:[eE][+-]?\d+)?)")
 
 
 def extract_layer(name):
@@ -55,10 +67,10 @@ def main():
     raw_path = sys.argv[1]
     csv_path = sys.argv[2]
 
-    rows = []          # (layer, step, vals_list)
-    cur_name  = None
+    rows = []  # (layer, step, vals_list)
+    cur_name = None
     cur_layer = -1
-    cur_vals  = []
+    cur_vals = []
     collecting = False
 
     with open(raw_path, errors="replace") as f:
@@ -71,10 +83,10 @@ def main():
 
                 raw_name = m.group(1)
                 base, layer = extract_layer(raw_name)
-                cur_name  = base
+                cur_name = base
                 cur_layer = layer
-                cur_vals  = []
-                collecting = (base in KEEP)
+                cur_vals = []
+                collecting = base in KEEP
                 continue
 
             if not collecting:
@@ -88,8 +100,8 @@ def main():
             sm = RE_SUM.search(line)
             if sm and cur_vals:
                 rows.append((cur_layer, cur_name, cur_vals[:]))
-                cur_name  = None
-                cur_vals  = []
+                cur_name = None
+                cur_vals = []
                 collecting = False
 
     # Flush last tensor if file ended without a sum line
@@ -100,14 +112,28 @@ def main():
     written = 0
     with open(csv_path, "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["layer","step","n_elem",
-                    "v0","v1","v2","v3","v4","v5","v6","v7",
-                    "mean","absmax"])
-        for (layer, name, vals) in rows:
+        w.writerow(
+            [
+                "layer",
+                "step",
+                "n_elem",
+                "v0",
+                "v1",
+                "v2",
+                "v3",
+                "v4",
+                "v5",
+                "v6",
+                "v7",
+                "mean",
+                "absmax",
+            ]
+        )
+        for layer, name, vals in rows:
             if not vals:
                 continue
-            n    = len(vals)
-            v8   = (vals + [0.0] * 8)[:8]
+            n = len(vals)
+            v8 = (vals + [0.0] * 8)[:8]
             mean = sum(vals) / n
             abmx = max(abs(v) for v in vals)
             w.writerow([layer, name, n] + v8 + [mean, abmx])

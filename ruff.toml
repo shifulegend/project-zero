@@ -1,8 +1,12 @@
-# Python lint (CI changelog job). Real-bug rules: syntax errors (E9), pyflakes
+# Python lint and format (CI changelog job). Real-bug rules: syntax errors (E9), pyflakes
 # (F: undefined names, unused imports/variables, ...), and bare/blind except
 # (E722, BLE001; a deliberate broad catch needs a noqa with its reason). Pinned ruff
 # version: see .github/workflows/ci.yml.
+line-length = 100
 extend-exclude = ["benchmark_results"]
 
 [lint]
 select = ["E9", "F", "E722", "BLE001"]
+
+[format]
+quote-style = "double"

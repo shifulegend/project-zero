@@ -181,12 +181,18 @@ Or use the inline Python PTY runner:
 #!/usr/bin/env python3
 import os, pty, select, time
 
-os.environ['PROJECT_ZERO_AGENT_AUTO_APPROVE'] = '1'
+os.environ["PROJECT_ZERO_AGENT_AUTO_APPROVE"] = "1"
 
-cmd = ['./pz',
-       '--model', 'models/bitnet-b1.58-2B-4T.bin',
-       '--tokenizer', 'models/bitnet-b1.58-2B-4T_tokenizer_proper.bin',
-       '--max-tokens', '64', '--verbose']
+cmd = [
+    "./pz",
+    "--model",
+    "models/bitnet-b1.58-2B-4T.bin",
+    "--tokenizer",
+    "models/bitnet-b1.58-2B-4T_tokenizer_proper.bin",
+    "--max-tokens",
+    "64",
+    "--verbose",
+]
 
 prompt = (
     "/agent You are a focused assistant. For your next single output, print EXACTLY "
@@ -205,7 +211,7 @@ while time.time() - start < 120:
     if fd in r:
         try:
             data = os.read(fd, 4096)
-            print(data.decode(errors='replace'), end='', flush=True)
+            print(data.decode(errors="replace"), end="", flush=True)
         except OSError:
             break
     try:

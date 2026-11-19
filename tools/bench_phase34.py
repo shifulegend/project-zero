@@ -31,36 +31,37 @@ except ImportError:
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ENGINE      = os.path.join(PROJECT_ROOT, "pz")
-MODEL       = os.path.join(PROJECT_ROOT, "models", "bitnet-b1.58-2B-4T.bin")
-TOKENIZER   = os.path.join(PROJECT_ROOT, "models", "bitnet-b1.58-2B-4T_tokenizer_proper.bin")
-PROMPT      = "Explain the difference between supervised and unsupervised learning in machine learning."
-MAX_TOKENS  = 40
-COOLDOWN_S  = 15   # seconds between runs
+ENGINE = os.path.join(PROJECT_ROOT, "pz")
+MODEL = os.path.join(PROJECT_ROOT, "models", "bitnet-b1.58-2B-4T.bin")
+TOKENIZER = os.path.join(PROJECT_ROOT, "models", "bitnet-b1.58-2B-4T_tokenizer_proper.bin")
+PROMPT = "Explain the difference between supervised and unsupervised learning in machine learning."
+MAX_TOKENS = 40
+COOLDOWN_S = 15  # seconds between runs
+
 
 # ── psutil snapshot ──────────────────────────────────────────────────────────
 def system_snapshot():
-    vm     = psutil.virtual_memory()
+    vm = psutil.virtual_memory()
     cpu_pct = psutil.cpu_percent(interval=0.1, percpu=True)
-    load   = os.getloadavg()
-    procs  = []
-    for p in psutil.process_iter(['pid', 'name', 'cpu_percent']):
+    load = os.getloadavg()
+    procs = []
+    for p in psutil.process_iter(["pid", "name", "cpu_percent"]):
         try:
-            c = p.info['cpu_percent']
+            c = p.info["cpu_percent"]
             if c and c > 1.0:
-                procs.append((p.info['name'], c))
+                procs.append((p.info["name"], c))
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
     procs.sort(key=lambda x: -x[1])
     return {
-        'ram_used_gb'  : vm.used  / 1e9,
-        'ram_avail_gb' : vm.available / 1e9,
-        'ram_total_gb' : vm.total / 1e9,
-        'cpu_per_core' : cpu_pct,
-        'cpu_mean'     : sum(cpu_pct) / len(cpu_pct),
-        'load_1m'      : load[0],
-        'load_5m'      : load[1],
-        'top_procs'    : procs[:6],
+        "ram_used_gb": vm.used / 1e9,
+        "ram_avail_gb": vm.available / 1e9,
+        "ram_total_gb": vm.total / 1e9,
+        "cpu_per_core": cpu_pct,
+        "cpu_mean": sum(cpu_pct) / len(cpu_pct),
+        "load_1m": load[0],
+        "load_5m": load[1],
+        "top_procs": procs[:6],
     }
 
 
@@ -77,6 +78,7 @@ def _cpu_burner():
     while True:
         _ = math.sqrt(12345678.9)
 
+
 def start_bg_load(n_workers=2):
     procs = []
     for _ in range(n_workers):
@@ -84,6 +86,7 @@ def start_bg_load(n_workers=2):
         p.start()
         procs.append(p)
     return procs
+
 
 def stop_bg_load(procs):
     for p in procs:
@@ -93,7 +96,8 @@ def stop_bg_load(procs):
 
 
 # ── Parse tok/s from engine output ───────────────────────────────────────────
-_TOKS_RE = re.compile(r'(\d+\.?\d*)\s*tok/s', re.IGNORECASE)
+_TOKS_RE = re.compile(r"(\d+\.?\d*)\s*tok/s", re.IGNORECASE)
+
 
 def extract_toks(output: str) -> float:
     hits = _TOKS_RE.findall(output)
@@ -101,7 +105,7 @@ def extract_toks(output: str) -> float:
         # Take the last number (generation rate, not prefill)
         return float(hits[-1])
     # Fallback: look for "N tokens in M.Ms" pattern
-    m = re.search(r'(\d+)\s+tokens?\s+in\s+([\d.]+)\s*s', output, re.IGNORECASE)
+    m = re.search(r"(\d+)\s+tokens?\s+in\s+([\d.]+)\s*s", output, re.IGNORECASE)
     if m:
         return float(m.group(1)) / float(m.group(2))
     return 0.0
@@ -111,11 +115,16 @@ def extract_toks(output: str) -> float:
 def run_once(n_threads: int, extra_flags=None) -> dict:
     cmd = [
         ENGINE,
-        "--model",     MODEL,
-        "--tokenizer", TOKENIZER,
-        "--prompt",    PROMPT,
-        "--max-tokens", str(MAX_TOKENS),
-        "--threads",   str(n_threads),
+        "--model",
+        MODEL,
+        "--tokenizer",
+        TOKENIZER,
+        "--prompt",
+        PROMPT,
+        "--max-tokens",
+        str(MAX_TOKENS),
+        "--threads",
+        str(n_threads),
     ]
     if extra_flags:
         cmd += extra_flags
@@ -125,7 +134,7 @@ def run_once(n_threads: int, extra_flags=None) -> dict:
 
     # Start monitor thread
     stop_evt = threading.Event()
-    samples  = []
+    samples = []
     mon = threading.Thread(target=monitor_loop, args=(stop_evt, samples, 0.25), daemon=True)
     mon.start()
 
@@ -141,47 +150,49 @@ def run_once(n_threads: int, extra_flags=None) -> dict:
     mon.join(timeout=2)
 
     stdout = proc.stdout + proc.stderr
-    toks   = extract_toks(stdout)
+    toks = extract_toks(stdout)
 
     # Aggregate monitor samples
     if samples:
-        mean_cpu   = sum(s['cpu_mean']     for s in samples) / len(samples)
-        mean_ram   = sum(s['ram_used_gb']  for s in samples) / len(samples)
-        peak_ram   = max(s['ram_used_gb']  for s in samples)
-        avail_ram  = min(s['ram_avail_gb'] for s in samples)
+        mean_cpu = sum(s["cpu_mean"] for s in samples) / len(samples)
+        mean_ram = sum(s["ram_used_gb"] for s in samples) / len(samples)
+        peak_ram = max(s["ram_used_gb"] for s in samples)
+        avail_ram = min(s["ram_avail_gb"] for s in samples)
     else:
-        mean_cpu = snap_pre['cpu_mean']
-        mean_ram = snap_pre['ram_used_gb']
-        peak_ram = snap_pre['ram_used_gb']
-        avail_ram = snap_pre['ram_avail_gb']
+        mean_cpu = snap_pre["cpu_mean"]
+        mean_ram = snap_pre["ram_used_gb"]
+        peak_ram = snap_pre["ram_used_gb"]
+        avail_ram = snap_pre["ram_avail_gb"]
 
     return {
-        "n_threads"   : n_threads,
-        "toks_s"      : round(toks, 2),
-        "elapsed_s"   : round(elapsed, 2),
+        "n_threads": n_threads,
+        "toks_s": round(toks, 2),
+        "elapsed_s": round(elapsed, 2),
         "cpu_mean_pct": round(mean_cpu, 1),
-        "ram_used_gb" : round(mean_ram, 2),
-        "ram_peak_gb" : round(peak_ram, 2),
+        "ram_used_gb": round(mean_ram, 2),
+        "ram_peak_gb": round(peak_ram, 2),
         "ram_avail_gb": round(avail_ram, 2),
-        "load_1m"     : round(snap_pre['load_1m'], 2),
-        "top_procs"   : snap_pre['top_procs'],
-        "stdout"      : stdout,
-        "returncode"  : proc.returncode,
+        "load_1m": round(snap_pre["load_1m"], 2),
+        "top_procs": snap_pre["top_procs"],
+        "stdout": stdout,
+        "returncode": proc.returncode,
     }
 
 
 # ── Suite runner ─────────────────────────────────────────────────────────────
 def run_suite(thread_counts, label, extra_flags=None):
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Suite: {label}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # Pre-suite system state
     snap = system_snapshot()
-    print(f"  RAM: {snap['ram_used_gb']:.2f} GB used / {snap['ram_total_gb']:.2f} GB total "
-          f"({snap['ram_avail_gb']:.2f} GB avail)")
+    print(
+        f"  RAM: {snap['ram_used_gb']:.2f} GB used / {snap['ram_total_gb']:.2f} GB total "
+        f"({snap['ram_avail_gb']:.2f} GB avail)"
+    )
     print(f"  CPU avg: {snap['cpu_mean']:.1f}%  load: {snap['load_1m']:.2f}")
-    top = ", ".join(f"{n}={c:.0f}%" for n, c in snap['top_procs'][:4])
+    top = ", ".join(f"{n}={c:.0f}%" for n, c in snap["top_procs"][:4])
     print(f"  Top procs: {top}")
 
     results = []
@@ -191,8 +202,10 @@ def run_suite(thread_counts, label, extra_flags=None):
         if "error" in r:
             print("TIMEOUT")
         else:
-            print(f"{r['toks_s']:.2f} tok/s  |  CPU {r['cpu_mean_pct']:.1f}%  "
-                  f"RAM {r['ram_used_gb']:.2f}GB used  load {r['load_1m']:.2f}")
+            print(
+                f"{r['toks_s']:.2f} tok/s  |  CPU {r['cpu_mean_pct']:.1f}%  "
+                f"RAM {r['ram_used_gb']:.2f}GB used  load {r['load_1m']:.2f}"
+            )
         results.append(r)
         if t != thread_counts[-1]:
             print(f"    [cooldown {COOLDOWN_S}s]", flush=True)
@@ -210,9 +223,11 @@ def print_table(results, label):
         if "error" in r:
             print(f"| {r['n_threads']} | TIMEOUT | — | — | — | — | — |")
         else:
-            print(f"| {r['n_threads']} | {r['toks_s']:.2f} | {r['cpu_mean_pct']:.1f} | "
-                  f"{r['ram_used_gb']:.2f} GB | {r['ram_avail_gb']:.2f} GB | "
-                  f"{r['load_1m']:.2f} | {r['elapsed_s']:.1f}s |")
+            print(
+                f"| {r['n_threads']} | {r['toks_s']:.2f} | {r['cpu_mean_pct']:.1f} | "
+                f"{r['ram_used_gb']:.2f} GB | {r['ram_avail_gb']:.2f} GB | "
+                f"{r['load_1m']:.2f} | {r['elapsed_s']:.1f}s |"
+            )
 
 
 # ── Top-process snapshot for report ──────────────────────────────────────────
@@ -232,8 +247,17 @@ def print_top_procs(results):
 
 # ── CSV export ────────────────────────────────────────────────────────────────
 def save_csv(all_results, path):
-    fields = ["suite", "n_threads", "toks_s", "cpu_mean_pct",
-              "ram_used_gb", "ram_peak_gb", "ram_avail_gb", "load_1m", "elapsed_s"]
+    fields = [
+        "suite",
+        "n_threads",
+        "toks_s",
+        "cpu_mean_pct",
+        "ram_used_gb",
+        "ram_peak_gb",
+        "ram_avail_gb",
+        "load_1m",
+        "elapsed_s",
+    ]
     with open(path, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
         w.writeheader()
@@ -249,20 +273,33 @@ def save_csv(all_results, path):
 def main():
     global COOLDOWN_S
     ap = argparse.ArgumentParser()
-    ap.add_argument("--threads", type=int, nargs="+",
-                    default=list(range(1, 9)),
-                    help="Thread counts to test (default: 1-8)")
-    ap.add_argument("--bg-load", action="store_true",
-                    help="Add synthetic background CPU load (2 workers)")
-    ap.add_argument("--bg-workers", type=int, default=2,
-                    help="Number of background CPU burner workers (default: 2)")
+    ap.add_argument(
+        "--threads",
+        type=int,
+        nargs="+",
+        default=list(range(1, 9)),
+        help="Thread counts to test (default: 1-8)",
+    )
+    ap.add_argument(
+        "--bg-load", action="store_true", help="Add synthetic background CPU load (2 workers)"
+    )
+    ap.add_argument(
+        "--bg-workers",
+        type=int,
+        default=2,
+        help="Number of background CPU burner workers (default: 2)",
+    )
     ap.add_argument("--out-csv", default=None, help="Save results to CSV file")
-    ap.add_argument("--simd", default=None,
-                    help="SIMD override (avx2, avx512f, vnni, scalar)")
-    ap.add_argument("--classifier", default=None,
-                    help="Classifier override (bf16, int8, int4, auto-fast)")
-    ap.add_argument("--cooldown", type=int, default=COOLDOWN_S,
-                    help=f"Cooldown seconds between runs (default: {COOLDOWN_S})")
+    ap.add_argument("--simd", default=None, help="SIMD override (avx2, avx512f, vnni, scalar)")
+    ap.add_argument(
+        "--classifier", default=None, help="Classifier override (bf16, int8, int4, auto-fast)"
+    )
+    ap.add_argument(
+        "--cooldown",
+        type=int,
+        default=COOLDOWN_S,
+        help=f"Cooldown seconds between runs (default: {COOLDOWN_S})",
+    )
     args = ap.parse_args()
 
     COOLDOWN_S = args.cooldown
@@ -306,7 +343,9 @@ def main():
         bg_procs = start_bg_load(args.bg_workers)
         time.sleep(2)  # let them stabilize
 
-        r_load = run_suite(args.threads, f"With {args.bg_workers} background CPU burner(s)", extra_flags)
+        r_load = run_suite(
+            args.threads, f"With {args.bg_workers} background CPU burner(s)", extra_flags
+        )
         all_results.append((f"bg_{args.bg_workers}workers", r_load))
         print_table(r_load, f"Background Load ({args.bg_workers} workers) — tok/s vs Thread Count")
         print_top_procs(r_load)
@@ -315,9 +354,9 @@ def main():
         print("[Background load stopped]")
 
     # ── Summary ───────────────────────────────────────────────────────────────
-    print("\n\n" + "="*60)
+    print("\n\n" + "=" * 60)
     print("SUMMARY")
-    print("="*60)
+    print("=" * 60)
     for suite_name, results in all_results:
         valid = [r for r in results if "error" not in r and r["toks_s"] > 0]
         if valid:

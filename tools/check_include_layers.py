@@ -12,6 +12,7 @@ and says when baseline edges have disappeared. Fix cycles, then run with
 
 usage: tools/check_include_layers.py [--update] [--self-test] [--graph]
 """
+
 import pathlib
 import re
 import sys
@@ -52,17 +53,22 @@ def sccs(edges):
     index, low, on, stack, out, n = {}, {}, set(), [], [], [0]
 
     def visit(v):
-        index[v] = low[v] = n[0]; n[0] += 1
-        stack.append(v); on.add(v)
+        index[v] = low[v] = n[0]
+        n[0] += 1
+        stack.append(v)
+        on.add(v)
         for w in sorted(edges.get(v, ())):
             if w not in index:
-                visit(w); low[v] = min(low[v], low[w])
+                visit(w)
+                low[v] = min(low[v], low[w])
             elif w in on:
                 low[v] = min(low[v], index[w])
         if low[v] == index[v]:
             comp = []
             while True:
-                w = stack.pop(); on.discard(w); comp.append(w)
+                w = stack.pop()
+                on.discard(w)
+                comp.append(w)
                 if w == v:
                     break
             if len(comp) > 1:
@@ -89,12 +95,16 @@ def cycle_edges(edges, comps):
 def read_baseline():
     if not BASELINE.exists():
         return set()
-    return {l.strip() for l in BASELINE.read_text().splitlines() if l.strip() and not l.startswith("#")}
+    return {
+        l.strip() for l in BASELINE.read_text().splitlines() if l.strip() and not l.startswith("#")
+    }
 
 
 def compare(current, baseline):
     """current/baseline: sets of 'A->B'. Return (new_problems, shrink_notes)."""
-    problems = [f"new include edge inside a dependency cycle: {e}" for e in sorted(current - baseline)]
+    problems = [
+        f"new include edge inside a dependency cycle: {e}" for e in sorted(current - baseline)
+    ]
     notes = [f"baseline edge is gone (run --update): {e}" for e in sorted(baseline - current)]
     return problems, notes
 
@@ -106,9 +116,12 @@ def self_test():
         nonlocal ok
         print(("ok   " if cond else "FAIL ") + msg)
         ok = ok and cond
+
     g = {"a": {"b"}, "b": {"c"}, "c": {"a"}, "d": {"a"}, "e": set()}
     comps = sccs(g)
-    check(comps == [frozenset("abc")], "a 3-module cycle is found, a tail into it is not part of it")
+    check(
+        comps == [frozenset("abc")], "a 3-module cycle is found, a tail into it is not part of it"
+    )
     ce = cycle_edges(g, comps)
     check(ce == {"a->b", "b->c", "c->a"}, "only edges inside the cycle are reported (d->a is not)")
     check(sccs({"a": {"b"}, "b": set()}) == [], "an acyclic graph has no cycle")
@@ -137,8 +150,10 @@ def main(argv):
         for m in sorted(edges):
             print(f"{m}: {', '.join(sorted(edges[m]))}")
     if "--update" in argv:
-        BASELINE.write_text("# Module include edges that lie inside a dependency cycle; this list may only shrink\n"
-                            "# (tools/check_include_layers.py).\n" + "".join(e + "\n" for e in sorted(cur)))
+        BASELINE.write_text(
+            "# Module include edges that lie inside a dependency cycle; this list may only shrink\n"
+            "# (tools/check_include_layers.py).\n" + "".join(e + "\n" for e in sorted(cur))
+        )
         print(f"baseline written: {len(cur)} cycle edge(s) in {len(comps)} cycle(s)")
         return 0
     problems, notes = compare(cur, read_baseline())
@@ -147,7 +162,9 @@ def main(argv):
     for p in problems:
         print("ERROR:", p)
     if problems:
-        print("Break the cycle (move the shared type down to a leaf header, or forward-declare it).")
+        print(
+            "Break the cycle (move the shared type down to a leaf header, or forward-declare it)."
+        )
         return 1
     print(f"include cycles ok ({len(cur)} existing cycle edges, none new)")
     return 0

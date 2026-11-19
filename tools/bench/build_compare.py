@@ -27,6 +27,7 @@ Examples
   python3 tools/bench/build_compare.py --build native,portable --rounds 5 --label native-vs-portable
   python3 tools/bench/build_compare.py --binaries before=./pz-old,after=./pz --models bitnet-2b --calibration off
 """
+
 import argparse
 import pathlib
 import shutil
@@ -54,7 +55,12 @@ def build_binaries(run, kinds, cc):
     for kind in kinds:
         target = {"native": "release", "portable": "dist"}[kind]
         run.log(f"building {kind} (make {target} CC={cc}) ...")
-        r = subprocess.run(["make", target, f"CC={cc}", f"-j{bl.os.cpu_count() or 2}"], cwd=bl.ROOT, capture_output=True, text=True)
+        r = subprocess.run(
+            ["make", target, f"CC={cc}", f"-j{bl.os.cpu_count() or 2}"],
+            cwd=bl.ROOT,
+            capture_output=True,
+            text=True,
+        )
         run.write(f"build_{kind}.log", r.stdout + r.stderr)
         if r.returncode != 0:
             raise SystemExit(f"make {target} failed; see {run.rel(run.path / f'build_{kind}.log')}")
@@ -69,7 +75,11 @@ def build_binaries(run, kinds, cc):
 def step_table(runs_text, reference):
     steps = {lbl: bl.parse_step_timing(t) for lbl, t in runs_text.items()}
     names = [n for n in steps[reference]]
-    header = ["step"] + [f"{lbl} (ms)" for lbl in steps] + [f"{lbl} / {reference}" for lbl in steps if lbl != reference]
+    header = (
+        ["step"]
+        + [f"{lbl} (ms)" for lbl in steps]
+        + [f"{lbl} / {reference}" for lbl in steps if lbl != reference]
+    )
     rows = []
     for n in names:
         row = [n] + [f"{steps[l].get(n, 0):.0f}" for l in steps]
@@ -82,7 +92,9 @@ def step_table(runs_text, reference):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     bl.add_common_args(ap, "build_compare")
     ap.add_argument("--binaries", default="")
     ap.add_argument("--build", default="")
@@ -107,20 +119,35 @@ def main():
         ap.error("give --binaries label=path,... and/or --build native,portable")
     threads = bl.parse_threads(a.threads)
     allm = bl.load_models()
-    wanted = ([k for k in ("bitnet-2b", "smollm2-135m") if bl.model_path(k, a.models_dir)] if a.models == "auto"
-              else bl.parse_list(a.models, list(allm), "model"))
-    models = [(k, allm[k], bl.model_path(k, a.models_dir)) for k in wanted if bl.model_path(k, a.models_dir)]
+    wanted = (
+        [k for k in ("bitnet-2b", "smollm2-135m") if bl.model_path(k, a.models_dir)]
+        if a.models == "auto"
+        else bl.parse_list(a.models, list(allm), "model")
+    )
+    models = [
+        (k, allm[k], bl.model_path(k, a.models_dir))
+        for k in wanted
+        if bl.model_path(k, a.models_dir)
+    ]
     run = bl.RunDir("build_compare", a.out, a.label)
     labels = list(bins) + [k for k in kinds if k not in bins]
     ref = a.reference or labels[0]
-    print(f"PLAN build_compare -> {run.rel()}\n  builds/binaries: {', '.join(labels)}  (reference {ref})")
-    print(f"  models: {', '.join(k for k, _, _ in models) or '(none found in ' + a.models_dir + ')'}; threads {threads}; "
-          f"{a.rounds} rounds x {a.tokens} tokens; order {a.order}; calibration {a.calibration}")
-    print(f"  {len(labels) * len(models) * len(threads) * a.rounds} measured runs; step timing {'on' if a.step_timing else 'off'}; screenshots {a.screenshots}")
+    print(
+        f"PLAN build_compare -> {run.rel()}\n  builds/binaries: {', '.join(labels)}  (reference {ref})"
+    )
+    print(
+        f"  models: {', '.join(k for k, _, _ in models) or '(none found in ' + a.models_dir + ')'}; threads {threads}; "
+        f"{a.rounds} rounds x {a.tokens} tokens; order {a.order}; calibration {a.calibration}"
+    )
+    print(
+        f"  {len(labels) * len(models) * len(threads) * a.rounds} measured runs; step timing {'on' if a.step_timing else 'off'}; screenshots {a.screenshots}"
+    )
     if a.dry_run:
         return 0
     if not models:
-        raise SystemExit("no models on disk: tools/bench/setup_engines.py --models smollm2-135m,bitnet-2b")
+        raise SystemExit(
+            "no models on disk: tools/bench/setup_engines.py --models smollm2-135m,bitnet-2b"
+        )
     run.create()
     if kinds:
         bins.update(build_binaries(run, kinds, a.cc))
@@ -133,21 +160,42 @@ def main():
     small = hp.find_small_model(a.models_dir) or models[0][2]
     run.log("\n== hardware profile (and first-run calibration) per binary ==")
     for l, p in bins.items():
-        hp.capture_profile(run, p, small, envs[l], a.calibration, rows=a.shot_rows, name=f"hardware_profile_{l}")
+        hp.capture_profile(
+            run, p, small, envs[l], a.calibration, rows=a.shot_rows, name=f"hardware_profile_{l}"
+        )
 
     variants = [bl.pz_variant(l, p, bl.pz_flags(a.calibration), envs[l]) for l, p in bins.items()]
     gcfg = gate.config_from_args(a)
     dirty = gate.require_clean(bins, gcfg, a.allow_dirty_binary, run.log)
-    gcfg["reference_override"] = a.gate_reference or ref          # every binary is judged against the reference binary
+    gcfg["reference_override"] = (
+        a.gate_reference or ref
+    )  # every binary is judged against the reference binary
     g = gate.Gate(gcfg, run, a.models_dir, resume=a.resume or a.gate_only)
     g.check(variants, models, threads)
     if a.gate_only:
         return gate.finish_standalone(run, g)
-    rows = bl.run_matrix(run, variants, models, threads, a.rounds, a.tokens, a.cooldown, a.order, True, a.resume, gate_of=g.verdict_of, skip_of=lambda k, v: not g.timed(k, v))
+    rows = bl.run_matrix(
+        run,
+        variants,
+        models,
+        threads,
+        a.rounds,
+        a.tokens,
+        a.cooldown,
+        a.order,
+        True,
+        a.resume,
+        gate_of=g.verdict_of,
+        skip_of=lambda k, v: not g.timed(k, v),
+    )
     summary = bl.summarize(rows, ref)
-    md = [f"# Build comparison ({', '.join(labels)}; reference {ref})", "",
-          f"UTC start: {bl.iso_utc(run.t0)}  |  host: {bl.cpu_model()}  |  pz commit: {bl.git_info()['commit']}", "",
-          bl.summary_md(summary, with_ratio=True, hide_invalid=g.cfg["mode"] == "strict")]
+    md = [
+        f"# Build comparison ({', '.join(labels)}; reference {ref})",
+        "",
+        f"UTC start: {bl.iso_utc(run.t0)}  |  host: {bl.cpu_model()}  |  pz commit: {bl.git_info()['commit']}",
+        "",
+        bl.summary_md(summary, with_ratio=True, hide_invalid=g.cfg["mode"] == "strict"),
+    ]
     if g.results:
         md += ["", gate.render_md(g.results, g.cfg)]
 
@@ -160,35 +208,89 @@ def main():
             e["TN_STEP_TIMING"] = "1"
             r = bl.run_cmd(bl.pz_cmd(p, path, 64, threads[-1], bl.pz_flags(a.calibration), True), e)
             texts[l] = r["text"]
-            run.write(f"steps_{key}_{l}.txt", "\n".join(x for x in r["text"].splitlines() if x.startswith("step=")) + "\n")
+            run.write(
+                f"steps_{key}_{l}.txt",
+                "\n".join(x for x in r["text"].splitlines() if x.startswith("step=")) + "\n",
+            )
         md += ["", f"## Per-step time, {key} (64 tokens, total ms)", "", step_table(texts, ref)]
 
-    isa_labels = ([l for l in bins if "portable" in l or "dist" in l] if a.check_isa == "auto"
-                  else [] if a.check_isa == "none" else bl.parse_list(a.check_isa, list(bins), "binary"))
+    isa_labels = (
+        [l for l in bins if "portable" in l or "dist" in l]
+        if a.check_isa == "auto"
+        else []
+        if a.check_isa == "none"
+        else bl.parse_list(a.check_isa, list(bins), "binary")
+    )
     isa_results = {}
     for l in isa_labels:
-        r = subprocess.run(["sh", str(bl.ROOT / "tools" / "check_dist_isa.sh"), bins[l]], capture_output=True, text=True)
+        r = subprocess.run(
+            ["sh", str(bl.ROOT / "tools" / "check_dist_isa.sh"), bins[l]],
+            capture_output=True,
+            text=True,
+        )
         run.write(f"check_dist_isa_{l}.txt", r.stdout + r.stderr)
         isa_results[l] = r.returncode
         run.log(f"check_dist_isa {l}: {'ok' if r.returncode == 0 else 'FAILED'}")
     if isa_results:
-        md += ["", "## check_dist_isa.sh", "", bl.md_table(["binary", "result"], [[l, "ok" if c == 0 else "FAILED"] for l, c in isa_results.items()])]
+        md += [
+            "",
+            "## check_dist_isa.sh",
+            "",
+            bl.md_table(
+                ["binary", "result"],
+                [[l, "ok" if c == 0 else "FAILED"] for l, c in isa_results.items()],
+            ),
+        ]
 
     shots = []
     if a.screenshots != "none":
         run.log("\n== screenshots (live terminal) ==")
-        shots = bl.take_screenshots(run, variants, models, max(threads), 32, a.screenshots, a.shot_rows,
-                                    note_of=lambda k, v: gate.caption_note(g.results.get(f"{k}/{v}")),
-                                         skip_of=lambda k, v: not g.timed(k, v))
-        md += ["", "## Screenshots", "", bl.md_table(["model", "binary", "threads", "screenshot"],
-               [[s["model"], s["variant"], s["threads"], s["screenshot"]] for s in shots])]
+        shots = bl.take_screenshots(
+            run,
+            variants,
+            models,
+            max(threads),
+            32,
+            a.screenshots,
+            a.shot_rows,
+            note_of=lambda k, v: gate.caption_note(g.results.get(f"{k}/{v}")),
+            skip_of=lambda k, v: not g.timed(k, v),
+        )
+        md += [
+            "",
+            "## Screenshots",
+            "",
+            bl.md_table(
+                ["model", "binary", "threads", "screenshot"],
+                [[s["model"], s["variant"], s["threads"], s["screenshot"]] for s in shots],
+            ),
+        ]
     run.write("summary.md", "\n".join(md) + "\n")
     print("\n" + bl.summary_md(summary, with_ratio=True, hide_invalid=g.cfg["mode"] == "strict"))
-    bl.finish(run, {"kind": "build_compare", "gate": g.summary_for_meta(), "dirty_binaries": dirty, "binaries": {l: bl.bin_info(p) for l, p in bins.items()}, "reference": ref,
-                    "models": [k for k, _, _ in models], "threads": threads, "rounds": a.rounds, "tokens": a.tokens,
-                    "order": a.order, "calibration": a.calibration, "summary": summary, "check_isa": isa_results,
-                    "screenshots": shots})
-    return 1 if (any(c != 0 for c in isa_results.values()) or gate.exit_status(g.results, g.cfg)) else 0
+    bl.finish(
+        run,
+        {
+            "kind": "build_compare",
+            "gate": g.summary_for_meta(),
+            "dirty_binaries": dirty,
+            "binaries": {l: bl.bin_info(p) for l, p in bins.items()},
+            "reference": ref,
+            "models": [k for k, _, _ in models],
+            "threads": threads,
+            "rounds": a.rounds,
+            "tokens": a.tokens,
+            "order": a.order,
+            "calibration": a.calibration,
+            "summary": summary,
+            "check_isa": isa_results,
+            "screenshots": shots,
+        },
+    )
+    return (
+        1
+        if (any(c != 0 for c in isa_results.values()) or gate.exit_status(g.results, g.cfg))
+        else 0
+    )
 
 
 if __name__ == "__main__":

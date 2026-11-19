@@ -22,6 +22,7 @@ Examples:
   python3 tools/bench/setup_engines.py --engines llamacpp --models smollm2-135m --dry-run
   python3 tools/bench/setup_engines.py --engines all --models all --ref latest --engine-fetch always
 """
+
 import argparse
 import hashlib
 import json
@@ -58,14 +59,28 @@ def _build(key, e, d, jobs, dry, log, targets=None):
     if targets is None:
         sh(e["configure"], cwd=d, env=env, log=log, dry=dry)
         targets = e["targets"]
-    sh(["cmake", "--build", "build", "-j", str(jobs)] + sum([["--target", t] for t in targets], []), cwd=d, env=env, log=log, dry=dry)
+    sh(
+        ["cmake", "--build", "build", "-j", str(jobs)]
+        + sum([["--target", t] for t in targets], []),
+        cwd=d,
+        env=env,
+        log=log,
+        dry=dry,
+    )
 
 
 def _record(key, e, d, engine_dir, want, dry):
     if not dry:
-        info = {"engine": key, "commit": engine_commit(key, engine_dir), "ref": want, "built": bl.iso_utc(),
-                "configure": e["configure"], "targets": e["targets"], "recorded_build": e.get("recorded_build", ""),
-                "patches": [x["path"] for x in e.get("patches", [])]}
+        info = {
+            "engine": key,
+            "commit": engine_commit(key, engine_dir),
+            "ref": want,
+            "built": bl.iso_utc(),
+            "configure": e["configure"],
+            "targets": e["targets"],
+            "recorded_build": e.get("recorded_build", ""),
+            "patches": [x["path"] for x in e.get("patches", [])],
+        }
         (d / ".pzbench_build.json").write_text(json.dumps(info, indent=2) + "\n")
 
 
@@ -75,7 +90,13 @@ def _apply_patches(e, d, log, dry):
         target = d / pt.get("apply_in", ".")
         patch = bl.ROOT / pt["path"]
         base = ["patch", f"-p{pt.get('strip', 1)}", "-i", str(patch)]
-        if subprocess.run(base + ["--dry-run", "-R", "-s"], cwd=target, capture_output=True).returncode == 0 and not dry:
+        if (
+            subprocess.run(
+                base + ["--dry-run", "-R", "-s"], cwd=target, capture_output=True
+            ).returncode
+            == 0
+            and not dry
+        ):
             log(f"  patch already applied: {pt['path']}")
             continue
         log(f"  applying {pt['path']}: {pt.get('why', '')}")
@@ -106,7 +127,9 @@ def ensure_engine(key, engine_dir, fetch="missing", ref="pinned", jobs=0, dry=Fa
         log(f"{e['label']}: missing at {binary} and --engine-fetch never")
         return None
     want = e["pin"] if ref == "pinned" else ref
-    log(f"{e['label']}: {'rebuilding' if binary.exists() else 'building'} at {want if ref != 'latest' else 'upstream HEAD'}")
+    log(
+        f"{e['label']}: {'rebuilding' if binary.exists() else 'building'} at {want if ref != 'latest' else 'upstream HEAD'}"
+    )
     if d.exists() and fetch == "always":
         log(f"  removing {d}")
         if not dry:
@@ -121,7 +144,9 @@ def ensure_engine(key, engine_dir, fetch="missing", ref="pinned", jobs=0, dry=Fa
         if not d.exists():
             log(f"  copying the source tree of {e['variant_of']} (without build directories)")
             if not dry:
-                shutil.copytree(src, d, symlinks=True, ignore=shutil.ignore_patterns("build", "build_*"))
+                shutil.copytree(
+                    src, d, symlinks=True, ignore=shutil.ignore_patterns("build", "build_*")
+                )
         _apply_patches(e, d, log, dry)
     else:
         if not d.exists():
@@ -131,7 +156,12 @@ def ensure_engine(key, engine_dir, fetch="missing", ref="pinned", jobs=0, dry=Fa
         else:
             sh(["git", "pull", "--ff-only"], cwd=d, log=log, dry=dry, check=False)
         if e.get("recursive"):
-            sh(["git", "submodule", "update", "--init", "--recursive", "--depth", "1"], cwd=d, log=log, dry=dry)
+            sh(
+                ["git", "submodule", "update", "--init", "--recursive", "--depth", "1"],
+                cwd=d,
+                log=log,
+                dry=dry,
+            )
     _build(key, e, d, jobs, dry, log)
     _record(key, e, d, engine_dir, want, dry)
     if not dry and not binary.exists():
@@ -150,7 +180,9 @@ def sha256_file(p, chunk=1 << 22):
     return h.hexdigest()
 
 
-def ensure_model(key, models_dir="models", fetch="missing", engine_dir=None, verify=False, dry=False, log=print):
+def ensure_model(
+    key, models_dir="models", fetch="missing", engine_dir=None, verify=False, dry=False, log=print
+):
     """Returns the model path (or None). Derived models are produced from their source with ik llama-quantize."""
     m = bl.load_models()[key]
     p = pathlib.Path(models_dir) / m["file"]
@@ -168,7 +200,14 @@ def ensure_model(key, models_dir="models", fetch="missing", engine_dir=None, ver
     if not dry:
         pathlib.Path(models_dir).mkdir(parents=True, exist_ok=True)
     if "derived_from" in m:
-        src = ensure_model(m["derived_from"], models_dir, fetch if fetch != "always" else "missing", engine_dir, dry=dry, log=log)
+        src = ensure_model(
+            m["derived_from"],
+            models_dir,
+            fetch if fetch != "always" else "missing",
+            engine_dir,
+            dry=dry,
+            log=log,
+        )
         q = engine_dir and bl.engine_binary("ik", engine_dir)
         if not q:
             log(f"{key}: needs ik_llama.cpp built first (--engines ik)")
@@ -182,26 +221,38 @@ def ensure_model(key, models_dir="models", fetch="missing", engine_dir=None, ver
     if not dry:
         if m.get("size") and p.stat().st_size != m["size"]:
             raise SystemExit(f"{key}: downloaded {p.stat().st_size} bytes, expected {m['size']}")
-        log(f"{key}: sha256 {sha256_file(p)}  (record it in tools/bench/models.json to verify later runs)")
+        log(
+            f"{key}: sha256 {sha256_file(p)}  (record it in tools/bench/models.json to verify later runs)"
+        )
     return p
 
 
 def smoke_engines(a, engines):
     """The gate's smoke check at install time, so a broken engine build is rejected before anyone times it."""
     import gate
+
     cfg = gate.load_config()
     bad = 0
     for k in engines:
         binary = bl.engine_binary(k, a.engine_dir)
-        models = sorted(((m, i, bl.model_path(m, a.models_dir)) for m, i in bl.load_models().items()
-                         if k in i["engines"] and bl.model_path(m, a.models_dir)), key=lambda x: x[2].stat().st_size)
+        models = sorted(
+            (
+                (m, i, bl.model_path(m, a.models_dir))
+                for m, i in bl.load_models().items()
+                if k in i["engines"] and bl.model_path(m, a.models_dir)
+            ),
+            key=lambda x: x[2].stat().st_size,
+        )
         if not binary or not models:
             print(f"smoke {k}: skipped (no binary or no model it supports on disk)")
             continue
         r = gate.run_smoke(bl.ref_variant(k, k, binary), *models[0], cfg, a.jobs or 4)
         ok = bool(r and r["smoke_ok"])
         bad += not ok
-        print(f"smoke {k} on {models[0][0]}: {'ok' if ok else 'WRONG ANSWER'}" + ("" if ok else f"\n    {r['smoke_tail'] if r else ''}"))
+        print(
+            f"smoke {k} on {models[0][0]}: {'ok' if ok else 'WRONG ANSWER'}"
+            + ("" if ok else f"\n    {r['smoke_tail'] if r else ''}")
+        )
     return 1 if bad else 0
 
 
@@ -209,17 +260,37 @@ def status_table(engine_dir, models_dir):
     rows = []
     for k, e in bl.load_engines().items():
         b = bl.engine_binary(k, engine_dir)
-        rows.append(["engine", k, "present" if b else "missing", engine_commit(k, engine_dir) or f"pin {e['pin']}", str(b or "")])
+        rows.append(
+            [
+                "engine",
+                k,
+                "present" if b else "missing",
+                engine_commit(k, engine_dir) or f"pin {e['pin']}",
+                str(b or ""),
+            ]
+        )
     for k, m in bl.load_models().items():
         p = bl.model_path(k, models_dir)
-        rows.append(["model", k, "present" if p else "missing", f"{(p.stat().st_size if p else m.get('size', 0)) / 1e6:.0f} MB", str(p or "")])
+        rows.append(
+            [
+                "model",
+                k,
+                "present" if p else "missing",
+                f"{(p.stat().st_size if p else m.get('size', 0)) / 1e6:.0f} MB",
+                str(p or ""),
+            ]
+        )
     return bl.md_table(["kind", "name", "state", "commit / size", "path"], rows)
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     eng, mod = list(bl.load_engines()), list(bl.load_models())
-    ap.add_argument("--engines", default="none", help=f"{','.join(eng)} | all | none (default none)")
+    ap.add_argument(
+        "--engines", default="none", help=f"{','.join(eng)} | all | none (default none)"
+    )
     ap.add_argument("--models", default="none", help=f"{','.join(mod)} | all | none (default none)")
     ap.add_argument("--engine-fetch", choices=["missing", "always", "never"], default="missing")
     ap.add_argument("--model-fetch", choices=["missing", "always", "never"], default="missing")
@@ -228,9 +299,12 @@ def main():
     ap.add_argument("--models-dir", default="models")
     ap.add_argument("--jobs", type=int, default=0)
     ap.add_argument("--verify", action="store_true")
-    ap.add_argument("--smoke", action="store_true",
-                    help="after setup, run the correctness gate's smoke check (a factual prompt) for each selected engine "
-                         "on the smallest present model it supports; exit 1 if an engine answers wrongly")
+    ap.add_argument(
+        "--smoke",
+        action="store_true",
+        help="after setup, run the correctness gate's smoke check (a factual prompt) for each selected engine "
+        "on the smallest present model it supports; exit 1 if an engine answers wrongly",
+    )
     ap.add_argument("--list", action="store_true", help="show what is present and exit")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()

@@ -25,6 +25,7 @@ project dim -> kv_dim, not dim -> dim, a real bug found and fixed during
 Phase 19 development against an actual downloaded SmolLM2 LoRA adapter
 (see docs/ai/mistakes.md).
 """
+
 import os
 import re
 import json
@@ -40,12 +41,12 @@ LORA_BIN_VERSION = 1
 # Order MUST match include/core/lora.h's LoRaTargetBit enum exactly — the
 # target_mask bit position and the on-disk block order both key off this.
 TARGETS = [
-    ("q_proj",    0),  # LORA_TARGET_Q
-    ("k_proj",    1),  # LORA_TARGET_K
-    ("v_proj",    2),  # LORA_TARGET_V
-    ("o_proj",    3),  # LORA_TARGET_O
+    ("q_proj", 0),  # LORA_TARGET_Q
+    ("k_proj", 1),  # LORA_TARGET_K
+    ("v_proj", 2),  # LORA_TARGET_V
+    ("o_proj", 3),  # LORA_TARGET_O
     ("gate_proj", 4),  # LORA_TARGET_GATE
-    ("up_proj",   5),  # LORA_TARGET_UP
+    ("up_proj", 5),  # LORA_TARGET_UP
     ("down_proj", 6),  # LORA_TARGET_DOWN
 ]
 
@@ -92,34 +93,63 @@ def main():
     parser = ArgumentParser(
         description="Convert a HuggingFace PEFT LoRA adapter to project-zero's .lora.bin format"
     )
-    parser.add_argument("--adapter", type=str, required=True,
-                         help="HF PEFT adapter directory (adapter_config.json + adapter_model.safetensors)")
+    parser.add_argument(
+        "--adapter",
+        type=str,
+        required=True,
+        help="HF PEFT adapter directory (adapter_config.json + adapter_model.safetensors)",
+    )
     parser.add_argument("--output", type=str, required=True, help="Output .lora.bin path")
-    parser.add_argument("--dim", type=int, required=True,
-                         help="Base model's attention dim (Config.dim — see the base GGUF's startup banner)")
-    parser.add_argument("--hidden-dim", type=int, required=True,
-                         help="Base model's FFN hidden_dim (Config.hidden_dim)")
-    parser.add_argument("--n-layers", type=int, required=True,
-                         help="Base model's layer count (Config.n_layers)")
-    parser.add_argument("--q-dim", type=int, default=None,
-                         help="Base model's Q width (n_heads * head_dim). Differs from --dim on "
-                              "Qwen3 (head_dim from attention.key_length); defaults to --dim.")
-    parser.add_argument("--kv-dim", type=int, default=None,
-                         help="Base model's GQA kv_dim (n_kv_heads * head_dim — printed as "
-                              "'kv_dim' in the base GGUF's startup banner). Required when the "
-                              "adapter targets k_proj/v_proj on a GQA model (n_kv_heads < "
-                              "n_heads) — K/V project to kv_dim, not dim, and a wrong value "
-                              "here corrupts every K/V-targeting LoRA correction silently. "
-                              "Defaults to --dim (correct only for a non-GQA/MHA base model).")
+    parser.add_argument(
+        "--dim",
+        type=int,
+        required=True,
+        help="Base model's attention dim (Config.dim — see the base GGUF's startup banner)",
+    )
+    parser.add_argument(
+        "--hidden-dim",
+        type=int,
+        required=True,
+        help="Base model's FFN hidden_dim (Config.hidden_dim)",
+    )
+    parser.add_argument(
+        "--n-layers", type=int, required=True, help="Base model's layer count (Config.n_layers)"
+    )
+    parser.add_argument(
+        "--q-dim",
+        type=int,
+        default=None,
+        help="Base model's Q width (n_heads * head_dim). Differs from --dim on "
+        "Qwen3 (head_dim from attention.key_length); defaults to --dim.",
+    )
+    parser.add_argument(
+        "--kv-dim",
+        type=int,
+        default=None,
+        help="Base model's GQA kv_dim (n_kv_heads * head_dim — printed as "
+        "'kv_dim' in the base GGUF's startup banner). Required when the "
+        "adapter targets k_proj/v_proj on a GQA model (n_kv_heads < "
+        "n_heads) — K/V project to kv_dim, not dim, and a wrong value "
+        "here corrupts every K/V-targeting LoRA correction silently. "
+        "Defaults to --dim (correct only for a non-GQA/MHA base model).",
+    )
     args = parser.parse_args()
     kv_dim = args.kv_dim if args.kv_dim is not None else args.dim
     q_dim = args.q_dim if args.q_dim is not None else args.dim
-    if args.kv_dim is None and ({"k_proj", "v_proj"} & set(json.load(
-            open(os.path.join(args.adapter, "adapter_config.json"))).get("target_modules", []))):
-        print(f"warning: adapter targets k_proj/v_proj but --kv-dim was not given — "
-              f"defaulting to --kv-dim={args.dim} (only correct if the base model uses "
-              f"plain multi-head attention, i.e. n_kv_heads == n_heads). Pass --kv-dim "
-              f"explicitly for a GQA base model (check the GGUF's startup banner).")
+    if args.kv_dim is None and (
+        {"k_proj", "v_proj"}
+        & set(
+            json.load(open(os.path.join(args.adapter, "adapter_config.json"))).get(
+                "target_modules", []
+            )
+        )
+    ):
+        print(
+            f"warning: adapter targets k_proj/v_proj but --kv-dim was not given — "
+            f"defaulting to --kv-dim={args.dim} (only correct if the base model uses "
+            f"plain multi-head attention, i.e. n_kv_heads == n_heads). Pass --kv-dim "
+            f"explicitly for a GQA base model (check the GGUF's startup banner)."
+        )
 
     config_path = os.path.join(args.adapter, "adapter_config.json")
     with open(config_path) as fh:
@@ -131,14 +161,16 @@ def main():
 
     unsupported = hf_target_modules - {name for name, _ in TARGETS}
     if unsupported:
-        print(f"warning: adapter targets modules this converter/engine doesn't "
-              f"support (Phase 19 scope: generic dense/GQA attention+FFN only): "
-              f"{sorted(unsupported)} — skipping them")
+        print(
+            f"warning: adapter targets modules this converter/engine doesn't "
+            f"support (Phase 19 scope: generic dense/GQA attention+FFN only): "
+            f"{sorted(unsupported)} — skipping them"
+        )
 
     target_mask = 0
     for hf_name, bit in TARGETS:
         if hf_name in hf_target_modules:
-            target_mask |= (1 << bit)
+            target_mask |= 1 << bit
 
     if target_mask == 0:
         raise ValueError(
@@ -150,9 +182,11 @@ def main():
     weights_path = find_adapter_weights_file(args.adapter)
 
     print(f"adapter: {args.adapter}")
-    print(f"  rank={rank} alpha={alpha} scale={alpha/rank:.4f}")
+    print(f"  rank={rank} alpha={alpha} scale={alpha / rank:.4f}")
     print(f"  target_modules={sorted(hf_target_modules)} -> mask=0x{target_mask:02x}")
-    print(f"  base model shape: dim={args.dim} q_dim={q_dim} kv_dim={kv_dim} hidden_dim={args.hidden_dim} n_layers={args.n_layers}")
+    print(
+        f"  base model shape: dim={args.dim} q_dim={q_dim} kv_dim={kv_dim} hidden_dim={args.hidden_dim} n_layers={args.n_layers}"
+    )
 
     with safe_open(weights_path, framework="numpy", device="cpu") as st:
         keys = list(st.keys())

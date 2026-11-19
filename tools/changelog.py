@@ -16,6 +16,7 @@ notes: prints the body of that section (without its heading) plus a link to
 the full diff; exits 1 if the section is missing or empty, so a tag cannot be
 released without changelog notes.
 """
+
 import argparse
 import re
 import sys
@@ -42,8 +43,10 @@ def parse(text):
             else:
                 r = RELEASE_RE.match(line)
                 if not r:
-                    errors.append(f"line {n}: bad version heading {line!r} "
-                                  "(want '## [X.Y.Z] - YYYY-MM-DD[ [YANKED]]' or '## [Unreleased]')")
+                    errors.append(
+                        f"line {n}: bad version heading {line!r} "
+                        "(want '## [X.Y.Z] - YYYY-MM-DD[ [YANKED]]' or '## [Unreleased]')"
+                    )
                     cur = None
                     continue
                 cur = [r.group(1), r.group(5), n, []]
@@ -58,8 +61,9 @@ def parse(text):
                 if name in done:
                     errors.append(f"line {n}: subsection {name!r} repeated in {cur[0]}")
                 elif any(SECTIONS.index(d) > SECTIONS.index(name) for d in done if d in SECTIONS):
-                    errors.append(f"line {n}: subsection {name!r} out of order "
-                                  f"(order: {', '.join(SECTIONS)})")
+                    errors.append(
+                        f"line {n}: subsection {name!r} out of order (order: {', '.join(SECTIONS)})"
+                    )
         if cur is not None:
             cur[3].append(line)
     return entries, links, errors
@@ -133,8 +137,10 @@ def main(argv=None):
         return 1 if errs else 0
     out = notes(text, a.version)
     if out is None:
-        print(f"{a.file}: no non-empty section for {a.version!r} — add release notes first",
-              file=sys.stderr)
+        print(
+            f"{a.file}: no non-empty section for {a.version!r} — add release notes first",
+            file=sys.stderr,
+        )
         return 1
     sys.stdout.write(out)
     return 0

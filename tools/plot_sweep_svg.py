@@ -11,6 +11,7 @@ Usage:
 Best run per (suite, threads) from summary.csv; failed runs (exit != 0) are skipped.
 --png also rasterises with headless Chromium (PLAYWRIGHT_BROWSERS_PATH or --chromium).
 """
+
 import argparse
 import csv
 import glob
@@ -44,9 +45,13 @@ def nice_max(v):
 
 def marker(i, x, y, c):
     if i == 0:
-        return f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4.5" fill="{c}" stroke="{BG}" stroke-width="2"/>'
-    return (f'<rect x="{x - 4.5:.1f}" y="{y - 4.5:.1f}" width="9" height="9" rx="1.5" '
-            f'fill="{c}" stroke="{BG}" stroke-width="2"/>')
+        return (
+            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4.5" fill="{c}" stroke="{BG}" stroke-width="2"/>'
+        )
+    return (
+        f'<rect x="{x - 4.5:.1f}" y="{y - 4.5:.1f}" width="9" height="9" rx="1.5" '
+        f'fill="{c}" stroke="{BG}" stroke-width="2"/>'
+    )
 
 
 def render(panels, best, title, subtitle):
@@ -57,21 +62,26 @@ def render(panels, best, title, subtitle):
     for _, series in panels:
         names += [n for _, n in series if n not in names]
     colour = {n: COLORS[i % len(COLORS)] for i, n in enumerate(names)}
-    n_sub = len(subtitle.split(" | "))                       # every subtitle line pushes the panels down
-    wide = max(0, 7 * max(len(n) for n in names) - 130)       # long end labels get room instead of running into the next panel
+    n_sub = len(subtitle.split(" | "))  # every subtitle line pushes the panels down
+    wide = max(
+        0, 7 * max(len(n) for n in names) - 130
+    )  # long end labels get room instead of running into the next panel
     pw, gap, left, top, ph = 360 + wide, 40, 50, 112 + 16 * max(0, n_sub - 2), 260
     w = left + len(panels) * pw + (len(panels) - 1) * gap + 30
     h = top + ph + 70
-    out = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}" '
-           'font-family="ui-monospace,Menlo,Consolas,monospace">',
-           f'<rect width="{w}" height="{h}" fill="{BG}"/>',
-           f'<text x="{left - 10}" y="34" font-size="18" fill="{INK}" font-weight="600">{title}</text>',
-           ]
-    for li, line in enumerate(subtitle.split(" | ")):   # " | " starts a new subtitle line
-        out.append(f'<text x="{left - 10}" y="{56 + 16 * li}" font-size="12" fill="{MUTED}">{line}</text>')
+    out = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}" '
+        'font-family="ui-monospace,Menlo,Consolas,monospace">',
+        f'<rect width="{w}" height="{h}" fill="{BG}"/>',
+        f'<text x="{left - 10}" y="34" font-size="18" fill="{INK}" font-weight="600">{title}</text>',
+    ]
+    for li, line in enumerate(subtitle.split(" | ")):  # " | " starts a new subtitle line
+        out.append(
+            f'<text x="{left - 10}" y="{56 + 16 * li}" font-size="12" fill="{MUTED}">{line}</text>'
+        )
     for pi, (label, series) in enumerate(panels):
         x0 = left + pi * (pw + gap)
-        x1 = x0 + pw - 150                                  # room for end labels
+        x1 = x0 + pw - 150  # room for end labels
         y0, y1 = top + ph, top
         threads = sorted({t for s, _ in series for t in best.get(s, {})})
         vmax = max((v for s, _ in series for v in best.get(s, {}).values()), default=1.0)
@@ -80,21 +90,32 @@ def render(panels, best, title, subtitle):
         k = 0.0
         while k <= ymax + 1e-9:
             y = y0 - (y0 - y1) * k / ymax
-            out.append(f'<line x1="{x0}" x2="{x1}" y1="{y:.1f}" y2="{y:.1f}" stroke="{GRID}" stroke-width="1"/>')
-            out.append(f'<text x="{x0 - 6}" y="{y + 4:.1f}" font-size="11" fill="{MUTED}" text-anchor="end">{k:g}</text>')
+            out.append(
+                f'<line x1="{x0}" x2="{x1}" y1="{y:.1f}" y2="{y:.1f}" stroke="{GRID}" stroke-width="1"/>'
+            )
+            out.append(
+                f'<text x="{x0 - 6}" y="{y + 4:.1f}" font-size="11" fill="{MUTED}" text-anchor="end">{k:g}</text>'
+            )
             k += step
         xs = {t: x0 + (x1 - x0) * i / max(1, len(threads) - 1) for i, t in enumerate(threads)}
         for t, x in xs.items():
-            out.append(f'<text x="{x:.1f}" y="{y0 + 18}" font-size="11" fill="{MUTED}" text-anchor="middle">t={t}</text>')
+            out.append(
+                f'<text x="{x:.1f}" y="{y0 + 18}" font-size="11" fill="{MUTED}" text-anchor="middle">t={t}</text>'
+            )
         ends = []
         for si, (suite, name) in enumerate(series):
-            pts = [(xs[t], y0 - (y0 - y1) * v / ymax) for t, v in sorted(best.get(suite, {}).items())]
+            pts = [
+                (xs[t], y0 - (y0 - y1) * v / ymax) for t, v in sorted(best.get(suite, {}).items())
+            ]
             if not pts:
                 continue
             c = colour[name]
             si = 0 if name.startswith("Project Zero") else 1
-            out.append('<polyline points="' + " ".join(f"{x:.1f},{y:.1f}" for x, y in pts) +
-                       f'" fill="none" stroke="{c}" stroke-width="2" stroke-linejoin="round"/>')
+            out.append(
+                '<polyline points="'
+                + " ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
+                + f'" fill="none" stroke="{c}" stroke-width="2" stroke-linejoin="round"/>'
+            )
             out += [marker(si, x, y, c) for x, y in pts]
             last_t = max(best[suite])
             ends.append([pts[-1][1], name, best[suite][last_t], c, si])
@@ -105,10 +126,16 @@ def render(panels, best, title, subtitle):
                 ends[i][0] = ends[i - 1][0] + 30
         for y, name, v, c, si in ends:
             out.append(marker(si, x1 + 14, y, c))
-            out.append(f'<text x="{x1 + 24}" y="{y + 3:.1f}" font-size="11" fill="{INK}">{name}</text>')
-            out.append(f'<text x="{x1 + 24}" y="{y + 16:.1f}" font-size="11" fill="{MUTED}">{v:.1f} tok/s</text>')
-    out.append(f'<text x="{left - 10}" y="{h - 16}" font-size="11" fill="{MUTED}">decode tokens/s, '
-               'best of N runs per thread count (higher is better)</text>')
+            out.append(
+                f'<text x="{x1 + 24}" y="{y + 3:.1f}" font-size="11" fill="{INK}">{name}</text>'
+            )
+            out.append(
+                f'<text x="{x1 + 24}" y="{y + 16:.1f}" font-size="11" fill="{MUTED}">{v:.1f} tok/s</text>'
+            )
+    out.append(
+        f'<text x="{left - 10}" y="{h - 16}" font-size="11" fill="{MUTED}">decode tokens/s, '
+        "best of N runs per thread count (higher is better)</text>"
+    )
     out.append("</svg>")
     return "\n".join(out)
 
@@ -118,7 +145,11 @@ def find_chromium(explicit):
         return explicit
     root = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "/opt/pw-browsers")
     hits = sorted(glob.glob(os.path.join(root, "chromium-*", "chrome-linux*", "chrome")))
-    if not hits and os.access(os.path.join(root, "chromium"), os.X_OK) and os.path.isfile(os.path.join(root, "chromium")):
+    if (
+        not hits
+        and os.access(os.path.join(root, "chromium"), os.X_OK)
+        and os.path.isfile(os.path.join(root, "chromium"))
+    ):
         hits = [os.path.join(root, "chromium")]
     return hits[-1] if hits else None
 
@@ -133,13 +164,26 @@ def svg_to_png(svg, png_path, chrome):
     with open(html, "w") as f:
         f.write('<html><body style="margin:0;background:%s">%s</body></html>' % (BG, svg))
     try:
-        subprocess.run([chrome, "--headless", "--no-sandbox", "--disable-gpu", "--hide-scrollbars",
-                        "--force-device-scale-factor=2", f"--window-size={w},{int(h) + 200}",
-                        f"--screenshot={os.path.abspath(png_path)}", "file://" + os.path.abspath(html)],
-                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            [
+                chrome,
+                "--headless",
+                "--no-sandbox",
+                "--disable-gpu",
+                "--hide-scrollbars",
+                "--force-device-scale-factor=2",
+                f"--window-size={w},{int(h) + 200}",
+                f"--screenshot={os.path.abspath(png_path)}",
+                "file://" + os.path.abspath(html),
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
     finally:
         os.remove(html)
     from PIL import Image
+
     im = Image.open(png_path)
     im.crop((0, 0, int(w) * 2, int(h) * 2)).save(png_path)
     return png_path
@@ -148,8 +192,12 @@ def svg_to_png(svg, png_path, chrome):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sweep", required=True)
-    ap.add_argument("--panel", action="append", required=True,
-                    help='"Label=suite:Engine name,suite:Engine name"')
+    ap.add_argument(
+        "--panel",
+        action="append",
+        required=True,
+        help='"Label=suite:Engine name,suite:Engine name"',
+    )
     ap.add_argument("--title", default="Decode throughput vs threads")
     ap.add_argument("--subtitle", default="")
     ap.add_argument("--out", default="throughput_vs_threads")

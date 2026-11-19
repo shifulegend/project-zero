@@ -175,16 +175,15 @@ from collections import defaultdict
 import numpy as np
 
 rows = defaultdict(list)
-with open('/tmp/engine_dump.csv') as f:
+with open("/tmp/engine_dump.csv") as f:
     for r in csv.DictReader(f):
-        rows[(int(r['layer']), r['step'])].append(
-            [float(r[f'v{i}']) for i in range(8)])
+        rows[(int(r["layer"]), r["step"])].append([float(r[f"v{i}"]) for i in range(8)])
 
 # Access: rows[(layer, step_name)][position_index]
 # Example: embedding at position 0
-embed_pos0 = rows[(-1, 'embed')][0]   # [v0..v7]
-attn_norm_pos0 = rows[(0, 'attn_norm')][0]
-k_rope_pos5 = rows[(0, 'k_pe')][5]
+embed_pos0 = rows[(-1, "embed")][0]  # [v0..v7]
+attn_norm_pos0 = rows[(0, "attn_norm")][0]
+k_rope_pos5 = rows[(0, "k_pe")][5]
 ```
 
 ### Step 4: Write a Python Reference for Each Step
@@ -200,7 +199,9 @@ def compare(step_name, py_vals, eng_vals, n_positions=14, threshold_rel=0.005):
             abs_diff = abs(py - eng)
             rel_diff = abs_diff / max(abs(py), 1e-6)
             if abs_diff > 1e-3 and rel_diff > threshold_rel:
-                print(f"  FAIL {step_name} pos={pos} idx={i}: py={py:.6f} eng={eng:.6f} rel={rel_diff:.1%}")
+                print(
+                    f"  FAIL {step_name} pos={pos} idx={i}: py={py:.6f} eng={eng:.6f} rel={rel_diff:.1%}"
+                )
                 issues += 1
     if issues == 0:
         print(f"  PASS {step_name}: all {n_positions} positions within {threshold_rel:.1%}")

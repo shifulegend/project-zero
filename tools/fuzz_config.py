@@ -3,6 +3,7 @@ import struct
 import os
 import subprocess
 
+
 def create_fuzzed_model(filename, vocab_size, dim):
     # Magic TNRY, Version 1
     magic = 0x594E5254
@@ -13,6 +14,7 @@ def create_fuzzed_model(filename, vocab_size, dim):
         f.write(header)
         f.write(b"\x00" * 4096)
 
+
 # Overridable via PZ_ENGINE_BIN for CI jobs that build via CMake (which
 # outputs build_dir/pz, same name as the Makefile build).
 ENGINE_BIN = os.environ.get("PZ_ENGINE_BIN", "./pz")
@@ -21,13 +23,15 @@ ENGINE_BIN = os.environ.get("PZ_ENGINE_BIN", "./pz")
 # host before it reads the model. A corrupt file must be rejected well within it.
 TIMEOUT_S = int(os.environ.get("PZ_FUZZ_TIMEOUT", "60"))
 
+
 def run_fuzz_test(vocab_size, dim):
     filename = f"fuzz_{vocab_size}_{dim}.bin"
     create_fuzzed_model(filename, vocab_size, dim)
     print(f"Testing vocab_size={vocab_size}, dim={dim}...")
     try:
-        result = subprocess.run([ENGINE_BIN, "--model", filename],
-                                capture_output=True, timeout=TIMEOUT_S)
+        result = subprocess.run(
+            [ENGINE_BIN, "--model", filename], capture_output=True, timeout=TIMEOUT_S
+        )
         print(f"  Return code: {result.returncode}")
         err = result.stderr + result.stdout
         # 2026-10-21: the contract is "reject corrupt input gracefully": a
@@ -64,8 +68,10 @@ def run_fuzz_test(vocab_size, dim):
         if os.path.exists(filename):
             os.remove(filename)
 
+
 if __name__ == "__main__":
     import sys
+
     # Test case 1: Large vocab and dim trigger overflow in weights_map
     # 1,000,000 * 4096 = 4,096,000,000 (> 2^31-1)
     ok = run_fuzz_test(1000000, 4096)

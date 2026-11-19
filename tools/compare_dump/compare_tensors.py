@@ -18,23 +18,36 @@ import csv
 import argparse
 
 # Tolerance for float comparison (relative error threshold)
-REL_TOL  = 1e-3   # 0.1% relative error
-ABS_TOL  = 1e-5   # absolute tolerance for near-zero values
+REL_TOL = 1e-3  # 0.1% relative error
+ABS_TOL = 1e-5  # absolute tolerance for near-zero values
 
 STEP_ORDER = [
-    "attn_norm", "kv_cmpr", "k_pe", "q", "q_pe", "kv",
-    "Qcur", "Kcur", "Vcur_cont",
-    "ffn_inp", "ffn_norm",
-    "ffn_moe_logits", "ffn_moe_probs", "ffn_moe_out",
-    "ffn_shexp", "ffn_out", "l_out",
-    "result_norm", "result_output",
+    "attn_norm",
+    "kv_cmpr",
+    "k_pe",
+    "q",
+    "q_pe",
+    "kv",
+    "Qcur",
+    "Kcur",
+    "Vcur_cont",
+    "ffn_inp",
+    "ffn_norm",
+    "ffn_moe_logits",
+    "ffn_moe_probs",
+    "ffn_moe_out",
+    "ffn_shexp",
+    "ffn_out",
+    "l_out",
+    "result_norm",
+    "result_output",
 ]
 
-ANSI_RED    = "\033[91m"
-ANSI_GREEN  = "\033[92m"
+ANSI_RED = "\033[91m"
+ANSI_GREEN = "\033[92m"
 ANSI_YELLOW = "\033[93m"
-ANSI_CYAN   = "\033[96m"
-ANSI_RESET  = "\033[0m"
+ANSI_CYAN = "\033[96m"
+ANSI_RESET = "\033[0m"
 
 
 def load_csv(path):
@@ -44,11 +57,11 @@ def load_csv(path):
         reader = csv.DictReader(f)
         for row in reader:
             layer = int(row["layer"])
-            step  = row["step"].strip()
-            n     = int(row["n_elem"])
-            vals  = [float(row[f"v{i}"]) for i in range(8)]
-            mean  = float(row["mean"])
-            abmx  = float(row["absmax"])
+            step = row["step"].strip()
+            n = int(row["n_elem"])
+            vals = [float(row[f"v{i}"]) for i in range(8)]
+            mean = float(row["mean"])
+            abmx = float(row["absmax"])
             key = (layer, step)
             # Keep first occurrence (first token position)
             if key not in rows:
@@ -69,10 +82,10 @@ def check_match(a, b, label):
         if re > REL_TOL and abs(a["vals"][i] - b["vals"][i]) > ABS_TOL:
             errs.append((i, a["vals"][i], b["vals"][i], re))
 
-    mean_re  = rel_err(a["mean"],   b["mean"])
-    abmx_re  = rel_err(a["absmax"], b["absmax"])
+    mean_re = rel_err(a["mean"], b["mean"])
+    abmx_re = rel_err(a["absmax"], b["absmax"])
 
-    matched = (len(errs) == 0 and mean_re < REL_TOL and abmx_re < REL_TOL)
+    matched = len(errs) == 0 and mean_re < REL_TOL and abmx_re < REL_TOL
 
     lines = []
     if not matched:
@@ -82,7 +95,9 @@ def check_match(a, b, label):
             flag = f"{ANSI_RED}✗{ANSI_RESET}"
             lines.append(f"  {i:>4}  {lv:>14.7g}  {ov:>14.7g}  {re:>10.4%} {flag}")
         lines.append(f"  {'mean':>4}  {a['mean']:>14.7g}  {b['mean']:>14.7g}  {mean_re:>10.4%}")
-        lines.append(f"  {'absmax':>4}  {a['absmax']:>14.7g}  {b['absmax']:>14.7g}  {abmx_re:>10.4%}")
+        lines.append(
+            f"  {'absmax':>4}  {a['absmax']:>14.7g}  {b['absmax']:>14.7g}  {abmx_re:>10.4%}"
+        )
     return matched, "\n".join(lines)
 
 
@@ -90,14 +105,16 @@ def compare(llama_csv, ours_csv, filter_layer=None, filter_step=None):
     print(f"\n{ANSI_CYAN}Loading llama.cpp dump:{ANSI_RESET} {llama_csv}")
     llama = load_csv(llama_csv)
     print(f"{ANSI_CYAN}Loading our engine dump:{ANSI_RESET} {ours_csv}")
-    ours  = load_csv(ours_csv)
+    ours = load_csv(ours_csv)
 
     print(f"\n{ANSI_CYAN}llama.cpp checkpoints: {len(llama)}{ANSI_RESET}")
     print(f"{ANSI_CYAN}Our engine checkpoints: {len(ours)}{ANSI_RESET}\n")
 
     # All keys that appear in either dump
-    all_keys = sorted(set(llama.keys()) | set(ours.keys()),
-                      key=lambda k: (k[0], STEP_ORDER.index(k[1]) if k[1] in STEP_ORDER else 99))
+    all_keys = sorted(
+        set(llama.keys()) | set(ours.keys()),
+        key=lambda k: (k[0], STEP_ORDER.index(k[1]) if k[1] in STEP_ORDER else 99),
+    )
 
     first_divergence = None
     n_match = 0
@@ -107,14 +124,14 @@ def compare(llama_csv, ours_csv, filter_layer=None, filter_step=None):
     print(f"{'LAYER':>6}  {'STEP':<22}  {'STATUS':>8}  DETAILS")
     print("─" * 72)
 
-    for (layer, step) in all_keys:
+    for layer, step in all_keys:
         if filter_layer is not None and layer != filter_layer:
             continue
         if filter_step is not None and step != filter_step:
             continue
 
         in_llama = (layer, step) in llama
-        in_ours  = (layer, step) in ours
+        in_ours = (layer, step) in ours
 
         if in_llama and not in_ours:
             n_missing += 1
@@ -157,13 +174,12 @@ def compare(llama_csv, ours_csv, filter_layer=None, filter_step=None):
 def main():
     ap = argparse.ArgumentParser(description="Compare tensor dumps from llama.cpp and our engine")
     ap.add_argument("llama_csv", help="CSV dump from llama_dump (llama.cpp)")
-    ap.add_argument("ours_csv",  help="CSV dump from our engine (--dump-tensors)")
+    ap.add_argument("ours_csv", help="CSV dump from our engine (--dump-tensors)")
     ap.add_argument("--layer", type=int, default=None, help="Filter to specific layer")
-    ap.add_argument("--step",  type=str, default=None, help="Filter to specific step name")
+    ap.add_argument("--step", type=str, default=None, help="Filter to specific step name")
     args = ap.parse_args()
 
-    compare(args.llama_csv, args.ours_csv,
-            filter_layer=args.layer, filter_step=args.step)
+    compare(args.llama_csv, args.ours_csv, filter_layer=args.layer, filter_step=args.step)
 
 
 if __name__ == "__main__":

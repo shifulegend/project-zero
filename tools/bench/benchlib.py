@@ -16,6 +16,7 @@ h2h_bench.py, build_compare.py, setup_engines.py). They share only this module:
 
 Nothing here commits, pushes or edits tracked files: results are plain files in the working tree.
 """
+
 import csv
 import datetime
 import hashlib
@@ -64,7 +65,9 @@ def parse_list(spec, allowed, what):
     items = [s.strip() for s in spec.split(",") if s.strip()]
     bad = [i for i in items if i not in allowed]
     if bad:
-        raise SystemExit(f"unknown {what}: {', '.join(bad)} (choose from: {', '.join(allowed)}, all, none)")
+        raise SystemExit(
+            f"unknown {what}: {', '.join(bad)} (choose from: {', '.join(allowed)}, all, none)"
+        )
     return items
 
 
@@ -82,18 +85,40 @@ def parse_threads(spec):
 
 def add_common_args(ap, kind):
     g = ap.add_argument_group("run folder and output")
-    g.add_argument("--out", help=f"output folder (default: benchmark_results/{kind}_<UTC stamp>[_<label>])")
-    g.add_argument("--label", default="", help="short name appended to the folder, e.g. 'native-vs-portable'")
-    g.add_argument("--dry-run", action="store_true", help="print the plan (commands, counts, estimate) and exit")
-    g.add_argument("--screenshots", choices=["none", "summary", "all"], default="summary",
-                   help="live-terminal screenshots: none, one per engine/model ('summary'), or one per run ('all')")
-    g.add_argument("--shot-rows", type=int, default=0, help="terminal rows for screenshots (0 = tool default 70)")
+    g.add_argument(
+        "--out", help=f"output folder (default: benchmark_results/{kind}_<UTC stamp>[_<label>])"
+    )
+    g.add_argument(
+        "--label", default="", help="short name appended to the folder, e.g. 'native-vs-portable'"
+    )
+    g.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print the plan (commands, counts, estimate) and exit",
+    )
+    g.add_argument(
+        "--screenshots",
+        choices=["none", "summary", "all"],
+        default="summary",
+        help="live-terminal screenshots: none, one per engine/model ('summary'), or one per run ('all')",
+    )
+    g.add_argument(
+        "--shot-rows",
+        type=int,
+        default=0,
+        help="terminal rows for screenshots (0 = tool default 70)",
+    )
     g = ap.add_argument_group("Project Zero binary")
     g.add_argument("--pz", default="./pz", help="pz binary to test (default ./pz)")
-    g.add_argument("--calibration", choices=["isolated", "off", "existing"], default="isolated",
-                   help="isolated: own empty HOME/cache, calibrates once like a first-time user (default); "
-                        "off: --no-calibrate; existing: use the real ~/.project-zero")
-    import gate          # local import: gate.py imports this module
+    g.add_argument(
+        "--calibration",
+        choices=["isolated", "off", "existing"],
+        default="isolated",
+        help="isolated: own empty HOME/cache, calibrates once like a first-time user (default); "
+        "off: --no-calibrate; existing: use the real ~/.project-zero",
+    )
+    import gate  # local import: gate.py imports this module
+
     gate.add_args(ap)
     return ap
 
@@ -114,15 +139,17 @@ class RunDir:
     def create(self):
         for d in (self.path, self.raw, self.shots):
             d.mkdir(parents=True, exist_ok=True)
-        cmdfile = self.path / "command.txt"          # a resumed run appends its command; the original stays
+        cmdfile = self.path / "command.txt"  # a resumed run appends its command; the original stays
         with open(cmdfile, "a") as f:
             f.write(shlex.join(["python3"] + [str(a) for a in self.argv]) + "\n")
         partial = self.path / "PARTIAL.md"
-        if not (self.path / "meta.json").exists():      # meta.json is written only by finish()
-            partial.write_text("# INCOMPLETE RUN\n\nThis folder is a checkpoint of a run that has not finished (or was interrupted). "
-                               "Its numbers are partial; do not quote them.\n\nResume with the same command plus "
-                               f"`--out {self.rel()} --resume`:\n\n    {shlex.join(['python3'] + [str(a) for a in self.argv])}\n\n"
-                               "`progress.json` says how far it got. This file is deleted when the run finishes.\n")
+        if not (self.path / "meta.json").exists():  # meta.json is written only by finish()
+            partial.write_text(
+                "# INCOMPLETE RUN\n\nThis folder is a checkpoint of a run that has not finished (or was interrupted). "
+                "Its numbers are partial; do not quote them.\n\nResume with the same command plus "
+                f"`--out {self.rel()} --resume`:\n\n    {shlex.join(['python3'] + [str(a) for a in self.argv])}\n\n"
+                "`progress.json` says how far it got. This file is deleted when the run finishes.\n"
+            )
         self._log = open(self.path / "run.log", "a")
         return self
 
@@ -154,7 +181,9 @@ class RunDir:
 # ── host / build identity ───────────────────────────────────────────────────────────────────
 def _sh(cmd):
     try:
-        return subprocess.run(cmd, shell=isinstance(cmd, str), capture_output=True, text=True, timeout=30).stdout.strip()
+        return subprocess.run(
+            cmd, shell=isinstance(cmd, str), capture_output=True, text=True, timeout=30
+        ).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         return ""
 
@@ -173,22 +202,43 @@ def host_info():
             flags = line.split(":", 1)[1]
             break
     # (/proc/cpuinfo spells VBMI "avx512vbmi" but VNNI/BF16 "avx512_vnni"/"avx512_bf16": match both)
-    want = ("avx2", "fma", "avx512f", "avx512bw", "avx512vl", "avx512_?vnni", "avx_vnni", "avx512_?vbmi",
-            "avx512_?bf16", "amx_tile", "f16c")
+    want = (
+        "avx2",
+        "fma",
+        "avx512f",
+        "avx512bw",
+        "avx512vl",
+        "avx512_?vnni",
+        "avx_vnni",
+        "avx512_?vbmi",
+        "avx512_?bf16",
+        "amx_tile",
+        "f16c",
+    )
     have = [w.replace("_?", "_") for w in want if re.search(rf"\b{w}\b", flags)]
     mem = ""
     for line in pathlib.Path("/proc/meminfo").read_text().splitlines():
         if line.startswith("MemTotal"):
             mem = f"{int(line.split()[1]) / 1048576:.1f} GiB"
             break
-    return {"cpu": cpu_model(), "vcpu": os.cpu_count(), "isa": have, "mem_total": mem,
-            "kernel": _sh("uname -sr"), "lscpu": _sh("lscpu"), "loadavg": os.getloadavg()}
+    return {
+        "cpu": cpu_model(),
+        "vcpu": os.cpu_count(),
+        "isa": have,
+        "mem_total": mem,
+        "kernel": _sh("uname -sr"),
+        "lscpu": _sh("lscpu"),
+        "loadavg": os.getloadavg(),
+    }
 
 
 def git_info():
     dirty = bool(_sh(["git", "-C", str(ROOT), "status", "--porcelain", "--untracked-files=no"]))
-    return {"commit": _sh(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"]),
-            "branch": _sh(["git", "-C", str(ROOT), "rev-parse", "--abbrev-ref", "HEAD"]), "dirty": dirty}
+    return {
+        "commit": _sh(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"]),
+        "branch": _sh(["git", "-C", str(ROOT), "rev-parse", "--abbrev-ref", "HEAD"]),
+        "dirty": dirty,
+    }
 
 
 def bin_info(path):
@@ -197,15 +247,26 @@ def bin_info(path):
         return {"path": str(path), "exists": False}
     sha = hashlib.sha256(p.read_bytes()).hexdigest()[:16]
     ver = _sh([str(p), "--version"]).splitlines()
-    return {"path": str(path), "exists": True, "sha256_16": sha, "size": p.stat().st_size,
-            "version": ver[0] if ver else ""}
+    return {
+        "path": str(path),
+        "exists": True,
+        "sha256_16": sha,
+        "size": p.stat().st_size,
+        "version": ver[0] if ver else "",
+    }
 
 
 def system_info_text(run, extra=None):
     h, g = host_info(), git_info()
-    lines = [f"DATE: {iso_utc(run.t0)}", f"HOST_CPU: {h['cpu']} ({h['vcpu']} vCPU)", f"ISA: {' '.join(h['isa'])}",
-             f"MEM: {h['mem_total']}", f"KERNEL: {h['kernel']}", f"LOADAVG_AT_START: {h['loadavg']}",
-             f"PROJECT_ZERO_COMMIT: {g['commit']}{' (dirty)' if g['dirty'] else ''}  branch {g['branch']}"]
+    lines = [
+        f"DATE: {iso_utc(run.t0)}",
+        f"HOST_CPU: {h['cpu']} ({h['vcpu']} vCPU)",
+        f"ISA: {' '.join(h['isa'])}",
+        f"MEM: {h['mem_total']}",
+        f"KERNEL: {h['kernel']}",
+        f"LOADAVG_AT_START: {h['loadavg']}",
+        f"PROJECT_ZERO_COMMIT: {g['commit']}{' (dirty)' if g['dirty'] else ''}  branch {g['branch']}",
+    ]
     for k, v in (extra or {}).items():
         lines.append(f"{k}: {v}")
     lines += ["--- lscpu", h["lscpu"]]
@@ -238,8 +299,11 @@ def pz_flags(calibration):
 def _ensure_capture_deps():
     mod = ROOT / "tools" / "screenshots" / "cli" / "node_modules" / "@xterm"
     if not mod.exists():
-        subprocess.run(["npm", "--prefix", str(CAPTURE.parent), "install", "--no-audit", "--no-fund"],
-                       check=True, capture_output=True)
+        subprocess.run(
+            ["npm", "--prefix", str(CAPTURE.parent), "install", "--no-audit", "--no-fund"],
+            check=True,
+            capture_output=True,
+        )
 
 
 def strip_ansi(text):
@@ -262,13 +326,17 @@ def screenshot(run, name, cmd, env, rows=0, timeout_s=600, note=""):
     base = f"{utc_stamp(t)}_{name}"
     png, raw = run.shots / f"{base}.png", run.raw / f"{base}.pty"
     g = git_info()
-    caption = f"{iso_utc(t)} UTC | {cpu_model()} | pz {g['commit']} | {shlex.join(cmd)[:200]}" + (f" | {note}" if note else "")
+    caption = f"{iso_utc(t)} UTC | {cpu_model()} | pz {g['commit']} | {shlex.join(cmd)[:200]}" + (
+        f" | {note}" if note else ""
+    )
     e = dict(env)
     e["PZ_CAPTURE_RAW_OUT"] = str(raw)
     e["PZ_CAPTURE_TIMEOUT_MS"] = str(int(timeout_s * 1000))
     if rows:
         e["PZ_CAPTURE_ROWS"] = str(rows)
-    r = subprocess.run(["node", str(CAPTURE), str(png), caption, "--"] + cmd, env=e, capture_output=True, text=True)
+    r = subprocess.run(
+        ["node", str(CAPTURE), str(png), caption, "--"] + cmd, env=e, capture_output=True, text=True
+    )
     if r.returncode != 0 or not png.exists():
         run.log(f"  (screenshot failed for {name}: {r.stderr.strip()[:200]})")
         return None, ""
@@ -307,8 +375,12 @@ def stats(vals):
     vals = [v for v in vals if v is not None]
     if not vals:
         return {"n": 0, "best": None, "mean": None, "stdev": None}
-    return {"n": len(vals), "best": max(vals), "mean": statistics.mean(vals),
-            "stdev": statistics.stdev(vals) if len(vals) > 1 else 0.0}
+    return {
+        "n": len(vals),
+        "best": max(vals),
+        "mean": statistics.mean(vals),
+        "stdev": statistics.stdev(vals) if len(vals) > 1 else 0.0,
+    }
 
 
 def write_csv(path, header, rows):
@@ -335,7 +407,16 @@ def fnum(v, nd=1):
 
 def save_run_log(run, relname, header_lines, text, tail_lines=()):
     """Verbatim output of one run with the DATE/HOST_CPU/CMD header used by the published sweeps."""
-    body = "\n".join(header_lines) + "\n" + "=" * 60 + "\n" + text + "\n" + "\n".join(tail_lines) + "\n"
+    body = (
+        "\n".join(header_lines)
+        + "\n"
+        + "=" * 60
+        + "\n"
+        + text
+        + "\n"
+        + "\n".join(tail_lines)
+        + "\n"
+    )
     p = run.raw / relname
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(body)
@@ -357,7 +438,9 @@ def finish(run, meta):
 def run_cmd(cmd, env=None, timeout=None):
     """Run cmd (stdout+stderr merged); returns dict(text, wall, rss_mb, cpu_pct, rc). One process at a time."""
     t0 = time.monotonic()
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env)
+    proc = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env
+    )
     try:
         out = proc.stdout.read()
         _, status, ru = os.wait4(proc.pid, 0)
@@ -367,12 +450,34 @@ def run_cmd(cmd, env=None, timeout=None):
     rc = os.waitstatus_to_exitcode(status)
     wall = time.monotonic() - t0
     cpu = (ru.ru_utime + ru.ru_stime) / wall * 100.0 if wall > 0 else 0.0
-    return {"text": out.decode("utf-8", "replace"), "wall": wall, "rss_mb": ru.ru_maxrss / 1024.0, "cpu_pct": cpu, "rc": rc}
+    return {
+        "text": out.decode("utf-8", "replace"),
+        "wall": wall,
+        "rss_mb": ru.ru_maxrss / 1024.0,
+        "cpu_pct": cpu,
+        "rc": rc,
+    }
 
 
 def pz_cmd(pz, model, tokens, threads, extra=(), fixed_length=True, prompt=PROMPT, flags=()):
-    cmd = [str(pz), "--model", str(model), "--prompt", prompt, "--max-tokens", str(tokens), "--temperature", "0",
-           "--threads", str(threads), "--no-update-check"] + list(flags) + list(extra)
+    cmd = (
+        [
+            str(pz),
+            "--model",
+            str(model),
+            "--prompt",
+            prompt,
+            "--max-tokens",
+            str(tokens),
+            "--temperature",
+            "0",
+            "--threads",
+            str(threads),
+            "--no-update-check",
+        ]
+        + list(flags)
+        + list(extra)
+    )
     if fixed_length:
         cmd += ["--raw-prompt", "--ignore-eos"]
     return cmd
@@ -380,7 +485,19 @@ def pz_cmd(pz, model, tokens, threads, extra=(), fixed_length=True, prompt=PROMP
 
 def ref_cmd(binary, runner, model, tokens, threads, extra=(), fixed_length=True, prompt=PROMPT):
     """llama.cpp family. runner 'ref' = llama-completion (-no-cnv), 'cli' = llama-cli (ik_llama.cpp)."""
-    cmd = [str(binary), "-m", str(model), "-p", prompt, "-n", str(tokens), "--temp", "0", "-t", str(threads)]
+    cmd = [
+        str(binary),
+        "-m",
+        str(model),
+        "-p",
+        prompt,
+        "-n",
+        str(tokens),
+        "--temp",
+        "0",
+        "-t",
+        str(threads),
+    ]
     if runner == "ref":
         cmd.append("-no-cnv")
     cmd += list(extra)
@@ -391,13 +508,37 @@ def ref_cmd(binary, runner, model, tokens, threads, extra=(), fixed_length=True,
 
 def ppl_cmd_pz(pz, model, text, ctx, chunks, threads, extra=()):
     """pz perplexity run (llama-perplexity's method, built into pz)."""
-    return [str(pz), "--model", str(model), "--perplexity", str(text), "--ppl-ctx", str(ctx), "--ppl-chunks", str(chunks),
-            "--threads", str(threads), "--no-update-check"] + list(extra)
+    return [
+        str(pz),
+        "--model",
+        str(model),
+        "--perplexity",
+        str(text),
+        "--ppl-ctx",
+        str(ctx),
+        "--ppl-chunks",
+        str(chunks),
+        "--threads",
+        str(threads),
+        "--no-update-check",
+    ] + list(extra)
 
 
 def ppl_cmd_ref(binary, model, text, ctx, chunks, threads, extra=()):
     """llama-perplexity of the llama.cpp family."""
-    return [str(binary), "-m", str(model), "-f", str(text), "-c", str(ctx), "--chunks", str(chunks), "-t", str(threads)] + list(extra)
+    return [
+        str(binary),
+        "-m",
+        str(model),
+        "-f",
+        str(text),
+        "-c",
+        str(ctx),
+        "--chunks",
+        str(chunks),
+        "-t",
+        str(threads),
+    ] + list(extra)
 
 
 def engine_ppl_binary(key, engine_dir):
@@ -413,10 +554,19 @@ def engine_ppl_binary(key, engine_dir):
 # so command construction exists once.
 def pz_variant(label, pz, flags=(), env=None):
     def cmd(key, info, path, tokens, threads, fixed, prompt=PROMPT):
-        return pz_cmd(pz, path, tokens, threads, flags, fixed, prompt) if "pz" in info["engines"] else None
+        return (
+            pz_cmd(pz, path, tokens, threads, flags, fixed, prompt)
+            if "pz" in info["engines"]
+            else None
+        )
 
     def ppl(key, info, path, text, ctx, chunks, threads, extra=()):
-        return ppl_cmd_pz(pz, path, text, ctx, chunks, threads, list(flags) + list(extra)) if "pz" in info["engines"] else None
+        return (
+            ppl_cmd_pz(pz, path, text, ctx, chunks, threads, list(flags) + list(extra))
+            if "pz" in info["engines"]
+            else None
+        )
+
     return {"label": label, "engine": "pz", "cmd": cmd, "ppl": ppl, "env": env}
 
 
@@ -426,28 +576,59 @@ def ref_variant(label, engine, binary, ppl_binary=None, env=None):
     def cmd(key, info, path, tokens, threads, fixed, prompt=PROMPT):
         if engine not in info["engines"]:
             return None
-        return ref_cmd(binary, e["runner"], path, tokens, threads, info.get("extra", {}).get(engine, []), fixed, prompt)
+        return ref_cmd(
+            binary,
+            e["runner"],
+            path,
+            tokens,
+            threads,
+            info.get("extra", {}).get(engine, []),
+            fixed,
+            prompt,
+        )
 
     def ppl(key, info, path, text, ctx, chunks, threads, extra=()):
         if engine not in info["engines"] or not ppl_binary:
             return None
         return ppl_cmd_ref(ppl_binary, path, text, ctx, chunks, threads, extra)
-    return {"label": label, "engine": engine, "cmd": cmd, "ppl": ppl, "env": env, "modified": bool(e.get("modified"))}
+
+    return {
+        "label": label,
+        "engine": engine,
+        "cmd": cmd,
+        "ppl": ppl,
+        "env": env,
+        "modified": bool(e.get("modified")),
+    }
 
 
 def measure(run, suite, threads, rnd, cmd, env=None, prompt=PROMPT):
     """One measured run: verbatim log under raw/<suite>/t<threads>/run<rnd>.txt, parsed numbers returned."""
     r = run_cmd(cmd, env)
     tps, ntok = gen_toks(r["text"])
-    header = [f"=== {suite} t={threads} run {rnd} ===", f"DATE: {iso_utc()}", f"HOST_CPU: {cpu_model()} ({os.cpu_count()} vCPU)",
-              f"CMD: {shlex.join(cmd)}", f"PROMPT: {prompt}"]
-    tail = [f"PERF: wall={r['wall']:.2f}s max_rss={r['rss_mb']:.0f}MB cpu={r['cpu_pct']:.0f}% exit={r['rc']}"]
+    header = [
+        f"=== {suite} t={threads} run {rnd} ===",
+        f"DATE: {iso_utc()}",
+        f"HOST_CPU: {cpu_model()} ({os.cpu_count()} vCPU)",
+        f"CMD: {shlex.join(cmd)}",
+        f"PROMPT: {prompt}",
+    ]
+    tail = [
+        f"PERF: wall={r['wall']:.2f}s max_rss={r['rss_mb']:.0f}MB cpu={r['cpu_pct']:.0f}% exit={r['rc']}"
+    ]
     pt = prompt_toks(r["text"])
     if pt:
         tail.append(f"PROMPT_TPS: {pt}")
     p = save_run_log(run, f"{suite}/t{threads}/run{rnd}.txt", header, r["text"], tail)
-    return {"tps": tps, "tokens": ntok, "wall": r["wall"], "rss_mb": r["rss_mb"], "cpu_pct": r["cpu_pct"], "rc": r["rc"],
-            "log": run.rel(p)}
+    return {
+        "tps": tps,
+        "tokens": ntok,
+        "wall": r["wall"],
+        "rss_mb": r["rss_mb"],
+        "cpu_pct": r["cpu_pct"],
+        "rc": r["rc"],
+        "log": run.rel(p),
+    }
 
 
 def parse_step_timing(text):
@@ -460,8 +641,20 @@ def parse_step_timing(text):
 
 
 # ── the measurement matrix (shared by h2h_bench, build_compare, calibration_test) ──────────
-SUMMARY_HEADER = ["model", "variant", "threads", "round", "gen_tok_s", "tokens", "wall_s", "max_rss_mb", "cpu_pct", "exit", "log",
-                  "gate"]
+SUMMARY_HEADER = [
+    "model",
+    "variant",
+    "threads",
+    "round",
+    "gen_tok_s",
+    "tokens",
+    "wall_s",
+    "max_rss_mb",
+    "cpu_pct",
+    "exit",
+    "log",
+    "gate",
+]
 
 
 def load_rows(path):
@@ -477,8 +670,13 @@ def load_rows(path):
 
 def write_progress(run, phase, done, total, last=""):
     """Checkpoint marker: how far the run got (readable by people and by the next session)."""
-    (run.path / "progress.json").write_text(json.dumps(
-        {"phase": phase, "done": done, "total": total, "last": last, "updated": iso_utc()}, indent=2) + "\n")
+    (run.path / "progress.json").write_text(
+        json.dumps(
+            {"phase": phase, "done": done, "total": total, "last": last, "updated": iso_utc()},
+            indent=2,
+        )
+        + "\n"
+    )
 
 
 def ensure_gate_column(path):
@@ -488,8 +686,20 @@ def ensure_gate_column(path):
         write_csv(path, SUMMARY_HEADER, [[r.get(h, "") for h in SUMMARY_HEADER] for r in rows])
 
 
-def run_matrix(run, variants, models, threads, rounds, tokens=0, cooldown=5.0, order="interleaved",
-               fixed_length=True, resume=False, gate_of=None, skip_of=None):
+def run_matrix(
+    run,
+    variants,
+    models,
+    threads,
+    rounds,
+    tokens=0,
+    cooldown=5.0,
+    order="interleaved",
+    fixed_length=True,
+    resume=False,
+    gate_of=None,
+    skip_of=None,
+):
     """Measure every variant on every model.
 
     variants: [{'label', 'cmd': f(model_key, model_info, path, tokens, threads, fixed_length) -> argv or None,
@@ -504,16 +714,31 @@ def run_matrix(run, variants, models, threads, rounds, tokens=0, cooldown=5.0, o
     path = run.path / "summary.csv"
     if resume and path.exists():
         ensure_gate_column(path)
-    done = {(r["model"], r["variant"], r["threads"], r["round"]) for r in load_rows(path)} if resume else set()
+    done = (
+        {(r["model"], r["variant"], r["threads"], r["round"]) for r in load_rows(path)}
+        if resume
+        else set()
+    )
     new = not path.exists() or not resume
     f = open(path, "a" if resume else "w", newline="")
     w = csv.writer(f)
     if new:
         w.writerow(SUMMARY_HEADER)
     rows = []
-    total = sum(sum(1 for v in variants if v["cmd"](k, i, p, tokens or i.get("tokens", 128), threads[0], fixed_length) is not None
-                    and not (skip_of and skip_of(k, v["label"])))
-                for k, i, p in models) * len(threads) * rounds
+    total = (
+        sum(
+            sum(
+                1
+                for v in variants
+                if v["cmd"](k, i, p, tokens or i.get("tokens", 128), threads[0], fixed_length)
+                is not None
+                and not (skip_of and skip_of(k, v["label"]))
+            )
+            for k, i, p in models
+        )
+        * len(threads)
+        * rounds
+    )
     counter = [len(done)]
 
     def one(key, info, mpath, v, t, rnd, ntok):
@@ -524,27 +749,56 @@ def run_matrix(run, variants, models, threads, rounds, tokens=0, cooldown=5.0, o
         if cmd is None:
             return
         if skip_of and skip_of(key, v["label"]):
-            return                                  # reported once per cell below, not once per run
+            return  # reported once per cell below, not once per run
         res = measure(run, f"{key}__{v['label']}", t, rnd, cmd, v.get("env"))
-        w.writerow([key, v["label"], t, rnd, res["tps"] if res["tps"] is not None else "", res["tokens"] or "",
-                    f"{res['wall']:.2f}", f"{res['rss_mb']:.0f}", f"{res['cpu_pct']:.0f}", res["rc"], res["log"],
-                    gate_of(key, v["label"]) if gate_of else ""])
+        w.writerow(
+            [
+                key,
+                v["label"],
+                t,
+                rnd,
+                res["tps"] if res["tps"] is not None else "",
+                res["tokens"] or "",
+                f"{res['wall']:.2f}",
+                f"{res['rss_mb']:.0f}",
+                f"{res['cpu_pct']:.0f}",
+                res["rc"],
+                res["log"],
+                gate_of(key, v["label"]) if gate_of else "",
+            ]
+        )
         f.flush()
-        rows.append({"model": key, "variant": v["label"], "threads": t, "round": rnd, "gen_tok_s": res["tps"]})
+        rows.append(
+            {
+                "model": key,
+                "variant": v["label"],
+                "threads": t,
+                "round": rnd,
+                "gen_tok_s": res["tps"],
+            }
+        )
         flag = "" if res["rc"] == 0 else f"  FAILED (exit {res['rc']})"
-        run.log(f"  {key:<20} {v['label']:<26} t={t} run {rnd}: {fnum(res['tps'], 2):>8} tok/s  wall {res['wall']:.1f}s{flag}")
+        run.log(
+            f"  {key:<20} {v['label']:<26} t={t} run {rnd}: {fnum(res['tps'], 2):>8} tok/s  wall {res['wall']:.1f}s{flag}"
+        )
         counter[0] += 1
         write_progress(run, "measuring", counter[0], total, f"{key} {v['label']} t={t} run {rnd}")
         time.sleep(cooldown)
 
     for key, info, mpath in models:
         ntok = tokens or info.get("tokens", 128)
-        usable = [v for v in variants if v["cmd"](key, info, mpath, ntok, threads[0], fixed_length) is not None]
+        usable = [
+            v
+            for v in variants
+            if v["cmd"](key, info, mpath, ntok, threads[0], fixed_length) is not None
+        ]
         for v in usable:
             if skip_of and skip_of(key, v["label"]):
                 run.log(f"  {key} {v['label']}: not timed (fails the correctness gate)")
         usable = [v for v in usable if not (skip_of and skip_of(key, v["label"]))]
-        run.log(f"\n=== {key}: {len(usable)} variants, threads {threads}, {rounds} rounds, {ntok} tokens ===")
+        run.log(
+            f"\n=== {key}: {len(usable)} variants, threads {threads}, {rounds} rounds, {ntok} tokens ==="
+        )
         if order == "blocks":
             for v in usable:
                 for t in threads:
@@ -567,7 +821,9 @@ def summarize(rows, reference=None):
         verdicts.setdefault((r["model"], r["variant"], r["threads"]), r.get("gate", ""))
     out = []
     for (m, v, t), vals in groups.items():
-        out.append({"model": m, "variant": v, "threads": t, "gate": verdicts[(m, v, t)], **stats(vals)})
+        out.append(
+            {"model": m, "variant": v, "threads": t, "gate": verdicts[(m, v, t)], **stats(vals)}
+        )
     if reference:
         ref = {(o["model"], o["threads"]): o["mean"] for o in out if o["variant"] == reference}
         for o in out:
@@ -579,14 +835,24 @@ def summarize(rows, reference=None):
 def summary_md(summary, with_ratio=False, hide_invalid=False):
     """hide_invalid (gate strict): INVALID cells show no throughput, only the verdict."""
     show_gate = any(o.get("gate") for o in summary)
-    header = (["model", "variant", "threads", "runs", "best tok/s", "mean tok/s", "stdev"] + (["mean / reference"] if with_ratio else [])
-              + (["gate"] if show_gate else []))
+    header = (
+        ["model", "variant", "threads", "runs", "best tok/s", "mean tok/s", "stdev"]
+        + (["mean / reference"] if with_ratio else [])
+        + (["gate"] if show_gate else [])
+    )
     rows = []
     for o in summary:
         hide = hide_invalid and o.get("gate") == "INVALID"
         na = "n/a"
-        r = [o["model"], o["variant"], o["threads"], o["n"], na if hide else fnum(o["best"], 2),
-             na if hide else fnum(o["mean"], 2), na if hide else fnum(o["stdev"], 2)]
+        r = [
+            o["model"],
+            o["variant"],
+            o["threads"],
+            o["n"],
+            na if hide else fnum(o["best"], 2),
+            na if hide else fnum(o["mean"], 2),
+            na if hide else fnum(o["stdev"], 2),
+        ]
         if with_ratio:
             r.append(na if hide or o.get("ratio") is None else f"{o['ratio'] * 100:.0f}%")
         if show_gate:
@@ -595,7 +861,9 @@ def summary_md(summary, with_ratio=False, hide_invalid=False):
     return md_table(header, rows)
 
 
-def take_screenshots(run, variants, models, shot_threads, tokens, mode, rows_override=0, note_of=None, skip_of=None):
+def take_screenshots(
+    run, variants, models, shot_threads, tokens, mode, rows_override=0, note_of=None, skip_of=None
+):
     """One live-terminal screenshot per (model, variant) ('summary') after the measured runs. The run is
     a separate, shorter one (tokens capped) because a pty run prints the live tok/s display; its own
     tok/s is parsed from the captured bytes and returned for the record, not mixed into the statistics."""
@@ -608,18 +876,35 @@ def take_screenshots(run, variants, models, shot_threads, tokens, mode, rows_ove
             if cmd is None or (skip_of and skip_of(key, v["label"])):
                 continue
             name = f"{key}__{v['label']}_t{shot_threads}"
-            have = sorted(run.shots.glob(f"*_{name}.png"))           # a screenshot already taken (resumed run)
+            have = sorted(
+                run.shots.glob(f"*_{name}.png")
+            )  # a screenshot already taken (resumed run)
             if have:
                 png = have[-1]
                 pty = run.raw / (png.stem + ".pty")
                 text = strip_ansi(pty.read_text(errors="replace")) if pty.exists() else ""
                 run.log(f"  screenshot {name}: exists, kept (resume)")
             else:
-                png, text = screenshot(run, name, cmd, v.get("env") or dict(os.environ),
-                                       rows=rows_override or 130, timeout_s=1800,
-                                       note=note_of(key, v["label"]) if note_of else "")
+                png, text = screenshot(
+                    run,
+                    name,
+                    cmd,
+                    v.get("env") or dict(os.environ),
+                    rows=rows_override or 130,
+                    timeout_s=1800,
+                    note=note_of(key, v["label"]) if note_of else "",
+                )
             tps, ntok = gen_toks(text)
-            out.append({"model": key, "variant": v["label"], "threads": shot_threads, "tok_s_in_screenshot_run": tps,
-                        "screenshot": run.rel(png) if png else None})
-            run.log(f"  screenshot {key} {v['label']}: {run.rel(png) if png else 'FAILED'}  ({fnum(tps, 2)} tok/s in that run)")
+            out.append(
+                {
+                    "model": key,
+                    "variant": v["label"],
+                    "threads": shot_threads,
+                    "tok_s_in_screenshot_run": tps,
+                    "screenshot": run.rel(png) if png else None,
+                }
+            )
+            run.log(
+                f"  screenshot {key} {v['label']}: {run.rel(png) if png else 'FAILED'}  ({fnum(tps, 2)} tok/s in that run)"
+            )
     return out

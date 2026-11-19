@@ -28,6 +28,7 @@ Used from a script:
     gate.apply_to_summary(run.path / "summary.csv", res)
 Standalone use on an existing run folder: every script has `--gate-only` (with `--out <folder> --resume`).
 """
+
 import hashlib
 import json
 import pathlib
@@ -38,9 +39,14 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import benchlib as bl  # noqa: E402
 
 CONFIG = bl.HERE / "gate.json"
-GOOD = ("PASS", "WARN", "REF", "APPROX")        # verdicts whose numbers may be published
-FLAG_TO_KEY = {"gate": "mode", "gate_tolerance": "tolerance_pct", "gate_text": "text",
-               "gate_chunks": "ppl_chunks", "gate_ctx": "ppl_ctx"}
+GOOD = ("PASS", "WARN", "REF", "APPROX")  # verdicts whose numbers may be published
+FLAG_TO_KEY = {
+    "gate": "mode",
+    "gate_tolerance": "tolerance_pct",
+    "gate_text": "text",
+    "gate_chunks": "ppl_chunks",
+    "gate_ctx": "ppl_ctx",
+}
 
 
 # ── configuration ───────────────────────────────────────────────────────────────────────────
@@ -61,16 +67,35 @@ def load_config(overrides=None):
 def add_args(ap):
     """The gate flags, shared by every script (called once from benchlib.add_common_args)."""
     g = ap.add_argument_group("correctness gate (defaults in tools/bench/gate.json)")
-    g.add_argument("--gate", choices=["off", "warn", "strict"], help="off | warn | strict (default from gate.json)")
-    g.add_argument("--gate-tolerance", type=float, metavar="PCT", help="allowed perplexity gap to the reference, percent")
+    g.add_argument(
+        "--gate",
+        choices=["off", "warn", "strict"],
+        help="off | warn | strict (default from gate.json)",
+    )
+    g.add_argument(
+        "--gate-tolerance",
+        type=float,
+        metavar="PCT",
+        help="allowed perplexity gap to the reference, percent",
+    )
     g.add_argument("--gate-text", metavar="FILE", help="text for the perplexity check")
     g.add_argument("--gate-chunks", type=int, help="perplexity chunks")
     g.add_argument("--gate-ctx", type=int, help="perplexity context length")
-    g.add_argument("--gate-reference", metavar="VARIANT", help="variant to use as the reference for every model (default: models.json)")
-    g.add_argument("--allow-dirty-binary", action="store_true",
-                   help="benchmark a pz binary built from uncommitted state (its version ends in -dirty); the run is marked")
-    g.add_argument("--gate-only", action="store_true",
-                   help="run only the gate (and update summary.csv/summary.md of --out FOLDER if they exist), then exit")
+    g.add_argument(
+        "--gate-reference",
+        metavar="VARIANT",
+        help="variant to use as the reference for every model (default: models.json)",
+    )
+    g.add_argument(
+        "--allow-dirty-binary",
+        action="store_true",
+        help="benchmark a pz binary built from uncommitted state (its version ends in -dirty); the run is marked",
+    )
+    g.add_argument(
+        "--gate-only",
+        action="store_true",
+        help="run only the gate (and update summary.csv/summary.md of --out FOLDER if they exist), then exit",
+    )
     return ap
 
 
@@ -84,8 +109,10 @@ def require_clean(binaries, cfg, allow=False, log=print):
     binaries: {label: path}. With allow=True it only warns. Returns the labels that were dirty."""
     dirty = [l for l, p in binaries.items() if is_dirty(bl.bin_info(p).get("version", ""))]
     if dirty and cfg.get("require_clean_binary", True):
-        msg = (f"not reproducible: {', '.join(dirty)} {'is' if len(dirty) == 1 else 'are'} a build of uncommitted state "
-               "(version ends in -dirty). Commit or stash, rebuild (make clean && make release), or pass --allow-dirty-binary.")
+        msg = (
+            f"not reproducible: {', '.join(dirty)} {'is' if len(dirty) == 1 else 'are'} a build of uncommitted state "
+            "(version ends in -dirty). Commit or stash, rebuild (make clean && make release), or pass --allow-dirty-binary."
+        )
         if not allow:
             raise SystemExit(msg)
         log("WARNING: " + msg + "  (allowed; recorded in meta.json)")
@@ -106,11 +133,14 @@ def parse_ppl(text, regex):
         last = m
     if not last:
         return None, None
-    err = re.search(r"\+/-\s*([0-9.]+)", text[last.start():last.start() + 80])
+    err = re.search(r"\+/-\s*([0-9.]+)", text[last.start() : last.start() + 80])
     return float(last.group(1)), (float(err.group(1)) if err else None)
 
 
-LOG_LINE = re.compile(r"^\d+\.\d+\.\d+\.\d+ [IWED] .*$|^(llama|ggml|load|system_info|sampler|generate|main)[_:].*$", re.M)
+LOG_LINE = re.compile(
+    r"^\d+\.\d+\.\d+\.\d+ [IWED] .*$|^(llama|ggml|load|system_info|sampler|generate|main)[_:].*$",
+    re.M,
+)
 
 
 def answer_text(text):
@@ -152,10 +182,16 @@ def judge(results, cfg, reference_of):
             ref = results.get(ref_key) if ref_key else None
             ref_bad = ref is None or ref.get("smoke_ok") is False or ref.get("ppl") is None
             r["ref_ppl"] = None if ref_bad else ref["ppl"]
-            r["verdict"], r["delta_pct"] = verdict(r.get("ppl"), r["ref_ppl"], cfg["tolerance_pct"], cfg["warn_factor"])
+            r["verdict"], r["delta_pct"] = verdict(
+                r.get("ppl"), r["ref_ppl"], cfg["tolerance_pct"], cfg["warn_factor"]
+            )
             approx = cfg.get("approximate", {}).get(r["variant"])
-            if approx is not None and r["verdict"] in ("WARN", "INVALID") and r.get("ppl") is not None:
-                bound = approx.get("tolerance_pct")                       # optional hard bound for a lossy variant
+            if (
+                approx is not None
+                and r["verdict"] in ("WARN", "INVALID")
+                and r.get("ppl") is not None
+            ):
+                bound = approx.get("tolerance_pct")  # optional hard bound for a lossy variant
                 if bound is None or abs(r["delta_pct"]) <= bound:
                     r["verdict"], r["approx_note"] = "APPROX", approx.get("why", "")
     return results
@@ -164,7 +200,9 @@ def judge(results, cfg, reference_of):
 def should_time(verdict, cfg):
     """False for a cell that fails the gate in strict mode (unless gate.json time_invalid): nothing is timed or
     screenshotted for a wrong computation."""
-    return not (cfg["mode"] == "strict" and verdict == "INVALID" and not cfg.get("time_invalid", False))
+    return not (
+        cfg["mode"] == "strict" and verdict == "INVALID" and not cfg.get("time_invalid", False)
+    )
 
 
 def blocked(res, cfg):
@@ -173,7 +211,11 @@ def blocked(res, cfg):
 
 
 def exit_status(results, cfg):
-    return 1 if cfg["mode"] == "strict" and any(r.get("verdict") == "INVALID" for r in results.values()) else 0
+    return (
+        1
+        if cfg["mode"] == "strict" and any(r.get("verdict") == "INVALID" for r in results.values())
+        else 0
+    )
 
 
 # ── running the checks ──────────────────────────────────────────────────────────────────────
@@ -185,7 +227,10 @@ def run_smoke(v, key, info, mpath, cfg, threads):
         return None
     r = bl.run_cmd(cmd, v.get("env"))
     answer = answer_text(r["text"])
-    return {"smoke_ok": smoke_ok(answer, sm["expect"], sm["prompt"]) and r["rc"] == 0, "smoke_tail": answer[-240:]}
+    return {
+        "smoke_ok": smoke_ok(answer, sm["expect"], sm["prompt"]) and r["rc"] == 0,
+        "smoke_tail": answer[-240:],
+    }
 
 
 class Gate:
@@ -207,8 +252,13 @@ class Gate:
         def ref(model, variant):
             if override:
                 return f"{model}/{override}"
-            spec = by_key.get(model, bl.load_models().get(model, {})).get("gate", {}).get("reference", {})
+            spec = (
+                by_key.get(model, bl.load_models().get(model, {}))
+                .get("gate", {})
+                .get("reference", {})
+            )
             return f"{spec.get('model', model)}/{spec['variant']}" if spec.get("variant") else None
+
         return ref
 
     def _one(self, v, key, info, mpath, threads):
@@ -218,29 +268,54 @@ class Gate:
             self.run.log(f"  gate {rkey}: recorded (resume)")
             return
         smoke = run_smoke(v, key, info, mpath, cfg, threads)
-        ppl_cmd = v["ppl"](key, info, mpath, cfg["text_path"], cfg["ppl_ctx"], cfg["ppl_chunks"], threads,
-                           info.get("gate", {}).get("extra", {}).get(v["engine"], []))
+        ppl_cmd = v["ppl"](
+            key,
+            info,
+            mpath,
+            cfg["text_path"],
+            cfg["ppl_ctx"],
+            cfg["ppl_chunks"],
+            threads,
+            info.get("gate", {}).get("extra", {}).get(v["engine"], []),
+        )
         if smoke is None or ppl_cmd is None:
             return
-        out = {"model": key, "variant": v["label"], "engine": v["engine"], "modified": bool(v.get("modified")), **smoke}
+        out = {
+            "model": key,
+            "variant": v["label"],
+            "engine": v["engine"],
+            "modified": bool(v.get("modified")),
+            **smoke,
+        }
         p = bl.run_cmd(ppl_cmd, v.get("env"))
         out["ppl"], out["ppl_err"] = parse_ppl(bl.strip_ansi(p["text"]), cfg["ppl_regex"])
         out["ppl_wall_s"] = round(p["wall"], 1)
         out["ppl_rc"] = p["rc"]
-        out["log"] = self.run.rel(bl.save_run_log(self.run, f"gate/{key}__{v['label']}.txt",
-                                                  [f"=== gate {rkey} ===", f"DATE: {bl.iso_utc()}", "CMD: " + bl.shlex.join(ppl_cmd)],
-                                                  p["text"]))
+        out["log"] = self.run.rel(
+            bl.save_run_log(
+                self.run,
+                f"gate/{key}__{v['label']}.txt",
+                [f"=== gate {rkey} ===", f"DATE: {bl.iso_utc()}", "CMD: " + bl.shlex.join(ppl_cmd)],
+                p["text"],
+            )
+        )
         self.results[rkey] = out
-        self.run.log(f"  gate {rkey:<36} smoke {'ok' if out['smoke_ok'] else 'WRONG'}  ppl {bl.fnum(out['ppl'], 4)}")
+        self.run.log(
+            f"  gate {rkey:<36} smoke {'ok' if out['smoke_ok'] else 'WRONG'}  ppl {bl.fnum(out['ppl'], 4)}"
+        )
 
     def check(self, variants, models, threads):
         """Run every check, judge, persist gate.json. Returns {'model/variant': result}."""
         if not self.enabled:
             return {}
         t = self.threads or max(threads)
-        self.run.log(f"\n== correctness gate ({self.cfg['mode']}, tolerance {self.cfg['tolerance_pct']} %, "
-                     f"text {pathlib.Path(self.cfg['text_path']).name}) ==")
-        order = sorted(variants, key=lambda v: not self._is_reference(v, models))   # references first
+        self.run.log(
+            f"\n== correctness gate ({self.cfg['mode']}, tolerance {self.cfg['tolerance_pct']} %, "
+            f"text {pathlib.Path(self.cfg['text_path']).name}) =="
+        )
+        order = sorted(
+            variants, key=lambda v: not self._is_reference(v, models)
+        )  # references first
         for key, info, mpath in models:
             for v in order:
                 self._one(v, key, info, mpath, t)
@@ -254,18 +329,26 @@ class Gate:
 
     def _save(self, models):
         judge(self.results, self.cfg, self.reference_of(models))
-        self.path.write_text(json.dumps({"config": self.cfg, "results": self.results}, indent=2) + "\n")
+        self.path.write_text(
+            json.dumps({"config": self.cfg, "results": self.results}, indent=2) + "\n"
+        )
 
     def summary_for_meta(self):
-        return {"mode": self.cfg["mode"], "tolerance_pct": self.cfg["tolerance_pct"], "text_sha256": self.cfg["text_sha256"],
-                "verdicts": {k: r["verdict"] for k, r in sorted(self.results.items())}}
+        return {
+            "mode": self.cfg["mode"],
+            "tolerance_pct": self.cfg["tolerance_pct"],
+            "text_sha256": self.cfg["text_sha256"],
+            "verdicts": {k: r["verdict"] for k, r in sorted(self.results.items())},
+        }
 
     def timed(self, model, variant):
         """Should this (model, variant) be timed and screenshotted? Used as the `skip_of` of run_matrix and screenshots."""
         return should_time(self.verdict_of(model, variant), self.cfg)
 
     def verdict_of(self, model, variant):
-        return self.results.get(f"{model}/{variant}", {}).get("verdict", "OFF" if not self.enabled else "UNVERIFIED")
+        return self.results.get(f"{model}/{variant}", {}).get(
+            "verdict", "OFF" if not self.enabled else "UNVERIFIED"
+        )
 
 
 # ── presenting the verdicts ─────────────────────────────────────────────────────────────────
@@ -281,16 +364,28 @@ def render_md(results, cfg):
     """Markdown section for summary.md."""
     rows = []
     for key, r in sorted(results.items()):
-        rows.append([r["model"], r["variant"] + (" (modified)" if r.get("modified") else ""), bl.fnum(r.get("ppl"), 4),
-                     bl.fnum(r.get("ref_ppl"), 4) if r.get("ref") != key else "-",
-                     "-" if r.get("delta_pct") is None else f"{r['delta_pct']:+.2f} %",
-                     "ok" if r.get("smoke_ok") else "WRONG", r["verdict"],
-                     "yes" if should_time(r["verdict"], cfg) else "no (fails the gate)"])
-    return ("## Correctness gate\n\n"
-            f"Mode {cfg['mode']}; tolerance {cfg['tolerance_pct']} % (WARN up to {cfg['warn_factor']}x); "
-            f"text `{pathlib.Path(cfg['text_path']).name}` (sha256 {cfg['text_sha256'][:12]}), "
-            f"{cfg['ppl_chunks']} chunks of {cfg['ppl_ctx']}.\n\n"
-            + bl.md_table(["model", "variant", "ppl", "reference ppl", "delta", "smoke", "verdict", "timed"], rows) + "\n")
+        rows.append(
+            [
+                r["model"],
+                r["variant"] + (" (modified)" if r.get("modified") else ""),
+                bl.fnum(r.get("ppl"), 4),
+                bl.fnum(r.get("ref_ppl"), 4) if r.get("ref") != key else "-",
+                "-" if r.get("delta_pct") is None else f"{r['delta_pct']:+.2f} %",
+                "ok" if r.get("smoke_ok") else "WRONG",
+                r["verdict"],
+                "yes" if should_time(r["verdict"], cfg) else "no (fails the gate)",
+            ]
+        )
+    return (
+        "## Correctness gate\n\n"
+        f"Mode {cfg['mode']}; tolerance {cfg['tolerance_pct']} % (WARN up to {cfg['warn_factor']}x); "
+        f"text `{pathlib.Path(cfg['text_path']).name}` (sha256 {cfg['text_sha256'][:12]}), "
+        f"{cfg['ppl_chunks']} chunks of {cfg['ppl_ctx']}.\n\n"
+        + bl.md_table(
+            ["model", "variant", "ppl", "reference ppl", "delta", "smoke", "verdict", "timed"], rows
+        )
+        + "\n"
+    )
 
 
 def finish_standalone(run, g):

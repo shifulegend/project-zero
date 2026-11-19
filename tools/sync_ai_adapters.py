@@ -13,6 +13,7 @@ Usage:
 Before 2026-11-11 the three copies were edited by hand and drifted (bullets present in one
 tool's copy only). Edit the .claude/rules file, then run this script.
 """
+
 import pathlib
 import re
 import sys
@@ -24,8 +25,10 @@ COPILOT_DIR = ROOT / ".github" / "instructions"
 
 
 def note(src_rel):
-    return (f"<!-- Generated from {src_rel} by tools/sync_ai_adapters.py; "
-            f"edit that file and re-run the script (CI checks this copy). -->")
+    return (
+        f"<!-- Generated from {src_rel} by tools/sync_ai_adapters.py; "
+        f"edit that file and re-run the script (CI checks this copy). -->"
+    )
 
 
 def parse(path):
@@ -44,13 +47,13 @@ def parse(path):
                 paths.append(item.group(1))
             elif line and not line.startswith(" "):
                 in_paths = False
-        text = text[m.end():]
+        text = text[m.end() :]
     lines = text.split("\n")
     while lines and not lines[0].strip():
         lines.pop(0)
     if not lines or not lines[0].startswith("# Claude rule:"):
         sys.exit(f"{path}: expected a '# Claude rule: <title>' heading after the front matter")
-    title = lines[0][len("# Claude rule:"):].strip()
+    title = lines[0][len("# Claude rule:") :].strip()
     body = "\n".join(lines[1:]).strip("\n") + "\n"
     return paths, title, body
 
@@ -62,10 +65,12 @@ def render(path):
     src_rel = path.relative_to(ROOT).as_posix()
     scope = path.stem
     agents = f"# Antigravity scoped rules: {title}\n\n{note(src_rel)}\n\n{body}"
-    copilot = ("---\n"
-               f'applyTo: "{",".join(paths)}"\n'
-               "---\n"
-               f"# Copilot scoped rules: {title}\n\n{note(src_rel)}\n\n{body}")
+    copilot = (
+        "---\n"
+        f'applyTo: "{",".join(paths)}"\n'
+        "---\n"
+        f"# Copilot scoped rules: {title}\n\n{note(src_rel)}\n\n{body}"
+    )
     return {
         AGENTS_DIR / f"{scope}.md": agents,
         COPILOT_DIR / f"{scope}.instructions.md": copilot,
@@ -120,8 +125,10 @@ def main(argv):
         if not stale:
             return 1
     if check and stale:
-        print("Stale generated adapter files (edit .claude/rules/*.md, then run "
-              "tools/sync_ai_adapters.py):")
+        print(
+            "Stale generated adapter files (edit .claude/rules/*.md, then run "
+            "tools/sync_ai_adapters.py):"
+        )
         for s in stale:
             print(f"  {s}")
         return 1

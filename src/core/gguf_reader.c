@@ -418,19 +418,18 @@ const GGUFTensor *gguf_find_tensor(const GGUFHeader *hdr, const char *name) {
     return NULL;
 }
 
-const char *gguf_meta_str(const GGUFHeader *hdr, const char *key) {
+int gguf_meta_str_copy(const GGUFHeader *hdr, const char *key, char *out, size_t cap) {
+    if (!hdr || !key || !out || cap == 0) return -1;
     for (uint64_t i = 0; i < hdr->n_meta; i++) {
         if (strcmp(hdr->meta[i].key, key) == 0 && hdr->meta[i].val_type == GGUF_VAL_STRING) {
-            /* Return a null-terminated version if space allows */
-            static char buf[GGUF_MAX_KEY_LEN];
             const GGUFMeta *m = &hdr->meta[i];
-            size_t n = m->val.string.len < sizeof(buf) - 1 ? m->val.string.len : sizeof(buf) - 1;
-            memcpy(buf, m->val.string.str, n);
-            buf[n] = '\0';
-            return buf;
+            size_t n          = m->val.string.len < cap - 1 ? (size_t)m->val.string.len : cap - 1;
+            memcpy(out, m->val.string.str, n);
+            out[n] = '\0';
+            return (int)m->val.string.len;
         }
     }
-    return NULL;
+    return -1;
 }
 
 uint32_t gguf_meta_u32(const GGUFHeader *hdr, const char *key, uint32_t default_val) {

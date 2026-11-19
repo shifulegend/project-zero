@@ -163,9 +163,12 @@ void gguf_header_free(GGUFHeader *hdr);
 const GGUFTensor *gguf_find_tensor(const GGUFHeader *hdr, const char *name);
 
 /**
- * Look up a metadata string value by key. Returns NULL if not found or wrong type.
+ * Copy a metadata string value into the caller's buffer, always NUL-terminated (truncated to
+ * cap - 1 bytes when longer). Returns the length of the full value (so a result >= cap means it was
+ * truncated), or -1 if the key is absent, is not a string, or cap is 0. The caller owns the
+ * buffer: there is no shared storage, so two lookups can never overwrite each other.
  */
-const char *gguf_meta_str(const GGUFHeader *hdr, const char *key);
+int gguf_meta_str_copy(const GGUFHeader *hdr, const char *key, char *out, size_t cap);
 
 /**
  * Look up a metadata uint32 value by key. Returns default_val if not found.

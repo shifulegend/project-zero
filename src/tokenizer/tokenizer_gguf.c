@@ -151,12 +151,10 @@ static int find_vocab_token(const Tokenizer *t, const char *s) {
 
 TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
     /* 1. Detect tokenizer type */
-    /* Copied: gguf_meta_str() returns a shared static buffer that the next
-     * call (e.g. tokenizer.ggml.pre below) overwrites. */
     char tok_model_buf[32];
-    const char *tok_model_meta = gguf_meta_str(hdr, "tokenizer.ggml.model");
-    snprintf(tok_model_buf, sizeof(tok_model_buf), "%s", tok_model_meta ? tok_model_meta : "llama");
-    const char *tok_model = tok_model_buf; /* "llama" = safe default */
+    if (gguf_meta_str_copy(hdr, "tokenizer.ggml.model", tok_model_buf, sizeof(tok_model_buf)) < 0)
+        snprintf(tok_model_buf, sizeof(tok_model_buf), "llama"); /* "llama" = safe default */
+    const char *tok_model = tok_model_buf;
 
     int is_bpe = (strcmp(tok_model, "gpt2") == 0);
     int is_spm = (!is_bpe); /* SPM, WPM, UGM, RWKV — all use scores array */
@@ -377,8 +375,11 @@ TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
     /* 6. BPE pre-tokenizer from tokenizer.ggml.pre — absent means llama.cpp's
      * "default" pipeline (what the reference runtimes use for such files). */
     if (is_bpe) {
-        const char *pre = gguf_meta_str(hdr, "tokenizer.ggml.pre");
-        t->pretok_type  = (int)pretok_type_from_name(pre);
+        char pre_buf[64];
+        const char *pre =
+            gguf_meta_str_copy(hdr, "tokenizer.ggml.pre", pre_buf, sizeof(pre_buf)) < 0 ? NULL
+                                                                                        : pre_buf;
+        t->pretok_type = (int)pretok_type_from_name(pre);
     }
     /* Missing add_bos_token: llama.cpp adds BOS for SentencePiece and for
      * Llama-3-style BPE, not for other BPE vocabularies (Qwen, SmolLM, ...). */

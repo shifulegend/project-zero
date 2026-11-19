@@ -288,9 +288,13 @@ TernaryError config_from_gguf(Config *cfg, const GGUFHeader *hdr) {
     snprintf(orig_ctx_key, 128, "%s.rope.scaling.original_context_length", hdr->arch);
 
     float rope_scale_factor = gguf_meta_f32(hdr, scale_key, 1.0f);
-    const char *scale_type  = gguf_meta_str(hdr, scale_type_key);
-    float yarn_log_mul      = gguf_meta_f32(hdr, log_mul_key, 0.0f);
-    int orig_ctx            = (int)gguf_meta_u32(hdr, orig_ctx_key, (uint32_t)cfg->seq_len);
+    char scale_type_buf[32];
+    const char *scale_type =
+        gguf_meta_str_copy(hdr, scale_type_key, scale_type_buf, sizeof(scale_type_buf)) < 0
+            ? NULL
+            : scale_type_buf;
+    float yarn_log_mul = gguf_meta_f32(hdr, log_mul_key, 0.0f);
+    int orig_ctx       = (int)gguf_meta_u32(hdr, orig_ctx_key, (uint32_t)cfg->seq_len);
 
     /* freq_scale = 1/factor; ext_factor=1 for yarn scaling, 0 otherwise */
     cfg->rope_freq_scale      = (rope_scale_factor > 1.0f) ? (1.0f / rope_scale_factor) : 1.0f;

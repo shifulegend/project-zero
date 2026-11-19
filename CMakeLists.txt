@@ -308,6 +308,12 @@ set(REASONING_SOURCES
 set(CLI_SOURCES
     src/cli/args.c
     src/cli/args_usage.c
+    src/cli/args_flags_generation.c
+    src/cli/args_flags_memory.c
+    src/cli/args_flags_serving.c
+    src/cli/args_flags_search.c
+    src/cli/args_flags_behavior.c
+    src/cli/args_flags_extras.c
     src/cli/arg_values.c
     src/cli/program_name.c
     src/cli/config_cmd.c

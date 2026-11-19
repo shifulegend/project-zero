@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fails when a command-line flag that parse_args() accepts is missing from the --help text.
 
-The flags come from `strcmp(argv[i], "--flag")` in src/cli/args.c, the help text from
+The flags come from `strcmp(argv[i], "--flag")` in src/cli/args.c and the flag groups (args_flags_*.c), the help text from
 src/cli/args_usage.c. A flag nobody can discover is a flag nobody uses (and DoD #6 wants every new
 setting visible), so adding a flag without its help line fails CI.
 
@@ -13,7 +13,7 @@ import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-ARGS = ROOT / "src" / "cli" / "args.c"
+ARGS_FILES = sorted((ROOT / "src" / "cli").glob("args*.c"))
 USAGE = ROOT / "src" / "cli" / "args_usage.c"
 
 PARSED = re.compile(r'strcmp\(argv\[i\],\s*"(--[a-z0-9-]+)"\)')
@@ -37,7 +37,10 @@ def undocumented(parsed, documented):
 
 def main():
     """Entry point; returns 1 when a parsed flag has no help text."""
-    parsed = parsed_flags(ARGS.read_text(encoding="utf-8"))
+    parsed = set()
+    for path in ARGS_FILES:
+        if path.name != "args_usage.c":
+            parsed |= parsed_flags(path.read_text(encoding="utf-8"))
     if not parsed:
         print("no flags found in args.c (did the parser format change?)")
         return 2

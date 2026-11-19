@@ -14,13 +14,13 @@
 typedef struct {
     int l1d_bytes;
     int l2_bytes;
-    long long l3_bytes;  /* can exceed 2 GiB-ish on big server parts; 0 = unknown */
+    long long l3_bytes; /* can exceed 2 GiB-ish on big server parts; 0 = unknown */
     int line_bytes;
-    int source;          /* 0 = fallback, 1 = sysfs, 2 = cpuid */
+    int source; /* 0 = fallback, 1 = sysfs, 2 = cpuid */
 } CacheInfo;
 
-#define CACHE_PROBE_FALLBACK_L1D  (32 * 1024)
-#define CACHE_PROBE_FALLBACK_L2   (1024 * 1024)
+#define CACHE_PROBE_FALLBACK_L1D (32 * 1024)
+#define CACHE_PROBE_FALLBACK_L2 (1024 * 1024)
 #define CACHE_PROBE_FALLBACK_LINE 64
 
 /* Probed once (thread-safe after the first call returns). */

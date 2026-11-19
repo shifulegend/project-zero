@@ -25,12 +25,14 @@
 #define JSON_GRAMMAR_MAX_DEPTH 256
 
 typedef enum {
-    JSON_ST_VALUE = 0,       /* expecting the start of any JSON value */
-    JSON_ST_OBJ_OPEN,        /* just saw '{': expect '"' (key) or '}' (empty) */
-    JSON_ST_OBJ_KEY,         /* inside an object-key string */
-    JSON_ST_OBJ_KEY_ESC,     /* saw '\' inside a key string */
-    JSON_ST_OBJ_KEY_ESC_U1, JSON_ST_OBJ_KEY_ESC_U2,
-    JSON_ST_OBJ_KEY_ESC_U3, JSON_ST_OBJ_KEY_ESC_U4,
+    JSON_ST_VALUE = 0,   /* expecting the start of any JSON value */
+    JSON_ST_OBJ_OPEN,    /* just saw '{': expect '"' (key) or '}' (empty) */
+    JSON_ST_OBJ_KEY,     /* inside an object-key string */
+    JSON_ST_OBJ_KEY_ESC, /* saw '\' inside a key string */
+    JSON_ST_OBJ_KEY_ESC_U1,
+    JSON_ST_OBJ_KEY_ESC_U2,
+    JSON_ST_OBJ_KEY_ESC_U3,
+    JSON_ST_OBJ_KEY_ESC_U4,
     JSON_ST_OBJ_COLON,       /* key string closed: expect ':' */
     JSON_ST_OBJ_AFTER_VALUE, /* a value inside an object just closed: expect ',' or '}' */
     JSON_ST_OBJ_KEY_NEXT,    /* after ',' in an object: expect '"' for the next key */
@@ -38,25 +40,33 @@ typedef enum {
     JSON_ST_ARR_AFTER_VALUE, /* a value inside an array just closed: expect ',' or ']' */
     JSON_ST_STRING,          /* inside a string VALUE (not an object key) */
     JSON_ST_STRING_ESC,
-    JSON_ST_STRING_ESC_U1, JSON_ST_STRING_ESC_U2,
-    JSON_ST_STRING_ESC_U3, JSON_ST_STRING_ESC_U4,
-    JSON_ST_NUM_INT_FIRST,   /* just saw '-': need >=1 digit next */
-    JSON_ST_NUM_INT,         /* >=1 integer digit consumed, first digit was 1-9; value may end here */
-    JSON_ST_NUM_INT_ZERO,    /* integer part is a single leading '0' (RFC 8259: no further
+    JSON_ST_STRING_ESC_U1,
+    JSON_ST_STRING_ESC_U2,
+    JSON_ST_STRING_ESC_U3,
+    JSON_ST_STRING_ESC_U4,
+    JSON_ST_NUM_INT_FIRST, /* just saw '-': need >=1 digit next */
+    JSON_ST_NUM_INT,       /* >=1 integer digit consumed, first digit was 1-9; value may end here */
+    JSON_ST_NUM_INT_ZERO,  /* integer part is a single leading '0' (RFC 8259: no further
                               * digits allowed here, unlike JSON_ST_NUM_INT -- "01" is invalid,
                               * only "0", "0.x", "0e/E..." or a terminator may follow) */
-    JSON_ST_NUM_FRAC_FIRST,  /* just saw '.': need >=1 digit next */
-    JSON_ST_NUM_FRAC,        /* >=1 fraction digit consumed; value may end here */
-    JSON_ST_NUM_EXP_FIRST,   /* just saw e/E: optional sign then need >=1 digit */
-    JSON_ST_NUM_EXP_SIGN,    /* just saw exponent sign: need >=1 digit */
-    JSON_ST_NUM_EXP,         /* >=1 exponent digit consumed; value may end here */
-    JSON_ST_LIT_TRUE_T, JSON_ST_LIT_TRUE_R, JSON_ST_LIT_TRUE_U,   /* matched "t"/"tr"/"tru" */
-    JSON_ST_LIT_FALSE_F, JSON_ST_LIT_FALSE_A,
-    JSON_ST_LIT_FALSE_L, JSON_ST_LIT_FALSE_S,                    /* matched "f".."fals" */
-    JSON_ST_LIT_NULL_N, JSON_ST_LIT_NULL_U, JSON_ST_LIT_NULL_L,  /* matched "n"/"nu"/"nul" */
-    JSON_ST_ROOT,            /* root mode start: only '{' or '[' (json_grammar_init_root) */
-    JSON_ST_DONE,            /* the single top-level value is complete */
-    JSON_ST_INVALID          /* sink state: this input can never be valid JSON */
+    JSON_ST_NUM_FRAC_FIRST, /* just saw '.': need >=1 digit next */
+    JSON_ST_NUM_FRAC,       /* >=1 fraction digit consumed; value may end here */
+    JSON_ST_NUM_EXP_FIRST,  /* just saw e/E: optional sign then need >=1 digit */
+    JSON_ST_NUM_EXP_SIGN,   /* just saw exponent sign: need >=1 digit */
+    JSON_ST_NUM_EXP,        /* >=1 exponent digit consumed; value may end here */
+    JSON_ST_LIT_TRUE_T,
+    JSON_ST_LIT_TRUE_R,
+    JSON_ST_LIT_TRUE_U, /* matched "t"/"tr"/"tru" */
+    JSON_ST_LIT_FALSE_F,
+    JSON_ST_LIT_FALSE_A,
+    JSON_ST_LIT_FALSE_L,
+    JSON_ST_LIT_FALSE_S, /* matched "f".."fals" */
+    JSON_ST_LIT_NULL_N,
+    JSON_ST_LIT_NULL_U,
+    JSON_ST_LIT_NULL_L, /* matched "n"/"nu"/"nul" */
+    JSON_ST_ROOT,       /* root mode start: only '{' or '[' (json_grammar_init_root) */
+    JSON_ST_DONE,       /* the single top-level value is complete */
+    JSON_ST_INVALID     /* sink state: this input can never be valid JSON */
 } JsonState;
 
 typedef struct {
@@ -66,7 +76,7 @@ typedef struct {
      * for a value nested in an object, JSON_ST_ARR_AFTER_VALUE for a value
      * nested in an array). */
     JsonState stack[JSON_GRAMMAR_MAX_DEPTH];
-    int sp; /* stack pointer; 0 = top-level, grows on '{'/'[' */
+    int sp;   /* stack pointer; 0 = top-level, grows on '{'/'[' */
     int root; /* root mode: document must be one object/array, nothing after it */
 } JsonGrammarState;
 

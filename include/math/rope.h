@@ -32,9 +32,8 @@ void rope_precompute_freqs(float *out, int head_dim, float theta);
  * @param attn_factor   YaRN amplitude correction factor
  * @param corr          YaRN correction dimension bounds [low, high]
  */
-void apply_rope(float *q, float *k, const float *freq,
-                int head_dim, int pos, int n_heads, int n_kv_heads,
-                float freq_scale, float ext_factor, float attn_factor,
+void apply_rope(float *q, float *k, const float *freq, int head_dim, int pos, int n_heads,
+                int n_kv_heads, float freq_scale, float ext_factor, float attn_factor,
                 const float corr[2]);
 
 /* Pair layout of the rotary embedding — which two dimensions rotate together.
@@ -44,9 +43,8 @@ void apply_rope(float *q, float *k, const float *freq,
 typedef enum { ROPE_LAYOUT_NORM = 0, ROPE_LAYOUT_NEOX = 1 } RopeLayout;
 
 /* apply_rope with an explicit layout (apply_rope == ROPE_LAYOUT_NORM). */
-void apply_rope_ex(float *q, float *k, const float *freq,
-                   int head_dim, int pos, int n_heads, int n_kv_heads,
-                   float freq_scale, float ext_factor, float attn_factor,
+void apply_rope_ex(float *q, float *k, const float *freq, int head_dim, int pos, int n_heads,
+                   int n_kv_heads, float freq_scale, float ext_factor, float attn_factor,
                    const float corr[2], int layout);
 
 /* Layout a GGUF general.architecture string uses (mirrors llama.cpp's

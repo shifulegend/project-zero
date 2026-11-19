@@ -13,23 +13,23 @@ void server_config_init(ServerConfig *sc) {
     memset(sc, 0, sizeof(*sc));
     sc->web_ui = WEBUI_MODE_AUTO;
     gen_params_default(&sc->gen_defaults);
-    sc->max_tokens_limit = 0; /* 0 = no cap beyond the model context */
-    sc->prompt_cache = 1;     /* reuse shared prompt prefixes by default */
-    sc->prompt_cache_mb = 0;  /* main.c sets the CLI value (default 256) */
+    sc->max_tokens_limit        = 0; /* 0 = no cap beyond the model context */
+    sc->prompt_cache            = 1; /* reuse shared prompt prefixes by default */
+    sc->prompt_cache_mb         = 0; /* main.c sets the CLI value (default 256) */
     sc->prompt_cache_min_tokens = 32;
-    sc->chat_format = -1;
-    sc->allow_request_template = 1;
-    sc->mcts_max = 64;
+    sc->chat_format             = -1;
+    sc->allow_request_template  = 1;
+    sc->mcts_max                = 64;
     mcts_options_defaults(&sc->mcts);
-    sc->best_of = 1;
-    sc->queue_size = 0;
-    sc->queue_timeout_s = 120;
-    sc->rate_limit = 20;         /* generous for the web UI, stops a flood of cheap calls */
-    sc->client_timeout_s = 30;   /* a stalled client frees its thread after 30 s */
-    sc->max_connections = 64;    /* excess clients get 503 instead of an unbounded thread each */
-    sc->parallel = 1;
-    sc->parallel_batch = PZ_PARALLEL_BATCH_DEFAULT;
-    sc->best_of_max = BEST_OF_MAX_DEFAULT;
+    sc->best_of          = 1;
+    sc->queue_size       = 0;
+    sc->queue_timeout_s  = 120;
+    sc->rate_limit       = 20; /* generous for the web UI, stops a flood of cheap calls */
+    sc->client_timeout_s = 30; /* a stalled client frees its thread after 30 s */
+    sc->max_connections  = 64; /* excess clients get 503 instead of an unbounded thread each */
+    sc->parallel         = 1;
+    sc->parallel_batch   = PZ_PARALLEL_BATCH_DEFAULT;
+    sc->best_of_max      = BEST_OF_MAX_DEFAULT;
 }
 
 int server_config_add_cors_origin(ServerConfig *sc, const char *origin) {

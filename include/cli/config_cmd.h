@@ -28,15 +28,16 @@ int pz_config_command(int argc, char **argv);
  * technical -- every step says what it means, shows example choices and
  * their effect, and whether it can be changed later). */
 typedef struct {
-    const char *const *model_dirs;   /* where to look for .gguf files (NULL-terminated; may be NULL) */
-    const PzStarterModel *catalog;   /* starter models offered for download (may be NULL) */
-    int    n_catalog;
-    const char *download_dir;        /* where starter models are saved */
-    double free_ram_gb;              /* for the suggestion; <= 0 = unknown */
+    const char *const
+        *model_dirs; /* where to look for .gguf files (NULL-terminated; may be NULL) */
+    const PzStarterModel *catalog; /* starter models offered for download (may be NULL) */
+    int n_catalog;
+    const char *download_dir; /* where starter models are saved */
+    double free_ram_gb;       /* for the suggestion; <= 0 = unknown */
     /* NULL = pz_model_download (tests inject a fake). */
-    int  (*download)(const PzStarterModel *m, const char *dir, char *path, size_t pathn, FILE *out);
-    int    offer_chat;               /* ask "open the chat page now?" after saving */
-    int    want_chat;                /* out: the user said yes */
+    int (*download)(const PzStarterModel *m, const char *dir, char *path, size_t pathn, FILE *out);
+    int offer_chat; /* ask "open the chat page now?" after saving */
+    int want_chat;  /* out: the user said yes */
 } PzWizardOpts;
 
 /* Interactive guided setup over `in`/`out` (testable without a terminal).

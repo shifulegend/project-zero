@@ -65,7 +65,8 @@ static void test_leading_zero_numbers_rejected(void) {
     TEST_ASSERT(!feed_never_invalid("00"), "'00' goes INVALID (leading zero + digit)");
     TEST_ASSERT(!feed_never_invalid("-01"), "'-01' goes INVALID (negative leading zero + digit)");
     TEST_ASSERT(!feed_never_invalid("[01]"), "leading-zero number inside an array goes INVALID");
-    TEST_ASSERT(!feed_never_invalid("{\"a\":01}"), "leading-zero number as an object value goes INVALID");
+    TEST_ASSERT(!feed_never_invalid("{\"a\":01}"),
+                "leading-zero number as an object value goes INVALID");
     /* These must NOT regress: '0' alone, and '0' followed by a legal
      * non-digit continuation (fraction/exponent/terminator), all still work. */
     TEST_ASSERT(feed_full("0"), "bare '0' still complete");
@@ -92,16 +93,19 @@ static void test_invalid_documents(void) {
     TEST_ASSERT(!feed_never_invalid("trux"), "malformed 'true' literal rejected");
     /* Raw control byte inside a string (must be escaped per RFC 8259). */
     {
-        char bad[] = { '"', 'a', 0x01, 'b', '"', '\0' };
+        char bad[] = {'"', 'a', 0x01, 'b', '"', '\0'};
         TEST_ASSERT(!feed_never_invalid(bad), "raw control byte in string rejected");
     }
     /* Extra content after a complete top-level value. */
     json_grammar_init(&g);
     {
-        const char *s = "{}x";
+        const char *s   = "{}x";
         int saw_invalid = 0;
         for (size_t i = 0; s[i]; i++)
-            if (json_grammar_step(&g, s[i]) == JSON_ST_INVALID) { saw_invalid = 1; break; }
+            if (json_grammar_step(&g, s[i]) == JSON_ST_INVALID) {
+                saw_invalid = 1;
+                break;
+            }
         TEST_ASSERT(saw_invalid, "trailing garbage after a complete value rejected");
     }
     /* Bad escape sequence. */
@@ -115,21 +119,20 @@ static void test_valid_but_incomplete_prefixes(void) {
      * but must not be considered DONE either (still open). */
     JsonGrammarState g;
     const char *prefixes[] = {
-        "{\"a\":\"unterminated string",
-        "[1,2,",
-        "{\"key\":",
-        "-3.14e",
-        "tru",
-        "{\"a\":{\"b\":1",
+        "{\"a\":\"unterminated string", "[1,2,", "{\"key\":", "-3.14e", "tru", "{\"a\":{\"b\":1",
     };
     for (size_t i = 0; i < sizeof(prefixes) / sizeof(prefixes[0]); i++) {
         json_grammar_init(&g);
         int ok = 1;
         for (size_t j = 0; prefixes[i][j]; j++) {
-            if (json_grammar_step(&g, prefixes[i][j]) == JSON_ST_INVALID) { ok = 0; break; }
+            if (json_grammar_step(&g, prefixes[i][j]) == JSON_ST_INVALID) {
+                ok = 0;
+                break;
+            }
         }
         TEST_ASSERT(ok, "valid prefix must not be rejected mid-stream");
-        TEST_ASSERT(!json_grammar_is_complete(&g), "valid-but-incomplete prefix must not read as DONE");
+        TEST_ASSERT(!json_grammar_is_complete(&g),
+                    "valid-but-incomplete prefix must not read as DONE");
     }
 }
 
@@ -139,7 +142,8 @@ static void test_finalize_closes_bare_number(void) {
     const char *s = "123";
     for (size_t i = 0; s[i]; i++)
         TEST_ASSERT(json_grammar_step(&g, s[i]) != JSON_ST_INVALID, "digit accepted");
-    TEST_ASSERT(!json_grammar_is_complete(&g), "bare number not DONE before finalize (no trailing delimiter yet)");
+    TEST_ASSERT(!json_grammar_is_complete(&g),
+                "bare number not DONE before finalize (no trailing delimiter yet)");
     json_grammar_finalize(&g);
     TEST_ASSERT(json_grammar_is_complete(&g), "bare number IS complete after finalize");
 }
@@ -149,8 +153,17 @@ static void test_deep_nesting_within_limit(void) {
     JsonGrammarState g;
     json_grammar_init(&g);
     int ok = 1;
-    for (int i = 0; i < 50; i++) if (json_grammar_step(&g, '[') == JSON_ST_INVALID) { ok = 0; break; }
-    if (ok) for (int i = 0; i < 50; i++) if (json_grammar_step(&g, ']') == JSON_ST_INVALID) { ok = 0; break; }
+    for (int i = 0; i < 50; i++)
+        if (json_grammar_step(&g, '[') == JSON_ST_INVALID) {
+            ok = 0;
+            break;
+        }
+    if (ok)
+        for (int i = 0; i < 50; i++)
+            if (json_grammar_step(&g, ']') == JSON_ST_INVALID) {
+                ok = 0;
+                break;
+            }
     TEST_ASSERT(ok, "50 levels of array nesting within JSON_GRAMMAR_MAX_DEPTH accepted");
     TEST_ASSERT(json_grammar_is_complete(&g), "deeply nested empty arrays close back to DONE");
 }
@@ -179,7 +192,8 @@ static void test_root_mode(void) {
     TEST_ASSERT(!feed_root("`", NULL), "markdown fence cannot start the output");
     TEST_ASSERT(!feed_root("{} ", NULL), "nothing, not even whitespace, after the root value");
     TEST_ASSERT(!feed_root("{}{}", NULL), "a second document rejected");
-    TEST_ASSERT(feed_root("{\"code\": \"```\"}", &done) && done, "backticks inside a string stay legal");
+    TEST_ASSERT(feed_root("{\"code\": \"```\"}", &done) && done,
+                "backticks inside a string stay legal");
     /* The permissive grammar is unchanged. */
     TEST_ASSERT(feed_full(" {} "), "default mode still allows surrounding whitespace");
 }

@@ -28,7 +28,10 @@ static void check_shape(int n, int d, float scale, unsigned long long seed) {
     snprintf(msg, sizeof(msg), "n=%d d=%d maxdiff=%g", n, d, maxdiff);
     TEST_ASSERT(maxdiff < 1e-3f * (float)n / 64.0f + 1e-4f, msg);
     TEST_ASSERT(b[0] == 0.0f, "zero row -> 0");
-    free(w); free(x); free(a); free(b);
+    free(w);
+    free(x);
+    free(a);
+    free(b);
 }
 
 static void test_shapes(void) {

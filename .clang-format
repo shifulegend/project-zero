@@ -1,0 +1,18 @@
+# clang-format 18 (CI pins the same major). The existing hand style: 4 spaces, attached braces, 100 columns,
+# aligned consecutive assignments. Includes and comments are left as written.
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 100
+UseTab: Never
+BreakBeforeBraces: Attach
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: true
+AlignConsecutiveAssignments: Consecutive
+AlignConsecutiveDeclarations: None
+AlignTrailingComments: true
+SortIncludes: Never
+IndentCaseLabels: true
+PointerAlignment: Right
+ReflowComments: false
+MaxEmptyLinesToKeep: 2

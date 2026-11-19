@@ -10,14 +10,14 @@
  * independent accumulators break the FP add dependency chain. Summation
  * order differs from the reference, so results match to rounding, not bits.
  */
-void ternary_matmul_branchless(float *out, const float *x, const tn_i8 *w,
-                               int n, int d, float scale) {
+void ternary_matmul_branchless(float *out, const float *x, const tn_i8 *w, int n, int d,
+                               float scale) {
     for (int i = 0; i < d; i++) {
         const tn_i8 *row = w + (size_t)i * n;
         float a0 = 0.0f, a1 = 0.0f, a2 = 0.0f, a3 = 0.0f;
         int j = 0;
         for (; j + 4 <= n; j += 4) {
-            a0 += (float)row[j]     * x[j];
+            a0 += (float)row[j] * x[j];
             a1 += (float)row[j + 1] * x[j + 1];
             a2 += (float)row[j + 2] * x[j + 2];
             a3 += (float)row[j + 3] * x[j + 3];

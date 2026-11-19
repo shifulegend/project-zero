@@ -19,17 +19,20 @@
 
 typedef float (*quantize_fn)(const float *, int8_t *, int);
 
-typedef struct { const char *name; quantize_fn fn; } Tier;
+typedef struct {
+    const char *name;
+    quantize_fn fn;
+} Tier;
 
 static unsigned rng_state = 12345u;
-static float rnd(void) {                      /* uniform in [-1, 1) */
+static float rnd(void) { /* uniform in [-1, 1) */
     rng_state = rng_state * 1103515245u + 12345u;
     return (float)((rng_state >> 8) & 0xFFFFu) / 32768.0f - 1.0f;
 }
 
 static int tiers(Tier *t) {
-    int n = 0;
-    t[n++] = (Tier){"neon", quantize_row_to_i8_neon};          /* scalar on non-NEON builds */
+    int n  = 0;
+    t[n++] = (Tier){"neon", quantize_row_to_i8_neon}; /* scalar on non-NEON builds */
 #if TN_HAS_AVX2
     t[n++] = (Tier){"avx2", quantize_row_to_i8_avx2};
 #endif
@@ -41,13 +44,19 @@ static int tiers(Tier *t) {
 
 /* abs_max = 127 makes inv_scale exactly 1.0f, so x[i] * inv_scale is x[i]: exact ties are testable. */
 static void test_ties_round_to_even(void) {
-    float x[16] = {127.0f, 0.5f, 1.5f, 2.5f, 3.5f, -0.5f, -1.5f, -2.5f, -3.5f, 0.49f, 0.51f, -0.49f, -0.51f, 126.5f, -126.5f, 0.0f};
+    float x[16]           = {127.0f, 0.5f,  1.5f,  2.5f,   3.5f,   -0.5f,  -1.5f,   -2.5f,
+                             -3.5f,  0.49f, 0.51f, -0.49f, -0.51f, 126.5f, -126.5f, 0.0f};
     const int8_t want[16] = {127, 0, 2, 2, 4, 0, -2, -2, -4, 0, 1, 0, -1, 126, -126, 0};
     int8_t q[16];
     TEST_ASSERT_FLOAT_EQ(quantize_row_to_i8(x, q, 16), 1.0f, 1e-7f, "ties: scale is abs_max/127");
     int ok = 1;
-    for (int i = 0; i < 16; i++) if (q[i] != want[i]) { ok = 0; printf("    scalar x=%g got %d want %d\n", x[i], q[i], want[i]); }
-    TEST_ASSERT(ok, "scalar rounds to nearest, ties to even (truncation would give 0 1 2 3 for the first four)");
+    for (int i = 0; i < 16; i++)
+        if (q[i] != want[i]) {
+            ok = 0;
+            printf("    scalar x=%g got %d want %d\n", x[i], q[i], want[i]);
+        }
+    TEST_ASSERT(ok, "scalar rounds to nearest, ties to even (truncation would give 0 1 2 3 for the "
+                    "first four)");
     Tier t[4];
     int nt = tiers(t);
     for (int k = 0; k < nt; k++) {
@@ -80,10 +89,12 @@ static void test_half_step_error_bound(void) {
     static int8_t q[N];
     double worst = 0.0;
     for (int trial = 0; trial < 20; trial++) {
-        for (int i = 0; i < N; i++) x[i] = rnd() * (trial % 3 == 0 ? 0.01f : 1.0f) * (i % 97 == 0 ? 8.0f : 1.0f);
+        for (int i = 0; i < N; i++)
+            x[i] = rnd() * (trial % 3 == 0 ? 0.01f : 1.0f) * (i % 97 == 0 ? 8.0f : 1.0f);
         float scale = quantize_row_to_i8(x, q, N);
         double amax = 0;
-        for (int i = 0; i < N; i++) if (fabs((double)x[i]) > amax) amax = fabs((double)x[i]);
+        for (int i = 0; i < N; i++)
+            if (fabs((double)x[i]) > amax) amax = fabs((double)x[i]);
         for (int i = 0; i < N; i++) {
             double e = fabs((double)q[i] - (double)x[i] * 127.0 / amax);
             if (e > worst) worst = e;
@@ -91,7 +102,8 @@ static void test_half_step_error_bound(void) {
         (void)scale;
     }
     printf("    worst |q - x*127/absmax| = %.4f steps\n", worst);
-    TEST_ASSERT(worst <= 0.5 + 1e-3, "quantisation error is at most half a step (truncation gives up to 1.0)");
+    TEST_ASSERT(worst <= 0.5 + 1e-3,
+                "quantisation error is at most half a step (truncation gives up to 1.0)");
 }
 
 static void check_tier_equals_oracle(const Tier *t, const float *base, int n, const char *what) {
@@ -99,7 +111,9 @@ static void check_tier_equals_oracle(const Tier *t, const float *base, int n, co
     float so = quantize_row_to_i8(base, qo, n);
     float st = t->fn(base, qt, n);
     int same = (so == st) && memcmp(qo, qt, (size_t)n) == 0;
-    if (!same) printf("    %s: %s differs from the oracle (n=%d, scale %g vs %g)\n", what, t->name, n, so, st);
+    if (!same)
+        printf("    %s: %s differs from the oracle (n=%d, scale %g vs %g)\n", what, t->name, n, so,
+               st);
     TEST_ASSERT(same, what);
 }
 
@@ -119,12 +133,13 @@ static void test_tiers_equal_oracle_bit_for_bit(void) {
             buf[n / 2] = 5000.0f;
             check_tier_equals_oracle(&t[k], buf, n, "outlier");
         }
-        for (int n = 1; n <= 200; n += 3) {                   /* abs_max 127: every x is its own product, ties included */
+        for (int n = 1; n <= 200;
+             n += 3) { /* abs_max 127: every x is its own product, ties included */
             for (int i = 0; i < n; i++) buf[i] = (float)((i * 7) % 255 - 127) * 0.5f;
             buf[0] = 127.0f;
             check_tier_equals_oracle(&t[k], buf, n, "ties at abs_max 127");
         }
-        for (int i = 0; i < 64; i++) buf[i] = (i & 1) ? -0.0f : 0.0f;                  /* signed zeros */
+        for (int i = 0; i < 64; i++) buf[i] = (i & 1) ? -0.0f : 0.0f; /* signed zeros */
         check_tier_equals_oracle(&t[k], buf, 64, "signed zeros");
     }
 }

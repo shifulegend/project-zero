@@ -6,8 +6,8 @@
 #include "core/progress.h"
 #include <stdio.h>
 
-size_t tn_progress_format(char *buf, size_t cap, int stage, int total_stages,
-                           const char *label, int is_tty) {
+size_t tn_progress_format(char *buf, size_t cap, int stage, int total_stages, const char *label,
+                          int is_tty) {
     if (!buf || cap == 0) return 0;
     buf[0] = '\0';
     if (!label) label = "";
@@ -18,7 +18,10 @@ size_t tn_progress_format(char *buf, size_t cap, int stage, int total_stages,
     } else {
         n = snprintf(buf, cap, "[%d/%d] %s\n", stage, total_stages, label);
     }
-    if (n < 0) { buf[0] = '\0'; return 0; }
+    if (n < 0) {
+        buf[0] = '\0';
+        return 0;
+    }
     if ((size_t)n >= cap) return cap - 1;
     return (size_t)n;
 }

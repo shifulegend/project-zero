@@ -6,9 +6,9 @@
  * server or the reasoning code just to know a maximum. */
 
 /* --parallel / --parallel-batch (the cancel registry holds one entry per parallel request). */
-#define PZ_PARALLEL_MAX            64
-#define PZ_PARALLEL_BATCH_DEFAULT  128
-#define PZ_PARALLEL_BATCH_MAX      4096
+#define PZ_PARALLEL_MAX 64
+#define PZ_PARALLEL_BATCH_DEFAULT 128
+#define PZ_PARALLEL_BATCH_MAX 4096
 
 /* Most best-of candidates one request may ask for. */
 #define BEST_OF_N_MAX 64

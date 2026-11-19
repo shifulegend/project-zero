@@ -18,8 +18,8 @@
 
 static inline void unpack32(const uint8_t *b, __m512 *lo, __m512 *hi) {
     const __m128i m4 = _mm_set1_epi8(0x0F);
-    __m128i x = _mm_loadu_si128((const __m128i *)b);
-    *lo = _mm512_cvtepi32_ps(_mm512_cvtepu8_epi32(_mm_and_si128(x, m4)));
+    __m128i x        = _mm_loadu_si128((const __m128i *)b);
+    *lo              = _mm512_cvtepi32_ps(_mm512_cvtepu8_epi32(_mm_and_si128(x, m4)));
     *hi = _mm512_cvtepi32_ps(_mm512_cvtepu8_epi32(_mm_and_si128(_mm_srli_epi16(x, 4), m4)));
 }
 
@@ -32,8 +32,8 @@ float kvq4_dot_avx512(const float *q, const uint8_t *k, const float *scales, int
         __m512 q0 = _mm512_loadu_ps(qq), q1 = _mm512_loadu_ps(qq + 16);
         __m512 qc = _mm512_fmadd_ps(q1, chi, _mm512_mul_ps(q0, clo));
         __m512 qs = _mm512_add_ps(q0, q1);
-        acc = _mm512_fmadd_ps(_mm512_set1_ps(scales[2 * g]), qc, acc);
-        acc = _mm512_fmadd_ps(_mm512_set1_ps(scales[2 * g + 1]), qs, acc);
+        acc       = _mm512_fmadd_ps(_mm512_set1_ps(scales[2 * g]), qc, acc);
+        acc       = _mm512_fmadd_ps(_mm512_set1_ps(scales[2 * g + 1]), qs, acc);
     }
     return _mm512_reduce_add_ps(acc);
 }
@@ -46,7 +46,8 @@ void kvq4_axpy_avx512(float *out, float a, const uint8_t *v, const float *scales
         __m512 ad = _mm512_set1_ps(a * scales[2 * g]);
         __m512 am = _mm512_set1_ps(a * scales[2 * g + 1]);
         _mm512_storeu_ps(oo, _mm512_fmadd_ps(ad, clo, _mm512_add_ps(_mm512_loadu_ps(oo), am)));
-        _mm512_storeu_ps(oo + 16, _mm512_fmadd_ps(ad, chi, _mm512_add_ps(_mm512_loadu_ps(oo + 16), am)));
+        _mm512_storeu_ps(oo + 16,
+                         _mm512_fmadd_ps(ad, chi, _mm512_add_ps(_mm512_loadu_ps(oo + 16), am)));
     }
 }
 

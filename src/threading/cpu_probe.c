@@ -44,12 +44,18 @@ static int count_physical_cores_linux(void) {
                 int found = 0;
                 for (int i = 0; i < count; i++) {
                     if (phys[i] == cur_phys && core[i] == cur_core) {
-                        found = 1; break;
+                        found = 1;
+                        break;
                     }
                 }
-                if (!found) { phys[count] = cur_phys; core[count] = cur_core; count++; }
+                if (!found) {
+                    phys[count] = cur_phys;
+                    core[count] = cur_core;
+                    count++;
+                }
             }
-            cur_phys = -1; cur_core = -1;
+            cur_phys = -1;
+            cur_core = -1;
         }
     }
     fclose(f);
@@ -74,7 +80,7 @@ int tn_get_optimal_thread_count(void) {
      * so the portable dist binary (baseline-ISA TU) applies the same rule on
      * AVX-512 hosts as a -march=native build. */
     if (tn_cpu_features_detect()->avx512f) {
-    /*
+        /*
      * On AVX-512 VNNI capable x86 CPUs, hyperthreading causes severe
      * performance degradation due to contention on the shared AVX-512
      * execution port and L2 cache pressure.
@@ -97,16 +103,16 @@ int tn_get_optimal_thread_count(void) {
      * Safety cap: never exceed logical - 2, leaving at least 2 logical
      * CPUs free for the OS and background tasks.
      */
-    int physical = count_physical_cores_linux();
-    if (physical <= 0) {
-        /* Fallback: half of logical cores */
-        int threads = logical / 2;
-        if (threads < 1) threads = 1;
-        return threads;
-    }
-    int optimal = physical;   /* physical cores only — VNNI saturates at T=4 */
+        int physical = count_physical_cores_linux();
+        if (physical <= 0) {
+            /* Fallback: half of logical cores */
+            int threads = logical / 2;
+            if (threads < 1) threads = 1;
+            return threads;
+        }
+        int optimal = physical; /* physical cores only — VNNI saturates at T=4 */
 
-    /*
+        /*
      * Safety cap: leave headroom for OS and background tasks.
      *
      * On HT systems (logical > physical): cap at logical - 2 to leave 2
@@ -117,13 +123,13 @@ int tn_get_optimal_thread_count(void) {
      * system it returned 2, halving throughput.  There are no HT siblings
      * to contend with, so every core should run a worker.
      */
-    if (logical > physical) {
-        int cap = logical - 2;
-        if (cap < 1) cap = 1;
-        if (optimal > cap) optimal = cap;
-    }
-    if (optimal < 1) optimal = 1;
-    return optimal;
+        if (logical > physical) {
+            int cap = logical - 2;
+            if (cap < 1) cap = 1;
+            if (optimal > cap) optimal = cap;
+        }
+        if (optimal < 1) optimal = 1;
+        return optimal;
     }
     {
         /* x86 without AVX-512: half of logical cores (see the #else note). */

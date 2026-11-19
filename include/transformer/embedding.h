@@ -17,9 +17,7 @@
  * @param embedding_table  BF16 embedding table (used when embd_f32 is NULL)
  * @param dim              Embedding dimension
  */
-void embed_token(float *out, int token,
-                 const float *embd_f32,
-                 const tn_u16 *embedding_table,
+void embed_token(float *out, int token, const float *embd_f32, const tn_u16 *embedding_table,
                  int dim);
 
 /**

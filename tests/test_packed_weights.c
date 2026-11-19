@@ -25,9 +25,9 @@
 /* Helper: create deterministic ternary weights {-1, 0, 1} */
 static void fill_ternary(tn_i8 *w, int count, unsigned seed) {
     for (int i = 0; i < count; i++) {
-        seed = seed * 1103515245 + 12345;
+        seed  = seed * 1103515245 + 12345;
         int r = (seed >> 16) % 3;
-        w[i] = (tn_i8)(r - 1);  /* -1, 0, or 1 */
+        w[i]  = (tn_i8)(r - 1); /* -1, 0, or 1 */
     }
 }
 
@@ -62,8 +62,7 @@ static void test_pack_unpack_roundtrip(void) {
     unpack_ternary_block(unpacked, packed, 256);
 
     for (int i = 0; i < 256; i++) {
-        TEST_ASSERT(unpacked[i] == original[i],
-                    "round-trip: unpacked matches original");
+        TEST_ASSERT(unpacked[i] == original[i], "round-trip: unpacked matches original");
     }
 }
 
@@ -80,15 +79,14 @@ static void test_pack_unpack_single(void) {
 static void test_pack_unpack_odd_count(void) {
     /* 7 weights -> 2 packed bytes (with padding) */
     tn_i8 original[7] = {1, -1, 0, 1, 0, -1, 1};
-    tn_u8 packed[2] = {0, 0};
+    tn_u8 packed[2]   = {0, 0};
     pack_weights(packed, original, 7);
 
     tn_i8 unpacked[7];
     unpack_ternary_block(unpacked, packed, 7);
 
     for (int i = 0; i < 7; i++) {
-        TEST_ASSERT(unpacked[i] == original[i],
-                    "odd count: unpacked matches original");
+        TEST_ASSERT(unpacked[i] == original[i], "odd count: unpacked matches original");
     }
 }
 
@@ -124,8 +122,7 @@ static void test_avx2_unpack_matches_scalar(void) {
     tn_unpack_block(simd_out, packed, count);
 
     for (int i = 0; i < count; i++) {
-        TEST_ASSERT(simd_out[i] == scalar_out[i],
-                    "AVX2 unpack matches scalar");
+        TEST_ASSERT(simd_out[i] == scalar_out[i], "AVX2 unpack matches scalar");
     }
 }
 
@@ -144,8 +141,7 @@ static void test_avx2_unpack_odd_count(void) {
     tn_unpack_block(simd_out, packed, count);
 
     for (int i = 0; i < count; i++) {
-        TEST_ASSERT(simd_out[i] == scalar_out[i],
-                    "AVX2 unpack odd count matches scalar");
+        TEST_ASSERT(simd_out[i] == scalar_out[i], "AVX2 unpack odd count matches scalar");
     }
 }
 
@@ -193,7 +189,7 @@ static void test_packed_matmul_per_matrix(void) {
 static void test_packed_matmul_per_group(void) {
     int n = 64, d = 4;
     int group_size = 16;
-    int n_groups = (n + group_size - 1) / group_size; /* 4 groups */
+    int n_groups   = (n + group_size - 1) / group_size; /* 4 groups */
 
     tn_i8 weights[64 * 4];
     fill_ternary(weights, n * d, 333);
@@ -212,13 +208,15 @@ static void test_packed_matmul_per_group(void) {
         float total = 0.0f;
         for (int g = 0; g < n_groups; g++) {
             float group_sum = 0.0f;
-            int start = g * group_size;
-            int end = start + group_size;
+            int start       = g * group_size;
+            int end         = start + group_size;
             if (end > n) end = n;
             for (int j = start; j < end; j++) {
                 tn_i8 w = weights[i * n + j];
-                if (w == 1) group_sum += x[j];
-                else if (w == -1) group_sum -= x[j];
+                if (w == 1)
+                    group_sum += x[j];
+                else if (w == -1)
+                    group_sum -= x[j];
             }
             total += group_sum * scales[i * n_groups + g];
         }
@@ -261,7 +259,7 @@ static void test_avx2_packed_matmul_matches_scalar(void) {
     fill_input(x, n, 666);
 
     size_t row_bytes = packed_bytes(n);
-    tn_u8 *packed = (tn_u8 *)calloc(d * row_bytes, 1);
+    tn_u8 *packed    = (tn_u8 *)calloc(d * row_bytes, 1);
 
     for (int i = 0; i < d; i++) {
         for (int j = 0; j < n; j++) {
@@ -323,7 +321,7 @@ static void test_neon_packed_matmul_matches_scalar(void) {
     fill_input(x, n, 888);
 
     size_t row_bytes = packed_bytes(n);
-    tn_u8 *packed = (tn_u8 *)calloc(d * row_bytes, 1);
+    tn_u8 *packed    = (tn_u8 *)calloc(d * row_bytes, 1);
 
     for (int i = 0; i < d; i++) {
         for (int j = 0; j < n; j++) {
@@ -353,11 +351,11 @@ static void test_neon_packed_matmul_matches_scalar(void) {
  * ================================================================ */
 
 static void test_single_element(void) {
-    tn_i8 w = 1;
+    tn_i8 w         = 1;
     tn_u8 packed[1] = {0};
     pack_ternary(packed, 0, w);
 
-    float x[1] = {3.0f};
+    float x[1]  = {3.0f};
     float scale = 2.0f;
     float out[1];
     ternary_matmul_packed(out, x, packed, 1, 1, &scale, 0);
@@ -373,7 +371,7 @@ static void test_all_zeros_weights(void) {
 
     /* But pack_ternary maps 0 -> 0b01, so need to encode properly */
     size_t row_bytes = packed_bytes(n);
-    tn_u8 *packed = (tn_u8 *)calloc(d * row_bytes, 1);
+    tn_u8 *packed    = (tn_u8 *)calloc(d * row_bytes, 1);
     for (int i = 0; i < d; i++) {
         for (int j = 0; j < n; j++) {
             pack_ternary(&packed[i * row_bytes], j, 0);
@@ -405,7 +403,7 @@ static void test_large_dimension(void) {
 
     /* Pack */
     size_t row_bytes = packed_bytes(n);
-    tn_u8 *packed = (tn_u8 *)calloc(row_bytes, 1);
+    tn_u8 *packed    = (tn_u8 *)calloc(row_bytes, 1);
     for (int j = 0; j < n; j++) {
         pack_ternary(packed, j, weights[j]);
     }
@@ -429,7 +427,9 @@ static void test_large_dimension(void) {
     float atol = 1.0f + 0.05f * fabsf(ref_out[0]);
     TEST_ASSERT(diff < atol, "large dim packed matmul matches reference");
 
-    free(weights); free(x); free(packed);
+    free(weights);
+    free(x);
+    free(packed);
 }
 
 /* ================================================================
@@ -447,7 +447,7 @@ static void test_group_size_equals_n(void) {
     fill_input(x, n, 888);
 
     size_t row_bytes = packed_bytes(n);
-    tn_u8 *packed = (tn_u8 *)calloc(d * row_bytes, 1);
+    tn_u8 *packed    = (tn_u8 *)calloc(d * row_bytes, 1);
     for (int i = 0; i < d; i++) {
         for (int j = 0; j < n; j++) {
             pack_ternary(&packed[i * row_bytes], j, weights[i * n + j]);
@@ -465,8 +465,7 @@ static void test_group_size_equals_n(void) {
 
     for (int i = 0; i < d; i++) {
         float diff = fabsf(per_matrix_out[i] - per_group_out[i]);
-        TEST_ASSERT(diff < 1e-5f,
-                    "group_size==n matches per-matrix result");
+        TEST_ASSERT(diff < 1e-5f, "group_size==n matches per-matrix result");
     }
 
     free(packed);

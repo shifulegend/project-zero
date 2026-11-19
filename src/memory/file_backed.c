@@ -17,10 +17,13 @@
  * failed to compile); F_PREALLOCATE + ftruncate is its equivalent there. */
 static int reserve_blocks(int fd, off_t bytes) {
 #if defined(__APPLE__)
-    fstore_t fs = { .fst_flags = F_ALLOCATECONTIG, .fst_posmode = F_PEOFPOSMODE,
-                    .fst_offset = 0, .fst_length = bytes, .fst_bytesalloc = 0 };
+    fstore_t fs = {.fst_flags      = F_ALLOCATECONTIG,
+                   .fst_posmode    = F_PEOFPOSMODE,
+                   .fst_offset     = 0,
+                   .fst_length     = bytes,
+                   .fst_bytesalloc = 0};
     if (fcntl(fd, F_PREALLOCATE, &fs) == -1) {
-        fs.fst_flags = F_ALLOCATEALL;            /* fragmented is fine */
+        fs.fst_flags = F_ALLOCATEALL; /* fragmented is fine */
         if (fcntl(fd, F_PREALLOCATE, &fs) == -1) return errno;
     }
     return ftruncate(fd, bytes) == 0 ? 0 : errno;
@@ -51,7 +54,7 @@ TernaryError file_backed_alloc(FileBacked *fb, const char *dir, size_t bytes) {
     void *p = mmap(NULL, bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     close(fd); /* the mapping keeps the file alive */
     if (p == MAP_FAILED) return TN_ERR_MMAP_FAILED;
-    fb->base = p;
+    fb->base  = p;
     fb->bytes = bytes;
     return TN_OK;
 }
@@ -59,7 +62,7 @@ TernaryError file_backed_alloc(FileBacked *fb, const char *dir, size_t bytes) {
 void file_backed_free(FileBacked *fb) {
     if (!fb) return;
     if (fb->base) munmap(fb->base, fb->bytes);
-    fb->base = NULL;
+    fb->base  = NULL;
     fb->bytes = 0;
 }
 
@@ -81,12 +84,21 @@ void file_backed_prefetch(const void *p, size_t len) {
 #else /* !TN_POSIX */
 
 TernaryError file_backed_alloc(FileBacked *fb, const char *dir, size_t bytes) {
-    (void)dir; (void)bytes;
+    (void)dir;
+    (void)bytes;
     if (fb) memset(fb, 0, sizeof(*fb));
     return TN_ERR_UNSUPPORTED;
 }
-void   file_backed_free(FileBacked *fb) { if (fb) memset(fb, 0, sizeof(*fb)); }
-tn_i64 file_backed_free_space(const char *dir) { (void)dir; return -1; }
-void   file_backed_prefetch(const void *p, size_t len) { (void)p; (void)len; }
+void file_backed_free(FileBacked *fb) {
+    if (fb) memset(fb, 0, sizeof(*fb));
+}
+tn_i64 file_backed_free_space(const char *dir) {
+    (void)dir;
+    return -1;
+}
+void file_backed_prefetch(const void *p, size_t len) {
+    (void)p;
+    (void)len;
+}
 
 #endif

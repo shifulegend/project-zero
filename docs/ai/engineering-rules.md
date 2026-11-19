@@ -24,6 +24,12 @@
 - Build: the Makefile tracks header dependencies (`-MMD -MP`, 2026-10-18); don't remove it —
   stale objects with old struct layouts were linked silently before.
 
+## Formatting
+- C/C++ is formatted with clang-format 18 using `.clang-format` (4 spaces, attached braces, 100
+  columns). `make format` rewrites, `make check-format` is the CI gate (job "format"). Vendored and
+  generated files are listed in `.clang-format-ignore`. A macro whose argument is stringified
+  (`#x`) must be wrapped in `// clang-format off` / `on`, as `PZ_UPDATE_REPO` is.
+
 ## Repository root stays clean
 - Tracked files at the repository root are limited to the list in `tools/root_allowlist.txt`
   (CI: `tools/check_root_files.sh`). Analysis notes go under `docs/`, test inputs under

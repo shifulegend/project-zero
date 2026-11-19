@@ -17,15 +17,18 @@ static inline float tn_fp16_to_f32(uint16_t h) {
     uint32_t exp  = (h >> 10) & 0x1fu;
     uint32_t mant = h & 0x3ffu;
     uint32_t u;
-    if (exp == 0x1fu) {                          /* inf / NaN: keep the payload */
+    if (exp == 0x1fu) { /* inf / NaN: keep the payload */
         u = sign | 0x7f800000u | (mant << 13);
-    } else if (exp != 0u) {                      /* normal */
+    } else if (exp != 0u) { /* normal */
         u = sign | ((exp + 112u) << 23) | (mant << 13);
-    } else if (mant == 0u) {                     /* signed zero */
+    } else if (mant == 0u) { /* signed zero */
         u = sign;
-    } else {                                     /* subnormal: renormalise */
+    } else { /* subnormal: renormalise */
         exp = 1u;
-        while (!(mant & 0x400u)) { mant <<= 1; exp--; }
+        while (!(mant & 0x400u)) {
+            mant <<= 1;
+            exp--;
+        }
         u = sign | ((exp + 112u) << 23) | ((mant & 0x3ffu) << 13);
     }
     float f;

@@ -14,11 +14,11 @@
 
 /* Template format to use when the tokenizer has no embedded Jinja2 template */
 typedef enum {
-    CHAT_TMPL_CHATML   = 0,   /* <|im_start|>role\ncontent<|im_end|>           */
-    CHAT_TMPL_LLAMA3   = 1,   /* <|start_header_id|>role<|end_header_id|>...   */
-    CHAT_TMPL_DEEPSEEK = 2,   /* DeepSeek "User: / Assistant:" style           */
-    CHAT_TMPL_MISTRAL  = 3,   /* [INST] ... [/INST]                            */
-    CHAT_TMPL_RAW      = 4    /* role: content\n (plain fallback)               */
+    CHAT_TMPL_CHATML   = 0, /* <|im_start|>role\ncontent<|im_end|>           */
+    CHAT_TMPL_LLAMA3   = 1, /* <|start_header_id|>role<|end_header_id|>...   */
+    CHAT_TMPL_DEEPSEEK = 2, /* DeepSeek "User: / Assistant:" style           */
+    CHAT_TMPL_MISTRAL  = 3, /* [INST] ... [/INST]                            */
+    CHAT_TMPL_RAW      = 4  /* role: content\n (plain fallback)               */
 } ChatTemplateType;
 
 /*
@@ -34,9 +34,8 @@ ChatTemplateType chat_template_detect(const char *model_name);
  * Returns TN_OK on success, TN_ERR_OOM if the buffer is too small to fit
  * any output, TN_ERR_INVALID_ARGS on NULL arguments.
  */
-TernaryError chat_compile_prompt(const ChatRequest *req,
-                                 ChatTemplateType tmpl,
-                                 char *out, size_t cap);
+TernaryError chat_compile_prompt(const ChatRequest *req, ChatTemplateType tmpl, char *out,
+                                 size_t cap);
 
 /*
  * Format for models WITHOUT an embedded Jinja template, chosen from what the

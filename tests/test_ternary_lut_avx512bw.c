@@ -14,12 +14,11 @@
 
 #if TN_HAS_AVX512
 
-void lut_mm_avx512bw(const int8_t * restrict A, const int8_t * restrict P,
-                     int M, int K, int N, int32_t * restrict C);
+void lut_mm_avx512bw(const int8_t *restrict A, const int8_t *restrict P, int M, int K, int N,
+                     int32_t *restrict C);
 void lut_pack_weights(const int8_t *W, int K, int N, int8_t *P);
 
-static void scalar_ref_matmul(const int8_t *A, const int8_t *W,
-                               int M, int K, int N, int32_t *C) {
+static void scalar_ref_matmul(const int8_t *A, const int8_t *W, int M, int K, int N, int32_t *C) {
     for (int m = 0; m < M; m++) {
         for (int n = 0; n < N; n++) {
             int32_t acc = 0;
@@ -32,8 +31,7 @@ static void scalar_ref_matmul(const int8_t *A, const int8_t *W,
 }
 
 /* Fills A with int8 activations in [-127,127] and W with ternary {-1,0,1}. */
-static void fill_case(int8_t *A, int8_t *W, int M, int K, int N,
-                      unsigned int seed) {
+static void fill_case(int8_t *A, int8_t *W, int M, int K, int N, unsigned int seed) {
     for (int i = 0; i < M * K; i++) {
         seed = seed * 1103515245u + 12345u;
         A[i] = (int8_t)(((seed >> 16) % 255) - 127);
@@ -45,9 +43,9 @@ static void fill_case(int8_t *A, int8_t *W, int M, int K, int N,
 }
 
 static int run_case(int M, int K, int N, unsigned int seed) {
-    int8_t *A = malloc((size_t)M * K);
-    int8_t *W = malloc((size_t)K * N);
-    int8_t *P = malloc((size_t)((K + 4) / 5) * N);
+    int8_t *A      = malloc((size_t)M * K);
+    int8_t *W      = malloc((size_t)K * N);
+    int8_t *P      = malloc((size_t)((K + 4) / 5) * N);
     int32_t *C_lut = malloc((size_t)M * N * sizeof(int32_t));
     int32_t *C_ref = malloc((size_t)M * N * sizeof(int32_t));
 
@@ -61,7 +59,11 @@ static int run_case(int M, int K, int N, unsigned int seed) {
         if (C_lut[i] != C_ref[i]) mismatches++;
     }
 
-    free(A); free(W); free(P); free(C_lut); free(C_ref);
+    free(A);
+    free(W);
+    free(P);
+    free(C_lut);
+    free(C_ref);
     return mismatches;
 }
 
@@ -88,7 +90,7 @@ static void test_lut_matches_scalar_tail_columns(void) {
 static void test_lut_extreme_activation_values(void) {
     /* av can reach 121 (all five weight digits saturated); a[i] can reach
      * the int8 extremes — check both without and with a tail column. */
-    int8_t A[5]  = {127, -127, 127, -127, 127};
+    int8_t A[5] = {127, -127, 127, -127, 127};
     int8_t W[5 * 33];
     for (int i = 0; i < 5 * 33; i++) W[i] = 0;
     int8_t w_col[5] = {1, 1, 1, 1, 1};
@@ -102,8 +104,7 @@ static void test_lut_extreme_activation_values(void) {
     int32_t C[33];
     lut_mm_avx512bw(A, P, 1, 5, 33, C);
 
-    TEST_ASSERT_EQ(C[32], expect,
-                   "lut_mm_avx512bw tail column, saturated weights/activations");
+    TEST_ASSERT_EQ(C[32], expect, "lut_mm_avx512bw tail column, saturated weights/activations");
 }
 
 int main(void) {

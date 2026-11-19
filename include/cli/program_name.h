@@ -9,7 +9,7 @@
  * through that name prints a one-line deprecation notice to stderr.
  */
 
-#define PZ_PROGRAM_NAME        "pz"
+#define PZ_PROGRAM_NAME "pz"
 #define PZ_LEGACY_PROGRAM_NAME "adaptive_ai_engine"
 
 /* Final path component of argv0 ("" for NULL). */

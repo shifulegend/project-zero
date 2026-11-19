@@ -41,9 +41,8 @@ typedef struct {
  *                          model's context is sized from this hint, not a
  *                          free-RAM probe (see runtime/model_load.h).
  */
-TernaryError draft_model_load(DraftModel *dm, const char *draft_model_path,
-                               int verifier_vocab_size, int max_seq_len_hint,
-                               ThreadPool *tp);
+TernaryError draft_model_load(DraftModel *dm, const char *draft_model_path, int verifier_vocab_size,
+                              int max_seq_len_hint, ThreadPool *tp);
 
 /** Frees everything draft_model_load() allocated. Safe on a zeroed DraftModel. */
 void draft_model_free(DraftModel *dm);

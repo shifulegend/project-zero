@@ -19,12 +19,12 @@ int release_web_base(const char *api_base, char *out, size_t n);
 /* <web>/<repo>/releases/tag/<tag> when `version` is exactly a release tag
  * (`git describe` with no commits past it); "" and -1 otherwise. The tag is
  * written as v<semver>, the repo's tag convention. */
-int release_notes_url(const char *api_base, const char *repo, const char *version,
-                      char *out, size_t n);
+int release_notes_url(const char *api_base, const char *repo, const char *version, char *out,
+                      size_t n);
 
 /* <web>/<repo>/blob/<ref>/CHANGELOG.md, ref = the release tag for a release
  * build, else HEAD (default branch). Returns 0, or -1 with out = "". */
-int release_changelog_url(const char *api_base, const char *repo, const char *version,
-                          char *out, size_t n);
+int release_changelog_url(const char *api_base, const char *repo, const char *version, char *out,
+                          size_t n);
 
 #endif /* PZ_RELEASE_LINKS_H */

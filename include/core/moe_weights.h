@@ -11,8 +11,7 @@
  * No-op when mc->is_moe == false (dense model).
  * Must be called AFTER weights_alloc_pointers() and BEFORE moe_weights_map().
  */
-TernaryError moe_weights_alloc(TransformerWeights *w, const Config *cfg,
-                                const MoEConfig *mc);
+TernaryError moe_weights_alloc(TransformerWeights *w, const Config *cfg, const MoEConfig *mc);
 
 /**
  * Free MoE pointer arrays allocated by moe_weights_alloc().
@@ -32,8 +31,7 @@ void moe_weights_free(TransformerWeights *w, const MoEConfig *mc);
  *   - gate matrix (packed ternary) + scale
  *   - for each expert: w1 + s1, w3 + s3, w2 + s2 (all packed ternary + scale)
  */
-TernaryError moe_weights_map(TransformerWeights *w, const Config *cfg,
-                              const MoEConfig *mc, tn_i8 *data,
-                              size_t data_size, tn_i8 **ptr_inout);
+TernaryError moe_weights_map(TransformerWeights *w, const Config *cfg, const MoEConfig *mc,
+                             tn_i8 *data, size_t data_size, tn_i8 **ptr_inout);
 
 #endif /* TN_MOE_WEIGHTS_H */

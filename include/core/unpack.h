@@ -26,8 +26,8 @@
  * @return        Ternary value in {-1, 0, 1}
  */
 static inline tn_i8 unpack_ternary(const tn_u8 *packed, int index) {
-    tn_u8 byte = packed[index >> 2];       /* index / 4 */
-    int shift = (index & 3) << 1;           /* (index % 4) * 2 */
+    tn_u8 byte = packed[index >> 2]; /* index / 4 */
+    int shift  = (index & 3) << 1;   /* (index % 4) * 2 */
     return (tn_i8)((byte >> shift) & 0x03) - 1;
 }
 
@@ -40,9 +40,9 @@ static inline tn_i8 unpack_ternary(const tn_u8 *packed, int index) {
  * @param value   Ternary value in {-1, 0, 1}
  */
 static inline void pack_ternary(tn_u8 *packed, int index, tn_i8 value) {
-    int byte_idx = index >> 2;              /* index / 4 */
-    int shift = (index & 3) << 1;           /* (index % 4) * 2 */
-    tn_u8 encoded = (tn_u8)(value + 1);     /* -1->0, 0->1, 1->2 */
+    int byte_idx  = index >> 2;         /* index / 4 */
+    int shift     = (index & 3) << 1;   /* (index % 4) * 2 */
+    tn_u8 encoded = (tn_u8)(value + 1); /* -1->0, 0->1, 1->2 */
     packed[byte_idx] |= (encoded << shift);
 }
 
@@ -68,7 +68,7 @@ void unpack_ternary_block_avx2(tn_i8 *out, const tn_u8 *packed, int count);
  * Returns the number of packed bytes needed for `count` ternary weights.
  */
 static inline size_t packed_bytes(int count) {
-    return ((size_t)count + 3) >> 2;  /* ceil(count / 4) */
+    return ((size_t)count + 3) >> 2; /* ceil(count / 4) */
 }
 
 #endif /* TN_UNPACK_H */

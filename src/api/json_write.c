@@ -14,7 +14,10 @@ static void jb_append(JsonBuf *jb, const char *s, size_t n) {
         size_t nc = jb->cap ? jb->cap : 256;
         while (nc < jb->len + n + 1) nc *= 2;
         char *nb = (char *)realloc(jb->buf, nc);
-        if (!nb) { jb->err = 1; return; }
+        if (!nb) {
+            jb->err = 1;
+            return;
+        }
         jb->buf = nb;
         jb->cap = nc;
     }
@@ -28,16 +31,29 @@ void jb_raw(JsonBuf *jb, const char *text) {
 }
 
 void jb_str(JsonBuf *jb, const char *s) {
-    if (!s) { jb_raw(jb, "null"); return; }
+    if (!s) {
+        jb_raw(jb, "null");
+        return;
+    }
     jb_append(jb, "\"", 1);
     for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
         char esc[8];
         switch (*p) {
-            case '"':  jb_append(jb, "\\\"", 2); break;
-            case '\\': jb_append(jb, "\\\\", 2); break;
-            case '\n': jb_append(jb, "\\n", 2);  break;
-            case '\r': jb_append(jb, "\\r", 2);  break;
-            case '\t': jb_append(jb, "\\t", 2);  break;
+            case '"':
+                jb_append(jb, "\\\"", 2);
+                break;
+            case '\\':
+                jb_append(jb, "\\\\", 2);
+                break;
+            case '\n':
+                jb_append(jb, "\\n", 2);
+                break;
+            case '\r':
+                jb_append(jb, "\\r", 2);
+                break;
+            case '\t':
+                jb_append(jb, "\\t", 2);
+                break;
             default:
                 if (*p < 0x20) {
                     snprintf(esc, sizeof(esc), "\\u%04x", *p);
@@ -62,7 +78,10 @@ void jb_int(JsonBuf *jb, long long v) {
 }
 
 void jb_num(JsonBuf *jb, double v) {
-    if (isnan(v) || isinf(v)) { jb_raw(jb, "null"); return; }
+    if (isnan(v) || isinf(v)) {
+        jb_raw(jb, "null");
+        return;
+    }
     char t[48];
     snprintf(t, sizeof(t), "%.6g", v);
     jb_raw(jb, t);
@@ -73,9 +92,12 @@ void jb_bool(JsonBuf *jb, int v) {
 }
 
 char *jb_finish(JsonBuf *jb) {
-    if (jb->err || !jb->buf) { jb_free(jb); return NULL; }
+    if (jb->err || !jb->buf) {
+        jb_free(jb);
+        return NULL;
+    }
     char *out = jb->buf;
-    jb->buf = NULL;
+    jb->buf   = NULL;
     jb->len = jb->cap = 0;
     return out;
 }

@@ -25,6 +25,7 @@ typedef struct {
  * @param v Vision Context containing projected embeddings
  * @param tp Thread Pool
  */
-void inject_vision_into_kv_cache(RunState *s, Config *p, TransformerWeights *w, const VisionContext *v, ThreadPool *tp);
+void inject_vision_into_kv_cache(RunState *s, Config *p, TransformerWeights *w,
+                                 const VisionContext *v, ThreadPool *tp);
 
 #endif /* TN_VISION_BRIDGE_H */

@@ -7,8 +7,12 @@
 #include <stdio.h>
 #include "api/cancel.h"
 
-#define PASS(name)  printf("[PASS] %s\n", name)
-#define FAIL(name, msg) do { printf("[FAIL] %s: %s\n", name, msg); g_failures++; } while(0)
+#define PASS(name) printf("[PASS] %s\n", name)
+#define FAIL(name, msg)                                                                            \
+    do {                                                                                           \
+        printf("[FAIL] %s: %s\n", name, msg);                                                      \
+        g_failures++;                                                                              \
+    } while (0)
 
 static int g_failures = 0;
 
@@ -16,10 +20,12 @@ static void test_no_active_generation(void) {
     CancelState cs;
     cancel_state_init(&cs);
     if (cancel_registry_request(&cs, "abc")) {
-        FAIL("no_active_generation", "should not match with nothing active"); goto done;
+        FAIL("no_active_generation", "should not match with nothing active");
+        goto done;
     }
     if (cancel_registry_check(&cs, "abc")) {
-        FAIL("no_active_generation", "check should be false with nothing active"); goto done;
+        FAIL("no_active_generation", "check should be false with nothing active");
+        goto done;
     }
     PASS("no_active_generation");
 done:
@@ -32,17 +38,21 @@ static void test_begin_request_check_lifecycle(void) {
     cancel_registry_begin(&cs, "req-1");
 
     if (cancel_registry_check(&cs, "req-1")) {
-        FAIL("begin_request_check_lifecycle", "should not be cancelled yet"); goto done;
+        FAIL("begin_request_check_lifecycle", "should not be cancelled yet");
+        goto done;
     }
     if (!cancel_registry_request(&cs, "req-1")) {
-        FAIL("begin_request_check_lifecycle", "request should match active id"); goto done;
+        FAIL("begin_request_check_lifecycle", "request should match active id");
+        goto done;
     }
     if (!cancel_registry_check(&cs, "req-1")) {
-        FAIL("begin_request_check_lifecycle", "check should now report cancelled"); goto done;
+        FAIL("begin_request_check_lifecycle", "check should now report cancelled");
+        goto done;
     }
     cancel_registry_end(&cs, "req-1");
     if (cancel_registry_check(&cs, "req-1")) {
-        FAIL("begin_request_check_lifecycle", "check must be false after end()"); goto done;
+        FAIL("begin_request_check_lifecycle", "check must be false after end()");
+        goto done;
     }
     PASS("begin_request_check_lifecycle");
 done:
@@ -55,10 +65,12 @@ static void test_id_mismatch_does_not_cancel(void) {
     cancel_registry_begin(&cs, "req-A");
 
     if (cancel_registry_request(&cs, "req-B")) {
-        FAIL("id_mismatch_does_not_cancel", "mismatched id must not match"); goto done;
+        FAIL("id_mismatch_does_not_cancel", "mismatched id must not match");
+        goto done;
     }
     if (cancel_registry_check(&cs, "req-A")) {
-        FAIL("id_mismatch_does_not_cancel", "req-A must not be cancelled"); goto done;
+        FAIL("id_mismatch_does_not_cancel", "req-A must not be cancelled");
+        goto done;
     }
     PASS("id_mismatch_does_not_cancel");
 done:
@@ -76,7 +88,8 @@ static void test_second_begin_resets_flag(void) {
     /* A fresh generation with a new id must not inherit a stale cancel flag. */
     cancel_registry_begin(&cs, "req-2");
     if (cancel_registry_check(&cs, "req-2")) {
-        FAIL("second_begin_resets_flag", "new generation must start uncancelled"); goto done;
+        FAIL("second_begin_resets_flag", "new generation must start uncancelled");
+        goto done;
     }
     PASS("second_begin_resets_flag");
 done:
@@ -94,18 +107,30 @@ static void test_concurrent_generations(void) {
         snprintf(id, sizeof(id), "req-%d", i);
         if (cancel_registry_begin(&cs, id) != 0) all = 0;
     }
-    if (!all) { FAIL("concurrent_generations", "registry must hold CANCEL_MAX_ACTIVE ids"); goto done; }
-    if (cancel_registry_begin(&cs, "one-too-many") != -1) {
-        FAIL("concurrent_generations", "begin past capacity must report -1"); goto done;
+    if (!all) {
+        FAIL("concurrent_generations", "registry must hold CANCEL_MAX_ACTIVE ids");
+        goto done;
     }
-    if (!cancel_registry_request(&cs, "req-7")) { FAIL("concurrent_generations", "req-7 must match"); goto done; }
+    if (cancel_registry_begin(&cs, "one-too-many") != -1) {
+        FAIL("concurrent_generations", "begin past capacity must report -1");
+        goto done;
+    }
+    if (!cancel_registry_request(&cs, "req-7")) {
+        FAIL("concurrent_generations", "req-7 must match");
+        goto done;
+    }
     if (!cancel_registry_check(&cs, "req-7") || cancel_registry_check(&cs, "req-8")) {
-        FAIL("concurrent_generations", "only the requested generation is cancelled"); goto done;
+        FAIL("concurrent_generations", "only the requested generation is cancelled");
+        goto done;
     }
     cancel_registry_end(&cs, "req-7");
-    if (cancel_registry_request(&cs, "req-7")) { FAIL("concurrent_generations", "ended id must not match"); goto done; }
+    if (cancel_registry_request(&cs, "req-7")) {
+        FAIL("concurrent_generations", "ended id must not match");
+        goto done;
+    }
     if (cancel_registry_begin(&cs, "late") != 0 || cancel_registry_check(&cs, "late")) {
-        FAIL("concurrent_generations", "a freed entry is reused, uncancelled"); goto done;
+        FAIL("concurrent_generations", "a freed entry is reused, uncancelled");
+        goto done;
     }
     PASS("concurrent_generations");
 done:
@@ -121,7 +146,10 @@ int main(void) {
     test_concurrent_generations();
 
     printf("\n");
-    if (g_failures == 0) { printf("=== All cancel tests passed ===\n"); return 0; }
+    if (g_failures == 0) {
+        printf("=== All cancel tests passed ===\n");
+        return 0;
+    }
     printf("=== %d test(s) FAILED ===\n", g_failures);
     return 1;
 }

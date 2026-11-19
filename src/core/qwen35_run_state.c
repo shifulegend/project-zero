@@ -16,14 +16,14 @@
  */
 
 #include "core/run_state.h"
-#include "core/platform.h"   /* tn_i64 */
+#include "core/platform.h" /* tn_i64 */
 #include "math/rope.h"
 #include "memory/aligned_alloc.h"
 #include <stdlib.h>
 #include <string.h>
 
-TernaryError q35_run_state_alloc(RunState *s, const Config *cfg,
-                                  const MoEConfig *mc, int max_seq_len) {
+TernaryError q35_run_state_alloc(RunState *s, const Config *cfg, const MoEConfig *mc,
+                                 int max_seq_len) {
     if (!mc || !mc->has_linear_attn) return TN_OK; /* not a hybrid model — no-op */
 
     /* s->key_cache/value_cache should already be NULL here: main.c calls
@@ -38,8 +38,10 @@ TernaryError q35_run_state_alloc(RunState *s, const Config *cfg,
      * calloc-then-immediately-free of that buffer is NOT equivalent to
      * never allocating it (tn_aligned_calloc's memset forces the RSS spike
      * at allocation time, not at free time). */
-    tn_aligned_free(s->key_cache);   s->key_cache   = NULL;
-    tn_aligned_free(s->value_cache); s->value_cache = NULL;
+    tn_aligned_free(s->key_cache);
+    s->key_cache = NULL;
+    tn_aligned_free(s->value_cache);
+    s->value_cache = NULL;
 
     int n_layers  = cfg->n_layers;
     int n_kv_h    = cfg->n_kv_heads;
@@ -52,8 +54,8 @@ TernaryError q35_run_state_alloc(RunState *s, const Config *cfg,
     int n_v_heads = mc->ssm_time_step_rank;
     int state_sz  = mc->ssm_state_size;
 
-    if (n_layers <= 0 || n_kv_h <= 0 || head_dim <= 0 || conv_k <= 1 ||
-        conv_dim <= 0 || n_v_heads <= 0 || state_sz <= 0 || max_seq_len <= 0)
+    if (n_layers <= 0 || n_kv_h <= 0 || head_dim <= 0 || conv_k <= 1 || conv_dim <= 0 ||
+        n_v_heads <= 0 || state_sz <= 0 || max_seq_len <= 0)
         return TN_ERR_INVALID_WEIGHTS;
 
     /* Defense-in-depth RAM safety cap for this arch's OWN K/V cache.
@@ -92,8 +94,8 @@ TernaryError q35_run_state_alloc(RunState *s, const Config *cfg,
          * for. Raise this if a host with more free RAM needs longer
          * context — it's intentionally conservative, not tuned per-host. */
         const tn_i64 FIXED_BUDGET_BYTES = 600000000LL;
-        tn_i64 per_pos_bytes = (tn_i64)n_kv_h * (tn_i64)head_dim * 2 * (tn_i64)sizeof(float)
-                             * (tn_i64)n_full_layers;
+        tn_i64 per_pos_bytes =
+            (tn_i64)n_kv_h * (tn_i64)head_dim * 2 * (tn_i64)sizeof(float) * (tn_i64)n_full_layers;
         if (per_pos_bytes > 0) {
             tn_i64 safe_max = FIXED_BUDGET_BYTES / per_pos_bytes;
             if (safe_max < 256) safe_max = 256; /* never below a minimal usable context */
@@ -119,7 +121,10 @@ TernaryError q35_run_state_alloc(RunState *s, const Config *cfg,
     float **cs = (float **)calloc((size_t)n_layers, sizeof(float *));
     float **rs = (float **)calloc((size_t)n_layers, sizeof(float *));
     if (!kc || !vc || !cs || !rs) {
-        free(kc); free(vc); free(cs); free(rs);
+        free(kc);
+        free(vc);
+        free(cs);
+        free(rs);
         return TN_ERR_OOM;
     }
     s->q35_key_cache   = kc;
@@ -130,24 +135,33 @@ TernaryError q35_run_state_alloc(RunState *s, const Config *cfg,
     for (int l = 0; l < n_layers; l++) {
         if (q35_layer_is_full_attn(mc, l)) {
             size_t kv_elems = (size_t)n_kv_h * (size_t)max_seq_len * (size_t)head_dim;
-            kc[l] = (float *)tn_aligned_calloc(kv_elems, sizeof(float), 64);
-            vc[l] = (float *)tn_aligned_calloc(kv_elems, sizeof(float), 64);
-            if (!kc[l] || !vc[l]) { q35_run_state_free(s, cfg, mc); return TN_ERR_OOM; }
+            kc[l]           = (float *)tn_aligned_calloc(kv_elems, sizeof(float), 64);
+            vc[l]           = (float *)tn_aligned_calloc(kv_elems, sizeof(float), 64);
+            if (!kc[l] || !vc[l]) {
+                q35_run_state_free(s, cfg, mc);
+                return TN_ERR_OOM;
+            }
         } else {
             size_t conv_elems  = (size_t)(conv_k - 1) * (size_t)conv_dim;
             size_t recur_elems = (size_t)n_v_heads * (size_t)state_sz * (size_t)state_sz;
-            cs[l] = (float *)tn_aligned_calloc(conv_elems, sizeof(float), 64);
-            rs[l] = (float *)tn_aligned_calloc(recur_elems, sizeof(float), 64);
-            if (!cs[l] || !rs[l]) { q35_run_state_free(s, cfg, mc); return TN_ERR_OOM; }
+            cs[l]              = (float *)tn_aligned_calloc(conv_elems, sizeof(float), 64);
+            rs[l]              = (float *)tn_aligned_calloc(recur_elems, sizeof(float), 64);
+            if (!cs[l] || !rs[l]) {
+                q35_run_state_free(s, cfg, mc);
+                return TN_ERR_OOM;
+            }
         }
     }
 
     /* Shared partial-rotary RoPE frequency table, sized for rope_dim (64),
      * NOT head_dim (256) — mirrors mla_rope_freq's fix for the same class
      * of bug (see mla_run_state.c header comment). */
-    int freq_len = rope_dim / 2;
+    int freq_len     = rope_dim / 2;
     s->q35_rope_freq = (float *)tn_aligned_calloc((size_t)freq_len, sizeof(float), 64);
-    if (!s->q35_rope_freq) { q35_run_state_free(s, cfg, mc); return TN_ERR_OOM; }
+    if (!s->q35_rope_freq) {
+        q35_run_state_free(s, cfg, mc);
+        return TN_ERR_OOM;
+    }
     float theta = cfg->rope_theta > 0.0f ? cfg->rope_theta : 10000.0f;
     rope_precompute_freqs(s->q35_rope_freq, rope_dim, theta);
 
@@ -159,19 +173,23 @@ void q35_run_state_free(RunState *s, const Config *cfg, const MoEConfig *mc) {
     int n_layers = cfg ? cfg->n_layers : 0;
     if (s->q35_key_cache) {
         for (int l = 0; l < n_layers; l++) tn_aligned_free(s->q35_key_cache[l]);
-        free(s->q35_key_cache); s->q35_key_cache = NULL;
+        free(s->q35_key_cache);
+        s->q35_key_cache = NULL;
     }
     if (s->q35_value_cache) {
         for (int l = 0; l < n_layers; l++) tn_aligned_free(s->q35_value_cache[l]);
-        free(s->q35_value_cache); s->q35_value_cache = NULL;
+        free(s->q35_value_cache);
+        s->q35_value_cache = NULL;
     }
     if (s->q35_conv_state) {
         for (int l = 0; l < n_layers; l++) tn_aligned_free(s->q35_conv_state[l]);
-        free(s->q35_conv_state); s->q35_conv_state = NULL;
+        free(s->q35_conv_state);
+        s->q35_conv_state = NULL;
     }
     if (s->q35_recur_state) {
         for (int l = 0; l < n_layers; l++) tn_aligned_free(s->q35_recur_state[l]);
-        free(s->q35_recur_state); s->q35_recur_state = NULL;
+        free(s->q35_recur_state);
+        s->q35_recur_state = NULL;
     }
     if (s->q35_rope_freq) {
         tn_aligned_free(s->q35_rope_freq);

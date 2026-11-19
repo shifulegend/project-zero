@@ -37,6 +37,6 @@ int static_assets_path_is_safe(const char *path);
  * Returns the HTTP status code that was written (200 or 404), so the
  * caller can record it in /metrics. */
 int static_assets_serve(int fd, const char *path, const ServerConfig *cfg,
-                         const char *extra_headers);
+                        const char *extra_headers);
 
 #endif /* TN_STATIC_ASSETS_H */

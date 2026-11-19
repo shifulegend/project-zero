@@ -9,11 +9,11 @@
  * KV cache strategy tiers, ordered by memory usage (low → high quality).
  */
 typedef enum {
-  KV_SLIDING_I4, /* Lowest memory: sliding window + int4 quantization */
-  KV_SLIDING_I8, /* Low memory: sliding window + int8 quantization */
-  KV_QUANT_I4,   /* Medium: full context + int4 quantization */
-  KV_QUANT_I8,   /* Good: full context + int8 quantization */
-  KV_FULL_F32    /* Best quality: full context + float32 (no compression) */
+    KV_SLIDING_I4, /* Lowest memory: sliding window + int4 quantization */
+    KV_SLIDING_I8, /* Low memory: sliding window + int8 quantization */
+    KV_QUANT_I4,   /* Medium: full context + int4 quantization */
+    KV_QUANT_I8,   /* Good: full context + int8 quantization */
+    KV_FULL_F32    /* Best quality: full context + float32 (no compression) */
 } KVStrategy;
 
 /**
@@ -21,8 +21,8 @@ typedef enum {
  * strategy and the computed maximum sequence length.
  */
 typedef struct {
-  KVStrategy strategy;
-  int max_seq_len; /* Effective max sequence length for this strategy */
+    KVStrategy strategy;
+    int max_seq_len; /* Effective max sequence length for this strategy */
 } KVStrategyResult;
 
 /**
@@ -67,12 +67,12 @@ KVStrategyResult select_kv_strategy(const Config *cfg, tn_i64 free_ram, const Mo
  * reproduces select_kv_strategy() exactly.
  */
 typedef struct {
-  int   ctx_size;     /* > 0: requested context (capped at the model's seq_len
+    int ctx_size;            /* > 0: requested context (capped at the model's seq_len
                          and by the RAM budget); 0 = tier default */
-  float ram_fraction; /* (0, 0.95]: share of free RAM the F32 KV cache may use;
+    float ram_fraction;      /* (0, 0.95]: share of free RAM the F32 KV cache may use;
                          0 = default 0.60 */
-  int   kv_type;      /* KVCacheType (kv_quant_ops.h): 0 = F32 (default), 1 = I8, 2 = I4 */
-  const char *offload_dir; /* Phase 31 --kv-offload: non-NULL puts the generic KV
+    int kv_type;             /* KVCacheType (kv_quant_ops.h): 0 = F32 (default), 1 = I8, 2 = I4 */
+    const char *offload_dir; /* Phase 31 --kv-offload: non-NULL puts the generic KV
                               cache in a disk-backed mapping there; the safety
                               cap then budgets free disk space, not free RAM */
 } KVStrategyOptions;

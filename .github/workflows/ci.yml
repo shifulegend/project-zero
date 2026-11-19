@@ -44,6 +44,17 @@ jobs:
       - name: AI adapter files in sync with .claude/rules
         run: python3 -I tools/sync_ai_adapters.py --check
 
+  format:
+    name: C/C++ formatting (clang-format 18)
+    runs-on: ubuntu-24.04            # pinned image: its clang-format-18 is the one the tree was formatted with
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install clang-format 18
+        run: sudo apt-get install -y -q clang-format-18
+      - name: Check formatting (make check-format)
+        run: make check-format CLANG_FORMAT=clang-format-18
+
   installer:
     name: Installer (install.sh, offline mirror)
     runs-on: ubuntu-latest

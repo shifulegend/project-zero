@@ -30,9 +30,9 @@
 /* ── Q8K activation block — 292 bytes per 256-element block ─────────────── */
 #define TN_Q8K_BLOCK 256
 typedef struct {
-    float   d;           /* scale = abs_max / 127 */
-    int8_t  qs[256];     /* quantized int8 activations */
-    int16_t bsums[16];   /* bsums[j] = sum(qs[j*16 .. j*16+15]) */
+    float d;           /* scale = abs_max / 127 */
+    int8_t qs[256];    /* quantized int8 activations */
+    int16_t bsums[16]; /* bsums[j] = sum(qs[j*16 .. j*16+15]) */
 } TnQ8KActBlock;
 
 /*
@@ -50,23 +50,21 @@ void tn_quantize_q8k(TnQ8KActBlock *out, const float *x, int n_blocks);
  * fused multi-matrix tasks (moe_experts.c) that interleave several weight
  * types inside one thread-pool dispatch.
  */
-float tn_dot_q4k_row_q8k(const uint8_t *row_q4k, const TnQ8KActBlock *acts,
-                         int n_blocks, int vnni);
+float tn_dot_q4k_row_q8k(const uint8_t *row_q4k, const TnQ8KActBlock *acts, int n_blocks, int vnni);
 
 /* 1 when the AVX-512 VNNI Q4_K kernel is compiled in and the CPU verified it. */
 int tn_q4k_vnni_ok(void);
 
-void parallel_matmul_q4k(float *out, const float *x, const uint8_t *w_q4k,
-                          int n, int d, ThreadPool *tp);
+void parallel_matmul_q4k(float *out, const float *x, const uint8_t *w_q4k, int n, int d,
+                         ThreadPool *tp);
 
 /*
  * parallel_matmul_q4k_preq — same as parallel_matmul_q4k but accepts
  * pre-quantized Q8K activation blocks instead of a raw float* input.
  * Use when the same activation vector drives more than one Q4K matmul.
  */
-void parallel_matmul_q4k_preq(float *out, const TnQ8KActBlock *acts,
-                               const uint8_t *w_q4k,
-                               int n, int d, ThreadPool *tp);
+void parallel_matmul_q4k_preq(float *out, const TnQ8KActBlock *acts, const uint8_t *w_q4k, int n,
+                              int d, ThreadPool *tp);
 
 /*
  * parallel_matmul_q4k_batch — batched Q4_K × F32 GEMV for k weight matrices
@@ -84,19 +82,16 @@ void parallel_matmul_q4k_preq(float *out, const TnQ8KActBlock *acts,
  *   k:     number of experts (batch count)
  *   tp:    thread pool (NULL = single-threaded)
  */
-void parallel_matmul_q4k_batch(float * const *outs, const float *x,
-                                const uint8_t * const *ws,
-                                int n, int d, int k, ThreadPool *tp);
+void parallel_matmul_q4k_batch(float *const *outs, const float *x, const uint8_t *const *ws, int n,
+                               int d, int k, ThreadPool *tp);
 
 /*
  * parallel_matmul_q4k_batch_preq — same as parallel_matmul_q4k_batch but
  * accepts pre-quantized Q8K activation blocks.  Use when the same input
  * drives both gate and up projections (saves one quantize_to_q8k call).
  */
-void parallel_matmul_q4k_batch_preq(float * const *outs,
-                                     const TnQ8KActBlock *acts,
-                                     const uint8_t * const *ws,
-                                     int n, int d, int k, ThreadPool *tp);
+void parallel_matmul_q4k_batch_preq(float *const *outs, const TnQ8KActBlock *acts,
+                                    const uint8_t *const *ws, int n, int d, int k, ThreadPool *tp);
 
 /*
  * parallel_matmul_q4k_tokens — Phase 18-B: one Q4_K matrix, n_tokens inputs.
@@ -104,7 +99,7 @@ void parallel_matmul_q4k_batch_preq(float * const *outs,
  * Each weight row is read once and applied to every token (speculative
  * verify batches). Bit-identical to n_tokens parallel_matmul_q4k() calls.
  */
-void parallel_matmul_q4k_tokens(float *out, const float *x, const uint8_t *w_q4k,
-                                int n, int d, int n_tokens, ThreadPool *tp);
+void parallel_matmul_q4k_tokens(float *out, const float *x, const uint8_t *w_q4k, int n, int d,
+                                int n_tokens, ThreadPool *tp);
 
 #endif /* TN_MATMUL_Q4K_H */

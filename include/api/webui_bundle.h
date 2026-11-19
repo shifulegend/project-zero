@@ -14,7 +14,7 @@
 #include <stddef.h>
 
 typedef struct {
-    const char *path;             /* e.g. "/", "/assets/index-XXXX.js" */
+    const char *path; /* e.g. "/", "/assets/index-XXXX.js" */
     const unsigned char *data;
     size_t len;
     const char *mime_type;

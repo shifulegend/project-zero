@@ -7,7 +7,7 @@
 #include "core/fp16.h"
 
 #if TN_HAS_AVX512 || TN_HAS_AVX2
-#  include <immintrin.h>
+#include <immintrin.h>
 #endif
 
 /**
@@ -55,8 +55,8 @@ static void f16_row_to_f32(float *out, const tn_u16 *row, int count) {
 }
 
 typedef struct {
-    float        *out;
-    const float  *x;
+    float *out;
+    const float *x;
     const tn_u16 *w;
     int n, d, n_tokens;
 } F16BatchArgs;
@@ -72,7 +72,7 @@ static void matmul_f16_batch_task(void *arg, int thread_id, int start, int end) 
             const tn_u16 *row = a->w + (size_t)i * a->n;
             for (int k = 0; k < a->n_tokens; k++) {
                 const float *xk = a->x + (size_t)k * a->n;
-                float val = 0.0f;
+                float val       = 0.0f;
                 for (int j = 0; j < a->n; j++) {
                     val += tn_fp16_to_f32(row[j]) * xk[j];
                 }
@@ -89,16 +89,16 @@ static void matmul_f16_batch_task(void *arg, int thread_id, int start, int end) 
          * read and the decode cost are amortized, not paid n_tokens times. */
         f16_row_to_f32(row_f32, row, a->n);
         for (int k = 0; k < a->n_tokens; k++) {
-            const float *xk = a->x + (size_t)k * a->n;
+            const float *xk              = a->x + (size_t)k * a->n;
             a->out[(size_t)k * a->d + i] = tn_vec_dot(row_f32, xk, a->n);
         }
     }
     free(row_f32);
 }
 
-void tn_matmul_f16_batch(float *out, const float *x, const tn_u16 *w,
-                          int n, int d, int n_tokens, ThreadPool *tp) {
-    F16BatchArgs args = { .out = out, .x = x, .w = w, .n = n, .d = d, .n_tokens = n_tokens };
+void tn_matmul_f16_batch(float *out, const float *x, const tn_u16 *w, int n, int d, int n_tokens,
+                         ThreadPool *tp) {
+    F16BatchArgs args = {.out = out, .x = x, .w = w, .n = n, .d = d, .n_tokens = n_tokens};
     if (!tp) {
         matmul_f16_batch_task(&args, 0, 0, d);
         return;

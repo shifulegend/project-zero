@@ -19,16 +19,16 @@
 #include "threading/thread_pool.h"
 
 typedef struct {
-    int n_ctx;       /* tokens per chunk (default 512, capped at the context size) */
-    int max_chunks;  /* 0 = every full chunk in the stream */
-    int bos_token;   /* < 0: keep the stream's own first token */
+    int n_ctx;      /* tokens per chunk (default 512, capped at the context size) */
+    int max_chunks; /* 0 = every full chunk in the stream */
+    int bos_token;  /* < 0: keep the stream's own first token */
 } PplOptions;
 
 typedef struct {
-    double ppl, ppl_err;   /* perplexity and its standard error */
+    double ppl, ppl_err; /* perplexity and its standard error */
     double mean_nll;
-    int    n_scored;       /* scored tokens */
-    int    n_chunks;
+    int n_scored; /* scored tokens */
+    int n_chunks;
     double seconds;
 } PplResult;
 
@@ -38,11 +38,11 @@ typedef void (*PplProgressFn)(int chunk, const PplResult *running, void *user);
 /* Pure helpers (unit-tested): NLL of `target` under `logits`, and the
  * accumulation -> PPL/± from a sum and sum of squares. */
 double ppl_token_nll(const float *logits, int vocab, int target);
-void   ppl_finish(PplResult *r, double sum_nll, double sum_nll2, int n);
+void ppl_finish(PplResult *r, double sum_nll, double sum_nll2, int n);
 
 TernaryError perplexity_eval(const int *tokens, int n_tokens, const PplOptions *opt,
                              const Config *cfg, const TransformerWeights *w, RunState *s,
-                             const MoEConfig *mc, ThreadPool *tp,
-                             PplProgressFn progress, void *user, PplResult *out);
+                             const MoEConfig *mc, ThreadPool *tp, PplProgressFn progress,
+                             void *user, PplResult *out);
 
 #endif /* TN_PERPLEXITY_H */

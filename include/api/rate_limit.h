@@ -11,7 +11,7 @@ typedef struct {
     double tokens;
     double rate;
     double burst;
-    double last;      /* seconds, monotonic; 0 until the first take */
+    double last; /* seconds, monotonic; 0 until the first take */
 } RateLimiter;
 
 void rate_limit_init(RateLimiter *rl, double rate_per_s, double burst);

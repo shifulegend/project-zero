@@ -67,18 +67,18 @@ typedef enum {
  * NULL-for-inapplicable convention TransformerWeights already uses
  * (q35_attn_q_norm etc., include/core/weights.h). */
 typedef struct {
-    const float *A;     /* [rank x n], row-major, owned by LoRAWeights */
-    const float *B;     /* [d x rank], row-major, owned by LoRAWeights */
-    int          rank;
-    float        scale; /* alpha / rank, precomputed at load time */
+    const float *A; /* [rank x n], row-major, owned by LoRAWeights */
+    const float *B; /* [d x rank], row-major, owned by LoRAWeights */
+    int rank;
+    float scale; /* alpha / rank, precomputed at load time */
 } LoRAModule;
 
 typedef struct {
-    int   n_layers;
-    int   rank;
+    int n_layers;
+    int rank;
     float alpha;
-    int   dim;
-    int   hidden_dim;
+    int dim;
+    int hidden_dim;
 
     /* One array per target module, length n_layers each. A module array is
      * NULL entirely when that target wasn't in the adapter's target_mask --
@@ -109,12 +109,12 @@ static inline const LoRAModule *lora_mod(const LoRAModule *arr, int layer) {
  * different-shaped base model would silently corrupt output otherwise).
  * Safe to call lora_free() on a zeroed LoRAWeights (memset convention, same
  * as MappedFile). */
-TernaryError lora_load(LoRAWeights *lora, const char *path,
-                        int dim, int kv_dim, int hidden_dim, int n_layers);
+TernaryError lora_load(LoRAWeights *lora, const char *path, int dim, int kv_dim, int hidden_dim,
+                       int n_layers);
 /* As lora_load() with the base model's Q width (n_heads * head_dim): equal
  * to dim for most models, wider on Qwen3 (head_dim from GGUF key_length). */
-TernaryError lora_load_ex(LoRAWeights *lora, const char *path, int dim, int q_dim,
-                          int kv_dim, int hidden_dim, int n_layers);
+TernaryError lora_load_ex(LoRAWeights *lora, const char *path, int dim, int q_dim, int kv_dim,
+                          int hidden_dim, int n_layers);
 void lora_free(LoRAWeights *lora);
 
 #endif /* TN_LORA_H */

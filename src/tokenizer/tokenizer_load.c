@@ -12,14 +12,14 @@
  */
 static void swap_int(int *a, int *b) {
     int tmp = *a;
-    *a = *b;
-    *b = tmp;
+    *a      = *b;
+    *b      = tmp;
 }
 
 static void vocab_insertion_sort(int *arr, int n, char **vocab) {
     for (int i = 1; i < n; i++) {
         int key = arr[i];
-        int j = i - 1;
+        int j   = i - 1;
         while (j >= 0 && strcmp(vocab[arr[j]], vocab[key]) > 0) {
             arr[j + 1] = arr[j];
             j--;
@@ -33,19 +33,21 @@ static void vocab_quicksort(int *arr, int n, char **vocab) {
         /* Median-of-three pivot selection */
         int mid = n / 2;
         if (strcmp(vocab[arr[0]], vocab[arr[mid]]) > 0) swap_int(&arr[0], &arr[mid]);
-        if (strcmp(vocab[arr[0]], vocab[arr[n-1]]) > 0) swap_int(&arr[0], &arr[n-1]);
-        if (strcmp(vocab[arr[mid]], vocab[arr[n-1]]) > 0) swap_int(&arr[mid], &arr[n-1]);
-        swap_int(&arr[mid], &arr[n-2]);
-        int pivot = arr[n-2];
+        if (strcmp(vocab[arr[0]], vocab[arr[n - 1]]) > 0) swap_int(&arr[0], &arr[n - 1]);
+        if (strcmp(vocab[arr[mid]], vocab[arr[n - 1]]) > 0) swap_int(&arr[mid], &arr[n - 1]);
+        swap_int(&arr[mid], &arr[n - 2]);
+        int pivot = arr[n - 2];
 
         int i = 0, j = n - 2;
         for (;;) {
-            while (strcmp(vocab[arr[++i]], vocab[pivot]) < 0) {}
-            while (strcmp(vocab[arr[--j]], vocab[pivot]) > 0) {}
+            while (strcmp(vocab[arr[++i]], vocab[pivot]) < 0) {
+            }
+            while (strcmp(vocab[arr[--j]], vocab[pivot]) > 0) {
+            }
             if (i >= j) break;
             swap_int(&arr[i], &arr[j]);
         }
-        swap_int(&arr[i], &arr[n-2]);
+        swap_int(&arr[i], &arr[n - 2]);
 
         /* Recurse on smaller partition, iterate on larger (tail-call optimization) */
         if (i < n - i - 1) {
@@ -76,8 +78,10 @@ int tokenizer_find_id(const Tokenizer *t, const char *str) {
         int idx = t->sorted_vocab_indices[mid];
         int cmp = strcmp(t->vocab[idx], str);
         if (cmp == 0) return idx;
-        if (cmp < 0) lo = mid + 1;
-        else         hi = mid - 1;
+        if (cmp < 0)
+            lo = mid + 1;
+        else
+            hi = mid - 1;
     }
     return -1;
 }
@@ -115,13 +119,24 @@ TernaryError tokenizer_load(Tokenizer *t, const char *path) {
 
     /* Allocate arrays */
     t->vocab = (char **)calloc((size_t)t->vocab_size, sizeof(char *));
-    if (!t->vocab) { fclose(fp); return TN_ERR_OOM; }
+    if (!t->vocab) {
+        fclose(fp);
+        return TN_ERR_OOM;
+    }
 
     t->vocab_scores = (float *)calloc((size_t)t->vocab_size, sizeof(float));
-    if (!t->vocab_scores) { fclose(fp); tokenizer_free(t); return TN_ERR_OOM; }
+    if (!t->vocab_scores) {
+        fclose(fp);
+        tokenizer_free(t);
+        return TN_ERR_OOM;
+    }
 
     t->sorted_vocab_indices = (int *)calloc((size_t)t->vocab_size, sizeof(int));
-    if (!t->sorted_vocab_indices) { fclose(fp); tokenizer_free(t); return TN_ERR_OOM; }
+    if (!t->sorted_vocab_indices) {
+        fclose(fp);
+        tokenizer_free(t);
+        return TN_ERR_OOM;
+    }
 
     /* Read each token: score(float) len(int) bytes(char[len]) */
     for (int i = 0; i < t->vocab_size; i++) {
@@ -129,23 +144,33 @@ TernaryError tokenizer_load(Tokenizer *t, const char *path) {
         int len;
 
         if (fread(&score, sizeof(float), 1, fp) != 1) {
-            fclose(fp); tokenizer_free(t); return TN_ERR_TOKENIZER_LOAD;
+            fclose(fp);
+            tokenizer_free(t);
+            return TN_ERR_TOKENIZER_LOAD;
         }
         if (fread(&len, sizeof(int), 1, fp) != 1) {
-            fclose(fp); tokenizer_free(t); return TN_ERR_TOKENIZER_LOAD;
+            fclose(fp);
+            tokenizer_free(t);
+            return TN_ERR_TOKENIZER_LOAD;
         }
         if (len < 0 || len > t->max_token_len) {
-            fclose(fp); tokenizer_free(t); return TN_ERR_TOKENIZER_LOAD;
+            fclose(fp);
+            tokenizer_free(t);
+            return TN_ERR_TOKENIZER_LOAD;
         }
 
         t->vocab_scores[i] = score;
-        t->vocab[i] = (char *)malloc((size_t)len + 1);
+        t->vocab[i]        = (char *)malloc((size_t)len + 1);
         if (!t->vocab[i]) {
-            fclose(fp); tokenizer_free(t); return TN_ERR_OOM;
+            fclose(fp);
+            tokenizer_free(t);
+            return TN_ERR_OOM;
         }
 
         if (len > 0 && fread(t->vocab[i], 1, (size_t)len, fp) != (size_t)len) {
-            fclose(fp); tokenizer_free(t); return TN_ERR_TOKENIZER_LOAD;
+            fclose(fp);
+            tokenizer_free(t);
+            return TN_ERR_TOKENIZER_LOAD;
         }
         t->vocab[i][len] = '\0';
     }
@@ -171,24 +196,27 @@ TernaryError tokenizer_load(Tokenizer *t, const char *path) {
 
     /* BOS candidates — first match wins */
     if (t->bos_token_id < 0) {
-        static const char *const BOS_CANDIDATES[] = {
-            "<|begin_of_text|>", "<s>", "<bos>", NULL
-        };
+        static const char *const BOS_CANDIDATES[] = {"<|begin_of_text|>", "<s>", "<bos>", NULL};
         for (int k = 0; BOS_CANDIDATES[k]; k++) {
             int id = tokenizer_find_id(t, BOS_CANDIDATES[k]);
-            if (id >= 0) { t->bos_token_id = id; break; }
+            if (id >= 0) {
+                t->bos_token_id = id;
+                break;
+            }
         }
     }
 
     /* Primary EOS candidate — first match wins */
     if (t->eos_token_id < 0) {
         static const char *const EOS_PRIMARY[] = {
-            "<|eot_id|>", "<|end_of_text|>", "<|im_end|>",
-            "</s>", "<eos>", "[EOS]", "<|endoftext|>", NULL
-        };
+            "<|eot_id|>", "<|end_of_text|>", "<|im_end|>",    "</s>",
+            "<eos>",      "[EOS]",           "<|endoftext|>", NULL};
         for (int k = 0; EOS_PRIMARY[k]; k++) {
             int id = tokenizer_find_id(t, EOS_PRIMARY[k]);
-            if (id >= 0) { t->eos_token_id = id; break; }
+            if (id >= 0) {
+                t->eos_token_id = id;
+                break;
+            }
         }
     }
 
@@ -200,19 +228,29 @@ TernaryError tokenizer_load(Tokenizer *t, const char *path) {
 
 static void eog_add(Tokenizer *t, int id) {
     if (id < 0 || id >= t->vocab_size || t->n_eos >= TN_TOKENIZER_MAX_EOG) return;
-    for (int i = 0; i < t->n_eos; i++) if (t->eos_list[i] == id) return;
+    for (int i = 0; i < t->n_eos; i++)
+        if (t->eos_list[i] == id) return;
     t->eos_list[t->n_eos++] = id;
 }
 
 void tokenizer_collect_eog(Tokenizer *t, const int *ids, int n_ids, int require_special) {
     /* llama.cpp llama_vocab::impl::load end-of-generation names, plus the
      * EOS spellings this engine always stopped on. No numeric ids here. */
-    static const char *const EOG_NAMES[] = {
-        "<|eot_id|>", "<|end_of_text|>", "<|im_end|>", "<|endoftext|>", "<|end|>",
-        "<end_of_turn>", "<|eom_id|>", "<EOT>", "_<EOT>", "</s>", "<eos>", "[EOS]",
-        "<end_of_utterance>", NULL
-    };
-    t->n_eos = 0;
+    static const char *const EOG_NAMES[] = {"<|eot_id|>",
+                                            "<|end_of_text|>",
+                                            "<|im_end|>",
+                                            "<|endoftext|>",
+                                            "<|end|>",
+                                            "<end_of_turn>",
+                                            "<|eom_id|>",
+                                            "<EOT>",
+                                            "_<EOT>",
+                                            "</s>",
+                                            "<eos>",
+                                            "[EOS]",
+                                            "<end_of_utterance>",
+                                            NULL};
+    t->n_eos                             = 0;
     for (int i = 0; ids && i < n_ids; i++) eog_add(t, ids[i]);
     for (int k = 0; EOG_NAMES[k]; k++) {
         int id = tokenizer_find_id(t, EOG_NAMES[k]);
@@ -231,7 +269,7 @@ unsigned char *tokenizer_chat_stops_new(const Tokenizer *t, const char *chat_tem
     if (!t || !chat_template || !chat_template[0] || !t->special_is_control || t->vocab_size <= 0)
         return NULL;
     unsigned char *m = (unsigned char *)calloc((size_t)t->vocab_size, 1);
-    if (!m) return NULL;   /* falls back to the declared EOG set */
+    if (!m) return NULL; /* falls back to the declared EOG set */
     for (int i = 0; i < t->n_special; i++) {
         int id = t->special_token_ids[i];
         if (!t->special_is_control[i] || id < 0 || id >= t->vocab_size) continue;

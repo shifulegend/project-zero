@@ -15,39 +15,62 @@
 
 static void test_store_roundtrip_error(void) {
     enum { N = 64 };
-    unsigned long long r; rng_seed(&r, 9);
-    float src[N]; tn_i8 q[N]; float scale;
+    unsigned long long r;
+    rng_seed(&r, 9);
+    float src[N];
+    tn_i8 q[N];
+    float scale;
     for (int i = 0; i < N; i++) src[i] = (rng_float(&r) - 0.5f) * 8.0f;
     kvq_store_row(q, &scale, src, N);
-    float amax = 0; for (int i = 0; i < N; i++) if (fabsf(src[i]) > amax) amax = fabsf(src[i]);
+    float amax = 0;
+    for (int i = 0; i < N; i++)
+        if (fabsf(src[i]) > amax) amax = fabsf(src[i]);
     TEST_ASSERT_FLOAT_EQ(scale, amax / 127.0f, 1e-6, "scale = absmax / 127");
     float maxerr = 0;
-    for (int i = 0; i < N; i++) { float e = fabsf((float)q[i] * scale - src[i]); if (e > maxerr) maxerr = e; }
+    for (int i = 0; i < N; i++) {
+        float e = fabsf((float)q[i] * scale - src[i]);
+        if (e > maxerr) maxerr = e;
+    }
     TEST_ASSERT(maxerr <= 0.5f * scale + 1e-6f, "reconstruction error <= half a step");
 }
 
 static void test_dot_and_axpy(void) {
     enum { N = 67 };
-    unsigned long long r; rng_seed(&r, 21);
-    float k[N], v[N], q[N]; tn_i8 kq[N], vq[N]; float ks, vs;
-    for (int i = 0; i < N; i++) { k[i] = rng_float(&r) - 0.5f; v[i] = rng_float(&r) - 0.5f; q[i] = rng_float(&r) - 0.5f; }
+    unsigned long long r;
+    rng_seed(&r, 21);
+    float k[N], v[N], q[N];
+    tn_i8 kq[N], vq[N];
+    float ks, vs;
+    for (int i = 0; i < N; i++) {
+        k[i] = rng_float(&r) - 0.5f;
+        v[i] = rng_float(&r) - 0.5f;
+        q[i] = rng_float(&r) - 0.5f;
+    }
     kvq_store_row(kq, &ks, k, N);
     kvq_store_row(vq, &vs, v, N);
-    double ref = 0; for (int i = 0; i < N; i++) ref += (double)q[i] * k[i];
+    double ref = 0;
+    for (int i = 0; i < N; i++) ref += (double)q[i] * k[i];
     float got = kvq_dot(q, kq, N) * ks;
     TEST_ASSERT(fabs(got - ref) < 0.02, "int8 dot close to F32 dot");
     float out[N] = {0}, ref_out[N] = {0};
     kvq_axpy(out, 0.7f * vs, vq, N);
     for (int i = 0; i < N; i++) ref_out[i] = 0.7f * v[i];
-    float md = 0; for (int i = 0; i < N; i++) { float e = fabsf(out[i] - ref_out[i]); if (e > md) md = e; }
+    float md = 0;
+    for (int i = 0; i < N; i++) {
+        float e = fabsf(out[i] - ref_out[i]);
+        if (e > md) md = e;
+    }
     TEST_ASSERT(md < 0.7f * vs, "axpy within one quantisation step");
 }
 
 static void test_zero_row_and_parse(void) {
-    float z[8] = {0}; tn_i8 q[8]; float s = 1.0f;
+    float z[8] = {0};
+    tn_i8 q[8];
+    float s = 1.0f;
     kvq_store_row(q, &s, z, 8);
     TEST_ASSERT(s == 0.0f, "zero row -> zero scale");
-    int all0 = 1; for (int i = 0; i < 8; i++) all0 &= q[i] == 0;
+    int all0 = 1;
+    for (int i = 0; i < 8; i++) all0 &= q[i] == 0;
     TEST_ASSERT(all0, "zero row -> zero codes");
     TEST_ASSERT_EQ(kv_type_parse("i8"), KV_TYPE_I8, "parse i8");
     TEST_ASSERT_EQ(kv_type_parse("f32"), KV_TYPE_F32, "parse f32");
@@ -64,10 +87,11 @@ static void test_i4_layout_and_roundtrip(void) {
     TEST_ASSERT_EQ(kvq_row_layout(KV_TYPE_F32, 48, &b, &sc), -1, "f32 is not quantized");
     TEST_ASSERT_EQ(kv_type_parse("i4"), KV_TYPE_I4, "parse i4");
 
-    unsigned long long r; rng_seed(&r, 33);
+    unsigned long long r;
+    rng_seed(&r, 33);
     float src[N], deq[N], scales[2 * (N / TN_KV_I4_GROUP)];
     tn_i8 q[N / 2];
-    for (int i = 0; i < N; i++) src[i] = (rng_float(&r) - 0.3f) * 6.0f;    /* skewed */
+    for (int i = 0; i < N; i++) src[i] = (rng_float(&r) - 0.3f) * 6.0f; /* skewed */
     kvq_store(KV_TYPE_I4, q, scales, src, N);
     /* Dequantise via axpy with a = 1 into zeros. */
     for (int i = 0; i < N; i++) deq[i] = 0.0f;
@@ -97,7 +121,8 @@ static void test_i4_layout_and_roundtrip(void) {
     TEST_ASSERT(cs[0] == 0.0f && exact, "constant group is exact (zero scale, min = value)");
 
     float i8out[N] = {0};
-    kvq_axpy_row(KV_TYPE_I8, i8out, 1.0f, q, scales, 4);  /* dispatch smoke: i8 path uses scales[0] */
+    kvq_axpy_row(KV_TYPE_I8, i8out, 1.0f, q, scales,
+                 4); /* dispatch smoke: i8 path uses scales[0] */
     TEST_ASSERT(isfinite(i8out[0]), "i8 dispatch");
 }
 
@@ -105,8 +130,9 @@ static void test_i4_layout_and_roundtrip(void) {
  * of several sizes (row values up to +-50 so d and m both matter). */
 static void check_kvq4_kernels(const char *name, tn_kvq4_dot_fn dot, tn_kvq4_axpy_fn axpy) {
     enum { MAXN = 256 };
-    static const int sizes[] = { 32, 64, 128, 256 };
-    unsigned long long r; rng_seed(&r, 77);
+    static const int sizes[] = {32, 64, 128, 256};
+    unsigned long long r;
+    rng_seed(&r, 77);
     int ok_dot = 1, ok_axpy = 1;
     for (int si = 0; si < 4; si++) {
         int n = sizes[si];
@@ -116,7 +142,7 @@ static void check_kvq4_kernels(const char *name, tn_kvq4_dot_fn dot, tn_kvq4_axp
             float amp = rep < 10 ? 1.0f : 50.0f;
             for (int i = 0; i < n; i++) {
                 src[i] = (rng_float(&r) - 0.3f) * amp;
-                q[i] = rng_float(&r) - 0.5f;
+                q[i]   = rng_float(&r) - 0.5f;
             }
             kvq_store(KV_TYPE_I4, packed, scales, src, n);
             float ref = kvq4_dot_scalar(q, (const uint8_t *)packed, scales, n);
@@ -141,15 +167,19 @@ static void check_kvq4_kernels(const char *name, tn_kvq4_dot_fn dot, tn_kvq4_axp
 static void test_i4_simd_kernels(void) {
     const TnCpuFeatures *cpu = tn_cpu_features_detect();
 #if TN_HAS_AVX2
-    if (cpu->avx2) check_kvq4_kernels("AVX2", kvq4_dot_avx2, kvq4_axpy_avx2);
-    else printf("  (skip AVX2: CPU lacks it)\n");
+    if (cpu->avx2)
+        check_kvq4_kernels("AVX2", kvq4_dot_avx2, kvq4_axpy_avx2);
+    else
+        printf("  (skip AVX2: CPU lacks it)\n");
 #endif
 #if TN_HAS_AVX512
-    if (cpu->avx512f) check_kvq4_kernels("AVX-512", kvq4_dot_avx512, kvq4_axpy_avx512);
-    else printf("  (skip AVX-512: CPU lacks it)\n");
+    if (cpu->avx512f)
+        check_kvq4_kernels("AVX-512", kvq4_dot_avx512, kvq4_axpy_avx512);
+    else
+        printf("  (skip AVX-512: CPU lacks it)\n");
 #endif
     (void)cpu;
-    tn_simd_init();                                /* whatever this CPU selects */
+    tn_simd_init(); /* whatever this CPU selects */
     check_kvq4_kernels("dispatched", tn_kvq4_dot, tn_kvq4_axpy);
 }
 

@@ -21,26 +21,19 @@
 #include <stdio.h>
 #include <string.h>
 
-TernaryError vision_pipeline_run(const char *image_path,
-                                  const char *vision_path,
-                                  const char *proj_path,
-                                  Config *cfg,
-                                  TransformerWeights *w,
-                                  RunState *s,
-                                  const MoEConfig *mc,
-                                  Tokenizer *tok,
-                                  ThreadPool *tp,
-                                  const char *prompt_text,
-                                  char *stripped_prompt_buf,
-                                  size_t stripped_prompt_buf_cap,
-                                  const char **out_prompt) {
+TernaryError vision_pipeline_run(const char *image_path, const char *vision_path,
+                                 const char *proj_path, Config *cfg, TransformerWeights *w,
+                                 RunState *s, const MoEConfig *mc, Tokenizer *tok, ThreadPool *tp,
+                                 const char *prompt_text, char *stripped_prompt_buf,
+                                 size_t stripped_prompt_buf_cap, const char **out_prompt) {
     if (out_prompt) *out_prompt = prompt_text; /* default: unchanged */
 
     if (!vision_path || !proj_path) {
         fprintf(stderr,
-            "[vision] --image requires --vision <vision.bin> and --proj <projector.bin>\n"
-            "[vision] Extract weights first:\n"
-            "[vision]   python tools/extract_multimodal.py --repo moondream-hf/moondream2 --out models/\n");
+                "[vision] --image requires --vision <vision.bin> and --proj <projector.bin>\n"
+                "[vision] Extract weights first:\n"
+                "[vision]   python tools/extract_multimodal.py --repo moondream-hf/moondream2 "
+                "--out models/\n");
         return TN_ERR_INVALID_ARGS;
     }
 
@@ -49,7 +42,7 @@ TernaryError vision_pipeline_run(const char *image_path,
     /* Load vision model weights */
     VisionModel vm;
     memset(&vm, 0, sizeof(vm));
-    int vm_ok = 0;
+    int vm_ok           = 0;
     TernaryError result = TN_ERR_IMAGE_LOAD;
 
     if (vision_model_load_encoder(&vm, vision_path) == TN_OK &&
@@ -64,8 +57,8 @@ TernaryError vision_pipeline_run(const char *image_path,
         /* Load and normalize image */
         float *pixels = NULL;
         int img_w = 0, img_h = 0;
-        int target_res = (int)(0.5f + __builtin_sqrtf((float)vm.cfg.num_patches))
-                         * (int)(0.5f + __builtin_sqrtf((float)(vm.cfg.patch_dim / 3)));
+        int target_res = (int)(0.5f + __builtin_sqrtf((float)vm.cfg.num_patches)) *
+                         (int)(0.5f + __builtin_sqrtf((float)(vm.cfg.patch_dim / 3)));
         if (target_res <= 0) target_res = 384;
 
         if (load_image(image_path, &pixels, &img_w, &img_h, target_res) != TN_OK) {
@@ -77,9 +70,9 @@ TernaryError vision_pipeline_run(const char *image_path,
 
         if (vm_ok) {
             /* Extract patches */
-            int patch_size = (int)(0.5f + __builtin_sqrtf((float)(vm.cfg.patch_dim / 3)));
+            int patch_size  = (int)(0.5f + __builtin_sqrtf((float)(vm.cfg.patch_dim / 3)));
             int max_patches = vm.cfg.num_patches;
-            float *patches = (float *)tn_aligned_alloc(
+            float *patches  = (float *)tn_aligned_alloc(
                 (size_t)max_patches * vm.cfg.patch_dim * sizeof(float), 64);
             int num_patches = 0;
 
@@ -104,16 +97,16 @@ TernaryError vision_pipeline_run(const char *image_path,
                     printf("  Encoder done.\n");
 
                     /* MLP projector (or pixel-shuffle + single linear) */
-                    int out_tokens = vision_projector_output_tokens(&vm.proj, num_patches);
+                    int out_tokens   = vision_projector_output_tokens(&vm.proj, num_patches);
                     float *projected = (float *)tn_aligned_alloc(
                         (size_t)out_tokens * cfg->dim * sizeof(float), 64);
 
                     /* Projector llm_dim must match LLM dim; warn if mismatched */
                     if (vm.proj.llm_dim != cfg->dim) {
                         fprintf(stderr,
-                            "[vision] WARNING: projector llm_dim=%d != LLM dim=%d\n"
-                            "[vision] Embeddings will be truncated/zero-padded.\n",
-                            vm.proj.llm_dim, cfg->dim);
+                                "[vision] WARNING: projector llm_dim=%d != LLM dim=%d\n"
+                                "[vision] Embeddings will be truncated/zero-padded.\n",
+                                vm.proj.llm_dim, cfg->dim);
                     }
 
                     if (!projected) {
@@ -123,14 +116,13 @@ TernaryError vision_pipeline_run(const char *image_path,
                         float *proj_buf = (float *)tn_aligned_alloc(
                             (size_t)out_tokens * vm.proj.llm_dim * sizeof(float), 64);
                         if (proj_buf) {
-                            vision_projector_forward_batch(proj_buf, vis_emb,
-                                                           num_patches, &vm.proj, tp);
+                            vision_projector_forward_batch(proj_buf, vis_emb, num_patches, &vm.proj,
+                                                           tp);
                             /* Copy into projected, matching LLM dim */
                             int copy_dim = vm.proj.llm_dim < cfg->dim ? vm.proj.llm_dim : cfg->dim;
                             memset(projected, 0, (size_t)out_tokens * cfg->dim * sizeof(float));
                             for (int pp = 0; pp < out_tokens; pp++) {
-                                memcpy(&projected[pp * cfg->dim],
-                                       &proj_buf[pp * vm.proj.llm_dim],
+                                memcpy(&projected[pp * cfg->dim], &proj_buf[pp * vm.proj.llm_dim],
                                        (size_t)copy_dim * sizeof(float));
                             }
                             tn_aligned_free(proj_buf);
@@ -145,24 +137,24 @@ TernaryError vision_pipeline_run(const char *image_path,
                             if (prompt_text && tok->chat_template &&
                                 strstr(tok->chat_template, "im_start")) {
                                 int im_start_id = tokenizer_find_id(tok, "<|im_start|>");
-                                const char *vis_prefix = (im_start_id >= 0)
-                                    ? "<|im_start|>User: "
-                                    : "User: ";
+                                const char *vis_prefix =
+                                    (im_start_id >= 0) ? "<|im_start|>User: " : "User: ";
                                 int prefix_toks[32];
                                 int n_pre = tokenizer_encode(tok, vis_prefix, strlen(vis_prefix),
                                                              prefix_toks, 32);
                                 if (n_pre > 0) {
                                     for (int pi = 0; pi < n_pre; pi++) {
-                                        transformer_forward(prefix_toks[pi], s->current_pos,
-                                                            cfg, w, s, mc, tp);
+                                        transformer_forward(prefix_toks[pi], s->current_pos, cfg, w,
+                                                            s, mc, tp);
                                         s->current_pos++;
                                     }
                                     const char *stripped = prompt_text;
-                                    size_t pfx_len = strlen(vis_prefix);
+                                    size_t pfx_len       = strlen(vis_prefix);
                                     if (strncmp(stripped, vis_prefix, pfx_len) == 0)
                                         stripped += pfx_len;
                                     if (stripped_prompt_buf && stripped_prompt_buf_cap > 0) {
-                                        snprintf(stripped_prompt_buf, stripped_prompt_buf_cap, "%s", stripped);
+                                        snprintf(stripped_prompt_buf, stripped_prompt_buf_cap, "%s",
+                                                 stripped);
                                         if (out_prompt) *out_prompt = stripped_prompt_buf;
                                     }
                                 }
@@ -173,8 +165,7 @@ TernaryError vision_pipeline_run(const char *image_path,
                             vctx.num_patches      = out_tokens;
                             vctx.embed_dim        = cfg->dim;
                             inject_vision_into_kv_cache(s, cfg, w, &vctx, tp);
-                            printf("  Vision context injected (%d KV tokens)\n\n",
-                                   out_tokens);
+                            printf("  Vision context injected (%d KV tokens)\n\n", out_tokens);
                             result = TN_OK;
                         }
                         tn_aligned_free(projected);

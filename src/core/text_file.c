@@ -19,20 +19,35 @@ char *tn_read_text_file(const char *path, size_t max_bytes, size_t *len_out) {
             /* max_bytes + 2: room for one byte past the limit, so a file of
              * exactly max_bytes is accepted and a longer one detected. */
             size_t ncap = cap * 2 > max_bytes + 2 ? max_bytes + 2 : cap * 2;
-            if (ncap <= cap) { free(buf); buf = NULL; break; }
+            if (ncap <= cap) {
+                free(buf);
+                buf = NULL;
+                break;
+            }
             char *nb = (char *)realloc(buf, ncap);
-            if (!nb) { free(buf); buf = NULL; break; }
+            if (!nb) {
+                free(buf);
+                buf = NULL;
+                break;
+            }
             buf = nb;
             cap = ncap;
         }
         size_t rd = fread(buf + len, 1, cap - 1 - len, f);
         len += rd;
-        if (len > max_bytes) { free(buf); buf = NULL; break; }
+        if (len > max_bytes) {
+            free(buf);
+            buf = NULL;
+            break;
+        }
         if (rd == 0) break;
     }
     int err = ferror(f);
     fclose(f);
-    if (!buf || err || len == 0) { free(buf); return NULL; }
+    if (!buf || err || len == 0) {
+        free(buf);
+        return NULL;
+    }
     buf[len] = '\0';
     if (len_out) *len_out = len;
     return buf;

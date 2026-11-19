@@ -28,9 +28,8 @@
  * @param tp     Thread pool (NULL for single-threaded)
  * @return       Pointer to s->logits (vocab_size floats)
  */
-float *transformer_forward(int token, int pos, const Config *cfg,
-                           const TransformerWeights *w, RunState *s,
-                           const MoEConfig *mc, ThreadPool *tp);
+float *transformer_forward(int token, int pos, const Config *cfg, const TransformerWeights *w,
+                           RunState *s, const MoEConfig *mc, ThreadPool *tp);
 
 /**
  * Phase 18 (speculative decoding): batched multi-token forward pass.
@@ -55,11 +54,10 @@ float *transformer_forward(int token, int pos, const Config *cfg,
  *                   floats — row i is the distribution predicting the
  *                   token after tokens[0..i].
  */
-TernaryError transformer_forward_batch(const int *tokens, int pos, int n_tokens,
-                                        const Config *cfg, const TransformerWeights *w,
-                                        RunState *s, SpecBatchScratch *sb,
-                                        const MoEConfig *mc, ThreadPool *tp,
-                                        float *logits_out);
+TernaryError transformer_forward_batch(const int *tokens, int pos, int n_tokens, const Config *cfg,
+                                       const TransformerWeights *w, RunState *s,
+                                       SpecBatchScratch *sb, const MoEConfig *mc, ThreadPool *tp,
+                                       float *logits_out);
 
 /*
  * Phase 23 continuous batching (2026-10-19): one forward step over n_tokens
@@ -70,20 +68,18 @@ TernaryError transformer_forward_batch(const int *tokens, int pos, int n_tokens,
  * Generic dense/GQA models only; TN_ERR_UNSUPPORTED otherwise.
  */
 TernaryError transformer_forward_multi(const int *tokens, const int *pos_arr,
-                                       RunState *const *states, int n_tokens,
-                                       const Config *cfg, const TransformerWeights *w,
-                                       SpecBatchScratch *sb, const MoEConfig *mc,
-                                       ThreadPool *tp, float *logits_out);
+                                       RunState *const *states, int n_tokens, const Config *cfg,
+                                       const TransformerWeights *w, SpecBatchScratch *sb,
+                                       const MoEConfig *mc, ThreadPool *tp, float *logits_out);
 
 /* Same, but only rows with want_logits[k] != 0 get logits: they are written
  * to logits_out in row order, one [vocab] row each (want_logits NULL = all
  * rows). Prefill rows that only fill the KV cache skip the classifier. */
 TernaryError transformer_forward_multi_ex(const int *tokens, const int *pos_arr,
                                           RunState *const *states, int n_tokens,
-                                          const unsigned char *want_logits,
-                                          const Config *cfg, const TransformerWeights *w,
-                                          SpecBatchScratch *sb, const MoEConfig *mc,
-                                          ThreadPool *tp, float *logits_out);
+                                          const unsigned char *want_logits, const Config *cfg,
+                                          const TransformerWeights *w, SpecBatchScratch *sb,
+                                          const MoEConfig *mc, ThreadPool *tp, float *logits_out);
 
 /* 1 when transformer_forward_multi() can run this model (generic dense/GQA,
  * local), 0 when callers must stay sequential. */
@@ -94,4 +90,3 @@ void transformer_layer_forward(RunState *s, const TransformerWeights *w, const C
                                const MoEConfig *mc, int layer, int pos, ThreadPool *tp);
 
 #endif /* TN_FORWARD_H */
-

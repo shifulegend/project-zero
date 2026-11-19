@@ -51,22 +51,39 @@ static int hex4(const char *s, unsigned *out) {
     for (int k = 0; k < 4; k++) {
         char h = s[k];
         v <<= 4;
-        if (h >= '0' && h <= '9') v |= (unsigned)(h - '0');
-        else if (h >= 'a' && h <= 'f') v |= (unsigned)(h - 'a' + 10);
-        else if (h >= 'A' && h <= 'F') v |= (unsigned)(h - 'A' + 10);
-        else return 0;
+        if (h >= '0' && h <= '9')
+            v |= (unsigned)(h - '0');
+        else if (h >= 'a' && h <= 'f')
+            v |= (unsigned)(h - 'a' + 10);
+        else if (h >= 'A' && h <= 'F')
+            v |= (unsigned)(h - 'A' + 10);
+        else
+            return 0;
     }
     *out = v;
     return 1;
 }
 
 static int utf8_encode(unsigned cp, char *o) {
-    if (cp < 0x80)    { o[0] = (char)cp; return 1; }
-    if (cp < 0x800)   { o[0] = (char)(0xC0 | (cp >> 6)); o[1] = (char)(0x80 | (cp & 0x3F)); return 2; }
-    if (cp < 0x10000) { o[0] = (char)(0xE0 | (cp >> 12)); o[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
-                        o[2] = (char)(0x80 | (cp & 0x3F)); return 3; }
-    o[0] = (char)(0xF0 | (cp >> 18)); o[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
-    o[2] = (char)(0x80 | ((cp >> 6) & 0x3F)); o[3] = (char)(0x80 | (cp & 0x3F));
+    if (cp < 0x80) {
+        o[0] = (char)cp;
+        return 1;
+    }
+    if (cp < 0x800) {
+        o[0] = (char)(0xC0 | (cp >> 6));
+        o[1] = (char)(0x80 | (cp & 0x3F));
+        return 2;
+    }
+    if (cp < 0x10000) {
+        o[0] = (char)(0xE0 | (cp >> 12));
+        o[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        o[2] = (char)(0x80 | (cp & 0x3F));
+        return 3;
+    }
+    o[0] = (char)(0xF0 | (cp >> 18));
+    o[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+    o[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+    o[3] = (char)(0x80 | (cp & 0x3F));
     return 4;
 }
 
@@ -90,21 +107,40 @@ static int parse_string(const char **p, char *dst, size_t dst_cap) {
              * keep reading beyond the buffer. */
             if (**p == '\0') return 0;
             switch (**p) {
-                case '"':  c = '"';  break;
-                case '\\': c = '\\'; break;
-                case '/':  c = '/';  break;
-                case 'n':  c = '\n'; break;
-                case 'r':  c = '\r'; break;
-                case 't':  c = '\t'; break;
-                case 'b':  c = '\b'; break;
-                case 'f':  c = '\f'; break;
+                case '"':
+                    c = '"';
+                    break;
+                case '\\':
+                    c = '\\';
+                    break;
+                case '/':
+                    c = '/';
+                    break;
+                case 'n':
+                    c = '\n';
+                    break;
+                case 'r':
+                    c = '\r';
+                    break;
+                case 't':
+                    c = '\t';
+                    break;
+                case 'b':
+                    c = '\b';
+                    break;
+                case 'f':
+                    c = '\f';
+                    break;
                 case 'u': {
                     /* \uXXXX (+ optional low surrogate) -> UTF-8. The
                      * escape is >= 6 input bytes and UTF-8 output <= 4 per
                      * code point, so parse_string_heap's length bound holds.
                      * (2026-10-18: previously every \u escape became '?'.) */
                     unsigned cp = 0;
-                    if (!hex4(*p + 1, &cp)) { c = '?'; break; }
+                    if (!hex4(*p + 1, &cp)) {
+                        c = '?';
+                        break;
+                    }
                     (*p) += 4;
                     if (cp >= 0xD800 && cp <= 0xDBFF && (*p)[1] == '\\' && (*p)[2] == 'u') {
                         unsigned lo = 0;
@@ -121,7 +157,9 @@ static int parse_string(const char **p, char *dst, size_t dst_cap) {
                     c = u8[nb - 1];
                     break;
                 }
-                default:   c = **p; break;
+                default:
+                    c = **p;
+                    break;
             }
         }
         if (i < dst_cap - 1) dst[i++] = c;
@@ -143,9 +181,12 @@ static char *parse_string_heap(const char **p) {
 
     /* First pass: measure length */
     const char *scan = *p + 1; /* skip opening quote */
-    size_t len = 0;
+    size_t len       = 0;
     while (*scan && *scan != '"') {
-        if (*scan == '\\') { scan++; if (!*scan) return NULL; }
+        if (*scan == '\\') {
+            scan++;
+            if (!*scan) return NULL;
+        }
         len++;
         scan++;
     }
@@ -167,8 +208,8 @@ static double parse_number(const char **p) {
     skip_ws(p);
     char buf[64];
     size_t i = 0;
-    while (**p && (isdigit((unsigned char)**p) || **p == '.' || **p == '-'
-                   || **p == '+' || **p == 'e' || **p == 'E')) {
+    while (**p && (isdigit((unsigned char)**p) || **p == '.' || **p == '-' || **p == '+' ||
+                   **p == 'e' || **p == 'E')) {
         if (i < sizeof(buf) - 1) buf[i++] = **p;
         (*p)++;
     }
@@ -179,8 +220,14 @@ static double parse_number(const char **p) {
 /* Parse a JSON boolean (true/false). Returns -1 on error, 0/1 on success. */
 static int parse_bool(const char **p) {
     skip_ws(p);
-    if (strncmp(*p, "true", 4) == 0)  { *p += 4; return 1; }
-    if (strncmp(*p, "false", 5) == 0) { *p += 5; return 0; }
+    if (strncmp(*p, "true", 4) == 0) {
+        *p += 4;
+        return 1;
+    }
+    if (strncmp(*p, "false", 5) == 0) {
+        *p += 5;
+        return 0;
+    }
     return -1;
 }
 
@@ -195,17 +242,35 @@ static void skip_value(const char **p) {
         /* Skip object */
         int depth = 0;
         while (**p) {
-            if (**p == '{') depth++;
-            else if (**p == '}') { depth--; (*p)++; if (depth == 0) return; continue; }
-            else if (**p == '"') { char d[4096]; parse_string(p, d, sizeof(d)); continue; }
+            if (**p == '{')
+                depth++;
+            else if (**p == '}') {
+                depth--;
+                (*p)++;
+                if (depth == 0) return;
+                continue;
+            } else if (**p == '"') {
+                char d[4096];
+                parse_string(p, d, sizeof(d));
+                continue;
+            }
             (*p)++;
         }
     } else if (c == '[') {
         int depth = 0;
         while (**p) {
-            if (**p == '[') depth++;
-            else if (**p == ']') { depth--; (*p)++; if (depth == 0) return; continue; }
-            else if (**p == '"') { char d[4096]; parse_string(p, d, sizeof(d)); continue; }
+            if (**p == '[')
+                depth++;
+            else if (**p == ']') {
+                depth--;
+                (*p)++;
+                if (depth == 0) return;
+                continue;
+            } else if (**p == '"') {
+                char d[4096];
+                parse_string(p, d, sizeof(d));
+                continue;
+            }
             (*p)++;
         }
     } else {
@@ -229,7 +294,7 @@ static TernaryError parse_content_parts(const char **p, ChatMessage *msg) {
     if (!expect_char(p, '[')) return TN_ERR_JSON_PARSE;
     skip_ws(p);
 
-    size_t text_len = msg->content ? strlen(msg->content) : 0;
+    size_t text_len      = msg->content ? strlen(msg->content) : 0;
     size_t text_capacity = msg->content ? text_len + 1 : 0;
 
     while (**p && **p != ']') {
@@ -241,7 +306,7 @@ static TernaryError parse_content_parts(const char **p, ChatMessage *msg) {
 
             char key[64];
             if (!parse_string(p, key, sizeof(key))) return TN_ERR_JSON_PARSE;
-            if (!expect_char(p, ':'))               return TN_ERR_JSON_PARSE;
+            if (!expect_char(p, ':')) return TN_ERR_JSON_PARSE;
             skip_ws(p);
 
             if (strcmp(key, "text") == 0) {
@@ -249,8 +314,8 @@ static TernaryError parse_content_parts(const char **p, ChatMessage *msg) {
                 if (!text) return TN_ERR_JSON_PARSE;
                 size_t part_len = strlen(text);
                 if (!msg->content) {
-                    msg->content = text;
-                    text_len = part_len;
+                    msg->content  = text;
+                    text_len      = part_len;
                     text_capacity = text_len + 1;
                 } else {
                     if (part_len > SIZE_MAX - text_len - 1) {
@@ -261,12 +326,12 @@ static TernaryError parse_content_parts(const char **p, ChatMessage *msg) {
                     if (required > text_capacity) {
                         size_t grown = text_capacity <= SIZE_MAX / 2 ? text_capacity * 2 : required;
                         size_t capacity = required > grown ? required : grown;
-                        char *joined = realloc(msg->content, capacity);
+                        char *joined    = realloc(msg->content, capacity);
                         if (!joined) {
                             free(text);
                             return TN_ERR_OOM;
                         }
-                        msg->content = joined;
+                        msg->content  = joined;
                         text_capacity = capacity;
                     }
                     memcpy(msg->content + text_len, text, part_len + 1);
@@ -280,7 +345,7 @@ static TernaryError parse_content_parts(const char **p, ChatMessage *msg) {
                     if (**p == '}') break;
                     char nkey[32];
                     if (!parse_string(p, nkey, sizeof(nkey))) return TN_ERR_JSON_PARSE;
-                    if (!expect_char(p, ':'))                 return TN_ERR_JSON_PARSE;
+                    if (!expect_char(p, ':')) return TN_ERR_JSON_PARSE;
                     skip_ws(p);
                     if (strcmp(nkey, "url") == 0) {
                         char *url = parse_string_heap(p);
@@ -304,7 +369,10 @@ static TernaryError parse_content_parts(const char **p, ChatMessage *msg) {
         if (!expect_char(p, '}')) return TN_ERR_JSON_PARSE;
 
         skip_ws(p);
-        if (**p == ',') { (*p)++; skip_ws(p); }
+        if (**p == ',') {
+            (*p)++;
+            skip_ws(p);
+        }
     }
     if (!expect_char(p, ']')) return TN_ERR_JSON_PARSE;
     return TN_OK;
@@ -325,7 +393,7 @@ static TernaryError parse_messages(const char **p, ChatRequest *req) {
         }
 
         /* Include partial messages so chat_request_free can release them on error. */
-        ChatMessage *msg = &req->messages[req->num_messages++];
+        ChatMessage *msg    = &req->messages[req->num_messages++];
         msg->role[0]        = '\0';
         msg->content        = NULL;
         msg->image_data_url = NULL;
@@ -337,12 +405,11 @@ static TernaryError parse_messages(const char **p, ChatRequest *req) {
 
             char key[64];
             if (!parse_string(p, key, sizeof(key))) return TN_ERR_JSON_PARSE;
-            if (!expect_char(p, ':'))               return TN_ERR_JSON_PARSE;
+            if (!expect_char(p, ':')) return TN_ERR_JSON_PARSE;
             skip_ws(p);
 
             if (strcmp(key, "role") == 0) {
-                if (!parse_string(p, msg->role, sizeof(msg->role)))
-                    return TN_ERR_JSON_PARSE;
+                if (!parse_string(p, msg->role, sizeof(msg->role))) return TN_ERR_JSON_PARSE;
             } else if (strcmp(key, "content") == 0) {
                 skip_ws(p);
                 /* A repeated "content" key replaces the earlier value (the last one
@@ -368,12 +435,17 @@ static TernaryError parse_messages(const char **p, ChatRequest *req) {
             }
 
             skip_ws(p);
-            if (**p == ',') { (*p)++; }
+            if (**p == ',') {
+                (*p)++;
+            }
         }
         if (!expect_char(p, '}')) return TN_ERR_JSON_PARSE;
 
         skip_ws(p);
-        if (**p == ',') { (*p)++; skip_ws(p); }
+        if (**p == ',') {
+            (*p)++;
+            skip_ws(p);
+        }
     }
     if (!expect_char(p, ']')) return TN_ERR_JSON_PARSE;
     return TN_OK;
@@ -414,12 +486,17 @@ void chat_request_free(ChatRequest *req) {
 /* "stop": "x" | ["x", "y", ...] | null */
 static TernaryError parse_stop(const char **p, ChatRequest *req) {
     skip_ws(p);
-    if (strncmp(*p, "null", 4) == 0) { *p += 4; return TN_OK; }
+    if (strncmp(*p, "null", 4) == 0) {
+        *p += 4;
+        return TN_OK;
+    }
     if (**p == '"') {
         char *s = parse_string_heap(p);
         if (!s) return TN_ERR_JSON_PARSE;
-        if (req->n_stop < CHAT_MAX_STOP && s[0]) req->stop[req->n_stop++] = s;
-        else free(s);
+        if (req->n_stop < CHAT_MAX_STOP && s[0])
+            req->stop[req->n_stop++] = s;
+        else
+            free(s);
         req->set_mask |= CHAT_SET_STOP;
         return TN_OK;
     }
@@ -428,10 +505,15 @@ static TernaryError parse_stop(const char **p, ChatRequest *req) {
     while (**p && **p != ']') {
         char *s = parse_string_heap(p);
         if (!s) return TN_ERR_JSON_PARSE;
-        if (req->n_stop < CHAT_MAX_STOP && s[0]) req->stop[req->n_stop++] = s;
-        else free(s);
+        if (req->n_stop < CHAT_MAX_STOP && s[0])
+            req->stop[req->n_stop++] = s;
+        else
+            free(s);
         skip_ws(p);
-        if (**p == ',') { (*p)++; skip_ws(p); }
+        if (**p == ',') {
+            (*p)++;
+            skip_ws(p);
+        }
     }
     if (!expect_char(p, ']')) return TN_ERR_JSON_PARSE;
     req->set_mask |= CHAT_SET_STOP;
@@ -495,7 +577,8 @@ static int json_too_deep(const char *s, int max) {
     int depth = 0;
     for (; *s; s++) {
         if (*s == '"') {
-            for (s++; *s && *s != '"'; s++) if (*s == '\\' && s[1]) s++;
+            for (s++; *s && *s != '"'; s++)
+                if (*s == '\\' && s[1]) s++;
             if (!*s) break;
         } else if (*s == '{' || *s == '[') {
             if (++depth > max) return 1;
@@ -521,12 +604,11 @@ TernaryError chat_request_parse(const char *json_body, ChatRequest *req) {
 
         char key[128];
         if (!parse_string(&p, key, sizeof(key))) return TN_ERR_JSON_PARSE;
-        if (!expect_char(&p, ':'))               return TN_ERR_JSON_PARSE;
+        if (!expect_char(&p, ':')) return TN_ERR_JSON_PARSE;
         skip_ws(&p);
 
         if (strcmp(key, "model") == 0) {
-            if (!parse_string(&p, req->model, sizeof(req->model)))
-                return TN_ERR_JSON_PARSE;
+            if (!parse_string(&p, req->model, sizeof(req->model))) return TN_ERR_JSON_PARSE;
         } else if (strcmp(key, "messages") == 0) {
             TernaryError err = parse_messages(&p, req);
             if (err != TN_OK) return err;
@@ -582,13 +664,20 @@ TernaryError chat_request_parse(const char *json_body, ChatRequest *req) {
                     if (!parse_string(&p, mk, sizeof(mk))) return TN_ERR_JSON_PARSE;
                     if (!expect_char(&p, ':')) return TN_ERR_JSON_PARSE;
                     skip_ws(&p);
-                    if (strcmp(mk, "simulations") == 0)      req->mcts.simulations = (int)parse_number(&p);
-                    else if (strcmp(mk, "expand") == 0)      req->mcts.expand = (int)parse_number(&p);
-                    else if (strcmp(mk, "max_depth") == 0)   req->mcts.max_depth = (int)parse_number(&p);
-                    else if (strcmp(mk, "step_tokens") == 0) req->mcts.step_tokens = (int)parse_number(&p);
-                    else if (strcmp(mk, "c") == 0)           req->mcts.c_ucb = (float)parse_number(&p);
-                    else if (strcmp(mk, "temperature") == 0) req->mcts.temperature = (float)parse_number(&p);
-                    else skip_value(&p);
+                    if (strcmp(mk, "simulations") == 0)
+                        req->mcts.simulations = (int)parse_number(&p);
+                    else if (strcmp(mk, "expand") == 0)
+                        req->mcts.expand = (int)parse_number(&p);
+                    else if (strcmp(mk, "max_depth") == 0)
+                        req->mcts.max_depth = (int)parse_number(&p);
+                    else if (strcmp(mk, "step_tokens") == 0)
+                        req->mcts.step_tokens = (int)parse_number(&p);
+                    else if (strcmp(mk, "c") == 0)
+                        req->mcts.c_ucb = (float)parse_number(&p);
+                    else if (strcmp(mk, "temperature") == 0)
+                        req->mcts.temperature = (float)parse_number(&p);
+                    else
+                        skip_value(&p);
                     skip_ws(&p);
                     if (*p == ',') p++;
                 }
@@ -601,15 +690,21 @@ TernaryError chat_request_parse(const char *json_body, ChatRequest *req) {
         } else if (strcmp(key, "chat_template") == 0) {
             skip_ws(&p);
             if (strncmp(p, "null", 4) == 0) {
-                p += 4;                         /* null = use the server's template */
+                p += 4; /* null = use the server's template */
             } else {
                 char *t = parse_string_heap(&p);
                 if (!t) return TN_ERR_JSON_PARSE;
-                if (strlen(t) > CHAT_MAX_TEMPLATE) { free(t); return TN_ERR_INVALID_ARGS; }
+                if (strlen(t) > CHAT_MAX_TEMPLATE) {
+                    free(t);
+                    return TN_ERR_INVALID_ARGS;
+                }
                 free(req->chat_template);
                 req->chat_template = NULL;
-                if (t[0]) { req->chat_template = t; req->set_mask |= CHAT_SET_CHAT_TEMPLATE; }
-                else free(t);                   /* "" = use the server's template */
+                if (t[0]) {
+                    req->chat_template = t;
+                    req->set_mask |= CHAT_SET_CHAT_TEMPLATE;
+                } else
+                    free(t); /* "" = use the server's template */
             }
         } else if (strcmp(key, "ignore_eos") == 0) {
             int b = parse_bool(&p);
@@ -659,7 +754,9 @@ TernaryError chat_request_parse(const char *json_body, ChatRequest *req) {
         }
 
         skip_ws(&p);
-        if (*p == ',') { p++; }
+        if (*p == ',') {
+            p++;
+        }
     }
     return TN_OK;
 }
@@ -680,7 +777,10 @@ static int find_top_level(const char *json_body, const char *key, const char **p
         if (!parse_string(&q, k, sizeof(k))) return 0;
         if (!expect_char(&q, ':')) return 0;
         skip_ws(&q);
-        if (strcmp(k, key) == 0) { *p = q; return 1; }
+        if (strcmp(k, key) == 0) {
+            *p = q;
+            return 1;
+        }
         skip_value(&q);
         skip_ws(&q);
         if (*q == ',') q++;
@@ -717,7 +817,7 @@ char *json_field_number_text(const char *json_body, const char *key) {
     if (!(*p == '-' || isdigit((unsigned char)*p))) return NULL;
     const char *start = p;
     while (*p && (isdigit((unsigned char)*p) || strchr("+-.eE", *p))) p++;
-    size_t n = (size_t)(p - start);
+    size_t n  = (size_t)(p - start);
     char *out = (char *)malloc(n + 1);
     if (!out) return NULL;
     memcpy(out, start, n);
@@ -739,8 +839,14 @@ int json_field_string_list(const char *json_body, const char *key, char **out, i
         }
         out[n++] = s;
         skip_ws(&p);
-        if (*p == ',') { p++; skip_ws(&p); }
+        if (*p == ',') {
+            p++;
+            skip_ws(&p);
+        }
     }
-    if (*p != ']') { while (n > 0) free(out[--n]); return -1; }
+    if (*p != ']') {
+        while (n > 0) free(out[--n]);
+        return -1;
+    }
     return n;
 }

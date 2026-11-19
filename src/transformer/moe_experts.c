@@ -19,23 +19,34 @@
 #include <string.h>
 
 /* ── module scratch (moe_ffn_forward is not re-entrant) ─────────────────── */
-static float          *s_g = NULL, *s_u = NULL;  /* [sum hdim] gate / up    */
-static size_t          s_g_cap = 0, s_u_cap = 0;
-static unsigned char  *s_hq = NULL;              /* quantized hidden vectors */
-static size_t          s_hq_cap = 0;
-static TnQ8KActBlock  *s_xk = NULL;              /* x as Q8K                 */
-static TnQ8_0ActBlock *s_x0 = NULL;              /* x as Q8_0                */
-static int             s_x_cap = 0;              /* elements of x covered    */
-static int            *s_off = NULL;             /* [n_jobs+1] row offsets   */
-static size_t         *s_hq_off = NULL;          /* [n_jobs] byte offsets    */
-static int             s_jobs_cap = 0;
+static float *s_g = NULL, *s_u = NULL; /* [sum hdim] gate / up    */
+static size_t s_g_cap = 0, s_u_cap = 0;
+static unsigned char *s_hq  = NULL; /* quantized hidden vectors */
+static size_t s_hq_cap      = 0;
+static TnQ8KActBlock *s_xk  = NULL; /* x as Q8K                 */
+static TnQ8_0ActBlock *s_x0 = NULL; /* x as Q8_0                */
+static int s_x_cap          = 0;    /* elements of x covered    */
+static int *s_off           = NULL; /* [n_jobs+1] row offsets   */
+static size_t *s_hq_off     = NULL; /* [n_jobs] byte offsets    */
+static int s_jobs_cap       = 0;
 
 void moe_experts_free(void) {
-    free(s_g); free(s_u); free(s_hq); free(s_xk); free(s_x0);
-    free(s_off); free(s_hq_off);
-    s_g = s_u = NULL; s_hq = NULL; s_xk = NULL; s_x0 = NULL;
-    s_off = NULL; s_hq_off = NULL;
-    s_g_cap = s_u_cap = s_hq_cap = 0; s_x_cap = 0; s_jobs_cap = 0;
+    free(s_g);
+    free(s_u);
+    free(s_hq);
+    free(s_xk);
+    free(s_x0);
+    free(s_off);
+    free(s_hq_off);
+    s_g = s_u = NULL;
+    s_hq      = NULL;
+    s_xk      = NULL;
+    s_x0      = NULL;
+    s_off     = NULL;
+    s_hq_off  = NULL;
+    s_g_cap = s_u_cap = s_hq_cap = 0;
+    s_x_cap                      = 0;
+    s_jobs_cap                   = 0;
 }
 
 static int is_kquant(int type) {
@@ -44,19 +55,25 @@ static int is_kquant(int type) {
 
 static size_t row_bytes(int type, int n_inner) {
     switch (type) {
-    case GGUF_TYPE_Q4_K: return (size_t)(n_inner / 256) * 144;
-    case GGUF_TYPE_Q6_K: return (size_t)(n_inner / 256) * TN_Q6K_BYTES;
-    case GGUF_TYPE_Q5_0: return (size_t)(n_inner / 32) * 22;
-    case GGUF_TYPE_Q5_1: return (size_t)(n_inner / 32) * 24;
-    case GGUF_TYPE_Q8_0: return (size_t)(n_inner / 32) * 34;
-    default:             return 0;
+        case GGUF_TYPE_Q4_K:
+            return (size_t)(n_inner / 256) * 144;
+        case GGUF_TYPE_Q6_K:
+            return (size_t)(n_inner / 256) * TN_Q6K_BYTES;
+        case GGUF_TYPE_Q5_0:
+            return (size_t)(n_inner / 32) * 22;
+        case GGUF_TYPE_Q5_1:
+            return (size_t)(n_inner / 32) * 24;
+        case GGUF_TYPE_Q8_0:
+            return (size_t)(n_inner / 32) * 34;
+        default:
+            return 0;
     }
 }
 
 /* bytes of activation blocks needed to quantize an n-vector for `type` */
 static size_t act_bytes(int type, int n) {
     return is_kquant(type) ? (size_t)(n / 256) * sizeof(TnQ8KActBlock)
-                           : (size_t)(n / 32)  * sizeof(TnQ8_0ActBlock);
+                           : (size_t)(n / 32) * sizeof(TnQ8_0ActBlock);
 }
 
 int moe_experts_type_ok(int type, int n_inner) {
@@ -69,20 +86,25 @@ int moe_experts_type_ok(int type, int n_inner) {
 
 int moe_experts_job_ok(const TnMoEExpertJob *j, int dim) {
     return j && j->w_gate && j->w_up && j->w_down && j->hdim > 0 &&
-           moe_experts_type_ok(j->gate_type, dim) &&
-           moe_experts_type_ok(j->up_type, dim) &&
+           moe_experts_type_ok(j->gate_type, dim) && moe_experts_type_ok(j->up_type, dim) &&
            moe_experts_type_ok(j->down_type, j->hdim);
 }
 
-static inline float rowdot(int type, const uint8_t *row, const void *acts,
-                           int n_inner, int vq4, int vq8) {
+static inline float rowdot(int type, const uint8_t *row, const void *acts, int n_inner, int vq4,
+                           int vq8) {
     switch (type) {
-    case GGUF_TYPE_Q4_K: return tn_dot_q4k_row_q8k(row, (const TnQ8KActBlock *)acts, n_inner / 256, vq4);
-    case GGUF_TYPE_Q6_K: return tn_dot_q6k_row_q8k(row, (const TnQ8KActBlock *)acts, n_inner / 256);
-    case GGUF_TYPE_Q5_0: return tn_dot_q5_0_q8_0(row, (const TnQ8_0ActBlock *)acts, n_inner / 32, vq8);
-    case GGUF_TYPE_Q5_1: return tn_dot_q5_1_q8_0(row, (const TnQ8_0ActBlock *)acts, n_inner / 32, vq8);
-    case GGUF_TYPE_Q8_0: return tn_dot_q8_0_q8_0(row, (const TnQ8_0ActBlock *)acts, n_inner / 32, vq8);
-    default:             return 0.0f;   /* unreachable: filtered by job_ok */
+        case GGUF_TYPE_Q4_K:
+            return tn_dot_q4k_row_q8k(row, (const TnQ8KActBlock *)acts, n_inner / 256, vq4);
+        case GGUF_TYPE_Q6_K:
+            return tn_dot_q6k_row_q8k(row, (const TnQ8KActBlock *)acts, n_inner / 256);
+        case GGUF_TYPE_Q5_0:
+            return tn_dot_q5_0_q8_0(row, (const TnQ8_0ActBlock *)acts, n_inner / 32, vq8);
+        case GGUF_TYPE_Q5_1:
+            return tn_dot_q5_1_q8_0(row, (const TnQ8_0ActBlock *)acts, n_inner / 32, vq8);
+        case GGUF_TYPE_Q8_0:
+            return tn_dot_q8_0_q8_0(row, (const TnQ8_0ActBlock *)acts, n_inner / 32, vq8);
+        default:
+            return 0.0f; /* unreachable: filtered by job_ok */
     }
 }
 
@@ -114,25 +136,25 @@ typedef struct {
 static void phase1_task(void *arg, int thread_id, int start, int end) {
     (void)thread_id;
     const MoEExpArgs *a = (const MoEExpArgs *)arg;
-    int j = 0;
+    int j               = 0;
     while (j + 1 < a->n_jobs && s_off[j + 1] <= start) j++;
     int r = start;
     while (r < end && j < a->n_jobs) {
         const TnMoEExpertJob *jb = a->jobs + j;
-        const int base = s_off[j];
-        const int jend = end < s_off[j + 1] ? end : s_off[j + 1];
-        const size_t gb = row_bytes(jb->gate_type, a->dim);
-        const size_t ub = row_bytes(jb->up_type, a->dim);
-        const void *xg = x_acts_for(jb->gate_type);
-        const void *xu = x_acts_for(jb->up_type);
+        const int base           = s_off[j];
+        const int jend           = end < s_off[j + 1] ? end : s_off[j + 1];
+        const size_t gb          = row_bytes(jb->gate_type, a->dim);
+        const size_t ub          = row_bytes(jb->up_type, a->dim);
+        const void *xg           = x_acts_for(jb->gate_type);
+        const void *xu           = x_acts_for(jb->up_type);
         for (int rr = r; rr < jend; rr++) {
             const size_t li = (size_t)(rr - base);
             if (rr + MOE_PF_ROWS < jend) {
                 prefetch_row(jb->w_gate + (li + MOE_PF_ROWS) * gb, gb);
-                prefetch_row(jb->w_up   + (li + MOE_PF_ROWS) * ub, ub);
+                prefetch_row(jb->w_up + (li + MOE_PF_ROWS) * ub, ub);
             }
             s_g[rr] = rowdot(jb->gate_type, jb->w_gate + li * gb, xg, a->dim, a->vq4, a->vq8);
-            s_u[rr] = rowdot(jb->up_type,   jb->w_up   + li * ub, xu, a->dim, a->vq4, a->vq8);
+            s_u[rr] = rowdot(jb->up_type, jb->w_up + li * ub, xu, a->dim, a->vq4, a->vq8);
         }
         r = jend;
         j++;
@@ -154,14 +176,14 @@ static void phase2_task(void *arg, int thread_id, int start, int end) {
      * owned exclusively by this thread, so += is race-free. */
     for (int j = 0; j < a->n_jobs; j++) {
         const TnMoEExpertJob *jb = a->jobs + j;
-        const size_t rb = row_bytes(jb->down_type, jb->hdim);
-        const void *hq = s_hq + s_hq_off[j];
-        const float wgt = jb->weight;
+        const size_t rb          = row_bytes(jb->down_type, jb->hdim);
+        const void *hq           = s_hq + s_hq_off[j];
+        const float wgt          = jb->weight;
         for (int r = start; r < end; r++) {
             if (r + MOE_PF_ROWS < end)
                 prefetch_row(jb->w_down + (size_t)(r + MOE_PF_ROWS) * rb, rb);
-            a->out[r] += wgt * rowdot(jb->down_type, jb->w_down + (size_t)r * rb, hq,
-                                      jb->hdim, a->vq4, a->vq8);
+            a->out[r] += wgt * rowdot(jb->down_type, jb->w_down + (size_t)r * rb, hq, jb->hdim,
+                                      a->vq4, a->vq8);
         }
     }
 }
@@ -172,44 +194,60 @@ static int grow(void **p, size_t *cap, size_t need) {
     void *n = malloc(need);
     if (!n) return -1;
     free(*p);
-    *p = n;
+    *p   = n;
     *cap = need;
     return 0;
 }
 
-int moe_experts_forward(float *out, const float *x,
-                        const TnMoEExpertJob *jobs, int n_jobs,
-                        int dim, int act_type, ThreadPool *tp) {
+int moe_experts_forward(float *out, const float *x, const TnMoEExpertJob *jobs, int n_jobs, int dim,
+                        int act_type, ThreadPool *tp) {
     if (!out || !x || !jobs || n_jobs <= 0 || dim <= 0) return -1;
 
     /* offsets */
     if (s_jobs_cap < n_jobs) {
-        int *no = (int *)malloc((size_t)(n_jobs + 1) * sizeof(int));
+        int *no    = (int *)malloc((size_t)(n_jobs + 1) * sizeof(int));
         size_t *nh = (size_t *)malloc((size_t)n_jobs * sizeof(size_t));
-        if (!no || !nh) { free(no); free(nh); return -1; }
-        free(s_off); free(s_hq_off);
-        s_off = no; s_hq_off = nh; s_jobs_cap = n_jobs;
+        if (!no || !nh) {
+            free(no);
+            free(nh);
+            return -1;
+        }
+        free(s_off);
+        free(s_hq_off);
+        s_off      = no;
+        s_hq_off   = nh;
+        s_jobs_cap = n_jobs;
     }
     int need_k = 0, need_0 = 0;
     size_t hq_total = 0;
-    s_off[0] = 0;
+    s_off[0]        = 0;
     for (int j = 0; j < n_jobs; j++) {
         s_off[j + 1] = s_off[j] + jobs[j].hdim;
         s_hq_off[j]  = hq_total;
-        hq_total    += act_bytes(jobs[j].down_type, jobs[j].hdim);
+        hq_total += act_bytes(jobs[j].down_type, jobs[j].hdim);
         need_k |= (is_kquant(jobs[j].gate_type) || is_kquant(jobs[j].up_type));
         need_0 |= (!is_kquant(jobs[j].gate_type) || !is_kquant(jobs[j].up_type));
     }
     const size_t rows = (size_t)s_off[n_jobs];
     if (grow((void **)&s_g, &s_g_cap, rows * sizeof(float)) ||
-        grow((void **)&s_u, &s_u_cap, rows * sizeof(float))) return -1;
+        grow((void **)&s_u, &s_u_cap, rows * sizeof(float)))
+        return -1;
     if (grow((void **)&s_hq, &s_hq_cap, hq_total)) return -1;
     if (s_x_cap < dim) {
-        TnQ8KActBlock  *xk = (TnQ8KActBlock *)malloc((size_t)(dim / 256 + 1) * sizeof(TnQ8KActBlock));
-        TnQ8_0ActBlock *x0 = (TnQ8_0ActBlock *)malloc((size_t)(dim / 32 + 1) * sizeof(TnQ8_0ActBlock));
-        if (!xk || !x0) { free(xk); free(x0); return -1; }
-        free(s_xk); free(s_x0);
-        s_xk = xk; s_x0 = x0; s_x_cap = dim;
+        TnQ8KActBlock *xk =
+            (TnQ8KActBlock *)malloc((size_t)(dim / 256 + 1) * sizeof(TnQ8KActBlock));
+        TnQ8_0ActBlock *x0 =
+            (TnQ8_0ActBlock *)malloc((size_t)(dim / 32 + 1) * sizeof(TnQ8_0ActBlock));
+        if (!xk || !x0) {
+            free(xk);
+            free(x0);
+            return -1;
+        }
+        free(s_xk);
+        free(s_x0);
+        s_xk    = xk;
+        s_x0    = x0;
+        s_x_cap = dim;
     }
 
     /* quantize x once per needed format */
@@ -219,7 +257,7 @@ int moe_experts_forward(float *out, const float *x,
     const int vq4 = tn_q4k_vnni_ok();
     const int vq8 = tn_q8_0_act_vnni_ok();
 
-    MoEExpArgs a1 = { jobs, n_jobs, dim, vq4, vq8 };
+    MoEExpArgs a1 = {jobs, n_jobs, dim, vq4, vq8};
     threadpool_dispatch_chunked(tp, phase1_task, &a1, (int)rows, 0);
 
     /* act(gate) * up, then quantize each hidden vector once for its down
@@ -230,9 +268,11 @@ int moe_experts_forward(float *out, const float *x,
      * count (caught by tests/test_moe_experts.c). ~11K elements per layer. */
     for (int j = 0; j < n_jobs; j++) {
         void *dst = s_hq + s_hq_off[j];
-        float *h = s_g + s_off[j];
-        if (act_type == 1) tn_relu2(h, jobs[j].hdim);
-        else               tn_silu(h, jobs[j].hdim);
+        float *h  = s_g + s_off[j];
+        if (act_type == 1)
+            tn_relu2(h, jobs[j].hdim);
+        else
+            tn_silu(h, jobs[j].hdim);
         tn_vec_mul(h, h, s_u + s_off[j], jobs[j].hdim);
         if (is_kquant(jobs[j].down_type))
             tn_quantize_q8k((TnQ8KActBlock *)dst, h, jobs[j].hdim / 256);
@@ -240,7 +280,7 @@ int moe_experts_forward(float *out, const float *x,
             tn_quantize_q8_0_act((TnQ8_0ActBlock *)dst, h, jobs[j].hdim / 32);
     }
 
-    MoEDownArgs a2 = { out, jobs, n_jobs, dim, vq4, vq8 };
+    MoEDownArgs a2 = {out, jobs, n_jobs, dim, vq4, vq8};
     threadpool_dispatch_chunked(tp, phase2_task, &a2, dim, 0);
     return 0;
 }

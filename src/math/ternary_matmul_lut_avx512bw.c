@@ -75,8 +75,8 @@ static void *tn_lut_aligned_alloc(size_t align, size_t size) {
  *
  * K must be a multiple of 5.
  */
-void lut_mm_avx512bw(const int8_t * restrict A, const int8_t * restrict P,
-                     int M, int K, int N, int32_t * restrict C);
+void lut_mm_avx512bw(const int8_t *restrict A, const int8_t *restrict P, int M, int K, int N,
+                     int32_t *restrict C);
 
 /*
  * lut_pack_weights: pack unpacked {-1,0,1} weights to 5-trit balanced ternary.
@@ -98,16 +98,16 @@ void lut_pack_weights(const int8_t *W, int K, int N, int8_t *P);
  *   d3[t] = t/3 - 1,  d4[t] = t%3 - 1
  */
 static int16_t g_d0[27], g_d1[27], g_d2[27];
-static int16_t g_d3[9],  g_d4[9];
-static int     g_digit_tables_init = 0;
+static int16_t g_d3[9], g_d4[9];
+static int g_digit_tables_init = 0;
 
 static void init_digit_tables(void) {
     if (g_digit_tables_init) return;
     int t;
     for (t = 0; t < 27; t++) {
-        g_d0[t] = (int16_t)(t / 9     - 1);
+        g_d0[t] = (int16_t)(t / 9 - 1);
         g_d1[t] = (int16_t)(t / 3 % 3 - 1);
-        g_d2[t] = (int16_t)(t % 3     - 1);
+        g_d2[t] = (int16_t)(t % 3 - 1);
     }
     for (t = 0; t < 9; t++) {
         g_d3[t] = (int16_t)(t / 3 - 1);
@@ -123,9 +123,9 @@ static void init_digit_tables(void) {
  */
 #define COEFF0 81
 #define COEFF1 27
-#define COEFF2  9
-#define COEFF3  3
-#define COEFF4  1
+#define COEFF2 9
+#define COEFF3 3
+#define COEFF4 1
 
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -169,8 +169,8 @@ static inline void build_tables(const int8_t a[5], __m512i T[4]) {
     lv_arr[24] = lv_arr[25] = lv_arr[26] = lv_arr[27] = lv_arr[28] = 0;
     lv_arr[29] = lv_arr[30] = lv_arr[31] = 0;
 
-    __m512i hv = _mm512_load_si512((const __m512i*)hv_arr);
-    __m512i lv = _mm512_load_si512((const __m512i*)lv_arr);
+    __m512i hv = _mm512_load_si512((const __m512i *)hv_arr);
+    __m512i lv = _mm512_load_si512((const __m512i *)lv_arr);
 
     /* Build T[k] for k in [0..3] using permutexvar scatter-gather */
     for (k = 0; k < 4; k++) {
@@ -182,10 +182,9 @@ static inline void build_tables(const int8_t a[5], __m512i T[4]) {
             idx_h[t]  = (int16_t)(abs_v / 9);
             idx_l[t]  = (int16_t)(abs_v % 9);
         }
-        __m512i vh = _mm512_load_si512((const __m512i*)idx_h);
-        __m512i vl = _mm512_load_si512((const __m512i*)idx_l);
-        T[k] = _mm512_add_epi16(_mm512_permutexvar_epi16(vh, hv),
-                                 _mm512_permutexvar_epi16(vl, lv));
+        __m512i vh = _mm512_load_si512((const __m512i *)idx_h);
+        __m512i vl = _mm512_load_si512((const __m512i *)idx_l);
+        T[k] = _mm512_add_epi16(_mm512_permutexvar_epi16(vh, hv), _mm512_permutexvar_epi16(vl, lv));
     }
 }
 
@@ -194,12 +193,11 @@ static inline void build_tables(const int8_t a[5], __m512i T[4]) {
  * Flush int16 accumulator to int32 accumulator pair
  * acc16: 32 x int16;  acc32[0]: low 16 x int32;  acc32[1]: high 16 x int32
  * ────────────────────────────────────────────────────────────────────────── */
-static inline void acc16_to_acc32(__m512i acc16,
-                                   __m512i *acc32_lo, __m512i *acc32_hi) {
+static inline void acc16_to_acc32(__m512i acc16, __m512i *acc32_lo, __m512i *acc32_hi) {
     __m256i lo16 = _mm512_extracti32x8_epi32(acc16, 0);
     __m256i hi16 = _mm512_extracti32x8_epi32(acc16, 1);
-    *acc32_lo = _mm512_add_epi32(*acc32_lo, _mm512_cvtepi16_epi32(lo16));
-    *acc32_hi = _mm512_add_epi32(*acc32_hi, _mm512_cvtepi16_epi32(hi16));
+    *acc32_lo    = _mm512_add_epi32(*acc32_lo, _mm512_cvtepi16_epi32(lo16));
+    *acc32_hi    = _mm512_add_epi32(*acc32_hi, _mm512_cvtepi16_epi32(hi16));
 }
 
 
@@ -210,9 +208,7 @@ static inline void acc16_to_acc32(__m512i acc16,
  * T:      4 x ZMM lookup tables
  * acc16:  in/out accumulator (32 x int16)
  * ────────────────────────────────────────────────────────────────────────── */
-static inline __m512i lookup_and_acc(const int8_t *pw,
-                                      const __m512i T[4],
-                                      __m512i acc16) {
+static inline __m512i lookup_and_acc(const int8_t *pw, const __m512i T[4], __m512i acc16) {
     /* Load exactly the 32 packed weight bytes this column block needs
      * (values in [-121..+121]). A 512-bit load here would read 32 bytes
      * past this block's data — only the low 32 bytes were ever used below
@@ -223,14 +219,14 @@ static inline __m512i lookup_and_acc(const int8_t *pw,
      * Found via ASan on a real-shape test case (K5=8, N=64, P=512B exactly)
      * after this session started building+testing with LIB_OBJS actually
      * instrumented — see docs/ai/mistakes.md. */
-    __m256i v = _mm256_loadu_si256((const __m256i*)pw);
+    __m256i v = _mm256_loadu_si256((const __m256i *)pw);
 
     /* abs(v) as int8, and sign mask (bit per byte, set where v < 0) */
     __m256i abs_lo8 = _mm256_abs_epi8(v);
     __mmask32 neg32 = _mm256_movepi8_mask(v);
 
     /* Widen the 32 bytes of abs_v (int8) to 32 x int16 */
-    __m512i idx16   = _mm512_cvtepu8_epi16(abs_lo8);  /* 0..121 */
+    __m512i idx16 = _mm512_cvtepu8_epi16(abs_lo8); /* 0..121 */
 
     /*
      * permutex2var_epi16(a, idx, b):
@@ -248,11 +244,11 @@ static inline __m512i lookup_and_acc(const int8_t *pw,
      *   Subtract 64 so that [64..127] maps to [0..63] with same bit-5 logic.
      */
     __m512i idx_hi = _mm512_sub_epi16(idx16, _mm512_set1_epi16(64));
-    __m512i r23 = _mm512_permutex2var_epi16(T[2], idx_hi, T[3]);
+    __m512i r23    = _mm512_permutex2var_epi16(T[2], idx_hi, T[3]);
 
     /* Blend: r01 when abs_value < 64, r23 when abs_value >= 64 */
     __mmask32 hi_mask = _mm512_cmpge_epi16_mask(idx16, _mm512_set1_epi16(64));
-    __m512i rr = _mm512_mask_blend_epi16(hi_mask, r01, r23);
+    __m512i rr        = _mm512_mask_blend_epi16(hi_mask, r01, r23);
 
     /* Negate lanes where original weight was negative */
     rr = _mm512_mask_sub_epi16(rr, neg32, _mm512_setzero_si512(), rr);
@@ -271,7 +267,7 @@ static inline __m512i lookup_and_acc(const int8_t *pw,
  * This amortizes the ~300-cycle table-build cost over N/32 = 64 column blocks
  * instead of rebuilding it for each (block, group) pair.
  * ────────────────────────────────────────────────────────────────────────── */
-#define FLUSH_EVERY 51  /* max acc per lane: 51 * 121 = 6171 < 32767 */
+#define FLUSH_EVERY 51 /* max acc per lane: 51 * 121 = 6171 < 32767 */
 
 /*
  * Workspace layout for process_row (per call):
@@ -281,11 +277,10 @@ static inline __m512i lookup_and_acc(const int8_t *pw,
  * Caller provides pre-allocated workspace to avoid per-row malloc overhead.
  * ws_size = n_full * sizeof(int16_t) + n_blocks * sizeof(int)  (rounded up to 64B)
  */
-static void process_row(const int8_t *a_row, const int8_t *P,
-                        int K5, int N, int32_t *C_row,
+static void process_row(const int8_t *a_row, const int8_t *P, int K5, int N, int32_t *C_row,
                         int16_t *acc16_all, int *flush_cnt) {
-    int n_full   = N & ~31;   /* largest multiple of 32 <= N */
-    int n_tail   = N &  31;   /* remaining columns */
+    int n_full   = N & ~31; /* largest multiple of 32 <= N */
+    int n_tail   = N & 31;  /* remaining columns */
     int n_blocks = n_full / 32;
 
     /* Zero the output and workspace */
@@ -303,27 +298,27 @@ static void process_row(const int8_t *a_row, const int8_t *P,
 
         /* ── Inner loop: all full 32-column blocks ── */
         for (int bn = 0; bn < n_blocks; bn++) {
-            int col0          = bn * 32;
+            int col0           = bn * 32;
             int16_t *acc16_blk = acc16_all + col0;
 
-            __m512i acc16 = _mm512_loadu_si512((const __m512i*)acc16_blk);
-            acc16 = lookup_and_acc(P_row + col0, T, acc16);
+            __m512i acc16 = _mm512_loadu_si512((const __m512i *)acc16_blk);
+            acc16         = lookup_and_acc(P_row + col0, T, acc16);
 
             flush_cnt[bn]++;
             if (flush_cnt[bn] == FLUSH_EVERY) {
                 /* Flush int16 -> int32 directly to C_row */
-                __m512i *acc32_lo = (__m512i*)(C_row + col0);
-                __m512i *acc32_hi = (__m512i*)(C_row + col0 + 16);
-                __m512i lo = _mm512_loadu_si512(acc32_lo);
-                __m512i hi = _mm512_loadu_si512(acc32_hi);
+                __m512i *acc32_lo = (__m512i *)(C_row + col0);
+                __m512i *acc32_hi = (__m512i *)(C_row + col0 + 16);
+                __m512i lo        = _mm512_loadu_si512(acc32_lo);
+                __m512i hi        = _mm512_loadu_si512(acc32_hi);
                 acc16_to_acc32(acc16, &lo, &hi);
                 _mm512_storeu_si512(acc32_lo, lo);
                 _mm512_storeu_si512(acc32_hi, hi);
-                acc16 = _mm512_setzero_si512();
+                acc16         = _mm512_setzero_si512();
                 flush_cnt[bn] = 0;
             }
 
-            _mm512_storeu_si512((__m512i*)acc16_blk, acc16);
+            _mm512_storeu_si512((__m512i *)acc16_blk, acc16);
         }
 
         /* Tail columns handled in scalar pass after main loop */
@@ -332,12 +327,12 @@ static void process_row(const int8_t *a_row, const int8_t *P,
     /* ── Final flush of remaining int16 accumulator to int32 ── */
     for (int bn = 0; bn < n_blocks; bn++) {
         if (flush_cnt[bn] > 0) {
-            int col0 = bn * 32;
-            __m512i acc16 = _mm512_loadu_si512((const __m512i*)(acc16_all + col0));
-            __m512i *acc32_lo = (__m512i*)(C_row + col0);
-            __m512i *acc32_hi = (__m512i*)(C_row + col0 + 16);
-            __m512i lo = _mm512_loadu_si512(acc32_lo);
-            __m512i hi = _mm512_loadu_si512(acc32_hi);
+            int col0          = bn * 32;
+            __m512i acc16     = _mm512_loadu_si512((const __m512i *)(acc16_all + col0));
+            __m512i *acc32_lo = (__m512i *)(C_row + col0);
+            __m512i *acc32_hi = (__m512i *)(C_row + col0 + 16);
+            __m512i lo        = _mm512_loadu_si512(acc32_lo);
+            __m512i hi        = _mm512_loadu_si512(acc32_hi);
             acc16_to_acc32(acc16, &lo, &hi);
             _mm512_storeu_si512(acc32_lo, lo);
             _mm512_storeu_si512(acc32_hi, hi);
@@ -348,7 +343,7 @@ static void process_row(const int8_t *a_row, const int8_t *P,
     if (n_tail > 0) {
         int col0 = n_full;
         for (int g = 0; g < K5; g++) {
-            const int8_t *a = a_row + (size_t)g * 5;
+            const int8_t *a  = a_row + (size_t)g * 5;
             const int8_t *pw = P + (size_t)g * N + col0;
             /*
              * Scalar decode and accumulate, mirroring build_tables(): shift
@@ -356,19 +351,17 @@ static void process_row(const int8_t *a_row, const int8_t *P,
              * splitting into hv/lv indices, matching the vectorized path.
              */
             for (int j = 0; j < n_tail; j++) {
-                int8_t pv = pw[j];  /* balanced ternary packed value */
-                int v    = (int)pv;
-                int sign = (v < 0) ? -1 : 1;
-                int av   = (v < 0) ? -v : v;
-                int u      = av + 121;
-                int hv_idx = u / 9;
-                int lv_idx = u % 9;
-                int16_t hv_val = (int16_t)a[0] * g_d0[hv_idx]
-                               + (int16_t)a[1] * g_d1[hv_idx]
-                               + (int16_t)a[2] * g_d2[hv_idx];
-                int16_t lv_val = (int16_t)a[3] * g_d3[lv_idx]
-                               + (int16_t)a[4] * g_d4[lv_idx];
-                int32_t dot = (int32_t)(hv_val + lv_val) * sign;
+                int8_t pv      = pw[j]; /* balanced ternary packed value */
+                int v          = (int)pv;
+                int sign       = (v < 0) ? -1 : 1;
+                int av         = (v < 0) ? -v : v;
+                int u          = av + 121;
+                int hv_idx     = u / 9;
+                int lv_idx     = u % 9;
+                int16_t hv_val = (int16_t)a[0] * g_d0[hv_idx] + (int16_t)a[1] * g_d1[hv_idx] +
+                                 (int16_t)a[2] * g_d2[hv_idx];
+                int16_t lv_val = (int16_t)a[3] * g_d3[lv_idx] + (int16_t)a[4] * g_d4[lv_idx];
+                int32_t dot    = (int32_t)(hv_val + lv_val) * sign;
                 C_row[col0 + j] += dot;
             }
         }
@@ -380,20 +373,19 @@ static void process_row(const int8_t *a_row, const int8_t *P,
  * Public functions
  * ────────────────────────────────────────────────────────────────────────── */
 
-void lut_mm_avx512bw(const int8_t * restrict A, const int8_t * restrict P,
-                     int M, int K, int N, int32_t * restrict C) {
+void lut_mm_avx512bw(const int8_t *restrict A, const int8_t *restrict P, int M, int K, int N,
+                     int32_t *restrict C) {
     assert(K % 5 == 0 && "K must be a multiple of 5 for 5-trit LUT kernel");
 
     init_digit_tables();
 
-    int K5     = K / 5;
-    int n_full = N & ~31;
+    int K5       = K / 5;
+    int n_full   = N & ~31;
     int n_blocks = n_full / 32;
 
     /* Allocate workspace ONCE for all M rows */
-    int16_t *acc16_ws = (int16_t*)tn_lut_aligned_alloc(64,
-                            (size_t)n_full * sizeof(int16_t) + 64);
-    int *flush_ws = (int*)malloc((size_t)(n_blocks + 1) * sizeof(int));
+    int16_t *acc16_ws = (int16_t *)tn_lut_aligned_alloc(64, (size_t)n_full * sizeof(int16_t) + 64);
+    int *flush_ws     = (int *)malloc((size_t)(n_blocks + 1) * sizeof(int));
     if (!acc16_ws || !flush_ws) {
         /* Fallback: allocate per-row (slow but correct) */
         free(acc16_ws);
@@ -403,8 +395,7 @@ void lut_mm_avx512bw(const int8_t * restrict A, const int8_t * restrict P,
 
     int m;
     for (m = 0; m < M; m++) {
-        process_row(A + (size_t)m * K, P, K5, N, C + (size_t)m * N,
-                    acc16_ws, flush_ws);
+        process_row(A + (size_t)m * K, P, K5, N, C + (size_t)m * N, acc16_ws, flush_ws);
     }
 
     free(acc16_ws);
@@ -422,8 +413,8 @@ void lut_pack_weights(const int8_t *W, int K, int N, int8_t *P) {
 
     for (g = 0; g < K5; g++) {
         for (n = 0; n < N; n++) {
-            int coeffs[5] = { COEFF0, COEFF1, COEFF2, COEFF3, COEFF4 };
-            int v = 0;
+            int coeffs[5] = {COEFF0, COEFF1, COEFF2, COEFF3, COEFF4};
+            int v         = 0;
             for (i = 0; i < 5; i++) {
                 int ki = 5 * g + i;
                 int w  = (ki < K) ? (int)W[(size_t)ki * N + n] : 0;

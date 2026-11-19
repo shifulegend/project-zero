@@ -33,11 +33,11 @@
  * tn_hardware_profile_set_model_bytes() with the real loaded-model sizes
  * to correct weight_bytes_per_tok and theoretical_ceiling post-load.
  */
-#define MODEL_TERNARY_BYTES   (522ULL * 1024 * 1024)  /* ~522 MB packed ternary */
-#define MODEL_EMBED_BYTES     (128256ULL * 2560 * 2)   /* ~628 MB BF16 embedding */
-#define MODEL_NORM_BYTES      (1ULL * 1024 * 1024)     /* ~1 MB norms */
-#define MODEL_DIM             2560
-#define MODEL_VOCAB           128256
+#define MODEL_TERNARY_BYTES (522ULL * 1024 * 1024) /* ~522 MB packed ternary */
+#define MODEL_EMBED_BYTES (128256ULL * 2560 * 2)   /* ~628 MB BF16 embedding */
+#define MODEL_NORM_BYTES (1ULL * 1024 * 1024)      /* ~1 MB norms */
+#define MODEL_DIM 2560
+#define MODEL_VOCAB 128256
 
 /* ── Cache size detection ──────────────────────────────────────────────── */
 
@@ -86,7 +86,7 @@ typedef struct {
     const unsigned char *buf;
     size_t size;
     double gbps;
-    uint64_t sink;   /* per-thread accumulator result, folded by the caller */
+    uint64_t sink; /* per-thread accumulator result, folded by the caller */
 } BwThreadArg;
 
 /* Defeats dead-code elimination of the read loops: each thread deposits its
@@ -122,7 +122,7 @@ static volatile uint64_t g_bw_probe_sink;
  * page faults are taken in parallel (single-threaded touching of the old
  * 2 GB buffer cost up to 15 s on VMs; 2026-10-19). */
 static void *bw_touch_fn(void *arg) {
-    BwThreadArg *a = (BwThreadArg *)arg;
+    BwThreadArg *a   = (BwThreadArg *)arg;
     unsigned char *m = (unsigned char *)(uintptr_t)a->buf;
     for (size_t j = 0; j < a->size; j += 4096) m[j] = (unsigned char)j;
     return NULL;
@@ -131,18 +131,23 @@ static void *bw_touch_fn(void *arg) {
 
 static void *bw_thread_fn(void *arg) {
     BwThreadArg *a = (BwThreadArg *)arg;
-    uint64_t s0 = 0, s1 = 0, s2 = 0, s3 = 0,
-             s4 = 0, s5 = 0, s6 = 0, s7 = 0;
+    uint64_t s0 = 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0, s5 = 0, s6 = 0, s7 = 0;
     const uint64_t *p = (const uint64_t *)(const void *)a->buf;
-    size_t n_words = a->size / 8;
-    int64_t t0 = bw_now_ns();
+    size_t n_words    = a->size / 8;
+    int64_t t0        = bw_now_ns();
     for (size_t i = 0; i + 8 <= n_words; i += 8) {
-        s0 += p[i];     s1 += p[i + 1]; s2 += p[i + 2]; s3 += p[i + 3];
-        s4 += p[i + 4]; s5 += p[i + 5]; s6 += p[i + 6]; s7 += p[i + 7];
+        s0 += p[i];
+        s1 += p[i + 1];
+        s2 += p[i + 2];
+        s3 += p[i + 3];
+        s4 += p[i + 4];
+        s5 += p[i + 5];
+        s6 += p[i + 6];
+        s7 += p[i + 7];
     }
     int64_t elapsed = bw_now_ns() - t0;
-    a->sink = s0 + s1 + s2 + s3 + s4 + s5 + s6 + s7;
-    a->gbps = (elapsed > 0) ? (double)a->size / (double)elapsed : 0.0;
+    a->sink         = s0 + s1 + s2 + s3 + s4 + s5 + s6 + s7;
+    a->gbps         = (elapsed > 0) ? (double)a->size / (double)elapsed : 0.0;
     return NULL;
 }
 
@@ -154,7 +159,7 @@ static int count_physical_cores(void);
 static size_t g_free_ram_hint;
 
 static double probe_dram_bandwidth(void) {
-    size_t l3 = detect_l3_cache();
+    size_t l3     = detect_l3_cache();
     int n_threads = count_physical_cores();
     if (n_threads < 1) n_threads = 1;
     if (n_threads > 8) n_threads = 8;
@@ -177,34 +182,34 @@ static double probe_dram_bandwidth(void) {
     /* Allocate, then touch all pages from the probing threads */
     for (int i = 0; i < n_threads; i++) {
         unsigned char *mem = (unsigned char *)malloc(per_thread);
-        if (!mem) { n_threads = i; break; }
-        args[i].buf = mem;
+        if (!mem) {
+            n_threads = i;
+            break;
+        }
+        args[i].buf  = mem;
         args[i].size = per_thread;
         args[i].gbps = 0.0;
     }
 
     if (n_threads == 0) return 0.0;
-    for (int i = 0; i < n_threads; i++)
-        pthread_create(&threads[i], NULL, bw_touch_fn, &args[i]);
-    for (int i = 0; i < n_threads; i++)
-        pthread_join(threads[i], NULL);
+    for (int i = 0; i < n_threads; i++) pthread_create(&threads[i], NULL, bw_touch_fn, &args[i]);
+    for (int i = 0; i < n_threads; i++) pthread_join(threads[i], NULL);
 
     /* Measure WALL TIME for all threads to complete ONE pass each — true
      * aggregate bandwidth including bus contention (plus a small
      * thread-create/join overhead, which biases slightly conservative).
      * 5 rounds, best kept (the buffers are smaller than they used to be). */
     size_t total_bytes = per_thread * (size_t)n_threads;
-    double best_gbps = 0.0;
+    double best_gbps   = 0.0;
 
     for (int pass = 0; pass < 5; pass++) {
         int64_t wall_t0 = bw_now_ns();
         for (int i = 0; i < n_threads; i++)
             pthread_create(&threads[i], NULL, bw_thread_fn, &args[i]);
-        for (int i = 0; i < n_threads; i++)
-            pthread_join(threads[i], NULL);
+        for (int i = 0; i < n_threads; i++) pthread_join(threads[i], NULL);
         int64_t wall_elapsed = bw_now_ns() - wall_t0;
         for (int i = 0; i < n_threads; i++)
-            g_bw_probe_sink += args[i].sink;   /* single-threaded fold */
+            g_bw_probe_sink += args[i].sink; /* single-threaded fold */
 
         if (wall_elapsed > 0) {
             double gbps = (double)total_bytes / (double)wall_elapsed;
@@ -212,22 +217,20 @@ static double probe_dram_bandwidth(void) {
         }
     }
 
-    for (int i = 0; i < n_threads; i++)
-        free((void *)args[i].buf);
+    for (int i = 0; i < n_threads; i++) free((void *)args[i].buf);
     return best_gbps;
 #else
     /* Fallback: single-threaded probe (same one-pass-per-round
      * multi-accumulator read as bw_thread_fn — see its comment). */
     unsigned char *buf = (unsigned char *)malloc(per_thread);
     if (!buf) return 0.0;
-    for (size_t i = 0; i < per_thread; i += 4096)
-        buf[i] = (unsigned char)i;
+    for (size_t i = 0; i < per_thread; i += 4096) buf[i] = (unsigned char)i;
 
     double best = 0.0;
     for (int pass = 0; pass < 3; pass++) {
-        BwThreadArg a = { .buf = buf, .size = per_thread, .gbps = 0.0, .sink = 0 };
+        BwThreadArg a = {.buf = buf, .size = per_thread, .gbps = 0.0, .sink = 0};
         bw_thread_fn(&a);
-        g_bw_probe_sink += a.sink;   /* keep the reads observable here too */
+        g_bw_probe_sink += a.sink; /* keep the reads observable here too */
         if (a.gbps > best) best = a.gbps;
     }
     free(buf);
@@ -258,12 +261,18 @@ static int count_physical_cores(void) {
                 int found = 0;
                 for (int i = 0; i < count; i++) {
                     if (phys[i] == cur_phys && core[i] == cur_core) {
-                        found = 1; break;
+                        found = 1;
+                        break;
                     }
                 }
-                if (!found) { phys[count] = cur_phys; core[count] = cur_core; count++; }
+                if (!found) {
+                    phys[count] = cur_phys;
+                    core[count] = cur_core;
+                    count++;
+                }
             }
-            cur_phys = -1; cur_core = -1;
+            cur_phys = -1;
+            cur_core = -1;
         }
     }
     fclose(f);
@@ -281,7 +290,10 @@ static int count_physical_cores(void) {
     FILE *f = popen("sysctl -n hw.physicalcpu 2>/dev/null", "r");
     if (f) {
         int n = 0;
-        if (fscanf(f, "%d", &n) == 1 && n > 0) { pclose(f); return n; }
+        if (fscanf(f, "%d", &n) == 1 && n > 0) {
+            pclose(f);
+            return n;
+        }
         pclose(f);
     }
     long n = sysconf(_SC_NPROCESSORS_ONLN);
@@ -294,14 +306,20 @@ static int count_logical_cores(void) {
 }
 
 #elif TN_POSIX
-static int count_physical_cores(void) { return (int)(sysconf(_SC_NPROCESSORS_ONLN) / 2); }
+static int count_physical_cores(void) {
+    return (int)(sysconf(_SC_NPROCESSORS_ONLN) / 2);
+}
 static int count_logical_cores(void) {
     long n = sysconf(_SC_NPROCESSORS_ONLN);
     return (n > 0) ? (int)n : 1;
 }
 #else
-static int count_physical_cores(void) { return 1; }
-static int count_logical_cores(void) { return 1; }
+static int count_physical_cores(void) {
+    return 1;
+}
+static int count_logical_cores(void) {
+    return 1;
+}
 #endif
 
 /* ── Classifier format selection ───────────────────────────────────────── */
@@ -345,10 +363,10 @@ static TnClassifierFormat select_classifier(const TnCpuFeatures *cpu) {
  * Target: ~25% of L2 for prefetch buffer.
  */
 static int select_prefetch_rows(size_t l2_bytes) {
-    if (l2_bytes == 0) return 4;  /* safe default */
-    size_t row_bytes = MODEL_DIM / 4;  /* packed ternary: 4 weights/byte */
+    if (l2_bytes == 0) return 4;            /* safe default */
+    size_t row_bytes       = MODEL_DIM / 4; /* packed ternary: 4 weights/byte */
     size_t prefetch_budget = l2_bytes / 4;
-    int rows = (int)(prefetch_budget / row_bytes);
+    int rows               = (int)(prefetch_budget / row_bytes);
     if (rows < 2) rows = 2;
     if (rows > 32) rows = 32;
     return rows;
@@ -372,15 +390,14 @@ static double cached_dram_bandwidth(int physical_cores, int logical_cores, size_
     *from_cache = false;
     char model[128], key[256], path[512];
     tn_bw_cache_cpu_model(model, sizeof(model));
-    int have_key = tn_bw_cache_key(key, sizeof(key), model, physical_cores, logical_cores,
-                                   l3_bytes, total_ram_bytes()) == 0;
-    int have_path = have_key && tn_bw_cache_path(path, sizeof(path)) == 0;
+    int have_key = tn_bw_cache_key(key, sizeof(key), model, physical_cores, logical_cores, l3_bytes,
+                                   total_ram_bytes()) == 0;
+    int have_path  = have_key && tn_bw_cache_path(path, sizeof(path)) == 0;
     const char *re = getenv("PZ_BW_REPROBE");
-    int reprobe = re && *re && strcmp(re, "0") != 0;
-    long long now = (long long)time(NULL);
-    double gbps = 0.0;
-    if (have_path && !reprobe &&
-        tn_bw_cache_load(path, key, now, TN_BW_CACHE_MAX_AGE_S, &gbps)) {
+    int reprobe    = re && *re && strcmp(re, "0") != 0;
+    long long now  = (long long)time(NULL);
+    double gbps    = 0.0;
+    if (have_path && !reprobe && tn_bw_cache_load(path, key, now, TN_BW_CACHE_MAX_AGE_S, &gbps)) {
         *from_cache = true;
         return gbps;
     }
@@ -400,11 +417,8 @@ static void rebuild_summary(void) {
     if (g_profile.classifier_fmt == TN_CLS_INT4) cls_name = "INT4";
 
     snprintf(g_profile.summary, sizeof(g_profile.summary),
-             "%s | %s cls | %dT | %.1f GB/s | ceiling %.0f tok/s",
-             g_profile.cpu->best_backend,
-             cls_name,
-             g_profile.optimal_threads,
-             g_profile.measured_bw_gbps,
+             "%s | %s cls | %dT | %.1f GB/s | ceiling %.0f tok/s", g_profile.cpu->best_backend,
+             cls_name, g_profile.optimal_threads, g_profile.measured_bw_gbps,
              g_profile.theoretical_ceiling);
 }
 
@@ -419,8 +433,7 @@ const TnHardwareProfile *tn_hardware_profile_init(void) {
     /* 2. Core topology */
     g_profile.physical_cores = count_physical_cores();
     g_profile.logical_cores  = count_logical_cores();
-    if (g_profile.physical_cores <= 0)
-        g_profile.physical_cores = g_profile.logical_cores;
+    if (g_profile.physical_cores <= 0) g_profile.physical_cores = g_profile.logical_cores;
     g_profile.optimal_threads = tn_get_optimal_thread_count();
 
     /* 3. Cache sizes */
@@ -437,19 +450,18 @@ const TnHardwareProfile *tn_hardware_profile_init(void) {
      */
 #if TN_POSIX
     {
-        tn_i64 mem_avail = tn_get_free_ram();   /* reads MemAvailable */
+        tn_i64 mem_avail = tn_get_free_ram(); /* reads MemAvailable */
         if (mem_avail > 0) {
             g_profile.free_ram_bytes = (size_t)mem_avail;
         } else {
 #if defined(__linux__)
             /* Fallback to sysinfo MemFree if /proc/meminfo is unavailable */
             struct sysinfo si;
-            if (sysinfo(&si) == 0)
-                g_profile.free_ram_bytes = (size_t)si.freeram * si.mem_unit;
+            if (sysinfo(&si) == 0) g_profile.free_ram_bytes = (size_t)si.freeram * si.mem_unit;
 #elif defined(__APPLE__)
             /* macOS: parse "vm_stat" for free + inactive pages */
             {
-                FILE *vf = popen("vm_stat 2>/dev/null", "r");
+                FILE *vf     = popen("vm_stat 2>/dev/null", "r");
                 long page_sz = sysconf(_SC_PAGESIZE);
                 if (!page_sz || page_sz < 0) page_sz = 4096;
                 if (vf && page_sz > 0) {
@@ -457,17 +469,19 @@ const TnHardwareProfile *tn_hardware_profile_init(void) {
                     size_t free_p = 0, inactive_p = 0;
                     while (fgets(vline, sizeof(vline), vf)) {
                         size_t v = 0;
-                        if (sscanf(vline, "Pages free: %zu.", &v) == 1)       free_p += v;
-                        if (sscanf(vline, "Pages inactive: %zu.", &v) == 1)   inactive_p += v;
+                        if (sscanf(vline, "Pages free: %zu.", &v) == 1) free_p += v;
+                        if (sscanf(vline, "Pages inactive: %zu.", &v) == 1) inactive_p += v;
                     }
                     pclose(vf);
                     g_profile.free_ram_bytes = (free_p + inactive_p) * (size_t)page_sz;
-                } else if (vf) { pclose(vf); }
+                } else if (vf) {
+                    pclose(vf);
+                }
             }
 #else
             /* Generic POSIX fallback — _SC_PHYS_PAGES is widely supported */
             {
-                long pages = sysconf(_SC_PHYS_PAGES);
+                long pages   = sysconf(_SC_PHYS_PAGES);
                 long page_sz = sysconf(_SC_PAGESIZE);
                 if (pages > 0 && page_sz > 0)
                     g_profile.free_ram_bytes = (size_t)pages * (size_t)page_sz / 2;
@@ -479,8 +493,9 @@ const TnHardwareProfile *tn_hardware_profile_init(void) {
 
     /* 5. Bandwidth: per-host cache, else probe (core/bw_cache.h) */
     g_free_ram_hint = g_profile.free_ram_bytes;
-    g_profile.measured_bw_gbps = cached_dram_bandwidth(g_profile.physical_cores, g_profile.logical_cores,
-                                                       g_profile.l3_cache_bytes, &g_profile.bw_cached);
+    g_profile.measured_bw_gbps =
+        cached_dram_bandwidth(g_profile.physical_cores, g_profile.logical_cores,
+                              g_profile.l3_cache_bytes, &g_profile.bw_cached);
 
     /* 6. Classifier selection */
     g_profile.classifier_fmt = select_classifier(g_profile.cpu);
@@ -489,7 +504,7 @@ const TnHardwareProfile *tn_hardware_profile_init(void) {
     g_profile.prefetch_rows = select_prefetch_rows(g_profile.l2_cache_bytes);
 
     /* 8. NT stores: useful when output is large and won't be read soon */
-    g_profile.use_nt_stores = false;  /* conservative default */
+    g_profile.use_nt_stores = false; /* conservative default */
 
     /* 9. Model-in-cache check */
     g_profile.model_fits_l3 = (g_profile.l3_cache_bytes >= MODEL_TERNARY_BYTES);
@@ -497,13 +512,19 @@ const TnHardwareProfile *tn_hardware_profile_init(void) {
     /* 10. Performance projections */
     double cls_bytes;
     switch (g_profile.classifier_fmt) {
-        case TN_CLS_INT4: cls_bytes = (double)MODEL_VOCAB * MODEL_DIM / 2.0; break;
-        case TN_CLS_INT8: cls_bytes = (double)MODEL_VOCAB * MODEL_DIM;       break;
-        default:          cls_bytes = (double)MODEL_VOCAB * MODEL_DIM * 2.0;  break;
+        case TN_CLS_INT4:
+            cls_bytes = (double)MODEL_VOCAB * MODEL_DIM / 2.0;
+            break;
+        case TN_CLS_INT8:
+            cls_bytes = (double)MODEL_VOCAB * MODEL_DIM;
+            break;
+        default:
+            cls_bytes = (double)MODEL_VOCAB * MODEL_DIM * 2.0;
+            break;
     }
     g_profile.cls_bytes_per_tok = cls_bytes;
-    g_profile.weight_bytes_per_tok = (double)MODEL_TERNARY_BYTES + cls_bytes +
-                                      (double)MODEL_NORM_BYTES;
+    g_profile.weight_bytes_per_tok =
+        (double)MODEL_TERNARY_BYTES + cls_bytes + (double)MODEL_NORM_BYTES;
 
     if (g_profile.measured_bw_gbps > 0.0) {
         /*
@@ -528,7 +549,7 @@ const TnHardwareProfile *tn_hardware_profile_init(void) {
          * ceiling" was in fact a symptom of the probe under-measuring
          * bandwidth, fixed the same day — see bw_thread_fn above).
          */
-        double l3_usable = (double)g_profile.l3_cache_bytes;
+        double l3_usable    = (double)g_profile.l3_cache_bytes;
         double dram_per_tok = g_profile.weight_bytes_per_tok;
 
         if (l3_usable > 0.0 && l3_usable < dram_per_tok) {
@@ -538,7 +559,7 @@ const TnHardwareProfile *tn_hardware_profile_init(void) {
                 cls_cached = cls_bytes;
             }
             /* Ternary layers: cache (L3 - classifier) worth of layers */
-            double l3_for_layers = l3_usable - cls_cached;
+            double l3_for_layers  = l3_usable - cls_cached;
             double ternary_cached = 0.0;
             if (l3_for_layers > 0.0 && l3_for_layers < (double)MODEL_TERNARY_BYTES) {
                 ternary_cached = l3_for_layers;
@@ -551,11 +572,10 @@ const TnHardwareProfile *tn_hardware_profile_init(void) {
         }
 
         if (dram_per_tok > 0.0) {
-            double seconds_per_tok = dram_per_tok /
-                                      (g_profile.measured_bw_gbps * 1e9);
+            double seconds_per_tok        = dram_per_tok / (g_profile.measured_bw_gbps * 1e9);
             g_profile.theoretical_ceiling = 1.0 / seconds_per_tok;
         } else {
-            g_profile.theoretical_ceiling = 999.0;  /* compute-limited */
+            g_profile.theoretical_ceiling = 999.0; /* compute-limited */
         }
     }
 
@@ -574,23 +594,29 @@ const TnHardwareProfile *tn_hardware_profile_get(void) {
 void tn_hardware_profile_set_classifier(TnClassifierFormat fmt) {
     if (!g_initialized) return;
 
-    g_profile.classifier_fmt = fmt;
+    g_profile.classifier_fmt      = fmt;
     g_profile.classifier_explicit = true;
 
     /* Recalculate data-per-token and ceiling */
     double cls_bytes;
     switch (fmt) {
-        case TN_CLS_INT4: cls_bytes = (double)MODEL_VOCAB * MODEL_DIM / 2.0; break;
-        case TN_CLS_INT8: cls_bytes = (double)MODEL_VOCAB * MODEL_DIM;       break;
-        default:          cls_bytes = (double)MODEL_VOCAB * MODEL_DIM * 2.0;  break;
+        case TN_CLS_INT4:
+            cls_bytes = (double)MODEL_VOCAB * MODEL_DIM / 2.0;
+            break;
+        case TN_CLS_INT8:
+            cls_bytes = (double)MODEL_VOCAB * MODEL_DIM;
+            break;
+        default:
+            cls_bytes = (double)MODEL_VOCAB * MODEL_DIM * 2.0;
+            break;
     }
     g_profile.cls_bytes_per_tok = cls_bytes;
-    g_profile.weight_bytes_per_tok = (double)MODEL_TERNARY_BYTES + cls_bytes +
-                                      (double)MODEL_NORM_BYTES;
+    g_profile.weight_bytes_per_tok =
+        (double)MODEL_TERNARY_BYTES + cls_bytes + (double)MODEL_NORM_BYTES;
 
     if (g_profile.measured_bw_gbps > 0.0) {
-        double seconds_per_tok = g_profile.weight_bytes_per_tok /
-                                  (g_profile.measured_bw_gbps * 1e9);
+        double seconds_per_tok =
+            g_profile.weight_bytes_per_tok / (g_profile.measured_bw_gbps * 1e9);
         g_profile.theoretical_ceiling = 1.0 / seconds_per_tok;
     }
 
@@ -599,27 +625,24 @@ void tn_hardware_profile_set_classifier(TnClassifierFormat fmt) {
 
 TnClassifierFormat tn_hardware_profile_swap_classifier(TnClassifierFormat fmt) {
     if (!g_initialized) return TN_CLS_BF16;
-    TnClassifierFormat old = g_profile.classifier_fmt;
+    TnClassifierFormat old   = g_profile.classifier_fmt;
     g_profile.classifier_fmt = fmt;
     return old;
 }
 
-void tn_hardware_profile_set_model_bytes(double weight_bytes_per_tok,
-                                          double cls_bytes_per_tok) {
+void tn_hardware_profile_set_model_bytes(double weight_bytes_per_tok, double cls_bytes_per_tok) {
     if (!g_initialized || weight_bytes_per_tok <= 0.0) return;
 
     g_profile.weight_bytes_per_tok = weight_bytes_per_tok;
-    g_profile.cls_bytes_per_tok = cls_bytes_per_tok;
-    g_profile.model_fits_l3 =
-        ((double)g_profile.l3_cache_bytes >= weight_bytes_per_tok);
+    g_profile.cls_bytes_per_tok    = cls_bytes_per_tok;
+    g_profile.model_fits_l3        = ((double)g_profile.l3_cache_bytes >= weight_bytes_per_tok);
 
     if (g_profile.measured_bw_gbps > 0.0) {
         /* Plain bandwidth division, no L3-retention heuristic: the init-time
          * heuristic was tuned for a ~1.2 GB BitNet working set; for the
          * multi-GB GGUF models this correction exists for, L3 covers well
          * under 1% of the per-token stream and the adjustment is noise. */
-        g_profile.theoretical_ceiling =
-            (g_profile.measured_bw_gbps * 1e9) / weight_bytes_per_tok;
+        g_profile.theoretical_ceiling = (g_profile.measured_bw_gbps * 1e9) / weight_bytes_per_tok;
     }
 
     rebuild_summary();
@@ -632,7 +655,8 @@ void tn_hardware_profile_set_model_bytes(double weight_bytes_per_tok,
 #if defined(__GNUC__)
 __attribute__((format(printf, 2, 3)))
 #endif
-static void hw_box_row(const char *label, const char *fmt, ...) {
+static void
+hw_box_row(const char *label, const char *fmt, ...) {
     char value[128];
     va_list ap;
     va_start(ap, fmt);
@@ -665,7 +689,8 @@ void tn_hardware_profile_report(const TnHardwareProfile *hp) {
      * startup sequence (this report prints before the model file is read);
      * main.c re-derives both from the real loaded model and prints the
      * corrected figures after the weights are loaded. */
-    hw_box_row("Data/token", "%-6.0f MB (pre-load est.)", hp->weight_bytes_per_tok / (1024.0 * 1024.0));
+    hw_box_row("Data/token", "%-6.0f MB (pre-load est.)",
+               hp->weight_bytes_per_tok / (1024.0 * 1024.0));
     hw_box_row("Ceiling", "%-6.1f tok/s (at 100%% BW)", hp->theoretical_ceiling);
     printf("└─────────────────────────────────────────────────────┘\n");
 }

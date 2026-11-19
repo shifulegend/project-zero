@@ -13,7 +13,8 @@ extern "C" {
 
 /* Tokenize `text` and run transformer_forward() for each token to populate the
  * KV cache in `s`. Returns number of tokens injected or negative on error. */
-int inject_text_into_kv(const char *text, const Config *cfg, const TransformerWeights *w, RunState *s, Tokenizer *tok, ThreadPool *tp);
+int inject_text_into_kv(const char *text, const Config *cfg, const TransformerWeights *w,
+                        RunState *s, Tokenizer *tok, ThreadPool *tp);
 
 #ifdef __cplusplus
 }

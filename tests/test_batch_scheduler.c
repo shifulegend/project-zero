@@ -33,22 +33,30 @@ static const char *PROMPTS[N_REQ] = {
     "Explain gravity to a child in one sentence.",
 };
 
-typedef struct { char text[4096]; size_t len; int pieces; int stop_after; } Out;
+typedef struct {
+    char text[4096];
+    size_t len;
+    int pieces;
+    int stop_after;
+} Out;
 
 static int collect(const char *piece, void *ud) {
-    Out *o = (Out *)ud;
+    Out *o   = (Out *)ud;
     size_t n = strlen(piece);
-    if (o->len + n < sizeof(o->text)) { memcpy(o->text + o->len, piece, n + 1); o->len += n; }
+    if (o->len + n < sizeof(o->text)) {
+        memcpy(o->text + o->len, piece, n + 1);
+        o->len += n;
+    }
     o->pieces++;
     return o->stop_after > 0 && o->pieces >= o->stop_after;
 }
 
 static void params(GenerationParams *gp, int i, float temp, GenerationStats *st) {
     gen_params_default(gp);
-    gp->max_tokens = MAX_TOK;
+    gp->max_tokens          = MAX_TOK;
     gp->sampler.temperature = temp;
-    gp->seed = 100 + i;
-    gp->stats = st;
+    gp->seed                = 100 + i;
+    gp->stats               = st;
 }
 
 static void sequential(float temp, Out *out) {
@@ -58,13 +66,18 @@ static void sequential(float temp, Out *out) {
         params(&gp, i, temp, &st);
         memset(&out[i], 0, sizeof(out[i]));
         M.state->current_pos = 0;
-        generate_ex(&M.config, &M.weights, M.state, &M.moe_config, &T, TP, PROMPTS[i], &gp,
-                    collect, &out[i]);
+        generate_ex(&M.config, &M.weights, M.state, &M.moe_config, &T, TP, PROMPTS[i], &gp, collect,
+                    &out[i]);
     }
 }
 
 typedef struct {
-    BatchScheduler *bs; int i; float temp; int use_cache; Out out; GenerationStats st;
+    BatchScheduler *bs;
+    int i;
+    float temp;
+    int use_cache;
+    Out out;
+    GenerationStats st;
 } Req;
 
 static void *run_req(void *arg) {
@@ -75,11 +88,15 @@ static void *run_req(void *arg) {
     return NULL;
 }
 
-static void parallel(BatchScheduler *bs, float temp, int use_cache, Req *req, int stop_req, int stop_after) {
+static void parallel(BatchScheduler *bs, float temp, int use_cache, Req *req, int stop_req,
+                     int stop_after) {
     pthread_t th[N_REQ];
     for (int i = 0; i < N_REQ; i++) {
         memset(&req[i], 0, sizeof(req[i]));
-        req[i].bs = bs; req[i].i = i; req[i].temp = temp; req[i].use_cache = use_cache;
+        req[i].bs        = bs;
+        req[i].i         = i;
+        req[i].temp      = temp;
+        req[i].use_cache = use_cache;
         if (i == stop_req) req[i].out.stop_after = stop_after;
         pthread_create(&th[i], NULL, run_req, &req[i]);
     }
@@ -87,18 +104,18 @@ static void parallel(BatchScheduler *bs, float temp, int use_cache, Req *req, in
 }
 
 static BatchScheduler *make(int slots, int rows, long long budget, PrefixCache *pc) {
-    BatchSchedulerOptions o = { slots, rows, budget };
+    BatchSchedulerOptions o = {slots, rows, budget};
     memset(pc, 0, sizeof(*pc));
-    return batch_scheduler_create(&M.config, &M.weights, M.state, pc, NULL, &M.moe_config,
-                                  &T, TP, &o);
+    return batch_scheduler_create(&M.config, &M.weights, M.state, pc, NULL, &M.moe_config, &T, TP,
+                                  &o);
 }
 
 static int same(const Out *seq, const Req *par, const char *what) {
     int ok = 1;
     for (int i = 0; i < N_REQ; i++) {
         if (strcmp(seq[i].text, par[i].out.text) != 0) {
-            printf("  %s: request %d differs\n    seq: %s\n    par: %s\n", what, i,
-                   seq[i].text, par[i].out.text);
+            printf("  %s: request %d differs\n    seq: %s\n    par: %s\n", what, i, seq[i].text,
+                   par[i].out.text);
             ok = 0;
         }
     }
@@ -156,7 +173,8 @@ static void test_queue_budget_cancel(void) {
     parallel(bs, 0.0f, 0, par, 1, 3);
     TEST_ASSERT(par[1].out.pieces == 3 && par[1].st.finish_reason == GEN_FINISH_CANCELLED,
                 "a stopping callback cancels its request after 3 pieces");
-    TEST_ASSERT(strcmp(par[0].out.text, seq[0].text) == 0 && strcmp(par[2].out.text, seq[2].text) == 0,
+    TEST_ASSERT(strcmp(par[0].out.text, seq[0].text) == 0 &&
+                    strcmp(par[2].out.text, seq[2].text) == 0,
                 "other requests unaffected by the cancel");
     batch_scheduler_destroy(bs);
     prefix_cache_free(&pc);
@@ -167,7 +185,10 @@ int main(void) {
     const char *path = getenv("PZ_TEST_MODEL");
     if (!path || !*path) path = "models/smollm2-q8_0.gguf";
     FILE *f = fopen(path, "rb");
-    if (!f) { printf("  (no model at %s; set PZ_TEST_MODEL) skipped\n", path); return 0; }
+    if (!f) {
+        printf("  (no model at %s; set PZ_TEST_MODEL) skipped\n", path);
+        return 0;
+    }
     fclose(f);
     tn_simd_init();
     TP = threadpool_create(4);

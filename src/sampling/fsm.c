@@ -35,8 +35,8 @@ static int eos_is_acceptable(const JsonGrammarState *base) {
     return json_grammar_is_complete(&g);
 }
 
-void fsm_compute_token_mask(const FSMState *fsm, Tokenizer *t, int prev_token,
-                             float *logits, int vocab_size) {
+void fsm_compute_token_mask(const FSMState *fsm, Tokenizer *t, int prev_token, float *logits,
+                            int vocab_size) {
     int eos_ok = eos_is_acceptable(&fsm->json);
     for (int token_id = 0; token_id < vocab_size; token_id++) {
         if (is_eos_token(fsm, t, token_id)) {
@@ -44,8 +44,7 @@ void fsm_compute_token_mask(const FSMState *fsm, Tokenizer *t, int prev_token,
             continue;
         }
         const char *piece = tokenizer_decode(t, prev_token, token_id);
-        if (!piece_is_acceptable(&fsm->json, piece))
-            logits[token_id] = TN_GRAMMAR_MASK_SENTINEL;
+        if (!piece_is_acceptable(&fsm->json, piece)) logits[token_id] = TN_GRAMMAR_MASK_SENTINEL;
     }
 }
 

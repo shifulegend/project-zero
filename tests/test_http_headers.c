@@ -4,14 +4,26 @@
 #include "api/http_headers.h"
 
 static int g_fail;
-#define CHECK(c, msg) do { if (!(c)) { printf("FAIL: %s\n", msg); g_fail++; } else printf("ok: %s\n", msg); } while (0)
+#define CHECK(c, msg)                                                                              \
+    do {                                                                                           \
+        if (!(c)) {                                                                                \
+            printf("FAIL: %s\n", msg);                                                             \
+            g_fail++;                                                                              \
+        } else                                                                                     \
+            printf("ok: %s\n", msg);                                                               \
+    } while (0)
 
-static HttpFraming scan(const char *s) { HttpFraming f; http_scan_framing(s, strlen(s), &f); return f; }
+static HttpFraming scan(const char *s) {
+    HttpFraming f;
+    http_scan_framing(s, strlen(s), &f);
+    return f;
+}
 
 int main(void) {
     size_t v = 99;
     CHECK(http_parse_content_length("123", &v) == 0 && v == 123, "plain digits");
-    CHECK(http_parse_content_length("  42 \r\n", &v) == 0 && v == 42, "surrounding spaces and CRLF");
+    CHECK(http_parse_content_length("  42 \r\n", &v) == 0 && v == 42,
+          "surrounding spaces and CRLF");
     CHECK(http_parse_content_length("0", &v) == 0 && v == 0, "zero");
     CHECK(http_parse_content_length("-1", &v) != 0, "negative rejected");
     CHECK(http_parse_content_length("+5", &v) != 0, "plus sign rejected");
@@ -22,7 +34,8 @@ int main(void) {
     CHECK(http_parse_content_length("99999999999999999999999999", &v) != 0, "overflow rejected");
 
     HttpFraming f = scan("POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 5\r\n");
-    CHECK(f.has_content_length && f.content_length == 5 && !f.content_length_invalid && !f.chunked, "single Content-Length");
+    CHECK(f.has_content_length && f.content_length == 5 && !f.content_length_invalid && !f.chunked,
+          "single Content-Length");
     f = scan("POST / HTTP/1.1\r\ncontent-LENGTH:7\r\n");
     CHECK(f.has_content_length && f.content_length == 7, "case-insensitive name, no space");
     f = scan("POST / HTTP/1.1\r\nContent-Length: 5\r\nContent-Length: 5\r\n");

@@ -25,7 +25,7 @@
 #include "core/fp16.h"
 
 #if TN_HAS_AVX2
-#  include <immintrin.h>
+#include <immintrin.h>
 #endif
 
 #define Q5_0_BYTES 22
@@ -34,9 +34,9 @@
 
 /* VNNI 256-bit dpbusd needs AVX512VNNI + AVX512VL at compile time. */
 #if TN_HAS_AVX2 && TN_HAS_AVX512VNNI && defined(__AVX512VL__)
-#  define Q8A_HAS_VNNI 1
+#define Q8A_HAS_VNNI 1
 #else
-#  define Q8A_HAS_VNNI 0
+#define Q8A_HAS_VNNI 0
 #endif
 
 static inline float q8a_f16(const uint8_t *p) {
@@ -55,7 +55,7 @@ int tn_q8_0_act_vnni_ok(void) {
     static int env = -1;
     if (env < 0) {
         const char *e = getenv("PZ_Q8A_VNNI");
-        env = (e && e[0] == '0') ? 0 : 1;
+        env           = (e && e[0] == '0') ? 0 : 1;
     }
     return (env && tn_cpu_features_detect()->avx512vnni) ? 1 : 0;
 #else
@@ -67,36 +67,41 @@ int tn_q8_0_act_vnni_ok(void) {
 
 void tn_quantize_q8_0_act(TnQ8_0ActBlock *out, const float *x, int n_blocks) {
     for (int b = 0; b < n_blocks; b++) {
-        const float *xb = x + (size_t)b * TN_Q8_0_BLOCK;
+        const float *xb   = x + (size_t)b * TN_Q8_0_BLOCK;
         TnQ8_0ActBlock *o = out + b;
 #if TN_HAS_AVX2
         const __m256 sign = _mm256_set1_ps(-0.0f);
-        __m256 v0 = _mm256_loadu_ps(xb),      v1 = _mm256_loadu_ps(xb + 8);
+        __m256 v0 = _mm256_loadu_ps(xb), v1 = _mm256_loadu_ps(xb + 8);
         __m256 v2 = _mm256_loadu_ps(xb + 16), v3 = _mm256_loadu_ps(xb + 24);
-        __m256 m = _mm256_max_ps(_mm256_max_ps(_mm256_andnot_ps(sign, v0), _mm256_andnot_ps(sign, v1)),
-                                 _mm256_max_ps(_mm256_andnot_ps(sign, v2), _mm256_andnot_ps(sign, v3)));
-        __m128 m4 = _mm_max_ps(_mm256_castps256_ps128(m), _mm256_extractf128_ps(m, 1));
-        m4 = _mm_max_ps(m4, _mm_movehl_ps(m4, m4));
-        m4 = _mm_max_ss(m4, _mm_movehdup_ps(m4));
+        __m256 m =
+            _mm256_max_ps(_mm256_max_ps(_mm256_andnot_ps(sign, v0), _mm256_andnot_ps(sign, v1)),
+                          _mm256_max_ps(_mm256_andnot_ps(sign, v2), _mm256_andnot_ps(sign, v3)));
+        __m128 m4        = _mm_max_ps(_mm256_castps256_ps128(m), _mm256_extractf128_ps(m, 1));
+        m4               = _mm_max_ps(m4, _mm_movehl_ps(m4, m4));
+        m4               = _mm_max_ss(m4, _mm_movehdup_ps(m4));
         const float amax = _mm_cvtss_f32(m4);
-        const float d  = amax / 127.0f;
-        const float id = amax > 0.0f ? 127.0f / amax : 0.0f;
+        const float d    = amax / 127.0f;
+        const float id   = amax > 0.0f ? 127.0f / amax : 0.0f;
         const __m256 vid = _mm256_set1_ps(id);
-        __m256i i0 = _mm256_cvtps_epi32(_mm256_round_ps(_mm256_mul_ps(v0, vid), _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
-        __m256i i1 = _mm256_cvtps_epi32(_mm256_round_ps(_mm256_mul_ps(v1, vid), _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
-        __m256i i2 = _mm256_cvtps_epi32(_mm256_round_ps(_mm256_mul_ps(v2, vid), _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
-        __m256i i3 = _mm256_cvtps_epi32(_mm256_round_ps(_mm256_mul_ps(v3, vid), _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
+        __m256i i0       = _mm256_cvtps_epi32(
+            _mm256_round_ps(_mm256_mul_ps(v0, vid), _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
+        __m256i i1 = _mm256_cvtps_epi32(
+            _mm256_round_ps(_mm256_mul_ps(v1, vid), _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
+        __m256i i2 = _mm256_cvtps_epi32(
+            _mm256_round_ps(_mm256_mul_ps(v2, vid), _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
+        __m256i i3 = _mm256_cvtps_epi32(
+            _mm256_round_ps(_mm256_mul_ps(v3, vid), _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
         /* integer sum for s (before packing reorders lanes) */
         __m256i isum = _mm256_add_epi32(_mm256_add_epi32(i0, i1), _mm256_add_epi32(i2, i3));
         __m128i s4 = _mm_add_epi32(_mm256_castsi256_si128(isum), _mm256_extracti128_si256(isum, 1));
-        s4 = _mm_add_epi32(s4, _mm_shuffle_epi32(s4, 0x4E));
-        s4 = _mm_add_epi32(s4, _mm_shuffle_epi32(s4, 0xB1));
+        s4         = _mm_add_epi32(s4, _mm_shuffle_epi32(s4, 0x4E));
+        s4         = _mm_add_epi32(s4, _mm_shuffle_epi32(s4, 0xB1));
         const int sum = _mm_cvtsi128_si32(s4);
         /* pack 32 x i32 -> 32 x i8 and undo the AVX2 in-lane interleave */
         __m256i p01 = _mm256_packs_epi32(i0, i1);
         __m256i p23 = _mm256_packs_epi32(i2, i3);
         __m256i p   = _mm256_packs_epi16(p01, p23);
-        p = _mm256_permutevar8x32_epi32(p, _mm256_setr_epi32(0, 4, 1, 5, 2, 6, 3, 7));
+        p           = _mm256_permutevar8x32_epi32(p, _mm256_setr_epi32(0, 4, 1, 5, 2, 6, 3, 7));
         _mm256_storeu_si256((__m256i *)o->qs, p);
         o->d = d;
         o->s = d * (float)sum;
@@ -108,7 +113,7 @@ void tn_quantize_q8_0_act(TnQ8_0ActBlock *out, const float *x, int n_blocks) {
         }
         const float d  = amax / 127.0f;
         const float id = amax > 0.0f ? 127.0f / amax : 0.0f;
-        int sum = 0;
+        int sum        = 0;
         for (int i = 0; i < TN_Q8_0_BLOCK; i++) {
             int q = (int)nearbyintf(xb[i] * id);
             if (q > 127) q = 127;
@@ -130,16 +135,17 @@ static inline __m256i q8a_nibbles32(const uint8_t *qs) {
 }
 /* byte i = 0xFF iff bit i of the 32-bit qh is set */
 static inline __m256i q8a_bits32(const uint8_t *qhp) {
-    uint32_t qh; memcpy(&qh, qhp, 4);
+    uint32_t qh;
+    memcpy(&qh, qhp, 4);
     const __m256i shuf = _mm256_set_epi64x(0x0303030303030303LL, 0x0202020202020202LL,
                                            0x0101010101010101LL, 0x0000000000000000LL);
-    __m256i b = _mm256_shuffle_epi8(_mm256_set1_epi32((int)qh), shuf);
-    b = _mm256_or_si256(b, _mm256_set1_epi64x(0x7fbfdfeff7fbfdfeLL));
+    __m256i b          = _mm256_shuffle_epi8(_mm256_set1_epi32((int)qh), shuf);
+    b                  = _mm256_or_si256(b, _mm256_set1_epi64x(0x7fbfdfeff7fbfdfeLL));
     return _mm256_cmpeq_epi8(b, _mm256_set1_epi64x(-1));
 }
 static inline float q8a_hsum8(__m256 v) {
     __m128 s = _mm_add_ps(_mm256_castps256_ps128(v), _mm256_extractf128_ps(v, 1));
-    s = _mm_add_ps(s, _mm_movehl_ps(s, s));
+    s        = _mm_add_ps(s, _mm_movehl_ps(s, s));
     return _mm_cvtss_f32(_mm_add_ss(s, _mm_movehdup_ps(s)));
 }
 /* unsigned u8 x signed i8 -> 8 x i32 pair sums (AVX2) */
@@ -153,32 +159,33 @@ float tn_dot_q5_0_q8_0(const uint8_t *row, const TnQ8_0ActBlock *a, int nb, int 
 #if TN_HAS_AVX2
     __m256 acc = _mm256_setzero_ps();
     float corr = 0.0f;
-#  if Q8A_HAS_VNNI
+#if Q8A_HAS_VNNI
     if (vnni) {
         const __m256i hb = _mm256_set1_epi8(0x10);
         for (int b = 0; b < nb; b++) {
             const uint8_t *blk = row + (size_t)b * Q5_0_BYTES;
-            const float dw = q8a_f16(blk);
-            const __m256i u = _mm256_or_si256(q8a_nibbles32(blk + 6),
-                                              _mm256_and_si256(q8a_bits32(blk + 2), hb));
+            const float dw     = q8a_f16(blk);
+            const __m256i u =
+                _mm256_or_si256(q8a_nibbles32(blk + 6), _mm256_and_si256(q8a_bits32(blk + 2), hb));
             const __m256i qa = _mm256_loadu_si256((const __m256i *)a[b].qs);
-            const __m256i p = _mm256_dpbusd_epi32(_mm256_setzero_si256(), u, qa);
+            const __m256i p  = _mm256_dpbusd_epi32(_mm256_setzero_si256(), u, qa);
             acc = _mm256_fmadd_ps(_mm256_set1_ps(dw * a[b].d), _mm256_cvtepi32_ps(p), acc);
             corr += dw * a[b].s;
         }
         return q8a_hsum8(acc) - 16.0f * corr;
     }
-#  endif
-    (void)vnni; (void)corr;
+#endif
+    (void)vnni;
+    (void)corr;
     const __m256i hf = _mm256_set1_epi8((char)0xF0);
     for (int b = 0; b < nb; b++) {
         const uint8_t *blk = row + (size_t)b * Q5_0_BYTES;
-        const float dw = q8a_f16(blk);
-        __m256i qx = _mm256_or_si256(q8a_nibbles32(blk + 6),
-                                     _mm256_andnot_si256(q8a_bits32(blk + 2), hf));
+        const float dw     = q8a_f16(blk);
+        __m256i qx =
+            _mm256_or_si256(q8a_nibbles32(blk + 6), _mm256_andnot_si256(q8a_bits32(blk + 2), hf));
         const __m256i qa = _mm256_loadu_si256((const __m256i *)a[b].qs);
-        const __m256i p = q8a_dot_us(_mm256_sign_epi8(qx, qx), _mm256_sign_epi8(qa, qx));
-        acc = _mm256_fmadd_ps(_mm256_set1_ps(dw * a[b].d), _mm256_cvtepi32_ps(p), acc);
+        const __m256i p  = q8a_dot_us(_mm256_sign_epi8(qx, qx), _mm256_sign_epi8(qa, qx));
+        acc              = _mm256_fmadd_ps(_mm256_set1_ps(dw * a[b].d), _mm256_cvtepi32_ps(p), acc);
     }
     return q8a_hsum8(acc);
 #else
@@ -186,13 +193,14 @@ float tn_dot_q5_0_q8_0(const uint8_t *row, const TnQ8_0ActBlock *a, int nb, int 
     float sum = 0.0f;
     for (int b = 0; b < nb; b++) {
         const uint8_t *blk = row + (size_t)b * Q5_0_BYTES;
-        const float dw = q8a_f16(blk);
-        uint32_t qh; memcpy(&qh, blk + 2, 4);
+        const float dw     = q8a_f16(blk);
+        uint32_t qh;
+        memcpy(&qh, blk + 2, 4);
         const uint8_t *qs = blk + 6;
-        int32_t si = 0;
+        int32_t si        = 0;
         for (int j = 0; j < 16; j++) {
             int q0 = (int)((qs[j] & 0x0F) | (((qh >> j) & 1u) << 4)) - 16;
-            int q1 = (int)((qs[j] >> 4)   | (((qh >> (j + 16)) & 1u) << 4)) - 16;
+            int q1 = (int)((qs[j] >> 4) | (((qh >> (j + 16)) & 1u) << 4)) - 16;
             si += q0 * a[b].qs[j] + q1 * a[b].qs[j + 16];
         }
         sum += dw * a[b].d * (float)si;
@@ -205,20 +213,21 @@ float tn_dot_q5_0_q8_0(const uint8_t *row, const TnQ8_0ActBlock *a, int nb, int 
 float tn_dot_q5_1_q8_0(const uint8_t *row, const TnQ8_0ActBlock *a, int nb, int vnni) {
     float mins = 0.0f;
 #if TN_HAS_AVX2
-    __m256 acc = _mm256_setzero_ps();
+    __m256 acc       = _mm256_setzero_ps();
     const __m256i hb = _mm256_set1_epi8(0x10);
     for (int b = 0; b < nb; b++) {
         const uint8_t *blk = row + (size_t)b * Q5_1_BYTES;
         const float dw = q8a_f16(blk), mw = q8a_f16(blk + 2);
-        const __m256i u = _mm256_or_si256(q8a_nibbles32(blk + 8),
-                                          _mm256_and_si256(q8a_bits32(blk + 4), hb));
+        const __m256i u =
+            _mm256_or_si256(q8a_nibbles32(blk + 8), _mm256_and_si256(q8a_bits32(blk + 4), hb));
         const __m256i qa = _mm256_loadu_si256((const __m256i *)a[b].qs);
         __m256i p;
-#  if Q8A_HAS_VNNI
-        if (vnni) p = _mm256_dpbusd_epi32(_mm256_setzero_si256(), u, qa);
+#if Q8A_HAS_VNNI
+        if (vnni)
+            p = _mm256_dpbusd_epi32(_mm256_setzero_si256(), u, qa);
         else
-#  endif
-        p = q8a_dot_us(u, qa);
+#endif
+            p = q8a_dot_us(u, qa);
         acc = _mm256_fmadd_ps(_mm256_set1_ps(dw * a[b].d), _mm256_cvtepi32_ps(p), acc);
         mins += mw * a[b].s;
     }
@@ -230,12 +239,13 @@ float tn_dot_q5_1_q8_0(const uint8_t *row, const TnQ8_0ActBlock *a, int nb, int 
     for (int b = 0; b < nb; b++) {
         const uint8_t *blk = row + (size_t)b * Q5_1_BYTES;
         const float dw = q8a_f16(blk), mw = q8a_f16(blk + 2);
-        uint32_t qh; memcpy(&qh, blk + 4, 4);
+        uint32_t qh;
+        memcpy(&qh, blk + 4, 4);
         const uint8_t *qs = blk + 8;
-        int32_t si = 0;
+        int32_t si        = 0;
         for (int j = 0; j < 16; j++) {
             int q0 = (int)((qs[j] & 0x0F) | (((qh >> j) & 1u) << 4));
-            int q1 = (int)((qs[j] >> 4)   | (((qh >> (j + 16)) & 1u) << 4));
+            int q1 = (int)((qs[j] >> 4) | (((qh >> (j + 16)) & 1u) << 4));
             si += q0 * a[b].qs[j] + q1 * a[b].qs[j + 16];
         }
         sum += dw * a[b].d * (float)si;
@@ -251,17 +261,18 @@ float tn_dot_q8_0_q8_0(const uint8_t *row, const TnQ8_0ActBlock *a, int nb, int 
     __m256 acc = _mm256_setzero_ps();
     for (int b = 0; b < nb; b++) {
         const uint8_t *blk = row + (size_t)b * Q8_0_BYTES;
-        const float dw = q8a_f16(blk);
-        const __m256i qw = _mm256_loadu_si256((const __m256i *)(blk + 2));
-        const __m256i qa = _mm256_loadu_si256((const __m256i *)a[b].qs);
-        const __m256i ax = _mm256_sign_epi8(qw, qw);
-        const __m256i sy = _mm256_sign_epi8(qa, qw);
+        const float dw     = q8a_f16(blk);
+        const __m256i qw   = _mm256_loadu_si256((const __m256i *)(blk + 2));
+        const __m256i qa   = _mm256_loadu_si256((const __m256i *)a[b].qs);
+        const __m256i ax   = _mm256_sign_epi8(qw, qw);
+        const __m256i sy   = _mm256_sign_epi8(qa, qw);
         __m256i p;
-#  if Q8A_HAS_VNNI
-        if (vnni) p = _mm256_dpbusd_epi32(_mm256_setzero_si256(), ax, sy);
+#if Q8A_HAS_VNNI
+        if (vnni)
+            p = _mm256_dpbusd_epi32(_mm256_setzero_si256(), ax, sy);
         else
-#  endif
-        p = q8a_dot_us(ax, sy);
+#endif
+            p = q8a_dot_us(ax, sy);
         acc = _mm256_fmadd_ps(_mm256_set1_ps(dw * a[b].d), _mm256_cvtepi32_ps(p), acc);
     }
     (void)vnni;
@@ -271,9 +282,9 @@ float tn_dot_q8_0_q8_0(const uint8_t *row, const TnQ8_0ActBlock *a, int nb, int 
     float sum = 0.0f;
     for (int b = 0; b < nb; b++) {
         const uint8_t *blk = row + (size_t)b * Q8_0_BYTES;
-        const float dw = q8a_f16(blk);
-        const int8_t *qw = (const int8_t *)(blk + 2);
-        int32_t si = 0;
+        const float dw     = q8a_f16(blk);
+        const int8_t *qw   = (const int8_t *)(blk + 2);
+        int32_t si         = 0;
         for (int j = 0; j < TN_Q8_0_BLOCK; j++) si += qw[j] * a[b].qs[j];
         sum += dw * a[b].d * (float)si;
     }
@@ -298,25 +309,38 @@ static void q8a_task(void *arg, int thread_id, int start, int end) {
         const uint8_t *row = a->w + (size_t)r * a->row_bytes;
         float v;
         switch (a->type) {
-        case GGUF_TYPE_Q5_0: v = tn_dot_q5_0_q8_0(row, a->acts, a->n_blocks, a->vnni); break;
-        case GGUF_TYPE_Q5_1: v = tn_dot_q5_1_q8_0(row, a->acts, a->n_blocks, a->vnni); break;
-        default:             v = tn_dot_q8_0_q8_0(row, a->acts, a->n_blocks, a->vnni); break;
+            case GGUF_TYPE_Q5_0:
+                v = tn_dot_q5_0_q8_0(row, a->acts, a->n_blocks, a->vnni);
+                break;
+            case GGUF_TYPE_Q5_1:
+                v = tn_dot_q5_1_q8_0(row, a->acts, a->n_blocks, a->vnni);
+                break;
+            default:
+                v = tn_dot_q8_0_q8_0(row, a->acts, a->n_blocks, a->vnni);
+                break;
         }
         a->out[r] = v;
     }
 }
 
 static TnQ8_0ActBlock *s_q8a_buf = NULL;
-static int             s_q8a_cap = 0;
+static int s_q8a_cap             = 0;
 
-int parallel_matmul_q8a(float *out, const float *x, const uint8_t *w,
-                        int gguf_type, int n, int d, ThreadPool *tp) {
+int parallel_matmul_q8a(float *out, const float *x, const uint8_t *w, int gguf_type, int n, int d,
+                        ThreadPool *tp) {
     size_t blk;
     switch (gguf_type) {
-    case GGUF_TYPE_Q5_0: blk = Q5_0_BYTES; break;
-    case GGUF_TYPE_Q5_1: blk = Q5_1_BYTES; break;
-    case GGUF_TYPE_Q8_0: blk = Q8_0_BYTES; break;
-    default: return -1;
+        case GGUF_TYPE_Q5_0:
+            blk = Q5_0_BYTES;
+            break;
+        case GGUF_TYPE_Q5_1:
+            blk = Q5_1_BYTES;
+            break;
+        case GGUF_TYPE_Q8_0:
+            blk = Q8_0_BYTES;
+            break;
+        default:
+            return -1;
     }
     if (n <= 0 || n % TN_Q8_0_BLOCK != 0 || d <= 0) return -1;
     const int nb = n / TN_Q8_0_BLOCK;
@@ -328,9 +352,11 @@ int parallel_matmul_q8a(float *out, const float *x, const uint8_t *w,
         s_q8a_cap = nb;
     }
     tn_quantize_q8_0_act(s_q8a_buf, x, nb);
-    Q8AArgs a = { out, w, s_q8a_buf, (size_t)nb * blk, nb, gguf_type, tn_q8_0_act_vnni_ok() };
-    if (tp) threadpool_dispatch(tp, q8a_task, &a, d);
-    else    q8a_task(&a, 0, 0, d);
+    Q8AArgs a = {out, w, s_q8a_buf, (size_t)nb * blk, nb, gguf_type, tn_q8_0_act_vnni_ok()};
+    if (tp)
+        threadpool_dispatch(tp, q8a_task, &a, d);
+    else
+        q8a_task(&a, 0, 0, d);
     return 0;
 }
 
@@ -344,7 +370,7 @@ int parallel_matmul_q8a(float *out, const float *x, const uint8_t *w,
 typedef struct {
     float *out;
     const uint8_t *w;
-    const TnQ8_0ActBlock *acts;   /* [n_tokens][n_blocks] */
+    const TnQ8_0ActBlock *acts; /* [n_tokens][n_blocks] */
     size_t row_bytes;
     int n_blocks, type, vnni, n_tokens, d;
 } Q8ATokensArgs;
@@ -358,9 +384,15 @@ static void q8a_tokens_task(void *arg, int thread_id, int start, int end) {
             const TnQ8_0ActBlock *ak = a->acts + (size_t)k * a->n_blocks;
             float v;
             switch (a->type) {
-            case GGUF_TYPE_Q5_0: v = tn_dot_q5_0_q8_0(row, ak, a->n_blocks, a->vnni); break;
-            case GGUF_TYPE_Q5_1: v = tn_dot_q5_1_q8_0(row, ak, a->n_blocks, a->vnni); break;
-            default:             v = tn_dot_q8_0_q8_0(row, ak, a->n_blocks, a->vnni); break;
+                case GGUF_TYPE_Q5_0:
+                    v = tn_dot_q5_0_q8_0(row, ak, a->n_blocks, a->vnni);
+                    break;
+                case GGUF_TYPE_Q5_1:
+                    v = tn_dot_q5_1_q8_0(row, ak, a->n_blocks, a->vnni);
+                    break;
+                default:
+                    v = tn_dot_q8_0_q8_0(row, ak, a->n_blocks, a->vnni);
+                    break;
             }
             a->out[(size_t)k * a->d + r] = v;
         }
@@ -368,21 +400,28 @@ static void q8a_tokens_task(void *arg, int thread_id, int start, int end) {
 }
 
 static TnQ8_0ActBlock *s_q8a_tok_buf = NULL;
-static size_t          s_q8a_tok_cap = 0;
+static size_t s_q8a_tok_cap          = 0;
 
-int parallel_matmul_q8a_tokens(float *out, const float *x, const uint8_t *w,
-                               int gguf_type, int n, int d, int n_tokens, ThreadPool *tp) {
+int parallel_matmul_q8a_tokens(float *out, const float *x, const uint8_t *w, int gguf_type, int n,
+                               int d, int n_tokens, ThreadPool *tp) {
     size_t blk;
     switch (gguf_type) {
-    case GGUF_TYPE_Q5_0: blk = Q5_0_BYTES; break;
-    case GGUF_TYPE_Q5_1: blk = Q5_1_BYTES; break;
-    case GGUF_TYPE_Q8_0: blk = Q8_0_BYTES; break;
-    default: return -1;
+        case GGUF_TYPE_Q5_0:
+            blk = Q5_0_BYTES;
+            break;
+        case GGUF_TYPE_Q5_1:
+            blk = Q5_1_BYTES;
+            break;
+        case GGUF_TYPE_Q8_0:
+            blk = Q8_0_BYTES;
+            break;
+        default:
+            return -1;
     }
     if (n <= 0 || n % TN_Q8_0_BLOCK != 0 || d <= 0 || n_tokens <= 0) return -1;
     if (n_tokens == 1) return parallel_matmul_q8a(out, x, w, gguf_type, n, d, tp);
     const int nb = n / TN_Q8_0_BLOCK;
-    size_t need = (size_t)nb * (size_t)n_tokens;
+    size_t need  = (size_t)nb * (size_t)n_tokens;
     if (s_q8a_tok_cap < need) {
         TnQ8_0ActBlock *nbuf = (TnQ8_0ActBlock *)malloc(need * sizeof(TnQ8_0ActBlock));
         if (!nbuf) return -1;
@@ -392,9 +431,11 @@ int parallel_matmul_q8a_tokens(float *out, const float *x, const uint8_t *w,
     }
     for (int k = 0; k < n_tokens; k++)
         tn_quantize_q8_0_act(s_q8a_tok_buf + (size_t)k * nb, x + (size_t)k * n, nb);
-    Q8ATokensArgs a = { out, w, s_q8a_tok_buf, (size_t)nb * blk, nb, gguf_type,
-                        tn_q8_0_act_vnni_ok(), n_tokens, d };
-    if (tp) threadpool_dispatch(tp, q8a_tokens_task, &a, d);
-    else    q8a_tokens_task(&a, 0, 0, d);
+    Q8ATokensArgs a = {
+        out, w, s_q8a_tok_buf, (size_t)nb * blk, nb, gguf_type, tn_q8_0_act_vnni_ok(), n_tokens, d};
+    if (tp)
+        threadpool_dispatch(tp, q8a_tokens_task, &a, d);
+    else
+        q8a_tokens_task(&a, 0, 0, d);
     return 0;
 }

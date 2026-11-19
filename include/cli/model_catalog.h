@@ -14,14 +14,14 @@
 #include <stdio.h>
 
 typedef struct {
-    char      id[32];
-    char      name[80];
+    char id[32];
+    char name[80];
     long long bytes;
-    double    min_ram_gb;
-    char      sha256[65];
-    char      url[512];
-    char      about[320];
-    char      file[560];       /* "<id>-<basename of url>" (fits id + url) */
+    double min_ram_gb;
+    char sha256[65];
+    char url[512];
+    char about[320];
+    char file[560]; /* "<id>-<basename of url>" (fits id + url) */
 } PzStarterModel;
 
 #define PZ_CATALOG_MAX 16
@@ -42,6 +42,7 @@ int pz_models_dir(char *buf, size_t n);
  * progress on the terminal, verifies the SHA-256, and writes the final path.
  * An existing file with the right checksum is reused. Returns 0, or -1 with a
  * plain-language reason printed to `out`. */
-int pz_model_download(const PzStarterModel *m, const char *dir, char *path, size_t pathn, FILE *out);
+int pz_model_download(const PzStarterModel *m, const char *dir, char *path, size_t pathn,
+                      FILE *out);
 
 #endif /* PZ_CLI_MODEL_CATALOG_H */

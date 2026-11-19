@@ -25,8 +25,8 @@
 extern "C" {
 #endif
 
-void parallel_matmul_q2_0(float *out, const float *x, const uint8_t *w_q2_0,
-                           int n, int d, ThreadPool *tp);
+void parallel_matmul_q2_0(float *out, const float *x, const uint8_t *w_q2_0, int n, int d,
+                          ThreadPool *tp);
 
 /* 1 when parallel_matmul_q2_0()/_batch() take the int8 VNNI path (which
  * quantizes x to int8) on this CPU with this build; 0 for the float path. */
@@ -35,9 +35,8 @@ int matmul_q2_0_uses_vnni(void);
 /*
  * parallel_matmul_q2_0_batch — batched Q2_0 × F32 GEMV for k weight matrices.
  */
-void parallel_matmul_q2_0_batch(float **outs, float **xs,
-                                 const uint8_t * const *ws,
-                                 int n, int d, int k, ThreadPool *tp);
+void parallel_matmul_q2_0_batch(float **outs, float **xs, const uint8_t *const *ws, int n, int d,
+                                int k, ThreadPool *tp);
 
 /*
  * AVX-512 VNNI fast-path entries (only compiled/linked when the build has
@@ -47,10 +46,10 @@ void parallel_matmul_q2_0_batch(float **outs, float **xs,
  * pre-2026-07-17 row-dot kept exclusively for tools/bench_q2_0's in-binary
  * A/B baseline and correctness cross-checks — never call it from engine code.
  */
-int parallel_matmul_q2_0_vnni(float *out, const float *x, const uint8_t *w_q2_0,
-                               int n, int d, ThreadPool *tp);
-int parallel_matmul_q2_0_vnni_ref(float *out, const float *x, const uint8_t *w_q2_0,
-                                   int n, int d, ThreadPool *tp);
+int parallel_matmul_q2_0_vnni(float *out, const float *x, const uint8_t *w_q2_0, int n, int d,
+                              ThreadPool *tp);
+int parallel_matmul_q2_0_vnni_ref(float *out, const float *x, const uint8_t *w_q2_0, int n, int d,
+                                  ThreadPool *tp);
 
 #ifdef __cplusplus
 }

@@ -37,8 +37,8 @@ void api_config_sources_json(JsonBuf *jb, const ApiContext *ctx);
  * cross-origin without a CORS preflight, which only --cors answers), and an
  * Origin header, when present, must match Host or be a CORS-allowed origin.
  * Returns 1 when allowed. Any argument may be NULL. */
-int api_config_write_allowed(const char *content_type, const char *origin,
-                             const char *host, const CorsConfig *cors);
+int api_config_write_allowed(const char *content_type, const char *origin, const char *host,
+                             const CorsConfig *cors);
 
 /* Cross-site guard for EVERY mutating (POST) route. A browser always sends an
  * Origin header on a cross-site POST, and a web page cannot forge it. So:

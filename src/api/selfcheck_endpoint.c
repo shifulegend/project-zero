@@ -33,7 +33,7 @@ char *api_selfcheck(ApiContext *ctx, const char *json_body, int *status) {
         return error_body("no model loaded", HTTP_INTERNAL_ERROR, status);
     SelfCheckOptions o;
     o.tolerance_pct = number_or(json_body, "tolerance", ctx->server_config.quality_tolerance);
-    o.n_tokens = (int)number_or(json_body, "tokens", ctx->server_config.self_check_tokens);
+    o.n_tokens      = (int)number_or(json_body, "tokens", ctx->server_config.self_check_tokens);
     if (o.tolerance_pct < 0 || o.tolerance_pct > 100)
         return error_body("\"tolerance\" must be 0..100 (percent)", HTTP_BAD_REQUEST, status);
     if (o.n_tokens < 16 || o.n_tokens > 4096)
@@ -42,22 +42,44 @@ char *api_selfcheck(ApiContext *ctx, const char *json_body, int *status) {
     SelfCheckResult r;
     TernaryError e = selfcheck_run(&o, ctx->cfg, ctx->weights, ctx->run_state, ctx->moe_cfg,
                                    ctx->tok, ctx->tp, &r);
-    if (e != TN_OK) return error_body("the accuracy probe failed to run", HTTP_INTERNAL_ERROR, status);
+    if (e != TN_OK)
+        return error_body("the accuracy probe failed to run", HTTP_INTERNAL_ERROR, status);
 
     JsonBuf jb;
     jb_init(&jb);
-    jb_raw(&jb, "{"); jb_key(&jb, "verdict"); jb_str(&jb, selfcheck_verdict_name(r.verdict));
-    jb_raw(&jb, ","); jb_key(&jb, "act_quant"); jb_str(&jb, r.act_quant);
-    jb_raw(&jb, ","); jb_key(&jb, "classifier"); jb_str(&jb, r.classifier);
-    jb_raw(&jb, ","); jb_key(&jb, "perplexity"); jb_raw(&jb, "{");
-    jb_key(&jb, "reference"); jb_num(&jb, r.ppl_ref);
-    jb_raw(&jb, ","); jb_key(&jb, "configured"); jb_num(&jb, r.ppl_cand);
+    jb_raw(&jb, "{");
+    jb_key(&jb, "verdict");
+    jb_str(&jb, selfcheck_verdict_name(r.verdict));
+    jb_raw(&jb, ",");
+    jb_key(&jb, "act_quant");
+    jb_str(&jb, r.act_quant);
+    jb_raw(&jb, ",");
+    jb_key(&jb, "classifier");
+    jb_str(&jb, r.classifier);
+    jb_raw(&jb, ",");
+    jb_key(&jb, "perplexity");
+    jb_raw(&jb, "{");
+    jb_key(&jb, "reference");
+    jb_num(&jb, r.ppl_ref);
+    jb_raw(&jb, ",");
+    jb_key(&jb, "configured");
+    jb_num(&jb, r.ppl_cand);
     jb_raw(&jb, "}");
-    jb_raw(&jb, ","); jb_key(&jb, "delta_pct"); jb_num(&jb, r.delta_pct);
-    jb_raw(&jb, ","); jb_key(&jb, "tolerance_pct"); jb_num(&jb, r.tolerance_pct);
-    jb_raw(&jb, ","); jb_key(&jb, "tokens_scored"); jb_int(&jb, r.n_scored);
-    jb_raw(&jb, ","); jb_key(&jb, "seconds"); jb_num(&jb, r.seconds);
-    jb_raw(&jb, ","); jb_key(&jb, "note"); jb_str(&jb, r.note);
+    jb_raw(&jb, ",");
+    jb_key(&jb, "delta_pct");
+    jb_num(&jb, r.delta_pct);
+    jb_raw(&jb, ",");
+    jb_key(&jb, "tolerance_pct");
+    jb_num(&jb, r.tolerance_pct);
+    jb_raw(&jb, ",");
+    jb_key(&jb, "tokens_scored");
+    jb_int(&jb, r.n_scored);
+    jb_raw(&jb, ",");
+    jb_key(&jb, "seconds");
+    jb_num(&jb, r.seconds);
+    jb_raw(&jb, ",");
+    jb_key(&jb, "note");
+    jb_str(&jb, r.note);
     jb_raw(&jb, "}");
     *status = HTTP_OK;
     return jb_finish(&jb);

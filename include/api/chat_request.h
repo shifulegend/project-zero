@@ -12,12 +12,12 @@
 #include <stdbool.h>
 #include "core/error.h"
 
-#define CHAT_MAX_MESSAGES   64
-#define CHAT_MAX_ROLE_LEN   32
-#define CHAT_MAX_CONTENT    65536   /* 64 KiB per message */
-#define CHAT_MAX_MODEL_LEN  128
-#define CHAT_MAX_STOP       8       /* == GEN_MAX_STOP */
-#define CHAT_MAX_TEMPLATE   65536   /* per-request "chat_template" cap (2026-10-19) */
+#define CHAT_MAX_MESSAGES 64
+#define CHAT_MAX_ROLE_LEN 32
+#define CHAT_MAX_CONTENT 65536 /* 64 KiB per message */
+#define CHAT_MAX_MODEL_LEN 128
+#define CHAT_MAX_STOP 8         /* == GEN_MAX_STOP */
+#define CHAT_MAX_TEMPLATE 65536 /* per-request "chat_template" cap (2026-10-19) */
 
 /* ChatRequest.set_mask bits: which optional fields the client sent. */
 enum {
@@ -45,8 +45,8 @@ enum {
 
 /* ── Single chat message ─────────────────────────────────────────────────── */
 typedef struct {
-    char role[CHAT_MAX_ROLE_LEN];       /* "system" | "user" | "assistant" */
-    char *content;                      /* Heap-allocated, NULL-terminated  */
+    char role[CHAT_MAX_ROLE_LEN]; /* "system" | "user" | "assistant" */
+    char *content;                /* Heap-allocated, NULL-terminated  */
     /* Phase 22.2: set when `content` was the OpenAI "content parts" array
      * form (text + image_url) rather than a plain string — carries the
      * image's data: URL (heap-allocated, NULL-terminated). NULL for
@@ -56,50 +56,50 @@ typedef struct {
 
 /* ── Parsed request from POST /v1/chat/completions ──────────────────────── */
 typedef struct {
-    char          model[CHAT_MAX_MODEL_LEN];
-    ChatMessage   messages[CHAT_MAX_MESSAGES];
-    int           num_messages;
-    float         temperature;          /* default 1.0  */
-    float         top_p;                /* default 1.0  */
-    int           max_tokens;           /* default 512  */
-    bool          stream;               /* default false */
+    char model[CHAT_MAX_MODEL_LEN];
+    ChatMessage messages[CHAT_MAX_MESSAGES];
+    int num_messages;
+    float temperature; /* default 1.0  */
+    float top_p;       /* default 1.0  */
+    int max_tokens;    /* default 512  */
+    bool stream;       /* default false */
     /* Phase 20: OpenAI-style `"response_format": {"type": "json_object"}`.
      * Only the basic json_object type is supported (grammar-masked to any
      * syntactically valid JSON) -- json_schema-constrained variants are out
      * of scope, see sampling/grammar.h's scope note. */
-    bool          json_mode;            /* default false */
+    bool json_mode; /* default false */
 
     /* Extended sampling / generation fields. Each is honored only when its
      * CHAT_SET_* bit is set in `set_mask` — absent fields fall back to the
      * server-side defaults (CLI flags), see api/request_params.h. */
-    unsigned      set_mask;
-    int           top_k;
-    float         min_p;
-    float         repetition_penalty;   /* "repetition_penalty" or "repeat_penalty" */
-    float         presence_penalty;
-    float         frequency_penalty;
-    int           penalty_last_n;       /* "penalty_last_n" or "repeat_last_n" */
-    long long     seed;
-    char         *stop[CHAT_MAX_STOP];  /* heap strings; "stop": "x" or ["x","y"] */
-    int           n_stop;
+    unsigned set_mask;
+    int top_k;
+    float min_p;
+    float repetition_penalty; /* "repetition_penalty" or "repeat_penalty" */
+    float presence_penalty;
+    float frequency_penalty;
+    int penalty_last_n; /* "penalty_last_n" or "repeat_last_n" */
+    long long seed;
+    char *stop[CHAT_MAX_STOP]; /* heap strings; "stop": "x" or ["x","y"] */
+    int n_stop;
     /* Phase 33: "watermark": {"enabled": bool, "key": str, "gamma": n, "delta": n} */
-    bool          watermark_enabled;
-    char         *watermark_key;        /* heap; NULL = use the server's key */
-    float         watermark_gamma;
-    float         watermark_delta;
+    bool watermark_enabled;
+    char *watermark_key; /* heap; NULL = use the server's key */
+    float watermark_gamma;
+    float watermark_delta;
     /* Phase 21.5: "cache_prompt": false forces a full prefill for this request. */
-    bool          cache_prompt;
+    bool cache_prompt;
     /* Phase 30: "best_of": N candidates, return the most likely one. */
-    int           best_of;
+    int best_of;
     /* "ignore_eos": true keeps generating to max_tokens (llama.cpp server name). */
-    bool          ignore_eos;
+    bool ignore_eos;
     /* "chat_template": Jinja template replacing the model's for this request
      * (heap; NULL = server's). Ignored when the server runs
      * --no-request-template. */
-    char         *chat_template;
+    char *chat_template;
     /* Phase 30: "mcts": N (simulations) or {"simulations", "expand",
      * "max_depth", "step_tokens", "c", "temperature"}; 0 fields = server's. */
-    MctsOptions   mcts;
+    MctsOptions mcts;
 } ChatRequest;
 
 /* ── Lifecycle ───────────────────────────────────────────────────────────── */

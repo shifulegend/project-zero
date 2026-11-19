@@ -23,12 +23,12 @@ typedef float (*tn_kvq4_dot_fn)(const float *q, const uint8_t *k, const float *s
 typedef void (*tn_kvq4_axpy_fn)(float *out, float a, const uint8_t *v, const float *scales, int n);
 
 float kvq4_dot_scalar(const float *q, const uint8_t *k, const float *scales, int n);
-void  kvq4_axpy_scalar(float *out, float a, const uint8_t *v, const float *scales, int n);
+void kvq4_axpy_scalar(float *out, float a, const uint8_t *v, const float *scales, int n);
 
 float kvq4_dot_avx2(const float *q, const uint8_t *k, const float *scales, int n);
-void  kvq4_axpy_avx2(float *out, float a, const uint8_t *v, const float *scales, int n);
+void kvq4_axpy_avx2(float *out, float a, const uint8_t *v, const float *scales, int n);
 
 float kvq4_dot_avx512(const float *q, const uint8_t *k, const float *scales, int n);
-void  kvq4_axpy_avx512(float *out, float a, const uint8_t *v, const float *scales, int n);
+void kvq4_axpy_avx512(float *out, float a, const uint8_t *v, const float *scales, int n);
 
 #endif /* PZ_KVQ4_KERNELS_H */

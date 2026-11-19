@@ -25,8 +25,7 @@
  * @param layer  Layer index [0, n_layers)
  * @param tp     Thread pool for parallel matmul (NULL for single-threaded)
  */
-void ffn_forward(RunState *s, const TransformerWeights *w,
-                 const Config *cfg, const MoEConfig *mc,
+void ffn_forward(RunState *s, const TransformerWeights *w, const Config *cfg, const MoEConfig *mc,
                  int layer, ThreadPool *tp);
 
 /**
@@ -45,9 +44,8 @@ void ffn_forward(RunState *s, const TransformerWeights *w,
  * @param sb       N-token-wide scratch (spec_batch_scratch_alloc()).
  * @param n_tokens Batch width; must match sb->n_tokens.
  */
-TernaryError ffn_forward_batch(RunState *s, SpecBatchScratch *sb,
-                                const TransformerWeights *w, const Config *cfg,
-                                const MoEConfig *mc, int layer, int n_tokens, ThreadPool *tp);
+TernaryError ffn_forward_batch(RunState *s, SpecBatchScratch *sb, const TransformerWeights *w,
+                               const Config *cfg, const MoEConfig *mc, int layer, int n_tokens,
+                               ThreadPool *tp);
 
 #endif /* TN_FFN_H */
-

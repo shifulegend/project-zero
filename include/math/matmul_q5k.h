@@ -28,8 +28,8 @@ extern "C" {
  *   d     : output dim
  *   tp    : thread pool (may be NULL for single-threaded)
  */
-void parallel_matmul_q5k(float *out, const float *x, const uint8_t *w_q5k,
-                          int n, int d, ThreadPool *tp);
+void parallel_matmul_q5k(float *out, const float *x, const uint8_t *w_q5k, int n, int d,
+                         ThreadPool *tp);
 
 #ifdef __cplusplus
 }

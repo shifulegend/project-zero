@@ -3,16 +3,18 @@
 #include <stdio.h>
 #include <string.h>
 
-void inject_vision_into_kv_cache(RunState *s, Config *p, TransformerWeights *w, const VisionContext *v, ThreadPool *tp) {
+void inject_vision_into_kv_cache(RunState *s, Config *p, TransformerWeights *w,
+                                 const VisionContext *v, ThreadPool *tp) {
     if (v->embed_dim != p->dim) {
-        fprintf(stderr, "Error: Vision embed_dim (%d) does not match LLM dim (%d)!\n", v->embed_dim, p->dim);
+        fprintf(stderr, "Error: Vision embed_dim (%d) does not match LLM dim (%d)!\n", v->embed_dim,
+                p->dim);
         return;
     }
 
     printf("Processing Image into Memory...\n");
 
     // We loop through every single projected image patch
-    for(int i = 0; i < v->num_patches; i++) {
+    for (int i = 0; i < v->num_patches; i++) {
 
         // Ensure we don't exceed the KV cache limits
         if (s->current_pos >= s->max_seq_len) {

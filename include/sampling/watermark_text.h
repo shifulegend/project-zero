@@ -17,7 +17,7 @@
 
 /* Tokenizes `text` (no BOS) and runs watermark_detect(). Returns
  * TN_ERR_INVALID_ARGS for NULL inputs, TN_ERR_OOM, or TN_OK. */
-TernaryError watermark_detect_text(const WatermarkConfig *wm, Tokenizer *tok,
-                                   const char *text, WatermarkResult *out);
+TernaryError watermark_detect_text(const WatermarkConfig *wm, Tokenizer *tok, const char *text,
+                                   WatermarkResult *out);
 
 #endif /* TN_WATERMARK_TEXT_H */

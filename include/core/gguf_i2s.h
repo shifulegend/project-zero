@@ -29,8 +29,7 @@ size_t tn_i2s_tensor_bytes(size_t n_elems);
  * dst must hold d_rows * packed_bytes(n_inner) bytes. *scale_out = tensor
  * scale. Returns 0, or -1 if n_inner is not a multiple of 128, a code is 3
  * (invalid), or the scale is not finite. */
-int tn_i2s_repack(uint8_t *dst, float *scale_out, const uint8_t *src,
-                  int d_rows, int n_inner);
+int tn_i2s_repack(uint8_t *dst, float *scale_out, const uint8_t *src, int d_rows, int n_inner);
 
 /* Reference packer in bitnet.cpp's layout (tests / converters). vals are
  * ternary {-1,0,1}; dst must hold tn_i2s_tensor_bytes(n) bytes. */

@@ -22,7 +22,9 @@ static const char SC_TEXT[] =
     "sailors still carry a paper chart and a sextant, because a good navigator never "
     "depends on a single tool.";
 
-const char *selfcheck_text(void) { return SC_TEXT; }
+const char *selfcheck_text(void) {
+    return SC_TEXT;
+}
 
 double selfcheck_delta_pct(double ppl_ref, double ppl_cand) {
     if (!isfinite(ppl_ref) || !isfinite(ppl_cand) || ppl_ref <= 0.0 || ppl_cand <= 0.0) return NAN;
@@ -58,7 +60,7 @@ static const char *cls_name(TnClassifierFormat f) {
 static TernaryError score(const int *toks, int n, int bos, const Config *cfg,
                           const TransformerWeights *w, RunState *s, const MoEConfig *mc,
                           ThreadPool *tp, PplResult *r) {
-    PplOptions o = { n, 1, bos };
+    PplOptions o = {n, 1, bos};
     return perplexity_eval(toks, n, &o, cfg, w, s, mc, tp, NULL, NULL, r);
 }
 
@@ -68,7 +70,7 @@ TernaryError selfcheck_run(const SelfCheckOptions *opt, const Config *cfg,
     if (!opt || !cfg || !w || !s || !tok || !out) return TN_ERR_INVALID_ARGS;
     memset(out, 0, sizeof(*out));
     out->tolerance_pct = opt->tolerance_pct;
-    out->verdict = SC_SKIPPED;
+    out->verdict       = SC_SKIPPED;
 
     const TnHardwareProfile *hp = tn_hardware_profile_get();
     TnClassifierFormat cand_cls = hp ? hp->classifier_fmt : TN_CLS_BF16;
@@ -77,14 +79,19 @@ TernaryError selfcheck_run(const SelfCheckOptions *opt, const Config *cfg,
 
     /* Tokens: BOS (when the model has one) + the passage, cut to the requested length. */
     size_t len = strlen(SC_TEXT);
-    int cap = (int)len + 2;
-    int *toks = (int *)malloc((size_t)cap * sizeof(int));
+    int cap    = (int)len + 2;
+    int *toks  = (int *)malloc((size_t)cap * sizeof(int));
     if (!toks) return TN_ERR_OOM;
-    int bos = !tok->add_bos_token ? -1 : (cfg->bos_token_id >= 0 ? cfg->bos_token_id : tok->bos_token_id);
+    int bos =
+        !tok->add_bos_token ? -1 : (cfg->bos_token_id >= 0 ? cfg->bos_token_id : tok->bos_token_id);
     int n = 0;
     if (bos >= 0) toks[n++] = bos;
     int k = tokenizer_encode(tok, SC_TEXT, len, toks + n, cap - n);
-    if (k < 0) { free(toks); snprintf(out->note, sizeof(out->note), "the passage could not be tokenized"); return TN_OK; }
+    if (k < 0) {
+        free(toks);
+        snprintf(out->note, sizeof(out->note), "the passage could not be tokenized");
+        return TN_OK;
+    }
     n += k;
     int want = opt->n_tokens > 0 ? opt->n_tokens : 96;
     if (n > want) n = want;
@@ -96,18 +103,19 @@ TernaryError selfcheck_run(const SelfCheckOptions *opt, const Config *cfg,
     }
 
     /* Candidate and reference identical: nothing to compare. */
-    int cand_is_float = strcmp(out->act_quant, "float") == 0;
+    int cand_is_float  = strcmp(out->act_quant, "float") == 0;
     int head_quantised = cand_cls != TN_CLS_BF16 && (w->wcls_i8 || w->wcls_i4);
     if (cand_is_float && !head_quantised) {
         free(toks);
-        snprintf(out->note, sizeof(out->note), "already the reference (float activations, BF16 head)");
+        snprintf(out->note, sizeof(out->note),
+                 "already the reference (float activations, BF16 head)");
         return TN_OK;
     }
 
     PplResult cand, ref;
     TernaryError e = score(toks, n, bos, cfg, w, s, mc, tp, &cand);
     if (e == TN_OK) {
-        TnActQuant old_act = tn_act_quant_get();
+        TnActQuant old_act         = tn_act_quant_get();
         TnClassifierFormat old_cls = tn_hardware_profile_swap_classifier(TN_CLS_BF16);
         tn_act_quant_set(TN_ACT_FLOAT);
         e = score(toks, n, bos, cfg, w, s, mc, tp, &ref);
@@ -117,24 +125,27 @@ TernaryError selfcheck_run(const SelfCheckOptions *opt, const Config *cfg,
     free(toks);
     if (e != TN_OK) return e;
 
-    out->ppl_cand = cand.ppl;
-    out->ppl_ref = ref.ppl;
-    out->n_scored = cand.n_scored;
-    out->seconds = cand.seconds + ref.seconds;
+    out->ppl_cand  = cand.ppl;
+    out->ppl_ref   = ref.ppl;
+    out->n_scored  = cand.n_scored;
+    out->seconds   = cand.seconds + ref.seconds;
     out->delta_pct = selfcheck_delta_pct(ref.ppl, cand.ppl);
-    out->verdict = selfcheck_judge(out->delta_pct, opt->tolerance_pct);
-    snprintf(out->note, sizeof(out->note), "as configured against float activations and a BF16 head");
+    out->verdict   = selfcheck_judge(out->delta_pct, opt->tolerance_pct);
+    snprintf(out->note, sizeof(out->note),
+             "as configured against float activations and a BF16 head");
     return TN_OK;
 }
 
 /* ---- first-run probe cache ---- */
 
-void selfcheck_cache_key(char *out, size_t cap, const char *model_path, long long size, long long mtime,
-                         const char *act_quant, const char *classifier, double tolerance_pct, int n_tokens) {
+void selfcheck_cache_key(char *out, size_t cap, const char *model_path, long long size,
+                         long long mtime, const char *act_quant, const char *classifier,
+                         double tolerance_pct, int n_tokens) {
     const char *base = model_path ? strrchr(model_path, '/') : NULL;
-    base = base ? base + 1 : (model_path ? model_path : "");
-    snprintf(out, cap, "v%d|%s|%lld|%lld|act=%s|head=%s|tol=%.2f|tok=%d", TN_SELFCHECK_CACHE_VERSION, base,
-             size, mtime, act_quant ? act_quant : "", classifier ? classifier : "", tolerance_pct, n_tokens);
+    base             = base ? base + 1 : (model_path ? model_path : "");
+    snprintf(out, cap, "v%d|%s|%lld|%lld|act=%s|head=%s|tol=%.2f|tok=%d",
+             TN_SELFCHECK_CACHE_VERSION, base, size, mtime, act_quant ? act_quant : "",
+             classifier ? classifier : "", tolerance_pct, n_tokens);
 }
 
 int selfcheck_cache_find(const char *text, const char *key, SelfCheckVerdict *v) {
@@ -142,11 +153,17 @@ int selfcheck_cache_find(const char *text, const char *key, SelfCheckVerdict *v)
     size_t kl = strlen(key);
     for (const char *p = text; *p;) {
         const char *eol = strchr(p, '\n');
-        size_t n = eol ? (size_t)(eol - p) : strlen(p);
+        size_t n        = eol ? (size_t)(eol - p) : strlen(p);
         if (n > kl && strncmp(p, key, kl) == 0 && p[kl] == '\t') {
             const char *w = p + kl + 1;
-            if (strncmp(w, "PASS", 4) == 0) { if (v) *v = SC_PASS; return 1; }
-            if (strncmp(w, "FAIL", 4) == 0) { if (v) *v = SC_FAIL; return 1; }
+            if (strncmp(w, "PASS", 4) == 0) {
+                if (v) *v = SC_PASS;
+                return 1;
+            }
+            if (strncmp(w, "FAIL", 4) == 0) {
+                if (v) *v = SC_FAIL;
+                return 1;
+            }
         }
         if (!eol) break;
         p = eol + 1;
@@ -167,9 +184,12 @@ int selfcheck_cache_load(const char *key, SelfCheckVerdict *v) {
     FILE *f = fopen(path, "rb");
     if (!f) return 0;
     char *buf = (char *)malloc(65536);
-    if (!buf) { fclose(f); return 0; }
+    if (!buf) {
+        fclose(f);
+        return 0;
+    }
     size_t n = fread(buf, 1, 65535, f);
-    buf[n] = '\0';
+    buf[n]   = '\0';
     fclose(f);
     int found = selfcheck_cache_find(buf, key, v);
     free(buf);
@@ -181,7 +201,10 @@ void selfcheck_cache_store(const char *key, SelfCheckVerdict v) {
     if (v == SC_SKIPPED || cache_path(path, sizeof(path)) != 0) return;
     snprintf(dir, sizeof(dir), "%s", path);
     char *slash = strrchr(dir, '/');
-    if (slash) { *slash = '\0'; mkdir(dir, 0755); }
+    if (slash) {
+        *slash = '\0';
+        mkdir(dir, 0755);
+    }
     FILE *f = fopen(path, "ab");
     if (!f) return;
     fprintf(f, "%s\t%s\n", key, selfcheck_verdict_name(v));
@@ -189,8 +212,10 @@ void selfcheck_cache_store(const char *key, SelfCheckVerdict v) {
 }
 
 int selfcheck_auto_applies(const SelfCheckAutoCtx *c) {
-    return c && c->act_quant_requested == 0 && c->ternary_model && !c->no_calibrate && !c->sanitized_build &&
-           c->tolerance_pct > 0.0 && !c->other_mode && c->effective_is_int8;
+    return c && c->act_quant_requested == 0 && c->ternary_model && !c->no_calibrate &&
+           !c->sanitized_build && c->tolerance_pct > 0.0 && !c->other_mode && c->effective_is_int8;
 }
 
-int selfcheck_auto_numerics(SelfCheckVerdict v) { return v == SC_FAIL ? 2 : 0; }
+int selfcheck_auto_numerics(SelfCheckVerdict v) {
+    return v == SC_FAIL ? 2 : 0;
+}

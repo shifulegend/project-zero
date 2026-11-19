@@ -44,9 +44,9 @@ static long b64_decode(const char *in, unsigned char *out, size_t out_cap) {
     size_t pad = 0;
     if (len >= 1 && in[len - 1] == '=') pad++;
     if (len >= 2 && in[len - 2] == '=') pad++;
-    long o = 0;
+    long o           = 0;
     unsigned int buf = 0;
-    int bits = 0;
+    int bits         = 0;
     for (size_t i = 0; i < len - pad; i++) {
         signed char v = b64_dec[(unsigned char)in[i]];
         if (v < 0) return -1;

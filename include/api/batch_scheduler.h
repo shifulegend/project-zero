@@ -33,15 +33,15 @@
 #include "kv_cache/prompt_store.h"
 
 typedef struct {
-    int       n_slots;           /* concurrent requests (>= 2 to be useful) */
-    int       max_batch_rows;    /* rows per forward pass (decode + prefill chunk) */
-    long long kv_budget_tokens;  /* positions all slots may hold together; 0 = no limit */
+    int n_slots;                /* concurrent requests (>= 2 to be useful) */
+    int max_batch_rows;         /* rows per forward pass (decode + prefill chunk) */
+    long long kv_budget_tokens; /* positions all slots may hold together; 0 = no limit */
 } BatchSchedulerOptions;
 
 typedef struct {
     int n_slots;
-    int active;      /* requests generating now */
-    int pending;     /* admitted by the caller, waiting for a slot or KV room */
+    int active;  /* requests generating now */
+    int pending; /* admitted by the caller, waiting for a slot or KV room */
     long long kv_committed_tokens;
     long long kv_budget_tokens;
 } BatchSchedulerStats;
@@ -57,9 +57,8 @@ int batch_scheduler_supported(const TransformerWeights *w, const MoEConfig *mc);
  * prompt snapshots for all slots. Returns NULL on failure (logged). */
 BatchScheduler *batch_scheduler_create(const Config *cfg, const TransformerWeights *w,
                                        RunState *slot0, PrefixCache *slot0_cache,
-                                       PromptStore *pstore, const MoEConfig *mc,
-                                       Tokenizer *tok, ThreadPool *tp,
-                                       const BatchSchedulerOptions *opt);
+                                       PromptStore *pstore, const MoEConfig *mc, Tokenizer *tok,
+                                       ThreadPool *tp, const BatchSchedulerOptions *opt);
 
 /* Stops the thread: active requests are cancelled, pending ones finish
  * without output, and later batch_scheduler_generate() calls return at
@@ -75,9 +74,8 @@ void batch_scheduler_destroy(BatchScheduler *bs);
  * thread with each piece; gp->stats (if set) is filled. gp->prefix_cache /
  * gp->prompt_store are ignored — use_cache selects whether the slot's own
  * prefix cache and the shared snapshots may be reused. */
-void batch_scheduler_generate(BatchScheduler *bs, const char *prompt,
-                              const GenerationParams *gp, int use_cache,
-                              TokenCallback callback, void *userdata);
+void batch_scheduler_generate(BatchScheduler *bs, const char *prompt, const GenerationParams *gp,
+                              int use_cache, TokenCallback callback, void *userdata);
 
 /* Forget every slot's cached prefix (e.g. after a cache reset request).
  * Only call while no request is in the scheduler. */

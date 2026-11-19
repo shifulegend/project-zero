@@ -64,7 +64,7 @@ static int create_test_tokenizer_file(void) {
     FILE *fp = fopen(test_tokenizer_path, "wb");
     if (!fp) return 0;
 
-    int vocab_size = TEST_VOCAB_SIZE;
+    int vocab_size    = TEST_VOCAB_SIZE;
     int max_token_len = TEST_MAX_TOKEN_LEN;
     fwrite(&vocab_size, sizeof(int), 1, fp);
     fwrite(&max_token_len, sizeof(int), 1, fp);
@@ -76,27 +76,27 @@ static int create_test_tokenizer_file(void) {
 
     /* Single byte tokens: indices 3..258 map to bytes 0x00..0xFF */
     for (int b = 0; b < 256; b++) {
-        char single[1] = { (char)b };
+        char single[1] = {(char)b};
         write_token_len(fp, -100.0f, single, 1);
     }
 
     /* Merge tokens */
-    write_token(fp, 10.0f, "ab");       /* 259 */
-    write_token(fp, 9.0f,  "cd");       /* 260 */
-    write_token(fp, 20.0f, "abcd");     /* 261 */
-    write_token(fp, 5.0f,  " h");       /* 262 */
-    write_token(fp, 6.0f,  " he");      /* 263 */
-    write_token(fp, 7.0f,  " hel");     /* 264 */
-    write_token(fp, 8.0f,  " hello");   /* 265 */
-    write_token(fp, -1.0f, "<0x0A>");   /* 266 */
+    write_token(fp, 10.0f, "ab");     /* 259 */
+    write_token(fp, 9.0f, "cd");      /* 260 */
+    write_token(fp, 20.0f, "abcd");   /* 261 */
+    write_token(fp, 5.0f, " h");      /* 262 */
+    write_token(fp, 6.0f, " he");     /* 263 */
+    write_token(fp, 7.0f, " hel");    /* 264 */
+    write_token(fp, 8.0f, " hello");  /* 265 */
+    write_token(fp, -1.0f, "<0x0A>"); /* 266 */
 
     /* GPT-2 byte-level-BPE-encoded pieces — see header comment above. */
-    write_token(fp, -1.0f, "\xC4\xA0world");  /* 267: Ġworld */
-    write_token(fp, -1.0f, "\xC2\xA9");       /* 268: byte 0xA9 */
-    write_token(fp, -1.0f, "\xC3\xA2");       /* 269: byte 0xE2 (emoji byte 1/3) */
-    write_token(fp, -1.0f, "\xC4\xBE");       /* 270: byte 0x9C (emoji byte 2/3) */
-    write_token(fp, -1.0f, "\xC4\xA7");       /* 271: byte 0x85 (emoji byte 3/3) */
-    write_token(fp, -1.0f, "\xC4\xA0hi");     /* 272: Ġhi */
+    write_token(fp, -1.0f, "\xC4\xA0world"); /* 267: Ġworld */
+    write_token(fp, -1.0f, "\xC2\xA9");      /* 268: byte 0xA9 */
+    write_token(fp, -1.0f, "\xC3\xA2");      /* 269: byte 0xE2 (emoji byte 1/3) */
+    write_token(fp, -1.0f, "\xC4\xBE");      /* 270: byte 0x9C (emoji byte 2/3) */
+    write_token(fp, -1.0f, "\xC4\xA7");      /* 271: byte 0x85 (emoji byte 3/3) */
+    write_token(fp, -1.0f, "\xC4\xA0hi");    /* 272: Ġhi */
 
     fclose(fp);
     return 1;
@@ -345,7 +345,7 @@ static void test_tokenizer_decode_byte_level_multibyte_emoji(void) {
 
     TEST_ASSERT(strlen(out) == 3, "3 byte-level tokens decode to 3 raw bytes total");
     TEST_ASSERT((unsigned char)out[0] == 0xE2 && (unsigned char)out[1] == 0x9C &&
-                (unsigned char)out[2] == 0x85,
+                    (unsigned char)out[2] == 0x85,
                 "concatenated byte-level tokens reassemble raw UTF-8 emoji bytes E2 9C 85");
 
     tokenizer_free(&t);

@@ -38,7 +38,7 @@ static void set_one_hot(float *logits, int vocab, int winner) {
 
 static void test_accept_reject_all_accepted(void) {
     const int spec_length = 4;
-    int draft_tokens[4] = {2, 0, 3, 1};
+    int draft_tokens[4]   = {2, 0, 3, 1};
     float verify_check_logits[4][SPEC_VOCAB];
     float bonus_logits[SPEC_VOCAB];
 
@@ -50,9 +50,8 @@ static void test_accept_reject_all_accepted(void) {
 
     unsigned long long rng = 1;
     int n_accept = -1, emit_token = -1;
-    accept_reject_round(draft_tokens, NULL, &verify_check_logits[0][0], bonus_logits,
-                         spec_length, SPEC_VOCAB, /*temperature=*/0.0f, &rng,
-                         &n_accept, &emit_token);
+    accept_reject_round(draft_tokens, NULL, &verify_check_logits[0][0], bonus_logits, spec_length,
+                        SPEC_VOCAB, /*temperature=*/0.0f, &rng, &n_accept, &emit_token);
 
     TEST_ASSERT_EQ(n_accept, spec_length, "all draft tokens accepted when they match the verifier");
     TEST_ASSERT_EQ(emit_token, 5, "bonus token is argmax(bonus_logits)");
@@ -60,7 +59,7 @@ static void test_accept_reject_all_accepted(void) {
 
 static void test_accept_reject_rejects_at_first_mismatch(void) {
     const int spec_length = 5;
-    int draft_tokens[5] = {0, 1, 2, 3, 4};
+    int draft_tokens[5]   = {0, 1, 2, 3, 4};
     float verify_check_logits[5][SPEC_VOCAB];
     float bonus_logits[SPEC_VOCAB];
 
@@ -76,17 +75,17 @@ static void test_accept_reject_rejects_at_first_mismatch(void) {
 
     unsigned long long rng = 1;
     int n_accept = -1, emit_token = -1;
-    accept_reject_round(draft_tokens, NULL, &verify_check_logits[0][0], bonus_logits,
-                         spec_length, SPEC_VOCAB, /*temperature=*/0.0f, &rng,
-                         &n_accept, &emit_token);
+    accept_reject_round(draft_tokens, NULL, &verify_check_logits[0][0], bonus_logits, spec_length,
+                        SPEC_VOCAB, /*temperature=*/0.0f, &rng, &n_accept, &emit_token);
 
     TEST_ASSERT_EQ(n_accept, 2, "acceptance stops at the first mismatch");
-    TEST_ASSERT_EQ(emit_token, 5, "emitted token is the verifier's own pick at the mismatch position");
+    TEST_ASSERT_EQ(emit_token, 5,
+                   "emitted token is the verifier's own pick at the mismatch position");
 }
 
 static void test_accept_reject_rejects_immediately(void) {
     const int spec_length = 3;
-    int draft_tokens[3] = {1, 1, 1};
+    int draft_tokens[3]   = {1, 1, 1};
     float verify_check_logits[3][SPEC_VOCAB];
     float bonus_logits[SPEC_VOCAB];
 
@@ -97,8 +96,8 @@ static void test_accept_reject_rejects_immediately(void) {
 
     unsigned long long rng = 1;
     int n_accept = -1, emit_token = -1;
-    accept_reject_round(draft_tokens, NULL, &verify_check_logits[0][0], bonus_logits,
-                         spec_length, SPEC_VOCAB, 0.0f, &rng, &n_accept, &emit_token);
+    accept_reject_round(draft_tokens, NULL, &verify_check_logits[0][0], bonus_logits, spec_length,
+                        SPEC_VOCAB, 0.0f, &rng, &n_accept, &emit_token);
 
     TEST_ASSERT_EQ(n_accept, 0, "zero tokens accepted when position 0 disagrees");
     TEST_ASSERT_EQ(emit_token, 4, "emitted token is the verifier's argmax at position 0");
@@ -117,16 +116,16 @@ static void test_accept_reject_rejects_immediately(void) {
 
 static void fill_ternary_i8(tn_i8 *buf, int count, unsigned seed) {
     for (int i = 0; i < count; i++) {
-        seed = seed * 1103515245 + 12345;
-        int r = (int)((seed >> 16) % 3);
+        seed   = seed * 1103515245 + 12345;
+        int r  = (int)((seed >> 16) % 3);
         buf[i] = (tn_i8)(r - 1);
     }
 }
 
 static tn_u8 *make_packed_ternary(int rows, int cols, unsigned seed) {
     size_t row_bytes = packed_bytes(cols);
-    tn_u8 *packed = (tn_u8 *)calloc((size_t)rows * row_bytes, 1);
-    tn_i8 *tmp = (tn_i8 *)malloc((size_t)rows * cols);
+    tn_u8 *packed    = (tn_u8 *)calloc((size_t)rows * row_bytes, 1);
+    tn_i8 *tmp       = (tn_i8 *)malloc((size_t)rows * cols);
     fill_ternary_i8(tmp, rows * cols, seed);
     for (int i = 0; i < rows; i++) {
         for (int j = 0; j < cols; j++) {
@@ -139,8 +138,8 @@ static tn_u8 *make_packed_ternary(int rows, int cols, unsigned seed) {
 
 static void fill_pattern_bf16(tn_u16 *buf, size_t count, unsigned seed) {
     for (size_t i = 0; i < count; i++) {
-        seed = seed * 1103515245 + 12345;
-        int v = (int)((seed >> 16) % 3) - 1;
+        seed    = seed * 1103515245 + 12345;
+        int v   = (int)((seed >> 16) % 3) - 1;
         float f = (float)v * 0.5f;
         uint32_t bits;
         memcpy(&bits, &f, sizeof(bits));
@@ -161,19 +160,19 @@ static void fill_ones(float *buf, int count) {
 
 static void build_spec_model(Config *cfg, TransformerWeights *w, unsigned seed_base) {
     memset(cfg, 0, sizeof(*cfg));
-    cfg->dim = SM_DIM;
-    cfg->hidden_dim = SM_HIDDEN;
-    cfg->n_layers = SM_LAYERS;
-    cfg->n_heads = SM_HEADS;
-    cfg->n_kv_heads = SM_KV_HEADS;
-    cfg->vocab_size = SPEC_VOCAB;
-    cfg->seq_len = SM_SEQ;
-    cfg->rms_norm_eps = 1e-5f;
-    cfg->rope_freq_scale = 1.0f;
-    cfg->rope_theta = 10000.0f;
+    cfg->dim                   = SM_DIM;
+    cfg->hidden_dim            = SM_HIDDEN;
+    cfg->n_layers              = SM_LAYERS;
+    cfg->n_heads               = SM_HEADS;
+    cfg->n_kv_heads            = SM_KV_HEADS;
+    cfg->vocab_size            = SPEC_VOCAB;
+    cfg->seq_len               = SM_SEQ;
+    cfg->rms_norm_eps          = 1e-5f;
+    cfg->rope_freq_scale       = 1.0f;
+    cfg->rope_theta            = 10000.0f;
     cfg->rope_yarn_attn_factor = 1.0f;
-    cfg->bos_token_id = -1;  /* legacy path uses tok->bos_token_id instead */
-    cfg->eos_token_id = -1;  /* never fires -- keeps the test's token count exact */
+    cfg->bos_token_id          = -1; /* legacy path uses tok->bos_token_id instead */
+    cfg->eos_token_id          = -1; /* never fires -- keeps the test's token count exact */
 
     memset(w, 0, sizeof(*w));
     weights_alloc_pointers(w, cfg);
@@ -217,9 +216,15 @@ static void build_spec_model(Config *cfg, TransformerWeights *w, unsigned seed_b
 static void free_spec_model(TransformerWeights *w) {
     free(w->token_embedding_table);
     for (int l = 0; l < SM_LAYERS; l++) {
-        free(w->wq[l]); free(w->wk[l]); free(w->wv[l]); free(w->wo[l]);
-        free(w->w1[l]); free(w->w2[l]); free(w->w3[l]);
-        free(w->rms_att_weight[l]); free(w->rms_ffn_weight[l]);
+        free(w->wq[l]);
+        free(w->wk[l]);
+        free(w->wv[l]);
+        free(w->wo[l]);
+        free(w->w1[l]);
+        free(w->w2[l]);
+        free(w->w3[l]);
+        free(w->rms_att_weight[l]);
+        free(w->rms_ffn_weight[l]);
     }
     free(w->rms_final_weight);
     free(w->wcls);
@@ -233,10 +238,10 @@ static void free_spec_model(TransformerWeights *w) {
  * no merges possible (no multi-character vocab entry exists to merge into). */
 static void build_test_tokenizer(Tokenizer *t) {
     memset(t, 0, sizeof(*t));
-    t->vocab_size = SPEC_VOCAB;
-    t->vocab = (char **)malloc((size_t)SPEC_VOCAB * sizeof(char *));
-    t->vocab_scores = (float *)calloc((size_t)SPEC_VOCAB, sizeof(float));
-    const char *strs[SPEC_VOCAB] = { "\x01BOS\x01", "A", "B", "C", "D", "\x02EOS\x02" };
+    t->vocab_size                = SPEC_VOCAB;
+    t->vocab                     = (char **)malloc((size_t)SPEC_VOCAB * sizeof(char *));
+    t->vocab_scores              = (float *)calloc((size_t)SPEC_VOCAB, sizeof(float));
+    const char *strs[SPEC_VOCAB] = {"\x01BOS\x01", "A", "B", "C", "D", "\x02EOS\x02"};
     for (int i = 0; i < SPEC_VOCAB; i++) {
         t->vocab[i] = strdup(strs[i]);
     }
@@ -249,7 +254,7 @@ static void build_test_tokenizer(Tokenizer *t) {
      * index to be sorted by strcmp(vocab[idx], ...)). */
     for (int i = 1; i < SPEC_VOCAB; i++) {
         int key = t->sorted_vocab_indices[i];
-        int j = i - 1;
+        int j   = i - 1;
         while (j >= 0 && strcmp(t->vocab[t->sorted_vocab_indices[j]], t->vocab[key]) > 0) {
             t->sorted_vocab_indices[j + 1] = t->sorted_vocab_indices[j];
             j--;
@@ -259,9 +264,9 @@ static void build_test_tokenizer(Tokenizer *t) {
     t->sorted = 1;
 
     t->chat_template = NULL; /* legacy prompt path: manual BOS + raw encode */
-    t->bos_token_id = 0;
-    t->eos_token_id = -1;
-    t->n_eos = 0;
+    t->bos_token_id  = 0;
+    t->eos_token_id  = -1;
+    t->n_eos         = 0;
 }
 
 typedef struct {
@@ -271,7 +276,7 @@ typedef struct {
 
 static int capture_callback(const char *piece, void *userdata) {
     CaptureCtx *c = (CaptureCtx *)userdata;
-    int plen = (int)strlen(piece);
+    int plen      = (int)strlen(piece);
     if (c->len + plen < (int)sizeof(c->buf)) {
         memcpy(c->buf + c->len, piece, (size_t)plen);
         c->len += plen;
@@ -294,18 +299,20 @@ static void test_speculative_greedy_matches_plain_generation(void) {
     MoEConfig mc;
     moe_config_init_dense(&mc);
 
-    const char *prompt = "AB";
-    const int max_tokens = 6;
+    const char *prompt    = "AB";
+    const int max_tokens  = 6;
     const int spec_length = 3;
 
     /* ── Baseline: plain greedy generation ────────────────────────────── */
     RunState s_plain;
     TEST_ASSERT(run_state_alloc(&s_plain, &verifier_cfg, verifier_cfg.seq_len) == TN_OK,
                 "plain run_state_alloc");
-    CaptureCtx plain_out; plain_out.len = 0; plain_out.buf[0] = '\0';
+    CaptureCtx plain_out;
+    plain_out.len    = 0;
+    plain_out.buf[0] = '\0';
     generate_with_callback(&verifier_cfg, &verifier_w, &s_plain, &mc, &tok, NULL, prompt,
-                            max_tokens, /*temperature=*/0.0f, /*top_p=*/1.0f, /*json_mode=*/false,
-                            capture_callback, &plain_out);
+                           max_tokens, /*temperature=*/0.0f, /*top_p=*/1.0f, /*json_mode=*/false,
+                           capture_callback, &plain_out);
     run_state_free(&s_plain);
 
     /* ── Speculative: same verifier weights, a differently-seeded draft ── */
@@ -318,16 +325,18 @@ static void test_speculative_greedy_matches_plain_generation(void) {
 
     DraftModel draft;
     memset(&draft, 0, sizeof(draft));
-    draft.config = draft_cfg;
+    draft.config  = draft_cfg;
     draft.weights = draft_w;
     moe_config_init_dense(&draft.moe_config);
     draft.state = &s_draft;
 
-    CaptureCtx spec_out; spec_out.len = 0; spec_out.buf[0] = '\0';
-    speculative_generate_with_callback(&verifier_cfg, &verifier_w, &s_spec, &mc, &tok, NULL,
-                                        prompt, max_tokens, /*temperature=*/0.0f, /*top_p=*/1.0f,
-                                        /*json_mode=*/false, &draft, spec_length,
-                                        capture_callback, &spec_out);
+    CaptureCtx spec_out;
+    spec_out.len    = 0;
+    spec_out.buf[0] = '\0';
+    speculative_generate_with_callback(&verifier_cfg, &verifier_w, &s_spec, &mc, &tok, NULL, prompt,
+                                       max_tokens, /*temperature=*/0.0f, /*top_p=*/1.0f,
+                                       /*json_mode=*/false, &draft, spec_length, capture_callback,
+                                       &spec_out);
     run_state_free(&s_spec);
     run_state_free(&s_draft);
 
@@ -355,7 +364,8 @@ static void test_draft_model_vocab_mismatch_rejected(void) {
     }
 
     DraftModel dm;
-    TernaryError err = draft_model_load(&dm, path, /*verifier_vocab_size=*/1, /*max_seq_len_hint=*/64, NULL);
+    TernaryError err =
+        draft_model_load(&dm, path, /*verifier_vocab_size=*/1, /*max_seq_len_hint=*/64, NULL);
     TEST_ASSERT_EQ(err, TN_ERR_INVALID_ARGS,
                    "draft model load is rejected when vocab_size doesn't match the verifier");
 }

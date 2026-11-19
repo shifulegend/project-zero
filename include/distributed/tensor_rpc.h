@@ -18,16 +18,11 @@
 
 #define RPC_MAGIC 0x31545A50u /* "PZT1" */
 
-typedef enum {
-    RPC_INFO    = 1,
-    RPC_FORWARD = 2,
-    RPC_ERROR   = 3,
-    RPC_BYE     = 4
-} RpcType;
+typedef enum { RPC_INFO = 1, RPC_FORWARD = 2, RPC_ERROR = 3, RPC_BYE = 4 } RpcType;
 
 typedef struct {
     uint32_t magic, type;
-    int32_t  arg;
+    int32_t arg;
     uint32_t count;
 } RpcHeader;
 
@@ -39,7 +34,7 @@ typedef struct {
 TernaryError rpc_listen(int port, int loopback_only, int *server_fd);
 TernaryError rpc_accept(int server_fd, int *conn_fd);
 TernaryError rpc_connect(const char *host, int port, int *sockfd);
-void         rpc_close(int fd);
+void rpc_close(int fd);
 
 /* Whole-message send/recv. `data` may be NULL when count == 0. recv checks
  * the magic and that the payload fits `max_count`. */

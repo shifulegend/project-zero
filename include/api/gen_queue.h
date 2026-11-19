@@ -32,19 +32,19 @@ typedef struct GenWaiter {
 
 typedef struct {
     pthread_mutex_t mu;
-    pthread_cond_t  cv;
-    int        capacity;     /* units that may be held at once (>= 1) */
-    int        in_use;       /* units held now */
+    pthread_cond_t cv;
+    int capacity; /* units that may be held at once (>= 1) */
+    int in_use;   /* units held now */
     GenWaiter *head, *tail;
-    int        n_waiting;
-    int        max_waiting;  /* 0 = no queue (reject when busy) */
+    int n_waiting;
+    int max_waiting; /* 0 = no queue (reject when busy) */
 } GenQueue;
 
 typedef enum {
     GEN_QUEUE_OK = 0,
-    GEN_QUEUE_FULL,      /* busy and the queue is full / disabled */
-    GEN_QUEUE_TIMEOUT,   /* waited timeout_ms without reaching the front */
-    GEN_QUEUE_ABORTED    /* the wait callback asked to stop (client gone) */
+    GEN_QUEUE_FULL,    /* busy and the queue is full / disabled */
+    GEN_QUEUE_TIMEOUT, /* waited timeout_ms without reaching the front */
+    GEN_QUEUE_ABORTED  /* the wait callback asked to stop (client gone) */
 } GenQueueResult;
 
 /* Called while waiting with the 1-based position (1 = next). Return nonzero
@@ -57,7 +57,7 @@ void gen_queue_set_max_waiting(GenQueue *q, int max_waiting);
 
 /* Units available at once (clamped to >= 1). Set before serving starts. */
 void gen_queue_set_capacity(GenQueue *q, int capacity);
-int  gen_queue_capacity(GenQueue *q);
+int gen_queue_capacity(GenQueue *q);
 
 /* Take the slot now if it is free and nobody is waiting; never blocks. */
 GenQueueResult gen_queue_try_acquire(GenQueue *q);
@@ -65,8 +65,8 @@ GenQueueResult gen_queue_try_acquire(GenQueue *q);
 /* Take the slot, waiting in FIFO order up to timeout_ms (<= 0: forever).
  * on_wait (may be NULL) is called when first queued, whenever the position
  * changes, and about once a second otherwise. */
-GenQueueResult gen_queue_acquire(GenQueue *q, int timeout_ms,
-                                 GenQueueWaitFn on_wait, void *userdata);
+GenQueueResult gen_queue_acquire(GenQueue *q, int timeout_ms, GenQueueWaitFn on_wait,
+                                 void *userdata);
 
 /* Hand the slot to the next waiter (or free it). */
 void gen_queue_release(GenQueue *q);
@@ -74,8 +74,8 @@ void gen_queue_release(GenQueue *q);
 /* The same for `units` units (clamped to [1, capacity]); the plain
  * functions above take one unit. */
 GenQueueResult gen_queue_try_acquire_n(GenQueue *q, int units);
-GenQueueResult gen_queue_acquire_n(GenQueue *q, int units, int timeout_ms,
-                                   GenQueueWaitFn on_wait, void *userdata);
+GenQueueResult gen_queue_acquire_n(GenQueue *q, int units, int timeout_ms, GenQueueWaitFn on_wait,
+                                   void *userdata);
 void gen_queue_release_n(GenQueue *q, int units);
 
 /* Snapshot of how many units are held. */

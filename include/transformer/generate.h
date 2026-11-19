@@ -31,10 +31,9 @@
  *                     through a JSON grammar (sampling/grammar.h) so the
  *                     output is guaranteed syntactically valid JSON.
  */
-void generate(const Config *cfg, const TransformerWeights *w, RunState *s,
-              const MoEConfig *mc,
-              Tokenizer *tok, ThreadPool *tp, const char *prompt,
-              int max_tokens, float temperature, float top_p, bool json_mode);
+void generate(const Config *cfg, const TransformerWeights *w, RunState *s, const MoEConfig *mc,
+              Tokenizer *tok, ThreadPool *tp, const char *prompt, int max_tokens, float temperature,
+              float top_p, bool json_mode);
 
 /*
  * Phase 21 — Token callback type.
@@ -58,12 +57,10 @@ typedef int (*TokenCallback)(const char *piece, void *userdata);
  * OpenAI-compatible API server (Phase 21) to stream tokens over SSE without
  * modifying core inference logic.
  */
-void generate_with_callback(const Config *cfg, const TransformerWeights *w,
-                             RunState *s, const MoEConfig *mc,
-                             Tokenizer *tok, ThreadPool *tp, const char *prompt,
-                             int max_tokens, float temperature, float top_p,
-                             bool json_mode,
-                             TokenCallback callback, void *userdata);
+void generate_with_callback(const Config *cfg, const TransformerWeights *w, RunState *s,
+                            const MoEConfig *mc, Tokenizer *tok, ThreadPool *tp, const char *prompt,
+                            int max_tokens, float temperature, float top_p, bool json_mode,
+                            TokenCallback callback, void *userdata);
 
 /**
  * Full-control generation: every knob (sampler chain, seed, JSON mode,
@@ -71,15 +68,13 @@ void generate_with_callback(const Config *cfg, const TransformerWeights *w,
  * (NULL = gen_params_default()). generate()/generate_with_callback() are
  * thin wrappers over this.
  */
-void generate_ex(const Config *cfg, const TransformerWeights *w,
-                 RunState *s, const MoEConfig *mc,
-                 Tokenizer *tok, ThreadPool *tp, const char *prompt,
-                 const GenerationParams *gp,
+void generate_ex(const Config *cfg, const TransformerWeights *w, RunState *s, const MoEConfig *mc,
+                 Tokenizer *tok, ThreadPool *tp, const char *prompt, const GenerationParams *gp,
                  TokenCallback callback, void *userdata);
 
 /** generate_ex() writing tokens to stdout (+ trailing newline), for the CLI. */
 void generate_params(const Config *cfg, const TransformerWeights *w, RunState *s,
-                     const MoEConfig *mc, Tokenizer *tok, ThreadPool *tp,
-                     const char *prompt, const GenerationParams *gp);
+                     const MoEConfig *mc, Tokenizer *tok, ThreadPool *tp, const char *prompt,
+                     const GenerationParams *gp);
 
 #endif /* TN_GENERATE_H */

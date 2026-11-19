@@ -59,16 +59,15 @@ static void run_case(int vocab, int dim, const char *label) {
     Config cfg;
     memset(&w, 0, sizeof(w));
     memset(&cfg, 0, sizeof(cfg));
-    cfg.dim = dim;
-    cfg.vocab_size = vocab;
+    cfg.dim           = dim;
+    cfg.vocab_size    = vocab;
     w.wcls_is_ternary = false;
 
     uint16_t *table = (uint16_t *)malloc((size_t)vocab * (size_t)dim * sizeof(uint16_t));
-    float *x = (float *)malloc((size_t)dim * sizeof(float));
-    float *ref = (float *)malloc((size_t)vocab * sizeof(float));
+    float *x        = (float *)malloc((size_t)dim * sizeof(float));
+    float *ref      = (float *)malloc((size_t)vocab * sizeof(float));
 
-    for (int j = 0; j < dim; j++)
-        x[j] = 0.5f + 0.1f * (float)((j * 7) % 13 - 6);
+    for (int j = 0; j < dim; j++) x[j] = 0.5f + 0.1f * (float)((j * 7) % 13 - 6);
 
     for (int i = 0; i < vocab; i++) {
         for (int j = 0; j < dim; j++) {
@@ -79,7 +78,7 @@ static void run_case(int vocab, int dim, const char *label) {
              * relative error meaningless regardless of quantizer quality)
              * while still giving a block-wise scale something real to
              * adapt to that a single row-wide scale cannot represent. */
-            int block = j / 32;
+            int block       = j / 32;
             float magnitude = (block % 2 == 0) ? 1.0f : 4.0f;
             float v = magnitude * (1.0f + 0.3f * (float)(((i * 31 + j * 17) % 21) - 10) / 10.0f);
             table[(size_t)i * dim + j] = f32_to_bf16(v);
@@ -100,12 +99,12 @@ static void run_case(int vocab, int dim, const char *label) {
      * per-row scheme structurally cannot represent this: one scale for
      * the whole row, no matter how block magnitudes vary). */
     if (n_blocks >= 2) {
-        float s0 = w.wcls_i8_scales[0];
-        float s1 = w.wcls_i8_scales[1];
+        float s0    = w.wcls_i8_scales[0];
+        float s1    = w.wcls_i8_scales[1];
         float ratio = (s0 > s1) ? s0 / s1 : s1 / s0;
         char msg[160];
-        snprintf(msg, sizeof(msg), "%s: block scales differ (s0=%.6f s1=%.6f ratio=%.3f)",
-                 label, s0, s1, ratio);
+        snprintf(msg, sizeof(msg), "%s: block scales differ (s0=%.6f s1=%.6f ratio=%.3f)", label,
+                 s0, s1, ratio);
         TEST_ASSERT(s0 > 0.0f && s1 > 0.0f && ratio > 2.0f, msg);
     }
 
@@ -121,26 +120,39 @@ static void run_case(int vocab, int dim, const char *label) {
          * here are all-positive-biased (no cancellation), so relative
          * error is a meaningful metric, unlike the earlier cancellation-
          * prone version of this test. */
-        float scale = fabsf(ref[i]) > 1.0f ? fabsf(ref[i]) : 1.0f;
+        float scale  = fabsf(ref[i]) > 1.0f ? fabsf(ref[i]) : 1.0f;
         float err_i8 = fabsf(out_i8[i] - ref[i]) / scale;
         float err_i4 = fabsf(out_i4[i] - ref[i]) / scale;
         char msg8[160], msg4[160];
-        snprintf(msg8, sizeof(msg8), "%s INT8 row %d: got=%.6f ref=%.6f rel_err=%.6f",
-                 label, i, out_i8[i], ref[i], err_i8);
-        snprintf(msg4, sizeof(msg4), "%s INT4 row %d: got=%.6f ref=%.6f rel_err=%.6f",
-                 label, i, out_i4[i], ref[i], err_i4);
+        snprintf(msg8, sizeof(msg8), "%s INT8 row %d: got=%.6f ref=%.6f rel_err=%.6f", label, i,
+                 out_i8[i], ref[i], err_i8);
+        snprintf(msg4, sizeof(msg4), "%s INT4 row %d: got=%.6f ref=%.6f rel_err=%.6f", label, i,
+                 out_i4[i], ref[i], err_i4);
         TEST_ASSERT(err_i8 < 0.05f, msg8);
         TEST_ASSERT(err_i4 < 0.30f, msg4);
     }
 
-    free(table); free(x); free(ref); free(out_i8); free(out_i4);
-    free(w.wcls_i8); free(w.wcls_i8_scales); free(w.wcls_i4); free(w.wcls_i4_scales);
+    free(table);
+    free(x);
+    free(ref);
+    free(out_i8);
+    free(out_i4);
+    free(w.wcls_i8);
+    free(w.wcls_i8_scales);
+    free(w.wcls_i4);
+    free(w.wcls_i4_scales);
     (void)n_blocks;
 }
 
-static void test_dim_multiple_of_block(void) { run_case(6, 128, "dim=128 (4 blocks, exact)"); }
-static void test_dim_not_multiple_of_block(void) { run_case(5, 100, "dim=100 (tail block, 4 full + 4 partial)"); }
-static void test_single_block(void) { run_case(4, 20, "dim=20 (1 partial block)"); }
+static void test_dim_multiple_of_block(void) {
+    run_case(6, 128, "dim=128 (4 blocks, exact)");
+}
+static void test_dim_not_multiple_of_block(void) {
+    run_case(5, 100, "dim=100 (tail block, 4 full + 4 partial)");
+}
+static void test_single_block(void) {
+    run_case(4, 20, "dim=20 (1 partial block)");
+}
 
 int main(void) {
     RUN_TEST(test_dim_multiple_of_block);

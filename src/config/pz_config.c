@@ -4,7 +4,7 @@
 #include "config/pz_config.h"
 #include "core/platform.h"
 #include "core/fs_util.h"
-#include "core/limits.h"          /* PZ_PARALLEL_*, BEST_OF_N_MAX: bounds shared with parse_args */
+#include "core/limits.h" /* PZ_PARALLEL_*, BEST_OF_N_MAX: bounds shared with parse_args */
 
 #include <ctype.h>
 #include <errno.h>
@@ -25,69 +25,96 @@
  * table in sync with args.c (engineering-rules DoD #6). */
 static const PzCfgKey g_schema[] = {
     /* model */
-    { "model",           PZ_CFG_STRING, "model", "Default model file (.gguf)", NULL, 0, 0, 0 },
-    { "tokenizer",       PZ_CFG_STRING, "model", "Tokenizer file for non-GGUF models", NULL, 0, 0, 0 },
-    { "chat-template-file", PZ_CFG_STRING, "model", "Jinja chat template that replaces the model's own", NULL, 0, 0, 0 },
-    { "chat-format",     PZ_CFG_STRING, "model", "Prompt format for models without a chat template", NULL, 0, 0, 0 },
-    { "lora",            PZ_CFG_STRING, "model", "LoRA adapter to apply", NULL, 0, 0, 0 },
-    { "draft-model",     PZ_CFG_STRING, "model", "Draft model for speculative decoding", NULL, 0, 0, 0 },
-    { "spec-length",     PZ_CFG_INT,    "model", "Draft tokens per speculative step", NULL, 1, 64, 0 },
+    {"model", PZ_CFG_STRING, "model", "Default model file (.gguf)", NULL, 0, 0, 0},
+    {"tokenizer", PZ_CFG_STRING, "model", "Tokenizer file for non-GGUF models", NULL, 0, 0, 0},
+    {"chat-template-file", PZ_CFG_STRING, "model",
+     "Jinja chat template that replaces the model's own", NULL, 0, 0, 0},
+    {"chat-format", PZ_CFG_STRING, "model", "Prompt format for models without a chat template",
+     NULL, 0, 0, 0},
+    {"lora", PZ_CFG_STRING, "model", "LoRA adapter to apply", NULL, 0, 0, 0},
+    {"draft-model", PZ_CFG_STRING, "model", "Draft model for speculative decoding", NULL, 0, 0, 0},
+    {"spec-length", PZ_CFG_INT, "model", "Draft tokens per speculative step", NULL, 1, 64, 0},
     /* hardware */
-    { "threads",         PZ_CFG_INT,    "hardware", "Worker threads (0 = auto)", NULL, 0, 1024, 0 },
-    { "simd",            PZ_CFG_STRING, "hardware", "SIMD backend", "auto|avx2|avx512f|vnni|scalar", 0, 0, 0 },
-    { "classifier",      PZ_CFG_STRING, "hardware", "LM-head precision", "auto|bf16|int8|int4|auto-fast", 0, 0, 0 },
-    { "no-calibrate",    PZ_CFG_BOOL,   "hardware", "Never run or use the hardware calibration (reproducible benchmarks)", NULL, 0, 0, 0 },
-    { "act-quant",       PZ_CFG_STRING, "hardware", "Activation numerics of ternary matmuls", "auto|int8|float", 0, 0, 0 },
-    { "quality-tolerance", PZ_CFG_FLOAT, "hardware", "Largest perplexity increase (%) a fast setting may cost; 0 = no bar", NULL, 0, 100, 0 },
-    { "self-check-tokens", PZ_CFG_INT,  "hardware", "Length of the accuracy probe in tokens", NULL, 16, 4096, 0 },
+    {"threads", PZ_CFG_INT, "hardware", "Worker threads (0 = auto)", NULL, 0, 1024, 0},
+    {"simd", PZ_CFG_STRING, "hardware", "SIMD backend", "auto|avx2|avx512f|vnni|scalar", 0, 0, 0},
+    {"classifier", PZ_CFG_STRING, "hardware", "LM-head precision", "auto|bf16|int8|int4|auto-fast",
+     0, 0, 0},
+    {"no-calibrate", PZ_CFG_BOOL, "hardware",
+     "Never run or use the hardware calibration (reproducible benchmarks)", NULL, 0, 0, 0},
+    {"act-quant", PZ_CFG_STRING, "hardware", "Activation numerics of ternary matmuls",
+     "auto|int8|float", 0, 0, 0},
+    {"quality-tolerance", PZ_CFG_FLOAT, "hardware",
+     "Largest perplexity increase (%) a fast setting may cost; 0 = no bar", NULL, 0, 100, 0},
+    {"self-check-tokens", PZ_CFG_INT, "hardware", "Length of the accuracy probe in tokens", NULL,
+     16, 4096, 0},
     /* memory / context */
-    { "ctx-size",        PZ_CFG_INT,    "memory", "Context length in tokens (0 = sized from RAM)", NULL, 0, 16777216, 0 },
-    { "kv-type",         PZ_CFG_STRING, "memory", "KV cache storage", "f32|i8|i4", 0, 0, 0 },
-    { "kv-ram-fraction", PZ_CFG_FLOAT,  "memory", "Share of free RAM the KV cache may use (0 = default)", NULL, 0, 1, 0 },
-    { "kv-offload",      PZ_CFG_STRING, "memory", "Directory for a disk-backed KV cache", NULL, 0, 0, 0 },
-    { "prompt-cache-mb", PZ_CFG_INT,    "memory", "Prompt snapshot cache budget in MiB", NULL, 0, 1048576, 0 },
+    {"ctx-size", PZ_CFG_INT, "memory", "Context length in tokens (0 = sized from RAM)", NULL, 0,
+     16777216, 0},
+    {"kv-type", PZ_CFG_STRING, "memory", "KV cache storage", "f32|i8|i4", 0, 0, 0},
+    {"kv-ram-fraction", PZ_CFG_FLOAT, "memory",
+     "Share of free RAM the KV cache may use (0 = default)", NULL, 0, 1, 0},
+    {"kv-offload", PZ_CFG_STRING, "memory", "Directory for a disk-backed KV cache", NULL, 0, 0, 0},
+    {"prompt-cache-mb", PZ_CFG_INT, "memory", "Prompt snapshot cache budget in MiB", NULL, 0,
+     1048576, 0},
     /* generation defaults */
-    { "max-tokens",      PZ_CFG_INT,    "generation", "Default tokens to generate", NULL, 1, 16777216, 0 },
-    { "temperature",     PZ_CFG_FLOAT,  "generation", "Sampling temperature", NULL, 0, 10, 0 },
-    { "top-p",           PZ_CFG_FLOAT,  "generation", "Nucleus sampling threshold", NULL, 0, 1, 0 },
-    { "top-k",           PZ_CFG_INT,    "generation", "Top-k sampling (0 = off)", NULL, 0, 1000000, 0 },
-    { "min-p",           PZ_CFG_FLOAT,  "generation", "Min-p sampling threshold", NULL, 0, 1, 0 },
-    { "repeat-penalty",  PZ_CFG_FLOAT,  "generation", "Repetition penalty (1 = off)", NULL, 0, 10, 0 },
-    { "presence-penalty", PZ_CFG_FLOAT, "generation", "Presence penalty", NULL, -10, 10, 0 },
-    { "frequency-penalty", PZ_CFG_FLOAT,"generation", "Frequency penalty", NULL, -10, 10, 0 },
-    { "repeat-last-n",   PZ_CFG_INT,    "generation", "Tokens considered by the penalties (-1 = all)", NULL, -1, 1048576, 0 },
-    { "seed",            PZ_CFG_INT,    "generation", "Sampling seed (-1 = random)", NULL, -1, 9.2e18, 0 },
-    { "system-prompt",   PZ_CFG_STRING, "generation", "Default system prompt", NULL, 0, 0, 0 },
-    { "stop",            PZ_CFG_LIST,   "generation", "Stop sequences", NULL, 0, 0, 0 },
-    { "color",           PZ_CFG_STRING, "generation", "Terminal colour", "auto|always|never", 0, 0, 0 },
+    {"max-tokens", PZ_CFG_INT, "generation", "Default tokens to generate", NULL, 1, 16777216, 0},
+    {"temperature", PZ_CFG_FLOAT, "generation", "Sampling temperature", NULL, 0, 10, 0},
+    {"top-p", PZ_CFG_FLOAT, "generation", "Nucleus sampling threshold", NULL, 0, 1, 0},
+    {"top-k", PZ_CFG_INT, "generation", "Top-k sampling (0 = off)", NULL, 0, 1000000, 0},
+    {"min-p", PZ_CFG_FLOAT, "generation", "Min-p sampling threshold", NULL, 0, 1, 0},
+    {"repeat-penalty", PZ_CFG_FLOAT, "generation", "Repetition penalty (1 = off)", NULL, 0, 10, 0},
+    {"presence-penalty", PZ_CFG_FLOAT, "generation", "Presence penalty", NULL, -10, 10, 0},
+    {"frequency-penalty", PZ_CFG_FLOAT, "generation", "Frequency penalty", NULL, -10, 10, 0},
+    {"repeat-last-n", PZ_CFG_INT, "generation", "Tokens considered by the penalties (-1 = all)",
+     NULL, -1, 1048576, 0},
+    {"seed", PZ_CFG_INT, "generation", "Sampling seed (-1 = random)", NULL, -1, 9.2e18, 0},
+    {"system-prompt", PZ_CFG_STRING, "generation", "Default system prompt", NULL, 0, 0, 0},
+    {"stop", PZ_CFG_LIST, "generation", "Stop sequences", NULL, 0, 0, 0},
+    {"color", PZ_CFG_STRING, "generation", "Terminal colour", "auto|always|never", 0, 0, 0},
     /* server */
-    { "port",            PZ_CFG_INT,    "server", "HTTP port for --server", NULL, 1, 65535, 0 },
-    { "web-ui",          PZ_CFG_STRING, "server", "Web chat UI", "auto|on|off", 0, 0, 0 },
-    { "ui-title",        PZ_CFG_STRING, "server", "Web UI title (also renders the wordmark)", NULL, 0, 0, 0 },
-    { "cors",            PZ_CFG_BOOL,   "server", "Allow cross-origin requests", NULL, 0, 0, 0 },
-    { "cors-origin",     PZ_CFG_LIST,   "server", "Allowed CORS origins", NULL, 0, 0, 0 },
-    { "api-key",         PZ_CFG_STRING, "server", "Require this bearer token", NULL, 0, 0, 1 },
-    { "metrics",         PZ_CFG_BOOL,   "server", "Expose /metrics", NULL, 0, 0, 0 },
-    { "queue-size",      PZ_CFG_INT,    "server", "Requests that may wait for the generation slot", NULL, 0, 1048576, 0 },
-    { "queue-timeout",   PZ_CFG_INT,    "server", "Seconds a queued request waits", NULL, 0, 86400, 0 },
-    { "rate-limit",      PZ_CFG_INT,    "server", "Requests/second on the non-generation routes (0 = off)", NULL, 0, 100000, 0 },
-    { "client-timeout",  PZ_CFG_INT,    "server", "Seconds a silent client may hold a connection (0 = never)", NULL, 0, 86400, 0 },
-    { "max-connections", PZ_CFG_INT,    "server", "Open client connections at once; more get 503 (0 = unlimited)", NULL, 0, 1048576, 0 },
-    { "parallel",        PZ_CFG_INT,    "server", "Chat requests served at once (1 = one at a time)", NULL, 1, PZ_PARALLEL_MAX, 0 },
-    { "parallel-batch",  PZ_CFG_INT,    "server", "Tokens per batched forward pass with --parallel", NULL, 1, PZ_PARALLEL_BATCH_MAX, 0 },
-    { "max-tokens-limit", PZ_CFG_INT,   "server", "Per-request max_tokens cap (0 = context)", NULL, 0, 16777216, 0 },
-    { "best-of-max",     PZ_CFG_INT,    "server", "Largest best_of a request may ask for", NULL, 1, BEST_OF_N_MAX, 0 },
-    { "no-config-write", PZ_CFG_BOOL,   "server", "Web UI may not save server defaults to this file", NULL, 0, 0, 0 },
-    { "mcts-max",        PZ_CFG_INT,    "server", "Largest tree-search budget a request may ask for", NULL, 0, 1048576, 0 },
+    {"port", PZ_CFG_INT, "server", "HTTP port for --server", NULL, 1, 65535, 0},
+    {"web-ui", PZ_CFG_STRING, "server", "Web chat UI", "auto|on|off", 0, 0, 0},
+    {"ui-title", PZ_CFG_STRING, "server", "Web UI title (also renders the wordmark)", NULL, 0, 0,
+     0},
+    {"cors", PZ_CFG_BOOL, "server", "Allow cross-origin requests", NULL, 0, 0, 0},
+    {"cors-origin", PZ_CFG_LIST, "server", "Allowed CORS origins", NULL, 0, 0, 0},
+    {"api-key", PZ_CFG_STRING, "server", "Require this bearer token", NULL, 0, 0, 1},
+    {"metrics", PZ_CFG_BOOL, "server", "Expose /metrics", NULL, 0, 0, 0},
+    {"queue-size", PZ_CFG_INT, "server", "Requests that may wait for the generation slot", NULL, 0,
+     1048576, 0},
+    {"queue-timeout", PZ_CFG_INT, "server", "Seconds a queued request waits", NULL, 0, 86400, 0},
+    {"rate-limit", PZ_CFG_INT, "server", "Requests/second on the non-generation routes (0 = off)",
+     NULL, 0, 100000, 0},
+    {"client-timeout", PZ_CFG_INT, "server",
+     "Seconds a silent client may hold a connection (0 = never)", NULL, 0, 86400, 0},
+    {"max-connections", PZ_CFG_INT, "server",
+     "Open client connections at once; more get 503 (0 = unlimited)", NULL, 0, 1048576, 0},
+    {"parallel", PZ_CFG_INT, "server", "Chat requests served at once (1 = one at a time)", NULL, 1,
+     PZ_PARALLEL_MAX, 0},
+    {"parallel-batch", PZ_CFG_INT, "server", "Tokens per batched forward pass with --parallel",
+     NULL, 1, PZ_PARALLEL_BATCH_MAX, 0},
+    {"max-tokens-limit", PZ_CFG_INT, "server", "Per-request max_tokens cap (0 = context)", NULL, 0,
+     16777216, 0},
+    {"best-of-max", PZ_CFG_INT, "server", "Largest best_of a request may ask for", NULL, 1,
+     BEST_OF_N_MAX, 0},
+    {"no-config-write", PZ_CFG_BOOL, "server", "Web UI may not save server defaults to this file",
+     NULL, 0, 0, 0},
+    {"mcts-max", PZ_CFG_INT, "server", "Largest tree-search budget a request may ask for", NULL, 0,
+     1048576, 0},
     /* updates */
-    { "no-update-check", PZ_CFG_BOOL,   "updates", "Never check for new releases", NULL, 0, 0, 0 },
-    { "update-channel",  PZ_CFG_STRING, "updates", "Release channel", "auto|stable|prerelease", 0, 0, 0 },
-    { "update-interval", PZ_CFG_INT,    "updates", "Hours between update checks (0 = off)", NULL, 0, 8760, 0 },
+    {"no-update-check", PZ_CFG_BOOL, "updates", "Never check for new releases", NULL, 0, 0, 0},
+    {"update-channel", PZ_CFG_STRING, "updates", "Release channel", "auto|stable|prerelease", 0, 0,
+     0},
+    {"update-interval", PZ_CFG_INT, "updates", "Hours between update checks (0 = off)", NULL, 0,
+     8760, 0},
 };
 
 #define N_SCHEMA ((int)(sizeof(g_schema) / sizeof(g_schema[0])))
 
-const PzCfgKey *pz_config_schema(int *n) { if (n) *n = N_SCHEMA; return g_schema; }
+const PzCfgKey *pz_config_schema(int *n) {
+    if (n) *n = N_SCHEMA;
+    return g_schema;
+}
 
 const PzCfgKey *pz_config_find_key(const char *key) {
     if (!key) return NULL;
@@ -99,18 +126,25 @@ const PzCfgKey *pz_config_find_key(const char *key) {
 int pz_config_path(char *buf, size_t n) {
     const char *d;
     int w;
-    if ((d = getenv("PZ_CONFIG")) && *d) w = snprintf(buf, n, "%s", d);
-    else if ((d = getenv("XDG_CONFIG_HOME")) && *d) w = snprintf(buf, n, "%s/project-zero/config.toml", d);
-    else if ((d = getenv("HOME")) && *d) w = snprintf(buf, n, "%s/.config/project-zero/config.toml", d);
-    else return -1;
+    if ((d = getenv("PZ_CONFIG")) && *d)
+        w = snprintf(buf, n, "%s", d);
+    else if ((d = getenv("XDG_CONFIG_HOME")) && *d)
+        w = snprintf(buf, n, "%s/project-zero/config.toml", d);
+    else if ((d = getenv("HOME")) && *d)
+        w = snprintf(buf, n, "%s/.config/project-zero/config.toml", d);
+    else
+        return -1;
     return (w < 0 || (size_t)w >= n) ? -1 : 0;
 }
 
 /* ── entries ──────────────────────────────────────────────────────────── */
 
 static void entry_clear(PzCfgEntry *e) {
-    for (int i = 0; i < e->n; i++) { free(e->v[i]); e->v[i] = NULL; }
-    e->n = 0;
+    for (int i = 0; i < e->n; i++) {
+        free(e->v[i]);
+        e->v[i] = NULL;
+    }
+    e->n   = 0;
     e->set = 0;
     e->src = PZ_SRC_DEFAULT;
 }
@@ -118,7 +152,10 @@ static void entry_clear(PzCfgEntry *e) {
 int pz_config_init(PzConfig *c) {
     if (!c) return -1;
     c->entries = (PzCfgEntry *)calloc((size_t)N_SCHEMA, sizeof(PzCfgEntry));
-    if (!c->entries) { c->n = 0; return -1; }
+    if (!c->entries) {
+        c->n = 0;
+        return -1;
+    }
     c->n = N_SCHEMA;
     for (int i = 0; i < N_SCHEMA; i++) c->entries[i].key = &g_schema[i];
     return 0;
@@ -129,7 +166,7 @@ void pz_config_free(PzConfig *c) {
     for (int i = 0; i < c->n; i++) entry_clear(&c->entries[i]);
     free(c->entries);
     c->entries = NULL;
-    c->n = 0;
+    c->n       = 0;
 }
 
 static PzCfgEntry *entry_for(PzConfig *c, const char *key) {
@@ -145,16 +182,22 @@ const PzCfgEntry *pz_config_get(const PzConfig *c, const char *key) {
 }
 
 int pz_config_validate(const PzCfgKey *k, const char *value, char *err, size_t errn) {
-    if (!k || !value) { snprintf(err, errn, "missing value"); return -1; }
-    if (strlen(value) >= PZ_CFG_MAX_VALUE) { snprintf(err, errn, "%s: value too long", k->key); return -1; }
+    if (!k || !value) {
+        snprintf(err, errn, "missing value");
+        return -1;
+    }
+    if (strlen(value) >= PZ_CFG_MAX_VALUE) {
+        snprintf(err, errn, "%s: value too long", k->key);
+        return -1;
+    }
     if (strchr(value, '\n') && k->type != PZ_CFG_STRING && k->type != PZ_CFG_LIST) {
         snprintf(err, errn, "%s: value may not contain a newline", k->key);
         return -1;
     }
     if (k->type == PZ_CFG_INT || k->type == PZ_CFG_FLOAT) {
         char *end = NULL;
-        errno = 0;
-        double d = k->type == PZ_CFG_INT ? (double)strtoll(value, &end, 10) : strtod(value, &end);
+        errno     = 0;
+        double d  = k->type == PZ_CFG_INT ? (double)strtoll(value, &end, 10) : strtod(value, &end);
         if (end == value || *end != '\0' || errno == ERANGE || !isfinite(d)) {
             snprintf(err, errn, "%s: expected %s, got \"%s\"", k->key,
                      k->type == PZ_CFG_INT ? "an integer" : "a number", value);
@@ -174,7 +217,7 @@ int pz_config_validate(const PzCfgKey *k, const char *value, char *err, size_t e
         size_t vl = strlen(value);
         for (const char *p = k->choices; *p;) {
             const char *bar = strchr(p, '|');
-            size_t l = bar ? (size_t)(bar - p) : strlen(p);
+            size_t l        = bar ? (size_t)(bar - p) : strlen(p);
             if (l == vl && strncmp(p, value, l) == 0) return 0;
             if (!bar) break;
             p = bar + 1;
@@ -185,20 +228,33 @@ int pz_config_validate(const PzCfgKey *k, const char *value, char *err, size_t e
     return 0;
 }
 
-static int store(PzConfig *c, const char *key, const char *value, int append, char *err, size_t errn) {
+static int store(PzConfig *c, const char *key, const char *value, int append, char *err,
+                 size_t errn) {
     const PzCfgKey *k = pz_config_find_key(key);
-    if (!k) { snprintf(err, errn, "unknown setting \"%s\" (see `pz config list --all`)", key); return -1; }
+    if (!k) {
+        snprintf(err, errn, "unknown setting \"%s\" (see `pz config list --all`)", key);
+        return -1;
+    }
     if (pz_config_validate(k, value, err, errn) != 0) return -1;
     PzCfgEntry *e = entry_for(c, key);
-    if (!e) { snprintf(err, errn, "config not initialised"); return -1; }
+    if (!e) {
+        snprintf(err, errn, "config not initialised");
+        return -1;
+    }
     if (!(append && k->type == PZ_CFG_LIST)) entry_clear(e);
-    if (e->n >= PZ_CFG_MAX_ITEMS) { snprintf(err, errn, "%s: at most %d items", key, PZ_CFG_MAX_ITEMS); return -1; }
+    if (e->n >= PZ_CFG_MAX_ITEMS) {
+        snprintf(err, errn, "%s: at most %d items", key, PZ_CFG_MAX_ITEMS);
+        return -1;
+    }
     char *dup = (char *)malloc(strlen(value) + 1);
-    if (!dup) { snprintf(err, errn, "out of memory"); return -1; }
+    if (!dup) {
+        snprintf(err, errn, "out of memory");
+        return -1;
+    }
     strcpy(dup, value);
     e->v[e->n++] = dup;
-    e->set = 1;
-    e->src = PZ_SRC_FILE;   /* set/add/parse hold file values; apply_env re-marks */
+    e->set       = 1;
+    e->src       = PZ_SRC_FILE; /* set/add/parse hold file values; apply_env re-marks */
     return 0;
 }
 
@@ -229,17 +285,26 @@ static void warnf(void (*warn)(const char *), int line, const char *what) {
 /* Parses a TOML basic string at *p (after the opening quote) into out. */
 static int parse_string(const char **pp, char *out, size_t outn) {
     const char *p = *pp;
-    size_t o = 0;
+    size_t o      = 0;
     while (*p && *p != '"') {
         char ch = *p++;
         if (ch == '\\') {
             char e = *p++;
             switch (e) {
-            case 'n': ch = '\n'; break;
-            case 't': ch = '\t'; break;
-            case '"': ch = '"'; break;
-            case '\\': ch = '\\'; break;
-            default: return -1;
+                case 'n':
+                    ch = '\n';
+                    break;
+                case 't':
+                    ch = '\t';
+                    break;
+                case '"':
+                    ch = '"';
+                    break;
+                case '\\':
+                    ch = '\\';
+                    break;
+                default:
+                    return -1;
             }
         }
         if (o + 1 >= outn) return -1;
@@ -247,7 +312,7 @@ static int parse_string(const char **pp, char *out, size_t outn) {
     }
     if (*p != '"') return -1;
     out[o] = '\0';
-    *pp = p + 1;
+    *pp    = p + 1;
     return 0;
 }
 
@@ -270,7 +335,10 @@ static int parse_scalar(const char **pp, char *out, size_t outn) {
     return 0;
 }
 
-static const char *skip_ws(const char *p) { while (*p == ' ' || *p == '\t') p++; return p; }
+static const char *skip_ws(const char *p) {
+    while (*p == ' ' || *p == '\t') p++;
+    return p;
+}
 
 int pz_config_parse(PzConfig *c, const char *text, void (*warn)(const char *)) {
     if (!c || !text) return 0;
@@ -280,8 +348,8 @@ int pz_config_parse(PzConfig *c, const char *text, void (*warn)(const char *)) {
     const char *p = text;
     while (*p) {
         const char *eol = strchr(p, '\n');
-        size_t len = eol ? (size_t)(eol - p) : strlen(p);
-        char *line = (char *)malloc(len + 1);
+        size_t len      = eol ? (size_t)(eol - p) : strlen(p);
+        char *line      = (char *)malloc(len + 1);
         if (!line) break;
         memcpy(line, p, len);
         line[len] = '\0';
@@ -290,17 +358,29 @@ int pz_config_parse(PzConfig *c, const char *text, void (*warn)(const char *)) {
         lineno++;
 
         const char *q = skip_ws(line);
-        if (*q == '\0' || *q == '#') { free(line); continue; }
-        if (*q == '[') { warnf(warn, lineno, "tables are not supported; keys are flat"); free(line); continue; }
+        if (*q == '\0' || *q == '#') {
+            free(line);
+            continue;
+        }
+        if (*q == '[') {
+            warnf(warn, lineno, "tables are not supported; keys are flat");
+            free(line);
+            continue;
+        }
         char key[64];
         size_t kl = 0;
         while (*q && (isalnum((unsigned char)*q) || *q == '-' || *q == '_') && kl + 1 < sizeof(key))
             key[kl++] = *q++;
         key[kl] = '\0';
-        for (size_t i = 0; i < kl; i++) if (key[i] == '_') key[i] = '-';
+        for (size_t i = 0; i < kl; i++)
+            if (key[i] == '_') key[i] = '-';
         q = skip_ws(q);
-        if (kl == 0 || *q != '=') { warnf(warn, lineno, "expected key = value"); free(line); continue; }
-        q = skip_ws(q + 1);
+        if (kl == 0 || *q != '=') {
+            warnf(warn, lineno, "expected key = value");
+            free(line);
+            continue;
+        }
+        q                 = skip_ws(q + 1);
         const PzCfgKey *k = pz_config_find_key(key);
         if (!k) {
             char m[128];
@@ -312,28 +392,44 @@ int pz_config_parse(PzConfig *c, const char *text, void (*warn)(const char *)) {
         char err[256];
         int ok = 1;
         if (*q == '[') {
-            if (k->type != PZ_CFG_LIST) { warnf(warn, lineno, "a list is only valid for list settings"); free(line); continue; }
+            if (k->type != PZ_CFG_LIST) {
+                warnf(warn, lineno, "a list is only valid for list settings");
+                free(line);
+                continue;
+            }
             pz_config_unset(c, key);
             q = skip_ws(q + 1);
             while (ok && *q && *q != ']') {
-                if (parse_scalar(&q, val, PZ_CFG_MAX_VALUE) != 0 || pz_config_add(c, key, val, err, sizeof(err)) != 0) ok = 0;
+                if (parse_scalar(&q, val, PZ_CFG_MAX_VALUE) != 0 ||
+                    pz_config_add(c, key, val, err, sizeof(err)) != 0)
+                    ok = 0;
                 q = skip_ws(q);
                 if (*q == ',') q = skip_ws(q + 1);
             }
             if (ok && *q != ']') ok = 0;
             if (ok) q = skip_ws(q + 1);
         } else {
-            if (parse_scalar(&q, val, PZ_CFG_MAX_VALUE) != 0) ok = 0;
+            if (parse_scalar(&q, val, PZ_CFG_MAX_VALUE) != 0)
+                ok = 0;
             else {
                 q = skip_ws(q);
-                if (k->type == PZ_CFG_LIST) ok = pz_config_set(c, key, val, err, sizeof(err)) == 0;
-                else ok = pz_config_set(c, key, val, err, sizeof(err)) == 0;
-                if (!ok) { warnf(warn, lineno, err); free(line); continue; }
+                if (k->type == PZ_CFG_LIST)
+                    ok = pz_config_set(c, key, val, err, sizeof(err)) == 0;
+                else
+                    ok = pz_config_set(c, key, val, err, sizeof(err)) == 0;
+                if (!ok) {
+                    warnf(warn, lineno, err);
+                    free(line);
+                    continue;
+                }
             }
         }
         if (ok && *q != '\0' && *q != '#') ok = 0;
-        if (!ok) { warnf(warn, lineno, "malformed value"); pz_config_unset(c, key); }
-        else loaded++;
+        if (!ok) {
+            warnf(warn, lineno, "malformed value");
+            pz_config_unset(c, key);
+        } else
+            loaded++;
         free(line);
     }
     free(val);
@@ -346,21 +442,32 @@ int pz_config_load(PzConfig *c, const char *path, void (*warn)(const char *)) {
     if (!f) return errno == ENOENT ? 0 : -1;
     size_t cap = 4096, len = 0;
     char *buf = (char *)malloc(cap);
-    if (!buf) { fclose(f); return -1; }
+    if (!buf) {
+        fclose(f);
+        return -1;
+    }
     size_t r;
     while ((r = fread(buf + len, 1, cap - len - 1, f)) > 0) {
         len += r;
         if (len + 1 >= cap) {
-            if (cap >= ((size_t)4 << 20)) { free(buf); fclose(f); return -1; } /* 4 MiB sanity cap */
+            if (cap >= ((size_t)4 << 20)) {
+                free(buf);
+                fclose(f);
+                return -1;
+            } /* 4 MiB sanity cap */
             char *nb = (char *)realloc(buf, cap * 2);
-            if (!nb) { free(buf); fclose(f); return -1; }
+            if (!nb) {
+                free(buf);
+                fclose(f);
+                return -1;
+            }
             buf = nb;
             cap *= 2;
         }
     }
     fclose(f);
     buf[len] = '\0';
-    int n = pz_config_parse(c, buf, warn);
+    int n    = pz_config_parse(c, buf, warn);
     free(buf);
     return n;
 }
@@ -384,24 +491,33 @@ static int append(char **buf, size_t *len, size_t *cap, const char *s) {
 
 static int append_quoted(char **buf, size_t *len, size_t *cap, const char *v) {
     if (append(buf, len, cap, "\"")) return -1;
-    char t[3] = { 0, 0, 0 };
+    char t[3] = {0, 0, 0};
     for (const char *p = v; *p; p++) {
         const char *s = NULL;
-        if (*p == '"') s = "\\\"";
-        else if (*p == '\\') s = "\\\\";
-        else if (*p == '\n') s = "\\n";
-        else if (*p == '\t') s = "\\t";
-        else { t[0] = *p; t[1] = 0; s = t; }
+        if (*p == '"')
+            s = "\\\"";
+        else if (*p == '\\')
+            s = "\\\\";
+        else if (*p == '\n')
+            s = "\\n";
+        else if (*p == '\t')
+            s = "\\t";
+        else {
+            t[0] = *p;
+            t[1] = 0;
+            s    = t;
+        }
         if (append(buf, len, cap, s)) return -1;
     }
     return append(buf, len, cap, "\"");
 }
 
 char *pz_config_format(const PzConfig *c) {
-    char *buf = NULL;
+    char *buf  = NULL;
     size_t len = 0, cap = 0;
-    if (append(&buf, &len, &cap, "# Project Zero configuration — edit with `pz config` or by hand.\n"
-                                  "# Precedence: command-line flag > PZ_* environment > this file > default.\n")) {
+    if (append(&buf, &len, &cap,
+               "# Project Zero configuration — edit with `pz config` or by hand.\n"
+               "# Precedence: command-line flag > PZ_* environment > this file > default.\n")) {
         free(buf);
         return NULL;
     }
@@ -411,7 +527,9 @@ char *pz_config_format(const PzConfig *c) {
         if (!e->set) continue;
         if (!group || strcmp(group, e->key->group) != 0) {
             group = e->key->group;
-            if (append(&buf, &len, &cap, "\n# ") || append(&buf, &len, &cap, group) || append(&buf, &len, &cap, "\n")) goto fail;
+            if (append(&buf, &len, &cap, "\n# ") || append(&buf, &len, &cap, group) ||
+                append(&buf, &len, &cap, "\n"))
+                goto fail;
         }
         if (append(&buf, &len, &cap, e->key->key) || append(&buf, &len, &cap, " = ")) goto fail;
         PzCfgType t = e->key->type;
@@ -424,7 +542,8 @@ char *pz_config_format(const PzConfig *c) {
             if (append(&buf, &len, &cap, "]")) goto fail;
         } else if (t == PZ_CFG_STRING) {
             if (append_quoted(&buf, &len, &cap, e->v[0])) goto fail;
-        } else if (append(&buf, &len, &cap, e->v[0])) goto fail;
+        } else if (append(&buf, &len, &cap, e->v[0]))
+            goto fail;
         if (append(&buf, &len, &cap, "\n")) goto fail;
     }
     return buf;
@@ -439,11 +558,17 @@ static void fsync_parent_dir(const char *path) {
     char dir[1100];
     snprintf(dir, sizeof(dir), "%s", path);
     char *slash = strrchr(dir, '/');
-    if (!slash) snprintf(dir, sizeof(dir), ".");
-    else if (slash == dir) dir[1] = '\0';
-    else *slash = '\0';
+    if (!slash)
+        snprintf(dir, sizeof(dir), ".");
+    else if (slash == dir)
+        dir[1] = '\0';
+    else
+        *slash = '\0';
     int dfd = open(dir, O_RDONLY);
-    if (dfd >= 0) { (void)fsync(dfd); close(dfd); }
+    if (dfd >= 0) {
+        (void)fsync(dfd);
+        close(dfd);
+    }
 }
 #endif
 
@@ -464,21 +589,35 @@ int pz_config_save(const PzConfig *c, const char *path) {
      * never an empty one. */
     (void)unlink(tmp);
     int fd = open(tmp, O_WRONLY | O_CREAT | O_EXCL, 0600);
-    if (fd < 0) { free(text); return -1; }
+    if (fd < 0) {
+        free(text);
+        return -1;
+    }
     FILE *f = fdopen(fd, "wb");
-    if (!f) { close(fd); remove(tmp); free(text); return -1; }
+    if (!f) {
+        close(fd);
+        remove(tmp);
+        free(text);
+        return -1;
+    }
     int ok = fputs(text, f) >= 0;
-    ok = (fflush(f) == 0) && ok;
-    ok = (fsync(fd) == 0) && ok;
-    ok = (fclose(f) == 0) && ok;
+    ok     = (fflush(f) == 0) && ok;
+    ok     = (fsync(fd) == 0) && ok;
+    ok     = (fclose(f) == 0) && ok;
 #else
     FILE *f = fopen(tmp, "wb");
-    if (!f) { free(text); return -1; }
+    if (!f) {
+        free(text);
+        return -1;
+    }
     int ok = fputs(text, f) >= 0;
-    ok = (fclose(f) == 0) && ok;
+    ok     = (fclose(f) == 0) && ok;
 #endif
     free(text);
-    if (!ok || rename(tmp, path) != 0) { remove(tmp); return -1; }
+    if (!ok || rename(tmp, path) != 0) {
+        remove(tmp);
+        return -1;
+    }
 #if TN_POSIX
     fsync_parent_dir(path);
 #endif
@@ -505,8 +644,7 @@ int pz_config_apply_env(PzConfig *c, void (*warn)(const char *)) {
         if (pz_config_set(c, c->entries[i].key->key, v, err, sizeof(err)) == 0) {
             c->entries[i].src = PZ_SRC_ENV;
             applied++;
-        }
-        else if (warn) {
+        } else if (warn) {
             char m[400];
             snprintf(m, sizeof(m), "%s ignored: %s", name, err);
             warn(m);
@@ -523,12 +661,14 @@ int pz_config_merge_argv(const PzConfig *c, int argc, char **argv, char ***out_a
     for (int i = 0; c && i < c->n; i++) {
         const PzCfgEntry *e = &c->entries[i];
         if (!e->set) continue;
-        if (e->key->type == PZ_CFG_BOOL) extra += strcmp(e->v[0], "true") == 0;
-        else extra += 2 * e->n;
+        if (e->key->type == PZ_CFG_BOOL)
+            extra += strcmp(e->v[0], "true") == 0;
+        else
+            extra += 2 * e->n;
     }
     char **av = (char **)malloc(((size_t)argc + (size_t)extra + 1) * sizeof(char *));
     if (!av) return -1;
-    int k = 0;
+    int k   = 0;
     av[k++] = argv[0];
     for (int i = 0; c && i < c->n; i++) {
         const PzCfgEntry *e = &c->entries[i];
@@ -538,10 +678,13 @@ int pz_config_merge_argv(const PzConfig *c, int argc, char **argv, char ***out_a
             if (strcmp(e->v[0], "true") == 0) av[k++] = flags[i];
             continue;
         }
-        for (int j = 0; j < e->n; j++) { av[k++] = flags[i]; av[k++] = e->v[j]; }
+        for (int j = 0; j < e->n; j++) {
+            av[k++] = flags[i];
+            av[k++] = e->v[j];
+        }
     }
     for (int i = 1; i < argc; i++) av[k++] = argv[i];
-    av[k] = NULL;
+    av[k]     = NULL;
     *out_argv = av;
     return k;
 }
@@ -550,10 +693,14 @@ int pz_config_merge_argv(const PzConfig *c, int argc, char **argv, char ***out_a
 
 const char *pz_config_source_name(int src) {
     switch (src) {
-    case PZ_SRC_FILE: return "file";
-    case PZ_SRC_ENV:  return "env";
-    case PZ_SRC_CLI:  return "cli";
-    default:          return "default";
+        case PZ_SRC_FILE:
+            return "file";
+        case PZ_SRC_ENV:
+            return "env";
+        case PZ_SRC_CLI:
+            return "cli";
+        default:
+            return "default";
     }
 }
 
@@ -563,7 +710,10 @@ int pz_config_mark_cli(PzConfig *c, int argc, char **argv) {
         /* parse_args only takes the "--key value" form. */
         if (!argv[i] || strncmp(argv[i], "--", 2) != 0) continue;
         PzCfgEntry *e = entry_for(c, argv[i] + 2);
-        if (e && e->src != PZ_SRC_CLI) { e->src = PZ_SRC_CLI; marked++; }
+        if (e && e->src != PZ_SRC_CLI) {
+            e->src = PZ_SRC_CLI;
+            marked++;
+        }
     }
     return marked;
 }
@@ -573,7 +723,7 @@ static char g_active_path[1024];
 static int g_active_file_used;
 
 void pz_config_publish(const PzConfig *c, const char *path, int file_used) {
-    g_active = c;
+    g_active           = c;
     g_active_file_used = c ? file_used : 0;
     snprintf(g_active_path, sizeof(g_active_path), "%s", (c && path) ? path : "");
 }
@@ -588,4 +738,6 @@ const char *pz_config_active_path(void) {
     return g_active_path[0] ? g_active_path : NULL;
 }
 
-int pz_config_active_file_used(void) { return g_active_file_used; }
+int pz_config_active_file_used(void) {
+    return g_active_file_used;
+}

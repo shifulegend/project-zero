@@ -1,3 +1,5 @@
+.clang-format
+.clang-format-ignore
 .editorconfig
 .gitattributes
 .gitignore

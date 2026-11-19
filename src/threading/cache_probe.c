@@ -13,14 +13,18 @@ long long tn_cache_parse_size(const char *s) {
     if (!s) return -1;
     while (isspace((unsigned char)*s)) s++;
     if (!isdigit((unsigned char)*s)) return -1;
-    char *end = NULL;
+    char *end   = NULL;
     long long v = strtoll(s, &end, 10);
     if (v < 0) return -1;
     while (end && isspace((unsigned char)*end)) end++;
-    if (end && (*end == 'K' || *end == 'k')) v *= 1024LL;
-    else if (end && (*end == 'M' || *end == 'm')) v *= 1024LL * 1024LL;
-    else if (end && (*end == 'G' || *end == 'g')) v *= 1024LL * 1024LL * 1024LL;
-    else if (end && *end && !isspace((unsigned char)*end)) return -1;
+    if (end && (*end == 'K' || *end == 'k'))
+        v *= 1024LL;
+    else if (end && (*end == 'M' || *end == 'm'))
+        v *= 1024LL * 1024LL;
+    else if (end && (*end == 'G' || *end == 'g'))
+        v *= 1024LL * 1024LL * 1024LL;
+    else if (end && *end && !isspace((unsigned char)*end))
+        return -1;
     return v;
 }
 
@@ -47,10 +51,14 @@ static int probe_sysfs(CacheInfo *ci) {
         if (bytes <= 0) continue;
         int lv = atoi(level);
         if (strcmp(type, "Instruction") == 0) continue;
-        if (lv == 1) ci->l1d_bytes = (int)bytes;
-        else if (lv == 2) ci->l2_bytes = (int)bytes;
-        else if (lv == 3) ci->l3_bytes = bytes;
-        snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu0/cache/index%d/coherency_line_size", idx);
+        if (lv == 1)
+            ci->l1d_bytes = (int)bytes;
+        else if (lv == 2)
+            ci->l2_bytes = (int)bytes;
+        else if (lv == 3)
+            ci->l3_bytes = bytes;
+        snprintf(path, sizeof(path),
+                 "/sys/devices/system/cpu/cpu0/cache/index%d/coherency_line_size", idx);
         if (read_line(path, line, sizeof(line)) && atoi(line) > 0) ci->line_bytes = atoi(line);
         found = 1;
     }
@@ -63,18 +71,21 @@ static int probe_cpuid(CacheInfo *ci) {
     int found = 0;
     for (unsigned sub = 0; sub < 8; sub++) {
         if (!__get_cpuid_count(4, sub, &eax, &ebx, &ecx, &edx)) break;
-        unsigned type = eax & 0x1f;          /* 0 = no more caches, 2 = instruction */
+        unsigned type = eax & 0x1f; /* 0 = no more caches, 2 = instruction */
         if (type == 0) break;
         if (type == 2) continue;
         unsigned level = (eax >> 5) & 0x7;
         long long ways = ((ebx >> 22) & 0x3ff) + 1, parts = ((ebx >> 12) & 0x3ff) + 1;
         long long line = (ebx & 0xfff) + 1, sets = (long long)ecx + 1;
         long long bytes = ways * parts * line * sets;
-        if (level == 1) ci->l1d_bytes = (int)bytes;
-        else if (level == 2) ci->l2_bytes = (int)bytes;
-        else if (level == 3) ci->l3_bytes = bytes;
+        if (level == 1)
+            ci->l1d_bytes = (int)bytes;
+        else if (level == 2)
+            ci->l2_bytes = (int)bytes;
+        else if (level == 3)
+            ci->l3_bytes = bytes;
         ci->line_bytes = (int)line;
-        found = 1;
+        found          = 1;
     }
     return found && ci->l1d_bytes > 0;
 #else
@@ -91,7 +102,8 @@ const CacheInfo *tn_cache_info(void) {
     CacheInfo ci;
     memset(&ci, 0, sizeof(ci));
     ci.line_bytes = CACHE_PROBE_FALLBACK_LINE;
-    if (probe_sysfs(&ci)) ci.source = 1;
+    if (probe_sysfs(&ci))
+        ci.source = 1;
     else {
         memset(&ci, 0, sizeof(ci));
         ci.line_bytes = CACHE_PROBE_FALLBACK_LINE;
@@ -99,7 +111,7 @@ const CacheInfo *tn_cache_info(void) {
     }
     if (ci.l1d_bytes <= 0) ci.l1d_bytes = CACHE_PROBE_FALLBACK_L1D;
     if (ci.l2_bytes <= 0) ci.l2_bytes = CACHE_PROBE_FALLBACK_L2;
-    g_cache = ci;
+    g_cache       = ci;
     g_cache_ready = 1;
     return &g_cache;
 }

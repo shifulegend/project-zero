@@ -19,9 +19,8 @@
  * dim/n_heads — see qwen3moe_attention.c's header comment and
  * qwen3moe_run_state_alloc() for the buffer-sizing rationale.
  */
-void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w,
-                                 const Config *cfg, const MoEConfig *mc,
-                                 int layer, int pos, ThreadPool *tp);
+void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w, const Config *cfg,
+                                const MoEConfig *mc, int layer, int pos, ThreadPool *tp);
 
 /**
  * Phase 18 (speculative decoding): batched multi-token Qwen3-MoE attention.
@@ -35,8 +34,8 @@ void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w,
  * RunState's generic scratch — see this file's header comment).
  */
 TernaryError qwen3moe_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
-                                               const TransformerWeights *w, const Config *cfg,
-                                               const MoEConfig *mc, int layer, int pos,
-                                               int n_tokens, ThreadPool *tp);
+                                              const TransformerWeights *w, const Config *cfg,
+                                              const MoEConfig *mc, int layer, int pos, int n_tokens,
+                                              ThreadPool *tp);
 
 #endif /* TN_QWEN3MOE_ATTENTION_H */

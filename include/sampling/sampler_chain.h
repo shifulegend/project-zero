@@ -23,12 +23,12 @@
 typedef struct {
     float temperature;        /* 0 = greedy */
     float top_p;              /* 1 = disabled */
-    int   top_k;              /* 0 = disabled */
+    int top_k;                /* 0 = disabled */
     float min_p;              /* 0 = disabled; keep tokens with p >= min_p * p_max */
     float repetition_penalty; /* 1 = disabled (CTRL-style divide/multiply) */
     float presence_penalty;   /* 0 = disabled (OpenAI semantics) */
     float frequency_penalty;  /* 0 = disabled (OpenAI semantics) */
-    int   penalty_last_n;     /* window for all penalties; 0 = disabled, -1 = whole history */
+    int penalty_last_n;       /* window for all penalties; 0 = disabled, -1 = whole history */
 } SamplerSettings;
 
 /* Neutral defaults: temperature 1, top_p 1, everything else disabled,
@@ -60,8 +60,7 @@ int sampler_chain_finish(float *logits, int vocab_size, const SamplerSettings *s
 
 /* Full pipeline. `logits` is modified in place. `wm` may be NULL. */
 int sampler_chain_sample(float *logits, int vocab_size, const SamplerSettings *ss,
-                         const int *history, int n_history,
-                         const WatermarkConfig *wm, int prev_token,
-                         unsigned long long *rng_state);
+                         const int *history, int n_history, const WatermarkConfig *wm,
+                         int prev_token, unsigned long long *rng_state);
 
 #endif /* TN_SAMPLER_CHAIN_H */

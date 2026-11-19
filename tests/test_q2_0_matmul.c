@@ -28,10 +28,11 @@
 #define Q2_0_BYTES 34
 
 static uint16_t f32_to_fp16(float f) {
-    uint32_t u; memcpy(&u, &f, 4);
-    uint32_t sign  = (u >> 16) & 0x8000;
-    uint32_t exp   = ((u >> 23) & 0xFF);
-    uint32_t mant  = u & 0x7FFFFF;
+    uint32_t u;
+    memcpy(&u, &f, 4);
+    uint32_t sign = (u >> 16) & 0x8000;
+    uint32_t exp  = ((u >> 23) & 0xFF);
+    uint32_t mant = u & 0x7FFFFF;
     if (exp >= 143) return (uint16_t)(sign | 0x7BFF);
     if (exp <= 102) return (uint16_t)sign;
     return (uint16_t)(sign | ((exp - 112) << 10) | (mant >> 13));
@@ -42,7 +43,7 @@ static uint16_t f32_to_fp16(float f) {
  * (0,1,2 -> -1,0,+1) plus the unused code 3, so the test exercises every
  * decodable value, not just the ones a real ternary-only model would emit. */
 static void make_q2_0_block(uint8_t *blk, int seed) {
-    float scale = 0.01f + (float)(seed % 13) * 0.007f;
+    float scale  = 0.01f + (float)(seed % 13) * 0.007f;
     uint16_t d_h = f32_to_fp16(scale);
     memcpy(blk, &d_h, 2);
     uint8_t *qs = blk + 2;
@@ -51,7 +52,7 @@ static void make_q2_0_block(uint8_t *blk, int seed) {
         int c1 = (i * 5 + seed + 1) & 0x3;
         int c2 = (i * 7 + seed + 2) & 0x3;
         int c3 = (i * 11 + seed + 3) & 0x3;
-        qs[i] = (uint8_t)(c0 | (c1 << 2) | (c2 << 4) | (c3 << 6));
+        qs[i]  = (uint8_t)(c0 | (c1 << 2) | (c2 << 4) | (c3 << 6));
     }
 }
 
@@ -102,16 +103,14 @@ static float ref_dot_q2_0_row(const uint8_t *row, const float *x, int n) {
     float s = 0.0f;
 
     if (matmul_q2_0_uses_vnni()) {
-        int8_t *q_x = (int8_t *)malloc((size_t)n * sizeof(int8_t));
+        int8_t *q_x     = (int8_t *)malloc((size_t)n * sizeof(int8_t));
         float act_scale = quantize_row_to_i8(x, q_x, n);
         if (act_scale > 0.0f) {
-            for (int i = 0; i < n; i++)
-                s += decoded[i] * ((float)q_x[i] * act_scale);
+            for (int i = 0; i < n; i++) s += decoded[i] * ((float)q_x[i] * act_scale);
         }
         free(q_x);
     } else {
-        for (int i = 0; i < n; i++)
-            s += decoded[i] * x[i];
+        for (int i = 0; i < n; i++) s += decoded[i] * x[i];
     }
 
     free(decoded);
@@ -125,19 +124,16 @@ static void run_case(int n, int d, const char *label) {
     size_t row_bytes = (size_t)(n / Q2_0_BLOCK) * Q2_0_BYTES;
 
     uint8_t *w = (uint8_t *)malloc(row_bytes * (size_t)d);
-    float *x = (float *)malloc((size_t)n * sizeof(float));
+    float *x   = (float *)malloc((size_t)n * sizeof(float));
     float *out = (float *)malloc((size_t)d * sizeof(float));
     float *ref = (float *)malloc((size_t)d * sizeof(float));
 
-    for (int i = 0; i < n; i++)
-        x[i] = ((float)((i * 17 + 3) % 23) - 11.0f) * 0.37f;
+    for (int i = 0; i < n; i++) x[i] = ((float)((i * 17 + 3) % 23) - 11.0f) * 0.37f;
 
-    for (int r = 0; r < d; r++)
-        make_q2_0_row(w + (size_t)r * row_bytes, n, r + 1);
+    for (int r = 0; r < d; r++) make_q2_0_row(w + (size_t)r * row_bytes, n, r + 1);
 
     parallel_matmul_q2_0(out, x, w, n, d, NULL);
-    for (int r = 0; r < d; r++)
-        ref[r] = ref_dot_q2_0_row(w + (size_t)r * row_bytes, x, n);
+    for (int r = 0; r < d; r++) ref[r] = ref_dot_q2_0_row(w + (size_t)r * row_bytes, x, n);
 
     for (int r = 0; r < d; r++) {
         char msg[128];
@@ -150,7 +146,10 @@ static void run_case(int n, int d, const char *label) {
         TEST_ASSERT_FLOAT_EQ(out[r], ref[r], tol, msg);
     }
 
-    free(w); free(x); free(out); free(ref);
+    free(w);
+    free(x);
+    free(out);
+    free(ref);
 }
 
 static void test_single_block_single_row(void) {
@@ -180,19 +179,20 @@ static void test_non_multiple_of_128_falls_back(void) {
      * valid row, so this and test_single_block_single_row would be
      * identical test bodies — the real target here is exercising
      * parallel_matmul_q2_0 with a non-block-aligned n end-to-end. */
-    int n = 150; /* not a multiple of 128 */
-    int d = 2;
-    int n_blocks = n / Q2_0_BLOCK; /* 1 full block; matmul_q2_0.c's row_bytes
+    int n            = 150; /* not a multiple of 128 */
+    int d            = 2;
+    int n_blocks     = n / Q2_0_BLOCK; /* 1 full block; matmul_q2_0.c's row_bytes
                                       formula (n/128)*34 ignores the rest */
     size_t row_bytes = (size_t)n_blocks * Q2_0_BYTES;
 
     uint8_t *w = (uint8_t *)malloc(row_bytes * (size_t)d);
-    float *x = (float *)malloc((size_t)n * sizeof(float));
+    float *x   = (float *)malloc((size_t)n * sizeof(float));
     float *out = (float *)malloc((size_t)d * sizeof(float));
     float *ref = (float *)malloc((size_t)d * sizeof(float));
 
     for (int i = 0; i < n; i++) x[i] = ((float)((i * 13 + 1) % 19) - 9.0f) * 0.29f;
-    for (int r = 0; r < d; r++) make_q2_0_row(w + (size_t)r * row_bytes, n_blocks * Q2_0_BLOCK, r + 5);
+    for (int r = 0; r < d; r++)
+        make_q2_0_row(w + (size_t)r * row_bytes, n_blocks * Q2_0_BLOCK, r + 5);
 
     parallel_matmul_q2_0(out, x, w, n, d, NULL);
     for (int r = 0; r < d; r++)
@@ -201,7 +201,10 @@ static void test_non_multiple_of_128_falls_back(void) {
     for (int r = 0; r < d; r++)
         TEST_ASSERT_FLOAT_EQ(out[r], ref[r], 0.5f, "non-128-multiple n still matches reference");
 
-    free(w); free(x); free(out); free(ref);
+    free(w);
+    free(x);
+    free(out);
+    free(ref);
 }
 
 static void test_all_zero_activation(void) {
@@ -232,7 +235,7 @@ static void test_batch_matches_single_matrix_path(void) {
     size_t row_bytes = (size_t)(n / Q2_0_BLOCK) * Q2_0_BYTES;
 
     uint8_t *ws_storage = (uint8_t *)malloc(row_bytes * (size_t)d * (size_t)k);
-    float *xs_storage = (float *)malloc((size_t)n * (size_t)k * sizeof(float));
+    float *xs_storage   = (float *)malloc((size_t)n * (size_t)k * sizeof(float));
     const uint8_t *ws[3];
     float *xs[3];
     float *outs_batch[3];
@@ -240,22 +243,19 @@ static void test_batch_matches_single_matrix_path(void) {
 
     for (int e = 0; e < k; e++) {
         uint8_t *w = ws_storage + (size_t)e * row_bytes * (size_t)d;
-        ws[e] = w;
-        for (int r = 0; r < d; r++)
-            make_q2_0_row(w + (size_t)r * row_bytes, n, e * 101 + r + 1);
+        ws[e]      = w;
+        for (int r = 0; r < d; r++) make_q2_0_row(w + (size_t)r * row_bytes, n, e * 101 + r + 1);
 
         float *x = xs_storage + (size_t)e * n;
-        xs[e] = x;
-        for (int i = 0; i < n; i++)
-            x[i] = ((float)((i * (7 + e) + e) % 23) - 11.0f) * 0.31f;
+        xs[e]    = x;
+        for (int i = 0; i < n; i++) x[i] = ((float)((i * (7 + e) + e) % 23) - 11.0f) * 0.31f;
 
-        outs_batch[e] = (float *)malloc((size_t)d * sizeof(float));
+        outs_batch[e]  = (float *)malloc((size_t)d * sizeof(float));
         outs_single[e] = (float *)malloc((size_t)d * sizeof(float));
     }
 
     parallel_matmul_q2_0_batch(outs_batch, xs, ws, n, d, k, NULL);
-    for (int e = 0; e < k; e++)
-        parallel_matmul_q2_0(outs_single[e], xs[e], ws[e], n, d, NULL);
+    for (int e = 0; e < k; e++) parallel_matmul_q2_0(outs_single[e], xs[e], ws[e], n, d, NULL);
 
     for (int e = 0; e < k; e++) {
         for (int r = 0; r < d; r++) {
@@ -279,22 +279,20 @@ static void test_batch_mixed_zero_activation(void) {
     size_t row_bytes = (size_t)(n / Q2_0_BLOCK) * Q2_0_BYTES;
 
     uint8_t *ws_storage = (uint8_t *)malloc(row_bytes * (size_t)d * (size_t)k);
-    float *xs_storage = (float *)calloc((size_t)n * (size_t)k, sizeof(float));
+    float *xs_storage   = (float *)calloc((size_t)n * (size_t)k, sizeof(float));
     const uint8_t *ws[3];
     float *xs[3];
     float *outs[3];
 
     for (int e = 0; e < k; e++) {
         uint8_t *w = ws_storage + (size_t)e * row_bytes * (size_t)d;
-        ws[e] = w;
-        for (int r = 0; r < d; r++)
-            make_q2_0_row(w + (size_t)r * row_bytes, n, e * 53 + r + 1);
+        ws[e]      = w;
+        for (int r = 0; r < d; r++) make_q2_0_row(w + (size_t)r * row_bytes, n, e * 53 + r + 1);
 
         float *x = xs_storage + (size_t)e * n;
-        xs[e] = x;
+        xs[e]    = x;
         if (e != 1) { /* expert 1 stays all-zero */
-            for (int i = 0; i < n; i++)
-                x[i] = ((float)((i * 3 + e) % 17) - 8.0f) * 0.41f;
+            for (int i = 0; i < n; i++) x[i] = ((float)((i * 3 + e) % 17) - 8.0f) * 0.41f;
         }
 
         outs[e] = (float *)malloc((size_t)d * sizeof(float));
@@ -312,8 +310,10 @@ static void test_batch_mixed_zero_activation(void) {
     parallel_matmul_q2_0(ref0, xs[0], ws[0], n, d, NULL);
     parallel_matmul_q2_0(ref2, xs[2], ws[2], n, d, NULL);
     for (int r = 0; r < d; r++) {
-        TEST_ASSERT_FLOAT_EQ(outs[0][r], ref0[r], 1e-3f, "batch expert 0 unaffected by expert 1's zero activation");
-        TEST_ASSERT_FLOAT_EQ(outs[2][r], ref2[r], 1e-3f, "batch expert 2 unaffected by expert 1's zero activation");
+        TEST_ASSERT_FLOAT_EQ(outs[0][r], ref0[r], 1e-3f,
+                             "batch expert 0 unaffected by expert 1's zero activation");
+        TEST_ASSERT_FLOAT_EQ(outs[2][r], ref2[r], 1e-3f,
+                             "batch expert 2 unaffected by expert 1's zero activation");
     }
 
     for (int e = 0; e < k; e++) free(outs[e]);

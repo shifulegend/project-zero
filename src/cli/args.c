@@ -34,19 +34,24 @@ void print_usage(const char *prog_name) {
     printf("                      -1 = all generated tokens, 0 = penalties off)\n");
     printf("  --system-prompt <s> System prompt for chat-template models (default: none)\n");
     printf("  --chat-template-file <f>  Jinja chat template replacing the model's own\n");
-    printf("                      (e.g. docs/templates/bitnet-b1.58.jinja); default: the GGUF's own\n");
-    printf("                      (BitNet's, which generates nothing, is replaced by a built-in)\n");
+    printf("                      (e.g. docs/templates/bitnet-b1.58.jinja); default: the GGUF's "
+           "own\n");
+    printf(
+        "                      (BitNet's, which generates nothing, is replaced by a built-in)\n");
     printf("  --no-request-template  Server: ignore a request's \"chat_template\" field\n");
     printf("  --no-config-write   Server: the web UI may not save defaults to the config file\n");
-    printf("  --stop <text>       Stop generation at this string; repeatable (max %d)\n", GEN_MAX_STOP);
+    printf("  --stop <text>       Stop generation at this string; repeatable (max %d)\n",
+           GEN_MAX_STOP);
     printf("  --best-of <N>       Generate N candidates, keep the one the model finds\n");
     printf("                      most likely (mean log-prob). Default 1 (off).\n");
-    printf("  --best-of-max <N>   Server: largest best_of a request may ask for (default %d)\n", BEST_OF_MAX_DEFAULT);
+    printf("  --best-of-max <N>   Server: largest best_of a request may ask for (default %d)\n",
+           BEST_OF_MAX_DEFAULT);
     printf("  --mcts <N>          Step-level tree search with N simulations (0 = off): sample\n");
     printf("                      --mcts-expand children per step, score each step, answer\n");
     printf("                      along the most visited path\n");
     printf("  --mcts-expand <k> --mcts-depth <d> --mcts-step-tokens <n> --mcts-c <c>\n");
-    printf("  --mcts-temperature <t> --mcts-delim <s>   search shape (defaults %d %d %d %.1f %.1f \"\\n\")\n",
+    printf("  --mcts-temperature <t> --mcts-delim <s>   search shape (defaults %d %d %d %.1f %.1f "
+           "\"\\n\")\n",
            MCTS_DEFAULT_EXPAND, MCTS_DEFAULT_DEPTH, MCTS_DEFAULT_STEP_TOKENS,
            (double)MCTS_DEFAULT_C, (double)MCTS_DEFAULT_TEMPERATURE);
     printf("  --mcts-max <N>      Server: largest \"mcts\" simulations a request may ask for\n");
@@ -81,7 +86,8 @@ void print_usage(const char *prog_name) {
     printf("  --attn-kernel <k>   standard (default) | tiled (single-pass online softmax)\n");
     printf("  --attn-tile <int>   Positions per tile for --attn-kernel tiled (0 = from L1d)\n");
     printf("  --attn-parallel-min-ctx <N> Spread attention heads over threads once the\n");
-    printf("                      context reaches N tokens (default %d, 0 = never)\n", ATTN_PARALLEL_MIN_CTX_DEFAULT);
+    printf("                      context reaches N tokens (default %d, 0 = never)\n",
+           ATTN_PARALLEL_MIN_CTX_DEFAULT);
 
     printf("\nWatermarking (off by default):\n");
     printf("  --watermark         Bias sampling toward a keyed green list so output can\n");
@@ -116,7 +122,8 @@ void print_usage(const char *prog_name) {
     printf("  --calibrate         Run micro-benchmarks to find optimal settings for\n");
     printf("                      this hardware. Results cached in ~/.project-zero/\n");
     printf("                      Runs automatically on first use or hardware change.\n");
-    printf("  --no-calibrate      Never load, run or save a calibration (also PZ_NO_CALIBRATE=true):\n");
+    printf("  --no-calibrate      Never load, run or save a calibration (also "
+           "PZ_NO_CALIBRATE=true):\n");
     printf("                      the highest SIMD tier and the detected thread count, for\n");
     printf("                      reproducible benchmarks and throwaway containers.\n");
 
@@ -136,14 +143,19 @@ void print_usage(const char *prog_name) {
     printf("  --queue-size <N>    Let up to N chat requests wait (in order) while one is\n");
     printf("                      generating, instead of answering 429 (default: 0)\n");
     printf("  --queue-timeout <s> Seconds a queued request waits before giving up (120)\n");
-    printf("  --rate-limit <n>    Requests per second allowed on the non-generation routes (20; 0 = off)\n");
-    printf("  --client-timeout <s> Drop a client that sends or reads nothing for this many seconds (30; 0 = never)\n");
-    printf("  --max-connections <N> Open client connections at once; more get 503 (64; 0 = unlimited)\n");
+    printf("  --rate-limit <n>    Requests per second allowed on the non-generation routes (20; 0 "
+           "= off)\n");
+    printf("  --client-timeout <s> Drop a client that sends or reads nothing for this many seconds "
+           "(30; 0 = never)\n");
+    printf("  --max-connections <N> Open client connections at once; more get 503 (64; 0 = "
+           "unlimited)\n");
     printf("  --parallel <N>      Serve up to N chat requests at once, batched into one\n");
     printf("                      forward pass per token (default: 1 = one at a time;\n");
-    printf("                      max %d). Dense models only; others stay sequential.\n", PZ_PARALLEL_MAX);
+    printf("                      max %d). Dense models only; others stay sequential.\n",
+           PZ_PARALLEL_MAX);
     printf("  --parallel-batch <N> Tokens per batched pass: every active reply's next\n");
-    printf("                      token plus a chunk of waiting prompts (default: %d)\n", PZ_PARALLEL_BATCH_DEFAULT);
+    printf("                      token plus a chunk of waiting prompts (default: %d)\n",
+           PZ_PARALLEL_BATCH_DEFAULT);
     printf("  --ui-title <name>   Brand name shown in the web UI (default: project-zero)\n");
     printf("  --ui-logo <m>       ascii (default: the block wordmark of --ui-title, as in the\n");
     printf("                      terminal banner; falls back to text for other letters) | text\n");
@@ -218,122 +230,127 @@ void print_usage(const char *prog_name) {
     printf("                      always off when CI is set. Otherwise interactive runs and\n");
     printf("                      --server check in the background at most once per\n");
     printf("                      --update-interval (sends only a User-Agent with the version).\n");
-    printf("  --update-interval <h> Hours between checks (default %d, 0 = off).\n", UPDATE_DEFAULT_INTERVAL_H);
-    printf("  --update-channel <c> auto (default: pre-releases while on 0.x) | stable | prerelease\n");
+    printf("  --update-interval <h> Hours between checks (default %d, 0 = off).\n",
+           UPDATE_DEFAULT_INTERVAL_H);
+    printf(
+        "  --update-channel <c> auto (default: pre-releases while on 0.x) | stable | prerelease\n");
     printf("  --update-repo <o/n> Releases source (default: upstream; forks set their own).\n");
-    printf("  --update-api <url>  API base, e.g. GitHub Enterprise (default https://api.github.com).\n");
+    printf("  --update-api <url>  API base, e.g. GitHub Enterprise (default "
+           "https://api.github.com).\n");
 
     printf("\nExamples:\n");
-    printf("  %s --model models/smollm2.gguf --prompt \"What is the capital of France?\"\n", prog_name);
+    printf("  %s --model models/smollm2.gguf --prompt \"What is the capital of France?\"\n",
+           prog_name);
     printf("  %s --model models/smollm2.gguf --threads 4          # interactive REPL\n", prog_name);
-    printf("  %s --model models/smollm2.gguf --server --port 8080 --cors --cors-origin \"*\"\n", prog_name);
+    printf("  %s --model models/smollm2.gguf --server --port 8080 --cors --cors-origin \"*\"\n",
+           prog_name);
 }
 
 TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     if (!args) return TN_ERR_INVALID_CONFIG;
 
     // Set defaults
-    args->model_path = NULL;
-    args->tokenizer_path = NULL;
-    args->prompt = NULL;
-    args->image_path = NULL;
-    args->vision_path = NULL;
-    args->proj_path = NULL;
-    args->memory_db_path = NULL;
-    args->temperature = 0.7f;
-    args->top_p = 0.9f;
-    args->max_tokens = 512;
-    args->num_threads = 0; // auto
-    args->enable_reasoning = false;
-    args->json_mode = false;
-    args->raw_prompt = false;
-    args->ignore_eos = false;
-    args->rope_layout = -1;
-    args->perplexity_file = NULL;
-    args->ppl_ctx = 512;
-    args->ppl_chunks = 0;
-    args->verbose = false;
-    args->seed = -1;
-    args->classifier_override = -1; // auto (BF16)
-    args->simd_override = NULL;     // auto
-    args->calibrate = false;
-    args->no_calibrate = false;
-    args->act_quant = 0;
-    args->quality_tolerance = 1.0;
-    args->self_check_tokens = 96;
-    args->self_check = false;
-    args->show_version = false;
-    args->check_update = false;
-    args->no_update_check = false;
-    args->update_repo = NULL;
-    args->update_api = NULL;
-    args->update_interval_h = -1;
-    args->update_channel = UPDATE_CHANNEL_AUTO;
-    args->dump_tensors_path = NULL;
-    args->server_mode = 0;
-    args->server_port = 8080;
-    args->cors_enabled = false;
-    args->num_cors_origins = 0;
-    args->api_key = NULL;
-    args->metrics_enabled = false;
-    args->static_dir = NULL;
-    args->web_ui_mode = WEBUI_MODE_AUTO;
-    args->color_mode = TN_COLOR_AUTO;
-    args->draft_model_path = NULL; /* disabled by default -- the ONLY way to enable
+    args->model_path          = NULL;
+    args->tokenizer_path      = NULL;
+    args->prompt              = NULL;
+    args->image_path          = NULL;
+    args->vision_path         = NULL;
+    args->proj_path           = NULL;
+    args->memory_db_path      = NULL;
+    args->temperature         = 0.7f;
+    args->top_p               = 0.9f;
+    args->max_tokens          = 512;
+    args->num_threads         = 0; // auto
+    args->enable_reasoning    = false;
+    args->json_mode           = false;
+    args->raw_prompt          = false;
+    args->ignore_eos          = false;
+    args->rope_layout         = -1;
+    args->perplexity_file     = NULL;
+    args->ppl_ctx             = 512;
+    args->ppl_chunks          = 0;
+    args->verbose             = false;
+    args->seed                = -1;
+    args->classifier_override = -1;   // auto (BF16)
+    args->simd_override       = NULL; // auto
+    args->calibrate           = false;
+    args->no_calibrate        = false;
+    args->act_quant           = 0;
+    args->quality_tolerance   = 1.0;
+    args->self_check_tokens   = 96;
+    args->self_check          = false;
+    args->show_version        = false;
+    args->check_update        = false;
+    args->no_update_check     = false;
+    args->update_repo         = NULL;
+    args->update_api          = NULL;
+    args->update_interval_h   = -1;
+    args->update_channel      = UPDATE_CHANNEL_AUTO;
+    args->dump_tensors_path   = NULL;
+    args->server_mode         = 0;
+    args->server_port         = 8080;
+    args->cors_enabled        = false;
+    args->num_cors_origins    = 0;
+    args->api_key             = NULL;
+    args->metrics_enabled     = false;
+    args->static_dir          = NULL;
+    args->web_ui_mode         = WEBUI_MODE_AUTO;
+    args->color_mode          = TN_COLOR_AUTO;
+    args->draft_model_path    = NULL; /* disabled by default -- the ONLY way to enable
                                        speculative decoding is --draft-model */
-    args->spec_length = 5;
-    args->lora_path = NULL; /* disabled by default -- the ONLY way to enable a
+    args->spec_length         = 5;
+    args->lora_path           = NULL; /* disabled by default -- the ONLY way to enable a
                                 LoRA adapter is --lora */
     {
         SamplerSettings ss;
         sampler_settings_default(&ss);
-        args->top_k = ss.top_k;
-        args->min_p = ss.min_p;
-        args->repeat_penalty = ss.repetition_penalty;
-        args->presence_penalty = ss.presence_penalty;
+        args->top_k             = ss.top_k;
+        args->min_p             = ss.min_p;
+        args->repeat_penalty    = ss.repetition_penalty;
+        args->presence_penalty  = ss.presence_penalty;
         args->frequency_penalty = ss.frequency_penalty;
-        args->repeat_last_n = ss.penalty_last_n;
+        args->repeat_last_n     = ss.penalty_last_n;
     }
-    args->system_prompt = NULL;
-    args->chat_template_file = NULL;
+    args->system_prompt       = NULL;
+    args->chat_template_file  = NULL;
     args->no_request_template = false;
-    args->n_stop = 0;
-    args->max_tokens_limit = 0;
-    args->watermark = false;
-    args->watermark_key = NULL;
-    args->watermark_gamma = WATERMARK_DEFAULT_GAMMA;
-    args->watermark_delta = WATERMARK_DEFAULT_DELTA;
-    args->watermark_detect = NULL;
-    args->ui_title = NULL;
-    args->ui_logo = 0;
-    args->chat_format = -1;
-    args->best_of = 1;
-    args->queue_size = 0;
-    args->rpc_worker_port = 0;
-    args->worker_layers = NULL;
-    args->rpc_bind_all = false;
-    args->remote_layers = NULL;
-    args->plan_layers = NULL;
-    args->queue_timeout_s = 120;
-    args->rate_limit = 20;
-    args->client_timeout_s = 30;
-    args->max_connections = 64;
-    args->parallel = 1;
-    args->parallel_batch = PZ_PARALLEL_BATCH_DEFAULT;
-    args->best_of_max = BEST_OF_MAX_DEFAULT;
+    args->n_stop              = 0;
+    args->max_tokens_limit    = 0;
+    args->watermark           = false;
+    args->watermark_key       = NULL;
+    args->watermark_gamma     = WATERMARK_DEFAULT_GAMMA;
+    args->watermark_delta     = WATERMARK_DEFAULT_DELTA;
+    args->watermark_detect    = NULL;
+    args->ui_title            = NULL;
+    args->ui_logo             = 0;
+    args->chat_format         = -1;
+    args->best_of             = 1;
+    args->queue_size          = 0;
+    args->rpc_worker_port     = 0;
+    args->worker_layers       = NULL;
+    args->rpc_bind_all        = false;
+    args->remote_layers       = NULL;
+    args->plan_layers         = NULL;
+    args->queue_timeout_s     = 120;
+    args->rate_limit          = 20;
+    args->client_timeout_s    = 30;
+    args->max_connections     = 64;
+    args->parallel            = 1;
+    args->parallel_batch      = PZ_PARALLEL_BATCH_DEFAULT;
+    args->best_of_max         = BEST_OF_MAX_DEFAULT;
     memset(&args->mcts, 0, sizeof(args->mcts));
     args->mcts_max = 64;
     args->prm_path = args->prm_format = args->prm_good = args->prm_bad = NULL;
-    args->prompt_cache = true;
-    args->prompt_cache_mb = 256;
-    args->prompt_cache_min_tokens = 32;
-    args->ctx_size = 0;
-    args->kv_type = 0;
-    args->kv_offload_dir = NULL;
-    args->attn_kernel = NULL;
-    args->attn_tile = 0;
+    args->prompt_cache                                                 = true;
+    args->prompt_cache_mb                                              = 256;
+    args->prompt_cache_min_tokens                                      = 32;
+    args->ctx_size                                                     = 0;
+    args->kv_type                                                      = 0;
+    args->kv_offload_dir                                               = NULL;
+    args->attn_kernel                                                  = NULL;
+    args->attn_tile                                                    = 0;
     args->attn_parallel_min_ctx = ATTN_PARALLEL_MIN_CTX_DEFAULT;
-    args->kv_ram_fraction = 0.0f;
+    args->kv_ram_fraction       = 0.0f;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--model") == 0 && i + 1 < argc) {
@@ -413,7 +430,7 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--rope-layout") == 0 && i + 1 < argc) {
-            const char *m = argv[++i];
+            const char *m     = argv[++i];
             args->rope_layout = strcmp(m, "auto") == 0 ? -1 : rope_layout_parse(m);
             if (strcmp(m, "auto") != 0 && args->rope_layout < 0) {
                 fprintf(stderr, "Error: --rope-layout must be auto, norm or neox\n");
@@ -471,8 +488,10 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             }
         } else if (strcmp(argv[i], "--prompt-cache") == 0 && i + 1 < argc) {
             const char *mode = argv[++i];
-            if (strcmp(mode, "on") == 0) args->prompt_cache = true;
-            else if (strcmp(mode, "off") == 0) args->prompt_cache = false;
+            if (strcmp(mode, "on") == 0)
+                args->prompt_cache = true;
+            else if (strcmp(mode, "off") == 0)
+                args->prompt_cache = false;
             else {
                 fprintf(stderr, "Error: --prompt-cache must be on or off\n");
                 return TN_ERR_INVALID_CONFIG;
@@ -584,10 +603,13 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
         } else if (strcmp(argv[i], "--mcts-delim") == 0 && i + 1 < argc) {
             /* "\n" in the argument means a newline */
             const char *d = argv[++i];
-            size_t k = 0;
+            size_t k      = 0;
             for (; *d && k + 1 < sizeof(args->mcts_delim_buf); d++) {
-                if (d[0] == '\\' && d[1] == 'n') { args->mcts_delim_buf[k++] = '\n'; d++; }
-                else args->mcts_delim_buf[k++] = *d;
+                if (d[0] == '\\' && d[1] == 'n') {
+                    args->mcts_delim_buf[k++] = '\n';
+                    d++;
+                } else
+                    args->mcts_delim_buf[k++] = *d;
             }
             args->mcts_delim_buf[k] = '\0';
             if (k == 0) {
@@ -612,15 +634,18 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
         } else if (strcmp(argv[i], "--chat-format") == 0 && i + 1 < argc) {
             args->chat_format = chat_template_parse(argv[++i]);
             if (args->chat_format < -1) {
-                fprintf(stderr, "Error: --chat-format must be auto, chatml, llama3, deepseek, mistral or plain\n");
+                fprintf(stderr, "Error: --chat-format must be auto, chatml, llama3, deepseek, "
+                                "mistral or plain\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--ui-title") == 0 && i + 1 < argc) {
             args->ui_title = argv[++i];
         } else if (strcmp(argv[i], "--ui-logo") == 0 && i + 1 < argc) {
             const char *m = argv[++i];
-            if (strcmp(m, "ascii") == 0) args->ui_logo = 0;
-            else if (strcmp(m, "text") == 0) args->ui_logo = 1;
+            if (strcmp(m, "ascii") == 0)
+                args->ui_logo = 0;
+            else if (strcmp(m, "text") == 0)
+                args->ui_logo = 1;
             else {
                 fprintf(stderr, "Error: --ui-logo must be ascii or text\n");
                 return TN_ERR_INVALID_CONFIG;
@@ -631,13 +656,19 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             args->memory_db_path = argv[++i];
         } else if (strcmp(argv[i], "--classifier") == 0 && i + 1 < argc) {
             const char *fmt = argv[++i];
-            if (strcmp(fmt, "auto") == 0)           args->classifier_override = -1;
-            else if (strcmp(fmt, "bf16") == 0)       args->classifier_override = 0;
-            else if (strcmp(fmt, "int8") == 0)       args->classifier_override = 1;
-            else if (strcmp(fmt, "int4") == 0)       args->classifier_override = 2;
-            else if (strcmp(fmt, "auto-fast") == 0)  args->classifier_override = 3;
+            if (strcmp(fmt, "auto") == 0)
+                args->classifier_override = -1;
+            else if (strcmp(fmt, "bf16") == 0)
+                args->classifier_override = 0;
+            else if (strcmp(fmt, "int8") == 0)
+                args->classifier_override = 1;
+            else if (strcmp(fmt, "int4") == 0)
+                args->classifier_override = 2;
+            else if (strcmp(fmt, "auto-fast") == 0)
+                args->classifier_override = 3;
             else {
-                fprintf(stderr, "Error: --classifier must be one of: auto, bf16, int8, int4, auto-fast\n");
+                fprintf(stderr,
+                        "Error: --classifier must be one of: auto, bf16, int8, int4, auto-fast\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--simd") == 0 && i + 1 < argc) {
@@ -648,7 +679,8 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
                        strcmp(backend, "vnni") == 0 || strcmp(backend, "scalar") == 0) {
                 args->simd_override = (char *)backend;
             } else {
-                fprintf(stderr, "Error: --simd must be one of: auto, avx2, avx512f, vnni, scalar\n");
+                fprintf(stderr,
+                        "Error: --simd must be one of: auto, avx2, avx512f, vnni, scalar\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--calibrate") == 0) {
@@ -700,7 +732,8 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             args->cors_enabled = true;
         } else if (strcmp(argv[i], "--cors-origin") == 0 && i + 1 < argc) {
             if (args->num_cors_origins >= CLI_MAX_CORS_ORIGINS) {
-                fprintf(stderr, "Error: too many --cors-origin values (max %d)\n", CLI_MAX_CORS_ORIGINS);
+                fprintf(stderr, "Error: too many --cors-origin values (max %d)\n",
+                        CLI_MAX_CORS_ORIGINS);
                 return TN_ERR_INVALID_CONFIG;
             }
             args->cors_origins[args->num_cors_origins++] = argv[++i];
@@ -712,9 +745,12 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             args->static_dir = argv[++i];
         } else if (strcmp(argv[i], "--web-ui") == 0 && i + 1 < argc) {
             const char *mode = argv[++i];
-            if (strcmp(mode, "auto") == 0)      args->web_ui_mode = WEBUI_MODE_AUTO;
-            else if (strcmp(mode, "on") == 0)   args->web_ui_mode = WEBUI_MODE_ON;
-            else if (strcmp(mode, "off") == 0)  args->web_ui_mode = WEBUI_MODE_OFF;
+            if (strcmp(mode, "auto") == 0)
+                args->web_ui_mode = WEBUI_MODE_AUTO;
+            else if (strcmp(mode, "on") == 0)
+                args->web_ui_mode = WEBUI_MODE_ON;
+            else if (strcmp(mode, "off") == 0)
+                args->web_ui_mode = WEBUI_MODE_OFF;
             else {
                 fprintf(stderr, "Error: --web-ui must be one of: auto, on, off\n");
                 return TN_ERR_INVALID_CONFIG;
@@ -731,7 +767,8 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             args->lora_path = argv[++i];
         } else if (strcmp(argv[i], "--color") == 0 && i + 1 < argc) {
             const char *mode = argv[++i];
-            if (strcmp(mode, "auto") != 0 && strcmp(mode, "always") != 0 && strcmp(mode, "never") != 0) {
+            if (strcmp(mode, "auto") != 0 && strcmp(mode, "always") != 0 &&
+                strcmp(mode, "never") != 0) {
                 fprintf(stderr, "Error: --color must be one of: auto, always, never\n");
                 return TN_ERR_INVALID_CONFIG;
             }
@@ -798,10 +835,10 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
      * BOS/EOS token IDs) and are loaded automatically via tokenizer_load_from_gguf(). */
     if (!args->tokenizer_path) {
         const char *mp = args->model_path ? args->model_path : "";
-        int is_gguf = (strstr(mp, ".gguf") != NULL);
+        int is_gguf    = (strstr(mp, ".gguf") != NULL);
         if (!is_gguf) {
             fprintf(stderr, "Warning: --tokenizer <path> not provided. "
-                    "Text generation will fail without a vocabulary file.\n");
+                            "Text generation will fail without a vocabulary file.\n");
         }
     }
 
@@ -821,13 +858,13 @@ void args_fill_gen_params(const CliArgs *args, GenerationParams *gp) {
     gp->sampler.frequency_penalty  = args->frequency_penalty;
     gp->sampler.penalty_last_n     = args->repeat_last_n;
     sampler_settings_sanitize(&gp->sampler);
-    gp->seed      = args->seed;
-    gp->json_mode = args->json_mode;
-    gp->raw_prompt = args->raw_prompt;
-    gp->ignore_eos = args->ignore_eos;
+    gp->seed          = args->seed;
+    gp->json_mode     = args->json_mode;
+    gp->raw_prompt    = args->raw_prompt;
+    gp->ignore_eos    = args->ignore_eos;
     gp->system_prompt = args->system_prompt;
     for (int i = 0; i < args->n_stop && i < GEN_MAX_STOP; i++) gp->stop[i] = args->stop[i];
-    gp->n_stop = args->n_stop < GEN_MAX_STOP ? args->n_stop : GEN_MAX_STOP;
+    gp->n_stop            = args->n_stop < GEN_MAX_STOP ? args->n_stop : GEN_MAX_STOP;
     gp->watermark.enabled = args->watermark;
     gp->watermark.key     = watermark_key_from_string(args->watermark_key);
     gp->watermark.gamma   = args->watermark_gamma;

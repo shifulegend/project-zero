@@ -7,11 +7,11 @@
  * Content-Length must be plain decimal digits, appear at most once, and fit in
  * size_t; Transfer-Encoding is detected so the caller can refuse it. */
 typedef struct {
-    int    has_content_length;
+    int has_content_length;
     size_t content_length;
-    int    content_length_invalid; /* non-digits, overflow, empty, or repeated with another value */
-    int    chunked;                /* Transfer-Encoding mentions "chunked" */
-    int    has_transfer_encoding;
+    int content_length_invalid; /* non-digits, overflow, empty, or repeated with another value */
+    int chunked;                /* Transfer-Encoding mentions "chunked" */
+    int has_transfer_encoding;
 } HttpFraming;
 
 /* Parse a Content-Length header value ("  123  \r\n"). 0 = ok, -1 = invalid. */

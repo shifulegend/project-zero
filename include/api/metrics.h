@@ -18,9 +18,9 @@ typedef struct {
     atomic_llong requests_4xx;
     atomic_llong requests_5xx;
     atomic_llong tokens_generated_total;
-    atomic_int   active_connections;
+    atomic_int active_connections;
     atomic_llong generations_cancelled_total;
-    time_t       start_time;
+    time_t start_time;
 } MetricsState;
 
 void metrics_init(MetricsState *m);

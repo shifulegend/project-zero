@@ -38,36 +38,54 @@ static void assert_allowed_by_policy(char *const argv[], const char *label) {
 
 /* ── Absolute paths ──────────────────────────────────────────────────────── */
 static void test_absolute_paths_blocked(void) {
-    char *a[] = {"cat", "/etc/shadow", NULL};            assert_blocked(a, "cat /etc/shadow");
-    char *b[] = {"cat", "/etc/passwd", NULL};             assert_blocked(b, "cat /etc/passwd");
-    char *c[] = {"cat", "/proc/self/environ", NULL};      assert_blocked(c, "cat /proc/self/environ");
-    char *d[] = {"cat", "/root/.ssh/id_rsa", NULL};       assert_blocked(d, "cat /root/.ssh/id_rsa");
-    char *e[] = {"cat", "//etc/passwd", NULL};            assert_blocked(e, "cat //etc/passwd (double slash)");
-    char *f[] = {"ls",  "/etc", NULL};                    assert_blocked(f, "ls /etc");
+    char *a[] = {"cat", "/etc/shadow", NULL};
+    assert_blocked(a, "cat /etc/shadow");
+    char *b[] = {"cat", "/etc/passwd", NULL};
+    assert_blocked(b, "cat /etc/passwd");
+    char *c[] = {"cat", "/proc/self/environ", NULL};
+    assert_blocked(c, "cat /proc/self/environ");
+    char *d[] = {"cat", "/root/.ssh/id_rsa", NULL};
+    assert_blocked(d, "cat /root/.ssh/id_rsa");
+    char *e[] = {"cat", "//etc/passwd", NULL};
+    assert_blocked(e, "cat //etc/passwd (double slash)");
+    char *f[] = {"ls", "/etc", NULL};
+    assert_blocked(f, "ls /etc");
 }
 
 /* ── Home-dir shortcuts ──────────────────────────────────────────────────── */
 static void test_home_shortcuts_blocked(void) {
-    char *a[] = {"cat", "~/.ssh/id_rsa", NULL};  assert_blocked(a, "cat ~/.ssh/id_rsa");
-    char *b[] = {"cat", "~root/.bashrc", NULL};  assert_blocked(b, "cat ~root/.bashrc");
+    char *a[] = {"cat", "~/.ssh/id_rsa", NULL};
+    assert_blocked(a, "cat ~/.ssh/id_rsa");
+    char *b[] = {"cat", "~root/.bashrc", NULL};
+    assert_blocked(b, "cat ~root/.bashrc");
 }
 
 /* ── Traversal ───────────────────────────────────────────────────────────── */
 static void test_traversal_blocked(void) {
-    char *a[] = {"cat", "../x", NULL};                          assert_blocked(a, "../x");
-    char *b[] = {"cat", "../../x", NULL};                       assert_blocked(b, "../../x");
-    char *c[] = {"cat", "a/../../x", NULL};                     assert_blocked(c, "a/../../x");
-    char *d[] = {"cat", "a/b/../../../etc/passwd", NULL};       assert_blocked(d, "a/b/../../../etc/passwd");
-    char *e[] = {"ls",  "..", NULL};                            assert_blocked(e, "bare ..");
-    char *f[] = {"cat", "./../x", NULL};                        assert_blocked(f, "./../x");
+    char *a[] = {"cat", "../x", NULL};
+    assert_blocked(a, "../x");
+    char *b[] = {"cat", "../../x", NULL};
+    assert_blocked(b, "../../x");
+    char *c[] = {"cat", "a/../../x", NULL};
+    assert_blocked(c, "a/../../x");
+    char *d[] = {"cat", "a/b/../../../etc/passwd", NULL};
+    assert_blocked(d, "a/b/../../../etc/passwd");
+    char *e[] = {"ls", "..", NULL};
+    assert_blocked(e, "bare ..");
+    char *f[] = {"cat", "./../x", NULL};
+    assert_blocked(f, "./../x");
 }
 
 /* ── Traversal look-alikes: must NOT be over-blocked ────────────────────── */
 static void test_traversal_lookalikes_allowed(void) {
-    char *a[] = {"cat", "...", NULL};          assert_allowed_by_policy(a, "'...'");
-    char *b[] = {"cat", "foo..bar.txt", NULL}; assert_allowed_by_policy(b, "'foo..bar.txt'");
-    char *c[] = {"ls",  ".hidden", NULL};      assert_allowed_by_policy(c, "'.hidden'");
-    char *d[] = {"cat", "a..b/c", NULL};       assert_allowed_by_policy(d, "'a..b/c'");
+    char *a[] = {"cat", "...", NULL};
+    assert_allowed_by_policy(a, "'...'");
+    char *b[] = {"cat", "foo..bar.txt", NULL};
+    assert_allowed_by_policy(b, "'foo..bar.txt'");
+    char *c[] = {"ls", ".hidden", NULL};
+    assert_allowed_by_policy(c, "'.hidden'");
+    char *d[] = {"cat", "a..b/c", NULL};
+    assert_allowed_by_policy(d, "'a..b/c'");
 }
 
 /* ── "Encoded" traversal: this engine does no percent/backslash decoding --
@@ -104,25 +122,29 @@ static void test_null_and_odd_bytes(void) {
      * string simply ends there. Exercise the resulting truncated value
      * (a bare ".", which is a hidden-dir-style relative name, ALLOWED). */
     char embedded_nul_arg[] = "abc\0def";
-    char *a[] = {"cat", embedded_nul_arg, NULL};
-    TEST_ASSERT(exec_policy_allows_args(a) == 1, "truncated-at-NUL arg ('abc') does not crash and is allowed");
+    char *a[]               = {"cat", embedded_nul_arg, NULL};
+    TEST_ASSERT(exec_policy_allows_args(a) == 1,
+                "truncated-at-NUL arg ('abc') does not crash and is allowed");
 
     /* Very long path (> PATH_MAX): must not crash or overflow. */
     char long_path[PATH_MAX * 2];
     memset(long_path, 'a', sizeof(long_path) - 1);
     long_path[sizeof(long_path) - 1] = '\0';
-    char *b[] = {"cat", long_path, NULL};
+    char *b[]                        = {"cat", long_path, NULL};
     int allowed = exec_policy_allows_args(b); /* no crash is the actual assertion */
-    TEST_ASSERT(allowed == 0 || allowed == 1, "very long path (> PATH_MAX) does not crash exec_policy_allows_args");
+    TEST_ASSERT(allowed == 0 || allowed == 1,
+                "very long path (> PATH_MAX) does not crash exec_policy_allows_args");
     char out[64] = {0};
     ExecResult r = execute_command(b, 2, out, sizeof(out));
-    TEST_ASSERT(r.exit_code == 127 || r.exit_code >= 0, "very long path does not crash execute_command");
+    TEST_ASSERT(r.exit_code == 127 || r.exit_code >= 0,
+                "very long path does not crash execute_command");
 
     /* UTF-8 homoglyph for '.' (U+FF0E FULLWIDTH FULL STOP) is not the ASCII
      * byte 0x2E, so it can never match the lexical ".." check -- allowed as
      * a literal (and harmless, since the OS doesn't treat it as ".." either). */
     char *c[] = {"cat", "\xef\xbc\x8e\xef\xbc\x8e/etc/passwd", NULL};
-    assert_allowed_by_policy(c, "UTF-8 fullwidth-dot homoglyph is not ASCII '.' -- literal, not traversal");
+    assert_allowed_by_policy(
+        c, "UTF-8 fullwidth-dot homoglyph is not ASCII '.' -- literal, not traversal");
 }
 
 /* ── Symlink escape: FIXED 2026-09-18 (was a documented known gap) ───────
@@ -143,7 +165,7 @@ static void test_symlink_escape_now_blocked(void) {
      * that's guaranteed to exist and guaranteed outside CWD on every POSIX
      * platform this project targets. */
     char target_template[] = "/tmp/pz_symlink_escape_target_XXXXXX";
-    int target_fd = mkstemp(target_template);
+    int target_fd          = mkstemp(target_template);
     if (target_fd < 0) {
         printf("  SKIP: could not create outside-CWD target file (%s)\n", strerror(errno));
         return;
@@ -171,7 +193,8 @@ static void test_symlink_within_cwd_still_allowed(void) {
     const char *link_name = "test_adv_symlink_internal_tmp";
     unlink(link_name);
     if (symlink("README.md", link_name) != 0) {
-        printf("  SKIP: could not create test symlink (no write access to CWD, or README.md missing)\n");
+        printf("  SKIP: could not create test symlink (no write access to CWD, or README.md "
+               "missing)\n");
         return;
     }
     char *a[] = {"cat", (char *)link_name, NULL};
@@ -188,7 +211,7 @@ static void test_unknown_cwd_fails_closed(void) {
         char dir[] = "/tmp/pz_adv_nocwd_XXXXXX";
         if (!mkdtemp(dir) || chdir(dir) != 0 || rmdir(dir) != 0) _exit(2);
         char *a[] = {"ls", "somefile", NULL};
-        _exit(exec_policy_allows_args(a) ? 1 : 0);   /* 0 = blocked, as required */
+        _exit(exec_policy_allows_args(a) ? 1 : 0); /* 0 = blocked, as required */
     }
     int st = 0;
     TEST_ASSERT(pid > 0 && waitpid(pid, &st, 0) == pid && WIFEXITED(st) && WEXITSTATUS(st) == 0,
@@ -203,23 +226,26 @@ static void test_child_env_is_minimal(void) {
     setenv("LANG", "C.UTF-8", 1);
     setenv("LC_ALL", "C", 1);
     char *env[64];
-    size_t n = exec_build_child_env(env, 64);
+    size_t n   = exec_build_child_env(env, 64);
     int has_tz = 0, has_lang = 0, has_lc = 0, has_path = 0, leaked = 0;
     for (size_t i = 0; i < n; i++) {
         if (!strncmp(env[i], "TZ=", 3)) has_tz = 1;
         if (!strncmp(env[i], "LANG=", 5)) has_lang = 1;
         if (!strncmp(env[i], "LC_ALL=", 7)) has_lc = 1;
         if (!strncmp(env[i], "PATH=", 5)) has_path = 1;
-        if (strstr(env[i], "secret") || strstr(env[i], "PZ_") || !strncmp(env[i], "HOME=", 5)) leaked = 1;
+        if (strstr(env[i], "secret") || strstr(env[i], "PZ_") || !strncmp(env[i], "HOME=", 5))
+            leaked = 1;
     }
-    TEST_ASSERT(has_tz && has_lang && has_lc && has_path, "TZ, LANG, LC_* and a fixed PATH are passed");
-    TEST_ASSERT(!leaked && env[n] == NULL, "secrets, PZ_* and HOME are not passed; list is NULL-terminated");
+    TEST_ASSERT(has_tz && has_lang && has_lc && has_path,
+                "TZ, LANG, LC_* and a fixed PATH are passed");
+    TEST_ASSERT(!leaked && env[n] == NULL,
+                "secrets, PZ_* and HOME are not passed; list is NULL-terminated");
     TEST_ASSERT(exec_build_child_env(env, 1) == 0, "too-small buffer is handled");
 
     /* end to end: the child still sees TZ (date prints JST) */
     char out[128] = {0};
-    char *a[] = {"date", "+%Z", NULL};
-    ExecResult r = execute_command(a, 5, out, sizeof out);
+    char *a[]     = {"date", "+%Z", NULL};
+    ExecResult r  = execute_command(a, 5, out, sizeof out);
     TEST_ASSERT(r.exit_code == 0, "date still runs with the reduced environment");
     if (access("/usr/share/zoneinfo/Asia/Tokyo", R_OK) == 0)
         TEST_ASSERT(strstr(out, "JST") != NULL, "TZ reaches the child (date +%Z prints JST)");
@@ -227,12 +253,17 @@ static void test_child_env_is_minimal(void) {
 
 /* ── Flag injection ──────────────────────────────────────────────────────── */
 static void test_flag_injection(void) {
-    char *a[] = {"ls", "--help", NULL};             assert_allowed_by_policy(a, "ls --help (flag, not a path)");
+    char *a[] = {"ls", "--help", NULL};
+    assert_allowed_by_policy(a, "ls --help (flag, not a path)");
     char *b[] = {"cat", "-v", "/etc/passwd", NULL};
-    TEST_ASSERT(!exec_policy_allows_args(b), "cat -v /etc/passwd: absolute path arg still blocks despite flag");
-    char *c[] = {"date", "-s", "00:00", NULL};       assert_blocked(c, "date -s 00:00 (clock-setting)");
-    char *d[] = {"date", "--set=00:00", NULL};       assert_blocked(d, "date --set=00:00 (clock-setting)");
-    char *e[] = {"echo", "-e", "hi", NULL};          assert_allowed_by_policy(e, "echo -e hi (echo has no path-confinement rule)");
+    TEST_ASSERT(!exec_policy_allows_args(b),
+                "cat -v /etc/passwd: absolute path arg still blocks despite flag");
+    char *c[] = {"date", "-s", "00:00", NULL};
+    assert_blocked(c, "date -s 00:00 (clock-setting)");
+    char *d[] = {"date", "--set=00:00", NULL};
+    assert_blocked(d, "date --set=00:00 (clock-setting)");
+    char *e[] = {"echo", "-e", "hi", NULL};
+    assert_allowed_by_policy(e, "echo -e hi (echo has no path-confinement rule)");
 }
 
 /* ── Shell metacharacters: fork()+execvp() has no shell -- these must land
@@ -245,17 +276,22 @@ static void test_shell_metacharacters_are_literal(void) {
     unlink(marker);
     char injected[128];
     snprintf(injected, sizeof(injected), "; touch %s ;", marker);
-    char *b[] = {"ls", injected, NULL};
+    char *b[]     = {"ls", injected, NULL};
     char out[256] = {0};
-    ExecResult r = execute_command(b, 2, out, sizeof(out));
-    TEST_ASSERT(access(marker, F_OK) != 0, "shell metacharacter payload did not create a marker file (no shell exists)");
-    TEST_ASSERT(r.exit_code != 0, "ls on the literal metacharacter string fails (no such file), not '0' from a shell no-op");
+    ExecResult r  = execute_command(b, 2, out, sizeof(out));
+    TEST_ASSERT(access(marker, F_OK) != 0,
+                "shell metacharacter payload did not create a marker file (no shell exists)");
+    TEST_ASSERT(
+        r.exit_code != 0,
+        "ls on the literal metacharacter string fails (no such file), not '0' from a shell no-op");
     unlink(marker);
 
     char *c[] = {"ls", "a && cat /etc/passwd", NULL};
-    assert_allowed_by_policy(c, "'a && cat /etc/passwd' is policy-allowed as a literal filename candidate");
+    assert_allowed_by_policy(
+        c, "'a && cat /etc/passwd' is policy-allowed as a literal filename candidate");
     char *d[] = {"ls", "`whoami`", NULL};
-    assert_allowed_by_policy(d, "backtick payload is policy-allowed as a literal filename candidate");
+    assert_allowed_by_policy(d,
+                             "backtick payload is policy-allowed as a literal filename candidate");
     char *e[] = {"ls", "$(id)", NULL};
     assert_allowed_by_policy(e, "$() payload is policy-allowed as a literal filename candidate");
     char *f[] = {"ls", "a | nc", NULL};
@@ -264,10 +300,14 @@ static void test_shell_metacharacters_are_literal(void) {
 
 /* ── argv[0] tricks ──────────────────────────────────────────────────────── */
 static void test_argv0_tricks_blocked(void) {
-    char *a[] = {"./ls", NULL};      assert_blocked(a, "./ls (not in name allow-list)");
-    char *b[] = {"/bin/ls", NULL};   assert_blocked(b, "/bin/ls (not in name allow-list)");
-    char *c[] = {"ls/../ls", NULL};  assert_blocked(c, "ls/../ls (not in name allow-list)");
-    char *d[] = {"", NULL};          assert_blocked(d, "empty string argv[0]");
+    char *a[] = {"./ls", NULL};
+    assert_blocked(a, "./ls (not in name allow-list)");
+    char *b[] = {"/bin/ls", NULL};
+    assert_blocked(b, "/bin/ls (not in name allow-list)");
+    char *c[] = {"ls/../ls", NULL};
+    assert_blocked(c, "ls/../ls (not in name allow-list)");
+    char *d[] = {"", NULL};
+    assert_blocked(d, "empty string argv[0]");
     TEST_ASSERT(!exec_policy_allows_args(NULL), "NULL argv is blocked, not a crash");
     /* argv[0] == NULL hits execute_command's early defensive `!argv[0]`
      * return (exit_code stays at its -1 init value, distinct from the

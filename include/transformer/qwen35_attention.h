@@ -14,8 +14,7 @@
  * recurrence + SiLU output gate) sub-path, per q35_layer_is_full_attn().
  * Called from attention_forward() when mc->has_linear_attn is set.
  */
-void qwen35_attention_forward(RunState *s, const TransformerWeights *w,
-                               const Config *cfg, const MoEConfig *mc,
-                               int layer, int pos, ThreadPool *tp);
+void qwen35_attention_forward(RunState *s, const TransformerWeights *w, const Config *cfg,
+                              const MoEConfig *mc, int layer, int pos, ThreadPool *tp);
 
 #endif /* TN_QWEN35_ATTENTION_H */

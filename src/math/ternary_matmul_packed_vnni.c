@@ -38,7 +38,7 @@
  */
 
 #define TN_VNNI_MAX_N 16384
-#define TN_PREFETCH_ROWS  8   /* primary lookahead (≈1 DRAM latency) */
+#define TN_PREFETCH_ROWS 8 /* primary lookahead (≈1 DRAM latency) */
 
 /*
  * Prefetch ALL cache lines of the target weight row.
@@ -47,12 +47,11 @@
  * causing DRAM stalls when the inner loop reaches those lines.
  * This macro issues a prefetch for every 64-byte cache line in the row.
  */
-#define TN_PREFETCH_ROW_ALL(ptr, row_bytes, hint)                          \
-    do {                                                                    \
-        const char *_p = (const char *)(ptr);                              \
-        size_t _rb = (row_bytes);                                           \
-        for (size_t _off = 0; _off < _rb; _off += 64)                     \
-            _mm_prefetch(_p + _off, (hint));                               \
+#define TN_PREFETCH_ROW_ALL(ptr, row_bytes, hint)                                                  \
+    do {                                                                                           \
+        const char *_p = (const char *)(ptr);                                                      \
+        size_t _rb     = (row_bytes);                                                              \
+        for (size_t _off = 0; _off < _rb; _off += 64) _mm_prefetch(_p + _off, (hint));             \
     } while (0)
 
 /*
@@ -74,19 +73,18 @@
 #endif
 
 void TN_VNNI_KERNEL(ternary_matmul_packed_vnni)(float *out, const float *x, const tn_u8 *packed_w,
-                                 int n, int d, const float *scales, int group_size)
-{
+                                                int n, int d, const float *scales, int group_size) {
     if (n > TN_VNNI_MAX_N) {
         /* Safety fallback — should never happen with current models */
-        extern void ternary_matmul_packed_avx512(float*, const float*, const tn_u8*,
-                                                  int, int, const float*, int);
+        extern void ternary_matmul_packed_avx512(float *, const float *, const tn_u8 *, int, int,
+                                                 const float *, int);
         ternary_matmul_packed_avx512(out, x, packed_w, n, d, scales, group_size);
         return;
     }
 
     /* ── Step 1: Quantize activations (once per matmul call) ── */
-    int8_t  q_x[TN_VNNI_MAX_N];
-    float   act_scale = quantize_row_to_i8_avx512(x, q_x, n);
+    int8_t q_x[TN_VNNI_MAX_N];
+    float act_scale = quantize_row_to_i8_avx512(x, q_x, n);
 
     if (act_scale == 0.0f) {
         /* All-zero input — output is zero regardless of weights */
@@ -113,7 +111,7 @@ void TN_VNNI_KERNEL(ternary_matmul_packed_vnni)(float *out, const float *x, cons
 
 
             __m512i acc = _mm512_setzero_si512();
-            int j = 0;
+            int j       = 0;
 
             /* 64-weight VNNI loop */
             for (; j + 63 < n; j += 64) {
@@ -121,7 +119,7 @@ void TN_VNNI_KERNEL(ternary_matmul_packed_vnni)(float *out, const float *x, cons
                 __m512i wenc = tn_unpack64_to_wenc_u8(row + (j >> 2));
 
                 /* Load 64 int8 activations */
-                __m512i qxv = _mm512_loadu_si512((const __m512i*)(q_x + j));
+                __m512i qxv = _mm512_loadu_si512((const __m512i *)(q_x + j));
 
                 /* VNNI: acc += Σ(wenc[k] * qxv[k]) in groups of 4 → 16 int32 */
                 acc = _mm512_dpbusds_epi32(acc, wenc, qxv);
@@ -138,7 +136,7 @@ void TN_VNNI_KERNEL(ternary_matmul_packed_vnni)(float *out, const float *x, cons
 
             /* Bias correction + dequantize */
             int32_t true_dot = vnni_result - sum_qx;
-            out[i] = (float)true_dot * act_scale * w_scale;
+            out[i]           = (float)true_dot * act_scale * w_scale;
         }
 
     } else {
@@ -146,7 +144,7 @@ void TN_VNNI_KERNEL(ternary_matmul_packed_vnni)(float *out, const float *x, cons
         int n_groups = (n + group_size - 1) / group_size;
 
         /* Precompute per-group partial sums of q_x for bias correction */
-        int32_t sum_qx_group[1024];  /* supports up to 1024 groups */
+        int32_t sum_qx_group[1024]; /* supports up to 1024 groups */
         int safe_groups = n_groups < 1024 ? n_groups : 1024;
         for (int g = 0; g < safe_groups; g++) {
             int gs = g * group_size;
@@ -171,13 +169,13 @@ void TN_VNNI_KERNEL(ternary_matmul_packed_vnni)(float *out, const float *x, cons
                 if (ge > n) ge = n;
 
                 __m512i acc = _mm512_setzero_si512();
-                int j = gs;
+                int j       = gs;
 
                 for (; j + 63 < ge; j += 64) {
                     __m512i wenc = tn_unpack64_to_wenc_u8(row + (j >> 2));
 
-                    __m512i qxv = _mm512_loadu_si512((const __m512i*)(q_x + j));
-                    acc = _mm512_dpbusds_epi32(acc, wenc, qxv);
+                    __m512i qxv = _mm512_loadu_si512((const __m512i *)(q_x + j));
+                    acc         = _mm512_dpbusds_epi32(acc, wenc, qxv);
                 }
 
                 int32_t vnni_result = _mm512_reduce_add_epi32(acc);
@@ -213,13 +211,9 @@ void TN_VNNI_KERNEL(ternary_matmul_packed_vnni)(float *out, const float *x, cons
  * than the standard path (T1/8 rows) since smaller lookahead fits better in
  * L1 (48 KB Tiger Lake) alongside the 2.5 KB activation vector.
  */
-void TN_VNNI_KERNEL(ternary_matmul_packed_vnni_preq)(float *out,
-                                      const int8_t *q_x, float act_scale,
-                                      int32_t sum_qx,
-                                      const tn_u8 *packed_w,
-                                      int n, int d,
-                                      const float *scales, int group_size)
-{
+void TN_VNNI_KERNEL(ternary_matmul_packed_vnni_preq)(float *out, const int8_t *q_x, float act_scale,
+                                                     int32_t sum_qx, const tn_u8 *packed_w, int n,
+                                                     int d, const float *scales, int group_size) {
     if (act_scale == 0.0f) {
         memset(out, 0, (size_t)d * sizeof(float));
         return;
@@ -239,13 +233,13 @@ void TN_VNNI_KERNEL(ternary_matmul_packed_vnni_preq)(float *out,
 
 
             __m512i acc = _mm512_setzero_si512();
-            int j = 0;
+            int j       = 0;
 
             for (; j + 63 < n; j += 64) {
                 __m512i wenc = tn_unpack64_to_wenc_u8(row + (j >> 2));
 
-                __m512i qxv = _mm512_loadu_si512((const __m512i*)(q_x + j));
-                acc = _mm512_dpbusds_epi32(acc, wenc, qxv);
+                __m512i qxv = _mm512_loadu_si512((const __m512i *)(q_x + j));
+                acc         = _mm512_dpbusds_epi32(acc, wenc, qxv);
             }
 
             int32_t vnni_result = _mm512_reduce_add_epi32(acc);
@@ -256,7 +250,7 @@ void TN_VNNI_KERNEL(ternary_matmul_packed_vnni_preq)(float *out,
             }
 
             int32_t true_dot = vnni_result - sum_qx;
-            out[i] = (float)true_dot * act_scale * w_scale;
+            out[i]           = (float)true_dot * act_scale * w_scale;
         }
 
     } else {
@@ -286,13 +280,13 @@ void TN_VNNI_KERNEL(ternary_matmul_packed_vnni_preq)(float *out,
                 if (ge > n) ge = n;
 
                 __m512i acc = _mm512_setzero_si512();
-                int j = gs;
+                int j       = gs;
 
                 for (; j + 63 < ge; j += 64) {
                     __m512i wenc = tn_unpack64_to_wenc_u8(row + (j >> 2));
 
-                    __m512i qxv = _mm512_loadu_si512((const __m512i*)(q_x + j));
-                    acc = _mm512_dpbusds_epi32(acc, wenc, qxv);
+                    __m512i qxv = _mm512_loadu_si512((const __m512i *)(q_x + j));
+                    acc         = _mm512_dpbusds_epi32(acc, wenc, qxv);
                 }
 
                 int32_t vnni_result = _mm512_reduce_add_epi32(acc);

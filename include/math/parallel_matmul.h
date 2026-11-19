@@ -20,15 +20,15 @@
  * @param scale Per-matrix scale factor
  * @param tp    Thread pool (NULL for single-threaded fallback)
  */
-void parallel_ternary_matmul(float *out, const float *x, const tn_i8 *w,
-                              int n, int d, float scale, ThreadPool *tp);
+void parallel_ternary_matmul(float *out, const float *x, const tn_i8 *w, int n, int d, float scale,
+                             ThreadPool *tp);
 
 /**
  * Parallel packed ternary matrix-vector multiplication.
  * Uses 2-bit packing (4 weights per byte).
  */
-void parallel_ternary_matmul_packed(float *out, const float *x, const tn_u8 *w,
-                                     int n, int d, float scale, ThreadPool *tp);
+void parallel_ternary_matmul_packed(float *out, const float *x, const tn_u8 *w, int n, int d,
+                                    float scale, ThreadPool *tp);
 
 /**
  * Layer-level pre-quantised activation state.
@@ -49,10 +49,10 @@ void parallel_ternary_matmul_packed(float *out, const float *x, const tn_u8 *w,
  * the standard quantise-per-call path transparently.
  */
 typedef struct {
-    const int8_t *q_x;       /* points into caller's buffer (not owned) */
-    float         act_scale;
-    int32_t       sum_qx;
-    int           valid;     /* 1 if successfully quantised, 0 = fallback */
+    const int8_t *q_x; /* points into caller's buffer (not owned) */
+    float act_scale;
+    int32_t sum_qx;
+    int valid; /* 1 if successfully quantised, 0 = fallback */
 } TnPreqActivation;
 
 /**
@@ -67,29 +67,27 @@ int tn_preq_prepare(TnPreqActivation *preq, int8_t *buf, const float *x, int n);
  * If preq->valid, skips quantisation step entirely (layer-level preq).
  * Falls back to standard quantise-per-call if preq is NULL or preq->valid == 0.
  */
-void parallel_ternary_matmul_packed_preq(float *out, const float *x, const tn_u8 *w,
-                                          int n, int d, float scale,
-                                          const TnPreqActivation *preq,
-                                          ThreadPool *tp);
+void parallel_ternary_matmul_packed_preq(float *out, const float *x, const tn_u8 *w, int n, int d,
+                                         float scale, const TnPreqActivation *preq, ThreadPool *tp);
 /**
  * Parallel bf16 matrix-vector multiplication.
  * Used for the output classifier when the embedding table is stored as bfloat16.
  * Converts bf16 → float32 on the fly (single bit-shift per value, no overhead).
  */
-void parallel_matmul_bf16(float *out, const float *x, const tn_u16 *w,
-                           int n, int d, ThreadPool *tp);
+void parallel_matmul_bf16(float *out, const float *x, const tn_u16 *w, int n, int d,
+                          ThreadPool *tp);
 
 /* Multi-token BF16 matmul: x [n_tokens][n] -> out [n_tokens][d], each weight
  * row streamed once for all tokens (Phase 23 batched decode). */
-void parallel_matmul_bf16_tokens(float *out, const float *x, const tn_u16 *w,
-                                 int n, int d, int n_tokens, ThreadPool *tp);
+void parallel_matmul_bf16_tokens(float *out, const float *x, const tn_u16 *w, int n, int d,
+                                 int n_tokens, ThreadPool *tp);
 
 /**
  * Parallel float32 matrix-vector multiplication.
  * Used when weights are stored as regular float32 (non-ternary fallback path).
  */
-void parallel_matmul_float32(float *out, const float *x, const float *w,
-                              int n, int d, ThreadPool *tp);
+void parallel_matmul_float32(float *out, const float *x, const float *w, int n, int d,
+                             ThreadPool *tp);
 
 /**
  * Parallel INT8 matrix-vector multiplication with block-wise scales.
@@ -103,8 +101,8 @@ void parallel_matmul_float32(float *out, const float *x, const float *w,
  *
  * out[i] = sum_b (sum_{j in block b} w_i8[i][j] * x[j]) * scales[i*n_blocks+b]
  */
-void parallel_matmul_i8(float *out, const float *x, const tn_u8 *w,
-                          const float *scales, int n, int d, ThreadPool *tp);
+void parallel_matmul_i8(float *out, const float *x, const tn_u8 *w, const float *scales, int n,
+                        int d, ThreadPool *tp);
 
 /**
  * Parallel INT4 matrix-vector multiplication with block-wise scales.
@@ -118,7 +116,7 @@ void parallel_matmul_i8(float *out, const float *x, const tn_u8 *w,
  *
  * out[i] = sum_b (sum_{j in block b} w_i4[i][j] * x[j]) * scales[i*n_blocks+b]
  */
-void parallel_matmul_i4(float *out, const float *x, const tn_u8 *w,
-                          const float *scales, int n, int d, ThreadPool *tp);
+void parallel_matmul_i4(float *out, const float *x, const tn_u8 *w, const float *scales, int n,
+                        int d, ThreadPool *tp);
 
 #endif /* TN_PARALLEL_MATMUL_H */

@@ -33,8 +33,8 @@
 
 static void fill_ternary_i8(tn_i8 *buf, int count, unsigned seed) {
     for (int i = 0; i < count; i++) {
-        seed = seed * 1103515245 + 12345;
-        int r = (seed >> 16) % 3;
+        seed   = seed * 1103515245 + 12345;
+        int r  = (seed >> 16) % 3;
         buf[i] = (tn_i8)(r - 1);
     }
 }
@@ -42,8 +42,8 @@ static void fill_ternary_i8(tn_i8 *buf, int count, unsigned seed) {
 /* Packs a [rows][cols] ternary matrix (row-major) into 2-bit packed form. */
 static tn_u8 *make_packed_ternary(int rows, int cols, unsigned seed) {
     size_t row_bytes = packed_bytes(cols);
-    tn_u8 *packed = (tn_u8 *)calloc((size_t)rows * row_bytes, 1);
-    tn_i8 *tmp = (tn_i8 *)malloc((size_t)rows * cols);
+    tn_u8 *packed    = (tn_u8 *)calloc((size_t)rows * row_bytes, 1);
+    tn_i8 *tmp       = (tn_i8 *)malloc((size_t)rows * cols);
     fill_ternary_i8(tmp, rows * cols, seed);
     for (int i = 0; i < rows; i++) {
         for (int j = 0; j < cols; j++) {
@@ -56,7 +56,7 @@ static tn_u8 *make_packed_ternary(int rows, int cols, unsigned seed) {
 
 static void fill_pattern_bf16(tn_u16 *buf, size_t count, int seed) {
     for (size_t i = 0; i < count; i++) {
-        int v = ((int)(i * 7 + (unsigned)seed * 13) % 3) - 1;
+        int v   = ((int)(i * 7 + (unsigned)seed * 13) % 3) - 1;
         float f = (float)v * 0.5f;
         uint32_t bits;
         memcpy(&bits, &f, sizeof(bits));
@@ -80,16 +80,16 @@ static void fill_ones(float *buf, int count) {
 
 static void build_dense_ternary_model(Config *cfg, TransformerWeights *w) {
     memset(cfg, 0, sizeof(*cfg));
-    cfg->dim = D_DIM;
-    cfg->hidden_dim = D_HIDDEN;
-    cfg->n_layers = D_LAYERS;
-    cfg->n_heads = D_HEADS;
-    cfg->n_kv_heads = D_KV_HEADS;
-    cfg->vocab_size = D_VOCAB;
-    cfg->seq_len = D_SEQ;
-    cfg->rms_norm_eps = 1e-5f;
-    cfg->rope_freq_scale = 1.0f;
-    cfg->rope_theta = 10000.0f;
+    cfg->dim                   = D_DIM;
+    cfg->hidden_dim            = D_HIDDEN;
+    cfg->n_layers              = D_LAYERS;
+    cfg->n_heads               = D_HEADS;
+    cfg->n_kv_heads            = D_KV_HEADS;
+    cfg->vocab_size            = D_VOCAB;
+    cfg->seq_len               = D_SEQ;
+    cfg->rms_norm_eps          = 1e-5f;
+    cfg->rope_freq_scale       = 1.0f;
+    cfg->rope_theta            = 10000.0f;
     cfg->rope_yarn_attn_factor = 1.0f;
 
     memset(w, 0, sizeof(*w));
@@ -134,9 +134,15 @@ static void build_dense_ternary_model(Config *cfg, TransformerWeights *w) {
 static void free_dense_ternary_model(TransformerWeights *w) {
     free(w->token_embedding_table);
     for (int l = 0; l < D_LAYERS; l++) {
-        free(w->wq[l]); free(w->wk[l]); free(w->wv[l]); free(w->wo[l]);
-        free(w->w1[l]); free(w->w2[l]); free(w->w3[l]);
-        free(w->rms_att_weight[l]); free(w->rms_ffn_weight[l]);
+        free(w->wq[l]);
+        free(w->wk[l]);
+        free(w->wv[l]);
+        free(w->wo[l]);
+        free(w->w1[l]);
+        free(w->w2[l]);
+        free(w->w3[l]);
+        free(w->rms_att_weight[l]);
+        free(w->rms_ffn_weight[l]);
     }
     free(w->rms_final_weight);
     free(w->wcls);
@@ -151,7 +157,7 @@ static void test_dense_batch_matches_sequential(void) {
     build_dense_ternary_model(&cfg, &w);
 
     const int n_tokens = 3;
-    int tokens[3] = {1, 4, 2};
+    int tokens[3]      = {1, 4, 2};
 
     /* Sequential reference */
     RunState s_ref;
@@ -177,9 +183,8 @@ static void test_dense_batch_matches_sequential(void) {
      * batched function with the raw token IDs, matching its documented
      * contract). */
     float logits_batch[3][D_VOCAB];
-    TernaryError err = transformer_forward_batch(tokens, 0, n_tokens, &cfg, &w,
-                                                  &s_batch, &sb, NULL, NULL,
-                                                  (float *)logits_batch);
+    TernaryError err = transformer_forward_batch(tokens, 0, n_tokens, &cfg, &w, &s_batch, &sb, NULL,
+                                                 NULL, (float *)logits_batch);
     TEST_ASSERT(err == TN_OK, "transformer_forward_batch returns TN_OK for dense model");
 
     int all_match = 1;
@@ -204,15 +209,23 @@ static LoRAModule *lora_modules(int n_layers, int in, int out, int rank, unsigne
     for (int l = 0; l < n_layers; l++) {
         float *A = (float *)malloc((size_t)rank * in * sizeof(float));
         float *B = (float *)malloc((size_t)out * rank * sizeof(float));
-        for (int i = 0; i < rank * in; i++) A[i] = 0.05f * (float)((int)((seed + 7u * i) % 13u) - 6);
-        for (int i = 0; i < out * rank; i++) B[i] = 0.05f * (float)((int)((seed + 5u * i) % 11u) - 5);
-        m[l].A = A; m[l].B = B; m[l].rank = rank; m[l].scale = 2.0f;
+        for (int i = 0; i < rank * in; i++)
+            A[i] = 0.05f * (float)((int)((seed + 7u * i) % 13u) - 6);
+        for (int i = 0; i < out * rank; i++)
+            B[i] = 0.05f * (float)((int)((seed + 5u * i) % 11u) - 5);
+        m[l].A     = A;
+        m[l].B     = B;
+        m[l].rank  = rank;
+        m[l].scale = 2.0f;
     }
     return m;
 }
 
 static void lora_modules_free(LoRAModule *m, int n_layers) {
-    for (int l = 0; l < n_layers; l++) { free((void *)m[l].A); free((void *)m[l].B); }
+    for (int l = 0; l < n_layers; l++) {
+        free((void *)m[l].A);
+        free((void *)m[l].B);
+    }
     free(m);
 }
 
@@ -224,18 +237,21 @@ static void test_dense_batch_matches_sequential_with_lora(void) {
     int kv_dim = config_kv_dim(&cfg);
     LoRAWeights lora;
     memset(&lora, 0, sizeof(lora));
-    lora.n_layers = cfg.n_layers; lora.rank = 2; lora.alpha = 4.0f;
-    lora.dim = cfg.dim; lora.hidden_dim = cfg.hidden_dim;
-    lora.q = lora_modules(cfg.n_layers, cfg.dim, cfg.dim, 2, 1);
-    lora.k = lora_modules(cfg.n_layers, cfg.dim, kv_dim, 2, 2);
-    lora.v = lora_modules(cfg.n_layers, cfg.dim, kv_dim, 2, 3);
-    lora.o = lora_modules(cfg.n_layers, cfg.dim, cfg.dim, 2, 4);
-    lora.gate = lora_modules(cfg.n_layers, cfg.dim, cfg.hidden_dim, 2, 5);
-    lora.up = lora_modules(cfg.n_layers, cfg.dim, cfg.hidden_dim, 2, 6);
-    lora.down = lora_modules(cfg.n_layers, cfg.hidden_dim, cfg.dim, 2, 7);
+    lora.n_layers   = cfg.n_layers;
+    lora.rank       = 2;
+    lora.alpha      = 4.0f;
+    lora.dim        = cfg.dim;
+    lora.hidden_dim = cfg.hidden_dim;
+    lora.q          = lora_modules(cfg.n_layers, cfg.dim, cfg.dim, 2, 1);
+    lora.k          = lora_modules(cfg.n_layers, cfg.dim, kv_dim, 2, 2);
+    lora.v          = lora_modules(cfg.n_layers, cfg.dim, kv_dim, 2, 3);
+    lora.o          = lora_modules(cfg.n_layers, cfg.dim, cfg.dim, 2, 4);
+    lora.gate       = lora_modules(cfg.n_layers, cfg.dim, cfg.hidden_dim, 2, 5);
+    lora.up         = lora_modules(cfg.n_layers, cfg.dim, cfg.hidden_dim, 2, 6);
+    lora.down       = lora_modules(cfg.n_layers, cfg.hidden_dim, cfg.dim, 2, 7);
 
     const int n_tokens = 3;
-    int tokens[3] = {1, 4, 2};
+    int tokens[3]      = {1, 4, 2};
     RunState s_ref, s_base, s_batch;
     run_state_alloc(&s_ref, &cfg, cfg.seq_len);
     run_state_alloc(&s_base, &cfg, cfg.seq_len);
@@ -243,17 +259,20 @@ static void test_dense_batch_matches_sequential_with_lora(void) {
     sw_init(&s_ref.sw, cfg.seq_len, 0);
     sw_init(&s_base.sw, cfg.seq_len, 0);
     sw_init(&s_batch.sw, cfg.seq_len, 0);
-    s_ref.active_lora = &lora;
+    s_ref.active_lora   = &lora;
     s_batch.active_lora = &lora;
     float ref[3][D_VOCAB], base[3][D_VOCAB], batch[3][D_VOCAB];
     for (int k = 0; k < n_tokens; k++) {
-        memcpy(ref[k], transformer_forward(tokens[k], k, &cfg, &w, &s_ref, NULL, NULL), sizeof(ref[k]));
-        memcpy(base[k], transformer_forward(tokens[k], k, &cfg, &w, &s_base, NULL, NULL), sizeof(base[k]));
+        memcpy(ref[k], transformer_forward(tokens[k], k, &cfg, &w, &s_ref, NULL, NULL),
+               sizeof(ref[k]));
+        memcpy(base[k], transformer_forward(tokens[k], k, &cfg, &w, &s_base, NULL, NULL),
+               sizeof(base[k]));
     }
     SpecBatchScratch sb;
     TEST_ASSERT(spec_batch_scratch_alloc(&sb, &cfg, n_tokens) == TN_OK, "scratch");
     TEST_ASSERT(transformer_forward_batch(tokens, 0, n_tokens, &cfg, &w, &s_batch, &sb, NULL, NULL,
-                                          (float *)batch) == TN_OK, "batched forward");
+                                          (float *)batch) == TN_OK,
+                "batched forward");
     int match = 1, differs = 0;
     for (int k = 0; k < n_tokens; k++)
         for (int i = 0; i < D_VOCAB; i++) {
@@ -263,10 +282,15 @@ static void test_dense_batch_matches_sequential_with_lora(void) {
     TEST_ASSERT(differs, "the adapter changes the sequential logits");
     TEST_ASSERT(match, "batched forward applies the same LoRA deltas as sequential");
     spec_batch_scratch_free(&sb);
-    run_state_free(&s_ref); run_state_free(&s_base); run_state_free(&s_batch);
-    lora_modules_free(lora.q, cfg.n_layers); lora_modules_free(lora.k, cfg.n_layers);
-    lora_modules_free(lora.v, cfg.n_layers); lora_modules_free(lora.o, cfg.n_layers);
-    lora_modules_free(lora.gate, cfg.n_layers); lora_modules_free(lora.up, cfg.n_layers);
+    run_state_free(&s_ref);
+    run_state_free(&s_base);
+    run_state_free(&s_batch);
+    lora_modules_free(lora.q, cfg.n_layers);
+    lora_modules_free(lora.k, cfg.n_layers);
+    lora_modules_free(lora.v, cfg.n_layers);
+    lora_modules_free(lora.o, cfg.n_layers);
+    lora_modules_free(lora.gate, cfg.n_layers);
+    lora_modules_free(lora.up, cfg.n_layers);
     lora_modules_free(lora.down, cfg.n_layers);
     free_dense_ternary_model(&w);
 }
@@ -281,8 +305,10 @@ static void test_forward_multi_matches_sequential(void) {
     build_dense_ternary_model(&cfg, &w);
     RunState ref[3], mul[3];
     for (int i = 0; i < 3; i++) {
-        run_state_alloc(&ref[i], &cfg, cfg.seq_len); sw_init(&ref[i].sw, cfg.seq_len, 0);
-        run_state_alloc(&mul[i], &cfg, cfg.seq_len); sw_init(&mul[i].sw, cfg.seq_len, 0);
+        run_state_alloc(&ref[i], &cfg, cfg.seq_len);
+        sw_init(&ref[i].sw, cfg.seq_len, 0);
+        run_state_alloc(&mul[i], &cfg, cfg.seq_len);
+        sw_init(&mul[i].sw, cfg.seq_len, 0);
     }
     /* histories: A = {1, 4, 2}, B = {3}, C = {} */
     const int ha[3] = {1, 4, 2};
@@ -305,7 +331,8 @@ static void test_forward_multi_matches_sequential(void) {
     TEST_ASSERT(spec_batch_scratch_alloc(&sb, &cfg, 4) == TN_OK, "scratch for 4 rows");
     float got[4][D_VOCAB];
     TEST_ASSERT(transformer_forward_multi(tokens, pos, st, 4, &cfg, &w, &sb, NULL, NULL,
-                                          (float *)got) == TN_OK, "multi-sequence step");
+                                          (float *)got) == TN_OK,
+                "multi-sequence step");
     int ok = 1;
     for (int k = 0; k < 4; k++)
         for (int i = 0; i < D_VOCAB; i++)
@@ -318,13 +345,18 @@ static void test_forward_multi_matches_sequential(void) {
     RunState *s1 = &mul[0];
     transformer_forward_multi(&t1, &p1, &s1, 1, &cfg, &w, &sb, NULL, NULL, g2);
     int ok2 = 1;
-    for (int i = 0; i < D_VOCAB; i++) if (fabsf(w2[i] - g2[i]) > TOL) ok2 = 0;
+    for (int i = 0; i < D_VOCAB; i++)
+        if (fabsf(w2[i] - g2[i]) > TOL) ok2 = 0;
     TEST_ASSERT(ok2, "KV written by a multi step is reused by the next step");
     int bad_pos = 99;
-    TEST_ASSERT(transformer_forward_multi(&t1, &bad_pos, &s1, 1, &cfg, &w, &sb, NULL, NULL, g2)
-                == TN_ERR_INVALID_ARGS, "position past the context refused");
+    TEST_ASSERT(transformer_forward_multi(&t1, &bad_pos, &s1, 1, &cfg, &w, &sb, NULL, NULL, g2) ==
+                    TN_ERR_INVALID_ARGS,
+                "position past the context refused");
     spec_batch_scratch_free(&sb);
-    for (int i = 0; i < 3; i++) { run_state_free(&ref[i]); run_state_free(&mul[i]); }
+    for (int i = 0; i < 3; i++) {
+        run_state_free(&ref[i]);
+        run_state_free(&mul[i]);
+    }
     free_dense_ternary_model(&w);
 }
 
@@ -344,29 +376,29 @@ static void test_forward_multi_matches_sequential(void) {
 
 static void build_mla_ternary_model(Config *cfg, TransformerWeights *w, MoEConfig *mc) {
     memset(cfg, 0, sizeof(*cfg));
-    cfg->dim = M_DIM;
-    cfg->hidden_dim = M_HIDDEN;
-    cfg->n_layers = M_LAYERS;
-    cfg->n_heads = M_HEADS;
-    cfg->n_kv_heads = M_KV_HEADS;
-    cfg->vocab_size = M_VOCAB;
-    cfg->seq_len = M_SEQ;
-    cfg->rms_norm_eps = 1e-5f;
-    cfg->rope_freq_scale = 1.0f;
-    cfg->rope_theta = 10000.0f;
+    cfg->dim                   = M_DIM;
+    cfg->hidden_dim            = M_HIDDEN;
+    cfg->n_layers              = M_LAYERS;
+    cfg->n_heads               = M_HEADS;
+    cfg->n_kv_heads            = M_KV_HEADS;
+    cfg->vocab_size            = M_VOCAB;
+    cfg->seq_len               = M_SEQ;
+    cfg->rms_norm_eps          = 1e-5f;
+    cfg->rope_freq_scale       = 1.0f;
+    cfg->rope_theta            = 10000.0f;
     cfg->rope_yarn_attn_factor = 1.0f;
 
     moe_config_init_dense(mc);
-    mc->has_mla = 1;
+    mc->has_mla          = 1;
     mc->qk_nope_head_dim = M_NOPE;
     mc->qk_rope_head_dim = M_ROPE;
-    mc->kv_lora_rank = M_LORA;
-    mc->v_head_dim = M_VDIM;
+    mc->kv_lora_rank     = M_LORA;
+    mc->v_head_dim       = M_VDIM;
     /* is_moe must be true for moe_weights_alloc() to allocate the mla_*
      * pointer arrays (see src/core/moe_weights.c) -- first_k_dense_replace
      * covers the one layer so ffn_forward_batch takes the dense path,
      * keeping this test focused on MLA *attention* batching alone. */
-    mc->is_moe = true;
+    mc->is_moe                = true;
     mc->first_k_dense_replace = M_LAYERS;
 
     memset(w, 0, sizeof(*w));
@@ -374,7 +406,7 @@ static void build_mla_ternary_model(Config *cfg, TransformerWeights *w, MoEConfi
     TEST_ASSERT(moe_weights_alloc(w, cfg, mc) == TN_OK, "moe_weights_alloc (MLA arrays)");
     w->layers_are_ternary = true;
 
-    const int q_rows = M_HEADS * (M_NOPE + M_ROPE);
+    const int q_rows   = M_HEADS * (M_NOPE + M_ROPE);
     const int kva_rows = M_LORA + M_ROPE;
     const int kvb_rows = M_KV_HEADS * (M_NOPE + M_VDIM);
 
@@ -418,9 +450,16 @@ static void build_mla_ternary_model(Config *cfg, TransformerWeights *w, MoEConfi
 static void free_mla_ternary_model(TransformerWeights *w, const MoEConfig *mc) {
     free(w->token_embedding_table);
     for (int l = 0; l < M_LAYERS; l++) {
-        free(w->mla_wq[l]); free(w->mla_wkv_a[l]); free(w->mla_wkv_b[l]);
-        free(w->wo[l]); free(w->w1[l]); free(w->w2[l]); free(w->w3[l]);
-        free(w->rms_att_weight[l]); free(w->rms_ffn_weight[l]); free(w->rms_attn_sub_norm[l]);
+        free(w->mla_wq[l]);
+        free(w->mla_wkv_a[l]);
+        free(w->mla_wkv_b[l]);
+        free(w->wo[l]);
+        free(w->w1[l]);
+        free(w->w2[l]);
+        free(w->w3[l]);
+        free(w->rms_att_weight[l]);
+        free(w->rms_ffn_weight[l]);
+        free(w->rms_attn_sub_norm[l]);
     }
     free(w->rms_final_weight);
     free(w->wcls);
@@ -437,11 +476,12 @@ static void test_mla_batch_matches_sequential(void) {
     build_mla_ternary_model(&cfg, &w, &mc);
 
     const int n_tokens = 3;
-    int tokens[3] = {1, 4, 2};
+    int tokens[3]      = {1, 4, 2};
 
     RunState s_ref;
     TEST_ASSERT(run_state_alloc(&s_ref, &cfg, cfg.seq_len) == TN_OK, "MLA ref run_state_alloc");
-    TEST_ASSERT(mla_run_state_alloc(&s_ref, &cfg, &mc, cfg.seq_len) == TN_OK, "MLA ref mla_run_state_alloc");
+    TEST_ASSERT(mla_run_state_alloc(&s_ref, &cfg, &mc, cfg.seq_len) == TN_OK,
+                "MLA ref mla_run_state_alloc");
     sw_init(&s_ref.sw, cfg.seq_len, 0);
     float logits_ref[3][M_VOCAB];
     for (int k = 0; k < n_tokens; k++) {
@@ -451,15 +491,16 @@ static void test_mla_batch_matches_sequential(void) {
 
     RunState s_batch;
     TEST_ASSERT(run_state_alloc(&s_batch, &cfg, cfg.seq_len) == TN_OK, "MLA batch run_state_alloc");
-    TEST_ASSERT(mla_run_state_alloc(&s_batch, &cfg, &mc, cfg.seq_len) == TN_OK, "MLA batch mla_run_state_alloc");
+    TEST_ASSERT(mla_run_state_alloc(&s_batch, &cfg, &mc, cfg.seq_len) == TN_OK,
+                "MLA batch mla_run_state_alloc");
     sw_init(&s_batch.sw, cfg.seq_len, 0);
     SpecBatchScratch sb;
-    TEST_ASSERT(spec_batch_scratch_alloc(&sb, &cfg, n_tokens) == TN_OK, "MLA spec_batch_scratch_alloc");
+    TEST_ASSERT(spec_batch_scratch_alloc(&sb, &cfg, n_tokens) == TN_OK,
+                "MLA spec_batch_scratch_alloc");
 
     float logits_batch[3][M_VOCAB];
-    TernaryError err = transformer_forward_batch(tokens, 0, n_tokens, &cfg, &w,
-                                                  &s_batch, &sb, &mc, NULL,
-                                                  (float *)logits_batch);
+    TernaryError err = transformer_forward_batch(tokens, 0, n_tokens, &cfg, &w, &s_batch, &sb, &mc,
+                                                 NULL, (float *)logits_batch);
     TEST_ASSERT(err == TN_OK, "transformer_forward_batch returns TN_OK for MLA model");
 
     int all_match = 1;
@@ -491,20 +532,20 @@ static void test_mla_batch_matches_sequential(void) {
 
 static void build_qwen3moe_ternary_model(Config *cfg, TransformerWeights *w, MoEConfig *mc) {
     memset(cfg, 0, sizeof(*cfg));
-    cfg->dim = Q3_DIM;
-    cfg->hidden_dim = Q3_HIDDEN;
-    cfg->n_layers = Q3_LAYERS;
-    cfg->n_heads = Q3_HEADS;
-    cfg->n_kv_heads = Q3_KV_HEADS;
-    cfg->vocab_size = Q3_VOCAB;
-    cfg->seq_len = Q3_SEQ;
-    cfg->rms_norm_eps = 1e-5f;
-    cfg->rope_freq_scale = 1.0f;
-    cfg->rope_theta = 10000.0f;
+    cfg->dim                   = Q3_DIM;
+    cfg->hidden_dim            = Q3_HIDDEN;
+    cfg->n_layers              = Q3_LAYERS;
+    cfg->n_heads               = Q3_HEADS;
+    cfg->n_kv_heads            = Q3_KV_HEADS;
+    cfg->vocab_size            = Q3_VOCAB;
+    cfg->seq_len               = Q3_SEQ;
+    cfg->rms_norm_eps          = 1e-5f;
+    cfg->rope_freq_scale       = 1.0f;
+    cfg->rope_theta            = 10000.0f;
     cfg->rope_yarn_attn_factor = 1.0f;
 
     moe_config_init_dense(mc);
-    mc->has_qk_norm = 1;
+    mc->has_qk_norm   = 1;
     mc->attn_head_dim = Q3_HEAD_DIM;
     /* is_moe left false: dense FFN, keeping this test focused on
      * QK-norm attention batching alone (mirrors the MLA test's approach). */
@@ -513,7 +554,7 @@ static void build_qwen3moe_ternary_model(Config *cfg, TransformerWeights *w, MoE
     weights_alloc_pointers(w, cfg);
     w->layers_are_ternary = true;
 
-    int q_width = Q3_HEADS * Q3_HEAD_DIM;
+    int q_width  = Q3_HEADS * Q3_HEAD_DIM;
     int kv_width = Q3_KV_HEADS * Q3_HEAD_DIM;
 
     w->token_embedding_table = (tn_u16 *)calloc((size_t)Q3_VOCAB * Q3_DIM, sizeof(tn_u16));
@@ -557,10 +598,17 @@ static void build_qwen3moe_ternary_model(Config *cfg, TransformerWeights *w, MoE
 static void free_qwen3moe_ternary_model(TransformerWeights *w) {
     free(w->token_embedding_table);
     for (int l = 0; l < Q3_LAYERS; l++) {
-        free(w->wq[l]); free(w->wk[l]); free(w->wv[l]); free(w->wo[l]);
-        free(w->w1[l]); free(w->w2[l]); free(w->w3[l]);
-        free(w->rms_att_weight[l]); free(w->rms_ffn_weight[l]);
-        free(w->qwen3moe_attn_q_norm[l]); free(w->qwen3moe_attn_k_norm[l]);
+        free(w->wq[l]);
+        free(w->wk[l]);
+        free(w->wv[l]);
+        free(w->wo[l]);
+        free(w->w1[l]);
+        free(w->w2[l]);
+        free(w->w3[l]);
+        free(w->rms_att_weight[l]);
+        free(w->rms_ffn_weight[l]);
+        free(w->qwen3moe_attn_q_norm[l]);
+        free(w->qwen3moe_attn_k_norm[l]);
     }
     free(w->rms_final_weight);
     free(w->wcls);
@@ -576,7 +624,7 @@ static void test_qwen3moe_batch_matches_sequential(void) {
     build_qwen3moe_ternary_model(&cfg, &w, &mc);
 
     const int n_tokens = 3;
-    int tokens[3] = {1, 3, 2};
+    int tokens[3]      = {1, 3, 2};
 
     RunState s_ref;
     TEST_ASSERT(run_state_alloc_ex(&s_ref, &cfg, cfg.seq_len, /*skip_kv_cache=*/true) == TN_OK,
@@ -597,12 +645,12 @@ static void test_qwen3moe_batch_matches_sequential(void) {
                 "Q3MoE batch qwen3moe_run_state_alloc");
     sw_init(&s_batch.sw, cfg.seq_len, 0);
     SpecBatchScratch sb;
-    TEST_ASSERT(spec_batch_scratch_alloc(&sb, &cfg, n_tokens) == TN_OK, "Q3MoE spec_batch_scratch_alloc");
+    TEST_ASSERT(spec_batch_scratch_alloc(&sb, &cfg, n_tokens) == TN_OK,
+                "Q3MoE spec_batch_scratch_alloc");
 
     float logits_batch[3][Q3_VOCAB];
-    TernaryError err = transformer_forward_batch(tokens, 0, n_tokens, &cfg, &w,
-                                                  &s_batch, &sb, &mc, NULL,
-                                                  (float *)logits_batch);
+    TernaryError err = transformer_forward_batch(tokens, 0, n_tokens, &cfg, &w, &s_batch, &sb, &mc,
+                                                 NULL, (float *)logits_batch);
     TEST_ASSERT(err == TN_OK, "transformer_forward_batch returns TN_OK for Qwen3-MoE model");
 
     int all_match = 1;
@@ -611,7 +659,8 @@ static void test_qwen3moe_batch_matches_sequential(void) {
             if (fabsf(logits_ref[k][i] - logits_batch[k][i]) > TOL) all_match = 0;
         }
     }
-    TEST_ASSERT(all_match, "Qwen3-MoE (QK-norm) batched forward matches N sequential forward calls");
+    TEST_ASSERT(all_match,
+                "Qwen3-MoE (QK-norm) batched forward matches N sequential forward calls");
 
     spec_batch_scratch_free(&sb);
     qwen3moe_run_state_free(&s_ref, &cfg);
@@ -626,9 +675,15 @@ static void test_qwen3moe_batch_matches_sequential(void) {
 static void test_linear_attn_returns_unsupported(void) {
     Config cfg;
     memset(&cfg, 0, sizeof(cfg));
-    cfg.dim = D_DIM; cfg.hidden_dim = D_HIDDEN; cfg.n_layers = 1;
-    cfg.n_heads = D_HEADS; cfg.n_kv_heads = D_KV_HEADS; cfg.vocab_size = D_VOCAB;
-    cfg.seq_len = D_SEQ; cfg.rms_norm_eps = 1e-5f; cfg.rope_freq_scale = 1.0f;
+    cfg.dim             = D_DIM;
+    cfg.hidden_dim      = D_HIDDEN;
+    cfg.n_layers        = 1;
+    cfg.n_heads         = D_HEADS;
+    cfg.n_kv_heads      = D_KV_HEADS;
+    cfg.vocab_size      = D_VOCAB;
+    cfg.seq_len         = D_SEQ;
+    cfg.rms_norm_eps    = 1e-5f;
+    cfg.rope_freq_scale = 1.0f;
 
     MoEConfig mc;
     moe_config_init_dense(&mc);
@@ -641,12 +696,13 @@ static void test_linear_attn_returns_unsupported(void) {
     TEST_ASSERT(run_state_alloc(&s, &cfg, cfg.seq_len) == TN_OK, "linear-attn run_state_alloc");
     sw_init(&s.sw, cfg.seq_len, 0);
     SpecBatchScratch sb;
-    TEST_ASSERT(spec_batch_scratch_alloc(&sb, &cfg, 3) == TN_OK, "linear-attn spec_batch_scratch_alloc");
+    TEST_ASSERT(spec_batch_scratch_alloc(&sb, &cfg, 3) == TN_OK,
+                "linear-attn spec_batch_scratch_alloc");
 
     int tokens[3] = {1, 2, 3};
     float logits[3][D_VOCAB];
-    TernaryError err = transformer_forward_batch(tokens, 0, 3, &cfg, &w, &s, &sb, &mc, NULL,
-                                                  (float *)logits);
+    TernaryError err =
+        transformer_forward_batch(tokens, 0, 3, &cfg, &w, &s, &sb, &mc, NULL, (float *)logits);
     TEST_ASSERT(err == TN_ERR_UNSUPPORTED,
                 "transformer_forward_batch refuses has_linear_attn models with TN_ERR_UNSUPPORTED");
 

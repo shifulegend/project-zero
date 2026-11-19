@@ -16,8 +16,8 @@
  *            \x1b[K clears any leftover text from a longer previous line).
  * Returns the number of bytes written (excluding the NUL terminator),
  * truncated safely to cap. */
-size_t tn_progress_format(char *buf, size_t cap, int stage, int total_stages,
-                           const char *label, int is_tty);
+size_t tn_progress_format(char *buf, size_t cap, int stage, int total_stages, const char *label,
+                          int is_tty);
 
 /* Writes the formatted line for this stage to stderr. */
 void tn_progress_stage(int stage, int total_stages, const char *label, int is_tty);

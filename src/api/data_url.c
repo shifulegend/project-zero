@@ -19,7 +19,7 @@ static int b64_val(unsigned char c) {
 TernaryError data_url_decode(const char *data_url, unsigned char **out_data, size_t *out_len) {
     if (!data_url || !out_data || !out_len) return TN_ERR_INVALID_ARGS;
     *out_data = NULL;
-    *out_len = 0;
+    *out_len  = 0;
 
     if (strncmp(data_url, "data:", 5) != 0) return TN_ERR_INVALID_ARGS;
 
@@ -29,13 +29,15 @@ TernaryError data_url_decode(const char *data_url, unsigned char **out_data, siz
 
     size_t payload_len = strlen(payload);
     /* Strip trailing whitespace/newlines some clients add. */
-    while (payload_len > 0 && (payload[payload_len - 1] == '\n' || payload[payload_len - 1] == '\r' ||
-                               payload[payload_len - 1] == ' ')) {
+    while (payload_len > 0 &&
+           (payload[payload_len - 1] == '\n' || payload[payload_len - 1] == '\r' ||
+            payload[payload_len - 1] == ' ')) {
         payload_len--;
     }
     if (payload_len == 0) return TN_ERR_INVALID_ARGS;
 
-    unsigned char *buf = (unsigned char *)malloc(payload_len); /* decoded is always <= encoded length */
+    unsigned char *buf =
+        (unsigned char *)malloc(payload_len); /* decoded is always <= encoded length */
     if (!buf) return TN_ERR_OOM;
 
     size_t out_i = 0;
@@ -53,7 +55,7 @@ TernaryError data_url_decode(const char *data_url, unsigned char **out_data, siz
             buf[out_i++] = (unsigned char)((group[0] << 2) | (group[1] >> 4));
             buf[out_i++] = (unsigned char)((group[1] << 4) | (group[2] >> 2));
             buf[out_i++] = (unsigned char)((group[2] << 6) | group[3]);
-            group_n = 0;
+            group_n      = 0;
         }
     }
     if (group_n == 2) {
@@ -64,6 +66,6 @@ TernaryError data_url_decode(const char *data_url, unsigned char **out_data, siz
     }
 
     *out_data = buf;
-    *out_len = out_i;
+    *out_len  = out_i;
     return TN_OK;
 }

@@ -49,10 +49,10 @@
 extern "C" {
 #endif
 
-#define VRDB_MAGIC   0x42445256u  /* "VRDB" as little-endian uint32 */
-#define VRDB_VERSION 2u          /* version written by this build */
-#define VRDB_VERSION_V1 1u       /* legacy: read, then upgraded on first store */
-#define VRDB_HEADER_SIZE 20      /* v2; v1 is 16 */
+#define VRDB_MAGIC 0x42445256u /* "VRDB" as little-endian uint32 */
+#define VRDB_VERSION 2u        /* version written by this build */
+#define VRDB_VERSION_V1 1u     /* legacy: read, then upgraded on first store */
+#define VRDB_HEADER_SIZE 20    /* v2; v1 is 16 */
 #define VRDB_HEADER_SIZE_V1 16
 
 /* Maximum text length stored per entry (including null terminator) */
@@ -66,20 +66,20 @@ extern "C" {
  * All pointers are owned by this struct (freed on vector_db_close).
  */
 typedef struct {
-    int     num_entries;  /* current number of stored entries */
-    int     embed_dim;    /* dimension of each embedding */
-    int     capacity;     /* allocated capacity in embeddings/texts arrays */
+    int num_entries; /* current number of stored entries */
+    int embed_dim;   /* dimension of each embedding */
+    int capacity;    /* allocated capacity in embeddings/texts arrays */
 
-    float  *embeddings;   /* flat row-major: embeddings[i * embed_dim + j] */
-    char  **texts;        /* text[i] points into text_pool */
-    char   *text_pool;    /* concatenated null-terminated strings */
-    size_t  text_pool_used;
-    size_t  text_pool_capacity;
+    float *embeddings; /* flat row-major: embeddings[i * embed_dim + j] */
+    char **texts;      /* text[i] points into text_pool */
+    char *text_pool;   /* concatenated null-terminated strings */
+    size_t text_pool_used;
+    size_t text_pool_capacity;
 
-    FILE   *fp;           /* open file handle (r+b or wb) */
-    uint32_t format;      /* on-disk version of the open file (1 or 2) */
-    long    valid_end;    /* byte offset just past the last counted record */
-    char    path[512];    /* file path (for error messages) */
+    FILE *fp;        /* open file handle (r+b or wb) */
+    uint32_t format; /* on-disk version of the open file (1 or 2) */
+    long valid_end;  /* byte offset just past the last counted record */
+    char path[512];  /* file path (for error messages) */
 } VectorDB;
 
 /**

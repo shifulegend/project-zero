@@ -17,9 +17,9 @@ extern "C" {
 #endif
 
 typedef struct {
-    VectorDB db;      /* owns the file-backed vector store */
-    Embedder emb;     /* owns the dedicated embedding RunState */
-    int      enabled; /* 1 = fully initialised and ready; 0 = disabled */
+    VectorDB db;  /* owns the file-backed vector store */
+    Embedder emb; /* owns the dedicated embedding RunState */
+    int enabled;  /* 1 = fully initialised and ready; 0 = disabled */
 } RagContext;
 
 #ifdef __cplusplus

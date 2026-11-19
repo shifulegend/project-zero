@@ -28,12 +28,12 @@ struct SpecBatchScratch {
     int hidden_dim;
     int vocab_size;
 
-    float *x;      /* [n_tokens][dim]        post-embedding / residual stream */
-    float *xb;     /* [n_tokens][dim]        rmsnorm / attention-out scratch */
-    float *xb2;     /* [n_tokens][dim]        residual branch scratch; doubles as k_buf */
-    float *hb;      /* [n_tokens][hidden_dim] FFN gate; doubles as MLA kv_full/q_full */
-    float *hb2;      /* [n_tokens][hidden_dim] FFN up; doubles as v_buf / MLA kv-compress */
-    float *q;       /* [n_tokens][dim]        query projections (all heads) */
+    float *x;   /* [n_tokens][dim]        post-embedding / residual stream */
+    float *xb;  /* [n_tokens][dim]        rmsnorm / attention-out scratch */
+    float *xb2; /* [n_tokens][dim]        residual branch scratch; doubles as k_buf */
+    float *hb;  /* [n_tokens][hidden_dim] FFN gate; doubles as MLA kv_full/q_full */
+    float *hb2; /* [n_tokens][hidden_dim] FFN up; doubles as v_buf / MLA kv-compress */
+    float *q;   /* [n_tokens][dim]        query projections (all heads) */
     /* No logits buffer here: transformer_forward_batch() always writes the
      * classifier output to its own explicit `logits_out` parameter (a
      * separate caller-owned [n_tokens][vocab_size] buffer, per

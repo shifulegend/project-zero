@@ -19,15 +19,17 @@
  * read from the file on 2026-11-16. */
 static const char *BROKEN_BITNET =
     "{% for message in messages %}{% if loop.first %}{{ bos_token }}{% endif %}"
-    "{% if message['role'] == 'user' %}{{ 'Human: ' + message['content'] + '\\n\\nBITNETAssistant: ' + eos_token }}"
-    "{% elif message['role'] == 'assistant' %}{{ message['content'] + eos_token }}{% endif %}{% endfor %}";
+    "{% if message['role'] == 'user' %}{{ 'Human: ' + message['content'] + '\\n\\nBITNETAssistant: "
+    "' + eos_token }}"
+    "{% elif message['role'] == 'assistant' %}{{ message['content'] + eos_token }}{% endif %}{% "
+    "endfor %}";
 
 #define BOS "<|begin_of_text|>"
 #define EOS "<|end_of_text|>"
 
 static char *render(const char *tmpl, int add_gen) {
-    const char *roles[] = { "user" };
-    const char *contents[] = { "Say hi." };
+    const char *roles[]    = {"user"};
+    const char *contents[] = {"Say hi."};
     return chat_template_apply(tmpl, roles, contents, 1, BOS, EOS, add_gen);
 }
 
@@ -38,7 +40,8 @@ static void test_known_fix_matches_bitnet(void) {
 }
 
 static void test_known_fix_leaves_others_alone(void) {
-    TEST_ASSERT(tn_template_known_fix("llama", BROKEN_BITNET) == NULL, "another architecture is never touched");
+    TEST_ASSERT(tn_template_known_fix("llama", BROKEN_BITNET) == NULL,
+                "another architecture is never touched");
     TEST_ASSERT(tn_template_known_fix("bitnet-b1.58", tn_template_bitnet_b158()) == NULL,
                 "an already-correct BitNet template is not replaced");
     TEST_ASSERT(tn_template_known_fix("bitnet-b1.58", "{{ messages[0].content }}") == NULL,
@@ -79,13 +82,17 @@ static void test_render_broken_vs_builtin(void) {
  * users may pass with --chat-template-file). Skipped when run outside the repo. */
 static void test_embedded_equals_docs_file(void) {
     FILE *f = fopen("docs/templates/bitnet-b1.58.jinja", "rb");
-    if (!f) { printf("docs/templates/bitnet-b1.58.jinja not found from here -- skipping\n"); return; }
+    if (!f) {
+        printf("docs/templates/bitnet-b1.58.jinja not found from here -- skipping\n");
+        return;
+    }
     char buf[4096];
     size_t n = fread(buf, 1, sizeof(buf) - 1, f);
     fclose(f);
     buf[n] = '\0';
     TEST_ASSERT(n > 0 && n < sizeof(buf) - 1, "docs template read");
-    TEST_ASSERT(strcmp(buf, tn_template_bitnet_b158()) == 0, "embedded template == docs/templates/bitnet-b1.58.jinja");
+    TEST_ASSERT(strcmp(buf, tn_template_bitnet_b158()) == 0,
+                "embedded template == docs/templates/bitnet-b1.58.jinja");
 }
 
 int main(void) {

@@ -20,8 +20,7 @@
  * n_pixels = width * height (each pixel has 3 channels). */
 static void normalize_siglip(float *pixels, int n_pixels) {
     int n = n_pixels * 3;
-    for (int i = 0; i < n; i++)
-        pixels[i] = pixels[i] * 2.0f - 1.0f;
+    for (int i = 0; i < n; i++) pixels[i] = pixels[i] * 2.0f - 1.0f;
 }
 
 TernaryError load_image(const char *path, float **pixels, int *width, int *height, int target_res) {
@@ -35,7 +34,7 @@ TernaryError load_image(const char *path, float **pixels, int *width, int *heigh
         return TN_ERR_IMAGE_LOAD;
     }
 
-    *width = target_res;
+    *width  = target_res;
     *height = target_res;
 
     // Allocate output array. target_res * target_res * 3 floats.
@@ -53,7 +52,8 @@ TernaryError load_image(const char *path, float **pixels, int *width, int *heigh
     }
 
     // Resize using bilinear interpolation
-    stbir_resize_float_linear(img_f, img_w, img_h, 0, out_f, target_res, target_res, 0, (stbir_pixel_layout)3);
+    stbir_resize_float_linear(img_f, img_w, img_h, 0, out_f, target_res, target_res, 0,
+                              (stbir_pixel_layout)3);
 
     stbi_image_free(img_f);
 

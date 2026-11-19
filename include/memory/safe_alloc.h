@@ -36,8 +36,12 @@ static inline int tn_is_pow2(size_t x) {
 static inline size_t tn_next_pow2(size_t x) {
     if (x <= 1) return 1;
     x--;
-    x |= x >> 1; x |= x >> 2; x |= x >> 4;
-    x |= x >> 8; x |= x >> 16; x |= x >> 32;
+    x |= x >> 1;
+    x |= x >> 2;
+    x |= x >> 4;
+    x |= x >> 8;
+    x |= x >> 16;
+    x |= x >> 32;
     return x + 1;
 }
 

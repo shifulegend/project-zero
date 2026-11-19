@@ -54,12 +54,11 @@
  * ================================================================ */
 
 static void test_kwarg_call_does_not_stall(void) {
-    const char *tmpl =
-        "{%- set ns = namespace(value=0) -%}"
-        "{{- ns.value -}}";
-    const char *roles[1] = {"user"};
+    const char *tmpl        = "{%- set ns = namespace(value=0) -%}"
+                              "{{- ns.value -}}";
+    const char *roles[1]    = {"user"};
     const char *contents[1] = {"hi"};
-    char *out = chat_template_apply(tmpl, roles, contents, 1, "<bos>", "<eos>", 0);
+    char *out               = chat_template_apply(tmpl, roles, contents, 1, "<bos>", "<eos>", 0);
     TEST_ASSERT(out != NULL, "kwarg call renders instead of failing");
     if (out) {
         TEST_ASSERT(strcmp(out, "0") == 0, "namespace() kwarg seeds the object field");
@@ -72,16 +71,16 @@ static void test_kwarg_call_does_not_stall(void) {
  * ================================================================ */
 
 static void test_dotted_set_mutates_namespace(void) {
-    const char *tmpl =
-        "{%- set ns = namespace(a=1, b=2) -%}"
-        "{%- set ns.a = 99 -%}"
-        "{{- ns.a -}},{{- ns.b -}}";
-    const char *roles[1] = {"user"};
+    const char *tmpl        = "{%- set ns = namespace(a=1, b=2) -%}"
+                              "{%- set ns.a = 99 -%}"
+                              "{{- ns.a -}},{{- ns.b -}}";
+    const char *roles[1]    = {"user"};
     const char *contents[1] = {"hi"};
-    char *out = chat_template_apply(tmpl, roles, contents, 1, "<bos>", "<eos>", 0);
+    char *out               = chat_template_apply(tmpl, roles, contents, 1, "<bos>", "<eos>", 0);
     TEST_ASSERT(out != NULL, "dotted set renders");
     if (out) {
-        TEST_ASSERT(strcmp(out, "99,2") == 0, "set ns.a mutates only that field, leaves ns.b intact");
+        TEST_ASSERT(strcmp(out, "99,2") == 0,
+                    "set ns.a mutates only that field, leaves ns.b intact");
         free(out);
     }
 }
@@ -91,33 +90,33 @@ static void test_dotted_set_mutates_namespace(void) {
  * ================================================================ */
 
 static void test_macro_positional_and_default_args(void) {
-    const char *tmpl =
-        "{%- macro greet(name, punct='!') -%}"
-        "Hello {{ name }}{{ punct }}"
-        "{%- endmacro -%}"
-        "{{- greet('World') }} {{ greet('Zig', '?') -}}";
-    const char *roles[1] = {"user"};
+    const char *tmpl        = "{%- macro greet(name, punct='!') -%}"
+                              "Hello {{ name }}{{ punct }}"
+                              "{%- endmacro -%}"
+                              "{{- greet('World') }} {{ greet('Zig', '?') -}}";
+    const char *roles[1]    = {"user"};
     const char *contents[1] = {"hi"};
-    char *out = chat_template_apply(tmpl, roles, contents, 1, "<bos>", "<eos>", 0);
+    char *out               = chat_template_apply(tmpl, roles, contents, 1, "<bos>", "<eos>", 0);
     TEST_ASSERT(out != NULL, "macro call renders");
     if (out) {
-        TEST_ASSERT(strcmp(out, "Hello World! Hello Zig?") == 0, "macro binds positional arg + default, and positional override");
+        TEST_ASSERT(strcmp(out, "Hello World! Hello Zig?") == 0,
+                    "macro binds positional arg + default, and positional override");
         free(out);
     }
 }
 
 static void test_macro_keyword_args(void) {
-    const char *tmpl =
-        "{%- macro greet(name, punct='!') -%}"
-        "Hello {{ name }}{{ punct }}"
-        "{%- endmacro -%}"
-        "{{- greet(punct='?', name='Kwarg') -}}";
-    const char *roles[1] = {"user"};
+    const char *tmpl        = "{%- macro greet(name, punct='!') -%}"
+                              "Hello {{ name }}{{ punct }}"
+                              "{%- endmacro -%}"
+                              "{{- greet(punct='?', name='Kwarg') -}}";
+    const char *roles[1]    = {"user"};
     const char *contents[1] = {"hi"};
-    char *out = chat_template_apply(tmpl, roles, contents, 1, "<bos>", "<eos>", 0);
+    char *out               = chat_template_apply(tmpl, roles, contents, 1, "<bos>", "<eos>", 0);
     TEST_ASSERT(out != NULL, "macro keyword-arg call renders");
     if (out) {
-        TEST_ASSERT(strcmp(out, "Hello Kwarg?") == 0, "macro binds keyword args by name regardless of order");
+        TEST_ASSERT(strcmp(out, "Hello Kwarg?") == 0,
+                    "macro binds keyword args by name regardless of order");
         free(out);
     }
 }
@@ -133,12 +132,13 @@ static void test_macro_render_content_shape(void) {
         "{%- for message in messages -%}"
         "{{- render_content(message.content) -}}"
         "{%- endfor -%}";
-    const char *roles[2] = {"user", "assistant"};
+    const char *roles[2]    = {"user", "assistant"};
     const char *contents[2] = {"Hi", "Hello there!"};
-    char *out = chat_template_apply(tmpl, roles, contents, 2, "<bos>", "<eos>", 0);
+    char *out               = chat_template_apply(tmpl, roles, contents, 2, "<bos>", "<eos>", 0);
     TEST_ASSERT(out != NULL, "render_content-shaped macro renders");
     if (out) {
-        TEST_ASSERT(strcmp(out, "HiHello there!") == 0, "macro-routed message content is not dropped");
+        TEST_ASSERT(strcmp(out, "HiHello there!") == 0,
+                    "macro-routed message content is not dropped");
         free(out);
     }
 }
@@ -148,16 +148,16 @@ static void test_macro_render_content_shape(void) {
  * ================================================================ */
 
 static void test_reverse_slice(void) {
-    const char *tmpl =
-        "{%- for m in messages[::-1] -%}"
-        "{{- m.content -}},"
-        "{%- endfor -%}";
-    const char *roles[3] = {"user", "assistant", "user"};
+    const char *tmpl        = "{%- for m in messages[::-1] -%}"
+                              "{{- m.content -}},"
+                              "{%- endfor -%}";
+    const char *roles[3]    = {"user", "assistant", "user"};
     const char *contents[3] = {"one", "two", "three"};
-    char *out = chat_template_apply(tmpl, roles, contents, 3, "<bos>", "<eos>", 0);
+    char *out               = chat_template_apply(tmpl, roles, contents, 3, "<bos>", "<eos>", 0);
     TEST_ASSERT(out != NULL, "reverse-slice loop renders");
     if (out) {
-        TEST_ASSERT(strcmp(out, "three,two,one,") == 0, "messages[::-1] iterates in reverse, not messages[-1]");
+        TEST_ASSERT(strcmp(out, "three,two,one,") == 0,
+                    "messages[::-1] iterates in reverse, not messages[-1]");
         free(out);
     }
 }
@@ -173,22 +173,22 @@ static void test_string_methods(void) {
      * broader parser gap (LitStr/LitInt don't get the postfix-chain
      * treatment Ident does) that doesn't occur anywhere in the real
      * template, so it's out of scope here; not tested. */
-    const char *tmpl =
-        "{%- set c = '<think>reason</think>answer' -%}"
-        "{%- if '</think>' in c -%}"
-        "{%- set reasoning = c.split('</think>')[0].split('<think>')[-1] -%}"
-        "{%- set body = c.split('</think>')[-1].lstrip('\n') -%}"
-        "{{- reasoning -}}|{{- body -}}"
-        "{%- endif -%}"
-        "|{%- set padded = '  pad  ' -%}{{- padded.strip() -}}"
-        "|{%- set abc = 'abcdef' -%}{{- abc.startswith('abc') -}}"
-        "|{{- abc.endswith('def') -}}";
-    const char *roles[1] = {"user"};
+    const char *tmpl        = "{%- set c = '<think>reason</think>answer' -%}"
+                              "{%- if '</think>' in c -%}"
+                              "{%- set reasoning = c.split('</think>')[0].split('<think>')[-1] -%}"
+                              "{%- set body = c.split('</think>')[-1].lstrip('\n') -%}"
+                              "{{- reasoning -}}|{{- body -}}"
+                              "{%- endif -%}"
+                              "|{%- set padded = '  pad  ' -%}{{- padded.strip() -}}"
+                              "|{%- set abc = 'abcdef' -%}{{- abc.startswith('abc') -}}"
+                              "|{{- abc.endswith('def') -}}";
+    const char *roles[1]    = {"user"};
     const char *contents[1] = {"hi"};
-    char *out = chat_template_apply(tmpl, roles, contents, 1, "<bos>", "<eos>", 0);
+    char *out               = chat_template_apply(tmpl, roles, contents, 1, "<bos>", "<eos>", 0);
     TEST_ASSERT(out != NULL, "string-method chain renders");
     if (out) {
-        TEST_ASSERT(strcmp(out, "reason|answer|pad|True|True") == 0, "split/lstrip/strip/startswith/endswith all work");
+        TEST_ASSERT(strcmp(out, "reason|answer|pad|True|True") == 0,
+                    "split/lstrip/strip/startswith/endswith all work");
         free(out);
     }
 }
@@ -199,29 +199,28 @@ static void test_string_methods(void) {
  * ================================================================ */
 
 static void test_basic_chatml_still_works(void) {
-    const char *tmpl =
-        "{%- for message in messages -%}"
-        "<|im_start|>{{ message.role }}\n{{ message.content|trim }}<|im_end|>\n"
-        "{%- endfor -%}"
-        "{%- if add_generation_prompt -%}<|im_start|>assistant\n{%- endif -%}";
-    const char *roles[2] = {"system", "user"};
+    const char *tmpl        = "{%- for message in messages -%}"
+                              "<|im_start|>{{ message.role }}\n{{ message.content|trim }}<|im_end|>\n"
+                              "{%- endfor -%}"
+                              "{%- if add_generation_prompt -%}<|im_start|>assistant\n{%- endif -%}";
+    const char *roles[2]    = {"system", "user"};
     const char *contents[2] = {" You are helpful. ", "Hi"};
-    char *out = chat_template_apply(tmpl, roles, contents, 2, "<bos>", "<eos>", 1);
+    char *out               = chat_template_apply(tmpl, roles, contents, 2, "<bos>", "<eos>", 1);
     TEST_ASSERT(out != NULL, "basic ChatML template still renders");
     if (out) {
         /* `{%- endfor -%}` / `{%- if -%}` strip the trailing "\n" after
          * each "<|im_end|>" and the leading text before "<|im_start|>". */
-        const char *expected =
-            "<|im_start|>system\nYou are helpful.<|im_end|>"
-            "<|im_start|>user\nHi<|im_end|>"
-            "<|im_start|>assistant";
+        const char *expected = "<|im_start|>system\nYou are helpful.<|im_end|>"
+                               "<|im_start|>user\nHi<|im_end|>"
+                               "<|im_start|>assistant";
         TEST_ASSERT(strcmp(out, expected) == 0, "unrelated for/if/filter behavior unchanged");
         free(out);
     }
 }
 
 static void test_zero_messages_does_not_crash(void) {
-    const char *tmpl = "{%- if not messages -%}{{- raise_exception('no messages') -}}{%- endif -%}ok";
+    const char *tmpl =
+        "{%- if not messages -%}{{- raise_exception('no messages') -}}{%- endif -%}ok";
     char *out = chat_template_apply(tmpl, NULL, NULL, 0, "<bos>", "<eos>", 0);
     TEST_ASSERT(out != NULL, "0-message render does not crash (raise_exception is a no-op)");
     if (out) {
@@ -238,18 +237,18 @@ static void test_zero_messages_does_not_crash(void) {
  * ================================================================ */
 
 static void test_items_filter_and_tuple_unpacking(void) {
-    const char *tmpl =
-        "{%- set obj = namespace(a=1, b=2) -%}"
-        "{%- for k, v in obj|items -%}"
-        "{{- k -}}={{- v -}};"
-        "{%- endfor -%}";
-    const char *roles[1] = {"user"};
+    const char *tmpl        = "{%- set obj = namespace(a=1, b=2) -%}"
+                              "{%- for k, v in obj|items -%}"
+                              "{{- k -}}={{- v -}};"
+                              "{%- endfor -%}";
+    const char *roles[1]    = {"user"};
     const char *contents[1] = {"hi"};
-    char *out = chat_template_apply(tmpl, roles, contents, 1, "<bos>", "<eos>", 0);
+    char *out               = chat_template_apply(tmpl, roles, contents, 1, "<bos>", "<eos>", 0);
     TEST_ASSERT(out != NULL, "items+tuple-unpacking renders");
     if (out) {
         /* Object keys iterate in sorted order (std::map) — a=1 before b=2. */
-        TEST_ASSERT(strcmp(out, "a=1;b=2;") == 0, "|items yields [k,v] pairs bound by tuple-unpacking for");
+        TEST_ASSERT(strcmp(out, "a=1;b=2;") == 0,
+                    "|items yields [k,v] pairs bound by tuple-unpacking for");
         free(out);
     }
 }
@@ -266,9 +265,9 @@ static void test_loop_previtem_nextitem(void) {
         "[{%- if loop.previtem -%}p={{- loop.previtem.content -}}{%- else -%}p=none{%- endif -%}"
         ",{%- if loop.nextitem -%}n={{- loop.nextitem.content -}}{%- else -%}n=none{%- endif -%}]"
         "{%- endfor -%}";
-    const char *roles[3] = {"user", "assistant", "user"};
+    const char *roles[3]    = {"user", "assistant", "user"};
     const char *contents[3] = {"one", "two", "three"};
-    char *out = chat_template_apply(tmpl, roles, contents, 3, "<bos>", "<eos>", 0);
+    char *out               = chat_template_apply(tmpl, roles, contents, 3, "<bos>", "<eos>", 0);
     TEST_ASSERT(out != NULL, "loop.previtem/nextitem renders");
     if (out) {
         TEST_ASSERT(strcmp(out, "[p=none,n=two][p=one,n=three][p=two,n=none]") == 0,
@@ -288,15 +287,15 @@ static void test_loop_previtem_nextitem(void) {
  * ================================================================ */
 
 static void test_method_call_on_variable_still_works(void) {
-    const char *tmpl =
-        "{%- set s = 'Hello' -%}"
-        "{{- s.startswith('He') -}}|{{- s.endswith('lo') -}}";
-    const char *roles[1] = {"user"};
+    const char *tmpl        = "{%- set s = 'Hello' -%}"
+                              "{{- s.startswith('He') -}}|{{- s.endswith('lo') -}}";
+    const char *roles[1]    = {"user"};
     const char *contents[1] = {"hi"};
-    char *out = chat_template_apply(tmpl, roles, contents, 1, "<bos>", "<eos>", 0);
+    char *out               = chat_template_apply(tmpl, roles, contents, 1, "<bos>", "<eos>", 0);
     TEST_ASSERT(out != NULL, "method call off a variable renders");
     if (out) {
-        TEST_ASSERT(strcmp(out, "True|True") == 0, "startswith/endswith off a set variable still work");
+        TEST_ASSERT(strcmp(out, "True|True") == 0,
+                    "startswith/endswith off a set variable still work");
         free(out);
     }
 }

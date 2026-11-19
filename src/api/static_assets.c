@@ -17,12 +17,12 @@ static const char *mime_for_path(const char *path) {
     const char *dot = strrchr(path, '.');
     if (!dot) return "application/octet-stream";
     if (strcmp(dot, ".html") == 0) return "text/html";
-    if (strcmp(dot, ".js") == 0)   return "application/javascript";
-    if (strcmp(dot, ".css") == 0)  return "text/css";
+    if (strcmp(dot, ".js") == 0) return "application/javascript";
+    if (strcmp(dot, ".css") == 0) return "text/css";
     if (strcmp(dot, ".json") == 0) return "application/json";
-    if (strcmp(dot, ".svg") == 0)  return "image/svg+xml";
-    if (strcmp(dot, ".png") == 0)  return "image/png";
-    if (strcmp(dot, ".ico") == 0)  return "image/x-icon";
+    if (strcmp(dot, ".svg") == 0) return "image/svg+xml";
+    if (strcmp(dot, ".png") == 0) return "image/png";
+    if (strcmp(dot, ".ico") == 0) return "image/x-icon";
     if (strcmp(dot, ".woff2") == 0) return "font/woff2";
     return "application/octet-stream";
 }
@@ -41,7 +41,7 @@ int static_assets_path_is_safe(const char *path) {
     const char *p = path;
     while (*p) {
         const char *seg_end = strchr(p, '/');
-        size_t seg_len = seg_end ? (size_t)(seg_end - p) : strlen(p);
+        size_t seg_len      = seg_end ? (size_t)(seg_end - p) : strlen(p);
         if (seg_len == 2 && p[0] == '.' && p[1] == '.') return 0;
         if (!seg_end) break;
         p = seg_end + 1;
@@ -50,18 +50,18 @@ int static_assets_path_is_safe(const char *path) {
 }
 
 static void write_headers(int fd, int status, const char *mime_type, size_t body_len,
-                           const char *extra_headers) {
+                          const char *extra_headers) {
     char hdr[512];
     int n = snprintf(hdr, sizeof(hdr),
-        "HTTP/1.1 %d %s\r\n"
-        "Content-Type: %s\r\n"
-        "Content-Length: %zu\r\n"
-        "Connection: close\r\n"
-        "%s"
-        "\r\n",
-        status, status == HTTP_OK ? "OK" : "Not Found", mime_type, body_len,
-        extra_headers ? extra_headers : "");
-    if (n > 0) (void)net_write_all(fd, hdr, (size_t)n);   /* peer gone: the body write fails too */
+                     "HTTP/1.1 %d %s\r\n"
+                     "Content-Type: %s\r\n"
+                     "Content-Length: %zu\r\n"
+                     "Connection: close\r\n"
+                     "%s"
+                     "\r\n",
+                     status, status == HTTP_OK ? "OK" : "Not Found", mime_type, body_len,
+                     extra_headers ? extra_headers : "");
+    if (n > 0) (void)net_write_all(fd, hdr, (size_t)n); /* peer gone: the body write fails too */
 }
 
 static void serve_404(int fd, const char *extra_headers) {
@@ -73,7 +73,7 @@ static void serve_404(int fd, const char *extra_headers) {
 /* ── Disk mode (--static-dir) ─────────────────────────────────────────────── */
 
 static int serve_from_disk(int fd, const char *static_dir, const char *path,
-                            const char *extra_headers) {
+                           const char *extra_headers) {
     char fs_path[1024];
     if (!static_assets_path_is_safe(path)) {
         serve_404(fd, extra_headers);
@@ -99,10 +99,18 @@ static int serve_from_disk(int fd, const char *static_dir, const char *path,
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
     fseek(f, 0, SEEK_SET);
-    if (size < 0) { fclose(f); serve_404(fd, extra_headers); return HTTP_NOT_FOUND; }
+    if (size < 0) {
+        fclose(f);
+        serve_404(fd, extra_headers);
+        return HTTP_NOT_FOUND;
+    }
 
     char *buf = (char *)malloc((size_t)size);
-    if (!buf) { fclose(f); serve_404(fd, extra_headers); return HTTP_NOT_FOUND; }
+    if (!buf) {
+        fclose(f);
+        serve_404(fd, extra_headers);
+        return HTTP_NOT_FOUND;
+    }
     size_t nread = fread(buf, 1, (size_t)size, f);
     fclose(f);
 
@@ -143,7 +151,7 @@ static int serve_from_bundle(int fd, const char *path, const char *extra_headers
 /* ── Public API ───────────────────────────────────────────────────────────── */
 
 int static_assets_serve(int fd, const char *path, const ServerConfig *cfg,
-                         const char *extra_headers) {
+                        const char *extra_headers) {
     if (cfg && cfg->static_dir) {
         return serve_from_disk(fd, cfg->static_dir, path, extra_headers);
     }

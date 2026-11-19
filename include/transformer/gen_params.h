@@ -27,37 +27,37 @@ typedef enum {
 
 /* Filled by generate_ex() when GenerationParams.stats is non-NULL. */
 typedef struct {
-    int             prompt_tokens;
-    int             completion_tokens;
-    int             cached_tokens;  /* prompt tokens reused from the prefix cache */
+    int prompt_tokens;
+    int completion_tokens;
+    int cached_tokens; /* prompt tokens reused from the prefix cache */
     GenFinishReason finish_reason;
-    double          tokens_per_sec; /* 0 when fewer than 2 tokens */
+    double tokens_per_sec; /* 0 when fewer than 2 tokens */
     /* Sum of log p(token) over emitted tokens under the raw model
      * distribution; only filled when GenerationParams.compute_logprobs. */
-    double          sum_logprob;
-    bool            hit_eos;        /* ended on an end-of-generation token (vs a stop string) */
+    double sum_logprob;
+    bool hit_eos; /* ended on an end-of-generation token (vs a stop string) */
 } GenerationStats;
 
 /* "stop" | "length" | "cancelled" | "error" — OpenAI finish_reason strings. */
 const char *gen_finish_reason_str(GenFinishReason r);
 
 typedef struct {
-    int             max_tokens;
+    int max_tokens;
     SamplerSettings sampler;
-    long long       seed;          /* < 0 = time-based (non-reproducible) */
-    bool            json_mode;     /* Phase 20 grammar-constrained JSON   */
-    bool            ignore_eos;    /* --ignore-eos / "ignore_eos": EOS logits masked, so
+    long long seed;            /* < 0 = time-based (non-reproducible) */
+    bool json_mode;            /* Phase 20 grammar-constrained JSON   */
+    bool ignore_eos;           /* --ignore-eos / "ignore_eos": EOS logits masked, so
                                       generation runs to max_tokens (benchmarks) */
-    bool            raw_prompt;    /* --raw-prompt: feed the prompt verbatim (BOS + text),
+    bool raw_prompt;           /* --raw-prompt: feed the prompt verbatim (BOS + text),
                                       skipping the model's embedded chat template */
-    WatermarkConfig watermark;     /* Phase 33, disabled by default        */
+    WatermarkConfig watermark; /* Phase 33, disabled by default        */
 
     /* Conversation for chat-template models. When n_messages > 0 the GGUF
      * chat template renders this whole history (system/user/assistant
      * turns) instead of the single `prompt` argument. Borrowed pointers. */
     const char *const *roles;
     const char *const *contents;
-    int                n_messages;
+    int n_messages;
 
     /* Optional system prompt, prepended as a "system" turn when the
      * template path renders a single prompt (ignored if `roles` already
@@ -75,7 +75,7 @@ typedef struct {
 
     /* OpenAI-style stop strings (borrowed). */
     const char *stop[GEN_MAX_STOP];
-    int         n_stop;
+    int n_stop;
 
     /* Phase 21.5: KV prefix reuse across calls on the same RunState. NULL =
      * disabled (always recompute the whole prompt). Owned by the caller

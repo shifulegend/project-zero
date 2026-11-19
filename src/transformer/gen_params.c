@@ -12,10 +12,14 @@ void gen_params_default(GenerationParams *gp) {
 
 const char *gen_finish_reason_str(GenFinishReason r) {
     switch (r) {
-        case GEN_FINISH_LENGTH:    return "length";
-        case GEN_FINISH_CANCELLED: return "cancelled";
-        case GEN_FINISH_ERROR:     return "error";
+        case GEN_FINISH_LENGTH:
+            return "length";
+        case GEN_FINISH_CANCELLED:
+            return "cancelled";
+        case GEN_FINISH_ERROR:
+            return "error";
         case GEN_FINISH_STOP:
-        default:                   return "stop";
+        default:
+            return "stop";
     }
 }

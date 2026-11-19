@@ -16,12 +16,12 @@
 #include "core/run_state.h"
 #include "math/rope.h"
 #include "memory/aligned_alloc.h"
-#include <stdlib.h>   /* malloc, free */
-#include <string.h>   /* memset */
+#include <stdlib.h> /* malloc, free */
+#include <string.h> /* memset */
 
-TernaryError mla_run_state_alloc(RunState *s, const Config *cfg,
-                                  const MoEConfig *mc, int max_seq_len) {
-    if (!mc || !mc->has_mla) return TN_OK;   /* dense or non-MLA model — no-op */
+TernaryError mla_run_state_alloc(RunState *s, const Config *cfg, const MoEConfig *mc,
+                                 int max_seq_len) {
+    if (!mc || !mc->has_mla) return TN_OK; /* dense or non-MLA model — no-op */
 
     int n_layers = cfg->n_layers;
     int rope_dim = mc->qk_rope_head_dim;
@@ -34,7 +34,7 @@ TernaryError mla_run_state_alloc(RunState *s, const Config *cfg,
 
     for (int l = 0; l < n_layers; l++) {
         size_t elems = (size_t)max_seq_len * rope_dim;
-        cache[l] = (float *)tn_aligned_calloc(elems, sizeof(float), 64);
+        cache[l]     = (float *)tn_aligned_calloc(elems, sizeof(float), 64);
         if (!cache[l]) {
             /* Free what we already allocated */
             for (int i = 0; i < l; i++) tn_aligned_free(cache[i]);
@@ -49,7 +49,7 @@ TernaryError mla_run_state_alloc(RunState *s, const Config *cfg,
      * Must use rope_dim (64) as the "head_dim" argument so that:
      *   mla_rope_freq[i] = 1/(rope_theta ^ (2i / rope_dim))  for i in [0, rope_dim/2)
      * This matches llama.cpp ggml_rope_ext with n_rot = rope_dim. */
-    int freq_len = rope_dim / 2;
+    int freq_len     = rope_dim / 2;
     s->mla_rope_freq = (float *)tn_aligned_calloc((size_t)freq_len, sizeof(float), 64);
     if (!s->mla_rope_freq) {
         mla_run_state_free(s, n_layers);

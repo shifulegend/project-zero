@@ -23,11 +23,11 @@
  */
 
 typedef struct {
-    float       *out;
+    float *out;
     const float *tmp;
     const float *B;
-    int          rank;
-    float        scale;
+    int rank;
+    float scale;
 } LoraBStepArgs;
 
 static void lora_b_step_task(void *arg, int thread_id, int start, int end) {
@@ -39,8 +39,7 @@ static void lora_b_step_task(void *arg, int thread_id, int start, int end) {
     }
 }
 
-void lora_apply(float *out, const float *x, const LoRAModule *mod,
-                 int n, int d, ThreadPool *tp) {
+void lora_apply(float *out, const float *x, const LoRAModule *mod, int n, int d, ThreadPool *tp) {
     if (!mod || mod->rank == 0) return;
 
     float *tmp = (float *)malloc((size_t)mod->rank * sizeof(float));
@@ -48,11 +47,11 @@ void lora_apply(float *out, const float *x, const LoRAModule *mod,
 
     for (int r = 0; r < mod->rank; r++) {
         const float *a_row = mod->A + (size_t)r * n;
-        tmp[r] = tn_vec_dot(a_row, x, n);
+        tmp[r]             = tn_vec_dot(a_row, x, n);
     }
 
-    LoraBStepArgs args = { .out = out, .tmp = tmp, .B = mod->B,
-                            .rank = mod->rank, .scale = mod->scale };
+    LoraBStepArgs args = {
+        .out = out, .tmp = tmp, .B = mod->B, .rank = mod->rank, .scale = mod->scale};
     if (!tp) {
         lora_b_step_task(&args, 0, 0, d);
     } else {
@@ -62,8 +61,8 @@ void lora_apply(float *out, const float *x, const LoRAModule *mod,
     free(tmp);
 }
 
-void lora_apply_batch(float *out, const float *x, const LoRAModule *mod,
-                      int n, int d, int n_tokens, ThreadPool *tp) {
+void lora_apply_batch(float *out, const float *x, const LoRAModule *mod, int n, int d, int n_tokens,
+                      ThreadPool *tp) {
     if (!mod || mod->rank == 0) return;
     for (int k = 0; k < n_tokens; k++)
         lora_apply(out + (size_t)k * d, x + (size_t)k * n, mod, n, d, tp);

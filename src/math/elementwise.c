@@ -28,7 +28,7 @@ void silu(float *x, int n) {
 void relu2_scalar(float *x, int n) {
     for (int i = 0; i < n; i++) {
         float v = x[i] < 0.0f ? 0.0f : x[i];
-        x[i] = v * v;
+        x[i]    = v * v;
     }
 }
 

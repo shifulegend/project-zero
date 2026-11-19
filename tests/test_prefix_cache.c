@@ -24,9 +24,9 @@ static void test_invalidation(void) {
     prefix_cache_init(&pc, 4);
     for (int i = 0; i < 4; i++) prefix_cache_set(&pc, i, i);
     TEST_ASSERT_EQ(pc.n, 4, "full");
-    prefix_cache_set(&pc, 4, 7);  /* window would wrap */
+    prefix_cache_set(&pc, 4, 7); /* window would wrap */
     TEST_ASSERT_EQ(pc.n, 0, "wrap invalidates");
-    prefix_cache_set(&pc, 2, 7);  /* gap */
+    prefix_cache_set(&pc, 2, 7); /* gap */
     TEST_ASSERT_EQ(pc.n, 0, "gap invalidates");
     prefix_cache_set(&pc, 0, 5);
     prefix_cache_truncate(&pc, 0);

@@ -13,8 +13,8 @@
 static void test_ternary_matmul_basic(void) {
     /* 2x3 weight matrix, input of size 3, output of size 2 */
     /* w = [[1, -1, 0], [0, 1, 1]] */
-    tn_i8 w[] = { 1, -1, 0, 0, 1, 1 };
-    float x[] = { 2.0f, 3.0f, 4.0f };
+    tn_i8 w[] = {1, -1, 0, 0, 1, 1};
+    float x[] = {2.0f, 3.0f, 4.0f};
     float out[2];
     float scale = 1.0f;
 
@@ -27,8 +27,8 @@ static void test_ternary_matmul_basic(void) {
 }
 
 static void test_ternary_matmul_scale(void) {
-    tn_i8 w[] = { 1, 1, 1, 1 };
-    float x[] = { 1.0f, 2.0f };
+    tn_i8 w[] = {1, 1, 1, 1};
+    float x[] = {1.0f, 2.0f};
     float out[2];
 
     ternary_matmul(out, x, w, 2, 2, 0.5f);
@@ -39,8 +39,8 @@ static void test_ternary_matmul_scale(void) {
 }
 
 static void test_ternary_matmul_all_zero(void) {
-    tn_i8 w[] = { 0, 0, 0, 0 };
-    float x[] = { 999.0f, 888.0f };
+    tn_i8 w[] = {0, 0, 0, 0};
+    float x[] = {999.0f, 888.0f};
     float out[2];
 
     ternary_matmul(out, x, w, 2, 2, 1.0f);
@@ -52,8 +52,8 @@ static void test_ternary_matmul_all_zero(void) {
 /* ---- RMSNorm ---- */
 
 static void test_rmsnorm_basic(void) {
-    float x[] = { 1.0f, 2.0f, 3.0f, 4.0f };
-    float w[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    float x[] = {1.0f, 2.0f, 3.0f, 4.0f};
+    float w[] = {1.0f, 1.0f, 1.0f, 1.0f};
     float out[4];
 
     rmsnorm(out, x, w, 4, 1e-5f);
@@ -68,7 +68,7 @@ static void test_rmsnorm_basic(void) {
 /* ---- Softmax ---- */
 
 static void test_softmax_sums_to_one(void) {
-    float x[] = { 1.0f, 2.0f, 3.0f, 4.0f };
+    float x[] = {1.0f, 2.0f, 3.0f, 4.0f};
     softmax(x, 4);
 
     float sum = 0.0f;
@@ -79,7 +79,7 @@ static void test_softmax_sums_to_one(void) {
 }
 
 static void test_softmax_extreme(void) {
-    float x[] = { 1000.0f, 1001.0f, 999.0f };
+    float x[] = {1000.0f, 1001.0f, 999.0f};
     softmax(x, 3);
 
     float sum = x[0] + x[1] + x[2];
@@ -90,8 +90,8 @@ static void test_softmax_extreme(void) {
 /* ---- Element-wise ---- */
 
 static void test_vec_add(void) {
-    float a[] = { 1.0f, 2.0f, 3.0f };
-    float b[] = { 4.0f, 5.0f, 6.0f };
+    float a[] = {1.0f, 2.0f, 3.0f};
+    float b[] = {4.0f, 5.0f, 6.0f};
     float out[3];
 
     vec_add(out, a, b, 3);
@@ -100,7 +100,7 @@ static void test_vec_add(void) {
 }
 
 static void test_silu(void) {
-    float x[] = { 0.0f, 1.0f, -1.0f };
+    float x[] = {0.0f, 1.0f, -1.0f};
     silu(x, 3);
 
     /* silu(0) = 0, silu(1) ≈ 0.7311, silu(-1) ≈ -0.2689 */
@@ -110,8 +110,8 @@ static void test_silu(void) {
 }
 
 static void test_vec_dot(void) {
-    float a[] = { 1.0f, 2.0f, 3.0f };
-    float b[] = { 4.0f, 5.0f, 6.0f };
+    float a[] = {1.0f, 2.0f, 3.0f};
+    float b[] = {4.0f, 5.0f, 6.0f};
 
     float d = vec_dot(a, b, 3);
     TEST_ASSERT_FLOAT_EQ(d, 32.0f, 1e-5f, "dot product");
@@ -136,7 +136,10 @@ static void test_aligned_alloc(void) {
     TEST_ASSERT(fptr != NULL, "aligned calloc returned non-NULL");
     int all_zero = 1;
     for (int i = 0; i < 256; i++) {
-        if (fptr[i] != 0.0f) { all_zero = 0; break; }
+        if (fptr[i] != 0.0f) {
+            all_zero = 0;
+            break;
+        }
     }
     TEST_ASSERT(all_zero, "aligned calloc is zero-filled");
     tn_aligned_free(fptr);
@@ -149,10 +152,10 @@ static void test_aligned_alloc(void) {
 
 static void test_rope_position_zero(void) {
     /* At position 0, cos(0)=1, sin(0)=0, so RoPE should be identity */
-    float q[] = { 1.0f, 2.0f, 3.0f, 4.0f };
-    float k[] = { 5.0f, 6.0f, 7.0f, 8.0f };
-    float q_orig[] = { 1.0f, 2.0f, 3.0f, 4.0f };
-    float k_orig[] = { 5.0f, 6.0f, 7.0f, 8.0f };
+    float q[]      = {1.0f, 2.0f, 3.0f, 4.0f};
+    float k[]      = {5.0f, 6.0f, 7.0f, 8.0f};
+    float q_orig[] = {1.0f, 2.0f, 3.0f, 4.0f};
+    float k_orig[] = {5.0f, 6.0f, 7.0f, 8.0f};
 
     float freq[2];
     rope_precompute_freqs(freq, 4, 10000.0f);

@@ -41,8 +41,7 @@ static void softmax_inplace(float *x, int n) {
  * O(n*k) — acceptable because k is small (e.g. 6) and n ≤ 256.
  * Returns indices in descending score order.
  */
-static void top_k_select(const float *scores, int n, int k,
-                          int *out_indices) {
+static void top_k_select(const float *scores, int n, int k, int *out_indices) {
     /* Track which indices have been selected already */
     /* Use a tiny stack-allocated visited array; n ≤ 512 */
     /* Safe: num_experts is validated ≤ 512 in moe_config_read */
@@ -50,7 +49,7 @@ static void top_k_select(const float *scores, int n, int k,
     memset(visited, 0, n * sizeof(int));
 
     for (int pick = 0; pick < k; pick++) {
-        int   best_idx = -1;
+        int best_idx   = -1;
         float best_val = -FLT_MAX;
         for (int i = 0; i < n; i++) {
             if (!visited[i] && scores[i] > best_val) {
@@ -67,31 +66,18 @@ static void top_k_select(const float *scores, int n, int k,
  * Public API
  * -------------------------------------------------------------------------- */
 
-void moe_router_forward(float       *expert_scores,
-                        int         *selected_experts,
-                        float       *selected_scores,
-                        const float *x,
-                        const float *gate_w,
-                        int          dim,
-                        int          num_experts,
-                        int          top_k,
-                        ThreadPool  *tp) {
-    moe_router_forward_opts(expert_scores, selected_experts, selected_scores,
-                            x, gate_w, dim, num_experts, top_k, NULL, tp);
+void moe_router_forward(float *expert_scores, int *selected_experts, float *selected_scores,
+                        const float *x, const float *gate_w, int dim, int num_experts, int top_k,
+                        ThreadPool *tp) {
+    moe_router_forward_opts(expert_scores, selected_experts, selected_scores, x, gate_w, dim,
+                            num_experts, top_k, NULL, tp);
 }
 
 /* 2026-10-21: gating / renormalization / scale from MoEConfig, matching
  * llama.cpp build_moe_ffn() (probs -> top-k -> get_rows -> norm -> scale). */
-void moe_router_forward_opts(float       *expert_scores,
-                             int         *selected_experts,
-                             float       *selected_scores,
-                             const float *x,
-                             const float *gate_w,
-                             int          dim,
-                             int          num_experts,
-                             int          top_k,
-                             const MoERouterOpts *opts,
-                             ThreadPool  *tp) {
+void moe_router_forward_opts(float *expert_scores, int *selected_experts, float *selected_scores,
+                             const float *x, const float *gate_w, int dim, int num_experts,
+                             int top_k, const MoERouterOpts *opts, ThreadPool *tp) {
     const int gating = (opts && opts->gating_func) ? opts->gating_func : MOE_GATING_SOFTMAX;
     /* Step 1: gate_logits[e] = dot(x, gate_w_row[e])
      *
@@ -117,7 +103,7 @@ void moe_router_forward_opts(float       *expert_scores,
     /* Step 4: Copy softmax scores for selected experts (no renormalisation —
      * DeepSeek norm_topk_prob=false uses raw softmax probabilities). */
     for (int i = 0; i < top_k; i++) {
-        int e = selected_experts[i];
+        int e              = selected_experts[i];
         selected_scores[i] = (e >= 0) ? expert_scores[e] : 0.0f;
     }
 

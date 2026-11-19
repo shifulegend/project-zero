@@ -60,21 +60,18 @@ static const __m512i tn_bitunpack2_vbmi_perm_idx = {
     (long long)0x0101010100000000LL, (long long)0x0303030302020202LL,
     (long long)0x0505050504040404LL, (long long)0x0707070706060606LL,
     (long long)0x0909090908080808LL, (long long)0x0b0b0b0b0a0a0a0aLL,
-    (long long)0x0d0d0d0d0c0c0c0cLL, (long long)0x0f0f0f0f0e0e0e0eLL
-};
+    (long long)0x0d0d0d0d0c0c0c0cLL, (long long)0x0f0f0f0f0e0e0e0eLL};
 
 static const __m512i tn_bitunpack2_vbmi_shift_ctrl = {
     (long long)0x2624222006040200LL, (long long)0x2624222006040200LL,
     (long long)0x2624222006040200LL, (long long)0x2624222006040200LL,
     (long long)0x2624222006040200LL, (long long)0x2624222006040200LL,
-    (long long)0x2624222006040200LL, (long long)0x2624222006040200LL
-};
+    (long long)0x2624222006040200LL, (long long)0x2624222006040200LL};
 
-static inline __m512i tn_unpack64_to_wenc_u8_vbmi(const tn_u8 *row_j)
-{
+static inline __m512i tn_unpack64_to_wenc_u8_vbmi(const tn_u8 *row_j) {
     __m128i p = _mm_loadu_si128((const __m128i *)row_j);
-    __m512i expanded = _mm512_permutexvar_epi8(tn_bitunpack2_vbmi_perm_idx,
-                                                _mm512_castsi128_si512(p));
+    __m512i expanded =
+        _mm512_permutexvar_epi8(tn_bitunpack2_vbmi_perm_idx, _mm512_castsi128_si512(p));
     __m512i shifted = _mm512_multishift_epi64_epi8(tn_bitunpack2_vbmi_shift_ctrl, expanded);
     return _mm512_and_si512(shifted, _mm512_set1_epi8(0x03));
 }
@@ -95,16 +92,15 @@ static inline __m512i tn_unpack64_to_wenc_u8_vbmi(const tn_u8 *row_j)
  *   m0[i] = w_enc[4i], m1[i] = w_enc[4i+1], m2[i] = w_enc[4i+2], m3[i] = w_enc[4i+3]
  *   unpacklo8/unpackhi8 then unpacklo16/unpackhi16 restores sequential order.
  */
-static inline __m512i tn_unpack64_to_wenc_u8_sse(const tn_u8 *row_j)
-{
+static inline __m512i tn_unpack64_to_wenc_u8_sse(const tn_u8 *row_j) {
     __m128i p = _mm_loadu_si128((const __m128i *)row_j);
 
     const __m128i mask2 = _mm_set1_epi8(0x03);
 
-    __m128i m0 = _mm_and_si128(p,                      mask2);
-    __m128i m1 = _mm_and_si128(_mm_srli_epi16(p, 2),   mask2);
-    __m128i m2 = _mm_and_si128(_mm_srli_epi16(p, 4),   mask2);
-    __m128i m3 = _mm_and_si128(_mm_srli_epi16(p, 6),   mask2);
+    __m128i m0 = _mm_and_si128(p, mask2);
+    __m128i m1 = _mm_and_si128(_mm_srli_epi16(p, 2), mask2);
+    __m128i m2 = _mm_and_si128(_mm_srli_epi16(p, 4), mask2);
+    __m128i m3 = _mm_and_si128(_mm_srli_epi16(p, 6), mask2);
 
     __m128i lo01 = _mm_unpacklo_epi8(m0, m1);
     __m128i hi01 = _mm_unpackhi_epi8(m0, m1);
@@ -117,17 +113,16 @@ static inline __m512i tn_unpack64_to_wenc_u8_sse(const tn_u8 *row_j)
     __m128i q3 = _mm_unpackhi_epi16(hi01, hi23);
 
     __m512i wenc = _mm512_castsi128_si512(q0);
-    wenc = _mm512_inserti32x4(wenc, q1, 1);
-    wenc = _mm512_inserti32x4(wenc, q2, 2);
-    wenc = _mm512_inserti32x4(wenc, q3, 3);
+    wenc         = _mm512_inserti32x4(wenc, q1, 1);
+    wenc         = _mm512_inserti32x4(wenc, q2, 2);
+    wenc         = _mm512_inserti32x4(wenc, q3, 3);
     return wenc;
 }
 
 /* Runtime dispatch: only take the VBMI path if the CPUID bit was also
  * execution-verified (see cpu_features.c) — never just the compile-time
  * capability. Cached after the first call, same pattern as tn_simd_init(). */
-static inline __m512i tn_unpack64_to_wenc_u8(const tn_u8 *row_j)
-{
+static inline __m512i tn_unpack64_to_wenc_u8(const tn_u8 *row_j) {
 #if TN_HAS_AVX512VBMI
 #ifdef TN_VNNI_ASSUME_VBMI
     /* ternary_matmul_packed_vnni_vbmi.c: the dispatcher binds this build only

@@ -9,16 +9,10 @@
 /* Maximum size of the formatted injection string */
 #define INJECT_BUF_SIZE 8192
 
-int auto_retrieve_and_inject(const char *user_prompt,
-                              VectorDB *db,
-                              const Config *cfg,
-                              const TransformerWeights *w,
-                              RunState *s,
-                              Embedder *emb,
-                              Tokenizer *tok,
-                              ThreadPool *tp) {
-    if (!user_prompt || !db || !cfg || !w || !s || !emb || !tok)
-        return -1;
+int auto_retrieve_and_inject(const char *user_prompt, VectorDB *db, const Config *cfg,
+                             const TransformerWeights *w, RunState *s, Embedder *emb,
+                             Tokenizer *tok, ThreadPool *tp) {
+    if (!user_prompt || !db || !cfg || !w || !s || !emb || !tok) return -1;
 
     /* Budget check: don't inject if too little space remains */
     int free_tokens = cfg->seq_len - s->current_pos;
@@ -30,8 +24,7 @@ int auto_retrieve_and_inject(const char *user_prompt,
 
     /* Search for relevant memories */
     MemoryResult results[AUTO_RETRIEVE_TOP_N];
-    int n = memory_search(db, user_prompt, cfg, w, emb, tok, tp,
-                          results, AUTO_RETRIEVE_TOP_N);
+    int n = memory_search(db, user_prompt, cfg, w, emb, tok, tp, results, AUTO_RETRIEVE_TOP_N);
     if (n <= 0) return 0;
 
     /* Filter strictly by AUTO_RETRIEVE_MIN_SCORE (memory_search uses a
@@ -52,8 +45,8 @@ int auto_retrieve_and_inject(const char *user_prompt,
     off += snprintf(buf + off, INJECT_BUF_SIZE - off,
                     "\n<memory>\nRelevant context from previous conversations:\n");
     for (int i = 0; i < kept && off < INJECT_BUF_SIZE - 128; i++) {
-        off += snprintf(buf + off, INJECT_BUF_SIZE - off,
-                        "- %s\n", results[i].text ? results[i].text : "");
+        off += snprintf(buf + off, INJECT_BUF_SIZE - off, "- %s\n",
+                        results[i].text ? results[i].text : "");
     }
     off += snprintf(buf + off, INJECT_BUF_SIZE - off, "</memory>\n");
 

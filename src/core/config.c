@@ -26,21 +26,21 @@ TernaryError config_read(Config *cfg, const void *mapped_ptr, size_t file_size) 
     /* Read fixed-size config fields (40 bytes total, matches on-disk .bin layout) */
     memcpy(cfg, ptr, 40);
     ptr += 40;
-    cfg->bos_token_id = -1;  /* not stored in .bin format; set by GGUF loader */
-    cfg->eos_token_id = -1;  /* not stored in .bin format; set by GGUF loader */
+    cfg->bos_token_id = -1;    /* not stored in .bin format; set by GGUF loader */
+    cfg->eos_token_id = -1;    /* not stored in .bin format; set by GGUF loader */
     cfg->rms_norm_eps = 1e-5f; /* default; overridden by GGUF loader */
     cfg->rope_layout  = 0;     /* NORM: .bin converters emit llama-layout Q/K */
 
     /* RoPE scaling: .bin format predates YaRN — set safe defaults so apply_rope
      * behaves as standard (no-scaling) RoPE.  attn_factor=1.0 is critical: if left
      * at 0 every rotated Q/K value is multiplied by 0 → complete garbage output. */
-    cfg->rope_freq_scale      = 1.0f;  /* no linear scaling */
-    cfg->rope_yarn_ext_factor = 0.0f;  /* no YaRN interpolation */
-    cfg->rope_yarn_attn_factor= 1.0f;  /* amplitude scale = 1 (pass-through) */
-    cfg->rope_yarn_beta_fast  = 32.0f;
-    cfg->rope_yarn_beta_slow  = 1.0f;
-    cfg->rope_orig_ctx_len    = cfg->seq_len;
-    cfg->rope_yarn_log_mul    = 0.0f;
+    cfg->rope_freq_scale       = 1.0f; /* no linear scaling */
+    cfg->rope_yarn_ext_factor  = 0.0f; /* no YaRN interpolation */
+    cfg->rope_yarn_attn_factor = 1.0f; /* amplitude scale = 1 (pass-through) */
+    cfg->rope_yarn_beta_fast   = 32.0f;
+    cfg->rope_yarn_beta_slow   = 1.0f;
+    cfg->rope_orig_ctx_len     = cfg->seq_len;
+    cfg->rope_yarn_log_mul     = 0.0f;
 
     /* Perform basic validation */
     TN_CHECK(cfg->dim > 0 && cfg->n_layers > 0, TN_ERR_INVALID_CONFIG);

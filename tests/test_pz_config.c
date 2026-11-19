@@ -15,10 +15,13 @@
 #endif
 
 static int g_warnings;
-static void count_warn(const char *m) { (void)m; g_warnings++; }
+static void count_warn(const char *m) {
+    (void)m;
+    g_warnings++;
+}
 
 static void test_schema_and_validate(void) {
-    int n = 0;
+    int n             = 0;
     const PzCfgKey *s = pz_config_schema(&n);
     TEST_ASSERT(s && n > 20, "schema has entries");
     TEST_ASSERT(pz_config_find_key("threads") != NULL, "threads in schema");
@@ -44,12 +47,15 @@ static void test_set_add_unset(void) {
     TEST_ASSERT(pz_config_init(&c) == 0, "init");
     char err[256];
     TEST_ASSERT(pz_config_set(&c, "threads", "4", err, sizeof(err)) == 0, "set");
-    TEST_ASSERT(pz_config_set(&c, "nope", "1", err, sizeof(err)) != 0 && strstr(err, "unknown"), "unknown key");
+    TEST_ASSERT(pz_config_set(&c, "nope", "1", err, sizeof(err)) != 0 && strstr(err, "unknown"),
+                "unknown key");
     TEST_ASSERT(pz_config_add(&c, "stop", "</s>", err, sizeof(err)) == 0 &&
-                pz_config_add(&c, "stop", ">>UNUSED_1<<", err, sizeof(err)) == 0, "list add");
+                    pz_config_add(&c, "stop", ">>UNUSED_1<<", err, sizeof(err)) == 0,
+                "list add");
     const PzCfgEntry *e = pz_config_get(&c, "stop");
     TEST_ASSERT(e && e->n == 2 && strcmp(e->v[1], ">>UNUSED_1<<") == 0, "list holds both");
-    TEST_ASSERT(pz_config_set(&c, "stop", "x", err, sizeof(err)) == 0 && pz_config_get(&c, "stop")->n == 1,
+    TEST_ASSERT(pz_config_set(&c, "stop", "x", err, sizeof(err)) == 0 &&
+                    pz_config_get(&c, "stop")->n == 1,
                 "set on a list replaces it");
     pz_config_unset(&c, "threads");
     TEST_ASSERT(pz_config_get(&c, "threads") == NULL, "unset");
@@ -59,23 +65,23 @@ static void test_set_add_unset(void) {
 static void test_parse(void) {
     PzConfig c;
     pz_config_init(&c);
-    const char *text =
-        "# comment\n"
-        "threads = 6   # trailing comment\n"
-        "kv_type = \"i8\"\n"                       /* underscore spelling accepted */
-        "system-prompt = \"Say \\\"hi\\\"\\nthen stop\"\n"
-        "cors = true\n"
-        "stop = [\"</s>\", \"<|end|>\"]\n"
-        "bogus = 1\n"                              /* unknown: warned, skipped */
-        "temperature = hot\n"                      /* invalid: warned, skipped */
-        "[server]\n";                              /* tables unsupported: warned */
+    const char *text = "# comment\n"
+                       "threads = 6   # trailing comment\n"
+                       "kv_type = \"i8\"\n" /* underscore spelling accepted */
+                       "system-prompt = \"Say \\\"hi\\\"\\nthen stop\"\n"
+                       "cors = true\n"
+                       "stop = [\"</s>\", \"<|end|>\"]\n"
+                       "bogus = 1\n"         /* unknown: warned, skipped */
+                       "temperature = hot\n" /* invalid: warned, skipped */
+                       "[server]\n";         /* tables unsupported: warned */
     g_warnings = 0;
-    int n = pz_config_parse(&c, text, count_warn);
+    int n      = pz_config_parse(&c, text, count_warn);
     TEST_ASSERT_EQ(n, 5, "five values loaded");
     TEST_ASSERT_EQ(g_warnings, 3, "unknown key, bad value and table each warned");
     TEST_ASSERT(strcmp(pz_config_get(&c, "threads")->v[0], "6") == 0, "int");
     TEST_ASSERT(strcmp(pz_config_get(&c, "kv-type")->v[0], "i8") == 0, "underscore key");
-    TEST_ASSERT(strcmp(pz_config_get(&c, "system-prompt")->v[0], "Say \"hi\"\nthen stop") == 0, "escapes");
+    TEST_ASSERT(strcmp(pz_config_get(&c, "system-prompt")->v[0], "Say \"hi\"\nthen stop") == 0,
+                "escapes");
     TEST_ASSERT(pz_config_get(&c, "stop")->n == 2, "list");
     TEST_ASSERT(pz_config_get(&c, "temperature") == NULL, "invalid value not stored");
     pz_config_free(&c);
@@ -101,7 +107,8 @@ static void test_round_trip_and_save(void) {
     TEST_ASSERT(stat(path, &st) == 0 && (st.st_mode & 077) == 0, "file is private (0600)");
 #endif
     TEST_ASSERT(pz_config_load(&d, path, NULL) == 4, "load back 4 values");
-    TEST_ASSERT(strcmp(pz_config_get(&d, "model")->v[0], "/models/a b \"q\".gguf") == 0, "string round trip");
+    TEST_ASSERT(strcmp(pz_config_get(&d, "model")->v[0], "/models/a b \"q\".gguf") == 0,
+                "string round trip");
     TEST_ASSERT(pz_config_get(&d, "cors-origin")->n == 2, "list round trip");
     char missing[300];
     snprintf(missing, sizeof(missing), "%s/none.toml", dir);
@@ -129,7 +136,9 @@ static void test_env_and_path(void) {
     TEST_ASSERT(pz_config_path(p, sizeof(p)) == 0 && strcmp(p, "/x/y.toml") == 0, "PZ_CONFIG wins");
     unsetenv("PZ_CONFIG");
     setenv("XDG_CONFIG_HOME", "/cfg", 1);
-    TEST_ASSERT(pz_config_path(p, sizeof(p)) == 0 && strcmp(p, "/cfg/project-zero/config.toml") == 0, "XDG");
+    TEST_ASSERT(pz_config_path(p, sizeof(p)) == 0 &&
+                    strcmp(p, "/cfg/project-zero/config.toml") == 0,
+                "XDG");
     unsetenv("XDG_CONFIG_HOME");
     pz_config_free(&c);
 }
@@ -142,16 +151,20 @@ static void test_merge_argv(void) {
     pz_config_set(&c, "cors", "true", err, sizeof(err));
     pz_config_set(&c, "metrics", "false", err, sizeof(err));
     pz_config_add(&c, "stop", "a", err, sizeof(err));
-    char *argv[] = { "pz", "--threads", "8", NULL };
-    char **out = NULL;
-    int n = pz_config_merge_argv(&c, 3, argv, &out);
+    char *argv[] = {"pz", "--threads", "8", NULL};
+    char **out   = NULL;
+    int n        = pz_config_merge_argv(&c, 3, argv, &out);
     /* pz --threads 2 --stop a --cors --threads 8 */
     TEST_ASSERT_EQ(n, 8, "argc = 1 + 2 (threads) + 2 (stop) + 1 (cors) + 2 (user)");
-    int ok = n == 8 && strcmp(out[0], "pz") == 0 && strcmp(out[1], "--threads") == 0 && strcmp(out[2], "2") == 0 &&
-             strcmp(out[6], "--threads") == 0 && strcmp(out[7], "8") == 0 && out[8] == NULL;
+    int ok = n == 8 && strcmp(out[0], "pz") == 0 && strcmp(out[1], "--threads") == 0 &&
+             strcmp(out[2], "2") == 0 && strcmp(out[6], "--threads") == 0 &&
+             strcmp(out[7], "8") == 0 && out[8] == NULL;
     TEST_ASSERT(ok, "config first, user flags last (so they win)");
     int saw_cors = 0, saw_metrics = 0;
-    for (int i = 1; i < n; i++) { saw_cors |= strcmp(out[i], "--cors") == 0; saw_metrics |= strcmp(out[i], "--metrics") == 0; }
+    for (int i = 1; i < n; i++) {
+        saw_cors |= strcmp(out[i], "--cors") == 0;
+        saw_metrics |= strcmp(out[i], "--metrics") == 0;
+    }
     TEST_ASSERT(saw_cors && !saw_metrics, "true bool adds the flag, false omits it");
     free(out);
     pz_config_free(&c);
@@ -159,7 +172,8 @@ static void test_merge_argv(void) {
 
 #if TN_POSIX
 static void test_save_is_private_and_safe(void) {
-    PzConfig c; pz_config_init(&c);
+    PzConfig c;
+    pz_config_init(&c);
     char err[256];
     pz_config_set(&c, "api-key", "s3cret", err, sizeof(err));
     char dir[] = "/tmp/pz_cfg_priv_XXXXXX";
@@ -170,22 +184,32 @@ static void test_save_is_private_and_safe(void) {
     snprintf(victim, sizeof(victim), "%s/victim.txt", dir);
 
     /* a hostile pre-planted symlink at the predictable temp name must not be followed */
-    FILE *v = fopen(victim, "w"); fputs("untouched", v); fclose(v);
+    FILE *v = fopen(victim, "w");
+    fputs("untouched", v);
+    fclose(v);
     TEST_ASSERT(symlink(victim, tmp) == 0, "plant symlink at the temp name");
-    mode_t old = umask(0);   /* worst case: a umask that would make files world-readable */
+    mode_t old = umask(0); /* worst case: a umask that would make files world-readable */
     TEST_ASSERT(pz_config_save(&c, path) == 0, "save succeeds despite the planted temp name");
     umask(old);
     struct stat st;
-    TEST_ASSERT(stat(path, &st) == 0 && (st.st_mode & 0777) == 0600, "config is exactly 0600 even with umask 0");
+    TEST_ASSERT(stat(path, &st) == 0 && (st.st_mode & 0777) == 0600,
+                "config is exactly 0600 even with umask 0");
     char buf[32] = {0};
-    v = fopen(victim, "r"); size_t n = fread(buf, 1, sizeof(buf) - 1, v); fclose(v); (void)n;
+    v            = fopen(victim, "r");
+    size_t n     = fread(buf, 1, sizeof(buf) - 1, v);
+    fclose(v);
+    (void)n;
     TEST_ASSERT(strcmp(buf, "untouched") == 0, "symlink target was not written through");
     TEST_ASSERT(access(tmp, F_OK) != 0, "no temp file is left behind");
 
     /* a stale world-readable temp file from a crashed save is replaced, not reused */
-    FILE *s = fopen(tmp, "w"); fputs("stale", s); fclose(s); chmod(tmp, 0644);
+    FILE *s = fopen(tmp, "w");
+    fputs("stale", s);
+    fclose(s);
+    chmod(tmp, 0644);
     TEST_ASSERT(pz_config_save(&c, path) == 0, "save over a stale temp file");
-    TEST_ASSERT(stat(path, &st) == 0 && (st.st_mode & 0777) == 0600, "still 0600 after a stale temp file");
+    TEST_ASSERT(stat(path, &st) == 0 && (st.st_mode & 0777) == 0600,
+                "still 0600 after a stale temp file");
     char cmd[300];
     snprintf(cmd, sizeof(cmd), "rm -rf '%s'", dir);
     TEST_ASSERT(system(cmd) == 0, "cleanup");
@@ -199,17 +223,25 @@ static void test_example_file_matches_schema(void) {
     FILE *f = fopen("config.toml.example", "r");
     TEST_ASSERT(f != NULL, "config.toml.example exists (tests run from the repo root)");
     if (!f) return;
-    char line[512]; int checked = 0, bad = 0;
-    PzConfig c; pz_config_init(&c);
+    char line[512];
+    int checked = 0, bad = 0;
+    PzConfig c;
+    pz_config_init(&c);
     while (fgets(line, sizeof(line), f)) {
         if (strncmp(line, "# ", 2) != 0) continue;
         char key[64], val[256];
         if (sscanf(line + 2, "%63s = %255[^\n]", key, val) != 2) continue;
         size_t vl = strlen(val);
-        if (vl >= 2 && val[0] == '"' && val[vl - 1] == '"') { val[vl - 1] = 0; memmove(val, val + 1, vl - 1); }
+        if (vl >= 2 && val[0] == '"' && val[vl - 1] == '"') {
+            val[vl - 1] = 0;
+            memmove(val, val + 1, vl - 1);
+        }
         char err[256];
         checked++;
-        if (pz_config_set(&c, key, val, err, sizeof(err)) != 0) { printf("  bad example line: %s", line); bad++; }
+        if (pz_config_set(&c, key, val, err, sizeof(err)) != 0) {
+            printf("  bad example line: %s", line);
+            bad++;
+        }
     }
     fclose(f);
     TEST_ASSERT(checked >= 8 && bad == 0, "every example setting is a valid key and value");

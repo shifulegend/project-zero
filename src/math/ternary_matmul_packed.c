@@ -7,8 +7,8 @@
  * Unpacks each row on-the-fly and accumulates. For per-group mode,
  * scale factors are applied at group boundaries.
  */
-void ternary_matmul_packed(float *out, const float *x, const tn_u8 *packed_w,
-                           int n, int d, const float *scales, int group_size) {
+void ternary_matmul_packed(float *out, const float *x, const tn_u8 *packed_w, int n, int d,
+                           const float *scales, int group_size) {
     size_t row_bytes = packed_bytes(n);
 
     for (int i = 0; i < d; i++) {
@@ -28,13 +28,13 @@ void ternary_matmul_packed(float *out, const float *x, const tn_u8 *packed_w,
             out[i] = val * scales[0];
         } else {
             /* Per-group scale mode: one scale per group */
-            float total = 0.0f;
+            float total  = 0.0f;
             int n_groups = (n + group_size - 1) / group_size;
 
             for (int g = 0; g < n_groups; g++) {
                 float group_sum = 0.0f;
-                int start = g * group_size;
-                int end = start + group_size;
+                int start       = g * group_size;
+                int end         = start + group_size;
                 if (end > n) end = n;
 
                 for (int j = start; j < end; j++) {

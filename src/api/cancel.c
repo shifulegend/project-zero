@@ -34,9 +34,9 @@ int cancel_registry_begin(CancelState *cs, const char *id) {
         CancelEntry *e = &cs->entries[i];
         if (e->active) continue;
         snprintf(e->id, sizeof(e->id), "%s", id ? id : "");
-        e->active = 1;
+        e->active           = 1;
         e->cancel_requested = 0;
-        rc = 0;
+        rc                  = 0;
         break;
     }
     pthread_mutex_unlock(&cs->lock);
@@ -55,7 +55,7 @@ int cancel_registry_check(CancelState *cs, const char *id) {
     if (!cs) return 0;
     pthread_mutex_lock(&cs->lock);
     CancelEntry *e = find(cs, id);
-    int result = cs->shutdown || (e && e->cancel_requested);
+    int result     = cs->shutdown || (e && e->cancel_requested);
     pthread_mutex_unlock(&cs->lock);
     return result;
 }

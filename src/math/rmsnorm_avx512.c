@@ -17,17 +17,17 @@
 void rmsnorm_avx512(float *out, const float *x, const float *weight, int size, float eps) {
     /* Pass 1: sum of squares */
     __m512 acc16 = _mm512_setzero_ps();
-    int i = 0;
+    int i        = 0;
     for (; i + 15 < size; i += 16) {
         __m512 xv = _mm512_loadu_ps(&x[i]);
-        acc16 = _mm512_fmadd_ps(xv, xv, acc16);
+        acc16     = _mm512_fmadd_ps(xv, xv, acc16);
     }
     float ss = _mm512_reduce_add_ps(acc16);
 
     __m256 acc8 = _mm256_setzero_ps();
     for (; i + 7 < size; i += 8) {
         __m256 xv = _mm256_loadu_ps(&x[i]);
-        acc8 = _mm256_fmadd_ps(xv, xv, acc8);
+        acc8      = _mm256_fmadd_ps(xv, xv, acc8);
     }
     __m128 hi = _mm256_extractf128_ps(acc8, 1);
     __m128 lo = _mm256_castps256_ps128(acc8);
@@ -43,7 +43,7 @@ void rmsnorm_avx512(float *out, const float *x, const float *weight, int size, f
     /* Pass 2: normalize and scale */
     __m512 norm16 = _mm512_set1_ps(ss);
     __m256 norm8  = _mm256_set1_ps(ss);
-    i = 0;
+    i             = 0;
     for (; i + 15 < size; i += 16) {
         __m512 xv = _mm512_loadu_ps(&x[i]);
         __m512 wv = _mm512_loadu_ps(&weight[i]);

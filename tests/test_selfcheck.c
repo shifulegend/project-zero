@@ -30,37 +30,51 @@ static void test_delta_and_judge(void) {
 static void test_format_and_text(void) {
     SelfCheckResult r;
     memset(&r, 0, sizeof(r));
-    r.verdict = SC_FAIL; strcpy(r.act_quant, "int8"); strcpy(r.classifier, "int4");
-    r.ppl_ref = 21.12; r.ppl_cand = 377.06; r.delta_pct = 1685.2; r.tolerance_pct = 1.0; r.n_scored = 47;
+    r.verdict = SC_FAIL;
+    strcpy(r.act_quant, "int8");
+    strcpy(r.classifier, "int4");
+    r.ppl_ref       = 21.12;
+    r.ppl_cand      = 377.06;
+    r.delta_pct     = 1685.2;
+    r.tolerance_pct = 1.0;
+    r.n_scored      = 47;
     char line[300];
     selfcheck_format(&r, line, sizeof(line));
-    TEST_ASSERT(strstr(line, "FAIL") && strstr(line, "head int4") && strstr(line, "+1685.20%"), "FAIL line");
-    r.verdict = SC_SKIPPED; strcpy(r.note, "already the reference");
+    TEST_ASSERT(strstr(line, "FAIL") && strstr(line, "head int4") && strstr(line, "+1685.20%"),
+                "FAIL line");
+    r.verdict = SC_SKIPPED;
+    strcpy(r.note, "already the reference");
     selfcheck_format(&r, line, sizeof(line));
     TEST_ASSERT(strstr(line, "SKIPPED") && strstr(line, "already the reference"), "SKIPPED line");
-    TEST_ASSERT(strlen(selfcheck_text()) > 400, "the built-in passage is long enough for a 96-token probe");
+    TEST_ASSERT(strlen(selfcheck_text()) > 400,
+                "the built-in passage is long enough for a 96-token probe");
 }
 
 static void test_act_quant_modes(void) {
     TnActQuant m;
-    TEST_ASSERT_EQ(tn_act_quant_parse("auto", &m), 0, "auto"); TEST_ASSERT_EQ(m, TN_ACT_AUTO, "auto value");
-    TEST_ASSERT_EQ(tn_act_quant_parse("int8", &m), 0, "int8"); TEST_ASSERT_EQ(m, TN_ACT_INT8, "int8 value");
-    TEST_ASSERT_EQ(tn_act_quant_parse("float", &m), 0, "float"); TEST_ASSERT_EQ(m, TN_ACT_FLOAT, "float value");
+    TEST_ASSERT_EQ(tn_act_quant_parse("auto", &m), 0, "auto");
+    TEST_ASSERT_EQ(m, TN_ACT_AUTO, "auto value");
+    TEST_ASSERT_EQ(tn_act_quant_parse("int8", &m), 0, "int8");
+    TEST_ASSERT_EQ(m, TN_ACT_INT8, "int8 value");
+    TEST_ASSERT_EQ(tn_act_quant_parse("float", &m), 0, "float");
+    TEST_ASSERT_EQ(m, TN_ACT_FLOAT, "float value");
     TEST_ASSERT_EQ(tn_act_quant_parse("bf16", &m), -1, "unknown name rejected");
     TEST_ASSERT_EQ(tn_act_quant_parse(NULL, &m), -1, "NULL rejected");
 
     tn_simd_init();
     tn_act_quant_set(TN_ACT_AUTO);
-    const char *before = tn_act_quant_effective();
-    int preq_before = tn_simd_ternary_preq();
+    const char *before         = tn_act_quant_effective();
+    int preq_before            = tn_simd_ternary_preq();
     const char *backend_before = tn_simd_backend_name();
 
     tn_act_quant_set(TN_ACT_FLOAT);
-    TEST_ASSERT(strcmp(tn_act_quant_effective(), "float") == 0, "float mode runs float activations");
+    TEST_ASSERT(strcmp(tn_act_quant_effective(), "float") == 0,
+                "float mode runs float activations");
     TEST_ASSERT_EQ(tn_simd_ternary_preq(), 0, "float mode has no pre-quantised int8 path");
 
     tn_act_quant_set(TN_ACT_AUTO);
-    TEST_ASSERT(strcmp(tn_act_quant_effective(), before) == 0, "auto restores the original numerics");
+    TEST_ASSERT(strcmp(tn_act_quant_effective(), before) == 0,
+                "auto restores the original numerics");
     TEST_ASSERT_EQ(tn_simd_ternary_preq(), preq_before, "auto restores the pre-quantised path");
     TEST_ASSERT(strcmp(tn_simd_backend_name(), backend_before) == 0, "and the same tier");
 
@@ -71,15 +85,19 @@ static void test_act_quant_modes(void) {
     unsetenv("TN_FORCE_BACKEND");
     tn_act_quant_set(TN_ACT_FLOAT);
     tn_act_quant_set(TN_ACT_AUTO);
-    TEST_ASSERT(strcmp(tn_simd_backend_name(), "Scalar") == 0, "forced tier kept across act-quant changes");
-    tn_simd_init();   /* back to auto for the tests that follow */
+    TEST_ASSERT(strcmp(tn_simd_backend_name(), "Scalar") == 0,
+                "forced tier kept across act-quant changes");
+    tn_simd_init(); /* back to auto for the tests that follow */
 }
 
 static void test_cache(void) {
     char k1[300], k2[300], k3[300];
-    selfcheck_cache_key(k1, sizeof(k1), "/models/bitnet.gguf", 1187801280LL, 1700000000LL, "int8", "bf16", 1.0, 96);
-    selfcheck_cache_key(k2, sizeof(k2), "/other/dir/bitnet.gguf", 1187801280LL, 1700000000LL, "int8", "bf16", 1.0, 96);
-    selfcheck_cache_key(k3, sizeof(k3), "/models/bitnet.gguf", 1187801280LL, 1700000001LL, "int8", "bf16", 1.0, 96);
+    selfcheck_cache_key(k1, sizeof(k1), "/models/bitnet.gguf", 1187801280LL, 1700000000LL, "int8",
+                        "bf16", 1.0, 96);
+    selfcheck_cache_key(k2, sizeof(k2), "/other/dir/bitnet.gguf", 1187801280LL, 1700000000LL,
+                        "int8", "bf16", 1.0, 96);
+    selfcheck_cache_key(k3, sizeof(k3), "/models/bitnet.gguf", 1187801280LL, 1700000001LL, "int8",
+                        "bf16", 1.0, 96);
     TEST_ASSERT(strcmp(k1, k2) == 0, "same file name, size and mtime: same key wherever it lives");
     TEST_ASSERT(strcmp(k1, k3) != 0, "a changed mtime is another file");
     char text[1024];
@@ -98,10 +116,11 @@ static void test_cache(void) {
  * float activations; a cache that cannot be written or read is only a miss. */
 static void test_cache_file(void) {
     char dir[64];
-    snprintf(dir, sizeof(dir), "/tmp/pz_selfcheck_%ld", (long)getpid());   /* mkdtemp is not declared under strict POSIX on macOS */
+    snprintf(dir, sizeof(dir), "/tmp/pz_selfcheck_%ld",
+             (long)getpid()); /* mkdtemp is not declared under strict POSIX on macOS */
     TEST_ASSERT(mkdir(dir, 0700) == 0 || errno == EEXIST, "temp HOME");
     const char *old = getenv("HOME");
-    char *saved = old ? strdup(old) : NULL;
+    char *saved     = old ? strdup(old) : NULL;
     setenv("HOME", dir, 1);
 
     SelfCheckVerdict v = SC_SKIPPED;
@@ -109,33 +128,57 @@ static void test_cache_file(void) {
     selfcheck_cache_store("k-pass", SC_PASS);
     selfcheck_cache_store("k-fail", SC_FAIL);
     selfcheck_cache_store("k-skip", SC_SKIPPED);
-    TEST_ASSERT_EQ(selfcheck_cache_load("k-pass", &v), 1, "stored PASS found"); TEST_ASSERT_EQ(v, SC_PASS, "PASS");
-    TEST_ASSERT_EQ(selfcheck_cache_load("k-fail", &v), 1, "stored FAIL found"); TEST_ASSERT_EQ(v, SC_FAIL, "FAIL read back");
+    TEST_ASSERT_EQ(selfcheck_cache_load("k-pass", &v), 1, "stored PASS found");
+    TEST_ASSERT_EQ(v, SC_PASS, "PASS");
+    TEST_ASSERT_EQ(selfcheck_cache_load("k-fail", &v), 1, "stored FAIL found");
+    TEST_ASSERT_EQ(v, SC_FAIL, "FAIL read back");
     TEST_ASSERT_EQ(selfcheck_cache_load("k-skip", &v), 0, "SKIPPED is never stored");
 
     setenv("HOME", "/nonexistent/dir/for/pz", 1);
-    selfcheck_cache_store("k-x", SC_FAIL);   /* must not crash */
+    selfcheck_cache_store("k-x", SC_FAIL); /* must not crash */
     TEST_ASSERT_EQ(selfcheck_cache_load("k-fail", &v), 0, "unreadable cache is a miss");
 
-    if (saved) { setenv("HOME", saved, 1); free(saved); } else unsetenv("HOME");
+    if (saved) {
+        setenv("HOME", saved, 1);
+        free(saved);
+    } else
+        unsetenv("HOME");
     char cmd[128];
     snprintf(cmd, sizeof(cmd), "rm -rf %s", dir);
     TEST_ASSERT_EQ(system(cmd), 0, "cleanup");
 }
 
 static void test_auto_decisions(void) {
-    SelfCheckAutoCtx c = { 0, 1, 0, 0, 1.0, 0, 1 };
+    SelfCheckAutoCtx c = {0, 1, 0, 0, 1.0, 0, 1};
     TEST_ASSERT_EQ(selfcheck_auto_applies(&c), 1, "auto + ternary + int8 + bar: checks");
-    SelfCheckAutoCtx x = c; x.act_quant_requested = 1; TEST_ASSERT_EQ(selfcheck_auto_applies(&x), 0, "explicit int8: no check");
-    x = c; x.act_quant_requested = 2; TEST_ASSERT_EQ(selfcheck_auto_applies(&x), 0, "explicit float: no check");
-    x = c; x.ternary_model = 0;      TEST_ASSERT_EQ(selfcheck_auto_applies(&x), 0, "not a ternary model");
-    x = c; x.no_calibrate = 1;       TEST_ASSERT_EQ(selfcheck_auto_applies(&x), 0, "--no-calibrate");
-    x = c; x.sanitized_build = 1;    TEST_ASSERT_EQ(selfcheck_auto_applies(&x), 0, "sanitizer build");
-    x = c; x.tolerance_pct = 0.0;    TEST_ASSERT_EQ(selfcheck_auto_applies(&x), 0, "tolerance 0 = no bar");
-    x = c; x.other_mode = 1;         TEST_ASSERT_EQ(selfcheck_auto_applies(&x), 0, "--self-check / --perplexity / --watermark-detect");
-    x = c; x.effective_is_int8 = 0;  TEST_ASSERT_EQ(selfcheck_auto_applies(&x), 0, "already float activations");
+    SelfCheckAutoCtx x    = c;
+    x.act_quant_requested = 1;
+    TEST_ASSERT_EQ(selfcheck_auto_applies(&x), 0, "explicit int8: no check");
+    x                     = c;
+    x.act_quant_requested = 2;
+    TEST_ASSERT_EQ(selfcheck_auto_applies(&x), 0, "explicit float: no check");
+    x               = c;
+    x.ternary_model = 0;
+    TEST_ASSERT_EQ(selfcheck_auto_applies(&x), 0, "not a ternary model");
+    x              = c;
+    x.no_calibrate = 1;
+    TEST_ASSERT_EQ(selfcheck_auto_applies(&x), 0, "--no-calibrate");
+    x                 = c;
+    x.sanitized_build = 1;
+    TEST_ASSERT_EQ(selfcheck_auto_applies(&x), 0, "sanitizer build");
+    x               = c;
+    x.tolerance_pct = 0.0;
+    TEST_ASSERT_EQ(selfcheck_auto_applies(&x), 0, "tolerance 0 = no bar");
+    x            = c;
+    x.other_mode = 1;
+    TEST_ASSERT_EQ(selfcheck_auto_applies(&x), 0,
+                   "--self-check / --perplexity / --watermark-detect");
+    x                   = c;
+    x.effective_is_int8 = 0;
+    TEST_ASSERT_EQ(selfcheck_auto_applies(&x), 0, "already float activations");
     TEST_ASSERT(selfcheck_auto_applies(NULL) == 0, "NULL");
-    TEST_ASSERT_EQ(selfcheck_auto_numerics(SC_FAIL), TN_ACT_FLOAT, "a FAIL verdict puts float activations in force");
+    TEST_ASSERT_EQ(selfcheck_auto_numerics(SC_FAIL), TN_ACT_FLOAT,
+                   "a FAIL verdict puts float activations in force");
     TEST_ASSERT_EQ(selfcheck_auto_numerics(SC_PASS), TN_ACT_AUTO, "PASS keeps auto");
     TEST_ASSERT_EQ(selfcheck_auto_numerics(SC_SKIPPED), TN_ACT_AUTO, "SKIPPED keeps auto");
 }

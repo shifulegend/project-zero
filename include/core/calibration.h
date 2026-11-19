@@ -34,16 +34,17 @@
  * Users opt in via --classifier auto-fast or --classifier int8.
  */
 
-#define TN_CALIB_MAGIC    0x505A4341  /* "PZCA" */
-#define TN_CALIB_VERSION  4           /* 4: interleaved paired rounds + sign test, ISA mask in the key (2026-11-18); 3: "auto" candidate + margin */
+#define TN_CALIB_MAGIC 0x505A4341 /* "PZCA" */
+#define TN_CALIB_VERSION                                                                           \
+    4 /* 4: interleaved paired rounds + sign test, ISA mask in the key (2026-11-18); 3: "auto" candidate + margin */
 
-#define TN_CALIB_MAX_THREADS 16       /* max thread counts tracked in sweep */
+#define TN_CALIB_MAX_THREADS 16 /* max thread counts tracked in sweep */
 
 /* SIMD candidates: "auto" (the dispatcher's CPUID pick, e.g. AVX-VNNI, which no
  * forced value selects) + every forceable tier. A forced tier replaces "auto"
  * only when clearly faster: median > auto median * TN_CALIB_OVERRIDE_MARGIN and
  * its slowest rep beats auto's median — otherwise run-to-run noise decides. */
-#define TN_CALIB_SIMD_N          6
+#define TN_CALIB_SIMD_N 6
 #define TN_CALIB_OVERRIDE_MARGIN 1.05
 
 /* 2026-11-18: candidates are measured in interleaved rounds (every candidate once
@@ -52,44 +53,44 @@
  * sample in enough rounds for a one-sided sign test at p <= 0.005 (13 of 15): a wrong override costs speed, a missed small win costs almost nothing, so the default wins ties and near-ties. The
  * pre-2026-11-18 sweep ran each candidate in its own block and picked "avx2" on an
  * AVX-512 VNNI host from noise (docs/ai/mistakes.md). */
-#define TN_CALIB_ROUNDS         15
-#define TN_CALIB_MAX_ROUNDS     31
+#define TN_CALIB_ROUNDS 15
+#define TN_CALIB_MAX_ROUNDS 31
 
 typedef struct {
     /* Hardware fingerprint (for cache invalidation) */
-    char cpu_model[128];       /* /proc/cpuinfo model name */
-    int  physical_cores;
-    int  logical_cores;
+    char cpu_model[128]; /* /proc/cpuinfo model name */
+    int physical_cores;
+    int logical_cores;
     size_t l2_cache_bytes;
     size_t l3_cache_bytes;
-    unsigned isa_mask;         /* tn_calibration_isa_mask() of the build that measured */
+    unsigned isa_mask; /* tn_calibration_isa_mask() of the build that measured */
 
     /* SIMD backend comparison: median tok/s per backend (0 = not tested) */
     double simd_tokps[TN_CALIB_SIMD_N]; /* see tn_calibration_simd_names(); [0] = "auto" */
-    int    simd_wins[TN_CALIB_SIMD_N]; /* paired rounds each candidate beat "auto" in */
-    int    simd_rounds;        /* rounds measured (0 = sweep not run) */
-    int    simd_sweep_noisy;   /* 1 = high background load: "auto" kept, nothing overridden */
-    int    best_simd_idx;      /* index into simd_tokps[] */
-    char   best_simd_name[32]; /* "auto" = keep the dispatcher's own choice */
-    char   auto_backend[32];   /* what "auto" resolved to, e.g. "AVX-VNNI" */
+    int simd_wins[TN_CALIB_SIMD_N];     /* paired rounds each candidate beat "auto" in */
+    int simd_rounds;                    /* rounds measured (0 = sweep not run) */
+    int simd_sweep_noisy;    /* 1 = high background load: "auto" kept, nothing overridden */
+    int best_simd_idx;       /* index into simd_tokps[] */
+    char best_simd_name[32]; /* "auto" = keep the dispatcher's own choice */
+    char auto_backend[32];   /* what "auto" resolved to, e.g. "AVX-VNNI" */
 
     /* Classifier bandwidth estimates (tok/s) */
-    double cls_tokps[3];       /* [0]=bf16, [1]=int8, [2]=int4 */
-    int    best_cls_idx;       /* index: fastest classifier */
+    double cls_tokps[3]; /* [0]=bf16, [1]=int8, [2]=int4 */
+    int best_cls_idx;    /* index: fastest classifier */
 
     /* Thread count sweep: per-T min/median/max tok/s and background load */
-    int    thread_sweep_n;                       /* number of T values tested */
+    int thread_sweep_n; /* number of T values tested */
     double thread_tokps_min[TN_CALIB_MAX_THREADS];
     double thread_tokps_med[TN_CALIB_MAX_THREADS];
     double thread_tokps_max[TN_CALIB_MAX_THREADS];
-    int    thread_sysload_pct[TN_CALIB_MAX_THREADS]; /* -1 = unavailable */
+    int thread_sysload_pct[TN_CALIB_MAX_THREADS]; /* -1 = unavailable */
 
     /* Best thread count (from sweep median, not heuristic) */
-    int    best_threads;
+    int best_threads;
     double best_thread_tokps;
 
     /* Metadata */
-    int    valid;              /* 1 if calibration completed successfully */
+    int valid; /* 1 if calibration completed successfully */
 } TnCalibrationResult;
 
 /*
@@ -113,8 +114,8 @@ int tn_calib_wins_needed(int n_rounds);
  * auto's median * margin AND beats auto's paired sample in at least
  * tn_calib_wins_needed(n_rounds) rounds. Pure function: no I/O, no globals.
  */
-int tn_calib_pick_simd(const double samples[][TN_CALIB_MAX_ROUNDS], const bool avail[],
-                       int n_cand, int n_rounds, double margin);
+int tn_calib_pick_simd(const double samples[][TN_CALIB_MAX_ROUNDS], const bool avail[], int n_cand,
+                       int n_rounds, double margin);
 
 /*
  * Run calibration micro-benchmarks.
@@ -158,7 +159,8 @@ const char *tn_calibration_act_quant(const TnCalibrationResult *result);
  * when the dispatcher's own choice "auto" quantises activations, auto) and among the float tiers (scalar,
  * avx2, avx512f and, otherwise, auto) of the sweep. Returns 1 and fills both when the
  * result is valid and both groups were measured, else 0. */
-int tn_calibration_act_timing(const TnCalibrationResult *result, int auto_is_int8, double *int8_tokps, double *float_tokps);
+int tn_calibration_act_timing(const TnCalibrationResult *result, int auto_is_int8,
+                              double *int8_tokps, double *float_tokps);
 
 /*
  * Get the recommended classifier for --classifier auto-fast.

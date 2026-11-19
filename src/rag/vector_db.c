@@ -19,7 +19,7 @@
  * lookup table would need a thread-safe lazy init. */
 static uint32_t crc32_update(uint32_t crc, const void *data, size_t n) {
     const unsigned char *p = (const unsigned char *)data;
-    crc = ~crc;
+    crc                    = ~crc;
     for (size_t i = 0; i < n; i++) {
         crc ^= p[i];
         for (int k = 0; k < 8; k++) crc = (crc >> 1) ^ (0xEDB88320u & (0u - (crc & 1u)));
@@ -37,14 +37,8 @@ static TernaryError sync_file(FILE *fp) {
 
 /* Write the v2 header (with its CRC) at offset 0 and sync it. */
 static TernaryError write_header(FILE *fp, int num_entries, int embed_dim) {
-    uint32_t hdr[5] = {
-        VRDB_MAGIC,
-        VRDB_VERSION,
-        (uint32_t)num_entries,
-        (uint32_t)embed_dim,
-        0
-    };
-    hdr[4] = crc32_update(0, hdr, 4 * sizeof(uint32_t));
+    uint32_t hdr[5] = {VRDB_MAGIC, VRDB_VERSION, (uint32_t)num_entries, (uint32_t)embed_dim, 0};
+    hdr[4]          = crc32_update(0, hdr, 4 * sizeof(uint32_t));
     if (fseek(fp, 0, SEEK_SET) != 0) return TN_ERR_DB_WRITE;
     if (fwrite(hdr, sizeof(uint32_t), 5, fp) != 5) return TN_ERR_DB_WRITE;
     return sync_file(fp);
@@ -67,7 +61,10 @@ static TernaryError pool_reserve(VectorDB *db, size_t extra) {
         for (int i = 0; i < db->num_entries; i++) offs[i] = (size_t)(db->texts[i] - db->text_pool);
     }
     char *new_pool = (char *)realloc(db->text_pool, new_cap);
-    if (!new_pool) { free(offs); return TN_ERR_OOM; }
+    if (!new_pool) {
+        free(offs);
+        return TN_ERR_OOM;
+    }
     for (int i = 0; i < db->num_entries; i++) db->texts[i] = new_pool + offs[i];
     free(offs);
     db->text_pool          = new_pool;
@@ -83,15 +80,15 @@ static TernaryError embeddings_reserve(VectorDB *db) {
     if (new_cap > VRDB_MAX_ENTRIES) new_cap = VRDB_MAX_ENTRIES;
     if (new_cap <= db->num_entries) return TN_ERR_OOM;
 
-    float *new_emb = (float *)realloc(db->embeddings,
-                                      (size_t)new_cap * db->embed_dim * sizeof(float));
+    float *new_emb =
+        (float *)realloc(db->embeddings, (size_t)new_cap * db->embed_dim * sizeof(float));
     if (!new_emb) return TN_ERR_OOM;
-    db->embeddings = new_emb;      /* larger than `capacity` says: still consistent */
+    db->embeddings = new_emb; /* larger than `capacity` says: still consistent */
 
     char **new_texts = (char **)realloc(db->texts, (size_t)new_cap * sizeof(char *));
     if (!new_texts) return TN_ERR_OOM;
     db->texts    = new_texts;
-    db->capacity = new_cap;        /* only now do both arrays hold new_cap entries */
+    db->capacity = new_cap; /* only now do both arrays hold new_cap entries */
     return TN_OK;
 }
 
@@ -109,14 +106,14 @@ static int lock_file(FILE *fp) {
 static unsigned char *build_record(const VectorDB *db, const float *emb, const char *text,
                                    uint32_t text_len, size_t *out_len) {
     size_t emb_bytes = (size_t)db->embed_dim * sizeof(float);
-    size_t len = emb_bytes + sizeof(uint32_t) + text_len + sizeof(uint32_t);
+    size_t len       = emb_bytes + sizeof(uint32_t) + text_len + sizeof(uint32_t);
     unsigned char *r = (unsigned char *)malloc(len);
     if (!r) return NULL;
     memcpy(r, emb, emb_bytes);
     memcpy(r + emb_bytes, &text_len, sizeof(uint32_t));
     memcpy(r + emb_bytes + sizeof(uint32_t), text, text_len - 1);
     r[emb_bytes + sizeof(uint32_t) + text_len - 1] = '\0';
-    uint32_t crc = crc32_update(0, r, len - sizeof(uint32_t));
+    uint32_t crc                                   = crc32_update(0, r, len - sizeof(uint32_t));
     memcpy(r + len - sizeof(uint32_t), &crc, sizeof(uint32_t));
     *out_len = len;
     return r;
@@ -129,12 +126,24 @@ static int copy_file_synced(const char *src, const char *dst) {
     FILE *in = fopen(src, "rb");
     if (!in) return -1;
     int fd = open(dst, O_WRONLY | O_CREAT | O_EXCL, 0600);
-    if (fd < 0) { fclose(in); return -1; }
+    if (fd < 0) {
+        fclose(in);
+        return -1;
+    }
     FILE *out = fdopen(fd, "wb");
-    if (!out) { close(fd); fclose(in); return -1; }
-    char buf[65536]; size_t n; int ok = 1;
+    if (!out) {
+        close(fd);
+        fclose(in);
+        return -1;
+    }
+    char buf[65536];
+    size_t n;
+    int ok = 1;
     while ((n = fread(buf, 1, sizeof buf, in)) > 0)
-        if (fwrite(buf, 1, n, out) != n) { ok = 0; break; }
+        if (fwrite(buf, 1, n, out) != n) {
+            ok = 0;
+            break;
+        }
     if (ferror(in)) ok = 0;
     ok = (fflush(out) == 0) && (fsync(fd) == 0) && ok;
     ok = (fclose(out) == 0) && ok;
@@ -147,10 +156,15 @@ static TernaryError upgrade_v1_to_v2(VectorDB *db) {
     char bak[sizeof(db->path) + 24], tmp[sizeof(db->path) + 8];
     int made = 0;
     for (int i = 0; i < 1000 && !made; i++) {
-        if (i == 0) snprintf(bak, sizeof bak, "%s.v1.bak", db->path);
-        else        snprintf(bak, sizeof bak, "%s.v1.bak.%d", db->path, i);
-        if (access(bak, F_OK) == 0) continue;               /* never overwrite a backup */
-        if (copy_file_synced(db->path, bak) == 0) made = 1; else return TN_ERR_DB_WRITE;
+        if (i == 0)
+            snprintf(bak, sizeof bak, "%s.v1.bak", db->path);
+        else
+            snprintf(bak, sizeof bak, "%s.v1.bak.%d", db->path, i);
+        if (access(bak, F_OK) == 0) continue; /* never overwrite a backup */
+        if (copy_file_synced(db->path, bak) == 0)
+            made = 1;
+        else
+            return TN_ERR_DB_WRITE;
     }
     if (!made) return TN_ERR_DB_WRITE;
     fprintf(stderr, "[RAG] vector_db: upgrading %s to format v2 (backup: %s)\n", db->path, bak);
@@ -160,36 +174,57 @@ static TernaryError upgrade_v1_to_v2(VectorDB *db) {
     int fd = open(tmp, O_RDWR | O_CREAT | O_EXCL, 0600);
     if (fd < 0) return TN_ERR_DB_WRITE;
     FILE *nf = fdopen(fd, "r+b");
-    if (!nf) { close(fd); unlink(tmp); return TN_ERR_DB_WRITE; }
-    if (lock_file(nf) != 0) { fclose(nf); unlink(tmp); return TN_ERR_DB_WRITE; }
+    if (!nf) {
+        close(fd);
+        unlink(tmp);
+        return TN_ERR_DB_WRITE;
+    }
+    if (lock_file(nf) != 0) {
+        fclose(nf);
+        unlink(tmp);
+        return TN_ERR_DB_WRITE;
+    }
 
     TernaryError err = write_header(nf, db->num_entries, db->embed_dim);
-    long end = VRDB_HEADER_SIZE;
+    long end         = VRDB_HEADER_SIZE;
     for (int i = 0; err == TN_OK && i < db->num_entries; i++) {
-        size_t rl; const char *t = db->texts[i];
+        size_t rl;
+        const char *t      = db->texts[i];
         unsigned char *rec = build_record(db, db->embeddings + (size_t)i * db->embed_dim, t,
                                           (uint32_t)strlen(t) + 1, &rl);
-        if (!rec) { err = TN_ERR_OOM; break; }
+        if (!rec) {
+            err = TN_ERR_OOM;
+            break;
+        }
         if (fseek(nf, end, SEEK_SET) != 0 || fwrite(rec, 1, rl, nf) != rl) err = TN_ERR_DB_WRITE;
         end += (long)rl;
         free(rec);
     }
     if (err == TN_OK) err = sync_file(nf);
     if (err != TN_OK || rename(tmp, db->path) != 0) {
-        fclose(nf); unlink(tmp);
+        fclose(nf);
+        unlink(tmp);
         return err != TN_OK ? err : TN_ERR_DB_WRITE;
     }
     /* make the rename durable */
     char dir[sizeof(db->path)];
     snprintf(dir, sizeof dir, "%s", db->path);
     char *sl = strrchr(dir, '/');
-    if (!sl) snprintf(dir, sizeof dir, "."); else if (sl == dir) dir[1] = '\0'; else *sl = '\0';
+    if (!sl)
+        snprintf(dir, sizeof dir, ".");
+    else if (sl == dir)
+        dir[1] = '\0';
+    else
+        *sl = '\0';
     int dfd = open(dir, O_RDONLY);
-    if (dfd >= 0) { (void)fsync(dfd); close(dfd); }
+    if (dfd >= 0) {
+        (void)fsync(dfd);
+        close(dfd);
+    }
 
-    fclose(db->fp);          /* releases the old lock; the new file is already locked */
-    db->fp = nf;
-    db->format = VRDB_VERSION;
+    fclose(db->fp); /* releases the old lock; the new file is already locked */
+    db->fp        = nf;
+    db->format    = VRDB_VERSION;
     db->valid_end = end;
     return TN_OK;
 }
@@ -215,7 +250,10 @@ TernaryError vector_db_open(VectorDB *db, const char *path, int embed_dim) {
     int fd = open(path, O_RDWR | O_CREAT, 0600);
     if (fd < 0) return TN_ERR_DB_OPEN;
     fp = fdopen(fd, "r+b");
-    if (!fp) { close(fd); return TN_ERR_DB_OPEN; }
+    if (!fp) {
+        close(fd);
+        return TN_ERR_DB_OPEN;
+    }
 #else
     fp = fopen(path, "r+b");
     if (!fp) fp = fopen(path, "w+b");
@@ -230,10 +268,10 @@ TernaryError vector_db_open(VectorDB *db, const char *path, int embed_dim) {
     if (fseek(fp, 0, SEEK_END) != 0) return open_fail(db, TN_ERR_DB_OPEN);
     long size = ftell(fp);
     if (size < 0) return open_fail(db, TN_ERR_DB_OPEN);
-    if (size == 0) {                                   /* new database */
+    if (size == 0) { /* new database */
         TernaryError err = write_header(fp, 0, embed_dim);
         if (err != TN_OK) return open_fail(db, err);
-        db->format = VRDB_VERSION;
+        db->format    = VRDB_VERSION;
         db->valid_end = VRDB_HEADER_SIZE;
         return TN_OK;
     }
@@ -243,22 +281,25 @@ TernaryError vector_db_open(VectorDB *db, const char *path, int embed_dim) {
     uint32_t hdr[5] = {0};
     if (fread(hdr, sizeof(uint32_t), 4, fp) != 4) return open_fail(db, TN_ERR_DB_OPEN);
     if (hdr[0] != VRDB_MAGIC) return open_fail(db, TN_ERR_INVALID_MAGIC);
-    if (hdr[1] != VRDB_VERSION && hdr[1] != VRDB_VERSION_V1) return open_fail(db, TN_ERR_VERSION_MISMATCH);
+    if (hdr[1] != VRDB_VERSION && hdr[1] != VRDB_VERSION_V1)
+        return open_fail(db, TN_ERR_VERSION_MISMATCH);
     db->format = hdr[1];
     if (db->format == VRDB_VERSION) {
         if (fread(&hdr[4], sizeof(uint32_t), 1, fp) != 1) return open_fail(db, TN_ERR_DB_OPEN);
         if (crc32_update(0, hdr, 4 * sizeof(uint32_t)) != hdr[4]) {
-            fprintf(stderr, "[RAG] vector_db: header checksum mismatch in %s (file is corrupt)\n", path);
+            fprintf(stderr, "[RAG] vector_db: header checksum mismatch in %s (file is corrupt)\n",
+                    path);
             return open_fail(db, TN_ERR_DB_OPEN);
         }
     }
     if ((int)hdr[3] != embed_dim) {
-        fprintf(stderr, "[RAG] vector_db: embed_dim mismatch (file=%u, expected=%d)\n",
-                hdr[3], embed_dim);
+        fprintf(stderr, "[RAG] vector_db: embed_dim mismatch (file=%u, expected=%d)\n", hdr[3],
+                embed_dim);
         return open_fail(db, TN_ERR_DIMENSION_MISMATCH);
     }
     if (hdr[2] > (uint32_t)VRDB_MAX_ENTRIES) {
-        fprintf(stderr, "[RAG] vector_db: entry count %u exceeds the limit of %d\n", hdr[2], VRDB_MAX_ENTRIES);
+        fprintf(stderr, "[RAG] vector_db: entry count %u exceeds the limit of %d\n", hdr[2],
+                VRDB_MAX_ENTRIES);
         return open_fail(db, TN_ERR_DB_OPEN);
     }
     int num_entries = (int)hdr[2];
@@ -268,7 +309,7 @@ TernaryError vector_db_open(VectorDB *db, const char *path, int embed_dim) {
         TernaryError err = embeddings_reserve(db);
         if (err != TN_OK) return open_fail(db, err);
 
-        float *emb_row = db->embeddings + (size_t)i * embed_dim;
+        float *emb_row   = db->embeddings + (size_t)i * embed_dim;
         size_t emb_bytes = (size_t)embed_dim * sizeof(float);
         if (fread(emb_row, sizeof(float), (size_t)embed_dim, fp) != (size_t)embed_dim) {
             fprintf(stderr, "[RAG] vector_db: truncated embedding at entry %d\n", i);
@@ -300,16 +341,17 @@ TernaryError vector_db_open(VectorDB *db, const char *path, int embed_dim) {
                 return open_fail(db, TN_ERR_DB_OPEN);
             }
             uint32_t got = crc32_update(0, emb_row, emb_bytes);
-            got = crc32_update(got, &text_len, sizeof text_len);
-            got = crc32_update(got, text_dst, text_len);
+            got          = crc32_update(got, &text_len, sizeof text_len);
+            got          = crc32_update(got, text_dst, text_len);
             if (got != want) {
-                fprintf(stderr, "[RAG] vector_db: checksum mismatch at entry %d (file is corrupt)\n", i);
+                fprintf(stderr,
+                        "[RAG] vector_db: checksum mismatch at entry %d (file is corrupt)\n", i);
                 return open_fail(db, TN_ERR_DB_OPEN);
             }
         }
         text_dst[text_len - 1] = '\0'; /* ensure null-termination */
 
-        db->texts[i]       = text_dst;
+        db->texts[i] = text_dst;
         db->text_pool_used += text_len;
         db->num_entries++;
     }
@@ -346,18 +388,23 @@ TernaryError vector_db_store(VectorDB *db, const float *embedding, const char *t
     clipped[text_len - 1] = '\0';
     size_t rec_len;
     unsigned char *rec = build_record(db, embedding, clipped, (uint32_t)text_len, &rec_len);
-    if (!rec) { free(clipped); return TN_ERR_OOM; }
+    if (!rec) {
+        free(clipped);
+        return TN_ERR_OOM;
+    }
 
     /* 2. Append the record at the end of the counted data (overwriting any
      * orphan bytes a previous crash left), sync, then bump the header and sync. */
     err = TN_OK;
-    if (fseek(db->fp, db->valid_end, SEEK_SET) != 0 ||
-        fwrite(rec, 1, rec_len, db->fp) != rec_len)
+    if (fseek(db->fp, db->valid_end, SEEK_SET) != 0 || fwrite(rec, 1, rec_len, db->fp) != rec_len)
         err = TN_ERR_DB_WRITE;
     if (err == TN_OK) err = sync_file(db->fp);
     if (err == TN_OK) err = write_header(db->fp, db->num_entries + 1, db->embed_dim);
     free(rec);
-    if (err != TN_OK) { free(clipped); return err; }   /* memory and counted disk state unchanged */
+    if (err != TN_OK) {
+        free(clipped);
+        return err;
+    } /* memory and counted disk state unchanged */
 
     /* 3. Commit to memory. */
     int idx = db->num_entries;
@@ -366,10 +413,10 @@ TernaryError vector_db_store(VectorDB *db, const float *embedding, const char *t
     char *text_dst = db->text_pool + db->text_pool_used;
     memcpy(text_dst, clipped, text_len);
     free(clipped);
-    db->texts[idx]       = text_dst;
-    db->text_pool_used  += text_len;
+    db->texts[idx] = text_dst;
+    db->text_pool_used += text_len;
     db->num_entries++;
-    db->valid_end       += (long)rec_len;
+    db->valid_end += (long)rec_len;
     return TN_OK;
 }
 
@@ -377,7 +424,7 @@ void vector_db_close(VectorDB *db) {
     if (!db) return;
     if (db->fp) {
         fflush(db->fp);
-        fclose(db->fp);          /* also drops the flock */
+        fclose(db->fp); /* also drops the flock */
         db->fp = NULL;
     }
     free(db->embeddings);

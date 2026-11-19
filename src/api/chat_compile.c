@@ -45,83 +45,81 @@ ChatTemplateType chat_template_detect(const char *model_name) {
     /* Case-insensitive substring search for known markers */
     const char *n = model_name;
     /* Llama-3 family */
-    if (strstr(n, "llama-3") || strstr(n, "llama3") ||
-        strstr(n, "Llama-3") || strstr(n, "Llama3"))
+    if (strstr(n, "llama-3") || strstr(n, "llama3") || strstr(n, "Llama-3") || strstr(n, "Llama3"))
         return CHAT_TMPL_LLAMA3;
     /* Mistral / Mixtral */
-    if (strstr(n, "mistral") || strstr(n, "Mistral") ||
-        strstr(n, "mixtral") || strstr(n, "Mixtral"))
+    if (strstr(n, "mistral") || strstr(n, "Mistral") || strstr(n, "mixtral") ||
+        strstr(n, "Mixtral"))
         return CHAT_TMPL_MISTRAL;
     /* DeepSeek */
-    if (strstr(n, "deepseek") || strstr(n, "DeepSeek"))
-        return CHAT_TMPL_DEEPSEEK;
+    if (strstr(n, "deepseek") || strstr(n, "DeepSeek")) return CHAT_TMPL_DEEPSEEK;
     /* Default: ChatML (Qwen, SmolLM, BitNet, etc.) */
     return CHAT_TMPL_CHATML;
 }
 
 /* ── ChatML template ─────────────────────────────────────────────────────── */
-static TernaryError compile_chatml(const ChatRequest *req,
-                                   char *out, size_t cap) {
+static TernaryError compile_chatml(const ChatRequest *req, char *out, size_t cap) {
     size_t off = 0;
     for (int i = 0; i < req->num_messages; i++) {
         const ChatMessage *m = &req->messages[i];
         if (!m->content) continue;
         char header[128];
         snprintf(header, sizeof(header), "<|im_start|>%s\n", m->role);
-        if (!buf_append(out, &off, cap, header))             return TN_ERR_OOM;
-        if (!buf_append(out, &off, cap, m->content))         return TN_ERR_OOM;
-        if (!buf_append(out, &off, cap, "<|im_end|>\n"))     return TN_ERR_OOM;
+        if (!buf_append(out, &off, cap, header)) return TN_ERR_OOM;
+        if (!buf_append(out, &off, cap, m->content)) return TN_ERR_OOM;
+        if (!buf_append(out, &off, cap, "<|im_end|>\n")) return TN_ERR_OOM;
     }
     if (!buf_append(out, &off, cap, "<|im_start|>assistant\n")) return TN_ERR_OOM;
     return TN_OK;
 }
 
 /* ── Llama-3 template ────────────────────────────────────────────────────── */
-static TernaryError compile_llama3(const ChatRequest *req,
-                                   char *out, size_t cap) {
+static TernaryError compile_llama3(const ChatRequest *req, char *out, size_t cap) {
     size_t off = 0;
     if (!buf_append(out, &off, cap, "<|begin_of_text|>")) return TN_ERR_OOM;
     for (int i = 0; i < req->num_messages; i++) {
         const ChatMessage *m = &req->messages[i];
         if (!m->content) continue;
         char header[256];
-        snprintf(header, sizeof(header),
-                 "<|start_header_id|>%s<|end_header_id|>\n\n", m->role);
-        if (!buf_append(out, &off, cap, header))         return TN_ERR_OOM;
-        if (!buf_append(out, &off, cap, m->content))     return TN_ERR_OOM;
-        if (!buf_append(out, &off, cap, "<|eot_id|>"))   return TN_ERR_OOM;
+        snprintf(header, sizeof(header), "<|start_header_id|>%s<|end_header_id|>\n\n", m->role);
+        if (!buf_append(out, &off, cap, header)) return TN_ERR_OOM;
+        if (!buf_append(out, &off, cap, m->content)) return TN_ERR_OOM;
+        if (!buf_append(out, &off, cap, "<|eot_id|>")) return TN_ERR_OOM;
     }
-    if (!buf_append(out, &off, cap,
-            "<|start_header_id|>assistant<|end_header_id|>\n\n"))
+    if (!buf_append(out, &off, cap, "<|start_header_id|>assistant<|end_header_id|>\n\n"))
         return TN_ERR_OOM;
     return TN_OK;
 }
 
 /* ── DeepSeek template ───────────────────────────────────────────────────── */
-static TernaryError compile_deepseek(const ChatRequest *req,
-                                     char *out, size_t cap) {
+static TernaryError compile_deepseek(const ChatRequest *req, char *out, size_t cap) {
     size_t off = 0;
     /* DeepSeek V2/R1 uses <｜begin▁of▁sentence｜> as BOS.
      * Encoded as literal UTF-8 bytes to avoid invalid hex escape warnings. */
-    static const char bos[] = "<\xef\xbd\x9c" "begin\xe2\x96\x81" "of\xe2\x96\x81" "sentence\xef\xbd\x9c>";
-    static const char eos[] = "<\xef\xbd\x9c" "end\xe2\x96\x81" "of\xe2\x96\x81" "sentence\xef\xbd\x9c>";
-    if (!buf_append(out, &off, cap, bos))
-        return TN_ERR_OOM;
+    static const char bos[] = "<\xef\xbd\x9c"
+                              "begin\xe2\x96\x81"
+                              "of\xe2\x96\x81"
+                              "sentence\xef\xbd\x9c>";
+    static const char eos[] = "<\xef\xbd\x9c"
+                              "end\xe2\x96\x81"
+                              "of\xe2\x96\x81"
+                              "sentence\xef\xbd\x9c>";
+    if (!buf_append(out, &off, cap, bos)) return TN_ERR_OOM;
     for (int i = 0; i < req->num_messages; i++) {
         const ChatMessage *m = &req->messages[i];
         if (!m->content) continue;
         if (strcmp(m->role, "user") == 0) {
-            if (!buf_append(out, &off, cap, "User: "))       return TN_ERR_OOM;
-            if (!buf_append(out, &off, cap, m->content))     return TN_ERR_OOM;
-            if (!buf_append(out, &off, cap, "\n\n"))          return TN_ERR_OOM;
+            if (!buf_append(out, &off, cap, "User: ")) return TN_ERR_OOM;
+            if (!buf_append(out, &off, cap, m->content)) return TN_ERR_OOM;
+            if (!buf_append(out, &off, cap, "\n\n")) return TN_ERR_OOM;
         } else if (strcmp(m->role, "assistant") == 0) {
-            if (!buf_append(out, &off, cap, "Assistant: "))  return TN_ERR_OOM;
-            if (!buf_append(out, &off, cap, m->content))     return TN_ERR_OOM;
-            if (!buf_append(out, &off, cap, eos))            return TN_ERR_OOM;
+            if (!buf_append(out, &off, cap, "Assistant: ")) return TN_ERR_OOM;
+            if (!buf_append(out, &off, cap, m->content)) return TN_ERR_OOM;
+            if (!buf_append(out, &off, cap, eos)) return TN_ERR_OOM;
         } else {
             /* system */
-            if (!buf_append(out, &off, cap, m->content))     return TN_ERR_OOM;
-            if (!buf_append(out, &off, cap, "\n\n"))          return TN_ERR_OOM;
+            if (!buf_append(out, &off, cap, m->content)) return TN_ERR_OOM;
+            if (!buf_append(out, &off, cap, "\n\n")) return TN_ERR_OOM;
         }
     }
     if (!buf_append(out, &off, cap, "Assistant:")) return TN_ERR_OOM;
@@ -129,21 +127,20 @@ static TernaryError compile_deepseek(const ChatRequest *req,
 }
 
 /* ── Mistral [INST] template ─────────────────────────────────────────────── */
-static TernaryError compile_mistral(const ChatRequest *req,
-                                    char *out, size_t cap) {
+static TernaryError compile_mistral(const ChatRequest *req, char *out, size_t cap) {
     size_t off = 0;
     if (!buf_append(out, &off, cap, "<s>")) return TN_ERR_OOM;
     for (int i = 0; i < req->num_messages; i++) {
         const ChatMessage *m = &req->messages[i];
         if (!m->content) continue;
         if (strcmp(m->role, "user") == 0) {
-            if (!buf_append(out, &off, cap, "[INST] "))       return TN_ERR_OOM;
-            if (!buf_append(out, &off, cap, m->content))      return TN_ERR_OOM;
-            if (!buf_append(out, &off, cap, " [/INST]"))      return TN_ERR_OOM;
+            if (!buf_append(out, &off, cap, "[INST] ")) return TN_ERR_OOM;
+            if (!buf_append(out, &off, cap, m->content)) return TN_ERR_OOM;
+            if (!buf_append(out, &off, cap, " [/INST]")) return TN_ERR_OOM;
         } else if (strcmp(m->role, "assistant") == 0) {
-            if (!buf_append(out, &off, cap, " "))             return TN_ERR_OOM;
-            if (!buf_append(out, &off, cap, m->content))      return TN_ERR_OOM;
-            if (!buf_append(out, &off, cap, "</s>"))          return TN_ERR_OOM;
+            if (!buf_append(out, &off, cap, " ")) return TN_ERR_OOM;
+            if (!buf_append(out, &off, cap, m->content)) return TN_ERR_OOM;
+            if (!buf_append(out, &off, cap, "</s>")) return TN_ERR_OOM;
         }
         /* system messages: prepend to first user message in real Mistral;
          * here we append raw for simplicity */
@@ -152,38 +149,42 @@ static TernaryError compile_mistral(const ChatRequest *req,
 }
 
 /* ── Raw fallback ────────────────────────────────────────────────────────── */
-static TernaryError compile_raw(const ChatRequest *req,
-                                char *out, size_t cap) {
+static TernaryError compile_raw(const ChatRequest *req, char *out, size_t cap) {
     size_t off = 0;
     for (int i = 0; i < req->num_messages; i++) {
         const ChatMessage *m = &req->messages[i];
         if (!m->content) continue;
         char header[64];
         snprintf(header, sizeof(header), "%s: ", m->role);
-        if (!buf_append(out, &off, cap, header))         return TN_ERR_OOM;
-        if (!buf_append(out, &off, cap, m->content))     return TN_ERR_OOM;
-        if (!buf_append(out, &off, cap, "\n"))            return TN_ERR_OOM;
+        if (!buf_append(out, &off, cap, header)) return TN_ERR_OOM;
+        if (!buf_append(out, &off, cap, m->content)) return TN_ERR_OOM;
+        if (!buf_append(out, &off, cap, "\n")) return TN_ERR_OOM;
     }
     /* Generation prompt, so a base model continues as the assistant
      * (2026-10-18: previously absent — the model just continued the user turn). */
-    if (!buf_append(out, &off, cap, "assistant:"))           return TN_ERR_OOM;
+    if (!buf_append(out, &off, cap, "assistant:")) return TN_ERR_OOM;
     return TN_OK;
 }
 
 /* ── Public API ──────────────────────────────────────────────────────────── */
 
-TernaryError chat_compile_prompt(const ChatRequest *req,
-                                 ChatTemplateType tmpl,
-                                 char *out, size_t cap) {
+TernaryError chat_compile_prompt(const ChatRequest *req, ChatTemplateType tmpl, char *out,
+                                 size_t cap) {
     if (!req || !out || cap == 0) return TN_ERR_INVALID_ARGS;
     out[0] = '\0';
     switch (tmpl) {
-        case CHAT_TMPL_CHATML:   return compile_chatml(req, out, cap);
-        case CHAT_TMPL_LLAMA3:   return compile_llama3(req, out, cap);
-        case CHAT_TMPL_DEEPSEEK: return compile_deepseek(req, out, cap);
-        case CHAT_TMPL_MISTRAL:  return compile_mistral(req, out, cap);
-        case CHAT_TMPL_RAW:      return compile_raw(req, out, cap);
-        default:                 return compile_chatml(req, out, cap);
+        case CHAT_TMPL_CHATML:
+            return compile_chatml(req, out, cap);
+        case CHAT_TMPL_LLAMA3:
+            return compile_llama3(req, out, cap);
+        case CHAT_TMPL_DEEPSEEK:
+            return compile_deepseek(req, out, cap);
+        case CHAT_TMPL_MISTRAL:
+            return compile_mistral(req, out, cap);
+        case CHAT_TMPL_RAW:
+            return compile_raw(req, out, cap);
+        default:
+            return compile_chatml(req, out, cap);
     }
 }
 
@@ -200,21 +201,27 @@ ChatTemplateType chat_template_detect_vocab(const Tokenizer *t) {
 
 int chat_template_parse(const char *name) {
     if (!name || strcmp(name, "auto") == 0) return -1;
-    if (strcmp(name, "chatml") == 0)   return CHAT_TMPL_CHATML;
-    if (strcmp(name, "llama3") == 0)   return CHAT_TMPL_LLAMA3;
+    if (strcmp(name, "chatml") == 0) return CHAT_TMPL_CHATML;
+    if (strcmp(name, "llama3") == 0) return CHAT_TMPL_LLAMA3;
     if (strcmp(name, "deepseek") == 0) return CHAT_TMPL_DEEPSEEK;
-    if (strcmp(name, "mistral") == 0)  return CHAT_TMPL_MISTRAL;
-    if (strcmp(name, "plain") == 0)    return CHAT_TMPL_RAW;
+    if (strcmp(name, "mistral") == 0) return CHAT_TMPL_MISTRAL;
+    if (strcmp(name, "plain") == 0) return CHAT_TMPL_RAW;
     return -2;
 }
 
 const char *chat_template_name(ChatTemplateType t) {
     switch (t) {
-        case CHAT_TMPL_CHATML:   return "chatml";
-        case CHAT_TMPL_LLAMA3:   return "llama3";
-        case CHAT_TMPL_DEEPSEEK: return "deepseek";
-        case CHAT_TMPL_MISTRAL:  return "mistral";
-        case CHAT_TMPL_RAW:      return "plain";
-        default:                 return "chatml";
+        case CHAT_TMPL_CHATML:
+            return "chatml";
+        case CHAT_TMPL_LLAMA3:
+            return "llama3";
+        case CHAT_TMPL_DEEPSEEK:
+            return "deepseek";
+        case CHAT_TMPL_MISTRAL:
+            return "mistral";
+        case CHAT_TMPL_RAW:
+            return "plain";
+        default:
+            return "chatml";
     }
 }

@@ -46,14 +46,14 @@ static inline float tn_cls_i4_row_tail(const tn_u8 *row, const float *x, int fro
 typedef void (*tn_cls_rows_fn)(float *out, const float *x, const tn_u8 *w, const float *scales,
                                int n, int n_blocks, int start, int end);
 
-void tn_cls_i8_rows_generic(float *out, const float *x, const tn_u8 *w, const float *scales,
-                            int n, int n_blocks, int start, int end);
-void tn_cls_i4_rows_generic(float *out, const float *x, const tn_u8 *w, const float *scales,
-                            int n, int n_blocks, int start, int end);
+void tn_cls_i8_rows_generic(float *out, const float *x, const tn_u8 *w, const float *scales, int n,
+                            int n_blocks, int start, int end);
+void tn_cls_i4_rows_generic(float *out, const float *x, const tn_u8 *w, const float *scales, int n,
+                            int n_blocks, int start, int end);
 
-void tn_cls_i8_rows_avx512(float *out, const float *x, const tn_u8 *w, const float *scales,
-                           int n, int n_blocks, int start, int end);
-void tn_cls_i4_rows_avx512(float *out, const float *x, const tn_u8 *w, const float *scales,
-                           int n, int n_blocks, int start, int end);
+void tn_cls_i8_rows_avx512(float *out, const float *x, const tn_u8 *w, const float *scales, int n,
+                           int n_blocks, int start, int end);
+void tn_cls_i4_rows_avx512(float *out, const float *x, const tn_u8 *w, const float *scales, int n,
+                           int n_blocks, int start, int end);
 
 #endif /* PZ_CLS_KERNELS_H */

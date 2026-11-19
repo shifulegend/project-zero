@@ -68,7 +68,10 @@ static void test_threadpool_single_thread(void) {
     /* Single thread => all items processed by thread 0 */
     int all_zero = 1;
     for (int i = 0; i < n; i++) {
-        if (buf[i] != 0) { all_zero = 0; break; }
+        if (buf[i] != 0) {
+            all_zero = 0;
+            break;
+        }
     }
     TEST_ASSERT(all_zero, "single thread processes all items");
 
@@ -88,7 +91,10 @@ static void test_threadpool_dispatch_multiple(void) {
 
         int all_valid = 1;
         for (int i = 0; i < n; i++) {
-            if (buf[i] < 0 || buf[i] >= 3) { all_valid = 0; break; }
+            if (buf[i] < 0 || buf[i] >= 3) {
+                all_valid = 0;
+                break;
+            }
         }
         TEST_ASSERT(all_valid, "multi-dispatch: all items valid");
     }
@@ -100,12 +106,12 @@ static void test_threadpool_dispatch_multiple(void) {
 
 static void test_parallel_matmul_matches_scalar(void) {
     /* Use a moderately sized problem: 64 output rows, 128 input dim */
-    int d = 64;
-    int n = 128;
+    int d       = 64;
+    int n       = 128;
     float scale = 0.5f;
 
-    float *x = (float *)tn_aligned_alloc((size_t)n * sizeof(float), TN_SIMD_ALIGN);
-    float *out_scalar = (float *)tn_aligned_alloc((size_t)d * sizeof(float), TN_SIMD_ALIGN);
+    float *x            = (float *)tn_aligned_alloc((size_t)n * sizeof(float), TN_SIMD_ALIGN);
+    float *out_scalar   = (float *)tn_aligned_alloc((size_t)d * sizeof(float), TN_SIMD_ALIGN);
     float *out_parallel = (float *)tn_aligned_alloc((size_t)d * sizeof(float), TN_SIMD_ALIGN);
     tn_i8 *w = (tn_i8 *)tn_aligned_alloc((size_t)d * (size_t)n * sizeof(tn_i8), TN_SIMD_ALIGN);
 
@@ -113,12 +119,12 @@ static void test_parallel_matmul_matches_scalar(void) {
 
     /* Fill input with a pattern */
     for (int i = 0; i < n; i++) {
-        x[i] = (float)(i % 7) - 3.0f;  /* values in [-3, 3] */
+        x[i] = (float)(i % 7) - 3.0f; /* values in [-3, 3] */
     }
 
     /* Fill weights with ternary values */
     for (int i = 0; i < d * n; i++) {
-        w[i] = (tn_i8)((i % 3) - 1);  /* cycles through -1, 0, 1 */
+        w[i] = (tn_i8)((i % 3) - 1); /* cycles through -1, 0, 1 */
     }
 
     /* Scalar reference */
@@ -152,15 +158,9 @@ static void test_parallel_matmul_null_pool_fallback(void) {
     int d = 8, n = 4;
     float scale = 1.0f;
 
-    tn_i8 w[] = { 1, -1, 0, 1,
-                   0,  1, 1, 0,
-                   1,  1, 1, 1,
-                  -1, -1, -1, -1,
-                   1,  0,  0,  1,
-                   0,  0,  0,  0,
-                  -1,  1, -1,  1,
-                   1, -1,  1, -1 };
-    float x[] = { 1.0f, 2.0f, 3.0f, 4.0f };
+    tn_i8 w[] = {1, -1, 0, 1, 0, 1, 1, 0, 1,  1, 1,  1, -1, -1, -1, -1,
+                 1, 0,  0, 1, 0, 0, 0, 0, -1, 1, -1, 1, 1,  -1, 1,  -1};
+    float x[] = {1.0f, 2.0f, 3.0f, 4.0f};
     float out_ref[8], out_null[8];
 
     ternary_matmul(out_ref, x, w, n, d, scale);
@@ -168,19 +168,22 @@ static void test_parallel_matmul_null_pool_fallback(void) {
 
     int match = 1;
     for (int i = 0; i < d; i++) {
-        if (fabsf(out_ref[i] - out_null[i]) > 1e-5f) { match = 0; break; }
+        if (fabsf(out_ref[i] - out_null[i]) > 1e-5f) {
+            match = 0;
+            break;
+        }
     }
     TEST_ASSERT(match, "NULL pool fallback matches scalar");
 }
 
 static void test_parallel_matmul_large(void) {
     /* Larger problem: 512 output rows, 1024 input dim (more realistic) */
-    int d = 512;
-    int n = 1024;
+    int d       = 512;
+    int n       = 1024;
     float scale = 0.25f;
 
-    float *x = (float *)tn_aligned_alloc((size_t)n * sizeof(float), TN_SIMD_ALIGN);
-    float *out_scalar = (float *)tn_aligned_alloc((size_t)d * sizeof(float), TN_SIMD_ALIGN);
+    float *x            = (float *)tn_aligned_alloc((size_t)n * sizeof(float), TN_SIMD_ALIGN);
+    float *out_scalar   = (float *)tn_aligned_alloc((size_t)d * sizeof(float), TN_SIMD_ALIGN);
     float *out_parallel = (float *)tn_aligned_alloc((size_t)d * sizeof(float), TN_SIMD_ALIGN);
     tn_i8 *w = (tn_i8 *)tn_aligned_alloc((size_t)d * (size_t)n * sizeof(tn_i8), TN_SIMD_ALIGN);
 
@@ -190,8 +193,8 @@ static void test_parallel_matmul_large(void) {
         x[i] = (float)((i * 7 + 3) % 11) - 5.0f;
     }
     for (int i = 0; i < d * n; i++) {
-        int v = (i * 13 + 5) % 5;  /* 0..4 mapped to {-1, -1, 0, 1, 1} */
-        w[i] = (tn_i8)(v <= 1 ? -1 : (v == 2 ? 0 : 1));
+        int v = (i * 13 + 5) % 5; /* 0..4 mapped to {-1, -1, 0, 1, 1} */
+        w[i]  = (tn_i8)(v <= 1 ? -1 : (v == 2 ? 0 : 1));
     }
 
     /* Use the SIMD-dispatched version as reference (same kernel parallel_matmul uses) */
@@ -240,7 +243,10 @@ static void test_threadpool_stress_sequential(void) {
 
         int all_valid = 1;
         for (int i = 0; i < n; i++) {
-            if (buf[i] < 0 || buf[i] >= 4) { all_valid = 0; break; }
+            if (buf[i] < 0 || buf[i] >= 4) {
+                all_valid = 0;
+                break;
+            }
         }
         TEST_ASSERT(all_valid, "stress: all items valid after dispatch");
     }
@@ -277,7 +283,10 @@ static void test_threadpool_stress_accumulate(void) {
 
     int all_correct = 1;
     for (int i = 0; i < n; i++) {
-        if (buf[i] != rounds) { all_correct = 0; break; }
+        if (buf[i] != rounds) {
+            all_correct = 0;
+            break;
+        }
     }
     TEST_ASSERT(all_correct, "accumulate stress: all elements equal to round count");
 
@@ -290,7 +299,7 @@ static void test_threadpool_stress_accumulate(void) {
  */
 static void test_threadpool_stress_varying_sizes(void) {
     int buf[1024];
-    int sizes[] = {1, 2, 3, 4, 5, 7, 10, 16, 50, 100, 512, 1024};
+    int sizes[]   = {1, 2, 3, 4, 5, 7, 10, 16, 50, 100, 512, 1024};
     int num_sizes = (int)(sizeof(sizes) / sizeof(sizes[0]));
 
     ThreadPool *tp = threadpool_create(4);
@@ -303,7 +312,10 @@ static void test_threadpool_stress_varying_sizes(void) {
 
         int all_valid = 1;
         for (int i = 0; i < n; i++) {
-            if (buf[i] < 0 || buf[i] >= 4) { all_valid = 0; break; }
+            if (buf[i] < 0 || buf[i] >= 4) {
+                all_valid = 0;
+                break;
+            }
         }
         TEST_ASSERT(all_valid, "varying sizes: all items valid");
     }
@@ -317,12 +329,12 @@ static void test_threadpool_stress_varying_sizes(void) {
  * across all layers of a transformer forward pass.
  */
 static void test_parallel_matmul_repeated(void) {
-    int d = 64;
-    int n = 128;
+    int d       = 64;
+    int n       = 128;
     float scale = 0.5f;
 
-    float *x = (float *)tn_aligned_alloc((size_t)n * sizeof(float), TN_SIMD_ALIGN);
-    float *out_scalar = (float *)tn_aligned_alloc((size_t)d * sizeof(float), TN_SIMD_ALIGN);
+    float *x            = (float *)tn_aligned_alloc((size_t)n * sizeof(float), TN_SIMD_ALIGN);
+    float *out_scalar   = (float *)tn_aligned_alloc((size_t)d * sizeof(float), TN_SIMD_ALIGN);
     float *out_parallel = (float *)tn_aligned_alloc((size_t)d * sizeof(float), TN_SIMD_ALIGN);
     tn_i8 *w = (tn_i8 *)tn_aligned_alloc((size_t)d * (size_t)n * sizeof(tn_i8), TN_SIMD_ALIGN);
 

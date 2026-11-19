@@ -49,38 +49,38 @@
  * parallel_ternary_matmul_packed()'s scope, the only mode the real forward
  * pass uses).
  */
-void tn_ternary_matmul_packed_batch(float *out, const float *x, const tn_u8 *packed_w,
-                                     int n, int d, float scale, int n_tokens, ThreadPool *tp);
+void tn_ternary_matmul_packed_batch(float *out, const float *x, const tn_u8 *packed_w, int n, int d,
+                                    float scale, int n_tokens, ThreadPool *tp);
 
 /**
  * F16 dense batched matmul.
  */
-void tn_matmul_f16_batch(float *out, const float *x, const tn_u16 *w,
-                          int n, int d, int n_tokens, ThreadPool *tp);
+void tn_matmul_f16_batch(float *out, const float *x, const tn_u16 *w, int n, int d, int n_tokens,
+                         ThreadPool *tp);
 
 /**
  * F32 dense batched matmul (Phase 18-B: weights dequantised to F32 at load).
  */
-void tn_matmul_f32_batch(float *out, const float *x, const float *w,
-                         int n, int d, int n_tokens, ThreadPool *tp);
+void tn_matmul_f32_batch(float *out, const float *x, const float *w, int n, int d, int n_tokens,
+                         ThreadPool *tp);
 
 /**
  * BF16 dense batched matmul (classifier format).
  */
-void tn_matmul_bf16_batch(float *out, const float *x, const tn_u16 *w,
-                           int n, int d, int n_tokens, ThreadPool *tp);
+void tn_matmul_bf16_batch(float *out, const float *x, const tn_u16 *w, int n, int d, int n_tokens,
+                          ThreadPool *tp);
 
 /**
  * INT8 block-quantized batched matmul (classifier format). `scales` is
  * d * n_blocks floats, TN_CLS_QUANT_BLOCK-element blocks (see weights.h).
  */
-void tn_matmul_i8_batch(float *out, const float *x, const tn_u8 *w,
-                         const float *scales, int n, int d, int n_tokens, ThreadPool *tp);
+void tn_matmul_i8_batch(float *out, const float *x, const tn_u8 *w, const float *scales, int n,
+                        int d, int n_tokens, ThreadPool *tp);
 
 /**
  * INT4 packed, block-quantized batched matmul (classifier format).
  */
-void tn_matmul_i4_batch(float *out, const float *x, const tn_u8 *w,
-                         const float *scales, int n, int d, int n_tokens, ThreadPool *tp);
+void tn_matmul_i4_batch(float *out, const float *x, const tn_u8 *w, const float *scales, int n,
+                        int d, int n_tokens, ThreadPool *tp);
 
 #endif /* TN_BATCHED_MATMUL_H */

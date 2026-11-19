@@ -25,8 +25,8 @@ typedef struct {
     float *out;
     const float *x;
     const tn_i8 *w;
-    int n;      /* input dimension (columns) */
-    int d;      /* output dimension (rows) — used for bounds check */
+    int n; /* input dimension (columns) */
+    int d; /* output dimension (rows) — used for bounds check */
     float scale;
 } ParallelMatmulArgs;
 
@@ -49,31 +49,18 @@ static void matmul_task(void *arg, int thread_id, int start, int end) {
      * We pass the sub-matrix starting at row 'start' with 'slice_rows' rows,
      * writing into out[start..end).
      */
-    tn_ternary_matmul(
-        a->out + start,
-        a->x,
-        a->w + (size_t)start * (size_t)a->n,
-        a->n,
-        slice_rows,
-        a->scale
-    );
+    tn_ternary_matmul(a->out + start, a->x, a->w + (size_t)start * (size_t)a->n, a->n, slice_rows,
+                      a->scale);
 }
 
-void parallel_ternary_matmul(float *out, const float *x, const tn_i8 *w,
-                              int n, int d, float scale, ThreadPool *tp) {
+void parallel_ternary_matmul(float *out, const float *x, const tn_i8 *w, int n, int d, float scale,
+                             ThreadPool *tp) {
     if (!tp) {
         tn_ternary_matmul(out, x, w, n, d, scale);
         return;
     }
 
-    ParallelMatmulArgs args = {
-        .out   = out,
-        .x     = x,
-        .w     = w,
-        .n     = n,
-        .d     = d,
-        .scale = scale
-    };
+    ParallelMatmulArgs args = {.out = out, .x = x, .w = w, .n = n, .d = d, .scale = scale};
 
     threadpool_dispatch(tp, matmul_task, &args, d);
 }
@@ -86,14 +73,14 @@ typedef struct {
     float scale;
     /* K-4 R-3: pre-quantised activations (non-NULL when the VNNI path is active) */
     const int8_t *q_x;
-    float         act_scale;
-    int32_t       sum_qx;
+    float act_scale;
+    int32_t sum_qx;
 } ParallelMatmulPackedArgs;
 
 static void matmul_packed_task(void *arg, int thread_id, int start, int end) {
     (void)thread_id;
     ParallelMatmulPackedArgs *a = (ParallelMatmulPackedArgs *)arg;
-    int slice_rows = end - start;
+    int slice_rows              = end - start;
     if (slice_rows <= 0) return;
 
     size_t row_bytes = ((size_t)a->n + 3) >> 2;
@@ -102,29 +89,18 @@ static void matmul_packed_task(void *arg, int thread_id, int start, int end) {
      * once by the dispatcher before thread launch (VNNI backend only; q_x is
      * non-NULL only when tn_ternary_matmul_preq is bound). */
     if (a->q_x && a->act_scale > 0.0f && tn_ternary_matmul_preq) {
-        tn_ternary_matmul_preq(
-            a->out + start,
-            a->q_x, a->act_scale, a->sum_qx,
-            a->w + (size_t)start * row_bytes,
-            a->n, slice_rows,
-            &a->scale, 0
-        );
+        tn_ternary_matmul_preq(a->out + start, a->q_x, a->act_scale, a->sum_qx,
+                               a->w + (size_t)start * row_bytes, a->n, slice_rows, &a->scale, 0);
         return;
     }
 
-    tn_ternary_matmul_packed(
-        a->out + start,
-        a->x,
-        a->w + (size_t)start * row_bytes,
-        a->n,
-        slice_rows,
-        &a->scale,
-        0 /* group_size 0 = per-matrix scales */
+    tn_ternary_matmul_packed(a->out + start, a->x, a->w + (size_t)start * row_bytes, a->n,
+                             slice_rows, &a->scale, 0 /* group_size 0 = per-matrix scales */
     );
 }
 
-void parallel_ternary_matmul_packed(float *out, const float *x, const tn_u8 *w,
-                                     int n, int d, float scale, ThreadPool *tp) {
+void parallel_ternary_matmul_packed(float *out, const float *x, const tn_u8 *w, int n, int d,
+                                    float scale, ThreadPool *tp) {
     if (!tp) {
         tn_ternary_matmul_packed(out, x, w, n, d, &scale, 0);
         return;
@@ -140,30 +116,28 @@ void parallel_ternary_matmul_packed(float *out, const float *x, const tn_u8 *w,
      * worker and improving instruction cache locality.
      */
     int8_t q_x_buf[TN_PREQ_MAX_N];
-    int8_t *q_x = NULL;
+    int8_t *q_x     = NULL;
     float act_scale = 0.0f;
-    int32_t sum_qx = 0;
+    int32_t sum_qx  = 0;
     /* Only the AVX-512 VNNI tier has a pre-quantised kernel; a forced or lower
      * tier must run the kernel it names (tn_simd_ternary_preq). */
     if (n <= TN_PREQ_MAX_N && tn_simd_ternary_preq()) {
         act_scale = tn_quantize_act_i8(x, q_x_buf, n);
         if (act_scale > 0.0f) {
             sum_qx = tn_sum_act_i8(q_x_buf, n);
-            q_x = q_x_buf;
+            q_x    = q_x_buf;
         }
     }
 
-    ParallelMatmulPackedArgs args = {
-        .out = out,
-        .x = x,
-        .w = w,
-        .n = n,
-        .d = d,
-        .scale = scale,
-        .q_x = q_x,
-        .act_scale = act_scale,
-        .sum_qx = sum_qx
-    };
+    ParallelMatmulPackedArgs args = {.out       = out,
+                                     .x         = x,
+                                     .w         = w,
+                                     .n         = n,
+                                     .d         = d,
+                                     .scale     = scale,
+                                     .q_x       = q_x,
+                                     .act_scale = act_scale,
+                                     .sum_qx    = sum_qx};
 
     threadpool_dispatch(tp, matmul_packed_task, &args, d);
 }
@@ -171,24 +145,23 @@ void parallel_ternary_matmul_packed(float *out, const float *x, const tn_u8 *w,
 /* ── Layer-level pre-quantisation API ──────────────────────────────────── */
 
 int tn_preq_prepare(TnPreqActivation *preq, int8_t *buf, const float *x, int n) {
-    preq->valid = 0;
-    preq->q_x = NULL;
+    preq->valid     = 0;
+    preq->q_x       = NULL;
     preq->act_scale = 0.0f;
-    preq->sum_qx = 0;
+    preq->sum_qx    = 0;
     if (n <= 0 || n > TN_PREQ_MAX_N || !tn_simd_ternary_preq()) return 0;
     float scale = tn_quantize_act_i8(x, buf, n);
     if (scale <= 0.0f) return 0;
-    preq->q_x      = buf;
+    preq->q_x       = buf;
     preq->act_scale = scale;
     preq->sum_qx    = tn_sum_act_i8(buf, n);
     preq->valid     = 1;
     return 1;
 }
 
-void parallel_ternary_matmul_packed_preq(float *out, const float *x, const tn_u8 *w,
-                                          int n, int d, float scale,
-                                          const TnPreqActivation *preq,
-                                          ThreadPool *tp) {
+void parallel_ternary_matmul_packed_preq(float *out, const float *x, const tn_u8 *w, int n, int d,
+                                         float scale, const TnPreqActivation *preq,
+                                         ThreadPool *tp) {
     if (!tp) {
         tn_ternary_matmul_packed(out, x, w, n, d, &scale, 0);
         return;
@@ -196,17 +169,15 @@ void parallel_ternary_matmul_packed_preq(float *out, const float *x, const tn_u8
 
     if (preq && preq->valid && tn_ternary_matmul_preq) {
         /* Fast path: activations already quantised by caller — no re-quantisation */
-        ParallelMatmulPackedArgs args = {
-            .out       = out,
-            .x         = x,
-            .w         = w,
-            .n         = n,
-            .d         = d,
-            .scale     = scale,
-            .q_x       = preq->q_x,
-            .act_scale = preq->act_scale,
-            .sum_qx    = preq->sum_qx
-        };
+        ParallelMatmulPackedArgs args = {.out       = out,
+                                         .x         = x,
+                                         .w         = w,
+                                         .n         = n,
+                                         .d         = d,
+                                         .scale     = scale,
+                                         .q_x       = preq->q_x,
+                                         .act_scale = preq->act_scale,
+                                         .sum_qx    = preq->sum_qx};
         threadpool_dispatch(tp, matmul_packed_task, &args, d);
         return;
     }
@@ -231,8 +202,8 @@ static void matmul_f32_task(void *arg, int thread_id, int start, int end) {
     }
 }
 
-void parallel_matmul_float32(float *out, const float *x, const float *w,
-                             int n, int d, ThreadPool *tp) {
+void parallel_matmul_float32(float *out, const float *x, const float *w, int n, int d,
+                             ThreadPool *tp) {
     if (!tp) {
         for (int i = 0; i < d; i++) {
             out[i] = tn_vec_dot(x, w + (size_t)i * n, n);
@@ -240,19 +211,13 @@ void parallel_matmul_float32(float *out, const float *x, const float *w,
         return;
     }
 
-    ParallelMatmulF32Args args = {
-        .out = out,
-        .x = x,
-        .w = w,
-        .n = n,
-        .d = d
-    };
+    ParallelMatmulF32Args args = {.out = out, .x = x, .w = w, .n = n, .d = d};
 
     threadpool_dispatch(tp, matmul_f32_task, &args, d);
 }
 
 typedef struct {
-    float       *out;
+    float *out;
     const float *x;
     const tn_u16 *w;
     int n, d;
@@ -279,43 +244,52 @@ static void matmul_bf16_task(void *arg, int thread_id, int start, int end) {
         __m512 acc1 = _mm512_setzero_ps();
         __m512 acc2 = _mm512_setzero_ps();
         __m512 acc3 = _mm512_setzero_ps();
-        int j = 0;
+        int j       = 0;
         for (; j + 63 < a->n; j += 64) {
-            acc0 = _mm512_fmadd_ps(_mm512_castsi512_ps(_mm512_slli_epi32(_mm512_cvtepu16_epi32(_mm256_loadu_si256((const __m256i *)&row[j])), 16)),
-                                    _mm512_loadu_ps(&a->x[j]), acc0);
-            acc1 = _mm512_fmadd_ps(_mm512_castsi512_ps(_mm512_slli_epi32(_mm512_cvtepu16_epi32(_mm256_loadu_si256((const __m256i *)&row[j + 16])), 16)),
-                                    _mm512_loadu_ps(&a->x[j + 16]), acc1);
-            acc2 = _mm512_fmadd_ps(_mm512_castsi512_ps(_mm512_slli_epi32(_mm512_cvtepu16_epi32(_mm256_loadu_si256((const __m256i *)&row[j + 32])), 16)),
-                                    _mm512_loadu_ps(&a->x[j + 32]), acc2);
-            acc3 = _mm512_fmadd_ps(_mm512_castsi512_ps(_mm512_slli_epi32(_mm512_cvtepu16_epi32(_mm256_loadu_si256((const __m256i *)&row[j + 48])), 16)),
-                                    _mm512_loadu_ps(&a->x[j + 48]), acc3);
+            acc0 = _mm512_fmadd_ps(
+                _mm512_castsi512_ps(_mm512_slli_epi32(
+                    _mm512_cvtepu16_epi32(_mm256_loadu_si256((const __m256i *)&row[j])), 16)),
+                _mm512_loadu_ps(&a->x[j]), acc0);
+            acc1 = _mm512_fmadd_ps(
+                _mm512_castsi512_ps(_mm512_slli_epi32(
+                    _mm512_cvtepu16_epi32(_mm256_loadu_si256((const __m256i *)&row[j + 16])), 16)),
+                _mm512_loadu_ps(&a->x[j + 16]), acc1);
+            acc2 = _mm512_fmadd_ps(
+                _mm512_castsi512_ps(_mm512_slli_epi32(
+                    _mm512_cvtepu16_epi32(_mm256_loadu_si256((const __m256i *)&row[j + 32])), 16)),
+                _mm512_loadu_ps(&a->x[j + 32]), acc2);
+            acc3 = _mm512_fmadd_ps(
+                _mm512_castsi512_ps(_mm512_slli_epi32(
+                    _mm512_cvtepu16_epi32(_mm256_loadu_si256((const __m256i *)&row[j + 48])), 16)),
+                _mm512_loadu_ps(&a->x[j + 48]), acc3);
         }
         __m512 acc = _mm512_add_ps(_mm512_add_ps(acc0, acc1), _mm512_add_ps(acc2, acc3));
         for (; j + 15 < a->n; j += 16) {
             __m256i bf16_16 = _mm256_loadu_si256((const __m256i *)&row[j]);
             __m512i i32_16  = _mm512_cvtepu16_epi32(bf16_16);
-            __m512  wv      = _mm512_castsi512_ps(_mm512_slli_epi32(i32_16, 16));
-            __m512  xv      = _mm512_loadu_ps(&a->x[j]);
-            acc = _mm512_fmadd_ps(wv, xv, acc);
+            __m512 wv       = _mm512_castsi512_ps(_mm512_slli_epi32(i32_16, 16));
+            __m512 xv       = _mm512_loadu_ps(&a->x[j]);
+            acc             = _mm512_fmadd_ps(wv, xv, acc);
         }
         float val = _mm512_reduce_add_ps(acc);
         /* AVX2 tail (8-wide) */
         if (j + 7 < a->n) {
             __m128i bf16_8 = _mm_loadu_si128((const __m128i *)&row[j]);
             __m256i i32_8  = _mm256_cvtepu16_epi32(bf16_8);
-            __m256  wv8    = _mm256_castsi256_ps(_mm256_slli_epi32(i32_8, 16));
-            __m256  xv8    = _mm256_loadu_ps(&a->x[j]);
-            __m256  p8     = _mm256_mul_ps(wv8, xv8);
-            __m128  h = _mm256_extractf128_ps(p8,1), l = _mm256_castps256_ps128(p8);
-            __m128  s4 = _mm_add_ps(l,h);
-            __m128  sh = _mm_movehdup_ps(s4);
-            __m128  sums = _mm_add_ps(s4,sh);
-            val += _mm_cvtss_f32(_mm_add_ss(sums, _mm_movehl_ps(sh,sums)));
+            __m256 wv8     = _mm256_castsi256_ps(_mm256_slli_epi32(i32_8, 16));
+            __m256 xv8     = _mm256_loadu_ps(&a->x[j]);
+            __m256 p8      = _mm256_mul_ps(wv8, xv8);
+            __m128 h = _mm256_extractf128_ps(p8, 1), l = _mm256_castps256_ps128(p8);
+            __m128 s4   = _mm_add_ps(l, h);
+            __m128 sh   = _mm_movehdup_ps(s4);
+            __m128 sums = _mm_add_ps(s4, sh);
+            val += _mm_cvtss_f32(_mm_add_ss(sums, _mm_movehl_ps(sh, sums)));
             j += 8;
         }
         for (; j < a->n; j++) {
             tn_u32 bits = (tn_u32)row[j] << 16;
-            float wval; __builtin_memcpy(&wval, &bits, sizeof(wval));
+            float wval;
+            __builtin_memcpy(&wval, &bits, sizeof(wval));
             val += wval * a->x[j];
         }
         a->out[i] = val;
@@ -329,38 +303,47 @@ static void matmul_bf16_task(void *arg, int thread_id, int start, int end) {
      */
     for (int i = start; i < end; i++) {
         const tn_u16 *row = a->w + (size_t)i * a->n;
-        __m256 acc0 = _mm256_setzero_ps();
-        __m256 acc1 = _mm256_setzero_ps();
-        __m256 acc2 = _mm256_setzero_ps();
-        __m256 acc3 = _mm256_setzero_ps();
-        int j = 0;
+        __m256 acc0       = _mm256_setzero_ps();
+        __m256 acc1       = _mm256_setzero_ps();
+        __m256 acc2       = _mm256_setzero_ps();
+        __m256 acc3       = _mm256_setzero_ps();
+        int j             = 0;
         for (; j + 31 < a->n; j += 32) {
-            acc0 = _mm256_fmadd_ps(_mm256_castsi256_ps(_mm256_slli_epi32(_mm256_cvtepu16_epi32(_mm_loadu_si128((const __m128i *)&row[j])), 16)),
-                                    _mm256_loadu_ps(&a->x[j]), acc0);
-            acc1 = _mm256_fmadd_ps(_mm256_castsi256_ps(_mm256_slli_epi32(_mm256_cvtepu16_epi32(_mm_loadu_si128((const __m128i *)&row[j + 8])), 16)),
-                                    _mm256_loadu_ps(&a->x[j + 8]), acc1);
-            acc2 = _mm256_fmadd_ps(_mm256_castsi256_ps(_mm256_slli_epi32(_mm256_cvtepu16_epi32(_mm_loadu_si128((const __m128i *)&row[j + 16])), 16)),
-                                    _mm256_loadu_ps(&a->x[j + 16]), acc2);
-            acc3 = _mm256_fmadd_ps(_mm256_castsi256_ps(_mm256_slli_epi32(_mm256_cvtepu16_epi32(_mm_loadu_si128((const __m128i *)&row[j + 24])), 16)),
-                                    _mm256_loadu_ps(&a->x[j + 24]), acc3);
+            acc0 = _mm256_fmadd_ps(
+                _mm256_castsi256_ps(_mm256_slli_epi32(
+                    _mm256_cvtepu16_epi32(_mm_loadu_si128((const __m128i *)&row[j])), 16)),
+                _mm256_loadu_ps(&a->x[j]), acc0);
+            acc1 = _mm256_fmadd_ps(
+                _mm256_castsi256_ps(_mm256_slli_epi32(
+                    _mm256_cvtepu16_epi32(_mm_loadu_si128((const __m128i *)&row[j + 8])), 16)),
+                _mm256_loadu_ps(&a->x[j + 8]), acc1);
+            acc2 = _mm256_fmadd_ps(
+                _mm256_castsi256_ps(_mm256_slli_epi32(
+                    _mm256_cvtepu16_epi32(_mm_loadu_si128((const __m128i *)&row[j + 16])), 16)),
+                _mm256_loadu_ps(&a->x[j + 16]), acc2);
+            acc3 = _mm256_fmadd_ps(
+                _mm256_castsi256_ps(_mm256_slli_epi32(
+                    _mm256_cvtepu16_epi32(_mm_loadu_si128((const __m128i *)&row[j + 24])), 16)),
+                _mm256_loadu_ps(&a->x[j + 24]), acc3);
         }
         __m256 acc = _mm256_add_ps(_mm256_add_ps(acc0, acc1), _mm256_add_ps(acc2, acc3));
         for (; j + 7 < a->n; j += 8) {
-            __m128i  bf16_8  = _mm_loadu_si128((const __m128i *)&row[j]);
-            __m256i  i32_8   = _mm256_cvtepu16_epi32(bf16_8);
-            __m256   wv      = _mm256_castsi256_ps(_mm256_slli_epi32(i32_8, 16));
-            __m256   xv      = _mm256_loadu_ps(&a->x[j]);
-            acc = _mm256_fmadd_ps(wv, xv, acc);
+            __m128i bf16_8 = _mm_loadu_si128((const __m128i *)&row[j]);
+            __m256i i32_8  = _mm256_cvtepu16_epi32(bf16_8);
+            __m256 wv      = _mm256_castsi256_ps(_mm256_slli_epi32(i32_8, 16));
+            __m256 xv      = _mm256_loadu_ps(&a->x[j]);
+            acc            = _mm256_fmadd_ps(wv, xv, acc);
         }
         __m128 hi   = _mm256_extractf128_ps(acc, 1);
         __m128 lo   = _mm256_castps256_ps128(acc);
         __m128 sum4 = _mm_add_ps(lo, hi);
         __m128 shuf = _mm_movehdup_ps(sum4);
         __m128 sum2 = _mm_add_ps(sum4, shuf);
-        float  val  = _mm_cvtss_f32(_mm_add_ss(sum2, _mm_movehl_ps(sum2, sum2)));
+        float val   = _mm_cvtss_f32(_mm_add_ss(sum2, _mm_movehl_ps(sum2, sum2)));
         for (; j < a->n; j++) {
             tn_u32 bits = (tn_u32)row[j] << 16;
-            float wval; __builtin_memcpy(&wval, &bits, sizeof(wval));
+            float wval;
+            __builtin_memcpy(&wval, &bits, sizeof(wval));
             val += wval * a->x[j];
         }
         a->out[i] = val;
@@ -369,10 +352,11 @@ static void matmul_bf16_task(void *arg, int thread_id, int start, int end) {
     /* Scalar fallback */
     for (int i = start; i < end; i++) {
         const tn_u16 *row = a->w + (size_t)i * a->n;
-        float acc = 0.0f;
+        float acc         = 0.0f;
         for (int j = 0; j < a->n; j++) {
             tn_u32 bits = (tn_u32)row[j] << 16;
-            float wval; __builtin_memcpy(&wval, &bits, sizeof(wval));
+            float wval;
+            __builtin_memcpy(&wval, &bits, sizeof(wval));
             acc += wval * a->x[j];
         }
         a->out[i] = acc;
@@ -380,14 +364,14 @@ static void matmul_bf16_task(void *arg, int thread_id, int start, int end) {
 #endif
 }
 
-void parallel_matmul_bf16(float *out, const float *x, const tn_u16 *w,
-                           int n, int d, ThreadPool *tp) {
+void parallel_matmul_bf16(float *out, const float *x, const tn_u16 *w, int n, int d,
+                          ThreadPool *tp) {
     if (!tp) {
         matmul_bf16_task(&(ParallelMatmulBF16Args){out, x, w, n, d}, 0, 0, d);
         return;
     }
 
-    ParallelMatmulBF16Args args = { .out = out, .x = x, .w = w, .n = n, .d = d };
+    ParallelMatmulBF16Args args = {.out = out, .x = x, .w = w, .n = n, .d = d};
     threadpool_dispatch(tp, matmul_bf16_task, &args, d);
 }
 
@@ -410,14 +394,15 @@ typedef struct {
 
 static inline float bf16_to_f32(tn_u16 h) {
     tn_u32 bits = (tn_u32)h << 16;
-    float f; __builtin_memcpy(&f, &bits, sizeof(f));
+    float f;
+    __builtin_memcpy(&f, &bits, sizeof(f));
     return f;
 }
 
 static void matmul_bf16_tokens_task(void *arg, int thread_id, int start, int end) {
     (void)thread_id;
     const ParallelMatmulBF16TokArgs *a = (const ParallelMatmulBF16TokArgs *)arg;
-    const int n = a->n;
+    const int n                        = a->n;
     for (int i = start; i < end; i++) {
         const tn_u16 *row = a->w + (size_t)i * n;
         for (int k0 = 0; k0 < a->n_tokens; k0 += BF16_TOK_TILE) {
@@ -425,8 +410,8 @@ static void matmul_bf16_tokens_task(void *arg, int thread_id, int start, int end
             const float *xs[BF16_TOK_TILE];
             for (int t = 0; t < BF16_TOK_TILE; t++)
                 xs[t] = a->x + (size_t)(k0 + (t < nt ? t : 0)) * n;
-            float sum[BF16_TOK_TILE] = { 0 };
-            int j = 0;
+            float sum[BF16_TOK_TILE] = {0};
+            int j                    = 0;
 #if TN_HAS_AVX512
             __m512 acc[BF16_TOK_TILE];
             for (int t = 0; t < BF16_TOK_TILE; t++) acc[t] = _mm512_setzero_ps();
@@ -447,8 +432,9 @@ static void matmul_bf16_tokens_task(void *arg, int thread_id, int start, int end
                     acc[t] = _mm256_fmadd_ps(wv, _mm256_loadu_ps(&xs[t][j]), acc[t]);
             }
             for (int t = 0; t < BF16_TOK_TILE; t++) {
-                __m128 s4 = _mm_add_ps(_mm256_castps256_ps128(acc[t]), _mm256_extractf128_ps(acc[t], 1));
-                s4 = _mm_add_ps(s4, _mm_movehl_ps(s4, s4));
+                __m128 s4 =
+                    _mm_add_ps(_mm256_castps256_ps128(acc[t]), _mm256_extractf128_ps(acc[t], 1));
+                s4     = _mm_add_ps(s4, _mm_movehl_ps(s4, s4));
                 sum[t] = _mm_cvtss_f32(_mm_add_ss(s4, _mm_movehdup_ps(s4)));
             }
 #endif
@@ -461,10 +447,13 @@ static void matmul_bf16_tokens_task(void *arg, int thread_id, int start, int end
     }
 }
 
-void parallel_matmul_bf16_tokens(float *out, const float *x, const tn_u16 *w,
-                                 int n, int d, int n_tokens, ThreadPool *tp) {
-    ParallelMatmulBF16TokArgs args = { out, x, w, n, d, n_tokens };
-    if (!tp) { matmul_bf16_tokens_task(&args, 0, 0, d); return; }
+void parallel_matmul_bf16_tokens(float *out, const float *x, const tn_u16 *w, int n, int d,
+                                 int n_tokens, ThreadPool *tp) {
+    ParallelMatmulBF16TokArgs args = {out, x, w, n, d, n_tokens};
+    if (!tp) {
+        matmul_bf16_tokens_task(&args, 0, 0, d);
+        return;
+    }
     threadpool_dispatch(tp, matmul_bf16_tokens_task, &args, d);
 }
 
@@ -492,17 +481,18 @@ void parallel_matmul_bf16_tokens(float *out, const float *x, const tn_u16 *w,
  */
 
 typedef struct {
-    float       *out;
+    float *out;
     const float *x;
-    const tn_u8 *w;        /* unsigned uint8 weights (original + 128 bias) */
-    const float *scales;    /* d * n_blocks block scales */
+    const tn_u8 *w;      /* unsigned uint8 weights (original + 128 bias) */
+    const float *scales; /* d * n_blocks block scales */
     int n, d, n_blocks;
 } ParallelMatmulI8Args;
 
 static void matmul_i8_task(void *arg, int thread_id, int start, int end) {
     (void)thread_id;
     const ParallelMatmulI8Args *a = (const ParallelMatmulI8Args *)arg;
-    tn_cls_i8_rows(a->out, a->x, a->w, a->scales, a->n, a->n_blocks, start, end);   /* math/cls_kernels.h */
+    tn_cls_i8_rows(a->out, a->x, a->w, a->scales, a->n, a->n_blocks, start,
+                   end); /* math/cls_kernels.h */
 }
 
 /* ── INT4 classifier matmul ─────────────────────────────────────────────────
@@ -517,24 +507,31 @@ static void matmul_i8_task(void *arg, int thread_id, int start, int end) {
  */
 
 typedef struct {
-    float       *out;
+    float *out;
     const float *x;
-    const tn_u8 *w;        /* packed INT4 weights */
-    const float *scales;    /* d * n_blocks block scales */
+    const tn_u8 *w;      /* packed INT4 weights */
+    const float *scales; /* d * n_blocks block scales */
     int n, d, n_blocks;
 } ParallelMatmulI4Args;
 
 static void matmul_i4_task(void *arg, int thread_id, int start, int end) {
     (void)thread_id;
     const ParallelMatmulI4Args *a = (const ParallelMatmulI4Args *)arg;
-    tn_cls_i4_rows(a->out, a->x, a->w, a->scales, a->n, a->n_blocks, start, end);   /* math/cls_kernels.h */
+    tn_cls_i4_rows(a->out, a->x, a->w, a->scales, a->n, a->n_blocks, start,
+                   end); /* math/cls_kernels.h */
 }
 
-void parallel_matmul_i4(float *out, const float *x, const tn_u8 *w,
-                          const float *scales, int n, int d, ThreadPool *tp) {
-    int n_blocks = (n + TN_CLS_QUANT_BLOCK - 1) / TN_CLS_QUANT_BLOCK;
+void parallel_matmul_i4(float *out, const float *x, const tn_u8 *w, const float *scales, int n,
+                        int d, ThreadPool *tp) {
+    int n_blocks              = (n + TN_CLS_QUANT_BLOCK - 1) / TN_CLS_QUANT_BLOCK;
     ParallelMatmulI4Args args = {
-        .out = out, .x = x, .w = w, .scales = scales, .n = n, .d = d, .n_blocks = n_blocks,
+        .out      = out,
+        .x        = x,
+        .w        = w,
+        .scales   = scales,
+        .n        = n,
+        .d        = d,
+        .n_blocks = n_blocks,
     };
 
     if (!tp) {
@@ -545,11 +542,17 @@ void parallel_matmul_i4(float *out, const float *x, const tn_u8 *w,
     threadpool_dispatch(tp, matmul_i4_task, &args, d);
 }
 
-void parallel_matmul_i8(float *out, const float *x, const tn_u8 *w,
-                          const float *scales, int n, int d, ThreadPool *tp) {
-    int n_blocks = (n + TN_CLS_QUANT_BLOCK - 1) / TN_CLS_QUANT_BLOCK;
+void parallel_matmul_i8(float *out, const float *x, const tn_u8 *w, const float *scales, int n,
+                        int d, ThreadPool *tp) {
+    int n_blocks              = (n + TN_CLS_QUANT_BLOCK - 1) / TN_CLS_QUANT_BLOCK;
     ParallelMatmulI8Args args = {
-        .out = out, .x = x, .w = w, .scales = scales, .n = n, .d = d, .n_blocks = n_blocks,
+        .out      = out,
+        .x        = x,
+        .w        = w,
+        .scales   = scales,
+        .n        = n,
+        .d        = d,
+        .n_blocks = n_blocks,
     };
 
     if (!tp) {

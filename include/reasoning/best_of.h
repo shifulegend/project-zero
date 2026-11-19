@@ -14,7 +14,7 @@
  */
 
 #include "transformer/generate.h"
-#include "core/limits.h"   /* BEST_OF_N_MAX */
+#include "core/limits.h" /* BEST_OF_N_MAX */
 
 #define BEST_OF_MAX_DEFAULT 8
 
@@ -24,10 +24,10 @@ typedef enum {
 } BestOfScore;
 
 typedef struct {
-    int     n;            /* candidates actually generated */
-    int     chosen;       /* index of the winner (-1 if none) */
-    double  scores[BEST_OF_N_MAX]; /* score per candidate */
-    int     tokens_total; /* completion tokens across all candidates */
+    int n;                        /* candidates actually generated */
+    int chosen;                   /* index of the winner (-1 if none) */
+    double scores[BEST_OF_N_MAX]; /* score per candidate */
+    int tokens_total;             /* completion tokens across all candidates */
     GenerationStats winner;
 } BestOfResult;
 
@@ -43,11 +43,10 @@ double best_of_score(const GenerationStats *st, BestOfScore mode);
  * text through callback. `gp->stats` (if set) receives the winner's stats.
  * Returns TN_OK, TN_ERR_OOM, or TN_ERR_INVALID_ARGS.
  */
-TernaryError generate_best_of(const Config *cfg, const TransformerWeights *w,
-                              RunState *s, const MoEConfig *mc,
-                              Tokenizer *tok, ThreadPool *tp, const char *prompt,
-                              const GenerationParams *gp, int n, BestOfScore mode,
-                              TokenCallback callback, void *userdata,
+TernaryError generate_best_of(const Config *cfg, const TransformerWeights *w, RunState *s,
+                              const MoEConfig *mc, Tokenizer *tok, ThreadPool *tp,
+                              const char *prompt, const GenerationParams *gp, int n,
+                              BestOfScore mode, TokenCallback callback, void *userdata,
                               BestOfAbortFn abort_fn, BestOfResult *out);
 
 #endif /* TN_BEST_OF_H */

@@ -12,12 +12,8 @@
  * moe_ffn_forward — Execute the MoE FFN for one token in one layer.
  * (full description unchanged)
  */
-void moe_ffn_forward(RunState              *s,
-                     const TransformerWeights *w,
-                     const Config          *cfg,
-                     const MoEConfig       *mc,
-                     int                    layer,
-                     ThreadPool            *tp);
+void moe_ffn_forward(RunState *s, const TransformerWeights *w, const Config *cfg,
+                     const MoEConfig *mc, int layer, ThreadPool *tp);
 
 /* ---- Expert hit tracking (Phase 17 diagnostics) ---- */
 

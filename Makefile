@@ -105,7 +105,15 @@ TARGET = pz
 # notice when run through it); drop LEGACY_TARGET the release after.
 LEGACY_TARGET = adaptive_ai_engine
 
-.PHONY: all clean debug release dist test run-tests test-tsan coverage objs demo webui-bundle screenshots
+# ── Formatting (clang-format, style in .clang-format; vendored/generated files in .clang-format-ignore) ──
+CLANG_FORMAT ?= clang-format
+FORMAT_FILES  = $(shell git ls-files '*.c' '*.h' '*.cpp' | grep -vE '^(include/stb_|src/api/webui_bundle_generated|benchmark_results/)')
+format:
+	$(CLANG_FORMAT) -i $(FORMAT_FILES)
+check-format:
+	$(CLANG_FORMAT) --dry-run -Werror $(FORMAT_FILES)
+
+.PHONY: format check-format all clean debug release dist test run-tests test-tsan coverage objs demo webui-bundle screenshots
 
 all: $(TARGET)
 

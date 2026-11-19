@@ -3,8 +3,8 @@
 
 #include "core/error.h"
 #include <stdbool.h>
-#include <stddef.h>   /* size_t */
-#include <stdint.h>   /* int32_t */
+#include <stddef.h> /* size_t */
+#include <stdint.h> /* int32_t */
 
 /**
  * MoEConfig — Mixture of Experts routing configuration.
@@ -19,38 +19,38 @@
  *   - At runtime: only top num_experts_per_tok experts execute per token
  */
 typedef struct {
-    int  num_experts;             /* total routed experts per layer, e.g. 64 (DeepSeek-V2-Lite) */
-    int  num_experts_per_tok;     /* top-k active per token, e.g. 6                               */
-    int  expert_hidden_dim;       /* each routed expert's FFN hidden dim                          */
-    bool is_moe;                  /* false → dense model, all MoE code is a no-op                */
-    int  first_k_dense_replace;   /* DeepSeek: first N layers use dense FFN, rest use MoE         */
-                                  /* set to 0 if all layers are MoE (e.g. Mixtral)                */
-    int  n_shared_experts;        /* DeepSeek: always-active shared experts per MoE layer (0=none)*/
-    int  shared_expert_hidden_dim;/* hidden dim of the shared-expert FFN (n_shared × moe_intermediate_size) */
+    int num_experts;           /* total routed experts per layer, e.g. 64 (DeepSeek-V2-Lite) */
+    int num_experts_per_tok;   /* top-k active per token, e.g. 6                               */
+    int expert_hidden_dim;     /* each routed expert's FFN hidden dim                          */
+    bool is_moe;               /* false → dense model, all MoE code is a no-op                */
+    int first_k_dense_replace; /* DeepSeek: first N layers use dense FFN, rest use MoE         */
+                               /* set to 0 if all layers are MoE (e.g. Mixtral)                */
+    int n_shared_experts;      /* DeepSeek: always-active shared experts per MoE layer (0=none)*/
+    int shared_expert_hidden_dim; /* hidden dim of the shared-expert FFN (n_shared × moe_intermediate_size) */
 
     /* MLA (Multi-head Latent Attention) fields — Phase 17.5 extension.
      * Bytes 28–47 of the MoE header (were padding, always zero in old files).
      * has_mla == 0 for ALL non-MLA models → MLA code is never reached.           */
-    int  has_mla;             /* 1 for DeepSeek-V2-style MLA, 0 otherwise          */
-    int  kv_lora_rank;        /* latent KV dim, e.g. 512                           */
-    int  qk_nope_head_dim;    /* per-head non-positional Q/K dim, e.g. 128         */
-    int  qk_rope_head_dim;    /* per-head RoPE positional dim, e.g. 64             */
-    int  v_head_dim;          /* per-head value dim, e.g. 128                      */
+    int has_mla;          /* 1 for DeepSeek-V2-style MLA, 0 otherwise          */
+    int kv_lora_rank;     /* latent KV dim, e.g. 512                           */
+    int qk_nope_head_dim; /* per-head non-positional Q/K dim, e.g. 128         */
+    int qk_rope_head_dim; /* per-head RoPE positional dim, e.g. 64             */
+    int v_head_dim;       /* per-head value dim, e.g. 128                      */
 
     /* Qwen3.5/3.6 hybrid Gated-DeltaNet + Gated-Attention fields.
      * has_linear_attn == 0 for ALL non-hybrid models → this code path is never
      * reached, same convention as has_mla above. Populated by
      * moe_config_from_gguf() for arch=="qwen35" (see gguf_loader.c). */
-    int  has_linear_attn;        /* 1 for Qwen3.5/3.6-style hybrid attention, 0 otherwise */
-    int  full_attention_interval;/* every Nth layer (1-indexed) is full-attention, rest linear */
-    int  attn_head_dim;          /* full-attention per-head dim (key_length/value_length),
+    int has_linear_attn;         /* 1 for Qwen3.5/3.6-style hybrid attention, 0 otherwise */
+    int full_attention_interval; /* every Nth layer (1-indexed) is full-attention, rest linear */
+    int attn_head_dim;           /* full-attention per-head dim (key_length/value_length),
                                      NOT dim/n_heads — this arch's Q/K/V shapes don't factor evenly */
-    int  attn_rope_dim;          /* partial-rotary dim for full-attention layers (<= attn_head_dim) */
-    int  ssm_conv_kernel;        /* depthwise causal conv1d kernel size (e.g. 4) */
-    int  ssm_group_count;        /* linear-attention K/Q head count (repeats to ssm_time_step_rank) */
-    int  ssm_inner_size;         /* linear-attention total value width (num_v_heads * head_v_dim) */
-    int  ssm_state_size;         /* linear-attention per-head K/V dim (e.g. 128) */
-    int  ssm_time_step_rank;     /* linear-attention V head count (== num decay/gate heads) */
+    int attn_rope_dim;      /* partial-rotary dim for full-attention layers (<= attn_head_dim) */
+    int ssm_conv_kernel;    /* depthwise causal conv1d kernel size (e.g. 4) */
+    int ssm_group_count;    /* linear-attention K/Q head count (repeats to ssm_time_step_rank) */
+    int ssm_inner_size;     /* linear-attention total value width (num_v_heads * head_v_dim) */
+    int ssm_state_size;     /* linear-attention per-head K/V dim (e.g. 128) */
+    int ssm_time_step_rank; /* linear-attention V head count (== num decay/gate heads) */
 
     /* Qwen3-MoE fields. has_qk_norm == 0 for ALL other models → this code
      * path is never reached, same convention as has_mla/has_linear_attn
@@ -58,13 +58,13 @@ typedef struct {
      * gguf_loader.c). Reuses attn_head_dim (already defined above for
      * qwen35) rather than a new field — same "independent head_dim"
      * problem qwen35 already solves, populated from attention.key_length. */
-    int  has_qk_norm;            /* 1 for Qwen3-MoE-style per-head QK RMSNorm before RoPE */
+    int has_qk_norm; /* 1 for Qwen3-MoE-style per-head QK RMSNorm before RoPE */
 
     /* Phase 22-SSM: pure state-space model (GGUF arch "mamba"). Reuses the
      * ssm_* fields above with Mamba-1 meaning: ssm_inner_size = d_inner,
      * ssm_state_size = d_state, ssm_conv_kernel = d_conv,
      * ssm_time_step_rank = dt_rank. 0 for every other model. */
-    int  is_ssm;
+    int is_ssm;
 
     /* Router weighting (2026-10-21), GGUF keys "<arch>.expert_weights_scale",
      * "<arch>.expert_weights_norm", "<arch>.expert_gating_func" — same
@@ -76,8 +76,8 @@ typedef struct {
      *   scale:   multiply the k weights (0 or 1 = no-op; DeepSeek-V2 = 16).
      * Previously the router always used softmax, never renormalized and
      * never scaled — wrong for Qwen3-MoE and for DeepSeek-V2 (non-Lite). */
-    int   expert_gating_func;
-    int   expert_weights_norm;
+    int expert_gating_func;
+    int expert_weights_norm;
     float expert_weights_scale;
 } MoEConfig;
 
@@ -121,8 +121,7 @@ void moe_config_init_dense(MoEConfig *mc);
  * Old model files have bytes 28-47 == 0 → has_mla = 0 → MLA path never taken.
  * No format break for any existing model.
  */
-TernaryError moe_config_read(MoEConfig *mc, const void *data,
-                              size_t data_size, size_t *offset);
+TernaryError moe_config_read(MoEConfig *mc, const void *data, size_t data_size, size_t *offset);
 
 /**
  * Print MoEConfig to stdout for boot diagnostics.

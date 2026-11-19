@@ -24,12 +24,12 @@ TnColorMode tn_color_mode_parse(const char *s);
 int tn_color_resolve(TnColorMode mode, int is_tty, const char *no_color_env);
 
 /* ANSI SGR codes used by the CLI. */
-#define TN_ANSI_RESET   "\x1b[0m"
-#define TN_ANSI_BOLD    "\x1b[1m"
-#define TN_ANSI_DIM     "\x1b[2m"
-#define TN_ANSI_GREEN   "\x1b[32m"
-#define TN_ANSI_CYAN    "\x1b[36m"
-#define TN_ANSI_YELLOW  "\x1b[33m"
+#define TN_ANSI_RESET "\x1b[0m"
+#define TN_ANSI_BOLD "\x1b[1m"
+#define TN_ANSI_DIM "\x1b[2m"
+#define TN_ANSI_GREEN "\x1b[32m"
+#define TN_ANSI_CYAN "\x1b[36m"
+#define TN_ANSI_YELLOW "\x1b[33m"
 
 /* Returns ansi_code if enabled, else "" — safe to splice into printf/fprintf
  * unconditionally instead of #ifdef-ing every color call site. */

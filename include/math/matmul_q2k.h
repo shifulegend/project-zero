@@ -41,8 +41,8 @@ extern "C" {
  *   out_dim — output dimension
  *   tp      — thread pool (NULL → single-threaded)
  */
-void parallel_matvec_q2k(float *out, const float *inp, const uint8_t *w,
-                          int in_dim, int out_dim, ThreadPool *tp);
+void parallel_matvec_q2k(float *out, const float *inp, const uint8_t *w, int in_dim, int out_dim,
+                         ThreadPool *tp);
 
 #ifdef __cplusplus
 }

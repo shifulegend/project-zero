@@ -10,7 +10,7 @@
 static void test_mmap_roundtrip(void) {
     /* Write a temp file */
     const char *tmppath = "/tmp/tn_test_mmap.bin";
-    FILE *f = fopen(tmppath, "wb");
+    FILE *f             = fopen(tmppath, "wb");
     TEST_ASSERT(f != NULL, "create temp file");
 
     tn_u8 data[256];
@@ -27,9 +27,12 @@ static void test_mmap_roundtrip(void) {
 
     /* Read back */
     tn_u8 *mapped = (tn_u8 *)mf.data;
-    int match = 1;
+    int match     = 1;
     for (int i = 0; i < 256; i++) {
-        if (mapped[i] != (tn_u8)i) { match = 0; break; }
+        if (mapped[i] != (tn_u8)i) {
+            match = 0;
+            break;
+        }
     }
     TEST_ASSERT(match, "mapped data matches written data");
 

@@ -11,7 +11,7 @@ int net_write_all(int fd, const void *buf, size_t len) {
             if (errno == EINTR) continue;
             return -1;
         }
-        if (n == 0) return -1;      /* no progress: treat as failure, never spin */
+        if (n == 0) return -1; /* no progress: treat as failure, never spin */
         p += (size_t)n;
         len -= (size_t)n;
     }

@@ -55,9 +55,8 @@
  *                            (after full acceptance).
  */
 void accept_reject_round(const int *draft_tokens, const float *draft_logits,
-                          const float *verify_check_logits, const float *bonus_logits,
-                          int spec_length, int vocab_size, float temperature,
-                          unsigned long long *rng_state,
-                          int *n_accept, int *emit_token);
+                         const float *verify_check_logits, const float *bonus_logits,
+                         int spec_length, int vocab_size, float temperature,
+                         unsigned long long *rng_state, int *n_accept, int *emit_token);
 
 #endif /* TN_SPECULATIVE_ACCEPT_REJECT_H */

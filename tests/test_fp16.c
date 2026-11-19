@@ -5,9 +5,20 @@
 #include "core/fp16.h"
 
 static int g_fail;
-#define CHECK(c, msg) do { if (!(c)) { printf("FAIL: %s\n", msg); g_fail++; } else printf("ok: %s\n", msg); } while (0)
+#define CHECK(c, msg)                                                                              \
+    do {                                                                                           \
+        if (!(c)) {                                                                                \
+            printf("FAIL: %s\n", msg);                                                             \
+            g_fail++;                                                                              \
+        } else                                                                                     \
+            printf("ok: %s\n", msg);                                                               \
+    } while (0)
 
-static uint32_t bits_of(float f) { uint32_t u; memcpy(&u, &f, 4); return u; }
+static uint32_t bits_of(float f) {
+    uint32_t u;
+    memcpy(&u, &f, 4);
+    return u;
+}
 
 int main(void) {
     int bad_value = 0, bad_special = 0, bad_sub = 0, subs = 0;
@@ -15,8 +26,12 @@ int main(void) {
         int s = (int)(h >> 15), e = (int)((h >> 10) & 0x1f), m = (int)(h & 0x3ff);
         float got = tn_fp16_to_f32((uint16_t)h);
         if (e == 31) {
-            if (m == 0) { if (!(isinf(got) && (signbit(got) != 0) == s)) bad_special++; }
-            else { if (!isnan(got) || ((bits_of(got) & 0x7fffffu) != ((uint32_t)m << 13))) bad_special++; }
+            if (m == 0) {
+                if (!(isinf(got) && (signbit(got) != 0) == s)) bad_special++;
+            } else {
+                if (!isnan(got) || ((bits_of(got) & 0x7fffffu) != ((uint32_t)m << 13)))
+                    bad_special++;
+            }
             continue;
         }
         /* exact value: normal (1024+m)*2^(e-25), subnormal m*2^-24; both exactly representable in float */

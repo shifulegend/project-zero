@@ -24,9 +24,9 @@ static float *read_f16_block(const void *base, size_t sz, size_t *off, size_t co
  * .lora.bin format doc's "in LoRaTargetBit order" note. */
 typedef struct {
     LoRaTargetBit bit;
-    LoRAModule  **field;   /* &lora->q, &lora->k, ... */
-    int           n;       /* A's row width (base model's input dim for this module) */
-    int           d;       /* B's row count (base model's output dim for this module) */
+    LoRAModule **field; /* &lora->q, &lora->k, ... */
+    int n;              /* A's row width (base model's input dim for this module) */
+    int d;              /* B's row count (base model's output dim for this module) */
 } LoraTargetSpec;
 
 static void free_module_array(LoRAModule *arr, int n_layers) {
@@ -38,13 +38,13 @@ static void free_module_array(LoRAModule *arr, int n_layers) {
     free(arr);
 }
 
-TernaryError lora_load(LoRAWeights *lora, const char *path,
-                        int dim, int kv_dim, int hidden_dim, int n_layers) {
+TernaryError lora_load(LoRAWeights *lora, const char *path, int dim, int kv_dim, int hidden_dim,
+                       int n_layers) {
     return lora_load_ex(lora, path, dim, dim, kv_dim, hidden_dim, n_layers);
 }
 
-TernaryError lora_load_ex(LoRAWeights *lora, const char *path, int dim, int q_dim,
-                          int kv_dim, int hidden_dim, int n_layers) {
+TernaryError lora_load_ex(LoRAWeights *lora, const char *path, int dim, int q_dim, int kv_dim,
+                          int hidden_dim, int n_layers) {
     if (!lora || !path) return TN_ERR_INVALID_ARGS;
     if (q_dim <= 0) q_dim = dim;
     memset(lora, 0, sizeof(*lora));
@@ -56,8 +56,8 @@ TernaryError lora_load_ex(LoRAWeights *lora, const char *path, int dim, int q_di
         return err;
     }
 
-    const void *d  = mf.data;
-    size_t      sz = mf.size;
+    const void *d = mf.data;
+    size_t sz     = mf.size;
 
     if (sz < 64) {
         fprintf(stderr, "[lora] file too small\n");
@@ -66,35 +66,36 @@ TernaryError lora_load_ex(LoRAWeights *lora, const char *path, int dim, int q_di
 
     uint32_t magic = tn_rd_u32(d, 0);
     if (magic != LORA_BIN_MAGIC) {
-        fprintf(stderr, "[lora] bad magic 0x%08X (expected 0x%08X)\n",
-                magic, LORA_BIN_MAGIC);
+        fprintf(stderr, "[lora] bad magic 0x%08X (expected 0x%08X)\n", magic, LORA_BIN_MAGIC);
         goto fail;
     }
 
-    int   file_n_layers = tn_rd_i32(d, 8);
-    int   rank           = tn_rd_i32(d, 12);
-    float alpha           = tn_rd_f32(d, 16);
-    int   file_dim        = tn_rd_i32(d, 20);
-    int   file_hidden_dim = tn_rd_i32(d, 24);
-    int   target_mask     = tn_rd_i32(d, 28);
-    int   file_kv_dim      = tn_rd_i32(d, 32);
-    int   file_q_dim       = tn_rd_i32(d, 36);
-    if (file_q_dim == 0) file_q_dim = file_dim;   /* pre-2026-10-19 files */
+    int file_n_layers   = tn_rd_i32(d, 8);
+    int rank            = tn_rd_i32(d, 12);
+    float alpha         = tn_rd_f32(d, 16);
+    int file_dim        = tn_rd_i32(d, 20);
+    int file_hidden_dim = tn_rd_i32(d, 24);
+    int target_mask     = tn_rd_i32(d, 28);
+    int file_kv_dim     = tn_rd_i32(d, 32);
+    int file_q_dim      = tn_rd_i32(d, 36);
+    if (file_q_dim == 0) file_q_dim = file_dim; /* pre-2026-10-19 files */
 
-    if (file_n_layers < 1 || file_n_layers > 512 || rank < 1 || rank > 4096 ||
-        file_dim < 1 || file_dim > 65536 || file_hidden_dim < 0 || file_hidden_dim > 262144 ||
-        file_kv_dim < 1 || file_kv_dim > 65536 || file_q_dim < 1 || file_q_dim > 262144) {
-        fprintf(stderr, "[lora] invalid header (n_layers=%d rank=%d dim=%d kv_dim=%d hidden_dim=%d)\n",
+    if (file_n_layers < 1 || file_n_layers > 512 || rank < 1 || rank > 4096 || file_dim < 1 ||
+        file_dim > 65536 || file_hidden_dim < 0 || file_hidden_dim > 262144 || file_kv_dim < 1 ||
+        file_kv_dim > 65536 || file_q_dim < 1 || file_q_dim > 262144) {
+        fprintf(stderr,
+                "[lora] invalid header (n_layers=%d rank=%d dim=%d kv_dim=%d hidden_dim=%d)\n",
                 file_n_layers, rank, file_dim, file_kv_dim, file_hidden_dim);
         goto fail;
     }
     if (file_n_layers != n_layers || file_dim != dim || file_hidden_dim != hidden_dim ||
         file_kv_dim != kv_dim || file_q_dim != q_dim) {
-        fprintf(stderr, "[lora] '%s' was built for a different base model "
+        fprintf(stderr,
+                "[lora] '%s' was built for a different base model "
                 "(file: n_layers=%d dim=%d q_dim=%d kv_dim=%d hidden_dim=%d; "
                 "model: n_layers=%d dim=%d q_dim=%d kv_dim=%d hidden_dim=%d)\n",
-                path, file_n_layers, file_dim, file_q_dim, file_kv_dim, file_hidden_dim,
-                n_layers, dim, q_dim, kv_dim, hidden_dim);
+                path, file_n_layers, file_dim, file_q_dim, file_kv_dim, file_hidden_dim, n_layers,
+                dim, q_dim, kv_dim, hidden_dim);
         goto fail;
     }
 
@@ -112,13 +113,13 @@ TernaryError lora_load_ex(LoRAWeights *lora, const char *path, int dim, int q_di
      * on this project's own demo model (n_kv_heads=3 < n_heads=9), see
      * docs/ai/mistakes.md, 2026-09-24 entry. */
     const LoraTargetSpec specs[LORA_TARGET_COUNT] = {
-        { LORA_TARGET_Q,    &lora->q,    dim,        q_dim      },
-        { LORA_TARGET_K,    &lora->k,    dim,        kv_dim     },
-        { LORA_TARGET_V,    &lora->v,    dim,        kv_dim     },
-        { LORA_TARGET_O,    &lora->o,    q_dim,      dim        },
-        { LORA_TARGET_GATE, &lora->gate, dim,        hidden_dim },
-        { LORA_TARGET_UP,   &lora->up,   dim,        hidden_dim },
-        { LORA_TARGET_DOWN, &lora->down, hidden_dim, dim        },
+        {LORA_TARGET_Q, &lora->q, dim, q_dim},
+        {LORA_TARGET_K, &lora->k, dim, kv_dim},
+        {LORA_TARGET_V, &lora->v, dim, kv_dim},
+        {LORA_TARGET_O, &lora->o, q_dim, dim},
+        {LORA_TARGET_GATE, &lora->gate, dim, hidden_dim},
+        {LORA_TARGET_UP, &lora->up, dim, hidden_dim},
+        {LORA_TARGET_DOWN, &lora->down, hidden_dim, dim},
     };
 
     size_t off = 64;
@@ -127,14 +128,24 @@ TernaryError lora_load_ex(LoRAWeights *lora, const char *path, int dim, int q_di
         if (!(target_mask & (1 << specs[t].bit))) continue;
 
         LoRAModule *arr = (LoRAModule *)calloc((size_t)n_layers, sizeof(LoRAModule));
-        if (!arr) { fprintf(stderr, "[lora] OOM allocating module array\n"); goto fail_free; }
+        if (!arr) {
+            fprintf(stderr, "[lora] OOM allocating module array\n");
+            goto fail_free;
+        }
         *specs[t].field = arr;
 
         for (int l = 0; l < n_layers; l++) {
             float *A = read_f16_block(d, sz, &off, (size_t)rank * specs[t].n);
-            if (!A) { fprintf(stderr, "[lora] truncated/OOM reading target %d layer %d A\n", t, l); goto fail_free; }
+            if (!A) {
+                fprintf(stderr, "[lora] truncated/OOM reading target %d layer %d A\n", t, l);
+                goto fail_free;
+            }
             float *B = read_f16_block(d, sz, &off, (size_t)specs[t].d * rank);
-            if (!B) { free(A); fprintf(stderr, "[lora] truncated/OOM reading target %d layer %d B\n", t, l); goto fail_free; }
+            if (!B) {
+                free(A);
+                fprintf(stderr, "[lora] truncated/OOM reading target %d layer %d B\n", t, l);
+                goto fail_free;
+            }
             arr[l].A     = A;
             arr[l].B     = B;
             arr[l].rank  = rank;
@@ -146,12 +157,12 @@ TernaryError lora_load_ex(LoRAWeights *lora, const char *path, int dim, int q_di
     return TN_OK;
 
 fail_free:
-    free_module_array(lora->q,    n_layers);
-    free_module_array(lora->k,    n_layers);
-    free_module_array(lora->v,    n_layers);
-    free_module_array(lora->o,    n_layers);
+    free_module_array(lora->q, n_layers);
+    free_module_array(lora->k, n_layers);
+    free_module_array(lora->v, n_layers);
+    free_module_array(lora->o, n_layers);
     free_module_array(lora->gate, n_layers);
-    free_module_array(lora->up,   n_layers);
+    free_module_array(lora->up, n_layers);
     free_module_array(lora->down, n_layers);
     memset(lora, 0, sizeof(*lora));
 fail:
@@ -161,12 +172,12 @@ fail:
 
 void lora_free(LoRAWeights *lora) {
     if (!lora) return;
-    free_module_array(lora->q,    lora->n_layers);
-    free_module_array(lora->k,    lora->n_layers);
-    free_module_array(lora->v,    lora->n_layers);
-    free_module_array(lora->o,    lora->n_layers);
+    free_module_array(lora->q, lora->n_layers);
+    free_module_array(lora->k, lora->n_layers);
+    free_module_array(lora->v, lora->n_layers);
+    free_module_array(lora->o, lora->n_layers);
     free_module_array(lora->gate, lora->n_layers);
-    free_module_array(lora->up,   lora->n_layers);
+    free_module_array(lora->up, lora->n_layers);
     free_module_array(lora->down, lora->n_layers);
     memset(lora, 0, sizeof(*lora));
 }

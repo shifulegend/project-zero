@@ -20,13 +20,12 @@
  * whether the base weight matrix is ternary/Q4_K/F16/Q2_0/F32 -- unlike a
  * fused per-format kernel, it never needs to know.
  */
-void lora_apply(float *out, const float *x, const LoRAModule *mod,
-                 int n, int d, ThreadPool *tp);
+void lora_apply(float *out, const float *x, const LoRAModule *mod, int n, int d, ThreadPool *tp);
 
 /* lora_apply() on each of n_tokens rows (out row stride d, x row stride n):
  * the batched speculative-decoding verify pass (2026-10-19 — it skipped the
  * adapter, so --lora + --draft-model verified against the base model). */
-void lora_apply_batch(float *out, const float *x, const LoRAModule *mod,
-                      int n, int d, int n_tokens, ThreadPool *tp);
+void lora_apply_batch(float *out, const float *x, const LoRAModule *mod, int n, int d, int n_tokens,
+                      ThreadPool *tp);
 
 #endif /* TN_LORA_MATMUL_H */

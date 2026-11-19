@@ -18,7 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include <unistd.h>  /* unlink */
+#include <unistd.h> /* unlink */
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 
@@ -33,7 +33,8 @@ static void make_unit_vec(float *v, int dim, int hot) {
 static void make_normed_vec(float *v, int dim, float val) {
     for (int i = 0; i < dim; i++) v[i] = val;
     float norm = sqrtf((float)dim * val * val);
-    if (norm > 1e-9f) for (int i = 0; i < dim; i++) v[i] /= norm;
+    if (norm > 1e-9f)
+        for (int i = 0; i < dim; i++) v[i] /= norm;
 }
 
 static const char *TMP_DB = "/tmp/test_rag_phase15.vrdb";
@@ -78,7 +79,7 @@ static void test_db_store_and_reload(void) {
 
     const char *t0 = vector_db_text(&db, 0);
     const char *t1 = vector_db_text(&db, 1);
-    TEST_ASSERT(t0 && strcmp(t0, "Hello world")  == 0, "text[0] correct");
+    TEST_ASSERT(t0 && strcmp(t0, "Hello world") == 0, "text[0] correct");
     TEST_ASSERT(t1 && strcmp(t1, "Second entry") == 0, "text[1] correct");
     vector_db_close(&db);
 
@@ -88,7 +89,7 @@ static void test_db_store_and_reload(void) {
 
     t0 = vector_db_text(&db, 0);
     t1 = vector_db_text(&db, 1);
-    TEST_ASSERT(t0 && strcmp(t0, "Hello world")  == 0, "reloaded text[0]");
+    TEST_ASSERT(t0 && strcmp(t0, "Hello world") == 0, "reloaded text[0]");
     TEST_ASSERT(t1 && strcmp(t1, "Second entry") == 0, "reloaded text[1]");
 
     /* Verify embedding round-trips */
@@ -120,10 +121,10 @@ static void test_db_dim_mismatch(void) {
 static void test_db_out_of_bounds_text(void) {
     VectorDB db;
     memset(&db, 0, sizeof(db));
-    db.embed_dim    = 4;
-    db.num_entries  = 0;
+    db.embed_dim   = 4;
+    db.num_entries = 0;
 
-    TEST_ASSERT(vector_db_text(&db, 0)  == NULL, "OOB index returns NULL");
+    TEST_ASSERT(vector_db_text(&db, 0) == NULL, "OOB index returns NULL");
     TEST_ASSERT(vector_db_text(&db, -1) == NULL, "negative index returns NULL");
 }
 
@@ -170,13 +171,13 @@ static void test_top_k_basic(void) {
     /* Three unit vectors (one-hot in positions 0, 1, 2) */
     float db_embs[12];
     memset(db_embs, 0, sizeof(db_embs));
-    db_embs[0] = 1.0f; /* entry 0: hot at 0 */
-    db_embs[5] = 1.0f; /* entry 1: hot at 1 */
-    db_embs[10]= 1.0f; /* entry 2: hot at 2 */
+    db_embs[0]  = 1.0f; /* entry 0: hot at 0 */
+    db_embs[5]  = 1.0f; /* entry 1: hot at 1 */
+    db_embs[10] = 1.0f; /* entry 2: hot at 2 */
 
     /* Query hot at 1 → entry 1 should be rank-0 */
     float query[4] = {0.0f, 1.0f, 0.0f, 0.0f};
-    int   idx[3];
+    int idx[3];
     float scores[3];
     int found = rag_find_top_k(query, db_embs, 3, dim, 3, idx, scores);
 
@@ -188,10 +189,10 @@ static void test_top_k_basic(void) {
 
 static void test_top_k_k_larger_than_entries(void) {
     tn_simd_init();
-    int dim = 4;
+    int dim          = 4;
     float db_embs[4] = {1.0f, 0.0f, 0.0f, 0.0f}; /* single entry */
     float query[4]   = {1.0f, 0.0f, 0.0f, 0.0f};
-    int   idx[5];
+    int idx[5];
     float scores[5];
     int found = rag_find_top_k(query, db_embs, 1, dim, 5, idx, scores);
     TEST_ASSERT(found == 1, "k=5 with 1 entry → 1 result");
@@ -201,7 +202,7 @@ static void test_top_k_k_larger_than_entries(void) {
 static void test_top_k_empty_db(void) {
     tn_simd_init();
     float query[4] = {1.0f, 0.0f, 0.0f, 0.0f};
-    int   idx[3];
+    int idx[3];
     float scores[3];
     int found = rag_find_top_k(query, NULL, 0, 4, 3, idx, scores);
     TEST_ASSERT(found == 0, "empty DB → 0 results");
@@ -245,8 +246,7 @@ static void test_auto_save_distinct_vectors_not_duped(void) {
     make_unit_vec(b, dim, 4); /* orthogonal */
 
     float sim = rag_cosine_similarity(a, b, dim);
-    TEST_ASSERT(sim < AUTO_SAVE_DEDUP_THRESHOLD,
-                "orthogonal vectors are not duplicates");
+    TEST_ASSERT(sim < AUTO_SAVE_DEDUP_THRESHOLD, "orthogonal vectors are not duplicates");
 }
 
 /* ── Incremental DB append test ──────────────────────────────────────────── */
@@ -292,7 +292,7 @@ static void test_db_incremental_append(void) {
 static void test_db_long_text_truncated(void) {
     unlink(TMP_DB);
 
-    int dim = 4;
+    int dim    = 4;
     float v[4] = {1.0f, 0.0f, 0.0f, 0.0f};
 
     /* Build a string longer than VRDB_MAX_TEXT */

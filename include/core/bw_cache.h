@@ -19,7 +19,7 @@
 
 #include <stddef.h>
 
-#define TN_BW_CACHE_MAX_AGE_S (30L * 24 * 3600)   /* re-measure monthly */
+#define TN_BW_CACHE_MAX_AGE_S (30L * 24 * 3600) /* re-measure monthly */
 
 /* Host fingerprint string. Returns 0, or -1 if buf is too small. */
 int tn_bw_cache_key(char *buf, size_t n, const char *cpu_model, int physical_cores,

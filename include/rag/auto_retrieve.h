@@ -50,14 +50,9 @@ extern "C" {
  * @return             Number of tokens injected (≥ 0), or -1 on error.
  *                     0 means no relevant memories found or budget exceeded.
  */
-int auto_retrieve_and_inject(const char *user_prompt,
-                             VectorDB *db,
-                             const Config *cfg,
-                             const TransformerWeights *w,
-                             RunState *s,
-                             Embedder *emb,
-                             Tokenizer *tok,
-                             ThreadPool *tp);
+int auto_retrieve_and_inject(const char *user_prompt, VectorDB *db, const Config *cfg,
+                             const TransformerWeights *w, RunState *s, Embedder *emb,
+                             Tokenizer *tok, ThreadPool *tp);
 
 #ifdef __cplusplus
 }

@@ -20,7 +20,7 @@
 #include "transformer/embedding.h"
 #include "transformer/ffn.h"
 #include "core/hardware_profile.h"
-#include "speculative/spec_scratch.h"   /* reads the batch scratch fields */
+#include "speculative/spec_scratch.h" /* reads the batch scratch fields */
 
 /*
  * Lightweight per-component profiling, activated by TN_PROFILE=1.
@@ -39,101 +39,102 @@ static inline int64_t prof_now(void) {
     return (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec;
 }
 
-float *transformer_forward(int token, int pos, const Config *cfg,
-                           const TransformerWeights *w, RunState *s,
-                           const MoEConfig *mc, ThreadPool *tp) {
-  int dim = cfg->dim;
+float *transformer_forward(int token, int pos, const Config *cfg, const TransformerWeights *w,
+                           RunState *s, const MoEConfig *mc, ThreadPool *tp) {
+    int dim = cfg->dim;
 
-  /* 2026-10-18: a RunState whose sliding window was never initialised maps
+    /* 2026-10-18: a RunState whose sliding window was never initialised maps
    * every position to slot 0 (garbage attention). generate_ex() sets it up,
    * but direct callers (the Phase 28 worker, --perplexity) got it wrong
    * twice — default to a plain window over the whole cache instead. */
-  if (s->sw.window_size == 0) sw_init(&s->sw, s->max_seq_len, 0);
+    if (s->sw.window_size == 0) sw_init(&s->sw, s->max_seq_len, 0);
 
-  /* One-time check for profiling env var */
-  if (g_profile_enabled < 0) {
-      const char *env = getenv("TN_PROFILE");
-      g_profile_enabled = (env && env[0] == '1') ? 1 : 0;
-  }
+    /* One-time check for profiling env var */
+    if (g_profile_enabled < 0) {
+        const char *env   = getenv("TN_PROFILE");
+        g_profile_enabled = (env && env[0] == '1') ? 1 : 0;
+    }
 
-  int64_t t0 = 0, t1 = 0, t2 = 0, t3 = 0, t4 = 0;
-  if (g_profile_enabled) t0 = prof_now();
+    int64_t t0 = 0, t1 = 0, t2 = 0, t3 = 0, t4 = 0;
+    if (g_profile_enabled) t0 = prof_now();
 
     /* Step 1: Embed token → s->x (skip if token < 0, assuming caller injected s->x) */
     if (token >= 0) {
-      if (token >= cfg->vocab_size) {
-          return s->logits;
-      }
-      int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-      if (w->q35_is_q2_0_model) {
-        embed_token_q2_0(s->x, token, w->q35_token_embd_raw, dim);
-      } else {
-        embed_token(s->x, token, w->embd_f32, w->token_embedding_table, dim);
-      }
-      if (t_step) {
-          tn_step_timing_add(TN_STEP_3_TOKEN_EMBEDDING,
-                             tn_step_timing_now_ns() - t_step);
-      }
-      DBG_MSG("token=%d  pos=%d\n", token, pos);
+        if (token >= cfg->vocab_size) {
+            return s->logits;
+        }
+        int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+        if (w->q35_is_q2_0_model) {
+            embed_token_q2_0(s->x, token, w->q35_token_embd_raw, dim);
+        } else {
+            embed_token(s->x, token, w->embd_f32, w->token_embedding_table, dim);
+        }
+        if (t_step) {
+            tn_step_timing_add(TN_STEP_3_TOKEN_EMBEDDING, tn_step_timing_now_ns() - t_step);
+        }
+        DBG_MSG("token=%d  pos=%d\n", token, pos);
     }
 
-  if (g_profile_enabled) t1 = prof_now();
+    if (g_profile_enabled) t1 = prof_now();
 
     /* Step 2: Run through all transformer layers */
     DistPlan *dist = dist_plan_active();
     for (int l = 0; l < cfg->n_layers; l++) {
-      /* Phase 28: a contiguous range assigned to a remote worker runs there. */
-      RemoteNode *rn = dist ? dist_plan_node_starting_at(dist, l) : NULL;
-      if (rn) {
-        if (dist_forward_remote(dist, rn, s->x, pos, s->sw.system_prompt_len) != TN_OK)
-          return s->logits;
-        l = rn->end - 1;
-        continue;
-      }
-      int64_t la = 0, lb = 0;
-      if (g_profile_enabled) la = prof_now();
-      if (mc && mc->is_ssm) {
-        /* Phase 22-SSM: a Mamba block replaces attention + FFN. */
-        mamba_block_forward(s->x, s->xb, s->xb2, s->mamba, w->mamba, cfg, mc, l, pos, tp);
-        if (g_profile_enabled) lb = prof_now();
-      } else {
-      /* Phase 31: disk-backed KV — start reading the next layer's rows now. */
-      if (s->kv_offload_base) {
-        if (l == 0) run_state_kv_prefetch_layer(s, cfg, 0, pos + 1);
-        run_state_kv_prefetch_layer(s, cfg, l + 1, pos + 1);
-      }
-      attention_forward(s, w, cfg, mc, l, pos, tp);
-      if (g_profile_enabled) lb = prof_now();
-      ffn_forward(s, w, cfg, mc, l, tp);
-      }
-      if (g_profile_enabled) { int64_t lc = prof_now(); g_prof_attn_only_ns += (lb - la); g_prof_ffn_only_ns += (lc - lb); }
-      DBG_DUMP(l, "l_out", s->x, dim);
-      if (g_tn_verbose) {
-          char tag[48];
-          snprintf(tag, sizeof(tag), "L%02d post-layer x[dim=%d]", l, dim);
-          dbg_vec_stats(tag, s->x, dim);
-      }
+        /* Phase 28: a contiguous range assigned to a remote worker runs there. */
+        RemoteNode *rn = dist ? dist_plan_node_starting_at(dist, l) : NULL;
+        if (rn) {
+            if (dist_forward_remote(dist, rn, s->x, pos, s->sw.system_prompt_len) != TN_OK)
+                return s->logits;
+            l = rn->end - 1;
+            continue;
+        }
+        int64_t la = 0, lb = 0;
+        if (g_profile_enabled) la = prof_now();
+        if (mc && mc->is_ssm) {
+            /* Phase 22-SSM: a Mamba block replaces attention + FFN. */
+            mamba_block_forward(s->x, s->xb, s->xb2, s->mamba, w->mamba, cfg, mc, l, pos, tp);
+            if (g_profile_enabled) lb = prof_now();
+        } else {
+            /* Phase 31: disk-backed KV — start reading the next layer's rows now. */
+            if (s->kv_offload_base) {
+                if (l == 0) run_state_kv_prefetch_layer(s, cfg, 0, pos + 1);
+                run_state_kv_prefetch_layer(s, cfg, l + 1, pos + 1);
+            }
+            attention_forward(s, w, cfg, mc, l, pos, tp);
+            if (g_profile_enabled) lb = prof_now();
+            ffn_forward(s, w, cfg, mc, l, tp);
+        }
+        if (g_profile_enabled) {
+            int64_t lc = prof_now();
+            g_prof_attn_only_ns += (lb - la);
+            g_prof_ffn_only_ns += (lc - lb);
+        }
+        DBG_DUMP(l, "l_out", s->x, dim);
+        if (g_tn_verbose) {
+            char tag[48];
+            snprintf(tag, sizeof(tag), "L%02d post-layer x[dim=%d]", l, dim);
+            dbg_vec_stats(tag, s->x, dim);
+        }
     }
 
-  if (g_profile_enabled) t2 = prof_now();
+    if (g_profile_enabled) t2 = prof_now();
 
     /* Step 3: Final RMSNorm */
     if (w->rms_final_weight) {
-      int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-      tn_rmsnorm(s->x, s->x, w->rms_final_weight, dim, cfg->rms_norm_eps);
-      if (t_step) {
-          tn_step_timing_add(TN_STEP_18_FINAL_RMSNORM,
-                             tn_step_timing_now_ns() - t_step);
-      }
+        int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+        tn_rmsnorm(s->x, s->x, w->rms_final_weight, dim, cfg->rms_norm_eps);
+        if (t_step) {
+            tn_step_timing_add(TN_STEP_18_FINAL_RMSNORM, tn_step_timing_now_ns() - t_step);
+        }
     }
     DBG_DUMP(-1, "result_norm", s->x, dim);
 
-  if (g_profile_enabled) t3 = prof_now();
+    if (g_profile_enabled) t3 = prof_now();
 
-  /* Verbose: logits stats before classifier */
-  DBG_VEC("final-norm x", s->x, dim);
+    /* Verbose: logits stats before classifier */
+    DBG_VEC("final-norm x", s->x, dim);
 
-  /* Step 4: Classifier matmul → logits
+    /* Step 4: Classifier matmul → logits
    *
    * Hardware-aware dispatch via TnHardwareProfile:
    *   - INT4 when VNNI available (0.5 bytes/weight, 164 MB bandwidth)
@@ -144,122 +145,128 @@ float *transformer_forward(int token, int pos, const Config *cfg,
    * Weights are only quantized to the selected format (saves startup time).
    * Quality preserved: LM head only needs relative ordering for sampling.
    */
-  if (w->q35_is_q2_0_model) {
-    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    /* Use a materialized BF16/INT8/INT4 classifier copy when one was built
+    if (w->q35_is_q2_0_model) {
+        int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+        /* Use a materialized BF16/INT8/INT4 classifier copy when one was built
      * (only happens when the user explicitly passed --classifier — see
      * gguf_loader.c) instead of always falling back to the raw zero-copy
      * Q2_0 path regardless of the requested format (the bug this replaces;
      * see docs/ai/mistakes.md). Absent an explicit request, stay zero-copy. */
-    const TnHardwareProfile *hp_q2 = tn_hardware_profile_get();
-    TnClassifierFormat fmt_q2 = hp_q2 ? hp_q2->classifier_fmt : TN_CLS_BF16;
-    bool used_materialized = false;
-    if (hp_q2 && hp_q2->classifier_explicit) {
-      if (fmt_q2 == TN_CLS_INT4 && w->wcls_i4 && w->wcls_i4_scales) {
-        parallel_matmul_i4(s->logits, s->x, w->wcls_i4, w->wcls_i4_scales,
-                            dim, cfg->vocab_size, tp);
-        used_materialized = true;
-      } else if (fmt_q2 >= TN_CLS_INT8 && w->wcls_i8 && w->wcls_i8_scales) {
-        parallel_matmul_i8(s->logits, s->x, w->wcls_i8, w->wcls_i8_scales,
-                            dim, cfg->vocab_size, tp);
-        used_materialized = true;
-      } else if (w->wcls) {
-        parallel_matmul_bf16(s->logits, s->x, w->wcls, dim, cfg->vocab_size, tp);
-        used_materialized = true;
-      }
-    }
-    if (!used_materialized) {
-      parallel_matmul_q2_0(s->logits, s->x, (const uint8_t *)w->q35_output_raw,
-                            dim, cfg->vocab_size, tp);
-    }
-    if (t_step) {
-      tn_step_timing_add(TN_STEP_19_LM_HEAD, tn_step_timing_now_ns() - t_step);
-    }
-  } else if (w->wcls_is_ternary) {
-    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    parallel_ternary_matmul_packed(s->logits, s->x, (const tn_u8 *)w->wcls, dim, cfg->vocab_size,
-                            w->wcls_scale, tp);
-    if (t_step) {
-      tn_step_timing_add(TN_STEP_19_LM_HEAD, tn_step_timing_now_ns() - t_step);
-    }
-  } else {
-    const TnHardwareProfile *hp = tn_hardware_profile_get();
-    TnClassifierFormat fmt = hp ? hp->classifier_fmt : TN_CLS_BF16;
-    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-
-    if (w->wcls_raw && w->wcls_raw_type == GGUF_TYPE_Q6_K) {
-      /* zero-copy quantized head (2026-10-21, see weights.h) */
-      parallel_matmul_q6k(s->logits, s->x, (const uint8_t *)w->wcls_raw,
-                          dim, cfg->vocab_size, tp);
-    } else if (w->wcls_raw && w->wcls_raw_type == GGUF_TYPE_Q4_K) {
-      parallel_matmul_q4k(s->logits, s->x, (const uint8_t *)w->wcls_raw,
-                          dim, cfg->vocab_size, tp);
-    } else if (fmt == TN_CLS_INT4 && w->wcls_i4 && w->wcls_i4_scales) {
-      parallel_matmul_i4(s->logits, s->x, w->wcls_i4, w->wcls_i4_scales,
-                          dim, cfg->vocab_size, tp);
-    } else if (fmt >= TN_CLS_INT8 && w->wcls_i8 && w->wcls_i8_scales) {
-      parallel_matmul_i8(s->logits, s->x, w->wcls_i8, w->wcls_i8_scales,
-                          dim, cfg->vocab_size, tp);
+        const TnHardwareProfile *hp_q2 = tn_hardware_profile_get();
+        TnClassifierFormat fmt_q2      = hp_q2 ? hp_q2->classifier_fmt : TN_CLS_BF16;
+        bool used_materialized         = false;
+        if (hp_q2 && hp_q2->classifier_explicit) {
+            if (fmt_q2 == TN_CLS_INT4 && w->wcls_i4 && w->wcls_i4_scales) {
+                parallel_matmul_i4(s->logits, s->x, w->wcls_i4, w->wcls_i4_scales, dim,
+                                   cfg->vocab_size, tp);
+                used_materialized = true;
+            } else if (fmt_q2 >= TN_CLS_INT8 && w->wcls_i8 && w->wcls_i8_scales) {
+                parallel_matmul_i8(s->logits, s->x, w->wcls_i8, w->wcls_i8_scales, dim,
+                                   cfg->vocab_size, tp);
+                used_materialized = true;
+            } else if (w->wcls) {
+                parallel_matmul_bf16(s->logits, s->x, w->wcls, dim, cfg->vocab_size, tp);
+                used_materialized = true;
+            }
+        }
+        if (!used_materialized) {
+            parallel_matmul_q2_0(s->logits, s->x, (const uint8_t *)w->q35_output_raw, dim,
+                                 cfg->vocab_size, tp);
+        }
+        if (t_step) {
+            tn_step_timing_add(TN_STEP_19_LM_HEAD, tn_step_timing_now_ns() - t_step);
+        }
+    } else if (w->wcls_is_ternary) {
+        int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+        parallel_ternary_matmul_packed(s->logits, s->x, (const tn_u8 *)w->wcls, dim,
+                                       cfg->vocab_size, w->wcls_scale, tp);
+        if (t_step) {
+            tn_step_timing_add(TN_STEP_19_LM_HEAD, tn_step_timing_now_ns() - t_step);
+        }
     } else {
-      parallel_matmul_bf16(s->logits, s->x, w->wcls, dim, cfg->vocab_size, tp);
+        const TnHardwareProfile *hp = tn_hardware_profile_get();
+        TnClassifierFormat fmt      = hp ? hp->classifier_fmt : TN_CLS_BF16;
+        int64_t t_step              = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+
+        if (w->wcls_raw && w->wcls_raw_type == GGUF_TYPE_Q6_K) {
+            /* zero-copy quantized head (2026-10-21, see weights.h) */
+            parallel_matmul_q6k(s->logits, s->x, (const uint8_t *)w->wcls_raw, dim, cfg->vocab_size,
+                                tp);
+        } else if (w->wcls_raw && w->wcls_raw_type == GGUF_TYPE_Q4_K) {
+            parallel_matmul_q4k(s->logits, s->x, (const uint8_t *)w->wcls_raw, dim, cfg->vocab_size,
+                                tp);
+        } else if (fmt == TN_CLS_INT4 && w->wcls_i4 && w->wcls_i4_scales) {
+            parallel_matmul_i4(s->logits, s->x, w->wcls_i4, w->wcls_i4_scales, dim, cfg->vocab_size,
+                               tp);
+        } else if (fmt >= TN_CLS_INT8 && w->wcls_i8 && w->wcls_i8_scales) {
+            parallel_matmul_i8(s->logits, s->x, w->wcls_i8, w->wcls_i8_scales, dim, cfg->vocab_size,
+                               tp);
+        } else {
+            parallel_matmul_bf16(s->logits, s->x, w->wcls, dim, cfg->vocab_size, tp);
+        }
+        if (t_step) {
+            tn_step_timing_add(TN_STEP_19_LM_HEAD, tn_step_timing_now_ns() - t_step);
+        }
     }
-    if (t_step) {
-      tn_step_timing_add(TN_STEP_19_LM_HEAD, tn_step_timing_now_ns() - t_step);
+
+    /* Step 19: dump top-8 logit values + their token indices for LM head verification */
+    if (g_dump_fp) {
+        /* Find top-8 logit indices by partial selection sort */
+        float top_vals[8];
+        int top_idx[8];
+        int visited[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+        /* store top-8 by scanning vocab once per pick (8 passes, each O(vocab)) */
+        int vocab = cfg->vocab_size;
+        for (int k = 0; k < 8; k++) {
+            float best = -1e30f;
+            int bi     = 0;
+            for (int i = 0; i < vocab; i++) {
+                int already = 0;
+                for (int j = 0; j < k; j++)
+                    if (top_idx[j] == i) {
+                        already = 1;
+                        break;
+                    }
+                if (!already && s->logits[i] > best) {
+                    best = s->logits[i];
+                    bi   = i;
+                }
+            }
+            top_vals[k] = best;
+            top_idx[k]  = bi;
+            (void)visited;
+        }
+        /* Dump as a synthetic 8-element vector tagged "lm_head_top8" */
+        DBG_DUMP(-1, "lm_head_top8", top_vals, 8);
+        /* Also dump the corresponding token indices as floats for reference */
+        float idx_f[8];
+        for (int k = 0; k < 8; k++) idx_f[k] = (float)top_idx[k];
+        DBG_DUMP(-1, "lm_head_top8_idx", idx_f, 8);
     }
-  }
 
-  /* Step 19: dump top-8 logit values + their token indices for LM head verification */
-  if (g_dump_fp) {
-      /* Find top-8 logit indices by partial selection sort */
-      float top_vals[8];
-      int   top_idx[8];
-      int   visited[8] = {0,0,0,0,0,0,0,0};
-      /* store top-8 by scanning vocab once per pick (8 passes, each O(vocab)) */
-      int vocab = cfg->vocab_size;
-      for (int k = 0; k < 8; k++) {
-          float best = -1e30f; int bi = 0;
-          for (int i = 0; i < vocab; i++) {
-              int already = 0;
-              for (int j = 0; j < k; j++) if (top_idx[j] == i) { already=1; break; }
-              if (!already && s->logits[i] > best) { best = s->logits[i]; bi = i; }
-          }
-          top_vals[k] = best; top_idx[k] = bi;
-          (void)visited;
-      }
-      /* Dump as a synthetic 8-element vector tagged "lm_head_top8" */
-      DBG_DUMP(-1, "lm_head_top8", top_vals, 8);
-      /* Also dump the corresponding token indices as floats for reference */
-      float idx_f[8];
-      for (int k = 0; k < 8; k++) idx_f[k] = (float)top_idx[k];
-      DBG_DUMP(-1, "lm_head_top8_idx", idx_f, 8);
-  }
+    if (g_profile_enabled) {
+        t4 = prof_now();
+        g_prof_embed_ns += (t1 - t0);
+        g_prof_attn_ns += (t2 - t1); /* attn + ffn combined (layers) */
+        g_prof_norm_ns += (t3 - t2);
+        g_prof_cls_ns += (t4 - t3);
+        g_prof_total_ns += (t4 - t0);
+        g_prof_tokens++;
 
-  if (g_profile_enabled) {
-      t4 = prof_now();
-      g_prof_embed_ns += (t1 - t0);
-      g_prof_attn_ns  += (t2 - t1);  /* attn + ffn combined (layers) */
-      g_prof_norm_ns  += (t3 - t2);
-      g_prof_cls_ns   += (t4 - t3);
-      g_prof_total_ns += (t4 - t0);
-      g_prof_tokens++;
+        if (g_prof_tokens % 20 == 0) {
+            double ms = 1e-6;
+            fprintf(stderr,
+                    "[PROFILE %d tok] embed=%.2f ms  layers=%.2f ms "
+                    "(attn=%.2f ffn=%.2f)  "
+                    "norm=%.2f ms  classifier=%.2f ms  TOTAL=%.2f ms\n",
+                    g_prof_tokens, g_prof_embed_ns * ms / g_prof_tokens,
+                    g_prof_attn_ns * ms / g_prof_tokens, g_prof_attn_only_ns * ms / g_prof_tokens,
+                    g_prof_ffn_only_ns * ms / g_prof_tokens, g_prof_norm_ns * ms / g_prof_tokens,
+                    g_prof_cls_ns * ms / g_prof_tokens, g_prof_total_ns * ms / g_prof_tokens);
+        }
+    }
 
-      if (g_prof_tokens % 20 == 0) {
-          double ms = 1e-6;
-          fprintf(stderr, "[PROFILE %d tok] embed=%.2f ms  layers=%.2f ms "
-                  "(attn=%.2f ffn=%.2f)  "
-                  "norm=%.2f ms  classifier=%.2f ms  TOTAL=%.2f ms\n",
-                  g_prof_tokens,
-                  g_prof_embed_ns * ms / g_prof_tokens,
-                  g_prof_attn_ns  * ms / g_prof_tokens,
-                  g_prof_attn_only_ns * ms / g_prof_tokens,
-                  g_prof_ffn_only_ns * ms / g_prof_tokens,
-                  g_prof_norm_ns  * ms / g_prof_tokens,
-                  g_prof_cls_ns   * ms / g_prof_tokens,
-                  g_prof_total_ns * ms / g_prof_tokens);
-      }
-  }
-
-  return s->logits;
+    return s->logits;
 }
 
 /* Final RMSNorm + classifier over n_tokens rows of sb->x -> logits_out
@@ -268,51 +275,50 @@ float *transformer_forward(int token, int pos, const Config *cfg,
 static void forward_rows_logits(SpecBatchScratch *sb, const TransformerWeights *w,
                                 const Config *cfg, int n_tokens, ThreadPool *tp,
                                 float *logits_out) {
-  int dim = cfg->dim;
-  /* final RMSNorm, per token (per-row statistic, not batchable) */
-  int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-  if (w->rms_final_weight) {
-    for (int k = 0; k < n_tokens; k++) {
-      float *x_k = sb->x + (size_t)k * dim;
-      tn_rmsnorm(x_k, x_k, w->rms_final_weight, dim, cfg->rms_norm_eps);
+    int dim = cfg->dim;
+    /* final RMSNorm, per token (per-row statistic, not batchable) */
+    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    if (w->rms_final_weight) {
+        for (int k = 0; k < n_tokens; k++) {
+            float *x_k = sb->x + (size_t)k * dim;
+            tn_rmsnorm(x_k, x_k, w->rms_final_weight, dim, cfg->rms_norm_eps);
+        }
     }
-  }
-  if (t_step) {
-    tn_step_timing_add(TN_STEP_18_FINAL_RMSNORM, tn_step_timing_now_ns() - t_step);
-  }
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_18_FINAL_RMSNORM, tn_step_timing_now_ns() - t_step);
+    }
 
-  /* classifier matmul -> logits_out, batched. Mirrors
+    /* classifier matmul -> logits_out, batched. Mirrors
    * transformer_forward()'s non-q35 branches (wcls_is_ternary, then the
    * hardware-profile-selected INT4/INT8/BF16 generic path); the
    * q35_is_q2_0_model branch there is unreachable here (see Step 1). */
-  t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-  if (w->wcls_is_ternary) {
-    tn_ternary_matmul_packed_batch(logits_out, sb->x, (const tn_u8 *)w->wcls,
-                                    dim, cfg->vocab_size, w->wcls_scale, n_tokens, tp);
-  } else {
-    const TnHardwareProfile *hp = tn_hardware_profile_get();
-    TnClassifierFormat fmt = hp ? hp->classifier_fmt : TN_CLS_BF16;
-
-    if (w->wcls_raw && w->wcls_raw_type == GGUF_TYPE_Q6_K) {
-      parallel_matmul_q6k_tokens(logits_out, sb->x, (const uint8_t *)w->wcls_raw,
-                                 dim, cfg->vocab_size, n_tokens, tp);
-    } else if (w->wcls_raw && w->wcls_raw_type == GGUF_TYPE_Q4_K) {
-      parallel_matmul_q4k_tokens(logits_out, sb->x, (const uint8_t *)w->wcls_raw,
-                                 dim, cfg->vocab_size, n_tokens, tp);
-    } else if (fmt == TN_CLS_INT4 && w->wcls_i4 && w->wcls_i4_scales) {
-      tn_matmul_i4_batch(logits_out, sb->x, w->wcls_i4, w->wcls_i4_scales,
-                          dim, cfg->vocab_size, n_tokens, tp);
-    } else if (fmt >= TN_CLS_INT8 && w->wcls_i8 && w->wcls_i8_scales) {
-      tn_matmul_i8_batch(logits_out, sb->x, w->wcls_i8, w->wcls_i8_scales,
-                          dim, cfg->vocab_size, n_tokens, tp);
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    if (w->wcls_is_ternary) {
+        tn_ternary_matmul_packed_batch(logits_out, sb->x, (const tn_u8 *)w->wcls, dim,
+                                       cfg->vocab_size, w->wcls_scale, n_tokens, tp);
     } else {
-      tn_matmul_bf16_batch(logits_out, sb->x, w->wcls, dim, cfg->vocab_size, n_tokens, tp);
-    }
-  }
-  if (t_step) {
-    tn_step_timing_add(TN_STEP_19_LM_HEAD, tn_step_timing_now_ns() - t_step);
-  }
+        const TnHardwareProfile *hp = tn_hardware_profile_get();
+        TnClassifierFormat fmt      = hp ? hp->classifier_fmt : TN_CLS_BF16;
 
+        if (w->wcls_raw && w->wcls_raw_type == GGUF_TYPE_Q6_K) {
+            parallel_matmul_q6k_tokens(logits_out, sb->x, (const uint8_t *)w->wcls_raw, dim,
+                                       cfg->vocab_size, n_tokens, tp);
+        } else if (w->wcls_raw && w->wcls_raw_type == GGUF_TYPE_Q4_K) {
+            parallel_matmul_q4k_tokens(logits_out, sb->x, (const uint8_t *)w->wcls_raw, dim,
+                                       cfg->vocab_size, n_tokens, tp);
+        } else if (fmt == TN_CLS_INT4 && w->wcls_i4 && w->wcls_i4_scales) {
+            tn_matmul_i4_batch(logits_out, sb->x, w->wcls_i4, w->wcls_i4_scales, dim,
+                               cfg->vocab_size, n_tokens, tp);
+        } else if (fmt >= TN_CLS_INT8 && w->wcls_i8 && w->wcls_i8_scales) {
+            tn_matmul_i8_batch(logits_out, sb->x, w->wcls_i8, w->wcls_i8_scales, dim,
+                               cfg->vocab_size, n_tokens, tp);
+        } else {
+            tn_matmul_bf16_batch(logits_out, sb->x, w->wcls, dim, cfg->vocab_size, n_tokens, tp);
+        }
+    }
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_19_LM_HEAD, tn_step_timing_now_ns() - t_step);
+    }
 }
 
 /* ── Phase 18 (speculative decoding): batched multi-token forward pass ─────
@@ -332,50 +338,49 @@ static void forward_rows_logits(SpecBatchScratch *sb, const TransformerWeights *
  * sequential vs. batched" is directly comparable from one report. DBG_DUMP
  * and TN_PROFILE remain single-token-only (no batched analogue defined for
  * either; not needed for this function's correctness). */
-TernaryError transformer_forward_batch(const int *tokens, int pos, int n_tokens,
-                                        const Config *cfg, const TransformerWeights *w,
-                                        RunState *s, SpecBatchScratch *sb,
-                                        const MoEConfig *mc, ThreadPool *tp,
-                                        float *logits_out) {
-  if (s->sw.window_size == 0) sw_init(&s->sw, s->max_seq_len, 0); /* see transformer_forward */
-  if (moe_is_recurrent(mc) || dist_plan_active()) {
-    return TN_ERR_UNSUPPORTED;
-  }
-
-  int dim = cfg->dim;
-
-  /* Step 1: embed all tokens into sb->x */
-  for (int k = 0; k < n_tokens; k++) {
-    int token = tokens[k];
-    if (token < 0 || token >= cfg->vocab_size) {
-      memset(sb->x + (size_t)k * dim, 0, (size_t)dim * sizeof(float));
-      continue;
+TernaryError transformer_forward_batch(const int *tokens, int pos, int n_tokens, const Config *cfg,
+                                       const TransformerWeights *w, RunState *s,
+                                       SpecBatchScratch *sb, const MoEConfig *mc, ThreadPool *tp,
+                                       float *logits_out) {
+    if (s->sw.window_size == 0) sw_init(&s->sw, s->max_seq_len, 0); /* see transformer_forward */
+    if (moe_is_recurrent(mc) || dist_plan_active()) {
+        return TN_ERR_UNSUPPORTED;
     }
-    if (w->q35_is_q2_0_model) {
-      /* Unreachable in practice: q35_is_q2_0_model models always have
+
+    int dim = cfg->dim;
+
+    /* Step 1: embed all tokens into sb->x */
+    for (int k = 0; k < n_tokens; k++) {
+        int token = tokens[k];
+        if (token < 0 || token >= cfg->vocab_size) {
+            memset(sb->x + (size_t)k * dim, 0, (size_t)dim * sizeof(float));
+            continue;
+        }
+        if (w->q35_is_q2_0_model) {
+            /* Unreachable in practice: q35_is_q2_0_model models always have
        * has_linear_attn set (see gguf_loader.c's Qwen3.5/3.6 loader),
        * already refused above. Handled anyway for defense-in-depth rather
        * than assuming the correlation always holds. */
-      embed_token_q2_0(sb->x + (size_t)k * dim, token, w->q35_token_embd_raw, dim);
-    } else {
-      embed_token(sb->x + (size_t)k * dim, token, w->embd_f32, w->token_embedding_table, dim);
+            embed_token_q2_0(sb->x + (size_t)k * dim, token, w->q35_token_embd_raw, dim);
+        } else {
+            embed_token(sb->x + (size_t)k * dim, token, w->embd_f32, w->token_embedding_table, dim);
+        }
     }
-  }
 
-  /* Step 2: run through all transformer layers */
-  for (int l = 0; l < cfg->n_layers; l++) {
-    if (s->kv_offload_base) {
-      if (l == 0) run_state_kv_prefetch_layer(s, cfg, 0, pos + n_tokens);
-      run_state_kv_prefetch_layer(s, cfg, l + 1, pos + n_tokens);
+    /* Step 2: run through all transformer layers */
+    for (int l = 0; l < cfg->n_layers; l++) {
+        if (s->kv_offload_base) {
+            if (l == 0) run_state_kv_prefetch_layer(s, cfg, 0, pos + n_tokens);
+            run_state_kv_prefetch_layer(s, cfg, l + 1, pos + n_tokens);
+        }
+        TernaryError err = attention_forward_batch(s, sb, w, cfg, mc, l, pos, n_tokens, tp);
+        if (err != TN_OK) return err;
+        err = ffn_forward_batch(s, sb, w, cfg, mc, l, n_tokens, tp);
+        if (err != TN_OK) return err;
     }
-    TernaryError err = attention_forward_batch(s, sb, w, cfg, mc, l, pos, n_tokens, tp);
-    if (err != TN_OK) return err;
-    err = ffn_forward_batch(s, sb, w, cfg, mc, l, n_tokens, tp);
-    if (err != TN_OK) return err;
-  }
 
-  forward_rows_logits(sb, w, cfg, n_tokens, tp, logits_out);
-  return TN_OK;
+    forward_rows_logits(sb, w, cfg, n_tokens, tp, logits_out);
+    return TN_OK;
 }
 
 /* Phase 23 (2026-10-19): one decode/prefill step for rows from several
@@ -383,73 +388,73 @@ TernaryError transformer_forward_batch(const int *tokens, int pos, int n_tokens,
  * and the classifier are batched across rows; attention runs per row against
  * states[k]'s own KV. */
 int transformer_forward_multi_supported(const TransformerWeights *w, const MoEConfig *mc) {
-  if (!w || dist_plan_active() || w->q35_is_q2_0_model) return 0;
-  if (mc && (moe_is_recurrent(mc) || mc->is_moe || mc->has_mla || mc->has_linear_attn ||
-             mc->has_qk_norm || mc->is_ssm))
-    return 0;
-  return 1;
+    if (!w || dist_plan_active() || w->q35_is_q2_0_model) return 0;
+    if (mc && (moe_is_recurrent(mc) || mc->is_moe || mc->has_mla || mc->has_linear_attn ||
+               mc->has_qk_norm || mc->is_ssm))
+        return 0;
+    return 1;
 }
 
 TernaryError transformer_forward_multi(const int *tokens, const int *pos_arr,
-                                       RunState *const *states, int n_tokens,
-                                       const Config *cfg, const TransformerWeights *w,
-                                       SpecBatchScratch *sb, const MoEConfig *mc,
-                                       ThreadPool *tp, float *logits_out) {
-  return transformer_forward_multi_ex(tokens, pos_arr, states, n_tokens, NULL,
-                                      cfg, w, sb, mc, tp, logits_out);
+                                       RunState *const *states, int n_tokens, const Config *cfg,
+                                       const TransformerWeights *w, SpecBatchScratch *sb,
+                                       const MoEConfig *mc, ThreadPool *tp, float *logits_out) {
+    return transformer_forward_multi_ex(tokens, pos_arr, states, n_tokens, NULL, cfg, w, sb, mc, tp,
+                                        logits_out);
 }
 
 TernaryError transformer_forward_multi_ex(const int *tokens, const int *pos_arr,
                                           RunState *const *states, int n_tokens,
-                                          const unsigned char *want_logits,
-                                          const Config *cfg, const TransformerWeights *w,
-                                          SpecBatchScratch *sb, const MoEConfig *mc,
-                                          ThreadPool *tp, float *logits_out) {
-  if (!tokens || !pos_arr || !states || n_tokens <= 0 || !sb || !logits_out)
-    return TN_ERR_INVALID_ARGS;
-  if (n_tokens > sb->n_tokens) return TN_ERR_INVALID_ARGS;
-  if (!transformer_forward_multi_supported(w, mc)) return TN_ERR_UNSUPPORTED;
-  int dim = cfg->dim;
-  for (int k = 0; k < n_tokens; k++) {
-    if (states[k]->sw.window_size == 0) sw_init(&states[k]->sw, states[k]->max_seq_len, 0);
-    if (pos_arr[k] < 0 || pos_arr[k] >= states[k]->max_seq_len) return TN_ERR_INVALID_ARGS;
-    int token = tokens[k];
-    if (token < 0 || token >= cfg->vocab_size)
-      memset(sb->x + (size_t)k * dim, 0, (size_t)dim * sizeof(float));
-    else
-      embed_token(sb->x + (size_t)k * dim, token, w->embd_f32, w->token_embedding_table, dim);
-  }
-  for (int l = 0; l < cfg->n_layers; l++) {
-    TernaryError err = attention_forward_multi(states, pos_arr, sb, w, cfg, mc, l, n_tokens, tp);
-    if (err != TN_OK) return err;
-    err = ffn_forward_batch(states[0], sb, w, cfg, mc, l, n_tokens, tp);
-    if (err != TN_OK) return err;
-  }
-  /* 2026-10-22: rows that only feed the KV cache (all but the last row of a
+                                          const unsigned char *want_logits, const Config *cfg,
+                                          const TransformerWeights *w, SpecBatchScratch *sb,
+                                          const MoEConfig *mc, ThreadPool *tp, float *logits_out) {
+    if (!tokens || !pos_arr || !states || n_tokens <= 0 || !sb || !logits_out)
+        return TN_ERR_INVALID_ARGS;
+    if (n_tokens > sb->n_tokens) return TN_ERR_INVALID_ARGS;
+    if (!transformer_forward_multi_supported(w, mc)) return TN_ERR_UNSUPPORTED;
+    int dim = cfg->dim;
+    for (int k = 0; k < n_tokens; k++) {
+        if (states[k]->sw.window_size == 0) sw_init(&states[k]->sw, states[k]->max_seq_len, 0);
+        if (pos_arr[k] < 0 || pos_arr[k] >= states[k]->max_seq_len) return TN_ERR_INVALID_ARGS;
+        int token = tokens[k];
+        if (token < 0 || token >= cfg->vocab_size)
+            memset(sb->x + (size_t)k * dim, 0, (size_t)dim * sizeof(float));
+        else
+            embed_token(sb->x + (size_t)k * dim, token, w->embd_f32, w->token_embedding_table, dim);
+    }
+    for (int l = 0; l < cfg->n_layers; l++) {
+        TernaryError err =
+            attention_forward_multi(states, pos_arr, sb, w, cfg, mc, l, n_tokens, tp);
+        if (err != TN_OK) return err;
+        err = ffn_forward_batch(states[0], sb, w, cfg, mc, l, n_tokens, tp);
+        if (err != TN_OK) return err;
+    }
+    /* 2026-10-22: rows that only feed the KV cache (all but the last row of a
    * prefill chunk) skip the final norm and classifier — move the wanted
    * rows' hidden states to the front, in order, and run the head on those. */
-  int n_out = n_tokens;
-  if (want_logits) {
-    n_out = 0;
-    for (int k = 0; k < n_tokens; k++) {
-      if (!want_logits[k]) continue;
-      if (n_out != k)
-        memmove(sb->x + (size_t)n_out * dim, sb->x + (size_t)k * dim, (size_t)dim * sizeof(float));
-      n_out++;
+    int n_out = n_tokens;
+    if (want_logits) {
+        n_out = 0;
+        for (int k = 0; k < n_tokens; k++) {
+            if (!want_logits[k]) continue;
+            if (n_out != k)
+                memmove(sb->x + (size_t)n_out * dim, sb->x + (size_t)k * dim,
+                        (size_t)dim * sizeof(float));
+            n_out++;
+        }
     }
-  }
-  if (n_out > 0) forward_rows_logits(sb, w, cfg, n_out, tp, logits_out);
-  return TN_OK;
+    if (n_out > 0) forward_rows_logits(sb, w, cfg, n_out, tp, logits_out);
+    return TN_OK;
 }
 
 /* One layer (attention + FFN, or a Mamba block) — the unit both the local
  * layer loop and a distributed worker (Phase 28) execute. */
 void transformer_layer_forward(RunState *s, const TransformerWeights *w, const Config *cfg,
                                const MoEConfig *mc, int layer, int pos, ThreadPool *tp) {
-  if (mc && mc->is_ssm) {
-    mamba_block_forward(s->x, s->xb, s->xb2, s->mamba, w->mamba, cfg, mc, layer, pos, tp);
-    return;
-  }
-  attention_forward(s, w, cfg, mc, layer, pos, tp);
-  ffn_forward(s, w, cfg, mc, layer, tp);
+    if (mc && mc->is_ssm) {
+        mamba_block_forward(s->x, s->xb, s->xb2, s->mamba, w->mamba, cfg, mc, layer, pos, tp);
+        return;
+    }
+    attention_forward(s, w, cfg, mc, layer, pos, tp);
+    ffn_forward(s, w, cfg, mc, layer, tp);
 }

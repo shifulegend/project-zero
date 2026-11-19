@@ -21,7 +21,6 @@
  * @param max_len        Maximum length of output_prompt (including null
  * terminator)
  */
-void inject_reasoning_prompt(char *output_prompt, const char *user_prompt,
-                             int max_len);
+void inject_reasoning_prompt(char *output_prompt, const char *user_prompt, int max_len);
 
 #endif /* TN_PROMPT_INJECT_H */

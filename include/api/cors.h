@@ -19,7 +19,6 @@ int cors_is_origin_allowed(const CorsConfig *cfg, const char *origin_hdr);
  * existing HTTP header block ahead of the blank line. Writes nothing (and
  * returns 0) when CORS is disabled or origin_hdr isn't allowed. Returns the
  * number of bytes written into buf (excluding the NUL terminator). */
-size_t cors_format_headers(const CorsConfig *cfg, const char *origin_hdr,
-                            char *buf, size_t cap);
+size_t cors_format_headers(const CorsConfig *cfg, const char *origin_hdr, char *buf, size_t cap);
 
 #endif /* TN_CORS_H */

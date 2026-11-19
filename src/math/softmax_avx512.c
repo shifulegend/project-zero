@@ -22,7 +22,7 @@ void softmax_avx512(float *x, int size) {
 
     /* Pass 1: find max — 16-wide */
     __m512 max16 = _mm512_set1_ps(-3.4028235e+38f);
-    i = 0;
+    i            = 0;
     for (; i + 15 < size; i += 16) {
         max16 = _mm512_max_ps(max16, _mm512_loadu_ps(&x[i]));
     }
@@ -32,10 +32,10 @@ void softmax_avx512(float *x, int size) {
     for (; i + 7 < size; i += 8) {
         max8 = _mm256_max_ps(max8, _mm256_loadu_ps(&x[i]));
     }
-    __m128 hi = _mm256_extractf128_ps(max8, 1);
-    __m128 lo = _mm256_castps256_ps128(max8);
-    __m128 m4 = _mm_max_ps(lo, hi);
-    __m128 m2 = _mm_max_ps(m4, _mm_movehl_ps(m4, m4));
+    __m128 hi      = _mm256_extractf128_ps(max8, 1);
+    __m128 lo      = _mm256_castps256_ps128(max8);
+    __m128 m4      = _mm_max_ps(lo, hi);
+    __m128 m2      = _mm_max_ps(m4, _mm_movehl_ps(m4, m4));
     float max8_val = _mm_cvtss_f32(_mm_max_ss(m2, _mm_movehdup_ps(m2)));
     if (max8_val > max_val) max_val = max8_val;
     for (; i < size; i++) {
@@ -51,9 +51,9 @@ void softmax_avx512(float *x, int size) {
 
     /* Pass 3: normalize — 16-wide */
     float inv_sum = 1.0f / sum;
-    __m512 inv16 = _mm512_set1_ps(inv_sum);
-    __m256 inv8  = _mm256_set1_ps(inv_sum);
-    i = 0;
+    __m512 inv16  = _mm512_set1_ps(inv_sum);
+    __m256 inv8   = _mm256_set1_ps(inv_sum);
+    i             = 0;
     for (; i + 15 < size; i += 16) {
         _mm512_storeu_ps(&x[i], _mm512_mul_ps(_mm512_loadu_ps(&x[i]), inv16));
     }

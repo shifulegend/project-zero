@@ -47,7 +47,8 @@ Adapter for the configurability rules in `docs/ai/engineering-rules.md`.
   `float` skips the int8 tiers. `eval/selfcheck.c` is the one accuracy probe (CLI `--self-check`, startup
   fallback of an explicit lossy `--classifier`, `POST /v1/selfcheck`, web UI): perplexity of a built-in
   passage as configured vs float activations + BF16 head, bar `--quality-tolerance` (default 1.0 %). A new
-  fast/lossy setting gets judged by it, not by a literal threshold.
+  fast/lossy setting gets judged by it, not by a literal threshold. `auto` on a ternary model runs it once per
+  model file and setting (cache `~/.project-zero/selfcheck.txt`, `selfcheck_cache_*`) and falls back to float.
 - GGUF conventions follow llama.cpp: RoPE layout from the architecture (`--rope-layout` to
   override), BPE pre-tokenizer from `tokenizer.ggml.pre`. `--raw-prompt` skips the chat template
   (plain completion, for benchmarks vs llama-completion); `--perplexity <file>` (+`--ppl-ctx`,

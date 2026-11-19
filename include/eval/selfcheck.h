@@ -61,4 +61,20 @@ TernaryError selfcheck_run(const SelfCheckOptions *opt, const Config *cfg,
                            const TransformerWeights *w, RunState *s, const MoEConfig *mc,
                            Tokenizer *tok, ThreadPool *tp, SelfCheckResult *out);
 
+
+/* ---- First-run probe cache (2026-11-18) -------------------------------------------------------
+ * --act-quant auto on a ternary model is accuracy-checked once per (model file, numerics, head,
+ * tolerance, probe length): the verdict is stored in ~/.project-zero/selfcheck.txt and read on the
+ * next start, so only the first run pays for the two short passes. Pure helpers, unit-tested. */
+#define TN_SELFCHECK_CACHE_VERSION 1
+
+/* Cache key text for a model file (size and mtime identify it) and the probed configuration. */
+void selfcheck_cache_key(char *out, size_t cap, const char *model_path, long long size, long long mtime,
+                         const char *act_quant, const char *classifier, double tolerance_pct, int n_tokens);
+/* Looks `key` up in the cache text (lines "key<TAB>VERDICT"). Returns 1 and sets *v when found. */
+int selfcheck_cache_find(const char *cache_text, const char *key, SelfCheckVerdict *v);
+/* File-backed wrappers; never fail the run (a cache that cannot be read or written is a miss). */
+int  selfcheck_cache_load(const char *key, SelfCheckVerdict *v);
+void selfcheck_cache_store(const char *key, SelfCheckVerdict v);
+
 #endif /* TN_SELFCHECK_H */

@@ -62,6 +62,7 @@
 /* Phase 21: OpenAI-compatible API server */
 #include "api/api_server.h"
 #include "eval/selfcheck.h"
+#include <sys/stat.h>
 
 /* Version is injected unquoted by the build (-DPZ_VERSION, see Makefile) and
  * stringified here; falls back to "dev" for builds that don't pass it
@@ -899,6 +900,46 @@ int main(int argc, char **argv) {
                         "model: using a BF16 head. Keep the request with a higher --quality-tolerance "
                         "(0 = no bar).\n", line, sr.classifier);
                 tn_hardware_profile_swap_classifier(TN_CLS_BF16);
+            }
+        }
+    }
+
+    /* --act-quant auto on a ternary model: the int8 numerics are accuracy-checked once per model
+     * and setting (verdict cached in ~/.project-zero/selfcheck.txt), and float activations take
+     * over if they fail. --no-calibrate, sanitizer builds and an explicit --act-quant skip it. */
+    if (args.act_quant == 0 && w.layers_are_ternary && !args.no_calibrate && !TN_SANITIZED &&
+        args.quality_tolerance > 0.0 && !args.self_check && !args.perplexity_file &&
+        !args.watermark_detect && strcmp(tn_act_quant_effective(), "int8") == 0) {
+        const TnHardwareProfile *hpa = tn_hardware_profile_get();
+        const char *cls = !hpa ? "bf16" : hpa->classifier_fmt == TN_CLS_INT4 ? "int4"
+                          : hpa->classifier_fmt == TN_CLS_INT8 ? "int8" : "bf16";
+        struct stat mst;
+        if (stat(args.model_path, &mst) == 0) {
+            char key[400];
+            selfcheck_cache_key(key, sizeof(key), args.model_path, (long long)mst.st_size,
+                                (long long)mst.st_mtime, "int8", cls, args.quality_tolerance,
+                                args.self_check_tokens);
+            SelfCheckVerdict cv;
+            if (!selfcheck_cache_load(key, &cv)) {
+                printf("[self-check] first run of this model with int8 activations: checking accuracy "
+                       "(cached afterwards)...\n");
+                fflush(stdout);
+                SelfCheckOptions so = { args.quality_tolerance, args.self_check_tokens };
+                SelfCheckResult sr;
+                if (selfcheck_run(&so, &p, &w, s, &mc, &t, tp, &sr) == TN_OK && sr.verdict != SC_SKIPPED) {
+                    char line[300];
+                    selfcheck_format(&sr, line, sizeof(line));
+                    printf("%s\n", line);
+                    selfcheck_cache_store(key, sr.verdict);
+                    cv = sr.verdict;
+                } else {
+                    cv = SC_SKIPPED;
+                }
+            }
+            if (cv == SC_FAIL) {
+                tn_act_quant_set(TN_ACT_FLOAT);
+                fprintf(stderr, "[self-check] int8 activations cost more than --quality-tolerance on this "
+                        "model: using float activations.\n");
             }
         }
     }

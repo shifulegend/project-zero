@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 /* Plain English prose on a general subject; long enough for the default probe length. */
 static const char SC_TEXT[] =
@@ -124,4 +125,65 @@ TernaryError selfcheck_run(const SelfCheckOptions *opt, const Config *cfg,
     out->verdict = selfcheck_judge(out->delta_pct, opt->tolerance_pct);
     snprintf(out->note, sizeof(out->note), "as configured against float activations and a BF16 head");
     return TN_OK;
+}
+
+/* ---- first-run probe cache ---- */
+
+void selfcheck_cache_key(char *out, size_t cap, const char *model_path, long long size, long long mtime,
+                         const char *act_quant, const char *classifier, double tolerance_pct, int n_tokens) {
+    const char *base = model_path ? strrchr(model_path, '/') : NULL;
+    base = base ? base + 1 : (model_path ? model_path : "");
+    snprintf(out, cap, "v%d|%s|%lld|%lld|act=%s|head=%s|tol=%.2f|tok=%d", TN_SELFCHECK_CACHE_VERSION, base,
+             size, mtime, act_quant ? act_quant : "", classifier ? classifier : "", tolerance_pct, n_tokens);
+}
+
+int selfcheck_cache_find(const char *text, const char *key, SelfCheckVerdict *v) {
+    if (!text || !key || !*key) return 0;
+    size_t kl = strlen(key);
+    for (const char *p = text; *p;) {
+        const char *eol = strchr(p, '\n');
+        size_t n = eol ? (size_t)(eol - p) : strlen(p);
+        if (n > kl && strncmp(p, key, kl) == 0 && p[kl] == '\t') {
+            const char *w = p + kl + 1;
+            if (strncmp(w, "PASS", 4) == 0) { if (v) *v = SC_PASS; return 1; }
+            if (strncmp(w, "FAIL", 4) == 0) { if (v) *v = SC_FAIL; return 1; }
+        }
+        if (!eol) break;
+        p = eol + 1;
+    }
+    return 0;
+}
+
+static int cache_path(char *buf, size_t cap) {
+    const char *home = getenv("HOME");
+    if (!home || !*home) return -1;
+    snprintf(buf, cap, "%s/.project-zero/selfcheck.txt", home);
+    return 0;
+}
+
+int selfcheck_cache_load(const char *key, SelfCheckVerdict *v) {
+    char path[512];
+    if (cache_path(path, sizeof(path)) != 0) return 0;
+    FILE *f = fopen(path, "rb");
+    if (!f) return 0;
+    char *buf = (char *)malloc(65536);
+    if (!buf) { fclose(f); return 0; }
+    size_t n = fread(buf, 1, 65535, f);
+    buf[n] = '\0';
+    fclose(f);
+    int found = selfcheck_cache_find(buf, key, v);
+    free(buf);
+    return found;
+}
+
+void selfcheck_cache_store(const char *key, SelfCheckVerdict v) {
+    char path[512], dir[512];
+    if (v == SC_SKIPPED || cache_path(path, sizeof(path)) != 0) return;
+    snprintf(dir, sizeof(dir), "%s", path);
+    char *slash = strrchr(dir, '/');
+    if (slash) { *slash = '\0'; mkdir(dir, 0755); }
+    FILE *f = fopen(path, "ab");
+    if (!f) return;
+    fprintf(f, "%s\t%s\n", key, selfcheck_verdict_name(v));
+    fclose(f);
 }

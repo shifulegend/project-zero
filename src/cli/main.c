@@ -135,6 +135,18 @@ static void run_perplexity(const CliArgs *args, const Config *p, const Transform
     free(toks);
 }
 
+/* strdup() for a server setting that must not silently be missing: an
+ * unchecked NULL api_key would start the server with authentication OFF. A
+ * failed copy is fatal, like every other required allocation in the engine. */
+static char *dup_setting(const char *s) {
+    char *c = strdup(s);
+    if (!c) {
+        fprintf(stderr, "Error: out of memory copying a server setting\n");
+        exit(1);
+    }
+    return c;
+}
+
 int main(int argc, char **argv) {
     pz_warn_if_legacy_invocation(argc > 0 ? argv[0] : NULL);
     /* Phase 40: `pz config ...` manages the settings file; every other run
@@ -991,7 +1003,7 @@ int main(int argc, char **argv) {
         for (int ci = 0; ci < args.num_cors_origins; ci++) {
             server_config_add_cors_origin(&api_ctx.server_config, args.cors_origins[ci]);
         }
-        if (args.api_key) api_ctx.server_config.auth.api_key = strdup(args.api_key);
+        if (args.api_key) api_ctx.server_config.auth.api_key = dup_setting(args.api_key);
         api_ctx.server_config.metrics.enabled = args.metrics_enabled;
         api_ctx.server_config.web_ui = args.web_ui_mode;
         api_ctx.server_config.act_quant = args.act_quant;
@@ -1010,9 +1022,9 @@ int main(int argc, char **argv) {
         }
         {
             const char *base = strrchr(args.model_path, '/');
-            api_ctx.server_config.model_id = strdup(base ? base + 1 : args.model_path);
+            api_ctx.server_config.model_id = dup_setting(base ? base + 1 : args.model_path);
         }
-        if (args.ui_title) api_ctx.server_config.ui_title = strdup(args.ui_title);
+        if (args.ui_title) api_ctx.server_config.ui_title = dup_setting(args.ui_title);
         api_ctx.server_config.ui_logo = args.ui_logo;
         api_ctx.server_config.prompt_cache = args.prompt_cache ? 1 : 0;
         api_ctx.server_config.chat_format = args.chat_format;
@@ -1035,10 +1047,10 @@ int main(int argc, char **argv) {
         api_ctx.server_config.max_tokens_limit =
             (args.max_tokens_limit > 0 && args.max_tokens_limit < p.seq_len)
                 ? args.max_tokens_limit : p.seq_len;
-        if (args.static_dir) api_ctx.server_config.static_dir = strdup(args.static_dir);
+        if (args.static_dir) api_ctx.server_config.static_dir = dup_setting(args.static_dir);
         if (args.vision_path && args.proj_path) {
-            api_ctx.server_config.vision_path = strdup(args.vision_path);
-            api_ctx.server_config.proj_path   = strdup(args.proj_path);
+            api_ctx.server_config.vision_path = dup_setting(args.vision_path);
+            api_ctx.server_config.proj_path   = dup_setting(args.proj_path);
         }
 
         TernaryError api_err = api_server_start(args.server_port, &api_ctx);

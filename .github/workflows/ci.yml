@@ -111,6 +111,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install dependencies from the lockfile
         run: cd webui && npm ci --no-audit --no-fund
+      - name: Unit tests (node --test: markdown renderer, XSS cases)
+        run: cd webui && npm test
       - name: svelte-check (0 errors, 0 warnings)
         run: cd webui && npm run check
       - name: Build the bundle and require the committed C file to match it

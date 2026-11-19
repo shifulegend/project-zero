@@ -27,16 +27,17 @@ export function renderMarkdown(text) {
   // Bold: **text**
   escaped = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
 
-  // Line breaks (outside <pre> blocks — safe here since <pre> content has
-  // no literal newlines re-introduced by the transforms above other than
-  // ones already inside the <pre>, which should keep their newlines as-is).
-  escaped = escaped.replace(/\n/g, (m, offset, full) => {
-    // Skip newlines inside a <pre>...</pre> span.
-    const before = full.slice(0, offset);
-    const openPre = (before.match(/<pre/g) || []).length;
-    const closePre = (before.match(/<\/pre>/g) || []).length;
-    return openPre > closePre ? m : '<br>';
-  });
+  // Line breaks, except inside <pre>...</pre> spans, whose newlines are kept as written. One pass
+  // over the <pre> spans, so the cost grows linearly with the text (this runs on every streamed
+  // token; an earlier version rescanned the whole prefix for every newline).
+  const parts = [];
+  let last = 0;
+  for (const m of escaped.matchAll(/<pre[\s\S]*?<\/pre>/g)) {
+    parts.push(escaped.slice(last, m.index).replace(/\n/g, '<br>'), m[0]);
+    last = m.index + m[0].length;
+  }
+  parts.push(escaped.slice(last).replace(/\n/g, '<br>'));
+  escaped = parts.join('');
 
   return escaped;
 }

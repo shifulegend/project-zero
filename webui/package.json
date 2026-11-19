@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "check": "svelte-check --threshold warning"
+    "check": "svelte-check --threshold warning",
+    "test": "node --test \"tests/*.test.mjs\""
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^3.1.1",

@@ -485,8 +485,30 @@ static TernaryError parse_watermark(const char **p, ChatRequest *req) {
  * Parse a raw JSON request body into *req.
  * req must have been initialised with chat_request_init() first.
  */
+/* Deepest { / [ nesting a request may have. Real requests nest fewer than 10
+ * levels; a body deeper than this is malformed for this API. */
+#define JSON_MAX_DEPTH 256
+
+/* 1 when `s` nests objects/arrays deeper than `max`. One iterative pass that
+ * skips string contents (so brackets inside strings do not count). */
+static int json_too_deep(const char *s, int max) {
+    int depth = 0;
+    for (; *s; s++) {
+        if (*s == '"') {
+            for (s++; *s && *s != '"'; s++) if (*s == '\\' && s[1]) s++;
+            if (!*s) break;
+        } else if (*s == '{' || *s == '[') {
+            if (++depth > max) return 1;
+        } else if (*s == '}' || *s == ']') {
+            if (depth > 0) depth--;
+        }
+    }
+    return 0;
+}
+
 TernaryError chat_request_parse(const char *json_body, ChatRequest *req) {
     if (!json_body || !req) return TN_ERR_INVALID_ARGS;
+    if (json_too_deep(json_body, JSON_MAX_DEPTH)) return TN_ERR_JSON_PARSE;
 
     const char *p = json_body;
     skip_ws(&p);

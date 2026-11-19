@@ -3,7 +3,7 @@
  * restore into the KV cache, supersede, LRU eviction, budget, scope.
  */
 #include "test_harness.h"
-#include "kv_cache/prompt_store.h"
+#include "runtime/prompt_store.h"
 
 #define L 2
 #define H 2

@@ -8,10 +8,10 @@
 #include "core/moe_config.h"
 #include "core/moe_weights.h"
 #include "core/weights.h"
-#include "core/run_state.h"
+#include "runtime/run_state.h"
 #include "core/lora.h"
-#include "core/hardware_profile.h"
-#include "core/calibration.h"
+#include "runtime/hardware_profile.h"
+#include "runtime/calibration.h"
 #include "core/text_file.h"
 #include "core/debug.h"
 #include "memory/mapped_file.h"
@@ -57,7 +57,7 @@
 
 /* Phase 34.2 GGUF loader */
 #include "core/gguf_reader.h"
-#include "core/gguf_loader.h"
+#include "runtime/gguf_loader.h"
 
 /* Phase 21: OpenAI-compatible API server */
 #include "api/api_server.h"

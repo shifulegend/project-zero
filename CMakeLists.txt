@@ -129,29 +129,29 @@ set(CORE_SOURCES
     src/core/gguf_quant.c
     src/core/gguf_quant_k.c
     src/core/gguf_quant_iq.c
-    src/core/hardware_profile.c
+    src/runtime/hardware_profile.c
     src/core/bw_cache.c
     src/core/fs_util.c
     src/core/sha256.c
     src/core/text_file.c
-    src/core/calibration.c
-    src/core/mla_run_state.c
+    src/runtime/calibration.c
+    src/runtime/mla_run_state.c
     src/core/moe_config.c
     src/core/moe_weights.c
-    src/core/qwen35_run_state.c
-    src/core/qwen3moe_run_state.c
-    src/core/run_state.c
+    src/runtime/qwen35_run_state.c
+    src/runtime/qwen3moe_run_state.c
+    src/runtime/run_state.c
     src/core/step_timing.c
-    src/core/weights.c
+    src/runtime/weights.c
     src/core/unpack.c
     src/core/unpack_avx2.c
     src/core/gguf_reader.c
     src/core/gguf_i2s.c
-    src/core/gguf_loader.c
-    src/core/mamba_state.c
-    src/core/spec_scratch.c
-    src/core/gguf_config.c
-    src/core/lora_load.c
+    src/runtime/gguf_loader.c
+    src/runtime/mamba_state.c
+    src/runtime/spec_scratch.c
+    src/runtime/gguf_config.c
+    src/runtime/lora_load.c
 )
 
 set(MATH_SOURCES
@@ -281,7 +281,7 @@ set(KV_CACHE_SOURCES
     src/kv_cache/sliding_window.c
     src/kv_cache/kv_strategy.c
     src/kv_cache/prefix_cache.c
-    src/kv_cache/prompt_store.c
+    src/runtime/prompt_store.c
     src/kv_cache/kv_quant_ops.c
     src/math/kvq4_avx2.c
     src/math/kvq4_avx512.c
@@ -454,7 +454,7 @@ if(PZ_DIST AND NOT MSVC)
         COMPILE_OPTIONS "-mavx512vnni;-mavx512vbmi;-mavx512vl")
     set_source_files_properties(src/math/ternary_matmul_packed_avx_vnni.c PROPERTIES
         COMPILE_OPTIONS "-mavxvnni")
-    set_source_files_properties(src/math/simd_dispatch.c src/core/calibration.c PROPERTIES
+    set_source_files_properties(src/math/simd_dispatch.c src/runtime/calibration.c PROPERTIES
         COMPILE_DEFINITIONS "TN_FORCE_DISPATCH_ALL")
     target_link_options(pz PRIVATE -static-libstdc++ -static-libgcc)
 endif()

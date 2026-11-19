@@ -1,7 +1,7 @@
 #include "test_harness.h"
 #include "core/config.h"
 #include "core/platform.h"
-#include "core/run_state.h"
+#include "runtime/run_state.h"
 #include "memory/aligned_alloc.h"
 
 static void test_config_read_valid(void) {

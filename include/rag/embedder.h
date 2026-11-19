@@ -16,7 +16,7 @@
  */
 
 #include "core/config.h"
-#include "core/run_state.h"
+#include "runtime/run_state.h"
 #include "core/weights.h"
 #include "core/error.h"
 #include "tokenizer/tokenizer.h"

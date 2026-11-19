@@ -4,10 +4,10 @@
 #include <stdbool.h>
 #include "core/config.h"
 #include "core/error.h"
-#include "core/gguf_loader.h"
+#include "runtime/gguf_loader.h"
 #include "core/gguf_reader.h"
 #include "core/moe_config.h"
-#include "core/run_state.h"
+#include "runtime/run_state.h"
 #include "core/weights.h"
 #include "memory/mapped_file.h"
 #include "threading/thread_pool.h"

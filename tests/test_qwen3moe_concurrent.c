@@ -4,13 +4,13 @@
  */
 #include "test_harness.h"
 #include "core/config.h"
-#include "core/run_state.h"
+#include "runtime/run_state.h"
 #include "core/weights.h"
 #include "core/moe_config.h"
 #include "core/moe_weights.h"
 #include "core/unpack.h"
 #include "math/simd_dispatch.h"
-#include "core/spec_scratch.h"
+#include "runtime/spec_scratch.h"
 #include "transformer/forward.h"
 #include "core/lora.h"
 #include <pthread.h>

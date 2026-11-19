@@ -16,7 +16,7 @@
 #include "core/error.h"
 #include "core/config.h"
 #include "core/weights.h"
-#include "core/run_state.h"
+#include "runtime/run_state.h"
 #include "core/moe_config.h"
 #include "tokenizer/tokenizer.h"
 #include "threading/thread_pool.h"

@@ -12,7 +12,7 @@
 #include "sampling/rng.h"
 #include "sampling/sampling.h"
 #include "speculative/accept_reject.h"
-#include "core/spec_scratch.h"
+#include "runtime/spec_scratch.h"
 #include "tokenizer/chat_template.h"
 #include "transformer/forward.h"
 #include "transformer/moe_ffn.h"

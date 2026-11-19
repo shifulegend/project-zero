@@ -6,7 +6,7 @@
  */
 #include "test_harness.h"
 #include "memory/file_backed.h"
-#include "core/run_state.h"
+#include "runtime/run_state.h"
 #include "kv_cache/kv_strategy.h"
 #include "kv_cache/kv_quant_ops.h"
 #include <stdint.h>

@@ -32,7 +32,7 @@ USE = re.compile(r"_mm512_|__AVX512|TN_HAS_AVX512|TN_HAS_AVXVNNI|__AVXVNNI__")
 # Files that legitimately reference the macros without being AVX-512 kernels.
 EXEMPT = {
     "src/math/simd_dispatch.c": "built with TN_FORCE_DISPATCH_ALL; the only file that references every tier",
-    "src/core/calibration.c": "built with TN_FORCE_DISPATCH_ALL; decides which tiers exist to benchmark",
+    "src/runtime/calibration.c": "built with TN_FORCE_DISPATCH_ALL; decides which tiers exist to benchmark",
     "src/core/cpu_features.c": "CPUID probe and execution-verification of VBMI/VNNI, no tier kernels",
 }
 

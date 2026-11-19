@@ -16,7 +16,7 @@
 #include "core/text_file.h"
 #include "memory/aligned_alloc.h"
 #include "memory/mapped_file.h"
-#include "core/run_state.h"
+#include "runtime/run_state.h"
 #include "tokenizer/tokenizer.h"
 #include <stdint.h>
 #include <stdio.h>

@@ -6,8 +6,8 @@
 #include "api/batch_scheduler.h"
 #include "transformer/gen_session.h"
 #include "transformer/forward.h"
-#include "core/spec_scratch.h"
-#include "core/run_state.h"
+#include "runtime/spec_scratch.h"
+#include "runtime/run_state.h"
 
 #include <pthread.h>
 #include <stdio.h>

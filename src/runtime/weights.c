@@ -1,9 +1,9 @@
 #include "core/weights.h"
-#include "core/mamba_state.h"
+#include "runtime/mamba_state.h"
 #include "core/moe_config.h"
 #include "core/moe_weights.h"
 #include "core/unpack.h"
-#include "core/hardware_profile.h"
+#include "runtime/hardware_profile.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>

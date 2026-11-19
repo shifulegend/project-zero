@@ -19,7 +19,7 @@
 #include "api/selfcheck_endpoint.h"
 #include "api/watermark_endpoint.h"
 #include "kv_cache/prefix_cache.h"
-#include "kv_cache/prompt_store.h"
+#include "runtime/prompt_store.h"
 
 #include <pthread.h>
 #include <stdio.h>

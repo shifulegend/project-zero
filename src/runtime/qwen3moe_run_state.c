@@ -11,7 +11,7 @@
  * independent head-dim cases.
  */
 
-#include "core/run_state.h"
+#include "runtime/run_state.h"
 #include "math/rope.h"
 #include "memory/aligned_alloc.h"
 #include <stdlib.h>

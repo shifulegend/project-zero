@@ -26,10 +26,10 @@
 
 #include "core/config.h"
 #include "core/error.h"
-#include "core/hardware_profile.h"
+#include "runtime/hardware_profile.h"
 #include "core/moe_config.h"
 #include "core/platform.h"
-#include "core/run_state.h"
+#include "runtime/run_state.h"
 #include "core/weights.h"
 #include "core/cpu_features.h"
 #include "math/simd_dispatch.h"

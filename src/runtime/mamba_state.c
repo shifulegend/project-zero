@@ -6,7 +6,7 @@
  * is unchanged.
  */
 
-#include "core/mamba_state.h"
+#include "runtime/mamba_state.h"
 #include "core/platform.h"
 #include "memory/aligned_alloc.h"
 #include "memory/safe_alloc.h"

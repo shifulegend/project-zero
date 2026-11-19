@@ -1,4 +1,4 @@
-#include "core/hardware_profile.h"
+#include "runtime/hardware_profile.h"
 #include "core/bw_cache.h"
 #include "threading/cache_probe.h"
 #include "kv_cache/kv_strategy.h"

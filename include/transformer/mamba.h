@@ -27,7 +27,7 @@
 #include "core/platform.h"
 #include "threading/thread_pool.h"
 
-#include "core/mamba_state.h" /* MambaWeights, MambaState and their alloc/free */
+#include "runtime/mamba_state.h" /* MambaWeights, MambaState and their alloc/free */
 
 /*
  * One Mamba block, in place on x[dim] (residual included). `xb`/`xb2` are

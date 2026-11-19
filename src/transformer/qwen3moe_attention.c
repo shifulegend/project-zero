@@ -32,7 +32,7 @@
 #include "math/lora_matmul.h"
 #include "core/lora.h"
 #include "core/clamp.h"
-#include "core/spec_scratch.h" /* reads the batch scratch fields */
+#include "runtime/spec_scratch.h" /* reads the batch scratch fields */
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>

@@ -1,4 +1,4 @@
-#include "core/spec_scratch.h"
+#include "runtime/spec_scratch.h"
 #include "core/platform.h"
 #include "memory/aligned_alloc.h"
 #include <string.h>

@@ -15,7 +15,7 @@
  *     O(1)-per-token state instead of an O(context) cache.
  */
 
-#include "core/run_state.h"
+#include "runtime/run_state.h"
 #include "core/platform.h" /* tn_i64 */
 #include "math/rope.h"
 #include "memory/aligned_alloc.h"

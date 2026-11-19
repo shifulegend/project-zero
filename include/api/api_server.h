@@ -22,7 +22,7 @@
 #include "api/rate_limit.h"
 #include "core/config.h"
 #include "core/moe_config.h"
-#include "core/run_state.h"
+#include "runtime/run_state.h"
 #include "core/weights.h"
 #include "threading/thread_pool.h"
 #include "tokenizer/tokenizer.h"
@@ -30,7 +30,7 @@
 #include "api/metrics.h"
 #include "api/cancel.h"
 #include "kv_cache/prefix_cache.h"
-#include "kv_cache/prompt_store.h"
+#include "runtime/prompt_store.h"
 #include "api/gen_queue.h"
 #include <pthread.h>
 

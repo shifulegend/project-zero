@@ -18,7 +18,7 @@
 #include "rag/vector_db.h"
 #include "rag/embedder.h"
 #include "core/config.h"
-#include "core/run_state.h"
+#include "runtime/run_state.h"
 #include "core/weights.h"
 #include "tokenizer/tokenizer.h"
 #include "threading/thread_pool.h"

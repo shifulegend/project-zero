@@ -25,7 +25,7 @@
 #include "transformer/stop_seq.h"
 #include "sampling/fsm.h"
 #include "kv_cache/prefix_cache.h"
-#include "kv_cache/prompt_store.h"
+#include "runtime/prompt_store.h"
 #include <stdint.h>
 
 typedef struct {

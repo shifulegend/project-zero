@@ -13,7 +13,7 @@
  * so freq[i] = 1/(theta^(2i/rope_dim)), giving exactly 32 correct entries.
  */
 
-#include "core/run_state.h"
+#include "runtime/run_state.h"
 #include "math/rope.h"
 #include "memory/aligned_alloc.h"
 #include <stdlib.h> /* malloc, free */

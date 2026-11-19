@@ -19,7 +19,7 @@ exactly (they're printed in project-zero's own "Model Configuration:"
 startup banner for any GGUF model — kv_dim is printed there directly) —
 lora_load() rejects a mismatch rather than silently producing garbage
 output (see lora_load()'s header-vs-base-model shape check in
-src/core/lora_load.c). --kv-dim matters only when the adapter targets
+src/runtime/lora_load.c). --kv-dim matters only when the adapter targets
 k_proj/v_proj on a GQA model (n_kv_heads < n_heads, e.g. SmolLM2): K/V
 project dim -> kv_dim, not dim -> dim, a real bug found and fixed during
 Phase 19 development against an actual downloaded SmolLM2 LoRA adapter

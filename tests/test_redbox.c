@@ -1,7 +1,7 @@
 #include "core/config.h"
 #include "core/error.h"
 #include "core/platform.h"
-#include "core/run_state.h"
+#include "runtime/run_state.h"
 #include "memory/aligned_alloc.h"
 #include "test_harness.h"
 #include <stdint.h>

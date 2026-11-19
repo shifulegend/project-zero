@@ -7,7 +7,7 @@
 #include "test_harness.h"
 #include "core/config.h"
 #include "core/moe_config.h"
-#include "core/run_state.h"
+#include "runtime/run_state.h"
 #include "core/unpack.h"
 #include "core/weights.h"
 #include "math/simd_dispatch.h"

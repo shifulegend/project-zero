@@ -1,5 +1,5 @@
 #include "eval/selfcheck.h"
-#include "core/hardware_profile.h"
+#include "runtime/hardware_profile.h"
 #include "eval/perplexity.h"
 #include "math/simd_dispatch.h"
 #include <math.h>

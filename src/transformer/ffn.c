@@ -8,7 +8,7 @@
 #include "core/step_timing.h"
 #include "core/weights.h"
 #include "transformer/dense_matmul_dispatch.h"
-#include "core/spec_scratch.h" /* reads the batch scratch fields */
+#include "runtime/spec_scratch.h" /* reads the batch scratch fields */
 #include <string.h>
 
 /* Maximum input dimension supported for layer-level preq stack buffer. */

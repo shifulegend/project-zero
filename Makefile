@@ -291,7 +291,7 @@ build/math/simd_dispatch.o: src/math/simd_dispatch.c
 	$(CC) $(CFLAGS) $(DISPATCH_DEFS) -c -o $@ $<
 
 # Calibration decides which backends to benchmark from the same macros.
-build/core/calibration.o: src/core/calibration.c
+build/runtime/calibration.o: src/runtime/calibration.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(DISPATCH_DEFS) -c -o $@ $<
 

@@ -20,11 +20,11 @@
 #include <stddef.h>
 #include <math.h>
 #include "core/gguf_reader.h"
-#include "core/gguf_loader.h"
+#include "runtime/gguf_loader.h"
 #include "core/moe_config.h"
 #include "core/moe_weights.h"
 #include "core/weights.h"
-#include "core/run_state.h"
+#include "runtime/run_state.h"
 #include "transformer/forward.h"
 #include "math/simd_dispatch.h"
 #include "threading/thread_pool.h"

@@ -1,11 +1,11 @@
 #include "runtime/model_load.h"
-#include "core/mamba_state.h"
+#include "runtime/mamba_state.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "core/hardware_profile.h"
+#include "runtime/hardware_profile.h"
 #include "core/moe_weights.h"
 #include "core/progress.h"
 #include "kv_cache/kv_strategy.h"

@@ -7,9 +7,7 @@ src/api/openapi.c 1
 src/cli/config_cmd.c 5
 src/cli/main.c 3
 src/config/pz_config.c 2
-src/core/calibration.c 1
 src/core/cpu_features.c 4
-src/core/hardware_profile.c 4
 src/core/step_timing.c 2
 src/distributed/dist_plan.c 1
 src/kv_cache/kv_strategy.c 1
@@ -18,6 +16,8 @@ src/math/q8_0_act.c 3
 src/math/simd_dispatch.c 3
 src/math/ternary_matmul_lut_avx512bw.c 3
 src/memory/tls_scratch.c 1
+src/runtime/calibration.c 1
+src/runtime/hardware_profile.c 4
 src/threading/cache_probe.c 2
 src/tokenizer/template_guard.c 1
 src/tokenizer/tokenizer_decode.c 1

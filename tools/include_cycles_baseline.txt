@@ -1,14 +1,2 @@
 # Module include edges that lie inside a dependency cycle; this list may only shrink
 # (tools/check_include_layers.py).
-core->kv_cache
-core->math
-core->memory
-core->threading
-kv_cache->core
-kv_cache->math
-kv_cache->memory
-math->core
-math->memory
-math->threading
-memory->core
-threading->core

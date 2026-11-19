@@ -1,6 +1,6 @@
 #include "api/config_endpoint.h"
 #include "api/api_info.h"
-#include "core/hardware_profile.h"
+#include "runtime/hardware_profile.h"
 #include <string.h>
 #include "api/json_write.h"
 #include "api/chat_compile.h"

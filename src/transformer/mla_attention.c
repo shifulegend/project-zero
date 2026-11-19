@@ -22,11 +22,11 @@
 #include "math/matmul_q4k.h"
 #include "math/simd_dispatch.h"
 #include "math/batched_matmul.h"
-#include "core/run_state.h"
+#include "runtime/run_state.h"
 #include "core/debug.h"
 #include "core/step_timing.h"
 #include "core/clamp.h"
-#include "core/spec_scratch.h" /* reads the batch scratch fields */
+#include "runtime/spec_scratch.h" /* reads the batch scratch fields */
 
 #include <math.h>
 #include <string.h>

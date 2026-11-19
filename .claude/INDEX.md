@@ -34,18 +34,18 @@ Q8_0, F32), and DeepSeek-V2-style MoE/MLA models. The primary binary is `pz`.
 ### 📁 `src/core/` — Model Loading & Config
 | File | Description |
 |------|-------------|
-| `src/core/gguf_loader.c` | GGUF→`TransformerWeights` mapping; `config_from_gguf`, `weights_from_gguf` |
-| `src/core/gguf_config.c` | `Config` and `MoEConfig` read from GGUF metadata |
+| `src/runtime/gguf_loader.c` | GGUF→`TransformerWeights` mapping; `config_from_gguf`, `weights_from_gguf` |
+| `src/runtime/gguf_config.c` | `Config` and `MoEConfig` read from GGUF metadata |
 | `src/core/gguf_reader.c` | Raw GGUF binary parser: reads header, metadata KV pairs, tensor index |
 | `src/core/gguf_quant.c` | GGUF dequantization: Q4_K, Q4_0, Q5_0, Q5_1, Q5_K, Q6_K, Q8_0 → F32 |
 | `src/core/config.c` | `config_read` (native .bin), `config_print` |
-| `src/core/weights.c` | `weights_alloc_pointers`, `weights_map` (native ternary), `weights_build_classifier_quant` |
+| `src/runtime/weights.c` | `weights_alloc_pointers`, `weights_map` (native ternary), `weights_build_classifier_quant` |
 | `src/core/moe_config.c` | `moe_config_read`, `moe_config_init_dense`, `moe_config_print` |
 | `src/core/moe_weights.c` | `moe_weights_alloc`, `moe_weights_map`, `moe_weights_free` for expert pointer arrays |
-| `src/core/run_state.c` | `run_state_alloc`/`run_state_free` — allocates all scratch/KV cache buffers |
-| `src/core/mla_run_state.c` | `mla_run_state_alloc`/`mla_run_state_free` — per-layer k_rope_cache for MLA |
-| `src/core/calibration.c` | Hardware benchmarking and optimal thread/SIMD selection; result cached at `~/.project-zero/calibration.bin` |
-| `src/core/hardware_profile.c` | CPU feature detection, RAM probing, classifier format selection |
+| `src/runtime/run_state.c` | `run_state_alloc`/`run_state_free` — allocates all scratch/KV cache buffers |
+| `src/runtime/mla_run_state.c` | `mla_run_state_alloc`/`mla_run_state_free` — per-layer k_rope_cache for MLA |
+| `src/runtime/calibration.c` | Hardware benchmarking and optimal thread/SIMD selection; result cached at `~/.project-zero/calibration.bin` |
+| `src/runtime/hardware_profile.c` | CPU feature detection, RAM probing, classifier format selection |
 | `src/core/unpack.c` | Scalar ternary unpack (2-bit packed → int8) |
 | `src/core/unpack_avx2.c` | AVX2 ternary unpack |
 | `src/core/debug.c` | `DBG_DUMP` macro support, `g_tn_verbose`, `g_dump_fp` |

@@ -2,7 +2,7 @@
 #define TN_CALIBRATION_H
 
 #include "core/platform.h"
-#include "core/hardware_profile.h"
+#include "runtime/hardware_profile.h"
 #include <stdbool.h>
 
 /*

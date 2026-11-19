@@ -125,6 +125,21 @@ int exec_policy_allows_args(char *const argv[]) {
     return 1;
 }
 
+extern char **environ;
+
+size_t exec_build_child_env(char *out[], size_t cap) {
+    static char path_entry[] = "PATH=/usr/bin:/bin";
+    size_t n = 0;
+    if (cap < 2) { if (cap) out[0] = NULL; return 0; }
+    out[n++] = path_entry;
+    for (char **e = environ; e && *e && n + 1 < cap; e++) {
+        if (strncmp(*e, "TZ=", 3) == 0 || strncmp(*e, "LANG=", 5) == 0 || strncmp(*e, "LC_", 3) == 0)
+            out[n++] = *e;
+    }
+    out[n] = NULL;
+    return n;
+}
+
 ExecResult execute_command(char *const argv[], int timeout_sec, char *out_buf, size_t out_buf_size) {
     ExecResult res = { .exit_code = -1, .timed_out = 0, .stdout_len = 0 };
     if (!argv || !argv[0]) return res;
@@ -137,6 +152,10 @@ ExecResult execute_command(char *const argv[], int timeout_sec, char *out_buf, s
     if (pipe(pipefd) != 0) {
         return res;
     }
+
+    /* Built before fork(): the child must not allocate or call getenv(). */
+    char *child_env[64];
+    exec_build_child_env(child_env, sizeof(child_env) / sizeof(child_env[0]));
 
     pid_t pid = fork();
     if (pid < 0) {
@@ -184,7 +203,7 @@ ExecResult execute_command(char *const argv[], int timeout_sec, char *out_buf, s
         {
             char resolved[PATH_MAX];
             if (resolve_trusted_path(argv[0], resolved, sizeof(resolved))) {
-                execv(resolved, argv);
+                execve(resolved, argv, child_env);
             }
             /* Not found in a trusted directory, or exec itself failed --
              * never fall back to execvp()'s $PATH search here. */

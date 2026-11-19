@@ -34,6 +34,12 @@ int exec_policy_allows(const char *cmd_name);
  */
 int exec_policy_allows_args(char *const argv[]);
 
+/* Build the minimal environment a command runs with: a fixed PATH plus TZ,
+ * LANG and LC_* copied from this process. Everything else (API keys, tokens,
+ * HOME, PZ_* settings, ...) is NOT passed to the command. Entries point into
+ * the process environment; `out` is NULL-terminated. Returns the entry count. */
+size_t exec_build_child_env(char *out[], size_t cap);
+
 /* Execute argv[] with a timeout (seconds). stdout (and stderr) are captured into out_buf.
  * Returns an ExecResult describing the run. */
 ExecResult execute_command(char *const argv[], int timeout_sec, char *out_buf, size_t out_buf_size);

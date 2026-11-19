@@ -195,6 +195,36 @@ static void test_unknown_cwd_fails_closed(void) {
                 "ls <path> is refused when the working directory no longer exists");
 }
 
+static void test_child_env_is_minimal(void) {
+    setenv("PZ_API_KEY", "hunter2-secret", 1);
+    setenv("AWS_SECRET_ACCESS_KEY", "also-secret", 1);
+    setenv("HOME", "/home/someone", 1);
+    setenv("TZ", "Asia/Tokyo", 1);
+    setenv("LANG", "C.UTF-8", 1);
+    setenv("LC_ALL", "C", 1);
+    char *env[64];
+    size_t n = exec_build_child_env(env, 64);
+    int has_tz = 0, has_lang = 0, has_lc = 0, has_path = 0, leaked = 0;
+    for (size_t i = 0; i < n; i++) {
+        if (!strncmp(env[i], "TZ=", 3)) has_tz = 1;
+        if (!strncmp(env[i], "LANG=", 5)) has_lang = 1;
+        if (!strncmp(env[i], "LC_ALL=", 7)) has_lc = 1;
+        if (!strncmp(env[i], "PATH=", 5)) has_path = 1;
+        if (strstr(env[i], "secret") || strstr(env[i], "PZ_") || !strncmp(env[i], "HOME=", 5)) leaked = 1;
+    }
+    TEST_ASSERT(has_tz && has_lang && has_lc && has_path, "TZ, LANG, LC_* and a fixed PATH are passed");
+    TEST_ASSERT(!leaked && env[n] == NULL, "secrets, PZ_* and HOME are not passed; list is NULL-terminated");
+    TEST_ASSERT(exec_build_child_env(env, 1) == 0, "too-small buffer is handled");
+
+    /* end to end: the child still sees TZ (date prints JST) */
+    char out[128] = {0};
+    char *a[] = {"date", "+%Z", NULL};
+    ExecResult r = execute_command(a, 5, out, sizeof out);
+    TEST_ASSERT(r.exit_code == 0, "date still runs with the reduced environment");
+    if (access("/usr/share/zoneinfo/Asia/Tokyo", R_OK) == 0)
+        TEST_ASSERT(strstr(out, "JST") != NULL, "TZ reaches the child (date +%Z prints JST)");
+}
+
 /* ── Flag injection ──────────────────────────────────────────────────────── */
 static void test_flag_injection(void) {
     char *a[] = {"ls", "--help", NULL};             assert_allowed_by_policy(a, "ls --help (flag, not a path)");
@@ -260,6 +290,7 @@ int main(void) {
     RUN_TEST(test_symlink_escape_now_blocked);
     RUN_TEST(test_symlink_within_cwd_still_allowed);
     RUN_TEST(test_unknown_cwd_fails_closed);
+    RUN_TEST(test_child_env_is_minimal);
     RUN_TEST(test_flag_injection);
     RUN_TEST(test_shell_metacharacters_are_literal);
     RUN_TEST(test_argv0_tricks_blocked);

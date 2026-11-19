@@ -120,7 +120,9 @@ jobs:
     name: Run on a clean minimal machine
     needs: build
     runs-on: ubuntu-22.04
-    container: debian:12-slim       # glibc 2.36 (>= build), no dev tools/libstdc++ preinstalled
+    # glibc 2.36 (>= build), no dev tools/libstdc++ preinstalled. Pinned by digest (the multi-arch index of
+    # debian:12-slim resolved on 2026-11-19); refresh with: docker buildx imagetools inspect debian:12-slim
+    container: debian:12-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with: { name: dist, path: dist }

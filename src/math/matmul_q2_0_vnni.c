@@ -40,6 +40,7 @@
 #include <immintrin.h>
 #include <string.h>
 #include <stdint.h>
+#include "core/fp16.h"
 
 /* Same 128-element/34-byte framing as matmul_q2_0.c — see that file's header
  * comment for why this is PrismML's group-128 packing, not mainline ggml's
@@ -77,16 +78,6 @@
             _mm_prefetch(_p + _off, (hint));                               \
     } while (0)
 
-static inline float q2_0v_f16_to_f32(uint16_t h) {
-    uint32_t sign = (uint32_t)(h >> 15) << 31;
-    uint32_t exp  = (h >> 10) & 0x1f;
-    uint32_t mant = (uint32_t)(h & 0x3ff) << 13;
-    uint32_t bits;
-    if      (exp == 0)  bits = sign | mant;
-    else if (exp == 31) bits = sign | 0x7f800000u | mant;
-    else                bits = sign | ((exp + 112) << 23) | mant;
-    float f; memcpy(&f, &bits, 4); return f;
-}
 
 /*
  * Dot product of one Q2_0 row (n_blocks * 34 bytes) against pre-quantised
@@ -112,7 +103,7 @@ static float dot_q2_0_row_vnni_ref(const uint8_t *row_q2_0, const int8_t *q_x,
     for (int b = 0; b < n_blocks; b++) {
         const uint8_t *blk = row_q2_0 + (size_t)b * Q2_0V_BYTES;
         uint16_t d_bits; memcpy(&d_bits, blk, 2);
-        float d = q2_0v_f16_to_f32(d_bits);
+        float d = tn_fp16_to_f32(d_bits);
         const uint8_t *qs = blk + 2;                       /* 32 bytes, 128 codes */
         const int8_t *qxb = q_x + (size_t)b * Q2_0V_BLOCK;
 

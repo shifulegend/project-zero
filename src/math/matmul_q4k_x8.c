@@ -31,6 +31,7 @@
 
 #if TN_HAS_AVX2
 #include <immintrin.h>
+#include "core/fp16.h"
 #endif
 
 #define Q4K_BYTES 144
@@ -405,20 +406,8 @@ static void gemv8_q4k_x8_q8k(float *out8, const TnQ8KActBlock *acts,
             const TnQ8KActBlock *act = acts + b;
 
             float d_w, dmin_w;
-            {
-                uint16_t h = bb->d[r];
-                uint32_t sign = (uint32_t)(h >> 15) << 31;
-                uint32_t exp  = (h >> 10) & 0x1f;
-                uint32_t bits = exp == 0 ? sign
-                    : sign | ((exp + 112u) << 23) | ((uint32_t)(h & 0x3ff) << 13);
-                memcpy(&d_w, &bits, 4);
-                h = bb->dmin[r];
-                sign = (uint32_t)(h >> 15) << 31;
-                exp  = (h >> 10) & 0x1f;
-                bits = exp == 0 ? sign
-                    : sign | ((exp + 112u) << 23) | ((uint32_t)(h & 0x3ff) << 13);
-                memcpy(&dmin_w, &bits, 4);
-            }
+            d_w    = tn_fp16_to_f32(bb->d[r]);
+            dmin_w = tn_fp16_to_f32(bb->dmin[r]);
 
             int32_t int_dot = 0, int_min = 0;
             for (int i = 0; i < 8; i++) {

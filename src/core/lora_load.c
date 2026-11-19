@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "core/fp16.h"
 
 /* ── Internal: read a uint32/int32 at byte offset in mapped data ───────────
  * Mirrors src/multimodal/vision_weights_load.c's own rd32/rd32s helpers --
@@ -28,16 +29,6 @@ static float rdf32(const void *base, size_t off) {
 
 /* Scalar F16->F32 helper (mirrors f16_to_f32_scalar in matmul_f16.c /
  * batched_matmul_f16.c / gguf_loader.c). */
-static inline float f16_to_f32_scalar(uint16_t h) {
-    uint32_t sign = (uint32_t)(h >> 15) << 31;
-    uint32_t exp  = (h >> 10) & 0x1f;
-    uint32_t mant = (uint32_t)(h & 0x3ff) << 13;
-    uint32_t bits;
-    if      (exp == 0)  bits = sign | mant;
-    else if (exp == 31) bits = sign | 0x7f800000u | mant;
-    else                bits = sign | ((exp + 112) << 23) | mant;
-    float f; memcpy(&f, &bits, 4); return f;
-}
 
 /* Reads `count` contiguous F16 values starting at byte offset *off, writes
  * them decoded to a freshly malloc'd F32 array, and advances *off. Returns
@@ -48,7 +39,7 @@ static float *read_f16_block(const void *base, size_t sz, size_t *off, size_t co
     float *out = (float *)malloc(count * sizeof(float));
     if (!out) return NULL;
     const uint16_t *src = (const uint16_t *)((const char *)base + *off);
-    for (size_t i = 0; i < count; i++) out[i] = f16_to_f32_scalar(src[i]);
+    for (size_t i = 0; i < count; i++) out[i] = tn_fp16_to_f32(src[i]);
     *off += nbytes;
     return out;
 }

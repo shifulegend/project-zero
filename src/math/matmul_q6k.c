@@ -4,6 +4,7 @@
 #include <string.h>
 #if TN_HAS_AVX2
 #include <immintrin.h>
+#include "core/fp16.h"
 #endif
 
 /* Block layout (ggml block_q6_K): ql[128] low nibbles, qh[64] high 2-bit
@@ -13,22 +14,6 @@
  *   high = (qh[32h + l] >> (2*part)) & 3
  *   q = (low | high << 4) - 32,  scale = scales[8h + 2*part + l/16]. */
 
-static inline float fp16_to_f32(uint16_t h) {
-    uint32_t sign = (uint32_t)(h & 0x8000) << 16;
-    uint32_t exp = (h >> 10) & 0x1F, mant = h & 0x3FF, bits;
-    if (exp == 0) {
-        if (mant == 0) bits = sign;
-        else {
-            exp = 127 - 15 + 1;
-            while (!(mant & 0x400)) { mant <<= 1; exp--; }
-            mant &= 0x3FF;
-            bits = sign | (exp << 23) | (mant << 13);
-        }
-    } else if (exp == 31) bits = sign | 0x7F800000u | (mant << 13);
-    else bits = sign | ((exp + 127 - 15) << 23) | (mant << 13);
-    float f; memcpy(&f, &bits, 4);
-    return f;
-}
 
 float tn_dot_q6k_row_q8k_scalar(const uint8_t *row, const TnQ8KActBlock *acts, int n_blocks) {
     float dot = 0.0f;
@@ -57,7 +42,7 @@ float tn_dot_q6k_row_q8k_scalar(const uint8_t *row, const TnQ8KActBlock *acts, i
                 isum += s * sc[2 * part + (g % 2)];
             }
         }
-        dot += fp16_to_f32(dh) * acts[b].d * (float)isum;
+        dot += tn_fp16_to_f32(dh) * acts[b].d * (float)isum;
     }
     return dot;
 }
@@ -81,7 +66,7 @@ static inline float q6k_fp16(uint16_t h) {
 #if defined(__F16C__)
     return _cvtsh_ss(h);
 #else
-    return fp16_to_f32(h);
+    return tn_fp16_to_f32(h);
 #endif
 }
 

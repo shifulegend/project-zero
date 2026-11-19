@@ -22,6 +22,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include "core/fp16.h"
 
 #if TN_HAS_AVX2
 #  include <immintrin.h>
@@ -44,23 +45,7 @@ static inline float q8a_f16(const uint8_t *p) {
 #if defined(__F16C__)
     return _cvtsh_ss(h);
 #else
-    uint32_t sign = (uint32_t)(h >> 15) << 31;
-    uint32_t exp  = (h >> 10) & 0x1f;
-    uint32_t mant = (uint32_t)(h & 0x3ff);
-    uint32_t bits;
-    if (exp == 0) {
-        if (mant == 0) { bits = sign; }
-        else {         /* subnormal: renormalise */
-            int e = -1;
-            do { e++; mant <<= 1; } while ((mant & 0x400u) == 0);
-            bits = sign | ((uint32_t)(112 - e) << 23) | ((mant & 0x3ffu) << 13);
-        }
-    } else if (exp == 31) {
-        bits = sign | 0x7f800000u | (mant << 13);
-    } else {
-        bits = sign | ((exp + 112u) << 23) | (mant << 13);
-    }
-    float f; memcpy(&f, &bits, 4); return f;
+    return tn_fp16_to_f32(h);
 #endif
 }
 

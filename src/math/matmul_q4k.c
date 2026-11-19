@@ -35,6 +35,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include "core/fp16.h"
 
 #if TN_HAS_AVX2 || TN_HAS_AVX512
 #  include <immintrin.h>
@@ -64,23 +65,6 @@ static TnQ8KActBlock *q8k_buf_ensure(int n_blocks) {
 }
 
 /* ── Scalar F16→F32 helper ────────────────────────────────────────────────── */
-static inline float q4k_f16_to_f32(uint16_t h) {
-    uint32_t sign = (uint32_t)(h >> 15) << 31;
-    uint32_t exp  = (h >> 10) & 0x1f;
-    uint32_t bits;
-    if (exp == 0) {
-        uint32_t m = (uint32_t)(h & 0x3ff);
-        if (m == 0) return 0.0f;
-        int e_adj = 0;
-        while ((m & 0x400u) == 0) { m <<= 1; e_adj++; }
-        bits = sign | ((uint32_t)(113 - e_adj) << 23) | ((m & 0x3ffu) << 13);
-    } else if (exp == 31) {
-        bits = sign | 0x7f800000u | ((uint32_t)(h & 0x3ff) << 13);
-    } else {
-        bits = sign | ((exp + 112u) << 23) | ((uint32_t)(h & 0x3ff) << 13);
-    }
-    float f; memcpy(&f, &bits, 4); return f;
-}
 
 /* ── Decode 8 raw integer (scale, min) pairs from sc12[12] ──────────────────── *
  * Only used by dot_q4k_row_q8k's scalar (no-SIMD) fallback below — the AVX2
@@ -274,8 +258,8 @@ static float dot_q4k_row_q8k(const uint8_t *row_q4k,
         uint16_t d_bits, dmin_bits;
         memcpy(&d_bits, blk, 2);
         memcpy(&dmin_bits, blk + 2, 2);
-        float d_w    = q4k_f16_to_f32(d_bits);
-        float dmin_w = q4k_f16_to_f32(dmin_bits);
+        float d_w    = tn_fp16_to_f32(d_bits);
+        float dmin_w = tn_fp16_to_f32(dmin_bits);
 
         /* ── Scale/min decode: uint32 bit ops (llama.cpp style) ─────────────
          * 12 bytes → utmp[0..3] where:
@@ -363,8 +347,8 @@ static float dot_q4k_row_q8k(const uint8_t *row_q4k,
         uint16_t d_bits, dmin_bits;
         memcpy(&d_bits, blk, 2);
         memcpy(&dmin_bits, blk + 2, 2);
-        float d_w    = q4k_f16_to_f32(d_bits);
-        float dmin_w = q4k_f16_to_f32(dmin_bits);
+        float d_w    = tn_fp16_to_f32(d_bits);
+        float dmin_w = tn_fp16_to_f32(dmin_bits);
 
         uint8_t raw_sc[8], raw_mn[8];
         q4k_decode_scales_raw(blk + 4, raw_sc, raw_mn);

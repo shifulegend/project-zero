@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include "core/fp16.h"
 
 #if TN_HAS_AVX512 || TN_HAS_AVX2
 #  include <immintrin.h>
@@ -14,7 +15,7 @@
  * layout convention and the bandwidth-reuse rationale.
  *
  * 2026-09-24 rewrite: the original v1 scalar-accumulator implementation
- * (`val += f16_to_f32_scalar(row[j]) * xk[j]`, re-decoding + re-accumulating
+ * (`val += tn_fp16_to_f32(row[j]) * xk[j]`, re-decoding + re-accumulating
  * from scratch for every one of the n_tokens candidates) delivered the
  * documented RAM-bandwidth win -- each row's 2 bytes/element are read from
  * RAM once -- but did the actual FMA work at scalar speed, on hardware
@@ -34,20 +35,6 @@
  * dot-product work that actually dominates.
  */
 
-/* Mirrors matmul_f16.c's own static f16_to_f32_scalar() -- this codebase's
- * established convention is a small static copy per matmul kernel TU
- * (see matmul_q4k.c/matmul_q8_0.c/matmul_q5_1.c/etc.), not a shared header. */
-static inline float f16_to_f32_scalar(uint16_t h) {
-    uint32_t sign = (uint32_t)(h >> 15) << 31;
-    uint32_t exp  = (h >> 10) & 0x1f;
-    uint32_t mant = (uint32_t)(h & 0x3ff) << 13;
-    uint32_t bits;
-    if      (exp == 0)  bits = sign | mant;
-    else if (exp == 31) bits = sign | 0x7f800000u | mant;
-    else                bits = sign | ((exp + 112) << 23) | mant;
-    float f; memcpy(&f, &bits, 4); return f;
-}
-
 /* Decode `count` contiguous F16 values to F32, SIMD-accelerated where
  * available (hardware cvtph_ps, matching matmul_f16.c's own conversion
  * instructions), scalar tail/fallback otherwise. */
@@ -64,7 +51,7 @@ static void f16_row_to_f32(float *out, const tn_u16 *row, int count) {
         _mm256_storeu_ps(&out[j], wv);
     }
 #endif
-    for (; j < count; j++) out[j] = f16_to_f32_scalar(row[j]);
+    for (; j < count; j++) out[j] = tn_fp16_to_f32(row[j]);
 }
 
 typedef struct {
@@ -87,7 +74,7 @@ static void matmul_f16_batch_task(void *arg, int thread_id, int start, int end) 
                 const float *xk = a->x + (size_t)k * a->n;
                 float val = 0.0f;
                 for (int j = 0; j < a->n; j++) {
-                    val += f16_to_f32_scalar(row[j]) * xk[j];
+                    val += tn_fp16_to_f32(row[j]) * xk[j];
                 }
                 a->out[(size_t)k * a->d + i] = val;
             }

@@ -13,6 +13,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
+#include "core/fp16.h"
 
 /* Round-to-nearest-even float32 -> bf16 (truncate the low 16 mantissa bits
  * after rounding, not a plain truncation — avoids a small but real one-sided
@@ -64,16 +65,6 @@ void weights_free_gguf(GGUFWeightStore *s) {
 
 /* ── Dequantization helpers ───────────────────────────────────────────────── */
 
-static float f16_to_f32(uint16_t h) {
-    uint32_t sign = (uint32_t)(h >> 15) << 31;
-    uint32_t exp  = (h >> 10) & 0x1f;
-    uint32_t mant = (uint32_t)(h & 0x3ff) << 13;
-    uint32_t bits;
-    if      (exp == 0)  bits = sign | mant;               /* subnormal / zero */
-    else if (exp == 31) bits = sign | 0x7f800000u | mant; /* inf / NaN       */
-    else                bits = sign | ((exp + 112) << 23) | mant;
-    float f; memcpy(&f, &bits, 4); return f;
-}
 
 /* Allocate a float32 buffer (n_elems floats), fill from tensor data, add to store.
  * Returns NULL and prints a message for unsupported types. */
@@ -88,7 +79,7 @@ static float *tensor_to_f32(const GGUFTensor *t, size_t n_elems,
         break;
     case GGUF_TYPE_F16: {
         const uint16_t *s = (const uint16_t *)t->data;
-        for (size_t i = 0; i < n_elems; i++) buf[i] = f16_to_f32(s[i]);
+        for (size_t i = 0; i < n_elems; i++) buf[i] = tn_fp16_to_f32(s[i]);
         break;
     }
     case GGUF_TYPE_BF16:
@@ -1405,7 +1396,7 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
             if (!buf) return TN_ERR_OOM;
             const uint16_t *src = (const uint16_t *)t->data;
             for (size_t i = 0; i < n; i++) {
-                float f = f16_to_f32(src[i]);
+                float f = tn_fp16_to_f32(src[i]);
                 uint32_t bits; memcpy(&bits, &f, 4);
                 buf[i] = (tn_u16)(bits >> 16);
             }
@@ -1639,7 +1630,7 @@ TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg,
                 if (!buf) return TN_ERR_OOM;
                 const uint16_t *src = (const uint16_t *)t->data;
                 for (size_t i = 0; i < n; i++) {
-                    float f = f16_to_f32(src[i]);
+                    float f = tn_fp16_to_f32(src[i]);
                     uint32_t bits; memcpy(&bits, &f, 4);
                     buf[i] = (tn_u16)(bits >> 16);
                 }

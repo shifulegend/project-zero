@@ -16,6 +16,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
+#include "core/fp16.h"
 
 #if TN_HAS_AVX2
 #  include <immintrin.h>
@@ -26,23 +27,6 @@
 #define Q2K_BYTES   84     /* bytes per super-block */
 
 /* ── fp16 → f32 (self-contained; mirrors gguf_quant.c) ─────────────────────── */
-static inline float q2k_fp16_to_f32(uint16_t h) {
-    uint32_t sign = (uint32_t)(h >> 15) << 31;
-    uint32_t exp  = (h >> 10) & 0x1fu;
-    uint32_t mant = h & 0x3ffu;
-    uint32_t u;
-    if      (exp == 0x1fu) { u = sign | 0x7f800000u | (mant << 13); }
-    else if (exp == 0u)    {
-        if (mant == 0u) { u = sign; }
-        else {
-            exp = 1u;
-            while (!(mant & 0x400u)) { mant <<= 1; exp--; }
-            mant &= 0x3ffu;
-            u = sign | ((exp + 112u) << 23) | (mant << 13);
-        }
-    } else { u = sign | ((exp + 112u) << 23) | (mant << 13); }
-    float f; memcpy(&f, &u, 4); return f;
-}
 
 /* ── AVX2 horizontal sum ────────────────────────────────────────────────────── */
 #if TN_HAS_AVX2
@@ -90,8 +74,8 @@ static void matvec_q2k_task(void *arg_v, int tid, int row_start, int row_end) {
             uint16_t d_bits, dmin_bits;
             memcpy(&d_bits,    blk + 80, 2);
             memcpy(&dmin_bits, blk + 82, 2);
-            const float d    = q2k_fp16_to_f32(d_bits);
-            const float dmin = q2k_fp16_to_f32(dmin_bits);
+            const float d    = tn_fp16_to_f32(d_bits);
+            const float dmin = tn_fp16_to_f32(dmin_bits);
             if (!(d == d) || !(dmin == dmin)) continue;  /* NaN guard: skip corrupt block */
 
             const float *inp_b = inp + b * Q2K_SUPER; /* inp[b*256 .. (b+1)*256) */

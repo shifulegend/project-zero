@@ -11,6 +11,7 @@
 #include "core/platform.h"
 #include <stdint.h>
 #include <string.h>
+#include "core/fp16.h"
 
 #if TN_HAS_AVX512 || TN_HAS_AVX2
 #  include <immintrin.h>
@@ -21,16 +22,6 @@
 #define Q5K_NSUB   8
 #define Q5K_BYTES  176   /* bytes per 256-element super-block */
 
-static inline float q5k_f16_to_f32(uint16_t h) {
-    uint32_t sign = (uint32_t)(h >> 15) << 31;
-    uint32_t exp  = (h >> 10) & 0x1f;
-    uint32_t mant = (uint32_t)(h & 0x3ff) << 13;
-    uint32_t bits;
-    if      (exp == 0)  bits = sign | mant;
-    else if (exp == 31) bits = sign | 0x7f800000u | mant;
-    else                bits = sign | ((exp + 112) << 23) | mant;
-    float f; memcpy(&f, &bits, 4); return f;
-}
 
 /* Decode 8 (scale, min) pairs — identical to Q4_K. */
 static inline void q5k_decode_scales(const uint8_t *sc12, float d, float dmin,
@@ -69,8 +60,8 @@ static float dot_q5k_row(const uint8_t *row_q5k, const float *x, int n) {
         uint16_t d_bits, dmin_bits;
         memcpy(&d_bits,    blk,     2);
         memcpy(&dmin_bits, blk + 2, 2);
-        float d    = q5k_f16_to_f32(d_bits);
-        float dmin = q5k_f16_to_f32(dmin_bits);
+        float d    = tn_fp16_to_f32(d_bits);
+        float dmin = tn_fp16_to_f32(dmin_bits);
 
         const uint8_t *sc12 = blk + 4;   /* 12 bytes */
         const uint8_t *qh   = blk + 16;  /* 32 bytes */

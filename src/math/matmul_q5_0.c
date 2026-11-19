@@ -26,6 +26,7 @@
 #include "core/platform.h"
 #include <stdint.h>
 #include <string.h>
+#include "core/fp16.h"
 
 #if TN_HAS_AVX512 || TN_HAS_AVX2
 #  include <immintrin.h>
@@ -35,16 +36,6 @@
 #define Q5_0_BLOCK   32
 #define Q5_0_BYTES   22   /* bytes per 32-element block */
 
-static inline float q5_0_f16_to_f32(uint16_t h) {
-    uint32_t sign = (uint32_t)(h >> 15) << 31;
-    uint32_t exp  = (h >> 10) & 0x1f;
-    uint32_t mant = (uint32_t)(h & 0x3ff) << 13;
-    uint32_t bits;
-    if      (exp == 0)  bits = sign | mant;
-    else if (exp == 31) bits = sign | 0x7f800000u | mant;
-    else                bits = sign | ((exp + 112) << 23) | mant;
-    float f; memcpy(&f, &bits, 4); return f;
-}
 
 /*
  * dot_q5_0_row: fused dot product of one Q5_0-encoded row with float32 x.
@@ -86,7 +77,7 @@ static float dot_q5_0_row(const uint8_t *row_q5_0, const float *x, int n) {
     for (int b = 0; b < n_blocks; b++) {
         const uint8_t *blk = row_q5_0 + (size_t)b * Q5_0_BYTES;
         uint16_t d_bits; memcpy(&d_bits, blk, 2);
-        float    d_val   = q5_0_f16_to_f32(d_bits);
+        float    d_val   = tn_fp16_to_f32(d_bits);
 
         uint32_t qh; memcpy(&qh, blk + 2, 4);
         const uint8_t *qs = blk + 6;
@@ -124,7 +115,7 @@ static float dot_q5_0_row(const uint8_t *row_q5_0, const float *x, int n) {
     for (int b = 0; b < n_blocks; b++) {
         const uint8_t *blk = row_q5_0 + (size_t)b * Q5_0_BYTES;
         uint16_t d_bits; memcpy(&d_bits, blk, 2);
-        __m256 dv = _mm256_set1_ps(q5_0_f16_to_f32(d_bits));
+        __m256 dv = _mm256_set1_ps(tn_fp16_to_f32(d_bits));
 
         uint32_t qh; memcpy(&qh, blk + 2, 4);
         const uint8_t *qs = blk + 6;
@@ -164,7 +155,7 @@ static float dot_q5_0_row(const uint8_t *row_q5_0, const float *x, int n) {
     for (int b = 0; b < n_blocks; b++) {
         const uint8_t *blk = row_q5_0 + (size_t)b * Q5_0_BYTES;
         uint16_t d_bits; memcpy(&d_bits, blk, 2);
-        float d = q5_0_f16_to_f32(d_bits);
+        float d = tn_fp16_to_f32(d_bits);
         uint32_t qh; memcpy(&qh, blk + 2, 4);
         const uint8_t *qs = blk + 6;
         const float   *xb = x + (size_t)b * Q5_0_BLOCK;

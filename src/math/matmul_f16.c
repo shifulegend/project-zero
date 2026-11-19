@@ -36,6 +36,7 @@
 #include "core/platform.h"
 #include <stdint.h>
 #include <string.h>
+#include "core/fp16.h"
 
 #if TN_HAS_AVX512
 #  include <immintrin.h>
@@ -44,16 +45,6 @@
 #endif
 
 /* Scalar F16→F32 helper (mirrors f16_to_f32 in gguf_loader.c). */
-static inline float f16_to_f32_scalar(uint16_t h) {
-    uint32_t sign = (uint32_t)(h >> 15) << 31;
-    uint32_t exp  = (h >> 10) & 0x1f;
-    uint32_t mant = (uint32_t)(h & 0x3ff) << 13;
-    uint32_t bits;
-    if      (exp == 0)  bits = sign | mant;
-    else if (exp == 31) bits = sign | 0x7f800000u | mant;
-    else                bits = sign | ((exp + 112) << 23) | mant;
-    float f; memcpy(&f, &bits, 4); return f;
-}
 
 typedef struct {
     float       *out;
@@ -113,7 +104,7 @@ static void matmul_f16_task(void *arg, int thread_id, int start, int end) {
             j += 8;
         }
         for (; j < a->n; j++) {
-            val += f16_to_f32_scalar(row[j]) * a->x[j];
+            val += tn_fp16_to_f32(row[j]) * a->x[j];
         }
         a->out[i] = val;
     }
@@ -159,7 +150,7 @@ static void matmul_f16_task(void *arg, int thread_id, int start, int end) {
         __m128 sum2 = _mm_add_ps(sum4, shuf);
         float  val  = _mm_cvtss_f32(_mm_add_ss(sum2, _mm_movehl_ps(sum2, sum2)));
         for (; j < a->n; j++) {
-            val += f16_to_f32_scalar(row[j]) * a->x[j];
+            val += tn_fp16_to_f32(row[j]) * a->x[j];
         }
         a->out[i] = val;
     }
@@ -170,7 +161,7 @@ static void matmul_f16_task(void *arg, int thread_id, int start, int end) {
         const tn_u16 *row = a->w + (size_t)i * a->n;
         float acc = 0.0f;
         for (int j = 0; j < a->n; j++) {
-            acc += f16_to_f32_scalar(row[j]) * a->x[j];
+            acc += tn_fp16_to_f32(row[j]) * a->x[j];
         }
         a->out[i] = acc;
     }

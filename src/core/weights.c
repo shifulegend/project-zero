@@ -1,5 +1,5 @@
 #include "core/weights.h"
-#include "transformer/mamba.h"
+#include "core/mamba_state.h"
 #include "core/moe_config.h"
 #include "core/moe_weights.h"
 #include "core/unpack.h"

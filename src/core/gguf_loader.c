@@ -1,5 +1,5 @@
 #include "core/gguf_loader.h"
-#include "transformer/mamba.h"
+#include "core/mamba_state.h"
 #include "core/gguf_quant.h"
 #include "core/moe_config.h"
 #include "core/platform.h"

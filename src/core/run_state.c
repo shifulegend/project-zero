@@ -1,5 +1,5 @@
 #include "core/run_state.h"
-#include "transformer/mamba.h"
+#include "core/mamba_state.h"
 #include "kv_cache/kv_quant_ops.h"
 #include "core/platform.h"
 #include "math/rope.h"

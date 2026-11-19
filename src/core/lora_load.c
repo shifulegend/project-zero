@@ -4,31 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "core/fp16.h"
-
-/* ── Internal: read a uint32/int32 at byte offset in mapped data ───────────
- * Mirrors src/multimodal/vision_weights_load.c's own rd32/rd32s helpers --
- * same small-per-TU-copy convention as f16_to_f32_scalar (matmul_f16.c
- * etc.), not a shared header. */
-static uint32_t rd32(const void *base, size_t off) {
-    uint32_t v;
-    memcpy(&v, (const char *)base + off, 4);
-    return v;
-}
-
-static int32_t rd32s(const void *base, size_t off) {
-    int32_t v;
-    memcpy(&v, (const char *)base + off, 4);
-    return v;
-}
-
-static float rdf32(const void *base, size_t off) {
-    float v;
-    memcpy(&v, (const char *)base + off, 4);
-    return v;
-}
-
-/* Scalar F16->F32 helper (mirrors f16_to_f32_scalar in matmul_f16.c /
- * batched_matmul_f16.c / gguf_loader.c). */
+#include "core/binary_io.h"
 
 /* Reads `count` contiguous F16 values starting at byte offset *off, writes
  * them decoded to a freshly malloc'd F32 array, and advances *off. Returns
@@ -88,21 +64,21 @@ TernaryError lora_load_ex(LoRAWeights *lora, const char *path, int dim, int q_di
         goto fail;
     }
 
-    uint32_t magic = rd32(d, 0);
+    uint32_t magic = tn_rd_u32(d, 0);
     if (magic != LORA_BIN_MAGIC) {
         fprintf(stderr, "[lora] bad magic 0x%08X (expected 0x%08X)\n",
                 magic, LORA_BIN_MAGIC);
         goto fail;
     }
 
-    int   file_n_layers = rd32s(d, 8);
-    int   rank           = rd32s(d, 12);
-    float alpha           = rdf32(d, 16);
-    int   file_dim        = rd32s(d, 20);
-    int   file_hidden_dim = rd32s(d, 24);
-    int   target_mask     = rd32s(d, 28);
-    int   file_kv_dim      = rd32s(d, 32);
-    int   file_q_dim       = rd32s(d, 36);
+    int   file_n_layers = tn_rd_i32(d, 8);
+    int   rank           = tn_rd_i32(d, 12);
+    float alpha           = tn_rd_f32(d, 16);
+    int   file_dim        = tn_rd_i32(d, 20);
+    int   file_hidden_dim = tn_rd_i32(d, 24);
+    int   target_mask     = tn_rd_i32(d, 28);
+    int   file_kv_dim      = tn_rd_i32(d, 32);
+    int   file_q_dim       = tn_rd_i32(d, 36);
     if (file_q_dim == 0) file_q_dim = file_dim;   /* pre-2026-10-19 files */
 
     if (file_n_layers < 1 || file_n_layers > 512 || rank < 1 || rank > 4096 ||

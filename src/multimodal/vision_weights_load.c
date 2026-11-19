@@ -2,19 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-
-/* ── Internal: read a uint32 at byte offset in mapped data ─────────────── */
-static uint32_t rd32(const void *base, size_t off) {
-    uint32_t v;
-    memcpy(&v, (const char *)base + off, 4);
-    return v;
-}
-
-static int32_t rd32s(const void *base, size_t off) {
-    int32_t v;
-    memcpy(&v, (const char *)base + off, 4);
-    return v;
-}
+#include "core/binary_io.h"
 
 /* ── Convenience: pointer to float array inside mmap ─────────────────────
  * Returns a float* at byte offset |off| into |base|.
@@ -38,20 +26,20 @@ TernaryError vision_model_load_encoder(VisionModel *vm, const char *path) {
 
     if (sz < 64) { fprintf(stderr, "[vision] file too small\n"); goto fail; }
 
-    uint32_t magic = rd32(d, 0);
+    uint32_t magic = tn_rd_u32(d, 0);
     if (magic != VISION_BIN_MAGIC) {
         fprintf(stderr, "[vision] bad magic 0x%08X (expected 0x%08X)\n",
                 magic, VISION_BIN_MAGIC);
         goto fail;
     }
 
-    /* uint32_t version = rd32(d, 4); — reserved for future */
-    int n_layers    = rd32s(d, 8);
-    int embed_dim   = rd32s(d, 12);
-    int hidden_dim  = rd32s(d, 16);
-    int n_heads     = rd32s(d, 20);
-    int patch_dim   = rd32s(d, 24);
-    int num_patches = rd32s(d, 28);
+    /* uint32_t version = tn_rd_u32(d, 4); — reserved for future */
+    int n_layers    = tn_rd_i32(d, 8);
+    int embed_dim   = tn_rd_i32(d, 12);
+    int hidden_dim  = tn_rd_i32(d, 16);
+    int n_heads     = tn_rd_i32(d, 20);
+    int patch_dim   = tn_rd_i32(d, 24);
+    int num_patches = tn_rd_i32(d, 28);
 
     if (n_layers < 1 || n_layers > 128 ||
         embed_dim < 1 || embed_dim > 8192 ||
@@ -155,17 +143,17 @@ TernaryError vision_model_load_projector(VisionModel *vm, const char *path) {
 
     if (sz < 64) { fprintf(stderr, "[vision] projector file too small\n"); goto fail; }
 
-    uint32_t magic = rd32(d, 0);
+    uint32_t magic = tn_rd_u32(d, 0);
     if (magic != PROJECTOR_BIN_MAGIC) {
         fprintf(stderr, "[vision] projector bad magic 0x%08X\n", magic);
         goto fail;
     }
 
-    int vision_dim   = rd32s(d, 8);
-    int llm_dim      = rd32s(d, 12);
-    int hidden_dim   = rd32s(d, 16);
-    int has_bias     = rd32s(d, 20);
-    int scale_factor = rd32s(d, 24);  /* 0 or 1 → no pixel shuffle; >1 → pixel shuffle */
+    int vision_dim   = tn_rd_i32(d, 8);
+    int llm_dim      = tn_rd_i32(d, 12);
+    int hidden_dim   = tn_rd_i32(d, 16);
+    int has_bias     = tn_rd_i32(d, 20);
+    int scale_factor = tn_rd_i32(d, 24);  /* 0 or 1 → no pixel shuffle; >1 → pixel shuffle */
     if (scale_factor <= 0) scale_factor = 1;
 
     if (vision_dim < 1 || llm_dim < 1 || hidden_dim < 0) {

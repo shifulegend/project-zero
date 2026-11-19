@@ -44,7 +44,6 @@
 #  include <immintrin.h>
 #endif
 
-/* Scalar F16→F32 helper (mirrors f16_to_f32 in gguf_loader.c). */
 
 typedef struct {
     float       *out;

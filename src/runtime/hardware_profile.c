@@ -154,7 +154,7 @@ static void *bw_thread_fn(void *arg) {
 }
 
 /* Forward declaration — defined below after /proc/cpuinfo parsing */
-static int count_physical_cores(void);
+static int probe_physical_cores(void);
 
 /* Free RAM seen by tn_hardware_profile_init() before the probe runs (caps
  * the probe buffer); 0 = unknown. */
@@ -162,7 +162,7 @@ static size_t g_free_ram_hint;
 
 static double probe_dram_bandwidth(void) {
     size_t l3     = detect_l3_cache();
-    int n_threads = count_physical_cores();
+    int n_threads = probe_physical_cores();
     if (n_threads < 1) n_threads = 1;
     if (n_threads > 8) n_threads = 8;
 
@@ -243,7 +243,7 @@ static double probe_dram_bandwidth(void) {
 /* ── Physical core count (duplicated lite version for profile) ─────── */
 
 #if defined(__linux__)
-static int count_physical_cores(void) {
+static int probe_physical_cores(void) {
     FILE *f = fopen("/proc/cpuinfo", "r");
     if (!f) return 0;
 
@@ -287,7 +287,7 @@ static int count_logical_cores(void) {
 }
 
 #elif defined(__APPLE__)
-static int count_physical_cores(void) {
+static int probe_physical_cores(void) {
     /* Use popen to avoid sys/sysctl.h conflicts with strict C99 mode */
     FILE *f = popen("sysctl -n hw.physicalcpu 2>/dev/null", "r");
     if (f) {
@@ -308,7 +308,7 @@ static int count_logical_cores(void) {
 }
 
 #elif TN_POSIX
-static int count_physical_cores(void) {
+static int probe_physical_cores(void) {
     return (int)(sysconf(_SC_NPROCESSORS_ONLN) / 2);
 }
 static int count_logical_cores(void) {
@@ -316,7 +316,7 @@ static int count_logical_cores(void) {
     return (n > 0) ? (int)n : 1;
 }
 #else
-static int count_physical_cores(void) {
+static int probe_physical_cores(void) {
     return 1;
 }
 static int count_logical_cores(void) {
@@ -433,7 +433,7 @@ const TnHardwareProfile *tn_hardware_profile_init(void) {
     g_profile.cpu = tn_cpu_features_detect();
 
     /* 2. Core topology */
-    g_profile.physical_cores = count_physical_cores();
+    g_profile.physical_cores = probe_physical_cores();
     g_profile.logical_cores  = count_logical_cores();
     if (g_profile.physical_cores <= 0) g_profile.physical_cores = g_profile.logical_cores;
     g_profile.optimal_threads = tn_get_optimal_thread_count();

@@ -33,7 +33,7 @@
 
 /* ── Hardware fingerprint ─────────────────────────────────────────────── */
 
-static void get_cpu_model(char *buf, size_t buflen) {
+static void read_cpu_model(char *buf, size_t buflen) {
     buf[0] = '\0';
 #if TN_POSIX
     FILE *f = fopen("/proc/cpuinfo", "r");
@@ -81,7 +81,7 @@ unsigned tn_calibration_isa_mask(void) {
 
 static bool fingerprint_matches(const TnCalibrationResult *cached, const TnHardwareProfile *hw) {
     char current_model[128];
-    get_cpu_model(current_model, sizeof(current_model));
+    read_cpu_model(current_model, sizeof(current_model));
 
     if (strcmp(cached->cpu_model, current_model) != 0) return false;
     if (cached->physical_cores != hw->physical_cores) return false;
@@ -94,7 +94,7 @@ static bool fingerprint_matches(const TnCalibrationResult *cached, const TnHardw
 
 /* ── Cache file path ──────────────────────────────────────────────────── */
 
-static void get_cache_path(char *buf, size_t buflen) {
+static void resolve_cache_path(char *buf, size_t buflen) {
 #if TN_POSIX
     const char *home = getenv("HOME");
     if (!home) {
@@ -364,7 +364,7 @@ void tn_calibrate(TnCalibrationResult *result, const TnHardwareProfile *hw) {
     memset(result, 0, sizeof(*result));
 
     /* Fingerprint */
-    get_cpu_model(result->cpu_model, sizeof(result->cpu_model));
+    read_cpu_model(result->cpu_model, sizeof(result->cpu_model));
     result->physical_cores = hw->physical_cores;
     result->logical_cores  = hw->logical_cores;
     result->l2_cache_bytes = hw->l2_cache_bytes;
@@ -663,7 +663,7 @@ void tn_calibrate(TnCalibrationResult *result, const TnHardwareProfile *hw) {
 
 bool tn_calibration_load(TnCalibrationResult *result, const TnHardwareProfile *hw) {
     char path[512];
-    get_cache_path(path, sizeof(path));
+    resolve_cache_path(path, sizeof(path));
 
     FILE *f = fopen(path, "rb");
     if (!f) return false;
@@ -699,7 +699,7 @@ bool tn_calibration_load(TnCalibrationResult *result, const TnHardwareProfile *h
 
 void tn_calibration_save(const TnCalibrationResult *result) {
     char path[512];
-    get_cache_path(path, sizeof(path));
+    resolve_cache_path(path, sizeof(path));
 
     FILE *f = fopen(path, "wb");
     if (!f) {

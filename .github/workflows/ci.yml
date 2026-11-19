@@ -103,6 +103,23 @@ jobs:
       - name: No new findings (tools/clang_tidy_baseline.txt)
         run: sh tools/check_clang_tidy.sh
 
+  webui:
+    name: Web UI (svelte-check, build, committed bundle up to date)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install dependencies from the lockfile
+        run: cd webui && npm ci --no-audit --no-fund
+      - name: svelte-check (0 errors, 0 warnings)
+        run: cd webui && npm run check
+      - name: Build the bundle and require the committed C file to match it
+        run: |
+          cd webui && npm run build && cd ..
+          make webui-bundle CC=gcc
+          git diff --exit-code -- src/api/webui_bundle_generated.c || {
+            echo "src/api/webui_bundle_generated.c is stale: run 'make webui-bundle' and commit it"; exit 1; }
+
   npm-audit:
     name: npm audit (web UI and screenshot tooling)
     runs-on: ubuntu-24.04

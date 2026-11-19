@@ -148,6 +148,7 @@ set(CORE_SOURCES
     src/core/gguf_reader.c
     src/core/gguf_i2s.c
     src/core/gguf_loader.c
+    src/core/gguf_config.c
     src/core/lora_load.c
 )
 

@@ -8,7 +8,7 @@ src/cli/config_cmd.c 529
 src/cli/main.c 1228
 src/config/pz_config.c 743
 src/core/calibration.c 796
-src/core/gguf_loader.c 1817
+src/core/gguf_loader.c 1510
 src/core/gguf_quant_iq.c 1586
 src/core/gguf_reader.c 604
 src/core/hardware_profile.c 696

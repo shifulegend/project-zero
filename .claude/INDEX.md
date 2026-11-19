@@ -35,6 +35,7 @@ Q8_0, F32), and DeepSeek-V2-style MoE/MLA models. The primary binary is `pz`.
 | File | Description |
 |------|-------------|
 | `src/core/gguf_loader.c` | GGUF→`TransformerWeights` mapping; `config_from_gguf`, `weights_from_gguf` |
+| `src/core/gguf_config.c` | `Config` and `MoEConfig` read from GGUF metadata |
 | `src/core/gguf_reader.c` | Raw GGUF binary parser: reads header, metadata KV pairs, tensor index |
 | `src/core/gguf_quant.c` | GGUF dequantization: Q4_K, Q4_0, Q5_0, Q5_1, Q5_K, Q6_K, Q8_0 → F32 |
 | `src/core/config.c` | `config_read` (native .bin), `config_print` |

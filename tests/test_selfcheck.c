@@ -6,9 +6,12 @@
 #include "test_harness.h"
 #include "eval/selfcheck.h"
 #include "math/simd_dispatch.h"
+#include <errno.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 static void test_delta_and_judge(void) {
     TEST_ASSERT(fabs(selfcheck_delta_pct(10.0, 10.1) - 1.0) < 1e-9, "+1% perplexity");
@@ -94,8 +97,9 @@ static void test_cache(void) {
 /* File-backed cache: what main.c reads on the next start. A stored FAIL is what switches `auto` to
  * float activations; a cache that cannot be written or read is only a miss. */
 static void test_cache_file(void) {
-    char dir[] = "/tmp/pz_selfcheck_XXXXXX";
-    TEST_ASSERT(mkdtemp(dir) != NULL, "temp HOME");
+    char dir[64];
+    snprintf(dir, sizeof(dir), "/tmp/pz_selfcheck_%ld", (long)getpid());   /* mkdtemp is not declared under strict POSIX on macOS */
+    TEST_ASSERT(mkdir(dir, 0700) == 0 || errno == EEXIST, "temp HOME");
     const char *old = getenv("HOME");
     char *saved = old ? strdup(old) : NULL;
     setenv("HOME", dir, 1);

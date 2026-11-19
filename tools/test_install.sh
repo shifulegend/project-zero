@@ -51,6 +51,24 @@ for SH in dash bash; do
        [ -x "$P/bin/pz" ] && "$P/bin/pz" --version > /dev/null 2>&1; then
         ok "install a given version"
     else bad "install a given version"; cat "$W/out"; fi
+    # No curl on PATH: the wget branch must read a file:// mirror itself (wget cannot) and must not
+    # be asked for the file:// URL at all.
+    NC="$W/nocurl"
+    if [ ! -d "$NC" ]; then
+        mkdir -p "$NC"
+        for f in /usr/bin/* /bin/*; do
+            b="${f##*/}"
+            [ "$b" = curl ] || [ -e "$NC/$b" ] || ln -s "$f" "$NC/$b"
+        done
+        rm -f "$NC/wget"
+        printf '#!/bin/sh\necho "$@" >> "%s/wget.log"\nexit 1\n' "$W" > "$NC/wget"
+        chmod +x "$NC/wget"
+    fi
+    PW="$W/prefix-wget-$SH"
+    if PATH="$NC" "$(command -v "$SH")" "$ROOT/install.sh" --version 0.0.1-test --prefix "$PW" --yes \
+        > "$W/out2" 2>&1 && [ -x "$PW/bin/pz" ] && [ ! -e "$W/wget.log" ]; then
+        ok "wget fallback installs from a file:// mirror without calling wget"
+    else bad "wget fallback installs from a file:// mirror without calling wget"; cat "$W/out2"; fi
     [ -f "$P/share/doc/project-zero/LICENSE" ] && [ -f "$P/share/project-zero/install-manifest" ] &&
         ok "docs + manifest installed" || bad "docs + manifest installed"
     # LGPL-3.0-or-later kernel is linked into pz: notice + licence text must be installed byte-identical.

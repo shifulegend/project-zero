@@ -145,11 +145,13 @@ void vision_encoder_forward(float *out_embeddings, const float *patches, const V
 
     size_t scratch_size = 0;
     tn_size_mul3(P, cfg->hidden_dim, 4, &scratch_size);
-    if (scratch_size < (size_t)(P * D * 3 + P * P + P * D)) {
-        scratch_size = P * D * 3 + P * P + P * D;
-    }
+    /* size_t arithmetic throughout: int products of patch counts and widths could overflow before
+     * the conversion (CodeQL "multiplication result converted to larger type"). */
+    const size_t pd   = (size_t)P * (size_t)D;
+    const size_t need = pd * 3 + (size_t)P * (size_t)P + pd;
+    if (scratch_size < need) scratch_size = need;
     float *scratch = (float *)tn_aligned_alloc(scratch_size * sizeof(float), 64);
-    float *normed  = (float *)tn_aligned_alloc(P * D * sizeof(float), 64);
+    float *normed  = (float *)tn_aligned_alloc(pd * sizeof(float), 64);
 
     if (!scratch || !normed) {
         if (scratch) tn_aligned_free(scratch);

@@ -110,7 +110,12 @@ if command -v curl >/dev/null 2>&1; then
         esac
     }
 elif command -v wget >/dev/null 2>&1; then
-    fetch() { wget -q --https-only --timeout=60 --tries=3 -O "$2" "$1"; }
+    fetch() {
+        case "$1" in
+            file://*) cp "${1#file://}" "$2" ;; # offline mirror, as in the curl branch
+            *) wget -q --https-only --timeout=60 --tries=3 -O "$2" "$1" ;;
+        esac
+    }
 else
     die "need curl or wget to download"
 fi

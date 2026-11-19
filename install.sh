@@ -99,9 +99,18 @@ esac
 
 # ── tools ────────────────────────────────────────────────────────────────
 if command -v curl >/dev/null 2>&1; then
-    fetch() { curl -fsSL --retry 3 -o "$2" "$1"; }
+    # Remote downloads: https only (also across redirects), and bounded in time
+    # so a stalled server cannot hang the installer. file:// stays allowed for
+    # a local mirror (used by tools/test_install.sh).
+    fetch() {
+        case "$1" in
+            file://*) curl -fsSL --retry 3 -o "$2" "$1" ;;
+            *) curl -fsSL --proto '=https' --proto-redir '=https' --retry 3 \
+                    --connect-timeout 20 --max-time 600 -o "$2" "$1" ;;
+        esac
+    }
 elif command -v wget >/dev/null 2>&1; then
-    fetch() { wget -q -O "$2" "$1"; }
+    fetch() { wget -q --https-only --timeout=60 --tries=3 -O "$2" "$1"; }
 else
     die "need curl or wget to download"
 fi

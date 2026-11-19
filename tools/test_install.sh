@@ -84,6 +84,16 @@ for SH in dash bash; do
         bad "missing checksum entry refused"
     else grep -q "no entry" "$W/out" && ok "missing checksum entry refused" || bad "missing entry message"; fi
 
+    # plain http:// downloads are refused (curl: protocol disabled), nothing installed
+    if command -v curl >/dev/null 2>&1; then
+        if PZ_INSTALL_BASE_URL="http://127.0.0.1:9" "$SH" "$ROOT/install.sh" --version 0.0.1-test \
+             --prefix "$W/http-$SH" --yes > "$W/out" 2>&1; then
+            bad "http:// download refused"
+        else
+            [ ! -e "$W/http-$SH/bin/pz" ] && ok "http:// download refused, nothing installed" || bad "http:// download refused"
+        fi
+    fi
+
     if PZ_INSTALL_ARCH=aarch64 "$SH" "$ROOT/install.sh" --prefix "$W/arm-$SH" --yes > "$W/out" 2>&1; then
         bad "unsupported platform refused"
     else

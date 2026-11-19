@@ -213,6 +213,7 @@ set(MEMORY_SOURCES
     src/memory/mapped_file.c
     src/memory/file_backed.c
     src/memory/safe_alloc.c
+    src/memory/tls_scratch.c
 )
 
 set(THREADING_SOURCES

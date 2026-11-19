@@ -3059,3 +3059,11 @@ Installing llama.cpp and bitnet.cpp for head-to-head runs exposed nine pre-exist
 - Detection: the mutable-statics inventory; `tests/test_qwen3moe_concurrent.c` runs two threads and TSan reports 4 data races on the old code, none on the new.
 - Correction: the scratch lives in the RunState (`qwen3moe_scratch`, sized `2*q_width + 2*kv_width`); logits are bit-identical before and after (hash of the sequential test run).
 - Prevention rule: per-call scratch belongs to the caller's state, not a function-local static; a function that could run on two threads gets a two-thread test in the TSan set. Qwen3.5's attention (`qwen35_attention.c`, 12 statics) has the same problem and no model-less test yet.
+
+### 2026-11-19 — Matmul kernels shared one reallocated activation buffer across threads
+- Summary: `parallel_matmul_q4k()` (and the Q5_0/Q5_1/Q8_0 integer paths in `q8_0_act.c`) quantised the activation into a file-scope buffer that was freed and re-malloc'd whenever a larger input arrived; two threads calling at once could free the buffer the other was reading (use-after-free) or interleave their quantised data, and the buffer was never freed.
+- Root cause: "static scratch, grow on demand" was written for a single caller; nothing tested two callers.
+- Affected files/modules: `src/math/matmul_q4k.c`, `src/math/q8_0_act.c`; fixed with the new `memory/tls_scratch.h` (per-thread buffer, freed at thread exit).
+- Detection: the mutable-statics inventory; `tests/test_tls_scratch.c` runs the Q4_K matmul from two threads with alternating sizes: it fails and TSan reports 6 races on the old code, none on the new.
+- Correction: each use site has a `TnTlsScratch`; results are unchanged (same quantisation, all existing kernel tests pass).
+- Prevention rule: do not write "static buffer, realloc if too small" in code a server thread can reach; use `tn_tls_scratch()` or caller-owned scratch. The MoE kernels (`moe_ffn.c`, `moe_experts.c`) still have this pattern.

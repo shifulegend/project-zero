@@ -13,8 +13,8 @@ src/core/step_timing.c 2
 src/distributed/dist_plan.c 1
 src/kv_cache/kv_strategy.c 1
 src/math/cpu_features.c 4
-src/math/matmul_q4k.c 3
-src/math/q8_0_act.c 5
+src/math/matmul_q4k.c 2
+src/math/q8_0_act.c 3
 src/math/simd_dispatch.c 3
 src/math/ternary_matmul_lut_avx512bw.c 3
 src/threading/cache_probe.c 2

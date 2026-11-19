@@ -19,6 +19,7 @@
 #include "math/q8_0_act.h"
 #include "math/cpu_features.h"
 #include "core/gguf_reader.h"
+#include "memory/tls_scratch.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -323,8 +324,7 @@ static void q8a_task(void *arg, int thread_id, int start, int end) {
     }
 }
 
-static TnQ8_0ActBlock *s_q8a_buf = NULL;
-static int s_q8a_cap             = 0;
+static TnTlsScratch s_q8a_scratch = TN_TLS_SCRATCH_INIT; /* per-thread, see memory/tls_scratch.h */
 
 int parallel_matmul_q8a(float *out, const float *x, const uint8_t *w, int gguf_type, int n, int d,
                         ThreadPool *tp) {
@@ -344,15 +344,11 @@ int parallel_matmul_q8a(float *out, const float *x, const uint8_t *w, int gguf_t
     }
     if (n <= 0 || n % TN_Q8_0_BLOCK != 0 || d <= 0) return -1;
     const int nb = n / TN_Q8_0_BLOCK;
-    if (s_q8a_cap < nb) {
-        TnQ8_0ActBlock *nbuf = (TnQ8_0ActBlock *)malloc((size_t)nb * sizeof(TnQ8_0ActBlock));
-        if (!nbuf) return -1;
-        free(s_q8a_buf);
-        s_q8a_buf = nbuf;
-        s_q8a_cap = nb;
-    }
-    tn_quantize_q8_0_act(s_q8a_buf, x, nb);
-    Q8AArgs a = {out, w, s_q8a_buf, (size_t)nb * blk, nb, gguf_type, tn_q8_0_act_vnni_ok()};
+    TnQ8_0ActBlock *acts =
+        (TnQ8_0ActBlock *)tn_tls_scratch(&s_q8a_scratch, (size_t)nb * sizeof(TnQ8_0ActBlock));
+    if (!acts) return -1;
+    tn_quantize_q8_0_act(acts, x, nb);
+    Q8AArgs a = {out, w, acts, (size_t)nb * blk, nb, gguf_type, tn_q8_0_act_vnni_ok()};
     if (tp)
         threadpool_dispatch(tp, q8a_task, &a, d);
     else
@@ -399,8 +395,7 @@ static void q8a_tokens_task(void *arg, int thread_id, int start, int end) {
     }
 }
 
-static TnQ8_0ActBlock *s_q8a_tok_buf = NULL;
-static size_t s_q8a_tok_cap          = 0;
+static TnTlsScratch s_q8a_tok_scratch = TN_TLS_SCRATCH_INIT; /* per-thread */
 
 int parallel_matmul_q8a_tokens(float *out, const float *x, const uint8_t *w, int gguf_type, int n,
                                int d, int n_tokens, ThreadPool *tp) {
@@ -422,17 +417,13 @@ int parallel_matmul_q8a_tokens(float *out, const float *x, const uint8_t *w, int
     if (n_tokens == 1) return parallel_matmul_q8a(out, x, w, gguf_type, n, d, tp);
     const int nb = n / TN_Q8_0_BLOCK;
     size_t need  = (size_t)nb * (size_t)n_tokens;
-    if (s_q8a_tok_cap < need) {
-        TnQ8_0ActBlock *nbuf = (TnQ8_0ActBlock *)malloc(need * sizeof(TnQ8_0ActBlock));
-        if (!nbuf) return -1;
-        free(s_q8a_tok_buf);
-        s_q8a_tok_buf = nbuf;
-        s_q8a_tok_cap = need;
-    }
+    TnQ8_0ActBlock *acts =
+        (TnQ8_0ActBlock *)tn_tls_scratch(&s_q8a_tok_scratch, need * sizeof(TnQ8_0ActBlock));
+    if (!acts) return -1;
     for (int k = 0; k < n_tokens; k++)
-        tn_quantize_q8_0_act(s_q8a_tok_buf + (size_t)k * nb, x + (size_t)k * n, nb);
-    Q8ATokensArgs a = {
-        out, w, s_q8a_tok_buf, (size_t)nb * blk, nb, gguf_type, tn_q8_0_act_vnni_ok(), n_tokens, d};
+        tn_quantize_q8_0_act(acts + (size_t)k * nb, x + (size_t)k * n, nb);
+    Q8ATokensArgs a = {out,      w, acts, (size_t)nb * blk, nb, gguf_type, tn_q8_0_act_vnni_ok(),
+                       n_tokens, d};
     if (tp)
         threadpool_dispatch(tp, q8a_tokens_task, &a, d);
     else

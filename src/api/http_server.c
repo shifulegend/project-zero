@@ -704,9 +704,9 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
                 break;
             }
 
-            /* static: safe because only one generation runs at a time
-         * (generation_mutex, held for the whole of this function). */
-            static char stripped_prompt_buf[HTTP_STRIPPED_PROMPT_BUF];
+            /* Per-request buffer (not static): the result is copied with strdup() below, so it
+             * does not need to outlive this block, and two requests never share it. */
+            char stripped_prompt_buf[HTTP_STRIPPED_PROMPT_BUF];
             const char *stripped_prompt = req.messages[i].content;
             /* cfg/weights are declared const in ApiContext (text generation
          * never mutates them); the vision pipeline's KV-cache injection

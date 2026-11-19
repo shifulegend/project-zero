@@ -62,6 +62,21 @@ TernaryError selfcheck_run(const SelfCheckOptions *opt, const Config *cfg,
                            Tokenizer *tok, ThreadPool *tp, SelfCheckResult *out);
 
 
+/* ---- `--act-quant auto` decisions (pure, unit-tested; main.c applies them) ---- */
+typedef struct {
+    int    act_quant_requested;  /* 0 = auto; an explicit mode skips the check */
+    int    ternary_model;
+    int    no_calibrate;
+    int    sanitized_build;
+    double tolerance_pct;        /* 0 = no bar */
+    int    other_mode;           /* --self-check, --perplexity or --watermark-detect */
+    int    effective_is_int8;
+} SelfCheckAutoCtx;
+/* 1 when a start should check int8 against the accuracy bar (once per model, cached). */
+int selfcheck_auto_applies(const SelfCheckAutoCtx *c);
+/* The activation mode a verdict leaves in force: FAIL puts float activations in force; else AUTO. */
+int selfcheck_auto_numerics(SelfCheckVerdict v);   /* TnActQuant value: 0 auto, 2 float */
+
 /* ---- First-run probe cache (2026-11-18) -------------------------------------------------------
  * --act-quant auto on a ternary model is accuracy-checked once per (model file, numerics, head,
  * tolerance, probe length): the verdict is stored in ~/.project-zero/selfcheck.txt and read on the

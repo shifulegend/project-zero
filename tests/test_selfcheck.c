@@ -123,6 +123,23 @@ static void test_cache_file(void) {
     TEST_ASSERT_EQ(system(cmd), 0, "cleanup");
 }
 
+static void test_auto_decisions(void) {
+    SelfCheckAutoCtx c = { 0, 1, 0, 0, 1.0, 0, 1 };
+    TEST_ASSERT_EQ(selfcheck_auto_applies(&c), 1, "auto + ternary + int8 + bar: checks");
+    SelfCheckAutoCtx x = c; x.act_quant_requested = 1; TEST_ASSERT_EQ(selfcheck_auto_applies(&x), 0, "explicit int8: no check");
+    x = c; x.act_quant_requested = 2; TEST_ASSERT_EQ(selfcheck_auto_applies(&x), 0, "explicit float: no check");
+    x = c; x.ternary_model = 0;      TEST_ASSERT_EQ(selfcheck_auto_applies(&x), 0, "not a ternary model");
+    x = c; x.no_calibrate = 1;       TEST_ASSERT_EQ(selfcheck_auto_applies(&x), 0, "--no-calibrate");
+    x = c; x.sanitized_build = 1;    TEST_ASSERT_EQ(selfcheck_auto_applies(&x), 0, "sanitizer build");
+    x = c; x.tolerance_pct = 0.0;    TEST_ASSERT_EQ(selfcheck_auto_applies(&x), 0, "tolerance 0 = no bar");
+    x = c; x.other_mode = 1;         TEST_ASSERT_EQ(selfcheck_auto_applies(&x), 0, "--self-check / --perplexity / --watermark-detect");
+    x = c; x.effective_is_int8 = 0;  TEST_ASSERT_EQ(selfcheck_auto_applies(&x), 0, "already float activations");
+    TEST_ASSERT(selfcheck_auto_applies(NULL) == 0, "NULL");
+    TEST_ASSERT_EQ(selfcheck_auto_numerics(SC_FAIL), TN_ACT_FLOAT, "a FAIL verdict puts float activations in force");
+    TEST_ASSERT_EQ(selfcheck_auto_numerics(SC_PASS), TN_ACT_AUTO, "PASS keeps auto");
+    TEST_ASSERT_EQ(selfcheck_auto_numerics(SC_SKIPPED), TN_ACT_AUTO, "SKIPPED keeps auto");
+}
+
 int main(void) {
     printf("=== Self-check / act-quant Tests ===\n");
     RUN_TEST(test_delta_and_judge);
@@ -130,5 +147,6 @@ int main(void) {
     RUN_TEST(test_act_quant_modes);
     RUN_TEST(test_cache);
     RUN_TEST(test_cache_file);
+    RUN_TEST(test_auto_decisions);
     TEST_SUMMARY();
 }

@@ -907,9 +907,11 @@ int main(int argc, char **argv) {
     /* --act-quant auto on a ternary model: the int8 numerics are accuracy-checked once per model
      * and setting (verdict cached in ~/.project-zero/selfcheck.txt), and float activations take
      * over if they fail. --no-calibrate, sanitizer builds and an explicit --act-quant skip it. */
-    if (args.act_quant == 0 && w.layers_are_ternary && !args.no_calibrate && !TN_SANITIZED &&
-        args.quality_tolerance > 0.0 && !args.self_check && !args.perplexity_file &&
-        !args.watermark_detect && strcmp(tn_act_quant_effective(), "int8") == 0) {
+    SelfCheckAutoCtx auto_ctx = { args.act_quant, w.layers_are_ternary, args.no_calibrate, TN_SANITIZED,
+                                  args.quality_tolerance,
+                                  args.self_check || args.perplexity_file || args.watermark_detect,
+                                  strcmp(tn_act_quant_effective(), "int8") == 0 };
+    if (selfcheck_auto_applies(&auto_ctx)) {
         const TnHardwareProfile *hpa = tn_hardware_profile_get();
         const char *cls = !hpa ? "bf16" : hpa->classifier_fmt == TN_CLS_INT4 ? "int4"
                           : hpa->classifier_fmt == TN_CLS_INT8 ? "int8" : "bf16";
@@ -936,7 +938,7 @@ int main(int argc, char **argv) {
                     cv = SC_SKIPPED;
                 }
             }
-            if (cv == SC_FAIL) {
+            if (selfcheck_auto_numerics(cv) == TN_ACT_FLOAT) {
                 tn_act_quant_set(TN_ACT_FLOAT);
                 fprintf(stderr, "[self-check] int8 activations cost more than --quality-tolerance on this "
                         "model: using float activations.\n");

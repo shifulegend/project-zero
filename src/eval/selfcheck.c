@@ -187,3 +187,10 @@ void selfcheck_cache_store(const char *key, SelfCheckVerdict v) {
     fprintf(f, "%s\t%s\n", key, selfcheck_verdict_name(v));
     fclose(f);
 }
+
+int selfcheck_auto_applies(const SelfCheckAutoCtx *c) {
+    return c && c->act_quant_requested == 0 && c->ternary_model && !c->no_calibrate && !c->sanitized_build &&
+           c->tolerance_pct > 0.0 && !c->other_mode && c->effective_is_int8;
+}
+
+int selfcheck_auto_numerics(SelfCheckVerdict v) { return v == SC_FAIL ? 2 : 0; }

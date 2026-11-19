@@ -251,12 +251,51 @@ static void test_service(void) {
     update_set_fetcher(NULL);
 }
 
+/* Hostile or malformed release lists: the element splitter and field readers must not be fooled by
+ * brackets inside strings, escaped quotes, a "tag_name" nested in another object, or truncation. */
+static void test_pick_latest_hostile(void) {
+    UpdateInfo u;
+    memset(&u, 0, sizeof(u));
+    update_pick_latest("[{\"body\":\"} , { \\\"tag_name\\\": \\\"v9.9.9\\\" ] [\","
+                       "\"tag_name\":\"v0.1.0\"}]",
+                       "v0.0.1", UPDATE_CHANNEL_AUTO, &u);
+    TEST_ASSERT(strcmp(u.latest, "v0.1.0") == 0,
+                "brackets and quotes inside a string do not split");
+
+    memset(&u, 0, sizeof(u));
+    update_pick_latest("[{\"assets\":[{\"tag_name\":\"v9.9.9\"}],\"tag_name\":\"v0.1.0\"}]",
+                       "v0.0.1", UPDATE_CHANNEL_AUTO, &u);
+    TEST_ASSERT(strcmp(u.latest, "v0.1.0") == 0, "a nested tag_name is not read as the release's");
+
+    memset(&u, 0, sizeof(u));
+    TEST_ASSERT_EQ(update_pick_latest("[{\"tag_name\":\"v0.1.0\"},{\"tag_name\":\"v0.2", "v0.0.1",
+                                      UPDATE_CHANNEL_AUTO, &u),
+                   0, "a truncated list is handled without error");
+    TEST_ASSERT(strcmp(u.latest, "v0.1.0") == 0,
+                "a truncated release does not become the latest version");
+
+    memset(&u, 0, sizeof(u));
+    update_pick_latest("[1,2,\"x\",null,{\"tag_name\":\"v0.3.0\"},[],{}]", "v0.0.1",
+                       UPDATE_CHANNEL_AUTO, &u);
+    TEST_ASSERT(strcmp(u.latest, "v0.3.0") == 0, "non-object elements are skipped");
+
+    memset(&u, 0, sizeof(u));
+    update_pick_latest("[{\"tag_name\":\"v0.1.0\",\"draft\":true}]", "v0.0.1", UPDATE_CHANNEL_AUTO,
+                       &u);
+    TEST_ASSERT(u.latest[0] == '\0', "a draft is never offered");
+
+    TEST_ASSERT(update_pick_latest(NULL, "v0.1.0", 0, &u) != 0 &&
+                    update_pick_latest("", "v0.1.0", 0, &u) != 0,
+                "NULL and empty input rejected");
+}
+
 int main(void) {
     printf("=== Update Check (Phase 38) Tests ===\n");
     const char *t = getenv("TMPDIR");
     snprintf(g_dir, sizeof(g_dir), "%s/pz-upd-%d", (t && *t) ? t : "/tmp", (int)getpid());
     RUN_TEST(test_semver);
     RUN_TEST(test_pick_latest);
+    RUN_TEST(test_pick_latest_hostile);
     RUN_TEST(test_validation_and_env);
     RUN_TEST(test_check_and_cache);
     RUN_TEST(test_service);

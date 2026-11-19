@@ -34,6 +34,8 @@ jobs:
         run: |
           sh tools/test_check_root_files.sh
           sh tools/check_root_files.sh
+      - name: SBOM generator tests
+        run: python3 -I tools/test_gen_sbom.py
       - name: Benchmark scripts (tools/bench) unit tests
         run: python3 tools/bench/test_bench.py
       - name: Python lint (ruff, syntax errors and unused or undefined names)

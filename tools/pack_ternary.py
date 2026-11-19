@@ -222,7 +222,7 @@ def main():
             scale_file = os.path.join(input_dir, f"{name}.scale")
             scale = 1.0
             if os.path.exists(scale_file):
-                with open(scale_file, "r") as sf:
+                with open(scale_file, "r", encoding="utf-8") as sf:
                     scale = float(sf.read().strip())
             weights_dict[name] = (w, scale)
             print(f"  Loaded {name}: shape={w.shape}, scale={scale}")

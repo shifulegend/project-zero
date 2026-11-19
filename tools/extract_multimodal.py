@@ -419,7 +419,7 @@ def load_tensors_from_hf(repo_id, cache_dir=None):
     print(f"  Downloaded to {local_dir}")
 
     config_path = os.path.join(local_dir, "config.json")
-    with open(config_path) as fh:
+    with open(config_path, encoding="utf-8") as fh:
         config = json.load(fh)
 
     tensors = load_tensors_from_dir(local_dir)
@@ -452,7 +452,7 @@ def main():
         if not os.path.exists(config_path):
             print(f"ERROR: no config.json in {args.local}")
             sys.exit(1)
-        with open(config_path) as fh:
+        with open(config_path, encoding="utf-8") as fh:
             config = json.load(fh)
         tensors = load_tensors_from_dir(args.local)
 

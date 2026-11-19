@@ -41,9 +41,9 @@ def host_cpu():
     """CPU model string — recorded per run because cloud containers can be moved to
     different hardware by a restart (2026-10-19: a sweep's host changed mid-way)."""
     try:
-        with open("/proc/cpuinfo") as f:
+        with open("/proc/cpuinfo", encoding="utf-8") as f:
             name = next((l.split(":", 1)[1].strip() for l in f if l.startswith("model name")), "?")
-        with open("/proc/cpuinfo") as f:
+        with open("/proc/cpuinfo", encoding="utf-8") as f:
             model = next((l.split(":", 1)[1].strip() for l in f if l.startswith("model\t")), "?")
         return f"{name} (model {model}, {os.cpu_count()} vCPU)"
     except OSError:
@@ -137,13 +137,13 @@ def main():
     new = not os.path.exists(summary_path)
     done = {}  # (suite, threads, run) -> tok/s already recorded
     if a.resume and not new:
-        with open(summary_path) as f:
+        with open(summary_path, encoding="utf-8") as f:
             for row in csv.DictReader(f):
                 if row.get("gen_tok_s"):
                     done[(row["suite"], int(row["threads"]), int(row["run"]))] = float(
                         row["gen_tok_s"]
                     )
-    sf = open(summary_path, "a", newline="")
+    sf = open(summary_path, "a", encoding="utf-8", newline="")
     sw = csv.writer(sf)
     if new:
         sw.writerow(
@@ -236,7 +236,7 @@ def main():
                 tps, ntok = gen_toks(text)
                 ptps = prompt_toks(text)
                 stamp = datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
-                with open(os.path.join(tdir, f"run{r}.txt"), "w") as f:
+                with open(os.path.join(tdir, f"run{r}.txt"), "w", encoding="utf-8") as f:
                     f.write(
                         f"=== {name} t={t} run {r} ===\nDATE: {stamp}\nHOST_CPU: {HOST_CPU}\nCMD: {' '.join(cmd)}\n"
                         f"PROMPT: {a.prompt}\n{'=' * 60}\n{text}\n"
@@ -273,14 +273,14 @@ def main():
     # Resumed sweeps (same --out) merge into the existing meta.json.
     mpath = os.path.join(a.out, "meta.json")
     if os.path.exists(mpath):
-        with open(mpath) as f:
+        with open(mpath, encoding="utf-8") as f:
             old = json.load(f)
         old["suites"].update(meta["suites"])
         old["threads"] = sorted(set(old.get("threads", [])) | set(threads))
         old["finished"] = meta["finished"]
         old.setdefault("resumed", []).append(meta["started"])
         meta = old
-    with open(mpath, "w") as f:
+    with open(mpath, "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2)
     sf.close()
 

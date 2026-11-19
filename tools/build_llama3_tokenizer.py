@@ -6,7 +6,7 @@ def build_tokenizer():
     input_path = "/tmp/tokenizer.json"
     output_path = "models/bitnet-b1.58-2B-4T_tokenizer_proper.bin"
 
-    with open(input_path, "r") as f:
+    with open(input_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
     # Llama-3 (Tiktoken) tokenizer.json structure:

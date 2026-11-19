@@ -330,7 +330,7 @@ def find_best_run(suite_name, t):
         fpath = f"{t_dir}/run{r}.txt"
         if not os.path.exists(fpath):
             continue
-        with open(fpath) as f:
+        with open(fpath, encoding="utf-8") as f:
             text = f.read()
         if is_ref:
             g = extract_perf_print(text)[1]
@@ -371,7 +371,7 @@ if __name__ == "__main__":
         SS_DIR = os.path.join(SWEEP, "screenshots")
         meta_path = os.path.join(SWEEP, "meta.json")
         if os.path.exists(meta_path):
-            with open(meta_path) as f:
+            with open(meta_path, encoding="utf-8") as f:
                 meta = json.load(f)
             MAX_TOKENS = meta.get("max_tokens", MAX_TOKENS)
             RUNS = meta.get("runs", RUNS)

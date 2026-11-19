@@ -6,7 +6,9 @@ line-length = 100
 extend-exclude = ["benchmark_results"]
 
 [lint]
-select = ["E9", "F", "E722", "BLE001"]
+preview = true
+explicit-preview-rules = true   # only the preview rules named below
+select = ["E9", "F", "E722", "BLE001", "PLW1514"]   # PLW1514: text-mode open() must say encoding=
 
 [format]
 quote-style = "double"

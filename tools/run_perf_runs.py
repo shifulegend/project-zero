@@ -43,7 +43,7 @@ def read_best_thread(suite_name):
         print(f"  WARNING: no summary for {suite_name}")
         return None
     best_t, best_val = None, -1
-    with open(summary_path) as f:
+    with open(summary_path, encoding="utf-8") as f:
         for line in f:
             m = re.match(r"^(\d+)\s+([\d.]+)", line)
             if m:
@@ -182,7 +182,7 @@ if __name__ == "__main__":
                 f"{'=' * 60}\n"
             )
             out_path = f"{SWEEP}/{suite_name}/perf_run.txt"
-            with open(out_path, "w") as f:
+            with open(out_path, "w", encoding="utf-8") as f:
                 f.write(header + out)
             print(f"  -> saved {out_path}")
 

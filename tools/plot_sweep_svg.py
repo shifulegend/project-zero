@@ -26,7 +26,7 @@ COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#8a5cd1", "#c4972b"]
 
 def best_by_suite(summary):
     best = defaultdict(dict)
-    with open(summary) as f:
+    with open(summary, encoding="utf-8") as f:
         for r in csv.DictReader(f):
             if r.get("exit", "0") != "0" or not r.get("gen_tok_s"):
                 continue
@@ -161,7 +161,7 @@ def svg_to_png(svg, png_path, chrome):
     # Headless window sizes include browser chrome on some versions, so
     # render into a taller window (2x scale) and crop to the SVG box.
     html = png_path + ".html"
-    with open(html, "w") as f:
+    with open(html, "w", encoding="utf-8") as f:
         f.write('<html><body style="margin:0;background:%s">%s</body></html>' % (BG, svg))
     try:
         subprocess.run(
@@ -211,7 +211,7 @@ def main():
         panels.append((label, [tuple(p.split(":", 1)) for p in rest.split(",")]))
     svg = render(panels, best_by_suite(os.path.join(a.sweep, "summary.csv")), a.title, a.subtitle)
     svg_path = os.path.join(a.sweep, a.out + ".svg")
-    with open(svg_path, "w") as f:
+    with open(svg_path, "w", encoding="utf-8") as f:
         f.write(svg)
     print("wrote", svg_path)
     if a.png:

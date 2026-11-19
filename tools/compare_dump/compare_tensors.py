@@ -53,7 +53,7 @@ ANSI_RESET = "\033[0m"
 def load_csv(path):
     """Load a tensor dump CSV into a dict keyed by (layer, step)."""
     rows = {}
-    with open(path, newline="") as f:
+    with open(path, encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
             layer = int(row["layer"])

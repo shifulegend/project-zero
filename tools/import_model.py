@@ -102,7 +102,7 @@ def load_config(path):
     config_path = os.path.join(path, "config.json")
     if not os.path.exists(config_path):
         return {}
-    with open(config_path) as fh:
+    with open(config_path, encoding="utf-8") as fh:
         return json.load(fh)
 
 

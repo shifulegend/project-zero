@@ -21,7 +21,7 @@ def load_summary(suite_name):
         print(f"  WARNING: {path} not found")
         return {}
     results = {}
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         for line in f:
             m = re.match(r"^(\d+)\s+([\d.N/A]+)\s+([\d.N/A]+)", line)
             if m:
@@ -37,7 +37,7 @@ def load_perf(suite_name):
     path = f"{SWEEP}/{suite_name}/perf_run.txt"
     if not os.path.exists(path):
         return {}
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         text = f.read()
     result = {}
     m = re.search(r"Elapsed \(wall clock\) time.*?:\s*(\S+)", text)

@@ -73,7 +73,7 @@ def main():
     cur_vals = []
     collecting = False
 
-    with open(raw_path, errors="replace") as f:
+    with open(raw_path, encoding="utf-8", errors="replace") as f:
         for line in f:
             m = RE_HEADER.search(line)
             if m:
@@ -110,7 +110,7 @@ def main():
 
     # Write CSV
     written = 0
-    with open(csv_path, "w", newline="") as f:
+    with open(csv_path, "w", encoding="utf-8", newline="") as f:
         w = csv.writer(f)
         w.writerow(
             [

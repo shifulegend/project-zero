@@ -134,7 +134,7 @@ def main():
     parser.add_argument("--command", required=True, help="Command that was run")
     args = parser.parse_args()
 
-    with open(args.input, "r") as f:
+    with open(args.input, "r", encoding="utf-8") as f:
         text = f.read()
 
     render(text, args.title, args.command, args.output)

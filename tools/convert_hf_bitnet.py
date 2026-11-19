@@ -208,7 +208,7 @@ def extract_config(model_path):
         print(f"Error: config.json not found in {model_path}", file=sys.stderr)
         sys.exit(1)
 
-    with open(config_path, "r") as f:
+    with open(config_path, "r", encoding="utf-8") as f:
         cfg = json.load(f)
 
     config = {

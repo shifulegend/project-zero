@@ -154,7 +154,7 @@ class Chart(unittest.TestCase):
                 ("bitnet-2b-iq2bn", "ik", 2, 12.0),
                 ("bitnet-2b", "bitnetcpp", 2, 9.0),
             ]
-            with open(d / "summary.csv", "w") as f:
+            with open(d / "summary.csv", "w", encoding="utf-8") as f:
                 f.write(",".join(bl.SUMMARY_HEADER) + "\n")
                 for m, v, t, x in rows:
                     f.write(f"{m},{v},{t},1,{x},500,10,300,100,0,log\n")

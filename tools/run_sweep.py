@@ -182,7 +182,7 @@ def run_suite(suite_name, cmd_fn, parser, t_list=THREADS, cwd=None):
                 f"PROMPT: {PROMPT}\n"
                 f"{'=' * 60}\n"
             )
-            with open(f"{t_dir}/run{r}.txt", "w") as f:
+            with open(f"{t_dir}/run{r}.txt", "w", encoding="utf-8") as f:
                 f.write(header + out_text)
 
             if gen is not None:
@@ -211,7 +211,7 @@ def run_suite(suite_name, cmd_fn, parser, t_list=THREADS, cwd=None):
             time.sleep(COOLDOWN_S)
 
     # write summary
-    with open(f"{suite_dir}/summary.txt", "w") as f:
+    with open(f"{suite_dir}/summary.txt", "w", encoding="utf-8") as f:
         f.write(f"Suite: {suite_name}\n")
         f.write(f"Date: {datetime.datetime.now()}\n")
         f.write(f"Prompt: {PROMPT}\n")

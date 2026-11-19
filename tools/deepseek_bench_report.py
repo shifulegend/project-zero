@@ -28,7 +28,7 @@ def read_csv(path):
     """Read CSV, tolerating continuation lines (bash printf newline bug)."""
     if not os.path.exists(path):
         return []
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         raw = f.read()
     # Fix: join lines that don't start with a date prefix or 'date' header
     fixed = re.sub(r"\n(?!20[0-9]|date)", ",", raw)
@@ -44,14 +44,14 @@ def read_llama_csv(path):
     """Read llama-bench CSV (clean format, no fixing needed)."""
     if not os.path.exists(path):
         return []
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return list(csv.DictReader(f))
 
 
 def read_file(path):
     if not os.path.exists(path):
         return "(not found)"
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return f.read()
 
 
@@ -613,7 +613,7 @@ w("*See `DEBUGGING_JOURNAL.md` for pipeline correctness verification.*")
 generate_regression_section(lines)
 
 # Write report
-with open(REPORT, "w") as f:
+with open(REPORT, "w", encoding="utf-8") as f:
     f.write("\n".join(lines))
 
 print(f"✅ Report written to: {REPORT}")

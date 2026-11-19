@@ -258,7 +258,7 @@ def save_csv(all_results, path):
         "load_1m",
         "elapsed_s",
     ]
-    with open(path, "w", newline="") as f:
+    with open(path, "w", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
         w.writeheader()
         for suite_name, results in all_results:

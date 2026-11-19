@@ -139,9 +139,9 @@ def main():
     if args.kv_dim is None and (
         {"k_proj", "v_proj"}
         & set(
-            json.load(open(os.path.join(args.adapter, "adapter_config.json"))).get(
-                "target_modules", []
-            )
+            json.load(
+                open(os.path.join(args.adapter, "adapter_config.json"), encoding="utf-8")
+            ).get("target_modules", [])
         )
     ):
         print(
@@ -152,7 +152,7 @@ def main():
         )
 
     config_path = os.path.join(args.adapter, "adapter_config.json")
-    with open(config_path) as fh:
+    with open(config_path, encoding="utf-8") as fh:
         cfg = json.load(fh)
 
     rank = int(cfg["r"])

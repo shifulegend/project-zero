@@ -110,7 +110,7 @@ def build_weight_map(model_dir):
     index_path = os.path.join(model_dir, "model.safetensors.index.json")
     weight_map = {}
     if os.path.exists(index_path):
-        with open(index_path) as fh:
+        with open(index_path, encoding="utf-8") as fh:
             weight_map = json.load(fh)["weight_map"]
     else:
         for fname in os.listdir(model_dir):
@@ -196,7 +196,7 @@ def write_mla_attention(f, model_dir, weight_map, layer, cfg_hf):
 
 
 def convert_dense(args):
-    with open(os.path.join(args.model, "config.json")) as fh:
+    with open(os.path.join(args.model, "config.json"), encoding="utf-8") as fh:
         cfg = json.load(fh)
 
     dim = cfg.get("hidden_size", cfg.get("dim"))
@@ -278,7 +278,7 @@ def convert_dense(args):
 
 
 def convert_moe(args):
-    with open(os.path.join(args.model, "config.json")) as fh:
+    with open(os.path.join(args.model, "config.json"), encoding="utf-8") as fh:
         cfg_hf = json.load(fh)
 
     # ── Config fields ──

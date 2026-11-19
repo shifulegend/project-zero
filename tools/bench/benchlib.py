@@ -140,7 +140,7 @@ class RunDir:
         for d in (self.path, self.raw, self.shots):
             d.mkdir(parents=True, exist_ok=True)
         cmdfile = self.path / "command.txt"  # a resumed run appends its command; the original stays
-        with open(cmdfile, "a") as f:
+        with open(cmdfile, "a", encoding="utf-8") as f:
             f.write(shlex.join(["python3"] + [str(a) for a in self.argv]) + "\n")
         partial = self.path / "PARTIAL.md"
         if not (self.path / "meta.json").exists():  # meta.json is written only by finish()
@@ -150,7 +150,7 @@ class RunDir:
                 f"`--out {self.rel()} --resume`:\n\n    {shlex.join(['python3'] + [str(a) for a in self.argv])}\n\n"
                 "`progress.json` says how far it got. This file is deleted when the run finishes.\n"
             )
-        self._log = open(self.path / "run.log", "a")
+        self._log = open(self.path / "run.log", "a", encoding="utf-8")
         return self
 
     def close(self):
@@ -189,7 +189,7 @@ def _sh(cmd):
 
 
 def cpu_model():
-    for line in pathlib.Path("/proc/cpuinfo").read_text().splitlines():
+    for line in pathlib.Path("/proc/cpuinfo").read_text(encoding="utf-8").splitlines():
         if line.startswith("model name"):
             return line.split(":", 1)[1].strip()
     return platform.processor() or "unknown"
@@ -197,7 +197,7 @@ def cpu_model():
 
 def host_info():
     flags = ""
-    for line in pathlib.Path("/proc/cpuinfo").read_text().splitlines():
+    for line in pathlib.Path("/proc/cpuinfo").read_text(encoding="utf-8").splitlines():
         if line.startswith("flags"):
             flags = line.split(":", 1)[1]
             break
@@ -217,7 +217,7 @@ def host_info():
     )
     have = [w.replace("_?", "_") for w in want if re.search(rf"\b{w}\b", flags)]
     mem = ""
-    for line in pathlib.Path("/proc/meminfo").read_text().splitlines():
+    for line in pathlib.Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
         if line.startswith("MemTotal"):
             mem = f"{int(line.split()[1]) / 1048576:.1f} GiB"
             break
@@ -384,14 +384,14 @@ def stats(vals):
 
 
 def write_csv(path, header, rows):
-    with open(path, "w", newline="") as f:
+    with open(path, "w", encoding="utf-8", newline="") as f:
         w = csv.writer(f)
         w.writerow(header)
         w.writerows(rows)
 
 
 def read_csv_dicts(path):
-    with open(path, newline="") as f:
+    with open(path, encoding="utf-8", newline="") as f:
         return list(csv.DictReader(f))
 
 
@@ -660,7 +660,7 @@ SUMMARY_HEADER = [
 def load_rows(path):
     rows = []
     if pathlib.Path(path).exists():
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             for r in csv.DictReader(f):
                 r["threads"], r["round"] = int(r["threads"]), int(r["round"])
                 r["gen_tok_s"] = float(r["gen_tok_s"]) if r["gen_tok_s"] else None

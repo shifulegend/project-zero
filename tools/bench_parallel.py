@@ -94,7 +94,7 @@ def run_config(a, parallel, clients, port):
     log = (
         None
         if a.show_server
-        else open(os.path.join(a.out, f"server_p{parallel}_c{clients}.log"), "w")
+        else open(os.path.join(a.out, f"server_p{parallel}_c{clients}.log"), "w", encoding="utf-8")
     )
     proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT if log else None)
     try:
@@ -173,7 +173,7 @@ def main():
                     max_tokens=a.max_tokens,
                     date=time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
                 )
-                with open(os.path.join(a.out, f"p{p}_c{c}.json"), "w") as f:
+                with open(os.path.join(a.out, f"p{p}_c{c}.json"), "w", encoding="utf-8") as f:
                     json.dump(r, f, indent=2)
                 print(
                     f"\n>>> parallel={p} slots={r['slots']} clients={c}: "
@@ -189,7 +189,7 @@ def main():
     rows = []
     for name in sorted(os.listdir(a.out)):
         if name.startswith("p") and name.endswith(".json"):
-            with open(os.path.join(a.out, name)) as f:
+            with open(os.path.join(a.out, name), encoding="utf-8") as f:
                 rows.append(json.load(f))
     rows.sort(key=lambda r: (r["parallel"], r["clients"]))
     base = {r["clients"]: r for r in rows if r["parallel"] == 1}
@@ -216,7 +216,7 @@ def main():
             f"{r['max_latency_s']:>9.1f} {gain:>16}"
         )
     text = "\n".join(lines) + "\n"
-    with open(os.path.join(a.out, "summary.txt"), "w") as f:
+    with open(os.path.join(a.out, "summary.txt"), "w", encoding="utf-8") as f:
         f.write(text)
     sys.stdout.write("\n" + text)
 

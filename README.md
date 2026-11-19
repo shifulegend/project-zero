@@ -14,7 +14,7 @@ OpenAI-compatible API with a built-in web chat.
 </p>
 
 <p align="center">
-  <img src="docs/demo_bitnet.gif" width="720" alt="pz answering a question with BitNet b1.58-2B-4T on a 4-vCPU Xeon, 15 tok/s">
+  <img src="docs/demo_bitnet.gif" width="720" alt="pz answering a question with BitNet b1.58-2B-4T on a 4-vCPU Xeon">
 </p>
 
 ## Quick start

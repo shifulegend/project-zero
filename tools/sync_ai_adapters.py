@@ -91,6 +91,24 @@ REQUIRED_RULES = [
 ]
 
 
+def persona_drift():
+    """The Copilot persona must carry the same instructions as the Claude one (front matter differs)."""
+    out = []
+    src_dir = ROOT / ".claude" / "agents"
+    for src in sorted(src_dir.glob("*.md")) if src_dir.exists() else []:
+        dst = ROOT / ".github" / "agents" / f"{src.stem}.agent.md"
+        body = lambda t: re.sub(r"^---\n.*?\n---\n", "", t, count=1, flags=re.S)  # noqa: E731
+        if not dst.exists():
+            out.append(
+                f"{dst.relative_to(ROOT).as_posix()}: missing copy of {src.relative_to(ROOT).as_posix()}"
+            )
+        elif body(src.read_text(encoding="utf-8")) != body(dst.read_text(encoding="utf-8")):
+            out.append(
+                f"{dst.relative_to(ROOT).as_posix()}: body differs from {src.relative_to(ROOT).as_posix()}"
+            )
+    return out
+
+
 def missing_rules():
     out = []
     for ep in ENTRYPOINTS:
@@ -117,7 +135,7 @@ def main(argv):
             if not check:
                 out.parent.mkdir(parents=True, exist_ok=True)
                 out.write_text(content, encoding="utf-8")
-    gaps = missing_rules() if check else []
+    gaps = (missing_rules() + persona_drift()) if check else []
     if check and gaps:
         print("Root adapter files lost a durable rule (copy it from CLAUDE.md / AGENTS.md):")
         for g in gaps:

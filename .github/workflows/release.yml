@@ -162,10 +162,18 @@ jobs:
     environment: release            # add required reviewers to this environment (Settings > Environments) to gate publishing
     permissions:
       contents: write               # least privilege: only this job writes releases
+      id-token: write               # keyless signing of the build provenance (Sigstore)
+      attestations: write           # store the attestation with the repository
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with: { name: dist, path: dist }
+      - name: Attest build provenance of the release assets
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/install.sh
       - name: Create release and upload assets
         env:
           GH_TOKEN: ${{ github.token }}

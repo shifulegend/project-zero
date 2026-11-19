@@ -190,6 +190,18 @@ MUST NOT be modified; any modifications MUST be released as a new version"), Kee
    N+1 and name that release in the deprecation (the `adaptive_ai_engine` alias: deprecated in
    0.2.0, removed in 0.3.0 per the Phase 39 decision), and say so in both releases' notes.
 
+## Verifying a download
+
+Every release archive and `install.sh` carries a signed build-provenance attestation (GitHub /
+Sigstore, created by the publish job). Beyond the `SHA256SUMS` check that `install.sh` always does,
+anyone can verify where a file was built:
+
+```bash
+gh attestation verify project-zero-<version>-x86_64-unknown-linux-gnu.tar.gz --repo shifulegend/project-zero
+```
+
+`install.sh` does not require this (it would need the `gh` CLI); it is an extra check for people who want one.
+
 ## Hardening note
 
 Third-party Actions are avoided (the release is cut with the preinstalled `gh`

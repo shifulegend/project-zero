@@ -23,7 +23,7 @@
 #include "core/moe_config.h"
 #include "core/run_state.h"
 #include "core/weights.h"
-#include "speculative/spec_scratch.h"
+#include "core/batch_scratch_fwd.h"
 #include "threading/thread_pool.h"
 
 /**

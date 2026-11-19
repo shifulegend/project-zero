@@ -25,6 +25,7 @@
 #include "core/run_state.h"
 #include "core/debug.h"
 #include "core/step_timing.h"
+#include "speculative/spec_scratch.h"   /* reads the batch scratch fields */
 
 #include <math.h>
 #include <string.h>

@@ -1,6 +1,7 @@
 #ifndef TN_SPEC_SCRATCH_H
 #define TN_SPEC_SCRATCH_H
 
+#include "core/batch_scratch_fwd.h"
 #include "core/config.h"
 #include "core/error.h"
 
@@ -21,7 +22,7 @@
  * attention_forward() — kv_dim <= dim <= width(xb2), kv_dim <= hidden_dim
  * <= width(hb2)); the same reuse trick applies here, just N-wide.
  */
-typedef struct {
+struct SpecBatchScratch {
     int n_tokens;
     int dim;
     int hidden_dim;
@@ -40,7 +41,7 @@ typedef struct {
      * allocated an unused `logits` field here that nothing ever read or
      * wrote (2026-09-22, see docs/ai/mistakes.md); removed rather than
      * left as dead weight. */
-} SpecBatchScratch;
+};
 
 /**
  * Allocate all buffers for a batch width of `n_tokens`. Returns TN_ERR_OOM

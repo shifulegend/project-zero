@@ -31,6 +31,7 @@
 #include "transformer/dense_matmul_dispatch.h"
 #include "math/lora_matmul.h"
 #include "core/lora.h"
+#include "speculative/spec_scratch.h"   /* reads the batch scratch fields */
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>

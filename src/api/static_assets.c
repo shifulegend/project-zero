@@ -4,6 +4,7 @@
  */
 
 #include "api/static_assets.h"
+#include "api/net_io.h"
 #include "api/webui_bundle.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -59,13 +60,13 @@ static void write_headers(int fd, int status, const char *mime_type, size_t body
         "\r\n",
         status, status == 200 ? "OK" : "Not Found", mime_type, body_len,
         extra_headers ? extra_headers : "");
-    if (n > 0) { ssize_t r = write(fd, hdr, (size_t)n); (void)r; }
+    if (n > 0) (void)net_write_all(fd, hdr, (size_t)n);   /* peer gone: the body write fails too */
 }
 
 static void serve_404(int fd, const char *extra_headers) {
     const char *body = "Not found";
     write_headers(fd, 404, "text/plain", strlen(body), extra_headers);
-    ssize_t r = write(fd, body, strlen(body)); (void)r;
+    (void)net_write_all(fd, body, strlen(body));
 }
 
 /* ── Disk mode (--static-dir) ─────────────────────────────────────────────── */
@@ -105,7 +106,7 @@ static int serve_from_disk(int fd, const char *static_dir, const char *path,
     fclose(f);
 
     write_headers(fd, 200, mime_for_path(fs_path), nread, extra_headers);
-    ssize_t r = write(fd, buf, nread); (void)r;
+    (void)net_write_all(fd, buf, nread);
     free(buf);
     return 200;
 }
@@ -134,7 +135,7 @@ static int serve_from_bundle(int fd, const char *path, const char *extra_headers
         return 404;
     }
     write_headers(fd, 200, asset->mime_type, asset->len, extra_headers);
-    ssize_t r = write(fd, asset->data, asset->len); (void)r;
+    (void)net_write_all(fd, asset->data, asset->len);
     return 200;
 }
 

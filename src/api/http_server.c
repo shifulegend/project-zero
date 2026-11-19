@@ -60,6 +60,7 @@
 
 #include "api/config_endpoint.h"
 #include "api/api_server.h"
+#include "api/net_io.h"
 #include "api/chat_request.h"
 #include "api/chat_compile.h"
 #include "api/sse_stream.h"
@@ -152,8 +153,8 @@ static void send_response_ex(int fd, int status, const char *content_type,
             "%s"
             "\r\n", status, content_type, body_len, extra);
     }
-    if (n > 0) { ssize_t r = write(fd, hdr, (size_t)n); (void)r; }
-    if (body && !streaming) { ssize_t r = write(fd, body, body_len); (void)r; }
+    if (n > 0 && net_write_all(fd, hdr, (size_t)n) != 0) return;
+    if (body && !streaming) (void)net_write_all(fd, body, body_len);   /* peer gone: nothing left to do */
 }
 
 static void send_error_ex(int fd, int status, const char *msg, const char *extra_headers) {
@@ -170,9 +171,8 @@ static void send_error_ex(int fd, int status, const char *msg, const char *extra
         "%s"
         "\r\n", status, strlen(body), extra);
     if (n > 0) {
-        ssize_t r;
-        r = write(fd, hdr, (size_t)n); (void)r;
-        r = write(fd, body, strlen(body)); (void)r;
+        if (net_write_all(fd, hdr, (size_t)n) == 0)
+            (void)net_write_all(fd, body, strlen(body));   /* peer gone: nothing left to do */
     }
 }
 
@@ -288,8 +288,8 @@ static void send_json_heap(int fd, int status, char *body, const char *extra_hea
             "HTTP/1.1 %d Error\r\nContent-Type: application/json\r\n"
             "Content-Length: %zu\r\nConnection: close\r\n%s\r\n",
             status, strlen(body), extra_headers ? extra_headers : "");
-        if (n > 0) { ssize_t r = write(fd, hdr, (size_t)n); (void)r; }
-        ssize_t r = write(fd, body, strlen(body)); (void)r;
+        if (n > 0 && net_write_all(fd, hdr, (size_t)n) != 0) return;   /* peer gone */
+        (void)net_write_all(fd, body, strlen(body));
     }
     free(body);
 }
@@ -575,7 +575,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
         if (qw.headers_sent) {
             char ev[160];
             int n = snprintf(ev, sizeof(ev), "data: {\"error\":{\"message\":\"%s\",\"type\":\"server_error\"}}\n\n", why);
-            ssize_t wr = write(fd, ev, (size_t)n); (void)wr;
+            if (n > 0) (void)net_write_all(fd, ev, (size_t)n);   /* peer gone: stream already ended */
         } else {
             send_error_ex(fd, 429, why, extra_headers);
         }

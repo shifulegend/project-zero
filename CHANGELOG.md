@@ -30,6 +30,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Fixed
 
+- Fix HTTP responses (including web UI files and error replies) being cut short when the connection could not take all the bytes in one write; the server now keeps writing until everything is sent or the client has gone.
 - Ship `NOTICE` and `LICENSE-LGPL-3.0.txt` in release archives and install them next to `LICENSE` (`share/doc/project-zero`), because the binary statically links an LGPL-3.0-or-later AVX-512 kernel; the README license section now names that exception.
 - Fix DeepSeek-V2 (`tokenizer.ggml.pre = deepseek-llm`) and DeepSeek-Coder models being tokenised with the generic splitter, which cut a space off the punctuation after it and fed the model unfamiliar token sequences: DeepSeek-V2-Lite perplexity on a 7.5 KB test text drops from 11.51 to 6.67 (llama.cpp: 6.61), and token IDs now match llama.cpp's.
 - Fix the int8 activation quantiser rounding toward zero instead of to nearest: ternary (BitNet) and Q2_0 models on the VNNI, VNNI-256 and ARM dotprod paths lost about 10% perplexity (BitNet 2B-4T on a 7.5 KB test text: 34.39 before, 31.37 after, against 31.32 for float activations; decode speed unchanged at 20.6 vs 19.7 tok/s, 4 threads, within noise). Output stayed fluent, so the loss was easy to miss.

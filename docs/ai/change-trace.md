@@ -1,7 +1,12 @@
 # Change Trace — project-zero
 
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
-> Update after each meaningful sub-step. Last updated: 2026-11-18.
+> Update after each meaningful sub-step. Last updated: 2026-11-19.
+
+### 2026-11-19 — Measurable code limits written into the engineering rules
+- What: `engineering-rules.md` gains "Measurable limits": 500-line files (CI ratchet), 20-line functions, complexity 10, nesting 3, attached braces, and an untrusted-input checklist.
+- Why: the limits were implicit; reviews (human and AI) need numbers to enforce. File size is the only one a CI gate enforces so far; the rest are review-time rules until a complexity gate exists.
+- Areas: `docs/ai/engineering-rules.md`.
 
 ### 2026-11-18 — act-quant setting, accuracy probe, self-check (CLI, API, web UI)
 - What: `TnActQuant` in `simd_dispatch.c`; `src/eval/selfcheck.c`; `--act-quant`, `--quality-tolerance`, `--self-check`, `--self-check-tokens` (args, `pz config` schema); startup fallback in `main.c`; `POST /v1/selfcheck`, `runtime` fields and saveable keys in `/v1/config`; `AccuracyCheck.svelte` and the regenerated bundle; `tests/test_selfcheck.c`.

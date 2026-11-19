@@ -41,6 +41,25 @@
   `tests/fixtures/`, benchmark outputs under `benchmark_results/`. Adding a genuine root file
   means adding it to that list in the same commit.
 
+## Measurable limits (new and changed code)
+- **File length:** at most 500 lines. CI (`tools/check_file_sizes.py`) fails on a new file over the
+  cap and on growth of a listed one; the existing offenders are in `tools/file_size_baseline.txt`,
+  which may only shrink.
+- **Function length:** a new function does one job and stays under 20 lines of body; a longer one
+  gets a comment that says why splitting it would hurt (a hot kernel, one flat state machine).
+  Reviewers hold new code to this; the 200-line functions already in the tree are tracked work, not
+  precedent. No automated gate yet (the complexity ratchet is open work).
+- **Complexity:** cyclomatic complexity 10 or less and nesting depth 3 or less per new function;
+  prefer early returns over nested `if`s, and a table or a helper over a long `else if` chain.
+- **Braces:** attached (K&R) braces everywhere, enforced by `.clang-format` (see Formatting); no
+  bare `{ ... }` scope blocks to make a function look shorter.
+- **Untrusted input (OWASP input validation):** everything that crosses the network, a file or the
+  command line is validated before it is used. Check every parse result (`strtol`/`strtoull`
+  with `errno` and end-pointer, never `atoi`), bound every length and nesting depth before
+  allocating, refuse what cannot be honoured with a clear error instead of ignoring it (a `400`,
+  not a silent default), and fail closed when a check cannot run. Examples already in the tree:
+  `api/http_headers.c`, the JSON depth cap, `response_format` types, `cmd_exec` path checks.
+
 ## Memory & safety (hard rules, learned from real bugs)
 - **Zero structs before partial population.** Always `memset(&x, 0, sizeof(x))` before
   `weights_alloc_pointers()` / `run_state_alloc()`-style fillers. `weights_free_pointers()`

@@ -48,9 +48,12 @@ struct Value {
     explicit Value(bool b_) : type(VType::Bool), b(b_) {}
     explicit Value(long long i_) : type(VType::Int), i(i_) {}
     explicit Value(double f_) : type(VType::Float), f(f_) {}
-    Value(const std::string &s_) : type(VType::Str), s(s_) {}       // NOLINT
-    Value(std::string &&s_) : type(VType::Str), s(std::move(s_)) {} // NOLINT
-    Value(const char *s_) : type(VType::Str), s(s_ ? s_ : "") {}    // NOLINT
+    // The three string constructors are implicit on purpose: template values are built from literals.
+    Value(const std::string &s_) : type(VType::Str), s(s_) {} // NOLINT(google-explicit-constructor)
+    Value(std::string &&s_)
+        : type(VType::Str), s(std::move(s_)) {} // NOLINT(google-explicit-constructor)
+    Value(const char *s_)
+        : type(VType::Str), s(s_ ? s_ : "") {} // NOLINT(google-explicit-constructor)
 
     bool truthy() const {
         switch (type) {

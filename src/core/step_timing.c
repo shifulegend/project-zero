@@ -4,12 +4,14 @@
 #include <string.h>
 #include <time.h>
 
+#include "core/env_flag.h"
+
 typedef struct {
     int64_t total_ns;
     int64_t count;
 } TnStepTimingStat;
 
-static int g_step_timing_enabled = -1;
+static atomic_int g_step_timing_enabled = TN_ENV_FLAG_UNSET;
 static TnStepTimingStat g_step_stats[TN_STEP_COUNT];
 
 static const char *g_step_names[TN_STEP_COUNT] = {
@@ -44,11 +46,7 @@ static const char *g_step_names[TN_STEP_COUNT] = {
 };
 
 int tn_step_timing_enabled(void) {
-    if (g_step_timing_enabled < 0) {
-        const char *env       = getenv("TN_STEP_TIMING");
-        g_step_timing_enabled = (env && env[0] == '1') ? 1 : 0;
-    }
-    return g_step_timing_enabled;
+    return tn_env_on_if_one(&g_step_timing_enabled, "TN_STEP_TIMING");
 }
 
 int64_t tn_step_timing_now_ns(void) {

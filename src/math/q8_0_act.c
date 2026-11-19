@@ -23,6 +23,7 @@
 #include <string.h>
 
 #include "core/cpu_features.h"
+#include "core/env_flag.h"
 #include "core/fp16.h"
 #include "core/gguf_reader.h"
 #include "memory/tls_scratch.h"
@@ -55,12 +56,9 @@ static inline float q8a_f16(const uint8_t *p) {
 int tn_q8_0_act_vnni_ok(void) {
 #if Q8A_HAS_VNNI
     /* PZ_Q8A_VNNI=0 forces the AVX2 path (A/B aid); main thread only */
-    static int env = -1;
-    if (env < 0) {
-        const char *e = getenv("PZ_Q8A_VNNI");
-        env           = (e && e[0] == '0') ? 0 : 1;
-    }
-    return (env && tn_cpu_features_detect()->avx512vnni) ? 1 : 0;
+    static atomic_int env = TN_ENV_FLAG_UNSET;
+    return (tn_env_on_unless_zero(&env, "PZ_Q8A_VNNI") && tn_cpu_features_detect()->avx512vnni) ? 1
+                                                                                                : 0;
 #else
     return 0;
 #endif

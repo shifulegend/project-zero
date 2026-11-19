@@ -6,6 +6,7 @@
 #include <time.h>
 
 #include "core/debug.h"
+#include "core/env_flag.h"
 #include "core/gguf_reader.h"
 #include "core/moe_config.h"
 #include "core/step_timing.h"
@@ -29,7 +30,11 @@
  * Accumulates time across all tokens, prints summary on every Nth token.
  * Zero cost when disabled (checked once at first call).
  */
-static int g_profile_enabled = -1; /* -1 = unchecked */
+static atomic_int g_profile_enabled = TN_ENV_FLAG_UNSET; /* TN_PROFILE, read once */
+
+static inline int prof_enabled(void) {
+    return tn_env_on_if_one(&g_profile_enabled, "TN_PROFILE");
+}
 static int64_t g_prof_embed_ns, g_prof_attn_ns;
 static int64_t g_prof_norm_ns, g_prof_cls_ns, g_prof_total_ns;
 static int64_t g_prof_attn_only_ns, g_prof_ffn_only_ns;
@@ -52,13 +57,9 @@ float *transformer_forward(int token, int pos, const Config *cfg, const Transfor
     if (s->sw.window_size == 0) sw_init(&s->sw, s->max_seq_len, 0);
 
     /* One-time check for profiling env var */
-    if (g_profile_enabled < 0) {
-        const char *env   = getenv("TN_PROFILE");
-        g_profile_enabled = (env && env[0] == '1') ? 1 : 0;
-    }
 
     int64_t t0 = 0, t1 = 0, t2 = 0, t3 = 0, t4 = 0;
-    if (g_profile_enabled) t0 = prof_now();
+    if (prof_enabled()) t0 = prof_now();
 
     /* Step 1: Embed token → s->x (skip if token < 0, assuming caller injected s->x) */
     if (token >= 0) {
@@ -77,7 +78,7 @@ float *transformer_forward(int token, int pos, const Config *cfg, const Transfor
         DBG_MSG("token=%d  pos=%d\n", token, pos);
     }
 
-    if (g_profile_enabled) t1 = prof_now();
+    if (prof_enabled()) t1 = prof_now();
 
     /* Step 2: Run through all transformer layers */
     DistPlan *dist = dist_plan_active();
@@ -91,11 +92,11 @@ float *transformer_forward(int token, int pos, const Config *cfg, const Transfor
             continue;
         }
         int64_t la = 0, lb = 0;
-        if (g_profile_enabled) la = prof_now();
+        if (prof_enabled()) la = prof_now();
         if (mc && mc->is_ssm) {
             /* Phase 22-SSM: a Mamba block replaces attention + FFN. */
             mamba_block_forward(s->x, s->xb, s->xb2, s->mamba, w->mamba, cfg, mc, l, pos, tp);
-            if (g_profile_enabled) lb = prof_now();
+            if (prof_enabled()) lb = prof_now();
         } else {
             /* Phase 31: disk-backed KV — start reading the next layer's rows now. */
             if (s->kv_offload_base) {
@@ -103,10 +104,10 @@ float *transformer_forward(int token, int pos, const Config *cfg, const Transfor
                 run_state_kv_prefetch_layer(s, cfg, l + 1, pos + 1);
             }
             attention_forward(s, w, cfg, mc, l, pos, tp);
-            if (g_profile_enabled) lb = prof_now();
+            if (prof_enabled()) lb = prof_now();
             ffn_forward(s, w, cfg, mc, l, tp);
         }
-        if (g_profile_enabled) {
+        if (prof_enabled()) {
             int64_t lc = prof_now();
             g_prof_attn_only_ns += (lb - la);
             g_prof_ffn_only_ns += (lc - lb);
@@ -119,7 +120,7 @@ float *transformer_forward(int token, int pos, const Config *cfg, const Transfor
         }
     }
 
-    if (g_profile_enabled) t2 = prof_now();
+    if (prof_enabled()) t2 = prof_now();
 
     /* Step 3: Final RMSNorm */
     if (w->rms_final_weight) {
@@ -131,7 +132,7 @@ float *transformer_forward(int token, int pos, const Config *cfg, const Transfor
     }
     DBG_DUMP(-1, "result_norm", s->x, dim);
 
-    if (g_profile_enabled) t3 = prof_now();
+    if (prof_enabled()) t3 = prof_now();
 
     /* Verbose: logits stats before classifier */
     DBG_VEC("final-norm x", s->x, dim);
@@ -246,7 +247,7 @@ float *transformer_forward(int token, int pos, const Config *cfg, const Transfor
         DBG_DUMP(-1, "lm_head_top8_idx", idx_f, 8);
     }
 
-    if (g_profile_enabled) {
+    if (prof_enabled()) {
         t4 = prof_now();
         g_prof_embed_ns += (t1 - t0);
         g_prof_attn_ns += (t2 - t1); /* attn + ffn combined (layers) */

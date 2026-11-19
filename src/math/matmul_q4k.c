@@ -35,6 +35,7 @@
 #include <string.h>
 
 #include "core/cpu_features.h"
+#include "core/env_flag.h"
 #include "core/fp16.h"
 #include "core/platform.h"
 #include "memory/tls_scratch.h"
@@ -460,12 +461,9 @@ int tn_q4k_vnni_ok(void) {
     /* runtime-verified flag: some hypervisors advertise VNNI in CPUID
      * without executing it (mistakes.md 2026-09-24). PZ_Q4K_VNNI=0 forces
      * the AVX2 kernel (A/B aid). Evaluated on the dispatching thread. */
-    static int env = -1;
-    if (env < 0) {
-        const char *e = getenv("PZ_Q4K_VNNI");
-        env           = (e && e[0] == '0') ? 0 : 1;
-    }
-    return (env && tn_cpu_features_detect()->avx512vnni) ? 1 : 0;
+    static atomic_int env = TN_ENV_FLAG_UNSET;
+    return (tn_env_on_unless_zero(&env, "PZ_Q4K_VNNI") && tn_cpu_features_detect()->avx512vnni) ? 1
+                                                                                                : 0;
 #else
     return 0;
 #endif

@@ -7,6 +7,7 @@
 #include <sys/mman.h>
 
 #include "core/debug.h"
+#include "core/env_flag.h"
 #include "core/gguf_quant.h"
 #include "core/gguf_reader.h"
 #include "core/step_timing.h"
@@ -206,12 +207,8 @@ void moe_expert_tracking_free(void) {
  * tensors) stays on the legacy path below. PZ_MOE_FUSED=0 forces the legacy
  * path (A/B and bisecting aid). */
 static int moe_fused_enabled(void) {
-    static int cached = -1;
-    if (cached < 0) {
-        const char *e = getenv("PZ_MOE_FUSED");
-        cached        = (e && e[0] == '0') ? 0 : 1;
-    }
-    return cached;
+    static atomic_int cached = TN_ENV_FLAG_UNSET;
+    return tn_env_on_unless_zero(&cached, "PZ_MOE_FUSED");
 }
 
 static void moe_fused_try(RunState *s, const TransformerWeights *w, const Config *cfg,

@@ -34,6 +34,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Fixed
 
+- Answer `501` to a request body sent with any `Transfer-Encoding` (gzip, deflate, ...), not only `chunked`; before, the server ignored the header and read the body as plain bytes.
 - Free the reply body when a client disconnects while the server is sending an error status for a settings, watermark or self-check request (it leaked before), and never send a cut-off header block: extra headers that would not fit are dropped, and error messages are JSON-escaped.
 - List `GET /openapi.json` in the OpenAPI document it serves; the route existed but was missing from its own description.
 - Stop the Mixture-of-Experts layers (expert kernels, the batched expert path and the router's top-k selection) from sharing scratch memory between threads: two requests running an MoE layer at once could corrupt each other's expert selection and outputs. Each calling thread now has its own scratch.
@@ -125,6 +126,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Fixed
 
+- Answer `501` to a request body sent with any `Transfer-Encoding` (gzip, deflate, ...), not only `chunked`; before, the server ignored the header and read the body as plain bytes.
 - Free the reply body when a client disconnects while the server is sending an error status for a settings, watermark or self-check request (it leaked before), and never send a cut-off header block: extra headers that would not fit are dropped, and error messages are JSON-escaped.
 - List `GET /openapi.json` in the OpenAPI document it serves; the route existed but was missing from its own description.
 - Stop the Mixture-of-Experts layers (expert kernels, the batched expert path and the router's top-k selection) from sharing scratch memory between threads: two requests running an MoE layer at once could corrupt each other's expert selection and outputs. Each calling thread now has its own scratch.
@@ -177,6 +179,7 @@ _First release with a prebuilt, portable x86-64 Linux binary (`adaptive_ai_engin
 
 ### Fixed
 
+- Answer `501` to a request body sent with any `Transfer-Encoding` (gzip, deflate, ...), not only `chunked`; before, the server ignored the header and read the body as plain bytes.
 - Free the reply body when a client disconnects while the server is sending an error status for a settings, watermark or self-check request (it leaked before), and never send a cut-off header block: extra headers that would not fit are dropped, and error messages are JSON-escaped.
 - List `GET /openapi.json` in the OpenAPI document it serves; the route existed but was missing from its own description.
 - Stop the Mixture-of-Experts layers (expert kernels, the batched expert path and the router's top-k selection) from sharing scratch memory between threads: two requests running an MoE layer at once could corrupt each other's expert selection and outputs. Each calling thread now has its own scratch.

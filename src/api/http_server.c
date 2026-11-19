@@ -708,10 +708,9 @@ static void handle_connection(int fd, ApiContext *ctx) {
                     close(fd);
                     return;
                 }
-                if (fr.has_transfer_encoding && fr.chunked) {
-                    http_send_error(
-                        fd, HTTP_NOT_IMPLEMENTED,
-                        "Chunked request bodies are not supported; send Content-Length");
+                if (fr.has_transfer_encoding) { /* chunked, gzip, ...: none is implemented */
+                    http_send_error(fd, HTTP_NOT_IMPLEMENTED,
+                                    "Transfer-Encoding is not supported; send Content-Length");
                     free(recv_buf);
                     close(fd);
                     return;

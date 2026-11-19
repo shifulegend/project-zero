@@ -129,6 +129,9 @@ int main(void) {
         {"POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: "
          "chunked\r\n\r\n0\r\n\r\n",
          "HTTP/1.1 501", "chunked body refused with 501"},
+        {"POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: "
+         "gzip\r\nContent-Length: 2\r\n\r\n{}",
+         "HTTP/1.1 501", "any other Transfer-Encoding is refused with 501 too"},
         {"POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: abc\r\n\r\n",
          "HTTP/1.1 400", "non-numeric Content-Length refused with 400"},
         {"POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: "
@@ -145,7 +148,7 @@ int main(void) {
         send_str(c, fr[i].req);
         slurp(c, buf, sizeof buf, 3000, &eof);
         CHECK(strncmp(buf, fr[i].want, strlen(fr[i].want)) == 0 ||
-                  (i == 3 && strncmp(buf, "HTTP/1.1 413", 12) == 0),
+                  (i == 4 && strncmp(buf, "HTTP/1.1 413", 12) == 0),
               fr[i].what);
         close(c);
     }

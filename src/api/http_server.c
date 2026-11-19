@@ -61,6 +61,7 @@
 #include "api/config_endpoint.h"
 #include "api/api_server.h"
 #include "api/net_io.h"
+#include "api/rate_limit.h"
 #include "api/http_headers.h"
 #include "api/chat_request.h"
 #include "api/chat_compile.h"
@@ -1074,6 +1075,22 @@ static void handle_connection(int fd, ApiContext *ctx) {
         return;
     }
 
+    /* Rate limit the cheap non-generation API routes (generation has its own
+     * queue; /health, /metrics and the web UI's static files are not limited). */
+    if (strncmp(req.path, "/v1/", 4) == 0 &&
+        strncmp(req.path, "/v1/chat/completions", 20) != 0) {
+        int retry = 1;
+        if (!rate_limit_take(&ctx->rate_limiter, rate_limit_now(), &retry)) {
+            char hdrs[640];
+            snprintf(hdrs, sizeof hdrs, "%sRetry-After: %d\r\n", extra_headers, retry);
+            metrics_record_request(&ctx->metrics, 429);
+            send_error_ex(fd, 429, "Too many requests; slow down", hdrs);
+            free(recv_buf);
+            close(fd);
+            return;
+        }
+    }
+
     /* Cross-site guard for every mutating route (the web UI and API clients
      * pass; a foreign web page cannot, because browsers always attach Origin). */
     if (strcmp(req.method, "POST") == 0 &&
@@ -1309,6 +1326,8 @@ TernaryError api_server_start(int port, ApiContext *ctx) {
     }
     start_parallel(ctx);
 
+    rate_limit_init(&ctx->rate_limiter, (double)ctx->server_config.rate_limit,
+                    2.0 * (double)ctx->server_config.rate_limit);
     atomic_store(&ctx->running, 1);
 
     /* Spawn listener thread */

@@ -1036,6 +1036,7 @@ int main(int argc, char **argv) {
         api_ctx.server_config.best_of = args.best_of;
         api_ctx.server_config.queue_size = args.queue_size;
         api_ctx.server_config.queue_timeout_s = args.queue_timeout_s;
+        api_ctx.server_config.rate_limit = args.rate_limit;
         api_ctx.server_config.client_timeout_s = args.client_timeout_s;
         api_ctx.server_config.max_connections = args.max_connections;
         api_ctx.server_config.parallel = args.parallel;

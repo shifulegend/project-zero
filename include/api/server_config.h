@@ -66,6 +66,7 @@ typedef struct {
     int              prompt_cache_min_tokens; /* --prompt-cache-min-tokens: shortest stored sequence */
     int              queue_size;      /* --queue-size: requests that may wait for the slot (0 = 429) */
     int              queue_timeout_s; /* --queue-timeout: seconds a queued request waits */
+    int              rate_limit;      /* --rate-limit: requests/second allowed on non-generation routes (0 = off) */
     int              client_timeout_s;/* --client-timeout: socket read/write timeout in seconds (0 = none) */
     int              max_connections; /* --max-connections: simultaneous client connections (0 = unlimited) */
     int              parallel;        /* --parallel: chat requests served at once (1 = sequential) */

@@ -136,6 +136,7 @@ void print_usage(const char *prog_name) {
     printf("  --queue-size <N>    Let up to N chat requests wait (in order) while one is\n");
     printf("                      generating, instead of answering 429 (default: 0)\n");
     printf("  --queue-timeout <s> Seconds a queued request waits before giving up (120)\n");
+    printf("  --rate-limit <n>    Requests per second allowed on the non-generation routes (20; 0 = off)\n");
     printf("  --client-timeout <s> Drop a client that sends or reads nothing for this many seconds (30; 0 = never)\n");
     printf("  --max-connections <N> Open client connections at once; more get 503 (64; 0 = unlimited)\n");
     printf("  --parallel <N>      Serve up to N chat requests at once, batched into one\n");
@@ -314,6 +315,7 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->remote_layers = NULL;
     args->plan_layers = NULL;
     args->queue_timeout_s = 120;
+    args->rate_limit = 20;
     args->client_timeout_s = 30;
     args->max_connections = 64;
     args->parallel = 1;
@@ -499,6 +501,12 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             args->queue_timeout_s = atoi(argv[++i]);
             if (args->queue_timeout_s < 1) {
                 fprintf(stderr, "Error: --queue-timeout must be >= 1 second\n");
+                return TN_ERR_INVALID_CONFIG;
+            }
+        } else if (strcmp(argv[i], "--rate-limit") == 0 && i + 1 < argc) {
+            args->rate_limit = atoi(argv[++i]);
+            if (args->rate_limit < 0 || args->rate_limit > 100000) {
+                fprintf(stderr, "Error: --rate-limit must be 0..100000 requests per second\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--client-timeout") == 0 && i + 1 < argc) {

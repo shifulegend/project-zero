@@ -19,6 +19,7 @@
 
 #include <stdatomic.h>
 #include "core/error.h"
+#include "api/rate_limit.h"
 #include "core/config.h"
 #include "core/moe_config.h"
 #include "core/run_state.h"
@@ -71,6 +72,7 @@ typedef struct {
     /* Server state (filled by api_server_start) */
     int   server_fd;            /* listening socket fd, -1 when stopped */
     void *listener_thread;      /* pthread_t, opaque */
+    RateLimiter rate_limiter;       /* non-generation routes (--rate-limit) */
     atomic_int active_connections; /* connection threads alive (listener +1, thread exit -1) */
     atomic_int running;         /* 1 = running, 0 = stop requested (read by the listener and connection threads) */
 } ApiContext;

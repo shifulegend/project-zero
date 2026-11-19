@@ -181,6 +181,34 @@ int main(void) {
     close(again);
 
     api_server_stop(&ctx);
+
+    /* rate limit: a second server allowing 2 req/s (burst 4) on the non-generation routes */
+    {
+        int port2 = free_port();
+        ApiContext rc;
+        api_context_init(&rc, NULL, NULL, NULL, NULL, NULL, NULL);
+        rc.server_config.rate_limit = 2;
+        if (port2 > 0 && api_server_start(port2, &rc) == TN_OK) {
+            nap_ms(100);
+            int n429 = 0, n200 = 0, retry_hdr = 0;
+            for (int i = 0; i < 12; i++) {
+                int c = dial(port2);
+                send_str(c, "GET /v1/models HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
+                slurp(c, buf, sizeof buf, 3000, &eof);
+                if (strncmp(buf, "HTTP/1.1 429", 12) == 0) { n429++; if (strstr(buf, "Retry-After: ")) retry_hdr = 1; }
+                else if (strncmp(buf, "HTTP/1.1 200", 12) == 0) n200++;
+                close(c);
+            }
+            CHECK(n429 >= 1 && n200 >= 1, "burst of 12 requests: some served, the rest refused with 429");
+            CHECK(retry_hdr, "429 carries a Retry-After header");
+            int c = dial(port2);
+            send_str(c, "GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
+            slurp(c, buf, sizeof buf, 3000, &eof);
+            CHECK(strncmp(buf, "HTTP/1.1 200", 12) == 0, "/health is never rate limited");
+            close(c);
+            api_server_stop(&rc);
+        } else { printf("FAIL: second server did not start\n"); g_fail++; }
+    }
     printf(g_fail ? "http_limits: %d FAILED\n" : "http_limits: all passed\n", g_fail);
     return g_fail ? 1 : 0;
 }

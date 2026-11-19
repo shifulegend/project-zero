@@ -40,6 +40,16 @@ void api_config_sources_json(JsonBuf *jb, const ApiContext *ctx);
 int api_config_write_allowed(const char *content_type, const char *origin,
                              const char *host, const CorsConfig *cors);
 
+/* Cross-site guard for EVERY mutating (POST) route. A browser always sends an
+ * Origin header on a cross-site POST, and a web page cannot forge it. So:
+ *   - no Origin                      -> non-browser client (curl, SDKs): allowed;
+ *   - Origin equal to Host           -> the server's own page (web UI): allowed;
+ *   - Origin allowed by --cors-origin -> allowed, but a body must be application/json;
+ *   - any other Origin               -> refused (returns 0).
+ * `body_len` is the request body size (bodyless POSTs need no Content-Type). */
+int api_post_allowed(const char *content_type, const char *origin, const char *host,
+                     const CorsConfig *cors, size_t body_len);
+
 /* Returns a heap JSON body (caller frees) and sets *status (200/400/403/500). */
 char *api_config_save(const ApiContext *ctx, const char *json_body, int *status);
 

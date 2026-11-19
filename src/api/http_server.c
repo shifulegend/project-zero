@@ -1064,6 +1064,19 @@ static void handle_connection(int fd, ApiContext *ctx) {
         return;
     }
 
+    /* Cross-site guard for every mutating route (the web UI and API clients
+     * pass; a foreign web page cannot, because browsers always attach Origin). */
+    if (strcmp(req.method, "POST") == 0 &&
+        !api_post_allowed(req.content_type, req.has_origin ? req.origin : NULL, req.host,
+                          &ctx->server_config.cors, req.body_len)) {
+        metrics_record_request(&ctx->metrics, 403);
+        send_error_ex(fd, 403, "Cross-site request refused (the Origin is not this server or "
+                               "an allowed --cors-origin)", extra_headers);
+        free(recv_buf);
+        close(fd);
+        return;
+    }
+
     /* ── Route dispatch ──────────────────────────────────────────────────── */
     int status = 200;
     if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/models") == 0) {

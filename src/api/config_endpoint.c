@@ -82,6 +82,15 @@ int api_config_write_allowed(const char *content_type, const char *origin,
     return cors && cors->enabled && cors_is_origin_allowed(cors, origin);
 }
 
+int api_post_allowed(const char *content_type, const char *origin, const char *host,
+                     const CorsConfig *cors, size_t body_len) {
+    if (!origin || !*origin) return 1;                    /* not a browser request */
+    if (origin_matches_host(origin, host)) return 1;      /* the server's own origin */
+    if (!(cors && cors->enabled && cors_is_origin_allowed(cors, origin))) return 0;
+    return body_len == 0 ||
+           (content_type && strncasecmp(content_type, "application/json", 16) == 0);
+}
+
 static char *error_body(const char *msg, int status, int *out_status) {
     *out_status = status;
     JsonBuf jb;

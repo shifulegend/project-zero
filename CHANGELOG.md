@@ -44,6 +44,10 @@ section becomes the version's entry and is published as its GitHub release notes
 - Stop answering `429 "Another generation is already in flight"` to a client that sends its next `/v1/chat/completions` request as soon as it has read the previous answer (most often a streaming client that stops at `data: [DONE]`); the server now frees the generation slot before it writes the end of the response.
 - Align the right border of the startup "Hardware Profile" box; rows were padded to different widths.
 
+### Security
+
+- Refuse cross-site POSTs on every API route, not only `/v1/config/defaults`: a POST carrying a browser `Origin` that is neither this server nor an allowed `--cors-origin` now gets `403`. Requests without an `Origin` (curl, SDKs) and the web UI are unaffected; behind a proxy that rewrites `Host`, add the public origin with `--cors --cors-origin`. Before, any web page you visited could trigger chat generations, `/v1/update/check`, cache clears or cancel another request on `127.0.0.1`.
+
 ## [0.2.0] - 2026-10-22
 
 ### Changed

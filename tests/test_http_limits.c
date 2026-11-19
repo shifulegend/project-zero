@@ -13,6 +13,7 @@
 #include <unistd.h>
 
 #include "api/api_server.h"
+#include "api/config_endpoint.h"
 
 static int g_fail;
 #define CHECK(c, msg) do { if (!(c)) { printf("FAIL: %s\n", msg); g_fail++; } else printf("ok: %s\n", msg); } while (0)
@@ -102,6 +103,32 @@ int main(void) {
               strncmp(buf, "HTTP/1.1 501", 12) != 0 && strncmp(buf, "HTTP/1.1", 8) == 0,
               "well-formed POST with a body is still handled");
         close(c);
+    }
+
+    {   /* cross-site guard on every POST route */
+        char hostline[64], req[640];
+        snprintf(hostline, sizeof hostline, "127.0.0.1:%d", port);
+        struct { const char *origin_fmt; int want403; const char *what; } cs[] = {
+            { "Origin: http://evil.example\r\n", 1, "POST from a foreign Origin is refused with 403" },
+            { "Origin: null\r\n", 1, "POST with Origin: null is refused with 403" },
+            { "Origin: http://%s\r\n", 0, "POST from the server's own origin is allowed" },
+            { "", 0, "POST without Origin (curl, SDKs) is allowed" },
+        };
+        for (size_t i = 0; i < sizeof cs / sizeof cs[0]; i++) {
+            char oh[128];
+            snprintf(oh, sizeof oh, cs[i].origin_fmt, hostline);
+            snprintf(req, sizeof req, "POST /v1/prompt_cache/clear HTTP/1.1\r\nHost: %s\r\n%sContent-Length: 0\r\n\r\n", hostline, oh);
+            int c = dial(port);
+            send_str(c, req);
+            slurp(c, buf, sizeof buf, 3000, &eof);
+            int is403 = strncmp(buf, "HTTP/1.1 403", 12) == 0;
+            CHECK(is403 == cs[i].want403 && strncmp(buf, "HTTP/1.1", 8) == 0, cs[i].what);
+            close(c);
+        }
+        CorsConfig none; memset(&none, 0, sizeof none);
+        CHECK(api_post_allowed("text/plain", "http://evil.example", "127.0.0.1:1", &none, 5) == 0, "unit: foreign origin refused");
+        CHECK(api_post_allowed(NULL, NULL, "127.0.0.1:1", &none, 5) == 1, "unit: no origin allowed");
+        CHECK(api_post_allowed("text/plain", "http://127.0.0.1:1", "127.0.0.1:1", &none, 5) == 1, "unit: same origin allowed");
     }
 
     /* two stalled clients fill the cap */

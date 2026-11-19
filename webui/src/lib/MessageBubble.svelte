@@ -21,6 +21,7 @@
     <div class="queued" role="status">Waiting for another reply to finish — position {queued} in queue</div>
   {/if}
   <div class="content">
+    <!-- eslint-disable-next-line svelte/no-at-html-tags -- renderMarkdown() escapes & < > and is covered by the XSS tests in tests/markdown.test.mjs -->
     {@html renderMarkdown(content)}{#if streaming}<span class="cursor">▌</span>{/if}
   </div>
   {#if role === 'assistant' && meta && !streaming}

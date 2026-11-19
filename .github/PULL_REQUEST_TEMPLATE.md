@@ -32,6 +32,16 @@
 |---|---|---|---|
 | T=4, SIMD=auto, CLS=auto | — tok/s | — tok/s | +0% |
 
+## Review aids
+- [ ] **One concern.** This PR does one logical thing; mechanical changes (reformat, rename) are in their own PR. CI fails above 400 changed lines (generated/vendored files excluded); a maintainer can add the `size-override` label for a mechanical change.
+- [ ] **Tests first.** For a behaviour change or bug fix, a test that fails without the change is included (Red -> Green -> Refactor).
+- [ ] **Web UI change:** a screenshot or short recording of the new/changed screen is attached (or "no UI change").
+- [ ] **Security / concurrency** (touches `src/api/`, `src/agent/`, `src/update/`, `install.sh`, threads or locks): I checked untrusted input, error paths, locking and shutdown, and `make test-tsan` passes (or "not applicable").
+- [ ] **Walkthrough** (large, AI-assisted or architectural PRs): a few lines below explain how the change works and why this design, in my own words; I can answer questions about every file.
+
+### Walkthrough (if checked above)
+<!-- how data flows through the change, what invariants it relies on, what could break -->
+
 ## Documentation Updated
 - [ ] Updated relevant `.md` file (README / BENCHMARK_REPORT / DEBUGGING_JOURNAL / IMPLEMENTATION_PLAN)
 - [ ] No docs change needed

@@ -47,6 +47,20 @@ jobs:
       - name: AI adapter files in sync with .claude/rules
         run: python3 -I tools/sync_ai_adapters.py --check
 
+  pr-size:
+    name: Pull request size (max 400 changed lines)
+    if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'size-override')
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Count changed lines against the base branch
+        run: |
+          python3 -I tools/test_check_pr_size.py
+          python3 -I tools/check_pr_size.py "origin/${{ github.base_ref }}"
+
   format:
     name: C/C++ formatting (clang-format 18)
     runs-on: ubuntu-24.04            # pinned image: its clang-format-18 is the one the tree was formatted with

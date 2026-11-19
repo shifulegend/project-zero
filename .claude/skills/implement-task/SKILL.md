@@ -7,7 +7,8 @@ description: Implement a project-zero change end-to-end with discipline — plan
 
 1. Plan: restate the goal, assumptions, scope (keep tight; no speculative refactors).
 2. Recon: reuse existing patterns (`simd_dispatch`, GGUF reader, `tn_*` helpers) before new code.
-3. Implement in the smallest coherent sub-steps; honor `.claude/rules/*` (modularity, no
+3. Test first for behaviour changes and bug fixes (Red -> Green -> Refactor; `docs/ai/engineering-rules.md`).
+   Implement in the smallest coherent sub-steps; honor `.claude/rules/*` (modularity, no
    hardcoding, memset-before-init, configurability).
 4. Verify each sub-step (see `review-and-verify`); fix the whole cascade if `make test` reveals more.
 5. Update `docs/ai/**` (mistakes/decision-log/change-trace) and sync adapters as you go.

@@ -126,6 +126,12 @@ A change is done only when:
 - Re-run the full verification cycle (`## Verification` above) after any bug fix, same as for
   planned work — a fix that isn't verified is just a different unverified change.
 
+## Test-first (Red -> Green -> Refactor)
+- A behaviour change or bug fix starts with a test that fails for the right reason, then the smallest
+  change that makes it pass, then cleanup with the tests green. State in the commit or PR which
+  test failed first. Pure refactors keep the existing tests green and, where the code generator is
+  deterministic, compare the compiled objects before and after. Documentation-only changes are exempt.
+
 ## Version control & branch hygiene
 - Integrate into `master` via small PRs (don't push directly); keep each PR's branch short-lived.
 - **Delete a feature/fix branch as soon as its PR is merged** — keep the remote to `master` plus

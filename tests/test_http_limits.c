@@ -74,6 +74,36 @@ int main(void) {
     CHECK(strstr(buf, "200") && strstr(buf, "\"ok\""), "normal /health request is served");
     close(ok);
 
+    /* request framing is validated before any body is read */
+    struct { const char *req; const char *want; const char *what; } fr[] = {
+        { "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n", "HTTP/1.1 501", "chunked body refused with 501" },
+        { "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nContent-Length: abc\r\n\r\n", "HTTP/1.1 400", "non-numeric Content-Length refused with 400" },
+        { "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nContent-Length: 5\r\nContent-Length: 6\r\n\r\n", "HTTP/1.1 400", "conflicting Content-Length refused with 400" },
+        { "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nContent-Length: 99999999999\r\n\r\n", "HTTP/1.1 400", "overflowing Content-Length refused" },
+        { "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nContent-Length: 9000000\r\n\r\n", "HTTP/1.1 413", "oversized Content-Length refused with 413" },
+    };
+    for (size_t i = 0; i < sizeof fr / sizeof fr[0]; i++) {
+        int c = dial(port);
+        send_str(c, fr[i].req);
+        slurp(c, buf, sizeof buf, 3000, &eof);
+        CHECK(strncmp(buf, fr[i].want, strlen(fr[i].want)) == 0 || (i == 3 && strncmp(buf, "HTTP/1.1 413", 12) == 0), fr[i].what);
+        close(c);
+    }
+
+    {   /* a well-formed POST with a body still goes through (and the word
+         * "content-length:" inside the body does not confuse the framing) */
+        const char *body = "{\"id\":\"content-length: 1\"}";
+        char req[512];
+        snprintf(req, sizeof req, "POST /v1/chat/completions/cancel HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: %zu\r\n\r\n%s", strlen(body), body);
+        int c = dial(port);
+        send_str(c, req);
+        slurp(c, buf, sizeof buf, 3000, &eof);
+        CHECK(strncmp(buf, "HTTP/1.1 400", 12) != 0 && strncmp(buf, "HTTP/1.1 413", 12) != 0 &&
+              strncmp(buf, "HTTP/1.1 501", 12) != 0 && strncmp(buf, "HTTP/1.1", 8) == 0,
+              "well-formed POST with a body is still handled");
+        close(c);
+    }
+
     /* two stalled clients fill the cap */
     int s1 = dial(port), s2 = dial(port);
     send_str(s1, "GET /hea"); send_str(s2, "GET /hea");

@@ -61,6 +61,7 @@
 #include "api/config_endpoint.h"
 #include "api/api_server.h"
 #include "api/net_io.h"
+#include "api/http_headers.h"
 #include "api/chat_request.h"
 #include "api/chat_compile.h"
 #include "api/sse_stream.h"
@@ -86,6 +87,7 @@
 #include "transformer/generate.h"
 #include "core/debug.h"
 
+#include <limits.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <netinet/in.h>
@@ -862,7 +864,6 @@ typedef struct {
     char *body;          /* pointer into recv_buf or separately allocated */
     size_t body_len;
     int  content_length; /* from Content-Length header, -1 if not present */
-    int  is_chunked;
     char origin[256];
     char authorization[512];
     char content_type[128];
@@ -912,9 +913,9 @@ static int http_parse(const char *buf, size_t buf_len, HttpRequest *req) {
         if (*p == '\n') { p++; break; }
 
         if (strncasecmp(p, "content-length:", 15) == 0) {
-            const char *v = p + 15;
-            while (*v == ' ') v++;
-            req->content_length = atoi(v);
+            size_t cl;
+            if (http_parse_content_length(p + 15, &cl) == 0 && cl <= (size_t)INT_MAX)
+                req->content_length = (int)cl;   /* invalid values were already rejected in handle_connection */
         } else if (strncasecmp(p, "origin:", 7) == 0) {
             copy_header_value(p + 7, req->origin, sizeof(req->origin));
             req->has_origin = 1;
@@ -967,9 +968,28 @@ static void handle_connection(int fd, ApiContext *ctx) {
                 header_end = (size_t)(hdrs_end - recv_buf)
                              + (strstr(recv_buf, "\r\n\r\n") ? 4 : 2);
 
-                /* Extract Content-Length from headers */
-                char *cl = strcasestr(recv_buf, "content-length:");
-                if (cl) content_length = atoi(cl + 15);
+                /* Strict framing: Content-Length is scanned only inside the
+                 * header block (never the body), must be plain digits, and
+                 * conflicting duplicates are refused. Chunked bodies are not
+                 * implemented, so they are refused instead of being read as
+                 * an empty or truncated body. */
+                HttpFraming fr;
+                http_scan_framing(recv_buf, header_end, &fr);
+                if (fr.content_length_invalid) {
+                    send_error(fd, 400, "Invalid Content-Length");
+                    free(recv_buf); close(fd); return;
+                }
+                if (fr.has_transfer_encoding && fr.chunked) {
+                    send_error(fd, 501, "Chunked request bodies are not supported; send Content-Length");
+                    free(recv_buf); close(fd); return;
+                }
+                if (fr.has_content_length) {
+                    if (fr.content_length > HTTP_MAX_BODY_BYTES) {
+                        send_error(fd, 413, "Request body too large");
+                        free(recv_buf); close(fd); return;
+                    }
+                    content_length = (int)fr.content_length;
+                }
 
                 /* 2026-07-15: pre-existing bug — a request with no
                  * Content-Length (the normal case for GET/HEAD/OPTIONS, and

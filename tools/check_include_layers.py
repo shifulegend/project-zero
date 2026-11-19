@@ -23,11 +23,13 @@ INC = re.compile(r'^\s*#\s*include\s+"([^"]+)"', re.M)
 
 
 def module_of(path):
+    """Module name (directory under include/ or src/) a file belongs to, or None."""
     parts = path.relative_to(ROOT).parts
     return parts[1] if len(parts) > 2 and parts[0] in ("include", "src") else None
 
 
 def build_graph(root=ROOT):
+    """Include graph between modules: {module: set of modules it includes}, headers and sources."""
     mods = set()
     for top in ("include", "src"):
         d = root / top
@@ -53,6 +55,7 @@ def sccs(edges):
     index, low, on, stack, out, n = {}, {}, set(), [], [], [0]
 
     def visit(v):
+        """Tarjan visit: assigns indices and pops a strongly connected component off the stack."""
         index[v] = low[v] = n[0]
         n[0] += 1
         stack.append(v)
@@ -93,6 +96,7 @@ def cycle_edges(edges, comps):
 
 
 def read_baseline():
+    """Cycle edges recorded in the baseline file (empty set when there is none)."""
     if not BASELINE.exists():
         return set()
     return {
@@ -110,9 +114,11 @@ def compare(current, baseline):
 
 
 def self_test():
+    """Checks the graph helpers on small hand-made graphs; returns 0 when all pass."""
     ok = True
 
     def check(cond, msg):
+        """Prints one self-test result and remembers a failure."""
         nonlocal ok
         print(("ok   " if cond else "FAIL ") + msg)
         ok = ok and cond
@@ -141,6 +147,7 @@ def self_test():
 
 
 def main(argv):
+    """Entry point: --self-test, --graph, --update, or the ratchet check; returns the exit code."""
     if "--self-test" in argv:
         return self_test()
     edges = build_graph()

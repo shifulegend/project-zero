@@ -120,6 +120,7 @@ def require_clean(binaries, cfg, allow=False, log=print):
 
 
 def config_from_args(a):
+    """Gate configuration from parsed CLI flags (reference override included)."""
     cfg = load_config({FLAG_TO_KEY[f]: getattr(a, f, None) for f in FLAG_TO_KEY})
     cfg["reference_override"] = getattr(a, "gate_reference", None)
     return cfg
@@ -211,6 +212,7 @@ def blocked(res, cfg):
 
 
 def exit_status(results, cfg):
+    """1 in strict mode when any verdict is INVALID, else 0."""
     return (
         1
         if cfg["mode"] == "strict" and any(r.get("verdict") == "INVALID" for r in results.values())
@@ -243,13 +245,16 @@ class Gate:
 
     @property
     def enabled(self):
+        """True unless the gate mode is "off"."""
         return self.cfg["mode"] != "off"
 
     def reference_of(self, models):
+        """Returns a function mapping (model, variant) to the key of its reference run."""
         by_key = {k: info for k, info, _ in models}
         override = self.cfg.get("reference_override")
 
         def ref(model, variant):
+            """Reference key for one variant: the override, else the model's configured reference."""
             if override:
                 return f"{model}/{override}"
             spec = (
@@ -334,6 +339,7 @@ class Gate:
         )
 
     def summary_for_meta(self):
+        """Gate settings and per-run verdicts in the form stored in the run metadata."""
         return {
             "mode": self.cfg["mode"],
             "tolerance_pct": self.cfg["tolerance_pct"],
@@ -346,6 +352,7 @@ class Gate:
         return should_time(self.verdict_of(model, variant), self.cfg)
 
     def verdict_of(self, model, variant):
+        """Verdict for one run: OFF when the gate is disabled, UNVERIFIED when it was not judged."""
         return self.results.get(f"{model}/{variant}", {}).get(
             "verdict", "OFF" if not self.enabled else "UNVERIFIED"
         )

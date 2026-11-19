@@ -3,7 +3,6 @@ tools/bench/benchlib.py 36
 tools/bench/build_compare.py 4
 tools/bench/calibration_test.py 5
 tools/bench/chart.py 1
-tools/bench/gate.py 7
 tools/bench/h2h_bench.py 3
 tools/bench/hardware_profile.py 2
 tools/bench/setup_engines.py 5
@@ -15,9 +14,9 @@ tools/bench_sweep_seq.py 4
 tools/build_llama3_tokenizer.py 1
 tools/changelog.py 3
 tools/check_coverage.py 3
+tools/check_docstrings.py 1
 tools/check_file_sizes.py 4
 tools/check_header_guards.py 4
-tools/check_include_layers.py 7
 tools/check_isa_guards.py 1
 tools/check_log_secrets.py 2
 tools/check_md_fences.py 2

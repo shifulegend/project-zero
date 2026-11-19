@@ -127,6 +127,8 @@ set(CORE_SOURCES
     src/core/debug.c
     src/core/error.c
     src/core/gguf_quant.c
+    src/core/gguf_quant_k.c
+    src/core/gguf_quant_iq.c
     src/core/hardware_profile.c
     src/core/bw_cache.c
     src/core/fs_util.c

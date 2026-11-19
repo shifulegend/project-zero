@@ -11,6 +11,10 @@ on:
                           # master/main, so a direct push to another branch
                           # never runs this workflow on its own)
 
+# Least privilege: read-only token; no job here writes to the repository.
+permissions:
+  contents: read
+
 jobs:
   changelog:
     name: Changelog format (Keep a Changelog + SemVer)

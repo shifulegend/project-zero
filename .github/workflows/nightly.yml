@@ -16,6 +16,10 @@ on:
     - cron: '0 3 * * *'   # 03:00 UTC daily
   workflow_dispatch: {}
 
+# Least privilege: read-only token; no job here writes to the repository.
+permissions:
+  contents: read
+
 jobs:
   extended-grammar-fuzz:
     name: Extended grammar differential fuzzing (TS-2.1)

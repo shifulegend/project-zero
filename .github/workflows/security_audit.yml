@@ -1,5 +1,10 @@
 name: Independent Security Audit CI
 on: [push, pull_request]
+
+# Least privilege: read-only token; no job here writes to the repository.
+permissions:
+  contents: read
+
 jobs:
   audit:
     runs-on: ubuntu-latest

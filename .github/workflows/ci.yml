@@ -56,6 +56,17 @@ jobs:
       - name: Check formatting (make check-format)
         run: make check-format CLANG_FORMAT=clang-format-18
 
+  static-analysis:
+    name: clang-tidy ratchet (bugprone, cert, clang-analyzer)
+    runs-on: ubuntu-24.04            # pinned image: clang-tidy-18 gives the same count as the committed baseline
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install clang-tidy 18
+        run: sudo apt-get install -y -q clang-tidy-18
+      - name: No new findings (tools/clang_tidy_baseline.txt)
+        run: sh tools/check_clang_tidy.sh
+
   installer:
     name: Installer (install.sh, offline mirror)
     runs-on: ubuntu-latest

@@ -560,7 +560,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     GenQueueResult qr = gen_queue_acquire_n(&ctx->gen_queue, units,
                                             ctx->server_config.queue_timeout_s * 1000,
                                             queue_wait_notify, &qw);
-    if (qr == GEN_QUEUE_OK && !ctx->running) {   /* shutting down: don't start */
+    if (qr == GEN_QUEUE_OK && !atomic_load(&ctx->running)) {   /* shutting down: don't start */
         gen_queue_release_n(&ctx->gen_queue, units);
         chat_request_free(&req);
         if (!qw.headers_sent) send_error_ex(fd, 503, "Server is shutting down", extra_headers);
@@ -1124,13 +1124,13 @@ static void *connection_thread_fn(void *arg) {
 static void *listener_thread_fn(void *arg) {
     ApiContext *ctx = (ApiContext *)arg;
 
-    while (ctx->running) {
+    while (atomic_load(&ctx->running)) {
         struct sockaddr_in client_addr;
         socklen_t addr_len = sizeof(client_addr);
         int conn_fd = accept(ctx->server_fd,
                              (struct sockaddr *)&client_addr, &addr_len);
         if (conn_fd < 0) {
-            if (!ctx->running) break;
+            if (!atomic_load(&ctx->running)) break;
             continue;
         }
 
@@ -1172,7 +1172,7 @@ void api_context_init(ApiContext *ctx,
     ctx->tok        = tok;
     ctx->tp         = tp;
     ctx->server_fd  = -1;
-    ctx->running    = 0;
+    atomic_store(&ctx->running, 0);
     server_config_init(&ctx->server_config);
     metrics_init(&ctx->metrics);
     cancel_state_init(&ctx->cancel);
@@ -1232,21 +1232,21 @@ TernaryError api_server_start(int port, ApiContext *ctx) {
     }
     start_parallel(ctx);
 
-    ctx->running = 1;
+    atomic_store(&ctx->running, 1);
 
     /* Spawn listener thread */
     pthread_t *tid = (pthread_t *)malloc(sizeof(pthread_t));
     if (!tid) {
         close(ctx->server_fd);
         ctx->server_fd = -1;
-        ctx->running = 0;
+        atomic_store(&ctx->running, 0);
         return TN_ERR_THREAD_CREATE;
     }
     if (pthread_create(tid, NULL, listener_thread_fn, ctx) != 0) {
         free(tid);
         close(ctx->server_fd);
         ctx->server_fd = -1;
-        ctx->running = 0;
+        atomic_store(&ctx->running, 0);
         return TN_ERR_THREAD_CREATE;
     }
     ctx->listener_thread = tid;
@@ -1309,7 +1309,7 @@ static void start_parallel(ApiContext *ctx) {
 
 void api_server_stop(ApiContext *ctx) {
     if (!ctx || ctx->server_fd < 0) return;
-    ctx->running = 0;
+    atomic_store(&ctx->running, 0);
     /* Wake the blocking accept() in listener_thread_fn. close() alone is
      * *not* reliable here: POSIX explicitly leaves "another thread blocked
      * in accept() on an fd this thread closes" unspecified, and in practice
@@ -1319,7 +1319,7 @@ void api_server_stop(ApiContext *ctx) {
      * code, since main()'s pause() had no signal handler installed and so
      * never returned). shutdown(SHUT_RDWR) first reliably makes the
      * blocked accept() return (ECONNABORTED/EINVAL, both handled by the
-     * `if (!ctx->running) break;` check below) before the fd is closed. */
+     * `if (!atomic_load(&ctx->running)) break;` check below) before the fd is closed. */
     shutdown(ctx->server_fd, SHUT_RDWR);
     close(ctx->server_fd);
     ctx->server_fd = -1;

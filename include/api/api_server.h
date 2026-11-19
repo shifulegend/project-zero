@@ -17,6 +17,7 @@
  *   api_server_stop(&ctx);
  */
 
+#include <stdatomic.h>
 #include "core/error.h"
 #include "core/config.h"
 #include "core/moe_config.h"
@@ -70,7 +71,7 @@ typedef struct {
     /* Server state (filled by api_server_start) */
     int   server_fd;            /* listening socket fd, -1 when stopped */
     void *listener_thread;      /* pthread_t, opaque */
-    volatile int running;       /* 1 = running, 0 = stop requested */
+    atomic_int running;         /* 1 = running, 0 = stop requested (read by the listener and connection threads) */
 } ApiContext;
 
 /* Initialise an ApiContext with all inference state.

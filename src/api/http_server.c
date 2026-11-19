@@ -117,13 +117,13 @@
 #define HTTP_BACKLOG 16
 
 /* Fixed buffer capacities (bytes). Each is the size of one stack/static array below. */
-#define HTTP_SSE_EVENT_BUF 160        /* one queue-failure SSE event */
-#define HTTP_PATH_MAX 256             /* request path */
-#define HTTP_ORIGIN_MAX 256           /* Origin header */
-#define HTTP_AUTH_MAX 512             /* Authorization header */
-#define HTTP_CTYPE_MAX 128            /* Content-Type header */
-#define HTTP_HOST_MAX 256             /* Host header */
-#define HTTP_EXTRA_HDRS_BUF 512       /* CORS headers added to a response */
+#define HTTP_SSE_EVENT_BUF 160                          /* one queue-failure SSE event */
+#define HTTP_PATH_MAX 256                               /* request path */
+#define HTTP_ORIGIN_MAX 256                             /* Origin header */
+#define HTTP_AUTH_MAX 512                               /* Authorization header */
+#define HTTP_CTYPE_MAX 128                              /* Content-Type header */
+#define HTTP_HOST_MAX 256                               /* Host header */
+#define HTTP_EXTRA_HDRS_BUF 512                         /* CORS headers added to a response */
 #define HTTP_RETRY_HDRS_BUF (HTTP_EXTRA_HDRS_BUF + 128) /* extra headers + Retry-After */
 #define HTTP_BUSY_REPLY_BUF 320 /* complete 503 reply to a refused connection */
 
@@ -294,11 +294,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     if (parse_err != TN_OK) {
         free(body);
         chat_request_free(&req);
-        http_send_error_ex(fd, HTTP_BAD_REQUEST,
-                           parse_err == TN_ERR_INVALID_ARGS
-                               ? "Unsupported value in request (response_format.type must be "
-                                 "'text' or 'json_object'; chat_template is capped at 64 KiB)"
-                               : "Invalid JSON in request body",
+        http_send_error_ex(fd, HTTP_BAD_REQUEST, chat_request_error_message(parse_err),
                            extra_headers);
         return;
     }
@@ -339,7 +335,8 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
         gen_queue_release_n(&ctx->gen_queue, units);
         chat_request_free(&req);
         if (!qw.headers_sent)
-            http_send_error_ex(fd, HTTP_SERVICE_UNAVAILABLE, "Server is shutting down", extra_headers);
+            http_send_error_ex(fd, HTTP_SERVICE_UNAVAILABLE, "Server is shutting down",
+                               extra_headers);
         return;
     }
     if (qr != GEN_QUEUE_OK) {
@@ -370,19 +367,11 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
             }
     if (!batched) {
         pthread_mutex_lock(&ctx->generation_mutex); /* uncontended: the queue granted the engine */
-
-        /* Every request is a fresh conversation rendered from its full message
-     * history, so start from KV position 0. (2026-10-18: current_pos was
-     * never reset — after one image request (vision prefill advances it) every
-     * later text request silently started after the stale image prefix.) */
+        /* Every request is a fresh conversation rendered from its full message history, so start
+         * from KV position 0 (2026-10-18: a stale image prefix leaked into later text requests). */
         ctx->run_state->current_pos = 0;
 
-        /* Phase 22.2: image upload via the web UI's image_url content parts —
-     * inject the vision pipeline into the KV cache before compiling/
-     * generating the prompt, mirroring the CLI's --image handling.
-     * Best-effort: an image sent to a server with no --vision/--proj
-     * configured is logged and skipped (text-only fallback), matching the
-     * CLI's own behavior when --image is given without --vision/--proj. */
+        /* Phase 22.2: image_url parts go through the vision pipeline (api/chat_image.h). */
         had_image = chat_apply_image(ctx, &req);
     } /* !batched */
 
@@ -544,7 +533,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
         chat_request_free(&req);
         http_release_generation_slot(ctx, units, !batched);
         http_send_error_ex(fd, HTTP_BAD_REQUEST, "Prompt could not be tokenized for this model",
-                      extra_headers);
+                           extra_headers);
         return;
     }
 
@@ -720,8 +709,9 @@ static void handle_connection(int fd, ApiContext *ctx) {
                     return;
                 }
                 if (fr.has_transfer_encoding && fr.chunked) {
-                    http_send_error(fd, HTTP_NOT_IMPLEMENTED,
-                               "Chunked request bodies are not supported; send Content-Length");
+                    http_send_error(
+                        fd, HTTP_NOT_IMPLEMENTED,
+                        "Chunked request bodies are not supported; send Content-Length");
                     free(recv_buf);
                     close(fd);
                     return;
@@ -794,9 +784,9 @@ static void handle_connection(int fd, ApiContext *ctx) {
     if (!is_health && !api_host_allowed(req.host, &ctx->server_config.cors)) {
         metrics_record_request(&ctx->metrics, HTTP_FORBIDDEN);
         http_send_error_ex(fd, HTTP_FORBIDDEN,
-                      "Host not allowed (this server answers to localhost / 127.0.0.1; "
-                      "behind a proxy add its address with --cors --cors-origin)",
-                      extra_headers);
+                           "Host not allowed (this server answers to localhost / 127.0.0.1; "
+                           "behind a proxy add its address with --cors --cors-origin)",
+                           extra_headers);
         free(recv_buf);
         close(fd);
         return;
@@ -840,9 +830,9 @@ static void handle_connection(int fd, ApiContext *ctx) {
                           &ctx->server_config.cors, req.body_len)) {
         metrics_record_request(&ctx->metrics, HTTP_FORBIDDEN);
         http_send_error_ex(fd, HTTP_FORBIDDEN,
-                      "Cross-site request refused (the Origin is not this server or "
-                      "an allowed --cors-origin)",
-                      extra_headers);
+                           "Cross-site request refused (the Origin is not this server or "
+                           "an allowed --cors-origin)",
+                           extra_headers);
         free(recv_buf);
         close(fd);
         return;
@@ -855,9 +845,9 @@ static void handle_connection(int fd, ApiContext *ctx) {
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/config") == 0) {
         http_handle_get_config(fd, ctx, extra_headers);
     } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/config/defaults") == 0) {
-        status =
-            http_handle_config_save(fd, req.body, req.body_len, req.content_type,
-                               req.has_origin ? req.origin : NULL, req.host, ctx, extra_headers);
+        status = http_handle_config_save(fd, req.body, req.body_len, req.content_type,
+                                         req.has_origin ? req.origin : NULL, req.host, ctx,
+                                         extra_headers);
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/update") == 0) {
         http_send_json_heap(fd, HTTP_OK, api_update_json(0), extra_headers);
     } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/update/check") == 0) {
@@ -880,7 +870,7 @@ static void handle_connection(int fd, ApiContext *ctx) {
         } else {
             status = HTTP_NOT_FOUND;
             http_send_error_ex(fd, HTTP_NOT_FOUND, "Metrics disabled (start with --metrics)",
-                          extra_headers);
+                               extra_headers);
         }
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/docs") == 0) {
         http_handle_get_docs(fd, extra_headers);

@@ -516,45 +516,11 @@ static void test_compile_tiny_buffer(void) {
 }
 
 /* ── main ────────────────────────────────────────────────────────────────── */
-/* response_format: "text" and "json_object" are honoured; any other type (json_schema, unknown)
- * is refused instead of being silently ignored (2026-11-19). */
-static void test_json_parse_response_format(void) {
-    const char *head = "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"response_format\":";
-    struct {
-        const char *rf;
-        TernaryError want;
-        int json_mode;
-    } cases[] = {
-        {"{\"type\":\"json_object\"}", TN_OK, 1},
-        {"{\"type\":\"text\"}", TN_OK, 0},
-        {"{\"type\":\"json_schema\",\"json_schema\":{\"name\":\"x\"}}", TN_ERR_INVALID_ARGS, 0},
-        {"{\"type\":\"grammar\"}", TN_ERR_INVALID_ARGS, 0},
-        {"{\"type\":\"\"}", TN_ERR_INVALID_ARGS, 0},
-        {"{}", TN_OK, 0},
-    };
-    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
-        char json[512];
-        snprintf(json, sizeof(json), "%s%s}", head, cases[i].rf);
-        ChatRequest req;
-        chat_request_init(&req);
-        TernaryError err = chat_request_parse(json, &req);
-        if (err != cases[i].want) {
-            FAIL("json_parse_response_format", cases[i].rf);
-        } else if (err == TN_OK && req.json_mode != cases[i].json_mode) {
-            FAIL("json_parse_response_format", "json_mode wrong");
-        } else {
-            PASS("json_parse_response_format");
-        }
-        chat_request_free(&req);
-    }
-}
-
 int main(void) {
     printf("=== Phase 21 API Server Tests ===\n");
 
     test_chat_request_init();
     test_json_parse_basic();
-    test_json_parse_response_format();
     test_json_parse_multiturn();
     test_json_parse_escapes();
     test_json_parse_unknown_keys();

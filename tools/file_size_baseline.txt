@@ -25,7 +25,7 @@ src/transformer/moe_ffn.c 707
 src/update/update_check.c 614
 tests/test_api_server.c 547
 tests/test_forward.c 670
-tests/test_forward_batch.c 734
+tests/test_forward_batch.c 602
 tests/test_gguf_loader_qwen3moe.c 616
 tests/test_kv_cache.c 529
 tests/test_lora.c 654

@@ -83,7 +83,7 @@ int http_handle_prompt_cache_clear(int fd, ApiContext *ctx, const char *extra_he
  * engine's own state, so like a cache reset it takes every generation unit plus the mutex
  * (429 while a generation is running) and drops the prefix caches that the probe overwrites. */
 int http_handle_selfcheck(int fd, const char *body_start, size_t body_len, ApiContext *ctx,
-                            const char *extra_headers) {
+                          const char *extra_headers) {
     char *body = (char *)malloc(body_len + 1);
     if (!body) {
         http_send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers);
@@ -110,7 +110,7 @@ int http_handle_selfcheck(int fd, const char *body_start, size_t body_len, ApiCo
 }
 
 int http_handle_watermark_detect(int fd, const char *body_start, size_t body_len, ApiContext *ctx,
-                                   const char *extra_headers) {
+                                 const char *extra_headers) {
     char *body = (char *)malloc(body_len + 1);
     if (!body) {
         http_send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers);
@@ -128,13 +128,13 @@ int http_handle_watermark_detect(int fd, const char *body_start, size_t body_len
 /* Phase 40.3: save a server default to the config file (never takes the
  * generation mutex). */
 int http_handle_config_save(int fd, const char *body_start, size_t body_len,
-                              const char *content_type, const char *origin, const char *host,
-                              ApiContext *ctx, const char *extra_headers) {
+                            const char *content_type, const char *origin, const char *host,
+                            ApiContext *ctx, const char *extra_headers) {
     if (!api_config_write_allowed(content_type, origin, host, &ctx->server_config.cors)) {
         http_send_error_ex(fd, HTTP_FORBIDDEN,
-                      "Cross-site request refused (send Content-Type: application/json "
-                      "from the server's own origin)",
-                      extra_headers);
+                           "Cross-site request refused (send Content-Type: application/json "
+                           "from the server's own origin)",
+                           extra_headers);
         return HTTP_FORBIDDEN;
     }
     char *body = (char *)malloc(body_len + 1);
@@ -211,7 +211,7 @@ static int extract_id_field(const char *json_body, char *out, size_t out_cap) {
 }
 
 void http_handle_cancel(int fd, const char *body_start, size_t body_len, ApiContext *ctx,
-                          const char *extra_headers) {
+                        const char *extra_headers) {
     char *body = (char *)malloc(body_len + 1);
     if (!body) {
         http_send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers);
@@ -231,7 +231,8 @@ void http_handle_cancel(int fd, const char *body_start, size_t body_len, ApiCont
     int matched = cancel_registry_request(&ctx->cancel, id);
     if (matched) {
         metrics_record_cancel(&ctx->metrics);
-        http_send_response_ex(fd, HTTP_OK, "application/json", "{\"cancelled\":true}", 0, extra_headers);
+        http_send_response_ex(fd, HTTP_OK, "application/json", "{\"cancelled\":true}", 0,
+                              extra_headers);
     } else {
         http_send_error_ex(fd, HTTP_NOT_FOUND, "No matching in-flight request", extra_headers);
     }

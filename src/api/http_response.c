@@ -19,7 +19,7 @@
  * (e.g. from cors_format_headers()) and is spliced in ahead of the blank
  * line that ends the header block. */
 void http_send_response_ex(int fd, int status, const char *content_type, const char *body,
-                             int streaming, const char *extra_headers) {
+                           int streaming, const char *extra_headers) {
     char hdr[HTTP_HDR_BUF];
     size_t body_len   = body ? strlen(body) : 0;
     const char *extra = extra_headers ? extra_headers : "";

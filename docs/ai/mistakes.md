@@ -3056,6 +3056,6 @@ Installing llama.cpp and bitnet.cpp for head-to-head runs exposed nine pre-exist
 - Summary: `qwen3moe_attention_forward()` kept its Q/K/V and concat buffers as `static float` arrays, so two forward passes running at once (separate RunStates, two threads) wrote the same memory; widths above the fixed 16384/8192 caps would also have overflowed them.
 - Root cause: the buffers were sized "generously" at compile time to avoid a runtime allocation, and nothing tested two callers at once.
 - Affected files/modules: `src/transformer/qwen3moe_attention.c`, `src/core/qwen3moe_run_state.c`, `include/core/run_state.h`.
-- Detection: the mutable-statics inventory; `tests/test_forward_batch.c` now runs two threads and TSan reports 4 data races on the old code, none on the new.
+- Detection: the mutable-statics inventory; `tests/test_qwen3moe_concurrent.c` runs two threads and TSan reports 4 data races on the old code, none on the new.
 - Correction: the scratch lives in the RunState (`qwen3moe_scratch`, sized `2*q_width + 2*kv_width`); logits are bit-identical before and after (hash of the sequential test run).
 - Prevention rule: per-call scratch belongs to the caller's state, not a function-local static; a function that could run on two threads gets a two-thread test in the TSan set. Qwen3.5's attention (`qwen35_attention.c`, 12 statics) has the same problem and no model-less test yet.

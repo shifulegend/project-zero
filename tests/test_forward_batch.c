@@ -30,44 +30,7 @@
 
 #define TOL 1e-3f
 
-/* ── Shared fill helpers ──────────────────────────────────────────────── */
-
-static void fill_ternary_i8(tn_i8 *buf, int count, unsigned seed) {
-    for (int i = 0; i < count; i++) {
-        seed   = seed * 1103515245 + 12345;
-        int r  = (seed >> 16) % 3;
-        buf[i] = (tn_i8)(r - 1);
-    }
-}
-
-/* Packs a [rows][cols] ternary matrix (row-major) into 2-bit packed form. */
-static tn_u8 *make_packed_ternary(int rows, int cols, unsigned seed) {
-    size_t row_bytes = packed_bytes(cols);
-    tn_u8 *packed    = (tn_u8 *)calloc((size_t)rows * row_bytes, 1);
-    tn_i8 *tmp       = (tn_i8 *)malloc((size_t)rows * cols);
-    fill_ternary_i8(tmp, rows * cols, seed);
-    for (int i = 0; i < rows; i++) {
-        for (int j = 0; j < cols; j++) {
-            pack_ternary(&packed[(size_t)i * row_bytes], j, tmp[i * cols + j]);
-        }
-    }
-    free(tmp);
-    return packed;
-}
-
-static void fill_pattern_bf16(tn_u16 *buf, size_t count, int seed) {
-    for (size_t i = 0; i < count; i++) {
-        int v   = ((int)(i * 7 + (unsigned)seed * 13) % 3) - 1;
-        float f = (float)v * 0.5f;
-        uint32_t bits;
-        memcpy(&bits, &f, sizeof(bits));
-        buf[i] = (tn_u16)(bits >> 16);
-    }
-}
-
-static void fill_ones(float *buf, int count) {
-    for (int i = 0; i < count; i++) buf[i] = 1.0f;
-}
+#include "synth_models.h"
 
 /* ── Dense/GQA ternary synthetic model ───────────────────────────────── */
 
@@ -520,102 +483,6 @@ static void test_mla_batch_matches_sequential(void) {
     free_mla_ternary_model(&w, &mc);
 }
 
-/* ── Qwen3-MoE (QK-norm) ternary synthetic model — attention only ──────── */
-
-#define Q3_DIM 8
-#define Q3_HIDDEN 8
-#define Q3_LAYERS 1
-#define Q3_HEADS 2
-#define Q3_KV_HEADS 1
-#define Q3_HEAD_DIM 4
-#define Q3_VOCAB 6
-#define Q3_SEQ 16
-
-static void build_qwen3moe_ternary_model(Config *cfg, TransformerWeights *w, MoEConfig *mc) {
-    memset(cfg, 0, sizeof(*cfg));
-    cfg->dim                   = Q3_DIM;
-    cfg->hidden_dim            = Q3_HIDDEN;
-    cfg->n_layers              = Q3_LAYERS;
-    cfg->n_heads               = Q3_HEADS;
-    cfg->n_kv_heads            = Q3_KV_HEADS;
-    cfg->vocab_size            = Q3_VOCAB;
-    cfg->seq_len               = Q3_SEQ;
-    cfg->rms_norm_eps          = 1e-5f;
-    cfg->rope_freq_scale       = 1.0f;
-    cfg->rope_theta            = 10000.0f;
-    cfg->rope_yarn_attn_factor = 1.0f;
-
-    moe_config_init_dense(mc);
-    mc->has_qk_norm   = 1;
-    mc->attn_head_dim = Q3_HEAD_DIM;
-    /* is_moe left false: dense FFN, keeping this test focused on
-     * QK-norm attention batching alone (mirrors the MLA test's approach). */
-
-    memset(w, 0, sizeof(*w));
-    weights_alloc_pointers(w, cfg);
-    w->layers_are_ternary = true;
-
-    int q_width  = Q3_HEADS * Q3_HEAD_DIM;
-    int kv_width = Q3_KV_HEADS * Q3_HEAD_DIM;
-
-    w->token_embedding_table = (tn_u16 *)calloc((size_t)Q3_VOCAB * Q3_DIM, sizeof(tn_u16));
-    fill_pattern_bf16(w->token_embedding_table, (size_t)Q3_VOCAB * Q3_DIM, 1);
-
-    for (int l = 0; l < Q3_LAYERS; l++) {
-        w->wq[l] = (tn_i8 *)make_packed_ternary(q_width, Q3_DIM, 11 + l);
-        w->sq[l] = 1.0f;
-        w->wk[l] = (tn_i8 *)make_packed_ternary(kv_width, Q3_DIM, 22 + l);
-        w->sk[l] = 1.0f;
-        w->wv[l] = (tn_i8 *)make_packed_ternary(kv_width, Q3_DIM, 33 + l);
-        w->sv[l] = 1.0f;
-        w->wo[l] = (tn_i8 *)make_packed_ternary(Q3_DIM, q_width, 44 + l);
-        w->so[l] = 1.0f;
-
-        w->w1[l] = (tn_i8 *)make_packed_ternary(Q3_HIDDEN, Q3_DIM, 55 + l);
-        w->s1[l] = 1.0f;
-        w->w3[l] = (tn_i8 *)make_packed_ternary(Q3_HIDDEN, Q3_DIM, 66 + l);
-        w->s3[l] = 1.0f;
-        w->w2[l] = (tn_i8 *)make_packed_ternary(Q3_DIM, Q3_HIDDEN, 77 + l);
-        w->s2[l] = 1.0f;
-
-        w->rms_att_weight[l] = (float *)malloc(Q3_DIM * sizeof(float));
-        fill_ones(w->rms_att_weight[l], Q3_DIM);
-        w->rms_ffn_weight[l] = (float *)malloc(Q3_DIM * sizeof(float));
-        fill_ones(w->rms_ffn_weight[l], Q3_DIM);
-
-        w->qwen3moe_attn_q_norm[l] = (float *)malloc(Q3_HEAD_DIM * sizeof(float));
-        fill_ones(w->qwen3moe_attn_q_norm[l], Q3_HEAD_DIM);
-        w->qwen3moe_attn_k_norm[l] = (float *)malloc(Q3_HEAD_DIM * sizeof(float));
-        fill_ones(w->qwen3moe_attn_k_norm[l], Q3_HEAD_DIM);
-    }
-
-    w->rms_final_weight = (float *)malloc(Q3_DIM * sizeof(float));
-    fill_ones(w->rms_final_weight, Q3_DIM);
-
-    w->wcls = (tn_u16 *)calloc((size_t)Q3_VOCAB * Q3_DIM, sizeof(tn_u16));
-    fill_pattern_bf16(w->wcls, (size_t)Q3_VOCAB * Q3_DIM, 99);
-}
-
-static void free_qwen3moe_ternary_model(TransformerWeights *w) {
-    free(w->token_embedding_table);
-    for (int l = 0; l < Q3_LAYERS; l++) {
-        free(w->wq[l]);
-        free(w->wk[l]);
-        free(w->wv[l]);
-        free(w->wo[l]);
-        free(w->w1[l]);
-        free(w->w2[l]);
-        free(w->w3[l]);
-        free(w->rms_att_weight[l]);
-        free(w->rms_ffn_weight[l]);
-        free(w->qwen3moe_attn_q_norm[l]);
-        free(w->qwen3moe_attn_k_norm[l]);
-    }
-    free(w->rms_final_weight);
-    free(w->wcls);
-    weights_free_pointers(w);
-}
-
 static void test_qwen3moe_batch_matches_sequential(void) {
     tn_simd_init();
 
@@ -712,67 +579,6 @@ static void test_linear_attn_returns_unsupported(void) {
     free_dense_ternary_model(&w);
 }
 
-/* Two threads run the same Qwen3-MoE token sequence on their own RunStates at once. The attention
- * scratch used to be function-local statics shared by every caller, so concurrent forwards
- * overwrote each other's Q/K/V (2026-11-19). Each thread must reproduce the single-thread logits
- * exactly; under TSan (make test-tsan) any remaining shared buffer is reported as a race. */
-typedef struct {
-    const Config *cfg;
-    const TransformerWeights *w;
-    const MoEConfig *mc;
-    float out[3][Q3_VOCAB];
-    int ok;
-} Q3Job;
-
-static void *q3_job_fn(void *arg) {
-    Q3Job *j      = (Q3Job *)arg;
-    int tokens[3] = {1, 3, 2};
-    RunState s;
-    j->ok = 0;
-    if (run_state_alloc_ex(&s, j->cfg, j->cfg->seq_len, true) != TN_OK) return NULL;
-    if (qwen3moe_run_state_alloc(&s, j->cfg, j->mc, j->cfg->seq_len) != TN_OK) {
-        run_state_free(&s);
-        return NULL;
-    }
-    sw_init(&s.sw, j->cfg->seq_len, 0);
-    for (int rep = 0; rep < 20; rep++) { /* repeat to widen the overlap window */
-        s.current_pos = 0;
-        sw_init(&s.sw, j->cfg->seq_len, 0);
-        for (int k = 0; k < 3; k++) {
-            float *lg = transformer_forward(tokens[k], k, j->cfg, j->w, &s, j->mc, NULL);
-            memcpy(j->out[k], lg, Q3_VOCAB * sizeof(float));
-        }
-    }
-    j->ok = 1;
-    qwen3moe_run_state_free(&s, j->cfg);
-    run_state_free(&s);
-    return NULL;
-}
-
-static void test_qwen3moe_concurrent_runstates(void) {
-    tn_simd_init();
-    Config cfg;
-    TransformerWeights w;
-    MoEConfig mc;
-    build_qwen3moe_ternary_model(&cfg, &w, &mc);
-
-    Q3Job ref = {&cfg, &w, &mc, {{0}}, 0};
-    q3_job_fn(&ref);
-    TEST_ASSERT(ref.ok, "Q3MoE single-thread reference run");
-
-    Q3Job a = {&cfg, &w, &mc, {{0}}, 0}, b = {&cfg, &w, &mc, {{0}}, 0};
-    pthread_t ta, tb;
-    pthread_create(&ta, NULL, q3_job_fn, &a);
-    pthread_create(&tb, NULL, q3_job_fn, &b);
-    pthread_join(ta, NULL);
-    pthread_join(tb, NULL);
-    TEST_ASSERT(a.ok && b.ok, "Q3MoE concurrent runs completed");
-    TEST_ASSERT(memcmp(ref.out, a.out, sizeof(ref.out)) == 0 &&
-                    memcmp(ref.out, b.out, sizeof(ref.out)) == 0,
-                "two threads on separate RunStates reproduce the single-thread logits exactly");
-    free_qwen3moe_ternary_model(&w);
-}
-
 int main(void) {
     /* Force the AVX2 (exact float32) dispatch tier, not VNNI: on a VNNI
      * capable host, tn_simd_init()'s default tier quantizes activations to
@@ -791,7 +597,6 @@ int main(void) {
     RUN_TEST(test_forward_multi_matches_sequential);
     RUN_TEST(test_mla_batch_matches_sequential);
     RUN_TEST(test_qwen3moe_batch_matches_sequential);
-    RUN_TEST(test_qwen3moe_concurrent_runstates);
     RUN_TEST(test_linear_attn_returns_unsupported);
     TEST_SUMMARY();
 }

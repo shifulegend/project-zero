@@ -70,3 +70,10 @@ void request_mcts_resolve(const ChatRequest *req, const MctsOptions *defaults, i
     }
     mcts_options_clamp(out, sim_cap < 0 ? 0 : sim_cap);
 }
+
+const char *chat_request_error_message(TernaryError err) {
+    if (err == TN_ERR_INVALID_ARGS)
+        return "Unsupported value in request (response_format.type must be 'text' or "
+               "'json_object'; chat_template is capped at 64 KiB)";
+    return "Invalid JSON in request body";
+}

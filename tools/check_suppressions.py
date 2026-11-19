@@ -18,7 +18,7 @@ KINDS = {
     "noqa": re.compile(r"#\s*noqa\b"),
     "pragma-diagnostic": re.compile(r"#\s*pragma\s+(GCC|clang)\s+diagnostic"),
 }
-SUFFIXES = {".c", ".h", ".cpp", ".py"}
+SUFFIXES = {".c", ".h", ".cpp", ".hpp", ".py"}
 SKIP = (
     "include/stb_",
     "src/api/webui_bundle_generated.c",

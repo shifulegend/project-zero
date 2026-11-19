@@ -116,7 +116,7 @@ Q8_0, F32), and DeepSeek-V2-style MoE/MLA models. The primary binary is `pz`.
 | `src/tokenizer/tokenizer_encode.c` | BPE encoding: `tokenizer_encode` |
 | `src/tokenizer/tokenizer_decode.c` | `tokenizer_decode` — token ID → UTF-8 piece |
 | `src/tokenizer/tokenizer_gguf.c` | `tokenizer_from_gguf` — extract BPE vocab from GGUF |
-| `src/tokenizer/chat_template.cpp` | Jinja2 chat template renderer (`chat_template_apply`) |
+| `src/tokenizer/chat_template*.cpp` | Jinja2 chat-template engine: `chat_template.cpp` (C API), `_lex`, `_parse`, `_parse_expr`, `_eval`, `_exec`; shared types in `chat_template_internal.hpp` |
 
 ### 📁 `src/api/` — OpenAI-Compatible API Server
 | File | Description |
@@ -353,7 +353,7 @@ Override: `TN_FORCE_BACKEND=scalar|avx2|avx512f|vnni|vnni256`
 **Runtime dependencies:** POSIX only (`pthread`, `mmap`, `clock_gettime`)
 **No external libraries** for core inference
 **Optional:** `stb_image.h`, `stb_image_resize2.h` (header-only, for multimodal)
-**Chat templates:** single C++ file (`src/tokenizer/chat_template.cpp`) using Jinja2-lite
+| `src/tokenizer/chat_template*.cpp` | Jinja2 chat-template engine: `chat_template.cpp` (C API), `_lex`, `_parse`, `_parse_expr`, `_eval`, `_exec`; shared types in `chat_template_internal.hpp` |
 
 ---
 

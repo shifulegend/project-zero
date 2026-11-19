@@ -38,7 +38,7 @@ def counts():
     files = subprocess.check_output(["git", "ls-files", "src"], cwd=ROOT, text=True).split()
     out = {}
     for rel in files:
-        if not rel.endswith((".c", ".cpp")) or rel in SKIP:
+        if not rel.endswith((".c", ".cpp", ".hpp")) or rel in SKIP:
             continue
         n = count((ROOT / rel).read_text(encoding="utf-8", errors="replace"))
         if n:

@@ -2,7 +2,7 @@
 src/agent/cmd_exec.c 1
 src/agent/tool_interceptor.c 2
 src/api/config_endpoint.c 1
-src/api/http_server.c 2
+src/api/http_request.c 2
 src/api/openapi.c 1
 src/cli/config_cmd.c 5
 src/cli/main.c 3

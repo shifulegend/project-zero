@@ -3,7 +3,7 @@
 tools/file_size_baseline.txt, and a listed file may not grow beyond its recorded length. Split a
 large file, then run --update so its entry drops or disappears (the list may only shrink).
 
-Counted: .c .h .cpp under src/ include/ tests/ tools/, .py under tools/ and tests/, and webui/src.
+Counted: .c .h .cpp .hpp under src/ include/ tests/ tools/, .py under tools/ and tests/, and webui/src.
 Not counted: vendored stb headers and the generated web UI bundle.
 
 usage: tools/check_file_sizes.py [--update]
@@ -16,7 +16,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 BASELINE = ROOT / "tools" / "file_size_baseline.txt"
 LIMIT = 500
-SUFFIXES = {".c", ".h", ".cpp", ".py", ".js", ".svelte"}
+SUFFIXES = {".c", ".h", ".cpp", ".hpp", ".py", ".js", ".svelte"}
 SCOPE = ("src/", "include/", "tests/", "tools/", "webui/src/")
 SKIP = ("include/stb_", "src/api/webui_bundle_generated.c", "tools/screenshots/")
 

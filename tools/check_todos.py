@@ -12,7 +12,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 REGISTER = ROOT / "docs" / "ai" / "todo-register.md"
-SUFFIXES = {".c", ".h", ".cpp", ".py", ".sh", ".js", ".svelte"}
+SUFFIXES = {".c", ".h", ".cpp", ".hpp", ".py", ".sh", ".js", ".svelte"}
 SKIP = (
     "include/stb_",
     "src/api/webui_bundle_generated.c",

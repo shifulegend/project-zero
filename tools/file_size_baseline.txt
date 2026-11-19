@@ -15,7 +15,6 @@ src/core/hardware_profile.c 696
 src/math/matmul_q4k.c 692
 src/math/matmul_q4k_x8.c 652
 src/math/parallel_matmul.c 564
-src/tokenizer/chat_template.cpp 1778
 src/tokenizer/pretokenize.c 592
 src/tokenizer/tokenizer_encode.c 591
 src/transformer/attention.c 754

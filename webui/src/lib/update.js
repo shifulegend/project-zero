@@ -9,10 +9,20 @@ const BANNER_KEY = 'pz.update.banner';
 const DISMISSED_KEY = 'pz.update.dismissed';
 
 function read(key, fallback) {
-  try { const v = localStorage.getItem(key); return v === null ? fallback : v; } catch { return fallback; }
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? fallback : v;
+  } catch {
+    return fallback;
+  }
 }
 function write(key, value) {
-  try { if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value); } catch { /* ignore */ }
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch {
+    /* ignore */
+  }
 }
 
 export const updateInfo = writable(null);

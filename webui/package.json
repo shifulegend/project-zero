@@ -8,10 +8,14 @@
     "dev": "vite",
     "build": "vite build",
     "check": "svelte-check --threshold warning",
-    "test": "node --test \"tests/*.test.mjs\""
+    "test": "node --test \"tests/*.test.mjs\"",
+    "format": "prettier --write \"src/**/*.js\" \"tests/*.mjs\" vite.config.js",
+    "format:check": "prettier --check \"src/**/*.js\" \"tests/*.mjs\" vite.config.js"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^3.1.1",
+    "prettier": "3.3.3",
+    "prettier-plugin-svelte": "3.2.6",
     "svelte": "^4.2.19",
     "svelte-check": "^3.8.6",
     "vite": "^5.4.10"

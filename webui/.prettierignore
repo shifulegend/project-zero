@@ -1,0 +1,6 @@
+dist/
+node_modules/
+package-lock.json
+# Svelte templates are whitespace-sensitive: reformatting them changes the rendered DOM and the bundle.
+*.svelte
+index.html

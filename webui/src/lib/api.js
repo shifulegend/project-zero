@@ -42,10 +42,16 @@ export async function detectWatermark({ text, key, gamma }) {
  * @param {(delta: string) => void} onToken
  * @returns {{ id: Promise<string|null>, done: Promise<{finish_reason?: string, usage?: object}>, abort: () => void }}
  */
-export function streamChatCompletion({ messages, options = {}, imageDataUrl }, onToken, onStatus = () => {}) {
+export function streamChatCompletion(
+  { messages, options = {}, imageDataUrl },
+  onToken,
+  onStatus = () => {}
+) {
   const controller = new AbortController();
   let resolveId;
-  const idPromise = new Promise((resolve) => { resolveId = resolve; });
+  const idPromise = new Promise((resolve) => {
+    resolveId = resolve;
+  });
 
   let requestMessages = messages;
   if (imageDataUrl) {
@@ -110,7 +116,10 @@ export function streamChatCompletion({ messages, options = {}, imageDataUrl }, o
           const line = rawEvent.trim();
           // Server comment while waiting for the generation slot (--queue-size).
           const queued = line.match(/^: queued (\d+)/);
-          if (queued) { onStatus({ queued: Number(queued[1]) }); continue; }
+          if (queued) {
+            onStatus({ queued: Number(queued[1]) });
+            continue;
+          }
           if (!line.startsWith('data:')) continue;
           const payload = line.slice(5).trim();
           if (payload === '[DONE]') continue;
@@ -125,7 +134,11 @@ export function streamChatCompletion({ messages, options = {}, imageDataUrl }, o
           }
 
           if (evt.error) throw new Error(evt.error.message ?? 'server error');
-          if (!idResolved && evt.id) { idResolved = true; resolveId(evt.id); onStatus({ queued: 0 }); }
+          if (!idResolved && evt.id) {
+            idResolved = true;
+            resolveId(evt.id);
+            onStatus({ queued: 0 });
+          }
           const delta = evt.choices?.[0]?.delta?.content;
           if (delta) onToken(delta);
           const fr = evt.choices?.[0]?.finish_reason;

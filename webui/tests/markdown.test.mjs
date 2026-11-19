@@ -10,12 +10,15 @@ test('plain text keeps its line breaks', () => {
 test('fenced code keeps newlines and gets a language hint', () => {
   assert.equal(
     renderMarkdown('x\n```js\nlet a;\nlet b;\n```\ny'),
-    'x<br><pre class="md-code-block" data-lang="js"><code>let a;\nlet b;\n</code></pre><br>y',
+    'x<br><pre class="md-code-block" data-lang="js"><code>let a;\nlet b;\n</code></pre><br>y'
   );
 });
 
 test('inline code and bold are rendered', () => {
-  assert.equal(renderMarkdown('**b** `c`'), '<strong>b</strong> <code class="md-inline-code">c</code>');
+  assert.equal(
+    renderMarkdown('**b** `c`'),
+    '<strong>b</strong> <code class="md-inline-code">c</code>'
+  );
 });
 
 test('bold and inline code inside a fenced block are left as written', () => {
@@ -27,7 +30,7 @@ test('bold and inline code next to a fenced block still render', () => {
   const out = renderMarkdown('**a**\n```\nx\n```\n`b`');
   assert.equal(
     out,
-    '<strong>a</strong><br><pre class="md-code-block"><code>x\n</code></pre><br><code class="md-inline-code">b</code>',
+    '<strong>a</strong><br><pre class="md-code-block"><code>x\n</code></pre><br><code class="md-inline-code">b</code>'
   );
 });
 
@@ -57,9 +60,27 @@ test('null and undefined render as empty', () => {
 });
 
 test('output is identical to the previous implementation on 20000 random inputs without ** or ` (those differ by design inside code blocks)', () => {
-  const frag = ['a', 'b c', '\n', '\n\n', '```', '```js\n', '<', '>', '&', '<pre>', '</pre>', '"', "'", 'x\ny'];
+  const frag = [
+    'a',
+    'b c',
+    '\n',
+    '\n\n',
+    '```',
+    '```js\n',
+    '<',
+    '>',
+    '&',
+    '<pre>',
+    '</pre>',
+    '"',
+    "'",
+    'x\ny',
+  ];
   let seed = 12345;
-  const rnd = (n) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
+  const rnd = (n) => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return seed % n;
+  };
   for (let i = 0; i < 20000; i++) {
     let s = '';
     for (let k = 0, n = 1 + rnd(12); k < n; k++) s += frag[rnd(frag.length)];
@@ -76,5 +97,8 @@ test('a long streamed reply renders in linear time', () => {
   const t1 = performance.now();
   legacy(text.slice(0, text.length / 4));
   const legacyQuarter = performance.now() - t1;
-  assert.ok(ms < legacyQuarter * 4 || ms < 300, 'not slower than the old version on a quarter of the input');
+  assert.ok(
+    ms < legacyQuarter * 4 || ms < 300,
+    'not slower than the old version on a quarter of the input'
+  );
 });

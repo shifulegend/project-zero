@@ -4,21 +4,20 @@
 // mirrors the same pragmatic scope as the CLI's cli/md_render.c.
 
 function escapeHtml(s) {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 // Inline transforms for text outside a fenced code block.
 function renderInline(text) {
-  return text
-    // Inline code: `code`
-    .replace(/`([^`\n]+)`/g, '<code class="md-inline-code">$1</code>')
-    // Bold: **text**
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    // Line breaks
-    .replace(/\n/g, '<br>');
+  return (
+    text
+      // Inline code: `code`
+      .replace(/`([^`\n]+)`/g, '<code class="md-inline-code">$1</code>')
+      // Bold: **text**
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      // Line breaks
+      .replace(/\n/g, '<br>')
+  );
 }
 
 /** @param {string} text @returns {string} sanitized HTML */

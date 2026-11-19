@@ -149,6 +149,8 @@ jobs:
         run: cd webui && npm test
       - name: svelte-check (0 errors, 0 warnings)
         run: cd webui && npm run check
+      - name: Prettier (JS sources and tests; Svelte templates are whitespace-sensitive and excluded)
+        run: cd webui && npm run format:check
       - name: Build the bundle and require the committed C file to match it
         run: |
           cd webui && npm run build && cd ..

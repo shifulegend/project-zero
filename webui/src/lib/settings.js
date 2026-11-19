@@ -76,7 +76,11 @@ export function saveSettings(settings, cfg) {
 }
 
 export function clearSavedSettings() {
-  try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
 }
 
 /** Number of settings that differ from the server defaults (badge on the button). */
@@ -161,8 +165,12 @@ export function requestParams(settings, cfg) {
   if (settings.watermark_key) wm.key = settings.watermark_key;
   body.watermark = wm;
   const tmpl = settings.chat_template ?? '';
-  if (cfg?.features?.request_chat_template && tmpl.trim() &&
-      tmpl !== (cfg?.chat_template?.text ?? '')) body.chat_template = tmpl;
+  if (
+    cfg?.features?.request_chat_template &&
+    tmpl.trim() &&
+    tmpl !== (cfg?.chat_template?.text ?? '')
+  )
+    body.chat_template = tmpl;
   return body;
 }
 

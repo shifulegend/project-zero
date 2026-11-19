@@ -30,6 +30,11 @@
   generated files are listed in `.clang-format-ignore`. A macro whose argument is stringified
   (`#x`) must be wrapped in `// clang-format off` / `on`, as `PZ_UPDATE_REPO` is.
 
+## Header guards
+- Every header under `include/` has a classic guard named `TN_<NAME>_H` (`#ifndef` / `#define` /
+  `#endif`); no `#pragma once`, no other prefixes. CI: `tools/check_header_guards.py`
+  (`--fix` renames a non-conforming guard to `TN_<DIR>_<FILE>_H`). Vendored `stb_*` are exempt.
+
 ## Repository root stays clean
 - Tracked files at the repository root are limited to the list in `tools/root_allowlist.txt`
   (CI: `tools/check_root_files.sh`). Analysis notes go under `docs/`, test inputs under

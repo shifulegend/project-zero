@@ -1,4 +1,5 @@
-#pragma once
+#ifndef TN_MATH_MATMUL_Q2K_H
+#define TN_MATH_MATMUL_Q2K_H
 /*
  * matmul_q2k.h — Fused Q2_K × float32 activation matrix-vector product.
  *
@@ -47,3 +48,5 @@ void parallel_matvec_q2k(float *out, const float *inp, const uint8_t *w, int in_
 #ifdef __cplusplus
 }
 #endif
+
+#endif /* TN_MATH_MATMUL_Q2K_H */

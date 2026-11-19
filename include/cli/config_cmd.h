@@ -1,5 +1,5 @@
-#ifndef PZ_CLI_CONFIG_CMD_H
-#define PZ_CLI_CONFIG_CMD_H
+#ifndef TN_CLI_CONFIG_CMD_H
+#define TN_CLI_CONFIG_CMD_H
 
 /*
  * cli/config_cmd — `pz config` (Phase 40.2, 2026-10-21).
@@ -58,4 +58,4 @@ int pz_config_wizard(PzConfig *c, FILE *in, FILE *out, const char *const *model_
  * (argv unchanged on error). */
 int pz_config_prepare_argv(int argc, char **argv, char ***out_argv);
 
-#endif /* PZ_CLI_CONFIG_CMD_H */
+#endif /* TN_CLI_CONFIG_CMD_H */

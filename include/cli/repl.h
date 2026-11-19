@@ -1,5 +1,5 @@
-#ifndef PROJECT_ZERO_REPL_H
-#define PROJECT_ZERO_REPL_H
+#ifndef TN_CLI_REPL_H
+#define TN_CLI_REPL_H
 
 #include "core/config.h"
 #include "core/moe_config.h"
@@ -26,4 +26,4 @@ void run_repl(Config *p, TransformerWeights *w, const MoEConfig *mc, VisionConfi
               VisionWeights *vw, VisionProjector *vp, RunState *s, Tokenizer *t, ThreadPool *tp,
               CliArgs *args, RagContext *rag, DraftModel *draft);
 
-#endif // PROJECT_ZERO_REPL_H
+#endif // TN_CLI_REPL_H

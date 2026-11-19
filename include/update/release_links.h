@@ -1,5 +1,5 @@
-#ifndef PZ_RELEASE_LINKS_H
-#define PZ_RELEASE_LINKS_H
+#ifndef TN_UPDATE_RELEASE_LINKS_H
+#define TN_UPDATE_RELEASE_LINKS_H
 
 /*
  * update/release_links — web links to the running version's release notes and
@@ -27,4 +27,4 @@ int release_notes_url(const char *api_base, const char *repo, const char *versio
 int release_changelog_url(const char *api_base, const char *repo, const char *version, char *out,
                           size_t n);
 
-#endif /* PZ_RELEASE_LINKS_H */
+#endif /* TN_UPDATE_RELEASE_LINKS_H */

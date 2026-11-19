@@ -1,5 +1,5 @@
-#ifndef PROJECT_ZERO_ARGS_H
-#define PROJECT_ZERO_ARGS_H
+#ifndef TN_CLI_ARGS_H
+#define TN_CLI_ARGS_H
 
 #include "reasoning/mcts.h"
 #include <stdbool.h>
@@ -155,4 +155,4 @@ void args_fill_update_options(const CliArgs *args, UpdateOptions *o);
 // Print usage help
 void print_usage(const char *prog_name);
 
-#endif // PROJECT_ZERO_ARGS_H
+#endif // TN_CLI_ARGS_H

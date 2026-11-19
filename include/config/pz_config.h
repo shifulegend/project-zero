@@ -1,5 +1,5 @@
-#ifndef PZ_CONFIG_H
-#define PZ_CONFIG_H
+#ifndef TN_CONFIG_PZ_CONFIG_H
+#define TN_CONFIG_PZ_CONFIG_H
 
 /*
  * config/pz_config — persistent configuration (Phase 40.1, 2026-10-21).
@@ -119,4 +119,4 @@ const char *pz_config_active_path(void);
 /* 1 when the published config read the file and environment. */
 int pz_config_active_file_used(void);
 
-#endif /* PZ_CONFIG_H */
+#endif /* TN_CONFIG_PZ_CONFIG_H */

@@ -1,5 +1,5 @@
-#ifndef PZ_CLI_MODEL_CATALOG_H
-#define PZ_CLI_MODEL_CATALOG_H
+#ifndef TN_CLI_MODEL_CATALOG_H
+#define TN_CLI_MODEL_CATALOG_H
 
 /*
  * cli/model_catalog — starter models the setup wizard can download
@@ -45,4 +45,4 @@ int pz_models_dir(char *buf, size_t n);
 int pz_model_download(const PzStarterModel *m, const char *dir, char *path, size_t pathn,
                       FILE *out);
 
-#endif /* PZ_CLI_MODEL_CATALOG_H */
+#endif /* TN_CLI_MODEL_CATALOG_H */

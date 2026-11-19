@@ -1,4 +1,5 @@
-#pragma once
+#ifndef TN_MATH_MATMUL_Q5_0_H
+#define TN_MATH_MATMUL_Q5_0_H
 /*
  * parallel_matmul_q5_0 — fused Q5_0 × F32 activation matmul (gemv).
  *
@@ -34,3 +35,5 @@ void parallel_matmul_q5_0_batch(float **outs, float **xs, const uint8_t *const *
 #ifdef __cplusplus
 }
 #endif
+
+#endif /* TN_MATH_MATMUL_Q5_0_H */

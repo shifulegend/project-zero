@@ -1,4 +1,5 @@
-#pragma once
+#ifndef TN_MATH_MATMUL_Q2_0_H
+#define TN_MATH_MATMUL_Q2_0_H
 /*
  * parallel_matmul_q2_0 — fused Q2_0 × F32 activation matmul (gemv).
  *
@@ -54,3 +55,5 @@ int parallel_matmul_q2_0_vnni_ref(float *out, const float *x, const uint8_t *w_q
 #ifdef __cplusplus
 }
 #endif
+
+#endif /* TN_MATH_MATMUL_Q2_0_H */

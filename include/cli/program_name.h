@@ -1,5 +1,5 @@
-#ifndef PZ_CLI_PROGRAM_NAME_H
-#define PZ_CLI_PROGRAM_NAME_H
+#ifndef TN_CLI_PROGRAM_NAME_H
+#define TN_CLI_PROGRAM_NAME_H
 
 /*
  * cli/program_name — the executable's name and the Phase 39 transition shim.
@@ -21,4 +21,4 @@ int pz_is_legacy_invocation(const char *argv0);
 /* Prints the deprecation notice to stderr when invoked through the legacy name. */
 void pz_warn_if_legacy_invocation(const char *argv0);
 
-#endif /* PZ_CLI_PROGRAM_NAME_H */
+#endif /* TN_CLI_PROGRAM_NAME_H */

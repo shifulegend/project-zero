@@ -1,5 +1,5 @@
-#ifndef AGENT_CMD_EXEC_H
-#define AGENT_CMD_EXEC_H
+#ifndef TN_AGENT_CMD_EXEC_H
+#define TN_AGENT_CMD_EXEC_H
 
 #include <stddef.h>
 
@@ -48,4 +48,4 @@ ExecResult execute_command(char *const argv[], int timeout_sec, char *out_buf, s
 }
 #endif
 
-#endif /* AGENT_CMD_EXEC_H */
+#endif /* TN_AGENT_CMD_EXEC_H */

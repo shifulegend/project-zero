@@ -1,5 +1,5 @@
-#ifndef AGENT_LOOP_H
-#define AGENT_LOOP_H
+#ifndef TN_AGENT_AGENT_LOOP_H
+#define TN_AGENT_AGENT_LOOP_H
 
 #include "core/config.h"
 #include "core/weights.h"
@@ -32,4 +32,4 @@ int user_approval_prompt(const char *cmd);
 }
 #endif
 
-#endif /* AGENT_LOOP_H */
+#endif /* TN_AGENT_AGENT_LOOP_H */

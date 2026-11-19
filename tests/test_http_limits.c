@@ -171,6 +171,35 @@ int main(void) {
         close(c);
     }
 
+    { /* X-Request-ID: a well-formed client ID is echoed, anything else is replaced, errors carry it too */
+        struct {
+            const char *req;
+            const char *want;
+            const char *what;
+        } ids[] = {
+            {"GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Request-ID: abc-123\r\n\r\n",
+             "X-Request-ID: abc-123\r\n", "a valid X-Request-ID is echoed"},
+            {"GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+             "X-Request-ID: ", "a request without one gets a generated ID"},
+            {"POST /v1/nothing HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 0\r\n"
+             "X-Request-ID: err-7\r\n\r\n",
+             "X-Request-ID: err-7\r\n", "an error reply carries the ID as well"},
+        };
+        for (size_t i = 0; i < sizeof ids / sizeof ids[0]; i++) {
+            int c = dial(port);
+            send_str(c, ids[i].req);
+            slurp(c, buf, sizeof buf, 3000, &eof);
+            CHECK(strstr(buf, ids[i].want) != NULL, ids[i].what);
+            close(c);
+        }
+        int c = dial(port);
+        send_str(c, "GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Request-ID: bad id\"x\r\n\r\n");
+        slurp(c, buf, sizeof buf, 3000, &eof);
+        CHECK(strstr(buf, "X-Request-ID: bad") == NULL && strstr(buf, "X-Request-ID: ") != NULL,
+              "an invalid X-Request-ID is replaced, not echoed");
+        close(c);
+    }
+
     { /* a body far larger than the initial receive buffer is read in full (buffer growth) */
         enum { BODY_N = 200000 };
         char *body = (char *)malloc(BODY_N + 64);

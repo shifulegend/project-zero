@@ -10,8 +10,12 @@
 #include "api/http_headers.h"
 #include "api/http_status.h"
 
+#include <ctype.h>
 #include <limits.h>
+#include <pthread.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include <string.h>
 #include <strings.h>
 #include <sys/socket.h>
@@ -30,6 +34,16 @@ static void copy_header_value(const char *p, char *dst, size_t dst_cap) {
  * Parse a minimal HTTP/1.1 request from a NUL-terminated buffer.
  * Returns 1 on success, 0 on parse failure.
  */
+int http_request_id_valid(const char *id) {
+    size_t n = id ? strlen(id) : 0;
+    if (n == 0 || n >= HTTP_REQID_MAX) return 0;
+    for (size_t i = 0; i < n; i++) {
+        unsigned char c = (unsigned char)id[i];
+        if (!(isalnum(c) || c == '.' || c == '_' || c == ':' || c == '-')) return 0;
+    }
+    return 1;
+}
+
 int http_parse(const char *buf, size_t buf_len, HttpRequest *req) {
     memset(req, 0, sizeof(*req));
     req->content_length = -1;
@@ -76,6 +90,10 @@ int http_parse(const char *buf, size_t buf_len, HttpRequest *req) {
             req->has_authorization = 1;
         } else if (strncasecmp(p, "content-type:", 13) == 0) {
             copy_header_value(p + 13, req->content_type, sizeof(req->content_type));
+        } else if (strncasecmp(p, "x-request-id:", 13) == 0) {
+            char id[HTTP_REQID_MAX + 8]; /* longer than allowed, so an over-long ID is rejected */
+            copy_header_value(p + 13, id, sizeof(id));
+            if (http_request_id_valid(id)) memcpy(req->request_id, id, strlen(id) + 1);
         } else if (strncasecmp(p, "host:", 5) == 0) {
             copy_header_value(p + 5, req->host, sizeof(req->host));
         }
@@ -183,4 +201,21 @@ int http_request_read(int fd, char **buf, size_t *len, const char **err) {
     *buf            = recv_buf;
     *len            = total;
     return 0;
+}
+
+/* ── Unique and correlation IDs ──────────────────────────────────────────── */
+
+void http_new_id(char *buf, size_t cap) {
+    static pthread_mutex_t id_lock = PTHREAD_MUTEX_INITIALIZER;
+    static unsigned long counter   = 0;
+    pthread_mutex_lock(&id_lock);
+    unsigned long n = ++counter;
+    pthread_mutex_unlock(&id_lock);
+    snprintf(buf, cap, "%lx-%lx", (unsigned long)time(NULL), n);
+}
+
+void http_request_attach_id(HttpRequest *req, char *headers, size_t cap) {
+    if (!req->request_id[0]) http_new_id(req->request_id, sizeof(req->request_id));
+    size_t used = strlen(headers);
+    snprintf(headers + used, cap - used, "X-Request-ID: %s\r\n", req->request_id);
 }

@@ -113,21 +113,10 @@
 #define HTTP_BACKLOG 16
 
 /* Fixed buffer capacities (bytes). Each is the size of one stack/static array below. */
-#define HTTP_SSE_EVENT_BUF 160                          /* one queue-failure SSE event */
-#define HTTP_EXTRA_HDRS_BUF 512                         /* CORS headers added to a response */
+#define HTTP_SSE_EVENT_BUF 160  /* one queue-failure SSE event */
+#define HTTP_EXTRA_HDRS_BUF 640 /* CORS headers + X-Request-ID added to a response */
 #define HTTP_RETRY_HDRS_BUF (HTTP_EXTRA_HDRS_BUF + 128) /* extra headers + Retry-After */
 #define HTTP_BUSY_REPLY_BUF 320 /* complete 503 reply to a refused connection */
-
-/* ── Simple unique ID generator ─────────────────────────────────────────── */
-static void make_id(char *buf, size_t cap) {
-    static pthread_mutex_t id_lock = PTHREAD_MUTEX_INITIALIZER;
-    static unsigned long counter   = 0;
-    pthread_mutex_lock(&id_lock);
-    unsigned long n = ++counter;
-    pthread_mutex_unlock(&id_lock);
-    snprintf(buf, cap, "%lx-%lx", (unsigned long)time(NULL), n);
-}
-
 
 /* ── Token streaming callback ────────────────────────────────────────────── */
 
@@ -446,7 +435,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
 
     /* Generate a request ID */
     char id[32];
-    make_id(id, sizeof(id));
+    http_new_id(id, sizeof(id));
 
     /* Set up streaming state */
     StreamState st;
@@ -596,6 +585,8 @@ static void handle_connection(int fd, ApiContext *ctx) {
                             extra_headers, sizeof(extra_headers));
     }
 
+    http_request_attach_id(&req, extra_headers, sizeof(extra_headers)); /* echoed on every reply */
+
     int is_health    = (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/health") == 0);
     int is_preflight = (strcmp(req.method, "OPTIONS") == 0);
 
@@ -710,6 +701,7 @@ static void handle_connection(int fd, ApiContext *ctx) {
         http_send_error_ex(fd, HTTP_NOT_FOUND, "Not found", extra_headers);
     }
     metrics_record_request(&ctx->metrics, status);
+    if (g_tn_verbose) fprintf(stderr, "[API] request %s -> %d\n", req.request_id, status);
 
     free(recv_buf);
     close(fd);

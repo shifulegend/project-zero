@@ -23,6 +23,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Added
 
+- Echo an `X-Request-ID` header on every API response (the client's own when it is 1 to 64 characters from `A-Z a-z 0-9 . _ : -`, a generated one otherwise) and log it with the status of each request in `--verbose` mode, so a request can be matched to its log line.
 - Publish a CycloneDX software bill of materials (`sbom.cdx.json`) with each release and attach a signed build-provenance attestation to the archive, `install.sh` and the SBOM; check one with `gh attestation verify <file> --repo shifulegend/project-zero`.
 - Add `--rate-limit <n>` (default 20 requests per second, 0 = off; also `pz config set rate-limit`): the API's cheap non-generation routes (`/v1/models`, `/v1/config`, `/v1/update*`, `/v1/prompt_cache*`, `/v1/selfcheck`, `/v1/watermark/detect`) answer `429` with a `Retry-After` header once the limit is exceeded. Chat generation, `/health`, `/metrics` and the web UI files are not limited.
 - Add `--client-timeout <s>` (default 30; 0 = never) and `--max-connections <N>` (default 64; 0 = unlimited), also available as `pz config set client-timeout` / `max-connections` and reported by `GET /v1/config`-style server info: the server drops a client that sends or reads nothing for the timeout, and answers `503` with `Retry-After` when more connections than the cap are open. Before, one stalled client held a server thread forever and a flood could create unbounded threads.
@@ -93,6 +94,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Added
 
+- Echo an `X-Request-ID` header on every API response (the client's own when it is 1 to 64 characters from `A-Z a-z 0-9 . _ : -`, a generated one otherwise) and log it with the status of each request in `--verbose` mode, so a request can be matched to its log line.
 - Add Qwen 3.5/3.6 hybrid-attention models (e.g. Ternary-Bonsai-27B) and the Q2_0 quant.
 - Add Qwen3-MoE GGUF models.
 - Add Mamba-1 state-space models.
@@ -172,6 +174,7 @@ _First release with a prebuilt, portable x86-64 Linux binary (`adaptive_ai_engin
 
 ### Added
 
+- Echo an `X-Request-ID` header on every API response (the client's own when it is 1 to 64 characters from `A-Z a-z 0-9 . _ : -`, a generated one otherwise) and log it with the status of each request in `--verbose` mode, so a request can be matched to its log line.
 - Add BitNet b1.58 ternary inference with packed 2-bit weights and int8 activation quantization.
 - Add runtime SIMD dispatch across scalar, AVX2, AVX-512F, AVX-512 VNNI, AVX-VNNI, ARM NEON and dotprod.
 - Add GGUF loading (Q8_0, Q4_K, I2_S, embedded tokenizer) with an architecture router.

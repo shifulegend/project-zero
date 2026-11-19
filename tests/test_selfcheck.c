@@ -6,9 +6,12 @@
 #include "test_harness.h"
 #include "eval/selfcheck.h"
 #include "math/simd_dispatch.h"
+#include <errno.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 static void test_delta_and_judge(void) {
     TEST_ASSERT(fabs(selfcheck_delta_pct(10.0, 10.1) - 1.0) < 1e-9, "+1% perplexity");
@@ -91,11 +94,41 @@ static void test_cache(void) {
     TEST_ASSERT_EQ(selfcheck_cache_find(k1, k1, &v), 0, "a key without a verdict is a miss");
 }
 
+/* File-backed cache: what main.c reads on the next start. A stored FAIL is what switches `auto` to
+ * float activations; a cache that cannot be written or read is only a miss. */
+static void test_cache_file(void) {
+    char dir[64];
+    snprintf(dir, sizeof(dir), "/tmp/pz_selfcheck_%ld", (long)getpid());   /* mkdtemp is not declared under strict POSIX on macOS */
+    TEST_ASSERT(mkdir(dir, 0700) == 0 || errno == EEXIST, "temp HOME");
+    const char *old = getenv("HOME");
+    char *saved = old ? strdup(old) : NULL;
+    setenv("HOME", dir, 1);
+
+    SelfCheckVerdict v = SC_SKIPPED;
+    TEST_ASSERT_EQ(selfcheck_cache_load("k-pass", &v), 0, "empty: miss");
+    selfcheck_cache_store("k-pass", SC_PASS);
+    selfcheck_cache_store("k-fail", SC_FAIL);
+    selfcheck_cache_store("k-skip", SC_SKIPPED);
+    TEST_ASSERT_EQ(selfcheck_cache_load("k-pass", &v), 1, "stored PASS found"); TEST_ASSERT_EQ(v, SC_PASS, "PASS");
+    TEST_ASSERT_EQ(selfcheck_cache_load("k-fail", &v), 1, "stored FAIL found"); TEST_ASSERT_EQ(v, SC_FAIL, "FAIL read back");
+    TEST_ASSERT_EQ(selfcheck_cache_load("k-skip", &v), 0, "SKIPPED is never stored");
+
+    setenv("HOME", "/nonexistent/dir/for/pz", 1);
+    selfcheck_cache_store("k-x", SC_FAIL);   /* must not crash */
+    TEST_ASSERT_EQ(selfcheck_cache_load("k-fail", &v), 0, "unreadable cache is a miss");
+
+    if (saved) { setenv("HOME", saved, 1); free(saved); } else unsetenv("HOME");
+    char cmd[128];
+    snprintf(cmd, sizeof(cmd), "rm -rf %s", dir);
+    TEST_ASSERT_EQ(system(cmd), 0, "cleanup");
+}
+
 int main(void) {
     printf("=== Self-check / act-quant Tests ===\n");
     RUN_TEST(test_delta_and_judge);
     RUN_TEST(test_format_and_text);
     RUN_TEST(test_act_quant_modes);
     RUN_TEST(test_cache);
+    RUN_TEST(test_cache_file);
     TEST_SUMMARY();
 }

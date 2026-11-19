@@ -5,6 +5,11 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-11-18.
 
+### 2026-11-19 — The web UI's quality-tolerance field rounded 2.5 to 3
+- What: the new Settings control reused `NumberField`, which rounds to integers; saving 2.5 wrote `quality-tolerance = 3` and 0.5 could not be set. Found by driving the save flow in a browser (the earlier checks only called the API).
+- Fix: `AccuracyCheck.svelte` has its own decimal input (step 0.1, clamped 0..100); bundle regenerated; the save flow now writes 2.5.
+- Lesson: a UI control for a float setting needs a decimal test in the browser, not only an API call; `NumberField` is integer-only by design.
+
 ### 2026-11-18 — DeepSeek-V2 was tokenised with the default pre-tokenizer: perplexity 11.5 against 6.6 in llama.cpp
 - What: the DeepSeek-V2-Lite GGUF declares `tokenizer.ggml.pre = deepseek-llm`. `pretok_type_from_name()` had no entry for it and fell back to the default pipeline, so a space before punctuation was split off (a space, an opening parenthesis and a backtick came out as 3 pieces where llama.cpp has 1) and the model received token sequences it was never trained on. Found by the correctness gate (pz 11.5050 vs llama.cpp 6.6130 on the gate text); every layer, the router, the experts, the LM head and attention matched llama.cpp and an f64 oracle to quantisation noise, which is how the cause was narrowed to the input: on the first 400 characters of the text pz produced 102 tokens and llama.cpp 99.
 - Fix: `deepseek-llm` and `deepseek-coder` pre-tokenizer pipelines in `src/tokenizer/pretokenize.c` (llama.cpp's regex sequences as split steps); token IDs are now identical to llama.cpp on the 3556-token gate text and on a Unicode/CJK/CRLF/code stress text; perplexity 6.6678 vs 6.6130 (+0.83%).

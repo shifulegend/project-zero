@@ -2,7 +2,6 @@
   // Activation numerics, the quality bar for fast settings, and the engine's own accuracy
   // probe (POST /v1/selfcheck). Values come from GET /v1/config runtime; changes are saved
   // as server defaults and apply at the next start, like the other startup settings.
-  import NumberField from './NumberField.svelte';
   import { runSelfCheck } from './api.js';
 
   export let runtime;
@@ -22,6 +21,15 @@
         ...(tolerance !== runtime.quality_tolerance ? [{ key: 'quality_tolerance', value: tolerance }] : []),
       ]
     : [];
+
+  // Decimal values (0.5, 2.5): NumberField rounds to integers, which would turn 2.5 into 3.
+  function onTolerance(e) {
+    let v = Number(e.target.value.trim());
+    if (!Number.isFinite(v)) v = runtime.quality_tolerance;
+    v = Math.min(100, Math.max(0, v));
+    tolerance = v;
+    e.target.value = String(v);
+  }
 
   let busy = false;
   let result = null;
@@ -50,8 +58,10 @@
             <option value="float">float</option>
           </select>
         </label>
-        <NumberField label="Quality tolerance (%)" bind:value={tolerance} range={{ min: 0, max: 100, step: 0.1 }}
-                     hint="Largest perplexity increase a fast setting may cost; a quantised LM head over it falls back to BF16. 0 = no bar." />
+        <label class="text" title="Largest perplexity increase a fast setting may cost; a quantised LM head over it falls back to BF16. 0 = no bar.">
+          <span>Quality tolerance (%)</span>
+          <input type="number" min="0" max="100" step="0.1" value={tolerance} on:change={onTolerance} />
+        </label>
         <button class="link-btn" disabled={saving || !changes.length} on:click={() => onSave(changes)}
                 title="Applies when the server restarts">Save for next start</button>
       </div>
@@ -79,7 +89,7 @@
   .row.gap { gap: 0.75rem; flex-wrap: wrap; }
   .dim { color: var(--text-dim); font-size: 0.75rem; }
   .text { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.8rem; }
-  .text select {
+  .text select, .text input {
     background: var(--bg);
     color: var(--text);
     border: 1px solid var(--border);

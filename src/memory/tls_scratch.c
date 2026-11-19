@@ -52,3 +52,12 @@ void *tn_tls_scratch(TnTlsScratch *s, size_t bytes) {
     }
     return r->data;
 }
+
+void tn_tls_scratch_release(TnTlsScratch *s) {
+    if (!s || atomic_load_explicit(&s->state, memory_order_acquire) <= 0) return;
+    TlsRecord *r = (TlsRecord *)pthread_getspecific(s->key);
+    if (!r) return;
+    free(r->data);
+    r->data = NULL;
+    r->cap  = 0;
+}

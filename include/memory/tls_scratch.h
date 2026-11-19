@@ -28,4 +28,8 @@ typedef struct {
  * memory or the key could not be created. `bytes` of 0 returns a valid non-NULL pointer. */
 void *tn_tls_scratch(TnTlsScratch *s, size_t bytes);
 
+/* Frees the calling thread's buffer for `s` now (it is otherwise freed at thread exit). The next
+ * tn_tls_scratch() call on this thread allocates afresh. */
+void tn_tls_scratch_release(TnTlsScratch *s);
+
 #endif

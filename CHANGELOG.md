@@ -34,6 +34,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Fixed
 
+- Stop the Mixture-of-Experts layers (expert kernels, the batched expert path and the router's top-k selection) from sharing scratch memory between threads: two requests running an MoE layer at once could corrupt each other's expert selection and outputs. Each calling thread now has its own scratch.
 - Stop the Q4_K, Q5_0, Q5_1 and Q8_0 matrix kernels from sharing one activation buffer between threads: two requests multiplying at the same time could free the buffer under each other. Each thread now has its own, released when the thread exits (before, the shared buffer was also never freed).
 - Stop Qwen3-MoE attention from sharing scratch buffers between concurrent callers: two requests running a forward pass at the same time could overwrite each other's Q/K/V values. The buffers now belong to each request's run state and are sized by the model, so the old 16384-wide Q and 8192-wide K/V caps are gone too.
 - Answer `400` to a chat request whose `response_format.type` is `json_schema` or anything other than `text` or `json_object`; before, the server returned `200` with free text, so a client relying on schema-conformant output was never told it was not getting it.
@@ -122,6 +123,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Fixed
 
+- Stop the Mixture-of-Experts layers (expert kernels, the batched expert path and the router's top-k selection) from sharing scratch memory between threads: two requests running an MoE layer at once could corrupt each other's expert selection and outputs. Each calling thread now has its own scratch.
 - Stop the Q4_K, Q5_0, Q5_1 and Q8_0 matrix kernels from sharing one activation buffer between threads: two requests multiplying at the same time could free the buffer under each other. Each thread now has its own, released when the thread exits (before, the shared buffer was also never freed).
 - Stop Qwen3-MoE attention from sharing scratch buffers between concurrent callers: two requests running a forward pass at the same time could overwrite each other's Q/K/V values. The buffers now belong to each request's run state and are sized by the model, so the old 16384-wide Q and 8192-wide K/V caps are gone too.
 - Fix chat replies running past the end of the answer when a model ends its turn with a control token its metadata does not declare (e.g. Falcon3-1.58bit's `>>UNUSED_1<<`): in chat mode any control token the chat template never writes now ends the turn, so no `--stop` workaround is needed.
@@ -171,6 +173,7 @@ _First release with a prebuilt, portable x86-64 Linux binary (`adaptive_ai_engin
 
 ### Fixed
 
+- Stop the Mixture-of-Experts layers (expert kernels, the batched expert path and the router's top-k selection) from sharing scratch memory between threads: two requests running an MoE layer at once could corrupt each other's expert selection and outputs. Each calling thread now has its own scratch.
 - Stop the Q4_K, Q5_0, Q5_1 and Q8_0 matrix kernels from sharing one activation buffer between threads: two requests multiplying at the same time could free the buffer under each other. Each thread now has its own, released when the thread exits (before, the shared buffer was also never freed).
 - Stop Qwen3-MoE attention from sharing scratch buffers between concurrent callers: two requests running a forward pass at the same time could overwrite each other's Q/K/V values. The buffers now belong to each request's run state and are sized by the model, so the old 16384-wide Q and 8192-wide K/V caps are gone too.
 - Fix a stack overflow in top-k sampling and a buffer overflow in the thought filter.

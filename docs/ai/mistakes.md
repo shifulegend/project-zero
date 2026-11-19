@@ -3066,4 +3066,12 @@ Installing llama.cpp and bitnet.cpp for head-to-head runs exposed nine pre-exist
 - Affected files/modules: `src/math/matmul_q4k.c`, `src/math/q8_0_act.c`; fixed with the new `memory/tls_scratch.h` (per-thread buffer, freed at thread exit).
 - Detection: the mutable-statics inventory; `tests/test_tls_scratch.c` runs the Q4_K matmul from two threads with alternating sizes: it fails and TSan reports 6 races on the old code, none on the new.
 - Correction: each use site has a `TnTlsScratch`; results are unchanged (same quantisation, all existing kernel tests pass).
-- Prevention rule: do not write "static buffer, realloc if too small" in code a server thread can reach; use `tn_tls_scratch()` or caller-owned scratch. The MoE kernels (`moe_ffn.c`, `moe_experts.c`) still have this pattern.
+- Prevention rule: do not write "static buffer, realloc if too small" in code a server thread can reach; use `tn_tls_scratch()` or caller-owned scratch.
+
+### 2026-11-19 — MoE expert kernels and the router shared file-scope scratch between threads
+- Summary: `moe_experts.c` (7 buffers), `moe_ffn.c` (dequant, batched gate/up/down and Q8K activation buffers) and `moe_router.c` (`static int visited[512]` in the top-k selection, whose own comment called it a stack array) kept their scratch in statics. Two concurrent callers corrupted each other's expert selection and outputs. `moe_ffn.c` also used a stale, possibly unquantised Q8K buffer for the shared expert when `has_expert_quant` was false (a read of garbage or of the previous layer's activation).
+- Root cause: "the function is not re-entrant" was written in a comment instead of enforced; the pool workers read some of the statics directly, which made them look unavoidable.
+- Affected files/modules: `src/transformer/moe_experts.c`, `moe_ffn.c`, `moe_router.c`, `include/transformer/moe_experts.h`.
+- Detection: TSan on the new two-thread tests: 23 races (experts), 15 (ffn + router) on the old code, none on the new.
+- Correction: per-thread scratch via `memory/tls_scratch.h`, handed to pool workers through the task argument struct (they run on other threads); the router array is per call; the Q8K pointer is NULL unless this call quantised the activation, so the shared expert falls back to the float path instead of reading stale data. `moe_experts_free()` now releases the calling thread's scratch. Single-thread outputs are bit-identical (hash of the batched path before and after).
+- Prevention rule: a "not re-entrant" comment is a defect to fix, not a contract; scratch that pool workers read must be passed to them, not looked up.

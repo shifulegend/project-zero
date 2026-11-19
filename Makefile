@@ -430,7 +430,7 @@ run-tests: $(LIB_OBJS) $(TEST_BINS)
 # driver file directly with CFLAGS_TSAN/LDFLAGS_TSAN -- the generic
 # build/tests/% rule hardcodes CFLAGS_DEBUG (ASan/UBSan) for the driver file,
 # which cannot be linked into a TSan binary.
-TSAN_TESTS = audit_threadpool_stress test_threading test_moe_experts test_api_server test_q4k_x8_matmul test_q2_0_matmul test_forward test_qwen3moe_concurrent test_tls_scratch test_gen_queue test_batch_scheduler test_cancel test_tensor_rpc test_update_check test_net_io test_http_limits test_rate_limit test_top_p
+TSAN_TESTS = audit_threadpool_stress test_threading test_moe_experts test_api_server test_q4k_x8_matmul test_q2_0_matmul test_forward test_qwen3moe_concurrent test_tls_scratch test_moe_experts_concurrent test_moe_ffn_batched test_gen_queue test_batch_scheduler test_cancel test_tensor_rpc test_update_check test_net_io test_http_limits test_rate_limit test_top_p
 
 test-tsan:
 	$(call ensure_variant,tsan)

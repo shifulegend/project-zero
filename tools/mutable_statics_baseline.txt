@@ -17,13 +17,13 @@ src/math/matmul_q4k.c 2
 src/math/q8_0_act.c 3
 src/math/simd_dispatch.c 3
 src/math/ternary_matmul_lut_avx512bw.c 3
+src/memory/tls_scratch.c 1
 src/threading/cache_probe.c 2
 src/tokenizer/template_guard.c 1
 src/tokenizer/tokenizer_decode.c 1
 src/transformer/attn_tiled.c 3
 src/transformer/forward.c 5
-src/transformer/moe_experts.c 10
-src/transformer/moe_ffn.c 15
-src/transformer/moe_router.c 1
+src/transformer/moe_experts.c 1
+src/transformer/moe_ffn.c 8
 src/transformer/qwen35_attention.c 11
 src/update/update_check.c 8

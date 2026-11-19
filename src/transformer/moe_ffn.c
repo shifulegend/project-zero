@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <sys/mman.h>
+#include "memory/tls_scratch.h"
 
 /* Maximum experts supported without heap allocation (stack-allocated buffers) */
 #define MOE_MAX_EXPERTS_STACK 512
@@ -26,69 +27,53 @@
  * not for the FFN output — that uses RunState's hb/hb2 which are heap-allocated) */
 #define MOE_SCORE_BUF_SIZE MOE_MAX_EXPERTS_STACK
 
-/* Lazy-allocated dequantization scratch buffer — holds one expert weight matrix
- * (dim × expert_hdim floats).  Grown as needed; freed at process exit. */
-static float *s_dequant_buf       = NULL;
-static size_t s_dequant_buf_elems = 0;
-
-/* Module-level scratch buffers for batched expert matmul outputs.
- * moe_ffn_forward is not re-entrant (one call at a time from the main thread;
- * internal parallelism is via tp only), so static buffers are safe. */
-static float *s_gate_buf = NULL; /* [top_k * expert_hdim] */
-static float *s_up_buf   = NULL; /* [top_k * expert_hdim] */
-static float *s_down_buf = NULL; /* [top_k * dim] */
-static int s_batch_top_k = 0;
-static int s_batch_ehdim = 0;
-static int s_batch_dim   = 0;
-
-/* P1: Pre-quantized Q8K activation buffer for s->xb.
- * Quantized once per MoE layer; reused for all Q4K matmuls sharing xb
- * (Q4K batched gate+up, shared expert w1+w3). */
-static TnQ8KActBlock *s_xb_q8k = NULL;
-static int s_xb_q8k_blocks     = 0;
+/* Per-thread scratch (memory/tls_scratch.h; was file-scope statics that two concurrent callers
+ * corrupted). Every user runs on the calling thread; pool workers receive the pointers by value.
+ *   s_dequant_scratch  one expert weight matrix (dim x expert_hdim floats)
+ *   s_batch_scratch    batched expert matmul outputs: gate [top_k*ehdim] | up | down [top_k*dim]
+ *   s_xb_scratch       s->xb pre-quantized to Q8K once per MoE layer (Q4K gate+up, shared w1+w3) */
+static TnTlsScratch s_dequant_scratch = TN_TLS_SCRATCH_INIT;
+static TnTlsScratch s_batch_scratch   = TN_TLS_SCRATCH_INIT;
+static TnTlsScratch s_xb_scratch      = TN_TLS_SCRATCH_INIT;
 
 static float *dequant_expert_weight(const tn_i8 *raw, int quant_type, size_t n_elems) {
-    if (s_dequant_buf_elems < n_elems) {
-        free(s_dequant_buf);
-        s_dequant_buf       = (float *)malloc(n_elems * sizeof(float));
-        s_dequant_buf_elems = s_dequant_buf ? n_elems : 0;
-        if (!s_dequant_buf) return NULL;
-    }
+    float *dq = (float *)tn_tls_scratch(&s_dequant_scratch, n_elems * sizeof(float));
+    if (!dq) return NULL;
     switch (quant_type) {
         case 10:
-            gguf_dequant_q2_k(s_dequant_buf, raw, n_elems);
+            gguf_dequant_q2_k(dq, raw, n_elems);
             break; /* Q2_K */
         case 11:
-            gguf_dequant_q3_k(s_dequant_buf, raw, n_elems);
+            gguf_dequant_q3_k(dq, raw, n_elems);
             break; /* Q3_K */
         case 12:
-            gguf_dequant_q4_k(s_dequant_buf, raw, n_elems);
+            gguf_dequant_q4_k(dq, raw, n_elems);
             break; /* Q4_K */
         case 6:
-            gguf_dequant_q5_0(s_dequant_buf, raw, n_elems);
+            gguf_dequant_q5_0(dq, raw, n_elems);
             break; /* Q5_0 */
         case 7:
-            gguf_dequant_q5_1(s_dequant_buf, raw, n_elems);
+            gguf_dequant_q5_1(dq, raw, n_elems);
             break; /* Q5_1 */
         case 13:
-            gguf_dequant_q5_k(s_dequant_buf, raw, n_elems);
+            gguf_dequant_q5_k(dq, raw, n_elems);
             break; /* Q5_K */
         case 14:
-            gguf_dequant_q6_k(s_dequant_buf, raw, n_elems);
+            gguf_dequant_q6_k(dq, raw, n_elems);
             break; /* Q6_K */
         case 8:
-            gguf_dequant_q8_0(s_dequant_buf, raw, n_elems);
+            gguf_dequant_q8_0(dq, raw, n_elems);
             break; /* Q8_0 */
         case 20:
-            gguf_dequant_iq4_nl(s_dequant_buf, raw, n_elems);
+            gguf_dequant_iq4_nl(dq, raw, n_elems);
             break; /* IQ4_NL */
         default:   /* F32 already decoded (ternary / other) */
             for (size_t i = 0; i < n_elems; i++) {
-                ((float *)s_dequant_buf)[i] = ((const float *)raw)[i];
+                ((float *)dq)[i] = ((const float *)raw)[i];
             }
             break;
     }
-    return s_dequant_buf;
+    return dq;
 }
 
 /* P4: Compute raw byte size of a quantized weight tensor.
@@ -389,16 +374,15 @@ void moe_ffn_forward(RunState *s, const TransformerWeights *w, const Config *cfg
 
     /* P1: Pre-quantize s->xb to Q8K once — reused by all Q4K dispatches
      * (batched gate+up for routed experts, shared expert w1+w3). */
-    int xb_n_blocks = dim / TN_Q8K_BLOCK;
-    if (s_xb_q8k_blocks < xb_n_blocks) {
-        free(s_xb_q8k);
-        s_xb_q8k        = (TnQ8KActBlock *)malloc((size_t)xb_n_blocks * sizeof(TnQ8KActBlock));
-        s_xb_q8k_blocks = s_xb_q8k ? xb_n_blocks : 0;
-    }
-    if (s_xb_q8k && !(routed_done && shared_done) && w->has_expert_quant &&
+    int xb_n_blocks       = dim / TN_Q8K_BLOCK;
+    TnQ8KActBlock *xb_q8k = NULL; /* stays NULL unless s->xb was quantized for this call */
+    if (!(routed_done && shared_done) && w->has_expert_quant &&
         (w->expert_w13_quant_type == GGUF_TYPE_Q4_K ||
-         (w->shared_w1_type_per_layer && w->shared_w1_type_per_layer[layer] == GGUF_TYPE_Q4_K)))
-        tn_quantize_q8k(s_xb_q8k, s->xb, xb_n_blocks);
+         (w->shared_w1_type_per_layer && w->shared_w1_type_per_layer[layer] == GGUF_TYPE_Q4_K))) {
+        xb_q8k = (TnQ8KActBlock *)tn_tls_scratch(&s_xb_scratch,
+                                                 (size_t)xb_n_blocks * sizeof(TnQ8KActBlock));
+        if (xb_q8k) tn_quantize_q8k(xb_q8k, s->xb, xb_n_blocks);
+    }
 
     /* ----------------------------------------------------------------
      * Expert FFN — batched path for Q4K gate/up + Q5_1 down:
@@ -417,18 +401,17 @@ void moe_ffn_forward(RunState *s, const TransformerWeights *w, const Config *cfg
                            ? w->expert_w2_quant_per_layer[layer]
                            : w->expert_w2_quant_type;
 
-        /* Grow module-level scratch buffers if dimensions increased */
-        if (s_batch_top_k < top_k || s_batch_ehdim < expert_hdim || s_batch_dim < dim) {
-            free(s_gate_buf);
-            free(s_up_buf);
-            free(s_down_buf);
-            s_gate_buf    = (float *)malloc((size_t)top_k * expert_hdim * sizeof(float));
-            s_up_buf      = (float *)malloc((size_t)top_k * expert_hdim * sizeof(float));
-            s_down_buf    = (float *)malloc((size_t)top_k * dim * sizeof(float));
-            s_batch_top_k = top_k;
-            s_batch_ehdim = expert_hdim;
-            s_batch_dim   = dim;
+        const size_t gate_n = (size_t)top_k * (size_t)expert_hdim;
+        const size_t down_n = (size_t)top_k * (size_t)dim;
+        float *batch =
+            (float *)tn_tls_scratch(&s_batch_scratch, (2 * gate_n + down_n) * sizeof(float));
+        if (!batch) {
+            fprintf(stderr, "[moe] out of memory for the expert batch buffers\n");
+            abort();
         }
+        float *batch_gate = batch;
+        float *batch_up   = batch + gate_n;
+        float *batch_down = batch + 2 * gate_n;
 
         /* Build pointer arrays — one entry per valid selected expert */
         float *gate_ptrs[MOE_SCORE_BUF_SIZE];
@@ -445,9 +428,9 @@ void moe_ffn_forward(RunState *s, const TransformerWeights *w, const Config *cfg
             if (e < 0 || e >= num_experts) continue;
             if (g_expert_hits && layer < g_track_n_layers && e < g_track_n_experts)
                 g_expert_hits[layer * g_track_n_experts + e]++;
-            gate_ptrs[valid_k] = s_gate_buf + (size_t)valid_k * expert_hdim;
-            up_ptrs[valid_k]   = s_up_buf + (size_t)valid_k * expert_hdim;
-            down_ptrs[valid_k] = s_down_buf + (size_t)valid_k * dim;
+            gate_ptrs[valid_k] = batch_gate + (size_t)valid_k * expert_hdim;
+            up_ptrs[valid_k]   = batch_up + (size_t)valid_k * expert_hdim;
+            down_ptrs[valid_k] = batch_down + (size_t)valid_k * dim;
             w1_ptrs[valid_k]   = (const uint8_t *)w->moe_w1[layer][e];
             w3_ptrs[valid_k]   = (const uint8_t *)w->moe_w3[layer][e];
             w2_ptrs[valid_k]   = (const uint8_t *)w->moe_w2[layer][e];
@@ -460,8 +443,8 @@ void moe_ffn_forward(RunState *s, const TransformerWeights *w, const Config *cfg
             if (tn_step_timing_enabled()) ts_gate = tn_step_timing_now_ns();
 
             /* Dispatch 1: all gate projections (Q4K, pre-quantized xb) */
-            if (s_xb_q8k)
-                parallel_matmul_q4k_batch_preq((float *const *)gate_ptrs, s_xb_q8k,
+            if (xb_q8k)
+                parallel_matmul_q4k_batch_preq((float *const *)gate_ptrs, xb_q8k,
                                                (const uint8_t *const *)w1_ptrs, dim, expert_hdim,
                                                valid_k, tp);
             else
@@ -473,8 +456,8 @@ void moe_ffn_forward(RunState *s, const TransformerWeights *w, const Config *cfg
             }
 
             /* Dispatch 2: all up projections (Q4K, pre-quantized xb — no re-quantise) */
-            if (s_xb_q8k)
-                parallel_matmul_q4k_batch_preq((float *const *)up_ptrs, s_xb_q8k,
+            if (xb_q8k)
+                parallel_matmul_q4k_batch_preq((float *const *)up_ptrs, xb_q8k,
                                                (const uint8_t *const *)w3_ptrs, dim, expert_hdim,
                                                valid_k, tp);
             else
@@ -648,15 +631,15 @@ void moe_ffn_forward(RunState *s, const TransformerWeights *w, const Config *cfg
         /* P2: fuse shared expert gate (w1) + up (w3) into one batch dispatch
          * when both are Q4K and pre-quantized acts are available.
          * Saves 1 thread-pool dispatch per MoE layer (26 total per token). */
-        if (w1t == GGUF_TYPE_Q4_K && w3t == GGUF_TYPE_Q4_K && s_xb_q8k) {
+        if (w1t == GGUF_TYPE_Q4_K && w3t == GGUF_TYPE_Q4_K && xb_q8k) {
             float *sh_outs[2]       = {s->hb, s->hb2};
             const uint8_t *sh_ws[2] = {(const uint8_t *)w->moe_shared_w1[layer],
                                        (const uint8_t *)w->moe_shared_w3[layer]};
-            parallel_matmul_q4k_batch_preq(sh_outs, s_xb_q8k, sh_ws, dim, shdim, 2, tp);
+            parallel_matmul_q4k_batch_preq(sh_outs, xb_q8k, sh_ws, dim, shdim, 2, tp);
         } else {
             /* Gate projection (w1) */
-            if (w1t == GGUF_TYPE_Q4_K && s_xb_q8k)
-                parallel_matmul_q4k_preq(s->hb, s_xb_q8k, (const uint8_t *)w->moe_shared_w1[layer],
+            if (w1t == GGUF_TYPE_Q4_K && xb_q8k)
+                parallel_matmul_q4k_preq(s->hb, xb_q8k, (const uint8_t *)w->moe_shared_w1[layer],
                                          dim, shdim, tp);
             else if (w1t == GGUF_TYPE_Q4_K)
                 parallel_matmul_q4k(s->hb, s->xb, (const uint8_t *)w->moe_shared_w1[layer], dim,
@@ -666,8 +649,8 @@ void moe_ffn_forward(RunState *s, const TransformerWeights *w, const Config *cfg
                                         shdim, tp);
 
             /* Up projection (w3) */
-            if (w3t == GGUF_TYPE_Q4_K && s_xb_q8k)
-                parallel_matmul_q4k_preq(s->hb2, s_xb_q8k, (const uint8_t *)w->moe_shared_w3[layer],
+            if (w3t == GGUF_TYPE_Q4_K && xb_q8k)
+                parallel_matmul_q4k_preq(s->hb2, xb_q8k, (const uint8_t *)w->moe_shared_w3[layer],
                                          dim, shdim, tp);
             else if (w3t == GGUF_TYPE_Q4_K)
                 parallel_matmul_q4k(s->hb2, s->xb, (const uint8_t *)w->moe_shared_w3[layer], dim,

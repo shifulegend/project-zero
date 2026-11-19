@@ -22,6 +22,7 @@
 #include "threading/thread_pool.h"
 
 #define DIST_MAX_NODES 8
+#define DIST_SPEC_BUF 256 /* a --plan-layers / --remote-layers node list */
 
 typedef struct {
     char host[128];

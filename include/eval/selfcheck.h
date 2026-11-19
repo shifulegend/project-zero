@@ -24,6 +24,9 @@
 #include "threading/thread_pool.h"
 #include "tokenizer/tokenizer.h"
 
+#define SELFCHECK_LINE_BUF 300 /* a formatted verdict line (selfcheck_format) */
+#define SELFCHECK_KEY_BUF 400  /* a cache key (selfcheck_cache_key) */
+
 typedef enum { SC_PASS = 0, SC_FAIL, SC_SKIPPED } SelfCheckVerdict;
 
 typedef struct {

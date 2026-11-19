@@ -869,7 +869,7 @@ int main(int argc, char **argv) {
     if (args.plan_layers) {
         long long ram[DIST_MAX_NODES];
         int starts[DIST_MAX_NODES], ends[DIST_MAX_NODES], n = 0;
-        char buf[256];
+        char buf[DIST_SPEC_BUF];
         snprintf(buf, sizeof(buf), "%s", args.plan_layers);
         char *save = NULL;
         for (char *t = strtok_r(buf, ",", &save); t && n < DIST_MAX_NODES;
@@ -951,7 +951,7 @@ int main(int argc, char **argv) {
             SelfCheckOptions so = {args.quality_tolerance, args.self_check_tokens};
             SelfCheckResult sr;
             if (selfcheck_run(&so, &p, &w, s, &mc, &t, tp, &sr) == TN_OK && sr.verdict == SC_FAIL) {
-                char line[300];
+                char line[SELFCHECK_LINE_BUF];
                 selfcheck_format(&sr, line, sizeof(line));
                 fprintf(
                     stderr,
@@ -982,7 +982,7 @@ int main(int argc, char **argv) {
                                                                             : "bf16";
         struct stat mst;
         if (stat(args.model_path, &mst) == 0) {
-            char key[400];
+            char key[SELFCHECK_KEY_BUF];
             selfcheck_cache_key(key, sizeof(key), args.model_path, (long long)mst.st_size,
                                 (long long)mst.st_mtime, "int8", cls, args.quality_tolerance,
                                 args.self_check_tokens);
@@ -996,7 +996,7 @@ int main(int argc, char **argv) {
                 SelfCheckResult sr;
                 if (selfcheck_run(&so, &p, &w, s, &mc, &t, tp, &sr) == TN_OK &&
                     sr.verdict != SC_SKIPPED) {
-                    char line[300];
+                    char line[SELFCHECK_LINE_BUF];
                     selfcheck_format(&sr, line, sizeof(line));
                     printf("%s\n", line);
                     selfcheck_cache_store(key, sr.verdict);
@@ -1023,7 +1023,7 @@ int main(int argc, char **argv) {
             fprintf(stderr, "Error: self-check failed (%s)\n", tn_error_str(se));
             exit_code = 1;
         } else {
-            char line[300];
+            char line[SELFCHECK_LINE_BUF];
             selfcheck_format(&sr, line, sizeof(line));
             printf("%s\n", line);
             if (sr.verdict == SC_FAIL) exit_code = 1;

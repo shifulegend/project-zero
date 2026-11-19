@@ -6,7 +6,7 @@ import unittest
 
 TOOLS = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS))
-import check_header_guards as c  # noqa: E402
+import check_header_guards as c
 
 REL = pathlib.PurePosixPath("api/net_io.h")
 

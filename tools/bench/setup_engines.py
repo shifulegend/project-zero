@@ -33,7 +33,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-import benchlib as bl  # noqa: E402
+import benchlib as bl
 
 
 def sh(cmd, cwd=None, env=None, log=print, dry=False, check=True):

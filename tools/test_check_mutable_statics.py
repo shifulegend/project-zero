@@ -5,7 +5,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-import check_mutable_statics as c  # noqa: E402
+import check_mutable_statics as c
 
 
 class StaticTest(unittest.TestCase):

@@ -35,9 +35,9 @@ import subprocess
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-import benchlib as bl  # noqa: E402
-import hardware_profile as hp  # noqa: E402
-import gate  # noqa: E402
+import benchlib as bl
+import hardware_profile as hp
+import gate
 
 TESTS = ["profile", "sweeps", "tiers", "classifiers", "unit"]
 TIERS = ["default", "vnni", "avx2", "avx512f", "scalar", "vnni256"]

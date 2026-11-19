@@ -59,6 +59,8 @@
 #endif
 
 #include "api/config_endpoint.h"
+#include "api/http_response.h"
+#include "api/http_routes.h"
 #include "api/api_server.h"
 #include "api/net_io.h"
 #include "api/rate_limit.h"
@@ -114,9 +116,6 @@
 #define HTTP_BACKLOG 16
 
 /* Fixed buffer capacities (bytes). Each is the size of one stack/static array below. */
-#define HTTP_HDR_BUF 1024             /* one response header block */
-#define HTTP_ERR_BODY_BUF 256         /* JSON error body */
-#define HTTP_METRICS_BUF 4096         /* rendered /metrics text */
 #define HTTP_SSE_EVENT_BUF 160        /* one queue-failure SSE event */
 #define HTTP_STRIPPED_PROMPT_BUF 8192 /* user prompt with the image part removed */
 #define HTTP_PATH_MAX 256             /* request path */
@@ -138,70 +137,6 @@ static void make_id(char *buf, size_t cap) {
     snprintf(buf, cap, "%lx-%lx", (unsigned long)time(NULL), n);
 }
 
-/* ── HTTP response helpers ───────────────────────────────────────────────── */
-
-/* extra_headers, if non-NULL, must already be "\r\n"-terminated per line
- * (e.g. from cors_format_headers()) and is spliced in ahead of the blank
- * line that ends the header block. */
-static void send_response_ex(int fd, int status, const char *content_type, const char *body,
-                             int streaming, const char *extra_headers) {
-    char hdr[HTTP_HDR_BUF];
-    size_t body_len   = body ? strlen(body) : 0;
-    const char *extra = extra_headers ? extra_headers : "";
-    int n;
-    if (streaming) {
-        /* 2026-07-15: pre-existing bug — this claimed "Transfer-Encoding:
-         * chunked" but the SSE writers (sse_write_token/done) write raw
-         * unframed bytes, not HTTP chunk-size-prefixed framing. A strict
-         * client (browser fetch/EventSource; curl --raw) sees a protocol
-         * violation. Since the response always closes the connection when
-         * done, RFC 7230 §3.3.3 case 7 already lets EOF delimit the body —
-         * no Transfer-Encoding header is needed at all. */
-        n = snprintf(hdr, sizeof(hdr),
-                     "HTTP/1.1 %d OK\r\n"
-                     "Content-Type: %s\r\n"
-                     "Cache-Control: no-cache\r\n"
-                     "Connection: close\r\n"
-                     "%s"
-                     "\r\n",
-                     status, content_type, extra);
-    } else {
-        n = snprintf(hdr, sizeof(hdr),
-                     "HTTP/1.1 %d OK\r\n"
-                     "Content-Type: %s\r\n"
-                     "Content-Length: %zu\r\n"
-                     "Connection: close\r\n"
-                     "%s"
-                     "\r\n",
-                     status, content_type, body_len, extra);
-    }
-    if (n > 0 && net_write_all(fd, hdr, (size_t)n) != 0) return;
-    if (body && !streaming)
-        (void)net_write_all(fd, body, body_len); /* peer gone: nothing left to do */
-}
-
-static void send_error_ex(int fd, int status, const char *msg, const char *extra_headers) {
-    char body[HTTP_ERR_BODY_BUF];
-    snprintf(body, sizeof(body), "{\"error\":{\"message\":\"%s\",\"type\":\"server_error\"}}", msg);
-    const char *extra = extra_headers ? extra_headers : "";
-    char hdr[HTTP_HDR_BUF];
-    int n = snprintf(hdr, sizeof(hdr),
-                     "HTTP/1.1 %d Error\r\n"
-                     "Content-Type: application/json\r\n"
-                     "Content-Length: %zu\r\n"
-                     "Connection: close\r\n"
-                     "%s"
-                     "\r\n",
-                     status, strlen(body), extra);
-    if (n > 0) {
-        if (net_write_all(fd, hdr, (size_t)n) == 0)
-            (void)net_write_all(fd, body, strlen(body)); /* peer gone: nothing left to do */
-    }
-}
-
-static void send_error(int fd, int status, const char *msg) {
-    send_error_ex(fd, status, msg, NULL);
-}
 
 /* ── Token streaming callback ────────────────────────────────────────────── */
 
@@ -318,235 +253,6 @@ static int streaming_token_callback(const char *piece, void *userdata) {
     return cancel_registry_check(st->cancel, st->public_id);
 }
 
-/* ── Route handlers ──────────────────────────────────────────────────────── */
-
-static void send_json_heap(int fd, int status, char *body, const char *extra_headers) {
-    if (!body) {
-        send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers);
-        return;
-    }
-    if (status == HTTP_OK)
-        send_response_ex(fd, HTTP_OK, "application/json", body, 0, extra_headers);
-    else {
-        char hdr[HTTP_HDR_BUF];
-        int n = snprintf(hdr, sizeof(hdr),
-                         "HTTP/1.1 %d Error\r\nContent-Type: application/json\r\n"
-                         "Content-Length: %zu\r\nConnection: close\r\n%s\r\n",
-                         status, strlen(body), extra_headers ? extra_headers : "");
-        if (n > 0 && net_write_all(fd, hdr, (size_t)n) != 0) return; /* peer gone */
-        (void)net_write_all(fd, body, strlen(body));
-    }
-    free(body);
-}
-
-/* 2026-10-18: previously a hardcoded {"id":"local-adaptive-engine"} with no
- * "vision" flag, so the web UI's image-upload control (gated on
- * modelInfo.vision) could never appear even with --vision/--proj set. */
-static void handle_get_models(int fd, ApiContext *ctx, const char *extra_headers) {
-    send_json_heap(fd, HTTP_OK, api_models_json(ctx), extra_headers);
-}
-
-static void handle_get_config(int fd, ApiContext *ctx, const char *extra_headers) {
-    send_json_heap(fd, HTTP_OK, api_config_json(ctx), extra_headers);
-}
-
-/* Phase 23 stage 2b: a batched chat request holds one gen_queue unit (one
- * scheduler slot); anything that needs the whole engine — the sequential
- * generation path, image input, best-of, tree search, cache reset — holds
- * all of them plus generation_mutex, so the scheduler is idle meanwhile. */
-static int engine_units(ApiContext *ctx) {
-    return gen_queue_capacity(&ctx->gen_queue);
-}
-
-/* Releases what handle_chat_completions() / prompt-cache clear took:
- * `units` gen_queue units, and generation_mutex when it held the engine. */
-static void release_generation_slot(ApiContext *ctx, int units, int exclusive) {
-    if (exclusive) pthread_mutex_unlock(&ctx->generation_mutex);
-    gen_queue_release_n(&ctx->gen_queue, units);
-}
-
-/* GET /v1/prompt_cache — Phase 26 store stats. Reads counters without the
- * generation mutex (word-sized, informational only). */
-static void handle_prompt_cache_stats(int fd, ApiContext *ctx, const char *extra_headers) {
-    send_json_heap(fd, HTTP_OK, api_prompt_cache_json(ctx), extra_headers);
-}
-
-/* POST /v1/prompt_cache/clear — drops every snapshot and the live prefix
- * record. Mutates generation state, so it takes generation_mutex (429 while
- * a generation is running, same as a second chat request). */
-static int handle_prompt_cache_clear(int fd, ApiContext *ctx, const char *extra_headers) {
-    int units = engine_units(ctx);
-    if (gen_queue_try_acquire_n(&ctx->gen_queue, units) != GEN_QUEUE_OK) {
-        send_error_ex(fd, HTTP_TOO_MANY_REQUESTS, "A generation is in flight", extra_headers);
-        return HTTP_TOO_MANY_REQUESTS;
-    }
-    pthread_mutex_lock(&ctx->generation_mutex);
-    prompt_store_clear(&ctx->prompt_store);
-    prefix_cache_reset(&ctx->prefix_cache);
-    batch_scheduler_reset_caches(ctx->sched); /* every parallel slot's prefix too */
-    release_generation_slot(ctx, units, 1);
-    send_json_heap(fd, HTTP_OK, api_prompt_cache_json(ctx), extra_headers);
-    return HTTP_OK;
-}
-
-/* POST /v1/selfcheck — the accuracy probe on the loaded model. It runs forward passes on the
- * engine's own state, so like a cache reset it takes every generation unit plus the mutex
- * (429 while a generation is running) and drops the prefix caches that the probe overwrites. */
-static int handle_selfcheck(int fd, const char *body_start, size_t body_len, ApiContext *ctx,
-                            const char *extra_headers) {
-    char *body = (char *)malloc(body_len + 1);
-    if (!body) {
-        send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers);
-        return HTTP_INTERNAL_ERROR;
-    }
-    memcpy(body, body_start, body_len);
-    body[body_len] = '\0';
-    int units      = engine_units(ctx);
-    if (gen_queue_try_acquire_n(&ctx->gen_queue, units) != GEN_QUEUE_OK) {
-        free(body);
-        send_error_ex(fd, HTTP_TOO_MANY_REQUESTS, "A generation is in flight", extra_headers);
-        return HTTP_TOO_MANY_REQUESTS;
-    }
-    pthread_mutex_lock(&ctx->generation_mutex);
-    int status = HTTP_INTERNAL_ERROR;
-    char *json = api_selfcheck(ctx, body, &status);
-    prompt_store_clear(&ctx->prompt_store);
-    prefix_cache_reset(&ctx->prefix_cache);
-    batch_scheduler_reset_caches(ctx->sched);
-    release_generation_slot(ctx, units, 1);
-    free(body);
-    send_json_heap(fd, status, json, extra_headers);
-    return status;
-}
-
-static int handle_watermark_detect(int fd, const char *body_start, size_t body_len, ApiContext *ctx,
-                                   const char *extra_headers) {
-    char *body = (char *)malloc(body_len + 1);
-    if (!body) {
-        send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers);
-        return HTTP_INTERNAL_ERROR;
-    }
-    memcpy(body, body_start, body_len);
-    body[body_len] = '\0';
-    int status     = HTTP_INTERNAL_ERROR;
-    char *json     = api_watermark_detect(ctx, body, &status);
-    free(body);
-    send_json_heap(fd, status, json, extra_headers);
-    return status;
-}
-
-/* Phase 40.3: save a server default to the config file (never takes the
- * generation mutex). */
-static int handle_config_save(int fd, const char *body_start, size_t body_len,
-                              const char *content_type, const char *origin, const char *host,
-                              ApiContext *ctx, const char *extra_headers) {
-    if (!api_config_write_allowed(content_type, origin, host, &ctx->server_config.cors)) {
-        send_error_ex(fd, HTTP_FORBIDDEN,
-                      "Cross-site request refused (send Content-Type: application/json "
-                      "from the server's own origin)",
-                      extra_headers);
-        return HTTP_FORBIDDEN;
-    }
-    char *body = (char *)malloc(body_len + 1);
-    if (!body) {
-        send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers);
-        return HTTP_INTERNAL_ERROR;
-    }
-    memcpy(body, body_start, body_len);
-    body[body_len] = '\0';
-    int status     = HTTP_INTERNAL_ERROR;
-    char *json     = api_config_save(ctx, body, &status);
-    free(body);
-    send_json_heap(fd, status, json, extra_headers);
-    return status;
-}
-
-static void handle_health(int fd, const char *extra_headers) {
-    send_response_ex(fd, HTTP_OK, "application/json", "{\"status\":\"ok\"}", 0, extra_headers);
-}
-
-static void handle_get_metrics(int fd, ApiContext *ctx, const char *extra_headers) {
-    char buf[HTTP_METRICS_BUF];
-    size_t n = metrics_render(&ctx->metrics, buf, sizeof(buf));
-    /* Phase 23: generation slots (gen_queue units) and the parallel scheduler. */
-    BatchSchedulerStats bst;
-    batch_scheduler_stats(ctx->sched, &bst);
-    if (n < sizeof(buf))
-        snprintf(
-            buf + n, sizeof(buf) - n,
-            "# HELP project_zero_generation_slots Requests the server generates at once "
-            "(--parallel).\n"
-            "# TYPE project_zero_generation_slots gauge\n"
-            "project_zero_generation_slots %d\n"
-            "# HELP project_zero_generation_slots_busy Generation slots in use.\n"
-            "# TYPE project_zero_generation_slots_busy gauge\n"
-            "project_zero_generation_slots_busy %d\n"
-            "# HELP project_zero_queue_waiting Chat requests waiting for a slot.\n"
-            "# TYPE project_zero_queue_waiting gauge\n"
-            "project_zero_queue_waiting %d\n"
-            "# HELP project_zero_parallel_kv_tokens KV-cache positions held by parallel slots.\n"
-            "# TYPE project_zero_parallel_kv_tokens gauge\n"
-            "project_zero_parallel_kv_tokens %lld\n",
-            ctx->parallel_slots > 0 ? ctx->parallel_slots : 1, gen_queue_in_use(&ctx->gen_queue),
-            gen_queue_waiting(&ctx->gen_queue), bst.kv_committed_tokens);
-    send_response_ex(fd, HTTP_OK, "text/plain; version=0.0.4", buf, 0, extra_headers);
-}
-
-static void handle_get_docs(int fd, const char *extra_headers) {
-    send_response_ex(fd, HTTP_OK, "text/html", openapi_docs_html(), 0, extra_headers);
-}
-
-static void handle_get_openapi(int fd, const char *extra_headers) {
-    send_response_ex(fd, HTTP_OK, "application/json", openapi_json(), 0, extra_headers);
-}
-
-/* Minimal extraction of {"id":"..."} — the cancel endpoint's only field.
- * Deliberately not routed through json_parse.c (whose helpers are file-
- * static and scoped to the fuller ChatRequest grammar); this mirrors the
- * lightweight hand-rolled scanning style already used by http_parse(). */
-static int extract_id_field(const char *json_body, char *out, size_t out_cap) {
-    if (!json_body || !out || out_cap == 0) return 0;
-    const char *key = strstr(json_body, "\"id\"");
-    if (!key) return 0;
-    const char *colon = strchr(key, ':');
-    if (!colon) return 0;
-    const char *p = colon + 1;
-    while (*p == ' ' || *p == '\t') p++;
-    if (*p != '"') return 0;
-    p++;
-    size_t i = 0;
-    while (*p && *p != '"' && i < out_cap - 1) out[i++] = *p++;
-    out[i] = '\0';
-    return i > 0;
-}
-
-static void handle_cancel(int fd, const char *body_start, size_t body_len, ApiContext *ctx,
-                          const char *extra_headers) {
-    char *body = (char *)malloc(body_len + 1);
-    if (!body) {
-        send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers);
-        return;
-    }
-    memcpy(body, body_start, body_len);
-    body[body_len] = '\0';
-
-    char id[32];
-    if (!extract_id_field(body, id, sizeof(id))) {
-        free(body);
-        send_error_ex(fd, HTTP_BAD_REQUEST, "Missing 'id' field", extra_headers);
-        return;
-    }
-    free(body);
-
-    int matched = cancel_registry_request(&ctx->cancel, id);
-    if (matched) {
-        metrics_record_cancel(&ctx->metrics);
-        send_response_ex(fd, HTTP_OK, "application/json", "{\"cancelled\":true}", 0, extra_headers);
-    } else {
-        send_error_ex(fd, HTTP_NOT_FOUND, "No matching in-flight request", extra_headers);
-    }
-}
-
 /* Phase 23 stage 1: while a streaming request waits for the generation slot,
  * send the SSE headers once and then ": queued <position>" comments (also a
  * keep-alive). A failed write means the client left — abandon the wait. */
@@ -561,7 +267,7 @@ static int queue_wait_notify(int position, void *userdata) {
     QueueWaitCtx *w = (QueueWaitCtx *)userdata;
     if (!w->stream) return 0;
     if (!w->headers_sent) {
-        send_response_ex(w->fd, HTTP_OK, "text/event-stream", NULL, 1, w->extra_headers);
+        http_send_response_ex(w->fd, HTTP_OK, "text/event-stream", NULL, 1, w->extra_headers);
         w->headers_sent = 1;
     }
     char line[64];
@@ -575,7 +281,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
      * settings (stream) are known while it waits for the slot. */
     char *body = (char *)malloc(body_len + 1);
     if (!body) {
-        send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers);
+        http_send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers);
         return;
     }
     memcpy(body, body_start, body_len);
@@ -587,14 +293,14 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     if (chat_request_parse(body, &req) != TN_OK) {
         free(body);
         chat_request_free(&req);
-        send_error_ex(fd, HTTP_BAD_REQUEST, "Invalid JSON in request body", extra_headers);
+        http_send_error_ex(fd, HTTP_BAD_REQUEST, "Invalid JSON in request body", extra_headers);
         return;
     }
     free(body);
 
     if (req.num_messages == 0) {
         chat_request_free(&req);
-        send_error_ex(fd, HTTP_BAD_REQUEST, "No messages in request", extra_headers);
+        http_send_error_ex(fd, HTTP_BAD_REQUEST, "No messages in request", extra_headers);
         return;
     }
 
@@ -613,7 +319,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
     /* Phase 23 stage 2b: plain chat requests share the engine through the
      * parallel scheduler (one unit each); the rest need all of it. */
     int batched = ctx->sched && best_of <= 1 && mopt.simulations <= 0 && !wants_image;
-    int units   = batched ? 1 : engine_units(ctx);
+    int units   = batched ? 1 : http_engine_units(ctx);
 
     /* With --parallel N, N batched requests run at once; otherwise one
      * generation at a time. With --queue-size N, up to N requests wait their
@@ -627,7 +333,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
         gen_queue_release_n(&ctx->gen_queue, units);
         chat_request_free(&req);
         if (!qw.headers_sent)
-            send_error_ex(fd, HTTP_SERVICE_UNAVAILABLE, "Server is shutting down", extra_headers);
+            http_send_error_ex(fd, HTTP_SERVICE_UNAVAILABLE, "Server is shutting down", extra_headers);
         return;
     }
     if (qr != GEN_QUEUE_OK) {
@@ -644,7 +350,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
                              why);
             if (n > 0) (void)net_write_all(fd, ev, (size_t)n); /* peer gone: stream already ended */
         } else {
-            send_error_ex(fd, HTTP_TOO_MANY_REQUESTS, why, extra_headers);
+            http_send_error_ex(fd, HTTP_TOO_MANY_REQUESTS, why, extra_headers);
         }
         return;
     }
@@ -770,8 +476,8 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
         char *compiled = (char *)malloc(HTTP_MAX_PROMPT_BYTES);
         if (!compiled) {
             chat_request_free(&req);
-            release_generation_slot(ctx, units, !batched);
-            send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers);
+            http_release_generation_slot(ctx, units, !batched);
+            http_send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers);
             return;
         }
         ChatTemplateType tmpl = ctx->server_config.chat_format >= 0
@@ -794,15 +500,15 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
         if (!neutral_ok) {
             free(compiled);
             chat_request_free(&req);
-            release_generation_slot(ctx, units, !batched);
-            send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers);
+            http_release_generation_slot(ctx, units, !batched);
+            http_send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers);
             return;
         }
         if (chat_compile_prompt(&req, tmpl, compiled, HTTP_MAX_PROMPT_BYTES) != TN_OK) {
             free(compiled);
             chat_request_free(&req);
-            release_generation_slot(ctx, units, !batched);
-            send_error_ex(fd, HTTP_INTERNAL_ERROR, "Prompt compilation failed", extra_headers);
+            http_release_generation_slot(ctx, units, !batched);
+            http_send_error_ex(fd, HTTP_INTERNAL_ERROR, "Prompt compilation failed", extra_headers);
             return;
         }
         prompt      = compiled;
@@ -824,7 +530,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
 
     if (req.stream && !qw.headers_sent) {
         /* Send SSE headers before starting generation */
-        send_response_ex(fd, HTTP_OK, "text/event-stream", NULL, 1, extra_headers);
+        http_send_response_ex(fd, HTTP_OK, "text/event-stream", NULL, 1, extra_headers);
     }
 
     /* Register under public_id — the same "chatcmpl-<id>" string the client
@@ -887,8 +593,8 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
         free(st.accum_buf);
         if (free_prompt) free(prompt);
         chat_request_free(&req);
-        release_generation_slot(ctx, units, !batched);
-        send_error_ex(fd, HTTP_BAD_REQUEST, "Prompt could not be tokenized for this model",
+        http_release_generation_slot(ctx, units, !batched);
+        http_send_error_ex(fd, HTTP_BAD_REQUEST, "Prompt could not be tokenized for this model",
                       extra_headers);
         return;
     }
@@ -903,7 +609,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
      * from request-local buffers (st.accum_buf, gstats, bres, mres), and
      * `finish_reason` is a static string. */
     if (req.stream) {
-        release_generation_slot(ctx, units, !batched);
+        http_release_generation_slot(ctx, units, !batched);
         sse_write_done_ex(fd, id, finish_reason, gstats.prompt_tokens, gstats.completion_tokens,
                           gstats.cached_tokens);
     } else {
@@ -918,11 +624,11 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
             json = append_mcts_json(json, &mres);
         else if (json && best_of > 1)
             json = append_best_of_json(json, &bres);
-        release_generation_slot(ctx, units, !batched);
+        http_release_generation_slot(ctx, units, !batched);
         if (json)
-            send_response_ex(fd, HTTP_OK, "application/json", json, 0, extra_headers);
+            http_send_response_ex(fd, HTTP_OK, "application/json", json, 0, extra_headers);
         else
-            send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers);
+            http_send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers);
         free(json);
     }
 
@@ -1059,13 +765,13 @@ static void handle_connection(int fd, ApiContext *ctx) {
                 HttpFraming fr;
                 http_scan_framing(recv_buf, header_end, &fr);
                 if (fr.content_length_invalid) {
-                    send_error(fd, HTTP_BAD_REQUEST, "Invalid Content-Length");
+                    http_send_error(fd, HTTP_BAD_REQUEST, "Invalid Content-Length");
                     free(recv_buf);
                     close(fd);
                     return;
                 }
                 if (fr.has_transfer_encoding && fr.chunked) {
-                    send_error(fd, HTTP_NOT_IMPLEMENTED,
+                    http_send_error(fd, HTTP_NOT_IMPLEMENTED,
                                "Chunked request bodies are not supported; send Content-Length");
                     free(recv_buf);
                     close(fd);
@@ -1073,7 +779,7 @@ static void handle_connection(int fd, ApiContext *ctx) {
                 }
                 if (fr.has_content_length) {
                     if (fr.content_length > HTTP_MAX_BODY_BYTES) {
-                        send_error(fd, HTTP_PAYLOAD_TOO_LARGE, "Request body too large");
+                        http_send_error(fd, HTTP_PAYLOAD_TOO_LARGE, "Request body too large");
                         free(recv_buf);
                         close(fd);
                         return;
@@ -1103,7 +809,7 @@ static void handle_connection(int fd, ApiContext *ctx) {
         if (cap - total < 1024) {
             size_t new_cap = cap * 2;
             if (new_cap > HTTP_MAX_BODY_BYTES + 8192) {
-                send_error(fd, HTTP_PAYLOAD_TOO_LARGE, "Request body too large");
+                http_send_error(fd, HTTP_PAYLOAD_TOO_LARGE, "Request body too large");
                 free(recv_buf);
                 close(fd);
                 return;
@@ -1118,7 +824,7 @@ static void handle_connection(int fd, ApiContext *ctx) {
 
     HttpRequest req;
     if (!http_parse(recv_buf, total, &req)) {
-        send_error(fd, HTTP_BAD_REQUEST, "Malformed HTTP request");
+        http_send_error(fd, HTTP_BAD_REQUEST, "Malformed HTTP request");
         free(recv_buf);
         close(fd);
         return;
@@ -1138,7 +844,7 @@ static void handle_connection(int fd, ApiContext *ctx) {
     /* DNS-rebinding guard (everything except /health, which monitors probe). */
     if (!is_health && !api_host_allowed(req.host, &ctx->server_config.cors)) {
         metrics_record_request(&ctx->metrics, HTTP_FORBIDDEN);
-        send_error_ex(fd, HTTP_FORBIDDEN,
+        http_send_error_ex(fd, HTTP_FORBIDDEN,
                       "Host not allowed (this server answers to localhost / 127.0.0.1; "
                       "behind a proxy add its address with --cors --cors-origin)",
                       extra_headers);
@@ -1148,7 +854,7 @@ static void handle_connection(int fd, ApiContext *ctx) {
     }
 
     if (is_preflight) {
-        send_response_ex(fd, HTTP_NO_CONTENT, "text/plain", NULL, 0, extra_headers);
+        http_send_response_ex(fd, HTTP_NO_CONTENT, "text/plain", NULL, 0, extra_headers);
         free(recv_buf);
         close(fd);
         return;
@@ -1157,7 +863,7 @@ static void handle_connection(int fd, ApiContext *ctx) {
     if (!is_health && !auth_check_request(&ctx->server_config.auth,
                                           req.has_authorization ? req.authorization : NULL)) {
         metrics_record_request(&ctx->metrics, HTTP_UNAUTHORIZED);
-        send_error_ex(fd, HTTP_UNAUTHORIZED, "Unauthorized", extra_headers);
+        http_send_error_ex(fd, HTTP_UNAUTHORIZED, "Unauthorized", extra_headers);
         free(recv_buf);
         close(fd);
         return;
@@ -1171,7 +877,7 @@ static void handle_connection(int fd, ApiContext *ctx) {
             char hdrs[HTTP_RETRY_HDRS_BUF];
             snprintf(hdrs, sizeof hdrs, "%sRetry-After: %d\r\n", extra_headers, retry);
             metrics_record_request(&ctx->metrics, HTTP_TOO_MANY_REQUESTS);
-            send_error_ex(fd, HTTP_TOO_MANY_REQUESTS, "Too many requests; slow down", hdrs);
+            http_send_error_ex(fd, HTTP_TOO_MANY_REQUESTS, "Too many requests; slow down", hdrs);
             free(recv_buf);
             close(fd);
             return;
@@ -1184,7 +890,7 @@ static void handle_connection(int fd, ApiContext *ctx) {
         !api_post_allowed(req.content_type, req.has_origin ? req.origin : NULL, req.host,
                           &ctx->server_config.cors, req.body_len)) {
         metrics_record_request(&ctx->metrics, HTTP_FORBIDDEN);
-        send_error_ex(fd, HTTP_FORBIDDEN,
+        http_send_error_ex(fd, HTTP_FORBIDDEN,
                       "Cross-site request refused (the Origin is not this server or "
                       "an allowed --cors-origin)",
                       extra_headers);
@@ -1196,46 +902,46 @@ static void handle_connection(int fd, ApiContext *ctx) {
     /* ── Route dispatch ──────────────────────────────────────────────────── */
     int status = HTTP_OK;
     if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/models") == 0) {
-        handle_get_models(fd, ctx, extra_headers);
+        http_handle_get_models(fd, ctx, extra_headers);
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/config") == 0) {
-        handle_get_config(fd, ctx, extra_headers);
+        http_handle_get_config(fd, ctx, extra_headers);
     } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/config/defaults") == 0) {
         status =
-            handle_config_save(fd, req.body, req.body_len, req.content_type,
+            http_handle_config_save(fd, req.body, req.body_len, req.content_type,
                                req.has_origin ? req.origin : NULL, req.host, ctx, extra_headers);
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/update") == 0) {
-        send_json_heap(fd, HTTP_OK, api_update_json(0), extra_headers);
+        http_send_json_heap(fd, HTTP_OK, api_update_json(0), extra_headers);
     } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/update/check") == 0) {
-        send_json_heap(fd, HTTP_OK, api_update_json(1), extra_headers);
+        http_send_json_heap(fd, HTTP_OK, api_update_json(1), extra_headers);
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/prompt_cache") == 0) {
-        handle_prompt_cache_stats(fd, ctx, extra_headers);
+        http_handle_prompt_cache_stats(fd, ctx, extra_headers);
     } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/prompt_cache/clear") == 0) {
-        status = handle_prompt_cache_clear(fd, ctx, extra_headers);
+        status = http_handle_prompt_cache_clear(fd, ctx, extra_headers);
     } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/selfcheck") == 0) {
-        status = handle_selfcheck(fd, req.body, req.body_len, ctx, extra_headers);
+        status = http_handle_selfcheck(fd, req.body, req.body_len, ctx, extra_headers);
     } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/watermark/detect") == 0) {
-        status = handle_watermark_detect(fd, req.body, req.body_len, ctx, extra_headers);
+        status = http_handle_watermark_detect(fd, req.body, req.body_len, ctx, extra_headers);
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/health") == 0) {
         /* Always available, regardless of --web-ui — distinct from "/",
          * which now serves the web UI (Phase 22.2). */
-        handle_health(fd, extra_headers);
+        http_handle_health(fd, extra_headers);
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/metrics") == 0) {
         if (ctx->server_config.metrics.enabled) {
-            handle_get_metrics(fd, ctx, extra_headers);
+            http_handle_get_metrics(fd, ctx, extra_headers);
         } else {
             status = HTTP_NOT_FOUND;
-            send_error_ex(fd, HTTP_NOT_FOUND, "Metrics disabled (start with --metrics)",
+            http_send_error_ex(fd, HTTP_NOT_FOUND, "Metrics disabled (start with --metrics)",
                           extra_headers);
         }
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/docs") == 0) {
-        handle_get_docs(fd, extra_headers);
+        http_handle_get_docs(fd, extra_headers);
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/openapi.json") == 0) {
-        handle_get_openapi(fd, extra_headers);
+        http_handle_get_openapi(fd, extra_headers);
     } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/chat/completions") == 0) {
         handle_chat_completions(fd, req.body, req.body_len, ctx, extra_headers);
     } else if (strcmp(req.method, "POST") == 0 &&
                strcmp(req.path, "/v1/chat/completions/cancel") == 0) {
-        handle_cancel(fd, req.body, req.body_len, ctx, extra_headers);
+        http_handle_cancel(fd, req.body, req.body_len, ctx, extra_headers);
     } else if (strcmp(req.method, "GET") == 0 && ctx->server_config.web_ui != WEBUI_MODE_OFF) {
         /* Web UI (Phase 22.2): "/" and files under "/assets/", placed after
          * every API route so nothing above is ever shadowed. Any other
@@ -1243,7 +949,7 @@ static void handle_connection(int fd, ApiContext *ctx) {
         status = static_assets_serve(fd, req.path, &ctx->server_config, extra_headers);
     } else {
         status = HTTP_NOT_FOUND;
-        send_error_ex(fd, HTTP_NOT_FOUND, "Not found", extra_headers);
+        http_send_error_ex(fd, HTTP_NOT_FOUND, "Not found", extra_headers);
     }
     metrics_record_request(&ctx->metrics, status);
 

@@ -7,9 +7,9 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-import benchlib as bl  # noqa: E402
-import calibration_test as ct  # noqa: E402
-import hardware_profile as hp  # noqa: E402
+import benchlib as bl
+import calibration_test as ct
+import hardware_profile as hp
 
 SWEEP = """
   auto = AVX-512 VNNI;  candidates: scalar avx2 avx512f vnni256

@@ -1,4 +1,4 @@
 # Suppression counts that must not go up (tools/check_suppressions.py).
 NOLINT 3
-noqa 33
+noqa 9
 pragma-diagnostic 3

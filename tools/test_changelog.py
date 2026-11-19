@@ -6,7 +6,7 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import changelog  # noqa: E402
+import changelog
 
 GOOD = """# Changelog
 

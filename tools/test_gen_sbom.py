@@ -9,7 +9,7 @@ import unittest
 
 TOOLS = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS))
-import gen_sbom  # noqa: E402
+import gen_sbom
 
 
 class SbomTest(unittest.TestCase):

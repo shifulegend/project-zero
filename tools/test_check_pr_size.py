@@ -8,7 +8,7 @@ import unittest
 
 TOOLS = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS))
-import check_pr_size as c  # noqa: E402
+import check_pr_size as c
 
 
 def run(numstat, *extra):

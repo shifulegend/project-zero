@@ -48,11 +48,11 @@ import shlex
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-import benchlib as bl  # noqa: E402
-import hardware_profile as hp  # noqa: E402
-import setup_engines as se  # noqa: E402
-import chart  # noqa: E402
-import gate  # noqa: E402
+import benchlib as bl
+import hardware_profile as hp
+import setup_engines as se
+import chart
+import gate
 
 # The bare minimum of a published sweep (2026-10-19 / 10-29): every engine on every model, 1..4 threads,
 # 500 tokens, 3 rounds with a 10 s cooldown, pz default plus INT4, a live-terminal screenshot of every run

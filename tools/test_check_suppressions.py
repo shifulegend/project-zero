@@ -5,7 +5,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-import check_suppressions as c  # noqa: E402
+import check_suppressions as c
 
 
 class SuppressionTest(unittest.TestCase):

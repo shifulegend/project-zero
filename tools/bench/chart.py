@@ -18,9 +18,9 @@ import sys
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent))
-import benchlib as bl  # noqa: E402
-import gate  # noqa: E402
-import plot_sweep_svg as ps  # noqa: E402
+import benchlib as bl
+import gate
+import plot_sweep_svg as ps
 
 
 def variant_name(v):

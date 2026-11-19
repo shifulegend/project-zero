@@ -135,6 +135,10 @@ static void run_perplexity(const CliArgs *args, const Config *p, const Transform
     free(toks);
 }
 
+/* Buffer capacities (bytes). */
+#define VIS_PROMPT_BUF    8192   /* prompt with the image part removed */
+#define UPDATE_NOTICE_BUF 512    /* one-line update notice */
+
 /* Bytes in a GiB, for the --remote-layers per-node RAM sizes (given and printed in GB). */
 #define BYTES_PER_GIB 1073741824.0
 
@@ -809,7 +813,7 @@ int main(int argc, char **argv) {
 
     /* ── Phase 34: Vision pipeline (extracted to multimodal/vision_pipeline.c
      * in Phase 22.2 so the HTTP API can reuse it for image_url uploads) ──── */
-    static char vis_prompt_buf[8192];
+    static char vis_prompt_buf[VIS_PROMPT_BUF];
     if (args.image_path) {
         const char *stripped_prompt = args.prompt;
         vision_pipeline_run(args.image_path, args.vision_path, args.proj_path,
@@ -1133,7 +1137,7 @@ int main(int argc, char **argv) {
      * (an in-flight check is not waited for — it lands in the cache for next time). */
     if (update_notice) {
         UpdateInfo ui;
-        char notice[512];
+        char notice[UPDATE_NOTICE_BUF];
         update_service_get(&ui);
         update_format_notice(&ui, notice, sizeof(notice));
         if (notice[0]) fprintf(stderr, "\n%s", notice);

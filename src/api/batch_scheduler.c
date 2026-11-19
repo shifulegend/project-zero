@@ -14,6 +14,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* First capacity (bytes) of a job's output buffer; it doubles from here. */
+#define BATCH_JOB_OUT_INIT_CAP 1024
+
 typedef struct BatchJob {
     const char *prompt;
     const GenerationParams *gp;
@@ -83,7 +86,7 @@ static int job_enqueue(const char *piece, void *userdata) {
     int stop = job->abort;
     if (!stop && piece) {
         if (job->out_len + n + 1 > job->out_cap) {
-            size_t cap = job->out_cap ? job->out_cap * 2 : 1024;
+            size_t cap = job->out_cap ? job->out_cap * 2 : BATCH_JOB_OUT_INIT_CAP;
             while (cap < job->out_len + n + 1) cap *= 2;
             char *nb = (char *)realloc(job->out, cap);
             if (!nb) { job->abort = stop = 1; }

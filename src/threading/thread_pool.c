@@ -5,6 +5,9 @@
 #include <string.h>
 #include <unistd.h>  /* sysconf(_SC_NPROCESSORS_ONLN) */
 
+/* Most distinct (physical id, core id) pairs read from /proc/cpuinfo; more are ignored. */
+#define TP_MAX_CORES 512
+
 #if TN_POSIX
 
 /*
@@ -32,7 +35,7 @@ static int detect_physical_cores(void) {
         long n = sysconf(_SC_NPROCESSORS_ONLN);
         return (n > 0) ? (int)n : 1;
     }
-    int phys_ids[512], core_ids[512], count = 0;
+    int phys_ids[TP_MAX_CORES], core_ids[TP_MAX_CORES], count = 0;
     int cur_phys = -1, cur_core = -1;
     char line[256];
     while (fgets(line, sizeof(line), f)) {
@@ -42,7 +45,7 @@ static int detect_physical_cores(void) {
         } else if (strncmp(line, "core id", 7) == 0) {
             char *p = strchr(line, ':');
             if (p) cur_core = (int)strtol(p + 1, NULL, 10);
-            if (cur_phys >= 0 && cur_core >= 0 && count < 512) {
+            if (cur_phys >= 0 && cur_core >= 0 && count < TP_MAX_CORES) {
                 int found = 0;
                 for (int i = 0; i < count; i++) {
                     if (phys_ids[i] == cur_phys && core_ids[i] == cur_core) {

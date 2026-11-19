@@ -112,6 +112,21 @@
 #define HTTP_MAX_PROMPT_BYTES (65536)   /* compiled prompt size cap       */
 #define HTTP_BACKLOG         16
 
+/* Fixed buffer capacities (bytes). Each is the size of one stack/static array below. */
+#define HTTP_HDR_BUF         1024       /* one response header block */
+#define HTTP_ERR_BODY_BUF    256        /* JSON error body */
+#define HTTP_METRICS_BUF     4096       /* rendered /metrics text */
+#define HTTP_SSE_EVENT_BUF   160        /* one queue-failure SSE event */
+#define HTTP_STRIPPED_PROMPT_BUF 8192   /* user prompt with the image part removed */
+#define HTTP_PATH_MAX        256        /* request path */
+#define HTTP_ORIGIN_MAX      256        /* Origin header */
+#define HTTP_AUTH_MAX        512        /* Authorization header */
+#define HTTP_CTYPE_MAX       128        /* Content-Type header */
+#define HTTP_HOST_MAX        256        /* Host header */
+#define HTTP_EXTRA_HDRS_BUF  512        /* CORS headers added to a response */
+#define HTTP_RETRY_HDRS_BUF  (HTTP_EXTRA_HDRS_BUF + 128)  /* extra headers + Retry-After */
+#define HTTP_BUSY_REPLY_BUF  320        /* complete 503 reply to a refused connection */
+
 /* ── Simple unique ID generator ─────────────────────────────────────────── */
 static void make_id(char *buf, size_t cap) {
     static pthread_mutex_t id_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -130,7 +145,7 @@ static void make_id(char *buf, size_t cap) {
 static void send_response_ex(int fd, int status, const char *content_type,
                               const char *body, int streaming,
                               const char *extra_headers) {
-    char hdr[1024];
+    char hdr[HTTP_HDR_BUF];
     size_t body_len = body ? strlen(body) : 0;
     const char *extra = extra_headers ? extra_headers : "";
     int n;
@@ -163,11 +178,11 @@ static void send_response_ex(int fd, int status, const char *content_type,
 }
 
 static void send_error_ex(int fd, int status, const char *msg, const char *extra_headers) {
-    char body[256];
+    char body[HTTP_ERR_BODY_BUF];
     snprintf(body, sizeof(body),
              "{\"error\":{\"message\":\"%s\",\"type\":\"server_error\"}}", msg);
     const char *extra = extra_headers ? extra_headers : "";
-    char hdr[1024];
+    char hdr[HTTP_HDR_BUF];
     int n = snprintf(hdr, sizeof(hdr),
         "HTTP/1.1 %d Error\r\n"
         "Content-Type: application/json\r\n"
@@ -288,7 +303,7 @@ static void send_json_heap(int fd, int status, char *body, const char *extra_hea
     if (!body) { send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers); return; }
     if (status == HTTP_OK) send_response_ex(fd, HTTP_OK, "application/json", body, 0, extra_headers);
     else {
-        char hdr[1024];
+        char hdr[HTTP_HDR_BUF];
         int n = snprintf(hdr, sizeof(hdr),
             "HTTP/1.1 %d Error\r\nContent-Type: application/json\r\n"
             "Content-Length: %zu\r\nConnection: close\r\n%s\r\n",
@@ -413,7 +428,7 @@ static void handle_health(int fd, const char *extra_headers) {
 }
 
 static void handle_get_metrics(int fd, ApiContext *ctx, const char *extra_headers) {
-    char buf[4096];
+    char buf[HTTP_METRICS_BUF];
     size_t n = metrics_render(&ctx->metrics, buf, sizeof(buf));
     /* Phase 23: generation slots (gen_queue units) and the parallel scheduler. */
     BatchSchedulerStats bst;
@@ -578,7 +593,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
                         : ctx->server_config.queue_size > 0 ? "Generation queue is full"
                         : "Another generation is already in flight";
         if (qw.headers_sent) {
-            char ev[160];
+            char ev[HTTP_SSE_EVENT_BUF];
             int n = snprintf(ev, sizeof(ev), "data: {\"error\":{\"message\":\"%s\",\"type\":\"server_error\"}}\n\n", why);
             if (n > 0) (void)net_write_all(fd, ev, (size_t)n);   /* peer gone: stream already ended */
         } else {
@@ -641,7 +656,7 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
 
         /* static: safe because only one generation runs at a time
          * (generation_mutex, held for the whole of this function). */
-        static char stripped_prompt_buf[8192];
+        static char stripped_prompt_buf[HTTP_STRIPPED_PROMPT_BUF];
         const char *stripped_prompt = req.messages[i].content;
         /* cfg/weights are declared const in ApiContext (text generation
          * never mutates them); the vision pipeline's KV-cache injection
@@ -862,14 +877,14 @@ static void handle_chat_completions(int fd, const char *body_start, size_t body_
 
 typedef struct {
     char method[16];
-    char path[256];
+    char path[HTTP_PATH_MAX];
     char *body;          /* pointer into recv_buf or separately allocated */
     size_t body_len;
     int  content_length; /* from Content-Length header, -1 if not present */
-    char origin[256];
-    char authorization[512];
-    char content_type[128];
-    char host[256];
+    char origin[HTTP_ORIGIN_MAX];
+    char authorization[HTTP_AUTH_MAX];
+    char content_type[HTTP_CTYPE_MAX];
+    char host[HTTP_HOST_MAX];
     int  has_origin;
     int  has_authorization;
 } HttpRequest;
@@ -1038,7 +1053,7 @@ static void handle_connection(int fd, ApiContext *ctx) {
     }
 
     /* ── CORS + auth gate (applied ahead of dispatch; /health always open) ── */
-    char extra_headers[512];
+    char extra_headers[HTTP_EXTRA_HDRS_BUF];
     extra_headers[0] = '\0';
     if (ctx->server_config.cors.enabled) {
         cors_format_headers(&ctx->server_config.cors,
@@ -1082,7 +1097,7 @@ static void handle_connection(int fd, ApiContext *ctx) {
         strncmp(req.path, "/v1/chat/completions", 20) != 0) {
         int retry = 1;
         if (!rate_limit_take(&ctx->rate_limiter, rate_limit_now(), &retry)) {
-            char hdrs[640];
+            char hdrs[HTTP_RETRY_HDRS_BUF];
             snprintf(hdrs, sizeof hdrs, "%sRetry-After: %d\r\n", extra_headers, retry);
             metrics_record_request(&ctx->metrics, HTTP_TOO_MANY_REQUESTS);
             send_error_ex(fd, HTTP_TOO_MANY_REQUESTS, "Too many requests; slow down", hdrs);
@@ -1219,7 +1234,7 @@ static void *listener_thread_fn(void *arg) {
         if (cap > 0 && atomic_load(&ctx->active_connections) >= cap) {
             static const char body[] =
                 "{\"error\":{\"message\":\"Too many open connections\",\"type\":\"server_error\"}}";
-            char busy[320];
+            char busy[HTTP_BUSY_REPLY_BUF];
             int bn = snprintf(busy, sizeof(busy),
                 "HTTP/1.1 503 Service Unavailable\r\n"
                 "Content-Type: application/json\r\n"

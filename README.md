@@ -69,8 +69,9 @@ is built with the squared-ReLU feed-forward activation that BitNet 2B-4T specifi
 Logs and screenshots: [sweep](benchmark_results/h2h_20261118-053147Z_published-sweep/) ·
 [DeepSeek](benchmark_results/h2h_20261118-210302Z_deepseek-refresh/).
 
-`--classifier int4` (4-bit output layer) runs BitNet 2B-4T at 26.7 tok/s, 28% above the default, for
-4.4% higher perplexity; its self-check reads about 9% on a short passage, so keep it with `--quality-tolerance 10` (the default bar is 1%).
+`--classifier int4` (4-bit output layer) runs BitNet 2B-4T at 26.7 tok/s, 28% above the default, at 4.4%
+higher perplexity. The self-check measures about 9% on its short passage, so keeping int4 needs
+`--quality-tolerance 10`; the default bar is 1%.
 
 Output quality: perplexity is within 0.9% of llama.cpp on SmolLM2-135M and 1.7B, Mamba-130m and
 DeepSeek-V2-Lite ([results](benchmark_results/h2h_20261118-053147Z_published-sweep/summary.md),

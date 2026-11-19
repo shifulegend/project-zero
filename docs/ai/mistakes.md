@@ -5,6 +5,11 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-11-18.
 
+### 2026-11-19 — test_gen_queue read a thread-written int without synchronisation: intermittent TSan failure
+- What: `test_full_timeout_abort` read `Waiter.last_pos` in the main thread while the waiter thread wrote it from the queue callback. ThreadSanitizer reported the race in one of three CI runs of a docs-only commit (the other two passed); the test itself still reported all tests passed, only the sanitizer step failed.
+- Fix: both sides use `g_order_mu`. Not reproducible on the dev host (0 reports in 150 TSan runs of the old test as well as the new one); the race is the unsynchronised write/read pair the CI report names (`note_pos` / `test_full_timeout_abort`), so the fix is justified by the report, not by a local red-to-green run.
+- Lesson: a test's own shared variables need the same synchronisation as the code under test; an intermittent TSan failure is a finding, not a re-run.
+
 ### 2026-11-19 — The web UI's quality-tolerance field rounded 2.5 to 3
 - What: the new Settings control reused `NumberField`, which rounds to integers; saving 2.5 wrote `quality-tolerance = 3` and 0.5 could not be set. Found by driving the save flow in a browser (the earlier checks only called the API).
 - Fix: `AccuracyCheck.svelte` has its own decimal input (step 0.1, clamped 0..100); bundle regenerated; the save flow now writes 2.5.

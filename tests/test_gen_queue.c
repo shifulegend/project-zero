@@ -21,7 +21,21 @@ static pthread_mutex_t g_order_mu = PTHREAD_MUTEX_INITIALIZER;
 
 typedef struct { int id; int last_pos; } Waiter;
 
-static int note_pos(int pos, void *ud) { ((Waiter *)ud)->last_pos = pos; return 0; }
+/* The waiter thread writes last_pos from the queue callback and the main thread reads it: both go
+ * through g_order_mu (an unsynchronised int was a data race TSan reported intermittently in CI). */
+static int note_pos(int pos, void *ud) {
+    pthread_mutex_lock(&g_order_mu);
+    ((Waiter *)ud)->last_pos = pos;
+    pthread_mutex_unlock(&g_order_mu);
+    return 0;
+}
+
+static int waiter_pos(Waiter *w) {
+    pthread_mutex_lock(&g_order_mu);
+    int p = w->last_pos;
+    pthread_mutex_unlock(&g_order_mu);
+    return p;
+}
 
 static void *waiter_thread(void *arg) {
     Waiter *w = (Waiter *)arg;
@@ -84,7 +98,7 @@ static void test_full_timeout_abort(void) {
     pthread_create(&th, NULL, waiter_thread, &w);
     wait_for_waiting(1);
     TEST_ASSERT_EQ(gen_queue_acquire(&Q, 100, NULL, NULL), GEN_QUEUE_FULL, "queue of 1 is full");
-    TEST_ASSERT_EQ(w.last_pos, 1, "waiter told it is next");
+    TEST_ASSERT_EQ(waiter_pos(&w), 1, "waiter told it is next");
     gen_queue_release(&Q);
     pthread_join(th, NULL);
     gen_queue_destroy(&Q);

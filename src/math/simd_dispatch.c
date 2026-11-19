@@ -121,27 +121,31 @@ extern void ternary_matmul_packed_neon(float *out, const float *x, const tn_u8 *
 #endif
 
 /* ── Global dispatch table ─────────────────────────────────────────────────
- * Initialized to NULL; call tn_simd_init() once at startup before any math.
+ * Every pointer starts on its portable scalar implementation, so a caller that forgets
+ * tn_simd_init() (a test, an embedder) gets slow but correct math instead of a NULL call. The
+ * exceptions are the three int8-activation pointers at the end: they are bound only for the
+ * AVX-512 VNNI tier and gated by tn_simd_ternary_preq(), so NULL means "not available".
+ * Call tn_simd_init() once at startup to select the fastest tier.
  */
-tn_matmul_fn tn_ternary_matmul               = NULL;
-tn_matmul_packed_fn tn_ternary_matmul_packed = NULL;
-tn_unpack_fn tn_unpack_block                 = NULL;
-tn_rmsnorm_fn tn_rmsnorm                     = NULL;
-tn_softmax_fn tn_softmax                     = NULL;
-tn_vec_add_fn tn_vec_add                     = NULL;
-tn_vec_mul_fn tn_vec_mul                     = NULL;
-tn_vec_scale_fn tn_vec_scale                 = NULL;
-tn_silu_fn tn_silu                           = NULL;
-tn_relu2_fn tn_relu2                         = NULL;
-tn_vec_dot_fn tn_vec_dot                     = NULL;
+tn_matmul_fn tn_ternary_matmul               = ternary_matmul_branchless;
+tn_matmul_packed_fn tn_ternary_matmul_packed = ternary_matmul_packed;
+tn_unpack_fn tn_unpack_block                 = unpack_ternary_block;
+tn_rmsnorm_fn tn_rmsnorm                     = rmsnorm;
+tn_softmax_fn tn_softmax                     = softmax;
+tn_vec_add_fn tn_vec_add                     = vec_add;
+tn_vec_mul_fn tn_vec_mul                     = vec_mul;
+tn_vec_scale_fn tn_vec_scale                 = vec_scale;
+tn_silu_fn tn_silu                           = silu;
+tn_relu2_fn tn_relu2                         = relu2_scalar;
+tn_vec_dot_fn tn_vec_dot                     = vec_dot;
 tn_kvq4_dot_fn tn_kvq4_dot                   = kvq4_dot_scalar;
 tn_kvq4_axpy_fn tn_kvq4_axpy                 = kvq4_axpy_scalar;
-tn_vec_saxpy_fn tn_vec_saxpy                 = NULL;
+tn_vec_saxpy_fn tn_vec_saxpy                 = vec_saxpy;
+tn_cls_rows_fn tn_cls_i8_rows                = tn_cls_i8_rows_generic;
+tn_cls_rows_fn tn_cls_i4_rows                = tn_cls_i4_rows_generic;
 tn_quantize_i8_fn tn_quantize_act_i8         = NULL;
 tn_sum_i8_fn tn_sum_act_i8                   = NULL;
 tn_matmul_preq_fn tn_ternary_matmul_preq     = NULL;
-tn_cls_rows_fn tn_cls_i8_rows                = tn_cls_i8_rows_generic;
-tn_cls_rows_fn tn_cls_i4_rows                = tn_cls_i4_rows_generic;
 
 /* Human-readable name of the selected backend (set by tn_simd_init) */
 static const char *g_backend_name = "Scalar";

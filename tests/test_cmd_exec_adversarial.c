@@ -11,6 +11,7 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <sys/wait.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <limits.h>
@@ -178,6 +179,22 @@ static void test_symlink_within_cwd_still_allowed(void) {
     unlink(link_name);
 }
 
+static void test_unknown_cwd_fails_closed(void) {
+    /* If getcwd() fails (the working directory was deleted) the confinement
+     * cannot be checked, so a path argument must be refused, not waved through.
+     * Done in a child process so this process keeps its working directory. */
+    pid_t pid = fork();
+    if (pid == 0) {
+        char dir[] = "/tmp/pz_adv_nocwd_XXXXXX";
+        if (!mkdtemp(dir) || chdir(dir) != 0 || rmdir(dir) != 0) _exit(2);
+        char *a[] = {"ls", "somefile", NULL};
+        _exit(exec_policy_allows_args(a) ? 1 : 0);   /* 0 = blocked, as required */
+    }
+    int st = 0;
+    TEST_ASSERT(pid > 0 && waitpid(pid, &st, 0) == pid && WIFEXITED(st) && WEXITSTATUS(st) == 0,
+                "ls <path> is refused when the working directory no longer exists");
+}
+
 /* ── Flag injection ──────────────────────────────────────────────────────── */
 static void test_flag_injection(void) {
     char *a[] = {"ls", "--help", NULL};             assert_allowed_by_policy(a, "ls --help (flag, not a path)");
@@ -242,6 +259,7 @@ int main(void) {
     RUN_TEST(test_null_and_odd_bytes);
     RUN_TEST(test_symlink_escape_now_blocked);
     RUN_TEST(test_symlink_within_cwd_still_allowed);
+    RUN_TEST(test_unknown_cwd_fails_closed);
     RUN_TEST(test_flag_injection);
     RUN_TEST(test_shell_metacharacters_are_literal);
     RUN_TEST(test_argv0_tricks_blocked);

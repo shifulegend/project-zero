@@ -91,8 +91,10 @@ static int path_arg_is_safe(const char *arg) {
 static int path_escapes_cwd_via_symlink(const char *arg) {
     char resolved[PATH_MAX];
     char cwd[PATH_MAX];
+    /* Fail closed: if the CWD cannot be determined (deleted, unreadable) there
+     * is no subtree to confine to, so the argument is refused. */
+    if (!getcwd(cwd, sizeof(cwd))) return 1;
     if (!realpath(arg, resolved)) return 0;      /* doesn't exist -- not this check's problem */
-    if (!getcwd(cwd, sizeof(cwd))) return 0;      /* can't determine CWD -- don't false-block */
     size_t cwd_len = strlen(cwd);
     if (strncmp(resolved, cwd, cwd_len) != 0) return 1;         /* escaped */
     if (resolved[cwd_len] != '\0' && resolved[cwd_len] != '/') return 1; /* e.g. cwd="/a/b", resolved="/a/bc" */

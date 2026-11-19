@@ -164,6 +164,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Lint (shellcheck)
         run: shellcheck install.sh tools/test_install.sh tools/check_dist_isa.sh
+      - name: Lint every first-party shell script (warnings and errors)
+        # benchmark_results/ holds archived evidence scripts and is not linted.
+        run: git ls-files '*.sh' | grep -v '^benchmark_results/' | xargs shellcheck -S warning
       - name: Build (release)
         run: make release CC=gcc
       - name: Install / upgrade / refuse tampered / uninstall (dash + bash)

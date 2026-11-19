@@ -7,21 +7,34 @@
  * A simple, append-only binary file that stores (embedding, text) pairs.
  * No external dependencies — same philosophy as the model weight file.
  *
- * File format (little-endian):
+ * File format v2 (little-endian; written by this version):
  * ┌─────────────────────────────────────────┐
- * │ Header (16 bytes)                        │
+ * │ Header (20 bytes)                        │
  * │   [0-3]  magic:       uint32 = 0x42445256 "VRDB" │
- * │   [4-7]  version:     uint32 = 1         │
+ * │   [4-7]  version:     uint32 = 2         │
  * │   [8-11] num_entries: uint32             │
  * │   [12-15] embed_dim:  uint32             │
+ * │   [16-19] crc32 of bytes 0-15            │
  * ├─────────────────────────────────────────┤
  * │ Record 0                                 │
  * │   [embed_dim * 4 bytes] float32 embedding│
  * │   [4 bytes]             uint32 text_len  │
  * │   [text_len bytes]      UTF-8 text + \0  │
+ * │   [4 bytes]             crc32 of the three fields above │
  * ├─────────────────────────────────────────┤
  * │ Record 1, 2, …                          │
  * └─────────────────────────────────────────┘
+ *
+ * Format v1 (16-byte header, no checksums) is still read. The first store()
+ * into a v1 file copies it to "<path>.v1.bak" (never overwriting an existing
+ * backup) and rewrites it atomically as v2. A v2 file cannot be read by a
+ * binary that only knows v1.
+ *
+ * A record is appended and synced first, then the header's entry count is
+ * updated and synced, so a crash leaves either the old or the new database;
+ * bytes after the counted records are ignored and overwritten by the next
+ * store. The file is locked (flock) while open: a second process fails to
+ * open it instead of interleaving writes.
  *
  * On open, all records are loaded into heap-allocated arrays for
  * fast in-memory search. Writes append a new record to the file
@@ -37,8 +50,10 @@ extern "C" {
 #endif
 
 #define VRDB_MAGIC   0x42445256u  /* "VRDB" as little-endian uint32 */
-#define VRDB_VERSION 1u
-#define VRDB_HEADER_SIZE 16
+#define VRDB_VERSION 2u          /* version written by this build */
+#define VRDB_VERSION_V1 1u       /* legacy: read, then upgraded on first store */
+#define VRDB_HEADER_SIZE 20      /* v2; v1 is 16 */
+#define VRDB_HEADER_SIZE_V1 16
 
 /* Maximum text length stored per entry (including null terminator) */
 #define VRDB_MAX_TEXT 4096
@@ -62,6 +77,8 @@ typedef struct {
     size_t  text_pool_capacity;
 
     FILE   *fp;           /* open file handle (r+b or wb) */
+    uint32_t format;      /* on-disk version of the open file (1 or 2) */
+    long    valid_end;    /* byte offset just past the last counted record */
     char    path[512];    /* file path (for error messages) */
 } VectorDB;
 

@@ -105,7 +105,7 @@ These phases are completely spec'd in [`IMPLEMENTATION_PLAN.md`](docs/architectu
 ## 👀 Review & hotfixes
 
 - **Turnaround:** the maintainer aims to give a first response to a pull request within 7 days. This is a goal, not a guarantee.
-- **Hotfixes:** a change merged outside the normal checks (for example a urgent fix with a test left for later) opens a follow-up issue in the same hour, labelled `hotfix-followup`, listing what was skipped; it is closed within 14 days.
+- **Hotfixes:** a change merged outside the normal checks (for example an urgent fix with a test left for later) opens a follow-up issue in the same hour, labelled `hotfix-followup`, listing what was skipped; it is closed within 14 days.
 - **Nit:** comments are non-blocking (see Code Standards above).
 
 ## 🔀 Branch Naming

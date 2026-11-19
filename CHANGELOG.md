@@ -34,6 +34,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Fixed
 
+- Refuse a non-numeric value for a numeric flag (`--rate-limit abc`, `--threads four`, `--temperature hot`, ...) with an error naming the flag; before, `atoi` turned it into 0, which silently switched off the rate limiter, the client timeout or the connection cap. Trailing junk (`64x`) and numbers outside the integer range are refused too.
 - Answer `501` to a request body sent with any `Transfer-Encoding` (gzip, deflate, ...), not only `chunked`; before, the server ignored the header and read the body as plain bytes.
 - Free the reply body when a client disconnects while the server is sending an error status for a settings, watermark or self-check request (it leaked before), and never send a cut-off header block: extra headers that would not fit are dropped, and error messages are JSON-escaped.
 - List `GET /openapi.json` in the OpenAPI document it serves; the route existed but was missing from its own description.
@@ -126,6 +127,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Fixed
 
+- Refuse a non-numeric value for a numeric flag (`--rate-limit abc`, `--threads four`, `--temperature hot`, ...) with an error naming the flag; before, `atoi` turned it into 0, which silently switched off the rate limiter, the client timeout or the connection cap. Trailing junk (`64x`) and numbers outside the integer range are refused too.
 - Answer `501` to a request body sent with any `Transfer-Encoding` (gzip, deflate, ...), not only `chunked`; before, the server ignored the header and read the body as plain bytes.
 - Free the reply body when a client disconnects while the server is sending an error status for a settings, watermark or self-check request (it leaked before), and never send a cut-off header block: extra headers that would not fit are dropped, and error messages are JSON-escaped.
 - List `GET /openapi.json` in the OpenAPI document it serves; the route existed but was missing from its own description.
@@ -179,6 +181,7 @@ _First release with a prebuilt, portable x86-64 Linux binary (`adaptive_ai_engin
 
 ### Fixed
 
+- Refuse a non-numeric value for a numeric flag (`--rate-limit abc`, `--threads four`, `--temperature hot`, ...) with an error naming the flag; before, `atoi` turned it into 0, which silently switched off the rate limiter, the client timeout or the connection cap. Trailing junk (`64x`) and numbers outside the integer range are refused too.
 - Answer `501` to a request body sent with any `Transfer-Encoding` (gzip, deflate, ...), not only `chunked`; before, the server ignored the header and read the body as plain bytes.
 - Free the reply body when a client disconnects while the server is sending an error status for a settings, watermark or self-check request (it leaked before), and never send a cut-off header block: extra headers that would not fit are dropped, and error messages are JSON-escaped.
 - List `GET /openapi.json` in the OpenAPI document it serves; the route existed but was missing from its own description.

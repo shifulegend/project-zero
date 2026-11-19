@@ -1,4 +1,5 @@
 #include "cli/args.h"
+#include "cli/arg_values.h"
 #include "math/simd_dispatch.h"
 #include "transformer/attn_tiled.h"
 #include "kv_cache/kv_quant_ops.h"
@@ -8,7 +9,6 @@
 #include "update/update_check.h"
 #include "math/rope.h"
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 void print_usage(const char *prog_name) {
@@ -366,27 +366,27 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
         } else if (strcmp(argv[i], "--proj") == 0 && i + 1 < argc) {
             args->proj_path = argv[++i];
         } else if (strcmp(argv[i], "--temperature") == 0 && i + 1 < argc) {
-            args->temperature = atof(argv[++i]);
+            ARG_NUM(args->temperature);
         } else if (strcmp(argv[i], "--top-p") == 0 && i + 1 < argc) {
-            args->top_p = atof(argv[++i]);
+            ARG_NUM(args->top_p);
         } else if (strcmp(argv[i], "--max-tokens") == 0 && i + 1 < argc) {
-            args->max_tokens = atoi(argv[++i]);
+            ARG_INT(args->max_tokens);
         } else if (strcmp(argv[i], "--threads") == 0 && i + 1 < argc) {
-            args->num_threads = atoi(argv[++i]);
+            ARG_INT(args->num_threads);
         } else if (strcmp(argv[i], "--seed") == 0 && i + 1 < argc) {
-            args->seed = atoi(argv[++i]);
+            ARG_INT(args->seed);
         } else if (strcmp(argv[i], "--top-k") == 0 && i + 1 < argc) {
-            args->top_k = atoi(argv[++i]);
+            ARG_INT(args->top_k);
         } else if (strcmp(argv[i], "--min-p") == 0 && i + 1 < argc) {
-            args->min_p = (float)atof(argv[++i]);
+            ARG_NUM(args->min_p);
         } else if (strcmp(argv[i], "--repeat-penalty") == 0 && i + 1 < argc) {
-            args->repeat_penalty = (float)atof(argv[++i]);
+            ARG_NUM(args->repeat_penalty);
         } else if (strcmp(argv[i], "--presence-penalty") == 0 && i + 1 < argc) {
-            args->presence_penalty = (float)atof(argv[++i]);
+            ARG_NUM(args->presence_penalty);
         } else if (strcmp(argv[i], "--frequency-penalty") == 0 && i + 1 < argc) {
-            args->frequency_penalty = (float)atof(argv[++i]);
+            ARG_NUM(args->frequency_penalty);
         } else if (strcmp(argv[i], "--repeat-last-n") == 0 && i + 1 < argc) {
-            args->repeat_last_n = atoi(argv[++i]);
+            ARG_INT(args->repeat_last_n);
         } else if (strcmp(argv[i], "--system-prompt") == 0 && i + 1 < argc) {
             args->system_prompt = argv[++i];
         } else if (strcmp(argv[i], "--no-request-template") == 0) {
@@ -402,7 +402,7 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             }
             args->stop[args->n_stop++] = argv[++i];
         } else if (strcmp(argv[i], "--max-tokens-limit") == 0 && i + 1 < argc) {
-            args->max_tokens_limit = atoi(argv[++i]);
+            ARG_INT(args->max_tokens_limit);
             if (args->max_tokens_limit < 0) {
                 fprintf(stderr, "Error: --max-tokens-limit must be >= 0\n");
                 return TN_ERR_INVALID_CONFIG;
@@ -412,19 +412,19 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
         } else if (strcmp(argv[i], "--watermark-key") == 0 && i + 1 < argc) {
             args->watermark_key = argv[++i];
         } else if (strcmp(argv[i], "--watermark-gamma") == 0 && i + 1 < argc) {
-            args->watermark_gamma = (float)atof(argv[++i]);
+            ARG_NUM(args->watermark_gamma);
         } else if (strcmp(argv[i], "--watermark-delta") == 0 && i + 1 < argc) {
-            args->watermark_delta = (float)atof(argv[++i]);
+            ARG_NUM(args->watermark_delta);
         } else if (strcmp(argv[i], "--perplexity") == 0 && i + 1 < argc) {
             args->perplexity_file = argv[++i];
         } else if (strcmp(argv[i], "--ppl-ctx") == 0 && i + 1 < argc) {
-            args->ppl_ctx = atoi(argv[++i]);
+            ARG_INT(args->ppl_ctx);
             if (args->ppl_ctx < 4) {
                 fprintf(stderr, "Error: --ppl-ctx must be >= 4\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--ppl-chunks") == 0 && i + 1 < argc) {
-            args->ppl_chunks = atoi(argv[++i]);
+            ARG_INT(args->ppl_chunks);
             if (args->ppl_chunks < 0) {
                 fprintf(stderr, "Error: --ppl-chunks must be >= 0\n");
                 return TN_ERR_INVALID_CONFIG;
@@ -443,13 +443,13 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--attn-tile") == 0 && i + 1 < argc) {
-            args->attn_tile = atoi(argv[++i]);
+            ARG_INT(args->attn_tile);
             if (args->attn_tile < 0) {
                 fprintf(stderr, "Error: --attn-tile must be >= 0\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--attn-parallel-min-ctx") == 0 && i + 1 < argc) {
-            args->attn_parallel_min_ctx = atoi(argv[++i]);
+            ARG_INT(args->attn_parallel_min_ctx);
             if (args->attn_parallel_min_ctx < 0) {
                 fprintf(stderr, "Error: --attn-parallel-min-ctx must be >= 0\n");
                 return TN_ERR_INVALID_CONFIG;
@@ -463,25 +463,25 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
         } else if (strcmp(argv[i], "--kv-offload") == 0 && i + 1 < argc) {
             args->kv_offload_dir = argv[++i];
         } else if (strcmp(argv[i], "--ctx-size") == 0 && i + 1 < argc) {
-            args->ctx_size = atoi(argv[++i]);
+            ARG_INT(args->ctx_size);
             if (args->ctx_size < 0) {
                 fprintf(stderr, "Error: --ctx-size must be >= 0\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--kv-ram-fraction") == 0 && i + 1 < argc) {
-            args->kv_ram_fraction = (float)atof(argv[++i]);
+            ARG_NUM(args->kv_ram_fraction);
             if (!(args->kv_ram_fraction > 0.0f && args->kv_ram_fraction <= 0.95f)) {
                 fprintf(stderr, "Error: --kv-ram-fraction must be in (0, 0.95]\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--prompt-cache-mb") == 0 && i + 1 < argc) {
-            args->prompt_cache_mb = atoi(argv[++i]);
+            ARG_INT(args->prompt_cache_mb);
             if (args->prompt_cache_mb < 0) {
                 fprintf(stderr, "Error: --prompt-cache-mb must be >= 0\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--prompt-cache-min-tokens") == 0 && i + 1 < argc) {
-            args->prompt_cache_min_tokens = atoi(argv[++i]);
+            ARG_INT(args->prompt_cache_min_tokens);
             if (args->prompt_cache_min_tokens < 1) {
                 fprintf(stderr, "Error: --prompt-cache-min-tokens must be >= 1\n");
                 return TN_ERR_INVALID_CONFIG;
@@ -497,7 +497,7 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--rpc-worker") == 0 && i + 1 < argc) {
-            args->rpc_worker_port = atoi(argv[++i]);
+            ARG_INT(args->rpc_worker_port);
             if (args->rpc_worker_port <= 0 || args->rpc_worker_port > 65535) {
                 fprintf(stderr, "Error: --rpc-worker must be a port 1-65535\n");
                 return TN_ERR_INVALID_CONFIG;
@@ -511,91 +511,91 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
         } else if (strcmp(argv[i], "--plan-layers") == 0 && i + 1 < argc) {
             args->plan_layers = argv[++i];
         } else if (strcmp(argv[i], "--queue-size") == 0 && i + 1 < argc) {
-            args->queue_size = atoi(argv[++i]);
+            ARG_INT(args->queue_size);
             if (args->queue_size < 0) {
                 fprintf(stderr, "Error: --queue-size must be >= 0\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--queue-timeout") == 0 && i + 1 < argc) {
-            args->queue_timeout_s = atoi(argv[++i]);
+            ARG_INT(args->queue_timeout_s);
             if (args->queue_timeout_s < 1) {
                 fprintf(stderr, "Error: --queue-timeout must be >= 1 second\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--rate-limit") == 0 && i + 1 < argc) {
-            args->rate_limit = atoi(argv[++i]);
+            ARG_INT(args->rate_limit);
             if (args->rate_limit < 0 || args->rate_limit > 100000) {
                 fprintf(stderr, "Error: --rate-limit must be 0..100000 requests per second\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--client-timeout") == 0 && i + 1 < argc) {
-            args->client_timeout_s = atoi(argv[++i]);
+            ARG_INT(args->client_timeout_s);
             if (args->client_timeout_s < 0 || args->client_timeout_s > 86400) {
                 fprintf(stderr, "Error: --client-timeout must be 0..86400 seconds\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--max-connections") == 0 && i + 1 < argc) {
-            args->max_connections = atoi(argv[++i]);
+            ARG_INT(args->max_connections);
             if (args->max_connections < 0 || args->max_connections > 1048576) {
                 fprintf(stderr, "Error: --max-connections must be 0..1048576\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--parallel") == 0 && i + 1 < argc) {
-            args->parallel = atoi(argv[++i]);
+            ARG_INT(args->parallel);
             if (args->parallel < 1 || args->parallel > PZ_PARALLEL_MAX) {
                 fprintf(stderr, "Error: --parallel must be 1..%d\n", PZ_PARALLEL_MAX);
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--parallel-batch") == 0 && i + 1 < argc) {
-            args->parallel_batch = atoi(argv[++i]);
+            ARG_INT(args->parallel_batch);
             if (args->parallel_batch < 1 || args->parallel_batch > PZ_PARALLEL_BATCH_MAX) {
                 fprintf(stderr, "Error: --parallel-batch must be 1..%d\n", PZ_PARALLEL_BATCH_MAX);
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--best-of") == 0 && i + 1 < argc) {
-            args->best_of = atoi(argv[++i]);
+            ARG_INT(args->best_of);
             if (args->best_of < 1 || args->best_of > BEST_OF_N_MAX) {
                 fprintf(stderr, "Error: --best-of must be 1..%d\n", BEST_OF_N_MAX);
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--mcts") == 0 && i + 1 < argc) {
-            args->mcts.simulations = atoi(argv[++i]);
+            ARG_INT(args->mcts.simulations);
             if (args->mcts.simulations < 0 || args->mcts.simulations > 4096) {
                 fprintf(stderr, "Error: --mcts must be 0..4096\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--mcts-max") == 0 && i + 1 < argc) {
-            args->mcts_max = atoi(argv[++i]);
+            ARG_INT(args->mcts_max);
             if (args->mcts_max < 0 || args->mcts_max > 4096) {
                 fprintf(stderr, "Error: --mcts-max must be 0..4096\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--mcts-expand") == 0 && i + 1 < argc) {
-            args->mcts.expand = atoi(argv[++i]);
+            ARG_INT(args->mcts.expand);
             if (args->mcts.expand < 1 || args->mcts.expand > 16) {
                 fprintf(stderr, "Error: --mcts-expand must be 1..16\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--mcts-depth") == 0 && i + 1 < argc) {
-            args->mcts.max_depth = atoi(argv[++i]);
+            ARG_INT(args->mcts.max_depth);
             if (args->mcts.max_depth < 1 || args->mcts.max_depth > 256) {
                 fprintf(stderr, "Error: --mcts-depth must be 1..256\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--mcts-step-tokens") == 0 && i + 1 < argc) {
-            args->mcts.step_tokens = atoi(argv[++i]);
+            ARG_INT(args->mcts.step_tokens);
             if (args->mcts.step_tokens < 1 || args->mcts.step_tokens > 4096) {
                 fprintf(stderr, "Error: --mcts-step-tokens must be 1..4096\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--mcts-c") == 0 && i + 1 < argc) {
-            args->mcts.c_ucb = (float)atof(argv[++i]);
+            ARG_NUM(args->mcts.c_ucb);
             if (!(args->mcts.c_ucb > 0.0f && args->mcts.c_ucb <= 10.0f)) {
                 fprintf(stderr, "Error: --mcts-c must be in (0, 10]\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--mcts-temperature") == 0 && i + 1 < argc) {
-            args->mcts.temperature = (float)atof(argv[++i]);
+            ARG_NUM(args->mcts.temperature);
             if (!(args->mcts.temperature > 0.0f && args->mcts.temperature <= 2.0f)) {
                 fprintf(stderr, "Error: --mcts-temperature must be in (0, 2]\n");
                 return TN_ERR_INVALID_CONFIG;
@@ -626,7 +626,7 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
         } else if (strcmp(argv[i], "--prm-bad") == 0 && i + 1 < argc) {
             args->prm_bad = argv[++i];
         } else if (strcmp(argv[i], "--best-of-max") == 0 && i + 1 < argc) {
-            args->best_of_max = atoi(argv[++i]);
+            ARG_INT(args->best_of_max);
             if (args->best_of_max < 1 || args->best_of_max > BEST_OF_N_MAX) {
                 fprintf(stderr, "Error: --best-of-max must be 1..%d\n", BEST_OF_N_MAX);
                 return TN_ERR_INVALID_CONFIG;
@@ -695,13 +695,13 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             }
             args->act_quant = (int)m;
         } else if (strcmp(argv[i], "--quality-tolerance") == 0 && i + 1 < argc) {
-            args->quality_tolerance = atof(argv[++i]);
+            ARG_NUM(args->quality_tolerance);
             if (!(args->quality_tolerance >= 0.0 && args->quality_tolerance <= 100.0)) {
                 fprintf(stderr, "Error: --quality-tolerance must be 0..100 (percent)\n");
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--self-check-tokens") == 0 && i + 1 < argc) {
-            args->self_check_tokens = atoi(argv[++i]);
+            ARG_INT(args->self_check_tokens);
             if (args->self_check_tokens < 16 || args->self_check_tokens > 4096) {
                 fprintf(stderr, "Error: --self-check-tokens must be 16..4096\n");
                 return TN_ERR_INVALID_CONFIG;
@@ -723,7 +723,7 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
         } else if (strcmp(argv[i], "--server") == 0) {
             args->server_mode = 1;
         } else if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
-            args->server_port = atoi(argv[++i]);
+            ARG_INT(args->server_port);
             if (args->server_port <= 0 || args->server_port > 65535) {
                 fprintf(stderr, "Error: --port must be 1–65535\n");
                 return TN_ERR_INVALID_CONFIG;
@@ -758,7 +758,7 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
         } else if (strcmp(argv[i], "--draft-model") == 0 && i + 1 < argc) {
             args->draft_model_path = argv[++i];
         } else if (strcmp(argv[i], "--spec-length") == 0 && i + 1 < argc) {
-            args->spec_length = atoi(argv[++i]);
+            ARG_INT(args->spec_length);
             if (args->spec_length <= 0) {
                 fprintf(stderr, "Error: --spec-length must be a positive integer\n");
                 return TN_ERR_INVALID_CONFIG;
@@ -790,7 +790,7 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
                 return TN_ERR_INVALID_CONFIG;
             }
         } else if (strcmp(argv[i], "--update-interval") == 0 && i + 1 < argc) {
-            args->update_interval_h = atoi(argv[++i]);
+            ARG_INT(args->update_interval_h);
             if (args->update_interval_h < 0 || args->update_interval_h > 24 * 365) {
                 fprintf(stderr, "Error: --update-interval must be 0-8760 hours\n");
                 return TN_ERR_INVALID_CONFIG;

@@ -14,20 +14,21 @@
  * synthetic fixture needs no byte-level GGUF serialization at all.
  */
 
+#include <math.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stddef.h>
-#include <math.h>
+
 #include "core/gguf_reader.h"
-#include "runtime/gguf_loader.h"
 #include "core/moe_config.h"
 #include "core/moe_weights.h"
 #include "core/weights.h"
-#include "runtime/run_state.h"
-#include "transformer/forward.h"
 #include "math/simd_dispatch.h"
+#include "runtime/gguf_loader.h"
+#include "runtime/run_state.h"
 #include "threading/thread_pool.h"
+#include "transformer/forward.h"
 
 #define PASS(name) printf("[PASS] %s\n", name)
 #define FAIL(name, msg)                                                                            \

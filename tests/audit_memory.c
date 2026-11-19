@@ -1,9 +1,10 @@
-#include "core/platform.h"
-#include "memory/aligned_alloc.h"
-#include "test_harness.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#include "core/platform.h"
+#include "memory/aligned_alloc.h"
+#include "test_harness.h"
 
 /**
  * Audit Test: Mem-01 (Zero Size Allocation)

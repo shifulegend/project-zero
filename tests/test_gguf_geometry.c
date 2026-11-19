@@ -14,12 +14,12 @@
  * block_elems) that only gguf_type_bpe() exposes indirectly are covered
  * from both angles.
  */
-#include "core/gguf_reader.h"
-#include "test_harness.h"
-
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "core/gguf_reader.h"
+#include "test_harness.h"
 
 /* ── Minimal GGUF v3 buffer builder: magic+version+counts, zero KV entries,
  * one tensor descriptor (name, n_dims=1, dims[0]=n_elems, type, offset=0),

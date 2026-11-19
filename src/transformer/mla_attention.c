@@ -18,19 +18,20 @@
  */
 
 #include "transformer/mla_attention.h"
-#include "math/parallel_matmul.h"
-#include "math/matmul_q4k.h"
-#include "math/simd_dispatch.h"
-#include "math/batched_matmul.h"
-#include "runtime/run_state.h"
-#include "core/debug.h"
-#include "core/step_timing.h"
-#include "core/clamp.h"
-#include "runtime/spec_scratch.h" /* reads the batch scratch fields */
 
 #include <math.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
+
+#include "core/clamp.h"
+#include "core/debug.h"
+#include "core/step_timing.h"
+#include "math/batched_matmul.h"
+#include "math/matmul_q4k.h"
+#include "math/parallel_matmul.h"
+#include "math/simd_dispatch.h"
+#include "runtime/run_state.h"
+#include "runtime/spec_scratch.h" /* reads the batch scratch fields */
 
 /* ── YaRN RoPE helpers ─────────────────────────────────────────────────── */
 

@@ -11,17 +11,16 @@
  * Build: see tools/Makefile.difftest (links against the llama.cpp/ggml
  * shared libs built in /tmp/llama-ref/build).
  */
-#include "core/gguf_quant.h"
-
-#include "ggml.h"
-#include "ggml-quants.h"
-
+#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
+
+#include "core/gguf_quant.h"
+#include "ggml-quants.h"
+#include "ggml.h"
 
 #define N_ELEMS 4096
 

@@ -1,14 +1,14 @@
 #include "runtime/model_load.h"
-#include "runtime/mamba_state.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "runtime/hardware_profile.h"
 #include "core/moe_weights.h"
 #include "core/progress.h"
 #include "kv_cache/kv_strategy.h"
+#include "runtime/hardware_profile.h"
+#include "runtime/mamba_state.h"
 
 /* Phase 18 (speculative decoding) Stage 3: this file is the GGUF half of
  * main()'s original inline model-load block (roughly its old lines

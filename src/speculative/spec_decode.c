@@ -1,18 +1,18 @@
 #include "speculative/spec_decode.h"
-#include "distributed/dist_plan.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
-#include "core/timer.h"
 #include "core/step_timing.h"
+#include "core/timer.h"
+#include "distributed/dist_plan.h"
 #include "math/simd_dispatch.h"
+#include "runtime/spec_scratch.h"
 #include "sampling/rng.h"
 #include "sampling/sampling.h"
 #include "speculative/accept_reject.h"
-#include "runtime/spec_scratch.h"
 #include "tokenizer/chat_template.h"
 #include "transformer/forward.h"
 #include "transformer/moe_ffn.h"

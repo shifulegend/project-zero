@@ -1,22 +1,24 @@
 #include "transformer/attention.h"
-#include "transformer/attn_tiled.h"
+
+#include <math.h>
+#include <string.h>
+
+#include "core/clamp.h"
+#include "core/platform.h"
+#include "core/step_timing.h"
+#include "core/weights.h"
 #include "kv_cache/kv_quant_ops.h"
+#include "math/batched_matmul.h"
+#include "math/lora_matmul.h"
+#include "math/parallel_matmul.h"
+#include "math/rope.h"
+#include "math/simd_dispatch.h"
+#include "runtime/spec_scratch.h"
+#include "transformer/attn_tiled.h"
+#include "transformer/dense_matmul_dispatch.h"
 #include "transformer/mla_attention.h"
 #include "transformer/qwen35_attention.h"
 #include "transformer/qwen3moe_attention.h"
-#include "math/parallel_matmul.h"
-#include "math/rope.h"
-#include "transformer/dense_matmul_dispatch.h"
-#include "math/simd_dispatch.h"
-#include "math/batched_matmul.h"
-#include "math/lora_matmul.h"
-#include "runtime/spec_scratch.h"
-#include "core/platform.h"
-#include "core/weights.h"
-#include "core/step_timing.h"
-#include "core/clamp.h"
-#include <math.h>
-#include <string.h>
 #if TN_HAS_AVX512
 #include <immintrin.h>
 #endif

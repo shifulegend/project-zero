@@ -2,11 +2,13 @@
  * api/selfcheck_endpoint.c — see api/selfcheck_endpoint.h.
  */
 #include "api/selfcheck_endpoint.h"
-#include "core/json_fields.h"
-#include "api/json_write.h"
-#include "api/http_status.h"
-#include "eval/selfcheck.h"
+
 #include <stdlib.h>
+
+#include "api/http_status.h"
+#include "api/json_write.h"
+#include "core/json_fields.h"
+#include "eval/selfcheck.h"
 
 static double number_or(const char *body, const char *key, double dflt) {
     char *t = body ? json_field_number_text(body, key) : NULL;

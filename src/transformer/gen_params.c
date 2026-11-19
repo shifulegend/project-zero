@@ -1,4 +1,5 @@
 #include "transformer/gen_params.h"
+
 #include <string.h>
 
 void gen_params_default(GenerationParams *gp) {

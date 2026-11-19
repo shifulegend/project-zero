@@ -1,9 +1,11 @@
 #include "multimodal/vision_projector.h"
-#include "math/elementwise.h"
-#include "memory/aligned_alloc.h"
+
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "math/elementwise.h"
+#include "memory/aligned_alloc.h"
 
 #ifdef __AVX2__
 #include <immintrin.h>

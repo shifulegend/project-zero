@@ -2,11 +2,12 @@
 
 #if TN_HAS_ARM_DOTPROD
 
-#include "math/ternary_matmul_packed.h"
-#include "math/quantize_i8.h"
 #include <arm_neon.h>
-#include <string.h>
 #include <stdint.h>
+#include <string.h>
+
+#include "math/quantize_i8.h"
+#include "math/ternary_matmul_packed.h"
 
 /*
  * ARM dotprod ternary matmul (Phase 16-S.4 — K-1c)

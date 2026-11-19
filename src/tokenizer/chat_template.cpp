@@ -15,7 +15,6 @@
  */
 
 #include "tokenizer/chat_template.h"
-#include "chat_template_internal.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -28,6 +27,8 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+
+#include "chat_template_internal.hpp"
 
 /* ======================================================================== *
  *  SECTION 6 — PUBLIC C API

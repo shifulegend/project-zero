@@ -1,3 +1,8 @@
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include "core/config.h"
 #include "core/platform.h"
 #include "math/rmsnorm.h"
@@ -6,10 +11,6 @@
 #include "math/softmax.h"
 #include "memory/aligned_alloc.h"
 #include "test_harness.h"
-#include <math.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
 /**
  * Audit Test: Math-01 (Softmax Extreme Values)

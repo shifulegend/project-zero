@@ -4,11 +4,12 @@
  * Split out of the former single gguf_quant.c (Phase 34.2b); the public entry points are declared in
  * include/core/gguf_quant.h. Block layout references: llama.cpp ggml-quants.h (public domain / MIT).
  */
-#include "core/gguf_quant.h"
+#include <math.h>
 #include <stdint.h>
 #include <string.h>
-#include <math.h>
+
 #include "core/fp16.h"
+#include "core/gguf_quant.h"
 
 /* ── Q4_K ─────────────────────────────────────────────────────────────────── */
 /*

@@ -1,15 +1,17 @@
 #include "runtime/run_state.h"
-#include "runtime/mamba_state.h"
-#include "kv_cache/kv_quant_ops.h"
+
+#include <stdio.h>
+#include <stdlib.h> /* free() for k_rope_cache pointer array */
+#include <string.h>
+
 #include "core/platform.h"
+#include "kv_cache/kv_quant_ops.h"
+#include "kv_cache/kv_strategy.h"
 #include "math/rope.h"
 #include "memory/aligned_alloc.h"
 #include "memory/file_backed.h"
-#include "kv_cache/kv_strategy.h"
 #include "memory/safe_alloc.h" /* tn_alloc_too_large() — shared OOM guard */
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h> /* free() for k_rope_cache pointer array */
+#include "runtime/mamba_state.h"
 
 /* Phase 31: carve `n` buffers of sizes[i] bytes out of one disk-backed
  * mapping in `dir`, each 64-byte aligned. On success out[i] point into

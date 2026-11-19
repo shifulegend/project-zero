@@ -1,8 +1,10 @@
 #include "distributed/dist_plan.h"
-#include "distributed/tensor_rpc.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "distributed/tensor_rpc.h"
 
 static DistPlan *g_active;
 

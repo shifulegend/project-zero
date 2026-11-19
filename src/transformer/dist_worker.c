@@ -7,13 +7,15 @@
  */
 
 #include "transformer/dist_worker.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include "distributed/dist_plan.h"
 #include "distributed/tensor_rpc.h"
 #include "kv_cache/sliding_window.h"
 #include "transformer/forward.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
 TernaryError dist_worker_serve(int port, int loopback_only, int start, int end, const Config *cfg,
                                const TransformerWeights *w, RunState *s, const MoEConfig *mc,

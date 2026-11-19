@@ -11,20 +11,20 @@
  *     identical to Phase 19's pre-existing behavior (zero-cost no-op path).
  */
 
-#include "core/config.h"
-#include "core/lora.h"
-#include "runtime/run_state.h"
-#include "core/weights.h"
-#include "math/lora_matmul.h"
-#include "math/simd_dispatch.h"
-#include "test_harness.h"
-#include "transformer/forward.h"
-
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "core/config.h"
+#include "core/lora.h"
+#include "core/weights.h"
+#include "math/lora_matmul.h"
+#include "math/simd_dispatch.h"
+#include "runtime/run_state.h"
+#include "test_harness.h"
+#include "transformer/forward.h"
 
 /* ================================================================
  * TEST: lora_apply() unit correctness

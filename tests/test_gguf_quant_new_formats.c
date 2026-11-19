@@ -8,11 +8,11 @@
  * catches byte-order/sign bugs that a self-consistency-only test would miss.
  */
 
-#include "core/gguf_quant.h"
-#include "test_harness.h"
-
 #include <stdint.h>
 #include <string.h>
+
+#include "core/gguf_quant.h"
+#include "test_harness.h"
 
 /* ── fp16 encode helper (test-side only; production code decodes, doesn't encode) */
 static uint16_t f32_to_fp16(float f) {

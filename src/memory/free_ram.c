@@ -6,8 +6,10 @@
  */
 
 #include "memory/free_ram.h"
-#include "core/platform.h"
+
 #include <stdio.h>
+
+#include "core/platform.h"
 
 #if TN_POSIX
 #include <unistd.h>

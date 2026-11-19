@@ -17,13 +17,15 @@
  */
 
 #include "math/q8_0_act.h"
-#include "core/cpu_features.h"
-#include "core/gguf_reader.h"
-#include "memory/tls_scratch.h"
+
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "core/cpu_features.h"
 #include "core/fp16.h"
+#include "core/gguf_reader.h"
+#include "memory/tls_scratch.h"
 
 #if TN_HAS_AVX2
 #include <immintrin.h>

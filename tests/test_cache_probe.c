@@ -2,11 +2,11 @@
  * tests/test_cache_probe.c — Phase 27.1 cache geometry + 27.3 tiled
  * attention kernel equivalence with the standard softmax path.
  */
+#include "math/simd_dispatch.h"
+#include "sampling/rng.h"
 #include "test_harness.h"
 #include "threading/cache_probe.h"
 #include "transformer/attn_tiled.h"
-#include "math/simd_dispatch.h"
-#include "sampling/rng.h"
 
 static void test_parse_size(void) {
     TEST_ASSERT_EQ(tn_cache_parse_size("48K"), 49152, "48K");

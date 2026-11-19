@@ -1,9 +1,10 @@
 #ifndef TN_HARDWARE_PROFILE_H
 #define TN_HARDWARE_PROFILE_H
 
-#include "core/platform.h"
-#include "core/cpu_features.h"
 #include <stdbool.h>
+
+#include "core/cpu_features.h"
+#include "core/platform.h"
 
 /*
  * Unified hardware profile — auto-tunes inference parameters at startup.

@@ -25,15 +25,15 @@
 #include <unistd.h> /* sleep() */
 
 #include "core/config.h"
+#include "core/cpu_features.h"
 #include "core/error.h"
-#include "runtime/hardware_profile.h"
 #include "core/moe_config.h"
 #include "core/platform.h"
-#include "runtime/run_state.h"
 #include "core/weights.h"
-#include "core/cpu_features.h"
 #include "math/simd_dispatch.h"
 #include "memory/mapped_file.h"
+#include "runtime/hardware_profile.h"
+#include "runtime/run_state.h"
 #include "threading/thread_pool.h"
 #include "transformer/forward.h"
 

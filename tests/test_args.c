@@ -3,9 +3,10 @@
  * parse_args() at all -- scoped here to the new flags this stage adds,
  * matching the plan's Stage 4 verification requirement, not a general
  * CLI-arg test sweep (a real but separate coverage gap, out of scope here). */
-#include "test_harness.h"
-#include "cli/args.h"
 #include <string.h>
+
+#include "cli/args.h"
+#include "test_harness.h"
 
 static void test_draft_model_flag_sets_path(void) {
     char *argv[] = {"prog", "--model", "m.gguf", "--draft-model", "draft.gguf"};

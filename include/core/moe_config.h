@@ -1,10 +1,11 @@
 #ifndef TN_MOE_CONFIG_H
 #define TN_MOE_CONFIG_H
 
-#include "core/error.h"
 #include <stdbool.h>
 #include <stddef.h> /* size_t */
 #include <stdint.h> /* int32_t */
+
+#include "core/error.h"
 
 /**
  * MoEConfig — Mixture of Experts routing configuration.

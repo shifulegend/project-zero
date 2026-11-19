@@ -1,8 +1,9 @@
 #ifndef TN_CPU_FEATURES_H
 #define TN_CPU_FEATURES_H
 
-#include "core/platform.h"
 #include <stdbool.h>
+
+#include "core/platform.h"
 
 /*
  * Runtime CPU feature detection (Phase 16-S.1)

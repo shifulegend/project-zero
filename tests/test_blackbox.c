@@ -1,7 +1,7 @@
 #include "core/config.h"
-#include "runtime/run_state.h"
 #include "core/weights.h"
 #include "math/simd_dispatch.h"
+#include "runtime/run_state.h"
 #include "test_harness.h"
 #include "tokenizer/tokenizer.h"
 #include "transformer/forward.h"

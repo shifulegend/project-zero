@@ -2,9 +2,6 @@
  * config/pz_config.c — see config/pz_config.h.
  */
 #include "config/pz_config.h"
-#include "core/platform.h"
-#include "core/fs_util.h"
-#include "core/limits.h" /* PZ_PARALLEL_*, BEST_OF_N_MAX: bounds shared with parse_args */
 
 #include <ctype.h>
 #include <errno.h>
@@ -13,6 +10,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "core/fs_util.h"
+#include "core/limits.h" /* PZ_PARALLEL_*, BEST_OF_N_MAX: bounds shared with parse_args */
+#include "core/platform.h"
 #if TN_POSIX
 #include <sys/stat.h>
 #include <unistd.h>

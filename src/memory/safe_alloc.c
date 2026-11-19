@@ -1,6 +1,7 @@
 #include "memory/safe_alloc.h"
-#include "memory/free_ram.h"
+
 #include "core/platform.h"
+#include "memory/free_ram.h"
 #if TN_POSIX
 #include <unistd.h>
 #endif

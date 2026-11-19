@@ -2,10 +2,10 @@
  * tests/test_api_info.c — GET /v1/models + GET /v1/config bodies and the
  * watermark detect endpoint, built from an ApiContext without sockets.
  */
-#include "test_harness.h"
 #include "api/api_info.h"
-#include "api/watermark_endpoint.h"
 #include "api/server_config.h"
+#include "api/watermark_endpoint.h"
+#include "test_harness.h"
 
 static void make_ctx(ApiContext *ctx, Config *cfg) {
     memset(ctx, 0, sizeof(*ctx));

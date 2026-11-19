@@ -1,11 +1,12 @@
 #include "kv_cache/kv_strategy.h"
-#include "memory/file_backed.h"
-#include "kv_cache/kv_quant_ops.h"
-#include "core/platform.h"
-#include "core/config.h"
 
 #include <stdio.h>
 #include <string.h>
+
+#include "core/config.h"
+#include "core/platform.h"
+#include "kv_cache/kv_quant_ops.h"
+#include "memory/file_backed.h"
 
 #if TN_POSIX
 #include <unistd.h>

@@ -1,10 +1,11 @@
-#include "math/batched_matmul.h"
-#include "math/parallel_matmul.h"
-#include "math/simd_dispatch.h"
-#include "core/weights.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "core/weights.h"
+#include "math/batched_matmul.h"
+#include "math/parallel_matmul.h"
+#include "math/simd_dispatch.h"
 
 /**
  * Batched classifier-format matmuls (BF16 / block-quantized INT8 / packed

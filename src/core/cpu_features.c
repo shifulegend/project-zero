@@ -1,7 +1,9 @@
 #include "core/cpu_features.h"
-#include "core/platform.h"
-#include <string.h>
+
 #include <stdio.h>
+#include <string.h>
+
+#include "core/platform.h"
 
 /* ── x86-64 CPUID detection ───────────────────────────────────────────────── */
 #if TN_ARCH_X86
@@ -50,9 +52,9 @@ static void detect_x86(TnCpuFeatures *f) {
 }
 
 #if TN_HAS_AVX512VBMI || TN_HAS_AVX512VNNI
-#include <signal.h>
-#include <setjmp.h>
 #include <immintrin.h>
+#include <setjmp.h>
+#include <signal.h>
 #endif
 
 #if TN_HAS_AVX512VBMI
@@ -152,8 +154,8 @@ static bool verify_avx512vnni_executable(void) {
 #if TN_ARCH_ARM
 
 #if TN_POSIX && !TN_APPLE
-#include <sys/auxv.h>
 #include <asm/hwcap.h>
+#include <sys/auxv.h>
 
 /* HWCAP bit positions — from <asm/hwcap.h> on Linux ARM64 */
 #ifndef HWCAP_ASIMDDP

@@ -5,9 +5,11 @@
  * include/core/gguf_quant.h. Block layout references: llama.cpp ggml-quants.h (public domain / MIT).
  */
 #include "core/gguf_quant.h"
+
+#include <math.h>
 #include <stdint.h>
 #include <string.h>
-#include <math.h>
+
 #include "core/fp16.h"
 
 /* ── Q8_0 ─────────────────────────────────────────────────────────────────── */

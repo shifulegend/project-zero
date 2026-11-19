@@ -6,14 +6,15 @@
  * block, odd n for INT4, partial row ranges) and for the real BitNet and Mamba head shapes.
  * 2026-11-18: the kernels were rewritten to reduce once per row instead of once per block.
  */
-#include "test_harness.h"
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include "core/platform.h"
 #include "math/cls_kernels.h"
 #include "math/simd_dispatch.h"
-#include <math.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
+#include "test_harness.h"
 
 static unsigned st = 99u;
 static unsigned rnd32(void) {

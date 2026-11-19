@@ -1,11 +1,12 @@
 #ifndef TN_RUN_STATE_H
 #define TN_RUN_STATE_H
 
+#include <stdbool.h>
+
 #include "core/config.h"
 #include "core/error.h"
 #include "core/lora.h"
 #include "kv_cache/sliding_window.h"
-#include <stdbool.h>
 
 /**
  * KV Cache Memory Layout (TRANSPOSED for cache-line efficiency):

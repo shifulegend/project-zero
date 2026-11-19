@@ -1,24 +1,25 @@
 #include "transformer/moe_ffn.h"
-#include "transformer/moe_router.h"
-#include "transformer/moe_experts.h"
-#include "math/parallel_matmul.h"
-#include "math/matmul_q4k.h"
-#include "math/matmul_q2k.h"
-#include "math/matmul_q5_1.h"
-#include "math/matmul_q5_0.h"
-#include "math/matmul_q8_0.h"
-#include "math/simd_dispatch.h"
+
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/mman.h>
+
+#include "core/debug.h"
 #include "core/gguf_quant.h"
 #include "core/gguf_reader.h"
-#include "core/debug.h"
 #include "core/step_timing.h"
-
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <stdint.h>
-#include <sys/mman.h>
+#include "math/matmul_q2k.h"
+#include "math/matmul_q4k.h"
+#include "math/matmul_q5_0.h"
+#include "math/matmul_q5_1.h"
+#include "math/matmul_q8_0.h"
+#include "math/parallel_matmul.h"
+#include "math/simd_dispatch.h"
 #include "memory/tls_scratch.h"
+#include "transformer/moe_experts.h"
+#include "transformer/moe_router.h"
 
 /* Maximum experts supported without heap allocation (stack-allocated buffers) */
 #define MOE_MAX_EXPERTS_STACK 512

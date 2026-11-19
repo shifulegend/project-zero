@@ -1,10 +1,12 @@
 #include "transformer/mamba.h"
-#include "transformer/dense_matmul_dispatch.h"
-#include "math/simd_dispatch.h"
-#include "memory/aligned_alloc.h"
+
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "math/simd_dispatch.h"
+#include "memory/aligned_alloc.h"
+#include "transformer/dense_matmul_dispatch.h"
 
 static inline float silu(float v) {
     return v / (1.0f + expf(-v));

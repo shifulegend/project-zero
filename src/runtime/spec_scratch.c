@@ -1,7 +1,9 @@
 #include "runtime/spec_scratch.h"
+
+#include <string.h>
+
 #include "core/platform.h"
 #include "memory/aligned_alloc.h"
-#include <string.h>
 
 TernaryError spec_batch_scratch_alloc(SpecBatchScratch *sb, const Config *cfg, int n_tokens) {
     memset(sb, 0, sizeof(*sb));

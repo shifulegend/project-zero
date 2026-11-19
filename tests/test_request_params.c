@@ -2,12 +2,12 @@
  * tests/test_request_params.c — extended ChatRequest fields, \u decoding,
  * and merging a request over server defaults.
  */
-#include "test_harness.h"
+#include "api/chat_compile.h"
 #include "api/chat_request.h"
 #include "api/request_params.h"
 #include "core/json_fields.h"
-#include "api/chat_compile.h"
 #include "reasoning/best_of.h"
+#include "test_harness.h"
 
 static void test_parse_extended_fields(void) {
     ChatRequest r;

@@ -6,8 +6,9 @@
  * web UI sends for image uploads) into raw bytes.
  */
 
-#include "core/error.h"
 #include <stddef.h>
+
+#include "core/error.h"
 
 /* Decodes data_url into a heap buffer. Returns TN_OK and sets *out_data
  * (caller must free()) and *out_len on success. Returns

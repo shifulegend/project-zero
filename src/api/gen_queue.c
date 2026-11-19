@@ -1,7 +1,9 @@
 #include "api/gen_queue.h"
-#include "core/clamp.h"
+
 #include <errno.h>
 #include <time.h>
+
+#include "core/clamp.h"
 
 void gen_queue_init(GenQueue *q, int max_waiting) {
     pthread_mutex_init(&q->mu, NULL);

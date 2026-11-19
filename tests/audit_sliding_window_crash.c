@@ -1,12 +1,13 @@
-#include "core/config.h"
-#include "runtime/run_state.h"
-#include "core/weights.h"
-#include "math/simd_dispatch.h"
-#include "test_harness.h"
-#include "transformer/forward.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "core/config.h"
+#include "core/weights.h"
+#include "math/simd_dispatch.h"
+#include "runtime/run_state.h"
+#include "test_harness.h"
+#include "transformer/forward.h"
 
 /* This audit test intentionally performs an out-of-bounds KV cache index
  * calculation to verify that the engine's sliding window maps pos=15 outside

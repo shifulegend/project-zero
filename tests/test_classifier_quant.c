@@ -15,16 +15,16 @@
  * the old per-row scheme could never represent).
  */
 
-#include "core/weights.h"
-#include "core/config.h"
-#include "math/parallel_matmul.h"
-#include "test_harness.h"
-
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
+
+#include "core/config.h"
+#include "core/weights.h"
+#include "math/parallel_matmul.h"
+#include "test_harness.h"
 
 static uint16_t f32_to_bf16(float f) {
     uint32_t bits;

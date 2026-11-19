@@ -1,11 +1,13 @@
 #include "multimodal/vision_encoder.h"
-#include "math/rmsnorm.h"
-#include "math/softmax.h"
-#include "math/elementwise.h"
-#include "memory/aligned_alloc.h"
+
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
+
+#include "math/elementwise.h"
+#include "math/rmsnorm.h"
+#include "math/softmax.h"
+#include "memory/aligned_alloc.h"
 
 #ifdef __AVX2__
 #include <immintrin.h>

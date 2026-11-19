@@ -1,4 +1,5 @@
 #include "brand/block_font.h"
+
 #include <ctype.h>
 #include <string.h>
 

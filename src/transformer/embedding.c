@@ -1,8 +1,10 @@
 #include "transformer/embedding.h"
-#include "core/gguf_quant.h"
+
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+
+#include "core/gguf_quant.h"
 
 /* Q2_0 block: 34 bytes / 128 elements — PrismML's group-128 packing, NOT
  * mainline ggml's group-64 block_q2_0 (see gguf_quant.c's gguf_dequant_q2_0

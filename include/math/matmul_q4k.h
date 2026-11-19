@@ -23,9 +23,10 @@
  * Quant type guard: only call with GGUF_TYPE_Q4_K (= 12) weights.
  */
 
+#include <stdint.h>
+
 #include "core/platform.h"
 #include "threading/thread_pool.h"
-#include <stdint.h>
 
 /* ── Q8K activation block — 292 bytes per 256-element block ─────────────── */
 #define TN_Q8K_BLOCK 256

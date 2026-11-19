@@ -2,10 +2,11 @@
  * cli/config_cmd.c — see cli/config_cmd.h.
  */
 #include "cli/config_cmd.h"
-#include "core/platform.h"
 
 #include <stdlib.h>
 #include <string.h>
+
+#include "core/platform.h"
 #include "kv_cache/kv_strategy.h"
 #if TN_POSIX
 #include <dirent.h>

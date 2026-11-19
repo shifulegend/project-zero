@@ -9,14 +9,15 @@
  * Skips when the build has no VBMI variant or the CPU's VBMI is not execution-
  * verified (core/cpu_features.c): then tn_simd_init never binds the _vbmi pair.
  */
-#include "test_harness.h"
-#include "core/platform.h"
-#include "core/cpu_features.h"
-#include "math/quantize_i8.h"
-#include "math/ternary_matmul_packed.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "core/cpu_features.h"
+#include "core/platform.h"
+#include "math/quantize_i8.h"
+#include "math/ternary_matmul_packed.h"
+#include "test_harness.h"
 
 #if TN_HAS_AVX512VNNI && TN_HAS_AVX512VBMI
 

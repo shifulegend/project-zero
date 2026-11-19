@@ -1,14 +1,13 @@
 /* net_write_all(): full delivery across short writes, and a clean failure when the peer is gone. */
+#include <arpa/inet.h>
 #include <pthread.h>
-#include <time.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <time.h>
 #include <unistd.h>
-
-#include <arpa/inet.h>
 
 #include "api/net_io.h"
 

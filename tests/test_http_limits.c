@@ -6,6 +6,7 @@
 #include <netinet/in.h>
 #include <poll.h>
 #include <signal.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,7 +14,6 @@
 #include <time.h>
 #include <unistd.h>
 
-#include <stdatomic.h>
 #include "api/api_server.h"
 #include "api/config_endpoint.h"
 

@@ -21,12 +21,13 @@
  * caller's); nothing is stored in shared objects such as the Tokenizer.
  */
 
-#include "transformer/generate.h"
-#include "transformer/stop_seq.h"
-#include "sampling/fsm.h"
+#include <stdint.h>
+
 #include "kv_cache/prefix_cache.h"
 #include "runtime/prompt_store.h"
-#include <stdint.h>
+#include "sampling/fsm.h"
+#include "transformer/generate.h"
+#include "transformer/stop_seq.h"
 
 typedef struct {
     const Config *cfg;

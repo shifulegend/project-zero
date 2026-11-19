@@ -2,21 +2,22 @@
  * test_qwen3moe_concurrent.c -- two threads run Qwen3-MoE forward passes on separate RunStates at
  * once. Run under TSan (make test-tsan) it reports any scratch buffer the two share.
  */
-#include "test_harness.h"
-#include "core/config.h"
-#include "runtime/run_state.h"
-#include "core/weights.h"
-#include "core/moe_config.h"
-#include "core/moe_weights.h"
-#include "core/unpack.h"
-#include "math/simd_dispatch.h"
-#include "runtime/spec_scratch.h"
-#include "transformer/forward.h"
-#include "core/lora.h"
+#include <math.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
+
+#include "core/config.h"
+#include "core/lora.h"
+#include "core/moe_config.h"
+#include "core/moe_weights.h"
+#include "core/unpack.h"
+#include "core/weights.h"
+#include "math/simd_dispatch.h"
+#include "runtime/run_state.h"
+#include "runtime/spec_scratch.h"
+#include "test_harness.h"
+#include "transformer/forward.h"
 
 #define TOL 1e-3f
 

@@ -1,12 +1,14 @@
 #include "eval/selfcheck.h"
-#include "runtime/hardware_profile.h"
-#include "eval/perplexity.h"
-#include "math/simd_dispatch.h"
+
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+
+#include "eval/perplexity.h"
+#include "math/simd_dispatch.h"
+#include "runtime/hardware_profile.h"
 
 /* Plain English prose on a general subject; long enough for the default probe length. */
 static const char SC_TEXT[] =

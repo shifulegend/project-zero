@@ -1,7 +1,8 @@
 #include "api/update_endpoint.h"
+
 #include "api/json_write.h"
-#include "update/update_check.h"
 #include "update/release_links.h"
+#include "update/update_check.h"
 
 char *api_update_json(int force) {
     int started = update_service_poll(force);

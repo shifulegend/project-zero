@@ -1,7 +1,9 @@
 #include "core/config.h"
-#include "core/platform.h"
-#include <string.h>
+
 #include <stdio.h>
+#include <string.h>
+
+#include "core/platform.h"
 
 TernaryError config_read(Config *cfg, const void *mapped_ptr, size_t file_size) {
     /* Need at least magic + version + Config */

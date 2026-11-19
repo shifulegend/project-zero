@@ -1,10 +1,12 @@
 #include "rag/vector_db.h"
-#include "core/platform.h"
+
+#include <errno.h>
+#include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
-#include <stddef.h>
-#include <errno.h>
+
+#include "core/platform.h"
 
 #if TN_POSIX
 #include <fcntl.h>

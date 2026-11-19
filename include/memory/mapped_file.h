@@ -1,8 +1,9 @@
 #ifndef TN_MAPPED_FILE_H
 #define TN_MAPPED_FILE_H
 
-#include "core/error.h"
 #include <stddef.h>
+
+#include "core/error.h"
 
 typedef struct {
     void *data;  /* pointer to mapped region */

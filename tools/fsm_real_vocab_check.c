@@ -17,15 +17,15 @@
  * Usage: tools/fsm_real_vocab_check <model.gguf>
  * Not part of `make test` (needs a real downloaded model) -- run manually.
  */
-#include "sampling/fsm.h"
-#include "tokenizer/tokenizer.h"
-#include "tokenizer/tokenizer_gguf.h"
-#include "core/gguf_reader.h"
-#include "memory/mapped_file.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "core/gguf_reader.h"
+#include "memory/mapped_file.h"
+#include "sampling/fsm.h"
+#include "tokenizer/tokenizer.h"
+#include "tokenizer/tokenizer_gguf.h"
 
 static int g_pass = 0, g_fail = 0;
 

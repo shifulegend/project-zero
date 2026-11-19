@@ -7,24 +7,26 @@
  * unchanged from generate_ex; comments carried over.
  */
 #include "transformer/gen_session.h"
-#include "transformer/moe_ffn.h"
-#include "sampling/sampling.h"
-#include "sampling/rng.h"
-#include "sampling/constrained_sample.h"
-#include "sampling/sampler_chain.h"
-#include "sampling/logprob.h"
-#include "distributed/dist_plan.h"
-#include "core/timer.h"
-#include "core/step_timing.h"
-#include "tokenizer/chat_template.h"
-#include "tokenizer/template_guard.h"
-#include "memory/safe_alloc.h"
-#include "core/debug.h"
+
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+#include "core/debug.h"
+#include "core/step_timing.h"
+#include "core/timer.h"
+#include "distributed/dist_plan.h"
+#include "memory/safe_alloc.h"
+#include "sampling/constrained_sample.h"
+#include "sampling/logprob.h"
+#include "sampling/rng.h"
+#include "sampling/sampler_chain.h"
+#include "sampling/sampling.h"
+#include "tokenizer/chat_template.h"
+#include "tokenizer/template_guard.h"
+#include "transformer/moe_ffn.h"
 
 /* Max messages rendered through the chat template in one call (system
  * prompt + history). Bounded so the role/content pointer arrays live on the

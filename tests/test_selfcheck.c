@@ -3,15 +3,16 @@
  * act-quant mode of the dispatcher: judging, formatting, name parsing, and that selecting
  * float activations really moves the ternary matmul off the int8 kernel and back.
  */
-#include "test_harness.h"
-#include "eval/selfcheck.h"
-#include "math/simd_dispatch.h"
 #include <errno.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
+#include "eval/selfcheck.h"
+#include "math/simd_dispatch.h"
+#include "test_harness.h"
 
 static void test_delta_and_judge(void) {
     TEST_ASSERT(fabs(selfcheck_delta_pct(10.0, 10.1) - 1.0) < 1e-9, "+1% perplexity");

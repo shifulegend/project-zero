@@ -1,8 +1,9 @@
 #ifndef TN_CONFIG_H
 #define TN_CONFIG_H
 
-#include "core/error.h"
 #include <stdio.h>
+
+#include "core/error.h"
 
 typedef struct {
     int dim;          /* transformer dimension (e.g., 4096) */

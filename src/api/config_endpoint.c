@@ -2,17 +2,18 @@
  * api/config_endpoint.c — see api/config_endpoint.h.
  */
 #include "api/config_endpoint.h"
-#include "api/cors.h"
-#include "core/json_fields.h"
-#include "api/http_status.h"
-#include "config/pz_config.h"
-#include "transformer/gen_params.h"
 
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+
+#include "api/cors.h"
+#include "api/http_status.h"
+#include "config/pz_config.h"
+#include "core/json_fields.h"
+#include "transformer/gen_params.h"
 
 /* /v1/config JSON names ↔ config keys (the CLI flag names). */
 static const struct {

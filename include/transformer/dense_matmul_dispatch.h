@@ -8,18 +8,19 @@
  * the same model. Centralized here so the dispatch logic exists in exactly
  * one place, not duplicated (and liable to drift) across both call sites. */
 
+#include <stdlib.h>
+
+#include "core/gguf_reader.h"
 #include "core/weights.h"
-#include "math/parallel_matmul.h"
+#include "math/batched_matmul.h"
 #include "math/matmul_f16.h"
 #include "math/matmul_q2_0.h"
 #include "math/matmul_q4k.h"
 #include "math/matmul_q4k_x8.h"
 #include "math/matmul_q6k.h"
+#include "math/parallel_matmul.h"
 #include "math/q8_0_act.h"
-#include "core/gguf_reader.h"
-#include "math/batched_matmul.h"
 #include "threading/thread_pool.h"
-#include <stdlib.h>
 
 /* Bound for the stack Q8K activation buffer below — matches
  * ATTN_PREQ_BUF_SIZE/FFN_PREQ_BUF_SIZE's 16384-element cap (attention.c,

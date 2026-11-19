@@ -25,9 +25,8 @@
 #include "core/error.h"
 #include "core/moe_config.h"
 #include "core/platform.h"
-#include "threading/thread_pool.h"
-
 #include "runtime/mamba_state.h" /* MambaWeights, MambaState and their alloc/free */
+#include "threading/thread_pool.h"
 
 /*
  * One Mamba block, in place on x[dim] (residual included). `xb`/`xb2` are

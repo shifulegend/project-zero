@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include "api/data_url.h"
 
 #define PASS(name) printf("[PASS] %s\n", name)

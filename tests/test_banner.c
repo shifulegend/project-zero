@@ -9,6 +9,7 @@
 
 #include <stdio.h>
 #include <string.h>
+
 #include "cli/banner.h"
 
 #define PASS(name) printf("[PASS] %s\n", name)

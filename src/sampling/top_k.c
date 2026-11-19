@@ -1,6 +1,7 @@
+#include <math.h>
+
 #include "sampling/rng.h"
 #include "sampling/sampling.h"
-#include <math.h>
 
 /* Maximum k for stack-allocated top-k arrays. Values above this are clamped. */
 #define TOP_K_MAX 1024

@@ -1,12 +1,13 @@
-#include "test_harness.h"
-#include "math/ternary_matmul.h"
-#include "math/rmsnorm.h"
-#include "math/softmax.h"
-#include "math/elementwise.h"
-#include "math/rope.h"
-#include "memory/aligned_alloc.h"
-#include "core/platform.h"
 #include <stdint.h>
+
+#include "core/platform.h"
+#include "math/elementwise.h"
+#include "math/rmsnorm.h"
+#include "math/rope.h"
+#include "math/softmax.h"
+#include "math/ternary_matmul.h"
+#include "memory/aligned_alloc.h"
+#include "test_harness.h"
 
 /* ---- Ternary MatMul ---- */
 

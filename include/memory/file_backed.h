@@ -13,6 +13,7 @@
  */
 
 #include <stddef.h>
+
 #include "core/error.h"
 #include "core/platform.h"
 

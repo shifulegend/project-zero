@@ -1,4 +1,5 @@
 #include "math/rmsnorm.h"
+
 #include <math.h>
 
 void rmsnorm(float *out, const float *x, const float *weight, int size, float eps) {

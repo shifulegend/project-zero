@@ -3,11 +3,11 @@
  * state reset at pos 0, recurrence actually carries history, conv/scan
  * against a scalar re-derivation, and allocation guards.
  */
-#include "test_harness.h"
-#include "transformer/mamba.h"
 #include "core/weights.h"
 #include "math/simd_dispatch.h"
 #include "sampling/rng.h"
+#include "test_harness.h"
+#include "transformer/mamba.h"
 
 #define DIM 8
 #define DI 6

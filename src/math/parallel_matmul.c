@@ -1,11 +1,13 @@
 #include "math/parallel_matmul.h"
-#include "math/simd_dispatch.h"
-#include "threading/thread_pool.h"
-#include "core/platform.h"
-#include "core/weights.h"
+
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+
+#include "core/platform.h"
+#include "core/weights.h"
+#include "math/simd_dispatch.h"
+#include "threading/thread_pool.h"
 
 #if TN_HAS_AVX2
 #include <immintrin.h>

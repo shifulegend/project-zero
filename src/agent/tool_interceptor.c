@@ -1,6 +1,7 @@
 #include "agent/tool_interceptor.h"
-#include <string.h>
+
 #include <stdio.h>
+#include <string.h>
 
 /* Simple streaming tag parser. Buffers partial pieces between calls. */
 static char buffer[8192];

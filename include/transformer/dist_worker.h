@@ -4,8 +4,8 @@
 #include "core/config.h"
 #include "core/error.h"
 #include "core/moe_config.h"
-#include "runtime/run_state.h"
 #include "core/weights.h"
+#include "runtime/run_state.h"
 #include "threading/thread_pool.h"
 
 /* Worker loop: serves FORWARD requests for layers [start, end) forever (one coordinator connection

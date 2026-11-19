@@ -3,12 +3,13 @@
  * validation, TOML-subset parsing, save/load round trip, environment overlay
  * and argv merging (config tokens before the user's own flags).
  */
-#include "test_harness.h"
-#include "config/pz_config.h"
-#include "core/platform.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "config/pz_config.h"
+#include "core/platform.h"
+#include "test_harness.h"
 #if TN_POSIX
 #include <sys/stat.h>
 #include <unistd.h>

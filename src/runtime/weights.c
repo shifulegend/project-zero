@@ -1,13 +1,15 @@
 #include "core/weights.h"
-#include "runtime/mamba_state.h"
+
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include "core/moe_config.h"
 #include "core/moe_weights.h"
 #include "core/unpack.h"
 #include "runtime/hardware_profile.h"
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
-#include <math.h>
+#include "runtime/mamba_state.h"
 
 TernaryError weights_alloc_pointers(TransformerWeights *w, const Config *cfg) {
     int n_layers = cfg->n_layers;

@@ -13,14 +13,15 @@
  * text-only generation.
  */
 
-#include "core/error.h"
+#include <stddef.h>
+
 #include "core/config.h"
+#include "core/error.h"
+#include "core/moe_config.h"
 #include "core/weights.h"
 #include "runtime/run_state.h"
-#include "core/moe_config.h"
-#include "tokenizer/tokenizer.h"
 #include "threading/thread_pool.h"
-#include <stddef.h>
+#include "tokenizer/tokenizer.h"
 
 /*
  * @param image_path              Path to the image file.

@@ -14,8 +14,8 @@
  * judge is hardcoded: format, good, bad come from CLI flags.
  */
 
-#include "runtime/model_load.h"
 #include "core/error.h"
+#include "runtime/model_load.h"
 #include "threading/thread_pool.h"
 #include "tokenizer/tokenizer.h"
 

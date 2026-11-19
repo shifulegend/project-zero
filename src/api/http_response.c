@@ -6,12 +6,13 @@
  */
 
 #include "api/http_response.h"
-#include "api/net_io.h"
-#include "api/http_status.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "api/http_status.h"
+#include "api/net_io.h"
 
 /* ── HTTP response helpers ───────────────────────────────────────────────── */
 

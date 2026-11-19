@@ -1,6 +1,7 @@
-#include "test_harness.h"
-#include "agent/tool_interceptor.h"
 #include <string.h>
+
+#include "agent/tool_interceptor.h"
+#include "test_harness.h"
 
 static void test_passthrough(void) {
     ti_init();

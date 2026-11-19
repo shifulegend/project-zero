@@ -3,15 +3,16 @@
  * file / env / cli) published in GET /v1/config, the cross-site guard and
  * POST /v1/config/defaults writing the `pz config` file.
  */
-#include "test_harness.h"
-#include "api/api_info.h"
-#include "api/config_endpoint.h"
-#include "core/json_fields.h"
-#include "config/pz_config.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h> /* mkdtemp on macOS */
+
+#include "api/api_info.h"
+#include "api/config_endpoint.h"
+#include "config/pz_config.h"
+#include "core/json_fields.h"
+#include "test_harness.h"
 
 static char g_dir[] = "/tmp/pz_cfgep_XXXXXX";
 static char g_path[300];

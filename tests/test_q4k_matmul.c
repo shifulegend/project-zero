@@ -18,14 +18,14 @@
  * Q8K activation blocks, so one reference formula is correct for either.
  */
 
-#include "math/matmul_q4k.h"
-#include "test_harness.h"
-
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
+
+#include "math/matmul_q4k.h"
+#include "test_harness.h"
 
 #define Q4K_SUPER 256
 #define Q4K_NSUB 8

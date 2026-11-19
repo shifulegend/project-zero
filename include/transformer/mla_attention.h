@@ -18,12 +18,12 @@
  * Stored in s->k_rope_cache[layer][pos * qk_rope_head_dim].
  */
 
+#include "core/batch_scratch_fwd.h"
 #include "core/config.h"
 #include "core/error.h"
 #include "core/moe_config.h"
-#include "runtime/run_state.h"
 #include "core/weights.h"
-#include "core/batch_scratch_fwd.h"
+#include "runtime/run_state.h"
 #include "threading/thread_pool.h"
 
 /**

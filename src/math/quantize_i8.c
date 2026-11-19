@@ -1,7 +1,9 @@
 #include "math/quantize_i8.h"
-#include "core/platform.h"
+
 #include <math.h>
 #include <string.h>
+
+#include "core/platform.h"
 
 /* ── Scalar reference ─────────────────────────────────────────────────────── */
 

@@ -1,17 +1,17 @@
 #ifndef TN_CLI_REPL_H
 #define TN_CLI_REPL_H
 
+#include "cli/args.h"
 #include "core/config.h"
 #include "core/moe_config.h"
 #include "core/weights.h"
-#include "runtime/run_state.h"
-#include "tokenizer/tokenizer.h"
-#include "threading/thread_pool.h"
-#include "cli/args.h"
 #include "multimodal/vision_encoder.h"
 #include "multimodal/vision_projector.h"
-#include "rag/rag_context.h"         /* Phase 15 */
+#include "rag/rag_context.h" /* Phase 15 */
+#include "runtime/run_state.h"
 #include "speculative/draft_model.h" /* Phase 18 */
+#include "threading/thread_pool.h"
+#include "tokenizer/tokenizer.h"
 
 /**
  * Run the interactive Read-Eval-Print-Loop (REPL).

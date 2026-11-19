@@ -1,19 +1,21 @@
 #include "runtime/gguf_loader.h"
-#include "runtime/mamba_state.h"
+
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "core/fp16.h"
+#include "core/gguf_i2s.h"
 #include "core/gguf_quant.h"
 #include "core/moe_config.h"
 #include "core/platform.h"
-#include "runtime/hardware_profile.h"
-#include "math/matmul_q4k_x8.h"
-#include "core/gguf_i2s.h"
-#include "memory/mapped_file.h"
-#include "math/rope.h"
 #include "core/unpack.h"
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
-#include <math.h>
-#include "core/fp16.h"
+#include "math/matmul_q4k_x8.h"
+#include "math/rope.h"
+#include "memory/mapped_file.h"
+#include "runtime/hardware_profile.h"
+#include "runtime/mamba_state.h"
 
 /* Round-to-nearest-even float32 -> bf16 (truncate the low 16 mantissa bits
  * after rounding, not a plain truncation — avoids a small but real one-sided

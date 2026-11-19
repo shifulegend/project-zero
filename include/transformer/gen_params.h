@@ -11,10 +11,11 @@
  */
 
 #include <stdbool.h>
-#include "sampling/sampler_chain.h"
-#include "sampling/watermark.h"
+
 #include "kv_cache/prefix_cache.h"
 #include "runtime/prompt_store.h"
+#include "sampling/sampler_chain.h"
+#include "sampling/watermark.h"
 
 #define GEN_MAX_STOP 8
 

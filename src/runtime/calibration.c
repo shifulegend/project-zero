@@ -13,21 +13,22 @@
 #undef TN_HAS_AVX512VNNI
 #define TN_HAS_AVX512VNNI 1
 #endif
-#include "core/cpu_features.h"
-#include "math/simd_dispatch.h"
-#include "math/parallel_matmul.h"
-#include "threading/thread_pool.h"
-#include "threading/cpu_probe.h"
-#include "core/clamp.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 #include <sys/stat.h>
+#include <time.h>
+
+#include "core/clamp.h"
+#include "core/cpu_features.h"
+#include "math/parallel_matmul.h"
+#include "math/simd_dispatch.h"
+#include "threading/cpu_probe.h"
+#include "threading/thread_pool.h"
 
 #if TN_POSIX
-#include <unistd.h>
 #include <pwd.h>
+#include <unistd.h>
 #endif
 
 /* ── Hardware fingerprint ─────────────────────────────────────────────── */

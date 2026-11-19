@@ -1,9 +1,10 @@
-#include "tokenizer/tokenizer.h"
-#include "tokenizer/pretokenize.h"
-#include "core/platform.h"
-#include <string.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "core/platform.h"
+#include "tokenizer/pretokenize.h"
+#include "tokenizer/tokenizer.h"
 
 /*
  * GPT-2 byte-to-unicode table (matches the HuggingFace ByteLevel pre-tokenizer).

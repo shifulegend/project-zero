@@ -3,14 +3,15 @@
  * input (no terminal): model discovery and pick, keep-on-Enter, re-ask after
  * an invalid value, save vs cancel; and argv preparation with --no-config.
  */
-#include "test_harness.h"
-#include "cli/config_cmd.h"
-#include "config/pz_config.h"
-#include "core/sha256.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h> /* mkdtemp on macOS */
+
+#include "cli/config_cmd.h"
+#include "config/pz_config.h"
+#include "core/sha256.h"
+#include "test_harness.h"
 
 static FILE *script(const char *text) {
     FILE *f = tmpfile();

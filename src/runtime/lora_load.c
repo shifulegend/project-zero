@@ -1,10 +1,11 @@
-#include "core/lora.h"
-#include "memory/mapped_file.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "core/fp16.h"
+
 #include "core/binary_io.h"
+#include "core/fp16.h"
+#include "core/lora.h"
+#include "memory/mapped_file.h"
 
 /* Reads `count` contiguous F16 values starting at byte offset *off, writes
  * them decoded to a freshly malloc'd F32 array, and advances *off. Returns

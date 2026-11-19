@@ -7,11 +7,13 @@
  */
 
 #include "runtime/mamba_state.h"
+
+#include <stdlib.h>
+#include <string.h>
+
 #include "core/platform.h"
 #include "memory/aligned_alloc.h"
 #include "memory/safe_alloc.h"
-#include <stdlib.h>
-#include <string.h>
 
 TernaryError mamba_weights_alloc(MambaWeights **out, int n_layers) {
     if (!out || n_layers <= 0) return TN_ERR_INVALID_ARGS;

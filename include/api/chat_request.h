@@ -8,9 +8,10 @@
  * Matches the OpenAI /v1/chat/completions schema.
  */
 
-#include "reasoning/mcts_options.h"
 #include <stdbool.h>
+
 #include "core/error.h"
+#include "reasoning/mcts_options.h"
 
 #define CHAT_MAX_MESSAGES 64
 #define CHAT_MAX_ROLE_LEN 32

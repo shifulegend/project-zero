@@ -2,13 +2,14 @@
  * core/bw_cache.c — per-host DRAM bandwidth cache (see core/bw_cache.h).
  */
 #include "core/bw_cache.h"
-#include "core/platform.h"
-#include "core/fs_util.h"
 
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "core/fs_util.h"
+#include "core/platform.h"
 #if TN_POSIX
 #include <sys/stat.h>
 #endif

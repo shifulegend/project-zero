@@ -2,10 +2,11 @@
 #define TN_GENERATE_H
 
 #include <stdbool.h>
+
 #include "core/config.h"
 #include "core/moe_config.h"
-#include "runtime/run_state.h"
 #include "core/weights.h"
+#include "runtime/run_state.h"
 #include "threading/thread_pool.h"
 #include "tokenizer/tokenizer.h"
 #include "transformer/gen_params.h"

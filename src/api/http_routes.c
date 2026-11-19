@@ -7,24 +7,25 @@
  */
 
 #include "api/http_routes.h"
-#include "api/http_response.h"
-#include "api/http_status.h"
-#include "api/config_endpoint.h"
+
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include "api/api_info.h"
 #include "api/batch_scheduler.h"
 #include "api/cancel.h"
+#include "api/config_endpoint.h"
 #include "api/gen_queue.h"
+#include "api/http_response.h"
+#include "api/http_status.h"
 #include "api/metrics.h"
 #include "api/openapi.h"
 #include "api/selfcheck_endpoint.h"
 #include "api/watermark_endpoint.h"
 #include "kv_cache/prefix_cache.h"
 #include "runtime/prompt_store.h"
-
-#include <pthread.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
 /* Fixed buffer capacity: rendered /metrics text. */
 #define HTTP_METRICS_BUF 4096

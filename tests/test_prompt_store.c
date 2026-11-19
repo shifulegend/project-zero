@@ -2,8 +2,8 @@
  * tests/test_prompt_store.c — Phase 26 multi-entry prompt snapshots: save,
  * restore into the KV cache, supersede, LRU eviction, budget, scope.
  */
-#include "test_harness.h"
 #include "runtime/prompt_store.h"
+#include "test_harness.h"
 
 #define L 2
 #define H 2

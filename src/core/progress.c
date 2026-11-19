@@ -4,6 +4,7 @@
  */
 
 #include "core/progress.h"
+
 #include <stdio.h>
 
 size_t tn_progress_format(char *buf, size_t cap, int stage, int total_stages, const char *label,

@@ -9,16 +9,16 @@
  */
 
 #include "transformer/moe_experts.h"
-#include "math/matmul_q6k.h"
-#include "math/q8_0_act.h"
-#include "math/simd_dispatch.h"
-#include "core/gguf_reader.h"
-#include "core/platform.h"
-
-#include "memory/tls_scratch.h"
 
 #include <stdlib.h>
 #include <string.h>
+
+#include "core/gguf_reader.h"
+#include "core/platform.h"
+#include "math/matmul_q6k.h"
+#include "math/q8_0_act.h"
+#include "math/simd_dispatch.h"
+#include "memory/tls_scratch.h"
 
 /* ── per-thread scratch ─────────────────────────────────────────────────────
  * One block per calling thread (memory/tls_scratch.h), carved into the arrays below on every

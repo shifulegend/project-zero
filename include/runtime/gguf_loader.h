@@ -2,10 +2,10 @@
 #define TN_GGUF_LOADER_H
 
 #include "core/config.h"
-#include "core/weights.h"
-#include "core/moe_config.h"
-#include "core/gguf_reader.h"
 #include "core/error.h"
+#include "core/gguf_reader.h"
+#include "core/moe_config.h"
+#include "core/weights.h"
 
 /* Opaque store tracking all heap buffers allocated during GGUF weight loading.
  * Pass to weights_free_gguf() after weights_free_pointers(). */

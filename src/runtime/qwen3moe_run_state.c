@@ -11,11 +11,12 @@
  * independent head-dim cases.
  */
 
-#include "runtime/run_state.h"
-#include "math/rope.h"
-#include "memory/aligned_alloc.h"
 #include <stdlib.h>
 #include <string.h>
+
+#include "math/rope.h"
+#include "memory/aligned_alloc.h"
+#include "runtime/run_state.h"
 
 TernaryError qwen3moe_run_state_alloc(RunState *s, const Config *cfg, const MoEConfig *mc,
                                       int max_seq_len) {

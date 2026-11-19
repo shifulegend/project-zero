@@ -9,13 +9,14 @@
  *   2. its error never exceeds half a step against an exact double-precision value;
  *   3. every tier equals the scalar oracle BIT FOR BIT on random, adversarial and ragged-length input.
  */
-#include "test_harness.h"
-#include "core/platform.h"
-#include "math/quantize_i8.h"
 #include <math.h>
 #include <stdint.h>
-#include <string.h>
 #include <stdio.h>
+#include <string.h>
+
+#include "core/platform.h"
+#include "math/quantize_i8.h"
+#include "test_harness.h"
 
 typedef float (*quantize_fn)(const float *, int8_t *, int);
 

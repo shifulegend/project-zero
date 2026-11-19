@@ -4,17 +4,17 @@
  * The --help text. Split out of args.c; the text is unchanged (`pz --help` output is identical).
  */
 
-#include "cli/args.h"
-#include "math/simd_dispatch.h"
-#include "transformer/attn_tiled.h"
-#include "kv_cache/kv_quant_ops.h"
-#include "api/chat_compile.h"
-#include "reasoning/best_of.h"
-#include "api/server_config.h"
-#include "update/update_check.h"
-#include "math/rope.h"
-
 #include <stdio.h>
+
+#include "api/chat_compile.h"
+#include "api/server_config.h"
+#include "cli/args.h"
+#include "kv_cache/kv_quant_ops.h"
+#include "math/rope.h"
+#include "math/simd_dispatch.h"
+#include "reasoning/best_of.h"
+#include "transformer/attn_tiled.h"
+#include "update/update_check.h"
 
 void print_usage(const char *prog_name) {
     printf("Usage: %s [options]\n", prog_name);

@@ -25,16 +25,16 @@
  *   make bench
  */
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 #include <time.h>
 
-#include "core/platform.h"
-#include "math/ternary_matmul_packed.h"
 #include "core/cpu_features.h"
+#include "core/platform.h"
 #include "math/simd_dispatch.h"
+#include "math/ternary_matmul_packed.h"
 #include "memory/aligned_alloc.h"
 
 /* ── Benchmark parameters ─────────────────────────────────────────────────── */

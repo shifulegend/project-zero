@@ -13,15 +13,15 @@
  *  9. Strategy name lookup
  */
 
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include "kv_cache/kv_compress.h"
 #include "kv_cache/kv_strategy.h"
 #include "kv_cache/sliding_window.h"
 #include "memory/aligned_alloc.h"
 #include "test_harness.h"
-
-#include <math.h>
-#include <stdlib.h>
-#include <string.h>
 
 /* ================================================================
  * TEST: int8 KV Compression (Phase 8.1)

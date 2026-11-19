@@ -6,8 +6,9 @@
  * segregation). On a toolchain without AVX-512 the same names forward to the generic kernels (never bound there).
  * Contract and layout: include/math/cls_kernels.h. One horizontal reduction per row.
  */
-#include "math/cls_kernels.h"
 #include <stdlib.h>
+
+#include "math/cls_kernels.h"
 
 #if TN_HAS_AVX512
 #include <immintrin.h>

@@ -1,4 +1,5 @@
 #include "reasoning/thought_filter.h"
+
 #include <string.h>
 
 /* The tags we're matching */

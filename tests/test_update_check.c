@@ -5,14 +5,15 @@
  * error back-off keeping the last good answer, the background service, and
  * input validation. Network is replaced by a fake fetcher. Part of TSAN_TESTS.
  */
-#include "test_harness.h"
-#include "update/semver.h"
-#include "update/update_check.h"
-#include "core/json_fields.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#include "core/json_fields.h"
+#include "test_harness.h"
+#include "update/semver.h"
+#include "update/update_check.h"
 
 static void test_semver(void) {
     SemVer a, b;

@@ -10,16 +10,18 @@
  */
 
 #include "multimodal/vision_pipeline.h"
-#include "multimodal/image_load.h"
-#include "multimodal/patch_extract.h"
-#include "multimodal/vision_encoder.h"
-#include "multimodal/vision_projector.h"
-#include "multimodal/vision_bridge.h"
-#include "multimodal/vision_weights_load.h"
-#include "memory/aligned_alloc.h"
-#include "transformer/forward.h"
+
 #include <stdio.h>
 #include <string.h>
+
+#include "memory/aligned_alloc.h"
+#include "multimodal/image_load.h"
+#include "multimodal/patch_extract.h"
+#include "multimodal/vision_bridge.h"
+#include "multimodal/vision_encoder.h"
+#include "multimodal/vision_projector.h"
+#include "multimodal/vision_weights_load.h"
+#include "transformer/forward.h"
 
 TernaryError vision_pipeline_run(const char *image_path, const char *vision_path,
                                  const char *proj_path, Config *cfg, TransformerWeights *w,

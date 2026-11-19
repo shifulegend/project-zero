@@ -1,9 +1,11 @@
 #include "rag/auto_save.h"
-#include "rag/similarity.h"
-#include "memory/aligned_alloc.h"
+
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
+
+#include "memory/aligned_alloc.h"
+#include "rag/similarity.h"
 
 int auto_save_memory(const char *text, VectorDB *db, const Config *cfg, const TransformerWeights *w,
                      Embedder *emb, Tokenizer *tok, ThreadPool *tp) {

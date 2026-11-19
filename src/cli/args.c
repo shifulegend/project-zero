@@ -1,15 +1,17 @@
 #include "cli/args.h"
-#include "cli/arg_values.h"
-#include "math/simd_dispatch.h"
-#include "transformer/attn_tiled.h"
-#include "kv_cache/kv_quant_ops.h"
-#include "api/chat_compile.h"
-#include "reasoning/best_of.h"
-#include "api/server_config.h"
-#include "update/update_check.h"
-#include "math/rope.h"
+
 #include <stdio.h>
 #include <string.h>
+
+#include "api/chat_compile.h"
+#include "api/server_config.h"
+#include "cli/arg_values.h"
+#include "kv_cache/kv_quant_ops.h"
+#include "math/rope.h"
+#include "math/simd_dispatch.h"
+#include "reasoning/best_of.h"
+#include "transformer/attn_tiled.h"
+#include "update/update_check.h"
 
 TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     if (!args) return TN_ERR_INVALID_CONFIG;

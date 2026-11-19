@@ -22,12 +22,14 @@
  */
 
 #include "math/matmul_q2_0.h"
-#include "threading/thread_pool.h"
-#include "core/platform.h"
-#include "core/cpu_features.h"
-#include "core/fp16.h" /* tn_fp16_to_f32: used by the scalar path too, so not under TN_HAS_AVX2 */
+
 #include <stdint.h>
 #include <string.h>
+
+#include "core/cpu_features.h"
+#include "core/fp16.h" /* tn_fp16_to_f32: used by the scalar path too, so not under TN_HAS_AVX2 */
+#include "core/platform.h"
+#include "threading/thread_pool.h"
 
 #if TN_HAS_AVX2
 #include <immintrin.h>

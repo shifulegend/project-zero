@@ -12,6 +12,7 @@
  */
 
 #include <pthread.h>
+
 #include "core/limits.h"
 
 #define CANCEL_MAX_ACTIVE PZ_PARALLEL_MAX /* core/limits.h */

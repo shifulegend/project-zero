@@ -14,25 +14,25 @@
  * mathematical correctness against hand-computable results.
  */
 
+#include <math.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include "core/config.h"
-#include "runtime/run_state.h"
 #include "core/weights.h"
+#include "kv_cache/kv_quant_ops.h"
+#include "kv_cache/kv_strategy.h"
 #include "math/simd_dispatch.h"
 #include "memory/aligned_alloc.h"
+#include "runtime/run_state.h"
 #include "test_harness.h"
+#include "threading/thread_pool.h"
 #include "transformer/attention.h"
+#include "transformer/attn_tiled.h"
 #include "transformer/embedding.h"
 #include "transformer/ffn.h"
 #include "transformer/forward.h"
-#include "transformer/attn_tiled.h"
-#include "threading/thread_pool.h"
-#include "kv_cache/kv_strategy.h"
-
-#include <math.h>
-#include "kv_cache/kv_quant_ops.h"
-#include <stdlib.h>
-#include <string.h>
-#include <stdint.h>
 
 /* ---------- helpers ---------- */
 

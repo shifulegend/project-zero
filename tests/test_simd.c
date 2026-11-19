@@ -1,12 +1,13 @@
-#include "test_harness.h"
-#include "core/platform.h"
-#include "math/ternary_matmul.h"
-#include "math/rmsnorm.h"
-#include "math/softmax.h"
-#include "math/elementwise.h"
-#include "math/simd_dispatch.h"
-#include "memory/aligned_alloc.h"
 #include <stdint.h>
+
+#include "core/platform.h"
+#include "math/elementwise.h"
+#include "math/rmsnorm.h"
+#include "math/simd_dispatch.h"
+#include "math/softmax.h"
+#include "math/ternary_matmul.h"
+#include "memory/aligned_alloc.h"
+#include "test_harness.h"
 
 /*
  * SIMD Correctness Tests

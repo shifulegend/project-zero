@@ -8,14 +8,14 @@
  * tests the pure-logic components that can be validated without a model.
  */
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <assert.h>
 #include <unistd.h> /* pipe(), read() */
 
-#include "api/chat_request.h"
 #include "api/chat_compile.h"
+#include "api/chat_request.h"
 #include "api/sse_stream.h"
 
 /* ── Test helpers ────────────────────────────────────────────────────────── */

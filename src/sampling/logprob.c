@@ -1,4 +1,5 @@
 #include "sampling/logprob.h"
+
 #include <math.h>
 
 double logprob_logsumexp(const float *logits, int n) {

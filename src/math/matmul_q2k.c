@@ -11,12 +11,13 @@
  */
 
 #include "math/matmul_q2k.h"
-#include "core/platform.h"
 
 #include <stdint.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
+
 #include "core/fp16.h"
+#include "core/platform.h"
 
 #if TN_HAS_AVX2
 #include <immintrin.h>

@@ -1,26 +1,28 @@
+#include "transformer/forward.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include "transformer/forward.h"
-#include "kv_cache/sliding_window.h"
-#include "transformer/mamba.h"
-#include "distributed/dist_plan.h"
-#include "core/moe_config.h"
+
 #include "core/debug.h"
+#include "core/gguf_reader.h"
+#include "core/moe_config.h"
 #include "core/step_timing.h"
-#include "math/parallel_matmul.h"
+#include "distributed/dist_plan.h"
+#include "kv_cache/sliding_window.h"
+#include "math/batched_matmul.h"
 #include "math/matmul_q2_0.h"
 #include "math/matmul_q4k.h"
 #include "math/matmul_q6k.h"
-#include "core/gguf_reader.h"
+#include "math/parallel_matmul.h"
 #include "math/simd_dispatch.h"
-#include "math/batched_matmul.h"
+#include "runtime/hardware_profile.h"
+#include "runtime/spec_scratch.h" /* reads the batch scratch fields */
 #include "transformer/attention.h"
 #include "transformer/embedding.h"
 #include "transformer/ffn.h"
-#include "runtime/hardware_profile.h"
-#include "runtime/spec_scratch.h" /* reads the batch scratch fields */
+#include "transformer/mamba.h"
 
 /*
  * Lightweight per-component profiling, activated by TN_PROFILE=1.

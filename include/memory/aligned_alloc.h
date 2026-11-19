@@ -2,6 +2,7 @@
 #define TN_ALIGNED_ALLOC_H
 
 #include <stddef.h>
+
 #include "core/platform.h"
 
 /**

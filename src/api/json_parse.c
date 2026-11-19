@@ -22,14 +22,15 @@
  *                   own defaults apply to anything the client omits
  */
 
-#include "api/chat_request.h"
-#include "core/json_fields.h"
-#include "core/error.h"
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
 #include <ctype.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "api/chat_request.h"
+#include "core/error.h"
+#include "core/json_fields.h"
 
 /* ── Internal helpers ────────────────────────────────────────────────────── */
 

@@ -1,11 +1,12 @@
 #include "transformer/moe_router.h"
+
+#include <float.h>
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include "core/moe_config.h"
 #include "math/parallel_matmul.h"
-
-#include <math.h>
-#include <string.h>
-#include <stdlib.h>
-#include <float.h>
 
 /* --------------------------------------------------------------------------
  * Internal helpers

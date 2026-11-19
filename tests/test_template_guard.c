@@ -8,12 +8,13 @@
  * (architecture + template text), and flags any rendered prompt that ends in
  * EOS. No model file is needed: the check is on rendered text.
  */
-#include "test_harness.h"
-#include "tokenizer/chat_template.h"
-#include "tokenizer/template_guard.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "test_harness.h"
+#include "tokenizer/chat_template.h"
+#include "tokenizer/template_guard.h"
 
 /* tokenizer.chat_template of bitnet-b1.58-2B-4T-gguf (ggml-model-i2_s.gguf),
  * read from the file on 2026-11-16. */

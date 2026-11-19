@@ -8,17 +8,17 @@
  * to exercise the DB and similarity layers independently.
  */
 
-#include "test_harness.h"
-#include "rag/vector_db.h"
-#include "rag/similarity.h"
-#include "rag/auto_save.h"
-#include "math/simd_dispatch.h"
-
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 #include <unistd.h> /* unlink */
+
+#include "math/simd_dispatch.h"
+#include "rag/auto_save.h"
+#include "rag/similarity.h"
+#include "rag/vector_db.h"
+#include "test_harness.h"
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 

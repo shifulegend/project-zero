@@ -4,13 +4,15 @@
  */
 
 #include "api/static_assets.h"
-#include "api/net_io.h"
-#include "api/webui_bundle.h"
-#include "api/http_status.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#include "api/http_status.h"
+#include "api/net_io.h"
+#include "api/webui_bundle.h"
 
 static const char *mime_for_path(const char *path) {
     if (strcmp(path, "/") == 0) return "text/html";

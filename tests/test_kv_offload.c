@@ -4,14 +4,15 @@
  * run_state carving for F32 and int8 KV, disk-budgeted context sizing.
  * Skips gracefully when no writable temp directory supports mmap.
  */
-#include "test_harness.h"
-#include "memory/file_backed.h"
-#include "runtime/run_state.h"
-#include "kv_cache/kv_strategy.h"
-#include "kv_cache/kv_quant_ops.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "kv_cache/kv_quant_ops.h"
+#include "kv_cache/kv_strategy.h"
+#include "memory/file_backed.h"
+#include "runtime/run_state.h"
+#include "test_harness.h"
 
 static const char *tmp_dir(void) {
     const char *d = getenv("TMPDIR");

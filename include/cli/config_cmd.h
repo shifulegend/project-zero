@@ -17,6 +17,7 @@
  */
 
 #include <stdio.h>
+
 #include "config/pz_config.h"
 
 /* argv[0] is "config". Returns the process exit code. */

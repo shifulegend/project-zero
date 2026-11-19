@@ -43,11 +43,11 @@
 
 #if TN_HAS_AVX512
 
+#include <assert.h>
 #include <immintrin.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <assert.h>
 
 /* aligned_alloc needs C11 or _ISOC11_SOURCE; fall back to posix_memalign */
 #if !defined(_ISOC11_SOURCE) && defined(_POSIX_C_SOURCE) && (_POSIX_C_SOURCE >= 200112L)

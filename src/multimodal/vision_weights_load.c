@@ -1,7 +1,9 @@
 #include "multimodal/vision_weights_load.h"
-#include <string.h>
+
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
 #include "core/binary_io.h"
 
 /* ── Convenience: pointer to float array inside mmap ─────────────────────

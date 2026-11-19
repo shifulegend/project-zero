@@ -15,21 +15,22 @@
  *     weights to 1 (Qwen3-MoE), scale multiplies, sigmoid gating selects on
  *     sigmoid(logit).
  */
-#include "test_harness.h"
-#include "transformer/moe_experts.h"
-#include "transformer/moe_router.h"
+#include <math.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "core/gguf_reader.h"
 #include "core/moe_config.h"
 #include "math/matmul_q4k.h"
 #include "math/matmul_q5_0.h"
 #include "math/q8_0_act.h"
 #include "math/simd_dispatch.h"
-#include "core/gguf_reader.h"
-#include "threading/thread_pool.h"
 #include "sampling/rng.h"
-#include <math.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
+#include "test_harness.h"
+#include "threading/thread_pool.h"
+#include "transformer/moe_experts.h"
+#include "transformer/moe_router.h"
 
 static uint16_t f32_to_fp16(float f) {
     uint32_t u;

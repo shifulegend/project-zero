@@ -42,12 +42,12 @@
  *     calls methods on variables), but a real parser gap.
  */
 
-#include "tokenizer/chat_template.h"
-#include "test_harness.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "test_harness.h"
+#include "tokenizer/chat_template.h"
 
 /* ================================================================
  * Keyword args must not hang / OOM (regression for the parser stall).

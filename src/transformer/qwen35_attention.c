@@ -31,12 +31,14 @@
  */
 
 #include "transformer/qwen35_attention.h"
-#include "math/matmul_q2_0.h"
-#include "math/simd_dispatch.h"
-#include "core/platform.h"
-#include "core/step_timing.h"
+
 #include <math.h>
 #include <string.h>
+
+#include "core/platform.h"
+#include "core/step_timing.h"
+#include "math/matmul_q2_0.h"
+#include "math/simd_dispatch.h"
 
 /* Generous fixed stack-buffer bounds for this arch's projection widths.
  * Validated (>0) at config-parse time in moe_config_from_gguf(); these

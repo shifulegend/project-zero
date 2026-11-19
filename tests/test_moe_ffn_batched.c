@@ -4,8 +4,8 @@
  * single-thread result exactly. The function's scratch (dequant buffer, batched gate/up/down
  * outputs, the Q8K copy of the activation) used to be file-scope statics shared by every caller.
  */
-#include <pthread.h>
 #include <math.h>
+#include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,9 +14,9 @@
 #include "core/config.h"
 #include "core/gguf_reader.h"
 #include "core/moe_config.h"
-#include "runtime/run_state.h"
 #include "core/weights.h"
 #include "math/simd_dispatch.h"
+#include "runtime/run_state.h"
 #include "transformer/moe_ffn.h"
 
 static int g_fail;

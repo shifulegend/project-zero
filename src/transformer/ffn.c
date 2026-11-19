@@ -1,15 +1,17 @@
 #include "transformer/ffn.h"
-#include "transformer/moe_ffn.h"
-#include "math/parallel_matmul.h"
-#include "math/simd_dispatch.h"
-#include "math/batched_matmul.h"
-#include "math/lora_matmul.h"
+
+#include <string.h>
+
 #include "core/debug.h"
 #include "core/step_timing.h"
 #include "core/weights.h"
-#include "transformer/dense_matmul_dispatch.h"
+#include "math/batched_matmul.h"
+#include "math/lora_matmul.h"
+#include "math/parallel_matmul.h"
+#include "math/simd_dispatch.h"
 #include "runtime/spec_scratch.h" /* reads the batch scratch fields */
-#include <string.h>
+#include "transformer/dense_matmul_dispatch.h"
+#include "transformer/moe_ffn.h"
 
 /* Maximum input dimension supported for layer-level preq stack buffer. */
 #define FFN_PREQ_BUF_SIZE 16384

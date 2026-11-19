@@ -26,7 +26,8 @@
 
 ## Formatting
 - C/C++ is formatted with clang-format 18 using `.clang-format` (4 spaces, attached braces, 100
-  columns). `make format` rewrites, `make check-format` is the CI gate (job "format"). Vendored and
+  columns; includes in four groups separated by blank lines: the file's own header, C system headers,
+  C++ standard headers, project headers, each sorted). `make format` rewrites, `make check-format` is the CI gate (job "format"). Vendored and
   generated files are listed in `.clang-format-ignore`. A macro whose argument is stringified
   (`#x`) must be wrapped in `// clang-format off` / `on`, as `PZ_UPDATE_REPO` is.
 

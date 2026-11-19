@@ -1,9 +1,10 @@
-#include <stdio.h>
 #include <math.h>
+#include <stdio.h>
+
+#include "../tests/test_harness.h"
+#include "memory/aligned_alloc.h"
 #include "multimodal/image_load.h"
 #include "multimodal/patch_extract.h"
-#include "memory/aligned_alloc.h"
-#include "../tests/test_harness.h"
 
 void test_patch_extraction(void) {
     printf("Testing patch extraction...\n");
@@ -46,9 +47,10 @@ void test_patch_extraction(void) {
     printf("Patch extraction tests passed.\n");
 }
 
-#include "multimodal/vision_encoder.h"
 #include <stdlib.h>
 #include <string.h>
+
+#include "multimodal/vision_encoder.h"
 
 void test_vision_encoder(void) {
     printf("Testing vision encoder...\n");

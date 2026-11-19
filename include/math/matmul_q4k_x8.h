@@ -22,10 +22,11 @@
  * existing single-row WEIGHT_TYPE_Q4K path.
  */
 
+#include <stdint.h>
+
 #include "core/platform.h"
 #include "math/matmul_q4k.h"
 #include "threading/thread_pool.h"
-#include <stdint.h>
 
 /* One repacked super-block covering 8 rows' worth of 256 columns each.
  * Byte-exact port of llama.cpp's block_q4_Kx8 (ggml-cpu/repack.h):

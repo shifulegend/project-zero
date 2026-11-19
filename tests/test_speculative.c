@@ -4,25 +4,25 @@
  * between speculative_generate_with_callback() and plain
  * generate_with_callback() in greedy mode.
  */
-#include "test_harness.h"
-#include "core/config.h"
-#include "core/moe_config.h"
-#include "runtime/run_state.h"
-#include "core/unpack.h"
-#include "core/weights.h"
-#include "math/simd_dispatch.h"
-#include "speculative/accept_reject.h"
-#include "speculative/draft_model.h"
-#include "speculative/spec_decode.h"
-#include "tokenizer/tokenizer.h"
-#include "transformer/generate.h"
-
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#include "core/config.h"
+#include "core/moe_config.h"
+#include "core/unpack.h"
+#include "core/weights.h"
+#include "math/simd_dispatch.h"
+#include "runtime/run_state.h"
+#include "speculative/accept_reject.h"
+#include "speculative/draft_model.h"
+#include "speculative/spec_decode.h"
+#include "test_harness.h"
+#include "tokenizer/tokenizer.h"
+#include "transformer/generate.h"
 
 #define SPEC_VOCAB 6
 

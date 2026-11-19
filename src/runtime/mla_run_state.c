@@ -13,11 +13,12 @@
  * so freq[i] = 1/(theta^(2i/rope_dim)), giving exactly 32 correct entries.
  */
 
-#include "runtime/run_state.h"
-#include "math/rope.h"
-#include "memory/aligned_alloc.h"
 #include <stdlib.h> /* malloc, free */
 #include <string.h> /* memset */
+
+#include "math/rope.h"
+#include "memory/aligned_alloc.h"
+#include "runtime/run_state.h"
 
 TernaryError mla_run_state_alloc(RunState *s, const Config *cfg, const MoEConfig *mc,
                                  int max_seq_len) {

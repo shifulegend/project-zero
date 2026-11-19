@@ -11,18 +11,18 @@
  *  7. PRE10-BUG-003: tokenizer_decode NULL dereference when piece is NULL
  */
 
-#include "sampling/rng.h"
-#include "sampling/sampling.h"
-#include "reasoning/thought_filter.h"
-#include "memory/mapped_file.h"
-#include "tokenizer/tokenizer.h"
-#include "test_harness.h"
-
+#include <fcntl.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stddef.h>
-#include <fcntl.h>
+
+#include "memory/mapped_file.h"
+#include "reasoning/thought_filter.h"
+#include "sampling/rng.h"
+#include "sampling/sampling.h"
+#include "test_harness.h"
+#include "tokenizer/tokenizer.h"
 #if !defined(_WIN32)
 #include <unistd.h>
 #endif

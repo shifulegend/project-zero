@@ -8,16 +8,17 @@
  * Needs a real dense GGUF (SmolLM2): $PZ_TEST_MODEL, else
  * models/smollm2-q8_0.gguf; skipped when absent.
  */
-#include "test_harness.h"
-#include "api/batch_scheduler.h"
-#include "runtime/model_load.h"
-#include "threading/thread_pool.h"
-#include "math/simd_dispatch.h"
-#include "tokenizer/tokenizer_gguf.h"
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "api/batch_scheduler.h"
+#include "math/simd_dispatch.h"
+#include "runtime/model_load.h"
+#include "test_harness.h"
+#include "threading/thread_pool.h"
+#include "tokenizer/tokenizer_gguf.h"
 
 #define N_REQ 4
 #define MAX_TOK 20

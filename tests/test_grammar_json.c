@@ -1,10 +1,10 @@
 /*
  * test_grammar_json.c — Phase 20: JSON-mode pushdown automaton correctness.
  */
+#include <string.h>
+
 #include "sampling/grammar.h"
 #include "test_harness.h"
-
-#include <string.h>
 
 /* Feeds an entire C string through the automaton from a fresh state.
  * Returns 1 if every character was accepted (no JSON_ST_INVALID reached)

@@ -1,4 +1,5 @@
 #include "math/softmax.h"
+
 #include <math.h>
 
 void softmax(float *x, int size) {

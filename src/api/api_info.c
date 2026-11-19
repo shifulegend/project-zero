@@ -1,20 +1,22 @@
-#include "api/config_endpoint.h"
 #include "api/api_info.h"
-#include "runtime/hardware_profile.h"
+
+#include <stdio.h>
 #include <string.h>
-#include "api/json_write.h"
+
 #include "api/chat_compile.h"
-#include "reasoning/best_of.h"
 #include "api/chat_request.h"
+#include "api/config_endpoint.h"
+#include "api/json_write.h"
+#include "brand/block_font.h"
+#include "distributed/dist_plan.h"
+#include "kv_cache/kv_quant_ops.h"
+#include "math/rope.h"
+#include "math/simd_dispatch.h"
+#include "reasoning/best_of.h"
+#include "runtime/hardware_profile.h"
 #include "sampling/watermark_text.h"
 #include "threading/cache_probe.h"
 #include "transformer/attn_tiled.h"
-#include "kv_cache/kv_quant_ops.h"
-#include "brand/block_font.h"
-#include "math/rope.h"
-#include "distributed/dist_plan.h"
-#include <stdio.h>
-#include "math/simd_dispatch.h"
 
 int api_max_tokens_limit(const ApiContext *ctx) {
     int ctx_len = (ctx && ctx->cfg) ? ctx->cfg->seq_len : 0;

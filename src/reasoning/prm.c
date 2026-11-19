@@ -2,13 +2,14 @@
  * reasoning/prm.c — Phase 30.1 process reward model (see reasoning/prm.h).
  */
 #include "reasoning/prm.h"
-#include "tokenizer/tokenizer_gguf.h"
-#include "transformer/forward.h"
 
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "tokenizer/tokenizer_gguf.h"
+#include "transformer/forward.h"
 
 char *prm_format(const char *fmt, const char *question, const char *steps) {
     if (!fmt) fmt = PRM_DEFAULT_FORMAT;

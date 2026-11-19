@@ -1,4 +1,5 @@
 #include "api/request_params.h"
+
 #include <string.h>
 
 void request_params_resolve(const ChatRequest *req, const GenerationParams *defaults,

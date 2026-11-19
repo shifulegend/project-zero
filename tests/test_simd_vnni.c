@@ -12,19 +12,20 @@
  *   8. Integration: VNNI matmul produces same output as float baseline (tol)
  */
 
-#include "test_harness.h"
-#include "core/platform.h"
-#include "core/cpu_features.h"
-#include "math/quantize_i8.h"
-#include "math/ternary_matmul_packed.h"
-#include "math/simd_dispatch.h"
-#include "kv_cache/kv_strategy.h"
-#include "core/config.h"
-#include "memory/aligned_alloc.h"
-#include <stdint.h>
 #include <math.h>
-#include <string.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <string.h>
+
+#include "core/config.h"
+#include "core/cpu_features.h"
+#include "core/platform.h"
+#include "kv_cache/kv_strategy.h"
+#include "math/quantize_i8.h"
+#include "math/simd_dispatch.h"
+#include "math/ternary_matmul_packed.h"
+#include "memory/aligned_alloc.h"
+#include "test_harness.h"
 
 /* ─── Helpers ─────────────────────────────────────────────────────────────── */
 

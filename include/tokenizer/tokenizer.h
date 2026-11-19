@@ -1,8 +1,9 @@
 #ifndef TN_TOKENIZER_H
 #define TN_TOKENIZER_H
 
-#include "core/error.h"
 #include <stddef.h>
+
+#include "core/error.h"
 
 #define TN_TOKENIZER_MAX_EOG 16
 

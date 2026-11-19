@@ -1,9 +1,9 @@
 #ifndef TN_SIMD_DISPATCH_H
 #define TN_SIMD_DISPATCH_H
 
-#include "math/kvq4_kernels.h"
-#include "math/cls_kernels.h"
 #include "core/platform.h"
+#include "math/cls_kernels.h"
+#include "math/kvq4_kernels.h"
 
 /**
  * SIMD runtime dispatch layer.

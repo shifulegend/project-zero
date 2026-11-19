@@ -2,14 +2,15 @@
 #define TN_RUNTIME_MODEL_LOAD_H
 
 #include <stdbool.h>
+
 #include "core/config.h"
 #include "core/error.h"
-#include "runtime/gguf_loader.h"
 #include "core/gguf_reader.h"
 #include "core/moe_config.h"
-#include "runtime/run_state.h"
 #include "core/weights.h"
 #include "memory/mapped_file.h"
+#include "runtime/gguf_loader.h"
+#include "runtime/run_state.h"
 #include "threading/thread_pool.h"
 
 /**

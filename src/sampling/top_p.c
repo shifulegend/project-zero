@@ -1,7 +1,8 @@
-#include "sampling/rng.h"
-#include "sampling/sampling.h"
 #include <math.h>
 #include <stdlib.h>
+
+#include "sampling/rng.h"
+#include "sampling/sampling.h"
 
 /* Sort helper: index + probability pair for descending sort */
 typedef struct {

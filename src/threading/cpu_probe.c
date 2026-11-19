@@ -1,12 +1,14 @@
 #include "threading/cpu_probe.h"
+
+#include <stdlib.h>
+#include <string.h>
+
 #include "core/cpu_features.h"
 #include "core/platform.h"
-#include <string.h>
-#include <stdlib.h>
 
 #if TN_POSIX
-#include <unistd.h>
 #include <stdio.h>
+#include <unistd.h>
 #endif
 
 #if TN_WIN32

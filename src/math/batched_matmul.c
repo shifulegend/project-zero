@@ -1,9 +1,11 @@
 #include "math/batched_matmul.h"
-#include "core/unpack.h"
-#include "math/simd_dispatch.h"
-#include "core/platform.h"
+
 #include <stddef.h>
 #include <stdlib.h>
+
+#include "core/platform.h"
+#include "core/unpack.h"
+#include "math/simd_dispatch.h"
 
 /**
  * Ternary-packed batched matmul. See include/math/batched_matmul.h for the

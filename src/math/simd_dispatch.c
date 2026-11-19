@@ -1,15 +1,17 @@
 #include "math/simd_dispatch.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include "core/cpu_features.h"
-#include "math/ternary_matmul.h"
-#include "math/ternary_matmul_packed.h"
-#include "math/quantize_i8.h"
 #include "core/unpack.h"
+#include "math/elementwise.h"
+#include "math/quantize_i8.h"
 #include "math/rmsnorm.h"
 #include "math/softmax.h"
-#include "math/elementwise.h"
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
+#include "math/ternary_matmul.h"
+#include "math/ternary_matmul_packed.h"
 
 /*
  * Portable distribution build (`make dist`): this TU is compiled at a

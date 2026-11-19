@@ -11,18 +11,18 @@
  * which matmul_q2_0_vnni.c declines and hands back to matmul_q2_0.c).
  */
 
-#include "math/matmul_q2_0.h"
-#include "core/gguf_quant.h"
-#include "core/platform.h"
-#include "core/cpu_features.h"
-#include "math/quantize_i8.h"
-#include "test_harness.h"
-
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
+
+#include "core/cpu_features.h"
+#include "core/gguf_quant.h"
+#include "core/platform.h"
+#include "math/matmul_q2_0.h"
+#include "math/quantize_i8.h"
+#include "test_harness.h"
 
 #define Q2_0_BLOCK 128
 #define Q2_0_BYTES 34

@@ -5,14 +5,15 @@
  * moe_config_from_gguf() (MoEConfig). Split out of gguf_loader.c; the code is unchanged.
  */
 
-#include "runtime/gguf_loader.h"
-#include "core/moe_config.h"
-#include "core/platform.h"
-#include "math/rope.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "core/moe_config.h"
+#include "core/platform.h"
+#include "math/rope.h"
+#include "runtime/gguf_loader.h"
 
 /* ── config_from_gguf() ───────────────────────────────────────────────────── */
 

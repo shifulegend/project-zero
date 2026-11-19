@@ -1,12 +1,13 @@
 #ifndef TN_CLI_ARGS_H
 #define TN_CLI_ARGS_H
 
-#include "reasoning/mcts.h"
 #include <stdbool.h>
-#include "core/platform.h"
-#include "core/error.h"
-#include "cli/color.h"
+
 #include "api/server_config.h"
+#include "cli/color.h"
+#include "core/error.h"
+#include "core/platform.h"
+#include "reasoning/mcts.h"
 #include "transformer/gen_params.h"
 #include "update/update_check.h"
 

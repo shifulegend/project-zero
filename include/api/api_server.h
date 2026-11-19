@@ -17,22 +17,23 @@
  *   api_server_stop(&ctx);
  */
 
+#include <pthread.h>
 #include <stdatomic.h>
-#include "core/error.h"
-#include "api/rate_limit.h"
-#include "core/config.h"
-#include "core/moe_config.h"
-#include "runtime/run_state.h"
-#include "core/weights.h"
-#include "threading/thread_pool.h"
-#include "tokenizer/tokenizer.h"
-#include "api/server_config.h"
-#include "api/metrics.h"
+
 #include "api/cancel.h"
+#include "api/gen_queue.h"
+#include "api/metrics.h"
+#include "api/rate_limit.h"
+#include "api/server_config.h"
+#include "core/config.h"
+#include "core/error.h"
+#include "core/moe_config.h"
+#include "core/weights.h"
 #include "kv_cache/prefix_cache.h"
 #include "runtime/prompt_store.h"
-#include "api/gen_queue.h"
-#include <pthread.h>
+#include "runtime/run_state.h"
+#include "threading/thread_pool.h"
+#include "tokenizer/tokenizer.h"
 
 /* ── Inference context passed from main to API handler ──────────────────── */
 typedef struct {

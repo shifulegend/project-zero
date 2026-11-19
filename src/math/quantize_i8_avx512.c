@@ -7,10 +7,11 @@
  * toolchain/arch without AVX-512 the same names are scalar fallbacks (never bound
  * there). Split out of quantize_i8.c, which is compiled at the AVX2 baseline.
  */
-#include "math/quantize_i8.h"
-#include "core/platform.h"
 #include <math.h>
 #include <string.h>
+
+#include "core/platform.h"
+#include "math/quantize_i8.h"
 
 /* ── AVX-512 accelerated ──────────────────────────────────────────────────── */
 #if TN_HAS_AVX512

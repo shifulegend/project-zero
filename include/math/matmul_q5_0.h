@@ -15,8 +15,9 @@
  * Dot product: d * sum(int_val * x) - 16*d * sum(x)
  */
 
-#include "threading/thread_pool.h"
 #include <stdint.h>
+
+#include "threading/thread_pool.h"
 
 #ifdef __cplusplus
 extern "C" {

@@ -1,13 +1,13 @@
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
+
 #include "reasoning/prompt_inject.h"
 #include "reasoning/thought_filter.h"
 #include "sampling/rng.h"
 #include "sampling/sampling.h"
 #include "transformer/forward.h"
 #include "transformer/generate.h"
-
-#include <stdio.h>
-#include <string.h>
-#include <time.h>
 
 /**
  * Reasoning-aware generation wrapper.

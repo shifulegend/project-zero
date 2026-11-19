@@ -1,9 +1,10 @@
 #ifndef TN_CALIBRATION_H
 #define TN_CALIBRATION_H
 
+#include <stdbool.h>
+
 #include "core/platform.h"
 #include "runtime/hardware_profile.h"
-#include <stdbool.h>
 
 /*
  * Auto-calibration system — finds optimal engine settings per hardware.

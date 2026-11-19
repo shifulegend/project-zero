@@ -7,10 +7,11 @@
  * digit-decomposition bug that only showed up when N % 32 != 0.
  */
 
-#include "test_harness.h"
-#include "core/platform.h"
 #include <stdint.h>
 #include <stdlib.h>
+
+#include "core/platform.h"
+#include "test_harness.h"
 
 #if TN_HAS_AVX512
 

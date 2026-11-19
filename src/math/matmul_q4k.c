@@ -28,15 +28,17 @@
  */
 
 #include "math/matmul_q4k.h"
-#include "memory/tls_scratch.h"
-#include "threading/thread_pool.h"
-#include "core/platform.h"
-#include "core/cpu_features.h"
+
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "core/cpu_features.h"
 #include "core/fp16.h"
+#include "core/platform.h"
+#include "memory/tls_scratch.h"
+#include "threading/thread_pool.h"
 
 #if TN_HAS_AVX2 || TN_HAS_AVX512
 #include <immintrin.h>

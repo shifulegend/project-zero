@@ -4,12 +4,13 @@
  * judge score. (The search loop itself is exercised live against real GGUFs —
  * see IMPLEMENTATION_PLAN Phase 30.)
  */
-#include "test_harness.h"
-#include "reasoning/mcts.h"
-#include "reasoning/prm.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "reasoning/mcts.h"
+#include "reasoning/prm.h"
+#include "test_harness.h"
 
 static void test_ucb(void) {
     TEST_ASSERT(isinf(mcts_ucb(0.0, 0, 5, 1.4)), "unvisited child explored first");

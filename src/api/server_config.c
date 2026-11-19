@@ -4,9 +4,11 @@
  */
 
 #include "api/server_config.h"
-#include "reasoning/best_of.h"
+
 #include <stdlib.h>
 #include <string.h>
+
+#include "reasoning/best_of.h"
 
 void server_config_init(ServerConfig *sc) {
     if (!sc) return;

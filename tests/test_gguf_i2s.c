@@ -6,14 +6,15 @@
  *  - NEOX rotary equals NORM rotary on the de-interleaved vector, and the
  *    architecture -> layout table follows llama.cpp.
  */
-#include "test_harness.h"
-#include "core/gguf_i2s.h"
-#include "core/unpack.h"
-#include "math/ternary_matmul_packed.h"
-#include "math/rope.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "core/gguf_i2s.h"
+#include "core/unpack.h"
+#include "math/rope.h"
+#include "math/ternary_matmul_packed.h"
+#include "test_harness.h"
 
 static uint32_t rng = 12345u;
 static int next_tern(void) {

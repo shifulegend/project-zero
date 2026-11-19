@@ -4,15 +4,16 @@
  */
 
 #include "api/batch_scheduler.h"
-#include "transformer/gen_session.h"
-#include "transformer/forward.h"
-#include "runtime/spec_scratch.h"
-#include "runtime/run_state.h"
 
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "runtime/run_state.h"
+#include "runtime/spec_scratch.h"
+#include "transformer/forward.h"
+#include "transformer/gen_session.h"
 
 /* First capacity (bytes) of a job's output buffer; it doubles from here. */
 #define BATCH_JOB_OUT_INIT_CAP 1024

@@ -2,10 +2,11 @@
 
 #if TN_HAS_AVX2
 
-#include "math/ternary_matmul_packed.h"
-#include "core/unpack.h"
 #include <immintrin.h>
 #include <string.h>
+
+#include "core/unpack.h"
+#include "math/ternary_matmul_packed.h"
 
 /**
  * AVX2 fused unpack+matmul for 2-bit packed ternary weights.

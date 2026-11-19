@@ -45,9 +45,10 @@
  *   no reshape/transpose, just an F32->F16 cast.)
  */
 
-#include "core/error.h"
 #include <stddef.h>
 #include <stdint.h>
+
+#include "core/error.h"
 
 #define LORA_BIN_MAGIC 0x41524F4Cu
 

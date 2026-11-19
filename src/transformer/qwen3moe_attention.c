@@ -22,20 +22,22 @@
  */
 
 #include "transformer/qwen3moe_attention.h"
+
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "core/clamp.h"
+#include "core/lora.h"
+#include "core/platform.h"
+#include "core/step_timing.h"
+#include "math/batched_matmul.h"
+#include "math/lora_matmul.h"
 #include "math/parallel_matmul.h"
 #include "math/rope.h"
 #include "math/simd_dispatch.h"
-#include "math/batched_matmul.h"
-#include "core/platform.h"
-#include "core/step_timing.h"
-#include "transformer/dense_matmul_dispatch.h"
-#include "math/lora_matmul.h"
-#include "core/lora.h"
-#include "core/clamp.h"
 #include "runtime/spec_scratch.h" /* reads the batch scratch fields */
-#include <math.h>
-#include <string.h>
-#include <stdlib.h>
+#include "transformer/dense_matmul_dispatch.h"
 
 #define QWEN3MOE_PREQ_BUF_SIZE 16384
 

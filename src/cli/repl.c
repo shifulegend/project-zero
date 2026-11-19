@@ -1,19 +1,21 @@
 #include "cli/repl.h"
-#include "core/timer.h"
-#include "cli/color.h"
-#include "cli/live_stats.h"
-#include "cli/md_render.h"
-#include "transformer/generate.h"
-#include "speculative/spec_decode.h"
-#include "agent/agent_loop.h"
-#include "rag/auto_retrieve.h"
-#include "rag/auto_save.h"
-#include "rag/memory_search.h"
-#include "rag/vector_db.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#include "agent/agent_loop.h"
+#include "cli/color.h"
+#include "cli/live_stats.h"
+#include "cli/md_render.h"
+#include "core/timer.h"
+#include "rag/auto_retrieve.h"
+#include "rag/auto_save.h"
+#include "rag/memory_search.h"
+#include "rag/vector_db.h"
+#include "speculative/spec_decode.h"
+#include "transformer/generate.h"
 
 #define MAX_REPL_LINE 4096
 

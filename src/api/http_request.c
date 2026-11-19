@@ -7,19 +7,20 @@
  */
 
 #include "api/http_request.h"
-#include "api/http_headers.h"
-#include "api/http_status.h"
 
 #include <ctype.h>
 #include <limits.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
 #include <string.h>
 #include <strings.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <time.h>
+
+#include "api/http_headers.h"
+#include "api/http_status.h"
 
 /* Copies a header value starting at *p up to (not including) \r or \n into
  * dst (NUL-terminated, truncated to dst_cap - 1). */

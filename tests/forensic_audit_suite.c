@@ -1,22 +1,21 @@
+#include <assert.h>
+#include <setjmp.h>
+#include <signal.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <assert.h>
-#include <stdint.h>
-#include <signal.h>
-#include <setjmp.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "core/config.h"
 #include "core/weights.h"
-#include "tokenizer/tokenizer.h"
 #include "kv_cache/sliding_window.h"
-#include "math/simd_dispatch.h"
 #include "math/parallel_matmul.h"
-#include "threading/thread_pool.h"
+#include "math/simd_dispatch.h"
 #include "memory/mapped_file.h"
-
-#include <sys/wait.h>
+#include "threading/thread_pool.h"
+#include "tokenizer/tokenizer.h"
 
 /* --- Signal Recovery Infrastructure (Try-Catch in C) --- */
 static const char *g_current_test_name = "None";
@@ -241,8 +240,9 @@ void test_concurrency_threadpool(void) {
     fflush(stdout);
 }
 
-#include "core/unpack.h"
 #include <pthread.h>
+
+#include "core/unpack.h"
 
 void test_sanity_ternary_math(void) {
     printf("[MATH] Starting Sanity: Ternary Matmul Basic...\n");

@@ -15,8 +15,9 @@
  * Element value = int_val * scale - min  (same formula as Q4_K)
  */
 
-#include "threading/thread_pool.h"
 #include <stdint.h>
+
+#include "threading/thread_pool.h"
 
 #ifdef __cplusplus
 extern "C" {

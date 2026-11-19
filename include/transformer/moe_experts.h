@@ -24,9 +24,10 @@
  * Inactive experts cost nothing (only selected jobs are passed in).
  */
 
+#include <stdint.h>
+
 #include "math/matmul_q4k.h"
 #include "threading/thread_pool.h"
-#include <stdint.h>
 
 typedef struct {
     const uint8_t *w_gate;             /* hdim rows x dim cols, type gate_type */

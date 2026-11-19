@@ -14,8 +14,9 @@
  * Value = int_val * d + m
  */
 
-#include "threading/thread_pool.h"
 #include <stdint.h>
+
+#include "threading/thread_pool.h"
 
 #ifdef __cplusplus
 extern "C" {

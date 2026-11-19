@@ -1,23 +1,23 @@
 #include "agent/agent_loop.h"
-#include "agent/tool_interceptor.h"
+
 #include "agent/cmd_exec.h"
+#include "agent/tool_interceptor.h"
+#include "core/timer.h"
+#include "math/simd_dispatch.h"
+#include "sampling/rng.h"
+#include "sampling/sampling.h"
+#include "tokenizer/tokenizer.h"
+#include "transformer/forward.h"
 #include "transformer/output_inject.h"
 
-#include "transformer/forward.h"
-#include "math/simd_dispatch.h"
-#include "sampling/sampling.h"
-#include "sampling/rng.h"
-#include "tokenizer/tokenizer.h"
-#include "core/timer.h"
-
 /* Phase 15 RAG */
-#include "rag/auto_save.h"
-#include "rag/memory_search.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+#include "rag/auto_save.h"
+#include "rag/memory_search.h"
 
 /* Minimal agent loop: replicates the core of generate() but intercepts
  * decoded pieces and reacts to tags such as <exec>...</exec>.

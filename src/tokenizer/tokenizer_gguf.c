@@ -24,11 +24,13 @@
  */
 
 #include "tokenizer/tokenizer_gguf.h"
-#include "tokenizer/pretokenize.h"
-#include "core/gguf_reader.h"
+
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
+
+#include "core/gguf_reader.h"
+#include "tokenizer/pretokenize.h"
 
 /* ── Internal sort (duplicated from tokenizer_load.c for independence) ──── */
 

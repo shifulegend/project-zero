@@ -2,13 +2,14 @@
  * cli/model_catalog.c — see cli/model_catalog.h.
  */
 #include "cli/model_catalog.h"
-#include "core/platform.h"
-#include "core/sha256.h"
 
 #include <ctype.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "core/platform.h"
+#include "core/sha256.h"
 #if TN_POSIX
 #include <spawn.h>
 #include <sys/stat.h>

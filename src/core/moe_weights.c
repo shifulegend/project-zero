@@ -1,7 +1,9 @@
 #include "core/moe_weights.h"
-#include "core/unpack.h"
+
 #include <stdlib.h>
 #include <string.h>
+
+#include "core/unpack.h"
 
 /* -----------------------------------------------------------------------
  * Allocation

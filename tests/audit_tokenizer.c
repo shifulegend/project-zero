@@ -1,8 +1,9 @@
-#include "test_harness.h"
-#include "tokenizer/tokenizer.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "test_harness.h"
+#include "tokenizer/tokenizer.h"
 
 /**
  * Audit Test: Tok-01 (Short Hex Token OOB Read)

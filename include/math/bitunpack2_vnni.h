@@ -5,6 +5,7 @@
 
 #if TN_HAS_AVX512VNNI
 #include <immintrin.h>
+
 #include "core/cpu_features.h"
 
 /*

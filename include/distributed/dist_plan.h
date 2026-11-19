@@ -15,10 +15,10 @@
  */
 
 #include "core/config.h"
-#include "core/moe_config.h"
 #include "core/error.h"
-#include "runtime/run_state.h"
+#include "core/moe_config.h"
 #include "core/weights.h"
+#include "runtime/run_state.h"
 #include "threading/thread_pool.h"
 
 #define DIST_MAX_NODES 8

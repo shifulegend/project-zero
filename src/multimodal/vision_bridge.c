@@ -1,7 +1,9 @@
 #include "multimodal/vision_bridge.h"
-#include "transformer/forward.h"
+
 #include <stdio.h>
 #include <string.h>
+
+#include "transformer/forward.h"
 
 void inject_vision_into_kv_cache(RunState *s, Config *p, TransformerWeights *w,
                                  const VisionContext *v, ThreadPool *tp) {

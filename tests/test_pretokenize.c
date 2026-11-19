@@ -5,9 +5,10 @@
  * UTF-8, plus name mapping and capacity handling. Expected splits follow
  * llama.cpp's unicode_regex_split_custom_* behaviour.
  */
+#include <string.h>
+
 #include "test_harness.h"
 #include "tokenizer/pretokenize.h"
-#include <string.h>
 
 /* Joins fragments with '|' for compact comparison. */
 static const char *split(PretokType t, const char *s) {

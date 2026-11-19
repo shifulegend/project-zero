@@ -12,9 +12,10 @@
  * Architecture-specific weight loading is handled by the caller.
  */
 
-#include "core/error.h"
 #include <stddef.h>
 #include <stdint.h>
+
+#include "core/error.h"
 
 /* ── GGUF constants ─────────────────────────────────────────────────────── */
 #define GGUF_MAGIC 0x46554747u /* "GGUF" LE */

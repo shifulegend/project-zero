@@ -15,12 +15,13 @@
  *     O(1)-per-token state instead of an O(context) cache.
  */
 
-#include "runtime/run_state.h"
+#include <stdlib.h>
+#include <string.h>
+
 #include "core/platform.h" /* tn_i64 */
 #include "math/rope.h"
 #include "memory/aligned_alloc.h"
-#include <stdlib.h>
-#include <string.h>
+#include "runtime/run_state.h"
 
 TernaryError q35_run_state_alloc(RunState *s, const Config *cfg, const MoEConfig *mc,
                                  int max_seq_len) {

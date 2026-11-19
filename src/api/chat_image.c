@@ -7,14 +7,15 @@
  */
 
 #include "api/chat_image.h"
-#include "api/data_url.h"
-#include "api/net_io.h"
-#include "multimodal/vision_pipeline.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#include "api/data_url.h"
+#include "api/net_io.h"
+#include "multimodal/vision_pipeline.h"
 
 #define HTTP_STRIPPED_PROMPT_BUF 8192 /* user prompt with the image part removed */
 

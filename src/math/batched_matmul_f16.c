@@ -1,10 +1,11 @@
-#include "math/batched_matmul.h"
-#include "math/simd_dispatch.h"
-#include "core/platform.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include "core/fp16.h"
+#include "core/platform.h"
+#include "math/batched_matmul.h"
+#include "math/simd_dispatch.h"
 
 #if TN_HAS_AVX512 || TN_HAS_AVX2
 #include <immintrin.h>

@@ -3,9 +3,9 @@
  * matvec agrees with the reference across shapes (incl. non-multiple-of-4
  * widths, all-zero rows and scale).
  */
-#include "test_harness.h"
 #include "math/ternary_matmul.h"
 #include "sampling/rng.h"
+#include "test_harness.h"
 
 static void check_shape(int n, int d, float scale, unsigned long long seed) {
     unsigned long long rng;

@@ -1,11 +1,12 @@
 #ifndef TN_WEIGHTS_H
 #define TN_WEIGHTS_H
 
+#include <stdbool.h>
+
 #include "core/config.h"
 #include "core/error.h"
 #include "core/moe_config.h"
 #include "core/platform.h"
-#include <stdbool.h>
 
 /* Per-projection weight storage type constants (wq_type / wk_type / ... below).
  * Dispatch is purely data-driven — no model-name checks anywhere. */

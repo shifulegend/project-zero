@@ -2,22 +2,22 @@
  * test_moe.c — Unit tests for Phase 17: Mixture of Experts Routing
  */
 
+#include <math.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include "core/config.h"
 #include "core/moe_config.h"
-#include "runtime/run_state.h"
 #include "core/unpack.h"
 #include "core/weights.h"
 #include "math/simd_dispatch.h"
+#include "runtime/run_state.h"
 #include "test_harness.h"
 #include "transformer/ffn.h"
 #include "transformer/forward.h"
 #include "transformer/moe_ffn.h"
 #include "transformer/moe_router.h"
-
-#include <math.h>
-#include <string.h>
-#include <stdlib.h>
-#include <stdint.h>
 
 /* ================================================================
  * Helpers

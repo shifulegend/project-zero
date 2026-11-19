@@ -4,8 +4,9 @@
 /* The small route handlers of the HTTP server (src/api/http_routes.c). The ones returning int
  * return the HTTP status they sent; `extra_headers` is the CORS block or NULL. */
 
-#include "api/api_server.h"
 #include <stddef.h>
+
+#include "api/api_server.h"
 
 void http_handle_get_models(int fd, ApiContext *ctx, const char *extra_headers);
 void http_handle_get_config(int fd, ApiContext *ctx, const char *extra_headers);

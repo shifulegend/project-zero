@@ -28,9 +28,9 @@
  * sequential otherwise.
  */
 
-#include "transformer/generate.h"
 #include "kv_cache/prefix_cache.h"
 #include "runtime/prompt_store.h"
+#include "transformer/generate.h"
 
 typedef struct {
     int n_slots;                /* concurrent requests (>= 2 to be useful) */

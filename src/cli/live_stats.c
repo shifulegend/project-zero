@@ -4,9 +4,11 @@
  */
 
 #include "cli/live_stats.h"
+
+#include <stdio.h>
+
 #include "cli/color.h"
 #include "core/timer.h"
-#include <stdio.h>
 
 void tn_live_stats_init(TnLiveStats *ls) {
     if (!ls) return;

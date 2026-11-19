@@ -1,8 +1,5 @@
 #include "update/update_check.h"
-#include "update/semver.h"
-#include "core/json_fields.h"
-#include "core/platform.h"
-#include "core/fs_util.h"
+
 #include <ctype.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -10,12 +7,17 @@
 #include <string.h>
 #include <time.h>
 
+#include "core/fs_util.h"
+#include "core/json_fields.h"
+#include "core/platform.h"
+#include "update/semver.h"
+
 #if TN_POSIX
 #include <errno.h>
 #include <fcntl.h>
+#include <spawn.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
 extern char **environ;

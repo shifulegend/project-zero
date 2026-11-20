@@ -25,6 +25,7 @@ def fake_variant(label: str) -> bl.Variant:
         fixed: bool,
         prompt: str = "",
     ) -> list[str] | None:
+        """The generation command of the fake variant."""
         return ["x"]
 
     def ppl(
@@ -37,6 +38,7 @@ def fake_variant(label: str) -> bl.Variant:
         threads: int,
         extra: Any = (),
     ) -> list[str] | None:
+        """The fake variant has no perplexity command."""
         return None
 
     return {"label": label, "engine": "pz", "cmd": cmd, "ppl": ppl, "env": None}
@@ -64,6 +66,7 @@ class Gate(unittest.TestCase):
         import gate
 
         def v(x: float) -> str:
+            """Helper of the gate tests."""
             return gate.verdict(x, 100.0, 1.0, 2.0)[0]
 
         self.assertEqual(
@@ -207,6 +210,7 @@ class Gate(unittest.TestCase):
                 env: dict[str, str] | None = None,
                 prompt: str = "",
             ) -> dict[str, Any]:
+                """A measurement that always returns the canned result."""
                 seen_suites.append(suite)
                 return dict(MEASURED)
 

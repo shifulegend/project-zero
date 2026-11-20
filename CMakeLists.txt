@@ -127,6 +127,7 @@ endif()
 set(CORE_SOURCES
     src/core/config.c
     src/core/debug.c
+    src/core/log.c
     src/core/error.c
     src/core/gguf_quant.c
     src/core/gguf_quant_k.c

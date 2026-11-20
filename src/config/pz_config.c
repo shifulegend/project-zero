@@ -563,33 +563,47 @@ int pz_config_apply_env(PzConfig *c, void (*warn)(const char *)) {
     return applied;
 }
 
-int pz_config_merge_argv(const PzConfig *c, int argc, char **argv, char ***out_argv) {
-    if (!out_argv || argc < 1 || !argv) return -1;
-    /* Flag names live in a static table of "--key" strings built once. */
-    static char flags[PZ_CFG_SCHEMA_MAX][72];
+/* How many arguments the set entries add, and (in *n_set) how many entries are set. */
+static int count_set_args(const PzConfig *c, int *n_set) {
     int extra = 0;
     for (int i = 0; c && i < c->n; i++) {
         const PzCfgEntry *e = &c->entries[i];
         if (!e->set) continue;
+        (*n_set)++;
         if (e->key->type == PZ_CFG_BOOL)
             extra += strcmp(e->v[0], "true") == 0;
         else
             extra += 2 * e->n;
     }
-    char **av = (char **)malloc(((size_t)argc + (size_t)extra + 1) * sizeof(char *));
+    return extra;
+}
+
+#define PZ_FLAG_NAME_MAX 72 /* room for "--" and the longest setting name */
+
+int pz_config_merge_argv(const PzConfig *c, int argc, char **argv, char ***out_argv) {
+    if (!out_argv || argc < 1 || !argv) return -1;
+    int n_set = 0;
+    int extra = count_set_args(c, &n_set);
+    /* One block: the argument pointers, then the "--key" strings they point at (the caller frees
+     * the pointers and the strings go with them). */
+    size_t n_ptr = (size_t)argc + (size_t)extra + 1;
+    char **av    = (char **)malloc(n_ptr * sizeof(char *) + (size_t)n_set * PZ_FLAG_NAME_MAX);
     if (!av) return -1;
-    int k   = 0;
-    av[k++] = argv[0];
+    char *names = (char *)(av + n_ptr);
+    int k       = 0;
+    av[k++]     = argv[0];
     for (int i = 0; c && i < c->n; i++) {
         const PzCfgEntry *e = &c->entries[i];
         if (!e->set) continue;
-        snprintf(flags[i], sizeof(flags[i]), "--%s", e->key->key);
+        char *flag = names;
+        names += PZ_FLAG_NAME_MAX;
+        snprintf(flag, PZ_FLAG_NAME_MAX, "--%s", e->key->key);
         if (e->key->type == PZ_CFG_BOOL) {
-            if (strcmp(e->v[0], "true") == 0) av[k++] = flags[i];
+            if (strcmp(e->v[0], "true") == 0) av[k++] = flag;
             continue;
         }
         for (int j = 0; j < e->n; j++) {
-            av[k++] = flags[i];
+            av[k++] = flag;
             av[k++] = e->v[j];
         }
     }

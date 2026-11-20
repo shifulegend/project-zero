@@ -247,6 +247,21 @@ static int cmp_flags(const void *a, const void *b) {
     return strcmp((const char *)a, (const char *)b);
 }
 
+/* The next flag name in `p`: a strcmp(argv[i], "--x") branch or a {"--x", ...} table entry.
+ * Copies it to `name` and returns where to continue, or NULL when the line has no more. */
+static const char *next_flag(const char *p, char *name, size_t cap) {
+    const char *s1 = strstr(p, "strcmp(argv[i], \"--");
+    const char *s2 = strstr(p, "{\"--");
+    if (!s1 && !s2) return NULL;
+    int table     = s1 == NULL || (s2 != NULL && s2 < s1);
+    p             = table ? s2 + strlen("{\"") : s1 + strlen("strcmp(argv[i], \"");
+    const char *e = strchr(p, '"');
+    if (!e || (size_t)(e - p) >= cap) return NULL;
+    memcpy(name, p, (size_t)(e - p));
+    name[e - p] = '\0';
+    return e;
+}
+
 static int read_flags(char flags[][40], int max) {
     static const char *files[] = {"src/cli/args.c",
                                   "src/cli/args_flags_generation.c",
@@ -262,25 +277,13 @@ static int read_flags(char flags[][40], int max) {
         FILE *f = fopen(files[fi], "r");
         if (!f) continue;
         found = 1;
-        char line[512];
+        char line[512], name[40];
         while (fgets(line, sizeof line, f)) {
             const char *p = line;
-            /* a flag is either a strcmp(argv[i], "--x") branch or a {"--x", ...} table entry */
-            for (;;) {
-                const char *s1 = strstr(p, "strcmp(argv[i], \"--");
-                const char *s2 = strstr(p, "{\"--");
-                if (!s1 && !s2) break;
-                int table     = s1 == NULL || (s2 != NULL && s2 < s1);
-                p             = table ? s2 + strlen("{\"") : s1 + strlen("strcmp(argv[i], \"");
-                const char *e = strchr(p, '"');
-                if (!e || e - p >= 40) break;
-                char name[40];
-                memcpy(name, p, (size_t)(e - p));
-                name[e - p] = '\0';
-                int dup     = 0;
+            while ((p = next_flag(p, name, sizeof name)) != NULL) {
+                int dup = 0;
                 for (int i = 0; i < n; i++) dup |= strcmp(flags[i], name) == 0;
                 if (!dup && n < max) strcpy(flags[n++], name);
-                p = e;
             }
         }
         fclose(f);

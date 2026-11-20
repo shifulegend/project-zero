@@ -3,7 +3,7 @@ src/api/batch_scheduler.c 573
 src/api/http_server.c 577
 src/api/json_parse.c 853
 src/cli/config_cmd.c 531
-src/config/pz_config.c 749
+src/config/pz_config.c 667
 src/core/gguf_quant_iq.c 1587
 src/core/gguf_reader.c 607
 src/math/matmul_q4k.c 688

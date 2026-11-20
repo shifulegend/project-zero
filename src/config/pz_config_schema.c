@@ -108,8 +108,4 @@ const PzCfgKey g_pz_cfg_schema[] = {
      8760, 0},
 };
 
-/* Compile-time check that the table fits the arrays sized by PZ_CFG_SCHEMA_MAX. */
-typedef char pz_cfg_schema_fits_the_bound
-    [(sizeof(g_pz_cfg_schema) / sizeof(g_pz_cfg_schema[0]) <= PZ_CFG_SCHEMA_MAX) ? 1 : -1];
-
 const int g_pz_cfg_schema_len = (int)(sizeof(g_pz_cfg_schema) / sizeof(g_pz_cfg_schema[0]));

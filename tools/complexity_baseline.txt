@@ -5,7 +5,7 @@ src/agent/cmd_exec.c::execute_command 25 85
 src/agent/cmd_exec.c::path_arg_is_safe 13 15
 src/agent/tool_interceptor.c::ti_process_piece 13 32
 src/agent/user_approval.c::user_approval_prompt 12 22
-src/api/api_config_json.c::config_features 20 58
+src/api/api_config_json.c::config_features 16 48
 src/api/api_config_json.c::config_runtime 12 42
 src/api/api_info.c::api_model_meta 14 56
 src/api/api_info.c::api_prompt_cache_json 16 41
@@ -25,7 +25,7 @@ src/api/data_url.c::data_url_decode 18 44
 src/api/gen_queue.c::gen_queue_acquire_n 17 50
 src/api/http_chat.c::chat_acquire_units 11 34
 src/api/http_chat.c::chat_build_prompt 17 57
-src/api/http_chat.c::http_handle_chat_completions 33 102
+src/api/http_chat.c::http_handle_chat_completions 33 98
 src/api/http_headers.c::http_parse_content_length 13 16
 src/api/http_headers.c::http_scan_framing 17 38
 src/api/http_request.c::http_parse 30 51
@@ -60,7 +60,7 @@ src/cli/args_flags_extras.c::args_parse_extras 28 56
 src/cli/args_flags_generation.c::args_parse_generation 54 72
 src/cli/args_flags_memory.c::args_parse_memory 45 90
 src/cli/args_flags_search.c::args_parse_search 52 87
-src/cli/args_flags_serving.c::args_parse_serving 38 68
+src/cli/args_flags_serving.c::args_parse_serving 20 37
 src/cli/config_cmd.c::ask_model 35 74
 src/cli/config_cmd.c::pz_config_command 42 103
 src/cli/config_cmd.c::pz_config_prepare_argv 14 40
@@ -75,11 +75,11 @@ src/cli/session_checks.c::session_accuracy_checks 21 73
 src/cli/session_dist.c::session_distributed 20 66
 src/cli/session_extras.c::session_load_extras 14 58
 src/cli/session_model.c::load_native 31 133
-src/cli/session_server.c::configure_server 18 56
+src/cli/session_server.c::configure_server 18 50
 src/cli/session_startup.c::session_tune_hardware 32 90
 src/cli/session_tokenizer.c::session_setup_tokenizer 29 84
 src/config/pz_config.c::pz_config_format 23 39
-src/config/pz_config.c::pz_config_merge_argv 16 34
+src/config/pz_config.c::pz_config_merge_argv 12 30
 src/config/pz_config.c::pz_config_parse 41 94
 src/config/pz_config.c::pz_config_save 16 39
 src/config/pz_config.c::pz_config_validate 27 46
@@ -293,7 +293,6 @@ src/update/update_check.c::update_service_poll 12 42
 tests/agent_pty_runner.py::main 15 61
 tests/monkey_tester.py::monkey_test_cli 11 28
 tests/test_args_golden.c::main 17 78
-tests/test_args_golden.c::read_flags 11 36
 tests/test_cancel.c::test_concurrent_generations 11 38
 tests/test_classifier_quant.c::run_case 13 62
 tests/test_cls_kernels.c::run_case 11 30

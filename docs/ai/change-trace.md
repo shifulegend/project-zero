@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-20 — Jinja `eval` (378 lines) split into one function per node type
+- What: `chat_template_eval.cpp`'s `eval()` switch is now ~40 lines dispatching to `eval_getitem`, `eval_getslice`, `eval_getattr`, `eval_binop` (+ `binop_apply`), `eval_unop`, `eval_isdef`, `eval_call` (+ `eval_macro_call`); the filters, Python string methods and `namespace` / `range` moved to the new `chat_template_builtins.cpp` (`jinja_filter` over `filter_text` / `filter_value`, `jinja_string_method`, `jinja_call_*`). The two copies of the "argument i" lambda are one `call_arg()`. Largest function 53 lines (was 378).
+- Why: one switch held every expression type, the 14 filters and the string methods, with cyclomatic complexity 188.
+- Proof: the 144 renders of 18 real templates (4 message sets x 2 generation modes) and 3600 renders of 450 mutated templates give identical output hashes before and after; `test_chat_template` 24/24, `test_template_guard` 23/23, `test_prompt_injection` 11/11; CLI one-shot, REPL and best-of runs on SmolLM2 and BitNet (which render their GGUF templates) are identical to the previous commit.
+- Areas: `src/tokenizer/chat_template_{eval,builtins}.cpp`, `chat_template_internal.hpp`, `CMakeLists.txt`, `.claude/INDEX.md`.
+
 ### 2026-11-20 — `moe_ffn_forward` split into routing, a fused try and the legacy expert paths
 - What: the 300-line function is now ~60 lines over `moe_norm_and_route`, `prefetch_selected`, `moe_quantize_xb`, the fused try, and `moe_legacy_routed_batched` / `moe_legacy_routed_sequential` / `moe_legacy_shared` (new `moe_ffn_legacy.c`, helpers `batch_collect`, `batch_q4k_proj`, `batch_down_proj`, `expert_ffn_quantised`, `expert_ffn_ternary`, `shared_gate_up`); expert hit tracking moved to `moe_ffn_track.c` behind `moe_track_hit()`. `moe_ffn.c` 688 to 292 lines. The `--verbose` router line no longer prints a stray half line (`experts=[`) before the real one.
 - Why: one function mixed routing, three expert strategies and the shared expert, with the Q4_K batched path nested 5 deep.

@@ -314,6 +314,11 @@ std::vector<Token> jinja_lex(const std::string &tmpl);
 NodePtr jinja_parse_block(Parser &p);
 NodePtr jinja_parse_expr(Parser &p);
 Value jinja_eval(const Node *n, Scope &sc);
+/* Filter / string-method / builtin-call evaluation (chat_template_builtins.cpp). */
+Value jinja_filter(const Node *n, Scope &sc);
+Value jinja_string_method(const Node *n, Scope &sc);
+Value jinja_call_namespace(const Node *n, Scope &sc);
+Value jinja_call_range(const Node *n, Scope &sc);
 void jinja_exec(const Node *n, Scope &sc, std::string &out);
 
 #endif

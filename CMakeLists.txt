@@ -240,6 +240,7 @@ set(TOKENIZER_SOURCES
     src/tokenizer/chat_template_parse.cpp
     src/tokenizer/chat_template_parse_expr.cpp
     src/tokenizer/chat_template_eval.cpp
+    src/tokenizer/chat_template_builtins.cpp
     src/tokenizer/chat_template_exec.cpp
     src/tokenizer/template_guard.c
     src/tokenizer/tokenizer_load.c

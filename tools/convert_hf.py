@@ -25,11 +25,18 @@ Binary format (ternary MoE, scale_mode=2):
                 [Shared expert]: sw1+ss1, sw3+ss3, sw2+ss2
 """
 
-import os, struct, json
-import numpy as np
+import json
+import os
+import struct
+from argparse import ArgumentParser, Namespace
+from typing import Any, BinaryIO
+
 import ml_dtypes  # noqa: F401  (registers bfloat16 with numpy as a side effect)
+import numpy as np
+import numpy.typing as npt
 from safetensors import safe_open
-from argparse import ArgumentParser
+
+Tensor = npt.NDArray[np.float32]
 
 TN_MAGIC = 0x594E5254
 TN_VERSION = 1
@@ -39,7 +46,7 @@ TN_VERSION = 1
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def align64(f):
+def align64(f: BinaryIO) -> None:
     """Pads the output file with zeros up to the next 64-byte boundary."""
     pos = f.tell()
     rem = pos % 64
@@ -47,12 +54,12 @@ def align64(f):
         f.write(b"\x00" * (64 - rem))
 
 
-def packed_bytes(n):
+def packed_bytes(n: int) -> int:
     """Bytes needed to store n ternary values at 4 per byte (2 bits each)."""
     return (n + 3) // 4
 
 
-def quantize_ternary(w: np.ndarray):
+def quantize_ternary(w: npt.NDArray[Any]) -> tuple[np.float32, bytes]:
     """
     BitNet-style ternary quantization.
     scale = mean(|w|)  (L1 norm scale)
@@ -60,9 +67,9 @@ def quantize_ternary(w: np.ndarray):
     Returns (scale: float32, packed: bytes)
     """
     w = w.astype(np.float32).flatten()
-    scale = np.mean(np.abs(w))
+    scale = np.float32(np.mean(np.abs(w)))
     if scale < 1e-9:
-        scale = 1.0
+        scale = np.float32(1.0)
     q = np.clip(np.round(w / scale), -1, 1).astype(np.int8)
 
     # Pack 4 values per byte: -1→00, 0→01, 1→10  (LSB first)
@@ -76,7 +83,7 @@ def quantize_ternary(w: np.ndarray):
     return np.float32(scale), buf
 
 
-def write_ternary_block(f, w: np.ndarray):
+def write_ternary_block(f: BinaryIO, w: npt.NDArray[Any]) -> None:
     """Write packed ternary weight block + float32 scale, each 64-byte aligned."""
     scale, packed = quantize_ternary(w)
     f.write(packed)
@@ -85,13 +92,13 @@ def write_ternary_block(f, w: np.ndarray):
     align64(f)
 
 
-def write_fp32_block(f, w: np.ndarray):
+def write_fp32_block(f: BinaryIO, w: npt.NDArray[Any]) -> None:
     """Write float32 weight block, 64-byte aligned."""
     f.write(w.astype(np.float32).tobytes())
     align64(f)
 
 
-def write_bf16_block(f, w: np.ndarray):
+def write_bf16_block(f: BinaryIO, w: npt.NDArray[Any]) -> None:
     """Write bfloat16 weight block (native HF format), 64-byte aligned."""
     # bf16 = upper 2 bytes of float32
     f32 = w.astype(np.float32)
@@ -107,10 +114,10 @@ def write_bf16_block(f, w: np.ndarray):
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def build_weight_map(model_dir):
+def build_weight_map(model_dir: str) -> dict[str, str]:
     """Maps tensor names to safetensors shard files from the model's index (empty when the model is a single file)."""
     index_path = os.path.join(model_dir, "model.safetensors.index.json")
-    weight_map = {}
+    weight_map: dict[str, str] = {}
     if os.path.exists(index_path):
         with open(index_path, encoding="utf-8") as fh:
             weight_map = json.load(fh)["weight_map"]
@@ -125,14 +132,23 @@ def build_weight_map(model_dir):
     return weight_map
 
 
-def get_tensor(model_dir, weight_map, name):
+def get_tensor(model_dir: str, weight_map: dict[str, str], name: str) -> Tensor | None:
     """Reads one tensor as a numpy array from its shard, or None when the name is not in the weight map."""
     shard = weight_map.get(name)
     if not shard:
         return None
     path = os.path.join(model_dir, shard)
     with safe_open(path, framework="numpy", device="cpu") as st:
-        return st.get_tensor(name).astype(np.float32)
+        tensor: Tensor = st.get_tensor(name).astype(np.float32)
+    return tensor
+
+
+def require_tensor(model_dir: str, weight_map: dict[str, str], name: str) -> Tensor:
+    """Like get_tensor, but stops with a clear message when the model does not contain `name`."""
+    tensor = get_tensor(model_dir, weight_map, name)
+    if tensor is None:
+        raise SystemExit(f"error: tensor {name} not found in {model_dir}")
+    return tensor
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -159,7 +175,9 @@ def get_tensor(model_dir, weight_map, name):
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def expand_mla_attention(model_dir, weight_map, layer, cfg_hf):
+def expand_mla_attention(
+    model_dir: str, weight_map: dict[str, str], layer: int, cfg_hf: dict[str, Any]
+) -> None:
     """DEPRECATED — kept for reference only.
     This function pre-multiplied kv_b × kv_a to produce standard wk/wv matrices,
     which loses k_rope (shared positional encoding) and truncates q_rope heads.
@@ -171,7 +189,9 @@ def expand_mla_attention(model_dir, weight_map, layer, cfg_hf):
     )
 
 
-def write_mla_attention(f, model_dir, weight_map, layer, cfg_hf):
+def write_mla_attention(
+    f: BinaryIO, model_dir: str, weight_map: dict[str, str], layer: int, cfg_hf: dict[str, Any]
+) -> None:
     """Phase 17.9 — Write raw MLA projection matrices (no pre-multiplication).
 
     Writes three ternary-quantised blocks per layer:
@@ -184,9 +204,9 @@ def write_mla_attention(f, model_dir, weight_map, layer, cfg_hf):
     """
     pfx = f"model.layers.{layer}.self_attn"
 
-    q_full = get_tensor(model_dir, weight_map, f"{pfx}.q_proj.weight")
-    kv_a = get_tensor(model_dir, weight_map, f"{pfx}.kv_a_proj_with_mqa.weight")
-    kv_b = get_tensor(model_dir, weight_map, f"{pfx}.kv_b_proj.weight")
+    q_full = require_tensor(model_dir, weight_map, f"{pfx}.q_proj.weight")
+    kv_a = require_tensor(model_dir, weight_map, f"{pfx}.kv_a_proj_with_mqa.weight")
+    kv_b = require_tensor(model_dir, weight_map, f"{pfx}.kv_b_proj.weight")
 
     write_ternary_block(f, q_full)  # mla_wq  + mla_sq
     write_ternary_block(f, kv_a)  # mla_wkv_a + mla_skv_a
@@ -198,7 +218,7 @@ def write_mla_attention(f, model_dir, weight_map, layer, cfg_hf):
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def convert_dense(args):
+def convert_dense(args: Namespace) -> None:
     """Converts a dense (non-MoE) model directory to the pz .bin format."""
     with open(os.path.join(args.model, "config.json"), encoding="utf-8") as fh:
         cfg = json.load(fh)
@@ -217,8 +237,8 @@ def convert_dense(args):
 
     weight_map = build_weight_map(args.model)
 
-    def get(name):
-        """Reads a tensor of the model being converted."""
+    def get(name: str) -> Tensor | None:
+        """Reads a tensor of the model being converted (None when it is absent)."""
         return get_tensor(args.model, weight_map, name)
 
     with open(args.output, "wb") as f:
@@ -241,7 +261,7 @@ def convert_dense(args):
         )  # scale_mode=1
         align64(f)  # pad to 64
 
-        def write_fp32(name):
+        def write_fp32(name: str) -> None:
             """Writes a tensor as float32, 64-byte aligned; a missing tensor is skipped (with a warning, except lm_head.weight, which may be absent)."""
             arr = get(name)
             if arr is None:
@@ -283,7 +303,7 @@ def convert_dense(args):
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def convert_moe(args):
+def convert_moe(args: Namespace) -> None:
     """Converts a Mixture-of-Experts model directory to the pz .bin format (ternary experts, no sub-norms)."""
     with open(os.path.join(args.model, "config.json"), encoding="utf-8") as fh:
         cfg_hf = json.load(fh)
@@ -327,9 +347,9 @@ def convert_moe(args):
 
     weight_map = build_weight_map(args.model)
 
-    def get(name):
-        """Reads a tensor of the model being converted."""
-        return get_tensor(args.model, weight_map, name)
+    def get(name: str) -> Tensor:
+        """Reads a tensor of the model being converted; stops with a message when it is absent."""
+        return require_tensor(args.model, weight_map, name)
 
     with open(args.output, "wb") as f:
         # ── Header (64 bytes total) ──
@@ -399,13 +419,13 @@ def convert_moe(args):
             else:
                 # Non-MLA MoE (Mixtral style): standard wq/wk/wv
                 pfx_attn = f"model.layers.{l}.self_attn"
-                q_proj = get_tensor(args.model, weight_map, f"{pfx_attn}.q_proj.weight")
-                k_proj = get_tensor(args.model, weight_map, f"{pfx_attn}.k_proj.weight")
-                v_proj = get_tensor(args.model, weight_map, f"{pfx_attn}.v_proj.weight")
+                q_proj = get(f"{pfx_attn}.q_proj.weight")
+                k_proj = get(f"{pfx_attn}.k_proj.weight")
+                v_proj = get(f"{pfx_attn}.v_proj.weight")
                 write_ternary_block(f, q_proj)
                 write_ternary_block(f, k_proj)
                 write_ternary_block(f, v_proj)
-            wo = get_tensor(args.model, weight_map, f"model.layers.{l}.self_attn.o_proj.weight")
+            wo = get(f"model.layers.{l}.self_attn.o_proj.weight")
             # No attn_sub_norm for DeepSeek (scale_mode=2 skips it)
             write_ternary_block(f, wo)  # wo + so
 
@@ -467,7 +487,7 @@ def convert_moe(args):
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def main():
+def main() -> None:
     """Command-line entry point: parses the options and runs the dense or MoE conversion."""
     parser = ArgumentParser(description="Convert HuggingFace model to project-zero .bin format")
     parser.add_argument("--model", type=str, required=True, help="HF model directory")

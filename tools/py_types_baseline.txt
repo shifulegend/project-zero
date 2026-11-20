@@ -1,6 +1,5 @@
 # Python files that do not pass mypy --strict yet (tools/check_py_types.py): path, errors.
 # Entries may only shrink or go.
-tools/convert_hf.py 70
 tools/deepseek_bench_report.py 292
 tools/extract_multimodal.py 158
 tools/test_extract_multimodal.py 11

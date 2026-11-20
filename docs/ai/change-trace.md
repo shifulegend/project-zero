@@ -21,6 +21,10 @@
 - Proof: 6 unit tests (including the stale-floor case) pass; the checker passes on the fresh tracefile.
 - Areas: `tools/check_coverage.py`, `tools/test_check_coverage.py`, `tools/coverage_floor.txt`.
 
+### 2026-11-20 — Duplicated-code ratchet
+- What: `tools/check_duplication.py` (unit-tested, CI `changelog` job) normalises each source file (comments, blank and brace-only lines dropped), slides a 6-line window over it and counts the lines covered by a window that occurs elsewhere. Measured now: `src/` 8.02 % (the figure the finding quoted was 8.17 %), `webui/src` 16.77 %. Both are recorded in `tools/duplication_baseline.txt`; a higher share fails, and a share that fell by more than half a point fails until `--update` records it, so the number only goes down.
+- Why: decision 41.e / 1.g / 45.c (blocking ratchet on duplication, existing debt grandfathered and burned down).
+
 ### 2026-11-20 — One shared table for the one-character string escapes
 - What: `core/escape.c` (`tn_escape_simple`: `\" \\ \n \t \r \b \f`) replaces the two hand-written switches in `src/api/json_parse.c` (which keeps `\/` and `\uXXXX`) and `src/config/pz_config.c`. The two grammars stay separate (JSON and TOML differ), only the shared letters are one function. The config reader now also accepts `\r`, `\b` and `\f`, which TOML basic strings define; an unknown escape is still refused. `tests/test_escape.c` covers the table, JSON decoding and the TOML reader.
 - Verified: `make test` green on gcc and clang, CMake build, complexity / size / include-layer ratchets.

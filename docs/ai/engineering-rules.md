@@ -58,11 +58,10 @@
   tracked work, not
   precedent. CI (`tools/check_complexity.py`, lizard) fails on a new function in
   `src/`, `tools/` or `tests/`
-  (C, C++ and Python) over 100 lines or complexity 10 and on growth of a listed
+  (C, C++ and Python) over 100 lines, complexity 10 or nesting depth 3 (lizard's
+  NS) and on growth of a listed
   one (`tools/complexity_baseline.txt`, which may
-  only shrink); the 20-line target stays a review-time rule. Nesting depth 3 is
-  a review-time rule
-  until the tool reports it.
+  only shrink); the 20-line target stays a review-time rule.
 - **Complexity:** cyclomatic complexity 10 or less and nesting depth 3 or less
   per new function;
   prefer early returns over nested `if`s, and a table or a helper over a long

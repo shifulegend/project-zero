@@ -21,6 +21,10 @@
 - Proof: 6 unit tests (including the stale-floor case) pass; the checker passes on the fresh tracefile.
 - Areas: `tools/check_coverage.py`, `tools/test_check_coverage.py`, `tools/coverage_floor.txt`.
 
+### 2026-11-20 — Nesting depth 3 joins the complexity ratchet
+- What: `tools/check_complexity.py` also reads lizard's nesting depth (`-Ens`). A function over complexity 10, 100 lines or nesting 3 must be listed in `tools/complexity_baseline.txt` (now `key complexity lines nesting`, 409 entries, 41 of them new because of nesting only); a listed function may not grow in any of the three numbers; a new one fails. `tools/test_check_complexity.py` covers the nesting case.
+- Why: decision Q3 / 20.c (nesting limit 3 enforced through lizard, existing offenders grandfathered).
+
 ### 2026-11-20 — Docstrings on every Python function, enforced
 - What: all 172 missing public docstrings (modules, classes, methods, unit tests) were added; test methods get a sentence derived from their name. Ruff now selects `D100`-`D107` for every Python file, and `tools/check_docstrings.py` counts every `def` in `tools/` (private helpers, nested functions and tests included; dunder methods excepted), baseline 0. `tools/bench/test_bench.py` (507 lines) was split: the gate tests are in `test_bench_gate.py`, run by the same CI step. The text-mode `open()` calls already pass `encoding` (ruff `PLW1514` has been on since the Python hygiene commit), so the Windows-encoding half of the finding needed no change.
 - Why: decision Q20 (docstrings for private helpers and tests too).

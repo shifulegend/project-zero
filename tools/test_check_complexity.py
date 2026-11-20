@@ -14,33 +14,41 @@ class ComplexityTest(unittest.TestCase):
 
     def test_small_functions_pass(self) -> None:
         """Small functions pass."""
-        self.assertEqual(c.problems({"src/a.c::f": (10, 100)}, {}), [])
+        self.assertEqual(c.problems({"src/a.c::f": (10, 100, 3)}, {}), [])
 
     def test_a_new_complex_function_fails(self) -> None:
         """A new complex function fails."""
-        out = c.problems({"src/a.c::f": (11, 10)}, {})
+        out = c.problems({"src/a.c::f": (11, 10, 1)}, {})
         self.assertEqual(len(out), 1)
         self.assertIn("complexity 11", out[0])
 
     def test_a_new_long_function_fails(self) -> None:
         """A new long function fails."""
-        out = c.problems({"src/a.c::f": (3, 101)}, {})
+        out = c.problems({"src/a.c::f": (3, 101, 1)}, {})
         self.assertEqual(len(out), 1)
         self.assertIn("101 lines", out[0])
 
     def test_a_listed_function_may_stay_or_shrink_but_not_grow(self) -> None:
         """A listed function may stay or shrink but not grow."""
-        base = {"src/a.c::big": (40, 300)}
-        self.assertEqual(c.problems({"src/a.c::big": (40, 300)}, base), [])
-        self.assertEqual(c.problems({"src/a.c::big": (30, 200)}, base), [])
-        for grown in ((41, 300), (40, 301)):
+        base = {"src/a.c::big": (40, 300, 5)}
+        self.assertEqual(c.problems({"src/a.c::big": (40, 300, 5)}, base), [])
+        self.assertEqual(c.problems({"src/a.c::big": (30, 200, 4)}, base), [])
+        for grown in ((41, 300, 5), (40, 301, 5), (40, 300, 6)):
             out = c.problems({"src/a.c::big": grown}, base)
             self.assertEqual(len(out), 1)
             self.assertIn("grew", out[0])
 
+    def test_a_new_deeply_nested_function_fails(self) -> None:
+        """Nesting over 3 fails for a function that is not listed."""
+        out = c.problems({"src/a.c::f": (5, 30, 4)}, {})
+        self.assertEqual(len(out), 1)
+        self.assertIn("nesting 4", out[0])
+
     def test_a_listed_function_that_got_small_is_fine(self) -> None:
         """A listed function that got small is fine."""
-        self.assertEqual(c.problems({"src/a.c::big": (5, 20)}, {"src/a.c::big": (40, 300)}), [])
+        self.assertEqual(
+            c.problems({"src/a.c::big": (5, 20, 1)}, {"src/a.c::big": (40, 300, 5)}), []
+        )
 
     def test_the_real_tree_is_within_the_baseline(self) -> None:
         """The real tree is within the baseline."""

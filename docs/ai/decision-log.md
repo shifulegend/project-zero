@@ -1326,3 +1326,18 @@ Taken from the plan's defaults while the owner's design answers were pending (an
   helper function whose only purpose is a name. Banning it would push code toward more small
   helpers with one caller, which the single-responsibility rule does not ask for.
 - Status: decided by the maintainer (2026-11-20); no code change.
+
+### 2026-11-20 — Closed-enumeration switches stay switches; quant and architecture dispatch use tables
+- Decision: A `switch` over a closed enumeration of one grammar (the chat-template lexer and
+  AST, the pre-tokenizer, the JSON and GGUF value types, the KV cache type, the JSON grammar
+  states) stays a `switch`: the compiler checks that every case is handled and nothing outside
+  the file needs to know the cases. Dispatch that grows when a model family or a quantisation
+  format is added is a table instead: the architecture loaders are `k_arch_loaders` in
+  `src/runtime/gguf_loader.c` (name, loader, BF16-head flag), and per-format knowledge (block
+  size, bytes per block, dequantiser) belongs in one place per format. A new architecture or
+  quantisation is one table row plus its function, not an edit to a chain of `strcmp`s.
+- Rationale: a table is better where the set of cases is open and owned by data (models,
+  formats); a `switch` is better where the set is closed and owned by a grammar. Converting the
+  second kind would trade compiler exhaustiveness checks for indirection.
+- Status: decided by the maintainer (2026-11-20). The architecture table exists; moving the
+  per-format quantisation switches into one table is tracked under 8.a.

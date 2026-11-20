@@ -61,9 +61,19 @@
         }                                                                                          \
     } while (0)
 
+/* Loads the F32 norm weight named by `fmt` (blk.<l>....) into *dst; 0 when the tensor is missing. */
+static int load_layer_norm(const GGUFHeader *hdr, GGUFWeightStore *store, const char *fmt, int l,
+                           size_t n, float **dst) {
+    char name[128];
+    snprintf(name, sizeof(name), fmt, l);
+    *dst = gguf_ld_norm_to_f32(hdr, name, n, store);
+    return *dst != NULL;
+}
+
 TernaryError weights_from_gguf_qwen3moe(TransformerWeights *w, const Config *cfg,
                                         const GGUFHeader *hdr, const MoEConfig *mc,
                                         GGUFWeightStore *store) {
+    WeightsAttn *wa = &w->attn;
 
     int dim         = cfg->dim;
     int nl          = cfg->n_layers;
@@ -82,33 +92,28 @@ TernaryError weights_from_gguf_qwen3moe(TransformerWeights *w, const Config *cfg
 
     for (int l = 0; l < nl; l++) {
         /* Attention/FFN norms */
-        snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_norm.weight", l);
-        w->attn.norm[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)dim, store);
-        if (!w->attn.norm[l]) return TN_ERR_INVALID_WEIGHTS;
+        if (!load_layer_norm(hdr, store, "blk.%d.attn_norm.weight", l, (size_t)dim, &wa->norm[l]))
+            return TN_ERR_INVALID_WEIGHTS;
 
-        snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_norm.weight", l);
-        w->ffn.norm[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)dim, store);
-        if (!w->ffn.norm[l]) return TN_ERR_INVALID_WEIGHTS;
+        if (!load_layer_norm(hdr, store, "blk.%d.ffn_norm.weight", l, (size_t)dim, &w->ffn.norm[l]))
+            return TN_ERR_INVALID_WEIGHTS;
 
         /* Per-head QK-norm */
-        snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_q_norm.weight", l);
-        w->qwen3moe.attn_q_norm[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)head_dim, store);
-        if (!w->qwen3moe.attn_q_norm[l]) return TN_ERR_INVALID_WEIGHTS;
+        if (!load_layer_norm(hdr, store, "blk.%d.attn_q_norm.weight", l, (size_t)head_dim,
+                             &w->qwen3moe.attn_q_norm[l]))
+            return TN_ERR_INVALID_WEIGHTS;
 
-        snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_k_norm.weight", l);
-        w->qwen3moe.attn_k_norm[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)head_dim, store);
-        if (!w->qwen3moe.attn_k_norm[l]) return TN_ERR_INVALID_WEIGHTS;
+        if (!load_layer_norm(hdr, store, "blk.%d.attn_k_norm.weight", l, (size_t)head_dim,
+                             &w->qwen3moe.attn_k_norm[l]))
+            return TN_ERR_INVALID_WEIGHTS;
 
         /* GQA attention projections — q_rows/kv_rows widths (NOT dim*dim;
          * head_dim is independent of dim/n_heads for this arch). */
-        Q3MOE_LOAD_PROJ(w->attn.wq, "attn_q.weight", (size_t)q_rows * (size_t)dim, w->attn.wq_type);
-        Q3MOE_LOAD_PROJ(w->attn.wk, "attn_k.weight", (size_t)kv_rows * (size_t)dim,
-                        w->attn.wk_type);
-        Q3MOE_LOAD_PROJ(w->attn.wv, "attn_v.weight", (size_t)kv_rows * (size_t)dim,
-                        w->attn.wv_type);
-        Q3MOE_LOAD_PROJ(w->attn.wo, "attn_output.weight", (size_t)dim * (size_t)q_rows,
-                        w->attn.wo_type);
-        w->attn.sq[l] = w->attn.sk[l] = w->attn.sv[l] = w->attn.so[l] = 1.0f;
+        Q3MOE_LOAD_PROJ(wa->wq, "attn_q.weight", (size_t)q_rows * (size_t)dim, wa->wq_type);
+        Q3MOE_LOAD_PROJ(wa->wk, "attn_k.weight", (size_t)kv_rows * (size_t)dim, wa->wk_type);
+        Q3MOE_LOAD_PROJ(wa->wv, "attn_v.weight", (size_t)kv_rows * (size_t)dim, wa->wv_type);
+        Q3MOE_LOAD_PROJ(wa->wo, "attn_output.weight", (size_t)dim * (size_t)q_rows, wa->wo_type);
+        wa->sq[l] = wa->sk[l] = wa->sv[l] = wa->so[l] = 1.0f;
 
         /* Router (F32, zero-copy) */
         snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_gate_inp.weight", l);

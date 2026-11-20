@@ -11,38 +11,42 @@
 /* Bytes in a GiB, for the --remote-layers per-node RAM sizes (given and printed in GB). */
 #define BYTES_PER_GIB 1073741824.0
 
+/* Phase 28.1: --plan-layers prints a RAM-proportional split and exits. */
+static void plan_layers(PzSession *S) {
+    long long ram[DIST_MAX_NODES];
+    int starts[DIST_MAX_NODES], ends[DIST_MAX_NODES], n = 0;
+    char buf[DIST_SPEC_BUF];
+    snprintf(buf, sizeof(buf), "%s", S->args.dist.plan_layers);
+    char *save = NULL;
+    for (char *tok = strtok_r(buf, ",", &save); tok && n < DIST_MAX_NODES;
+         tok       = strtok_r(NULL, ",", &save))
+        ram[n++] = (long long)(atof(tok) * BYTES_PER_GIB);
+    if (n == 0) {
+        S->exit_code = 1;
+        TN_LOG_ERR("session_dist", "Error: --plan-layers needs GB,GB,... (max %d nodes)\n",
+                   DIST_MAX_NODES);
+    } else {
+        dist_plan_layers_by_ram(S->p.n_layers, ram, n, starts, ends);
+        printf("Layer plan for %d layers over %d node(s):\n", S->p.n_layers, n);
+        for (int i = 0; i < n; i++)
+            printf("  node %d (%.1f GB): layers %d-%d%s\n", i, (double)ram[i] / BYTES_PER_GIB,
+                   starts[i], ends[i], i == 0 ? "  (coordinator)" : "");
+        if (n > 1) {
+            printf("Coordinator: --remote-layers ");
+            for (int i = 1; i < n; i++)
+                printf("%sHOST%d:PORT@%d-%d", i > 1 ? "," : "", i, starts[i], ends[i]);
+            printf("\nWorker i:    --rpc-worker PORT --layers <its range>\n");
+        }
+    }
+    S->args.input.prompt       = NULL;
+    S->args.server.server_mode = 0;
+}
+
 /* Returns non-zero when the run ends here: the plan was printed, the worker finished, or the
  * remote layers could not be set up. */
 int session_distributed(PzSession *S) {
-    /* Phase 28.1: --plan-layers prints a RAM-proportional split and exits. */
     if (S->args.dist.plan_layers) {
-        long long ram[DIST_MAX_NODES];
-        int starts[DIST_MAX_NODES], ends[DIST_MAX_NODES], n = 0;
-        char buf[DIST_SPEC_BUF];
-        snprintf(buf, sizeof(buf), "%s", S->args.dist.plan_layers);
-        char *save = NULL;
-        for (char *tok = strtok_r(buf, ",", &save); tok && n < DIST_MAX_NODES;
-             tok       = strtok_r(NULL, ",", &save))
-            ram[n++] = (long long)(atof(tok) * BYTES_PER_GIB);
-        if (n == 0) {
-            S->exit_code = 1;
-            TN_LOG_ERR("session_dist", "Error: --plan-layers needs GB,GB,... (max %d nodes)\n",
-                       DIST_MAX_NODES);
-        } else {
-            dist_plan_layers_by_ram(S->p.n_layers, ram, n, starts, ends);
-            printf("Layer plan for %d layers over %d node(s):\n", S->p.n_layers, n);
-            for (int i = 0; i < n; i++)
-                printf("  node %d (%.1f GB): layers %d-%d%s\n", i, (double)ram[i] / BYTES_PER_GIB,
-                       starts[i], ends[i], i == 0 ? "  (coordinator)" : "");
-            if (n > 1) {
-                printf("Coordinator: --remote-layers ");
-                for (int i = 1; i < n; i++)
-                    printf("%sHOST%d:PORT@%d-%d", i > 1 ? "," : "", i, starts[i], ends[i]);
-                printf("\nWorker i:    --rpc-worker PORT --layers <its range>\n");
-            }
-        }
-        S->args.input.prompt       = NULL;
-        S->args.server.server_mode = 0;
+        plan_layers(S);
         return 1;
     }
 

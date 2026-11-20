@@ -255,8 +255,7 @@ int main(int argc, char **argv) {
     if (!saved_backend) saved_backend = "";
     setenv("TN_FORCE_BACKEND", best_simd, 1);
     tn_simd_init();
-    const TnHardwareProfile *hw = tn_hardware_profile_init();
-    (void)hw;
+    tn_hardware_profile_init();
 
     TransformerWeights w;
     memset(&w, 0, sizeof(w));
@@ -265,9 +264,8 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    tn_i8 *wdata = (tn_i8 *)mf.data + 64; /* skip 64-byte header */
-    MoEConfig moe_cfg; /* the legacy .bin format has no MoE section: all zero = dense */
-    memset(&moe_cfg, 0, sizeof(moe_cfg));
+    tn_i8 *wdata      = (tn_i8 *)mf.data + 64; /* skip 64-byte header */
+    MoEConfig moe_cfg = {.is_moe = false};     /* the legacy .bin format has no MoE section */
     if (weights_map(&w, &cfg, &moe_cfg, wdata, mf.size - 64) != TN_OK) {
         fprintf(stderr, "weights_map failed\n");
         return 1;

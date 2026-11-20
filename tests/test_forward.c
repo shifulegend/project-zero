@@ -512,8 +512,7 @@ static void test_forward_kv_i8_close_to_f32(void) {
     free_synthetic_weights(&w, &cfg);
 }
 
-/* int4 KV (2026-10-19): head_dim 32 so the i4 groups apply; a head_dim that is
- * not a multiple of 32 falls back to i8. */
+/* int4 KV (2026-10-19): head_dim 32 so the i4 groups apply; other head_dims fall back to i8. */
 static void test_forward_kv_i4_close_to_f32(void) {
     Config cfg     = tiny_config();
     cfg.dim        = 128;

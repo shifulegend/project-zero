@@ -53,20 +53,19 @@
 TernaryError weights_from_gguf_qwen35(TransformerWeights *w, const Config *cfg,
                                       const GGUFHeader *hdr, const MoEConfig *mc,
                                       GGUFWeightStore *store) {
+    WeightsAttn *wa = &w->attn;
 
-    int dim        = cfg->dim;
-    int hidden_dim = cfg->hidden_dim;
-    int nl         = cfg->n_layers;
-    int n_head     = cfg->n_heads;
-    int head_dim   = mc->attn_head_dim; /* NOT dim/n_heads for this arch */
-    int key_dim    = mc->ssm_group_count * mc->ssm_state_size;
-    int value_dim  = mc->ssm_inner_size;
-    int conv_dim   = key_dim * 2 + value_dim;
-    int n_v_heads  = mc->ssm_time_step_rank;
+    int dim       = cfg->dim;
+    int nl        = cfg->n_layers;
+    int head_dim  = mc->attn_head_dim; /* NOT dim/n_heads for this arch */
+    int key_dim   = mc->ssm_group_count * mc->ssm_state_size;
+    int value_dim = mc->ssm_inner_size;
+    int conv_dim  = key_dim * 2 + value_dim;
+    int n_v_heads = mc->ssm_time_step_rank;
     char name_buf[128];
 
     for (int l = 0; l < nl; l++) {
-        Q35_LOAD_NORM(w->attn.norm, "attn_norm.weight", dim);
+        Q35_LOAD_NORM(wa->norm, "attn_norm.weight", dim);
         Q35_LOAD_NORM(w->ffn.norm, "post_attention_norm.weight", dim);
 
         /* Dense SwiGLU FFN — shared by both layer types, same as generic path */
@@ -78,13 +77,13 @@ TernaryError weights_from_gguf_qwen35(TransformerWeights *w, const Config *cfg,
         if (q35_layer_is_full_attn(mc, l)) {
             /* Full attention: GQA + QK-norm + partial rotary + gated output.
              * wq holds the combined [Q | gate] projection (width 2*n_head*head_dim). */
-            Q35_LOAD_Q2_0(w->attn.wq, "attn_q.weight");
-            Q35_LOAD_Q2_0(w->attn.wk, "attn_k.weight");
-            Q35_LOAD_Q2_0(w->attn.wv, "attn_v.weight");
-            Q35_LOAD_Q2_0(w->attn.wo, "attn_output.weight");
+            Q35_LOAD_Q2_0(wa->wq, "attn_q.weight");
+            Q35_LOAD_Q2_0(wa->wk, "attn_k.weight");
+            Q35_LOAD_Q2_0(wa->wv, "attn_v.weight");
+            Q35_LOAD_Q2_0(wa->wo, "attn_output.weight");
             Q35_LOAD_NORM(w->q35.attn_q_norm, "attn_q_norm.weight", head_dim);
             Q35_LOAD_NORM(w->q35.attn_k_norm, "attn_k_norm.weight", head_dim);
-            w->attn.sq[l] = w->attn.sk[l] = w->attn.sv[l] = w->attn.so[l] = 1.0f;
+            wa->sq[l] = wa->sk[l] = wa->sv[l] = wa->so[l] = 1.0f;
         } else {
             /* Linear attention (Gated DeltaNet) */
             Q35_LOAD_Q2_0(w->q35.ssm_qkv, "attn_qkv.weight");
@@ -162,12 +161,9 @@ TernaryError weights_from_gguf_qwen35(TransformerWeights *w, const Config *cfg,
      * (attention routes to qwen35_attention_forward and never reads these;
      * ffn_forward's dense SwiGLU path does, for the shared-FFN portion.) */
     for (int l = 0; l < nl; l++) {
-        w->attn.wq_type[l] = w->attn.wk_type[l] = w->attn.wv_type[l] = w->attn.wo_type[l] =
-            WEIGHT_TYPE_Q2_0;
+        wa->wq_type[l] = wa->wk_type[l] = wa->wv_type[l] = wa->wo_type[l] = WEIGHT_TYPE_Q2_0;
         w->ffn.w1_type[l] = w->ffn.w2_type[l] = w->ffn.w3_type[l] = WEIGHT_TYPE_Q2_0;
     }
-    (void)hidden_dim;
-    (void)n_head;
 
     TN_OUT_INF("gguf_q35",
                "[GGUF-Q35] Weights loaded (%d layers, full_attention_interval=%d, "

@@ -30,33 +30,34 @@ void session_start_update_check(PzSession *S) {
     }
 }
 
+/* Accuracy probe (2026-11-18): a LM head the user asked to be quantised must still compute
+ * the model. Over --quality-tolerance it falls back to BF16, loudly; --quality-tolerance 0
+ * keeps the request as given. --self-check below runs the same probe on demand. */
+static void check_lossy_head(PzSession *S) {
+    const TnHardwareProfile *hpc = tn_hardware_profile_get();
+    int lossy_head = hpc && hpc->classifier_explicit && hpc->classifier_fmt != TN_CLS_BF16;
+    if (lossy_head && S->args.eval.quality_tolerance > 0.0 && !S->args.eval.self_check &&
+        !S->args.eval.perplexity_file && !S->args.watermark.watermark_detect) {
+        SelfCheckOptions so = {S->args.eval.quality_tolerance, S->args.eval.self_check_tokens};
+        SelfCheckResult sr;
+        if (selfcheck_run(&so, &S->p, &S->w, S->s, &S->mc, &S->t, S->tp, &sr) == TN_OK &&
+            sr.verdict == SC_FAIL) {
+            char line[SELFCHECK_LINE_BUF];
+            selfcheck_format(&sr, line, sizeof(line));
+            tn_log(TN_LOG_INFO, "session_checks",
+                   "[%s]\n[self-check] the %s LM head costs more than --quality-tolerance on this "
+                   "model: using a BF16 head. Keep the request with a higher --quality-tolerance "
+                   "(0 = no bar).\n",
+                   line, sr.classifier);
+            tn_hardware_profile_swap_classifier(TN_CLS_BF16);
+        }
+    }
+}
+
 /* A LM head the user asked to be quantised must still compute the model, and the int8
  * activations of a ternary model are accuracy-checked once (verdict cached). */
 void session_accuracy_checks(PzSession *S) {
-    /* Accuracy probe (2026-11-18): a LM head the user asked to be quantised must still compute
-     * the model. Over --quality-tolerance it falls back to BF16, loudly; --quality-tolerance 0
-     * keeps the request as given. --self-check below runs the same probe on demand. */
-    {
-        const TnHardwareProfile *hpc = tn_hardware_profile_get();
-        int lossy_head = hpc && hpc->classifier_explicit && hpc->classifier_fmt != TN_CLS_BF16;
-        if (lossy_head && S->args.eval.quality_tolerance > 0.0 && !S->args.eval.self_check &&
-            !S->args.eval.perplexity_file && !S->args.watermark.watermark_detect) {
-            SelfCheckOptions so = {S->args.eval.quality_tolerance, S->args.eval.self_check_tokens};
-            SelfCheckResult sr;
-            if (selfcheck_run(&so, &S->p, &S->w, S->s, &S->mc, &S->t, S->tp, &sr) == TN_OK &&
-                sr.verdict == SC_FAIL) {
-                char line[SELFCHECK_LINE_BUF];
-                selfcheck_format(&sr, line, sizeof(line));
-                tn_log(
-                    TN_LOG_INFO, "session_checks",
-                    "[%s]\n[self-check] the %s LM head costs more than --quality-tolerance on this "
-                    "model: using a BF16 head. Keep the request with a higher --quality-tolerance "
-                    "(0 = no bar).\n",
-                    line, sr.classifier);
-                tn_hardware_profile_swap_classifier(TN_CLS_BF16);
-            }
-        }
-    }
+    check_lossy_head(S);
 
     /* --act-quant auto on a ternary model: the int8 numerics are accuracy-checked once per model
      * and setting (verdict cached in ~/.project-zero/selfcheck.txt), and float activations take

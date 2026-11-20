@@ -117,6 +117,22 @@ int session_detect_format(PzSession *S) {
     return 0;
 }
 
+/* --act-quant auto: say which activation numerics the calibration picked (measured int8 tier
+ * against float tier). */
+static void announce_act_quant(const TnCalibrationResult *calib, int dispatcher_int8) {
+    const char *aq = tn_calibration_act_quant(calib);
+    double t_i8 = 0, t_fl = 0;
+    if (tn_calibration_act_timing(calib, dispatcher_int8, &t_i8, &t_fl))
+        tn_log_out(TN_LOG_INFO, "session_startup",
+                   "Activation quantization: %s (auto, %s; measured int8 tier %.1f vs float tier "
+                   "%.1f tok/s)\n",
+                   aq ? aq : tn_act_quant_effective(), aq ? "calibrated" : "highest tier", t_i8,
+                   t_fl);
+    else
+        TN_OUT_INF("session_startup", "Activation quantization: %s (auto, %s)\n",
+                   aq ? aq : tn_act_quant_effective(), aq ? "calibrated" : "highest tier");
+}
+
 /* SIMD tier, calibration, classifier, activation numerics and the thread pool. Returns 1 when
  * the pool cannot be created. */
 int session_tune_hardware(PzSession *S) {
@@ -185,19 +201,7 @@ int session_tune_hardware(PzSession *S) {
         }
     }
     /* --act-quant auto: the numerics are the calibrated tier's (measured int8 against float). */
-    if (have_calib && S->args.eval.act_quant == 0) {
-        const char *aq = tn_calibration_act_quant(&calib);
-        double t_i8 = 0, t_fl = 0;
-        if (tn_calibration_act_timing(&calib, dispatcher_int8, &t_i8, &t_fl))
-            tn_log_out(
-                TN_LOG_INFO, "session_startup",
-                "Activation quantization: %s (auto, %s; measured int8 tier %.1f vs float tier "
-                "%.1f tok/s)\n",
-                aq ? aq : tn_act_quant_effective(), aq ? "calibrated" : "highest tier", t_i8, t_fl);
-        else
-            TN_OUT_INF("session_startup", "Activation quantization: %s (auto, %s)\n",
-                       aq ? aq : tn_act_quant_effective(), aq ? "calibrated" : "highest tier");
-    }
+    if (have_calib && S->args.eval.act_quant == 0) announce_act_quant(&calib, dispatcher_int8);
 
     /* ── Classifier selection ───────────────────────────────────────────── */
     if (S->args.perf.classifier_override == 3) {

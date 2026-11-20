@@ -11,12 +11,16 @@
 #include "runtime/hardware_profile.h"
 #include "runtime/mamba_state.h"
 
-TernaryError weights_alloc_pointers(TransformerWeights *w, const Config *cfg) {
-    int n_layers = cfg->n_layers;
-    /* Callers are responsible for zeroing the struct (memset(w, 0, sizeof(*w)))
-     * before calling this function.  Doing it here would clobber fields the
-     * caller may have set (e.g. layers_are_ternary) — violating modularity. */
+/* 1 when none of the n pointers is NULL. */
+static int all_allocated(const void *const *ptrs, size_t n) {
+    for (size_t i = 0; i < n; i++)
+        if (!ptrs[i]) return 0;
+    return 1;
+}
 
+/* The dense attention and FFN pointer arrays (one entry per layer, NULL contents). Returns 1 when
+ * every allocation succeeded. */
+static int alloc_dense_arrays(TransformerWeights *w, int n_layers) {
     w->attn.wq       = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
     w->attn.wk       = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
     w->attn.wv       = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
@@ -38,14 +42,25 @@ TernaryError weights_alloc_pointers(TransformerWeights *w, const Config *cfg) {
 
     /* Per-layer, per-projection weight type (WEIGHT_TYPE_*) — see weights.h
      * for why this can't be a single shared flag. */
-    w->attn.wq_type = (int *)calloc(n_layers, sizeof(int));
-    w->attn.wk_type = (int *)calloc(n_layers, sizeof(int));
-    w->attn.wv_type = (int *)calloc(n_layers, sizeof(int));
-    w->attn.wo_type = (int *)calloc(n_layers, sizeof(int));
-    w->ffn.w1_type  = (int *)calloc(n_layers, sizeof(int));
-    w->ffn.w2_type  = (int *)calloc(n_layers, sizeof(int));
-    w->ffn.w3_type  = (int *)calloc(n_layers, sizeof(int));
+    w->attn.wq_type            = (int *)calloc(n_layers, sizeof(int));
+    w->attn.wk_type            = (int *)calloc(n_layers, sizeof(int));
+    w->attn.wv_type            = (int *)calloc(n_layers, sizeof(int));
+    w->attn.wo_type            = (int *)calloc(n_layers, sizeof(int));
+    w->ffn.w1_type             = (int *)calloc(n_layers, sizeof(int));
+    w->ffn.w2_type             = (int *)calloc(n_layers, sizeof(int));
+    w->ffn.w3_type             = (int *)calloc(n_layers, sizeof(int));
+    const void *const arrays[] = {
+        w->attn.wq,      w->attn.wk,       w->attn.wv,      w->attn.wo,      w->attn.sq,
+        w->attn.sk,      w->attn.sv,       w->attn.so,      w->ffn.w1,       w->ffn.w2,
+        w->ffn.w3,       w->ffn.s1,        w->ffn.s2,       w->ffn.s3,       w->attn.norm,
+        w->ffn.norm,     w->attn.sub_norm, w->ffn.sub_norm, w->attn.wq_type, w->attn.wk_type,
+        w->attn.wv_type, w->attn.wo_type,  w->ffn.w1_type,  w->ffn.w2_type,  w->ffn.w3_type};
+    return all_allocated(arrays, sizeof(arrays) / sizeof(arrays[0]));
+}
 
+/* The Qwen3.5 hybrid-attention, Qwen3-MoE QK-norm and bias pointer arrays. Returns 1 when every
+ * allocation succeeded. */
+static int alloc_arch_arrays(TransformerWeights *w, int n_layers) {
     /* Qwen3.5/3.6 hybrid attention — cheap per-layer pointer arrays,
      * always allocated (NULL contents) like attn.sub_norm above;
      * populated only when MoEConfig.has_linear_attn is set. */
@@ -64,21 +79,26 @@ TernaryError weights_alloc_pointers(TransformerWeights *w, const Config *cfg) {
     /* Qwen3-MoE QK-norm — cheap per-layer pointer arrays, always allocated
      * (NULL contents) like q35_attn_q_norm above; populated only when
      * MoEConfig.has_qk_norm is set. */
-    w->qwen3moe.attn_q_norm = (float **)calloc(n_layers, sizeof(float *));
-    w->qwen3moe.attn_k_norm = (float **)calloc(n_layers, sizeof(float *));
-    w->attn.bq              = (float **)calloc(n_layers, sizeof(float *));
-    w->attn.bk              = (float **)calloc(n_layers, sizeof(float *));
-    w->attn.bv              = (float **)calloc(n_layers, sizeof(float *));
+    w->qwen3moe.attn_q_norm    = (float **)calloc(n_layers, sizeof(float *));
+    w->qwen3moe.attn_k_norm    = (float **)calloc(n_layers, sizeof(float *));
+    w->attn.bq                 = (float **)calloc(n_layers, sizeof(float *));
+    w->attn.bk                 = (float **)calloc(n_layers, sizeof(float *));
+    w->attn.bv                 = (float **)calloc(n_layers, sizeof(float *));
+    const void *const arrays[] = {
+        w->q35.attn_q_norm,      w->q35.attn_k_norm, w->q35.ssm_qkv, w->q35.ssm_gate,
+        w->q35.ssm_conv1d,       w->q35.ssm_dt_bias, w->q35.ssm_a,   w->q35.ssm_alpha,
+        w->q35.ssm_beta,         w->q35.ssm_norm,    w->q35.ssm_out, w->qwen3moe.attn_q_norm,
+        w->qwen3moe.attn_k_norm, w->attn.bq,         w->attn.bk,     w->attn.bv};
+    return all_allocated(arrays, sizeof(arrays) / sizeof(arrays[0]));
+}
 
-    if (!w->attn.wq || !w->attn.wk || !w->attn.wv || !w->attn.wo || !w->attn.sq || !w->attn.sk ||
-        !w->attn.sv || !w->attn.so || !w->ffn.w1 || !w->ffn.w2 || !w->ffn.w3 || !w->ffn.s1 ||
-        !w->ffn.s2 || !w->ffn.s3 || !w->attn.norm || !w->ffn.norm || !w->attn.sub_norm ||
-        !w->ffn.sub_norm || !w->attn.wq_type || !w->attn.wk_type || !w->attn.wv_type ||
-        !w->attn.wo_type || !w->ffn.w1_type || !w->ffn.w2_type || !w->ffn.w3_type ||
-        !w->q35.attn_q_norm || !w->q35.attn_k_norm || !w->q35.ssm_qkv || !w->q35.ssm_gate ||
-        !w->q35.ssm_conv1d || !w->q35.ssm_dt_bias || !w->q35.ssm_a || !w->q35.ssm_alpha ||
-        !w->q35.ssm_beta || !w->q35.ssm_norm || !w->q35.ssm_out || !w->qwen3moe.attn_q_norm ||
-        !w->qwen3moe.attn_k_norm || !w->attn.bq || !w->attn.bk || !w->attn.bv) {
+TernaryError weights_alloc_pointers(TransformerWeights *w, const Config *cfg) {
+    int n_layers = cfg->n_layers;
+    /* Callers are responsible for zeroing the struct (memset(w, 0, sizeof(*w)))
+     * before calling this function.  Doing it here would clobber fields the
+     * caller may have set (e.g. layers_are_ternary) — violating modularity. */
+
+    if (!alloc_dense_arrays(w, n_layers) || !alloc_arch_arrays(w, n_layers)) {
         weights_free_pointers(w);
         return TN_ERR_OOM;
     }
@@ -215,17 +235,16 @@ TernaryError weights_map(TransformerWeights *w, const Config *cfg, const MoEConf
                  *   mla_wkv_a : (kv_lora+rope) × dim       → 576  × 2048
                  *   mla_wkv_b : n_kv_heads*(nope+v) × kv_lora → 4096 × 512
                  * wq[l] and wk[l]/wv[l] are left NULL for MLA layers. */
-                size_t wq_r =
-                    (size_t)cfg->n_heads * (mc->mla.qk_nope_head_dim + mc->mla.qk_rope_head_dim);
-                size_t wkva_r = (size_t)(mc->mla.kv_lora_rank + mc->mla.qk_rope_head_dim);
-                size_t wkvb_r =
-                    (size_t)cfg->n_kv_heads * (mc->mla.qk_nope_head_dim + mc->mla.v_head_dim);
+                const MlaDims *md = &mc->mla;
+                size_t wq_r = (size_t)cfg->n_heads * (md->qk_nope_head_dim + md->qk_rope_head_dim);
+                size_t wkva_r = (size_t)(md->kv_lora_rank + md->qk_rope_head_dim);
+                size_t wkvb_r = (size_t)cfg->n_kv_heads * (md->qk_nope_head_dim + md->v_head_dim);
 
                 MAP_PTR(w->mla.wq[l], packed_bytes(wq_r * dim));
                 COPY_VAL_ALIGN(&w->mla.sq[l], 4);
                 MAP_PTR(w->mla.wkv_a[l], packed_bytes(wkva_r * dim));
                 COPY_VAL_ALIGN(&w->mla.skv_a[l], 4);
-                MAP_PTR(w->mla.wkv_b[l], packed_bytes(wkvb_r * (size_t)mc->mla.kv_lora_rank));
+                MAP_PTR(w->mla.wkv_b[l], packed_bytes(wkvb_r * (size_t)md->kv_lora_rank));
                 COPY_VAL_ALIGN(&w->mla.skv_b[l], 4);
             } else {
                 MAP_PTR(w->attn.wq[l], packed_bytes(size_q));
@@ -282,10 +301,7 @@ TernaryError weights_map(TransformerWeights *w, const Config *cfg, const MoEConf
     weights_build_classifier_quant(w, cfg);
 
     /* 7. MoE expert weights (immediately follows the regular weight section) */
-    if (mc && mc->is_moe) {
-        TernaryError moe_err = moe_weights_map(w, cfg, mc, data, data_size, &ptr);
-        if (moe_err != TN_OK) return moe_err;
-    }
+    if (mc && mc->is_moe) return moe_weights_map(w, cfg, mc, data, data_size, &ptr);
 
 #undef MAP_PTR
 #undef ALIGN64

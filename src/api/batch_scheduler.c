@@ -117,8 +117,7 @@ static void job_finish_locked(BatchJob *job) {
 /* ── Slots and KV budget ──────────────────────────────────────────────── */
 
 static long long kv_need(const GenSession *g, const Config *cfg) {
-    long long need =
-        (long long)g->prompt.n_tokens + (g->req.max_tokens > 0 ? g->req.max_tokens : 0);
+    long long need = g->prompt.n_tokens + (g->req.max_tokens > 0 ? g->req.max_tokens : 0);
     return need < cfg->seq_len ? need : cfg->seq_len;
 }
 
@@ -138,12 +137,11 @@ static void slot_release_kv(BatchScheduler *sched, BatchSlot *slot) {
 static int pick_slot(BatchScheduler *sched, const BatchJob *job, int *match_out) {
     int best = -1, best_match = -1;
     long long best_commit = 0;
+    const GenPrompt *jp   = &job->g.prompt;
     for (int i = 0; i < sched->opt.n_slots; i++) {
         BatchSlot *slot = &sched->slots[i];
         if (slot->job) continue;
-        int m       = job->use_cache
-                          ? prefix_cache_match(slot->pc, job->g.prompt.tokens, job->g.prompt.n_tokens)
-                          : 0;
+        int m       = job->use_cache ? prefix_cache_match(slot->pc, jp->tokens, jp->n_tokens) : 0;
         long long c = slot->s->kv_committed;
         if (best < 0 || m > best_match || (m == best_match && c < best_commit)) {
             best        = i;

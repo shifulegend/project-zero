@@ -59,6 +59,12 @@ static void print_memory_list(RagContext *rag) {
     }
 }
 
+/* /think and /json: flips a setting and says what it is now. */
+static void toggle_mode(bool *flag, const char *label) {
+    *flag = !*flag;
+    printf("[Config] %s %s\n", label, *flag ? "ENABLED" : "DISABLED");
+}
+
 void run_repl(Config *p, TransformerWeights *w, const MoEConfig *mc, VisionConfig *vc,
               VisionWeights *vw, VisionProjector *vp, RunState *s, Tokenizer *t, ThreadPool *tp,
               CliArgs *args, RagContext *rag, DraftModel *draft) {
@@ -111,16 +117,12 @@ void run_repl(Config *p, TransformerWeights *w, const MoEConfig *mc, VisionConfi
         }
 
         if (strcmp(line, "/think") == 0) {
-            args->search.enable_reasoning = !args->search.enable_reasoning;
-            printf("[Config] Reasoning mode %s\n",
-                   args->search.enable_reasoning ? "ENABLED" : "DISABLED");
+            toggle_mode(&args->search.enable_reasoning, "Reasoning mode");
             continue;
         }
 
         if (strcmp(line, "/json") == 0) {
-            args->sampling.json_mode = !args->sampling.json_mode;
-            printf("[Config] JSON-constrained mode %s\n",
-                   args->sampling.json_mode ? "ENABLED" : "DISABLED");
+            toggle_mode(&args->sampling.json_mode, "JSON-constrained mode");
             continue;
         }
 

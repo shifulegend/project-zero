@@ -21,6 +21,11 @@
 - Proof: 6 unit tests (including the stale-floor case) pass; the checker passes on the fresh tracefile.
 - Areas: `tools/check_coverage.py`, `tools/test_check_coverage.py`, `tools/coverage_floor.txt`.
 
+### 2026-11-20 — Functions back at or below their pre-grouping size
+- What: the 22 functions and 4 files that the struct grouping had made 1-8 lines longer (longer member paths wrap at 100 columns) are back at or below their recorded size, with the baselines re-recorded at the real, lower values (complexity 405 entries, 28 files over 500 lines). Done by extraction, not by raising a baseline: `attention_project_qkv` / `attention_project_qkv_rows` (`attention_proj.c`), `project_qkv` (Qwen3-MoE), `mla_kq_scale`, `alloc_quantized_kv` and `run_kv_store_complete`, `alloc_dense_arrays` / `alloc_arch_arrays`, `load_layer_norm`, `check_lossy_head`, `load_lora`, `plan_layers`, `announce_act_quant`, `selfcheck_json`, `toggle_mode`, and for the image upload `write_image_temp_file` and `run_vision_for_message` (the vision fix keeps complexity 11 and its original size). The norm fields of `WeightsAttn` / `WeightsFfn` lost their redundant prefixes (`attn.norm`, `ffn.sub_norm`). Dead code removed on the way: two unused locals in the Qwen3.5 loader.
+- Verified: `make test` green on gcc and clang, CMake build, format check, tool unit tests; greedy output identical to the previous build on SmolLM2, BitNet and DeepSeek-V2-Lite, interleaved tokens/s within noise on SmolLM2 and BitNet; the REPL toggles, `POST /v1/selfcheck` and `tests/e2e_vision_long_prompt.sh` (15,000-character message with an image, two concurrent image requests) give the same results as before.
+- Why: Open decisions #14 (no baseline bump: extract helpers so every function stays at or below its original entry).
+
 ### 2026-11-20 — Nesting depth 3 joins the complexity ratchet
 - What: `tools/check_complexity.py` also reads lizard's nesting depth (`-Ens`). A function over complexity 10, 100 lines or nesting 3 must be listed in `tools/complexity_baseline.txt` (now `key complexity lines nesting`, 409 entries, 41 of them new because of nesting only); a listed function may not grow in any of the three numbers; a new one fails. `tools/test_check_complexity.py` covers the nesting case.
 - Why: decision Q3 / 20.c (nesting limit 3 enforced through lizard, existing offenders grandfathered).

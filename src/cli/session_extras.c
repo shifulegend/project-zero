@@ -19,6 +19,35 @@
 
 #define VIS_PROMPT_BUF 8192 /* prompt with the image part removed */
 
+/* ── Phase 19: LoRA adapter (optional) ───────────────────────────────────
+ * --lora is the only way this ever activates -- see cli/args.h. Applies
+ * to the *primary* model's RunState only (s->active_lora), never the
+ * draft model's -- see docs/ai/decision-log.md for the scope rationale.
+ * v1 covers the generic dense/GQA attention/FFN path only; lora_load()
+ * itself doesn't know or care about the model's architecture family, so
+ * loading succeeds even for MLA/Qwen3-MoE/hybrid models, but
+ * attention_forward()/ffn_forward() only read active_lora on the
+ * generic path -- the adapter would silently have no effect on those
+ * architectures. */
+static int load_lora(PzSession *S) {
+    /* Qwen3 (QK-norm path) has head_dim from GGUF key_length, so its Q
+     * is n_heads*head_dim wide, not dim (Phase 19-B, 2026-10-19). */
+    int lhd      = (S->mc.has_qk_norm && S->mc.attn_head_dim > 0) ? S->mc.attn_head_dim : 0;
+    int l_q_dim  = lhd ? S->p.n_heads * lhd : S->p.dim;
+    int l_kv_dim = lhd ? S->p.n_kv_heads * lhd : config_kv_dim(&S->p);
+    if (lora_load_ex(&S->lora, S->args.input.lora_path, S->p.dim, l_q_dim, l_kv_dim,
+                     S->p.hidden_dim, S->p.n_layers) != TN_OK) {
+        TN_LOG_ERR("session_extras", "Error: failed to load --lora '%s'.\n",
+                   S->args.input.lora_path);
+        return 1;
+    }
+    S->lora_active    = true;
+    S->s->active_lora = &S->lora;
+    TN_LOG_INF("lora", "[lora] '%s' active (rank %d, alpha %.1f, q_dim %d, kv_dim %d)\n",
+               S->args.input.lora_path, S->lora.rank, (double)S->lora.alpha, l_q_dim, l_kv_dim);
+    return 0;
+}
+
 /* Loads --draft-model, --prm, --lora and --memory-db. Returns 1 when --draft-model or --lora was
  * given and could not be loaded (the caller releases the session). */
 int session_load_extras(PzSession *S) {
@@ -46,33 +75,7 @@ int session_load_extras(PzSession *S) {
         TN_LOG_INF("prm", "[prm] continuing without a PRM: steps are scored by the model itself\n");
     }
 
-    /* ── Phase 19: LoRA adapter (optional) ───────────────────────────────────
-     * --lora is the only way this ever activates -- see cli/args.h. Applies
-     * to the *primary* model's RunState only (s->active_lora), never the
-     * draft model's -- see docs/ai/decision-log.md for the scope rationale.
-     * v1 covers the generic dense/GQA attention/FFN path only; lora_load()
-     * itself doesn't know or care about the model's architecture family, so
-     * loading succeeds even for MLA/Qwen3-MoE/hybrid models, but
-     * attention_forward()/ffn_forward() only read active_lora on the
-     * generic path -- the adapter would silently have no effect on those
-     * architectures. */
-    if (S->args.input.lora_path) {
-        /* Qwen3 (QK-norm path) has head_dim from GGUF key_length, so its Q
-         * is n_heads*head_dim wide, not dim (Phase 19-B, 2026-10-19). */
-        int lhd      = (S->mc.has_qk_norm && S->mc.attn_head_dim > 0) ? S->mc.attn_head_dim : 0;
-        int l_q_dim  = lhd ? S->p.n_heads * lhd : S->p.dim;
-        int l_kv_dim = lhd ? S->p.n_kv_heads * lhd : config_kv_dim(&S->p);
-        if (lora_load_ex(&S->lora, S->args.input.lora_path, S->p.dim, l_q_dim, l_kv_dim,
-                         S->p.hidden_dim, S->p.n_layers) != TN_OK) {
-            TN_LOG_ERR("session_extras", "Error: failed to load --lora '%s'.\n",
-                       S->args.input.lora_path);
-            return 1;
-        }
-        S->lora_active    = true;
-        S->s->active_lora = &S->lora;
-        TN_LOG_INF("lora", "[lora] '%s' active (rank %d, alpha %.1f, q_dim %d, kv_dim %d)\n",
-                   S->args.input.lora_path, S->lora.rank, (double)S->lora.alpha, l_q_dim, l_kv_dim);
-    }
+    if (S->args.input.lora_path && load_lora(S)) return 1;
 
     /* ── Phase 15: RAG initialisation ────────────────────────────────────── */
 

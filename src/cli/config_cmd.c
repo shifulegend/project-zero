@@ -8,6 +8,7 @@
 
 #include "core/log.h"
 #include "core/platform.h"
+#include "core/sys_probe.h"
 #include "kv_cache/kv_strategy.h"
 #if TN_POSIX
 #include <dirent.h>
@@ -483,49 +484,48 @@ int pz_config_command(int argc, char **argv) {
     return rc;
 }
 
-int pz_config_prepare_argv(int argc, char **argv, char ***out_argv) {
-    static PzConfig cfg; /* values referenced by the returned argv: process lifetime */
-    /* The returned array is owned here and freed on the next call; holding it
-     * in a static keeps it reachable, so LeakSanitizer stays quiet on every
-     * exit path of main() (2026-10-22: the fuzzer flagged it as a leak). */
-    static char **owned;
-    free(owned);
-    owned          = NULL;
-    *out_argv      = argv;
-    int skip       = 0;
-    const char *ne = getenv("PZ_NO_CONFIG");
-    if (ne && *ne && strcmp(ne, "0") != 0) skip = 1;
-    int keep        = 0;
-    char **filtered = (char **)malloc(((size_t)argc + 1) * sizeof(char *));
-    if (!filtered) return argc;
+/* --no-config anywhere in argv is dropped and skips the file and environment. */
+static int strip_no_config(int argc, char **argv, char **filtered, int *skip) {
+    int keep = 0;
     for (int i = 0; i < argc; i++) {
-        if (i > 0 && strcmp(argv[i], "--no-config") == 0) {
-            skip = 1;
-            continue;
-        }
-        filtered[keep++] = argv[i];
+        if (i > 0 && strcmp(argv[i], "--no-config") == 0)
+            *skip = 1;
+        else
+            filtered[keep++] = argv[i];
     }
     filtered[keep] = NULL;
-    *out_argv = owned = filtered;
-    char path[1024];
-    pz_config_publish(NULL, NULL, 0);
-    pz_config_free(&cfg); /* no-op on first use (static: zeroed) */
-    if (pz_config_init(&cfg) != 0) return keep;
-    int have_path = pz_config_path(path, sizeof(path)) == 0;
-    /* Provenance for GET /v1/config (Phase 40.3). With --no-config only the
-     * user's flags count, but the file location is still published so the
-     * web UI can save to it. */
+    return keep;
+}
+
+void pz_launch_config_free(PzLaunchConfig *lc) {
+    free(lc->owned);
+    pz_config_free(&lc->cfg);
+    memset(lc, 0, sizeof(*lc));
+}
+
+int pz_config_prepare_argv(PzLaunchConfig *lc, int argc, char **argv, char ***out_argv) {
+    pz_launch_config_free(lc);
+    *out_argv       = argv;
+    int skip        = tn_sys_env_flag(NULL, "PZ_NO_CONFIG");
+    char **filtered = (char **)malloc(((size_t)argc + 1) * sizeof(char *));
+    if (!filtered) return argc;
+    int keep  = strip_no_config(argc, argv, filtered, &skip);
+    *out_argv = lc->owned = filtered;
+    if (pz_config_init(&lc->cfg) != 0) return keep;
+    int have_path = pz_config_path(lc->path, sizeof(lc->path)) == 0;
+    /* Provenance for GET /v1/config: --no-config keeps only the flags, but the file location
+     * stays known so the web UI can still save to it. */
     if (!skip) {
-        if (have_path) pz_config_load(&cfg, path, warn_stderr);
-        pz_config_apply_env(&cfg, warn_stderr);
+        if (have_path) pz_config_load(&lc->cfg, lc->path, warn_stderr);
+        pz_config_apply_env(&lc->cfg, warn_stderr);
     }
-    pz_config_mark_cli(&cfg, keep, filtered);
-    pz_config_publish(&cfg, have_path ? path : NULL, !skip);
+    pz_config_mark_cli(&lc->cfg, keep, filtered);
+    lc->provenance = (PzProvenance){&lc->cfg, have_path ? lc->path : NULL, !skip};
     if (skip) return keep;
     char **merged = NULL;
-    int n         = pz_config_merge_argv(&cfg, keep, filtered, &merged);
+    int n         = pz_config_merge_argv(&lc->cfg, keep, filtered, &merged);
     if (n < 0) return keep;
     free(filtered);
-    *out_argv = owned = merged;
+    *out_argv = lc->owned = merged;
     return n;
 }

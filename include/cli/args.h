@@ -5,6 +5,7 @@
 
 #include "api/server_config.h"
 #include "cli/color.h"
+#include "config/pz_config.h"
 #include "core/error.h"
 #include "core/platform.h"
 #include "reasoning/mcts.h"
@@ -126,6 +127,7 @@ typedef struct {
     int max_prompt_bytes;     /* --max-prompt-bytes <N>: text bytes per request (1 MiB; 0 = any) */
     int parallel;             /* --parallel <N>: chat requests served at once (1) */
     int parallel_batch;       /* --parallel-batch <N>: rows per batched pass (128) */
+    PzProvenance config_provenance; /* where each setting came from, set by main (not a flag) */
 } CliServer;
 
 /* Console output: verbosity, colour, log format, --version. */

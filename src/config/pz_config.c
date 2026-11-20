@@ -629,26 +629,8 @@ int pz_config_mark_cli(PzConfig *c, int argc, char **argv) {
     return marked;
 }
 
-static const PzConfig *g_active;
-static char g_active_path[1024];
-static int g_active_file_used;
-
-void pz_config_publish(const PzConfig *c, const char *path, int file_used) {
-    g_active           = c;
-    g_active_file_used = c ? file_used : 0;
-    snprintf(g_active_path, sizeof(g_active_path), "%s", (c && path) ? path : "");
-}
-
-const char *pz_config_active_source(const char *key) {
+const char *pz_provenance_source(const PzProvenance *p, const char *key) {
     /* entry_for, not pz_config_get: a key given only as a flag is unset here. */
-    const PzCfgEntry *e = (g_active && key) ? entry_for((PzConfig *)g_active, key) : NULL;
+    const PzCfgEntry *e = (p && p->config && key) ? entry_for((PzConfig *)p->config, key) : NULL;
     return pz_config_source_name(e ? e->src : PZ_SRC_DEFAULT);
-}
-
-const char *pz_config_active_path(void) {
-    return g_active_path[0] ? g_active_path : NULL;
-}
-
-int pz_config_active_file_used(void) {
-    return g_active_file_used;
 }

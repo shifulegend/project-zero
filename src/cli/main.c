@@ -14,13 +14,11 @@
 /* A CLI run is a PzSession (cli/session.h) moved through the phases below; each phase lives in
  * src/cli/session_*.c. Every failure path ends in session_release(), which frees whatever stage
  * was reached. */
-int main(int argc, char **argv) {
-    pz_warn_if_legacy_invocation(argc > 0 ? argv[0] : NULL);
-    /* Phase 40: `pz config ...` manages the settings file; every other run
-     * reads it (and PZ_* env) as defaults placed before the user's flags. */
-    if (argc > 1 && strcmp(argv[1], "config") == 0) return pz_config_command(argc - 1, argv + 1);
-    argc = pz_config_prepare_argv(argc, argv, &argv);
+static int hardware_setup_failed(PzSession *ses) {
+    return session_detect_format(ses) != 0 || session_tune_hardware(ses) != 0;
+}
 
+static int run(int argc, char **argv, const PzProvenance *provenance) {
     PzSession *ses = (PzSession *)calloc(1, sizeof(*ses));
     if (!ses) {
         TN_LOG_ERR("main", "Error: out of memory\n");
@@ -30,6 +28,7 @@ int main(int argc, char **argv) {
         free(ses);
         return 1;
     }
+    ses->args.server.config_provenance = *provenance;
     session_apply_log_options(ses);
     {
         KVStrategyOptions kv_opt = {ses->args.perf.ctx_size, ses->args.perf.kv_ram_fraction,
@@ -46,7 +45,7 @@ int main(int argc, char **argv) {
     if (ses->args.output.verbose) g_tn_verbose = 1;
 
     session_open_dump(ses);
-    if (session_detect_format(ses) != 0 || session_tune_hardware(ses) != 0) {
+    if (hardware_setup_failed(ses)) {
         free(ses);
         return 1;
     }
@@ -77,4 +76,17 @@ fail:
     session_release(ses);
     free(ses);
     return 1;
+}
+
+int main(int argc, char **argv) {
+    pz_warn_if_legacy_invocation(argc > 0 ? argv[0] : NULL);
+    /* Phase 40: `pz config ...` manages the settings file; every other run
+     * reads it (and PZ_* env) as defaults placed before the user's flags. */
+    if (argc > 1 && strcmp(argv[1], "config") == 0) return pz_config_command(argc - 1, argv + 1);
+    PzLaunchConfig launch;
+    memset(&launch, 0, sizeof(launch));
+    argc   = pz_config_prepare_argv(&launch, argc, argv, &argv);
+    int rc = run(argc, argv, &launch.provenance);
+    pz_launch_config_free(&launch);
+    return rc;
 }

@@ -107,16 +107,16 @@ const char *pz_config_source_name(int src);
  * as PZ_SRC_CLI. Returns the number of keys marked. */
 int pz_config_mark_cli(PzConfig *c, int argc, char **argv);
 
-/* Process-wide record of the configuration the engine started with, for
- * reporting (GET /v1/config). `c` must outlive all readers; NULL clears it.
- * path may be NULL (no config location); file_used is 0 when the file and
- * environment were skipped (--no-config / PZ_NO_CONFIG). */
-void pz_config_publish(const PzConfig *c, const char *path, int file_used);
-/* Source of `key` in the published config ("default" when none / unknown). */
-const char *pz_config_active_source(const char *key);
-/* Path of the published config file, or NULL. */
-const char *pz_config_active_path(void);
-/* 1 when the published config read the file and environment. */
-int pz_config_active_file_used(void);
+/* Where the configuration the engine started with came from, for reporting (GET /v1/config).
+ * The owner (main) keeps `config` alive for the whole run. All pointers may be NULL; file_used
+ * is 0 when the file and environment were skipped (--no-config / PZ_NO_CONFIG). */
+typedef struct {
+    const PzConfig *config;
+    const char *path; /* the settings file, or NULL when there is no config location */
+    int file_used;
+} PzProvenance;
+
+/* Source of `key` ("default", "file", "env" or "cli"); "default" for NULL or an unknown key. */
+const char *pz_provenance_source(const PzProvenance *p, const char *key);
 
 #endif /* TN_CONFIG_PZ_CONFIG_H */

@@ -115,7 +115,8 @@ void session_run_server(PzSession *ses) {
     ApiContext api_ctx;
     api_context_init(&api_ctx, &ses->p, &ses->w, ses->s, &ses->mc, &ses->t, ses->tp);
     configure_server(ses, &api_ctx);
-    api_ctx.update = &ses->update.svc;
+    api_ctx.update                   = &ses->update.svc;
+    api_ctx.server_config.provenance = ses->args.server.config_provenance;
 
     TernaryError api_err = api_server_start(ses->args.server.server_port, &api_ctx);
     if (api_err != TN_OK) {

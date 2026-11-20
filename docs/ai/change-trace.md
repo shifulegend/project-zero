@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-20 — config provenance is passed along, not published through globals
+- What: `pz_config_prepare_argv` fills a caller-owned `PzLaunchConfig` (settings, merged argv, file path, `PzProvenance`) that `main` owns and frees; the provenance is copied through `CliServer.config_provenance` into `ServerConfig.provenance`, which `/v1/config` and `POST /v1/config/defaults` read. `pz_config_publish` and the `pz_config_active_*` functions are gone (`pz_provenance_source` replaces the lookup). `main` is split into `run` plus a small `main`.
+- Why: finding 14.f; five process-wide statics (published config pointer, its path and flag, the merged settings, the argv owner) removed. Mutable statics 54 -> 50. Also drops two complexity-baseline entries (`main`, `pz_config_prepare_argv`) and shrinks two file-size entries; nothing was raised.
+- Proof: `make test` gcc and clang, TSan, release build; new test asserts provenance points at the launch's own settings; live server compared with the baseline binary for file, env, flag and `--no-config` runs (identical `/v1/config` config block, identical saved file). Clang caught a missing include on the way (fixed).
+- Areas: `include/config/pz_config.h`, `src/config/pz_config.c`, `include/cli/config_cmd.h`, `src/cli/{config_cmd,main,session_server}.c`, `include/cli/args.h`, `include/api/server_config.h`, `src/api/config_endpoint.c`, `tests/test_config_{cmd,endpoint}.c`.
+
 ### 2026-11-20 — physical-core count and the re-probe switch go through TnSysProbe
 - What: the `/proc/cpuinfo` physical-core count (`tn_sys_physical_cores`, rewritten from one nesting-7 function into three small ones) and the `PZ_BW_REPROBE` switch (`tn_sys_env_flag`) moved from `src/runtime/hardware_profile.c` into `src/core/sys_probe.c`, taking the injectable probe table.
 - Why: finding 11.a (inject TnSysProbe for hardware_profile.c). A test can now hand in a fake `/proc/cpuinfo` and environment; the old function also left the complexity baseline.

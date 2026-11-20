@@ -8,6 +8,7 @@
  */
 
 #include "api/cancel.h"
+#include "config/pz_config.h"
 #include "core/limits.h"
 #include "reasoning/mcts_options.h"
 #include "transformer/gen_params.h"
@@ -112,7 +113,8 @@ typedef struct {
      * args_fill_gen_params), published to clients via GET /v1/config so the web UI renders its
      * controls from the server's real values. Pointer fields (system_prompt, stop) borrow argv. */
     GenerationParams gen_defaults;
-    char *model_id; /* reported by /v1/models; main.c sets the model file's basename */
+    char *model_id;          /* reported by /v1/models; main.c sets the model file's basename */
+    PzProvenance provenance; /* where each setting came from, published by /v1/config */
 } ServerConfig;
 
 /* Zero-initialise. Must be called before use. */

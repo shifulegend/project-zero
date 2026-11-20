@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-20 — attention-kernel setup runs and logs once
+- What: removed the second copy of the attention-kernel block in `session_apply_runtime_options`; added `tests/e2e_verbose_output.sh` and a CI step.
+- Why: the copy came in with the `main()` split (commit 8c256a2) and made `--verbose` print `Attention: ...` twice; the baseline binary prints it once.
+- Proof: the new e2e fails on the old code and passes on the fix; `make test` gcc and clang; complexity and size baselines unchanged or lower.
+- Areas: `src/cli/session_extras.c`, `tests/e2e_verbose_output.sh`, `.github/workflows/ci.yml`, `docs/ai/mistakes.md`.
+
 ### 2026-11-20 — KV sizing options are passed to the code that uses them, not set globally
 - What: `KVStrategyOptions` (--ctx-size, --kv-ram-fraction, --kv-type, --kv-offload) is built from the arguments by `args_fill_kv_options` and handed to `select_kv_strategy_ex`, `kv_strategy_print`, `kv_strategy_budget_tokens`, `run_state_alloc_ex`, `load_gguf_model`, `draft_model_load`, `prm_load` and the batch scheduler's slot allocation (`ServerConfig.kv` for the server). `kv_strategy_set_options`, `kv_strategy_kv_type` and `kv_strategy_offload_dir` are gone. The native-model KV sizing moved into `size_native_context`.
 - Why: finding 14.f; the process-wide options static is removed (mutable statics 50 -> 49, baseline lowered). Anything allocated without options (the RAG embedder) now uses F32 in RAM instead of silently inheriting `--kv-type`. `start_parallel` also resets the whole `ApiParallel` on each start.

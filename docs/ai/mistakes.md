@@ -5,6 +5,11 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-11-20.
 
+### 2026-11-20 — `--verbose` printed the attention-kernel line twice
+- What: when `main()` was split into one function per phase, the attention-kernel block (configure + the `Attention: ...` log line) ended up in `session_apply_runtime_options` twice. The second copy re-ran the same configuration, so only the duplicated output was visible; the parity run listed it as an "intended difference" instead of questioning it.
+- Fix: one copy; `tests/e2e_verbose_output.sh` (CI) fails if a startup line appears more than once (it fails on the old code with 2 prints).
+- Lesson: a parity difference nobody can name a finding for is a regression until proven otherwise; after a mechanical function split, diff the moved blocks for copies.
+
 ### 2026-11-20 — `--seed` was ignored by speculative decoding
 - What: `speculative_generate_with_callback()` seeded its RNG with `time(NULL)` and had no seed parameter, so with `--draft-model` two runs of `--seed 5 --temperature 1.0` gave different text (plain generation passes `gp->seed`). Found while writing a differential harness for the function: it needed a pinned clock to compare runs, which showed the seed path was missing.
 - Fix: a `seed` parameter (negative = clock) wired from the CLI and REPL; `test_speculative_seed_is_reproducible` (same seed twice, a second apart, same text; another seed differs) fails on the old code.

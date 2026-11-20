@@ -383,6 +383,9 @@ jobs:
       - name: Run E2E structured-logging test (JSON lines, redaction)
         run: tests/e2e_log_format.sh models/smollm2-q8_0.gguf
 
+      - name: Verbose startup lines are printed once
+        run: tests/e2e_verbose_output.sh models/smollm2-q8_0.gguf
+
       - name: Run E2E cross-site POST test (foreign Origin refused on every POST route)
         run: tests/e2e_cross_site_post.sh models/smollm2-q8_0.gguf
 

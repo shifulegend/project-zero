@@ -139,21 +139,4 @@ void session_apply_runtime_options(PzSession *ses) {
             attn_kernel_name(attn_kernel_get()), attn_tile_get(), attn_parallel_min_ctx_get(),
             ci->l1d_bytes / 1024, ci->l2_bytes / 1024, tn_cache_source_name(ci->source));
     }
-
-
-    /* Phase 27: attention kernel + head-parallel threshold (tile size from L1d). */
-    attn_kernel_configure(ses->args.perf.attn_kernel
-                              ? (AttnKernel)attn_kernel_parse(ses->args.perf.attn_kernel)
-                              : ATTN_KERNEL_STANDARD,
-                          ses->args.perf.attn_tile, config_head_dim(&ses->p));
-    attn_parallel_min_ctx_set(ses->args.perf.attn_parallel_min_ctx);
-    if (ses->args.output.verbose || ses->args.perf.attn_kernel) {
-        const CacheInfo *ci = tn_cache_info();
-        tn_log_out(
-            TN_LOG_INFO, "session_extras",
-            "Attention: %s kernel (tile %d), heads parallel from %d ctx; L1d %d KiB, L2 %d KiB "
-            "(%s)\n",
-            attn_kernel_name(attn_kernel_get()), attn_tile_get(), attn_parallel_min_ctx_get(),
-            ci->l1d_bytes / 1024, ci->l2_bytes / 1024, tn_cache_source_name(ci->source));
-    }
 }

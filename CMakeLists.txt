@@ -198,7 +198,6 @@ set(MATH_SOURCES
     src/math/ternary_matmul_packed.c
     src/math/ternary_matmul_packed_avx2.c
     src/math/ternary_matmul_packed_avx512.c
-    src/math/ternary_matmul_lut_avx512bw.c
     src/math/ternary_matmul_packed_vnni.c
     src/math/ternary_matmul_packed_avx_vnni.c
     src/math/ternary_matmul_packed_dotprod.c
@@ -463,7 +462,7 @@ if(PZ_DIST AND NOT MSVC)
         src/math/matmul_f16.c src/math/quantize_i8.c src/math/parallel_matmul.c
         src/math/q8_0_act.c src/math/kvq4_avx2.c src/math/cls_kernels.c)
     set(PZ_AVX512_SRCS
-        src/math/ternary_matmul_packed_avx512.c src/math/ternary_matmul_lut_avx512bw.c
+        src/math/ternary_matmul_packed_avx512.c
         src/math/elementwise_avx512.c src/math/quantize_i8_avx512.c
         src/math/rmsnorm_avx512.c src/math/softmax_avx512.c src/math/kvq4_avx512.c src/math/cls_kernels_avx512.c)
     set_source_files_properties(${PZ_AVX2_SRCS} PROPERTIES

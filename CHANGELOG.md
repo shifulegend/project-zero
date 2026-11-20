@@ -21,6 +21,10 @@ section becomes the version's entry and is published as its GitHub release notes
 - Redo the first-run hardware calibration: SIMD tiers are compared in interleaved rounds and one replaces the default only when it wins a sign test and clears a 5% margin, and the thread count stays at the physical-core count unless another count is clearly faster. Existing calibration caches are discarded and rebuilt once on the next run (about a minute).
 - Label the web UI's per-reply usage line in tokens ("7 reply tokens · 37 prompt tokens" instead of "7 tokens · 37 prompt"); hovering it explains that the prompt count includes the chat template and any system message.
 
+### Removed
+
+- Remove the unused AVX-512 LUT ternary kernel (`src/math/ternary_matmul_lut_avx512bw.c`, LGPL-3.0-or-later) and its test: nothing in the engine called it, the binary and its speed are unchanged. `LICENSE-LGPL-3.0.txt` is no longer shipped in release archives or installed, and the README, `NOTICE` and the SBOM say MIT only.
+
 ### Added
 
 - Add `--log-format text|json` and `--log-level debug|info|warn|error` (also `pz config set log-format` / `log-level` and `PZ_LOG_FORMAT` / `PZ_LOG_LEVEL`): every diagnostic the program writes to stderr, and the status lines it prints at startup (model summary, calibration, hardware choices, server messages), now go through one logger. With `--log-format json` stderr carries exactly one JSON object per line (`{"ts","level","component","msg"}`), startup status lines move from stdout to stderr as JSON, an `Authorization:` header, `Bearer` token or `api_key=` value is redacted, and control characters are escaped so a value cannot forge a log line; stdout then holds only program output (generated text, the banner and hardware table, `--help`, results). `--verbose` still turns on the debug lines (it now means `--log-level debug`). The default text format prints the same bytes as before.

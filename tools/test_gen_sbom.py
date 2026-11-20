@@ -41,9 +41,9 @@ class SbomTest(unittest.TestCase):
             bom = json.loads(out.read_text())
             self.assertEqual(bom["metadata"]["component"]["version"], "9.8.7")
 
-    def test_both_licenses_are_declared(self) -> None:
+    def test_the_licence_is_declared(self) -> None:
         lic = {x["license"]["id"] for x in gen_sbom.build("1")["metadata"]["component"]["licenses"]}
-        self.assertEqual(lic, {"MIT", "LGPL-3.0-or-later"})
+        self.assertEqual(lic, {"MIT"})
 
 
 if __name__ == "__main__":

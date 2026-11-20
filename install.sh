@@ -179,7 +179,7 @@ cp "$SRC/pz" "$BIN_DIR/.pz.new"
 chmod 0755 "$BIN_DIR/.pz.new"
 mv -f "$BIN_DIR/.pz.new" "$BIN_DIR/pz"          # atomic: a running pz keeps its old file
 printf '%s\n' "$BIN_DIR/pz" > "$MANIFEST.new"
-for f in LICENSE NOTICE LICENSE-LGPL-3.0.txt README.md CHANGELOG.md; do
+for f in LICENSE NOTICE README.md CHANGELOG.md; do
     if [ -f "$SRC/$f" ]; then
         cp "$SRC/$f" "$DOC_DIR/$f"
         printf '%s\n' "$DOC_DIR/$f" >> "$MANIFEST.new"

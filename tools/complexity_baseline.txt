@@ -124,7 +124,6 @@ src/math/parallel_matmul.c::matmul_bf16_task 14 117
 src/math/parallel_matmul.c::matmul_bf16_tokens_task 19 44
 src/math/q8_0_act.c::parallel_matmul_q8a_tokens 12 33
 src/math/simd_dispatch.c::tn_simd_init 51 121
-src/math/ternary_matmul_lut_avx512bw.c::process_row 11 68
 src/math/ternary_matmul_packed.c::ternary_matmul_packed 11 39
 src/math/ternary_matmul_packed_avx2.c::ternary_matmul_packed_avx2 14 79
 src/math/ternary_matmul_packed_avx_vnni.c::ternary_matmul_packed_avx_vnni 17 101

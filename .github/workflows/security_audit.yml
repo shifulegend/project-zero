@@ -31,7 +31,7 @@ jobs:
         # own CMake build already produces (ENABLE_TESTS=ON by default).
         run: |
           cd build
-          ctest -R "^(test_simd|test_math|test_q2_0_matmul|test_q2k_matvec|test_q4k_matmul|test_q4k_x8_matmul|audit_math|test_ternary_lut_avx512bw)$" --output-on-failure
+          ctest -R "^(test_simd|test_math|test_q2_0_matmul|test_q2k_matvec|test_q4k_matmul|test_q4k_x8_matmul|audit_math)$" --output-on-failure
 
   tsan:
     name: ThreadSanitizer (TS-5.3)

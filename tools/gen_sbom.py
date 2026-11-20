@@ -70,8 +70,8 @@ def build(version: str) -> dict[str, Any]:
                 "bom-ref": f"project-zero@{version}",
                 "name": "project-zero",
                 "version": version,
-                "licenses": [{"license": {"id": "MIT"}}, {"license": {"id": "LGPL-3.0-or-later"}}],
-                "description": "MIT, except src/math/ternary_matmul_lut_avx512bw.c (LGPL-3.0-or-later)",
+                "licenses": [{"license": {"id": "MIT"}}],
+                "description": "MIT",
             }
         },
         "components": comps,

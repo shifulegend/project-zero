@@ -1315,3 +1315,14 @@ Taken from the plan's defaults while the owner's design answers were pending (an
 - Also: the Q2_0 VNNI batch matmul's five per-call `malloc`s collapse to one checked,
   overflow-guarded carve — fewer allocator round-trips on the hot path.
 - Status: OPEN (PR to `master`).
+
+### 2026-11-20 — Scoped bare blocks (`{ ... }` inside a function) are allowed style in C
+- Decision: A bare `{ ... }` block that limits the scope of a few locals (or of a `const` alias) is
+  idiomatic ISO C and stays allowed. Function definitions keep the project's K&R brace placement
+  (`clang-format` enforces it); a bare block is formatted as any other block, with its opening
+  brace on the line of its own and its content indented.
+- Rationale: C99 and later give blocks their own scope, so a block is the plain way to end the
+  lifetime of temporaries (for example the `base`/`pb` pointers in `configure_server`) without a
+  helper function whose only purpose is a name. Banning it would push code toward more small
+  helpers with one caller, which the single-responsibility rule does not ask for.
+- Status: decided by the maintainer (2026-11-20); no code change.

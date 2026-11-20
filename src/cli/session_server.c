@@ -53,8 +53,8 @@ static void configure_limits(ApiContext *ctx, const CliServer *server_p) {
 
 /* Generation flags become the server-side defaults every request (and the web UI, via
  * GET /v1/config) starts from; the rest are the API hardening and UI knobs. */
-static void configure_server(PzSession *S, ApiContext *ctx) {
-    const CliServer *server_p = &S->args.server;
+static void configure_server(PzSession *ses, ApiContext *ctx) {
+    const CliServer *server_p = &ses->args.server;
     /* Phase 21: Start OpenAI-compatible API server */
 
     /* Phase 22: API hardening knobs, off by default */
@@ -65,61 +65,62 @@ static void configure_server(PzSession *S, ApiContext *ctx) {
     if (server_p->api_key) ctx->server_config.auth.api_key = dup_setting(server_p->api_key);
     ctx->server_config.metrics.enabled            = server_p->metrics_enabled;
     ctx->server_config.ui.web_ui                  = server_p->web_ui_mode;
-    ctx->server_config.numerics.act_quant         = S->args.eval.act_quant;
-    ctx->server_config.numerics.quality_tolerance = S->args.eval.quality_tolerance;
-    ctx->server_config.numerics.self_check_tokens = S->args.eval.self_check_tokens;
+    ctx->server_config.numerics.act_quant         = ses->args.eval.act_quant;
+    ctx->server_config.numerics.quality_tolerance = ses->args.eval.quality_tolerance;
+    ctx->server_config.numerics.self_check_tokens = ses->args.eval.self_check_tokens;
     /* Generation flags become the server-side defaults every request
      * (and the web UI, via GET /v1/config) starts from. */
-    args_fill_gen_params(&S->args, &ctx->server_config.gen_defaults);
+    args_fill_gen_params(&ses->args, &ctx->server_config.gen_defaults);
     /* Phase 30: --mcts* are the request defaults; --prm the judge. */
-    ctx->server_config.search.mcts     = S->args.search.mcts;
-    ctx->server_config.search.mcts_max = S->args.search.mcts_max;
-    if (S->prm.loaded) {
-        const char *pb                      = strrchr(S->args.search.prm_path, '/');
-        ctx->prm                            = &S->prm;
-        ctx->server_config.search.prm_model = pb ? pb + 1 : S->args.search.prm_path;
+    ctx->server_config.search.mcts     = ses->args.search.mcts;
+    ctx->server_config.search.mcts_max = ses->args.search.mcts_max;
+    if (ses->prm.loaded) {
+        const char *pb                      = strrchr(ses->args.search.prm_path, '/');
+        ctx->prm                            = &ses->prm;
+        ctx->server_config.search.prm_model = pb ? pb + 1 : ses->args.search.prm_path;
     }
     {
-        const char *base            = strrchr(S->args.input.model_path, '/');
-        ctx->server_config.model_id = dup_setting(base ? base + 1 : S->args.input.model_path);
+        const char *base            = strrchr(ses->args.input.model_path, '/');
+        ctx->server_config.model_id = dup_setting(base ? base + 1 : ses->args.input.model_path);
     }
     if (server_p->ui_title) ctx->server_config.ui.ui_title = dup_setting(server_p->ui_title);
     ctx->server_config.ui.ui_logo                  = server_p->ui_logo;
-    ctx->server_config.cache.prompt_cache          = S->args.perf.prompt_cache ? 1 : 0;
-    ctx->server_config.chat.chat_format            = S->args.sampling.chat_format;
+    ctx->server_config.cache.prompt_cache          = ses->args.perf.prompt_cache ? 1 : 0;
+    ctx->server_config.chat.chat_format            = ses->args.sampling.chat_format;
     ctx->server_config.chat.allow_request_template = server_p->no_request_template ? 0 : 1;
     ctx->server_config.chat.allow_config_write     = server_p->no_config_write ? 0 : 1;
-    ctx->server_config.chat.chat_template_source   = !S->t.chat_template          ? "none"
-                                                     : S->chat_template_from_file ? "file"
-                                                     : S->chat_template_builtin   ? "builtin"
-                                                                                  : "gguf";
-    ctx->server_config.search.best_of              = S->args.sampling.best_of;
+    ctx->server_config.chat.chat_template_source   = !ses->t.chat_template          ? "none"
+                                                     : ses->chat_template_from_file ? "file"
+                                                     : ses->chat_template_builtin   ? "builtin"
+                                                                                    : "gguf";
+    ctx->server_config.search.best_of              = ses->args.sampling.best_of;
     configure_limits(ctx, server_p);
     gen_queue_set_max_waiting(&ctx->gen_queue, server_p->queue_size);
-    ctx->server_config.search.best_of_max            = S->args.sampling.best_of_max;
-    ctx->server_config.cache.prompt_cache_mb         = S->args.perf.prompt_cache_mb;
-    ctx->server_config.cache.prompt_cache_min_tokens = S->args.perf.prompt_cache_min_tokens;
+    ctx->server_config.search.best_of_max            = ses->args.sampling.best_of_max;
+    ctx->server_config.cache.prompt_cache_mb         = ses->args.perf.prompt_cache_mb;
+    ctx->server_config.cache.prompt_cache_min_tokens = ses->args.perf.prompt_cache_min_tokens;
     ctx->server_config.limits.max_tokens_limit =
-        (S->args.sampling.max_tokens_limit > 0 && S->args.sampling.max_tokens_limit < S->p.seq_len)
-            ? S->args.sampling.max_tokens_limit
-            : S->p.seq_len;
+        (ses->args.sampling.max_tokens_limit > 0 &&
+         ses->args.sampling.max_tokens_limit < ses->p.seq_len)
+            ? ses->args.sampling.max_tokens_limit
+            : ses->p.seq_len;
     if (server_p->static_dir) ctx->server_config.ui.static_dir = dup_setting(server_p->static_dir);
-    if (S->args.input.vision_path && S->args.input.proj_path) {
-        ctx->server_config.vision.vision_path = dup_setting(S->args.input.vision_path);
-        ctx->server_config.vision.proj_path   = dup_setting(S->args.input.proj_path);
+    if (ses->args.input.vision_path && ses->args.input.proj_path) {
+        ctx->server_config.vision.vision_path = dup_setting(ses->args.input.vision_path);
+        ctx->server_config.vision.proj_path   = dup_setting(ses->args.input.proj_path);
     }
 }
 
-void session_run_server(PzSession *S) {
+void session_run_server(PzSession *ses) {
     ApiContext api_ctx;
-    api_context_init(&api_ctx, &S->p, &S->w, S->s, &S->mc, &S->t, S->tp);
-    configure_server(S, &api_ctx);
+    api_context_init(&api_ctx, &ses->p, &ses->w, ses->s, &ses->mc, &ses->t, ses->tp);
+    configure_server(ses, &api_ctx);
 
-    TernaryError api_err = api_server_start(S->args.server.server_port, &api_ctx);
+    TernaryError api_err = api_server_start(ses->args.server.server_port, &api_ctx);
     if (api_err != TN_OK) {
-        S->exit_code = 1;
+        ses->exit_code = 1;
         TN_LOG_ERR("session_server", "Error: Failed to start API server on port %d: %s\n",
-                   S->args.server.server_port, tn_error_str(api_err));
+                   ses->args.server.server_port, tn_error_str(api_err));
     } else {
         printf("Press Ctrl+C to stop.\n");
 

@@ -71,21 +71,21 @@ typedef struct {
 
 /* Phases, in the order main() runs them. Those returning int give 0 for success and non-zero
  * when the run must stop (the reason is already printed). */
-void session_apply_log_options(PzSession *S); /* --log-format, --log-level, --verbose */
-int session_early_command(PzSession *S);      /* -1: none; else the exit status of --version etc. */
-void session_open_dump(PzSession *S);
-int session_detect_format(PzSession *S);
-int session_tune_hardware(PzSession *S);
-int session_load_model(PzSession *S);
-int session_setup_tokenizer(PzSession *S);
-int session_load_extras(PzSession *S);
-void session_apply_runtime_options(PzSession *S);
-int session_distributed(PzSession *S); /* non-zero: the run is finished, skip to release */
-void session_start_update_check(PzSession *S);
-void session_accuracy_checks(PzSession *S);
-void session_execute(PzSession *S);
-void session_run_server(PzSession *S); /* --server: configure, serve until SIGINT/SIGTERM */
-void session_finish(PzSession *S);
-void session_release(PzSession *S);
+void session_apply_log_options(PzSession *ses); /* --log-format, --log-level, --verbose */
+int session_early_command(PzSession *ses); /* -1: none; else the exit status of --version etc. */
+void session_open_dump(PzSession *ses);
+int session_detect_format(PzSession *ses);
+int session_tune_hardware(PzSession *ses);
+int session_load_model(PzSession *ses);
+int session_setup_tokenizer(PzSession *ses);
+int session_load_extras(PzSession *ses);
+void session_apply_runtime_options(PzSession *ses);
+int session_distributed(PzSession *ses); /* non-zero: the run is finished, skip to release */
+void session_start_update_check(PzSession *ses);
+void session_accuracy_checks(PzSession *ses);
+void session_execute(PzSession *ses);
+void session_run_server(PzSession *ses); /* --server: configure, serve until SIGINT/SIGTERM */
+void session_finish(PzSession *ses);
+void session_release(PzSession *ses);
 
 #endif

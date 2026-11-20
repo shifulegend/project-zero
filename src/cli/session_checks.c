@@ -16,31 +16,32 @@
 #include "update/update_check.h"
 
 /* Server always (the web UI shows it), CLI only when a person is watching stderr. Never blocks. */
-void session_start_update_check(PzSession *S) {
+void session_start_update_check(PzSession *ses) {
     /* Phase 38: background update check — server always (the web UI shows
      * it), CLI only when a person is watching stderr. Never blocks. */
-    S->update_notice = 0;
-    if (!S->args.watermark.watermark_detect && !S->args.eval.perplexity_file &&
-        (S->args.server.server_mode || isatty(fileno(stderr)))) {
+    ses->update_notice = 0;
+    if (!ses->args.watermark.watermark_detect && !ses->args.eval.perplexity_file &&
+        (ses->args.server.server_mode || isatty(fileno(stderr)))) {
         UpdateOptions uo;
-        args_fill_update_options(&S->args, &uo);
+        args_fill_update_options(&ses->args, &uo);
         update_service_init(&uo, PZ_VERSION_STR);
         update_service_poll(0);
-        S->update_notice = !S->args.server.server_mode;
+        ses->update_notice = !ses->args.server.server_mode;
     }
 }
 
 /* Accuracy probe (2026-11-18): a LM head the user asked to be quantised must still compute
  * the model. Over --quality-tolerance it falls back to BF16, loudly; --quality-tolerance 0
  * keeps the request as given. --self-check below runs the same probe on demand. */
-static void check_lossy_head(PzSession *S) {
+static void check_lossy_head(PzSession *ses) {
     const TnHardwareProfile *hpc = tn_hardware_profile_get();
     int lossy_head = hpc && hpc->classifier_explicit && hpc->classifier_fmt != TN_CLS_BF16;
-    if (lossy_head && S->args.eval.quality_tolerance > 0.0 && !S->args.eval.self_check &&
-        !S->args.eval.perplexity_file && !S->args.watermark.watermark_detect) {
-        SelfCheckOptions so = {S->args.eval.quality_tolerance, S->args.eval.self_check_tokens};
+    if (lossy_head && ses->args.eval.quality_tolerance > 0.0 && !ses->args.eval.self_check &&
+        !ses->args.eval.perplexity_file && !ses->args.watermark.watermark_detect) {
+        SelfCheckOptions so = {ses->args.eval.quality_tolerance, ses->args.eval.self_check_tokens};
         SelfCheckResult sr;
-        if (selfcheck_run(&so, &S->p, &S->w, S->s, &S->mc, &S->t, S->tp, &sr) == TN_OK &&
+        if (selfcheck_run(&so, &ses->p, &ses->w, ses->s, &ses->mc, &ses->t, ses->tp, &sr) ==
+                TN_OK &&
             sr.verdict == SC_FAIL) {
             char line[SELFCHECK_LINE_BUF];
             selfcheck_format(&sr, line, sizeof(line));
@@ -56,19 +57,19 @@ static void check_lossy_head(PzSession *S) {
 
 /* A LM head the user asked to be quantised must still compute the model, and the int8
  * activations of a ternary model are accuracy-checked once (verdict cached). */
-void session_accuracy_checks(PzSession *S) {
-    check_lossy_head(S);
+void session_accuracy_checks(PzSession *ses) {
+    check_lossy_head(ses);
 
     /* --act-quant auto on a ternary model: the int8 numerics are accuracy-checked once per model
      * and setting (verdict cached in ~/.project-zero/selfcheck.txt), and float activations take
      * over if they fail. --no-calibrate, sanitizer builds and an explicit --act-quant skip it. */
-    SelfCheckAutoCtx auto_ctx = {S->args.eval.act_quant,
-                                 S->w.layers_are_ternary,
-                                 S->args.perf.no_calibrate,
+    SelfCheckAutoCtx auto_ctx = {ses->args.eval.act_quant,
+                                 ses->w.layers_are_ternary,
+                                 ses->args.perf.no_calibrate,
                                  TN_SANITIZED,
-                                 S->args.eval.quality_tolerance,
-                                 S->args.eval.self_check || S->args.eval.perplexity_file ||
-                                     S->args.watermark.watermark_detect,
+                                 ses->args.eval.quality_tolerance,
+                                 ses->args.eval.self_check || ses->args.eval.perplexity_file ||
+                                     ses->args.watermark.watermark_detect,
                                  strcmp(tn_act_quant_effective(), "int8") == 0};
     if (selfcheck_auto_applies(&auto_ctx)) {
         const TnHardwareProfile *hpa = tn_hardware_profile_get();
@@ -77,11 +78,11 @@ void session_accuracy_checks(PzSession *S) {
                                        : hpa->classifier_fmt == TN_CLS_INT8 ? "int8"
                                                                             : "bf16";
         struct stat mst;
-        if (stat(S->args.input.model_path, &mst) == 0) {
+        if (stat(ses->args.input.model_path, &mst) == 0) {
             char key[SELFCHECK_KEY_BUF];
-            selfcheck_cache_key(key, sizeof(key), S->args.input.model_path, (long long)mst.st_size,
-                                (long long)mst.st_mtime, "int8", cls,
-                                S->args.eval.quality_tolerance, S->args.eval.self_check_tokens);
+            selfcheck_cache_key(key, sizeof(key), ses->args.input.model_path,
+                                (long long)mst.st_size, (long long)mst.st_mtime, "int8", cls,
+                                ses->args.eval.quality_tolerance, ses->args.eval.self_check_tokens);
             SelfCheckVerdict cv;
             if (!selfcheck_cache_load(key, &cv)) {
                 tn_log_out(
@@ -89,10 +90,11 @@ void session_accuracy_checks(PzSession *S) {
                     "[self-check] first run of this model with int8 activations: checking accuracy "
                     "(cached afterwards)...\n");
                 fflush(stdout);
-                SelfCheckOptions so = {S->args.eval.quality_tolerance,
-                                       S->args.eval.self_check_tokens};
+                SelfCheckOptions so = {ses->args.eval.quality_tolerance,
+                                       ses->args.eval.self_check_tokens};
                 SelfCheckResult sr;
-                if (selfcheck_run(&so, &S->p, &S->w, S->s, &S->mc, &S->t, S->tp, &sr) == TN_OK &&
+                if (selfcheck_run(&so, &ses->p, &ses->w, ses->s, &ses->mc, &ses->t, ses->tp, &sr) ==
+                        TN_OK &&
                     sr.verdict != SC_SKIPPED) {
                     char line[SELFCHECK_LINE_BUF];
                     selfcheck_format(&sr, line, sizeof(line));

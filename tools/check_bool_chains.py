@@ -22,30 +22,36 @@ HEADER = (
 KEYWORD = re.compile(r"\b(?:if|while)\s*\(")
 
 
+def span_end(text: str, i: int) -> int:
+    """End of the comment or literal that starts at text[i], or -1 when none starts there."""
+    n = len(text)
+    if text[i : i + 2] == "//":
+        end = text.find("\n", i)
+        return n if end < 0 else end
+    if text[i : i + 2] == "/*":
+        end = text.find("*/", i + 2)
+        return n if end < 0 else end + 2
+    if text[i] in "\"'":
+        end = i + 1
+        while end < n and text[end] != text[i]:
+            end += 2 if text[end] == "\\" else 1
+        return end + 1
+    return -1
+
+
 def strip(text: str) -> str:
     """The source with comments and string/char literals blanked out (same length)."""
     out = list(text)
-    i, n = 0, len(text)
-    while i < n:
-        two = text[i : i + 2]
-        if two == "//":
-            j = text.find("\n", i)
-            j = n if j < 0 else j
-        elif two == "/*":
-            j = text.find("*/", i + 2)
-            j = n if j < 0 else j + 2
-        elif text[i] in "\"'":
-            quote, j = text[i], i + 1
-            while j < n and text[j] != quote:
-                j += 2 if text[j] == "\\" else 1
-            j += 1
-        else:
+    i = 0
+    while i < len(text):
+        end = span_end(text, i)
+        if end < 0:
             i += 1
             continue
-        for k in range(i, min(j, n)):
+        for k in range(i, min(end, len(text))):
             if out[k] != "\n":
                 out[k] = " "
-        i = j
+        i = end
     return "".join(out)
 
 

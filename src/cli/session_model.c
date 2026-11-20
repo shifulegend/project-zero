@@ -22,91 +22,91 @@
 #include "threading/thread_pool.h"
 
 /* GGUF: the shared loader (also used for the draft model) does everything. */
-static int load_gguf(PzSession *S) {
+static int load_gguf(PzSession *ses) {
     LoadedModel lm;
-    TernaryError lerr = load_gguf_model(&lm, S->args.input.model_path, /*is_primary=*/true, 0,
-                                        S->tp, S->stdout_is_tty);
+    TernaryError lerr = load_gguf_model(&lm, ses->args.input.model_path, /*is_primary=*/true, 0,
+                                        ses->tp, ses->stdout_is_tty);
     if (lerr != TN_OK) {
         TN_LOG_ERR("session_model", "Failed to load model: %s\n", tn_error_str(lerr));
         return 1;
     }
-    S->p          = lm.config;
-    S->w          = lm.weights;
-    S->mc         = lm.moe_config;
-    S->s          = lm.state;
-    S->mf         = lm.mf;
-    S->gguf_hdr   = lm.gguf_hdr;
-    S->gguf_store = lm.gguf_store;
+    ses->p          = lm.config;
+    ses->w          = lm.weights;
+    ses->mc         = lm.moe_config;
+    ses->s          = lm.state;
+    ses->mf         = lm.mf;
+    ses->gguf_hdr   = lm.gguf_hdr;
+    ses->gguf_store = lm.gguf_store;
     return 0;
 }
 
 /* Native ternary `.bin`: mapped, parsed and its run state sized here (no draft-model use case,
  * see runtime/model_load.h, so it does not share the GGUF helper). */
-static int load_native(PzSession *S) {
+static int load_native(PzSession *ses) {
     TN_OUT_INF("session_model", "Model format: native ternary\n");
 
-    if (mapped_file_open(&S->mf, S->args.input.model_path) != TN_OK) {
-        TN_LOG_ERR("session_model", "Failed to map model file: %s\n", S->args.input.model_path);
+    if (mapped_file_open(&ses->mf, ses->args.input.model_path) != TN_OK) {
+        TN_LOG_ERR("session_model", "Failed to map model file: %s\n", ses->args.input.model_path);
         return 1;
     }
 
-    if (config_read(&S->p, S->mf.data, S->mf.size) != TN_OK) {
+    if (config_read(&ses->p, ses->mf.data, ses->mf.size) != TN_OK) {
         TN_LOG_ERR("session_model", "Invalid model configuration.\n");
-        mapped_file_close(&S->mf);
+        mapped_file_close(&ses->mf);
         return 1;
     }
-    config_print(&S->p);
+    config_print(&ses->p);
 
     /* MoE model: scale_mode=2 → read 32-byte MoE header at offset 64,
      * weight data starts at byte 128 (64 header + 32 MoE + 32 padding).
      * Dense model: scale_mode=0 → weight data starts at byte 64. */
     tn_i8 *weight_data;
     size_t data_size;
-    if (S->p.scale_mode == 2) {
+    if (ses->p.scale_mode == 2) {
         const size_t MOE_HDR_OFFSET = 64;
         const size_t WEIGHT_OFFSET  = 128;
-        if (S->mf.size < WEIGHT_OFFSET) {
+        if (ses->mf.size < WEIGHT_OFFSET) {
             TN_LOG_ERR("session_model", "MoE model file too small.\n");
-            mapped_file_close(&S->mf);
+            mapped_file_close(&ses->mf);
             return 1;
         }
-        size_t moe_size = S->mf.size - MOE_HDR_OFFSET;
+        size_t moe_size = ses->mf.size - MOE_HDR_OFFSET;
         size_t moe_off  = 0;
-        if (moe_config_read(&S->mc, (char *)S->mf.data + MOE_HDR_OFFSET, moe_size, &moe_off) !=
+        if (moe_config_read(&ses->mc, (char *)ses->mf.data + MOE_HDR_OFFSET, moe_size, &moe_off) !=
             TN_OK) {
             TN_LOG_ERR("session_model", "Failed to read MoE config header.\n");
-            mapped_file_close(&S->mf);
+            mapped_file_close(&ses->mf);
             return 1;
         }
-        moe_config_print(&S->mc);
-        weight_data = (tn_i8 *)S->mf.data + WEIGHT_OFFSET;
-        data_size   = S->mf.size - WEIGHT_OFFSET;
+        moe_config_print(&ses->mc);
+        weight_data = (tn_i8 *)ses->mf.data + WEIGHT_OFFSET;
+        data_size   = ses->mf.size - WEIGHT_OFFSET;
     } else {
-        weight_data = (tn_i8 *)S->mf.data + 64;
-        data_size   = S->mf.size - 64;
+        weight_data = (tn_i8 *)ses->mf.data + 64;
+        data_size   = ses->mf.size - 64;
     }
 
-    if (weights_alloc_pointers(&S->w, &S->p) != TN_OK) {
+    if (weights_alloc_pointers(&ses->w, &ses->p) != TN_OK) {
         TN_LOG_ERR("session_model", "Failed to allocate weight pointers.\n");
-        mapped_file_close(&S->mf);
+        mapped_file_close(&ses->mf);
         return 1;
     }
 
-    if (S->mc.is_moe) {
-        if (moe_weights_alloc(&S->w, &S->p, &S->mc) != TN_OK) {
+    if (ses->mc.is_moe) {
+        if (moe_weights_alloc(&ses->w, &ses->p, &ses->mc) != TN_OK) {
             TN_LOG_ERR("session_model", "Failed to allocate MoE weight pointers.\n");
-            if (S->mc.is_moe) moe_weights_free(&S->w, &S->mc);
-            weights_free_pointers(&S->w);
-            mapped_file_close(&S->mf);
+            if (ses->mc.is_moe) moe_weights_free(&ses->w, &ses->mc);
+            weights_free_pointers(&ses->w);
+            mapped_file_close(&ses->mf);
             return 1;
         }
     }
 
-    if (weights_map(&S->w, &S->p, &S->mc, weight_data, data_size) != TN_OK) {
+    if (weights_map(&ses->w, &ses->p, &ses->mc, weight_data, data_size) != TN_OK) {
         TN_LOG_ERR("session_model", "Failed to map weight structures from file.\n");
-        moe_weights_free(&S->w, &S->mc);
-        weights_free_pointers(&S->w);
-        mapped_file_close(&S->mf);
+        moe_weights_free(&ses->w, &ses->mc);
+        weights_free_pointers(&ses->w);
+        mapped_file_close(&ses->mf);
         return 1;
     }
 
@@ -120,7 +120,7 @@ static int load_native(PzSession *S) {
      * INT8/INT4 = half/quarter). Native MoE (scale_mode==2) overcounts
      * inactive experts here — same TODO(PZ-TODO-1) as the GGUF branch. */
     {
-        double embed_bytes            = (double)S->p.vocab_size * S->p.dim * 2.0;
+        double embed_bytes            = (double)ses->p.vocab_size * ses->p.dim * 2.0;
         const TnHardwareProfile *hp_n = tn_hardware_profile_get();
         double cls_bytes              = embed_bytes; /* BF16 default */
         if (hp_n && hp_n->classifier_fmt == TN_CLS_INT8) cls_bytes = embed_bytes / 2.0;
@@ -136,7 +136,7 @@ static int load_native(PzSession *S) {
         }
     }
 
-    tn_progress_stage(3, 4, "Preparing runtime...", S->stdout_is_tty);
+    tn_progress_stage(3, 4, "Preparing runtime...", ses->stdout_is_tty);
 
     /* KV Strategy — measured AFTER model weights are loaded so that any F32-dequantised
      * weight allocations (MLA projections, shared experts, norms) are already counted in
@@ -151,18 +151,18 @@ static int load_native(PzSession *S) {
      * than sharing that GGUF-only helper. */
     {
         tn_i64 post_load_ram    = tn_get_free_ram();
-        KVStrategyResult kv_res = select_kv_strategy(&S->p, post_load_ram, &S->mc);
-        S->p.seq_len            = kv_res.max_seq_len;
-        kv_strategy_print(&kv_res, S->p.seq_len);
+        KVStrategyResult kv_res = select_kv_strategy(&ses->p, post_load_ram, &ses->mc);
+        ses->p.seq_len          = kv_res.max_seq_len;
+        kv_strategy_print(&kv_res, ses->p.seq_len);
     }
 
     /* Setup RunState */
-    S->s = (RunState *)malloc(sizeof(RunState));
-    if (!S->s) {
+    ses->s = (RunState *)malloc(sizeof(RunState));
+    if (!ses->s) {
         TN_LOG_ERR("session_model", "Failed to allocate RunState header.\n");
-        if (S->mc.is_moe) moe_weights_free(&S->w, &S->mc);
-        weights_free_pointers(&S->w);
-        mapped_file_close(&S->mf);
+        if (ses->mc.is_moe) moe_weights_free(&ses->w, &ses->mc);
+        weights_free_pointers(&ses->w);
+        mapped_file_close(&ses->mf);
         return 1;
     }
 
@@ -172,51 +172,51 @@ static int load_native(PzSession *S) {
      * qwen3moe.value_cache, allocated below) — skip_kv_cache=true avoids a
      * multi-GB calloc+memset for those models' context. See
      * run_state_alloc_ex's header comment and docs/ai/mistakes.md. */
-    if (run_state_alloc_ex(S->s, &S->p, S->p.seq_len, S->mc.has_linear_attn || S->mc.has_qk_norm) !=
-        TN_OK) {
+    if (run_state_alloc_ex(ses->s, &ses->p, ses->p.seq_len,
+                           ses->mc.has_linear_attn || ses->mc.has_qk_norm) != TN_OK) {
         TN_LOG_ERR("session_model", "Failed to allocate RunState buffers.\n");
-        free(S->s);
-        if (S->mc.is_moe) moe_weights_free(&S->w, &S->mc);
-        weights_free_pointers(&S->w);
-        mapped_file_close(&S->mf);
+        free(ses->s);
+        if (ses->mc.is_moe) moe_weights_free(&ses->w, &ses->mc);
+        weights_free_pointers(&ses->w);
+        mapped_file_close(&ses->mf);
         return 1;
     }
 
     /* Phase 17.7: MLA k_rope_cache (allocated only when mla.enabled=1) */
-    if (S->mc.mla.enabled) {
-        if (mla_run_state_alloc(S->s, &S->p, &S->mc, S->p.seq_len) != TN_OK) {
+    if (ses->mc.mla.enabled) {
+        if (mla_run_state_alloc(ses->s, &ses->p, &ses->mc, ses->p.seq_len) != TN_OK) {
             TN_LOG_ERR("session_model", "Failed to allocate MLA k_rope_cache.\n");
-            run_state_free(S->s);
-            free(S->s);
-            if (S->mc.is_moe) moe_weights_free(&S->w, &S->mc);
-            weights_free_pointers(&S->w);
-            mapped_file_close(&S->mf);
+            run_state_free(ses->s);
+            free(ses->s);
+            if (ses->mc.is_moe) moe_weights_free(&ses->w, &ses->mc);
+            weights_free_pointers(&ses->w);
+            mapped_file_close(&ses->mf);
             return 1;
         }
     }
 
     /* Qwen3.5/3.6 hybrid attention state (allocated only when has_linear_attn=1) */
-    if (S->mc.has_linear_attn) {
-        if (q35_run_state_alloc(S->s, &S->p, &S->mc, S->p.seq_len) != TN_OK) {
+    if (ses->mc.has_linear_attn) {
+        if (q35_run_state_alloc(ses->s, &ses->p, &ses->mc, ses->p.seq_len) != TN_OK) {
             TN_LOG_ERR("session_model", "Failed to allocate Qwen3.5/3.6 hybrid attention state.\n");
-            run_state_free(S->s);
-            free(S->s);
-            if (S->mc.is_moe) moe_weights_free(&S->w, &S->mc);
-            weights_free_pointers(&S->w);
-            mapped_file_close(&S->mf);
+            run_state_free(ses->s);
+            free(ses->s);
+            if (ses->mc.is_moe) moe_weights_free(&ses->w, &ses->mc);
+            weights_free_pointers(&ses->w);
+            mapped_file_close(&ses->mf);
             return 1;
         }
     }
 
     /* Qwen3-MoE attention state (allocated only when has_qk_norm=1) */
-    if (S->mc.has_qk_norm) {
-        if (qwen3moe_run_state_alloc(S->s, &S->p, &S->mc, S->p.seq_len) != TN_OK) {
+    if (ses->mc.has_qk_norm) {
+        if (qwen3moe_run_state_alloc(ses->s, &ses->p, &ses->mc, ses->p.seq_len) != TN_OK) {
             TN_LOG_ERR("session_model", "Failed to allocate Qwen3-MoE attention state.\n");
-            run_state_free(S->s);
-            free(S->s);
-            if (S->mc.is_moe) moe_weights_free(&S->w, &S->mc);
-            weights_free_pointers(&S->w);
-            mapped_file_close(&S->mf);
+            run_state_free(ses->s);
+            free(ses->s);
+            if (ses->mc.is_moe) moe_weights_free(&ses->w, &ses->mc);
+            weights_free_pointers(&ses->w);
+            mapped_file_close(&ses->mf);
             return 1;
         }
     }
@@ -226,26 +226,26 @@ static int load_native(PzSession *S) {
 
 /* Opens the model file and builds weights and run state. Returns 1 when loading failed (the
  * reason is printed and nothing needs releasing except the thread pool). */
-int session_load_model(PzSession *S) {
-    tn_progress_stage(1, 4, "Opening model file...", S->stdout_is_tty);
+int session_load_model(PzSession *ses) {
+    tn_progress_stage(1, 4, "Opening model file...", ses->stdout_is_tty);
 
-    tn_progress_stage(2, 4, "Loading weights...", S->stdout_is_tty);
+    tn_progress_stage(2, 4, "Loading weights...", ses->stdout_is_tty);
 
-    memset(&S->w, 0, sizeof(S->w)); /* required before weights_alloc_pointers */
-    moe_config_init_dense(&S->mc);  /* initialise to dense; overridden below for MoE models */
-    memset(&S->gguf_hdr, 0, sizeof(S->gguf_hdr));
-    return S->is_gguf ? load_gguf(S) : load_native(S);
+    memset(&ses->w, 0, sizeof(ses->w)); /* required before weights_alloc_pointers */
+    moe_config_init_dense(&ses->mc);    /* initialise to dense; overridden below for MoE models */
+    memset(&ses->gguf_hdr, 0, sizeof(ses->gguf_hdr));
+    return ses->is_gguf ? load_gguf(ses) : load_native(ses);
 }
 
 /* Frees whatever the run built, in reverse order. Safe at any stage: a part that was never set up
- * is zeroed (the session starts zeroed) or flagged off. Needs S->s set, i.e. a loaded model. */
-void session_release(PzSession *S) {
-    if (S->draft_active) draft_model_free(&S->draft);
-    prm_free(&S->prm);
-    if (S->lora_active) lora_free(&S->lora);
-    if (S->rag_ok) {
-        embedder_free(&S->rag.emb);
-        vector_db_close(&S->rag.db);
+ * is zeroed (the session starts zeroed) or flagged off. Needs ses->s set, i.e. a loaded model. */
+void session_release(PzSession *ses) {
+    if (ses->draft_active) draft_model_free(&ses->draft);
+    prm_free(&ses->prm);
+    if (ses->lora_active) lora_free(&ses->lora);
+    if (ses->rag_ok) {
+        embedder_free(&ses->rag.emb);
+        vector_db_close(&ses->rag.db);
     }
     /* tokenizer_free is safe unconditionally: t was memset to zero above,
      * and both load paths (--tokenizer file, or GGUF auto-load) populate
@@ -253,7 +253,7 @@ void session_release(PzSession *S) {
      * which skipped cleanup entirely for the GGUF-auto-load path — the
      * common case when no external --tokenizer is passed — leaking the
      * whole vocab (~49k strings) every run. */
-    tokenizer_free(&S->t);
+    tokenizer_free(&ses->t);
     /* mla_run_state_free/q35_run_state_free/qwen3moe_run_state_free must run
      * before run_state_free() (they free k_rope_cache and the q35_ / qwen3moe_
      * pointer arrays that run_state_free() doesn't know about).
@@ -262,15 +262,15 @@ void session_release(PzSession *S) {
      * buffers) + mla_rope_freq on every DeepSeek/MLA run, only its own
      * OOM-cleanup path called it. Fixed here alongside the new
      * q35_run_state_free wiring (see docs/ai/mistakes.md). */
-    if (S->mc.mla.enabled) mla_run_state_free(S->s, S->p.n_layers);
-    if (S->mc.has_linear_attn) q35_run_state_free(S->s, &S->p, &S->mc);
-    if (S->mc.has_qk_norm) qwen3moe_run_state_free(S->s, &S->p);
-    run_state_free(S->s);
-    free(S->s);
-    if (S->mc.is_moe) moe_weights_free(&S->w, &S->mc);
-    weights_free_pointers(&S->w);
-    if (S->gguf_store) weights_free_gguf(S->gguf_store);
-    if (S->is_gguf) gguf_header_free(&S->gguf_hdr);
-    mapped_file_close(&S->mf);
-    threadpool_destroy(S->tp);
+    if (ses->mc.mla.enabled) mla_run_state_free(ses->s, ses->p.n_layers);
+    if (ses->mc.has_linear_attn) q35_run_state_free(ses->s, &ses->p, &ses->mc);
+    if (ses->mc.has_qk_norm) qwen3moe_run_state_free(ses->s, &ses->p);
+    run_state_free(ses->s);
+    free(ses->s);
+    if (ses->mc.is_moe) moe_weights_free(&ses->w, &ses->mc);
+    weights_free_pointers(&ses->w);
+    if (ses->gguf_store) weights_free_gguf(ses->gguf_store);
+    if (ses->is_gguf) gguf_header_free(&ses->gguf_hdr);
+    mapped_file_close(&ses->mf);
+    threadpool_destroy(ses->tp);
 }

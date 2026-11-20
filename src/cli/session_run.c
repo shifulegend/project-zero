@@ -83,31 +83,31 @@ static int run_perplexity(const CliArgs *args, const Config *p, const Transforme
 }
 
 /* --self-check: the accuracy probe on demand; exit status 1 over the tolerance. */
-static void run_selfcheck(PzSession *S) {
-    SelfCheckOptions so = {S->args.eval.quality_tolerance, S->args.eval.self_check_tokens};
+static void run_selfcheck(PzSession *ses) {
+    SelfCheckOptions so = {ses->args.eval.quality_tolerance, ses->args.eval.self_check_tokens};
     SelfCheckResult sr;
-    TernaryError se = selfcheck_run(&so, &S->p, &S->w, S->s, &S->mc, &S->t, S->tp, &sr);
+    TernaryError se = selfcheck_run(&so, &ses->p, &ses->w, ses->s, &ses->mc, &ses->t, ses->tp, &sr);
     if (se != TN_OK) {
         TN_LOG_ERR("session_run", "Error: self-check failed (%s)\n", tn_error_str(se));
-        S->exit_code = 1;
+        ses->exit_code = 1;
     } else {
         char line[SELFCHECK_LINE_BUF];
         selfcheck_format(&sr, line, sizeof(line));
         printf("%s\n", line);
-        if (sr.verdict == SC_FAIL) S->exit_code = 1;
+        if (sr.verdict == SC_FAIL) ses->exit_code = 1;
     }
 }
 
 /* --watermark-detect: tokenize the text with this model's tokenizer and score it. */
-static void run_watermark_detect(PzSession *S) {
+static void run_watermark_detect(PzSession *ses) {
     /* Phase 33: offline watermark detection — tokenize the text with this
      * model's tokenizer and score it with the configured key/gamma. */
     GenerationParams gp;
-    args_fill_gen_params(&S->args, &gp);
+    args_fill_gen_params(&ses->args, &gp);
     WatermarkResult wr;
-    if (watermark_detect_text(&gp.watermark, &S->t, S->args.watermark.watermark_detect, &wr) !=
+    if (watermark_detect_text(&gp.watermark, &ses->t, ses->args.watermark.watermark_detect, &wr) !=
         TN_OK) {
-        S->exit_code = 1;
+        ses->exit_code = 1;
         TN_LOG_ERR("session_run", "Error: could not tokenize --watermark-detect text.\n");
     } else {
         printf("watermark: tokens_scored=%d green=%d green_fraction=%.3f z=%.2f -> %s\n",
@@ -117,22 +117,23 @@ static void run_watermark_detect(PzSession *S) {
 }
 
 /* --prompt: one generation, speculative / tree search / best-of-N / plain. */
-static void run_one_shot(PzSession *S) {
+static void run_one_shot(PzSession *ses) {
     printf("\n");
-    if (S->draft_active) {
-        speculative_generate(&S->p, &S->w, S->s, &S->mc, &S->t, S->tp, S->args.input.prompt,
-                             S->args.sampling.max_tokens, S->args.sampling.temperature,
-                             S->args.sampling.top_p, S->args.sampling.json_mode, &S->draft,
-                             S->args.search.spec_length, S->args.sampling.seed);
+    if (ses->draft_active) {
+        speculative_generate(&ses->p, &ses->w, ses->s, &ses->mc, &ses->t, ses->tp,
+                             ses->args.input.prompt, ses->args.sampling.max_tokens,
+                             ses->args.sampling.temperature, ses->args.sampling.top_p,
+                             ses->args.sampling.json_mode, &ses->draft,
+                             ses->args.search.spec_length, ses->args.sampling.seed);
     } else {
         GenerationParams gp;
-        args_fill_gen_params(&S->args, &gp);
-        if (S->args.search.mcts.simulations > 0) {
+        args_fill_gen_params(&ses->args, &gp);
+        if (ses->args.search.mcts.simulations > 0) {
             MctsResult mr;
-            TernaryError me = generate_mcts(&S->p, &S->w, S->s, &S->mc, &S->t, S->tp,
-                                            S->args.input.prompt, S->args.input.prompt, &gp,
-                                            &S->args.search.mcts, S->prm.loaded ? &S->prm : NULL,
-                                            stdout_piece_callback, NULL, NULL, &mr);
+            TernaryError me = generate_mcts(
+                &ses->p, &ses->w, ses->s, &ses->mc, &ses->t, ses->tp, ses->args.input.prompt,
+                ses->args.input.prompt, &gp, &ses->args.search.mcts,
+                ses->prm.loaded ? &ses->prm : NULL, stdout_piece_callback, NULL, NULL, &mr);
             printf("\n");
             TN_LOG_INF("mcts",
                        "[mcts] %d simulations, %d nodes, %d-step path (value %.3f, %s), %d search "
@@ -140,46 +141,48 @@ static void run_one_shot(PzSession *S) {
                        mr.simulations, mr.nodes, mr.steps, (double)mr.path_value,
                        mr.used_prm ? "PRM" : "self-scored", mr.tokens_total,
                        me == TN_OK ? "" : " (failed)");
-        } else if (S->args.sampling.best_of > 1) {
+        } else if (ses->args.sampling.best_of > 1) {
             BestOfResult br;
-            generate_best_of(&S->p, &S->w, S->s, &S->mc, &S->t, S->tp, S->args.input.prompt, &gp,
-                             S->args.sampling.best_of, BEST_OF_SCORE_MEAN_LOGPROB,
-                             stdout_piece_callback, NULL, NULL, &br);
+            generate_best_of(&ses->p, &ses->w, ses->s, &ses->mc, &ses->t, ses->tp,
+                             ses->args.input.prompt, &gp, ses->args.sampling.best_of,
+                             BEST_OF_SCORE_MEAN_LOGPROB, stdout_piece_callback, NULL, NULL, &br);
             printf("\n");
             TN_LOG_INF("best_of", "[best-of] %d candidates, chose #%d (mean log-prob %.3f)\n", br.n,
                        br.chosen, br.chosen >= 0 ? br.scores[br.chosen] : 0.0);
         } else {
-            generate_params(&S->p, &S->w, S->s, &S->mc, &S->t, S->tp, S->args.input.prompt, &gp);
+            generate_params(&ses->p, &ses->w, ses->s, &ses->mc, &ses->t, ses->tp,
+                            ses->args.input.prompt, &gp);
         }
     }
     printf("\n");
 }
 
-void session_execute(PzSession *S) {
-    if (S->args.eval.self_check) {
-        run_selfcheck(S);
-    } else if (S->args.eval.perplexity_file) {
-        S->exit_code = run_perplexity(&S->args, &S->p, &S->w, S->s, &S->mc, &S->t, S->tp);
-    } else if (S->args.watermark.watermark_detect) {
-        run_watermark_detect(S);
-    } else if (S->args.server.server_mode) {
-        session_run_server(S);
-    } else if (S->args.input.prompt) {
-        run_one_shot(S);
+void session_execute(PzSession *ses) {
+    if (ses->args.eval.self_check) {
+        run_selfcheck(ses);
+    } else if (ses->args.eval.perplexity_file) {
+        ses->exit_code =
+            run_perplexity(&ses->args, &ses->p, &ses->w, ses->s, &ses->mc, &ses->t, ses->tp);
+    } else if (ses->args.watermark.watermark_detect) {
+        run_watermark_detect(ses);
+    } else if (ses->args.server.server_mode) {
+        session_run_server(ses);
+    } else if (ses->args.input.prompt) {
+        run_one_shot(ses);
     } else {
-        run_repl(&S->p, &S->w, &S->mc, NULL, NULL, NULL, S->s, &S->t, S->tp, &S->args,
-                 S->rag_ok ? &S->rag : NULL, S->draft_active ? &S->draft : NULL);
+        run_repl(&ses->p, &ses->w, &ses->mc, NULL, NULL, NULL, ses->s, &ses->t, ses->tp, &ses->args,
+                 ses->rag_ok ? &ses->rag : NULL, ses->draft_active ? &ses->draft : NULL);
     }
 }
 
 /* After the run: close the layer plan and print the update notice (from the cached result; an
  * in-flight check is not waited for). */
-void session_finish(PzSession *S) {
-    if (S->dist_active) dist_plan_close(&S->dist);
+void session_finish(PzSession *ses) {
+    if (ses->dist_active) dist_plan_close(&ses->dist);
 
     /* Phase 38: one line after the output, from the cached/background result
      * (an in-flight check is not waited for — it lands in the cache for next time). */
-    if (S->update_notice) {
+    if (ses->update_notice) {
         UpdateInfo ui;
         char notice[UPDATE_NOTICE_BUF];
         update_service_get(&ui);

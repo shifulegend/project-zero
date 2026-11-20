@@ -21,60 +21,60 @@ int main(int argc, char **argv) {
     if (argc > 1 && strcmp(argv[1], "config") == 0) return pz_config_command(argc - 1, argv + 1);
     argc = pz_config_prepare_argv(argc, argv, &argv);
 
-    PzSession *S = (PzSession *)calloc(1, sizeof(*S));
-    if (!S) {
+    PzSession *ses = (PzSession *)calloc(1, sizeof(*ses));
+    if (!ses) {
         TN_LOG_ERR("main", "Error: out of memory\n");
         return 1;
     }
-    if (parse_args(&S->args, argc, argv) != TN_OK) {
-        free(S);
+    if (parse_args(&ses->args, argc, argv) != TN_OK) {
+        free(ses);
         return 1;
     }
-    session_apply_log_options(S);
+    session_apply_log_options(ses);
     {
-        KVStrategyOptions kv_opt = {S->args.perf.ctx_size, S->args.perf.kv_ram_fraction,
-                                    S->args.perf.kv_type, S->args.perf.kv_offload_dir};
+        KVStrategyOptions kv_opt = {ses->args.perf.ctx_size, ses->args.perf.kv_ram_fraction,
+                                    ses->args.perf.kv_type, ses->args.perf.kv_offload_dir};
         kv_strategy_set_options(&kv_opt);
     }
     (void)tn_cache_info(); /* Phase 27.1: probe once, before any worker threads */
 
-    int early = session_early_command(S);
+    int early = session_early_command(ses);
     if (early >= 0) {
-        free(S);
+        free(ses);
         return early;
     }
-    if (S->args.output.verbose) g_tn_verbose = 1;
+    if (ses->args.output.verbose) g_tn_verbose = 1;
 
-    session_open_dump(S);
-    if (session_detect_format(S) != 0 || session_tune_hardware(S) != 0) {
-        free(S);
+    session_open_dump(ses);
+    if (session_detect_format(ses) != 0 || session_tune_hardware(ses) != 0) {
+        free(ses);
         return 1;
     }
-    if (session_load_model(S) != 0) {
-        threadpool_destroy(S->tp);
-        free(S);
+    if (session_load_model(ses) != 0) {
+        threadpool_destroy(ses->tp);
+        free(ses);
         return 1;
     }
-    if (session_setup_tokenizer(S) != 0) goto fail;
+    if (session_setup_tokenizer(ses) != 0) goto fail;
 
-    tn_progress_stage(4, 4, "Ready.", S->stdout_is_tty);
-    tn_progress_done(S->stdout_is_tty);
+    tn_progress_stage(4, 4, "Ready.", ses->stdout_is_tty);
+    tn_progress_done(ses->stdout_is_tty);
 
-    if (session_load_extras(S) != 0) goto fail;
-    session_apply_runtime_options(S);
-    if (!session_distributed(S)) {
-        session_start_update_check(S);
-        session_accuracy_checks(S);
-        session_execute(S);
-        session_finish(S);
+    if (session_load_extras(ses) != 0) goto fail;
+    session_apply_runtime_options(ses);
+    if (!session_distributed(ses)) {
+        session_start_update_check(ses);
+        session_accuracy_checks(ses);
+        session_execute(ses);
+        session_finish(ses);
     }
-    session_release(S);
-    int exit_code = S->exit_code;
-    free(S);
+    session_release(ses);
+    int exit_code = ses->exit_code;
+    free(ses);
     return exit_code;
 
 fail:
-    session_release(S);
-    free(S);
+    session_release(ses);
+    free(ses);
     return 1;
 }

@@ -8,7 +8,7 @@ extend-exclude = ["benchmark_results"]
 [lint]
 preview = true
 explicit-preview-rules = true   # only the preview rules named below
-select = ["E9", "F", "E722", "BLE001", "PLW1514", "I", "B", "UP", "SIM", "C4", "S", "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107"]
+select = ["E9", "F", "E722", "BLE001", "PLW1514", "I", "B", "UP", "SIM", "C4", "S", "N802", "N803", "N806", "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107"]
 # PLW1514: text-mode open() must say encoding=; I: sorted imports; B: likely bugs; UP: modern syntax;
 # SIM, C4: simpler code; S: security (Bandit) rules.
 
@@ -44,3 +44,7 @@ quote-style = "double"
 "tools/convert_hf.py" = ["SIM118"]
 "tools/convert_hf_bitnet.py" = ["SIM118"]
 "tools/extract_multimodal.py" = ["SIM118"]
+# N806: the reference models use the papers' names for tensors and shapes (B, T, D, A_log ...); a
+#   lowercase rename would make them harder to check against the source they reproduce.
+"tools/mamba_reference.py" = ["N806"]
+"tools/bench/verify/bitnet_layer0.py" = ["N806"]

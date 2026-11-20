@@ -289,18 +289,18 @@ static void q35_linear_attn_forward(RunState *s, const TransformerWeights *w, co
     float *v_lin = conv_out + 2 * key_dim; /* [n_v_heads][state_sz] */
 
     for (int kh = 0; kh < n_k_heads; kh++) {
-        float *qh  = q_lin + (size_t)kh * state_sz;
-        float *kh_ = k_lin + (size_t)kh * state_sz;
+        float *qh    = q_lin + (size_t)kh * state_sz;
+        float *k_row = k_lin + (size_t)kh * state_sz;
         float qn = 0.0f, kn = 0.0f;
         for (int d = 0; d < state_sz; d++) {
             qn += qh[d] * qh[d];
-            kn += kh_[d] * kh_[d];
+            kn += k_row[d] * k_row[d];
         }
         float qs = 1.0f / fmaxf(sqrtf(qn), eps);
         float ks = 1.0f / fmaxf(sqrtf(kn), eps);
         for (int d = 0; d < state_sz; d++) {
             qh[d] *= qs;
-            kh_[d] *= ks;
+            k_row[d] *= ks;
         }
     }
 

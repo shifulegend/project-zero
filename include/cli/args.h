@@ -123,6 +123,7 @@ typedef struct {
     int rate_limit;           /* --rate-limit <n>: req/s on non-generation routes (20) */
     int client_timeout_s;     /* --client-timeout <s>: socket I/O timeout (30) */
     int max_connections;      /* --max-connections <N>: open connections (64)  */
+    int max_prompt_bytes;     /* --max-prompt-bytes <N>: text bytes per request (1 MiB; 0 = any) */
     int parallel;             /* --parallel <N>: chat requests served at once (1) */
     int parallel_batch;       /* --parallel-batch <N>: rows per batched pass (128) */
 } CliServer;

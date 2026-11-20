@@ -323,6 +323,7 @@ set(CLI_SOURCES
     src/cli/args_flags_generation.c
     src/cli/args_flags_memory.c
     src/cli/args_flags_serving.c
+    src/cli/args_flags_limits.c
     src/cli/args_flags_search.c
     src/cli/args_flags_behavior.c
     src/cli/args_flags_extras.c
@@ -331,6 +332,7 @@ set(CLI_SOURCES
     src/cli/config_cmd.c
     src/cli/model_catalog.c
     src/config/pz_config.c
+    src/config/pz_config_schema.c
     src/core/timer.c
     src/cli/repl.c
     src/cli/session_checks.c

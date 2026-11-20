@@ -47,6 +47,13 @@ static void test_flags(void) {
     TEST_ASSERT(a.sampling.temperature > 0.249f && a.sampling.temperature < 0.251f, "and stored");
     TEST_ASSERT_EQ(parse("--rate-limit", "0", &a), TN_OK,
                    "0 is still allowed when typed on purpose");
+    TEST_ASSERT_EQ(parse("--max-prompt-bytes", "many", &a), TN_ERR_INVALID_CONFIG,
+                   "--max-prompt-bytes many is an error");
+    TEST_ASSERT_EQ(parse("--max-prompt-bytes", "-1", &a), TN_ERR_INVALID_CONFIG,
+                   "a negative --max-prompt-bytes is an error");
+    TEST_ASSERT_EQ(parse("--max-prompt-bytes", "4096", &a), TN_OK, "a valid cap is accepted");
+    TEST_ASSERT_EQ(a.server.max_prompt_bytes, 4096L, "and stored");
+    TEST_ASSERT_EQ(parse("--max-prompt-bytes", "0", &a), TN_OK, "0 = no cap");
 }
 
 int main(void) {

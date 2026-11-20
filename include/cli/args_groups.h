@@ -14,8 +14,12 @@ TernaryError args_parse_generation(CliArgs *args, int argc, char **argv, int *ip
 /* perplexity, RoPE, attention kernel, KV cache and prompt-cache flags. */
 TernaryError args_parse_memory(CliArgs *args, int argc, char **argv, int *ip, int *handled);
 
-/* remote layers, request queue, rate/timeout/connection limits and parallel slots. */
+/* remote layers and parallel slots. */
+
 TernaryError args_parse_serving(CliArgs *args, int argc, char **argv, int *ip, int *handled);
+
+/* request queue, rate, timeout, connection and prompt-size limits of the API server. */
+TernaryError args_parse_limits(CliArgs *args, int argc, char **argv, int *ip, int *handled);
 
 /* best-of and tree-search (MCTS) flags and the reasoning judge. */
 TernaryError args_parse_search(CliArgs *args, int argc, char **argv, int *ip, int *handled);

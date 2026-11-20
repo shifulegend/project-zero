@@ -368,6 +368,24 @@ static void config_runtime(JsonBuf *jb, const ApiContext *ctx) {
     }
 }
 
+/* The queue, rate, timeout, prompt-size and connection limits, as `"key":value` pairs. */
+static void features_limits(JsonBuf *jb, const ApiContext *ctx) {
+    jb_key(jb, "queue_size");
+    jb_int(jb, ctx ? ctx->server_config.limits.queue_size : 0);
+    jb_raw(jb, ",");
+    jb_key(jb, "rate_limit");
+    jb_int(jb, ctx ? ctx->server_config.limits.rate_limit : 0);
+    jb_raw(jb, ",");
+    jb_key(jb, "client_timeout_s");
+    jb_int(jb, ctx ? ctx->server_config.limits.client_timeout_s : 0);
+    jb_raw(jb, ",");
+    jb_key(jb, "max_prompt_bytes");
+    jb_int(jb, ctx ? ctx->server_config.limits.max_prompt_bytes : 0);
+    jb_raw(jb, ",");
+    jb_key(jb, "max_connections");
+    jb_int(jb, ctx ? ctx->server_config.limits.max_connections : 0);
+}
+
 /* Feature switches the web UI renders its controls from. */
 static void config_features(JsonBuf *jb, const ApiContext *ctx) {
     jb_key(jb, "features");
@@ -396,17 +414,7 @@ static void config_features(JsonBuf *jb, const ApiContext *ctx) {
     else
         jb_raw(jb, "null");
     jb_raw(jb, ",");
-    jb_key(jb, "queue_size");
-    jb_int(jb, ctx ? ctx->server_config.limits.queue_size : 0);
-    jb_raw(jb, ",");
-    jb_key(jb, "rate_limit");
-    jb_int(jb, ctx ? ctx->server_config.limits.rate_limit : 0);
-    jb_raw(jb, ",");
-    jb_key(jb, "client_timeout_s");
-    jb_int(jb, ctx ? ctx->server_config.limits.client_timeout_s : 0);
-    jb_raw(jb, ",");
-    jb_key(jb, "max_connections");
-    jb_int(jb, ctx ? ctx->server_config.limits.max_connections : 0);
+    features_limits(jb, ctx);
     features_parallel(jb, ctx);
     /* Recurrent linear-attention state cannot resume from a partial prefix. */
     jb_raw(jb, ",");

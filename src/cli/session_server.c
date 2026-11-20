@@ -37,6 +37,20 @@ static char *dup_setting(const char *s) {
     return c;
 }
 
+/* The connection, queue and size limits of the API server (the flags that bound what a client
+ * may ask for or hold). */
+static void configure_limits(ApiContext *ctx, const CliServer *server_p) {
+    ServerLimits *lim     = &ctx->server_config.limits;
+    lim->queue_size       = server_p->queue_size;
+    lim->queue_timeout_s  = server_p->queue_timeout_s;
+    lim->rate_limit       = server_p->rate_limit;
+    lim->client_timeout_s = server_p->client_timeout_s;
+    lim->max_connections  = server_p->max_connections;
+    lim->max_prompt_bytes = server_p->max_prompt_bytes;
+    lim->parallel         = server_p->parallel;
+    lim->parallel_batch   = server_p->parallel_batch;
+}
+
 /* Generation flags become the server-side defaults every request (and the web UI, via
  * GET /v1/config) starts from; the rest are the API hardening and UI knobs. */
 static void configure_server(PzSession *S, ApiContext *ctx) {
@@ -80,13 +94,7 @@ static void configure_server(PzSession *S, ApiContext *ctx) {
                                                      : S->chat_template_builtin   ? "builtin"
                                                                                   : "gguf";
     ctx->server_config.search.best_of              = S->args.sampling.best_of;
-    ctx->server_config.limits.queue_size           = server_p->queue_size;
-    ctx->server_config.limits.queue_timeout_s      = server_p->queue_timeout_s;
-    ctx->server_config.limits.rate_limit           = server_p->rate_limit;
-    ctx->server_config.limits.client_timeout_s     = server_p->client_timeout_s;
-    ctx->server_config.limits.max_connections      = server_p->max_connections;
-    ctx->server_config.limits.parallel             = server_p->parallel;
-    ctx->server_config.limits.parallel_batch       = server_p->parallel_batch;
+    configure_limits(ctx, server_p);
     gen_queue_set_max_waiting(&ctx->gen_queue, server_p->queue_size);
     ctx->server_config.search.best_of_max            = S->args.sampling.best_of_max;
     ctx->server_config.cache.prompt_cache_mb         = S->args.perf.prompt_cache_mb;

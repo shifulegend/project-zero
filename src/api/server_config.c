@@ -27,7 +27,8 @@ void server_config_init(ServerConfig *sc) {
     sc->limits.queue_size       = 0;
     sc->limits.queue_timeout_s  = 120;
     sc->limits.rate_limit       = 20; /* generous for the web UI, stops a flood of cheap calls */
-    sc->limits.client_timeout_s = 30; /* a stalled client frees its thread after 30 s */
+    sc->limits.max_prompt_bytes = 1024 * 1024; /* 1 MiB of message text; 0 = no cap */
+    sc->limits.client_timeout_s = 30;          /* a stalled client frees its thread after 30 s */
     sc->limits.max_connections =
         64; /* excess clients get 503 instead of an unbounded thread each */
     sc->limits.parallel       = 1;

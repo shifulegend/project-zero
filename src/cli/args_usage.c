@@ -160,6 +160,8 @@ static void usage_server(void) {
            "= off)\n");
     printf("  --client-timeout <s> Drop a client that sends or reads nothing for this many seconds "
            "(30; 0 = never)\n");
+    printf("  --max-prompt-bytes <N> Server: message text one chat request may carry; more gets "
+           "400 (1048576; 0 = no cap)\n");
     printf("  --max-connections <N> Open client connections at once; more get 503 (64; 0 = "
            "unlimited)\n");
     printf("  --parallel <N>      Serve up to N chat requests at once, batched into one\n");

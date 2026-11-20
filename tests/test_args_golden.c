@@ -75,6 +75,7 @@ static int in_image(uintptr_t v) {
     X(output, log_level)                                                                           \
     X(input, lora_path)                                                                            \
     X(server, max_connections)                                                                     \
+    X(server, max_prompt_bytes)                                                                    \
     X(sampling, max_tokens)                                                                        \
     X(sampling, max_tokens_limit)                                                                  \
     X(search, mcts)                                                                                \
@@ -251,6 +252,7 @@ static int read_flags(char flags[][40], int max) {
                                   "src/cli/args_flags_generation.c",
                                   "src/cli/args_flags_memory.c",
                                   "src/cli/args_flags_serving.c",
+                                  "src/cli/args_flags_limits.c",
                                   "src/cli/args_flags_search.c",
                                   "src/cli/args_flags_behavior.c",
                                   "src/cli/args_flags_extras.c"};
@@ -263,8 +265,13 @@ static int read_flags(char flags[][40], int max) {
         char line[512];
         while (fgets(line, sizeof line, f)) {
             const char *p = line;
-            while ((p = strstr(p, "strcmp(argv[i], \"--")) != NULL) {
-                p += strlen("strcmp(argv[i], \"");
+            /* a flag is either a strcmp(argv[i], "--x") branch or a {"--x", ...} table entry */
+            for (;;) {
+                const char *s1 = strstr(p, "strcmp(argv[i], \"--");
+                const char *s2 = strstr(p, "{\"--");
+                if (!s1 && !s2) break;
+                int table     = s1 == NULL || (s2 != NULL && s2 < s1);
+                p             = table ? s2 + strlen("{\"") : s1 + strlen("strcmp(argv[i], \"");
                 const char *e = strchr(p, '"');
                 if (!e || e - p >= 40) break;
                 char name[40];

@@ -21,6 +21,11 @@
 - Proof: 6 unit tests (including the stale-floor case) pass; the checker passes on the fresh tracefile.
 - Areas: `tools/check_coverage.py`, `tools/test_check_coverage.py`, `tools/coverage_floor.txt`.
 
+### 2026-11-20 — `--max-prompt-bytes`: one configurable cap on prompt size
+- What: new flag `--max-prompt-bytes <N>` (default 1048576, 0 = no cap, max 1 GiB; `pz config set max-prompt-bytes`, `PZ_MAX_PROMPT_BYTES`, reported as `features.max_prompt_bytes` by `GET /v1/config`). `chat_request_acceptable()` in `http_chat.c` answers a request whose message text is longer than the cap with `400` naming the flag (it also holds the old empty-messages check). Together with the per-request buffer for image messages this replaces the old silent 8 KiB cut. The limit flags (queue size/timeout, rate, client timeout, connections, prompt bytes) are a table in the new `args_flags_limits.c`, reached from `args_parse_serving`; the settings schema moved out of `pz_config.c` into `pz_config_schema.c` (the file was over its size entry); `features_limits()` and `configure_limits()` keep the long functions at their recorded size. `tests/test_args_golden.c` and `tools/check_help_flags.py` also read table-style flags; the golden table was regenerated for the new field (4909 cases).
+- Verified: `make test` green on gcc and clang; `tests/e2e_max_prompt_bytes.sh` (cap 200: 100 characters answered, 300 refused with 400 and the flag name; cap 0: 300 answered; `/v1/config` reports the value; added to the CI golden job); unit test of the flag's range checks; complexity, file-size, help-flag, struct and unit-test ratchets pass.
+- Why: Open decisions #1 (user default: dynamic buffer plus a configurable safety cap with a clean error).
+
 ### 2026-11-20 — CI workflow fixes: Node pinned, invalid YAML repaired
 - What: the `webui` job in `ci.yml` had a step name containing `: ` in a plain YAML scalar, so GitHub could not parse the whole workflow; the name is reworded. The job now runs `actions/setup-node` pinned to the v7.1.0 commit (949feb24...) with Node 22, the version the committed bundle is built with. New `tools/test_workflows_parse.py` (run in the `changelog` job) parses every YAML file under `.github/`.
 - Why: Open decisions #4 (Node pin) and a workflow that could never have run.

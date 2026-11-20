@@ -112,6 +112,7 @@ static void defaults_server(CliServer *g) {
     g->rate_limit          = 20;
     g->client_timeout_s    = 30;
     g->max_connections     = 64;
+    g->max_prompt_bytes    = 1024 * 1024;
     g->parallel            = 1;
     g->parallel_batch      = PZ_PARALLEL_BATCH_DEFAULT;
 }

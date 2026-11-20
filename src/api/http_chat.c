@@ -261,6 +261,28 @@ static void chat_send_result(int fd, ApiContext *ctx, const ChatRequest *req, co
     }
 }
 
+/* A parsed request needs at least one message and, with --max-prompt-bytes, message text within
+ * the server's cap; otherwise it is answered with 400 and freed. Returns 1 when it may go on. */
+static int chat_request_acceptable(int fd, const ApiContext *ctx, ChatRequest *req,
+                                   const char *extra_headers) {
+    if (req->num_messages == 0) {
+        chat_request_free(req);
+        http_send_error_ex(fd, HTTP_BAD_REQUEST, "No messages in request", extra_headers);
+        return 0;
+    }
+    long cap = ctx->server_config.limits.max_prompt_bytes;
+    if (cap <= 0) return 1;
+    size_t text_bytes = 0;
+    for (int mi = 0; mi < req->num_messages; mi++)
+        if (req->messages[mi].content) text_bytes += strlen(req->messages[mi].content);
+    if (text_bytes <= (size_t)cap) return 1;
+    chat_request_free(req);
+    http_send_error_ex(fd, HTTP_BAD_REQUEST,
+                       "Messages are longer than this server allows (--max-prompt-bytes)",
+                       extra_headers);
+    return 0;
+}
+
 void http_handle_chat_completions(int fd, const char *body_start, size_t body_len, ApiContext *ctx,
                                   const char *extra_headers) {
     const ServerSearch *search_p = &ctx->server_config.search;
@@ -287,11 +309,7 @@ void http_handle_chat_completions(int fd, const char *body_start, size_t body_le
     }
     free(body);
 
-    if (req.num_messages == 0) {
-        chat_request_free(&req);
-        http_send_error_ex(fd, HTTP_BAD_REQUEST, "No messages in request", extra_headers);
-        return;
-    }
+    if (!chat_request_acceptable(fd, ctx, &req, extra_headers)) return;
 
     /* Phase 30: best-of-N (server default --best-of, capped by --best-of-max)
      * and step-level tree search (server --mcts*, request "mcts"). */

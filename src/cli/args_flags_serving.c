@@ -1,7 +1,7 @@
 /*
  * src/cli/args_flags_serving.c
  *
- * Command-line flags: remote layers, request queue, rate/timeout/connection limits and parallel slots. One group of parse_args() (args.c); each branch is unchanged, and
+ * Command-line flags: remote layers and parallel slots (the request queue and size limits are in args_flags_limits.c). One group of parse_args() (args.c); each branch is unchanged, and
  * tests/test_args_golden.c compares every flag's parse result with a golden table.
  */
 
@@ -12,6 +12,7 @@
 #include "api/server_config.h"
 #include "cli/arg_values.h"
 #include "cli/args.h"
+#include "cli/args_groups.h"
 #include "core/log.h"
 #include "kv_cache/kv_quant_ops.h"
 #include "math/rope.h"
@@ -36,37 +37,6 @@ TernaryError args_parse_serving(CliArgs *args, int argc, char **argv, int *ip, i
         args->dist.remote_layers = argv[++i];
     } else if (strcmp(argv[i], "--plan-layers") == 0 && i + 1 < argc) {
         args->dist.plan_layers = argv[++i];
-    } else if (strcmp(argv[i], "--queue-size") == 0 && i + 1 < argc) {
-        ARG_INT(args->server.queue_size);
-        if (args->server.queue_size < 0) {
-            TN_LOG_ERR("args_flags_serving", "Error: --queue-size must be >= 0\n");
-            return TN_ERR_INVALID_CONFIG;
-        }
-    } else if (strcmp(argv[i], "--queue-timeout") == 0 && i + 1 < argc) {
-        ARG_INT(args->server.queue_timeout_s);
-        if (args->server.queue_timeout_s < 1) {
-            TN_LOG_ERR("args_flags_serving", "Error: --queue-timeout must be >= 1 second\n");
-            return TN_ERR_INVALID_CONFIG;
-        }
-    } else if (strcmp(argv[i], "--rate-limit") == 0 && i + 1 < argc) {
-        ARG_INT(args->server.rate_limit);
-        if (args->server.rate_limit < 0 || args->server.rate_limit > 100000) {
-            TN_LOG_ERR("args_flags_serving",
-                       "Error: --rate-limit must be 0..100000 requests per second\n");
-            return TN_ERR_INVALID_CONFIG;
-        }
-    } else if (strcmp(argv[i], "--client-timeout") == 0 && i + 1 < argc) {
-        ARG_INT(args->server.client_timeout_s);
-        if (args->server.client_timeout_s < 0 || args->server.client_timeout_s > 86400) {
-            TN_LOG_ERR("args_flags_serving", "Error: --client-timeout must be 0..86400 seconds\n");
-            return TN_ERR_INVALID_CONFIG;
-        }
-    } else if (strcmp(argv[i], "--max-connections") == 0 && i + 1 < argc) {
-        ARG_INT(args->server.max_connections);
-        if (args->server.max_connections < 0 || args->server.max_connections > 1048576) {
-            TN_LOG_ERR("args_flags_serving", "Error: --max-connections must be 0..1048576\n");
-            return TN_ERR_INVALID_CONFIG;
-        }
     } else if (strcmp(argv[i], "--parallel") == 0 && i + 1 < argc) {
         ARG_INT(args->server.parallel);
         if (args->server.parallel < 1 || args->server.parallel > PZ_PARALLEL_MAX) {
@@ -82,7 +52,7 @@ TernaryError args_parse_serving(CliArgs *args, int argc, char **argv, int *ip, i
             return TN_ERR_INVALID_CONFIG;
         }
     } else {
-        return TN_OK; /* not one of this group's flags */
+        return args_parse_limits(args, argc, argv, ip, handled); /* or not ours at all */
     }
     *ip      = i;
     *handled = 1;

@@ -349,6 +349,9 @@ jobs:
       - name: Run E2E CLI exit-status test (errors exit non-zero)
         run: tests/e2e_cli_exit_status.sh models/smollm2-q8_0.gguf
 
+      - name: Run E2E prompt-size cap test (--max-prompt-bytes)
+        run: PZ=./pz MODEL=models/smollm2-q8_0.gguf tests/e2e_max_prompt_bytes.sh
+
       - name: Run E2E structured-logging test (JSON lines, redaction)
         run: tests/e2e_log_format.sh models/smollm2-q8_0.gguf
 

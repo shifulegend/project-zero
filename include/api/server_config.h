@@ -65,6 +65,7 @@ typedef struct {
     int rate_limit; /* --rate-limit: requests/second allowed on non-generation routes (0 = off) */
     int client_timeout_s; /* --client-timeout: socket read/write timeout in seconds (0 = none) */
     int max_connections;  /* --max-connections: simultaneous client connections (0 = unlimited) */
+    int max_prompt_bytes; /* --max-prompt-bytes: message text a request may carry (0 = unlimited) */
     int parallel;         /* --parallel: chat requests served at once (1 = sequential) */
     int parallel_batch;   /* --parallel-batch: rows per batched forward pass */
 } ServerLimits;

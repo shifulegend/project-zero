@@ -16,7 +16,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 ARGS_FILES = sorted((ROOT / "src" / "cli").glob("args*.c"))
 USAGE = ROOT / "src" / "cli" / "args_usage.c"
 
-PARSED = re.compile(r'strcmp\(argv\[i\],\s*"(--[a-z0-9-]+)"\)')
+PARSED = re.compile(r'(?:strcmp\(argv\[i\],\s*|\{)"(--[a-z0-9-]+)"')
 MENTIONED = re.compile(r"(--[a-z0-9-]+)")
 
 

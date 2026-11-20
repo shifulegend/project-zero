@@ -130,6 +130,7 @@ set(CORE_SOURCES
     src/core/log.c
     src/core/error.c
     src/core/escape.c
+    src/core/sys_probe.c
     src/core/gguf_quant.c
     src/core/gguf_quant_k.c
     src/core/gguf_quant_iq.c

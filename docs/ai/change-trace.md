@@ -21,6 +21,11 @@
 - Proof: 6 unit tests (including the stale-floor case) pass; the checker passes on the fresh tracefile.
 - Areas: `tools/check_coverage.py`, `tools/test_check_coverage.py`, `tools/coverage_floor.txt`.
 
+### 2026-11-20 — One shared system probe for the CPU model and the cache directory
+- What: `core/sys_probe.c` (`TnSysProbe`: `getenv` and `fopen` behind a table, real by default) holds `tn_sys_cpu_model()` and `tn_sys_cache_dir()`. The two copies of the `/proc/cpuinfo` "model name" reader (`bw_cache.c`, `calibration.c`) and the environment lookup of the bandwidth cache path now call it; `tests/test_sys_probe.c` drives them with a fake environment and a fake `/proc/cpuinfo`, no real machine involved (model name, empty and short-buffer cases, `PZ_CACHE_DIR` / `XDG_CACHE_HOME` / `HOME` precedence). Also dropped includes that the earlier splits left unused in `attention.c` and `mla_attention.c`.
+- Not done: `hardware_profile.c` still calls `sysconf`, `/proc/meminfo` and `popen` directly; the other lookups move behind the probe one at a time.
+- Why: decision 11.a (inject a system probe into the hardware files; `sha256.c` and `text_file.c` stay as plain file-I/O utilities).
+
 ### 2026-11-20 — `simd_dispatch.h` split into core, vector and pre-quantised parts
 - What: the one extern table is three headers: `math/simd_core_ops.h` (ternary matmul, packed matmul, unpack, RMSNorm, softmax), `math/simd_vec_ops.h` (element-wise kernels, SAXPY, the int4 KV rows and the INT8/INT4 classifier rows) and `math/simd_preq_ops.h` (the pre-quantised ternary path and `tn_simd_ternary_preq`). `simd_dispatch.h` keeps `tn_simd_init`, the backend name and the activation-numerics API and includes all three, so existing code is unchanged; 28 files under `src/` that use only some kernels now include only those headers. The dispatch pointers themselves are the same objects with the same names, so nothing changes at run time (no extra indirection).
 - Verified: `make test` green on gcc and clang, `make dist` + `check_dist_isa`, include-layer, ISA-guard and header-guard checks, greedy output identical on SmolLM2, BitNet and DeepSeek-V2-Lite.

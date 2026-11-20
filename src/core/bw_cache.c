@@ -10,6 +10,7 @@
 
 #include "core/fs_util.h"
 #include "core/platform.h"
+#include "core/sys_probe.h"
 #if TN_POSIX
 #include <sys/stat.h>
 #endif
@@ -31,36 +32,13 @@ int tn_bw_cache_key(char *buf, size_t n, const char *cpu_model, int physical_cor
 }
 
 void tn_bw_cache_cpu_model(char *buf, size_t n) {
-    if (!buf || n == 0) return;
-    buf[0]  = '\0';
-    FILE *f = fopen("/proc/cpuinfo", "r");
-    if (!f) return;
-    char line[256];
-    while (fgets(line, sizeof(line), f)) {
-        if (strncmp(line, "model name", 10) != 0) continue;
-        char *p = strchr(line, ':');
-        if (p) {
-            p++;
-            while (*p == ' ') p++;
-            p[strcspn(p, "\r\n")] = '\0';
-            snprintf(buf, n, "%s", p);
-        }
-        break;
-    }
-    fclose(f);
+    tn_sys_cpu_model(NULL, buf, n);
 }
 
 int tn_bw_cache_path(char *buf, size_t n) {
-    const char *d = getenv("PZ_CACHE_DIR");
-    int w;
-    if (d && *d)
-        w = snprintf(buf, n, "%s/membw", d);
-    else if ((d = getenv("XDG_CACHE_HOME")) && *d)
-        w = snprintf(buf, n, "%s/project-zero/membw", d);
-    else if ((d = getenv("HOME")) && *d)
-        w = snprintf(buf, n, "%s/.cache/project-zero/membw", d);
-    else
-        return -1;
+    char dir[512];
+    if (tn_sys_cache_dir(NULL, dir, sizeof(dir)) != 0) return -1;
+    int w = snprintf(buf, n, "%s/membw", dir);
     return (w < 0 || (size_t)w >= n) ? -1 : 0;
 }
 

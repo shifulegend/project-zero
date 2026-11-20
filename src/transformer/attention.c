@@ -4,13 +4,10 @@
 #include <string.h>
 
 #include "core/clamp.h"
-#include "core/platform.h"
 #include "core/step_timing.h"
 #include "core/weights.h"
 #include "kv_cache/kv_quant_ops.h"
-#include "math/batched_matmul.h"
 #include "math/lora_matmul.h"
-#include "math/parallel_matmul.h"
 #include "math/rope.h"
 #include "math/simd_core_ops.h"
 #include "math/simd_vec_ops.h"

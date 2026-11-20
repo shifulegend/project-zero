@@ -31,7 +31,6 @@
 #include "math/parallel_matmul.h"
 #include "math/simd_core_ops.h"
 #include "math/simd_vec_ops.h"
-#include "runtime/run_state.h"
 #include "runtime/spec_scratch.h" /* reads the batch scratch fields */
 
 /* ── YaRN RoPE helpers ─────────────────────────────────────────────────── */

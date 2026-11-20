@@ -1,6 +1,7 @@
 #include "runtime/calibration.h"
 
 #include "core/log.h"
+#include "core/sys_probe.h"
 
 /* Portable dist build: this TU is compiled at the baseline ISA, so the
  * TN_HAS_* macros below would hide every SIMD backend from calibration even
@@ -36,26 +37,7 @@
 /* ── Hardware fingerprint ─────────────────────────────────────────────── */
 
 static void read_cpu_model(char *buf, size_t buflen) {
-    buf[0] = '\0';
-#if TN_POSIX
-    FILE *f = fopen("/proc/cpuinfo", "r");
-    if (!f) return;
-    char line[256];
-    while (fgets(line, sizeof(line), f)) {
-        if (strncmp(line, "model name", 10) == 0) {
-            char *p = strchr(line, ':');
-            if (p) {
-                p++;
-                while (*p == ' ') p++;
-                size_t len = strlen(p);
-                if (len > 0 && p[len - 1] == '\n') p[len - 1] = '\0';
-                snprintf(buf, buflen, "%s", p);
-            }
-            break;
-        }
-    }
-    fclose(f);
-#endif
+    tn_sys_cpu_model(NULL, buf, buflen);
 }
 
 unsigned tn_calibration_isa_mask(void) {

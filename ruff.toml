@@ -8,7 +8,34 @@ extend-exclude = ["benchmark_results"]
 [lint]
 preview = true
 explicit-preview-rules = true   # only the preview rules named below
-select = ["E9", "F", "E722", "BLE001", "PLW1514"]   # PLW1514: text-mode open() must say encoding=
+select = ["E9", "F", "E722", "BLE001", "PLW1514", "I", "B", "UP", "SIM", "C4", "S"]
+# PLW1514: text-mode open() must say encoding=; I: sorted imports; B: likely bugs; UP: modern syntax;
+# SIM, C4: simpler code; S: security (Bandit) rules.
+
+[lint.isort]
+combine-as-imports = true   # keep `X as X` re-export lists in one block
 
 [format]
 quote-style = "double"
+
+# Bandit rules that do not fit the scripts and tests in this tree, with the reason for each. The
+# attack surface is the C engine, the HTTP server and install.sh (reviewed with the appsec-reviewer
+# persona); these are developer and CI scripts that run fixed local commands.
+[lint.per-file-ignores]
+# S101 assert: scripts and tests use assert for invariants (and for type narrowing).
+# S603/S607: subprocess calls take argument lists (never a shell) built from the repository's own
+#   paths and fixed tool names (git, make, node, npm, lizard); no user-supplied string reaches a shell.
+"tools/**" = ["S101", "S603", "S607"]
+"tests/**" = ["S101", "S603", "S607"]
+# S311: the fuzzers draw test inputs, not secrets.
+"tools/fuzz_grammar_json.py" = ["S311"]
+"tests/monkey_tester.py" = ["S311"]
+# S606: the pty runner execs the engine in the forked child by design.
+"tests/agent_pty_runner.py" = ["S606"]
+# SIM115: these handles live for the whole run (run log, summary CSV, mmap-backed reader) and are
+#   closed by close()/finally, so a with-block would not fit.
+"tools/bench/benchlib.py" = ["SIM115"]
+"tools/bench/verify/gguf_min.py" = ["SIM115"]
+# S310 (bench_parallel): the URL is always http://127.0.0.1:<port> built from the local server's port.
+"tools/bench_parallel.py" = ["S310", "SIM115"]
+"tools/bench_sweep_seq.py" = ["SIM115"]

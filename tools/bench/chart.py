@@ -20,6 +20,8 @@ from typing import Any
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent))
+import contextlib
+
 import benchlib as bl
 import gate
 import plot_sweep_svg as ps
@@ -101,10 +103,8 @@ def make_chart(
     ]
     if subtitle is None:
         meta: dict[str, Any] = {}
-        try:
+        with contextlib.suppress(OSError, ValueError):
             meta = json.loads((run_dir / "meta.json").read_text())
-        except (OSError, ValueError):
-            pass
         stamp = run_dir.name.split("_")[1] if "_" in run_dir.name else ""
         when = (
             f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:8]} {stamp[9:11]}:{stamp[11:13]} UTC"

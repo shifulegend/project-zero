@@ -14,6 +14,7 @@ usage: tools/check_pr_size.py BASE_REF [--limit N] [--numstat FILE]   (--numstat
 """
 
 import fnmatch
+import pathlib
 import subprocess
 import sys
 
@@ -71,7 +72,7 @@ def main(argv: list[str]) -> int:
     if "--limit" in argv:
         limit = int(argv[argv.index("--limit") + 1])
     if "--numstat" in argv:
-        text = open(argv[argv.index("--numstat") + 1], encoding="utf-8").read()
+        text = pathlib.Path(argv[argv.index("--numstat") + 1]).read_text(encoding="utf-8")
     else:
         text = subprocess.check_output(["git", "diff", "--numstat", f"{argv[1]}...HEAD"], text=True)
     total, per = count(text)

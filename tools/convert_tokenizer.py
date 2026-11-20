@@ -19,15 +19,15 @@ Usage:
 
 import argparse
 import json
-import struct
 import os
+import struct
 import sys
 
 
 def convert_hf_tokenizer(input_path: str, output_path: str) -> None:
     """Convert HuggingFace tokenizer.json to binary format."""
 
-    with open(input_path, "r", encoding="utf-8") as f:
+    with open(input_path, encoding="utf-8") as f:
         tok_data = json.load(f)
 
     # Extract vocabulary

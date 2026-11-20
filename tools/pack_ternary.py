@@ -20,11 +20,12 @@ Usage:
 """
 
 import argparse
+import os
 import struct
+from typing import Any
+
 import numpy as np
 import numpy.typing as npt
-from typing import Any
-import os
 
 # Magic and version must match TN_MAGIC / TN_VERSION in platform.h
 TN_MAGIC = 0x594E5254  # "TNRY" in little-endian
@@ -231,7 +232,7 @@ def main() -> None:
             scale_file = os.path.join(input_dir, f"{name}.scale")
             scale = 1.0
             if os.path.exists(scale_file):
-                with open(scale_file, "r", encoding="utf-8") as sf:
+                with open(scale_file, encoding="utf-8") as sf:
                     scale = float(sf.read().strip())
             weights_dict[name] = (w, scale)
             print(f"  Loaded {name}: shape={w.shape}, scale={scale}")

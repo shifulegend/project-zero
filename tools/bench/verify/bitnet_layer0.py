@@ -4,10 +4,11 @@ import sys
 from typing import Any
 
 sys.path.insert(0, ".")
+import os
+
 import numpy as np
 import numpy.typing as npt
 from gguf_min import G
-import os
 
 g = G(os.environ.get("BITNET_GGUF", "models/bitnet-b1.58-2B-4T-i2_s.gguf"))
 EPS = g.kv["bitnet-b1.58.attention.layer_norm_rms_epsilon"]

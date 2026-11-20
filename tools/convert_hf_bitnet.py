@@ -10,8 +10,8 @@ Supports memory-efficient streaming conversion for large models (e.g., 7B+).
 
 import argparse
 import json
-import struct
 import os
+import struct
 import sys
 from collections.abc import Iterator
 from typing import Any, BinaryIO
@@ -26,7 +26,7 @@ except ImportError:
 
 # Reuse the packing function from pack_ternary.py
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from pack_ternary import pack_ternary_array, TN_MAGIC, TN_VERSION
+from pack_ternary import TN_MAGIC, TN_VERSION, pack_ternary_array
 
 
 def get_tensor_map(model_path: str) -> dict[str, str]:
@@ -38,7 +38,7 @@ def get_tensor_map(model_path: str) -> dict[str, str]:
         if fname.endswith(".safetensors"):
             filepath = os.path.join(model_path, fname)
             with safe_open(filepath, framework="numpy") as f:
-                for key in f.keys():
+                for key in f:
                     tensor_map[key] = filepath
     return tensor_map
 
@@ -221,7 +221,7 @@ def extract_config(model_path: str) -> dict[str, Any]:
         print(f"Error: config.json not found in {model_path}", file=sys.stderr)
         sys.exit(1)
 
-    with open(config_path, "r", encoding="utf-8") as f:
+    with open(config_path, encoding="utf-8") as f:
         cfg = json.load(f)
 
     config = {

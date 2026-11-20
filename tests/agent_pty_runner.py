@@ -21,6 +21,7 @@ Expected output excerpt:
     AGENT-TEST
 """
 
+import contextlib
 import os
 import pty
 import select
@@ -30,7 +31,7 @@ import time
 ENGINE = "./pz"
 MODEL = "models/bitnet-b1.58-2B-4T.bin"
 TOKENIZER = "models/bitnet-b1.58-2B-4T_tokenizer_proper.bin"
-LOG_PATH = "/tmp/agent_pty_run.log"
+LOG_PATH = "build/agent_pty_run.log"  # build/ is git-ignored
 TIMEOUT = 120  # seconds
 
 PROMPT = (
@@ -56,6 +57,7 @@ def main() -> None:
         sys.exit(1)  # unreachable
 
     all_output = bytearray()
+    os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
     with open(LOG_PATH, "wb") as logf:
         os.write(fd, PROMPT.encode())
         start = time.time()
@@ -94,10 +96,8 @@ def main() -> None:
 
             if time.time() - start > TIMEOUT:
                 print("\n[TIMEOUT] killing engine", file=sys.stderr)
-                try:
+                with contextlib.suppress(OSError):  # the engine may have exited already
                     os.kill(pid, 9)
-                except OSError:  # already exited
-                    pass
                 break
 
     text = all_output.decode(errors="replace")

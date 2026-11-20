@@ -107,7 +107,7 @@ def check(text: str, require_unreleased: bool = False) -> list[str]:
         if e.name in seen:
             errors.append(f"line {e.line_no}: duplicate version {e.name}")
         seen.add(e.name)
-    for a, b in zip(rel, rel[1:]):
+    for a, b in zip(rel, rel[1:], strict=False):
         if _key(a.name) <= _key(b.name):
             errors.append(f"line {b.line_no}: {b.name} listed after {a.name} (newest first)")
         if (a.date or "") < (b.date or ""):

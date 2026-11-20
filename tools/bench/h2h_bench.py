@@ -43,8 +43,8 @@ Examples
 
 import argparse
 import json
-import pathlib
 import os
+import pathlib
 import shlex
 import sys
 from collections.abc import Sequence
@@ -52,10 +52,10 @@ from typing import Any
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import benchlib as bl
-import hardware_profile as hp
-import setup_engines as se
 import chart
 import gate
+import hardware_profile as hp
+import setup_engines as se
 
 # The bare minimum of a published sweep (2026-10-19 / 10-29): every engine on every model, 1..4 threads,
 # 500 tokens, 3 rounds with a 10 s cooldown, pz default plus INT4, a live-terminal screenshot of every run
@@ -341,7 +341,7 @@ def main() -> int:
         a.fixed,
         a.resume,
         gate_of=g.verdict_of,
-        skip_of=lambda k, v: not g.timed(k, v),
+        skip_of=g.skipped,
     )
     ref = variants[0]["label"]
     shots = []
@@ -357,8 +357,8 @@ def main() -> int:
                 a.shot_tokens,
                 a.screenshots,
                 a.shot_rows,
-                note_of=lambda k, v: gate.caption_note(g.results.get(f"{k}/{v}")),
-                skip_of=lambda k, v: not g.timed(k, v),
+                note_of=g.caption,
+                skip_of=g.skipped,
             )
     summary = build_report(run, a, g, shots, ref)
     print("\n" + bl.summary_md(summary, with_ratio=True, hide_invalid=g.cfg["mode"] == "strict"))

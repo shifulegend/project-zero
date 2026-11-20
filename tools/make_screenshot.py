@@ -13,6 +13,7 @@ Usage:
 import argparse
 import os
 import re
+
 from PIL import Image, ImageDraw, ImageFont
 
 # Terminal colour palette (dark theme)
@@ -137,7 +138,7 @@ def main() -> None:
     parser.add_argument("--command", required=True, help="Command that was run")
     args = parser.parse_args()
 
-    with open(args.input, "r", encoding="utf-8") as f:
+    with open(args.input, encoding="utf-8") as f:
         text = f.read()
 
     render(text, args.title, args.command, args.output)

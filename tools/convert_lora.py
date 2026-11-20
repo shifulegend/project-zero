@@ -26,9 +26,9 @@ Phase 19 development against an actual downloaded SmolLM2 LoRA adapter
 (see docs/ai/mistakes.md).
 """
 
+import json
 import os
 import re
-import json
 import struct
 from argparse import ArgumentParser
 from collections.abc import Iterable
@@ -142,14 +142,9 @@ def main() -> None:
     args = parser.parse_args()
     kv_dim = args.kv_dim if args.kv_dim is not None else args.dim
     q_dim = args.q_dim if args.q_dim is not None else args.dim
-    if args.kv_dim is None and (
-        {"k_proj", "v_proj"}
-        & set(
-            json.load(
-                open(os.path.join(args.adapter, "adapter_config.json"), encoding="utf-8")
-            ).get("target_modules", [])
-        )
-    ):
+    with open(os.path.join(args.adapter, "adapter_config.json"), encoding="utf-8") as cfg_file:
+        target_modules = set(json.load(cfg_file).get("target_modules", []))
+    if args.kv_dim is None and {"k_proj", "v_proj"} & target_modules:
         print(
             f"warning: adapter targets k_proj/v_proj but --kv-dim was not given — "
             f"defaulting to --kv-dim={args.dim} (only correct if the base model uses "

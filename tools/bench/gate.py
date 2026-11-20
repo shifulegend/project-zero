@@ -391,6 +391,14 @@ class Gate:
         """Should this (model, variant) be timed and screenshotted? Used as the `skip_of` of run_matrix and screenshots."""
         return should_time(self.verdict_of(model, variant), self.cfg)
 
+    def skipped(self, model: str, variant: str) -> bool:
+        """The `skip_of` of run_matrix and screenshots: True for a cell that must not be timed."""
+        return not self.timed(model, variant)
+
+    def caption(self, model: str, variant: str) -> str:
+        """Screenshot caption note (the `note_of` of take_screenshots) for one cell."""
+        return caption_note(self.results.get(f"{model}/{variant}"))
+
     def verdict_of(self, model: str, variant: str) -> str:
         """Verdict for one run: OFF when the gate is disabled, UNVERIFIED when it was not judged."""
         return str(

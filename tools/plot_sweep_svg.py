@@ -185,7 +185,7 @@ def svg_to_png(svg: str, png_path: str, chrome: str) -> str:
     # render into a taller window (2x scale) and crop to the SVG box.
     html = png_path + ".html"
     with open(html, "w", encoding="utf-8") as f:
-        f.write('<html><body style="margin:0;background:%s">%s</body></html>' % (BG, svg))
+        f.write(f'<html><body style="margin:0;background:{BG}">{svg}</body></html>')
     try:
         subprocess.run(
             [

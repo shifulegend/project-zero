@@ -29,17 +29,17 @@ Examples
 
 import argparse
 import collections
+import os
 import pathlib
 import re
-import os
 import subprocess
 import sys
 from typing import Any
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import benchlib as bl
-import hardware_profile as hp
 import gate
+import hardware_profile as hp
 
 TESTS = ["profile", "sweeps", "tiers", "classifiers", "unit"]
 TIERS = ["default", "vnni", "avx2", "avx512f", "scalar", "vnni256"]
@@ -283,7 +283,7 @@ def main() -> int:
                 a.order,
                 True,
                 gate_of=g.verdict_of,
-                skip_of=lambda k, v: not g.timed(k, v),
+                skip_of=g.skipped,
             )
             summary = bl.summarize(rows, variants[0]["label"])
             hide = g.cfg["mode"] == "strict"
@@ -306,8 +306,8 @@ def main() -> int:
                     32,
                     a.screenshots,
                     a.shot_rows,
-                    note_of=lambda k, v: gate.caption_note(g.results.get(f"{k}/{v}")),
-                    skip_of=lambda k, v: not g.timed(k, v),
+                    note_of=g.caption,
+                    skip_of=g.skipped,
                 )
                 meta[f"{name}_screenshots"] = shots
     if "unit" in tests:

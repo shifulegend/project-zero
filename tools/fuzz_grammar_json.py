@@ -35,7 +35,7 @@ import sys
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_HARNESS_SRC = os.path.join(REPO_ROOT, "tools", "grammar_json_verdict.c")
-DEFAULT_HARNESS_BIN = "/tmp/grammar_json_verdict_fuzz"
+DEFAULT_HARNESS_BIN = os.path.join(REPO_ROOT, "build", "grammar_json_verdict_fuzz")
 
 JSON_ALPHABET = '{}[]",:0123456789abcdefghijklmnopqrstuvwxyz \t\n-+.eE\\'
 
@@ -70,6 +70,7 @@ def build_harness(path: str) -> str:
     """Path of the compiled fuzz harness, building it when it does not exist yet."""
     if os.path.exists(path):
         return path
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     cc = os.environ.get("CC", "gcc")
     cmd = [
         cc,
@@ -146,7 +147,7 @@ def run_harness(harness: str, candidates: list[bytes]) -> list[Result]:
     b64_lines = "\n".join(base64.b64encode(c).decode() for c in candidates) + "\n"
     proc = subprocess.run([harness], input=b64_lines, capture_output=True, text=True, check=True)
     results: list[Result] = []
-    for line, original in zip(proc.stdout.splitlines(), candidates):
+    for line, original in zip(proc.stdout.splitlines(), candidates, strict=False):
         parts = line.split("\t", 2)
         verdict, offset = parts[0], int(parts[1])
         results.append((verdict, offset, original))
@@ -220,7 +221,7 @@ def main() -> None:
             f"  [{status}] {label}: {len(candidates)} candidates, "
             f"{len(false_accepts)} false-accepts, {len(false_rejects)} false-rejects"
         )
-        for raw, off in false_accepts[:5]:
+        for raw, _off in false_accepts[:5]:
             print(f"      FALSE ACCEPT: our=DONE json.loads=raises  bytes={raw!r}")
         for raw, off in false_rejects[:5]:
             print(f"      FALSE REJECT: our=INVALID(@{off}) json.loads=parses  bytes={raw!r}")

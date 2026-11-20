@@ -1,13 +1,14 @@
 import json
 import struct
+import sys
 
 
 def build_tokenizer() -> None:
     """Converts a Llama-3 tiktoken-style tokenizer.json into the binary tokenizer file used by pz."""
-    input_path = "/tmp/tokenizer.json"
+    input_path = sys.argv[1] if len(sys.argv) > 1 else "tokenizer.json"
     output_path = "models/bitnet-b1.58-2B-4T_tokenizer_proper.bin"
 
-    with open(input_path, "r", encoding="utf-8") as f:
+    with open(input_path, encoding="utf-8") as f:
         data = json.load(f)
 
     # Llama-3 (Tiktoken) tokenizer.json structure:

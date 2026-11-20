@@ -19,8 +19,8 @@ import numpy.typing as npt
 path = sys.argv[1]
 toks = [int(t) for t in sys.argv[2].split(",")]
 n_gen = int(sys.argv[3])
-f = open(path, "rb")
-data = f.read()
+with open(path, "rb") as f:
+    data = f.read()
 off = 0
 
 
@@ -165,7 +165,7 @@ def step(tok: int) -> npt.NDArray[np.float32]:
 
 
 seq = list(toks)
-for i, t in enumerate(seq):
+for _i, t in enumerate(seq):
     logits = step(t)
 for g in range(n_gen):
     top = np.argsort(-logits)[:5]

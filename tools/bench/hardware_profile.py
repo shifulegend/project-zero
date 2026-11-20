@@ -24,8 +24,8 @@ import os
 import pathlib
 import re
 import shlex
-from typing import Any
 import sys
+from typing import Any
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import benchlib as bl
@@ -34,7 +34,7 @@ import benchlib as bl
 def find_small_model(models_dir: str) -> pathlib.Path | None:
     """The smallest known model on disk (the profile does not depend on which one)."""
     best: pathlib.Path | None = None
-    for key, m in bl.load_models().items():
+    for key, _m in bl.load_models().items():
         p = bl.model_path(key, models_dir)
         if p and (best is None or p.stat().st_size < best.stat().st_size):
             best = p

@@ -127,7 +127,7 @@ def build_weight_map(model_dir: str) -> dict[str, str]:
                 with safe_open(
                     os.path.join(model_dir, fname), framework="numpy", device="cpu"
                 ) as st:
-                    for k in st.keys():
+                    for k in st:
                         weight_map[k] = fname
     return weight_map
 

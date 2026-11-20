@@ -1,6 +1,6 @@
-import subprocess
 import os
 import random
+import subprocess
 
 
 def run_with_timeout(cmd: list[str], timeout_sec: float) -> tuple[int, str, str]:

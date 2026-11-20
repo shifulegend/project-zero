@@ -9,6 +9,7 @@ Outputs:
 """
 
 import os
+
 import matplotlib
 
 matplotlib.use("Agg")
@@ -108,8 +109,8 @@ print(f"Saved: {out}")
 
 
 # ── Graph 2: Speedup ratio ────────────────────────────────────────────────────
-speedup_bf16 = [b / m for b, m in zip(pz_bf16, msft)]
-speedup_int4 = [i / m for i, m in zip(pz_int4, msft)]
+speedup_bf16 = [b / m for b, m in zip(pz_bf16, msft, strict=False)]
+speedup_int4 = [i / m for i, m in zip(pz_int4, msft, strict=False)]
 
 fig, ax = plt.subplots(figsize=(10, 5))
 apply_dark(ax, fig)
@@ -128,7 +129,7 @@ ax.set_title(
 ax.set_xticks(threads)
 ax.legend(facecolor="#1A1A25", edgecolor=GRID, labelcolor=FG, fontsize=11)
 
-for t, su in zip(threads, speedup_int4):
+for t, su in zip(threads, speedup_int4, strict=False):
     ax.annotate(
         f"{su:.1f}×",
         xy=(t, su),
@@ -163,7 +164,7 @@ fig, ax = plt.subplots(figsize=(8, 5))
 apply_dark(ax, fig)
 
 bars = ax.bar(labels, values, color=colours, width=0.45, edgecolor=GRID, linewidth=0.8)
-for bar, val, tlabel in zip(bars, values, t_labels):
+for bar, val, tlabel in zip(bars, values, t_labels, strict=False):
     ax.text(
         bar.get_x() + bar.get_width() / 2,
         bar.get_height() + 0.5,

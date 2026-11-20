@@ -15,6 +15,7 @@ import argparse
 import json
 import os
 import re
+
 from PIL import Image, ImageDraw, ImageFont
 
 Colour = tuple[int, int, int]

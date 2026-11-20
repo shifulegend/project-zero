@@ -435,7 +435,7 @@ def load_tensors_from_dir(model_dir: str) -> Tensors:
     tensors: Tensors = {}
     for fpath in sf_files:
         with safe_open(fpath, framework="pt") as f:
-            for key in f.keys():
+            for key in f:
                 tensors[key] = f.get_tensor(key).float().numpy()
         print(f"  Loaded {os.path.basename(fpath)} ({len(tensors)} tensors total)")
 

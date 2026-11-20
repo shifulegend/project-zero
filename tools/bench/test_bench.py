@@ -13,7 +13,6 @@ import calibration_test as ct
 import hardware_profile as hp
 from bench_sweep_seq import gen_toks
 
-
 MEASURED = {"tps": 1.0, "tokens": 1, "wall": 0.0, "rss_mb": 1, "cpu_pct": 1, "rc": 0, "log": "x"}
 
 
@@ -167,7 +166,9 @@ class Matrix(unittest.TestCase):
                 vs = [fake_variant(l) for l in ("a", "b", "c")]
                 models = [("m", {"tokens": 4}, pathlib.Path("m.gguf"))]
                 bl.run_matrix(run, vs, models, [4], 3, 0, 0.0)
-                first_per_round = [s for (s, r), i in zip(seen, range(len(seen))) if i % 3 == 0]
+                first_per_round = [
+                    s for (s, r), i in zip(seen, range(len(seen)), strict=False) if i % 3 == 0
+                ]
                 self.assertEqual(len(set(first_per_round)), 3, "the starting variant rotates")
                 n = len(seen)
                 bl.run_matrix(run, vs, models, [4], 3, 0, 0.0, resume=True)

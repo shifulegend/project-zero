@@ -39,22 +39,21 @@ HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 from bench_sweep_seq import PROMPT, gen_toks, prompt_toks, run_once  # noqa: F401  (reused, not copied)
-
-from benchlib_variants import (
+from benchlib_variants import (  # re-exported for the bench scripts
     GenCmd as GenCmd,
     PplCmd as PplCmd,
     Variant as Variant,
-    load_engines as load_engines,
-    load_models as load_models,
     default_engine_dir as default_engine_dir,
     engine_binary as engine_binary,
+    engine_ppl_binary as engine_ppl_binary,
+    load_engines as load_engines,
+    load_models as load_models,
     model_path as model_path,
-    pz_cmd as pz_cmd,
-    ref_cmd as ref_cmd,
     ppl_cmd_pz as ppl_cmd_pz,
     ppl_cmd_ref as ppl_cmd_ref,
-    engine_ppl_binary as engine_ppl_binary,
+    pz_cmd as pz_cmd,
     pz_variant as pz_variant,
+    ref_cmd as ref_cmd,
     ref_variant as ref_variant,
 )
 

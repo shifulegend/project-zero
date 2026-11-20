@@ -73,9 +73,10 @@ def detect_model_class(config: dict[str, Any], model_dir: str) -> str:
 
     # Inspect actual weights if safetensors available
     try:
-        from safetensors import safe_open
-        import numpy as np
         import glob
+
+        import numpy as np
+        from safetensors import safe_open
 
         sf = sorted(glob.glob(os.path.join(model_dir, "*.safetensors")))
         if sf:

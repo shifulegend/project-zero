@@ -16,9 +16,9 @@ Usage:
     python3 parse_llama_log.py llama_raw.txt llama_tensors.csv
 """
 
-import sys
-import re
 import csv
+import re
+import sys
 
 # Tensor names we care about (must match CAPTURE_PATTERNS in compare_tensors.py)
 KEEP = {

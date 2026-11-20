@@ -37,8 +37,8 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import benchlib as bl
-import hardware_profile as hp
 import gate
+import hardware_profile as hp
 
 
 def parse_binaries(spec: str) -> dict[str, str]:
@@ -78,7 +78,7 @@ def build_binaries(run: bl.RunDir, kinds: list[str], cc: str) -> dict[str, str]:
 def step_table(runs_text: dict[str, str], reference: str) -> str:
     """Markdown table of per-step timings of every run against the reference run."""
     steps = {lbl: bl.parse_step_timing(t) for lbl, t in runs_text.items()}
-    names = [n for n in steps[reference]]
+    names = list(steps[reference])
     header = (
         ["step"]
         + [f"{lbl} (ms)" for lbl in steps]
@@ -189,7 +189,7 @@ def main() -> int:
         True,
         a.resume,
         gate_of=g.verdict_of,
-        skip_of=lambda k, v: not g.timed(k, v),
+        skip_of=g.skipped,
     )
     summary = bl.summarize(rows, ref)
     md = [
@@ -256,8 +256,8 @@ def main() -> int:
             32,
             a.screenshots,
             a.shot_rows,
-            note_of=lambda k, v: gate.caption_note(g.results.get(f"{k}/{v}")),
-            skip_of=lambda k, v: not g.timed(k, v),
+            note_of=g.caption,
+            skip_of=g.skipped,
         )
         md += [
             "",

@@ -150,6 +150,12 @@ set(CORE_SOURCES
     src/core/gguf_reader.c
     src/core/gguf_i2s.c
     src/runtime/gguf_loader.c
+    src/runtime/gguf_load_util.c
+    src/runtime/gguf_load_proj.c
+    src/runtime/gguf_load_deepseek2.c
+    src/runtime/gguf_load_qwen35.c
+    src/runtime/gguf_load_qwen3moe.c
+    src/runtime/gguf_load_mamba.c
     src/runtime/mamba_state.c
     src/runtime/spec_scratch.c
     src/runtime/gguf_config.c

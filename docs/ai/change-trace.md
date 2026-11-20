@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-20 — GGUF weight loading split per architecture; the dense loader into small functions
+- What: `gguf_loader.c` (1512 lines; `weights_from_gguf` alone 460 lines) is now the dispatcher plus the dense path as `dense_shape`, `load_dense_embedding`, `load_dense_layer`, `load_dense_output` and `set_inference_flags` (422 lines). The shared helpers moved to `gguf_load_util.c` (names `gguf_ld_*`, header `runtime/gguf_load_util.h`), the projection policy to `gguf_load_proj.c` (the old `LOAD_PROJ` macro is a function with `repack_i2s` / `repack_q4k_x8` helpers), and the four architecture loaders to `gguf_load_{deepseek2,qwen35,qwen3moe,mamba}.c`. The four if-blocks of the dispatcher are one `load_moe_family()` taking the loader and whether the dense BF16 head is used.
+- Why: one 1500-line file held five loaders, and the dense one was a single function with a 100-line macro in its loop.
+- Proof: with the helpers' old names mapped to the new ones, every helper function compiles to the identical instruction stream (`-O2`, inlining and IPA off); the four architecture loaders and the dispatcher differ only in register allocation (the callees are no longer in their translation unit). SmolLM2 and BitNet give the same perplexity (274.3610 and 201.4187) before and after, which touches every loaded tensor.
+- Areas: `src/runtime/gguf_load*.c`, `include/runtime/gguf_load_util.h`, `CMakeLists.txt`, `tools/file_size_baseline.txt`, `.claude/INDEX.md`.
+
 ### 2026-11-20 — error exits of the CLI modes return 1
 - What: `session_distributed`, `run_perplexity` (now returns a status), `run_watermark_detect` and `session_run_server` set `exit_code = 1` on their error branches; `tests/e2e_cli_exit_status.sh` plus a CI step.
 - Why: they printed an error and exited 0 (see mistakes.md, 2026-11-20).

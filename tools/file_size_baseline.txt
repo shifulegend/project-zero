@@ -11,7 +11,6 @@ src/math/matmul_q4k.c 690
 src/math/matmul_q4k_x8.c 654
 src/math/parallel_matmul.c 566
 src/runtime/calibration.c 797
-src/runtime/gguf_loader.c 1512
 src/runtime/hardware_profile.c 698
 src/tokenizer/pretokenize.c 593
 src/tokenizer/tokenizer_encode.c 592

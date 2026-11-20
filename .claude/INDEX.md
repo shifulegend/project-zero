@@ -44,7 +44,10 @@ Q8_0, F32), and DeepSeek-V2-style MoE/MLA models. The primary binary is `pz`.
 ### 📁 `src/core/` — Model Loading & Config
 | File | Description |
 |------|-------------|
-| `src/runtime/gguf_loader.c` | GGUF→`TransformerWeights` mapping; `config_from_gguf`, `weights_from_gguf` |
+| `src/runtime/gguf_loader.c` | `weights_from_gguf`: picks the loader by architecture; the dense (llama / qwen2 / qwen3 / BitNet) path as small functions (embedding, layer, output, flags) |
+| `src/runtime/gguf_load_proj.c` | Dense projection loader: zero-copy F16 / F32 / Q4_K / Q6_K, I2_S and Q4_K x8 repack, else dequantise |
+| `src/runtime/gguf_load_util.c` + `include/runtime/gguf_load_util.h` | Loader-internal helpers: buffer store, tensor to float, typed projection, dense BF16 head |
+| `src/runtime/gguf_load_{deepseek2,qwen35,qwen3moe,mamba}.c` | Per-architecture weight loaders |
 | `src/runtime/gguf_config.c` | `Config` and `MoEConfig` read from GGUF metadata |
 | `src/core/gguf_reader.c` | Raw GGUF binary parser: reads header, metadata KV pairs, tensor index |
 | `src/core/gguf_quant.c` | GGUF dequantization: Q4_K, Q4_0, Q5_0, Q5_1, Q5_K, Q6_K, Q8_0 → F32 |

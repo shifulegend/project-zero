@@ -374,6 +374,7 @@ set(API_SOURCES
     src/api/json_write.c
     src/api/request_params.c
     src/api/api_info.c
+    src/api/api_config_json.c
     src/api/watermark_endpoint.c
     src/api/selfcheck_endpoint.c
     src/api/config_endpoint.c

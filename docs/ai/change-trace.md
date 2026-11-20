@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-20 — `api_config_json` (372 lines) and `print_usage` (221 lines) split into one function per section
+- What: `GET /v1/config`'s builder moved to `src/api/api_config_json.c` as `config_ui`, `config_model`, `config_defaults_{sampler,search,tail}`, `config_limits`, `config_runtime` (+ `runtime_act_quant`, `runtime_distributed`, `runtime_cache`), `config_features` (+ `features_parallel`) and `config_chat_template`; `api_info.c` 548 to 145 lines (`api_model_meta` / `api_vision_enabled` shared through `api/api_info.h`). `args_usage.c`'s `print_usage` calls one `usage_<section>` function per `--help` section.
+- Why: each was one function writing a dozen unrelated sections in a row.
+- Proof: `/v1/config` from a live SmolLM2 server is byte-identical to the previous commit's binary under ten flag sets (default, UI title / text logo, best-of and tree search, system prompt and sampler flags, watermark, JSON mode, CORS / metrics / cache off, act-quant / classifier, stop strings); the old and new `print_usage` print byte-identical text (212 lines, compiled side by side); `test_api_info` 39/39, `test_config_endpoint` 46/46, `test_openapi`, `test_api_server`, the openapi-route and help-flag checks pass.
+- Areas: `src/api/{api_info,api_config_json}.c`, `include/api/api_info.h`, `src/cli/args_usage.c`, `CMakeLists.txt`, `tools/file_size_baseline.txt`.
+
 ### 2026-11-20 — Jinja `eval` (378 lines) split into one function per node type
 - What: `chat_template_eval.cpp`'s `eval()` switch is now ~40 lines dispatching to `eval_getitem`, `eval_getslice`, `eval_getattr`, `eval_binop` (+ `binop_apply`), `eval_unop`, `eval_isdef`, `eval_call` (+ `eval_macro_call`); the filters, Python string methods and `namespace` / `range` moved to the new `chat_template_builtins.cpp` (`jinja_filter` over `filter_text` / `filter_value`, `jinja_string_method`, `jinja_call_*`). The two copies of the "argument i" lambda are one `call_arg()`. Largest function 53 lines (was 378).
 - Why: one switch held every expression type, the 14 filters and the string methods, with cyclomatic complexity 188.

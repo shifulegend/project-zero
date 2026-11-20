@@ -140,6 +140,8 @@ Q8_0, F32), and DeepSeek-V2-style MoE/MLA models. The primary binary is `pz`.
 | `src/api/http_response.c` | Response writers (plain, SSE headers, JSON error) |
 | `src/api/http_chat.c` | `POST /v1/chat/completions`: queue wait, prompt build, generation dispatch, reply (one helper per step) |
 | `src/api/chat_stream.c` | Per-request output state: SSE streaming / accumulation callback, best-of and tree-search result JSON |
+| `src/api/api_info.c` | `GET /v1/models` and `/v1/prompt_cache` bodies, model metadata, the max-tokens cap |
+| `src/api/api_config_json.c` | `GET /v1/config` document, one function per section (ui, model, defaults, limits, runtime, features, chat template) |
 | `src/api/http_routes.c` | Small route handlers: models, config, prompt cache, self-check, watermark, health, metrics, docs, OpenAPI, cancel |
 | `src/api/http_request.c` | Reading one request off a socket with strict framing; the HTTP/1.1 request parser |
 | `src/api/chat_compile.c` | Compile `messages[]` array → single prompt string |

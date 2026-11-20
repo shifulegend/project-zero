@@ -59,6 +59,15 @@ def size(files: list[str]) -> int:
     return sum((ROOT / f).stat().st_size for f in files if (ROOT / f).is_file())
 
 
+def write_archive(out: str, names: list[str]) -> str:
+    """Write the files to the gzip tar `out`; returns the SHA-256 of the archive."""
+    existing = [name for name in names if (ROOT / name).is_file()]
+    with tarfile.open(out, "w:gz") as tar:
+        for name in existing:
+            tar.add(ROOT / name, arcname=name)
+    return hashlib.sha256(Path(out).read_bytes()).hexdigest()
+
+
 def main(argv: list[str]) -> int:
     """Run the requested action."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -71,12 +80,7 @@ def main(argv: list[str]) -> int:
         f"keep {len(kept)} files ({size(kept) / 1e6:.1f} MB), archive {len(archived)} files ({size(archived) / 1e6:.1f} MB)"
     )
     if args.archive:
-        with tarfile.open(args.archive, "w:gz") as tar:
-            for name in archived:
-                if (ROOT / name).is_file():
-                    tar.add(ROOT / name, arcname=name)
-        digest = hashlib.sha256(Path(args.archive).read_bytes()).hexdigest()
-        print(f"wrote {args.archive} sha256 {digest}")
+        print(f"wrote {args.archive} sha256 {write_archive(args.archive, archived)}")
     if args.remove:
         subprocess.run(["git", "rm", "-q", "--", *archived], cwd=ROOT, check=True)
         print(f"removed {len(archived)} files from the tree")

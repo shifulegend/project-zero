@@ -48,8 +48,10 @@
   which may only shrink.
 - **Function length:** a new function does one job and stays under 20 lines of body; a longer one
   gets a comment that says why splitting it would hurt (a hot kernel, one flat state machine).
-  Reviewers hold new code to this; the 200-line functions already in the tree are tracked work, not
-  precedent. No automated gate yet (the complexity ratchet is open work).
+  Reviewers hold new code to this; the long functions already in the tree are tracked work, not
+  precedent. CI (`tools/check_complexity.py`, lizard) fails on a new function in `src/` over 100
+  lines or complexity 15 and on growth of a listed one (`tools/complexity_baseline.txt`, which may
+  only shrink); the 20-line and complexity-10 targets stay review-time rules.
 - **Complexity:** cyclomatic complexity 10 or less and nesting depth 3 or less per new function;
   prefer early returns over nested `if`s, and a table or a helper over a long `else if` chain.
 - **Braces:** attached (K&R) braces everywhere, enforced by `.clang-format` (see Formatting); no

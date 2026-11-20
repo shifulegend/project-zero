@@ -3,6 +3,11 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-20 — complexity ratchet in CI
+- What: `tools/check_complexity.py` (lizard 1.26.1; unit tests in `tools/test_check_complexity.py`) fails on a function in `src/` over complexity 15 or 100 lines unless it is in `tools/complexity_baseline.txt`, and on growth of a listed one; a CI step installs lizard and runs it. 170 existing offenders are recorded (largest first in `--update` output), the list may only shrink.
+- Why: the limits in `engineering-rules.md` had no gate, so the splits in this series could be undone by the next large function.
+- Areas: `tools/check_complexity.py`, `tools/test_check_complexity.py`, `tools/complexity_baseline.txt`, `.github/workflows/ci.yml`, `docs/ai/engineering-rules.md`.
+
 ### 2026-11-20 — `json_grammar_step` (289 lines, repeated if-chains) rebuilt from small state helpers
 - What: the 37-state JSON pushdown automaton keeps its single `switch`, but each case is one short expression over helpers (`in_string`, `after_backslash`, `hex_digit`, `literal_byte`, `start_value`, `number_continues`, `set`); the two copies of the string escape machine (object key, string value) share the helpers. 289 to 117 lines.
 - Why: the key and value string states, the three literal families and the number states each repeated the same if-chains.

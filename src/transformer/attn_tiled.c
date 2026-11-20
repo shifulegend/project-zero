@@ -3,7 +3,7 @@
 #include <math.h>
 #include <string.h>
 
-#include "math/simd_dispatch.h"
+#include "math/simd_vec_ops.h"
 #include "threading/cache_probe.h"
 
 static AttnKernel g_kernel    = ATTN_KERNEL_STANDARD;

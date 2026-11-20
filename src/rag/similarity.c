@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "math/simd_dispatch.h"
+#include "math/simd_vec_ops.h"
 
 float rag_cosine_similarity(const float *a, const float *b, int dim) {
     /* Both vectors are pre-normalised → dot product == cosine similarity */

@@ -4,7 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "math/simd_dispatch.h"
+#include "math/simd_core_ops.h"
+#include "math/simd_vec_ops.h"
 #include "memory/aligned_alloc.h"
 #include "transformer/dense_matmul_dispatch.h"
 

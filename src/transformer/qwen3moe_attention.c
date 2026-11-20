@@ -35,7 +35,8 @@
 #include "math/lora_matmul.h"
 #include "math/parallel_matmul.h"
 #include "math/rope.h"
-#include "math/simd_dispatch.h"
+#include "math/simd_core_ops.h"
+#include "math/simd_vec_ops.h"
 #include "runtime/spec_scratch.h" /* reads the batch scratch fields */
 #include "transformer/dense_matmul_dispatch.h"
 

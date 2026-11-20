@@ -5,7 +5,7 @@
 #include "core/fp16.h"
 #include "core/platform.h"
 #include "math/batched_matmul.h"
-#include "math/simd_dispatch.h"
+#include "math/simd_vec_ops.h"
 
 #if TN_HAS_AVX512 || TN_HAS_AVX2
 #include <immintrin.h>

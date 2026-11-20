@@ -9,7 +9,7 @@
 #include "core/step_timing.h"
 #include "core/timer.h"
 #include "distributed/dist_plan.h"
-#include "math/simd_dispatch.h"
+#include "math/simd_core_ops.h"
 #include "runtime/spec_scratch.h"
 #include "sampling/rng.h"
 #include "sampling/sampling.h"

@@ -2,7 +2,7 @@
 
 #include <stdlib.h>
 
-#include "math/simd_dispatch.h"
+#include "math/simd_vec_ops.h"
 
 /*
  * lora_apply() computes out += scale * (B @ (A @ x)) in two small steps:

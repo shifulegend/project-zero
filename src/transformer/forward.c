@@ -18,7 +18,7 @@
 #include "math/matmul_q4k.h"
 #include "math/matmul_q6k.h"
 #include "math/parallel_matmul.h"
-#include "math/simd_dispatch.h"
+#include "math/simd_core_ops.h"
 #include "runtime/hardware_profile.h"
 #include "runtime/spec_scratch.h" /* reads the batch scratch fields */
 #include "transformer/attention.h"

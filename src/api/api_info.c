@@ -11,7 +11,6 @@
 #include "distributed/dist_plan.h"
 #include "kv_cache/kv_quant_ops.h"
 #include "math/rope.h"
-#include "math/simd_dispatch.h"
 #include "reasoning/best_of.h"
 #include "runtime/hardware_profile.h"
 #include "sampling/watermark_text.h"

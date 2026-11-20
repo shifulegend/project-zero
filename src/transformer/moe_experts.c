@@ -17,7 +17,7 @@
 #include "core/platform.h"
 #include "math/matmul_q6k.h"
 #include "math/q8_0_act.h"
-#include "math/simd_dispatch.h"
+#include "math/simd_vec_ops.h"
 #include "memory/tls_scratch.h"
 
 /* ── per-thread scratch ─────────────────────────────────────────────────────

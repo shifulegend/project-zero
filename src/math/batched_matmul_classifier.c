@@ -5,7 +5,7 @@
 #include "core/weights.h"
 #include "math/batched_matmul.h"
 #include "math/parallel_matmul.h"
-#include "math/simd_dispatch.h"
+#include "math/simd_vec_ops.h"
 
 /**
  * Batched classifier-format matmuls (BF16 / block-quantized INT8 / packed

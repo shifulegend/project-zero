@@ -15,7 +15,7 @@
 #include "math/matmul_q5_1.h"
 #include "math/matmul_q8_0.h"
 #include "math/parallel_matmul.h"
-#include "math/simd_dispatch.h"
+#include "math/simd_vec_ops.h"
 #include "memory/tls_scratch.h"
 #include "transformer/moe_ffn_internal.h"
 

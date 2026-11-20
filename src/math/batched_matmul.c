@@ -5,7 +5,7 @@
 
 #include "core/platform.h"
 #include "core/unpack.h"
-#include "math/simd_dispatch.h"
+#include "math/simd_vec_ops.h"
 
 /**
  * Ternary-packed batched matmul. See include/math/batched_matmul.h for the

@@ -38,7 +38,8 @@
 #include "core/platform.h"
 #include "core/step_timing.h"
 #include "math/matmul_q2_0.h"
-#include "math/simd_dispatch.h"
+#include "math/simd_core_ops.h"
+#include "math/simd_vec_ops.h"
 
 /* Stack bound for the per-head v_pred / delta temporaries of the delta rule (state size per head).
  * The projection buffers live in RunState.q35.scratch and have no fixed cap. */

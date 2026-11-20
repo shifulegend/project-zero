@@ -4,7 +4,7 @@
 #include "agent/tool_interceptor.h"
 #include "core/log.h"
 #include "core/timer.h"
-#include "math/simd_dispatch.h"
+#include "math/simd_core_ops.h"
 #include "sampling/rng.h"
 #include "sampling/sampling.h"
 #include "tokenizer/tokenizer.h"

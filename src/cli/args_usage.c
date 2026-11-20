@@ -11,7 +11,6 @@
 #include "cli/args.h"
 #include "kv_cache/kv_quant_ops.h"
 #include "math/rope.h"
-#include "math/simd_dispatch.h"
 #include "reasoning/best_of.h"
 #include "transformer/attn_tiled.h"
 #include "update/update_check.h"

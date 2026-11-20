@@ -21,6 +21,11 @@
 - Proof: 6 unit tests (including the stale-floor case) pass; the checker passes on the fresh tracefile.
 - Areas: `tools/check_coverage.py`, `tools/test_check_coverage.py`, `tools/coverage_floor.txt`.
 
+### 2026-11-20 — Tool to archive old benchmark results
+- What: `tools/archive_benchmark_results.py` (unit-tested selection rule) splits the tracked files under `benchmark_results/`: the README and the latest published sweep (`h2h_20261118-053147Z_published-sweep` without its terminal screenshots) stay (257 files, 2.3 MB, under the 5 MB budget); the other 1,729 files (85 MB, 73 MB as `tar.gz`) are archived. `--list` shows the split, `--archive OUT.tar.gz` writes the archive and prints its SHA-256, `--remove` runs `git rm` on the archived files. Git history is not rewritten.
+- Not done (needs a maintainer): attaching the archive to a GitHub release and then running `--remove`; the upload cannot be done from this session, and removing the files before the upload would lose them from the tree.
+- Why: decision 3.a (archive historical raw logs and PNGs to GitHub Releases, keep the latest full run and charts in the tree).
+
 ### 2026-11-20 — One socket write path for the HTTP server
 - What: `sse_stream.c` had its own `write_all` whose comment said it retried on EINTR but did not (an interrupted write looked like a disconnected client and ended a stream), and `http_chat.c` wrote the queue notice with a bare `write()`. Both now call `net_write_all()`, so `net_io.c` is the only file in `src/api/` that writes to a socket. `tools/check_socket_writes.py` (unit-tested, CI `changelog` job) fails on any other direct `write()`, `send()` or `fwrite()` there.
 - Why: finding 11.c (handlers write straight to the socket; one writer function means a test can drive handlers through a pipe or socket pair and the short-write/EINTR handling lives in one place).

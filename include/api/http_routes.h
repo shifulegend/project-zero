@@ -19,6 +19,9 @@ int http_handle_watermark_detect(int fd, const char *body_start, size_t body_len
 int http_handle_config_save(int fd, const char *body_start, size_t body_len,
                             const char *content_type, const char *origin, const char *host,
                             ApiContext *ctx, const char *extra_headers);
+/* POST /v1/chat/completions: the whole generation request, queue wait included. */
+void http_handle_chat_completions(int fd, const char *body_start, size_t body_len, ApiContext *ctx,
+                                  const char *extra_headers);
 void http_handle_health(int fd, const char *extra_headers);
 void http_handle_get_metrics(int fd, ApiContext *ctx, const char *extra_headers);
 void http_handle_get_docs(int fd, const char *extra_headers);

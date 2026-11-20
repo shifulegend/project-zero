@@ -338,6 +338,8 @@ set(API_SOURCES
     src/api/json_parse.c
     src/api/net_io.c
     src/api/http_response.c
+    src/api/chat_stream.c
+    src/api/http_chat.c
     src/api/http_routes.c
     src/api/http_request.c
     src/api/chat_image.c

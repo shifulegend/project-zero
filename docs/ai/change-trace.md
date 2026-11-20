@@ -1,7 +1,13 @@
 # Change Trace — project-zero
 
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
-> Update after each meaningful sub-step. Last updated: 2026-11-19.
+> Update after each meaningful sub-step. Last updated: 2026-11-20.
+
+### 2026-11-20 — `handle_chat_completions` split into one function per step
+- What: the 380-line handler is now 133 lines plus `chat_acquire_units`, `chat_build_prompt`, `chat_run_generation` and `chat_send_result`; the chat route moved to `src/api/http_chat.c` and the output state (`StreamState`, token callback, best-of / tree-search JSON) to `src/api/chat_stream.c`. `http_server.c` 1014 to 575 lines. Behaviour unchanged.
+- Why: the function mixed parsing, queueing, prompt rendering, generation and reply writing, which made each hard to review and test on its own.
+- Proof: with SmolLM2 the live server's replies (non-stream, stream, empty messages, bad JSON) are byte-identical to the pre-series binary once ids and timestamps are masked; `e2e_parallel` 6/6, `e2e_prompt_cache`, `e2e_json_mode` 17/17; `make test` 39/39.
+- Areas: `src/api/{http_chat,chat_stream,http_server}.c`, `include/api/{chat_stream,http_routes}.h`, `CMakeLists.txt`, `tools/file_size_baseline.txt`.
 
 ### 2026-11-19 — Measurable code limits written into the engineering rules
 - What: `engineering-rules.md` gains "Measurable limits": 500-line files (CI ratchet), 20-line functions, complexity 10, nesting 3, attached braces, and an untrusted-input checklist.

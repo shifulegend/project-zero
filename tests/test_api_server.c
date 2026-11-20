@@ -33,10 +33,10 @@ static void test_chat_request_init(void) {
     ChatRequest req;
     chat_request_init(&req);
     assert(req.num_messages == 0);
-    assert(req.temperature == 1.0f);
-    assert(req.top_p == 1.0f);
-    assert(req.max_tokens == 512);
-    assert(req.stream == 0);
+    assert(req.sampling.temperature == 1.0f);
+    assert(req.sampling.top_p == 1.0f);
+    assert(req.output.max_tokens == 512);
+    assert(req.output.stream == 0);
     chat_request_free(&req);
     PASS("chat_request_init");
 }

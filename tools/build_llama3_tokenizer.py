@@ -1,3 +1,5 @@
+"""Build llama3 tokenizer."""
+
 import json
 import struct
 import sys

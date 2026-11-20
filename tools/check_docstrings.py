@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Ratchet on public Python functions without a docstring in tools/ (tests excluded).
+"""Ratchet on Python functions without a docstring in tools/ (private helpers and tests included).
 
 The per-file count may not go up (tools/docstring_baseline.txt); documenting a function and lowering
-the baseline (--update) is welcome. A "public" function is any def whose name does not start with an
-underscore, including methods and nested functions.
+the baseline (--update) is welcome. Every def counts (public or private, methods, nested functions
+and the unit tests); dunder methods are the exception. Ruff (D100-D107) covers the public ones in
+every Python file, this check also the private ones.
 
 usage: tools/check_docstrings.py [--update]
 """
@@ -27,7 +28,7 @@ def missing(source: str) -> list[str]:
     for node in ast.walk(ast.parse(source)):
         if (
             isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and not node.name.startswith("_")
+            and not (node.name.startswith("__") and node.name.endswith("__"))
             and not ast.get_docstring(node)
         ):
             out.append(node.name)
@@ -35,12 +36,11 @@ def missing(source: str) -> list[str]:
 
 
 def counts() -> dict[str, int]:
-    """Returns {relative path: number of undocumented public functions} for tools/*.py."""
+    """Returns {relative path: number of undocumented functions} for tools/*.py."""
     files = subprocess.check_output(["git", "ls-files", "tools"], cwd=ROOT, text=True).split()
     result = {}
     for rel in files:
-        name = pathlib.PurePosixPath(rel).name
-        if not rel.endswith(".py") or name.startswith("test_") or "benchmark_results" in rel:
+        if not rel.endswith(".py") or "benchmark_results" in rel:
             continue
         n = len(missing((ROOT / rel).read_text(encoding="utf-8")))
         if n:

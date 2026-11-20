@@ -268,6 +268,7 @@ class Gate:
         threads: int = 0,
         resume: bool = False,
     ) -> None:
+        """Set up the instance."""
         self.cfg, self.run, self.models_dir, self.threads = cfg, run, models_dir, threads
         self.path = run.path / "gate.json"
         self.results: Results = {}
@@ -369,10 +370,12 @@ class Gate:
         return self.results
 
     def _is_reference(self, v: bl.Variant, models: Sequence[Model]) -> bool:
+        """True when `v` is the variant the others are judged against."""
         ref = self.reference_of(models)
         return any(ref(k, v["label"]) == f"{k}/{v['label']}" for k, _, _ in models)
 
     def _save(self, models: Sequence[Model]) -> None:
+        """Judge all results and write the gate file."""
         judge(self.results, self.cfg, self.reference_of(models))
         self.path.write_text(
             json.dumps({"config": self.cfg, "results": self.results}, indent=2) + "\n"

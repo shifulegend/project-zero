@@ -83,6 +83,7 @@ def parse(text: str) -> tuple[list[Entry], dict[str, str], list[str]]:
 
 
 def _key(v: str) -> tuple[int | tuple[int, str], ...]:
+    """Sort key of a version string: numeric parts, with a pre-release below its release."""
     core = v.split("-", 1)[0]
     pre = v.split("-", 1)[1] if "-" in v else None
     # A pre-release sorts below its release.

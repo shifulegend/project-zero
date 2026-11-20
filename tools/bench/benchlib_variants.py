@@ -31,7 +31,8 @@ class GenCmd(Protocol):
         threads: int,
         fixed: bool,
         prompt: str = ...,
-    ) -> list[str] | None: ...
+    ) -> list[str] | None:
+        """Call."""
 
 
 class PplCmd(Protocol):
@@ -47,7 +48,8 @@ class PplCmd(Protocol):
         chunks: int,
         threads: int,
         extra: Sequence[str] = ...,
-    ) -> list[str] | None: ...
+    ) -> list[str] | None:
+        """Call."""
 
 
 class Variant(TypedDict):

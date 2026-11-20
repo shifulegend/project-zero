@@ -157,6 +157,7 @@ class RunDir:
         label: str = "",
         argv: Sequence[str] | None = None,
     ) -> None:
+        """Set up the instance."""
         self.kind = kind
         self.t0 = utc_now()
         self.stamp = utc_stamp(self.t0)

@@ -21,6 +21,10 @@
 - Proof: 6 unit tests (including the stale-floor case) pass; the checker passes on the fresh tracefile.
 - Areas: `tools/check_coverage.py`, `tools/test_check_coverage.py`, `tools/coverage_floor.txt`.
 
+### 2026-11-20 — Docstrings on every Python function, enforced
+- What: all 172 missing public docstrings (modules, classes, methods, unit tests) were added; test methods get a sentence derived from their name. Ruff now selects `D100`-`D107` for every Python file, and `tools/check_docstrings.py` counts every `def` in `tools/` (private helpers, nested functions and tests included; dunder methods excepted), baseline 0. `tools/bench/test_bench.py` (507 lines) was split: the gate tests are in `test_bench_gate.py`, run by the same CI step. The text-mode `open()` calls already pass `encoding` (ruff `PLW1514` has been on since the Python hygiene commit), so the Windows-encoding half of the finding needed no change.
+- Why: decision Q20 (docstrings for private helpers and tests too).
+
 ### 2026-11-20 — Duplicated-code ratchet
 - What: `tools/check_duplication.py` (unit-tested, CI `changelog` job) normalises each source file (comments, blank and brace-only lines dropped), slides a 6-line window over it and counts the lines covered by a window that occurs elsewhere. Measured now: `src/` 8.02 % (the figure the finding quoted was 8.17 %), `webui/src` 16.77 %. Both are recorded in `tools/duplication_baseline.txt`; a higher share fails, and a share that fell by more than half a point fails until `--update` records it, so the number only goes down.
 - Why: decision 41.e / 1.g / 45.c (blocking ratchet on duplication, existing debt grandfathered and burned down).

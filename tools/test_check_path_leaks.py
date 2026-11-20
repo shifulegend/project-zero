@@ -9,7 +9,10 @@ import check_path_leaks as c
 
 
 class LeakTest(unittest.TestCase):
+    """Tests for leak."""
+
     def test_flags_each_kind(self) -> None:
+        """Flags each kind."""
         for text in (
             "see /home/alice/project/x",
             "in /Users/bob/Documents",
@@ -20,6 +23,7 @@ class LeakTest(unittest.TestCase):
             self.assertEqual(len(c.problems(text, "a.md")), 1, text)
 
     def test_neutral_paths_pass(self) -> None:
+        """Neutral paths pass."""
         for text in (
             "reference builds in /home/user/ext/llama.cpp",
             "use <HOME>/models",
@@ -29,12 +33,14 @@ class LeakTest(unittest.TestCase):
             self.assertEqual(c.problems(text, "a.md"), [], text)
 
     def test_scope(self) -> None:
+        """Scope."""
         self.assertTrue(c.in_scope("docs/ai/mistakes.md"))
         self.assertTrue(c.in_scope("README.md"))
         self.assertFalse(c.in_scope("docs/PERFORMANCE_CEILING_REPORT.md"))
         self.assertFalse(c.in_scope("src/a.c"))
 
     def test_the_real_tree_is_clean(self) -> None:
+        """The real tree is clean."""
         self.assertEqual(c.main(), 0)
 
 

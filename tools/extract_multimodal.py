@@ -118,6 +118,7 @@ class ModelAdapter(ABC):
     """Base class — subclasses implement vision_config / write_vision_weights / write_proj_weights."""
 
     def __init__(self, tensors: Tensors, config: Config) -> None:
+        """Set up the instance."""
         self.tensors = tensors  # dict: name -> numpy array
         self.config = config
 
@@ -164,6 +165,7 @@ class Moondream2Adapter(ModelAdapter):
         return n_layers, embed_dim, hidden_dim, n_heads, patch_size
 
     def _layer_key(self, l: int, sub: str) -> str:
+        """Tensor name of sub-tensor `sub` in encoder layer `l`."""
         return f"{self.PREFIX_ENC}{l}.{sub}"
 
     def write_vision_weights(self, f: BinaryIO) -> None:

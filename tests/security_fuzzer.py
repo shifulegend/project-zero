@@ -1,3 +1,5 @@
+"""Security fuzzer."""
+
 import struct
 
 
@@ -7,6 +9,7 @@ def generate_exploit_tokenizer(filename: str, len_val: int) -> None:
     #   int max_token_len;
     #   ...
     # }
+    """Generate exploit tokenizer."""
     vocab_size = 1
     max_token_len = 1024
 
@@ -19,6 +22,7 @@ def generate_exploit_tokenizer(filename: str, len_val: int) -> None:
 
 
 def test_tokenizer_vulnerability() -> None:
+    """Tokenizer vulnerability."""
     print("[SECURITY] Testing TOK-SEC-02: Integer Overflow in malloc...")
     # len = -1 will lead to malloc(0) on some systems or a very large size
     # In C: (size_t)-1 + 1 = 0. malloc(0).

@@ -123,7 +123,9 @@ jobs:
       - name: SBOM generator tests
         run: python3 -I tools/test_gen_sbom.py
       - name: Benchmark scripts (tools/bench) unit tests
-        run: python3 tools/bench/test_bench.py
+        run: |
+          python3 tools/bench/test_bench.py
+          python3 tools/bench/test_bench_gate.py
       - name: Python lint (ruff, syntax errors and unused or undefined names)
         run: |
           pip install --quiet ruff==0.16.9

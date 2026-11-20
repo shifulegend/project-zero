@@ -9,7 +9,10 @@ import check_mutable_statics as c
 
 
 class StaticTest(unittest.TestCase):
+    """Tests for static."""
+
     def test_counts_mutable_statics_only(self) -> None:
+        """Counts mutable statics only."""
         text = "\n".join(
             [
                 "static int g_count = 0;",
@@ -26,12 +29,14 @@ class StaticTest(unittest.TestCase):
         self.assertEqual(c.count(text), 4)
 
     def test_compare_only_reports_increases(self) -> None:
+        """Compare only reports increases."""
         self.assertEqual(c.compare({"a.c": 2}, {"a.c": 2}), [])
         self.assertEqual(c.compare({"a.c": 1}, {"a.c": 2}), [])
         self.assertEqual(len(c.compare({"a.c": 3}, {"a.c": 2})), 1)
         self.assertEqual(len(c.compare({"new.c": 1}, {})), 1)
 
     def test_the_real_tree_is_within_the_baseline(self) -> None:
+        """The real tree is within the baseline."""
         self.assertEqual(c.main([]), 0)
 
 

@@ -44,6 +44,7 @@ CMD = [ENGINE, "--model", MODEL, "--tokenizer", TOKENIZER, "--max-tokens", "64",
 
 
 def main() -> None:
+    """Main."""
     auto = os.environ.get("PROJECT_ZERO_AGENT_AUTO_APPROVE", "")
     if not auto:
         print(

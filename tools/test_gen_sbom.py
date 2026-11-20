@@ -13,7 +13,10 @@ import gen_sbom
 
 
 class SbomTest(unittest.TestCase):
+    """Tests for sbom."""
+
     def test_structure(self) -> None:
+        """Structure."""
         bom = gen_sbom.build("0.3.0")
         self.assertEqual(bom["bomFormat"], "CycloneDX")
         self.assertEqual(bom["specVersion"], "1.5")
@@ -21,18 +24,21 @@ class SbomTest(unittest.TestCase):
         self.assertEqual(bom["metadata"]["component"]["version"], "0.3.0")
 
     def test_vendored_versions_come_from_the_headers(self) -> None:
+        """Vendored versions come from the headers."""
         names = {c["name"]: c["version"] for c in gen_sbom.build("1")["components"]}
         self.assertEqual(set(names), {"stb_image", "stb_image_resize2"})
         for v in names.values():
             self.assertRegex(v, r"^\d+\.\d+$")
 
     def test_dependencies_reference_existing_components(self) -> None:
+        """Dependencies reference existing components."""
         bom = gen_sbom.build("1")
         refs = {c["bom-ref"] for c in bom["components"]}
         deps = bom["dependencies"][0]
         self.assertEqual(set(deps["dependsOn"]), refs)
 
     def test_cli_strips_v_and_writes_valid_json(self) -> None:
+        """Cli strips v and writes valid json."""
         with tempfile.TemporaryDirectory() as d:
             out = pathlib.Path(d) / "sbom.json"
             subprocess.run(
@@ -42,6 +48,7 @@ class SbomTest(unittest.TestCase):
             self.assertEqual(bom["metadata"]["component"]["version"], "9.8.7")
 
     def test_the_licence_is_declared(self) -> None:
+        """The licence is declared."""
         lic = {x["license"]["id"] for x in gen_sbom.build("1")["metadata"]["component"]["licenses"]}
         self.assertEqual(lic, {"MIT"})
 

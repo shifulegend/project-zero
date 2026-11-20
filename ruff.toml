@@ -8,7 +8,7 @@ extend-exclude = ["benchmark_results"]
 [lint]
 preview = true
 explicit-preview-rules = true   # only the preview rules named below
-select = ["E9", "F", "E722", "BLE001", "PLW1514", "I", "B", "UP", "SIM", "C4", "S"]
+select = ["E9", "F", "E722", "BLE001", "PLW1514", "I", "B", "UP", "SIM", "C4", "S", "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107"]
 # PLW1514: text-mode open() must say encoding=; I: sorted imports; B: likely bugs; UP: modern syntax;
 # SIM, C4: simpler code; S: security (Bandit) rules.
 

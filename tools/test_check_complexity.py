@@ -10,20 +10,26 @@ import check_complexity as c
 
 
 class ComplexityTest(unittest.TestCase):
+    """Tests for complexity."""
+
     def test_small_functions_pass(self) -> None:
+        """Small functions pass."""
         self.assertEqual(c.problems({"src/a.c::f": (10, 100)}, {}), [])
 
     def test_a_new_complex_function_fails(self) -> None:
+        """A new complex function fails."""
         out = c.problems({"src/a.c::f": (11, 10)}, {})
         self.assertEqual(len(out), 1)
         self.assertIn("complexity 11", out[0])
 
     def test_a_new_long_function_fails(self) -> None:
+        """A new long function fails."""
         out = c.problems({"src/a.c::f": (3, 101)}, {})
         self.assertEqual(len(out), 1)
         self.assertIn("101 lines", out[0])
 
     def test_a_listed_function_may_stay_or_shrink_but_not_grow(self) -> None:
+        """A listed function may stay or shrink but not grow."""
         base = {"src/a.c::big": (40, 300)}
         self.assertEqual(c.problems({"src/a.c::big": (40, 300)}, base), [])
         self.assertEqual(c.problems({"src/a.c::big": (30, 200)}, base), [])
@@ -33,9 +39,11 @@ class ComplexityTest(unittest.TestCase):
             self.assertIn("grew", out[0])
 
     def test_a_listed_function_that_got_small_is_fine(self) -> None:
+        """A listed function that got small is fine."""
         self.assertEqual(c.problems({"src/a.c::big": (5, 20)}, {"src/a.c::big": (40, 300)}), [])
 
     def test_the_real_tree_is_within_the_baseline(self) -> None:
+        """The real tree is within the baseline."""
         if importlib.util.find_spec("lizard") is None:
             self.skipTest("lizard is not installed")
         self.assertEqual(c.main([]), 0)

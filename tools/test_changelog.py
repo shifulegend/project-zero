@@ -42,15 +42,20 @@ def _notes(text: str, version: str) -> str:
 
 
 class Check(unittest.TestCase):
+    """Check."""
+
     def test_good(self) -> None:
+        """Good."""
         self.assertEqual(changelog.check(GOOD, require_unreleased=True), [])
 
     def test_repo_changelog_is_valid(self) -> None:
+        """Repo changelog is valid."""
         root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "CHANGELOG.md")
         with open(root, encoding="utf-8") as f:
             self.assertEqual(changelog.check(f.read(), require_unreleased=True), [])
 
     def test_unreleased_must_be_first_and_unique(self) -> None:
+        """Unreleased must be first and unique."""
         t = GOOD.replace("## [Unreleased]\n", "", 1).replace(
             "## [0.1.0]", "## [Unreleased]\n\n## [0.1.0]"
         )
@@ -59,6 +64,7 @@ class Check(unittest.TestCase):
         self.assertTrue(any("more than one" in e for e in changelog.check(t2)))
 
     def test_order_dates_duplicates(self) -> None:
+        """Order dates duplicates."""
         t = GOOD.replace("[0.2.0] - 2026-11-01", "[0.0.9] - 2026-11-01").replace(
             "[0.2.0]: ", "[0.0.9]: "
         )
@@ -69,6 +75,7 @@ class Check(unittest.TestCase):
         self.assertTrue(any("duplicate" in e for e in changelog.check(t)))
 
     def test_bad_heading_subsection_link(self) -> None:
+        """Bad heading subsection link."""
         self.assertTrue(changelog.check(GOOD.replace("[0.1.0] - 2026-06-20", "0.1.0 (June)")))
         self.assertTrue(
             any("subsection" in e for e in changelog.check(GOOD.replace("### Fixed", "### Bugs")))
@@ -83,6 +90,7 @@ class Check(unittest.TestCase):
         )
 
     def test_prerelease_sorts_below_release(self) -> None:
+        """Prerelease sorts below release."""
         t = GOOD.replace("[0.2.0] - 2026-11-01", "[0.2.0-rc.1] - 2026-11-01").replace(
             "[0.2.0]: ", "[0.2.0-rc.1]: "
         )
@@ -90,7 +98,10 @@ class Check(unittest.TestCase):
 
 
 class SectionsAndYanked(unittest.TestCase):
+    """Sections And Yanked."""
+
     def test_section_order_and_repeat(self) -> None:
+        """Section order and repeat."""
         t = GOOD.replace(
             "### Added\n\n- new thing\n", "### Added\n\n- new thing\n\n### Changed\n\n- x\n"
         )
@@ -99,13 +110,17 @@ class SectionsAndYanked(unittest.TestCase):
         self.assertTrue(any("repeated" in e for e in changelog.check(t)))
 
     def test_yanked_heading(self) -> None:
+        """Yanked heading."""
         t = GOOD.replace("[0.1.0] - 2026-06-20", "[0.1.0] - 2026-06-20 [YANKED]")
         self.assertEqual(changelog.check(t), [])
         self.assertIn("- bug", _notes(t, "0.1.0"))
 
 
 class Notes(unittest.TestCase):
+    """Notes."""
+
     def test_extract_with_v_prefix_and_link(self) -> None:
+        """Extract with v prefix and link."""
         out = _notes(GOOD, "v0.2.0")
         self.assertIn("### Changed", out)
         self.assertIn("- renamed", out)
@@ -114,6 +129,7 @@ class Notes(unittest.TestCase):
         self.assertIn("https://x/compare/v0.1.0...v0.2.0", out)
 
     def test_unreleased_and_missing(self) -> None:
+        """Unreleased and missing."""
         self.assertIn("new thing", _notes(GOOD, "Unreleased"))
         self.assertIsNone(changelog.notes(GOOD, "9.9.9"))
         empty = GOOD.replace("### Changed\n\n- renamed\n", "")

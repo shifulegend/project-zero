@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Fuzz config."""
+
 import os
 import struct
 import subprocess

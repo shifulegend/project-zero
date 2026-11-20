@@ -6,7 +6,10 @@ from typing import Any
 
 
 class G:
+    """G."""
+
     def __init__(s, path: str) -> None:
+        """Set up the instance."""
         s.f = open(path, "rb")
         s.m = mmap.mmap(s.f.fileno(), 0, access=mmap.ACCESS_READ)
         b = s.m

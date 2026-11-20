@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Mamba reference."""
+
 # mamba_reference.py — independent numpy Mamba-1 reference for Phase 22-SSM.
 #
 # Reads an F16/F32 Mamba GGUF directly (no llama.cpp, no torch), runs the

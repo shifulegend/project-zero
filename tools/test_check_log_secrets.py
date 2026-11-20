@@ -1,3 +1,5 @@
+"""Tests for check log secrets."""
+
 import pathlib
 import sys
 import unittest
@@ -7,28 +9,37 @@ import check_log_secrets as c
 
 
 class LogSecretTests(unittest.TestCase):
+    """Log Secret Tests."""
+
     def test_flags_a_secret_argument(self) -> None:
+        """Flags a secret argument."""
         self.assertEqual(
             c.violations('fprintf(stderr, "key=%s\\n", ctx->api_key);'), [(1, "api_key")]
         )
 
     def test_flags_a_multiline_call(self) -> None:
+        """Flags a multiline call."""
         text = 'fprintf(stderr,\n  "auth %s",\n  auth_header);'
         self.assertEqual(c.violations(text), [(3, "auth_header")])
 
     def test_help_text_in_a_string_is_fine(self) -> None:
+        """Help text in a string is fine."""
         self.assertEqual(c.violations('printf("  --api-key <key>  Require Bearer <key>\\n");'), [])
 
     def test_comments_are_ignored(self) -> None:
+        """Comments are ignored."""
         self.assertEqual(c.violations("/* printf(api_key); */\n// puts(password);"), [])
 
     def test_non_print_use_is_fine(self) -> None:
+        """Non print use is fine."""
         self.assertEqual(c.violations("if (strcmp(tok, api_key) == 0) return 1;"), [])
 
     def test_perror_and_puts_are_covered(self) -> None:
+        """Perror and puts are covered."""
         self.assertEqual(len(c.violations("puts(password); perror(passphrase);")), 2)
 
     def test_the_logger_calls_are_covered(self) -> None:
+        """The logger calls are covered."""
         self.assertEqual(
             c.violations('TN_LOG_ERR("auth", "key %s\\n", server_config.auth.api_key);'),
             [(1, "api_key")],
@@ -41,6 +52,7 @@ class LogSecretTests(unittest.TestCase):
         )
 
     def test_the_real_tree_is_clean(self) -> None:
+        """The real tree is clean."""
         self.assertEqual(c.main(), 0)
 
 

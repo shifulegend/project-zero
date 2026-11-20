@@ -1,3 +1,5 @@
+"""Tests for check coverage."""
+
 import pathlib
 import sys
 import unittest
@@ -9,15 +11,20 @@ INFO = "SF:a.c\nLF:100\nLH:60\nBRF:50\nBRH:20\nend_of_record\nSF:b.c\nLF:100\nLH
 
 
 class CoverageTests(unittest.TestCase):
+    """Coverage Tests."""
+
     def test_totals_sum_every_file(self) -> None:
+        """Totals sum every file."""
         t = c.totals(INFO)
         self.assertEqual(t["lines"], (100, 200))
         self.assertEqual(t["branches"], (50, 100))
 
     def test_meets_floor(self) -> None:
+        """Meets floor."""
         self.assertEqual(c.check(INFO, {"lines": 50.0, "branches": 50.0}), [])
 
     def test_below_floor_is_named(self) -> None:
+        """Below floor is named."""
         out = c.check(INFO, {"lines": 51.0, "branches": 50.0})
         self.assertEqual(len(out), 1)
         self.assertIn("lines", out[0])
@@ -29,14 +36,17 @@ class CoverageTests(unittest.TestCase):
         self.assertIn("raise it", out[0])
 
     def test_empty_tracefile_fails(self) -> None:
+        """Empty tracefile fails."""
         self.assertTrue(c.check("", {"lines": 1.0}))
 
     def test_floor_file_parses_comments(self) -> None:
+        """Floor file parses comments."""
         self.assertEqual(
             c.read_floor("# c\nlines 50 # x\nbranches 35\n"), {"lines": 50.0, "branches": 35.0}
         )
 
     def test_real_floor_file_is_valid(self) -> None:
+        """Real floor file is valid."""
         floor = c.read_floor(c.FLOOR.read_text(encoding="utf-8"))
         self.assertEqual(set(floor), {"lines", "branches"})
 

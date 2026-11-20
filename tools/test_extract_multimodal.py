@@ -28,6 +28,7 @@ class AdapterTest(unittest.TestCase):
 
         class Partial(em.ModelAdapter):
             def vision_config(self) -> em.VisionConfig:
+                """A one-by-one vision configuration."""
                 return (1, 1, 1, 1, 1)
 
         partial: Any = Partial
@@ -39,12 +40,15 @@ class AdapterTest(unittest.TestCase):
 
         class Full(em.ModelAdapter):
             def vision_config(self) -> em.VisionConfig:
+                """A one-by-one vision configuration."""
                 return (1, 1, 1, 1, 1)
 
             def write_vision_weights(self, f: BinaryIO) -> None:
+                """Writes nothing."""
                 pass
 
             def write_proj_weights(self, f: BinaryIO) -> None:
+                """Writes nothing."""
                 pass
 
         self.assertEqual(Full({}, {}).vision_config(), (1, 1, 1, 1, 1))

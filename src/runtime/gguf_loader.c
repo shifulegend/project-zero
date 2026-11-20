@@ -400,23 +400,30 @@ static TernaryError load_moe_family(TransformerWeights *w, const Config *cfg, co
     return TN_OK;
 }
 
+/* One row per architecture with its own loader; adding a family is a row here plus its loader
+ * file. Anything not listed takes the dense path. */
+static const struct {
+    const char *arch;
+    ArchLoader loader;
+    int bf16_head; /* dense BF16 embedding / head + quantised classifier built here */
+} k_arch_loaders[] = {
+    {"deepseek2", weights_from_gguf_deepseek2, 1},
+    {"qwen3moe", weights_from_gguf_qwen3moe, 1},
+    {"mamba", weights_from_gguf_mamba, 0},
+    /* Qwen3.5/3.6 hybrid Gated-DeltaNet + Gated-Attention: no classifier-quant build here, the LM
+     * head stays zero-copy Q2_0 (see weights_from_gguf_qwen35 / forward.c's q35_is_q2_0_model). */
+    {"qwen35", weights_from_gguf_qwen35, 0},
+};
+
 TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg, const GGUFHeader *hdr,
                                GGUFWeightStore **store_out) {
     GGUFWeightStore *store = gguf_ld_store_alloc();
     if (!store) return TN_ERR_OOM;
     *store_out = store;
 
-    /* DeepSeek-V2 and Qwen3-MoE: dequantised BF16 embedding / head shared helper. */
-    if (strcmp(hdr->arch, "deepseek2") == 0)
-        return load_moe_family(w, cfg, hdr, store, weights_from_gguf_deepseek2, 1);
-    if (strcmp(hdr->arch, "qwen3moe") == 0)
-        return load_moe_family(w, cfg, hdr, store, weights_from_gguf_qwen3moe, 1);
-    /* Mamba (pure state-space model). */
-    if (strcmp(hdr->arch, "mamba") == 0)
-        return load_moe_family(w, cfg, hdr, store, weights_from_gguf_mamba, 0);
-    /* Qwen3.5/3.6 hybrid Gated-DeltaNet + Gated-Attention: no classifier-quant build here, the LM
-     * head stays zero-copy Q2_0 (see weights_from_gguf_qwen35 / forward.c's q35_is_q2_0_model). */
-    if (strcmp(hdr->arch, "qwen35") == 0)
-        return load_moe_family(w, cfg, hdr, store, weights_from_gguf_qwen35, 0);
+    for (size_t i = 0; i < sizeof(k_arch_loaders) / sizeof(k_arch_loaders[0]); i++)
+        if (strcmp(hdr->arch, k_arch_loaders[i].arch) == 0)
+            return load_moe_family(w, cfg, hdr, store, k_arch_loaders[i].loader,
+                                   k_arch_loaders[i].bf16_head);
     return weights_from_gguf_dense(w, cfg, hdr, store);
 }

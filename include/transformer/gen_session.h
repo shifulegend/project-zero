@@ -29,6 +29,7 @@
 #include "transformer/generate.h"
 #include "transformer/stop_seq.h"
 
+/* The model a generation runs on (borrowed from the caller). */
 typedef struct {
     const Config *cfg;
     const TransformerWeights *w;
@@ -36,31 +37,44 @@ typedef struct {
     const MoEConfig *mc;
     Tokenizer *tok;
     ThreadPool *tp;
+} GenModel;
+
+/* What the caller asked for: parameters, callback and the sampler / watermark settings. */
+typedef struct {
     const GenerationParams *gp;
     GenerationParams gp_default;
     TokenCallback callback;
     void *userdata;
-
     const SamplerSettings *ss;
     const WatermarkConfig *wm;
     int max_tokens;
     int json_mode;
-    StopMatcher stop;
-    FSMState json_fsm;
     unsigned char *chat_stops; /* this generation's chat-mode turn ends */
+} GenRequest;
 
+/* The prompt and the caches that may already hold part of it. */
+typedef struct {
     int *prompt_tokens;
     int n_prompt;
     int pos_offset;
+    PrefixCache *pcache;
+    PromptStore *pstore;
+    int cache_eligible;
+} GenPrompt;
+
+/* Sampling state: stop matching, the JSON grammar, the RNG and the log-probability sums. */
+typedef struct {
+    StopMatcher stop;
+    FSMState json_fsm;
     unsigned long long rng_state;
     int *gen_history;
     int n_history;
     float *raw_logits;
     double sum_logprob, step_lse;
-    PrefixCache *pcache;
-    PromptStore *pstore;
-    int cache_eligible;
+} GenSampling;
 
+/* Where the generation stands. */
+typedef struct {
     int step, total_steps;
     int prev_token, next;
     int tokens_generated;
@@ -72,6 +86,14 @@ typedef struct {
     int64_t gen_start_us;
     int started; /* begin succeeded (end must flush/save) */
     int done;
+} GenProgress;
+
+typedef struct {
+    GenModel model;
+    GenRequest req;
+    GenPrompt prompt;
+    GenSampling sampling;
+    GenProgress progress;
 } GenSession;
 
 /* Prepares a generation on RunState s: renders the prompt, tokenizes,

@@ -21,6 +21,11 @@
 - Proof: 6 unit tests (including the stale-floor case) pass; the checker passes on the fresh tracefile.
 - Areas: `tools/check_coverage.py`, `tools/test_check_coverage.py`, `tools/coverage_floor.txt`.
 
+### 2026-11-20 — `GenSession` grouped into five sub-structs
+- What: `GenSession` (41 direct fields) is `model` (`GenModel`: cfg, w, s, mc, tok, tp), `req` (`GenRequest`: gp, callback, sampler and watermark settings, max_tokens, json_mode, chat_stops), `prompt` (`GenPrompt`: tokens, offset, prefix and prompt caches), `sampling` (`GenSampling`: stop matcher, JSON automaton, RNG, history, log-probability sums) and `progress` (`GenProgress`: step counters, finish reason, timing, started/done). 246 uses in `src/transformer`, `src/api`, `src/cli` and the tests were rewritten from compiler errors. It leaves `tools/struct_fields_baseline.txt` (2 structs remain: `TransformerWeights`, `RunState`). Five functions in `gen_session.c` grew by 1-8 lines because the longer paths wrap; their complexity entries were re-recorded (complexity unchanged).
+- Verified: `make test` green on gcc and clang; greedy output identical to the previous build on SmolLM2 and BitNet; interleaved A/B (5 runs each, 64 tokens, 4 threads): SmolLM2 59.2 (before) vs 64.4 (after) tok/s, BitNet 19.1 vs 19.8 tok/s medians, i.e. within noise (the field offsets are compile-time constants).
+- Why: decision Q3 / 10.b (20-25 direct fields per struct; hot-path structs need an A/B).
+
 ### 2026-11-20 — `MoEConfig` MLA dimensions grouped
 - What: `MoEConfig` (26 direct fields) now holds the five MLA dimensions as `mla` (`MlaDims`: `enabled`, `kv_lora_rank`, `qk_nope_head_dim`, `qk_rope_head_dim`, `v_head_dim`), 22 direct fields; 60 uses rewritten from compiler errors (`cfg->has_mla` became `cfg->mla.enabled`). It leaves `tools/struct_fields_baseline.txt` (3 structs remain: `TransformerWeights`, `GenSession`, `RunState`). `weights_map` grew by 2 lines (longer paths wrap); its complexity entry was re-recorded.
 - Verified: `make test` green on gcc and clang; DeepSeek-V2-Lite Q2_K (MLA + MoE) generates the same text as the previous build (greedy, 12 tokens; only the version string and free-RAM lines differ).

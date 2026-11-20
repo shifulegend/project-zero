@@ -1,4 +1,3 @@
 # Structs over 25 fields (tools/check_struct_fields.py): key, fields; entries may only shrink or go.
 include/core/weights.h::TransformerWeights 88
 include/runtime/run_state.h::RunState 39
-include/transformer/gen_session.h::GenSession 41

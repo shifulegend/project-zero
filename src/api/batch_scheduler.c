@@ -117,7 +117,8 @@ static void job_finish_locked(BatchJob *job) {
 /* ── Slots and KV budget ──────────────────────────────────────────────── */
 
 static long long kv_need(const GenSession *g, const Config *cfg) {
-    long long need = (long long)g->n_prompt + (g->max_tokens > 0 ? g->max_tokens : 0);
+    long long need =
+        (long long)g->prompt.n_prompt + (g->req.max_tokens > 0 ? g->req.max_tokens : 0);
     return need < cfg->seq_len ? need : cfg->seq_len;
 }
 
@@ -140,8 +141,9 @@ static int pick_slot(BatchScheduler *sched, const BatchJob *job, int *match_out)
     for (int i = 0; i < sched->opt.n_slots; i++) {
         BatchSlot *slot = &sched->slots[i];
         if (slot->job) continue;
-        int m = job->use_cache ? prefix_cache_match(slot->pc, job->g.prompt_tokens, job->g.n_prompt)
-                               : 0;
+        int m       = job->use_cache ? prefix_cache_match(slot->pc, job->g.prompt.prompt_tokens,
+                                                          job->g.prompt.n_prompt)
+                                     : 0;
         long long c = slot->s->kv_committed;
         if (best < 0 || m > best_match || (m == best_match && c < best_commit)) {
             best        = i;
@@ -256,7 +258,7 @@ static void step(BatchScheduler *sched) {
             int pick = -1;
             for (int i = 0; i < n_slots; i++) {
                 BatchSlot *slot = &sched->slots[i];
-                if (!slot->job || count[i] || slot->job->g.done) continue;
+                if (!slot->job || count[i] || slot->job->g.progress.done) continue;
                 if (gen_session_needs_logits(&slot->job->g) != (pass == 0)) continue;
                 if (pick < 0 || slot->admit_seq < sched->slots[pick].admit_seq) pick = i;
             }
@@ -270,7 +272,7 @@ static void step(BatchScheduler *sched) {
             }
             for (int k = 0; k < n; k++) {
                 sched->row_state[rows + k] = sched->slots[pick].s;
-                sched->row_want[rows + k]  = (g->step + k >= g->n_prompt - 1);
+                sched->row_want[rows + k]  = (g->progress.step + k >= g->prompt.n_prompt - 1);
             }
             count[pick]      = n;
             order[n_order++] = pick;
@@ -300,9 +302,9 @@ static void step(BatchScheduler *sched) {
                         : single            ? single
                                  : sched->logits + (size_t)(out++) * sched->cfg->vocab_size;
             if (err != TN_OK) {
-                g->finish = GEN_FINISH_ERROR;
-                g->done   = 1;
-            } else if (!g->done)
+                g->progress.finish = GEN_FINISH_ERROR;
+                g->progress.done   = 1;
+            } else if (!g->progress.done)
                 gen_session_consume(g, lg);
         }
     }
@@ -311,7 +313,7 @@ static void step(BatchScheduler *sched) {
 static void finish_done(BatchScheduler *sched) {
     for (int i = 0; i < sched->opt.n_slots; i++) {
         BatchSlot *slot = &sched->slots[i];
-        if (!slot->job || !slot->job->g.done) continue;
+        if (!slot->job || !slot->job->g.progress.done) continue;
         BatchJob *j = slot->job;
         gen_session_end(&j->g); /* flush, snapshot, stats */
         pthread_mutex_lock(&sched->mu);
@@ -347,9 +349,9 @@ static void *scheduler_main(void *arg) {
         /* A request whose client stopped listening ends now, even mid-prompt. */
         for (int i = 0; i < sched->opt.n_slots; i++) {
             BatchJob *j = sched->slots[i].job;
-            if (j && j->abort && !j->g.done) {
-                j->g.finish = GEN_FINISH_CANCELLED;
-                j->g.done   = 1;
+            if (j && j->abort && !j->g.progress.done) {
+                j->g.progress.finish = GEN_FINISH_CANCELLED;
+                j->g.progress.done   = 1;
             }
         }
         admit(sched, &staged);
@@ -360,7 +362,7 @@ static void *scheduler_main(void *arg) {
         }
         int any_done = 0;
         for (int i = 0; i < sched->opt.n_slots; i++)
-            if (sched->slots[i].job && sched->slots[i].job->g.done) any_done = 1;
+            if (sched->slots[i].job && sched->slots[i].job->g.progress.done) any_done = 1;
         pthread_mutex_unlock(&sched->mu);
         if (!any_done) step(sched);
         finish_done(sched);

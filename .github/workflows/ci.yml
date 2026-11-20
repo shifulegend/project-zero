@@ -60,7 +60,7 @@ jobs:
         run: |
           python3 -I tools/test_check_raw_logging.py
           python3 -I tools/check_raw_logging.py
-      - name: Functions in src/ must not grow past complexity 10 / 100 lines (ratchet)
+      - name: Functions in src/, tools/ and tests/ must not grow past complexity 10 / 100 lines (ratchet)
         run: |
           pip install --quiet lizard==1.26.1
           python3 -I tools/test_check_complexity.py

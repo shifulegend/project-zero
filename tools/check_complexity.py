@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Ratchet on function size and complexity in the engine: a function in src/ may not exceed
-cyclomatic complexity 15 or 100 lines of code unless it is listed in tools/complexity_baseline.txt,
-and a listed function may not grow in either number. Split a function, then run --update so its
-entry drops or disappears (the list may only shrink). The project targets are lower (20 lines,
-complexity 10, docs/ai/engineering-rules.md); this gate stops the worst from getting worse.
+"""Ratchet on function size and complexity: a function in src/ (C and C++), tools/ or tests/ (C and
+Python) may not exceed cyclomatic complexity 10 or 100 lines of code unless it is listed in
+tools/complexity_baseline.txt, and a listed function may not grow in either number. Split a function,
+then run --update so its entry drops or disappears (the list may only shrink). The project target for
+function length is lower (20 lines, docs/ai/engineering-rules.md); this gate stops the worst from
+getting worse.
 
-Measured with lizard (pip install lizard==1.26.1): C and C++ under src/, generated code excluded.
+Measured with lizard (pip install lizard==1.26.1): generated code excluded.
 
 usage: tools/check_complexity.py [--update]
 """
@@ -21,12 +22,13 @@ BASELINE = ROOT / "tools" / "complexity_baseline.txt"
 MAX_CCN = 10
 MAX_NLOC = 100
 SKIP = ("src/api/webui_bundle_generated.c",)
+SCOPE = ("src", "tools", "tests")  # C and C++ under src/, Python under tools/ and tests/
 
 
 def measure() -> dict[str, tuple[int, int]]:
-    """{ "file::function": (ccn, nloc) } for every function in src/ (largest wins on a repeated name)."""
+    """{ "file::function": (ccn, nloc) } for every function in src/, tools/ and tests/ (largest wins on a repeated name)."""
     out = subprocess.run(
-        [sys.executable, "-m", "lizard", "src", "-l", "c", "-l", "cpp", "--csv"],
+        [sys.executable, "-m", "lizard", *SCOPE, "-l", "c", "-l", "cpp", "-l", "python", "--csv"],
         cwd=ROOT,
         capture_output=True,
         text=True,

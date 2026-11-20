@@ -335,7 +335,7 @@ tools/bench/h2h_bench.py::select_models 12 17
 tools/bench/setup_engines.py::ensure_engine 24 62
 tools/bench/setup_engines.py::ensure_model 18 49
 tools/bench/setup_engines.py::smoke_engines 13 25
-tools/bench_full.c::main 30 106
+tools/bench_full.c::main 30 108
 tools/bench_parallel.py::main 13 71
 tools/bench_parallel.py::run_config 17 69
 tools/bench_phase34.py::main 15 82

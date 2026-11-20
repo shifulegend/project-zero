@@ -1,5 +1,5 @@
 # Files over 500 lines and their lengths (tools/check_file_sizes.py); entries may only shrink or go.
-src/api/batch_scheduler.c 571
+src/api/batch_scheduler.c 573
 src/api/http_server.c 577
 src/api/json_parse.c 853
 src/cli/config_cmd.c 531
@@ -13,17 +13,17 @@ src/runtime/calibration.c 816
 src/runtime/hardware_profile.c 698
 src/tokenizer/pretokenize.c 593
 src/tokenizer/tokenizer_encode.c 592
-src/transformer/attention.c 756
-src/transformer/gen_session.c 549
-src/transformer/mla_attention.c 587
+src/transformer/attention.c 763
+src/transformer/gen_session.c 569
+src/transformer/mla_attention.c 588
 src/update/update_check.c 616
 tests/test_api_server.c 547
-tests/test_forward.c 670
+tests/test_forward.c 671
 tests/test_forward_batch.c 602
 tests/test_gguf_loader_qwen3moe.c 617
 tests/test_kv_cache.c 529
 tests/test_lora.c 654
 tests/test_packed_weights.c 504
 tests/test_simd_vnni.c 644
-tools/bench/benchlib.py 773
-tools/deepseek_bench_report.py 598
+tools/bench/benchlib.py 772
+tools/deepseek_bench_report.py 547

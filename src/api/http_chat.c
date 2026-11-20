@@ -68,8 +68,9 @@ static int chat_acquire_units(int fd, ApiContext *ctx, ChatRequest *reqp, int un
      * (metrics/docs/static/cancel) never touch the queue. */
     *qwp              = (QueueWaitCtx){fd, reqp->stream ? 1 : 0, 0, extra_headers};
     QueueWaitCtx *qw  = qwp;
-    GenQueueResult qr = gen_queue_acquire_n(
-        &ctx->gen_queue, units, ctx->server_config.queue_timeout_s * 1000, queue_wait_notify, qw);
+    GenQueueResult qr = gen_queue_acquire_n(&ctx->gen_queue, units,
+                                            ctx->server_config.limits.queue_timeout_s * 1000,
+                                            queue_wait_notify, qw);
     if (qr == GEN_QUEUE_OK && !atomic_load(&ctx->running)) { /* shutting down: don't start */
         gen_queue_release_n(&ctx->gen_queue, units);
         chat_request_free(reqp);
@@ -82,7 +83,7 @@ static int chat_acquire_units(int fd, ApiContext *ctx, ChatRequest *reqp, int un
         chat_request_free(reqp);
         if (qr == GEN_QUEUE_ABORTED) return 0; /* client already gone */
         const char *why = qr == GEN_QUEUE_TIMEOUT ? "Timed out waiting for the generation queue"
-                          : ctx->server_config.queue_size > 0
+                          : ctx->server_config.limits.queue_size > 0
                               ? "Generation queue is full"
                               : "Another generation is already in flight";
         if (qw->headers_sent) {
@@ -115,7 +116,7 @@ static int chat_build_prompt(int fd, ApiContext *ctx, ChatRequest *req, Generati
     request_params_resolve(req, &ctx->server_config.gen_defaults, api_max_tokens_limit(ctx), gp);
 
     /* Per-request templates only when the operator allows them. */
-    if (!ctx->server_config.allow_request_template) gp->chat_template = NULL;
+    if (!ctx->server_config.chat.allow_request_template) gp->chat_template = NULL;
 
     if (ctx->tok->chat_template || gp->chat_template) {
         /* GGUF tokenizer: the model's own Jinja template renders the whole
@@ -142,8 +143,8 @@ static int chat_build_prompt(int fd, ApiContext *ctx, ChatRequest *req, Generati
             http_send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers);
             return 0;
         }
-        ChatTemplateType tmpl = ctx->server_config.chat_format >= 0
-                                    ? (ChatTemplateType)ctx->server_config.chat_format
+        ChatTemplateType tmpl = ctx->server_config.chat.chat_format >= 0
+                                    ? (ChatTemplateType)ctx->server_config.chat.chat_format
                                     : chat_template_detect_vocab(ctx->tok);
         /* Message text is content, never chat markup (prompt-injection
          * defence, 2026-10-22): neutralise control tokens before the
@@ -294,13 +295,16 @@ void http_handle_chat_completions(int fd, const char *body_start, size_t body_le
 
     /* Phase 30: best-of-N (server default --best-of, capped by --best-of-max)
      * and step-level tree search (server --mcts*, request "mcts"). */
-    int best_of = (req.set_mask & CHAT_SET_BEST_OF) ? req.best_of : ctx->server_config.best_of;
+    int best_of =
+        (req.set_mask & CHAT_SET_BEST_OF) ? req.best_of : ctx->server_config.search.best_of;
     if (best_of < 1) best_of = 1;
-    if (best_of > ctx->server_config.best_of_max) best_of = ctx->server_config.best_of_max;
+    if (best_of > ctx->server_config.search.best_of_max)
+        best_of = ctx->server_config.search.best_of_max;
     MctsOptions mopt;
-    request_mcts_resolve(&req, &ctx->server_config.mcts, ctx->server_config.mcts_max, &mopt);
+    request_mcts_resolve(&req, &ctx->server_config.search.mcts, ctx->server_config.search.mcts_max,
+                         &mopt);
     int wants_image = 0;
-    if (ctx->server_config.vision_path && ctx->server_config.proj_path)
+    if (ctx->server_config.vision.vision_path && ctx->server_config.vision.proj_path)
         for (int i = 0; i < req.num_messages; i++)
             if (strcmp(req.messages[i].role, "user") == 0 && req.messages[i].image_data_url)
                 wants_image = 1;
@@ -312,7 +316,7 @@ void http_handle_chat_completions(int fd, const char *body_start, size_t body_le
     QueueWaitCtx qw;
     if (!chat_acquire_units(fd, ctx, &req, units, &qw, extra_headers)) return;
     int had_image = 0;
-    if (batched && !(ctx->server_config.vision_path && ctx->server_config.proj_path))
+    if (batched && !(ctx->server_config.vision.vision_path && ctx->server_config.vision.proj_path))
         for (int i = 0; i < req.num_messages; i++)
             if (strcmp(req.messages[i].role, "user") == 0 && req.messages[i].image_data_url) {
                 TN_LOG_INF("vision",
@@ -365,8 +369,8 @@ void http_handle_chat_completions(int fd, const char *body_start, size_t body_le
     /* Run inference */
     /* Phase 21.5: reuse the KV prefix shared with the previous request unless
      * disabled server-wide (--prompt-cache off) or for this request. */
-    int use_cache =
-        (req.set_mask & CHAT_SET_CACHE_PROMPT) ? req.cache_prompt : ctx->server_config.prompt_cache;
+    int use_cache = (req.set_mask & CHAT_SET_CACHE_PROMPT) ? req.cache_prompt
+                                                           : ctx->server_config.cache.prompt_cache;
     if (!batched) {
         if (had_image) prefix_cache_reset(&ctx->prefix_cache); /* vision prefill rewrote KV */
         if (use_cache && ctx->prefix_cache.tokens) {

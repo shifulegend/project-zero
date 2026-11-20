@@ -34,8 +34,9 @@ char *api_selfcheck(ApiContext *ctx, const char *json_body, int *status) {
     if (!ctx || !ctx->cfg || !ctx->weights || !ctx->run_state || !ctx->tok)
         return error_body("no model loaded", HTTP_INTERNAL_ERROR, status);
     SelfCheckOptions o;
-    o.tolerance_pct = number_or(json_body, "tolerance", ctx->server_config.quality_tolerance);
-    o.n_tokens      = (int)number_or(json_body, "tokens", ctx->server_config.self_check_tokens);
+    o.tolerance_pct =
+        number_or(json_body, "tolerance", ctx->server_config.numerics.quality_tolerance);
+    o.n_tokens = (int)number_or(json_body, "tokens", ctx->server_config.numerics.self_check_tokens);
     if (o.tolerance_pct < 0 || o.tolerance_pct > 100)
         return error_body("\"tolerance\" must be 0..100 (percent)", HTTP_BAD_REQUEST, status);
     if (o.n_tokens < 16 || o.n_tokens > 4096)

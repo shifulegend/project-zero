@@ -154,8 +154,8 @@ static int serve_from_bundle(int fd, const char *path, const char *extra_headers
 
 int static_assets_serve(int fd, const char *path, const ServerConfig *cfg,
                         const char *extra_headers) {
-    if (cfg && cfg->static_dir) {
-        return serve_from_disk(fd, cfg->static_dir, path, extra_headers);
+    if (cfg && cfg->ui.static_dir) {
+        return serve_from_disk(fd, cfg->ui.static_dir, path, extra_headers);
     }
     return serve_from_bundle(fd, path, extra_headers);
 }

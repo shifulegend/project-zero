@@ -24,7 +24,7 @@ int chat_apply_image(ApiContext *ctx, ChatRequest *req) {
         if (strcmp(req->messages[i].role, "user") != 0 || !req->messages[i].image_data_url)
             continue;
 
-        if (!ctx->server_config.vision_path || !ctx->server_config.proj_path) {
+        if (!ctx->server_config.vision.vision_path || !ctx->server_config.vision.proj_path) {
             TN_LOG_INF("vision", "[vision] image_url provided but server has no --vision/--proj "
                                  "configured; ignoring image\n");
             break;
@@ -70,10 +70,11 @@ int chat_apply_image(ApiContext *ctx, ChatRequest *req) {
          * needs non-const pointers even though it doesn't rewrite either --
          * same underlying objects main.c's CLI path passes non-const. */
         had_image = 1;
-        vision_pipeline_run(tmp_path, ctx->server_config.vision_path, ctx->server_config.proj_path,
-                            (Config *)ctx->cfg, (TransformerWeights *)ctx->weights, ctx->run_state,
-                            ctx->moe_cfg, ctx->tok, ctx->tp, req->messages[i].content,
-                            stripped_prompt_buf, stripped_cap, &stripped_prompt);
+        vision_pipeline_run(tmp_path, ctx->server_config.vision.vision_path,
+                            ctx->server_config.vision.proj_path, (Config *)ctx->cfg,
+                            (TransformerWeights *)ctx->weights, ctx->run_state, ctx->moe_cfg,
+                            ctx->tok, ctx->tp, req->messages[i].content, stripped_prompt_buf,
+                            stripped_cap, &stripped_prompt);
         unlink(tmp_path);
 
         if (stripped_prompt != req->messages[i].content) {

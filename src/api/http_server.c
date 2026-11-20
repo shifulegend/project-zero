@@ -253,7 +253,7 @@ static void handle_connection(int fd, ApiContext *ctx) {
     } else if (strcmp(req.method, "POST") == 0 &&
                strcmp(req.path, "/v1/chat/completions/cancel") == 0) {
         http_handle_cancel(fd, req.body, req.body_len, ctx, extra_headers);
-    } else if (strcmp(req.method, "GET") == 0 && ctx->server_config.web_ui != WEBUI_MODE_OFF) {
+    } else if (strcmp(req.method, "GET") == 0 && ctx->server_config.ui.web_ui != WEBUI_MODE_OFF) {
         /* Web UI (Phase 22.2): "/" and files under "/assets/", placed after
          * every API route so nothing above is ever shadowed. Any other
          * unmatched GET also falls through here for client-side SPA routing. */
@@ -314,14 +314,14 @@ static void *listener_thread_fn(void *arg) {
         /* Bound the work a client can hold: a read/write timeout so a stalled
          * (slowloris) peer cannot pin its thread forever, and a connection cap
          * so a flood cannot spawn unbounded threads. 0 disables either. */
-        if (ctx->server_config.client_timeout_s > 0) {
+        if (ctx->server_config.limits.client_timeout_s > 0) {
             struct timeval tv;
-            tv.tv_sec  = ctx->server_config.client_timeout_s;
+            tv.tv_sec  = ctx->server_config.limits.client_timeout_s;
             tv.tv_usec = 0;
             setsockopt(conn_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
             setsockopt(conn_fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
         }
-        int cap = ctx->server_config.max_connections;
+        int cap = ctx->server_config.limits.max_connections;
         if (cap > 0 && atomic_load(&ctx->active_connections) >= cap) {
             static const char body[] =
                 "{\"error\":{\"message\":\"Too many open connections\",\"type\":\"server_error\"}}";
@@ -426,17 +426,17 @@ TernaryError api_server_start(int port, ApiContext *ctx) {
         prefix_cache_init(&ctx->prefix_cache, ctx->run_state->max_seq_len);
     if (!ctx->prompt_store_ready) {
         prompt_store_init(&ctx->prompt_store,
-                          (size_t)(ctx->server_config.prompt_cache_mb > 0
-                                       ? ctx->server_config.prompt_cache_mb
+                          (size_t)(ctx->server_config.cache.prompt_cache_mb > 0
+                                       ? ctx->server_config.cache.prompt_cache_mb
                                        : 0) *
                               1024u * 1024u,
-                          ctx->server_config.prompt_cache_min_tokens);
+                          ctx->server_config.cache.prompt_cache_min_tokens);
         ctx->prompt_store_ready = 1;
     }
     start_parallel(ctx);
 
-    rate_limit_init(&ctx->rate_limiter, (double)ctx->server_config.rate_limit,
-                    2.0 * (double)ctx->server_config.rate_limit);
+    rate_limit_init(&ctx->rate_limiter, (double)ctx->server_config.limits.rate_limit,
+                    2.0 * (double)ctx->server_config.limits.rate_limit);
     atomic_store(&ctx->running, 1);
 
     /* Spawn listener thread */
@@ -463,9 +463,9 @@ TernaryError api_server_start(int port, ApiContext *ctx) {
     TN_OUT_INF("api", "[API]   POST http://127.0.0.1:%d/v1/chat/completions/cancel\n", port);
     TN_OUT_INF("api", "[API]   GET  http://127.0.0.1:%d/health\n", port);
     TN_OUT_INF("api", "[API]   GET  http://127.0.0.1:%d/docs\n", port);
-    if (ctx->server_config.web_ui != WEBUI_MODE_OFF)
+    if (ctx->server_config.ui.web_ui != WEBUI_MODE_OFF)
         TN_OUT_INF("api", "[API]   GET  http://127.0.0.1:%d/  (web chat UI%s)\n", port,
-                   ctx->server_config.static_dir ? ", served from disk" : "");
+                   ctx->server_config.ui.static_dir ? ", served from disk" : "");
     if (ctx->server_config.metrics.enabled)
         TN_OUT_INF("api", "[API]   GET  http://127.0.0.1:%d/metrics\n", port);
     if (ctx->server_config.cors.enabled)
@@ -481,14 +481,14 @@ TernaryError api_server_start(int port, ApiContext *ctx) {
  * model can run batched; otherwise (or if it cannot be set up) the server
  * stays sequential and /v1/config says why. */
 static void start_parallel(ApiContext *ctx) {
-    int want            = ctx->server_config.parallel;
+    int want            = ctx->server_config.limits.parallel;
     ctx->parallel_slots = 1;
     ctx->parallel_note  = NULL;
     if (want > 1 && !batch_scheduler_supported(ctx->weights, ctx->moe_cfg)) {
         ctx->parallel_note = "this model architecture runs one request at a time "
                              "(batched serving covers dense attention models)";
     } else if (want > 1) {
-        int rows = ctx->server_config.parallel_batch;
+        int rows = ctx->server_config.limits.parallel_batch;
         if (rows < want) rows = want; /* every slot needs a row per step */
         /* All slots share the KV budget one context was sized from, or
          * the larger pool --kv-ram-fraction of free memory holds. */
@@ -554,8 +554,8 @@ void api_server_stop(ApiContext *ctx) {
      * (--client-timeout), so the wait ends within that time; the cap keeps a
      * long timeout from delaying exit more than a few seconds. */
     {
-        int cap_ms = ctx->server_config.client_timeout_s > 0
-                         ? ctx->server_config.client_timeout_s * 1000 + HTTP_INTERNAL_ERROR
+        int cap_ms = ctx->server_config.limits.client_timeout_s > 0
+                         ? ctx->server_config.limits.client_timeout_s * 1000 + HTTP_INTERNAL_ERROR
                          : 0;
         if (cap_ms > 5000 || cap_ms == 0) cap_ms = 5000;
         int waited_ms = 0;

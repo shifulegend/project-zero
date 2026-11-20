@@ -104,8 +104,8 @@ int main(void) {
 
     ApiContext ctx;
     api_context_init(&ctx, NULL, NULL, NULL, NULL, NULL, NULL);
-    ctx.server_config.client_timeout_s = 1;
-    ctx.server_config.max_connections  = 2;
+    ctx.server_config.limits.client_timeout_s = 1;
+    ctx.server_config.limits.max_connections  = 2;
     if (api_server_start(port, &ctx) != TN_OK) {
         printf("FAIL: server did not start\n");
         return 1;
@@ -335,7 +335,7 @@ int main(void) {
         int port3 = free_port();
         ApiContext dc;
         api_context_init(&dc, NULL, NULL, NULL, NULL, NULL, NULL);
-        dc.server_config.client_timeout_s = 1;
+        dc.server_config.limits.client_timeout_s = 1;
         if (port3 > 0 && api_server_start(port3, &dc) == TN_OK) {
             nap_ms(100);
             int stalled = dial(port3);
@@ -361,7 +361,7 @@ int main(void) {
         int port2 = free_port();
         ApiContext rc;
         api_context_init(&rc, NULL, NULL, NULL, NULL, NULL, NULL);
-        rc.server_config.rate_limit = 2;
+        rc.server_config.limits.rate_limit = 2;
         if (port2 > 0 && api_server_start(port2, &rc) == TN_OK) {
             nap_ms(100);
             int n429 = 0, n200 = 0, retry_hdr = 0;

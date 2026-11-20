@@ -13,25 +13,26 @@
 void server_config_init(ServerConfig *sc) {
     if (!sc) return;
     memset(sc, 0, sizeof(*sc));
-    sc->web_ui = WEBUI_MODE_AUTO;
+    sc->ui.web_ui = WEBUI_MODE_AUTO;
     gen_params_default(&sc->gen_defaults);
-    sc->max_tokens_limit        = 0; /* 0 = no cap beyond the model context */
-    sc->prompt_cache            = 1; /* reuse shared prompt prefixes by default */
-    sc->prompt_cache_mb         = 0; /* main.c sets the CLI value (default 256) */
-    sc->prompt_cache_min_tokens = 32;
-    sc->chat_format             = -1;
-    sc->allow_request_template  = 1;
-    sc->mcts_max                = 64;
-    mcts_options_defaults(&sc->mcts);
-    sc->best_of          = 1;
-    sc->queue_size       = 0;
-    sc->queue_timeout_s  = 120;
-    sc->rate_limit       = 20; /* generous for the web UI, stops a flood of cheap calls */
-    sc->client_timeout_s = 30; /* a stalled client frees its thread after 30 s */
-    sc->max_connections  = 64; /* excess clients get 503 instead of an unbounded thread each */
-    sc->parallel         = 1;
-    sc->parallel_batch   = PZ_PARALLEL_BATCH_DEFAULT;
-    sc->best_of_max      = BEST_OF_MAX_DEFAULT;
+    sc->limits.max_tokens_limit       = 0; /* 0 = no cap beyond the model context */
+    sc->cache.prompt_cache            = 1; /* reuse shared prompt prefixes by default */
+    sc->cache.prompt_cache_mb         = 0; /* main.c sets the CLI value (default 256) */
+    sc->cache.prompt_cache_min_tokens = 32;
+    sc->chat.chat_format              = -1;
+    sc->chat.allow_request_template   = 1;
+    sc->search.mcts_max               = 64;
+    mcts_options_defaults(&sc->search.mcts);
+    sc->search.best_of          = 1;
+    sc->limits.queue_size       = 0;
+    sc->limits.queue_timeout_s  = 120;
+    sc->limits.rate_limit       = 20; /* generous for the web UI, stops a flood of cheap calls */
+    sc->limits.client_timeout_s = 30; /* a stalled client frees its thread after 30 s */
+    sc->limits.max_connections =
+        64; /* excess clients get 503 instead of an unbounded thread each */
+    sc->limits.parallel       = 1;
+    sc->limits.parallel_batch = PZ_PARALLEL_BATCH_DEFAULT;
+    sc->search.best_of_max    = BEST_OF_MAX_DEFAULT;
 }
 
 int server_config_add_cors_origin(ServerConfig *sc, const char *origin) {
@@ -52,14 +53,14 @@ void server_config_free(ServerConfig *sc) {
     sc->cors.num_origins = 0;
     free(sc->auth.api_key);
     sc->auth.api_key = NULL;
-    free(sc->static_dir);
-    sc->static_dir = NULL;
-    free(sc->vision_path);
-    sc->vision_path = NULL;
-    free(sc->proj_path);
-    sc->proj_path = NULL;
+    free(sc->ui.static_dir);
+    sc->ui.static_dir = NULL;
+    free(sc->vision.vision_path);
+    sc->vision.vision_path = NULL;
+    free(sc->vision.proj_path);
+    sc->vision.proj_path = NULL;
     free(sc->model_id);
     sc->model_id = NULL;
-    free(sc->ui_title);
-    sc->ui_title = NULL;
+    free(sc->ui.ui_title);
+    sc->ui.ui_title = NULL;
 }

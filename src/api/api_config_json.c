@@ -43,7 +43,8 @@ static void runtime_act_quant(JsonBuf *jb, const ApiContext *ctx) {
     jb_key(jb, "act_quant");
     jb_raw(jb, "{");
     jb_key(jb, "requested");
-    jb_str(jb, tn_act_quant_name(ctx ? (TnActQuant)ctx->server_config.act_quant : TN_ACT_AUTO));
+    jb_str(jb, tn_act_quant_name(ctx ? (TnActQuant)ctx->server_config.numerics.act_quant
+                                     : TN_ACT_AUTO));
     jb_raw(jb, ",");
     jb_key(jb, "effective");
     jb_str(jb, tn_act_quant_effective());
@@ -56,10 +57,10 @@ static void runtime_act_quant(JsonBuf *jb, const ApiContext *ctx) {
                                                    : "bf16");
     jb_raw(jb, ",");
     jb_key(jb, "quality_tolerance");
-    jb_num(jb, ctx ? ctx->server_config.quality_tolerance : 1.0);
+    jb_num(jb, ctx ? ctx->server_config.numerics.quality_tolerance : 1.0);
     jb_raw(jb, ",");
     jb_key(jb, "self_check_tokens");
-    jb_int(jb, ctx ? ctx->server_config.self_check_tokens : 96);
+    jb_int(jb, ctx ? ctx->server_config.numerics.self_check_tokens : 96);
 }
 
 /* The layer plan of a --remote-layers coordinator (an empty array otherwise). */
@@ -109,10 +110,10 @@ static void features_parallel(JsonBuf *jb, const ApiContext *ctx) {
     jb_int(jb, ctx && ctx->parallel_slots > 0 ? ctx->parallel_slots : 1);
     jb_raw(jb, ",");
     jb_key(jb, "requested");
-    jb_int(jb, ctx ? ctx->server_config.parallel : 1);
+    jb_int(jb, ctx ? ctx->server_config.limits.parallel : 1);
     jb_raw(jb, ",");
     jb_key(jb, "batch_tokens");
-    jb_int(jb, ctx ? ctx->server_config.parallel_batch : PZ_PARALLEL_BATCH_DEFAULT);
+    jb_int(jb, ctx ? ctx->server_config.limits.parallel_batch : PZ_PARALLEL_BATCH_DEFAULT);
     jb_raw(jb, ",");
     jb_key(jb, "kv_budget_tokens");
     jb_int(jb, ctx ? ctx->parallel_kv_budget : 0);
@@ -132,11 +133,11 @@ static void features_parallel(JsonBuf *jb, const ApiContext *ctx) {
  * the same font as the CLI banner; titles the font can't spell fall back to text, as does
  * --ui-logo text. */
 static void config_ui(JsonBuf *jb, const ApiContext *ctx) {
-    const char *title = ctx && ctx->server_config.ui_title && ctx->server_config.ui_title[0]
-                            ? ctx->server_config.ui_title
+    const char *title = ctx && ctx->server_config.ui.ui_title && ctx->server_config.ui.ui_title[0]
+                            ? ctx->server_config.ui.ui_title
                             : "project-zero";
     char logo[TN_BLOCK_FONT_ROWS * 160];
-    int ascii = !(ctx && ctx->server_config.ui_logo == 1) &&
+    int ascii = !(ctx && ctx->server_config.ui.ui_logo == 1) &&
                 tn_block_font_render(title, logo, sizeof(logo), 0) > 0;
     jb_key(jb, "ui");
     jb_raw(jb, "{");
@@ -201,10 +202,10 @@ static void config_defaults_sampler(JsonBuf *jb, const ApiContext *ctx,
     jb_bool(jb, defp->ignore_eos);
     jb_raw(jb, ",");
     jb_key(jb, "cache_prompt");
-    jb_bool(jb, ctx && ctx->server_config.prompt_cache);
+    jb_bool(jb, ctx && ctx->server_config.cache.prompt_cache);
     jb_raw(jb, ",");
     jb_key(jb, "best_of");
-    jb_int(jb, ctx ? ctx->server_config.best_of : 1);
+    jb_int(jb, ctx ? ctx->server_config.search.best_of : 1);
 }
 
 /* Tree-search (mcts) defaults. */
@@ -212,7 +213,7 @@ static void config_defaults_search(JsonBuf *jb, const ApiContext *ctx) {
     {
         MctsOptions m;
         if (ctx)
-            m = ctx->server_config.mcts;
+            m = ctx->server_config.search.mcts;
         else
             memset(&m, 0, sizeof(m));
         mcts_options_defaults(&m);
@@ -300,9 +301,9 @@ static void config_limits(JsonBuf *jb, const ApiContext *ctx, int lim, int vocab
     jb_raw(jb, ",");
     range(jb, "watermark_delta", 0, 20, 0.1);
     jb_raw(jb, ",");
-    range(jb, "best_of", 1, ctx ? ctx->server_config.best_of_max : BEST_OF_MAX_DEFAULT, 1);
+    range(jb, "best_of", 1, ctx ? ctx->server_config.search.best_of_max : BEST_OF_MAX_DEFAULT, 1);
     jb_raw(jb, ",");
-    range(jb, "mcts_simulations", 0, ctx ? ctx->server_config.mcts_max : 0, 1);
+    range(jb, "mcts_simulations", 0, ctx ? ctx->server_config.search.mcts_max : 0, 1);
     jb_raw(jb, ",");
     range(jb, "mcts_expand", 1, MCTS_MAX_EXPAND, 1);
     jb_raw(jb, ",");
@@ -384,28 +385,28 @@ static void config_features(JsonBuf *jb, const ApiContext *ctx) {
     jb_bool(jb, 1);
     jb_raw(jb, ",");
     jb_key(jb, "best_of");
-    jb_bool(jb, ctx && ctx->server_config.best_of_max > 1);
+    jb_bool(jb, ctx && ctx->server_config.search.best_of_max > 1);
     jb_raw(jb, ",");
     jb_key(jb, "mcts");
-    jb_bool(jb, ctx && ctx->server_config.mcts_max > 0);
+    jb_bool(jb, ctx && ctx->server_config.search.mcts_max > 0);
     jb_raw(jb, ",");
     jb_key(jb, "prm");
-    if (ctx && ctx->prm && ctx->server_config.prm_model)
-        jb_str(jb, ctx->server_config.prm_model);
+    if (ctx && ctx->prm && ctx->server_config.search.prm_model)
+        jb_str(jb, ctx->server_config.search.prm_model);
     else
         jb_raw(jb, "null");
     jb_raw(jb, ",");
     jb_key(jb, "queue_size");
-    jb_int(jb, ctx ? ctx->server_config.queue_size : 0);
+    jb_int(jb, ctx ? ctx->server_config.limits.queue_size : 0);
     jb_raw(jb, ",");
     jb_key(jb, "rate_limit");
-    jb_int(jb, ctx ? ctx->server_config.rate_limit : 0);
+    jb_int(jb, ctx ? ctx->server_config.limits.rate_limit : 0);
     jb_raw(jb, ",");
     jb_key(jb, "client_timeout_s");
-    jb_int(jb, ctx ? ctx->server_config.client_timeout_s : 0);
+    jb_int(jb, ctx ? ctx->server_config.limits.client_timeout_s : 0);
     jb_raw(jb, ",");
     jb_key(jb, "max_connections");
-    jb_int(jb, ctx ? ctx->server_config.max_connections : 0);
+    jb_int(jb, ctx ? ctx->server_config.limits.max_connections : 0);
     features_parallel(jb, ctx);
     /* Recurrent linear-attention state cannot resume from a partial prefix. */
     jb_raw(jb, ",");
@@ -413,7 +414,7 @@ static void config_features(JsonBuf *jb, const ApiContext *ctx) {
     jb_bool(jb, !(ctx && moe_is_recurrent(ctx->moe_cfg)));
     jb_raw(jb, ",");
     jb_key(jb, "prompt_store");
-    jb_bool(jb, ctx && ctx->server_config.prompt_cache_mb > 0 &&
+    jb_bool(jb, ctx && ctx->server_config.cache.prompt_cache_mb > 0 &&
                     (!ctx->moe_cfg || prompt_store_supported(ctx->moe_cfg)) &&
                     !(ctx->run_state && ctx->run_state->kv_type != KV_TYPE_F32));
     jb_raw(jb, ",");
@@ -424,7 +425,7 @@ static void config_features(JsonBuf *jb, const ApiContext *ctx) {
     jb_bool(jb, ctx && ctx->tok && ctx->tok->chat_template != NULL);
     jb_raw(jb, ",");
     jb_key(jb, "request_chat_template");
-    jb_bool(jb, ctx && ctx->server_config.allow_request_template);
+    jb_bool(jb, ctx && ctx->server_config.chat.allow_request_template);
     jb_raw(jb, "}");
 }
 
@@ -434,15 +435,15 @@ static void config_chat_template(JsonBuf *jb, const ApiContext *ctx) {
     jb_key(jb, "chat_template");
     jb_raw(jb, "{");
     jb_key(jb, "source");
-    jb_str(jb, ctx && ctx->server_config.chat_template_source
-                   ? ctx->server_config.chat_template_source
+    jb_str(jb, ctx && ctx->server_config.chat.chat_template_source
+                   ? ctx->server_config.chat.chat_template_source
                    : (ctx && ctx->tok && ctx->tok->chat_template ? "gguf" : "none"));
     jb_raw(jb, ",");
     jb_key(jb, "text");
     jb_str(jb, ctx && ctx->tok && ctx->tok->chat_template ? ctx->tok->chat_template : "");
     jb_raw(jb, ",");
     jb_key(jb, "request_override");
-    jb_bool(jb, ctx && ctx->server_config.allow_request_template);
+    jb_bool(jb, ctx && ctx->server_config.chat.allow_request_template);
     jb_raw(jb, ",");
     jb_key(jb, "max_bytes");
     jb_int(jb, CHAT_MAX_TEMPLATE);

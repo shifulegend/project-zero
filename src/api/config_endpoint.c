@@ -47,7 +47,7 @@ static const char *config_key_for(const char *json) {
 }
 
 static int writable(const ApiContext *ctx) {
-    return ctx && ctx->server_config.allow_config_write && pz_config_active_path() != NULL;
+    return ctx && ctx->server_config.chat.allow_config_write && pz_config_active_path() != NULL;
 }
 
 void api_config_sources_json(JsonBuf *jb, const ApiContext *ctx) {
@@ -160,7 +160,7 @@ static pthread_mutex_t g_save_lock = PTHREAD_MUTEX_INITIALIZER;
 
 char *api_config_save(const ApiContext *ctx, const char *json_body, int *status) {
     if (!writable(ctx))
-        return error_body(ctx && !ctx->server_config.allow_config_write
+        return error_body(ctx && !ctx->server_config.chat.allow_config_write
                               ? "Saving defaults is disabled (--no-config-write)"
                               : "No config file location (set PZ_CONFIG or HOME)",
                           HTTP_FORBIDDEN, status);

@@ -105,7 +105,7 @@ static void test_save(void) {
     TEST_ASSERT_EQ(save(ctx, "{\"key\":\"temperature\",\"value\":0.7}", &r), 403,
                    "--no-config-write refuses");
     free(r);
-    ctx->server_config.allow_config_write = 1;
+    ctx->server_config.chat.allow_config_write = 1;
 
     TEST_ASSERT_EQ(save(ctx, "{\"key\":\"temperature\",\"value\":0.7}", &r), 200, "number saved");
     TEST_ASSERT(r && strstr(r, "\"applies\":\"restart\"") && strstr(r, "\"overridden_by\":null"),

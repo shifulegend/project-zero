@@ -20,7 +20,7 @@
 
 int api_max_tokens_limit(const ApiContext *ctx) {
     int ctx_len = (ctx && ctx->cfg) ? ctx->cfg->seq_len : 0;
-    int lim     = ctx ? ctx->server_config.max_tokens_limit : 0;
+    int lim     = ctx ? ctx->server_config.limits.max_tokens_limit : 0;
     if (lim > 0 && (ctx_len <= 0 || lim < ctx_len)) return lim;
     return ctx_len > 0 ? ctx_len : 4096;
 }
@@ -31,7 +31,7 @@ static const char *model_id(const ApiContext *ctx) {
 }
 
 int api_vision_enabled(const ApiContext *ctx) {
-    return ctx && ctx->server_config.vision_path && ctx->server_config.proj_path;
+    return ctx && ctx->server_config.vision.vision_path && ctx->server_config.vision.proj_path;
 }
 
 void api_model_meta(JsonBuf *jb, const ApiContext *ctx) {
@@ -82,8 +82,8 @@ void api_model_meta(JsonBuf *jb, const ApiContext *ctx) {
     jb_key(jb, "chat_format");
     if (ctx && ctx->tok && ctx->tok->chat_template)
         jb_str(jb, "embedded");
-    else if (ctx && ctx->server_config.chat_format >= 0)
-        jb_str(jb, chat_template_name((ChatTemplateType)ctx->server_config.chat_format));
+    else if (ctx && ctx->server_config.chat.chat_format >= 0)
+        jb_str(jb, chat_template_name((ChatTemplateType)ctx->server_config.chat.chat_format));
     else
         jb_str(jb, chat_template_name(chat_template_detect_vocab(ctx ? ctx->tok : NULL)));
     jb_raw(jb, ",");
@@ -106,11 +106,11 @@ char *api_prompt_cache_json(const ApiContext *ctx) {
      * with --kv-type i8 (the live prefix cache still applies). */
     int supported = (!(ctx && ctx->moe_cfg) || prompt_store_supported(ctx->moe_cfg)) &&
                     !(ctx && ctx->run_state && ctx->run_state->kv_type != KV_TYPE_F32);
-    size_t budget =
-        ctx ? (size_t)(ctx->server_config.prompt_cache_mb > 0 ? ctx->server_config.prompt_cache_mb
-                                                              : 0) *
-                  1024u * 1024u
-            : 0;
+    size_t budget = ctx ? (size_t)(ctx->server_config.cache.prompt_cache_mb > 0
+                                       ? ctx->server_config.cache.prompt_cache_mb
+                                       : 0) *
+                              1024u * 1024u
+                        : 0;
     JsonBuf jb;
     jb_init(&jb);
     jb_raw(&jb, "{");

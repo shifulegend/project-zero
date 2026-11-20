@@ -22,6 +22,7 @@ import subprocess
 import sys
 import threading
 import time
+from typing import Any
 
 try:
     import psutil
@@ -40,12 +41,12 @@ COOLDOWN_S = 15  # seconds between runs
 
 
 # ── psutil snapshot ──────────────────────────────────────────────────────────
-def system_snapshot():
+def system_snapshot() -> dict[str, Any]:
     """Current RAM, per-CPU load, load average and the busiest processes, used to show how noisy the host was around a run."""
     vm = psutil.virtual_memory()
     cpu_pct = psutil.cpu_percent(interval=0.1, percpu=True)
     load = os.getloadavg()
-    procs = []
+    procs: list[tuple[str, float]] = []
     for p in psutil.process_iter(["pid", "name", "cpu_percent"]):
         try:
             c = p.info["cpu_percent"]
@@ -66,7 +67,9 @@ def system_snapshot():
     }
 
 
-def monitor_loop(stop_evt, samples, interval=0.5):
+def monitor_loop(
+    stop_evt: threading.Event, samples: list[dict[str, Any]], interval: float = 0.5
+) -> None:
     """Background thread: collect psutil snapshots every `interval` seconds."""
     while not stop_evt.is_set():
         samples.append(system_snapshot())
@@ -74,15 +77,15 @@ def monitor_loop(stop_evt, samples, interval=0.5):
 
 
 # ── Background CPU load ───────────────────────────────────────────────────────
-def _cpu_burner():
+def _cpu_burner() -> None:
     """Endless tight loop consuming one logical CPU."""
     while True:
         _ = math.sqrt(12345678.9)
 
 
-def start_bg_load(n_workers=2):
+def start_bg_load(n_workers: int = 2) -> list[multiprocessing.Process]:
     """Starts `n_workers` CPU-burning processes to simulate background load; returns them for stop_bg_load()."""
-    procs = []
+    procs: list[multiprocessing.Process] = []
     for _ in range(n_workers):
         p = multiprocessing.Process(target=_cpu_burner, daemon=True)
         p.start()
@@ -90,7 +93,7 @@ def start_bg_load(n_workers=2):
     return procs
 
 
-def stop_bg_load(procs):
+def stop_bg_load(procs: list[multiprocessing.Process]) -> None:
     """Terminates and joins the background-load processes."""
     for p in procs:
         p.terminate()
@@ -116,7 +119,7 @@ def extract_toks(output: str) -> float:
 
 
 # ── Single benchmark run ─────────────────────────────────────────────────────
-def run_once(n_threads: int, extra_flags=None) -> dict:
+def run_once(n_threads: int, extra_flags: list[str] | None = None) -> dict[str, Any]:
     """Runs pz once with `n_threads` threads and returns its speed, CPU and RAM figures (or an error entry on timeout)."""
     cmd = [
         ENGINE,
@@ -139,7 +142,7 @@ def run_once(n_threads: int, extra_flags=None) -> dict:
 
     # Start monitor thread
     stop_evt = threading.Event()
-    samples = []
+    samples: list[dict[str, Any]] = []
     mon = threading.Thread(target=monitor_loop, args=(stop_evt, samples, 0.25), daemon=True)
     mon.start()
 
@@ -185,7 +188,9 @@ def run_once(n_threads: int, extra_flags=None) -> dict:
 
 
 # ── Suite runner ─────────────────────────────────────────────────────────────
-def run_suite(thread_counts, label, extra_flags=None):
+def run_suite(
+    thread_counts: list[int], label: str, extra_flags: list[str] | None = None
+) -> list[dict[str, Any]]:
     """Runs pz at each thread count with a cooldown between runs and returns the list of results."""
     print(f"\n{'=' * 60}")
     print(f"Suite: {label}")
@@ -201,7 +206,7 @@ def run_suite(thread_counts, label, extra_flags=None):
     top = ", ".join(f"{n}={c:.0f}%" for n, c in snap["top_procs"][:4])
     print(f"  Top procs: {top}")
 
-    results = []
+    results: list[dict[str, Any]] = []
     for t in thread_counts:
         print(f"\n  T={t} ... ", end="", flush=True)
         r = run_once(t, extra_flags)
@@ -221,7 +226,7 @@ def run_suite(thread_counts, label, extra_flags=None):
 
 
 # ── Table printer ─────────────────────────────────────────────────────────────
-def print_table(results, label):
+def print_table(results: list[dict[str, Any]], label: str) -> None:
     """Prints a Markdown table of one suite's results."""
     print(f"\n### {label}\n")
     print("| T | tok/s | CPU% | RAM used | RAM avail | load 1m | elapsed |")
@@ -238,7 +243,7 @@ def print_table(results, label):
 
 
 # ── Top-process snapshot for report ──────────────────────────────────────────
-def print_top_procs(results):
+def print_top_procs(results: list[dict[str, Any]]) -> None:
     """Prints the busiest processes seen during the first sample that recorded any."""
     if not results:
         return
@@ -254,7 +259,7 @@ def print_top_procs(results):
 
 
 # ── CSV export ────────────────────────────────────────────────────────────────
-def save_csv(all_results, path):
+def save_csv(all_results: list[tuple[str, list[dict[str, Any]]]], path: str) -> None:
     """Writes the results of all suites to a CSV file."""
     fields = [
         "suite",
@@ -279,7 +284,7 @@ def save_csv(all_results, path):
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
-def main():
+def main() -> list[tuple[str, list[dict[str, Any]]]]:
     """Command-line entry point: parses the options, runs the suites and prints and saves the results."""
     global COOLDOWN_S
     ap = argparse.ArgumentParser()
@@ -321,7 +326,7 @@ def main():
         print(f"ERROR: model not found at {MODEL}")
         sys.exit(1)
 
-    extra_flags = []
+    extra_flags: list[str] = []
     if args.simd:
         extra_flags += ["--simd", args.simd]
     if args.classifier:

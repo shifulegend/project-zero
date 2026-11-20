@@ -17,6 +17,9 @@ import os
 import re
 from PIL import Image, ImageDraw, ImageFont
 
+Colour = tuple[int, int, int]
+Font = ImageFont.FreeTypeFont | ImageFont.ImageFont
+
 # ── colour palette ────────────────────────────────────────────────────────────
 BG = (15, 15, 20)
 FG = (204, 204, 204)
@@ -39,7 +42,7 @@ SS_DIR = f"{SWEEP}/screenshots"
 
 
 # ── font ──────────────────────────────────────────────────────────────────────
-def load_font(size=14):
+def load_font(size: int = 14) -> Font:
     """Loads the first available monospace TrueType font at `size`, falling back to PIL's default font."""
     for path in [
         "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
@@ -56,20 +59,27 @@ FONT_BOLD = load_font(15)
 FONT_SMALL = load_font(12)
 
 
-def text_w(text, font=FONT):
+def text_w(text: str, font: Font = FONT) -> float:
     """Pixel width of `text` in `font`."""
     bbox = font.getbbox(text)
     return bbox[2] - bbox[0]
 
 
 # ── draw helpers ──────────────────────────────────────────────────────────────
-def draw_line(draw, y, text, colour=FG, font=FONT, x=PADDING):
+def draw_line(
+    draw: ImageDraw.ImageDraw,
+    y: int,
+    text: str,
+    colour: Colour = FG,
+    font: Font = FONT,
+    x: int = PADDING,
+) -> int:
     """Draws one line of text at (x, y) and returns the y of the next line."""
     draw.text((x, y), text, fill=colour, font=font)
     return y + LINE_H
 
 
-def draw_separator(draw, y, colour=DIM):
+def draw_separator(draw: ImageDraw.ImageDraw, y: int, colour: Colour = DIM) -> int:
     """Draws a horizontal rule across the image and returns the y of the next line."""
     draw.line(
         [(PADDING, y + LINE_H // 2), (WIDTH - PADDING, y + LINE_H // 2)], fill=colour, width=1
@@ -78,27 +88,27 @@ def draw_separator(draw, y, colour=DIM):
 
 
 # ── content extractors ────────────────────────────────────────────────────────
-def extract_gen_toks(text):
+def extract_gen_toks(text: str) -> str:
     """pz generation speed (tok/s) from a sweep log, or "N/A"."""
     m = re.search(r"\[gen\]\s+([\d.]+)\s+tok/s", text)
     return m.group(1) if m else "N/A"
 
 
-def extract_prompt_toks_msft(text):
+def extract_prompt_toks_msft(text: str) -> str:
     # Order: sampling → prompt eval → eval; second-to-last is prompt eval
     """Prompt-evaluation speed from a Microsoft BitNet log (second-to-last "tokens per second" value), or "N/A"."""
     vals = re.findall(r"([\d.]+) tokens per second", text)
     return vals[-2] if len(vals) >= 2 else "N/A"
 
 
-def extract_eval_toks_msft(text):
+def extract_eval_toks_msft(text: str) -> str:
     # Last entry is generation eval speed
     """Generation speed from a Microsoft BitNet log (last "tokens per second" value), or "N/A"."""
     vals = re.findall(r"([\d.]+) tokens per second", text)
     return vals[-1] if vals else "N/A"
 
 
-def extract_llama_speeds(text):
+def extract_llama_speeds(text: str) -> tuple[str, str]:
     """(prompt, generation) speeds in t/s from a llama.cpp summary line, or ("N/A", "N/A")."""
     m = re.search(r"Prompt:\s*([\d.]+)\s*t/s\s*\|\s*Generation:\s*([\d.]+)\s*t/s", text)
     if m:
@@ -106,7 +116,7 @@ def extract_llama_speeds(text):
     return "N/A", "N/A"
 
 
-def extract_perf_print(text):
+def extract_perf_print(text: str) -> tuple[str, str]:
     """llama.cpp / bitnet.cpp common_perf_print: (prompt tok/s, generation tok/s)."""
     p = re.search(r"prompt eval time =.*?([\d.]+) tokens per second", text)
     g = re.search(
@@ -116,19 +126,19 @@ def extract_perf_print(text):
     return (p.group(1) if p else "N/A"), (g.group(1) if g else "N/A")
 
 
-def extract_date(text):
+def extract_date(text: str) -> str:
     """The DATE line of a sweep log, or the default date when it is absent."""
     m = re.search(r"DATE:\s*(.+)", text)
     return m.group(1).strip() if m else "2026-06-21"
 
 
-def extract_cmd(text):
+def extract_cmd(text: str) -> str:
     """The CMD line of a sweep log, or an empty string."""
     m = re.search(r"CMD:\s*(.+)", text)
     return m.group(1).strip() if m else ""
 
 
-def shorten_cmd(cmd, max_len=90):
+def shorten_cmd(cmd: str, max_len: int = 90) -> str:
     """Shortens a command line for display: unchanged if it fits `max_len`, else known path prefixes are abbreviated and the rest is truncated."""
     if len(cmd) <= max_len:
         return cmd
@@ -144,7 +154,9 @@ def shorten_cmd(cmd, max_len=90):
 
 
 # ── main screenshot renderer ──────────────────────────────────────────────────
-def make_screenshot(suite_name, t, run_text, out_path, run_num=None):
+def make_screenshot(
+    suite_name: str, t: int, run_text: str, out_path: str, run_num: str | None = None
+) -> None:
     """Render one benchmark run as a PNG screenshot."""
     is_ref = REF_SUITES.get(suite_name, False)
     is_msft = "msft" in suite_name and not is_ref
@@ -326,7 +338,7 @@ def make_screenshot(suite_name, t, run_text, out_path, run_num=None):
 
 
 # ── process all suites ────────────────────────────────────────────────────────
-def find_best_run(suite_name, t):
+def find_best_run(suite_name: str, t: int) -> tuple[int | None, str | None]:
     """Return (run_num, text) of the best run (highest gen tok/s)."""
     t_dir = f"{SWEEP}/{suite_name}/t{t}"
     if not os.path.isdir(t_dir):
@@ -336,7 +348,9 @@ def find_best_run(suite_name, t):
     is_msft = "msft" in suite_name and not is_ref
     is_llama = "llama" in suite_name and not is_ref
 
-    best_val, best_r, best_text = -1, None, None
+    best_val = -1.0
+    best_r: int | None = None
+    best_text: str | None = None
     for r in range(1, RUNS + 1):
         fpath = f"{t_dir}/run{r}.txt"
         if not os.path.exists(fpath):
@@ -368,8 +382,10 @@ HARDWARE = "i5-11300H @ 3.10GHz · 4c/8t · 16GB DDR4 · AVX-512 VNNI"
 MAX_TOKENS = 500
 RUNS = 3
 THREADS = list(range(1, 9))
-LABELS = {}
-REF_SUITES = {}  # suite -> True for llama.cpp-family runs (from meta.json "engine": "ref")
+LABELS: dict[str, str] = {}
+REF_SUITES: dict[
+    str, bool
+] = {}  # suite -> True for llama.cpp-family runs (from meta.json "engine": "ref")
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()

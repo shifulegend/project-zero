@@ -96,11 +96,17 @@ export interface ModelInfo {
   vision?: boolean;
 }
 
+export interface ChatTemplateInfo {
+  text?: string;
+  source?: string;
+  max_bytes?: number;
+}
+
 export interface ServerConfig {
   defaults?: ConfigDefaults;
   limits?: Limits;
   features?: Features;
-  chat_template?: { text?: string; source?: string; max_bytes?: number };
+  chat_template?: ChatTemplateInfo;
   config?: ConfigInfo;
   runtime?: Runtime;
   model?: ModelInfo;

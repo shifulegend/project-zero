@@ -111,14 +111,16 @@ void run_repl(Config *p, TransformerWeights *w, const MoEConfig *mc, VisionConfi
         }
 
         if (strcmp(line, "/think") == 0) {
-            args->enable_reasoning = !args->enable_reasoning;
-            printf("[Config] Reasoning mode %s\n", args->enable_reasoning ? "ENABLED" : "DISABLED");
+            args->search.enable_reasoning = !args->search.enable_reasoning;
+            printf("[Config] Reasoning mode %s\n",
+                   args->search.enable_reasoning ? "ENABLED" : "DISABLED");
             continue;
         }
 
         if (strcmp(line, "/json") == 0) {
-            args->json_mode = !args->json_mode;
-            printf("[Config] JSON-constrained mode %s\n", args->json_mode ? "ENABLED" : "DISABLED");
+            args->sampling.json_mode = !args->sampling.json_mode;
+            printf("[Config] JSON-constrained mode %s\n",
+                   args->sampling.json_mode ? "ENABLED" : "DISABLED");
             continue;
         }
 
@@ -169,21 +171,21 @@ void run_repl(Config *p, TransformerWeights *w, const MoEConfig *mc, VisionConfi
         /* /agent <prompt> */
         if (strncmp(line, "/agent ", 7) == 0 || strcmp(line, "/agent") == 0) {
             const char *agent_prompt = (strncmp(line, "/agent ", 7) == 0) ? (line + 7) : "";
-            run_agent_loop(agent_prompt, p, w, s, t, tp, args->max_tokens, args->temperature,
-                           args->top_p, rag);
+            run_agent_loop(agent_prompt, p, w, s, t, tp, args->sampling.max_tokens,
+                           args->sampling.temperature, args->sampling.top_p, rag);
             continue;
         }
 
         /* Standard generation — optionally prepend retrieved memories */
         if (rag && rag->enabled) {
             int injected = auto_retrieve_and_inject(line, &rag->db, p, w, s, &rag->emb, t, tp);
-            if (injected > 0 && args->verbose) {
+            if (injected > 0 && args->output.verbose) {
                 printf("[Memory] Injected %d tokens of relevant context.\n", injected);
             }
         }
 
         int is_tty        = isatty(fileno(stdout));
-        int color_enabled = tn_color_resolve(args->color_mode, is_tty, getenv("NO_COLOR"));
+        int color_enabled = tn_color_resolve(args->output.color_mode, is_tty, getenv("NO_COLOR"));
 
         ReplGenContext rc;
         md_render_init(&rc.md, stdout, color_enabled);
@@ -194,8 +196,9 @@ void run_repl(Config *p, TransformerWeights *w, const MoEConfig *mc, VisionConfi
         int64_t start_time = timer_now_us();
         if (draft) {
             speculative_generate_with_callback(
-                p, w, s, mc, t, tp, line, args->max_tokens, args->temperature, args->top_p,
-                args->json_mode, draft, args->spec_length, args->seed, repl_token_callback, &rc);
+                p, w, s, mc, t, tp, line, args->sampling.max_tokens, args->sampling.temperature,
+                args->sampling.top_p, args->sampling.json_mode, draft, args->search.spec_length,
+                args->sampling.seed, repl_token_callback, &rc);
         } else {
             GenerationParams gp;
             args_fill_gen_params(args, &gp);
@@ -208,7 +211,7 @@ void run_repl(Config *p, TransformerWeights *w, const MoEConfig *mc, VisionConfi
         int64_t end_time = timer_now_us();
         printf("\n");
 
-        if (args->verbose) {
+        if (args->output.verbose) {
             printf("\n[Generation took %.2fs]\n", (end_time - start_time) / 1000000.0);
         }
     }

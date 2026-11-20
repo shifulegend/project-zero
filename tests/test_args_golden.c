@@ -43,29 +43,141 @@ static int in_image(uintptr_t v) {
     return v >= (uintptr_t)&__executable_start && v < (uintptr_t)&_end;
 }
 
-/* Digest of the struct: pointer-looking words are replaced by the (bounded) string they point to. */
-static uint64_t digest(const CliArgs *a) {
-    uint64_t h             = 1469598103934665603ULL;
-    const unsigned char *b = (const unsigned char *)a;
+#define ARGS_FIELDS(X)                                                                             \
+    X(eval, act_quant)                                                                             \
+    X(server, api_key)                                                                             \
+    X(perf, attn_kernel)                                                                           \
+    X(perf, attn_parallel_min_ctx)                                                                 \
+    X(perf, attn_tile)                                                                             \
+    X(sampling, best_of)                                                                           \
+    X(sampling, best_of_max)                                                                       \
+    X(perf, calibrate)                                                                             \
+    X(sampling, chat_format)                                                                       \
+    X(input, chat_template_file)                                                                   \
+    X(update, check_update)                                                                        \
+    X(perf, classifier_override)                                                                   \
+    X(server, client_timeout_s)                                                                    \
+    X(output, color_mode)                                                                          \
+    X(server, cors_enabled)                                                                        \
+    X(server, cors_origins)                                                                        \
+    X(perf, ctx_size)                                                                              \
+    X(input, draft_model_path)                                                                     \
+    X(eval, dump_tensors_path)                                                                     \
+    X(search, enable_reasoning)                                                                    \
+    X(sampling, frequency_penalty)                                                                 \
+    X(sampling, ignore_eos)                                                                        \
+    X(input, image_path)                                                                           \
+    X(sampling, json_mode)                                                                         \
+    X(perf, kv_offload_dir)                                                                        \
+    X(perf, kv_ram_fraction)                                                                       \
+    X(perf, kv_type)                                                                               \
+    X(output, log_json)                                                                            \
+    X(output, log_level)                                                                           \
+    X(input, lora_path)                                                                            \
+    X(server, max_connections)                                                                     \
+    X(sampling, max_tokens)                                                                        \
+    X(sampling, max_tokens_limit)                                                                  \
+    X(search, mcts)                                                                                \
+    X(search, mcts_delim_buf)                                                                      \
+    X(search, mcts_max)                                                                            \
+    X(input, memory_db_path)                                                                       \
+    X(server, metrics_enabled)                                                                     \
+    X(sampling, min_p)                                                                             \
+    X(input, model_path)                                                                           \
+    X(sampling, n_stop)                                                                            \
+    X(perf, no_calibrate)                                                                          \
+    X(server, no_config_write)                                                                     \
+    X(server, no_request_template)                                                                 \
+    X(update, no_update_check)                                                                     \
+    X(server, num_cors_origins)                                                                    \
+    X(perf, num_threads)                                                                           \
+    X(server, parallel)                                                                            \
+    X(server, parallel_batch)                                                                      \
+    X(eval, perplexity_file)                                                                       \
+    X(dist, plan_layers)                                                                           \
+    X(eval, ppl_chunks)                                                                            \
+    X(eval, ppl_ctx)                                                                               \
+    X(sampling, presence_penalty)                                                                  \
+    X(search, prm_bad)                                                                             \
+    X(search, prm_format)                                                                          \
+    X(search, prm_good)                                                                            \
+    X(search, prm_path)                                                                            \
+    X(input, proj_path)                                                                            \
+    X(input, prompt)                                                                               \
+    X(perf, prompt_cache)                                                                          \
+    X(perf, prompt_cache_mb)                                                                       \
+    X(perf, prompt_cache_min_tokens)                                                               \
+    X(eval, quality_tolerance)                                                                     \
+    X(server, queue_size)                                                                          \
+    X(server, queue_timeout_s)                                                                     \
+    X(server, rate_limit)                                                                          \
+    X(sampling, raw_prompt)                                                                        \
+    X(dist, remote_layers)                                                                         \
+    X(sampling, repeat_last_n)                                                                     \
+    X(sampling, repeat_penalty)                                                                    \
+    X(perf, rope_layout)                                                                           \
+    X(dist, rpc_bind_all)                                                                          \
+    X(dist, rpc_worker_port)                                                                       \
+    X(sampling, seed)                                                                              \
+    X(eval, self_check)                                                                            \
+    X(eval, self_check_tokens)                                                                     \
+    X(server, server_mode)                                                                         \
+    X(server, server_port)                                                                         \
+    X(output, show_version)                                                                        \
+    X(perf, simd_override)                                                                         \
+    X(search, spec_length)                                                                         \
+    X(server, static_dir)                                                                          \
+    X(sampling, stop)                                                                              \
+    X(input, system_prompt)                                                                        \
+    X(sampling, temperature)                                                                       \
+    X(input, tokenizer_path)                                                                       \
+    X(sampling, top_k)                                                                             \
+    X(sampling, top_p)                                                                             \
+    X(server, ui_logo)                                                                             \
+    X(server, ui_title)                                                                            \
+    X(update, update_api)                                                                          \
+    X(update, update_channel)                                                                      \
+    X(update, update_interval_h)                                                                   \
+    X(update, update_repo)                                                                         \
+    X(output, verbose)                                                                             \
+    X(input, vision_path)                                                                          \
+    X(watermark, watermark_delta)                                                                  \
+    X(watermark, watermark_detect)                                                                 \
+    X(watermark, watermark_gamma)                                                                  \
+    X(watermark, watermark_key)                                                                    \
+    X(server, web_ui_mode)                                                                         \
+    X(dist, worker_layers)
+
+/* The digest walks the fields in name order, so it does not depend on how CliArgs is laid out (the
+ * struct is grouped by topic; ARGS_FLAT_LAYOUT builds this test against the old flat struct, which
+ * is how the grouping was proven equal). Pointer-looking words are replaced by the (bounded) string
+ * they point to; the one pointer into the struct itself (the MCTS delimiter buffer) by a marker. */
+#ifdef ARGS_FLAT_LAYOUT
+#define FIELD(a, g, f) ((a)->f)
+#define WM_ENABLED(a) ((a)->watermark)
+#else
+#define FIELD(a, g, f) ((a)->g.f)
+#define WM_ENABLED(a) ((a)->watermark.enabled) /* the one field renamed by the grouping */
+#endif
+
+static uint64_t digest_bytes(uint64_t h, const void *p, size_t n, uintptr_t self) {
+    const unsigned char *b = (const unsigned char *)p;
     size_t i               = 0;
-    while (i < sizeof(*a)) {
-        if (i % sizeof(uintptr_t) == 0 && i + sizeof(uintptr_t) <= sizeof(*a)) {
+    while (i < n) {
+        if (n - i >= sizeof(uintptr_t) && (uintptr_t)(b + i) % sizeof(uintptr_t) == 0) {
             uintptr_t v;
             memcpy(&v, b + i, sizeof v);
-            if (v >= (uintptr_t)a &&
-                v < (uintptr_t)a + sizeof(*a)) { /* points into the struct itself */
-                uintptr_t off = v - (uintptr_t)a;
-                h             = mix(h, "S", 1);
-                h             = mix(h, &off, sizeof off);
+            if (v == self) {
+                h = mix(h, "S", 1);
                 i += sizeof(uintptr_t);
                 continue;
             }
             if (in_arena(v) || in_image(v)) {
                 const char *s = (const char *)v;
-                size_t n      = 0;
-                while (n < 200 && s[n]) n++;
+                size_t len    = 0;
+                while (len < 200 && s[len]) len++;
                 h = mix(h, "P", 1);
-                h = mix(h, s, n);
+                h = mix(h, s, len);
                 i += sizeof(uintptr_t);
                 continue;
             }
@@ -73,6 +185,17 @@ static uint64_t digest(const CliArgs *a) {
         h = mix(h, b + i, 1);
         i++;
     }
+    return h;
+}
+
+static uint64_t digest(const CliArgs *a) {
+    uint64_t h     = 1469598103934665603ULL;
+    uintptr_t self = (uintptr_t)FIELD(a, search, mcts_delim_buf);
+#define DIGEST_FIELD(g, f)                                                                         \
+    h = digest_bytes(mix(h, #f, sizeof #f), &FIELD(a, g, f), sizeof FIELD(a, g, f), self);
+    ARGS_FIELDS(DIGEST_FIELD)
+#undef DIGEST_FIELD
+    h = digest_bytes(mix(h, "watermark", 9), &WM_ENABLED(a), sizeof WM_ENABLED(a), self);
     return h;
 }
 

@@ -65,6 +65,10 @@ jobs:
           pip install --quiet lizard==1.26.1
           python3 -I tools/test_check_complexity.py
           python3 -I tools/check_complexity.py
+      - name: No struct wider than 25 fields unless recorded (ratchet)
+        run: |
+          python3 -I tools/test_check_struct_fields.py
+          python3 -I tools/check_struct_fields.py
       - name: Python passes mypy --strict (ratchet; untyped files listed in tools/py_types_baseline.txt)
         run: |
           pip install --quiet mypy==2.3.1

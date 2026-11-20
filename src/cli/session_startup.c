@@ -18,10 +18,10 @@
 
 /* Log format and threshold: --log-format / --log-level, and --verbose means debug. */
 void session_apply_log_options(PzSession *S) {
-    tn_log_set_format(S->args.log_json ? TN_LOG_JSON : TN_LOG_TEXT);
-    if (S->args.log_level >= 0)
-        tn_log_set_level((TnLogLevel)S->args.log_level);
-    else if (S->args.verbose)
+    tn_log_set_format(S->args.output.log_json ? TN_LOG_JSON : TN_LOG_TEXT);
+    if (S->args.output.log_level >= 0)
+        tn_log_set_level((TnLogLevel)S->args.output.log_level);
+    else if (S->args.output.verbose)
         tn_log_set_level(TN_LOG_DEBUG);
 }
 
@@ -29,14 +29,14 @@ void session_apply_log_options(PzSession *S) {
 int session_early_command(PzSession *S) {
     /* --version: print version + the SIMD backend selected for this CPU, then
      * exit 0. tn_simd_init() only probes CPUID, so no model is required. */
-    if (S->args.show_version) {
+    if (S->args.output.show_version) {
         printf("Project Zero %s\n", PZ_VERSION_STR);
         printf("SIMD backend (this CPU): %s\n", tn_simd_init());
         return 0;
     }
 
     /* Phase 38: --check-update — explicit, synchronous, no model needed. */
-    if (S->args.check_update) {
+    if (S->args.update.check_update) {
         UpdateOptions uo;
         UpdateInfo ui;
         args_fill_update_options(&S->args, &uo);
@@ -61,14 +61,14 @@ int session_early_command(PzSession *S) {
 /* --dump-tensors: opens the CSV file the forward pass appends to. */
 void session_open_dump(PzSession *S) {
     /* Open tensor dump file if requested */
-    if (S->args.dump_tensors_path) {
-        g_dump_fp = fopen(S->args.dump_tensors_path, "w");
+    if (S->args.eval.dump_tensors_path) {
+        g_dump_fp = fopen(S->args.eval.dump_tensors_path, "w");
         if (!g_dump_fp) {
             TN_LOG_WRN("session_startup", "Warning: cannot open dump file '%s' — dumps disabled\n",
-                       S->args.dump_tensors_path);
+                       S->args.eval.dump_tensors_path);
         } else {
             fprintf(g_dump_fp, "layer,step,n_elem,v0,v1,v2,v3,v4,v5,v6,v7,mean,absmax\n");
-            TN_LOG_INF("dump", "[dump] Writing tensors to: %s\n", S->args.dump_tensors_path);
+            TN_LOG_INF("dump", "[dump] Writing tensors to: %s\n", S->args.eval.dump_tensors_path);
         }
     }
 }
@@ -90,7 +90,7 @@ int session_detect_format(PzSession *S) {
      * generation output. */
     S->stdout_is_tty = isatty(fileno(stdout));
     int color_enabled_early =
-        tn_color_resolve(S->args.color_mode, S->stdout_is_tty, getenv("NO_COLOR"));
+        tn_color_resolve(S->args.output.color_mode, S->stdout_is_tty, getenv("NO_COLOR"));
     tn_banner_print(S->stdout_is_tty, color_enabled_early);
 
     printf("Project Zero Engine %s — Auto-Tuned Hardware\n", PZ_VERSION_STR);
@@ -102,9 +102,10 @@ int session_detect_format(PzSession *S) {
      * hardware probe and first-run calibration (2026-10-22) so a wrong
      * --model path fails at once instead of after a minutes-long sweep. */
     {
-        FILE *magic_f = fopen(S->args.model_path, "rb");
+        FILE *magic_f = fopen(S->args.input.model_path, "rb");
         if (!magic_f) {
-            TN_LOG_ERR("session_startup", "Failed to open model file: %s\n", S->args.model_path);
+            TN_LOG_ERR("session_startup", "Failed to open model file: %s\n",
+                       S->args.input.model_path);
             return 1;
         }
         uint32_t file_magic = 0;
@@ -122,9 +123,10 @@ int session_tune_hardware(PzSession *S) {
     /* ── SIMD backend selection ─────────────────────────────────────────── */
     /* CLI --simd override takes precedence over calibration and auto-detect.
      * Order: --simd flag > TN_FORCE_BACKEND env > calibration cache > auto */
-    if (S->args.simd_override) {
-        setenv("TN_FORCE_BACKEND", S->args.simd_override, 1);
-        TN_OUT_INF("session_startup", "SIMD override: %s (user-selected)\n", S->args.simd_override);
+    if (S->args.perf.simd_override) {
+        setenv("TN_FORCE_BACKEND", S->args.perf.simd_override, 1);
+        TN_OUT_INF("session_startup", "SIMD override: %s (user-selected)\n",
+                   S->args.perf.simd_override);
     }
 
     tn_simd_init();
@@ -134,19 +136,19 @@ int session_tune_hardware(PzSession *S) {
     /* Hardware Profile: auto-detect cores, cache, bandwidth, classifier format.
      * The DRAM bandwidth comes from a per-host cache (core/bw_cache.h);
      * --calibrate re-measures it along with everything else. */
-    if (S->args.calibrate) setenv("PZ_BW_REPROBE", "1", 1);
+    if (S->args.perf.calibrate) setenv("PZ_BW_REPROBE", "1", 1);
     const TnHardwareProfile *hw = tn_hardware_profile_init();
 
     /* ── Calibration ────────────────────────────────────────────────────── */
     TnCalibrationResult calib;
     bool have_calib = false;
 
-    if (S->args.no_calibrate) {
+    if (S->args.perf.no_calibrate) {
         /* 2026-11-18: no calibration at all -- nothing is loaded, run or saved, so
          * the dispatcher's own tier and the detected thread count apply and a run
          * does not depend on what an earlier run left in ~/.project-zero. */
         TN_OUT_INF("calibration", "[Calibration] Skipped: --no-calibrate\n");
-    } else if (S->args.calibrate) {
+    } else if (S->args.perf.calibrate) {
         /* User explicitly requested calibration */
         tn_calibrate(&calib, hw);
         /* A sanitizer build measures 5-20x slower than release: never let
@@ -173,7 +175,7 @@ int session_tune_hardware(PzSession *S) {
     }
 
     /* Apply calibrated SIMD backend (if no CLI override) */
-    if (have_calib && !S->args.simd_override && !getenv("TN_FORCE_BACKEND")) {
+    if (have_calib && !S->args.perf.simd_override && !getenv("TN_FORCE_BACKEND")) {
         const char *best = tn_calibration_best_simd(&calib);
         if (best) {
             setenv("TN_FORCE_BACKEND", best, 1);
@@ -183,7 +185,7 @@ int session_tune_hardware(PzSession *S) {
         }
     }
     /* --act-quant auto: the numerics are the calibrated tier's (measured int8 against float). */
-    if (have_calib && S->args.act_quant == 0) {
+    if (have_calib && S->args.eval.act_quant == 0) {
         const char *aq = tn_calibration_act_quant(&calib);
         double t_i8 = 0, t_fl = 0;
         if (tn_calibration_act_timing(&calib, dispatcher_int8, &t_i8, &t_fl))
@@ -198,7 +200,7 @@ int session_tune_hardware(PzSession *S) {
     }
 
     /* ── Classifier selection ───────────────────────────────────────────── */
-    if (S->args.classifier_override == 3) {
+    if (S->args.perf.classifier_override == 3) {
         /* --classifier auto-fast: use calibration's fastest classifier */
         TnClassifierFormat fast_cls =
             have_calib ? tn_calibration_best_classifier(&calib)
@@ -207,27 +209,27 @@ int session_tune_hardware(PzSession *S) {
         tn_hardware_profile_set_classifier(fast_cls);
         const char *names[] = {"BF16", "INT8", "INT4"};
         TN_OUT_INF("session_startup", "Classifier: %s (auto-fast, calibrated)\n", names[fast_cls]);
-    } else if (S->args.classifier_override >= 0 && S->args.classifier_override <= 2) {
-        tn_hardware_profile_set_classifier((TnClassifierFormat)S->args.classifier_override);
+    } else if (S->args.perf.classifier_override >= 0 && S->args.perf.classifier_override <= 2) {
+        tn_hardware_profile_set_classifier((TnClassifierFormat)S->args.perf.classifier_override);
         const char *names[] = {"BF16", "INT8", "INT4"};
         TN_OUT_INF("session_startup", "Classifier: %s (user-selected)\n",
-                   names[S->args.classifier_override]);
+                   names[S->args.perf.classifier_override]);
     }
     /* else: default BF16 (from hardware_profile.c select_classifier) */
 
     /* ── Activation numerics ────────────────────────────────────────────── */
-    if (S->args.act_quant != 0) {
-        tn_act_quant_set((TnActQuant)S->args.act_quant);
+    if (S->args.eval.act_quant != 0) {
+        tn_act_quant_set((TnActQuant)S->args.eval.act_quant);
         TN_OUT_INF("session_startup", "Activation quantization: %s (user-selected)\n",
-                   tn_act_quant_name((TnActQuant)S->args.act_quant));
+                   tn_act_quant_name((TnActQuant)S->args.eval.act_quant));
     }
 
     tn_hardware_profile_report(hw);
 
     /* Thread count: CLI override > calibration > auto-detected */
     int active_threads;
-    if (S->args.num_threads > 0) {
-        active_threads = S->args.num_threads;
+    if (S->args.perf.num_threads > 0) {
+        active_threads = S->args.perf.num_threads;
     } else if (have_calib && calib.best_threads > 0) {
         active_threads = calib.best_threads;
     } else {

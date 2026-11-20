@@ -23,59 +23,60 @@
 TernaryError args_parse_serving(CliArgs *args, int argc, char **argv, int *ip, int *handled) {
     int i = *ip;
     if (strcmp(argv[i], "--rpc-worker") == 0 && i + 1 < argc) {
-        ARG_INT(args->rpc_worker_port);
-        if (args->rpc_worker_port <= 0 || args->rpc_worker_port > 65535) {
+        ARG_INT(args->dist.rpc_worker_port);
+        if (args->dist.rpc_worker_port <= 0 || args->dist.rpc_worker_port > 65535) {
             TN_LOG_ERR("args_flags_serving", "Error: --rpc-worker must be a port 1-65535\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--layers") == 0 && i + 1 < argc) {
-        args->worker_layers = argv[++i];
+        args->dist.worker_layers = argv[++i];
     } else if (strcmp(argv[i], "--rpc-bind-all") == 0) {
-        args->rpc_bind_all = true;
+        args->dist.rpc_bind_all = true;
     } else if (strcmp(argv[i], "--remote-layers") == 0 && i + 1 < argc) {
-        args->remote_layers = argv[++i];
+        args->dist.remote_layers = argv[++i];
     } else if (strcmp(argv[i], "--plan-layers") == 0 && i + 1 < argc) {
-        args->plan_layers = argv[++i];
+        args->dist.plan_layers = argv[++i];
     } else if (strcmp(argv[i], "--queue-size") == 0 && i + 1 < argc) {
-        ARG_INT(args->queue_size);
-        if (args->queue_size < 0) {
+        ARG_INT(args->server.queue_size);
+        if (args->server.queue_size < 0) {
             TN_LOG_ERR("args_flags_serving", "Error: --queue-size must be >= 0\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--queue-timeout") == 0 && i + 1 < argc) {
-        ARG_INT(args->queue_timeout_s);
-        if (args->queue_timeout_s < 1) {
+        ARG_INT(args->server.queue_timeout_s);
+        if (args->server.queue_timeout_s < 1) {
             TN_LOG_ERR("args_flags_serving", "Error: --queue-timeout must be >= 1 second\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--rate-limit") == 0 && i + 1 < argc) {
-        ARG_INT(args->rate_limit);
-        if (args->rate_limit < 0 || args->rate_limit > 100000) {
+        ARG_INT(args->server.rate_limit);
+        if (args->server.rate_limit < 0 || args->server.rate_limit > 100000) {
             TN_LOG_ERR("args_flags_serving",
                        "Error: --rate-limit must be 0..100000 requests per second\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--client-timeout") == 0 && i + 1 < argc) {
-        ARG_INT(args->client_timeout_s);
-        if (args->client_timeout_s < 0 || args->client_timeout_s > 86400) {
+        ARG_INT(args->server.client_timeout_s);
+        if (args->server.client_timeout_s < 0 || args->server.client_timeout_s > 86400) {
             TN_LOG_ERR("args_flags_serving", "Error: --client-timeout must be 0..86400 seconds\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--max-connections") == 0 && i + 1 < argc) {
-        ARG_INT(args->max_connections);
-        if (args->max_connections < 0 || args->max_connections > 1048576) {
+        ARG_INT(args->server.max_connections);
+        if (args->server.max_connections < 0 || args->server.max_connections > 1048576) {
             TN_LOG_ERR("args_flags_serving", "Error: --max-connections must be 0..1048576\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--parallel") == 0 && i + 1 < argc) {
-        ARG_INT(args->parallel);
-        if (args->parallel < 1 || args->parallel > PZ_PARALLEL_MAX) {
+        ARG_INT(args->server.parallel);
+        if (args->server.parallel < 1 || args->server.parallel > PZ_PARALLEL_MAX) {
             TN_LOG_ERR("args_flags_serving", "Error: --parallel must be 1..%d\n", PZ_PARALLEL_MAX);
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--parallel-batch") == 0 && i + 1 < argc) {
-        ARG_INT(args->parallel_batch);
-        if (args->parallel_batch < 1 || args->parallel_batch > PZ_PARALLEL_BATCH_MAX) {
+        ARG_INT(args->server.parallel_batch);
+        if (args->server.parallel_batch < 1 ||
+            args->server.parallel_batch > PZ_PARALLEL_BATCH_MAX) {
             TN_LOG_ERR("args_flags_serving", "Error: --parallel-batch must be 1..%d\n",
                        PZ_PARALLEL_BATCH_MAX);
             return TN_ERR_INVALID_CONFIG;

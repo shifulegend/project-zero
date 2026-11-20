@@ -42,9 +42,9 @@ static void test_flags(void) {
     TEST_ASSERT_EQ(parse("--threads", "four", &a), TN_ERR_INVALID_CONFIG,
                    "--threads four is an error");
     TEST_ASSERT_EQ(parse("--rate-limit", "5", &a), TN_OK, "a valid --rate-limit is accepted");
-    TEST_ASSERT_EQ(a.rate_limit, 5, "and stored");
+    TEST_ASSERT_EQ(a.server.rate_limit, 5, "and stored");
     TEST_ASSERT_EQ(parse("--temperature", "0.25", &a), TN_OK, "a valid --temperature is accepted");
-    TEST_ASSERT(a.temperature > 0.249f && a.temperature < 0.251f, "and stored");
+    TEST_ASSERT(a.sampling.temperature > 0.249f && a.sampling.temperature < 0.251f, "and stored");
     TEST_ASSERT_EQ(parse("--rate-limit", "0", &a), TN_OK,
                    "0 is still allowed when typed on purpose");
 }

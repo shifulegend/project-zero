@@ -23,82 +23,82 @@
 TernaryError args_parse_memory(CliArgs *args, int argc, char **argv, int *ip, int *handled) {
     int i = *ip;
     if (strcmp(argv[i], "--perplexity") == 0 && i + 1 < argc) {
-        args->perplexity_file = argv[++i];
+        args->eval.perplexity_file = argv[++i];
     } else if (strcmp(argv[i], "--ppl-ctx") == 0 && i + 1 < argc) {
-        ARG_INT(args->ppl_ctx);
-        if (args->ppl_ctx < 4) {
+        ARG_INT(args->eval.ppl_ctx);
+        if (args->eval.ppl_ctx < 4) {
             TN_LOG_ERR("args_flags_memory", "Error: --ppl-ctx must be >= 4\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--ppl-chunks") == 0 && i + 1 < argc) {
-        ARG_INT(args->ppl_chunks);
-        if (args->ppl_chunks < 0) {
+        ARG_INT(args->eval.ppl_chunks);
+        if (args->eval.ppl_chunks < 0) {
             TN_LOG_ERR("args_flags_memory", "Error: --ppl-chunks must be >= 0\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--rope-layout") == 0 && i + 1 < argc) {
-        const char *m     = argv[++i];
-        args->rope_layout = strcmp(m, "auto") == 0 ? -1 : rope_layout_parse(m);
-        if (strcmp(m, "auto") != 0 && args->rope_layout < 0) {
+        const char *m          = argv[++i];
+        args->perf.rope_layout = strcmp(m, "auto") == 0 ? -1 : rope_layout_parse(m);
+        if (strcmp(m, "auto") != 0 && args->perf.rope_layout < 0) {
             TN_LOG_ERR("args_flags_memory", "Error: --rope-layout must be auto, norm or neox\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--attn-kernel") == 0 && i + 1 < argc) {
-        args->attn_kernel = argv[++i];
-        if (attn_kernel_parse(args->attn_kernel) < 0) {
+        args->perf.attn_kernel = argv[++i];
+        if (attn_kernel_parse(args->perf.attn_kernel) < 0) {
             TN_LOG_ERR("args_flags_memory", "Error: --attn-kernel must be standard or tiled\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--attn-tile") == 0 && i + 1 < argc) {
-        ARG_INT(args->attn_tile);
-        if (args->attn_tile < 0) {
+        ARG_INT(args->perf.attn_tile);
+        if (args->perf.attn_tile < 0) {
             TN_LOG_ERR("args_flags_memory", "Error: --attn-tile must be >= 0\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--attn-parallel-min-ctx") == 0 && i + 1 < argc) {
-        ARG_INT(args->attn_parallel_min_ctx);
-        if (args->attn_parallel_min_ctx < 0) {
+        ARG_INT(args->perf.attn_parallel_min_ctx);
+        if (args->perf.attn_parallel_min_ctx < 0) {
             TN_LOG_ERR("args_flags_memory", "Error: --attn-parallel-min-ctx must be >= 0\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--kv-type") == 0 && i + 1 < argc) {
-        args->kv_type = kv_type_parse(argv[++i]);
-        if (args->kv_type < 0) {
+        args->perf.kv_type = kv_type_parse(argv[++i]);
+        if (args->perf.kv_type < 0) {
             TN_LOG_ERR("args_flags_memory", "Error: --kv-type must be f32, i8 or i4\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--kv-offload") == 0 && i + 1 < argc) {
-        args->kv_offload_dir = argv[++i];
+        args->perf.kv_offload_dir = argv[++i];
     } else if (strcmp(argv[i], "--ctx-size") == 0 && i + 1 < argc) {
-        ARG_INT(args->ctx_size);
-        if (args->ctx_size < 0) {
+        ARG_INT(args->perf.ctx_size);
+        if (args->perf.ctx_size < 0) {
             TN_LOG_ERR("args_flags_memory", "Error: --ctx-size must be >= 0\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--kv-ram-fraction") == 0 && i + 1 < argc) {
-        ARG_NUM(args->kv_ram_fraction);
-        if (!(args->kv_ram_fraction > 0.0f && args->kv_ram_fraction <= 0.95f)) {
+        ARG_NUM(args->perf.kv_ram_fraction);
+        if (!(args->perf.kv_ram_fraction > 0.0f && args->perf.kv_ram_fraction <= 0.95f)) {
             TN_LOG_ERR("args_flags_memory", "Error: --kv-ram-fraction must be in (0, 0.95]\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--prompt-cache-mb") == 0 && i + 1 < argc) {
-        ARG_INT(args->prompt_cache_mb);
-        if (args->prompt_cache_mb < 0) {
+        ARG_INT(args->perf.prompt_cache_mb);
+        if (args->perf.prompt_cache_mb < 0) {
             TN_LOG_ERR("args_flags_memory", "Error: --prompt-cache-mb must be >= 0\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--prompt-cache-min-tokens") == 0 && i + 1 < argc) {
-        ARG_INT(args->prompt_cache_min_tokens);
-        if (args->prompt_cache_min_tokens < 1) {
+        ARG_INT(args->perf.prompt_cache_min_tokens);
+        if (args->perf.prompt_cache_min_tokens < 1) {
             TN_LOG_ERR("args_flags_memory", "Error: --prompt-cache-min-tokens must be >= 1\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--prompt-cache") == 0 && i + 1 < argc) {
         const char *mode = argv[++i];
         if (strcmp(mode, "on") == 0)
-            args->prompt_cache = true;
+            args->perf.prompt_cache = true;
         else if (strcmp(mode, "off") == 0)
-            args->prompt_cache = false;
+            args->perf.prompt_cache = false;
         else {
             TN_LOG_ERR("args_flags_memory", "Error: --prompt-cache must be on or off\n");
             return TN_ERR_INVALID_CONFIG;

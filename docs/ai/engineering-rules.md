@@ -56,6 +56,10 @@
 - **Complexity:** cyclomatic complexity 10 or less and nesting depth 3 or less per new function;
   prefer early returns over nested `if`s, and a table or a helper over a long `else if` chain.
 - **Web UI is TypeScript:** `webui/src` is `.ts` and `<script lang="ts">` under `strict` (`webui/tsconfig.json`); `npm run check` (svelte-check), `npm run lint` (typescript-eslint) and `npm test` (compiles the library files, then `node --test`) must pass. The server's JSON shapes live in `src/lib/types.ts`; a field the server may omit is optional, not given a default in the UI.
+- **Struct width:** at most 25 direct fields per struct; group a wider one into cohesive sub-structs
+  (`CliArgs` is ten of them: `args->server.port`, `args->sampling.temperature`). CI
+  (`tools/check_struct_fields.py`) fails on a new struct over 25 fields and on growth of a listed one
+  (`tools/struct_fields_baseline.txt`, which may only shrink; vendored stb headers are skipped).
 - **Python typing:** every tracked `.py` file passes `mypy --strict` (`mypy.ini`; CI:
   `tools/check_py_types.py`, which also fails a listed file that became clean). Annotate every
   parameter and return type, name aliases for repeated shapes (`Row`, `Tensors`), and use a

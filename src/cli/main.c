@@ -32,8 +32,8 @@ int main(int argc, char **argv) {
     }
     session_apply_log_options(S);
     {
-        KVStrategyOptions kv_opt = {S->args.ctx_size, S->args.kv_ram_fraction, S->args.kv_type,
-                                    S->args.kv_offload_dir};
+        KVStrategyOptions kv_opt = {S->args.perf.ctx_size, S->args.perf.kv_ram_fraction,
+                                    S->args.perf.kv_type, S->args.perf.kv_offload_dir};
         kv_strategy_set_options(&kv_opt);
     }
     (void)tn_cache_info(); /* Phase 27.1: probe once, before any worker threads */
@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
         free(S);
         return early;
     }
-    if (S->args.verbose) g_tn_verbose = 1;
+    if (S->args.output.verbose) g_tn_verbose = 1;
 
     session_open_dump(S);
     if (session_detect_format(S) != 0 || session_tune_hardware(S) != 0) {

@@ -20,13 +20,13 @@ void session_start_update_check(PzSession *S) {
     /* Phase 38: background update check — server always (the web UI shows
      * it), CLI only when a person is watching stderr. Never blocks. */
     S->update_notice = 0;
-    if (!S->args.watermark_detect && !S->args.perplexity_file &&
-        (S->args.server_mode || isatty(fileno(stderr)))) {
+    if (!S->args.watermark.watermark_detect && !S->args.eval.perplexity_file &&
+        (S->args.server.server_mode || isatty(fileno(stderr)))) {
         UpdateOptions uo;
         args_fill_update_options(&S->args, &uo);
         update_service_init(&uo, PZ_VERSION_STR);
         update_service_poll(0);
-        S->update_notice = !S->args.server_mode;
+        S->update_notice = !S->args.server.server_mode;
     }
 }
 
@@ -39,9 +39,9 @@ void session_accuracy_checks(PzSession *S) {
     {
         const TnHardwareProfile *hpc = tn_hardware_profile_get();
         int lossy_head = hpc && hpc->classifier_explicit && hpc->classifier_fmt != TN_CLS_BF16;
-        if (lossy_head && S->args.quality_tolerance > 0.0 && !S->args.self_check &&
-            !S->args.perplexity_file && !S->args.watermark_detect) {
-            SelfCheckOptions so = {S->args.quality_tolerance, S->args.self_check_tokens};
+        if (lossy_head && S->args.eval.quality_tolerance > 0.0 && !S->args.eval.self_check &&
+            !S->args.eval.perplexity_file && !S->args.watermark.watermark_detect) {
+            SelfCheckOptions so = {S->args.eval.quality_tolerance, S->args.eval.self_check_tokens};
             SelfCheckResult sr;
             if (selfcheck_run(&so, &S->p, &S->w, S->s, &S->mc, &S->t, S->tp, &sr) == TN_OK &&
                 sr.verdict == SC_FAIL) {
@@ -61,13 +61,13 @@ void session_accuracy_checks(PzSession *S) {
     /* --act-quant auto on a ternary model: the int8 numerics are accuracy-checked once per model
      * and setting (verdict cached in ~/.project-zero/selfcheck.txt), and float activations take
      * over if they fail. --no-calibrate, sanitizer builds and an explicit --act-quant skip it. */
-    SelfCheckAutoCtx auto_ctx = {S->args.act_quant,
+    SelfCheckAutoCtx auto_ctx = {S->args.eval.act_quant,
                                  S->w.layers_are_ternary,
-                                 S->args.no_calibrate,
+                                 S->args.perf.no_calibrate,
                                  TN_SANITIZED,
-                                 S->args.quality_tolerance,
-                                 S->args.self_check || S->args.perplexity_file ||
-                                     S->args.watermark_detect,
+                                 S->args.eval.quality_tolerance,
+                                 S->args.eval.self_check || S->args.eval.perplexity_file ||
+                                     S->args.watermark.watermark_detect,
                                  strcmp(tn_act_quant_effective(), "int8") == 0};
     if (selfcheck_auto_applies(&auto_ctx)) {
         const TnHardwareProfile *hpa = tn_hardware_profile_get();
@@ -76,11 +76,11 @@ void session_accuracy_checks(PzSession *S) {
                                        : hpa->classifier_fmt == TN_CLS_INT8 ? "int8"
                                                                             : "bf16";
         struct stat mst;
-        if (stat(S->args.model_path, &mst) == 0) {
+        if (stat(S->args.input.model_path, &mst) == 0) {
             char key[SELFCHECK_KEY_BUF];
-            selfcheck_cache_key(key, sizeof(key), S->args.model_path, (long long)mst.st_size,
-                                (long long)mst.st_mtime, "int8", cls, S->args.quality_tolerance,
-                                S->args.self_check_tokens);
+            selfcheck_cache_key(key, sizeof(key), S->args.input.model_path, (long long)mst.st_size,
+                                (long long)mst.st_mtime, "int8", cls,
+                                S->args.eval.quality_tolerance, S->args.eval.self_check_tokens);
             SelfCheckVerdict cv;
             if (!selfcheck_cache_load(key, &cv)) {
                 tn_log_out(
@@ -88,7 +88,8 @@ void session_accuracy_checks(PzSession *S) {
                     "[self-check] first run of this model with int8 activations: checking accuracy "
                     "(cached afterwards)...\n");
                 fflush(stdout);
-                SelfCheckOptions so = {S->args.quality_tolerance, S->args.self_check_tokens};
+                SelfCheckOptions so = {S->args.eval.quality_tolerance,
+                                       S->args.eval.self_check_tokens};
                 SelfCheckResult sr;
                 if (selfcheck_run(&so, &S->p, &S->w, S->s, &S->mc, &S->t, S->tp, &sr) == TN_OK &&
                     sr.verdict != SC_SKIPPED) {

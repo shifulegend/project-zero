@@ -39,10 +39,10 @@ static void ppl_progress(int chunk, const PplResult *r, void *user) {
 static int run_perplexity(const CliArgs *args, const Config *p, const TransformerWeights *w,
                           RunState *s, const MoEConfig *mc, Tokenizer *t, ThreadPool *tp) {
     size_t rd  = 0;
-    char *text = tn_read_text_file(args->perplexity_file, (size_t)64 << 20, &rd);
+    char *text = tn_read_text_file(args->eval.perplexity_file, (size_t)64 << 20, &rd);
     if (!text) {
         TN_LOG_ERR("session_run", "Error: cannot read %s (must be 1 B..64 MiB)\n",
-                   args->perplexity_file);
+                   args->eval.perplexity_file);
         return 1;
     }
     int *toks = (int *)malloc((rd + 2) * sizeof(int));
@@ -57,15 +57,16 @@ static int run_perplexity(const CliArgs *args, const Config *p, const Transforme
     int k = tokenizer_encode(t, text, rd, toks + n, (int)rd + 1);
     if (k < 0) {
         rc = 1;
-        TN_LOG_ERR("session_run", "Error: could not tokenize %s\n", args->perplexity_file);
+        TN_LOG_ERR("session_run", "Error: could not tokenize %s\n", args->eval.perplexity_file);
     } else {
         n += k;
-        PplOptions opt = {args->ppl_ctx, args->ppl_chunks, bos};
+        PplOptions opt = {args->eval.ppl_ctx, args->eval.ppl_chunks, bos};
         PplResult r;
         printf("perplexity: %d tokens, n_ctx %d, %d chunk(s)\n", n,
                opt.n_ctx < s->max_seq_len ? opt.n_ctx : s->max_seq_len,
-               args->ppl_chunks > 0 && args->ppl_chunks < n / opt.n_ctx ? args->ppl_chunks
-                                                                        : n / opt.n_ctx);
+               args->eval.ppl_chunks > 0 && args->eval.ppl_chunks < n / opt.n_ctx
+                   ? args->eval.ppl_chunks
+                   : n / opt.n_ctx);
         TernaryError e = perplexity_eval(toks, n, &opt, p, w, s, mc, tp, ppl_progress, NULL, &r);
         if (e != TN_OK) {
             rc = 1;
@@ -83,7 +84,7 @@ static int run_perplexity(const CliArgs *args, const Config *p, const Transforme
 
 /* --self-check: the accuracy probe on demand; exit status 1 over the tolerance. */
 static void run_selfcheck(PzSession *S) {
-    SelfCheckOptions so = {S->args.quality_tolerance, S->args.self_check_tokens};
+    SelfCheckOptions so = {S->args.eval.quality_tolerance, S->args.eval.self_check_tokens};
     SelfCheckResult sr;
     TernaryError se = selfcheck_run(&so, &S->p, &S->w, S->s, &S->mc, &S->t, S->tp, &sr);
     if (se != TN_OK) {
@@ -104,7 +105,8 @@ static void run_watermark_detect(PzSession *S) {
     GenerationParams gp;
     args_fill_gen_params(&S->args, &gp);
     WatermarkResult wr;
-    if (watermark_detect_text(&gp.watermark, &S->t, S->args.watermark_detect, &wr) != TN_OK) {
+    if (watermark_detect_text(&gp.watermark, &S->t, S->args.watermark.watermark_detect, &wr) !=
+        TN_OK) {
         S->exit_code = 1;
         TN_LOG_ERR("session_run", "Error: could not tokenize --watermark-detect text.\n");
     } else {
@@ -118,18 +120,19 @@ static void run_watermark_detect(PzSession *S) {
 static void run_one_shot(PzSession *S) {
     printf("\n");
     if (S->draft_active) {
-        speculative_generate(&S->p, &S->w, S->s, &S->mc, &S->t, S->tp, S->args.prompt,
-                             S->args.max_tokens, S->args.temperature, S->args.top_p,
-                             S->args.json_mode, &S->draft, S->args.spec_length, S->args.seed);
+        speculative_generate(&S->p, &S->w, S->s, &S->mc, &S->t, S->tp, S->args.input.prompt,
+                             S->args.sampling.max_tokens, S->args.sampling.temperature,
+                             S->args.sampling.top_p, S->args.sampling.json_mode, &S->draft,
+                             S->args.search.spec_length, S->args.sampling.seed);
     } else {
         GenerationParams gp;
         args_fill_gen_params(&S->args, &gp);
-        if (S->args.mcts.simulations > 0) {
+        if (S->args.search.mcts.simulations > 0) {
             MctsResult mr;
-            TernaryError me =
-                generate_mcts(&S->p, &S->w, S->s, &S->mc, &S->t, S->tp, S->args.prompt,
-                              S->args.prompt, &gp, &S->args.mcts, S->prm.loaded ? &S->prm : NULL,
-                              stdout_piece_callback, NULL, NULL, &mr);
+            TernaryError me = generate_mcts(&S->p, &S->w, S->s, &S->mc, &S->t, S->tp,
+                                            S->args.input.prompt, S->args.input.prompt, &gp,
+                                            &S->args.search.mcts, S->prm.loaded ? &S->prm : NULL,
+                                            stdout_piece_callback, NULL, NULL, &mr);
             printf("\n");
             TN_LOG_INF("mcts",
                        "[mcts] %d simulations, %d nodes, %d-step path (value %.3f, %s), %d search "
@@ -137,31 +140,31 @@ static void run_one_shot(PzSession *S) {
                        mr.simulations, mr.nodes, mr.steps, (double)mr.path_value,
                        mr.used_prm ? "PRM" : "self-scored", mr.tokens_total,
                        me == TN_OK ? "" : " (failed)");
-        } else if (S->args.best_of > 1) {
+        } else if (S->args.sampling.best_of > 1) {
             BestOfResult br;
-            generate_best_of(&S->p, &S->w, S->s, &S->mc, &S->t, S->tp, S->args.prompt, &gp,
-                             S->args.best_of, BEST_OF_SCORE_MEAN_LOGPROB, stdout_piece_callback,
-                             NULL, NULL, &br);
+            generate_best_of(&S->p, &S->w, S->s, &S->mc, &S->t, S->tp, S->args.input.prompt, &gp,
+                             S->args.sampling.best_of, BEST_OF_SCORE_MEAN_LOGPROB,
+                             stdout_piece_callback, NULL, NULL, &br);
             printf("\n");
             TN_LOG_INF("best_of", "[best-of] %d candidates, chose #%d (mean log-prob %.3f)\n", br.n,
                        br.chosen, br.chosen >= 0 ? br.scores[br.chosen] : 0.0);
         } else {
-            generate_params(&S->p, &S->w, S->s, &S->mc, &S->t, S->tp, S->args.prompt, &gp);
+            generate_params(&S->p, &S->w, S->s, &S->mc, &S->t, S->tp, S->args.input.prompt, &gp);
         }
     }
     printf("\n");
 }
 
 void session_execute(PzSession *S) {
-    if (S->args.self_check) {
+    if (S->args.eval.self_check) {
         run_selfcheck(S);
-    } else if (S->args.perplexity_file) {
+    } else if (S->args.eval.perplexity_file) {
         S->exit_code = run_perplexity(&S->args, &S->p, &S->w, S->s, &S->mc, &S->t, S->tp);
-    } else if (S->args.watermark_detect) {
+    } else if (S->args.watermark.watermark_detect) {
         run_watermark_detect(S);
-    } else if (S->args.server_mode) {
+    } else if (S->args.server.server_mode) {
         session_run_server(S);
-    } else if (S->args.prompt) {
+    } else if (S->args.input.prompt) {
         run_one_shot(S);
     } else {
         run_repl(&S->p, &S->w, &S->mc, NULL, NULL, NULL, S->s, &S->t, S->tp, &S->args,

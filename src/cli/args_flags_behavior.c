@@ -23,41 +23,41 @@
 TernaryError args_parse_behavior(CliArgs *args, int argc, char **argv, int *ip, int *handled) {
     int i = *ip;
     if (strcmp(argv[i], "--chat-format") == 0 && i + 1 < argc) {
-        args->chat_format = chat_template_parse(argv[++i]);
-        if (args->chat_format < -1) {
+        args->sampling.chat_format = chat_template_parse(argv[++i]);
+        if (args->sampling.chat_format < -1) {
             TN_LOG_ERR("args_flags_behavior",
                        "Error: --chat-format must be auto, chatml, llama3, deepseek, "
                        "mistral or plain\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--ui-title") == 0 && i + 1 < argc) {
-        args->ui_title = argv[++i];
+        args->server.ui_title = argv[++i];
     } else if (strcmp(argv[i], "--ui-logo") == 0 && i + 1 < argc) {
         const char *m = argv[++i];
         if (strcmp(m, "ascii") == 0)
-            args->ui_logo = 0;
+            args->server.ui_logo = 0;
         else if (strcmp(m, "text") == 0)
-            args->ui_logo = 1;
+            args->server.ui_logo = 1;
         else {
             TN_LOG_ERR("args_flags_behavior", "Error: --ui-logo must be ascii or text\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--watermark-detect") == 0 && i + 1 < argc) {
-        args->watermark_detect = argv[++i];
+        args->watermark.watermark_detect = argv[++i];
     } else if (strcmp(argv[i], "--memory-db") == 0 && i + 1 < argc) {
-        args->memory_db_path = argv[++i];
+        args->input.memory_db_path = argv[++i];
     } else if (strcmp(argv[i], "--classifier") == 0 && i + 1 < argc) {
         const char *fmt = argv[++i];
         if (strcmp(fmt, "auto") == 0)
-            args->classifier_override = -1;
+            args->perf.classifier_override = -1;
         else if (strcmp(fmt, "bf16") == 0)
-            args->classifier_override = 0;
+            args->perf.classifier_override = 0;
         else if (strcmp(fmt, "int8") == 0)
-            args->classifier_override = 1;
+            args->perf.classifier_override = 1;
         else if (strcmp(fmt, "int4") == 0)
-            args->classifier_override = 2;
+            args->perf.classifier_override = 2;
         else if (strcmp(fmt, "auto-fast") == 0)
-            args->classifier_override = 3;
+            args->perf.classifier_override = 3;
         else {
             TN_LOG_ERR("args_flags_behavior",
                        "Error: --classifier must be one of: auto, bf16, int8, int4, auto-fast\n");
@@ -66,19 +66,19 @@ TernaryError args_parse_behavior(CliArgs *args, int argc, char **argv, int *ip, 
     } else if (strcmp(argv[i], "--simd") == 0 && i + 1 < argc) {
         const char *backend = argv[++i];
         if (strcmp(backend, "auto") == 0) {
-            args->simd_override = NULL;
+            args->perf.simd_override = NULL;
         } else if (strcmp(backend, "avx2") == 0 || strcmp(backend, "avx512f") == 0 ||
                    strcmp(backend, "vnni") == 0 || strcmp(backend, "scalar") == 0) {
-            args->simd_override = (char *)backend;
+            args->perf.simd_override = (char *)backend;
         } else {
             TN_LOG_ERR("args_flags_behavior",
                        "Error: --simd must be one of: auto, avx2, avx512f, vnni, scalar\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--calibrate") == 0) {
-        args->calibrate = true;
+        args->perf.calibrate = true;
     } else if (strcmp(argv[i], "--no-calibrate") == 0) {
-        args->no_calibrate = true;
+        args->perf.no_calibrate = true;
     } else if (strcmp(argv[i], "--act-quant") == 0 && i + 1 < argc) {
         TnActQuant m;
         if (tn_act_quant_parse(argv[++i], &m) != 0) {
@@ -86,39 +86,39 @@ TernaryError args_parse_behavior(CliArgs *args, int argc, char **argv, int *ip, 
                        "Error: --act-quant must be one of: auto, int8, float\n");
             return TN_ERR_INVALID_CONFIG;
         }
-        args->act_quant = (int)m;
+        args->eval.act_quant = (int)m;
     } else if (strcmp(argv[i], "--quality-tolerance") == 0 && i + 1 < argc) {
-        ARG_NUM(args->quality_tolerance);
-        if (!(args->quality_tolerance >= 0.0 && args->quality_tolerance <= 100.0)) {
+        ARG_NUM(args->eval.quality_tolerance);
+        if (!(args->eval.quality_tolerance >= 0.0 && args->eval.quality_tolerance <= 100.0)) {
             TN_LOG_ERR("args_flags_behavior",
                        "Error: --quality-tolerance must be 0..100 (percent)\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--self-check-tokens") == 0 && i + 1 < argc) {
-        ARG_INT(args->self_check_tokens);
-        if (args->self_check_tokens < 16 || args->self_check_tokens > 4096) {
+        ARG_INT(args->eval.self_check_tokens);
+        if (args->eval.self_check_tokens < 16 || args->eval.self_check_tokens > 4096) {
             TN_LOG_ERR("args_flags_behavior", "Error: --self-check-tokens must be 16..4096\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--self-check") == 0) {
-        args->self_check = true;
+        args->eval.self_check = true;
     } else if (strcmp(argv[i], "--reasoning") == 0) {
-        args->enable_reasoning = true;
+        args->search.enable_reasoning = true;
     } else if (strcmp(argv[i], "--json") == 0) {
-        args->json_mode = true;
+        args->sampling.json_mode = true;
     } else if (strcmp(argv[i], "--raw-prompt") == 0) {
-        args->raw_prompt = true;
+        args->sampling.raw_prompt = true;
     } else if (strcmp(argv[i], "--ignore-eos") == 0) {
-        args->ignore_eos = true;
+        args->sampling.ignore_eos = true;
     } else if (strcmp(argv[i], "--verbose") == 0) {
-        args->verbose = true;
+        args->output.verbose = true;
     } else if (strcmp(argv[i], "--log-format") == 0 && i + 1 < argc) {
         TnLogFormat f;
         if (tn_log_parse_format(argv[++i], &f) != 0) {
             TN_LOG_ERR("args_flags_behavior", "Error: --log-format must be one of: text, json\n");
             return TN_ERR_INVALID_CONFIG;
         }
-        args->log_json = f == TN_LOG_JSON;
+        args->output.log_json = f == TN_LOG_JSON;
     } else if (strcmp(argv[i], "--log-level") == 0 && i + 1 < argc) {
         TnLogLevel l;
         if (tn_log_parse_level(argv[++i], &l) != 0) {
@@ -126,40 +126,40 @@ TernaryError args_parse_behavior(CliArgs *args, int argc, char **argv, int *ip, 
                        "Error: --log-level must be one of: debug, info, warn, error\n");
             return TN_ERR_INVALID_CONFIG;
         }
-        args->log_level = (int)l;
+        args->output.log_level = (int)l;
     } else if (strcmp(argv[i], "--dump-tensors") == 0 && i + 1 < argc) {
-        args->dump_tensors_path = argv[++i];
+        args->eval.dump_tensors_path = argv[++i];
     } else if (strcmp(argv[i], "--server") == 0) {
-        args->server_mode = 1;
+        args->server.server_mode = 1;
     } else if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
-        ARG_INT(args->server_port);
-        if (args->server_port <= 0 || args->server_port > 65535) {
+        ARG_INT(args->server.server_port);
+        if (args->server.server_port <= 0 || args->server.server_port > 65535) {
             TN_LOG_ERR("args_flags_behavior", "Error: --port must be 1–65535\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--cors") == 0) {
-        args->cors_enabled = true;
+        args->server.cors_enabled = true;
     } else if (strcmp(argv[i], "--cors-origin") == 0 && i + 1 < argc) {
-        if (args->num_cors_origins >= CLI_MAX_CORS_ORIGINS) {
+        if (args->server.num_cors_origins >= CLI_MAX_CORS_ORIGINS) {
             TN_LOG_ERR("args_flags_behavior", "Error: too many --cors-origin values (max %d)\n",
                        CLI_MAX_CORS_ORIGINS);
             return TN_ERR_INVALID_CONFIG;
         }
-        args->cors_origins[args->num_cors_origins++] = argv[++i];
+        args->server.cors_origins[args->server.num_cors_origins++] = argv[++i];
     } else if (strcmp(argv[i], "--api-key") == 0 && i + 1 < argc) {
-        args->api_key = argv[++i];
+        args->server.api_key = argv[++i];
     } else if (strcmp(argv[i], "--metrics") == 0) {
-        args->metrics_enabled = true;
+        args->server.metrics_enabled = true;
     } else if (strcmp(argv[i], "--static-dir") == 0 && i + 1 < argc) {
-        args->static_dir = argv[++i];
+        args->server.static_dir = argv[++i];
     } else if (strcmp(argv[i], "--web-ui") == 0 && i + 1 < argc) {
         const char *mode = argv[++i];
         if (strcmp(mode, "auto") == 0)
-            args->web_ui_mode = WEBUI_MODE_AUTO;
+            args->server.web_ui_mode = WEBUI_MODE_AUTO;
         else if (strcmp(mode, "on") == 0)
-            args->web_ui_mode = WEBUI_MODE_ON;
+            args->server.web_ui_mode = WEBUI_MODE_ON;
         else if (strcmp(mode, "off") == 0)
-            args->web_ui_mode = WEBUI_MODE_OFF;
+            args->server.web_ui_mode = WEBUI_MODE_OFF;
         else {
             TN_LOG_ERR("args_flags_behavior", "Error: --web-ui must be one of: auto, on, off\n");
             return TN_ERR_INVALID_CONFIG;

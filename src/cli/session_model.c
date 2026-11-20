@@ -24,8 +24,8 @@
 /* GGUF: the shared loader (also used for the draft model) does everything. */
 static int load_gguf(PzSession *S) {
     LoadedModel lm;
-    TernaryError lerr =
-        load_gguf_model(&lm, S->args.model_path, /*is_primary=*/true, 0, S->tp, S->stdout_is_tty);
+    TernaryError lerr = load_gguf_model(&lm, S->args.input.model_path, /*is_primary=*/true, 0,
+                                        S->tp, S->stdout_is_tty);
     if (lerr != TN_OK) {
         TN_LOG_ERR("session_model", "Failed to load model: %s\n", tn_error_str(lerr));
         return 1;
@@ -45,8 +45,8 @@ static int load_gguf(PzSession *S) {
 static int load_native(PzSession *S) {
     TN_OUT_INF("session_model", "Model format: native ternary\n");
 
-    if (mapped_file_open(&S->mf, S->args.model_path) != TN_OK) {
-        TN_LOG_ERR("session_model", "Failed to map model file: %s\n", S->args.model_path);
+    if (mapped_file_open(&S->mf, S->args.input.model_path) != TN_OK) {
+        TN_LOG_ERR("session_model", "Failed to map model file: %s\n", S->args.input.model_path);
         return 1;
     }
 

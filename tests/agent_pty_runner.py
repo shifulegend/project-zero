@@ -42,7 +42,7 @@ PROMPT = (
 CMD = [ENGINE, "--model", MODEL, "--tokenizer", TOKENIZER, "--max-tokens", "64", "--verbose"]
 
 
-def main():
+def main() -> None:
     auto = os.environ.get("PROJECT_ZERO_AGENT_AUTO_APPROVE", "")
     if not auto:
         print(

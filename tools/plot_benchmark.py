@@ -13,6 +13,8 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 
 # ── Measured data (i5-11300H, AVX-512 VNNI, 2026-06-21) ──────────────────────
 threads = [1, 2, 3, 4, 5, 6, 7, 8]
@@ -35,7 +37,7 @@ GRID = "#2A2A35"
 FG = "#CCCCCC"
 
 
-def apply_dark(ax, fig):
+def apply_dark(ax: Axes, fig: Figure) -> None:
     """Applies the dark theme colours to a matplotlib figure and axes."""
     fig.patch.set_facecolor(BG)
     ax.set_facecolor(BG)
@@ -182,12 +184,12 @@ ax.set_title(
 ax.set_ylim(0, pk_int4 * 1.25)
 
 # Speedup annotations — as figure text below the chart
-speedup_int4 = pk_int4 / pk_msft
-speedup_bf16 = pk_bf16 / pk_msft
+peak_ratio_int4 = pk_int4 / pk_msft
+peak_ratio_bf16 = pk_bf16 / pk_msft
 plt.figtext(
     0.26,
     0.01,
-    f"{speedup_int4:.1f}× faster than MSFT",
+    f"{peak_ratio_int4:.1f}× faster than MSFT",
     ha="center",
     color=C_INT4,
     fontsize=10,
@@ -196,7 +198,7 @@ plt.figtext(
 plt.figtext(
     0.57,
     0.01,
-    f"{speedup_bf16:.1f}× faster than MSFT",
+    f"{peak_ratio_bf16:.1f}× faster than MSFT",
     ha="center",
     color=C_BF16,
     fontsize=10,

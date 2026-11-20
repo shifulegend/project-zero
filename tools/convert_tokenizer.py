@@ -24,7 +24,7 @@ import os
 import sys
 
 
-def convert_hf_tokenizer(input_path, output_path):
+def convert_hf_tokenizer(input_path: str, output_path: str) -> None:
     """Convert HuggingFace tokenizer.json to binary format."""
 
     with open(input_path, "r", encoding="utf-8") as f:
@@ -96,7 +96,7 @@ def convert_hf_tokenizer(input_path, output_path):
     print(f"  File size: {file_size:,} bytes")
 
 
-def convert_sentencepiece(input_path, output_path):
+def convert_sentencepiece(input_path: str, output_path: str) -> None:
     """Convert SentencePiece .model to binary format."""
     try:
         import sentencepiece as spm
@@ -137,7 +137,7 @@ def convert_sentencepiece(input_path, output_path):
     print(f"  File size: {file_size:,} bytes")
 
 
-def main():
+def main() -> None:
     """Command-line entry point: converts a tokenizer to pz's binary format."""
     parser = argparse.ArgumentParser(description="Convert tokenizer to binary format")
     parser.add_argument("--input", required=True, help="Input tokenizer.json or .model file")

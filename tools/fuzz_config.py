@@ -4,7 +4,7 @@ import os
 import subprocess
 
 
-def create_fuzzed_model(filename, vocab_size, dim):
+def create_fuzzed_model(filename: str, vocab_size: int, dim: int) -> None:
     # Magic TNRY, Version 1
     """Writes a model file with a valid header and the given (possibly hostile) vocab size and dimension."""
     magic = 0x594E5254
@@ -25,7 +25,7 @@ ENGINE_BIN = os.environ.get("PZ_ENGINE_BIN", "./pz")
 TIMEOUT_S = int(os.environ.get("PZ_FUZZ_TIMEOUT", "60"))
 
 
-def run_fuzz_test(vocab_size, dim):
+def run_fuzz_test(vocab_size: int, dim: int) -> bool:
     """Runs pz on one fuzzed model and checks that it is rejected gracefully (no crash or hang)."""
     filename = f"fuzz_{vocab_size}_{dim}.bin"
     create_fuzzed_model(filename, vocab_size, dim)
@@ -45,7 +45,7 @@ def run_fuzz_test(vocab_size, dim):
             print(f"  VULNERABILITY: engine killed by signal {-result.returncode}")
             return False
         if b"AddressSanitizer" in err or b"runtime error:" in err:
-            print(f"  VULNERABILITY: sanitizer report: {err[:300]}")
+            print(f"  VULNERABILITY: sanitizer report: {err[:300].decode('utf-8', 'replace')}")
             return False
         if result.returncode == 0:
             print("  FAIL: corrupt model accepted (exit 0)")

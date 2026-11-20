@@ -31,7 +31,7 @@ FONT_SIZE = 16
 IMG_WIDTH = 900
 
 
-def load_font(size: int):
+def load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     """Loads the first available monospace font at `size`."""
     candidates = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
@@ -45,7 +45,7 @@ def load_font(size: int):
     return ImageFont.load_default()
 
 
-def colour_line(line: str):
+def colour_line(line: str) -> tuple[tuple[int, int, int], str]:
     """Return (colour, line_text) based on content."""
     if re.search(r"\[gen\].*tok/s", line):
         return YELLOW, line
@@ -74,7 +74,7 @@ def colour_line(line: str):
     return FG, line
 
 
-def render(text: str, title: str, command: str, output_path: str):
+def render(text: str, title: str, command: str, output_path: str) -> None:
     """Renders text, a title and the command as a terminal-style PNG at `output_path`."""
     font = load_font(FONT_SIZE)
     bold_font = load_font(FONT_SIZE)  # same size; bold not critical
@@ -128,7 +128,7 @@ def render(text: str, title: str, command: str, output_path: str):
     print(f"Screenshot saved: {output_path}")
 
 
-def main():
+def main() -> None:
     """Command-line entry point: renders benchmark output as a PNG."""
     parser = argparse.ArgumentParser(description="Render benchmark output as terminal PNG")
     parser.add_argument("--input", required=True, help="Input benchmark .txt file")

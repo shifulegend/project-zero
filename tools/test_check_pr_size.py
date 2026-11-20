@@ -11,7 +11,7 @@ sys.path.insert(0, str(TOOLS))
 import check_pr_size as c
 
 
-def run(numstat, *extra):
+def run(numstat: str, *extra: str) -> subprocess.CompletedProcess[str]:
     with tempfile.TemporaryDirectory() as d:
         f = pathlib.Path(d) / "n.txt"
         f.write_text(numstat)

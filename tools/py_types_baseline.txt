@@ -1,8 +1,5 @@
 # Python files that do not pass mypy --strict yet (tools/check_py_types.py): path, errors.
 # Entries may only shrink or go.
-tests/agent_pty_runner.py 2
-tests/monkey_tester.py 4
-tests/security_fuzzer.py 4
 tools/bench/benchlib.py 123
 tools/bench/build_compare.py 64
 tools/bench/calibration_test.py 66
@@ -15,19 +12,10 @@ tools/bench/test_bench.py 91
 tools/bench/verify/bitnet_layer0.py 36
 tools/bench/verify/gguf_min.py 25
 tools/bench_phase34.py 26
-tools/build_llama3_tokenizer.py 2
-tools/compare_dump/parse_llama_log.py 5
 tools/convert_hf.py 70
 tools/convert_hf_bitnet.py 45
-tools/convert_lora.py 9
-tools/convert_tokenizer.py 6
 tools/deepseek_bench_report.py 292
 tools/extract_multimodal.py 158
-tools/fuzz_config.py 5
-tools/make_screenshot.py 5
 tools/make_sweep_screenshots.py 29
 tools/mamba_reference.py 33
-tools/plot_benchmark.py 6
-tools/run_perf_runs.py 5
-tools/test_check_pr_size.py 4
 tools/test_extract_multimodal.py 11

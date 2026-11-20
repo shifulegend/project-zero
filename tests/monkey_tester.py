@@ -3,7 +3,7 @@ import os
 import random
 
 
-def run_with_timeout(cmd, timeout_sec):
+def run_with_timeout(cmd: list[str], timeout_sec: float) -> tuple[int, str, str]:
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         stdout, stderr = proc.communicate(timeout=timeout_sec)
@@ -13,7 +13,7 @@ def run_with_timeout(cmd, timeout_sec):
         return -1, "", "TIMEOUT"
 
 
-def monkey_test_cli():
+def monkey_test_cli() -> None:
     print("[MONKEY] Starting randomized garbage input test...")
     # Prioritize the actual engine binary: $PZ_ENGINE_BIN, the Makefile's ./pz,
     # then a CMake build's build/pz (2026-10-21: was ./build/project-zero, the

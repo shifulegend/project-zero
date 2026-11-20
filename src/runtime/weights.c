@@ -207,22 +207,24 @@ TernaryError weights_map(TransformerWeights *w, const Config *cfg, const MoEConf
 
         if (w->layers_are_ternary) {
             /* Attention: Q, K, V */
-            if (mc && mc->has_mla) {
+            if (mc && mc->mla.enabled) {
                 /* MLA path (Phase 17.6): replaces standard wq/wk/wv.
                  * Sizes (DeepSeek-V2-Lite example):
                  *   mla_wq    : n_heads*(nope+rope) × dim  → 3072 × 2048
                  *   mla_wkv_a : (kv_lora+rope) × dim       → 576  × 2048
                  *   mla_wkv_b : n_kv_heads*(nope+v) × kv_lora → 4096 × 512
                  * wq[l] and wk[l]/wv[l] are left NULL for MLA layers. */
-                size_t wq_r = (size_t)cfg->n_heads * (mc->qk_nope_head_dim + mc->qk_rope_head_dim);
-                size_t wkva_r = (size_t)(mc->kv_lora_rank + mc->qk_rope_head_dim);
-                size_t wkvb_r = (size_t)cfg->n_kv_heads * (mc->qk_nope_head_dim + mc->v_head_dim);
+                size_t wq_r =
+                    (size_t)cfg->n_heads * (mc->mla.qk_nope_head_dim + mc->mla.qk_rope_head_dim);
+                size_t wkva_r = (size_t)(mc->mla.kv_lora_rank + mc->mla.qk_rope_head_dim);
+                size_t wkvb_r =
+                    (size_t)cfg->n_kv_heads * (mc->mla.qk_nope_head_dim + mc->mla.v_head_dim);
 
                 MAP_PTR(w->mla_wq[l], packed_bytes(wq_r * dim));
                 COPY_VAL_ALIGN(&w->mla_sq[l], 4);
                 MAP_PTR(w->mla_wkv_a[l], packed_bytes(wkva_r * dim));
                 COPY_VAL_ALIGN(&w->mla_skv_a[l], 4);
-                MAP_PTR(w->mla_wkv_b[l], packed_bytes(wkvb_r * (size_t)mc->kv_lora_rank));
+                MAP_PTR(w->mla_wkv_b[l], packed_bytes(wkvb_r * (size_t)mc->mla.kv_lora_rank));
                 COPY_VAL_ALIGN(&w->mla_skv_b[l], 4);
             } else {
                 MAP_PTR(w->wq[l], packed_bytes(size_q));

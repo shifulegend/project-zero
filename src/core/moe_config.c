@@ -66,11 +66,11 @@ TernaryError moe_config_read(MoEConfig *mc, const void *data, size_t data_size, 
     mc->is_moe                   = (is_moe_flag != 0);
     mc->n_shared_experts         = n_shared;
     mc->shared_expert_hidden_dim = (n_shared > 0) ? shared_hdim : 0;
-    mc->has_mla                  = (has_mla != 0);
-    mc->kv_lora_rank             = has_mla ? kv_lora_rank : 0;
-    mc->qk_nope_head_dim         = has_mla ? qk_nope_head_dim : 0;
-    mc->qk_rope_head_dim         = has_mla ? qk_rope_head_dim : 0;
-    mc->v_head_dim               = has_mla ? v_head_dim : 0;
+    mc->mla.enabled              = (has_mla != 0);
+    mc->mla.kv_lora_rank         = has_mla ? kv_lora_rank : 0;
+    mc->mla.qk_nope_head_dim     = has_mla ? qk_nope_head_dim : 0;
+    mc->mla.qk_rope_head_dim     = has_mla ? qk_rope_head_dim : 0;
+    mc->mla.v_head_dim           = has_mla ? v_head_dim : 0;
     /* .bin MoE header carries no router-weighting fields: DeepSeek-V2-Lite
      * semantics (softmax, no renormalization, no scale). */
     mc->expert_gating_func   = MOE_GATING_SOFTMAX;
@@ -108,10 +108,11 @@ void moe_config_print(const MoEConfig *mc) {
                "first_k_dense=%d  shared_experts=%d (hdim=%d)\n",
                mc->num_experts, mc->num_experts_per_tok, mc->expert_hidden_dim,
                mc->first_k_dense_replace, mc->n_shared_experts, mc->shared_expert_hidden_dim);
-    if (mc->has_mla) {
+    if (mc->mla.enabled) {
         TN_OUT_INF("mla",
                    "[MLA] kv_lora_rank=%d  qk_nope_head_dim=%d  "
                    "qk_rope_head_dim=%d  v_head_dim=%d\n",
-                   mc->kv_lora_rank, mc->qk_nope_head_dim, mc->qk_rope_head_dim, mc->v_head_dim);
+                   mc->mla.kv_lora_rank, mc->mla.qk_nope_head_dim, mc->mla.qk_rope_head_dim,
+                   mc->mla.v_head_dim);
     }
 }

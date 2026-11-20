@@ -28,7 +28,7 @@ typedef enum { STAGE_FILE, STAGE_WEIGHTS, STAGE_STATE } LoadStage;
  * end-of-program cleanup sequence. */
 static void release_state(LoadedModel *m) {
     if (!m->state) return;
-    if (m->moe_config.has_mla) mla_run_state_free(m->state, m->config.n_layers);
+    if (m->moe_config.mla.enabled) mla_run_state_free(m->state, m->config.n_layers);
     if (m->moe_config.has_linear_attn) q35_run_state_free(m->state, &m->config, &m->moe_config);
     if (m->moe_config.has_qk_norm) qwen3moe_run_state_free(m->state, &m->config);
     run_state_free(m->state);
@@ -78,7 +78,7 @@ static TernaryError read_model_info(LoadedModel *out, const char *model_path, bo
         return TN_ERR_INVALID_ARGS;
     }
     if (is_primary &&
-        (out->moe_config.is_moe || out->moe_config.has_mla || out->moe_config.has_linear_attn ||
+        (out->moe_config.is_moe || out->moe_config.mla.enabled || out->moe_config.has_linear_attn ||
          out->moe_config.has_qk_norm || out->moe_config.is_ssm))
         moe_config_print(&out->moe_config);
     return TN_OK;
@@ -218,7 +218,7 @@ static TernaryError alloc_run_state(LoadedModel *out) {
     }
 
     const char *what = NULL;
-    if (mc->has_mla &&
+    if (mc->mla.enabled &&
         mla_run_state_alloc(out->state, c, mc, c->seq_len) != TN_OK) /* k_rope_cache */
         what = "MLA k_rope_cache";
     else if (mc->is_ssm && mamba_state_alloc(&out->state->mamba, c->n_layers, mc) != TN_OK)

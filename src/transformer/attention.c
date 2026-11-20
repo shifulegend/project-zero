@@ -169,7 +169,7 @@ void attention_forward(RunState *s, const TransformerWeights *w, const Config *c
     /* Phase 17.8: Route to MLA forward pass when has_mla=1.
    * This guard is a single pointer deref + int compare — branch predictor handles it
    * in 0-1 cycles for all non-MLA models (BitNet, Llama, Mixtral). */
-    if (mc && mc->has_mla) {
+    if (mc && mc->mla.enabled) {
         mla_attention_forward(s, w, cfg, mc, layer, pos, tp);
         return;
     }
@@ -702,7 +702,7 @@ static TernaryError attention_forward_rows(RunState *const *states, const int *p
 TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb, const TransformerWeights *w,
                                      const Config *cfg, const MoEConfig *mc, int layer, int pos,
                                      int n_tokens, ThreadPool *tp) {
-    if (mc && mc->has_mla) {
+    if (mc && mc->mla.enabled) {
         return mla_attention_forward_batch(s, sb, w, cfg, mc, layer, pos, n_tokens, tp);
     }
     if (mc && mc->has_linear_attn) {
@@ -750,7 +750,7 @@ TernaryError attention_forward_multi(RunState *const *states, const int *pos_arr
                                      const Config *cfg, const MoEConfig *mc, int layer,
                                      int n_tokens, ThreadPool *tp) {
     if (!states || !pos_arr || n_tokens <= 0) return TN_ERR_INVALID_ARGS;
-    if (mc && (mc->has_mla || mc->has_linear_attn || mc->has_qk_norm || mc->is_ssm))
+    if (mc && (mc->mla.enabled || mc->has_linear_attn || mc->has_qk_norm || mc->is_ssm))
         return TN_ERR_UNSUPPORTED; /* generic dense/GQA path only (stage 2) */
     return attention_forward_rows(states, pos_arr, sb, w, cfg, layer, n_tokens, tp);
 }

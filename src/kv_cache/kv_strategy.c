@@ -180,7 +180,7 @@ KVStrategyResult select_kv_strategy_ex(const Config *cfg, tn_i64 free_ram, const
    * the real 128 for Qwen3-30B-A3B, which under-clamps max_seq_len and can
    * still OOM on constrained hosts — GitHub issue #32, confirmed still
    * broken after the qwen3moe loader fix because this cap never saw the
-   * true head_dim before). MLA (mc->has_mla) intentionally keeps the naive
+   * true head_dim before). MLA (mc->mla.enabled) intentionally keeps the naive
    * formula — its real cache is a smaller low-rank latent, not
    * n_kv_heads*head_dim, so the naive formula over-clamps (conservative,
    * not unsafe) rather than under-clamps; see kv_strategy.h for why that's

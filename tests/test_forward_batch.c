@@ -353,11 +353,11 @@ static void build_mla_ternary_model(Config *cfg, TransformerWeights *w, MoEConfi
     cfg->rope_yarn_attn_factor = 1.0f;
 
     moe_config_init_dense(mc);
-    mc->has_mla          = 1;
-    mc->qk_nope_head_dim = M_NOPE;
-    mc->qk_rope_head_dim = M_ROPE;
-    mc->kv_lora_rank     = M_LORA;
-    mc->v_head_dim       = M_VDIM;
+    mc->mla.enabled          = 1;
+    mc->mla.qk_nope_head_dim = M_NOPE;
+    mc->mla.qk_rope_head_dim = M_ROPE;
+    mc->mla.kv_lora_rank     = M_LORA;
+    mc->mla.v_head_dim       = M_VDIM;
     /* is_moe must be true for moe_weights_alloc() to allocate the mla_*
      * pointer arrays (see src/core/moe_weights.c) -- first_k_dense_replace
      * covers the one layer so ffn_forward_batch takes the dense path,

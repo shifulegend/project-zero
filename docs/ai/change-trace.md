@@ -21,6 +21,11 @@
 - Proof: 6 unit tests (including the stale-floor case) pass; the checker passes on the fresh tracefile.
 - Areas: `tools/check_coverage.py`, `tools/test_check_coverage.py`, `tools/coverage_floor.txt`.
 
+### 2026-11-20 — `MoEConfig` MLA dimensions grouped
+- What: `MoEConfig` (26 direct fields) now holds the five MLA dimensions as `mla` (`MlaDims`: `enabled`, `kv_lora_rank`, `qk_nope_head_dim`, `qk_rope_head_dim`, `v_head_dim`), 22 direct fields; 60 uses rewritten from compiler errors (`cfg->has_mla` became `cfg->mla.enabled`). It leaves `tools/struct_fields_baseline.txt` (3 structs remain: `TransformerWeights`, `GenSession`, `RunState`). `weights_map` grew by 2 lines (longer paths wrap); its complexity entry was re-recorded.
+- Verified: `make test` green on gcc and clang; DeepSeek-V2-Lite Q2_K (MLA + MoE) generates the same text as the previous build (greedy, 12 tokens; only the version string and free-RAM lines differ).
+- Why: decision Q3 / 10.c (20-25 direct fields per struct).
+
 ### 2026-11-20 — `ChatRequest` grouped into four sub-structs
 - What: `ChatRequest` (27 direct fields) is `model`, `messages`, `num_messages`, `set_mask`, `cache_prompt`, `chat_template` plus `sampling` (`ChatSampling`, 9), `output` (`ChatOutput`, 6: max_tokens, stream, json_mode, ignore_eos, stop, n_stop), `watermark` (`ChatWatermark`, 4: enabled, key, gamma, delta) and `search` (`ChatSearch`: best_of, mcts). 70 uses in `src/api` and the tests were rewritten from compiler errors. It leaves `tools/struct_fields_baseline.txt` (4 structs remain: `TransformerWeights`, `GenSession`, `RunState`, `MoEConfig`).
 - Verified: `make test` green on gcc and clang; the live server returns byte-identical replies (ids and timestamps removed) to the previous build for 13 request shapes: greedy, temperature/top_p/top_k/min_p/seed, the three penalties with `penalty_last_n`, `stop` as list and string, watermark, `best_of`, `mcts`, `json_object`, `ignore_eos` + `cache_prompt:false`, a request `chat_template`, `stream:true` and an invalid `temperature`.

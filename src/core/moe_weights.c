@@ -66,7 +66,7 @@ TernaryError moe_weights_alloc(TransformerWeights *w, const Config *cfg, const M
     }
 
     /* Phase 17.6: MLA weight pointer arrays (NULL for non-MLA models) */
-    if (mc->has_mla) {
+    if (mc->mla.enabled) {
         w->mla_wq    = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
         w->mla_wkv_a = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
         w->mla_wkv_b = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));

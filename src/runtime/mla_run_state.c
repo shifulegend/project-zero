@@ -22,10 +22,10 @@
 
 TernaryError mla_run_state_alloc(RunState *s, const Config *cfg, const MoEConfig *mc,
                                  int max_seq_len) {
-    if (!mc || !mc->has_mla) return TN_OK; /* dense or non-MLA model — no-op */
+    if (!mc || !mc->mla.enabled) return TN_OK; /* dense or non-MLA model — no-op */
 
     int n_layers = cfg->n_layers;
-    int rope_dim = mc->qk_rope_head_dim;
+    int rope_dim = mc->mla.qk_rope_head_dim;
 
     if (n_layers <= 0 || rope_dim <= 0 || max_seq_len <= 0) return TN_ERR_INVALID_WEIGHTS;
 

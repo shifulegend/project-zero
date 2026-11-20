@@ -211,7 +211,7 @@ TernaryError moe_config_from_gguf(MoEConfig *mc, const GGUFHeader *hdr) {
 
     if (strcmp(hdr->arch, "qwen35") == 0) {
         /* Qwen3.5/3.6 hybrid Gated-DeltaNet + Gated-Attention.
-         * Not MoE (is_moe/has_mla stay 0) — a distinct 3rd attention family,
+         * Not MoE (is_moe/mla.enabled stay 0) — a distinct 3rd attention family,
          * gated purely by has_linear_attn. Key names verified against
          * llama.cpp src/models/qwen35.cpp + a real Ternary-Bonsai-27B-Q2_0.gguf
          * header dump (see docs/ai/decision-log.md). */
@@ -284,7 +284,7 @@ TernaryError moe_config_from_gguf(MoEConfig *mc, const GGUFHeader *hdr) {
             return TN_ERR_INVALID_CONFIG;
         }
         mc->is_moe      = true;
-        mc->has_mla     = 0;
+        mc->mla.enabled = 0;
         mc->has_qk_norm = 1;
         return TN_OK;
     }
@@ -300,14 +300,14 @@ TernaryError moe_config_from_gguf(MoEConfig *mc, const GGUFHeader *hdr) {
     mc->expert_hidden_dim     = (int)gguf_meta_u32(hdr, MK("expert_feed_forward_length"), 1408);
     mc->first_k_dense_replace = (int)gguf_meta_u32(hdr, MK("leading_dense_block_count"), 1);
     mc->n_shared_experts      = (int)gguf_meta_u32(hdr, MK("expert_shared_count"), 2);
-    mc->kv_lora_rank          = (int)gguf_meta_u32(hdr, MK("attention.kv_lora_rank"), 512);
-    mc->qk_rope_head_dim      = (int)gguf_meta_u32(hdr, MK("rope.dimension_count"), 64);
-    mc->v_head_dim            = (int)gguf_meta_u32(hdr, MK("attention.value_length"), 128);
+    mc->mla.kv_lora_rank      = (int)gguf_meta_u32(hdr, MK("attention.kv_lora_rank"), 512);
+    mc->mla.qk_rope_head_dim  = (int)gguf_meta_u32(hdr, MK("rope.dimension_count"), 64);
+    mc->mla.v_head_dim        = (int)gguf_meta_u32(hdr, MK("attention.value_length"), 128);
 
     /* qk_nope = total_key_length - rope_dim */
-    int key_length       = (int)gguf_meta_u32(hdr, MK("attention.key_length"), 192);
-    mc->qk_nope_head_dim = key_length - mc->qk_rope_head_dim;
-    if (mc->qk_nope_head_dim <= 0) mc->qk_nope_head_dim = 128; /* fallback */
+    int key_length           = (int)gguf_meta_u32(hdr, MK("attention.key_length"), 192);
+    mc->mla.qk_nope_head_dim = key_length - mc->mla.qk_rope_head_dim;
+    if (mc->mla.qk_nope_head_dim <= 0) mc->mla.qk_nope_head_dim = 128; /* fallback */
 
 #undef MK
 
@@ -318,7 +318,7 @@ TernaryError moe_config_from_gguf(MoEConfig *mc, const GGUFHeader *hdr) {
      * (V2 / V2.5 GGUFs carry no gating key); norm defaults to false. */
     moe_config_read_gating(mc, hdr, MOE_GATING_SOFTMAX, 0);
 
-    mc->is_moe  = true;
-    mc->has_mla = 1;
+    mc->is_moe      = true;
+    mc->mla.enabled = 1;
     return TN_OK;
 }

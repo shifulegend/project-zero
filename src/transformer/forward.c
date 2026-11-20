@@ -394,7 +394,7 @@ TernaryError transformer_forward_batch(const int *tokens, int pos, int n_tokens,
  * states[k]'s own KV. */
 int transformer_forward_multi_supported(const TransformerWeights *w, const MoEConfig *mc) {
     if (!w || dist_plan_active() || w->q35_is_q2_0_model) return 0;
-    if (mc && (moe_is_recurrent(mc) || mc->is_moe || mc->has_mla || mc->has_linear_attn ||
+    if (mc && (moe_is_recurrent(mc) || mc->is_moe || mc->mla.enabled || mc->has_linear_attn ||
                mc->has_qk_norm || mc->is_ssm))
         return 0;
     return 1;

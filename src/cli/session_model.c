@@ -182,8 +182,8 @@ static int load_native(PzSession *S) {
         return 1;
     }
 
-    /* Phase 17.7: MLA k_rope_cache (allocated only when has_mla=1) */
-    if (S->mc.has_mla) {
+    /* Phase 17.7: MLA k_rope_cache (allocated only when mla.enabled=1) */
+    if (S->mc.mla.enabled) {
         if (mla_run_state_alloc(S->s, &S->p, &S->mc, S->p.seq_len) != TN_OK) {
             TN_LOG_ERR("session_model", "Failed to allocate MLA k_rope_cache.\n");
             run_state_free(S->s);
@@ -262,7 +262,7 @@ void session_release(PzSession *S) {
      * buffers) + mla_rope_freq on every DeepSeek/MLA run, only its own
      * OOM-cleanup path called it. Fixed here alongside the new
      * q35_run_state_free wiring (see docs/ai/mistakes.md). */
-    if (S->mc.has_mla) mla_run_state_free(S->s, S->p.n_layers);
+    if (S->mc.mla.enabled) mla_run_state_free(S->s, S->p.n_layers);
     if (S->mc.has_linear_attn) q35_run_state_free(S->s, &S->p, &S->mc);
     if (S->mc.has_qk_norm) qwen3moe_run_state_free(S->s, &S->p);
     run_state_free(S->s);

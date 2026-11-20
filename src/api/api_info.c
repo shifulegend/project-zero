@@ -73,7 +73,7 @@ void api_model_meta(JsonBuf *jb, const ApiContext *ctx) {
         jb_bool(jb, ctx->moe_cfg->is_moe);
         jb_raw(jb, ",");
         jb_key(jb, "mla");
-        jb_bool(jb, ctx->moe_cfg->has_mla);
+        jb_bool(jb, ctx->moe_cfg->mla.enabled);
     }
     jb_raw(jb, ",");
     jb_key(jb, "chat_template");

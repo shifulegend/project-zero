@@ -434,7 +434,7 @@ static void test_config_and_moe_config(void) {
         FAIL("config_and_moe_config", "moe_config_from_gguf failed");
         goto done;
     }
-    if (!mc.is_moe || mc.has_mla != 0 || mc.has_qk_norm != 1 || mc.n_shared_experts != 0 ||
+    if (!mc.is_moe || mc.mla.enabled != 0 || mc.has_qk_norm != 1 || mc.n_shared_experts != 0 ||
         mc.first_k_dense_replace != 0 || mc.num_experts != T_EXPERTS ||
         mc.num_experts_per_tok != T_EXPERTS_PER_TOK || mc.expert_hidden_dim != T_EXP_HID ||
         mc.attn_head_dim != T_HEAD_DIM) {

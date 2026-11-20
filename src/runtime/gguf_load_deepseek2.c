@@ -35,10 +35,10 @@ TernaryError weights_from_gguf_deepseek2(TransformerWeights *w, const Config *cf
     int num_experts = mc->num_experts;
     int exp_hid     = mc->expert_hidden_dim;
     int sh_hid      = mc->shared_expert_hidden_dim;
-    int lora        = mc->kv_lora_rank;
-    int nope        = mc->qk_nope_head_dim;
-    int rope_dim    = mc->qk_rope_head_dim;
-    int v_dim       = mc->v_head_dim;
+    int lora        = mc->mla.kv_lora_rank;
+    int nope        = mc->mla.qk_nope_head_dim;
+    int rope_dim    = mc->mla.qk_rope_head_dim;
+    int v_dim       = mc->mla.v_head_dim;
     char name_buf[128];
 
     /* MLA dimension sizes */

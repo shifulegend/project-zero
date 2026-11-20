@@ -189,7 +189,7 @@ src/runtime/run_state.c::run_state_kv_reserve 15 29
 src/runtime/weights.c::weights_alloc_pointers 42 56
 src/runtime/weights.c::weights_build_classifier_quant 32 89
 src/runtime/weights.c::weights_free_pointers 49 57
-src/runtime/weights.c::weights_map 12 73
+src/runtime/weights.c::weights_map 12 75
 src/sampling/grammar_json.c::json_grammar_step 80 117
 src/sampling/grammar_json.c::start_value 11 13
 src/sampling/sampler_chain.c::sampler_apply_penalties 15 26

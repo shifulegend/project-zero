@@ -21,6 +21,10 @@
 - Proof: 6 unit tests (including the stale-floor case) pass; the checker passes on the fresh tracefile.
 - Areas: `tools/check_coverage.py`, `tools/test_check_coverage.py`, `tools/coverage_floor.txt`.
 
+### 2026-11-20 — Ratchet on lines over 100 columns
+- What: `tools/check_line_width.py` (unit-tested, CI `changelog` job) counts source lines over 100 columns per tracked file (C, C++, headers, Python, TypeScript, Svelte, shell; generated, vendored and benchmark-result files skipped). 629 lines in 174 files are recorded in `tools/line_width_baseline.txt`; a file may not go above its count and a new file starts at zero. clang-format and ruff already keep code within 100 columns, so the residue is comments, long strings and markup they cannot wrap (the finding counted 703).
+- Why: decision 23.c (machine-enforced column limit; no reflow of the existing lines).
+
 ### 2026-11-20 — Casing is machine-checked; the session handle is `ses`, not `S`
 - What: new `.clang-tidy` with `readability-identifier-naming` (functions, variables and parameters snake_case, macros and enum constants UPPER_CASE, an UPPER_CASE or fully lower-case constant is accepted; single-capital math names A, B, C, D, H, L, P, S, Dv, Srow are the explicit allow-list for the SSM, LoRA and attention code). `tools/check_clang_tidy.sh` runs it with the other checks, so the same ratchet (baseline 193, may only fall) fails a new casing violation. Ruff gains `N802`, `N803`, `N806` (the two reference-model scripts that use the papers' capital tensor names are exempted with their reason in `ruff.toml`). The one-letter session handle `S` of the CLI (`PzSession *S`, about 390 uses in `main.c` and `session_*.c`) became `ses`; two odd names (`_i`, `kh_`) were renamed. No function or file grew past its recorded size.
 - Verified: `make test` green on gcc and clang, format check, clang-tidy ratchet, ruff, tool unit tests; greedy output unchanged.

@@ -71,49 +71,49 @@ static void build(Model *m, int dim, unsigned seed) {
     m->mc.num_experts_per_tok = TOPK;
     m->mc.expert_hidden_dim   = dim;
     weights_alloc_pointers(&m->w, &m->cfg);
-    m->w.has_expert_quant      = true;
-    m->w.expert_w13_quant_type = GGUF_TYPE_Q4_K;
-    m->w.expert_w2_quant_type  = GGUF_TYPE_Q4_K;
-    m->w.rms_ffn_weight[0]     = (float *)malloc((size_t)dim * sizeof(float));
-    for (int i = 0; i < dim; i++) m->w.rms_ffn_weight[0][i] = 1.0f;
-    m->w.moe_gate_w = (tn_i8 **)calloc(1, sizeof(tn_i8 *));
-    m->w.moe_w1     = (tn_i8 ***)calloc(1, sizeof(tn_i8 **));
-    m->w.moe_w2     = (tn_i8 ***)calloc(1, sizeof(tn_i8 **));
-    m->w.moe_w3     = (tn_i8 ***)calloc(1, sizeof(tn_i8 **));
+    m->w.expert_quant.present  = true;
+    m->w.expert_quant.w13_type = GGUF_TYPE_Q4_K;
+    m->w.expert_quant.w2_type  = GGUF_TYPE_Q4_K;
+    m->w.ffn.rms_ffn_weight[0] = (float *)malloc((size_t)dim * sizeof(float));
+    for (int i = 0; i < dim; i++) m->w.ffn.rms_ffn_weight[0][i] = 1.0f;
+    m->w.moe.gate_w = (tn_i8 **)calloc(1, sizeof(tn_i8 *));
+    m->w.moe.w1     = (tn_i8 ***)calloc(1, sizeof(tn_i8 **));
+    m->w.moe.w2     = (tn_i8 ***)calloc(1, sizeof(tn_i8 **));
+    m->w.moe.w3     = (tn_i8 ***)calloc(1, sizeof(tn_i8 **));
     float *gate     = (float *)malloc((size_t)NE * dim * sizeof(float));
     for (int i = 0; i < NE * dim; i++) {
         seed    = seed * 1664525u + 1013904223u;
         gate[i] = ((int)(seed >> 24) - 128) / 256.0f;
     }
-    m->w.moe_gate_w[0] = (tn_i8 *)gate;
-    m->w.moe_w1[0]     = (tn_i8 **)calloc(NE, sizeof(tn_i8 *));
-    m->w.moe_w2[0]     = (tn_i8 **)calloc(NE, sizeof(tn_i8 *));
-    m->w.moe_w3[0]     = (tn_i8 **)calloc(NE, sizeof(tn_i8 *));
+    m->w.moe.gate_w[0] = (tn_i8 *)gate;
+    m->w.moe.w1[0]     = (tn_i8 **)calloc(NE, sizeof(tn_i8 *));
+    m->w.moe.w2[0]     = (tn_i8 **)calloc(NE, sizeof(tn_i8 *));
+    m->w.moe.w3[0]     = (tn_i8 **)calloc(NE, sizeof(tn_i8 *));
     for (int e = 0; e < NE; e++) {
-        m->w.moe_w1[0][e] = (tn_i8 *)make_q4k(dim, dim, &seed);
-        m->w.moe_w3[0][e] = (tn_i8 *)make_q4k(dim, dim, &seed);
-        m->w.moe_w2[0][e] = (tn_i8 *)make_q4k(dim, dim, &seed);
+        m->w.moe.w1[0][e] = (tn_i8 *)make_q4k(dim, dim, &seed);
+        m->w.moe.w3[0][e] = (tn_i8 *)make_q4k(dim, dim, &seed);
+        m->w.moe.w2[0][e] = (tn_i8 *)make_q4k(dim, dim, &seed);
     }
 }
 
 static void destroy(Model *m) {
-    free(m->w.rms_ffn_weight[0]);
-    m->w.rms_ffn_weight[0] = NULL;
-    free(m->w.moe_gate_w[0]);
+    free(m->w.ffn.rms_ffn_weight[0]);
+    m->w.ffn.rms_ffn_weight[0] = NULL;
+    free(m->w.moe.gate_w[0]);
     for (int e = 0; e < NE; e++) {
-        free(m->w.moe_w1[0][e]);
-        free(m->w.moe_w2[0][e]);
-        free(m->w.moe_w3[0][e]);
+        free(m->w.moe.w1[0][e]);
+        free(m->w.moe.w2[0][e]);
+        free(m->w.moe.w3[0][e]);
     }
-    free(m->w.moe_w1[0]);
-    free(m->w.moe_w2[0]);
-    free(m->w.moe_w3[0]);
-    free(m->w.moe_gate_w);
-    free(m->w.moe_w1);
-    free(m->w.moe_w2);
-    free(m->w.moe_w3);
-    m->w.moe_gate_w = NULL;
-    m->w.moe_w1 = m->w.moe_w2 = m->w.moe_w3 = NULL;
+    free(m->w.moe.w1[0]);
+    free(m->w.moe.w2[0]);
+    free(m->w.moe.w3[0]);
+    free(m->w.moe.gate_w);
+    free(m->w.moe.w1);
+    free(m->w.moe.w2);
+    free(m->w.moe.w3);
+    m->w.moe.gate_w = NULL;
+    m->w.moe.w1 = m->w.moe.w2 = m->w.moe.w3 = NULL;
     weights_free_pointers(&m->w);
 }
 

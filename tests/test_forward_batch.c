@@ -66,50 +66,50 @@ static void build_dense_ternary_model(Config *cfg, TransformerWeights *w) {
     fill_pattern_bf16(w->token_embedding_table, (size_t)D_VOCAB * D_DIM, 1);
 
     for (int l = 0; l < D_LAYERS; l++) {
-        w->wq[l] = (tn_i8 *)make_packed_ternary(D_DIM, D_DIM, 100 + l);
-        w->sq[l] = 1.0f;
-        w->wk[l] = (tn_i8 *)make_packed_ternary(kv_dim, D_DIM, 200 + l);
-        w->sk[l] = 1.0f;
-        w->wv[l] = (tn_i8 *)make_packed_ternary(kv_dim, D_DIM, 300 + l);
-        w->sv[l] = 1.0f;
-        w->wo[l] = (tn_i8 *)make_packed_ternary(D_DIM, D_DIM, 400 + l);
-        w->so[l] = 1.0f;
+        w->attn.wq[l] = (tn_i8 *)make_packed_ternary(D_DIM, D_DIM, 100 + l);
+        w->attn.sq[l] = 1.0f;
+        w->attn.wk[l] = (tn_i8 *)make_packed_ternary(kv_dim, D_DIM, 200 + l);
+        w->attn.sk[l] = 1.0f;
+        w->attn.wv[l] = (tn_i8 *)make_packed_ternary(kv_dim, D_DIM, 300 + l);
+        w->attn.sv[l] = 1.0f;
+        w->attn.wo[l] = (tn_i8 *)make_packed_ternary(D_DIM, D_DIM, 400 + l);
+        w->attn.so[l] = 1.0f;
 
-        w->w1[l] = (tn_i8 *)make_packed_ternary(D_HIDDEN, D_DIM, 500 + l);
-        w->s1[l] = 1.0f;
-        w->w3[l] = (tn_i8 *)make_packed_ternary(D_HIDDEN, D_DIM, 600 + l);
-        w->s3[l] = 1.0f;
-        w->w2[l] = (tn_i8 *)make_packed_ternary(D_DIM, D_HIDDEN, 700 + l);
-        w->s2[l] = 1.0f;
+        w->ffn.w1[l] = (tn_i8 *)make_packed_ternary(D_HIDDEN, D_DIM, 500 + l);
+        w->ffn.s1[l] = 1.0f;
+        w->ffn.w3[l] = (tn_i8 *)make_packed_ternary(D_HIDDEN, D_DIM, 600 + l);
+        w->ffn.s3[l] = 1.0f;
+        w->ffn.w2[l] = (tn_i8 *)make_packed_ternary(D_DIM, D_HIDDEN, 700 + l);
+        w->ffn.s2[l] = 1.0f;
 
-        w->rms_att_weight[l] = (float *)malloc(D_DIM * sizeof(float));
-        fill_ones(w->rms_att_weight[l], D_DIM);
-        w->rms_ffn_weight[l] = (float *)malloc(D_DIM * sizeof(float));
-        fill_ones(w->rms_ffn_weight[l], D_DIM);
+        w->attn.rms_att_weight[l] = (float *)malloc(D_DIM * sizeof(float));
+        fill_ones(w->attn.rms_att_weight[l], D_DIM);
+        w->ffn.rms_ffn_weight[l] = (float *)malloc(D_DIM * sizeof(float));
+        fill_ones(w->ffn.rms_ffn_weight[l], D_DIM);
     }
 
     w->rms_final_weight = (float *)malloc(D_DIM * sizeof(float));
     fill_ones(w->rms_final_weight, D_DIM);
 
-    w->wcls = (tn_u16 *)calloc((size_t)D_VOCAB * D_DIM, sizeof(tn_u16));
-    fill_pattern_bf16(w->wcls, (size_t)D_VOCAB * D_DIM, 99);
+    w->cls.w = (tn_u16 *)calloc((size_t)D_VOCAB * D_DIM, sizeof(tn_u16));
+    fill_pattern_bf16(w->cls.w, (size_t)D_VOCAB * D_DIM, 99);
 }
 
 static void free_dense_ternary_model(TransformerWeights *w) {
     free(w->token_embedding_table);
     for (int l = 0; l < D_LAYERS; l++) {
-        free(w->wq[l]);
-        free(w->wk[l]);
-        free(w->wv[l]);
-        free(w->wo[l]);
-        free(w->w1[l]);
-        free(w->w2[l]);
-        free(w->w3[l]);
-        free(w->rms_att_weight[l]);
-        free(w->rms_ffn_weight[l]);
+        free(w->attn.wq[l]);
+        free(w->attn.wk[l]);
+        free(w->attn.wv[l]);
+        free(w->attn.wo[l]);
+        free(w->ffn.w1[l]);
+        free(w->ffn.w2[l]);
+        free(w->ffn.w3[l]);
+        free(w->attn.rms_att_weight[l]);
+        free(w->ffn.rms_ffn_weight[l]);
     }
     free(w->rms_final_weight);
-    free(w->wcls);
+    free(w->cls.w);
     weights_free_pointers(w);
 }
 
@@ -378,55 +378,55 @@ static void build_mla_ternary_model(Config *cfg, TransformerWeights *w, MoEConfi
     fill_pattern_bf16(w->token_embedding_table, (size_t)M_VOCAB * M_DIM, 1);
 
     for (int l = 0; l < M_LAYERS; l++) {
-        w->mla_wq[l]    = (tn_i8 *)make_packed_ternary(q_rows, M_DIM, 111 + l);
-        w->mla_sq[l]    = 1.0f;
-        w->mla_wkv_a[l] = (tn_i8 *)make_packed_ternary(kva_rows, M_DIM, 222 + l);
-        w->mla_skv_a[l] = 1.0f;
-        w->mla_wkv_b[l] = (tn_i8 *)make_packed_ternary(kvb_rows, M_LORA, 333 + l);
-        w->mla_skv_b[l] = 1.0f;
+        w->mla.wq[l]    = (tn_i8 *)make_packed_ternary(q_rows, M_DIM, 111 + l);
+        w->mla.sq[l]    = 1.0f;
+        w->mla.wkv_a[l] = (tn_i8 *)make_packed_ternary(kva_rows, M_DIM, 222 + l);
+        w->mla.skv_a[l] = 1.0f;
+        w->mla.wkv_b[l] = (tn_i8 *)make_packed_ternary(kvb_rows, M_LORA, 333 + l);
+        w->mla.skv_b[l] = 1.0f;
 
-        w->wo[l] = (tn_i8 *)make_packed_ternary(M_DIM, M_HEADS * M_VDIM, 444 + l);
-        w->so[l] = 1.0f;
+        w->attn.wo[l] = (tn_i8 *)make_packed_ternary(M_DIM, M_HEADS * M_VDIM, 444 + l);
+        w->attn.so[l] = 1.0f;
 
         /* Dense FFN (first_k_dense_replace covers this layer) */
-        w->w1[l] = (tn_i8 *)make_packed_ternary(M_HIDDEN, M_DIM, 555 + l);
-        w->s1[l] = 1.0f;
-        w->w3[l] = (tn_i8 *)make_packed_ternary(M_HIDDEN, M_DIM, 666 + l);
-        w->s3[l] = 1.0f;
-        w->w2[l] = (tn_i8 *)make_packed_ternary(M_DIM, M_HIDDEN, 777 + l);
-        w->s2[l] = 1.0f;
+        w->ffn.w1[l] = (tn_i8 *)make_packed_ternary(M_HIDDEN, M_DIM, 555 + l);
+        w->ffn.s1[l] = 1.0f;
+        w->ffn.w3[l] = (tn_i8 *)make_packed_ternary(M_HIDDEN, M_DIM, 666 + l);
+        w->ffn.s3[l] = 1.0f;
+        w->ffn.w2[l] = (tn_i8 *)make_packed_ternary(M_DIM, M_HIDDEN, 777 + l);
+        w->ffn.s2[l] = 1.0f;
 
-        w->rms_att_weight[l] = (float *)malloc(M_DIM * sizeof(float));
-        fill_ones(w->rms_att_weight[l], M_DIM);
-        w->rms_ffn_weight[l] = (float *)malloc(M_DIM * sizeof(float));
-        fill_ones(w->rms_ffn_weight[l], M_DIM);
-        w->rms_attn_sub_norm[l] = (float *)malloc(M_LORA * sizeof(float));
-        fill_ones(w->rms_attn_sub_norm[l], M_LORA);
+        w->attn.rms_att_weight[l] = (float *)malloc(M_DIM * sizeof(float));
+        fill_ones(w->attn.rms_att_weight[l], M_DIM);
+        w->ffn.rms_ffn_weight[l] = (float *)malloc(M_DIM * sizeof(float));
+        fill_ones(w->ffn.rms_ffn_weight[l], M_DIM);
+        w->attn.rms_attn_sub_norm[l] = (float *)malloc(M_LORA * sizeof(float));
+        fill_ones(w->attn.rms_attn_sub_norm[l], M_LORA);
     }
 
     w->rms_final_weight = (float *)malloc(M_DIM * sizeof(float));
     fill_ones(w->rms_final_weight, M_DIM);
 
-    w->wcls = (tn_u16 *)calloc((size_t)M_VOCAB * M_DIM, sizeof(tn_u16));
-    fill_pattern_bf16(w->wcls, (size_t)M_VOCAB * M_DIM, 99);
+    w->cls.w = (tn_u16 *)calloc((size_t)M_VOCAB * M_DIM, sizeof(tn_u16));
+    fill_pattern_bf16(w->cls.w, (size_t)M_VOCAB * M_DIM, 99);
 }
 
 static void free_mla_ternary_model(TransformerWeights *w, const MoEConfig *mc) {
     free(w->token_embedding_table);
     for (int l = 0; l < M_LAYERS; l++) {
-        free(w->mla_wq[l]);
-        free(w->mla_wkv_a[l]);
-        free(w->mla_wkv_b[l]);
-        free(w->wo[l]);
-        free(w->w1[l]);
-        free(w->w2[l]);
-        free(w->w3[l]);
-        free(w->rms_att_weight[l]);
-        free(w->rms_ffn_weight[l]);
-        free(w->rms_attn_sub_norm[l]);
+        free(w->mla.wq[l]);
+        free(w->mla.wkv_a[l]);
+        free(w->mla.wkv_b[l]);
+        free(w->attn.wo[l]);
+        free(w->ffn.w1[l]);
+        free(w->ffn.w2[l]);
+        free(w->ffn.w3[l]);
+        free(w->attn.rms_att_weight[l]);
+        free(w->ffn.rms_ffn_weight[l]);
+        free(w->attn.rms_attn_sub_norm[l]);
     }
     free(w->rms_final_weight);
-    free(w->wcls);
+    free(w->cls.w);
     moe_weights_free(w, mc);
     weights_free_pointers(w);
 }

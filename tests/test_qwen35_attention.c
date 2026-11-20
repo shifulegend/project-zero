@@ -104,42 +104,42 @@ static void build(Model *m) {
     m->mc.ssm_time_step_rank      = VHEADS;
     weights_alloc_pointers(&m->w, &m->cfg);
     TransformerWeights *w = &m->w;
-    for (int l = 0; l < LAYERS; l++) w->rms_att_weight[l] = vec(m, DIM, 1.0f, 0.1f);
+    for (int l = 0; l < LAYERS; l++) w->attn.rms_att_weight[l] = vec(m, DIM, 1.0f, 0.1f);
     /* layer 0: linear attention */
-    w->q35_ssm_qkv[0]     = (tn_i8 *)q2_0(m, CONV_DIM, DIM);
-    w->q35_ssm_gate[0]    = (tn_i8 *)q2_0(m, INNER, DIM);
-    w->q35_ssm_beta[0]    = (tn_i8 *)q2_0(m, VHEADS, DIM);
-    w->q35_ssm_alpha[0]   = (tn_i8 *)q2_0(m, VHEADS, DIM);
-    w->q35_ssm_out[0]     = (tn_i8 *)q2_0(m, DIM, INNER);
-    w->q35_ssm_conv1d[0]  = vec(m, CONV_DIM * CONV_K, 0.0f, 0.5f);
-    w->q35_ssm_dt_bias[0] = vec(m, VHEADS, 0.0f, 0.5f);
-    w->q35_ssm_a[0]       = vec(m, VHEADS, -0.5f, 0.2f);
-    w->q35_ssm_norm[0]    = vec(m, STATE, 1.0f, 0.1f);
+    w->q35.ssm_qkv[0]     = (tn_i8 *)q2_0(m, CONV_DIM, DIM);
+    w->q35.ssm_gate[0]    = (tn_i8 *)q2_0(m, INNER, DIM);
+    w->q35.ssm_beta[0]    = (tn_i8 *)q2_0(m, VHEADS, DIM);
+    w->q35.ssm_alpha[0]   = (tn_i8 *)q2_0(m, VHEADS, DIM);
+    w->q35.ssm_out[0]     = (tn_i8 *)q2_0(m, DIM, INNER);
+    w->q35.ssm_conv1d[0]  = vec(m, CONV_DIM * CONV_K, 0.0f, 0.5f);
+    w->q35.ssm_dt_bias[0] = vec(m, VHEADS, 0.0f, 0.5f);
+    w->q35.ssm_a[0]       = vec(m, VHEADS, -0.5f, 0.2f);
+    w->q35.ssm_norm[0]    = vec(m, STATE, 1.0f, 0.1f);
     /* layer 1: full attention (q is doubled for the output gate) */
-    w->wq[1]              = (tn_i8 *)q2_0(m, 2 * HEADS * HEAD_DIM, DIM);
-    w->wk[1]              = (tn_i8 *)q2_0(m, KV_HEADS * HEAD_DIM, DIM);
-    w->wv[1]              = (tn_i8 *)q2_0(m, KV_HEADS * HEAD_DIM, DIM);
-    w->wo[1]              = (tn_i8 *)q2_0(m, DIM, HEADS * HEAD_DIM);
-    w->q35_attn_q_norm[1] = vec(m, HEAD_DIM, 1.0f, 0.1f);
-    w->q35_attn_k_norm[1] = vec(m, HEAD_DIM, 1.0f, 0.1f);
+    w->attn.wq[1]         = (tn_i8 *)q2_0(m, 2 * HEADS * HEAD_DIM, DIM);
+    w->attn.wk[1]         = (tn_i8 *)q2_0(m, KV_HEADS * HEAD_DIM, DIM);
+    w->attn.wv[1]         = (tn_i8 *)q2_0(m, KV_HEADS * HEAD_DIM, DIM);
+    w->attn.wo[1]         = (tn_i8 *)q2_0(m, DIM, HEADS * HEAD_DIM);
+    w->q35.attn_q_norm[1] = vec(m, HEAD_DIM, 1.0f, 0.1f);
+    w->q35.attn_k_norm[1] = vec(m, HEAD_DIM, 1.0f, 0.1f);
 }
 
 static void destroy(Model *m) {
     for (int i = 0; i < m->n_owned; i++) free(m->owned[i]);
     /* the per-layer arrays hold borrowed pointers: clear them so weights_free_pointers only frees the arrays */
     for (int l = 0; l < LAYERS; l++) {
-        m->w.rms_att_weight[l]  = NULL;
-        m->w.q35_ssm_qkv[l]     = NULL;
-        m->w.q35_ssm_gate[l]    = NULL;
-        m->w.q35_ssm_beta[l]    = NULL;
-        m->w.q35_ssm_alpha[l]   = NULL;
-        m->w.q35_ssm_out[l]     = NULL;
-        m->w.q35_ssm_conv1d[l]  = NULL;
-        m->w.q35_ssm_dt_bias[l] = NULL;
-        m->w.q35_ssm_a[l]       = NULL;
-        m->w.q35_ssm_norm[l]    = NULL;
-        m->w.wq[l] = m->w.wk[l] = m->w.wv[l] = m->w.wo[l] = NULL;
-        m->w.q35_attn_q_norm[l] = m->w.q35_attn_k_norm[l] = NULL;
+        m->w.attn.rms_att_weight[l] = NULL;
+        m->w.q35.ssm_qkv[l]         = NULL;
+        m->w.q35.ssm_gate[l]        = NULL;
+        m->w.q35.ssm_beta[l]        = NULL;
+        m->w.q35.ssm_alpha[l]       = NULL;
+        m->w.q35.ssm_out[l]         = NULL;
+        m->w.q35.ssm_conv1d[l]      = NULL;
+        m->w.q35.ssm_dt_bias[l]     = NULL;
+        m->w.q35.ssm_a[l]           = NULL;
+        m->w.q35.ssm_norm[l]        = NULL;
+        m->w.attn.wq[l] = m->w.attn.wk[l] = m->w.attn.wv[l] = m->w.attn.wo[l] = NULL;
+        m->w.q35.attn_q_norm[l] = m->w.q35.attn_k_norm[l] = NULL;
     }
     weights_free_pointers(&m->w);
 }

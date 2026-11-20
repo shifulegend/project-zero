@@ -66,37 +66,37 @@ TernaryError weights_from_gguf_qwen35(TransformerWeights *w, const Config *cfg,
     char name_buf[128];
 
     for (int l = 0; l < nl; l++) {
-        Q35_LOAD_NORM(w->rms_att_weight, "attn_norm.weight", dim);
-        Q35_LOAD_NORM(w->rms_ffn_weight, "post_attention_norm.weight", dim);
+        Q35_LOAD_NORM(w->attn.rms_att_weight, "attn_norm.weight", dim);
+        Q35_LOAD_NORM(w->ffn.rms_ffn_weight, "post_attention_norm.weight", dim);
 
         /* Dense SwiGLU FFN — shared by both layer types, same as generic path */
-        Q35_LOAD_Q2_0(w->w1, "ffn_gate.weight");
-        Q35_LOAD_Q2_0(w->w3, "ffn_up.weight");
-        Q35_LOAD_Q2_0(w->w2, "ffn_down.weight");
-        w->s1[l] = w->s2[l] = w->s3[l] = 1.0f;
+        Q35_LOAD_Q2_0(w->ffn.w1, "ffn_gate.weight");
+        Q35_LOAD_Q2_0(w->ffn.w3, "ffn_up.weight");
+        Q35_LOAD_Q2_0(w->ffn.w2, "ffn_down.weight");
+        w->ffn.s1[l] = w->ffn.s2[l] = w->ffn.s3[l] = 1.0f;
 
         if (q35_layer_is_full_attn(mc, l)) {
             /* Full attention: GQA + QK-norm + partial rotary + gated output.
              * wq holds the combined [Q | gate] projection (width 2*n_head*head_dim). */
-            Q35_LOAD_Q2_0(w->wq, "attn_q.weight");
-            Q35_LOAD_Q2_0(w->wk, "attn_k.weight");
-            Q35_LOAD_Q2_0(w->wv, "attn_v.weight");
-            Q35_LOAD_Q2_0(w->wo, "attn_output.weight");
-            Q35_LOAD_NORM(w->q35_attn_q_norm, "attn_q_norm.weight", head_dim);
-            Q35_LOAD_NORM(w->q35_attn_k_norm, "attn_k_norm.weight", head_dim);
-            w->sq[l] = w->sk[l] = w->sv[l] = w->so[l] = 1.0f;
+            Q35_LOAD_Q2_0(w->attn.wq, "attn_q.weight");
+            Q35_LOAD_Q2_0(w->attn.wk, "attn_k.weight");
+            Q35_LOAD_Q2_0(w->attn.wv, "attn_v.weight");
+            Q35_LOAD_Q2_0(w->attn.wo, "attn_output.weight");
+            Q35_LOAD_NORM(w->q35.attn_q_norm, "attn_q_norm.weight", head_dim);
+            Q35_LOAD_NORM(w->q35.attn_k_norm, "attn_k_norm.weight", head_dim);
+            w->attn.sq[l] = w->attn.sk[l] = w->attn.sv[l] = w->attn.so[l] = 1.0f;
         } else {
             /* Linear attention (Gated DeltaNet) */
-            Q35_LOAD_Q2_0(w->q35_ssm_qkv, "attn_qkv.weight");
-            Q35_LOAD_Q2_0(w->q35_ssm_gate, "attn_gate.weight");
-            Q35_LOAD_NORM(w->q35_ssm_conv1d, "ssm_conv1d.weight",
+            Q35_LOAD_Q2_0(w->q35.ssm_qkv, "attn_qkv.weight");
+            Q35_LOAD_Q2_0(w->q35.ssm_gate, "attn_gate.weight");
+            Q35_LOAD_NORM(w->q35.ssm_conv1d, "ssm_conv1d.weight",
                           (size_t)mc->ssm_conv_kernel * conv_dim);
-            Q35_LOAD_NORM(w->q35_ssm_dt_bias, "ssm_dt.bias", n_v_heads);
-            Q35_LOAD_NORM(w->q35_ssm_a, "ssm_a", n_v_heads);
-            Q35_LOAD_Q2_0(w->q35_ssm_alpha, "ssm_alpha.weight");
-            Q35_LOAD_Q2_0(w->q35_ssm_beta, "ssm_beta.weight");
-            Q35_LOAD_NORM(w->q35_ssm_norm, "ssm_norm.weight", mc->ssm_state_size);
-            Q35_LOAD_Q2_0(w->q35_ssm_out, "ssm_out.weight");
+            Q35_LOAD_NORM(w->q35.ssm_dt_bias, "ssm_dt.bias", n_v_heads);
+            Q35_LOAD_NORM(w->q35.ssm_a, "ssm_a", n_v_heads);
+            Q35_LOAD_Q2_0(w->q35.ssm_alpha, "ssm_alpha.weight");
+            Q35_LOAD_Q2_0(w->q35.ssm_beta, "ssm_beta.weight");
+            Q35_LOAD_NORM(w->q35.ssm_norm, "ssm_norm.weight", mc->ssm_state_size);
+            Q35_LOAD_Q2_0(w->q35.ssm_out, "ssm_out.weight");
         }
     }
 
@@ -112,15 +112,15 @@ TernaryError weights_from_gguf_qwen35(TransformerWeights *w, const Config *cfg,
             TN_LOG_ERR("gguf_loader", "[gguf_loader] qwen35: 'token_embd.weight' must be Q2_0\n");
             return TN_ERR_INVALID_WEIGHTS;
         }
-        w->q35_token_embd_raw = temb->data;
+        w->q35.token_embd_raw = temb->data;
 
         const GGUFTensor *tout = gguf_find_tensor(hdr, "output.weight");
         if (!tout || tout->type != GGUF_TYPE_Q2_0) {
             TN_LOG_ERR("gguf_loader", "[gguf_loader] qwen35: 'output.weight' must be Q2_0\n");
             return TN_ERR_INVALID_WEIGHTS;
         }
-        w->q35_output_raw    = tout->data;
-        w->q35_is_q2_0_model = true;
+        w->q35.output_raw    = tout->data;
+        w->q35.is_q2_0_model = true;
 
         /* LM head: kept as zero-copy raw Q2_0 by default (materializing a
          * dense copy of the 248320x5120 vocab would cost ~2.5 GB for BF16,
@@ -141,7 +141,7 @@ TernaryError weights_from_gguf_qwen35(TransformerWeights *w, const Config *cfg,
                     bf16_buf[i] = gguf_ld_f32_to_bf16_round(tmp_f32[i]);
                 }
                 if (gguf_ld_store_add(store, bf16_buf) == 0) {
-                    w->wcls = bf16_buf;
+                    w->cls.w = bf16_buf;
                     weights_build_classifier_quant(w, cfg);
                 } else {
                     free(bf16_buf);
@@ -155,15 +155,16 @@ TernaryError weights_from_gguf_qwen35(TransformerWeights *w, const Config *cfg,
     }
 
     w->layers_are_ternary = false;
-    w->wcls_is_ternary    = false;
-    w->wcls_scale         = 1.0f;
+    w->cls.is_ternary     = false;
+    w->cls.scale          = 1.0f;
     /* Uniform Q2_0 for every layer/projection — unlike Q4_K_M, this
      * architecture's quantizer applies one type to all tensors, all layers.
      * (attention routes to qwen35_attention_forward and never reads these;
      * ffn_forward's dense SwiGLU path does, for the shared-FFN portion.) */
     for (int l = 0; l < nl; l++) {
-        w->wq_type[l] = w->wk_type[l] = w->wv_type[l] = w->wo_type[l] = WEIGHT_TYPE_Q2_0;
-        w->w1_type[l] = w->w2_type[l] = w->w3_type[l] = WEIGHT_TYPE_Q2_0;
+        w->attn.wq_type[l] = w->attn.wk_type[l] = w->attn.wv_type[l] = w->attn.wo_type[l] =
+            WEIGHT_TYPE_Q2_0;
+        w->ffn.w1_type[l] = w->ffn.w2_type[l] = w->ffn.w3_type[l] = WEIGHT_TYPE_Q2_0;
     }
     (void)hidden_dim;
     (void)n_head;

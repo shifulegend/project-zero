@@ -359,7 +359,7 @@ static void test_moe_ffn_q4k_batched_path(void) {
         goto cleanup;
     }
 
-    if (w.expert_w13_quant_type != GGUF_TYPE_Q4_K) {
+    if (w.expert_quant.w13_type != GGUF_TYPE_Q4_K) {
         FAIL("moe_ffn_q4k_batched",
              "expert_w13_quant_type != Q4_K -- fixture didn't hit the batched path");
         goto cleanup;
@@ -481,30 +481,30 @@ static void test_weights_from_gguf_and_expert_stride(void) {
         goto done_moe;
     }
 
-    if (!w.qwen3moe_attn_q_norm || !w.qwen3moe_attn_k_norm) {
+    if (!w.qwen3moe.attn_q_norm || !w.qwen3moe.attn_k_norm) {
         FAIL("weights_from_gguf", "expected qwen3moe_attn_q_norm/k_norm arrays to be allocated");
         goto done_store;
     }
-    if (!w.qwen3moe_attn_q_norm[0] || !w.qwen3moe_attn_k_norm[0]) {
+    if (!w.qwen3moe.attn_q_norm[0] || !w.qwen3moe.attn_k_norm[0]) {
         FAIL("weights_from_gguf", "qwen3moe_attn_q_norm/k_norm[0] is NULL");
         goto done_store;
     }
-    if (!w.moe_gate_w[0]) {
+    if (!w.moe.gate_w[0]) {
         FAIL("weights_from_gguf", "moe_gate_w[0] is NULL");
         goto done_store;
     }
-    if (!w.moe_w1[0][0] || !w.moe_w1[0][1]) {
+    if (!w.moe.w1[0][0] || !w.moe.w1[0][1]) {
         FAIL("weights_from_gguf", "moe_w1[0][0 or 1] is NULL");
         goto done_store;
     }
     /* Per-expert stride correctness: expert 0 and expert 1 must be distinct
      * offsets into the stacked tensor, not aliasing the same base pointer
      * (the exact bug class this stride-slicing scheme is prone to). */
-    if (w.moe_w1[0][0] == w.moe_w1[0][1]) {
+    if (w.moe.w1[0][0] == w.moe.w1[0][1]) {
         FAIL("weights_from_gguf", "moe_w1[0][0] aliases moe_w1[0][1] (stride bug)");
         goto done_store;
     }
-    ptrdiff_t stride_bytes    = (const tn_i8 *)w.moe_w1[0][1] - (const tn_i8 *)w.moe_w1[0][0];
+    ptrdiff_t stride_bytes    = (const tn_i8 *)w.moe.w1[0][1] - (const tn_i8 *)w.moe.w1[0][0];
     ptrdiff_t expected_stride = (ptrdiff_t)((size_t)T_EXP_HID * T_DIM * sizeof(float));
     if (stride_bytes != expected_stride) {
         FAIL("weights_from_gguf",

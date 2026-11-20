@@ -76,36 +76,39 @@ TernaryError weights_from_gguf_qwen3moe(TransformerWeights *w, const Config *cfg
     int exp_hid     = mc->expert_hidden_dim;
     char name_buf[128];
 
-    w->expert_w2_quant_per_layer  = (int *)calloc((size_t)nl, sizeof(int));
-    w->expert_w13_quant_per_layer = (int *)calloc((size_t)nl, sizeof(int));
-    if (!w->expert_w2_quant_per_layer || !w->expert_w13_quant_per_layer) return TN_ERR_OOM;
+    w->expert_quant.w2_per_layer  = (int *)calloc((size_t)nl, sizeof(int));
+    w->expert_quant.w13_per_layer = (int *)calloc((size_t)nl, sizeof(int));
+    if (!w->expert_quant.w2_per_layer || !w->expert_quant.w13_per_layer) return TN_ERR_OOM;
 
     for (int l = 0; l < nl; l++) {
         /* Attention/FFN norms */
         snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_norm.weight", l);
-        w->rms_att_weight[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)dim, store);
-        if (!w->rms_att_weight[l]) return TN_ERR_INVALID_WEIGHTS;
+        w->attn.rms_att_weight[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)dim, store);
+        if (!w->attn.rms_att_weight[l]) return TN_ERR_INVALID_WEIGHTS;
 
         snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_norm.weight", l);
-        w->rms_ffn_weight[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)dim, store);
-        if (!w->rms_ffn_weight[l]) return TN_ERR_INVALID_WEIGHTS;
+        w->ffn.rms_ffn_weight[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)dim, store);
+        if (!w->ffn.rms_ffn_weight[l]) return TN_ERR_INVALID_WEIGHTS;
 
         /* Per-head QK-norm */
         snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_q_norm.weight", l);
-        w->qwen3moe_attn_q_norm[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)head_dim, store);
-        if (!w->qwen3moe_attn_q_norm[l]) return TN_ERR_INVALID_WEIGHTS;
+        w->qwen3moe.attn_q_norm[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)head_dim, store);
+        if (!w->qwen3moe.attn_q_norm[l]) return TN_ERR_INVALID_WEIGHTS;
 
         snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_k_norm.weight", l);
-        w->qwen3moe_attn_k_norm[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)head_dim, store);
-        if (!w->qwen3moe_attn_k_norm[l]) return TN_ERR_INVALID_WEIGHTS;
+        w->qwen3moe.attn_k_norm[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)head_dim, store);
+        if (!w->qwen3moe.attn_k_norm[l]) return TN_ERR_INVALID_WEIGHTS;
 
         /* GQA attention projections — q_rows/kv_rows widths (NOT dim*dim;
          * head_dim is independent of dim/n_heads for this arch). */
-        Q3MOE_LOAD_PROJ(w->wq, "attn_q.weight", (size_t)q_rows * (size_t)dim, w->wq_type);
-        Q3MOE_LOAD_PROJ(w->wk, "attn_k.weight", (size_t)kv_rows * (size_t)dim, w->wk_type);
-        Q3MOE_LOAD_PROJ(w->wv, "attn_v.weight", (size_t)kv_rows * (size_t)dim, w->wv_type);
-        Q3MOE_LOAD_PROJ(w->wo, "attn_output.weight", (size_t)dim * (size_t)q_rows, w->wo_type);
-        w->sq[l] = w->sk[l] = w->sv[l] = w->so[l] = 1.0f;
+        Q3MOE_LOAD_PROJ(w->attn.wq, "attn_q.weight", (size_t)q_rows * (size_t)dim, w->attn.wq_type);
+        Q3MOE_LOAD_PROJ(w->attn.wk, "attn_k.weight", (size_t)kv_rows * (size_t)dim,
+                        w->attn.wk_type);
+        Q3MOE_LOAD_PROJ(w->attn.wv, "attn_v.weight", (size_t)kv_rows * (size_t)dim,
+                        w->attn.wv_type);
+        Q3MOE_LOAD_PROJ(w->attn.wo, "attn_output.weight", (size_t)dim * (size_t)q_rows,
+                        w->attn.wo_type);
+        w->attn.sq[l] = w->attn.sk[l] = w->attn.sv[l] = w->attn.so[l] = 1.0f;
 
         /* Router (F32, zero-copy) */
         snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_gate_inp.weight", l);
@@ -119,8 +122,8 @@ TernaryError weights_from_gguf_qwen3moe(TransformerWeights *w, const Config *cfg
                        (int)tgate->type);
             return TN_ERR_INVALID_WEIGHTS;
         }
-        w->moe_gate_w[l] = (tn_i8 *)tgate->data;
-        w->moe_gate_s[l] = 1.0f;
+        w->moe.gate_w[l] = (tn_i8 *)tgate->data;
+        w->moe.gate_s[l] = 1.0f;
 
         /* Stacked routed expert weights — kept quantized in mmap, same
          * stride-slicing scheme as weights_from_gguf_deepseek2 (no shared
@@ -150,13 +153,13 @@ TernaryError weights_from_gguf_qwen3moe(TransformerWeights *w, const Config *cfg
         }
 
         for (int e = 0; e < num_experts; e++) {
-            w->moe_w1[l][e] = (tn_i8 *)tg_exps->data + (size_t)e * g_stride;
-            w->moe_w3[l][e] = (tn_i8 *)tu_exps->data + (size_t)e * u_stride;
-            w->moe_w2[l][e] = (tn_i8 *)td_exps->data + (size_t)e * d_stride;
-            w->moe_s1[l][e] = w->moe_s2[l][e] = w->moe_s3[l][e] = 0.0f;
+            w->moe.w1[l][e] = (tn_i8 *)tg_exps->data + (size_t)e * g_stride;
+            w->moe.w3[l][e] = (tn_i8 *)tu_exps->data + (size_t)e * u_stride;
+            w->moe.w2[l][e] = (tn_i8 *)td_exps->data + (size_t)e * d_stride;
+            w->moe.s1[l][e] = w->moe.s2[l][e] = w->moe.s3[l][e] = 0.0f;
         }
-        w->expert_w2_quant_per_layer[l]  = (int)td_exps->type;
-        w->expert_w13_quant_per_layer[l] = (int)tg_exps->type;
+        w->expert_quant.w2_per_layer[l]  = (int)td_exps->type;
+        w->expert_quant.w13_per_layer[l] = (int)tg_exps->type;
     }
 
     w->rms_final_weight = gguf_ld_norm_to_f32(hdr, "output_norm.weight", (size_t)dim, store);
@@ -168,14 +171,14 @@ TernaryError weights_from_gguf_qwen3moe(TransformerWeights *w, const Config *cfg
     {
         const GGUFTensor *tg     = gguf_find_tensor(hdr, "blk.0.ffn_gate_exps.weight");
         const GGUFTensor *td     = gguf_find_tensor(hdr, "blk.0.ffn_down_exps.weight");
-        w->expert_w13_quant_type = tg ? (int)tg->type : GGUF_TYPE_Q4_K;
-        w->expert_w2_quant_type  = td ? (int)td->type : GGUF_TYPE_Q4_K;
-        w->has_expert_quant      = true;
+        w->expert_quant.w13_type = tg ? (int)tg->type : GGUF_TYPE_Q4_K;
+        w->expert_quant.w2_type  = td ? (int)td->type : GGUF_TYPE_Q4_K;
+        w->expert_quant.present  = true;
     }
 
     w->layers_are_ternary = false;
-    w->wcls_is_ternary    = false;
-    w->wcls_scale         = 1.0f;
+    w->cls.is_ternary     = false;
+    w->cls.scale          = 1.0f;
     /* wq_type/wk_type/wv_type/wo_type were set per-layer by Q3MOE_LOAD_PROJ
      * above; w1_type/w2_type/w3_type stay at their zero-init default
      * (WEIGHT_TYPE_F32) since this arch has no dense FFN layers to read

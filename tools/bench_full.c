@@ -266,7 +266,9 @@ int main(int argc, char **argv) {
     }
 
     tn_i8 *wdata = (tn_i8 *)mf.data + 64; /* skip 64-byte header */
-    if (weights_map(&w, &cfg, wdata, mf.size - 64) != TN_OK) {
+    MoEConfig moe_cfg; /* the legacy .bin format has no MoE section: all zero = dense */
+    memset(&moe_cfg, 0, sizeof(moe_cfg));
+    if (weights_map(&w, &cfg, &moe_cfg, wdata, mf.size - 64) != TN_OK) {
         fprintf(stderr, "weights_map failed\n");
         return 1;
     }

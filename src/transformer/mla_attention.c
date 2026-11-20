@@ -108,7 +108,7 @@ static void rope_apply_yarn(float *v, const float *freq, int d, int pos, float f
  * add a branch here. Never hardcode tensor names or dimension checks. */
 #define MLA_MATMUL(out, in, wptr, sptr, n_in, n_out)                                               \
     do {                                                                                           \
-        if (w->has_mla_quant) {                                                                    \
+        if (w->mla.has_quant) {                                                                    \
             parallel_matmul_q4k((out), (in), (const uint8_t *)(wptr), (n_in), (n_out), tp);        \
         } else if (is_float) {                                                                     \
             parallel_matmul_float32((out), (in), (const float *)(wptr), (n_in), (n_out), tp);      \
@@ -166,7 +166,7 @@ void mla_attention_forward(RunState *s, const TransformerWeights *w, const Confi
 
     /* Step 1: RMSNorm */
     int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    tn_rmsnorm(s->xb, s->x, w->rms_att_weight[layer], dim, cfg->rms_norm_eps);
+    tn_rmsnorm(s->xb, s->x, w->attn.rms_att_weight[layer], dim, cfg->rms_norm_eps);
     if (t_step) {
         tn_step_timing_add(TN_STEP_4_PRE_ATTN_RMSNORM, tn_step_timing_now_ns() - t_step);
     }
@@ -174,7 +174,7 @@ void mla_attention_forward(RunState *s, const TransformerWeights *w, const Confi
 
     /* Step 2: KV compress → hb2 (kva_rows ≤ hidden_dim) */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    MLA_MATMUL(s->hb2, s->xb, w->mla_wkv_a[layer], w->mla_skv_a[layer], dim, kva_rows);
+    MLA_MATMUL(s->hb2, s->xb, w->mla.wkv_a[layer], w->mla.skv_a[layer], dim, kva_rows);
     if (t_step) {
         tn_step_timing_add(TN_STEP_6_KV_A_COMPRESSION, tn_step_timing_now_ns() - t_step);
     }
@@ -182,9 +182,9 @@ void mla_attention_forward(RunState *s, const TransformerWeights *w, const Confi
     float *k_rope_cur = s->hb2 + lora; /* hb2[lora..lora+rope-1] */
 
     /* Step 2b: Apply KV-A norm to kv_latent (before KV-B expansion) */
-    if (w->rms_attn_sub_norm && w->rms_attn_sub_norm[layer]) {
+    if (w->attn.rms_attn_sub_norm && w->attn.rms_attn_sub_norm[layer]) {
         t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-        tn_rmsnorm(kv_latent, kv_latent, w->rms_attn_sub_norm[layer], lora, cfg->rms_norm_eps);
+        tn_rmsnorm(kv_latent, kv_latent, w->attn.rms_attn_sub_norm[layer], lora, cfg->rms_norm_eps);
         if (t_step) {
             tn_step_timing_add(TN_STEP_7_KV_A_LATENT_NORM, tn_step_timing_now_ns() - t_step);
         }
@@ -193,7 +193,7 @@ void mla_attention_forward(RunState *s, const TransformerWeights *w, const Confi
 
     /* Step 3: KV expand → hb  (kvb_rows ≤ hidden_dim; e.g. 4096 << 11008) */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    MLA_MATMUL(s->hb, kv_latent, w->mla_wkv_b[layer], w->mla_skv_b[layer], lora, kvb_rows);
+    MLA_MATMUL(s->hb, kv_latent, w->mla.wkv_b[layer], w->mla.skv_b[layer], lora, kvb_rows);
     if (t_step) {
         tn_step_timing_add(TN_STEP_8_KV_B_EXPANSION, tn_step_timing_now_ns() - t_step);
     }
@@ -214,7 +214,7 @@ void mla_attention_forward(RunState *s, const TransformerWeights *w, const Confi
 
     /* Step 4: Q projection → hb  (q_rows ≤ hidden_dim; overwrites kv_full, already cached) */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    MLA_MATMUL(s->hb, s->xb, w->mla_wq[layer], w->mla_sq[layer], dim, q_rows);
+    MLA_MATMUL(s->hb, s->xb, w->mla.wq[layer], w->mla.sq[layer], dim, q_rows);
     if (t_step) {
         tn_step_timing_add(TN_STEP_5_Q_PROJECTION, tn_step_timing_now_ns() - t_step);
     }
@@ -302,7 +302,7 @@ void mla_attention_forward(RunState *s, const TransformerWeights *w, const Confi
 
     /* Step 8: wo projection → xb; residual */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    MLA_MATMUL(s->xb, s->xb2, w->wo[layer], w->so[layer], n_heads * v_dim, dim);
+    MLA_MATMUL(s->xb, s->xb2, w->attn.wo[layer], w->attn.so[layer], n_heads * v_dim, dim);
     /* Step 12: W_o projection output (pre-residual) */
     DBG_DUMP(layer, "attn_wo_out", s->xb, dim);
     for (int i = 0; i < dim; i++) s->x[i] += s->xb[i];
@@ -376,7 +376,7 @@ TernaryError mla_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
     const int attn_out_width = n_heads * v_dim;
 
     const bool is_float  = !w->layers_are_ternary;
-    const bool can_batch = !is_float && !w->has_mla_quant;
+    const bool can_batch = !is_float && !w->mla.has_quant;
 
     float corr[2];
     yarn_corr_dims(rope, cfg->rope_orig_ctx_len, cfg->rope_theta, cfg->rope_yarn_beta_fast,
@@ -403,8 +403,8 @@ TernaryError mla_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
 
     /* Step 1: rmsnorm, per token */
     for (int k = 0; k < n_tokens; k++) {
-        tn_rmsnorm(sb->xb + (size_t)k * dim, sb->x + (size_t)k * dim, w->rms_att_weight[layer], dim,
-                   cfg->rms_norm_eps);
+        tn_rmsnorm(sb->xb + (size_t)k * dim, sb->x + (size_t)k * dim, w->attn.rms_att_weight[layer],
+                   dim, cfg->rms_norm_eps);
     }
     if (t_step) {
         tn_step_timing_add(TN_STEP_4_PRE_ATTN_RMSNORM, tn_step_timing_now_ns() - t_step);
@@ -413,12 +413,12 @@ TernaryError mla_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
     /* Step 2: KV compress -> sb->hb2, packed at stride kva_rows */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     if (can_batch) {
-        tn_ternary_matmul_packed_batch(sb->hb2, sb->xb, (const tn_u8 *)w->mla_wkv_a[layer], dim,
-                                       kva_rows, w->mla_skv_a[layer], n_tokens, tp);
+        tn_ternary_matmul_packed_batch(sb->hb2, sb->xb, (const tn_u8 *)w->mla.wkv_a[layer], dim,
+                                       kva_rows, w->mla.skv_a[layer], n_tokens, tp);
     } else {
         for (int k = 0; k < n_tokens; k++) {
             MLA_MATMUL(sb->hb2 + (size_t)k * kva_rows, sb->xb + (size_t)k * dim,
-                       w->mla_wkv_a[layer], w->mla_skv_a[layer], dim, kva_rows);
+                       w->mla.wkv_a[layer], w->mla.skv_a[layer], dim, kva_rows);
         }
     }
     if (t_step) {
@@ -430,8 +430,8 @@ TernaryError mla_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     for (int k = 0; k < n_tokens; k++) {
         float *kv_latent_k = sb->hb2 + (size_t)k * kva_rows;
-        if (w->rms_attn_sub_norm && w->rms_attn_sub_norm[layer]) {
-            tn_rmsnorm(kv_latent_k, kv_latent_k, w->rms_attn_sub_norm[layer], lora,
+        if (w->attn.rms_attn_sub_norm && w->attn.rms_attn_sub_norm[layer]) {
+            tn_rmsnorm(kv_latent_k, kv_latent_k, w->attn.rms_attn_sub_norm[layer], lora,
                        cfg->rms_norm_eps);
         }
         memcpy(kv_latent_packed + (size_t)k * lora, kv_latent_k, (size_t)lora * sizeof(float));
@@ -444,12 +444,12 @@ TernaryError mla_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     if (can_batch) {
         tn_ternary_matmul_packed_batch(kv_full_packed, kv_latent_packed,
-                                       (const tn_u8 *)w->mla_wkv_b[layer], lora, kvb_rows,
-                                       w->mla_skv_b[layer], n_tokens, tp);
+                                       (const tn_u8 *)w->mla.wkv_b[layer], lora, kvb_rows,
+                                       w->mla.skv_b[layer], n_tokens, tp);
     } else {
         for (int k = 0; k < n_tokens; k++) {
             MLA_MATMUL(kv_full_packed + (size_t)k * kvb_rows, kv_latent_packed + (size_t)k * lora,
-                       w->mla_wkv_b[layer], w->mla_skv_b[layer], lora, kvb_rows);
+                       w->mla.wkv_b[layer], w->mla.skv_b[layer], lora, kvb_rows);
         }
     }
     if (t_step) {
@@ -480,12 +480,12 @@ TernaryError mla_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
      * after caching" ordering constraint to worry about here). */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     if (can_batch) {
-        tn_ternary_matmul_packed_batch(sb->hb, sb->xb, (const tn_u8 *)w->mla_wq[layer], dim, q_rows,
-                                       w->mla_sq[layer], n_tokens, tp);
+        tn_ternary_matmul_packed_batch(sb->hb, sb->xb, (const tn_u8 *)w->mla.wq[layer], dim, q_rows,
+                                       w->mla.sq[layer], n_tokens, tp);
     } else {
         for (int k = 0; k < n_tokens; k++) {
-            MLA_MATMUL(sb->hb + (size_t)k * q_rows, sb->xb + (size_t)k * dim, w->mla_wq[layer],
-                       w->mla_sq[layer], dim, q_rows);
+            MLA_MATMUL(sb->hb + (size_t)k * q_rows, sb->xb + (size_t)k * dim, w->mla.wq[layer],
+                       w->mla.sq[layer], dim, q_rows);
         }
     }
     if (t_step) {
@@ -568,12 +568,12 @@ TernaryError mla_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
     /* Step 8: wo projection -> sb->xb2, packed at stride dim; residual */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     if (can_batch) {
-        tn_ternary_matmul_packed_batch(sb->xb2, attn_out_packed, (const tn_u8 *)w->wo[layer],
-                                       attn_out_width, dim, w->so[layer], n_tokens, tp);
+        tn_ternary_matmul_packed_batch(sb->xb2, attn_out_packed, (const tn_u8 *)w->attn.wo[layer],
+                                       attn_out_width, dim, w->attn.so[layer], n_tokens, tp);
     } else {
         for (int k = 0; k < n_tokens; k++) {
             MLA_MATMUL(sb->xb2 + (size_t)k * dim, attn_out_packed + (size_t)k * attn_out_width,
-                       w->wo[layer], w->so[layer], attn_out_width, dim);
+                       w->attn.wo[layer], w->attn.so[layer], attn_out_width, dim);
         }
     }
     tn_vec_add(sb->x, sb->x, sb->xb2, n_tokens * dim);

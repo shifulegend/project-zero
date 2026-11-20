@@ -184,50 +184,50 @@ static void build_spec_model(Config *cfg, TransformerWeights *w, unsigned seed_b
     fill_pattern_bf16(w->token_embedding_table, (size_t)SPEC_VOCAB * SM_DIM, seed_base + 1);
 
     for (int l = 0; l < SM_LAYERS; l++) {
-        w->wq[l] = (tn_i8 *)make_packed_ternary(SM_DIM, SM_DIM, seed_base + 10 + l);
-        w->sq[l] = 1.0f;
-        w->wk[l] = (tn_i8 *)make_packed_ternary(kv_dim, SM_DIM, seed_base + 20 + l);
-        w->sk[l] = 1.0f;
-        w->wv[l] = (tn_i8 *)make_packed_ternary(kv_dim, SM_DIM, seed_base + 30 + l);
-        w->sv[l] = 1.0f;
-        w->wo[l] = (tn_i8 *)make_packed_ternary(SM_DIM, SM_DIM, seed_base + 40 + l);
-        w->so[l] = 1.0f;
+        w->attn.wq[l] = (tn_i8 *)make_packed_ternary(SM_DIM, SM_DIM, seed_base + 10 + l);
+        w->attn.sq[l] = 1.0f;
+        w->attn.wk[l] = (tn_i8 *)make_packed_ternary(kv_dim, SM_DIM, seed_base + 20 + l);
+        w->attn.sk[l] = 1.0f;
+        w->attn.wv[l] = (tn_i8 *)make_packed_ternary(kv_dim, SM_DIM, seed_base + 30 + l);
+        w->attn.sv[l] = 1.0f;
+        w->attn.wo[l] = (tn_i8 *)make_packed_ternary(SM_DIM, SM_DIM, seed_base + 40 + l);
+        w->attn.so[l] = 1.0f;
 
-        w->w1[l] = (tn_i8 *)make_packed_ternary(SM_HIDDEN, SM_DIM, seed_base + 50 + l);
-        w->s1[l] = 1.0f;
-        w->w3[l] = (tn_i8 *)make_packed_ternary(SM_HIDDEN, SM_DIM, seed_base + 60 + l);
-        w->s3[l] = 1.0f;
-        w->w2[l] = (tn_i8 *)make_packed_ternary(SM_DIM, SM_HIDDEN, seed_base + 70 + l);
-        w->s2[l] = 1.0f;
+        w->ffn.w1[l] = (tn_i8 *)make_packed_ternary(SM_HIDDEN, SM_DIM, seed_base + 50 + l);
+        w->ffn.s1[l] = 1.0f;
+        w->ffn.w3[l] = (tn_i8 *)make_packed_ternary(SM_HIDDEN, SM_DIM, seed_base + 60 + l);
+        w->ffn.s3[l] = 1.0f;
+        w->ffn.w2[l] = (tn_i8 *)make_packed_ternary(SM_DIM, SM_HIDDEN, seed_base + 70 + l);
+        w->ffn.s2[l] = 1.0f;
 
-        w->rms_att_weight[l] = (float *)malloc(SM_DIM * sizeof(float));
-        fill_ones(w->rms_att_weight[l], SM_DIM);
-        w->rms_ffn_weight[l] = (float *)malloc(SM_DIM * sizeof(float));
-        fill_ones(w->rms_ffn_weight[l], SM_DIM);
+        w->attn.rms_att_weight[l] = (float *)malloc(SM_DIM * sizeof(float));
+        fill_ones(w->attn.rms_att_weight[l], SM_DIM);
+        w->ffn.rms_ffn_weight[l] = (float *)malloc(SM_DIM * sizeof(float));
+        fill_ones(w->ffn.rms_ffn_weight[l], SM_DIM);
     }
 
     w->rms_final_weight = (float *)malloc(SM_DIM * sizeof(float));
     fill_ones(w->rms_final_weight, SM_DIM);
 
-    w->wcls = (tn_u16 *)calloc((size_t)SPEC_VOCAB * SM_DIM, sizeof(tn_u16));
-    fill_pattern_bf16(w->wcls, (size_t)SPEC_VOCAB * SM_DIM, seed_base + 99);
+    w->cls.w = (tn_u16 *)calloc((size_t)SPEC_VOCAB * SM_DIM, sizeof(tn_u16));
+    fill_pattern_bf16(w->cls.w, (size_t)SPEC_VOCAB * SM_DIM, seed_base + 99);
 }
 
 static void free_spec_model(TransformerWeights *w) {
     free(w->token_embedding_table);
     for (int l = 0; l < SM_LAYERS; l++) {
-        free(w->wq[l]);
-        free(w->wk[l]);
-        free(w->wv[l]);
-        free(w->wo[l]);
-        free(w->w1[l]);
-        free(w->w2[l]);
-        free(w->w3[l]);
-        free(w->rms_att_weight[l]);
-        free(w->rms_ffn_weight[l]);
+        free(w->attn.wq[l]);
+        free(w->attn.wk[l]);
+        free(w->attn.wv[l]);
+        free(w->attn.wo[l]);
+        free(w->ffn.w1[l]);
+        free(w->ffn.w2[l]);
+        free(w->ffn.w3[l]);
+        free(w->attn.rms_att_weight[l]);
+        free(w->ffn.rms_ffn_weight[l]);
     }
     free(w->rms_final_weight);
-    free(w->wcls);
+    free(w->cls.w);
     weights_free_pointers(w);
 }
 

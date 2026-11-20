@@ -177,13 +177,13 @@ static TernaryError load_dense_layer(TransformerWeights *w, const GGUFHeader *hd
     const int wide_heads = sh->wide_heads;
     /* Attention norm (rms_att_weight): F32 zero-copy or dequant */
     snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_norm.weight", l);
-    w->rms_att_weight[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)dim, store);
-    if (!w->rms_att_weight[l]) return TN_ERR_INVALID_WEIGHTS;
+    w->attn.rms_att_weight[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)dim, store);
+    if (!w->attn.rms_att_weight[l]) return TN_ERR_INVALID_WEIGHTS;
 
     /* FFN norm (rms_ffn_weight) */
     snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_norm.weight", l);
-    w->rms_ffn_weight[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)dim, store);
-    if (!w->rms_ffn_weight[l]) return TN_ERR_INVALID_WEIGHTS;
+    w->ffn.rms_ffn_weight[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)dim, store);
+    if (!w->ffn.rms_ffn_weight[l]) return TN_ERR_INVALID_WEIGHTS;
 
     /* Qwen3 (dense) per-head QK-norm — optional: present for "qwen3" arch,
      * absent for llama/mistral/gemma/phi. Reuses the q35_attn_{q,k}_norm
@@ -191,8 +191,8 @@ static TernaryError load_dense_layer(TransformerWeights *w, const GGUFHeader *hd
      * generic forward path applies them the same way when non-NULL. */
     snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_q_norm.weight", l);
     if (gguf_find_tensor(hdr, name_buf)) {
-        float **qn = wide_heads ? w->qwen3moe_attn_q_norm : w->q35_attn_q_norm;
-        float **kn = wide_heads ? w->qwen3moe_attn_k_norm : w->q35_attn_k_norm;
+        float **qn = wide_heads ? w->qwen3moe.attn_q_norm : w->q35.attn_q_norm;
+        float **kn = wide_heads ? w->qwen3moe.attn_k_norm : w->q35.attn_k_norm;
         qn[l]      = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)head_dim, store);
         if (!qn[l]) return TN_ERR_INVALID_WEIGHTS;
         snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_k_norm.weight", l);
@@ -201,32 +201,32 @@ static TernaryError load_dense_layer(TransformerWeights *w, const GGUFHeader *hd
     }
 
     TernaryError e = gguf_ld_dense_projection(hdr, store, l, "attn_q.weight", sh->q_rows, sh->dim,
-                                              w->wq, w->wq_type, w->sq);
+                                              w->attn.wq, w->attn.wq_type, w->attn.sq);
     if (e == TN_OK)
-        e = gguf_ld_dense_projection(hdr, store, l, "attn_k.weight", sh->kv_dim, sh->dim, w->wk,
-                                     w->wk_type, w->sk);
+        e = gguf_ld_dense_projection(hdr, store, l, "attn_k.weight", sh->kv_dim, sh->dim,
+                                     w->attn.wk, w->attn.wk_type, w->attn.sk);
     if (e == TN_OK)
-        e = gguf_ld_dense_projection(hdr, store, l, "attn_v.weight", sh->kv_dim, sh->dim, w->wv,
-                                     w->wv_type, w->sv);
+        e = gguf_ld_dense_projection(hdr, store, l, "attn_v.weight", sh->kv_dim, sh->dim,
+                                     w->attn.wv, w->attn.wv_type, w->attn.sv);
     if (e == TN_OK)
         e = gguf_ld_dense_projection(hdr, store, l, "attn_output.weight", sh->dim, sh->q_rows,
-                                     w->wo, w->wo_type, w->so);
+                                     w->attn.wo, w->attn.wo_type, w->attn.so);
     if (e == TN_OK)
         e = gguf_ld_dense_projection(hdr, store, l, "ffn_gate.weight", sh->hidden_dim, sh->dim,
-                                     w->w1, w->w1_type, w->s1);
+                                     w->ffn.w1, w->ffn.w1_type, w->ffn.s1);
     if (e == TN_OK)
         e = gguf_ld_dense_projection(hdr, store, l, "ffn_down.weight", sh->dim, sh->hidden_dim,
-                                     w->w2, w->w2_type, w->s2);
+                                     w->ffn.w2, w->ffn.w2_type, w->ffn.s2);
     if (e == TN_OK)
-        e = gguf_ld_dense_projection(hdr, store, l, "ffn_up.weight", sh->hidden_dim, sh->dim, w->w3,
-                                     w->w3_type, w->s3);
+        e = gguf_ld_dense_projection(hdr, store, l, "ffn_up.weight", sh->hidden_dim, sh->dim,
+                                     w->ffn.w3, w->ffn.w3_type, w->ffn.s3);
     if (e != TN_OK) return e;
 
     /* Q/K/V biases (Qwen2/2.5) — optional; 2026-10-19: previously never
      * loaded, so such models produced garbage instead of being refused. */
     {
         static const char *const bias_names[3] = {"attn_q.bias", "attn_k.bias", "attn_v.bias"};
-        float **dst[3]                         = {w->bq, w->bk, w->bv};
+        float **dst[3]                         = {w->attn.bq, w->attn.bk, w->attn.bv};
         const int lens[3]                      = {q_rows, kv_dim, kv_dim};
         for (int b = 0; b < 3; b++) {
             snprintf(name_buf, sizeof(name_buf), "blk.%d.%s", l, bias_names[b]);
@@ -239,13 +239,13 @@ static TernaryError load_dense_layer(TransformerWeights *w, const GGUFHeader *hd
     /* BitNet sub-norms (before attn_output / ffn_down) — optional. */
     snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_sub_norm.weight", l);
     if (gguf_find_tensor(hdr, name_buf)) {
-        w->rms_attn_sub_norm[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)dim, store);
-        if (!w->rms_attn_sub_norm[l]) return TN_ERR_INVALID_WEIGHTS;
+        w->attn.rms_attn_sub_norm[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)dim, store);
+        if (!w->attn.rms_attn_sub_norm[l]) return TN_ERR_INVALID_WEIGHTS;
     }
     snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_sub_norm.weight", l);
     if (gguf_find_tensor(hdr, name_buf)) {
-        w->rms_ffn_sub_norm[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)hidden_dim, store);
-        if (!w->rms_ffn_sub_norm[l]) return TN_ERR_INVALID_WEIGHTS;
+        w->ffn.rms_ffn_sub_norm[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)hidden_dim, store);
+        if (!w->ffn.rms_ffn_sub_norm[l]) return TN_ERR_INVALID_WEIGHTS;
     }
     return TN_OK;
 }
@@ -264,9 +264,9 @@ static TernaryError load_dense_output(TransformerWeights *w, const Config *cfg,
         if (t) {
             size_t n = (size_t)cfg->vocab_size * (size_t)dim;
             if (gguf_ld_classifier_keep_raw(w, cfg, t)) {
-                w->wcls = NULL; /* forward.c dispatches on wcls_raw */
+                w->cls.w = NULL; /* forward.c dispatches on wcls_raw */
             } else if (t->type == GGUF_TYPE_BF16) {
-                w->wcls = (tn_u16 *)t->data; /* zero-copy */
+                w->cls.w = (tn_u16 *)t->data; /* zero-copy */
             } else if (t->type == GGUF_TYPE_F32) {
                 tn_u16 *buf = (tn_u16 *)malloc(n * sizeof(tn_u16));
                 if (!buf) return TN_ERR_OOM;
@@ -280,7 +280,7 @@ static TernaryError load_dense_output(TransformerWeights *w, const Config *cfg,
                     free(buf);
                     return TN_ERR_OOM;
                 }
-                w->wcls = buf;
+                w->cls.w = buf;
                 mapped_file_release(t->data, t->size_bytes);
             } else if (t->type == GGUF_TYPE_F16) {
                 tn_u16 *buf = (tn_u16 *)malloc(n * sizeof(tn_u16));
@@ -296,13 +296,13 @@ static TernaryError load_dense_output(TransformerWeights *w, const Config *cfg,
                     free(buf);
                     return TN_ERR_OOM;
                 }
-                w->wcls = buf;
+                w->cls.w = buf;
                 mapped_file_release(t->data, t->size_bytes);
             } else {
                 /* Quantized types → F32 → BF16 */
                 float *ftmp = gguf_ld_tensor_to_f32(t, n, store);
                 if (!ftmp) {
-                    w->wcls = w->token_embedding_table;
+                    w->cls.w = w->token_embedding_table;
                     goto wcls_done;
                 }
                 tn_u16 *buf = (tn_u16 *)malloc(n * sizeof(tn_u16));
@@ -316,12 +316,12 @@ static TernaryError load_dense_output(TransformerWeights *w, const Config *cfg,
                     free(buf);
                     return TN_ERR_OOM;
                 }
-                w->wcls = buf;
+                w->cls.w = buf;
                 mapped_file_release(t->data, t->size_bytes);
             }
         wcls_done:;
         } else {
-            w->wcls = w->token_embedding_table; /* weight-tied */
+            w->cls.w = w->token_embedding_table; /* weight-tied */
         }
     }
     return TN_OK;
@@ -333,8 +333,9 @@ static TernaryError set_inference_flags(TransformerWeights *w, int nl) {
     {
         int n_tern = 0, n_proj = 0;
         for (int l = 0; l < nl; l++) {
-            const int t7[7] = {w->wq_type[l], w->wk_type[l], w->wv_type[l], w->wo_type[l],
-                               w->w1_type[l], w->w2_type[l], w->w3_type[l]};
+            const int t7[7] = {w->attn.wq_type[l], w->attn.wk_type[l], w->attn.wv_type[l],
+                               w->attn.wo_type[l], w->ffn.w1_type[l],  w->ffn.w2_type[l],
+                               w->ffn.w3_type[l]};
             for (int k = 0; k < 7; k++) {
                 n_proj++;
                 n_tern += (t7[k] == WEIGHT_TYPE_TERNARY);
@@ -347,8 +348,8 @@ static TernaryError set_inference_flags(TransformerWeights *w, int nl) {
         }
         w->layers_are_ternary = (n_tern == n_proj && n_proj > 0);
     }
-    w->wcls_is_ternary = false;
-    w->wcls_scale      = 1.0f;
+    w->cls.is_ternary = false;
+    w->cls.scale      = 1.0f;
     /* wq_type/wk_type/.../w3_type were set per-projection by LOAD_PROJ above;
  * sq/sk/.../s3 hold the I2_S tensor scales on the ternary path (0 otherwise);
  * rms_*_sub_norm are set only when the file has them (BitNet). */
@@ -366,8 +367,8 @@ static TernaryError weights_from_gguf_dense(TransformerWeights *w, const Config 
     if (e == TN_OK) e = set_inference_flags(w, sh.n_layers);
     if (e != TN_OK) return e;
 
-    w->wcls_is_ternary = false;
-    w->wcls_scale      = 1.0f;
+    w->cls.is_ternary = false;
+    w->cls.scale      = 1.0f;
     /* wq_type/wk_type/.../w3_type were set per-projection by gguf_ld_dense_projection(); sq/sk/.../s3
      * hold the I2_S tensor scales on the ternary path (0 otherwise); rms_*_sub_norm are set only
      * when the file has them (BitNet). */

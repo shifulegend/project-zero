@@ -47,19 +47,19 @@ static void aud_kv_cache_overflow(void) {
     memset(&w, 0, sizeof(w));
     weights_alloc_pointers(&w, &cfg);
     w.token_embedding_table = calloc(cfg.vocab_size * cfg.dim, sizeof(float));
-    w.wq[0]                 = calloc(cfg.dim * cfg.dim, sizeof(float));
-    w.wk[0]                 = calloc(cfg.dim * config_kv_dim(&cfg), sizeof(float));
-    w.wv[0]                 = calloc(cfg.dim * config_kv_dim(&cfg), sizeof(float));
-    w.wo[0]                 = calloc(cfg.dim * cfg.dim, sizeof(float));
+    w.attn.wq[0]            = calloc(cfg.dim * cfg.dim, sizeof(float));
+    w.attn.wk[0]            = calloc(cfg.dim * config_kv_dim(&cfg), sizeof(float));
+    w.attn.wv[0]            = calloc(cfg.dim * config_kv_dim(&cfg), sizeof(float));
+    w.attn.wo[0]            = calloc(cfg.dim * cfg.dim, sizeof(float));
 
-    w.w1[0] = calloc((size_t)cfg.hidden_dim * cfg.dim, sizeof(float));
-    w.w2[0] = calloc((size_t)cfg.dim * cfg.hidden_dim, sizeof(float));
-    w.w3[0] = calloc((size_t)cfg.hidden_dim * cfg.dim, sizeof(float));
+    w.ffn.w1[0] = calloc((size_t)cfg.hidden_dim * cfg.dim, sizeof(float));
+    w.ffn.w2[0] = calloc((size_t)cfg.dim * cfg.hidden_dim, sizeof(float));
+    w.ffn.w3[0] = calloc((size_t)cfg.hidden_dim * cfg.dim, sizeof(float));
 
-    w.rms_att_weight[0] = calloc(cfg.dim, 4);
-    w.rms_ffn_weight[0] = calloc(cfg.dim, 4);
-    w.rms_final_weight  = calloc(cfg.dim, 4);
-    w.wcls              = calloc((size_t)cfg.vocab_size * cfg.dim, sizeof(float));
+    w.attn.rms_att_weight[0] = calloc(cfg.dim, 4);
+    w.ffn.rms_ffn_weight[0]  = calloc(cfg.dim, 4);
+    w.rms_final_weight       = calloc(cfg.dim, 4);
+    w.cls.w                  = calloc((size_t)cfg.vocab_size * cfg.dim, sizeof(float));
 
     /* Allocate RunState with ONLY 10 tokens capacity */
     int limited_seq  = 10;
@@ -92,17 +92,17 @@ static void aud_kv_cache_overflow(void) {
     /* Cleanup */
     run_state_free(&s);
     free(w.token_embedding_table);
-    free(w.wq[0]);
-    free(w.wk[0]);
-    free(w.wv[0]);
-    free(w.wo[0]);
-    free(w.w1[0]);
-    free(w.w2[0]);
-    free(w.w3[0]);
-    free(w.rms_att_weight[0]);
-    free(w.rms_ffn_weight[0]);
+    free(w.attn.wq[0]);
+    free(w.attn.wk[0]);
+    free(w.attn.wv[0]);
+    free(w.attn.wo[0]);
+    free(w.ffn.w1[0]);
+    free(w.ffn.w2[0]);
+    free(w.ffn.w3[0]);
+    free(w.attn.rms_att_weight[0]);
+    free(w.ffn.rms_ffn_weight[0]);
     free(w.rms_final_weight);
-    free(w.wcls);
+    free(w.cls.w);
     weights_free_pointers(&w);
 }
 

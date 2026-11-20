@@ -68,8 +68,8 @@ float *transformer_forward(int token, int pos, const Config *cfg, const Transfor
             return s->logits;
         }
         int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-        if (w->q35_is_q2_0_model) {
-            embed_token_q2_0(s->x, token, w->q35_token_embd_raw, dim);
+        if (w->q35.is_q2_0_model) {
+            embed_token_q2_0(s->x, token, w->q35.token_embd_raw, dim);
         } else {
             embed_token(s->x, token, w->embd_f32, w->token_embedding_table, dim);
         }
@@ -149,7 +149,7 @@ float *transformer_forward(int token, int pos, const Config *cfg, const Transfor
    * Weights are only quantized to the selected format (saves startup time).
    * Quality preserved: LM head only needs relative ordering for sampling.
    */
-    if (w->q35_is_q2_0_model) {
+    if (w->q35.is_q2_0_model) {
         int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
         /* Use a materialized BF16/INT8/INT4 classifier copy when one was built
      * (only happens when the user explicitly passed --classifier — see
@@ -160,30 +160,30 @@ float *transformer_forward(int token, int pos, const Config *cfg, const Transfor
         TnClassifierFormat fmt_q2      = hp_q2 ? hp_q2->classifier_fmt : TN_CLS_BF16;
         bool used_materialized         = false;
         if (hp_q2 && hp_q2->classifier_explicit) {
-            if (fmt_q2 == TN_CLS_INT4 && w->wcls_i4 && w->wcls_i4_scales) {
-                parallel_matmul_i4(s->logits, s->x, w->wcls_i4, w->wcls_i4_scales, dim,
+            if (fmt_q2 == TN_CLS_INT4 && w->cls.i4 && w->cls.i4_scales) {
+                parallel_matmul_i4(s->logits, s->x, w->cls.i4, w->cls.i4_scales, dim,
                                    cfg->vocab_size, tp);
                 used_materialized = true;
-            } else if (fmt_q2 >= TN_CLS_INT8 && w->wcls_i8 && w->wcls_i8_scales) {
-                parallel_matmul_i8(s->logits, s->x, w->wcls_i8, w->wcls_i8_scales, dim,
+            } else if (fmt_q2 >= TN_CLS_INT8 && w->cls.i8 && w->cls.i8_scales) {
+                parallel_matmul_i8(s->logits, s->x, w->cls.i8, w->cls.i8_scales, dim,
                                    cfg->vocab_size, tp);
                 used_materialized = true;
-            } else if (w->wcls) {
-                parallel_matmul_bf16(s->logits, s->x, w->wcls, dim, cfg->vocab_size, tp);
+            } else if (w->cls.w) {
+                parallel_matmul_bf16(s->logits, s->x, w->cls.w, dim, cfg->vocab_size, tp);
                 used_materialized = true;
             }
         }
         if (!used_materialized) {
-            parallel_matmul_q2_0(s->logits, s->x, (const uint8_t *)w->q35_output_raw, dim,
+            parallel_matmul_q2_0(s->logits, s->x, (const uint8_t *)w->q35.output_raw, dim,
                                  cfg->vocab_size, tp);
         }
         if (t_step) {
             tn_step_timing_add(TN_STEP_19_LM_HEAD, tn_step_timing_now_ns() - t_step);
         }
-    } else if (w->wcls_is_ternary) {
+    } else if (w->cls.is_ternary) {
         int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-        parallel_ternary_matmul_packed(s->logits, s->x, (const tn_u8 *)w->wcls, dim,
-                                       cfg->vocab_size, w->wcls_scale, tp);
+        parallel_ternary_matmul_packed(s->logits, s->x, (const tn_u8 *)w->cls.w, dim,
+                                       cfg->vocab_size, w->cls.scale, tp);
         if (t_step) {
             tn_step_timing_add(TN_STEP_19_LM_HEAD, tn_step_timing_now_ns() - t_step);
         }
@@ -192,21 +192,21 @@ float *transformer_forward(int token, int pos, const Config *cfg, const Transfor
         TnClassifierFormat fmt      = hp ? hp->classifier_fmt : TN_CLS_BF16;
         int64_t t_step              = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
 
-        if (w->wcls_raw && w->wcls_raw_type == GGUF_TYPE_Q6_K) {
+        if (w->cls.raw && w->cls.raw_type == GGUF_TYPE_Q6_K) {
             /* zero-copy quantized head (2026-10-21, see weights.h) */
-            parallel_matmul_q6k(s->logits, s->x, (const uint8_t *)w->wcls_raw, dim, cfg->vocab_size,
+            parallel_matmul_q6k(s->logits, s->x, (const uint8_t *)w->cls.raw, dim, cfg->vocab_size,
                                 tp);
-        } else if (w->wcls_raw && w->wcls_raw_type == GGUF_TYPE_Q4_K) {
-            parallel_matmul_q4k(s->logits, s->x, (const uint8_t *)w->wcls_raw, dim, cfg->vocab_size,
+        } else if (w->cls.raw && w->cls.raw_type == GGUF_TYPE_Q4_K) {
+            parallel_matmul_q4k(s->logits, s->x, (const uint8_t *)w->cls.raw, dim, cfg->vocab_size,
                                 tp);
-        } else if (fmt == TN_CLS_INT4 && w->wcls_i4 && w->wcls_i4_scales) {
-            parallel_matmul_i4(s->logits, s->x, w->wcls_i4, w->wcls_i4_scales, dim, cfg->vocab_size,
+        } else if (fmt == TN_CLS_INT4 && w->cls.i4 && w->cls.i4_scales) {
+            parallel_matmul_i4(s->logits, s->x, w->cls.i4, w->cls.i4_scales, dim, cfg->vocab_size,
                                tp);
-        } else if (fmt >= TN_CLS_INT8 && w->wcls_i8 && w->wcls_i8_scales) {
-            parallel_matmul_i8(s->logits, s->x, w->wcls_i8, w->wcls_i8_scales, dim, cfg->vocab_size,
+        } else if (fmt >= TN_CLS_INT8 && w->cls.i8 && w->cls.i8_scales) {
+            parallel_matmul_i8(s->logits, s->x, w->cls.i8, w->cls.i8_scales, dim, cfg->vocab_size,
                                tp);
         } else {
-            parallel_matmul_bf16(s->logits, s->x, w->wcls, dim, cfg->vocab_size, tp);
+            parallel_matmul_bf16(s->logits, s->x, w->cls.w, dim, cfg->vocab_size, tp);
         }
         if (t_step) {
             tn_step_timing_add(TN_STEP_19_LM_HEAD, tn_step_timing_now_ns() - t_step);
@@ -298,27 +298,27 @@ static void forward_rows_logits(SpecBatchScratch *sb, const TransformerWeights *
    * hardware-profile-selected INT4/INT8/BF16 generic path); the
    * q35_is_q2_0_model branch there is unreachable here (see Step 1). */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    if (w->wcls_is_ternary) {
-        tn_ternary_matmul_packed_batch(logits_out, sb->x, (const tn_u8 *)w->wcls, dim,
-                                       cfg->vocab_size, w->wcls_scale, n_tokens, tp);
+    if (w->cls.is_ternary) {
+        tn_ternary_matmul_packed_batch(logits_out, sb->x, (const tn_u8 *)w->cls.w, dim,
+                                       cfg->vocab_size, w->cls.scale, n_tokens, tp);
     } else {
         const TnHardwareProfile *hp = tn_hardware_profile_get();
         TnClassifierFormat fmt      = hp ? hp->classifier_fmt : TN_CLS_BF16;
 
-        if (w->wcls_raw && w->wcls_raw_type == GGUF_TYPE_Q6_K) {
-            parallel_matmul_q6k_tokens(logits_out, sb->x, (const uint8_t *)w->wcls_raw, dim,
+        if (w->cls.raw && w->cls.raw_type == GGUF_TYPE_Q6_K) {
+            parallel_matmul_q6k_tokens(logits_out, sb->x, (const uint8_t *)w->cls.raw, dim,
                                        cfg->vocab_size, n_tokens, tp);
-        } else if (w->wcls_raw && w->wcls_raw_type == GGUF_TYPE_Q4_K) {
-            parallel_matmul_q4k_tokens(logits_out, sb->x, (const uint8_t *)w->wcls_raw, dim,
+        } else if (w->cls.raw && w->cls.raw_type == GGUF_TYPE_Q4_K) {
+            parallel_matmul_q4k_tokens(logits_out, sb->x, (const uint8_t *)w->cls.raw, dim,
                                        cfg->vocab_size, n_tokens, tp);
-        } else if (fmt == TN_CLS_INT4 && w->wcls_i4 && w->wcls_i4_scales) {
-            tn_matmul_i4_batch(logits_out, sb->x, w->wcls_i4, w->wcls_i4_scales, dim,
-                               cfg->vocab_size, n_tokens, tp);
-        } else if (fmt >= TN_CLS_INT8 && w->wcls_i8 && w->wcls_i8_scales) {
-            tn_matmul_i8_batch(logits_out, sb->x, w->wcls_i8, w->wcls_i8_scales, dim,
-                               cfg->vocab_size, n_tokens, tp);
+        } else if (fmt == TN_CLS_INT4 && w->cls.i4 && w->cls.i4_scales) {
+            tn_matmul_i4_batch(logits_out, sb->x, w->cls.i4, w->cls.i4_scales, dim, cfg->vocab_size,
+                               n_tokens, tp);
+        } else if (fmt >= TN_CLS_INT8 && w->cls.i8 && w->cls.i8_scales) {
+            tn_matmul_i8_batch(logits_out, sb->x, w->cls.i8, w->cls.i8_scales, dim, cfg->vocab_size,
+                               n_tokens, tp);
         } else {
-            tn_matmul_bf16_batch(logits_out, sb->x, w->wcls, dim, cfg->vocab_size, n_tokens, tp);
+            tn_matmul_bf16_batch(logits_out, sb->x, w->cls.w, dim, cfg->vocab_size, n_tokens, tp);
         }
     }
     if (t_step) {
@@ -361,12 +361,12 @@ TernaryError transformer_forward_batch(const int *tokens, int pos, int n_tokens,
             memset(sb->x + (size_t)k * dim, 0, (size_t)dim * sizeof(float));
             continue;
         }
-        if (w->q35_is_q2_0_model) {
+        if (w->q35.is_q2_0_model) {
             /* Unreachable in practice: q35_is_q2_0_model models always have
        * has_linear_attn set (see gguf_loader.c's Qwen3.5/3.6 loader),
        * already refused above. Handled anyway for defense-in-depth rather
        * than assuming the correlation always holds. */
-            embed_token_q2_0(sb->x + (size_t)k * dim, token, w->q35_token_embd_raw, dim);
+            embed_token_q2_0(sb->x + (size_t)k * dim, token, w->q35.token_embd_raw, dim);
         } else {
             embed_token(sb->x + (size_t)k * dim, token, w->embd_f32, w->token_embedding_table, dim);
         }
@@ -393,7 +393,7 @@ TernaryError transformer_forward_batch(const int *tokens, int pos, int n_tokens,
  * and the classifier are batched across rows; attention runs per row against
  * states[k]'s own KV. */
 int transformer_forward_multi_supported(const TransformerWeights *w, const MoEConfig *mc) {
-    if (!w || dist_plan_active() || w->q35_is_q2_0_model) return 0;
+    if (!w || dist_plan_active() || w->q35.is_q2_0_model) return 0;
     if (mc && (moe_is_recurrent(mc) || mc->is_moe || mc->mla.enabled || mc->has_linear_attn ||
                mc->has_qk_norm || mc->is_ssm))
         return 0;

@@ -483,7 +483,7 @@ bench: $(LIB_OBJS) tools/bench_simd.c
 build/tools/bench_full: $(LIB_OBJS) tools/bench_full.c
 	@mkdir -p build/tools
 	$(CC) $(CFLAGS_RELEASE) -mavx512vnni -mavxvnni -o $@ \
-	    tools/bench_full.c $(LIB_OBJS) $(LDFLAGS)
+	    tools/bench_full.c $(LIB_OBJS) $(LDFLAGS) -lstdc++
 
 # Q2_0 VNNI kernel A/B micro-benchmark (ref vs optimized row dot in one
 # binary — see docs/architecture/CEILING_CALCULATION.md §7 option A)

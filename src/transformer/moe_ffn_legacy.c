@@ -68,9 +68,9 @@ static float *dequant_expert_weight(const tn_i8 *raw, int quant_type, size_t n_e
 
 /* The quant type of the experts' down projection in `layer` (per-layer override first). */
 static int expert_w2_type(const TransformerWeights *w, int layer) {
-    return (w->expert_w2_quant_per_layer && w->expert_w2_quant_per_layer[layer])
-               ? w->expert_w2_quant_per_layer[layer]
-               : w->expert_w2_quant_type;
+    return (w->expert_quant.w2_per_layer && w->expert_quant.w2_per_layer[layer])
+               ? w->expert_quant.w2_per_layer[layer]
+               : w->expert_quant.w2_type;
 }
 
 /* ── Batched Q4_K path ──────────────────────────────────────────────────── */
@@ -105,9 +105,9 @@ static void batch_collect(ExpertBatch *b, const TransformerWeights *w, const MoE
         b->gate[k]  = batch_gate + (size_t)k * expert_hdim;
         b->up[k]    = batch_up + (size_t)k * expert_hdim;
         b->down[k]  = batch_down + (size_t)k * dim;
-        b->w1[k]    = (const uint8_t *)w->moe_w1[layer][e];
-        b->w3[k]    = (const uint8_t *)w->moe_w3[layer][e];
-        b->w2[k]    = (const uint8_t *)w->moe_w2[layer][e];
+        b->w1[k]    = (const uint8_t *)w->moe.w1[layer][e];
+        b->w3[k]    = (const uint8_t *)w->moe.w3[layer][e];
+        b->w2[k]    = (const uint8_t *)w->moe.w2[layer][e];
         b->score[k] = scores[i];
         b->n++;
     }
@@ -146,7 +146,7 @@ static void batch_down_proj(ExpertBatch *b, const TransformerWeights *w, int lay
         /* Other types: dequant + F32 sequential */
         for (int i = 0; i < valid_k; i++) {
             size_t n_el = (size_t)expert_hdim * dim;
-            float *fw   = dequant_expert_weight(w->moe_w2[layer][selected[i]], w2_qtype, n_el);
+            float *fw   = dequant_expert_weight(w->moe.w2[layer][selected[i]], w2_qtype, n_el);
             if (fw) parallel_matmul_float32(b->down[i], b->gate[i], fw, expert_hdim, dim, tp);
         }
     }
@@ -215,9 +215,9 @@ void moe_legacy_routed_batched(RunState *s, const TransformerWeights *w, const C
 
 /* The layer's gate / up quant type (per-layer override first; fixes mixed-type models). */
 static int expert_w13_type(const TransformerWeights *w, int layer) {
-    return (w->expert_w13_quant_per_layer && w->expert_w13_quant_per_layer[layer])
-               ? w->expert_w13_quant_per_layer[layer]
-               : w->expert_w13_quant_type;
+    return (w->expert_quant.w13_per_layer && w->expert_quant.w13_per_layer[layer])
+               ? w->expert_quant.w13_per_layer[layer]
+               : w->expert_quant.w13_type;
 }
 
 /* One quantised expert: gate and up (fused Q2_K, else dequantised to F32), activation, down.
@@ -231,15 +231,15 @@ static void expert_ffn_quantised(RunState *s, const TransformerWeights *w, const
     /* P7: Fused Q2K matvec — dequant + dot in one pass, no intermediate
      * float32 buffer.  Saves ~11.5 MB write + ~11.5 MB re-read vs old path. */
     if (w13_qtype == GGUF_TYPE_Q2_K) {
-        parallel_matvec_q2k(s->hb, s->xb, (const uint8_t *)w->moe_w1[layer][e], dim, expert_hdim,
+        parallel_matvec_q2k(s->hb, s->xb, (const uint8_t *)w->moe.w1[layer][e], dim, expert_hdim,
                             tp);
-        parallel_matvec_q2k(s->hb2, s->xb, (const uint8_t *)w->moe_w3[layer][e], dim, expert_hdim,
+        parallel_matvec_q2k(s->hb2, s->xb, (const uint8_t *)w->moe.w3[layer][e], dim, expert_hdim,
                             tp);
     } else {
-        float *fw1 = dequant_expert_weight(w->moe_w1[layer][e], w13_qtype, w13_elems);
+        float *fw1 = dequant_expert_weight(w->moe.w1[layer][e], w13_qtype, w13_elems);
         if (fw1) parallel_matmul_float32(s->hb, s->xb, fw1, dim, expert_hdim, tp);
 
-        float *fw3 = dequant_expert_weight(w->moe_w3[layer][e], w13_qtype, w13_elems);
+        float *fw3 = dequant_expert_weight(w->moe.w3[layer][e], w13_qtype, w13_elems);
         if (fw3) parallel_matmul_float32(s->hb2, s->xb, fw3, dim, expert_hdim, tp);
     }
 
@@ -252,16 +252,16 @@ static void expert_ffn_quantised(RunState *s, const TransformerWeights *w, const
     int w2_qtype = expert_w2_type(w, layer);
     if (w2_qtype == GGUF_TYPE_Q2_K) {
         /* P7: fused Q2K down projection */
-        parallel_matvec_q2k(s->q, s->hb, (const uint8_t *)w->moe_w2[layer][e], expert_hdim, dim,
+        parallel_matvec_q2k(s->q, s->hb, (const uint8_t *)w->moe.w2[layer][e], expert_hdim, dim,
                             tp);
     } else if (w2_qtype == GGUF_TYPE_Q4_K) {
-        parallel_matmul_q4k(s->q, s->hb, (const uint8_t *)w->moe_w2[layer][e], expert_hdim, dim,
+        parallel_matmul_q4k(s->q, s->hb, (const uint8_t *)w->moe.w2[layer][e], expert_hdim, dim,
                             tp);
     } else if (w2_qtype == GGUF_TYPE_Q5_1) {
-        parallel_matmul_q5_1(s->q, s->hb, (const uint8_t *)w->moe_w2[layer][e], expert_hdim, dim,
+        parallel_matmul_q5_1(s->q, s->hb, (const uint8_t *)w->moe.w2[layer][e], expert_hdim, dim,
                              tp);
     } else {
-        float *fw2 = dequant_expert_weight(w->moe_w2[layer][e], w2_qtype, w2_elems);
+        float *fw2 = dequant_expert_weight(w->moe.w2[layer][e], w2_qtype, w2_elems);
         if (fw2) parallel_matmul_float32(s->q, s->hb, fw2, expert_hdim, dim, tp);
     }
 }
@@ -269,11 +269,11 @@ static void expert_ffn_quantised(RunState *s, const TransformerWeights *w, const
 /* One ternary-packed expert (native .bin format); the result is left in s->q. */
 static void expert_ffn_ternary(RunState *s, const TransformerWeights *w, const Config *cfg,
                                int layer, int e, int dim, int expert_hdim, ThreadPool *tp) {
-    parallel_ternary_matmul_packed(s->hb, s->xb, (const tn_u8 *)w->moe_w1[layer][e], dim,
-                                   expert_hdim, w->moe_s1[layer][e], tp);
+    parallel_ternary_matmul_packed(s->hb, s->xb, (const tn_u8 *)w->moe.w1[layer][e], dim,
+                                   expert_hdim, w->moe.s1[layer][e], tp);
 
-    parallel_ternary_matmul_packed(s->hb2, s->xb, (const tn_u8 *)w->moe_w3[layer][e], dim,
-                                   expert_hdim, w->moe_s3[layer][e], tp);
+    parallel_ternary_matmul_packed(s->hb2, s->xb, (const tn_u8 *)w->moe.w3[layer][e], dim,
+                                   expert_hdim, w->moe.s3[layer][e], tp);
 
     if (cfg->act_type == 1)
         tn_relu2(s->hb, expert_hdim);
@@ -281,8 +281,8 @@ static void expert_ffn_ternary(RunState *s, const TransformerWeights *w, const C
         tn_silu(s->hb, expert_hdim);
     tn_vec_mul(s->hb, s->hb, s->hb2, expert_hdim);
 
-    parallel_ternary_matmul_packed(s->q, s->hb, (const tn_u8 *)w->moe_w2[layer][e], expert_hdim,
-                                   dim, w->moe_s2[layer][e], tp);
+    parallel_ternary_matmul_packed(s->q, s->hb, (const tn_u8 *)w->moe.w2[layer][e], expert_hdim,
+                                   dim, w->moe.s2[layer][e], tp);
 }
 
 void moe_legacy_routed_sequential(RunState *s, const TransformerWeights *w, const Config *cfg,
@@ -296,7 +296,7 @@ void moe_legacy_routed_sequential(RunState *s, const TransformerWeights *w, cons
         if (e < 0 || e >= mc->num_experts) continue;
         moe_track_hit(layer, e);
 
-        if (w->has_expert_quant)
+        if (w->expert_quant.present)
             expert_ffn_quantised(s, w, cfg, layer, e, dim, expert_hdim, tp);
         else
             expert_ffn_ternary(s, w, cfg, layer, e, dim, expert_hdim, tp);
@@ -315,31 +315,28 @@ static void shared_gate_up(RunState *s, const TransformerWeights *w, int layer, 
      * Saves 1 thread-pool dispatch per MoE layer (26 total per token). */
     if (w1t == GGUF_TYPE_Q4_K && w3t == GGUF_TYPE_Q4_K && xb_q8k) {
         float *sh_outs[2]       = {s->hb, s->hb2};
-        const uint8_t *sh_ws[2] = {(const uint8_t *)w->moe_shared_w1[layer],
-                                   (const uint8_t *)w->moe_shared_w3[layer]};
+        const uint8_t *sh_ws[2] = {(const uint8_t *)w->shared.w1[layer],
+                                   (const uint8_t *)w->shared.w3[layer]};
         parallel_matmul_q4k_batch_preq(sh_outs, xb_q8k, sh_ws, dim, shdim, 2, tp);
         return;
     }
     /* Gate projection (w1) */
     if (w1t == GGUF_TYPE_Q4_K && xb_q8k)
-        parallel_matmul_q4k_preq(s->hb, xb_q8k, (const uint8_t *)w->moe_shared_w1[layer], dim,
-                                 shdim, tp);
+        parallel_matmul_q4k_preq(s->hb, xb_q8k, (const uint8_t *)w->shared.w1[layer], dim, shdim,
+                                 tp);
     else if (w1t == GGUF_TYPE_Q4_K)
-        parallel_matmul_q4k(s->hb, s->xb, (const uint8_t *)w->moe_shared_w1[layer], dim, shdim, tp);
+        parallel_matmul_q4k(s->hb, s->xb, (const uint8_t *)w->shared.w1[layer], dim, shdim, tp);
     else
-        parallel_matmul_float32(s->hb, s->xb, (const float *)w->moe_shared_w1[layer], dim, shdim,
-                                tp);
+        parallel_matmul_float32(s->hb, s->xb, (const float *)w->shared.w1[layer], dim, shdim, tp);
 
     /* Up projection (w3) */
     if (w3t == GGUF_TYPE_Q4_K && xb_q8k)
-        parallel_matmul_q4k_preq(s->hb2, xb_q8k, (const uint8_t *)w->moe_shared_w3[layer], dim,
-                                 shdim, tp);
+        parallel_matmul_q4k_preq(s->hb2, xb_q8k, (const uint8_t *)w->shared.w3[layer], dim, shdim,
+                                 tp);
     else if (w3t == GGUF_TYPE_Q4_K)
-        parallel_matmul_q4k(s->hb2, s->xb, (const uint8_t *)w->moe_shared_w3[layer], dim, shdim,
-                            tp);
+        parallel_matmul_q4k(s->hb2, s->xb, (const uint8_t *)w->shared.w3[layer], dim, shdim, tp);
     else
-        parallel_matmul_float32(s->hb2, s->xb, (const float *)w->moe_shared_w3[layer], dim, shdim,
-                                tp);
+        parallel_matmul_float32(s->hb2, s->xb, (const float *)w->shared.w3[layer], dim, shdim, tp);
 }
 
 /* Each projection dispatches on shared_w{1,2,3}_type_per_layer[layer]: GGUF_TYPE_Q4_K runs the
@@ -351,9 +348,9 @@ void moe_legacy_shared(RunState *s, const TransformerWeights *w, const Config *c
                        ThreadPool *tp) {
     const int dim   = cfg->dim;
     const int shdim = mc->shared_expert_hidden_dim;
-    int w1t         = w->shared_w1_type_per_layer ? w->shared_w1_type_per_layer[layer] : 0;
-    int w2t         = w->shared_w2_type_per_layer ? w->shared_w2_type_per_layer[layer] : 0;
-    int w3t         = w->shared_w3_type_per_layer ? w->shared_w3_type_per_layer[layer] : 0;
+    int w1t         = w->shared.w1_type_per_layer ? w->shared.w1_type_per_layer[layer] : 0;
+    int w2t         = w->shared.w2_type_per_layer ? w->shared.w2_type_per_layer[layer] : 0;
+    int w3t         = w->shared.w3_type_per_layer ? w->shared.w3_type_per_layer[layer] : 0;
 
     shared_gate_up(s, w, layer, dim, shdim, w1t, w3t, xb_q8k, tp);
 
@@ -365,10 +362,9 @@ void moe_legacy_shared(RunState *s, const TransformerWeights *w, const Config *c
 
     /* Down projection (w2) */
     if (w2t == GGUF_TYPE_Q4_K)
-        parallel_matmul_q4k(s->q, s->hb, (const uint8_t *)w->moe_shared_w2[layer], shdim, dim, tp);
+        parallel_matmul_q4k(s->q, s->hb, (const uint8_t *)w->shared.w2[layer], shdim, dim, tp);
     else
-        parallel_matmul_float32(s->q, s->hb, (const float *)w->moe_shared_w2[layer], shdim, dim,
-                                tp);
+        parallel_matmul_float32(s->q, s->hb, (const float *)w->shared.w2[layer], shdim, dim, tp);
 
     tn_vec_saxpy(s->xb2, 1.0f, s->q, dim);
 }

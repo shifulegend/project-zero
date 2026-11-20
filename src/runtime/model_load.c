@@ -129,7 +129,7 @@ static void report_model_bytes(const LoadedModel *out) {
     double per_tok                = (double)out->mf.size;
     double cls_bytes              = 0.0;
     const TnHardwareProfile *hp_m = tn_hardware_profile_get();
-    if (out->weights.q35_is_q2_0_model) {
+    if (out->weights.q35.is_q2_0_model) {
         double q2_row = (double)out->config.vocab_size * out->config.dim * (34.0 / 128.0);
         cls_bytes     = q2_row; /* zero-copy raw Q2_0 head (default) */
         if (hp_m && hp_m->classifier_explicit) {

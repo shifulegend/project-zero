@@ -160,8 +160,8 @@ src/runtime/gguf_config.c::config_from_gguf 26 94
 src/runtime/gguf_config.c::moe_config_from_gguf 23 87
 src/runtime/gguf_load_deepseek2.c::weights_from_gguf_deepseek2 26 134
 src/runtime/gguf_load_proj.c::gguf_ld_dense_projection 14 32
-src/runtime/gguf_load_qwen35.c::weights_from_gguf_qwen35 15 96
-src/runtime/gguf_load_qwen3moe.c::weights_from_gguf_qwen3moe 20 93
+src/runtime/gguf_load_qwen35.c::weights_from_gguf_qwen35 15 97
+src/runtime/gguf_load_qwen3moe.c::weights_from_gguf_qwen3moe 20 96
 src/runtime/gguf_load_util.c::gguf_ld_bf16_embedding_and_output 13 45
 src/runtime/gguf_load_util.c::gguf_ld_proj_typed 15 38
 src/runtime/gguf_load_util.c::gguf_ld_quant_bytes 25 54
@@ -186,7 +186,7 @@ src/runtime/qwen3moe_run_state.c::qwen3moe_run_state_alloc 15 47
 src/runtime/run_state.c::run_state_alloc_ex 34 131
 src/runtime/run_state.c::run_state_kv_release 13 23
 src/runtime/run_state.c::run_state_kv_reserve 15 30
-src/runtime/weights.c::weights_alloc_pointers 42 56
+src/runtime/weights.c::weights_alloc_pointers 42 58
 src/runtime/weights.c::weights_build_classifier_quant 32 89
 src/runtime/weights.c::weights_free_pointers 49 57
 src/runtime/weights.c::weights_map 12 75
@@ -244,9 +244,9 @@ src/tokenizer/tokenizer_gguf.c::collect_special_tokens 16 28
 src/tokenizer/tokenizer_gguf.c::find_vocab_token 11 23
 src/tokenizer/tokenizer_load.c::tokenizer_chat_stops_new 14 16
 src/tokenizer/tokenizer_load.c::tokenizer_load 24 99
-src/transformer/attention.c::attention_forward 42 163
+src/transformer/attention.c::attention_forward 42 169
 src/transformer/attention.c::attention_forward_batch 12 37
-src/transformer/attention.c::attention_forward_rows 38 156
+src/transformer/attention.c::attention_forward_rows 38 157
 src/transformer/attn_tiled.c::attn_head_tiled 16 36
 src/transformer/dist_worker.c::dist_worker_serve 20 56
 src/transformer/ffn.c::ffn_forward 15 69
@@ -266,7 +266,7 @@ src/transformer/mla_attention.c::mla_attention_forward 40 152
 src/transformer/mla_attention.c::mla_attention_forward_batch 52 202
 src/transformer/moe_experts.c::moe_experts_forward 16 63
 src/transformer/moe_ffn.c::moe_ffn_forward 17 43
-src/transformer/moe_ffn.c::moe_fused_try 24 67
+src/transformer/moe_ffn.c::moe_fused_try 24 64
 src/transformer/moe_ffn.c::moe_norm_and_route 13 44
 src/transformer/moe_ffn.c::prefetch_expert_weights 12 13
 src/transformer/moe_ffn_legacy.c::dequant_expert_weight 12 39
@@ -276,7 +276,7 @@ src/transformer/moe_router.c::moe_router_forward_opts 16 26
 src/transformer/output_inject.c::inject_text_into_kv 11 28
 src/transformer/qwen35_attention.c::q35_full_attn_forward 24 85
 src/transformer/qwen35_attention.c::q35_linear_attn_forward 36 134
-src/transformer/qwen3moe_attention.c::qwen3moe_attention_forward 26 131
+src/transformer/qwen3moe_attention.c::qwen3moe_attention_forward 26 134
 src/transformer/qwen3moe_attention.c::qwen3moe_attention_forward_batch 34 166
 src/transformer/stop_seq.c::stop_matcher_feed 13 29
 src/update/release_links.c::release_web_base 15 21

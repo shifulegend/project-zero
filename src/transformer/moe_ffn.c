@@ -58,12 +58,12 @@ static void prefetch_expert_weights(const TransformerWeights *w, int layer, cons
     for (int i = 0; i < top_k; i++) {
         int e = selected[i];
         if (e < 0) continue;
-        if (w->moe_w1 && w->moe_w1[layer] && w->moe_w1[layer][e])
-            madvise((void *)w->moe_w1[layer][e], w13_bytes, MADV_WILLNEED);
-        if (w->moe_w3 && w->moe_w3[layer] && w->moe_w3[layer][e])
-            madvise((void *)w->moe_w3[layer][e], w13_bytes, MADV_WILLNEED);
-        if (w->moe_w2 && w->moe_w2[layer] && w->moe_w2[layer][e])
-            madvise((void *)w->moe_w2[layer][e], w2_bytes, MADV_WILLNEED);
+        if (w->moe.w1 && w->moe.w1[layer] && w->moe.w1[layer][e])
+            madvise((void *)w->moe.w1[layer][e], w13_bytes, MADV_WILLNEED);
+        if (w->moe.w3 && w->moe.w3[layer] && w->moe.w3[layer][e])
+            madvise((void *)w->moe.w3[layer][e], w13_bytes, MADV_WILLNEED);
+        if (w->moe.w2 && w->moe.w2[layer] && w->moe.w2[layer][e])
+            madvise((void *)w->moe.w2[layer][e], w2_bytes, MADV_WILLNEED);
     }
 }
 
@@ -90,13 +90,13 @@ static void moe_fused_try(RunState *s, const TransformerWeights *w, const Config
     TnMoEExpertJob jobs[MOE_SCORE_BUF_SIZE + 1];
     int nj = 0, routed = 0, shared = 0;
 
-    if (w->has_expert_quant) {
-        int w13 = (w->expert_w13_quant_per_layer && w->expert_w13_quant_per_layer[layer])
-                      ? w->expert_w13_quant_per_layer[layer]
-                      : w->expert_w13_quant_type;
-        int w2  = (w->expert_w2_quant_per_layer && w->expert_w2_quant_per_layer[layer])
-                      ? w->expert_w2_quant_per_layer[layer]
-                      : w->expert_w2_quant_type;
+    if (w->expert_quant.present) {
+        int w13 = (w->expert_quant.w13_per_layer && w->expert_quant.w13_per_layer[layer])
+                      ? w->expert_quant.w13_per_layer[layer]
+                      : w->expert_quant.w13_type;
+        int w2  = (w->expert_quant.w2_per_layer && w->expert_quant.w2_per_layer[layer])
+                      ? w->expert_quant.w2_per_layer[layer]
+                      : w->expert_quant.w2_type;
         TnMoEExpertJob probe = {(const uint8_t *)1,
                                 (const uint8_t *)1,
                                 (const uint8_t *)1,
@@ -109,9 +109,9 @@ static void moe_fused_try(RunState *s, const TransformerWeights *w, const Config
             for (int i = 0; i < top_k; i++) {
                 int e = selected[i];
                 if (e < 0 || e >= mc->num_experts) continue;
-                TnMoEExpertJob j = {(const uint8_t *)w->moe_w1[layer][e],
-                                    (const uint8_t *)w->moe_w3[layer][e],
-                                    (const uint8_t *)w->moe_w2[layer][e],
+                TnMoEExpertJob j = {(const uint8_t *)w->moe.w1[layer][e],
+                                    (const uint8_t *)w->moe.w3[layer][e],
+                                    (const uint8_t *)w->moe.w2[layer][e],
                                     w13,
                                     w13,
                                     w2,
@@ -122,16 +122,13 @@ static void moe_fused_try(RunState *s, const TransformerWeights *w, const Config
             routed = 1;
         }
     }
-    if (mc->n_shared_experts > 0 && w->moe_shared_w1 && w->moe_shared_w1[layer] &&
-        w->shared_w1_type_per_layer && w->shared_w2_type_per_layer && w->shared_w3_type_per_layer) {
-        TnMoEExpertJob j = {(const uint8_t *)w->moe_shared_w1[layer],
-                            (const uint8_t *)w->moe_shared_w3[layer],
-                            (const uint8_t *)w->moe_shared_w2[layer],
-                            w->shared_w1_type_per_layer[layer],
-                            w->shared_w3_type_per_layer[layer],
-                            w->shared_w2_type_per_layer[layer],
-                            mc->shared_expert_hidden_dim,
-                            1.0f};
+    if (mc->n_shared_experts > 0 && w->shared.w1 && w->shared.w1[layer] &&
+        w->shared.w1_type_per_layer && w->shared.w2_type_per_layer && w->shared.w3_type_per_layer) {
+        TnMoEExpertJob j = {
+            (const uint8_t *)w->shared.w1[layer], (const uint8_t *)w->shared.w3[layer],
+            (const uint8_t *)w->shared.w2[layer], w->shared.w1_type_per_layer[layer],
+            w->shared.w3_type_per_layer[layer],   w->shared.w2_type_per_layer[layer],
+            mc->shared_expert_hidden_dim,         1.0f};
         if (moe_experts_job_ok(&j, dim)) {
             jobs[nj++] = j;
             shared     = 1;
@@ -152,11 +149,11 @@ static void moe_fused_try(RunState *s, const TransformerWeights *w, const Config
 /* P4: the raw-byte sizes of one expert's gate/up and down tensors, for madvise(). */
 static void prefetch_selected(const TransformerWeights *w, int layer, int dim, int expert_hdim,
                               const int *selected, int top_k) {
-    if (!w->has_expert_quant) return;
-    int w2_qtype     = (w->expert_w2_quant_per_layer && w->expert_w2_quant_per_layer[layer])
-                           ? w->expert_w2_quant_per_layer[layer]
-                           : w->expert_w2_quant_type;
-    size_t w13_bytes = quant_tensor_bytes(w->expert_w13_quant_type, (size_t)dim * expert_hdim);
+    if (!w->expert_quant.present) return;
+    int w2_qtype     = (w->expert_quant.w2_per_layer && w->expert_quant.w2_per_layer[layer])
+                           ? w->expert_quant.w2_per_layer[layer]
+                           : w->expert_quant.w2_type;
+    size_t w13_bytes = quant_tensor_bytes(w->expert_quant.w13_type, (size_t)dim * expert_hdim);
     size_t w2_bytes  = quant_tensor_bytes(w2_qtype, (size_t)expert_hdim * dim);
     prefetch_expert_weights(w, layer, selected, top_k, w13_bytes, w2_bytes);
 }
@@ -172,7 +169,7 @@ static void moe_norm_and_route(RunState *s, const TransformerWeights *w, const C
 
     /* Identical to the dense path; normalise s->x into s->xb. */
     int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    tn_rmsnorm(s->xb, s->x, w->rms_ffn_weight[layer], dim, cfg->rms_norm_eps);
+    tn_rmsnorm(s->xb, s->x, w->ffn.rms_ffn_weight[layer], dim, cfg->rms_norm_eps);
     if (t_step) {
         tn_step_timing_add(TN_STEP_13_PRE_FFN_RMSNORM, tn_step_timing_now_ns() - t_step);
     }
@@ -182,7 +179,7 @@ static void moe_norm_and_route(RunState *s, const TransformerWeights *w, const C
     /* Dump raw router logits (pre-softmax) — only when tensor dump is active */
     if (g_dump_fp) {
         float raw_logits[MOE_SCORE_BUF_SIZE];
-        parallel_matmul_float32(raw_logits, s->xb, (const float *)w->moe_gate_w[layer], dim,
+        parallel_matmul_float32(raw_logits, s->xb, (const float *)w->moe.gate_w[layer], dim,
                                 num_experts, tp);
         DBG_DUMP(layer, "router_logits", raw_logits, num_experts);
     }
@@ -191,7 +188,7 @@ static void moe_norm_and_route(RunState *s, const TransformerWeights *w, const C
     const MoERouterOpts ropts = {mc->expert_gating_func, mc->expert_weights_norm,
                                  mc->expert_weights_scale};
     moe_router_forward_opts(scores, selected, selected_scores, s->xb,
-                            (const float *)w->moe_gate_w[layer], dim, num_experts, top_k, &ropts,
+                            (const float *)w->moe.gate_w[layer], dim, num_experts, top_k, &ropts,
                             tp);
     if (t_step) {
         tn_step_timing_add(TN_STEP_15_MOE_ROUTING, tn_step_timing_now_ns() - t_step);
@@ -220,9 +217,9 @@ static void moe_norm_and_route(RunState *s, const TransformerWeights *w, const C
 static TnQ8KActBlock *moe_quantize_xb(RunState *s, const TransformerWeights *w, int layer, int dim,
                                       int routed_done, int shared_done) {
     int xb_n_blocks = dim / TN_Q8K_BLOCK;
-    if (!(routed_done && shared_done) && w->has_expert_quant &&
-        (w->expert_w13_quant_type == GGUF_TYPE_Q4_K ||
-         (w->shared_w1_type_per_layer && w->shared_w1_type_per_layer[layer] == GGUF_TYPE_Q4_K))) {
+    if (!(routed_done && shared_done) && w->expert_quant.present &&
+        (w->expert_quant.w13_type == GGUF_TYPE_Q4_K ||
+         (w->shared.w1_type_per_layer && w->shared.w1_type_per_layer[layer] == GGUF_TYPE_Q4_K))) {
         TnQ8KActBlock *q = (TnQ8KActBlock *)tn_tls_scratch(
             &s_xb_scratch, (size_t)xb_n_blocks * sizeof(TnQ8KActBlock));
         if (q) tn_quantize_q8k(q, s->xb, xb_n_blocks);
@@ -268,7 +265,7 @@ void moe_ffn_forward(RunState *s, const TransformerWeights *w, const Config *cfg
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     if (routed_done) {
         /* handled by moe_fused_try() above */
-    } else if (w->has_expert_quant && w->expert_w13_quant_type == GGUF_TYPE_Q4_K) {
+    } else if (w->expert_quant.present && w->expert_quant.w13_type == GGUF_TYPE_Q4_K) {
         moe_legacy_routed_batched(s, w, cfg, mc, layer, selected_experts, selected_scores, top_k,
                                   xb_q8k, tp);
     } else {
@@ -281,7 +278,7 @@ void moe_ffn_forward(RunState *s, const TransformerWeights *w, const Config *cfg
     DBG_DUMP(layer, "ffn_moe_out", s->xb2, dim);
 
     /* Step 3b: the shared expert (DeepSeek-V2 style) is always active, on top of the routed ones. */
-    if (!shared_done && mc->n_shared_experts > 0 && w->moe_shared_w1 && w->moe_shared_w1[layer]) {
+    if (!shared_done && mc->n_shared_experts > 0 && w->shared.w1 && w->shared.w1[layer]) {
         t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
         moe_legacy_shared(s, w, cfg, mc, layer, xb_q8k, tp);
         if (t_step) {

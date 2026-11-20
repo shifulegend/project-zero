@@ -107,43 +107,43 @@ static void alloc_synthetic_weights(TransformerWeights *w, const Config *cfg) {
         size_t qo_size = (size_t)dim * dim;
         size_t kv_size = (size_t)dim * kv_dim;
 
-        w->wq[l] = (tn_i8 *)calloc(qo_size, sizeof(float));
-        fill_pattern_f32((float *)w->wq[l], qo_size, l * 100 + 1);
-        w->sq[l] = 1.0f;
+        w->attn.wq[l] = (tn_i8 *)calloc(qo_size, sizeof(float));
+        fill_pattern_f32((float *)w->attn.wq[l], qo_size, l * 100 + 1);
+        w->attn.sq[l] = 1.0f;
 
-        w->wk[l] = (tn_i8 *)calloc(kv_size, sizeof(float));
-        fill_pattern_f32((float *)w->wk[l], kv_size, l * 100 + 2);
-        w->sk[l] = 1.0f;
+        w->attn.wk[l] = (tn_i8 *)calloc(kv_size, sizeof(float));
+        fill_pattern_f32((float *)w->attn.wk[l], kv_size, l * 100 + 2);
+        w->attn.sk[l] = 1.0f;
 
-        w->wv[l] = (tn_i8 *)calloc(kv_size, sizeof(float));
-        fill_pattern_f32((float *)w->wv[l], kv_size, l * 100 + 3);
-        w->sv[l] = 1.0f;
+        w->attn.wv[l] = (tn_i8 *)calloc(kv_size, sizeof(float));
+        fill_pattern_f32((float *)w->attn.wv[l], kv_size, l * 100 + 3);
+        w->attn.sv[l] = 1.0f;
 
-        w->wo[l] = (tn_i8 *)calloc(qo_size, sizeof(float));
-        fill_pattern_f32((float *)w->wo[l], qo_size, l * 100 + 4);
-        w->so[l] = 1.0f;
+        w->attn.wo[l] = (tn_i8 *)calloc(qo_size, sizeof(float));
+        fill_pattern_f32((float *)w->attn.wo[l], qo_size, l * 100 + 4);
+        w->attn.so[l] = 1.0f;
 
         size_t gate_size = (size_t)dim * hidden_dim;
         size_t down_size = (size_t)hidden_dim * dim;
 
-        w->w1[l] = (tn_i8 *)calloc(gate_size, sizeof(float));
-        fill_pattern_f32((float *)w->w1[l], gate_size, l * 100 + 5);
-        w->s1[l] = 1.0f;
+        w->ffn.w1[l] = (tn_i8 *)calloc(gate_size, sizeof(float));
+        fill_pattern_f32((float *)w->ffn.w1[l], gate_size, l * 100 + 5);
+        w->ffn.s1[l] = 1.0f;
 
-        w->w2[l] = (tn_i8 *)calloc(down_size, sizeof(float));
-        fill_pattern_f32((float *)w->w2[l], down_size, l * 100 + 6);
-        w->s2[l] = 1.0f;
+        w->ffn.w2[l] = (tn_i8 *)calloc(down_size, sizeof(float));
+        fill_pattern_f32((float *)w->ffn.w2[l], down_size, l * 100 + 6);
+        w->ffn.s2[l] = 1.0f;
 
-        w->w3[l] = (tn_i8 *)calloc(gate_size, sizeof(float));
-        fill_pattern_f32((float *)w->w3[l], gate_size, l * 100 + 7);
-        w->s3[l] = 1.0f;
+        w->ffn.w3[l] = (tn_i8 *)calloc(gate_size, sizeof(float));
+        fill_pattern_f32((float *)w->ffn.w3[l], gate_size, l * 100 + 7);
+        w->ffn.s3[l] = 1.0f;
 
         /* RMS norm weights (all 1.0 for simplicity) */
-        w->rms_att_weight[l] = (float *)calloc(dim, sizeof(float));
-        for (int i = 0; i < dim; i++) w->rms_att_weight[l][i] = 1.0f;
+        w->attn.rms_att_weight[l] = (float *)calloc(dim, sizeof(float));
+        for (int i = 0; i < dim; i++) w->attn.rms_att_weight[l][i] = 1.0f;
 
-        w->rms_ffn_weight[l] = (float *)calloc(dim, sizeof(float));
-        for (int i = 0; i < dim; i++) w->rms_ffn_weight[l][i] = 1.0f;
+        w->ffn.rms_ffn_weight[l] = (float *)calloc(dim, sizeof(float));
+        for (int i = 0; i < dim; i++) w->ffn.rms_ffn_weight[l][i] = 1.0f;
     }
 
     /* Final RMS norm */
@@ -152,8 +152,8 @@ static void alloc_synthetic_weights(TransformerWeights *w, const Config *cfg) {
 
     /* Output classifier */
     size_t cls_size = (size_t)dim * cfg->vocab_size;
-    w->wcls         = (tn_u16 *)calloc(cls_size, sizeof(tn_u16));
-    fill_pattern_bf16(w->wcls, cls_size, 99);
+    w->cls.w        = (tn_u16 *)calloc(cls_size, sizeof(tn_u16));
+    fill_pattern_bf16(w->cls.w, cls_size, 99);
 }
 
 static void free_synthetic_weights(TransformerWeights *w, const Config *cfg) {
@@ -161,18 +161,18 @@ static void free_synthetic_weights(TransformerWeights *w, const Config *cfg) {
 
     free(w->token_embedding_table);
     for (int l = 0; l < nl; l++) {
-        free(w->wq[l]);
-        free(w->wk[l]);
-        free(w->wv[l]);
-        free(w->wo[l]);
-        free(w->w1[l]);
-        free(w->w2[l]);
-        free(w->w3[l]);
-        free(w->rms_att_weight[l]);
-        free(w->rms_ffn_weight[l]);
+        free(w->attn.wq[l]);
+        free(w->attn.wk[l]);
+        free(w->attn.wv[l]);
+        free(w->attn.wo[l]);
+        free(w->ffn.w1[l]);
+        free(w->ffn.w2[l]);
+        free(w->ffn.w3[l]);
+        free(w->attn.rms_att_weight[l]);
+        free(w->ffn.rms_ffn_weight[l]);
     }
     free(w->rms_final_weight);
-    free(w->wcls);
+    free(w->cls.w);
     weights_free_pointers(w);
 }
 

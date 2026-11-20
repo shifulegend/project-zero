@@ -109,7 +109,7 @@ TernaryError selfcheck_run(const SelfCheckOptions *opt, const Config *cfg,
 
     /* Candidate and reference identical: nothing to compare. */
     int cand_is_float  = strcmp(out->act_quant, "float") == 0;
-    int head_quantised = cand_cls != TN_CLS_BF16 && (w->wcls_i8 || w->wcls_i4);
+    int head_quantised = cand_cls != TN_CLS_BF16 && (w->cls.i8 || w->cls.i4);
     if (cand_is_float && !head_quantised) {
         free(toks);
         snprintf(out->note, sizeof(out->note),

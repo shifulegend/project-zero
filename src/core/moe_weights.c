@@ -14,36 +14,36 @@ TernaryError moe_weights_alloc(TransformerWeights *w, const Config *cfg, const M
 
     int nl              = cfg->n_layers;
     int ne              = mc->num_experts;
-    w->moe_alloc_layers = nl;
+    w->moe.alloc_layers = nl;
 
     /* Gate weight pointers: one per layer */
-    w->moe_gate_w = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
-    w->moe_gate_s = (float *)calloc(nl, sizeof(float));
+    w->moe.gate_w = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
+    w->moe.gate_s = (float *)calloc(nl, sizeof(float));
 
     /* Expert weight pointers: [n_layers][num_experts] */
-    w->moe_w1 = (tn_i8 ***)calloc(nl, sizeof(tn_i8 **));
-    w->moe_w2 = (tn_i8 ***)calloc(nl, sizeof(tn_i8 **));
-    w->moe_w3 = (tn_i8 ***)calloc(nl, sizeof(tn_i8 **));
-    w->moe_s1 = (float **)calloc(nl, sizeof(float *));
-    w->moe_s2 = (float **)calloc(nl, sizeof(float *));
-    w->moe_s3 = (float **)calloc(nl, sizeof(float *));
+    w->moe.w1 = (tn_i8 ***)calloc(nl, sizeof(tn_i8 **));
+    w->moe.w2 = (tn_i8 ***)calloc(nl, sizeof(tn_i8 **));
+    w->moe.w3 = (tn_i8 ***)calloc(nl, sizeof(tn_i8 **));
+    w->moe.s1 = (float **)calloc(nl, sizeof(float *));
+    w->moe.s2 = (float **)calloc(nl, sizeof(float *));
+    w->moe.s3 = (float **)calloc(nl, sizeof(float *));
 
-    if (!w->moe_gate_w || !w->moe_gate_s || !w->moe_w1 || !w->moe_w2 || !w->moe_w3 || !w->moe_s1 ||
-        !w->moe_s2 || !w->moe_s3) {
+    if (!w->moe.gate_w || !w->moe.gate_s || !w->moe.w1 || !w->moe.w2 || !w->moe.w3 || !w->moe.s1 ||
+        !w->moe.s2 || !w->moe.s3) {
         moe_weights_free(w, mc);
         return TN_ERR_OOM;
     }
 
     for (int l = 0; l < nl; l++) {
-        w->moe_w1[l] = (tn_i8 **)calloc(ne, sizeof(tn_i8 *));
-        w->moe_w2[l] = (tn_i8 **)calloc(ne, sizeof(tn_i8 *));
-        w->moe_w3[l] = (tn_i8 **)calloc(ne, sizeof(tn_i8 *));
-        w->moe_s1[l] = (float *)calloc(ne, sizeof(float));
-        w->moe_s2[l] = (float *)calloc(ne, sizeof(float));
-        w->moe_s3[l] = (float *)calloc(ne, sizeof(float));
+        w->moe.w1[l] = (tn_i8 **)calloc(ne, sizeof(tn_i8 *));
+        w->moe.w2[l] = (tn_i8 **)calloc(ne, sizeof(tn_i8 *));
+        w->moe.w3[l] = (tn_i8 **)calloc(ne, sizeof(tn_i8 *));
+        w->moe.s1[l] = (float *)calloc(ne, sizeof(float));
+        w->moe.s2[l] = (float *)calloc(ne, sizeof(float));
+        w->moe.s3[l] = (float *)calloc(ne, sizeof(float));
 
-        if (!w->moe_w1[l] || !w->moe_w2[l] || !w->moe_w3[l] || !w->moe_s1[l] || !w->moe_s2[l] ||
-            !w->moe_s3[l]) {
+        if (!w->moe.w1[l] || !w->moe.w2[l] || !w->moe.w3[l] || !w->moe.s1[l] || !w->moe.s2[l] ||
+            !w->moe.s3[l]) {
             moe_weights_free(w, mc);
             return TN_ERR_OOM;
         }
@@ -51,15 +51,15 @@ TernaryError moe_weights_alloc(TransformerWeights *w, const Config *cfg, const M
 
     /* Shared expert weight pointers (DeepSeek-V2 style) */
     if (mc->n_shared_experts > 0) {
-        w->moe_shared_w1 = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
-        w->moe_shared_w2 = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
-        w->moe_shared_w3 = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
-        w->moe_shared_s1 = (float *)calloc(nl, sizeof(float));
-        w->moe_shared_s2 = (float *)calloc(nl, sizeof(float));
-        w->moe_shared_s3 = (float *)calloc(nl, sizeof(float));
+        w->shared.w1 = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
+        w->shared.w2 = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
+        w->shared.w3 = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
+        w->shared.s1 = (float *)calloc(nl, sizeof(float));
+        w->shared.s2 = (float *)calloc(nl, sizeof(float));
+        w->shared.s3 = (float *)calloc(nl, sizeof(float));
 
-        if (!w->moe_shared_w1 || !w->moe_shared_w2 || !w->moe_shared_w3 || !w->moe_shared_s1 ||
-            !w->moe_shared_s2 || !w->moe_shared_s3) {
+        if (!w->shared.w1 || !w->shared.w2 || !w->shared.w3 || !w->shared.s1 || !w->shared.s2 ||
+            !w->shared.s3) {
             moe_weights_free(w, mc);
             return TN_ERR_OOM;
         }
@@ -67,15 +67,15 @@ TernaryError moe_weights_alloc(TransformerWeights *w, const Config *cfg, const M
 
     /* Phase 17.6: MLA weight pointer arrays (NULL for non-MLA models) */
     if (mc->mla.enabled) {
-        w->mla_wq    = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
-        w->mla_wkv_a = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
-        w->mla_wkv_b = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
-        w->mla_sq    = (float *)calloc(nl, sizeof(float));
-        w->mla_skv_a = (float *)calloc(nl, sizeof(float));
-        w->mla_skv_b = (float *)calloc(nl, sizeof(float));
+        w->mla.wq    = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
+        w->mla.wkv_a = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
+        w->mla.wkv_b = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
+        w->mla.sq    = (float *)calloc(nl, sizeof(float));
+        w->mla.skv_a = (float *)calloc(nl, sizeof(float));
+        w->mla.skv_b = (float *)calloc(nl, sizeof(float));
 
-        if (!w->mla_wq || !w->mla_wkv_a || !w->mla_wkv_b || !w->mla_sq || !w->mla_skv_a ||
-            !w->mla_skv_b) {
+        if (!w->mla.wq || !w->mla.wkv_a || !w->mla.wkv_b || !w->mla.sq || !w->mla.skv_a ||
+            !w->mla.skv_b) {
             moe_weights_free(w, mc);
             return TN_ERR_OOM;
         }
@@ -91,119 +91,119 @@ TernaryError moe_weights_alloc(TransformerWeights *w, const Config *cfg, const M
 void moe_weights_free(TransformerWeights *w, const MoEConfig *mc) {
     if (!mc || !mc->is_moe) return;
 
-    bool free_routed_payloads = !w->has_expert_quant;
+    bool free_routed_payloads = !w->expert_quant.present;
 
     /* Traverse w->moe_w1 rows until we hit a NULL row (calloc'd to NULL).
      * Null each pointer immediately after freeing so calling this function
      * twice is safe (idempotent). */
-    if (w->moe_w1) {
-        for (int l = 0; l < w->moe_alloc_layers; l++) {
-            if (!w->moe_w1[l] || !w->moe_w2[l] || !w->moe_w3[l]) continue;
+    if (w->moe.w1) {
+        for (int l = 0; l < w->moe.alloc_layers; l++) {
+            if (!w->moe.w1[l] || !w->moe.w2[l] || !w->moe.w3[l]) continue;
             for (int e = 0; e < mc->num_experts; e++) {
-                if (free_routed_payloads && w->moe_w1[l][e]) free(w->moe_w1[l][e]);
-                if (free_routed_payloads && w->moe_w2[l][e]) free(w->moe_w2[l][e]);
-                if (free_routed_payloads && w->moe_w3[l][e]) free(w->moe_w3[l][e]);
-                w->moe_w1[l][e] = NULL;
-                w->moe_w2[l][e] = NULL;
-                w->moe_w3[l][e] = NULL;
+                if (free_routed_payloads && w->moe.w1[l][e]) free(w->moe.w1[l][e]);
+                if (free_routed_payloads && w->moe.w2[l][e]) free(w->moe.w2[l][e]);
+                if (free_routed_payloads && w->moe.w3[l][e]) free(w->moe.w3[l][e]);
+                w->moe.w1[l][e] = NULL;
+                w->moe.w2[l][e] = NULL;
+                w->moe.w3[l][e] = NULL;
             }
-            if (w->moe_s1[l]) {
-                free(w->moe_s1[l]);
-                w->moe_s1[l] = NULL;
+            if (w->moe.s1[l]) {
+                free(w->moe.s1[l]);
+                w->moe.s1[l] = NULL;
             }
-            if (w->moe_s2[l]) {
-                free(w->moe_s2[l]);
-                w->moe_s2[l] = NULL;
+            if (w->moe.s2[l]) {
+                free(w->moe.s2[l]);
+                w->moe.s2[l] = NULL;
             }
-            if (w->moe_s3[l]) {
-                free(w->moe_s3[l]);
-                w->moe_s3[l] = NULL;
+            if (w->moe.s3[l]) {
+                free(w->moe.s3[l]);
+                w->moe.s3[l] = NULL;
             }
-            free(w->moe_w1[l]);
-            w->moe_w1[l] = NULL;
-            free(w->moe_w2[l]);
-            w->moe_w2[l] = NULL;
-            free(w->moe_w3[l]);
-            w->moe_w3[l] = NULL;
+            free(w->moe.w1[l]);
+            w->moe.w1[l] = NULL;
+            free(w->moe.w2[l]);
+            w->moe.w2[l] = NULL;
+            free(w->moe.w3[l]);
+            w->moe.w3[l] = NULL;
         }
-        free(w->moe_w1);
-        w->moe_w1 = NULL;
-        free(w->moe_w2);
-        w->moe_w2 = NULL;
-        free(w->moe_w3);
-        w->moe_w3 = NULL;
-        free(w->moe_s1);
-        w->moe_s1 = NULL;
-        free(w->moe_s2);
-        w->moe_s2 = NULL;
-        free(w->moe_s3);
-        w->moe_s3 = NULL;
+        free(w->moe.w1);
+        w->moe.w1 = NULL;
+        free(w->moe.w2);
+        w->moe.w2 = NULL;
+        free(w->moe.w3);
+        w->moe.w3 = NULL;
+        free(w->moe.s1);
+        w->moe.s1 = NULL;
+        free(w->moe.s2);
+        w->moe.s2 = NULL;
+        free(w->moe.s3);
+        w->moe.s3 = NULL;
     }
-    w->moe_alloc_layers = 0;
+    w->moe.alloc_layers = 0;
 
-    if (w->moe_gate_w) {
+    if (w->moe.gate_w) {
         /* Gate weight arrays: only the pointer-of-pointers is heap-alloc'd by
          * moe_weights_alloc(). For mmap'd files the data was NOT heap alloc'd
          * (pointed into the mmap), so we only free the pointer array itself.
          * In tests the actual weight buffers are freed separately before this call. */
-        free(w->moe_gate_w);
-        w->moe_gate_w = NULL;
+        free(w->moe.gate_w);
+        w->moe.gate_w = NULL;
     }
-    if (w->moe_gate_s) {
-        free(w->moe_gate_s);
-        w->moe_gate_s = NULL;
+    if (w->moe.gate_s) {
+        free(w->moe.gate_s);
+        w->moe.gate_s = NULL;
     }
 
     /* Shared expert pointer arrays (data is mmap'd, only free the arrays) */
-    if (w->moe_shared_w1) {
-        free(w->moe_shared_w1);
-        w->moe_shared_w1 = NULL;
+    if (w->shared.w1) {
+        free(w->shared.w1);
+        w->shared.w1 = NULL;
     }
-    if (w->moe_shared_w2) {
-        free(w->moe_shared_w2);
-        w->moe_shared_w2 = NULL;
+    if (w->shared.w2) {
+        free(w->shared.w2);
+        w->shared.w2 = NULL;
     }
-    if (w->moe_shared_w3) {
-        free(w->moe_shared_w3);
-        w->moe_shared_w3 = NULL;
+    if (w->shared.w3) {
+        free(w->shared.w3);
+        w->shared.w3 = NULL;
     }
-    if (w->moe_shared_s1) {
-        free(w->moe_shared_s1);
-        w->moe_shared_s1 = NULL;
+    if (w->shared.s1) {
+        free(w->shared.s1);
+        w->shared.s1 = NULL;
     }
-    if (w->moe_shared_s2) {
-        free(w->moe_shared_s2);
-        w->moe_shared_s2 = NULL;
+    if (w->shared.s2) {
+        free(w->shared.s2);
+        w->shared.s2 = NULL;
     }
-    if (w->moe_shared_s3) {
-        free(w->moe_shared_s3);
-        w->moe_shared_s3 = NULL;
+    if (w->shared.s3) {
+        free(w->shared.s3);
+        w->shared.s3 = NULL;
     }
 
     /* MLA weight pointer arrays (data is mmap'd; only free the pointer arrays) */
-    if (w->mla_wq) {
-        free(w->mla_wq);
-        w->mla_wq = NULL;
+    if (w->mla.wq) {
+        free(w->mla.wq);
+        w->mla.wq = NULL;
     }
-    if (w->mla_wkv_a) {
-        free(w->mla_wkv_a);
-        w->mla_wkv_a = NULL;
+    if (w->mla.wkv_a) {
+        free(w->mla.wkv_a);
+        w->mla.wkv_a = NULL;
     }
-    if (w->mla_wkv_b) {
-        free(w->mla_wkv_b);
-        w->mla_wkv_b = NULL;
+    if (w->mla.wkv_b) {
+        free(w->mla.wkv_b);
+        w->mla.wkv_b = NULL;
     }
-    if (w->mla_sq) {
-        free(w->mla_sq);
-        w->mla_sq = NULL;
+    if (w->mla.sq) {
+        free(w->mla.sq);
+        w->mla.sq = NULL;
     }
-    if (w->mla_skv_a) {
-        free(w->mla_skv_a);
-        w->mla_skv_a = NULL;
+    if (w->mla.skv_a) {
+        free(w->mla.skv_a);
+        w->mla.skv_a = NULL;
     }
-    if (w->mla_skv_b) {
-        free(w->mla_skv_b);
-        w->mla_skv_b = NULL;
+    if (w->mla.skv_b) {
+        free(w->mla.skv_b);
+        w->mla.skv_b = NULL;
     }
 }
 
@@ -269,9 +269,9 @@ TernaryError moe_weights_map(TransformerWeights *w, const Config *cfg, const MoE
 
         /* Gate matrix: [dim × num_experts] packed ternary */
         size_t gate_bytes = packed_bytes((size_t)dim * ne);
-        MOE_MAP_PTR(w->moe_gate_w[l], gate_bytes);
+        MOE_MAP_PTR(w->moe.gate_w[l], gate_bytes);
         MOE_ALIGN64();
-        MOE_COPY_SCALE(&w->moe_gate_s[l]);
+        MOE_COPY_SCALE(&w->moe.gate_s[l]);
 
         /* Per-expert FFN weights */
         size_t w1_bytes = packed_bytes((size_t)dim * ehdim);
@@ -279,17 +279,17 @@ TernaryError moe_weights_map(TransformerWeights *w, const Config *cfg, const MoE
         size_t w3_bytes = w1_bytes;
 
         for (int e = 0; e < ne; e++) {
-            MOE_MAP_PTR(w->moe_w1[l][e], w1_bytes);
+            MOE_MAP_PTR(w->moe.w1[l][e], w1_bytes);
             MOE_ALIGN64();
-            MOE_COPY_SCALE(&w->moe_s1[l][e]);
+            MOE_COPY_SCALE(&w->moe.s1[l][e]);
 
-            MOE_MAP_PTR(w->moe_w3[l][e], w3_bytes);
+            MOE_MAP_PTR(w->moe.w3[l][e], w3_bytes);
             MOE_ALIGN64();
-            MOE_COPY_SCALE(&w->moe_s3[l][e]);
+            MOE_COPY_SCALE(&w->moe.s3[l][e]);
 
-            MOE_MAP_PTR(w->moe_w2[l][e], w2_bytes);
+            MOE_MAP_PTR(w->moe.w2[l][e], w2_bytes);
             MOE_ALIGN64();
-            MOE_COPY_SCALE(&w->moe_s2[l][e]);
+            MOE_COPY_SCALE(&w->moe.s2[l][e]);
         }
 
         /* Shared expert FFN (DeepSeek-V2 style):
@@ -297,23 +297,23 @@ TernaryError moe_weights_map(TransformerWeights *w, const Config *cfg, const MoE
          *         [sw3] ALIGN64 [ss3] ALIGN64
          *         [sw2] ALIGN64 [ss2] ALIGN64
          * Dimensions: [dim × shared_hdim] for w1/w3, [shared_hdim × dim] for w2 */
-        if (mc->n_shared_experts > 0 && w->moe_shared_w1) {
+        if (mc->n_shared_experts > 0 && w->shared.w1) {
             int shdim        = mc->shared_expert_hidden_dim;
             size_t sw1_bytes = packed_bytes((size_t)dim * shdim);
             size_t sw2_bytes = packed_bytes((size_t)shdim * dim);
             size_t sw3_bytes = sw1_bytes;
 
-            MOE_MAP_PTR(w->moe_shared_w1[l], sw1_bytes);
+            MOE_MAP_PTR(w->shared.w1[l], sw1_bytes);
             MOE_ALIGN64();
-            MOE_COPY_SCALE(&w->moe_shared_s1[l]);
+            MOE_COPY_SCALE(&w->shared.s1[l]);
 
-            MOE_MAP_PTR(w->moe_shared_w3[l], sw3_bytes);
+            MOE_MAP_PTR(w->shared.w3[l], sw3_bytes);
             MOE_ALIGN64();
-            MOE_COPY_SCALE(&w->moe_shared_s3[l]);
+            MOE_COPY_SCALE(&w->shared.s3[l]);
 
-            MOE_MAP_PTR(w->moe_shared_w2[l], sw2_bytes);
+            MOE_MAP_PTR(w->shared.w2[l], sw2_bytes);
             MOE_ALIGN64();
-            MOE_COPY_SCALE(&w->moe_shared_s2[l]);
+            MOE_COPY_SCALE(&w->shared.s2[l]);
         }
     }
 

@@ -59,9 +59,9 @@ static void run_case(int vocab, int dim, const char *label) {
     Config cfg;
     memset(&w, 0, sizeof(w));
     memset(&cfg, 0, sizeof(cfg));
-    cfg.dim           = dim;
-    cfg.vocab_size    = vocab;
-    w.wcls_is_ternary = false;
+    cfg.dim          = dim;
+    cfg.vocab_size   = vocab;
+    w.cls.is_ternary = false;
 
     uint16_t *table = (uint16_t *)malloc((size_t)vocab * (size_t)dim * sizeof(uint16_t));
     float *x        = (float *)malloc((size_t)dim * sizeof(float));
@@ -85,11 +85,11 @@ static void run_case(int vocab, int dim, const char *label) {
         }
         ref[i] = ref_dot(table + (size_t)i * dim, x, dim);
     }
-    w.wcls = table;
+    w.cls.w = table;
 
     weights_build_classifier_quant(&w, &cfg);
-    TEST_ASSERT(w.wcls_i8 != NULL && w.wcls_i8_scales != NULL, "INT8 classifier built");
-    TEST_ASSERT(w.wcls_i4 != NULL && w.wcls_i4_scales != NULL, "INT4 classifier built");
+    TEST_ASSERT(w.cls.i8 != NULL && w.cls.i8_scales != NULL, "INT8 classifier built");
+    TEST_ASSERT(w.cls.i4 != NULL && w.cls.i4_scales != NULL, "INT4 classifier built");
 
     int n_blocks = (dim + TN_CLS_QUANT_BLOCK - 1) / TN_CLS_QUANT_BLOCK;
 
@@ -99,8 +99,8 @@ static void run_case(int vocab, int dim, const char *label) {
      * per-row scheme structurally cannot represent this: one scale for
      * the whole row, no matter how block magnitudes vary). */
     if (n_blocks >= 2) {
-        float s0    = w.wcls_i8_scales[0];
-        float s1    = w.wcls_i8_scales[1];
+        float s0    = w.cls.i8_scales[0];
+        float s1    = w.cls.i8_scales[1];
         float ratio = (s0 > s1) ? s0 / s1 : s1 / s0;
         char msg[160];
         snprintf(msg, sizeof(msg), "%s: block scales differ (s0=%.6f s1=%.6f ratio=%.3f)", label,
@@ -110,8 +110,8 @@ static void run_case(int vocab, int dim, const char *label) {
 
     float *out_i8 = (float *)malloc((size_t)vocab * sizeof(float));
     float *out_i4 = (float *)malloc((size_t)vocab * sizeof(float));
-    parallel_matmul_i8(out_i8, x, w.wcls_i8, w.wcls_i8_scales, dim, vocab, NULL);
-    parallel_matmul_i4(out_i4, x, w.wcls_i4, w.wcls_i4_scales, dim, vocab, NULL);
+    parallel_matmul_i8(out_i8, x, w.cls.i8, w.cls.i8_scales, dim, vocab, NULL);
+    parallel_matmul_i4(out_i4, x, w.cls.i4, w.cls.i4_scales, dim, vocab, NULL);
 
     for (int i = 0; i < vocab; i++) {
         /* INT8: ~1/127 per-block relative precision; INT4: ~1/7. Generous
@@ -137,10 +137,10 @@ static void run_case(int vocab, int dim, const char *label) {
     free(ref);
     free(out_i8);
     free(out_i4);
-    free(w.wcls_i8);
-    free(w.wcls_i8_scales);
-    free(w.wcls_i4);
-    free(w.wcls_i4_scales);
+    free(w.cls.i8);
+    free(w.cls.i8_scales);
+    free(w.cls.i4);
+    free(w.cls.i4_scales);
     (void)n_blocks;
 }
 

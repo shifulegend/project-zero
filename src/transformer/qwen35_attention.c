@@ -86,30 +86,30 @@ static void q35_full_attn_forward(RunState *s, const TransformerWeights *w, cons
 
     /* Step 1: RMSNorm */
     int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    tn_rmsnorm(s->xb, s->x, w->rms_att_weight[layer], dim, cfg->rms_norm_eps);
+    tn_rmsnorm(s->xb, s->x, w->attn.rms_att_weight[layer], dim, cfg->rms_norm_eps);
     if (t_step) tn_step_timing_add(TN_STEP_4_PRE_ATTN_RMSNORM, tn_step_timing_now_ns() - t_step);
 
     /* Step 2: projections */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    parallel_matmul_q2_0(q_full, s->xb, (const uint8_t *)w->wq[layer], dim, q_width, tp);
+    parallel_matmul_q2_0(q_full, s->xb, (const uint8_t *)w->attn.wq[layer], dim, q_width, tp);
     if (t_step) {
         tn_step_timing_add(TN_STEP_5_Q_PROJECTION, tn_step_timing_now_ns() - t_step);
         t_step = tn_step_timing_now_ns();
     }
-    parallel_matmul_q2_0(k_buf, s->xb, (const uint8_t *)w->wk[layer], dim, kv_width, tp);
-    parallel_matmul_q2_0(v_buf, s->xb, (const uint8_t *)w->wv[layer], dim, kv_width, tp);
+    parallel_matmul_q2_0(k_buf, s->xb, (const uint8_t *)w->attn.wk[layer], dim, kv_width, tp);
+    parallel_matmul_q2_0(v_buf, s->xb, (const uint8_t *)w->attn.wv[layer], dim, kv_width, tp);
     if (t_step) tn_step_timing_add(TN_STEP_6_KV_A_COMPRESSION, tn_step_timing_now_ns() - t_step);
 
     /* Step 3: per-head Q/K RMSNorm, then partial NEOX rotary */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     for (int h = 0; h < n_head; h++) {
         float *q_h = q_full + (size_t)h * 2 * head_dim;
-        tn_rmsnorm(q_h, q_h, w->q35_attn_q_norm[layer], head_dim, cfg->rms_norm_eps);
+        tn_rmsnorm(q_h, q_h, w->q35.attn_q_norm[layer], head_dim, cfg->rms_norm_eps);
         rope_apply_neox_partial(q_h, s->q35.rope_freq, rope_dim, pos);
     }
     for (int kh = 0; kh < n_kv_h; kh++) {
         float *k_h = k_buf + (size_t)kh * head_dim;
-        tn_rmsnorm(k_h, k_h, w->q35_attn_k_norm[layer], head_dim, cfg->rms_norm_eps);
+        tn_rmsnorm(k_h, k_h, w->q35.attn_k_norm[layer], head_dim, cfg->rms_norm_eps);
         rope_apply_neox_partial(k_h, s->q35.rope_freq, rope_dim, pos);
     }
     if (t_step) tn_step_timing_add(TN_STEP_9_YARN_ROPE, tn_step_timing_now_ns() - t_step);
@@ -166,8 +166,8 @@ static void q35_full_attn_forward(RunState *s, const TransformerWeights *w, cons
 
     /* Step 7: output projection + residual */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    parallel_matmul_q2_0(s->xb, attn_concat, (const uint8_t *)w->wo[layer], n_head * head_dim, dim,
-                         tp);
+    parallel_matmul_q2_0(s->xb, attn_concat, (const uint8_t *)w->attn.wo[layer], n_head * head_dim,
+                         dim, tp);
     tn_vec_add(s->x, s->x, s->xb, dim);
     if (t_step) tn_step_timing_add(TN_STEP_12_POST_ATTN, tn_step_timing_now_ns() - t_step);
 }
@@ -207,7 +207,7 @@ static void q35_linear_attn_forward(RunState *s, const TransformerWeights *w, co
 
     /* Step 1: RMSNorm */
     int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    tn_rmsnorm(s->xb, s->x, w->rms_att_weight[layer], dim, eps);
+    tn_rmsnorm(s->xb, s->x, w->attn.rms_att_weight[layer], dim, eps);
     if (t_step) tn_step_timing_add(TN_STEP_4_PRE_ATTN_RMSNORM, tn_step_timing_now_ns() - t_step);
 
     /* Step 2: projections — combined q|k|v (pre-conv), separate output gate.
@@ -215,15 +215,15 @@ static void q35_linear_attn_forward(RunState *s, const TransformerWeights *w, co
      * gate/beta/alpha projections to step 6 — the closest available buckets;
      * DeltaNet has no literal "Q projection"/"KV compression". */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    parallel_matmul_q2_0(qkv_mixed, s->xb, (const uint8_t *)w->q35_ssm_qkv[layer], dim, conv_dim,
+    parallel_matmul_q2_0(qkv_mixed, s->xb, (const uint8_t *)w->q35.ssm_qkv[layer], dim, conv_dim,
                          tp);
     if (t_step) {
         tn_step_timing_add(TN_STEP_5_Q_PROJECTION, tn_step_timing_now_ns() - t_step);
         t_step = tn_step_timing_now_ns();
     }
-    parallel_matmul_q2_0(z, s->xb, (const uint8_t *)w->q35_ssm_gate[layer], dim, value_dim, tp);
-    parallel_matmul_q2_0(beta, s->xb, (const uint8_t *)w->q35_ssm_beta[layer], dim, n_v_heads, tp);
-    parallel_matmul_q2_0(alpha, s->xb, (const uint8_t *)w->q35_ssm_alpha[layer], dim, n_v_heads,
+    parallel_matmul_q2_0(z, s->xb, (const uint8_t *)w->q35.ssm_gate[layer], dim, value_dim, tp);
+    parallel_matmul_q2_0(beta, s->xb, (const uint8_t *)w->q35.ssm_beta[layer], dim, n_v_heads, tp);
+    parallel_matmul_q2_0(alpha, s->xb, (const uint8_t *)w->q35.ssm_alpha[layer], dim, n_v_heads,
                          tp);
     if (t_step) tn_step_timing_add(TN_STEP_6_KV_A_COMPRESSION, tn_step_timing_now_ns() - t_step);
 
@@ -235,9 +235,9 @@ static void q35_linear_attn_forward(RunState *s, const TransformerWeights *w, co
     for (int hv = 0; hv < n_v_heads; hv++) {
         float sig      = 1.0f / (1.0f + expf(-beta[hv]));
         beta[hv]       = sig;
-        float ab       = alpha[hv] + w->q35_ssm_dt_bias[layer][hv];
+        float ab       = alpha[hv] + w->q35.ssm_dt_bias[layer][hv];
         float softplus = (ab > 20.0f) ? ab : log1pf(expf(ab));
-        float gate     = w->q35_ssm_a[layer][hv] * softplus;
+        float gate     = w->q35.ssm_a[layer][hv] * softplus;
         g_exp[hv]      = expf(gate);
     }
 
@@ -262,7 +262,7 @@ static void q35_linear_attn_forward(RunState *s, const TransformerWeights *w, co
             s->q35.conv_state
                 [layer]; /* [conv_k-1][conv_dim], tap-major (this file's own buffer, no GGUF layout constraint) */
         const float *kernel =
-            w->q35_ssm_conv1d[layer]; /* [conv_dim][conv_k], channel-major per GGUF */
+            w->q35.ssm_conv1d[layer]; /* [conv_dim][conv_k], channel-major per GGUF */
         for (int c = 0; c < conv_dim; c++) {
             const float *kc = kernel + (size_t)c * conv_k;
             float acc       = 0.0f;
@@ -354,13 +354,13 @@ static void q35_linear_attn_forward(RunState *s, const TransformerWeights *w, co
     for (int hv = 0; hv < n_v_heads; hv++) {
         float *out_h = core_out + (size_t)hv * state_sz;
         float *z_h   = z + (size_t)hv * state_sz;
-        tn_rmsnorm(out_h, out_h, w->q35_ssm_norm[layer], state_sz, eps);
+        tn_rmsnorm(out_h, out_h, w->q35.ssm_norm[layer], state_sz, eps);
         for (int d = 0; d < state_sz; d++)
             out_h[d] *= z_h[d] / (1.0f + expf(-z_h[d])); /* SiLU(z) */
     }
 
     /* Step 8: output projection + residual (gated norm above included) */
-    parallel_matmul_q2_0(s->xb, core_out, (const uint8_t *)w->q35_ssm_out[layer], value_dim, dim,
+    parallel_matmul_q2_0(s->xb, core_out, (const uint8_t *)w->q35.ssm_out[layer], value_dim, dim,
                          tp);
     tn_vec_add(s->x, s->x, s->xb, dim);
     if (t_step) tn_step_timing_add(TN_STEP_12_POST_ATTN, tn_step_timing_now_ns() - t_step);

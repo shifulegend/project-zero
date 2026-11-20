@@ -251,8 +251,8 @@ int gguf_ld_classifier_keep_raw(TransformerWeights *w, const Config *cfg, const 
     if (!t || (hw && hw->classifier_explicit)) return 0;
     if (cfg->dim % 256 != 0) return 0;
     if (t->type != GGUF_TYPE_Q6_K && t->type != GGUF_TYPE_Q4_K) return 0;
-    w->wcls_raw      = t->data;
-    w->wcls_raw_type = (int)t->type;
+    w->cls.raw      = t->data;
+    w->cls.raw_type = (int)t->type;
     return 1;
 }
 
@@ -286,7 +286,7 @@ TernaryError gguf_ld_bf16_embedding_and_output(TransformerWeights *w, const Conf
 
     const GGUFTensor *toutw = gguf_find_tensor(hdr, "output.weight");
     if (toutw && gguf_ld_classifier_keep_raw(w, cfg, toutw)) {
-        w->wcls = NULL; /* forward.c dispatches on wcls_raw */
+        w->cls.w = NULL; /* forward.c dispatches on wcls_raw */
     } else if (toutw) {
         float *fout = gguf_ld_tensor_to_f32(toutw, n_emb, store);
         if (!fout) return TN_ERR_INVALID_WEIGHTS;
@@ -301,9 +301,9 @@ TernaryError gguf_ld_bf16_embedding_and_output(TransformerWeights *w, const Conf
             free(obuf);
             return TN_ERR_OOM;
         }
-        w->wcls = obuf;
+        w->cls.w = obuf;
     } else {
-        w->wcls = w->token_embedding_table;
+        w->cls.w = w->token_embedding_table;
     }
     return TN_OK;
 }

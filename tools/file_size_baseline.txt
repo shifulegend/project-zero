@@ -5,7 +5,6 @@ src/api/json_parse.c 837
 src/cli/config_cmd.c 531
 src/config/pz_config.c 654
 src/core/gguf_quant_iq.c 1573
-src/core/gguf_reader.c 607
 src/math/matmul_q4k.c 688
 src/math/matmul_q4k_x8.c 654
 src/math/parallel_matmul.c 566

@@ -213,6 +213,11 @@ const void *gguf_meta_array_data(const GGUFHeader *hdr, const char *key,
  */
 const char *gguf_type_name(GGUFType t);
 
+/* Bytes per block and weights per block of a tensor type (0 bytes for a type that is not
+ * block-structured or not listed, 1 weight per block for the plain types). */
+size_t gguf_type_block_bytes(GGUFType t);
+size_t gguf_type_block_elems(GGUFType t);
+
 /**
  * Return bytes-per-element for a GGUF type (approximate for block-quantized types).
  */

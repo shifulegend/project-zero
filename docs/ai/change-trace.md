@@ -21,6 +21,12 @@
 - Proof: 6 unit tests (including the stale-floor case) pass; the checker passes on the fresh tracefile.
 - Areas: `tools/check_coverage.py`, `tools/test_check_coverage.py`, `tools/coverage_floor.txt`.
 
+### 2026-11-20 — One table for the GGUF tensor types
+- What: the three per-type switches in `core/gguf_reader.c` (block bytes, weights per block, name; about 170 lines) are one table, `k_type_info` (type, name, block bytes, block elements); a new quantisation is one row. `gguf_type_block_bytes()` and `gguf_type_block_elems()` are public next to `gguf_type_name()`. The file is 494 lines (was over 500). `tests/test_gguf_type_info.c` pins all 71 type values (0..70) to what the old switches returned (captured from the old code before the change): block bytes, elements and names of every listed type, and the defaults (0 bytes, 1 element, "UNKNOWN") of every unlisted one.
+- Verified: `make test` green on gcc and clang; greedy output identical on SmolLM2, BitNet and DeepSeek-V2-Lite; the shrink-only baselines fell again (401 complexity entries, 27 files over 500 lines).
+- Not done: the dispatch switches in `runtime/gguf_load_util.c`, `math/q8_0_act.c` and `transformer/moe_experts.c` still map types to kernels; they follow one at a time.
+- Why: decision 8.a / 8.c (convert quant switches to registries, keep closed-enum parser switches).
+
 ### 2026-11-20 — Tool to archive old benchmark results
 - What: `tools/archive_benchmark_results.py` (unit-tested selection rule) splits the tracked files under `benchmark_results/`: the README and the latest published sweep (`h2h_20261118-053147Z_published-sweep` without its terminal screenshots) stay (257 files, 2.3 MB, under the 5 MB budget); the other 1,729 files (85 MB, 73 MB as `tar.gz`) are archived. `--list` shows the split, `--archive OUT.tar.gz` writes the archive and prints its SHA-256, `--remove` runs `git rm` on the archived files. Git history is not rewritten.
 - Not done (needs a maintainer): attaching the archive to a GitHub release and then running `--remove`; the upload cannot be done from this session, and removing the files before the upload would lose them from the tree.

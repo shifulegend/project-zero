@@ -171,116 +171,72 @@ static int parse_meta_entry(const uint8_t **p, const uint8_t *end, GGUFMeta *m) 
     return 0;
 }
 
-/* ── Block sizes for quantized types (bytes per block) ──────────────────── */
-static size_t gguf_block_size(GGUFType t) {
-    switch (t) {
-        case GGUF_TYPE_F32:
-            return 4;
-        case GGUF_TYPE_F16:
-            return 2;
-        case GGUF_TYPE_BF16:
-            return 2;
-        case GGUF_TYPE_Q4_0:
-            return 2 + 16; /* scale(f16) + 16 bytes = 32 weights */
-        case GGUF_TYPE_Q4_1:
-            return 4 + 16;
-        case GGUF_TYPE_Q5_0:
-            return 2 + 4 + 16;
-        case GGUF_TYPE_Q5_1:
-            return 4 + 4 + 16;
-        case GGUF_TYPE_Q8_0:
-            return 2 + 32; /* scale(f16) + 32 bytes */
-        case GGUF_TYPE_Q8_1:
-            return 4 + 32; /* d+s as fp16 pair (2+2=4) + 32 bytes int8 —
-                                                   bug fix 2026-09-17: was 4+4+32=40, but
-                                                   ggml's block_q8_1 has no qh field like
-                                                   Q5_1 does; correct size is 36, verified
-                                                   against llama.cpp's block_q8_1 struct */
-        case GGUF_TYPE_Q2_K:
-            return 84; /* scales[16]+qs[64]+d(fp16)+dmin(fp16) */
-        case GGUF_TYPE_Q3_K:
-            return 110;
-        case GGUF_TYPE_Q4_K:
-            return 144;
-        case GGUF_TYPE_Q5_K:
-            return 176;
-        case GGUF_TYPE_Q6_K:
-            return 210;
-        case GGUF_TYPE_Q8_K:
-            return 292;
-        case GGUF_TYPE_IQ4_NL:
-            return 18; /* d(fp16) + qs[16] nibbles = 32 weights */
-        /* Byte counts below verified 2026-09-17 against llama.cpp's real block_iq*
-         * structs in ggml-common.h (Phase 37 enum-completeness pass) — the plan
-         * doc's own byte counts for IQ1_S (said 26) and IQ1_M (said 37) were wrong;
-         * corrected here to the real 50 and 56. */
-        case GGUF_TYPE_IQ2_XXS:
-            return 66; /* d(2) + qs[32]*u16(64) */
-        case GGUF_TYPE_IQ2_XS:
-            return 74; /* d(2) + qs[32]*u16(64) + scales[8] */
-        case GGUF_TYPE_IQ2_S:
-            return 82; /* d(2) + qs[64] + qh[8] + scales[8] */
-        case GGUF_TYPE_IQ3_XXS:
-            return 98; /* d(2) + qs[96] */
-        case GGUF_TYPE_IQ3_S:
-            return 110; /* d(2) + qs[64] + qh[8] + signs[32] + scales[4] */
-        case GGUF_TYPE_IQ1_S:
-            return 50; /* d(2) + qs[32] + qh[8]*u16(16) */
-        case GGUF_TYPE_IQ1_M:
-            return 56; /* qs[32] + qh[16] + scales[8], no top-level d */
-        case GGUF_TYPE_IQ4_XS:
-            return 136; /* d(2) + scales_h(2) + scales_l[4] + qs[128] */
-        /* PrismML's group-128 packing (see gguf_quant.c's gguf_dequant_q2_0
-         * comment) — NOT mainline ggml's canonical group-64 block_q2_0.
-         * size_bytes computed here is informational only (t->data is
-         * located via the offset stored in the file, not via this table). */
-        case GGUF_TYPE_Q2_0:
-            return 2 + 32; /* scale(f16) + 32 bytes (2 bits × 128) = 128 weights */
-        case GGUF_TYPE_I8:
-            return 1;
-        case GGUF_TYPE_I16:
-            return 2;
-        case GGUF_TYPE_I32:
-            return 4;
-        case GGUF_TYPE_I64:
-            return 8;
-        case GGUF_TYPE_F64:
-            return 8;
-        default:
-            return 0;
-    }
+/* ── What every GGUF tensor type is: name, bytes per block and weights per block ───────────────
+ * One row per type (a new quantisation is one row). Block byte counts were verified 2026-09-17
+ * against llama.cpp's block_* structs in ggml-common.h (Phase 37): Q8_1 is 36 (d+s as an fp16 pair
+ * plus 32 int8, no qh), IQ1_S is 50 and IQ1_M is 56. Q2_0 is PrismML's group-128 packing
+ * (34 bytes per 128 weights, informational: t->data is located by the stored offset). I2_S is not
+ * block-structured (size handled in tensor_size_bytes). A type that is not listed has size 0. */
+typedef struct {
+    GGUFType type;
+    const char *name;
+    size_t block_bytes;
+    size_t block_elems;
+} GGUFTypeInfo;
+
+static const GGUFTypeInfo k_type_info[] = {
+    {GGUF_TYPE_F32, "F32", 4, 1},
+    {GGUF_TYPE_F16, "F16", 2, 1},
+    {GGUF_TYPE_Q4_0, "Q4_0", 18, 32},
+    {GGUF_TYPE_Q4_1, "Q4_1", 20, 32},
+    {GGUF_TYPE_Q5_0, "Q5_0", 22, 32},
+    {GGUF_TYPE_Q5_1, "Q5_1", 24, 32},
+    {GGUF_TYPE_Q8_0, "Q8_0", 34, 32},
+    {GGUF_TYPE_Q8_1, "Q8_1", 36, 32},
+    {GGUF_TYPE_Q2_K, "Q2_K", 84, 256},
+    {GGUF_TYPE_Q3_K, "Q3_K", 110, 256},
+    {GGUF_TYPE_Q4_K, "Q4_K", 144, 256},
+    {GGUF_TYPE_Q5_K, "Q5_K", 176, 256},
+    {GGUF_TYPE_Q6_K, "Q6_K", 210, 256},
+    {GGUF_TYPE_Q8_K, "Q8_K", 292, 256},
+    {GGUF_TYPE_IQ2_XXS, "IQ2_XXS", 66, 256},
+    {GGUF_TYPE_IQ2_XS, "IQ2_XS", 74, 256},
+    {GGUF_TYPE_IQ3_XXS, "IQ3_XXS", 98, 256},
+    {GGUF_TYPE_IQ1_S, "IQ1_S", 50, 256},
+    {GGUF_TYPE_IQ4_NL, "IQ4_NL", 18, 32},
+    {GGUF_TYPE_IQ3_S, "IQ3_S", 110, 256},
+    {GGUF_TYPE_IQ2_S, "IQ2_S", 82, 256},
+    {GGUF_TYPE_IQ4_XS, "IQ4_XS", 136, 256},
+    {GGUF_TYPE_I8, "I8", 1, 1},
+    {GGUF_TYPE_I16, "I16", 2, 1},
+    {GGUF_TYPE_I32, "I32", 4, 1},
+    {GGUF_TYPE_I64, "I64", 8, 1},
+    {GGUF_TYPE_F64, "F64", 8, 1},
+    {GGUF_TYPE_IQ1_M, "IQ1_M", 56, 256},
+    {GGUF_TYPE_BF16, "BF16", 2, 1},
+    {GGUF_TYPE_I2_S, "I2_S", 0, 1},
+    {GGUF_TYPE_Q2_0, "Q2_0", 34, 128},
+};
+
+static const GGUFTypeInfo *type_info(GGUFType t) {
+    for (size_t i = 0; i < sizeof(k_type_info) / sizeof(k_type_info[0]); i++)
+        if (k_type_info[i].type == t) return &k_type_info[i];
+    return NULL;
 }
 
-static size_t gguf_block_elems(GGUFType t) {
-    switch (t) {
-        case GGUF_TYPE_Q4_0:
-        case GGUF_TYPE_Q4_1:
-        case GGUF_TYPE_Q5_0:
-        case GGUF_TYPE_Q5_1:
-        case GGUF_TYPE_Q8_0:
-        case GGUF_TYPE_Q8_1:
-        case GGUF_TYPE_IQ4_NL:
-            return 32;
-        case GGUF_TYPE_Q2_0:
-            return 128;
-        case GGUF_TYPE_Q2_K:
-        case GGUF_TYPE_Q3_K:
-        case GGUF_TYPE_Q4_K:
-        case GGUF_TYPE_Q5_K:
-        case GGUF_TYPE_Q6_K:
-        case GGUF_TYPE_Q8_K:
-        case GGUF_TYPE_IQ2_XXS:
-        case GGUF_TYPE_IQ2_XS:
-        case GGUF_TYPE_IQ2_S:
-        case GGUF_TYPE_IQ3_XXS:
-        case GGUF_TYPE_IQ3_S:
-        case GGUF_TYPE_IQ1_S:
-        case GGUF_TYPE_IQ1_M:
-        case GGUF_TYPE_IQ4_XS:
-            return 256;
-        default:
-            return 1;
-    }
+size_t gguf_type_block_bytes(GGUFType t) {
+    const GGUFTypeInfo *info = type_info(t);
+    return info ? info->block_bytes : 0;
+}
+
+size_t gguf_type_block_elems(GGUFType t) {
+    const GGUFTypeInfo *info = type_info(t);
+    return info ? info->block_elems : 1;
+}
+
+const char *gguf_type_name(GGUFType t) {
+    const GGUFTypeInfo *info = type_info(t);
+    return info ? info->name : "UNKNOWN";
 }
 
 static size_t tensor_size_bytes(const GGUFTensor *t) {
@@ -289,8 +245,8 @@ static size_t tensor_size_bytes(const GGUFTensor *t) {
     /* I2_S is not block-structured: n/4 code bytes + F32 scale, padded to 32
      * (ggml_nbytes in bitnet.cpp's ggml.c). */
     if (t->type == GGUF_TYPE_I2_S) return (size_t)(n_elems / 4) + 32;
-    size_t block_sz = gguf_block_size(t->type);
-    size_t block_el = gguf_block_elems(t->type);
+    size_t block_sz = gguf_type_block_bytes(t->type);
+    size_t block_el = gguf_type_block_elems(t->type);
     size_t n_blocks = (size_t)((n_elems + block_el - 1) / block_el);
     return n_blocks * block_sz;
 }
@@ -517,78 +473,9 @@ const void *gguf_meta_array_data(const GGUFHeader *hdr, const char *key,
     return m->val.array.data;
 }
 
-const char *gguf_type_name(GGUFType t) {
-    switch (t) {
-        case GGUF_TYPE_F32:
-            return "F32";
-        case GGUF_TYPE_F16:
-            return "F16";
-        case GGUF_TYPE_BF16:
-            return "BF16";
-        case GGUF_TYPE_I2_S:
-            return "I2_S";
-        case GGUF_TYPE_Q4_0:
-            return "Q4_0";
-        case GGUF_TYPE_Q4_1:
-            return "Q4_1";
-        case GGUF_TYPE_Q5_0:
-            return "Q5_0";
-        case GGUF_TYPE_Q5_1:
-            return "Q5_1";
-        case GGUF_TYPE_Q8_0:
-            return "Q8_0";
-        case GGUF_TYPE_Q8_1:
-            return "Q8_1";
-        case GGUF_TYPE_Q2_K:
-            return "Q2_K";
-        case GGUF_TYPE_Q3_K:
-            return "Q3_K";
-        case GGUF_TYPE_Q4_K:
-            return "Q4_K";
-        case GGUF_TYPE_Q5_K:
-            return "Q5_K";
-        case GGUF_TYPE_Q6_K:
-            return "Q6_K";
-        case GGUF_TYPE_Q8_K:
-            return "Q8_K";
-        case GGUF_TYPE_IQ2_XXS:
-            return "IQ2_XXS";
-        case GGUF_TYPE_IQ2_XS:
-            return "IQ2_XS";
-        case GGUF_TYPE_IQ2_S:
-            return "IQ2_S";
-        case GGUF_TYPE_IQ3_XXS:
-            return "IQ3_XXS";
-        case GGUF_TYPE_IQ3_S:
-            return "IQ3_S";
-        case GGUF_TYPE_IQ1_S:
-            return "IQ1_S";
-        case GGUF_TYPE_IQ1_M:
-            return "IQ1_M";
-        case GGUF_TYPE_IQ4_XS:
-            return "IQ4_XS";
-        case GGUF_TYPE_IQ4_NL:
-            return "IQ4_NL";
-        case GGUF_TYPE_Q2_0:
-            return "Q2_0";
-        case GGUF_TYPE_I8:
-            return "I8";
-        case GGUF_TYPE_I16:
-            return "I16";
-        case GGUF_TYPE_I32:
-            return "I32";
-        case GGUF_TYPE_I64:
-            return "I64";
-        case GGUF_TYPE_F64:
-            return "F64";
-        default:
-            return "UNKNOWN";
-    }
-}
-
 float gguf_type_bpe(GGUFType t) {
-    size_t bs = gguf_block_size(t);
-    size_t be = gguf_block_elems(t);
+    size_t bs = gguf_type_block_bytes(t);
+    size_t be = gguf_type_block_elems(t);
     if (be == 0) return 0.0f;
     return (float)bs / (float)be;
 }

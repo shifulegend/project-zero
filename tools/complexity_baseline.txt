@@ -100,10 +100,7 @@ src/core/gguf_quant_iq.c::gguf_dequant_iq3_s 13 52 4
 src/core/gguf_quant_iq.c::gguf_dequant_iq3_xxs 9 33 4
 src/core/gguf_quant_k.c::gguf_dequant_q2_k 9 35 4
 src/core/gguf_quant_k.c::gguf_dequant_q3_k 9 41 4
-src/core/gguf_reader.c::gguf_block_elems 23 31 1
-src/core/gguf_reader.c::gguf_block_size 31 66 1
 src/core/gguf_reader.c::gguf_read_header 31 80 3
-src/core/gguf_reader.c::gguf_type_name 32 68 1
 src/core/gguf_reader.c::parse_meta_entry 22 69 3
 src/core/gguf_reader.c::skip_meta_value 20 43 3
 src/core/log.c::put_escaped 14 29 7

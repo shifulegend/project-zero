@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-20 — `tokenizer_load_from_gguf` (178 lines) split into one function per step
+- What: `read_vocab`, `read_spm_scores`, `read_bpe_merges` (with `apply_merge`), `read_chat_template`, `read_bos_eos`, `collect_special_tokens` (with `grow_special_arrays`) and the 40-line loader that calls them in the original order.
+- Why: one function parsed the vocab, the SentencePiece scores, the BPE merges, the template, the special-token list and the end-of-generation set, with the special-token growth nested six deep.
+- Proof: a differential harness (previous object with renamed symbols, ASan + UBSan) compares every field of the loaded `Tokenizer` (vocab, scores bitwise, sorted index, template, ids, special tokens, EOG list) on SmolLM2 (49152 tokens, gpt2 BPE) and BitNet (128256 tokens) and on 9 synthetic headers (SentencePiece with / without scores and token types, mismatched score count, BPE with / without merges, add_bos on / off, llama3 and qwen2 pre-tokenizers, EOT id, missing and non-string token arrays): identical in every case, including the return codes; `test_tokenizer` 54/54, `test_pretokenize`, `test_chat_stops`, `test_prompt_injection`, `test_template_guard`, `test_batch_scheduler` pass; CLI one-shot / REPL / best-of runs unchanged.
+- Areas: `src/tokenizer/tokenizer_gguf.c`.
+
 ### 2026-11-20 — `load_gguf_model` (186 lines) split into stages with one release function; truncated GGUF refused
 - What: `load_gguf_model()` is now ~25 lines over `read_model_info`, `load_model_weights`, `report_model_bytes`, `size_context` and `alloc_run_state`; the nine hand-written failure cleanups are `release_to(out, stage)` / `release_state()` (every free is NULL-safe and the model starts zeroed). `weights_from_gguf()` calls `check_tensors_present()` first.
 - Why: the function interleaved six stages with a copy of the cleanup at every exit, each slightly different (the weights-load failure path leaked the weight store).

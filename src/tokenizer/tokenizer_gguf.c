@@ -149,19 +149,10 @@ static int find_vocab_token(const Tokenizer *t, const char *s) {
     return best;
 }
 
-/* ── Main loader ─────────────────────────────────────────────────────────── */
+/* ── Loader steps ────────────────────────────────────────────────────────── */
 
-TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
-    /* 1. Detect tokenizer type */
-    char tok_model_buf[32];
-    if (gguf_meta_str_copy(hdr, "tokenizer.ggml.model", tok_model_buf, sizeof(tok_model_buf)) < 0)
-        snprintf(tok_model_buf, sizeof(tok_model_buf), "llama"); /* "llama" = safe default */
-    const char *tok_model = tok_model_buf;
-
-    int is_bpe = (strcmp(tok_model, "gpt2") == 0);
-    int is_spm = (!is_bpe); /* SPM, WPM, UGM, RWKV — all use scores array */
-
-    /* 2. Load vocab tokens array */
+/* Reads tokenizer.ggml.tokens into t->vocab (+ zeroed scores and the index array). */
+static TernaryError read_vocab(Tokenizer *t, const GGUFHeader *hdr, uint64_t *count_out) {
     GGUFValType elem_type   = GGUF_VAL_STRING;
     const void *tokens_data = gguf_meta_array_data(hdr, "tokenizer.ggml.tokens", &elem_type);
     uint64_t vocab_count    = gguf_meta_array_count(hdr, "tokenizer.ggml.tokens");
@@ -200,179 +191,202 @@ TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
         int slen    = (int)strlen(s);
         if (slen > t->max_token_len) t->max_token_len = slen;
     }
+    *count_out = vocab_count;
+    return TN_OK;
+}
+
+/* SentencePiece-style vocabularies: the scores array (zeros when absent or mismatched). */
+static void read_spm_scores(Tokenizer *t, const GGUFHeader *hdr, uint64_t vocab_count) {
+    GGUFValType stype       = GGUF_VAL_FLOAT32;
+    const void *scores_data = gguf_meta_array_data(hdr, "tokenizer.ggml.scores", &stype);
+    uint64_t scores_count   = gguf_meta_array_count(hdr, "tokenizer.ggml.scores");
+
+    if (scores_data && stype == GGUF_VAL_FLOAT32 && scores_count == vocab_count) {
+        /* Packed float32 in mmap, but NOT necessarily 4-byte aligned —
+         * GGUF packs metadata byte-tight with no padding, so this
+         * array's start offset depends on whatever preceded it in the
+         * file. A raw `((const float *)scores_data)[i]` is an unaligned
+         * load, undefined behavior in C (UBSan: "misaligned address...
+         * requires 4 byte alignment") and a real crash risk on
+         * strict-alignment targets. memcpy into a local is the same
+         * fix gguf_reader.c's own read_u32/read_u64 already use for
+         * header fields — copies out at whatever alignment, compiles to
+         * a single unaligned-load instruction on x86/ARM. */
+        const char *bytes = (const char *)scores_data;
+        for (uint64_t i = 0; i < vocab_count; i++) {
+            float sc;
+            memcpy(&sc, bytes + i * sizeof(float), sizeof(float));
+            t->vocab_scores[i] = sc;
+        }
+    } else if (scores_count > 0) {
+        fprintf(stderr,
+                "[gguf-tok] WARN: scores array type mismatch or wrong count "
+                "(%llu vs %llu vocab), using zeros\n",
+                (unsigned long long)scores_count, (unsigned long long)vocab_count);
+        /* scores remain zero-initialized */
+    }
+    /* If no scores array: all zeros (valid for uniform-weight SPM or RWKV) */
+}
+
+/* One merge "token_a token_b": the merged token gets the score -(float)rank when it has none yet
+ * (lower rank = higher priority). Malformed merges and unknown results are skipped. */
+static void apply_merge(Tokenizer *t, const char *merge_str, uint64_t rank) {
+    /* Merge format: "token_a token_b" separated by a single space */
+    const char *space = strchr(merge_str, ' ');
+    if (!space) return;
+
+    /* Build merged token string by concatenating token_a + token_b */
+    size_t la    = (size_t)(space - merge_str);
+    size_t lb    = strlen(space + 1);
+    size_t lm    = la + lb;
+    char *merged = (char *)malloc(lm + 1);
+    if (!merged) return;
+    memcpy(merged, merge_str, la);
+    memcpy(merged + la, space + 1, lb);
+    merged[lm] = '\0';
+
+    int id = find_vocab_token(t, merged);
+    if (id >= 0) {
+        /* Only update if not already set (keep highest-priority merge) */
+        if (t->vocab_scores[id] == 0.0f) t->vocab_scores[id] = -(float)rank;
+    }
+    free(merged);
+}
+
+/* BPE vocabularies: scores from the merge ranks. */
+static void read_bpe_merges(Tokenizer *t, const GGUFHeader *hdr) {
+    GGUFValType mtype       = GGUF_VAL_STRING;
+    const void *merges_data = gguf_meta_array_data(hdr, "tokenizer.ggml.merges", &mtype);
+    uint64_t merges_count   = gguf_meta_array_count(hdr, "tokenizer.ggml.merges");
+
+    if (merges_data && mtype == GGUF_VAL_STRING && merges_count > 0) {
+        /* scores start at 0.0f; merged tokens get -(float)rank so lower-rank
+         * merges (higher priority) sort before higher-rank merges in BPE. */
+        StrArrayCursor mc2;
+        str_cursor_init(&mc2, merges_data, merges_count);
+
+        for (uint64_t rank = 0; rank < merges_count; rank++) {
+            char *merge_str = str_cursor_next(&mc2);
+            if (!merge_str) break;
+            apply_merge(t, merge_str, rank);
+            free(merge_str);
+        }
+    } else {
+        fprintf(stderr, "[gguf-tok] WARN: BPE tokenizer but no tokenizer.ggml.merges "
+                        "array — BPE merge scores will be zero\n");
+    }
+}
+
+/* chat_template — copy the exact bytes from the GGUF metadata string (gguf_meta_find + exact
+ * length, as llama.cpp does: no reliance on NUL termination). */
+static void read_chat_template(Tokenizer *t, const GGUFHeader *hdr) {
+    const GGUFMeta *m = gguf_meta_find(hdr, "tokenizer.chat_template");
+    if (m && m->val_type == GGUF_VAL_STRING && m->val.string.len > 0) {
+        /* string.str is already NUL-terminated (gguf_reader allocates it so),
+         * but we use string.len to be explicit about the true length. */
+        t->chat_template = (char *)malloc(m->val.string.len + 1);
+        if (t->chat_template) {
+            memcpy(t->chat_template, m->val.string.str, m->val.string.len);
+            t->chat_template[m->val.string.len] = '\0';
+        }
+    }
+}
+
+/* BOS / EOS token IDs and add_bos_token (-1 when absent, resolved later from the vocab type). */
+static void read_bos_eos(Tokenizer *t, const GGUFHeader *hdr) {
+    t->bos_token_id = (int)gguf_meta_u32(hdr, "tokenizer.ggml.bos_token_id", (uint32_t)-1);
+    t->eos_token_id = (int)gguf_meta_u32(hdr, "tokenizer.ggml.eos_token_id", (uint32_t)-1);
+
+    const GGUFMeta *abm = gguf_meta_find(hdr, "tokenizer.ggml.add_bos_token");
+    if (abm && abm->val_type == GGUF_VAL_BOOL)
+        t->add_bos_token = abm->val.boolean ? 1 : 0;
+    else
+        t->add_bos_token = -1; /* resolved below from the vocab type, as llama.cpp */
+}
+
+/* Doubles the capacity of the three special-token arrays; returns the new capacity, or 0 when any
+ * allocation fails (the arrays keep what was collected). 2026-10-22: assigning realloc's result in
+ * place leaked the old arrays and left NULLs that tokenizer_free then walked. */
+static int grow_special_arrays(Tokenizer *t, int cap) {
+    int ncap  = cap * 2;
+    char **ns = (char **)realloc(t->special_tokens, (size_t)ncap * sizeof(char *));
+    if (ns) t->special_tokens = ns;
+    int *ni = ns ? (int *)realloc(t->special_token_ids, (size_t)ncap * sizeof(int)) : NULL;
+    if (ni) t->special_token_ids = ni;
+    unsigned char *nc = ni ? (unsigned char *)realloc(t->special_is_control, (size_t)ncap) : NULL;
+    if (nc) t->special_is_control = nc;
+    return nc ? ncap : 0;
+}
+
+/* token_type array → dynamic special tokens list. Tokens with type != 1 (NORMAL) are matched
+ * verbatim before BPE. Types: 0=UNDEFINED, 1=NORMAL, 2=UNKNOWN, 3=CONTROL, 4=USER_DEFINED,
+ * 5=UNUSED, 6=BYTE. */
+static void collect_special_tokens(Tokenizer *t, const GGUFHeader *hdr) {
+    GGUFValType tt_elem = GGUF_VAL_UINT32;
+    const void *tt_data = gguf_meta_array_data(hdr, "tokenizer.ggml.token_type", &tt_elem);
+    uint64_t tt_count   = gguf_meta_array_count(hdr, "tokenizer.ggml.token_type");
+    if (!tt_data || !(tt_elem == GGUF_VAL_INT32 || tt_elem == GGUF_VAL_UINT32)) return;
+
+    /* Same unaligned-load hazard as the scores array above — GGUF's byte-tight packing gives no
+     * alignment guarantee for this array's start offset, so index via memcpy, not a raw
+     * (const int32_t *) cast + subscript. */
+    const char *tt_bytes  = (const char *)tt_data;
+    int cap               = 128;
+    t->special_tokens     = (char **)malloc((size_t)cap * sizeof(char *));
+    t->special_token_ids  = (int *)malloc((size_t)cap * sizeof(int));
+    t->special_is_control = (unsigned char *)malloc((size_t)cap);
+    if (!t->special_tokens || !t->special_token_ids || !t->special_is_control) return;
+
+    for (int i = 0; i < t->vocab_size && (uint64_t)i < tt_count; i++) {
+        int32_t ttype;
+        memcpy(&ttype, tt_bytes + (size_t)i * sizeof(int32_t), sizeof(int32_t));
+        /* Include: CONTROL(3), USER_DEFINED(4) — the "added tokens".
+         * Exclude: NORMAL(1), BYTE(6, handled by BPE), UNUSED(5). */
+        if (!((ttype == 3 || ttype == 4) && t->vocab[i] && t->vocab[i][0])) continue;
+        if (t->n_special >= cap) {
+            int ncap = grow_special_arrays(t, cap);
+            if (!ncap) break;
+            cap = ncap;
+        }
+        char *dup = strdup(t->vocab[i]);
+        if (!dup) break; /* match_special_token strlen()s every entry */
+        t->special_tokens[t->n_special]     = dup;
+        t->special_token_ids[t->n_special]  = i;
+        t->special_is_control[t->n_special] = (unsigned char)(ttype == 3);
+        t->n_special++;
+    }
+}
+
+/* ── Main loader ─────────────────────────────────────────────────────────── */
+
+TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
+    /* 1. Detect tokenizer type */
+    char tok_model_buf[32];
+    if (gguf_meta_str_copy(hdr, "tokenizer.ggml.model", tok_model_buf, sizeof(tok_model_buf)) < 0)
+        snprintf(tok_model_buf, sizeof(tok_model_buf), "llama"); /* "llama" = safe default */
+    const char *tok_model = tok_model_buf;
+
+    int is_bpe = (strcmp(tok_model, "gpt2") == 0);
+    int is_spm = (!is_bpe); /* SPM, WPM, UGM, RWKV — all use scores array */
+
+    /* 2. Vocab tokens */
+    uint64_t vocab_count = 0;
+    TernaryError ve      = read_vocab(t, hdr, &vocab_count);
+    if (ve != TN_OK) return ve;
 
     /* 3a. SPM path: read scores array */
-    if (is_spm) {
-        GGUFValType stype       = GGUF_VAL_FLOAT32;
-        const void *scores_data = gguf_meta_array_data(hdr, "tokenizer.ggml.scores", &stype);
-        uint64_t scores_count   = gguf_meta_array_count(hdr, "tokenizer.ggml.scores");
-
-        if (scores_data && stype == GGUF_VAL_FLOAT32 && scores_count == vocab_count) {
-            /* Packed float32 in mmap, but NOT necessarily 4-byte aligned —
-             * GGUF packs metadata byte-tight with no padding, so this
-             * array's start offset depends on whatever preceded it in the
-             * file. A raw `((const float *)scores_data)[i]` is an unaligned
-             * load, undefined behavior in C (UBSan: "misaligned address...
-             * requires 4 byte alignment") and a real crash risk on
-             * strict-alignment targets. memcpy into a local is the same
-             * fix gguf_reader.c's own read_u32/read_u64 already use for
-             * header fields — copies out at whatever alignment, compiles to
-             * a single unaligned-load instruction on x86/ARM. */
-            const char *bytes = (const char *)scores_data;
-            for (uint64_t i = 0; i < vocab_count; i++) {
-                float sc;
-                memcpy(&sc, bytes + i * sizeof(float), sizeof(float));
-                t->vocab_scores[i] = sc;
-            }
-        } else if (scores_count > 0) {
-            fprintf(stderr,
-                    "[gguf-tok] WARN: scores array type mismatch or wrong count "
-                    "(%llu vs %llu vocab), using zeros\n",
-                    (unsigned long long)scores_count, (unsigned long long)vocab_count);
-            /* scores remain zero-initialized */
-        }
-        /* If no scores array: all zeros (valid for uniform-weight SPM or RWKV) */
-    }
+    if (is_spm) read_spm_scores(t, hdr, vocab_count);
 
     /* Sorted index for binary-search encode and merge resolution below */
     build_sorted(t);
 
-    /* 3b. BPE path: read merges array, compute scores from merge ranks */
-    if (is_bpe) {
-        GGUFValType mtype       = GGUF_VAL_STRING;
-        const void *merges_data = gguf_meta_array_data(hdr, "tokenizer.ggml.merges", &mtype);
-        uint64_t merges_count   = gguf_meta_array_count(hdr, "tokenizer.ggml.merges");
+    /* 3b. BPE path: compute scores from merge ranks */
+    if (is_bpe) read_bpe_merges(t, hdr);
 
-        if (merges_data && mtype == GGUF_VAL_STRING && merges_count > 0) {
-            /* scores start at 0.0f; merged tokens get -(float)rank so lower-rank
-             * merges (higher priority) sort before higher-rank merges in BPE. */
-            StrArrayCursor mc2;
-            str_cursor_init(&mc2, merges_data, merges_count);
-
-            for (uint64_t rank = 0; rank < merges_count; rank++) {
-                char *merge_str = str_cursor_next(&mc2);
-                if (!merge_str) break;
-
-                /* Merge format: "token_a token_b" separated by a single space */
-                char *space = strchr(merge_str, ' ');
-                if (!space) {
-                    free(merge_str);
-                    continue;
-                }
-
-                /* Build merged token string by concatenating token_a + token_b */
-                size_t la    = (size_t)(space - merge_str);
-                size_t lb    = strlen(space + 1);
-                size_t lm    = la + lb;
-                char *merged = (char *)malloc(lm + 1);
-                if (merged) {
-                    memcpy(merged, merge_str, la);
-                    memcpy(merged + la, space + 1, lb);
-                    merged[lm] = '\0';
-
-                    int id = find_vocab_token(t, merged);
-                    if (id >= 0) {
-                        /* Only update if not already set (keep highest-priority merge) */
-                        if (t->vocab_scores[id] == 0.0f) t->vocab_scores[id] = -(float)rank;
-                    }
-                    free(merged);
-                }
-                free(merge_str);
-            }
-        } else {
-            fprintf(stderr, "[gguf-tok] WARN: BPE tokenizer but no tokenizer.ggml.merges "
-                            "array — BPE merge scores will be zero\n");
-        }
-    }
-
-    /* 5. Read chat template and special token metadata
-     * Use gguf_meta_find + exact length copy to get the full string from the
-     * model exactly as llama.cpp does — no reliance on NUL termination. */
-
-    /* chat_template — copy exact bytes from the GGUF metadata string */
-    {
-        const GGUFMeta *m = gguf_meta_find(hdr, "tokenizer.chat_template");
-        if (m && m->val_type == GGUF_VAL_STRING && m->val.string.len > 0) {
-            /* string.str is already NUL-terminated (gguf_reader allocates it so),
-             * but we use string.len to be explicit about the true length. */
-            t->chat_template = (char *)malloc(m->val.string.len + 1);
-            if (t->chat_template) {
-                memcpy(t->chat_template, m->val.string.str, m->val.string.len);
-                t->chat_template[m->val.string.len] = '\0';
-            }
-        }
-    }
-
-    /* BOS / EOS token IDs — prefer tokenizer.ggml.*_token_id; fall back to
-     * searching the vocab for the BOS/EOS token strings */
-    t->bos_token_id = (int)gguf_meta_u32(hdr, "tokenizer.ggml.bos_token_id", (uint32_t)-1);
-    t->eos_token_id = (int)gguf_meta_u32(hdr, "tokenizer.ggml.eos_token_id", (uint32_t)-1);
-
-    /* add_bos_token boolean */
-    {
-        const GGUFMeta *abm = gguf_meta_find(hdr, "tokenizer.ggml.add_bos_token");
-        if (abm && abm->val_type == GGUF_VAL_BOOL)
-            t->add_bos_token = abm->val.boolean ? 1 : 0;
-        else
-            t->add_bos_token = -1; /* resolved below from the vocab type, as llama.cpp */
-    }
-
-    /* token_type array → dynamic special tokens list.
-     * Tokens with type != 1 (NORMAL) are matched verbatim before BPE.
-     * Types: 0=UNDEFINED, 1=NORMAL, 2=UNKNOWN, 3=CONTROL, 4=USER_DEFINED, 5=UNUSED, 6=BYTE */
-    {
-        GGUFValType tt_elem = GGUF_VAL_UINT32;
-        const void *tt_data = gguf_meta_array_data(hdr, "tokenizer.ggml.token_type", &tt_elem);
-        uint64_t tt_count   = gguf_meta_array_count(hdr, "tokenizer.ggml.token_type");
-
-        if (tt_data && (tt_elem == GGUF_VAL_INT32 || tt_elem == GGUF_VAL_UINT32)) {
-            /* Same unaligned-load hazard as the scores array above — GGUF's
-             * byte-tight packing gives no alignment guarantee for this
-             * array's start offset, so index via memcpy, not a raw
-             * (const int32_t *) cast + subscript. */
-            const char *tt_bytes  = (const char *)tt_data;
-            int cap               = 128;
-            t->special_tokens     = (char **)malloc((size_t)cap * sizeof(char *));
-            t->special_token_ids  = (int *)malloc((size_t)cap * sizeof(int));
-            t->special_is_control = (unsigned char *)malloc((size_t)cap);
-            if (t->special_tokens && t->special_token_ids && t->special_is_control) {
-                for (int i = 0; i < t->vocab_size && (uint64_t)i < tt_count; i++) {
-                    int32_t ttype;
-                    memcpy(&ttype, tt_bytes + (size_t)i * sizeof(int32_t), sizeof(int32_t));
-                    /* Include: CONTROL(3), USER_DEFINED(4) — the "added tokens".
-                     * Exclude: NORMAL(1), BYTE(6, handled by BPE), UNUSED(5). */
-                    if ((ttype == 3 || ttype == 4) && t->vocab[i] && t->vocab[i][0]) {
-                        if (t->n_special >= cap) {
-                            /* Grow each array separately; on failure keep what
-                             * was collected (2026-10-22: assigning realloc's
-                             * result in place leaked the old arrays and left
-                             * NULLs that tokenizer_free then walked). */
-                            int ncap = cap * 2;
-                            char **ns =
-                                (char **)realloc(t->special_tokens, (size_t)ncap * sizeof(char *));
-                            if (ns) t->special_tokens = ns;
-                            int *ni = ns ? (int *)realloc(t->special_token_ids,
-                                                          (size_t)ncap * sizeof(int))
-                                         : NULL;
-                            if (ni) t->special_token_ids = ni;
-                            unsigned char *nc =
-                                ni ? (unsigned char *)realloc(t->special_is_control, (size_t)ncap)
-                                   : NULL;
-                            if (nc) t->special_is_control = nc;
-                            if (!nc) break;
-                            cap = ncap;
-                        }
-                        char *dup = strdup(t->vocab[i]);
-                        if (!dup) break; /* match_special_token strlen()s every entry */
-                        t->special_tokens[t->n_special]     = dup;
-                        t->special_token_ids[t->n_special]  = i;
-                        t->special_is_control[t->n_special] = (unsigned char)(ttype == 3);
-                        t->n_special++;
-                    }
-                }
-            }
-        }
-    }
+    /* 5. Chat template and special token metadata */
+    read_chat_template(t, hdr);
+    read_bos_eos(t, hdr);
+    collect_special_tokens(t, hdr);
 
     /* 6. BPE pre-tokenizer from tokenizer.ggml.pre — absent means llama.cpp's
      * "default" pipeline (what the reference runtimes use for such files). */

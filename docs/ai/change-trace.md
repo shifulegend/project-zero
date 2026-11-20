@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-20 — physical-core count and the re-probe switch go through TnSysProbe
+- What: the `/proc/cpuinfo` physical-core count (`tn_sys_physical_cores`, rewritten from one nesting-7 function into three small ones) and the `PZ_BW_REPROBE` switch (`tn_sys_env_flag`) moved from `src/runtime/hardware_profile.c` into `src/core/sys_probe.c`, taking the injectable probe table.
+- Why: finding 11.a (inject TnSysProbe for hardware_profile.c). A test can now hand in a fake `/proc/cpuinfo` and environment; the old function also left the complexity baseline.
+- Proof: new tests (hardware threads of one core count once, no ids -> 0, unreadable -> 0, env flag cases); on this machine the new function and an independent awk count both give 4; `make test` gcc and clang; complexity baseline 399 -> 398, no baseline raised.
+- Areas: `include/core/sys_probe.h`, `src/core/sys_probe.c`, `src/runtime/hardware_profile.c`, `tests/test_sys_probe.c`.
+
 ### 2026-11-20 — config save lock and parallel-scheduler fields move into ApiContext
 - What: `ApiContext` gets a `config_save_lock` (was a file-scope mutex in `config_endpoint.c`) and groups its four parallel-scheduler fields into `ApiParallel parallel` (25 -> 23 direct fields). The child-environment PATH entry in `cmd_exec.c` is a const array.
 - Why: finding 14.f and the 25-field cap (10.b); two server contexts no longer share a save lock. Mutable statics 56 -> 54.

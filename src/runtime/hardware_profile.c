@@ -9,6 +9,7 @@
 
 #include "core/bw_cache.h"
 #include "core/cpu_features.h"
+#include "core/sys_probe.h"
 #include "kv_cache/kv_strategy.h"
 #include "threading/cache_probe.h"
 #include "threading/cpu_probe.h"
@@ -244,41 +245,7 @@ static double probe_dram_bandwidth(void) {
 
 #if defined(__linux__)
 static int probe_physical_cores(void) {
-    FILE *f = fopen("/proc/cpuinfo", "r");
-    if (!f) return 0;
-
-    int phys[512], core[512], count = 0;
-    int cur_phys = -1, cur_core = -1;
-    char line[256];
-
-    while (fgets(line, sizeof(line), f)) {
-        if (strncmp(line, "physical id", 11) == 0) {
-            char *p = strchr(line, ':');
-            if (p) cur_phys = (int)strtol(p + 1, NULL, 10);
-        } else if (strncmp(line, "core id", 7) == 0) {
-            char *p = strchr(line, ':');
-            if (p) cur_core = (int)strtol(p + 1, NULL, 10);
-        } else if (line[0] == '\n') {
-            if (cur_phys >= 0 && cur_core >= 0 && count < 512) {
-                int found = 0;
-                for (int i = 0; i < count; i++) {
-                    if (phys[i] == cur_phys && core[i] == cur_core) {
-                        found = 1;
-                        break;
-                    }
-                }
-                if (!found) {
-                    phys[count] = cur_phys;
-                    core[count] = cur_core;
-                    count++;
-                }
-            }
-            cur_phys = -1;
-            cur_core = -1;
-        }
-    }
-    fclose(f);
-    return count;
+    return tn_sys_physical_cores(NULL);
 }
 
 static int count_logical_cores(void) {
@@ -394,11 +361,10 @@ static double cached_dram_bandwidth(int physical_cores, int logical_cores, size_
     tn_bw_cache_cpu_model(model, sizeof(model));
     int have_key = tn_bw_cache_key(key, sizeof(key), model, physical_cores, logical_cores, l3_bytes,
                                    total_ram_bytes()) == 0;
-    int have_path  = have_key && tn_bw_cache_path(path, sizeof(path)) == 0;
-    const char *re = getenv("PZ_BW_REPROBE");
-    int reprobe    = re && *re && strcmp(re, "0") != 0;
-    long long now  = (long long)time(NULL);
-    double gbps    = 0.0;
+    int have_path = have_key && tn_bw_cache_path(path, sizeof(path)) == 0;
+    int reprobe   = tn_sys_env_flag(NULL, "PZ_BW_REPROBE");
+    long long now = (long long)time(NULL);
+    double gbps   = 0.0;
     if (have_path && !reprobe && tn_bw_cache_load(path, key, now, TN_BW_CACHE_MAX_AGE_S, &gbps)) {
         *from_cache = true;
         return gbps;

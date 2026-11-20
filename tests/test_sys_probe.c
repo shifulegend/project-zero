@@ -42,6 +42,30 @@ static void test_cpu_model(void) {
     TEST_ASSERT(strlen(buf) < 8, "a short buffer is respected");
 }
 
+static void test_physical_cores(void) {
+    /* Four logical CPUs, two sockets x one core each x two hardware threads: 2 physical. */
+    g_cpuinfo = "processor\t: 0\nphysical id\t: 0\ncore id\t: 0\n\n"
+                "processor\t: 1\nphysical id\t: 0\ncore id\t: 0\n\n"
+                "processor\t: 2\nphysical id\t: 1\ncore id\t: 0\n\n"
+                "processor\t: 3\nphysical id\t: 1\ncore id\t: 0\n\n";
+    TEST_ASSERT_EQ(tn_sys_physical_cores(&k_fake), 2, "hardware threads of one core count once");
+    g_cpuinfo = "processor\t: 0\nmodel name\t: x\n\n";
+    TEST_ASSERT_EQ(tn_sys_physical_cores(&k_fake), 0, "no topology ids gives 0");
+    g_cpuinfo = NULL;
+    TEST_ASSERT_EQ(tn_sys_physical_cores(&k_fake), 0, "unreadable file gives 0");
+}
+
+static void test_env_flag(void) {
+    g_env[0] = "1";
+    TEST_ASSERT_EQ(tn_sys_env_flag(&k_fake, "PZ_CACHE_DIR"), 1, "set and non-empty is on");
+    g_env[0] = "0";
+    TEST_ASSERT_EQ(tn_sys_env_flag(&k_fake, "PZ_CACHE_DIR"), 0, "\"0\" is off");
+    g_env[0] = "";
+    TEST_ASSERT_EQ(tn_sys_env_flag(&k_fake, "PZ_CACHE_DIR"), 0, "empty is off");
+    g_env[0] = NULL;
+    TEST_ASSERT_EQ(tn_sys_env_flag(&k_fake, "PZ_CACHE_DIR"), 0, "unset is off");
+}
+
 static void test_cache_dir_precedence(void) {
     char buf[128];
     g_env[0] = "/pz";
@@ -74,6 +98,8 @@ static void test_default_probe_is_real(void) {
 
 int main(void) {
     RUN_TEST(test_cpu_model);
+    RUN_TEST(test_physical_cores);
+    RUN_TEST(test_env_flag);
     RUN_TEST(test_cache_dir_precedence);
     RUN_TEST(test_default_probe_is_real);
     TEST_SUMMARY();

@@ -21,6 +21,12 @@ const TnSysProbe *tn_sys_probe_default(void);
 /* "model name" of the first CPU in /proc/cpuinfo (empty string when unavailable). */
 void tn_sys_cpu_model(const TnSysProbe *probe, char *buf, size_t n);
 
+/* Physical cores: distinct (physical id, core id) pairs in /proc/cpuinfo; 0 when unreadable. */
+int tn_sys_physical_cores(const TnSysProbe *probe);
+
+/* 1 when the environment variable is set, non-empty and not "0" (the PZ_* switch convention). */
+int tn_sys_env_flag(const TnSysProbe *probe, const char *name);
+
 /* Directory for per-host caches: $PZ_CACHE_DIR, else $XDG_CACHE_HOME/project-zero, else
  * $HOME/.cache/project-zero. Returns 0 and writes `buf`, or -1 when none is set or it does not
  * fit. */

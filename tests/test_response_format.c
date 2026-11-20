@@ -30,7 +30,8 @@ int main(void) {
         ChatRequest req;
         chat_request_init(&req);
         TernaryError err = chat_request_parse(json, &req);
-        int ok = err == cases[i].want && (err != TN_OK || req.json_mode == cases[i].json_mode);
+        int ok =
+            err == cases[i].want && (err != TN_OK || req.output.json_mode == cases[i].json_mode);
         printf("%s: response_format %s\n", ok ? "ok" : "FAIL", cases[i].rf);
         g_fail += !ok;
         chat_request_free(&req);

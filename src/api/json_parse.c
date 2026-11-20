@@ -457,10 +457,10 @@ static TernaryError parse_messages(const char **p, ChatRequest *req) {
 void chat_request_init(ChatRequest *req) {
     if (!req) return;
     memset(req, 0, sizeof(*req));
-    req->temperature = 1.0f;
-    req->top_p       = 1.0f;
-    req->max_tokens  = 512;
-    req->stream      = 0;
+    req->sampling.temperature = 1.0f;
+    req->sampling.top_p       = 1.0f;
+    req->output.max_tokens    = 512;
+    req->output.stream        = 0;
     strncpy(req->model, "local", sizeof(req->model) - 1);
 }
 
@@ -473,13 +473,13 @@ void chat_request_free(ChatRequest *req) {
         req->messages[i].image_data_url = NULL;
     }
     req->num_messages = 0;
-    for (int i = 0; i < req->n_stop; i++) {
-        free(req->stop[i]);
-        req->stop[i] = NULL;
+    for (int i = 0; i < req->output.n_stop; i++) {
+        free(req->output.stop[i]);
+        req->output.stop[i] = NULL;
     }
-    req->n_stop = 0;
-    free(req->watermark_key);
-    req->watermark_key = NULL;
+    req->output.n_stop = 0;
+    free(req->watermark.key);
+    req->watermark.key = NULL;
     free(req->chat_template);
     req->chat_template = NULL;
 }
@@ -494,8 +494,8 @@ static TernaryError parse_stop(const char **p, ChatRequest *req) {
     if (**p == '"') {
         char *s = parse_string_heap(p);
         if (!s) return TN_ERR_JSON_PARSE;
-        if (req->n_stop < CHAT_MAX_STOP && s[0])
-            req->stop[req->n_stop++] = s;
+        if (req->output.n_stop < CHAT_MAX_STOP && s[0])
+            req->output.stop[req->output.n_stop++] = s;
         else
             free(s);
         req->set_mask |= CHAT_SET_STOP;
@@ -506,8 +506,8 @@ static TernaryError parse_stop(const char **p, ChatRequest *req) {
     while (**p && **p != ']') {
         char *s = parse_string_heap(p);
         if (!s) return TN_ERR_JSON_PARSE;
-        if (req->n_stop < CHAT_MAX_STOP && s[0])
-            req->stop[req->n_stop++] = s;
+        if (req->output.n_stop < CHAT_MAX_STOP && s[0])
+            req->output.stop[req->output.n_stop++] = s;
         else
             free(s);
         skip_ws(p);
@@ -526,7 +526,7 @@ static TernaryError parse_watermark(const char **p, ChatRequest *req) {
     skip_ws(p);
     int b = parse_bool(p);
     if (b >= 0) {
-        req->watermark_enabled = (b == 1);
+        req->watermark.enabled = (b == 1);
         req->set_mask |= CHAT_SET_WATERMARK;
         return TN_OK;
     }
@@ -541,18 +541,18 @@ static TernaryError parse_watermark(const char **p, ChatRequest *req) {
         if (strcmp(key, "enabled") == 0) {
             int e = parse_bool(p);
             if (e < 0) return TN_ERR_JSON_PARSE;
-            req->watermark_enabled = (e == 1);
+            req->watermark.enabled = (e == 1);
             req->set_mask |= CHAT_SET_WATERMARK;
         } else if (strcmp(key, "key") == 0) {
             char *k = parse_string_heap(p);
             if (!k) return TN_ERR_JSON_PARSE;
-            free(req->watermark_key);
-            req->watermark_key = k;
+            free(req->watermark.key);
+            req->watermark.key = k;
         } else if (strcmp(key, "gamma") == 0) {
-            req->watermark_gamma = (float)parse_number(p);
+            req->watermark.gamma = (float)parse_number(p);
             req->set_mask |= CHAT_SET_WM_GAMMA;
         } else if (strcmp(key, "delta") == 0) {
-            req->watermark_delta = (float)parse_number(p);
+            req->watermark.delta = (float)parse_number(p);
             req->set_mask |= CHAT_SET_WM_DELTA;
         } else {
             skip_value(p);
@@ -616,34 +616,34 @@ TernaryError chat_request_parse(const char *json_body, ChatRequest *req) {
         } else if (strncmp(p, "null", 4) == 0) {
             p += 4; /* explicit null = "use the default" for any field */
         } else if (strcmp(key, "temperature") == 0) {
-            req->temperature = (float)parse_number(&p);
+            req->sampling.temperature = (float)parse_number(&p);
             req->set_mask |= CHAT_SET_TEMPERATURE;
         } else if (strcmp(key, "top_p") == 0) {
-            req->top_p = (float)parse_number(&p);
+            req->sampling.top_p = (float)parse_number(&p);
             req->set_mask |= CHAT_SET_TOP_P;
         } else if (strcmp(key, "max_tokens") == 0 || strcmp(key, "max_completion_tokens") == 0) {
-            req->max_tokens = (int)parse_number(&p);
+            req->output.max_tokens = (int)parse_number(&p);
             req->set_mask |= CHAT_SET_MAX_TOKENS;
         } else if (strcmp(key, "top_k") == 0) {
-            req->top_k = (int)parse_number(&p);
+            req->sampling.top_k = (int)parse_number(&p);
             req->set_mask |= CHAT_SET_TOP_K;
         } else if (strcmp(key, "min_p") == 0) {
-            req->min_p = (float)parse_number(&p);
+            req->sampling.min_p = (float)parse_number(&p);
             req->set_mask |= CHAT_SET_MIN_P;
         } else if (strcmp(key, "repetition_penalty") == 0 || strcmp(key, "repeat_penalty") == 0) {
-            req->repetition_penalty = (float)parse_number(&p);
+            req->sampling.repetition_penalty = (float)parse_number(&p);
             req->set_mask |= CHAT_SET_REP_PENALTY;
         } else if (strcmp(key, "presence_penalty") == 0) {
-            req->presence_penalty = (float)parse_number(&p);
+            req->sampling.presence_penalty = (float)parse_number(&p);
             req->set_mask |= CHAT_SET_PRES_PENALTY;
         } else if (strcmp(key, "frequency_penalty") == 0) {
-            req->frequency_penalty = (float)parse_number(&p);
+            req->sampling.frequency_penalty = (float)parse_number(&p);
             req->set_mask |= CHAT_SET_FREQ_PENALTY;
         } else if (strcmp(key, "penalty_last_n") == 0 || strcmp(key, "repeat_last_n") == 0) {
-            req->penalty_last_n = (int)parse_number(&p);
+            req->sampling.penalty_last_n = (int)parse_number(&p);
             req->set_mask |= CHAT_SET_PENALTY_N;
         } else if (strcmp(key, "seed") == 0) {
-            req->seed = (long long)parse_number(&p);
+            req->sampling.seed = (long long)parse_number(&p);
             req->set_mask |= CHAT_SET_SEED;
         } else if (strcmp(key, "stop") == 0) {
             TernaryError err = parse_stop(&p, req);
@@ -652,7 +652,7 @@ TernaryError chat_request_parse(const char *json_body, ChatRequest *req) {
             TernaryError err = parse_watermark(&p, req);
             if (err != TN_OK) return err;
         } else if (strcmp(key, "best_of") == 0) {
-            req->best_of = (int)parse_number(&p);
+            req->search.best_of = (int)parse_number(&p);
             req->set_mask |= CHAT_SET_BEST_OF;
         } else if (strcmp(key, "mcts") == 0) {
             skip_ws(&p);
@@ -666,17 +666,17 @@ TernaryError chat_request_parse(const char *json_body, ChatRequest *req) {
                     if (!expect_char(&p, ':')) return TN_ERR_JSON_PARSE;
                     skip_ws(&p);
                     if (strcmp(mk, "simulations") == 0)
-                        req->mcts.simulations = (int)parse_number(&p);
+                        req->search.mcts.simulations = (int)parse_number(&p);
                     else if (strcmp(mk, "expand") == 0)
-                        req->mcts.expand = (int)parse_number(&p);
+                        req->search.mcts.expand = (int)parse_number(&p);
                     else if (strcmp(mk, "max_depth") == 0)
-                        req->mcts.max_depth = (int)parse_number(&p);
+                        req->search.mcts.max_depth = (int)parse_number(&p);
                     else if (strcmp(mk, "step_tokens") == 0)
-                        req->mcts.step_tokens = (int)parse_number(&p);
+                        req->search.mcts.step_tokens = (int)parse_number(&p);
                     else if (strcmp(mk, "c") == 0)
-                        req->mcts.c_ucb = (float)parse_number(&p);
+                        req->search.mcts.c_ucb = (float)parse_number(&p);
                     else if (strcmp(mk, "temperature") == 0)
-                        req->mcts.temperature = (float)parse_number(&p);
+                        req->search.mcts.temperature = (float)parse_number(&p);
                     else
                         skip_value(&p);
                     skip_ws(&p);
@@ -685,7 +685,7 @@ TernaryError chat_request_parse(const char *json_body, ChatRequest *req) {
                 if (*p != '}') return TN_ERR_JSON_PARSE;
                 p++;
             } else {
-                req->mcts.simulations = (int)parse_number(&p);
+                req->search.mcts.simulations = (int)parse_number(&p);
             }
             req->set_mask |= CHAT_SET_MCTS;
         } else if (strcmp(key, "chat_template") == 0) {
@@ -710,7 +710,7 @@ TernaryError chat_request_parse(const char *json_body, ChatRequest *req) {
         } else if (strcmp(key, "ignore_eos") == 0) {
             int b = parse_bool(&p);
             if (b < 0) return TN_ERR_JSON_PARSE;
-            req->ignore_eos = (b == 1);
+            req->output.ignore_eos = (b == 1);
             req->set_mask |= CHAT_SET_IGNORE_EOS;
         } else if (strcmp(key, "cache_prompt") == 0) {
             int b = parse_bool(&p);
@@ -720,7 +720,7 @@ TernaryError chat_request_parse(const char *json_body, ChatRequest *req) {
         } else if (strcmp(key, "stream") == 0) {
             int b = parse_bool(&p);
             if (b < 0) return TN_ERR_JSON_PARSE;
-            req->stream = (b == 1);
+            req->output.stream = (b == 1);
         } else if (strcmp(key, "response_format") == 0) {
             /* "json_object" is the one mode the grammar engine honors; "text" is a no-op. */
             skip_ws(&p);
@@ -738,7 +738,7 @@ TernaryError chat_request_parse(const char *json_body, ChatRequest *req) {
                         if (!parse_string(&p, type_val, sizeof(type_val))) return TN_ERR_JSON_PARSE;
                         if (strcmp(type_val, "json_object") != 0 && strcmp(type_val, "text") != 0)
                             return TN_ERR_INVALID_ARGS;
-                        req->json_mode = (strcmp(type_val, "json_object") == 0);
+                        req->output.json_mode = (strcmp(type_val, "json_object") == 0);
                         req->set_mask |= CHAT_SET_JSON_MODE;
                     } else {
                         skip_value(&p);

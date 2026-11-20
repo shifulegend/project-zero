@@ -73,15 +73,15 @@ static void test_json_parse_basic(void) {
         FAIL("json_parse_basic", "content mismatch");
         goto done;
     }
-    if (req.temperature != 0.7f) {
+    if (req.sampling.temperature != 0.7f) {
         FAIL("json_parse_basic", "temperature mismatch");
         goto done;
     }
-    if (req.max_tokens != 64) {
+    if (req.output.max_tokens != 64) {
         FAIL("json_parse_basic", "max_tokens mismatch");
         goto done;
     }
-    if (!req.stream) {
+    if (!req.output.stream) {
         FAIL("json_parse_basic", "stream flag mismatch");
         goto done;
     }

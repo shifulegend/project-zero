@@ -1,5 +1,4 @@
 # Structs over 25 fields (tools/check_struct_fields.py): key, fields; entries may only shrink or go.
-include/api/chat_request.h::ChatRequest 27
 include/core/moe_config.h::MoEConfig 26
 include/core/weights.h::TransformerWeights 88
 include/runtime/run_state.h::RunState 39

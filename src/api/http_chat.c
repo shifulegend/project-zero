@@ -66,7 +66,7 @@ static int chat_acquire_units(int fd, ApiContext *ctx, ChatRequest *reqp, int un
      * turn in arrival order (Phase 23 stage 1); otherwise (the default) a
      * busy server answers 429 immediately. Unrelated routes
      * (metrics/docs/static/cancel) never touch the queue. */
-    *qwp              = (QueueWaitCtx){fd, reqp->stream ? 1 : 0, 0, extra_headers};
+    *qwp              = (QueueWaitCtx){fd, reqp->output.stream ? 1 : 0, 0, extra_headers};
     QueueWaitCtx *qw  = qwp;
     GenQueueResult qr = gen_queue_acquire_n(&ctx->gen_queue, units,
                                             ctx->server_config.limits.queue_timeout_s * 1000,
@@ -218,7 +218,7 @@ static void chat_send_result(int fd, ApiContext *ctx, const ChatRequest *req, co
                              int best_of, const MctsOptions *mopt, const BestOfResult *bres,
                              const MctsResult *mres, const char *extra_headers) {
     const char *finish_reason = gen_finish_reason_str(gstats->finish_reason);
-    if (gstats->finish_reason == GEN_FINISH_ERROR && !req->stream) {
+    if (gstats->finish_reason == GEN_FINISH_ERROR && !req->output.stream) {
         /* Nothing was generated because the prompt could not be prepared
          * (template render or tokenization failed) — report it instead of an
          * empty 200 completion. */
@@ -237,7 +237,7 @@ static void chat_send_result(int fd, ApiContext *ctx, const ChatRequest *req, co
      * marks a job done only after it left its slot), the response is built
      * from request-local buffers (st->accum_buf, gstats, bres, mres), and
      * `finish_reason` is a static string. */
-    if (req->stream) {
+    if (req->output.stream) {
         http_release_generation_slot(ctx, units, !batched);
         sse_write_done_ex(fd, id, finish_reason, gstats->prompt_tokens, gstats->completion_tokens,
                           gstats->cached_tokens);
@@ -296,7 +296,7 @@ void http_handle_chat_completions(int fd, const char *body_start, size_t body_le
     /* Phase 30: best-of-N (server default --best-of, capped by --best-of-max)
      * and step-level tree search (server --mcts*, request "mcts"). */
     int best_of =
-        (req.set_mask & CHAT_SET_BEST_OF) ? req.best_of : ctx->server_config.search.best_of;
+        (req.set_mask & CHAT_SET_BEST_OF) ? req.search.best_of : ctx->server_config.search.best_of;
     if (best_of < 1) best_of = 1;
     if (best_of > ctx->server_config.search.best_of_max)
         best_of = ctx->server_config.search.best_of_max;
@@ -351,12 +351,12 @@ void http_handle_chat_completions(int fd, const char *body_start, size_t body_le
     StreamState st;
     memset(&st, 0, sizeof(st));
     st.conn_fd      = fd;
-    st.is_streaming = req.stream;
+    st.is_streaming = req.output.stream;
     st.cancel       = &ctx->cancel;
     snprintf(st.id, sizeof(st.id), "%s", id);
     snprintf(st.public_id, sizeof(st.public_id), "chatcmpl-%s", id);
 
-    if (req.stream && !qw.headers_sent) {
+    if (req.output.stream && !qw.headers_sent) {
         /* Send SSE headers before starting generation */
         http_send_response_ex(fd, HTTP_OK, "text/event-stream", NULL, 1, extra_headers);
     }

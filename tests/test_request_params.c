@@ -22,14 +22,14 @@ static void test_parse_extended_fields(void) {
     TEST_ASSERT_EQ(chat_request_parse(body, &r), TN_OK, "parses");
     TEST_ASSERT_EQ(r.num_messages, 3, "3 messages incl. null content");
     TEST_ASSERT(r.messages[2].content && r.messages[2].content[0] == '\0', "null content -> empty");
-    TEST_ASSERT_EQ(r.top_k, 40, "top_k");
-    TEST_ASSERT_FLOAT_EQ(r.min_p, 0.05f, 1e-6, "min_p");
-    TEST_ASSERT_EQ(r.penalty_last_n, 32, "repeat_last_n alias");
-    TEST_ASSERT_EQ(r.seed, 1234, "seed");
-    TEST_ASSERT_EQ(r.n_stop, 2, "two stops");
-    TEST_ASSERT(strcmp(r.stop[0], "\nUser:") == 0, "stop escape decoded");
+    TEST_ASSERT_EQ(r.sampling.top_k, 40, "top_k");
+    TEST_ASSERT_FLOAT_EQ(r.sampling.min_p, 0.05f, 1e-6, "min_p");
+    TEST_ASSERT_EQ(r.sampling.penalty_last_n, 32, "repeat_last_n alias");
+    TEST_ASSERT_EQ(r.sampling.seed, 1234, "seed");
+    TEST_ASSERT_EQ(r.output.n_stop, 2, "two stops");
+    TEST_ASSERT(strcmp(r.output.stop[0], "\nUser:") == 0, "stop escape decoded");
     TEST_ASSERT(!(r.set_mask & CHAT_SET_TEMPERATURE), "null temperature = unset");
-    TEST_ASSERT(r.watermark_enabled && r.watermark_key && strcmp(r.watermark_key, "k") == 0,
+    TEST_ASSERT(r.watermark.enabled && r.watermark.key && strcmp(r.watermark.key, "k") == 0,
                 "watermark");
     TEST_ASSERT(r.set_mask & CHAT_SET_WM_GAMMA, "gamma set");
     chat_request_free(&r);
@@ -42,7 +42,7 @@ static void test_stop_string_form(void) {
         chat_request_parse(
             "{\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"stop\":\"END\"}", &r),
         TN_OK, "parses");
-    TEST_ASSERT(r.n_stop == 1 && strcmp(r.stop[0], "END") == 0, "string stop");
+    TEST_ASSERT(r.output.n_stop == 1 && strcmp(r.output.stop[0], "END") == 0, "string stop");
     chat_request_free(&r);
 }
 
@@ -118,7 +118,8 @@ static void test_chat_template_field(void) {
     TEST_ASSERT((r.set_mask & CHAT_SET_CHAT_TEMPLATE) && r.chat_template &&
                     strcmp(r.chat_template, "{{ messages[0].content }}") == 0,
                 "template recorded");
-    TEST_ASSERT((r.set_mask & CHAT_SET_TOP_K) && r.top_k == 3, "fields after it still parse");
+    TEST_ASSERT((r.set_mask & CHAT_SET_TOP_K) && r.sampling.top_k == 3,
+                "fields after it still parse");
     GenerationParams def, out;
     gen_params_default(&def);
     request_params_resolve(&r, &def, 4096, &out);
@@ -132,7 +133,7 @@ static void test_chat_template_field(void) {
         snprintf(body, sizeof(body), "%s,\"chat_template\":%s,\"top_k\":4}", M, empties[i]);
         TEST_ASSERT_EQ(chat_request_parse(body, &r), TN_OK, "empty/null parses");
         TEST_ASSERT(!(r.set_mask & CHAT_SET_CHAT_TEMPLATE) && r.chat_template == NULL &&
-                        r.top_k == 4,
+                        r.sampling.top_k == 4,
                     "empty/null = server template");
         request_params_resolve(&r, &def, 4096, &out);
         TEST_ASSERT(out.chat_template == NULL, "no override resolved");
@@ -171,7 +172,8 @@ static void test_mcts_field(void) {
             "{\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"mcts\":10,\"top_k\":2}", &r),
         TN_OK, "number form parses");
     request_mcts_resolve(&r, &def, 32, &out);
-    TEST_ASSERT(out.simulations == 10 && out.expand == 2 && r.top_k == 2, "number = simulations");
+    TEST_ASSERT(out.simulations == 10 && out.expand == 2 && r.sampling.top_k == 2,
+                "number = simulations");
     chat_request_free(&r);
 
     chat_request_init(&r);
@@ -188,7 +190,7 @@ static void test_mcts_field(void) {
                 "fields applied and clamped");
     TEST_ASSERT_FLOAT_EQ(out.c_ucb, 0.5f, 1e-7f, "c applied");
     TEST_ASSERT_FLOAT_EQ(out.temperature, 2.0f, 1e-7f, "temperature clamped to 2");
-    TEST_ASSERT_EQ(r.top_k, 5, "fields after the object still parse");
+    TEST_ASSERT_EQ(r.sampling.top_k, 5, "fields after the object still parse");
     chat_request_free(&r);
 
     chat_request_init(&r);
@@ -207,7 +209,8 @@ static void test_ignore_eos_field(void) {
         chat_request_parse(
             "{\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"ignore_eos\":true}", &r),
         TN_OK, "parses");
-    TEST_ASSERT((r.set_mask & CHAT_SET_IGNORE_EOS) && r.ignore_eos, "ignore_eos=true recorded");
+    TEST_ASSERT((r.set_mask & CHAT_SET_IGNORE_EOS) && r.output.ignore_eos,
+                "ignore_eos=true recorded");
     GenerationParams def, out;
     gen_params_default(&def);
     request_params_resolve(&r, &def, 4096, &out);
@@ -243,7 +246,7 @@ static void test_best_of_parse_and_score(void) {
     ChatRequest r;
     chat_request_init(&r);
     chat_request_parse("{\"messages\":[{\"role\":\"user\",\"content\":\"x\"}],\"best_of\":3}", &r);
-    TEST_ASSERT((r.set_mask & CHAT_SET_BEST_OF) && r.best_of == 3, "best_of parsed");
+    TEST_ASSERT((r.set_mask & CHAT_SET_BEST_OF) && r.search.best_of == 3, "best_of parsed");
     chat_request_free(&r);
     GenerationStats a = {0}, b = {0};
     a.completion_tokens = 10;

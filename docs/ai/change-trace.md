@@ -21,6 +21,12 @@
 - Proof: 6 unit tests (including the stale-floor case) pass; the checker passes on the fresh tracefile.
 - Areas: `tools/check_coverage.py`, `tools/test_check_coverage.py`, `tools/coverage_floor.txt`.
 
+### 2026-11-20 — `ChatRequest` grouped into four sub-structs
+- What: `ChatRequest` (27 direct fields) is `model`, `messages`, `num_messages`, `set_mask`, `cache_prompt`, `chat_template` plus `sampling` (`ChatSampling`, 9), `output` (`ChatOutput`, 6: max_tokens, stream, json_mode, ignore_eos, stop, n_stop), `watermark` (`ChatWatermark`, 4: enabled, key, gamma, delta) and `search` (`ChatSearch`: best_of, mcts). 70 uses in `src/api` and the tests were rewritten from compiler errors. It leaves `tools/struct_fields_baseline.txt` (4 structs remain: `TransformerWeights`, `GenSession`, `RunState`, `MoEConfig`).
+- Verified: `make test` green on gcc and clang; the live server returns byte-identical replies (ids and timestamps removed) to the previous build for 13 request shapes: greedy, temperature/top_p/top_k/min_p/seed, the three penalties with `penalty_last_n`, `stop` as list and string, watermark, `best_of`, `mcts`, `json_object`, `ignore_eos` + `cache_prompt:false`, a request `chat_template`, `stream:true` and an invalid `temperature`.
+- Also fixed on the way: an unused helper left behind in `grammar_json.c` (clang `-Wunused-function`), and a UBSan report in the INT4 classifier kernel (`buf + 0` on a NULL buffer when the row has no full block; now `block_sums_after`).
+- Why: decision Q3 / 10.c (20-25 direct fields per struct).
+
 ### 2026-11-20 — `ServerConfig` grouped into seven sub-structs
 - What: `ServerConfig` (34 direct fields) is `cors`, `auth`, `metrics`, `ui`, `vision`, `cache`, `limits`, `chat`, `numerics`, `search`, `gen_defaults`, `model_id` (`ServerUi`, `ServerVision`, `ServerCache`, `ServerLimits`, `ServerChat`, `ServerNumerics`, `ServerSearch`; none over 8 fields). 149 uses in `src/api`, `src/cli` and the tests were rewritten from compiler errors. It is removed from `tools/struct_fields_baseline.txt` (5 structs remain). Five functions grew by 1-3 lines because the longer member paths wrap; their complexity-baseline entries were re-recorded once.
 - Verified: `make test` green on gcc and clang; `GET /v1/config` byte-identical to the previous build for default flags, `--parallel/--queue-size/--rate-limit` and `--mcts-max/--best-of-max/--max-connections/--queue-timeout/--api-key/--parallel-batch/--metrics` (only the free-RAM-derived `kv_budget_tokens` varies between any two runs).

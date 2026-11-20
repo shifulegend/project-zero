@@ -33,7 +33,11 @@
 | T=4, SIMD=auto, CLS=auto | — tok/s | — tok/s | +0% |
 
 ## Review aids
-- [ ] **One concern.** This PR does one logical thing, at most 400 changed lines (lockfiles, generated code, snapshots, vendored files, translations and test fixtures are excluded). Larger work is split into stacked PRs. `size-override` is the exception, not a shortcut: see "Size override justification" below and CONTRIBUTING.md.
+- [ ] **One concern.** This PR does one logical thing, at most 400 changed lines
+  (lockfiles, generated code, snapshots, vendored files, translations and test
+  fixtures are excluded). Larger work is split into stacked PRs. `size-override`
+  is the exception, not a shortcut: see "Size override justification" below and
+  CONTRIBUTING.md.
 - [ ] **Tests first.** For a behaviour change or bug fix, a test that fails without the change is included (Red -> Green -> Refactor).
 - [ ] **Web UI change:** a screenshot or short recording of the new/changed screen is attached (or "no UI change").
 - [ ] **Security / concurrency** (touches `src/api/`, `src/agent/`, `src/update/`, `install.sh`, threads or locks): I checked untrusted input, error paths, locking and shutdown, and `make test-tsan` passes (or "not applicable").
@@ -44,8 +48,10 @@
 
 ### Size override justification (only when the PR carries the `size-override` label)
 <!-- Say why this cannot be split into smaller, stacked PRs. Allowed kinds: automated dependency or framework
-     bumps, mechanical search-and-replace refactors across many files, data migrations or static asset
-     additions, an overall clean-up that must land in one piece. CI fails a labelled PR without this text. -->
+     bumps, mechanical search-and-replace refactors across many files, data
+     migrations or static asset
+     additions, an overall clean-up that must land in one piece. CI fails a
+     labelled PR without this text. -->
 
 ## Documentation Updated
 - [ ] Updated relevant `.md` file (README / BENCHMARK_REPORT / DEBUGGING_JOURNAL / IMPLEMENTATION_PLAN)

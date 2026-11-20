@@ -26,8 +26,10 @@
 
 ## Formatting
 - C/C++ is formatted with clang-format 18 using `.clang-format` (4 spaces, attached braces, 100
-  columns; includes in four groups separated by blank lines: the file's own header, C system headers,
-  C++ standard headers, project headers, each sorted). `make format` rewrites, `make check-format` is the CI gate (job "format"). Vendored and
+  columns; includes in four groups separated by blank lines: the file's own
+  header, C system headers,
+  C++ standard headers, project headers, each sorted). `make format` rewrites,
+  `make check-format` is the CI gate (job "format"). Vendored and
   generated files are listed in `.clang-format-ignore`. A macro whose argument is stringified
   (`#x`) must be wrapped in `// clang-format off` / `on`, as `PZ_UPDATE_REPO` is.
 
@@ -43,46 +45,81 @@
   means adding it to that list in the same commit.
 
 ## Measurable limits (new and changed code)
-- **File length:** at most 500 lines. CI (`tools/check_file_sizes.py`) fails on a new file over the
-  cap and on growth of a listed one; the existing offenders are in `tools/file_size_baseline.txt`,
+- **File length:** at most 500 lines. CI (`tools/check_file_sizes.py`) fails on
+  a new file over the
+  cap and on growth of a listed one; the existing offenders are in
+  `tools/file_size_baseline.txt`,
   which may only shrink.
-- **Function length:** a new function does one job and stays under 20 lines of body; a longer one
-  gets a comment that says why splitting it would hurt (a hot kernel, one flat state machine).
-  Reviewers hold new code to this; the long functions already in the tree are tracked work, not
-  precedent. CI (`tools/check_complexity.py`, lizard) fails on a new function in `src/`, `tools/` or `tests/`
-  (C, C++ and Python) over 100 lines or complexity 10 and on growth of a listed one (`tools/complexity_baseline.txt`, which may
-  only shrink); the 20-line target stays a review-time rule. Nesting depth 3 is a review-time rule
+- **Function length:** a new function does one job and stays under 20 lines of
+  body; a longer one
+  gets a comment that says why splitting it would hurt (a hot kernel, one flat
+  state machine).
+  Reviewers hold new code to this; the long functions already in the tree are
+  tracked work, not
+  precedent. CI (`tools/check_complexity.py`, lizard) fails on a new function in
+  `src/`, `tools/` or `tests/`
+  (C, C++ and Python) over 100 lines or complexity 10 and on growth of a listed
+  one (`tools/complexity_baseline.txt`, which may
+  only shrink); the 20-line target stays a review-time rule. Nesting depth 3 is
+  a review-time rule
   until the tool reports it.
-- **Complexity:** cyclomatic complexity 10 or less and nesting depth 3 or less per new function;
-  prefer early returns over nested `if`s, and a table or a helper over a long `else if` chain.
+- **Complexity:** cyclomatic complexity 10 or less and nesting depth 3 or less
+  per new function;
+  prefer early returns over nested `if`s, and a table or a helper over a long
+  `else if` chain.
 - **Web UI is TypeScript:** `webui/src` is `.ts` and `<script lang="ts">` under `strict` (`webui/tsconfig.json`); `npm run check` (svelte-check), `npm run lint` (typescript-eslint) and `npm test` (compiles the library files, then `node --test`) must pass. The server's JSON shapes live in `src/lib/types.ts`; a field the server may omit is optional, not given a default in the UI.
-- **Struct width:** at most 25 direct fields per struct; group a wider one into cohesive sub-structs
-  (`CliArgs` is ten of them: `args->server.port`, `args->sampling.temperature`). CI
-  (`tools/check_struct_fields.py`) fails on a new struct over 25 fields and on growth of a listed one
-  (`tools/struct_fields_baseline.txt`, which may only shrink; vendored stb headers are skipped).
-- **Python typing:** every tracked `.py` file passes `mypy --strict` (`mypy.ini`; CI:
-  `tools/check_py_types.py`, which also fails a listed file that became clean). Annotate every
-  parameter and return type, name aliases for repeated shapes (`Row`, `Tensors`), and use a
-  `TypedDict` or dataclass instead of positional lists or dicts of mixed values. `Any` is for
-  genuinely dynamic data (GGUF metadata, JSON), with a comment. `benchmark_results/` is not checked.
-- **Logging:** every diagnostic goes through `core/log.h` (`TN_LOG_ERR/WRN/INF/DBG(component, ...)`;
-  `TN_OUT_INF` for a status line the person running the program should see on stdout). No raw
-  `fprintf(stderr, ...)` in `src/` (CI: `tools/check_raw_logging.py`, allow-list for the terminal-UI
-  lines); a credential is never an argument (`tools/check_log_secrets.py` covers the logger); an
-  untrusted string goes through `tn_log_sanitize()` first. Program output (generated text, `--help`,
+- **Struct width:** at most 25 direct fields per struct; group a wider one into
+  cohesive sub-structs
+  (`CliArgs` is ten of them: `args->server.port`, `args->sampling.temperature`).
+  CI
+  (`tools/check_struct_fields.py`) fails on a new struct over 25 fields and on
+  growth of a listed one
+  (`tools/struct_fields_baseline.txt`, which may only shrink; vendored stb
+  headers are skipped).
+- **Python typing:** every tracked `.py` file passes `mypy --strict`
+  (`mypy.ini`; CI:
+  `tools/check_py_types.py`, which also fails a listed file that became clean).
+  Annotate every
+  parameter and return type, name aliases for repeated shapes (`Row`,
+  `Tensors`), and use a
+  `TypedDict` or dataclass instead of positional lists or dicts of mixed values.
+  `Any` is for
+  genuinely dynamic data (GGUF metadata, JSON), with a comment.
+  `benchmark_results/` is not checked.
+- **Logging:** every diagnostic goes through `core/log.h`
+  (`TN_LOG_ERR/WRN/INF/DBG(component, ...)`;
+  `TN_OUT_INF` for a status line the person running the program should see on
+  stdout). No raw
+  `fprintf(stderr, ...)` in `src/` (CI: `tools/check_raw_logging.py`, allow-list
+  for the terminal-UI
+  lines); a credential is never an argument (`tools/check_log_secrets.py` covers
+  the logger); an
+  untrusted string goes through `tn_log_sanitize()` first. Program output
+  (generated text, `--help`,
   the banner and tables, results) stays `printf`.
-- **Braces:** attached (K&R) braces everywhere, enforced by `.clang-format` (see Formatting); no
+- **Braces:** attached (K&R) braces everywhere, enforced by `.clang-format` (see
+  Formatting); no
   bare `{ ... }` scope blocks to make a function look shorter.
-- **Untrusted input (OWASP input validation):** everything that crosses the network, a file or the
-  command line is validated before it is used. Check every parse result (`strtol`/`strtoull`
-  with `errno` and end-pointer, never `atoi`), bound every length and nesting depth before
-  allocating, refuse what cannot be honoured with a clear error instead of ignoring it (a `400`,
-  not a silent default), and fail closed when a check cannot run. Examples already in the tree:
-  `api/http_headers.c`, the JSON depth cap, `response_format` types, `cmd_exec` path checks.
-- **Logs:** never print a client-supplied string without escaping control characters (a CR/LF in
-  a header value forges a log line), and never pass a credential to a print call: CI
-  (`tools/check_log_secrets.py`) fails on `api_key`, `authorization`, `password` and the like inside
-  `printf`/`fprintf`/`puts`/`perror`. Nothing client-controlled is logged today; the first log line
+- **Untrusted input (OWASP input validation):** everything that crosses the
+  network, a file or the
+  command line is validated before it is used. Check every parse result
+  (`strtol`/`strtoull`
+  with `errno` and end-pointer, never `atoi`), bound every length and nesting
+  depth before
+  allocating, refuse what cannot be honoured with a clear error instead of
+  ignoring it (a `400`,
+  not a silent default), and fail closed when a check cannot run. Examples
+  already in the tree:
+  `api/http_headers.c`, the JSON depth cap, `response_format` types, `cmd_exec`
+  path checks.
+- **Logs:** never print a client-supplied string without escaping control
+  characters (a CR/LF in
+  a header value forges a log line), and never pass a credential to a print
+  call: CI
+  (`tools/check_log_secrets.py`) fails on `api_key`, `authorization`, `password`
+  and the like inside
+  `printf`/`fprintf`/`puts`/`perror`. Nothing client-controlled is logged today;
+  the first log line
   that includes one adds the escaping helper with it.
 
 ## Memory & safety (hard rules, learned from real bugs)

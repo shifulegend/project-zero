@@ -12,8 +12,11 @@ description: Verify a project-zero change before claiming completion — build r
 4. Review the diff for modularity, no-hardcoding, memset-before-partial-init, and no new warnings;
    user-facing changes have a `CHANGELOG.md` `[Unreleased]` line (`python3 tools/changelog.py check`).
    README reviewed for anything the change made stale (DoD #7: flags vs `./pz --help`, links, numbers, phase status).
-5. Security-sensitive diff (`src/api`, `src/agent`, `src/update`, `src/config`, `install.sh`, `webui/`)? Run the
-   `appsec-reviewer` agent (`.claude/agents/appsec-reviewer.md`) on it and address its findings.
-6. Report: what was verified, what remains UNVERIFIED, and the exact commit message.
+5. Security-sensitive diff (`src/api`, `src/agent`, `src/update`, `src/config`,
+   `install.sh`, `webui/`)? Run the
+   `appsec-reviewer` agent (`.claude/agents/appsec-reviewer.md`) on it and
+   address its findings.
+6. Report: what was verified, what remains UNVERIFIED, and the exact commit
+   message.
 Bar: `make test` runs every `tests/*.c` and aborts on first failure — full green required.
 Details: `docs/ai/engineering-rules.md`, `docs/REGRESSION_VERIFICATION_2026-06-07.md`.

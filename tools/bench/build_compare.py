@@ -29,6 +29,7 @@ Examples
 """
 
 import argparse
+import os
 import pathlib
 import shutil
 import subprocess
@@ -40,9 +41,9 @@ import hardware_profile as hp
 import gate
 
 
-def parse_binaries(spec):
+def parse_binaries(spec: str) -> dict[str, str]:
     """Parses "label=path,label=path" into {label: path}."""
-    out = {}
+    out: dict[str, str] = {}
     for item in [s for s in spec.split(",") if s.strip()]:
         if "=" not in item:
             raise SystemExit(f"--binaries wants label=path pairs, got '{item}'")
@@ -51,14 +52,14 @@ def parse_binaries(spec):
     return out
 
 
-def build_binaries(run, kinds, cc):
+def build_binaries(run: bl.RunDir, kinds: list[str], cc: str) -> dict[str, str]:
     """Builds pz (native and/or portable) with the compiler `cc`, one binary per kind, and returns {kind: path}."""
-    bins = {}
+    bins: dict[str, str] = {}
     for kind in kinds:
         target = {"native": "release", "portable": "dist"}[kind]
         run.log(f"building {kind} (make {target} CC={cc}) ...")
         r = subprocess.run(
-            ["make", target, f"CC={cc}", f"-j{bl.os.cpu_count() or 2}"],
+            ["make", target, f"CC={cc}", f"-j{os.cpu_count() or 2}"],
             cwd=bl.ROOT,
             capture_output=True,
             text=True,
@@ -74,7 +75,7 @@ def build_binaries(run, kinds, cc):
     return bins
 
 
-def step_table(runs_text, reference):
+def step_table(runs_text: dict[str, str], reference: str) -> str:
     """Markdown table of per-step timings of every run against the reference run."""
     steps = {lbl: bl.parse_step_timing(t) for lbl, t in runs_text.items()}
     names = [n for n in steps[reference]]
@@ -83,7 +84,7 @@ def step_table(runs_text, reference):
         + [f"{lbl} (ms)" for lbl in steps]
         + [f"{lbl} / {reference}" for lbl in steps if lbl != reference]
     )
-    rows = []
+    rows: list[list[str]] = []
     for n in names:
         row = [n] + [f"{steps[l].get(n, 0):.0f}" for l in steps]
         for l in steps:
@@ -94,7 +95,7 @@ def step_table(runs_text, reference):
     return bl.md_table(header, rows)
 
 
-def main():
+def main() -> int:
     """Command-line entry point: builds the binaries, runs them with identical settings and writes the comparison."""
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -129,9 +130,7 @@ def main():
         else bl.parse_list(a.models, list(allm), "model")
     )
     models = [
-        (k, allm[k], bl.model_path(k, a.models_dir))
-        for k in wanted
-        if bl.model_path(k, a.models_dir)
+        (k, allm[k], model_file) for k in wanted if (model_file := bl.model_path(k, a.models_dir))
     ]
     run = bl.RunDir("build_compare", a.out, a.label)
     labels = list(bins) + [k for k in kinds if k not in bins]
@@ -225,16 +224,16 @@ def main():
         if a.check_isa == "none"
         else bl.parse_list(a.check_isa, list(bins), "binary")
     )
-    isa_results = {}
+    isa_results: dict[str, int] = {}
     for l in isa_labels:
-        r = subprocess.run(
+        isa_run = subprocess.run(
             ["sh", str(bl.ROOT / "tools" / "check_dist_isa.sh"), bins[l]],
             capture_output=True,
             text=True,
         )
-        run.write(f"check_dist_isa_{l}.txt", r.stdout + r.stderr)
-        isa_results[l] = r.returncode
-        run.log(f"check_dist_isa {l}: {'ok' if r.returncode == 0 else 'FAILED'}")
+        run.write(f"check_dist_isa_{l}.txt", isa_run.stdout + isa_run.stderr)
+        isa_results[l] = isa_run.returncode
+        run.log(f"check_dist_isa {l}: {'ok' if isa_run.returncode == 0 else 'FAILED'}")
     if isa_results:
         md += [
             "",

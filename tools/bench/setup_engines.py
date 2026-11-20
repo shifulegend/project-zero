@@ -288,9 +288,9 @@ def smoke_engines(a: argparse.Namespace, engines: list[str]) -> int:
         binary = bl.engine_binary(k, a.engine_dir)
         models = sorted(
             (
-                (m, i, p)
+                (m, i, model_file)
                 for m, i in bl.load_models().items()
-                if k in i["engines"] and (p := bl.model_path(m, a.models_dir))
+                if k in i["engines"] and (model_file := bl.model_path(m, a.models_dir))
             ),
             key=lambda x: x[2].stat().st_size,
         )

@@ -5,11 +5,46 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from typing import Any
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import benchlib as bl
 import calibration_test as ct
 import hardware_profile as hp
+from bench_sweep_seq import gen_toks
+
+
+MEASURED = {"tps": 1.0, "tokens": 1, "wall": 0.0, "rss_mb": 1, "cpu_pct": 1, "rc": 0, "log": "x"}
+
+
+def fake_variant(label: str) -> bl.Variant:
+    """A variant whose generation command is always ["x"] and that has no perplexity command."""
+
+    def cmd(
+        key: str,
+        info: dict[str, Any],
+        path: pathlib.Path,
+        tokens: int,
+        threads: int,
+        fixed: bool,
+        prompt: str = "",
+    ) -> list[str] | None:
+        return ["x"]
+
+    def ppl(
+        key: str,
+        info: dict[str, Any],
+        path: pathlib.Path,
+        text: str | pathlib.Path,
+        ctx: int,
+        chunks: int,
+        threads: int,
+        extra: Any = (),
+    ) -> list[str] | None:
+        return None
+
+    return {"label": label, "engine": "pz", "cmd": cmd, "ppl": ppl, "env": None}
+
 
 SWEEP = """
   auto = AVX-512 VNNI;  candidates: scalar avx2 avx512f vnni256
@@ -51,9 +86,9 @@ class Parsers(unittest.TestCase):
         self.assertEqual([t[0] for t in s["threads"]], ["1", "4"])
 
     def test_engine_output(self) -> None:
-        self.assertEqual(bl.gen_toks("[gen] 25.20 tok/s (128 tokens)")[0], 25.2)
+        self.assertEqual(gen_toks("[gen] 25.20 tok/s (128 tokens)")[0], 25.2)
         llama = "llama_perf_context_print:        eval time =    1000.00 ms /   127 runs   (    7.87 ms per token,   127.00 tokens per second)"
-        self.assertEqual(bl.gen_toks(llama)[0], 127.0)
+        self.assertEqual(gen_toks(llama)[0], 127.0)
 
     def test_step_timing(self) -> None:
         t = 'step=11 name="Attention score / softmax" total_ms=29.46 count=1320 avg_ms=0.02\nstep=6 name="KV-A compression" total_ms=0.0 count=0 avg_ms=0'
@@ -112,22 +147,24 @@ class Matrix(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             run = bl.RunDir("t", d)
             run.create()
-            seen = []
+            seen: list[tuple[str, int]] = []
             orig = bl.measure
-            bl.measure = lambda run_, suite, t, rnd, cmd, env=None, prompt=None: (
+
+            def fake_measure(
+                run: bl.RunDir,
+                suite: str,
+                threads: int,
+                rnd: int,
+                cmd: list[str],
+                env: dict[str, str] | None = None,
+                prompt: str = "",
+            ) -> dict[str, Any]:
                 seen.append((suite, rnd))
-                or {
-                    "tps": 1.0,
-                    "tokens": 1,
-                    "wall": 0.0,
-                    "rss_mb": 1,
-                    "cpu_pct": 1,
-                    "rc": 0,
-                    "log": "x",
-                }
-            )
+                return dict(MEASURED)
+
+            bl.measure = fake_measure
             try:
-                vs = [{"label": l, "cmd": (lambda *a: ["x"]), "env": None} for l in ("a", "b", "c")]
+                vs = [fake_variant(l) for l in ("a", "b", "c")]
                 models = [("m", {"tokens": 4}, pathlib.Path("m.gguf"))]
                 bl.run_matrix(run, vs, models, [4], 3, 0, 0.0)
                 first_per_round = [s for (s, r), i in zip(seen, range(len(seen))) if i % 3 == 0]
@@ -144,8 +181,8 @@ class Chart(unittest.TestCase):
     def test_chart_groups_panels_and_puts_pz_first(self) -> None:
         import chart
 
-        with tempfile.TemporaryDirectory() as d:
-            d = pathlib.Path(d)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            d = pathlib.Path(tmpdir)
             rows = [
                 ("bitnet-2b", "bitnetcpp", 1, 5.0),
                 ("bitnet-2b", "pz", 1, 4.0),
@@ -194,7 +231,9 @@ class Gate(unittest.TestCase):
     def test_verdict_boundaries_are_two_sided(self) -> None:
         import gate
 
-        v = lambda x: gate.verdict(x, 100.0, 1.0, 2.0)[0]
+        def v(x: float) -> str:
+            return gate.verdict(x, 100.0, 1.0, 2.0)[0]
+
         self.assertEqual(
             [v(100.9), v(99.1), v(101.5), v(98.5), v(103.0), v(96.0)],
             ["PASS", "PASS", "WARN", "WARN", "INVALID", "INVALID"],
@@ -317,22 +356,24 @@ class Gate(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:  # run_matrix honours skip_of
             run = bl.RunDir("t", d)
             run.create()
-            seen = []
+            seen_suites: list[str] = []
             orig = bl.measure
-            bl.measure = lambda run_, suite, t, rnd, cmd, env=None, prompt=None: (
-                seen.append(suite)
-                or {
-                    "tps": 1.0,
-                    "tokens": 1,
-                    "wall": 0.0,
-                    "rss_mb": 1,
-                    "cpu_pct": 1,
-                    "rc": 0,
-                    "log": "x",
-                }
-            )
+
+            def fake_measure(
+                run: bl.RunDir,
+                suite: str,
+                threads: int,
+                rnd: int,
+                cmd: list[str],
+                env: dict[str, str] | None = None,
+                prompt: str = "",
+            ) -> dict[str, Any]:
+                seen_suites.append(suite)
+                return dict(MEASURED)
+
+            bl.measure = fake_measure
             try:
-                vs = [{"label": l, "cmd": (lambda *a: ["x"]), "env": None} for l in ("ok", "bad")]
+                vs = [fake_variant(l) for l in ("ok", "bad")]
                 bl.run_matrix(
                     run,
                     vs,
@@ -343,8 +384,8 @@ class Gate(unittest.TestCase):
                     0.0,
                     skip_of=lambda k, v: v == "bad",
                 )
-                self.assertEqual(sorted(set(seen)), ["m__ok"])
-                self.assertEqual(len(seen), 2)
+                self.assertEqual(sorted(set(seen_suites)), ["m__ok"])
+                self.assertEqual(len(seen_suites), 2)
             finally:
                 bl.measure = orig
                 run.close()
@@ -390,8 +431,8 @@ class Gate(unittest.TestCase):
         import chart
         import gate
 
-        with tempfile.TemporaryDirectory() as d:
-            d = pathlib.Path(d)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            d = pathlib.Path(tmpdir)
             old = [
                 "model",
                 "variant",
@@ -430,13 +471,16 @@ class Gate(unittest.TestCase):
             self.assertIn("n/a", md)
 
     def test_variant_factories_and_registry(self) -> None:
-        info = {"engines": ["pz"], "gate": {}}
+        info: dict[str, Any] = {"engines": ["pz"], "gate": {}}
+        gguf = pathlib.Path("m.gguf")
         v = bl.pz_variant("pz", "./pz", ["--no-calibrate"], None)
-        self.assertIn("--perplexity", v["ppl"]("m", info, "m.gguf", "t.txt", 512, 8, 4))
-        self.assertIsNone(v["ppl"]("m", {"engines": ["ik"]}, "m.gguf", "t.txt", 512, 8, 4))
+        pz_ppl = v["ppl"]("m", info, gguf, "t.txt", 512, 8, 4)
+        assert pz_ppl is not None
+        self.assertIn("--perplexity", pz_ppl)
+        self.assertIsNone(v["ppl"]("m", {"engines": ["ik"]}, gguf, "t.txt", 512, 8, 4))
         r = bl.ref_variant("llamacpp", "llamacpp", "/b/llama-completion", None)
         self.assertIsNone(
-            r["ppl"]("m", {"engines": ["llamacpp"]}, "m.gguf", "t.txt", 512, 8, 4)
+            r["ppl"]("m", {"engines": ["llamacpp"]}, gguf, "t.txt", 512, 8, 4)
         )  # no perplexity tool
         engines, models = bl.load_engines(), bl.load_models()
         for (

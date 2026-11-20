@@ -25,5 +25,5 @@ tests/test_kv_cache.c 529
 tests/test_lora.c 654
 tests/test_packed_weights.c 504
 tests/test_simd_vnni.c 644
-tools/bench/benchlib.py 859
+tools/bench/benchlib.py 773
 tools/deepseek_bench_report.py 598

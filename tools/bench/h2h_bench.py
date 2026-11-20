@@ -44,8 +44,11 @@ Examples
 import argparse
 import json
 import pathlib
+import os
 import shlex
 import sys
+from collections.abc import Sequence
+from typing import Any
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import benchlib as bl
@@ -57,7 +60,7 @@ import gate
 # The bare minimum of a published sweep (2026-10-19 / 10-29): every engine on every model, 1..4 threads,
 # 500 tokens, 3 rounds with a 10 s cooldown, pz default plus INT4, a live-terminal screenshot of every run
 # cell at the full length, and the throughput-vs-threads chart. Heavy models (DeepSeek) stay opt-in.
-PRESETS = {
+PRESETS: dict[str, dict[str, Any]] = {
     "published": {
         "engines": "all",
         "models": "all-light",
@@ -73,9 +76,12 @@ PRESETS = {
 PZ_CLASSIFIERS = ["default", "auto", "bf16", "int8", "int4", "auto-fast"]
 
 
-def build_variants(a, run, env):
+def build_variants(
+    a: argparse.Namespace, run: bl.RunDir, env: dict[str, str]
+) -> tuple[list[bl.Variant], list[tuple[str, str]]]:
     """Variant list (pz and the reference engines) selected by the options; also returns the ones that are not available."""
-    variants, missing = [], []
+    variants: list[bl.Variant] = []
+    missing: list[tuple[str, str]] = []
     engines = bl.load_engines()
     wanted = (
         bl.parse_list(a.engines, ["pz"] + list(engines), "engine") if a.engines != "auto" else None
@@ -107,7 +113,13 @@ def build_variants(a, run, env):
     return variants, missing
 
 
-def build_report(run, a, g, shots, ref="pz"):
+def build_report(
+    run: bl.RunDir,
+    a: argparse.Namespace,
+    g: gate.Gate,
+    shots: Sequence[dict[str, Any]],
+    ref: str = "pz",
+) -> list[dict[str, Any]]:
     """summary.md and the chart from the folder's summary.csv and gate.json. Used by a normal run and by
     --gate-only, so the layout exists once."""
     hide = g.cfg["mode"] == "strict"
@@ -144,9 +156,10 @@ def build_report(run, a, g, shots, ref="pz"):
     return summary
 
 
-def select_models(a):
+def select_models(a: argparse.Namespace) -> tuple[list[gate.Model], list[tuple[str, str]]]:
     """Models selected by the options ("auto" and "all-light" pick the light ones); also returns the missing ones."""
-    models, missing = [], []
+    models: list[gate.Model] = []
+    missing: list[tuple[str, str]] = []
     allm = bl.load_models()
     if a.models in ("auto", "all-light"):
         wanted = [k for k, m in allm.items() if not m.get("heavy")]
@@ -164,11 +177,18 @@ def select_models(a):
 
 
 def estimate_minutes(
-    variants, models, threads, rounds, tokens, cooldown, shots="none", shot_tokens=0
-):
+    variants: Sequence[bl.Variant],
+    models: Sequence[gate.Model],
+    threads: Sequence[int],
+    rounds: int,
+    tokens: int,
+    cooldown: float,
+    shots: str = "none",
+    shot_tokens: int = 0,
+) -> float:
     """Rough wall time: ~12 tok/s decode plus ~6 s load per run, the cooldown after each, and one more
     run (no cooldown) per screenshot."""
-    secs = 0
+    secs = 0.0
     for key, info, p in models:
         ntok = tokens or info["tokens"]
         for v in variants:
@@ -180,7 +200,7 @@ def estimate_minutes(
     return secs / 60.0
 
 
-def main():
+def main() -> int:
     """Command-line entry point for the head-to-head benchmark."""
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -193,9 +213,9 @@ def main():
     ap.add_argument("--tokens", type=int, default=0)
     ap.add_argument("--cooldown", type=float, default=5.0)
     ap.add_argument("--order", choices=["interleaved", "blocks"], default="interleaved")
-    g = ap.add_mutually_exclusive_group()
-    g.add_argument("--fixed-length", dest="fixed", action="store_true", default=True)
-    g.add_argument("--chat", dest="fixed", action="store_false")
+    length_group = ap.add_mutually_exclusive_group()
+    length_group.add_argument("--fixed-length", dest="fixed", action="store_true", default=True)
+    length_group.add_argument("--chat", dest="fixed", action="store_false")
     ap.add_argument("--pz-classifiers", default="default")
     ap.add_argument("--pz-extra", default="")
     ap.add_argument("--resume", action="store_true")
@@ -224,7 +244,7 @@ def main():
 
     threads = bl.parse_threads(a.threads)
     run = bl.RunDir("h2h", a.out, a.label)
-    env = bl.pz_env(run, a.calibration) if not a.dry_run else dict(bl.os.environ)
+    env = bl.pz_env(run, a.calibration) if not a.dry_run else dict(os.environ)
     variants, missing = build_variants(a, run, env)
     models, missing_m = select_models(a)
     missing += missing_m
@@ -284,7 +304,7 @@ def main():
     run.create()
     g = gate.Gate(gate.config_from_args(a), run, a.models_dir, resume=a.resume or a.gate_only)
     if not a.gate_only:  # --gate-only never rewrites the record of the timed run
-        ids = {"PZ_BINARY": bl.bin_info(a.pz)}
+        ids: dict[str, Any] = {"PZ_BINARY": bl.bin_info(a.pz)}
         for k in bl.load_engines():
             b = bl.engine_binary(k, a.engine_dir)
             if b:
@@ -363,7 +383,7 @@ def main():
     return gate.exit_status(g.results, g.cfg)
 
 
-def finish_gate_only(run, a, g):
+def finish_gate_only(run: bl.RunDir, a: argparse.Namespace, g: gate.Gate) -> int:
     """--gate-only on an existing folder: verdicts into summary.csv, summary.md, the chart and meta.json."""
     gate.apply_to_summary(run.path / "summary.csv", g.results)
     meta_path = run.path / "meta.json"
@@ -373,7 +393,6 @@ def finish_gate_only(run, a, g):
     meta_path.write_text(json.dumps(meta, indent=2, default=str) + "\n")
     run.close()
     return gate.exit_status(g.results, g.cfg)
-    return 0
 
 
 if __name__ == "__main__":

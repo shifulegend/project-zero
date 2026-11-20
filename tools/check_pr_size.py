@@ -3,8 +3,12 @@
 
 Counts `git diff --numstat BASE...HEAD`, ignoring generated, vendored and data files
 (EXCLUDE below). A reviewer cannot read a bigger change as one unit: split it, or, for a
-mechanical change that really must go in one piece (a reformat, a rename), have a
-maintainer add the label "size-override" -- CI then skips this check.
+change that really must go in one piece (a reformat, a rename, a dependency or framework upgrade,
+a data migration, an overall clean-up), have a maintainer add the label "size-override" -- CI then
+skips this check and instead requires the PR description to carry a filled
+"Size override justification" section (tools/check_size_override.py). Noise that is predictable
+(lockfiles, generated code, snapshots, vendored files, translations, fixtures) never counts, so the
+label is not needed for it (EXCLUDE below).
 
 usage: tools/check_pr_size.py BASE_REF [--limit N] [--numstat FILE]   (--numstat is for the tests)
 """
@@ -24,6 +28,14 @@ EXCLUDE = [
     "*.png",
     "*.jpg",
     "*.gguf",
+    "*.snap",
+    "*/__snapshots__/*",
+    "*.min.js",
+    "*.po",
+    "*.pot",
+    "*/translations/*",
+    "tests/fixtures/*",
+    "*.golden",
 ]
 
 

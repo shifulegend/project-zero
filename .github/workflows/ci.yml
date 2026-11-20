@@ -115,6 +115,20 @@ jobs:
           python3 -I tools/test_check_pr_size.py
           python3 -I tools/check_pr_size.py "origin/${{ github.base_ref }}"
 
+  size-override-justification:
+    name: size-override needs a written justification
+    if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'size-override')
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: The PR description explains why the change cannot be split
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}   # via env, never interpolated into the script
+        run: |
+          python3 -I tools/test_check_size_override.py
+          python3 -I tools/check_size_override.py
+
   format:
     name: C/C++ formatting (clang-format 18)
     runs-on: ubuntu-24.04            # pinned image: its clang-format-18 is the one the tree was formatted with

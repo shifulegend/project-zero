@@ -107,6 +107,7 @@ void session_run_server(PzSession *S) {
 
     TernaryError api_err = api_server_start(S->args.server_port, &api_ctx);
     if (api_err != TN_OK) {
+        S->exit_code = 1;
         fprintf(stderr, "Error: Failed to start API server on port %d: %s\n", S->args.server_port,
                 tn_error_str(api_err));
     } else {

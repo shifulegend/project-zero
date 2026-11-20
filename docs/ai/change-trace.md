@@ -3,6 +3,11 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-20 — error exits of the CLI modes return 1
+- What: `session_distributed`, `run_perplexity` (now returns a status), `run_watermark_detect` and `session_run_server` set `exit_code = 1` on their error branches; `tests/e2e_cli_exit_status.sh` plus a CI step.
+- Why: they printed an error and exited 0 (see mistakes.md, 2026-11-20).
+- Areas: `src/cli/session_{dist,run,server}.c`, `tests/e2e_cli_exit_status.sh`, `.github/workflows/ci.yml`, `CHANGELOG.md`.
+
 ### 2026-11-20 — `main()` split into a session and one function per phase
 - What: `main()` (1063 lines, one function) is now 79 lines that create a `PzSession` (`include/cli/session.h`) and call `session_early_command`, `session_open_dump`, `session_detect_format`, `session_tune_hardware`, `session_load_model`, `session_setup_tokenizer`, `session_load_extras`, `session_apply_runtime_options`, `session_distributed`, `session_start_update_check`, `session_accuracy_checks`, `session_execute`, `session_finish` and `session_release` (files `src/cli/session_*.c`). Five copies of the hand-written cleanup on failure paths are one `session_release()`; the session is zero-initialised so it frees exactly what was set up. The `DistPlan` static became a session member (mutable statics 71 to 70).
 - Why: one function mixing a dozen phases could not be read, tested or changed phase by phase, and each early return had its own, slightly different cleanup (the `--tokenizer` failure path never freed the MLA / Qwen state).

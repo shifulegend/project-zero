@@ -24,6 +24,7 @@ int session_distributed(PzSession *S) {
              tok       = strtok_r(NULL, ",", &save))
             ram[n++] = (long long)(atof(tok) * BYTES_PER_GIB);
         if (n == 0) {
+            S->exit_code = 1;
             fprintf(stderr, "Error: --plan-layers needs GB,GB,... (max %d nodes)\n",
                     DIST_MAX_NODES);
         } else {
@@ -49,6 +50,7 @@ int session_distributed(PzSession *S) {
         int a = 0, b = S->p.n_layers;
         if (!S->args.worker_layers || sscanf(S->args.worker_layers, "%d-%d", &a, &b) != 2 ||
             a < 0 || b > S->p.n_layers || a >= b) {
+            S->exit_code = 1;
             fprintf(stderr, "Error: --rpc-worker needs --layers A-B within 0-%d\n", S->p.n_layers);
         } else {
             dist_worker_serve(S->args.rpc_worker_port, !S->args.rpc_bind_all, a, b, &S->p, &S->w,
@@ -62,11 +64,13 @@ int session_distributed(PzSession *S) {
     /* Phase 28: coordinator — connect to the workers for remote layer ranges. */
     if (S->args.remote_layers) {
         if (S->draft_active) {
+            S->exit_code = 1;
             fprintf(stderr, "Error: --draft-model cannot be combined with --remote-layers\n");
             return 1;
         }
         if (dist_plan_parse(&S->dist, S->args.remote_layers, S->p.n_layers) != 0 ||
             dist_plan_connect(&S->dist, &S->p, &S->mc) != TN_OK) {
+            S->exit_code = 1;
             fprintf(stderr, "Error: could not set up --remote-layers\n");
             dist_plan_close(&S->dist);
             return 1;

@@ -35,24 +35,26 @@ static void ppl_progress(int chunk, const PplResult *r, void *user) {
     fflush(stdout);
 }
 
-static void run_perplexity(const CliArgs *args, const Config *p, const TransformerWeights *w,
-                           RunState *s, const MoEConfig *mc, Tokenizer *t, ThreadPool *tp) {
+static int run_perplexity(const CliArgs *args, const Config *p, const TransformerWeights *w,
+                          RunState *s, const MoEConfig *mc, Tokenizer *t, ThreadPool *tp) {
     size_t rd  = 0;
     char *text = tn_read_text_file(args->perplexity_file, (size_t)64 << 20, &rd);
     if (!text) {
         fprintf(stderr, "Error: cannot read %s (must be 1 B..64 MiB)\n", args->perplexity_file);
-        return;
+        return 1;
     }
     int *toks = (int *)malloc((rd + 2) * sizeof(int));
     if (!toks) {
         free(text);
-        return;
+        return 1;
     }
+    int rc  = 0;
     int bos = tokenizer_bos_to_prepend(t, p->bos_token_id);
     int n   = 0;
     if (bos >= 0) toks[n++] = bos;
     int k = tokenizer_encode(t, text, rd, toks + n, (int)rd + 1);
     if (k < 0) {
+        rc = 1;
         fprintf(stderr, "Error: could not tokenize %s\n", args->perplexity_file);
     } else {
         n += k;
@@ -64,6 +66,7 @@ static void run_perplexity(const CliArgs *args, const Config *p, const Transform
                                                                         : n / opt.n_ctx);
         TernaryError e = perplexity_eval(toks, n, &opt, p, w, s, mc, tp, ppl_progress, NULL, &r);
         if (e != TN_OK) {
+            rc = 1;
             fprintf(stderr, "\nError: perplexity needs at least --ppl-ctx (%d) tokens\n",
                     opt.n_ctx);
         } else {
@@ -73,6 +76,7 @@ static void run_perplexity(const CliArgs *args, const Config *p, const Transform
     }
     free(text);
     free(toks);
+    return rc;
 }
 
 /* --self-check: the accuracy probe on demand; exit status 1 over the tolerance. */
@@ -99,6 +103,7 @@ static void run_watermark_detect(PzSession *S) {
     args_fill_gen_params(&S->args, &gp);
     WatermarkResult wr;
     if (watermark_detect_text(&gp.watermark, &S->t, S->args.watermark_detect, &wr) != TN_OK) {
+        S->exit_code = 1;
         fprintf(stderr, "Error: could not tokenize --watermark-detect text.\n");
     } else {
         printf("watermark: tokens_scored=%d green=%d green_fraction=%.3f z=%.2f -> %s\n",
@@ -149,7 +154,7 @@ void session_execute(PzSession *S) {
     if (S->args.self_check) {
         run_selfcheck(S);
     } else if (S->args.perplexity_file) {
-        run_perplexity(&S->args, &S->p, &S->w, S->s, &S->mc, &S->t, S->tp);
+        S->exit_code = run_perplexity(&S->args, &S->p, &S->w, S->s, &S->mc, &S->t, S->tp);
     } else if (S->args.watermark_detect) {
         run_watermark_detect(S);
     } else if (S->args.server_mode) {

@@ -35,6 +35,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Fixed
 
+- Exit with status 1 when a run prints an error and does nothing: `--plan-layers` with no node sizes, `--rpc-worker` without a valid `--layers`, `--remote-layers` that cannot be set up (or is combined with `--draft-model`), `--perplexity` on an unreadable file or too few tokens, `--watermark-detect` text that cannot be tokenised, and `--server` when the port cannot be bound. Before, scripts and service managers saw success.
 - Stop Qwen3.5/3.6 attention from sharing scratch buffers between concurrent callers: both the full-attention and the Gated-DeltaNet layers kept their buffers in function-local statics, so two requests running a forward pass at the same time could overwrite each other's values. The buffers now belong to each request's run state and are sized by the model, so the fixed width caps are gone too.
 - Make `install.sh` work from an offline `file://` mirror when only `wget` is installed (it passed the `file://` URL to wget, which cannot read it).
 - Refuse a non-numeric value for a numeric flag (`--rate-limit abc`, `--threads four`, `--temperature hot`, ...) with an error naming the flag; before, `atoi` turned it into 0, which silently switched off the rate limiter, the client timeout or the connection cap. Trailing junk (`64x`) and numbers outside the integer range are refused too.

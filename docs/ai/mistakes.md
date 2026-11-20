@@ -3,7 +3,12 @@
 > Canonical, append-at-top (newest first). Read this at the start of every session.
 > Add an entry **immediately** when a mistake, false assumption, regression, or avoidable
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
-> Last updated: 2026-11-18.
+> Last updated: 2026-11-20.
+
+### 2026-11-20 — CLI modes that failed after loading the model still exited 0
+- What: `main()` ended every post-load error path with `goto cleanup_after_run` and returned `exit_code`, which only `--self-check` ever set. `--plan-layers` with no sizes, `--rpc-worker` without `--layers`, `--remote-layers` failures, `--perplexity` errors, `--watermark-detect` tokenisation errors and a `--server` bind failure all printed an error and returned 0, so a script or service manager saw success. Found while splitting `main()` into phases (each error branch had to be named).
+- Fix: each of those branches sets `exit_code = 1`; `tests/e2e_cli_exit_status.sh` (CI) fails 5 of 6 cases on the old binary. `--image` with an unreadable image still degrades to text-only and exits 0, which is the documented behaviour.
+- Lesson: when a function has many error exits, make "status" part of the one place that returns it and test the exit code, not just the message.
 
 ### 2026-11-19 — test_gen_queue read a thread-written int without synchronisation: intermittent TSan failure
 - What: `test_full_timeout_abort` read `Waiter.last_pos` in the main thread while the waiter thread wrote it from the queue callback. ThreadSanitizer reported the race in one of three CI runs of a docs-only commit (the other two passed); the test itself still reported all tests passed, only the sanitizer step failed.

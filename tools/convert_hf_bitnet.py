@@ -13,7 +13,11 @@ import json
 import struct
 import os
 import sys
+from collections.abc import Iterator
+from typing import Any, BinaryIO
+
 import numpy as np
+import numpy.typing as npt
 
 try:
     import ml_dtypes  # noqa: F401  (registers bfloat16 with numpy as a side effect)
@@ -25,11 +29,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pack_ternary import pack_ternary_array, TN_MAGIC, TN_VERSION
 
 
-def get_tensor_map(model_path):
+def get_tensor_map(model_path: str) -> dict[str, str]:
     """Scan safetensors files and build a key -> filename map."""
     from safetensors import safe_open
 
-    tensor_map = {}
+    tensor_map: dict[str, str] = {}
     for fname in sorted(os.listdir(model_path)):
         if fname.endswith(".safetensors"):
             filepath = os.path.join(model_path, fname)
@@ -39,7 +43,7 @@ def get_tensor_map(model_path):
     return tensor_map
 
 
-def load_tensor(tensor_map, key):
+def load_tensor(tensor_map: dict[str, str], key: str) -> npt.NDArray[Any] | None:
     """Load a single small tensor (e.g., norm weights) from the correct shard."""
     from safetensors import safe_open
 
@@ -47,10 +51,13 @@ def load_tensor(tensor_map, key):
         return None
     filepath = tensor_map[key]
     with safe_open(filepath, framework="numpy") as f:
-        return f.get_tensor(key)
+        tensor: npt.NDArray[Any] = f.get_tensor(key)
+    return tensor
 
 
-def load_tensor_chunked(tensor_map, key, chunk_size=10000):
+def load_tensor_chunked(
+    tensor_map: dict[str, str], key: str, chunk_size: int = 10000
+) -> Iterator[npt.NDArray[Any]]:
     """Generator that yields chunks of a tensor to save memory."""
     from safetensors import safe_open
 
@@ -69,7 +76,7 @@ def load_tensor_chunked(tensor_map, key, chunk_size=10000):
             yield chunk
 
 
-def validate_and_quantize_ternary(tensor, scale):
+def validate_and_quantize_ternary(tensor: npt.NDArray[Any], scale: float) -> npt.NDArray[np.int8]:
     """Scale weights by absmean, round, and clip to {-1, 0, 1}."""
     tensor_f32 = tensor.astype(np.float32)
     # BitNet b1.58 quantizes by dividing by the mean absolute value
@@ -78,7 +85,7 @@ def validate_and_quantize_ternary(tensor, scale):
     return np.clip(rounded, -1, 1)
 
 
-def unpack_ms_packed(packed_tensor):
+def unpack_ms_packed(packed_tensor: npt.NDArray[np.uint8]) -> npt.NDArray[np.int8]:
     """Unpack Microsoft's BitNet row-packed uint8 format.
 
     HuggingFace/transformers packs a weight matrix [out, in] → packed [out//4, in] uint8.
@@ -105,7 +112,9 @@ def unpack_ms_packed(packed_tensor):
     return result
 
 
-def process_and_write_packed(f, tensor_map, key, chunk_size=10000):
+def process_and_write_packed(
+    f: BinaryIO, tensor_map: dict[str, str], key: str, chunk_size: int = 10000
+) -> None:
     """Process a ternary tensor in chunks and write to file."""
     if key not in tensor_map:
         print(f"    Warning: {key} not found")
@@ -160,7 +169,9 @@ def process_and_write_packed(f, tensor_map, key, chunk_size=10000):
     del full_tensor
 
 
-def process_and_write_raw(f, tensor_map, key, chunk_size=10000):
+def process_and_write_raw(
+    f: BinaryIO, tensor_map: dict[str, str], key: str, chunk_size: int = 10000
+) -> None:
     """Write a tensor directly as float32 without packing."""
     if key not in tensor_map:
         print(f"    Warning: {key} not found")
@@ -173,7 +184,9 @@ def process_and_write_raw(f, tensor_map, key, chunk_size=10000):
         del chunk
 
 
-def process_and_write_bf16(f, tensor_map, key, chunk_size=10000):
+def process_and_write_bf16(
+    f: BinaryIO, tensor_map: dict[str, str], key: str, chunk_size: int = 10000
+) -> None:
     """Write a tensor as native bfloat16 (2 bytes per value).
 
     BF16 is the native HuggingFace storage format for embeddings — no precision
@@ -201,7 +214,7 @@ def process_and_write_bf16(f, tensor_map, key, chunk_size=10000):
         del chunk
 
 
-def extract_config(model_path):
+def extract_config(model_path: str) -> dict[str, Any]:
     """Read config.json from model directory."""
     config_path = os.path.join(model_path, "config.json")
     if not os.path.exists(config_path):
@@ -223,7 +236,7 @@ def extract_config(model_path):
     return config
 
 
-def pad_file(f, alignment=64):
+def pad_file(f: BinaryIO, alignment: int = 64) -> None:
     """Pad the file to the next alignment boundary."""
     current_pos = f.tell()
     padding = (alignment - (current_pos % alignment)) % alignment
@@ -231,7 +244,7 @@ def pad_file(f, alignment=64):
         f.write(b"\x00" * padding)
 
 
-def convert(model_path, output_path):
+def convert(model_path: str, output_path: str) -> None:
     """Convert a model to packed binary format in a memory-efficient way."""
     print("Loading config...")
     config = extract_config(model_path)
@@ -343,7 +356,7 @@ def convert(model_path, output_path):
     print(f"\nDone! Output: {output_path} ({os.path.getsize(output_path):,} bytes)")
 
 
-def main():
+def main() -> None:
     """Command-line entry point: converts a HuggingFace BitNet checkpoint to the pz .bin format with bounded memory."""
     parser = argparse.ArgumentParser(description="Memory-efficient model converter")
     parser.add_argument("--model", required=True, help="Model directory")

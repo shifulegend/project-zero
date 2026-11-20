@@ -38,7 +38,7 @@ def get_tensor_map(model_path: str) -> dict[str, str]:
         if fname.endswith(".safetensors"):
             filepath = os.path.join(model_path, fname)
             with safe_open(filepath, framework="numpy") as f:
-                for key in f:
+                for key in f.keys():
                     tensor_map[key] = filepath
     return tensor_map
 

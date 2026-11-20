@@ -39,3 +39,8 @@ quote-style = "double"
 # S310 (bench_parallel): the URL is always http://127.0.0.1:<port> built from the local server's port.
 "tools/bench_parallel.py" = ["S310", "SIM115"]
 "tools/bench_sweep_seq.py" = ["SIM115"]
+# SIM118: a safetensors safe_open handle is not iterable (only .keys() lists its tensors); a
+# "for key in handle" rewrite breaks the converters (found by running extract_multimodal).
+"tools/convert_hf.py" = ["SIM118"]
+"tools/convert_hf_bitnet.py" = ["SIM118"]
+"tools/extract_multimodal.py" = ["SIM118"]

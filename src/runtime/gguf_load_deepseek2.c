@@ -187,18 +187,18 @@ TernaryError weights_from_gguf_deepseek2(TransformerWeights *w, const Config *cf
     for (int l = 0; l < nl; l++) {
         /* Attention norm */
         snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_norm.weight", l);
-        w->attn.rms_att_weight[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)dim, store);
-        if (!w->attn.rms_att_weight[l]) return TN_ERR_INVALID_WEIGHTS;
+        w->attn.norm[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)dim, store);
+        if (!w->attn.norm[l]) return TN_ERR_INVALID_WEIGHTS;
 
         /* FFN norm */
         snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_norm.weight", l);
-        w->ffn.rms_ffn_weight[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)dim, store);
-        if (!w->ffn.rms_ffn_weight[l]) return TN_ERR_INVALID_WEIGHTS;
+        w->ffn.norm[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)dim, store);
+        if (!w->ffn.norm[l]) return TN_ERR_INVALID_WEIGHTS;
 
         /* KV-A sub-norm (applied to kv_latent after KV-A projection) */
         snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_kv_a_norm.weight", l);
-        w->attn.rms_attn_sub_norm[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)lora, store);
-        if (!w->attn.rms_attn_sub_norm[l]) return TN_ERR_INVALID_WEIGHTS;
+        w->attn.sub_norm[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)lora, store);
+        if (!w->attn.sub_norm[l]) return TN_ERR_INVALID_WEIGHTS;
 
         /* MLA attention projections — Q4K heap-copy when available, F32 fallback otherwise.
          * DS_LOAD_MLA_PROJ_HEAP sets has_mla_quant=true so MLA_MATMUL dispatches

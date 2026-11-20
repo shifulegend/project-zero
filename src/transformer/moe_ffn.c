@@ -169,7 +169,7 @@ static void moe_norm_and_route(RunState *s, const TransformerWeights *w, const C
 
     /* Identical to the dense path; normalise s->x into s->xb. */
     int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    tn_rmsnorm(s->xb, s->x, w->ffn.rms_ffn_weight[layer], dim, cfg->rms_norm_eps);
+    tn_rmsnorm(s->xb, s->x, w->ffn.norm[layer], dim, cfg->rms_norm_eps);
     if (t_step) {
         tn_step_timing_add(TN_STEP_13_PRE_FFN_RMSNORM, tn_step_timing_now_ns() - t_step);
     }

@@ -101,10 +101,10 @@ static void build_qwen3moe_ternary_model(Config *cfg, TransformerWeights *w, MoE
         w->ffn.w2[l] = (tn_i8 *)make_packed_ternary(Q3_DIM, Q3_HIDDEN, 77 + l);
         w->ffn.s2[l] = 1.0f;
 
-        w->attn.rms_att_weight[l] = (float *)malloc(Q3_DIM * sizeof(float));
-        fill_ones(w->attn.rms_att_weight[l], Q3_DIM);
-        w->ffn.rms_ffn_weight[l] = (float *)malloc(Q3_DIM * sizeof(float));
-        fill_ones(w->ffn.rms_ffn_weight[l], Q3_DIM);
+        w->attn.norm[l] = (float *)malloc(Q3_DIM * sizeof(float));
+        fill_ones(w->attn.norm[l], Q3_DIM);
+        w->ffn.norm[l] = (float *)malloc(Q3_DIM * sizeof(float));
+        fill_ones(w->ffn.norm[l], Q3_DIM);
 
         w->qwen3moe.attn_q_norm[l] = (float *)malloc(Q3_HEAD_DIM * sizeof(float));
         fill_ones(w->qwen3moe.attn_q_norm[l], Q3_HEAD_DIM);
@@ -129,8 +129,8 @@ static void free_qwen3moe_ternary_model(TransformerWeights *w) {
         free(w->ffn.w1[l]);
         free(w->ffn.w2[l]);
         free(w->ffn.w3[l]);
-        free(w->attn.rms_att_weight[l]);
-        free(w->ffn.rms_ffn_weight[l]);
+        free(w->attn.norm[l]);
+        free(w->ffn.norm[l]);
         free(w->qwen3moe.attn_q_norm[l]);
         free(w->qwen3moe.attn_k_norm[l]);
     }

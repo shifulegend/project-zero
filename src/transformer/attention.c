@@ -23,10 +23,6 @@
 #include <immintrin.h>
 #endif
 
-/* Maximum input dimension supported for layer-level preq stack buffer.
- * BitNet-b1.58-2B-4T: dim=2048. Guard against future larger models. */
-#define ATTN_PREQ_BUF_SIZE 16384
-
 /*
  * K-3 R-3: Non-temporal store helper for KV cache writes.
  *
@@ -166,6 +162,8 @@ static void attn_heads_task(void *arg, int thread_id, int start, int end) {
 
 void attention_forward(RunState *s, const TransformerWeights *w, const Config *cfg,
                        const MoEConfig *mc, int layer, int pos, ThreadPool *tp) {
+    const RunKvStore *kvs = &s->kvs;
+    const WeightsAttn *wa = &w->attn;
     /* Phase 17.8: Route to MLA forward pass when has_mla=1.
    * This guard is a single pointer deref + int compare — branch predictor handles it
    * in 0-1 cycles for all non-MLA models (BitNet, Llama, Mixtral). */
@@ -204,7 +202,7 @@ void attention_forward(RunState *s, const TransformerWeights *w, const Config *c
 
     /* Step 1: RMSNorm — normalize s->x into s->xb */
     int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    tn_rmsnorm(s->xb, s->x, w->attn.rms_att_weight[layer], dim, cfg->rms_norm_eps);
+    tn_rmsnorm(s->xb, s->x, wa->norm[layer], dim, cfg->rms_norm_eps);
     if (t_step) {
         tn_step_timing_add(TN_STEP_4_PRE_ATTN_RMSNORM, tn_step_timing_now_ns() - t_step);
     }
@@ -219,45 +217,8 @@ void attention_forward(RunState *s, const TransformerWeights *w, const Config *c
    * Layer-level preq: quantise s->xb once, reuse for all three projections.
    * Saves 2 redundant quantisations per attention layer (3 calls → 1 quantise). */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    if (w->layers_are_ternary) {
-        int8_t preq_buf[ATTN_PREQ_BUF_SIZE];
-        TnPreqActivation preq;
-        tn_preq_prepare(&preq, preq_buf, s->xb, dim);
-        parallel_ternary_matmul_packed_preq(s->q, s->xb, (const tn_u8 *)w->attn.wq[layer], dim, dim,
-                                            w->attn.sq[layer], &preq, tp);
-        parallel_ternary_matmul_packed_preq(k_buf, s->xb, (const tn_u8 *)w->attn.wk[layer], dim,
-                                            kv_dim, w->attn.sk[layer], &preq, tp);
-        parallel_ternary_matmul_packed_preq(v_buf, s->xb, (const tn_u8 *)w->attn.wv[layer], dim,
-                                            kv_dim, w->attn.sv[layer], &preq, tp);
-    } else if (tn_is_q4k_family(w->attn.wq_type[layer]) &&
-               tn_is_q4k_family(w->attn.wk_type[layer]) &&
-               tn_is_q4k_family(w->attn.wv_type[layer])) {
-        /* All three read the same s->xb — quantize to Q8K once and reuse, same
-     * layer-level-preq idea as the ternary branch above. Bug fixed 2026-07-31:
-     * this branch previously called tn_dense_matmul_dispatch() three times,
-     * each of which (via parallel_matmul_q4k) independently re-quantized
-     * s->xb, despite the comment above already claiming the shared-quantize
-     * optimization — it had only ever been wired up for the ternary path.
-     * Extended 2026-07-31 to also cover WEIGHT_TYPE_Q4K_X8 (the repacked
-     * multi-row-GEMV variant, matmul_q4k_x8.c) — both consume the same Q8K
-     * activation format, so the shared-quantize win applies to either. */
-        TnQ8KActBlock acts[ATTN_PREQ_BUF_SIZE / TN_Q8K_BLOCK];
-        int n_blocks = dim / TN_Q8K_BLOCK;
-        tn_quantize_q8k(acts, s->xb, n_blocks);
-        tn_dense_matmul_dispatch_preq(s->q, acts, w->attn.wq[layer], w->attn.wq_type[layer], dim,
-                                      dim, tp);
-        tn_dense_matmul_dispatch_preq(k_buf, acts, w->attn.wk[layer], w->attn.wk_type[layer], dim,
-                                      kv_dim, tp);
-        tn_dense_matmul_dispatch_preq(v_buf, acts, w->attn.wv[layer], w->attn.wv_type[layer], dim,
-                                      kv_dim, tp);
-    } else {
-        tn_dense_matmul_dispatch(s->q, s->xb, w->attn.wq[layer], w->attn.wq_type[layer], dim, dim,
-                                 tp);
-        tn_dense_matmul_dispatch(k_buf, s->xb, w->attn.wk[layer], w->attn.wk_type[layer], dim,
-                                 kv_dim, tp);
-        tn_dense_matmul_dispatch(v_buf, s->xb, w->attn.wv[layer], w->attn.wv_type[layer], dim,
-                                 kv_dim, tp);
-    }
+    attention_project_qkv(s, wa, w->layers_are_ternary, layer, dim, dim, kv_dim, s->q, k_buf, v_buf,
+                          tp);
 
     /* Phase 19: LoRA correction on top of the base Q/K/V projections (one
    * call each, once here, regardless of which dispatch branch just ran --
@@ -274,9 +235,9 @@ void attention_forward(RunState *s, const TransformerWeights *w, const Config *c
     }
 
     /* Q/K/V biases (Qwen2/2.5), after any LoRA delta, before QK-norm/RoPE. */
-    attn_add_bias(s->q, w->attn.bq ? w->attn.bq[layer] : NULL, dim);
-    attn_add_bias(k_buf, w->attn.bk ? w->attn.bk[layer] : NULL, kv_dim);
-    attn_add_bias(v_buf, w->attn.bv ? w->attn.bv[layer] : NULL, kv_dim);
+    attn_add_bias(s->q, wa->bq ? wa->bq[layer] : NULL, dim);
+    attn_add_bias(k_buf, wa->bk ? wa->bk[layer] : NULL, kv_dim);
+    attn_add_bias(v_buf, wa->bv ? wa->bv[layer] : NULL, kv_dim);
 
     /* Step 2b: Qwen3 (dense) per-head QK-norm — RMSNorm applied to each Q/K
    * head individually, before RoPE. Absent (NULL) for architectures without
@@ -331,11 +292,11 @@ void attention_forward(RunState *s, const TransformerWeights *w, const Config *c
     for (int kv_h = 0; kv_h < n_kv_heads; kv_h++) {
         size_t cache_offset =
             KV_CACHE_IDX(layer, kv_h, mapped_pos, 0, n_kv_heads, max_seq, head_dim);
-        if (s->kvs.type != KV_TYPE_F32) {
+        if (kvs->type != KV_TYPE_F32) {
             size_t row = KV_SCALE_IDX(layer, kv_h, mapped_pos, n_kv_heads, max_seq);
-            kvq_store((KVCacheType)s->kvs.type, kvq_k(s, row), kvq_ks(s, row),
+            kvq_store((KVCacheType)kvs->type, kvq_k(s, row), kvq_ks(s, row),
                       &k_buf[kv_h * head_dim], head_dim);
-            kvq_store((KVCacheType)s->kvs.type, kvq_v(s, row), kvq_vs(s, row),
+            kvq_store((KVCacheType)kvs->type, kvq_v(s, row), kvq_vs(s, row),
                       &v_buf[kv_h * head_dim], head_dim);
             (void)cache_offset;
         } else {
@@ -381,17 +342,16 @@ void attention_forward(RunState *s, const TransformerWeights *w, const Config *c
 
     /* Step 6: Apply attn_sub_norm (BitNet) if present */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    if (w->attn.rms_attn_sub_norm && w->attn.rms_attn_sub_norm[layer]) {
-        tn_rmsnorm(s->xb, s->xb, w->attn.rms_attn_sub_norm[layer], dim, cfg->rms_norm_eps);
+    if (wa->sub_norm && wa->sub_norm[layer]) {
+        tn_rmsnorm(s->xb, s->xb, wa->sub_norm[layer], dim, cfg->rms_norm_eps);
     }
 
     /* Step 7: Output projection — s->xb (concatenated head outputs) → s->xb2 */
     if (w->layers_are_ternary) {
-        parallel_ternary_matmul_packed(s->xb2, s->xb, (const tn_u8 *)w->attn.wo[layer], dim, dim,
-                                       w->attn.so[layer], tp);
+        parallel_ternary_matmul_packed(s->xb2, s->xb, (const tn_u8 *)wa->wo[layer], dim, dim,
+                                       wa->so[layer], tp);
     } else {
-        tn_dense_matmul_dispatch(s->xb2, s->xb, w->attn.wo[layer], w->attn.wo_type[layer], dim, dim,
-                                 tp);
+        tn_dense_matmul_dispatch(s->xb2, s->xb, wa->wo[layer], wa->wo_type[layer], dim, dim, tp);
     }
     /* Phase 19: LoRA correction on the output projection (see the Q/K/V
    * comment above for the general convention). */
@@ -531,29 +491,15 @@ static TernaryError attention_forward_rows(RunState *const *states, const int *p
     /* rmsnorm is per-row (each token normalizes against its own mean square),
    * so it must loop per token -- not a batchable weight-matrix operation. */
     for (int k = 0; k < n_tokens; k++) {
-        tn_rmsnorm(sb->xb + (size_t)k * dim, sb->x + (size_t)k * dim, w->attn.rms_att_weight[layer],
-                   dim, cfg->rms_norm_eps);
+        tn_rmsnorm(sb->xb + (size_t)k * dim, sb->x + (size_t)k * dim, w->attn.norm[layer], dim,
+                   cfg->rms_norm_eps);
     }
     if (t_step) {
         tn_step_timing_add(TN_STEP_4_PRE_ATTN_RMSNORM, tn_step_timing_now_ns() - t_step);
     }
 
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    if (w->layers_are_ternary) {
-        tn_ternary_matmul_packed_batch(sb->q, sb->xb, (const tn_u8 *)w->attn.wq[layer], dim, dim,
-                                       w->attn.sq[layer], n_tokens, tp);
-        tn_ternary_matmul_packed_batch(k_buf_all, sb->xb, (const tn_u8 *)w->attn.wk[layer], dim,
-                                       kv_dim, w->attn.sk[layer], n_tokens, tp);
-        tn_ternary_matmul_packed_batch(v_buf_all, sb->xb, (const tn_u8 *)w->attn.wv[layer], dim,
-                                       kv_dim, w->attn.sv[layer], n_tokens, tp);
-    } else {
-        tn_dense_matmul_dispatch_batch(sb->q, sb->xb, w->attn.wq[layer], w->attn.wq_type[layer],
-                                       dim, dim, n_tokens, tp);
-        tn_dense_matmul_dispatch_batch(k_buf_all, sb->xb, w->attn.wk[layer], w->attn.wk_type[layer],
-                                       dim, kv_dim, n_tokens, tp);
-        tn_dense_matmul_dispatch_batch(v_buf_all, sb->xb, w->attn.wv[layer], w->attn.wv_type[layer],
-                                       dim, kv_dim, n_tokens, tp);
-    }
+    attention_project_qkv_rows(sb, w, cfg, layer, n_tokens, k_buf_all, v_buf_all, tp);
     /* Phase 19: same LoRA deltas as the single-token path, per row. */
     const RunState *s0 = states[0]; /* the adapter is shared by every sequence in a step */
     if (s0->active_lora) {
@@ -676,10 +622,10 @@ static TernaryError attention_forward_rows(RunState *const *states, const int *p
 
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     /* attn_sub_norm (BitNet) — per token, elementwise-independent stats per row */
-    if (w->attn.rms_attn_sub_norm && w->attn.rms_attn_sub_norm[layer]) {
+    if (w->attn.sub_norm && w->attn.sub_norm[layer]) {
         for (int k = 0; k < n_tokens; k++) {
             float *xb_k = sb->xb + (size_t)k * dim;
-            tn_rmsnorm(xb_k, xb_k, w->attn.rms_attn_sub_norm[layer], dim, cfg->rms_norm_eps);
+            tn_rmsnorm(xb_k, xb_k, w->attn.sub_norm[layer], dim, cfg->rms_norm_eps);
         }
     }
 

@@ -118,6 +118,21 @@ static void rope_apply_yarn(float *v, const float *freq, int d, int pos, float f
         }                                                                                          \
     } while (0)
 
+/* kq_scale: matches llama.cpp deepseek2.cpp formula.
+ *   mscale_kq = 1 + rope_yarn_log_mul * ln(1/freq_scale)
+ *             = 1 + 0.0707 * ln(40) = 1.2608  (for DeepSeek-V2-Lite)
+ *   iscale = mscale_kq^2 / sqrt(nope + rope)
+ * When YaRN is inactive (ext_factor==0 or log_mul==0), use standard 1/sqrt(d). */
+static float mla_kq_scale(const Config *cfg, int nope, int rope) {
+    float mscale_kq = 1.0f;
+    if (cfg->rope_yarn_ext_factor != 0.0f && cfg->rope_yarn_log_mul != 0.0f &&
+        cfg->rope_freq_scale < 1.0f) {
+        /* freq_scale = 1/factor; ln(factor) = ln(1/freq_scale) = -ln(freq_scale) */
+        mscale_kq = 1.0f + cfg->rope_yarn_log_mul * logf(1.0f / cfg->rope_freq_scale);
+    }
+    return mscale_kq * mscale_kq / sqrtf((float)(nope + rope));
+}
+
 void mla_attention_forward(RunState *s, const TransformerWeights *w, const Config *cfg,
                            const MoEConfig *mc, int layer, int pos, ThreadPool *tp) {
     const int dim      = cfg->dim;
@@ -131,21 +146,7 @@ void mla_attention_forward(RunState *s, const TransformerWeights *w, const Confi
     const int kv_mul   = n_heads / n_kv_h;
     const int head_dim = dim / n_heads; /* KV cache stride */
 
-    /* kq_scale: matches llama.cpp deepseek2.cpp formula.
-     * mscale_kq = 1 + rope_yarn_log_mul * ln(1/freq_scale)
-     *           = 1 + 0.0707 * ln(40) = 1.2608  (for DeepSeek-V2-Lite)
-     * iscale = mscale_kq^2 / sqrt(nope + rope)
-     * When YaRN is inactive (ext_factor==0 or log_mul==0), use standard 1/sqrt(d). */
-    float iscale;
-    {
-        float mscale_kq = 1.0f;
-        if (cfg->rope_yarn_ext_factor != 0.0f && cfg->rope_yarn_log_mul != 0.0f &&
-            cfg->rope_freq_scale < 1.0f) {
-            /* freq_scale = 1/factor; ln(factor) = ln(1/freq_scale) = -ln(freq_scale) */
-            mscale_kq = 1.0f + cfg->rope_yarn_log_mul * logf(1.0f / cfg->rope_freq_scale);
-        }
-        iscale = mscale_kq * mscale_kq / sqrtf((float)(nope + rope));
-    }
+    float iscale = mla_kq_scale(cfg, nope, rope);
 
     const int q_rows   = n_heads * (nope + rope); /* 3072 */
     const int kva_rows = lora + rope;             /*  576 */
@@ -166,7 +167,7 @@ void mla_attention_forward(RunState *s, const TransformerWeights *w, const Confi
 
     /* Step 1: RMSNorm */
     int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    tn_rmsnorm(s->xb, s->x, w->attn.rms_att_weight[layer], dim, cfg->rms_norm_eps);
+    tn_rmsnorm(s->xb, s->x, w->attn.norm[layer], dim, cfg->rms_norm_eps);
     if (t_step) {
         tn_step_timing_add(TN_STEP_4_PRE_ATTN_RMSNORM, tn_step_timing_now_ns() - t_step);
     }
@@ -182,9 +183,9 @@ void mla_attention_forward(RunState *s, const TransformerWeights *w, const Confi
     float *k_rope_cur = s->hb2 + lora; /* hb2[lora..lora+rope-1] */
 
     /* Step 2b: Apply KV-A norm to kv_latent (before KV-B expansion) */
-    if (w->attn.rms_attn_sub_norm && w->attn.rms_attn_sub_norm[layer]) {
+    if (w->attn.sub_norm && w->attn.sub_norm[layer]) {
         t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-        tn_rmsnorm(kv_latent, kv_latent, w->attn.rms_attn_sub_norm[layer], lora, cfg->rms_norm_eps);
+        tn_rmsnorm(kv_latent, kv_latent, w->attn.sub_norm[layer], lora, cfg->rms_norm_eps);
         if (t_step) {
             tn_step_timing_add(TN_STEP_7_KV_A_LATENT_NORM, tn_step_timing_now_ns() - t_step);
         }
@@ -360,15 +361,7 @@ TernaryError mla_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
     const int kv_mul   = n_heads / n_kv_h;
     const int head_dim = dim / n_heads;
 
-    float iscale;
-    {
-        float mscale_kq = 1.0f;
-        if (cfg->rope_yarn_ext_factor != 0.0f && cfg->rope_yarn_log_mul != 0.0f &&
-            cfg->rope_freq_scale < 1.0f) {
-            mscale_kq = 1.0f + cfg->rope_yarn_log_mul * logf(1.0f / cfg->rope_freq_scale);
-        }
-        iscale = mscale_kq * mscale_kq / sqrtf((float)(nope + rope));
-    }
+    float iscale = mla_kq_scale(cfg, nope, rope);
 
     const int q_rows         = n_heads * (nope + rope);
     const int kva_rows       = lora + rope;
@@ -403,8 +396,8 @@ TernaryError mla_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
 
     /* Step 1: rmsnorm, per token */
     for (int k = 0; k < n_tokens; k++) {
-        tn_rmsnorm(sb->xb + (size_t)k * dim, sb->x + (size_t)k * dim, w->attn.rms_att_weight[layer],
-                   dim, cfg->rms_norm_eps);
+        tn_rmsnorm(sb->xb + (size_t)k * dim, sb->x + (size_t)k * dim, w->attn.norm[layer], dim,
+                   cfg->rms_norm_eps);
     }
     if (t_step) {
         tn_step_timing_add(TN_STEP_4_PRE_ATTN_RMSNORM, tn_step_timing_now_ns() - t_step);
@@ -430,9 +423,8 @@ TernaryError mla_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     for (int k = 0; k < n_tokens; k++) {
         float *kv_latent_k = sb->hb2 + (size_t)k * kva_rows;
-        if (w->attn.rms_attn_sub_norm && w->attn.rms_attn_sub_norm[layer]) {
-            tn_rmsnorm(kv_latent_k, kv_latent_k, w->attn.rms_attn_sub_norm[layer], lora,
-                       cfg->rms_norm_eps);
+        if (w->attn.sub_norm && w->attn.sub_norm[layer]) {
+            tn_rmsnorm(kv_latent_k, kv_latent_k, w->attn.sub_norm[layer], lora, cfg->rms_norm_eps);
         }
         memcpy(kv_latent_packed + (size_t)k * lora, kv_latent_k, (size_t)lora * sizeof(float));
     }

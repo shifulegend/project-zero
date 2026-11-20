@@ -31,7 +31,7 @@ void ffn_forward(RunState *s, const TransformerWeights *w, const Config *cfg, co
 
     /* Step 1: RMSNorm — normalize s->x into s->xb */
     int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    tn_rmsnorm(s->xb, s->x, w->ffn.rms_ffn_weight[layer], dim, cfg->rms_norm_eps);
+    tn_rmsnorm(s->xb, s->x, w->ffn.norm[layer], dim, cfg->rms_norm_eps);
     if (t_step) {
         tn_step_timing_add(TN_STEP_13_PRE_FFN_RMSNORM, tn_step_timing_now_ns() - t_step);
     }
@@ -97,8 +97,8 @@ void ffn_forward(RunState *s, const TransformerWeights *w, const Config *cfg, co
     DBG_DUMP(layer, "dense_swiglu", s->hb, hidden_dim);
 
     /* Step 5: Apply ffn_sub_norm (BitNet) if present */
-    if (w->ffn.rms_ffn_sub_norm && w->ffn.rms_ffn_sub_norm[layer]) {
-        tn_rmsnorm(s->hb, s->hb, w->ffn.rms_ffn_sub_norm[layer], hidden_dim, cfg->rms_norm_eps);
+    if (w->ffn.sub_norm && w->ffn.sub_norm[layer]) {
+        tn_rmsnorm(s->hb, s->hb, w->ffn.sub_norm[layer], hidden_dim, cfg->rms_norm_eps);
     }
 
     /* Step 6: Down projection with Dynamic Dispatch */
@@ -147,8 +147,8 @@ TernaryError ffn_forward_batch(RunState *s, SpecBatchScratch *sb, const Transfor
 
     /* Dense SwiGLU FFN — fully batched. */
     for (int k = 0; k < n_tokens; k++) {
-        tn_rmsnorm(sb->xb + (size_t)k * dim, sb->x + (size_t)k * dim, w->ffn.rms_ffn_weight[layer],
-                   dim, cfg->rms_norm_eps);
+        tn_rmsnorm(sb->xb + (size_t)k * dim, sb->x + (size_t)k * dim, w->ffn.norm[layer], dim,
+                   cfg->rms_norm_eps);
     }
     if (t_step) {
         tn_step_timing_add(TN_STEP_13_PRE_FFN_RMSNORM, tn_step_timing_now_ns() - t_step);
@@ -183,10 +183,10 @@ TernaryError ffn_forward_batch(RunState *s, SpecBatchScratch *sb, const Transfor
     }
     tn_vec_mul(sb->hb, sb->hb, sb->hb2, n_tokens * hidden_dim);
 
-    if (w->ffn.rms_ffn_sub_norm && w->ffn.rms_ffn_sub_norm[layer]) {
+    if (w->ffn.sub_norm && w->ffn.sub_norm[layer]) {
         for (int k = 0; k < n_tokens; k++) {
             float *hb_k = sb->hb + (size_t)k * hidden_dim;
-            tn_rmsnorm(hb_k, hb_k, w->ffn.rms_ffn_sub_norm[layer], hidden_dim, cfg->rms_norm_eps);
+            tn_rmsnorm(hb_k, hb_k, w->ffn.sub_norm[layer], hidden_dim, cfg->rms_norm_eps);
         }
     }
 

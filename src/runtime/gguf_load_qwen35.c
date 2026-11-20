@@ -66,8 +66,8 @@ TernaryError weights_from_gguf_qwen35(TransformerWeights *w, const Config *cfg,
     char name_buf[128];
 
     for (int l = 0; l < nl; l++) {
-        Q35_LOAD_NORM(w->attn.rms_att_weight, "attn_norm.weight", dim);
-        Q35_LOAD_NORM(w->ffn.rms_ffn_weight, "post_attention_norm.weight", dim);
+        Q35_LOAD_NORM(w->attn.norm, "attn_norm.weight", dim);
+        Q35_LOAD_NORM(w->ffn.norm, "post_attention_norm.weight", dim);
 
         /* Dense SwiGLU FFN — shared by both layer types, same as generic path */
         Q35_LOAD_Q2_0(w->ffn.w1, "ffn_gate.weight");

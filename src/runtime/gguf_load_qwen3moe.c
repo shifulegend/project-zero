@@ -83,12 +83,12 @@ TernaryError weights_from_gguf_qwen3moe(TransformerWeights *w, const Config *cfg
     for (int l = 0; l < nl; l++) {
         /* Attention/FFN norms */
         snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_norm.weight", l);
-        w->attn.rms_att_weight[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)dim, store);
-        if (!w->attn.rms_att_weight[l]) return TN_ERR_INVALID_WEIGHTS;
+        w->attn.norm[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)dim, store);
+        if (!w->attn.norm[l]) return TN_ERR_INVALID_WEIGHTS;
 
         snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_norm.weight", l);
-        w->ffn.rms_ffn_weight[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)dim, store);
-        if (!w->ffn.rms_ffn_weight[l]) return TN_ERR_INVALID_WEIGHTS;
+        w->ffn.norm[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)dim, store);
+        if (!w->ffn.norm[l]) return TN_ERR_INVALID_WEIGHTS;
 
         /* Per-head QK-norm */
         snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_q_norm.weight", l);

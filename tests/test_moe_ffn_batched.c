@@ -74,8 +74,8 @@ static void build(Model *m, int dim, unsigned seed) {
     m->w.expert_quant.present  = true;
     m->w.expert_quant.w13_type = GGUF_TYPE_Q4_K;
     m->w.expert_quant.w2_type  = GGUF_TYPE_Q4_K;
-    m->w.ffn.rms_ffn_weight[0] = (float *)malloc((size_t)dim * sizeof(float));
-    for (int i = 0; i < dim; i++) m->w.ffn.rms_ffn_weight[0][i] = 1.0f;
+    m->w.ffn.norm[0]           = (float *)malloc((size_t)dim * sizeof(float));
+    for (int i = 0; i < dim; i++) m->w.ffn.norm[0][i] = 1.0f;
     m->w.moe.gate_w = (tn_i8 **)calloc(1, sizeof(tn_i8 *));
     m->w.moe.w1     = (tn_i8 ***)calloc(1, sizeof(tn_i8 **));
     m->w.moe.w2     = (tn_i8 ***)calloc(1, sizeof(tn_i8 **));
@@ -97,8 +97,8 @@ static void build(Model *m, int dim, unsigned seed) {
 }
 
 static void destroy(Model *m) {
-    free(m->w.ffn.rms_ffn_weight[0]);
-    m->w.ffn.rms_ffn_weight[0] = NULL;
+    free(m->w.ffn.norm[0]);
+    m->w.ffn.norm[0] = NULL;
     free(m->w.moe.gate_w[0]);
     for (int e = 0; e < NE; e++) {
         free(m->w.moe.w1[0][e]);

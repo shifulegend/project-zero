@@ -66,4 +66,17 @@ TernaryError attention_forward_multi(RunState *const *states, const int *pos_arr
                                      const Config *cfg, const MoEConfig *mc, int layer,
                                      int n_tokens, ThreadPool *tp);
 
+/* Q, K and V of one token: reads s->xb, writes q_buf (q_width), k_buf and v_buf (kv_width). Layer-
+ * level preq: the activations are quantised once for all three projections where the weight type
+ * allows. `ternary` selects the packed ternary kernels. */
+void attention_project_qkv(RunState *s, const WeightsAttn *wa, bool ternary, int layer, int dim,
+                           int q_width, int kv_width, float *q_buf, float *k_buf, float *v_buf,
+                           ThreadPool *tp);
+
+/* The same for n_tokens rows of a speculative batch: reads sb->xb, writes sb->q, k_buf_all and
+ * v_buf_all. */
+void attention_project_qkv_rows(SpecBatchScratch *sb, const TransformerWeights *w,
+                                const Config *cfg, int layer, int n_tokens, float *k_buf_all,
+                                float *v_buf_all, ThreadPool *tp);
+
 #endif /* TN_ATTENTION_H */

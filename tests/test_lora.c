@@ -489,11 +489,11 @@ static void alloc_synthetic_weights(TransformerWeights *w, const Config *cfg) {
         fill_pattern_f32((float *)w->ffn.w3[l], gate_size, l * 100 + 7);
         w->ffn.s3[l] = 1.0f;
 
-        w->attn.rms_att_weight[l] = (float *)calloc(dim, sizeof(float));
-        for (int i = 0; i < dim; i++) w->attn.rms_att_weight[l][i] = 1.0f;
+        w->attn.norm[l] = (float *)calloc(dim, sizeof(float));
+        for (int i = 0; i < dim; i++) w->attn.norm[l][i] = 1.0f;
 
-        w->ffn.rms_ffn_weight[l] = (float *)calloc(dim, sizeof(float));
-        for (int i = 0; i < dim; i++) w->ffn.rms_ffn_weight[l][i] = 1.0f;
+        w->ffn.norm[l] = (float *)calloc(dim, sizeof(float));
+        for (int i = 0; i < dim; i++) w->ffn.norm[l][i] = 1.0f;
     }
 
     w->rms_final_weight = (float *)calloc(dim, sizeof(float));
@@ -515,8 +515,8 @@ static void free_synthetic_weights(TransformerWeights *w, const Config *cfg) {
         free(w->ffn.w1[l]);
         free(w->ffn.w2[l]);
         free(w->ffn.w3[l]);
-        free(w->attn.rms_att_weight[l]);
-        free(w->ffn.rms_ffn_weight[l]);
+        free(w->attn.norm[l]);
+        free(w->ffn.norm[l]);
     }
     free(w->rms_final_weight);
     free(w->cls.w);

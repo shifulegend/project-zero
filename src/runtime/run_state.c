@@ -48,6 +48,47 @@ TernaryError run_state_alloc(RunState *s, const Config *cfg, int max_seq_len) {
     return run_state_alloc_ex(s, cfg, max_seq_len, false);
 }
 
+/* Plan 8.5: quantized K/V rows plus F32 scales (i8 is 4x, i4 about 7x smaller than F32), carved
+ * from the offload mapping or allocated. On failure the state is freed and the error returned. */
+static TernaryError alloc_quantized_kv(RunState *s, const char *offload_dir, int qtype,
+                                       size_t kv_cache_size, int head_dim, int row_bytes,
+                                       int row_scales) {
+    RunKvStore *kv    = &s->kvs;
+    size_t n_rows     = kv_cache_size / (size_t)(head_dim > 0 ? head_dim : 1);
+    size_t data_bytes = n_rows * (size_t)row_bytes;
+    size_t scale_n    = n_rows * (size_t)row_scales;
+    if (!offload_dir && tn_alloc_too_large(data_bytes, sizeof(tn_i8))) {
+        run_state_free(s);
+        return TN_ERR_OOM;
+    }
+    kv->type       = qtype;
+    kv->row_bytes  = row_bytes;
+    kv->row_scales = row_scales;
+    if (offload_dir) {
+        size_t sz[4]   = {data_bytes, data_bytes, scale_n * sizeof(float), scale_n * sizeof(float)};
+        void *pp[4]    = {NULL, NULL, NULL, NULL};
+        TernaryError e = kv_offload_carve(s, offload_dir, sz, pp, 4);
+        if (e != TN_OK) {
+            run_state_free(s);
+            return e;
+        }
+        kv->key_cache_q   = (tn_i8 *)pp[0];
+        kv->value_cache_q = (tn_i8 *)pp[1];
+        kv->key_scale     = (float *)pp[2];
+        kv->value_scale   = (float *)pp[3];
+    } else {
+        kv->key_cache_q   = (tn_i8 *)tn_aligned_calloc(data_bytes, sizeof(tn_i8), TN_SIMD_ALIGN);
+        kv->value_cache_q = (tn_i8 *)tn_aligned_calloc(data_bytes, sizeof(tn_i8), TN_SIMD_ALIGN);
+        kv->key_scale     = (float *)tn_aligned_calloc(scale_n, sizeof(float), TN_SIMD_ALIGN);
+        kv->value_scale   = (float *)tn_aligned_calloc(scale_n, sizeof(float), TN_SIMD_ALIGN);
+    }
+    if (!run_kv_store_complete(&s->kvs)) {
+        run_state_free(s);
+        return TN_ERR_OOM;
+    }
+    return TN_OK;
+}
+
 TernaryError run_state_alloc_ex(RunState *s, const Config *cfg, int max_seq_len,
                                 bool skip_kv_cache) {
     memset(s, 0, sizeof(*s));
@@ -116,45 +157,9 @@ TernaryError run_state_alloc_ex(RunState *s, const Config *cfg, int max_seq_len,
             kvq_row_layout(KV_TYPE_I8, head_dim, &row_bytes, &row_scales);
         }
         if (qtype != KV_TYPE_F32) {
-            /* Plan 8.5: quantized rows + F32 scales (i8 4x, i4 ~7x smaller than F32). */
-            size_t n_rows     = kv_cache_size / (size_t)(head_dim > 0 ? head_dim : 1);
-            size_t data_bytes = n_rows * (size_t)row_bytes;
-            size_t scale_n    = n_rows * (size_t)row_scales;
-            if (!offload_dir && tn_alloc_too_large(data_bytes, sizeof(tn_i8))) {
-                run_state_free(s);
-                return TN_ERR_OOM;
-            }
-            s->kvs.type       = qtype;
-            s->kvs.row_bytes  = row_bytes;
-            s->kvs.row_scales = row_scales;
-            if (offload_dir) {
-                size_t sz[4]   = {data_bytes, data_bytes, scale_n * sizeof(float),
-                                  scale_n * sizeof(float)};
-                void *pp[4]    = {NULL, NULL, NULL, NULL};
-                TernaryError e = kv_offload_carve(s, offload_dir, sz, pp, 4);
-                if (e != TN_OK) {
-                    run_state_free(s);
-                    return e;
-                }
-                s->kvs.key_cache_q   = (tn_i8 *)pp[0];
-                s->kvs.value_cache_q = (tn_i8 *)pp[1];
-                s->kvs.key_scale     = (float *)pp[2];
-                s->kvs.value_scale   = (float *)pp[3];
-            } else {
-                s->kvs.key_cache_q =
-                    (tn_i8 *)tn_aligned_calloc(data_bytes, sizeof(tn_i8), TN_SIMD_ALIGN);
-                s->kvs.value_cache_q =
-                    (tn_i8 *)tn_aligned_calloc(data_bytes, sizeof(tn_i8), TN_SIMD_ALIGN);
-                s->kvs.key_scale =
-                    (float *)tn_aligned_calloc(scale_n, sizeof(float), TN_SIMD_ALIGN);
-                s->kvs.value_scale =
-                    (float *)tn_aligned_calloc(scale_n, sizeof(float), TN_SIMD_ALIGN);
-            }
-            if (!s->kvs.key_cache_q || !s->kvs.value_cache_q || !s->kvs.key_scale ||
-                !s->kvs.value_scale) {
-                run_state_free(s);
-                return TN_ERR_OOM;
-            }
+            TernaryError qe = alloc_quantized_kv(s, offload_dir, qtype, kv_cache_size, head_dim,
+                                                 row_bytes, row_scales);
+            if (qe != TN_OK) return qe;
         } else {
             size_t kv_bytes;
             if (tn_size_mul_overflow(kv_cache_size, sizeof(float), &kv_bytes) ||
@@ -258,9 +263,7 @@ void run_state_kv_reserve(RunState *s, const Config *cfg, int n_pos) {
                 ((size_t)l * (size_t)cfg->n_kv_heads + (size_t)h) * (size_t)s->max_seq_len +
                 (size_t)from;
             if (s->kvs.type != KV_TYPE_F32) {
-                if (!s->kvs.key_cache_q || !s->kvs.value_cache_q || !s->kvs.key_scale ||
-                    !s->kvs.value_scale)
-                    return;
+                if (!run_kv_store_complete(&s->kvs)) return;
                 size_t rb = (size_t)s->kvs.row_bytes, rs = (size_t)s->kvs.row_scales;
                 tn_mem_commit(s->kvs.key_cache_q + row * rb, cnt * rb);
                 tn_mem_commit(s->kvs.value_cache_q + row * rb, cnt * rb);
@@ -282,9 +285,7 @@ int run_state_kv_release(RunState *s, const Config *cfg) {
     size_t rows = (size_t)s->max_seq_len * (size_t)cfg->n_layers * (size_t)cfg->n_kv_heads;
     int ok;
     if (s->kvs.type != KV_TYPE_F32) {
-        if (!s->kvs.key_cache_q || !s->kvs.value_cache_q || !s->kvs.key_scale ||
-            !s->kvs.value_scale)
-            return 0;
+        if (!run_kv_store_complete(&s->kvs)) return 0;
         size_t rb = (size_t)s->kvs.row_bytes, rs = (size_t)s->kvs.row_scales;
         ok = tn_mem_release(s->kvs.key_cache_q, rows * rb) &
              tn_mem_release(s->kvs.value_cache_q, rows * rb) &

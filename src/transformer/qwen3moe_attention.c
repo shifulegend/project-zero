@@ -41,6 +41,30 @@
 
 #define QWEN3MOE_PREQ_BUF_SIZE 16384
 
+/* Q, K and V of one token (reads s->xb): the packed ternary kernels share one activation
+ * quantisation, any other weight type goes through the dense dispatch. */
+static void project_qkv(RunState *s, const TransformerWeights *w, int layer, int dim, float *q_buf,
+                        float *k_buf, float *v_buf, int q_width, int kv_width, ThreadPool *tp) {
+    if (w->layers_are_ternary) {
+        int8_t preq_buf[QWEN3MOE_PREQ_BUF_SIZE];
+        TnPreqActivation preq;
+        tn_preq_prepare(&preq, preq_buf, s->xb, dim);
+        parallel_ternary_matmul_packed_preq(q_buf, s->xb, (const tn_u8 *)w->attn.wq[layer], dim,
+                                            q_width, w->attn.sq[layer], &preq, tp);
+        parallel_ternary_matmul_packed_preq(k_buf, s->xb, (const tn_u8 *)w->attn.wk[layer], dim,
+                                            kv_width, w->attn.sk[layer], &preq, tp);
+        parallel_ternary_matmul_packed_preq(v_buf, s->xb, (const tn_u8 *)w->attn.wv[layer], dim,
+                                            kv_width, w->attn.sv[layer], &preq, tp);
+    } else {
+        tn_dense_matmul_dispatch(q_buf, s->xb, w->attn.wq[layer], w->attn.wq_type[layer], dim,
+                                 q_width, tp);
+        tn_dense_matmul_dispatch(k_buf, s->xb, w->attn.wk[layer], w->attn.wk_type[layer], dim,
+                                 kv_width, tp);
+        tn_dense_matmul_dispatch(v_buf, s->xb, w->attn.wv[layer], w->attn.wv_type[layer], dim,
+                                 kv_width, tp);
+    }
+}
+
 void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w, const Config *cfg,
                                 const MoEConfig *mc, int layer, int pos, ThreadPool *tp) {
     int dim      = cfg->dim;
@@ -60,7 +84,7 @@ void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w, const 
 
     /* Step 1: RMSNorm */
     int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    tn_rmsnorm(s->xb, s->x, w->attn.rms_att_weight[layer], dim, cfg->rms_norm_eps);
+    tn_rmsnorm(s->xb, s->x, w->attn.norm[layer], dim, cfg->rms_norm_eps);
     if (t_step) {
         tn_step_timing_add(TN_STEP_4_PRE_ATTN_RMSNORM, tn_step_timing_now_ns() - t_step);
     }
@@ -68,24 +92,7 @@ void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w, const 
     /* Step 2: Q/K/V projections — 3-way dispatch, same convention as
      * attention.c's generic path (this arch is not Q2_0-locked). */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    if (w->layers_are_ternary) {
-        int8_t preq_buf[QWEN3MOE_PREQ_BUF_SIZE];
-        TnPreqActivation preq;
-        tn_preq_prepare(&preq, preq_buf, s->xb, dim);
-        parallel_ternary_matmul_packed_preq(q_buf, s->xb, (const tn_u8 *)w->attn.wq[layer], dim,
-                                            q_width, w->attn.sq[layer], &preq, tp);
-        parallel_ternary_matmul_packed_preq(k_buf, s->xb, (const tn_u8 *)w->attn.wk[layer], dim,
-                                            kv_width, w->attn.sk[layer], &preq, tp);
-        parallel_ternary_matmul_packed_preq(v_buf, s->xb, (const tn_u8 *)w->attn.wv[layer], dim,
-                                            kv_width, w->attn.sv[layer], &preq, tp);
-    } else {
-        tn_dense_matmul_dispatch(q_buf, s->xb, w->attn.wq[layer], w->attn.wq_type[layer], dim,
-                                 q_width, tp);
-        tn_dense_matmul_dispatch(k_buf, s->xb, w->attn.wk[layer], w->attn.wk_type[layer], dim,
-                                 kv_width, tp);
-        tn_dense_matmul_dispatch(v_buf, s->xb, w->attn.wv[layer], w->attn.wv_type[layer], dim,
-                                 kv_width, tp);
-    }
+    project_qkv(s, w, layer, cfg->dim, q_buf, k_buf, v_buf, q_width, kv_width, tp);
     /* Phase 19-B (2026-10-19): LoRA deltas on the wide Q (n_heads*head_dim)
      * and K/V, before QK-norm — Qwen3 adapters were silently ignored. */
     if (s->active_lora) {
@@ -248,8 +255,8 @@ TernaryError qwen3moe_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
 
     /* Step 1: rmsnorm, per token */
     for (int k = 0; k < n_tokens; k++) {
-        tn_rmsnorm(sb->xb + (size_t)k * dim, sb->x + (size_t)k * dim, w->attn.rms_att_weight[layer],
-                   dim, cfg->rms_norm_eps);
+        tn_rmsnorm(sb->xb + (size_t)k * dim, sb->x + (size_t)k * dim, w->attn.norm[layer], dim,
+                   cfg->rms_norm_eps);
     }
     if (t_step) {
         tn_step_timing_add(TN_STEP_4_PRE_ATTN_RMSNORM, tn_step_timing_now_ns() - t_step);

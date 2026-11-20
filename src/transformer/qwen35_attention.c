@@ -86,7 +86,7 @@ static void q35_full_attn_forward(RunState *s, const TransformerWeights *w, cons
 
     /* Step 1: RMSNorm */
     int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    tn_rmsnorm(s->xb, s->x, w->attn.rms_att_weight[layer], dim, cfg->rms_norm_eps);
+    tn_rmsnorm(s->xb, s->x, w->attn.norm[layer], dim, cfg->rms_norm_eps);
     if (t_step) tn_step_timing_add(TN_STEP_4_PRE_ATTN_RMSNORM, tn_step_timing_now_ns() - t_step);
 
     /* Step 2: projections */
@@ -207,7 +207,7 @@ static void q35_linear_attn_forward(RunState *s, const TransformerWeights *w, co
 
     /* Step 1: RMSNorm */
     int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    tn_rmsnorm(s->xb, s->x, w->attn.rms_att_weight[layer], dim, eps);
+    tn_rmsnorm(s->xb, s->x, w->attn.norm[layer], dim, eps);
     if (t_step) tn_step_timing_add(TN_STEP_4_PRE_ATTN_RMSNORM, tn_step_timing_now_ns() - t_step);
 
     /* Step 2: projections — combined q|k|v (pre-conv), separate output gate.

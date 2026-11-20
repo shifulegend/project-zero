@@ -80,6 +80,11 @@ typedef struct {
     size_t offload_bytes;
 } RunKvStore;
 
+/* 1 when the four quantized-KV buffers (data and scales of K and V) are all allocated. */
+static inline int run_kv_store_complete(const RunKvStore *kvs) {
+    return kvs->key_cache_q && kvs->value_cache_q && kvs->key_scale && kvs->value_scale;
+}
+
 typedef struct {
     /* Scratch vectors (dim) */
     float *x;   /* current activation */

@@ -104,7 +104,7 @@ static void build(Model *m) {
     m->mc.ssm_time_step_rank      = VHEADS;
     weights_alloc_pointers(&m->w, &m->cfg);
     TransformerWeights *w = &m->w;
-    for (int l = 0; l < LAYERS; l++) w->attn.rms_att_weight[l] = vec(m, DIM, 1.0f, 0.1f);
+    for (int l = 0; l < LAYERS; l++) w->attn.norm[l] = vec(m, DIM, 1.0f, 0.1f);
     /* layer 0: linear attention */
     w->q35.ssm_qkv[0]     = (tn_i8 *)q2_0(m, CONV_DIM, DIM);
     w->q35.ssm_gate[0]    = (tn_i8 *)q2_0(m, INNER, DIM);
@@ -128,16 +128,16 @@ static void destroy(Model *m) {
     for (int i = 0; i < m->n_owned; i++) free(m->owned[i]);
     /* the per-layer arrays hold borrowed pointers: clear them so weights_free_pointers only frees the arrays */
     for (int l = 0; l < LAYERS; l++) {
-        m->w.attn.rms_att_weight[l] = NULL;
-        m->w.q35.ssm_qkv[l]         = NULL;
-        m->w.q35.ssm_gate[l]        = NULL;
-        m->w.q35.ssm_beta[l]        = NULL;
-        m->w.q35.ssm_alpha[l]       = NULL;
-        m->w.q35.ssm_out[l]         = NULL;
-        m->w.q35.ssm_conv1d[l]      = NULL;
-        m->w.q35.ssm_dt_bias[l]     = NULL;
-        m->w.q35.ssm_a[l]           = NULL;
-        m->w.q35.ssm_norm[l]        = NULL;
+        m->w.attn.norm[l]       = NULL;
+        m->w.q35.ssm_qkv[l]     = NULL;
+        m->w.q35.ssm_gate[l]    = NULL;
+        m->w.q35.ssm_beta[l]    = NULL;
+        m->w.q35.ssm_alpha[l]   = NULL;
+        m->w.q35.ssm_out[l]     = NULL;
+        m->w.q35.ssm_conv1d[l]  = NULL;
+        m->w.q35.ssm_dt_bias[l] = NULL;
+        m->w.q35.ssm_a[l]       = NULL;
+        m->w.q35.ssm_norm[l]    = NULL;
         m->w.attn.wq[l] = m->w.attn.wk[l] = m->w.attn.wv[l] = m->w.attn.wo[l] = NULL;
         m->w.q35.attn_q_norm[l] = m->w.q35.attn_k_norm[l] = NULL;
     }

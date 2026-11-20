@@ -200,10 +200,10 @@ static void build_spec_model(Config *cfg, TransformerWeights *w, unsigned seed_b
         w->ffn.w2[l] = (tn_i8 *)make_packed_ternary(SM_DIM, SM_HIDDEN, seed_base + 70 + l);
         w->ffn.s2[l] = 1.0f;
 
-        w->attn.rms_att_weight[l] = (float *)malloc(SM_DIM * sizeof(float));
-        fill_ones(w->attn.rms_att_weight[l], SM_DIM);
-        w->ffn.rms_ffn_weight[l] = (float *)malloc(SM_DIM * sizeof(float));
-        fill_ones(w->ffn.rms_ffn_weight[l], SM_DIM);
+        w->attn.norm[l] = (float *)malloc(SM_DIM * sizeof(float));
+        fill_ones(w->attn.norm[l], SM_DIM);
+        w->ffn.norm[l] = (float *)malloc(SM_DIM * sizeof(float));
+        fill_ones(w->ffn.norm[l], SM_DIM);
     }
 
     w->rms_final_weight = (float *)malloc(SM_DIM * sizeof(float));
@@ -223,8 +223,8 @@ static void free_spec_model(TransformerWeights *w) {
         free(w->ffn.w1[l]);
         free(w->ffn.w2[l]);
         free(w->ffn.w3[l]);
-        free(w->attn.rms_att_weight[l]);
-        free(w->ffn.rms_ffn_weight[l]);
+        free(w->attn.norm[l]);
+        free(w->ffn.norm[l]);
     }
     free(w->rms_final_weight);
     free(w->cls.w);

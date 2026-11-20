@@ -56,8 +56,8 @@ typedef struct {
      * the projection, before QK-norm/RoPE (llama.cpp build_qkv order). */
     float **bq, **bk, **bv;
 
-    float **rms_att_weight;    /* dim per layer (input_layernorm) */
-    float **rms_attn_sub_norm; /* dim per layer (BitNet attn_sub_norm, may be NULL) */
+    float **norm;     /* dim per layer (input_layernorm) */
+    float **sub_norm; /* dim per layer (BitNet attn_sub_norm, may be NULL) */
 
     /* Per-layer, per-projection weight storage type for non-ternary GGUF
      * models: arrays of n_layers ints, set at load time by gguf_loader from
@@ -94,8 +94,8 @@ typedef struct {
     tn_i8 **w3;          /* Up:     dim * hidden_dim */
     float *s1, *s2, *s3; /* per-layer scales */
 
-    float **rms_ffn_weight;   /* dim per layer (post_attention_layernorm) */
-    float **rms_ffn_sub_norm; /* hidden_dim per layer (BitNet ffn_sub_norm, may be NULL) */
+    float **norm;     /* dim per layer (post_attention_layernorm) */
+    float **sub_norm; /* hidden_dim per layer (BitNet ffn_sub_norm, may be NULL) */
 
     int *w1_type, *w2_type, *w3_type; /* [n_layers], FFN gate/down/up */
 } WeightsFfn;
@@ -250,7 +250,7 @@ typedef struct {
      * existing wq/wk/wv/wo fields above (same semantic role: Q/K/V/output
      * projections — wq holds the combined Q+gate projection, width
      * 2*n_head*attn_head_dim) plus the two per-head RMSNorm weights below.
-     * Dense FFN (w1/w2/w3) and both RMSNorms (rms_att_weight/rms_ffn_weight)
+     * Dense FFN (w1/w2/w3) and both RMSNorms (attn.norm / ffn.norm)
      * are shared by both layer types — Qwen3.5's FFN is plain SwiGLU.
      *
      * Linear-attention (Gated DeltaNet) layers use ssm_* instead;

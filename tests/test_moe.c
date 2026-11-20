@@ -67,8 +67,8 @@ static void alloc_dense_layer(TransformerWeights *w, const Config *cfg, int l) {
     size_t gate    = (size_t)dim * hidden_dim; /* number of weights */
     size_t down    = (size_t)hidden_dim * dim;
 
-    w->ffn.rms_ffn_weight[l] = (float *)calloc(dim, sizeof(float));
-    fill_f32(w->ffn.rms_ffn_weight[l], dim, 1.0f);
+    w->ffn.norm[l] = (float *)calloc(dim, sizeof(float));
+    fill_f32(w->ffn.norm[l], dim, 1.0f);
 
     /* packed_bytes() buffers — 4 ternary weights per byte */
     w->ffn.w1[l] = (tn_i8 *)alloc_packed_ternary(gate, l * 100 + 5);
@@ -234,7 +234,7 @@ static void test_moe_ffn_output_finite(void) {
         free(w.moe.s1[l]);
         free(w.moe.s2[l]);
         free(w.moe.s3[l]);
-        free(w.ffn.rms_ffn_weight[l]);
+        free(w.ffn.norm[l]);
         free(w.ffn.w1[l]);
         free(w.ffn.w2[l]);
         free(w.ffn.w3[l]);
@@ -282,7 +282,7 @@ static void test_moe_dense_unchanged(void) {
 
     run_state_free(&s1);
     run_state_free(&s2);
-    free(w.ffn.rms_ffn_weight[0]);
+    free(w.ffn.norm[0]);
     free(w.ffn.w1[0]);
     free(w.ffn.w2[0]);
     free(w.ffn.w3[0]);

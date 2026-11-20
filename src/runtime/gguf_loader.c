@@ -175,15 +175,15 @@ static TernaryError load_dense_layer(TransformerWeights *w, const GGUFHeader *hd
     const int head_dim   = sh->head_dim;
     const int q_rows     = sh->q_rows;
     const int wide_heads = sh->wide_heads;
-    /* Attention norm (rms_att_weight): F32 zero-copy or dequant */
+    /* Attention norm (attn.norm): F32 zero-copy or dequant */
     snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_norm.weight", l);
-    w->attn.rms_att_weight[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)dim, store);
-    if (!w->attn.rms_att_weight[l]) return TN_ERR_INVALID_WEIGHTS;
+    w->attn.norm[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)dim, store);
+    if (!w->attn.norm[l]) return TN_ERR_INVALID_WEIGHTS;
 
-    /* FFN norm (rms_ffn_weight) */
+    /* FFN norm (ffn.norm) */
     snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_norm.weight", l);
-    w->ffn.rms_ffn_weight[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)dim, store);
-    if (!w->ffn.rms_ffn_weight[l]) return TN_ERR_INVALID_WEIGHTS;
+    w->ffn.norm[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)dim, store);
+    if (!w->ffn.norm[l]) return TN_ERR_INVALID_WEIGHTS;
 
     /* Qwen3 (dense) per-head QK-norm — optional: present for "qwen3" arch,
      * absent for llama/mistral/gemma/phi. Reuses the q35_attn_{q,k}_norm
@@ -239,13 +239,13 @@ static TernaryError load_dense_layer(TransformerWeights *w, const GGUFHeader *hd
     /* BitNet sub-norms (before attn_output / ffn_down) — optional. */
     snprintf(name_buf, sizeof(name_buf), "blk.%d.attn_sub_norm.weight", l);
     if (gguf_find_tensor(hdr, name_buf)) {
-        w->attn.rms_attn_sub_norm[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)dim, store);
-        if (!w->attn.rms_attn_sub_norm[l]) return TN_ERR_INVALID_WEIGHTS;
+        w->attn.sub_norm[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)dim, store);
+        if (!w->attn.sub_norm[l]) return TN_ERR_INVALID_WEIGHTS;
     }
     snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_sub_norm.weight", l);
     if (gguf_find_tensor(hdr, name_buf)) {
-        w->ffn.rms_ffn_sub_norm[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)hidden_dim, store);
-        if (!w->ffn.rms_ffn_sub_norm[l]) return TN_ERR_INVALID_WEIGHTS;
+        w->ffn.sub_norm[l] = gguf_ld_norm_to_f32(hdr, name_buf, (size_t)hidden_dim, store);
+        if (!w->ffn.sub_norm[l]) return TN_ERR_INVALID_WEIGHTS;
     }
     return TN_OK;
 }

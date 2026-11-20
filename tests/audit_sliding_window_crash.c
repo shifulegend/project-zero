@@ -56,10 +56,10 @@ static void aud_kv_cache_overflow(void) {
     w.ffn.w2[0] = calloc((size_t)cfg.dim * cfg.hidden_dim, sizeof(float));
     w.ffn.w3[0] = calloc((size_t)cfg.hidden_dim * cfg.dim, sizeof(float));
 
-    w.attn.rms_att_weight[0] = calloc(cfg.dim, 4);
-    w.ffn.rms_ffn_weight[0]  = calloc(cfg.dim, 4);
-    w.rms_final_weight       = calloc(cfg.dim, 4);
-    w.cls.w                  = calloc((size_t)cfg.vocab_size * cfg.dim, sizeof(float));
+    w.attn.norm[0]     = calloc(cfg.dim, 4);
+    w.ffn.norm[0]      = calloc(cfg.dim, 4);
+    w.rms_final_weight = calloc(cfg.dim, 4);
+    w.cls.w            = calloc((size_t)cfg.vocab_size * cfg.dim, sizeof(float));
 
     /* Allocate RunState with ONLY 10 tokens capacity */
     int limited_seq  = 10;
@@ -99,8 +99,8 @@ static void aud_kv_cache_overflow(void) {
     free(w.ffn.w1[0]);
     free(w.ffn.w2[0]);
     free(w.ffn.w3[0]);
-    free(w.attn.rms_att_weight[0]);
-    free(w.ffn.rms_ffn_weight[0]);
+    free(w.attn.norm[0]);
+    free(w.ffn.norm[0]);
     free(w.rms_final_weight);
     free(w.cls.w);
     weights_free_pointers(&w);

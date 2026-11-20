@@ -17,24 +17,24 @@ TernaryError weights_alloc_pointers(TransformerWeights *w, const Config *cfg) {
      * before calling this function.  Doing it here would clobber fields the
      * caller may have set (e.g. layers_are_ternary) — violating modularity. */
 
-    w->attn.wq                = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
-    w->attn.wk                = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
-    w->attn.wv                = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
-    w->attn.wo                = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
-    w->attn.sq                = (float *)calloc(n_layers, sizeof(float));
-    w->attn.sk                = (float *)calloc(n_layers, sizeof(float));
-    w->attn.sv                = (float *)calloc(n_layers, sizeof(float));
-    w->attn.so                = (float *)calloc(n_layers, sizeof(float));
-    w->ffn.w1                 = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
-    w->ffn.w2                 = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
-    w->ffn.w3                 = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
-    w->ffn.s1                 = (float *)calloc(n_layers, sizeof(float));
-    w->ffn.s2                 = (float *)calloc(n_layers, sizeof(float));
-    w->ffn.s3                 = (float *)calloc(n_layers, sizeof(float));
-    w->attn.rms_att_weight    = (float **)calloc(n_layers, sizeof(float *));
-    w->ffn.rms_ffn_weight     = (float **)calloc(n_layers, sizeof(float *));
-    w->attn.rms_attn_sub_norm = (float **)calloc(n_layers, sizeof(float *));
-    w->ffn.rms_ffn_sub_norm   = (float **)calloc(n_layers, sizeof(float *));
+    w->attn.wq       = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
+    w->attn.wk       = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
+    w->attn.wv       = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
+    w->attn.wo       = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
+    w->attn.sq       = (float *)calloc(n_layers, sizeof(float));
+    w->attn.sk       = (float *)calloc(n_layers, sizeof(float));
+    w->attn.sv       = (float *)calloc(n_layers, sizeof(float));
+    w->attn.so       = (float *)calloc(n_layers, sizeof(float));
+    w->ffn.w1        = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
+    w->ffn.w2        = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
+    w->ffn.w3        = (tn_i8 **)calloc(n_layers, sizeof(tn_i8 *));
+    w->ffn.s1        = (float *)calloc(n_layers, sizeof(float));
+    w->ffn.s2        = (float *)calloc(n_layers, sizeof(float));
+    w->ffn.s3        = (float *)calloc(n_layers, sizeof(float));
+    w->attn.norm     = (float **)calloc(n_layers, sizeof(float *));
+    w->ffn.norm      = (float **)calloc(n_layers, sizeof(float *));
+    w->attn.sub_norm = (float **)calloc(n_layers, sizeof(float *));
+    w->ffn.sub_norm  = (float **)calloc(n_layers, sizeof(float *));
 
     /* Per-layer, per-projection weight type (WEIGHT_TYPE_*) — see weights.h
      * for why this can't be a single shared flag. */
@@ -47,7 +47,7 @@ TernaryError weights_alloc_pointers(TransformerWeights *w, const Config *cfg) {
     w->ffn.w3_type  = (int *)calloc(n_layers, sizeof(int));
 
     /* Qwen3.5/3.6 hybrid attention — cheap per-layer pointer arrays,
-     * always allocated (NULL contents) like rms_attn_sub_norm above;
+     * always allocated (NULL contents) like attn.sub_norm above;
      * populated only when MoEConfig.has_linear_attn is set. */
     w->q35.attn_q_norm = (float **)calloc(n_layers, sizeof(float *));
     w->q35.attn_k_norm = (float **)calloc(n_layers, sizeof(float *));
@@ -72,14 +72,13 @@ TernaryError weights_alloc_pointers(TransformerWeights *w, const Config *cfg) {
 
     if (!w->attn.wq || !w->attn.wk || !w->attn.wv || !w->attn.wo || !w->attn.sq || !w->attn.sk ||
         !w->attn.sv || !w->attn.so || !w->ffn.w1 || !w->ffn.w2 || !w->ffn.w3 || !w->ffn.s1 ||
-        !w->ffn.s2 || !w->ffn.s3 || !w->attn.rms_att_weight || !w->ffn.rms_ffn_weight ||
-        !w->attn.rms_attn_sub_norm || !w->ffn.rms_ffn_sub_norm || !w->attn.wq_type ||
-        !w->attn.wk_type || !w->attn.wv_type || !w->attn.wo_type || !w->ffn.w1_type ||
-        !w->ffn.w2_type || !w->ffn.w3_type || !w->q35.attn_q_norm || !w->q35.attn_k_norm ||
-        !w->q35.ssm_qkv || !w->q35.ssm_gate || !w->q35.ssm_conv1d || !w->q35.ssm_dt_bias ||
-        !w->q35.ssm_a || !w->q35.ssm_alpha || !w->q35.ssm_beta || !w->q35.ssm_norm ||
-        !w->q35.ssm_out || !w->qwen3moe.attn_q_norm || !w->qwen3moe.attn_k_norm || !w->attn.bq ||
-        !w->attn.bk || !w->attn.bv) {
+        !w->ffn.s2 || !w->ffn.s3 || !w->attn.norm || !w->ffn.norm || !w->attn.sub_norm ||
+        !w->ffn.sub_norm || !w->attn.wq_type || !w->attn.wk_type || !w->attn.wv_type ||
+        !w->attn.wo_type || !w->ffn.w1_type || !w->ffn.w2_type || !w->ffn.w3_type ||
+        !w->q35.attn_q_norm || !w->q35.attn_k_norm || !w->q35.ssm_qkv || !w->q35.ssm_gate ||
+        !w->q35.ssm_conv1d || !w->q35.ssm_dt_bias || !w->q35.ssm_a || !w->q35.ssm_alpha ||
+        !w->q35.ssm_beta || !w->q35.ssm_norm || !w->q35.ssm_out || !w->qwen3moe.attn_q_norm ||
+        !w->qwen3moe.attn_k_norm || !w->attn.bq || !w->attn.bk || !w->attn.bv) {
         weights_free_pointers(w);
         return TN_ERR_OOM;
     }
@@ -105,10 +104,10 @@ void weights_free_pointers(TransformerWeights *w) {
     if (w->ffn.s1) free(w->ffn.s1);
     if (w->ffn.s2) free(w->ffn.s2);
     if (w->ffn.s3) free(w->ffn.s3);
-    if (w->attn.rms_att_weight) free(w->attn.rms_att_weight);
-    if (w->ffn.rms_ffn_weight) free(w->ffn.rms_ffn_weight);
-    if (w->attn.rms_attn_sub_norm) free(w->attn.rms_attn_sub_norm);
-    if (w->ffn.rms_ffn_sub_norm) free(w->ffn.rms_ffn_sub_norm);
+    if (w->attn.norm) free(w->attn.norm);
+    if (w->ffn.norm) free(w->ffn.norm);
+    if (w->attn.sub_norm) free(w->attn.sub_norm);
+    if (w->ffn.sub_norm) free(w->ffn.sub_norm);
     if (w->attn.wq_type) free(w->attn.wq_type);
     if (w->attn.wk_type) free(w->attn.wk_type);
     if (w->attn.wv_type) free(w->attn.wv_type);
@@ -198,9 +197,9 @@ TernaryError weights_map(TransformerWeights *w, const Config *cfg, const MoEConf
     /* 2. Per-layer weights (DEFINITELY CONFIRMED Microsoft BitNet-b1.58-2B-4T Sequence) */
     for (int l = 0; l < n_layers; l++) {
         /* Input Norms (Both present) */
-        MAP_PTR(w->attn.rms_att_weight[l], (size_t)dim * sizeof(float));
+        MAP_PTR(w->attn.norm[l], (size_t)dim * sizeof(float));
         ALIGN64();
-        MAP_PTR(w->ffn.rms_ffn_weight[l], (size_t)dim * sizeof(float));
+        MAP_PTR(w->ffn.norm[l], (size_t)dim * sizeof(float));
         ALIGN64();
 
         size_t size_q   = (size_t)dim * dim;
@@ -239,7 +238,7 @@ TernaryError weights_map(TransformerWeights *w, const Config *cfg, const MoEConf
 
             /* attn_sub_norm (BitNet only) */
             if (has_sub_norms) {
-                MAP_PTR(w->attn.rms_attn_sub_norm[l], (size_t)dim * sizeof(float));
+                MAP_PTR(w->attn.sub_norm[l], (size_t)dim * sizeof(float));
                 ALIGN64();
             }
 
@@ -257,7 +256,7 @@ TernaryError weights_map(TransformerWeights *w, const Config *cfg, const MoEConf
 
                 /* ffn_sub_norm (BitNet only) */
                 if (has_sub_norms) {
-                    MAP_PTR(w->ffn.rms_ffn_sub_norm[l], (size_t)hidden_dim * sizeof(float));
+                    MAP_PTR(w->ffn.sub_norm[l], (size_t)hidden_dim * sizeof(float));
                     ALIGN64();
                 }
 

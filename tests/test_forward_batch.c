@@ -82,10 +82,10 @@ static void build_dense_ternary_model(Config *cfg, TransformerWeights *w) {
         w->ffn.w2[l] = (tn_i8 *)make_packed_ternary(D_DIM, D_HIDDEN, 700 + l);
         w->ffn.s2[l] = 1.0f;
 
-        w->attn.rms_att_weight[l] = (float *)malloc(D_DIM * sizeof(float));
-        fill_ones(w->attn.rms_att_weight[l], D_DIM);
-        w->ffn.rms_ffn_weight[l] = (float *)malloc(D_DIM * sizeof(float));
-        fill_ones(w->ffn.rms_ffn_weight[l], D_DIM);
+        w->attn.norm[l] = (float *)malloc(D_DIM * sizeof(float));
+        fill_ones(w->attn.norm[l], D_DIM);
+        w->ffn.norm[l] = (float *)malloc(D_DIM * sizeof(float));
+        fill_ones(w->ffn.norm[l], D_DIM);
     }
 
     w->rms_final_weight = (float *)malloc(D_DIM * sizeof(float));
@@ -105,8 +105,8 @@ static void free_dense_ternary_model(TransformerWeights *w) {
         free(w->ffn.w1[l]);
         free(w->ffn.w2[l]);
         free(w->ffn.w3[l]);
-        free(w->attn.rms_att_weight[l]);
-        free(w->ffn.rms_ffn_weight[l]);
+        free(w->attn.norm[l]);
+        free(w->ffn.norm[l]);
     }
     free(w->rms_final_weight);
     free(w->cls.w);
@@ -396,12 +396,12 @@ static void build_mla_ternary_model(Config *cfg, TransformerWeights *w, MoEConfi
         w->ffn.w2[l] = (tn_i8 *)make_packed_ternary(M_DIM, M_HIDDEN, 777 + l);
         w->ffn.s2[l] = 1.0f;
 
-        w->attn.rms_att_weight[l] = (float *)malloc(M_DIM * sizeof(float));
-        fill_ones(w->attn.rms_att_weight[l], M_DIM);
-        w->ffn.rms_ffn_weight[l] = (float *)malloc(M_DIM * sizeof(float));
-        fill_ones(w->ffn.rms_ffn_weight[l], M_DIM);
-        w->attn.rms_attn_sub_norm[l] = (float *)malloc(M_LORA * sizeof(float));
-        fill_ones(w->attn.rms_attn_sub_norm[l], M_LORA);
+        w->attn.norm[l] = (float *)malloc(M_DIM * sizeof(float));
+        fill_ones(w->attn.norm[l], M_DIM);
+        w->ffn.norm[l] = (float *)malloc(M_DIM * sizeof(float));
+        fill_ones(w->ffn.norm[l], M_DIM);
+        w->attn.sub_norm[l] = (float *)malloc(M_LORA * sizeof(float));
+        fill_ones(w->attn.sub_norm[l], M_LORA);
     }
 
     w->rms_final_weight = (float *)malloc(M_DIM * sizeof(float));
@@ -421,9 +421,9 @@ static void free_mla_ternary_model(TransformerWeights *w, const MoEConfig *mc) {
         free(w->ffn.w1[l]);
         free(w->ffn.w2[l]);
         free(w->ffn.w3[l]);
-        free(w->attn.rms_att_weight[l]);
-        free(w->ffn.rms_ffn_weight[l]);
-        free(w->attn.rms_attn_sub_norm[l]);
+        free(w->attn.norm[l]);
+        free(w->ffn.norm[l]);
+        free(w->attn.sub_norm[l]);
     }
     free(w->rms_final_weight);
     free(w->cls.w);

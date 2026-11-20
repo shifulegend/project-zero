@@ -55,6 +55,11 @@
   until the tool reports it.
 - **Complexity:** cyclomatic complexity 10 or less and nesting depth 3 or less per new function;
   prefer early returns over nested `if`s, and a table or a helper over a long `else if` chain.
+- **Python typing:** every tracked `.py` file passes `mypy --strict` (`mypy.ini`; CI:
+  `tools/check_py_types.py`, which also fails a listed file that became clean). Annotate every
+  parameter and return type, name aliases for repeated shapes (`Row`, `Tensors`), and use a
+  `TypedDict` or dataclass instead of positional lists or dicts of mixed values. `Any` is for
+  genuinely dynamic data (GGUF metadata, JSON), with a comment. `benchmark_results/` is not checked.
 - **Logging:** every diagnostic goes through `core/log.h` (`TN_LOG_ERR/WRN/INF/DBG(component, ...)`;
   `TN_OUT_INF` for a status line the person running the program should see on stdout). No raw
   `fprintf(stderr, ...)` in `src/` (CI: `tools/check_raw_logging.py`, allow-list for the terminal-UI

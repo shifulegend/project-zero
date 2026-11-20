@@ -1,3 +1,2 @@
 # Python files that do not pass mypy --strict yet (tools/check_py_types.py): path, errors.
 # Entries may only shrink or go.
-tools/deepseek_bench_report.py 292

@@ -17,90 +17,37 @@ Writes:
   BENCHMARK_REPORT.md
 """
 
-import csv, os, re, io
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from bench_report_util import Row, fmt_tps, read_csv, read_file, read_llama_csv, safe_float
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_DIR = os.path.join(REPO, "benchmark_results")
 REPORT = os.path.join(REPO, "BENCHMARK_REPORT.md")
 
 
-def read_csv(path):
-    """Read CSV, tolerating continuation lines (bash printf newline bug)."""
-    if not os.path.exists(path):
-        return []
-    with open(path, encoding="utf-8") as f:
-        raw = f.read()
-    # Fix: join lines that don't start with a date prefix or 'date' header
-    fixed = re.sub(r"\n(?!20[0-9]|date)", ",", raw)
-    rows = []
-    reader = csv.DictReader(io.StringIO(fixed))
-    for row in reader:
-        # Clean up any extra commas creating phantom fields
-        rows.append({k: v.strip() for k, v in row.items() if k is not None})
-    return rows
+lines: list[str] = []
 
 
-def read_llama_csv(path):
-    """Read llama-bench CSV (clean format, no fixing needed)."""
-    if not os.path.exists(path):
-        return []
-    with open(path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
-
-def read_file(path):
-    """Contents of a file, or "(not found)" when it does not exist."""
-    if not os.path.exists(path):
-        return "(not found)"
-    with open(path, encoding="utf-8") as f:
-        return f.read()
-
-
-def safe_float(v, default=0.0):
-    """`v` as a float, or `default` when it is missing or not a number."""
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return default
-
-
-def fmt_tps(v):
-    """A tok/s value formatted for the report, "N/A" when missing or zero."""
-    f = safe_float(v)
-    if f == 0:
-        return "N/A"
-    return f"{f:.3f}"
-
-
-def speedup(our, llama):
-    """Speed-up of the first value over the second as "N.N×", "N/A" when either is missing."""
-    o = safe_float(our)
-    l = safe_float(llama)
-    if o == 0 or l == 0:
-        return "N/A"
-    return f"{l / o:.1f}×"
-
-
-lines = []
-
-
-def w(s=""):
+def w(s: str = "") -> None:
     """Appends a line to the report."""
     lines.append(s)
 
 
-def generate_regression_section(out_lines):
+def generate_regression_section(out_lines: list[str]) -> None:
     """Append Section 8 (Regression Benchmark — Bitnet & SmolLM2) to out_lines."""
 
-    def emit(s=""):
+    def emit(s: str = "") -> None:
         """Appends a line to the section being generated."""
         out_lines.append(s)
 
-    def read_reg_csv(name):
+    def read_reg_csv(name: str) -> list[Row]:
         """Reads a regression-benchmark CSV from the output folder."""
         return read_csv(os.path.join(OUT_DIR, name))
 
-    def sweep_tables(sweep, label):
+    def sweep_tables(sweep: list[Row], label: str) -> Row | None:
         """Render 1a/1b-style tables for a regression sweep CSV."""
         if not sweep:
             emit("*No data — run `tools/regression_bench.sh` first.*")
@@ -167,7 +114,7 @@ def generate_regression_section(out_lines):
             emit()
             return None
 
-    def thread_table(tsweep):
+    def thread_table(tsweep: list[Row]) -> None:
         """Render thread-scaling table (like Section 2)."""
         if not tsweep:
             emit("*No data — run `tools/regression_bench.sh` first.*")
@@ -356,8 +303,8 @@ if sweep:
     header = "| Threads |" + "".join(f" {c:^10} |" for c in classifiers)
     w(header)
     w("|---------|" + "".join("-" * 12 + "|" for _ in classifiers))
-    auto_simd = [s for s in simd_modes if s in ("auto", "vnni")]
-    auto_simd = auto_simd[0] if auto_simd else simd_modes[-1]
+    auto_simd_modes = [s for s in simd_modes if s in ("auto", "vnni")]
+    auto_simd = auto_simd_modes[0] if auto_simd_modes else simd_modes[-1]
     for t in threads:
         row_str = f"| T={t:<5} |" + "".join(
             f" {fmt_tps(tps_map.get((t, auto_simd, c), 0)):^10} |" for c in classifiers
@@ -434,7 +381,7 @@ w("| Threads | PZ tok/s | llama TG tok/s | llama is faster by |")
 w("|---------|----------|----------------|---------------------|")
 
 # Map our best tps per thread
-our_by_t = {}
+our_by_t: dict[int, float] = {}
 for row in tsweep or sweep:
     t = int(row["threads"])
     tps = safe_float(row["tok_s"])
@@ -473,7 +420,7 @@ if perf:
     w("|--------|---|-----|-------------|--------------|--------------|-------------|---------|")
     for row in perf:
         eng = row.get("engine", "?")
-        t = row.get("threads", "?")
+        t_text = row.get("threads", "?")
         ipc = row.get("ipc", "?")
         cmiss = row.get("cache_miss_pct", "?")
         bmiss = row.get("branch_miss_pct", "?")
@@ -481,7 +428,7 @@ if perf:
         page = row.get("page_faults", "?")
         freq = row.get("cpu_freq_mhz", "?")
         w(
-            f"| {eng:<14} | {t} | {ipc:>4} | {cmiss:>11} | {bmiss:>12} | {ctx:>12} | {page:>11} | {freq:>7} |"
+            f"| {eng:<14} | {t_text} | {ipc:>4} | {cmiss:>11} | {bmiss:>12} | {ctx:>12} | {page:>11} | {freq:>7} |"
         )
     w()
 
@@ -562,14 +509,14 @@ if tsweep:
     w("| Threads | Load (ms) | Inference (ms) | Load/Total ratio |")
     w("|---------|-----------|----------------|------------------|")
     for row in tsweep:
-        t = row["threads"]
+        t_text = row["threads"]
         load = safe_float(row.get("load_ms", 0))
         tps = safe_float(row["tok_s"])
         ntoks = safe_float(row.get("ntoks", 5))
         infer = (ntoks / tps * 1000) if tps > 0 else 0
         total = load + infer
         ratio = f"{load / total * 100:.0f}%" if total > 0 else "N/A"
-        w(f"| T={t:<5} | {int(load):>9} | {int(infer):>14} | {ratio:>16} |")
+        w(f"| T={t_text:<5} | {int(load):>9} | {int(infer):>14} | {ratio:>16} |")
     w()
     w("Model load is dominated by Q4_K→F32 dequantization at engine startup.")
     w("Load time is constant across SIMD/Classifier variants (loading is single-threaded).")

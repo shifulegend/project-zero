@@ -61,6 +61,7 @@ static int queue_wait_notify(int position, void *userdata) {
  * freed, the client has its answer, and 0 is returned. */
 static int chat_acquire_units(int fd, ApiContext *ctx, ChatRequest *reqp, int units,
                               QueueWaitCtx *qwp, const char *extra_headers) {
+    const ServerLimits *limits_p = &ctx->server_config.limits;
     /* With --parallel N, N batched requests run at once; otherwise one
      * generation at a time. With --queue-size N, up to N requests wait their
      * turn in arrival order (Phase 23 stage 1); otherwise (the default) a
@@ -68,9 +69,8 @@ static int chat_acquire_units(int fd, ApiContext *ctx, ChatRequest *reqp, int un
      * (metrics/docs/static/cancel) never touch the queue. */
     *qwp              = (QueueWaitCtx){fd, reqp->output.stream ? 1 : 0, 0, extra_headers};
     QueueWaitCtx *qw  = qwp;
-    GenQueueResult qr = gen_queue_acquire_n(&ctx->gen_queue, units,
-                                            ctx->server_config.limits.queue_timeout_s * 1000,
-                                            queue_wait_notify, qw);
+    GenQueueResult qr = gen_queue_acquire_n(
+        &ctx->gen_queue, units, limits_p->queue_timeout_s * 1000, queue_wait_notify, qw);
     if (qr == GEN_QUEUE_OK && !atomic_load(&ctx->running)) { /* shutting down: don't start */
         gen_queue_release_n(&ctx->gen_queue, units);
         chat_request_free(reqp);
@@ -82,10 +82,9 @@ static int chat_acquire_units(int fd, ApiContext *ctx, ChatRequest *reqp, int un
     if (qr != GEN_QUEUE_OK) {
         chat_request_free(reqp);
         if (qr == GEN_QUEUE_ABORTED) return 0; /* client already gone */
-        const char *why = qr == GEN_QUEUE_TIMEOUT ? "Timed out waiting for the generation queue"
-                          : ctx->server_config.limits.queue_size > 0
-                              ? "Generation queue is full"
-                              : "Another generation is already in flight";
+        const char *why = qr == GEN_QUEUE_TIMEOUT    ? "Timed out waiting for the generation queue"
+                          : limits_p->queue_size > 0 ? "Generation queue is full"
+                                                     : "Another generation is already in flight";
         if (qw->headers_sent) {
             char ev[HTTP_SSE_EVENT_BUF];
             int n = snprintf(ev, sizeof(ev),
@@ -264,6 +263,7 @@ static void chat_send_result(int fd, ApiContext *ctx, const ChatRequest *req, co
 
 void http_handle_chat_completions(int fd, const char *body_start, size_t body_len, ApiContext *ctx,
                                   const char *extra_headers) {
+    const ServerSearch *search_p = &ctx->server_config.search;
     /* Parse first — no shared state is touched — so the request's own
      * settings (stream) are known while it waits for the slot. */
     char *body = (char *)malloc(body_len + 1);
@@ -295,14 +295,11 @@ void http_handle_chat_completions(int fd, const char *body_start, size_t body_le
 
     /* Phase 30: best-of-N (server default --best-of, capped by --best-of-max)
      * and step-level tree search (server --mcts*, request "mcts"). */
-    int best_of =
-        (req.set_mask & CHAT_SET_BEST_OF) ? req.search.best_of : ctx->server_config.search.best_of;
+    int best_of = (req.set_mask & CHAT_SET_BEST_OF) ? req.search.best_of : search_p->best_of;
     if (best_of < 1) best_of = 1;
-    if (best_of > ctx->server_config.search.best_of_max)
-        best_of = ctx->server_config.search.best_of_max;
+    if (best_of > search_p->best_of_max) best_of = search_p->best_of_max;
     MctsOptions mopt;
-    request_mcts_resolve(&req, &ctx->server_config.search.mcts, ctx->server_config.search.mcts_max,
-                         &mopt);
+    request_mcts_resolve(&req, &search_p->mcts, search_p->mcts_max, &mopt);
     int wants_image = 0;
     if (ctx->server_config.vision.vision_path && ctx->server_config.vision.proj_path)
         for (int i = 0; i < req.num_messages; i++)

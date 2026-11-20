@@ -54,8 +54,8 @@ typedef struct {
 
 /* The prompt and the caches that may already hold part of it. */
 typedef struct {
-    int *prompt_tokens;
-    int n_prompt;
+    int *tokens;
+    int n_tokens;
     int pos_offset;
     PrefixCache *pcache;
     PromptStore *pstore;
@@ -134,5 +134,8 @@ int gen_session_consume(GenSession *g, float *logits);
 
 /* Flushes, saves the prompt snapshot, fills stats and frees the session. */
 void gen_session_end(GenSession *g);
+
+/* Verbose mode: log the five largest logits of a step and the token that was sampled. */
+void gen_session_log_top5(int step, int sampled, const float *logits, int vocab_size);
 
 #endif /* TN_GEN_SESSION_H */

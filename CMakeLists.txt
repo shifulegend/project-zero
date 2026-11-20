@@ -257,6 +257,7 @@ set(TRANSFORMER_SOURCES
     src/transformer/forward.c
     src/transformer/generate.c
     src/transformer/gen_session.c
+    src/transformer/gen_session_debug.c
     src/transformer/mla_attention.c
     src/transformer/moe_ffn.c
     src/transformer/moe_ffn_legacy.c

@@ -14,7 +14,7 @@ src/runtime/hardware_profile.c 698
 src/tokenizer/pretokenize.c 593
 src/tokenizer/tokenizer_encode.c 592
 src/transformer/attention.c 763
-src/transformer/gen_session.c 569
+src/transformer/gen_session.c 549
 src/transformer/mla_attention.c 588
 src/update/update_check.c 616
 tests/test_api_server.c 547

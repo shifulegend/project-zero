@@ -23,9 +23,9 @@ src/api/config_endpoint.c::api_config_save 31 100
 src/api/config_endpoint.c::api_host_allowed 18 23
 src/api/data_url.c::data_url_decode 18 44
 src/api/gen_queue.c::gen_queue_acquire_n 17 50
-src/api/http_chat.c::chat_acquire_units 11 35
+src/api/http_chat.c::chat_acquire_units 11 34
 src/api/http_chat.c::chat_build_prompt 17 57
-src/api/http_chat.c::http_handle_chat_completions 33 104
+src/api/http_chat.c::http_handle_chat_completions 33 102
 src/api/http_headers.c::http_parse_content_length 13 16
 src/api/http_headers.c::http_scan_framing 17 38
 src/api/http_request.c::http_parse 30 51
@@ -75,7 +75,7 @@ src/cli/session_checks.c::session_accuracy_checks 21 73
 src/cli/session_dist.c::session_distributed 20 66
 src/cli/session_extras.c::session_load_extras 14 58
 src/cli/session_model.c::load_native 31 133
-src/cli/session_server.c::configure_server 18 58
+src/cli/session_server.c::configure_server 18 56
 src/cli/session_startup.c::session_tune_hardware 32 90
 src/cli/session_tokenizer.c::session_setup_tokenizer 29 84
 src/config/pz_config.c::pz_config_format 23 39
@@ -256,11 +256,11 @@ src/transformer/forward.c::transformer_forward 67 176
 src/transformer/forward.c::transformer_forward_batch 13 34
 src/transformer/forward.c::transformer_forward_multi_ex 23 40
 src/transformer/forward.c::transformer_forward_multi_supported 11 7
-src/transformer/gen_session.c::build_prompt 51 113
-src/transformer/gen_session.c::gen_session_consume 48 116
-src/transformer/gen_session.c::gen_session_end 15 40
-src/transformer/gen_session.c::gen_session_prepare 18 59
-src/transformer/gen_session.c::gen_session_start 19 41
+src/transformer/gen_session.c::build_prompt 51 111
+src/transformer/gen_session.c::gen_session_consume 44 92
+src/transformer/gen_session.c::gen_session_end 15 32
+src/transformer/gen_session.c::gen_session_prepare 18 58
+src/transformer/gen_session.c::gen_session_start 15 38
 src/transformer/mamba.c::mamba_block_forward 11 47
 src/transformer/mla_attention.c::mla_attention_forward 40 152
 src/transformer/mla_attention.c::mla_attention_forward_batch 52 202

@@ -118,7 +118,7 @@ static void job_finish_locked(BatchJob *job) {
 
 static long long kv_need(const GenSession *g, const Config *cfg) {
     long long need =
-        (long long)g->prompt.n_prompt + (g->req.max_tokens > 0 ? g->req.max_tokens : 0);
+        (long long)g->prompt.n_tokens + (g->req.max_tokens > 0 ? g->req.max_tokens : 0);
     return need < cfg->seq_len ? need : cfg->seq_len;
 }
 
@@ -141,9 +141,9 @@ static int pick_slot(BatchScheduler *sched, const BatchJob *job, int *match_out)
     for (int i = 0; i < sched->opt.n_slots; i++) {
         BatchSlot *slot = &sched->slots[i];
         if (slot->job) continue;
-        int m       = job->use_cache ? prefix_cache_match(slot->pc, job->g.prompt.prompt_tokens,
-                                                          job->g.prompt.n_prompt)
-                                     : 0;
+        int m       = job->use_cache
+                          ? prefix_cache_match(slot->pc, job->g.prompt.tokens, job->g.prompt.n_tokens)
+                          : 0;
         long long c = slot->s->kv_committed;
         if (best < 0 || m > best_match || (m == best_match && c < best_commit)) {
             best        = i;
@@ -272,7 +272,7 @@ static void step(BatchScheduler *sched) {
             }
             for (int k = 0; k < n; k++) {
                 sched->row_state[rows + k] = sched->slots[pick].s;
-                sched->row_want[rows + k]  = (g->progress.step + k >= g->prompt.n_prompt - 1);
+                sched->row_want[rows + k]  = (g->progress.step + k >= g->prompt.n_tokens - 1);
             }
             count[pick]      = n;
             order[n_order++] = pick;

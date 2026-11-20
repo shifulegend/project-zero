@@ -40,17 +40,17 @@ static char *dup_setting(const char *s) {
 /* Generation flags become the server-side defaults every request (and the web UI, via
  * GET /v1/config) starts from; the rest are the API hardening and UI knobs. */
 static void configure_server(PzSession *S, ApiContext *ctx) {
+    const CliServer *server_p = &S->args.server;
     /* Phase 21: Start OpenAI-compatible API server */
 
     /* Phase 22: API hardening knobs, off by default */
-    ctx->server_config.cors.enabled = S->args.server.cors_enabled;
-    for (int ci = 0; ci < S->args.server.num_cors_origins; ci++) {
-        server_config_add_cors_origin(&ctx->server_config, S->args.server.cors_origins[ci]);
+    ctx->server_config.cors.enabled = server_p->cors_enabled;
+    for (int ci = 0; ci < server_p->num_cors_origins; ci++) {
+        server_config_add_cors_origin(&ctx->server_config, server_p->cors_origins[ci]);
     }
-    if (S->args.server.api_key)
-        ctx->server_config.auth.api_key = dup_setting(S->args.server.api_key);
-    ctx->server_config.metrics.enabled            = S->args.server.metrics_enabled;
-    ctx->server_config.ui.web_ui                  = S->args.server.web_ui_mode;
+    if (server_p->api_key) ctx->server_config.auth.api_key = dup_setting(server_p->api_key);
+    ctx->server_config.metrics.enabled            = server_p->metrics_enabled;
+    ctx->server_config.ui.web_ui                  = server_p->web_ui_mode;
     ctx->server_config.numerics.act_quant         = S->args.eval.act_quant;
     ctx->server_config.numerics.quality_tolerance = S->args.eval.quality_tolerance;
     ctx->server_config.numerics.self_check_tokens = S->args.eval.self_check_tokens;
@@ -69,26 +69,25 @@ static void configure_server(PzSession *S, ApiContext *ctx) {
         const char *base            = strrchr(S->args.input.model_path, '/');
         ctx->server_config.model_id = dup_setting(base ? base + 1 : S->args.input.model_path);
     }
-    if (S->args.server.ui_title)
-        ctx->server_config.ui.ui_title = dup_setting(S->args.server.ui_title);
-    ctx->server_config.ui.ui_logo                  = S->args.server.ui_logo;
+    if (server_p->ui_title) ctx->server_config.ui.ui_title = dup_setting(server_p->ui_title);
+    ctx->server_config.ui.ui_logo                  = server_p->ui_logo;
     ctx->server_config.cache.prompt_cache          = S->args.perf.prompt_cache ? 1 : 0;
     ctx->server_config.chat.chat_format            = S->args.sampling.chat_format;
-    ctx->server_config.chat.allow_request_template = S->args.server.no_request_template ? 0 : 1;
-    ctx->server_config.chat.allow_config_write     = S->args.server.no_config_write ? 0 : 1;
+    ctx->server_config.chat.allow_request_template = server_p->no_request_template ? 0 : 1;
+    ctx->server_config.chat.allow_config_write     = server_p->no_config_write ? 0 : 1;
     ctx->server_config.chat.chat_template_source   = !S->t.chat_template          ? "none"
                                                      : S->chat_template_from_file ? "file"
                                                      : S->chat_template_builtin   ? "builtin"
                                                                                   : "gguf";
     ctx->server_config.search.best_of              = S->args.sampling.best_of;
-    ctx->server_config.limits.queue_size           = S->args.server.queue_size;
-    ctx->server_config.limits.queue_timeout_s      = S->args.server.queue_timeout_s;
-    ctx->server_config.limits.rate_limit           = S->args.server.rate_limit;
-    ctx->server_config.limits.client_timeout_s     = S->args.server.client_timeout_s;
-    ctx->server_config.limits.max_connections      = S->args.server.max_connections;
-    ctx->server_config.limits.parallel             = S->args.server.parallel;
-    ctx->server_config.limits.parallel_batch       = S->args.server.parallel_batch;
-    gen_queue_set_max_waiting(&ctx->gen_queue, S->args.server.queue_size);
+    ctx->server_config.limits.queue_size           = server_p->queue_size;
+    ctx->server_config.limits.queue_timeout_s      = server_p->queue_timeout_s;
+    ctx->server_config.limits.rate_limit           = server_p->rate_limit;
+    ctx->server_config.limits.client_timeout_s     = server_p->client_timeout_s;
+    ctx->server_config.limits.max_connections      = server_p->max_connections;
+    ctx->server_config.limits.parallel             = server_p->parallel;
+    ctx->server_config.limits.parallel_batch       = server_p->parallel_batch;
+    gen_queue_set_max_waiting(&ctx->gen_queue, server_p->queue_size);
     ctx->server_config.search.best_of_max            = S->args.sampling.best_of_max;
     ctx->server_config.cache.prompt_cache_mb         = S->args.perf.prompt_cache_mb;
     ctx->server_config.cache.prompt_cache_min_tokens = S->args.perf.prompt_cache_min_tokens;
@@ -96,8 +95,7 @@ static void configure_server(PzSession *S, ApiContext *ctx) {
         (S->args.sampling.max_tokens_limit > 0 && S->args.sampling.max_tokens_limit < S->p.seq_len)
             ? S->args.sampling.max_tokens_limit
             : S->p.seq_len;
-    if (S->args.server.static_dir)
-        ctx->server_config.ui.static_dir = dup_setting(S->args.server.static_dir);
+    if (server_p->static_dir) ctx->server_config.ui.static_dir = dup_setting(server_p->static_dir);
     if (S->args.input.vision_path && S->args.input.proj_path) {
         ctx->server_config.vision.vision_path = dup_setting(S->args.input.vision_path);
         ctx->server_config.vision.proj_path   = dup_setting(S->args.input.proj_path);

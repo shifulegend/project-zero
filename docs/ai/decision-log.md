@@ -1341,3 +1341,13 @@ Taken from the plan's defaults while the owner's design answers were pending (an
   second kind would trade compiler exhaustiveness checks for indirection.
 - Status: decided by the maintainer (2026-11-20). The architecture table exists; moving the
   per-format quantisation switches into one table is tracked under 8.a.
+
+### 2026-11-20 — Third-party Claude Code plugins: pin the marketplace to a commit, until then a documented exception
+- Decision: `.claude/settings.json` should name the `claude-plugins-official` marketplace with a
+  commit (`ref`) so the two enabled plugins (`superpowers`, `mattpocock-skills`) cannot change
+  under a session without a reviewed commit here. The commit of that marketplace repository has
+  to be chosen and verified by someone who can read it; until then the marketplace stays
+  unpinned. This is a recorded, time-limited exception: the repository rules in `docs/ai/**`
+  and the adapters override any plugin skill (`tool-sync-policy.md`), the plugins are read-only
+  skill text, and the `SessionStart` hook runs the repository's own `tools/git_sync_check.sh`.
+- Status: exception open; the pin is listed in the maintainer's open decisions.

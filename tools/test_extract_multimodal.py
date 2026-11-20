@@ -16,11 +16,11 @@ except ImportError:  # numpy missing: nothing to test here
 
 @unittest.skipIf(em is None, "numpy is not installed")
 class AdapterTest(unittest.TestCase):
-    def test_the_base_class_cannot_be_instantiated(self):
+    def test_the_base_class_cannot_be_instantiated(self) -> None:
         with self.assertRaises(TypeError):
             em.ModelAdapter({}, {})
 
-    def test_a_subclass_missing_a_method_cannot_be_instantiated(self):
+    def test_a_subclass_missing_a_method_cannot_be_instantiated(self) -> None:
         class Partial(em.ModelAdapter):
             def vision_config(self):
                 return (1, 1, 1, 1, 1)
@@ -28,7 +28,7 @@ class AdapterTest(unittest.TestCase):
         with self.assertRaises(TypeError):
             Partial({}, {})
 
-    def test_a_complete_subclass_can(self):
+    def test_a_complete_subclass_can(self) -> None:
         class Full(em.ModelAdapter):
             def vision_config(self):
                 return (1, 1, 1, 1, 1)
@@ -41,7 +41,7 @@ class AdapterTest(unittest.TestCase):
 
         self.assertEqual(Full({}, {}).vision_config(), (1, 1, 1, 1, 1))
 
-    def test_the_real_adapters_are_complete(self):
+    def test_the_real_adapters_are_complete(self) -> None:
         for cls in (em.Moondream2Adapter, em.SmolVLMAdapter, em.LLaVAAdapter):
             self.assertEqual(
                 getattr(cls, "__abstractmethods__", frozenset()), frozenset(), cls.__name__

@@ -9,15 +9,15 @@ import check_file_sizes as c
 
 
 class SizeTest(unittest.TestCase):
-    def test_small_files_pass(self):
+    def test_small_files_pass(self) -> None:
         self.assertEqual(c.problems({"src/a.c": 500, "src/b.c": 10}, {}), [])
 
-    def test_a_new_large_file_fails(self):
+    def test_a_new_large_file_fails(self) -> None:
         out = c.problems({"src/a.c": 501}, {})
         self.assertEqual(len(out), 1)
         self.assertIn("501", out[0])
 
-    def test_a_listed_file_may_stay_or_shrink_but_not_grow(self):
+    def test_a_listed_file_may_stay_or_shrink_but_not_grow(self) -> None:
         base = {"src/big.c": 2000}
         self.assertEqual(c.problems({"src/big.c": 2000}, base), [])
         self.assertEqual(c.problems({"src/big.c": 1500}, base), [])
@@ -25,12 +25,12 @@ class SizeTest(unittest.TestCase):
         self.assertEqual(len(out), 1)
         self.assertIn("grew", out[0])
 
-    def test_docstring_lines_are_not_counted(self):
+    def test_docstring_lines_are_not_counted(self) -> None:
         src = '"""Module\ndoc."""\n\ndef f():\n    """One."""\n    return 1\n\nclass K:\n    """A\n    B."""\n'
         self.assertEqual(c.docstring_lines(src), 2 + 1 + 2)
         self.assertEqual(c.docstring_lines("def broken(:"), 0)
 
-    def test_the_real_tree_is_within_the_baseline(self):
+    def test_the_real_tree_is_within_the_baseline(self) -> None:
         self.assertEqual(c.main([]), 0)
 
 

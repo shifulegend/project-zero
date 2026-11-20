@@ -9,28 +9,28 @@ GOOD = "## Summary\nx\n\n## Size override justification\nAn overall clean-up of 
 
 
 class SizeOverrideTests(unittest.TestCase):
-    def test_a_real_justification_passes(self):
+    def test_a_real_justification_passes(self) -> None:
         self.assertEqual(c.problems(GOOD), [])
 
-    def test_missing_section_fails(self):
+    def test_missing_section_fails(self) -> None:
         self.assertEqual(len(c.problems("## Summary\nonly this")), 1)
         self.assertEqual(len(c.problems("")), 1)
 
-    def test_comment_only_fails(self):
+    def test_comment_only_fails(self) -> None:
         body = (
             "## Size override justification\n<!-- explain why this cannot be split -->\n## Next\n"
         )
         self.assertEqual(len(c.problems(body)), 1)
 
-    def test_placeholder_and_short_text_fail(self):
+    def test_placeholder_and_short_text_fail(self) -> None:
         self.assertIn("placeholder", c.problems("## Size override justification\nTBD\n")[0])
         self.assertIn("shorter", c.problems("## Size override justification\nbig refactor\n")[0])
 
-    def test_section_ends_at_the_next_heading(self):
+    def test_section_ends_at_the_next_heading(self) -> None:
         body = "## Size override justification\nshort\n## Testing\n" + "long text " * 20
         self.assertEqual(len(c.problems(body)), 1)
 
-    def test_heading_level_and_case_are_flexible(self):
+    def test_heading_level_and_case_are_flexible(self) -> None:
         body = "### size-override JUSTIFICATION\n" + "because this is one mechanical sweep " * 2
         self.assertEqual(c.problems(body), [])
 

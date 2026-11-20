@@ -9,19 +9,19 @@ import check_raw_logging as c
 
 
 class RawLoggingTest(unittest.TestCase):
-    def test_flags_raw_stderr_writes(self):
+    def test_flags_raw_stderr_writes(self) -> None:
         self.assertEqual(c.raw_uses('int f(void) {\n  fprintf(stderr, "x\\n");\n}\n'), [2])
         self.assertEqual(c.raw_uses('perror("open");'), [1])
         self.assertEqual(c.raw_uses("fputs(msg, stderr);"), [1])
         self.assertEqual(c.raw_uses("fwrite(b, 1, n, stderr);"), [1])
         self.assertEqual(c.raw_uses("fflush(stderr);"), [])
 
-    def test_logger_calls_and_comments_are_fine(self):
+    def test_logger_calls_and_comments_are_fine(self) -> None:
         self.assertEqual(c.raw_uses('tn_log(TN_LOG_ERROR, "x", "bad\\n");'), [])
         self.assertEqual(c.raw_uses('/* fprintf(stderr, "old") */'), [])
         self.assertEqual(c.raw_uses('// fprintf(stderr, "old")'), [])
 
-    def test_the_real_tree_is_clean(self):
+    def test_the_real_tree_is_clean(self) -> None:
         self.assertEqual(c.main(), 0)
 
 

@@ -24,25 +24,25 @@ SWEEP = """
 
 
 class Args(unittest.TestCase):
-    def test_threads(self):
+    def test_threads(self) -> None:
         self.assertEqual(bl.parse_threads("1-3,6"), [1, 2, 3, 6])
         self.assertEqual(bl.parse_threads("4"), [4])
 
-    def test_lists(self):
+    def test_lists(self) -> None:
         self.assertEqual(bl.parse_list("a,b", ["a", "b", "c"], "x"), ["a", "b"])
         self.assertEqual(bl.parse_list("all", ["a", "b"], "x"), ["a", "b"])
         self.assertEqual(bl.parse_list("none", ["a"], "x"), [])
         with self.assertRaises(SystemExit):
             bl.parse_list("zzz", ["a"], "x")
 
-    def test_stamp_is_sortable_utc(self):
+    def test_stamp_is_sortable_utc(self) -> None:
         s = bl.utc_stamp()
         self.assertRegex(s, r"^\d{8}-\d{6}Z$")
         self.assertRegex(bl.iso_utc(), r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
 
 
 class Parsers(unittest.TestCase):
-    def test_calibration_sweep(self):
+    def test_calibration_sweep(self) -> None:
         s = ct.parse_sweep(SWEEP)
         self.assertEqual([c[0] for c in s["candidates"]], ["auto", "scalar", "avx2"])
         self.assertEqual(s["candidates"][2][4:], ("1", "15"))
@@ -50,37 +50,37 @@ class Parsers(unittest.TestCase):
         self.assertEqual(s["pick_threads"], "4")
         self.assertEqual([t[0] for t in s["threads"]], ["1", "4"])
 
-    def test_engine_output(self):
+    def test_engine_output(self) -> None:
         self.assertEqual(bl.gen_toks("[gen] 25.20 tok/s (128 tokens)")[0], 25.2)
         llama = "llama_perf_context_print:        eval time =    1000.00 ms /   127 runs   (    7.87 ms per token,   127.00 tokens per second)"
         self.assertEqual(bl.gen_toks(llama)[0], 127.0)
 
-    def test_step_timing(self):
+    def test_step_timing(self) -> None:
         t = 'step=11 name="Attention score / softmax" total_ms=29.46 count=1320 avg_ms=0.02\nstep=6 name="KV-A compression" total_ms=0.0 count=0 avg_ms=0'
         self.assertEqual(bl.parse_step_timing(t), {"Attention score / softmax": 29.46})
 
-    def test_profile_box(self):
+    def test_profile_box(self) -> None:
         box = "┌─────┐\n│ Hardware Profile (auto-detected) │\n├─────┤\n│ x │\n└─────┘"
         self.assertIn("Hardware Profile", hp.profile_box("noise\n" + box + "\nmore"))
         self.assertEqual(hp.profile_box("no box here"), "")
 
-    def test_ansi_stripped(self):
+    def test_ansi_stripped(self) -> None:
         self.assertEqual(bl.strip_ansi("\x1b[32mgreen\x1b[0m\r\n"), "green\n")
 
 
 class Commands(unittest.TestCase):
-    def test_pz_cmd_fixed_length_and_flags(self):
+    def test_pz_cmd_fixed_length_and_flags(self) -> None:
         c = bl.pz_cmd("./pz", "m.gguf", 128, 4, ["--simd", "vnni"], True, flags=["--no-calibrate"])
         self.assertIn("--raw-prompt", c)
         self.assertIn("--ignore-eos", c)
         self.assertIn("--no-calibrate", c)
         self.assertEqual(c[c.index("--threads") + 1], "4")
 
-    def test_ref_cmd_runner_styles(self):
+    def test_ref_cmd_runner_styles(self) -> None:
         self.assertIn("-no-cnv", bl.ref_cmd("b", "ref", "m", 8, 2))
         self.assertNotIn("-no-cnv", bl.ref_cmd("b", "cli", "m", 8, 2))
 
-    def test_registries_are_consistent(self):
+    def test_registries_are_consistent(self) -> None:
         engines, models = bl.load_engines(), bl.load_models()
         for k, m in models.items():
             for e in m["engines"]:
@@ -95,7 +95,7 @@ class Commands(unittest.TestCase):
 
 
 class Matrix(unittest.TestCase):
-    def test_summary_and_ratio(self):
+    def test_summary_and_ratio(self) -> None:
         rows = [
             {"model": "m", "variant": v, "threads": 4, "round": r, "gen_tok_s": x}
             for v, xs in (("a", [10.0, 12.0]), ("b", [5.0, 6.0]))
@@ -107,7 +107,7 @@ class Matrix(unittest.TestCase):
         self.assertAlmostEqual(by["b"]["ratio"], 5.5 / 11.0)
         self.assertIn("| m | a | 4 | 2 |", bl.summary_md(s, True))
 
-    def test_rotation_order_and_resume(self):
+    def test_rotation_order_and_resume(self) -> None:
         """Interleaved order rotates the starting variant; --resume skips recorded rows."""
         with tempfile.TemporaryDirectory() as d:
             run = bl.RunDir("t", d)
@@ -141,7 +141,7 @@ class Matrix(unittest.TestCase):
 
 
 class Chart(unittest.TestCase):
-    def test_chart_groups_panels_and_puts_pz_first(self):
+    def test_chart_groups_panels_and_puts_pz_first(self) -> None:
         import chart
 
         with tempfile.TemporaryDirectory() as d:
@@ -167,7 +167,7 @@ class Chart(unittest.TestCase):
 
 
 class Preset(unittest.TestCase):
-    def test_published_preset_is_the_full_sweep(self):
+    def test_published_preset_is_the_full_sweep(self) -> None:
         import h2h_bench as h
 
         p = h.PRESETS["published"]
@@ -175,7 +175,7 @@ class Preset(unittest.TestCase):
         self.assertEqual((p["tokens"], p["rounds"], p["screenshots"]), (500, 3, "all"))
         self.assertIn("int4", p["pz_classifiers"])
 
-    def test_measurements_never_overlap(self):
+    def test_measurements_never_overlap(self) -> None:
         # one process at a time: run_cmd waits for its child; nothing in the matrix uses threads/pools.
         src = (pathlib.Path(__file__).parent / "benchlib.py").read_text()
         for bad in (
@@ -191,7 +191,7 @@ class Preset(unittest.TestCase):
 class Gate(unittest.TestCase):
     CFG = {"tolerance_pct": 1.0, "warn_factor": 2.0, "mode": "strict"}
 
-    def test_verdict_boundaries_are_two_sided(self):
+    def test_verdict_boundaries_are_two_sided(self) -> None:
         import gate
 
         v = lambda x: gate.verdict(x, 100.0, 1.0, 2.0)[0]
@@ -202,7 +202,7 @@ class Gate(unittest.TestCase):
         self.assertEqual(gate.verdict(None, 100.0, 1.0, 2.0)[0], "INVALID")
         self.assertEqual(gate.verdict(5.0, None, 1.0, 2.0)[0], "UNVERIFIED")
 
-    def test_the_rca_numbers(self):
+    def test_the_rca_numbers(self) -> None:
         import gate
 
         self.assertEqual(
@@ -216,7 +216,7 @@ class Gate(unittest.TestCase):
         )  # pz float activations
         self.assertEqual(gate.verdict(12.5801, 12.5667, 1.0, 2.0)[0], "PASS")  # Mamba
 
-    def test_parse_ppl_and_answer_text(self):
+    def test_parse_ppl_and_answer_text(self) -> None:
         import gate
 
         rx = gate.load_config()["ppl_regex"]
@@ -232,7 +232,7 @@ class Gate(unittest.TestCase):
             "The capital of France is Paris.",
         )
 
-    def test_smoke_rejects_an_expectation_that_is_in_the_prompt(self):
+    def test_smoke_rejects_an_expectation_that_is_in_the_prompt(self) -> None:
         import gate
 
         self.assertTrue(gate.smoke_ok("... is Paris.", ["Paris"], "The capital of France is"))
@@ -242,7 +242,7 @@ class Gate(unittest.TestCase):
         with self.assertRaises(ValueError):
             gate.smoke_ok("x", ["France"], "The capital of France is")
 
-    def test_judge_reference_unverified_and_wrong_smoke(self):
+    def test_judge_reference_unverified_and_wrong_smoke(self) -> None:
         import gate
 
         res = {
@@ -268,7 +268,7 @@ class Gate(unittest.TestCase):
         self.assertTrue(gate.blocked(res["m/bad"], self.CFG))
         self.assertFalse(gate.blocked(res["m/ok"], self.CFG))
 
-    def test_approximate_variants_are_reported_not_judged(self):
+    def test_approximate_variants_are_reported_not_judged(self) -> None:
         import gate
 
         cfg = dict(
@@ -294,7 +294,7 @@ class Gate(unittest.TestCase):
         )  # a lossy variant must still answer correctly
         self.assertIn("APPROX", gate.GOOD)
 
-    def test_ik_perplexity_format_is_parsed(self):
+    def test_ik_perplexity_format_is_parsed(self) -> None:
         import gate
 
         rx = gate.load_config()["ppl_regex"]
@@ -305,7 +305,7 @@ class Gate(unittest.TestCase):
             (8.0256, 0.54101),
         )
 
-    def test_cells_that_fail_the_gate_are_not_timed(self):
+    def test_cells_that_fail_the_gate_are_not_timed(self) -> None:
         import gate
 
         strict, warn = {"mode": "strict"}, {"mode": "warn"}
@@ -349,7 +349,7 @@ class Gate(unittest.TestCase):
                 bl.measure = orig
                 run.close()
 
-    def test_dirty_binaries_are_refused_unless_allowed(self):
+    def test_dirty_binaries_are_refused_unless_allowed(self) -> None:
         import gate
 
         self.assertTrue(gate.is_dirty("Project Zero v0.2.0-21-g864eeea-dirty"))
@@ -368,14 +368,14 @@ class Gate(unittest.TestCase):
                 gate.require_clean({"pz": str(fake)}, {"require_clean_binary": False}), ["pz"]
             )
 
-    def test_config_overrides_and_frozen_text(self):
+    def test_config_overrides_and_frozen_text(self) -> None:
         import gate
 
         cfg = gate.load_config({"tolerance_pct": 0.5, "mode": None})
         self.assertEqual((cfg["tolerance_pct"], cfg["mode"]), (0.5, "strict"))
         self.assertEqual(len(cfg["text_sha256"]), 64)  # the frozen text exists and is hashed
 
-    def test_flags_exist_on_every_script(self):
+    def test_flags_exist_on_every_script(self) -> None:
         import argparse
 
         ap = bl.add_common_args(argparse.ArgumentParser(), "x")
@@ -386,7 +386,7 @@ class Gate(unittest.TestCase):
             (a.gate, a.gate_tolerance, a.gate_only, a.gate_reference), ("warn", 2.5, True, "pz")
         )
 
-    def test_summary_column_and_chart_hide_invalid(self):
+    def test_summary_column_and_chart_hide_invalid(self) -> None:
         import chart
         import gate
 
@@ -429,7 +429,7 @@ class Gate(unittest.TestCase):
             md = bl.summary_md(bl.summarize(rows), hide_invalid=True)
             self.assertIn("n/a", md)
 
-    def test_variant_factories_and_registry(self):
+    def test_variant_factories_and_registry(self) -> None:
         info = {"engines": ["pz"], "gate": {}}
         v = bl.pz_variant("pz", "./pz", ["--no-calibrate"], None)
         self.assertIn("--perplexity", v["ppl"]("m", info, "m.gguf", "t.txt", 512, 8, 4))

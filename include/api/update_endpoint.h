@@ -1,6 +1,8 @@
 #ifndef TN_UPDATE_ENDPOINT_H
 #define TN_UPDATE_ENDPOINT_H
 
+#include "update/update_check.h"
+
 /*
  * update_endpoint.h — Phase 38: JSON for GET /v1/update and
  * POST /v1/update/check. Reads the update service (update/update_check.h);
@@ -9,7 +11,7 @@
  * a timer thread.
  */
 
-/* `force` = 1 for POST /v1/update/check (rate-limited by the service). */
-char *api_update_json(int force);
+/* `force` = 1 for POST /v1/update/check (rate-limited by the service). `svc` may be NULL. */
+char *api_update_json(UpdateService *svc, int force);
 
 #endif /* TN_UPDATE_ENDPOINT_H */

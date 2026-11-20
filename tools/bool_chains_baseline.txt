@@ -63,4 +63,4 @@ src/transformer/moe_ffn.c 2
 src/transformer/output_inject.c 1
 src/transformer/qwen3moe_attention.c 1
 src/update/semver.c 1
-src/update/update_check.c 8
+src/update/update_check.c 7

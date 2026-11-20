@@ -221,9 +221,9 @@ static void handle_connection(int fd, ApiContext *ctx) {
                                          req.has_origin ? req.origin : NULL, req.host, ctx,
                                          extra_headers);
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/update") == 0) {
-        http_send_json_heap(fd, HTTP_OK, api_update_json(0), extra_headers);
+        http_send_json_heap(fd, HTTP_OK, api_update_json(ctx->update, 0), extra_headers);
     } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/update/check") == 0) {
-        http_send_json_heap(fd, HTTP_OK, api_update_json(1), extra_headers);
+        http_send_json_heap(fd, HTTP_OK, api_update_json(ctx->update, 1), extra_headers);
     } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/prompt_cache") == 0) {
         http_handle_prompt_cache_stats(fd, ctx, extra_headers);
     } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/prompt_cache/clear") == 0) {

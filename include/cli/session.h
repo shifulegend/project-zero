@@ -23,6 +23,7 @@
 #include "speculative/draft_model.h"
 #include "threading/thread_pool.h"
 #include "tokenizer/tokenizer.h"
+#include "update/update_check.h"
 
 /* Version is injected unquoted by the build (-DPZ_VERSION, see Makefile) and stringified here;
  * falls back to "dev" for builds that don't pass it (e.g. plain `make debug`). */
@@ -32,6 +33,12 @@
 #define PZ_STRINGIFY2(x) #x
 #define PZ_STRINGIFY(x) PZ_STRINGIFY2(x)
 #define PZ_VERSION_STR PZ_STRINGIFY(PZ_VERSION)
+
+/* Background release check and whether to print its result after the output. */
+typedef struct {
+    UpdateService svc; /* zeroed = unconfigured */
+    int notice;        /* CLI only; the server shows it in the web UI */
+} PzUpdateState;
 
 typedef struct {
     CliArgs args;
@@ -66,7 +73,7 @@ typedef struct {
     int rag_ok;
     DistPlan dist;
     int dist_active;
-    int update_notice;
+    PzUpdateState update;
 } PzSession;
 
 /* Phases, in the order main() runs them. Those returning int give 0 for success and non-zero

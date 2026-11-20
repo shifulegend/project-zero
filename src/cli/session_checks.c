@@ -19,14 +19,14 @@
 void session_start_update_check(PzSession *ses) {
     /* Phase 38: background update check — server always (the web UI shows
      * it), CLI only when a person is watching stderr. Never blocks. */
-    ses->update_notice = 0;
+    ses->update.notice = 0;
     if (!ses->args.watermark.watermark_detect && !ses->args.eval.perplexity_file &&
         (ses->args.server.server_mode || isatty(fileno(stderr)))) {
         UpdateOptions uo;
         args_fill_update_options(&ses->args, &uo);
-        update_service_init(&uo, PZ_VERSION_STR);
-        update_service_poll(0);
-        ses->update_notice = !ses->args.server.server_mode;
+        update_service_init(&ses->update.svc, &uo, PZ_VERSION_STR);
+        update_service_poll(&ses->update.svc, 0);
+        ses->update.notice = !ses->args.server.server_mode;
     }
 }
 

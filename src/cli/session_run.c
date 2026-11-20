@@ -182,10 +182,10 @@ void session_finish(PzSession *ses) {
 
     /* Phase 38: one line after the output, from the cached/background result
      * (an in-flight check is not waited for — it lands in the cache for next time). */
-    if (ses->update_notice) {
+    if (ses->update.notice) {
         UpdateInfo ui;
         char notice[UPDATE_NOTICE_BUF];
-        update_service_get(&ui);
+        update_service_get(&ses->update.svc, &ui);
         update_format_notice(&ui, notice, sizeof(notice));
         if (notice[0]) TN_LOG_INF("update", "\n%s", notice);
     }

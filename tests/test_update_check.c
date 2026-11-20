@@ -161,11 +161,10 @@ static void test_check_and_cache(void) {
     UpdateOptions o;
     UpdateInfo u;
     setup_opts(&o);
-    update_set_fetcher(fake_fetch);
     g_fetches = 0;
     g_fail    = 0;
 
-    TEST_ASSERT_EQ(update_check(&o, "v0.1.0", 0, &u), 0, "first check");
+    TEST_ASSERT_EQ(update_check_with(fake_fetch, &o, "v0.1.0", 0, &u), 0, "first check");
     TEST_ASSERT_EQ(g_fetches, 1, "fetched once");
     TEST_ASSERT(strstr(g_seen_url, "https://api.github.com/repos/o/r/releases") == g_seen_url,
                 "releases URL");
@@ -173,36 +172,36 @@ static void test_check_and_cache(void) {
     TEST_ASSERT_EQ(u.status, UPDATE_STATUS_AVAILABLE, "available");
     TEST_ASSERT(access(o.cache_path, R_OK) == 0, "cache written (parent dirs created)");
 
-    TEST_ASSERT_EQ(update_check(&o, "v0.1.0", 0, &u), 0, "second check");
+    TEST_ASSERT_EQ(update_check_with(fake_fetch, &o, "v0.1.0", 0, &u), 0, "second check");
     TEST_ASSERT_EQ(g_fetches, 1, "served from cache within the interval");
     TEST_ASSERT(u.from_cache && strcmp(u.latest, "v0.2.0-rc.1") == 0, "cached answer");
 
-    TEST_ASSERT_EQ(update_check(&o, "v0.2.0-rc.1", 0, &u), 0, "after upgrading");
+    TEST_ASSERT_EQ(update_check_with(fake_fetch, &o, "v0.2.0-rc.1", 0, &u), 0, "after upgrading");
     TEST_ASSERT_EQ(u.status, UPDATE_STATUS_UP_TO_DATE,
                    "status recomputed vs new current, no fetch");
     TEST_ASSERT_EQ(g_fetches, 1, "still no fetch");
 
     o.channel = UPDATE_CHANNEL_STABLE;
-    update_check(&o, "v0.1.0", 0, &u);
+    update_check_with(fake_fetch, &o, "v0.1.0", 0, &u);
     TEST_ASSERT_EQ(g_fetches, 2, "channel change invalidates the cache");
     TEST_ASSERT(strcmp(u.latest, "v0.1.1") == 0, "stable answer");
 
     g_fail = 1;
-    update_check(&o, "v0.1.0", 1, &u);
+    update_check_with(fake_fetch, &o, "v0.1.0", 1, &u);
     TEST_ASSERT_EQ(g_fetches, 3, "forced check fetches");
     TEST_ASSERT(u.error[0] && strcmp(u.latest, "v0.1.1") == 0,
                 "failure keeps the last good answer");
     TEST_ASSERT_EQ(u.status, UPDATE_STATUS_AVAILABLE, "known update stays visible offline");
-    update_check(&o, "v0.1.0", 0, &u);
+    update_check_with(fake_fetch, &o, "v0.1.0", 0, &u);
     TEST_ASSERT_EQ(g_fetches, 3, "failed check backs off");
 
     o.enabled = 0;
-    update_check(&o, "v0.1.0", 0, &u);
+    update_check_with(fake_fetch, &o, "v0.1.0", 0, &u);
     TEST_ASSERT_EQ(u.status, UPDATE_STATUS_DISABLED, "--no-update-check");
     TEST_ASSERT_EQ(g_fetches, 3, "disabled never fetches");
     o.enabled        = 1;
     o.interval_hours = 0;
-    update_check(&o, "v0.1.0", 0, &u);
+    update_check_with(fake_fetch, &o, "v0.1.0", 0, &u);
     TEST_ASSERT_EQ(u.status, UPDATE_STATUS_DISABLED, "--update-interval 0");
 
     char notice[512];
@@ -219,37 +218,49 @@ static void test_check_and_cache(void) {
 static void test_service(void) {
     UpdateOptions o;
     UpdateInfo u;
+    UpdateService svc;
+    memset(&svc, 0, sizeof(svc));
     setup_opts(&o);
     snprintf(o.cache_path, sizeof(o.cache_path), "%s/svc-cache", g_dir);
     unlink(o.cache_path);
-    update_set_fetcher(fake_fetch);
+    update_service_set_fetcher(&svc, fake_fetch);
     g_fetches = 0;
     g_fail    = 0;
 
-    update_service_init(&o, "v0.1.0");
-    update_service_get(&u);
+    update_service_init(&svc, &o, "v0.1.0");
+    update_service_get(&svc, &u);
     TEST_ASSERT_EQ(u.status, UPDATE_STATUS_UNKNOWN, "unknown before the first check");
-    TEST_ASSERT_EQ(update_service_poll(0), 1, "stale -> background check started");
-    TEST_ASSERT_EQ(update_service_poll(0), 0, "no second check while one is in flight");
-    update_service_wait();
-    update_service_get(&u);
+    TEST_ASSERT_EQ(update_service_poll(&svc, 0), 1, "stale -> background check started");
+    TEST_ASSERT_EQ(update_service_poll(&svc, 0), 0, "no second check while one is in flight");
+    update_service_wait(&svc);
+    update_service_get(&svc, &u);
     TEST_ASSERT_EQ(u.status, UPDATE_STATUS_AVAILABLE, "result published");
-    TEST_ASSERT_EQ(update_service_poll(0), 0, "fresh -> no check");
-    TEST_ASSERT_EQ(update_service_poll(1), 0, "forced check rate-limited");
+    TEST_ASSERT_EQ(update_service_poll(&svc, 0), 0, "fresh -> no check");
+    TEST_ASSERT_EQ(update_service_poll(&svc, 1), 0, "forced check rate-limited");
     TEST_ASSERT_EQ(g_fetches, 1, "one fetch total");
 
-    update_service_init(&o, "v0.1.0");
-    update_service_get(&u);
+    update_service_init(&svc, &o, "v0.1.0");
+    update_service_get(&svc, &u);
     TEST_ASSERT(u.from_cache && u.status == UPDATE_STATUS_AVAILABLE,
                 "restart shows cached answer without network");
 
     o.enabled = 0;
-    update_service_init(&o, "v0.1.0");
-    TEST_ASSERT_EQ(update_service_poll(1), 0, "operator opt-out beats a UI check-now");
-    update_service_get(&u);
+    update_service_init(&svc, &o, "v0.1.0");
+    TEST_ASSERT_EQ(update_service_poll(&svc, 1), 0, "operator opt-out beats a UI check-now");
+    update_service_get(&svc, &u);
     TEST_ASSERT_EQ(u.status, UPDATE_STATUS_DISABLED, "disabled state");
-    update_service_wait();
-    update_set_fetcher(NULL);
+    update_service_wait(&svc);
+
+    /* A second service shares nothing with the first; NULL and unconfigured ones are inert. */
+    UpdateService other;
+    memset(&other, 0, sizeof(other));
+    update_service_get(&other, &u);
+    TEST_ASSERT_EQ(u.status, UPDATE_STATUS_UNKNOWN, "unconfigured service reports nothing");
+    TEST_ASSERT_EQ(update_service_poll(&other, 0), 0, "unconfigured service never polls");
+    TEST_ASSERT_EQ(update_service_poll(NULL, 0), 0, "NULL service never polls");
+    TEST_ASSERT_EQ(update_service_options(&other, &o), 0, "unconfigured service has no options");
+    update_service_get(&svc, &u);
+    TEST_ASSERT_EQ(u.status, UPDATE_STATUS_DISABLED, "first service keeps its own state");
 }
 
 /* Hostile or malformed release lists: the element splitter and field readers must not be fooled by

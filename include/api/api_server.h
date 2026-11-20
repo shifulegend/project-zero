@@ -34,6 +34,7 @@
 #include "runtime/run_state.h"
 #include "threading/thread_pool.h"
 #include "tokenizer/tokenizer.h"
+#include "update/update_check.h"
 
 /* ── Inference context passed from main to API handler ──────────────────── */
 typedef struct {
@@ -43,7 +44,8 @@ typedef struct {
     const MoEConfig *moe_cfg;
     Tokenizer *tok;
     ThreadPool *tp;
-    struct PrmModel *prm; /* Phase 30 judge for "mcts" requests; NULL = self-scored */
+    struct PrmModel *prm;  /* Phase 30 judge for "mcts" requests; NULL = self-scored */
+    UpdateService *update; /* /v1/update state, owned by the caller; NULL = no update info */
 
     /* Phase 22: server hardening state. server_config may be populated by
      * the caller (main.c) any time before api_server_start(); the others are

@@ -416,6 +416,7 @@ set(UPDATE_SOURCES
     src/update/release_links.c
     src/update/semver.c
     src/update/update_check.c
+    src/update/update_service.c
 )
 
 set(AGENT_SOURCES

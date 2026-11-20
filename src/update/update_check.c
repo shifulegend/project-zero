@@ -33,7 +33,7 @@ extern char **environ;
 #define UPD_STR2(x) #x
 #define UPD_STR(x) UPD_STR2(x)
 
-static void copy_str(char *dst, size_t n, const char *src) {
+void update_copy_str(char *dst, size_t n, const char *src) {
     if (!dst || n == 0) return;
     snprintf(dst, n, "%s", src ? src : "");
 }
@@ -41,8 +41,8 @@ static void copy_str(char *dst, size_t n, const char *src) {
 void update_options_default(UpdateOptions *o) {
     memset(o, 0, sizeof(*o));
     o->enabled = 1;
-    copy_str(o->repo, sizeof(o->repo), UPD_STR(PZ_UPDATE_REPO));
-    copy_str(o->api_base, sizeof(o->api_base), "https://api.github.com");
+    update_copy_str(o->repo, sizeof(o->repo), UPD_STR(PZ_UPDATE_REPO));
+    update_copy_str(o->api_base, sizeof(o->api_base), "https://api.github.com");
     o->interval_hours       = UPDATE_DEFAULT_INTERVAL_H;
     o->channel              = UPDATE_CHANNEL_AUTO;
     o->timeout_s            = UPDATE_DEFAULT_TIMEOUT_S;
@@ -118,7 +118,7 @@ static int include_prereleases(int channel, const char *current) {
 }
 
 void update_compute_status(UpdateInfo *out, const char *current) {
-    copy_str(out->current, sizeof(out->current), current);
+    update_copy_str(out->current, sizeof(out->current), current);
     SemVer cur, lat;
     if (!out->latest[0] || semver_parse(out->latest, &lat) != 0) {
         out->status = out->error[0] ? UPDATE_STATUS_ERROR : UPDATE_STATUS_UNKNOWN;
@@ -201,11 +201,11 @@ int update_pick_latest(const char *json, const char *current, int channel, Updat
                 have      = 1;
                 char *url = json_field_string(obj, "html_url");
                 char *pub = json_field_string(obj, "published_at");
-                copy_str(out->latest, sizeof(out->latest), tag);
+                update_copy_str(out->latest, sizeof(out->latest), tag);
                 /* Only https release pages are surfaced as links. */
-                copy_str(out->url, sizeof(out->url),
-                         url && strncmp(url, "https://", 8) == 0 ? url : "");
-                copy_str(out->published, sizeof(out->published), pub);
+                update_copy_str(out->url, sizeof(out->url),
+                                url && strncmp(url, "https://", 8) == 0 ? url : "");
+                update_copy_str(out->published, sizeof(out->published), pub);
                 out->latest_prerelease = pre || v.pre[0];
                 free(url);
                 free(pub);
@@ -223,7 +223,7 @@ int update_pick_latest(const char *json, const char *current, int channel, Updat
 
 int update_cache_path(const UpdateOptions *o, char *buf, size_t n) {
     if (o && o->cache_path[0]) {
-        copy_str(buf, n, o->cache_path);
+        update_copy_str(buf, n, o->cache_path);
         return 0;
     }
     const char *d = getenv("PZ_CACHE_DIR");
@@ -259,19 +259,19 @@ int update_cache_load(const char *path, UpdateInfo *out) {
             out->checked_at = strtoll(v, NULL, 10);
             ok              = 1;
         } else if (strcmp(k, "latest") == 0)
-            copy_str(out->latest, sizeof(out->latest), v);
+            update_copy_str(out->latest, sizeof(out->latest), v);
         else if (strcmp(k, "url") == 0)
-            copy_str(out->url, sizeof(out->url), strncmp(v, "https://", 8) == 0 ? v : "");
+            update_copy_str(out->url, sizeof(out->url), strncmp(v, "https://", 8) == 0 ? v : "");
         else if (strcmp(k, "published") == 0)
-            copy_str(out->published, sizeof(out->published), v);
+            update_copy_str(out->published, sizeof(out->published), v);
         else if (strcmp(k, "prerelease") == 0)
             out->latest_prerelease = atoi(v) != 0;
         else if (strcmp(k, "channel") == 0)
             out->channel = atoi(v);
         else if (strcmp(k, "repo") == 0)
-            copy_str(out->repo, sizeof(out->repo), v);
+            update_copy_str(out->repo, sizeof(out->repo), v);
         else if (strcmp(k, "error") == 0)
-            copy_str(out->error, sizeof(out->error), v);
+            update_copy_str(out->error, sizeof(out->error), v);
     }
     fclose(f);
     return ok ? 0 : -1;
@@ -409,14 +409,9 @@ static int curl_fetch(const char *url, int timeout_s, const char *ua, char **bod
 }
 #endif
 
-static UpdateFetchFn g_fetch = curl_fetch;
-void update_set_fetcher(UpdateFetchFn fn) {
-    g_fetch = fn ? fn : curl_fetch;
-}
-
 /* ---- synchronous check ----------------------------------------------------- */
 
-static int cache_fresh(const UpdateOptions *o, const UpdateInfo *c, long long now) {
+int update_cache_fresh(const UpdateOptions *o, const UpdateInfo *c, long long now) {
     if (c->checked_at <= 0 || c->channel != o->channel || strcmp(c->repo, o->repo) != 0) return 0;
     long long age = now - c->checked_at;
     if (age < 0) return 0; /* clock went backwards: re-check */
@@ -425,182 +420,83 @@ static int cache_fresh(const UpdateOptions *o, const UpdateInfo *c, long long no
 }
 
 int update_check(const UpdateOptions *o, const char *current, int force, UpdateInfo *out) {
-    memset(out, 0, sizeof(*out));
-    copy_str(out->current, sizeof(out->current), current);
-    if (!o) return -1;
-    out->channel = o->channel;
-    copy_str(out->repo, sizeof(out->repo), o->repo);
+    return update_check_with(NULL, o, current, force, out);
+}
+
+/* A cached answer is usable only for the channel and repository being asked about. */
+int update_cache_matches(const UpdateInfo *c, const UpdateOptions *o) {
+    return c->channel == o->channel && strcmp(c->repo, o->repo) == 0;
+}
+
+/* 1 when the check may run, 0 when updates are switched off (out says so), -1 on bad settings. */
+static int check_allowed(const UpdateOptions *o, int force, UpdateInfo *out) {
     if (!force && (!o->enabled || o->interval_hours <= 0 || update_env_opt_out())) {
         out->status = UPDATE_STATUS_DISABLED;
         return 0;
     }
     if (!update_repo_valid(o->repo) || !update_api_base_valid(o->api_base)) {
-        copy_str(out->error, sizeof(out->error), "invalid --update-repo / --update-api");
+        update_copy_str(out->error, sizeof(out->error), "invalid --update-repo / --update-api");
         out->status = UPDATE_STATUS_ERROR;
         return -1;
     }
+    return 1;
+}
+
+/* A failed fetch keeps the last good answer so a flaky network doesn't hide a known update. */
+static void fetch_failed(UpdateInfo *out, const UpdateInfo *cached, const UpdateOptions *o,
+                         const char *current, int got_body) {
+    if (cached->latest[0] && update_cache_matches(cached, o)) {
+        update_copy_str(out->latest, sizeof(out->latest), cached->latest);
+        update_copy_str(out->url, sizeof(out->url), cached->url);
+        update_copy_str(out->published, sizeof(out->published), cached->published);
+        out->latest_prerelease = cached->latest_prerelease;
+    }
+    update_copy_str(out->error, sizeof(out->error),
+                    got_body ? "unexpected response" : "network check failed");
+    update_compute_status(out, current);
+    if (!out->latest[0]) out->status = UPDATE_STATUS_ERROR;
+}
+
+/* Ask the releases API; on failure fall back to the cached answer. */
+static void fetch_latest(UpdateFetchFn fetch, const UpdateOptions *o, const char *current,
+                         const UpdateInfo *cached, UpdateInfo *out) {
+    char url[320], ua[96];
+    snprintf(url, sizeof(url), "%s/repos/%s/releases?per_page=20", o->api_base, o->repo);
+    snprintf(ua, sizeof(ua), "project-zero/%s", current && *current ? current : "unknown");
+    char *body = NULL;
+    if (fetch(url, o->timeout_s, ua, &body) != 0 || !body ||
+        update_pick_latest(body, current, o->channel, out) != 0)
+        fetch_failed(out, cached, o, current, body != NULL);
+    free(body);
+}
+
+int update_check_with(UpdateFetchFn fetch, const UpdateOptions *o, const char *current, int force,
+                      UpdateInfo *out) {
+    memset(out, 0, sizeof(*out));
+    update_copy_str(out->current, sizeof(out->current), current);
+    if (!o) return -1;
+    out->channel = o->channel;
+    update_copy_str(out->repo, sizeof(out->repo), o->repo);
+    int allowed = check_allowed(o, force, out);
+    if (allowed <= 0) return allowed;
     char path[512];
     int have_path = update_cache_path(o, path, sizeof(path)) == 0;
     long long now = (long long)time(NULL);
     UpdateInfo cached;
     memset(&cached, 0, sizeof(cached));
     if (have_path && update_cache_load(path, &cached) == 0 && !force &&
-        cache_fresh(o, &cached, now)) {
+        update_cache_fresh(o, &cached, now)) {
         *out            = cached;
         out->from_cache = 1;
         update_compute_status(out, current);
         return 0;
     }
-    char url[320], ua[96];
-    snprintf(url, sizeof(url), "%s/repos/%s/releases?per_page=20", o->api_base, o->repo);
-    snprintf(ua, sizeof(ua), "project-zero/%s", current && *current ? current : "unknown");
-    char *body      = NULL;
     out->checked_at = now;
-    if (g_fetch(url, o->timeout_s, ua, &body) != 0 || !body ||
-        update_pick_latest(body, current, o->channel, out) != 0) {
-        /* Keep the last good answer so a flaky network doesn't hide a known update. */
-        if (cached.latest[0] && cached.channel == o->channel && strcmp(cached.repo, o->repo) == 0) {
-            copy_str(out->latest, sizeof(out->latest), cached.latest);
-            copy_str(out->url, sizeof(out->url), cached.url);
-            copy_str(out->published, sizeof(out->published), cached.published);
-            out->latest_prerelease = cached.latest_prerelease;
-        }
-        copy_str(out->error, sizeof(out->error),
-                 body ? "unexpected response" : "network check failed");
-        update_compute_status(out, current);
-        if (!out->latest[0]) out->status = UPDATE_STATUS_ERROR;
-    }
-    free(body);
-    copy_str(out->repo, sizeof(out->repo), o->repo);
+    fetch_latest(fetch ? fetch : curl_fetch, o, current, &cached, out);
+    update_copy_str(out->repo, sizeof(out->repo), o->repo);
     out->channel = o->channel;
     if (have_path) update_cache_save(path, out);
     return 0;
-}
-
-/* ---- background service ---------------------------------------------------- */
-
-static pthread_mutex_t g_mu = PTHREAD_MUTEX_INITIALIZER;
-static UpdateOptions g_opts;
-static UpdateInfo g_info;
-static char g_current[64];
-static int g_init, g_in_flight, g_thread_valid;
-static pthread_t g_thread;
-static int g_force_next;
-
-static void *service_thread(void *arg) {
-    (void)arg;
-    UpdateOptions o;
-    char cur[64];
-    int force;
-    pthread_mutex_lock(&g_mu);
-    o = g_opts;
-    copy_str(cur, sizeof(cur), g_current);
-    force = g_force_next;
-    pthread_mutex_unlock(&g_mu);
-    UpdateInfo r;
-    update_check(&o, cur, force, &r);
-    pthread_mutex_lock(&g_mu);
-    g_info      = r;
-    g_in_flight = 0;
-    pthread_mutex_unlock(&g_mu);
-    return NULL;
-}
-
-void update_service_init(const UpdateOptions *o, const char *current) {
-    update_service_wait();
-    pthread_mutex_lock(&g_mu);
-    g_opts = *o;
-    copy_str(g_current, sizeof(g_current), current);
-    memset(&g_info, 0, sizeof(g_info));
-    copy_str(g_info.current, sizeof(g_info.current), current);
-    g_info.channel = o->channel;
-    copy_str(g_info.repo, sizeof(g_info.repo), o->repo);
-    g_info.status = (!o->enabled || o->interval_hours <= 0 || update_env_opt_out())
-                        ? UPDATE_STATUS_DISABLED
-                        : UPDATE_STATUS_UNKNOWN;
-    /* Show the last cached answer immediately (no network). */
-    if (g_info.status != UPDATE_STATUS_DISABLED) {
-        char path[512];
-        UpdateInfo c;
-        memset(&c, 0, sizeof(c));
-        if (update_cache_path(o, path, sizeof(path)) == 0 && update_cache_load(path, &c) == 0 &&
-            c.channel == o->channel && strcmp(c.repo, o->repo) == 0) {
-            g_info            = c;
-            g_info.from_cache = 1;
-            update_compute_status(&g_info, current);
-        }
-    }
-    g_init = 1;
-    pthread_mutex_unlock(&g_mu);
-}
-
-int update_service_poll(int force) {
-    pthread_mutex_lock(&g_mu);
-    if (!g_init || g_in_flight) {
-        pthread_mutex_unlock(&g_mu);
-        return 0;
-    }
-    long long now = (long long)time(NULL);
-    int disabled  = !g_opts.enabled || g_opts.interval_hours <= 0 || update_env_opt_out();
-    int start;
-    if (disabled) {
-        start = 0; /* the operator's opt-out also wins over a UI "check now" */
-    } else if (force) {
-        start = g_info.checked_at <= 0 || now - g_info.checked_at >= g_opts.force_min_interval_s;
-    } else {
-        start = !cache_fresh(&g_opts, &g_info, now);
-    }
-    if (!start) {
-        pthread_mutex_unlock(&g_mu);
-        return 0;
-    }
-    /* Reap the previous, finished thread before starting another. */
-    if (g_thread_valid) {
-        pthread_t old  = g_thread;
-        g_thread_valid = 0;
-        pthread_mutex_unlock(&g_mu);
-        pthread_join(old, NULL);
-        pthread_mutex_lock(&g_mu);
-        if (g_in_flight) {
-            pthread_mutex_unlock(&g_mu);
-            return 0;
-        }
-    }
-    g_in_flight  = 1;
-    g_force_next = force;
-    if (pthread_create(&g_thread, NULL, service_thread, NULL) != 0) {
-        g_in_flight = 0;
-        pthread_mutex_unlock(&g_mu);
-        return 0;
-    }
-    g_thread_valid = 1;
-    pthread_mutex_unlock(&g_mu);
-    return 1;
-}
-
-void update_service_get(UpdateInfo *out) {
-    pthread_mutex_lock(&g_mu);
-    *out          = g_info;
-    int in_flight = g_in_flight;
-    pthread_mutex_unlock(&g_mu);
-    (void)in_flight;
-}
-
-int update_service_options(UpdateOptions *out) {
-    pthread_mutex_lock(&g_mu);
-    int ok = g_init;
-    if (ok) *out = g_opts;
-    pthread_mutex_unlock(&g_mu);
-    return ok;
-}
-
-void update_service_wait(void) {
-    pthread_mutex_lock(&g_mu);
-    int valid      = g_thread_valid;
-    pthread_t t    = g_thread;
-    g_thread_valid = 0;
-    pthread_mutex_unlock(&g_mu);
-    if (valid) pthread_join(t, NULL);
 }
 
 void update_format_notice(const UpdateInfo *in, char *buf, size_t n) {

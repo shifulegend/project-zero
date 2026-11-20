@@ -20,6 +20,7 @@
  * while the running build is itself 0.x or a pre-release).
  */
 
+#include <pthread.h>
 #include <stddef.h>
 
 typedef enum {
@@ -90,26 +91,49 @@ int update_pick_latest(const char *json, const char *current, int channel, Updat
 /* Recompute out->status from out->latest vs current. */
 void update_compute_status(UpdateInfo *out, const char *current);
 
+/* A cached answer is fresh inside the interval (shorter after an error) and usable only for
+ * the channel and repository being asked about. */
+int update_cache_fresh(const UpdateOptions *o, const UpdateInfo *c, long long now);
+int update_cache_matches(const UpdateInfo *c, const UpdateOptions *o);
+
+/* snprintf(dst, n, "%s", src) that accepts a NULL src. */
+void update_copy_str(char *dst, size_t n, const char *src);
+
 int update_cache_path(const UpdateOptions *o, char *buf, size_t n);
 int update_cache_load(const char *path, UpdateInfo *out); /* 0 = loaded */
 int update_cache_save(const char *path, const UpdateInfo *in);
 
 /* Transport hook (tests inject a fake). Returns 0 and a malloc'd body. */
 typedef int (*UpdateFetchFn)(const char *url, int timeout_s, const char *user_agent, char **body);
-void update_set_fetcher(UpdateFetchFn fn); /* NULL restores curl */
 
 /* Synchronous, cache-aware check. `force` skips the interval (still honours
  * enabled=0 only via the caller — --check-update is an explicit request). */
 int update_check(const UpdateOptions *o, const char *current, int force, UpdateInfo *out);
+/* Same with an explicit transport; NULL uses curl. */
+int update_check_with(UpdateFetchFn fetch, const UpdateOptions *o, const char *current, int force,
+                      UpdateInfo *out);
 
-/* ---- background service (server + interactive CLI) -------------------- */
-void update_service_init(const UpdateOptions *o, const char *current);
+/* ---- background service (server + interactive CLI) --------------------
+ * One service per process owner (the session); a zeroed struct is a valid, unconfigured
+ * service. Every function accepts NULL or an unconfigured service and then does nothing. */
+typedef struct {
+    pthread_mutex_t mu;
+    UpdateOptions opts;
+    UpdateInfo info;
+    char current[64];
+    UpdateFetchFn fetch; /* NULL = curl */
+    pthread_t thread;
+    int ready, configured, in_flight, thread_valid, force_next;
+} UpdateService;
+
+void update_service_set_fetcher(UpdateService *svc, UpdateFetchFn fn); /* NULL restores curl */
+void update_service_init(UpdateService *svc, const UpdateOptions *o, const char *current);
 /* Starts a background check when stale (or forced and the last attempt is
  * older than force_min_interval_s). Returns 1 if a check was started. */
-int update_service_poll(int force);
-void update_service_get(UpdateInfo *out);
-int update_service_options(UpdateOptions *out); /* 0 if not initialised */
-void update_service_wait(void);                 /* join an in-flight check (tests, exit) */
+int update_service_poll(UpdateService *svc, int force);
+void update_service_get(UpdateService *svc, UpdateInfo *out);
+int update_service_options(UpdateService *svc, UpdateOptions *out); /* 0 if not initialised */
+void update_service_wait(UpdateService *svc); /* join an in-flight check (tests, exit) */
 
 /* One-line notice for stderr, or "" when nothing to say. */
 void update_format_notice(const UpdateInfo *in, char *buf, size_t n);

@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-20 — update check keeps its state in an UpdateService, not in globals
+- What: the background release check (`src/update/update_service.c`, split out of `update_check.c`) works on a caller-owned `UpdateService` (mutex, options, last result, thread, fetch hook). The session owns one (`PzSession.update.svc`) and hands it to the HTTP server (`ApiContext.update`); `update_set_fetcher` became `update_service_set_fetcher`, and `update_check_with` takes the transport explicitly.
+- Why: finding 14.f (no process-wide mutable state). Mutable statics 64 -> 56; two services in one process no longer share a result or a thread. The split also took `update_check` and `update_service_poll` under their recorded complexity and the file from 616 to 512 lines.
+- Proof: `make test` gcc and clang, TSan, CMake build; new test with two independent services plus NULL and unconfigured ones; complexity (399), file-size (27 files) and bool-chain (113) baselines lowered, none raised.
+- Areas: `src/update/update_check.c`, `src/update/update_service.c`, `include/update/update_check.h`, `src/api/{update_endpoint,http_server}.c`, `include/api/{api_server,update_endpoint}.h`, `include/cli/session.h`, `src/cli/session_{checks,run,server}.c`, `tests/test_update_check.c`, `CMakeLists.txt`.
+
 ### 2026-11-20 — setup wizard scratch buffers are locals, not statics
 - What: the model list, model catalog buffers in `src/cli/config_cmd.c` are automatic variables; `cfg` and `owned` stay static (the returned argv points into them).
 - Why: finding 14.f; the three statics only avoided stack size (about 60 KB total on the main thread). Mutable statics 67 -> 64, baseline tightened.

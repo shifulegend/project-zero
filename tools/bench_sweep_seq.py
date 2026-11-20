@@ -37,7 +37,7 @@ PROMPT = (
 ENGINE = "./pz"
 
 
-def host_cpu():
+def host_cpu() -> str:
     """CPU model string — recorded per run because cloud containers can be moved to
     different hardware by a restart (2026-10-19: a sweep's host changed mid-way)."""
     try:
@@ -53,7 +53,7 @@ def host_cpu():
 HOST_CPU = host_cpu()
 
 
-def parse_threads(spec):
+def parse_threads(spec: str) -> list[int]:
     """Thread counts from "N", "A-B" or "a,b,c"."""
     if "-" in spec:
         a, b = spec.split("-", 1)
@@ -61,12 +61,13 @@ def parse_threads(spec):
     return [int(x) for x in spec.split(",")]
 
 
-def run_once(cmd, log_path):
+def run_once(cmd: list[str], log_path: str | None) -> tuple[str, float, float, float, int]:
     """Run cmd, capture stdout+stderr, return (text, wall_s, maxrss_mb, cpu_pct)."""
     t0 = time.monotonic()
     proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL
     )
+    assert proc.stdout is not None  # stdout=PIPE above
     out = proc.stdout.read()
     _, status, ru = os.wait4(proc.pid, 0)
     proc.returncode = os.waitstatus_to_exitcode(status)
@@ -75,7 +76,7 @@ def run_once(cmd, log_path):
     return out.decode("utf-8", "replace"), wall, ru.ru_maxrss / 1024.0, cpu, proc.returncode
 
 
-def gen_toks(text):
+def gen_toks(text: str) -> tuple[float | None, int | None]:
     """(generation tok/s, token count) from a pz or llama.cpp/bitnet.cpp log, or (None, None)."""
     m = re.search(r"\[gen\]\s+([\d.]+)\s+tok/s\s+\((\d+) tokens\)", text)
     if m:
@@ -90,7 +91,7 @@ def gen_toks(text):
     return None, None
 
 
-def prompt_toks(text):
+def prompt_toks(text: str) -> float | None:
     """Prompt-evaluation tok/s from a llama.cpp-style log, or None."""
     m = re.search(
         r"prompt eval time =\s*[\d.]+ ms /\s*\d+ tokens\s*\([^,]+,\s*([\d.]+) tokens per second",
@@ -99,7 +100,7 @@ def prompt_toks(text):
     return float(m.group(1)) if m else None
 
 
-def main():
+def main() -> None:
     """Command-line entry point: runs the thread sweep and writes the results."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
@@ -290,4 +291,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

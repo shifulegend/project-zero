@@ -13,6 +13,7 @@ import pathlib
 import re
 import sys
 import uuid
+from typing import Any
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
@@ -32,9 +33,9 @@ VENDORED = [
 ]
 
 
-def vendored_components():
+def vendored_components() -> list[dict[str, Any]]:
     """CycloneDX components for the vendored headers, with versions read from the headers themselves."""
-    out = []
+    out: list[dict[str, Any]] = []
     for name, rel, pattern, url in VENDORED:
         text = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
         m = re.search(pattern, text)
@@ -55,7 +56,7 @@ def vendored_components():
     return out
 
 
-def build(version):
+def build(version: str) -> dict[str, Any]:
     """The CycloneDX 1.5 document for release `version`."""
     comps = vendored_components()
     return {
@@ -80,7 +81,7 @@ def build(version):
     }
 
 
-def main(argv):
+def main(argv: list[str]) -> int:
     """Entry point: prints the SBOM for the version given on the command line."""
     if len(argv) < 2:
         sys.exit(__doc__)

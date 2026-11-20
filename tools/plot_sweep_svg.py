@@ -18,15 +18,30 @@ import glob
 import os
 import subprocess
 from collections import defaultdict
+from dataclasses import dataclass
 
 BG, INK, MUTED, GRID = "#fcfcfb", "#1f1f1d", "#6b6a64", "#e7e6e1"
 # Engine colours: Project Zero first, references after (validated pair, CVD-safe).
 COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#8a5cd1", "#c4972b"]
 
 
-def best_by_suite(summary):
+@dataclass(order=True)
+class LineEnd:
+    """Where a series ends in a panel: label position, name, last value, colour, marker style."""
+
+    y: float
+    name: str
+    value: float
+    colour: str
+    marker_style: int
+
+
+Panel = tuple[str, list[tuple[str, str]]]  # (label, [(suite, engine name)])
+
+
+def best_by_suite(summary: str) -> dict[str, dict[int, float]]:
     """Best generation tok/s per suite and thread count from the sweep summary CSV."""
-    best = defaultdict(dict)
+    best: defaultdict[str, dict[int, float]] = defaultdict(dict)
     with open(summary, encoding="utf-8") as f:
         for r in csv.DictReader(f):
             if r.get("exit", "0") != "0" or not r.get("gen_tok_s"):
@@ -37,7 +52,7 @@ def best_by_suite(summary):
     return best
 
 
-def nice_max(v):
+def nice_max(v: float) -> tuple[float, float]:
     """Axis maximum and tick step for a value (the first step that gives at most four ticks)."""
     for step in (1, 2, 2.5, 5, 10, 20, 25, 50, 100):
         if v <= step * 4:
@@ -45,7 +60,7 @@ def nice_max(v):
     return v, v / 4
 
 
-def marker(i, x, y, c):
+def marker(i: int, x: float, y: float, c: str) -> str:
     """SVG marker for series `i` at (x, y) in colour `c`."""
     if i == 0:
         return (
@@ -57,12 +72,14 @@ def marker(i, x, y, c):
     )
 
 
-def render(panels, best, title, subtitle):
+def render(
+    panels: list[Panel], best: dict[str, dict[int, float]], title: str, subtitle: str
+) -> str:
+    """The chart as an SVG string for the given panels, best values, title and subtitle."""
     # One colour per engine name across every panel (2026-10-30: colours were per panel position,
     # so the same colour meant different engines in different panels); Project Zero series are
     # drawn as circles, references as squares.
-    """The chart as an SVG string for the given panels, best values, title and subtitle."""
-    names = []
+    names: list[str] = []
     for _, series in panels:
         names += [n for _, n in series if n not in names]
     colour = {n: COLORS[i % len(COLORS)] for i, n in enumerate(names)}
@@ -106,7 +123,7 @@ def render(panels, best, title, subtitle):
             out.append(
                 f'<text x="{x:.1f}" y="{y0 + 18}" font-size="11" fill="{MUTED}" text-anchor="middle">t={t}</text>'
             )
-        ends = []
+        ends: list[LineEnd] = []
         for si, (suite, name) in enumerate(series):
             pts = [
                 (xs[t], y0 - (y0 - y1) * v / ymax) for t, v in sorted(best.get(suite, {}).items())
@@ -122,19 +139,20 @@ def render(panels, best, title, subtitle):
             )
             out += [marker(si, x, y, c) for x, y in pts]
             last_t = max(best[suite])
-            ends.append([pts[-1][1], name, best[suite][last_t], c, si])
+            ends.append(LineEnd(pts[-1][1], name, best[suite][last_t], c, si))
         # Direct labels at the line ends, nudged apart so they never overlap.
         ends.sort()
         for i in range(1, len(ends)):
-            if ends[i][0] - ends[i - 1][0] < 30:
-                ends[i][0] = ends[i - 1][0] + 30
-        for y, name, v, c, si in ends:
+            if ends[i].y - ends[i - 1].y < 30:
+                ends[i].y = ends[i - 1].y + 30
+        for end in ends:
+            y, name, c, si = end.y, end.name, end.colour, end.marker_style
             out.append(marker(si, x1 + 14, y, c))
             out.append(
                 f'<text x="{x1 + 24}" y="{y + 3:.1f}" font-size="11" fill="{INK}">{name}</text>'
             )
             out.append(
-                f'<text x="{x1 + 24}" y="{y + 16:.1f}" font-size="11" fill="{MUTED}">{v:.1f} tok/s</text>'
+                f'<text x="{x1 + 24}" y="{y + 16:.1f}" font-size="11" fill="{MUTED}">{end.value:.1f} tok/s</text>'
             )
     out.append(
         f'<text x="{left - 10}" y="{h - 16}" font-size="11" fill="{MUTED}">decode tokens/s, '
@@ -144,7 +162,7 @@ def render(panels, best, title, subtitle):
     return "\n".join(out)
 
 
-def find_chromium(explicit):
+def find_chromium(explicit: str | None) -> str | None:
     """Path of a Chromium binary: the explicit one, else one found under the Playwright browsers folder."""
     if explicit:
         return explicit
@@ -159,7 +177,7 @@ def find_chromium(explicit):
     return hits[-1] if hits else None
 
 
-def svg_to_png(svg, png_path, chrome):
+def svg_to_png(svg: str, png_path: str, chrome: str) -> str:
     """Rasterise the SVG with headless Chromium (2x) and crop to the SVG box."""
     w = svg.split('width="', 1)[1].split('"', 1)[0]
     h = svg.split('height="', 1)[1].split('"', 1)[0]
@@ -194,7 +212,7 @@ def svg_to_png(svg, png_path, chrome):
     return png_path
 
 
-def main():
+def main() -> None:
     """Command-line entry point: renders the sweep chart as SVG and, when a browser is available, PNG."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--sweep", required=True)

@@ -8,19 +8,22 @@ Run AFTER run_sweep.py and run_perf_runs.py have completed.
 
 import os
 import re
+from typing import Any
+
+Summary = dict[int, dict[str, float | None]]  # threads -> {best_gen, best_prompt}
 
 PROJECT = os.environ.get("PZ_PROJECT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SWEEP = f"{PROJECT}/benchmark_results/sweep_2026-06-21"
 
 
 # ── load summaries ────────────────────────────────────────────────────────────
-def load_summary(suite_name):
+def load_summary(suite_name: str) -> Summary:
     """Returns dict: t -> {best_gen, best_prompt}"""
     path = f"{SWEEP}/{suite_name}/summary.txt"
     if not os.path.exists(path):
         print(f"  WARNING: {path} not found")
         return {}
-    results = {}
+    results: Summary = {}
     with open(path, encoding="utf-8") as f:
         for line in f:
             m = re.match(r"^(\d+)\s+([\d.N/A]+)\s+([\d.N/A]+)", line)
@@ -32,14 +35,14 @@ def load_summary(suite_name):
     return results
 
 
-def load_perf(suite_name):
+def load_perf(suite_name: str) -> dict[str, Any]:
     """Returns dict with perf metrics: wall_time, max_rss, cpu_pct."""
     path = f"{SWEEP}/{suite_name}/perf_run.txt"
     if not os.path.exists(path):
         return {}
     with open(path, encoding="utf-8") as f:
         text = f.read()
-    result = {}
+    result: dict[str, Any] = {}
     m = re.search(r"Elapsed \(wall clock\) time.*?:\s*(\S+)", text)
     if m:
         result["wall_time"] = m.group(1)
@@ -53,7 +56,7 @@ def load_perf(suite_name):
 
 
 # ── table builders ────────────────────────────────────────────────────────────
-def make_bitnet_table(pz_bf16, pz_int4, msft):
+def make_bitnet_table(pz_bf16: Summary, pz_int4: Summary, msft: Summary) -> str:
     """BitNet 3-engine comparison table."""
     rows = [
         "| Threads | PZ BF16 (tok/s) | PZ INT4 (tok/s) | MSFT bitnet.cpp | BF16 Gain | INT4 Gain |",
@@ -72,7 +75,7 @@ def make_bitnet_table(pz_bf16, pz_int4, msft):
     return "\n".join(rows)
 
 
-def make_smollm2_table(pz, llama):
+def make_smollm2_table(pz: Summary, llama: Summary) -> str:
     """SmolLM2 PZ vs llama.cpp table."""
     rows = [
         "| Threads | Project Zero BF16 (tok/s) | llama.cpp (tok/s) | PZ Gain |",
@@ -92,11 +95,13 @@ def make_smollm2_table(pz, llama):
     return "\n".join(rows)
 
 
-def make_prompt_speed_table(pz_bf16, pz_int4, msft, pz_smol, llama):
+def make_prompt_speed_table(
+    pz_bf16: Summary, pz_int4: Summary, msft: Summary, pz_smol: Summary, llama: Summary
+) -> str:
     """Prompt tok/s table for engines that report it."""
     rows = ["| Engine | Model | t=best | Prompt tok/s | Gen tok/s |", "|---|---|---|---|---|"]
 
-    def best_row(data, label, model):
+    def best_row(data: Summary, label: str, model: str) -> str | None:
         """Table row for the thread count with the best generation speed, or None when there is no data."""
         if not data:
             return None
@@ -134,7 +139,7 @@ if __name__ == "__main__":
     perf_smol = load_perf("smollm2_pz")
     perf_llama = load_perf("smollm2_llama")
 
-    def peak(data):
+    def peak(data: Summary) -> tuple[int | None, float | None]:
         """(thread count, speed) of the best generation run, or (None, None)."""
         if not data:
             return (None, None)

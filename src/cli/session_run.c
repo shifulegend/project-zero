@@ -118,7 +118,7 @@ static void run_one_shot(PzSession *S) {
     if (S->draft_active) {
         speculative_generate(&S->p, &S->w, S->s, &S->mc, &S->t, S->tp, S->args.prompt,
                              S->args.max_tokens, S->args.temperature, S->args.top_p,
-                             S->args.json_mode, &S->draft, S->args.spec_length);
+                             S->args.json_mode, &S->draft, S->args.spec_length, S->args.seed);
     } else {
         GenerationParams gp;
         args_fill_gen_params(&S->args, &gp);

@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-20 — `speculative_generate_with_callback` (209 lines) split into phases; `--seed` honoured
+- What: a `SpecRun` struct and `spec_supported`, `encode_prompt`, `round_buffers_alloc/free`, `prefill`, `draft_phase`, `verify_phase`, `accept_phase`, `emit_round`, `commit_round`; the function is the 76-line loop over them. New `seed` parameter on both entry points (negative = clock), passed from `--seed` in the CLI and REPL.
+- Why: draft, verify, accept, emit and commit were one 200-line loop body; the seed was never passed in.
+- Proof: a differential harness runs the previous and the new function on SmolLM2 as both verifier and draft (previous object with renamed symbols, clock pinned so seeds match) over 9 cases (temperature 0 to 1.2, speculative length 2 to 8, empty and one-token prompts, chat template): identical text in every case; `test_speculative` 20/20 (the new seed test fails on the old code); speed `[spec-gen]` 38.9-39.3 tok/s against 36.8 on the baseline binary.
+- Areas: `src/speculative/spec_decode.c`, `include/speculative/spec_decode.h`, `src/cli/{repl,session_run}.c`, `tests/test_speculative.c`.
+
 ### 2026-11-20 — `tokenizer_load_from_gguf` (178 lines) split into one function per step
 - What: `read_vocab`, `read_spm_scores`, `read_bpe_merges` (with `apply_merge`), `read_chat_template`, `read_bos_eos`, `collect_special_tokens` (with `grow_special_arrays`) and the 40-line loader that calls them in the original order.
 - Why: one function parsed the vocab, the SentencePiece scores, the BPE merges, the template, the special-token list and the end-of-generation set, with the special-token growth nested six deep.

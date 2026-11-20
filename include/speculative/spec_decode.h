@@ -39,15 +39,18 @@
  *     draft/accept-reject loop this pass -- passing json_mode=true prints
  *     a warning and proceeds with plain temperature/top_p sampling.
  */
+/* `seed` >= 0 makes draft sampling and accept/reject reproducible (--seed / API "seed"); a
+ * negative value seeds from the clock, as plain generation does. */
 void speculative_generate(const Config *cfg, const TransformerWeights *w, RunState *s,
                           const MoEConfig *mc, Tokenizer *tok, ThreadPool *tp, const char *prompt,
                           int max_tokens, float temperature, float top_p, bool json_mode,
-                          DraftModel *draft, int spec_length);
+                          DraftModel *draft, int spec_length, long long seed);
 
 void speculative_generate_with_callback(const Config *cfg, const TransformerWeights *w, RunState *s,
                                         const MoEConfig *mc, Tokenizer *tok, ThreadPool *tp,
                                         const char *prompt, int max_tokens, float temperature,
                                         float top_p, bool json_mode, DraftModel *draft,
-                                        int spec_length, TokenCallback callback, void *userdata);
+                                        int spec_length, long long seed, TokenCallback callback,
+                                        void *userdata);
 
 #endif /* TN_SPECULATIVE_SPEC_DECODE_H */

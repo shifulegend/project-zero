@@ -335,8 +335,8 @@ static void test_speculative_greedy_matches_plain_generation(void) {
     spec_out.buf[0] = '\0';
     speculative_generate_with_callback(&verifier_cfg, &verifier_w, &s_spec, &mc, &tok, NULL, prompt,
                                        max_tokens, /*temperature=*/0.0f, /*top_p=*/1.0f,
-                                       /*json_mode=*/false, &draft, spec_length, capture_callback,
-                                       &spec_out);
+                                       /*json_mode=*/false, &draft, spec_length, /*seed=*/-1,
+                                       capture_callback, &spec_out);
     run_state_free(&s_spec);
     run_state_free(&s_draft);
 
@@ -347,6 +347,55 @@ static void test_speculative_greedy_matches_plain_generation(void) {
     tokenizer_free(&tok);
     free_spec_model(&verifier_w);
     free_spec_model(&draft_w);
+}
+
+/* --seed / API "seed": sampled speculative decoding must be reproducible. It used to seed from the
+ * clock whatever the caller asked for, so two runs with --seed 5 gave different text. */
+static void run_sampled(const Config *vc, const TransformerWeights *vw, const Config *dc,
+                        const TransformerWeights *dw, Tokenizer *tok, long long seed,
+                        CaptureCtx *out) {
+    MoEConfig mc;
+    moe_config_init_dense(&mc);
+    RunState s_spec, s_draft;
+    TEST_ASSERT(run_state_alloc(&s_spec, vc, vc->seq_len) == TN_OK, "seeded spec run_state_alloc");
+    TEST_ASSERT(run_state_alloc(&s_draft, dc, dc->seq_len) == TN_OK,
+                "seeded draft run_state_alloc");
+    DraftModel draft;
+    memset(&draft, 0, sizeof(draft));
+    draft.config  = *dc;
+    draft.weights = *dw;
+    moe_config_init_dense(&draft.moe_config);
+    draft.state = &s_draft;
+    out->len    = 0;
+    out->buf[0] = '\0';
+    speculative_generate_with_callback(vc, vw, &s_spec, &mc, tok, NULL, "AB", /*max_tokens=*/24,
+                                       /*temperature=*/1.5f, /*top_p=*/1.0f, /*json_mode=*/false,
+                                       &draft, /*spec_length=*/3, seed, capture_callback, out);
+    run_state_free(&s_spec);
+    run_state_free(&s_draft);
+}
+
+static void test_speculative_seed_is_reproducible(void) {
+    tn_simd_init();
+    Config vc, dc;
+    TransformerWeights vw, dw;
+    build_spec_model(&vc, &vw, 1000);
+    build_spec_model(&dc, &dw, 9000);
+    Tokenizer tok;
+    build_test_tokenizer(&tok);
+
+    CaptureCtx a, b, c;
+    run_sampled(&vc, &vw, &dc, &dw, &tok, 7, &a);
+    sleep(1); /* the clock moves on: a clock-seeded run would differ now */
+    run_sampled(&vc, &vw, &dc, &dw, &tok, 7, &b);
+    run_sampled(&vc, &vw, &dc, &dw, &tok, 99, &c);
+    TEST_ASSERT(a.len > 0, "seeded speculative run produced output");
+    TEST_ASSERT(strcmp(a.buf, b.buf) == 0, "the same seed gives the same speculative output");
+    TEST_ASSERT(strcmp(a.buf, c.buf) != 0, "a different seed gives different speculative output");
+
+    tokenizer_free(&tok);
+    free_spec_model(&vw);
+    free_spec_model(&dw);
 }
 
 /* ── draft_model_load() vocab-mismatch validation ────────────────────────
@@ -375,6 +424,7 @@ int main(void) {
     RUN_TEST(test_accept_reject_rejects_at_first_mismatch);
     RUN_TEST(test_accept_reject_rejects_immediately);
     RUN_TEST(test_speculative_greedy_matches_plain_generation);
+    RUN_TEST(test_speculative_seed_is_reproducible);
     RUN_TEST(test_draft_model_vocab_mismatch_rejected);
     TEST_SUMMARY();
 }

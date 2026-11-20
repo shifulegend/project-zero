@@ -192,9 +192,9 @@ void run_repl(Config *p, TransformerWeights *w, const MoEConfig *mc, VisionConfi
 
         int64_t start_time = timer_now_us();
         if (draft) {
-            speculative_generate_with_callback(p, w, s, mc, t, tp, line, args->max_tokens,
-                                               args->temperature, args->top_p, args->json_mode,
-                                               draft, args->spec_length, repl_token_callback, &rc);
+            speculative_generate_with_callback(
+                p, w, s, mc, t, tp, line, args->max_tokens, args->temperature, args->top_p,
+                args->json_mode, draft, args->spec_length, args->seed, repl_token_callback, &rc);
         } else {
             GenerationParams gp;
             args_fill_gen_params(args, &gp);

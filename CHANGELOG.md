@@ -35,6 +35,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Fixed
 
+- Make `--seed` work with `--draft-model`: speculative decoding seeded its sampler from the clock, so two runs with the same `--seed` gave different text (plain generation already honoured it).
 - Refuse a truncated model file with an error (`tensor 'token_embd.weight' is missing from the file (truncated download?)`, exit status 1) instead of crashing with a segmentation fault while loading weights.
 - Print one `--verbose` router line per MoE layer: it used to start with a stray unfinished `experts=[` fragment before the real line.
 - Exit with status 1 when a run prints an error and does nothing: `--plan-layers` with no node sizes, `--rpc-worker` without a valid `--layers`, `--remote-layers` that cannot be set up (or is combined with `--draft-model`), `--perplexity` on an unreadable file or too few tokens, `--watermark-detect` text that cannot be tokenised, and `--server` when the port cannot be bound. Before, scripts and service managers saw success.

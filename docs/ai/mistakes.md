@@ -5,6 +5,11 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-11-20.
 
+### 2026-11-20 — `--seed` was ignored by speculative decoding
+- What: `speculative_generate_with_callback()` seeded its RNG with `time(NULL)` and had no seed parameter, so with `--draft-model` two runs of `--seed 5 --temperature 1.0` gave different text (plain generation passes `gp->seed`). Found while writing a differential harness for the function: it needed a pinned clock to compare runs, which showed the seed path was missing.
+- Fix: a `seed` parameter (negative = clock) wired from the CLI and REPL; `test_speculative_seed_is_reproducible` (same seed twice, a second apart, same text; another seed differs) fails on the old code.
+- Lesson: a test that has to pin the clock to be deterministic is pointing at a missing seed.
+
 ### 2026-11-20 — A truncated GGUF crashed the loader (segmentation fault)
 - What: the GGUF reader leaves `tensor->data` NULL for a tensor that does not fit in the file and only prints a warning; the weight loaders then read through it (SEGV in `gguf_dequant_q8_0` on a 5 MB prefix of SmolLM2, exit 139). Found by running truncated files through the new `load_gguf_model` split under ASan; the pre-series binary crashes the same way. Separately, a failed `weights_from_gguf()` leaked its weight store because only the success path freed it.
 - Fix: `weights_from_gguf()` refuses the file up front, naming the first missing tensor, before any loader touches it; `load_gguf_model()` now releases the store on that path. `tests/test_gguf_truncated.c` (all five architectures) and a truncated-file case in `tests/e2e_cli_exit_status.sh` guard it.

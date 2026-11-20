@@ -39,6 +39,13 @@ already satisfied.
 
 Full license text: LICENSE-LGPL-3.0.txt
 
+Origin and history: the algorithm in that file was first ported from the original GPL-3.0 lut_mm,
+with its author's agreement (thread above), before he relicensed the project to LGPL-3.0-or-later.
+Releases of Project Zero that shipped the file carry its LGPL-3.0 notice; published releases are
+immutable. LICENSE-GPL-3.0.txt (the GNU GPL v3 text, unmodified) is kept so the original terms
+stay on record. The file is scheduled for removal (see below once done); nothing outside that file
+depends on it.
+
 Credit: algorithm design and reference implementation by tommyyliu
 (lut_mm, ternary_mm_avx512.cpp). C99 port by Project Zero contributors.
 

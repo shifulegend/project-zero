@@ -325,7 +325,7 @@ tests/test_vnni_vbmi_parity.c::run_size 13 40
 tools/bench/benchlib.py::run_matrix 31 70
 tools/bench/benchlib.py::summary_md 14 28
 tools/bench/benchlib.py::take_screenshots 15 53
-tools/bench/build_compare.py::main 49 192
+tools/bench/build_compare.py::main 26 98
 tools/bench/calibration_test.py::main 29 149
 tools/bench/calibration_test.py::test_sweeps 11 58
 tools/bench/chart.py::make_chart 26 87

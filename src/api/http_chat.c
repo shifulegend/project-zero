@@ -54,7 +54,7 @@ static int queue_wait_notify(int position, void *userdata) {
     }
     char line[64];
     int n = snprintf(line, sizeof(line), ": queued %d\n\n", position);
-    return write(w->fd, line, (size_t)n) != n;
+    return net_write_all(w->fd, line, (size_t)n) != 0;
 }
 
 /* Waits for `units` engine units. Returns 1 once they are held; on any failure the request is

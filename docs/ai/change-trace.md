@@ -21,6 +21,10 @@
 - Proof: 6 unit tests (including the stale-floor case) pass; the checker passes on the fresh tracefile.
 - Areas: `tools/check_coverage.py`, `tools/test_check_coverage.py`, `tools/coverage_floor.txt`.
 
+### 2026-11-20 — One socket write path for the HTTP server
+- What: `sse_stream.c` had its own `write_all` whose comment said it retried on EINTR but did not (an interrupted write looked like a disconnected client and ended a stream), and `http_chat.c` wrote the queue notice with a bare `write()`. Both now call `net_write_all()`, so `net_io.c` is the only file in `src/api/` that writes to a socket. `tools/check_socket_writes.py` (unit-tested, CI `changelog` job) fails on any other direct `write()`, `send()` or `fwrite()` there.
+- Why: finding 11.c (handlers write straight to the socket; one writer function means a test can drive handlers through a pipe or socket pair and the short-write/EINTR handling lives in one place).
+
 ### 2026-11-20 — Nightly mutation smoke test
 - What: `tools/mutation_smoke.py FILE TEST` flips one comparison or logical operator at a time in a source file (outside comments and strings), rebuilds the named unit test, runs it and counts the mutants the test notices; the file is always restored. The `nightly.yml` job `mutation-smoke` runs it on `top_p.c`, `cors.c` and `rate_limit.c` and writes the kill rates and the survivors to the job summary; it only reports and never blocks a pull request. First local runs: `top_p.c` 3/6 killed (the survivors are boundary `>=` mutants worth a test), `rate_limit.c` 2/6 (the survivors are equivalent mutants on the clock check). The pure parts (finding sites, flipping an operator) have unit tests.
 - Why: decision 39.d (mutation testing after merge, in the nightly workflow, not blocking).

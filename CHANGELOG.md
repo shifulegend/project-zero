@@ -40,6 +40,7 @@ section becomes the version's entry and is published as its GitHub release notes
 - Warn on stderr when a chat template renders a prompt that ends with the end-of-sequence token, and when a chat generation ends with 0 tokens; the second warning names the first token the model chose and the last prompt token.
 
 ### Fixed
+- Fix a streamed reply being cut off when a signal interrupted a socket write: the server-sent-events writer treated an interrupted write as a disconnected client; every response byte now goes through the one write loop that retries on interruption and short writes.
 
 - Stop cutting a chat message that carries an image at 8 KiB: the text part of such a message is now kept whole (a 15,000-character message reached the model as about 8,000 characters before, silently).
 - Make `--seed` work with `--draft-model`: speculative decoding seeded its sampler from the clock, so two runs with the same `--seed` gave different text (plain generation already honoured it).

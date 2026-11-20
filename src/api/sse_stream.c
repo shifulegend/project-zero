@@ -13,6 +13,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "api/net_io.h"
+
 /* ── JSON string escaping ────────────────────────────────────────────────── */
 
 /*
@@ -57,15 +59,9 @@ static char *json_escape(char *dst, const char *src) {
     return dst;
 }
 
-/* ── write() wrapper that retries on EINTR ──────────────────────────────── */
+/* ── Socket write: all bytes or -1 (loops on short writes and EINTR via net_write_all) ───── */
 static ssize_t write_all(int fd, const char *buf, size_t len) {
-    size_t sent = 0;
-    while (sent < len) {
-        ssize_t n = write(fd, buf + sent, len - sent);
-        if (n < 0) return -1;
-        sent += (size_t)n;
-    }
-    return (ssize_t)sent;
+    return net_write_all(fd, buf, len) == 0 ? (ssize_t)len : -1;
 }
 
 /* ── Public API ──────────────────────────────────────────────────────────── */

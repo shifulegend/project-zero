@@ -21,6 +21,10 @@
 - Proof: 6 unit tests (including the stale-floor case) pass; the checker passes on the fresh tracefile.
 - Areas: `tools/check_coverage.py`, `tools/test_check_coverage.py`, `tools/coverage_floor.txt`.
 
+### 2026-11-20 — Ratchet on long boolean conditions
+- What: `tools/check_bool_chains.py` (unit-tested, CI `changelog` job) counts `if` / `while` conditions in `src/` with four or more operands (three or more top-level `&&` / `||`, comments and string literals ignored). 114 conditions in 65 files are recorded in `tools/bool_chains_baseline.txt`; a file may not go above its count and a new file starts at zero, so the list only shrinks. The decision counts NULL-guard chains as violations; they are burned down by naming the predicate or moving it into a helper.
+- Why: decision 2.c (no blanket exemption for NULL-guard chains; refactor with tests).
+
 ### 2026-11-20 — One shared system probe for the CPU model and the cache directory
 - What: `core/sys_probe.c` (`TnSysProbe`: `getenv` and `fopen` behind a table, real by default) holds `tn_sys_cpu_model()` and `tn_sys_cache_dir()`. The two copies of the `/proc/cpuinfo` "model name" reader (`bw_cache.c`, `calibration.c`) and the environment lookup of the bandwidth cache path now call it; `tests/test_sys_probe.c` drives them with a fake environment and a fake `/proc/cpuinfo`, no real machine involved (model name, empty and short-buffer cases, `PZ_CACHE_DIR` / `XDG_CACHE_HOME` / `HOME` precedence). Also dropped includes that the earlier splits left unused in `attention.c` and `mla_attention.c`.
 - Not done: `hardware_profile.c` still calls `sysconf`, `/proc/meminfo` and `popen` directly; the other lookups move behind the probe one at a time.

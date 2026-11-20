@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-20 — setup wizard scratch buffers are locals, not statics
+- What: the model list, model catalog buffers in `src/cli/config_cmd.c` are automatic variables; `cfg` and `owned` stay static (the returned argv points into them).
+- Why: finding 14.f; the three statics only avoided stack size (about 60 KB total on the main thread). Mutable statics 67 -> 64, baseline tightened.
+- Proof: `make test` gcc and clang pass; format, complexity (401) and statics ratchets pass.
+- Areas: `src/cli/config_cmd.c`, `tools/mutable_statics_baseline.txt`.
+
 ### 2026-11-20 — CI check against disabled code
 - What: `tools/check_dead_code.py` (with tests) fails on `#if 0` and on commented-out C statements in `src/`, `include/`, `tests/`; wired into the `ci.yml` lint steps.
 - Why: finding 29.a; the tree has none today, so the baseline is zero and nothing can creep in. Vendored `stb_*` headers are skipped.

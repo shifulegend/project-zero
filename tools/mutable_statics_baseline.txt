@@ -3,7 +3,7 @@ src/agent/cmd_exec.c 1
 src/api/config_endpoint.c 1
 src/api/http_request.c 2
 src/api/openapi.c 1
-src/cli/config_cmd.c 5
+src/cli/config_cmd.c 2
 src/cli/session_extras.c 1
 src/cli/session_server.c 1
 src/config/pz_config.c 2

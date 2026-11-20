@@ -215,10 +215,10 @@ static int yes(const char *line, int dflt) {
  * current model or takes the suggestion. Returns 0 on EOF. */
 static int ask_model(PzConfig *c, FILE *in, FILE *out, PzWizardOpts *o) {
 #if TN_POSIX
-    static char found[32][1024];
+    char found[32][1024];
     int nf = scan_models(o->model_dirs, found, 32);
 #else
-    static char found[1][1024];
+    char found[1][1024];
     int nf = 0;
 #endif
     int nc = o->catalog ? o->n_catalog : 0;
@@ -415,7 +415,7 @@ int pz_config_command(int argc, char **argv) {
         else if (h)
             snprintf(data_models, sizeof(data_models), "%s/.local/share/project-zero/models", h);
         const char *dirs[] = {"models", home_models, data_models, NULL};
-        static PzStarterModel cat[PZ_CATALOG_MAX];
+        PzStarterModel cat[PZ_CATALOG_MAX];
         const char *cat_src = NULL;
         PzWizardOpts o;
         memset(&o, 0, sizeof(o));

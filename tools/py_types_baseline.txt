@@ -9,8 +9,6 @@ tools/bench/h2h_bench.py 77
 tools/bench/hardware_profile.py 26
 tools/bench/setup_engines.py 66
 tools/bench/test_bench.py 91
-tools/bench/verify/bitnet_layer0.py 36
-tools/bench/verify/gguf_min.py 25
 tools/bench_phase34.py 26
 tools/convert_hf.py 70
 tools/convert_hf_bitnet.py 45

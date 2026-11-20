@@ -10,6 +10,9 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 FLOOR = ROOT / "tools" / "coverage_floor.txt"
+STALE_MARGIN = (
+    5.0  # points of headroom before the floor must be raised (CPU-dependent kernel paths)
+)
 DEFAULT_INFO = ROOT / "build" / "coverage" / "coverage.info"
 
 
@@ -54,6 +57,11 @@ def check(info_text: str, floor: dict[str, float]) -> list[str]:
             failures.append(f"{name}: no data in the tracefile")
         elif pct < minimum:
             failures.append(f"{name} coverage {pct:.1f}% is below the floor {minimum:.1f}%")
+        elif pct > minimum + STALE_MARGIN:
+            failures.append(
+                f"{name} coverage {pct:.1f}% is more than {STALE_MARGIN:.0f} points above the floor "
+                f"{minimum:.1f}%: raise it in tools/coverage_floor.txt (the floor only goes up)"
+            )
     return failures
 
 

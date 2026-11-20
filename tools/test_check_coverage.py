@@ -22,6 +22,12 @@ class CoverageTests(unittest.TestCase):
         self.assertEqual(len(out), 1)
         self.assertIn("lines", out[0])
 
+    def test_a_stale_floor_must_be_raised(self) -> None:
+        """Coverage far above the floor fails, so the floor only ratchets upward."""
+        out = c.check(INFO, {"lines": 30.0, "branches": 50.0})
+        self.assertEqual(len(out), 1)
+        self.assertIn("raise it", out[0])
+
     def test_empty_tracefile_fails(self) -> None:
         self.assertTrue(c.check("", {"lines": 1.0}))
 

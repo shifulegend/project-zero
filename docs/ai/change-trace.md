@@ -21,6 +21,10 @@
 - Proof: 6 unit tests (including the stale-floor case) pass; the checker passes on the fresh tracefile.
 - Areas: `tools/check_coverage.py`, `tools/test_check_coverage.py`, `tools/coverage_floor.txt`.
 
+### 2026-11-20 — Nightly mutation smoke test
+- What: `tools/mutation_smoke.py FILE TEST` flips one comparison or logical operator at a time in a source file (outside comments and strings), rebuilds the named unit test, runs it and counts the mutants the test notices; the file is always restored. The `nightly.yml` job `mutation-smoke` runs it on `top_p.c`, `cors.c` and `rate_limit.c` and writes the kill rates and the survivors to the job summary; it only reports and never blocks a pull request. First local runs: `top_p.c` 3/6 killed (the survivors are boundary `>=` mutants worth a test), `rate_limit.c` 2/6 (the survivors are equivalent mutants on the clock check). The pure parts (finding sites, flipping an operator) have unit tests.
+- Why: decision 39.d (mutation testing after merge, in the nightly workflow, not blocking).
+
 ### 2026-11-20 — Ratchet on lines over 100 columns
 - What: `tools/check_line_width.py` (unit-tested, CI `changelog` job) counts source lines over 100 columns per tracked file (C, C++, headers, Python, TypeScript, Svelte, shell; generated, vendored and benchmark-result files skipped). 629 lines in 174 files are recorded in `tools/line_width_baseline.txt`; a file may not go above its count and a new file starts at zero. clang-format and ruff already keep code within 100 columns, so the residue is comments, long strings and markup they cannot wrap (the finding counted 703).
 - Why: decision 23.c (machine-enforced column limit; no reflow of the existing lines).

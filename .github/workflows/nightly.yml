@@ -37,6 +37,24 @@ jobs:
             python3 tools/fuzz_grammar_json.py --n 20000 --seed "$seed" --harness /tmp/grammar_json_verdict_nightly
           done
 
+  mutation-smoke:
+    name: Mutation smoke test (does a changed operator make a unit test fail?)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -q || { sudo rm -f /etc/apt/sources.list.d/*microsoft*; sudo apt-get update -q; }
+          sudo apt-get install -y -q gcc python3
+      - name: Mutate a few small files and run their tests (report only, never blocks)
+        run: |
+          {
+            echo '### Mutation smoke test'
+            python3 tools/mutation_smoke.py src/sampling/top_p.c test_top_p --max 12 || true
+            python3 tools/mutation_smoke.py src/api/cors.c test_cors --max 10 || true
+            python3 tools/mutation_smoke.py src/api/rate_limit.c test_rate_limit --max 12 || true
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
   differential-dequant-vs-ggml:
     name: Differential dequant vs real ggml (TS-1.1)
     runs-on: ubuntu-latest

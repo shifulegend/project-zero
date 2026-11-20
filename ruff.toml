@@ -30,6 +30,8 @@ quote-style = "double"
 # S311: the fuzzers draw test inputs, not secrets.
 "tools/fuzz_grammar_json.py" = ["S311"]
 "tests/monkey_tester.py" = ["S311"]
+# S311: the mutation smoke test shuffles which operator sites to try, not a secret.
+"tools/mutation_smoke.py" = ["S311"]
 # S606: the pty runner execs the engine in the forked child by design.
 "tests/agent_pty_runner.py" = ["S606"]
 # SIM115: these handles live for the whole run (run log, summary CSV, mmap-backed reader) and are

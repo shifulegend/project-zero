@@ -54,21 +54,20 @@ def generate_regression_section(out_lines: list[str]) -> None:
             emit()
             return None  # no best row
 
-        simd_modes, classifiers, threads = [], [], []
+        simd_seen: dict[str, None] = {}  # insertion-ordered sets
+        cls_seen: dict[str, None] = {}
+        thread_seen: dict[int, None] = {}
         tps_map = {}
         for row in sweep:
             t = int(row.get("threads", 0))
             s = row.get("simd", "")
             c = row.get("classifier", "")
             tps = safe_float(row.get("tok_s", 0))
-            if t not in threads:
-                threads.append(t)
-            if s not in simd_modes:
-                simd_modes.append(s)
-            if c not in classifiers:
-                classifiers.append(c)
+            thread_seen.setdefault(t)
+            simd_seen.setdefault(s)
+            cls_seen.setdefault(c)
             tps_map[(t, s, c)] = tps
-        threads.sort()
+        simd_modes, classifiers, threads = list(simd_seen), list(cls_seen), sorted(thread_seen)
 
         emit("#### tok/s by Threads × SIMD (best classifier per cell)")
         emit()
@@ -264,23 +263,20 @@ if sweep:
     w()
 
     # Group by SIMD for per-simd tables
-    simd_modes = []
-    classifiers = []
-    threads = []
+    simd_seen: dict[str, None] = {}  # insertion-ordered sets
+    cls_seen: dict[str, None] = {}
+    thread_seen: dict[int, None] = {}
     tps_map = {}
     for row in sweep:
         t = int(row["threads"])
         s = row["simd"]
         c = row["classifier"]
         tps = safe_float(row["tok_s"])
-        if t not in threads:
-            threads.append(t)
-        if s not in simd_modes:
-            simd_modes.append(s)
-        if c not in classifiers:
-            classifiers.append(c)
+        thread_seen.setdefault(t)
+        simd_seen.setdefault(s)
+        cls_seen.setdefault(c)
         tps_map[(t, s, c)] = tps
-    threads.sort()
+    simd_modes, classifiers, threads = list(simd_seen), list(cls_seen), sorted(thread_seen)
 
     # Summary heatmap: best cls per (T, SIMD)
     w("### 1a. tok/s by Threads × SIMD (best classifier each cell)")

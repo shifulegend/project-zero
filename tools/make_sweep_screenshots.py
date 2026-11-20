@@ -411,8 +411,7 @@ if __name__ == "__main__":
     for item in args.suite:
         k, _, v = item.partition("=")
         LABELS[k] = v
-        if k not in SUITES:
-            SUITES.append(k)
+        SUITES = list(dict.fromkeys([*SUITES, k]))  # append once, keep the order
     os.makedirs(SS_DIR, exist_ok=True)
     total = 0
     for suite_name in SUITES:

@@ -79,9 +79,7 @@ def render(
     # One colour per engine name across every panel (2026-10-30: colours were per panel position,
     # so the same colour meant different engines in different panels); Project Zero series are
     # drawn as circles, references as squares.
-    names: list[str] = []
-    for _, series in panels:
-        names += [n for _, n in series if n not in names]
+    names = list(dict.fromkeys(n for _, series in panels for _, n in series))
     colour = {n: COLORS[i % len(COLORS)] for i, n in enumerate(names)}
     n_sub = len(subtitle.split(" | "))  # every subtitle line pushes the panels down
     wide = max(

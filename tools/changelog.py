@@ -71,7 +71,7 @@ def parse(text: str) -> tuple[list[Entry], dict[str, str], list[str]]:
                 errors.append(f"line {n}: subsection {name!r} not one of {', '.join(SECTIONS)}")
             else:
                 done = [l[4:].strip() for l in cur.body if l.startswith("### ")]
-                if name in done:
+                if name in set(done):
                     errors.append(f"line {n}: subsection {name!r} repeated in {cur.name}")
                 elif any(SECTIONS.index(d) > SECTIONS.index(name) for d in done if d in SECTIONS):
                     errors.append(

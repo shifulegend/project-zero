@@ -20,17 +20,20 @@ Examples:
 """
 
 import argparse
+import os
 import pathlib
 import re
+import shlex
+from typing import Any
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import benchlib as bl
 
 
-def find_small_model(models_dir):
+def find_small_model(models_dir: str) -> pathlib.Path | None:
     """The smallest known model on disk (the profile does not depend on which one)."""
-    best = None
+    best: pathlib.Path | None = None
     for key, m in bl.load_models().items():
         p = bl.model_path(key, models_dir)
         if p and (best is None or p.stat().st_size < best.stat().st_size):
@@ -41,13 +44,21 @@ def find_small_model(models_dir):
     return best
 
 
-def profile_box(text):
+def profile_box(text: str) -> str:
     """The 'Hardware Profile' box from a pz startup, or '' when absent."""
     m = re.search(r"┌[─]+┐\s*\n│\s+Hardware Profile.*?└[─]+┘", text, re.S)
     return m.group(0) if m else ""
 
 
-def capture_profile(run, pz, model, env, calibration, rows=0, name="hardware_profile"):
+def capture_profile(
+    run: bl.RunDir,
+    pz: str,
+    model: str | pathlib.Path,
+    env: dict[str, str],
+    calibration: str,
+    rows: int = 0,
+    name: str = "hardware_profile",
+) -> tuple[pathlib.Path | None, str, str]:
     """Runs a one-token pz generation, screenshots its startup output and saves the hardware-profile box from it in the run folder."""
     cmd = [
         pz,
@@ -60,10 +71,10 @@ def capture_profile(run, pz, model, env, calibration, rows=0, name="hardware_pro
         "--temperature",
         "0",
         "--threads",
-        str(bl.os.cpu_count() or 1),
+        str(os.cpu_count() or 1),
         "--no-update-check",
     ] + bl.pz_flags(calibration)
-    run.log(f"capturing the pz hardware profile: {bl.shlex.join(cmd)}")
+    run.log(f"capturing the pz hardware profile: {shlex.join(cmd)}")
     png, text = bl.screenshot(
         run, name, cmd, env, rows=rows or 100, timeout_s=900, note=f"calibration={calibration}"
     )
@@ -73,7 +84,7 @@ def capture_profile(run, pz, model, env, calibration, rows=0, name="hardware_pro
     return png, text, box
 
 
-def main():
+def main() -> int:
     """Command-line entry point: captures the hardware profile of this machine."""
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -101,7 +112,11 @@ def main():
         )
     run.create()
     env = bl.pz_env(run, a.calibration)
-    info = {"PZ_BINARY": f"{bl.bin_info(a.pz)}", "CALIBRATION": a.calibration, "MODEL": model}
+    info: dict[str, Any] = {
+        "PZ_BINARY": f"{bl.bin_info(a.pz)}",
+        "CALIBRATION": a.calibration,
+        "MODEL": model,
+    }
     run.write("system_info.txt", bl.system_info_text(run, info))
     png, text, box = capture_profile(run, a.pz, model, env, a.calibration, rows=a.shot_rows)
     run.log(box or "(no hardware-profile box found in the terminal output)")

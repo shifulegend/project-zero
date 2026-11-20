@@ -1,12 +1,9 @@
 # Python files that do not pass mypy --strict yet (tools/check_py_types.py): path, errors.
 # Entries may only shrink or go.
-tools/bench/build_compare.py 20
-tools/bench/calibration_test.py 19
-tools/bench/chart.py 9
-tools/bench/h2h_bench.py 31
-tools/bench/hardware_profile.py 10
-tools/bench/setup_engines.py 43
-tools/bench/test_bench.py 29
+tools/bench/build_compare.py 19
+tools/bench/calibration_test.py 17
+tools/bench/h2h_bench.py 25
+tools/bench/test_bench.py 25
 tools/bench_phase34.py 26
 tools/convert_hf.py 70
 tools/convert_hf_bitnet.py 45

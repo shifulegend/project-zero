@@ -28,32 +28,50 @@ import hashlib
 import json
 import os
 import pathlib
+import shlex
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
+from typing import Any
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import benchlib as bl
 
 
-def sh(cmd, cwd=None, env=None, log=print, dry=False, check=True):
+def sh(
+    cmd: list[str],
+    cwd: str | pathlib.Path | None = None,
+    env: dict[str, str] | None = None,
+    log: Callable[[str], object] = print,
+    dry: bool = False,
+    check: bool = True,
+) -> int:
     """Runs a command (or only logs it with `dry`); raises SystemExit when it fails and `check` is set; returns the exit code."""
-    log("  $ " + bl.shlex.join(cmd) + (f"   (in {cwd})" if cwd else ""))
+    log("  $ " + shlex.join(cmd) + (f"   (in {cwd})" if cwd else ""))
     if dry:
         return 0
     r = subprocess.run(cmd, cwd=cwd, env=env)
     if check and r.returncode != 0:
-        raise SystemExit(f"command failed ({r.returncode}): {bl.shlex.join(cmd)}")
+        raise SystemExit(f"command failed ({r.returncode}): {shlex.join(cmd)}")
     return r.returncode
 
 
-def engine_commit(key, engine_dir):
+def engine_commit(key: str, engine_dir: str | pathlib.Path) -> str:
     """Short commit of the named engine's checkout, or an empty string when it is not cloned."""
     d = pathlib.Path(engine_dir) / bl.load_engines()[key]["dir"]
     return bl._sh(["git", "-C", str(d), "rev-parse", "--short", "HEAD"]) if d.exists() else ""
 
 
-def _build(key, e, d, jobs, dry, log, targets=None):
+def _build(
+    key: str,
+    e: dict[str, Any],
+    d: pathlib.Path,
+    jobs: int,
+    dry: bool,
+    log: Callable[[str], object],
+    targets: list[str] | None = None,
+) -> None:
     """Configure (unless only extra targets are wanted) and build; the one place that knows how."""
     env = dict(os.environ)
     if e.get("compiler") == "clang":
@@ -63,7 +81,7 @@ def _build(key, e, d, jobs, dry, log, targets=None):
         targets = e["targets"]
     sh(
         ["cmake", "--build", "build", "-j", str(jobs)]
-        + sum([["--target", t] for t in targets], []),
+        + [arg for t in targets for arg in ("--target", t)],
         cwd=d,
         env=env,
         log=log,
@@ -71,7 +89,15 @@ def _build(key, e, d, jobs, dry, log, targets=None):
     )
 
 
-def _record(key, e, d, engine_dir, want, dry):
+def _record(
+    key: str,
+    e: dict[str, Any],
+    d: pathlib.Path,
+    engine_dir: str | pathlib.Path,
+    want: str,
+    dry: bool,
+) -> None:
+    """Writes the build record (commit, ref, configure line) next to the engine's sources."""
     if not dry:
         info = {
             "engine": key,
@@ -86,7 +112,9 @@ def _record(key, e, d, engine_dir, want, dry):
         (d / ".pzbench_build.json").write_text(json.dumps(info, indent=2) + "\n")
 
 
-def _apply_patches(e, d, log, dry):
+def _apply_patches(
+    e: dict[str, Any], d: pathlib.Path, log: Callable[[str], object], dry: bool
+) -> None:
     """Apply the engine's recorded patches (idempotent: an already-applied patch is skipped)."""
     for pt in e.get("patches", []):
         target = d / pt.get("apply_in", ".")
@@ -105,7 +133,14 @@ def _apply_patches(e, d, log, dry):
         sh(base, cwd=target, log=log, dry=dry)
 
 
-def _ensure_perplexity(key, e, d, jobs, dry, log):
+def _ensure_perplexity(
+    key: str,
+    e: dict[str, Any],
+    d: pathlib.Path,
+    jobs: int,
+    dry: bool,
+    log: Callable[[str], object],
+) -> None:
     """The gate needs the engine's perplexity tool; build just that target when the engine is already built."""
     spec = e.get("perplexity")
     if spec and not (d / spec["binary"]).exists():
@@ -113,12 +148,20 @@ def _ensure_perplexity(key, e, d, jobs, dry, log):
         _build(key, e, d, jobs, dry, log, targets=[spec["target"]])
 
 
-def ensure_engine(key, engine_dir, fetch="missing", ref="pinned", jobs=0, dry=False, log=print):
+def ensure_engine(
+    key: str,
+    engine_dir: str | pathlib.Path,
+    fetch: str = "missing",
+    ref: str = "pinned",
+    jobs: int = 0,
+    dry: bool = False,
+    log: Callable[[str], object] = print,
+) -> pathlib.Path | None:
     """Returns the binary path (or None when fetch=never and it is absent). Idempotent.
     A variant (engines.json `variant_of`) is a patched copy of another engine's source tree."""
     e = bl.load_engines()[key]
     d = pathlib.Path(engine_dir) / e["dir"]
-    binary = d / e["binary"]
+    binary: pathlib.Path = d / e["binary"]
     jobs = jobs or os.cpu_count() or 2
     if binary.exists() and fetch != "always":
         log(f"{e['label']}: present ({engine_commit(key, engine_dir)}) at {binary}")
@@ -171,7 +214,7 @@ def ensure_engine(key, engine_dir, fetch="missing", ref="pinned", jobs=0, dry=Fa
     return binary
 
 
-def sha256_file(p, chunk=1 << 22):
+def sha256_file(p: str | pathlib.Path, chunk: int = 1 << 22) -> str:
     """SHA-256 of a file, read in chunks."""
     h = hashlib.sha256()
     with open(p, "rb") as f:
@@ -184,11 +227,17 @@ def sha256_file(p, chunk=1 << 22):
 
 
 def ensure_model(
-    key, models_dir="models", fetch="missing", engine_dir=None, verify=False, dry=False, log=print
-):
+    key: str,
+    models_dir: str | pathlib.Path = "models",
+    fetch: str = "missing",
+    engine_dir: str | pathlib.Path | None = None,
+    verify: bool = False,
+    dry: bool = False,
+    log: Callable[[str], object] = print,
+) -> pathlib.Path | None:
     """Returns the model path (or None). Derived models are produced from their source with ik llama-quantize."""
     m = bl.load_models()[key]
-    p = pathlib.Path(models_dir) / m["file"]
+    p: pathlib.Path = pathlib.Path(models_dir) / m["file"]
     if p.exists() and fetch != "always":
         ok = (m.get("size") is None) or p.stat().st_size == m["size"]
         if verify and m.get("sha256"):
@@ -211,8 +260,7 @@ def ensure_model(
             dry=dry,
             log=log,
         )
-        q = engine_dir and bl.engine_binary("ik", engine_dir)
-        if not q:
+        if not engine_dir or not bl.engine_binary("ik", engine_dir):
             log(f"{key}: needs ik_llama.cpp built first (--engines ik)")
             return None
         ik = bl.load_engines()["ik"]
@@ -230,7 +278,7 @@ def ensure_model(
     return p
 
 
-def smoke_engines(a, engines):
+def smoke_engines(a: argparse.Namespace, engines: list[str]) -> int:
     """The gate's smoke check at install time, so a broken engine build is rejected before anyone times it."""
     import gate
 
@@ -240,9 +288,9 @@ def smoke_engines(a, engines):
         binary = bl.engine_binary(k, a.engine_dir)
         models = sorted(
             (
-                (m, i, bl.model_path(m, a.models_dir))
+                (m, i, p)
                 for m, i in bl.load_models().items()
-                if k in i["engines"] and bl.model_path(m, a.models_dir)
+                if k in i["engines"] and (p := bl.model_path(m, a.models_dir))
             ),
             key=lambda x: x[2].stat().st_size,
         )
@@ -259,9 +307,9 @@ def smoke_engines(a, engines):
     return 1 if bad else 0
 
 
-def status_table(engine_dir, models_dir):
+def status_table(engine_dir: str | pathlib.Path, models_dir: str | pathlib.Path) -> str:
     """Table of every engine and model with whether it is built or downloaded."""
-    rows = []
+    rows: list[list[str]] = []
     for k, e in bl.load_engines().items():
         b = bl.engine_binary(k, engine_dir)
         rows.append(
@@ -287,7 +335,7 @@ def status_table(engine_dir, models_dir):
     return bl.md_table(["kind", "name", "state", "commit / size", "path"], rows)
 
 
-def main():
+def main() -> int:
     """Command-line entry point: clones, builds and checks the reference engines and models."""
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter

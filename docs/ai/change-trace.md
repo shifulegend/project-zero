@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-20 — config save lock and parallel-scheduler fields move into ApiContext
+- What: `ApiContext` gets a `config_save_lock` (was a file-scope mutex in `config_endpoint.c`) and groups its four parallel-scheduler fields into `ApiParallel parallel` (25 -> 23 direct fields). The child-environment PATH entry in `cmd_exec.c` is a const array.
+- Why: finding 14.f and the 25-field cap (10.b); two server contexts no longer share a save lock. Mutable statics 56 -> 54.
+- Proof: `make test` gcc and clang, TSan, CMake build; field, complexity, file-size and statics ratchets pass without any baseline raised.
+- Areas: `include/api/api_server.h`, `src/api/{http_server,http_chat,http_routes,api_config_json,config_endpoint}.c`, `src/agent/cmd_exec.c`, `tests/test_api_info.c`.
+
 ### 2026-11-20 — update check keeps its state in an UpdateService, not in globals
 - What: the background release check (`src/update/update_service.c`, split out of `update_check.c`) works on a caller-owned `UpdateService` (mutex, options, last result, thread, fetch hook). The session owns one (`PzSession.update.svc`) and hands it to the HTTP server (`ApiContext.update`); `update_set_fetcher` became `update_service_set_fetcher`, and `update_check_with` takes the transport explicitly.
 - Why: finding 14.f (no process-wide mutable state). Mutable statics 64 -> 56; two services in one process no longer share a result or a thread. The split also took `update_check` and `update_service_poll` under their recorded complexity and the file from 616 to 512 lines.

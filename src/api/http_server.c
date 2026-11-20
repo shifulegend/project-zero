@@ -378,9 +378,9 @@ void api_context_init(ApiContext *ctx, const Config *cfg, const TransformerWeigh
     metrics_init(&ctx->metrics);
     cancel_state_init(&ctx->cancel);
     pthread_mutex_init(&ctx->generation_mutex, NULL);
+    pthread_mutex_init(&ctx->config_save_lock, NULL);
     gen_queue_init(&ctx->gen_queue, 0);
 }
-
 static void start_parallel(ApiContext *ctx);
 
 TernaryError api_server_start(int port, ApiContext *ctx) {
@@ -482,10 +482,10 @@ TernaryError api_server_start(int port, ApiContext *ctx) {
  * stays sequential and /v1/config says why. */
 static void start_parallel(ApiContext *ctx) {
     int want            = ctx->server_config.limits.parallel;
-    ctx->parallel_slots = 1;
-    ctx->parallel_note  = NULL;
+    ctx->parallel.slots = 1;
+    ctx->parallel.note  = NULL;
     if (want > 1 && !batch_scheduler_supported(ctx->weights, ctx->moe_cfg)) {
-        ctx->parallel_note = "this model architecture runs one request at a time "
+        ctx->parallel.note = "this model architecture runs one request at a time "
                              "(batched serving covers dense attention models)";
     } else if (want > 1) {
         int rows = ctx->server_config.limits.parallel_batch;
@@ -495,22 +495,22 @@ static void start_parallel(ApiContext *ctx) {
         long long budget = kv_strategy_budget_tokens(ctx->cfg, ctx->moe_cfg, tn_get_free_ram());
         if (budget < ctx->run_state->max_seq_len) budget = ctx->run_state->max_seq_len;
         BatchSchedulerOptions o = {want, rows, budget};
-        ctx->sched =
+        ctx->parallel.sched =
             batch_scheduler_create(ctx->cfg, ctx->weights, ctx->run_state, &ctx->prefix_cache,
                                    &ctx->prompt_store, ctx->moe_cfg, ctx->tok, ctx->tp, &o);
-        if (ctx->sched) {
-            ctx->parallel_slots     = want;
-            ctx->parallel_kv_budget = budget;
+        if (ctx->parallel.sched) {
+            ctx->parallel.slots     = want;
+            ctx->parallel.kv_budget = budget;
         } else {
-            ctx->parallel_note = "could not allocate the parallel slots (out of memory?)";
+            ctx->parallel.note = "could not allocate the parallel slots (out of memory?)";
         }
     }
-    gen_queue_set_capacity(&ctx->gen_queue, ctx->parallel_slots);
+    gen_queue_set_capacity(&ctx->gen_queue, ctx->parallel.slots);
     if (want > 1)
-        TN_OUT_INF("api", "[API] Parallel: %d request%s at once%s%s%s\n", ctx->parallel_slots,
-                   ctx->parallel_slots == 1 ? "" : "s", ctx->parallel_note ? " — " : "",
-                   ctx->parallel_note ? ctx->parallel_note : "",
-                   ctx->parallel_note ? "" : " (batched)");
+        TN_OUT_INF("api", "[API] Parallel: %d request%s at once%s%s%s\n", ctx->parallel.slots,
+                   ctx->parallel.slots == 1 ? "" : "s", ctx->parallel.note ? " — " : "",
+                   ctx->parallel.note ? ctx->parallel.note : "",
+                   ctx->parallel.note ? "" : " (batched)");
 }
 
 void api_server_stop(ApiContext *ctx) {
@@ -547,7 +547,7 @@ void api_server_stop(ApiContext *ctx) {
         struct timespec ts = {0, 10 * 1000000L};
         nanosleep(&ts, NULL);
     }
-    batch_scheduler_stop(ctx->sched);
+    batch_scheduler_stop(ctx->parallel.sched);
 
     /* Drain the detached connection threads: wait (bounded) until every one
      * has finished. An idle client is dropped by its read timeout

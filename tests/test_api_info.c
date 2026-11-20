@@ -68,8 +68,8 @@ static void test_config_reflects_defaults_and_limits(void) {
     TEST_ASSERT(strstr(j, "\"parallel\":{\"slots\":1,\"requested\":1,\"batch_tokens\":128") != NULL,
                 "parallel: sequential by default, batch size published");
     ctx.server_config.limits.parallel = 4;
-    ctx.parallel_slots                = 1;
-    ctx.parallel_note                 = "this model architecture runs one request at a time";
+    ctx.parallel.slots                = 1;
+    ctx.parallel.note                 = "this model architecture runs one request at a time";
     char *jp                          = api_config_json(&ctx);
     TEST_ASSERT(jp && strstr(jp, "\"slots\":1,\"requested\":4") &&
                     strstr(jp, "\"note\":\"this model architecture runs one request at a time\""),

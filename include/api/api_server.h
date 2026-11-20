@@ -36,6 +36,15 @@
 #include "tokenizer/tokenizer.h"
 #include "update/update_check.h"
 
+/* The --parallel scheduler (NULL = sequential) and what it ended up running: slots, the KV budget
+ * and why fewer slots than requested. */
+typedef struct {
+    struct BatchScheduler *sched;
+    int slots;
+    const char *note;
+    long long kv_budget;
+} ApiParallel;
+
 /* ── Inference context passed from main to API handler ──────────────────── */
 typedef struct {
     const Config *cfg;
@@ -53,6 +62,7 @@ typedef struct {
     ServerConfig server_config;
     MetricsState metrics;
     CancelState cancel;
+    pthread_mutex_t config_save_lock; /* serialises load -> change -> save of the config file */
     pthread_mutex_t generation_mutex; /* serializes generate_with_callback calls */
     /* Phase 23 stage 1: FIFO admission to the generation slot (max_waiting =
      * --queue-size; 0 keeps the 429-when-busy behaviour). */
@@ -67,10 +77,7 @@ typedef struct {
     int prompt_store_ready;
     /* Phase 23 stage 2b: the --parallel scheduler (NULL = sequential) and
      * what it ended up running: slots, and why fewer than requested. */
-    struct BatchScheduler *sched;
-    int parallel_slots;
-    const char *parallel_note;
-    long long parallel_kv_budget;
+    ApiParallel parallel;
 
     /* Server state (filled by api_server_start) */
     int server_fd;                 /* listening socket fd, -1 when stopped */

@@ -186,8 +186,8 @@ static void chat_run_generation(ApiContext *ctx, const ChatRequest *req, Generat
                                 const MctsOptions *mopt, StreamState *st, GenerationStats *gstats,
                                 BestOfResult *bres, MctsResult *mres) {
     if (batched) {
-        batch_scheduler_generate(ctx->sched, prompt, gp, use_cache, chat_streaming_token_callback,
-                                 st);
+        batch_scheduler_generate(ctx->parallel.sched, prompt, gp, use_cache,
+                                 chat_streaming_token_callback, st);
     } else if (mopt->simulations > 0) {
         const char *question = "";
         for (int i = req->num_messages - 1; i >= 0; i--)
@@ -325,7 +325,7 @@ void http_handle_chat_completions(int fd, const char *body_start, size_t body_le
                 wants_image = 1;
     /* Phase 23 stage 2b: plain chat requests share the engine through the
      * parallel scheduler (one unit each); the rest need all of it. */
-    int batched = ctx->sched && best_of <= 1 && mopt.simulations <= 0 && !wants_image;
+    int batched = ctx->parallel.sched && best_of <= 1 && mopt.simulations <= 0 && !wants_image;
     int units   = batched ? 1 : http_engine_units(ctx);
 
     QueueWaitCtx qw;

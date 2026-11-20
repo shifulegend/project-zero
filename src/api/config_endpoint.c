@@ -155,9 +155,6 @@ static char *error_body(const char *msg, int status, int *out_status) {
     return jb_finish(&jb);
 }
 
-/* Serialises load → change → save between concurrent requests. */
-static pthread_mutex_t g_save_lock = PTHREAD_MUTEX_INITIALIZER;
-
 char *api_config_save(const ApiContext *ctx, const char *json_body, int *status) {
     if (!writable(ctx))
         return error_body(ctx && !ctx->server_config.chat.allow_config_write
@@ -203,7 +200,7 @@ char *api_config_save(const ApiContext *ctx, const char *json_body, int *status)
     int rc           = 0;
     const char *path = pz_config_active_path();
     PzConfig c;
-    pthread_mutex_lock(&g_save_lock);
+    pthread_mutex_lock((pthread_mutex_t *)&ctx->config_save_lock); /* a lock, not state */
     if (pz_config_init(&c) != 0 || pz_config_load(&c, path, NULL) < 0) {
         snprintf(err, sizeof(err), "cannot read %s", path);
         rc = HTTP_INTERNAL_ERROR;
@@ -220,7 +217,7 @@ char *api_config_save(const ApiContext *ctx, const char *json_body, int *status)
         snprintf(err, sizeof(err), "cannot write %s", path);
         rc = HTTP_INTERNAL_ERROR;
     }
-    pthread_mutex_unlock(&g_save_lock);
+    pthread_mutex_unlock((pthread_mutex_t *)&ctx->config_save_lock);
     pz_config_free(&c);
     free(scalar);
     for (int i = 0; i < n_items; i++) free(items[i]);

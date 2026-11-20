@@ -74,7 +74,7 @@ int http_handle_prompt_cache_clear(int fd, ApiContext *ctx, const char *extra_he
     pthread_mutex_lock(&ctx->generation_mutex);
     prompt_store_clear(&ctx->prompt_store);
     prefix_cache_reset(&ctx->prefix_cache);
-    batch_scheduler_reset_caches(ctx->sched); /* every parallel slot's prefix too */
+    batch_scheduler_reset_caches(ctx->parallel.sched); /* every parallel slot's prefix too */
     http_release_generation_slot(ctx, units, 1);
     http_send_json_heap(fd, HTTP_OK, api_prompt_cache_json(ctx), extra_headers);
     return HTTP_OK;
@@ -103,7 +103,7 @@ int http_handle_selfcheck(int fd, const char *body_start, size_t body_len, ApiCo
     char *json = api_selfcheck(ctx, body, &status);
     prompt_store_clear(&ctx->prompt_store);
     prefix_cache_reset(&ctx->prefix_cache);
-    batch_scheduler_reset_caches(ctx->sched);
+    batch_scheduler_reset_caches(ctx->parallel.sched);
     http_release_generation_slot(ctx, units, 1);
     free(body);
     http_send_json_heap(fd, status, json, extra_headers);
@@ -161,7 +161,7 @@ void http_handle_get_metrics(int fd, ApiContext *ctx, const char *extra_headers)
     size_t n = metrics_render(&ctx->metrics, buf, sizeof(buf));
     /* Phase 23: generation slots (gen_queue units) and the parallel scheduler. */
     BatchSchedulerStats bst;
-    batch_scheduler_stats(ctx->sched, &bst);
+    batch_scheduler_stats(ctx->parallel.sched, &bst);
     if (n < sizeof(buf))
         snprintf(
             buf + n, sizeof(buf) - n,
@@ -178,7 +178,7 @@ void http_handle_get_metrics(int fd, ApiContext *ctx, const char *extra_headers)
             "# HELP project_zero_parallel_kv_tokens KV-cache positions held by parallel slots.\n"
             "# TYPE project_zero_parallel_kv_tokens gauge\n"
             "project_zero_parallel_kv_tokens %lld\n",
-            ctx->parallel_slots > 0 ? ctx->parallel_slots : 1, gen_queue_in_use(&ctx->gen_queue),
+            ctx->parallel.slots > 0 ? ctx->parallel.slots : 1, gen_queue_in_use(&ctx->gen_queue),
             gen_queue_waiting(&ctx->gen_queue), bst.kv_committed_tokens);
     http_send_response_ex(fd, HTTP_OK, "text/plain; version=0.0.4", buf, 0, extra_headers);
 }

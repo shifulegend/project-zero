@@ -107,7 +107,7 @@ static void features_parallel(JsonBuf *jb, const ApiContext *ctx) {
     jb_key(jb, "parallel");
     jb_raw(jb, "{");
     jb_key(jb, "slots");
-    jb_int(jb, ctx && ctx->parallel_slots > 0 ? ctx->parallel_slots : 1);
+    jb_int(jb, ctx && ctx->parallel.slots > 0 ? ctx->parallel.slots : 1);
     jb_raw(jb, ",");
     jb_key(jb, "requested");
     jb_int(jb, ctx ? ctx->server_config.limits.parallel : 1);
@@ -116,7 +116,7 @@ static void features_parallel(JsonBuf *jb, const ApiContext *ctx) {
     jb_int(jb, ctx ? ctx->server_config.limits.parallel_batch : PZ_PARALLEL_BATCH_DEFAULT);
     jb_raw(jb, ",");
     jb_key(jb, "kv_budget_tokens");
-    jb_int(jb, ctx ? ctx->parallel_kv_budget : 0);
+    jb_int(jb, ctx ? ctx->parallel.kv_budget : 0);
     jb_raw(jb, ",");
     jb_key(jb, "max");
     jb_int(jb, PZ_PARALLEL_MAX);
@@ -125,7 +125,7 @@ static void features_parallel(JsonBuf *jb, const ApiContext *ctx) {
     jb_int(jb, PZ_PARALLEL_BATCH_MAX);
     jb_raw(jb, ",");
     jb_key(jb, "note");
-    jb_str(jb, ctx ? ctx->parallel_note : NULL);
+    jb_str(jb, ctx ? ctx->parallel.note : NULL);
     jb_raw(jb, "}");
 }
 

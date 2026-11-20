@@ -130,13 +130,13 @@ int exec_policy_allows_args(char *const argv[]) {
 extern char **environ;
 
 size_t exec_build_child_env(char *out[], size_t cap) {
-    static char path_entry[] = "PATH=/usr/bin:/bin";
-    size_t n                 = 0;
+    static const char path_entry[] = "PATH=/usr/bin:/bin";
+    size_t n                       = 0;
     if (cap < 2) {
         if (cap) out[0] = NULL;
         return 0;
     }
-    out[n++] = path_entry;
+    out[n++] = (char *)path_entry; /* read-only: the child's environment is never written */
     for (char **e = environ; e && *e && n + 1 < cap; e++) {
         if (strncmp(*e, "TZ=", 3) == 0 || strncmp(*e, "LANG=", 5) == 0 ||
             strncmp(*e, "LC_", 3) == 0)

@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "cli/session.h"
+#include "core/log.h"
 #include "transformer/dist_worker.h"
 
 /* Bytes in a GiB, for the --remote-layers per-node RAM sizes (given and printed in GB). */
@@ -25,8 +26,8 @@ int session_distributed(PzSession *S) {
             ram[n++] = (long long)(atof(tok) * BYTES_PER_GIB);
         if (n == 0) {
             S->exit_code = 1;
-            fprintf(stderr, "Error: --plan-layers needs GB,GB,... (max %d nodes)\n",
-                    DIST_MAX_NODES);
+            TN_LOG_ERR("session_dist", "Error: --plan-layers needs GB,GB,... (max %d nodes)\n",
+                       DIST_MAX_NODES);
         } else {
             dist_plan_layers_by_ram(S->p.n_layers, ram, n, starts, ends);
             printf("Layer plan for %d layers over %d node(s):\n", S->p.n_layers, n);
@@ -51,7 +52,8 @@ int session_distributed(PzSession *S) {
         if (!S->args.worker_layers || sscanf(S->args.worker_layers, "%d-%d", &a, &b) != 2 ||
             a < 0 || b > S->p.n_layers || a >= b) {
             S->exit_code = 1;
-            fprintf(stderr, "Error: --rpc-worker needs --layers A-B within 0-%d\n", S->p.n_layers);
+            TN_LOG_ERR("session_dist", "Error: --rpc-worker needs --layers A-B within 0-%d\n",
+                       S->p.n_layers);
         } else {
             dist_worker_serve(S->args.rpc_worker_port, !S->args.rpc_bind_all, a, b, &S->p, &S->w,
                               S->s, &S->mc, S->tp);
@@ -65,13 +67,14 @@ int session_distributed(PzSession *S) {
     if (S->args.remote_layers) {
         if (S->draft_active) {
             S->exit_code = 1;
-            fprintf(stderr, "Error: --draft-model cannot be combined with --remote-layers\n");
+            TN_LOG_ERR("session_dist",
+                       "Error: --draft-model cannot be combined with --remote-layers\n");
             return 1;
         }
         if (dist_plan_parse(&S->dist, S->args.remote_layers, S->p.n_layers) != 0 ||
             dist_plan_connect(&S->dist, &S->p, &S->mc) != TN_OK) {
             S->exit_code = 1;
-            fprintf(stderr, "Error: could not set up --remote-layers\n");
+            TN_LOG_ERR("session_dist", "Error: could not set up --remote-layers\n");
             dist_plan_close(&S->dist);
             return 1;
         }

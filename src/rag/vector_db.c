@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "core/log.h"
 #include "core/platform.h"
 
 #if TN_POSIX
@@ -169,7 +170,7 @@ static TernaryError upgrade_v1_to_v2(VectorDB *db) {
             return TN_ERR_DB_WRITE;
     }
     if (!made) return TN_ERR_DB_WRITE;
-    fprintf(stderr, "[RAG] vector_db: upgrading %s to format v2 (backup: %s)\n", db->path, bak);
+    TN_LOG_INF("rag", "[RAG] vector_db: upgrading %s to format v2 (backup: %s)\n", db->path, bak);
 
     snprintf(tmp, sizeof tmp, "%s.new", db->path);
     (void)unlink(tmp);
@@ -263,7 +264,7 @@ TernaryError vector_db_open(VectorDB *db, const char *path, int embed_dim) {
 #endif
     db->fp = fp;
     if (lock_file(fp) != 0) {
-        fprintf(stderr, "[RAG] vector_db: %s is in use by another process\n", path);
+        TN_LOG_INF("rag", "[RAG] vector_db: %s is in use by another process\n", path);
         return open_fail(db, TN_ERR_DB_OPEN);
     }
 
@@ -289,19 +290,19 @@ TernaryError vector_db_open(VectorDB *db, const char *path, int embed_dim) {
     if (db->format == VRDB_VERSION) {
         if (fread(&hdr[4], sizeof(uint32_t), 1, fp) != 1) return open_fail(db, TN_ERR_DB_OPEN);
         if (crc32_update(0, hdr, 4 * sizeof(uint32_t)) != hdr[4]) {
-            fprintf(stderr, "[RAG] vector_db: header checksum mismatch in %s (file is corrupt)\n",
-                    path);
+            TN_LOG_ERR("rag", "[RAG] vector_db: header checksum mismatch in %s (file is corrupt)\n",
+                       path);
             return open_fail(db, TN_ERR_DB_OPEN);
         }
     }
     if ((int)hdr[3] != embed_dim) {
-        fprintf(stderr, "[RAG] vector_db: embed_dim mismatch (file=%u, expected=%d)\n", hdr[3],
-                embed_dim);
+        TN_LOG_ERR("rag", "[RAG] vector_db: embed_dim mismatch (file=%u, expected=%d)\n", hdr[3],
+                   embed_dim);
         return open_fail(db, TN_ERR_DIMENSION_MISMATCH);
     }
     if (hdr[2] > (uint32_t)VRDB_MAX_ENTRIES) {
-        fprintf(stderr, "[RAG] vector_db: entry count %u exceeds the limit of %d\n", hdr[2],
-                VRDB_MAX_ENTRIES);
+        TN_LOG_INF("rag", "[RAG] vector_db: entry count %u exceeds the limit of %d\n", hdr[2],
+                   VRDB_MAX_ENTRIES);
         return open_fail(db, TN_ERR_DB_OPEN);
     }
     int num_entries = (int)hdr[2];
@@ -314,17 +315,17 @@ TernaryError vector_db_open(VectorDB *db, const char *path, int embed_dim) {
         float *emb_row   = db->embeddings + (size_t)i * embed_dim;
         size_t emb_bytes = (size_t)embed_dim * sizeof(float);
         if (fread(emb_row, sizeof(float), (size_t)embed_dim, fp) != (size_t)embed_dim) {
-            fprintf(stderr, "[RAG] vector_db: truncated embedding at entry %d\n", i);
+            TN_LOG_INF("rag", "[RAG] vector_db: truncated embedding at entry %d\n", i);
             return open_fail(db, TN_ERR_DB_OPEN);
         }
 
         uint32_t text_len;
         if (fread(&text_len, sizeof(uint32_t), 1, fp) != 1) {
-            fprintf(stderr, "[RAG] vector_db: truncated text_len at entry %d\n", i);
+            TN_LOG_INF("rag", "[RAG] vector_db: truncated text_len at entry %d\n", i);
             return open_fail(db, TN_ERR_DB_OPEN);
         }
         if (text_len == 0 || text_len > VRDB_MAX_TEXT) {
-            fprintf(stderr, "[RAG] vector_db: invalid text_len %u at entry %d\n", text_len, i);
+            TN_LOG_ERR("rag", "[RAG] vector_db: invalid text_len %u at entry %d\n", text_len, i);
             return open_fail(db, TN_ERR_DB_OPEN);
         }
 
@@ -333,21 +334,21 @@ TernaryError vector_db_open(VectorDB *db, const char *path, int embed_dim) {
 
         char *text_dst = db->text_pool + db->text_pool_used;
         if (fread(text_dst, 1, (size_t)text_len, fp) != (size_t)text_len) {
-            fprintf(stderr, "[RAG] vector_db: truncated text at entry %d\n", i);
+            TN_LOG_INF("rag", "[RAG] vector_db: truncated text at entry %d\n", i);
             return open_fail(db, TN_ERR_DB_OPEN);
         }
         if (db->format == VRDB_VERSION) {
             uint32_t want;
             if (fread(&want, sizeof(uint32_t), 1, fp) != 1) {
-                fprintf(stderr, "[RAG] vector_db: truncated checksum at entry %d\n", i);
+                TN_LOG_INF("rag", "[RAG] vector_db: truncated checksum at entry %d\n", i);
                 return open_fail(db, TN_ERR_DB_OPEN);
             }
             uint32_t got = crc32_update(0, emb_row, emb_bytes);
             got          = crc32_update(got, &text_len, sizeof text_len);
             got          = crc32_update(got, text_dst, text_len);
             if (got != want) {
-                fprintf(stderr,
-                        "[RAG] vector_db: checksum mismatch at entry %d (file is corrupt)\n", i);
+                TN_LOG_ERR("rag",
+                           "[RAG] vector_db: checksum mismatch at entry %d (file is corrupt)\n", i);
                 return open_fail(db, TN_ERR_DB_OPEN);
             }
         }

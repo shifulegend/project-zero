@@ -5,6 +5,7 @@
 #include <stdlib.h>
 
 #include "core/gguf_i2s.h"
+#include "core/log.h"
 #include "core/unpack.h"
 #include "math/matmul_q4k_x8.h"
 #include "memory/mapped_file.h"
@@ -24,15 +25,15 @@ static TernaryError repack_i2s(const GGUFTensor *t, const char *name, int d_rows
     size_t n_elems = (size_t)d_rows * (size_t)n_inner;
     size_t pb      = (size_t)d_rows * packed_bytes(n_inner);
     if (t->size_bytes < tn_i2s_tensor_bytes(n_elems)) {
-        fprintf(stderr, "[gguf_loader] I2_S tensor '%s' too small\n", name);
+        TN_LOG_ERR("gguf_loader", "[gguf_loader] I2_S tensor '%s' too small\n", name);
         return TN_ERR_INVALID_WEIGHTS;
     }
     uint8_t *pk = (uint8_t *)malloc(pb);
     if (!pk) return TN_ERR_OOM;
     if (tn_i2s_repack(pk, &scale_out[l], (const uint8_t *)t->data, d_rows, n_inner) != 0) {
         free(pk);
-        fprintf(stderr, "[gguf_loader] I2_S tensor '%s' malformed (needs columns %% 128 == 0)\n",
-                name);
+        TN_LOG_ERR("gguf_loader",
+                   "[gguf_loader] I2_S tensor '%s' malformed (needs columns %% 128 == 0)\n", name);
         return TN_ERR_INVALID_WEIGHTS;
     }
     if (gguf_ld_store_add(store, pk) != 0) {
@@ -84,7 +85,7 @@ TernaryError gguf_ld_dense_projection(const GGUFHeader *hdr, GGUFWeightStore *st
     snprintf(name_buf, sizeof(name_buf), "blk.%d.%s", l, tname);
     const GGUFTensor *t = gguf_find_tensor(hdr, name_buf);
     if (!t) {
-        fprintf(stderr, "[gguf_loader] missing tensor '%s'\n", name_buf);
+        TN_LOG_ERR("gguf_loader", "[gguf_loader] missing tensor '%s'\n", name_buf);
         return TN_ERR_INVALID_WEIGHTS;
     }
     size_t n_elems = (size_t)d_rows * (size_t)n_inner;

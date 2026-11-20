@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "cli/session.h"
+#include "core/log.h"
 #include "core/lora.h"
 #include "math/rope.h"
 #include "multimodal/vision_pipeline.h"
@@ -28,8 +29,8 @@ int session_load_extras(PzSession *S) {
     if (S->args.draft_model_path) {
         if (draft_model_load(&S->draft, S->args.draft_model_path, S->p.vocab_size,
                              S->args.max_tokens + S->args.spec_length + 64, S->tp) != TN_OK) {
-            fprintf(stderr, "Error: failed to load --draft-model '%s'.\n",
-                    S->args.draft_model_path);
+            TN_LOG_ERR("session_extras", "Error: failed to load --draft-model '%s'.\n",
+                       S->args.draft_model_path);
             return 1;
         }
         S->draft_active = true;
@@ -40,7 +41,7 @@ int session_load_extras(PzSession *S) {
     if (S->args.prm_path &&
         prm_load(&S->prm, S->args.prm_path, S->args.prm_format, S->args.prm_good, S->args.prm_bad,
                  S->s->max_seq_len, S->tp) != TN_OK) {
-        fprintf(stderr, "[prm] continuing without a PRM: steps are scored by the model itself\n");
+        TN_LOG_INF("prm", "[prm] continuing without a PRM: steps are scored by the model itself\n");
     }
 
     /* ── Phase 19: LoRA adapter (optional) ───────────────────────────────────
@@ -61,13 +62,13 @@ int session_load_extras(PzSession *S) {
         int l_kv_dim = lhd ? S->p.n_kv_heads * lhd : config_kv_dim(&S->p);
         if (lora_load_ex(&S->lora, S->args.lora_path, S->p.dim, l_q_dim, l_kv_dim, S->p.hidden_dim,
                          S->p.n_layers) != TN_OK) {
-            fprintf(stderr, "Error: failed to load --lora '%s'.\n", S->args.lora_path);
+            TN_LOG_ERR("session_extras", "Error: failed to load --lora '%s'.\n", S->args.lora_path);
             return 1;
         }
         S->lora_active    = true;
         S->s->active_lora = &S->lora;
-        fprintf(stderr, "[lora] '%s' active (rank %d, alpha %.1f, q_dim %d, kv_dim %d)\n",
-                S->args.lora_path, S->lora.rank, (double)S->lora.alpha, l_q_dim, l_kv_dim);
+        TN_LOG_INF("lora", "[lora] '%s' active (rank %d, alpha %.1f, q_dim %d, kv_dim %d)\n",
+                   S->args.lora_path, S->lora.rank, (double)S->lora.alpha, l_q_dim, l_kv_dim);
     }
 
     /* ── Phase 15: RAG initialisation ────────────────────────────────────── */
@@ -75,23 +76,23 @@ int session_load_extras(PzSession *S) {
     if (S->args.memory_db_path) {
         TernaryError err = vector_db_open(&S->rag.db, S->args.memory_db_path, S->p.dim);
         if (err != TN_OK) {
-            fprintf(stderr,
-                    "[RAG] Warning: could not open vector DB '%s' (err=%d). "
-                    "Memory features disabled.\n",
-                    S->args.memory_db_path, (int)err);
+            TN_LOG_WRN("rag",
+                       "[RAG] Warning: could not open vector DB '%s' (err=%d). "
+                       "Memory features disabled.\n",
+                       S->args.memory_db_path, (int)err);
         } else {
             err = embedder_init(&S->rag.emb, &S->p);
             if (err != TN_OK) {
-                fprintf(stderr,
-                        "[RAG] Warning: could not initialise embedder (err=%d). "
-                        "Memory features disabled.\n",
-                        (int)err);
+                TN_LOG_WRN("rag",
+                           "[RAG] Warning: could not initialise embedder (err=%d). "
+                           "Memory features disabled.\n",
+                           (int)err);
                 vector_db_close(&S->rag.db);
             } else {
                 S->rag.enabled = 1;
                 S->rag_ok      = 1;
-                printf("[RAG] Memory enabled — %d entries in '%s'\n", S->rag.db.num_entries,
-                       S->args.memory_db_path);
+                TN_OUT_INF("rag", "[RAG] Memory enabled — %d entries in '%s'\n",
+                           S->rag.db.num_entries, S->args.memory_db_path);
             }
         }
     }
@@ -120,10 +121,12 @@ void session_apply_runtime_options(PzSession *S) {
     attn_parallel_min_ctx_set(S->args.attn_parallel_min_ctx);
     if (S->args.verbose || S->args.attn_kernel) {
         const CacheInfo *ci = tn_cache_info();
-        printf("Attention: %s kernel (tile %d), heads parallel from %d ctx; L1d %d KiB, L2 %d KiB "
-               "(%s)\n",
-               attn_kernel_name(attn_kernel_get()), attn_tile_get(), attn_parallel_min_ctx_get(),
-               ci->l1d_bytes / 1024, ci->l2_bytes / 1024, tn_cache_source_name(ci->source));
+        tn_log_out(
+            TN_LOG_INFO, "session_extras",
+            "Attention: %s kernel (tile %d), heads parallel from %d ctx; L1d %d KiB, L2 %d KiB "
+            "(%s)\n",
+            attn_kernel_name(attn_kernel_get()), attn_tile_get(), attn_parallel_min_ctx_get(),
+            ci->l1d_bytes / 1024, ci->l2_bytes / 1024, tn_cache_source_name(ci->source));
     }
 
 
@@ -134,9 +137,11 @@ void session_apply_runtime_options(PzSession *S) {
     attn_parallel_min_ctx_set(S->args.attn_parallel_min_ctx);
     if (S->args.verbose || S->args.attn_kernel) {
         const CacheInfo *ci = tn_cache_info();
-        printf("Attention: %s kernel (tile %d), heads parallel from %d ctx; L1d %d KiB, L2 %d KiB "
-               "(%s)\n",
-               attn_kernel_name(attn_kernel_get()), attn_tile_get(), attn_parallel_min_ctx_get(),
-               ci->l1d_bytes / 1024, ci->l2_bytes / 1024, tn_cache_source_name(ci->source));
+        tn_log_out(
+            TN_LOG_INFO, "session_extras",
+            "Attention: %s kernel (tile %d), heads parallel from %d ctx; L1d %d KiB, L2 %d KiB "
+            "(%s)\n",
+            attn_kernel_name(attn_kernel_get()), attn_tile_get(), attn_parallel_min_ctx_get(),
+            ci->l1d_bytes / 1024, ci->l2_bytes / 1024, tn_cache_source_name(ci->source));
     }
 }

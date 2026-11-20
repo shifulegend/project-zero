@@ -4,6 +4,7 @@
 
 #include "core/binary_io.h"
 #include "core/fp16.h"
+#include "core/log.h"
 #include "core/lora.h"
 #include "memory/mapped_file.h"
 
@@ -53,7 +54,7 @@ TernaryError lora_load_ex(LoRAWeights *lora, const char *path, int dim, int q_di
     MappedFile mf;
     TernaryError err = mapped_file_open(&mf, path);
     if (err != TN_OK) {
-        fprintf(stderr, "[lora] cannot open %s\n", path);
+        TN_LOG_ERR("lora", "[lora] cannot open %s\n", path);
         return err;
     }
 
@@ -61,13 +62,13 @@ TernaryError lora_load_ex(LoRAWeights *lora, const char *path, int dim, int q_di
     size_t sz     = mf.size;
 
     if (sz < 64) {
-        fprintf(stderr, "[lora] file too small\n");
+        TN_LOG_ERR("lora", "[lora] file too small\n");
         goto fail;
     }
 
     uint32_t magic = tn_rd_u32(d, 0);
     if (magic != LORA_BIN_MAGIC) {
-        fprintf(stderr, "[lora] bad magic 0x%08X (expected 0x%08X)\n", magic, LORA_BIN_MAGIC);
+        TN_LOG_INF("lora", "[lora] bad magic 0x%08X (expected 0x%08X)\n", magic, LORA_BIN_MAGIC);
         goto fail;
     }
 
@@ -84,19 +85,19 @@ TernaryError lora_load_ex(LoRAWeights *lora, const char *path, int dim, int q_di
     if (file_n_layers < 1 || file_n_layers > 512 || rank < 1 || rank > 4096 || file_dim < 1 ||
         file_dim > 65536 || file_hidden_dim < 0 || file_hidden_dim > 262144 || file_kv_dim < 1 ||
         file_kv_dim > 65536 || file_q_dim < 1 || file_q_dim > 262144) {
-        fprintf(stderr,
-                "[lora] invalid header (n_layers=%d rank=%d dim=%d kv_dim=%d hidden_dim=%d)\n",
-                file_n_layers, rank, file_dim, file_kv_dim, file_hidden_dim);
+        TN_LOG_ERR("lora",
+                   "[lora] invalid header (n_layers=%d rank=%d dim=%d kv_dim=%d hidden_dim=%d)\n",
+                   file_n_layers, rank, file_dim, file_kv_dim, file_hidden_dim);
         goto fail;
     }
     if (file_n_layers != n_layers || file_dim != dim || file_hidden_dim != hidden_dim ||
         file_kv_dim != kv_dim || file_q_dim != q_dim) {
-        fprintf(stderr,
-                "[lora] '%s' was built for a different base model "
-                "(file: n_layers=%d dim=%d q_dim=%d kv_dim=%d hidden_dim=%d; "
-                "model: n_layers=%d dim=%d q_dim=%d kv_dim=%d hidden_dim=%d)\n",
-                path, file_n_layers, file_dim, file_q_dim, file_kv_dim, file_hidden_dim, n_layers,
-                dim, q_dim, kv_dim, hidden_dim);
+        TN_LOG_INF("lora",
+                   "[lora] '%s' was built for a different base model "
+                   "(file: n_layers=%d dim=%d q_dim=%d kv_dim=%d hidden_dim=%d; "
+                   "model: n_layers=%d dim=%d q_dim=%d kv_dim=%d hidden_dim=%d)\n",
+                   path, file_n_layers, file_dim, file_q_dim, file_kv_dim, file_hidden_dim,
+                   n_layers, dim, q_dim, kv_dim, hidden_dim);
         goto fail;
     }
 
@@ -130,7 +131,7 @@ TernaryError lora_load_ex(LoRAWeights *lora, const char *path, int dim, int q_di
 
         LoRAModule *arr = (LoRAModule *)calloc((size_t)n_layers, sizeof(LoRAModule));
         if (!arr) {
-            fprintf(stderr, "[lora] OOM allocating module array\n");
+            TN_LOG_ERR("lora", "[lora] OOM allocating module array\n");
             goto fail_free;
         }
         *specs[t].field = arr;
@@ -138,13 +139,13 @@ TernaryError lora_load_ex(LoRAWeights *lora, const char *path, int dim, int q_di
         for (int l = 0; l < n_layers; l++) {
             float *A = read_f16_block(d, sz, &off, (size_t)rank * specs[t].n);
             if (!A) {
-                fprintf(stderr, "[lora] truncated/OOM reading target %d layer %d A\n", t, l);
+                TN_LOG_ERR("lora", "[lora] truncated/OOM reading target %d layer %d A\n", t, l);
                 goto fail_free;
             }
             float *B = read_f16_block(d, sz, &off, (size_t)specs[t].d * rank);
             if (!B) {
                 free(A);
-                fprintf(stderr, "[lora] truncated/OOM reading target %d layer %d B\n", t, l);
+                TN_LOG_ERR("lora", "[lora] truncated/OOM reading target %d layer %d B\n", t, l);
                 goto fail_free;
             }
             arr[l].A     = A;

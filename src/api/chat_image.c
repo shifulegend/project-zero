@@ -15,6 +15,7 @@
 
 #include "api/data_url.h"
 #include "api/net_io.h"
+#include "core/log.h"
 #include "multimodal/vision_pipeline.h"
 
 #define HTTP_STRIPPED_PROMPT_BUF 8192 /* user prompt with the image part removed */
@@ -26,22 +27,22 @@ int chat_apply_image(ApiContext *ctx, ChatRequest *req) {
             continue;
 
         if (!ctx->server_config.vision_path || !ctx->server_config.proj_path) {
-            fprintf(stderr, "[vision] image_url provided but server has no --vision/--proj "
-                            "configured; ignoring image\n");
+            TN_LOG_INF("vision", "[vision] image_url provided but server has no --vision/--proj "
+                                 "configured; ignoring image\n");
             break;
         }
 
         unsigned char *img_bytes = NULL;
         size_t img_len           = 0;
         if (data_url_decode(req->messages[i].image_data_url, &img_bytes, &img_len) != TN_OK) {
-            fprintf(stderr, "[vision] failed to decode image_url data\n");
+            TN_LOG_ERR("vision", "[vision] failed to decode image_url data\n");
             break;
         }
 
         char tmp_path[] = "/tmp/pz-vision-upload-XXXXXX";
         int tmp_fd      = mkstemp(tmp_path);
         if (tmp_fd < 0) {
-            fprintf(stderr, "[vision] failed to create temp file for uploaded image\n");
+            TN_LOG_ERR("vision", "[vision] failed to create temp file for uploaded image\n");
             free(img_bytes);
             break;
         }
@@ -50,7 +51,7 @@ int chat_apply_image(ApiContext *ctx, ChatRequest *req) {
         close(tmp_fd);
         free(img_bytes);
         if (!wrote_all) {
-            fprintf(stderr, "[vision] failed to write temp image file\n");
+            TN_LOG_ERR("vision", "[vision] failed to write temp image file\n");
             unlink(tmp_path);
             break;
         }

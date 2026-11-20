@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "core/log.h"
 #include "runtime/run_state.h"
 #include "runtime/spec_scratch.h"
 #include "transformer/forward.h"
@@ -289,7 +290,8 @@ static void step(BatchScheduler *sched) {
         err = transformer_forward_multi_ex(sched->row_tok, sched->row_pos, sched->row_state, rows,
                                            sched->row_want, sched->cfg, sched->w, &sched->sb,
                                            sched->mc, sched->tp, sched->logits);
-    if (err != TN_OK) fprintf(stderr, "[parallel] batched forward failed: %s\n", tn_error_str(err));
+    if (err != TN_OK)
+        TN_LOG_ERR("parallel", "[parallel] batched forward failed: %s\n", tn_error_str(err));
     int r = 0, out = 0;
     for (int o = 0; o < n_order; o++) {
         GenSession *g = &sched->slots[order[o]].job->g;
@@ -449,7 +451,7 @@ BatchScheduler *batch_scheduler_create(const Config *cfg, const TransformerWeigh
         }
     }
     if (!ok) {
-        fprintf(stderr, "[parallel] could not set up %d slots (out of memory?)\n", n);
+        TN_LOG_ERR("parallel", "[parallel] could not set up %d slots (out of memory?)\n", n);
         free_slots(sched);
         spec_batch_scratch_free(&sched->sb);
         free(sched->row_tok);

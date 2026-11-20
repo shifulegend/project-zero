@@ -8,6 +8,7 @@
 #include "core/fp16.h"
 #include "core/gguf_i2s.h"
 #include "core/gguf_quant.h"
+#include "core/log.h"
 #include "core/moe_config.h"
 #include "core/platform.h"
 #include "core/unpack.h"
@@ -61,7 +62,7 @@ static TernaryError load_dense_embedding(TransformerWeights *w, const Config *cf
     const int dim       = cfg->dim;
     const GGUFTensor *t = gguf_find_tensor(hdr, "token_embd.weight");
     if (!t) {
-        fprintf(stderr, "[gguf_loader] missing 'token_embd.weight'\n");
+        TN_LOG_ERR("gguf_loader", "[gguf_loader] missing 'token_embd.weight'\n");
         return TN_ERR_INVALID_WEIGHTS;
     }
     size_t n = (size_t)cfg->vocab_size * (size_t)dim;
@@ -154,10 +155,10 @@ static TernaryError load_dense_embedding(TransformerWeights *w, const Config *cf
         w->token_embedding_table = buf;
         mapped_file_release(t->data, t->size_bytes);
     } else {
-        fprintf(stderr,
-                "[gguf_loader] unsupported embedding type %d ('%s')\n"
-                "[gguf_loader] Supported embedding types: F32, F16, BF16\n",
-                (int)t->type, gguf_type_name(t->type));
+        TN_LOG_ERR("gguf_loader",
+                   "[gguf_loader] unsupported embedding type %d ('%s')\n"
+                   "[gguf_loader] Supported embedding types: F32, F16, BF16\n",
+                   (int)t->type, gguf_type_name(t->type));
         return TN_ERR_INVALID_WEIGHTS;
     }
     return TN_OK;
@@ -340,8 +341,8 @@ static TernaryError set_inference_flags(TransformerWeights *w, int nl) {
             }
         }
         if (n_tern && n_tern != n_proj) {
-            fprintf(stderr,
-                    "[gguf_loader] mixed I2_S and non-ternary projections are not supported\n");
+            TN_LOG_ERR("gguf_loader",
+                       "[gguf_loader] mixed I2_S and non-ternary projections are not supported\n");
             return TN_ERR_UNSUPPORTED;
         }
         w->layers_are_ternary = (n_tern == n_proj && n_proj > 0);
@@ -374,7 +375,7 @@ static TernaryError weights_from_gguf_dense(TransformerWeights *w, const Config 
     /* INT8 / INT4 quantized classifier variants */
     weights_build_classifier_quant(w, cfg);
 
-    printf("[GGUF] Weights loaded (%d layers, arch=%s)\n", sh.n_layers, hdr->arch);
+    TN_OUT_INF("gguf", "[GGUF] Weights loaded (%d layers, arch=%s)\n", sh.n_layers, hdr->arch);
     return TN_OK;
 }
 
@@ -420,9 +421,9 @@ static const struct {
 static TernaryError check_tensors_present(const GGUFHeader *hdr) {
     for (uint64_t i = 0; i < hdr->n_tensors; i++) {
         if (!hdr->tensors[i].data) {
-            fprintf(stderr,
-                    "[gguf_loader] tensor '%s' is missing from the file (truncated download?)\n",
-                    hdr->tensors[i].name);
+            TN_LOG_ERR("gguf_loader",
+                       "[gguf_loader] tensor '%s' is missing from the file (truncated download?)\n",
+                       hdr->tensors[i].name);
             return TN_ERR_INVALID_WEIGHTS;
         }
     }

@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "core/log.h"
 #include "tokenizer/tokenizer_gguf.h"
 #include "transformer/forward.h"
 
@@ -59,7 +60,7 @@ TernaryError prm_load(PrmModel *pm, const char *path, const char *format, const 
     TernaryError e = load_gguf_model(&pm->model, path, /*is_primary=*/false, max_seq_len, tp,
                                      /*stdout_is_tty=*/false);
     if (e != TN_OK) {
-        fprintf(stderr, "[prm] cannot load '%s': %s\n", path, tn_error_str(e));
+        TN_LOG_ERR("prm", "[prm] cannot load '%s': %s\n", path, tn_error_str(e));
         return e;
     }
     pm->loaded = 1;
@@ -75,12 +76,12 @@ TernaryError prm_load(PrmModel *pm, const char *path, const char *format, const 
     pm->prev    = (int *)malloc((size_t)pm->model.state->max_seq_len * sizeof(int));
     if (!pm->format || !pm->prev || pm->good_id < 0 || pm->bad_id < 0 ||
         pm->good_id == pm->bad_id) {
-        fprintf(stderr, "[prm] good/bad strings must map to two different tokens\n");
+        TN_LOG_INF("prm", "[prm] good/bad strings must map to two different tokens\n");
         prm_free(pm);
         return TN_ERR_INVALID_ARGS;
     }
-    fprintf(stderr, "[prm] judge '%s' loaded (good token %d, bad token %d)\n", path, pm->good_id,
-            pm->bad_id);
+    TN_LOG_INF("prm", "[prm] judge '%s' loaded (good token %d, bad token %d)\n", path, pm->good_id,
+               pm->bad_id);
     return TN_OK;
 }
 

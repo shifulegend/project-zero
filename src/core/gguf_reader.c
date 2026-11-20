@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "core/log.h"
+
 /* ── Internal helpers ───────────────────────────────────────────────────── */
 
 /* Read a little-endian uint64 from a byte cursor, advancing it. */
@@ -317,13 +319,13 @@ TernaryError gguf_read_header(GGUFHeader *hdr, const void *mapped_ptr, size_t ma
     /* Magic */
     uint32_t magic = read_u32(&p);
     if (magic != GGUF_MAGIC) {
-        fprintf(stderr, "[gguf] bad magic: 0x%08X (expected 0x%08X)\n", magic, GGUF_MAGIC);
+        TN_LOG_INF("gguf", "[gguf] bad magic: 0x%08X (expected 0x%08X)\n", magic, GGUF_MAGIC);
         return TN_ERR_INVALID_ARGS;
     }
 
     hdr->version = read_u32(&p);
     if (hdr->version < 1 || hdr->version > 3) {
-        fprintf(stderr, "[gguf] unsupported version: %u\n", hdr->version);
+        TN_LOG_ERR("gguf", "[gguf] unsupported version: %u\n", hdr->version);
         return TN_ERR_INVALID_ARGS;
     }
 
@@ -331,8 +333,8 @@ TernaryError gguf_read_header(GGUFHeader *hdr, const void *mapped_ptr, size_t ma
     hdr->n_meta    = (hdr->version == 1) ? read_u32(&p) : read_u64(&p);
 
     if (hdr->n_tensors > GGUF_MAX_TENSORS || hdr->n_meta > GGUF_MAX_META_KEYS) {
-        fprintf(stderr, "[gguf] tensor count %llu or meta count %llu exceeds limit\n",
-                (unsigned long long)hdr->n_tensors, (unsigned long long)hdr->n_meta);
+        TN_LOG_INF("gguf", "[gguf] tensor count %llu or meta count %llu exceeds limit\n",
+                   (unsigned long long)hdr->n_tensors, (unsigned long long)hdr->n_meta);
         return TN_ERR_INVALID_ARGS;
     }
 
@@ -340,7 +342,7 @@ TernaryError gguf_read_header(GGUFHeader *hdr, const void *mapped_ptr, size_t ma
     for (uint64_t i = 0; i < hdr->n_meta; i++) {
         GGUFMeta *m = &hdr->meta[i];
         if (parse_meta_entry(&p, end, m) != 0) {
-            fprintf(stderr, "[gguf] failed parsing meta entry %llu\n", (unsigned long long)i);
+            TN_LOG_ERR("gguf", "[gguf] failed parsing meta entry %llu\n", (unsigned long long)i);
             return TN_ERR_INVALID_ARGS;
         }
 
@@ -357,7 +359,7 @@ TernaryError gguf_read_header(GGUFHeader *hdr, const void *mapped_ptr, size_t ma
     for (uint64_t i = 0; i < hdr->n_tensors; i++) {
         GGUFTensor *t = &hdr->tensors[i];
         if (read_str(&p, end, t->name, sizeof(t->name))) {
-            fprintf(stderr, "[gguf] failed reading tensor %llu name\n", (unsigned long long)i);
+            TN_LOG_ERR("gguf", "[gguf] failed reading tensor %llu name\n", (unsigned long long)i);
             return TN_ERR_INVALID_ARGS;
         }
         if (p + 4 > end) return TN_ERR_INVALID_ARGS;
@@ -398,9 +400,9 @@ TernaryError gguf_read_header(GGUFHeader *hdr, const void *mapped_ptr, size_t ma
                    (t->type == GGUF_TYPE_Q2_0 || sz <= hdr->data_region_size - t->offset);
         if (!fits) {
             if (t->offset <= hdr->data_region_size)
-                fprintf(stderr,
-                        "[gguf] tensor '%s' extends past the end of the file (truncated?)\n",
-                        t->name);
+                TN_LOG_INF("gguf",
+                           "[gguf] tensor '%s' extends past the end of the file (truncated?)\n",
+                           t->name);
             t->data       = NULL;
             t->size_bytes = 0;
         } else {

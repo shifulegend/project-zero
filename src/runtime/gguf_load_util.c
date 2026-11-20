@@ -11,6 +11,7 @@
 #include "core/fp16.h"
 #include "core/gguf_i2s.h"
 #include "core/gguf_quant.h"
+#include "core/log.h"
 #include "core/moe_config.h"
 #include "core/platform.h"
 #include "core/unpack.h"
@@ -149,12 +150,13 @@ float *gguf_ld_tensor_to_f32(const GGUFTensor *t, size_t n_elems, GGUFWeightStor
             gguf_dequant_iq1_m(buf, t->data, n_elems);
             break;
         default:
-            fprintf(stderr,
-                    "[gguf_loader] unsupported quant type %d ('%s') for tensor '%s'\n"
-                    "[gguf_loader] Supported: F32, F16, BF16, Q8_0, Q4_K, Q4_0, Q5_0, Q5_1, Q5_K, "
-                    "Q6_K, Q2_K, Q3_K, IQ4_NL\n"
-                    "[gguf_loader] Convert with: llama-quantize model.gguf out.gguf Q4_K_S\n",
-                    (int)t->type, gguf_type_name(t->type), t->name);
+            TN_LOG_ERR(
+                "gguf_loader",
+                "[gguf_loader] unsupported quant type %d ('%s') for tensor '%s'\n"
+                "[gguf_loader] Supported: F32, F16, BF16, Q8_0, Q4_K, Q4_0, Q5_0, Q5_1, Q5_K, "
+                "Q6_K, Q2_K, Q3_K, IQ4_NL\n"
+                "[gguf_loader] Convert with: llama-quantize model.gguf out.gguf Q4_K_S\n",
+                (int)t->type, gguf_type_name(t->type), t->name);
             free(buf);
             return NULL;
     }
@@ -172,7 +174,7 @@ float *gguf_ld_norm_to_f32(const GGUFHeader *hdr, const char *name, size_t n_ele
                            GGUFWeightStore *store) {
     const GGUFTensor *t = gguf_find_tensor(hdr, name);
     if (!t) {
-        fprintf(stderr, "[gguf_loader] missing norm tensor '%s'\n", name);
+        TN_LOG_ERR("gguf_loader", "[gguf_loader] missing norm tensor '%s'\n", name);
         return NULL;
     }
     if (t->type == GGUF_TYPE_F32) {
@@ -263,7 +265,7 @@ TernaryError gguf_ld_bf16_embedding_and_output(TransformerWeights *w, const Conf
                                                const GGUFHeader *hdr, GGUFWeightStore *store) {
     const GGUFTensor *temb = gguf_find_tensor(hdr, "token_embd.weight");
     if (!temb) {
-        fprintf(stderr, "[gguf_loader] missing 'token_embd.weight'\n");
+        TN_LOG_ERR("gguf_loader", "[gguf_loader] missing 'token_embd.weight'\n");
         return TN_ERR_INVALID_WEIGHTS;
     }
     size_t n_emb = (size_t)cfg->vocab_size * (size_t)cfg->dim;
@@ -318,7 +320,7 @@ TernaryError gguf_ld_proj_typed(const GGUFHeader *hdr, GGUFWeightStore *store, c
                                 int d_rows, int n_inner, tn_i8 **out, int *type_out) {
     const GGUFTensor *t = gguf_find_tensor(hdr, name);
     if (!t) {
-        fprintf(stderr, "[gguf_loader] missing tensor '%s'\n", name);
+        TN_LOG_ERR("gguf_loader", "[gguf_loader] missing tensor '%s'\n", name);
         return TN_ERR_INVALID_WEIGHTS;
     }
     size_t n       = (size_t)d_rows * (size_t)n_inner;

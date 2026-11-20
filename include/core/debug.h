@@ -4,6 +4,8 @@
 #include <math.h>
 #include <stdio.h>
 
+#include "core/log.h"
+
 /*
  * Global verbose-debug flag.
  * Set to 1 by main.c when --verbose is passed.
@@ -28,7 +30,7 @@ static inline void dbg_vec_stats(const char *tag, const float *v, int n) {
         if (a > mx) mx = a;
         if (isnan(v[i]) || isinf(v[i])) bad++;
     }
-    fprintf(stderr, "[DBG] %-30s  max_abs=%.4f  bad=%d\n", tag, mx, bad);
+    TN_LOG_DBG("debug", "[DBG] %-30s  max_abs=%.4f  bad=%d\n", tag, mx, bad);
 }
 
 /*
@@ -61,7 +63,7 @@ static inline void dbg_dump_vec(int layer, const char *step, const float *v, int
     } while (0)
 #define DBG_MSG(...)                                                                               \
     do {                                                                                           \
-        if (g_tn_verbose) fprintf(stderr, "[DBG] " __VA_ARGS__);                                   \
+        if (g_tn_verbose) TN_LOG_DBG("debug", "[DBG] " __VA_ARGS__);                               \
     } while (0)
 
 /* Dump macro — zero cost when g_dump_fp is NULL */

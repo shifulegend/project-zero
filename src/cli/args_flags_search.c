@@ -12,6 +12,7 @@
 #include "api/server_config.h"
 #include "cli/arg_values.h"
 #include "cli/args.h"
+#include "core/log.h"
 #include "kv_cache/kv_quant_ops.h"
 #include "math/rope.h"
 #include "math/simd_dispatch.h"
@@ -24,49 +25,49 @@ TernaryError args_parse_search(CliArgs *args, int argc, char **argv, int *ip, in
     if (strcmp(argv[i], "--best-of") == 0 && i + 1 < argc) {
         ARG_INT(args->best_of);
         if (args->best_of < 1 || args->best_of > BEST_OF_N_MAX) {
-            fprintf(stderr, "Error: --best-of must be 1..%d\n", BEST_OF_N_MAX);
+            TN_LOG_ERR("args_flags_search", "Error: --best-of must be 1..%d\n", BEST_OF_N_MAX);
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--mcts") == 0 && i + 1 < argc) {
         ARG_INT(args->mcts.simulations);
         if (args->mcts.simulations < 0 || args->mcts.simulations > 4096) {
-            fprintf(stderr, "Error: --mcts must be 0..4096\n");
+            TN_LOG_ERR("args_flags_search", "Error: --mcts must be 0..4096\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--mcts-max") == 0 && i + 1 < argc) {
         ARG_INT(args->mcts_max);
         if (args->mcts_max < 0 || args->mcts_max > 4096) {
-            fprintf(stderr, "Error: --mcts-max must be 0..4096\n");
+            TN_LOG_ERR("args_flags_search", "Error: --mcts-max must be 0..4096\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--mcts-expand") == 0 && i + 1 < argc) {
         ARG_INT(args->mcts.expand);
         if (args->mcts.expand < 1 || args->mcts.expand > 16) {
-            fprintf(stderr, "Error: --mcts-expand must be 1..16\n");
+            TN_LOG_ERR("args_flags_search", "Error: --mcts-expand must be 1..16\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--mcts-depth") == 0 && i + 1 < argc) {
         ARG_INT(args->mcts.max_depth);
         if (args->mcts.max_depth < 1 || args->mcts.max_depth > 256) {
-            fprintf(stderr, "Error: --mcts-depth must be 1..256\n");
+            TN_LOG_ERR("args_flags_search", "Error: --mcts-depth must be 1..256\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--mcts-step-tokens") == 0 && i + 1 < argc) {
         ARG_INT(args->mcts.step_tokens);
         if (args->mcts.step_tokens < 1 || args->mcts.step_tokens > 4096) {
-            fprintf(stderr, "Error: --mcts-step-tokens must be 1..4096\n");
+            TN_LOG_ERR("args_flags_search", "Error: --mcts-step-tokens must be 1..4096\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--mcts-c") == 0 && i + 1 < argc) {
         ARG_NUM(args->mcts.c_ucb);
         if (!(args->mcts.c_ucb > 0.0f && args->mcts.c_ucb <= 10.0f)) {
-            fprintf(stderr, "Error: --mcts-c must be in (0, 10]\n");
+            TN_LOG_ERR("args_flags_search", "Error: --mcts-c must be in (0, 10]\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--mcts-temperature") == 0 && i + 1 < argc) {
         ARG_NUM(args->mcts.temperature);
         if (!(args->mcts.temperature > 0.0f && args->mcts.temperature <= 2.0f)) {
-            fprintf(stderr, "Error: --mcts-temperature must be in (0, 2]\n");
+            TN_LOG_ERR("args_flags_search", "Error: --mcts-temperature must be in (0, 2]\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--mcts-delim") == 0 && i + 1 < argc) {
@@ -82,7 +83,7 @@ TernaryError args_parse_search(CliArgs *args, int argc, char **argv, int *ip, in
         }
         args->mcts_delim_buf[k] = '\0';
         if (k == 0) {
-            fprintf(stderr, "Error: --mcts-delim must not be empty\n");
+            TN_LOG_ERR("args_flags_search", "Error: --mcts-delim must not be empty\n");
             return TN_ERR_INVALID_CONFIG;
         }
         args->mcts.step_delim = args->mcts_delim_buf;
@@ -97,7 +98,7 @@ TernaryError args_parse_search(CliArgs *args, int argc, char **argv, int *ip, in
     } else if (strcmp(argv[i], "--best-of-max") == 0 && i + 1 < argc) {
         ARG_INT(args->best_of_max);
         if (args->best_of_max < 1 || args->best_of_max > BEST_OF_N_MAX) {
-            fprintf(stderr, "Error: --best-of-max must be 1..%d\n", BEST_OF_N_MAX);
+            TN_LOG_ERR("args_flags_search", "Error: --best-of-max must be 1..%d\n", BEST_OF_N_MAX);
             return TN_ERR_INVALID_CONFIG;
         }
     } else {

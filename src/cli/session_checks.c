@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 #include "cli/session.h"
+#include "core/log.h"
 #include "core/platform.h"
 #include "eval/selfcheck.h"
 #include "math/simd_dispatch.h"
@@ -46,8 +47,8 @@ void session_accuracy_checks(PzSession *S) {
                 sr.verdict == SC_FAIL) {
                 char line[SELFCHECK_LINE_BUF];
                 selfcheck_format(&sr, line, sizeof(line));
-                fprintf(
-                    stderr,
+                tn_log(
+                    TN_LOG_INFO, "session_checks",
                     "[%s]\n[self-check] the %s LM head costs more than --quality-tolerance on this "
                     "model: using a BF16 head. Keep the request with a higher --quality-tolerance "
                     "(0 = no bar).\n",
@@ -82,7 +83,8 @@ void session_accuracy_checks(PzSession *S) {
                                 S->args.self_check_tokens);
             SelfCheckVerdict cv;
             if (!selfcheck_cache_load(key, &cv)) {
-                printf(
+                tn_log_out(
+                    TN_LOG_INFO, "self_check",
                     "[self-check] first run of this model with int8 activations: checking accuracy "
                     "(cached afterwards)...\n");
                 fflush(stdout);
@@ -92,7 +94,7 @@ void session_accuracy_checks(PzSession *S) {
                     sr.verdict != SC_SKIPPED) {
                     char line[SELFCHECK_LINE_BUF];
                     selfcheck_format(&sr, line, sizeof(line));
-                    printf("%s\n", line);
+                    TN_OUT_INF("session_checks", "%s\n", line);
                     selfcheck_cache_store(key, sr.verdict);
                     cv = sr.verdict;
                 } else {
@@ -101,9 +103,10 @@ void session_accuracy_checks(PzSession *S) {
             }
             if (selfcheck_auto_numerics(cv) == TN_ACT_FLOAT) {
                 tn_act_quant_set(TN_ACT_FLOAT);
-                fprintf(stderr,
-                        "[self-check] int8 activations cost more than --quality-tolerance on this "
-                        "model: using float activations.\n");
+                TN_LOG_INF(
+                    "self_check",
+                    "[self-check] int8 activations cost more than --quality-tolerance on this "
+                    "model: using float activations.\n");
             }
         }
     }

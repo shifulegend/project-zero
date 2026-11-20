@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "core/log.h"
 #include "core/moe_weights.h"
 #include "core/progress.h"
 #include "kv_cache/kv_strategy.h"
@@ -50,18 +51,18 @@ static void release_to(LoadedModel *m, LoadStage stage) {
 /* Maps the file, reads the GGUF header, the Config and the MoEConfig. */
 static TernaryError read_model_info(LoadedModel *out, const char *model_path, bool is_primary) {
     if (mapped_file_open(&out->mf, model_path) != TN_OK) {
-        fprintf(stderr, "Failed to map model file: %s\n", model_path);
+        TN_LOG_ERR("model_load", "Failed to map model file: %s\n", model_path);
         return TN_ERR_FILE_OPEN;
     }
 
-    if (is_primary) printf("Model format: GGUF\n");
+    if (is_primary) TN_OUT_INF("model_load", "Model format: GGUF\n");
 
     if (gguf_read_header(&out->gguf_hdr, out->mf.data, out->mf.size) != TN_OK) {
-        fprintf(stderr, "Failed to parse GGUF header.\n");
+        TN_LOG_ERR("model_load", "Failed to parse GGUF header.\n");
         return TN_ERR_INVALID_ARGS;
     }
     if (config_from_gguf(&out->config, &out->gguf_hdr) != TN_OK) {
-        fprintf(stderr, "Failed to read config from GGUF metadata.\n");
+        TN_LOG_ERR("model_load", "Failed to read config from GGUF metadata.\n");
         return TN_ERR_INVALID_ARGS;
     }
     if (is_primary) config_print(&out->config);
@@ -73,7 +74,7 @@ static TernaryError read_model_info(LoadedModel *out, const char *model_path, bo
      * newly supported architecture (mamba) silently ran as a dense
      * transformer with NULL attention weights. */
     if (moe_config_from_gguf(&out->moe_config, &out->gguf_hdr) != TN_OK) {
-        fprintf(stderr, "Failed to read MoE config from GGUF.\n");
+        TN_LOG_ERR("model_load", "Failed to read MoE config from GGUF.\n");
         return TN_ERR_INVALID_ARGS;
     }
     if (is_primary &&
@@ -88,18 +89,18 @@ static TernaryError read_model_info(LoadedModel *out, const char *model_path, bo
 static TernaryError load_model_weights(LoadedModel *out, LoadStage *stage) {
     *stage = STAGE_FILE;
     if (weights_alloc_pointers(&out->weights, &out->config) != TN_OK) {
-        fprintf(stderr, "Failed to allocate weight pointers.\n");
+        TN_LOG_ERR("model_load", "Failed to allocate weight pointers.\n");
         return TN_ERR_OOM;
     }
     *stage = STAGE_WEIGHTS;
     /* For MoE GGUF models (DeepSeek-V2), allocate per-layer/expert arrays. */
     if (out->moe_config.is_moe &&
         moe_weights_alloc(&out->weights, &out->config, &out->moe_config) != TN_OK) {
-        fprintf(stderr, "Failed to allocate MoE weight pointer arrays.\n");
+        TN_LOG_ERR("model_load", "Failed to allocate MoE weight pointer arrays.\n");
         return TN_ERR_OOM;
     }
     if (weights_from_gguf(&out->weights, &out->config, &out->gguf_hdr, &out->gguf_store) != TN_OK) {
-        fprintf(stderr, "Failed to load GGUF weights.\n");
+        TN_LOG_ERR("model_load", "Failed to load GGUF weights.\n");
         return TN_ERR_INVALID_ARGS;
     }
     return TN_OK;
@@ -151,9 +152,10 @@ static void report_model_bytes(const LoadedModel *out) {
     }
     tn_hardware_profile_set_model_bytes(per_tok, cls_bytes);
     if (hp_m) {
-        printf("[profile] Data/token (loaded model): %.0f MB -> "
-               "ceiling %.1f tok/s at %.1f GB/s\n",
-               per_tok / (1024.0 * 1024.0), hp_m->theoretical_ceiling, hp_m->measured_bw_gbps);
+        TN_OUT_INF("profile",
+                   "[profile] Data/token (loaded model): %.0f MB -> "
+                   "ceiling %.1f tok/s at %.1f GB/s\n",
+                   per_tok / (1024.0 * 1024.0), hp_m->theoretical_ceiling, hp_m->measured_bw_gbps);
     }
 }
 
@@ -197,7 +199,7 @@ static TernaryError alloc_run_state(LoadedModel *out) {
     MoEConfig *mc = &out->moe_config;
     out->state    = (RunState *)malloc(sizeof(RunState));
     if (!out->state) {
-        fprintf(stderr, "Failed to allocate RunState header.\n");
+        TN_LOG_ERR("model_load", "Failed to allocate RunState header.\n");
         return TN_ERR_OOM;
     }
 
@@ -209,7 +211,7 @@ static TernaryError alloc_run_state(LoadedModel *out) {
      * run_state_alloc_ex's header comment and docs/ai/mistakes.md. */
     if (run_state_alloc_ex(out->state, c, c->seq_len,
                            mc->has_linear_attn || mc->has_qk_norm || mc->is_ssm) != TN_OK) {
-        fprintf(stderr, "Failed to allocate RunState buffers.\n");
+        TN_LOG_ERR("model_load", "Failed to allocate RunState buffers.\n");
         free(out->state); /* nothing inside it to release */
         out->state = NULL;
         return TN_ERR_OOM;
@@ -226,7 +228,7 @@ static TernaryError alloc_run_state(LoadedModel *out) {
     else if (mc->has_qk_norm && qwen3moe_run_state_alloc(out->state, c, mc, c->seq_len) != TN_OK)
         what = "Qwen3-MoE attention state";
     if (what) {
-        fprintf(stderr, "Failed to allocate %s.\n", what);
+        TN_LOG_ERR("model_load", "Failed to allocate %s.\n", what);
         release_state(out);
         return TN_ERR_OOM;
     }

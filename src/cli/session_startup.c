@@ -10,10 +10,20 @@
 #include "cli/color.h"
 #include "cli/session.h"
 #include "core/debug.h"
+#include "core/log.h"
 #include "math/simd_dispatch.h"
 #include "runtime/calibration.h"
 #include "runtime/hardware_profile.h"
 #include "update/update_check.h"
+
+/* Log format and threshold: --log-format / --log-level, and --verbose means debug. */
+void session_apply_log_options(PzSession *S) {
+    tn_log_set_format(S->args.log_json ? TN_LOG_JSON : TN_LOG_TEXT);
+    if (S->args.log_level >= 0)
+        tn_log_set_level((TnLogLevel)S->args.log_level);
+    else if (S->args.verbose)
+        tn_log_set_level(TN_LOG_DEBUG);
+}
 
 /* --version and --check-update need no model. Returns the exit status, or -1 when the run goes on. */
 int session_early_command(PzSession *S) {
@@ -54,11 +64,11 @@ void session_open_dump(PzSession *S) {
     if (S->args.dump_tensors_path) {
         g_dump_fp = fopen(S->args.dump_tensors_path, "w");
         if (!g_dump_fp) {
-            fprintf(stderr, "Warning: cannot open dump file '%s' — dumps disabled\n",
-                    S->args.dump_tensors_path);
+            TN_LOG_WRN("session_startup", "Warning: cannot open dump file '%s' — dumps disabled\n",
+                       S->args.dump_tensors_path);
         } else {
             fprintf(g_dump_fp, "layer,step,n_elem,v0,v1,v2,v3,v4,v5,v6,v7,mean,absmax\n");
-            fprintf(stderr, "[dump] Writing tensors to: %s\n", S->args.dump_tensors_path);
+            TN_LOG_INF("dump", "[dump] Writing tensors to: %s\n", S->args.dump_tensors_path);
         }
     }
 }
@@ -94,7 +104,7 @@ int session_detect_format(PzSession *S) {
     {
         FILE *magic_f = fopen(S->args.model_path, "rb");
         if (!magic_f) {
-            fprintf(stderr, "Failed to open model file: %s\n", S->args.model_path);
+            TN_LOG_ERR("session_startup", "Failed to open model file: %s\n", S->args.model_path);
             return 1;
         }
         uint32_t file_magic = 0;
@@ -114,7 +124,7 @@ int session_tune_hardware(PzSession *S) {
      * Order: --simd flag > TN_FORCE_BACKEND env > calibration cache > auto */
     if (S->args.simd_override) {
         setenv("TN_FORCE_BACKEND", S->args.simd_override, 1);
-        printf("SIMD override: %s (user-selected)\n", S->args.simd_override);
+        TN_OUT_INF("session_startup", "SIMD override: %s (user-selected)\n", S->args.simd_override);
     }
 
     tn_simd_init();
@@ -135,7 +145,7 @@ int session_tune_hardware(PzSession *S) {
         /* 2026-11-18: no calibration at all -- nothing is loaded, run or saved, so
          * the dispatcher's own tier and the detected thread count apply and a run
          * does not depend on what an earlier run left in ~/.project-zero. */
-        printf("[Calibration] Skipped: --no-calibrate\n");
+        TN_OUT_INF("calibration", "[Calibration] Skipped: --no-calibrate\n");
     } else if (S->args.calibrate) {
         /* User explicitly requested calibration */
         tn_calibrate(&calib, hw);
@@ -150,10 +160,12 @@ int session_tune_hardware(PzSession *S) {
             /* 2026-10-22: the first-run sweep took >2 min under ASan on a
              * fresh CI runner (the fuzzer counted it as a hang) and would
              * save meaningless timings. Auto-detected defaults instead. */
-            printf("[Calibration] Skipped: sanitizer build (timings not representative)\n");
+            TN_OUT_INF("calibration",
+                       "[Calibration] Skipped: sanitizer build (timings not representative)\n");
         } else if (!have_calib) {
             /* First run or hardware changed — auto-calibrate */
-            printf("[Calibration] First run on this hardware — calibrating...\n");
+            TN_OUT_INF("calibration",
+                       "[Calibration] First run on this hardware — calibrating...\n");
             tn_calibrate(&calib, hw);
             tn_calibration_save(&calib);
             have_calib = true;
@@ -167,7 +179,7 @@ int session_tune_hardware(PzSession *S) {
             setenv("TN_FORCE_BACKEND", best, 1);
             tn_simd_init();
             unsetenv("TN_FORCE_BACKEND");
-            printf("SIMD: %s (calibrated optimal)\n", best);
+            TN_OUT_INF("session_startup", "SIMD: %s (calibrated optimal)\n", best);
         }
     }
     /* --act-quant auto: the numerics are the calibrated tier's (measured int8 against float). */
@@ -175,13 +187,14 @@ int session_tune_hardware(PzSession *S) {
         const char *aq = tn_calibration_act_quant(&calib);
         double t_i8 = 0, t_fl = 0;
         if (tn_calibration_act_timing(&calib, dispatcher_int8, &t_i8, &t_fl))
-            printf("Activation quantization: %s (auto, %s; measured int8 tier %.1f vs float tier "
-                   "%.1f tok/s)\n",
-                   aq ? aq : tn_act_quant_effective(), aq ? "calibrated" : "highest tier", t_i8,
-                   t_fl);
+            tn_log_out(
+                TN_LOG_INFO, "session_startup",
+                "Activation quantization: %s (auto, %s; measured int8 tier %.1f vs float tier "
+                "%.1f tok/s)\n",
+                aq ? aq : tn_act_quant_effective(), aq ? "calibrated" : "highest tier", t_i8, t_fl);
         else
-            printf("Activation quantization: %s (auto, %s)\n", aq ? aq : tn_act_quant_effective(),
-                   aq ? "calibrated" : "highest tier");
+            TN_OUT_INF("session_startup", "Activation quantization: %s (auto, %s)\n",
+                       aq ? aq : tn_act_quant_effective(), aq ? "calibrated" : "highest tier");
     }
 
     /* ── Classifier selection ───────────────────────────────────────────── */
@@ -193,19 +206,20 @@ int session_tune_hardware(PzSession *S) {
                                                                                  : TN_CLS_BF16;
         tn_hardware_profile_set_classifier(fast_cls);
         const char *names[] = {"BF16", "INT8", "INT4"};
-        printf("Classifier: %s (auto-fast, calibrated)\n", names[fast_cls]);
+        TN_OUT_INF("session_startup", "Classifier: %s (auto-fast, calibrated)\n", names[fast_cls]);
     } else if (S->args.classifier_override >= 0 && S->args.classifier_override <= 2) {
         tn_hardware_profile_set_classifier((TnClassifierFormat)S->args.classifier_override);
         const char *names[] = {"BF16", "INT8", "INT4"};
-        printf("Classifier: %s (user-selected)\n", names[S->args.classifier_override]);
+        TN_OUT_INF("session_startup", "Classifier: %s (user-selected)\n",
+                   names[S->args.classifier_override]);
     }
     /* else: default BF16 (from hardware_profile.c select_classifier) */
 
     /* ── Activation numerics ────────────────────────────────────────────── */
     if (S->args.act_quant != 0) {
         tn_act_quant_set((TnActQuant)S->args.act_quant);
-        printf("Activation quantization: %s (user-selected)\n",
-               tn_act_quant_name((TnActQuant)S->args.act_quant));
+        TN_OUT_INF("session_startup", "Activation quantization: %s (user-selected)\n",
+                   tn_act_quant_name((TnActQuant)S->args.act_quant));
     }
 
     tn_hardware_profile_report(hw);
@@ -219,12 +233,12 @@ int session_tune_hardware(PzSession *S) {
     } else {
         active_threads = hw->optimal_threads;
     }
-    printf("Active: %d threads | %s\n", active_threads, hw->summary);
+    TN_OUT_INF("session_startup", "Active: %d threads | %s\n", active_threads, hw->summary);
 
     /* Create Thread Pool */
     S->tp = threadpool_create(active_threads);
     if (!S->tp) {
-        fprintf(stderr, "Failed to create thread pool\n");
+        TN_LOG_ERR("session_startup", "Failed to create thread pool\n");
         return 1;
     }
 

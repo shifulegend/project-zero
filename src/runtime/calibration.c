@@ -1,5 +1,7 @@
 #include "runtime/calibration.h"
 
+#include "core/log.h"
+
 /* Portable dist build: this TU is compiled at the baseline ISA, so the
  * TN_HAS_* macros below would hide every SIMD backend from calibration even
  * though simd_dispatch can run them (runtime CPUID decides, via cpu->*).
@@ -375,22 +377,28 @@ void tn_calibrate(TnCalibrationResult *result, const TnHardwareProfile *hw) {
     int logi  = hw->logical_cores > 0 ? hw->logical_cores : phys;
     int max_t = logi < TN_CALIB_MAX_THREADS ? logi : TN_CALIB_MAX_THREADS;
 
-    printf("┌──────────────────────────────────────────────────────────────────┐\n");
-    printf("│  Auto-Calibration  —  first run, result cached for future use   │\n");
-    printf("│  Re-triggers only when hardware changes.  ~40-60 seconds.       │\n");
-    printf("├──────────────────────────────────────────────────────────────────┤\n");
+    TN_OUT_INF("calibration",
+               "┌──────────────────────────────────────────────────────────────────┐\n");
+    TN_OUT_INF("calibration",
+               "│  Auto-Calibration  —  first run, result cached for future use   │\n");
+    TN_OUT_INF("calibration",
+               "│  Re-triggers only when hardware changes.  ~40-60 seconds.       │\n");
+    TN_OUT_INF("calibration",
+               "├──────────────────────────────────────────────────────────────────┤\n");
     fflush(stdout);
 
     const TnCpuFeatures *cpu = tn_cpu_features_detect();
 
     /* ── Phase 1/2: SIMD backend comparison at T=physical_cores ──────────── */
-    printf("│  Phase 1/2  SIMD backends at T=%d  (thermal stabilisation)       │\n", phys);
-    printf("├──────────────────────────────────────────────────────────────────┤\n");
+    TN_OUT_INF("calibration",
+               "│  Phase 1/2  SIMD backends at T=%d  (thermal stabilisation)       │\n", phys);
+    TN_OUT_INF("calibration",
+               "├──────────────────────────────────────────────────────────────────┤\n");
     fflush(stdout);
 
     ThreadPool *tp_phys = threadpool_create(phys);
     if (!tp_phys) {
-        fprintf(stderr, "[Calibration] Failed to create thread pool\n");
+        TN_LOG_ERR("calibration", "[Calibration] Failed to create thread pool\n");
         return;
     }
 
@@ -438,7 +446,7 @@ void tn_calibrate(TnCalibrationResult *result, const TnHardwareProfile *hw) {
     printf("  auto = %s;  candidates:", result->auto_backend);
     for (int i = 1; i < TN_CALIB_SIMD_N; i++)
         if (avail[i]) printf(" %s", backends[i]);
-    printf("\n");
+    TN_OUT_INF("calibration", "\n");
 
     /* ── Interleaved rounds ──────────────────────────────────────────────
      * Every candidate once per round, the starting candidate rotating, so
@@ -471,7 +479,7 @@ void tn_calibrate(TnCalibrationResult *result, const TnHardwareProfile *hw) {
             putchar('.');
             fflush(stdout);
         }
-        printf("]\n");
+        TN_OUT_INF("calibration", "]\n");
         bench_buf_free(&bb);
         unsetenv("TN_FORCE_BACKEND");
         tn_simd_init();
@@ -492,14 +500,17 @@ void tn_calibrate(TnCalibrationResult *result, const TnHardwareProfile *hw) {
             result->simd_tokps[c] = median_of(samples[c], rounds);
             result->simd_wins[c]  = wins;
             if (c == 0)
-                printf("  %-14s %7.1f  [%5.1f – %5.1f] tok/s%s\n", "auto", result->simd_tokps[c],
-                       lo, hi, best_simd_idx == 0 ? "  ← BEST" : "");
+                TN_OUT_INF("calibration", "  %-14s %7.1f  [%5.1f – %5.1f] tok/s%s\n", "auto",
+                           result->simd_tokps[c], lo, hi, best_simd_idx == 0 ? "  ← BEST" : "");
             else
-                printf("  %-14s %7.1f  [%5.1f – %5.1f] tok/s  beat auto in %2d/%d rounds%s\n",
-                       backends[c], result->simd_tokps[c], lo, hi, wins, rounds,
-                       c == best_simd_idx ? "  ← BEST" : "");
+                TN_OUT_INF("calibration",
+                           "  %-14s %7.1f  [%5.1f – %5.1f] tok/s  beat auto in %2d/%d rounds%s\n",
+                           backends[c], result->simd_tokps[c], lo, hi, wins, rounds,
+                           c == best_simd_idx ? "  ← BEST" : "");
         }
-        if (noisy) printf("  [!] background load %d%%: keeping auto, no tier is overridden\n", bg);
+        if (noisy)
+            TN_OUT_INF("calibration",
+                       "  [!] background load %d%%: keeping auto, no tier is overridden\n", bg);
         fflush(stdout);
     }
 
@@ -514,10 +525,12 @@ void tn_calibrate(TnCalibrationResult *result, const TnHardwareProfile *hw) {
     unsetenv("TN_FORCE_BACKEND");
 
     /* ── Phase 2/2: Thread count sweep with best SIMD backend ────────────── */
-    printf("├──────────────────────────────────────────────────────────────────┤\n");
-    printf("│  Phase 2/2  Thread sweep  (backend: %-10s)                │\n",
-           result->best_simd_name);
-    printf("├──────────────────────────────────────────────────────────────────┤\n");
+    TN_OUT_INF("calibration",
+               "├──────────────────────────────────────────────────────────────────┤\n");
+    TN_OUT_INF("calibration", "│  Phase 2/2  Thread sweep  (backend: %-10s)                │\n",
+               result->best_simd_name);
+    TN_OUT_INF("calibration",
+               "├──────────────────────────────────────────────────────────────────┤\n");
     fflush(stdout);
 
     double best_thread_tokps = 0.0;
@@ -531,7 +544,8 @@ void tn_calibrate(TnCalibrationResult *result, const TnHardwareProfile *hw) {
             result->thread_tokps_med[t - 1]   = 0.0;
             result->thread_tokps_max[t - 1]   = 0.0;
             result->thread_sysload_pct[t - 1] = -1;
-            printf("  T=%-2d  [failed to create thread pool]\n", t);
+            tn_log_out(TN_LOG_ERROR, "calibration", "  T=%-2d  [failed to create thread pool]\n",
+                       t);
             fflush(stdout);
             continue;
         }
@@ -567,8 +581,8 @@ void tn_calibrate(TnCalibrationResult *result, const TnHardwareProfile *hw) {
         }
 
         bool noisy = (bg >= 0 && bg > 30);
-        printf("  %6.1f  [%5.1f – %5.1f] tok/s%s%s\n", tokps, lo, hi, is_best ? "  ← PEAK" : "",
-               noisy ? "  [!] high bg load" : "");
+        TN_OUT_INF("calibration", "  %6.1f  [%5.1f – %5.1f] tok/s%s%s\n", tokps, lo, hi,
+                   is_best ? "  ← PEAK" : "", noisy ? "  [!] high bg load" : "");
         fflush(stdout);
     }
 
@@ -629,13 +643,16 @@ void tn_calibrate(TnCalibrationResult *result, const TnHardwareProfile *hw) {
 
     result->valid = 1;
 
-    printf("├──────────────────────────────────────────────────────────────────┤\n");
-    printf("│  Result                                                          │\n");
-    printf("│    SIMD      : %-10s (%5.1f tok/s at T=%d)                 │\n",
-           result->best_simd_name, result->simd_tokps[result->best_simd_idx], phys);
-    printf("│    Threads   : T=%-2d  (%5.1f tok/s, swept T=1..%d)           │\n",
-           result->best_threads, result->best_thread_tokps, max_t);
-    printf("│    Classifier: BF16 (default — full intelligence)               │\n");
+    TN_OUT_INF("calibration",
+               "├──────────────────────────────────────────────────────────────────┤\n");
+    TN_OUT_INF("calibration",
+               "│  Result                                                          │\n");
+    TN_OUT_INF("calibration", "│    SIMD      : %-10s (%5.1f tok/s at T=%d)                 │\n",
+               result->best_simd_name, result->simd_tokps[result->best_simd_idx], phys);
+    TN_OUT_INF("calibration", "│    Threads   : T=%-2d  (%5.1f tok/s, swept T=1..%d)           │\n",
+               result->best_threads, result->best_thread_tokps, max_t);
+    TN_OUT_INF("calibration",
+               "│    Classifier: BF16 (default — full intelligence)               │\n");
     /* Print the actually-computed best format + gain (2026-07-17): this line
      * was previously the hardcoded literal "(INT8, ~+36%)" regardless of the
      * cls_tokps[] computed above. "est." because these are analytic pre-load
@@ -653,9 +670,10 @@ void tn_calibrate(TnCalibrationResult *result, const TnHardwareProfile *hw) {
         } else {
             snprintf(opt_line, sizeof(opt_line), "Speed opt : --classifier auto-fast");
         }
-        printf("│    %-62s│\n", opt_line);
+        TN_OUT_INF("calibration", "│    %-62s│\n", opt_line);
     }
-    printf("└──────────────────────────────────────────────────────────────────┘\n");
+    TN_OUT_INF("calibration",
+               "└──────────────────────────────────────────────────────────────────┘\n");
     fflush(stdout);
 }
 
@@ -690,7 +708,7 @@ bool tn_calibration_load(TnCalibrationResult *result, const TnHardwareProfile *h
 
     /* Check hardware fingerprint */
     if (!fingerprint_matches(result, hw)) {
-        printf("[Calibration] Hardware changed — re-calibration needed.\n");
+        TN_OUT_INF("calibration", "[Calibration] Hardware changed — re-calibration needed.\n");
         return false;
     }
 
@@ -703,7 +721,7 @@ void tn_calibration_save(const TnCalibrationResult *result) {
 
     FILE *f = fopen(path, "wb");
     if (!f) {
-        fprintf(stderr, "[Calibration] Warning: could not save to %s\n", path);
+        TN_LOG_WRN("calibration", "[Calibration] Warning: could not save to %s\n", path);
         return;
     }
 
@@ -714,26 +732,26 @@ void tn_calibration_save(const TnCalibrationResult *result) {
     fwrite(result, sizeof(*result), 1, f);
     fclose(f);
 
-    printf("[Calibration] Saved to %s\n", path);
+    TN_OUT_INF("calibration", "[Calibration] Saved to %s\n", path);
 }
 
 void tn_calibration_report(const TnCalibrationResult *result) {
     if (!result->valid) {
-        printf("[Calibration] No valid calibration data.\n");
+        TN_OUT_INF("calibration", "[Calibration] No valid calibration data.\n");
         return;
     }
 
-    printf("\n[Calibration Results]\n");
-    printf("  CPU      : %s\n", result->cpu_model);
-    printf("  Cores    : %d physical / %d logical\n", result->physical_cores,
-           result->logical_cores);
-    printf("  SIMD     : %s (%.1f tok/s)\n", result->best_simd_name,
-           result->simd_tokps[result->best_simd_idx]);
-    printf("  Threads  : T=%d (%.1f tok/s, swept T=1..%d)\n", result->best_threads,
-           result->best_thread_tokps, result->thread_sweep_n);
+    TN_OUT_INF("calibration", "\n[Calibration Results]\n");
+    TN_OUT_INF("calibration", "  CPU      : %s\n", result->cpu_model);
+    TN_OUT_INF("calibration", "  Cores    : %d physical / %d logical\n", result->physical_cores,
+               result->logical_cores);
+    TN_OUT_INF("calibration", "  SIMD     : %s (%.1f tok/s)\n", result->best_simd_name,
+               result->simd_tokps[result->best_simd_idx]);
+    TN_OUT_INF("calibration", "  Threads  : T=%d (%.1f tok/s, swept T=1..%d)\n",
+               result->best_threads, result->best_thread_tokps, result->thread_sweep_n);
 
     if (result->thread_sweep_n > 0) {
-        printf("  Thread sweep:\n");
+        TN_OUT_INF("calibration", "  Thread sweep:\n");
         for (int t = 1; t <= result->thread_sweep_n; t++) {
             int bg = result->thread_sysload_pct[t - 1];
             char bg_str[16];
@@ -741,21 +759,22 @@ void tn_calibration_report(const TnCalibrationResult *result) {
                 snprintf(bg_str, sizeof(bg_str), "%3d%%", bg);
             else
                 snprintf(bg_str, sizeof(bg_str), " n/a");
-            printf("    T=%-2d  bg:%4s  %6.1f  [%5.1f – %5.1f] tok/s%s\n", t, bg_str,
-                   result->thread_tokps_med[t - 1], result->thread_tokps_min[t - 1],
-                   result->thread_tokps_max[t - 1], t == result->best_threads ? "  ← PEAK" : "");
+            tn_log_out(
+                TN_LOG_INFO, "calibration", "    T=%-2d  bg:%4s  %6.1f  [%5.1f – %5.1f] tok/s%s\n",
+                t, bg_str, result->thread_tokps_med[t - 1], result->thread_tokps_min[t - 1],
+                result->thread_tokps_max[t - 1], t == result->best_threads ? "  ← PEAK" : "");
         }
     }
 
     const char *cls_names[] = {"BF16", "INT8", "INT4"};
-    printf("  Classifier estimates:\n");
+    TN_OUT_INF("calibration", "  Classifier estimates:\n");
     for (int i = 0; i < 3; i++) {
         if (result->cls_tokps[i] <= 0.0) continue;
-        printf("    %-4s  %.1f tok/s%s%s\n", cls_names[i], result->cls_tokps[i],
-               i == 0 ? " (default, full intelligence)" : "",
-               i == result->best_cls_idx ? " [FASTEST]" : "");
+        TN_OUT_INF("calibration", "    %-4s  %.1f tok/s%s%s\n", cls_names[i], result->cls_tokps[i],
+                   i == 0 ? " (default, full intelligence)" : "",
+                   i == result->best_cls_idx ? " [FASTEST]" : "");
     }
-    printf("\n");
+    TN_OUT_INF("calibration", "\n");
 }
 
 const char *tn_calibration_best_simd(const TnCalibrationResult *result) {

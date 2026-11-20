@@ -115,6 +115,10 @@ built-in corrected one for it; `--chat-template-file` replaces either.
   head (`--classifier int8|int4`) that costs more than `--quality-tolerance` percent perplexity
   (default 1) falls back to BF16; `--act-quant` picks int8 or float activations for ternary models.
 
+- Logs for operators: `--log-format json` writes every diagnostic on stderr as one JSON object per
+  line (`ts`, `level`, `component`, `msg`), with credentials redacted; `--log-level` filters. The
+  default text output is unchanged.
+
 Every flag: `pz --help`. Every web UI control and API route: [docs/WEBUI_GUIDE.md](docs/WEBUI_GUIDE.md).
 
 | Web chat, light theme | Settings, dark theme |

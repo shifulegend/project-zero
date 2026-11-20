@@ -27,6 +27,7 @@
 #include "api/net_io.h"
 #include "api/request_params.h"
 #include "api/sse_stream.h"
+#include "core/log.h"
 #include "reasoning/best_of.h"
 #include "reasoning/mcts.h"
 #include "transformer/generate.h"
@@ -314,8 +315,9 @@ void http_handle_chat_completions(int fd, const char *body_start, size_t body_le
     if (batched && !(ctx->server_config.vision_path && ctx->server_config.proj_path))
         for (int i = 0; i < req.num_messages; i++)
             if (strcmp(req.messages[i].role, "user") == 0 && req.messages[i].image_data_url) {
-                fprintf(stderr, "[vision] image_url provided but server has no --vision/--proj "
-                                "configured; ignoring image\n");
+                TN_LOG_INF("vision",
+                           "[vision] image_url provided but server has no --vision/--proj "
+                           "configured; ignoring image\n");
                 break;
             }
     if (!batched) {

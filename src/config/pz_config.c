@@ -72,6 +72,11 @@ static const PzCfgKey g_schema[] = {
     {"system-prompt", PZ_CFG_STRING, "generation", "Default system prompt", NULL, 0, 0, 0},
     {"stop", PZ_CFG_LIST, "generation", "Stop sequences", NULL, 0, 0, 0},
     {"color", PZ_CFG_STRING, "generation", "Terminal colour", "auto|always|never", 0, 0, 0},
+    /* logging */
+    {"log-format", PZ_CFG_STRING, "logging", "Diagnostics on stderr: text or JSON lines",
+     "text|json", 0, 0, 0},
+    {"log-level", PZ_CFG_STRING, "logging", "Lowest level written", "debug|info|warn|error", 0, 0,
+     0},
     /* server */
     {"port", PZ_CFG_INT, "server", "HTTP port for --server", NULL, 1, 65535, 0},
     {"web-ui", PZ_CFG_STRING, "server", "Web chat UI", "auto|on|off", 0, 0, 0},

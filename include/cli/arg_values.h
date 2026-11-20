@@ -6,6 +6,8 @@
 
 #include <stdio.h>
 
+#include "core/log.h"
+
 /* 1 and *out set when the whole string is a valid number in range; 0 otherwise. */
 int arg_to_int(const char *s, int *out);
 int arg_to_double(const char *s, double *out);
@@ -16,7 +18,7 @@ int arg_to_double(const char *s, double *out);
     do {                                                                                           \
         int v_;                                                                                    \
         if (!arg_to_int(argv[i + 1], &v_)) {                                                       \
-            fprintf(stderr, "Error: %s expects an integer, got '%s'\n", argv[i], argv[i + 1]);     \
+            TN_LOG_ERR("args", "Error: %s expects an integer, got '%s'\n", argv[i], argv[i + 1]);  \
             return TN_ERR_INVALID_CONFIG;                                                          \
         }                                                                                          \
         (dst) = v_;                                                                                \
@@ -27,7 +29,7 @@ int arg_to_double(const char *s, double *out);
     do {                                                                                           \
         double v_;                                                                                 \
         if (!arg_to_double(argv[i + 1], &v_)) {                                                    \
-            fprintf(stderr, "Error: %s expects a number, got '%s'\n", argv[i], argv[i + 1]);       \
+            TN_LOG_ERR("args", "Error: %s expects a number, got '%s'\n", argv[i], argv[i + 1]);    \
             return TN_ERR_INVALID_CONFIG;                                                          \
         }                                                                                          \
         (dst) = (__typeof__(dst))v_;                                                               \

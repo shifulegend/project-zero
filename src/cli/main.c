@@ -23,13 +23,14 @@ int main(int argc, char **argv) {
 
     PzSession *S = (PzSession *)calloc(1, sizeof(*S));
     if (!S) {
-        fprintf(stderr, "Error: out of memory\n");
+        TN_LOG_ERR("main", "Error: out of memory\n");
         return 1;
     }
     if (parse_args(&S->args, argc, argv) != TN_OK) {
         free(S);
         return 1;
     }
+    session_apply_log_options(S);
     {
         KVStrategyOptions kv_opt = {S->args.ctx_size, S->args.kv_ram_fraction, S->args.kv_type,
                                     S->args.kv_offload_dir};

@@ -79,43 +79,56 @@ static int starts_with_ci(const char *s, const char *prefix) {
     return 1;
 }
 
-/* Length of the credential that starts at `s` (the part to replace), 0 when `s` starts none.
- * - "Authorization:" header: everything after the colon to the end of the line
- * - "Bearer <token>": the token
- * - api_key / api-key / apikey followed by = : or " and a value: the value */
+/* Each helper returns the length of the credential starting at `s` and sets *skip to the length
+ * of the keyword before it (kept in the output); 0 when `s` does not start that credential. */
+
+/* "Authorization:" header: everything after the colon to the end of the line. */
+static size_t span_authorization(const char *s, size_t *skip) {
+    if (!starts_with_ci(s, "authorization:")) return 0;
+    size_t n = strlen("authorization:");
+    while (s[n] == ' ') n++;
+    size_t e = n;
+    while (s[e] && s[e] != '\n' && s[e] != '\r') e++;
+    *skip = n;
+    return e - n;
+}
+
+/* "Bearer <token>": the token. */
+static size_t span_bearer(const char *s, size_t *skip) {
+    if (!starts_with_ci(s, "bearer ")) return 0;
+    size_t n = strlen("bearer ");
+    size_t e = n;
+    while (is_token_char(s[e])) e++;
+    /* "Bearer" as the scheme is redacted whatever follows; lower case ("the bearer of news") only
+     * when the next word looks like a long token. */
+    if (strncmp(s, "Bearer ", 7) != 0 && e - n < 12) return 0;
+    *skip = n;
+    return e - n;
+}
+
+/* api_key / api-key / apikey followed by = or : and a value: the value. */
+static size_t span_api_key(const char *s, size_t *skip) {
+    if (!starts_with_ci(s, "api_key") && !starts_with_ci(s, "api-key") &&
+        !starts_with_ci(s, "apikey"))
+        return 0;
+    size_t n = starts_with_ci(s, "apikey") ? 6 : 7;
+    while (s[n] == '"' || s[n] == '\'') n++;
+    if (s[n] != '=' && s[n] != ':') return 0;
+    n++;
+    while (s[n] == ' ' || s[n] == '"' || s[n] == '\'') n++;
+    size_t e = n;
+    while (is_token_char(s[e])) e++;
+    *skip = n;
+    return e - n;
+}
+
+/* Length of the credential that starts at `s` (the part to replace), 0 when `s` starts none. */
 static size_t secret_span(const char *s, size_t *skip) {
-    *skip = 0;
-    if (starts_with_ci(s, "authorization:")) {
-        size_t n = strlen("authorization:");
-        while (s[n] == ' ') n++;
-        size_t e = n;
-        while (s[e] && s[e] != '\n' && s[e] != '\r') e++;
-        *skip = n;
-        return e - n;
-    }
-    if (starts_with_ci(s, "bearer ")) {
-        size_t n = strlen("bearer ");
-        size_t e = n;
-        while (is_token_char(s[e])) e++;
-        /* "Bearer" as the scheme is redacted whatever follows; lower case ("the bearer of news")
-         * only when the next word looks like a long token. */
-        if (strncmp(s, "Bearer ", 7) != 0 && e - n < 12) return 0;
-        *skip = n;
-        return e - n;
-    }
-    if (starts_with_ci(s, "api_key") || starts_with_ci(s, "api-key") ||
-        starts_with_ci(s, "apikey")) {
-        size_t n = starts_with_ci(s, "apikey") ? 6 : 7;
-        while (s[n] == '"' || s[n] == '\'') n++;
-        if (s[n] != '=' && s[n] != ':') return 0;
-        n++;
-        while (s[n] == ' ' || s[n] == '"' || s[n] == '\'') n++;
-        size_t e = n;
-        while (is_token_char(s[e])) e++;
-        *skip = n;
-        return e - n;
-    }
-    return 0;
+    *skip    = 0;
+    size_t n = span_authorization(s, skip);
+    if (!n) n = span_bearer(s, skip);
+    if (!n) n = span_api_key(s, skip);
+    return n;
 }
 
 /* ── Rendering ───────────────────────────────────────────────────────────── */
@@ -263,5 +276,16 @@ void tn_log(TnLogLevel lvl, const char *component, const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
     tn_logv(lvl, component, fmt, ap);
+    va_end(ap);
+}
+
+void tn_log_out(TnLogLevel lvl, const char *component, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    if (tn_log_get_format() == TN_LOG_JSON) {
+        tn_logv(lvl, component, fmt, ap);
+    } else if ((int)lvl >= atomic_load(&g_level)) {
+        vfprintf(stdout, fmt, ap);
+    }
     va_end(ap);
 }

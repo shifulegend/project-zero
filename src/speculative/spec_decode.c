@@ -5,6 +5,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "core/log.h"
 #include "core/step_timing.h"
 #include "core/timer.h"
 #include "distributed/dist_plan.h"
@@ -116,24 +117,26 @@ typedef struct {
 /* The cases speculative decoding refuses or degrades, in one place. Returns 0 to refuse. */
 static int spec_supported(const MoEConfig *mc, const RunState *s, bool *json_mode) {
     if (dist_plan_active()) {
-        fprintf(stderr,
-                "[spec] Speculative decoding is not supported with --remote-layers -- refusing.\n");
+        TN_LOG_ERR(
+            "spec",
+            "[spec] Speculative decoding is not supported with --remote-layers -- refusing.\n");
         return 0;
     }
     if (moe_is_recurrent(mc)) {
-        fprintf(stderr, "[spec] Speculative decoding is not supported for recurrent-state "
-                        "models (Qwen3.5/3.6 linear attention, Mamba SSM) -- refusing.\n");
+        TN_LOG_ERR("spec", "[spec] Speculative decoding is not supported for recurrent-state "
+                           "models (Qwen3.5/3.6 linear attention, Mamba SSM) -- refusing.\n");
         return 0;
     }
     if (s->current_pos != 0) {
-        fprintf(stderr, "[spec] Speculative decoding does not support resuming from a "
-                        "nonzero position (e.g. vision prefill) -- the draft model has no matching "
-                        "prefix in its own KV cache. Use plain generation for this request.\n");
+        TN_LOG_ERR("spec",
+                   "[spec] Speculative decoding does not support resuming from a "
+                   "nonzero position (e.g. vision prefill) -- the draft model has no matching "
+                   "prefix in its own KV cache. Use plain generation for this request.\n");
         return 0;
     }
     if (*json_mode) {
-        fprintf(stderr, "[spec] Warning: --json is not wired into speculative decoding's "
-                        "accept/reject loop yet -- proceeding with plain sampling.\n");
+        TN_LOG_WRN("spec", "[spec] Warning: --json is not wired into speculative decoding's "
+                           "accept/reject loop yet -- proceeding with plain sampling.\n");
         *json_mode = false;
     }
     return 1;
@@ -197,7 +200,7 @@ static int round_buffers_alloc(SpecRun *r) {
     if (r->draft_tokens && r->draft_logits_buf && r->verify_check_logits &&
         r->verifier_logits_out && r->last_verifier_logits && r->last_draft_logits)
         return 0;
-    fprintf(stderr, "[spec] Failed to allocate round buffers.\n");
+    TN_LOG_ERR("spec", "[spec] Failed to allocate round buffers.\n");
     round_buffers_free(r);
     return -1;
 }
@@ -344,7 +347,7 @@ void speculative_generate_with_callback(const Config *cfg, const TransformerWeig
 
     /* ── Speculative scratch ──────────────────────────────────────────── */
     if (spec_batch_scratch_alloc(&r.sb, cfg, spec_length) != TN_OK) {
-        fprintf(stderr, "[spec] Failed to allocate batch scratch.\n");
+        TN_LOG_ERR("spec", "[spec] Failed to allocate batch scratch.\n");
         free(prompt_tokens);
         return;
     }
@@ -369,8 +372,8 @@ void speculative_generate_with_callback(const Config *cfg, const TransformerWeig
         draft_phase(&r);
         TernaryError verr = verify_phase(&r);
         if (verr != TN_OK) {
-            fprintf(stderr, "[spec] transformer_forward_batch failed (err=%d) -- stopping.\n",
-                    (int)verr);
+            TN_LOG_ERR("spec", "[spec] transformer_forward_batch failed (err=%d) -- stopping.\n",
+                       (int)verr);
             break;
         }
         int n_accept, emit_token;
@@ -388,7 +391,8 @@ void speculative_generate_with_callback(const Config *cfg, const TransformerWeig
     if (r.tokens_generated > 1 && r.gen_start_us > 0) {
         int64_t end_us     = timer_now_us();
         double tok_per_sec = timer_tokens_per_sec(r.gen_start_us, end_us, r.tokens_generated);
-        fprintf(stderr, "\n[spec-gen] %.2f tok/s (%d tokens)\n", tok_per_sec, r.tokens_generated);
+        TN_LOG_INF("spec_gen", "\n[spec-gen] %.2f tok/s (%d tokens)\n", tok_per_sec,
+                   r.tokens_generated);
     }
     if (mc && mc->is_moe) moe_expert_tracking_print(cfg->n_layers, mc->num_experts);
     tn_step_timing_report(stderr);

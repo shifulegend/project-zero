@@ -10,6 +10,7 @@
 #include "api/api_server.h"
 #include "api/server_config.h"
 #include "cli/session.h"
+#include "core/log.h"
 
 /* --server mode graceful shutdown: set only by handle_shutdown_signal (the
  * only async-signal-safe thing to do in a handler is set a sig_atomic_t
@@ -30,7 +31,7 @@ static void handle_shutdown_signal(int sig) {
 static char *dup_setting(const char *s) {
     char *c = strdup(s);
     if (!c) {
-        fprintf(stderr, "Error: out of memory copying a server setting\n");
+        TN_LOG_ERR("session_server", "Error: out of memory copying a server setting\n");
         exit(1);
     }
     return c;
@@ -108,8 +109,8 @@ void session_run_server(PzSession *S) {
     TernaryError api_err = api_server_start(S->args.server_port, &api_ctx);
     if (api_err != TN_OK) {
         S->exit_code = 1;
-        fprintf(stderr, "Error: Failed to start API server on port %d: %s\n", S->args.server_port,
-                tn_error_str(api_err));
+        TN_LOG_ERR("session_server", "Error: Failed to start API server on port %d: %s\n",
+                   S->args.server_port, tn_error_str(api_err));
     } else {
         printf("Press Ctrl+C to stop.\n");
 

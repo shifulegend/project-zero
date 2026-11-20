@@ -8,6 +8,7 @@
 #include "core/debug.h"
 #include "core/env_flag.h"
 #include "core/gguf_reader.h"
+#include "core/log.h"
 #include "core/moe_config.h"
 #include "core/step_timing.h"
 #include "distributed/dist_plan.h"
@@ -258,14 +259,15 @@ float *transformer_forward(int token, int pos, const Config *cfg, const Transfor
 
         if (g_prof_tokens % 20 == 0) {
             double ms = 1e-6;
-            fprintf(stderr,
-                    "[PROFILE %d tok] embed=%.2f ms  layers=%.2f ms "
-                    "(attn=%.2f ffn=%.2f)  "
-                    "norm=%.2f ms  classifier=%.2f ms  TOTAL=%.2f ms\n",
-                    g_prof_tokens, g_prof_embed_ns * ms / g_prof_tokens,
-                    g_prof_attn_ns * ms / g_prof_tokens, g_prof_attn_only_ns * ms / g_prof_tokens,
-                    g_prof_ffn_only_ns * ms / g_prof_tokens, g_prof_norm_ns * ms / g_prof_tokens,
-                    g_prof_cls_ns * ms / g_prof_tokens, g_prof_total_ns * ms / g_prof_tokens);
+            TN_LOG_INF("profile",
+                       "[PROFILE %d tok] embed=%.2f ms  layers=%.2f ms "
+                       "(attn=%.2f ffn=%.2f)  "
+                       "norm=%.2f ms  classifier=%.2f ms  TOTAL=%.2f ms\n",
+                       g_prof_tokens, g_prof_embed_ns * ms / g_prof_tokens,
+                       g_prof_attn_ns * ms / g_prof_tokens,
+                       g_prof_attn_only_ns * ms / g_prof_tokens,
+                       g_prof_ffn_only_ns * ms / g_prof_tokens, g_prof_norm_ns * ms / g_prof_tokens,
+                       g_prof_cls_ns * ms / g_prof_tokens, g_prof_total_ns * ms / g_prof_tokens);
         }
     }
 

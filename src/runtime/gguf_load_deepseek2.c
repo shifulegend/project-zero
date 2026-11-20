@@ -8,6 +8,7 @@
 #include "core/fp16.h"
 #include "core/gguf_i2s.h"
 #include "core/gguf_quant.h"
+#include "core/log.h"
 #include "core/moe_config.h"
 #include "core/platform.h"
 #include "core/unpack.h"
@@ -50,7 +51,7 @@ TernaryError weights_from_gguf_deepseek2(TransformerWeights *w, const Config *cf
         snprintf(name_buf, sizeof(name_buf), "blk.%d." tname, l);                                  \
         const GGUFTensor *_t = gguf_find_tensor(hdr, name_buf);                                    \
         if (!_t) {                                                                                 \
-            fprintf(stderr, "[gguf_loader] missing tensor '%s'\n", name_buf);                      \
+            TN_LOG_ERR("gguf_loader", "[gguf_loader] missing tensor '%s'\n", name_buf);            \
             return TN_ERR_INVALID_WEIGHTS;                                                         \
         }                                                                                          \
         float *_f = gguf_ld_tensor_to_f32(_t, (n_elems), store);                                   \
@@ -65,7 +66,7 @@ TernaryError weights_from_gguf_deepseek2(TransformerWeights *w, const Config *cf
         snprintf(name_buf, sizeof(name_buf), "blk.%d." tname, l);                                  \
         const GGUFTensor *_t = gguf_find_tensor(hdr, name_buf);                                    \
         if (!_t) {                                                                                 \
-            fprintf(stderr, "[gguf_loader] missing tensor '%s'\n", name_buf);                      \
+            TN_LOG_ERR("gguf_loader", "[gguf_loader] missing tensor '%s'\n", name_buf);            \
             return TN_ERR_INVALID_WEIGHTS;                                                         \
         }                                                                                          \
         if (_t->type == GGUF_TYPE_Q4_K) {                                                          \
@@ -88,7 +89,7 @@ TernaryError weights_from_gguf_deepseek2(TransformerWeights *w, const Config *cf
         snprintf(name_buf, sizeof(name_buf), "blk.%d." tname, l);                                  \
         const GGUFTensor *_t = gguf_find_tensor(hdr, name_buf);                                    \
         if (!_t) {                                                                                 \
-            fprintf(stderr, "[gguf_loader] missing tensor '%s'\n", name_buf);                      \
+            TN_LOG_ERR("gguf_loader", "[gguf_loader] missing tensor '%s'\n", name_buf);            \
             return TN_ERR_INVALID_WEIGHTS;                                                         \
         }                                                                                          \
         (type_arr)[l] = (int)_t->type;                                                             \
@@ -117,7 +118,7 @@ TernaryError weights_from_gguf_deepseek2(TransformerWeights *w, const Config *cf
         snprintf(name_buf, sizeof(name_buf), "blk.%d." tname, l);                                  \
         const GGUFTensor *_t = gguf_find_tensor(hdr, name_buf);                                    \
         if (!_t) {                                                                                 \
-            fprintf(stderr, "[gguf_loader] missing tensor '%s'\n", name_buf);                      \
+            TN_LOG_ERR("gguf_loader", "[gguf_loader] missing tensor '%s'\n", name_buf);            \
             return TN_ERR_INVALID_WEIGHTS;                                                         \
         }                                                                                          \
         if (_t->type == GGUF_TYPE_Q4_K) {                                                          \
@@ -150,7 +151,7 @@ TernaryError weights_from_gguf_deepseek2(TransformerWeights *w, const Config *cf
         snprintf(name_buf, sizeof(name_buf), "blk.%d." tname, l);                                  \
         const GGUFTensor *_t = gguf_find_tensor(hdr, name_buf);                                    \
         if (!_t) {                                                                                 \
-            fprintf(stderr, "[gguf_loader] missing tensor '%s'\n", name_buf);                      \
+            TN_LOG_ERR("gguf_loader", "[gguf_loader] missing tensor '%s'\n", name_buf);            \
             return TN_ERR_INVALID_WEIGHTS;                                                         \
         }                                                                                          \
         if (_t->type == GGUF_TYPE_Q4_K) {                                                          \
@@ -235,12 +236,13 @@ TernaryError weights_from_gguf_deepseek2(TransformerWeights *w, const Config *cf
             snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_gate_inp.weight", l);
             const GGUFTensor *tgate = gguf_find_tensor(hdr, name_buf);
             if (!tgate) {
-                fprintf(stderr, "[gguf_loader] missing tensor '%s'\n", name_buf);
+                TN_LOG_ERR("gguf_loader", "[gguf_loader] missing tensor '%s'\n", name_buf);
                 return TN_ERR_INVALID_WEIGHTS;
             }
             if (tgate->type != GGUF_TYPE_F32) {
-                fprintf(stderr, "[gguf_loader] ffn_gate_inp.weight must be F32 (got %d)\n",
-                        (int)tgate->type);
+                TN_LOG_ERR("gguf_loader",
+                           "[gguf_loader] ffn_gate_inp.weight must be F32 (got %d)\n",
+                           (int)tgate->type);
                 return TN_ERR_INVALID_WEIGHTS;
             }
             w->moe_gate_w[l] = (tn_i8 *)tgate->data; /* zero-copy, F32 */
@@ -258,7 +260,7 @@ TernaryError weights_from_gguf_deepseek2(TransformerWeights *w, const Config *cf
             const GGUFTensor *td_exps = gguf_find_tensor(hdr, name_buf);
 
             if (!tg_exps || !tu_exps || !td_exps) {
-                fprintf(stderr, "[gguf_loader] missing expert tensors for layer %d\n", l);
+                TN_LOG_ERR("gguf_loader", "[gguf_loader] missing expert tensors for layer %d\n", l);
                 return TN_ERR_INVALID_WEIGHTS;
             }
 
@@ -267,8 +269,8 @@ TernaryError weights_from_gguf_deepseek2(TransformerWeights *w, const Config *cf
             size_t d_stride = gguf_ld_quant_bytes(td_exps->type, expert_elems);
 
             if (g_stride == 0 || u_stride == 0 || d_stride == 0) {
-                fprintf(stderr, "[gguf_loader] unknown quant type for expert tensors layer %d\n",
-                        l);
+                TN_LOG_ERR("gguf_loader",
+                           "[gguf_loader] unknown quant type for expert tensors layer %d\n", l);
                 return TN_ERR_INVALID_WEIGHTS;
             }
 
@@ -321,8 +323,9 @@ TernaryError weights_from_gguf_deepseek2(TransformerWeights *w, const Config *cf
     w->wcls_is_ternary    = false;
     w->wcls_scale         = 1.0f;
 
-    printf("[GGUF-DS2] Weights loaded (%d layers, %d dense + %d MoE, "
-           "%d experts/layer, experts=quantized)\n",
-           nl, first_dense, nl - first_dense, num_experts);
+    TN_OUT_INF("gguf_ds2",
+               "[GGUF-DS2] Weights loaded (%d layers, %d dense + %d MoE, "
+               "%d experts/layer, experts=quantized)\n",
+               nl, first_dense, nl - first_dense, num_experts);
     return TN_OK;
 }

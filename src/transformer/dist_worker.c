@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "core/log.h"
 #include "distributed/dist_plan.h"
 #include "distributed/tensor_rpc.h"
 #include "kv_cache/sliding_window.h"
@@ -23,11 +24,12 @@ TernaryError dist_worker_serve(int port, int loopback_only, int start, int end, 
     int srv;
     TernaryError e = rpc_listen(port, loopback_only, &srv);
     if (e != TN_OK) {
-        fprintf(stderr, "[dist-worker] cannot listen on port %d: %s\n", port, tn_error_str(e));
+        TN_LOG_ERR("dist_worker", "[dist-worker] cannot listen on port %d: %s\n", port,
+                   tn_error_str(e));
         return e;
     }
-    printf("[dist-worker] serving layers %d-%d on %s:%d\n", start, end,
-           loopback_only ? "127.0.0.1" : "0.0.0.0", port);
+    TN_OUT_INF("dist_worker", "[dist-worker] serving layers %d-%d on %s:%d\n", start, end,
+               loopback_only ? "127.0.0.1" : "0.0.0.0", port);
     fflush(stdout);
     float *x = (float *)malloc(((size_t)cfg->dim + 1) * sizeof(float));
     if (!x) {

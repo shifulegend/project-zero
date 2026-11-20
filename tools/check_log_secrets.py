@@ -2,7 +2,7 @@
 """Fails when a secret-looking variable is passed to a printing call in src/.
 
 A log line is read by whoever can read the terminal or the log file, so a credential that reaches
-printf/fprintf/puts/perror ends up there. The check looks at every print statement in src/ (from the
+printf/fprintf/puts/perror or the logger (tn_log, tn_log_out) ends up there. The check looks at every print statement in src/ (from the
 call to its closing `;`), drops the string literals (help text may name `--api-key`), and flags the
 identifiers that hold credentials: api_key, auth_header, authorization, bearer, password,
 passphrase, watermark_key. Add a name to SECRET_NAMES when a new credential variable appears.
@@ -20,7 +20,9 @@ SECRET_NAMES = re.compile(
     r"\b(api_?key|auth_?header|authorization|bearer|password|passphrase|watermark_key|wm_key)\b",
     re.IGNORECASE,
 )
-PRINT_CALL = re.compile(r"\b(f?printf|vfprintf|dprintf|puts|fputs|perror|snprintf_stderr)\s*\(")
+PRINT_CALL = re.compile(
+    r"\b(f?printf|vfprintf|dprintf|puts|fputs|perror|snprintf_stderr|tn_log|tn_log_out|TN_LOG_[A-Z]{3}|TN_OUT_INF)\s*\("
+)
 STRING = re.compile(r'"(?:\\.|[^"\\])*"')
 COMMENT = re.compile(r"/\*.*?\*/|//[^\n]*", re.DOTALL)
 SKIP = ("src/api/webui_bundle_generated.c",)

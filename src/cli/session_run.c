@@ -7,6 +7,7 @@
 
 #include "cli/repl.h"
 #include "cli/session.h"
+#include "core/log.h"
 #include "core/text_file.h"
 #include "eval/perplexity.h"
 #include "eval/selfcheck.h"
@@ -40,7 +41,8 @@ static int run_perplexity(const CliArgs *args, const Config *p, const Transforme
     size_t rd  = 0;
     char *text = tn_read_text_file(args->perplexity_file, (size_t)64 << 20, &rd);
     if (!text) {
-        fprintf(stderr, "Error: cannot read %s (must be 1 B..64 MiB)\n", args->perplexity_file);
+        TN_LOG_ERR("session_run", "Error: cannot read %s (must be 1 B..64 MiB)\n",
+                   args->perplexity_file);
         return 1;
     }
     int *toks = (int *)malloc((rd + 2) * sizeof(int));
@@ -55,7 +57,7 @@ static int run_perplexity(const CliArgs *args, const Config *p, const Transforme
     int k = tokenizer_encode(t, text, rd, toks + n, (int)rd + 1);
     if (k < 0) {
         rc = 1;
-        fprintf(stderr, "Error: could not tokenize %s\n", args->perplexity_file);
+        TN_LOG_ERR("session_run", "Error: could not tokenize %s\n", args->perplexity_file);
     } else {
         n += k;
         PplOptions opt = {args->ppl_ctx, args->ppl_chunks, bos};
@@ -67,8 +69,8 @@ static int run_perplexity(const CliArgs *args, const Config *p, const Transforme
         TernaryError e = perplexity_eval(toks, n, &opt, p, w, s, mc, tp, ppl_progress, NULL, &r);
         if (e != TN_OK) {
             rc = 1;
-            fprintf(stderr, "\nError: perplexity needs at least --ppl-ctx (%d) tokens\n",
-                    opt.n_ctx);
+            TN_LOG_ERR("session_run", "\nError: perplexity needs at least --ppl-ctx (%d) tokens\n",
+                       opt.n_ctx);
         } else {
             printf("\nFinal estimate: PPL = %.4f +/- %.5f  (%d tokens scored, %d chunks, %.1f s)\n",
                    r.ppl, r.ppl_err, r.n_scored, r.n_chunks, r.seconds);
@@ -85,7 +87,7 @@ static void run_selfcheck(PzSession *S) {
     SelfCheckResult sr;
     TernaryError se = selfcheck_run(&so, &S->p, &S->w, S->s, &S->mc, &S->t, S->tp, &sr);
     if (se != TN_OK) {
-        fprintf(stderr, "Error: self-check failed (%s)\n", tn_error_str(se));
+        TN_LOG_ERR("session_run", "Error: self-check failed (%s)\n", tn_error_str(se));
         S->exit_code = 1;
     } else {
         char line[SELFCHECK_LINE_BUF];
@@ -104,7 +106,7 @@ static void run_watermark_detect(PzSession *S) {
     WatermarkResult wr;
     if (watermark_detect_text(&gp.watermark, &S->t, S->args.watermark_detect, &wr) != TN_OK) {
         S->exit_code = 1;
-        fprintf(stderr, "Error: could not tokenize --watermark-detect text.\n");
+        TN_LOG_ERR("session_run", "Error: could not tokenize --watermark-detect text.\n");
     } else {
         printf("watermark: tokens_scored=%d green=%d green_fraction=%.3f z=%.2f -> %s\n",
                wr.n_scored, wr.n_green, wr.green_fraction, wr.z_score,
@@ -129,20 +131,20 @@ static void run_one_shot(PzSession *S) {
                               S->args.prompt, &gp, &S->args.mcts, S->prm.loaded ? &S->prm : NULL,
                               stdout_piece_callback, NULL, NULL, &mr);
             printf("\n");
-            fprintf(stderr,
-                    "[mcts] %d simulations, %d nodes, %d-step path (value %.3f, %s), %d search "
-                    "tokens%s\n",
-                    mr.simulations, mr.nodes, mr.steps, (double)mr.path_value,
-                    mr.used_prm ? "PRM" : "self-scored", mr.tokens_total,
-                    me == TN_OK ? "" : " (failed)");
+            TN_LOG_INF("mcts",
+                       "[mcts] %d simulations, %d nodes, %d-step path (value %.3f, %s), %d search "
+                       "tokens%s\n",
+                       mr.simulations, mr.nodes, mr.steps, (double)mr.path_value,
+                       mr.used_prm ? "PRM" : "self-scored", mr.tokens_total,
+                       me == TN_OK ? "" : " (failed)");
         } else if (S->args.best_of > 1) {
             BestOfResult br;
             generate_best_of(&S->p, &S->w, S->s, &S->mc, &S->t, S->tp, S->args.prompt, &gp,
                              S->args.best_of, BEST_OF_SCORE_MEAN_LOGPROB, stdout_piece_callback,
                              NULL, NULL, &br);
             printf("\n");
-            fprintf(stderr, "[best-of] %d candidates, chose #%d (mean log-prob %.3f)\n", br.n,
-                    br.chosen, br.chosen >= 0 ? br.scores[br.chosen] : 0.0);
+            TN_LOG_INF("best_of", "[best-of] %d candidates, chose #%d (mean log-prob %.3f)\n", br.n,
+                       br.chosen, br.chosen >= 0 ? br.scores[br.chosen] : 0.0);
         } else {
             generate_params(&S->p, &S->w, S->s, &S->mc, &S->t, S->tp, S->args.prompt, &gp);
         }
@@ -179,6 +181,6 @@ void session_finish(PzSession *S) {
         char notice[UPDATE_NOTICE_BUF];
         update_service_get(&ui);
         update_format_notice(&ui, notice, sizeof(notice));
-        if (notice[0]) fprintf(stderr, "\n%s", notice);
+        if (notice[0]) TN_LOG_INF("update", "\n%s", notice);
     }
 }

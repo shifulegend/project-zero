@@ -12,6 +12,7 @@
 #include "api/server_config.h"
 #include "cli/arg_values.h"
 #include "cli/args.h"
+#include "core/log.h"
 #include "kv_cache/kv_quant_ops.h"
 #include "math/rope.h"
 #include "math/simd_dispatch.h"
@@ -65,14 +66,15 @@ TernaryError args_parse_generation(CliArgs *args, int argc, char **argv, int *ip
         args->chat_template_file = argv[++i];
     } else if (strcmp(argv[i], "--stop") == 0 && i + 1 < argc) {
         if (args->n_stop >= GEN_MAX_STOP) {
-            fprintf(stderr, "Error: too many --stop values (max %d)\n", GEN_MAX_STOP);
+            TN_LOG_ERR("args_flags_generation", "Error: too many --stop values (max %d)\n",
+                       GEN_MAX_STOP);
             return TN_ERR_INVALID_CONFIG;
         }
         args->stop[args->n_stop++] = argv[++i];
     } else if (strcmp(argv[i], "--max-tokens-limit") == 0 && i + 1 < argc) {
         ARG_INT(args->max_tokens_limit);
         if (args->max_tokens_limit < 0) {
-            fprintf(stderr, "Error: --max-tokens-limit must be >= 0\n");
+            TN_LOG_ERR("args_flags_generation", "Error: --max-tokens-limit must be >= 0\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--watermark") == 0) {

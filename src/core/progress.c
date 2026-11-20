@@ -7,6 +7,8 @@
 
 #include <stdio.h>
 
+#include "core/log.h"
+
 size_t tn_progress_format(char *buf, size_t cap, int stage, int total_stages, const char *label,
                           int is_tty) {
     if (!buf || cap == 0) return 0;
@@ -30,8 +32,12 @@ size_t tn_progress_format(char *buf, size_t cap, int stage, int total_stages, co
 void tn_progress_stage(int stage, int total_stages, const char *label, int is_tty) {
     char buf[256];
     tn_progress_format(buf, sizeof(buf), stage, total_stages, label, is_tty);
-    fputs(buf, stderr);
-    fflush(stderr);
+    if (is_tty) { /* in-place terminal update, not a log line */
+        fputs(buf, stderr);
+        fflush(stderr);
+    } else {
+        TN_LOG_INF("progress", "%s", buf);
+    }
 }
 
 void tn_progress_done(int is_tty) {

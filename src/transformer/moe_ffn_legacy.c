@@ -7,6 +7,7 @@
 
 #include "core/gguf_quant.h"
 #include "core/gguf_reader.h"
+#include "core/log.h"
 #include "core/step_timing.h"
 #include "math/matmul_q2k.h"
 #include "math/matmul_q4k.h"
@@ -163,7 +164,7 @@ void moe_legacy_routed_batched(RunState *s, const TransformerWeights *w, const C
     const size_t down_n = (size_t)top_k * (size_t)dim;
     float *batch = (float *)tn_tls_scratch(&s_batch_scratch, (2 * gate_n + down_n) * sizeof(float));
     if (!batch) {
-        fprintf(stderr, "[moe] out of memory for the expert batch buffers\n");
+        TN_LOG_ERR("moe", "[moe] out of memory for the expert batch buffers\n");
         abort();
     }
     ExpertBatch b;
@@ -203,10 +204,10 @@ void moe_legacy_routed_batched(RunState *s, const TransformerWeights *w, const C
     if (tn_step_timing_enabled() && sub_timing_count < 3) {
         sub_timing_count++;
         int64_t t_end = tn_step_timing_now_ns();
-        fprintf(stderr,
-                "[sub-step16 #%d] gate=%.3fms up=%.3fms silu=%.3fms down=%.3fms acc=%.3fms\n",
-                sub_timing_count, (ts_up - ts_gate) * 1e-6, (ts_silu - ts_up) * 1e-6,
-                (ts_down - ts_silu) * 1e-6, (ts_acc - ts_down) * 1e-6, (t_end - ts_acc) * 1e-6);
+        TN_LOG_INF("sub_step16",
+                   "[sub-step16 #%d] gate=%.3fms up=%.3fms silu=%.3fms down=%.3fms acc=%.3fms\n",
+                   sub_timing_count, (ts_up - ts_gate) * 1e-6, (ts_silu - ts_up) * 1e-6,
+                   (ts_down - ts_silu) * 1e-6, (ts_acc - ts_down) * 1e-6, (t_end - ts_acc) * 1e-6);
     }
 }
 

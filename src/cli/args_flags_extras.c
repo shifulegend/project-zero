@@ -12,6 +12,7 @@
 #include "api/server_config.h"
 #include "cli/arg_values.h"
 #include "cli/args.h"
+#include "core/log.h"
 #include "kv_cache/kv_quant_ops.h"
 #include "math/rope.h"
 #include "math/simd_dispatch.h"
@@ -26,7 +27,7 @@ TernaryError args_parse_extras(CliArgs *args, int argc, char **argv, int *ip, in
     } else if (strcmp(argv[i], "--spec-length") == 0 && i + 1 < argc) {
         ARG_INT(args->spec_length);
         if (args->spec_length <= 0) {
-            fprintf(stderr, "Error: --spec-length must be a positive integer\n");
+            TN_LOG_ERR("args_flags_extras", "Error: --spec-length must be a positive integer\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--lora") == 0 && i + 1 < argc) {
@@ -35,7 +36,7 @@ TernaryError args_parse_extras(CliArgs *args, int argc, char **argv, int *ip, in
         const char *mode = argv[++i];
         if (strcmp(mode, "auto") != 0 && strcmp(mode, "always") != 0 &&
             strcmp(mode, "never") != 0) {
-            fprintf(stderr, "Error: --color must be one of: auto, always, never\n");
+            TN_LOG_ERR("args_flags_extras", "Error: --color must be one of: auto, always, never\n");
             return TN_ERR_INVALID_CONFIG;
         }
         args->color_mode = tn_color_mode_parse(mode);
@@ -46,25 +47,26 @@ TernaryError args_parse_extras(CliArgs *args, int argc, char **argv, int *ip, in
     } else if (strcmp(argv[i], "--update-repo") == 0 && i + 1 < argc) {
         args->update_repo = argv[++i];
         if (!update_repo_valid(args->update_repo)) {
-            fprintf(stderr, "Error: --update-repo must be owner/name\n");
+            TN_LOG_ERR("args_flags_extras", "Error: --update-repo must be owner/name\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--update-api") == 0 && i + 1 < argc) {
         args->update_api = argv[++i];
         if (!update_api_base_valid(args->update_api)) {
-            fprintf(stderr, "Error: --update-api must be an https:// URL\n");
+            TN_LOG_ERR("args_flags_extras", "Error: --update-api must be an https:// URL\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--update-interval") == 0 && i + 1 < argc) {
         ARG_INT(args->update_interval_h);
         if (args->update_interval_h < 0 || args->update_interval_h > 24 * 365) {
-            fprintf(stderr, "Error: --update-interval must be 0-8760 hours\n");
+            TN_LOG_ERR("args_flags_extras", "Error: --update-interval must be 0-8760 hours\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else if (strcmp(argv[i], "--update-channel") == 0 && i + 1 < argc) {
         args->update_channel = update_channel_parse(argv[++i]);
         if (args->update_channel < 0) {
-            fprintf(stderr, "Error: --update-channel must be auto, stable or prerelease\n");
+            TN_LOG_ERR("args_flags_extras",
+                       "Error: --update-channel must be auto, stable or prerelease\n");
             return TN_ERR_INVALID_CONFIG;
         }
     } else {

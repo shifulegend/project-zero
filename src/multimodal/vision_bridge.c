@@ -3,13 +3,14 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "core/log.h"
 #include "transformer/forward.h"
 
 void inject_vision_into_kv_cache(RunState *s, Config *p, TransformerWeights *w,
                                  const VisionContext *v, ThreadPool *tp) {
     if (v->embed_dim != p->dim) {
-        fprintf(stderr, "Error: Vision embed_dim (%d) does not match LLM dim (%d)!\n", v->embed_dim,
-                p->dim);
+        TN_LOG_ERR("vision_bridge", "Error: Vision embed_dim (%d) does not match LLM dim (%d)!\n",
+                   v->embed_dim, p->dim);
         return;
     }
 
@@ -20,7 +21,8 @@ void inject_vision_into_kv_cache(RunState *s, Config *p, TransformerWeights *w,
 
         // Ensure we don't exceed the KV cache limits
         if (s->current_pos >= s->max_seq_len) {
-            fprintf(stderr, "Warning: KV Cache full, stopping vision injection early.\n");
+            TN_LOG_WRN("vision_bridge",
+                       "Warning: KV Cache full, stopping vision injection early.\n");
             break;
         }
 

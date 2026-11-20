@@ -6,6 +6,7 @@
 
 #include "cli/session.h"
 #include "core/gguf_reader.h"
+#include "core/log.h"
 #include "core/text_file.h"
 #include "math/rope.h"
 #include "tokenizer/template_guard.h"
@@ -25,7 +26,8 @@ int session_setup_tokenizer(PzSession *S) {
     /* Tokenizer */
     if (S->args.tokenizer_path) {
         if (tokenizer_load(&S->t, S->args.tokenizer_path) != TN_OK) {
-            fprintf(stderr, "Failed to load tokenizer: %s\n", S->args.tokenizer_path);
+            TN_LOG_ERR("session_tokenizer", "Failed to load tokenizer: %s\n",
+                       S->args.tokenizer_path);
             return 1;
         }
         /* When the model is GGUF, pull chat_template and special token IDs
@@ -40,7 +42,8 @@ int session_setup_tokenizer(PzSession *S) {
                     if (S->t.chat_template) {
                         memcpy(S->t.chat_template, m->val.string.str, m->val.string.len);
                         S->t.chat_template[m->val.string.len] = '\0';
-                        fprintf(stderr, "[tokenizer] chat_template patched from GGUF metadata\n");
+                        TN_LOG_INF("tokenizer",
+                                   "[tokenizer] chat_template patched from GGUF metadata\n");
                     }
                 }
             }
@@ -72,10 +75,10 @@ int session_setup_tokenizer(PzSession *S) {
         /* Phase 34.5: Auto-load tokenizer from GGUF when no external file given */
         TernaryError terr = tokenizer_load_from_gguf(&S->t, &S->gguf_hdr);
         if (terr != TN_OK) {
-            fprintf(stderr,
-                    "[WARN] GGUF tokenizer load failed (err=%d). "
-                    "Run with --tokenizer <path> to specify one.\n",
-                    (int)terr);
+            TN_LOG_WRN("warn",
+                       "[WARN] GGUF tokenizer load failed (err=%d). "
+                       "Run with --tokenizer <path> to specify one.\n",
+                       (int)terr);
             /* Non-fatal: engine can still run if tokens passed externally */
         }
     }
@@ -89,16 +92,16 @@ int session_setup_tokenizer(PzSession *S) {
         size_t tl  = 0;
         char *tmpl = tn_read_text_file(S->args.chat_template_file, (size_t)1 << 20, &tl);
         if (!tmpl) {
-            fprintf(stderr,
-                    "[WARN] cannot read --chat-template-file '%s' (1 B..1 MiB); "
-                    "keeping the model's template\n",
-                    S->args.chat_template_file);
+            TN_LOG_WRN("warn",
+                       "[WARN] cannot read --chat-template-file '%s' (1 B..1 MiB); "
+                       "keeping the model's template\n",
+                       S->args.chat_template_file);
         } else {
             free(S->t.chat_template);
             S->t.chat_template         = tmpl;
             S->chat_template_from_file = 1;
-            fprintf(stderr, "[tokenizer] chat template from %s (%zu bytes)\n",
-                    S->args.chat_template_file, tl);
+            TN_LOG_INF("tokenizer", "[tokenizer] chat template from %s (%zu bytes)\n",
+                       S->args.chat_template_file, tl);
         }
     }
 
@@ -114,11 +117,11 @@ int session_setup_tokenizer(PzSession *S) {
             free(S->t.chat_template);
             S->t.chat_template       = copy;
             S->chat_template_builtin = 1;
-            fprintf(stderr,
-                    "[tokenizer] the model's chat template ends the prompt with the "
-                    "end-of-sequence token (known problem); using the built-in %s "
-                    "template. --chat-template-file overrides it.\n",
-                    S->gguf_hdr.arch);
+            TN_LOG_INF("tokenizer",
+                       "[tokenizer] the model's chat template ends the prompt with the "
+                       "end-of-sequence token (known problem); using the built-in %s "
+                       "template. --chat-template-file overrides it.\n",
+                       S->gguf_hdr.arch);
         }
     }
     return 0;

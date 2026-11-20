@@ -28,6 +28,18 @@ class LogSecretTests(unittest.TestCase):
     def test_perror_and_puts_are_covered(self):
         self.assertEqual(len(c.violations("puts(password); perror(passphrase);")), 2)
 
+    def test_the_logger_calls_are_covered(self):
+        self.assertEqual(
+            c.violations('TN_LOG_ERR("auth", "key %s\\n", server_config.auth.api_key);'),
+            [(1, "api_key")],
+        )
+        self.assertEqual(
+            c.violations(
+                'tn_log(TN_LOG_INFO, "x", "%s", auth_header); TN_OUT_INF("x", "%s", password);'
+            ),
+            [(1, "auth_header"), (1, "password")],
+        )
+
     def test_the_real_tree_is_clean(self):
         self.assertEqual(c.main(), 0)
 

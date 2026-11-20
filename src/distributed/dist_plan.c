@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "core/log.h"
 #include "distributed/tensor_rpc.h"
 
 static DistPlan *g_active;
@@ -23,13 +24,13 @@ int dist_plan_parse(DistPlan *dp, const char *spec, int n_layers) {
     char *save = NULL;
     for (char *tok = strtok_r(buf, ",", &save); tok; tok = strtok_r(NULL, ",", &save)) {
         if (dp->n >= DIST_MAX_NODES) {
-            fprintf(stderr, "[dist] too many nodes (max %d)\n", DIST_MAX_NODES);
+            TN_LOG_INF("dist", "[dist] too many nodes (max %d)\n", DIST_MAX_NODES);
             return -1;
         }
         RemoteNode *nd = &dp->nodes[dp->n];
         char *at = strchr(tok, '@'), *colon = strrchr(tok, ':');
         if (!at || !colon || colon > at) {
-            fprintf(stderr, "[dist] bad node '%s' (want host:port@A-B)\n", tok);
+            TN_LOG_INF("dist", "[dist] bad node '%s' (want host:port@A-B)\n", tok);
             return -1;
         }
         *colon = '\0';
@@ -38,15 +39,15 @@ int dist_plan_parse(DistPlan *dp, const char *spec, int n_layers) {
         nd->port = atoi(colon + 1);
         if (sscanf(at + 1, "%d-%d", &nd->start, &nd->end) != 2 || nd->port <= 0 ||
             nd->port > 65535 || nd->start < 0 || nd->end > n_layers || nd->start >= nd->end) {
-            fprintf(stderr, "[dist] bad range/port in '%s:%s@%s' (model has %d layers)\n", nd->host,
-                    colon + 1, at + 1, n_layers);
+            TN_LOG_INF("dist", "[dist] bad range/port in '%s:%s@%s' (model has %d layers)\n",
+                       nd->host, colon + 1, at + 1, n_layers);
             return -1;
         }
         nd->fd      = -1;
         nd->scratch = NULL;
         for (int i = 0; i < dp->n; i++) {
             if (nd->start < dp->nodes[i].end && dp->nodes[i].start < nd->end) {
-                fprintf(stderr, "[dist] overlapping layer ranges\n");
+                TN_LOG_INF("dist", "[dist] overlapping layer ranges\n");
                 return -1;
             }
         }
@@ -90,7 +91,7 @@ TernaryError dist_plan_connect(DistPlan *dp, const Config *cfg, const MoEConfig 
         if (!nd->scratch) return TN_ERR_OOM;
         TernaryError e = rpc_connect(nd->host, nd->port, &nd->fd);
         if (e != TN_OK) {
-            fprintf(stderr, "[dist] cannot connect to %s:%d\n", nd->host, nd->port);
+            TN_LOG_ERR("dist", "[dist] cannot connect to %s:%d\n", nd->host, nd->port);
             return e;
         }
         RpcInfo info;
@@ -98,21 +99,23 @@ TernaryError dist_plan_connect(DistPlan *dp, const Config *cfg, const MoEConfig 
         if (rpc_send(nd->fd, RPC_INFO, 0, NULL, 0) != TN_OK ||
             rpc_recv(nd->fd, &h, &info, sizeof(info) / 4) != TN_OK || h.type != RPC_INFO ||
             h.count != sizeof(info) / 4) {
-            fprintf(stderr, "[dist] handshake with %s:%d failed\n", nd->host, nd->port);
+            TN_LOG_ERR("dist", "[dist] handshake with %s:%d failed\n", nd->host, nd->port);
             return TN_ERR_INVALID_MAGIC;
         }
         if (info.n_layers != cfg->n_layers || info.dim != cfg->dim ||
             info.vocab_size != cfg->vocab_size || info.is_ssm != (mc && mc->is_ssm ? 1 : 0)) {
-            fprintf(stderr, "[dist] %s:%d serves a different model (%d layers, dim %d, vocab %d)\n",
-                    nd->host, nd->port, info.n_layers, info.dim, info.vocab_size);
+            TN_LOG_INF("dist",
+                       "[dist] %s:%d serves a different model (%d layers, dim %d, vocab %d)\n",
+                       nd->host, nd->port, info.n_layers, info.dim, info.vocab_size);
             return TN_ERR_DIMENSION_MISMATCH;
         }
         if (info.layer_start != nd->start || info.layer_end != nd->end) {
-            fprintf(stderr, "[dist] %s:%d serves layers %d-%d, expected %d-%d\n", nd->host,
-                    nd->port, info.layer_start, info.layer_end, nd->start, nd->end);
+            TN_LOG_INF("dist", "[dist] %s:%d serves layers %d-%d, expected %d-%d\n", nd->host,
+                       nd->port, info.layer_start, info.layer_end, nd->start, nd->end);
             return TN_ERR_INVALID_CONFIG;
         }
-        printf("[dist] layers %d-%d -> %s:%d\n", nd->start, nd->end, nd->host, nd->port);
+        TN_OUT_INF("dist", "[dist] layers %d-%d -> %s:%d\n", nd->start, nd->end, nd->host,
+                   nd->port);
     }
     return TN_OK;
 }
@@ -151,8 +154,8 @@ TernaryError dist_forward_remote(DistPlan *dp, RemoteNode *node, float *x, int p
     if (e == TN_OK && (h.type != RPC_FORWARD || h.count != (uint32_t)dp->dim))
         e = h.type == RPC_ERROR ? (TernaryError)h.arg : TN_ERR_DIMENSION_MISMATCH;
     if (e != TN_OK && !dp->failed) {
-        fprintf(stderr, "[dist] layers %d-%d on %s:%d failed: %s\n", node->start, node->end,
-                node->host, node->port, tn_error_str(e));
+        TN_LOG_ERR("dist", "[dist] layers %d-%d on %s:%d failed: %s\n", node->start, node->end,
+                   node->host, node->port, tn_error_str(e));
         dp->failed = 1;
     }
     return e;

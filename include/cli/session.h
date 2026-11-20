@@ -71,7 +71,8 @@ typedef struct {
 
 /* Phases, in the order main() runs them. Those returning int give 0 for success and non-zero
  * when the run must stop (the reason is already printed). */
-int session_early_command(PzSession *S); /* -1: none; else the exit status of --version etc. */
+void session_apply_log_options(PzSession *S); /* --log-format, --log-level, --verbose */
+int session_early_command(PzSession *S);      /* -1: none; else the exit status of --version etc. */
 void session_open_dump(PzSession *S);
 int session_detect_format(PzSession *S);
 int session_tune_hardware(PzSession *S);

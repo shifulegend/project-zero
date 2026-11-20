@@ -243,7 +243,10 @@ static void usage_output(void) {
     printf("  --color <mode>      Color output: auto (default), always, never.\n");
     printf("                      auto respects the NO_COLOR env var and disables\n");
     printf("                      color when stdout isn't a terminal.\n");
-    printf("  --verbose           Enable verbose logging\n");
+    printf("  --verbose           Enable verbose logging (same as --log-level debug)\n");
+    printf("  --log-format <fmt>  Diagnostics on stderr: text (default) or json (one object per\n");
+    printf("                      line: ts, level, component, msg)\n");
+    printf("  --log-level <lvl>   Lowest level written: debug, info (default), warn, error\n");
     printf("  --dump-tensors <f>  Write intermediate tensor stats to a CSV file\n");
     printf("  --version, -v       Print version and the SIMD backend for this CPU, then exit.\n");
     printf("  --help, -h          Print this help and exit.\n");

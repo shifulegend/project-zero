@@ -9,6 +9,7 @@
 #include "core/debug.h"
 #include "core/env_flag.h"
 #include "core/gguf_reader.h"
+#include "core/log.h"
 #include "core/step_timing.h"
 #include "math/matmul_q4k.h"
 #include "math/parallel_matmul.h"
@@ -203,11 +204,14 @@ static void moe_norm_and_route(RunState *s, const TransformerWeights *w, const C
             float a = s->xb[ii] < 0 ? -s->xb[ii] : s->xb[ii];
             if (a > xb_max) xb_max = a;
         }
-        fprintf(stderr, "[DBG] L%02d router: xb_max_abs=%.4f  selected=[", layer, xb_max);
-        for (int ii = 0; ii < top_k; ii++)
-            fprintf(stderr, "%d(%.3f)%s", selected[ii], selected_scores[ii],
-                    ii < top_k - 1 ? ", " : "");
-        fprintf(stderr, "]\n");
+        char sel[MOE_SCORE_BUF_SIZE * 16 + 1];
+        size_t used = 0;
+        sel[0]      = '\0';
+        for (int ii = 0; ii < top_k && used + 16 < sizeof(sel); ii++)
+            used += (size_t)snprintf(sel + used, sizeof(sel) - used, "%d(%.3f)%s", selected[ii],
+                                     selected_scores[ii], ii < top_k - 1 ? ", " : "");
+        TN_LOG_DBG("moe_ffn", "[DBG] L%02d router: xb_max_abs=%.4f  selected=[%s]\n", layer, xb_max,
+                   sel);
     }
 }
 

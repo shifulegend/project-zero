@@ -62,6 +62,7 @@ Q8_0, F32), and DeepSeek-V2-style MoE/MLA models. The primary binary is `pz`.
 | `src/core/unpack.c` | Scalar ternary unpack (2-bit packed → int8) |
 | `src/core/unpack_avx2.c` | AVX2 ternary unpack |
 | `src/core/debug.c` | `DBG_DUMP` macro support, `g_tn_verbose`, `g_dump_fp` |
+| `src/core/log.c` | Structured logger: `TN_LOG_*` / `TN_OUT_INF`, text or JSON lines, redaction, escaping |
 | `src/core/error.c` | TernaryError codes and string table |
 | `src/core/step_timing.c` | Optional per-step latency profiler (TN_STEP_TIMING=1) |
 

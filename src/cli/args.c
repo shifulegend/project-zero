@@ -7,6 +7,7 @@
 #include "api/server_config.h"
 #include "cli/arg_values.h"
 #include "cli/args_groups.h"
+#include "core/log.h"
 #include "kv_cache/kv_quant_ops.h"
 #include "math/rope.h"
 #include "math/simd_dispatch.h"
@@ -64,6 +65,8 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
     args->static_dir          = NULL;
     args->web_ui_mode         = WEBUI_MODE_AUTO;
     args->color_mode          = TN_COLOR_AUTO;
+    args->log_json            = 0;
+    args->log_level           = -1;
     args->draft_model_path    = NULL; /* disabled by default -- the ONLY way to enable
                                        speculative decoding is --draft-model */
     args->spec_length         = 5;
@@ -141,21 +144,22 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
             print_usage(argv[0]);
             return TN_ERR_INVALID_CONFIG;
         } else {
-            fprintf(stderr, "Unknown argument: %s\n", argv[i]);
+            TN_LOG_ERR("args", "Unknown argument: %s\n", argv[i]);
             print_usage(argv[0]);
             return TN_ERR_INVALID_CONFIG;
         }
     }
 
     if (args->calibrate && args->no_calibrate) {
-        fprintf(stderr, "Error: --calibrate and --no-calibrate contradict each other; use one.\n");
+        TN_LOG_ERR("args",
+                   "Error: --calibrate and --no-calibrate contradict each other; use one.\n");
         return TN_ERR_INVALID_CONFIG;
     }
 
     if (args->check_update) return TN_OK; /* needs no model */
 
     if (!args->model_path) {
-        fprintf(stderr, "Error: --model <path> is required.\n");
+        TN_LOG_ERR("args", "Error: --model <path> is required.\n");
         print_usage(argv[0]);
         return TN_ERR_INVALID_CONFIG;
     }
@@ -167,8 +171,8 @@ TernaryError parse_args(CliArgs *args, int argc, char **argv) {
         const char *mp = args->model_path ? args->model_path : "";
         int is_gguf    = (strstr(mp, ".gguf") != NULL);
         if (!is_gguf) {
-            fprintf(stderr, "Warning: --tokenizer <path> not provided. "
-                            "Text generation will fail without a vocabulary file.\n");
+            TN_LOG_WRN("args", "Warning: --tokenizer <path> not provided. "
+                               "Text generation will fail without a vocabulary file.\n");
         }
     }
 

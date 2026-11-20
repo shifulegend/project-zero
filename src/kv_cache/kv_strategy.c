@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "core/config.h"
+#include "core/log.h"
 #include "core/platform.h"
 #include "kv_cache/kv_quant_ops.h"
 #include "memory/file_backed.h"
@@ -118,12 +119,13 @@ void kv_strategy_print(const KVStrategyResult *r, int max_seq_len) {
    * generic cache really uses (--kv-type) and the tier for what it is: the
    * context-sizing tier. */
     float frac = g_kv_opts.ram_fraction > 0.0f ? g_kv_opts.ram_fraction : KV_DEFAULT_RAM_FRACTION;
-    printf("KV cache: %s%s%s, max context: %d tokens (sizing tier: %s%s, %s budget %.0f%%)\n",
-           kv_type_name((KVCacheType)g_kv_opts.kv_type),
-           g_kv_opts.offload_dir ? " on disk in " : "",
-           g_kv_opts.offload_dir ? g_kv_opts.offload_dir : "", max_seq_len,
-           r ? kv_strategy_name(r->strategy) : "n/a", g_kv_opts.ctx_size > 0 ? ", --ctx-size" : "",
-           g_kv_opts.offload_dir ? "disk" : "RAM", frac * 100.0f);
+    tn_log_out(
+        TN_LOG_INFO, "kv_strategy",
+        "KV cache: %s%s%s, max context: %d tokens (sizing tier: %s%s, %s budget %.0f%%)\n",
+        kv_type_name((KVCacheType)g_kv_opts.kv_type), g_kv_opts.offload_dir ? " on disk in " : "",
+        g_kv_opts.offload_dir ? g_kv_opts.offload_dir : "", max_seq_len,
+        r ? kv_strategy_name(r->strategy) : "n/a", g_kv_opts.ctx_size > 0 ? ", --ctx-size" : "",
+        g_kv_opts.offload_dir ? "disk" : "RAM", frac * 100.0f);
 }
 
 KVStrategyResult select_kv_strategy_ex(const Config *cfg, tn_i64 free_ram, const MoEConfig *mc,

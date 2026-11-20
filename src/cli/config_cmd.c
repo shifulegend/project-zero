@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "core/log.h"
 #include "core/platform.h"
 #include "kv_cache/kv_strategy.h"
 #if TN_POSIX
@@ -16,20 +17,20 @@ extern char **environ;
 #endif
 
 static void warn_stderr(const char *m) {
-    fprintf(stderr, "[config] %s\n", m);
+    TN_LOG_WRN("config", "[config] %s\n", m);
 }
 
 static int load_file(PzConfig *c, char *path, size_t pathn) {
     if (pz_config_init(c) != 0) {
-        fprintf(stderr, "[config] out of memory\n");
+        TN_LOG_ERR("config", "[config] out of memory\n");
         return -1;
     }
     if (pz_config_path(path, pathn) != 0) {
-        fprintf(stderr, "[config] no config location (set PZ_CONFIG or HOME)\n");
+        TN_LOG_INF("config", "[config] no config location (set PZ_CONFIG or HOME)\n");
         return -1;
     }
     if (pz_config_load(c, path, warn_stderr) < 0) {
-        fprintf(stderr, "[config] cannot read %s\n", path);
+        TN_LOG_ERR("config", "[config] cannot read %s\n", path);
         return -1;
     }
     return 0;
@@ -370,7 +371,7 @@ static void start_chat_page(int port) {
     char *const av[] = {"pz", "--server", NULL};
     execv("/proc/self/exe", av);
     execvp("pz", av);
-    fprintf(stderr, "Could not start the chat page automatically; run: pz --server\n");
+    TN_LOG_ERR("config_cmd", "Could not start the chat page automatically; run: pz --server\n");
 #else
     (void)port;
 #endif
@@ -386,7 +387,7 @@ int pz_config_command(int argc, char **argv) {
     }
     if (sub && strcmp(sub, "path") == 0) {
         if (pz_config_path(path, sizeof(path)) != 0) {
-            fprintf(stderr, "[config] no config location\n");
+            TN_LOG_INF("config", "[config] no config location\n");
             return 1;
         }
         printf("%s\n", path);
@@ -436,7 +437,7 @@ int pz_config_command(int argc, char **argv) {
     } else if (strcmp(sub, "get") == 0 && argc == 3) {
         const PzCfgEntry *e = pz_config_get(&c, argv[2]);
         if (!pz_config_find_key(argv[2])) {
-            fprintf(stderr, "unknown setting \"%s\"\n", argv[2]);
+            TN_LOG_ERR("config_cmd", "unknown setting \"%s\"\n", argv[2]);
             rc = 1;
         } else if (!e)
             rc = 1; /* unset: empty output, exit 1 (like git config) */
@@ -447,13 +448,13 @@ int pz_config_command(int argc, char **argv) {
         int r = sub[0] == 's' ? pz_config_set(&c, argv[2], argv[3], err, sizeof(err))
                               : pz_config_add(&c, argv[2], argv[3], err, sizeof(err));
         if (r != 0) {
-            fprintf(stderr, "%s\n", err);
+            TN_LOG_INF("config_cmd", "%s\n", err);
             rc = 1;
         } else
             dirty = 1;
     } else if (strcmp(sub, "unset") == 0 && argc == 3) {
         if (!pz_config_find_key(argv[2])) {
-            fprintf(stderr, "unknown setting \"%s\"\n", argv[2]);
+            TN_LOG_ERR("config_cmd", "unknown setting \"%s\"\n", argv[2]);
             rc = 1;
         } else {
             pz_config_unset(&c, argv[2]);
@@ -465,7 +466,7 @@ int pz_config_command(int argc, char **argv) {
     }
     if (dirty) {
         if (pz_config_save(&c, path) != 0) {
-            fprintf(stderr, "[config] cannot write %s\n", path);
+            TN_LOG_ERR("config", "[config] cannot write %s\n", path);
             rc          = 1;
             launch_chat = 0;
         } else

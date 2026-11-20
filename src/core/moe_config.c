@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "core/log.h"
+
 void moe_config_init_dense(MoEConfig *mc) {
     memset(mc, 0, sizeof(*mc));
     /* is_moe = false, all MoE code will be skipped */
@@ -83,29 +85,33 @@ TernaryError moe_config_read(MoEConfig *mc, const void *data, size_t data_size, 
 void moe_config_print(const MoEConfig *mc) {
     if (!mc) return;
     if (mc->has_linear_attn) {
-        printf("[Qwen3.5/3.6] hybrid attention: full_attention_interval=%d "
-               "attn_head_dim=%d attn_rope_dim=%d "
-               "ssm(conv_kernel=%d group_count=%d inner_size=%d state_size=%d time_step_rank=%d)\n",
-               mc->full_attention_interval, mc->attn_head_dim, mc->attn_rope_dim,
-               mc->ssm_conv_kernel, mc->ssm_group_count, mc->ssm_inner_size, mc->ssm_state_size,
-               mc->ssm_time_step_rank);
+        tn_log_out(
+            TN_LOG_INFO, "qwen3_5",
+            "[Qwen3.5/3.6] hybrid attention: full_attention_interval=%d "
+            "attn_head_dim=%d attn_rope_dim=%d "
+            "ssm(conv_kernel=%d group_count=%d inner_size=%d state_size=%d time_step_rank=%d)\n",
+            mc->full_attention_interval, mc->attn_head_dim, mc->attn_rope_dim, mc->ssm_conv_kernel,
+            mc->ssm_group_count, mc->ssm_inner_size, mc->ssm_state_size, mc->ssm_time_step_rank);
     }
     if (mc->is_ssm) {
-        printf("[Mamba] state-space model: d_inner=%d d_state=%d d_conv=%d dt_rank=%d\n",
-               mc->ssm_inner_size, mc->ssm_state_size, mc->ssm_conv_kernel, mc->ssm_time_step_rank);
+        TN_OUT_INF(
+            "mamba", "[Mamba] state-space model: d_inner=%d d_state=%d d_conv=%d dt_rank=%d\n",
+            mc->ssm_inner_size, mc->ssm_state_size, mc->ssm_conv_kernel, mc->ssm_time_step_rank);
         return;
     }
     if (!mc->is_moe) {
-        printf("[MoE] Dense model (MoE disabled)\n");
+        TN_OUT_INF("moe", "[MoE] Dense model (MoE disabled)\n");
         return;
     }
-    printf("[MoE] num_experts=%d  top_k=%d  expert_hidden_dim=%d  "
-           "first_k_dense=%d  shared_experts=%d (hdim=%d)\n",
-           mc->num_experts, mc->num_experts_per_tok, mc->expert_hidden_dim,
-           mc->first_k_dense_replace, mc->n_shared_experts, mc->shared_expert_hidden_dim);
+    TN_OUT_INF("moe",
+               "[MoE] num_experts=%d  top_k=%d  expert_hidden_dim=%d  "
+               "first_k_dense=%d  shared_experts=%d (hdim=%d)\n",
+               mc->num_experts, mc->num_experts_per_tok, mc->expert_hidden_dim,
+               mc->first_k_dense_replace, mc->n_shared_experts, mc->shared_expert_hidden_dim);
     if (mc->has_mla) {
-        printf("[MLA] kv_lora_rank=%d  qk_nope_head_dim=%d  "
-               "qk_rope_head_dim=%d  v_head_dim=%d\n",
-               mc->kv_lora_rank, mc->qk_nope_head_dim, mc->qk_rope_head_dim, mc->v_head_dim);
+        TN_OUT_INF("mla",
+                   "[MLA] kv_lora_rank=%d  qk_nope_head_dim=%d  "
+                   "qk_rope_head_dim=%d  v_head_dim=%d\n",
+                   mc->kv_lora_rank, mc->qk_nope_head_dim, mc->qk_rope_head_dim, mc->v_head_dim);
     }
 }

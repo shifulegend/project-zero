@@ -8,6 +8,7 @@
 #include "core/fp16.h"
 #include "core/gguf_i2s.h"
 #include "core/gguf_quant.h"
+#include "core/log.h"
 #include "core/moe_config.h"
 #include "core/platform.h"
 #include "core/unpack.h"
@@ -43,7 +44,7 @@
         snprintf(name_buf, sizeof(name_buf), "blk.%d." tname, l);                                  \
         const GGUFTensor *_t = gguf_find_tensor(hdr, name_buf);                                    \
         if (!_t) {                                                                                 \
-            fprintf(stderr, "[gguf_loader] missing tensor '%s'\n", name_buf);                      \
+            TN_LOG_ERR("gguf_loader", "[gguf_loader] missing tensor '%s'\n", name_buf);            \
             return TN_ERR_INVALID_WEIGHTS;                                                         \
         }                                                                                          \
         if (_t->type == GGUF_TYPE_F16) {                                                           \
@@ -110,12 +111,12 @@ TernaryError weights_from_gguf_qwen3moe(TransformerWeights *w, const Config *cfg
         snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_gate_inp.weight", l);
         const GGUFTensor *tgate = gguf_find_tensor(hdr, name_buf);
         if (!tgate) {
-            fprintf(stderr, "[gguf_loader] missing tensor '%s'\n", name_buf);
+            TN_LOG_ERR("gguf_loader", "[gguf_loader] missing tensor '%s'\n", name_buf);
             return TN_ERR_INVALID_WEIGHTS;
         }
         if (tgate->type != GGUF_TYPE_F32) {
-            fprintf(stderr, "[gguf_loader] ffn_gate_inp.weight must be F32 (got %d)\n",
-                    (int)tgate->type);
+            TN_LOG_ERR("gguf_loader", "[gguf_loader] ffn_gate_inp.weight must be F32 (got %d)\n",
+                       (int)tgate->type);
             return TN_ERR_INVALID_WEIGHTS;
         }
         w->moe_gate_w[l] = (tn_i8 *)tgate->data;
@@ -134,7 +135,7 @@ TernaryError weights_from_gguf_qwen3moe(TransformerWeights *w, const Config *cfg
         const GGUFTensor *td_exps = gguf_find_tensor(hdr, name_buf);
 
         if (!tg_exps || !tu_exps || !td_exps) {
-            fprintf(stderr, "[gguf_loader] missing expert tensors for layer %d\n", l);
+            TN_LOG_ERR("gguf_loader", "[gguf_loader] missing expert tensors for layer %d\n", l);
             return TN_ERR_INVALID_WEIGHTS;
         }
 
@@ -143,7 +144,8 @@ TernaryError weights_from_gguf_qwen3moe(TransformerWeights *w, const Config *cfg
         size_t d_stride = gguf_ld_quant_bytes(td_exps->type, expert_elems);
 
         if (g_stride == 0 || u_stride == 0 || d_stride == 0) {
-            fprintf(stderr, "[gguf_loader] unknown quant type for expert tensors layer %d\n", l);
+            TN_LOG_ERR("gguf_loader",
+                       "[gguf_loader] unknown quant type for expert tensors layer %d\n", l);
             return TN_ERR_INVALID_WEIGHTS;
         }
 
@@ -179,9 +181,10 @@ TernaryError weights_from_gguf_qwen3moe(TransformerWeights *w, const Config *cfg
      * (WEIGHT_TYPE_F32) since this arch has no dense FFN layers to read
      * them — every layer routes through moe_ffn_forward instead. */
 
-    printf("[GGUF-Q3MOE] Weights loaded (%d layers, %d experts/layer, top-%d, "
-           "head_dim=%d)\n",
-           nl, num_experts, mc->num_experts_per_tok, head_dim);
+    TN_OUT_INF("gguf_q3moe",
+               "[GGUF-Q3MOE] Weights loaded (%d layers, %d experts/layer, top-%d, "
+               "head_dim=%d)\n",
+               nl, num_experts, mc->num_experts_per_tok, head_dim);
     return TN_OK;
 }
 

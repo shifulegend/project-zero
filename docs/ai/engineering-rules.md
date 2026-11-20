@@ -54,6 +54,12 @@
   only shrink); the 20-line and complexity-10 targets stay review-time rules.
 - **Complexity:** cyclomatic complexity 10 or less and nesting depth 3 or less per new function;
   prefer early returns over nested `if`s, and a table or a helper over a long `else if` chain.
+- **Logging:** every diagnostic goes through `core/log.h` (`TN_LOG_ERR/WRN/INF/DBG(component, ...)`;
+  `TN_OUT_INF` for a status line the person running the program should see on stdout). No raw
+  `fprintf(stderr, ...)` in `src/` (CI: `tools/check_raw_logging.py`, allow-list for the terminal-UI
+  lines); a credential is never an argument (`tools/check_log_secrets.py` covers the logger); an
+  untrusted string goes through `tn_log_sanitize()` first. Program output (generated text, `--help`,
+  the banner and tables, results) stays `printf`.
 - **Braces:** attached (K&R) braces everywhere, enforced by `.clang-format` (see Formatting); no
   bare `{ ... }` scope blocks to make a function look shorter.
 - **Untrusted input (OWASP input validation):** everything that crosses the network, a file or the

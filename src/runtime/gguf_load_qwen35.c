@@ -8,6 +8,7 @@
 #include "core/fp16.h"
 #include "core/gguf_i2s.h"
 #include "core/gguf_quant.h"
+#include "core/log.h"
 #include "core/moe_config.h"
 #include "core/platform.h"
 #include "core/unpack.h"
@@ -31,12 +32,12 @@
         snprintf(name_buf, sizeof(name_buf), "blk.%d." tname, l);                                  \
         const GGUFTensor *_t = gguf_find_tensor(hdr, name_buf);                                    \
         if (!_t) {                                                                                 \
-            fprintf(stderr, "[gguf_loader] missing tensor '%s'\n", name_buf);                      \
+            TN_LOG_ERR("gguf_loader", "[gguf_loader] missing tensor '%s'\n", name_buf);            \
             return TN_ERR_INVALID_WEIGHTS;                                                         \
         }                                                                                          \
         if (_t->type != GGUF_TYPE_Q2_0) {                                                          \
-            fprintf(stderr, "[gguf_loader] qwen35: '%s' must be Q2_0 (got %d '%s')\n", name_buf,   \
-                    (int)_t->type, gguf_type_name(_t->type));                                      \
+            TN_LOG_ERR("gguf_loader", "[gguf_loader] qwen35: '%s' must be Q2_0 (got %d '%s')\n",   \
+                       name_buf, (int)_t->type, gguf_type_name(_t->type));                         \
             return TN_ERR_INVALID_WEIGHTS;                                                         \
         }                                                                                          \
         (field)[l] = (tn_i8 *)_t->data; /* zero-copy raw Q2_0 bytes */                             \
@@ -108,14 +109,14 @@ TernaryError weights_from_gguf_qwen35(TransformerWeights *w, const Config *cfg,
     {
         const GGUFTensor *temb = gguf_find_tensor(hdr, "token_embd.weight");
         if (!temb || temb->type != GGUF_TYPE_Q2_0) {
-            fprintf(stderr, "[gguf_loader] qwen35: 'token_embd.weight' must be Q2_0\n");
+            TN_LOG_ERR("gguf_loader", "[gguf_loader] qwen35: 'token_embd.weight' must be Q2_0\n");
             return TN_ERR_INVALID_WEIGHTS;
         }
         w->q35_token_embd_raw = temb->data;
 
         const GGUFTensor *tout = gguf_find_tensor(hdr, "output.weight");
         if (!tout || tout->type != GGUF_TYPE_Q2_0) {
-            fprintf(stderr, "[gguf_loader] qwen35: 'output.weight' must be Q2_0\n");
+            TN_LOG_ERR("gguf_loader", "[gguf_loader] qwen35: 'output.weight' must be Q2_0\n");
             return TN_ERR_INVALID_WEIGHTS;
         }
         w->q35_output_raw    = tout->data;
@@ -167,9 +168,10 @@ TernaryError weights_from_gguf_qwen35(TransformerWeights *w, const Config *cfg,
     (void)hidden_dim;
     (void)n_head;
 
-    printf("[GGUF-Q35] Weights loaded (%d layers, full_attention_interval=%d, "
-           "%d Q2_0 quantized)\n",
-           nl, mc->full_attention_interval, nl);
+    TN_OUT_INF("gguf_q35",
+               "[GGUF-Q35] Weights loaded (%d layers, full_attention_interval=%d, "
+               "%d Q2_0 quantized)\n",
+               nl, mc->full_attention_interval, nl);
     return TN_OK;
 }
 

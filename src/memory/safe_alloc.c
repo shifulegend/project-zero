@@ -1,5 +1,6 @@
 #include "memory/safe_alloc.h"
 
+#include "core/log.h"
 #include "core/platform.h"
 #include "memory/free_ram.h"
 #if TN_POSIX
@@ -49,10 +50,10 @@ static int too_large_checked(size_t count, size_t elem_size) {
 /* One-line diagnostic then abort: a required buffer could not be satisfied.
  * Kept in one place so the message format is uniform and greppable. */
 static void tn_alloc_fail(const char *what, size_t bytes) {
-    fprintf(stderr,
-            "[fatal] allocation failed: %s (%zu bytes) — required buffer; "
-            "see docs/ai/mistakes.md\n",
-            what ? what : "(unnamed)", bytes);
+    TN_LOG_ERR("fatal",
+               "[fatal] allocation failed: %s (%zu bytes) — required buffer; "
+               "see docs/ai/mistakes.md\n",
+               what ? what : "(unnamed)", bytes);
     fflush(stderr);
     abort();
 }

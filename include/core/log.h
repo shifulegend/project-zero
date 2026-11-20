@@ -35,10 +35,23 @@ void tn_log(TnLogLevel lvl, const char *component, const char *fmt, ...)
     ;
 void tn_logv(TnLogLevel lvl, const char *component, const char *fmt, va_list ap);
 
+/* Status lines the program prints for the person running it (model summary, calibration, hardware
+ * choices). Text format: written to stdout exactly as printf would (location and bytes unchanged);
+ * JSON format: the same message as a JSON line on stderr, so stdout carries only program output.
+ * Subject to the level threshold like tn_log. */
+void tn_log_out(TnLogLevel lvl, const char *component, const char *fmt, ...)
+#if defined(__GNUC__)
+    __attribute__((format(printf, 3, 4)))
+#endif
+    ;
+
 #define TN_LOG_ERR(comp, ...) tn_log(TN_LOG_ERROR, (comp), __VA_ARGS__)
 #define TN_LOG_WRN(comp, ...) tn_log(TN_LOG_WARN, (comp), __VA_ARGS__)
 #define TN_LOG_INF(comp, ...) tn_log(TN_LOG_INFO, (comp), __VA_ARGS__)
 #define TN_LOG_DBG(comp, ...) tn_log(TN_LOG_DEBUG, (comp), __VA_ARGS__)
+/* A status line printed for the person running the program (stdout in text format, see
+ * tn_log_out). */
+#define TN_OUT_INF(comp, ...) tn_log_out(TN_LOG_INFO, (comp), __VA_ARGS__)
 
 /* Copies an untrusted string (a request path, a header, a file name from the network) into `out`
  * with every control character, newlines included, replaced by \xNN; always NUL-terminated;

@@ -30,6 +30,7 @@
 #include <string.h>
 
 #include "core/gguf_reader.h"
+#include "core/log.h"
 #include "tokenizer/pretokenize.h"
 
 /* ── Internal sort (duplicated from tokenizer_load.c for independence) ──── */
@@ -158,11 +159,11 @@ static TernaryError read_vocab(Tokenizer *t, const GGUFHeader *hdr, uint64_t *co
     uint64_t vocab_count    = gguf_meta_array_count(hdr, "tokenizer.ggml.tokens");
 
     if (!tokens_data || vocab_count == 0) {
-        fprintf(stderr, "[gguf-tok] ERROR: no tokenizer.ggml.tokens array found in GGUF\n");
+        TN_LOG_ERR("gguf_tok", "[gguf-tok] ERROR: no tokenizer.ggml.tokens array found in GGUF\n");
         return TN_ERR_INVALID_ARGS;
     }
     if (elem_type != GGUF_VAL_STRING) {
-        fprintf(stderr, "[gguf-tok] ERROR: tokenizer.ggml.tokens is not a string array\n");
+        TN_LOG_ERR("gguf_tok", "[gguf-tok] ERROR: tokenizer.ggml.tokens is not a string array\n");
         return TN_ERR_INVALID_ARGS;
     }
 
@@ -219,10 +220,10 @@ static void read_spm_scores(Tokenizer *t, const GGUFHeader *hdr, uint64_t vocab_
             t->vocab_scores[i] = sc;
         }
     } else if (scores_count > 0) {
-        fprintf(stderr,
-                "[gguf-tok] WARN: scores array type mismatch or wrong count "
-                "(%llu vs %llu vocab), using zeros\n",
-                (unsigned long long)scores_count, (unsigned long long)vocab_count);
+        TN_LOG_WRN("gguf_tok",
+                   "[gguf-tok] WARN: scores array type mismatch or wrong count "
+                   "(%llu vs %llu vocab), using zeros\n",
+                   (unsigned long long)scores_count, (unsigned long long)vocab_count);
         /* scores remain zero-initialized */
     }
     /* If no scores array: all zeros (valid for uniform-weight SPM or RWKV) */
@@ -272,8 +273,8 @@ static void read_bpe_merges(Tokenizer *t, const GGUFHeader *hdr) {
             free(merge_str);
         }
     } else {
-        fprintf(stderr, "[gguf-tok] WARN: BPE tokenizer but no tokenizer.ggml.merges "
-                        "array — BPE merge scores will be zero\n");
+        TN_LOG_WRN("gguf_tok", "[gguf-tok] WARN: BPE tokenizer but no tokenizer.ggml.merges "
+                               "array — BPE merge scores will be zero\n");
     }
 }
 
@@ -415,8 +416,8 @@ TernaryError tokenizer_load_from_gguf(Tokenizer *t, const GGUFHeader *hdr) {
     }
 
     /* 8. Log summary */
-    fprintf(
-        stderr,
+    tn_log(
+        TN_LOG_INFO, "gguf_tok",
         "[gguf-tok] Loaded %d tokens (%s, pre=%s), %d special — BOS=%d EOS=%d chat_template=%s\n",
         t->vocab_size, tok_model, pretok_type_name((PretokType)t->pretok_type), t->n_special,
         t->bos_token_id, t->eos_token_id, t->chat_template ? "yes" : "no");

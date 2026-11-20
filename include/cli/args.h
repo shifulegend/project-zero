@@ -69,6 +69,8 @@ typedef struct {
     WebUiMode web_ui_mode; /* --web-ui <auto|on|off>: default auto                 */
     /* Phase 22.3: CLI/REPL polish */
     TnColorMode color_mode; /* --color <auto|always|never>: default auto            */
+    int log_json;           /* --log-format json: diagnostics as JSON lines on stderr   */
+    int log_level; /* --log-level <debug|info|warn|error>; -1 = default (info, debug with --verbose) */
     /* Phase 18: speculative decoding */
     char *draft_model_path; /* --draft-model <path>: GGUF draft model. NULL (default)
                                   = disabled -- the ONLY way to enable speculative

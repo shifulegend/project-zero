@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "core/log.h"
 #include "core/moe_config.h"
 #include "core/platform.h"
 #include "math/rope.h"
@@ -50,11 +51,11 @@ TernaryError config_from_gguf(Config *cfg, const GGUFHeader *hdr) {
     }
 
     if (cfg->dim <= 0 || cfg->n_layers <= 0 || cfg->n_heads <= 0 || cfg->hidden_dim <= 0) {
-        fprintf(stderr,
-                "[gguf_loader] missing required metadata (embedding_length / "
-                "block_count / head_count / feed_forward_length)\n"
-                "[gguf_loader] Architecture in file: '%s'\n",
-                arch);
+        TN_LOG_ERR("gguf_loader",
+                   "[gguf_loader] missing required metadata (embedding_length / "
+                   "block_count / head_count / feed_forward_length)\n"
+                   "[gguf_loader] Architecture in file: '%s'\n",
+                   arch);
         return TN_ERR_INVALID_CONFIG;
     }
 
@@ -68,7 +69,7 @@ TernaryError config_from_gguf(Config *cfg, const GGUFHeader *hdr) {
         if (embd && embd->n_dims >= 2) cfg->vocab_size = (int)embd->dims[1];
     }
     if (cfg->vocab_size <= 0) {
-        fprintf(stderr, "[gguf_loader] cannot determine vocab_size\n");
+        TN_LOG_ERR("gguf_loader", "[gguf_loader] cannot determine vocab_size\n");
         return TN_ERR_INVALID_CONFIG;
     }
 
@@ -164,10 +165,10 @@ static void moe_config_read_gating(MoEConfig *mc, const GGUFHeader *hdr, int def
     int g = (int)gguf_meta_u32(hdr, k, 0);
     if (g == 0) g = default_gating;
     if (g != MOE_GATING_SOFTMAX && g != MOE_GATING_SIGMOID) {
-        fprintf(stderr,
-                "[gguf_loader] %s: expert_gating_func=%d not supported, "
-                "using softmax\n",
-                hdr->arch, g);
+        TN_LOG_ERR("gguf_loader",
+                   "[gguf_loader] %s: expert_gating_func=%d not supported, "
+                   "using softmax\n",
+                   hdr->arch, g);
         g = MOE_GATING_SOFTMAX;
     }
     mc->expert_gating_func = g;
@@ -201,7 +202,7 @@ TernaryError moe_config_from_gguf(MoEConfig *mc, const GGUFHeader *hdr) {
 #undef MK
         if (mc->ssm_conv_kernel <= 0 || mc->ssm_inner_size <= 0 || mc->ssm_state_size <= 0 ||
             mc->ssm_time_step_rank <= 0) {
-            fprintf(stderr, "[gguf_loader] mamba: missing/invalid ssm.* metadata\n");
+            TN_LOG_ERR("gguf_loader", "[gguf_loader] mamba: missing/invalid ssm.* metadata\n");
             return TN_ERR_INVALID_CONFIG;
         }
         mc->is_ssm = 1;
@@ -227,8 +228,8 @@ TernaryError moe_config_from_gguf(MoEConfig *mc, const GGUFHeader *hdr) {
 #undef MK
         if (mc->attn_head_dim <= 0 || mc->ssm_group_count <= 0 || mc->ssm_inner_size <= 0 ||
             mc->ssm_state_size <= 0 || mc->ssm_time_step_rank <= 0) {
-            fprintf(stderr, "[gguf_loader] qwen35: missing/invalid ssm.* or "
-                            "attention.key_length metadata\n");
+            TN_LOG_ERR("gguf_loader", "[gguf_loader] qwen35: missing/invalid ssm.* or "
+                                      "attention.key_length metadata\n");
             return TN_ERR_INVALID_CONFIG;
         }
         mc->has_linear_attn = 1;
@@ -277,9 +278,9 @@ TernaryError moe_config_from_gguf(MoEConfig *mc, const GGUFHeader *hdr) {
 
         if (mc->num_experts <= 0 || mc->num_experts_per_tok <= 0 || mc->expert_hidden_dim <= 0 ||
             mc->attn_head_dim <= 0) {
-            fprintf(stderr, "[gguf_loader] qwen3moe: missing/invalid expert_count / "
-                            "expert_used_count / expert_feed_forward_length / "
-                            "attention.key_length metadata\n");
+            TN_LOG_ERR("gguf_loader", "[gguf_loader] qwen3moe: missing/invalid expert_count / "
+                                      "expert_used_count / expert_feed_forward_length / "
+                                      "attention.key_length metadata\n");
             return TN_ERR_INVALID_CONFIG;
         }
         mc->is_moe      = true;

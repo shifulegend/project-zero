@@ -4,6 +4,7 @@
 #include <stdlib.h> /* free() for k_rope_cache pointer array */
 #include <string.h>
 
+#include "core/log.h"
 #include "core/platform.h"
 #include "kv_cache/kv_quant_ops.h"
 #include "kv_cache/kv_strategy.h"
@@ -26,8 +27,8 @@ static TernaryError kv_offload_carve(RunState *s, const char *dir, const size_t 
     }
     tn_i64 disk = file_backed_free_space(dir);
     if (disk >= 0 && (tn_i64)total > disk) {
-        fprintf(stderr, "[kv-offload] need %.1f GiB in %s, only %.1f GiB free\n",
-                (double)total / 1073741824.0, dir, (double)disk / 1073741824.0);
+        TN_LOG_INF("kv_offload", "[kv-offload] need %.1f GiB in %s, only %.1f GiB free\n",
+                   (double)total / 1073741824.0, dir, (double)disk / 1073741824.0);
         return TN_ERR_OOM;
     }
     FileBacked fb;
@@ -108,8 +109,9 @@ TernaryError run_state_alloc_ex(RunState *s, const Config *cfg, int max_seq_len,
         if (qtype != KV_TYPE_F32 &&
             kvq_row_layout((KVCacheType)qtype, head_dim, &row_bytes, &row_scales) != 0) {
             /* i4 groups need head_dim % TN_KV_I4_GROUP == 0; fall back to i8. */
-            fprintf(stderr, "[kv] --kv-type %s needs head_dim %% %d == 0 (head_dim %d); using i8\n",
-                    kv_type_name((KVCacheType)qtype), TN_KV_I4_GROUP, head_dim);
+            TN_LOG_ERR("kv",
+                       "[kv] --kv-type %s needs head_dim %% %d == 0 (head_dim %d); using i8\n",
+                       kv_type_name((KVCacheType)qtype), TN_KV_I4_GROUP, head_dim);
             qtype = KV_TYPE_I8;
             kvq_row_layout(KV_TYPE_I8, head_dim, &row_bytes, &row_scales);
         }

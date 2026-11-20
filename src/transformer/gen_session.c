@@ -15,6 +15,7 @@
 #include <time.h>
 
 #include "core/debug.h"
+#include "core/log.h"
 #include "core/step_timing.h"
 #include "core/timer.h"
 #include "distributed/dist_plan.h"
@@ -36,10 +37,10 @@
 /* 2026-10-22: since untrusted text is neutralised instead of rejected, the
  * tokenizer only fails when the prompt does not fit in the context. */
 static void report_encode_failure(const char *what, int seq_len) {
-    fprintf(stderr,
-            "[error] the %s does not fit in the model's context of %d tokens. "
-            "Nothing was generated; shorten it or raise --ctx-size.\n",
-            what, seq_len);
+    TN_LOG_ERR("error",
+               "[error] the %s does not fit in the model's context of %d tokens. "
+               "Nothing was generated; shorten it or raise --ctx-size.\n",
+               what, seq_len);
 }
 
 static const char *token_text(const Tokenizer *tok, int id) {
@@ -51,13 +52,13 @@ static const char *token_text(const Tokenizer *tok, int id) {
  * generated. Leading servers (llama.cpp, Ollama) answer with an empty message
  * and leave users to guess; name the evidence and the usual cause instead. */
 static void report_empty_generation(const Tokenizer *tok, int first_token, int last_prompt_token) {
-    fprintf(stderr,
-            "[warn] no tokens were generated: the first token the model chose was %d (\"%s\"), "
-            "a stop token; the prompt ended with token %d (\"%s\"). For a chat model this "
-            "usually means a chat-template problem: check the template "
-            "(--chat-template-file replaces it) or run with --verbose.\n",
-            first_token, token_text(tok, first_token), last_prompt_token,
-            token_text(tok, last_prompt_token));
+    TN_LOG_WRN("warn",
+               "[warn] no tokens were generated: the first token the model chose was %d (\"%s\"), "
+               "a stop token; the prompt ended with token %d (\"%s\"). For a chat model this "
+               "usually means a chat-template problem: check the template "
+               "(--chat-template-file replaces it) or run with --verbose.\n",
+               first_token, token_text(tok, first_token), last_prompt_token,
+               token_text(tok, last_prompt_token));
 }
 
 /* Renders and tokenizes the prompt into g->prompt_tokens / g->n_prompt.
@@ -131,7 +132,7 @@ static int build_prompt(GenSession *g, const char *prompt) {
         }
         if (!formatted) return -1;
 
-        if (g_tn_verbose) fprintf(stderr, "[DBG] formatted prompt: %s\n", formatted);
+        if (g_tn_verbose) TN_LOG_DBG("dbg", "[DBG] formatted prompt: %s\n", formatted);
 
         if (gp->assistant_prefix && gp->assistant_prefix[0]) {
             size_t fl = strlen(formatted), al = strlen(gp->assistant_prefix);
@@ -262,9 +263,12 @@ int gen_session_prepare(GenSession *g, const Config *cfg, const TransformerWeigh
 
     /* Debug: print prompt token IDs when verbose */
     if (g_tn_verbose) {
-        fprintf(stderr, "[DBG] n_prompt=%d  tokens:", n_prompt);
-        for (int i = 0; i < n_prompt && i < 32; i++) fprintf(stderr, " %d", g->prompt_tokens[i]);
-        fprintf(stderr, "\n");
+        char ids[32 * 12 + 1];
+        size_t used = 0;
+        ids[0]      = '\0';
+        for (int i = 0; i < n_prompt && i < 32; i++)
+            used += (size_t)snprintf(ids + used, sizeof(ids) - used, " %d", g->prompt_tokens[i]);
+        TN_LOG_DBG("gen_session", "[DBG] n_prompt=%d  tokens:%s\n", n_prompt, ids);
     }
 
     /* RNG: explicit seed (--seed / API "seed") for reproducible sampling,
@@ -446,8 +450,8 @@ int gen_session_consume(GenSession *g, float *logits) {
                     }
                 }
             }
-            fprintf(
-                stderr,
+            tn_log(
+                TN_LOG_DEBUG, "dbg",
                 "[DBG] step=%d sampled=%d  top5:[%d(%.3f) %d(%.3f) %d(%.3f) %d(%.3f) %d(%.3f)]\n",
                 step, g->next, top5i[0], top5v[0], top5i[1], top5v[1], top5i[2], top5v[2], top5i[3],
                 top5v[3], top5i[4], top5v[4]);
@@ -528,7 +532,7 @@ void gen_session_end(GenSession *g) {
     if (g->tokens_generated > 1 && g->gen_start_us > 0) {
         int64_t end_us = timer_now_us();
         tok_per_sec    = timer_tokens_per_sec(g->gen_start_us, end_us, g->tokens_generated);
-        fprintf(stderr, "\n[gen] %.2f tok/s (%d tokens)\n", tok_per_sec, g->tokens_generated);
+        TN_LOG_INF("gen", "\n[gen] %.2f tok/s (%d tokens)\n", tok_per_sec, g->tokens_generated);
     }
     if (gp && gp->stats) {
         gp->stats->prompt_tokens     = g->n_prompt;

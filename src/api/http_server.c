@@ -102,6 +102,7 @@
 #include "api/update_endpoint.h"
 #include "api/watermark_endpoint.h"
 #include "core/debug.h"
+#include "core/log.h"
 #include "kv_cache/kv_strategy.h"
 #include "multimodal/vision_pipeline.h"
 #include "reasoning/best_of.h"
@@ -262,7 +263,7 @@ static void handle_connection(int fd, ApiContext *ctx) {
         http_send_error_ex(fd, HTTP_NOT_FOUND, "Not found", extra_headers);
     }
     metrics_record_request(&ctx->metrics, status);
-    if (g_tn_verbose) fprintf(stderr, "[API] request %s -> %d\n", req.request_id, status);
+    if (g_tn_verbose) TN_LOG_INF("api", "[API] request %s -> %d\n", req.request_id, status);
 
     free(recv_buf);
     close(fd);
@@ -307,7 +308,7 @@ static void *listener_thread_fn(void *arg) {
             /* The last octet is masked: the log names the network, not the client. */
             char peer[INET_ADDRSTRLEN + 2];
             net_format_peer_masked(&client_addr.sin_addr, peer, sizeof(peer));
-            fprintf(stderr, "[API] Connection from %s\n", peer);
+            TN_LOG_INF("api", "[API] Connection from %s\n", peer);
         }
 
         /* Bound the work a client can hold: a read/write timeout so a stalled
@@ -455,23 +456,24 @@ TernaryError api_server_start(int port, ApiContext *ctx) {
     }
     ctx->listener_thread = tid;
 
-    printf("[API] Server listening on http://127.0.0.1:%d\n", port);
-    printf("[API] Endpoints:\n");
-    printf("[API]   GET  http://127.0.0.1:%d/v1/models\n", port);
-    printf("[API]   POST http://127.0.0.1:%d/v1/chat/completions\n", port);
-    printf("[API]   POST http://127.0.0.1:%d/v1/chat/completions/cancel\n", port);
-    printf("[API]   GET  http://127.0.0.1:%d/health\n", port);
-    printf("[API]   GET  http://127.0.0.1:%d/docs\n", port);
+    TN_OUT_INF("api", "[API] Server listening on http://127.0.0.1:%d\n", port);
+    TN_OUT_INF("api", "[API] Endpoints:\n");
+    TN_OUT_INF("api", "[API]   GET  http://127.0.0.1:%d/v1/models\n", port);
+    TN_OUT_INF("api", "[API]   POST http://127.0.0.1:%d/v1/chat/completions\n", port);
+    TN_OUT_INF("api", "[API]   POST http://127.0.0.1:%d/v1/chat/completions/cancel\n", port);
+    TN_OUT_INF("api", "[API]   GET  http://127.0.0.1:%d/health\n", port);
+    TN_OUT_INF("api", "[API]   GET  http://127.0.0.1:%d/docs\n", port);
     if (ctx->server_config.web_ui != WEBUI_MODE_OFF)
-        printf("[API]   GET  http://127.0.0.1:%d/  (web chat UI%s)\n", port,
-               ctx->server_config.static_dir ? ", served from disk" : "");
+        TN_OUT_INF("api", "[API]   GET  http://127.0.0.1:%d/  (web chat UI%s)\n", port,
+                   ctx->server_config.static_dir ? ", served from disk" : "");
     if (ctx->server_config.metrics.enabled)
-        printf("[API]   GET  http://127.0.0.1:%d/metrics\n", port);
+        TN_OUT_INF("api", "[API]   GET  http://127.0.0.1:%d/metrics\n", port);
     if (ctx->server_config.cors.enabled)
-        printf("[API]   CORS enabled (%d allowed origin%s)\n", ctx->server_config.cors.num_origins,
-               ctx->server_config.cors.num_origins == 1 ? "" : "s");
+        TN_OUT_INF("api", "[API]   CORS enabled (%d allowed origin%s)\n",
+                   ctx->server_config.cors.num_origins,
+                   ctx->server_config.cors.num_origins == 1 ? "" : "s");
     if (ctx->server_config.auth.api_key)
-        printf("[API]   Auth enabled (Authorization: Bearer <key> required)\n");
+        TN_OUT_INF("api", "[API]   Auth enabled (Authorization: Bearer <key> required)\n");
     return TN_OK;
 }
 
@@ -505,10 +507,10 @@ static void start_parallel(ApiContext *ctx) {
     }
     gen_queue_set_capacity(&ctx->gen_queue, ctx->parallel_slots);
     if (want > 1)
-        printf("[API] Parallel: %d request%s at once%s%s%s\n", ctx->parallel_slots,
-               ctx->parallel_slots == 1 ? "" : "s", ctx->parallel_note ? " — " : "",
-               ctx->parallel_note ? ctx->parallel_note : "",
-               ctx->parallel_note ? "" : " (batched)");
+        TN_OUT_INF("api", "[API] Parallel: %d request%s at once%s%s%s\n", ctx->parallel_slots,
+                   ctx->parallel_slots == 1 ? "" : "s", ctx->parallel_note ? " — " : "",
+                   ctx->parallel_note ? ctx->parallel_note : "",
+                   ctx->parallel_note ? "" : " (batched)");
 }
 
 void api_server_stop(ApiContext *ctx) {
@@ -541,7 +543,7 @@ void api_server_stop(ApiContext *ctx) {
          gen_queue_in_use(&ctx->gen_queue) > 0 || gen_queue_waiting(&ctx->gen_queue) > 0;
          waited_ms += 10) {
         if (waited_ms == 2000)
-            fprintf(stderr, "[API] waiting for in-flight generations to stop...\n");
+            TN_LOG_INF("api", "[API] waiting for in-flight generations to stop...\n");
         struct timespec ts = {0, 10 * 1000000L};
         nanosleep(&ts, NULL);
     }
@@ -564,8 +566,8 @@ void api_server_stop(ApiContext *ctx) {
         }
         int left = atomic_load(&ctx->active_connections);
         if (left > 0)
-            fprintf(stderr, "[API] %d connection(s) still open after %d ms; exiting anyway\n", left,
-                    cap_ms);
+            TN_LOG_INF("api", "[API] %d connection(s) still open after %d ms; exiting anyway\n",
+                       left, cap_ms);
     }
 
     /* server_config/cancel/generation_mutex are still not freed here: a

@@ -9,6 +9,7 @@ src/cli/session_extras.c 1
 src/cli/session_server.c 1
 src/config/pz_config.c 2
 src/core/cpu_features.c 4
+src/core/log.c 2
 src/core/step_timing.c 2
 src/distributed/dist_plan.c 1
 src/kv_cache/kv_strategy.c 1

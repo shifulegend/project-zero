@@ -9,6 +9,7 @@
 #include "cli/color.h"
 #include "cli/live_stats.h"
 #include "cli/md_render.h"
+#include "core/log.h"
 #include "core/timer.h"
 #include "rag/auto_retrieve.h"
 #include "rag/auto_save.h"
@@ -202,7 +203,7 @@ void run_repl(Config *p, TransformerWeights *w, const MoEConfig *mc, VisionConfi
         }
         md_render_flush(&rc.md);
         if (rc.is_tty && rc.live.count >= 2)
-            fprintf(stderr, "\n"); /* move past the live tok/s line */
+            fputc('\n', stderr); /* move past the live tok/s line (terminal UI, not a log) */
         md_render_free(&rc.md);
         int64_t end_time = timer_now_us();
         printf("\n");

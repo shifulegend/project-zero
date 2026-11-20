@@ -328,6 +328,9 @@ jobs:
       - name: Run E2E CLI exit-status test (errors exit non-zero)
         run: tests/e2e_cli_exit_status.sh models/smollm2-q8_0.gguf
 
+      - name: Run E2E cross-site POST test (foreign Origin refused on every POST route)
+        run: tests/e2e_cross_site_post.sh models/smollm2-q8_0.gguf
+
       - name: Run E2E API concurrency test (429 while busy, none for sequential clients)
         run: tests/e2e_api_concurrency.sh models/smollm2-q8_0.gguf
 

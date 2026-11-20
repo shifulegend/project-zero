@@ -120,9 +120,7 @@ int run_agent_loop(const char *prompt, const Config *cfg, const TransformerWeigh
         int bos = (tok->bos_token_id >= 0)  ? tok->bos_token_id
                   : (cfg->bos_token_id > 0) ? cfg->bos_token_id
                                             : -1;
-        if (bos >= 0) {
-            prompt_tokens[n_prompt++] = bos;
-        }
+        if (bos >= 0) prompt_tokens[n_prompt++] = bos;
     }
 
     int n_encoded = tokenizer_encode(tok, prompt, strlen(prompt), &prompt_tokens[n_prompt],
@@ -142,7 +140,8 @@ int run_agent_loop(const char *prompt, const Config *cfg, const TransformerWeigh
     int prev_token = -1;
     int next       = 0;
 
-    ti_init();
+    TiParser ti;
+    ti_init(&ti);
     char tag_buf[4096];
 
     for (int pos = 0; pos < max_tokens && pos < cfg->seq_len; pos++) {
@@ -177,7 +176,7 @@ int run_agent_loop(const char *prompt, const Config *cfg, const TransformerWeigh
         if (pos >= n_prompt - 1) {
             const char *piece = tokenizer_decode(tok, prev_token, next);
             if (piece) {
-                TI_Tag tag = ti_process_piece(piece, tag_buf, sizeof(tag_buf));
+                TI_Tag tag = ti_process_piece(&ti, piece, tag_buf, sizeof(tag_buf));
 
                 if (tag == TI_TAG_NONE) {
                     printf("%s", piece);

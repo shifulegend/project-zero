@@ -3,17 +3,14 @@
 #include <stdio.h>
 #include <string.h>
 
-/* Simple streaming tag parser. Buffers partial pieces between calls. */
-static char buffer[8192];
-static size_t buf_pos = 0;
-
-void ti_init(void) {
-    buf_pos   = 0;
-    buffer[0] = '\0';
+/* Simple streaming tag parser. Buffers partial pieces between calls (in the TiParser). */
+void ti_init(TiParser *parser) {
+    parser->pos       = 0;
+    parser->buffer[0] = '\0';
 }
 
-void ti_reset(void) {
-    ti_init();
+void ti_reset(TiParser *parser) {
+    ti_init(parser);
 }
 
 static const struct {
@@ -28,22 +25,22 @@ static const struct {
     {"<result>", "</result>", TI_TAG_RESULT},
 };
 
-TI_Tag ti_process_piece(const char *piece, char *out_buf, size_t out_buf_size) {
+TI_Tag ti_process_piece(TiParser *parser, const char *piece, char *out_buf, size_t out_buf_size) {
     if (!piece || piece[0] == '\0') return TI_TAG_NONE;
 
     size_t piece_len = strlen(piece);
-    /* Append piece into buffer (truncate if full) */
-    size_t space   = sizeof(buffer) - 1 - buf_pos;
+    /* Append piece into parser->buffer (truncate if full) */
+    size_t space   = sizeof(parser->buffer) - 1 - parser->pos;
     size_t to_copy = piece_len < space ? piece_len : space;
     if (to_copy > 0) {
-        memcpy(buffer + buf_pos, piece, to_copy);
-        buf_pos += to_copy;
-        buffer[buf_pos] = '\0';
+        memcpy(parser->buffer + parser->pos, piece, to_copy);
+        parser->pos += to_copy;
+        parser->buffer[parser->pos] = '\0';
     }
 
     /* Look for any complete tag */
     for (size_t i = 0; i < sizeof(tags) / sizeof(tags[0]); i++) {
-        char *open = strstr(buffer, tags[i].open);
+        char *open = strstr(parser->buffer, tags[i].open);
         if (!open) continue;
         char *close = strstr(open + strlen(tags[i].open), tags[i].close);
         if (!close) continue; /* wait for closing tag */
@@ -62,8 +59,8 @@ TI_Tag ti_process_piece(const char *piece, char *out_buf, size_t out_buf_size) {
         /* Remove consumed prefix up to end of closing tag */
         char *rest      = close + strlen(tags[i].close);
         size_t rest_len = strlen(rest);
-        memmove(buffer, rest, rest_len + 1);
-        buf_pos = rest_len;
+        memmove(parser->buffer, rest, rest_len + 1);
+        parser->pos = rest_len;
         return tags[i].tag;
     }
 

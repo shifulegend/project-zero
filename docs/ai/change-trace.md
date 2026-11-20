@@ -21,6 +21,11 @@
 - Proof: 6 unit tests (including the stale-floor case) pass; the checker passes on the fresh tracefile.
 - Areas: `tools/check_coverage.py`, `tools/test_check_coverage.py`, `tools/coverage_floor.txt`.
 
+### 2026-11-20 — The agent's tag parser keeps its state in a `TiParser`
+- What: `agent/tool_interceptor` buffered partial `<exec>` / `<think>` tags in two file-scope statics (an 8 KiB buffer and its position). The state is now a `TiParser` that the caller owns (`ti_init(&p)`, `ti_process_piece(&p, ...)`), so two agent loops can never mix their text; mutable statics in `src/`: 69 to 67. `tests/test_tool_interceptor.c` gained a test with two parsers fed interleaved pieces.
+- Verified: `make test` green on gcc and clang; complexity, size and format checks pass (`run_agent_loop` stays at its recorded size).
+- Why: decision 14.f (explicit context instead of globals where a context is possible; the remaining statics are caches, dispatch tables and thread-local scratch, listed in the baseline and tracked one by one).
+
 ### 2026-11-20 — One table for the GGUF tensor types
 - What: the three per-type switches in `core/gguf_reader.c` (block bytes, weights per block, name; about 170 lines) are one table, `k_type_info` (type, name, block bytes, block elements); a new quantisation is one row. `gguf_type_block_bytes()` and `gguf_type_block_elems()` are public next to `gguf_type_name()`. The file is 494 lines (was over 500). `tests/test_gguf_type_info.c` pins all 71 type values (0..70) to what the old switches returned (captured from the old code before the change): block bytes, elements and names of every listed type, and the defaults (0 bytes, 1 element, "UNKNOWN") of every unlisted one.
 - Verified: `make test` green on gcc and clang; greedy output identical on SmolLM2, BitNet and DeepSeek-V2-Lite; the shrink-only baselines fell again (401 complexity entries, 27 files over 500 lines).

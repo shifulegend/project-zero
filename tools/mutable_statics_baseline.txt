@@ -1,6 +1,5 @@
 # Mutable static variables per file in src/ (tools/check_mutable_statics.py); may only go down.
 src/agent/cmd_exec.c 1
-src/agent/tool_interceptor.c 2
 src/api/config_endpoint.c 1
 src/api/http_request.c 2
 src/api/openapi.c 1

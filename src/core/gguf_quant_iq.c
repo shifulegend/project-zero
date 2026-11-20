@@ -34,9 +34,7 @@ void gguf_dequant_iq4_nl(float *out, const void *data, size_t n_elems) {
 
     for (size_t b = 0; b < n_blocks; b++) {
         const uint8_t *blk = p + b * IQ4_NL_BYTES_PER_BLOCK;
-        uint16_t d_bits;
-        memcpy(&d_bits, blk, 2);
-        float d = tn_fp16_to_f32(d_bits);
+        float d            = tn_fp16_load(blk);
         if (!(d == d)) d = 0.0f; /* NaN guard: bad scale → zero block */
         const uint8_t *qs = blk + 2;
         float *dst        = out + b * IQ4_NL_BLOCK_SIZE;
@@ -199,9 +197,7 @@ void gguf_dequant_iq2_xxs(float *out, const void *data, size_t n_elems) {
 
     for (size_t b = 0; b < n_super; b++) {
         const uint8_t *blk = p + b * IQ2_XXS_BYTES;
-        uint16_t d_bits;
-        memcpy(&d_bits, blk, 2);
-        float d = tn_fp16_to_f32(d_bits);
+        float d            = tn_fp16_load(blk);
         if (!(d == d)) d = 0.0f;     /* NaN guard */
         const uint8_t *qs = blk + 2; /* 64 bytes = 16 groups of 4 bytes = 8 * 2 u32 */
 
@@ -640,9 +636,7 @@ void gguf_dequant_iq2_xs(float *out, const void *data, size_t n_elems) {
 
     for (size_t b = 0; b < n_super; b++) {
         const uint8_t *blk = p + b * IQ2_XS_BYTES;
-        uint16_t d_bits;
-        memcpy(&d_bits, blk, 2);
-        float d = tn_fp16_to_f32(d_bits);
+        float d            = tn_fp16_load(blk);
         if (!(d == d)) d = 0.0f;                             /* NaN guard */
         const uint16_t *qs    = (const uint16_t *)(blk + 2); /* 32 u16 = 64 bytes */
         const uint8_t *scales = blk + 2 + 64;                /* 8 bytes */
@@ -686,9 +680,7 @@ void gguf_dequant_iq2_s(float *out, const void *data, size_t n_elems) {
 
     for (size_t b = 0; b < n_super; b++) {
         const uint8_t *blk = p + b * IQ2_S_BYTES;
-        uint16_t d_bits;
-        memcpy(&d_bits, blk, 2);
-        float d = tn_fp16_to_f32(d_bits);
+        float d            = tn_fp16_load(blk);
         if (!(d == d)) d = 0.0f;                   /* NaN guard */
         const uint8_t *qs_base = blk + 2;          /* 64 bytes: idx[32] + signs[32] */
         const uint8_t *qh      = blk + 2 + 64;     /* 8 bytes */
@@ -845,9 +837,7 @@ void gguf_dequant_iq3_xxs(float *out, const void *data, size_t n_elems) {
 
     for (size_t b = 0; b < n_super; b++) {
         const uint8_t *blk = p + b * IQ3_XXS_BYTES;
-        uint16_t d_bits;
-        memcpy(&d_bits, blk, 2);
-        float d = tn_fp16_to_f32(d_bits);
+        float d            = tn_fp16_load(blk);
         if (!(d == d)) d = 0.0f;                                       /* NaN guard */
         const uint8_t *qs_base          = blk + 2;                     /* 96 bytes */
         const uint8_t *scales_and_signs = qs_base + IQ3_XXS_SUPER / 4; /* offset 64 */
@@ -896,9 +886,7 @@ void gguf_dequant_iq3_s(float *out, const void *data, size_t n_elems) {
 
     for (size_t b = 0; b < n_super; b++) {
         const uint8_t *blk = p + b * IQ3_S_BYTES;
-        uint16_t d_bits;
-        memcpy(&d_bits, blk, 2);
-        float d = tn_fp16_to_f32(d_bits);
+        float d            = tn_fp16_load(blk);
         if (!(d == d)) d = 0.0f;                           /* NaN guard */
         const uint8_t *qs_base    = blk + 2;               /* 64 bytes */
         const uint8_t *qh_base    = blk + 2 + 64;          /* 8 bytes */
@@ -1493,9 +1481,7 @@ void gguf_dequant_iq1_s(float *out, const void *data, size_t n_elems) {
 
     for (size_t b = 0; b < n_super; b++) {
         const uint8_t *blk = p + b * IQ1_S_BYTES;
-        uint16_t d_bits;
-        memcpy(&d_bits, blk, 2);
-        float d = tn_fp16_to_f32(d_bits);
+        float d            = tn_fp16_load(blk);
         if (!(d == d)) d = 0.0f;                /* NaN guard */
         const uint8_t *qs       = blk + 2;      /* 32 bytes */
         const uint8_t *qh_bytes = blk + 2 + 32; /* 16 bytes -> 8 x u16 */

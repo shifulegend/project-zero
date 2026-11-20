@@ -214,9 +214,7 @@ void gguf_dequant_q3_k(float *out, const void *data, size_t n_elems) {
         const uint8_t *hm  = blk;      /* hmask[32] */
         const uint8_t *qs  = blk + 32; /* qs[64]    */
         const uint8_t *sc  = blk + 96; /* scales[12]*/
-        uint16_t d_bits;
-        memcpy(&d_bits, blk + 108, 2);
-        float d = tn_fp16_to_f32(d_bits);
+        float d            = tn_fp16_load(blk + 108);
 
         /* Unpack 16 sub-block scales (6-bit each) from 12 packed bytes.
          * Exact bit manipulation from llama.cpp dequantize_row_q3_K(). */
@@ -340,9 +338,7 @@ void gguf_dequant_q6_k(float *out, const void *data, size_t n_elems) {
         const uint8_t *ql_base = blk;                         /* 128 bytes */
         const uint8_t *qh_base = blk + 128;                   /* 64 bytes  */
         const int8_t *sc_base  = (const int8_t *)(blk + 192); /* 16 bytes */
-        uint16_t d_bits;
-        memcpy(&d_bits, blk + 208, 2);
-        float d = tn_fp16_to_f32(d_bits);
+        float d                = tn_fp16_load(blk + 208);
 
         float *dst = out + b * Q6_K_SUPER;
 

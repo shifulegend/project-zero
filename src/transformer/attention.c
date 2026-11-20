@@ -42,16 +42,16 @@
 /* Quantized KV rows (plan 8.5, i8/i4): row r = KV_SCALE_IDX(...) -> its data
  * bytes and its F32 scales (see RunState.kv_row_bytes/kv_row_scales). */
 static inline tn_i8 *kvq_k(const RunState *s, size_t r) {
-    return s->key_cache_q + r * (size_t)s->kv_row_bytes;
+    return s->kvs.key_cache_q + r * (size_t)s->kvs.row_bytes;
 }
 static inline tn_i8 *kvq_v(const RunState *s, size_t r) {
-    return s->value_cache_q + r * (size_t)s->kv_row_bytes;
+    return s->kvs.value_cache_q + r * (size_t)s->kvs.row_bytes;
 }
 static inline float *kvq_ks(const RunState *s, size_t r) {
-    return s->key_scale + r * (size_t)s->kv_row_scales;
+    return s->kvs.key_scale + r * (size_t)s->kvs.row_scales;
 }
 static inline float *kvq_vs(const RunState *s, size_t r) {
-    return s->value_scale + r * (size_t)s->kv_row_scales;
+    return s->kvs.value_scale + r * (size_t)s->kvs.row_scales;
 }
 
 /* y += b (n floats); no-op when the model has no bias for this projection. */
@@ -97,7 +97,7 @@ static void attn_one_head(const AttnHeadArgs *a, int h) {
     int valid_ctx = sw_valid_count(&s->sw, pos);
 
     /* Phase 27.3: single-pass tiled online-softmax kernel (opt-in; F32 KV only). */
-    if (a->use_tiled && s->kv_type == KV_TYPE_F32) {
+    if (a->use_tiled && s->kvs.type == KV_TYPE_F32) {
         size_t slab = KV_CACHE_IDX(layer, kv_h, 0, 0, n_kv_heads, max_seq, head_dim);
         attn_head_tiled(s->xb + h * head_dim, q_head, &s->key_cache[slab], &s->value_cache[slab],
                         head_dim, &s->sw, pos, valid_ctx, inv_sqrt_head_dim, a->tile);
@@ -118,11 +118,11 @@ static void attn_one_head(const AttnHeadArgs *a, int h) {
 
         size_t k_offset = KV_CACHE_IDX(layer, kv_h, mapped_t, 0, n_kv_heads, max_seq, head_dim);
         float score;
-        if (s->kv_type != KV_TYPE_F32) {
+        if (s->kvs.type != KV_TYPE_F32) {
             /* Plan 8.5: quantized row · F32 query, scales folded in. */
             size_t r = KV_SCALE_IDX(layer, kv_h, mapped_t, n_kv_heads, max_seq);
             score =
-                kvq_dot_row((KVCacheType)s->kv_type, q_head, kvq_k(s, r), kvq_ks(s, r), head_dim);
+                kvq_dot_row((KVCacheType)s->kvs.type, q_head, kvq_k(s, r), kvq_ks(s, r), head_dim);
             (void)k_offset;
         } else {
             /* Dot product — use SIMD-dispatched vec_dot for speed */
@@ -148,9 +148,9 @@ static void attn_one_head(const AttnHeadArgs *a, int h) {
 
         size_t v_offset = KV_CACHE_IDX(layer, kv_h, v_mapped, 0, n_kv_heads, max_seq, head_dim);
         float a_t       = att_scores[t];
-        if (s->kv_type != KV_TYPE_F32) {
+        if (s->kvs.type != KV_TYPE_F32) {
             size_t r = KV_SCALE_IDX(layer, kv_h, v_mapped, n_kv_heads, max_seq);
-            kvq_axpy_row((KVCacheType)s->kv_type, out_head, a_t, kvq_v(s, r), kvq_vs(s, r),
+            kvq_axpy_row((KVCacheType)s->kvs.type, out_head, a_t, kvq_v(s, r), kvq_vs(s, r),
                          head_dim);
             (void)v_offset;
         } else {
@@ -326,11 +326,11 @@ void attention_forward(RunState *s, const TransformerWeights *w, const Config *c
     for (int kv_h = 0; kv_h < n_kv_heads; kv_h++) {
         size_t cache_offset =
             KV_CACHE_IDX(layer, kv_h, mapped_pos, 0, n_kv_heads, max_seq, head_dim);
-        if (s->kv_type != KV_TYPE_F32) {
+        if (s->kvs.type != KV_TYPE_F32) {
             size_t row = KV_SCALE_IDX(layer, kv_h, mapped_pos, n_kv_heads, max_seq);
-            kvq_store((KVCacheType)s->kv_type, kvq_k(s, row), kvq_ks(s, row),
+            kvq_store((KVCacheType)s->kvs.type, kvq_k(s, row), kvq_ks(s, row),
                       &k_buf[kv_h * head_dim], head_dim);
-            kvq_store((KVCacheType)s->kv_type, kvq_v(s, row), kvq_vs(s, row),
+            kvq_store((KVCacheType)s->kvs.type, kvq_v(s, row), kvq_vs(s, row),
                       &v_buf[kv_h * head_dim], head_dim);
             (void)cache_offset;
         } else {
@@ -461,8 +461,8 @@ static void rows_one_head(const RowsHeadArgs *a, int h) {
             int mapped_t     = sw_map_position(&s->sw, hist_logical);
             size_t k_offset = KV_CACHE_IDX(layer, kv_h, mapped_t, 0, n_kv_heads, max_seq, head_dim);
             size_t kr       = KV_SCALE_IDX(layer, kv_h, mapped_t, n_kv_heads, max_seq);
-            float score     = (s->kv_type != KV_TYPE_F32)
-                                  ? kvq_dot_row((KVCacheType)s->kv_type, q_head, kvq_k(s, kr),
+            float score     = (s->kvs.type != KV_TYPE_F32)
+                                  ? kvq_dot_row((KVCacheType)s->kvs.type, q_head, kvq_k(s, kr),
                                                 kvq_ks(s, kr), head_dim)
                                   : tn_vec_dot(q_head, &s->key_cache[k_offset], head_dim);
             att_scores[t]   = score * a->inv_sqrt_head_dim;
@@ -475,9 +475,9 @@ static void rows_one_head(const RowsHeadArgs *a, int h) {
             int mapped_t     = sw_map_position(&s->sw, hist_logical);
             size_t v_offset = KV_CACHE_IDX(layer, kv_h, mapped_t, 0, n_kv_heads, max_seq, head_dim);
             float w_t       = att_scores[t];
-            if (s->kv_type != KV_TYPE_F32) {
+            if (s->kvs.type != KV_TYPE_F32) {
                 size_t vr = KV_SCALE_IDX(layer, kv_h, mapped_t, n_kv_heads, max_seq);
-                kvq_axpy_row((KVCacheType)s->kv_type, out_head, w_t, kvq_v(s, vr), kvq_vs(s, vr),
+                kvq_axpy_row((KVCacheType)s->kvs.type, out_head, w_t, kvq_v(s, vr), kvq_vs(s, vr),
                              head_dim);
             } else
                 tn_vec_saxpy(out_head, w_t, &s->value_cache[v_offset], head_dim);
@@ -626,11 +626,11 @@ static TernaryError attention_forward_rows(RunState *const *states, const int *p
         for (int kv_h = 0; kv_h < n_kv_heads; kv_h++) {
             size_t cache_offset =
                 KV_CACHE_IDX(layer, kv_h, mapped_pos, 0, n_kv_heads, max_seq, head_dim);
-            if (s->kv_type != KV_TYPE_F32) {
+            if (s->kvs.type != KV_TYPE_F32) {
                 size_t row = KV_SCALE_IDX(layer, kv_h, mapped_pos, n_kv_heads, max_seq);
-                kvq_store((KVCacheType)s->kv_type, kvq_k(s, row), kvq_ks(s, row),
+                kvq_store((KVCacheType)s->kvs.type, kvq_k(s, row), kvq_ks(s, row),
                           &kbuf_k[kv_h * head_dim], head_dim);
-                kvq_store((KVCacheType)s->kv_type, kvq_v(s, row), kvq_vs(s, row),
+                kvq_store((KVCacheType)s->kvs.type, kvq_v(s, row), kvq_vs(s, row),
                           &v_k[kv_h * head_dim], head_dim);
                 (void)cache_offset;
             } else {
@@ -707,7 +707,7 @@ TernaryError attention_forward_batch(RunState *s, SpecBatchScratch *sb, const Tr
     }
     if (mc && mc->has_linear_attn) {
         /* Qwen3.5/3.6 hybrid's Gated-DeltaNet linear-attention layers hold a
-     * genuinely recurrent state (q35_recur_state) that position k+1's
+     * genuinely recurrent state (q35.recur_state) that position k+1's
      * update must read only after position k's update has landed -- this
      * cannot be batched with a local restructuring like the write/read
      * split above. Refuse cleanly; speculative_generate() checks this once

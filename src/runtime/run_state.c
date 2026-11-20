@@ -16,7 +16,7 @@
 
 /* Phase 31: carve `n` buffers of sizes[i] bytes out of one disk-backed
  * mapping in `dir`, each 64-byte aligned. On success out[i] point into
- * s->kv_offload_base. */
+ * s->kvs.offload_base. */
 static TernaryError kv_offload_carve(RunState *s, const char *dir, const size_t *sizes, void **out,
                                      int n) {
     size_t total = 0;
@@ -34,9 +34,9 @@ static TernaryError kv_offload_carve(RunState *s, const char *dir, const size_t 
     FileBacked fb;
     TernaryError e = file_backed_alloc(&fb, dir, total);
     if (e != TN_OK) return e;
-    s->kv_offload_base  = fb.base;
-    s->kv_offload_bytes = fb.bytes;
-    size_t off          = 0;
+    s->kvs.offload_base  = fb.base;
+    s->kvs.offload_bytes = fb.bytes;
+    size_t off           = 0;
     for (int i = 0; i < n; i++) {
         out[i] = (char *)fb.base + off;
         off += (sizes[i] + (TN_SIMD_ALIGN - 1)) & ~(size_t)(TN_SIMD_ALIGN - 1);
@@ -124,9 +124,9 @@ TernaryError run_state_alloc_ex(RunState *s, const Config *cfg, int max_seq_len,
                 run_state_free(s);
                 return TN_ERR_OOM;
             }
-            s->kv_type       = qtype;
-            s->kv_row_bytes  = row_bytes;
-            s->kv_row_scales = row_scales;
+            s->kvs.type       = qtype;
+            s->kvs.row_bytes  = row_bytes;
+            s->kvs.row_scales = row_scales;
             if (offload_dir) {
                 size_t sz[4]   = {data_bytes, data_bytes, scale_n * sizeof(float),
                                   scale_n * sizeof(float)};
@@ -136,19 +136,22 @@ TernaryError run_state_alloc_ex(RunState *s, const Config *cfg, int max_seq_len,
                     run_state_free(s);
                     return e;
                 }
-                s->key_cache_q   = (tn_i8 *)pp[0];
-                s->value_cache_q = (tn_i8 *)pp[1];
-                s->key_scale     = (float *)pp[2];
-                s->value_scale   = (float *)pp[3];
+                s->kvs.key_cache_q   = (tn_i8 *)pp[0];
+                s->kvs.value_cache_q = (tn_i8 *)pp[1];
+                s->kvs.key_scale     = (float *)pp[2];
+                s->kvs.value_scale   = (float *)pp[3];
             } else {
-                s->key_cache_q =
+                s->kvs.key_cache_q =
                     (tn_i8 *)tn_aligned_calloc(data_bytes, sizeof(tn_i8), TN_SIMD_ALIGN);
-                s->value_cache_q =
+                s->kvs.value_cache_q =
                     (tn_i8 *)tn_aligned_calloc(data_bytes, sizeof(tn_i8), TN_SIMD_ALIGN);
-                s->key_scale   = (float *)tn_aligned_calloc(scale_n, sizeof(float), TN_SIMD_ALIGN);
-                s->value_scale = (float *)tn_aligned_calloc(scale_n, sizeof(float), TN_SIMD_ALIGN);
+                s->kvs.key_scale =
+                    (float *)tn_aligned_calloc(scale_n, sizeof(float), TN_SIMD_ALIGN);
+                s->kvs.value_scale =
+                    (float *)tn_aligned_calloc(scale_n, sizeof(float), TN_SIMD_ALIGN);
             }
-            if (!s->key_cache_q || !s->value_cache_q || !s->key_scale || !s->value_scale) {
+            if (!s->kvs.key_cache_q || !s->kvs.value_cache_q || !s->kvs.key_scale ||
+                !s->kvs.value_scale) {
                 run_state_free(s);
                 return TN_ERR_OOM;
             }
@@ -202,23 +205,23 @@ void run_state_free(RunState *s) {
         mamba_state_free(s->mamba);
         s->mamba = NULL;
     }
-    if (s->kv_offload_base) {
+    if (s->kvs.offload_base) {
         /* KV buffers point into the disk-backed mapping, not the aligned heap. */
-        FileBacked fb = {s->kv_offload_base, s->kv_offload_bytes};
+        FileBacked fb = {s->kvs.offload_base, s->kvs.offload_bytes};
         file_backed_free(&fb);
-        s->kv_offload_base = NULL;
+        s->kvs.offload_base = NULL;
         s->key_cache = s->value_cache = NULL;
-        s->key_cache_q = s->value_cache_q = NULL;
-        s->key_scale = s->value_scale = NULL;
+        s->kvs.key_cache_q = s->kvs.value_cache_q = NULL;
+        s->kvs.key_scale = s->kvs.value_scale = NULL;
     }
-    tn_aligned_free(s->key_cache_q);
-    s->key_cache_q = NULL;
-    tn_aligned_free(s->value_cache_q);
-    s->value_cache_q = NULL;
-    tn_aligned_free(s->key_scale);
-    s->key_scale = NULL;
-    tn_aligned_free(s->value_scale);
-    s->value_scale = NULL;
+    tn_aligned_free(s->kvs.key_cache_q);
+    s->kvs.key_cache_q = NULL;
+    tn_aligned_free(s->kvs.value_cache_q);
+    s->kvs.value_cache_q = NULL;
+    tn_aligned_free(s->kvs.key_scale);
+    s->kvs.key_scale = NULL;
+    tn_aligned_free(s->kvs.value_scale);
+    s->kvs.value_scale = NULL;
     tn_aligned_free(s->x);
     tn_aligned_free(s->xb);
     tn_aligned_free(s->xb2);
@@ -230,20 +233,20 @@ void run_state_free(RunState *s) {
     tn_aligned_free(s->key_cache);
     tn_aligned_free(s->value_cache);
     tn_aligned_free(s->rope_freq);
-    tn_aligned_free(s->mla_rope_freq);
+    tn_aligned_free(s->mla.mla_rope_freq);
     /* k_rope_cache is allocated per-layer by mla_run_state_alloc(); free if present */
-    if (s->k_rope_cache) {
+    if (s->mla.k_rope_cache) {
         /* number of layers is unknown here; mla_run_state_alloc stores layers in cache[0..n-1].
      * We free the pointer array itself — the per-layer buffers are freed by
      * mla_run_state_free() which must be called before run_state_free(). */
-        free(s->k_rope_cache);
-        s->k_rope_cache = NULL;
+        free(s->mla.k_rope_cache);
+        s->mla.k_rope_cache = NULL;
     }
     memset(s, 0, sizeof(*s));
 }
 
 void run_state_kv_reserve(RunState *s, const Config *cfg, int n_pos) {
-    if (!s || !cfg || s->kv_offload_base) return;
+    if (!s || !cfg || s->kvs.offload_base) return;
     if (n_pos > s->max_seq_len) n_pos = s->max_seq_len;
     int from = s->kv_committed;
     if (n_pos <= from) return;
@@ -254,14 +257,15 @@ void run_state_kv_reserve(RunState *s, const Config *cfg, int n_pos) {
             size_t row =
                 ((size_t)l * (size_t)cfg->n_kv_heads + (size_t)h) * (size_t)s->max_seq_len +
                 (size_t)from;
-            if (s->kv_type != KV_TYPE_F32) {
-                if (!s->key_cache_q || !s->value_cache_q || !s->key_scale || !s->value_scale)
+            if (s->kvs.type != KV_TYPE_F32) {
+                if (!s->kvs.key_cache_q || !s->kvs.value_cache_q || !s->kvs.key_scale ||
+                    !s->kvs.value_scale)
                     return;
-                size_t rb = (size_t)s->kv_row_bytes, rs = (size_t)s->kv_row_scales;
-                tn_mem_commit(s->key_cache_q + row * rb, cnt * rb);
-                tn_mem_commit(s->value_cache_q + row * rb, cnt * rb);
-                tn_mem_commit(s->key_scale + row * rs, cnt * rs * sizeof(float));
-                tn_mem_commit(s->value_scale + row * rs, cnt * rs * sizeof(float));
+                size_t rb = (size_t)s->kvs.row_bytes, rs = (size_t)s->kvs.row_scales;
+                tn_mem_commit(s->kvs.key_cache_q + row * rb, cnt * rb);
+                tn_mem_commit(s->kvs.value_cache_q + row * rb, cnt * rb);
+                tn_mem_commit(s->kvs.key_scale + row * rs, cnt * rs * sizeof(float));
+                tn_mem_commit(s->kvs.value_scale + row * rs, cnt * rs * sizeof(float));
             } else {
                 if (!s->key_cache || !s->value_cache) return;
                 tn_mem_commit(s->key_cache + row * (size_t)hd, cnt * (size_t)hd * sizeof(float));
@@ -273,17 +277,19 @@ void run_state_kv_reserve(RunState *s, const Config *cfg, int n_pos) {
 }
 
 int run_state_kv_release(RunState *s, const Config *cfg) {
-    if (!s || !cfg || s->kv_offload_base || s->kv_committed <= 0) return 0;
+    if (!s || !cfg || s->kvs.offload_base || s->kv_committed <= 0) return 0;
     int n       = s->kv_committed;
     size_t rows = (size_t)s->max_seq_len * (size_t)cfg->n_layers * (size_t)cfg->n_kv_heads;
     int ok;
-    if (s->kv_type != KV_TYPE_F32) {
-        if (!s->key_cache_q || !s->value_cache_q || !s->key_scale || !s->value_scale) return 0;
-        size_t rb = (size_t)s->kv_row_bytes, rs = (size_t)s->kv_row_scales;
-        ok = tn_mem_release(s->key_cache_q, rows * rb) &
-             tn_mem_release(s->value_cache_q, rows * rb) &
-             tn_mem_release(s->key_scale, rows * rs * sizeof(float)) &
-             tn_mem_release(s->value_scale, rows * rs * sizeof(float));
+    if (s->kvs.type != KV_TYPE_F32) {
+        if (!s->kvs.key_cache_q || !s->kvs.value_cache_q || !s->kvs.key_scale ||
+            !s->kvs.value_scale)
+            return 0;
+        size_t rb = (size_t)s->kvs.row_bytes, rs = (size_t)s->kvs.row_scales;
+        ok = tn_mem_release(s->kvs.key_cache_q, rows * rb) &
+             tn_mem_release(s->kvs.value_cache_q, rows * rb) &
+             tn_mem_release(s->kvs.key_scale, rows * rs * sizeof(float)) &
+             tn_mem_release(s->kvs.value_scale, rows * rs * sizeof(float));
     } else {
         if (!s->key_cache || !s->value_cache) return 0;
         size_t bytes = rows * (size_t)config_head_dim(cfg) * sizeof(float);
@@ -295,18 +301,19 @@ int run_state_kv_release(RunState *s, const Config *cfg) {
 }
 
 void run_state_kv_prefetch_layer(const RunState *s, const Config *cfg, int layer, int n_pos) {
-    if (!s || !s->kv_offload_base || layer < 0 || layer >= cfg->n_layers || n_pos <= 0) return;
+    if (!s || !s->kvs.offload_base || layer < 0 || layer >= cfg->n_layers || n_pos <= 0) return;
     int hd = config_head_dim(cfg);
     if (n_pos > s->max_seq_len) n_pos = s->max_seq_len;
     for (int h = 0; h < cfg->n_kv_heads; h++) {
         size_t row0 =
             ((size_t)layer * (size_t)cfg->n_kv_heads + (size_t)h) * (size_t)s->max_seq_len;
-        if (s->kv_type != KV_TYPE_F32) {
-            size_t rb = (size_t)s->kv_row_bytes, rs = (size_t)s->kv_row_scales;
-            file_backed_prefetch(s->key_cache_q + row0 * rb, (size_t)n_pos * rb);
-            file_backed_prefetch(s->value_cache_q + row0 * rb, (size_t)n_pos * rb);
-            file_backed_prefetch(s->key_scale + row0 * rs, (size_t)n_pos * rs * sizeof(float));
-            file_backed_prefetch(s->value_scale + row0 * rs, (size_t)n_pos * rs * sizeof(float));
+        if (s->kvs.type != KV_TYPE_F32) {
+            size_t rb = (size_t)s->kvs.row_bytes, rs = (size_t)s->kvs.row_scales;
+            file_backed_prefetch(s->kvs.key_cache_q + row0 * rb, (size_t)n_pos * rb);
+            file_backed_prefetch(s->kvs.value_cache_q + row0 * rb, (size_t)n_pos * rb);
+            file_backed_prefetch(s->kvs.key_scale + row0 * rs, (size_t)n_pos * rs * sizeof(float));
+            file_backed_prefetch(s->kvs.value_scale + row0 * rs,
+                                 (size_t)n_pos * rs * sizeof(float));
         } else {
             file_backed_prefetch(s->key_cache + row0 * (size_t)hd,
                                  (size_t)n_pos * (size_t)hd * sizeof(float));

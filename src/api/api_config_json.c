@@ -337,14 +337,14 @@ static void config_runtime(JsonBuf *jb, const ApiContext *ctx) {
         runtime_act_quant(jb, ctx);
         jb_raw(jb, ",");
         jb_key(jb, "kv_type");
-        jb_str(jb, !(ctx && ctx->run_state)                ? "f32"
-                   : ctx->run_state->kv_type == KV_TYPE_I8 ? "i8"
-                   : ctx->run_state->kv_type == KV_TYPE_I4 ? "i4"
-                                                           : "f32");
+        jb_str(jb, !(ctx && ctx->run_state)                 ? "f32"
+                   : ctx->run_state->kvs.type == KV_TYPE_I8 ? "i8"
+                   : ctx->run_state->kvs.type == KV_TYPE_I4 ? "i4"
+                                                            : "f32");
         /* Phase 31: whether the KV cache is disk-backed (the path stays server-side). */
         jb_raw(jb, ",");
         jb_key(jb, "kv_offload");
-        jb_raw(jb, ctx && ctx->run_state && ctx->run_state->kv_offload_base ? "true" : "false");
+        jb_raw(jb, ctx && ctx->run_state && ctx->run_state->kvs.offload_base ? "true" : "false");
         jb_raw(jb, ",");
         jb_key(jb, "attention_kernel");
         jb_str(jb, attn_kernel_name(attn_kernel_get()));
@@ -416,7 +416,7 @@ static void config_features(JsonBuf *jb, const ApiContext *ctx) {
     jb_key(jb, "prompt_store");
     jb_bool(jb, ctx && ctx->server_config.cache.prompt_cache_mb > 0 &&
                     (!ctx->moe_cfg || prompt_store_supported(ctx->moe_cfg)) &&
-                    !(ctx->run_state && ctx->run_state->kv_type != KV_TYPE_F32));
+                    !(ctx->run_state && ctx->run_state->kvs.type != KV_TYPE_F32));
     jb_raw(jb, ",");
     jb_key(jb, "metrics");
     jb_bool(jb, ctx && ctx->server_config.metrics.enabled);

@@ -497,7 +497,7 @@ static void test_forward_kv_i8_close_to_f32(void) {
     RunState probe;
     memset(&probe, 0, sizeof(probe));
     run_state_alloc(&probe, &cfg, cfg.seq_len);
-    TEST_ASSERT(probe.kv_type == 1 && probe.key_cache == NULL && probe.key_cache_q != NULL,
+    TEST_ASSERT(probe.kvs.type == 1 && probe.key_cache == NULL && probe.kvs.key_cache_q != NULL,
                 "i8 run state allocates int8 storage only");
     run_state_free(&probe);
     run_positions(&cfg, &w, NULL, 60, i8);
@@ -531,14 +531,15 @@ static void test_forward_kv_i4_close_to_f32(void) {
     RunState probe;
     memset(&probe, 0, sizeof(probe));
     run_state_alloc(&probe, &cfg, cfg.seq_len);
-    TEST_ASSERT(probe.kv_type == KV_TYPE_I4 && probe.kv_row_bytes == 16 && probe.kv_row_scales == 2,
+    TEST_ASSERT(probe.kvs.type == KV_TYPE_I4 && probe.kvs.row_bytes == 16 &&
+                    probe.kvs.row_scales == 2,
                 "i4 run state: 16 data bytes + (scale,min) per 32-wide row");
     run_state_free(&probe);
     run_positions(&cfg, &w, NULL, 60, i4);
     Config narrow = tiny_config(); /* head_dim 8 */
     memset(&probe, 0, sizeof(probe));
     run_state_alloc(&probe, &narrow, narrow.seq_len);
-    TEST_ASSERT(probe.kv_type == KV_TYPE_I8, "head_dim % 32 != 0 falls back to i8");
+    TEST_ASSERT(probe.kvs.type == KV_TYPE_I8, "head_dim % 32 != 0 falls back to i8");
     run_state_free(&probe);
     kv_strategy_set_options(NULL);
     float md = 0, mag = 0;

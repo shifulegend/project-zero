@@ -168,8 +168,8 @@ static int load_native(PzSession *S) {
 
     /* Qwen3.5/3.6 hybrid models and Qwen3-MoE models never read the generic
      * key_cache/value_cache (they use their own correctly-sized
-     * q35_key_cache/q35_value_cache or qwen3moe_key_cache/
-     * qwen3moe_value_cache, allocated below) — skip_kv_cache=true avoids a
+     * q35.key_cache/q35.value_cache or qwen3moe.key_cache/
+     * qwen3moe.value_cache, allocated below) — skip_kv_cache=true avoids a
      * multi-GB calloc+memset for those models' context. See
      * run_state_alloc_ex's header comment and docs/ai/mistakes.md. */
     if (run_state_alloc_ex(S->s, &S->p, S->p.seq_len, S->mc.has_linear_attn || S->mc.has_qk_norm) !=

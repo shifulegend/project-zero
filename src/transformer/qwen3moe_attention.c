@@ -53,7 +53,7 @@ void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w, const 
     int max_seq  = s->max_seq_len;
 
     /* Per-RunState scratch (qwen3moe_run_state_alloc): no shared static, no width cap. */
-    float *q_buf       = s->qwen3moe_scratch;
+    float *q_buf       = s->qwen3moe.scratch;
     float *k_buf       = q_buf + q_width;
     float *v_buf       = k_buf + kv_width;
     float *attn_concat = v_buf + kv_width;
@@ -105,7 +105,7 @@ void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w, const 
     }
 
     /* Step 4: full (non-partial) RoPE with YaRN support, sized for this
-     * arch's real head_dim via s->qwen3moe_rope_freq
+     * arch's real head_dim via s->qwen3moe.rope_freq
      * (qwen3moe_run_state_alloc) — identical convention to
      * attention_forward()'s generic Step 3. */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
@@ -128,7 +128,7 @@ void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w, const 
             corr[0] = tn_clampf(start, 0.0f, (float)(head_dim - 1));
             corr[1] = tn_clampf(end, 0.0f, (float)(head_dim - 1));
         }
-        apply_rope_ex(q_buf, k_buf, s->qwen3moe_rope_freq, head_dim, pos, n_heads, n_kv_h,
+        apply_rope_ex(q_buf, k_buf, s->qwen3moe.rope_freq, head_dim, pos, n_heads, n_kv_h,
                       freq_scale, ext_factor, attn_factor, corr, cfg->rope_layout);
     }
     if (t_step) {
@@ -141,9 +141,9 @@ void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w, const 
     int mapped_pos = sw_map_position(&s->sw, pos);
     for (int kh = 0; kh < n_kv_h; kh++) {
         size_t off = ((size_t)kh * max_seq + (size_t)mapped_pos) * head_dim;
-        memcpy(&s->qwen3moe_key_cache[layer][off], &k_buf[(size_t)kh * head_dim],
+        memcpy(&s->qwen3moe.key_cache[layer][off], &k_buf[(size_t)kh * head_dim],
                (size_t)head_dim * sizeof(float));
-        memcpy(&s->qwen3moe_value_cache[layer][off], &v_buf[(size_t)kh * head_dim],
+        memcpy(&s->qwen3moe.value_cache[layer][off], &v_buf[(size_t)kh * head_dim],
                (size_t)head_dim * sizeof(float));
     }
     sw_advance(&s->sw);
@@ -165,7 +165,7 @@ void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w, const 
             int hist     = (pos >= valid_ctx) ? (pos - valid_ctx + 1 + t) : t;
             int mapped_t = sw_map_position(&s->sw, hist);
             size_t off   = ((size_t)kh * max_seq + (size_t)mapped_t) * head_dim;
-            att[t] = tn_vec_dot(q_h, &s->qwen3moe_key_cache[layer][off], head_dim) * inv_sqrt_hd;
+            att[t] = tn_vec_dot(q_h, &s->qwen3moe.key_cache[layer][off], head_dim) * inv_sqrt_hd;
         }
         tn_softmax(att, valid_ctx);
 
@@ -175,7 +175,7 @@ void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w, const 
             int hist     = (pos >= valid_ctx) ? (pos - valid_ctx + 1 + t) : t;
             int mapped_t = sw_map_position(&s->sw, hist);
             size_t off   = ((size_t)kh * max_seq + (size_t)mapped_t) * head_dim;
-            tn_vec_saxpy(out_h, att[t], &s->qwen3moe_value_cache[layer][off], head_dim);
+            tn_vec_saxpy(out_h, att[t], &s->qwen3moe.value_cache[layer][off], head_dim);
         }
     }
     if (t_step) {
@@ -320,7 +320,7 @@ TernaryError qwen3moe_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
             corr[0] = tn_clampf(start, 0.0f, (float)(head_dim - 1));
             corr[1] = tn_clampf(end, 0.0f, (float)(head_dim - 1));
         }
-        apply_rope_ex(q_k, k_k, s->qwen3moe_rope_freq, head_dim, tok_pos, n_heads, n_kv_h,
+        apply_rope_ex(q_k, k_k, s->qwen3moe.rope_freq, head_dim, tok_pos, n_heads, n_kv_h,
                       freq_scale, ext_factor, attn_factor, corr, cfg->rope_layout);
     }
     if (t_step) {
@@ -336,9 +336,9 @@ TernaryError qwen3moe_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
         int mapped_pos = sw_map_position(&s->sw, tok_pos);
         for (int kh = 0; kh < n_kv_h; kh++) {
             size_t off = ((size_t)kh * max_seq + (size_t)mapped_pos) * head_dim;
-            memcpy(&s->qwen3moe_key_cache[layer][off], &k_k[(size_t)kh * head_dim],
+            memcpy(&s->qwen3moe.key_cache[layer][off], &k_k[(size_t)kh * head_dim],
                    (size_t)head_dim * sizeof(float));
-            memcpy(&s->qwen3moe_value_cache[layer][off], &v_k[(size_t)kh * head_dim],
+            memcpy(&s->qwen3moe.value_cache[layer][off], &v_k[(size_t)kh * head_dim],
                    (size_t)head_dim * sizeof(float));
         }
         sw_advance(&s->sw); /* kept for parity; see attention_forward_batch()'s comment */
@@ -366,7 +366,7 @@ TernaryError qwen3moe_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
                 int mapped_t = sw_map_position(&s->sw, hist);
                 size_t off   = ((size_t)kh * max_seq + (size_t)mapped_t) * head_dim;
                 att[t] =
-                    tn_vec_dot(q_h, &s->qwen3moe_key_cache[layer][off], head_dim) * inv_sqrt_hd;
+                    tn_vec_dot(q_h, &s->qwen3moe.key_cache[layer][off], head_dim) * inv_sqrt_hd;
             }
             tn_softmax(att, valid_ctx);
 
@@ -376,7 +376,7 @@ TernaryError qwen3moe_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
                 int hist     = (tok_pos >= valid_ctx) ? (tok_pos - valid_ctx + 1 + t) : t;
                 int mapped_t = sw_map_position(&s->sw, hist);
                 size_t off   = ((size_t)kh * max_seq + (size_t)mapped_t) * head_dim;
-                tn_vec_saxpy(out_h, att[t], &s->qwen3moe_value_cache[layer][off], head_dim);
+                tn_vec_saxpy(out_h, att[t], &s->qwen3moe.value_cache[layer][off], head_dim);
             }
         }
     }

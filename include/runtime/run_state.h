@@ -23,6 +23,63 @@
 #define KV_SCALE_IDX(layer, head, pos, n_kv_heads, max_seq)                                        \
     (((size_t)(layer) * (n_kv_heads) + (size_t)(head)) * (max_seq) + (size_t)(pos))
 
+/* Phase 17.7: MLA k_rope_cache -- shared RoPE key cache for MLA models and its frequency table
+ * (computed for qk_rope_head_dim, NOT full head_dim). Both NULL for non-MLA models
+ * (mla.enabled == 0); allocated by mla_run_state_alloc(). */
+typedef struct {
+    float **k_rope_cache; /* k_rope_cache[layer][pos * qk_rope_head_dim] */
+    float *mla_rope_freq; /* freq[i] = 1/pow(rope_theta, 2i/qk_rope_head_dim) */
+} RunMla;
+
+/* Qwen3.5/3.6 hybrid attention state (see MoEConfig.has_linear_attn). NULL for all other models.
+ * This arch's true attn_head_dim doesn't divide evenly from dim/n_heads, so it cannot reuse
+ * key_cache/value_cache/rope_freq (sized with config_head_dim(cfg) == dim/n_heads). Allocated by
+ * q35_run_state_alloc(). Per-layer arrays follow the same NULL-for-inapplicable-layer-type
+ * convention as weights.h (key_cache[l] is NULL for linear-attention layers and vice versa). */
+typedef struct {
+    float **key_cache;   /* [n_layers] full-attn: [n_kv_heads][max_seq][attn_head_dim] */
+    float **value_cache; /* [n_layers] full-attn: same shape */
+    float **conv_state;  /* [n_layers] linear-attn: [conv_kernel-1][conv_dim] history */
+    float **recur_state; /* [n_layers] linear-attn: [n_v_heads][state_size][state_size] */
+    float *rope_freq;    /* [attn_rope_dim/2] shared partial-rotary freq table */
+    /* Single-token attention scratch for both layer kinds (full: q|gate, k, v, concat; linear:
+     * qkv, z, beta, alpha, decay, conv out, core out), sized from the model. Per RunState, so two
+     * RunStates never share it. */
+    float *scratch;
+} RunQwen35;
+
+/* Qwen3-MoE attention state (see MoEConfig.has_qk_norm). NULL for all other models. Same class of
+ * fix as RunQwen35: this arch's head_dim is independent of dim/n_heads, so it cannot reuse
+ * key_cache/value_cache/rope_freq. Allocated by qwen3moe_run_state_alloc(). */
+typedef struct {
+    float **key_cache;   /* [n_layers] [n_kv_heads][max_seq][attn_head_dim] */
+    float **value_cache; /* [n_layers] same shape */
+    float *rope_freq;    /* [attn_head_dim/2] full-rotary freq table */
+    /* Single-token attention scratch: q [q_width] | k [kv_width] | v [kv_width] | concat [q_width],
+     * q_width = n_heads*attn_head_dim, kv_width = n_kv_heads*attn_head_dim. Per RunState, so two
+     * RunStates (server slots) never share it, and sized by the model, so no width cap. */
+    float *scratch;
+} RunQwen3Moe;
+
+/* Plan 8.5: int8/int4 KV storage for the generic dense/GQA cache (--kv-type). When type is
+ * quantized, key_cache/value_cache are NULL and key_cache_q/value_cache_q hold the same
+ * KV_CACHE_IDX layout as int8, plus one scale set per (layer, kv_head, position) row at index
+ * KV_SCALE_IDX. Phase 31: with --kv-offload DIR the generic KV buffers are carved out of one
+ * disk-backed mapping (memory/file_backed.h) at offload_base; run_state_free() unmaps it. */
+typedef struct {
+    int type;
+    int row_bytes;  /* quantized: data bytes per head_dim row (i8: hd, i4: hd/2) */
+    int row_scales; /* quantized: F32 scales per row (i8: 1, i4: 2*hd/32); row r's data at
+                       key_cache_q + r*row_bytes, scales at key_scale + r*row_scales,
+                       r = KV_SCALE_IDX(...) */
+    tn_i8 *key_cache_q;
+    tn_i8 *value_cache_q;
+    float *key_scale;
+    float *value_scale;
+    void *offload_base; /* NULL when not offloaded */
+    size_t offload_bytes;
+} RunKvStore;
+
 typedef struct {
     /* Scratch vectors (dim) */
     float *x;   /* current activation */
@@ -46,49 +103,18 @@ typedef struct {
     float *key_cache;
     float *value_cache;
 
-    /* Phase 17.7: MLA k_rope_cache — shared RoPE key cache for MLA models.
-   * Layout: k_rope_cache[layer][pos * qk_rope_head_dim]
-   * NULL for non-MLA models (has_mla == 0); allocated by mla_run_state_alloc(). */
-    float **k_rope_cache;
-
-    /* MLA RoPE frequency table computed for qk_rope_head_dim (NOT full head_dim).
-   * freq[i] = 1/pow(rope_theta, 2i/qk_rope_head_dim) for i in [0, rope_dim/2).
-   * NULL for non-MLA models. Allocated by mla_run_state_alloc(). */
-    float *mla_rope_freq;
+    /* Phase 17.7: MLA RoPE state; NULL for non-MLA models (see RunMla). */
+    RunMla mla;
 
     /* Precomputed RoPE frequency table: freq[i] = 1/pow(10000, 2i/head_dim) */
     float *rope_freq;
     int rope_freq_len; /* head_dim / 2 */
 
-    /* Qwen3.5/3.6 hybrid attention state (see MoEConfig.has_linear_attn).
-   * NULL for all other models. This arch's true attn_head_dim doesn't
-   * divide evenly from dim/n_heads (unlike MLA's DeepSeek-Lite case), so
-   * it CANNOT reuse key_cache/value_cache/rope_freq above — those are sized
-   * with config_head_dim(cfg)==dim/n_heads, which is wrong here (truncates
-   * to a non-integer). Allocated by q35_run_state_alloc(). Per-layer arrays
-   * follow the same NULL-for-inapplicable-layer-type convention as weights.h
-   * (q35_key_cache[l] is NULL for linear-attention layers and vice versa). */
-    float **q35_key_cache;   /* [n_layers] full-attn: [n_kv_heads][max_seq][attn_head_dim] */
-    float **q35_value_cache; /* [n_layers] full-attn: same shape */
-    float **q35_conv_state;  /* [n_layers] linear-attn: [conv_kernel-1][conv_dim] history */
-    float **q35_recur_state; /* [n_layers] linear-attn: [n_v_heads][state_size][state_size] */
-    float *q35_rope_freq;    /* [attn_rope_dim/2] shared partial-rotary freq table */
-    /* Single-token attention scratch for both layer kinds (full: q|gate, k, v, concat; linear:
-     * qkv, z, beta, alpha, decay, conv out, core out), sized from the model. Per RunState, so two
-     * RunStates never share it (it used to be function-local statics with fixed caps). */
-    float *q35_scratch;
+    /* Qwen3.5/3.6 hybrid attention state (see RunQwen35); all NULL for other models. */
+    RunQwen35 q35;
 
-    /* Qwen3-MoE attention state (see MoEConfig.has_qk_norm). NULL for all
-   * other models. Same class of fix as q35_key_cache above: this arch's
-   * head_dim is independent of dim/n_heads, so it cannot reuse
-   * key_cache/value_cache/rope_freq. Allocated by qwen3moe_run_state_alloc(). */
-    float **qwen3moe_key_cache;   /* [n_layers] [n_kv_heads][max_seq][attn_head_dim] */
-    float **qwen3moe_value_cache; /* [n_layers] same shape */
-    float *qwen3moe_rope_freq;    /* [attn_head_dim/2] full-rotary freq table */
-    /* Single-token attention scratch: q [q_width] | k [kv_width] | v [kv_width] | concat [q_width],
-     * q_width = n_heads*attn_head_dim, kv_width = n_kv_heads*attn_head_dim. Per RunState, so two
-     * RunStates (server slots) never share it, and sized by the model, so no width cap. */
-    float *qwen3moe_scratch;
+    /* Qwen3-MoE attention state (see RunQwen3Moe); all NULL for other models. */
+    RunQwen3Moe qwen3moe;
 
     /* State tracking */
     int current_pos;
@@ -110,24 +136,8 @@ typedef struct {
    * Allocated by mamba_state_alloc() after run_state_alloc*(); released by
    * run_state_free(). */
     struct MambaState *mamba;
-    /* Plan 8.5: int8 KV storage for the generic dense/GQA cache (--kv-type i8).
-   * When kv_type == KV_TYPE_I8, key_cache/value_cache are NULL and these hold
-   * the same KV_CACHE_IDX layout as int8, plus one absmax scale per
-   * (layer, kv_head, position) row at index KV_SCALE_IDX. */
-    int kv_type;
-    int kv_row_bytes;  /* quantized: data bytes per head_dim row (i8: hd, i4: hd/2) */
-    int kv_row_scales; /* quantized: F32 scales per row (i8: 1, i4: 2*hd/32); row r's
-                            data at key_cache_q + r*kv_row_bytes, scales at
-                            key_scale + r*kv_row_scales, r = KV_SCALE_IDX(...) */
-    tn_i8 *key_cache_q;
-    tn_i8 *value_cache_q;
-    float *key_scale;
-    float *value_scale;
-    /* Phase 31: when --kv-offload DIR is set, the generic KV buffers above are
-   * carved out of one disk-backed mapping (memory/file_backed.h) instead of
-   * tn_aligned_calloc; run_state_free() unmaps it. NULL otherwise. */
-    void *kv_offload_base;
-    size_t kv_offload_bytes;
+    /* Quantized and disk-offloaded KV storage (see RunKvStore). */
+    RunKvStore kvs;
     /* Positions [0, kv_committed) of the generic KV cache are known resident
    * (run_state_kv_reserve); the buffers are committed lazily otherwise. */
     int kv_committed;
@@ -148,7 +158,7 @@ TernaryError run_state_alloc(RunState *s, const Config *cfg, int max_seq_len);
  *
  * For Qwen3.5/3.6 hybrid models this buffer is 100% dead weight — the
  * qwen35 forward path never reads it (it uses its own correctly-sized
- * q35_key_cache/q35_value_cache instead, see q35_run_state_alloc) — but at
+ * q35.key_cache/q35.value_cache instead, see q35_run_state_alloc) — but at
  * this arch's native 262144 context the generic sizing alone reaches
  * several GB. Freeing it immediately after allocating (the first fix
  * attempted here) still isn't enough: tn_aligned_calloc's explicit
@@ -218,7 +228,7 @@ TernaryError q35_run_state_alloc(RunState *s, const Config *cfg, const MoEConfig
                                  int max_seq_len);
 
 /**
- * Free q35_key_cache/q35_value_cache/q35_conv_state/q35_recur_state/q35_rope_freq.
+ * Free q35.key_cache/q35.value_cache/q35.conv_state/q35.recur_state/q35.rope_freq.
  * Call before run_state_free() when has_linear_attn was true at alloc time.
  */
 void q35_run_state_free(RunState *s, const Config *cfg, const MoEConfig *mc);
@@ -235,7 +245,7 @@ TernaryError qwen3moe_run_state_alloc(RunState *s, const Config *cfg, const MoEC
                                       int max_seq_len);
 
 /**
- * Free qwen3moe_key_cache/qwen3moe_value_cache/qwen3moe_rope_freq.
+ * Free qwen3moe.key_cache/qwen3moe.value_cache/qwen3moe.rope_freq.
  * Call before run_state_free() when has_qk_norm was true at alloc time.
  */
 void qwen3moe_run_state_free(RunState *s, const Config *cfg);

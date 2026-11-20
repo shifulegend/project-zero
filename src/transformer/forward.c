@@ -100,7 +100,7 @@ float *transformer_forward(int token, int pos, const Config *cfg, const Transfor
             if (prof_enabled()) lb = prof_now();
         } else {
             /* Phase 31: disk-backed KV — start reading the next layer's rows now. */
-            if (s->kv_offload_base) {
+            if (s->kvs.offload_base) {
                 if (l == 0) run_state_kv_prefetch_layer(s, cfg, 0, pos + 1);
                 run_state_kv_prefetch_layer(s, cfg, l + 1, pos + 1);
             }
@@ -374,7 +374,7 @@ TernaryError transformer_forward_batch(const int *tokens, int pos, int n_tokens,
 
     /* Step 2: run through all transformer layers */
     for (int l = 0; l < cfg->n_layers; l++) {
-        if (s->kv_offload_base) {
+        if (s->kvs.offload_base) {
             if (l == 0) run_state_kv_prefetch_layer(s, cfg, 0, pos + n_tokens);
             run_state_kv_prefetch_layer(s, cfg, l + 1, pos + n_tokens);
         }

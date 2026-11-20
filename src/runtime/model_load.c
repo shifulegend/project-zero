@@ -178,13 +178,13 @@ static void size_context(LoadedModel *out, bool is_primary, int max_seq_len_hint
         KVStrategyResult kv_res = select_kv_strategy(&out->config, post_load_ram, &out->moe_config);
         out->config.seq_len     = kv_res.max_seq_len;
         /* Qwen35 hybrid models keep their own F32 K/V caches
-         * (q35_key_cache/q35_value_cache, only the full-attention layers) —
+         * (q35.key_cache/q35.value_cache, only the full-attention layers) —
          * the quantized-KV strategy machinery is not wired into that path,
          * so printing e.g. "Quantized I8" for them misreported what actually
          * happens (2026-07-17, found during the ceiling-gap attribution;
          * see docs/ai/mistakes.md). The RAM-aware max-context clamp from
          * select_kv_strategy() still applies either way. Qwen3-MoE's own
-         * qwen3moe_key_cache/qwen3moe_value_cache are the same situation —
+         * qwen3moe.key_cache/qwen3moe.value_cache are the same situation —
          * independent head_dim, own F32 cache, not the quantized-KV path. */
         kv_strategy_print(&kv_res, out->config.seq_len);
     } else {
@@ -205,8 +205,8 @@ static TernaryError alloc_run_state(LoadedModel *out) {
 
     /* Qwen3.5/3.6 hybrid models and Qwen3-MoE models never read the generic
      * key_cache/value_cache (they use their own correctly-sized
-     * q35_key_cache/q35_value_cache or qwen3moe_key_cache/
-     * qwen3moe_value_cache, allocated below) — skip_kv_cache=true avoids a
+     * q35.key_cache/q35.value_cache or qwen3moe.key_cache/
+     * qwen3moe.value_cache, allocated below) — skip_kv_cache=true avoids a
      * multi-GB calloc+memset for those models' context. See
      * run_state_alloc_ex's header comment and docs/ai/mistakes.md. */
     if (run_state_alloc_ex(out->state, c, c->seq_len,

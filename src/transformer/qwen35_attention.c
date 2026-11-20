@@ -41,7 +41,7 @@
 #include "math/simd_dispatch.h"
 
 /* Stack bound for the per-head v_pred / delta temporaries of the delta rule (state size per head).
- * The projection buffers live in RunState.q35_scratch and have no fixed cap. */
+ * The projection buffers live in RunState.q35.scratch and have no fixed cap. */
 #define Q35_MAX_HEAD_DIM 512
 
 /* ── Partial-rotary RoPE, NEOX/rotate-half pairing ───────────────────────
@@ -79,7 +79,7 @@ static void q35_full_attn_forward(RunState *s, const TransformerWeights *w, cons
     int max_seq  = s->max_seq_len;
 
     /* Per-RunState scratch (q35_run_state_alloc): no shared static, no width cap. */
-    float *q_full      = s->q35_scratch;
+    float *q_full      = s->q35.scratch;
     float *k_buf       = q_full + q_width;
     float *v_buf       = k_buf + kv_width;
     float *attn_concat = v_buf + kv_width;
@@ -105,12 +105,12 @@ static void q35_full_attn_forward(RunState *s, const TransformerWeights *w, cons
     for (int h = 0; h < n_head; h++) {
         float *q_h = q_full + (size_t)h * 2 * head_dim;
         tn_rmsnorm(q_h, q_h, w->q35_attn_q_norm[layer], head_dim, cfg->rms_norm_eps);
-        rope_apply_neox_partial(q_h, s->q35_rope_freq, rope_dim, pos);
+        rope_apply_neox_partial(q_h, s->q35.rope_freq, rope_dim, pos);
     }
     for (int kh = 0; kh < n_kv_h; kh++) {
         float *k_h = k_buf + (size_t)kh * head_dim;
         tn_rmsnorm(k_h, k_h, w->q35_attn_k_norm[layer], head_dim, cfg->rms_norm_eps);
-        rope_apply_neox_partial(k_h, s->q35_rope_freq, rope_dim, pos);
+        rope_apply_neox_partial(k_h, s->q35.rope_freq, rope_dim, pos);
     }
     if (t_step) tn_step_timing_add(TN_STEP_9_YARN_ROPE, tn_step_timing_now_ns() - t_step);
 
@@ -119,9 +119,9 @@ static void q35_full_attn_forward(RunState *s, const TransformerWeights *w, cons
     int mapped_pos = sw_map_position(&s->sw, pos);
     for (int kh = 0; kh < n_kv_h; kh++) {
         size_t off = ((size_t)kh * max_seq + (size_t)mapped_pos) * head_dim;
-        memcpy(&s->q35_key_cache[layer][off], &k_buf[(size_t)kh * head_dim],
+        memcpy(&s->q35.key_cache[layer][off], &k_buf[(size_t)kh * head_dim],
                (size_t)head_dim * sizeof(float));
-        memcpy(&s->q35_value_cache[layer][off], &v_buf[(size_t)kh * head_dim],
+        memcpy(&s->q35.value_cache[layer][off], &v_buf[(size_t)kh * head_dim],
                (size_t)head_dim * sizeof(float));
     }
     sw_advance(&s->sw);
@@ -144,7 +144,7 @@ static void q35_full_attn_forward(RunState *s, const TransformerWeights *w, cons
             int hist     = (pos >= valid_ctx) ? (pos - valid_ctx + 1 + t) : t;
             int mapped_t = sw_map_position(&s->sw, hist);
             size_t off   = ((size_t)kh * max_seq + (size_t)mapped_t) * head_dim;
-            att[t]       = tn_vec_dot(q_h, &s->q35_key_cache[layer][off], head_dim) * inv_sqrt_hd;
+            att[t]       = tn_vec_dot(q_h, &s->q35.key_cache[layer][off], head_dim) * inv_sqrt_hd;
         }
         tn_softmax(att, valid_ctx);
 
@@ -154,7 +154,7 @@ static void q35_full_attn_forward(RunState *s, const TransformerWeights *w, cons
             int hist     = (pos >= valid_ctx) ? (pos - valid_ctx + 1 + t) : t;
             int mapped_t = sw_map_position(&s->sw, hist);
             size_t off   = ((size_t)kh * max_seq + (size_t)mapped_t) * head_dim;
-            tn_vec_saxpy(out_h, att[t], &s->q35_value_cache[layer][off], head_dim);
+            tn_vec_saxpy(out_h, att[t], &s->q35.value_cache[layer][off], head_dim);
         }
         /* Step 6: sigmoid output gate (per-element, matches build_layer_attn) */
         for (int d = 0; d < head_dim; d++) {
@@ -197,7 +197,7 @@ static void q35_linear_attn_forward(RunState *s, const TransformerWeights *w, co
      * the full-attention part is q_full (2*n_heads*head_dim) + k + v (kv_width each) + concat. */
     const size_t full_n = 3 * (size_t)cfg->n_heads * (size_t)mc->attn_head_dim +
                           2 * (size_t)cfg->n_kv_heads * (size_t)mc->attn_head_dim;
-    float *qkv_mixed = s->q35_scratch + full_n;
+    float *qkv_mixed = s->q35.scratch + full_n;
     float *z         = qkv_mixed + conv_dim;
     float *beta      = z + value_dim;
     float *alpha     = beta + n_v_heads;
@@ -259,7 +259,7 @@ static void q35_linear_attn_forward(RunState *s, const TransformerWeights *w, co
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     {
         float *hist =
-            s->q35_conv_state
+            s->q35.conv_state
                 [layer]; /* [conv_k-1][conv_dim], tap-major (this file's own buffer, no GGUF layout constraint) */
         const float *kernel =
             w->q35_ssm_conv1d[layer]; /* [conv_dim][conv_k], channel-major per GGUF */
@@ -312,7 +312,7 @@ static void q35_linear_attn_forward(RunState *s, const TransformerWeights *w, co
         const float *v_h = v_lin + (size_t)hv * state_sz;
         float gamma      = g_exp[hv];
         float bh         = beta[hv];
-        float *S = s->q35_recur_state[layer] + (size_t)hv * state_sz * state_sz; /* [i][d] */
+        float *S = s->q35.recur_state[layer] + (size_t)hv * state_sz * state_sz; /* [i][d] */
 
         /* decay */
         for (int idx = 0; idx < state_sz * state_sz; idx++) S[idx] *= gamma;

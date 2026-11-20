@@ -226,7 +226,7 @@ void mla_attention_forward(RunState *s, const TransformerWeights *w, const Confi
      * (which is computed for head_dim=128 and gives wrong frequencies).
      * Full YaRN per-dimension blending: low-freq dims use unscaled theta,
      * high-freq dims use scaled theta (freq_scale), blend zone in between. */
-    const float *rf = s->mla_rope_freq;
+    const float *rf = s->mla.mla_rope_freq;
     t_step          = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     rope_apply_yarn(k_rope_cur, rf, rope, pos, yarn_freq_scale, yarn_ext_factor, yarn_attn_factor,
                     corr);
@@ -242,7 +242,8 @@ void mla_attention_forward(RunState *s, const TransformerWeights *w, const Confi
 
     /* Step 6: Store k_rope_cur to k_rope_cache */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    memcpy(&s->k_rope_cache[layer][mapped_pos * rope], k_rope_cur, (size_t)rope * sizeof(float));
+    memcpy(&s->mla.k_rope_cache[layer][mapped_pos * rope], k_rope_cur,
+           (size_t)rope * sizeof(float));
     if (t_step) {
         tn_step_timing_add(TN_STEP_10_KV_CACHE_WRITE, tn_step_timing_now_ns() - t_step);
     }
@@ -265,7 +266,7 @@ void mla_attention_forward(RunState *s, const TransformerWeights *w, const Confi
             int mapped_t = sw_map_position(&s->sw, hist);
             size_t k_off = KV_CACHE_IDX(layer, kv_h, mapped_t, 0, n_kv_h, max_seq, head_dim);
             float score  = tn_vec_dot(q_nope_h, &s->key_cache[k_off], nope);
-            score += tn_vec_dot(q_rope_h, &s->k_rope_cache[layer][mapped_t * rope], rope);
+            score += tn_vec_dot(q_rope_h, &s->mla.k_rope_cache[layer][mapped_t * rope], rope);
             att[t] = score * iscale;
         }
         /* Step 11: dump pre-softmax attention scores for head 0 */
@@ -383,7 +384,7 @@ TernaryError mla_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
     float yarn_freq_scale  = cfg->rope_freq_scale;
     float yarn_ext_factor  = cfg->rope_yarn_ext_factor;
     float yarn_attn_factor = cfg->rope_yarn_attn_factor;
-    const float *rf        = s->mla_rope_freq;
+    const float *rf        = s->mla.mla_rope_freq;
 
     float *kv_latent_packed = (float *)malloc((size_t)n_tokens * lora * sizeof(float));
     float *kv_full_packed   = (float *)malloc((size_t)n_tokens * kvb_rows * sizeof(float));
@@ -515,7 +516,7 @@ TernaryError mla_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
         int tok_pos         = pos + k;
         float *k_rope_cur_k = sb->hb2 + (size_t)k * kva_rows + lora;
         int mapped_pos      = sw_map_position(&s->sw, tok_pos);
-        memcpy(&s->k_rope_cache[layer][mapped_pos * rope], k_rope_cur_k,
+        memcpy(&s->mla.k_rope_cache[layer][mapped_pos * rope], k_rope_cur_k,
                (size_t)rope * sizeof(float));
         sw_advance(&s->sw); /* kept for parity; see attention_forward_batch()'s comment */
     }
@@ -544,7 +545,7 @@ TernaryError mla_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
                 int mapped_t = sw_map_position(&s->sw, hist);
                 size_t k_off = KV_CACHE_IDX(layer, kv_h, mapped_t, 0, n_kv_h, max_seq, head_dim);
                 float score  = tn_vec_dot(q_nope_h, &s->key_cache[k_off], nope);
-                score += tn_vec_dot(q_rope_h, &s->k_rope_cache[layer][mapped_t * rope], rope);
+                score += tn_vec_dot(q_rope_h, &s->mla.k_rope_cache[layer][mapped_t * rope], rope);
                 att[t] = score * iscale;
             }
             tn_softmax(att, valid_ctx);

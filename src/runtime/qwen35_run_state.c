@@ -32,7 +32,7 @@ TernaryError q35_run_state_alloc(RunState *s, const Config *cfg, const MoEConfig
      * so the *generic* key_cache/value_cache (sized with
      * config_head_dim(cfg)==dim/n_heads for ALL cfg->n_layers — wrong
      * head_dim for this arch, and never read by qwen35_attention.c, which
-     * uses q35_key_cache/q35_value_cache below instead) is never allocated
+     * uses q35.key_cache/q35.value_cache below instead) is never allocated
      * at all for a hybrid model. This free is a defensive no-op if that
      * invariant is ever violated (e.g. a caller uses plain run_state_alloc()
      * instead of the _ex variant) — see docs/ai/mistakes.md for why a
@@ -106,7 +106,7 @@ TernaryError q35_run_state_alloc(RunState *s, const Config *cfg, const MoEConfig
 
     /* s->max_seq_len was already set (to the original, unclamped seq_len)
      * by the earlier run_state_alloc_ex() call in main.c. qwen35_attention.c
-     * computes q35_key_cache/q35_value_cache byte offsets as
+     * computes q35.key_cache/q35.value_cache byte offsets as
      * (kh * s->max_seq_len + pos) * head_dim — i.e. it trusts
      * s->max_seq_len as the per-head stride of the buffers allocated
      * below. If this function clamps its own *local* max_seq_len (for the
@@ -128,10 +128,10 @@ TernaryError q35_run_state_alloc(RunState *s, const Config *cfg, const MoEConfig
         free(rs);
         return TN_ERR_OOM;
     }
-    s->q35_key_cache   = kc;
-    s->q35_value_cache = vc;
-    s->q35_conv_state  = cs;
-    s->q35_recur_state = rs;
+    s->q35.key_cache   = kc;
+    s->q35.value_cache = vc;
+    s->q35.conv_state  = cs;
+    s->q35.recur_state = rs;
 
     for (int l = 0; l < n_layers; l++) {
         if (q35_layer_is_full_attn(mc, l)) {
@@ -158,23 +158,23 @@ TernaryError q35_run_state_alloc(RunState *s, const Config *cfg, const MoEConfig
      * NOT head_dim (256) — mirrors mla_rope_freq's fix for the same class
      * of bug (see mla_run_state.c header comment). */
     int freq_len     = rope_dim / 2;
-    s->q35_rope_freq = (float *)tn_aligned_calloc((size_t)freq_len, sizeof(float), 64);
-    if (!s->q35_rope_freq) {
+    s->q35.rope_freq = (float *)tn_aligned_calloc((size_t)freq_len, sizeof(float), 64);
+    if (!s->q35.rope_freq) {
         q35_run_state_free(s, cfg, mc);
         return TN_ERR_OOM;
     }
     float theta = cfg->rope_theta > 0.0f ? cfg->rope_theta : 10000.0f;
-    rope_precompute_freqs(s->q35_rope_freq, rope_dim, theta);
+    rope_precompute_freqs(s->q35.rope_freq, rope_dim, theta);
 
-    /* Attention scratch (see RunState.q35_scratch): both layer kinds' buffers, laid out by
+    /* Attention scratch (see RunState.q35.scratch): both layer kinds' buffers, laid out by
      * qwen35_attention.c from the same widths. */
     {
         size_t q_w     = (size_t)cfg->n_heads * (size_t)head_dim;
         size_t kv_w    = (size_t)n_kv_h * (size_t)head_dim;
         size_t full    = 2 * q_w + 2 * kv_w + q_w;
         size_t lin     = (size_t)conv_dim * 2 + (size_t)value_dim * 2 + (size_t)n_v_heads * 3;
-        s->q35_scratch = (float *)tn_aligned_calloc(full + lin, sizeof(float), 64);
-        if (!s->q35_scratch) {
+        s->q35.scratch = (float *)tn_aligned_calloc(full + lin, sizeof(float), 64);
+        if (!s->q35.scratch) {
             q35_run_state_free(s, cfg, mc);
             return TN_ERR_OOM;
         }
@@ -186,33 +186,33 @@ TernaryError q35_run_state_alloc(RunState *s, const Config *cfg, const MoEConfig
 void q35_run_state_free(RunState *s, const Config *cfg, const MoEConfig *mc) {
     if (!s) return;
     int n_layers = cfg ? cfg->n_layers : 0;
-    if (s->q35_key_cache) {
-        for (int l = 0; l < n_layers; l++) tn_aligned_free(s->q35_key_cache[l]);
-        free(s->q35_key_cache);
-        s->q35_key_cache = NULL;
+    if (s->q35.key_cache) {
+        for (int l = 0; l < n_layers; l++) tn_aligned_free(s->q35.key_cache[l]);
+        free(s->q35.key_cache);
+        s->q35.key_cache = NULL;
     }
-    if (s->q35_value_cache) {
-        for (int l = 0; l < n_layers; l++) tn_aligned_free(s->q35_value_cache[l]);
-        free(s->q35_value_cache);
-        s->q35_value_cache = NULL;
+    if (s->q35.value_cache) {
+        for (int l = 0; l < n_layers; l++) tn_aligned_free(s->q35.value_cache[l]);
+        free(s->q35.value_cache);
+        s->q35.value_cache = NULL;
     }
-    if (s->q35_conv_state) {
-        for (int l = 0; l < n_layers; l++) tn_aligned_free(s->q35_conv_state[l]);
-        free(s->q35_conv_state);
-        s->q35_conv_state = NULL;
+    if (s->q35.conv_state) {
+        for (int l = 0; l < n_layers; l++) tn_aligned_free(s->q35.conv_state[l]);
+        free(s->q35.conv_state);
+        s->q35.conv_state = NULL;
     }
-    if (s->q35_recur_state) {
-        for (int l = 0; l < n_layers; l++) tn_aligned_free(s->q35_recur_state[l]);
-        free(s->q35_recur_state);
-        s->q35_recur_state = NULL;
+    if (s->q35.recur_state) {
+        for (int l = 0; l < n_layers; l++) tn_aligned_free(s->q35.recur_state[l]);
+        free(s->q35.recur_state);
+        s->q35.recur_state = NULL;
     }
-    if (s->q35_rope_freq) {
-        tn_aligned_free(s->q35_rope_freq);
-        s->q35_rope_freq = NULL;
+    if (s->q35.rope_freq) {
+        tn_aligned_free(s->q35.rope_freq);
+        s->q35.rope_freq = NULL;
     }
-    if (s->q35_scratch) {
-        tn_aligned_free(s->q35_scratch);
-        s->q35_scratch = NULL;
+    if (s->q35.scratch) {
+        tn_aligned_free(s->q35.scratch);
+        s->q35.scratch = NULL;
     }
     (void)mc;
 }

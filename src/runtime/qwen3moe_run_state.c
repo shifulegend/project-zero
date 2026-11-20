@@ -27,7 +27,7 @@ TernaryError qwen3moe_run_state_alloc(RunState *s, const Config *cfg, const MoEC
      * the *generic* key_cache/value_cache (sized with
      * config_head_dim(cfg)==dim/n_heads — wrong head_dim for this arch,
      * and never read by qwen3moe_attention.c, which uses
-     * qwen3moe_key_cache/qwen3moe_value_cache below instead) is never
+     * qwen3moe.key_cache/qwen3moe.value_cache below instead) is never
      * allocated at all. This free is a defensive no-op if that invariant is
      * ever violated — mirrors q35_run_state_alloc's identical comment. */
     tn_aligned_free(s->key_cache);
@@ -49,8 +49,8 @@ TernaryError qwen3moe_run_state_alloc(RunState *s, const Config *cfg, const MoEC
         free(vc);
         return TN_ERR_OOM;
     }
-    s->qwen3moe_key_cache   = kc;
-    s->qwen3moe_value_cache = vc;
+    s->qwen3moe.key_cache   = kc;
+    s->qwen3moe.value_cache = vc;
 
     size_t kv_elems = (size_t)n_kv_h * (size_t)max_seq_len * (size_t)head_dim;
     for (int l = 0; l < n_layers; l++) {
@@ -63,20 +63,20 @@ TernaryError qwen3moe_run_state_alloc(RunState *s, const Config *cfg, const MoEC
     }
 
     int freq_len          = head_dim / 2;
-    s->qwen3moe_rope_freq = (float *)tn_aligned_calloc((size_t)freq_len, sizeof(float), 64);
-    if (!s->qwen3moe_rope_freq) {
+    s->qwen3moe.rope_freq = (float *)tn_aligned_calloc((size_t)freq_len, sizeof(float), 64);
+    if (!s->qwen3moe.rope_freq) {
         qwen3moe_run_state_free(s, cfg);
         return TN_ERR_OOM;
     }
     size_t q_width      = (size_t)cfg->n_heads * (size_t)head_dim;
     size_t kv_width     = (size_t)n_kv_h * (size_t)head_dim;
-    s->qwen3moe_scratch = (float *)tn_aligned_calloc(2 * q_width + 2 * kv_width, sizeof(float), 64);
-    if (!s->qwen3moe_scratch) {
+    s->qwen3moe.scratch = (float *)tn_aligned_calloc(2 * q_width + 2 * kv_width, sizeof(float), 64);
+    if (!s->qwen3moe.scratch) {
         qwen3moe_run_state_free(s, cfg);
         return TN_ERR_OOM;
     }
     float theta = cfg->rope_theta > 0.0f ? cfg->rope_theta : 10000.0f;
-    rope_precompute_freqs(s->qwen3moe_rope_freq, head_dim, theta);
+    rope_precompute_freqs(s->qwen3moe.rope_freq, head_dim, theta);
 
     return TN_OK;
 }
@@ -84,22 +84,22 @@ TernaryError qwen3moe_run_state_alloc(RunState *s, const Config *cfg, const MoEC
 void qwen3moe_run_state_free(RunState *s, const Config *cfg) {
     if (!s) return;
     int n_layers = cfg ? cfg->n_layers : 0;
-    if (s->qwen3moe_key_cache) {
-        for (int l = 0; l < n_layers; l++) tn_aligned_free(s->qwen3moe_key_cache[l]);
-        free(s->qwen3moe_key_cache);
-        s->qwen3moe_key_cache = NULL;
+    if (s->qwen3moe.key_cache) {
+        for (int l = 0; l < n_layers; l++) tn_aligned_free(s->qwen3moe.key_cache[l]);
+        free(s->qwen3moe.key_cache);
+        s->qwen3moe.key_cache = NULL;
     }
-    if (s->qwen3moe_value_cache) {
-        for (int l = 0; l < n_layers; l++) tn_aligned_free(s->qwen3moe_value_cache[l]);
-        free(s->qwen3moe_value_cache);
-        s->qwen3moe_value_cache = NULL;
+    if (s->qwen3moe.value_cache) {
+        for (int l = 0; l < n_layers; l++) tn_aligned_free(s->qwen3moe.value_cache[l]);
+        free(s->qwen3moe.value_cache);
+        s->qwen3moe.value_cache = NULL;
     }
-    if (s->qwen3moe_rope_freq) {
-        tn_aligned_free(s->qwen3moe_rope_freq);
-        s->qwen3moe_rope_freq = NULL;
+    if (s->qwen3moe.rope_freq) {
+        tn_aligned_free(s->qwen3moe.rope_freq);
+        s->qwen3moe.rope_freq = NULL;
     }
-    if (s->qwen3moe_scratch) {
-        tn_aligned_free(s->qwen3moe_scratch);
-        s->qwen3moe_scratch = NULL;
+    if (s->qwen3moe.scratch) {
+        tn_aligned_free(s->qwen3moe.scratch);
+        s->qwen3moe.scratch = NULL;
     }
 }

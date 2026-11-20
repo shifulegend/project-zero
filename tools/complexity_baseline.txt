@@ -183,9 +183,9 @@ src/runtime/prompt_store.c::prompt_store_save 22 47
 src/runtime/qwen35_run_state.c::q35_run_state_alloc 30 90
 src/runtime/qwen35_run_state.c::q35_run_state_free 13 33
 src/runtime/qwen3moe_run_state.c::qwen3moe_run_state_alloc 15 47
-src/runtime/run_state.c::run_state_alloc_ex 34 128
-src/runtime/run_state.c::run_state_kv_release 13 21
-src/runtime/run_state.c::run_state_kv_reserve 15 29
+src/runtime/run_state.c::run_state_alloc_ex 34 131
+src/runtime/run_state.c::run_state_kv_release 13 23
+src/runtime/run_state.c::run_state_kv_reserve 15 30
 src/runtime/weights.c::weights_alloc_pointers 42 56
 src/runtime/weights.c::weights_build_classifier_quant 32 89
 src/runtime/weights.c::weights_free_pointers 49 57
@@ -262,7 +262,7 @@ src/transformer/gen_session.c::gen_session_end 15 40
 src/transformer/gen_session.c::gen_session_prepare 18 59
 src/transformer/gen_session.c::gen_session_start 19 41
 src/transformer/mamba.c::mamba_block_forward 11 47
-src/transformer/mla_attention.c::mla_attention_forward 40 151
+src/transformer/mla_attention.c::mla_attention_forward 40 152
 src/transformer/mla_attention.c::mla_attention_forward_batch 52 202
 src/transformer/moe_experts.c::moe_experts_forward 16 63
 src/transformer/moe_ffn.c::moe_ffn_forward 17 43

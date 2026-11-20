@@ -105,7 +105,7 @@ char *api_prompt_cache_json(const ApiContext *ctx) {
     /* Snapshots copy F32 KV rows: unavailable for SSM/MLA/hybrid models and
      * with --kv-type i8 (the live prefix cache still applies). */
     int supported = (!(ctx && ctx->moe_cfg) || prompt_store_supported(ctx->moe_cfg)) &&
-                    !(ctx && ctx->run_state && ctx->run_state->kv_type != KV_TYPE_F32);
+                    !(ctx && ctx->run_state && ctx->run_state->kvs.type != KV_TYPE_F32);
     size_t budget = ctx ? (size_t)(ctx->server_config.cache.prompt_cache_mb > 0
                                        ? ctx->server_config.cache.prompt_cache_mb
                                        : 0) *

@@ -52,6 +52,10 @@ jobs:
         run: |
           python3 -I tools/test_check_socket_writes.py
           python3 -I tools/check_socket_writes.py
+      - name: No disabled code (#if 0, commented-out statements)
+        run: |
+          python3 -I tools/test_check_dead_code.py
+          python3 -I tools/check_dead_code.py
       - name: Lines over 100 columns must not increase
         run: |
           python3 -I tools/test_check_line_width.py

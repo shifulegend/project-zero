@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-20 — CI check against disabled code
+- What: `tools/check_dead_code.py` (with tests) fails on `#if 0` and on commented-out C statements in `src/`, `include/`, `tests/`; wired into the `ci.yml` lint steps.
+- Why: finding 29.a; the tree has none today, so the baseline is zero and nothing can creep in. Vendored `stb_*` headers are skipped.
+- Proof: unit tests including a real-tree run; the check reports 0 hits.
+- Areas: `tools/check_dead_code.py`, `tools/test_check_dead_code.py`, `.github/workflows/ci.yml`.
+
 ### 2026-11-20 — ThreadSanitizer job also runs under clang
 - What: the `tsan` job in `.github/workflows/security_audit.yml` is a gcc and clang matrix.
 - Why: decision Q7 (22.c) asked for CC=clang in the TSan job; the two compilers instrument differently.

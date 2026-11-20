@@ -77,9 +77,8 @@ static void test_run_state_offload(void) {
     if (g_skip) return;
     Config c            = tiny_cfg();
     KVStrategyOptions o = {0, 0.0f, 0, tmp_dir()};
-    kv_strategy_set_options(&o);
     RunState s;
-    TEST_ASSERT_EQ(run_state_alloc(&s, &c, 128), TN_OK, "F32 KV on disk");
+    TEST_ASSERT_EQ(run_state_alloc_ex(&s, &c, 128, false, &o), TN_OK, "F32 KV on disk");
     TEST_ASSERT(s.kvs.offload_base != NULL, "mapping recorded");
     TEST_ASSERT(inside(&s, s.key_cache) && inside(&s, s.value_cache), "K/V carved, 64-B aligned");
     size_t n           = (size_t)c.n_layers * c.n_kv_heads * 128 * (c.dim / c.n_heads);
@@ -94,8 +93,7 @@ static void test_run_state_offload(void) {
     TEST_ASSERT(s.kvs.offload_base == NULL && s.key_cache == NULL, "freed");
 
     KVStrategyOptions o8 = {0, 0.0f, KV_TYPE_I8, tmp_dir()};
-    kv_strategy_set_options(&o8);
-    TEST_ASSERT_EQ(run_state_alloc(&s, &c, 128), TN_OK, "int8 KV on disk");
+    TEST_ASSERT_EQ(run_state_alloc_ex(&s, &c, 128, false, &o8), TN_OK, "int8 KV on disk");
     TEST_ASSERT(inside(&s, s.kvs.key_cache_q) && inside(&s, s.kvs.value_cache_q) &&
                     inside(&s, s.kvs.key_scale) && inside(&s, s.kvs.value_scale),
                 "int8 buffers carved");
@@ -103,7 +101,6 @@ static void test_run_state_offload(void) {
     run_state_kv_prefetch_layer(&s, &c, 1, 64);
     run_state_free(&s);
 
-    kv_strategy_set_options(NULL);
     TEST_ASSERT_EQ(run_state_alloc(&s, &c, 128), TN_OK, "RAM KV still default");
     TEST_ASSERT(s.kvs.offload_base == NULL && s.key_cache != NULL, "heap path unchanged");
     run_state_free(&s);

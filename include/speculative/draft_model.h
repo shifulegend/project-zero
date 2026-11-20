@@ -40,9 +40,11 @@ typedef struct {
  * @param max_seq_len_hint  Forwarded to load_gguf_model() -- the draft
  *                          model's context is sized from this hint, not a
  *                          free-RAM probe (see runtime/model_load.h).
+ * @param kv_opt            KV storage overrides shared with the verifier (NULL = automatic).
  */
 TernaryError draft_model_load(DraftModel *dm, const char *draft_model_path, int verifier_vocab_size,
-                              int max_seq_len_hint, ThreadPool *tp);
+                              int max_seq_len_hint, ThreadPool *tp,
+                              const KVStrategyOptions *kv_opt);
 
 /** Frees everything draft_model_load() allocated. Safe on a zeroed DraftModel. */
 void draft_model_free(DraftModel *dm);

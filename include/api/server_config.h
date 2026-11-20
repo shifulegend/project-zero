@@ -10,6 +10,7 @@
 #include "api/cancel.h"
 #include "config/pz_config.h"
 #include "core/limits.h"
+#include "kv_cache/kv_strategy.h"
 #include "reasoning/mcts_options.h"
 #include "transformer/gen_params.h"
 
@@ -115,6 +116,7 @@ typedef struct {
     GenerationParams gen_defaults;
     char *model_id;          /* reported by /v1/models; main.c sets the model file's basename */
     PzProvenance provenance; /* where each setting came from, published by /v1/config */
+    KVStrategyOptions kv;    /* KV storage and sizing overrides every slot allocates with */
 } ServerConfig;
 
 /* Zero-initialise. Must be called before use. */

@@ -17,10 +17,10 @@ src/transformer/gen_session.c 549
 src/transformer/mla_attention.c 580
 src/update/update_check.c 512
 tests/test_api_server.c 547
-tests/test_forward.c 670
+tests/test_forward.c 666
 tests/test_forward_batch.c 602
 tests/test_gguf_loader_qwen3moe.c 617
-tests/test_kv_cache.c 529
+tests/test_kv_cache.c 527
 tests/test_lora.c 654
 tests/test_packed_weights.c 504
 tests/test_simd_vnni.c 644

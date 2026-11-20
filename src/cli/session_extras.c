@@ -56,10 +56,12 @@ int session_load_extras(PzSession *ses) {
      * --draft-model is the only way this ever activates -- see cli/args.h.
      * Loaded once here so both call sites below (--prompt one-shot and the
      * REPL) can share it. */
+    KVStrategyOptions kv_opt;
+    args_fill_kv_options(&ses->args, &kv_opt);
     if (ses->args.input.draft_model_path) {
         if (draft_model_load(&ses->draft, ses->args.input.draft_model_path, ses->p.vocab_size,
                              ses->args.sampling.max_tokens + ses->args.search.spec_length + 64,
-                             ses->tp) != TN_OK) {
+                             ses->tp, &kv_opt) != TN_OK) {
             TN_LOG_ERR("session_extras", "Error: failed to load --draft-model '%s'.\n",
                        ses->args.input.draft_model_path);
             return 1;
@@ -71,8 +73,8 @@ int session_load_extras(PzSession *ses) {
     mcts_options_defaults(&ses->args.search.mcts);
     if (ses->args.search.prm_path &&
         prm_load(&ses->prm, ses->args.search.prm_path, ses->args.search.prm_format,
-                 ses->args.search.prm_good, ses->args.search.prm_bad, ses->s->max_seq_len,
-                 ses->tp) != TN_OK) {
+                 ses->args.search.prm_good, ses->args.search.prm_bad, ses->s->max_seq_len, ses->tp,
+                 &kv_opt) != TN_OK) {
         TN_LOG_INF("prm", "[prm] continuing without a PRM: steps are scored by the model itself\n");
     }
 

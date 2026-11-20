@@ -45,7 +45,7 @@ static TernaryError kv_offload_carve(RunState *s, const char *dir, const size_t 
 }
 
 TernaryError run_state_alloc(RunState *s, const Config *cfg, int max_seq_len) {
-    return run_state_alloc_ex(s, cfg, max_seq_len, false);
+    return run_state_alloc_ex(s, cfg, max_seq_len, false, NULL);
 }
 
 /* Plan 8.5: quantized K/V rows plus F32 scales (i8 is 4x, i4 about 7x smaller than F32), carved
@@ -89,8 +89,8 @@ static TernaryError alloc_quantized_kv(RunState *s, const char *offload_dir, int
     return TN_OK;
 }
 
-TernaryError run_state_alloc_ex(RunState *s, const Config *cfg, int max_seq_len,
-                                bool skip_kv_cache) {
+TernaryError run_state_alloc_ex(RunState *s, const Config *cfg, int max_seq_len, bool skip_kv_cache,
+                                const KVStrategyOptions *kv_opt) {
     memset(s, 0, sizeof(*s));
     s->max_seq_len = max_seq_len;
     s->current_pos = 0;
@@ -138,14 +138,14 @@ TernaryError run_state_alloc_ex(RunState *s, const Config *cfg, int max_seq_len,
    * calloc's explicit memset would force real RSS commit for the whole
    * buffer even if freed moments later. */
     if (!skip_kv_cache) {
-        const char *offload_dir = kv_strategy_offload_dir();
+        const char *offload_dir = kv_options_offload_dir(kv_opt);
         size_t kv_cache_size;
         if (tn_size_mul4((size_t)cfg->n_layers, (size_t)cfg->n_kv_heads, (size_t)max_seq_len,
                          (size_t)head_dim, &kv_cache_size)) {
             run_state_free(s);
             return TN_ERR_OOM;
         }
-        int qtype     = kv_strategy_kv_type();
+        int qtype     = kv_options_type(kv_opt);
         int row_bytes = 0, row_scales = 0;
         if (qtype != KV_TYPE_F32 &&
             kvq_row_layout((KVCacheType)qtype, head_dim, &row_bytes, &row_scales) != 0) {

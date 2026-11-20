@@ -430,7 +430,7 @@ BatchScheduler *batch_scheduler_create(const Config *cfg, const TransformerWeigh
             break;
         }
         memset(slot->s, 0, sizeof(*slot->s));
-        if (run_state_alloc(slot->s, cfg, slot0->max_seq_len) != TN_OK) {
+        if (run_state_alloc_ex(slot->s, cfg, slot0->max_seq_len, false, opt->kv) != TN_OK) {
             free(slot->s);
             slot->s = NULL;
             ok      = 0;

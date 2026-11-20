@@ -495,7 +495,7 @@ static void test_qwen3moe_batch_matches_sequential(void) {
     int tokens[3]      = {1, 3, 2};
 
     RunState s_ref;
-    TEST_ASSERT(run_state_alloc_ex(&s_ref, &cfg, cfg.seq_len, /*skip_kv_cache=*/true) == TN_OK,
+    TEST_ASSERT(run_state_alloc_ex(&s_ref, &cfg, cfg.seq_len, true, NULL) == TN_OK,
                 "Q3MoE ref run_state_alloc_ex");
     TEST_ASSERT(qwen3moe_run_state_alloc(&s_ref, &cfg, &mc, cfg.seq_len) == TN_OK,
                 "Q3MoE ref qwen3moe_run_state_alloc");
@@ -507,7 +507,7 @@ static void test_qwen3moe_batch_matches_sequential(void) {
     }
 
     RunState s_batch;
-    TEST_ASSERT(run_state_alloc_ex(&s_batch, &cfg, cfg.seq_len, /*skip_kv_cache=*/true) == TN_OK,
+    TEST_ASSERT(run_state_alloc_ex(&s_batch, &cfg, cfg.seq_len, true, NULL) == TN_OK,
                 "Q3MoE batch run_state_alloc_ex");
     TEST_ASSERT(qwen3moe_run_state_alloc(&s_batch, &cfg, &mc, cfg.seq_len) == TN_OK,
                 "Q3MoE batch qwen3moe_run_state_alloc");

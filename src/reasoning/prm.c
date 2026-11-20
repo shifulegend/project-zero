@@ -54,11 +54,11 @@ static int first_token(Tokenizer *t, const char *s) {
 }
 
 TernaryError prm_load(PrmModel *pm, const char *path, const char *format, const char *good,
-                      const char *bad, int max_seq_len, ThreadPool *tp) {
+                      const char *bad, int max_seq_len, ThreadPool *tp,
+                      const KVStrategyOptions *kv_opt) {
     if (!pm || !path) return TN_ERR_INVALID_ARGS;
     memset(pm, 0, sizeof(*pm));
-    TernaryError e = load_gguf_model(&pm->model, path, /*is_primary=*/false, max_seq_len, tp,
-                                     /*stdout_is_tty=*/false);
+    TernaryError e = load_gguf_model(&pm->model, path, false, max_seq_len, tp, false, kv_opt);
     if (e != TN_OK) {
         TN_LOG_ERR("prm", "[prm] cannot load '%s': %s\n", path, tn_error_str(e));
         return e;

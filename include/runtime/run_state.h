@@ -6,6 +6,7 @@
 #include "core/config.h"
 #include "core/error.h"
 #include "core/lora.h"
+#include "kv_cache/kv_strategy.h"
 #include "kv_cache/sliding_window.h"
 
 /**
@@ -158,8 +159,8 @@ TernaryError run_state_alloc(RunState *s, const Config *cfg, int max_seq_len);
  * Same as run_state_alloc(), but when skip_kv_cache is true, key_cache/
  * value_cache are left NULL (not calloc'd at all — not a calloc-then-free,
  * see below) instead of their usual [n_layers][n_kv_heads][max_seq][head_dim]
- * sizing. run_state_alloc() is a thin wrapper calling this with false, so
- * every existing caller is unaffected.
+ * sizing. `kv_opt` (NULL = F32 in RAM) picks the generic cache's storage type and --kv-offload
+ * directory. run_state_alloc() is a thin wrapper calling this with false and NULL.
  *
  * For Qwen3.5/3.6 hybrid models this buffer is 100% dead weight — the
  * qwen35 forward path never reads it (it uses its own correctly-sized
@@ -174,8 +175,8 @@ TernaryError run_state_alloc(RunState *s, const Config *cfg, int max_seq_len);
  * confirmed by a real near-OOM during verification, see docs/ai/mistakes.md.
  * Skipping the calloc entirely is the only way to avoid the spike.
  */
-TernaryError run_state_alloc_ex(RunState *s, const Config *cfg, int max_seq_len,
-                                bool skip_kv_cache);
+TernaryError run_state_alloc_ex(RunState *s, const Config *cfg, int max_seq_len, bool skip_kv_cache,
+                                const KVStrategyOptions *kv_opt);
 
 /**
  * Free all RunState buffers.

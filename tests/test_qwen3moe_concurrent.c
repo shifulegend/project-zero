@@ -40,7 +40,7 @@ static void *q3_job_fn(void *arg) {
     int tokens[3] = {1, 3, 2};
     RunState s;
     j->ok = 0;
-    if (run_state_alloc_ex(&s, j->cfg, j->cfg->seq_len, true) != TN_OK) return NULL;
+    if (run_state_alloc_ex(&s, j->cfg, j->cfg->seq_len, true, NULL) != TN_OK) return NULL;
     if (qwen3moe_run_state_alloc(&s, j->cfg, j->mc, j->cfg->seq_len) != TN_OK) {
         run_state_free(&s);
         return NULL;

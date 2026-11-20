@@ -8,6 +8,7 @@
 #include "config/pz_config.h"
 #include "core/error.h"
 #include "core/platform.h"
+#include "kv_cache/kv_strategy.h"
 #include "reasoning/mcts.h"
 #include "transformer/gen_params.h"
 #include "update/update_check.h"
@@ -194,6 +195,8 @@ void args_fill_gen_params(const CliArgs *args, GenerationParams *gp);
 
 /* Phase 38: update-check options from the --update-* / --no-update-check flags. */
 void args_fill_update_options(const CliArgs *args, UpdateOptions *o);
+/* Context size and KV storage overrides: --ctx-size, --kv-ram-fraction, --kv-type, --kv-offload. */
+void args_fill_kv_options(const CliArgs *args, KVStrategyOptions *o);
 
 // Print usage help
 void print_usage(const char *prog_name);

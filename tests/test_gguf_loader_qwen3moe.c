@@ -366,7 +366,7 @@ static void test_moe_ffn_q4k_batched_path(void) {
     }
 
     cfg.seq_len = 16;
-    if (run_state_alloc_ex(&s, &cfg, cfg.seq_len, mc.has_qk_norm) != TN_OK) {
+    if (run_state_alloc_ex(&s, &cfg, cfg.seq_len, mc.has_qk_norm, NULL) != TN_OK) {
         FAIL("moe_ffn_q4k_batched", "run_state_alloc_ex failed");
         goto cleanup;
     }
@@ -561,7 +561,7 @@ static void test_end_to_end_forward_pass(void) {
     }
 
     cfg.seq_len = 16; /* small context, plenty for a 1-token forward pass */
-    if (run_state_alloc_ex(&s, &cfg, cfg.seq_len, mc.has_qk_norm) != TN_OK) {
+    if (run_state_alloc_ex(&s, &cfg, cfg.seq_len, mc.has_qk_norm, NULL) != TN_OK) {
         FAIL("end_to_end_forward", "run_state_alloc_ex failed");
         goto cleanup;
     }

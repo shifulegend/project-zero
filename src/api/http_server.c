@@ -480,21 +480,21 @@ TernaryError api_server_start(int port, ApiContext *ctx) {
 /* Phase 23 stage 2b: --parallel N > 1 starts the batch scheduler when the
  * model can run batched; otherwise (or if it cannot be set up) the server
  * stays sequential and /v1/config says why. */
+/* Starts the --parallel scheduler. All slots share one KV pool: the context's, or
+ * --kv-ram-fraction of free memory if that is larger. */
 static void start_parallel(ApiContext *ctx) {
-    int want            = ctx->server_config.limits.parallel;
-    ctx->parallel.slots = 1;
-    ctx->parallel.note  = NULL;
+    int want      = ctx->server_config.limits.parallel;
+    ctx->parallel = (ApiParallel){NULL, 1, NULL, 0}; /* sched, slots, note, kv_budget */
     if (want > 1 && !batch_scheduler_supported(ctx->weights, ctx->moe_cfg)) {
         ctx->parallel.note = "this model architecture runs one request at a time "
                              "(batched serving covers dense attention models)";
     } else if (want > 1) {
         int rows = ctx->server_config.limits.parallel_batch;
         if (rows < want) rows = want; /* every slot needs a row per step */
-        /* All slots share the KV budget one context was sized from, or
-         * the larger pool --kv-ram-fraction of free memory holds. */
-        long long budget = kv_strategy_budget_tokens(ctx->cfg, ctx->moe_cfg, tn_get_free_ram());
+        const KVStrategyOptions *kv = &ctx->server_config.kv;
+        long long budget = kv_strategy_budget_tokens(ctx->cfg, ctx->moe_cfg, tn_get_free_ram(), kv);
         if (budget < ctx->run_state->max_seq_len) budget = ctx->run_state->max_seq_len;
-        BatchSchedulerOptions o = {want, rows, budget};
+        BatchSchedulerOptions o = {want, rows, budget, kv};
         ctx->parallel.sched =
             batch_scheduler_create(ctx->cfg, ctx->weights, ctx->run_state, &ctx->prefix_cache,
                                    &ctx->prompt_store, ctx->moe_cfg, ctx->tok, ctx->tp, &o);

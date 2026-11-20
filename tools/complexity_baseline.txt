@@ -72,7 +72,7 @@ src/cli/model_catalog.c::valid 12 9 2
 src/cli/repl.c::run_repl 37 129 5
 src/cli/session_checks.c::session_accuracy_checks 12 54 4
 src/cli/session_dist.c::session_distributed 12 40 2
-src/cli/session_model.c::load_native 31 133 3
+src/cli/session_model.c::load_native 31 130 3
 src/cli/session_run.c::session_execute 8 17 5
 src/cli/session_server.c::configure_server 18 51 1
 src/cli/session_startup.c::session_tune_hardware 27 78 4

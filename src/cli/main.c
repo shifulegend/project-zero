@@ -8,7 +8,6 @@
 #include "cli/session.h"
 #include "core/debug.h"
 #include "core/progress.h"
-#include "kv_cache/kv_strategy.h"
 #include "threading/cache_probe.h"
 
 /* A CLI run is a PzSession (cli/session.h) moved through the phases below; each phase lives in
@@ -30,11 +29,6 @@ static int run(int argc, char **argv, const PzProvenance *provenance) {
     }
     ses->args.server.config_provenance = *provenance;
     session_apply_log_options(ses);
-    {
-        KVStrategyOptions kv_opt = {ses->args.perf.ctx_size, ses->args.perf.kv_ram_fraction,
-                                    ses->args.perf.kv_type, ses->args.perf.kv_offload_dir};
-        kv_strategy_set_options(&kv_opt);
-    }
     (void)tn_cache_info(); /* Phase 27.1: probe once, before any worker threads */
 
     int early = session_early_command(ses);

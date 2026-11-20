@@ -147,7 +147,7 @@ static void destroy(Model *m) {
 /* Runs STEPS positions through both layers on a fresh RunState; out gets x after every step. */
 static int run(const Model *m, float out[STEPS][DIM]) {
     RunState s;
-    if (run_state_alloc_ex(&s, &m->cfg, SEQ, true) != TN_OK) return -1;
+    if (run_state_alloc_ex(&s, &m->cfg, SEQ, true, NULL) != TN_OK) return -1;
     if (q35_run_state_alloc(&s, &m->cfg, &m->mc, SEQ) != TN_OK) {
         run_state_free(&s);
         return -1;

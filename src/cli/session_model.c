@@ -24,8 +24,10 @@
 /* GGUF: the shared loader (also used for the draft model) does everything. */
 static int load_gguf(PzSession *ses) {
     LoadedModel lm;
+    KVStrategyOptions kv_opt;
+    args_fill_kv_options(&ses->args, &kv_opt);
     TernaryError lerr = load_gguf_model(&lm, ses->args.input.model_path, /*is_primary=*/true, 0,
-                                        ses->tp, ses->stdout_is_tty);
+                                        ses->tp, ses->stdout_is_tty, &kv_opt);
     if (lerr != TN_OK) {
         TN_LOG_ERR("session_model", "Failed to load model: %s\n", tn_error_str(lerr));
         return 1;
@@ -38,6 +40,23 @@ static int load_gguf(PzSession *ses) {
     ses->gguf_hdr   = lm.gguf_hdr;
     ses->gguf_store = lm.gguf_store;
     return 0;
+}
+
+/* KV strategy, measured AFTER the weights are loaded so that any F32-dequantised weight
+ * allocations (MLA projections, shared experts, norms) are already counted in consumed RAM. For
+ * mmap'd GGUF models the raw quantised expert bytes don't use physical RAM until accessed, so only
+ * the upfront malloc'd F32 blocks matter. Re-measuring here prevents DeepSeek-style OOM where a
+ * 163840-token context would need 7+ GB of KV cache on a machine with 2-3 GB left after load.
+ *
+ * This is the native-format twin of load_gguf_model()'s KV-strategy/RunState sequence (Phase 18
+ * Stage 3); native `.bin` models have no draft-model use case (see runtime/model_load.h), so it
+ * stays here rather than sharing that GGUF-only helper. */
+static void size_native_context(PzSession *ses) {
+    KVStrategyOptions kv_opt;
+    args_fill_kv_options(&ses->args, &kv_opt);
+    KVStrategyResult kv_res = select_kv_strategy_ex(&ses->p, tn_get_free_ram(), &ses->mc, &kv_opt);
+    ses->p.seq_len          = kv_res.max_seq_len;
+    kv_strategy_print(&kv_res, ses->p.seq_len, &kv_opt);
 }
 
 /* Native ternary `.bin`: mapped, parsed and its run state sized here (no draft-model use case,
@@ -138,23 +157,7 @@ static int load_native(PzSession *ses) {
 
     tn_progress_stage(3, 4, "Preparing runtime...", ses->stdout_is_tty);
 
-    /* KV Strategy — measured AFTER model weights are loaded so that any F32-dequantised
-     * weight allocations (MLA projections, shared experts, norms) are already counted in
-     * consumed RAM.  For mmap'd GGUF models the raw quantised expert bytes don't use
-     * physical RAM until accessed, so only the upfront malloc'd F32 blocks matter here.
-     * Re-measuring at this point prevents DeepSeek-style OOM where a 163840-token context
-     * would require 7+ GB KV cache on a machine that only has 2–3 GB left after load.
-     *
-     * This is the native-format twin of load_gguf_model()'s identical KV-strategy/
-     * RunState-allocation sequence (Phase 18 Stage 3) — native `.bin` models have no
-     * draft-model use case (see runtime/model_load.h), so this stays inline here rather
-     * than sharing that GGUF-only helper. */
-    {
-        tn_i64 post_load_ram    = tn_get_free_ram();
-        KVStrategyResult kv_res = select_kv_strategy(&ses->p, post_load_ram, &ses->mc);
-        ses->p.seq_len          = kv_res.max_seq_len;
-        kv_strategy_print(&kv_res, ses->p.seq_len);
-    }
+    size_native_context(ses);
 
     /* Setup RunState */
     ses->s = (RunState *)malloc(sizeof(RunState));
@@ -172,8 +175,10 @@ static int load_native(PzSession *ses) {
      * qwen3moe.value_cache, allocated below) — skip_kv_cache=true avoids a
      * multi-GB calloc+memset for those models' context. See
      * run_state_alloc_ex's header comment and docs/ai/mistakes.md. */
+    KVStrategyOptions kv_opt;
+    args_fill_kv_options(&ses->args, &kv_opt);
     if (run_state_alloc_ex(ses->s, &ses->p, ses->p.seq_len,
-                           ses->mc.has_linear_attn || ses->mc.has_qk_norm) != TN_OK) {
+                           ses->mc.has_linear_attn || ses->mc.has_qk_norm, &kv_opt) != TN_OK) {
         TN_LOG_ERR("session_model", "Failed to allocate RunState buffers.\n");
         free(ses->s);
         if (ses->mc.is_moe) moe_weights_free(&ses->w, &ses->mc);

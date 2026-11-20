@@ -105,7 +105,7 @@ static void parallel(BatchScheduler *bs, float temp, int use_cache, Req *req, in
 }
 
 static BatchScheduler *make(int slots, int rows, long long budget, PrefixCache *pc) {
-    BatchSchedulerOptions o = {slots, rows, budget};
+    BatchSchedulerOptions o = {slots, rows, budget, NULL};
     memset(pc, 0, sizeof(*pc));
     return batch_scheduler_create(&M.config, &M.weights, M.state, pc, NULL, &M.moe_config, &T, TP,
                                   &o);
@@ -194,7 +194,7 @@ int main(void) {
     tn_simd_init();
     TP = threadpool_create(4);
     memset(&M, 0, sizeof(M));
-    if (load_gguf_model(&M, path, true, 0, TP, false) != TN_OK) {
+    if (load_gguf_model(&M, path, true, 0, TP, false, NULL) != TN_OK) {
         printf("  (could not load %s) skipped\n", path);
         threadpool_destroy(TP);
         return 0;

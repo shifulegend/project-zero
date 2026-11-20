@@ -28,14 +28,16 @@
  * sequential otherwise.
  */
 
+#include "kv_cache/kv_strategy.h"
 #include "kv_cache/prefix_cache.h"
 #include "runtime/prompt_store.h"
 #include "transformer/generate.h"
 
 typedef struct {
-    int n_slots;                /* concurrent requests (>= 2 to be useful) */
-    int max_batch_rows;         /* rows per forward pass (decode + prefill chunk) */
-    long long kv_budget_tokens; /* positions all slots may hold together; 0 = no limit */
+    int n_slots;                 /* concurrent requests (>= 2 to be useful) */
+    int max_batch_rows;          /* rows per forward pass (decode + prefill chunk) */
+    long long kv_budget_tokens;  /* positions all slots may hold together; 0 = no limit */
+    const KVStrategyOptions *kv; /* storage of every slot's KV cache (NULL = F32 in RAM) */
 } BatchSchedulerOptions;
 
 typedef struct {

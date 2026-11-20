@@ -414,7 +414,7 @@ static void test_draft_model_vocab_mismatch_rejected(void) {
 
     DraftModel dm;
     TernaryError err =
-        draft_model_load(&dm, path, /*verifier_vocab_size=*/1, /*max_seq_len_hint=*/64, NULL);
+        draft_model_load(&dm, path, /*verifier_vocab_size=*/1, /*max_seq_len_hint=*/64, NULL, NULL);
     TEST_ASSERT_EQ(err, TN_ERR_INVALID_ARGS,
                    "draft model load is rejected when vocab_size doesn't match the verifier");
 }

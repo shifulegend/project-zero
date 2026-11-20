@@ -161,7 +161,8 @@ static void report_model_bytes(const LoadedModel *out) {
 
 /* The context length: sized from the RAM left after loading for the primary model, or the hint for
  * a draft model. */
-static void size_context(LoadedModel *out, bool is_primary, int max_seq_len_hint) {
+static void size_context(LoadedModel *out, bool is_primary, int max_seq_len_hint,
+                         const KVStrategyOptions *kv_opt) {
     /* KV Strategy — measured AFTER model weights are loaded so that any F32-dequantised
  * weight allocations (MLA projections, shared experts, norms) are already counted in
  * consumed RAM.  For mmap'd GGUF models the raw quantised expert bytes don't use
@@ -174,9 +175,10 @@ static void size_context(LoadedModel *out, bool is_primary, int max_seq_len_hint
  * and a second independent free-RAM probe during the same startup would
  * double-count RAM the primary model's own sizing already accounted for. */
     if (is_primary) {
-        tn_i64 post_load_ram    = tn_get_free_ram();
-        KVStrategyResult kv_res = select_kv_strategy(&out->config, post_load_ram, &out->moe_config);
-        out->config.seq_len     = kv_res.max_seq_len;
+        tn_i64 post_load_ram = tn_get_free_ram();
+        KVStrategyResult kv_res =
+            select_kv_strategy_ex(&out->config, post_load_ram, &out->moe_config, kv_opt);
+        out->config.seq_len = kv_res.max_seq_len;
         /* Qwen35 hybrid models keep their own F32 K/V caches
          * (q35.key_cache/q35.value_cache, only the full-attention layers) —
          * the quantized-KV strategy machinery is not wired into that path,
@@ -186,7 +188,7 @@ static void size_context(LoadedModel *out, bool is_primary, int max_seq_len_hint
          * select_kv_strategy() still applies either way. Qwen3-MoE's own
          * qwen3moe.key_cache/qwen3moe.value_cache are the same situation —
          * independent head_dim, own F32 cache, not the quantized-KV path. */
-        kv_strategy_print(&kv_res, out->config.seq_len);
+        kv_strategy_print(&kv_res, out->config.seq_len, kv_opt);
     } else {
         out->config.seq_len = (max_seq_len_hint > 0) ? max_seq_len_hint : 1;
     }
@@ -194,7 +196,7 @@ static void size_context(LoadedModel *out, bool is_primary, int max_seq_len_hint
 
 /* RunState and the per-architecture state (MLA, Mamba, Qwen3.5 hybrid, Qwen3-MoE). On failure the
  * state is released here; the caller releases the weights. */
-static TernaryError alloc_run_state(LoadedModel *out) {
+static TernaryError alloc_run_state(LoadedModel *out, const KVStrategyOptions *kv_opt) {
     Config *c     = &out->config;
     MoEConfig *mc = &out->moe_config;
     out->state    = (RunState *)malloc(sizeof(RunState));
@@ -210,7 +212,7 @@ static TernaryError alloc_run_state(LoadedModel *out) {
      * multi-GB calloc+memset for those models' context. See
      * run_state_alloc_ex's header comment and docs/ai/mistakes.md. */
     if (run_state_alloc_ex(out->state, c, c->seq_len,
-                           mc->has_linear_attn || mc->has_qk_norm || mc->is_ssm) != TN_OK) {
+                           mc->has_linear_attn || mc->has_qk_norm || mc->is_ssm, kv_opt) != TN_OK) {
         TN_LOG_ERR("model_load", "Failed to allocate RunState buffers.\n");
         free(out->state); /* nothing inside it to release */
         out->state = NULL;
@@ -236,7 +238,8 @@ static TernaryError alloc_run_state(LoadedModel *out) {
 }
 
 TernaryError load_gguf_model(LoadedModel *out, const char *model_path, bool is_primary,
-                             int max_seq_len_hint, ThreadPool *tp, bool stdout_is_tty) {
+                             int max_seq_len_hint, ThreadPool *tp, bool stdout_is_tty,
+                             const KVStrategyOptions *kv_opt) {
     memset(out, 0, sizeof(*out));
     moe_config_init_dense(&out->moe_config); /* dense by default; overridden below for MoE models */
     (void)tp; /* not currently consumed by weights_from_gguf() (which takes no ThreadPool
@@ -259,8 +262,8 @@ TernaryError load_gguf_model(LoadedModel *out, const char *model_path, bool is_p
         report_model_bytes(out);
         tn_progress_stage(3, 4, "Preparing runtime...", stdout_is_tty);
     }
-    size_context(out, is_primary, max_seq_len_hint);
-    e = alloc_run_state(out);
+    size_context(out, is_primary, max_seq_len_hint, kv_opt);
+    e = alloc_run_state(out, kv_opt);
     if (e != TN_OK) {
         release_to(out, STAGE_WEIGHTS);
         return e;

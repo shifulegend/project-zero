@@ -251,6 +251,11 @@ void args_fill_gen_params(const CliArgs *args, GenerationParams *gp) {
     watermark_config_sanitize(&gp->watermark);
 }
 
+void args_fill_kv_options(const CliArgs *args, KVStrategyOptions *o) {
+    *o = (KVStrategyOptions){args->perf.ctx_size, args->perf.kv_ram_fraction, args->perf.kv_type,
+                             args->perf.kv_offload_dir};
+}
+
 void args_fill_update_options(const CliArgs *args, UpdateOptions *o) {
     update_options_default(o);
     if (args->update.no_update_check) o->enabled = 0;

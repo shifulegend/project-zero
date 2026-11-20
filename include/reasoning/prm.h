@@ -38,7 +38,8 @@ typedef struct PrmModel {
 
 /* Loads the judge and resolves good/bad tokens (NULL = defaults above). */
 TernaryError prm_load(PrmModel *pm, const char *path, const char *format, const char *good,
-                      const char *bad, int max_seq_len, ThreadPool *tp);
+                      const char *bad, int max_seq_len, ThreadPool *tp,
+                      const KVStrategyOptions *kv_opt);
 void prm_free(PrmModel *pm);
 
 /* Score of the last step of `steps` for `question`: [0, 1], or -1 on error. */

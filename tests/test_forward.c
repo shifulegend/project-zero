@@ -433,10 +433,10 @@ static void test_forward_single_token(void) {
  * reproduce the serial standard path over a long-ish context. Also the TSan
  * target for the head dispatch (test_forward is in TSAN_TESTS). */
 static void run_positions(const Config *cfg, TransformerWeights *w, ThreadPool *tp, int n_pos,
-                          float *last_logits) {
+                          float *last_logits, const KVStrategyOptions *kv) {
     RunState s;
     memset(&s, 0, sizeof(s));
-    run_state_alloc(&s, cfg, cfg->seq_len);
+    run_state_alloc_ex(&s, cfg, cfg->seq_len, false, kv);
     sw_init(&s.sw, cfg->seq_len, 0);
     float *logits = NULL;
     for (int pos = 0; pos < n_pos; pos++)
@@ -456,18 +456,18 @@ static void test_forward_parallel_and_tiled_attention(void) {
     float serial[8], parallel[8], tiled[8];
 
     attn_kernel_configure(ATTN_KERNEL_STANDARD, 0, cfg.dim / cfg.n_heads);
-    run_positions(&cfg, &w, NULL, 80, serial);
+    run_positions(&cfg, &w, NULL, 80, serial, NULL);
 
     ThreadPool *tp = threadpool_create(4);
     attn_parallel_min_ctx_set(1); /* force the head dispatch from position 0 */
-    run_positions(&cfg, &w, tp, 80, parallel);
+    run_positions(&cfg, &w, tp, 80, parallel, NULL);
     int same = 1;
     for (int i = 0; i < cfg.vocab_size; i++)
         if (serial[i] != parallel[i]) same = 0;
     TEST_ASSERT(same, "head-parallel attention is bit-identical to serial");
 
     attn_kernel_configure(ATTN_KERNEL_TILED, 8, cfg.dim / cfg.n_heads);
-    run_positions(&cfg, &w, tp, 80, tiled);
+    run_positions(&cfg, &w, tp, 80, tiled, NULL);
     float md = 0;
     for (int i = 0; i < cfg.vocab_size; i++) {
         float e = fabsf(serial[i] - tiled[i]);
@@ -491,17 +491,15 @@ static void test_forward_kv_i8_close_to_f32(void) {
     tn_simd_init();
     alloc_synthetic_weights(&w, &cfg);
     float f32[8], i8[8];
-    run_positions(&cfg, &w, NULL, 60, f32);
+    run_positions(&cfg, &w, NULL, 60, f32, NULL);
     KVStrategyOptions o = {0, 0.0f, 1, NULL};
-    kv_strategy_set_options(&o);
     RunState probe;
     memset(&probe, 0, sizeof(probe));
-    run_state_alloc(&probe, &cfg, cfg.seq_len);
+    run_state_alloc_ex(&probe, &cfg, cfg.seq_len, false, &o);
     TEST_ASSERT(probe.kvs.type == 1 && probe.key_cache == NULL && probe.kvs.key_cache_q != NULL,
                 "i8 run state allocates int8 storage only");
     run_state_free(&probe);
-    run_positions(&cfg, &w, NULL, 60, i8);
-    kv_strategy_set_options(NULL);
+    run_positions(&cfg, &w, NULL, 60, i8, &o);
     float md = 0, mag = 0;
     for (int i = 0; i < cfg.vocab_size; i++) {
         float e = fabsf(f32[i] - i8[i]);
@@ -524,23 +522,21 @@ static void test_forward_kv_i4_close_to_f32(void) {
     tn_simd_init();
     alloc_synthetic_weights(&w, &cfg);
     float f32[8], i4[8];
-    run_positions(&cfg, &w, NULL, 60, f32);
+    run_positions(&cfg, &w, NULL, 60, f32, NULL);
     KVStrategyOptions o = {0, 0.0f, KV_TYPE_I4, NULL};
-    kv_strategy_set_options(&o);
     RunState probe;
     memset(&probe, 0, sizeof(probe));
-    run_state_alloc(&probe, &cfg, cfg.seq_len);
+    run_state_alloc_ex(&probe, &cfg, cfg.seq_len, false, &o);
     TEST_ASSERT(probe.kvs.type == KV_TYPE_I4 && probe.kvs.row_bytes == 16 &&
                     probe.kvs.row_scales == 2,
                 "i4 run state: 16 data bytes + (scale,min) per 32-wide row");
     run_state_free(&probe);
-    run_positions(&cfg, &w, NULL, 60, i4);
+    run_positions(&cfg, &w, NULL, 60, i4, &o);
     Config narrow = tiny_config(); /* head_dim 8 */
     memset(&probe, 0, sizeof(probe));
-    run_state_alloc(&probe, &narrow, narrow.seq_len);
+    run_state_alloc_ex(&probe, &narrow, narrow.seq_len, false, &o);
     TEST_ASSERT(probe.kvs.type == KV_TYPE_I8, "head_dim % 32 != 0 falls back to i8");
     run_state_free(&probe);
-    kv_strategy_set_options(NULL);
     float md = 0, mag = 0;
     for (int i = 0; i < cfg.vocab_size; i++) {
         float e = fabsf(f32[i] - i4[i]);

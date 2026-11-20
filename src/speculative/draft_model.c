@@ -7,12 +7,13 @@
 #include "tokenizer/tokenizer_gguf.h"
 
 TernaryError draft_model_load(DraftModel *dm, const char *draft_model_path, int verifier_vocab_size,
-                              int max_seq_len_hint, ThreadPool *tp) {
+                              int max_seq_len_hint, ThreadPool *tp,
+                              const KVStrategyOptions *kv_opt) {
     memset(dm, 0, sizeof(*dm));
 
     LoadedModel lm;
     TernaryError err = load_gguf_model(&lm, draft_model_path, /*is_primary=*/false,
-                                       max_seq_len_hint, tp, /*stdout_is_tty=*/false);
+                                       max_seq_len_hint, tp, /*stdout_is_tty=*/false, kv_opt);
     if (err != TN_OK) {
         TN_LOG_ERR("draft_model", "Failed to load draft model '%s': %s\n", draft_model_path,
                    tn_error_str(err));

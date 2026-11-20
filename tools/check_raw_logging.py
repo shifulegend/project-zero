@@ -33,10 +33,10 @@ RAW = re.compile(
 COMMENT = re.compile(r"/\*.*?\*/|//[^\n]*", re.DOTALL)
 
 
-def raw_uses(text):
+def raw_uses(text: str) -> list[int]:
     """Line numbers of raw stderr writes in `text` (comments ignored)."""
 
-    def blank(m):
+    def blank(m: re.Match[str]) -> str:
         """Replaces a comment with spaces, keeping line breaks."""
         return re.sub(r"[^\n]", " ", m.group(0))
 
@@ -44,7 +44,7 @@ def raw_uses(text):
     return [code.count("\n", 0, m.start()) + 1 for m in RAW.finditer(code)]
 
 
-def main():
+def main() -> int:
     """Entry point: scans src/ and returns 1 when a file outside the allow-list writes to stderr."""
     files = subprocess.check_output(["git", "ls-files", "src"], cwd=ROOT, text=True).split()
     bad = []

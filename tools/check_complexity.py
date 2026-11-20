@@ -18,12 +18,12 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 BASELINE = ROOT / "tools" / "complexity_baseline.txt"
-MAX_CCN = 15
+MAX_CCN = 10
 MAX_NLOC = 100
 SKIP = ("src/api/webui_bundle_generated.c",)
 
 
-def measure():
+def measure() -> dict[str, tuple[int, int]]:
     """{ "file::function": (ccn, nloc) } for every function in src/ (largest wins on a repeated name)."""
     out = subprocess.run(
         [sys.executable, "-m", "lizard", "src", "-l", "c", "-l", "cpp", "--csv"],
@@ -32,7 +32,7 @@ def measure():
         text=True,
         check=True,
     ).stdout
-    result = {}
+    result: dict[str, tuple[int, int]] = {}
     for row in csv.reader(io.StringIO(out)):
         nloc, ccn, path, name = int(row[0]), int(row[1]), row[6], row[7]
         if path.startswith(SKIP):
@@ -43,7 +43,7 @@ def measure():
     return result
 
 
-def read_baseline():
+def read_baseline() -> dict[str, tuple[int, int]]:
     """Recorded (ccn, nloc) of the existing offenders from tools/complexity_baseline.txt."""
     out = {}
     if BASELINE.exists():
@@ -54,12 +54,12 @@ def read_baseline():
     return out
 
 
-def offenders(cur):
+def offenders(cur: dict[str, tuple[int, int]]) -> dict[str, tuple[int, int]]:
     """The functions over either limit."""
     return {k: v for k, v in cur.items() if v[0] > MAX_CCN or v[1] > MAX_NLOC}
 
 
-def problems(cur, base):
+def problems(cur: dict[str, tuple[int, int]], base: dict[str, tuple[int, int]]) -> list[str]:
     """Messages for new offenders and for listed ones that grew in complexity or length."""
     out = []
     for key, (ccn, nloc) in sorted(offenders(cur).items()):
@@ -77,7 +77,7 @@ def problems(cur, base):
     return out
 
 
-def main(argv):
+def main(argv: list[str]) -> int:
     """Entry point: writes the baseline with --update, else checks the tree; returns the exit code."""
     cur = measure()
     if "--update" in argv:
@@ -90,13 +90,15 @@ def main(argv):
         )
         print(f"baseline written: {len(bad)} function(s)")
         return 0
-    bad = problems(cur, read_baseline())
-    for line in bad:
+    found = problems(cur, read_baseline())
+    for line in found:
         print(line)
     print(
-        f"functions over the limits: {len(offenders(cur))}" if not bad else f"{len(bad)} problem(s)"
+        f"functions over the limits: {len(offenders(cur))}"
+        if not found
+        else f"{len(found)} problem(s)"
     )
-    return 1 if bad else 0
+    return 1 if found else 0
 
 
 if __name__ == "__main__":

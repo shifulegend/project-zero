@@ -24,19 +24,19 @@ DOCUMENTED = re.compile(r'\\"(/[^"\\]*)\\":\{\\"(get|post|put|delete|patch)\\"')
 FALLBACK = {("GET", "/")}  # documented, served by the static-asset fallback
 
 
-def routed_routes(text):
+def routed_routes(text: str) -> set[tuple[str, str]]:
     """(method, path) pairs the router matches in http_server.c."""
     return {(m.upper(), p) for m, p in ROUTED.findall(text)}
 
 
-def documented_routes(text):
+def documented_routes(text: str) -> set[tuple[str, str]]:
     """(method, path) pairs the OpenAPI document describes."""
     return {(m.upper(), p) for p, m in DOCUMENTED.findall(text)}
 
 
-def compare(routed, documented):
+def compare(routed: set[tuple[str, str]], documented: set[tuple[str, str]]) -> list[str]:
     """Returns a list of problems (empty when the two sets agree)."""
-    problems = []
+    problems: list[str] = []
     for method, path in sorted(routed - documented):
         problems.append(f"{method} {path} is served but missing from the OpenAPI document")
     for method, path in sorted(documented - routed - FALLBACK):
@@ -44,7 +44,7 @@ def compare(routed, documented):
     return problems
 
 
-def main():
+def main() -> int:
     """Entry point: compares the two sets and returns 1 on any difference."""
     routed = routed_routes(SERVER.read_text(encoding="utf-8"))
     documented = documented_routes(OPENAPI.read_text(encoding="utf-8"))

@@ -16,9 +16,10 @@ SKIP = ("benchmark_results/",)
 FENCE = re.compile(r"^(\s*)(`{3,}|~{3,})(.*)$")
 
 
-def untagged(lines):
+def untagged(lines: list[str]) -> list[int]:
     """Line numbers (0-based) of opening fences without an info string."""
-    out, fence = [], None
+    out: list[int] = []
+    fence: tuple[str, int] | None = None
     for i, line in enumerate(lines):
         m = FENCE.match(line)
         if not m:
@@ -33,7 +34,7 @@ def untagged(lines):
     return out
 
 
-def fix_text(text):
+def fix_text(text: str) -> str:
     """Returns `text` with every untagged code fence tagged as `text`."""
     lines = text.split("\n")
     for i in untagged(lines):
@@ -41,7 +42,7 @@ def fix_text(text):
     return "\n".join(lines)
 
 
-def main(argv):
+def main(argv: list[str]) -> int:
     """Entry point: reports untagged fences in tracked Markdown files (and tags them with --fix); returns the exit code."""
     do_fix = "--fix" in argv
     files = subprocess.check_output(["git", "ls-files", "*.md"], cwd=ROOT, text=True).split()

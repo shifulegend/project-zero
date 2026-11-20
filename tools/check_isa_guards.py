@@ -53,7 +53,7 @@ PENDING = {
 }
 
 
-def isa_flagged_files():
+def isa_flagged_files() -> set[str]:
     """Files the Makefile builds with AVX-512 / VNNI per-file flags."""
     mk = (ROOT / "Makefile").read_text()
     flagged = set()
@@ -68,13 +68,13 @@ def isa_flagged_files():
     return flagged
 
 
-def strip_comments(text):
+def strip_comments(text: str) -> str:
     """Drop /* */ and // comments: prose about a macro is not a use of it."""
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
     return re.sub(r"//[^\n]*", "", text)
 
 
-def main():
+def main() -> int:
     """Entry point: checks that AVX-512/VNNI code only appears in files built with those ISA flags (and that the pending list has no stale entries); returns the exit code."""
     flagged = isa_flagged_files()
     if not flagged:

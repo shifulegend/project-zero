@@ -28,14 +28,14 @@ SKIP = (
 )
 
 
-def count(text):
+def count(text: str) -> dict[str, int]:
     """Number of NOLINT, noqa and pragma-diagnostic suppressions in `text`, by kind."""
     return {k: len(rx.findall(text)) for k, rx in KINDS.items()}
 
 
-def bare(text, kind):
+def bare(text: str, kind: str) -> list[int]:
     """Lines with a blanket NOLINT (it must name its check) or a noqa with no reason after its codes."""
-    out = []
+    out: list[int] = []
     for n, line in enumerate(text.splitlines(), 1):
         if kind == "NOLINT" and re.search(r"NOLINT(NEXTLINE)?(?!\()", line):
             out.append(n)
@@ -47,11 +47,11 @@ def bare(text, kind):
     return out
 
 
-def totals():
+def totals() -> tuple[dict[str, int], list[str]]:
     """Suppression counts over all tracked first-party files, and the lines of blanket suppressions."""
     files = subprocess.check_output(["git", "ls-files"], cwd=ROOT, text=True).split()
     total = dict.fromkeys(KINDS, 0)
-    bare_lines = []
+    bare_lines: list[str] = []
     for rel in files:
         if pathlib.Path(rel).suffix not in SUFFIXES or rel.startswith(SKIP):
             continue
@@ -62,7 +62,7 @@ def totals():
     return total, bare_lines
 
 
-def read_baseline():
+def read_baseline() -> dict[str, int]:
     """Baseline counts from tools/suppressions_baseline.txt."""
     out = {}
     for line in BASELINE.read_text(encoding="utf-8").splitlines():
@@ -72,7 +72,7 @@ def read_baseline():
     return out
 
 
-def compare(current, baseline):
+def compare(current: dict[str, int], baseline: dict[str, int]) -> list[str]:
     """Messages for every kind whose count exceeds its baseline."""
     return [
         f"{k}: {current[k]} (baseline {baseline.get(k, 0)})"
@@ -81,7 +81,7 @@ def compare(current, baseline):
     ]
 
 
-def main(argv):
+def main(argv: list[str]) -> int:
     """Entry point: writes the baseline with --update, else checks the tree; returns the exit code."""
     cur, bare_lines = totals()
     if "--update" in argv:

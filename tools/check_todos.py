@@ -23,9 +23,9 @@ SKIP = (
 MARK = re.compile(r"\b(TODO|FIXME)\b(\(([A-Za-z0-9-]+)\))?")
 
 
-def problems(text, path, registered):
+def problems(text: str, path: str, registered: set[str]) -> list[str]:
     """Problems in `text`: TODO/FIXME markers with no ID, or an ID that is not in the register."""
-    out = []
+    out: list[str] = []
     for n, line in enumerate(text.splitlines(), 1):
         for m in MARK.finditer(line):
             ident = m.group(3)
@@ -38,12 +38,12 @@ def problems(text, path, registered):
     return out
 
 
-def registered_ids(text):
+def registered_ids(text: str) -> set[str]:
     """IDs listed in the register table."""
     return set(re.findall(r"^\|\s*((?:PZ-TODO|QA-ISS)-\d+)\s*\|", text, re.M))
 
 
-def main():
+def main() -> int:
     """Entry point: scans the tracked sources against the register and returns 1 on any problem."""
     reg = registered_ids(REGISTER.read_text(encoding="utf-8"))
     files = subprocess.check_output(["git", "ls-files"], cwd=ROOT, text=True).split()

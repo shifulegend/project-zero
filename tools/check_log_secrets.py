@@ -28,20 +28,20 @@ COMMENT = re.compile(r"/\*.*?\*/|//[^\n]*", re.DOTALL)
 SKIP = ("src/api/webui_bundle_generated.c",)
 
 
-def strip(text):
+def strip(text: str) -> str:
     """Blanks comments and string literals but keeps line numbers."""
 
-    def blank(m):
+    def blank(m: re.Match[str]) -> str:
         """Replaces the matched text with spaces, keeping line breaks so line numbers stay right."""
         return re.sub(r"[^\n]", " ", m.group(0))
 
     return STRING.sub(blank, COMMENT.sub(blank, text))
 
 
-def violations(text):
+def violations(text: str) -> list[tuple[int, str]]:
     """Returns (line, identifier) for every secret name used inside a print statement."""
     code = strip(text)
-    out = []
+    out: list[tuple[int, str]] = []
     for call in PRINT_CALL.finditer(code):
         end = code.find(";", call.end())
         stmt = code[call.end() : end if end != -1 else len(code)]
@@ -51,7 +51,7 @@ def violations(text):
     return out
 
 
-def main():
+def main() -> int:
     """Entry point: scans src/ for credential variables passed to print calls and returns 1 when any is found."""
     files = subprocess.check_output(["git", "ls-files", "src"], cwd=ROOT, text=True).split()
     bad = []

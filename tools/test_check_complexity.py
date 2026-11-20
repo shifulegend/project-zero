@@ -11,12 +11,12 @@ import check_complexity as c
 
 class ComplexityTest(unittest.TestCase):
     def test_small_functions_pass(self):
-        self.assertEqual(c.problems({"src/a.c::f": (15, 100)}, {}), [])
+        self.assertEqual(c.problems({"src/a.c::f": (10, 100)}, {}), [])
 
     def test_a_new_complex_function_fails(self):
-        out = c.problems({"src/a.c::f": (16, 10)}, {})
+        out = c.problems({"src/a.c::f": (11, 10)}, {})
         self.assertEqual(len(out), 1)
-        self.assertIn("complexity 16", out[0])
+        self.assertIn("complexity 11", out[0])
 
     def test_a_new_long_function_fails(self):
         out = c.problems({"src/a.c::f": (3, 101)}, {})

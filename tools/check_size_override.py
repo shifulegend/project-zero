@@ -21,18 +21,19 @@ MIN_CHARS = 30
 PLACEHOLDERS = ("todo", "tbd", "n/a", "na", "none", "...", "explain here", "fill in")
 
 
-def justification(body):
+def justification(body: str | None) -> str | None:
     """The text under the 'Size override justification' heading, or None when there is no such section."""
-    m = HEADING.search(body or "")
+    text_in = body or ""
+    m = HEADING.search(text_in)
     if not m:
         return None
-    rest = body[m.end() :]
+    rest = text_in[m.end() :]
     nxt = NEXT_HEADING.search(rest)
     text = rest[: nxt.start()] if nxt else rest
     return COMMENT.sub("", text).strip()
 
 
-def problems(body):
+def problems(body: str | None) -> list[str]:
     """Reasons the description does not justify the override (empty list when it does)."""
     text = justification(body)
     if text is None:
@@ -46,7 +47,7 @@ def problems(body):
     return []
 
 
-def main(argv):
+def main(argv: list[str]) -> int:
     """Entry point: checks the PR body (from --file or $PR_BODY); returns 1 when it does not justify the label."""
     if "--file" in argv:
         with open(argv[argv.index("--file") + 1], encoding="utf-8") as f:

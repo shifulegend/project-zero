@@ -50,8 +50,9 @@
   gets a comment that says why splitting it would hurt (a hot kernel, one flat state machine).
   Reviewers hold new code to this; the long functions already in the tree are tracked work, not
   precedent. CI (`tools/check_complexity.py`, lizard) fails on a new function in `src/` over 100
-  lines or complexity 15 and on growth of a listed one (`tools/complexity_baseline.txt`, which may
-  only shrink); the 20-line and complexity-10 targets stay review-time rules.
+  lines or complexity 10 and on growth of a listed one (`tools/complexity_baseline.txt`, which may
+  only shrink); the 20-line target stays a review-time rule. Nesting depth 3 is a review-time rule
+  until the tool reports it.
 - **Complexity:** cyclomatic complexity 10 or less and nesting depth 3 or less per new function;
   prefer early returns over nested `if`s, and a table or a helper over a long `else if` chain.
 - **Logging:** every diagnostic goes through `core/log.h` (`TN_LOG_ERR/WRN/INF/DBG(component, ...)`;

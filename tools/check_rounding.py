@@ -44,14 +44,15 @@ RULES = [
 ]
 
 
-def strip_comment(line):
+def strip_comment(line: str) -> str:
     """The line without its block comment and trailing // comment."""
     return re.sub(r"/\*.*?\*/", "", line).split("//")[0]
 
 
-def scan_text(text):
+def scan_text(text: str) -> list[tuple[int, str]]:
     """-> [(line_no, message)] for one file's text."""
-    lines, out = text.split("\n"), []
+    lines = text.split("\n")
+    out: list[tuple[int, str]] = []
     for i, line in enumerate(lines):
         code = strip_comment(line)
         for rx, msg in RULES:
@@ -64,7 +65,7 @@ def scan_text(text):
     return out
 
 
-def self_test():
+def self_test() -> None:
     """Runs the rule on known-bad and known-good snippets and exits when they are not classified as expected."""
     bad = [
         "__m512i i = _mm512_cvttps_epi32(v);",
@@ -84,7 +85,7 @@ def self_test():
     print("check_rounding self-test ok")
 
 
-def main():
+def main() -> int:
     """Entry point: --self-test, else scans the kernels for truncating float-to-int conversions and returns the exit code."""
     if "--self-test" in sys.argv:
         self_test()

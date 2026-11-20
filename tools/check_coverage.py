@@ -13,7 +13,7 @@ FLOOR = ROOT / "tools" / "coverage_floor.txt"
 DEFAULT_INFO = ROOT / "build" / "coverage" / "coverage.info"
 
 
-def totals(text):
+def totals(text: str) -> dict[str, tuple[int, int]]:
     """Sums the per-file records of a tracefile into {'lines': (hit, found), 'branches': ...}."""
     sums = {"LF": 0, "LH": 0, "BRF": 0, "BRH": 0}
     for line in text.splitlines():
@@ -23,13 +23,13 @@ def totals(text):
     return {"lines": (sums["LH"], sums["LF"]), "branches": (sums["BRH"], sums["BRF"])}
 
 
-def percent(hit_found):
+def percent(hit_found: tuple[int, int]) -> float:
     """Percentage for a (hit, found) pair; 0 when nothing was found."""
     hit, found = hit_found
     return 100.0 * hit / found if found else 0.0
 
 
-def read_floor(text):
+def read_floor(text: str) -> dict[str, float]:
     """Parses the floor file into {metric: minimum percent}, ignoring comments."""
     floor = {}
     for raw in text.splitlines():
@@ -40,7 +40,7 @@ def read_floor(text):
     return floor
 
 
-def check(info_text, floor):
+def check(info_text: str, floor: dict[str, float]) -> list[str]:
     """Returns a list of failure messages (empty when every metric meets its floor)."""
     got = totals(info_text)
     failures = []
@@ -57,7 +57,7 @@ def check(info_text, floor):
     return failures
 
 
-def main(argv):
+def main(argv: list[str]) -> int:
     """Entry point: compares the tracefile's coverage with the floor and returns the exit code."""
     info = pathlib.Path(argv[1]) if len(argv) > 1 else DEFAULT_INFO
     if not info.exists():

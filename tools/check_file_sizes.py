@@ -23,7 +23,7 @@ SCOPE = ("src/", "include/", "tests/", "tools/", "webui/src/")
 SKIP = ("include/stb_", "src/api/webui_bundle_generated.c", "tools/screenshots/")
 
 
-def docstring_lines(source):
+def docstring_lines(source: str) -> int:
     """Number of lines that Python docstrings (module, class and function) occupy in `source`."""
     try:
         tree = ast.parse(source)
@@ -38,11 +38,11 @@ def docstring_lines(source):
                 and isinstance(first.value, ast.Constant)
                 and isinstance(first.value.value, str)
             ):
-                total += first.end_lineno - first.lineno + 1
+                total += (first.end_lineno or first.lineno) - first.lineno + 1
     return total
 
 
-def sizes():
+def sizes() -> dict[str, int]:
     """Line count of every counted tracked source file (Python docstring lines excluded)."""
     files = subprocess.check_output(["git", "ls-files"], cwd=ROOT, text=True).split()
     out = {}
@@ -61,7 +61,7 @@ def sizes():
     return out
 
 
-def read_baseline():
+def read_baseline() -> dict[str, int]:
     """Recorded sizes of the existing oversized files from tools/file_size_baseline.txt."""
     out = {}
     if BASELINE.exists():
@@ -72,7 +72,7 @@ def read_baseline():
     return out
 
 
-def problems(cur, base, limit=LIMIT):
+def problems(cur: dict[str, int], base: dict[str, int], limit: int = LIMIT) -> list[str]:
     """Messages for files over the limit that are new, or listed ones that grew past their recorded size."""
     out = []
     for rel, n in sorted(cur.items()):
@@ -87,7 +87,7 @@ def problems(cur, base, limit=LIMIT):
     return out
 
 
-def main(argv):
+def main(argv: list[str]) -> int:
     """Entry point: writes the baseline with --update, else checks the tree; returns the exit code."""
     cur = sizes()
     if "--update" in argv:

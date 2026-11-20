@@ -60,11 +60,16 @@ jobs:
         run: |
           python3 -I tools/test_check_raw_logging.py
           python3 -I tools/check_raw_logging.py
-      - name: Functions in src/ must not grow past complexity 15 / 100 lines (ratchet)
+      - name: Functions in src/ must not grow past complexity 10 / 100 lines (ratchet)
         run: |
           pip install --quiet lizard==1.26.1
           python3 -I tools/test_check_complexity.py
           python3 -I tools/check_complexity.py
+      - name: Python passes mypy --strict (ratchet; untyped files listed in tools/py_types_baseline.txt)
+        run: |
+          pip install --quiet mypy==2.3.1
+          python3 -I tools/test_check_py_types.py
+          python3 -I tools/check_py_types.py
       - name: No new undocumented public functions in tools/ (ratchet)
         run: |
           python3 -I tools/test_check_docstrings.py

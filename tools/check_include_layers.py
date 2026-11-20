@@ -22,20 +22,20 @@ BASELINE = ROOT / "tools" / "include_cycles_baseline.txt"
 INC = re.compile(r'^\s*#\s*include\s+"([^"]+)"', re.M)
 
 
-def module_of(path):
+def module_of(path: pathlib.Path) -> str | None:
     """Module name (directory under include/ or src/) a file belongs to, or None."""
     parts = path.relative_to(ROOT).parts
     return parts[1] if len(parts) > 2 and parts[0] in ("include", "src") else None
 
 
-def build_graph(root=ROOT):
+def build_graph(root: pathlib.Path = ROOT) -> dict[str, set[str]]:
     """Include graph between modules: {module: set of modules it includes}, headers and sources."""
     mods = set()
     for top in ("include", "src"):
         d = root / top
         if d.is_dir():
             mods |= {p.name for p in d.iterdir() if p.is_dir()}
-    edges = {m: set() for m in mods}
+    edges: dict[str, set[str]] = {m: set() for m in mods}
     for top in ("include", "src"):
         for f in (root / top).rglob("*"):
             if f.suffix not in (".h", ".c", ".cpp", ".hpp"):
@@ -50,11 +50,16 @@ def build_graph(root=ROOT):
     return edges
 
 
-def sccs(edges):
+def sccs(edges: dict[str, set[str]]) -> list[frozenset[str]]:
     """Tarjan; returns the components with more than one module."""
-    index, low, on, stack, out, n = {}, {}, set(), [], [], [0]
+    index: dict[str, int] = {}
+    low: dict[str, int] = {}
+    on: set[str] = set()
+    stack: list[str] = []
+    out: list[frozenset[str]] = []
+    n = [0]
 
-    def visit(v):
+    def visit(v: str) -> None:
         """Tarjan visit: assigns indices and pops a strongly connected component off the stack."""
         index[v] = low[v] = n[0]
         n[0] += 1
@@ -84,9 +89,9 @@ def sccs(edges):
     return sorted(out, key=lambda c: sorted(c))
 
 
-def cycle_edges(edges, comps):
+def cycle_edges(edges: dict[str, set[str]], comps: list[frozenset[str]]) -> set[str]:
     """Edges whose two ends are in the same cycle component, as 'A->B' strings."""
-    out = set()
+    out: set[str] = set()
     for c in comps:
         for a in c:
             for b in edges.get(a, ()):
@@ -95,7 +100,7 @@ def cycle_edges(edges, comps):
     return out
 
 
-def read_baseline():
+def read_baseline() -> set[str]:
     """Cycle edges recorded in the baseline file (empty set when there is none)."""
     if not BASELINE.exists():
         return set()
@@ -104,7 +109,7 @@ def read_baseline():
     }
 
 
-def compare(current, baseline):
+def compare(current: set[str], baseline: set[str]) -> tuple[list[str], list[str]]:
     """current/baseline: sets of 'A->B'. Return (new_problems, shrink_notes)."""
     problems = [
         f"new include edge inside a dependency cycle: {e}" for e in sorted(current - baseline)
@@ -113,11 +118,11 @@ def compare(current, baseline):
     return problems, notes
 
 
-def self_test():
+def self_test() -> int:
     """Checks the graph helpers on small hand-made graphs; returns 0 when all pass."""
     ok = True
 
-    def check(cond, msg):
+    def check(cond: bool, msg: str) -> None:
         """Prints one self-test result and remembers a failure."""
         nonlocal ok
         print(("ok   " if cond else "FAIL ") + msg)
@@ -146,7 +151,7 @@ def self_test():
     return 0 if ok else 1
 
 
-def main(argv):
+def main(argv: list[str]) -> int:
     """Entry point: --self-test, --graph, --update, or the ratchet check; returns the exit code."""
     if "--self-test" in argv:
         return self_test()

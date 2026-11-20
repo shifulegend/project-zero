@@ -15,20 +15,20 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 SKIP = ("stb_",)
 
 
-def expected(rel):
+def expected(rel: pathlib.PurePath) -> str:
     """The guard name a header must use: TN_ plus its path under include/, upper-cased."""
     return "TN_" + re.sub(r"[^A-Za-z0-9]", "_", rel.as_posix()).upper()
 
 
-def guard_of(text):
+def guard_of(text: str) -> tuple[str, str] | None:
     """(ifndef name, define name) of the header's include guard, or None when it has none."""
     m = re.search(r"^\s*#\s*ifndef\s+(\w+)\s*\n\s*#\s*define\s+(\w+)", text, re.M)
     return (m.group(1), m.group(2)) if m else None
 
 
-def check(text, rel):
+def check(text: str, rel: pathlib.PurePath) -> list[str]:
     """Return a list of problems for one header's text."""
-    probs = []
+    probs: list[str] = []
     if re.search(r"^\s*#\s*pragma\s+once", text, re.M):
         probs.append("uses #pragma once")
     g = guard_of(text)
@@ -41,7 +41,7 @@ def check(text, rel):
     return probs
 
 
-def fix(text, rel):
+def fix(text: str, rel: pathlib.PurePath) -> str:
     """Returns `text` with its guard (or #pragma once) rewritten to the expected TN_ guard for header `rel`."""
     want = expected(rel)
     g = guard_of(text)
@@ -59,10 +59,11 @@ def fix(text, rel):
     return text
 
 
-def main(argv):
+def main(argv: list[str]) -> int:
     """Entry point: checks every header under include/ (and rewrites them with --fix); returns the exit code."""
     do_fix = "--fix" in argv
-    seen, bad = {}, 0
+    seen: dict[str, pathlib.PurePath] = {}
+    bad = 0
     for f in sorted((ROOT / "include").rglob("*.h")):
         if f.name.startswith(SKIP):
             continue

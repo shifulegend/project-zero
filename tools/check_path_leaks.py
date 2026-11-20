@@ -27,9 +27,9 @@ PATTERNS = [
 ]
 
 
-def problems(text, path):
+def problems(text: str, path: str) -> list[str]:
     """(line, description) for every machine path, session ID or private name found in `text`."""
-    out = []
+    out: list[str] = []
     for n, line in enumerate(text.splitlines(), 1):
         for label, rx in PATTERNS:
             if rx.search(line):
@@ -37,12 +37,12 @@ def problems(text, path):
     return out
 
 
-def in_scope(rel):
+def in_scope(rel: str) -> bool:
     """True for the Markdown files the check covers (root files and the project-memory folders)."""
     return rel.endswith(".md") and (rel.startswith(SCOPE) or "/" not in rel)
 
 
-def main():
+def main() -> int:
     """Entry point: scans the covered files and returns 1 when anything leaks."""
     files = subprocess.check_output(["git", "ls-files"], cwd=ROOT, text=True).split()
     bad = []

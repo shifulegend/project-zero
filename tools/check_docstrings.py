@@ -21,7 +21,7 @@ HEADER = (
 )
 
 
-def missing(source):
+def missing(source: str) -> list[str]:
     """Names of public functions in `source` that have no docstring."""
     out = []
     for node in ast.walk(ast.parse(source)):
@@ -34,7 +34,7 @@ def missing(source):
     return out
 
 
-def counts():
+def counts() -> dict[str, int]:
     """Returns {relative path: number of undocumented public functions} for tools/*.py."""
     files = subprocess.check_output(["git", "ls-files", "tools"], cwd=ROOT, text=True).split()
     result = {}
@@ -48,7 +48,7 @@ def counts():
     return result
 
 
-def read_baseline(text):
+def read_baseline(text: str) -> dict[str, int]:
     """Parses the baseline file into {path: count}."""
     out = {}
     for line in text.splitlines():
@@ -59,7 +59,7 @@ def read_baseline(text):
     return out
 
 
-def compare(current, baseline):
+def compare(current: dict[str, int], baseline: dict[str, int]) -> list[str]:
     """Returns messages for every file that has more undocumented functions than its baseline."""
     return [
         f"{path}: {n} undocumented public function(s), baseline {baseline.get(path, 0)}"
@@ -68,7 +68,7 @@ def compare(current, baseline):
     ]
 
 
-def main(argv):
+def main(argv: list[str]) -> int:
     """Entry point: writes the baseline with --update, else checks the tree; returns the exit code."""
     current = counts()
     if "--update" in argv:

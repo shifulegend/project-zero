@@ -39,14 +39,15 @@ EXCLUDE = [
 ]
 
 
-def excluded(path):
+def excluded(path: str) -> bool:
     """True when a changed path does not count towards the size limit (lockfiles, generated and vendored files)."""
     return any(fnmatch.fnmatch(path, pat) for pat in EXCLUDE)
 
 
-def count(numstat_text):
+def count(numstat_text: str) -> tuple[int, list[tuple[int, str]]]:
     """Return (lines_counted, per_file) from `git diff --numstat` output."""
-    total, per = 0, []
+    total = 0
+    per: list[tuple[int, str]] = []
     for line in numstat_text.splitlines():
         parts = line.split("\t")
         if len(parts) != 3:
@@ -62,7 +63,7 @@ def count(numstat_text):
     return total, sorted(per, reverse=True)
 
 
-def main(argv):
+def main(argv: list[str]) -> int:
     """Entry point: sums the changed lines against the base ref and returns 1 over the limit."""
     if len(argv) < 2:
         sys.exit(__doc__)

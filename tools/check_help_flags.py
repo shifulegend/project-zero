@@ -20,22 +20,22 @@ PARSED = re.compile(r'strcmp\(argv\[i\],\s*"(--[a-z0-9-]+)"\)')
 MENTIONED = re.compile(r"(--[a-z0-9-]+)")
 
 
-def parsed_flags(text):
+def parsed_flags(text: str) -> set[str]:
     """Long flags that the parser matches."""
     return set(PARSED.findall(text))
 
 
-def documented_flags(text):
+def documented_flags(text: str) -> set[str]:
     """Long flags that appear anywhere in the help text."""
     return set(MENTIONED.findall(text))
 
 
-def undocumented(parsed, documented):
+def undocumented(parsed: set[str], documented: set[str]) -> list[str]:
     """Sorted flags that are parsed but never mentioned in the help text."""
     return sorted(parsed - documented)
 
 
-def main():
+def main() -> int:
     """Entry point; returns 1 when a parsed flag has no help text."""
     parsed = set()
     for path in ARGS_FILES:

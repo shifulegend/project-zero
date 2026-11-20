@@ -34,13 +34,17 @@ jobs:
           ctest -R "^(test_simd|test_math|test_q2_0_matmul|test_q2k_matvec|test_q4k_matmul|test_q4k_x8_matmul|audit_math)$" --output-on-failure
 
   tsan:
-    name: ThreadSanitizer (TS-5.3)
+    name: ThreadSanitizer (TS-5.3, ${{ matrix.cc }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install Dependencies
         run: |
           sudo apt-get update -q || { echo "apt-get update failed; dropping the runner's third-party Microsoft repo (unused) and retrying"; sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list /etc/apt/sources.list.d/*microsoft*; sudo apt-get update -q; }
-          sudo apt-get install -y -q gcc make
+          sudo apt-get install -y -q gcc clang make
       - name: Run TSan-instrumented concurrency tests
-        run: make test-tsan CC=gcc
+        run: make test-tsan CC=${{ matrix.cc }}

@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-20 — ThreadSanitizer job also runs under clang
+- What: the `tsan` job in `.github/workflows/security_audit.yml` is a gcc and clang matrix.
+- Why: decision Q7 (22.c) asked for CC=clang in the TSan job; the two compilers instrument differently.
+- Proof: `make test-tsan CC=clang` reports no races; the workflow parse test passes.
+- Areas: `.github/workflows/security_audit.yml`.
+
 ### 2026-11-20 — structured logging: every diagnostic through `core/log.h`
 - What: `include/core/log.h` + `src/core/log.c` (levels, text or JSON-line format, credential redaction, control-character escaping, one write per line); 262 `fprintf(stderr, ...)` call sites in 53 files became `TN_LOG_ERR/WRN/INF/DBG(component, ...)` (level and component chosen by a script from each message, reviewed), the non-TTY progress lines and 118 startup status `printf` lines became `TN_LOG_*` / `TN_OUT_INF` (stdout in text mode, JSON on stderr in JSON mode); `--log-format`, `--log-level` (args group, `--help`, `pz config` schema, golden args table regenerated); `--verbose` sets the debug level. Program output (generated text, banner, hardware table, `--help`, perplexity / plan / update results, the REPL, the agent) is untouched. Terminal-UI writes stay raw (in-place progress, live tok/s line, step-timing table) and are on the allow-list of `tools/check_raw_logging.py`.
 - Why: diagnostics were ad-hoc printf / fprintf with no machine-readable form, no central redaction and no protection against a newline in a logged value.

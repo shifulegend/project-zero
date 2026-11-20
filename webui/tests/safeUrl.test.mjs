@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { safeHttpsUrl } from '../src/lib/safeUrl.js';
+import { safeHttpsUrl } from '../.test-build/safeUrl.js';
 
 test('a normal https URL is returned', () => {
   assert.equal(

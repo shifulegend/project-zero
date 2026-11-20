@@ -1,15 +1,16 @@
-<script>
-  import { renderMarkdown } from './markdown.js';
+<script lang="ts">
+  import { renderMarkdown } from './markdown';
+  import type { StreamSummary } from './types';
 
-  export let role; // 'user' | 'assistant'
-  export let content;
-  export let imageDataUrl = null;
+  export let role: string; // 'user' | 'assistant'
+  export let content: string;
+  export let imageDataUrl: string | null = null;
   export let streaming = false;
-  export let meta = null; // {finish_reason, usage} once the reply completes
+  export let meta: (StreamSummary & { best_of_n: number }) | null = null; // set once the reply completes
   export let brand = '';
   export let queued = 0; // position in the server's generation queue, 0 = running
 
-  const FINISH_LABEL = { stop: 'complete', length: 'hit max tokens', cancelled: 'stopped' };
+  const FINISH_LABEL: Record<string, string> = { stop: 'complete', length: 'hit max tokens', cancelled: 'stopped' };
 </script>
 
 <div class="bubble {role}">

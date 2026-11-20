@@ -1,16 +1,18 @@
-<script>
+<script lang="ts">
   // Activation numerics, the quality bar for fast settings, and the engine's own accuracy
   // probe (POST /v1/selfcheck). Values come from GET /v1/config runtime; changes are saved
   // as server defaults and apply at the next start, like the other startup settings.
-  import { runSelfCheck } from './api.js';
+  import { runSelfCheck } from './api';
+  import { errorText } from './errors';
+  import type { Runtime, SelfCheckResult } from './types';
 
-  export let runtime;
+  export let runtime: Runtime | undefined;
   export let writable = false;
   export let saving = false;
-  export let onSave = () => {};
+  export let onSave: (changes: { key: string; value: unknown }[]) => void = () => {};
 
-  let actQuant = null;
-  let tolerance = null;
+  let actQuant: string | null = null;
+  let tolerance: number | null | undefined = null;
   $: if (actQuant === null && runtime?.act_quant) {
     actQuant = runtime.act_quant.requested;
     tolerance = runtime.quality_tolerance;
@@ -23,21 +25,22 @@
     : [];
 
   // Decimal values (0.5, 2.5): NumberField rounds to integers, which would turn 2.5 into 3.
-  function onTolerance(e) {
-    let v = Number(e.target.value.trim());
-    if (!Number.isFinite(v)) v = runtime.quality_tolerance;
+  function onTolerance(e: Event): void {
+    const input = e.target as HTMLInputElement;
+    let v = Number(input.value.trim());
+    if (!Number.isFinite(v)) v = runtime?.quality_tolerance ?? 0;
     v = Math.min(100, Math.max(0, v));
     tolerance = v;
-    e.target.value = String(v);
+    input.value = String(v);
   }
 
   let busy = false;
-  let result = null;
+  let result: SelfCheckResult | null = null;
   let error = '';
-  async function run() {
+  async function run(): Promise<void> {
     busy = true; error = ''; result = null;
     try { result = await runSelfCheck(); }
-    catch (e) { error = e.message ?? String(e); }
+    catch (e) { error = errorText(e); }
     busy = false;
   }
 </script>

@@ -1,17 +1,19 @@
-<script>
+<script lang="ts">
   // Phase 33: paste any text and check it for this server's watermark.
-  import { detectWatermark } from './api.js';
+  import { detectWatermark } from './api';
+  import { errorText } from './errors';
+  import type { ServerConfig, WatermarkResult } from './types';
 
-  export let config;
+  export let config: ServerConfig;
   export let defaultKey = '';
 
   let text = '';
   let key = defaultKey;
-  let result = null;
-  let error = null;
+  let result: WatermarkResult | null = null;
+  let error: string | null = null;
   let busy = false;
 
-  async function run() {
+  async function run(): Promise<void> {
     if (!text.trim() || busy) return;
     busy = true;
     error = null;
@@ -19,7 +21,7 @@
     try {
       result = await detectWatermark({ text, key: key || undefined });
     } catch (e) {
-      error = e.message ?? String(e);
+      error = errorText(e);
     }
     busy = false;
   }

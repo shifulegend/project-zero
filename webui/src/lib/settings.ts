@@ -5,10 +5,15 @@
 // and the viewer's own overrides are layered on top and remembered in
 // localStorage (a per-browser convenience — the server stays authoritative).
 
+import type { ChatMessage, ServerConfig, SettingKey, Settings } from './types';
+
 const STORAGE_KEY = 'pz.settings.v1';
 
+/** Any setting read or written by name (the key set is fixed by `Settings`). */
+type SettingsByName = Record<SettingKey, unknown>;
+
 /** Settings object derived purely from /v1/config. */
-export function defaultsFromConfig(cfg) {
+export function defaultsFromConfig(cfg: ServerConfig | null | undefined): Settings {
   const d = cfg?.defaults ?? {};
   return {
     temperature: d.temperature,
@@ -43,7 +48,7 @@ export function defaultsFromConfig(cfg) {
   };
 }
 
-function readStored() {
+function readStored(): Partial<SettingsByName> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : {};
@@ -52,21 +57,33 @@ function readStored() {
   }
 }
 
+/** The setting names, from an object that has all of them. */
+function settingKeys(settings: Settings): SettingKey[] {
+  return Object.keys(settings) as SettingKey[];
+}
+
+/** True when `k` names a setting. */
+function isSettingKey(settings: Settings, k: string): k is SettingKey {
+  return k in settings;
+}
+
 /** Server defaults overlaid with this viewer's saved overrides (known keys only). */
-export function loadSettings(cfg) {
+export function loadSettings(cfg: ServerConfig | null | undefined): Settings {
   const base = defaultsFromConfig(cfg);
+  const target: SettingsByName = base;
   const stored = readStored();
-  for (const k of Object.keys(base)) {
-    if (k in stored && stored[k] !== null && stored[k] !== undefined) base[k] = stored[k];
+  for (const k of settingKeys(base)) {
+    const v = stored[k];
+    if (k in stored && v !== null && v !== undefined) target[k] = v;
   }
   return base;
 }
 
 /** Persists only the values that differ from the server defaults. */
-export function saveSettings(settings, cfg) {
+export function saveSettings(settings: Settings, cfg: ServerConfig | null | undefined): void {
   const base = defaultsFromConfig(cfg);
-  const diff = {};
-  for (const k of Object.keys(base)) if (settings[k] !== base[k]) diff[k] = settings[k];
+  const diff: Partial<SettingsByName> = {};
+  for (const k of settingKeys(base)) if (settings[k] !== base[k]) diff[k] = settings[k];
   try {
     if (Object.keys(diff).length) localStorage.setItem(STORAGE_KEY, JSON.stringify(diff));
     else localStorage.removeItem(STORAGE_KEY);
@@ -75,7 +92,7 @@ export function saveSettings(settings, cfg) {
   }
 }
 
-export function clearSavedSettings() {
+export function clearSavedSettings(): void {
   try {
     localStorage.removeItem(STORAGE_KEY);
   } catch {
@@ -84,13 +101,13 @@ export function clearSavedSettings() {
 }
 
 /** Number of settings that differ from the server defaults (badge on the button). */
-export function countOverrides(settings, cfg) {
+export function countOverrides(settings: Settings, cfg: ServerConfig | null | undefined): number {
   const base = defaultsFromConfig(cfg);
-  return Object.keys(base).filter((k) => settings[k] !== base[k]).length;
+  return settingKeys(base).filter((k) => settings[k] !== base[k]).length;
 }
 
 /** Stop sequences from the one-per-line textarea ("\\n" = newline). */
-function stopList(settings, cfg) {
+function stopList(settings: Settings, cfg: ServerConfig | null | undefined): string[] {
   const maxStop = cfg?.limits?.max_stop ?? 0;
   return String(settings.stop ?? '')
     .split('\n')
@@ -104,23 +121,26 @@ function stopList(settings, cfg) {
  * to its config file (/v1/config "config.keys"), as [{key, value}] for
  * POST /v1/config/defaults. A random seed is saved as -1.
  */
-export function serverDefaultChanges(settings, cfg) {
+export function serverDefaultChanges(
+  settings: Settings,
+  cfg: ServerConfig | null | undefined
+): { key: string; value: unknown }[] {
   const keys = cfg?.config?.keys ?? {};
   const base = defaultsFromConfig(cfg);
-  const out = [];
+  const out: { key: string; value: unknown }[] = [];
   for (const k of Object.keys(keys)) {
-    if (!(k in base) || settings[k] === base[k]) continue;
-    let value = settings[k];
+    if (!isSettingKey(base, k) || settings[k] === base[k]) continue;
+    let value: unknown = settings[k];
     if (k === 'stop') value = stopList(settings, cfg);
-    else if (k === 'seed') value = Number.isInteger(value) && value >= 0 ? value : -1;
+    else if (k === 'seed') value = Number.isInteger(value) && (value as number) >= 0 ? value : -1;
     out.push({ key: k, value });
   }
   return out;
 }
 
 /** {source: [json names]} for settings whose server value is not the built-in default. */
-export function sourcesSummary(cfg) {
-  const groups = {};
+export function sourcesSummary(cfg: ServerConfig | null | undefined): Record<string, string[]> {
+  const groups: Record<string, string[]> = {};
   for (const [k, src] of Object.entries(cfg?.config?.sources ?? {})) {
     if (src && src !== 'default') (groups[src] ??= []).push(k);
   }
@@ -128,9 +148,12 @@ export function sourcesSummary(cfg) {
 }
 
 /** Request-body fields for POST /v1/chat/completions. */
-export function requestParams(settings, cfg) {
+export function requestParams(
+  settings: Settings,
+  cfg: ServerConfig | null | undefined
+): Record<string, unknown> {
   const stop = stopList(settings, cfg);
-  const body = {
+  const body: Record<string, unknown> = {
     temperature: settings.temperature,
     top_p: settings.top_p,
     top_k: settings.top_k,
@@ -157,7 +180,7 @@ export function requestParams(settings, cfg) {
       temperature: settings.mcts_temperature,
     };
   }
-  const wm = {
+  const wm: Record<string, unknown> = {
     enabled: !!settings.watermark_enabled,
     gamma: settings.watermark_gamma,
     delta: settings.watermark_delta,
@@ -179,7 +202,10 @@ export function requestParams(settings, cfg) {
  * non-empty server default is sent as an empty system turn so the server's
  * default is suppressed rather than silently re-applied.
  */
-export function systemMessage(settings, cfg) {
+export function systemMessage(
+  settings: Settings,
+  cfg: ServerConfig | null | undefined
+): ChatMessage | null {
   const sp = settings.system_prompt ?? '';
   if (!cfg?.features?.system_prompt) return null;
   if (sp.trim()) return { role: 'system', content: sp };

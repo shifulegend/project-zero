@@ -6,7 +6,7 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 // any path by the embedded C HTTP server (see src/api/static_assets.c) or
 // from disk during development via --static-dir.
 export default defineConfig({
-  plugins: [svelte()],
+  plugins: [svelte()], // preprocessing comes from svelte.config.js
   base: './',
   build: {
     outDir: 'dist',

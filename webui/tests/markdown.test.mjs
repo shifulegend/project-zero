@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderMarkdown } from '../src/lib/markdown.js';
+import { renderMarkdown } from '../.test-build/markdown.js';
 import { renderMarkdown as legacy } from './markdown_legacy.js';
 
 test('plain text keeps its line breaks', () => {

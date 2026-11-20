@@ -1,21 +1,21 @@
-<script>
+<script lang="ts">
   // Phase 38: Settings → Updates. Shows what the server checks and lets the
   // user re-check or hide the banner. Interval / channel / repo / opt-out are
   // server flags (--update-*), shown read-only so nothing is hidden.
-  import { updateInfo, updateError, showBanner, checkNow, refreshUpdate } from './update.js';
-  import { safeHttpsUrl } from './safeUrl.js';
+  import { updateInfo, updateError, showBanner, checkNow, refreshUpdate } from './update';
+  import { safeHttpsUrl } from './safeUrl';
   import { onMount } from 'svelte';
 
   let busy = false;
   onMount(() => { if (!$updateInfo) refreshUpdate(); });
 
-  async function check() {
+  async function check(): Promise<void> {
     busy = true;
     await checkNow();
     busy = false;
   }
 
-  const labels = {
+  const labels: Record<string, string> = {
     available: 'update available',
     up_to_date: 'up to date',
     unknown: 'not checked yet',
@@ -31,7 +31,7 @@
 <div class="upd">
   {#if info}
     <div class="row">
-      <span class="state" class:on={info.status === 'available'}>{labels[info.status] ?? info.status}</span>
+      <span class="state" class:on={info.status === 'available'}>{labels[info.status ?? ''] ?? info.status}</span>
       <span class="mono dim">{info.current}{info.latest ? ` · latest ${info.latest}` : ''}</span>
     </div>
     <div class="row dim mono small-text">

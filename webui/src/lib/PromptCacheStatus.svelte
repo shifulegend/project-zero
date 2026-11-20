@@ -1,24 +1,26 @@
-<script>
+<script lang="ts">
   // Phase 26: how much of the server's prompt-snapshot budget is in use, with
   // a manual clear. Refreshed when shown and after clearing.
   import { onMount } from 'svelte';
-  import { fetchPromptCache, clearPromptCache } from './api.js';
+  import { fetchPromptCache, clearPromptCache } from './api';
+  import { errorText } from './errors';
+  import type { PromptCacheStats } from './types';
 
-  let stats = null;
-  let error = null;
+  let stats: PromptCacheStats | null = null;
+  let error: string | null = null;
   let busy = false;
 
-  const mb = (b) => (b / (1024 * 1024)).toFixed(1);
+  const mb = (b: number): string => (b / (1024 * 1024)).toFixed(1);
 
-  async function refresh() {
+  async function refresh(): Promise<void> {
     try { stats = await fetchPromptCache(); error = null; }
-    catch (e) { error = e.message ?? String(e); }
+    catch (e) { error = errorText(e); }
   }
 
-  async function clear() {
+  async function clear(): Promise<void> {
     busy = true;
     try { stats = await clearPromptCache(); error = null; }
-    catch (e) { error = e.message ?? String(e); }
+    catch (e) { error = errorText(e); }
     busy = false;
   }
 

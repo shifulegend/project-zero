@@ -173,13 +173,13 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install dependencies from the lockfile
         run: cd webui && npm ci --no-audit --no-fund
-      - name: Unit tests (node --test, markdown renderer and XSS cases)
+      - name: Unit tests (TypeScript compiled, then node --test: markdown renderer and XSS cases)
         run: cd webui && npm test
-      - name: svelte-check (0 errors, 0 warnings)
+      - name: svelte-check (TypeScript in .ts and .svelte files, 0 errors, 0 warnings)
         run: cd webui && npm run check
-      - name: ESLint (JS and Svelte, recommended rules)
+      - name: ESLint (TypeScript and Svelte, recommended rules)
         run: cd webui && npm run lint
-      - name: Prettier (JS sources and tests; Svelte templates are whitespace-sensitive and excluded)
+      - name: Prettier (TypeScript sources and tests; Svelte templates are whitespace-sensitive and excluded)
         run: cd webui && npm run format:check
       - name: Build the bundle and require the committed C file to match it
         run: |

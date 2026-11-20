@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   // Every generation knob the engine exposes, rendered from GET /v1/config:
   // defaults, ranges and feature flags all come from the server.
   import RangeField from './RangeField.svelte';
@@ -6,36 +6,38 @@
   import PromptCacheStatus from './PromptCacheStatus.svelte';
   import UpdateStatus from './UpdateStatus.svelte';
   import AccuracyCheck from './AccuracyCheck.svelte';
-  import { serverDefaultChanges, sourcesSummary } from './settings.js';
-  import { saveServerDefault } from './api.js';
+  import { serverDefaultChanges, sourcesSummary } from './settings';
+  import { saveServerDefault } from './api';
+  import { errorText } from './errors';
+  import type { Ranges, ServerConfig, Settings } from './types';
 
-  export let settings;
-  export let config;
-  export let onReset = () => {};
+  export let settings: Settings;
+  export let config: ServerConfig;
+  export let onReset: () => void = () => {};
 
-  $: L = config?.limits ?? {};
+  $: L = (config?.limits ?? {}) as Ranges;
   $: features = config?.features ?? {};
   $: templateEdited = (settings.chat_template ?? '') !== (config?.chat_template?.text ?? '');
   $: randomSeed = !(Number.isInteger(settings.seed) && settings.seed >= 0);
 
-  function toggleRandomSeed(e) {
-    settings.seed = e.target.checked ? -1 : 0;
+  function toggleRandomSeed(e: Event): void {
+    settings.seed = (e.target as HTMLInputElement).checked ? -1 : 0;
   }
 
   // Phase 40.3: save this browser's changes as the server's own defaults
   // (written to the `pz config` file; the server applies them at its next start).
-  const SOURCE_LABEL = { file: 'config file', env: 'environment', cli: 'command line' };
+  const SOURCE_LABEL: Record<string, string> = { file: 'config file', env: 'environment', cli: 'command line' };
   $: cfgInfo = config?.config ?? null;
   $: changes = config && settings ? serverDefaultChanges(settings, config) : [];
   $: sources = sourcesSummary(config);
-  let title = null;
+  let title: string | null = null;
   $: if (title === null && config?.ui?.title) title = config.ui.title;
   // Phase 23 stage 2b: how many chat requests the server answers at once
   // (--parallel) and its batch size; saved for the next start like the title.
   $: par = features.parallel ?? null;
-  let parallel = null;
-  let parallelBatch = null;
-  $: if (parallel === null && par) { parallel = par.requested; parallelBatch = par.batch_tokens; }
+  let parallel: number | undefined;
+  let parallelBatch: number | undefined;
+  $: if (parallel === undefined && par) { parallel = par.requested; parallelBatch = par.batch_tokens; }
   $: parallelChanges = par
     ? [
         ...(parallel !== par.requested ? [{ key: 'parallel', value: parallel }] : []),
@@ -46,22 +48,22 @@
   let saveMsg = '';
   let saveErr = '';
 
-  async function saveAll(items) {
+  async function saveAll(items: { key: string; value: unknown }[]): Promise<void> {
     saving = true;
     saveMsg = '';
     saveErr = '';
-    const overridden = [];
+    const overridden: string[] = [];
     try {
       for (const { key, value } of items) {
         const r = await saveServerDefault(key, value);
         if (r.overridden_by) overridden.push(`${key} (${SOURCE_LABEL[r.overridden_by] ?? r.overridden_by})`);
       }
-      saveMsg = `Saved ${items.length} setting${items.length === 1 ? '' : 's'} to ${cfgInfo.path}. ` +
+      saveMsg = `Saved ${items.length} setting${items.length === 1 ? '' : 's'} to ${cfgInfo?.path}. ` +
         'They apply when the server restarts.' +
-        (cfgInfo.file_used ? '' : ' Note: this server was started with --no-config, so it ignores the file.') +
+        (cfgInfo?.file_used ? '' : ' Note: this server was started with --no-config, so it ignores the file.') +
         (overridden.length ? ` Still overridden at startup by: ${overridden.join(', ')}.` : '');
     } catch (e) {
-      saveErr = e.message;
+      saveErr = errorText(e);
     } finally {
       saving = false;
     }
@@ -171,7 +173,7 @@
         <div class="row">
           <span class="dim">{(settings.chat_template ?? '').length} / {config.chat_template.max_bytes} chars</span>
           {#if templateEdited}
-            <button class="link-btn" on:click={() => (settings.chat_template = config.chat_template.text)}>Restore model template</button>
+            <button class="link-btn" on:click={() => (settings.chat_template = config.chat_template?.text ?? '')}>Restore model template</button>
           {/if}
         </div>
       {:else}
@@ -215,8 +217,8 @@
           <span>Web UI title <span class="dim">(also drawn as the wordmark)</span></span>
           <div class="row gap">
             <input type="text" bind:value={title} maxlength="64" />
-            <button class="link-btn" disabled={saving || !title?.trim() || title === config.ui.title}
-                    on:click={() => saveAll([{ key: 'ui_title', value: title.trim() }])}>Save title</button>
+            <button class="link-btn" disabled={saving || !title?.trim() || title === config.ui?.title}
+                    on:click={() => saveAll([{ key: 'ui_title', value: title?.trim() }])}>Save title</button>
           </div>
         </label>
         <div class="row gap">

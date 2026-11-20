@@ -21,7 +21,7 @@ tools/build_llama3_tokenizer.py 2
 tools/compare_dump/compare_tensors.py 13
 tools/compare_dump/parse_llama_log.py 5
 tools/convert_hf.py 70
-tools/convert_hf_bitnet.py 47
+tools/convert_hf_bitnet.py 45
 tools/convert_lora.py 9
 tools/convert_tokenizer.py 6
 tools/deepseek_bench_report.py 292
@@ -29,16 +29,12 @@ tools/extract_multimodal.py 158
 tools/fuzz_config.py 5
 tools/fuzz_grammar_json.py 21
 tools/gen_sbom.py 6
-tools/import_model.py 12
 tools/make_screenshot.py 5
 tools/make_sweep_screenshots.py 29
 tools/mamba_reference.py 33
-tools/pack_ternary.py 11
 tools/plot_benchmark.py 6
 tools/plot_sweep_svg.py 16
 tools/run_perf_runs.py 5
-tools/run_sweep.py 13
-tools/sync_ai_adapters.py 14
 tools/test_changelog.py 17
 tools/test_check_complexity.py 6
 tools/test_check_coverage.py 6

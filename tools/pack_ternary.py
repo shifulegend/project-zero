@@ -22,6 +22,8 @@ Usage:
 import argparse
 import struct
 import numpy as np
+import numpy.typing as npt
+from typing import Any
 import os
 
 # Magic and version must match TN_MAGIC / TN_VERSION in platform.h
@@ -30,12 +32,12 @@ TN_VERSION = 1
 
 
 # Encoding: -1 -> 0, 0 -> 1, 1 -> 2
-def encode_ternary(val):
+def encode_ternary(val: int) -> int:
     """Map ternary value to 2-bit encoding."""
     return val + 1
 
 
-def pack_ternary_array(weights):
+def pack_ternary_array(weights: npt.NDArray[Any]) -> bytes:
     """Pack an array of ternary values {-1, 0, 1} into 2-bit packed bytes.
     Vectorized using numpy for 100x speedup over Python loops.
     """
@@ -65,7 +67,7 @@ def pack_ternary_array(weights):
     return packed.tobytes()
 
 
-def unpack_ternary_array(packed_bytes, count):
+def unpack_ternary_array(packed_bytes: bytes, count: int) -> npt.NDArray[np.int8]:
     """Unpack 2-bit packed bytes back to ternary values. Vectorized."""
     packed = np.frombuffer(packed_bytes, dtype=np.uint8)
 
@@ -80,7 +82,13 @@ def unpack_ternary_array(packed_bytes, count):
     return result.astype(np.int8) - 1
 
 
-def write_packed_model(output_path, config, weights_dict, scale_mode=0, group_size=128):
+def write_packed_model(
+    output_path: str,
+    config: dict[str, int],
+    weights_dict: dict[str, tuple[npt.NDArray[Any], float]],
+    scale_mode: int = 0,
+    group_size: int = 128,
+) -> None:
     """Write a complete packed model binary file.
 
     Args:
@@ -184,7 +192,7 @@ def write_packed_model(output_path, config, weights_dict, scale_mode=0, group_si
     print(f"Wrote packed model: {output_path} ({file_size:,} bytes)")
 
 
-def main():
+def main() -> None:
     """Command-line entry point: packs ternary weights into the 2-bit format."""
     parser = argparse.ArgumentParser(description="Pack ternary weights into 2-bit format")
     parser.add_argument("--input", required=True, help="Directory containing .npy weight files")

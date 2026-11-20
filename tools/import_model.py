@@ -24,11 +24,12 @@ import json
 import os
 import subprocess
 import sys
+from typing import Any
 
 TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
-def run(script, extra_args):
+def run(script: str, extra_args: list[str]) -> None:
     """Runs a conversion script with the given arguments and exits with its code when it fails."""
     cmd = [sys.executable, os.path.join(TOOLS_DIR, script)] + extra_args
     print(f"\n  → Running: {' '.join(cmd)}\n")
@@ -38,7 +39,7 @@ def run(script, extra_args):
         sys.exit(result.returncode)
 
 
-def detect_model_class(config, model_dir):
+def detect_model_class(config: dict[str, Any], model_dir: str) -> str:
     """
     Returns one of: 'ternary_bitnet', 'multimodal', 'standard_float'
     """
@@ -99,16 +100,17 @@ def detect_model_class(config, model_dir):
     return "standard_float"
 
 
-def load_config(path):
+def load_config(path: str) -> dict[str, Any]:
     """The model directory's config.json as a dict (empty when it has none)."""
     config_path = os.path.join(path, "config.json")
     if not os.path.exists(config_path):
         return {}
     with open(config_path, encoding="utf-8") as fh:
-        return json.load(fh)
+        config: dict[str, Any] = json.load(fh)
+    return config
 
 
-def hf_download(repo_id, cache_dir):
+def hf_download(repo_id: str, cache_dir: str | None) -> str:
     """Download model to HF cache, return local directory."""
     try:
         from huggingface_hub import snapshot_download
@@ -116,14 +118,16 @@ def hf_download(repo_id, cache_dir):
         print("ERROR: pip install huggingface_hub")
         sys.exit(1)
     print(f"Downloading {repo_id} ...")
-    return snapshot_download(
-        repo_id=repo_id,
-        cache_dir=cache_dir,
-        ignore_patterns=["*.bin", "*.pt", "optimizer*"],
+    return str(
+        snapshot_download(
+            repo_id=repo_id,
+            cache_dir=cache_dir,
+            ignore_patterns=["*.bin", "*.pt", "optimizer*"],
+        )
     )
 
 
-def main():
+def main() -> None:
     """Command-line entry point: detects the model format and runs the matching converter."""
     parser = argparse.ArgumentParser(description="Universal model importer for Project Zero")
     group = parser.add_mutually_exclusive_group(required=True)

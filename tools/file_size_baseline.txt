@@ -17,7 +17,6 @@ src/tokenizer/tokenizer_encode.c 592
 src/transformer/attention.c 756
 src/transformer/gen_session.c 545
 src/transformer/mla_attention.c 587
-src/transformer/moe_ffn.c 691
 src/update/update_check.c 616
 tests/test_api_server.c 547
 tests/test_forward.c 670

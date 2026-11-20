@@ -258,6 +258,8 @@ set(TRANSFORMER_SOURCES
     src/transformer/gen_session.c
     src/transformer/mla_attention.c
     src/transformer/moe_ffn.c
+    src/transformer/moe_ffn_legacy.c
+    src/transformer/moe_ffn_track.c
     src/transformer/moe_experts.c
     src/transformer/moe_router.c
     src/transformer/qwen35_attention.c

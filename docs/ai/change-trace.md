@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-20 — `moe_ffn_forward` split into routing, a fused try and the legacy expert paths
+- What: the 300-line function is now ~60 lines over `moe_norm_and_route`, `prefetch_selected`, `moe_quantize_xb`, the fused try, and `moe_legacy_routed_batched` / `moe_legacy_routed_sequential` / `moe_legacy_shared` (new `moe_ffn_legacy.c`, helpers `batch_collect`, `batch_q4k_proj`, `batch_down_proj`, `expert_ffn_quantised`, `expert_ffn_ternary`, `shared_gate_up`); expert hit tracking moved to `moe_ffn_track.c` behind `moe_track_hit()`. `moe_ffn.c` 688 to 292 lines. The `--verbose` router line no longer prints a stray half line (`experts=[`) before the real one.
+- Why: one function mixed routing, three expert strategies and the shared expert, with the Q4_K batched path nested 5 deep.
+- Proof: a differential harness runs the old and new `moe_ffn_forward` (old object with renamed symbols) on 16 expert configurations x 2 shapes x 3 repeats (Q4_K, Q2_K, Q8_0, Q5_0, Q5_1, Q6_K, Q5_K, ternary packed; shared expert Q4_K and F32; SiLU and ReLU2) in the fused default and with `PZ_MOE_FUSED=0`: outputs (`x` and `xb2`) bit-identical in every case; per-call time within noise (legacy path, dim 1024 / hidden 512, 16 experts top 4: -2.7% to +0.5% over steady rounds). No real MoE model was available, so end-to-end MoE generation was not run.
+- Areas: `src/transformer/moe_ffn*.c`, `include/transformer/moe_ffn_internal.h`, `CMakeLists.txt`, `tools/{file_size,mutable_statics}_baseline.txt`, `.claude/INDEX.md`.
+
 ### 2026-11-20 — GGUF weight loading split per architecture; the dense loader into small functions
 - What: `gguf_loader.c` (1512 lines; `weights_from_gguf` alone 460 lines) is now the dispatcher plus the dense path as `dense_shape`, `load_dense_embedding`, `load_dense_layer`, `load_dense_output` and `set_inference_flags` (422 lines). The shared helpers moved to `gguf_load_util.c` (names `gguf_ld_*`, header `runtime/gguf_load_util.h`), the projection policy to `gguf_load_proj.c` (the old `LOAD_PROJ` macro is a function with `repack_i2s` / `repack_q4k_x8` helpers), and the four architecture loaders to `gguf_load_{deepseek2,qwen35,qwen3moe,mamba}.c`. The four if-blocks of the dispatcher are one `load_moe_family()` taking the loader and whether the dense BF16 head is used.
 - Why: one 1500-line file held five loaders, and the dense one was a single function with a 100-line macro in its loop.

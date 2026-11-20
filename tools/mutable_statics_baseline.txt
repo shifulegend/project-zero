@@ -25,5 +25,7 @@ src/tokenizer/tokenizer_decode.c 1
 src/transformer/attn_tiled.c 3
 src/transformer/forward.c 5
 src/transformer/moe_experts.c 1
-src/transformer/moe_ffn.c 8
+src/transformer/moe_ffn.c 2
+src/transformer/moe_ffn_legacy.c 3
+src/transformer/moe_ffn_track.c 3
 src/update/update_check.c 8

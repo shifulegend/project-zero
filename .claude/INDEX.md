@@ -105,7 +105,9 @@ Q8_0, F32), and DeepSeek-V2-style MoE/MLA models. The primary binary is `pz`.
 | `src/transformer/attention.c` | 🔥 `attention_forward` — GQA+RoPE+KV cache (routes to MLA when `mc->has_mla`) |
 | `src/transformer/mla_attention.c` | 🔥 `mla_attention_forward` — DeepSeek MLA: KV compress → expand → Q → RoPE → attend |
 | `src/transformer/ffn.c` | `ffn_forward` — SwiGLU/ReGLU dense FFN (routes to MoE when `moe_layer_is_moe`) |
-| `src/transformer/moe_ffn.c` | `moe_ffn_forward` — router → top-k experts → accumulate; expert hit tracking |
+| `src/transformer/moe_ffn.c` | `moe_ffn_forward` — norm + route, fused try, dispatch to the paths below, shared expert, residual |
+| `src/transformer/moe_ffn_legacy.c` | Expert paths without the fused kernel: batched Q4_K, sequential (Q2_K / dequantise / ternary), shared expert |
+| `src/transformer/moe_ffn_track.c` | Expert hit tracking (`moe_expert_tracking_*`, `moe_track_hit`) |
 | `src/transformer/moe_router.c` | `moe_router_forward` — gate matmul → softmax → top-k selection |
 | `src/transformer/embedding.c` | `embed_token` — BF16/F32 token embedding table lookup |
 

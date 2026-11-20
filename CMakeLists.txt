@@ -323,6 +323,14 @@ set(CLI_SOURCES
     src/config/pz_config.c
     src/core/timer.c
     src/cli/repl.c
+    src/cli/session_checks.c
+    src/cli/session_dist.c
+    src/cli/session_extras.c
+    src/cli/session_model.c
+    src/cli/session_run.c
+    src/cli/session_server.c
+    src/cli/session_startup.c
+    src/cli/session_tokenizer.c
     src/cli/color.c
     src/core/progress.c
     src/cli/live_stats.c

@@ -5,7 +5,8 @@ src/api/config_endpoint.c 1
 src/api/http_request.c 2
 src/api/openapi.c 1
 src/cli/config_cmd.c 5
-src/cli/main.c 3
+src/cli/session_extras.c 1
+src/cli/session_server.c 1
 src/config/pz_config.c 2
 src/core/cpu_features.c 4
 src/core/step_timing.c 2

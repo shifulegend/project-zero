@@ -25,7 +25,16 @@ Q8_0, F32), and DeepSeek-V2-style MoE/MLA models. The primary binary is `pz`.
 ### 📁 `src/cli/` — Command-Line Interface
 | File | Description |
 |------|-------------|
-| `src/cli/main.c` | Entry point: parses CLI, loads model, dispatches to generate/REPL/server/agent |
+| `src/cli/main.c` | Entry point (79 lines): creates a `PzSession` and runs the phases below in order |
+| `include/cli/session.h` | `PzSession` (args, model, tokenizer, optional parts) and the phase functions |
+| `src/cli/session_startup.c` | `--version` / `--check-update`, tensor dump file, banner + format probe, hardware tuning (SIMD, calibration, classifier, threads) |
+| `src/cli/session_model.c` | GGUF / native model loading and `session_release()` (frees whatever stage was reached) |
+| `src/cli/session_tokenizer.c` | RoPE layout override, tokenizer, chat-template selection |
+| `src/cli/session_extras.c` | `--draft-model`, `--prm`, `--lora`, `--memory-db`, `--image`, attention kernel settings |
+| `src/cli/session_dist.c` | `--plan-layers`, `--rpc-worker`, `--remote-layers` |
+| `src/cli/session_checks.c` | Background update check, LM-head and int8 accuracy probes |
+| `src/cli/session_run.c` | Execution modes: self-check, perplexity, watermark detect, one-shot prompt, REPL |
+| `src/cli/session_server.c` | `--server`: settings from flags, start, wait for SIGINT/SIGTERM |
 | `src/cli/args.c` | Argument parser for `--model`, `--prompt`, `--threads`, `--simd`, `--classifier`, etc. |
 | `src/cli/args_usage.c` | The `--help` text |
 | `src/cli/args_flags_*.c` | The flag groups `parse_args()` tries in turn (generation, memory, serving, search, behavior, extras); `tests/test_args_golden.c` pins every flag's result |

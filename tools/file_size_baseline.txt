@@ -4,7 +4,6 @@ src/api/batch_scheduler.c 569
 src/api/http_server.c 575
 src/api/json_parse.c 853
 src/cli/config_cmd.c 530
-src/cli/main.c 1230
 src/config/pz_config.c 744
 src/core/gguf_quant_iq.c 1587
 src/core/gguf_reader.c 605

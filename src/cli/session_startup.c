@@ -1,0 +1,232 @@
+/* Startup phases of a CLI run: commands that need no model, the tensor dump file, the banner and
+ * model-format probe, and the hardware tuning (SIMD tier, calibration, classifier, threads). */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#include "cli/banner.h"
+#include "cli/color.h"
+#include "cli/session.h"
+#include "core/debug.h"
+#include "math/simd_dispatch.h"
+#include "runtime/calibration.h"
+#include "runtime/hardware_profile.h"
+#include "update/update_check.h"
+
+/* --version and --check-update need no model. Returns the exit status, or -1 when the run goes on. */
+int session_early_command(PzSession *S) {
+    /* --version: print version + the SIMD backend selected for this CPU, then
+     * exit 0. tn_simd_init() only probes CPUID, so no model is required. */
+    if (S->args.show_version) {
+        printf("Project Zero %s\n", PZ_VERSION_STR);
+        printf("SIMD backend (this CPU): %s\n", tn_simd_init());
+        return 0;
+    }
+
+    /* Phase 38: --check-update — explicit, synchronous, no model needed. */
+    if (S->args.check_update) {
+        UpdateOptions uo;
+        UpdateInfo ui;
+        args_fill_update_options(&S->args, &uo);
+        update_check(&uo, PZ_VERSION_STR, 1, &ui);
+        printf("current : %s\n", PZ_VERSION_STR);
+        printf("latest  : %s%s\n", ui.latest[0] ? ui.latest : "(none found)",
+               ui.latest_prerelease ? " (pre-release)" : "");
+        printf("channel : %s   repo: %s\n", update_channel_name(uo.channel), uo.repo);
+        printf("status  : %s%s%s\n", update_status_name(ui.status), ui.error[0] ? " - " : "",
+               ui.error);
+        if (ui.url[0]) printf("release : %s\n", ui.url);
+        if (ui.status == UPDATE_STATUS_AVAILABLE)
+            printf("verify the download with the release's SHA256SUMS (sha256sum -c SHA256SUMS)\n");
+        if (ui.status == UPDATE_STATUS_AVAILABLE) return 3;
+        if (ui.status == UPDATE_STATUS_ERROR) return 1;
+        return 0;
+    }
+
+    return -1;
+}
+
+/* --dump-tensors: opens the CSV file the forward pass appends to. */
+void session_open_dump(PzSession *S) {
+    /* Open tensor dump file if requested */
+    if (S->args.dump_tensors_path) {
+        g_dump_fp = fopen(S->args.dump_tensors_path, "w");
+        if (!g_dump_fp) {
+            fprintf(stderr, "Warning: cannot open dump file '%s' — dumps disabled\n",
+                    S->args.dump_tensors_path);
+        } else {
+            fprintf(g_dump_fp, "layer,step,n_elem,v0,v1,v2,v3,v4,v5,v6,v7,mean,absmax\n");
+            fprintf(stderr, "[dump] Writing tensors to: %s\n", S->args.dump_tensors_path);
+        }
+    }
+}
+
+/* Prints the banner and decides GGUF vs native from the file's magic. Returns 1 when the model
+ * file cannot be opened. */
+int session_detect_format(PzSession *S) {
+    /* Phase 22.5: startup banner — always shown, regardless of invocation
+     * path (TTY, piped/redirected, one-shot --prompt, --server, REPL).
+     * Branding must not depend on how the CLI is invoked: llama-cli (the
+     * reference engine used throughout this project's head-to-head
+     * benchmarks) prints its banner unconditionally regardless of -p/
+     * single-turn mode — confirmed by reading its actual source
+     * (tools/cli/cli.cpp's console::log(LLAMA_ASCII_LOGO) call has no gate
+     * at all). tn_banner_print() itself branches on is_tty: animated reveal
+     * for a real terminal, a single plain (no-ANSI) block otherwise — so
+     * piped/redirected captures (e.g. benchmark screenshots built from
+     * tools/make_screenshot.py) are self-identifying too, not just plain
+     * generation output. */
+    S->stdout_is_tty = isatty(fileno(stdout));
+    int color_enabled_early =
+        tn_color_resolve(S->args.color_mode, S->stdout_is_tty, getenv("NO_COLOR"));
+    tn_banner_print(S->stdout_is_tty, color_enabled_early);
+
+    printf("Project Zero Engine %s — Auto-Tuned Hardware\n", PZ_VERSION_STR);
+
+    /* Detect model format by reading the 4-byte magic number, without a
+     * full mmap (load_gguf_model() below does its own mapped_file_open() for
+     * the GGUF case; the native case opens its own mf directly below) —
+     * a plain 4-byte read is all this decision needs. Done before the
+     * hardware probe and first-run calibration (2026-10-22) so a wrong
+     * --model path fails at once instead of after a minutes-long sweep. */
+    {
+        FILE *magic_f = fopen(S->args.model_path, "rb");
+        if (!magic_f) {
+            fprintf(stderr, "Failed to open model file: %s\n", S->args.model_path);
+            return 1;
+        }
+        uint32_t file_magic = 0;
+        size_t n            = fread(&file_magic, 1, sizeof(file_magic), magic_f);
+        fclose(magic_f);
+        S->is_gguf = (n == sizeof(file_magic) && file_magic == GGUF_MAGIC);
+    }
+
+    return 0;
+}
+
+/* SIMD tier, calibration, classifier, activation numerics and the thread pool. Returns 1 when
+ * the pool cannot be created. */
+int session_tune_hardware(PzSession *S) {
+    /* ── SIMD backend selection ─────────────────────────────────────────── */
+    /* CLI --simd override takes precedence over calibration and auto-detect.
+     * Order: --simd flag > TN_FORCE_BACKEND env > calibration cache > auto */
+    if (S->args.simd_override) {
+        setenv("TN_FORCE_BACKEND", S->args.simd_override, 1);
+        printf("SIMD override: %s (user-selected)\n", S->args.simd_override);
+    }
+
+    tn_simd_init();
+    const int dispatcher_int8 =
+        strcmp(tn_act_quant_effective(), "int8") == 0; /* what "auto" runs, before calibration */
+
+    /* Hardware Profile: auto-detect cores, cache, bandwidth, classifier format.
+     * The DRAM bandwidth comes from a per-host cache (core/bw_cache.h);
+     * --calibrate re-measures it along with everything else. */
+    if (S->args.calibrate) setenv("PZ_BW_REPROBE", "1", 1);
+    const TnHardwareProfile *hw = tn_hardware_profile_init();
+
+    /* ── Calibration ────────────────────────────────────────────────────── */
+    TnCalibrationResult calib;
+    bool have_calib = false;
+
+    if (S->args.no_calibrate) {
+        /* 2026-11-18: no calibration at all -- nothing is loaded, run or saved, so
+         * the dispatcher's own tier and the detected thread count apply and a run
+         * does not depend on what an earlier run left in ~/.project-zero. */
+        printf("[Calibration] Skipped: --no-calibrate\n");
+    } else if (S->args.calibrate) {
+        /* User explicitly requested calibration */
+        tn_calibrate(&calib, hw);
+        /* A sanitizer build measures 5-20x slower than release: never let
+         * it overwrite the cache release builds read (2026-10-22). */
+        if (!TN_SANITIZED) tn_calibration_save(&calib);
+        have_calib = true;
+    } else {
+        /* Try to load cached calibration */
+        have_calib = tn_calibration_load(&calib, hw);
+        if (!have_calib && TN_SANITIZED) {
+            /* 2026-10-22: the first-run sweep took >2 min under ASan on a
+             * fresh CI runner (the fuzzer counted it as a hang) and would
+             * save meaningless timings. Auto-detected defaults instead. */
+            printf("[Calibration] Skipped: sanitizer build (timings not representative)\n");
+        } else if (!have_calib) {
+            /* First run or hardware changed — auto-calibrate */
+            printf("[Calibration] First run on this hardware — calibrating...\n");
+            tn_calibrate(&calib, hw);
+            tn_calibration_save(&calib);
+            have_calib = true;
+        }
+    }
+
+    /* Apply calibrated SIMD backend (if no CLI override) */
+    if (have_calib && !S->args.simd_override && !getenv("TN_FORCE_BACKEND")) {
+        const char *best = tn_calibration_best_simd(&calib);
+        if (best) {
+            setenv("TN_FORCE_BACKEND", best, 1);
+            tn_simd_init();
+            unsetenv("TN_FORCE_BACKEND");
+            printf("SIMD: %s (calibrated optimal)\n", best);
+        }
+    }
+    /* --act-quant auto: the numerics are the calibrated tier's (measured int8 against float). */
+    if (have_calib && S->args.act_quant == 0) {
+        const char *aq = tn_calibration_act_quant(&calib);
+        double t_i8 = 0, t_fl = 0;
+        if (tn_calibration_act_timing(&calib, dispatcher_int8, &t_i8, &t_fl))
+            printf("Activation quantization: %s (auto, %s; measured int8 tier %.1f vs float tier "
+                   "%.1f tok/s)\n",
+                   aq ? aq : tn_act_quant_effective(), aq ? "calibrated" : "highest tier", t_i8,
+                   t_fl);
+        else
+            printf("Activation quantization: %s (auto, %s)\n", aq ? aq : tn_act_quant_effective(),
+                   aq ? "calibrated" : "highest tier");
+    }
+
+    /* ── Classifier selection ───────────────────────────────────────────── */
+    if (S->args.classifier_override == 3) {
+        /* --classifier auto-fast: use calibration's fastest classifier */
+        TnClassifierFormat fast_cls =
+            have_calib ? tn_calibration_best_classifier(&calib)
+            : (hw->cpu->avx512vnni || hw->cpu->avx_vnni || hw->cpu->arm_dotprod) ? TN_CLS_INT8
+                                                                                 : TN_CLS_BF16;
+        tn_hardware_profile_set_classifier(fast_cls);
+        const char *names[] = {"BF16", "INT8", "INT4"};
+        printf("Classifier: %s (auto-fast, calibrated)\n", names[fast_cls]);
+    } else if (S->args.classifier_override >= 0 && S->args.classifier_override <= 2) {
+        tn_hardware_profile_set_classifier((TnClassifierFormat)S->args.classifier_override);
+        const char *names[] = {"BF16", "INT8", "INT4"};
+        printf("Classifier: %s (user-selected)\n", names[S->args.classifier_override]);
+    }
+    /* else: default BF16 (from hardware_profile.c select_classifier) */
+
+    /* ── Activation numerics ────────────────────────────────────────────── */
+    if (S->args.act_quant != 0) {
+        tn_act_quant_set((TnActQuant)S->args.act_quant);
+        printf("Activation quantization: %s (user-selected)\n",
+               tn_act_quant_name((TnActQuant)S->args.act_quant));
+    }
+
+    tn_hardware_profile_report(hw);
+
+    /* Thread count: CLI override > calibration > auto-detected */
+    int active_threads;
+    if (S->args.num_threads > 0) {
+        active_threads = S->args.num_threads;
+    } else if (have_calib && calib.best_threads > 0) {
+        active_threads = calib.best_threads;
+    } else {
+        active_threads = hw->optimal_threads;
+    }
+    printf("Active: %d threads | %s\n", active_threads, hw->summary);
+
+    /* Create Thread Pool */
+    S->tp = threadpool_create(active_threads);
+    if (!S->tp) {
+        fprintf(stderr, "Failed to create thread pool\n");
+        return 1;
+    }
+
+    return 0;
+}

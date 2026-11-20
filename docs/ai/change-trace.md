@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-20 — `main()` split into a session and one function per phase
+- What: `main()` (1063 lines, one function) is now 79 lines that create a `PzSession` (`include/cli/session.h`) and call `session_early_command`, `session_open_dump`, `session_detect_format`, `session_tune_hardware`, `session_load_model`, `session_setup_tokenizer`, `session_load_extras`, `session_apply_runtime_options`, `session_distributed`, `session_start_update_check`, `session_accuracy_checks`, `session_execute`, `session_finish` and `session_release` (files `src/cli/session_*.c`). Five copies of the hand-written cleanup on failure paths are one `session_release()`; the session is zero-initialised so it frees exactly what was set up. The `DistPlan` static became a session member (mutable statics 71 to 70).
+- Why: one function mixing a dozen phases could not be read, tested or changed phase by phase, and each early return had its own, slightly different cleanup (the `--tokenizer` failure path never freed the MLA / Qwen state).
+- Proof: 23 command lines (one-shot on SmolLM2 and BitNet, perplexity, self-check, plan, worker / remote / draft / LoRA / tokenizer / vision / native-model error paths, watermark, best-of, REPL, tensor dump, first-run calibration) give identical stdout, stderr and exit status against the pre-series binary (timings masked); the live server replies are byte-identical; the same cases under ASan + UBSan + LeakSanitizer report nothing; `make test` 39/39.
+- Areas: `src/cli/{main,session_*}.c`, `include/cli/session.h`, `CMakeLists.txt`, `tools/{file_size,mutable_statics}_baseline.txt`, `.claude/INDEX.md`.
+
 ### 2026-11-20 — `handle_chat_completions` split into one function per step
 - What: the 380-line handler is now 133 lines plus `chat_acquire_units`, `chat_build_prompt`, `chat_run_generation` and `chat_send_result`; the chat route moved to `src/api/http_chat.c` and the output state (`StreamState`, token callback, best-of / tree-search JSON) to `src/api/chat_stream.c`. `http_server.c` 1014 to 575 lines. Behaviour unchanged.
 - Why: the function mixed parsing, queueing, prompt rendering, generation and reply writing, which made each hard to review and test on its own.

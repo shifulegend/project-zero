@@ -331,7 +331,7 @@ tools/bench/calibration_test.py::test_sweeps 11 58
 tools/bench/chart.py::make_chart 26 87
 tools/bench/gate.py::judge 15 25
 tools/bench/h2h_bench.py::build_variants 14 33
-tools/bench/h2h_bench.py::main 52 175
+tools/bench/h2h_bench.py::main 18 69
 tools/bench/h2h_bench.py::select_models 12 17
 tools/bench/setup_engines.py::ensure_engine 24 62
 tools/bench/setup_engines.py::ensure_model 18 49

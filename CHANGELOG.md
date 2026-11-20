@@ -40,6 +40,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Fixed
 
+- Stop cutting a chat message that carries an image at 8 KiB: the text part of such a message is now kept whole (a 15,000-character message reached the model as about 8,000 characters before, silently).
 - Make `--seed` work with `--draft-model`: speculative decoding seeded its sampler from the clock, so two runs with the same `--seed` gave different text (plain generation already honoured it).
 - Refuse a truncated model file with an error (`tensor 'token_embd.weight' is missing from the file (truncated download?)`, exit status 1) instead of crashing with a segmentation fault while loading weights.
 - Print one `--verbose` router line per MoE layer: it used to start with a stray unfinished `experts=[` fragment before the real line.

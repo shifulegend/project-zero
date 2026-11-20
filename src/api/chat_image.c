@@ -18,8 +18,6 @@
 #include "core/log.h"
 #include "multimodal/vision_pipeline.h"
 
-#define HTTP_STRIPPED_PROMPT_BUF 8192 /* user prompt with the image part removed */
-
 int chat_apply_image(ApiContext *ctx, ChatRequest *req) {
     int had_image = 0;
     for (int i = req->num_messages - 1; i >= 0; i--) {
@@ -56,19 +54,26 @@ int chat_apply_image(ApiContext *ctx, ChatRequest *req) {
             break;
         }
 
-        /* Per-request buffer (not static): the result is copied with strdup() below, so it
-         * does not need to outlive this block, and two requests never share it. */
-        char stripped_prompt_buf[HTTP_STRIPPED_PROMPT_BUF];
+        /* Per-request buffer sized to the message (the stripped text is never longer than the
+         * original), so a long prompt is never cut and two requests never share it. The request
+         * body limit already bounds the size. */
+        size_t stripped_cap         = strlen(req->messages[i].content) + 1;
+        char *stripped_prompt_buf   = malloc(stripped_cap);
         const char *stripped_prompt = req->messages[i].content;
+        if (!stripped_prompt_buf) {
+            TN_LOG_ERR("vision", "[vision] out of memory for the prompt buffer\n");
+            unlink(tmp_path);
+            break;
+        }
         /* cfg/weights are declared const in ApiContext (text generation
-     * never mutates them); the vision pipeline's KV-cache injection
-     * needs non-const pointers even though it doesn't rewrite either —
-     * same underlying objects main.c's CLI path passes non-const. */
+         * never mutates them); the vision pipeline's KV-cache injection
+         * needs non-const pointers even though it doesn't rewrite either --
+         * same underlying objects main.c's CLI path passes non-const. */
         had_image = 1;
         vision_pipeline_run(tmp_path, ctx->server_config.vision_path, ctx->server_config.proj_path,
                             (Config *)ctx->cfg, (TransformerWeights *)ctx->weights, ctx->run_state,
                             ctx->moe_cfg, ctx->tok, ctx->tp, req->messages[i].content,
-                            stripped_prompt_buf, sizeof(stripped_prompt_buf), &stripped_prompt);
+                            stripped_prompt_buf, stripped_cap, &stripped_prompt);
         unlink(tmp_path);
 
         if (stripped_prompt != req->messages[i].content) {
@@ -78,6 +83,7 @@ int chat_apply_image(ApiContext *ctx, ChatRequest *req) {
                 req->messages[i].content = new_content;
             }
         }
+        free(stripped_prompt_buf);
         break;
     }
     return had_image;

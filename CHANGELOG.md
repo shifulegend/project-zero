@@ -35,6 +35,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Fixed
 
+- Refuse a truncated model file with an error (`tensor 'token_embd.weight' is missing from the file (truncated download?)`, exit status 1) instead of crashing with a segmentation fault while loading weights.
 - Print one `--verbose` router line per MoE layer: it used to start with a stray unfinished `experts=[` fragment before the real line.
 - Exit with status 1 when a run prints an error and does nothing: `--plan-layers` with no node sizes, `--rpc-worker` without a valid `--layers`, `--remote-layers` that cannot be set up (or is combined with `--draft-model`), `--perplexity` on an unreadable file or too few tokens, `--watermark-detect` text that cannot be tokenised, and `--server` when the port cannot be bound. Before, scripts and service managers saw success.
 - Stop Qwen3.5/3.6 attention from sharing scratch buffers between concurrent callers: both the full-attention and the Gated-DeltaNet layers kept their buffers in function-local statics, so two requests running a forward pass at the same time could overwrite each other's values. The buffers now belong to each request's run state and are sized by the model, so the fixed width caps are gone too.

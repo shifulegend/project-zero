@@ -415,8 +415,24 @@ static const struct {
     {"qwen35", weights_from_gguf_qwen35, 0},
 };
 
+/* The reader leaves data NULL for a tensor that does not fit in the file (a truncated download);
+ * no loader below can use one, so the whole file is refused up front with the tensor's name. */
+static TernaryError check_tensors_present(const GGUFHeader *hdr) {
+    for (uint64_t i = 0; i < hdr->n_tensors; i++) {
+        if (!hdr->tensors[i].data) {
+            fprintf(stderr,
+                    "[gguf_loader] tensor '%s' is missing from the file (truncated download?)\n",
+                    hdr->tensors[i].name);
+            return TN_ERR_INVALID_WEIGHTS;
+        }
+    }
+    return TN_OK;
+}
+
 TernaryError weights_from_gguf(TransformerWeights *w, const Config *cfg, const GGUFHeader *hdr,
                                GGUFWeightStore **store_out) {
+    TernaryError present = check_tensors_present(hdr);
+    if (present != TN_OK) return present;
     GGUFWeightStore *store = gguf_ld_store_alloc();
     if (!store) return TN_ERR_OOM;
     *store_out = store;

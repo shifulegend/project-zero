@@ -5,6 +5,11 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-11-20.
 
+### 2026-11-20 — A truncated GGUF crashed the loader (segmentation fault)
+- What: the GGUF reader leaves `tensor->data` NULL for a tensor that does not fit in the file and only prints a warning; the weight loaders then read through it (SEGV in `gguf_dequant_q8_0` on a 5 MB prefix of SmolLM2, exit 139). Found by running truncated files through the new `load_gguf_model` split under ASan; the pre-series binary crashes the same way. Separately, a failed `weights_from_gguf()` leaked its weight store because only the success path freed it.
+- Fix: `weights_from_gguf()` refuses the file up front, naming the first missing tensor, before any loader touches it; `load_gguf_model()` now releases the store on that path. `tests/test_gguf_truncated.c` (all five architectures) and a truncated-file case in `tests/e2e_cli_exit_status.sh` guard it.
+- Lesson: a reader that tolerates a bad file by returning a NULL pointer pushes the check to every caller; do it once at the boundary the loaders share.
+
 ### 2026-11-20 — CLI modes that failed after loading the model still exited 0
 - What: `main()` ended every post-load error path with `goto cleanup_after_run` and returned `exit_code`, which only `--self-check` ever set. `--plan-layers` with no sizes, `--rpc-worker` without `--layers`, `--remote-layers` failures, `--perplexity` errors, `--watermark-detect` tokenisation errors and a `--server` bind failure all printed an error and returned 0, so a script or service manager saw success. Found while splitting `main()` into phases (each error branch had to be named).
 - Fix: each of those branches sets `exit_code = 1`; `tests/e2e_cli_exit_status.sh` (CI) fails 5 of 6 cases on the old binary. `--image` with an unreadable image still degrades to text-only and exits 0, which is the documented behaviour.

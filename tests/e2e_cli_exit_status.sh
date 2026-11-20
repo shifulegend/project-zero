@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # e2e_cli_exit_status.sh — a run that prints an error must exit non-zero, and a run that
 # succeeds must exit 0. Covers the modes that load a model and then fail on their own
-# arguments: --plan-layers, --rpc-worker, --remote-layers, --perplexity, --server.
+# arguments (and a truncated model file): --plan-layers, --rpc-worker, --remote-layers, --perplexity, --server.
 #
 # Usage: tests/e2e_cli_exit_status.sh <model.gguf>
 # Requires a real downloaded model; not part of `make test`.
@@ -47,5 +47,18 @@ trap 'kill $HOLDER 2>/dev/null' EXIT
 sleep 1
 expect 1 "--server on a port that is already taken" -- --server --port "$PORT"
 
-echo "=== $((6 - FAIL)) passed, $FAIL failed ==="
+# A truncated download must be refused with an error, not crash the loader (exit 139 before).
+TRUNC="$(mktemp)"
+head -c 5000000 "$MODEL" >"$TRUNC"
+"$BIN" --model "$TRUNC" --no-calibrate --threads 2 --prompt hi >/dev/null 2>&1 </dev/null
+got=$?
+rm -f "$TRUNC"
+if [ "$got" -eq 1 ]; then
+    echo "  [PASS] a truncated model file is refused (exit $got)"
+else
+    echo "  [FAIL] a truncated model file: wanted exit 1, got $got"
+    FAIL=$((FAIL + 1))
+fi
+
+echo "=== $((7 - FAIL)) passed, $FAIL failed ==="
 [ "$FAIL" -eq 0 ]

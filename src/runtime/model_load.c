@@ -17,15 +17,38 @@
  * here — draft models are GGUF-only (see include/runtime/model_load.h) — and
  * stays fully inline in main() as its own separate path. */
 
-TernaryError load_gguf_model(LoadedModel *out, const char *model_path, bool is_primary,
-                             int max_seq_len_hint, ThreadPool *tp, bool stdout_is_tty) {
-    memset(out, 0, sizeof(*out));
-    moe_config_init_dense(&out->moe_config); /* dense by default; overridden below for MoE models */
-    (void)tp; /* not currently consumed by weights_from_gguf() (which takes no ThreadPool
-               * argument) -- kept in the signature for interface symmetry with the rest
-               * of this codebase's loader-style functions and in case a future weight
-               * format needs it; not a dead parameter to remove. */
+/* How far a load got; release_to() frees everything up to and including that stage. */
+typedef enum { STAGE_FILE, STAGE_WEIGHTS, STAGE_STATE } LoadStage;
 
+/* Frees what a (partial) load built, newest first. Every free below is NULL-safe and the model
+ * starts zeroed, so it is correct at any stage. mla_run_state_free / q35_run_state_free /
+ * qwen3moe_run_state_free must run before run_state_free() (they free k_rope_cache and the q35_ /
+ * qwen3moe_ pointer arrays that run_state_free() doesn't know about) -- mirrors main()'s own
+ * end-of-program cleanup sequence. */
+static void release_state(LoadedModel *m) {
+    if (!m->state) return;
+    if (m->moe_config.has_mla) mla_run_state_free(m->state, m->config.n_layers);
+    if (m->moe_config.has_linear_attn) q35_run_state_free(m->state, &m->config, &m->moe_config);
+    if (m->moe_config.has_qk_norm) qwen3moe_run_state_free(m->state, &m->config);
+    run_state_free(m->state);
+    free(m->state);
+    m->state = NULL;
+}
+
+static void release_to(LoadedModel *m, LoadStage stage) {
+    if (stage >= STAGE_STATE) release_state(m);
+    if (stage >= STAGE_WEIGHTS) {
+        if (m->moe_config.is_moe) moe_weights_free(&m->weights, &m->moe_config);
+        weights_free_pointers(&m->weights);
+        if (m->gguf_store) weights_free_gguf(m->gguf_store);
+        m->gguf_store = NULL;
+    }
+    gguf_header_free(&m->gguf_hdr);
+    mapped_file_close(&m->mf);
+}
+
+/* Maps the file, reads the GGUF header, the Config and the MoEConfig. */
+static TernaryError read_model_info(LoadedModel *out, const char *model_path, bool is_primary) {
     if (mapped_file_open(&out->mf, model_path) != TN_OK) {
         fprintf(stderr, "Failed to map model file: %s\n", model_path);
         return TN_ERR_FILE_OPEN;
@@ -35,14 +58,10 @@ TernaryError load_gguf_model(LoadedModel *out, const char *model_path, bool is_p
 
     if (gguf_read_header(&out->gguf_hdr, out->mf.data, out->mf.size) != TN_OK) {
         fprintf(stderr, "Failed to parse GGUF header.\n");
-        gguf_header_free(&out->gguf_hdr);
-        mapped_file_close(&out->mf);
         return TN_ERR_INVALID_ARGS;
     }
     if (config_from_gguf(&out->config, &out->gguf_hdr) != TN_OK) {
         fprintf(stderr, "Failed to read config from GGUF metadata.\n");
-        gguf_header_free(&out->gguf_hdr);
-        mapped_file_close(&out->mf);
         return TN_ERR_INVALID_ARGS;
     }
     if (is_primary) config_print(&out->config);
@@ -53,109 +72,105 @@ TernaryError load_gguf_model(LoadedModel *out, const char *model_path, bool is_p
      * to be gated on a hardcoded arch list (deepseek2/qwen35/qwen3moe), so a
      * newly supported architecture (mamba) silently ran as a dense
      * transformer with NULL attention weights. */
-    {
-        if (moe_config_from_gguf(&out->moe_config, &out->gguf_hdr) != TN_OK) {
-            fprintf(stderr, "Failed to read MoE config from GGUF.\n");
-            gguf_header_free(&out->gguf_hdr);
-            mapped_file_close(&out->mf);
-            return TN_ERR_INVALID_ARGS;
-        }
-        if (is_primary &&
-            (out->moe_config.is_moe || out->moe_config.has_mla || out->moe_config.has_linear_attn ||
-             out->moe_config.has_qk_norm || out->moe_config.is_ssm))
-            moe_config_print(&out->moe_config);
+    if (moe_config_from_gguf(&out->moe_config, &out->gguf_hdr) != TN_OK) {
+        fprintf(stderr, "Failed to read MoE config from GGUF.\n");
+        return TN_ERR_INVALID_ARGS;
     }
+    if (is_primary &&
+        (out->moe_config.is_moe || out->moe_config.has_mla || out->moe_config.has_linear_attn ||
+         out->moe_config.has_qk_norm || out->moe_config.is_ssm))
+        moe_config_print(&out->moe_config);
+    return TN_OK;
+}
 
+/* Weight pointer arrays (per layer, per expert for MoE) and the weights themselves. On failure
+ * `*stage` says what to release. */
+static TernaryError load_model_weights(LoadedModel *out, LoadStage *stage) {
+    *stage = STAGE_FILE;
     if (weights_alloc_pointers(&out->weights, &out->config) != TN_OK) {
         fprintf(stderr, "Failed to allocate weight pointers.\n");
-        gguf_header_free(&out->gguf_hdr);
-        mapped_file_close(&out->mf);
         return TN_ERR_OOM;
     }
+    *stage = STAGE_WEIGHTS;
     /* For MoE GGUF models (DeepSeek-V2), allocate per-layer/expert arrays. */
-    if (out->moe_config.is_moe) {
-        if (moe_weights_alloc(&out->weights, &out->config, &out->moe_config) != TN_OK) {
-            fprintf(stderr, "Failed to allocate MoE weight pointer arrays.\n");
-            moe_weights_free(&out->weights, &out->moe_config);
-            weights_free_pointers(&out->weights);
-            gguf_header_free(&out->gguf_hdr);
-            mapped_file_close(&out->mf);
-            return TN_ERR_OOM;
-        }
+    if (out->moe_config.is_moe &&
+        moe_weights_alloc(&out->weights, &out->config, &out->moe_config) != TN_OK) {
+        fprintf(stderr, "Failed to allocate MoE weight pointer arrays.\n");
+        return TN_ERR_OOM;
     }
     if (weights_from_gguf(&out->weights, &out->config, &out->gguf_hdr, &out->gguf_store) != TN_OK) {
         fprintf(stderr, "Failed to load GGUF weights.\n");
-        if (out->moe_config.is_moe) moe_weights_free(&out->weights, &out->moe_config);
-        weights_free_pointers(&out->weights);
-        gguf_header_free(&out->gguf_hdr);
-        mapped_file_close(&out->mf);
         return TN_ERR_INVALID_ARGS;
     }
+    return TN_OK;
+}
 
-    /* Correct the profiler's per-token traffic + ceiling with the real
-     * loaded model (2026-07-17): tn_hardware_profile_init() runs before
-     * the model file is opened and seeds Data/token with compile-time
-     * BitNet-2B constants (~1149 MB), overstating the ceiling ~6x for
-     * multi-GB GGUF models (docs/ai/mistakes.md). Accounting per class:
-     * Q2_0-native models subtract the embedding table (read one row per
-     * token, not streamed) and swap the raw Q2_0 LM head for the
-     * materialized classifier's bytes when one was explicitly requested.
-     * Generic GGUF uses the raw file size — an upper bound that still
-     * bills the full embedding table, since its tensor format (and thus
-     * byte size) isn't known generically here; tight for tied-embedding
-     * models, conservative otherwise. MoE models overcount (all experts,
-     * not just routed) — TODO(PZ-TODO-1): subtract inactive-expert bytes via
-     * MoEConfig.
-     *
-     * Only ever measured for the primary (verifier) model — a draft model
-     * loaded alongside it must not overwrite the profiler's ceiling display
-     * with its own (much smaller) bytes/token. */
-    if (is_primary) {
-        double per_tok                = (double)out->mf.size;
-        double cls_bytes              = 0.0;
-        const TnHardwareProfile *hp_m = tn_hardware_profile_get();
-        if (out->weights.q35_is_q2_0_model) {
-            double q2_row = (double)out->config.vocab_size * out->config.dim * (34.0 / 128.0);
-            cls_bytes     = q2_row; /* zero-copy raw Q2_0 head (default) */
-            if (hp_m && hp_m->classifier_explicit) {
-                switch (hp_m->classifier_fmt) {
-                    case TN_CLS_INT4:
-                        cls_bytes = (double)out->config.vocab_size * out->config.dim * 0.5;
-                        break;
-                    case TN_CLS_INT8:
-                        cls_bytes = (double)out->config.vocab_size * out->config.dim;
-                        break;
-                    default:
-                        cls_bytes = (double)out->config.vocab_size * out->config.dim * 2.0;
-                        break;
-                }
+/* Correct the profiler's per-token traffic + ceiling with the real
+ * loaded model (2026-07-17): tn_hardware_profile_init() runs before
+ * the model file is opened and seeds Data/token with compile-time
+ * BitNet-2B constants (~1149 MB), overstating the ceiling ~6x for
+ * multi-GB GGUF models (docs/ai/mistakes.md). Accounting per class:
+ * Q2_0-native models subtract the embedding table (read one row per
+ * token, not streamed) and swap the raw Q2_0 LM head for the
+ * materialized classifier's bytes when one was explicitly requested.
+ * Generic GGUF uses the raw file size — an upper bound that still
+ * bills the full embedding table, since its tensor format (and thus
+ * byte size) isn't known generically here; tight for tied-embedding
+ * models, conservative otherwise. MoE models overcount (all experts,
+ * not just routed) — TODO(PZ-TODO-1): subtract inactive-expert bytes via
+ * MoEConfig.
+ *
+ * Only ever measured for the primary (verifier) model — a draft model
+ * loaded alongside it must not overwrite the profiler's ceiling display
+ * with its own (much smaller) bytes/token. */
+
+static void report_model_bytes(const LoadedModel *out) {
+    double per_tok                = (double)out->mf.size;
+    double cls_bytes              = 0.0;
+    const TnHardwareProfile *hp_m = tn_hardware_profile_get();
+    if (out->weights.q35_is_q2_0_model) {
+        double q2_row = (double)out->config.vocab_size * out->config.dim * (34.0 / 128.0);
+        cls_bytes     = q2_row; /* zero-copy raw Q2_0 head (default) */
+        if (hp_m && hp_m->classifier_explicit) {
+            switch (hp_m->classifier_fmt) {
+                case TN_CLS_INT4:
+                    cls_bytes = (double)out->config.vocab_size * out->config.dim * 0.5;
+                    break;
+                case TN_CLS_INT8:
+                    cls_bytes = (double)out->config.vocab_size * out->config.dim;
+                    break;
+                default:
+                    cls_bytes = (double)out->config.vocab_size * out->config.dim * 2.0;
+                    break;
             }
-            /* drop embedding (one row/token) + in-file head, add the
-             * head actually used */
-            per_tok -= 2.0 * q2_row;
-            per_tok += cls_bytes;
         }
-        tn_hardware_profile_set_model_bytes(per_tok, cls_bytes);
-        if (hp_m) {
-            printf("[profile] Data/token (loaded model): %.0f MB -> "
-                   "ceiling %.1f tok/s at %.1f GB/s\n",
-                   per_tok / (1024.0 * 1024.0), hp_m->theoretical_ceiling, hp_m->measured_bw_gbps);
-        }
+        /* drop embedding (one row/token) + in-file head, add the
+         * head actually used */
+        per_tok -= 2.0 * q2_row;
+        per_tok += cls_bytes;
     }
+    tn_hardware_profile_set_model_bytes(per_tok, cls_bytes);
+    if (hp_m) {
+        printf("[profile] Data/token (loaded model): %.0f MB -> "
+               "ceiling %.1f tok/s at %.1f GB/s\n",
+               per_tok / (1024.0 * 1024.0), hp_m->theoretical_ceiling, hp_m->measured_bw_gbps);
+    }
+}
 
-    if (is_primary) tn_progress_stage(3, 4, "Preparing runtime...", stdout_is_tty);
-
+/* The context length: sized from the RAM left after loading for the primary model, or the hint for
+ * a draft model. */
+static void size_context(LoadedModel *out, bool is_primary, int max_seq_len_hint) {
     /* KV Strategy — measured AFTER model weights are loaded so that any F32-dequantised
-     * weight allocations (MLA projections, shared experts, norms) are already counted in
-     * consumed RAM.  For mmap'd GGUF models the raw quantised expert bytes don't use
-     * physical RAM until accessed, so only the upfront malloc'd F32 blocks matter here.
-     * Re-measuring at this point prevents DeepSeek-style OOM where a 163840-token context
-     * would require 7+ GB KV cache on a machine that only has 2–3 GB left after load.
-     *
-     * A non-primary (draft) model skips the free-RAM probe entirely and takes
-     * max_seq_len_hint directly — a draft model never needs a large context,
-     * and a second independent free-RAM probe during the same startup would
-     * double-count RAM the primary model's own sizing already accounted for. */
+ * weight allocations (MLA projections, shared experts, norms) are already counted in
+ * consumed RAM.  For mmap'd GGUF models the raw quantised expert bytes don't use
+ * physical RAM until accessed, so only the upfront malloc'd F32 blocks matter here.
+ * Re-measuring at this point prevents DeepSeek-style OOM where a 163840-token context
+ * would require 7+ GB KV cache on a machine that only has 2–3 GB left after load.
+ *
+ * A non-primary (draft) model skips the free-RAM probe entirely and takes
+ * max_seq_len_hint directly — a draft model never needs a large context,
+ * and a second independent free-RAM probe during the same startup would
+ * double-count RAM the primary model's own sizing already accounted for. */
     if (is_primary) {
         tn_i64 post_load_ram    = tn_get_free_ram();
         KVStrategyResult kv_res = select_kv_strategy(&out->config, post_load_ram, &out->moe_config);
@@ -173,16 +188,16 @@ TernaryError load_gguf_model(LoadedModel *out, const char *model_path, bool is_p
     } else {
         out->config.seq_len = (max_seq_len_hint > 0) ? max_seq_len_hint : 1;
     }
+}
 
-    /* Setup RunState */
-    out->state = (RunState *)malloc(sizeof(RunState));
+/* RunState and the per-architecture state (MLA, Mamba, Qwen3.5 hybrid, Qwen3-MoE). On failure the
+ * state is released here; the caller releases the weights. */
+static TernaryError alloc_run_state(LoadedModel *out) {
+    Config *c     = &out->config;
+    MoEConfig *mc = &out->moe_config;
+    out->state    = (RunState *)malloc(sizeof(RunState));
     if (!out->state) {
         fprintf(stderr, "Failed to allocate RunState header.\n");
-        if (out->moe_config.is_moe) moe_weights_free(&out->weights, &out->moe_config);
-        weights_free_pointers(&out->weights);
-        if (out->gguf_store) weights_free_gguf(out->gguf_store);
-        gguf_header_free(&out->gguf_hdr);
-        mapped_file_close(&out->mf);
         return TN_ERR_OOM;
     }
 
@@ -192,91 +207,62 @@ TernaryError load_gguf_model(LoadedModel *out, const char *model_path, bool is_p
      * qwen3moe_value_cache, allocated below) — skip_kv_cache=true avoids a
      * multi-GB calloc+memset for those models' context. See
      * run_state_alloc_ex's header comment and docs/ai/mistakes.md. */
-    if (run_state_alloc_ex(out->state, &out->config, out->config.seq_len,
-                           out->moe_config.has_linear_attn || out->moe_config.has_qk_norm ||
-                               out->moe_config.is_ssm) != TN_OK) {
+    if (run_state_alloc_ex(out->state, c, c->seq_len,
+                           mc->has_linear_attn || mc->has_qk_norm || mc->is_ssm) != TN_OK) {
         fprintf(stderr, "Failed to allocate RunState buffers.\n");
-        free(out->state);
+        free(out->state); /* nothing inside it to release */
         out->state = NULL;
-        if (out->moe_config.is_moe) moe_weights_free(&out->weights, &out->moe_config);
-        weights_free_pointers(&out->weights);
-        if (out->gguf_store) weights_free_gguf(out->gguf_store);
-        gguf_header_free(&out->gguf_hdr);
-        mapped_file_close(&out->mf);
         return TN_ERR_OOM;
     }
 
-    /* Phase 17.7: MLA k_rope_cache (allocated only when has_mla=1) */
-    if (out->moe_config.has_mla) {
-        if (mla_run_state_alloc(out->state, &out->config, &out->moe_config, out->config.seq_len) !=
-            TN_OK) {
-            fprintf(stderr, "Failed to allocate MLA k_rope_cache.\n");
-            run_state_free(out->state);
-            free(out->state);
-            out->state = NULL;
-            if (out->moe_config.is_moe) moe_weights_free(&out->weights, &out->moe_config);
-            weights_free_pointers(&out->weights);
-            if (out->gguf_store) weights_free_gguf(out->gguf_store);
-            gguf_header_free(&out->gguf_hdr);
-            mapped_file_close(&out->mf);
-            return TN_ERR_OOM;
-        }
+    const char *what = NULL;
+    if (mc->has_mla &&
+        mla_run_state_alloc(out->state, c, mc, c->seq_len) != TN_OK) /* k_rope_cache */
+        what = "MLA k_rope_cache";
+    else if (mc->is_ssm && mamba_state_alloc(&out->state->mamba, c->n_layers, mc) != TN_OK)
+        what = "Mamba SSM state"; /* freed by run_state_free */
+    else if (mc->has_linear_attn && q35_run_state_alloc(out->state, c, mc, c->seq_len) != TN_OK)
+        what = "Qwen3.5/3.6 hybrid attention state";
+    else if (mc->has_qk_norm && qwen3moe_run_state_alloc(out->state, c, mc, c->seq_len) != TN_OK)
+        what = "Qwen3-MoE attention state";
+    if (what) {
+        fprintf(stderr, "Failed to allocate %s.\n", what);
+        release_state(out);
+        return TN_ERR_OOM;
     }
+    return TN_OK;
+}
 
-    /* Phase 22-SSM: Mamba recurrent state (freed by run_state_free). */
-    if (out->moe_config.is_ssm) {
-        if (mamba_state_alloc(&out->state->mamba, out->config.n_layers, &out->moe_config) !=
-            TN_OK) {
-            fprintf(stderr, "Failed to allocate Mamba SSM state.\n");
-            run_state_free(out->state);
-            free(out->state);
-            out->state = NULL;
-            weights_free_pointers(&out->weights);
-            if (out->gguf_store) weights_free_gguf(out->gguf_store);
-            gguf_header_free(&out->gguf_hdr);
-            mapped_file_close(&out->mf);
-            return TN_ERR_OOM;
-        }
+TernaryError load_gguf_model(LoadedModel *out, const char *model_path, bool is_primary,
+                             int max_seq_len_hint, ThreadPool *tp, bool stdout_is_tty) {
+    memset(out, 0, sizeof(*out));
+    moe_config_init_dense(&out->moe_config); /* dense by default; overridden below for MoE models */
+    (void)tp; /* not currently consumed by weights_from_gguf() (which takes no ThreadPool
+               * argument) -- kept in the signature for interface symmetry with the rest
+               * of this codebase's loader-style functions and in case a future weight
+               * format needs it; not a dead parameter to remove. */
+
+    TernaryError e = read_model_info(out, model_path, is_primary);
+    if (e != TN_OK) {
+        release_to(out, STAGE_FILE);
+        return e;
     }
-
-    /* Qwen3.5/3.6 hybrid attention state (allocated only when has_linear_attn=1) */
-    if (out->moe_config.has_linear_attn) {
-        if (q35_run_state_alloc(out->state, &out->config, &out->moe_config, out->config.seq_len) !=
-            TN_OK) {
-            fprintf(stderr, "Failed to allocate Qwen3.5/3.6 hybrid attention state.\n");
-            if (out->moe_config.has_mla) mla_run_state_free(out->state, out->config.n_layers);
-            run_state_free(out->state);
-            free(out->state);
-            out->state = NULL;
-            if (out->moe_config.is_moe) moe_weights_free(&out->weights, &out->moe_config);
-            weights_free_pointers(&out->weights);
-            if (out->gguf_store) weights_free_gguf(out->gguf_store);
-            gguf_header_free(&out->gguf_hdr);
-            mapped_file_close(&out->mf);
-            return TN_ERR_OOM;
-        }
+    LoadStage stage;
+    e = load_model_weights(out, &stage);
+    if (e != TN_OK) {
+        release_to(out, stage);
+        return e;
     }
-
-    /* Qwen3-MoE attention state (allocated only when has_qk_norm=1) */
-    if (out->moe_config.has_qk_norm) {
-        if (qwen3moe_run_state_alloc(out->state, &out->config, &out->moe_config,
-                                     out->config.seq_len) != TN_OK) {
-            fprintf(stderr, "Failed to allocate Qwen3-MoE attention state.\n");
-            if (out->moe_config.has_mla) mla_run_state_free(out->state, out->config.n_layers);
-            if (out->moe_config.has_linear_attn)
-                q35_run_state_free(out->state, &out->config, &out->moe_config);
-            run_state_free(out->state);
-            free(out->state);
-            out->state = NULL;
-            if (out->moe_config.is_moe) moe_weights_free(&out->weights, &out->moe_config);
-            weights_free_pointers(&out->weights);
-            if (out->gguf_store) weights_free_gguf(out->gguf_store);
-            gguf_header_free(&out->gguf_hdr);
-            mapped_file_close(&out->mf);
-            return TN_ERR_OOM;
-        }
+    if (is_primary) {
+        report_model_bytes(out);
+        tn_progress_stage(3, 4, "Preparing runtime...", stdout_is_tty);
     }
-
+    size_context(out, is_primary, max_seq_len_hint);
+    e = alloc_run_state(out);
+    if (e != TN_OK) {
+        release_to(out, STAGE_WEIGHTS);
+        return e;
+    }
     return TN_OK;
 }
 
@@ -291,21 +277,5 @@ void loaded_model_free(LoadedModel *m) {
         mapped_file_close(&m->mf);
         return;
     }
-
-    /* mla_run_state_free/q35_run_state_free/qwen3moe_run_state_free must run
-     * before run_state_free() (they free k_rope_cache and the q35_/qwen3moe_
-     * pointer arrays that run_state_free() doesn't know about) -- mirrors
-     * main()'s own end-of-program cleanup sequence. */
-    if (m->moe_config.has_mla) mla_run_state_free(m->state, m->config.n_layers);
-    if (m->moe_config.has_linear_attn) q35_run_state_free(m->state, &m->config, &m->moe_config);
-    if (m->moe_config.has_qk_norm) qwen3moe_run_state_free(m->state, &m->config);
-    run_state_free(m->state);
-    free(m->state);
-    m->state = NULL;
-
-    if (m->moe_config.is_moe) moe_weights_free(&m->weights, &m->moe_config);
-    weights_free_pointers(&m->weights);
-    if (m->gguf_store) weights_free_gguf(m->gguf_store);
-    gguf_header_free(&m->gguf_hdr);
-    mapped_file_close(&m->mf);
+    release_to(m, STAGE_STATE);
 }

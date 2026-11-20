@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-20 — `load_gguf_model` (186 lines) split into stages with one release function; truncated GGUF refused
+- What: `load_gguf_model()` is now ~25 lines over `read_model_info`, `load_model_weights`, `report_model_bytes`, `size_context` and `alloc_run_state`; the nine hand-written failure cleanups are `release_to(out, stage)` / `release_state()` (every free is NULL-safe and the model starts zeroed). `weights_from_gguf()` calls `check_tensors_present()` first.
+- Why: the function interleaved six stages with a copy of the cleanup at every exit, each slightly different (the weights-load failure path leaked the weight store).
+- Proof: the 5 truncated-file and 1 corrupt-header cases, a missing file and a working `--draft-model` give identical stdout / stderr / exit status to the pre-series binary except the truncated ones that crashed (exit 139, now 1 with a message); ASan + UBSan + LeakSanitizer clean on all of them; the two loaders (`session_model`, `draft_model`, `prm`) and `make test` pass.
+- Areas: `src/runtime/{model_load,gguf_loader}.c`, `tests/test_gguf_truncated.c`, `tests/e2e_cli_exit_status.sh`, `CHANGELOG.md`, `docs/ai/mistakes.md`.
+
 ### 2026-11-20 — `api_config_json` (372 lines) and `print_usage` (221 lines) split into one function per section
 - What: `GET /v1/config`'s builder moved to `src/api/api_config_json.c` as `config_ui`, `config_model`, `config_defaults_{sampler,search,tail}`, `config_limits`, `config_runtime` (+ `runtime_act_quant`, `runtime_distributed`, `runtime_cache`), `config_features` (+ `features_parallel`) and `config_chat_template`; `api_info.c` 548 to 145 lines (`api_model_meta` / `api_vision_enabled` shared through `api/api_info.h`). `args_usage.c`'s `print_usage` calls one `usage_<section>` function per `--help` section.
 - Why: each was one function writing a dozen unrelated sections in a row.

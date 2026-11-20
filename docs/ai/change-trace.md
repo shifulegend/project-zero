@@ -21,6 +21,11 @@
 - Proof: 6 unit tests (including the stale-floor case) pass; the checker passes on the fresh tracefile.
 - Areas: `tools/check_coverage.py`, `tools/test_check_coverage.py`, `tools/coverage_floor.txt`.
 
+### 2026-11-20 — `ServerConfig` grouped into seven sub-structs
+- What: `ServerConfig` (34 direct fields) is `cors`, `auth`, `metrics`, `ui`, `vision`, `cache`, `limits`, `chat`, `numerics`, `search`, `gen_defaults`, `model_id` (`ServerUi`, `ServerVision`, `ServerCache`, `ServerLimits`, `ServerChat`, `ServerNumerics`, `ServerSearch`; none over 8 fields). 149 uses in `src/api`, `src/cli` and the tests were rewritten from compiler errors. It is removed from `tools/struct_fields_baseline.txt` (5 structs remain). Five functions grew by 1-3 lines because the longer member paths wrap; their complexity-baseline entries were re-recorded once.
+- Verified: `make test` green on gcc and clang; `GET /v1/config` byte-identical to the previous build for default flags, `--parallel/--queue-size/--rate-limit` and `--mcts-max/--best-of-max/--max-connections/--queue-timeout/--api-key/--parallel-batch/--metrics` (only the free-RAM-derived `kv_budget_tokens` varies between any two runs).
+- Why: decision Q3 / 10.c (20-25 direct fields per struct).
+
 ### 2026-11-20 — `CliArgs` grouped into ten sub-structs, struct-width ratchet
 - What: `CliArgs` (109 direct fields) is ten cohesive structs (`input`, `sampling`, `eval`, `perf`, `update`, `server`, `output`, `search`, `watermark`, `dist`; none over 21 fields); all 537 uses in `src/cli`, `src/multimodal`, `include/api` and the tests were rewritten from compiler errors (`args->port` to `args->server.port`), the one field named like its group became `watermark.enabled`, and the 90-line default block of `parse_args` became one small function per group. `tools/check_struct_fields.py` (unit-tested, in CI) fails on a new struct over 25 fields and on growth of a listed one; 6 structs are recorded (`TransformerWeights` 88, `GenSession` 41, `RunState` 39, `ServerConfig` 34, `ChatRequest` 27, `MoEConfig` 26). Seven CLI functions grew by 1-3 lines because the longer member paths wrap; their complexity-baseline entries were re-recorded once.
 - Why: decision Q3 / 5.a (20-25 direct fields per struct, decompose `CliArgs` by functional domain).

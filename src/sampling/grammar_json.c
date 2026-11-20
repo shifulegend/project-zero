@@ -125,14 +125,6 @@ static inline JsonState start_value(char c) {
     return JSON_ST_INVALID;
 }
 
-/* Inside an array right after '[': a value, or ']' for an empty one. */
-static inline JsonState array_open(JsonGrammarState *g, char c, int *again) {
-    if (is_ws(c)) return g->state;
-    if (c == ']') return close_value(g);
-    *again = 1; /* reprocess c as the start of that value */
-    return push_value(g, JSON_ST_ARR_AFTER_VALUE);
-}
-
 /* ── Numbers (RFC 8259: -?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?) ──
  * Numbers have no closing delimiter of their own -- a whitespace, ',', '}', ']' (or end of input,
  * which this function never sees directly, handled by the caller checking json_grammar_is_complete

@@ -16,12 +16,14 @@
 #include "transformer/attn_tiled.h"
 #include "update/update_check.h"
 
-void print_usage(const char *prog_name) {
+static void usage_intro(const char *prog_name) {
     printf("Usage: %s [options]\n", prog_name);
     printf("       %s config        set up defaults interactively (pz config --help)\n", prog_name);
     printf("Saved settings (pz config) and PZ_<KEY> environment variables act as defaults;\n"
            "flags given here override them. --no-config ignores both.\n");
+}
 
+static void usage_generation(void) {
     printf("\nModel & Generation:\n");
     printf("  --model <path>      Path to the .bin/.gguf model file (required)\n");
     printf("  --tokenizer <path>  Path to the tokenizer.bin file (optional for GGUF)\n");
@@ -93,7 +95,9 @@ void print_usage(const char *prog_name) {
     printf("  --attn-parallel-min-ctx <N> Spread attention heads over threads once the\n");
     printf("                      context reaches N tokens (default %d, 0 = never)\n",
            ATTN_PARALLEL_MIN_CTX_DEFAULT);
+}
 
+static void usage_watermark(void) {
     printf("\nWatermarking (off by default):\n");
     printf("  --watermark         Bias sampling toward a keyed green list so output can\n");
     printf("                      later be identified (statistical, not visible).\n");
@@ -102,7 +106,9 @@ void print_usage(const char *prog_name) {
     printf("  --watermark-delta <d> Logit bias for green tokens (default: 2.0).\n");
     printf("  --watermark-detect <text> Score <text> for the watermark (needs --model for\n");
     printf("                      the tokenizer and the same key/gamma), then exit.\n");
+}
 
+static void usage_hardware(void) {
     printf("\nHardware & Performance:\n");
     printf("  --threads <int>     Number of threads (default: auto)\n");
     printf("  --classifier <fmt>  Classifier quantization: auto, bf16, int8, int4, auto-fast\n");
@@ -131,7 +137,9 @@ void print_usage(const char *prog_name) {
            "PZ_NO_CALIBRATE=true):\n");
     printf("                      the highest SIMD tier and the detected thread count, for\n");
     printf("                      reproducible benchmarks and throwaway containers.\n");
+}
 
+static void usage_server(void) {
     printf("\nServer (OpenAI-compatible HTTP API):\n");
     printf("  --server            Run as an HTTP API server (--prompt is ignored).\n");
     printf("  --port <int>        Listen port when --server is used (default: 8080).\n");
@@ -177,7 +185,9 @@ void print_usage(const char *prog_name) {
     printf("  --prompt-cache-min-tokens <N> Shortest sequence worth storing (default 32)\n");
     printf("  --static-dir <path> Serve the web UI from disk instead of the embedded\n");
     printf("                      bundle (dev mode, for iterating on webui/dist/).\n");
+}
 
+static void usage_distributed(void) {
     printf("\nDistributed layers (pipeline across processes/machines):\n");
     printf("  --rpc-worker <port> Serve a layer range for a coordinator, then exit on error.\n");
     printf("  --layers <A-B>      Layers [A, B) this worker runs (with --rpc-worker).\n");
@@ -187,18 +197,24 @@ void print_usage(const char *prog_name) {
     printf("                      layers on workers started with the same model file.\n");
     printf("  --plan-layers <s>   Print a layer split proportional to each node's RAM in GB\n");
     printf("                      (e.g. 16,8,8 — first entry is this coordinator), then exit.\n");
+}
 
+static void usage_vision(void) {
     printf("\nMultimodal (vision):\n");
     printf("  --image <path>      Path to image file for multimodal queries (optional)\n");
     printf("  --vision <path>     Path to vision.bin encoder weights\n");
     printf("  --proj <path>       Path to projector.bin weights\n");
     printf("                      Both --vision and --proj required to use --image.\n");
     printf("                      Extract with: python tools/extract_multimodal.py\n");
+}
 
+static void usage_memory(void) {
     printf("\nMemory & RAG:\n");
     printf("  --memory-db <path>  Path to vector DB file for RAG memory.\n");
     printf("                      File is created if it does not exist.\n");
+}
 
+static void usage_speculative(void) {
     printf("\nSpeculative decoding:\n");
     printf("  --draft-model <path> Path to a small GGUF draft model. Disabled by default --\n");
     printf("                      this is the ONLY way to enable speculative decoding;\n");
@@ -209,7 +225,9 @@ void print_usage(const char *prog_name) {
     printf("                      models (Qwen3.5/3.6 hybrid) -- refused at startup.\n");
     printf("  --spec-length <int> Tokens drafted per round when --draft-model is set\n");
     printf("                      (default: 5). Ignored otherwise.\n");
+}
 
+static void usage_lora(void) {
     printf("\nLoRA adapters:\n");
     printf("  --lora <path>       Path to a .lora.bin adapter. Disabled by default --\n");
     printf("                      this is the ONLY way to enable a LoRA adapter; there\n");
@@ -218,7 +236,9 @@ void print_usage(const char *prog_name) {
     printf("                      hidden_dim all checked at load time). v1 scope: the\n");
     printf("                      generic dense/GQA attention/FFN path only -- not MLA,\n");
     printf("                      Qwen3-MoE, Qwen3.5/3.6 hybrid, or MoE-FFN layers.\n");
+}
 
+static void usage_output(void) {
     printf("\nOutput:\n");
     printf("  --color <mode>      Color output: auto (default), always, never.\n");
     printf("                      auto respects the NO_COLOR env var and disables\n");
@@ -227,7 +247,9 @@ void print_usage(const char *prog_name) {
     printf("  --dump-tensors <f>  Write intermediate tensor stats to a CSV file\n");
     printf("  --version, -v       Print version and the SIMD backend for this CPU, then exit.\n");
     printf("  --help, -h          Print this help and exit.\n");
+}
 
+static void usage_updates(void) {
     printf("\nUpdates (notify only -- nothing is downloaded or installed):\n");
     printf("  --check-update      Check GitHub Releases now, print the result, exit\n");
     printf("                      (0 up to date/unknown, 3 update available, 1 error).\n");
@@ -242,11 +264,29 @@ void print_usage(const char *prog_name) {
     printf("  --update-repo <o/n> Releases source (default: upstream; forks set their own).\n");
     printf("  --update-api <url>  API base, e.g. GitHub Enterprise (default "
            "https://api.github.com).\n");
+}
 
+static void usage_examples(const char *prog_name) {
     printf("\nExamples:\n");
     printf("  %s --model models/smollm2.gguf --prompt \"What is the capital of France?\"\n",
            prog_name);
     printf("  %s --model models/smollm2.gguf --threads 4          # interactive REPL\n", prog_name);
     printf("  %s --model models/smollm2.gguf --server --port 8080 --cors --cors-origin \"*\"\n",
            prog_name);
+}
+
+void print_usage(const char *prog_name) {
+    usage_intro(prog_name);
+    usage_generation();
+    usage_watermark();
+    usage_hardware();
+    usage_server();
+    usage_distributed();
+    usage_vision();
+    usage_memory();
+    usage_speculative();
+    usage_lora();
+    usage_output();
+    usage_updates();
+    usage_examples(prog_name);
 }

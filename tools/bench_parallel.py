@@ -35,6 +35,7 @@ import sys
 import threading
 import time
 import urllib.request
+from typing import Any
 
 PROMPTS = [
     "Write a short story about a lighthouse keeper.",
@@ -48,7 +49,7 @@ PROMPTS = [
 ]
 
 
-def post(port, body, timeout=3600):
+def post(port: int, body: dict[str, Any], timeout: int = 3600) -> tuple[dict[str, Any], float]:
     """POSTs a chat-completions body to the local server and returns (response, seconds)."""
     req = urllib.request.Request(
         f"http://127.0.0.1:{port}/v1/chat/completions",
@@ -57,11 +58,11 @@ def post(port, body, timeout=3600):
     )
     t0 = time.perf_counter()
     with urllib.request.urlopen(req, timeout=timeout) as r:
-        data = json.loads(r.read())
+        data: dict[str, Any] = json.loads(r.read())
     return data, time.perf_counter() - t0
 
 
-def wait_ready(port, proc, seconds=300):
+def wait_ready(port: int, proc: subprocess.Popen[bytes], seconds: int = 300) -> bool:
     """Waits until the server answers /health; False if the process exits or the time runs out."""
     for _ in range(seconds * 4):
         if proc.poll() is not None:
@@ -74,7 +75,7 @@ def wait_ready(port, proc, seconds=300):
     return False
 
 
-def run_config(a, parallel, clients, port):
+def run_config(a: argparse.Namespace, parallel: int, clients: int, port: int) -> dict[str, Any]:
     """Starts the server with the given parallel slots, runs concurrent clients and returns their throughput figures."""
     cmd = [
         a.bin,
@@ -107,10 +108,10 @@ def run_config(a, parallel, clients, port):
         slots = cfg["features"]["parallel"]["slots"]
         base = {"max_tokens": a.max_tokens, "temperature": 0, "ignore_eos": True}
         post(port, dict(base, messages=[{"role": "user", "content": "Hello"}], max_tokens=8))
-        results = [None] * clients
+        results: list[tuple[int, int, float] | None] = [None] * clients
         start = threading.Barrier(clients + 1)
 
-        def client(i):
+        def client(i: int) -> None:
             """One client: waits for the start signal, sends its prompt and records the result."""
             body = dict(base, messages=[{"role": "user", "content": PROMPTS[i % len(PROMPTS)]}])
             start.wait()
@@ -133,15 +134,18 @@ def run_config(a, parallel, clients, port):
             proc.kill()
         if log:
             log.close()
-    toks = sum(r[0] for r in results)
-    lat = [r[2] for r in results]
-    per_req = [r[0] / r[2] for r in results]
+    finished = [r for r in results if r is not None]
+    if len(finished) != clients:
+        raise RuntimeError(f"{clients - len(finished)} client(s) got no response")
+    toks = sum(r[0] for r in finished)
+    lat = [r[2] for r in finished]
+    per_req = [r[0] / r[2] for r in finished]
     return {
         "parallel": parallel,
         "slots": slots,
         "clients": clients,
         "completion_tokens": toks,
-        "prompt_tokens": sum(r[1] for r in results),
+        "prompt_tokens": sum(r[1] for r in finished),
         "wall_s": wall,
         "aggregate_tok_s": toks / wall,
         "per_request_tok_s": sum(per_req) / len(per_req),
@@ -150,7 +154,7 @@ def run_config(a, parallel, clients, port):
     }
 
 
-def main():
+def main() -> None:
     """Command-line entry point for the parallel-slots benchmark."""
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter

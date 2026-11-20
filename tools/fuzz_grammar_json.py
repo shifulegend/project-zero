@@ -66,7 +66,7 @@ VALID_SEEDS = [
 ]
 
 
-def build_harness(path):
+def build_harness(path: str) -> str:
     """Path of the compiled fuzz harness, building it when it does not exist yet."""
     if os.path.exists(path):
         return path
@@ -88,7 +88,11 @@ def build_harness(path):
     return path
 
 
-def gen_uniform_random(rng, n, maxlen=40):
+Result = tuple[str, int, bytes]  # (verdict, invalid offset, input bytes)
+Failure = tuple[bytes, int]  # (input bytes, invalid offset)
+
+
+def gen_uniform_random(rng: random.Random, n: int, maxlen: int = 40) -> list[bytes]:
     """`n` random strings of random bytes."""
     out = []
     for _ in range(n):
@@ -97,7 +101,7 @@ def gen_uniform_random(rng, n, maxlen=40):
     return out
 
 
-def gen_alphabet_random(rng, n, maxlen=60):
+def gen_alphabet_random(rng: random.Random, n: int, maxlen: int = 60) -> list[bytes]:
     """`n` random strings over a small JSON-like alphabet."""
     out = []
     for _ in range(n):
@@ -106,7 +110,7 @@ def gen_alphabet_random(rng, n, maxlen=60):
     return out
 
 
-def gen_mutated_valid(rng, n):
+def gen_mutated_valid(rng: random.Random, n: int) -> list[bytes]:
     """`n` strings made by mutating valid JSON seeds."""
     out = []
     for _ in range(n):
@@ -127,7 +131,7 @@ def gen_mutated_valid(rng, n):
     return out
 
 
-def gen_prefix_truncations():
+def gen_prefix_truncations() -> list[bytes]:
     """Every offset of every valid seed, plus the full string itself."""
     out = []
     for seed in VALID_SEEDS:
@@ -137,11 +141,11 @@ def gen_prefix_truncations():
     return out
 
 
-def run_harness(harness, candidates):
+def run_harness(harness: str, candidates: list[bytes]) -> list[Result]:
     """candidates: list[bytes]. Returns list[(verdict, invalid_offset, raw_bytes)]."""
     b64_lines = "\n".join(base64.b64encode(c).decode() for c in candidates) + "\n"
     proc = subprocess.run([harness], input=b64_lines, capture_output=True, text=True, check=True)
-    results = []
+    results: list[Result] = []
     for line, original in zip(proc.stdout.splitlines(), candidates):
         parts = line.split("\t", 2)
         verdict, offset = parts[0], int(parts[1])
@@ -149,7 +153,7 @@ def run_harness(harness, candidates):
     return results
 
 
-def json_loads_verdict(raw):
+def json_loads_verdict(raw: bytes) -> bool:
     """Whether Python's json module accepts the bytes (the reference verdict)."""
     try:
         json.loads(raw.decode("utf-8", errors="surrogateescape"))
@@ -158,10 +162,10 @@ def json_loads_verdict(raw):
         return False
 
 
-def check_differential(results):
+def check_differential(results: list[Result]) -> tuple[list[Failure], list[Failure]]:
     """Compares the grammar's verdicts with Python's and reports false accepts and false rejects."""
-    false_accepts = []
-    false_rejects = []
+    false_accepts: list[Failure] = []
+    false_rejects: list[Failure] = []
     for verdict, offset, raw in results:
         parses = json_loads_verdict(raw)
         if verdict == "DONE" and not parses:
@@ -171,18 +175,18 @@ def check_differential(results):
     return false_accepts, false_rejects
 
 
-def check_prefix_asymmetry(results):
+def check_prefix_asymmetry(results: list[Result]) -> list[Failure]:
     """Any INVALID verdict among prefix-truncation candidates is a bug:
     a prefix of valid JSON must never be flatly invalid (it should be
     INCOMPLETE or DONE, never a sink state)."""
-    bad = []
+    bad: list[Failure] = []
     for verdict, offset, raw in results:
         if verdict == "INVALID":
             bad.append((raw, offset))
     return bad
 
 
-def main():
+def main() -> None:
     """Command-line entry point for the grammar fuzzer."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=3000, help="candidates per generator (default 3000)")

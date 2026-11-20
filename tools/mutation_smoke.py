@@ -48,12 +48,12 @@ def mutate(text: str, offset: int, operator: str) -> str:
 
 def run_test(test: str) -> str:
     """'killed' when the test build or run fails, 'survived' when it passes."""
-    build = subprocess.run(  # noqa: S603 -- fixed make arguments
+    build = subprocess.run(
         ["make", f"build/tests/{test}", "CC=gcc"], cwd=ROOT, capture_output=True, text=True
     )
     if build.returncode != 0:
         return "killed"  # a mutant that does not even build is noticed by the build
-    run = subprocess.run(  # noqa: S603 -- the binary just built
+    run = subprocess.run(
         [f"build/tests/{test}"], cwd=ROOT, capture_output=True, text=True, timeout=300
     )
     return "killed" if run.returncode != 0 else "survived"

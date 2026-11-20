@@ -30,7 +30,7 @@ def wide_lines(text: str) -> int:
 
 def tracked() -> list[str]:
     """Tracked source files this check looks at."""
-    out = subprocess.run(  # noqa: S603 -- fixed git arguments
+    out = subprocess.run(
         ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True
     ).stdout.split("\n")
     return [

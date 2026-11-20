@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-20 — `json_grammar_step` (289 lines, repeated if-chains) rebuilt from small state helpers
+- What: the 37-state JSON pushdown automaton keeps its single `switch`, but each case is one short expression over helpers (`in_string`, `after_backslash`, `hex_digit`, `literal_byte`, `start_value`, `number_continues`, `set`); the two copies of the string escape machine (object key, string value) share the helpers. 289 to 117 lines.
+- Why: the key and value string states, the three literal families and the number states each repeated the same if-chains.
+- Proof: a differential harness (previous object with renamed symbols) compares every (state x byte 0-255 x root / non-root x four stack depths x three stack shapes) single step, the stack-overflow edge for every state and byte, 1.5 million random byte sequences over a JSON-biased alphabet and six documents (valid and invalid): 2,351,073 steps, 0 mismatches in state, stack pointer, stack contents and `finalize`. It caught one bug in a first draft (a `close_value()` argument evaluated eagerly popped the stack on every string byte). Speed: 3.0 vs 2.8 ns per byte (+4-9%), about 0.03 ms per generated token in JSON mode; JSON-mode generation on SmolLM2 66 vs 66 tok/s over three runs. `test_grammar_json` 71/71, `test_fsm`, `test_sampling`, `e2e_json_mode` 17/17 pass.
+- Areas: `src/sampling/grammar_json.c`.
+
 ### 2026-11-20 — `speculative_generate_with_callback` (209 lines) split into phases; `--seed` honoured
 - What: a `SpecRun` struct and `spec_supported`, `encode_prompt`, `round_buffers_alloc/free`, `prefill`, `draft_phase`, `verify_phase`, `accept_phase`, `emit_round`, `commit_round`; the function is the 76-line loop over them. New `seed` parameter on both entry points (negative = clock), passed from `--seed` in the CLI and REPL.
 - Why: draft, verify, accept, emit and commit were one 200-line loop body; the seed was never passed in.

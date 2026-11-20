@@ -30,6 +30,7 @@
 
 #include "api/chat_request.h"
 #include "core/error.h"
+#include "core/escape.h"
 #include "core/json_fields.h"
 
 /* ── Internal helpers ────────────────────────────────────────────────────── */
@@ -107,61 +108,44 @@ static int parse_string(const char **p, char *dst, size_t dst_cap) {
             /* 2026-10-18: a trailing backslash used to step past the NUL and
              * keep reading beyond the buffer. */
             if (**p == '\0') return 0;
-            switch (**p) {
-                case '"':
-                    c = '"';
-                    break;
-                case '\\':
-                    c = '\\';
-                    break;
-                case '/':
-                    c = '/';
-                    break;
-                case 'n':
-                    c = '\n';
-                    break;
-                case 'r':
-                    c = '\r';
-                    break;
-                case 't':
-                    c = '\t';
-                    break;
-                case 'b':
-                    c = '\b';
-                    break;
-                case 'f':
-                    c = '\f';
-                    break;
-                case 'u': {
-                    /* \uXXXX (+ optional low surrogate) -> UTF-8. The
-                     * escape is >= 6 input bytes and UTF-8 output <= 4 per
-                     * code point, so parse_string_heap's length bound holds.
-                     * (2026-10-18: previously every \u escape became '?'.) */
-                    unsigned cp = 0;
-                    if (!hex4(*p + 1, &cp)) {
-                        c = '?';
+            int simple = tn_escape_simple(**p);
+            if (simple >= 0)
+                c = (char)simple;
+            else
+                switch (**p) {
+                    case '/':
+                        c = '/';
+                        break;
+                    case 'u': {
+                        /* \uXXXX (+ optional low surrogate) -> UTF-8. The
+                         * escape is >= 6 input bytes and UTF-8 output <= 4 per
+                         * code point, so parse_string_heap's length bound holds.
+                         * (2026-10-18: previously every \u escape became '?'.) */
+                        unsigned cp = 0;
+                        if (!hex4(*p + 1, &cp)) {
+                            c = '?';
+                            break;
+                        }
+                        (*p) += 4;
+                        if (cp >= 0xD800 && cp <= 0xDBFF && (*p)[1] == '\\' && (*p)[2] == 'u') {
+                            unsigned lo = 0;
+                            if (hex4(*p + 3, &lo) && lo >= 0xDC00 && lo <= 0xDFFF) {
+                                cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
+                                (*p) += 6;
+                            }
+                        }
+                        if (cp >= 0xD800 && cp <= 0xDFFF) cp = 0xFFFD; /* lone surrogate */
+                        char u8[4];
+                        int nb = utf8_encode(cp, u8);
+                        for (int k = 0; k < nb - 1; k++)
+                            if (i < dst_cap - 1) dst[i++] = u8[k];
+                        c = u8[nb - 1];
                         break;
                     }
-                    (*p) += 4;
-                    if (cp >= 0xD800 && cp <= 0xDBFF && (*p)[1] == '\\' && (*p)[2] == 'u') {
-                        unsigned lo = 0;
-                        if (hex4(*p + 3, &lo) && lo >= 0xDC00 && lo <= 0xDFFF) {
-                            cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
-                            (*p) += 6;
-                        }
-                    }
-                    if (cp >= 0xD800 && cp <= 0xDFFF) cp = 0xFFFD; /* lone surrogate */
-                    char u8[4];
-                    int nb = utf8_encode(cp, u8);
-                    for (int k = 0; k < nb - 1; k++)
-                        if (i < dst_cap - 1) dst[i++] = u8[k];
-                    c = u8[nb - 1];
-                    break;
+                    default:
+                        c = **p;
+                        break;
                 }
-                default:
-                    c = **p;
-                    break;
-            }
         }
         if (i < dst_cap - 1) dst[i++] = c;
         (*p)++;

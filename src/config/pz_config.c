@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "core/escape.h"
 #include "core/fs_util.h"
 #include "core/platform.h"
 #if TN_POSIX
@@ -199,23 +200,9 @@ static int parse_string(const char **pp, char *out, size_t outn) {
     while (*p && *p != '"') {
         char ch = *p++;
         if (ch == '\\') {
-            char e = *p++;
-            switch (e) {
-                case 'n':
-                    ch = '\n';
-                    break;
-                case 't':
-                    ch = '\t';
-                    break;
-                case '"':
-                    ch = '"';
-                    break;
-                case '\\':
-                    ch = '\\';
-                    break;
-                default:
-                    return -1;
-            }
+            int d = tn_escape_simple(*p++);
+            if (d < 0) return -1;
+            ch = (char)d;
         }
         if (o + 1 >= outn) return -1;
         out[o++] = ch;

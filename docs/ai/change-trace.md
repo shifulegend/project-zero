@@ -21,6 +21,11 @@
 - Proof: 6 unit tests (including the stale-floor case) pass; the checker passes on the fresh tracefile.
 - Areas: `tools/check_coverage.py`, `tools/test_check_coverage.py`, `tools/coverage_floor.txt`.
 
+### 2026-11-20 — One shared table for the one-character string escapes
+- What: `core/escape.c` (`tn_escape_simple`: `\" \\ \n \t \r \b \f`) replaces the two hand-written switches in `src/api/json_parse.c` (which keeps `\/` and `\uXXXX`) and `src/config/pz_config.c`. The two grammars stay separate (JSON and TOML differ), only the shared letters are one function. The config reader now also accepts `\r`, `\b` and `\f`, which TOML basic strings define; an unknown escape is still refused. `tests/test_escape.c` covers the table, JSON decoding and the TOML reader.
+- Verified: `make test` green on gcc and clang, CMake build, complexity / size / include-layer ratchets.
+- Why: decision 1.c (merge the shared escape-decoding helper; keep the two parsers separate and documented).
+
 ### 2026-11-20 — Added Markdown lines wrap at 80 columns
 - What: `tools/check_md_width.py` (unit-tested, CI `changelog` job, full-history checkout) fails when a Markdown line a change adds is wider than 80 columns; existing text is left alone. Exempt: tables, headings, lines with a URL, link or HTML tag, fenced code, and the append-only logs (`CHANGELOG.md`, `docs/ai/change-trace.md`, `mistakes.md`, `decision-log.md`, `todo-register.md`). The 102 prose lines this branch had added to 15 other Markdown files were re-wrapped at 80 columns (text unchanged, `sync_ai_adapters.py --check` and the fence check still pass).
 - Why: decision 30.c (80-column limit going forward on new and edited prose, no reflow of the existing 14k lines).

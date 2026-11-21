@@ -162,6 +162,74 @@ static TernaryError parse_content_parts(const char **p, ChatMessage *msg) {
 }
 
 /* ── Message array parser ────────────────────────────────────────────────── */
+/* The value of a "content" key: a plain string, null (treated as empty) or a content-parts
+ * array. */
+static TernaryError parse_content_value(const char **p, ChatMessage *msg) {
+    json_skip_ws(p);
+    /* A repeated "content" key replaces the earlier value (the last one
+     * wins); release the old text first, or it leaks. */
+    free(msg->content);
+    msg->content = NULL;
+    if (**p == '[') {
+        /* Phase 22.2: OpenAI "content parts" array (text + image_url) */
+        return parse_content_parts(p, msg);
+    }
+    if (strncmp(*p, "null", 4) == 0) {
+        /* OpenAI allows "content": null (e.g. assistant turns
+         * that only carried tool calls) — treat as empty. */
+        *p += 4;
+        msg->content = strdup("");
+        return msg->content ? TN_OK : TN_ERR_OOM;
+    }
+    msg->content = json_parse_string_heap(p);
+    return msg->content ? TN_OK : TN_ERR_JSON_PARSE;
+}
+
+/* One "key": value pair of a message object. */
+static TernaryError parse_message_member(const char **p, ChatMessage *msg) {
+    char key[64];
+    if (!json_parse_string(p, key, sizeof(key))) return TN_ERR_JSON_PARSE;
+    if (!json_expect_char(p, ':')) return TN_ERR_JSON_PARSE;
+    json_skip_ws(p);
+
+    if (strcmp(key, "role") == 0)
+        return json_parse_string(p, msg->role, sizeof(msg->role)) ? TN_OK : TN_ERR_JSON_PARSE;
+    if (strcmp(key, "content") == 0) return parse_content_value(p, msg);
+    json_skip_value(p);
+    return TN_OK;
+}
+
+/* The members of a message object, after its '{', up to and including the '}'. */
+static TernaryError parse_message_members(const char **p, ChatMessage *msg) {
+    while (**p && **p != '}') {
+        json_skip_ws(p);
+        if (**p == '}') break;
+        TernaryError err = parse_message_member(p, msg);
+        if (err != TN_OK) return err;
+        json_skip_ws(p);
+        if (**p == ',') (*p)++;
+    }
+    return json_expect_char(p, '}') ? TN_OK : TN_ERR_JSON_PARSE;
+}
+
+/* Moves a new, empty message into the request. Partial messages stay in it so that
+ * chat_request_free can release them on error. */
+static ChatMessage *begin_message(ChatRequest *req) {
+    ChatMessage *msg    = &req->messages[req->num_messages++];
+    msg->role[0]        = '\0';
+    msg->content        = NULL;
+    msg->image_data_url = NULL;
+    return msg;
+}
+
+/* After a message: an optional ',' and the whitespace behind it. */
+static void skip_message_separator(const char **p) {
+    json_skip_ws(p);
+    if (**p != ',') return;
+    (*p)++;
+    json_skip_ws(p);
+}
+
 TernaryError json_parse_messages(const char **p, ChatRequest *req) {
     if (!json_expect_char(p, '[')) return TN_ERR_JSON_PARSE;
     json_skip_ws(p);
@@ -175,60 +243,9 @@ TernaryError json_parse_messages(const char **p, ChatRequest *req) {
             break;
         }
 
-        /* Include partial messages so chat_request_free can release them on error. */
-        ChatMessage *msg    = &req->messages[req->num_messages++];
-        msg->role[0]        = '\0';
-        msg->content        = NULL;
-        msg->image_data_url = NULL;
-
-        /* Parse key-value pairs inside the message object */
-        while (**p && **p != '}') {
-            json_skip_ws(p);
-            if (**p == '}') break;
-
-            char key[64];
-            if (!json_parse_string(p, key, sizeof(key))) return TN_ERR_JSON_PARSE;
-            if (!json_expect_char(p, ':')) return TN_ERR_JSON_PARSE;
-            json_skip_ws(p);
-
-            if (strcmp(key, "role") == 0) {
-                if (!json_parse_string(p, msg->role, sizeof(msg->role))) return TN_ERR_JSON_PARSE;
-            } else if (strcmp(key, "content") == 0) {
-                json_skip_ws(p);
-                /* A repeated "content" key replaces the earlier value (the last one
-                 * wins); release the old text first, or it leaks. */
-                free(msg->content);
-                msg->content = NULL;
-                if (**p == '[') {
-                    /* Phase 22.2: OpenAI "content parts" array (text + image_url) */
-                    TernaryError err = parse_content_parts(p, msg);
-                    if (err != TN_OK) return err;
-                } else if (strncmp(*p, "null", 4) == 0) {
-                    /* OpenAI allows "content": null (e.g. assistant turns
-                     * that only carried tool calls) — treat as empty. */
-                    *p += 4;
-                    msg->content = strdup("");
-                    if (!msg->content) return TN_ERR_OOM;
-                } else {
-                    msg->content = json_parse_string_heap(p);
-                    if (!msg->content) return TN_ERR_JSON_PARSE;
-                }
-            } else {
-                json_skip_value(p);
-            }
-
-            json_skip_ws(p);
-            if (**p == ',') {
-                (*p)++;
-            }
-        }
-        if (!json_expect_char(p, '}')) return TN_ERR_JSON_PARSE;
-
-        json_skip_ws(p);
-        if (**p == ',') {
-            (*p)++;
-            json_skip_ws(p);
-        }
+        TernaryError err = parse_message_members(p, begin_message(req));
+        if (err != TN_OK) return err;
+        skip_message_separator(p);
     }
     if (!json_expect_char(p, ']')) return TN_ERR_JSON_PARSE;
     return TN_OK;

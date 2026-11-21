@@ -3,6 +3,22 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — chat message-array parser split into steps (finding 20.a)
+- What: `json_parse_messages` (complexity 25, 55 lines, nesting 7) is now a loop over `begin_message`,
+  `parse_message_members` (with `parse_message_member` and `parse_content_value`) and
+  `skip_message_separator`.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: new `tests/test_json_messages_golden.c` parses 60,000 generated message arrays (one to seventy
+  messages; plain, escaped and over-long roles; string, null, parts-array, repeated and missing content;
+  unknown keys with nested values; whitespace; truncation, dropped brackets, doubled commas; 38,800 parse
+  cleanly, 1,781 reach the 64-message cap) from exact-size heap blocks under ASan with leak checking, and
+  pins one hash of the result, the cursor, the count and every message, recorded from the old parser with
+  the library rebuilt by gcc and by clang; five of six mutations fail it (the sixth is equivalent, since the
+  next call skips whitespace itself). `make test` (gcc and clang). Ten message-array requests (system +
+  user, parts arrays, null content with tool calls, repeated and missing keys, spaced JSON, truncated
+  bodies, an over-long role, an empty list) get identical responses from the old binary over the live API.
+- Affected: `src/api/json_parse.c`, `tests/test_json_messages_golden.c`, `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — GGUF model configuration split per concern and per architecture (finding 20.a)
 - What: `config_from_gguf` (complexity 26, 94 lines, nesting 4) is now a driver over `read_core_dims`,
   `read_heads_and_vocab`, `read_rope_theta`, `apply_arch_defaults`, `read_rms_eps` and `read_yarn`, and

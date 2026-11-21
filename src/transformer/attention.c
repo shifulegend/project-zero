@@ -257,25 +257,11 @@ void attention_forward(RunState *s, const TransformerWeights *w, const Config *c
     /* Step 3: Apply RoPE to Q and K with full YaRN if configured */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     {
-        float corr[2]     = {0.0f, 0.0f};
+        float corr[2];
         float freq_scale  = cfg->rope_freq_scale;
         float ext_factor  = cfg->rope_yarn_ext_factor;
         float attn_factor = cfg->rope_yarn_attn_factor;
-        if (ext_factor != 0.0f) {
-            /* Compute per-dimension YaRN blend boundaries */
-            static const float M_PI_F = 3.14159265358979323846f;
-            float log_base            = logf(cfg->rope_theta);
-            float start               = floorf(
-                (float)head_dim *
-                logf((float)cfg->rope_orig_ctx_len / (cfg->rope_yarn_beta_fast * 2.0f * M_PI_F)) /
-                (2.0f * log_base));
-            float end = ceilf(
-                (float)head_dim *
-                logf((float)cfg->rope_orig_ctx_len / (cfg->rope_yarn_beta_slow * 2.0f * M_PI_F)) /
-                (2.0f * log_base));
-            corr[0] = tn_clampf(start, 0.0f, (float)(head_dim - 1));
-            corr[1] = tn_clampf(end, 0.0f, (float)(head_dim - 1));
-        }
+        rope_corr_from_config(cfg, head_dim, corr);
         apply_rope_ex(s->q, k_buf, s->rope_freq, head_dim, pos, n_heads, n_kv_heads, freq_scale,
                       ext_factor, attn_factor, corr, cfg->rope_layout);
     }
@@ -539,25 +525,12 @@ static TernaryError attention_forward_rows(RunState *const *states, const int *p
         }
 
         /* RoPE at this token's own position */
-        int tok_pos       = pos_arr[k];
-        float corr[2]     = {0.0f, 0.0f};
+        int tok_pos = pos_arr[k];
+        float corr[2];
         float freq_scale  = cfg->rope_freq_scale;
         float ext_factor  = cfg->rope_yarn_ext_factor;
         float attn_factor = cfg->rope_yarn_attn_factor;
-        if (ext_factor != 0.0f) {
-            static const float M_PI_F = 3.14159265358979323846f;
-            float log_base            = logf(cfg->rope_theta);
-            float start               = floorf(
-                (float)head_dim *
-                logf((float)cfg->rope_orig_ctx_len / (cfg->rope_yarn_beta_fast * 2.0f * M_PI_F)) /
-                (2.0f * log_base));
-            float end = ceilf(
-                (float)head_dim *
-                logf((float)cfg->rope_orig_ctx_len / (cfg->rope_yarn_beta_slow * 2.0f * M_PI_F)) /
-                (2.0f * log_base));
-            corr[0] = tn_clampf(start, 0.0f, (float)(head_dim - 1));
-            corr[1] = tn_clampf(end, 0.0f, (float)(head_dim - 1));
-        }
+        rope_corr_from_config(cfg, head_dim, corr);
         apply_rope_ex(q_k, kbuf_k, states[k]->rope_freq, head_dim, tok_pos, n_heads, n_kv_heads,
                       freq_scale, ext_factor, attn_factor, corr, cfg->rope_layout);
     }

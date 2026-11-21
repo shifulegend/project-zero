@@ -121,24 +121,11 @@ void qwen3moe_attention_forward(RunState *s, const TransformerWeights *w, const 
      * attention_forward()'s generic Step 3. */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     {
-        float corr[2]     = {0.0f, 0.0f};
+        float corr[2];
         float freq_scale  = cfg->rope_freq_scale;
         float ext_factor  = cfg->rope_yarn_ext_factor;
         float attn_factor = cfg->rope_yarn_attn_factor;
-        if (ext_factor != 0.0f) {
-            static const float M_PI_F = 3.14159265358979323846f;
-            float log_base            = logf(cfg->rope_theta);
-            float start               = floorf(
-                (float)head_dim *
-                logf((float)cfg->rope_orig_ctx_len / (cfg->rope_yarn_beta_fast * 2.0f * M_PI_F)) /
-                (2.0f * log_base));
-            float end = ceilf(
-                (float)head_dim *
-                logf((float)cfg->rope_orig_ctx_len / (cfg->rope_yarn_beta_slow * 2.0f * M_PI_F)) /
-                (2.0f * log_base));
-            corr[0] = tn_clampf(start, 0.0f, (float)(head_dim - 1));
-            corr[1] = tn_clampf(end, 0.0f, (float)(head_dim - 1));
-        }
+        rope_corr_from_config(cfg, head_dim, corr);
         apply_rope_ex(q_buf, k_buf, s->qwen3moe.rope_freq, head_dim, pos, n_heads, n_kv_h,
                       freq_scale, ext_factor, attn_factor, corr, cfg->rope_layout);
     }
@@ -313,24 +300,11 @@ TernaryError qwen3moe_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
         }
 
         /* Step 4: full (non-partial) RoPE with YaRN support */
-        float corr[2]     = {0.0f, 0.0f};
+        float corr[2];
         float freq_scale  = cfg->rope_freq_scale;
         float ext_factor  = cfg->rope_yarn_ext_factor;
         float attn_factor = cfg->rope_yarn_attn_factor;
-        if (ext_factor != 0.0f) {
-            static const float M_PI_F = 3.14159265358979323846f;
-            float log_base            = logf(cfg->rope_theta);
-            float start               = floorf(
-                (float)head_dim *
-                logf((float)cfg->rope_orig_ctx_len / (cfg->rope_yarn_beta_fast * 2.0f * M_PI_F)) /
-                (2.0f * log_base));
-            float end = ceilf(
-                (float)head_dim *
-                logf((float)cfg->rope_orig_ctx_len / (cfg->rope_yarn_beta_slow * 2.0f * M_PI_F)) /
-                (2.0f * log_base));
-            corr[0] = tn_clampf(start, 0.0f, (float)(head_dim - 1));
-            corr[1] = tn_clampf(end, 0.0f, (float)(head_dim - 1));
-        }
+        rope_corr_from_config(cfg, head_dim, corr);
         apply_rope_ex(q_k, k_k, s->qwen3moe.rope_freq, head_dim, tok_pos, n_heads, n_kv_h,
                       freq_scale, ext_factor, attn_factor, corr, cfg->rope_layout);
     }

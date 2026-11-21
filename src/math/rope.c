@@ -3,6 +3,9 @@
 #include <math.h>
 #include <string.h>
 
+#include "core/clamp.h"
+#include "core/config.h"
+
 void rope_precompute_freqs(float *out, int head_dim, float theta) {
     int half = head_dim / 2;
     for (int i = 0; i < half; i++) {
@@ -126,4 +129,24 @@ void apply_rope(float *q, float *k, const float *freq, int head_dim, int pos, in
     for (int h = 0; h < n_kv_heads; h++)
         rope_apply_head_yarn(k + h * head_dim, freq, head_dim, pos, freq_scale, ext_factor,
                              attn_factor, corr);
+}
+
+void rope_yarn_corr_dims(int n_dims, int n_ctx_orig, float freq_base, float beta_fast,
+                         float beta_slow, float corr[2]) {
+    static const float M_PI_F = 3.14159265358979323846f;
+    float log_base            = logf(freq_base);
+    float start = floorf((float)n_dims * logf((float)n_ctx_orig / (beta_fast * 2.0f * M_PI_F)) /
+                         (2.0f * log_base));
+    float end   = ceilf((float)n_dims * logf((float)n_ctx_orig / (beta_slow * 2.0f * M_PI_F)) /
+                        (2.0f * log_base));
+    corr[0]     = tn_clampf(start, 0.0f, (float)(n_dims - 1));
+    corr[1]     = tn_clampf(end, 0.0f, (float)(n_dims - 1));
+}
+
+void rope_corr_from_config(const Config *cfg, int head_dim, float corr[2]) {
+    corr[0] = 0.0f;
+    corr[1] = 0.0f;
+    if (cfg->rope_yarn_ext_factor != 0.0f)
+        rope_yarn_corr_dims(head_dim, cfg->rope_orig_ctx_len, cfg->rope_theta,
+                            cfg->rope_yarn_beta_fast, cfg->rope_yarn_beta_slow, corr);
 }

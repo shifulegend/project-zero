@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — the YaRN correction bounds are computed in one place
+- What: `rope_yarn_corr_dims` and `rope_corr_from_config` (`src/math/rope.c`, `include/math/rope.h`) replace five copies of the same formula: two in `attention.c` (single token and batched rows), two in `qwen3moe_attention.c` and MLA's private `yarn_corr_dims`. `rope_corr_from_config` returns `{0, 0}` unless the config enables the YaRN extension, as each copy did.
+- Why: finding 20.a / duplication; the attention functions shrink (`attention.c` -35 lines, `qwen3moe_attention.c` -34, `mla_attention.c` -24) ahead of splitting them further without growing the files.
+- Proof: new `tests/test_rope_yarn_corr.c` keeps the old inline code as the oracle and compares bit for bit over 18,480 combinations of head size, original context, base, beta fast/slow and extension factor; greedy output identical to the pre-change binary on SmolLM2 (with and without a draft model), BitNet, DeepSeek-V2-Lite (MLA), Qwen3-0.6B dense (with and without a draft model), Mamba-130M and Qwen3-30B-A3B MoE (Q2_K); `make test` gcc and clang. The new models were downloaded for this check.
+- Areas: `src/math/rope.c`, `include/math/rope.h`, `src/transformer/{attention,qwen3moe_attention,mla_attention}.c`, `tests/test_rope_yarn_corr.c`.
+
 ### 2026-11-21 — one generation step is split into failure check, sampling, EOS handling and delivery
 - What: `gen_session_consume` (`src/transformer/gen_session.c`) is a short driver over `step_failed`, `sample_next` (with `mask_eos_logits` for `--ignore-eos`), `next_is_eos`, `finish_on_eos`, `deliver_token` and `advance_step`. Order of operations, step-timing brackets, the prefix-cache update and every state change are as before.
 - Why: finding 20.a; `gen_session_consume` was complexity 44, 92 lines, nesting 5 and left the complexity baseline (375 -> 374).

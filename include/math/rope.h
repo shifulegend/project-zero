@@ -1,6 +1,8 @@
 #ifndef TN_ROPE_H
 #define TN_ROPE_H
 
+#include "core/config.h"
+
 /**
  * Precompute the RoPE frequency table: freq[i] = 1.0 / pow(theta, 2*i/head_dim).
  *
@@ -52,5 +54,15 @@ void apply_rope_ex(float *q, float *k, const float *freq, int head_dim, int pos,
 int rope_layout_for_arch(const char *arch);
 const char *rope_layout_name(int layout);
 int rope_layout_parse(const char *s); /* "norm" | "neox" -> layout, -1 otherwise */
+
+/* YaRN correction dimension bounds of the blend zone: corr[0] = low, corr[1] = high. Dimensions
+ * below low are fully extrapolated (no scaling), above high fully interpolated (scaled by
+ * freq_scale). Matches ggml_rope_yarn_corr_dims() from llama.cpp exactly. */
+void rope_yarn_corr_dims(int n_dims, int n_ctx_orig, float freq_base, float beta_fast,
+                         float beta_slow, float corr[2]);
+
+/* The corr[] a model's attention passes to apply_rope_ex: the YaRN bounds when the config enables
+ * the extension (rope_yarn_ext_factor != 0), {0, 0} otherwise. */
+void rope_corr_from_config(const Config *cfg, int head_dim, float corr[2]);
 
 #endif /* TN_ROPE_H */

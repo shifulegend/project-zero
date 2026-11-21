@@ -29,6 +29,7 @@
 #include "math/batched_matmul.h"
 #include "math/matmul_q4k.h"
 #include "math/parallel_matmul.h"
+#include "math/rope.h"
 #include "math/simd_core_ops.h"
 #include "math/simd_vec_ops.h"
 #include "runtime/spec_scratch.h" /* reads the batch scratch fields */
@@ -42,22 +43,6 @@ static float rope_yarn_ramp(float low, float high, int i0) {
     if (y < 0.0f) y = 0.0f;
     if (y > 1.0f) y = 1.0f;
     return 1.0f - y; /* 1=extrapolate, 0=interpolate */
-}
-
-/* Compute YaRN correction dimension bounds for the blend zone.
- * corr[0]=low, corr[1]=high: dims below low are fully extrapolated (no scaling),
- * dims above high are fully interpolated (scaled by freq_scale).
- * Matches ggml_rope_yarn_corr_dims() from llama.cpp exactly. */
-static void yarn_corr_dims(int n_dims, int n_ctx_orig, float freq_base, float beta_fast,
-                           float beta_slow, float corr[2]) {
-    static const float M_PI_F = 3.14159265358979323846f;
-    float log_base            = logf(freq_base);
-    float start = floorf((float)n_dims * logf((float)n_ctx_orig / (beta_fast * 2.0f * M_PI_F)) /
-                         (2.0f * log_base));
-    float end   = ceilf((float)n_dims * logf((float)n_ctx_orig / (beta_slow * 2.0f * M_PI_F)) /
-                        (2.0f * log_base));
-    corr[0]     = tn_clampf(start, 0.0f, (float)(n_dims - 1));
-    corr[1]     = tn_clampf(end, 0.0f, (float)(n_dims - 1));
 }
 
 /*
@@ -157,8 +142,8 @@ void mla_attention_forward(RunState *s, const TransformerWeights *w, const Confi
 
     /* YaRN RoPE parameters from config */
     float corr[2];
-    yarn_corr_dims(rope, cfg->rope_orig_ctx_len, cfg->rope_theta, cfg->rope_yarn_beta_fast,
-                   cfg->rope_yarn_beta_slow, corr);
+    rope_yarn_corr_dims(rope, cfg->rope_orig_ctx_len, cfg->rope_theta, cfg->rope_yarn_beta_fast,
+                        cfg->rope_yarn_beta_slow, corr);
     float yarn_freq_scale  = cfg->rope_freq_scale;
     float yarn_ext_factor  = cfg->rope_yarn_ext_factor;
     float yarn_attn_factor = cfg->rope_yarn_attn_factor;
@@ -372,8 +357,8 @@ TernaryError mla_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
     const bool can_batch = !is_float && !w->mla.has_quant;
 
     float corr[2];
-    yarn_corr_dims(rope, cfg->rope_orig_ctx_len, cfg->rope_theta, cfg->rope_yarn_beta_fast,
-                   cfg->rope_yarn_beta_slow, corr);
+    rope_yarn_corr_dims(rope, cfg->rope_orig_ctx_len, cfg->rope_theta, cfg->rope_yarn_beta_fast,
+                        cfg->rope_yarn_beta_slow, corr);
     float yarn_freq_scale  = cfg->rope_freq_scale;
     float yarn_ext_factor  = cfg->rope_yarn_ext_factor;
     float yarn_attn_factor = cfg->rope_yarn_attn_factor;

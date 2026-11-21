@@ -3,6 +3,17 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — tokenizer and chat-template set-up split into steps (finding 20.a)
+- What: `session_setup_tokenizer` (complexity 29, 84 lines, nesting 6) is now a short driver over
+  `session_rope_layout`, `load_external_tokenizer` (with `patch_template_from_gguf`,
+  `patch_special_ids_from_gguf`, `eos_list_add`), `load_gguf_tokenizer`, `apply_template_file` and
+  `apply_builtin_template_fix`.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: `make test` (gcc and clang); on SmolLM2, BitNet, DeepSeek-V2-Lite and Qwen3-0.6B the output
+  (startup text and generation) is identical to the pre-change binary for the default run, a valid
+  and a missing `--chat-template-file`, a missing and a GGUF `--tokenizer`, and `--rope-layout`.
+- Affected: `src/cli/session_tokenizer.c`, `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — best-of-N generation split into steps (finding 20.a)
 - What: `generate_best_of` (complexity 29, 57 lines) is now a short driver over `best_of_run`,
   `best_of_candidate`, `best_of_beats`/`best_of_take` (winner choice), `best_of_deliver` and small

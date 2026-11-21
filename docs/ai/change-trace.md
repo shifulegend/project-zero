@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — server start and accept loop split into steps
+- What: `api_server_start` calls `open_listen_socket`, `init_serving_state`, `start_listener` and `print_endpoints`; the accept loop calls `admit_connection` (client timeouts, the connection cap and its 503) and `spawn_connection`. Order of every side effect and every error code is unchanged.
+- Why: findings 7.a / 20.a; `api_server_start` was complexity 17 / 72 lines and `listener_thread_fn` 11 / 58; both left the complexity baseline (391 -> 389).
+- Proof: the startup banner is byte-identical to the baseline binary for three flag sets (default, metrics + CORS + API key, web UI off); starting on a taken port prints the same failure; `make test` gcc and clang (incl. the connection-cap and limits tests), TSan, `e2e_api_concurrency` and `e2e_cross_site_post`.
+- Areas: `src/api/http_server.c`, `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — chat completion handler split into steps
 - What: `http_handle_chat_completions` (`src/api/http_chat.c`) calls named helpers for the steps it used to inline: `chat_parse_body` (copy, parse, 500/400 replies), `chat_has_image` / `chat_vision_configured`, `chat_take_engine` (generation mutex, KV position 0, image through the vision pipeline), `chat_setup_prefix_cache` and `chat_init_stream`. The order of every side effect is unchanged.
 - Why: finding 7.a; the handler was complexity 33 and 98 lines, now 22 and 56 (nesting 3 -> 1).

@@ -31,9 +31,7 @@ src/api/http_headers.c::http_scan_framing 17 38 5
 src/api/http_request.c::http_parse 30 51 7
 src/api/http_request.c::http_request_read 19 63 5
 src/api/http_routes.c::extract_id_field 12 15 1
-src/api/http_server.c::api_server_start 17 72 1
 src/api/http_server.c::api_server_stop 13 38 2
-src/api/http_server.c::listener_thread_fn 11 58 3
 src/api/http_server.c::start_parallel 12 30 3
 src/api/json_parse.c::chat_request_parse 73 165 27
 src/api/json_parse.c::find_top_level 11 23 2

@@ -137,6 +137,54 @@ static void *connection_thread_fn(void *arg) {
 
 /* ── Listener thread ─────────────────────────────────────────────────────── */
 
+/* Bound the work a client can hold: a read/write timeout so a stalled (slowloris) peer cannot
+ * pin its thread forever, and a connection cap so a flood cannot spawn unbounded threads. 0
+ * disables either. Returns 0 after refusing the connection (503) when the cap is reached. */
+static int admit_connection(ApiContext *ctx, int conn_fd) {
+    if (ctx->server_config.limits.client_timeout_s > 0) {
+        struct timeval tv;
+        tv.tv_sec  = ctx->server_config.limits.client_timeout_s;
+        tv.tv_usec = 0;
+        setsockopt(conn_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+        setsockopt(conn_fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    }
+    int cap = ctx->server_config.limits.max_connections;
+    if (cap <= 0 || atomic_load(&ctx->active_connections) < cap) return 1;
+    static const char body[] =
+        "{\"error\":{\"message\":\"Too many open connections\",\"type\":\"server_error\"}}";
+    char busy[HTTP_BUSY_REPLY_BUF];
+    int bn = snprintf(busy, sizeof(busy),
+                      "HTTP/1.1 503 Service Unavailable\r\n"
+                      "Content-Type: application/json\r\n"
+                      "Retry-After: 1\r\n"
+                      "Connection: close\r\n"
+                      "Content-Length: %zu\r\n\r\n%s",
+                      sizeof(body) - 1, body);
+    if (bn > 0) (void)net_write_all(conn_fd, busy, (size_t)bn);
+    close(conn_fd);
+    return 0;
+}
+
+/* Hands the connection to its own detached thread; closes it when that is not possible. */
+static void spawn_connection(ApiContext *ctx, int conn_fd) {
+    ConnArgs *ca = (ConnArgs *)malloc(sizeof(ConnArgs));
+    if (!ca) {
+        close(conn_fd);
+        return;
+    }
+    ca->conn_fd = conn_fd;
+    ca->ctx     = ctx;
+    pthread_t tid;
+    atomic_fetch_add(&ctx->active_connections, 1);
+    if (pthread_create(&tid, NULL, connection_thread_fn, ca) != 0) {
+        atomic_fetch_sub(&ctx->active_connections, 1);
+        close(conn_fd);
+        free(ca);
+        return;
+    }
+    pthread_detach(tid);
+}
+
 static void *listener_thread_fn(void *arg) {
     ApiContext *ctx = (ApiContext *)arg;
     /* api_server_stop() sets ctx->server_fd = -1 after closing it; read it once,
@@ -152,58 +200,13 @@ static void *listener_thread_fn(void *arg) {
             if (!atomic_load(&ctx->running)) break;
             continue;
         }
-
         if (g_tn_verbose) {
             /* The last octet is masked: the log names the network, not the client. */
             char peer[INET_ADDRSTRLEN + 2];
             net_format_peer_masked(&client_addr.sin_addr, peer, sizeof(peer));
             TN_LOG_INF("api", "[API] Connection from %s\n", peer);
         }
-
-        /* Bound the work a client can hold: a read/write timeout so a stalled
-         * (slowloris) peer cannot pin its thread forever, and a connection cap
-         * so a flood cannot spawn unbounded threads. 0 disables either. */
-        if (ctx->server_config.limits.client_timeout_s > 0) {
-            struct timeval tv;
-            tv.tv_sec  = ctx->server_config.limits.client_timeout_s;
-            tv.tv_usec = 0;
-            setsockopt(conn_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-            setsockopt(conn_fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-        }
-        int cap = ctx->server_config.limits.max_connections;
-        if (cap > 0 && atomic_load(&ctx->active_connections) >= cap) {
-            static const char body[] =
-                "{\"error\":{\"message\":\"Too many open connections\",\"type\":\"server_error\"}}";
-            char busy[HTTP_BUSY_REPLY_BUF];
-            int bn = snprintf(busy, sizeof(busy),
-                              "HTTP/1.1 503 Service Unavailable\r\n"
-                              "Content-Type: application/json\r\n"
-                              "Retry-After: 1\r\n"
-                              "Connection: close\r\n"
-                              "Content-Length: %zu\r\n\r\n%s",
-                              sizeof(body) - 1, body);
-            if (bn > 0) (void)net_write_all(conn_fd, busy, (size_t)bn);
-            close(conn_fd);
-            continue;
-        }
-
-        ConnArgs *ca = (ConnArgs *)malloc(sizeof(ConnArgs));
-        if (!ca) {
-            close(conn_fd);
-            continue;
-        }
-        ca->conn_fd = conn_fd;
-        ca->ctx     = ctx;
-
-        pthread_t tid;
-        atomic_fetch_add(&ctx->active_connections, 1);
-        if (pthread_create(&tid, NULL, connection_thread_fn, ca) != 0) {
-            atomic_fetch_sub(&ctx->active_connections, 1);
-            close(conn_fd);
-            free(ca);
-            continue;
-        }
-        pthread_detach(tid);
+        if (admit_connection(ctx, conn_fd)) spawn_connection(ctx, conn_fd);
     }
     return NULL;
 }
@@ -232,17 +235,14 @@ void api_context_init(ApiContext *ctx, const Config *cfg, const TransformerWeigh
 }
 static void start_parallel(ApiContext *ctx);
 
-TernaryError api_server_start(int port, ApiContext *ctx) {
-    if (!ctx) return TN_ERR_INVALID_ARGS;
+/* Closes the listening socket after a failed start. */
+static void close_listener(ApiContext *ctx) {
+    close(ctx->server_fd);
+    ctx->server_fd = -1;
+}
 
-    /* 2026-07-15: without this, any client that disconnects mid-response
-     * (e.g. a short curl --max-time, or a browser navigating away during
-     * streaming) delivers SIGPIPE to write()/send() on that socket, whose
-     * default disposition kills the WHOLE process — not just the one
-     * connection. Standard for any long-running socket server. */
-    signal(SIGPIPE, SIG_IGN);
-
-    /* Create TCP socket */
+/* Creates the TCP socket and binds it to loopback only (not exposed to the network). */
+static TernaryError open_listen_socket(int port, ApiContext *ctx) {
     ctx->server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (ctx->server_fd < 0) return TN_ERR_SOCKET_CREATE;
 
@@ -250,27 +250,25 @@ TernaryError api_server_start(int port, ApiContext *ctx) {
     int opt = 1;
     setsockopt(ctx->server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
-    /* Bind to loopback only — not exposed to the network */
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family      = AF_INET;
     addr.sin_port        = htons((uint16_t)port);
     addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK); /* 127.0.0.1 */
-
     if (bind(ctx->server_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        close(ctx->server_fd);
-        ctx->server_fd = -1;
+        close_listener(ctx);
         return TN_ERR_SOCKET_BIND;
     }
-
     if (listen(ctx->server_fd, HTTP_BACKLOG) < 0) {
-        close(ctx->server_fd);
-        ctx->server_fd = -1;
+        close_listener(ctx);
         return TN_ERR_SOCKET_LISTEN;
     }
+    return TN_OK;
+}
 
-    /* Phase 21.5 / 26: the live prefix record and snapshot store exist for
-     * the server's lifetime (the parallel scheduler's slot 0 shares them). */
+/* Phase 21.5 / 26: the live prefix record and snapshot store exist for the server's lifetime (the
+ * parallel scheduler's slot 0 shares them); then the scheduler and the rate limiter start. */
+static void init_serving_state(ApiContext *ctx) {
     if (!ctx->prefix_cache.tokens && ctx->run_state)
         prefix_cache_init(&ctx->prefix_cache, ctx->run_state->max_seq_len);
     if (!ctx->prompt_store_ready) {
@@ -283,28 +281,26 @@ TernaryError api_server_start(int port, ApiContext *ctx) {
         ctx->prompt_store_ready = 1;
     }
     start_parallel(ctx);
-
     rate_limit_init(&ctx->rate_limiter, (double)ctx->server_config.limits.rate_limit,
                     2.0 * (double)ctx->server_config.limits.rate_limit);
     atomic_store(&ctx->running, 1);
+}
 
-    /* Spawn listener thread */
+/* Spawns the listener thread; on failure the listening socket is closed and the server marked
+ * stopped. */
+static TernaryError start_listener(ApiContext *ctx) {
     pthread_t *tid = (pthread_t *)malloc(sizeof(pthread_t));
-    if (!tid) {
-        close(ctx->server_fd);
-        ctx->server_fd = -1;
-        atomic_store(&ctx->running, 0);
-        return TN_ERR_THREAD_CREATE;
+    if (tid && pthread_create(tid, NULL, listener_thread_fn, ctx) == 0) {
+        ctx->listener_thread = tid;
+        return TN_OK;
     }
-    if (pthread_create(tid, NULL, listener_thread_fn, ctx) != 0) {
-        free(tid);
-        close(ctx->server_fd);
-        ctx->server_fd = -1;
-        atomic_store(&ctx->running, 0);
-        return TN_ERR_THREAD_CREATE;
-    }
-    ctx->listener_thread = tid;
+    free(tid);
+    close_listener(ctx);
+    atomic_store(&ctx->running, 0);
+    return TN_ERR_THREAD_CREATE;
+}
 
+static void print_endpoints(int port, const ApiContext *ctx) {
     TN_OUT_INF("api", "[API] Server listening on http://127.0.0.1:%d\n", port);
     TN_OUT_INF("api", "[API] Endpoints:\n");
     TN_OUT_INF("api", "[API]   GET  http://127.0.0.1:%d/v1/models\n", port);
@@ -323,6 +319,24 @@ TernaryError api_server_start(int port, ApiContext *ctx) {
                    ctx->server_config.cors.num_origins == 1 ? "" : "s");
     if (ctx->server_config.auth.api_key)
         TN_OUT_INF("api", "[API]   Auth enabled (Authorization: Bearer <key> required)\n");
+}
+
+TernaryError api_server_start(int port, ApiContext *ctx) {
+    if (!ctx) return TN_ERR_INVALID_ARGS;
+
+    /* 2026-07-15: without this, any client that disconnects mid-response
+     * (e.g. a short curl --max-time, or a browser navigating away during
+     * streaming) delivers SIGPIPE to write()/send() on that socket, whose
+     * default disposition kills the WHOLE process — not just the one
+     * connection. Standard for any long-running socket server. */
+    signal(SIGPIPE, SIG_IGN);
+
+    TernaryError err = open_listen_socket(port, ctx);
+    if (err != TN_OK) return err;
+    init_serving_state(ctx);
+    err = start_listener(ctx);
+    if (err != TN_OK) return err;
+    print_endpoints(port, ctx);
     return TN_OK;
 }
 

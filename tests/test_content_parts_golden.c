@@ -1,9 +1,10 @@
 /*
- * tests/test_content_parts_golden.c — chat_request_parse over 60,000 generated bodies whose messages
- * carry an OpenAI "content parts" array: several text parts (joined), image_url objects with extra
- * keys, repeated urls, unknown part keys and nested values, string and array contents mixed in one
- * request, and malformed or cut-off JSON. A hash of the result code and of every message's role,
- * text and image URL, recorded from the function before parse_content_parts was split into steps.
+ * tests/test_content_parts_golden.c — chat_request_parse over 60,000 generated bodies whose
+ * messages carry an OpenAI "content parts" array: several text parts (joined), image_url objects
+ * with extra keys, repeated urls, unknown part keys and nested values, string and array contents
+ * mixed in one request, and malformed or cut-off JSON. A hash of the result code and of every
+ * message's role, text and image URL, recorded from the function before parse_content_parts was
+ * split into steps.
  */
 #include <stdint.h>
 #include <stdio.h>

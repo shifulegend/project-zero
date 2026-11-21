@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — `vector_db_open` is split into file-open, header and per-record steps
+- What: `vector_db_open` (`src/rag/vector_db.c`) is `open_db_file` (the POSIX and fallback open), `read_db_header` (magic, version, `check_header_crc`, dimension, entry limit) and `read_db_record` per entry (embedding, length-prefixed text, `check_record_crc` for version 2); the function keeps the lock, the new-file branch and the valid-end offset. Log messages and result codes are unchanged.
+- Why: finding 20.a; `vector_db_open` was complexity 35 in 105 lines and left the complexity baseline (357 -> 356).
+- Proof: new `tests/test_vector_db_open_golden.c` builds 120 databases (version 2 made with the library, version 1 by hand; zero to six entries), then opens 160 variants of each (intact, wrong embedding dimension, cut at a random byte, one to three random byte flips) and hashes the result code, format, valid end offset and every loaded embedding and text; the hash was recorded from the old function and passes unchanged under gcc and clang; the existing `test_vector_db` passes; `make test` gcc and clang.
+- Areas: `src/rag/vector_db.c`, `tests/test_vector_db_open_golden.c`, `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — chat "content parts" parsing is split into text, image-URL and per-part steps
 - What: `parse_content_parts` (`src/api/json_parse.c`, nesting 7) is `append_text` (the first text part becomes the content, later ones are appended with the same growth rule), `parse_image_url_object`, `parse_part_value`, `parse_part` and a short array loop; the `TextBuf` struct carries the length and capacity that were two locals.
 - Why: finding 20.a; `parse_content_parts` was complexity 35, 80 lines, nesting 7 and left the complexity baseline (358 -> 357).

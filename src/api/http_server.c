@@ -85,6 +85,7 @@
 #include "api/cors.h"
 #include "api/data_url.h"
 #include "api/gen_queue.h"
+#include "api/http_connection.h"
 #include "api/http_headers.h"
 #include "api/http_request.h"
 #include "api/http_response.h"
@@ -117,158 +118,6 @@
 #define HTTP_RETRY_HDRS_BUF (HTTP_EXTRA_HDRS_BUF + 128) /* extra headers + Retry-After */
 #define HTTP_BUSY_REPLY_BUF 320 /* complete 503 reply to a refused connection */
 
-/* ── Per-connection handler ──────────────────────────────────────────────── */
-
-static void handle_connection(int fd, ApiContext *ctx) {
-    /* Receive the full request (headers and body), framing validated on the way. */
-    char *recv_buf       = NULL;
-    size_t total         = 0;
-    const char *read_err = NULL;
-    int read_status      = http_request_read(fd, &recv_buf, &total, &read_err);
-    if (read_status != 0) {
-        if (read_status > 0) http_send_error(fd, read_status, read_err);
-        close(fd);
-        return;
-    }
-
-    HttpRequest req;
-    if (!http_parse(recv_buf, total, &req)) {
-        http_send_error(fd, HTTP_BAD_REQUEST, "Malformed HTTP request");
-        free(recv_buf);
-        close(fd);
-        return;
-    }
-
-    /* ── CORS + auth gate (applied ahead of dispatch; /health always open) ── */
-    char extra_headers[HTTP_EXTRA_HDRS_BUF];
-    extra_headers[0] = '\0';
-    if (ctx->server_config.cors.enabled) {
-        cors_format_headers(&ctx->server_config.cors, req.has_origin ? req.origin : NULL,
-                            extra_headers, sizeof(extra_headers));
-    }
-
-    http_request_attach_id(&ctx->request_seq, &req, extra_headers, sizeof(extra_headers));
-
-    int is_health    = (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/health") == 0);
-    int is_preflight = (strcmp(req.method, "OPTIONS") == 0);
-
-    /* DNS-rebinding guard (everything except /health, which monitors probe). */
-    if (!is_health && !api_host_allowed(req.host, &ctx->server_config.cors)) {
-        metrics_record_request(&ctx->metrics, HTTP_FORBIDDEN);
-        http_send_error_ex(fd, HTTP_FORBIDDEN,
-                           "Host not allowed (this server answers to localhost / 127.0.0.1; "
-                           "behind a proxy add its address with --cors --cors-origin)",
-                           extra_headers);
-        free(recv_buf);
-        close(fd);
-        return;
-    }
-
-    if (is_preflight) {
-        http_send_response_ex(fd, HTTP_NO_CONTENT, "text/plain", NULL, 0, extra_headers);
-        free(recv_buf);
-        close(fd);
-        return;
-    }
-
-    if (!is_health && !auth_check_request(&ctx->server_config.auth,
-                                          req.has_authorization ? req.authorization : NULL)) {
-        metrics_record_request(&ctx->metrics, HTTP_UNAUTHORIZED);
-        http_send_error_ex(fd, HTTP_UNAUTHORIZED, "Unauthorized", extra_headers);
-        free(recv_buf);
-        close(fd);
-        return;
-    }
-
-    /* Rate limit the cheap non-generation API routes (generation has its own
-     * queue; /health, /metrics and the web UI's static files are not limited). */
-    if (strncmp(req.path, "/v1/", 4) == 0 && strncmp(req.path, "/v1/chat/completions", 20) != 0) {
-        int retry = 1;
-        if (!rate_limit_take(&ctx->rate_limiter, rate_limit_now(), &retry)) {
-            char hdrs[HTTP_RETRY_HDRS_BUF];
-            snprintf(hdrs, sizeof hdrs, "%sRetry-After: %d\r\n", extra_headers, retry);
-            metrics_record_request(&ctx->metrics, HTTP_TOO_MANY_REQUESTS);
-            http_send_error_ex(fd, HTTP_TOO_MANY_REQUESTS, "Too many requests; slow down", hdrs);
-            free(recv_buf);
-            close(fd);
-            return;
-        }
-    }
-
-    /* Cross-site guard for every mutating route (the web UI and API clients
-     * pass; a foreign web page cannot, because browsers always attach Origin). */
-    if (strcmp(req.method, "POST") == 0 &&
-        !api_post_allowed(req.content_type, req.has_origin ? req.origin : NULL, req.host,
-                          &ctx->server_config.cors, req.body_len)) {
-        metrics_record_request(&ctx->metrics, HTTP_FORBIDDEN);
-        http_send_error_ex(fd, HTTP_FORBIDDEN,
-                           "Cross-site request refused (the Origin is not this server or "
-                           "an allowed --cors-origin)",
-                           extra_headers);
-        free(recv_buf);
-        close(fd);
-        return;
-    }
-
-    /* ── Route dispatch ──────────────────────────────────────────────────── */
-    int status = HTTP_OK;
-    if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/models") == 0) {
-        http_handle_get_models(fd, ctx, extra_headers);
-    } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/config") == 0) {
-        http_handle_get_config(fd, ctx, extra_headers);
-    } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/config/defaults") == 0) {
-        status = http_handle_config_save(fd, req.body, req.body_len, req.content_type,
-                                         req.has_origin ? req.origin : NULL, req.host, ctx,
-                                         extra_headers);
-    } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/update") == 0) {
-        http_send_json_heap(fd, HTTP_OK, api_update_json(ctx->update, 0), extra_headers);
-    } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/update/check") == 0) {
-        http_send_json_heap(fd, HTTP_OK, api_update_json(ctx->update, 1), extra_headers);
-    } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/v1/prompt_cache") == 0) {
-        http_handle_prompt_cache_stats(fd, ctx, extra_headers);
-    } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/prompt_cache/clear") == 0) {
-        status = http_handle_prompt_cache_clear(fd, ctx, extra_headers);
-    } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/selfcheck") == 0) {
-        status = http_handle_selfcheck(fd, req.body, req.body_len, ctx, extra_headers);
-    } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/watermark/detect") == 0) {
-        status = http_handle_watermark_detect(fd, req.body, req.body_len, ctx, extra_headers);
-    } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/health") == 0) {
-        /* Always available, regardless of --web-ui — distinct from "/",
-         * which now serves the web UI (Phase 22.2). */
-        http_handle_health(fd, extra_headers);
-    } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/metrics") == 0) {
-        if (ctx->server_config.metrics.enabled) {
-            http_handle_get_metrics(fd, ctx, extra_headers);
-        } else {
-            status = HTTP_NOT_FOUND;
-            http_send_error_ex(fd, HTTP_NOT_FOUND, "Metrics disabled (start with --metrics)",
-                               extra_headers);
-        }
-    } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/docs") == 0) {
-        http_handle_get_docs(fd, extra_headers);
-    } else if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/openapi.json") == 0) {
-        http_handle_get_openapi(fd, extra_headers);
-    } else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/chat/completions") == 0) {
-        http_handle_chat_completions(fd, req.body, req.body_len, ctx, extra_headers);
-    } else if (strcmp(req.method, "POST") == 0 &&
-               strcmp(req.path, "/v1/chat/completions/cancel") == 0) {
-        http_handle_cancel(fd, req.body, req.body_len, ctx, extra_headers);
-    } else if (strcmp(req.method, "GET") == 0 && ctx->server_config.ui.web_ui != WEBUI_MODE_OFF) {
-        /* Web UI (Phase 22.2): "/" and files under "/assets/", placed after
-         * every API route so nothing above is ever shadowed. Any other
-         * unmatched GET also falls through here for client-side SPA routing. */
-        status = static_assets_serve(fd, req.path, &ctx->server_config, extra_headers);
-    } else {
-        status = HTTP_NOT_FOUND;
-        http_send_error_ex(fd, HTTP_NOT_FOUND, "Not found", extra_headers);
-    }
-    metrics_record_request(&ctx->metrics, status);
-    if (g_tn_verbose) TN_LOG_INF("api", "[API] request %s -> %d\n", req.request_id, status);
-
-    free(recv_buf);
-    close(fd);
-}
-
 /* ── Per-connection thread trampoline (Phase 22 concurrency rearchitecture) ── */
 
 typedef struct {
@@ -279,7 +128,7 @@ typedef struct {
 static void *connection_thread_fn(void *arg) {
     ConnArgs *ca = (ConnArgs *)arg;
     metrics_connection_opened(&ca->ctx->metrics);
-    handle_connection(ca->conn_fd, ca->ctx);
+    api_handle_connection(ca->conn_fd, ca->ctx);
     metrics_connection_closed(&ca->ctx->metrics);
     atomic_fetch_sub(&ca->ctx->active_connections, 1);
     free(ca);

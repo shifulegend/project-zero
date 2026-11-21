@@ -90,7 +90,6 @@ tools/sync_ai_adapters.py 5
 tools/test_check_coverage.py 1
 tools/test_check_file_sizes.py 1
 tools/test_check_headers_standalone.sh 4
-tools/test_check_openapi_routes.py 1
 tools/test_check_pr_size.py 1
 tools/test_check_root_files.sh 5
 tools/test_check_size_override.py 1

@@ -7,7 +7,8 @@ import unittest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import check_openapi_routes as c
 
-SERVER = 'if (strcmp(req.method, "GET") == 0 &&\n strcmp(req.path, "/health") == 0) {} else if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/v1/x") == 0)'
+SERVER = '{"GET", "/health", route_health},\n    {"POST", "/v1/x", route_x},\n'
+OTHER = 'strcmp(req->method, "GET") == 0 && strcmp(req->path, "/health") == 0'  # not a table row
 DOC = r'"\"/health\":{\"get\":{}},\"/v1/x\":{\"post\":{}},\"/\":{\"get\":{}}"'
 
 
@@ -20,6 +21,10 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(
             c.documented_routes(DOC), {("GET", "/health"), ("POST", "/v1/x"), ("GET", "/")}
         )
+
+    def test_other_code_is_not_a_route(self) -> None:
+        """A comparison in the gates is not a table row."""
+        self.assertEqual(c.routed_routes(OTHER), set())
 
     def test_agreement_is_clean(self) -> None:
         """Agreement is clean."""

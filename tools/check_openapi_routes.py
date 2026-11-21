@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Fails when the HTTP routes the server handles and the routes the OpenAPI document describes differ.
 
-The server's router (src/api/http_server.c) matches `strcmp(req.method, "M") == 0 &&
-strcmp(req.path, "/p") == 0`; the document (src/api/openapi.c) lists `"/p":{"m":...`. A route that
+The server's route table (k_routes in src/api/http_connection.c) has one `{"M", "/p", handler}` row
+per route; the document (src/api/openapi.c) lists `"/p":{"m":...`. A route that
 is served but not documented is invisible to API users, and a documented route that is not served
 is a lie. `/` is the web UI, served by the static-asset fallback rather than an explicit match.
 
@@ -14,18 +14,16 @@ import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-SERVER = ROOT / "src" / "api" / "http_server.c"
+SERVER = ROOT / "src" / "api" / "http_connection.c"
 OPENAPI = ROOT / "src" / "api" / "openapi.c"
 
-ROUTED = re.compile(
-    r'strcmp\(req\.method,\s*"(\w+)"\)\s*==\s*0\s*&&\s*strcmp\(req\.path,\s*"([^"]+)"\)'
-)
+ROUTED = re.compile(r'\{\s*"(GET|POST|PUT|DELETE|PATCH|HEAD)"\s*,\s*"(/[^"]*)"\s*,\s*\w+\s*\}')
 DOCUMENTED = re.compile(r'\\"(/[^"\\]*)\\":\{\\"(get|post|put|delete|patch)\\"')
 FALLBACK = {("GET", "/")}  # documented, served by the static-asset fallback
 
 
 def routed_routes(text: str) -> set[tuple[str, str]]:
-    """(method, path) pairs the router matches in http_server.c."""
+    """(method, path) pairs in the route table of http_connection.c."""
     return {(m.upper(), p) for m, p in ROUTED.findall(text)}
 
 

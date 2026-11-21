@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — connection handling split out of http_server.c: gates and a route table
+- What: `src/api/http_connection.c` (new, `api_handle_connection`) holds what `handle_connection` did: read and parse the request, run the gates, route, record the metric. The gates are one small function each (Host, API key, rate limit, cross-site POST) behind `pass_gates`; routing is a `k_routes` table of (method, path, handler) rows plus the web-UI fallback and the 404. `tools/check_openapi_routes.py` now reads that table (with a test that gate comparisons are not mistaken for routes).
+- Why: finding 7.a (`http_server.c` over 500 lines; its `handle_connection` was complexity 54, 125 lines, nesting 16). `http_server.c` leaves the file-size baseline (577 -> under 500); the offender is gone from the complexity baseline (392 -> 391).
+- Proof: against a build of the previous commit, 27 live requests per configuration (health, models, openapi, docs, metrics on/off, web UI on/off, 404s, CORS preflight, bad Host, API key, rate limit, cross-site POST, bad JSON, chat, cancel, update, watermark, config save) give identical status codes and bodies for three flag sets; the two bodies that carry per-run values (chat id/created, self-check timings) also differ between two runs of the same binary and match after normalising; `make test` gcc and clang, TSan; `e2e_cross_site_post`, `e2e_api_concurrency` and `e2e_log_format` pass.
+- Areas: `src/api/http_connection.c`, `include/api/http_connection.h`, `src/api/http_server.c`, `CMakeLists.txt`, `tools/check_openapi_routes.py` and its test.
+
 ### 2026-11-21 — wide comments in small C files are wrapped to 100 columns
 - What: 86 lines over 100 columns (628 -> 542) in 51 C and header files under 500 lines were re-wrapped by clang-format with `ReflowComments` switched on for this one pass (the project style keeps it off). Only comments and whitespace moved.
 - Why: finding 23.c. Comment lines do not count toward the function-size ratchets and these files have no file-size entry, so wrapping them cannot trip those gates; the earlier attempt on `tools/bench/benchlib.py` did (wrapped code lines add lines).

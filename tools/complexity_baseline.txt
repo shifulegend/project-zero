@@ -33,7 +33,6 @@ src/api/http_request.c::http_request_read 19 63 5
 src/api/http_routes.c::extract_id_field 12 15 1
 src/api/http_server.c::api_server_start 17 72 1
 src/api/http_server.c::api_server_stop 13 38 2
-src/api/http_server.c::handle_connection 54 125 16
 src/api/http_server.c::listener_thread_fn 11 58 3
 src/api/http_server.c::start_parallel 12 30 3
 src/api/json_parse.c::chat_request_parse 73 165 27
@@ -286,7 +285,7 @@ src/transformer/moe_ffn_track.c::moe_expert_tracking_print 14 43 5
 src/transformer/moe_router.c::moe_router_forward_opts 16 26 2
 src/transformer/output_inject.c::inject_text_into_kv 11 28 2
 src/transformer/qwen35_attention.c::q35_full_attn_forward 24 85 2
-src/transformer/qwen35_attention.c::q35_linear_attn_forward 36 134 3
+src/transformer/qwen35_attention.c::q35_linear_attn_forward 36 132 3
 src/transformer/qwen3moe_attention.c::qwen3moe_attention_forward 25 117 2
 src/transformer/qwen3moe_attention.c::qwen3moe_attention_forward_batch 34 166 3
 src/transformer/stop_seq.c::stop_matcher_feed 13 29 2

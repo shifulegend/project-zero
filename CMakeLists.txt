@@ -356,6 +356,7 @@ set(CLI_SOURCES
 
 set(API_SOURCES
     src/api/chat_compile.c
+    src/api/http_connection.c
     src/api/http_server.c
     src/api/http_headers.c
     src/api/json_parse.c

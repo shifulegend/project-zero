@@ -1,8 +1,9 @@
 /*
  * src/cli/args_flags_extras.c
  *
- * Command-line flags: draft model, LoRA, colour and update-check flags. One group of parse_args() (args.c); each branch is unchanged, and
- * tests/test_args_golden.c compares every flag's parse result with a golden table.
+ * Command-line flags: draft model, LoRA, colour and update-check flags. One group of parse_args()
+ * (args.c); each branch is unchanged, and tests/test_args_golden.c compares every flag's parse
+ * result with a golden table.
  */
 
 #include <stdio.h>

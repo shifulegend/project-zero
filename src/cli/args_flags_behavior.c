@@ -1,7 +1,8 @@
 /*
  * src/cli/args_flags_behavior.c
  *
- * Command-line flags: chat format, web UI branding, memory DB, calibration, numerics, output switches and the HTTP server. One group of parse_args() (args.c); each branch is unchanged, and
+ * Command-line flags: chat format, web UI branding, memory DB, calibration, numerics, output
+ * switches and the HTTP server. One group of parse_args() (args.c); each branch is unchanged, and
  * tests/test_args_golden.c compares every flag's parse result with a golden table.
  */
 

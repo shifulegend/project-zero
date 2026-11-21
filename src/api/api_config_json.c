@@ -101,7 +101,8 @@ static void runtime_cache(JsonBuf *jb, const CacheInfo *ci) {
     jb_str(jb, tn_cache_source_name(ci->source));
 }
 
-/* Phase 23 stage 2b: requests served at once, what was asked for, and why fewer when the model or memory cannot do it. */
+/* Phase 23 stage 2b: requests served at once, what was asked for, and why fewer when the model or
+ * memory cannot do it. */
 static void features_parallel(JsonBuf *jb, const ApiContext *ctx) {
     jb_raw(jb, ",");
     jb_key(jb, "parallel");
@@ -444,7 +445,8 @@ static void config_features(JsonBuf *jb, const ApiContext *ctx) {
     jb_raw(jb, "}");
 }
 
-/* The active chat template, so the web UI can show it and offer an edited copy as a per-request "chat_template" override. */
+/* The active chat template, so the web UI can show it and offer an edited copy as a per-request
+ * "chat_template" override. */
 static void config_chat_template(JsonBuf *jb, const ApiContext *ctx) {
     jb_raw(jb, ",");
     jb_key(jb, "chat_template");

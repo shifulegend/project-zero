@@ -2,8 +2,8 @@
  * src/transformer/dist_worker.c
  *
  * The worker side of --remote-layers: serves FORWARD requests for a range of layers. It runs the
- * transformer layers, so it lives in the transformer module (the coordinator side, dist_plan.c, does
- * not need the transformer). Split out of distributed/dist_plan.c; the code is unchanged.
+ * transformer layers, so it lives in the transformer module (the coordinator side, dist_plan.c,
+ * does not need the transformer). Split out of distributed/dist_plan.c; the code is unchanged.
  */
 
 #include "transformer/dist_worker.h"

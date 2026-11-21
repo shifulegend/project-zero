@@ -1,5 +1,6 @@
 /* The execution modes of a CLI run: --self-check, --perplexity, --watermark-detect, a one-shot
- * --prompt (plain, speculative, best-of or tree search), the REPL, and --server (session_server.c). */
+ * --prompt (plain, speculative, best-of or tree search), the REPL, and --server (session_server.c).
+ */
 
 #include <stdio.h>
 #include <stdlib.h>

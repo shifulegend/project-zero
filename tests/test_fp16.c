@@ -35,7 +35,8 @@ int main(void) {
             }
             continue;
         }
-        /* exact value: normal (1024+m)*2^(e-25), subnormal m*2^-24; both exactly representable in float */
+        /* exact value: normal (1024+m)*2^(e-25), subnormal m*2^-24; both exactly representable in
+         * float */
         double v = (e == 0) ? ldexp((double)m, -24) : ldexp((double)(1024 + m), e - 25);
         if (s) v = -v;
         if (bits_of(got) != bits_of((float)v)) {

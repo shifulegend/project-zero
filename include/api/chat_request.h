@@ -135,7 +135,8 @@ void chat_request_free(ChatRequest *req);
  * Returns TN_OK on success or TN_ERR_JSON_PARSE / TN_ERR_INVALID_ARGS. */
 TernaryError chat_request_parse(const char *json_body, ChatRequest *req);
 
-/* The 400 message for a non-OK chat_request_parse() result (no characters that need JSON escaping). */
+/* The 400 message for a non-OK chat_request_parse() result (no characters that need JSON escaping).
+ */
 const char *chat_request_error_message(TernaryError err);
 
 #endif /* TN_CHAT_REQUEST_H */

@@ -46,7 +46,8 @@ typedef struct {
     int ui_logo;      /* --ui-logo: 0 = ascii block wordmark of ui_title (default), 1 = text */
 } ServerUi;
 
-/* Image uploads via the web UI's image_url content parts (mirrors the CLI's --vision/--proj; NULL = vision disabled). */
+/* Image uploads via the web UI's image_url content parts (mirrors the CLI's --vision/--proj; NULL =
+ * vision disabled). */
 typedef struct {
     char *vision_path;
     char *proj_path;
@@ -76,7 +77,8 @@ typedef struct {
 typedef struct {
     int chat_format; /* --chat-format: -1 = auto (from vocabulary), else ChatTemplateType;
                                      only used when the model has no embedded chat template */
-    int allow_request_template; /* requests may send "chat_template" (1; --no-request-template = 0) */
+    int allow_request_template; /* requests may send "chat_template" (1; --no-request-template = 0)
+                                 */
     int allow_config_write;     /* POST /v1/config/defaults may save (1; --no-config-write = 0) */
     const char
         *chat_template_source; /* "gguf" | "file" | "builtin" | "none" — published by /v1/config */

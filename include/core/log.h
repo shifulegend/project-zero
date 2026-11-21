@@ -8,7 +8,8 @@
  * "api_key=<value>") and escape control characters. JSON escapes every one, so a value cannot
  * forge a second log line; text keeps the newlines and tabs a call site wrote (multi-line
  * messages), so a call site that logs an untrusted string passes it through tn_log_sanitize()
- * first. Each call is one write, so lines from threads never interleave. Program output (generated text, --help, tables) is not logging and stays on stdout. */
+ * first. Each call is one write, so lines from threads never interleave. Program output (generated
+ * text, --help, tables) is not logging and stays on stdout. */
 
 #include <stdarg.h>
 #include <stddef.h>

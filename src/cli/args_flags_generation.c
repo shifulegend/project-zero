@@ -1,8 +1,9 @@
 /*
  * src/cli/args_flags_generation.c
  *
- * Command-line flags: model and prompt inputs, sampling, penalties, stop strings and the watermark. One group of parse_args() (args.c); each branch is unchanged, and
- * tests/test_args_golden.c compares every flag's parse result with a golden table.
+ * Command-line flags: model and prompt inputs, sampling, penalties, stop strings and the watermark.
+ * One group of parse_args() (args.c); each branch is unchanged, and tests/test_args_golden.c
+ * compares every flag's parse result with a golden table.
  */
 
 #include <stdio.h>

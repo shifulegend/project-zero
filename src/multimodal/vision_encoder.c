@@ -168,9 +168,10 @@ void vision_encoder_forward(float *out_embeddings, const float *patches, const V
 
         // Attention (modifies normed to hold attention output or returns it in a scratch buffer)
         // Let's pass 'scratch + P*D*3' or similar. Wait, vision_attention overwrites q,k,v.
-        // Actually, vision_attention leaves the final wo output in `out` which is passed via `scratch`.
-        // The last loop in vision_attention copies q to out. But out is local to vision_attention.
-        // Let's just adjust vision_attention and vision_ffn to output to a specific buffer.
+        // Actually, vision_attention leaves the final wo output in `out` which is passed via
+        // `scratch`. The last loop in vision_attention copies q to out. But out is local to
+        // vision_attention. Let's just adjust vision_attention and vision_ffn to output to a
+        // specific buffer.
 
         float *att_out = scratch + P * D * 3 + P * P; // same as 'out' in vision_attention
         vision_attention(normed, cfg, w, l, scratch);

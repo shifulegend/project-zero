@@ -15,19 +15,19 @@
 #define WEIGHT_TYPE_Q4K 3  /* Q4_K mmap zero-copy — fused matmul kernel  */
 #define WEIGHT_TYPE_Q2_0 4 /* Q2_0 mmap zero-copy — fused matmul kernel (Qwen3.5/3.6 ternary) */
 #define WEIGHT_TYPE_Q4K_X8                                                                         \
-    5 /* Q4_K repacked into llama.cpp's block_q4_Kx8 interleaved layout at
-                              * load time — real multi-row SIMD-lane GEMV kernel (matmul_q4k_x8.c),
-                              * not just independent-accumulator ILP (see docs/ai/mistakes.md,
-                              * 2026-07-31 "attempt 6"). Only used when a projection's output
-                              * dimension is a multiple of 8; falls back to WEIGHT_TYPE_Q4K
-                              * otherwise (set per-projection at load time, gguf_loader.c). */
+    5 /* Q4_K repacked into llama.cpp's block_q4_Kx8 interleaved layout at                         \
+       * load time — real multi-row SIMD-lane GEMV kernel (matmul_q4k_x8.c),                     \
+       * not just independent-accumulator ILP (see docs/ai/mistakes.md,                            \
+       * 2026-07-31 "attempt 6"). Only used when a projection's output                             \
+       * dimension is a multiple of 8; falls back to WEIGHT_TYPE_Q4K                               \
+       * otherwise (set per-projection at load time, gguf_loader.c). */
 #define WEIGHT_TYPE_Q6K                                                                            \
-    6 /* Q6_K mmap zero-copy — fused matmul kernel (matmul_q6k.c); Q4_K_M
-                              * files use it for attn_v/ffn_down. Was dequantised to F32 before
-                              * 2026-10-18 (~4.9x the bytes per weight). */
+    6 /* Q6_K mmap zero-copy — fused matmul kernel (matmul_q6k.c); Q4_K_M                        \
+       * files use it for attn_v/ffn_down. Was dequantised to F32 before                           \
+       * 2026-10-18 (~4.9x the bytes per weight). */
 #define WEIGHT_TYPE_TERNARY                                                                        \
-    7 /* packed ternary rows (core/unpack.h) repacked at load time from a
-                              * BitNet I2_S GGUF tensor; selects layers_are_ternary. */
+    7 /* packed ternary rows (core/unpack.h) repacked at load time from a                          \
+       * BitNet I2_S GGUF tensor; selects layers_are_ternary. */
 /* 2026-10-21: legacy 32-element GGUF quants kept zero-copy and run by the
  * Q8_0-activation integer kernels (math/q8_0_act.c) instead of being
  * dequantized to an F32 heap copy (4-6x the bytes per weight). */
@@ -100,7 +100,8 @@ typedef struct {
     int *w1_type, *w2_type, *w3_type; /* [n_layers], FFN gate/down/up */
 } WeightsFfn;
 
-/* Output classifier (lm_head): BF16 table, ternary, INT8 / INT4 copies or the zero-copy quantized one. */
+/* Output classifier (lm_head): BF16 table, ternary, INT8 / INT4 copies or the zero-copy quantized
+ * one. */
 typedef struct {
     /* Output classifier: dim * vocab_size.
      * Weight-tied to token_embedding_table when is_ternary is false. */
@@ -153,20 +154,20 @@ typedef struct {
 } WeightsCls;
 
 /*
-     * Phase 17: Mixture of Experts (MoE) weights.
-     * All pointers are NULL for dense models (BitNet, Llama).
-     * Populated by moe_weights_alloc() + moe_weights_map() for MoE models.
-     *
-     * Dimensions:
-     *   gate_w[layer]       → packed ternary [dim × num_experts]
-     *   w{1,2,3}[layer][e] → packed ternary expert FFN weights
-     *   s{1,2,3}[layer][e] → per-expert ternary scales
-     *
-     * Shared experts (DeepSeek-V2 style — always active per MoE layer):
-     *   w{1,2,3}[layer] → packed ternary shared FFN weights
-     *   s{1,2,3}[layer] → shared expert scales
-     *   NULL when MoEConfig.n_shared_experts == 0
-     */
+ * Phase 17: Mixture of Experts (MoE) weights.
+ * All pointers are NULL for dense models (BitNet, Llama).
+ * Populated by moe_weights_alloc() + moe_weights_map() for MoE models.
+ *
+ * Dimensions:
+ *   gate_w[layer]       → packed ternary [dim × num_experts]
+ *   w{1,2,3}[layer][e] → packed ternary expert FFN weights
+ *   s{1,2,3}[layer][e] → per-expert ternary scales
+ *
+ * Shared experts (DeepSeek-V2 style — always active per MoE layer):
+ *   w{1,2,3}[layer] → packed ternary shared FFN weights
+ *   s{1,2,3}[layer] → shared expert scales
+ *   NULL when MoEConfig.n_shared_experts == 0
+ */
 typedef struct {
     tn_i8 **gate_w; /* [n_layers] gate matrix pointers           */
     float *gate_s;  /* [n_layers] gate scale factors             */
@@ -180,7 +181,8 @@ typedef struct {
     int alloc_layers; /* number of layers allocated for MoE arrays */
 } WeightsMoe;
 
-/* Shared experts (DeepSeek-V2): an always-active FFN per MoE layer; NULL when MoEConfig.n_shared_experts == 0. */
+/* Shared experts (DeepSeek-V2): an always-active FFN per MoE layer; NULL when
+ * MoEConfig.n_shared_experts == 0. */
 typedef struct {
     /* Shared experts (DeepSeek-V2): always-active FFN per MoE layer */
     tn_i8 **w1; /* [n_layers] shared gate_proj              */

@@ -55,7 +55,8 @@ TernaryError gguf_ld_bf16_embedding_and_output(TransformerWeights *w, const Conf
 TernaryError gguf_ld_proj_typed(const GGUFHeader *hdr, GGUFWeightStore *store, const char *name,
                                 int d_rows, int n_inner, tn_i8 **out, int *type_out);
 
-/* One projection of the dense path: "blk.<l>.<tname>" into field[l] / type_out[l] / scale_out[l]. */
+/* One projection of the dense path: "blk.<l>.<tname>" into field[l] / type_out[l] / scale_out[l].
+ */
 TernaryError gguf_ld_dense_projection(const GGUFHeader *hdr, GGUFWeightStore *store, int l,
                                       const char *tname, int d_rows, int n_inner, tn_i8 **field,
                                       int *type_out, float *scale_out);

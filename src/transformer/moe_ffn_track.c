@@ -1,4 +1,5 @@
-/* Expert hit tracking (Phase 17 diagnostics): which experts each layer used, printed after a run. */
+/* Expert hit tracking (Phase 17 diagnostics): which experts each layer used, printed after a run.
+ */
 
 #include <stdint.h>
 #include <stdio.h>

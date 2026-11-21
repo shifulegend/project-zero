@@ -1,9 +1,9 @@
 /*
  * src/core/mamba_state.c
  *
- * Allocation of the Mamba weight tables and recurrent state. Split out of transformer/mamba.c so the
- * core weight and run-state code can free them without including the transformer module; the code
- * is unchanged.
+ * Allocation of the Mamba weight tables and recurrent state. Split out of transformer/mamba.c so
+ * the core weight and run-state code can free them without including the transformer module; the
+ * code is unchanged.
  */
 
 #include "runtime/mamba_state.h"

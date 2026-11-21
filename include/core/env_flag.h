@@ -9,8 +9,9 @@
  * ignored, as before).
  *
  *     static atomic_int g_cache = TN_ENV_FLAG_UNSET;
- *     if (tn_env_on_unless_zero(&g_cache, "PZ_MOE_FUSED")) ...   // on, unless the value starts with '0'
- *     if (tn_env_on_if_one(&g_cache, "TN_PROFILE")) ...          // off, unless the value starts with '1'
+ *     if (tn_env_on_unless_zero(&g_cache, "PZ_MOE_FUSED")) ...   // on, unless the value starts
+ * with '0' if (tn_env_on_if_one(&g_cache, "TN_PROFILE")) ...          // off, unless the value
+ * starts with '1'
  */
 
 #include <stdatomic.h>

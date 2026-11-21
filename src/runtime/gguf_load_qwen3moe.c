@@ -61,7 +61,8 @@
         }                                                                                          \
     } while (0)
 
-/* Loads the F32 norm weight named by `fmt` (blk.<l>....) into *dst; 0 when the tensor is missing. */
+/* Loads the F32 norm weight named by `fmt` (blk.<l>....) into *dst; 0 when the tensor is missing.
+ */
 static int load_layer_norm(const GGUFHeader *hdr, GGUFWeightStore *store, const char *fmt, int l,
                            size_t n, float **dst) {
     char name[128];

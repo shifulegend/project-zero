@@ -1,8 +1,9 @@
 /**
  * gguf_quant_k.c — GGUF dequantization, k-quants (Q4_K, Q5_K, Q3_K, Q2_K, Q6_K, Q8_K).
  *
- * Split out of the former single gguf_quant.c (Phase 34.2b); the public entry points are declared in
- * include/core/gguf_quant.h. Block layout references: llama.cpp ggml-quants.h (public domain / MIT).
+ * Split out of the former single gguf_quant.c (Phase 34.2b); the public entry points are declared
+ * in include/core/gguf_quant.h. Block layout references: llama.cpp ggml-quants.h (public domain /
+ * MIT).
  */
 #include <math.h>
 #include <stdint.h>
@@ -21,8 +22,8 @@
  *
  * Scale/min extraction from the 12-byte packed field (ggml convention):
  *   Each sub-block j has:
- *     sc  = scales[j/2]       & (j%2 == 0 ? 0x3F : 0x0F) | ((scales[j/2+4] >> (j%2==0 ? 0 : 4)) << 4) & 0x30
- *     m   = scales[4 + j/2]   ... (complex bit packing, see decode below)
+ *     sc  = scales[j/2]       & (j%2 == 0 ? 0x3F : 0x0F) | ((scales[j/2+4] >> (j%2==0 ? 0 : 4)) <<
+ * 4) & 0x30 m   = scales[4 + j/2]   ... (complex bit packing, see decode below)
  *
  * Simpler unpacking: ggml stores scales as two 6-bit fields per byte:
  *   For sub-block j (0..7):

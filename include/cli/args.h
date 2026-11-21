@@ -38,7 +38,8 @@ typedef struct {
                                   here afterwards (set by the session, not a flag) */
 } CliInput;
 
-/* How a reply is generated: sampler chain, limits and stop sequences (also the server-side defaults). */
+/* How a reply is generated: sampler chain, limits and stop sequences (also the server-side
+ * defaults). */
 typedef struct {
     float temperature;
     float top_p;
@@ -64,15 +65,15 @@ typedef struct {
 
 /* Perplexity, accuracy probe and tensor dump options. */
 typedef struct {
-    char *perplexity_file; /* --perplexity <file>: evaluate PPL, then exit */
-    int ppl_ctx;           /* --ppl-ctx <n>: tokens per chunk (512) */
-    int ppl_chunks;        /* --ppl-chunks <n>: 0 = all */
-    int act_quant;         /* --act-quant: TnActQuant (0 auto, 1 int8, 2 float) */
-    double
-        quality_tolerance; /* --quality-tolerance: allowed perplexity increase in percent (0 = no bar) */
-    int self_check_tokens;   /* --self-check-tokens: length of the accuracy probe */
-    bool self_check;         /* --self-check: run the accuracy probe, print, exit */
-    char *dump_tensors_path; /* --dump-tensors FILE: write intermediate tensors CSV  */
+    char *perplexity_file;    /* --perplexity <file>: evaluate PPL, then exit */
+    int ppl_ctx;              /* --ppl-ctx <n>: tokens per chunk (512) */
+    int ppl_chunks;           /* --ppl-chunks <n>: 0 = all */
+    int act_quant;            /* --act-quant: TnActQuant (0 auto, 1 int8, 2 float) */
+    double quality_tolerance; /* --quality-tolerance: allowed perplexity increase in percent (0 = no
+                                 bar) */
+    int self_check_tokens;    /* --self-check-tokens: length of the accuracy probe */
+    bool self_check;          /* --self-check: run the accuracy probe, print, exit */
+    char *dump_tensors_path;  /* --dump-tensors FILE: write intermediate tensors CSV  */
 } CliEval;
 
 /* Threads, SIMD, kernels, KV cache and prompt cache. */
@@ -139,7 +140,8 @@ typedef struct {
     bool show_version;      /* --version/-v: print version + detected SIMD backend, exit 0 */
     TnColorMode color_mode; /* --color <auto|always|never>: default auto            */
     int log_json;           /* --log-format json: diagnostics as JSON lines on stderr   */
-    int log_level; /* --log-level <debug|info|warn|error>; -1 = default (info, debug with --verbose) */
+    int log_level; /* --log-level <debug|info|warn|error>; -1 = default (info, debug with --verbose)
+                    */
 } CliOutput;
 
 /* Reasoning, tree search (MCTS), judge model and speculative decoding. */

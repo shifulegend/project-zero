@@ -2,7 +2,8 @@
  * src/memory/free_ram.c
  *
  * tn_get_free_ram(): bytes of RAM the OS would hand to a new allocation. Split out of
- * kv_cache/kv_strategy.c so memory/ (safe_alloc.c) does not depend on kv_cache/; the code is unchanged.
+ * kv_cache/kv_strategy.c so memory/ (safe_alloc.c) does not depend on kv_cache/; the code is
+ * unchanged.
  */
 
 #include "memory/free_ram.h"
@@ -25,20 +26,20 @@
 tn_i64 tn_get_free_ram(void) {
 #if TN_POSIX
     /*
-   * Use MemAvailable from /proc/meminfo, not _SC_AVPHYS_PAGES.
-   *
-   * _SC_AVPHYS_PAGES returns MemFree — only pages with no current owner.
-   * On a typical Linux system with 16 GB RAM and active page cache, MemFree
-   * may read 400–700 MB while MemAvailable (what the kernel will actually
-   * hand to a new allocation, including reclaimable buffers/cache) reads
-   * 7–14 GB. Using MemFree causes the KV strategy selector to pick I4
-   * Sliding Window on systems that have ample RAM, collapsing throughput
-   * from ~15 tok/s to ~1.8 tok/s.
-   *
-   * MemAvailable was added in Linux 3.14 (2014) and is always present on
-   * any kernel we care about. Fall back to _SC_AVPHYS_PAGES only if the
-   * parse fails.
-   */
+     * Use MemAvailable from /proc/meminfo, not _SC_AVPHYS_PAGES.
+     *
+     * _SC_AVPHYS_PAGES returns MemFree — only pages with no current owner.
+     * On a typical Linux system with 16 GB RAM and active page cache, MemFree
+     * may read 400–700 MB while MemAvailable (what the kernel will actually
+     * hand to a new allocation, including reclaimable buffers/cache) reads
+     * 7–14 GB. Using MemFree causes the KV strategy selector to pick I4
+     * Sliding Window on systems that have ample RAM, collapsing throughput
+     * from ~15 tok/s to ~1.8 tok/s.
+     *
+     * MemAvailable was added in Linux 3.14 (2014) and is always present on
+     * any kernel we care about. Fall back to _SC_AVPHYS_PAGES only if the
+     * parse fails.
+     */
     FILE *f = fopen("/proc/meminfo", "r");
     if (f) {
         char line[128];
@@ -52,9 +53,9 @@ tn_i64 tn_get_free_ram(void) {
         fclose(f);
     }
     /* Fallback: use page count * page size.
-   * _SC_AVPHYS_PAGES (free pages) is Linux/glibc; on macOS use _SC_PHYS_PAGES
-   * (total) as a conservative over-estimate — the vm_stat path above is the
-   * accurate macOS path, so reaching here means vm_stat also failed. */
+     * _SC_AVPHYS_PAGES (free pages) is Linux/glibc; on macOS use _SC_PHYS_PAGES
+     * (total) as a conservative over-estimate — the vm_stat path above is the
+     * accurate macOS path, so reaching here means vm_stat also failed. */
 #if defined(_SC_AVPHYS_PAGES)
     long pages = sysconf(_SC_AVPHYS_PAGES);
 #else

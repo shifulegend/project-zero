@@ -88,14 +88,12 @@ static inline void tn_dense_matmul_dispatch_preq(float *out, const TnQ8KActBlock
  * tn_dense_matmul_dispatch() — `x` is [n_tokens][n] row-major, `out` is
  * [n_tokens][d] row-major (see include/math/batched_matmul.h).
  *
- * WEIGHT_TYPE_F16, F32, Q4_K, Q4_K_X8, Q6_K and (2026-10-22) Q8_0/Q5_0/Q5_1 get real batched kernels
- * (each weight row read from RAM once, reused across all n_tokens
- * candidates). Q2_0 still falls back to n_tokens sequential single-token
- * calls through the exact same per-token dispatch above -- correct (matches
- * the non-batched forward pass bit-for-bit), but without the RAM-bandwidth
- * win for those formats. Documented Phase 18-B follow-up, not silently
- * accepted -- see docs/architecture/IMPLEMENTATION_PLAN.md's Phase 18
- * section and docs/ai/decision-log.md. */
+ * WEIGHT_TYPE_F16, F32, Q4_K, Q4_K_X8, Q6_K and (2026-10-22) Q8_0/Q5_0/Q5_1 get real batched
+ * kernels (each weight row read from RAM once, reused across all n_tokens candidates). Q2_0 still
+ * falls back to n_tokens sequential single-token calls through the exact same per-token dispatch
+ * above -- correct (matches the non-batched forward pass bit-for-bit), but without the
+ * RAM-bandwidth win for those formats. Documented Phase 18-B follow-up, not silently accepted --
+ * see docs/architecture/IMPLEMENTATION_PLAN.md's Phase 18 section and docs/ai/decision-log.md. */
 static inline void tn_dense_matmul_dispatch_batch(float *out, const float *x, const tn_i8 *w,
                                                   int wtype, int n, int d, int n_tokens,
                                                   ThreadPool *tp) {

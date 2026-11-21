@@ -171,9 +171,9 @@ void test_vision_projector(void) {
 void test_vision_bridge(void) {
     printf("Testing vision bridge...\n");
 
-    // We don't want to actually execute a full transformer forward pass with huge uninitialized arrays
-    // just for this test component unless we stub out the weights properly.
-    // We already know it compiles. So we'll just check the pointer structs.
+    // We don't want to actually execute a full transformer forward pass with huge uninitialized
+    // arrays just for this test component unless we stub out the weights properly. We already know
+    // it compiles. So we'll just check the pointer structs.
     VisionContext v;
     v.num_patches = 4;
     v.embed_dim   = 4096;

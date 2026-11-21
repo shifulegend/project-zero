@@ -44,8 +44,9 @@ static void float_matmul_proj(float *out, const float *x, const float *w, const 
 
 #endif /* __AVX2__ */
 
-// Emulates GELU with SiLU or similar standard activation since standard gelu isn't strictly in elementwise yet,
-// we'll just use the silu provided in math/elementwise.c which is typically used for Gated Linear Units.
+// Emulates GELU with SiLU or similar standard activation since standard gelu isn't strictly in
+// elementwise yet, we'll just use the silu provided in math/elementwise.c which is typically used
+// for Gated Linear Units.
 static void apply_activation(float *x, int n) {
     silu(x, n);
 }

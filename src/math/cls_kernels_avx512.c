@@ -1,10 +1,11 @@
 /*
  * cls_kernels_avx512.c — AVX-512F INT8 / INT4 classifier row kernels.
  *
- * Built with the AVX-512 flags in every x86 build (Makefile AVX512_TUS, CMake PZ_AVX512_SRCS) and bound at
- * runtime from simd_dispatch.c, so the portable dist binary has them (docs/ai/engineering-rules.md, ISA
- * segregation). On a toolchain without AVX-512 the same names forward to the generic kernels (never bound there).
- * Contract and layout: include/math/cls_kernels.h. One horizontal reduction per row.
+ * Built with the AVX-512 flags in every x86 build (Makefile AVX512_TUS, CMake PZ_AVX512_SRCS) and
+ * bound at runtime from simd_dispatch.c, so the portable dist binary has them
+ * (docs/ai/engineering-rules.md, ISA segregation). On a toolchain without AVX-512 the same names
+ * forward to the generic kernels (never bound there). Contract and layout:
+ * include/math/cls_kernels.h. One horizontal reduction per row.
  */
 #include <stdlib.h>
 
@@ -45,11 +46,12 @@ static float *block_sums_after(float *buf, int nbf) {
     return buf ? buf + (size_t)nbf * TN_CLS_QUANT_BLOCK : NULL;
 }
 
-/* INT4: a block's 16 bytes hold elements (2k, 2k+1) in (low, high) nibbles. Instead of unpacking every weight
- * block into element order (6 shuffles and masks per block), the activation is de-interleaved ONCE per call into
- * even/odd halves per block, so a weight block needs only: widen 16 bytes to 16 lanes, mask (low nibble = even
- * elements), shift (high nibble = odd elements). The +8 code bias is folded into one correction per row:
- *   sum_b s_b * sum_j (q_j - 8) x_j = sum_b s_b * sum_j q_j x_j - 8 * sum_b s_b * sx_b,   sx_b = sum of block b of x. */
+/* INT4: a block's 16 bytes hold elements (2k, 2k+1) in (low, high) nibbles. Instead of unpacking
+ * every weight block into element order (6 shuffles and masks per block), the activation is
+ * de-interleaved ONCE per call into even/odd halves per block, so a weight block needs only: widen
+ * 16 bytes to 16 lanes, mask (low nibble = even elements), shift (high nibble = odd elements). The
+ * +8 code bias is folded into one correction per row: sum_b s_b * sum_j (q_j - 8) x_j = sum_b s_b *
+ * sum_j q_j x_j - 8 * sum_b s_b * sx_b,   sx_b = sum of block b of x. */
 void tn_cls_i4_rows_avx512(float *out, const float *x, const tn_u8 *w, const float *scales, int n,
                            int n_blocks, int start, int end) {
     const int nbf          = n / TN_CLS_QUANT_BLOCK;

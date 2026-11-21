@@ -155,7 +155,7 @@ int main(void) {
     }
 
     { /* a well-formed POST with a body still goes through (and the word
-         * "content-length:" inside the body does not confuse the framing) */
+       * "content-length:" inside the body does not confuse the framing) */
         const char *body = "{\"id\":\"content-length: 1\"}";
         char req[512];
         snprintf(req, sizeof req,
@@ -171,7 +171,8 @@ int main(void) {
         close(c);
     }
 
-    { /* X-Request-ID: a well-formed client ID is echoed, anything else is replaced, errors carry it too */
+    { /* X-Request-ID: a well-formed client ID is echoed, anything else is replaced, errors carry it
+         too */
         struct {
             const char *req;
             const char *want;

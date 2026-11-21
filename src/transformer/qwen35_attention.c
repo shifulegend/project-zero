@@ -194,8 +194,9 @@ static void q35_linear_attn_forward(RunState *s, const TransformerWeights *w, co
     int conv_dim  = key_dim * 2 + value_dim;
     float eps     = cfg->rms_norm_eps;
 
-    /* Linear-attention part of the scratch, after the full-attention part (see q35_run_state_alloc):
-     * the full-attention part is q_full (2*n_heads*head_dim) + k + v (kv_width each) + concat. */
+    /* Linear-attention part of the scratch, after the full-attention part (see
+     * q35_run_state_alloc): the full-attention part is q_full (2*n_heads*head_dim) + k + v
+     * (kv_width each) + concat. */
     const size_t full_n = 3 * (size_t)cfg->n_heads * (size_t)mc->attn_head_dim +
                           2 * (size_t)cfg->n_kv_heads * (size_t)mc->attn_head_dim;
     float *qkv_mixed = s->q35.scratch + full_n;
@@ -259,9 +260,8 @@ static void q35_linear_attn_forward(RunState *s, const TransformerWeights *w, co
      * docs/ai/mistakes.md). */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     {
-        float *hist =
-            s->q35.conv_state
-                [layer]; /* [conv_k-1][conv_dim], tap-major (this file's own buffer, no GGUF layout constraint) */
+        float *hist = s->q35.conv_state[layer]; /* [conv_k-1][conv_dim], tap-major (this file's own
+                                                   buffer, no GGUF layout constraint) */
         const float *kernel =
             w->q35.ssm_conv1d[layer]; /* [conv_dim][conv_k], channel-major per GGUF */
         for (int c = 0; c < conv_dim; c++) {

@@ -126,7 +126,8 @@ static void build(Model *m) {
 
 static void destroy(Model *m) {
     for (int i = 0; i < m->n_owned; i++) free(m->owned[i]);
-    /* the per-layer arrays hold borrowed pointers: clear them so weights_free_pointers only frees the arrays */
+    /* the per-layer arrays hold borrowed pointers: clear them so weights_free_pointers only frees
+     * the arrays */
     for (int l = 0; l < LAYERS; l++) {
         m->w.attn.norm[l]       = NULL;
         m->w.q35.ssm_qkv[l]     = NULL;

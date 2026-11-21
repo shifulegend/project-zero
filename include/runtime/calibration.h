@@ -37,7 +37,8 @@
 
 #define TN_CALIB_MAGIC 0x505A4341 /* "PZCA" */
 #define TN_CALIB_VERSION                                                                           \
-    4 /* 4: interleaved paired rounds + sign test, ISA mask in the key (2026-11-18); 3: "auto" candidate + margin */
+    4 /* 4: interleaved paired rounds + sign test, ISA mask in the key (2026-11-18); 3: "auto"     \
+         candidate + margin */
 
 #define TN_CALIB_MAX_THREADS 16 /* max thread counts tracked in sweep */
 
@@ -51,7 +52,8 @@
 /* 2026-11-18: candidates are measured in interleaved rounds (every candidate once
  * per round, rotating the order), so thermal drift and background load hit all of
  * them alike. A forced tier replaces "auto" only if it ALSO beats auto's paired
- * sample in enough rounds for a one-sided sign test at p <= 0.005 (13 of 15): a wrong override costs speed, a missed small win costs almost nothing, so the default wins ties and near-ties. The
+ * sample in enough rounds for a one-sided sign test at p <= 0.005 (13 of 15): a wrong override
+ * costs speed, a missed small win costs almost nothing, so the default wins ties and near-ties. The
  * pre-2026-11-18 sweep ran each candidate in its own block and picked "avx2" on an
  * AVX-512 VNNI host from noise (docs/ai/mistakes.md). */
 #define TN_CALIB_ROUNDS 15
@@ -150,16 +152,17 @@ void tn_calibration_report(const TnCalibrationResult *result);
  */
 const char *tn_calibration_best_simd(const TnCalibrationResult *result);
 
-/* Activation numerics the calibrated tier runs, for --act-quant auto: "int8" when the tier quantises
- * activations (vnni, vnni256), "float" for the float tiers (scalar, avx2, avx512f), NULL when the
- * result is invalid or keeps the dispatcher's own choice ("auto"). The decision is the measured one:
- * the sweep times the int8 tier against the float tiers and a float tier wins only on a clear margin. */
+/* Activation numerics the calibrated tier runs, for --act-quant auto: "int8" when the tier
+ * quantises activations (vnni, vnni256), "float" for the float tiers (scalar, avx2, avx512f), NULL
+ * when the result is invalid or keeps the dispatcher's own choice ("auto"). The decision is the
+ * measured one: the sweep times the int8 tier against the float tiers and a float tier wins only on
+ * a clear margin. */
 const char *tn_calibration_act_quant(const TnCalibrationResult *result);
 
-/* The measured evidence behind that choice: the best median tok/s among the int8 tiers (vnni, vnni256 and,
- * when the dispatcher's own choice "auto" quantises activations, auto) and among the float tiers (scalar,
- * avx2, avx512f and, otherwise, auto) of the sweep. Returns 1 and fills both when the
- * result is valid and both groups were measured, else 0. */
+/* The measured evidence behind that choice: the best median tok/s among the int8 tiers (vnni,
+ * vnni256 and, when the dispatcher's own choice "auto" quantises activations, auto) and among the
+ * float tiers (scalar, avx2, avx512f and, otherwise, auto) of the sweep. Returns 1 and fills both
+ * when the result is valid and both groups were measured, else 0. */
 int tn_calibration_act_timing(const TnCalibrationResult *result, int auto_is_int8,
                               double *int8_tokps, double *float_tokps);
 

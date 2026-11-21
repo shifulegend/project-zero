@@ -1,8 +1,9 @@
 /*
  * src/cli/args_flags_search.c
  *
- * Command-line flags: best-of and tree-search (MCTS) flags and the reasoning judge. One group of parse_args() (args.c); each branch is unchanged, and
- * tests/test_args_golden.c compares every flag's parse result with a golden table.
+ * Command-line flags: best-of and tree-search (MCTS) flags and the reasoning judge. One group of
+ * parse_args() (args.c); each branch is unchanged, and tests/test_args_golden.c compares every
+ * flag's parse result with a golden table.
  */
 
 #include <stdio.h>

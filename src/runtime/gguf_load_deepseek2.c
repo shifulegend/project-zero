@@ -239,7 +239,8 @@ TernaryError weights_from_gguf_deepseek2(TransformerWeights *w, const Config *cf
 
             /* Shared expert weights — heap-copy as Q4_K when available.
              * Uses DS_LOAD_SHEXP_HEAP which records per-layer type for correct dispatch.
-             * Different projections can have different quant types (e.g. gate/up=Q4_K, down=Q5_K). */
+             * Different projections can have different quant types (e.g. gate/up=Q4_K, down=Q5_K).
+             */
             DS_LOAD_SHEXP_HEAP(w->shared.w1, "ffn_gate_shexp.weight", (size_t)sh_hid * (size_t)dim,
                                w->shared.w1_type_per_layer);
             DS_LOAD_SHEXP_HEAP(w->shared.w2, "ffn_down_shexp.weight", (size_t)sh_hid * (size_t)dim,

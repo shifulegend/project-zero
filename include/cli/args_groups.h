@@ -4,7 +4,8 @@
 /* The flag groups parse_args() tries in turn (src/cli/args_flags_*.c). Each takes the argument at
  * argv[*ip]: when it is one of the group's flags (with its value present) the group parses it,
  * advances *ip past any value it consumed, sets *handled and returns TN_OK; when it is not, nothing
- * changes and *handled stays 0; a bad value prints its message and returns TN_ERR_INVALID_CONFIG. */
+ * changes and *handled stays 0; a bad value prints its message and returns TN_ERR_INVALID_CONFIG.
+ */
 
 #include "cli/args.h"
 
@@ -24,7 +25,8 @@ TernaryError args_parse_limits(CliArgs *args, int argc, char **argv, int *ip, in
 /* best-of and tree-search (MCTS) flags and the reasoning judge. */
 TernaryError args_parse_search(CliArgs *args, int argc, char **argv, int *ip, int *handled);
 
-/* chat format, web UI branding, memory DB, calibration, numerics, output switches and the HTTP server. */
+/* chat format, web UI branding, memory DB, calibration, numerics, output switches and the HTTP
+ * server. */
 TernaryError args_parse_behavior(CliArgs *args, int argc, char **argv, int *ip, int *handled);
 
 /* draft model, LoRA, colour and update-check flags. */

@@ -7,8 +7,9 @@
  *   --kv-type i8: one absmax scale per (layer, kv_head, position) row.
  *   --kv-type i4 (2026-10-19): Q4_1-style groups of TN_KV_I4_GROUP values,
  *     codes 0..15 with a (scale, min) pair per group;
- *     byte j holds element j (low nibble) and j+16 (high nibble), as ggml. Loops are written to auto-vectorise (int8 -> float
- * convert + FMA) on every SIMD tier, including the portable dist build.
+ *     byte j holds element j (low nibble) and j+16 (high nibble), as ggml. Loops are written to
+ * auto-vectorise (int8 -> float convert + FMA) on every SIMD tier, including the portable dist
+ * build.
  */
 
 #include "core/platform.h"

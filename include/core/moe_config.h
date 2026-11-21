@@ -36,7 +36,8 @@ typedef struct {
     int first_k_dense_replace; /* DeepSeek: first N layers use dense FFN, rest use MoE         */
                                /* set to 0 if all layers are MoE (e.g. Mixtral)                */
     int n_shared_experts;      /* DeepSeek: always-active shared experts per MoE layer (0=none)*/
-    int shared_expert_hidden_dim; /* hidden dim of the shared-expert FFN (n_shared × moe_intermediate_size) */
+    int shared_expert_hidden_dim; /* hidden dim of the shared-expert FFN (n_shared ×
+                                     moe_intermediate_size) */
 
     /* MLA (Multi-head Latent Attention) dimensions -- Phase 17.5 extension.
      * Bytes 28-47 of the MoE header (were padding, always zero in old files).

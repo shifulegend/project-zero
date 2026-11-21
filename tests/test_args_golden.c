@@ -242,7 +242,8 @@ static void run_case(char **words, int n, char *out, size_t cap) {
 }
 
 /* Every long flag parse_args matches, read from the source files of the parser (args.c and the
- * flag groups) and sorted, so a new flag joins the table and a move between files changes nothing. */
+ * flag groups) and sorted, so a new flag joins the table and a move between files changes nothing.
+ */
 static int cmp_flags(const void *a, const void *b) {
     return strcmp((const char *)a, (const char *)b);
 }
@@ -318,7 +319,8 @@ int main(void) {
             char *w2[2] = {flags[i], (char *)values[v]};
             run_case(w2, 2, res, sizeof res);
             snprintf(lines[nl++], sizeof lines[0], "%s %s | %s", flags[i], values[v], res);
-            /* with a model, so a valid flag reaches the success path instead of "--model required" */
+            /* with a model, so a valid flag reaches the success path instead of "--model required"
+             */
             char *w4[4] = {"--model", "m.gguf", flags[i], (char *)values[v]};
             run_case(w4, 4, res, sizeof res);
             snprintf(lines[nl++], sizeof lines[0], "M %s %s | %s", flags[i], values[v], res);

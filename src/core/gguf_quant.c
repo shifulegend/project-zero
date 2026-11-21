@@ -1,8 +1,10 @@
 /**
- * gguf_quant.c — GGUF dequantization, legacy block formats (Q8_0, Q4_0, Q5_0, Q2_0, Q5_1, Q4_1, Q8_1) and BF16.
+ * gguf_quant.c — GGUF dequantization, legacy block formats (Q8_0, Q4_0, Q5_0, Q2_0, Q5_1, Q4_1,
+ * Q8_1) and BF16.
  *
- * Split out of the former single gguf_quant.c (Phase 34.2b); the public entry points are declared in
- * include/core/gguf_quant.h. Block layout references: llama.cpp ggml-quants.h (public domain / MIT).
+ * Split out of the former single gguf_quant.c (Phase 34.2b); the public entry points are declared
+ * in include/core/gguf_quant.h. Block layout references: llama.cpp ggml-quants.h (public domain /
+ * MIT).
  */
 #include "core/gguf_quant.h"
 

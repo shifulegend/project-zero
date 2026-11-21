@@ -77,7 +77,8 @@ typedef struct {
 } SelfCheckAutoCtx;
 /* 1 when a start should check int8 against the accuracy bar (once per model, cached). */
 int selfcheck_auto_applies(const SelfCheckAutoCtx *c);
-/* The activation mode a verdict leaves in force: FAIL puts float activations in force; else AUTO. */
+/* The activation mode a verdict leaves in force: FAIL puts float activations in force; else AUTO.
+ */
 int selfcheck_auto_numerics(SelfCheckVerdict v); /* TnActQuant value: 0 auto, 2 float */
 
 /* ---- First-run probe cache (2026-11-18) -------------------------------------------------------

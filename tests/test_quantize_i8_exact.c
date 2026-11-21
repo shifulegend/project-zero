@@ -7,7 +7,8 @@
  * This test pins the specification:
  *   1. the scalar function rounds to nearest, ties to even (explicit tie vectors);
  *   2. its error never exceeds half a step against an exact double-precision value;
- *   3. every tier equals the scalar oracle BIT FOR BIT on random, adversarial and ragged-length input.
+ *   3. every tier equals the scalar oracle BIT FOR BIT on random, adversarial and ragged-length
+ * input.
  */
 #include <math.h>
 #include <stdint.h>
@@ -43,7 +44,8 @@ static int tiers(Tier *t) {
     return n;
 }
 
-/* abs_max = 127 makes inv_scale exactly 1.0f, so x[i] * inv_scale is x[i]: exact ties are testable. */
+/* abs_max = 127 makes inv_scale exactly 1.0f, so x[i] * inv_scale is x[i]: exact ties are testable.
+ */
 static void test_ties_round_to_even(void) {
     float x[16]           = {127.0f, 0.5f,  1.5f,  2.5f,   3.5f,   -0.5f,  -1.5f,   -2.5f,
                              -3.5f,  0.49f, 0.51f, -0.49f, -0.51f, 126.5f, -126.5f, 0.0f};

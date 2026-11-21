@@ -1,7 +1,8 @@
 /*
  * src/cli/args_flags_serving.c
  *
- * Command-line flags: remote layers and parallel slots (the request queue and size limits are in args_flags_limits.c). One group of parse_args() (args.c); each branch is unchanged, and
+ * Command-line flags: remote layers and parallel slots (the request queue and size limits are in
+ * args_flags_limits.c). One group of parse_args() (args.c); each branch is unchanged, and
  * tests/test_args_golden.c compares every flag's parse result with a golden table.
  */
 

@@ -37,8 +37,8 @@ void inject_vision_into_kv_cache(RunState *s, Config *p, TransformerWeights *w,
         // Let's check transformer_forward.
 
         // Assuming transformer_forward allows a flag or checking token == -1
-        // For now, let's call it manually using the standard behavior, but if token == -1 is not supported,
-        // we might just need to modify transformer_forward or replicate the layers loop.
+        // For now, let's call it manually using the standard behavior, but if token == -1 is not
+        // supported, we might just need to modify transformer_forward or replicate the layers loop.
 
         transformer_forward(-1, s->current_pos, p, w, s, NULL, tp);
 

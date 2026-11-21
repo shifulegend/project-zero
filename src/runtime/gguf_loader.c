@@ -329,8 +329,8 @@ static TernaryError set_inference_flags(TransformerWeights *w, int nl) {
     w->cls.is_ternary = false;
     w->cls.scale      = 1.0f;
     /* wq_type/wk_type/.../w3_type were set per-projection by LOAD_PROJ above;
- * sq/sk/.../s3 hold the I2_S tensor scales on the ternary path (0 otherwise);
- * rms_*_sub_norm are set only when the file has them (BitNet). */
+     * sq/sk/.../s3 hold the I2_S tensor scales on the ternary path (0 otherwise);
+     * rms_*_sub_norm are set only when the file has them (BitNet). */
     return TN_OK;
 }
 
@@ -347,9 +347,9 @@ static TernaryError weights_from_gguf_dense(TransformerWeights *w, const Config 
 
     w->cls.is_ternary = false;
     w->cls.scale      = 1.0f;
-    /* wq_type/wk_type/.../w3_type were set per-projection by gguf_ld_dense_projection(); sq/sk/.../s3
-     * hold the I2_S tensor scales on the ternary path (0 otherwise); rms_*_sub_norm are set only
-     * when the file has them (BitNet). */
+    /* wq_type/wk_type/.../w3_type were set per-projection by gguf_ld_dense_projection();
+     * sq/sk/.../s3 hold the I2_S tensor scales on the ternary path (0 otherwise); rms_*_sub_norm
+     * are set only when the file has them (BitNet). */
 
     /* INT8 / INT4 quantized classifier variants */
     weights_build_classifier_quant(w, cfg);

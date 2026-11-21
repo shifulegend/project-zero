@@ -25,7 +25,8 @@ void session_apply_log_options(PzSession *ses) {
         tn_log_set_level(TN_LOG_DEBUG);
 }
 
-/* --version and --check-update need no model. Returns the exit status, or -1 when the run goes on. */
+/* --version and --check-update need no model. Returns the exit status, or -1 when the run goes on.
+ */
 int session_early_command(PzSession *ses) {
     /* --version: print version + the SIMD backend selected for this CPU, then
      * exit 0. tn_simd_init() only probes CPUID, so no model is required. */

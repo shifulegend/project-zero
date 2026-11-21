@@ -1,8 +1,9 @@
 /*
  * src/cli/args_flags_memory.c
  *
- * Command-line flags: perplexity, RoPE, attention kernel, KV cache and prompt-cache flags. One group of parse_args() (args.c); each branch is unchanged, and
- * tests/test_args_golden.c compares every flag's parse result with a golden table.
+ * Command-line flags: perplexity, RoPE, attention kernel, KV cache and prompt-cache flags. One
+ * group of parse_args() (args.c); each branch is unchanged, and tests/test_args_golden.c compares
+ * every flag's parse result with a golden table.
  */
 
 #include <stdio.h>

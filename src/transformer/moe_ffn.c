@@ -278,7 +278,8 @@ void moe_ffn_forward(RunState *s, const TransformerWeights *w, const Config *cfg
     }
     DBG_DUMP(layer, "ffn_moe_out", s->xb2, dim);
 
-    /* Step 3b: the shared expert (DeepSeek-V2 style) is always active, on top of the routed ones. */
+    /* Step 3b: the shared expert (DeepSeek-V2 style) is always active, on top of the routed ones.
+     */
     if (!shared_done && mc->n_shared_experts > 0 && w->shared.w1 && w->shared.w1[layer]) {
         t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
         moe_legacy_shared(s, w, cfg, mc, layer, xb_q8k, tp);

@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — wide comments in small C files are wrapped to 100 columns
+- What: 86 lines over 100 columns (628 -> 542) in 51 C and header files under 500 lines were re-wrapped by clang-format with `ReflowComments` switched on for this one pass (the project style keeps it off). Only comments and whitespace moved.
+- Why: finding 23.c. Comment lines do not count toward the function-size ratchets and these files have no file-size entry, so wrapping them cannot trip those gates; the earlier attempt on `tools/bench/benchlib.py` did (wrapped code lines add lines).
+- Proof: after stripping comments and whitespace, every one of the 51 files is token-identical to HEAD; compiled objects of the C files are byte-identical except two test files whose `__LINE__` values moved; `make check-format` (project style) accepts the result; `make test` gcc and clang; line-width baseline lowered to 542.
+- Areas: 18 headers in `include/`, the rest `src/` and `tests/` C files.
+
 ### 2026-11-21 — the legacy dequantisers share one block walker
 - What: Q8_0, Q4_0, Q4_1, Q5_0, Q5_1, Q8_1 and Q2_0 in `src/core/gguf_quant.c` are now a per-format `*_block` decoder plus one `dequant_blocks` loop (and `zero_tail` for the formats that zero a partial last block); the arithmetic of each decoder is the old loop body, unchanged.
 - Why: finding 45.b (the repeated block-loop skeleton; decision Q2 asked for bit-exact output). The duplication tool's number does not move (7.36%): those loops differed textually, so this is structural clarity, not a metric gain.

@@ -31,8 +31,9 @@ typedef struct {
     int has_authorization;
 } HttpRequest;
 
-/* 1 when id is a usable correlation ID: 1..64 characters from [A-Za-z0-9._:-]. Anything else (spaces,
- * control characters, quotes) is refused so the value can be echoed in a header and logged safely. */
+/* 1 when id is a usable correlation ID: 1..64 characters from [A-Za-z0-9._:-]. Anything else
+ * (spaces, control characters, quotes) is refused so the value can be echoed in a header and logged
+ * safely. */
 int http_request_id_valid(const char *id);
 
 /* An ID unique among those drawn from `seq` ("<hex time>-<hex counter>"), thread-safe. */

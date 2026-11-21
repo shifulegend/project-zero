@@ -187,7 +187,6 @@ src/tokenizer/chat_template.cpp::chat_template_apply 11 31 2
 src/tokenizer/chat_template_builtins.cpp::filter_text 18 53 4
 src/tokenizer/chat_template_builtins.cpp::filter_value 21 31 3
 src/tokenizer/chat_template_builtins.cpp::jinja_string_method 18 50 3
-src/tokenizer/chat_template_eval.cpp::binop_apply 34 50 4
 src/tokenizer/chat_template_eval.cpp::eval 18 39 1
 src/tokenizer/chat_template_eval.cpp::eval_call 11 20 1
 src/tokenizer/chat_template_eval.cpp::eval_getslice 16 25 2

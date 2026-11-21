@@ -3,6 +3,18 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — chat-template operators split into small functions (finding 20.a)
+- What: `binop_apply` (complexity 34, 50 lines) now dispatches to `arith_apply` (+ `int_arith`),
+  `compare_apply` (+ `order_apply`) and `contains` / `not_contained`.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: new `tests/test_template_binop_golden.c` renders `{{ (A) OP (B) }}` for all 14 operators over
+  all 20x20 operand pairs (ints, zero, negatives, strings, none, booleans, undefined, objects, arrays,
+  ranges) and pins one hash recorded from the old function; mutations of `%`, `/`, `not in` and `<=` each
+  fail it. `make test` (gcc and clang); startup and generation identical to the old binary on SmolLM2,
+  BitNet, DeepSeek-V2-Lite and Qwen3-0.6B.
+- Affected: `src/tokenizer/chat_template_eval.cpp`, `tests/test_template_binop_golden.c`,
+  `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — tokenizer and chat-template set-up split into steps (finding 20.a)
 - What: `session_setup_tokenizer` (complexity 29, 84 lines, nesting 6) is now a short driver over
   `session_rope_layout`, `load_external_tokenizer` (with `patch_template_from_gguf`,

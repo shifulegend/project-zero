@@ -6,6 +6,8 @@
  * chat_template_builtins.cpp.
  */
 
+#include <cstring>
+
 #include "chat_template_internal.hpp"
 
 static Value eval(const Node *n, Scope &sc);
@@ -70,56 +72,85 @@ static Value eval_getattr(const Node *n, Scope &sc) {
     return Value();
 }
 
+static bool both_int(const Value &l, const Value &r) {
+    return l.type == VType::Int && r.type == VType::Int;
+}
+
+/* `a op b` on integers; a zero divisor is undefined. */
+static Value int_arith(char op, long long a, long long b) {
+    switch (op) {
+        case '-':
+            return Value(a - b);
+        case '*':
+            return Value(a * b);
+        case '/':
+            return b ? Value(a / b) : Value();
+        default:
+            return b ? Value(a % b) : Value();
+    }
+}
+
+/* Integer arithmetic; anything else is undefined. Returns false if `op` is not an arithmetic
+ * operator. */
+static bool arith_apply(const std::string &op, const Value &l, const Value &r, Value &out) {
+    if (op == "+" || op == "~") {
+        out = Value(l.to_str() + r.to_str());
+        return true;
+    }
+    if (op.size() != 1 || !strchr("-*/%", op[0])) return false;
+    out = both_int(l, r) ? int_arith(op[0], l.i, r.i) : Value();
+    return true;
+}
+
+/* `<`, `<=`, `>`, `>=` as the sign test on a three-way comparison result. */
+static bool order_apply(const std::string &op, int c, bool &result) {
+    static const char *const ORDER_OPS[4] = {"<", "<=", ">", ">="};
+    for (int i = 0; i < 4; i++) {
+        if (op != ORDER_OPS[i]) continue;
+        const bool tests[4] = {c < 0, c <= 0, c > 0, c >= 0};
+        result              = tests[i];
+        return true;
+    }
+    return false;
+}
+
+/* Equality and ordering. Returns false if `op` is not a comparison operator. */
+static bool compare_apply(const std::string &op, const Value &l, const Value &r, Value &out) {
+    if (op == "==" || op == "!=") {
+        out = Value(l.equals(r) == (op == "=="));
+        return true;
+    }
+    bool result = false;
+    if (!order_apply(op, l.cmp(r), result)) return false;
+    out = Value(result);
+    return true;
+}
+
+/* `l in r` for strings (substring), arrays (element) and objects (key). */
+static bool contains(const Value &l, const Value &r) {
+    std::string ls = l.to_str();
+    if (r.type == VType::Str) return r.s.find(ls) != std::string::npos;
+    if (r.type == VType::Array) {
+        for (const auto &x : r.arr)
+            if (x.equals(l)) return true;
+        return false;
+    }
+    if (r.type == VType::Object) return r.obj.count(ls) > 0;
+    return false;
+}
+
+/* `l not in r`: like `in`, except that an object is never searched (it always yields true). */
+static bool not_contained(const Value &l, const Value &r) {
+    if (r.type == VType::Object) return true;
+    return !contains(l, r);
+}
+
 /* Arithmetic, comparison and membership on two evaluated operands. */
 static Value binop_apply(const std::string &op, Value &l, Value &r) {
-
-    if (op == "+" || op == "~") return Value(l.to_str() + r.to_str());
-    if (op == "-") {
-        if (l.type == VType::Int && r.type == VType::Int) return Value(l.i - r.i);
-        return Value();
-    }
-    if (op == "*") {
-        if (l.type == VType::Int && r.type == VType::Int) return Value(l.i * r.i);
-        return Value();
-    }
-    if (op == "/") {
-        if (l.type == VType::Int && r.type == VType::Int && r.i) return Value(l.i / r.i);
-        return Value();
-    }
-    if (op == "%") {
-        if (l.type == VType::Int && r.type == VType::Int && r.i) return Value(l.i % r.i);
-        return Value();
-    }
-    if (op == "==") return Value(l.equals(r));
-    if (op == "!=") return Value(!l.equals(r));
-    if (op == "<") return Value(l.cmp(r) < 0);
-    if (op == "<=") return Value(l.cmp(r) <= 0);
-    if (op == ">") return Value(l.cmp(r) > 0);
-    if (op == ">=") return Value(l.cmp(r) >= 0);
-    if (op == "in") {
-        std::string ls = l.to_str();
-        if (r.type == VType::Str) return Value(r.s.find(ls) != std::string::npos);
-        if (r.type == VType::Array) {
-            for (auto &x : r.arr)
-                if (x.equals(l)) return Value(true);
-            return Value(false);
-        }
-        if (r.type == VType::Object) return Value(r.obj.count(ls) > 0);
-        return Value(false);
-    }
-    if (op == "not_in") {
-        std::string ls = l.to_str();
-        bool found     = false;
-        if (r.type == VType::Str) found = r.s.find(ls) != std::string::npos;
-        if (r.type == VType::Array) {
-            for (auto &x : r.arr)
-                if (x.equals(l)) {
-                    found = true;
-                    break;
-                }
-        }
-        return Value(!found);
-    }
+    Value out;
+    if (arith_apply(op, l, r, out) || compare_apply(op, l, r, out)) return out;
+    if (op == "in") return Value(contains(l, r));
+    if (op == "not_in") return Value(not_contained(l, r));
     return Value();
 }
 

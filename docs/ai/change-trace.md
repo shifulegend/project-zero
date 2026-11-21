@@ -3,6 +3,26 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — draft / LoRA / colour / update flags moved to a table plus handlers (finding 20.a)
+- What: `args_parse_extras` (complexity 28, 56 lines, nesting 11) is now an `ArgFlagSpec` table for the six
+  flags that need no custom check (`--draft-model`, `--lora`, `--spec-length`, `--update-interval`,
+  `--check-update`, `--no-update-check`) plus four small handlers (`set_color`, `set_update_repo`,
+  `set_update_api`, `set_update_channel`) in a name table. The handlers keep the old order: the repository,
+  API and channel values are stored before they are checked, so a rejected value is still visible in the
+  struct.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: the existing `tests/test_args_golden.c` table (4,970 cases, recorded from the old parser) still
+  passes; its sample values do not reach the exact range limits or every colour mode, so the new
+  `tests/test_args_extras_golden.c` pins one hash over every one of the ten flags x 31 values (empty, 0, 1,
+  -1, 24, 8760, 8761, overflow, words, the colour modes in two cases, channels, repositories, URLs, another
+  flag) alone, missing its value and followed by a second flag, covering the result code and every field
+  set, recorded from the old parser on gcc and clang; seven mutations (interval limit, a colour mode, the
+  spec-length range, store-before-check for the repository and API, the cursor advance, the channel check)
+  each fail it. `make test` (gcc and clang); error text for seven invalid values is byte-identical to the
+  old binary.
+- Affected: `src/cli/args_flags_extras.c`, `tests/test_args_extras_golden.c`,
+  `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — setting-value validation split by concern (finding 20.a)
 - What: `pz_config_validate` (complexity 27, 46 lines) is now a short driver over `validate_text` (length and
   newline rules), `validate_number` (with `number_parsed`), `validate_bool` and `validate_choice`. They live

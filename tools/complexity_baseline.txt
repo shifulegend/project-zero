@@ -165,7 +165,6 @@ src/runtime/gguf_loader.c::load_dense_layer 22 69 2
 src/runtime/gguf_loader.c::load_dense_output 17 71 6
 src/runtime/hardware_profile.c::probe_dram_bandwidth 26 56 3
 src/runtime/hardware_profile.c::tn_hardware_profile_init 29 96 4
-src/runtime/lora_load.c::lora_load_ex 31 106 3
 src/runtime/mamba_state.c::mamba_state_alloc 19 33 1
 src/runtime/mamba_state.c::mamba_weights_alloc 18 29 1
 src/runtime/mla_run_state.c::mla_run_state_alloc 12 28 3

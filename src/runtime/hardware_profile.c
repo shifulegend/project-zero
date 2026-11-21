@@ -40,106 +40,9 @@ static size_t detect_l3_cache(void) {
     return ci->source ? (size_t)ci->l3_bytes : 0;
 }
 
-/* ── DRAM bandwidth probe ──────────────────────────────────────────────── */
-
-static int64_t bw_now_ns(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec;
-}
-
-/*
- * Multi-threaded DRAM bandwidth probe.
- *
- * Uses N threads each reading a buffer > L3 cache to measure true DRAM
- * bandwidth (not L3). This is critical for systems with large L3 caches
- * (e.g., Xeon Emerald Rapids with 260 MB L3) where a small single-threaded
- * probe would measure L3 speed instead of DRAM speed.
- *
- * Each thread reads its own buffer sequentially; total is aggregated.
- * 3 passes, best aggregate result returned.
- */
-
-#if TN_POSIX
-#include <pthread.h>
-#endif
-
-/* Shared by the POSIX multi-threaded probe and the single-threaded
- * fallback — no pthread dependency in the pass function itself. */
-typedef struct {
-    const unsigned char *buf;
-    size_t size;
-    double gbps;
-    uint64_t sink; /* per-thread accumulator result, folded by the caller */
-} BwThreadArg;
-
-/* Defeats dead-code elimination of the read loops: each thread deposits its
- * accumulator sum into its own arg (no shared writes from workers — a
- * previous version had all threads += into this global directly, a benign
- * but real data race; independent-review finding, 2026-07-17); the caller
- * folds the per-thread sinks in here after join, single-threaded. */
-static volatile uint64_t g_bw_probe_sink;
-
-/*
- * One full-buffer read pass. TWO fixes on 2026-07-17 (both had been
- * under-stating measured bandwidth, compounding to ~3x total — see
- * docs/architecture/CEILING_CALCULATION.md §2 and docs/ai/mistakes.md):
- *
- * 1. ACCOUNTING: this function used to run its own 3 passes internally,
- *    while the caller timed the whole create/join round but divided only
- *    ONE pass worth of bytes by that wall time — a systematic ~3x
- *    under-measurement (the correctly-accounted per-thread bytes/elapsed
- *    figures were computed and then discarded). Now each thread runs
- *    exactly one pass per round; the caller's existing 3-round best-of
- *    loop provides the repetition.
- *
- * 2. ACCESS PATTERN: reads every byte via 8 independent 64-bit accumulator
- *    chains (one cache line per iteration) instead of one volatile char
- *    per line. The volatile-scalar loop serialized a 1-byte load + a
- *    volatile store per line and couldn't keep enough line fills in
- *    flight. Independent non-volatile accumulators let the compiler
- *    vectorize and the core overlap misses; the volatile sink store
- *    happens once per pass, outside the timed loop.
- */
-#if TN_POSIX
-/* First-touch of a probe buffer, run on the probing thread itself so the
- * page faults are taken in parallel (single-threaded touching of the old
- * 2 GB buffer cost up to 15 s on VMs; 2026-10-19). */
-static void *bw_touch_fn(void *arg) {
-    BwThreadArg *a   = (BwThreadArg *)arg;
-    unsigned char *m = (unsigned char *)(uintptr_t)a->buf;
-    for (size_t j = 0; j < a->size; j += 4096) m[j] = (unsigned char)j;
-    return NULL;
-}
-#endif
-
-static void *bw_thread_fn(void *arg) {
-    BwThreadArg *a = (BwThreadArg *)arg;
-    uint64_t s0 = 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0, s5 = 0, s6 = 0, s7 = 0;
-    const uint64_t *p = (const uint64_t *)(const void *)a->buf;
-    size_t n_words    = a->size / 8;
-    int64_t t0        = bw_now_ns();
-    for (size_t i = 0; i + 8 <= n_words; i += 8) {
-        s0 += p[i];
-        s1 += p[i + 1];
-        s2 += p[i + 2];
-        s3 += p[i + 3];
-        s4 += p[i + 4];
-        s5 += p[i + 5];
-        s6 += p[i + 6];
-        s7 += p[i + 7];
-    }
-    int64_t elapsed = bw_now_ns() - t0;
-    a->sink         = s0 + s1 + s2 + s3 + s4 + s5 + s6 + s7;
-    a->gbps         = (elapsed > 0) ? (double)a->size / (double)elapsed : 0.0;
-    return NULL;
-}
-
 /* Forward declaration — defined below after /proc/cpuinfo parsing */
 static int probe_physical_cores(void);
 
-/* Free RAM seen by tn_hardware_profile_init() before the probe runs (caps
- * the probe buffer); 0 = unknown. */
 static size_t g_free_ram_hint;
 
 static double probe_dram_bandwidth(void) {
@@ -147,79 +50,9 @@ static double probe_dram_bandwidth(void) {
     int n_threads = probe_physical_cores();
     if (n_threads < 1) n_threads = 1;
     if (n_threads > 8) n_threads = 8;
-
-    /* The buffers together must dwarf the shared L3 to measure DRAM, not
-     * cache: total = 4x L3, at least 512 MB, at most 2 GB and a quarter of
-     * free RAM. (Was 512 MB per thread regardless — 2 GB on 4 cores, which
-     * also showed up as every run's max RSS; 2026-10-19.) */
-    size_t total = (l3 > 0) ? 4 * l3 : 0;
-    if (total < 512ULL * 1024 * 1024) total = 512ULL * 1024 * 1024;
-    if (total > 2048ULL * 1024 * 1024) total = 2048ULL * 1024 * 1024;
-    if (g_free_ram_hint > 0 && total > g_free_ram_hint / 4) total = g_free_ram_hint / 4;
-    size_t per_thread = (total / (size_t)n_threads) & ~(size_t)4095;
-    if (per_thread < 4096) return 0.0;
-
-#if TN_POSIX
-    BwThreadArg args[8];
-    pthread_t threads[8];
-
-    /* Allocate, then touch all pages from the probing threads */
-    for (int i = 0; i < n_threads; i++) {
-        unsigned char *mem = (unsigned char *)malloc(per_thread);
-        if (!mem) {
-            n_threads = i;
-            break;
-        }
-        args[i].buf  = mem;
-        args[i].size = per_thread;
-        args[i].gbps = 0.0;
-    }
-
-    if (n_threads == 0) return 0.0;
-    for (int i = 0; i < n_threads; i++) pthread_create(&threads[i], NULL, bw_touch_fn, &args[i]);
-    for (int i = 0; i < n_threads; i++) pthread_join(threads[i], NULL);
-
-    /* Measure WALL TIME for all threads to complete ONE pass each — true
-     * aggregate bandwidth including bus contention (plus a small
-     * thread-create/join overhead, which biases slightly conservative).
-     * 5 rounds, best kept (the buffers are smaller than they used to be). */
-    size_t total_bytes = per_thread * (size_t)n_threads;
-    double best_gbps   = 0.0;
-
-    for (int pass = 0; pass < 5; pass++) {
-        int64_t wall_t0 = bw_now_ns();
-        for (int i = 0; i < n_threads; i++)
-            pthread_create(&threads[i], NULL, bw_thread_fn, &args[i]);
-        for (int i = 0; i < n_threads; i++) pthread_join(threads[i], NULL);
-        int64_t wall_elapsed = bw_now_ns() - wall_t0;
-        for (int i = 0; i < n_threads; i++)
-            g_bw_probe_sink += args[i].sink; /* single-threaded fold */
-
-        if (wall_elapsed > 0) {
-            double gbps = (double)total_bytes / (double)wall_elapsed;
-            if (gbps > best_gbps) best_gbps = gbps;
-        }
-    }
-
-    for (int i = 0; i < n_threads; i++) free((void *)args[i].buf);
-    return best_gbps;
-#else
-    /* Fallback: single-threaded probe (same one-pass-per-round
-     * multi-accumulator read as bw_thread_fn — see its comment). */
-    unsigned char *buf = (unsigned char *)malloc(per_thread);
-    if (!buf) return 0.0;
-    for (size_t i = 0; i < per_thread; i += 4096) buf[i] = (unsigned char)i;
-
-    double best = 0.0;
-    for (int pass = 0; pass < 3; pass++) {
-        BwThreadArg a = {.buf = buf, .size = per_thread, .gbps = 0.0, .sink = 0};
-        bw_thread_fn(&a);
-        g_bw_probe_sink += a.sink; /* keep the reads observable here too */
-        if (a.gbps > best) best = a.gbps;
-    }
-    free(buf);
-    return best;
-#endif
+    size_t per_thread = tn_hw_bw_buffer_bytes(l3, g_free_ram_hint, n_threads);
+    if (per_thread == 0) return 0.0;
+    return tn_hw_probe_bandwidth(n_threads, per_thread);
 }
 
 /* ── Physical core count (duplicated lite version for profile) ─────── */

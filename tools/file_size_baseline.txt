@@ -4,7 +4,6 @@ src/math/matmul_q4k.c 688
 src/math/matmul_q4k_x8.c 654
 src/math/parallel_matmul.c 566
 src/runtime/calibration.c 798
-src/runtime/hardware_profile.c 584
 src/tokenizer/tokenizer_encode.c 592
 src/transformer/attention.c 619
 src/transformer/mla_attention.c 506

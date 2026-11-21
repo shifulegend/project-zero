@@ -66,3 +66,16 @@ double tn_hw_cached_ceiling(double l3_usable, double bw_gbps, double weight_byte
         return 999.0; /* compute-limited */
     }
 }
+
+/* Per-thread buffer of the DRAM bandwidth probe. The buffers together must dwarf the shared L3 to
+ * measure DRAM, not cache: total = 4x L3, at least 512 MB, at most 2 GB and a quarter of free RAM.
+ * (Was 512 MB per thread regardless -- 2 GB on 4 cores, which also showed up as every run's max
+ * RSS; 2026-10-19.) 0 when the share is under one page. */
+size_t tn_hw_bw_buffer_bytes(size_t l3, size_t free_ram_hint, int n_threads) {
+    size_t total = (l3 > 0) ? 4 * l3 : 0;
+    if (total < 512ULL * 1024 * 1024) total = 512ULL * 1024 * 1024;
+    if (total > 2048ULL * 1024 * 1024) total = 2048ULL * 1024 * 1024;
+    if (free_ram_hint > 0 && total > free_ram_hint / 4) total = free_ram_hint / 4;
+    size_t per_thread = (total / (size_t)n_threads) & ~(size_t)4095;
+    return per_thread < 4096 ? 0 : per_thread;
+}

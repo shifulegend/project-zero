@@ -2,6 +2,7 @@
 #define TN_HARDWARE_PROFILE_H
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #include "core/cpu_features.h"
 #include "core/platform.h"
@@ -73,6 +74,14 @@ double tn_hw_classifier_bytes(TnClassifierFormat fmt);
  * Needs bw_gbps > 0. */
 double tn_hw_cached_ceiling(double l3_usable, double bw_gbps, double weight_bytes_per_tok,
                             double cls_bytes);
+
+/* Bytes each thread of the DRAM bandwidth probe allocates (0 = too small to probe) for an L3 of
+ * l3 bytes, free_ram_hint bytes of free RAM (0 = unknown) and n_threads >= 1 threads. */
+size_t tn_hw_bw_buffer_bytes(size_t l3, size_t free_ram_hint, int n_threads);
+
+/* Measured DRAM bandwidth in GB/s: n_threads threads each read their own per_thread-byte buffer
+ * (best of several rounds, aggregate wall time); 0 when no buffer could be allocated. */
+double tn_hw_probe_bandwidth(int n_threads, size_t per_thread);
 
 /*
  * Probe hardware and populate the profile.

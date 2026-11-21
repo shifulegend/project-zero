@@ -3,6 +3,19 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — DRAM bandwidth probe split and its buffer sizing made testable (finding 20.a)
+- What: `probe_dram_bandwidth` (complexity 26, 56 lines) is now core count, `tn_hw_bw_buffer_bytes` (the pure
+  buffer-sizing rule, in `hw_projection.c`) and `tn_hw_probe_bandwidth` (the thread work, moved with its helpers
+  `bw_alloc_buffers`, `bw_run_threads`, `bw_best_of_passes` and the read loops into the new
+  `src/runtime/bw_probe.c`). `hardware_profile.c` falls from 584 to 417 lines and leaves the size baseline.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: the sizing rule is checked against a verbatim copy of the old code in `tests/test_hw_projection.c`
+  over 400,000 (L3, free RAM, threads) tuples including the 512 MB / 2 GB clamps and the page limit. The
+  measurement itself is hardware-dependent, so it was compared by running: `PZ_BW_REPROBE=1` reports 45-48
+  GB/s on both the old and new binary (run-to-run noise). `make test` (gcc and clang).
+- Affected: `src/runtime/hardware_profile.c`, `src/runtime/bw_probe.c`, `src/runtime/hw_projection.c`,
+  `include/runtime/hardware_profile.h`, `CMakeLists.txt`, `tests/test_hw_projection.c`, both baselines.
+
 ### 2026-11-21 — agent commands no longer leave a zombie when output fills the buffer
 - What: `collect_output` now calls `stop_and_reap` on a full buffer (kill, then `waitpid`); the reported
   exit code for a truncated run is unchanged.

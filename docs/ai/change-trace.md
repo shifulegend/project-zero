@@ -3,6 +3,21 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — thinking-tag filter split into one function per state (finding 20.a)
+- What: `thought_filter_process` (complexity 27, 80 lines, nesting 6) is now a loop over `step_char`, which
+  dispatches to `step_passthrough`, `step_open_tag`, `step_thinking`, `step_close_tag` and `emit_char`,
+  with `begin_tag`, `buffer_tag_char`, `tag_mismatch` and `flush_tag_buffer` as shared helpers.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: new `tests/test_thought_filter_golden.c` feeds 100,000 generated token streams (whole, partial,
+  broken and split tags, text, newlines, empty tokens) through output buffers of 1..24 bytes and pins one
+  hash of the return value, the output and the whole filter state after every call, recorded from the old
+  filter on gcc and clang; five mutations (flush bound, thinking count, close-tag length, output bound,
+  state after the close tag) each fail it, and two survive because they are unreachable (a tag buffer
+  never holds more than eight matching characters). `make test` (gcc and clang) incl. the existing fuzz
+  test. Only unit tests call this function today (`generate_with_reasoning` is not wired into `pz`).
+- Affected: `src/reasoning/thought_filter.c`, `tests/test_thought_filter_golden.c`,
+  `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — chat-template `is` tests split into small functions (finding 20.a)
 - What: `eval_isdef` (complexity 24, 27 lines, nesting 8) is now `is_test_result` over `test_defined` and a
   table of seven value tests (`vt_none`, `vt_string`, `vt_number`, `vt_iterable`, `vt_mapping`, `vt_odd`,

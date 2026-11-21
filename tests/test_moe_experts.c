@@ -339,6 +339,22 @@ static void test_router_opts(void) {
                 "sigmoid gating weight");
 }
 
+/* The expert-format table must accept exactly what the old per-format rule accepted: K-quants
+ * (Q4_K, Q6_K) on multiples of 256, Q5_0/Q5_1/Q8_0 on multiples of 32, nothing else. */
+static void test_type_ok_truth_table(void) {
+    const int widths[] = {-32, 0, 1, 31, 32, 64, 255, 256, 288, 512, 1000, 2048};
+    for (int type = 0; type < 70; type++) {
+        for (size_t i = 0; i < sizeof(widths) / sizeof(widths[0]); i++) {
+            int n = widths[i], want = 0;
+            if (n > 0 && (type == GGUF_TYPE_Q4_K || type == GGUF_TYPE_Q6_K)) want = n % 256 == 0;
+            if (n > 0 &&
+                (type == GGUF_TYPE_Q5_0 || type == GGUF_TYPE_Q5_1 || type == GGUF_TYPE_Q8_0))
+                want = n % 32 == 0;
+            TEST_ASSERT_EQ(moe_experts_type_ok(type, n), want, "type/width acceptance");
+        }
+    }
+}
+
 int main(void) {
     tn_simd_init();
     printf("=== MoE fused experts / Q8_0-activation kernels ===\n");
@@ -346,5 +362,6 @@ int main(void) {
     RUN_TEST(test_q4k_vnni_matches_avx2);
     RUN_TEST(test_fused_matches_legacy);
     RUN_TEST(test_router_opts);
+    RUN_TEST(test_type_ok_truth_table);
     TEST_SUMMARY();
 }

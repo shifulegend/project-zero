@@ -40,25 +40,36 @@ void moe_experts_free(void) {
     tn_tls_scratch_release(&s_scratch);
 }
 
+/* The expert weight formats with an integer dot, one row each: the activation block they pair with
+ * (Q8K for the K-quants, Q8_0 otherwise) and the weight block size. A new format is a new row here
+ * plus a case in rowdot(); every size and acceptance check below only looks it up. */
+typedef struct {
+    int type;
+    int kquant;         /* pairs with Q8K activation blocks (256 wide) instead of Q8_0 (32 wide) */
+    int block_elems;    /* weights per block: 256 or 32 */
+    size_t block_bytes; /* bytes per block */
+} ExpertFormat;
+
+static const ExpertFormat k_expert_formats[] = {
+    {GGUF_TYPE_Q4_K, 1, 256, 144}, {GGUF_TYPE_Q6_K, 1, 256, TN_Q6K_BYTES},
+    {GGUF_TYPE_Q5_0, 0, 32, 22},   {GGUF_TYPE_Q5_1, 0, 32, 24},
+    {GGUF_TYPE_Q8_0, 0, 32, 34},
+};
+
+static const ExpertFormat *expert_format(int type) {
+    for (size_t i = 0; i < sizeof(k_expert_formats) / sizeof(k_expert_formats[0]); i++)
+        if (k_expert_formats[i].type == type) return &k_expert_formats[i];
+    return NULL;
+}
+
 static int is_kquant(int type) {
-    return type == GGUF_TYPE_Q4_K || type == GGUF_TYPE_Q6_K;
+    const ExpertFormat *k = expert_format(type);
+    return k && k->kquant;
 }
 
 static size_t row_bytes(int type, int n_inner) {
-    switch (type) {
-        case GGUF_TYPE_Q4_K:
-            return (size_t)(n_inner / 256) * 144;
-        case GGUF_TYPE_Q6_K:
-            return (size_t)(n_inner / 256) * TN_Q6K_BYTES;
-        case GGUF_TYPE_Q5_0:
-            return (size_t)(n_inner / 32) * 22;
-        case GGUF_TYPE_Q5_1:
-            return (size_t)(n_inner / 32) * 24;
-        case GGUF_TYPE_Q8_0:
-            return (size_t)(n_inner / 32) * 34;
-        default:
-            return 0;
-    }
+    const ExpertFormat *k = expert_format(type);
+    return k ? (size_t)(n_inner / k->block_elems) * k->block_bytes : 0;
 }
 
 /* bytes of activation blocks needed to quantize an n-vector for `type` */
@@ -68,11 +79,8 @@ static size_t act_bytes(int type, int n) {
 }
 
 int moe_experts_type_ok(int type, int n_inner) {
-    if (n_inner <= 0) return 0;
-    if (is_kquant(type)) return n_inner % 256 == 0;
-    if (type == GGUF_TYPE_Q5_0 || type == GGUF_TYPE_Q5_1 || type == GGUF_TYPE_Q8_0)
-        return n_inner % 32 == 0;
-    return 0;
+    const ExpertFormat *k = expert_format(type);
+    return k && n_inner > 0 && n_inner % k->block_elems == 0;
 }
 
 int moe_experts_job_ok(const TnMoEExpertJob *j, int dim) {
@@ -81,6 +89,8 @@ int moe_experts_job_ok(const TnMoEExpertJob *j, int dim) {
            moe_experts_type_ok(j->down_type, j->hdim);
 }
 
+/* The per-row dot stays a switch: an indirect call here measured about 2.5% slower on Q4_K
+ * expert GEMVs (docs/ai/change-trace.md 2026-11-21), and this is the innermost loop. */
 static inline float rowdot(int type, const uint8_t *row, const void *acts, int n_inner, int vq4,
                            int vq8) {
     switch (type) {

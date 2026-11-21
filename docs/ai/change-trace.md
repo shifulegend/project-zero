@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — expert formats are a table; the per-row dot stays a switch
+- What: `moe_experts.c` looks each expert weight format up in `k_expert_formats` (activation family, block size, block bytes) for row sizes and for `moe_experts_type_ok`, instead of two switches; the per-row dot in the innermost loop remains the original switch.
+- Why: finding 8.a. A first version also put the dot kernels in the table (indirect call per row) and measured about 2.5% slower on Q4_K expert GEMVs (a microbenchmark of `moe_experts_forward`, 8 experts, 2048x1536, 4 threads, 7 x 200 calls, release flags; Q8_0 was neutral), so that part was reverted. With the cold lookups in a table and the switch back, old vs new is within noise (Q4_K 705-729 vs 692-725 us, Q8_0 1135-1248 vs 1161-1199 us).
+- Proof: `tests/test_moe_experts.c` (927 assertions, incl. a truth table of `moe_experts_type_ok` over types 0..69 and widths that passes on the old and the new code, and the fused-vs-legacy comparison); `make test` gcc and clang, TSan.
+- Areas: `src/transformer/moe_experts.c`, `tests/test_moe_experts.c`.
+
 ### 2026-11-21 — Q8_0-activation GEMV picks its kernel from a table
 - What: `parallel_matmul_q8a` and `parallel_matmul_q8a_tokens` look the weight format up in `k_q8a_kernels` (type, block size, integer dot) once per call; the per-row worker loops call the resolved function instead of switching on the type for every row, and the two block-size switches are gone.
 - Why: finding 8.a (kernel-dispatch switches become a registry; Q11). `parallel_matmul_q8a_tokens` leaves the complexity baseline (393 -> 392).

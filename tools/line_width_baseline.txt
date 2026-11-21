@@ -11,7 +11,6 @@ tests/a6_thread_sweep.sh 10
 tests/e2e_api_concurrency.sh 12
 tests/e2e_cli_exit_status.sh 1
 tests/e2e_cross_site_post.sh 1
-tests/e2e_json_mode.sh 14
 tests/e2e_log_format.sh 2
 tests/e2e_max_prompt_bytes.sh 5
 tests/e2e_prompt_cache.sh 2

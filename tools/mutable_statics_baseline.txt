@@ -7,7 +7,8 @@ src/math/matmul_q4k.c 2
 src/math/q8_0_act.c 3
 src/math/simd_dispatch.c 3
 src/memory/tls_scratch.c 1
-src/runtime/hardware_profile.c 4
+src/runtime/bw_probe.c 1
+src/runtime/hardware_profile.c 3
 src/threading/cache_probe.c 2
 src/tokenizer/template_guard.c 1
 src/tokenizer/tokenizer_decode.c 1

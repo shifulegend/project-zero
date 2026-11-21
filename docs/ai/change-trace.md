@@ -3,6 +3,16 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — fused MoE job building split into routed and shared parts (finding 20.a)
+- What: `moe_fused_try` (complexity 24, 64 lines, nesting 4) now builds its job list through
+  `fused_add_routed` (with `fused_expert_types`) and `fused_add_shared`; the dispatch, hit tracking and the
+  two "done" flags are unchanged.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: hot path, so by real models: DeepSeek-V2-Lite (routed + shared experts) and Qwen3-30B-A3B (routed
+  only) give identical output to the old binary at temperature 0, and DeepSeek-V2-Lite runs at 1.72-1.78
+  tok/s against 1.69-1.83 for the old binary (noise). `make test` (gcc and clang).
+- Affected: `src/transformer/moe_ffn.c`, `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — DRAM bandwidth probe split and its buffer sizing made testable (finding 20.a)
 - What: `probe_dram_bandwidth` (complexity 26, 56 lines) is now core count, `tn_hw_bw_buffer_bytes` (the pure
   buffer-sizing rule, in `hw_projection.c`) and `tn_hw_probe_bandwidth` (the thread work, moved with its helpers

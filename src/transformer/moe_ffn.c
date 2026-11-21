@@ -81,6 +81,62 @@ static int moe_fused_enabled(void) {
     return tn_env_on_unless_zero(&cached, "PZ_MOE_FUSED");
 }
 
+/* Quantisation types of the routed experts' gate/up (w13) and down (w2) matrices of this layer:
+ * the per-layer value when the file has one, else the global one. */
+static void fused_expert_types(const TransformerWeights *w, int layer, int *w13, int *w2) {
+    const WeightsExpertQuant *q = &w->expert_quant;
+    *w13 = (q->w13_per_layer && q->w13_per_layer[layer]) ? q->w13_per_layer[layer] : q->w13_type;
+    *w2  = (q->w2_per_layer && q->w2_per_layer[layer]) ? q->w2_per_layer[layer] : q->w2_type;
+}
+
+/* Appends one job per selected routed expert; returns 1 when the routed experts can run fused. */
+static int fused_add_routed(TnMoEExpertJob *jobs, int *nj, const TransformerWeights *w,
+                            const MoEConfig *mc, int layer, const int *selected,
+                            const float *scores, int top_k, int dim) {
+    if (!w->expert_quant.present) return 0;
+    int w13, w2;
+    fused_expert_types(w, layer, &w13, &w2);
+    TnMoEExpertJob probe = {(const uint8_t *)1,
+                            (const uint8_t *)1,
+                            (const uint8_t *)1,
+                            w13,
+                            w13,
+                            w2,
+                            mc->expert_hidden_dim,
+                            0.0f};
+    if (!moe_experts_job_ok(&probe, dim)) return 0;
+    for (int i = 0; i < top_k; i++) {
+        int e = selected[i];
+        if (e < 0 || e >= mc->num_experts) continue;
+        TnMoEExpertJob j = {(const uint8_t *)w->moe.w1[layer][e],
+                            (const uint8_t *)w->moe.w3[layer][e],
+                            (const uint8_t *)w->moe.w2[layer][e],
+                            w13,
+                            w13,
+                            w2,
+                            mc->expert_hidden_dim,
+                            scores[i]};
+        jobs[(*nj)++]    = j;
+    }
+    return 1;
+}
+
+/* Appends the shared expert's job; returns 1 when it can run fused. */
+static int fused_add_shared(TnMoEExpertJob *jobs, int *nj, const TransformerWeights *w,
+                            const MoEConfig *mc, int layer, int dim) {
+    if (mc->n_shared_experts <= 0 || !w->shared.w1 || !w->shared.w1[layer]) return 0;
+    if (!w->shared.w1_type_per_layer || !w->shared.w2_type_per_layer ||
+        !w->shared.w3_type_per_layer)
+        return 0;
+    TnMoEExpertJob j = {(const uint8_t *)w->shared.w1[layer], (const uint8_t *)w->shared.w3[layer],
+                        (const uint8_t *)w->shared.w2[layer], w->shared.w1_type_per_layer[layer],
+                        w->shared.w3_type_per_layer[layer],   w->shared.w2_type_per_layer[layer],
+                        mc->shared_expert_hidden_dim,         1.0f};
+    if (!moe_experts_job_ok(&j, dim)) return 0;
+    jobs[(*nj)++] = j;
+    return 1;
+}
+
 static void moe_fused_try(RunState *s, const TransformerWeights *w, const Config *cfg,
                           const MoEConfig *mc, int layer, const int *selected, const float *scores,
                           int top_k, ThreadPool *tp, int *routed_done, int *shared_done) {
@@ -89,52 +145,10 @@ static void moe_fused_try(RunState *s, const TransformerWeights *w, const Config
     if (!moe_fused_enabled()) return;
     const int dim = cfg->dim;
     TnMoEExpertJob jobs[MOE_SCORE_BUF_SIZE + 1];
-    int nj = 0, routed = 0, shared = 0;
+    int nj = 0;
 
-    if (w->expert_quant.present) {
-        int w13 = (w->expert_quant.w13_per_layer && w->expert_quant.w13_per_layer[layer])
-                      ? w->expert_quant.w13_per_layer[layer]
-                      : w->expert_quant.w13_type;
-        int w2  = (w->expert_quant.w2_per_layer && w->expert_quant.w2_per_layer[layer])
-                      ? w->expert_quant.w2_per_layer[layer]
-                      : w->expert_quant.w2_type;
-        TnMoEExpertJob probe = {(const uint8_t *)1,
-                                (const uint8_t *)1,
-                                (const uint8_t *)1,
-                                w13,
-                                w13,
-                                w2,
-                                mc->expert_hidden_dim,
-                                0.0f};
-        if (moe_experts_job_ok(&probe, dim)) {
-            for (int i = 0; i < top_k; i++) {
-                int e = selected[i];
-                if (e < 0 || e >= mc->num_experts) continue;
-                TnMoEExpertJob j = {(const uint8_t *)w->moe.w1[layer][e],
-                                    (const uint8_t *)w->moe.w3[layer][e],
-                                    (const uint8_t *)w->moe.w2[layer][e],
-                                    w13,
-                                    w13,
-                                    w2,
-                                    mc->expert_hidden_dim,
-                                    scores[i]};
-                jobs[nj++]       = j;
-            }
-            routed = 1;
-        }
-    }
-    if (mc->n_shared_experts > 0 && w->shared.w1 && w->shared.w1[layer] &&
-        w->shared.w1_type_per_layer && w->shared.w2_type_per_layer && w->shared.w3_type_per_layer) {
-        TnMoEExpertJob j = {
-            (const uint8_t *)w->shared.w1[layer], (const uint8_t *)w->shared.w3[layer],
-            (const uint8_t *)w->shared.w2[layer], w->shared.w1_type_per_layer[layer],
-            w->shared.w3_type_per_layer[layer],   w->shared.w2_type_per_layer[layer],
-            mc->shared_expert_hidden_dim,         1.0f};
-        if (moe_experts_job_ok(&j, dim)) {
-            jobs[nj++] = j;
-            shared     = 1;
-        }
-    }
+    int routed = fused_add_routed(jobs, &nj, w, mc, layer, selected, scores, top_k, dim);
+    int shared = fused_add_shared(jobs, &nj, w, mc, layer, dim);
     if (nj == 0) return;
     if (moe_experts_forward(s->xb2, s->xb, jobs, nj, dim, cfg->act_type, tp) != 0) return;
     if (routed) {

@@ -38,6 +38,7 @@
 #include "math/simd_core_ops.h"
 #include "math/simd_vec_ops.h"
 #include "runtime/spec_scratch.h" /* reads the batch scratch fields */
+#include "transformer/attn_flat_kv.h"
 #include "transformer/dense_matmul_dispatch.h"
 
 #define QWEN3MOE_PREQ_BUF_SIZE 16384
@@ -114,43 +115,18 @@ static void q3_rope(const RunState *s, const Config *cfg, const Q3Dims *d, float
  * flat per-layer buffer, [kv_head][pos][d]. */
 static void q3_store_kv(RunState *s, const Q3Dims *d, int layer, int mapped_pos, const float *k,
                         const float *v) {
-    for (int kh = 0; kh < d->n_kv_h; kh++) {
-        size_t off = ((size_t)kh * d->max_seq + (size_t)mapped_pos) * d->head_dim;
-        memcpy(&s->qwen3moe.key_cache[layer][off], &k[(size_t)kh * d->head_dim],
-               (size_t)d->head_dim * sizeof(float));
-        memcpy(&s->qwen3moe.value_cache[layer][off], &v[(size_t)kh * d->head_dim],
-               (size_t)d->head_dim * sizeof(float));
-    }
+    attn_flat_store(s->qwen3moe.key_cache[layer], s->qwen3moe.value_cache[layer], d->n_kv_h,
+                    d->max_seq, d->head_dim, mapped_pos, k, v);
 }
 
 /* Scores + softmax + weighted sum for every query head of one row at `pos`: q holds the row's
  * q_width floats, out receives its q_width attention output. */
 static void q3_attend_row(const RunState *s, const Q3Dims *d, int layer, int pos, const float *q,
                           float *out) {
-    int valid_ctx     = sw_valid_count(&s->sw, pos);
-    float inv_sqrt_hd = 1.0f / sqrtf((float)d->head_dim);
-    for (int h = 0; h < d->n_heads; h++) {
-        const float *q_h = q + (size_t)h * d->head_dim;
-        int kh           = h / d->kv_mul;
-        float *att       = s->att + (size_t)h * d->max_seq;
-
-        for (int t = 0; t < valid_ctx; t++) {
-            int hist     = (pos >= valid_ctx) ? (pos - valid_ctx + 1 + t) : t;
-            int mapped_t = sw_map_position(&s->sw, hist);
-            size_t off   = ((size_t)kh * d->max_seq + (size_t)mapped_t) * d->head_dim;
-            att[t] = tn_vec_dot(q_h, &s->qwen3moe.key_cache[layer][off], d->head_dim) * inv_sqrt_hd;
-        }
-        tn_softmax(att, valid_ctx);
-
-        float *out_h = out + (size_t)h * d->head_dim;
-        memset(out_h, 0, (size_t)d->head_dim * sizeof(float));
-        for (int t = 0; t < valid_ctx; t++) {
-            int hist     = (pos >= valid_ctx) ? (pos - valid_ctx + 1 + t) : t;
-            int mapped_t = sw_map_position(&s->sw, hist);
-            size_t off   = ((size_t)kh * d->max_seq + (size_t)mapped_t) * d->head_dim;
-            tn_vec_saxpy(out_h, att[t], &s->qwen3moe.value_cache[layer][off], d->head_dim);
-        }
-    }
+    for (int h = 0; h < d->n_heads; h++)
+        attn_flat_head(&s->sw, s->qwen3moe.key_cache[layer], s->qwen3moe.value_cache[layer],
+                       h / d->kv_mul, d->max_seq, d->head_dim, pos, q + (size_t)h * d->head_dim,
+                       s->att + (size_t)h * d->max_seq, out + (size_t)h * d->head_dim);
 }
 
 /* Steps 1-3 (single token): RMSNorm, the Q/K/V projections (3-way dispatch, same convention as

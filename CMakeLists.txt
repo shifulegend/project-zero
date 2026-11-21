@@ -255,6 +255,7 @@ set(TOKENIZER_SOURCES
 set(TRANSFORMER_SOURCES
     src/transformer/embedding.c
     src/transformer/attention.c
+    src/transformer/attn_flat_kv.c
     src/transformer/attention_proj.c
     src/transformer/ffn.c
     src/transformer/forward.c

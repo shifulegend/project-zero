@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — the flat-cache head scan and KV store are shared by Qwen3-MoE and Qwen3.5 attention
+- What: `attn_flat_head` (scores, softmax, weighted sum of one query head over a `[kv_head][pos][d]` cache) and `attn_flat_store` (`src/transformer/attn_flat_kv.c`) replace identical loops in `q3_attend_row` / `q3_store_kv` and `q35_full_attend` / `q35_full_store_kv`; Qwen3.5 applies its sigmoid gate after the shared scan.
+- Why: the previous commit's step split made those two copies visible to the duplication ratchet (6.75% -> 6.78%) and I had accepted that with a blind `--update`, which I should not have; sharing the code brings the share down to 6.74%, below what it was before the attention work.
+- Proof: Qwen3-30B-A3B (plain, wrapped window, speculative draft with Qwen3-0.6B, seeded sampling) and Ternary-Bonsai-27B (greedy, wrapped window, seeded, raw prompt, byte-identical `--dump-tensors` CSV) give output identical to the pre-change binary; `make test` gcc and clang.
+- Areas: `src/transformer/attn_flat_kv.c`, `include/transformer/attn_flat_kv.h`, `src/transformer/qwen3moe_attention.c`, `src/transformer/qwen35_attention.c`, `CMakeLists.txt`, `tools/duplication_baseline.txt`.
+
 ### 2026-11-21 — Qwen3.5/3.6 attention (full and Gated DeltaNet) split into step functions
 - What: `q35_full_attn_forward` is `q35_full_project`, `q35_full_norm_rope`, `q35_full_store_kv`, `q35_full_attend` and the output step over a `Q35Full` shape struct. `q35_linear_attn_forward` is `q35_lin_project`, `q35_lin_decay_gates`, `q35_lin_conv` (the long comment on the GGUF conv-kernel layout moved with it), `q35_lin_recurrence` (q/k L2 normalisation, then `q35_lin_recur_head` per v-head, built on `q35_lin_mat_t_vec`) and `q35_lin_output`, over `Q35Lin` / `Q35LinBuf` structs that name where each intermediate sits in the scratch. Step-timing brackets and their buckets are unchanged.
 - Why: finding 20.a; `q35_full_attn_forward` (24 / 85) and `q35_linear_attn_forward` (36 / 132) left the complexity baseline (368 -> 366).

@@ -40,6 +40,7 @@
 #include "math/matmul_q2_0.h"
 #include "math/simd_core_ops.h"
 #include "math/simd_vec_ops.h"
+#include "transformer/attn_flat_kv.h"
 
 /* Stack bound for the per-head v_pred / delta temporaries of the delta rule (state size per head).
  * The projection buffers live in RunState.q35.scratch and have no fixed cap. */
@@ -126,14 +127,8 @@ static void q35_full_norm_rope(const RunState *s, const TransformerWeights *w, c
 static void q35_full_store_kv(RunState *s, const Q35Full *d, int layer, int pos, const float *k_buf,
                               const float *v_buf) {
     int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    int mapped_pos = sw_map_position(&s->sw, pos);
-    for (int kh = 0; kh < d->n_kv_h; kh++) {
-        size_t off = ((size_t)kh * d->max_seq + (size_t)mapped_pos) * d->head_dim;
-        memcpy(&s->q35.key_cache[layer][off], &k_buf[(size_t)kh * d->head_dim],
-               (size_t)d->head_dim * sizeof(float));
-        memcpy(&s->q35.value_cache[layer][off], &v_buf[(size_t)kh * d->head_dim],
-               (size_t)d->head_dim * sizeof(float));
-    }
+    attn_flat_store(s->q35.key_cache[layer], s->q35.value_cache[layer], d->n_kv_h, d->max_seq,
+                    d->head_dim, sw_map_position(&s->sw, pos), k_buf, v_buf);
     sw_advance(&s->sw);
     if (t_step) tn_step_timing_add(TN_STEP_10_KV_CACHE_WRITE, tn_step_timing_now_ns() - t_step);
 }
@@ -143,31 +138,13 @@ static void q35_full_store_kv(RunState *s, const Q35Full *d, int layer, int pos,
  * loop would add timer calls per head for little attribution value. */
 static void q35_full_attend(const RunState *s, const Q35Full *d, int layer, int pos,
                             const float *q_full, float *attn_concat) {
-    int64_t t_step    = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    int valid_ctx     = sw_valid_count(&s->sw, pos);
-    float inv_sqrt_hd = 1.0f / sqrtf((float)d->head_dim);
+    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     for (int h = 0; h < d->n_head; h++) {
         const float *q_h    = q_full + (size_t)h * 2 * d->head_dim;
         const float *gate_h = q_h + d->head_dim;
-        int kh              = h / d->kv_mul;
-        float *att          = s->att + (size_t)h * d->max_seq;
-
-        for (int t = 0; t < valid_ctx; t++) {
-            int hist     = (pos >= valid_ctx) ? (pos - valid_ctx + 1 + t) : t;
-            int mapped_t = sw_map_position(&s->sw, hist);
-            size_t off   = ((size_t)kh * d->max_seq + (size_t)mapped_t) * d->head_dim;
-            att[t] = tn_vec_dot(q_h, &s->q35.key_cache[layer][off], d->head_dim) * inv_sqrt_hd;
-        }
-        tn_softmax(att, valid_ctx);
-
-        float *out_h = attn_concat + (size_t)h * d->head_dim;
-        memset(out_h, 0, (size_t)d->head_dim * sizeof(float));
-        for (int t = 0; t < valid_ctx; t++) {
-            int hist     = (pos >= valid_ctx) ? (pos - valid_ctx + 1 + t) : t;
-            int mapped_t = sw_map_position(&s->sw, hist);
-            size_t off   = ((size_t)kh * d->max_seq + (size_t)mapped_t) * d->head_dim;
-            tn_vec_saxpy(out_h, att[t], &s->q35.value_cache[layer][off], d->head_dim);
-        }
+        float *out_h        = attn_concat + (size_t)h * d->head_dim;
+        attn_flat_head(&s->sw, s->q35.key_cache[layer], s->q35.value_cache[layer], h / d->kv_mul,
+                       d->max_seq, d->head_dim, pos, q_h, s->att + (size_t)h * d->max_seq, out_h);
         for (int i = 0; i < d->head_dim; i++) {
             float g = 1.0f / (1.0f + expf(-gate_h[i]));
             out_h[i] *= g;

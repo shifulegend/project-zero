@@ -22,7 +22,6 @@ src/api/chat_request_parse.c::chat_request_parse 12 23 2
 src/api/chat_request_parse.c::json_too_deep 14 15 5
 src/api/chat_request_parse.c::parse_stop 14 35 2
 src/api/chat_request_parse.c::parse_watermark 16 41 5
-src/api/config_endpoint.c::api_config_save 31 100 5
 src/api/config_endpoint.c::api_host_allowed 18 23 3
 src/api/data_url.c::data_url_decode 18 44 2
 src/api/gen_queue.c::gen_queue_acquire_n 17 50 3

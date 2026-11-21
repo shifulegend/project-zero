@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — `api_config_save` is split into request parsing, applying and the response
+- What: `api_config_save` (`src/api/config_endpoint.c`) is `parse_save_request` (key lookup, `unset`, `parse_save_value` for a list or a scalar) into a `SaveRequest` that `save_request_free` releases, `apply_save` (read, change, write under the save lock) over `apply_change`, and `save_response`. Status codes, messages, the response fields and the lock scope are unchanged.
+- Why: finding 20.a; the function was complexity 31, 100 lines, nesting 5 and left the complexity baseline (356 -> 355).
+- Proof: new `tests/test_config_save_golden.c` drives 6,000 generated requests (every saveable key and some that are not, valid and out-of-range numbers, strings, lists of zero to ten items, nulls, unset, malformed JSON, `--no-config-write`, no config location, flags marked as given on the command line) against one config file and hashes every status, response body and the file after each call; the hash was recorded from the old function and passes unchanged under gcc and clang. A live server (each binary with its own config file) returns identical statuses, bodies and file contents for 14 POST bodies; `test_config_endpoint` and `make test` gcc and clang pass.
+- Areas: `src/api/config_endpoint.c`, `tests/test_config_save_golden.c`, `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — `vector_db_open` is split into file-open, header and per-record steps
 - What: `vector_db_open` (`src/rag/vector_db.c`) is `open_db_file` (the POSIX and fallback open), `read_db_header` (magic, version, `check_header_crc`, dimension, entry limit) and `read_db_record` per entry (embedding, length-prefixed text, `check_record_crc` for version 2); the function keeps the lock, the new-file branch and the valid-end offset. Log messages and result codes are unchanged.
 - Why: finding 20.a; `vector_db_open` was complexity 35 in 105 lines and left the complexity baseline (357 -> 356).

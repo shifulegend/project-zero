@@ -156,78 +156,104 @@ static char *error_body(const char *msg, int status, int *out_status) {
     return jb_finish(&jb);
 }
 
-char *api_config_save(const ApiContext *ctx, const char *json_body, int *status) {
-    if (!writable(ctx))
-        return error_body(ctx && !ctx->server_config.chat.allow_config_write
-                              ? "Saving defaults is disabled (--no-config-write)"
-                              : "No config file location (set PZ_CONFIG or HOME)",
-                          HTTP_FORBIDDEN, status);
-    char *name      = json_field_string(json_body, "key");
-    const char *key = config_key_for(name);
-    if (!key) {
+/* A parsed save request: the JSON name and its config key, and the value as text the schema
+ * validates (and parse_args re-reads): one scalar, a list of items, or nothing (an unset). */
+typedef struct {
+    char *name;
+    const char *key;
+    int unset;
+    char *items[GEN_MAX_STOP];
+    int n_items;
+    char *scalar;
+} SaveRequest;
+
+static void save_request_free(SaveRequest *r) {
+    free(r->name);
+    free(r->scalar);
+    for (int i = 0; i < r->n_items; i++) free(r->items[i]);
+}
+
+/* The value part of a save request: a list for "stop", a string or number otherwise. Returns the
+ * error body for a bad value, NULL when it parsed (or none is needed for an unset). */
+static char *parse_save_value(const char *json_body, SaveRequest *r, int *status) {
+    if (r->unset) return NULL;
+    if (strcmp(r->key, "stop") == 0) {
+        r->n_items = json_field_string_list(json_body, "value", r->items, GEN_MAX_STOP);
+        if (r->n_items < 0) {
+            r->n_items = 0;
+            return error_body("\"value\" must be an array of at most 8 strings", HTTP_BAD_REQUEST,
+                              status);
+        }
+        return NULL;
+    }
+    r->scalar = json_field_string(json_body, "value");
+    if (!r->scalar) r->scalar = json_field_number_text(json_body, "value");
+    if (!r->scalar)
+        return error_body("\"value\" (number or string) or \"unset\": true is required",
+                          HTTP_BAD_REQUEST, status);
+    return NULL;
+}
+
+/* Parses the body. Returns the error body (nothing left allocated) or NULL when *r is filled. */
+static char *parse_save_request(const char *json_body, SaveRequest *r, int *status) {
+    memset(r, 0, sizeof(*r));
+    r->name = json_field_string(json_body, "key");
+    r->key  = config_key_for(r->name);
+    if (!r->key) {
         char m[160];
-        snprintf(m, sizeof(m), "\"key\" must name a saveable default, got %s%s%s", name ? "\"" : "",
-                 name ? name : "nothing", name ? "\"" : "");
-        free(name);
+        snprintf(m, sizeof(m), "\"key\" must name a saveable default, got %s%s%s",
+                 r->name ? "\"" : "", r->name ? r->name : "nothing", r->name ? "\"" : "");
+        save_request_free(r);
         return error_body(m, HTTP_BAD_REQUEST, status);
     }
-    int unset = 0;
-    json_field_bool(json_body, "unset", &unset);
+    json_field_bool(json_body, "unset", &r->unset);
+    char *err = parse_save_value(json_body, r, status);
+    if (err) save_request_free(r);
+    return err;
+}
 
-    /* The value, as text the schema validates (and parse_args re-reads). */
-    char *items[GEN_MAX_STOP];
-    int n_items  = 0;
-    char *scalar = NULL;
-    if (!unset) {
-        if (strcmp(key, "stop") == 0) {
-            n_items = json_field_string_list(json_body, "value", items, GEN_MAX_STOP);
-            if (n_items < 0) {
-                free(name);
-                return error_body("\"value\" must be an array of at most 8 strings",
-                                  HTTP_BAD_REQUEST, status);
-            }
-        } else {
-            scalar = json_field_string(json_body, "value");
-            if (!scalar) scalar = json_field_number_text(json_body, "value");
-            if (!scalar) {
-                free(name);
-                return error_body("\"value\" (number or string) or \"unset\": true is required",
-                                  HTTP_BAD_REQUEST, status);
-            }
-        }
+/* Applies the requested change to the loaded config. Returns 0, or HTTP_BAD_REQUEST with the
+ * schema's message in err. */
+static int apply_change(PzConfig *c, const SaveRequest *r, int is_unset, char *err, size_t errn) {
+    if (is_unset) {
+        pz_config_unset(c, r->key);
+        return 0;
     }
+    if (r->scalar)
+        return pz_config_set(c, r->key, r->scalar, err, errn) != 0 ? HTTP_BAD_REQUEST : 0;
+    pz_config_unset(c, r->key);
+    for (int i = 0; i < r->n_items; i++)
+        if (pz_config_add(c, r->key, r->items[i], err, errn) != 0) return HTTP_BAD_REQUEST;
+    return 0;
+}
 
-    char err[256]    = "";
+/* Loads the config file, applies the change and writes it back, under the save lock. Returns 0, or
+ * the HTTP status of the failure with its text in err. */
+static int apply_save(const ApiContext *ctx, const SaveRequest *r, int is_unset, char *err,
+                      size_t errn) {
     int rc           = 0;
     const char *path = ctx->server_config.provenance.path;
     PzConfig c;
     pthread_mutex_lock((pthread_mutex_t *)&ctx->config_save_lock); /* a lock, not state */
     if (pz_config_init(&c) != 0 || pz_config_load(&c, path, NULL) < 0) {
-        snprintf(err, sizeof(err), "cannot read %s", path);
+        snprintf(err, errn, "cannot read %s", path);
         rc = HTTP_INTERNAL_ERROR;
-    } else if (unset || (n_items == 0 && !scalar)) {
-        pz_config_unset(&c, key);
-    } else if (scalar) {
-        if (pz_config_set(&c, key, scalar, err, sizeof(err)) != 0) rc = HTTP_BAD_REQUEST;
     } else {
-        pz_config_unset(&c, key);
-        for (int i = 0; i < n_items && !rc; i++)
-            if (pz_config_add(&c, key, items[i], err, sizeof(err)) != 0) rc = HTTP_BAD_REQUEST;
+        rc = apply_change(&c, r, is_unset, err, errn);
     }
     if (!rc && pz_config_save(&c, path) != 0) {
-        snprintf(err, sizeof(err), "cannot write %s", path);
+        snprintf(err, errn, "cannot write %s", path);
         rc = HTTP_INTERNAL_ERROR;
     }
     pthread_mutex_unlock((pthread_mutex_t *)&ctx->config_save_lock);
     pz_config_free(&c);
-    free(scalar);
-    for (int i = 0; i < n_items; i++) free(items[i]);
-    if (rc) {
-        free(name);
-        return error_body(err, rc, status);
-    }
+    return rc;
+}
 
-    const char *src = pz_provenance_source(&ctx->server_config.provenance, key);
+/* The success body: what was saved, where, and whether a flag or environment variable overrides
+ * it until restart. */
+static char *save_response(const ApiContext *ctx, const SaveRequest *r, int is_unset) {
+    const char *src = pz_provenance_source(&ctx->server_config.provenance, r->key);
     int overridden  = strcmp(src, "cli") == 0 || strcmp(src, "env") == 0;
     JsonBuf jb;
     jb_init(&jb);
@@ -236,16 +262,16 @@ char *api_config_save(const ApiContext *ctx, const char *json_body, int *status)
     jb_bool(&jb, 1);
     jb_raw(&jb, ",");
     jb_key(&jb, "key");
-    jb_str(&jb, name);
+    jb_str(&jb, r->name);
     jb_raw(&jb, ",");
     jb_key(&jb, "config_key");
-    jb_str(&jb, key);
+    jb_str(&jb, r->key);
     jb_raw(&jb, ",");
     jb_key(&jb, "unset");
-    jb_bool(&jb, unset || (n_items == 0 && !scalar));
+    jb_bool(&jb, is_unset);
     jb_raw(&jb, ",");
     jb_key(&jb, "path");
-    jb_str(&jb, path);
+    jb_str(&jb, ctx->server_config.provenance.path);
     jb_raw(&jb, ",");
     jb_key(&jb, "applies");
     jb_str(&jb, "restart");
@@ -256,7 +282,29 @@ char *api_config_save(const ApiContext *ctx, const char *json_body, int *status)
     jb_key(&jb, "file_used");
     jb_bool(&jb, ctx->server_config.provenance.file_used);
     jb_raw(&jb, "}");
-    free(name);
-    *status = HTTP_OK;
     return jb_finish(&jb);
+}
+
+char *api_config_save(const ApiContext *ctx, const char *json_body, int *status) {
+    if (!writable(ctx))
+        return error_body(ctx && !ctx->server_config.chat.allow_config_write
+                              ? "Saving defaults is disabled (--no-config-write)"
+                              : "No config file location (set PZ_CONFIG or HOME)",
+                          HTTP_FORBIDDEN, status);
+    SaveRequest r;
+    char *bad = parse_save_request(json_body, &r, status);
+    if (bad) return bad;
+
+    int is_unset  = r.unset || (r.n_items == 0 && !r.scalar);
+    char err[256] = "";
+    int rc        = apply_save(ctx, &r, is_unset, err, sizeof(err));
+    char *answer;
+    if (rc) {
+        answer = error_body(err, rc, status);
+    } else {
+        answer  = save_response(ctx, &r, is_unset);
+        *status = HTTP_OK;
+    }
+    save_request_free(&r);
+    return answer;
 }

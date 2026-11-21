@@ -1,10 +1,10 @@
 /*
- * tests/test_vector_db_open_golden.c — vector_db_open over generated database files: valid version-2
- * files (made with the library itself) and version-1 files (built by hand, no checksums) with zero
- * to six entries, each read intact, with the wrong embedding dimension, cut at random bytes and with
- * one to three random byte flips (header fields, checksums, lengths and payloads). A hash of the
- * result code and of everything loaded (format, valid end offset, every embedding and text),
- * recorded from the function before it was split into steps.
+ * tests/test_vector_db_open_golden.c — vector_db_open over generated database files: valid
+ * version-2 files (made with the library itself) and version-1 files (built by hand, no
+ * checksums) with zero to six entries, each read intact, with the wrong embedding dimension, cut
+ * at random bytes and with one to three random byte flips (header fields, checksums, lengths and
+ * payloads). A hash of the result code and of everything loaded (format, valid end offset, every
+ * embedding and text), recorded from the function before it was split into steps.
  */
 #include <stdint.h>
 #include <stdio.h>

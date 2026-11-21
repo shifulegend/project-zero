@@ -11,19 +11,23 @@ run it by hand to redraw an existing folder:
 """
 
 import json
+import os
 import pathlib
 import subprocess
 import sys
+from typing import Any
 
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent))
-import benchlib as bl  # noqa: E402
-import gate  # noqa: E402
-import plot_sweep_svg as ps  # noqa: E402
+import contextlib
+
+import benchlib as bl
+import gate
+import plot_sweep_svg as ps
 
 
-def variant_name(v):
+def variant_name(v: str) -> str:
     """Display name: pz variants as 'Project Zero <CLASSIFIER>', engines by their registry label, lossy-by-design
     variants (gate.json `approximate`) marked so a chart never presents them as the exact computation."""
     engines = bl.load_engines()
@@ -38,8 +42,13 @@ def variant_name(v):
 
 
 def make_chart(
-    run_dir, title="Decode tok/s vs threads", subtitle=None, rounds=None, hide_invalid=None
-):
+    run_dir: str | pathlib.Path,
+    title: str = "Decode tok/s vs threads",
+    subtitle: str | None = None,
+    rounds: int | None = None,
+    hide_invalid: bool | None = None,
+) -> list[pathlib.Path]:
+    """Draws the decode tok/s versus threads chart for a run folder and returns the written paths (the SVG, plus a PNG when a browser is available), or [] when there is nothing to draw; INVALID series are hidden when the gate mode says so."""
     run_dir = pathlib.Path(run_dir)
     if (
         hide_invalid is None
@@ -67,7 +76,8 @@ def make_chart(
     if not rows:
         return []
     models = bl.load_models()
-    best, order = {}, {}
+    best: dict[str, dict[int, float]] = {}
+    order: dict[str, list[str]] = {}
     for r in rows:
         suite = f"{r['model']}__{r['variant']}"
         t = best.setdefault(suite, {})
@@ -78,7 +88,7 @@ def make_chart(
     # A model can be drawn inside another model's panel (chart_panel), e.g. the IQ2_BN file made for
     # ik_llama.cpp sits in the BitNet panel as published.
     host = {m: models.get(m, {}).get("chart_panel", m) for m in order}
-    grouped = {}
+    grouped: dict[str, list[tuple[str, str]]] = {}
     for m, vs in order.items():
         grouped.setdefault(host[m], []).extend((f"{m}__{v}", variant_name(v)) for v in vs)
     panels = [
@@ -92,11 +102,9 @@ def make_chart(
         for h, series in grouped.items()
     ]
     if subtitle is None:
-        meta = {}
-        try:
+        meta: dict[str, Any] = {}
+        with contextlib.suppress(OSError, ValueError):
             meta = json.loads((run_dir / "meta.json").read_text())
-        except (OSError, ValueError):
-            pass
         stamp = run_dir.name.split("_")[1] if "_" in run_dir.name else ""
         when = (
             f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:8]} {stamp[9:11]}:{stamp[11:13]} UTC"
@@ -104,7 +112,7 @@ def make_chart(
             else stamp
         )
         subtitle = (
-            f"{bl.cpu_model()}, {bl.os.cpu_count()} vCPU | {when}, "
+            f"{bl.cpu_model()}, {os.cpu_count()} vCPU | {when}, "
             f"best of {rounds or meta.get('rounds', 'N')}, pz {bl.git_info()['commit']}"
         )
     if dropped:

@@ -4,13 +4,15 @@
  */
 
 #include "api/static_assets.h"
-#include "api/net_io.h"
-#include "api/webui_bundle.h"
-#include "api/http_status.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#include "api/http_status.h"
+#include "api/net_io.h"
+#include "api/webui_bundle.h"
 
 static const char *mime_for_path(const char *path) {
     if (strcmp(path, "/") == 0) return "text/html";
@@ -152,8 +154,8 @@ static int serve_from_bundle(int fd, const char *path, const char *extra_headers
 
 int static_assets_serve(int fd, const char *path, const ServerConfig *cfg,
                         const char *extra_headers) {
-    if (cfg && cfg->static_dir) {
-        return serve_from_disk(fd, cfg->static_dir, path, extra_headers);
+    if (cfg && cfg->ui.static_dir) {
+        return serve_from_disk(fd, cfg->ui.static_dir, path, extra_headers);
     }
     return serve_from_bundle(fd, path, extra_headers);
 }

@@ -1,15 +1,18 @@
 #include "transformer/ffn.h"
-#include "transformer/moe_ffn.h"
-#include "math/parallel_matmul.h"
-#include "math/simd_dispatch.h"
-#include "math/batched_matmul.h"
-#include "math/lora_matmul.h"
+
+#include <string.h>
+
 #include "core/debug.h"
 #include "core/step_timing.h"
 #include "core/weights.h"
+#include "math/batched_matmul.h"
+#include "math/lora_matmul.h"
+#include "math/parallel_matmul.h"
+#include "math/simd_core_ops.h"
+#include "math/simd_vec_ops.h"
+#include "runtime/spec_scratch.h" /* reads the batch scratch fields */
 #include "transformer/dense_matmul_dispatch.h"
-#include "speculative/spec_scratch.h" /* reads the batch scratch fields */
-#include <string.h>
+#include "transformer/moe_ffn.h"
 
 /* Maximum input dimension supported for layer-level preq stack buffer. */
 #define FFN_PREQ_BUF_SIZE 16384
@@ -29,7 +32,7 @@ void ffn_forward(RunState *s, const TransformerWeights *w, const Config *cfg, co
 
     /* Step 1: RMSNorm — normalize s->x into s->xb */
     int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    tn_rmsnorm(s->xb, s->x, w->rms_ffn_weight[layer], dim, cfg->rms_norm_eps);
+    tn_rmsnorm(s->xb, s->x, w->ffn.norm[layer], dim, cfg->rms_norm_eps);
     if (t_step) {
         tn_step_timing_add(TN_STEP_13_PRE_FFN_RMSNORM, tn_step_timing_now_ns() - t_step);
     }
@@ -44,11 +47,11 @@ void ffn_forward(RunState *s, const TransformerWeights *w, const Config *cfg, co
         int8_t preq_buf[FFN_PREQ_BUF_SIZE];
         TnPreqActivation preq;
         tn_preq_prepare(&preq, preq_buf, s->xb, dim);
-        parallel_ternary_matmul_packed_preq(s->hb, s->xb, (const tn_u8 *)w->w1[layer], dim,
-                                            hidden_dim, w->s1[layer], &preq, tp);
-        parallel_ternary_matmul_packed_preq(s->hb2, s->xb, (const tn_u8 *)w->w3[layer], dim,
-                                            hidden_dim, w->s3[layer], &preq, tp);
-    } else if (tn_is_q4k_family(w->w1_type[layer]) && tn_is_q4k_family(w->w3_type[layer])) {
+        parallel_ternary_matmul_packed_preq(s->hb, s->xb, (const tn_u8 *)w->ffn.w1[layer], dim,
+                                            hidden_dim, w->ffn.s1[layer], &preq, tp);
+        parallel_ternary_matmul_packed_preq(s->hb2, s->xb, (const tn_u8 *)w->ffn.w3[layer], dim,
+                                            hidden_dim, w->ffn.s3[layer], &preq, tp);
+    } else if (tn_is_q4k_family(w->ffn.w1_type[layer]) && tn_is_q4k_family(w->ffn.w3_type[layer])) {
         /* Gate and up both read s->xb — quantize to Q8K once and reuse.
          * Bug fixed 2026-07-31: this branch previously called
          * tn_dense_matmul_dispatch() twice, each independently re-quantizing
@@ -61,15 +64,15 @@ void ffn_forward(RunState *s, const TransformerWeights *w, const Config *cfg, co
         TnQ8KActBlock acts[FFN_PREQ_BUF_SIZE / TN_Q8K_BLOCK];
         int n_blocks = dim / TN_Q8K_BLOCK;
         tn_quantize_q8k(acts, s->xb, n_blocks);
-        tn_dense_matmul_dispatch_preq(s->hb, acts, w->w1[layer], w->w1_type[layer], dim, hidden_dim,
-                                      tp);
-        tn_dense_matmul_dispatch_preq(s->hb2, acts, w->w3[layer], w->w3_type[layer], dim,
+        tn_dense_matmul_dispatch_preq(s->hb, acts, w->ffn.w1[layer], w->ffn.w1_type[layer], dim,
+                                      hidden_dim, tp);
+        tn_dense_matmul_dispatch_preq(s->hb2, acts, w->ffn.w3[layer], w->ffn.w3_type[layer], dim,
                                       hidden_dim, tp);
     } else {
-        tn_dense_matmul_dispatch(s->hb, s->xb, w->w1[layer], w->w1_type[layer], dim, hidden_dim,
-                                 tp);
-        tn_dense_matmul_dispatch(s->hb2, s->xb, w->w3[layer], w->w3_type[layer], dim, hidden_dim,
-                                 tp);
+        tn_dense_matmul_dispatch(s->hb, s->xb, w->ffn.w1[layer], w->ffn.w1_type[layer], dim,
+                                 hidden_dim, tp);
+        tn_dense_matmul_dispatch(s->hb2, s->xb, w->ffn.w3[layer], w->ffn.w3_type[layer], dim,
+                                 hidden_dim, tp);
     }
     /* Phase 19: LoRA correction on gate/up (see attention.c's Q/K/V comment
      * for the general convention). */
@@ -95,17 +98,17 @@ void ffn_forward(RunState *s, const TransformerWeights *w, const Config *cfg, co
     DBG_DUMP(layer, "dense_swiglu", s->hb, hidden_dim);
 
     /* Step 5: Apply ffn_sub_norm (BitNet) if present */
-    if (w->rms_ffn_sub_norm && w->rms_ffn_sub_norm[layer]) {
-        tn_rmsnorm(s->hb, s->hb, w->rms_ffn_sub_norm[layer], hidden_dim, cfg->rms_norm_eps);
+    if (w->ffn.sub_norm && w->ffn.sub_norm[layer]) {
+        tn_rmsnorm(s->hb, s->hb, w->ffn.sub_norm[layer], hidden_dim, cfg->rms_norm_eps);
     }
 
     /* Step 6: Down projection with Dynamic Dispatch */
     if (w->layers_are_ternary) {
-        parallel_ternary_matmul_packed(s->xb, s->hb, (const tn_u8 *)w->w2[layer], hidden_dim, dim,
-                                       w->s2[layer], tp);
+        parallel_ternary_matmul_packed(s->xb, s->hb, (const tn_u8 *)w->ffn.w2[layer], hidden_dim,
+                                       dim, w->ffn.s2[layer], tp);
     } else {
-        tn_dense_matmul_dispatch(s->xb, s->hb, w->w2[layer], w->w2_type[layer], hidden_dim, dim,
-                                 tp);
+        tn_dense_matmul_dispatch(s->xb, s->hb, w->ffn.w2[layer], w->ffn.w2_type[layer], hidden_dim,
+                                 dim, tp);
     }
     /* Phase 19: LoRA correction on the down projection. */
     if (s->active_lora) {
@@ -145,7 +148,7 @@ TernaryError ffn_forward_batch(RunState *s, SpecBatchScratch *sb, const Transfor
 
     /* Dense SwiGLU FFN — fully batched. */
     for (int k = 0; k < n_tokens; k++) {
-        tn_rmsnorm(sb->xb + (size_t)k * dim, sb->x + (size_t)k * dim, w->rms_ffn_weight[layer], dim,
+        tn_rmsnorm(sb->xb + (size_t)k * dim, sb->x + (size_t)k * dim, w->ffn.norm[layer], dim,
                    cfg->rms_norm_eps);
     }
     if (t_step) {
@@ -154,15 +157,15 @@ TernaryError ffn_forward_batch(RunState *s, SpecBatchScratch *sb, const Transfor
 
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     if (w->layers_are_ternary) {
-        tn_ternary_matmul_packed_batch(sb->hb, sb->xb, (const tn_u8 *)w->w1[layer], dim, hidden_dim,
-                                       w->s1[layer], n_tokens, tp);
-        tn_ternary_matmul_packed_batch(sb->hb2, sb->xb, (const tn_u8 *)w->w3[layer], dim,
-                                       hidden_dim, w->s3[layer], n_tokens, tp);
+        tn_ternary_matmul_packed_batch(sb->hb, sb->xb, (const tn_u8 *)w->ffn.w1[layer], dim,
+                                       hidden_dim, w->ffn.s1[layer], n_tokens, tp);
+        tn_ternary_matmul_packed_batch(sb->hb2, sb->xb, (const tn_u8 *)w->ffn.w3[layer], dim,
+                                       hidden_dim, w->ffn.s3[layer], n_tokens, tp);
     } else {
-        tn_dense_matmul_dispatch_batch(sb->hb, sb->xb, w->w1[layer], w->w1_type[layer], dim,
+        tn_dense_matmul_dispatch_batch(sb->hb, sb->xb, w->ffn.w1[layer], w->ffn.w1_type[layer], dim,
                                        hidden_dim, n_tokens, tp);
-        tn_dense_matmul_dispatch_batch(sb->hb2, sb->xb, w->w3[layer], w->w3_type[layer], dim,
-                                       hidden_dim, n_tokens, tp);
+        tn_dense_matmul_dispatch_batch(sb->hb2, sb->xb, w->ffn.w3[layer], w->ffn.w3_type[layer],
+                                       dim, hidden_dim, n_tokens, tp);
     }
     if (s->active_lora) { /* Phase 19: gate/up deltas, as the single-token path */
         lora_apply_batch(sb->hb, sb->xb, lora_mod(s->active_lora->gate, layer), dim, hidden_dim,
@@ -181,19 +184,19 @@ TernaryError ffn_forward_batch(RunState *s, SpecBatchScratch *sb, const Transfor
     }
     tn_vec_mul(sb->hb, sb->hb, sb->hb2, n_tokens * hidden_dim);
 
-    if (w->rms_ffn_sub_norm && w->rms_ffn_sub_norm[layer]) {
+    if (w->ffn.sub_norm && w->ffn.sub_norm[layer]) {
         for (int k = 0; k < n_tokens; k++) {
             float *hb_k = sb->hb + (size_t)k * hidden_dim;
-            tn_rmsnorm(hb_k, hb_k, w->rms_ffn_sub_norm[layer], hidden_dim, cfg->rms_norm_eps);
+            tn_rmsnorm(hb_k, hb_k, w->ffn.sub_norm[layer], hidden_dim, cfg->rms_norm_eps);
         }
     }
 
     if (w->layers_are_ternary) {
-        tn_ternary_matmul_packed_batch(sb->xb, sb->hb, (const tn_u8 *)w->w2[layer], hidden_dim, dim,
-                                       w->s2[layer], n_tokens, tp);
+        tn_ternary_matmul_packed_batch(sb->xb, sb->hb, (const tn_u8 *)w->ffn.w2[layer], hidden_dim,
+                                       dim, w->ffn.s2[layer], n_tokens, tp);
     } else {
-        tn_dense_matmul_dispatch_batch(sb->xb, sb->hb, w->w2[layer], w->w2_type[layer], hidden_dim,
-                                       dim, n_tokens, tp);
+        tn_dense_matmul_dispatch_batch(sb->xb, sb->hb, w->ffn.w2[layer], w->ffn.w2_type[layer],
+                                       hidden_dim, dim, n_tokens, tp);
     }
     if (s->active_lora)
         lora_apply_batch(sb->xb, sb->hb, lora_mod(s->active_lora->down, layer), hidden_dim, dim,

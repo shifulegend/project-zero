@@ -24,7 +24,7 @@ with **benchmark-driven** threads (the empty Discussions tab is a missed signal)
 > Create them manually — copy-paste-ready bodies below.
 
 ### Discussion 1 — "Project Zero vs llama.cpp — post your CPU results" (category: Show and tell / Polls)
-```
+```text
 Project Zero is a pure-C CPU LLM engine. On an Intel Xeon (2.10 GHz, AVX-512 VNNI)
 the same binary hits 40.4 tok/s on BitNet b1.58-2B-4T and 142 tok/s on SmolLM2-135M.
 
@@ -36,7 +36,7 @@ and the auto-detected SIMD backend. I'll keep a leaderboard table in this thread
 ```
 
 ### Discussion 2 — "Can we beat ARM Mac performance?" (category: Ideas)
-```
+```text
 project-zero auto-dispatches to NEON/dotprod on Apple Silicon but has only been
 tuned on x86 (AVX2..VNNI). Looking for M1/M2/M3/M4 numbers + perf-counter traces.
 Where's the bottleneck on ARM — memory bandwidth, the ternary unpack, or thread
@@ -44,7 +44,7 @@ scheduling? Post `make demo` output + `sysctl -n machdep.cpu.brand_string`.
 ```
 
 ### Discussion 3 — "Worst-case / performance-regression thread" (category: General)
-```
+```text
 Honesty thread. Where does project-zero LOSE today?
 Known: DeepSeek-V2 MoE is ~7× behind llama.cpp (expert-scatter penalty), and dense
 models lose at T=1–2 (BLAS edge). Post the configs where it underperforms on your
@@ -61,7 +61,7 @@ The audience already lives in the `llama.cpp` / `bitnet.cpp` ecosystems. **Contr
 a benchmark, don't advertise.** Draft (post to a relevant llama.cpp discussion, not a
 drive-by issue):
 
-```
+```text
 Title: Benchmarked a from-scratch pure-C CPU engine vs llama.cpp on the same box
 
 I tested project-zero (single C binary, no BLAS) against llama.cpp on an Intel

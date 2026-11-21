@@ -25,28 +25,44 @@ Q8_0, F32), and DeepSeek-V2-style MoE/MLA models. The primary binary is `pz`.
 ### 📁 `src/cli/` — Command-Line Interface
 | File | Description |
 |------|-------------|
-| `src/cli/main.c` | Entry point: parses CLI, loads model, dispatches to generate/REPL/server/agent |
+| `src/cli/main.c` | Entry point (79 lines): creates a `PzSession` and runs the phases below in order |
+| `include/cli/session.h` | `PzSession` (args, model, tokenizer, optional parts) and the phase functions |
+| `src/cli/session_startup.c` | `--version` / `--check-update`, tensor dump file, banner + format probe, hardware tuning (SIMD, calibration, classifier, threads) |
+| `src/cli/session_model.c` | GGUF / native model loading and `session_release()` (frees whatever stage was reached) |
+| `src/cli/session_tokenizer.c` | RoPE layout override, tokenizer, chat-template selection |
+| `src/cli/session_extras.c` | `--draft-model`, `--prm`, `--lora`, `--memory-db`, `--image`, attention kernel settings |
+| `src/cli/session_dist.c` | `--plan-layers`, `--rpc-worker`, `--remote-layers` |
+| `src/cli/session_checks.c` | Background update check, LM-head and int8 accuracy probes |
+| `src/cli/session_run.c` | Execution modes: self-check, perplexity, watermark detect, one-shot prompt, REPL |
+| `src/cli/session_server.c` | `--server`: settings from flags, start, wait for SIGINT/SIGTERM |
 | `src/cli/args.c` | Argument parser for `--model`, `--prompt`, `--threads`, `--simd`, `--classifier`, etc. |
+| `src/cli/args_usage.c` | The `--help` text |
+| `src/cli/args_flags_*.c` | The flag groups `parse_args()` tries in turn (generation, memory, serving, search, behavior, extras); `tests/test_args_golden.c` pins every flag's result |
 | `src/cli/repl.c` | Interactive multi-turn REPL loop |
 | `src/core/timer.c` | Wall-clock microsecond timer (`timer_now_us`, `timer_tokens_per_sec`) |
 
 ### 📁 `src/core/` — Model Loading & Config
 | File | Description |
 |------|-------------|
-| `src/core/gguf_loader.c` | GGUF→`TransformerWeights` mapping; `config_from_gguf`, `weights_from_gguf` |
+| `src/runtime/gguf_loader.c` | `weights_from_gguf`: picks the loader by architecture; the dense (llama / qwen2 / qwen3 / BitNet) path as small functions (embedding, layer, output, flags) |
+| `src/runtime/gguf_load_proj.c` | Dense projection loader: zero-copy F16 / F32 / Q4_K / Q6_K, I2_S and Q4_K x8 repack, else dequantise |
+| `src/runtime/gguf_load_util.c` + `include/runtime/gguf_load_util.h` | Loader-internal helpers: buffer store, tensor to float, typed projection, dense BF16 head |
+| `src/runtime/gguf_load_{deepseek2,qwen35,qwen3moe,mamba}.c` | Per-architecture weight loaders |
+| `src/runtime/gguf_config.c` | `Config` and `MoEConfig` read from GGUF metadata |
 | `src/core/gguf_reader.c` | Raw GGUF binary parser: reads header, metadata KV pairs, tensor index |
 | `src/core/gguf_quant.c` | GGUF dequantization: Q4_K, Q4_0, Q5_0, Q5_1, Q5_K, Q6_K, Q8_0 → F32 |
 | `src/core/config.c` | `config_read` (native .bin), `config_print` |
-| `src/core/weights.c` | `weights_alloc_pointers`, `weights_map` (native ternary), `weights_build_classifier_quant` |
+| `src/runtime/weights.c` | `weights_alloc_pointers`, `weights_map` (native ternary), `weights_build_classifier_quant` |
 | `src/core/moe_config.c` | `moe_config_read`, `moe_config_init_dense`, `moe_config_print` |
 | `src/core/moe_weights.c` | `moe_weights_alloc`, `moe_weights_map`, `moe_weights_free` for expert pointer arrays |
-| `src/core/run_state.c` | `run_state_alloc`/`run_state_free` — allocates all scratch/KV cache buffers |
-| `src/core/mla_run_state.c` | `mla_run_state_alloc`/`mla_run_state_free` — per-layer k_rope_cache for MLA |
-| `src/core/calibration.c` | Hardware benchmarking and optimal thread/SIMD selection; result cached at `~/.project-zero/calibration.bin` |
-| `src/core/hardware_profile.c` | CPU feature detection, RAM probing, classifier format selection |
+| `src/runtime/run_state.c` | `run_state_alloc`/`run_state_free` — allocates all scratch/KV cache buffers |
+| `src/runtime/mla_run_state.c` | `mla_run_state_alloc`/`mla_run_state_free` — per-layer k_rope_cache for MLA |
+| `src/runtime/calibration.c` | Hardware benchmarking and optimal thread/SIMD selection; result cached at `~/.project-zero/calibration.bin` |
+| `src/runtime/hardware_profile.c` | CPU feature detection, RAM probing, classifier format selection |
 | `src/core/unpack.c` | Scalar ternary unpack (2-bit packed → int8) |
 | `src/core/unpack_avx2.c` | AVX2 ternary unpack |
 | `src/core/debug.c` | `DBG_DUMP` macro support, `g_tn_verbose`, `g_dump_fp` |
+| `src/core/log.c` | Structured logger: `TN_LOG_*` / `TN_OUT_INF`, text or JSON lines, redaction, escaping |
 | `src/core/error.c` | TernaryError codes and string table |
 | `src/core/step_timing.c` | Optional per-step latency profiler (TN_STEP_TIMING=1) |
 
@@ -90,7 +106,9 @@ Q8_0, F32), and DeepSeek-V2-style MoE/MLA models. The primary binary is `pz`.
 | `src/transformer/attention.c` | 🔥 `attention_forward` — GQA+RoPE+KV cache (routes to MLA when `mc->has_mla`) |
 | `src/transformer/mla_attention.c` | 🔥 `mla_attention_forward` — DeepSeek MLA: KV compress → expand → Q → RoPE → attend |
 | `src/transformer/ffn.c` | `ffn_forward` — SwiGLU/ReGLU dense FFN (routes to MoE when `moe_layer_is_moe`) |
-| `src/transformer/moe_ffn.c` | `moe_ffn_forward` — router → top-k experts → accumulate; expert hit tracking |
+| `src/transformer/moe_ffn.c` | `moe_ffn_forward` — norm + route, fused try, dispatch to the paths below, shared expert, residual |
+| `src/transformer/moe_ffn_legacy.c` | Expert paths without the fused kernel: batched Q4_K, sequential (Q2_K / dequantise / ternary), shared expert |
+| `src/transformer/moe_ffn_track.c` | Expert hit tracking (`moe_expert_tracking_*`, `moe_track_hit`) |
 | `src/transformer/moe_router.c` | `moe_router_forward` — gate matmul → softmax → top-k selection |
 | `src/transformer/embedding.c` | `embed_token` — BF16/F32 token embedding table lookup |
 
@@ -114,12 +132,19 @@ Q8_0, F32), and DeepSeek-V2-style MoE/MLA models. The primary binary is `pz`.
 | `src/tokenizer/tokenizer_encode.c` | BPE encoding: `tokenizer_encode` |
 | `src/tokenizer/tokenizer_decode.c` | `tokenizer_decode` — token ID → UTF-8 piece |
 | `src/tokenizer/tokenizer_gguf.c` | `tokenizer_from_gguf` — extract BPE vocab from GGUF |
-| `src/tokenizer/chat_template.cpp` | Jinja2 chat template renderer (`chat_template_apply`) |
+| `src/tokenizer/chat_template*.cpp` | Jinja2 chat-template engine: `chat_template.cpp` (C API), `_lex`, `_parse`, `_parse_expr`, `_eval`, `_exec`; shared types in `chat_template_internal.hpp` |
 
 ### 📁 `src/api/` — OpenAI-Compatible API Server
 | File | Description |
 |------|-------------|
 | `src/api/http_server.c` | Embedded HTTP server: listens on port, dispatches to handlers |
+| `src/api/http_response.c` | Response writers (plain, SSE headers, JSON error) |
+| `src/api/http_chat.c` | `POST /v1/chat/completions`: queue wait, prompt build, generation dispatch, reply (one helper per step) |
+| `src/api/chat_stream.c` | Per-request output state: SSE streaming / accumulation callback, best-of and tree-search result JSON |
+| `src/api/api_info.c` | `GET /v1/models` and `/v1/prompt_cache` bodies, model metadata, the max-tokens cap |
+| `src/api/api_config_json.c` | `GET /v1/config` document, one function per section (ui, model, defaults, limits, runtime, features, chat template) |
+| `src/api/http_routes.c` | Small route handlers: models, config, prompt cache, self-check, watermark, health, metrics, docs, OpenAPI, cancel |
+| `src/api/http_request.c` | Reading one request off a socket with strict framing; the HTTP/1.1 request parser |
 | `src/api/chat_compile.c` | Compile `messages[]` array → single prompt string |
 | `src/api/json_parse.c` | Minimal JSON parser for OpenAI-format requests |
 | `src/api/sse_stream.c` | Server-Sent Events (SSE) streaming for token-by-token output |
@@ -222,7 +247,7 @@ Key fields:
 - `layer_weight_type` — `WEIGHT_TYPE_F32/F16/Q4K` for GGUF models
 - `has_expert_quant`, `has_mla_quant` — GGUF quantised expert/MLA flags
 
-### `RunState` (`include/core/run_state.h`)
+### `RunState` (`include/runtime/run_state.h`)
 - `x/xb/xb2` — activation scratch buffers (dim floats)
 - `hb/hb2` — FFN hidden state buffers (hidden_dim floats)
 - `q` — query vector (dim floats)
@@ -348,7 +373,7 @@ Override: `TN_FORCE_BACKEND=scalar|avx2|avx512f|vnni|vnni256`
 **Runtime dependencies:** POSIX only (`pthread`, `mmap`, `clock_gettime`)
 **No external libraries** for core inference
 **Optional:** `stb_image.h`, `stb_image_resize2.h` (header-only, for multimodal)
-**Chat templates:** single C++ file (`src/tokenizer/chat_template.cpp`) using Jinja2-lite
+| `src/tokenizer/chat_template*.cpp` | Jinja2 chat-template engine: `chat_template.cpp` (C API), `_lex`, `_parse`, `_parse_expr`, `_eval`, `_exec`; shared types in `chat_template_internal.hpp` |
 
 ---
 

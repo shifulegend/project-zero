@@ -5,19 +5,20 @@
 #endif
 
 #include "agent/cmd_exec.h"
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <sys/resource.h>
-#include <signal.h>
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
+
 #include <errno.h>
 #include <fcntl.h>
-#include <time.h>
-#include <sys/select.h>
 #include <limits.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/resource.h>
+#include <sys/select.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <time.h>
+#include <unistd.h>
 
 /* Very small allow-list to prevent destructive commands. Extend as needed. */
 static const char *allowlist[] = {"echo", "ls", "cat", "pwd", "uname", "date", "id", NULL};
@@ -129,13 +130,13 @@ int exec_policy_allows_args(char *const argv[]) {
 extern char **environ;
 
 size_t exec_build_child_env(char *out[], size_t cap) {
-    static char path_entry[] = "PATH=/usr/bin:/bin";
-    size_t n                 = 0;
+    static const char path_entry[] = "PATH=/usr/bin:/bin";
+    size_t n                       = 0;
     if (cap < 2) {
         if (cap) out[0] = NULL;
         return 0;
     }
-    out[n++] = path_entry;
+    out[n++] = (char *)path_entry; /* read-only: the child's environment is never written */
     for (char **e = environ; e && *e && n + 1 < cap; e++) {
         if (strncmp(*e, "TZ=", 3) == 0 || strncmp(*e, "LANG=", 5) == 0 ||
             strncmp(*e, "LC_", 3) == 0)

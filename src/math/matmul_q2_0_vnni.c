@@ -32,15 +32,16 @@
 
 #if TN_HAS_AVX512VNNI
 
+#include <immintrin.h>
+#include <stdint.h>
+#include <string.h>
+
+#include "core/fp16.h"
+#include "math/bitunpack2_vnni.h"
 #include "math/matmul_q2_0.h"
 #include "math/quantize_i8.h"
-#include "math/bitunpack2_vnni.h"
 #include "memory/safe_alloc.h" /* tn_size_mul3, tn_align_up */
 #include "threading/thread_pool.h"
-#include <immintrin.h>
-#include <string.h>
-#include <stdint.h>
-#include "core/fp16.h"
 
 /* Same 128-element/34-byte framing as matmul_q2_0.c — see that file's header
  * comment for why this is PrismML's group-128 packing, not mainline ggml's

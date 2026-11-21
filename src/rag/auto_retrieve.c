@@ -1,10 +1,12 @@
 #include "rag/auto_retrieve.h"
-#include "rag/memory_search.h"
-#include "transformer/output_inject.h"
-#include "memory/aligned_alloc.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "memory/aligned_alloc.h"
+#include "rag/memory_search.h"
+#include "transformer/output_inject.h"
 
 /* Maximum size of the formatted injection string */
 #define INJECT_BUF_SIZE 8192

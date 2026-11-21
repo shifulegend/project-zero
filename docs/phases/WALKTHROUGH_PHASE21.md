@@ -59,7 +59,7 @@ This makes the engine compatible with tools like:
 
 ## Architecture: How It Works
 
-```
+```text
 User starts engine with --server --port 8080
                 |
          api_server_start(8080, &ctx)
@@ -129,7 +129,7 @@ User starts engine with --server --port 8080
 ```
 
 **Streaming response** (`stream: true`):
-```
+```text
 data: {"id":"chatcmpl-abc123","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"4"},"finish_reason":null}]}
 
 data: {"id":"chatcmpl-abc123","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
@@ -248,7 +248,7 @@ make build/tests/test_api_server
 ```
 
 Expected output:
-```
+```text
 === Phase 21 API Server Tests ===
 [PASS] chat_request_init
 [PASS] json_parse_basic

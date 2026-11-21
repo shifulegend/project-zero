@@ -1,6 +1,7 @@
 #include "memory/file_backed.h"
-#include <string.h>
+
 #include <stdio.h>
+#include <string.h>
 
 #if TN_POSIX
 

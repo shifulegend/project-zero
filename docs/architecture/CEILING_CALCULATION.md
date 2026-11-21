@@ -12,7 +12,7 @@
 Autoregressive CPU decode of a dense model is **DRAM-bandwidth-bound**: every generated token
 must stream (nearly) all weight bytes through the cores once. The ceiling is therefore:
 
-```
+```text
 ceiling_tokps = measured_bandwidth_bytes_per_sec / weight_bytes_per_token
 ```
 

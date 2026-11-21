@@ -1,19 +1,22 @@
-<script>
+<script lang="ts">
   // Integer input bounded by a server-provided range — used where a slider
   // would be unusable (top-k spans the whole vocabulary, seeds are arbitrary).
-  export let label;
-  export let value;
-  export let range = { min: 0, max: 100, step: 1 };
+  import type { Range } from './types';
+
+  export let label: string;
+  export let value: number | undefined;
+  export let range: Range = { min: 0, max: 100, step: 1 };
   export let hint = '';
   export let placeholder = '';
 
-  function onChange(e) {
-    const raw = e.target.value.trim();
+  function onChange(e: Event): void {
+    const input = e.target as HTMLInputElement;
+    const raw = input.value.trim();
     let v = raw === '' ? range.min : Math.round(Number(raw));
     if (!Number.isFinite(v)) v = range.min;
     v = Math.min(range.max, Math.max(range.min, v));
     value = v;
-    e.target.value = String(v);
+    input.value = String(v);
   }
 </script>
 

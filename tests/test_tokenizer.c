@@ -1,9 +1,10 @@
-#include "test_harness.h"
-#include "tokenizer/tokenizer.h"
-#include "core/error.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "core/error.h"
+#include "test_harness.h"
+#include "tokenizer/tokenizer.h"
 
 /* ---------- Helper: write a synthetic tokenizer binary file ---------- */
 

@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": ".test-build",
+    "rootDir": "src/lib",
+    "verbatimModuleSyntax": false
+  },
+  "include": ["src/lib/markdown.ts", "src/lib/safeUrl.ts"]
+}

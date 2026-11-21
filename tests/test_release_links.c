@@ -3,9 +3,10 @@
  * the update settings (GitHub, GitHub Enterprise, invalid inputs, release vs
  * in-between builds).
  */
+#include <string.h>
+
 #include "test_harness.h"
 #include "update/release_links.h"
-#include <string.h>
 
 static void test_web_base(void) {
     char b[128];

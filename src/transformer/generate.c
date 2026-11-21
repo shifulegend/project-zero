@@ -1,8 +1,10 @@
 #include "transformer/generate.h"
-#include "transformer/gen_session.h"
-#include "transformer/forward.h"
+
 #include <stdio.h>
 #include <string.h>
+
+#include "transformer/forward.h"
+#include "transformer/gen_session.h"
 
 /* ── stdout callback used by the public generate() wrapper ─────────────── */
 static int stdout_token_callback(const char *piece, void *userdata) {

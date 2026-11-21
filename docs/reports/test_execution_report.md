@@ -23,7 +23,7 @@ All 19 test binaries pass under `ctest`. Zero memory safety violations detected.
 
 ## Environment
 
-```
+```text
 OS:      Linux 6.1.158 x86_64
 Compiler: GCC 14.2.0 (Debian)
 CMake:   3.31.6
@@ -262,7 +262,7 @@ All tests were built with ASAN + UBSAN and run in the same Debug configuration.
 
 ### SAST Scan Results
 
-```
+```text
 grep -rn 'gets\|strcpy\|strcat\|sprintf\|scanf' src/
 → 0 matches (CLEAN — no dangerous C string functions used anywhere)
 ```
@@ -284,7 +284,7 @@ grep -rn 'gets\|strcpy\|strcat\|sprintf\|scanf' src/
 ## Test File Delivered
 
 The complete zero-trust test suite is at:
-```
+```text
 tests/zt_forensic_suite.c   (1,381 lines, 89 test cases)
 ```
 

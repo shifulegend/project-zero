@@ -23,8 +23,9 @@
  * two 16-element sub-blocks per group (each with its own scale pair).
  */
 
-#include "threading/thread_pool.h"
 #include <stdint.h>
+
+#include "threading/thread_pool.h"
 
 #ifdef __cplusplus
 extern "C" {

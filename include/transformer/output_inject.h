@@ -3,9 +3,9 @@
 
 #include "core/config.h"
 #include "core/weights.h"
-#include "core/run_state.h"
-#include "tokenizer/tokenizer.h"
+#include "runtime/run_state.h"
 #include "threading/thread_pool.h"
+#include "tokenizer/tokenizer.h"
 
 #ifdef __cplusplus
 extern "C" {

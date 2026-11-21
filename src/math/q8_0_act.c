@@ -17,12 +17,16 @@
  */
 
 #include "math/q8_0_act.h"
-#include "math/cpu_features.h"
-#include "core/gguf_reader.h"
+
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "core/cpu_features.h"
+#include "core/env_flag.h"
 #include "core/fp16.h"
+#include "core/gguf_reader.h"
+#include "memory/tls_scratch.h"
 
 #if TN_HAS_AVX2
 #include <immintrin.h>
@@ -52,12 +56,9 @@ static inline float q8a_f16(const uint8_t *p) {
 int tn_q8_0_act_vnni_ok(void) {
 #if Q8A_HAS_VNNI
     /* PZ_Q8A_VNNI=0 forces the AVX2 path (A/B aid); main thread only */
-    static int env = -1;
-    if (env < 0) {
-        const char *e = getenv("PZ_Q8A_VNNI");
-        env           = (e && e[0] == '0') ? 0 : 1;
-    }
-    return (env && tn_cpu_features_detect()->avx512vnni) ? 1 : 0;
+    static atomic_int env = TN_ENV_FLAG_UNSET;
+    return (tn_env_on_unless_zero(&env, "PZ_Q8A_VNNI") && tn_cpu_features_detect()->avx512vnni) ? 1
+                                                                                                : 0;
 #else
     return 0;
 #endif
@@ -294,12 +295,33 @@ float tn_dot_q8_0_q8_0(const uint8_t *row, const TnQ8_0ActBlock *a, int nb, int 
 
 /* ── Whole-matrix GEMV over the thread pool ──────────────────────────────── */
 
+/* The weight formats that have an integer dot against Q8_0 activations: block size and kernel. */
+typedef float (*Q8ADotFn)(const uint8_t *row, const TnQ8_0ActBlock *a, int n_blocks, int vnni);
+typedef struct {
+    int type;
+    size_t block_bytes;
+    Q8ADotFn dot;
+} Q8AKernel;
+
+static const Q8AKernel k_q8a_kernels[] = {
+    {GGUF_TYPE_Q5_0, Q5_0_BYTES, tn_dot_q5_0_q8_0},
+    {GGUF_TYPE_Q5_1, Q5_1_BYTES, tn_dot_q5_1_q8_0},
+    {GGUF_TYPE_Q8_0, Q8_0_BYTES, tn_dot_q8_0_q8_0},
+};
+
+static const Q8AKernel *q8a_kernel(int gguf_type) {
+    for (size_t i = 0; i < sizeof(k_q8a_kernels) / sizeof(k_q8a_kernels[0]); i++)
+        if (k_q8a_kernels[i].type == gguf_type) return &k_q8a_kernels[i];
+    return NULL;
+}
+
 typedef struct {
     float *out;
     const uint8_t *w;
     const TnQ8_0ActBlock *acts;
     size_t row_bytes;
-    int n_blocks, type, vnni;
+    int n_blocks, vnni;
+    Q8ADotFn dot;
 } Q8AArgs;
 
 static void q8a_task(void *arg, int thread_id, int start, int end) {
@@ -307,52 +329,24 @@ static void q8a_task(void *arg, int thread_id, int start, int end) {
     const Q8AArgs *a = (const Q8AArgs *)arg;
     for (int r = start; r < end; r++) {
         const uint8_t *row = a->w + (size_t)r * a->row_bytes;
-        float v;
-        switch (a->type) {
-            case GGUF_TYPE_Q5_0:
-                v = tn_dot_q5_0_q8_0(row, a->acts, a->n_blocks, a->vnni);
-                break;
-            case GGUF_TYPE_Q5_1:
-                v = tn_dot_q5_1_q8_0(row, a->acts, a->n_blocks, a->vnni);
-                break;
-            default:
-                v = tn_dot_q8_0_q8_0(row, a->acts, a->n_blocks, a->vnni);
-                break;
-        }
-        a->out[r] = v;
+        a->out[r]          = a->dot(row, a->acts, a->n_blocks, a->vnni);
     }
 }
 
-static TnQ8_0ActBlock *s_q8a_buf = NULL;
-static int s_q8a_cap             = 0;
+static TnTlsScratch s_q8a_scratch = TN_TLS_SCRATCH_INIT; /* per-thread, see memory/tls_scratch.h */
 
 int parallel_matmul_q8a(float *out, const float *x, const uint8_t *w, int gguf_type, int n, int d,
                         ThreadPool *tp) {
-    size_t blk;
-    switch (gguf_type) {
-        case GGUF_TYPE_Q5_0:
-            blk = Q5_0_BYTES;
-            break;
-        case GGUF_TYPE_Q5_1:
-            blk = Q5_1_BYTES;
-            break;
-        case GGUF_TYPE_Q8_0:
-            blk = Q8_0_BYTES;
-            break;
-        default:
-            return -1;
-    }
+    const Q8AKernel *kernel = q8a_kernel(gguf_type);
+    if (!kernel) return -1;
     if (n <= 0 || n % TN_Q8_0_BLOCK != 0 || d <= 0) return -1;
     const int nb = n / TN_Q8_0_BLOCK;
-    if (s_q8a_cap < nb) {
-        TnQ8_0ActBlock *nbuf = (TnQ8_0ActBlock *)malloc((size_t)nb * sizeof(TnQ8_0ActBlock));
-        if (!nbuf) return -1;
-        free(s_q8a_buf);
-        s_q8a_buf = nbuf;
-        s_q8a_cap = nb;
-    }
-    tn_quantize_q8_0_act(s_q8a_buf, x, nb);
-    Q8AArgs a = {out, w, s_q8a_buf, (size_t)nb * blk, nb, gguf_type, tn_q8_0_act_vnni_ok()};
+    TnQ8_0ActBlock *acts =
+        (TnQ8_0ActBlock *)tn_tls_scratch(&s_q8a_scratch, (size_t)nb * sizeof(TnQ8_0ActBlock));
+    if (!acts) return -1;
+    tn_quantize_q8_0_act(acts, x, nb);
+    Q8AArgs a = {out,        w, acts, (size_t)nb * kernel->block_bytes, nb, tn_q8_0_act_vnni_ok(),
+                 kernel->dot};
     if (tp)
         threadpool_dispatch(tp, q8a_task, &a, d);
     else
@@ -372,7 +366,8 @@ typedef struct {
     const uint8_t *w;
     const TnQ8_0ActBlock *acts; /* [n_tokens][n_blocks] */
     size_t row_bytes;
-    int n_blocks, type, vnni, n_tokens, d;
+    int n_blocks, vnni, n_tokens, d;
+    Q8ADotFn dot;
 } Q8ATokensArgs;
 
 static void q8a_tokens_task(void *arg, int thread_id, int start, int end) {
@@ -381,58 +376,30 @@ static void q8a_tokens_task(void *arg, int thread_id, int start, int end) {
     for (int r = start; r < end; r++) {
         const uint8_t *row = a->w + (size_t)r * a->row_bytes;
         for (int k = 0; k < a->n_tokens; k++) {
-            const TnQ8_0ActBlock *ak = a->acts + (size_t)k * a->n_blocks;
-            float v;
-            switch (a->type) {
-                case GGUF_TYPE_Q5_0:
-                    v = tn_dot_q5_0_q8_0(row, ak, a->n_blocks, a->vnni);
-                    break;
-                case GGUF_TYPE_Q5_1:
-                    v = tn_dot_q5_1_q8_0(row, ak, a->n_blocks, a->vnni);
-                    break;
-                default:
-                    v = tn_dot_q8_0_q8_0(row, ak, a->n_blocks, a->vnni);
-                    break;
-            }
-            a->out[(size_t)k * a->d + r] = v;
+            const TnQ8_0ActBlock *ak     = a->acts + (size_t)k * a->n_blocks;
+            a->out[(size_t)k * a->d + r] = a->dot(row, ak, a->n_blocks, a->vnni);
         }
     }
 }
 
-static TnQ8_0ActBlock *s_q8a_tok_buf = NULL;
-static size_t s_q8a_tok_cap          = 0;
+static TnTlsScratch s_q8a_tok_scratch = TN_TLS_SCRATCH_INIT; /* per-thread */
 
 int parallel_matmul_q8a_tokens(float *out, const float *x, const uint8_t *w, int gguf_type, int n,
                                int d, int n_tokens, ThreadPool *tp) {
-    size_t blk;
-    switch (gguf_type) {
-        case GGUF_TYPE_Q5_0:
-            blk = Q5_0_BYTES;
-            break;
-        case GGUF_TYPE_Q5_1:
-            blk = Q5_1_BYTES;
-            break;
-        case GGUF_TYPE_Q8_0:
-            blk = Q8_0_BYTES;
-            break;
-        default:
-            return -1;
-    }
+    const Q8AKernel *kernel = q8a_kernel(gguf_type);
+    if (!kernel) return -1;
     if (n <= 0 || n % TN_Q8_0_BLOCK != 0 || d <= 0 || n_tokens <= 0) return -1;
     if (n_tokens == 1) return parallel_matmul_q8a(out, x, w, gguf_type, n, d, tp);
     const int nb = n / TN_Q8_0_BLOCK;
     size_t need  = (size_t)nb * (size_t)n_tokens;
-    if (s_q8a_tok_cap < need) {
-        TnQ8_0ActBlock *nbuf = (TnQ8_0ActBlock *)malloc(need * sizeof(TnQ8_0ActBlock));
-        if (!nbuf) return -1;
-        free(s_q8a_tok_buf);
-        s_q8a_tok_buf = nbuf;
-        s_q8a_tok_cap = need;
-    }
+    TnQ8_0ActBlock *acts =
+        (TnQ8_0ActBlock *)tn_tls_scratch(&s_q8a_tok_scratch, need * sizeof(TnQ8_0ActBlock));
+    if (!acts) return -1;
     for (int k = 0; k < n_tokens; k++)
-        tn_quantize_q8_0_act(s_q8a_tok_buf + (size_t)k * nb, x + (size_t)k * n, nb);
+        tn_quantize_q8_0_act(acts + (size_t)k * nb, x + (size_t)k * n, nb);
     Q8ATokensArgs a = {
-        out, w, s_q8a_tok_buf, (size_t)nb * blk, nb, gguf_type, tn_q8_0_act_vnni_ok(), n_tokens, d};
+        out,      w, acts,       (size_t)nb * kernel->block_bytes, nb, tn_q8_0_act_vnni_ok(),
+        n_tokens, d, kernel->dot};
     if (tp)
         threadpool_dispatch(tp, q8a_tokens_task, &a, d);
     else

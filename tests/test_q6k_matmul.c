@@ -3,13 +3,14 @@
  * (exact integer path), both match dequantise-then-dot through the existing
  * gguf_dequant_q6_k(), and batched == per-token.
  */
-#include "test_harness.h"
-#include "math/matmul_q6k.h"
-#include "core/gguf_quant.h"
-#include "math/simd_dispatch.h"
-#include "threading/thread_pool.h"
-#include "sampling/rng.h"
 #include <stdint.h>
+
+#include "core/gguf_quant.h"
+#include "math/matmul_q6k.h"
+#include "math/simd_dispatch.h"
+#include "sampling/rng.h"
+#include "test_harness.h"
+#include "threading/thread_pool.h"
 
 static uint16_t f32_to_fp16(float f) {
     uint32_t u;

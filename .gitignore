@@ -76,3 +76,4 @@ QUICK_SUMMARY 2.txt
 *.pem
 *.key
 config.toml
+.test-build/

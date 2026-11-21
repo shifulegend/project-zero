@@ -2,10 +2,10 @@
  * tests/test_api_info.c — GET /v1/models + GET /v1/config bodies and the
  * watermark detect endpoint, built from an ApiContext without sockets.
  */
-#include "test_harness.h"
 #include "api/api_info.h"
-#include "api/watermark_endpoint.h"
 #include "api/server_config.h"
+#include "api/watermark_endpoint.h"
+#include "test_harness.h"
 
 static void make_ctx(ApiContext *ctx, Config *cfg) {
     memset(ctx, 0, sizeof(*ctx));
@@ -30,9 +30,9 @@ static void test_models_reports_metadata(void) {
     TEST_ASSERT(strstr(j, "\"chat_format\":\"plain\"") != NULL, "no tokenizer -> plain format");
     TEST_ASSERT(strstr(j, "\"recurrent\":false") != NULL, "dense is not recurrent");
     free(j);
-    ctx.server_config.vision_path = strdup("v.bin");
-    ctx.server_config.proj_path   = strdup("p.bin");
-    j                             = api_models_json(&ctx);
+    ctx.server_config.vision.vision_path = strdup("v.bin");
+    ctx.server_config.vision.proj_path   = strdup("p.bin");
+    j                                    = api_models_json(&ctx);
     TEST_ASSERT(strstr(j, "\"vision\":true") != NULL, "vision true when configured");
     free(j);
     server_config_free(&ctx.server_config);
@@ -48,8 +48,8 @@ static void test_config_reflects_defaults_and_limits(void) {
     ctx.server_config.gen_defaults.system_prompt       = "Say \"hi\"";
     ctx.server_config.gen_defaults.stop[0]             = "###";
     ctx.server_config.gen_defaults.n_stop              = 1;
-    ctx.server_config.max_tokens_limit                 = 1000;
-    ctx.server_config.ui_title                         = strdup("acme-zero");
+    ctx.server_config.limits.max_tokens_limit          = 1000;
+    ctx.server_config.ui.ui_title                      = strdup("acme-zero");
     char *j                                            = api_config_json(&ctx);
     TEST_ASSERT(j != NULL, "json built");
     TEST_ASSERT(strstr(j, "\"title\":\"acme-zero\"") != NULL, "ui title");
@@ -67,26 +67,26 @@ static void test_config_reflects_defaults_and_limits(void) {
     TEST_ASSERT_EQ(api_max_tokens_limit(&ctx), 1000, "explicit limit");
     TEST_ASSERT(strstr(j, "\"parallel\":{\"slots\":1,\"requested\":1,\"batch_tokens\":128") != NULL,
                 "parallel: sequential by default, batch size published");
-    ctx.server_config.parallel = 4;
-    ctx.parallel_slots         = 1;
-    ctx.parallel_note          = "this model architecture runs one request at a time";
-    char *jp                   = api_config_json(&ctx);
+    ctx.server_config.limits.parallel = 4;
+    ctx.parallel.slots                = 1;
+    ctx.parallel.note                 = "this model architecture runs one request at a time";
+    char *jp                          = api_config_json(&ctx);
     TEST_ASSERT(jp && strstr(jp, "\"slots\":1,\"requested\":4") &&
                     strstr(jp, "\"note\":\"this model architecture runs one request at a time\""),
                 "parallel fallback: requested vs actual slots and the reason");
     free(jp);
-    free(ctx.server_config.ui_title);
-    ctx.server_config.ui_title = strdup("project-zero");
-    char *jl                   = api_config_json(&ctx);
+    free(ctx.server_config.ui.ui_title);
+    ctx.server_config.ui.ui_title = strdup("project-zero");
+    char *jl                      = api_config_json(&ctx);
     TEST_ASSERT(jl && strstr(jl, "\"logo\":\"ascii\"") && strstr(jl, "\"logo_ascii\":\"####  ####"),
                 "default title -> ascii wordmark");
     free(jl);
-    ctx.server_config.ui_logo = 1;
-    jl                        = api_config_json(&ctx);
+    ctx.server_config.ui.ui_logo = 1;
+    jl                           = api_config_json(&ctx);
     TEST_ASSERT(jl && strstr(jl, "\"logo\":\"text\""), "--ui-logo text");
     free(jl);
-    ctx.server_config.ui_logo          = 0;
-    ctx.server_config.max_tokens_limit = 0;
+    ctx.server_config.ui.ui_logo              = 0;
+    ctx.server_config.limits.max_tokens_limit = 0;
     TEST_ASSERT_EQ(api_max_tokens_limit(&ctx), 2048, "falls back to context length");
     free(j);
     server_config_free(&ctx.server_config);
@@ -96,14 +96,14 @@ static void test_prompt_cache_json(void) {
     ApiContext ctx;
     Config cfg;
     make_ctx(&ctx, &cfg);
-    ctx.server_config.prompt_cache_mb = 8;
-    char *j                           = api_prompt_cache_json(&ctx);
+    ctx.server_config.cache.prompt_cache_mb = 8;
+    char *j                                 = api_prompt_cache_json(&ctx);
     TEST_ASSERT(j && strstr(j, "\"enabled\":true") && strstr(j, "\"budget_bytes\":8388608"),
                 "budget reported");
     TEST_ASSERT(strstr(j, "\"entries\":0") != NULL, "empty store");
     free(j);
-    ctx.server_config.prompt_cache_mb = 0;
-    j                                 = api_prompt_cache_json(&ctx);
+    ctx.server_config.cache.prompt_cache_mb = 0;
+    j                                       = api_prompt_cache_json(&ctx);
     TEST_ASSERT(strstr(j, "\"enabled\":false") != NULL, "0 MB = disabled");
     free(j);
     server_config_free(&ctx.server_config);
@@ -121,8 +121,8 @@ static void test_config_mcts(void) {
     TEST_ASSERT(strstr(j, "\"mcts\":true") != NULL && strstr(j, "\"prm\":null") != NULL,
                 "feature on, no judge");
     free(j);
-    ctx.server_config.mcts_max = 0;
-    j                          = api_config_json(&ctx);
+    ctx.server_config.search.mcts_max = 0;
+    j                                 = api_config_json(&ctx);
     TEST_ASSERT(j && strstr(j, "\"mcts\":false") != NULL, "--mcts-max 0 -> feature off");
     free(j);
     server_config_free(&ctx.server_config);
@@ -134,10 +134,10 @@ static void test_config_chat_template(void) {
     make_ctx(&ctx, &cfg);
     Tokenizer tok;
     memset(&tok, 0, sizeof(tok));
-    tok.chat_template                      = (char *)"{{ bos_token }}User: \"q\"";
-    ctx.tok                                = &tok;
-    ctx.server_config.chat_template_source = "file";
-    char *j                                = api_config_json(&ctx);
+    tok.chat_template                           = (char *)"{{ bos_token }}User: \"q\"";
+    ctx.tok                                     = &tok;
+    ctx.server_config.chat.chat_template_source = "file";
+    char *j                                     = api_config_json(&ctx);
     TEST_ASSERT(j && strstr(j, "\"request_chat_template\":true") != NULL,
                 "override allowed by default");
     TEST_ASSERT(strstr(j, "\"source\":\"file\"") != NULL, "template source published");
@@ -145,8 +145,8 @@ static void test_config_chat_template(void) {
                 "template text JSON-escaped");
     TEST_ASSERT(strstr(j, "\"max_bytes\":65536") != NULL, "size cap published");
     free(j);
-    ctx.server_config.allow_request_template = 0;
-    j                                        = api_config_json(&ctx);
+    ctx.server_config.chat.allow_request_template = 0;
+    j                                             = api_config_json(&ctx);
     TEST_ASSERT(j && strstr(j, "\"request_override\":false") != NULL,
                 "--no-request-template published");
     free(j);

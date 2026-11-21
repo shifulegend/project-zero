@@ -17,7 +17,6 @@ COOLDOWN=3
 PROMPT="The capital of France is"
 ENGINE=./pz
 OUT_CSV="/tmp/bench_sweep_results.csv"
-LOG="/tmp/bench_sweep.log"
 
 SIMD_BACKENDS=("vnni" "vnni256" "avx512f" "avx2" "scalar")
 SIMD_NAMES=("AVX-512VNNI" "VNNI-256" "AVX-512F" "AVX2" "Scalar")

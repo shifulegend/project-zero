@@ -16,11 +16,11 @@
  * invalid_offset is the 0-based byte index INVALID was first reached at, or
  * -1 if never.
  */
-#include "sampling/grammar.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "sampling/grammar.h"
 
 /* -1 = not a valid base64 character; built once by b64_table_init() below
  * since a designated-initializer array literal can't set an aggregate

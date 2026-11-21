@@ -1,33 +1,40 @@
-<script>
+<script lang="ts">
   import AsciiLogo from './AsciiLogo.svelte';
   import { tick } from 'svelte';
   import MessageBubble from './MessageBubble.svelte';
   import ImageUpload from './ImageUpload.svelte';
-  import { streamChatCompletion, cancelGeneration } from './api.js';
+  import { streamChatCompletion, cancelGeneration } from './api';
+  import { errorText } from './errors';
+  import { requestParams, systemMessage } from './settings';
+  import type { ChatMessage, ServerConfig, Settings, StreamSummary } from './types';
 
-  import { requestParams, systemMessage } from './settings.js';
+  /** A message as shown: what was said, plus the image, queue position and result of its request. */
+  interface UiMessage extends ChatMessage {
+    imageDataUrl?: string | null;
+    queued?: number;
+    meta?: StreamSummary & { best_of_n: number };
+  }
 
-  export let settings;
-  export let config;
+  export let settings: Settings;
+  export let config: ServerConfig;
   export let brand = '';
   export let logoAscii = ''; // block wordmark (GET /v1/config ui.logo_ascii), '' = text only
   export let visionCapable = false;
 
-  /** @type {{role: string, content: string, imageDataUrl?: string}[]} */
-  let messages = [];
+  let messages: UiMessage[] = [];
   let input = '';
-  let imageDataUrl = null;
+  let imageDataUrl: string | null = null;
   let generating = false;
-  let currentRequestId = null;
-  let errorText = null;
-  let scrollEl;
+  let currentRequestId: string | null = null;
+  let errorMessage: string | null = null;
+  let scrollEl: HTMLElement | undefined;
 
-  async function scrollToBottom() {
+  async function scrollToBottom(): Promise<void> {
     await tick();
     scrollEl?.scrollTo({ top: scrollEl.scrollHeight, behavior: 'smooth' });
   }
 
-  async function send() {
+  async function send(): Promise<void> {
     const text = input.trim();
     if (!text || generating) return;
 
@@ -38,10 +45,10 @@
     const attachedImage = imageDataUrl;
     imageDataUrl = null;
     generating = true;
-    errorText = null;
+    errorMessage = null;
     await scrollToBottom();
 
-    const history = messages
+    const history: ChatMessage[] = messages
       .slice(0, assistantIndex)
       .filter((m) => m.content && typeof m.content === 'string')
       .map((m) => ({ role: m.role, content: m.content }));
@@ -67,27 +74,31 @@
       const summary = await done;
       if (summary && messages[assistantIndex]) {
         const opts = requestParams(settings, config);
-        messages[assistantIndex].meta = { ...summary, best_of_n: opts.best_of ?? 1 };
+        const bestOf = opts.best_of;
+        messages[assistantIndex].meta = {
+          ...summary,
+          best_of_n: typeof bestOf === 'number' ? bestOf : 1,
+        };
         messages = messages;
       }
     } catch (err) {
-      errorText = err.message ?? String(err);
+      errorMessage = errorText(err);
     }
     generating = false;
     currentRequestId = null;
   }
 
-  async function stop() {
+  async function stop(): Promise<void> {
     if (currentRequestId) await cancelGeneration(currentRequestId);
   }
 
-  export function clearConversation() {
+  export function clearConversation(): void {
     if (generating) return;
     messages = [];
-    errorText = null;
+    errorMessage = null;
   }
 
-  function onKeydown(e) {
+  function onKeydown(e: KeyboardEvent): void {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       send();
@@ -115,8 +126,8 @@
         streaming={generating && i === messages.length - 1 && m.role === 'assistant'}
       />
     {/each}
-    {#if errorText}
-      <div class="error" role="alert"><strong>Error:</strong> {errorText}</div>
+    {#if errorMessage}
+      <div class="error" role="alert"><strong>Error:</strong> {errorMessage}</div>
     {/if}
   </div>
 

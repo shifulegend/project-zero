@@ -1,12 +1,13 @@
-#include "test_harness.h"
-#include "threading/cpu_probe.h"
-#include "threading/thread_pool.h"
+#include <stdint.h>
+
+#include "core/platform.h"
 #include "math/parallel_matmul.h"
 #include "math/simd_dispatch.h"
 #include "math/ternary_matmul.h"
 #include "memory/aligned_alloc.h"
-#include "core/platform.h"
-#include <stdint.h>
+#include "test_harness.h"
+#include "threading/cpu_probe.h"
+#include "threading/thread_pool.h"
 
 /* ---- CPU Probe ---- */
 

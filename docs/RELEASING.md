@@ -55,7 +55,7 @@ runs on a `v*` tag push.
 
 | Asset | Contents |
 |-------|----------|
-| `project-zero-<version>-x86_64-unknown-linux-gnu.tar.gz` | unpacks to `project-zero-<version>-x86_64-unknown-linux-gnu/`: `pz` + `LICENSE` + `NOTICE` + `LICENSE-LGPL-3.0.txt` + `README.md` + `CHANGELOG.md` (+ the `adaptive_ai_engine → pz` alias symlink, first release after the rename only) |
+| `project-zero-<version>-x86_64-unknown-linux-gnu.tar.gz` | unpacks to `project-zero-<version>-x86_64-unknown-linux-gnu/`: `pz` + `LICENSE` + `NOTICE` + `README.md` + `CHANGELOG.md` (+ the `adaptive_ai_engine → pz` alias symlink, first release after the rename only) |
 | `install.sh` | the installer (Phase 40.4): picks the asset for the machine, verifies it against `SHA256SUMS`, installs `pz` to `~/.local/bin` |
 | `SHA256SUMS` | checksums of the tarball and `install.sh` (`sha256sum -c --ignore-missing SHA256SUMS` to verify what you downloaded) |
 

@@ -1,8 +1,11 @@
 #include "multimodal/vision_weights_load.h"
-#include <string.h>
+
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
 #include "core/binary_io.h"
+#include "core/log.h"
 
 /* ── Convenience: pointer to float array inside mmap ─────────────────────
  * Returns a float* at byte offset |off| into |base|.
@@ -17,7 +20,7 @@ TernaryError vision_model_load_encoder(VisionModel *vm, const char *path) {
 
     TernaryError err = mapped_file_open(&vm->vision_mf, path);
     if (err != TN_OK) {
-        fprintf(stderr, "[vision] cannot open %s\n", path);
+        TN_LOG_ERR("vision", "[vision] cannot open %s\n", path);
         return err;
     }
 
@@ -25,13 +28,14 @@ TernaryError vision_model_load_encoder(VisionModel *vm, const char *path) {
     size_t sz     = vm->vision_mf.size;
 
     if (sz < 64) {
-        fprintf(stderr, "[vision] file too small\n");
+        TN_LOG_ERR("vision", "[vision] file too small\n");
         goto fail;
     }
 
     uint32_t magic = tn_rd_u32(d, 0);
     if (magic != VISION_BIN_MAGIC) {
-        fprintf(stderr, "[vision] bad magic 0x%08X (expected 0x%08X)\n", magic, VISION_BIN_MAGIC);
+        TN_LOG_INF("vision", "[vision] bad magic 0x%08X (expected 0x%08X)\n", magic,
+                   VISION_BIN_MAGIC);
         goto fail;
     }
 
@@ -45,7 +49,7 @@ TernaryError vision_model_load_encoder(VisionModel *vm, const char *path) {
 
     if (n_layers < 1 || n_layers > 128 || embed_dim < 1 || embed_dim > 8192 || n_heads < 1 ||
         n_heads > 64 || patch_dim < 1 || num_patches < 1) {
-        fprintf(stderr, "[vision] invalid config in header\n");
+        TN_LOG_ERR("vision", "[vision] invalid config in header\n");
         goto fail;
     }
 
@@ -67,7 +71,7 @@ TernaryError vision_model_load_encoder(VisionModel *vm, const char *path) {
     do {                                                                                           \
         size_t nbytes = (size_t)(count) * sizeof(float);                                           \
         if (off + nbytes > sz) {                                                                   \
-            fprintf(stderr, "[vision] truncated at " #field "\n");                                 \
+            TN_LOG_INF("vision", "[vision] truncated at " #field "\n");                            \
             goto fail;                                                                             \
         }                                                                                          \
         w->field = fptr(d, off);                                                                   \
@@ -93,7 +97,7 @@ TernaryError vision_model_load_encoder(VisionModel *vm, const char *path) {
     w->w3             = (float **)calloc((size_t)n_layers, sizeof(float *));
 
     if (!w->rms_att_weight || !w->wq || !w->w1) {
-        fprintf(stderr, "[vision] OOM allocating per-layer pointer arrays\n");
+        TN_LOG_ERR("vision", "[vision] OOM allocating per-layer pointer arrays\n");
         goto fail_free;
     }
 
@@ -101,7 +105,7 @@ TernaryError vision_model_load_encoder(VisionModel *vm, const char *path) {
     do {                                                                                           \
         size_t nbytes = (size_t)(count) * sizeof(float);                                           \
         if (off + nbytes > sz) {                                                                   \
-            fprintf(stderr, "[vision] truncated at layer %d " #field "\n", l);                     \
+            TN_LOG_INF("vision", "[vision] truncated at layer %d " #field "\n", l);                \
             goto fail_free;                                                                        \
         }                                                                                          \
         w->field[l] = fptr(d, off);                                                                \
@@ -146,7 +150,7 @@ TernaryError vision_model_load_projector(VisionModel *vm, const char *path) {
 
     TernaryError err = mapped_file_open(&vm->proj_mf, path);
     if (err != TN_OK) {
-        fprintf(stderr, "[vision] cannot open projector %s\n", path);
+        TN_LOG_ERR("vision", "[vision] cannot open projector %s\n", path);
         return err;
     }
 
@@ -154,13 +158,13 @@ TernaryError vision_model_load_projector(VisionModel *vm, const char *path) {
     size_t sz     = vm->proj_mf.size;
 
     if (sz < 64) {
-        fprintf(stderr, "[vision] projector file too small\n");
+        TN_LOG_ERR("vision", "[vision] projector file too small\n");
         goto fail;
     }
 
     uint32_t magic = tn_rd_u32(d, 0);
     if (magic != PROJECTOR_BIN_MAGIC) {
-        fprintf(stderr, "[vision] projector bad magic 0x%08X\n", magic);
+        TN_LOG_INF("vision", "[vision] projector bad magic 0x%08X\n", magic);
         goto fail;
     }
 
@@ -172,7 +176,7 @@ TernaryError vision_model_load_projector(VisionModel *vm, const char *path) {
     if (scale_factor <= 0) scale_factor = 1;
 
     if (vision_dim < 1 || llm_dim < 1 || hidden_dim < 0) {
-        fprintf(stderr, "[vision] invalid projector config\n");
+        TN_LOG_ERR("vision", "[vision] invalid projector config\n");
         goto fail;
     }
 
@@ -188,7 +192,7 @@ TernaryError vision_model_load_projector(VisionModel *vm, const char *path) {
     do {                                                                                           \
         size_t nbytes = (size_t)(count) * sizeof(float);                                           \
         if (off + nbytes > sz) {                                                                   \
-            fprintf(stderr, "[vision] projector truncated at " #field "\n");                       \
+            TN_LOG_INF("vision", "[vision] projector truncated at " #field "\n");                  \
             goto fail;                                                                             \
         }                                                                                          \
         proj->field = fptr(d, off);                                                                \

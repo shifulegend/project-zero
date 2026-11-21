@@ -1,0 +1,14 @@
+# Options for the checks that tools/check_clang_tidy.sh enables with -checks=...
+# (the check list lives in that script so CI and local runs agree).
+CheckOptions:
+  # Casing (decision 29.a): functions, variables and parameters are snake_case, macros and enum
+  # constants UPPER_CASE. Single-capital names are the math names of the SSM / LoRA / attention
+  # code (A, B, C, D, H, L, P, S, Dv, Srow) and are the explicit allow-list. Types are not checked (the tree mixes TnCamel structs and tn_u8 typedefs).
+  - {key: readability-identifier-naming.FunctionCase, value: lower_case}
+  - {key: readability-identifier-naming.VariableCase, value: lower_case}
+  - {key: readability-identifier-naming.ParameterCase, value: lower_case}
+  - {key: readability-identifier-naming.MacroDefinitionCase, value: UPPER_CASE}
+  - {key: readability-identifier-naming.EnumConstantCase, value: UPPER_CASE}
+  - {key: readability-identifier-naming.MacroDefinitionIgnoredRegexp, value: '^_.*$'}
+  - {key: readability-identifier-naming.ConstantIgnoredRegexp, value: '^[A-Za-z0-9_]+$'}
+  - {key: readability-identifier-naming.VariableIgnoredRegexp, value: '^([A-Z][A-Z0-9_]+|A|B|C|D|H|L|P|S|Dv|Srow)$'}

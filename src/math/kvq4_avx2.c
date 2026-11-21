@@ -6,7 +6,6 @@
  * per row, so the per-group cost is 4 FMAs + 3 adds + 2 FMAs.
  */
 #include "core/platform.h"
-#include "kv_cache/kv_quant_ops.h"
 #include "math/kvq4_kernels.h"
 
 #if TN_HAS_AVX2

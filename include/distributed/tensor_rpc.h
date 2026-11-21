@@ -14,6 +14,7 @@
  */
 
 #include <stdint.h>
+
 #include "core/error.h"
 
 #define RPC_MAGIC 0x31545A50u /* "PZT1" */

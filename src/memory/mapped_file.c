@@ -1,8 +1,9 @@
 #include "memory/mapped_file.h"
-#include "core/platform.h"
-#include <string.h>
 
 #include <stdint.h>
+#include <string.h>
+
+#include "core/platform.h"
 
 #if TN_POSIX
 

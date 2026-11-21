@@ -16,8 +16,14 @@ typedef enum {
     TI_TAG_RESULT
 } TI_Tag;
 
-/* Initialize / reset internal parser state */
-void ti_init(void);
+/* The parser's buffered text; one per agent loop (no shared state, so two loops never mix). */
+typedef struct {
+    char buffer[8192];
+    size_t pos;
+} TiParser;
+
+/* Initialize / reset a parser. */
+void ti_init(TiParser *parser);
 
 /*
  * Process a decoded text piece (one tokenizer_decode() output).
@@ -26,10 +32,10 @@ void ti_init(void);
  * corresponding TI_Tag is returned. Partial tags are buffered until
  * closed.
  */
-TI_Tag ti_process_piece(const char *piece, char *out_buf, size_t out_buf_size);
+TI_Tag ti_process_piece(TiParser *parser, const char *piece, char *out_buf, size_t out_buf_size);
 
-/* Forcefully reset internal buffer */
-void ti_reset(void);
+/* Forcefully reset the buffer */
+void ti_reset(TiParser *parser);
 
 #ifdef __cplusplus
 }

@@ -36,4 +36,13 @@ static inline float tn_fp16_to_f32(uint16_t h) {
     return f;
 }
 
+
+/* Reads the little-endian binary16 value at `p` (no alignment needed) as a float: the scale at the
+ * start of a GGUF quantisation block. */
+static inline float tn_fp16_load(const void *p) {
+    uint16_t h;
+    memcpy(&h, p, 2);
+    return tn_fp16_to_f32(h);
+}
+
 #endif /* TN_CORE_FP16_H */

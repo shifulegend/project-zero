@@ -29,15 +29,17 @@ Examples
 
 import argparse
 import collections
+import os
 import pathlib
 import re
 import subprocess
 import sys
+from typing import Any
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-import benchlib as bl  # noqa: E402
-import hardware_profile as hp  # noqa: E402
-import gate  # noqa: E402
+import benchlib as bl
+import gate
+import hardware_profile as hp
 
 TESTS = ["profile", "sweeps", "tiers", "classifiers", "unit"]
 TIERS = ["default", "vnni", "avx2", "avx512f", "scalar", "vnni256"]
@@ -55,17 +57,25 @@ PICK_SIMD = re.compile(r"SIMD\s*:\s*(\w+)\s+\(\s*([\d.]+) tok/s")
 PICK_THREADS = re.compile(r"Threads\s*:\s*T=(\d+)")
 
 
-def parse_sweep(text):
+def parse_sweep(text: str) -> dict[str, Any]:
+    """Candidates and thread picks reported by one calibration run's output."""
     return {
         "candidates": [m.groups() for m in CAND.finditer(text)],
         "threads": [m.groups() for m in THREAD.finditer(text)],
-        "pick_simd": (PICK_SIMD.search(text) or [None, None])[1],
-        "pick_threads": (PICK_THREADS.search(text) or [None, None])[1],
+        "pick_simd": simd_pick.group(1) if (simd_pick := PICK_SIMD.search(text)) else None,
+        "pick_threads": thread_pick.group(1)
+        if (thread_pick := PICK_THREADS.search(text))
+        else None,
     }
 
 
-def test_sweeps(run, a, env, small):
-    rows, picks, tpicks = [], collections.Counter(), collections.Counter()
+def test_sweeps(
+    run: bl.RunDir, a: argparse.Namespace, env: dict[str, str], small: str | pathlib.Path
+) -> tuple[list[str], dict[str, Any]]:
+    """Runs calibration repeatedly and records which tiers and thread counts it picks and how stable the picks are."""
+    rows: list[list[Any]] = []
+    picks: collections.Counter[str] = collections.Counter()
+    tpicks: collections.Counter[str] = collections.Counter()
     for i in range(1, a.calibrations + 1):
         run.log(f"\n-- forced calibration {i}/{a.calibrations}")
         cmd = [
@@ -80,7 +90,7 @@ def test_sweeps(run, a, env, small):
             "--temperature",
             "0",
             "--threads",
-            str(bl.os.cpu_count() or 1),
+            str(os.cpu_count() or 1),
             "--no-update-check",
         ]
         png, text = bl.screenshot(
@@ -120,7 +130,10 @@ def test_sweeps(run, a, env, small):
     return md, {"simd_picks": dict(picks), "thread_picks": dict(tpicks)}
 
 
-def variant_set(a, env, kind, labels):
+def variant_set(
+    a: argparse.Namespace, env: dict[str, str], kind: str, labels: list[str]
+) -> list[bl.Variant]:
+    """Variants forcing each tier (kind "tier") or classifier format (kind "cls") in `labels`."""
     flag = {"tier": "--simd", "cls": "--classifier"}[kind]
     return [
         bl.pz_variant(
@@ -133,12 +146,13 @@ def variant_set(a, env, kind, labels):
     ]
 
 
-def test_unit(run, a):
+def test_unit(run: bl.RunDir, a: argparse.Namespace) -> tuple[list[str], dict[str, Any]]:
+    """Runs the unit tests (make test) and logs the outcome; note that it rebuilds in the debug variant."""
     run.log(
         f"\n-- unit tests: make test CC={a.cc} (rebuilds in the debug variant; ./pz is replaced, run `make release` after)"
     )
     r = subprocess.run(
-        ["make", "test", f"CC={a.cc}", f"-j{bl.os.cpu_count() or 2}"],
+        ["make", "test", f"CC={a.cc}", f"-j{os.cpu_count() or 2}"],
         cwd=bl.ROOT,
         capture_output=True,
         text=True,
@@ -152,7 +166,8 @@ def test_unit(run, a):
     ], {"returncode": r.returncode, "programs_reporting": len(passed)}
 
 
-def main():
+def main() -> int:
+    """Command-line entry point for the calibration test."""
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -184,9 +199,9 @@ def main():
         else bl.parse_list(a.models, list(allm), "model")
     )
     models = [
-        (k, allm[k], bl.model_path(k, a.models_dir))
+        (k, allm[k], model_file)
         for k in wanted
-        if bl.model_path(k, a.models_dir) and "pz" in allm[k]["engines"]
+        if (model_file := bl.model_path(k, a.models_dir)) and "pz" in allm[k]["engines"]
     ]
     run = bl.RunDir("calibration", a.out, a.label)
     n_runs = (
@@ -268,7 +283,7 @@ def main():
                 a.order,
                 True,
                 gate_of=g.verdict_of,
-                skip_of=lambda k, v: not g.timed(k, v),
+                skip_of=g.skipped,
             )
             summary = bl.summarize(rows, variants[0]["label"])
             hide = g.cfg["mode"] == "strict"
@@ -291,8 +306,8 @@ def main():
                     32,
                     a.screenshots,
                     a.shot_rows,
-                    note_of=lambda k, v: gate.caption_note(g.results.get(f"{k}/{v}")),
-                    skip_of=lambda k, v: not g.timed(k, v),
+                    note_of=g.caption,
+                    skip_of=g.skipped,
                 )
                 meta[f"{name}_screenshots"] = shots
     if "unit" in tests:

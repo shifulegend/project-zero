@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "core/log.h"
+
 const char *pz_program_basename(const char *argv0) {
     if (!argv0) return "";
     const char *base = argv0;
@@ -24,8 +26,8 @@ int pz_is_legacy_invocation(const char *argv0) {
 
 void pz_warn_if_legacy_invocation(const char *argv0) {
     if (pz_is_legacy_invocation(argv0))
-        fprintf(stderr,
-                "note: '%s' has been renamed to '%s'; the old name will be removed "
-                "in the next release.\n",
-                PZ_LEGACY_PROGRAM_NAME, PZ_PROGRAM_NAME);
+        TN_LOG_INF("program_name",
+                   "note: '%s' has been renamed to '%s'; the old name will be removed "
+                   "in the next release.\n",
+                   PZ_LEGACY_PROGRAM_NAME, PZ_PROGRAM_NAME);
 }

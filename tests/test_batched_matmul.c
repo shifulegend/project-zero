@@ -8,18 +8,18 @@
  * compute with the path under test (batched, one call for all tokens),
  * assert element-wise closeness for every (token, output-row) pair.
  */
-#include "test_harness.h"
-#include "math/batched_matmul.h"
-#include "math/parallel_matmul.h"
-#include "math/matmul_f16.h"
-#include "math/ternary_matmul_packed.h"
-#include "math/simd_dispatch.h"
-#include "core/unpack.h"
-#include "core/weights.h"
-
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
+
+#include "core/unpack.h"
+#include "core/weights.h"
+#include "math/batched_matmul.h"
+#include "math/matmul_f16.h"
+#include "math/parallel_matmul.h"
+#include "math/simd_dispatch.h"
+#include "math/ternary_matmul_packed.h"
+#include "test_harness.h"
 
 #define TOL 1e-4f
 

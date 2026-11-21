@@ -3,15 +3,16 @@
  * file / env / cli) published in GET /v1/config, the cross-site guard and
  * POST /v1/config/defaults writing the `pz config` file.
  */
-#include "test_harness.h"
-#include "api/api_info.h"
-#include "api/config_endpoint.h"
-#include "core/json_fields.h"
-#include "config/pz_config.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h> /* mkdtemp on macOS */
+
+#include "api/api_info.h"
+#include "api/config_endpoint.h"
+#include "config/pz_config.h"
+#include "core/json_fields.h"
+#include "test_harness.h"
 
 static char g_dir[] = "/tmp/pz_cfgep_XXXXXX";
 static char g_path[300];
@@ -37,18 +38,22 @@ static void test_sources(void) {
     char *argv[] = {"pz", "--seed", "3", "--prompt", "x", "--top-p", "0.9", NULL};
     TEST_ASSERT_EQ(pz_config_mark_cli(&c, 7, argv), 2,
                    "two schema flags marked (prompt is not a setting)");
-    pz_config_publish(&c, g_path, 1);
-    TEST_ASSERT(strcmp(pz_config_active_source("temperature"), "file") == 0, "file value");
-    TEST_ASSERT(strcmp(pz_config_active_source("top-k"), "env") == 0, "env value");
-    TEST_ASSERT(strcmp(pz_config_active_source("top-p"), "cli") == 0, "flag beats file");
-    TEST_ASSERT(strcmp(pz_config_active_source("seed"), "cli") == 0, "flag-only key");
-    TEST_ASSERT(strcmp(pz_config_active_source("min-p"), "default") == 0, "untouched key");
-    TEST_ASSERT(strcmp(pz_config_active_source("nope"), "default") == 0, "unknown key");
+    PzProvenance prov = {&c, g_path, 1};
+    TEST_ASSERT(strcmp(pz_provenance_source(&prov, "temperature"), "file") == 0, "file value");
+    TEST_ASSERT(strcmp(pz_provenance_source(&prov, "top-k"), "env") == 0, "env value");
+    TEST_ASSERT(strcmp(pz_provenance_source(&prov, "top-p"), "cli") == 0, "flag beats file");
+    TEST_ASSERT(strcmp(pz_provenance_source(&prov, "seed"), "cli") == 0, "flag-only key");
+    TEST_ASSERT(strcmp(pz_provenance_source(&prov, "min-p"), "default") == 0, "untouched key");
+    TEST_ASSERT(strcmp(pz_provenance_source(&prov, "nope"), "default") == 0, "unknown key");
     TEST_ASSERT(pz_config_validate(pz_config_find_key("repeat-last-n"), "-1", err, sizeof(err)) ==
                     0,
                 "repeat-last-n accepts -1 (all tokens), as --repeat-last-n does");
 
-    char *json = api_config_json(NULL);
+    ApiContext *ctx = (ApiContext *)calloc(1, sizeof(ApiContext));
+    TEST_ASSERT(ctx != NULL, "context");
+    if (!ctx) return;
+    ctx->server_config.provenance = prov;
+    char *json                    = api_config_json(ctx);
     TEST_ASSERT(json && strstr(json, "\"config\":{\"path\":") != NULL,
                 "/v1/config has a config block");
     TEST_ASSERT(json && strstr(json, "\"top_p\":\"cli\"") != NULL, "sources keyed by JSON name");
@@ -56,7 +61,7 @@ static void test_sources(void) {
                 "JSON name -> config key map");
     TEST_ASSERT(json && strstr(json, "\"writable\":false") != NULL, "no context: not writable");
     free(json);
-    pz_config_publish(NULL, NULL, 0);
+    free(ctx);
     pz_config_free(&c);
 }
 
@@ -98,13 +103,13 @@ static void test_save(void) {
     if (!ctx) return;
     PzConfig c;
     pz_config_init(&c);
-    pz_config_publish(&c, g_path, 1);
-    char *r = NULL;
+    ctx->server_config.provenance = (PzProvenance){&c, g_path, 1};
+    char *r                       = NULL;
 
     TEST_ASSERT_EQ(save(ctx, "{\"key\":\"temperature\",\"value\":0.7}", &r), 403,
                    "--no-config-write refuses");
     free(r);
-    ctx->server_config.allow_config_write = 1;
+    ctx->server_config.chat.allow_config_write = 1;
 
     TEST_ASSERT_EQ(save(ctx, "{\"key\":\"temperature\",\"value\":0.7}", &r), 200, "number saved");
     TEST_ASSERT(r && strstr(r, "\"applies\":\"restart\"") && strstr(r, "\"overridden_by\":null"),
@@ -156,7 +161,7 @@ static void test_save(void) {
                 "writable with a path and no --no-config-write");
     free(json);
 
-    pz_config_publish(NULL, NULL, 0);
+    ctx->server_config.provenance = (PzProvenance){0};
     TEST_ASSERT_EQ(save(ctx, "{\"key\":\"top_p\",\"value\":0.5}", &r), 403, "no config location");
     free(r);
     pz_config_free(&c);

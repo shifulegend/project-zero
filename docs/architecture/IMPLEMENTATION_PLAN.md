@@ -33,7 +33,7 @@ root constraint, release-maintenance rules.
 
 ### 0.1 — Directory Structure Creation ✅
 Create the canonical source tree:
-```
+```text
 project-zero/
 ├── src/
 │   ├── core/          # Data structures, config, error handling
@@ -693,7 +693,7 @@ project-zero/
 - Input: A directory of per-layer `.npy` or safetensors weight files (values in {-1, 0, 1}).
 - Packing scheme: 4 ternary values per byte. Mapping: -1 → 0b00, 0 → 0b01, 1 → 0b10.
 - Output: Single `.bin` file with header:
-  ```
+  ```text
   [magic_number: 4 bytes "TNRY"]
   [version: 4 bytes]
   [Config struct: sizeof(Config) bytes]
@@ -1150,7 +1150,7 @@ Since we cannot change the AI's weights at runtime, we make the AI "learn" by gi
 - **Why file-backed:** We don't use SQLite or any external DB. The vector store is a single binary file on disk, mmap'd for instant access — same philosophy as the model weights.
 - `typedef struct { int num_entries; int embed_dim; float *embeddings; char **texts; size_t *text_offsets; MappedFile mf; } VectorDB;`
 - **File format:**
-  ```
+  ```text
   [magic: 4 bytes "VRDB"]
   [version: 4 bytes]
   [num_entries: 4 bytes]
@@ -1481,7 +1481,7 @@ K-6 would be the first integer-math kernel available on that hardware.
 
 ## Dependency Graph (Critical Path)
 
-```
+```text
 Phase 0 (Scaffold)
     └─→ Phase 2.6 (Aligned Allocator) ← MUST EXIST BEFORE ANY BUFFER ALLOC
          └─→ Phase 1 (Structs — RunState uses aligned alloc + transposed KV)
@@ -2251,7 +2251,7 @@ Enables multi-user API serving by breaking KV cache into non-contiguous memory p
       int **request_tables;   // Per-request page tables (request_id → page indices)
       int max_requests;
   } PageTableManager;
-  ```
+  ```text
 - `TernaryError page_table_init(PageTableManager *pt, int total_pages, int head_dim, int max_requests);`
 - `int page_table_alloc_page(PageTableManager *pt, int request_id);` — Assigns a free page to a request.
 - `void page_table_free_request(PageTableManager *pt, int request_id);` — Returns all pages to free list.
@@ -2384,7 +2384,7 @@ Eliminates redundant computation when the same prompt prefix appears across mult
       int num_children;
       int64_t last_access_time;  // For LRU eviction
   } RadixNode;
-  ```
+  ```text
 - `void radix_tree_init(RadixTree *rt);`
 - `RadixNode *radix_tree_search(RadixTree *rt, const int *tokens, int len, int *match_len);`
   - Returns longest matching prefix node + how many tokens matched.
@@ -2668,7 +2668,7 @@ Implements the TTT architecture where the model trains a tiny internal network o
       int inner_dim;
       float learning_rate;
   } TTTLayer;
-  ```
+  ```text
 - `TernaryError ttt_layer_init(TTTLayer *ttt, int inner_dim, float lr);`
 - `void ttt_layer_free(TTTLayer *ttt);`
 
@@ -2813,7 +2813,7 @@ python tools/extract_multimodal.py --repo moondream-hf/moondream2 --out models/
 
 ## Updated Dependency Graph (Full Architecture)
 
-```
+```text
 Phase 0 (Scaffold)
     └─→ Phase 2.6 (Aligned Allocator) ← MUST EXIST BEFORE ANY BUFFER ALLOC
          └─→ Phase 1 (Structs — RunState uses aligned alloc + transposed KV)
@@ -3115,7 +3115,7 @@ cannot support O(1) appends. Inserting a new embedding requires `memmove` of
 all subsequent blocks.
 
 **Required fix (Phase 15):** Interleave records:
-```
+```text
 [Header]
 Record 1: [embedding][text_length][text_data]
 Record 2: [embedding][text_length][text_data]
@@ -3243,7 +3243,7 @@ tiering strategy based on available RAM.
 
 ### Architecture Overview
 
-```
+```text
 Text prompt
     │
     ▼
@@ -3272,7 +3272,7 @@ PNG / JPEG image output
 
 ### 36.2 — New Source Files
 
-```
+```text
 src/diffusion/scheduler.c       — DDIM / DPM-Solver++ step functions
 src/diffusion/unet.c            — U-Net / DiT forward pass (residual blocks)
 src/diffusion/vae_decoder.c     — latent → pixel upsampling
@@ -3284,7 +3284,7 @@ include/diffusion/vae_decoder.h
 
 ### 36.3 — CLI Integration
 
-```
+```text
 ./adaptive_ai_engine --text2img "a red apple on a wooden table" \
                      --model models/flux-schnell-Q4_K.gguf \
                      --output output.png \

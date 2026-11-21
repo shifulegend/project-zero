@@ -1,12 +1,12 @@
 #ifndef TN_QWEN3MOE_ATTENTION_H
 #define TN_QWEN3MOE_ATTENTION_H
 
+#include "core/batch_scratch_fwd.h"
 #include "core/config.h"
 #include "core/error.h"
 #include "core/moe_config.h"
-#include "core/run_state.h"
 #include "core/weights.h"
-#include "core/batch_scratch_fwd.h"
+#include "runtime/run_state.h"
 #include "threading/thread_pool.h"
 
 /**

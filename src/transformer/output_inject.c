@@ -1,8 +1,10 @@
 #include "transformer/output_inject.h"
-#include "transformer/forward.h"
-#include <string.h>
-#include <stdlib.h>
+
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "transformer/forward.h"
 
 int inject_text_into_kv(const char *text, const Config *cfg, const TransformerWeights *w,
                         RunState *s, Tokenizer *tok, ThreadPool *tp) {

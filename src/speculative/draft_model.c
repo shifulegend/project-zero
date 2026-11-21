@@ -3,36 +3,38 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "core/log.h"
 #include "tokenizer/tokenizer_gguf.h"
 
 TernaryError draft_model_load(DraftModel *dm, const char *draft_model_path, int verifier_vocab_size,
-                              int max_seq_len_hint, ThreadPool *tp) {
+                              int max_seq_len_hint, ThreadPool *tp,
+                              const KVStrategyOptions *kv_opt) {
     memset(dm, 0, sizeof(*dm));
 
     LoadedModel lm;
     TernaryError err = load_gguf_model(&lm, draft_model_path, /*is_primary=*/false,
-                                       max_seq_len_hint, tp, /*stdout_is_tty=*/false);
+                                       max_seq_len_hint, tp, /*stdout_is_tty=*/false, kv_opt);
     if (err != TN_OK) {
-        fprintf(stderr, "Failed to load draft model '%s': %s\n", draft_model_path,
-                tn_error_str(err));
+        TN_LOG_ERR("draft_model", "Failed to load draft model '%s': %s\n", draft_model_path,
+                   tn_error_str(err));
         return err;
     }
 
     if (moe_is_recurrent(&lm.moe_config)) {
-        fprintf(stderr,
-                "Draft model '%s' has recurrent state (Qwen3.5/3.6 linear attention or Mamba), "
-                "which speculative decoding's batched verify pass does not support.\n",
-                draft_model_path);
+        TN_LOG_ERR("draft_model",
+                   "Draft model '%s' has recurrent state (Qwen3.5/3.6 linear attention or Mamba), "
+                   "which speculative decoding's batched verify pass does not support.\n",
+                   draft_model_path);
         loaded_model_free(&lm);
         return TN_ERR_UNSUPPORTED;
     }
 
     if (lm.config.vocab_size != verifier_vocab_size) {
-        fprintf(stderr,
-                "Draft model '%s' vocab_size (%d) does not match verifier "
-                "vocab_size (%d) -- draft and verifier must share a tokenizer for "
-                "token-level accept/reject to be meaningful.\n",
-                draft_model_path, lm.config.vocab_size, verifier_vocab_size);
+        TN_LOG_ERR("draft_model",
+                   "Draft model '%s' vocab_size (%d) does not match verifier "
+                   "vocab_size (%d) -- draft and verifier must share a tokenizer for "
+                   "token-level accept/reject to be meaningful.\n",
+                   draft_model_path, lm.config.vocab_size, verifier_vocab_size);
         loaded_model_free(&lm);
         return TN_ERR_INVALID_ARGS;
     }
@@ -51,14 +53,15 @@ TernaryError draft_model_load(DraftModel *dm, const char *draft_model_path, int 
          * token IDs directly and never decodes through the draft model's own
          * tokenizer -- the verifier's tokenizer (already loaded by the
          * caller) remains authoritative for output text/EOS/chat-template. */
-        fprintf(stderr,
-                "[draft-model] Warning: could not load draft model's own "
-                "tokenizer metadata (err=%d) -- continuing without it.\n",
-                (int)tok_err);
+        TN_LOG_WRN("draft_model",
+                   "[draft-model] Warning: could not load draft model's own "
+                   "tokenizer metadata (err=%d) -- continuing without it.\n",
+                   (int)tok_err);
     }
 
-    printf("[draft-model] Loaded '%s' (%d layers, vocab_size=%d) for speculative decoding\n",
-           draft_model_path, dm->config.n_layers, dm->config.vocab_size);
+    TN_OUT_INF("draft_model",
+               "[draft-model] Loaded '%s' (%d layers, vocab_size=%d) for speculative decoding\n",
+               draft_model_path, dm->config.n_layers, dm->config.vocab_size);
 
     return TN_OK;
 }

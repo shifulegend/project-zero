@@ -1,8 +1,9 @@
 #include "core/fs_util.h"
-#include "core/platform.h"
 
 #include <stdio.h>
 #include <string.h>
+
+#include "core/platform.h"
 
 #if TN_POSIX
 #include <sys/stat.h>

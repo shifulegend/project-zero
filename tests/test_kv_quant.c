@@ -5,13 +5,13 @@
  * reference; AVX2 / AVX-512 int4 kernels against the scalar reference
  * (directly and through tn_simd_init's dispatch).
  */
-#include "test_harness.h"
+#include "core/cpu_features.h"
+#include "core/platform.h"
 #include "kv_cache/kv_quant_ops.h"
-#include "sampling/rng.h"
 #include "math/kvq4_kernels.h"
 #include "math/simd_dispatch.h"
-#include "math/cpu_features.h"
-#include "core/platform.h"
+#include "sampling/rng.h"
+#include "test_harness.h"
 
 static void test_store_roundtrip_error(void) {
     enum { N = 64 };

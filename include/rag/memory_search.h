@@ -10,12 +10,12 @@
  * Entries with similarity < MEMORY_SEARCH_MIN_SCORE are filtered out.
  */
 
-#include "rag/vector_db.h"
-#include "rag/embedder.h"
 #include "core/config.h"
 #include "core/weights.h"
-#include "tokenizer/tokenizer.h"
+#include "rag/embedder.h"
+#include "rag/vector_db.h"
 #include "threading/thread_pool.h"
+#include "tokenizer/tokenizer.h"
 
 #ifdef __cplusplus
 extern "C" {

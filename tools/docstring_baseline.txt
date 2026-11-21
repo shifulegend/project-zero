@@ -1,0 +1,1 @@
+# Public functions without a docstring, per file in tools/ (tools/check_docstrings.py); may only go down.

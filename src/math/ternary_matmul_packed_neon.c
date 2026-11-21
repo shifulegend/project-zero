@@ -2,10 +2,11 @@
 
 #if TN_HAS_NEON
 
-#include "math/ternary_matmul_packed.h"
-#include "core/unpack.h"
 #include <arm_neon.h>
 #include <string.h>
+
+#include "core/unpack.h"
+#include "math/ternary_matmul_packed.h"
 
 /**
  * Plain ARM NEON fused unpack+matmul for 2-bit packed ternary weights.

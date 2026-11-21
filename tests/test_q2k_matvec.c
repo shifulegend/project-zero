@@ -7,15 +7,15 @@
  * and checks that both outputs match within floating-point tolerance.
  */
 
-#include "math/matmul_q2k.h"
-#include "core/gguf_quant.h"
-#include "test_harness.h"
-
+#include <math.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
-#include <math.h>
+
+#include "core/gguf_quant.h"
+#include "math/matmul_q2k.h"
+#include "test_harness.h"
 
 /* ── Q2K constants (must match matmul_q2k.c) ───────────────────────────────── */
 #define Q2K_SUPER 256

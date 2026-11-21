@@ -20,12 +20,102 @@ jobs:
     name: Changelog format (Keep a Changelog + SemVer)
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout (full history, so the Markdown width check can compare with the base branch)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
       - name: Lint CHANGELOG.md and test the tool
         run: |
           python3 tools/changelog.py check --require-unreleased
           python3 -I tools/test_changelog.py
+      - name: Every workflow file is valid YAML
+        run: |
+          pip install --quiet pyyaml==6.0.2
+          python3 -I tools/test_workflows_parse.py
+      - name: Every TODO has an ID listed in docs/ai/todo-register.md
+        run: |
+          python3 -I tools/test_check_todos.py
+          python3 -I tools/check_todos.py
+      - name: Added Markdown lines stay within 80 columns
+        run: |
+          python3 -I tools/test_check_md_width.py
+          if [ -n "${{ github.base_ref }}" ]; then python3 -I tools/check_md_width.py origin/${{ github.base_ref }}; fi
+      - name: Markdown code fences name a language
+        run: |
+          python3 -I tools/test_check_md_fences.py
+          python3 -I tools/check_md_fences.py
+      - name: Suppressions (NOLINT, noqa, pragma diagnostic) must not increase
+        run: |
+          python3 -I tools/test_check_suppressions.py
+          python3 -I tools/check_suppressions.py
+      - name: The HTTP server writes only through net_write_all
+        run: |
+          python3 -I tools/test_check_socket_writes.py
+          python3 -I tools/check_socket_writes.py
+      - name: No disabled code (#if 0, commented-out statements)
+        run: |
+          python3 -I tools/test_check_dead_code.py
+          python3 -I tools/check_dead_code.py
+      - name: Lines over 100 columns must not increase
+        run: |
+          python3 -I tools/test_check_line_width.py
+          python3 -I tools/check_line_width.py
+      - name: Long boolean conditions in src/ must not increase
+        run: |
+          python3 -I tools/test_check_bool_chains.py
+          python3 -I tools/check_bool_chains.py
+      - name: Duplicated code must not increase (src/ and webui/src)
+        run: |
+          python3 -I tools/test_check_duplication.py
+          python3 -I tools/check_duplication.py
+      - name: Mutable statics in src/ must not increase
+        run: |
+          python3 -I tools/test_check_mutable_statics.py
+          python3 -I tools/check_mutable_statics.py
+      - name: No machine paths or identifiers in the project-memory docs
+        run: |
+          python3 -I tools/test_check_path_leaks.py
+          python3 -I tools/check_path_leaks.py
+      - name: Source files must not grow past 500 lines (baseline for the existing ones)
+        run: |
+          python3 -I tools/test_check_file_sizes.py
+          python3 -I tools/check_file_sizes.py
+      - name: Coverage floor check (unit tests)
+        run: python3 -I tools/test_check_coverage.py
+      - name: No credential variable reaches a print call
+        run: |
+          python3 -I tools/test_check_log_secrets.py
+          python3 -I tools/check_log_secrets.py
+      - name: Diagnostics go through the logger (no raw stderr writes in src/)
+        run: |
+          python3 -I tools/test_check_raw_logging.py
+          python3 -I tools/check_raw_logging.py
+      - name: Functions in src/, tools/ and tests/ must not grow past complexity 10 / 100 lines (ratchet)
+        run: |
+          pip install --quiet lizard==1.26.1
+          python3 -I tools/test_check_complexity.py
+          python3 -I tools/check_complexity.py
+      - name: No struct wider than 25 fields unless recorded (ratchet)
+        run: |
+          python3 -I tools/test_check_struct_fields.py
+          python3 -I tools/check_struct_fields.py
+      - name: Python passes mypy --strict (ratchet; untyped files listed in tools/py_types_baseline.txt)
+        run: |
+          pip install --quiet mypy==2.3.1
+          python3 -I tools/test_check_py_types.py
+          python3 -I tools/check_py_types.py
+      - name: No new undocumented public functions in tools/ (ratchet)
+        run: |
+          python3 -I tools/test_check_docstrings.py
+          python3 -I tools/check_docstrings.py
+      - name: Every command-line flag is described in --help
+        run: |
+          python3 -I tools/test_check_help_flags.py
+          python3 -I tools/check_help_flags.py
+      - name: OpenAPI document matches the routes the server handles
+        run: |
+          python3 -I tools/test_check_openapi_routes.py
+          python3 -I tools/check_openapi_routes.py
       - name: Header include guards (TN_..._H, no #pragma once)
         run: |
           python3 -I tools/test_check_header_guards.py
@@ -42,10 +132,16 @@ jobs:
         run: |
           sh tools/test_check_root_files.sh
           sh tools/check_root_files.sh
+      - name: Multimodal extractor adapter tests (needs numpy)
+        run: |
+          pip install --quiet numpy
+          python3 -I tools/test_extract_multimodal.py
       - name: SBOM generator tests
         run: python3 -I tools/test_gen_sbom.py
       - name: Benchmark scripts (tools/bench) unit tests
-        run: python3 tools/bench/test_bench.py
+        run: |
+          python3 tools/bench/test_bench.py
+          python3 tools/bench/test_bench_gate.py
       - name: Python lint (ruff, syntax errors and unused or undefined names)
         run: |
           pip install --quiet ruff==0.16.9
@@ -69,6 +165,20 @@ jobs:
           python3 -I tools/test_check_pr_size.py
           python3 -I tools/check_pr_size.py "origin/${{ github.base_ref }}"
 
+  size-override-justification:
+    name: size-override needs a written justification
+    if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'size-override')
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: The PR description explains why the change cannot be split
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}   # via env, never interpolated into the script
+        run: |
+          python3 -I tools/test_check_size_override.py
+          python3 -I tools/check_size_override.py
+
   format:
     name: C/C++ formatting (clang-format 18)
     runs-on: ubuntu-24.04            # pinned image: its clang-format-18 is the one the tree was formatted with
@@ -90,6 +200,33 @@ jobs:
         run: sudo apt-get install -y -q clang-tidy-18
       - name: No new findings (tools/clang_tidy_baseline.txt)
         run: sh tools/check_clang_tidy.sh
+
+  webui:
+    name: Web UI (svelte-check, build, committed bundle up to date)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Node 22 (the version the committed bundle is built with)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Install dependencies from the lockfile
+        run: cd webui && npm ci --no-audit --no-fund
+      - name: Unit tests (TypeScript compiled, then node --test, markdown renderer and XSS cases)
+        run: cd webui && npm test
+      - name: svelte-check (TypeScript in .ts and .svelte files, 0 errors, 0 warnings)
+        run: cd webui && npm run check
+      - name: ESLint (TypeScript and Svelte, recommended rules)
+        run: cd webui && npm run lint
+      - name: Prettier (TypeScript sources and tests; Svelte templates are whitespace-sensitive and excluded)
+        run: cd webui && npm run format:check
+      - name: Build the bundle and require the committed C file to match it
+        run: |
+          cd webui && npm run build && cd ..
+          make webui-bundle CC=gcc
+          git diff --exit-code -- src/api/webui_bundle_generated.c || {
+            echo "src/api/webui_bundle_generated.c is stale: run 'make webui-bundle' and commit it"; exit 1; }
 
   npm-audit:
     name: npm audit (web UI and screenshot tooling)
@@ -117,6 +254,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Lint (shellcheck)
         run: shellcheck install.sh tools/test_install.sh tools/check_dist_isa.sh
+      - name: Lint every first-party shell script (warnings and errors)
+        # benchmark_results/ holds archived evidence scripts and is not linted.
+        run: git ls-files '*.sh' | grep -v '^benchmark_results/' | xargs shellcheck -S warning
       - name: Build (release)
         run: make release CC=gcc
       - name: Install / upgrade / refuse tampered / uninstall (dash + bash)
@@ -234,6 +374,21 @@ jobs:
       - name: Run E2E JSON-mode test (CLI + API, TS-2.3/2.4)
         run: tests/e2e_json_mode.sh models/smollm2-q8_0.gguf
 
+      - name: Run E2E CLI exit-status test (errors exit non-zero)
+        run: tests/e2e_cli_exit_status.sh models/smollm2-q8_0.gguf
+
+      - name: Run E2E prompt-size cap test (--max-prompt-bytes)
+        run: PZ=./pz MODEL=models/smollm2-q8_0.gguf tests/e2e_max_prompt_bytes.sh
+
+      - name: Run E2E structured-logging test (JSON lines, redaction)
+        run: tests/e2e_log_format.sh models/smollm2-q8_0.gguf
+
+      - name: Verbose startup lines are printed once
+        run: tests/e2e_verbose_output.sh models/smollm2-q8_0.gguf
+
+      - name: Run E2E cross-site POST test (foreign Origin refused on every POST route)
+        run: tests/e2e_cross_site_post.sh models/smollm2-q8_0.gguf
+
       - name: Run E2E API concurrency test (429 while busy, none for sequential clients)
         run: tests/e2e_api_concurrency.sh models/smollm2-q8_0.gguf
 
@@ -256,6 +411,9 @@ jobs:
 
       - name: Generate coverage report
         run: make coverage CC=gcc
+
+      - name: Enforce the coverage floor
+        run: python3 tools/check_coverage.py
 
       - name: Upload coverage report
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

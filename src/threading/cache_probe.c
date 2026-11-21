@@ -1,10 +1,12 @@
 #include "threading/cache_probe.h"
-#include "core/platform.h"
-#include "core/clamp.h"
+
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
+
+#include "core/clamp.h"
+#include "core/platform.h"
 
 #if TN_ARCH_X86
 #include <cpuid.h>

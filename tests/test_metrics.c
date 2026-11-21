@@ -6,6 +6,7 @@
 
 #include <stdio.h>
 #include <string.h>
+
 #include "api/metrics.h"
 
 #define PASS(name) printf("[PASS] %s\n", name)

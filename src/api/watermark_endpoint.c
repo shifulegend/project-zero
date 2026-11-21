@@ -1,10 +1,12 @@
 #include "api/watermark_endpoint.h"
-#include "core/json_fields.h"
-#include "api/json_write.h"
-#include "api/http_status.h"
-#include "sampling/watermark_text.h"
+
 #include <stdlib.h>
 #include <string.h>
+
+#include "api/http_status.h"
+#include "api/json_write.h"
+#include "core/json_fields.h"
+#include "sampling/watermark_text.h"
 
 static char *error_body(const char *msg) {
     JsonBuf jb;

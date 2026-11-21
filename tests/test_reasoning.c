@@ -7,11 +7,11 @@
  *  3. Edge cases and partial tag matches
  */
 
+#include <string.h>
+
 #include "reasoning/prompt_inject.h"
 #include "reasoning/thought_filter.h"
 #include "test_harness.h"
-
-#include <string.h>
 
 /* ================================================================
  * TEST: ThoughtFilter State Machine (Phase 9.1)

@@ -19,9 +19,10 @@
  * matmuls, so outputs move closer to the reference engine, not further.
  */
 
+#include <stdint.h>
+
 #include "core/platform.h"
 #include "threading/thread_pool.h"
-#include <stdint.h>
 
 #define TN_Q8_0_BLOCK 32
 

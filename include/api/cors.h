@@ -8,6 +8,7 @@
  */
 
 #include <stddef.h>
+
 #include "api/server_config.h"
 
 /* Returns 1 if origin_hdr is allowed by cfg (or cfg has a "*" entry),

@@ -3,12 +3,13 @@
  * validation, TOML-subset parsing, save/load round trip, environment overlay
  * and argv merging (config tokens before the user's own flags).
  */
-#include "test_harness.h"
-#include "config/pz_config.h"
-#include "core/platform.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "config/pz_config.h"
+#include "core/platform.h"
+#include "test_harness.h"
 #if TN_POSIX
 #include <sys/stat.h>
 #include <unistd.h>
@@ -143,6 +144,26 @@ static void test_env_and_path(void) {
     pz_config_free(&c);
 }
 
+static void test_merge_argv_results_are_independent(void) {
+    PzConfig c1, c2;
+    pz_config_init(&c1);
+    pz_config_init(&c2);
+    char err[256];
+    pz_config_set(&c1, "threads", "2", err, sizeof(err));
+    pz_config_set(&c2, "top-k", "5", err, sizeof(err));
+    char *argv[] = {"pz", NULL};
+    char **a = NULL, **b = NULL;
+    int na = pz_config_merge_argv(&c1, 1, argv, &a);
+    int nb = pz_config_merge_argv(&c2, 1, argv, &b);
+    TEST_ASSERT(na == 3 && nb == 3, "one setting each");
+    TEST_ASSERT(strcmp(a[1], "--threads") == 0, "the first result keeps its flag name");
+    TEST_ASSERT(strcmp(b[1], "--top-k") == 0, "the second result has its own");
+    free(a);
+    free(b);
+    pz_config_free(&c1);
+    pz_config_free(&c2);
+}
+
 static void test_merge_argv(void) {
     PzConfig c;
     pz_config_init(&c);
@@ -260,5 +281,6 @@ int main(void) {
     RUN_TEST(test_env_and_path);
     RUN_TEST(test_example_file_matches_schema);
     RUN_TEST(test_merge_argv);
+    RUN_TEST(test_merge_argv_results_are_independent);
     TEST_SUMMARY();
 }

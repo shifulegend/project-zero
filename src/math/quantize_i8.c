@@ -1,7 +1,9 @@
 #include "math/quantize_i8.h"
-#include "core/platform.h"
+
 #include <math.h>
 #include <string.h>
+
+#include "core/platform.h"
 
 /* ── Scalar reference ─────────────────────────────────────────────────────── */
 
@@ -28,8 +30,8 @@ float quantize_row_to_i8(const float *x, int8_t *q, int n) {
             v = 127.0f;
         else if (v < -127.0f)
             v = -127.0f;
-        /* Round to nearest, ties to even (the specification in quantize_i8.h). Truncation here, which
-         * this line did until 2026-11-18, gave ~10x the quantization error (docs/rca/...). */
+        /* Round to nearest, ties to even (the specification in quantize_i8.h). Truncation here,
+         * which this line did until 2026-11-18, gave ~10x the quantization error (docs/rca/...). */
         q[i] = (int8_t)lrintf(v);
     }
 
@@ -96,7 +98,8 @@ float quantize_row_to_i8_avx2(const float *x, int8_t *q, int n) {
         v        = _mm256_min_ps(v, vpos127);
         v        = _mm256_max_ps(v, vneg127);
 
-        /* Pack float→int32→int8: float→i32 (round to nearest even, MXCSR default) then two pack steps */
+        /* Pack float→int32→int8: float→i32 (round to nearest even, MXCSR default) then two pack
+         * steps */
         __m256i i32 = _mm256_cvtps_epi32(v);
         /* Pack int32→int16 (saturating signed) */
         __m128i lo_i32 = _mm256_castsi256_si128(i32);

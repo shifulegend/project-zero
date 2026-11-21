@@ -19,20 +19,23 @@ exactly (they're printed in project-zero's own "Model Configuration:"
 startup banner for any GGUF model — kv_dim is printed there directly) —
 lora_load() rejects a mismatch rather than silently producing garbage
 output (see lora_load()'s header-vs-base-model shape check in
-src/core/lora_load.c). --kv-dim matters only when the adapter targets
+src/runtime/lora_load.c). --kv-dim matters only when the adapter targets
 k_proj/v_proj on a GQA model (n_kv_heads < n_heads, e.g. SmolLM2): K/V
 project dim -> kv_dim, not dim -> dim, a real bug found and fixed during
 Phase 19 development against an actual downloaded SmolLM2 LoRA adapter
 (see docs/ai/mistakes.md).
 """
 
+import json
 import os
 import re
-import json
 import struct
 from argparse import ArgumentParser
+from collections.abc import Iterable
+from typing import Any, BinaryIO
 
 import numpy as np
+import numpy.typing as npt
 from safetensors import safe_open
 
 LORA_BIN_MAGIC = 0x41524F4C  # "LORA" LE, matches include/core/lora.h
@@ -51,7 +54,8 @@ TARGETS = [
 ]
 
 
-def find_adapter_weights_file(adapter_dir):
+def find_adapter_weights_file(adapter_dir: str) -> str:
+    """Path of the adapter's safetensors weights file inside the adapter directory."""
     for name in ("adapter_model.safetensors",):
         path = os.path.join(adapter_dir, name)
         if os.path.exists(path):
@@ -63,7 +67,7 @@ def find_adapter_weights_file(adapter_dir):
     )
 
 
-def find_lora_key(keys, layer, hf_module_name, matrix):
+def find_lora_key(keys: Iterable[str], layer: int, hf_module_name: str, matrix: str) -> str | None:
     """Locates the lora_A/lora_B tensor key for one (layer, module), tolerant
     of PEFT's varying key prefixes (base_model.model.model.layers.N... vs.
     base_model.model.layers.N..., different attention class names, etc.) —
@@ -85,11 +89,13 @@ def find_lora_key(keys, layer, hf_module_name, matrix):
     )
 
 
-def write_f16_block(f, arr: np.ndarray):
+def write_f16_block(f: BinaryIO, arr: npt.NDArray[Any]) -> None:
+    """Writes an array to `f` as float16."""
     f.write(arr.astype(np.float32).astype(np.float16).tobytes())
 
 
-def main():
+def main() -> None:
+    """Command-line entry point: converts a PEFT LoRA adapter to the pz .lora.bin format."""
     parser = ArgumentParser(
         description="Convert a HuggingFace PEFT LoRA adapter to project-zero's .lora.bin format"
     )
@@ -136,14 +142,9 @@ def main():
     args = parser.parse_args()
     kv_dim = args.kv_dim if args.kv_dim is not None else args.dim
     q_dim = args.q_dim if args.q_dim is not None else args.dim
-    if args.kv_dim is None and (
-        {"k_proj", "v_proj"}
-        & set(
-            json.load(
-                open(os.path.join(args.adapter, "adapter_config.json"), encoding="utf-8")
-            ).get("target_modules", [])
-        )
-    ):
+    with open(os.path.join(args.adapter, "adapter_config.json"), encoding="utf-8") as cfg_file:
+        target_modules = set(json.load(cfg_file).get("target_modules", []))
+    if args.kv_dim is None and {"k_proj", "v_proj"} & target_modules:
         print(
             f"warning: adapter targets k_proj/v_proj but --kv-dim was not given — "
             f"defaulting to --kv-dim={args.dim} (only correct if the base model uses "

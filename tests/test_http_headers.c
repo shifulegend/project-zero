@@ -1,7 +1,9 @@
 /* Strict Content-Length / Transfer-Encoding parsing. */
 #include <stdio.h>
 #include <string.h>
+
 #include "api/http_headers.h"
+#include "api/http_request.h"
 
 static int g_fail;
 #define CHECK(c, msg)                                                                              \
@@ -19,7 +21,33 @@ static HttpFraming scan(const char *s) {
     return f;
 }
 
+static void test_request_ids(void) {
+    CHECK(http_request_id_valid("abc-123_x.y:z"), "a plain ID is valid");
+    CHECK(!http_request_id_valid(""), "empty ID is invalid");
+    CHECK(!http_request_id_valid("a b"), "a space is invalid");
+    CHECK(!http_request_id_valid("a\"b") && !http_request_id_valid("a\r\nX: y"),
+          "quotes and CRLF are invalid (no header or log injection)");
+    char long64[65], long65[66];
+    memset(long64, 'a', 64);
+    long64[64] = '\0';
+    memset(long65, 'a', 65);
+    long65[65] = '\0';
+    CHECK(http_request_id_valid(long64) && !http_request_id_valid(long65), "64 characters at most");
+    char a[40], b[40];
+    atomic_ulong seq = 0;
+    http_new_id(&seq, a, sizeof a);
+    http_new_id(&seq, b, sizeof b);
+    CHECK(strcmp(a, b) != 0 && http_request_id_valid(a), "generated IDs are unique and valid");
+    HttpRequest req;
+    memset(&req, 0, sizeof req);
+    char hdrs[128] = "A: 1\r\n";
+    http_request_attach_id(&seq, &req, hdrs, sizeof hdrs);
+    CHECK(strstr(hdrs, "A: 1\r\nX-Request-ID: ") == hdrs && req.request_id[0],
+          "attach appends the header and generates an ID when none was sent");
+}
+
 int main(void) {
+    test_request_ids();
     size_t v = 99;
     CHECK(http_parse_content_length("123", &v) == 0 && v == 123, "plain digits");
     CHECK(http_parse_content_length("  42 \r\n", &v) == 0 && v == 42,

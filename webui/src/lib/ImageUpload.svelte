@@ -1,15 +1,15 @@
-<script>
-  export let imageDataUrl = null;
+<script lang="ts">
+  export let imageDataUrl: string | null = null;
 
-  function onFileChange(e) {
-    const file = e.target.files?.[0];
+  function onFileChange(e: Event): void {
+    const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => { imageDataUrl = reader.result; };
+    reader.onload = () => { imageDataUrl = typeof reader.result === 'string' ? reader.result : null; };
     reader.readAsDataURL(file);
   }
 
-  function clear() {
+  function clear(): void {
     imageDataUrl = null;
   }
 </script>

@@ -1,6 +1,7 @@
 /* tn_rd_*: alignment-safe 32-bit reads at arbitrary byte offsets. */
 #include <stdio.h>
 #include <string.h>
+
 #include "core/binary_io.h"
 
 static int g_fail;

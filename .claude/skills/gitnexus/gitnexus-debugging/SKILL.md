@@ -14,7 +14,7 @@ description: "Use when the user is debugging a bug, tracing an error, or asking 
 
 ## Workflow
 
-```
+```text
 1. gitnexus_query({query: "<error or symptom>"})            → Find related execution flows
 2. gitnexus_context({name: "<suspect>"})                    → See callers/callees/processes
 3. READ gitnexus://repo/{name}/process/{name}                → Trace execution flow
@@ -25,7 +25,7 @@ description: "Use when the user is debugging a bug, tracing an error, or asking 
 
 ## Checklist
 
-```
+```text
 - [ ] Understand the symptom (error message, unexpected behavior)
 - [ ] gitnexus_query for error text or related code
 - [ ] Identify the suspect function from returned processes
@@ -48,14 +48,14 @@ description: "Use when the user is debugging a bug, tracing an error, or asking 
 ## Tools
 
 **gitnexus_query** — find code related to error:
-```
+```text
 gitnexus_query({query: "payment validation error"})
 → Processes: CheckoutFlow, ErrorHandling
 → Symbols: validatePayment, handlePaymentError, PaymentException
 ```
 
 **gitnexus_context** — full context for a suspect:
-```
+```text
 gitnexus_context({name: "validatePayment"})
 → Incoming calls: processCheckout, webhookHandler
 → Outgoing calls: verifyCard, fetchRates (external API!)
@@ -70,7 +70,7 @@ RETURN [n IN nodes(path) | n.name] AS chain
 
 ## Example: "Payment endpoint returns 500 intermittently"
 
-```
+```text
 1. gitnexus_query({query: "payment error handling"})
    → Processes: CheckoutFlow, ErrorHandling
    → Symbols: validatePayment, handlePaymentError

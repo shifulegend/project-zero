@@ -1,7 +1,10 @@
 #include "core/config.h"
-#include "core/platform.h"
-#include <string.h>
+
 #include <stdio.h>
+#include <string.h>
+
+#include "core/log.h"
+#include "core/platform.h"
 
 TernaryError config_read(Config *cfg, const void *mapped_ptr, size_t file_size) {
     /* Need at least magic + version + Config */
@@ -51,16 +54,17 @@ TernaryError config_read(Config *cfg, const void *mapped_ptr, size_t file_size) 
 }
 
 void config_print(const Config *cfg) {
-    printf("Model Configuration:\n");
-    printf("  dim:        %d\n", cfg->dim);
-    printf("  hidden_dim: %d\n", cfg->hidden_dim);
-    printf("  n_layers:   %d\n", cfg->n_layers);
-    printf("  n_heads:    %d\n", cfg->n_heads);
-    printf("  n_kv_heads: %d\n", cfg->n_kv_heads);
-    printf("  vocab_size: %d\n", cfg->vocab_size);
-    printf("  seq_len:    %d\n", cfg->seq_len);
-    printf("  act_type:   %d (%s)\n", cfg->act_type, cfg->act_type == 1 ? "ReLU2" : "SiLU");
-    printf("  rope_theta: %.1f\n", cfg->rope_theta);
-    printf("  head_dim:   %d\n", config_head_dim(cfg));
-    printf("  kv_dim:     %d\n", config_kv_dim(cfg));
+    TN_OUT_INF("config", "Model Configuration:\n");
+    TN_OUT_INF("config", "  dim:        %d\n", cfg->dim);
+    TN_OUT_INF("config", "  hidden_dim: %d\n", cfg->hidden_dim);
+    TN_OUT_INF("config", "  n_layers:   %d\n", cfg->n_layers);
+    TN_OUT_INF("config", "  n_heads:    %d\n", cfg->n_heads);
+    TN_OUT_INF("config", "  n_kv_heads: %d\n", cfg->n_kv_heads);
+    TN_OUT_INF("config", "  vocab_size: %d\n", cfg->vocab_size);
+    TN_OUT_INF("config", "  seq_len:    %d\n", cfg->seq_len);
+    TN_OUT_INF("config", "  act_type:   %d (%s)\n", cfg->act_type,
+               cfg->act_type == 1 ? "ReLU2" : "SiLU");
+    TN_OUT_INF("config", "  rope_theta: %.1f\n", cfg->rope_theta);
+    TN_OUT_INF("config", "  head_dim:   %d\n", config_head_dim(cfg));
+    TN_OUT_INF("config", "  kv_dim:     %d\n", config_kv_dim(cfg));
 }

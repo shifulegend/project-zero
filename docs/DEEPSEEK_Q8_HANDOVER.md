@@ -79,7 +79,7 @@ structure called a "superblock" for better accuracy. Each superblock covers 256 
 and uses 8 sub-block scales.
 
 **Q4_K superblock layout (256 elements → 144 bytes):**
-```
+```text
 Bytes  0- 1:  d     (float16) — superblock scale
 Bytes  2- 3:  dmin  (float16) — superblock minimum correction scale
 Bytes  4-15:  sc12  (12 bytes) — 8 sub-block scales + 8 sub-block mins, packed 6 bits each
@@ -88,7 +88,7 @@ Bytes 16-143: qs    (128 bytes) — 256 × 4-bit nibbles, two nibbles per byte
 ```
 
 **How a weight value is decoded:**
-```
+```text
 For element i in sub-block g (g = 0..7, each sub-block = 32 elements):
   raw_nibble = qs[i/2] & 0xF  (for even i)  OR  qs[i/2] >> 4  (for odd i)
   true_value = raw_nibble * sc[g] * d - mn[g] * dmin
@@ -124,7 +124,7 @@ DeepSeek uses:
 
 Sourced from `include/core/moe_config.h` and `BENCHMARK_REPORT.md` addenda:
 
-```
+```text
 dim           = 2048    (token embedding dimension)
 n_layers      = 27      (total transformer layers)
 n_heads       = 16      (attention heads)
@@ -155,7 +155,7 @@ must minimize bytes read per multiply — that's the entire optimization story.
 
 Understanding the call chain is essential before changing anything.
 
-```
+```text
 main() [src/cli/main.c]
   └─ generate() [src/transformer/generate.c]
        └─ transformer_forward(token, pos) [src/transformer/forward.c]
@@ -745,7 +745,7 @@ first to prove correctness before introducing weight pointer changes.
 
 ### 11.1 Hardware
 
-```
+```text
 CPU:      Intel Core i5-5250U (Broadwell, 2 physical / 4 logical cores, 1.6 GHz base)
 SIMD:     AVX2 + F16C only (no AVX-512 of any kind, no VNNI, no NEON)
 RAM:      8 GB DDR3-1600 (measured bandwidth: 5.1–5.3 GB/s)
@@ -857,7 +857,7 @@ Verify anyway:
 ### Rule 8: Document Exact Commands
 
 Every benchmark result must record ALL flags. From GOLDEN_RULES.md:
-```
+```text
 Date: YYYY-MM-DD HH:MM UTC | Commit: <SHA>
 Command: ./pz --model <path> --prompt "<text>" \
          --max-tokens N --temperature T --threads N --simd <mode> --classifier <mode>
@@ -909,7 +909,7 @@ done
 
 ## 14. Pre-Commit Checklist
 
-```
+```text
 [ ] make -j4 succeeds with no errors or new warnings
 [ ] France → Paris output correct (DeepSeek Q3_K_M, T=4, temp=0)
 [ ] Germany → Berlin output correct

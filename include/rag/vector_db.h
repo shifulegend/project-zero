@@ -41,9 +41,10 @@
  * and update the header in-place.
  */
 
-#include "core/error.h"
 #include <stdint.h>
 #include <stdio.h>
+
+#include "core/error.h"
 
 #ifdef __cplusplus
 extern "C" {

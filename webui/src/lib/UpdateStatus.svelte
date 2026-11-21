@@ -1,20 +1,21 @@
-<script>
+<script lang="ts">
   // Phase 38: Settings → Updates. Shows what the server checks and lets the
   // user re-check or hide the banner. Interval / channel / repo / opt-out are
   // server flags (--update-*), shown read-only so nothing is hidden.
-  import { updateInfo, updateError, showBanner, checkNow, refreshUpdate } from './update.js';
+  import { updateInfo, updateError, showBanner, checkNow, refreshUpdate } from './update';
+  import { safeHttpsUrl } from './safeUrl';
   import { onMount } from 'svelte';
 
   let busy = false;
   onMount(() => { if (!$updateInfo) refreshUpdate(); });
 
-  async function check() {
+  async function check(): Promise<void> {
     busy = true;
     await checkNow();
     busy = false;
   }
 
-  const labels = {
+  const labels: Record<string, string> = {
     available: 'update available',
     up_to_date: 'up to date',
     unknown: 'not checked yet',
@@ -30,7 +31,7 @@
 <div class="upd">
   {#if info}
     <div class="row">
-      <span class="state" class:on={info.status === 'available'}>{labels[info.status] ?? info.status}</span>
+      <span class="state" class:on={info.status === 'available'}>{labels[info.status ?? ''] ?? info.status}</span>
       <span class="mono dim">{info.current}{info.latest ? ` · latest ${info.latest}` : ''}</span>
     </div>
     <div class="row dim mono small-text">
@@ -40,14 +41,14 @@
         disabled on the server (--no-update-check, --update-interval 0, PZ_NO_UPDATE_CHECK or CI)
       {/if}
     </div>
-    {#if info.release_notes_url || info.changelog_url}
+    {#if safeHttpsUrl(info.release_notes_url) || safeHttpsUrl(info.changelog_url)}
       <!-- Links come from the server (update repo/API settings), never hardcoded here. -->
       <div class="row small-text">
-        {#if info.release_notes_url}
-          <a href={info.release_notes_url} target="_blank" rel="noopener noreferrer">Release notes for {info.current}</a>
+        {#if safeHttpsUrl(info.release_notes_url)}
+          <a href={safeHttpsUrl(info.release_notes_url)} target="_blank" rel="noopener noreferrer">Release notes for {info.current}</a>
         {/if}
-        {#if info.changelog_url}
-          <a href={info.changelog_url} target="_blank" rel="noopener noreferrer">Changelog</a>
+        {#if safeHttpsUrl(info.changelog_url)}
+          <a href={safeHttpsUrl(info.changelog_url)} target="_blank" rel="noopener noreferrer">Changelog</a>
         {/if}
       </div>
     {/if}

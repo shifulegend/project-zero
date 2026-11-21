@@ -4,6 +4,7 @@
  */
 
 #include "cli/color.h"
+
 #include <string.h>
 #include <strings.h>
 

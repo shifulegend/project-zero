@@ -1,8 +1,9 @@
-#include "tokenizer/tokenizer.h"
-#include "core/platform.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "core/platform.h"
+#include "tokenizer/tokenizer.h"
 
 /*
  * Portable context-aware sort for vocabulary indices.

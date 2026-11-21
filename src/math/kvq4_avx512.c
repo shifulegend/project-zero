@@ -5,7 +5,6 @@
  * nibbles = elems 16..31); dot = d * sum(q*c) + m * sum(q), reduced once per row.
  */
 #include "core/platform.h"
-#include "kv_cache/kv_quant_ops.h"
 #include "math/kvq4_kernels.h"
 
 #if TN_HAS_AVX512

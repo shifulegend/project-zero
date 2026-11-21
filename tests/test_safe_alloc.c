@@ -5,10 +5,11 @@
  * guard. The trap paths (tn_safe_* on failure) abort by design and are
  * verified in the process-isolation audit, not here.
  */
-#include "memory/safe_alloc.h"
-#include "test_harness.h"
 #include <limits.h>
 #include <string.h>
+
+#include "memory/safe_alloc.h"
+#include "test_harness.h"
 
 static void test_pow2(void) {
     TEST_ASSERT(tn_is_pow2(1), "1 is a power of two");

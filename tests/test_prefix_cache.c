@@ -1,8 +1,8 @@
 /*
  * tests/test_prefix_cache.c — Phase 21.5 KV prefix-reuse bookkeeping.
  */
-#include "test_harness.h"
 #include "kv_cache/prefix_cache.h"
+#include "test_harness.h"
 
 static void test_match_and_record(void) {
     PrefixCache pc;

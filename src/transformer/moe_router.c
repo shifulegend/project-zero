@@ -1,11 +1,12 @@
 #include "transformer/moe_router.h"
+
+#include <float.h>
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include "core/moe_config.h"
 #include "math/parallel_matmul.h"
-
-#include <math.h>
-#include <string.h>
-#include <stdlib.h>
-#include <float.h>
 
 /* --------------------------------------------------------------------------
  * Internal helpers
@@ -42,11 +43,20 @@ static void softmax_inplace(float *x, int n) {
  * Returns indices in descending score order.
  */
 static void top_k_select(const float *scores, int n, int k, int *out_indices) {
-    /* Track which indices have been selected already */
-    /* Use a tiny stack-allocated visited array; n ≤ 512 */
-    /* Safe: num_experts is validated ≤ 512 in moe_config_read */
-    static int visited[512];
-    memset(visited, 0, n * sizeof(int));
+    /* Track which indices have been selected already. A per-call array: this was a function-local
+     * static, shared by every caller, so two concurrent routers corrupted each other's selection
+     * (2026-11-19). num_experts is validated <= 512 in moe_config_read; the heap path covers a
+     * larger n instead of overflowing. */
+    int stack_visited[512];
+    int *visited = stack_visited;
+    if (n > 512) {
+        visited = (int *)malloc((size_t)n * sizeof(int));
+        if (!visited) {
+            for (int pick = 0; pick < k; pick++) out_indices[pick] = -1;
+            return;
+        }
+    }
+    memset(visited, 0, (size_t)n * sizeof(int));
 
     for (int pick = 0; pick < k; pick++) {
         int best_idx   = -1;
@@ -60,6 +70,7 @@ static void top_k_select(const float *scores, int n, int k, int *out_indices) {
         out_indices[pick] = best_idx;
         if (best_idx >= 0) visited[best_idx] = 1;
     }
+    if (visited != stack_visited) free(visited);
 }
 
 /* --------------------------------------------------------------------------

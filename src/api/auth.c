@@ -4,6 +4,7 @@
  */
 
 #include "api/auth.h"
+
 #include <string.h>
 
 #define BEARER_PREFIX "Bearer "

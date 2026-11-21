@@ -46,7 +46,7 @@ Skills live at `.claude/skills/gitnexus/*/SKILL.md`.
 
 ## Graph Schema
 
-```
+```text
 (Symbol)-[:CodeRelation {type: 'CALLS' | 'IMPORTS' | 'IMPLEMENTS' | 'EXTENDS'}]->(Symbol)
 (Symbol)-[:BelongsTo]->(Cluster)
 (Symbol)-[:PartOf {step}]->(Process)

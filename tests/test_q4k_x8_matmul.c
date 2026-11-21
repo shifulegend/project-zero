@@ -13,14 +13,14 @@
  * each row's dot product directly from its own (unrepacked) Q4_K bytes.
  */
 
-#include "math/matmul_q4k_x8.h"
-#include "test_harness.h"
-
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
+
+#include "math/matmul_q4k_x8.h"
+#include "test_harness.h"
 
 #define Q4K_SUPER 256
 #define Q4K_NSUB 8

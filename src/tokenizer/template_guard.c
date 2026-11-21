@@ -7,6 +7,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "core/log.h"
+
 /* Copy of docs/templates/bitnet-b1.58.jinja (the model card's
  * "User: ...<|eot_id|>Assistant: " format, with add_generation_prompt).
  * 2026-11-16: embedded so installed users, who do not have the docs/ tree,
@@ -55,7 +57,8 @@ int tn_prompt_ends_with_token(const char *rendered, const char *token) {
 void tn_template_warn_eos_ending_once(void) {
     static atomic_flag warned = ATOMIC_FLAG_INIT;
     if (atomic_flag_test_and_set(&warned)) return;
-    fprintf(stderr, "[warn] the chat template renders a prompt that ends with the end-of-sequence "
-                    "token, so the model will probably generate nothing. Check the template "
-                    "(--chat-template-file replaces it).\n");
+    TN_LOG_WRN("warn",
+               "[warn] the chat template renders a prompt that ends with the end-of-sequence "
+               "token, so the model will probably generate nothing. Check the template "
+               "(--chat-template-file replaces it).\n");
 }

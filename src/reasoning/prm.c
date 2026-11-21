@@ -2,13 +2,15 @@
  * reasoning/prm.c — Phase 30.1 process reward model (see reasoning/prm.h).
  */
 #include "reasoning/prm.h"
-#include "tokenizer/tokenizer_gguf.h"
-#include "transformer/forward.h"
 
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "core/log.h"
+#include "tokenizer/tokenizer_gguf.h"
+#include "transformer/forward.h"
 
 char *prm_format(const char *fmt, const char *question, const char *steps) {
     if (!fmt) fmt = PRM_DEFAULT_FORMAT;
@@ -52,13 +54,13 @@ static int first_token(Tokenizer *t, const char *s) {
 }
 
 TernaryError prm_load(PrmModel *pm, const char *path, const char *format, const char *good,
-                      const char *bad, int max_seq_len, ThreadPool *tp) {
+                      const char *bad, int max_seq_len, ThreadPool *tp,
+                      const KVStrategyOptions *kv_opt) {
     if (!pm || !path) return TN_ERR_INVALID_ARGS;
     memset(pm, 0, sizeof(*pm));
-    TernaryError e = load_gguf_model(&pm->model, path, /*is_primary=*/false, max_seq_len, tp,
-                                     /*stdout_is_tty=*/false);
+    TernaryError e = load_gguf_model(&pm->model, path, false, max_seq_len, tp, false, kv_opt);
     if (e != TN_OK) {
-        fprintf(stderr, "[prm] cannot load '%s': %s\n", path, tn_error_str(e));
+        TN_LOG_ERR("prm", "[prm] cannot load '%s': %s\n", path, tn_error_str(e));
         return e;
     }
     pm->loaded = 1;
@@ -74,12 +76,12 @@ TernaryError prm_load(PrmModel *pm, const char *path, const char *format, const 
     pm->prev    = (int *)malloc((size_t)pm->model.state->max_seq_len * sizeof(int));
     if (!pm->format || !pm->prev || pm->good_id < 0 || pm->bad_id < 0 ||
         pm->good_id == pm->bad_id) {
-        fprintf(stderr, "[prm] good/bad strings must map to two different tokens\n");
+        TN_LOG_INF("prm", "[prm] good/bad strings must map to two different tokens\n");
         prm_free(pm);
         return TN_ERR_INVALID_ARGS;
     }
-    fprintf(stderr, "[prm] judge '%s' loaded (good token %d, bad token %d)\n", path, pm->good_id,
-            pm->bad_id);
+    TN_LOG_INF("prm", "[prm] judge '%s' loaded (good token %d, bad token %d)\n", path, pm->good_id,
+               pm->bad_id);
     return TN_OK;
 }
 

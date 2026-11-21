@@ -2,6 +2,7 @@
 #define TN_CORE_TIMER_H
 
 #include <stdint.h>
+
 #include "core/platform.h"
 
 // Get current high-resolution time in microseconds

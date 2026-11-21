@@ -2,14 +2,16 @@
 #define TN_RUNTIME_MODEL_LOAD_H
 
 #include <stdbool.h>
+
 #include "core/config.h"
 #include "core/error.h"
-#include "core/gguf_loader.h"
 #include "core/gguf_reader.h"
 #include "core/moe_config.h"
-#include "core/run_state.h"
 #include "core/weights.h"
+#include "kv_cache/kv_strategy.h"
 #include "memory/mapped_file.h"
+#include "runtime/gguf_loader.h"
+#include "runtime/run_state.h"
 #include "threading/thread_pool.h"
 
 /**
@@ -69,9 +71,12 @@ typedef struct {
  * @param stdout_is_tty    Only consulted when is_primary is true: forwarded
  *                          to tn_progress_stage()/tn_progress_done() for
  *                          the in-place vs. line-per-stage progress output.
+ * @param kv_opt           Context sizing and KV storage overrides (--ctx-size, --kv-type, ...);
+ *                          NULL = automatic.
  */
 TernaryError load_gguf_model(LoadedModel *out, const char *model_path, bool is_primary,
-                             int max_seq_len_hint, ThreadPool *tp, bool stdout_is_tty);
+                             int max_seq_len_hint, ThreadPool *tp, bool stdout_is_tty,
+                             const KVStrategyOptions *kv_opt);
 
 /**
  * Frees everything load_gguf_model() allocated into `*m` on a TN_OK return,

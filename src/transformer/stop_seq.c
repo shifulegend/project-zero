@@ -1,4 +1,5 @@
 #include "transformer/stop_seq.h"
+
 #include <stdlib.h>
 #include <string.h>
 

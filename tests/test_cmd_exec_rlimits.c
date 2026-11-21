@@ -15,20 +15,20 @@
  *    production code relies on actually behaves as documented -- this is
  *    white-box testing of the mechanism, not of execute_command() itself.
  */
-#include "test_harness.h"
-#include "agent/cmd_exec.h"
-
-#include <string.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
+#include <string.h>
+#include <sys/resource.h>
+#include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <sys/resource.h>
-#include <sys/time.h>
-#include <sys/stat.h>
-#include <signal.h>
 #include <time.h>
+#include <unistd.h>
+
+#include "agent/cmd_exec.h"
+#include "test_harness.h"
 
 /* ── Case: cat on a blocking relative-path FIFO -- parent timeout kills it ── */
 static void test_timeout_kills_blocking_read(void) {

@@ -13,8 +13,8 @@
  * reward model or tree search can plug in at BestOfScoreFn later.
  */
 
-#include "transformer/generate.h"
 #include "core/limits.h" /* BEST_OF_N_MAX */
+#include "transformer/generate.h"
 
 #define BEST_OF_MAX_DEFAULT 8
 

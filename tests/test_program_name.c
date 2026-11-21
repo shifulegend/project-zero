@@ -2,9 +2,10 @@
  * tests/test_program_name.c — Phase 39 rename: basename parsing and the
  * legacy-name detection behind the one-release deprecation notice.
  */
-#include "test_harness.h"
-#include "cli/program_name.h"
 #include <string.h>
+
+#include "cli/program_name.h"
+#include "test_harness.h"
 
 static void test_basename(void) {
     TEST_ASSERT(strcmp(pz_program_basename("./pz"), "pz") == 0, "./pz -> pz");

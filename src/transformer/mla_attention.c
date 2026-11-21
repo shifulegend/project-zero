@@ -18,19 +18,21 @@
  */
 
 #include "transformer/mla_attention.h"
-#include "math/parallel_matmul.h"
-#include "math/matmul_q4k.h"
-#include "math/simd_dispatch.h"
-#include "math/batched_matmul.h"
-#include "core/run_state.h"
-#include "core/debug.h"
-#include "core/step_timing.h"
-#include "core/clamp.h"
-#include "speculative/spec_scratch.h" /* reads the batch scratch fields */
 
 #include <math.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
+
+#include "core/clamp.h"
+#include "core/debug.h"
+#include "core/step_timing.h"
+#include "math/batched_matmul.h"
+#include "math/matmul_q4k.h"
+#include "math/parallel_matmul.h"
+#include "math/rope.h"
+#include "math/simd_core_ops.h"
+#include "math/simd_vec_ops.h"
+#include "runtime/spec_scratch.h" /* reads the batch scratch fields */
 
 /* ── YaRN RoPE helpers ─────────────────────────────────────────────────── */
 
@@ -41,22 +43,6 @@ static float rope_yarn_ramp(float low, float high, int i0) {
     if (y < 0.0f) y = 0.0f;
     if (y > 1.0f) y = 1.0f;
     return 1.0f - y; /* 1=extrapolate, 0=interpolate */
-}
-
-/* Compute YaRN correction dimension bounds for the blend zone.
- * corr[0]=low, corr[1]=high: dims below low are fully extrapolated (no scaling),
- * dims above high are fully interpolated (scaled by freq_scale).
- * Matches ggml_rope_yarn_corr_dims() from llama.cpp exactly. */
-static void yarn_corr_dims(int n_dims, int n_ctx_orig, float freq_base, float beta_fast,
-                           float beta_slow, float corr[2]) {
-    static const float M_PI_F = 3.14159265358979323846f;
-    float log_base            = logf(freq_base);
-    float start = floorf((float)n_dims * logf((float)n_ctx_orig / (beta_fast * 2.0f * M_PI_F)) /
-                         (2.0f * log_base));
-    float end   = ceilf((float)n_dims * logf((float)n_ctx_orig / (beta_slow * 2.0f * M_PI_F)) /
-                        (2.0f * log_base));
-    corr[0]     = tn_clampf(start, 0.0f, (float)(n_dims - 1));
-    corr[1]     = tn_clampf(end, 0.0f, (float)(n_dims - 1));
 }
 
 /*
@@ -100,220 +86,230 @@ static void rope_apply_yarn(float *v, const float *freq, int d, int pos, float f
 
 /* Dispatch helper for MLA projection matmuls.
  * Three paths, selected at runtime from weight flags set by gguf_loader:
- *   1. has_mla_quant=true  → zero-copy Q4_K kernel (best performance for GGUF)
- *   2. is_float=true       → F32 dequantized path  (fallback for non-Q4K GGUF)
- *   3. else                → packed ternary path   (native .bin models)
+ *   1. has_mla_quant=true  -> zero-copy Q4_K kernel (best performance for GGUF)
+ *   2. layers not ternary  -> F32 dequantized path  (fallback for non-Q4K GGUF)
+ *   3. else                -> packed ternary path   (native .bin models)
  * Adding a new quant type: add a flag to TransformerWeights, set in gguf_loader,
  * add a branch here. Never hardcode tensor names or dimension checks. */
-#define MLA_MATMUL(out, in, wptr, sptr, n_in, n_out)                                               \
-    do {                                                                                           \
-        if (w->has_mla_quant) {                                                                    \
-            parallel_matmul_q4k((out), (in), (const uint8_t *)(wptr), (n_in), (n_out), tp);        \
-        } else if (is_float) {                                                                     \
-            parallel_matmul_float32((out), (in), (const float *)(wptr), (n_in), (n_out), tp);      \
-        } else {                                                                                   \
-            parallel_ternary_matmul_packed((out), (in), (const tn_u8 *)(wptr), (n_in), (n_out),    \
-                                           (sptr), tp);                                            \
-        }                                                                                          \
-    } while (0)
+static void mla_matmul(const TransformerWeights *w, ThreadPool *tp, float *out, const float *in,
+                       const void *wptr, float sptr, int n_in, int n_out) {
+    if (w->mla.has_quant)
+        parallel_matmul_q4k(out, in, (const uint8_t *)wptr, n_in, n_out, tp);
+    else if (!w->layers_are_ternary)
+        parallel_matmul_float32(out, in, (const float *)wptr, n_in, n_out, tp);
+    else
+        parallel_ternary_matmul_packed(out, in, (const tn_u8 *)wptr, n_in, n_out, sptr, tp);
+}
+
+/* kq_scale: matches llama.cpp deepseek2.cpp formula.
+ *   mscale_kq = 1 + rope_yarn_log_mul * ln(1/freq_scale)
+ *             = 1 + 0.0707 * ln(40) = 1.2608  (for DeepSeek-V2-Lite)
+ *   iscale = mscale_kq^2 / sqrt(nope + rope)
+ * When YaRN is inactive (ext_factor==0 or log_mul==0), use standard 1/sqrt(d). */
+static float mla_kq_scale(const Config *cfg, int nope, int rope) {
+    float mscale_kq = 1.0f;
+    if (cfg->rope_yarn_ext_factor != 0.0f && cfg->rope_yarn_log_mul != 0.0f &&
+        cfg->rope_freq_scale < 1.0f) {
+        /* freq_scale = 1/factor; ln(factor) = ln(1/freq_scale) = -ln(freq_scale) */
+        mscale_kq = 1.0f + cfg->rope_yarn_log_mul * logf(1.0f / cfg->rope_freq_scale);
+    }
+    return mscale_kq * mscale_kq / sqrtf((float)(nope + rope));
+}
+
+/* This layer's shapes, from the config and the MLA metadata. */
+typedef struct {
+    int dim, n_heads, n_kv_h, nope, rope, lora, v_dim, max_seq, kv_mul;
+    int head_dim; /* KV cache stride */
+    int q_rows, kva_rows, kvb_rows;
+    float iscale;
+    float corr[2]; /* YaRN blend bounds for the rope dims */
+} MlaShape;
+
+static MlaShape mla_dims(const RunState *s, const Config *cfg, const MoEConfig *mc) {
+    MlaShape d;
+    d.dim      = cfg->dim;
+    d.n_heads  = cfg->n_heads;
+    d.n_kv_h   = cfg->n_kv_heads;
+    d.nope     = mc->mla.qk_nope_head_dim;
+    d.rope     = mc->mla.qk_rope_head_dim;
+    d.lora     = mc->mla.kv_lora_rank;
+    d.v_dim    = mc->mla.v_head_dim;
+    d.max_seq  = s->max_seq_len;
+    d.kv_mul   = d.n_heads / d.n_kv_h;
+    d.head_dim = d.dim / d.n_heads;
+    d.q_rows   = d.n_heads * (d.nope + d.rope);
+    d.kva_rows = d.lora + d.rope;
+    d.kvb_rows = d.n_kv_h * (d.nope + d.v_dim);
+    d.iscale   = mla_kq_scale(cfg, d.nope, d.rope);
+    rope_yarn_corr_dims(d.rope, cfg->rope_orig_ctx_len, cfg->rope_theta, cfg->rope_yarn_beta_fast,
+                        cfg->rope_yarn_beta_slow, d.corr);
+    return d;
+}
+
+/* Stores one row's k_nope and v (kvb_rows floats, [kv_head][nope + v_dim]) into the K/V caches. */
+static void mla_store_kv_row(RunState *s, const MlaShape *d, int layer, int mapped_pos,
+                             const float *kv_full) {
+    for (int kv_h = 0; kv_h < d->n_kv_h; kv_h++) {
+        const float *k_nope_src = kv_full + kv_h * (d->nope + d->v_dim);
+        const float *v_src      = k_nope_src + d->nope;
+        size_t off = KV_CACHE_IDX(layer, kv_h, mapped_pos, 0, d->n_kv_h, d->max_seq, d->head_dim);
+        memcpy(&s->key_cache[off], k_nope_src, (size_t)d->nope * sizeof(float));
+        memcpy(&s->value_cache[off], v_src, (size_t)d->v_dim * sizeof(float));
+    }
+}
+
+/* RoPE on one row's k_rope_cur and on every head's q_rope part of q_full, at `pos`. CRITICAL: uses
+ * mla_rope_freq (computed for rope_dim=64), NOT s->rope_freq (computed for head_dim=128, which
+ * gives wrong frequencies). Full YaRN per-dimension blending: low-freq dims use unscaled theta,
+ * high-freq dims use scaled theta (freq_scale), blend zone in between. */
+static void mla_rope_row(const RunState *s, const Config *cfg, const MlaShape *d, float *k_rope_cur,
+                         float *q_full, int pos) {
+    const float *rf = s->mla.mla_rope_freq;
+    rope_apply_yarn(k_rope_cur, rf, d->rope, pos, cfg->rope_freq_scale, cfg->rope_yarn_ext_factor,
+                    cfg->rope_yarn_attn_factor, d->corr);
+    for (int h = 0; h < d->n_heads; h++)
+        rope_apply_yarn(q_full + h * (d->nope + d->rope) + d->nope, rf, d->rope, pos,
+                        cfg->rope_freq_scale, cfg->rope_yarn_ext_factor, cfg->rope_yarn_attn_factor,
+                        d->corr);
+}
+
+/* Scores of one head against the cached K (nope part) and k_rope, scaled; softmax in place. */
+static void mla_scores(const RunState *s, const MlaShape *d, int layer, int pos, int valid_ctx,
+                       const float *q_nope_h, int kv_h, float *att) {
+    const float *q_rope_h = q_nope_h + d->nope;
+    for (int t = 0; t < valid_ctx; t++) {
+        int hist     = (pos >= valid_ctx) ? (pos - valid_ctx + 1 + t) : t;
+        int mapped_t = sw_map_position(&s->sw, hist);
+        size_t k_off = KV_CACHE_IDX(layer, kv_h, mapped_t, 0, d->n_kv_h, d->max_seq, d->head_dim);
+        float score  = tn_vec_dot(q_nope_h, &s->key_cache[k_off], d->nope);
+        score += tn_vec_dot(q_rope_h, &s->mla.k_rope_cache[layer][mapped_t * d->rope], d->rope);
+        att[t] = score * d->iscale;
+    }
+}
+
+/* out_h += sum_t att[t] * V[t] for one head. */
+static void mla_weighted_v(const RunState *s, const MlaShape *d, int layer, int pos, int valid_ctx,
+                           int kv_h, const float *att, float *out_h) {
+    for (int t = 0; t < valid_ctx; t++) {
+        int hist     = (pos >= valid_ctx) ? (pos - valid_ctx + 1 + t) : t;
+        int mapped_t = sw_map_position(&s->sw, hist);
+        size_t v_off = KV_CACHE_IDX(layer, kv_h, mapped_t, 0, d->n_kv_h, d->max_seq, d->head_dim);
+        float a      = att[t];
+        const float *v_vec = &s->value_cache[v_off];
+        for (int i = 0; i < d->v_dim; i++) out_h[i] += a * v_vec[i];
+    }
+}
+
+/* Steps 1-2b (single token): RMSNorm, KV compress into hb2 (kva_rows <= hidden_dim) and the KV-A
+ * norm of kv_latent = hb2[0..lora-1]; k_rope_cur is left in hb2[lora..lora+rope-1]. */
+static void mla_compress(RunState *s, const TransformerWeights *w, const Config *cfg,
+                         const MlaShape *d, int layer, ThreadPool *tp) {
+    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    tn_rmsnorm(s->xb, s->x, w->attn.norm[layer], d->dim, cfg->rms_norm_eps);
+    if (t_step) tn_step_timing_add(TN_STEP_4_PRE_ATTN_RMSNORM, tn_step_timing_now_ns() - t_step);
+    DBG_DUMP(layer, "attn_norm", s->xb, d->dim);
+
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    mla_matmul(w, tp, s->hb2, s->xb, w->mla.wkv_a[layer], w->mla.skv_a[layer], d->dim, d->kva_rows);
+    if (t_step) tn_step_timing_add(TN_STEP_6_KV_A_COMPRESSION, tn_step_timing_now_ns() - t_step);
+
+    if (w->attn.sub_norm && w->attn.sub_norm[layer]) {
+        t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+        tn_rmsnorm(s->hb2, s->hb2, w->attn.sub_norm[layer], d->lora, cfg->rms_norm_eps);
+        if (t_step)
+            tn_step_timing_add(TN_STEP_7_KV_A_LATENT_NORM, tn_step_timing_now_ns() - t_step);
+    }
+    DBG_DUMP(layer, "kv_cmpr", s->hb2, d->lora);
+}
+
+/* Step 3 (single token): KV expand of kv_latent into hb (kvb_rows <= hidden_dim), then the k_nope
+ * and v cache writes, which must happen before hb is reused for Q. */
+static void mla_expand_store(RunState *s, const TransformerWeights *w, const MlaShape *d, int layer,
+                             int mapped_pos, ThreadPool *tp) {
+    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    mla_matmul(w, tp, s->hb, s->hb2, w->mla.wkv_b[layer], w->mla.skv_b[layer], d->lora,
+               d->kvb_rows);
+    if (t_step) tn_step_timing_add(TN_STEP_8_KV_B_EXPANSION, tn_step_timing_now_ns() - t_step);
+    DBG_DUMP(layer, "kv", s->hb, d->kvb_rows);
+
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    mla_store_kv_row(s, d, layer, mapped_pos, s->hb);
+    if (t_step) tn_step_timing_add(TN_STEP_10_KV_CACHE_WRITE, tn_step_timing_now_ns() - t_step);
+}
+
+/* Step 7 (single token): every head's scores, softmax and V-weighted sum into xb2, each part with
+ * its own step-timing bracket (accumulated per head) and the head-0 debug dumps. */
+static void mla_attend(RunState *s, const MlaShape *d, int layer, int pos, const float *q_full) {
+    int valid_ctx = sw_valid_count(&s->sw, pos);
+    memset(s->xb2, 0, (size_t)(d->n_heads * d->v_dim) * sizeof(float));
+    for (int h = 0; h < d->n_heads; h++) {
+        const float *q_nope_h = q_full + h * (d->nope + d->rope);
+        int kv_h              = h / d->kv_mul;
+        float *att            = s->att + h * d->max_seq;
+
+        int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+        mla_scores(s, d, layer, pos, valid_ctx, q_nope_h, kv_h, att);
+        if (h == 0) DBG_DUMP(layer, "attn_score_h0", att, valid_ctx); /* pre-softmax, head 0 */
+        tn_softmax(att, valid_ctx);
+        if (h == 0) DBG_DUMP(layer, "attn_soft_h0", att, valid_ctx); /* post-softmax, head 0 */
+        if (t_step) tn_step_timing_add(TN_STEP_11_ATTN_SCORE, tn_step_timing_now_ns() - t_step);
+
+        t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+        mla_weighted_v(s, d, layer, pos, valid_ctx, kv_h, att, s->xb2 + h * d->v_dim);
+        if (t_step) tn_step_timing_add(TN_STEP_12_POST_ATTN, tn_step_timing_now_ns() - t_step);
+    }
+}
+
+/* Steps 4-6 (single token): Q projection into hb (q_rows <= hidden_dim; overwrites kv_full, which
+ * is already cached), RoPE on k_rope_cur (in hb2) and the q_rope part of every head (in hb), and
+ * the k_rope_cache write. Leaves q_full = hb: [n_heads][nope + rope]. */
+static void mla_q_rope_store(RunState *s, const TransformerWeights *w, const Config *cfg,
+                             const MlaShape *d, int layer, int pos, int mapped_pos,
+                             ThreadPool *tp) {
+    float *k_rope_cur = s->hb2 + d->lora;
+    int64_t t_step    = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    mla_matmul(w, tp, s->hb, s->xb, w->mla.wq[layer], w->mla.sq[layer], d->dim, d->q_rows);
+    if (t_step) tn_step_timing_add(TN_STEP_5_Q_PROJECTION, tn_step_timing_now_ns() - t_step);
+    DBG_DUMP(layer, "q", s->hb, d->q_rows);
+
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    mla_rope_row(s, cfg, d, k_rope_cur, s->hb, pos);
+    if (t_step) tn_step_timing_add(TN_STEP_9_YARN_ROPE, tn_step_timing_now_ns() - t_step);
+    DBG_DUMP(layer, "k_pe", k_rope_cur, d->rope);
+    DBG_DUMP(layer, "q_pe", s->hb + d->nope, d->rope); /* first head's rope portion */
+
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    memcpy(&s->mla.k_rope_cache[layer][mapped_pos * d->rope], k_rope_cur,
+           (size_t)d->rope * sizeof(float));
+    if (t_step) tn_step_timing_add(TN_STEP_10_KV_CACHE_WRITE, tn_step_timing_now_ns() - t_step);
+}
 
 void mla_attention_forward(RunState *s, const TransformerWeights *w, const Config *cfg,
                            const MoEConfig *mc, int layer, int pos, ThreadPool *tp) {
-    const int dim      = cfg->dim;
-    const int n_heads  = cfg->n_heads;
-    const int n_kv_h   = cfg->n_kv_heads;
-    const int nope     = mc->qk_nope_head_dim;
-    const int rope     = mc->qk_rope_head_dim;
-    const int lora     = mc->kv_lora_rank;
-    const int v_dim    = mc->v_head_dim;
-    const int max_seq  = s->max_seq_len;
-    const int kv_mul   = n_heads / n_kv_h;
-    const int head_dim = dim / n_heads; /* KV cache stride */
+    const MlaShape d = mla_dims(s, cfg, mc);
+    int mapped_pos   = sw_map_position(&s->sw, pos);
 
-    /* kq_scale: matches llama.cpp deepseek2.cpp formula.
-     * mscale_kq = 1 + rope_yarn_log_mul * ln(1/freq_scale)
-     *           = 1 + 0.0707 * ln(40) = 1.2608  (for DeepSeek-V2-Lite)
-     * iscale = mscale_kq^2 / sqrt(nope + rope)
-     * When YaRN is inactive (ext_factor==0 or log_mul==0), use standard 1/sqrt(d). */
-    float iscale;
-    {
-        float mscale_kq = 1.0f;
-        if (cfg->rope_yarn_ext_factor != 0.0f && cfg->rope_yarn_log_mul != 0.0f &&
-            cfg->rope_freq_scale < 1.0f) {
-            /* freq_scale = 1/factor; ln(factor) = ln(1/freq_scale) = -ln(freq_scale) */
-            mscale_kq = 1.0f + cfg->rope_yarn_log_mul * logf(1.0f / cfg->rope_freq_scale);
-        }
-        iscale = mscale_kq * mscale_kq / sqrtf((float)(nope + rope));
-    }
+    mla_compress(s, w, cfg, &d, layer, tp);
+    mla_expand_store(s, w, &d, layer, mapped_pos, tp);
+    mla_q_rope_store(s, w, cfg, &d, layer, pos, mapped_pos, tp);
 
-    const int q_rows   = n_heads * (nope + rope); /* 3072 */
-    const int kva_rows = lora + rope;             /*  576 */
-    const int kvb_rows = n_kv_h * (nope + v_dim); /* 4096 */
-
-    /* Dispatch to float32 or ternary matmul */
-    const bool is_float = !w->layers_are_ternary;
-
-    /* YaRN RoPE parameters from config */
-    float corr[2];
-    yarn_corr_dims(rope, cfg->rope_orig_ctx_len, cfg->rope_theta, cfg->rope_yarn_beta_fast,
-                   cfg->rope_yarn_beta_slow, corr);
-    float yarn_freq_scale  = cfg->rope_freq_scale;
-    float yarn_ext_factor  = cfg->rope_yarn_ext_factor;
-    float yarn_attn_factor = cfg->rope_yarn_attn_factor;
-
-    int mapped_pos = sw_map_position(&s->sw, pos);
-
-    /* Step 1: RMSNorm */
-    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    tn_rmsnorm(s->xb, s->x, w->rms_att_weight[layer], dim, cfg->rms_norm_eps);
-    if (t_step) {
-        tn_step_timing_add(TN_STEP_4_PRE_ATTN_RMSNORM, tn_step_timing_now_ns() - t_step);
-    }
-    DBG_DUMP(layer, "attn_norm", s->xb, dim);
-
-    /* Step 2: KV compress → hb2 (kva_rows ≤ hidden_dim) */
-    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    MLA_MATMUL(s->hb2, s->xb, w->mla_wkv_a[layer], w->mla_skv_a[layer], dim, kva_rows);
-    if (t_step) {
-        tn_step_timing_add(TN_STEP_6_KV_A_COMPRESSION, tn_step_timing_now_ns() - t_step);
-    }
-    float *kv_latent  = s->hb2;        /* hb2[0..lora-1]  */
-    float *k_rope_cur = s->hb2 + lora; /* hb2[lora..lora+rope-1] */
-
-    /* Step 2b: Apply KV-A norm to kv_latent (before KV-B expansion) */
-    if (w->rms_attn_sub_norm && w->rms_attn_sub_norm[layer]) {
-        t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-        tn_rmsnorm(kv_latent, kv_latent, w->rms_attn_sub_norm[layer], lora, cfg->rms_norm_eps);
-        if (t_step) {
-            tn_step_timing_add(TN_STEP_7_KV_A_LATENT_NORM, tn_step_timing_now_ns() - t_step);
-        }
-    }
-    DBG_DUMP(layer, "kv_cmpr", kv_latent, lora);
-
-    /* Step 3: KV expand → hb  (kvb_rows ≤ hidden_dim; e.g. 4096 << 11008) */
-    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    MLA_MATMUL(s->hb, kv_latent, w->mla_wkv_b[layer], w->mla_skv_b[layer], lora, kvb_rows);
-    if (t_step) {
-        tn_step_timing_add(TN_STEP_8_KV_B_EXPANSION, tn_step_timing_now_ns() - t_step);
-    }
-    DBG_DUMP(layer, "kv", s->hb, kvb_rows);
-    /* Store k_nope and v to caches before hb is overwritten */
-    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    for (int kv_h = 0; kv_h < n_kv_h; kv_h++) {
-        float *k_nope_src = s->hb + kv_h * (nope + v_dim);
-        float *v_src      = k_nope_src + nope;
-        size_t k_off      = KV_CACHE_IDX(layer, kv_h, mapped_pos, 0, n_kv_h, max_seq, head_dim);
-        size_t v_off      = KV_CACHE_IDX(layer, kv_h, mapped_pos, 0, n_kv_h, max_seq, head_dim);
-        memcpy(&s->key_cache[k_off], k_nope_src, (size_t)nope * sizeof(float));
-        memcpy(&s->value_cache[v_off], v_src, (size_t)v_dim * sizeof(float));
-    }
-    if (t_step) {
-        tn_step_timing_add(TN_STEP_10_KV_CACHE_WRITE, tn_step_timing_now_ns() - t_step);
-    }
-
-    /* Step 4: Q projection → hb  (q_rows ≤ hidden_dim; overwrites kv_full, already cached) */
-    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    MLA_MATMUL(s->hb, s->xb, w->mla_wq[layer], w->mla_sq[layer], dim, q_rows);
-    if (t_step) {
-        tn_step_timing_add(TN_STEP_5_Q_PROJECTION, tn_step_timing_now_ns() - t_step);
-    }
-    float *q_full = s->hb; /* [n_heads][nope + rope] */
-    DBG_DUMP(layer, "q", q_full, q_rows);
-
-    /* Step 5: Apply RoPE to k_rope_cur (in hb2, shared) and q_rope per head (in hb).
-     * CRITICAL: use mla_rope_freq (computed for rope_dim=64), NOT s->rope_freq
-     * (which is computed for head_dim=128 and gives wrong frequencies).
-     * Full YaRN per-dimension blending: low-freq dims use unscaled theta,
-     * high-freq dims use scaled theta (freq_scale), blend zone in between. */
-    const float *rf = s->mla_rope_freq;
-    t_step          = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    rope_apply_yarn(k_rope_cur, rf, rope, pos, yarn_freq_scale, yarn_ext_factor, yarn_attn_factor,
-                    corr);
-    DBG_DUMP(layer, "k_pe", k_rope_cur, rope);
-    for (int h = 0; h < n_heads; h++)
-        rope_apply_yarn(q_full + h * (nope + rope) + nope, rf, rope, pos, yarn_freq_scale,
-                        yarn_ext_factor, yarn_attn_factor, corr);
-    if (t_step) {
-        tn_step_timing_add(TN_STEP_9_YARN_ROPE, tn_step_timing_now_ns() - t_step);
-    }
-    /* Dump q_pe: first head's rope portion */
-    DBG_DUMP(layer, "q_pe", q_full + nope, rope);
-
-    /* Step 6: Store k_rope_cur to k_rope_cache */
-    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    memcpy(&s->k_rope_cache[layer][mapped_pos * rope], k_rope_cur, (size_t)rope * sizeof(float));
-    if (t_step) {
-        tn_step_timing_add(TN_STEP_10_KV_CACHE_WRITE, tn_step_timing_now_ns() - t_step);
-    }
-
-    /* Step 7: Attention */
     sw_advance(&s->sw);
-    int valid_ctx = sw_valid_count(&s->sw, pos);
+    mla_attend(s, &d, layer, pos, s->hb);
+    DBG_DUMP(layer, "attn_v_out", s->xb2, d.n_heads * d.v_dim); /* V-weighted sum, pre-W_o */
 
-    memset(s->xb2, 0, (size_t)(n_heads * v_dim) * sizeof(float));
-
-    for (int h = 0; h < n_heads; h++) {
-        float *q_nope_h = q_full + h * (nope + rope);
-        float *q_rope_h = q_nope_h + nope;
-        int kv_h        = h / kv_mul;
-        float *att      = s->att + h * max_seq;
-
-        t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-        for (int t = 0; t < valid_ctx; t++) {
-            int hist     = (pos >= valid_ctx) ? (pos - valid_ctx + 1 + t) : t;
-            int mapped_t = sw_map_position(&s->sw, hist);
-            size_t k_off = KV_CACHE_IDX(layer, kv_h, mapped_t, 0, n_kv_h, max_seq, head_dim);
-            float score  = tn_vec_dot(q_nope_h, &s->key_cache[k_off], nope);
-            score += tn_vec_dot(q_rope_h, &s->k_rope_cache[layer][mapped_t * rope], rope);
-            att[t] = score * iscale;
-        }
-        /* Step 11: dump pre-softmax attention scores for head 0 */
-        if (h == 0) {
-            DBG_DUMP(layer, "attn_score_h0", att, valid_ctx);
-        }
-        tn_softmax(att, valid_ctx);
-        /* Step 11: dump post-softmax attention weights for head 0 */
-        if (h == 0) {
-            DBG_DUMP(layer, "attn_soft_h0", att, valid_ctx);
-        }
-        if (t_step) {
-            tn_step_timing_add(TN_STEP_11_ATTN_SCORE, tn_step_timing_now_ns() - t_step);
-        }
-
-        float *out_h = s->xb2 + h * v_dim;
-        t_step       = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-        for (int t = 0; t < valid_ctx; t++) {
-            int hist     = (pos >= valid_ctx) ? (pos - valid_ctx + 1 + t) : t;
-            int mapped_t = sw_map_position(&s->sw, hist);
-            size_t v_off = KV_CACHE_IDX(layer, kv_h, mapped_t, 0, n_kv_h, max_seq, head_dim);
-            float a      = att[t];
-            float *v_vec = &s->value_cache[v_off];
-            for (int d = 0; d < v_dim; d++) out_h[d] += a * v_vec[d];
-        }
-        if (t_step) {
-            tn_step_timing_add(TN_STEP_12_POST_ATTN, tn_step_timing_now_ns() - t_step);
-        }
-    }
-
-    /* Step 12: V-weighted sum output (pre-W_o projection) */
-    DBG_DUMP(layer, "attn_v_out", s->xb2, n_heads * v_dim);
-
-    /* Step 8: wo projection → xb; residual */
-    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    MLA_MATMUL(s->xb, s->xb2, w->wo[layer], w->so[layer], n_heads * v_dim, dim);
-    /* Step 12: W_o projection output (pre-residual) */
-    DBG_DUMP(layer, "attn_wo_out", s->xb, dim);
-    for (int i = 0; i < dim; i++) s->x[i] += s->xb[i];
-    if (t_step) {
-        tn_step_timing_add(TN_STEP_12_POST_ATTN, tn_step_timing_now_ns() - t_step);
-    }
-    /* Step 12: post-attention residual (x after += xb) */
-    DBG_DUMP(layer, "attn_resid", s->x, dim);
+    /* Step 8: wo projection -> xb; residual */
+    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    mla_matmul(w, tp, s->xb, s->xb2, w->attn.wo[layer], w->attn.so[layer], d.n_heads * d.v_dim,
+               d.dim);
+    DBG_DUMP(layer, "attn_wo_out", s->xb, d.dim); /* W_o output, pre-residual */
+    for (int i = 0; i < d.dim; i++) s->x[i] += s->xb[i];
+    if (t_step) tn_step_timing_add(TN_STEP_12_POST_ATTN, tn_step_timing_now_ns() - t_step);
+    DBG_DUMP(layer, "attn_resid", s->x, d.dim); /* x after += xb */
 
     if (g_tn_verbose) {
         char tag[48];
         snprintf(tag, sizeof(tag), "L%02d mla-attn out x", layer);
-        dbg_vec_stats(tag, s->x, dim);
+        dbg_vec_stats(tag, s->x, d.dim);
     }
 }
 
@@ -343,244 +339,168 @@ void mla_attention_forward(RunState *s, const TransformerWeights *w, const Confi
  * sequential per-token MLA_MATMUL calls -- correct, documented, without
  * the bandwidth win for those formats (same Phase 18-B scope as the
  * generic dense/GQA path). */
+/* One batch call's packed scratch: kv_latent (stride lora), kv_full (stride kvb_rows) and the
+ * attention output (stride n_heads * v_dim). The batched-matmul kernels take a single fixed stride
+ * (= n), so a value embedded at a different stride in sb->hb2 is gathered first. Small and freed at
+ * the end of the call (lora / kvb_rows / v_dim are all much smaller than the hidden_dim-scale
+ * matrices). */
+typedef struct {
+    float *latent, *kv_full, *attn_out;
+    int attn_out_width;
+} MlaBatch;
+
+static int mla_batch_alloc(MlaBatch *b, const MlaShape *d, int n_tokens) {
+    b->attn_out_width = d->n_heads * d->v_dim;
+    b->latent         = (float *)malloc((size_t)n_tokens * d->lora * sizeof(float));
+    b->kv_full        = (float *)malloc((size_t)n_tokens * d->kvb_rows * sizeof(float));
+    b->attn_out       = (float *)malloc((size_t)n_tokens * b->attn_out_width * sizeof(float));
+    return b->latent && b->kv_full && b->attn_out;
+}
+
+static void mla_batch_free(MlaBatch *b) {
+    free(b->latent);
+    free(b->kv_full);
+    free(b->attn_out);
+}
+
+/* One batched projection (ternary weights only) or n_tokens sequential per-token calls (Q4_K and
+ * F32 fall back, the same Phase 18-B scope as the generic dense/GQA path): out is packed at stride
+ * n_out, in at stride n_in. */
+static void mla_matmul_rows(const TransformerWeights *w, ThreadPool *tp, float *out,
+                            const float *in, const void *wptr, float sptr, int n_in, int n_out,
+                            int n_tokens) {
+    if (!w->layers_are_ternary || w->mla.has_quant) {
+        for (int k = 0; k < n_tokens; k++)
+            mla_matmul(w, tp, out + (size_t)k * n_out, in + (size_t)k * n_in, wptr, sptr, n_in,
+                       n_out);
+        return;
+    }
+    tn_ternary_matmul_packed_batch(out, in, (const tn_u8 *)wptr, n_in, n_out, sptr, n_tokens, tp);
+}
+
+/* KV-A norm (when the model has one) of each row's kv_latent in sb->hb2, copied into b->latent. */
+static void mla_gather_latent(SpecBatchScratch *sb, const TransformerWeights *w, const Config *cfg,
+                              const MlaShape *d, int layer, int n_tokens, MlaBatch *b) {
+    for (int k = 0; k < n_tokens; k++) {
+        float *kv_latent_k = sb->hb2 + (size_t)k * d->kva_rows;
+        if (w->attn.sub_norm && w->attn.sub_norm[layer])
+            tn_rmsnorm(kv_latent_k, kv_latent_k, w->attn.sub_norm[layer], d->lora,
+                       cfg->rms_norm_eps);
+        memcpy(b->latent + (size_t)k * d->lora, kv_latent_k, (size_t)d->lora * sizeof(float));
+    }
+}
+
+/* Steps 1-2 over all rows: per-token RMSNorm, KV compress packed at stride kva_rows in sb->hb2,
+ * then the KV-A norm plus gather of kv_latent into a tightly packed buffer (stride lora). */
+static void mla_rows_compress(SpecBatchScratch *sb, const TransformerWeights *w, const Config *cfg,
+                              const MlaShape *d, int layer, int n_tokens, ThreadPool *tp,
+                              MlaBatch *b) {
+    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    for (int k = 0; k < n_tokens; k++)
+        tn_rmsnorm(sb->xb + (size_t)k * d->dim, sb->x + (size_t)k * d->dim, w->attn.norm[layer],
+                   d->dim, cfg->rms_norm_eps);
+    if (t_step) tn_step_timing_add(TN_STEP_4_PRE_ATTN_RMSNORM, tn_step_timing_now_ns() - t_step);
+
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    mla_matmul_rows(w, tp, sb->hb2, sb->xb, w->mla.wkv_a[layer], w->mla.skv_a[layer], d->dim,
+                    d->kva_rows, n_tokens);
+    if (t_step) tn_step_timing_add(TN_STEP_6_KV_A_COMPRESSION, tn_step_timing_now_ns() - t_step);
+
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    mla_gather_latent(sb, w, cfg, d, layer, n_tokens, b);
+    if (t_step) tn_step_timing_add(TN_STEP_7_KV_A_LATENT_NORM, tn_step_timing_now_ns() - t_step);
+}
+
+/* Step 3 over all rows: KV expand (packed at stride kvb_rows) and the k_nope / v cache writes per
+ * token. */
+static void mla_rows_expand_store(RunState *s, const TransformerWeights *w, const MlaShape *d,
+                                  int layer, int pos, int n_tokens, ThreadPool *tp, MlaBatch *b) {
+    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    mla_matmul_rows(w, tp, b->kv_full, b->latent, w->mla.wkv_b[layer], w->mla.skv_b[layer], d->lora,
+                    d->kvb_rows, n_tokens);
+    if (t_step) tn_step_timing_add(TN_STEP_8_KV_B_EXPANSION, tn_step_timing_now_ns() - t_step);
+
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    for (int k = 0; k < n_tokens; k++)
+        mla_store_kv_row(s, d, layer, sw_map_position(&s->sw, pos + k),
+                         b->kv_full + (size_t)k * d->kvb_rows);
+    if (t_step) tn_step_timing_add(TN_STEP_10_KV_CACHE_WRITE, tn_step_timing_now_ns() - t_step);
+}
+
+/* Steps 4-6 over all rows: Q projection packed at stride q_rows in sb->hb (sb->hb was never used
+ * for kv_full here, so there is no overwrite-after-caching ordering to worry about), RoPE per
+ * token and the k_rope cache writes. */
+static void mla_rows_q_rope(RunState *s, SpecBatchScratch *sb, const TransformerWeights *w,
+                            const Config *cfg, const MlaShape *d, int layer, int pos, int n_tokens,
+                            ThreadPool *tp) {
+    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    mla_matmul_rows(w, tp, sb->hb, sb->xb, w->mla.wq[layer], w->mla.sq[layer], d->dim, d->q_rows,
+                    n_tokens);
+    if (t_step) tn_step_timing_add(TN_STEP_5_Q_PROJECTION, tn_step_timing_now_ns() - t_step);
+
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    for (int k = 0; k < n_tokens; k++)
+        mla_rope_row(s, cfg, d, sb->hb2 + (size_t)k * d->kva_rows + d->lora,
+                     sb->hb + (size_t)k * d->q_rows, pos + k);
+    if (t_step) tn_step_timing_add(TN_STEP_9_YARN_ROPE, tn_step_timing_now_ns() - t_step);
+
+    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    for (int k = 0; k < n_tokens; k++) {
+        int mapped_pos = sw_map_position(&s->sw, pos + k);
+        memcpy(&s->mla.k_rope_cache[layer][mapped_pos * d->rope],
+               sb->hb2 + (size_t)k * d->kva_rows + d->lora, (size_t)d->rope * sizeof(float));
+        sw_advance(&s->sw); /* kept for parity; see attention_forward_batch()'s comment */
+    }
+    if (t_step) tn_step_timing_add(TN_STEP_10_KV_CACHE_WRITE, tn_step_timing_now_ns() - t_step);
+}
+
+/* Read phase: attention per token (not batched across k). */
+static void mla_rows_attend(RunState *s, SpecBatchScratch *sb, const MlaShape *d, int layer,
+                            int pos, int n_tokens, MlaBatch *b) {
+    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    for (int k = 0; k < n_tokens; k++) {
+        int tok_pos         = pos + k;
+        const float *q_full = sb->hb + (size_t)k * d->q_rows;
+        float *out_k        = b->attn_out + (size_t)k * b->attn_out_width;
+        memset(out_k, 0, (size_t)b->attn_out_width * sizeof(float));
+        int valid_ctx = sw_valid_count(&s->sw, tok_pos);
+        for (int h = 0; h < d->n_heads; h++) {
+            int kv_h   = h / d->kv_mul;
+            float *att = s->att + h * d->max_seq;
+            mla_scores(s, d, layer, tok_pos, valid_ctx, q_full + h * (d->nope + d->rope), kv_h,
+                       att);
+            tn_softmax(att, valid_ctx);
+            mla_weighted_v(s, d, layer, tok_pos, valid_ctx, kv_h, att, out_k + h * d->v_dim);
+        }
+    }
+    if (t_step) tn_step_timing_add(TN_STEP_11_ATTN_SCORE, tn_step_timing_now_ns() - t_step);
+}
+
 TernaryError mla_attention_forward_batch(RunState *s, SpecBatchScratch *sb,
                                          const TransformerWeights *w, const Config *cfg,
                                          const MoEConfig *mc, int layer, int pos, int n_tokens,
                                          ThreadPool *tp) {
-    const int dim      = cfg->dim;
-    const int n_heads  = cfg->n_heads;
-    const int n_kv_h   = cfg->n_kv_heads;
-    const int nope     = mc->qk_nope_head_dim;
-    const int rope     = mc->qk_rope_head_dim;
-    const int lora     = mc->kv_lora_rank;
-    const int v_dim    = mc->v_head_dim;
-    const int max_seq  = s->max_seq_len;
-    const int kv_mul   = n_heads / n_kv_h;
-    const int head_dim = dim / n_heads;
-
-    float iscale;
-    {
-        float mscale_kq = 1.0f;
-        if (cfg->rope_yarn_ext_factor != 0.0f && cfg->rope_yarn_log_mul != 0.0f &&
-            cfg->rope_freq_scale < 1.0f) {
-            mscale_kq = 1.0f + cfg->rope_yarn_log_mul * logf(1.0f / cfg->rope_freq_scale);
-        }
-        iscale = mscale_kq * mscale_kq / sqrtf((float)(nope + rope));
-    }
-
-    const int q_rows         = n_heads * (nope + rope);
-    const int kva_rows       = lora + rope;
-    const int kvb_rows       = n_kv_h * (nope + v_dim);
-    const int attn_out_width = n_heads * v_dim;
-
-    const bool is_float  = !w->layers_are_ternary;
-    const bool can_batch = !is_float && !w->has_mla_quant;
-
-    float corr[2];
-    yarn_corr_dims(rope, cfg->rope_orig_ctx_len, cfg->rope_theta, cfg->rope_yarn_beta_fast,
-                   cfg->rope_yarn_beta_slow, corr);
-    float yarn_freq_scale  = cfg->rope_freq_scale;
-    float yarn_ext_factor  = cfg->rope_yarn_ext_factor;
-    float yarn_attn_factor = cfg->rope_yarn_attn_factor;
-    const float *rf        = s->mla_rope_freq;
-
-    float *kv_latent_packed = (float *)malloc((size_t)n_tokens * lora * sizeof(float));
-    float *kv_full_packed   = (float *)malloc((size_t)n_tokens * kvb_rows * sizeof(float));
-    float *attn_out_packed  = (float *)malloc((size_t)n_tokens * attn_out_width * sizeof(float));
-    if (!kv_latent_packed || !kv_full_packed || !attn_out_packed) {
-        free(kv_latent_packed);
-        free(kv_full_packed);
-        free(attn_out_packed);
+    const MlaShape d = mla_dims(s, cfg, mc);
+    MlaBatch b;
+    if (!mla_batch_alloc(&b, &d, n_tokens)) {
+        mla_batch_free(&b);
         return TN_ERR_OOM;
     }
 
-    /* Whole-batch-call step-timing granularity (Stage 5.5): mirrors
-     * mla_attention_forward()'s own step tagging (4, 6, 7, 8, 9, 10, 11, 12)
-     * at the equivalent call boundaries in this batched version. */
-    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-
-    /* Step 1: rmsnorm, per token */
-    for (int k = 0; k < n_tokens; k++) {
-        tn_rmsnorm(sb->xb + (size_t)k * dim, sb->x + (size_t)k * dim, w->rms_att_weight[layer], dim,
-                   cfg->rms_norm_eps);
-    }
-    if (t_step) {
-        tn_step_timing_add(TN_STEP_4_PRE_ATTN_RMSNORM, tn_step_timing_now_ns() - t_step);
-    }
-
-    /* Step 2: KV compress -> sb->hb2, packed at stride kva_rows */
-    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    if (can_batch) {
-        tn_ternary_matmul_packed_batch(sb->hb2, sb->xb, (const tn_u8 *)w->mla_wkv_a[layer], dim,
-                                       kva_rows, w->mla_skv_a[layer], n_tokens, tp);
-    } else {
-        for (int k = 0; k < n_tokens; k++) {
-            MLA_MATMUL(sb->hb2 + (size_t)k * kva_rows, sb->xb + (size_t)k * dim,
-                       w->mla_wkv_a[layer], w->mla_skv_a[layer], dim, kva_rows);
-        }
-    }
-    if (t_step) {
-        tn_step_timing_add(TN_STEP_6_KV_A_COMPRESSION, tn_step_timing_now_ns() - t_step);
-    }
-
-    /* Step 2b: KV-A norm + gather kv_latent into a tightly-packed buffer
-     * (stride lora) for the KV-expand call below. */
-    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    for (int k = 0; k < n_tokens; k++) {
-        float *kv_latent_k = sb->hb2 + (size_t)k * kva_rows;
-        if (w->rms_attn_sub_norm && w->rms_attn_sub_norm[layer]) {
-            tn_rmsnorm(kv_latent_k, kv_latent_k, w->rms_attn_sub_norm[layer], lora,
-                       cfg->rms_norm_eps);
-        }
-        memcpy(kv_latent_packed + (size_t)k * lora, kv_latent_k, (size_t)lora * sizeof(float));
-    }
-    if (t_step) {
-        tn_step_timing_add(TN_STEP_7_KV_A_LATENT_NORM, tn_step_timing_now_ns() - t_step);
-    }
-
-    /* Step 3: KV expand -> kv_full_packed, stride kvb_rows */
-    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    if (can_batch) {
-        tn_ternary_matmul_packed_batch(kv_full_packed, kv_latent_packed,
-                                       (const tn_u8 *)w->mla_wkv_b[layer], lora, kvb_rows,
-                                       w->mla_skv_b[layer], n_tokens, tp);
-    } else {
-        for (int k = 0; k < n_tokens; k++) {
-            MLA_MATMUL(kv_full_packed + (size_t)k * kvb_rows, kv_latent_packed + (size_t)k * lora,
-                       w->mla_wkv_b[layer], w->mla_skv_b[layer], lora, kvb_rows);
-        }
-    }
-    if (t_step) {
-        tn_step_timing_add(TN_STEP_8_KV_B_EXPANSION, tn_step_timing_now_ns() - t_step);
-    }
-
-    /* Store k_nope/v to caches, per token */
-    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    for (int k = 0; k < n_tokens; k++) {
-        int tok_pos      = pos + k;
-        int mapped_pos   = sw_map_position(&s->sw, tok_pos);
-        float *kv_full_k = kv_full_packed + (size_t)k * kvb_rows;
-        for (int kv_h = 0; kv_h < n_kv_h; kv_h++) {
-            float *k_nope_src = kv_full_k + kv_h * (nope + v_dim);
-            float *v_src      = k_nope_src + nope;
-            size_t off        = KV_CACHE_IDX(layer, kv_h, mapped_pos, 0, n_kv_h, max_seq, head_dim);
-            memcpy(&s->key_cache[off], k_nope_src, (size_t)nope * sizeof(float));
-            memcpy(&s->value_cache[off], v_src, (size_t)v_dim * sizeof(float));
-        }
-    }
-    if (t_step) {
-        tn_step_timing_add(TN_STEP_10_KV_CACHE_WRITE, tn_step_timing_now_ns() - t_step);
-    }
-
-    /* Step 4: Q projection -> sb->hb, packed at stride q_rows (sb->hb was
-     * never used for kv_full in this batched version -- kv_full lives in
-     * its own kv_full_packed buffer above -- so there is no "overwrite
-     * after caching" ordering constraint to worry about here). */
-    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    if (can_batch) {
-        tn_ternary_matmul_packed_batch(sb->hb, sb->xb, (const tn_u8 *)w->mla_wq[layer], dim, q_rows,
-                                       w->mla_sq[layer], n_tokens, tp);
-    } else {
-        for (int k = 0; k < n_tokens; k++) {
-            MLA_MATMUL(sb->hb + (size_t)k * q_rows, sb->xb + (size_t)k * dim, w->mla_wq[layer],
-                       w->mla_sq[layer], dim, q_rows);
-        }
-    }
-    if (t_step) {
-        tn_step_timing_add(TN_STEP_5_Q_PROJECTION, tn_step_timing_now_ns() - t_step);
-    }
-
-    /* Step 5: RoPE, per token */
-    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    for (int k = 0; k < n_tokens; k++) {
-        int tok_pos         = pos + k;
-        float *k_rope_cur_k = sb->hb2 + (size_t)k * kva_rows + lora;
-        float *q_full_k     = sb->hb + (size_t)k * q_rows;
-
-        rope_apply_yarn(k_rope_cur_k, rf, rope, tok_pos, yarn_freq_scale, yarn_ext_factor,
-                        yarn_attn_factor, corr);
-        for (int h = 0; h < n_heads; h++) {
-            rope_apply_yarn(q_full_k + h * (nope + rope) + nope, rf, rope, tok_pos, yarn_freq_scale,
-                            yarn_ext_factor, yarn_attn_factor, corr);
-        }
-    }
-    if (t_step) {
-        tn_step_timing_add(TN_STEP_9_YARN_ROPE, tn_step_timing_now_ns() - t_step);
-    }
-
-    /* Step 6: store k_rope_cur to cache, per token */
-    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    for (int k = 0; k < n_tokens; k++) {
-        int tok_pos         = pos + k;
-        float *k_rope_cur_k = sb->hb2 + (size_t)k * kva_rows + lora;
-        int mapped_pos      = sw_map_position(&s->sw, tok_pos);
-        memcpy(&s->k_rope_cache[layer][mapped_pos * rope], k_rope_cur_k,
-               (size_t)rope * sizeof(float));
-        sw_advance(&s->sw); /* kept for parity; see attention_forward_batch()'s comment */
-    }
-    if (t_step) {
-        tn_step_timing_add(TN_STEP_10_KV_CACHE_WRITE, tn_step_timing_now_ns() - t_step);
-    }
-
-    /* Read phase: attention, per token (not batched across k) */
-    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    for (int k = 0; k < n_tokens; k++) {
-        int tok_pos     = pos + k;
-        float *q_full_k = sb->hb + (size_t)k * q_rows;
-        float *out_k    = attn_out_packed + (size_t)k * attn_out_width;
-        memset(out_k, 0, (size_t)attn_out_width * sizeof(float));
-
-        int valid_ctx = sw_valid_count(&s->sw, tok_pos);
-
-        for (int h = 0; h < n_heads; h++) {
-            float *q_nope_h = q_full_k + h * (nope + rope);
-            float *q_rope_h = q_nope_h + nope;
-            int kv_h        = h / kv_mul;
-            float *att      = s->att + h * max_seq;
-
-            for (int t = 0; t < valid_ctx; t++) {
-                int hist     = (tok_pos >= valid_ctx) ? (tok_pos - valid_ctx + 1 + t) : t;
-                int mapped_t = sw_map_position(&s->sw, hist);
-                size_t k_off = KV_CACHE_IDX(layer, kv_h, mapped_t, 0, n_kv_h, max_seq, head_dim);
-                float score  = tn_vec_dot(q_nope_h, &s->key_cache[k_off], nope);
-                score += tn_vec_dot(q_rope_h, &s->k_rope_cache[layer][mapped_t * rope], rope);
-                att[t] = score * iscale;
-            }
-            tn_softmax(att, valid_ctx);
-
-            float *out_h = out_k + h * v_dim;
-            for (int t = 0; t < valid_ctx; t++) {
-                int hist     = (tok_pos >= valid_ctx) ? (tok_pos - valid_ctx + 1 + t) : t;
-                int mapped_t = sw_map_position(&s->sw, hist);
-                size_t v_off = KV_CACHE_IDX(layer, kv_h, mapped_t, 0, n_kv_h, max_seq, head_dim);
-                float a      = att[t];
-                float *v_vec = &s->value_cache[v_off];
-                for (int d = 0; d < v_dim; d++) out_h[d] += a * v_vec[d];
-            }
-        }
-    }
-    if (t_step) {
-        tn_step_timing_add(TN_STEP_11_ATTN_SCORE, tn_step_timing_now_ns() - t_step);
-    }
+    /* Whole-batch-call step-timing granularity (Stage 5.5): mirrors mla_attention_forward()'s own
+     * step tagging (4, 6, 7, 8, 9, 10, 11, 12) at the equivalent call boundaries. */
+    mla_rows_compress(sb, w, cfg, &d, layer, n_tokens, tp, &b);
+    mla_rows_expand_store(s, w, &d, layer, pos, n_tokens, tp, &b);
+    mla_rows_q_rope(s, sb, w, cfg, &d, layer, pos, n_tokens, tp);
+    mla_rows_attend(s, sb, &d, layer, pos, n_tokens, &b);
 
     /* Step 8: wo projection -> sb->xb2, packed at stride dim; residual */
-    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    if (can_batch) {
-        tn_ternary_matmul_packed_batch(sb->xb2, attn_out_packed, (const tn_u8 *)w->wo[layer],
-                                       attn_out_width, dim, w->so[layer], n_tokens, tp);
-    } else {
-        for (int k = 0; k < n_tokens; k++) {
-            MLA_MATMUL(sb->xb2 + (size_t)k * dim, attn_out_packed + (size_t)k * attn_out_width,
-                       w->wo[layer], w->so[layer], attn_out_width, dim);
-        }
-    }
-    tn_vec_add(sb->x, sb->x, sb->xb2, n_tokens * dim);
-    if (t_step) {
-        tn_step_timing_add(TN_STEP_12_POST_ATTN, tn_step_timing_now_ns() - t_step);
-    }
+    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    mla_matmul_rows(w, tp, sb->xb2, b.attn_out, w->attn.wo[layer], w->attn.so[layer],
+                    b.attn_out_width, d.dim, n_tokens);
+    tn_vec_add(sb->x, sb->x, sb->xb2, n_tokens * d.dim);
+    if (t_step) tn_step_timing_add(TN_STEP_12_POST_ATTN, tn_step_timing_now_ns() - t_step);
 
-    free(kv_latent_packed);
-    free(kv_full_packed);
-    free(attn_out_packed);
+    mla_batch_free(&b);
     return TN_OK;
 }

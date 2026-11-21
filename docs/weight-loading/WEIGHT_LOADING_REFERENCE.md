@@ -107,7 +107,7 @@ static inline size_t packed_bytes(int count) {
 
 ### Example for Qwen 2B (dim=4096, hidden_dim=14336, n_layers=24)
 
-```
+```text
 Configuration:
   dim = 4096
   hidden_dim = 14336
@@ -151,7 +151,7 @@ Total model file (weights only): ~1.8 GB
 ## 4. OFFSET CALCULATION ALGORITHM
 
 ### File Structure
-```
+```text
 Byte Offset    Content
 [0:8]          Magic/Version
 [8:48]         Config struct (40 bytes)
@@ -182,7 +182,7 @@ const size_t offset_base = 64;  // File offset where weights start
 5. `(64 - ...) % 64` = 0 if already aligned, else padding needed
 
 ### Example Calculation
-```
+```text
 If relative offset = 0:     abs_offset = 64  → 64 % 64 = 0   → padding = 0
 If relative offset = 10:    abs_offset = 74  → 74 % 64 = 10  → padding = 54
 If relative offset = 4194304: abs_offset = 4194368
@@ -253,7 +253,7 @@ void *data = MapViewOfFile(hMapping, FILE_MAP_READ, 0, 0, 0);
 ## 7. TERNARY UNPACKING (2-bit Format)
 
 ### Packed Format
-```
+```text
 4 ternary weights per byte (2 bits each)
 
 Byte layout (LSB first):
@@ -278,7 +278,7 @@ static inline tn_i8 unpack_ternary(const tn_u8 *packed, int index) {
 ```
 
 ### Unpacking Examples
-```
+```text
 Byte value: 0b01_10_01_00 = 0x68 = 104
   Weight[0]: bits[1:0] = 0b00 → -1
   Weight[1]: bits[3:2] = 0b01 → 0

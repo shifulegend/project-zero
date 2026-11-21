@@ -28,14 +28,18 @@
  */
 
 #include "math/matmul_q4k.h"
-#include "threading/thread_pool.h"
-#include "core/platform.h"
-#include "math/cpu_features.h"
+
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "core/cpu_features.h"
+#include "core/env_flag.h"
 #include "core/fp16.h"
+#include "core/platform.h"
+#include "memory/tls_scratch.h"
+#include "threading/thread_pool.h"
 
 #if TN_HAS_AVX2 || TN_HAS_AVX512
 #include <immintrin.h>
@@ -51,17 +55,12 @@
 /* Q8K_BLOCK mirrors TN_Q8K_BLOCK from the header — kept local for clarity */
 #define Q8K_BLOCK 256
 
-/* ── Module-level Q8K activation buffer (reallocated as needed) ─────────────── */
-static TnQ8KActBlock *s_q8k_buf = NULL;
-static int s_q8k_buf_blocks     = 0;
+/* ── Per-thread Q8K activation buffer (grown as needed, freed at thread exit) ─── */
+static TnTlsScratch s_q8k_scratch = TN_TLS_SCRATCH_INIT;
 
 static TnQ8KActBlock *q8k_buf_ensure(int n_blocks) {
-    if (s_q8k_buf_blocks < n_blocks) {
-        free(s_q8k_buf);
-        s_q8k_buf        = (TnQ8KActBlock *)malloc((size_t)n_blocks * sizeof(TnQ8KActBlock));
-        s_q8k_buf_blocks = s_q8k_buf ? n_blocks : 0;
-    }
-    return s_q8k_buf;
+    return (TnQ8KActBlock *)tn_tls_scratch(&s_q8k_scratch,
+                                           (size_t)n_blocks * sizeof(TnQ8KActBlock));
 }
 
 /* ── Scalar F16→F32 helper ────────────────────────────────────────────────── */
@@ -462,12 +461,9 @@ int tn_q4k_vnni_ok(void) {
     /* runtime-verified flag: some hypervisors advertise VNNI in CPUID
      * without executing it (mistakes.md 2026-09-24). PZ_Q4K_VNNI=0 forces
      * the AVX2 kernel (A/B aid). Evaluated on the dispatching thread. */
-    static int env = -1;
-    if (env < 0) {
-        const char *e = getenv("PZ_Q4K_VNNI");
-        env           = (e && e[0] == '0') ? 0 : 1;
-    }
-    return (env && tn_cpu_features_detect()->avx512vnni) ? 1 : 0;
+    static atomic_int env = TN_ENV_FLAG_UNSET;
+    return (tn_env_on_unless_zero(&env, "PZ_Q4K_VNNI") && tn_cpu_features_detect()->avx512vnni) ? 1
+                                                                                                : 0;
 #else
     return 0;
 #endif

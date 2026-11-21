@@ -1,0 +1,8 @@
+# Minimum coverage (percent) that tools/check_coverage.py enforces on the CI coverage job, and the
+# ratchet that keeps it honest: it fails below the floor and also when coverage is more than 5 points
+# above it (raise the floor then; it only goes up).
+# Measured 2026-11-20 without a model (make coverage): lines 55.5, branches 43.3, functions 62.2.
+# The floors sit just below that because a runner whose CPU lacks AVX-512/VNNI runs fewer kernel
+# paths. Lowering one needs a reason in the commit message.
+lines 55
+branches 43

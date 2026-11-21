@@ -1,8 +1,9 @@
 #ifndef TN_KV_COMPRESS_H
 #define TN_KV_COMPRESS_H
 
-#include "core/platform.h"
 #include <stddef.h>
+
+#include "core/platform.h"
 
 /**
  * Compressed KV cache entry using int8 absmax quantization.

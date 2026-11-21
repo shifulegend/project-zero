@@ -4,10 +4,11 @@
  * (the brand's reference ASCII), case/separator handling, raw mode, refusal of
  * unsupported characters and too-small buffers, and parity with the banner.
  */
-#include "test_harness.h"
+#include <string.h>
+
 #include "brand/block_font.h"
 #include "cli/banner.h"
-#include <string.h>
+#include "test_harness.h"
 
 static const char *GOLDEN =
     "####  ####   ###    ### #####  #### #####     ##### ##### ####   ### \n"

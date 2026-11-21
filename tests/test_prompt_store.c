@@ -2,8 +2,8 @@
  * tests/test_prompt_store.c — Phase 26 multi-entry prompt snapshots: save,
  * restore into the KV cache, supersede, LRU eviction, budget, scope.
  */
+#include "runtime/prompt_store.h"
 #include "test_harness.h"
-#include "kv_cache/prompt_store.h"
 
 #define L 2
 #define H 2
@@ -160,7 +160,7 @@ static void test_disabled_and_scope(void) {
     MoEConfig mc;
     memset(&mc, 0, sizeof(mc));
     TEST_ASSERT(prompt_store_supported(&mc), "dense supported");
-    mc.has_mla = 1;
+    mc.mla.enabled = 1;
     TEST_ASSERT(!prompt_store_supported(&mc), "MLA excluded");
     TEST_ASSERT(prompt_store_supported(NULL), "NULL mc = dense");
     prompt_store_free(&ps);

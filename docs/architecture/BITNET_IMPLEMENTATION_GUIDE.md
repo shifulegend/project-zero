@@ -314,7 +314,7 @@ __m256i lookup = _mm256_shuffle_epi8(
 
 ### Current Problem
 PZ's architecture likely has **implicit barrier** after quantization phase:
-```
+```text
 Token inference:
   [BARRIER] Compute quant_scale (sequential)
   [BARRIER] Quantize to int8 (per-thread)
@@ -325,7 +325,7 @@ Token inference:
 Each barrier adds overhead for thread synchronization.
 
 ### BitNet.cpp Solution
-```
+```text
 Token inference:
   Compute quant_scale (fast SIMD, no barrier needed)
   Build LUT (can be done by master thread while workers idle)

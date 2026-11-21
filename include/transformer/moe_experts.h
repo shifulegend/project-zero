@@ -24,9 +24,10 @@
  * Inactive experts cost nothing (only selected jobs are passed in).
  */
 
+#include <stdint.h>
+
 #include "math/matmul_q4k.h"
 #include "threading/thread_pool.h"
-#include <stdint.h>
 
 typedef struct {
     const uint8_t *w_gate;             /* hdim rows x dim cols, type gate_type */
@@ -50,12 +51,14 @@ int moe_experts_job_ok(const TnMoEExpertJob *job, int dim);
  * act_type: 0 = SiLU, 1 = ReLU² (Config.act_type). All jobs must satisfy
  * moe_experts_job_ok(). Returns 0, or -1 on allocation failure (out is then
  * unchanged and the caller should fall back to the legacy path).
- * Not re-entrant (module scratch), like moe_ffn_forward().
+ * Safe to call from several threads at once (the scratch is per calling thread); a call must not
+ * be nested inside another on the same thread. Pool workers never touch the scratch directly.
  */
 int moe_experts_forward(float *out, const float *x, const TnMoEExpertJob *jobs, int n_jobs, int dim,
                         int act_type, ThreadPool *tp);
 
-/* Release the module scratch (optional; called at model unload). */
+/* Release the calling thread's scratch now (optional; called at model unload; it is otherwise
+ * freed when the thread exits). */
 void moe_experts_free(void);
 
 #endif /* TN_MOE_EXPERTS_H */

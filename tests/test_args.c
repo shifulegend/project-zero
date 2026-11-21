@@ -3,17 +3,19 @@
  * parse_args() at all -- scoped here to the new flags this stage adds,
  * matching the plan's Stage 4 verification requirement, not a general
  * CLI-arg test sweep (a real but separate coverage gap, out of scope here). */
-#include "test_harness.h"
-#include "cli/args.h"
 #include <string.h>
+
+#include "cli/args.h"
+#include "test_harness.h"
 
 static void test_draft_model_flag_sets_path(void) {
     char *argv[] = {"prog", "--model", "m.gguf", "--draft-model", "draft.gguf"};
     CliArgs args;
     TernaryError err = parse_args(&args, 5, argv);
     TEST_ASSERT_EQ(err, TN_OK, "parse succeeds with --draft-model");
-    TEST_ASSERT(args.draft_model_path != NULL, "draft_model_path is set");
-    TEST_ASSERT(strcmp(args.draft_model_path, "draft.gguf") == 0, "draft_model_path value matches");
+    TEST_ASSERT(args.input.draft_model_path != NULL, "draft_model_path is set");
+    TEST_ASSERT(strcmp(args.input.draft_model_path, "draft.gguf") == 0,
+                "draft_model_path value matches");
 }
 
 static void test_draft_model_defaults_to_null(void) {
@@ -21,7 +23,7 @@ static void test_draft_model_defaults_to_null(void) {
     CliArgs args;
     TernaryError err = parse_args(&args, 3, argv);
     TEST_ASSERT_EQ(err, TN_OK, "parse succeeds without --draft-model");
-    TEST_ASSERT(args.draft_model_path == NULL,
+    TEST_ASSERT(args.input.draft_model_path == NULL,
                 "draft_model_path defaults to NULL -- speculative decoding is opt-in only");
 }
 
@@ -30,7 +32,7 @@ static void test_spec_length_flag_sets_value(void) {
     CliArgs args;
     TernaryError err = parse_args(&args, 7, argv);
     TEST_ASSERT_EQ(err, TN_OK, "parse succeeds with --spec-length");
-    TEST_ASSERT_EQ(args.spec_length, 8, "spec_length value matches");
+    TEST_ASSERT_EQ(args.search.spec_length, 8, "spec_length value matches");
 }
 
 static void test_spec_length_defaults_to_five(void) {
@@ -38,7 +40,7 @@ static void test_spec_length_defaults_to_five(void) {
     CliArgs args;
     TernaryError err = parse_args(&args, 3, argv);
     TEST_ASSERT_EQ(err, TN_OK, "parse succeeds without --spec-length");
-    TEST_ASSERT_EQ(args.spec_length, 5, "spec_length defaults to 5");
+    TEST_ASSERT_EQ(args.search.spec_length, 5, "spec_length defaults to 5");
 }
 
 static void test_spec_length_zero_rejected(void) {

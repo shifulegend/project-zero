@@ -1,5 +1,6 @@
 /* Token bucket with an injected clock: burst, refill, cap, retry hint, disabled. */
 #include <stdio.h>
+
 #include "api/rate_limit.h"
 
 static int g_fail;

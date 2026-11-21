@@ -233,7 +233,7 @@ inline void three_tbl_impl_<params>(int32_t* c, int8_t* lut, uint8_t* a, uint8_t
    - Unpacks to 16-bit for accumulation
 
 2. **Sign Handling:** Embedded in LUT lookup via 2-bit sign array
-   ```
+   ```text
    XOR trick: (x + sign_bit) ^ sign_bit = conditional negation
    This is faster than conditional moves on older CPUs
    ```
@@ -297,7 +297,7 @@ For x86 + AVX2:
 | **Memory Overhead** | Minimal | ~256 bytes × K/24 per output row |
 
 BitNet.cpp architecture:
-```
+```text
 Token t:
   1. Compute global scale: per_tensor_quant() [~50 instr, scalar output]
   2. Build LUT: three_lut_ctor() [vectorized, parallelizable]

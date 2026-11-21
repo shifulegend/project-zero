@@ -150,9 +150,16 @@ the CLI.
 | `GET /docs`, `GET /openapi.json` | Interactive API docs / OpenAPI 3.0 spec |
 | `GET /`, `GET /assets/*` | The web UI (see `--web-ui` above) |
 
+Every response carries an `X-Request-ID` header: the one the client sent (1 to
+64 characters from `A-Z a-z 0-9 . _ : -`), or a generated one. `--verbose` logs
+it with the status of each request.
+
 Chat completion requests accept, besides `messages`/`stream`/`max_tokens`/`temperature`/`top_p`:
 `top_k`, `min_p`, `repetition_penalty`, `presence_penalty`, `frequency_penalty`,
-`penalty_last_n`, `seed`, `stop` (string or array), `response_format: {"type":"json_object"}` (the reply is then one JSON object or array: it starts with `{` or `[` and ends at the matching bracket)
+`penalty_last_n`, `seed`, `stop` (string or array), `response_format:
+{"type":"json_object"}` (`"text"` is accepted, `"json_schema"` and other types
+get a `400`; with json_object the reply is then one JSON object or array: it
+starts with `{` or `[` and ends at the matching bracket)
 `watermark: {"enabled", "key", "gamma", "delta"}`, `cache_prompt` (default from
 `--prompt-cache`, on) and `best_of` (default `--best-of`, capped by `--best-of-max`; the response
 then includes a `best_of` object with each candidate's score). Omitted fields use the server defaults

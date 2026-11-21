@@ -127,4 +127,7 @@ shows the live tok/s display and the banner); its tok/s is recorded in `meta.jso
 statistics.
 
 The earlier dated scripts (`tools/run_h2h_sweep_*.sh`, `tools/bench_sweep_seq.py`) stay as the record of
-how the published numbers were produced; `benchlib.py` reuses `bench_sweep_seq.py`'s output parsers.
+how the published numbers were produced; `benchlib.py` reuses
+`bench_sweep_seq.py`'s output parsers; the engine and model registries, command
+builders and variants live in `benchlib_variants.py`, which `benchlib`
+re-exports.

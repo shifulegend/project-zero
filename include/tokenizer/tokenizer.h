@@ -1,8 +1,9 @@
 #ifndef TN_TOKENIZER_H
 #define TN_TOKENIZER_H
 
-#include "core/error.h"
 #include <stddef.h>
+
+#include "core/error.h"
 
 #define TN_TOKENIZER_MAX_EOG 16
 
@@ -120,5 +121,13 @@ char *tokenizer_neutralize_control(const Tokenizer *t, const char *text);
  * leading space is stripped when prev_token is the BOS token.
  */
 const char *tokenizer_decode(Tokenizer *t, int prev_token, int token);
+
+
+/* Token to prepend when encoding a prompt: -1 when the tokenizer does not add one, else the
+ * config's BOS id when it has one (>= 0), else the tokenizer's own. */
+static inline int tokenizer_bos_to_prepend(const Tokenizer *t, int config_bos) {
+    if (!t->add_bos_token) return -1;
+    return config_bos >= 0 ? config_bos : t->bos_token_id;
+}
 
 #endif /* TN_TOKENIZER_H */

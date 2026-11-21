@@ -2,22 +2,22 @@
  * test_moe.c — Unit tests for Phase 17: Mixture of Experts Routing
  */
 
+#include <math.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include "core/config.h"
 #include "core/moe_config.h"
-#include "core/run_state.h"
 #include "core/unpack.h"
 #include "core/weights.h"
 #include "math/simd_dispatch.h"
+#include "runtime/run_state.h"
 #include "test_harness.h"
 #include "transformer/ffn.h"
 #include "transformer/forward.h"
 #include "transformer/moe_ffn.h"
 #include "transformer/moe_router.h"
-
-#include <math.h>
-#include <string.h>
-#include <stdlib.h>
-#include <stdint.h>
 
 /* ================================================================
  * Helpers
@@ -67,16 +67,16 @@ static void alloc_dense_layer(TransformerWeights *w, const Config *cfg, int l) {
     size_t gate    = (size_t)dim * hidden_dim; /* number of weights */
     size_t down    = (size_t)hidden_dim * dim;
 
-    w->rms_ffn_weight[l] = (float *)calloc(dim, sizeof(float));
-    fill_f32(w->rms_ffn_weight[l], dim, 1.0f);
+    w->ffn.norm[l] = (float *)calloc(dim, sizeof(float));
+    fill_f32(w->ffn.norm[l], dim, 1.0f);
 
     /* packed_bytes() buffers — 4 ternary weights per byte */
-    w->w1[l] = (tn_i8 *)alloc_packed_ternary(gate, l * 100 + 5);
-    w->s1[l] = 1.0f;
-    w->w2[l] = (tn_i8 *)alloc_packed_ternary(down, l * 100 + 6);
-    w->s2[l] = 1.0f;
-    w->w3[l] = (tn_i8 *)alloc_packed_ternary(gate, l * 100 + 7);
-    w->s3[l] = 1.0f;
+    w->ffn.w1[l] = (tn_i8 *)alloc_packed_ternary(gate, l * 100 + 5);
+    w->ffn.s1[l] = 1.0f;
+    w->ffn.w2[l] = (tn_i8 *)alloc_packed_ternary(down, l * 100 + 6);
+    w->ffn.s2[l] = 1.0f;
+    w->ffn.w3[l] = (tn_i8 *)alloc_packed_ternary(gate, l * 100 + 7);
+    w->ffn.s3[l] = 1.0f;
 }
 
 /* ================================================================
@@ -177,14 +177,14 @@ static void test_moe_ffn_output_finite(void) {
     alloc_dense_layer(&w, &cfg, 0);
 
     int nl = cfg.n_layers, ne = mc.num_experts, ehdim = mc.expert_hidden_dim;
-    w.moe_gate_w = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
-    w.moe_gate_s = (float *)calloc(nl, sizeof(float));
-    w.moe_w1     = (tn_i8 ***)calloc(nl, sizeof(tn_i8 **));
-    w.moe_w2     = (tn_i8 ***)calloc(nl, sizeof(tn_i8 **));
-    w.moe_w3     = (tn_i8 ***)calloc(nl, sizeof(tn_i8 **));
-    w.moe_s1     = (float **)calloc(nl, sizeof(float *));
-    w.moe_s2     = (float **)calloc(nl, sizeof(float *));
-    w.moe_s3     = (float **)calloc(nl, sizeof(float *));
+    w.moe.gate_w = (tn_i8 **)calloc(nl, sizeof(tn_i8 *));
+    w.moe.gate_s = (float *)calloc(nl, sizeof(float));
+    w.moe.w1     = (tn_i8 ***)calloc(nl, sizeof(tn_i8 **));
+    w.moe.w2     = (tn_i8 ***)calloc(nl, sizeof(tn_i8 **));
+    w.moe.w3     = (tn_i8 ***)calloc(nl, sizeof(tn_i8 **));
+    w.moe.s1     = (float **)calloc(nl, sizeof(float *));
+    w.moe.s2     = (float **)calloc(nl, sizeof(float *));
+    w.moe.s3     = (float **)calloc(nl, sizeof(float *));
 
     for (int l = 0; l < nl; l++) {
         /* moe_gate_w is stored as a tn_i8* pointer but holds raw F32 gate
@@ -195,21 +195,21 @@ static void test_moe_ffn_output_finite(void) {
          * only caught once make test started actually instrumenting
          * LIB_OBJS with sanitizers (see docs/ai/mistakes.md) — the router's
          * F32 SIMD load read past this buffer's true (undersized) end. */
-        w.moe_gate_w[l] = (tn_i8 *)calloc((size_t)cfg.dim * ne, sizeof(float));
-        w.moe_gate_s[l] = 1.0f;
-        w.moe_w1[l]     = (tn_i8 **)calloc(ne, sizeof(tn_i8 *));
-        w.moe_w2[l]     = (tn_i8 **)calloc(ne, sizeof(tn_i8 *));
-        w.moe_w3[l]     = (tn_i8 **)calloc(ne, sizeof(tn_i8 *));
-        w.moe_s1[l]     = (float *)calloc(ne, sizeof(float));
-        w.moe_s2[l]     = (float *)calloc(ne, sizeof(float));
-        w.moe_s3[l]     = (float *)calloc(ne, sizeof(float));
+        w.moe.gate_w[l] = (tn_i8 *)calloc((size_t)cfg.dim * ne, sizeof(float));
+        w.moe.gate_s[l] = 1.0f;
+        w.moe.w1[l]     = (tn_i8 **)calloc(ne, sizeof(tn_i8 *));
+        w.moe.w2[l]     = (tn_i8 **)calloc(ne, sizeof(tn_i8 *));
+        w.moe.w3[l]     = (tn_i8 **)calloc(ne, sizeof(tn_i8 *));
+        w.moe.s1[l]     = (float *)calloc(ne, sizeof(float));
+        w.moe.s2[l]     = (float *)calloc(ne, sizeof(float));
+        w.moe.s3[l]     = (float *)calloc(ne, sizeof(float));
         for (int e = 0; e < ne; e++) {
-            w.moe_w1[l][e] = (tn_i8 *)calloc((size_t)cfg.dim * ehdim, sizeof(tn_i8));
-            w.moe_w2[l][e] = (tn_i8 *)calloc((size_t)ehdim * cfg.dim, sizeof(tn_i8));
-            w.moe_w3[l][e] = (tn_i8 *)calloc((size_t)cfg.dim * ehdim, sizeof(tn_i8));
-            w.moe_s1[l][e] = 1.0f;
-            w.moe_s2[l][e] = 1.0f;
-            w.moe_s3[l][e] = 1.0f;
+            w.moe.w1[l][e] = (tn_i8 *)calloc((size_t)cfg.dim * ehdim, sizeof(tn_i8));
+            w.moe.w2[l][e] = (tn_i8 *)calloc((size_t)ehdim * cfg.dim, sizeof(tn_i8));
+            w.moe.w3[l][e] = (tn_i8 *)calloc((size_t)cfg.dim * ehdim, sizeof(tn_i8));
+            w.moe.s1[l][e] = 1.0f;
+            w.moe.s2[l][e] = 1.0f;
+            w.moe.s3[l][e] = 1.0f;
         }
     }
 
@@ -222,31 +222,31 @@ static void test_moe_ffn_output_finite(void) {
 
     /* Clean up */
     for (int l = 0; l < nl; l++) {
-        free(w.moe_gate_w[l]);
+        free(w.moe.gate_w[l]);
         for (int e = 0; e < ne; e++) {
-            free(w.moe_w1[l][e]);
-            free(w.moe_w2[l][e]);
-            free(w.moe_w3[l][e]);
+            free(w.moe.w1[l][e]);
+            free(w.moe.w2[l][e]);
+            free(w.moe.w3[l][e]);
         }
-        free(w.moe_w1[l]);
-        free(w.moe_w2[l]);
-        free(w.moe_w3[l]);
-        free(w.moe_s1[l]);
-        free(w.moe_s2[l]);
-        free(w.moe_s3[l]);
-        free(w.rms_ffn_weight[l]);
-        free(w.w1[l]);
-        free(w.w2[l]);
-        free(w.w3[l]);
+        free(w.moe.w1[l]);
+        free(w.moe.w2[l]);
+        free(w.moe.w3[l]);
+        free(w.moe.s1[l]);
+        free(w.moe.s2[l]);
+        free(w.moe.s3[l]);
+        free(w.ffn.norm[l]);
+        free(w.ffn.w1[l]);
+        free(w.ffn.w2[l]);
+        free(w.ffn.w3[l]);
     }
-    free(w.moe_gate_w);
-    free(w.moe_gate_s);
-    free(w.moe_w1);
-    free(w.moe_w2);
-    free(w.moe_w3);
-    free(w.moe_s1);
-    free(w.moe_s2);
-    free(w.moe_s3);
+    free(w.moe.gate_w);
+    free(w.moe.gate_s);
+    free(w.moe.w1);
+    free(w.moe.w2);
+    free(w.moe.w3);
+    free(w.moe.s1);
+    free(w.moe.s2);
+    free(w.moe.s3);
     weights_free_pointers(&w);
 }
 
@@ -282,10 +282,10 @@ static void test_moe_dense_unchanged(void) {
 
     run_state_free(&s1);
     run_state_free(&s2);
-    free(w.rms_ffn_weight[0]);
-    free(w.w1[0]);
-    free(w.w2[0]);
-    free(w.w3[0]);
+    free(w.ffn.norm[0]);
+    free(w.ffn.w1[0]);
+    free(w.ffn.w2[0]);
+    free(w.ffn.w3[0]);
     weights_free_pointers(&w);
 }
 

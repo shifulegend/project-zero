@@ -8,4 +8,8 @@ Definition of done: `docs/ai/engineering-rules.md`.
 4. Diff review: modularity, no hardcoding, memset-before-init, no new warnings, secrets check;
    user-facing changes logged under `[Unreleased]` in `CHANGELOG.md` (`tools/changelog.py check`).
    README reviewed for anything the change made stale (DoD #7: flags vs `./pz --help`, links, numbers, phase status).
-5. Report what is verified vs UNVERIFIED; "done" means every step above passed.
+5. Security-sensitive diff (`src/api`, `src/agent`, `src/update`, `src/config`,
+   `install.sh`, `webui/`): review it
+   against `.claude/agents/appsec-reviewer.md` (the same checklist) and address
+   the findings.
+6. Report what is verified vs UNVERIFIED; "done" means every step above passed.

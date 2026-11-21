@@ -114,7 +114,7 @@ These are the test plan's own Phase 2/3 items; none were part of the Phase 1 (P0
 
 ## Verification of this state
 
-```
+```text
 make clean && make release CC=gcc  && make test CC=gcc  && make debug CC=gcc  && make test-tsan CC=gcc
 make clean && make release CC=clang && make test CC=clang && make debug CC=clang
 ```

@@ -14,11 +14,13 @@
  */
 
 #include "math/matmul_q5_1.h"
-#include "threading/thread_pool.h"
-#include "core/platform.h"
+
 #include <stdint.h>
 #include <string.h>
+
 #include "core/fp16.h"
+#include "core/platform.h"
+#include "threading/thread_pool.h"
 
 #if TN_HAS_AVX512 || TN_HAS_AVX2
 #include <immintrin.h>

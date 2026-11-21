@@ -9,8 +9,8 @@
  * threading five separate pointers everywhere.
  */
 
-#include "rag/vector_db.h"
 #include "rag/embedder.h"
+#include "rag/vector_db.h"
 
 #ifdef __cplusplus
 extern "C" {

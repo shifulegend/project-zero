@@ -11,8 +11,9 @@
  * Dot product: d * sum(qs[i] * x[i])
  */
 
-#include "threading/thread_pool.h"
 #include <stdint.h>
+
+#include "threading/thread_pool.h"
 
 #ifdef __cplusplus
 extern "C" {

@@ -1,7 +1,835 @@
 # Change Trace — project-zero
 
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
-> Update after each meaningful sub-step. Last updated: 2026-11-18.
+> Update after each meaningful sub-step. Last updated: 2026-11-20.
+
+### 2026-11-21 — hardware tuning at start-up split into steps (finding 20.a)
+- What: `session_tune_hardware` (complexity 27, 78 lines) is now a driver over `apply_simd_override`,
+  `obtain_calibration` (with `calibrate_first_run`), `apply_calibrated_simd`, `select_classifier` (with
+  `fast_classifier`) and `pick_threads`.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: it only sets environment variables, loads or runs calibration and prints, so the check is the
+  printed text: on SmolLM2 with a calibrated home the start-up output is identical to the old binary for the
+  default run, `--simd` scalar / avx2 / an unknown value, `--classifier` 0-3, `--act-quant` 1 and 2,
+  `--threads`, `--no-calibrate` (alone and with `--classifier 3`) and a combination; a first run on a fresh
+  home prints the same calibration, classifier and thread lines (only the measured bandwidth differs).
+  `make test` (gcc and clang).
+- Affected: `src/cli/session_startup.c`, `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — draft / LoRA / colour / update flags moved to a table plus handlers (finding 20.a)
+- What: `args_parse_extras` (complexity 28, 56 lines, nesting 11) is now an `ArgFlagSpec` table for the six
+  flags that need no custom check (`--draft-model`, `--lora`, `--spec-length`, `--update-interval`,
+  `--check-update`, `--no-update-check`) plus four small handlers (`set_color`, `set_update_repo`,
+  `set_update_api`, `set_update_channel`) in a name table. The handlers keep the old order: the repository,
+  API and channel values are stored before they are checked, so a rejected value is still visible in the
+  struct.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: the existing `tests/test_args_golden.c` table (4,970 cases, recorded from the old parser) still
+  passes; its sample values do not reach the exact range limits or every colour mode, so the new
+  `tests/test_args_extras_golden.c` pins one hash over every one of the ten flags x 31 values (empty, 0, 1,
+  -1, 24, 8760, 8761, overflow, words, the colour modes in two cases, channels, repositories, URLs, another
+  flag) alone, missing its value and followed by a second flag, covering the result code and every field
+  set, recorded from the old parser on gcc and clang; seven mutations (interval limit, a colour mode, the
+  spec-length range, store-before-check for the repository and API, the cursor advance, the channel check)
+  each fail it. `make test` (gcc and clang); error text for seven invalid values is byte-identical to the
+  old binary.
+- Affected: `src/cli/args_flags_extras.c`, `tests/test_args_extras_golden.c`,
+  `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — setting-value validation split by concern (finding 20.a)
+- What: `pz_config_validate` (complexity 27, 46 lines) is now a short driver over `validate_text` (length and
+  newline rules), `validate_number` (with `number_parsed`), `validate_bool` and `validate_choice`. They live
+  in the new `src/config/pz_config_validate.c`, which takes `pz_config.c` from 503 to 440 lines (back under
+  the 500-line limit) and removes its one long boolean condition from the baseline.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: new `tests/test_config_validate_golden.c` validates every one of the 56 schema keys against each key's
+  bounds and values just outside them, malformed and overflowing numbers, booleans, every choice and near
+  misses, newlines and values at the length limit, with error text captured in 0-, 8-, 64- and 400-byte
+  buffers, and pins one hash recorded from the old validator on gcc and clang; eleven mutations (choice
+  length, range edges, length limit, newline rule, overflow, finite check, trailing text, choice check, error
+  text) each fail it. `make test` (gcc and clang); `pz config list` and `pz config set` (valid and invalid
+  values) print byte-identical text to the old binary.
+- Affected: `src/config/pz_config.c`, `src/config/pz_config_validate.c`, `CMakeLists.txt`,
+  `tests/test_config_validate_golden.c`, `tools/complexity_baseline.txt`, `tools/bool_chains_baseline.txt`
+  (lower counts only).
+
+### 2026-11-21 — thinking-tag filter split into one function per state (finding 20.a)
+- What: `thought_filter_process` (complexity 27, 80 lines, nesting 6) is now a loop over `step_char`, which
+  dispatches to `step_passthrough`, `step_open_tag`, `step_thinking`, `step_close_tag` and `emit_char`,
+  with `begin_tag`, `buffer_tag_char`, `tag_mismatch` and `flush_tag_buffer` as shared helpers.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: new `tests/test_thought_filter_golden.c` feeds 100,000 generated token streams (whole, partial,
+  broken and split tags, text, newlines, empty tokens) through output buffers of 1..24 bytes and pins one
+  hash of the return value, the output and the whole filter state after every call, recorded from the old
+  filter on gcc and clang; five mutations (flush bound, thinking count, close-tag length, output bound,
+  state after the close tag) each fail it, and two survive because they are unreachable (a tag buffer
+  never holds more than eight matching characters). `make test` (gcc and clang) incl. the existing fuzz
+  test. Only unit tests call this function today (`generate_with_reasoning` is not wired into `pz`).
+- Affected: `src/reasoning/thought_filter.c`, `tests/test_thought_filter_golden.c`,
+  `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — chat-template `is` tests split into small functions (finding 20.a)
+- What: `eval_isdef` (complexity 24, 27 lines, nesting 8) is now `is_test_result` over `test_defined` and a
+  table of seven value tests (`vt_none`, `vt_string`, `vt_number`, `vt_iterable`, `vt_mapping`, `vt_odd`,
+  `vt_even`); the operand is still evaluated only for a test that uses it.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: new `tests/test_template_istest_golden.c` renders every `is` / `is not` test (and names that are
+  not tests) over 38 operands of every value kind, including a name set to an undefined value (the case
+  where asking the scope and evaluating differ); 532 of 1,064 results are true; one hash recorded from the
+  old evaluator on gcc and clang. Mutations of odd, iterable, the None spelling, the scope lookup and the
+  negation each fail it. A Float mutant survives because no template can produce a float (the engine has
+  no float literal or filter). `make test` (gcc and clang); four real models identical.
+- Affected: `src/tokenizer/chat_template_eval.cpp`, `tests/test_template_istest_golden.c`,
+  `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — .bin MoE header reader split into steps (finding 20.a)
+- What: `moe_config_read` (complexity 28, 54 lines) is now a short driver over `moe_bin_header_read` (into a
+  plain struct), three validity checks (`moe_bin_experts_valid`, `moe_bin_shared_valid`,
+  `moe_bin_mla_valid`) and `moe_bin_header_apply`.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: new `tests/test_moe_config_read_golden.c` reads 400,000 generated headers (48-byte, legacy 32-byte
+  and every size 0..60, offsets 0..4, fields at and around every limit; 137,015 accepted, 17,786 with MLA)
+  from exact-size heap blocks under ASan and pins one hash of the return code, the offset and every byte of
+  the config, recorded from the old reader on gcc and clang; six mutations (expert limit, shared check, MLA
+  check, MLA zeroing, offset advance, dense check) each fail it. `make test` (gcc and clang). Only the
+  legacy `.bin` loader calls this function; GGUF models read their MoE settings elsewhere and are
+  unchanged (DeepSeek-V2-Lite and SmolLM2 output identical).
+- Affected: `src/core/moe_config.c`, `tests/test_moe_config_read_golden.c`,
+  `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — chat-template statement executor split per statement (finding 20.a)
+- What: `jinja_exec` (complexity 28, 97 lines, nesting 5) is now a dispatch over `exec_for` (with
+  `bind_loop_vars` and `make_loop_object`), `exec_if_chain`, `exec_set` (with `set_attribute_path`) and the
+  three one-line cases.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: new `tests/test_template_exec_golden.c` renders 40,000 generated nested templates (for over the
+  messages / a range / a split string / `|items` pairs with single and tuple targets and every `loop.*`
+  field, if / elif / else chains, plain / namespace / nested / missing-base set, macros; 28,348 outputs
+  with text) and pins one hash recorded from the old executor on gcc and clang; six mutations (if-chain
+  `done` handling, pair size, nested attribute path, `previtem`, tuple target) each fail it. `make test`
+  (gcc and clang); startup and generation identical to the old binary on five real models.
+- Lesson recorded while writing it: a generator must not draw two random numbers inside one call's
+  argument list (evaluation order differs between gcc and clang); the first recording did exactly that
+  and clang caught it.
+- Affected: `src/tokenizer/chat_template_exec.cpp`, `tests/test_template_exec_golden.c`,
+  `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — pre-tokenizer character-class matching split per pattern (finding 20.a)
+- What: `cls_match` (complexity 34, 54 lines) is now a table lookup over eleven small matchers, one per
+  pattern (`cls_number_run`, `cls_punct_run`, `cls_cjk`, ...). The pattern code moved to
+  `src/tokenizer/pretok_classes.c` with the shared types in `include/tokenizer/pretok_internal.h`, so
+  `pretokenize.c` shrinks from 593 to 430 lines and leaves the file-size baseline.
+- Why: finding 20.a; the function left the complexity baseline entirely (`ds_letter` keeps its entry, now
+  under its new file name, same numbers).
+- Proof: new `tests/test_pretokenize_golden.c` runs all eight pre-tokenizer types over 60,000 generated
+  texts each (every class pattern, malformed UTF-8, exact-size heap buffers under ASan) and pins one hash
+  recorded from the old code; mutations of the symbol set, the digit count, the trailing-space rule and
+  the pattern table each fail it. `make test` (gcc and clang); startup and generation identical to the old
+  binary on four real models. Speed on 3 MB of mixed text: default -6%, deepseek-llm -12%, deepseek-coder
+  +7% (about 4 ms), i.e. a wash.
+- Affected: `src/tokenizer/pretokenize.c`, `src/tokenizer/pretok_classes.c`,
+  `include/tokenizer/pretok_internal.h`, `CMakeLists.txt`, `tests/test_pretokenize_golden.c`, both
+  baselines.
+
+### 2026-11-21 — chat-template expression parser split into small functions (finding 20.a)
+- What: `parse_primary` (complexity 32, 95 lines, nesting 6) is now a short driver over `parse_atom`
+  (`parse_ident_primary`, `parse_bool_literal`), `parse_postfix` and the three postfix parsers
+  `parse_subscript` (index and slice), `parse_attribute` and `parse_call`.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: new `tests/test_template_parse_golden.c` renders 30,000 generated expressions (every literal
+  form, parenthesised expressions, chains of index / slice with each part optional / attribute / `.0` /
+  call with keyword arguments, some cut short or with a closing token dropped; 27,037 render, 24,246 with
+  text) and pins one hash recorded from the old parser; mutations of the index bracket, `.0`, and `True`
+  each fail it. `make test` (gcc and clang); startup and generation identical to the old binary on five
+  real models.
+- Affected: `src/tokenizer/chat_template_parse_expr.cpp`, `tests/test_template_parse_golden.c`,
+  `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — chat-template operators split into small functions (finding 20.a)
+- What: `binop_apply` (complexity 34, 50 lines) now dispatches to `arith_apply` (+ `int_arith`),
+  `compare_apply` (+ `order_apply`) and `contains` / `not_contained`.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: new `tests/test_template_binop_golden.c` renders `{{ (A) OP (B) }}` for all 14 operators over
+  all 20x20 operand pairs (ints, zero, negatives, strings, none, booleans, undefined, objects, arrays,
+  ranges) and pins one hash recorded from the old function; mutations of `%`, `/`, `not in` and `<=` each
+  fail it. `make test` (gcc and clang); startup and generation identical to the old binary on SmolLM2,
+  BitNet, DeepSeek-V2-Lite and Qwen3-0.6B.
+- Affected: `src/tokenizer/chat_template_eval.cpp`, `tests/test_template_binop_golden.c`,
+  `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — tokenizer and chat-template set-up split into steps (finding 20.a)
+- What: `session_setup_tokenizer` (complexity 29, 84 lines, nesting 6) is now a short driver over
+  `session_rope_layout`, `load_external_tokenizer` (with `patch_template_from_gguf`,
+  `patch_special_ids_from_gguf`, `eos_list_add`), `load_gguf_tokenizer`, `apply_template_file` and
+  `apply_builtin_template_fix`.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: `make test` (gcc and clang); on SmolLM2, BitNet, DeepSeek-V2-Lite and Qwen3-0.6B the output
+  (startup text and generation) is identical to the pre-change binary for the default run, a valid
+  and a missing `--chat-template-file`, a missing and a GGUF `--tokenizer`, and `--rope-layout`.
+- Affected: `src/cli/session_tokenizer.c`, `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — best-of-N generation split into steps (finding 20.a)
+- What: `generate_best_of` (complexity 29, 57 lines) is now a short driver over `best_of_run`,
+  `best_of_candidate`, `best_of_beats`/`best_of_take` (winner choice), `best_of_deliver` and small
+  argument/seed helpers; the shared state travels in two small structs.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: `make test` (gcc and clang); `--best-of 1/3/4/8` runs with fixed seeds on SmolLM2 give text
+  identical to the pre-change binary, and a `best_of: 3` API request returns the same reply and usage.
+- Affected: `src/reasoning/best_of.c`, `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — parallel-slot scheduler set-up split into steps (finding 20.a)
+- What: `batch_scheduler_create` (complexity 29, 79 lines) is now a short driver over `alloc_buffers`,
+  `init_slots` (with `init_owned_slot`), `start_thread` and `release_buffers`; the failure cleanup that was
+  written inline is the one `release_buffers`.
+- Why: finding 20.a; the baseline entry for this function fell from 29 / 79 to 14 / 27.
+- Proof: `make test` (gcc and clang, incl. `test_batch_scheduler`); `tests/e2e_parallel.sh` on SmolLM2 with the
+  Mamba fallback model passes 7 of 7 (4 concurrent requests, text identical to the sequential server, best_of
+  between batched jobs, cancel, config and metrics, unsupported-model fallback); under a memory cap the
+  failure path logs "could not set up 6 slots" and the server falls back to sequential and stays healthy.
+- Areas: `src/api/batch_scheduler.c`, `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — parallel-slot scheduler set-up split into steps (finding 20.a)
+- What: `batch_scheduler_create` (complexity 29, 79 lines) is now a short driver over `batch_scheduler_setup` and
+  `batch_scheduler_release` in the new `src/api/batch_slots.c` (buffer allocation, per-slot run state and prefix
+  cache, scheduler thread start, and the one cleanup path that `create`'s failure branch and `destroy` both use).
+  The scheduler's private types moved to `include/api/batch_scheduler_internal.h`, shared by both files.
+- Why: finding 20.a; the baseline entry for this function fell from 29 / 79 to 12 / 25, and
+  `batch_scheduler.c` shrank from 571 to 439 lines (it was over the 500-line limit).
+- Proof: `make test` (gcc and clang, incl. `test_batch_scheduler`); `tests/e2e_parallel.sh` on SmolLM2 with the
+  Mamba fallback model passes 7 of 7 (4 concurrent requests, text identical to the sequential server, best_of
+  between batched jobs, cancel, config and metrics, unsupported-model fallback); under a memory cap the
+  failure path logs "could not set up 6 slots" and the server falls back to sequential and stays healthy;
+  `make test-tsan` (see the commit message).
+- Areas: `src/api/batch_scheduler.c`, `src/api/batch_slots.c`, `include/api/batch_scheduler_internal.h`,
+  `CMakeLists.txt`, `tests/test_json_string_golden.c` (header comment wrapped), both baselines.
+
+### 2026-11-21 — JSON string parser split into steps (finding 20.a)
+- What: `json_parse_string` (complexity 24, nesting 6) now delegates escape handling to `decode_escape`,
+  `decode_unicode_escape` and `join_surrogates`, with one bounded `put_byte`. A zero-size destination buffer
+  no longer wraps the size arithmetic (no caller passes one; the old code would have written past it).
+- Why: finding 20.a; the complexity baseline lost one entry (345 recorded functions). This parser reads every
+  string of every API request, so it got a differential-style pin before the change.
+- Proof: `tests/test_json_string_golden.c` hashes return code, cursor movement and every destination byte over
+  200,000 generated strings (simple, `\/`, `\uXXXX`, surrogate pairs, lone and malformed escapes, raw UTF-8,
+  control bytes, trailing backslash, truncation) into 1..64-byte buffers, each input in an exact-size heap block
+  under ASan; the hash was recorded from the unsplit parser and holds on gcc and clang; narrowing the surrogate
+  range by one makes it fail. Live API requests with escaped content give the same replies as the old binary.
+- Areas: `src/api/json_scan.c`, `tests/test_json_string_golden.c`, `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — hardware profile start-up split into steps (finding 20.a)
+- What: `tn_hardware_profile_init` (complexity 29, 96 lines) now calls `detect_free_ram` (with one small
+  fallback function per OS), `tn_hw_classifier_bytes` and `tn_hw_cached_ceiling`. The classifier-size switch
+  was written out twice (start-up and `--classifier`); both use the one helper now.
+- Why: finding 20.a; the complexity baseline lost one entry (346 recorded functions).
+- Proof: `tests/test_hw_projection.c` compares both helpers against a verbatim copy of the old code over
+  200,000 generated tuples including the exact L3 boundaries (exact double equality; changing one `<` to
+  `<=` makes it fail), on gcc and clang. The macOS and generic-POSIX branches compile with warnings on.
+  The printed hardware box and loaded-model ceiling are identical to the pre-change binary for the default,
+  `--classifier int4` and `--classifier int8`; SmolLM2 greedy output is identical.
+- Areas: `src/runtime/hardware_profile.c`, `include/runtime/hardware_profile.h`,
+  `src/runtime/hw_projection.c` (helpers moved here so `hardware_profile.c` shrank 664 -> 584 lines), `include/runtime/hw_model_constants.h`, `CMakeLists.txt`, `tests/test_hw_projection.c`, the complexity and file-size baselines.
+
+### 2026-11-21 — Qwen3.5 run-state allocation split into steps (finding 20.a)
+- What: `q35_run_state_alloc` (complexity 30, 90 lines) is now a short driver over five helpers: shape check,
+  context clamp to the 600 MB cache ceiling, per-layer buffers, pointer arrays, RoPE table and scratch.
+- Why: finding 20.a; the complexity baseline lost one entry (353 -> 347 with the other recent splits).
+- Proof: `tests/test_q35_run_state_golden.c` hashes the result code, stored context length, which layers hold
+  K/V or conv/recurrent state, and the RoPE table over 3,000 generated shapes (valid and invalid), writing the
+  last element of every buffer under ASan; the hash was recorded from the unsplit function and holds on gcc and
+  clang. Ternary-Bonsai-27B greedy output is identical to the pre-change binary.
+- Areas: `src/runtime/qwen35_run_state.c`, `tests/test_q35_run_state_golden.c`, `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — long lines in the Python tooling wrapped (finding 23.c, part 1)
+- What: 40 of the 541 lines over 100 columns, in 21 Python files under `tools/` (the benchmark gate and h2h scripts, the ratchet checkers and their tests, the sweep scripts), were wrapped with black's string-processing mode and `ruff format` (long strings become parenthesised implicit concatenations). A file was only changed when its AST was equivalent to the original (docstring trailing whitespace ignored), `ruff check` stayed clean and none of the width, file-size or complexity ratchets reported anything for it; files where wrapping would have grown a size or complexity baseline (for example `tools/bench/benchlib.py`) were left alone.
+- Why: finding 23.c; the width baseline fell by 40 lines.
+- Proof: `python3 -m unittest discover` in `tools/` (143 tests) and `tools/bench/` (29 tests) pass, `ruff check` and `ruff format --check` are clean, all ratchets pass.
+- Not done: the remaining 501 lines are long strings and expressions in shell scripts, Svelte files, C code and a few Python files where wrapping grows a size or complexity baseline; each needs its own run to prove the script still behaves.
+- Areas: 21 files under `tools/`, `tools/line_width_baseline.txt`.
+
+### 2026-11-21 — K-quant and IQ dequantisers share the block driver; unused loader includes removed (finding 45.b)
+- What: the legacy formats already decoded through `dequant_blocks`; that driver is now exported (`gguf_dequant_blocks`, `gguf_dequant_zero_tail`, `include/core/gguf_dequant_blocks.h`) and the six K-quant decoders (`src/core/gguf_quant_k.c`) and nine IQ decoders (`src/core/gguf_quant_iq.c`) are each a per-block function (`q4_k_block`, `iq3_s_block`, ...) plus a one-line wrapper, instead of fifteen copies of the super-block loop and the tail zeroing. The four GGUF loaders (`gguf_load_deepseek2/mamba/qwen35/qwen3moe.c`) carried an identical block of includes they did not use (`<math.h>`, `rope.h`, `unpack.h`, `gguf_i2s.h`, ...); only headers whose symbols a file does not use were removed, each confirmed by a warning-free build on gcc and clang.
+- Why: finding 45.b (duplicated dequantiser loops); the nesting-4 entries of nine decoders left the complexity baseline, `gguf_quant_iq.c` fell from 1,573 to 1,545 lines (and `gguf_quant_k.c` by about 30), and duplicated source lines fell from 6.33% to 6.19%.
+- Proof: `tests/test_gguf_dequant_golden.c` (every format's output over pseudo-random blocks, hashes recorded before any refactoring of the dequantisers) passes unchanged under gcc and clang, as do `test_gguf_dequant_registry`, `test_gguf_quant_new_formats` and `test_gguf_type_info`; all seven real models (SmolLM2, BitNet, DeepSeek-V2-Lite, Qwen3-0.6B, Mamba, Qwen3-30B-A3B, Ternary-Bonsai-27B) give output identical to the pre-change binary; `make test` gcc and clang; a clean TSan run on the previous HEAD reported no races.
+- Areas: `src/core/gguf_quant.c`, `src/core/gguf_quant_k.c`, `src/core/gguf_quant_iq.c`, `include/core/gguf_dequant_blocks.h`, the four `src/runtime/gguf_load_*.c` loaders, `tools/*_baseline.txt`.
+
+### 2026-11-21 — `http_parse` reads its headers from a table
+- What: `http_parse` (`src/api/http_request.c`, nesting 7) is `parse_request_line` (over `copy_token`), `parse_headers` and `parse_header_line`, which matches the line against `k_headers` (name, length, handler: `on_content_length`, `on_origin`, `on_authorization`, `on_content_type`, `on_request_id`, `on_host`) instead of a six-branch `strncasecmp` chain. The doc comment that had drifted onto `http_request_id_valid` is back on `http_parse`.
+- Why: finding 20.a; `http_parse` was complexity 30, 51 lines, nesting 7 and left the complexity baseline (355 after the earlier splits).
+- Proof: new `tests/test_http_parse_golden.c` parses 150,000 generated raw requests from exactly sized NUL-terminated buffers under ASan (all six headers in random case and order, short and over-long values, valid and invalid Content-Length and X-Request-ID, other headers, CRLF and bare-LF endings, a missing blank line, bodies, garbage bytes; 106,451 parse) and hashes the return value and every field including the body offset and length; the hash was recorded from the old function and passes unchanged under gcc and clang. `test_http_limits`, `test_http_headers`, `tests/e2e_api_concurrency.sh` (8/8), `tests/e2e_parallel.sh` (6/6) and `tests/e2e_cross_site_post.sh` (7/7, which depends on Origin parsing) pass; `make test` gcc and clang.
+- Areas: `src/api/http_request.c`, `tests/test_http_parse_golden.c`, `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — `api_config_save` is split into request parsing, applying and the response
+- What: `api_config_save` (`src/api/config_endpoint.c`) is `parse_save_request` (key lookup, `unset`, `parse_save_value` for a list or a scalar) into a `SaveRequest` that `save_request_free` releases, `apply_save` (read, change, write under the save lock) over `apply_change`, and `save_response`. Status codes, messages, the response fields and the lock scope are unchanged.
+- Why: finding 20.a; the function was complexity 31, 100 lines, nesting 5 and left the complexity baseline (356 -> 355).
+- Proof: new `tests/test_config_save_golden.c` drives 6,000 generated requests (every saveable key and some that are not, valid and out-of-range numbers, strings, lists of zero to ten items, nulls, unset, malformed JSON, `--no-config-write`, no config location, flags marked as given on the command line) against one config file and hashes every status, response body and the file after each call; the hash was recorded from the old function and passes unchanged under gcc and clang. A live server (each binary with its own config file) returns identical statuses, bodies and file contents for 14 POST bodies; `test_config_endpoint` and `make test` gcc and clang pass.
+- Areas: `src/api/config_endpoint.c`, `tests/test_config_save_golden.c`, `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — `vector_db_open` is split into file-open, header and per-record steps
+- What: `vector_db_open` (`src/rag/vector_db.c`) is `open_db_file` (the POSIX and fallback open), `read_db_header` (magic, version, `check_header_crc`, dimension, entry limit) and `read_db_record` per entry (embedding, length-prefixed text, `check_record_crc` for version 2); the function keeps the lock, the new-file branch and the valid-end offset. Log messages and result codes are unchanged.
+- Why: finding 20.a; `vector_db_open` was complexity 35 in 105 lines and left the complexity baseline (357 -> 356).
+- Proof: new `tests/test_vector_db_open_golden.c` builds 120 databases (version 2 made with the library, version 1 by hand; zero to six entries), then opens 160 variants of each (intact, wrong embedding dimension, cut at a random byte, one to three random byte flips) and hashes the result code, format, valid end offset and every loaded embedding and text; the hash was recorded from the old function and passes unchanged under gcc and clang; the existing `test_vector_db` passes; `make test` gcc and clang.
+- Areas: `src/rag/vector_db.c`, `tests/test_vector_db_open_golden.c`, `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — chat "content parts" parsing is split into text, image-URL and per-part steps
+- What: `parse_content_parts` (`src/api/json_parse.c`, nesting 7) is `append_text` (the first text part becomes the content, later ones are appended with the same growth rule), `parse_image_url_object`, `parse_part_value`, `parse_part` and a short array loop; the `TextBuf` struct carries the length and capacity that were two locals.
+- Why: finding 20.a; `parse_content_parts` was complexity 35, 80 lines, nesting 7 and left the complexity baseline (358 -> 357).
+- Proof: new `tests/test_content_parts_golden.c` hashes the result code and every message's role, text and image URL for 60,000 generated bodies (several text parts, image_url objects with extra keys and repeated urls, unknown part keys, nested values, string and array contents mixed, malformed and cut-off JSON; 20,239 parse); the hash was recorded from the old function and passes unchanged under gcc and clang; `test_chat_request_golden` still passes; `tests/e2e_vision_long_prompt.sh` (image plus a 15,000-character text, two concurrent image requests) passes against the rebuilt server; `make test` gcc and clang.
+- Areas: `src/api/json_parse.c`, `tests/test_content_parts_golden.c`, `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — the LoRA adapter loader is split into header, model-match, layer and target steps
+- What: `lora_load_ex` (`src/runtime/lora_load.c`) is `lora_read_header` (size, magic, the eight fields, `lora_header_in_range` over a limits table), `lora_matches_model`, `lora_read_targets` over `lora_read_layer`, and `lora_free_arrays` for the failure path. Log messages, the legacy "q_dim field 0 means dim" rule and the failure state (everything freed, the struct zeroed) are unchanged.
+- Why: finding 20.a; `lora_load_ex` was complexity 31 in 106 lines and left the complexity baseline (359 -> 358).
+- Proof: new `tests/test_lora_load_golden.c` writes 3,000 generated adapter files (valid for assorted target masks and shapes, built for a different base model, each checked header field out of range, bad magic, under 64 bytes, cut short; 427 load) and hashes the result code, every loaded header value and module weight, and the zeroed state after a failure; the hash was recorded from the old function and passes unchanged under gcc and clang; the existing `test_lora` passes; `make test` gcc and clang.
+- Areas: `src/runtime/lora_load.c`, `tests/test_lora_load_golden.c`, `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — GGUF header reader: bounds-checked values, split into sections, clean failure state
+- What: `gguf_read_header` (`src/core/gguf_reader.c`) is `read_preamble`, `read_meta_section`, `read_tensor_section` (over `read_tensor_info`) and `resolve_tensor_data`; `parse_meta_entry` is a `scalar_size` table plus `parse_string_value` and `parse_array_value`. Every scalar, string and array read now goes through `have()`, which compares against the remaining size (`p + n` could wrap), and a fixed-size array is skipped with one bounds check instead of a loop over its count. `fail_header` releases what was parsed and zeroes the counts on any failure; `gguf_header_free` clamps its loop to the array and clears each pointer.
+- Bugs fixed on the way (all on malformed or truncated files; intact files parse exactly as before): (1) scalar metadata values (u8 to f64) were read, and skipped, with no check against the end of the data; (2) string lengths were checked with `*p + len > end`, which wraps for a huge length; (3) an array of fixed-size elements with a huge count looped once per element; (4) after a "count exceeds limit" rejection the declared count stayed in the header, so `gguf_header_free` (called on the failure path by `model_load.c`) walked far past the 512-entry metadata array. A GGUF whose metadata count is over the limit made the old `pz` segfault at startup (exit 139); the new binary rejects it with the same log line and exit 1.
+- Why: finding 20.a; `gguf_read_header` (31 / 80), `parse_meta_entry` (22 / 69) and the old `skip_meta_value` (20 / 43) left the complexity baseline.
+- Proof: new `tests/test_gguf_header_golden.c`: a hash of every field the reader fills for 40 generated intact images (versions 1 to 3, random metadata and tensors) recorded from the old reader and passing unchanged under gcc and clang; plus every truncation and 200 random byte mutations of each image, read from an exactly sized buffer under ASan/UBSan with the header freed afterwards, which fails on the old reader and passes on the new one; a cut inside the header is always rejected. All seven real models (SmolLM2, BitNet, DeepSeek-V2-Lite, Qwen3-0.6B, Mamba, Qwen3-30B-A3B, Ternary-Bonsai-27B) give output identical to the pre-change binary; `make test` gcc and clang.
+- Areas: `src/core/gguf_reader.c`, `tests/test_gguf_header_golden.c`, `tools/complexity_baseline.txt`, `tools/duplication_baseline.txt`.
+
+### 2026-11-21 — `request_params_resolve` is split into sampling, output, watermark and token-limit steps
+- What: `request_params_resolve` (`src/api/request_params.c`) is `apply_sampling`, `apply_output`, `apply_watermark` and `clamp_max_tokens` around the copy of the server defaults; a request key is still taken whenever one is present, JSON mode still turns on from the request alone, and the stop list is still capped at `GEN_MAX_STOP`.
+- Why: finding 20.a; the function was complexity 31 in 47 lines and left the complexity baseline (362 -> 361).
+- Proof: new `tests/test_request_params_golden.c` hashes every field of the resulting `GenerationParams` (strings by content) over 100,000 generated request, defaults and limit triples (out-of-range values, every subset of the set bits, too many stop strings, missing request or defaults, non-positive limits); the hash was recorded from the old function and passes unchanged under gcc and clang. A live server returns identical bodies to the pre-change binary for 13 request shapes (limits, penalties, seeds, stops as list and string, JSON mode, ignore_eos, watermark, per-request template, zero and negative `max_tokens`, out-of-range temperature and top_p); `make test` gcc and clang.
+- Areas: `src/api/request_params.c`, `tests/test_request_params_golden.c`, `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — `semver_parse` is split into core, pre-release and tail steps
+- What: `semver_parse` (`src/update/semver.c`) is `parse_core` (the `[vV]major.minor.patch` part), `ends_version` (nothing left, a bare `-dirty`, or a git-describe suffix), `parse_prerelease` (`read_prerelease` for the tag and a trailing `-dirty`, `split_glued_describe` for a describe suffix glued onto it) and the build-metadata check.
+- Why: finding 20.a; `semver_parse` was complexity 30 in 31 lines and left the complexity baseline (363 -> 362).
+- Proof: new `tests/test_semver_parse_equiv.c` hashes every result code and the whole `SemVer` for 400,000 generated strings (v prefixes, numbers at and beyond the limit, pre-release tags, describe suffixes alone and glued, `-dirty`, build metadata, over-long identifiers, junk, high-bit bytes; 11,266 of them valid); the hash was recorded from the old single function and passes unchanged under gcc and clang; `make test` on both.
+- Areas: `src/update/semver.c`, `tests/test_semver_parse_equiv.c`, `tests/test_pz_config_parse_golden.c` (generator made order-independent), `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — the INT8 and INT4 classifier builders share one block quantiser
+- What: `weights_build_classifier_quant` (`src/runtime/weights.c`) built the INT8 and INT4 LM-head copies with two near-identical loops (BF16 to F32 per block, error-minimising scale search, round and clamp). They now share `quantize_cls_row` (values in `[-qmax, qmax]` plus the per-block scales); `build_cls_i8` and `build_cls_i4` only bias and pack; the function itself is the profile gate. If one of a format's two allocations fails, both are freed and the pointers stay NULL (before, the half-built pair stayed set and a consumer could read an unfilled table).
+- Why: finding 20.a; `weights_build_classifier_quant` was complexity 32 in 89 lines and left the complexity baseline (364 -> 363).
+- Proof: new `tests/test_classifier_quant_exact.c` hashes the INT8/INT4 tables and scales over twelve table shapes (dimensions that are and are not multiples of the 32-element block or of 2, zero, tiny, huge and outlier rows); the hash was recorded from the previous implementation and passes unchanged. Output identical to the pre-change binary on SmolLM2, BitNet, Qwen3-0.6B and Mamba for every `--classifier` mode (auto, bf16, int8, int4, auto-fast); `make test` gcc and clang.
+- Areas: `src/runtime/weights.c`, `tests/test_classifier_quant_exact.c`, `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — MoE weight pointer arrays from offset tables; the DeepSeek loader's macros become functions
+- What: `moe_weights_alloc` and `moe_weights_free` (`src/core/moe_weights.c`) walk four offset tables (routed per-layer arrays, per-layer expert rows, shared-expert arrays, MLA arrays) with `alloc_slots` / `slot_free` instead of about 25 repeated calloc/free/null blocks. `src/runtime/gguf_load_deepseek2.c` had five 15-30 line macros of which three were unused; the dead ones are deleted and the two live ones are `ds_load_heap_q4k`, used by `ds_load_mla_layer` and `ds_load_shexp_layer`; `weights_from_gguf_deepseek2` drives `ds_load_norms`, `ds_load_dense_ffn`, `ds_load_moe_ffn` and `ds_set_expert_quant`.
+- Bug fixed on the way: `moe_weights_free` skipped a whole layer's rows when any of its three expert-row arrays was NULL and dereferenced an array that never got allocated, so an allocation failure partway through `moe_weights_alloc` leaked or crashed (the new test segfaults on the old code at `moe_weights_free`). Every array and row is now checked on its own.
+- Why: finding 20.a; `moe_weights_alloc` (31 / 59) and `moe_weights_free` (32 / 104) left the complexity baseline and `weights_from_gguf_deepseek2` went from 18 / 96 to 12 / 40. Duplicated source lines fell from 6.74% to 6.48% (the macros were the largest repeated blocks in the DeepSeek loader).
+- Proof: new `tests/test_moe_weights_alloc.c` (dense model allocates nothing, routed / shared / MLA array sets, zeroed per-expert rows, idempotent free, quantised experts own their payloads, partly allocated layers) under ASan and LeakSanitizer; DeepSeek-V2-Lite (plain and speculative self-draft) and Qwen3-30B-A3B output identical to the pre-change binary; `make test` gcc and clang.
+- Areas: `src/core/moe_weights.c`, `src/runtime/gguf_load_deepseek2.c`, `tests/test_moe_weights_alloc.c`, `tools/complexity_baseline.txt`, `tools/duplication_baseline.txt`.
+
+### 2026-11-21 — the flat-cache head scan and KV store are shared by Qwen3-MoE and Qwen3.5 attention
+- What: `attn_flat_head` (scores, softmax, weighted sum of one query head over a `[kv_head][pos][d]` cache) and `attn_flat_store` (`src/transformer/attn_flat_kv.c`) replace identical loops in `q3_attend_row` / `q3_store_kv` and `q35_full_attend` / `q35_full_store_kv`; Qwen3.5 applies its sigmoid gate after the shared scan.
+- Why: the previous commit's step split made those two copies visible to the duplication ratchet (6.75% -> 6.78%) and I had accepted that with a blind `--update`, which I should not have; sharing the code brings the share down to 6.74%, below what it was before the attention work.
+- Proof: Qwen3-30B-A3B (plain, wrapped window, speculative draft with Qwen3-0.6B, seeded sampling) and Ternary-Bonsai-27B (greedy, wrapped window, seeded, raw prompt, byte-identical `--dump-tensors` CSV) give output identical to the pre-change binary; `make test` gcc and clang.
+- Areas: `src/transformer/attn_flat_kv.c`, `include/transformer/attn_flat_kv.h`, `src/transformer/qwen3moe_attention.c`, `src/transformer/qwen35_attention.c`, `CMakeLists.txt`, `tools/duplication_baseline.txt`.
+
+### 2026-11-21 — Qwen3.5/3.6 attention (full and Gated DeltaNet) split into step functions
+- What: `q35_full_attn_forward` is `q35_full_project`, `q35_full_norm_rope`, `q35_full_store_kv`, `q35_full_attend` and the output step over a `Q35Full` shape struct. `q35_linear_attn_forward` is `q35_lin_project`, `q35_lin_decay_gates`, `q35_lin_conv` (the long comment on the GGUF conv-kernel layout moved with it), `q35_lin_recurrence` (q/k L2 normalisation, then `q35_lin_recur_head` per v-head, built on `q35_lin_mat_t_vec`) and `q35_lin_output`, over `Q35Lin` / `Q35LinBuf` structs that name where each intermediate sits in the scratch. Step-timing brackets and their buckets are unchanged.
+- Why: finding 20.a; `q35_full_attn_forward` (24 / 85) and `q35_linear_attn_forward` (36 / 132) left the complexity baseline (368 -> 366).
+- Proof: Ternary-Bonsai-27B (Q2_0, Qwen3.5 hybrid; downloaded for this check) gives identical output to the pre-change binary for greedy, a wrapped sliding window (`--ctx-size 16`), seeded sampling and a raw prompt; the `--dump-tensors` CSV (638,441 bytes) is byte-identical; `test_qwen35_attention` passes; `make test` gcc and clang; speed median ratio 1.09 (noise).
+- Areas: `src/transformer/qwen35_attention.c`, `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — MLA attention: shared row steps, and a function instead of the MLA_MATMUL macro
+- What: `MLA_MATMUL` (a macro that silently relied on `w`, `is_float` and `tp` being in scope) is the function `mla_matmul`; the batched variant (one batched ternary call, or n_tokens per-token calls for Q4_K and F32 weights) is `mla_matmul_rows`. The k_nope / v cache write (`mla_store_kv_row`), the YaRN RoPE on a row (`mla_rope_row`) and the score and weighted-V loops (`mla_scores`, `mla_weighted_v`) were written twice and are shared. `mla_attention_forward` is `mla_compress`, `mla_expand_store`, `mla_q_rope_store`, `mla_attend` and the output step (the per-head step-timing brackets and the head-0 debug dumps are unchanged); `mla_attention_forward_batch` is `mla_rows_compress`, `mla_rows_expand_store`, `mla_rows_q_rope`, `mla_rows_attend` and the output over an `MlaBatch` scratch. A `MlaShape` struct replaces nine repeated local constants.
+- Why: finding 20.a; `mla_attention_forward` (37 / 144 lines) and `mla_attention_forward_batch` (49 / 193 lines, nesting 4) left the complexity baseline (370 -> 368); the file went from 565 to 502 lines.
+- Proof: DeepSeek-V2-Lite output identical to the pre-change binary for greedy, tiny `--ctx-size`, seeded sampling, `--verbose` and a self-draft speculative run (a breakpoint confirms `mla_attention_forward_batch` runs through `transformer_forward_batch`); the `--dump-tensors` CSV of every per-step debug vector is byte-identical; the MLA batch-vs-sequential unit test passes; `make test` gcc and clang; speed median ratio 1.05 (noise).
+- Areas: `src/transformer/mla_attention.c`, `tools/complexity_baseline.txt`, `tools/file_size_baseline.txt`, `tools/duplication_baseline.txt`.
+
+### 2026-11-21 — Qwen3-MoE attention: shared row steps for the single-token and batched paths
+- What: `qwen3moe_attention_forward` and `qwen3moe_attention_forward_batch` shared four blocks that were written twice (QK-norm, RoPE, the per-layer KV store and the per-head scan + softmax + weighted sum); they are now `q3_qk_norm`, `q3_rope`, `q3_store_kv` and `q3_attend_row` over a `Q3Dims` shape struct. The single-token function is `q3_project`, RoPE, KV store, `q3_attend_row`, `q3_output`; the batch function is `q3_project_rows`, `q3_norm_rope_rows`, a store loop, an attend loop and `q3_output_rows` around a `Q3Batch` scratch (allocation and free in one place). Step-timing brackets and the QK-norm-with-projection grouping are unchanged.
+- Why: finding 20.a; `qwen3moe_attention_forward` (24 / 104) and `qwen3moe_attention_forward_batch` (33 / 153) left the complexity baseline (372 -> 370); the file went from 394 to 363 lines.
+- Proof: greedy and seeded-sampling output identical to the pre-change binary on Qwen3-30B-A3B (Q2_K) plain, with a wrapped sliding window (`--ctx-size 24`), and with Qwen3-0.6B as the speculative draft (breakpoint confirms the real run reaches `qwen3moe_attention_forward_batch` through `transformer_forward_batch`); the existing `test_qwen3moe_batch_matches_sequential` differential test passes; `make test` gcc and clang; speed A/B on the 30B model median ratio 1.00.
+- Areas: `src/transformer/qwen3moe_attention.c`, `tools/complexity_baseline.txt`, `tools/duplication_baseline.txt`.
+
+### 2026-11-21 — dense attention: one head scan, one KV-row store, and step functions for the single and batched paths
+- What: the score / softmax / weighted-sum scan of one query head against one sequence's KV cache (`attn_scan_head`) and the per-row K/V store (`store_kv_row`) were written twice, once for the single token and once for the batched rows; both paths now share them, along with `attn_qk_norm`. `attention_forward` is `attn_route_family` (MLA, Qwen3.5 hybrid, Qwen3-MoE) then `attn_project`, `attn_rope`, `attn_store_kv`, `attn_heads`, `attn_output`; `attention_forward_rows` is the same steps over rows (`rows_project`, `rows_bias_norm_rope`, `rows_store_kv`, `rows_heads`, `rows_output`). Every step keeps its own step-timing bracket.
+- Why: finding 20.a; `attention_forward` (38 / 142 lines) and `attention_forward_rows` (37 / 143) left the complexity baseline (374 -> 372 with the Qwen3-MoE numbers dropping from the YaRN change); `attention.c` fell from 680 to 619 lines.
+- Proof: greedy output identical to the pre-change binary on 18 runs: SmolLM2, Qwen3-0.6B (QK-norm) and BitNet (sub-norm, ternary) each plain, with `--kv-type i8` / `i4`, with a draft model (batched rows), plus `--attn-kernel tiled`, `--attn-parallel-min-ctx 1`, a tiny `--ctx-size` that wraps the sliding window, DeepSeek-V2-Lite, Qwen3-30B-A3B and Mamba; `tests/e2e_parallel.sh` 6/6 and `tests/e2e_api_concurrency.sh` 8/8; `make test` gcc and clang. Speed (interleaved A/B, median tok/s): SmolLM2 1.03x, BitNet 0.95x (ranges overlap), Qwen3-0.6B 1.00x, long-context single-thread SmolLM2 1.02x.
+- Areas: `src/transformer/attention.c`, `tools/complexity_baseline.txt`, `tools/file_size_baseline.txt`, `tools/duplication_baseline.txt`.
+
+### 2026-11-21 — the YaRN correction bounds are computed in one place
+- What: `rope_yarn_corr_dims` and `rope_corr_from_config` (`src/math/rope.c`, `include/math/rope.h`) replace five copies of the same formula: two in `attention.c` (single token and batched rows), two in `qwen3moe_attention.c` and MLA's private `yarn_corr_dims`. `rope_corr_from_config` returns `{0, 0}` unless the config enables the YaRN extension, as each copy did.
+- Why: finding 20.a / duplication; the attention functions shrink (`attention.c` -35 lines, `qwen3moe_attention.c` -34, `mla_attention.c` -24) ahead of splitting them further without growing the files.
+- Proof: new `tests/test_rope_yarn_corr.c` keeps the old inline code as the oracle and compares bit for bit over 18,480 combinations of head size, original context, base, beta fast/slow and extension factor; greedy output identical to the pre-change binary on SmolLM2 (with and without a draft model), BitNet, DeepSeek-V2-Lite (MLA), Qwen3-0.6B dense (with and without a draft model), Mamba-130M and Qwen3-30B-A3B MoE (Q2_K); `make test` gcc and clang. The new models were downloaded for this check.
+- Areas: `src/math/rope.c`, `include/math/rope.h`, `src/transformer/{attention,qwen3moe_attention,mla_attention}.c`, `tests/test_rope_yarn_corr.c`.
+
+### 2026-11-21 — one generation step is split into failure check, sampling, EOS handling and delivery
+- What: `gen_session_consume` (`src/transformer/gen_session.c`) is a short driver over `step_failed`, `sample_next` (with `mask_eos_logits` for `--ignore-eos`), `next_is_eos`, `finish_on_eos`, `deliver_token` and `advance_step`. Order of operations, step-timing brackets, the prefix-cache update and every state change are as before.
+- Why: finding 20.a; `gen_session_consume` was complexity 44, 92 lines, nesting 5 and left the complexity baseline (375 -> 374).
+- Proof: CLI output identical to the pre-change binary over 17 runs: greedy, seeded sampling with top-k/top-p, `--ignore-eos`, `--json`, `--stop`, raw prompt, `--verbose`, `--best-of`, `--mcts`, penalties, tiny `--ctx-size`, `--max-tokens 1`, speculative draft model, watermark, BitNet and DeepSeek-V2-Lite, and a template that ends in EOS; `tests/e2e_parallel.sh` 6/6 and `tests/e2e_api_concurrency.sh` 8/8 (streaming, cancel, batching); `make test` gcc and clang, `make test-tsan`.
+- Areas: `src/transformer/gen_session.c`, `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — `pz config` subcommands and the setup wizard are split into small functions
+- What: `pz_config_command` (`src/cli/config_cmd.c`) is a short driver: `run_without_config` (help, path), then a `k_subcommands` table (wizard, list, get, set, add, unset) with their argument counts, each a small function (`run_wizard`, `cmd_get`, `cmd_set`, `cmd_unset`); saving and the "open the chat page" launch stay in the driver. The wizard moved to `src/cli/config_wizard.c`; `ask_model` is `show_menu`, `menu_pick`, `fetch_starter` and `answer_model` around a `ModelMenu`, and `pz_config_wizard_ex` calls `confirm_save`. `config_cmd.c` fell from 531 to 272 lines and left the file-size baseline.
+- Why: finding 20.a; `pz_config_command` (42 / 103 / 6), `ask_model` (35 / 74 / 3) and `pz_config_wizard_ex` (14 / 25 / 2) left the complexity baseline (378 -> 375).
+- Proof: new `tests/test_config_wizard_golden.c` runs the wizard over 12,000 generated answer scripts (blank, `?`, `-`, numbers in and out of range, paths, yes/no, junk) against a fake catalog, a fake downloader and a directory of model files and hashes the return value, the chat flag, everything printed and the settings; the hash was recorded from the code before the split, passes unchanged, and a deliberate mutation fails it. `pz config` run over 40 invocations (path, help, list, get, set, add, unset, bad keys and values, wrong argument counts, secret masking) with an isolated HOME gives identical output, exit codes and config file contents to the previous binary; `make test` gcc and clang.
+- Areas: `src/cli/config_cmd.c`, `src/cli/config_wizard.c`, `tests/test_config_wizard_golden.c`, `CMakeLists.txt`, `tools/complexity_baseline.txt`, `tools/file_size_baseline.txt`, `tools/bool_chains_baseline.txt`.
+
+### 2026-11-21 — the settings-file parser is split by step and lives in pz_config_parse.c
+- What: `pz_config_parse` is a loop over `take_line` and `parse_line`, which uses `read_setting` (key, `=`, schema lookup), `parse_value` (list or scalar), `parse_list_value` and `parse_scalar_value`. The parser (with its string, scalar and whitespace helpers) moved from `pz_config.c` to `src/config/pz_config_parse.c`; `pz_config.c` dropped under the 500-line limit and left the file-size baseline. A duplicated `if LIST ... else ...` that called `pz_config_set` in both branches became one call, and one long boolean condition became `ends_bare_value`.
+- Why: finding 20.a; `pz_config_parse` was complexity 41, 94 lines, nesting 4 and left the complexity baseline (379 -> 378).
+- Proof: new `tests/test_pz_config_parse_golden.c` hashes the loaded count, every warning and the resulting settings for 60,000 generated config texts (comments, tables, flat keys, quoted strings with escapes, lists, malformed lines, unknown keys, trailing junk, CRLF); the hash was recorded from the old function and passes unchanged on the new one; a deliberate one-line mutation makes it fail. `pz config set/list` output identical to the baseline binary; `make test` gcc and clang.
+- Areas: `src/config/pz_config.c`, `src/config/pz_config_parse.c`, `tests/test_pz_config_parse_golden.c`, `CMakeLists.txt`, `tools/complexity_baseline.txt`, `tools/file_size_baseline.txt`, `tools/bool_chains_baseline.txt`.
+
+### 2026-11-21 — prompt building moves to gen_prompt.c and is split by path
+- What: `build_prompt` (`src/transformer/gen_session.c`) is now `gen_session_build_prompt` in `src/transformer/gen_prompt.c` (`include/transformer/gen_prompt.h`), a short driver over `build_chat_prompt` (template path: `template_messages`, `render_chat_template` with the control-token neutralising, `append_assistant_prefix`) and `build_raw_prompt` (`raw_bos_id`, assistant prefix encoding). Order of operations, step-timing brackets, warnings and error messages are unchanged. `gen_session.c` shrank from 548 to 394 lines (file-size baseline lowered).
+- Why: finding 20.a; `build_prompt` was complexity 51 in 111 lines and left the complexity baseline (380 -> 379).
+- Proof: CLI output identical to the baseline binary for SmolLM2, BitNet and DeepSeek-V2-Lite with default chat, `--raw-prompt`, `--system-prompt`, an over-long prompt (error text), a `--chat-template-file` override and `--verbose` (the only difference is the router debug line the baseline printed garbled, fixed earlier); `--mcts` output identical; a live server answers identical bodies for single and multi-turn history, a system message, an injected `<|im_end|>`, a per-request `chat_template`, `best_of`, `mcts` and an empty message list; `tests/e2e_parallel.sh` 6/6; `make test` gcc and clang.
+- Areas: `src/transformer/gen_session.c`, `src/transformer/gen_prompt.c`, `include/transformer/gen_prompt.h`, `CMakeLists.txt`, `tools/complexity_baseline.txt`, `tools/file_size_baseline.txt`.
+
+### 2026-11-21 — tn_simd_init binds each kernel group in its own function
+- What: `tn_simd_init` (`src/math/simd_dispatch.c`) builds one `SimdSel` (CPU features, `TN_FORCE_BACKEND` cap, act-quant mode) and calls `bind_vector_ops`, `bind_unpack` and the packed-matmul tiers in the old priority order: `bind_vnni_512`, `bind_vnni_256`, `bind_avx_vnni`, then the AVX-512F and AVX2 float tiers, then the ARM dotprod and NEON tiers, then the scalar fallback. The same `TN_HAS_*` guards wrap the same tiers.
+- Why: finding 20.a; `tn_simd_init` was complexity 51 in 121 lines and left the complexity baseline (381 -> 380).
+- Proof: BitNet greedy output and the banner's backend name identical to the baseline binary for `TN_FORCE_BACKEND` empty, scalar, avx2, avx512f, vnni256 and an unknown value, each with `--act-quant` auto, float and int8; `make test` gcc and clang; `make dist` passes `tools/check_dist_isa.sh` and `tools/check_isa_guards.py`. The ARM and AVX-VNNI tiers cannot run on this machine; their code moved unchanged and compiles under the same guards.
+- Areas: `src/math/simd_dispatch.c`, `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — weights_free_pointers frees from a table of owned arrays
+- What: `weights_free_pointers` (`src/runtime/weights.c`) walks `k_owned_arrays`, the offsets of the 50 heap arrays a `TransformerWeights` owns (attention and FFN weights, scales, norms, per-layer types, Qwen3.5 and Qwen3-MoE tensors, biases, classifier copies, per-layer expert tables), instead of 50 `if (p) free(p)` lines. The list was generated from the old function's free calls, so none was dropped. The Mamba block is still released through `mamba_weights_free`.
+- Why: finding 20.a; the function was complexity 49 in 57 lines and left the complexity baseline (382 -> 381).
+- Proof: `make test` gcc and clang under ASan/LeakSanitizer (a missed array would be reported as a leak).
+- Areas: `src/runtime/weights.c`, `include/cli/args_table.h` (one comment line re-wrapped), `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — generation, search and memory flag groups are table-driven; classifier head in its own file
+- What: `args_parse_generation`, `args_parse_search` and `args_parse_memory` (complexity 54 / 52 / 45, nesting 27 / 15 / 16) are rows of `ArgFlagSpec` (flag, CliArgs field, kind, range, message) run by `args_table_parse` (`src/cli/args_table.c`); flags with their own rules (`--stop`, `--mcts-delim`, `--rope-layout`, `--attn-kernel`, `--kv-type`, `--prompt-cache`) are small handlers. `tests/test_args_golden.c` finds flag names in all spellings. Separately the classifier head (`forward_head_classify`, `forward_head_rows`) moved from `forward.c` to `src/transformer/forward_head.c` to keep `forward.c` under the file-size limit.
+- Why: finding 20.a; all three left the complexity baseline (385 -> 382).
+- Proof: the 4970-case golden table (recorded from the old parser) passes unchanged; 27 error and rejection invocations print identical text and exit codes to the previous commit's binary; `make test` gcc and clang, `make test-tsan`.
+- Areas: `src/cli/args_flags_{generation,search,memory}.c`, `src/cli/args_table.c`, `include/cli/args_table.h`, `src/transformer/forward*.c`, `include/transformer/forward_head.h`, `tests/test_args_golden.c`, `CMakeLists.txt`, `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — batched logits head and multi-sequence step split into helpers
+- What: `forward_rows_logits` now calls `rows_final_norm` and `rows_classifier` (early-return format dispatch); `transformer_forward_multi_ex` calls `multi_embed_rows` and `compact_wanted_rows`.
+- Why: finding 20.a; `forward_rows_logits` left the complexity baseline and `transformer_forward_multi_ex` went from 23 / 40 / 3 to 14 / 21 / 2.
+- Proof: `make test` gcc and clang, `make test-tsan`, `tests/e2e_parallel.sh` (6 of 6, batched text identical to the sequential server's), speculative decoding output identical to the original baseline binary.
+- Areas: `src/transformer/forward.c`, `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — the single-token forward pass is split into embed, layers, final norm and classifier
+- What: `transformer_forward` (`src/transformer/forward.c`) is a short driver over `forward_embed`, `forward_layers` (distributed ranges), `forward_layer` (Mamba or attention plus FFN), `forward_final_norm` and `forward_classifier`; classifier format checks are shared helpers (`cls_raw_is`, `cls_i4_ok`, `cls_i8_ok`) also used by `forward_rows_logits`.
+- Why: finding 20.a; `transformer_forward` was complexity 67, 176 lines, nesting 6 and left the complexity baseline; `forward_rows_logits` dropped from 19 to 13.
+- Proof: greedy output identical to the previous commit for BitNet (default and `--classifier int8`), SmolLM2 (all classifier modes), DeepSeek-V2-Lite and speculative decoding; `make test` gcc and clang; interleaved tok/s within noise.
+- Areas: `src/transformer/forward.c`, `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — chat-template lexer split into one function per token kind
+- What: `jinja_lex` (`src/tokenizer/chat_template_lex.cpp`) is a short driver over a `Lexer` cursor; text, comments, whitespace control, strings, integers, identifiers, closing delimiters and operators each have a small function, and the operators are tables (`k_two_char_ops`, `k_single_char_ops`). `chat_template_lex_digest` (new, exported) hashes a template's token stream.
+- Why: finding 20.a; `jinja_lex` was complexity 97, 200 lines, nesting 7 and left the complexity baseline (388 -> 387); every new function is within the limits.
+- Proof: old and new lexers compared token for token on 3,065,280 inputs (3M random strings built from lexer fragments, truncated at arbitrary bytes, plus every one- and two-byte sequence inside a tag): 0 differences. `tests/test_chat_template.c` now hashes the token streams of 16 templates (ChatML, Mistral, Llama 3, Qwen-style macros, comments, whitespace control, escapes, operators, unterminated constructs) with hashes taken from the old lexer, and passes; lexing 200 x 26 KB of template takes the same time (39.8 vs 40.4 ms); SmolLM2 output identical to the baseline; `make test` gcc and clang.
+- Areas: `src/tokenizer/chat_template_lex.cpp`, `src/tokenizer/chat_template.cpp`, `include/tokenizer/chat_template.h`, `tests/test_chat_template.c`.
+
+### 2026-11-21 — tree search split into select, expand, evaluate and finish
+- What: `generate_mcts` (`src/reasoning/mcts.c`) keeps one `Search` struct and calls `select_leaf`, `simulate_once`, `expand_node`, `evaluate_step`, `best_path` and `finish_search` (with `summarize_path`, `needs_completion`, `complete_path`, `report_stats`). The order of every side effect, the seed sequence and the stats written back are unchanged.
+- Why: finding 20.a; `generate_mcts` was complexity 61, 150 lines, nesting 4 (now 15 / 35 / 2; every new function is within the limits).
+- Proof: end to end on SmolLM2 against the original baseline binary: CLI runs with eight parameter sets (`--mcts` 0/1/4, with `--mcts-expand`, `--mcts-depth`, `--mcts-step-tokens`, `--mcts-c`, `--mcts-temperature`; seeded) give identical output, the `[mcts] 4 simulations, 4 nodes, 2-step path ...` line shows the search ran; server requests with `"mcts": 4`, an mcts object, and a streamed mcts request are identical after normalising ids; `make test` gcc and clang, format and ratchets.
+- Areas: `src/reasoning/mcts.c`, `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — every code point's class is pinned; the classifier stays an if-chain
+- What: `cp_flags` is exported as `pretok_cp_class` and `tests/test_pretokenize.c` hashes its result for every value 0..0x110005 (hash recorded from the old function). A range-table rewrite was tried and reverted: identical on 1,114,122 values, but 25-50% slower in `pretokenize()` on 5.4 MB of mixed-script text (35 ms vs 44-54 ms), so the chain stays (decision-log 2026-11-21).
+- Why: finding 20.a (`cp_flags`, complexity 92 in 36 lines); the measurement said no, and the pin makes any later change safe. The complexity baseline entry is renamed with unchanged numbers.
+- Proof: exhaustive old-vs-new comparison for the rewrite; `make test` gcc and clang; file-size ratchet unchanged at 593 lines.
+- Areas: `src/tokenizer/pretokenize.c`, `include/tokenizer/pretokenize.h`, `tests/test_pretokenize.c`, `tools/complexity_baseline.txt`, `docs/ai/decision-log.md`.
+
+### 2026-11-21 — the behaviour/server flag group is table-driven
+- What: `args_parse_behavior` (`src/cli/args_flags_behavior.c`) was one else-if chain over 36 flags (complexity 74, 151 lines, nesting 32). Flags without a value are `k_switch_flags` rows, pointer-valued flags `k_string_flags`, named-choice flags (`--ui-logo`, `--classifier`, `--web-ui`) `k_choice_flags` with their value lists and messages, numeric flags (`--quality-tolerance`, `--self-check-tokens`, `--port`) `k_range_flags`, and the flags with their own rules (`--chat-format`, `--simd`, `--act-quant`, `--log-format`, `--log-level`, `--cors-origin`) are small named handlers. One small function per kind walks its table. Messages, exit codes and the order of side effects are unchanged.
+- Why: finding 20.a (decision Q3: table-driven flag parsing with parity tests). The function left the complexity baseline (389 -> 388).
+- Proof: `tests/test_args_golden.c` compares every flag parsed alone and with 22 sample values (each alone and with a model) against `tests/fixtures/args_golden.txt`: result code, everything printed and a digest of the whole `CliArgs`. Its sample values missed most valid choices, so 61 targeted cases (every valid choice and range boundary of this group, plus two multi-flag sequences with a model) were added and the fixture extended from the old code first; the 4909 existing lines are unchanged and all 4970 cases pass after the refactor; `make test` gcc and clang; `e2e_cli_exit_status` passes.
+- Areas: `src/cli/args_flags_behavior.c`, `tests/test_args_golden.c`, `tests/fixtures/args_golden.txt`.
+
+### 2026-11-21 — chat request parser is table-driven; JSON scanner in its own file
+- What: `chat_request_parse` reads each key through `parse_request_field`: scalar numbers and booleans from a table (`k_scalar_fields`: name, type, offset, set-mask bit; aliases are extra rows), the mcts object keys from `k_mcts_fields`, and the fields with their own shape (stop, watermark, mcts, chat_template, response_format, messages) through small parsers in `k_object_fields`. The code moved out of `json_parse.c` into `chat_request_parse.c`, and the scanning primitives (whitespace, strings, numbers, booleans, skip-value) into `json_scan.c` with `api/json_scan.h`; `json_parse.c` keeps the messages, init/free and the generic top-level field access.
+- Why: finding 20.a; `chat_request_parse` was complexity 73, 165 lines, nesting 27 (now 12 / 23 / 2) and `json_parse.c` was 877 lines against a 837 baseline. Moved functions keep their old complexity numbers (renames in the baselines, nothing raised); `json_parse.c` leaves the file-size baseline (837 -> 330 lines).
+- Proof: `tests/test_chat_request_golden.c` (66 request bodies: every key and alias, `null` for each, malformed and truncated bodies, escapes, nested unknown values, over-long templates, too many stops) serialises every parsed field and hashes it; the hashes were recorded from the old parser (ASan/UBSan clean) and the new parser matches all 66. Live chat output (stream, non-stream, stop, cache, best-of, errors, parallel, cancel) is identical to the original baseline binary; `make test` gcc and clang, TSan; JSON-mode, parallel/cancel, cross-site and vision (real encoder) e2e scripts pass.
+- Areas: `src/api/{json_parse,json_scan,chat_request_parse}.c`, `include/api/json_scan.h`, `tests/test_chat_request_golden.c`, `CMakeLists.txt`, baselines.
+
+### 2026-11-21 — server start and accept loop split into steps
+- What: `api_server_start` calls `open_listen_socket`, `init_serving_state`, `start_listener` and `print_endpoints`; the accept loop calls `admit_connection` (client timeouts, the connection cap and its 503) and `spawn_connection`. Order of every side effect and every error code is unchanged.
+- Why: findings 7.a / 20.a; `api_server_start` was complexity 17 / 72 lines and `listener_thread_fn` 11 / 58; both left the complexity baseline (391 -> 389).
+- Proof: the startup banner is byte-identical to the baseline binary for three flag sets (default, metrics + CORS + API key, web UI off); starting on a taken port prints the same failure; `make test` gcc and clang (incl. the connection-cap and limits tests), TSan, `e2e_api_concurrency` and `e2e_cross_site_post`.
+- Areas: `src/api/http_server.c`, `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — chat completion handler split into steps
+- What: `http_handle_chat_completions` (`src/api/http_chat.c`) calls named helpers for the steps it used to inline: `chat_parse_body` (copy, parse, 500/400 replies), `chat_has_image` / `chat_vision_configured`, `chat_take_engine` (generation mutex, KV position 0, image through the vision pipeline), `chat_setup_prefix_cache` and `chat_init_stream`. The order of every side effect is unchanged.
+- Why: finding 7.a; the handler was complexity 33 and 98 lines, now 22 and 56 (nesting 3 -> 1).
+- Proof: against a build of the previous commit, 34 lines of normalised live output (non-stream, stream chunks, stop sequence, cache reuse twice, best-of, empty and malformed bodies, three parallel requests, cancel) are identical with and without `--parallel 2 --queue-size 4`; `e2e_vision_long_prompt` (real vision encoder, two image requests at once), `e2e_prompt_cache`, `e2e_parallel` (cancel), `e2e_json_mode` and `e2e_max_prompt_bytes` pass; `make test` gcc and clang, TSan.
+- Areas: `src/api/http_chat.c`, `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — connection handling split out of http_server.c: gates and a route table
+- What: `src/api/http_connection.c` (new, `api_handle_connection`) holds what `handle_connection` did: read and parse the request, run the gates, route, record the metric. The gates are one small function each (Host, API key, rate limit, cross-site POST) behind `pass_gates`; routing is a `k_routes` table of (method, path, handler) rows plus the web-UI fallback and the 404. `tools/check_openapi_routes.py` now reads that table (with a test that gate comparisons are not mistaken for routes).
+- Why: finding 7.a (`http_server.c` over 500 lines; its `handle_connection` was complexity 54, 125 lines, nesting 16). `http_server.c` leaves the file-size baseline (577 -> under 500); the offender is gone from the complexity baseline (392 -> 391).
+- Proof: against a build of the previous commit, 27 live requests per configuration (health, models, openapi, docs, metrics on/off, web UI on/off, 404s, CORS preflight, bad Host, API key, rate limit, cross-site POST, bad JSON, chat, cancel, update, watermark, config save) give identical status codes and bodies for three flag sets; the two bodies that carry per-run values (chat id/created, self-check timings) also differ between two runs of the same binary and match after normalising; `make test` gcc and clang, TSan; `e2e_cross_site_post`, `e2e_api_concurrency` and `e2e_log_format` pass.
+- Areas: `src/api/http_connection.c`, `include/api/http_connection.h`, `src/api/http_server.c`, `CMakeLists.txt`, `tools/check_openapi_routes.py` and its test.
+
+### 2026-11-21 — wide comments in small C files are wrapped to 100 columns
+- What: 86 lines over 100 columns (628 -> 542) in 51 C and header files under 500 lines were re-wrapped by clang-format with `ReflowComments` switched on for this one pass (the project style keeps it off). Only comments and whitespace moved.
+- Why: finding 23.c. Comment lines do not count toward the function-size ratchets and these files have no file-size entry, so wrapping them cannot trip those gates; the earlier attempt on `tools/bench/benchlib.py` did (wrapped code lines add lines).
+- Proof: after stripping comments and whitespace, every one of the 51 files is token-identical to HEAD; compiled objects of the C files are byte-identical except two test files whose `__LINE__` values moved; `make check-format` (project style) accepts the result; `make test` gcc and clang; line-width baseline lowered to 542.
+- Areas: 18 headers in `include/`, the rest `src/` and `tests/` C files.
+
+### 2026-11-21 — the legacy dequantisers share one block walker
+- What: Q8_0, Q4_0, Q4_1, Q5_0, Q5_1, Q8_1 and Q2_0 in `src/core/gguf_quant.c` are now a per-format `*_block` decoder plus one `dequant_blocks` loop (and `zero_tail` for the formats that zero a partial last block); the arithmetic of each decoder is the old loop body, unchanged.
+- Why: finding 45.b (the repeated block-loop skeleton; decision Q2 asked for bit-exact output). The duplication tool's number does not move (7.36%): those loops differed textually, so this is structural clarity, not a metric gain.
+- Proof: `tests/test_gguf_dequant_golden.c` (32 assertions) passes on gcc and clang; its new tail cases (40 weights = one block + 8) were hashed from the old decoder and match: Q8_0 decodes the partial block, Q5_0/Q5_1/Q4_1/Q8_1/Q2_0 zero the rest, Q4_0 leaves it; SmolLM2 greedy text identical to the baseline and model load plus first token unchanged (median 0.716 s vs 0.735 s, 7 interleaved pairs).
+- Areas: `src/core/gguf_quant.c`, `tests/test_gguf_dequant_golden.c`.
+
+### 2026-11-21 — bit-exact reference test for every GGUF dequantiser
+- What: `tests/test_gguf_dequant_golden.c` decodes 1024 weights per format (24 formats: F32, F16, BF16 and the legacy, K and IQ quants) from deterministic pseudo-random blocks and compares an FNV-1a hash of the output bytes with a stored one; `--print` lists the current hashes for a deliberate update.
+- Why: finding 45.b made bit-exact references the prerequisite for merging the per-format block loops (decision Q2). The hashes agree between gcc and clang, debug and `-O3 -march=native`, so the check is stable across the CI compilers.
+- Proof: passes on gcc and clang; a one-constant mutation of the Q4_0 decoder fails exactly the Q4_0 case.
+- Areas: `tests/test_gguf_dequant_golden.c`.
+
+### 2026-11-21 — one MoE-layer loader for DeepSeek-2 and Qwen3-MoE
+- What: `gguf_ld_moe_layer` (in `gguf_load_util.c`) loads one MoE layer's F32 router and slices the stacked expert tensors into per-expert pointers, recording the layer's quant types; both architecture loaders call it instead of carrying the same ~45 lines. Error messages and behaviour are unchanged.
+- Why: findings 1.g / 20.b (duplication, over-long functions): `weights_from_gguf_deepseek2` 134 -> 96 lines (complexity 26 -> 18), `weights_from_gguf_qwen3moe` 92 -> 54 lines (20 -> 12); duplicated source share 7.55% -> 7.36% (baseline was 7.84%).
+- Proof: `make test` gcc and clang (the synthetic Qwen3-MoE loader test checks the per-expert strides through the helper); DeepSeek-V2-Lite (Q2_K) greedy text identical to the baseline binary.
+- Areas: `src/runtime/{gguf_load_util,gguf_load_deepseek2,gguf_load_qwen3moe}.c`, `include/runtime/gguf_load_util.h`.
+
+### 2026-11-21 — the embedding loader uses the shared dequantiser table
+- What: `gguf_ld_dequant` (new, in `gguf_load_util.c`) is the table lookup behind `gguf_ld_tensor_to_f32`; the token-embedding loader in `gguf_loader.c` calls it instead of its own 6-case switch.
+- Why: finding 8.a; the same seven formats were dispatched in two places.
+- Proof: `tests/test_gguf_dequant_registry.c` now also covers the direct entry (236 assertions); `make test` gcc and clang; greedy text identical to the baseline binary on SmolLM2, BitNet and DeepSeek-V2-Lite.
+- Areas: `src/runtime/{gguf_loader,gguf_load_util}.c`, `include/runtime/gguf_load_util.h`, `tests/test_gguf_dequant_registry.c`.
+
+### 2026-11-21 — expert formats are a table; the per-row dot stays a switch
+- What: `moe_experts.c` looks each expert weight format up in `k_expert_formats` (activation family, block size, block bytes) for row sizes and for `moe_experts_type_ok`, instead of two switches; the per-row dot in the innermost loop remains the original switch.
+- Why: finding 8.a. A first version also put the dot kernels in the table (indirect call per row) and measured about 2.5% slower on Q4_K expert GEMVs (a microbenchmark of `moe_experts_forward`, 8 experts, 2048x1536, 4 threads, 7 x 200 calls, release flags; Q8_0 was neutral), so that part was reverted. With the cold lookups in a table and the switch back, old vs new is within noise (Q4_K 705-729 vs 692-725 us, Q8_0 1135-1248 vs 1161-1199 us).
+- Proof: `tests/test_moe_experts.c` (927 assertions, incl. a truth table of `moe_experts_type_ok` over types 0..69 and widths that passes on the old and the new code, and the fused-vs-legacy comparison); `make test` gcc and clang, TSan.
+- Areas: `src/transformer/moe_experts.c`, `tests/test_moe_experts.c`.
+
+### 2026-11-21 — Q8_0-activation GEMV picks its kernel from a table
+- What: `parallel_matmul_q8a` and `parallel_matmul_q8a_tokens` look the weight format up in `k_q8a_kernels` (type, block size, integer dot) once per call; the per-row worker loops call the resolved function instead of switching on the type for every row, and the two block-size switches are gone.
+- Why: finding 8.a (kernel-dispatch switches become a registry; Q11). `parallel_matmul_q8a_tokens` leaves the complexity baseline (393 -> 392).
+- Proof: new `tests/test_q8a_dispatch.c` (158 assertions) compares both entry points with the direct per-row dots bit for bit for Q5_0, Q5_1 and Q8_0, with and without a thread pool, and checks every other type is refused; it passes on the old and the new code; `make test` gcc and clang, TSan; SmolLM2 greedy text identical to the baseline binary and speed unchanged (median 84.7 vs 83.9 tok/s, 7 interleaved pairs).
+- Areas: `src/math/q8_0_act.c`, `tests/test_q8a_dispatch.c`.
+
+### 2026-11-21 — GGUF float conversion and byte counts come from tables
+- What: `gguf_ld_tensor_to_f32` looks the tensor type up in a `k_dequant` table (one row per supported format) instead of a 24-case switch, and `gguf_ld_quant_bytes` derives the size from that table plus the public block sizes in `core/gguf_reader.c` instead of its own 24-case switch. A new format is one table row.
+- Why: finding 8.a / decision Q11 (quant switches become registries). Two functions left the complexity baseline (395 -> 393). One deliberate fix: the old byte-count switch had no Q2_0 row and returned 0; it now returns the real size (34 bytes per 128 elements), which only matters for Q2_0 expert tensors.
+- Proof: `tests/test_gguf_dequant_registry.c` (141 assertions) checks every type against the old switch kept as test data: byte counts equal (Q2_0 aside), the table's float output equals calling the type's own dequantiser on pseudo-random blocks, unsupported types still return NULL; `make test` gcc and clang; greedy text identical to the baseline binary on SmolLM2 (Q8_0), BitNet (I2_S) and DeepSeek-V2-Lite (Q2_K, expert strides).
+- Areas: `src/runtime/gguf_load_util.c`, `tests/test_gguf_dequant_registry.c`.
+
+### 2026-11-21 — remaining-statics classification brought up to date
+- What: `docs/ai/decision-log.md` now counts 40 statics (3 impossible, 37 in six proposed exception groups) and states that no planned removals remain; the act-quant mode in `simd_dispatch.c` moved from "to remove" to a "kernel dispatch binding" group, because the dispatch function pointers it describes are process-wide by design.
+- Why: keep the written conclusion true after the removals of this series; the owner's approval list in the Deviation approval log gained the sixth group.
+- Areas: `docs/ai/decision-log.md`.
+
+### 2026-11-21 — the distributed plan belongs to the RunState; calibration samples are a local
+- What: `RunState.dist` points at the `--remote-layers` plan the state's forward pass follows (set by `session_distributed` on the main state); `dist_plan_set_active`/`dist_plan_active` and the static are gone. `forward`, `transformer_forward_batch`, `gen_session`, `spec_decode` and `/v1/config` read `s->dist`; `batch_scheduler_supported` takes the state. The calibration sample table in `tn_calibrate` is an automatic array (about 1.5 KB).
+- Why: finding 14.f (planned removals); mutable statics 42 -> 40. `transformer_forward_multi_ex` documents that callers must not pass a distributed state (its only caller, the scheduler, checks).
+- Proof: `make test` gcc and clang, TSan, release; a real coordinator plus a local worker (`--remote-layers 127.0.0.1:PORT@10-30`, worker `--layers 10-30`) generates identical text on the baseline and the new binary ("... Paris."); complexity ratchet only went down (396 -> 395).
+- Areas: `include/distributed/dist_plan.h`, `src/distributed/dist_plan.c`, `include/runtime/run_state.h`, `src/transformer/{forward,gen_session}.c`, `src/speculative/spec_decode.c`, `src/api/{batch_scheduler,http_server,api_config_json}.c`, `src/cli/session_dist.c`, `src/runtime/calibration.c`, `tests/test_batch_scheduler.c`.
+
+### 2026-11-21 — the OpenAPI document is joined per call, not cached
+- What: `openapi_json()` returns a freshly joined, caller-owned copy of the two source halves; the static buffer and its `pthread_once` are gone. The route handler frees it; a test checks that two calls give separate identical copies.
+- Why: finding 14.f (planned removal); the join happens on a rarely hit route, so a per-call allocation costs nothing. Mutable statics 43 -> 42.
+- Proof: `make test` gcc and clang, TSan, release build; a live server serves `application/json` from `/openapi.json` (the document itself is unchanged by this commit).
+- Areas: `include/api/openapi.h`, `src/api/{openapi,http_routes}.c`, `tests/test_openapi.c`.
+
+### 2026-11-21 — the --image prompt buffer is part of the arguments
+- What: `CliInput.vision_prompt[8192]` holds the prompt with the image part removed; the file-local static in `session_apply_runtime_options` is gone.
+- Why: finding 14.f (planned removal); the buffer belongs to the run whose `prompt` points into it. Mutable statics 44 -> 43.
+- Proof: `make test` gcc and clang, TSan; a CLI `--image` run with a real vision encoder and projector prints the same text as the baseline binary.
+- Areas: `include/cli/args.h`, `src/cli/session_extras.c`.
+
+### 2026-11-21 — request-ID counter lives in the server context
+- What: `http_new_id` and `http_request_attach_id` draw from an `atomic_ulong` (`ApiContext.request_seq`) instead of a function-local mutex and counter.
+- Why: finding 14.f (one of the planned removals); two server contexts no longer share a sequence, and the lock is gone. Mutable statics 46 -> 44.
+- Proof: `make test` gcc and clang, TSan, release build; live server: 8 concurrent requests received 8 distinct `X-Request-ID` values and a client-supplied ID is echoed; the headers test uses its own counter.
+- Areas: `include/api/{http_request,api_server}.h`, `src/api/{http_request,http_chat,http_server}.c`, `tests/test_http_headers.c`.
+
+### 2026-11-21 — remaining process-wide state classified
+- What: `docs/ai/decision-log.md` splits the 46 remaining mutable statics into impossible (signal-handler state, 3), planned removals (9) and four groups of proposed exceptions; the three signal-handler variables carry a comment saying why they stay file-scope. The exception groups are in the Deviation approval log for approval.
+- Why: finding 14.f allows an allow-list only after a formal conclusion that removal is not possible; this is that conclusion, per group, instead of a silent baseline.
+- Proof: comment-only code change; `make test` gcc and clang; statics ratchet unchanged at 46.
+- Areas: `docs/ai/decision-log.md`, `src/cli/session_server.c`, `src/core/cpu_features.c`.
+
+### 2026-11-20 — attention kernel settings live in each RunState
+- What: `AttnConfig` (kernel, tile, parallel threshold; `include/core/attn_config.h`) is a field of `RunState`, defaulted at allocation. The attention code reads `s->attn`; the session applies `--attn-kernel/--attn-tile/--attn-parallel-min-ctx` to the main, draft, PRM and RAG-embedder states, batch-scheduler slots copy slot 0's, and `/v1/config` reports the served state's. The `attn_*_get()` accessors and the three file-scope variables are gone.
+- Why: finding 14.f; mutable statics 49 -> 46. Two states in one process can now run different kernels. The type sits in `core/` so `run_state.h` does not include the transformer layer (the layer check caught that first).
+- Proof: `make test` gcc and clang, TSan, release; output identical to the baseline binary for default, tiled, tiled with tile 16, parallel threshold 0 and 1, and a draft model with the tiled kernel; `/v1/config` attention fields and two concurrent requests with `--parallel 2` and the tiled kernel match; speed A/B median 84.2 vs 81.2 tok/s (new vs baseline, noise).
+- Areas: `include/core/attn_config.h`, `include/transformer/attn_tiled.h`, `src/transformer/{attn_tiled,attention}.c`, `include/runtime/run_state.h`, `src/runtime/run_state.c`, `src/api/{batch_scheduler,api_config_json}.c`, `src/cli/session_extras.c`, `tests/test_{forward,cache_probe}.c`.
+
+### 2026-11-20 — attention-kernel setup runs and logs once
+- What: removed the second copy of the attention-kernel block in `session_apply_runtime_options`; added `tests/e2e_verbose_output.sh` and a CI step.
+- Why: the copy came in with the `main()` split (commit 8c256a2) and made `--verbose` print `Attention: ...` twice; the baseline binary prints it once.
+- Proof: the new e2e fails on the old code and passes on the fix; `make test` gcc and clang; complexity and size baselines unchanged or lower.
+- Areas: `src/cli/session_extras.c`, `tests/e2e_verbose_output.sh`, `.github/workflows/ci.yml`, `docs/ai/mistakes.md`.
+
+### 2026-11-20 — KV sizing options are passed to the code that uses them, not set globally
+- What: `KVStrategyOptions` (--ctx-size, --kv-ram-fraction, --kv-type, --kv-offload) is built from the arguments by `args_fill_kv_options` and handed to `select_kv_strategy_ex`, `kv_strategy_print`, `kv_strategy_budget_tokens`, `run_state_alloc_ex`, `load_gguf_model`, `draft_model_load`, `prm_load` and the batch scheduler's slot allocation (`ServerConfig.kv` for the server). `kv_strategy_set_options`, `kv_strategy_kv_type` and `kv_strategy_offload_dir` are gone. The native-model KV sizing moved into `size_native_context`.
+- Why: finding 14.f; the process-wide options static is removed (mutable statics 50 -> 49, baseline lowered). Anything allocated without options (the RAG embedder) now uses F32 in RAM instead of silently inheriting `--kv-type`. `start_parallel` also resets the whole `ApiParallel` on each start.
+- Proof: `make test` gcc and clang, TSan, release build; greedy output and the `KV cache:` line identical to the baseline binary for default, `--kv-type i8|i4`, `--kv-offload`, both together, and `--ctx-size` with `--kv-ram-fraction`; two concurrent chat requests with `--parallel 2 --kv-type i8` answer identically. Complexity, file-size and statics baselines only went down.
+- Areas: `include/kv_cache/kv_strategy.h`, `src/kv_cache/kv_strategy.c`, `src/runtime/{run_state,model_load}.c`, `src/speculative/draft_model.c`, `src/reasoning/prm.c`, `src/api/{batch_scheduler,http_server}.c`, `src/cli/{args,session_model,session_extras,session_server,main}.c`, `include/api/{server_config,batch_scheduler}.h`, tests that set or read the options.
+
+### 2026-11-20 — config provenance is passed along, not published through globals
+- What: `pz_config_prepare_argv` fills a caller-owned `PzLaunchConfig` (settings, merged argv, file path, `PzProvenance`) that `main` owns and frees; the provenance is copied through `CliServer.config_provenance` into `ServerConfig.provenance`, which `/v1/config` and `POST /v1/config/defaults` read. `pz_config_publish` and the `pz_config_active_*` functions are gone (`pz_provenance_source` replaces the lookup). `main` is split into `run` plus a small `main`.
+- Why: finding 14.f; five process-wide statics (published config pointer, its path and flag, the merged settings, the argv owner) removed. Mutable statics 54 -> 50. Also drops two complexity-baseline entries (`main`, `pz_config_prepare_argv`) and shrinks two file-size entries; nothing was raised.
+- Proof: `make test` gcc and clang, TSan, release build; new test asserts provenance points at the launch's own settings; live server compared with the baseline binary for file, env, flag and `--no-config` runs (identical `/v1/config` config block, identical saved file). Clang caught a missing include on the way (fixed).
+- Areas: `include/config/pz_config.h`, `src/config/pz_config.c`, `include/cli/config_cmd.h`, `src/cli/{config_cmd,main,session_server}.c`, `include/cli/args.h`, `include/api/server_config.h`, `src/api/config_endpoint.c`, `tests/test_config_{cmd,endpoint}.c`.
+
+### 2026-11-20 — physical-core count and the re-probe switch go through TnSysProbe
+- What: the `/proc/cpuinfo` physical-core count (`tn_sys_physical_cores`, rewritten from one nesting-7 function into three small ones) and the `PZ_BW_REPROBE` switch (`tn_sys_env_flag`) moved from `src/runtime/hardware_profile.c` into `src/core/sys_probe.c`, taking the injectable probe table.
+- Why: finding 11.a (inject TnSysProbe for hardware_profile.c). A test can now hand in a fake `/proc/cpuinfo` and environment; the old function also left the complexity baseline.
+- Proof: new tests (hardware threads of one core count once, no ids -> 0, unreadable -> 0, env flag cases); on this machine the new function and an independent awk count both give 4; `make test` gcc and clang; complexity baseline 399 -> 398, no baseline raised.
+- Areas: `include/core/sys_probe.h`, `src/core/sys_probe.c`, `src/runtime/hardware_profile.c`, `tests/test_sys_probe.c`.
+
+### 2026-11-20 — config save lock and parallel-scheduler fields move into ApiContext
+- What: `ApiContext` gets a `config_save_lock` (was a file-scope mutex in `config_endpoint.c`) and groups its four parallel-scheduler fields into `ApiParallel parallel` (25 -> 23 direct fields). The child-environment PATH entry in `cmd_exec.c` is a const array.
+- Why: finding 14.f and the 25-field cap (10.b); two server contexts no longer share a save lock. Mutable statics 56 -> 54.
+- Proof: `make test` gcc and clang, TSan, CMake build; field, complexity, file-size and statics ratchets pass without any baseline raised.
+- Areas: `include/api/api_server.h`, `src/api/{http_server,http_chat,http_routes,api_config_json,config_endpoint}.c`, `src/agent/cmd_exec.c`, `tests/test_api_info.c`.
+
+### 2026-11-20 — update check keeps its state in an UpdateService, not in globals
+- What: the background release check (`src/update/update_service.c`, split out of `update_check.c`) works on a caller-owned `UpdateService` (mutex, options, last result, thread, fetch hook). The session owns one (`PzSession.update.svc`) and hands it to the HTTP server (`ApiContext.update`); `update_set_fetcher` became `update_service_set_fetcher`, and `update_check_with` takes the transport explicitly.
+- Why: finding 14.f (no process-wide mutable state). Mutable statics 64 -> 56; two services in one process no longer share a result or a thread. The split also took `update_check` and `update_service_poll` under their recorded complexity and the file from 616 to 512 lines.
+- Proof: `make test` gcc and clang, TSan, CMake build; new test with two independent services plus NULL and unconfigured ones; complexity (399), file-size (27 files) and bool-chain (113) baselines lowered, none raised.
+- Areas: `src/update/update_check.c`, `src/update/update_service.c`, `include/update/update_check.h`, `src/api/{update_endpoint,http_server}.c`, `include/api/{api_server,update_endpoint}.h`, `include/cli/session.h`, `src/cli/session_{checks,run,server}.c`, `tests/test_update_check.c`, `CMakeLists.txt`.
+
+### 2026-11-20 — setup wizard scratch buffers are locals, not statics
+- What: the model list, model catalog buffers in `src/cli/config_cmd.c` are automatic variables; `cfg` and `owned` stay static (the returned argv points into them).
+- Why: finding 14.f; the three statics only avoided stack size (about 60 KB total on the main thread). Mutable statics 67 -> 64, baseline tightened.
+- Proof: `make test` gcc and clang pass; format, complexity (401) and statics ratchets pass.
+- Areas: `src/cli/config_cmd.c`, `tools/mutable_statics_baseline.txt`.
+
+### 2026-11-20 — CI check against disabled code
+- What: `tools/check_dead_code.py` (with tests) fails on `#if 0` and on commented-out C statements in `src/`, `include/`, `tests/`; wired into the `ci.yml` lint steps.
+- Why: finding 29.a; the tree has none today, so the baseline is zero and nothing can creep in. Vendored `stb_*` headers are skipped.
+- Proof: unit tests including a real-tree run; the check reports 0 hits.
+- Areas: `tools/check_dead_code.py`, `tools/test_check_dead_code.py`, `.github/workflows/ci.yml`.
+
+### 2026-11-20 — ThreadSanitizer job also runs under clang
+- What: the `tsan` job in `.github/workflows/security_audit.yml` is a gcc and clang matrix.
+- Why: decision Q7 (22.c) asked for CC=clang in the TSan job; the two compilers instrument differently.
+- Proof: `make test-tsan CC=clang` reports no races; the workflow parse test passes.
+- Areas: `.github/workflows/security_audit.yml`.
+
+### 2026-11-20 — structured logging: every diagnostic through `core/log.h`
+- What: `include/core/log.h` + `src/core/log.c` (levels, text or JSON-line format, credential redaction, control-character escaping, one write per line); 262 `fprintf(stderr, ...)` call sites in 53 files became `TN_LOG_ERR/WRN/INF/DBG(component, ...)` (level and component chosen by a script from each message, reviewed), the non-TTY progress lines and 118 startup status `printf` lines became `TN_LOG_*` / `TN_OUT_INF` (stdout in text mode, JSON on stderr in JSON mode); `--log-format`, `--log-level` (args group, `--help`, `pz config` schema, golden args table regenerated); `--verbose` sets the debug level. Program output (generated text, banner, hardware table, `--help`, perplexity / plan / update results, the REPL, the agent) is untouched. Terminal-UI writes stay raw (in-place progress, live tok/s line, step-timing table) and are on the allow-list of `tools/check_raw_logging.py`.
+- Why: diagnostics were ad-hoc printf / fprintf with no machine-readable form, no central redaction and no protection against a newline in a logged value.
+- Proof: text mode is byte-identical: 23 CLI command lines (stdout, stderr, exit status) match the previous commit's output; `tests/test_log.c` (25 checks incl. eight threads x 200 lines without a torn one); `tests/e2e_log_format.sh` (9 checks on a real model: every stderr line is JSON, no status line on stdout in JSON mode, `--log-level`, a bad value refused, a server run with `--api-key ... --verbose` never writes the key); `tools/check_raw_logging.py` and the extended `tools/check_log_secrets.py` in CI. Baseline bumps from the conversion: 28 functions and 7 files grew by 1-3 lines each (wrapped calls; `tn_calibrate` by 16), 2 mutable statics (the logger's atomics).
+- Areas: `src/core/log.c`, `include/core/log.h`, 55 files under `src/`, `include/core/debug.h`, `include/cli/arg_values.h`, `src/cli/args_flags_behavior.c`, `src/config/pz_config.c`, `tests/{test_log.c,e2e_log_format.sh}`, `tools/check_raw_logging.py`, `tools/*baseline.txt`, `tests/fixtures/args_golden.txt`.
+
+### 2026-11-20 — unused LGPL kernel removed
+- What: `src/math/ternary_matmul_lut_avx512bw.c` (LGPL-3.0-or-later, ported from lut_mm), its test, the Makefile/CMake/CI entries, `LICENSE-LGPL-3.0.txt` and its packaging in `install.sh`, the release workflow and `tools/test_install.sh` are removed; README, `NOTICE` and the SBOM now say MIT only (NOTICE keeps a short history). Done in two commits: the first added `LICENSE-GPL-3.0.txt` and the origin record, this one deletes the kernel and the licence files.
+- Why: decision Q16 (benchmark-gated removal, with a compliance-closing commit first).
+- Proof: nothing in `src/` called the kernel (`nm pz` held two symbols from it, none after). Interleaved A/B, BitNet 2B-4T, 4 threads, 5 runs each: before median 24.17 tok/s, after 24.70 (no regression); greedy output identical; binary 1.64 MB (was 1.66). Installer test 30/30, SBOM tests, root-file, suppression, changelog and CMake configure checks pass.
+- Areas: `src/math/`, `tests/`, `Makefile`, `CMakeLists.txt`, `.github/workflows/`, `install.sh`, `tools/`, `NOTICE`, `README.md`, `CHANGELOG.md`.
+
+### 2026-11-20 — coverage floor set to the measured baseline, with an upward ratchet
+- What: `make coverage` without a model measured lines 55.5 %, branches 43.3 %, functions 62.2 % (the earlier floors were 50 / 35 from a 53.8 / 39.9 measurement). `tools/coverage_floor.txt` now holds 55 / 43, and `tools/check_coverage.py` also fails when coverage is more than 5 points above the floor ("raise it": the floor only goes up); the 5 points leave room for runners whose CPU lacks AVX-512/VNNI.
+- Why: decision P2.A (measure the real baseline, lock it, one-way upward ratchet).
+- Proof: 6 unit tests (including the stale-floor case) pass; the checker passes on the fresh tracefile.
+- Areas: `tools/check_coverage.py`, `tools/test_check_coverage.py`, `tools/coverage_floor.txt`.
+
+### 2026-11-20 — The agent's tag parser keeps its state in a `TiParser`
+- What: `agent/tool_interceptor` buffered partial `<exec>` / `<think>` tags in two file-scope statics (an 8 KiB buffer and its position). The state is now a `TiParser` that the caller owns (`ti_init(&p)`, `ti_process_piece(&p, ...)`), so two agent loops can never mix their text; mutable statics in `src/`: 69 to 67. `tests/test_tool_interceptor.c` gained a test with two parsers fed interleaved pieces.
+- Verified: `make test` green on gcc and clang; complexity, size and format checks pass (`run_agent_loop` stays at its recorded size).
+- Why: decision 14.f (explicit context instead of globals where a context is possible; the remaining statics are caches, dispatch tables and thread-local scratch, listed in the baseline and tracked one by one).
+
+### 2026-11-20 — One table for the GGUF tensor types
+- What: the three per-type switches in `core/gguf_reader.c` (block bytes, weights per block, name; about 170 lines) are one table, `k_type_info` (type, name, block bytes, block elements); a new quantisation is one row. `gguf_type_block_bytes()` and `gguf_type_block_elems()` are public next to `gguf_type_name()`. The file is 494 lines (was over 500). `tests/test_gguf_type_info.c` pins all 71 type values (0..70) to what the old switches returned (captured from the old code before the change): block bytes, elements and names of every listed type, and the defaults (0 bytes, 1 element, "UNKNOWN") of every unlisted one.
+- Verified: `make test` green on gcc and clang; greedy output identical on SmolLM2, BitNet and DeepSeek-V2-Lite; the shrink-only baselines fell again (401 complexity entries, 27 files over 500 lines).
+- Not done: the dispatch switches in `runtime/gguf_load_util.c`, `math/q8_0_act.c` and `transformer/moe_experts.c` still map types to kernels; they follow one at a time.
+- Why: decision 8.a / 8.c (convert quant switches to registries, keep closed-enum parser switches).
+
+### 2026-11-20 — Tool to archive old benchmark results
+- What: `tools/archive_benchmark_results.py` (unit-tested selection rule) splits the tracked files under `benchmark_results/`: the README and the latest published sweep (`h2h_20261118-053147Z_published-sweep` without its terminal screenshots) stay (257 files, 2.3 MB, under the 5 MB budget); the other 1,729 files (85 MB, 73 MB as `tar.gz`) are archived. `--list` shows the split, `--archive OUT.tar.gz` writes the archive and prints its SHA-256, `--remove` runs `git rm` on the archived files. Git history is not rewritten.
+- Not done (needs a maintainer): attaching the archive to a GitHub release and then running `--remove`; the upload cannot be done from this session, and removing the files before the upload would lose them from the tree.
+- Why: decision 3.a (archive historical raw logs and PNGs to GitHub Releases, keep the latest full run and charts in the tree).
+
+### 2026-11-20 — One socket write path for the HTTP server
+- What: `sse_stream.c` had its own `write_all` whose comment said it retried on EINTR but did not (an interrupted write looked like a disconnected client and ended a stream), and `http_chat.c` wrote the queue notice with a bare `write()`. Both now call `net_write_all()`, so `net_io.c` is the only file in `src/api/` that writes to a socket. `tools/check_socket_writes.py` (unit-tested, CI `changelog` job) fails on any other direct `write()`, `send()` or `fwrite()` there.
+- Why: finding 11.c (handlers write straight to the socket; one writer function means a test can drive handlers through a pipe or socket pair and the short-write/EINTR handling lives in one place).
+
+### 2026-11-20 — Nightly mutation smoke test
+- What: `tools/mutation_smoke.py FILE TEST` flips one comparison or logical operator at a time in a source file (outside comments and strings), rebuilds the named unit test, runs it and counts the mutants the test notices; the file is always restored. The `nightly.yml` job `mutation-smoke` runs it on `top_p.c`, `cors.c` and `rate_limit.c` and writes the kill rates and the survivors to the job summary; it only reports and never blocks a pull request. First local runs: `top_p.c` 3/6 killed (the survivors are boundary `>=` mutants worth a test), `rate_limit.c` 2/6 (the survivors are equivalent mutants on the clock check). The pure parts (finding sites, flipping an operator) have unit tests.
+- Why: decision 39.d (mutation testing after merge, in the nightly workflow, not blocking).
+
+### 2026-11-20 — Ratchet on lines over 100 columns
+- What: `tools/check_line_width.py` (unit-tested, CI `changelog` job) counts source lines over 100 columns per tracked file (C, C++, headers, Python, TypeScript, Svelte, shell; generated, vendored and benchmark-result files skipped). 629 lines in 174 files are recorded in `tools/line_width_baseline.txt`; a file may not go above its count and a new file starts at zero. clang-format and ruff already keep code within 100 columns, so the residue is comments, long strings and markup they cannot wrap (the finding counted 703).
+- Why: decision 23.c (machine-enforced column limit; no reflow of the existing lines).
+
+### 2026-11-20 — Casing is machine-checked; the session handle is `ses`, not `S`
+- What: new `.clang-tidy` with `readability-identifier-naming` (functions, variables and parameters snake_case, macros and enum constants UPPER_CASE, an UPPER_CASE or fully lower-case constant is accepted; single-capital math names A, B, C, D, H, L, P, S, Dv, Srow are the explicit allow-list for the SSM, LoRA and attention code). `tools/check_clang_tidy.sh` runs it with the other checks, so the same ratchet (baseline 193, may only fall) fails a new casing violation. Ruff gains `N802`, `N803`, `N806` (the two reference-model scripts that use the papers' capital tensor names are exempted with their reason in `ruff.toml`). The one-letter session handle `S` of the CLI (`PzSession *S`, about 390 uses in `main.c` and `session_*.c`) became `ses`; two odd names (`_i`, `kh_`) were renamed. No function or file grew past its recorded size.
+- Verified: `make test` green on gcc and clang, format check, clang-tidy ratchet, ruff, tool unit tests; greedy output unchanged.
+- Why: decision 29.a / 27.a (add casing lint configs even though the status is PASS; minimum identifier length 3 with an explicit allow-list).
+
+### 2026-11-20 — Ratchet on long boolean conditions
+- What: `tools/check_bool_chains.py` (unit-tested, CI `changelog` job) counts `if` / `while` conditions in `src/` with four or more operands (three or more top-level `&&` / `||`, comments and string literals ignored). 114 conditions in 65 files are recorded in `tools/bool_chains_baseline.txt`; a file may not go above its count and a new file starts at zero, so the list only shrinks. The decision counts NULL-guard chains as violations; they are burned down by naming the predicate or moving it into a helper.
+- Why: decision 2.c (no blanket exemption for NULL-guard chains; refactor with tests).
+
+### 2026-11-20 — One shared system probe for the CPU model and the cache directory
+- What: `core/sys_probe.c` (`TnSysProbe`: `getenv` and `fopen` behind a table, real by default) holds `tn_sys_cpu_model()` and `tn_sys_cache_dir()`. The two copies of the `/proc/cpuinfo` "model name" reader (`bw_cache.c`, `calibration.c`) and the environment lookup of the bandwidth cache path now call it; `tests/test_sys_probe.c` drives them with a fake environment and a fake `/proc/cpuinfo`, no real machine involved (model name, empty and short-buffer cases, `PZ_CACHE_DIR` / `XDG_CACHE_HOME` / `HOME` precedence). Also dropped includes that the earlier splits left unused in `attention.c` and `mla_attention.c`.
+- Not done: `hardware_profile.c` still calls `sysconf`, `/proc/meminfo` and `popen` directly; the other lookups move behind the probe one at a time.
+- Why: decision 11.a (inject a system probe into the hardware files; `sha256.c` and `text_file.c` stay as plain file-I/O utilities).
+
+### 2026-11-20 — `simd_dispatch.h` split into core, vector and pre-quantised parts
+- What: the one extern table is three headers: `math/simd_core_ops.h` (ternary matmul, packed matmul, unpack, RMSNorm, softmax), `math/simd_vec_ops.h` (element-wise kernels, SAXPY, the int4 KV rows and the INT8/INT4 classifier rows) and `math/simd_preq_ops.h` (the pre-quantised ternary path and `tn_simd_ternary_preq`). `simd_dispatch.h` keeps `tn_simd_init`, the backend name and the activation-numerics API and includes all three, so existing code is unchanged; 28 files under `src/` that use only some kernels now include only those headers. The dispatch pointers themselves are the same objects with the same names, so nothing changes at run time (no extra indirection).
+- Verified: `make test` green on gcc and clang, `make dist` + `check_dist_isa`, include-layer, ISA-guard and header-guard checks, greedy output identical on SmolLM2, BitNet and DeepSeek-V2-Lite.
+- Why: decision 10.d (split the dispatch header into narrow parts; the hot-path cost was checked by keeping the pointer table unchanged).
+
+### 2026-11-20 — Functions back at or below their pre-grouping size
+- What: the 22 functions and 4 files that the struct grouping had made 1-8 lines longer (longer member paths wrap at 100 columns) are back at or below their recorded size, with the baselines re-recorded at the real, lower values (complexity 405 entries, 28 files over 500 lines). Done by extraction, not by raising a baseline: `attention_project_qkv` / `attention_project_qkv_rows` (`attention_proj.c`), `project_qkv` (Qwen3-MoE), `mla_kq_scale`, `alloc_quantized_kv` and `run_kv_store_complete`, `alloc_dense_arrays` / `alloc_arch_arrays`, `load_layer_norm`, `check_lossy_head`, `load_lora`, `plan_layers`, `announce_act_quant`, `selfcheck_json`, `toggle_mode`, and for the image upload `write_image_temp_file` and `run_vision_for_message` (the vision fix keeps complexity 11 and its original size). The norm fields of `WeightsAttn` / `WeightsFfn` lost their redundant prefixes (`attn.norm`, `ffn.sub_norm`). Dead code removed on the way: two unused locals in the Qwen3.5 loader.
+- Verified: `make test` green on gcc and clang, CMake build, format check, tool unit tests; greedy output identical to the previous build on SmolLM2, BitNet and DeepSeek-V2-Lite, interleaved tokens/s within noise on SmolLM2 and BitNet; the REPL toggles, `POST /v1/selfcheck` and `tests/e2e_vision_long_prompt.sh` (15,000-character message with an image, two concurrent image requests) give the same results as before.
+- Why: Open decisions #14 (no baseline bump: extract helpers so every function stays at or below its original entry).
+
+### 2026-11-20 — Nesting depth 3 joins the complexity ratchet
+- What: `tools/check_complexity.py` also reads lizard's nesting depth (`-Ens`). A function over complexity 10, 100 lines or nesting 3 must be listed in `tools/complexity_baseline.txt` (now `key complexity lines nesting`, 409 entries, 41 of them new because of nesting only); a listed function may not grow in any of the three numbers; a new one fails. `tools/test_check_complexity.py` covers the nesting case.
+- Why: decision Q3 / 20.c (nesting limit 3 enforced through lizard, existing offenders grandfathered).
+
+### 2026-11-20 — Docstrings on every Python function, enforced
+- What: all 172 missing public docstrings (modules, classes, methods, unit tests) were added; test methods get a sentence derived from their name. Ruff now selects `D100`-`D107` for every Python file, and `tools/check_docstrings.py` counts every `def` in `tools/` (private helpers, nested functions and tests included; dunder methods excepted), baseline 0. `tools/bench/test_bench.py` (507 lines) was split: the gate tests are in `test_bench_gate.py`, run by the same CI step. The text-mode `open()` calls already pass `encoding` (ruff `PLW1514` has been on since the Python hygiene commit), so the Windows-encoding half of the finding needed no change.
+- Why: decision Q20 (docstrings for private helpers and tests too).
+
+### 2026-11-20 — Duplicated-code ratchet
+- What: `tools/check_duplication.py` (unit-tested, CI `changelog` job) normalises each source file (comments, blank and brace-only lines dropped), slides a 6-line window over it and counts the lines covered by a window that occurs elsewhere. Measured now: `src/` 8.02 % (the figure the finding quoted was 8.17 %), `webui/src` 16.77 %. Both are recorded in `tools/duplication_baseline.txt`; a higher share fails, and a share that fell by more than half a point fails until `--update` records it, so the number only goes down.
+- Why: decision 41.e / 1.g / 45.c (blocking ratchet on duplication, existing debt grandfathered and burned down).
+
+### 2026-11-20 — One shared table for the one-character string escapes
+- What: `core/escape.c` (`tn_escape_simple`: `\" \\ \n \t \r \b \f`) replaces the two hand-written switches in `src/api/json_parse.c` (which keeps `\/` and `\uXXXX`) and `src/config/pz_config.c`. The two grammars stay separate (JSON and TOML differ), only the shared letters are one function. The config reader now also accepts `\r`, `\b` and `\f`, which TOML basic strings define; an unknown escape is still refused. `tests/test_escape.c` covers the table, JSON decoding and the TOML reader.
+- Verified: `make test` green on gcc and clang, CMake build, complexity / size / include-layer ratchets.
+- Why: decision 1.c (merge the shared escape-decoding helper; keep the two parsers separate and documented).
+
+### 2026-11-20 — Added Markdown lines wrap at 80 columns
+- What: `tools/check_md_width.py` (unit-tested, CI `changelog` job, full-history checkout) fails when a Markdown line a change adds is wider than 80 columns; existing text is left alone. Exempt: tables, headings, lines with a URL, link or HTML tag, fenced code, and the append-only logs (`CHANGELOG.md`, `docs/ai/change-trace.md`, `mistakes.md`, `decision-log.md`, `todo-register.md`). The 102 prose lines this branch had added to 15 other Markdown files were re-wrapped at 80 columns (text unchanged, `sync_ai_adapters.py --check` and the fence check still pass).
+- Why: decision 30.c (80-column limit going forward on new and edited prose, no reflow of the existing 14k lines).
+
+### 2026-11-20 — `--max-prompt-bytes`: one configurable cap on prompt size
+- What: new flag `--max-prompt-bytes <N>` (default 1048576, 0 = no cap, max 1 GiB; `pz config set max-prompt-bytes`, `PZ_MAX_PROMPT_BYTES`, reported as `features.max_prompt_bytes` by `GET /v1/config`). `chat_request_acceptable()` in `http_chat.c` answers a request whose message text is longer than the cap with `400` naming the flag (it also holds the old empty-messages check). Together with the per-request buffer for image messages this replaces the old silent 8 KiB cut. The limit flags (queue size/timeout, rate, client timeout, connections, prompt bytes) are a table in the new `args_flags_limits.c`, reached from `args_parse_serving`; the settings schema moved out of `pz_config.c` into `pz_config_schema.c` (the file was over its size entry); `features_limits()` and `configure_limits()` keep the long functions at their recorded size. `tests/test_args_golden.c` and `tools/check_help_flags.py` also read table-style flags; the golden table was regenerated for the new field (4909 cases).
+- Verified: `make test` green on gcc and clang; `tests/e2e_max_prompt_bytes.sh` (cap 200: 100 characters answered, 300 refused with 400 and the flag name; cap 0: 300 answered; `/v1/config` reports the value; added to the CI golden job); unit test of the flag's range checks; complexity, file-size, help-flag, struct and unit-test ratchets pass.
+- Why: Open decisions #1 (user default: dynamic buffer plus a configurable safety cap with a clean error).
+
+### 2026-11-20 — CI workflow fixes: Node pinned, invalid YAML repaired
+- What: the `webui` job in `ci.yml` had a step name containing `: ` in a plain YAML scalar, so GitHub could not parse the whole workflow; the name is reworded. The job now runs `actions/setup-node` pinned to the v7.1.0 commit (949feb24...) with Node 22, the version the committed bundle is built with. New `tools/test_workflows_parse.py` (run in the `changelog` job) parses every YAML file under `.github/`.
+- Why: Open decisions #4 (Node pin) and a workflow that could never have run.
+
+### 2026-11-20 — `TransformerWeights` grouped into nine sub-structs; struct-width baseline empty
+- What: `TransformerWeights` (88 direct fields) keeps the embedding tables, `rms_final_weight`, `layers_are_ternary` and `mamba` (5 direct members) and holds the rest as `attn` (`WeightsAttn`: wq..wo, scales, biases, per-layer types, input and sub norms), `ffn` (`WeightsFfn`), `cls` (`WeightsCls`: the BF16, ternary, INT8, INT4 and zero-copy quantized classifier), `moe` (`WeightsMoe`: gate and routed experts), `shared` (`WeightsShared`), `expert_quant` (`WeightsExpertQuant`), `mla` (`WeightsMla`), `q35` (`WeightsQwen35`) and `qwen3moe` (`WeightsQwen3Moe`); none has more than 17 fields. The `moe_`/`mla_`/`q35_`/`qwen3moe_`/`wcls_` prefixes became the group name (`w->attn.wq`, `w->cls.i8`, `w->moe.gate_w`, `w->mla.has_quant`). 1,327 uses in `src/` and the tests were rewritten from compiler errors. `tools/struct_fields_baseline.txt` is now empty: no struct in the repository has more than 25 direct fields. Six functions grew by 1-6 lines (longer paths wrap); their complexity entries were re-recorded.
+- Verified: `make test` green on gcc and clang, `make debug` on both, `make dist` + `check_dist_isa`, CMake build; the previous and new builds print identical text for greedy generation on SmolLM2 (default, `--kv-type i8/i4`, `--classifier int8/int4`, `--act-quant float`), BitNet and DeepSeek-V2-Lite, identical perplexity on SmolLM2 and BitNet, and the same self-check result; interleaved A/B medians (before/after): SmolLM2 55.4/56.1, BitNet 18.9/18.8, DeepSeek-V2-Lite 1.21/1.16 tok/s, within noise.
+- Also fixed on the way: `tools/bench_full.c` did not compile (`weights_map` gained a `MoEConfig` argument earlier) and `make build/tools/bench_full` did not link (C++ chat-template objects without `-lstdc++`); it builds again.
+- Why: decision Q3 / 10.b (20-25 direct fields per struct).
+
+### 2026-11-20 — `RunState` architecture and KV-storage state grouped
+- What: `RunState` (39 direct fields) keeps the activation buffers, the generic KV cache, `rope_freq`, position and sliding-window state, `active_lora`, `mamba` and `kv_committed` (17 direct members) and moves the rest into four sub-structs: `mla` (`RunMla`: k_rope_cache, mla_rope_freq), `q35` (`RunQwen35`: key_cache, value_cache, conv_state, recur_state, rope_freq, scratch), `qwen3moe` (`RunQwen3Moe`: key_cache, value_cache, rope_freq, scratch) and `kvs` (`RunKvStore`: type, row_bytes, row_scales, key_cache_q, value_cache_q, key_scale, value_scale, offload_base, offload_bytes). The `q35_`/`qwen3moe_`/`kv_` prefixes became the group name (`s->q35.key_cache`, `s->kvs.type`). 204 uses rewritten from compiler errors; comments that named the old fields were updated. It leaves `tools/struct_fields_baseline.txt` (1 struct remains: `TransformerWeights`). Four functions grew by 1-3 lines (longer paths wrap); their complexity entries were re-recorded.
+- Verified: `make test` green on gcc and clang, `make debug`, `make dist` + `check_dist_isa`; greedy output identical to the previous build on SmolLM2 (default, `--kv-type i8`, `--kv-type i4`, `--kv-offload`, a 64-token context), BitNet and DeepSeek-V2-Lite (MLA); interleaved A/B medians before/after: SmolLM2 56.6/60.5, BitNet 19.7/18.9, DeepSeek-V2-Lite 1.19/1.26 tok/s, within noise (offsets are compile-time constants). The Qwen3.5 / Qwen3-MoE / Mamba members are covered by the unit tests and the compiler only (no such model is available here).
+- Why: decision Q3 / 10.b (20-25 direct fields per struct; hot-path structs need an A/B).
+
+### 2026-11-20 — `GenSession` grouped into five sub-structs
+- What: `GenSession` (41 direct fields) is `model` (`GenModel`: cfg, w, s, mc, tok, tp), `req` (`GenRequest`: gp, callback, sampler and watermark settings, max_tokens, json_mode, chat_stops), `prompt` (`GenPrompt`: tokens, offset, prefix and prompt caches), `sampling` (`GenSampling`: stop matcher, JSON automaton, RNG, history, log-probability sums) and `progress` (`GenProgress`: step counters, finish reason, timing, started/done). 246 uses in `src/transformer`, `src/api`, `src/cli` and the tests were rewritten from compiler errors. It leaves `tools/struct_fields_baseline.txt` (2 structs remain: `TransformerWeights`, `RunState`). Five functions in `gen_session.c` grew by 1-8 lines because the longer paths wrap; their complexity entries were re-recorded (complexity unchanged).
+- Verified: `make test` green on gcc and clang; greedy output identical to the previous build on SmolLM2 and BitNet; interleaved A/B (5 runs each, 64 tokens, 4 threads): SmolLM2 59.2 (before) vs 64.4 (after) tok/s, BitNet 19.1 vs 19.8 tok/s medians, i.e. within noise (the field offsets are compile-time constants).
+- Why: decision Q3 / 10.b (20-25 direct fields per struct; hot-path structs need an A/B).
+
+### 2026-11-20 — `MoEConfig` MLA dimensions grouped
+- What: `MoEConfig` (26 direct fields) now holds the five MLA dimensions as `mla` (`MlaDims`: `enabled`, `kv_lora_rank`, `qk_nope_head_dim`, `qk_rope_head_dim`, `v_head_dim`), 22 direct fields; 60 uses rewritten from compiler errors (`cfg->has_mla` became `cfg->mla.enabled`). It leaves `tools/struct_fields_baseline.txt` (3 structs remain: `TransformerWeights`, `GenSession`, `RunState`). `weights_map` grew by 2 lines (longer paths wrap); its complexity entry was re-recorded.
+- Verified: `make test` green on gcc and clang; DeepSeek-V2-Lite Q2_K (MLA + MoE) generates the same text as the previous build (greedy, 12 tokens; only the version string and free-RAM lines differ).
+- Why: decision Q3 / 10.c (20-25 direct fields per struct).
+
+### 2026-11-20 — `ChatRequest` grouped into four sub-structs
+- What: `ChatRequest` (27 direct fields) is `model`, `messages`, `num_messages`, `set_mask`, `cache_prompt`, `chat_template` plus `sampling` (`ChatSampling`, 9), `output` (`ChatOutput`, 6: max_tokens, stream, json_mode, ignore_eos, stop, n_stop), `watermark` (`ChatWatermark`, 4: enabled, key, gamma, delta) and `search` (`ChatSearch`: best_of, mcts). 70 uses in `src/api` and the tests were rewritten from compiler errors. It leaves `tools/struct_fields_baseline.txt` (4 structs remain: `TransformerWeights`, `GenSession`, `RunState`, `MoEConfig`).
+- Verified: `make test` green on gcc and clang; the live server returns byte-identical replies (ids and timestamps removed) to the previous build for 13 request shapes: greedy, temperature/top_p/top_k/min_p/seed, the three penalties with `penalty_last_n`, `stop` as list and string, watermark, `best_of`, `mcts`, `json_object`, `ignore_eos` + `cache_prompt:false`, a request `chat_template`, `stream:true` and an invalid `temperature`.
+- Also fixed on the way: an unused helper left behind in `grammar_json.c` (clang `-Wunused-function`), and a UBSan report in the INT4 classifier kernel (`buf + 0` on a NULL buffer when the row has no full block; now `block_sums_after`).
+- Why: decision Q3 / 10.c (20-25 direct fields per struct).
+
+### 2026-11-20 — `ServerConfig` grouped into seven sub-structs
+- What: `ServerConfig` (34 direct fields) is `cors`, `auth`, `metrics`, `ui`, `vision`, `cache`, `limits`, `chat`, `numerics`, `search`, `gen_defaults`, `model_id` (`ServerUi`, `ServerVision`, `ServerCache`, `ServerLimits`, `ServerChat`, `ServerNumerics`, `ServerSearch`; none over 8 fields). 149 uses in `src/api`, `src/cli` and the tests were rewritten from compiler errors. It is removed from `tools/struct_fields_baseline.txt` (5 structs remain). Five functions grew by 1-3 lines because the longer member paths wrap; their complexity-baseline entries were re-recorded once.
+- Verified: `make test` green on gcc and clang; `GET /v1/config` byte-identical to the previous build for default flags, `--parallel/--queue-size/--rate-limit` and `--mcts-max/--best-of-max/--max-connections/--queue-timeout/--api-key/--parallel-batch/--metrics` (only the free-RAM-derived `kv_budget_tokens` varies between any two runs).
+- Why: decision Q3 / 10.c (20-25 direct fields per struct).
+
+### 2026-11-20 — `CliArgs` grouped into ten sub-structs, struct-width ratchet
+- What: `CliArgs` (109 direct fields) is ten cohesive structs (`input`, `sampling`, `eval`, `perf`, `update`, `server`, `output`, `search`, `watermark`, `dist`; none over 21 fields); all 537 uses in `src/cli`, `src/multimodal`, `include/api` and the tests were rewritten from compiler errors (`args->port` to `args->server.port`), the one field named like its group became `watermark.enabled`, and the 90-line default block of `parse_args` became one small function per group. `tools/check_struct_fields.py` (unit-tested, in CI) fails on a new struct over 25 fields and on growth of a listed one; 6 structs are recorded (`TransformerWeights` 88, `GenSession` 41, `RunState` 39, `ServerConfig` 34, `ChatRequest` 27, `MoEConfig` 26). Seven CLI functions grew by 1-3 lines because the longer member paths wrap; their complexity-baseline entries were re-recorded once.
+- Why: decision Q3 / 5.a (20-25 direct fields per struct, decompose `CliArgs` by functional domain).
+- Proof: `tests/test_args_golden.c` now digests the struct field by field (name order), so it no longer depends on layout; its golden table was regenerated from the previous commit's flat struct (built with `-DARGS_FLAT_LAYOUT`) and the grouped struct reproduces all 4864 cases (exit code, every printed byte and every field value, defaults included). `make test CC=gcc` and `CC=clang` (ASan + UBSan), `make debug`, format and all ratchets pass.
+- Areas: `include/cli/args.h`, `src/cli/*`, `src/multimodal/vision_pipeline.c`, `include/api/server_config.h`, `tests/test_args*.c`, `tests/fixtures/args_golden.txt`, `tools/check_struct_fields.py`, `tools/struct_fields_baseline.txt`, `.github/workflows/ci.yml`.
+
+### 2026-11-20 — `SettingsPanel.svelte` split into section components
+- What: the 372-line settings component is 115 lines: `SamplingSection`, `TreeSearchSection`, `RepetitionSection`, `OutputSection`, `WatermarkSection`, `TemplateSection` and `ServerDefaultsSection` (which owns the save-as-server-defaults logic) each hold one group of controls and the code only that group uses; the panel lays them out and keeps the system prompt and the Updates section. Each component carries only the CSS rules its own markup uses (Svelte scopes styles per component, so a shared sheet would have restyled the unrelated `AccuracyCheck`, `PromptCacheStatus` and `UpdateStatus` children).
+- Why: decision Q3 / 7.g (split into cohesive section sub-components, Svelte best practice).
+- Proof: in Chromium against the real SmolLM2 model, the full Settings panel (scroll height removed) is pixel-identical to the previous bundle except the 92x10 px build-version string in the Updates section; page text of the Settings and Watermark panels, the streamed reply, and a settings round trip (untick Random seed, tick JSON mode, edit a field, reload, Reset: same stored overrides, same visible fields) are identical; `svelte-check` 0 errors / 0 warnings, ESLint, Prettier and 15 unit tests pass.
+- Areas: `webui/src/lib/{SettingsPanel,*Section}.svelte`, `webui/src/lib/types.ts`, `src/api/webui_bundle_generated.c`.
+
+### 2026-11-20 — Web UI moves to TypeScript
+- What: `webui/src` is TypeScript: `main.ts`, `lib/{api,settings,update,markdown,safeUrl}.ts`, new `lib/types.ts` (the server's JSON shapes) and `lib/errors.ts`; the 12 Svelte components use `<script lang="ts">` with typed props and handlers. `tsconfig.json` is `strict`; `svelte.config.js` enables Vite's TypeScript preprocessing; ESLint uses typescript-eslint; `npm test` compiles `markdown.ts` and `safeUrl.ts` with `tsc` (output in the ignored `.test-build/`) and runs `node --test` on the result, so it works on any Node version. typescript 5.6.3 and typescript-eslint 8.14.0 are pinned.
+- Why: decision Q20 (TypeScript migration of the web UI).
+- Proof: `svelte-check` 0 errors / 0 warnings over 93 files, `tsc --noEmit`, ESLint and Prettier clean, the 15 unit tests pass. The built JS bundle is not byte-identical (93.54 to 93.89 kB; `errorText` replaces `e.message ?? String(e)` in nine places and the type guards add a few checks), which Q20 allows when the behavior is checked: in Chromium against the real SmolLM2 model the old and new bundle (both built into `pz` from the same commit) produce the same page text for the Settings and Watermark panels and the same streamed reply, no console errors, and pixel-identical screenshots of the settings and chat views. `src/api/webui_bundle_generated.c` is regenerated.
+- Areas: `webui/**`, `src/api/webui_bundle_generated.c`, `.gitignore`, `.github/workflows/ci.yml`, `docs/ai/engineering-rules.md`.
+
+### 2026-11-20 — complexity ratchet also covers the Python scripts
+- What: `tools/check_complexity.py` now measures `tools/` and `tests/` (Python and C) as well as `src/`; 78 existing offenders there (mostly the bench `main()` functions, `make_screenshot`, `run_matrix`) are recorded in `tools/complexity_baseline.txt` (292 to 370 functions, recorded once) and may only shrink.
+- Why: decision Q3 sets 100 lines / complexity 10 for every language; the gate only looked at the engine.
+- Areas: `tools/check_complexity.py`, `tools/complexity_baseline.txt`, `docs/ai/engineering-rules.md`, `.github/workflows/ci.yml`.
+
+### 2026-11-20 — Python type ratchet (`mypy --strict`) and complexity limit set to 10
+- What: `tools/check_py_types.py` (unit tests in `tools/test_check_py_types.py`, config in `mypy.ini`) runs `mypy --strict` over every tracked `.py` file outside `benchmark_results/`; a file passes, or it is listed with its error count in `tools/py_types_baseline.txt` (59 files at the start, none left after the typing batches that followed), and the list may only shrink. The 20 gate scripts (`tools/check_*.py`, `tools/changelog.py`) are fully annotated; `changelog.py` now passes entries as an `Entry` dataclass instead of positional lists. The complexity gate limit moves from 15 to the decided 10 (baseline 170 to 292 functions, recorded once).
+- Why: decisions Q3 (complexity 10) and Q20 (mypy `--strict` across all scripts); the gate keeps every file that is typed from losing its types.
+- Proof: `mypy --strict` clean on the 20 files; `python3 -m unittest discover -s tools` 97 tests pass; `check_changelog`, `check_file_sizes` and the complexity gate give the same results as before apart from the lower limit.
+- Areas: `tools/check_py_types.py`, `tools/test_check_py_types.py`, `tools/py_types_baseline.txt`, `mypy.ini`, `tools/check_*.py`, `tools/changelog.py`, `tools/check_complexity.py`, `tools/complexity_baseline.txt`, `.github/workflows/ci.yml`, `docs/ai/engineering-rules.md`.
+
+### 2026-11-20 — complexity ratchet in CI
+- What: `tools/check_complexity.py` (lizard 1.26.1; unit tests in `tools/test_check_complexity.py`) fails on a function in `src/` over complexity 15 or 100 lines unless it is in `tools/complexity_baseline.txt`, and on growth of a listed one; a CI step installs lizard and runs it. 170 existing offenders are recorded (largest first in `--update` output), the list may only shrink.
+- Why: the limits in `engineering-rules.md` had no gate, so the splits in this series could be undone by the next large function.
+- Areas: `tools/check_complexity.py`, `tools/test_check_complexity.py`, `tools/complexity_baseline.txt`, `.github/workflows/ci.yml`, `docs/ai/engineering-rules.md`.
+
+### 2026-11-20 — `json_grammar_step` (289 lines, repeated if-chains) rebuilt from small state helpers
+- What: the 37-state JSON pushdown automaton keeps its single `switch`, but each case is one short expression over helpers (`in_string`, `after_backslash`, `hex_digit`, `literal_byte`, `start_value`, `number_continues`, `set`); the two copies of the string escape machine (object key, string value) share the helpers. 289 to 117 lines.
+- Why: the key and value string states, the three literal families and the number states each repeated the same if-chains.
+- Proof: a differential harness (previous object with renamed symbols) compares every (state x byte 0-255 x root / non-root x four stack depths x three stack shapes) single step, the stack-overflow edge for every state and byte, 1.5 million random byte sequences over a JSON-biased alphabet and six documents (valid and invalid): 2,351,073 steps, 0 mismatches in state, stack pointer, stack contents and `finalize`. It caught one bug in a first draft (a `close_value()` argument evaluated eagerly popped the stack on every string byte). Speed: 3.0 vs 2.8 ns per byte (+4-9%), about 0.03 ms per generated token in JSON mode; JSON-mode generation on SmolLM2 66 vs 66 tok/s over three runs. `test_grammar_json` 71/71, `test_fsm`, `test_sampling`, `e2e_json_mode` 17/17 pass.
+- Areas: `src/sampling/grammar_json.c`.
+
+### 2026-11-20 — `speculative_generate_with_callback` (209 lines) split into phases; `--seed` honoured
+- What: a `SpecRun` struct and `spec_supported`, `encode_prompt`, `round_buffers_alloc/free`, `prefill`, `draft_phase`, `verify_phase`, `accept_phase`, `emit_round`, `commit_round`; the function is the 76-line loop over them. New `seed` parameter on both entry points (negative = clock), passed from `--seed` in the CLI and REPL.
+- Why: draft, verify, accept, emit and commit were one 200-line loop body; the seed was never passed in.
+- Proof: a differential harness runs the previous and the new function on SmolLM2 as both verifier and draft (previous object with renamed symbols, clock pinned so seeds match) over 9 cases (temperature 0 to 1.2, speculative length 2 to 8, empty and one-token prompts, chat template): identical text in every case; `test_speculative` 20/20 (the new seed test fails on the old code); speed `[spec-gen]` 38.9-39.3 tok/s against 36.8 on the baseline binary.
+- Areas: `src/speculative/spec_decode.c`, `include/speculative/spec_decode.h`, `src/cli/{repl,session_run}.c`, `tests/test_speculative.c`.
+
+### 2026-11-20 — `tokenizer_load_from_gguf` (178 lines) split into one function per step
+- What: `read_vocab`, `read_spm_scores`, `read_bpe_merges` (with `apply_merge`), `read_chat_template`, `read_bos_eos`, `collect_special_tokens` (with `grow_special_arrays`) and the 40-line loader that calls them in the original order.
+- Why: one function parsed the vocab, the SentencePiece scores, the BPE merges, the template, the special-token list and the end-of-generation set, with the special-token growth nested six deep.
+- Proof: a differential harness (previous object with renamed symbols, ASan + UBSan) compares every field of the loaded `Tokenizer` (vocab, scores bitwise, sorted index, template, ids, special tokens, EOG list) on SmolLM2 (49152 tokens, gpt2 BPE) and BitNet (128256 tokens) and on 9 synthetic headers (SentencePiece with / without scores and token types, mismatched score count, BPE with / without merges, add_bos on / off, llama3 and qwen2 pre-tokenizers, EOT id, missing and non-string token arrays): identical in every case, including the return codes; `test_tokenizer` 54/54, `test_pretokenize`, `test_chat_stops`, `test_prompt_injection`, `test_template_guard`, `test_batch_scheduler` pass; CLI one-shot / REPL / best-of runs unchanged.
+- Areas: `src/tokenizer/tokenizer_gguf.c`.
+
+### 2026-11-20 — `load_gguf_model` (186 lines) split into stages with one release function; truncated GGUF refused
+- What: `load_gguf_model()` is now ~25 lines over `read_model_info`, `load_model_weights`, `report_model_bytes`, `size_context` and `alloc_run_state`; the nine hand-written failure cleanups are `release_to(out, stage)` / `release_state()` (every free is NULL-safe and the model starts zeroed). `weights_from_gguf()` calls `check_tensors_present()` first.
+- Why: the function interleaved six stages with a copy of the cleanup at every exit, each slightly different (the weights-load failure path leaked the weight store).
+- Proof: the 5 truncated-file and 1 corrupt-header cases, a missing file and a working `--draft-model` give identical stdout / stderr / exit status to the pre-series binary except the truncated ones that crashed (exit 139, now 1 with a message); ASan + UBSan + LeakSanitizer clean on all of them; the two loaders (`session_model`, `draft_model`, `prm`) and `make test` pass.
+- Areas: `src/runtime/{model_load,gguf_loader}.c`, `tests/test_gguf_truncated.c`, `tests/e2e_cli_exit_status.sh`, `CHANGELOG.md`, `docs/ai/mistakes.md`.
+
+### 2026-11-20 — `api_config_json` (372 lines) and `print_usage` (221 lines) split into one function per section
+- What: `GET /v1/config`'s builder moved to `src/api/api_config_json.c` as `config_ui`, `config_model`, `config_defaults_{sampler,search,tail}`, `config_limits`, `config_runtime` (+ `runtime_act_quant`, `runtime_distributed`, `runtime_cache`), `config_features` (+ `features_parallel`) and `config_chat_template`; `api_info.c` 548 to 145 lines (`api_model_meta` / `api_vision_enabled` shared through `api/api_info.h`). `args_usage.c`'s `print_usage` calls one `usage_<section>` function per `--help` section.
+- Why: each was one function writing a dozen unrelated sections in a row.
+- Proof: `/v1/config` from a live SmolLM2 server is byte-identical to the previous commit's binary under ten flag sets (default, UI title / text logo, best-of and tree search, system prompt and sampler flags, watermark, JSON mode, CORS / metrics / cache off, act-quant / classifier, stop strings); the old and new `print_usage` print byte-identical text (212 lines, compiled side by side); `test_api_info` 39/39, `test_config_endpoint` 46/46, `test_openapi`, `test_api_server`, the openapi-route and help-flag checks pass.
+- Areas: `src/api/{api_info,api_config_json}.c`, `include/api/api_info.h`, `src/cli/args_usage.c`, `CMakeLists.txt`, `tools/file_size_baseline.txt`.
+
+### 2026-11-20 — Jinja `eval` (378 lines) split into one function per node type
+- What: `chat_template_eval.cpp`'s `eval()` switch is now ~40 lines dispatching to `eval_getitem`, `eval_getslice`, `eval_getattr`, `eval_binop` (+ `binop_apply`), `eval_unop`, `eval_isdef`, `eval_call` (+ `eval_macro_call`); the filters, Python string methods and `namespace` / `range` moved to the new `chat_template_builtins.cpp` (`jinja_filter` over `filter_text` / `filter_value`, `jinja_string_method`, `jinja_call_*`). The two copies of the "argument i" lambda are one `call_arg()`. Largest function 53 lines (was 378).
+- Why: one switch held every expression type, the 14 filters and the string methods, with cyclomatic complexity 188.
+- Proof: the 144 renders of 18 real templates (4 message sets x 2 generation modes) and 3600 renders of 450 mutated templates give identical output hashes before and after; `test_chat_template` 24/24, `test_template_guard` 23/23, `test_prompt_injection` 11/11; CLI one-shot, REPL and best-of runs on SmolLM2 and BitNet (which render their GGUF templates) are identical to the previous commit.
+- Areas: `src/tokenizer/chat_template_{eval,builtins}.cpp`, `chat_template_internal.hpp`, `CMakeLists.txt`, `.claude/INDEX.md`.
+
+### 2026-11-20 — `moe_ffn_forward` split into routing, a fused try and the legacy expert paths
+- What: the 300-line function is now ~60 lines over `moe_norm_and_route`, `prefetch_selected`, `moe_quantize_xb`, the fused try, and `moe_legacy_routed_batched` / `moe_legacy_routed_sequential` / `moe_legacy_shared` (new `moe_ffn_legacy.c`, helpers `batch_collect`, `batch_q4k_proj`, `batch_down_proj`, `expert_ffn_quantised`, `expert_ffn_ternary`, `shared_gate_up`); expert hit tracking moved to `moe_ffn_track.c` behind `moe_track_hit()`. `moe_ffn.c` 688 to 292 lines. The `--verbose` router line no longer prints a stray half line (`experts=[`) before the real one.
+- Why: one function mixed routing, three expert strategies and the shared expert, with the Q4_K batched path nested 5 deep.
+- Proof: a differential harness runs the old and new `moe_ffn_forward` (old object with renamed symbols) on 16 expert configurations x 2 shapes x 3 repeats (Q4_K, Q2_K, Q8_0, Q5_0, Q5_1, Q6_K, Q5_K, ternary packed; shared expert Q4_K and F32; SiLU and ReLU2) in the fused default and with `PZ_MOE_FUSED=0`: outputs (`x` and `xb2`) bit-identical in every case; per-call time within noise (legacy path, dim 1024 / hidden 512, 16 experts top 4: -2.7% to +0.5% over steady rounds). No real MoE model was available, so end-to-end MoE generation was not run.
+- Areas: `src/transformer/moe_ffn*.c`, `include/transformer/moe_ffn_internal.h`, `CMakeLists.txt`, `tools/{file_size,mutable_statics}_baseline.txt`, `.claude/INDEX.md`.
+
+### 2026-11-20 — GGUF weight loading split per architecture; the dense loader into small functions
+- What: `gguf_loader.c` (1512 lines; `weights_from_gguf` alone 460 lines) is now the dispatcher plus the dense path as `dense_shape`, `load_dense_embedding`, `load_dense_layer`, `load_dense_output` and `set_inference_flags` (422 lines). The shared helpers moved to `gguf_load_util.c` (names `gguf_ld_*`, header `runtime/gguf_load_util.h`), the projection policy to `gguf_load_proj.c` (the old `LOAD_PROJ` macro is a function with `repack_i2s` / `repack_q4k_x8` helpers), and the four architecture loaders to `gguf_load_{deepseek2,qwen35,qwen3moe,mamba}.c`. The four if-blocks of the dispatcher are one `load_moe_family()` taking the loader and whether the dense BF16 head is used.
+- Why: one 1500-line file held five loaders, and the dense one was a single function with a 100-line macro in its loop.
+- Proof: with the helpers' old names mapped to the new ones, every helper function compiles to the identical instruction stream (`-O2`, inlining and IPA off); the four architecture loaders and the dispatcher differ only in register allocation (the callees are no longer in their translation unit). SmolLM2 and BitNet give the same perplexity (274.3610 and 201.4187) before and after, which touches every loaded tensor.
+- Areas: `src/runtime/gguf_load*.c`, `include/runtime/gguf_load_util.h`, `CMakeLists.txt`, `tools/file_size_baseline.txt`, `.claude/INDEX.md`.
+
+### 2026-11-20 — error exits of the CLI modes return 1
+- What: `session_distributed`, `run_perplexity` (now returns a status), `run_watermark_detect` and `session_run_server` set `exit_code = 1` on their error branches; `tests/e2e_cli_exit_status.sh` plus a CI step.
+- Why: they printed an error and exited 0 (see mistakes.md, 2026-11-20).
+- Areas: `src/cli/session_{dist,run,server}.c`, `tests/e2e_cli_exit_status.sh`, `.github/workflows/ci.yml`, `CHANGELOG.md`.
+
+### 2026-11-20 — `main()` split into a session and one function per phase
+- What: `main()` (1063 lines, one function) is now 79 lines that create a `PzSession` (`include/cli/session.h`) and call `session_early_command`, `session_open_dump`, `session_detect_format`, `session_tune_hardware`, `session_load_model`, `session_setup_tokenizer`, `session_load_extras`, `session_apply_runtime_options`, `session_distributed`, `session_start_update_check`, `session_accuracy_checks`, `session_execute`, `session_finish` and `session_release` (files `src/cli/session_*.c`). Five copies of the hand-written cleanup on failure paths are one `session_release()`; the session is zero-initialised so it frees exactly what was set up. The `DistPlan` static became a session member (mutable statics 71 to 70).
+- Why: one function mixing a dozen phases could not be read, tested or changed phase by phase, and each early return had its own, slightly different cleanup (the `--tokenizer` failure path never freed the MLA / Qwen state).
+- Proof: 23 command lines (one-shot on SmolLM2 and BitNet, perplexity, self-check, plan, worker / remote / draft / LoRA / tokenizer / vision / native-model error paths, watermark, best-of, REPL, tensor dump, first-run calibration) give identical stdout, stderr and exit status against the pre-series binary (timings masked); the live server replies are byte-identical; the same cases under ASan + UBSan + LeakSanitizer report nothing; `make test` 39/39.
+- Areas: `src/cli/{main,session_*}.c`, `include/cli/session.h`, `CMakeLists.txt`, `tools/{file_size,mutable_statics}_baseline.txt`, `.claude/INDEX.md`.
+
+### 2026-11-20 — `handle_chat_completions` split into one function per step
+- What: the 380-line handler is now 133 lines plus `chat_acquire_units`, `chat_build_prompt`, `chat_run_generation` and `chat_send_result`; the chat route moved to `src/api/http_chat.c` and the output state (`StreamState`, token callback, best-of / tree-search JSON) to `src/api/chat_stream.c`. `http_server.c` 1014 to 575 lines. Behaviour unchanged.
+- Why: the function mixed parsing, queueing, prompt rendering, generation and reply writing, which made each hard to review and test on its own.
+- Proof: with SmolLM2 the live server's replies (non-stream, stream, empty messages, bad JSON) are byte-identical to the pre-series binary once ids and timestamps are masked; `e2e_parallel` 6/6, `e2e_prompt_cache`, `e2e_json_mode` 17/17; `make test` 39/39.
+- Areas: `src/api/{http_chat,chat_stream,http_server}.c`, `include/api/{chat_stream,http_routes}.h`, `CMakeLists.txt`, `tools/file_size_baseline.txt`.
+
+### 2026-11-19 — Measurable code limits written into the engineering rules
+- What: `engineering-rules.md` gains "Measurable limits": 500-line files (CI ratchet), 20-line functions, complexity 10, nesting 3, attached braces, and an untrusted-input checklist.
+- Why: the limits were implicit; reviews (human and AI) need numbers to enforce. File size is the only one a CI gate enforces so far; the rest are review-time rules until a complexity gate exists.
+- Areas: `docs/ai/engineering-rules.md`.
 
 ### 2026-11-18 — act-quant setting, accuracy probe, self-check (CLI, API, web UI)
 - What: `TnActQuant` in `simd_dispatch.c`; `src/eval/selfcheck.c`; `--act-quant`, `--quality-tolerance`, `--self-check`, `--self-check-tokens` (args, `pz config` schema); startup fallback in `main.c`; `POST /v1/selfcheck`, `runtime` fields and saveable keys in `/v1/config`; `AccuracyCheck.svelte` and the regenerated bundle; `tests/test_selfcheck.c`.

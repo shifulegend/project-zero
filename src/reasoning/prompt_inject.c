@@ -1,4 +1,5 @@
 #include "reasoning/prompt_inject.h"
+
 #include <string.h>
 
 static const char REASONING_SUFFIX[] =

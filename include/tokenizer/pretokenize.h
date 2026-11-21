@@ -18,6 +18,7 @@
  */
 
 #include <stddef.h>
+#include <stdint.h>
 
 typedef enum {
     PRETOK_NONE = 0,      /* no split (SentencePiece models, legacy .bin tokenizers) */
@@ -41,5 +42,12 @@ const char *pretok_type_name(PretokType t);
  * never split a UTF-8 sequence. */
 int pretokenize(PretokType type, const char *text, size_t len, size_t *starts, size_t *lens,
                 int max_frags);
+
+/* The character class of one code point, the one every pattern above uses: a bit set of
+ * 1 letter, 2 number, 4 space, 8 punctuation, 16 symbol / mark, 32 other (control and format);
+ * 0 for a value that is not a code point. Exposed so a test can pin the whole table. It stays an
+ * if-chain: the compiler makes a decision tree of it, and a range table (linear or binary search)
+ * measured 25-50% slower in pretokenize() on mixed-script text (docs/ai/decision-log.md). */
+int pretok_cp_class(uint32_t cp);
 
 #endif /* TN_PRETOKENIZE_H */

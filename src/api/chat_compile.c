@@ -20,10 +20,12 @@
  */
 
 #include "api/chat_compile.h"
-#include "tokenizer/tokenizer.h"
-#include <string.h>
+
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
+#include "tokenizer/tokenizer.h"
 
 /* ── Snprintf helper: append to a buffer, tracking remaining space ───────── */
 static int buf_append(char *dst, size_t *off, size_t cap, const char *src) {

@@ -11,18 +11,19 @@
  *  - tokenizer_collect_eog: declared ids first, end-of-turn names, special-only
  *    filter, duplicates dropped.
  */
-#include "test_harness.h"
-#include "core/bw_cache.h"
-#include "core/text_file.h"
-#include "memory/aligned_alloc.h"
-#include "memory/mapped_file.h"
-#include "core/run_state.h"
-#include "tokenizer/tokenizer.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#include "core/bw_cache.h"
+#include "core/text_file.h"
+#include "memory/aligned_alloc.h"
+#include "memory/mapped_file.h"
+#include "runtime/run_state.h"
+#include "test_harness.h"
+#include "tokenizer/tokenizer.h"
 
 static char g_dir[64];
 

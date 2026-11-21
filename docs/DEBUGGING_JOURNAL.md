@@ -121,7 +121,7 @@ bash /tmp/fair_bench_v3.sh
 
 ## Confirmed Working Baseline
 - **llama.cpp** (built at `/home/ubuntu/llama.cpp`) runs the SAME GGUF file correctly:
-  ```
+  ```text
   ./build/bin/llama-cli -m models/deepseek-v2-lite-chat-Q4_K_S.gguf -c 512 --threads 8 \
     -p "User: What is the capital of France?\n\nAssistant:"
   → "The capital of France is Paris."  @ 15.3 tok/s
@@ -164,7 +164,7 @@ bash /tmp/fair_bench_v3.sh
 
 ### Prompt Used Throughout All Comparisons
 
-```
+```text
 Raw prompt:    "What is the capital of France?"
 After template: "<｜begin▁of▁sentence｜>User: What is the capital of France?\n\nAssistant:"
 Token IDs:     [100000, 5726, 25, 2461, 317, 254, 6077, 280, 7239, 30, 185, 185, 77398, 25]
@@ -201,7 +201,7 @@ Q4_K blocks have 256 elements. The bug was in elements 16–31, 48–63, 80–95
 ## Step-by-Step Comparison Results (Paris Prompt, Layer 0)
 
 ### Model Config (from GGUF)
-```
+```text
 dim=2048, n_heads=16, n_kv_heads=16
 LORA=512, ROPE_DIM=64, V_DIM=128, NOPE=128
 KVA_ROWS=576, Q_ROWS=3072, KVB_ROWS=4096
@@ -396,7 +396,7 @@ flat 3D buffer.
 ## Exact llama.cpp MLA Algorithm (Reference)
 From `~/llama.cpp/src/models/deepseek2.cpp`:
 
-```
+```text
 For DeepSeek-V2-Lite (is_lite=true, single wq matrix):
 1. q = wq @ x                     → [n_heads*(nope+rope)] = [3072]
 2. q_nope = q[:, 0:128 per head]  → [n_heads=16, nope=128]
@@ -432,13 +432,13 @@ For DeepSeek-V2-Lite (is_lite=true, single wq matrix):
 
 ### Root Cause
 Our engine was sending the raw prompt directly to the tokenizer, producing 8 tokens:
-```
+```text
 [100000, 2640, 317, 254, 6077, 280, 7239, 30]
 ```
 llama.cpp applies the model's Jinja2 chat template FIRST, formatting the prompt as:
 `<｜begin▁of▁sentence｜>User: What is the capital of France?\n\nAssistant:`
 then tokenizes that, producing 14 tokens:
-```
+```text
 [100000, 5726, 25, 2461, 317, 254, 6077, 280, 7239, 30, 185, 185, 77398, 25]
 ```
 DeepSeek-V2-Lite-Chat was fine-tuned to expect the `User: ...\n\nAssistant:` format.
@@ -470,7 +470,7 @@ This caused:
 | `Makefile` | Added CXX/CXXFLAGS, C++ source discovery and pattern rule, use CXX for linking |
 
 ### Verification
-```
+```text
 [gguf-tok] Loaded 102400 tokens (gpt2), 2400 special — BOS=100000 EOS=100001 chat_template=yes
 [DBG] formatted prompt: <｜begin▁of▁sentence｜>User: What is the capital of France?
 
@@ -674,7 +674,7 @@ After Fix #10:
 - L1 pos=13: rdiff 36% → 5.7% ✅
 
 Residual formula verified internally in both engines:
-```
+```text
 l_out = attn_resid + ffn_moe_out + ffn_shexp   (diff < 1e-7 in both engines)
 ```
 
@@ -714,7 +714,7 @@ applies a two-stage YaRN factor correction.
 
 ### llama.cpp Formula (deepseek2.cpp)
 
-```
+```text
 rope_yarn_log_mul  = 0.0707   # raw from GGUF
 rope_freq_scale    = 0.025    # = 1/40 (factor=40)
 yarn_attn_factor   = 0.7306   # = 1/(1 + 0.1*ln(40)) — applied in llama-context.cpp
@@ -784,7 +784,7 @@ over 27 layers, not an algorithmic divergence.
 
 ## Final Output Verification (2026-03-21)
 
-```
+```text
 Prompt: "What is the capital of France?"
 Engine: ./adaptive_ai_engine --model models/deepseek-v2-lite-chat-Q4_K_S.gguf \
         --prompt "What is the capital of France?" --max-tokens 30
@@ -792,7 +792,7 @@ Output: "The capital of France is Paris."
 Speed:  0.29 tok/s (8 tokens, stops at EOS)
 ```
 
-```
+```text
 Prompt: "What is the capital of Germany?"
 Engine: same flags
 Output: "The capital of Germany is Berlin."
@@ -1061,7 +1061,7 @@ weights bug in `weights_build_classifier_quant()`.
 
 ### Symptom
 
-```
+```text
 # BROKEN (int8/int4):
 ./adaptive_ai_engine --model models/deepseek-v2-lite-chat-Q4_K_S.gguf \
   --prompt "What is the capital of France?" --max-tokens 12 --temperature 0.0 \
@@ -1123,7 +1123,7 @@ For models with a separate `output.weight` (DeepSeek, Qwen, etc.), this is the c
 
 ### Verification — all three classifiers now correct
 
-```
+```text
 # Exact test command (2026-03-23, commit after 4b950e7):
 ./adaptive_ai_engine --model models/deepseek-v2-lite-chat-Q4_K_S.gguf \
   --prompt "What is the capital of France?" --max-tokens 12 --temperature 0.0 \
@@ -1255,14 +1255,14 @@ Workers spin between every pair of matmul calls. With SPIN_LIMIT = 40,000 × `_m
 ### Fix: batch all top_k expert gate projections into one dispatch, same for up and down
 
 Instead of:
-```
+```text
 dispatch(gate_e0)  spin  dispatch(gate_e1)  spin  ...  dispatch(gate_e5)  spin
 dispatch(up_e0)   spin  dispatch(up_e1)   spin  ...  dispatch(up_e5)   spin
 ...
 ```
 
 Do:
-```
+```text
 dispatch(gate_e0..e5)   [1 dispatch — all threads work all 6 experts' gate rows]
 dispatch(up_e0..e5)     [1 dispatch]
 dispatch(down_e0..e5)   [1 dispatch with per-expert inputs]
@@ -1348,7 +1348,7 @@ the Q5_1 structure but with `m = -16*d` (no stored min field), block = 22 bytes.
 
 ### Bandwidth ceiling
 
-```
+```text
 Ceiling = bandwidth / bytes_per_token
         = 11.7 GB/s / 1.19 GB/tok
         = 9.8 tok/s

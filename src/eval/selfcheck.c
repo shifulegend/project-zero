@@ -1,12 +1,14 @@
 #include "eval/selfcheck.h"
-#include "core/hardware_profile.h"
-#include "eval/perplexity.h"
-#include "math/simd_dispatch.h"
+
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+
+#include "eval/perplexity.h"
+#include "math/simd_dispatch.h"
+#include "runtime/hardware_profile.h"
 
 /* Plain English prose on a general subject; long enough for the default probe length. */
 static const char SC_TEXT[] =
@@ -38,7 +40,9 @@ SelfCheckVerdict selfcheck_judge(double delta_pct, double tolerance_pct) {
 }
 
 const char *selfcheck_verdict_name(SelfCheckVerdict v) {
-    return v == SC_PASS ? "PASS" : v == SC_FAIL ? "FAIL" : "SKIPPED";
+    if (v == SC_PASS) return "PASS";
+    if (v == SC_FAIL) return "FAIL";
+    return "SKIPPED";
 }
 
 void selfcheck_format(const SelfCheckResult *r, char *out, size_t cap) {
@@ -54,7 +58,9 @@ void selfcheck_format(const SelfCheckResult *r, char *out, size_t cap) {
 }
 
 static const char *cls_name(TnClassifierFormat f) {
-    return f == TN_CLS_INT4 ? "int4" : f == TN_CLS_INT8 ? "int8" : "bf16";
+    if (f == TN_CLS_INT4) return "int4";
+    if (f == TN_CLS_INT8) return "int8";
+    return "bf16";
 }
 
 static TernaryError score(const int *toks, int n, int bos, const Config *cfg,
@@ -82,9 +88,8 @@ TernaryError selfcheck_run(const SelfCheckOptions *opt, const Config *cfg,
     int cap    = (int)len + 2;
     int *toks  = (int *)malloc((size_t)cap * sizeof(int));
     if (!toks) return TN_ERR_OOM;
-    int bos =
-        !tok->add_bos_token ? -1 : (cfg->bos_token_id >= 0 ? cfg->bos_token_id : tok->bos_token_id);
-    int n = 0;
+    int bos = tokenizer_bos_to_prepend(tok, cfg->bos_token_id);
+    int n   = 0;
     if (bos >= 0) toks[n++] = bos;
     int k = tokenizer_encode(tok, SC_TEXT, len, toks + n, cap - n);
     if (k < 0) {
@@ -104,7 +109,7 @@ TernaryError selfcheck_run(const SelfCheckOptions *opt, const Config *cfg,
 
     /* Candidate and reference identical: nothing to compare. */
     int cand_is_float  = strcmp(out->act_quant, "float") == 0;
-    int head_quantised = cand_cls != TN_CLS_BF16 && (w->wcls_i8 || w->wcls_i4);
+    int head_quantised = cand_cls != TN_CLS_BF16 && (w->cls.i8 || w->cls.i4);
     if (cand_is_float && !head_quantised) {
         free(toks);
         snprintf(out->note, sizeof(out->note),

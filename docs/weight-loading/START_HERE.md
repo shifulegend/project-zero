@@ -89,7 +89,7 @@ This is **CRITICAL** - your converter must output weights in this EXACT order:
 
 ### Format: 4 weights per byte, 2 bits each
 
-```
+```text
 Byte (8 bits):
 [7:6] [5:4] [3:2] [1:0]
  w3   w2    w1    w0
@@ -119,7 +119,7 @@ Packed: ceil(16777216 / 4) = 4,194,304 bytes
 - Memory access optimization
 
 ### How?
-```
+```text
 1. File structure:
    [0:8]    Magic/Version
    [8:48]   Config
@@ -135,7 +135,7 @@ Packed: ceil(16777216 / 4) = 4,194,304 bytes
 ```
 
 ### Examples
-```
+```text
 rel_offset=0:           padding=0   (already aligned at byte 64)
 rel_offset=16384:       padding=0   (aligned at byte 16448)
 rel_offset=4227076:     padding=60  (byte 4227140 % 64 = 4, need 60)
@@ -163,7 +163,7 @@ Catches:
 
 ## File Format
 
-```
+```text
 Offset    Size    Content
 0         8       Magic/Version
 8         40      Config struct
@@ -208,7 +208,7 @@ void *data = MapViewOfFile(hMapping, FILE_MAP_READ, ...);
 
 ## Size Example (Qwen 2B)
 
-```
+```text
 Config:
   dim = 4096
   hidden_dim = 14336

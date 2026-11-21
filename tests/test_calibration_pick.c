@@ -8,13 +8,14 @@
  * paired samples AND clears the median margin. The decision is a pure function,
  * so noise, ties and clear wins are tested with synthetic series.
  */
-#include "test_harness.h"
-#include "core/calibration.h"
-#include "core/hardware_profile.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#include "runtime/calibration.h"
+#include "runtime/hardware_profile.h"
+#include "test_harness.h"
 
 #define R TN_CALIB_ROUNDS
 

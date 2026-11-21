@@ -1,10 +1,20 @@
 #ifndef TN_MOE_CONFIG_H
 #define TN_MOE_CONFIG_H
 
-#include "core/error.h"
 #include <stdbool.h>
 #include <stddef.h> /* size_t */
 #include <stdint.h> /* int32_t */
+
+#include "core/error.h"
+
+/* DeepSeek-V2-style Multi-head Latent Attention dimensions. */
+typedef struct {
+    int enabled;          /* 1 for DeepSeek-V2-style MLA, 0 otherwise          */
+    int kv_lora_rank;     /* latent KV dim, e.g. 512                           */
+    int qk_nope_head_dim; /* per-head non-positional Q/K dim, e.g. 128         */
+    int qk_rope_head_dim; /* per-head RoPE positional dim, e.g. 64             */
+    int v_head_dim;       /* per-head value dim, e.g. 128                      */
+} MlaDims;
 
 /**
  * MoEConfig — Mixture of Experts routing configuration.
@@ -26,16 +36,13 @@ typedef struct {
     int first_k_dense_replace; /* DeepSeek: first N layers use dense FFN, rest use MoE         */
                                /* set to 0 if all layers are MoE (e.g. Mixtral)                */
     int n_shared_experts;      /* DeepSeek: always-active shared experts per MoE layer (0=none)*/
-    int shared_expert_hidden_dim; /* hidden dim of the shared-expert FFN (n_shared × moe_intermediate_size) */
+    int shared_expert_hidden_dim; /* hidden dim of the shared-expert FFN (n_shared ×
+                                     moe_intermediate_size) */
 
-    /* MLA (Multi-head Latent Attention) fields — Phase 17.5 extension.
-     * Bytes 28–47 of the MoE header (were padding, always zero in old files).
-     * has_mla == 0 for ALL non-MLA models → MLA code is never reached.           */
-    int has_mla;          /* 1 for DeepSeek-V2-style MLA, 0 otherwise          */
-    int kv_lora_rank;     /* latent KV dim, e.g. 512                           */
-    int qk_nope_head_dim; /* per-head non-positional Q/K dim, e.g. 128         */
-    int qk_rope_head_dim; /* per-head RoPE positional dim, e.g. 64             */
-    int v_head_dim;       /* per-head value dim, e.g. 128                      */
+    /* MLA (Multi-head Latent Attention) dimensions -- Phase 17.5 extension.
+     * Bytes 28-47 of the MoE header (were padding, always zero in old files).
+     * mla.enabled == 0 for ALL non-MLA models -> MLA code is never reached.      */
+    MlaDims mla;
 
     /* Qwen3.5/3.6 hybrid Gated-DeltaNet + Gated-Attention fields.
      * has_linear_attn == 0 for ALL non-hybrid models → this code path is never

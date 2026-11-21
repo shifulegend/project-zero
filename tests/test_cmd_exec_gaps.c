@@ -19,14 +19,14 @@
  *     either way, and the test plan itself rates this "low severity given
  *     the human-approval gate, but real", not something this pass fixes.
  */
-#include "test_harness.h"
-#include "agent/cmd_exec.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <sys/stat.h>
+#include <unistd.h>
+
+#include "agent/cmd_exec.h"
+#include "test_harness.h"
 
 /* ── PATH hijacking: a malicious executable named "cat" placed earlier in
  * $PATH than the real one must NOT run in its place. ─────────────────── */

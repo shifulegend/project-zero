@@ -1,12 +1,13 @@
 /*
  * tests/test_watermark.c — Phase 33: green-list watermark bias + detection.
  */
-#include "test_harness.h"
-#include "sampling/watermark.h"
+#include <math.h>
+
+#include "math/simd_dispatch.h"
 #include "sampling/rng.h"
 #include "sampling/sampler_chain.h"
-#include "math/simd_dispatch.h"
-#include <math.h>
+#include "sampling/watermark.h"
+#include "test_harness.h"
 
 #define VOCAB 512
 

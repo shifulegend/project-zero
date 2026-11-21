@@ -1,8 +1,9 @@
-#include "core/platform.h"
-#include "tokenizer/tokenizer.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+
+#include "core/platform.h"
+#include "tokenizer/tokenizer.h"
 
 /*
  * GPT-2 byte-level BPE reverse mapping: unicode codepoint -> raw byte.

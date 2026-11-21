@@ -1,7 +1,58 @@
 # Decision Log — project-zero
 
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
-> Read at session start. Last updated: 2026-11-18.
+> Read at session start. Last updated: 2026-11-21.
+
+### 2026-11-21 — The code-point classifier stays an if-chain
+- Decision: `pretok_cp_class` (formerly the static `cp_flags`) in
+  `src/tokenizer/pretokenize.c` keeps its if-chain over Unicode ranges
+  (complexity 92, 36 lines) and its entry in the complexity baseline.
+- Why: it runs once per character of every prompt. Rewritten as a sorted
+  range table it was identical on all 1,114,122 values checked (every code
+  point plus the sentinel and extremes), but `pretokenize()` took 44-54 ms
+  instead of 35 ms on 5.4 MB of mixed-script text with binary search (a
+  linear scan was far slower in a classification-only benchmark, 177 ms vs
+  24 ms). The compiler turns the chain into a decision tree.
+- Safety net instead: `tests/test_pretokenize.c` hashes the class of every
+  code point (0..0x110005) with the value taken from the old function, so
+  any later change to the chain is caught at the first different character.
+- Consequence: a deviation row for the hot-path exemption (Q3) is in the
+  Deviation approval log; the function's name is exported only so the test
+  can reach it.
+
+### 2026-11-21 — Process-wide mutable state: what cannot be removed, what is proposed
+- Decision: 40 mutable statics remain in `src/` (down from 69). They fall
+  into seven groups; only the first is impossible to remove. The rest are
+  exceptions proposed to the owner (Deviation approval log, 2026-11-21);
+  nothing is allow-listed until approved.
+- Impossible (3): state a POSIX signal handler touches. A handler gets only
+  the signal number, so `g_shutdown_requested` (`session_server.c`) and the
+  two `sigjmp_buf`s of the CPU-feature probes (`cpu_features.c`) must be
+  file-scope. They stay, each with a comment saying why.
+- Planned removals: none left. Done since this entry was drafted: the
+  request-ID counter and lock, the vision prompt buffer, the OpenAPI
+  once-flag, the calibration samples and the active distributed plan.
+  The act-quant mode in `simd_dispatch.c` (3) is not a removal: it
+  describes the kernel binding that the dispatch function pointers
+  themselves form, which is process-wide by design (see below).
+- Proposed exception, thread-local scratch (9): `TnTlsScratch` buffers and
+  the decode buffer. They are per-thread by construction, not shared state;
+  the alternative is a worker-context argument through every matmul call.
+- Proposed exception, read-once environment flags (4): memoised `getenv`
+  results. The environment is itself process-wide; the flags are atomic.
+- Proposed exception, machine facts (8): CPU features, cache sizes and the
+  hardware profile are measured once and read-only afterwards.
+- Proposed exception, kernel dispatch binding (3): the act-quant mode
+  and last forced backend in `simd_dispatch.c`, next to the dispatch
+  function pointers they describe; per-context kernels would mean passing
+  an ops table through every math call.
+- Proposed exception, logging level and format (2): one logger per process.
+- Proposed exception, diagnostics (11): `TN_PROFILE`/`TN_STEP_TIMING`
+  counters and the expert-hit tracker; planned alternative is a profiler
+  object on the `RunState`, which costs signature changes in the forward path.
+- Consequence: `tools/check_mutable_statics.py` keeps ratcheting the whole
+  count down; approval of an exception group only moves it from "to remove"
+  to "documented floor".
 
 ### 2026-11-18 — Numerics and quality are settings with one probe, not side effects
 - Decision: `--act-quant auto|int8|float` selects the ternary activation numerics independently of the SIMD tier; `eval/selfcheck.c` scores a built-in passage as configured against float activations and a BF16 head; `--quality-tolerance` (default 1.0 %, 0 = no bar) is the bar. An explicitly requested quantised LM head that fails it falls back to BF16 at startup; `--self-check`, `POST /v1/selfcheck` and the web UI run the same probe on demand.
@@ -1315,3 +1366,39 @@ Taken from the plan's defaults while the owner's design answers were pending (an
 - Also: the Q2_0 VNNI batch matmul's five per-call `malloc`s collapse to one checked,
   overflow-guarded carve — fewer allocator round-trips on the hot path.
 - Status: OPEN (PR to `master`).
+
+### 2026-11-20 — Scoped bare blocks (`{ ... }` inside a function) are allowed style in C
+- Decision: A bare `{ ... }` block that limits the scope of a few locals (or of a `const` alias) is
+  idiomatic ISO C and stays allowed. Function definitions keep the project's K&R brace placement
+  (`clang-format` enforces it); a bare block is formatted as any other block, with its opening
+  brace on the line of its own and its content indented.
+- Rationale: C99 and later give blocks their own scope, so a block is the plain way to end the
+  lifetime of temporaries (for example the `base`/`pb` pointers in `configure_server`) without a
+  helper function whose only purpose is a name. Banning it would push code toward more small
+  helpers with one caller, which the single-responsibility rule does not ask for.
+- Status: decided by the maintainer (2026-11-20); no code change.
+
+### 2026-11-20 — Closed-enumeration switches stay switches; quant and architecture dispatch use tables
+- Decision: A `switch` over a closed enumeration of one grammar (the chat-template lexer and
+  AST, the pre-tokenizer, the JSON and GGUF value types, the KV cache type, the JSON grammar
+  states) stays a `switch`: the compiler checks that every case is handled and nothing outside
+  the file needs to know the cases. Dispatch that grows when a model family or a quantisation
+  format is added is a table instead: the architecture loaders are `k_arch_loaders` in
+  `src/runtime/gguf_loader.c` (name, loader, BF16-head flag), and per-format knowledge (block
+  size, bytes per block, dequantiser) belongs in one place per format. A new architecture or
+  quantisation is one table row plus its function, not an edit to a chain of `strcmp`s.
+- Rationale: a table is better where the set of cases is open and owned by data (models,
+  formats); a `switch` is better where the set is closed and owned by a grammar. Converting the
+  second kind would trade compiler exhaustiveness checks for indirection.
+- Status: decided by the maintainer (2026-11-20). The architecture table exists; moving the
+  per-format quantisation switches into one table is tracked under 8.a.
+
+### 2026-11-20 — Third-party Claude Code plugins: pin the marketplace to a commit, until then a documented exception
+- Decision: `.claude/settings.json` should name the `claude-plugins-official` marketplace with a
+  commit (`ref`) so the two enabled plugins (`superpowers`, `mattpocock-skills`) cannot change
+  under a session without a reviewed commit here. The commit of that marketplace repository has
+  to be chosen and verified by someone who can read it; until then the marketplace stays
+  unpinned. This is a recorded, time-limited exception: the repository rules in `docs/ai/**`
+  and the adapters override any plugin skill (`tool-sync-policy.md`), the plugins are read-only
+  skill text, and the `SessionStart` hook runs the repository's own `tools/git_sync_check.sh`.
+- Status: exception open; the pin is listed in the maintainer's open decisions.

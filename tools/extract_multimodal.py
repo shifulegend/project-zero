@@ -34,8 +34,15 @@ import json
 import os
 import struct
 import sys
+from abc import ABC, abstractmethod
+from typing import Any, BinaryIO
 
 import numpy as np
+import numpy.typing as npt
+
+Tensors = dict[str, npt.NDArray[Any]]  # tensor name -> array
+Config = dict[str, Any]  # config.json
+VisionConfig = tuple[int, int, int, int, int]  # layers, embed dim, hidden dim, heads, patch size
 
 VISION_MAGIC = 0x57535956  # "VISW" LE
 PROJECTOR_MAGIC = 0x4A4F5250  # "PROJ" LE
@@ -46,7 +53,16 @@ HEADER_SIZE = 64  # padded to 64 bytes
 # ── Binary write helpers ────────────────────────────────────────────────────
 
 
-def write_header_vision(f, n_layers, embed_dim, hidden_dim, n_heads, patch_dim, num_patches):
+def write_header_vision(
+    f: BinaryIO,
+    n_layers: int,
+    embed_dim: int,
+    hidden_dim: int,
+    n_heads: int,
+    patch_dim: int,
+    num_patches: int,
+) -> None:
+    """Writes the vision-weights file header (magic, version and the encoder dimensions) to `f`."""
     hdr = struct.pack(
         "<IIiiiiii",
         VISION_MAGIC,
@@ -62,10 +78,18 @@ def write_header_vision(f, n_layers, embed_dim, hidden_dim, n_heads, patch_dim, 
     f.write(b"\x00" * (HEADER_SIZE - len(hdr)))
 
 
-def write_header_proj(f, vision_dim, llm_dim, hidden_dim, has_bias, scale_factor=1):
+def write_header_proj(
+    f: BinaryIO,
+    vision_dim: int,
+    llm_dim: int,
+    hidden_dim: int,
+    has_bias: int,
+    scale_factor: int = 1,
+) -> None:
     # [0:24] magic, version, vision_dim, llm_dim, hidden_dim, has_bias
     # [24:28] scale_factor (new field; 1 = 2-layer MLP, >1 = pixel-shuffle + single linear)
     # [28:64] reserved
+    """Writes the projector-weights file header (magic, version, dimensions, bias flag and scale factor) to `f`."""
     hdr = struct.pack(
         "<IIiiiiii",
         PROJECTOR_MAGIC,
@@ -81,7 +105,7 @@ def write_header_proj(f, vision_dim, llm_dim, hidden_dim, has_bias, scale_factor
     f.write(b"\x00" * (HEADER_SIZE - len(hdr)))
 
 
-def write_f32(f, tensor):
+def write_f32(f: BinaryIO, tensor: npt.ArrayLike) -> None:
     """Write a tensor as float32 (convert from bf16/f16 if needed)."""
     arr = np.array(tensor, dtype=np.float32)
     f.write(arr.tobytes())
@@ -90,27 +114,34 @@ def write_f32(f, tensor):
 # ── Model-specific extractors ───────────────────────────────────────────────
 
 
-class ModelAdapter:
-    """Base class — subclasses implement get_vision_tensors / get_proj_tensors."""
+class ModelAdapter(ABC):
+    """Base class — subclasses implement vision_config / write_vision_weights / write_proj_weights."""
 
-    def __init__(self, tensors, config):
+    def __init__(self, tensors: Tensors, config: Config) -> None:
+        """Set up the instance."""
         self.tensors = tensors  # dict: name -> numpy array
         self.config = config
 
-    def get(self, name):
+    def get(self, name: str) -> npt.NDArray[Any]:
+        """The named tensor from the checkpoint; raises KeyError when it is missing."""
         t = self.tensors.get(name)
         if t is None:
             raise KeyError(f"tensor not found: {name!r}")
         return t
 
-    def vision_config(self):
+    @abstractmethod
+    def vision_config(self) -> VisionConfig:
         """Return (n_layers, embed_dim, hidden_dim, n_heads, patch_size)."""
         raise NotImplementedError
 
-    def write_vision_weights(self, f):
+    @abstractmethod
+    def write_vision_weights(self, f: BinaryIO) -> None:
+        """Writes the vision encoder weights to `f` in pz's binary layout."""
         raise NotImplementedError
 
-    def write_proj_weights(self, f):
+    @abstractmethod
+    def write_proj_weights(self, f: BinaryIO) -> None:
+        """Writes the projector weights to `f` in pz's binary layout."""
         raise NotImplementedError
 
 
@@ -123,7 +154,8 @@ class Moondream2Adapter(ModelAdapter):
     PREFIX_ENC = "vision_encoder.encoder.layers."
     PREFIX_PROJ = "vision_projection."
 
-    def vision_config(self):
+    def vision_config(self) -> VisionConfig:
+        """Vision encoder shape (layers, embed dim, hidden dim, heads, patch size) from the config, with Moondream2 defaults."""
         vcfg = self.config.get("vision_config", self.config)
         n_layers = vcfg.get("num_hidden_layers", 27)
         embed_dim = vcfg.get("hidden_size", 1152)
@@ -132,10 +164,12 @@ class Moondream2Adapter(ModelAdapter):
         patch_size = vcfg.get("patch_size", 14)
         return n_layers, embed_dim, hidden_dim, n_heads, patch_size
 
-    def _layer_key(self, l, sub):
+    def _layer_key(self, l: int, sub: str) -> str:
+        """Tensor name of sub-tensor `sub` in encoder layer `l`."""
         return f"{self.PREFIX_ENC}{l}.{sub}"
 
-    def write_vision_weights(self, f):
+    def write_vision_weights(self, f: BinaryIO) -> None:
+        """Writes the Moondream2 vision encoder weights (patch projection, position embeddings and transformer blocks)."""
         n_layers, embed_dim, hidden_dim, n_heads, patch_size = self.vision_config()
         patch_dim = patch_size * patch_size * 3
         num_patches = (384 // patch_size) ** 2
@@ -173,7 +207,8 @@ class Moondream2Adapter(ModelAdapter):
             # w3 (gate/up): zeros (SigLIP uses single-gate MLP, not gated)
             write_f32(f, np.zeros((hidden_dim, embed_dim), dtype=np.float32))
 
-    def write_proj_weights(self, f):
+    def write_proj_weights(self, f: BinaryIO) -> None:
+        """Writes the Moondream2 projector (a two-layer MLP, fc1 and fc2)."""
         n_layers, embed_dim, _, _, _ = self.vision_config()
         text_cfg = self.config.get("text_config", self.config)
         llm_dim = text_cfg.get("hidden_size", 2048)
@@ -207,7 +242,8 @@ class SmolVLMAdapter(ModelAdapter):
     PREFIX_ENC = "model.vision_model.encoder.layers."
     PREFIX_PROJ = "model.connector."
 
-    def vision_config(self):
+    def vision_config(self) -> VisionConfig:
+        """Vision encoder shape from the config, with SmolVLM defaults."""
         vcfg = self.config.get("vision_config", {})
         n_layers = vcfg.get("num_hidden_layers", 27)
         embed_dim = vcfg.get("hidden_size", 1152)
@@ -216,7 +252,8 @@ class SmolVLMAdapter(ModelAdapter):
         patch_size = vcfg.get("patch_size", 14)
         return n_layers, embed_dim, hidden_dim, n_heads, patch_size
 
-    def write_vision_weights(self, f):
+    def write_vision_weights(self, f: BinaryIO) -> None:
+        """Writes the SmolVLM vision encoder weights."""
         n_layers, embed_dim, hidden_dim, n_heads, patch_size = self.vision_config()
         patch_dim = patch_size * patch_size * 3
         num_patches = (384 // patch_size) ** 2
@@ -251,7 +288,8 @@ class SmolVLMAdapter(ModelAdapter):
             write_f32(f, self.get(f"{p}{l}.mlp.fc2.weight"))
             write_f32(f, np.zeros((hidden_dim, embed_dim), dtype=np.float32))
 
-    def write_proj_weights(self, f):
+    def write_proj_weights(self, f: BinaryIO) -> None:
+        """Writes the SmolVLM projector (single linear after pixel shuffle when scale_factor > 1, else a two-layer MLP)."""
         n_layers, embed_dim, _, _, _ = self.vision_config()
         tcfg = self.config.get("text_config", {})
         llm_dim = tcfg.get("hidden_size", 576)
@@ -296,11 +334,13 @@ class LLaVAAdapter(ModelAdapter):
     PREFIX_ENC = "model.vision_tower.vision_tower.vision_model.encoder.layers."
     PREFIX_PROJ = "model.mm_projector."
 
-    def vision_config(self):
+    def vision_config(self) -> VisionConfig:
         # ViT-L/14: 24 layers, 1024 dim, 4096 hidden, 16 heads, patch=14
+        """Fixed LLaVA vision encoder shape: ViT-L/14 (24 layers, 1024 dim, 4096 hidden, 16 heads, patch 14)."""
         return 24, 1024, 4096, 16, 14
 
-    def write_vision_weights(self, f):
+    def write_vision_weights(self, f: BinaryIO) -> None:
+        """Writes the LLaVA vision encoder weights (336 px input)."""
         n_layers, embed_dim, hidden_dim, n_heads, patch_size = self.vision_config()
         patch_dim = patch_size * patch_size * 3
         num_patches = (336 // patch_size) ** 2  # LLaVA uses 336px
@@ -327,7 +367,8 @@ class LLaVAAdapter(ModelAdapter):
             write_f32(f, self.get(f"{p}{l}.mlp.fc2.weight"))
             write_f32(f, np.zeros((hidden_dim, embed_dim), dtype=np.float32))
 
-    def write_proj_weights(self, f):
+    def write_proj_weights(self, f: BinaryIO) -> None:
+        """Writes the LLaVA projector (two-layer MLP)."""
         _, embed_dim, _, _, _ = self.vision_config()
         tcfg = self.config.get("text_config", {})
         llm_dim = tcfg.get("hidden_size", 4096)
@@ -349,7 +390,8 @@ class LLaVAAdapter(ModelAdapter):
 # ── Adapter registry ─────────────────────────────────────────────────────────
 
 
-def detect_adapter(config, tensors):
+def detect_adapter(config: Config, tensors: Tensors) -> ModelAdapter:
+    """Picks the adapter class for a checkpoint from its config (Moondream2, SmolVLM or LLaVA) and returns it; raises ValueError when the model type is not supported."""
     model_type = config.get("model_type", "").lower()
     arch = config.get("architectures", [""])[0].lower()
 
@@ -378,7 +420,7 @@ def detect_adapter(config, tensors):
 # ── Tensor loading ────────────────────────────────────────────────────────────
 
 
-def load_tensors_from_dir(model_dir):
+def load_tensors_from_dir(model_dir: str) -> Tensors:
     """Load all tensors from safetensors files in model_dir."""
     try:
         from safetensors import safe_open
@@ -392,7 +434,7 @@ def load_tensors_from_dir(model_dir):
     if not sf_files:
         raise FileNotFoundError(f"No .safetensors files in {model_dir}")
 
-    tensors = {}
+    tensors: Tensors = {}
     for fpath in sf_files:
         with safe_open(fpath, framework="pt") as f:
             for key in f.keys():
@@ -402,7 +444,7 @@ def load_tensors_from_dir(model_dir):
     return tensors
 
 
-def load_tensors_from_hf(repo_id, cache_dir=None):
+def load_tensors_from_hf(repo_id: str, cache_dir: str | None = None) -> tuple[Tensors, Config, str]:
     """Download and load tensors from HuggingFace Hub."""
     try:
         from huggingface_hub import snapshot_download
@@ -429,7 +471,8 @@ def load_tensors_from_hf(repo_id, cache_dir=None):
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 
-def main():
+def main() -> None:
+    """Command-line entry point: downloads or reads a multimodal checkpoint and writes the vision encoder and projector files."""
     parser = argparse.ArgumentParser(
         description="Extract vision encoder + projector from a multimodal HF model"
     )

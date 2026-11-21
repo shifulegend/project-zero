@@ -123,166 +123,248 @@ static void backup(Tree *t, int id, double r) {
     }
 }
 
-TernaryError generate_mcts(const Config *cfg, const TransformerWeights *w, RunState *s,
-                           const MoEConfig *mc, Tokenizer *tok, ThreadPool *tp, const char *prompt,
-                           const char *question, const GenerationParams *base,
-                           const MctsOptions *opt_in, PrmModel *prm, TokenCallback callback,
-                           void *userdata, MctsAbortFn abort_fn, MctsResult *out) {
-    if (!cfg || !w || !s || !tok || !prompt || !base || !opt_in) return TN_ERR_INVALID_ARGS;
-    MctsOptions opt = *opt_in;
-    mcts_options_defaults(&opt);
+/* Everything one search needs, so the steps below take one argument. */
+typedef struct {
+    const Config *cfg;
+    const TransformerWeights *w;
+    RunState *s;
+    const MoEConfig *mc;
+    Tokenizer *tok;
+    ThreadPool *tp;
+    const char *prompt;
+    const char *question;
+    const GenerationParams *base;
+    MctsOptions opt;
+    PrmModel *prm;
+    Tree t;
     MctsResult res;
-    memset(&res, 0, sizeof(res));
-    res.used_prm = prm && prm->loaded;
+    unsigned long long seed0;
+    int expansions;
+    int prompt_tokens;
+} Search;
 
-    Tree t = {0};
-    if (tree_add(&t, -1, NULL) != 0) return TN_ERR_OOM;
-    unsigned long long seed0 = base->seed >= 0 ? (unsigned long long)base->seed : 0x5eedULL;
-    int expansions           = 0;
-    int prompt_tokens        = 0;
+/* Mean value of a node's visits so far (0 when unvisited). */
+static double node_mean(const Tree *t, int id) {
+    return t->v[id].visits ? t->v[id].value_sum / t->v[id].visits : 0.0;
+}
 
-    for (int sim = 0; sim < opt.simulations; sim++) {
-        if (abort_fn && abort_fn(userdata)) break;
-        /* Selection */
-        int node = 0;
-        while (!t.v[node].terminal && t.v[node].n_children >= opt.expand) {
-            int best  = t.v[node].children[0];
-            double bs = -INFINITY;
-            for (int k = 0; k < t.v[node].n_children; k++) {
-                int c    = t.v[node].children[k];
-                double u = mcts_ucb(t.v[c].value_sum, t.v[c].visits, t.v[node].visits, opt.c_ucb);
-                if (u > bs) {
-                    bs   = u;
-                    best = c;
-                }
+/* Selection: from the root, take the child with the best UCB value while a node has its full
+ * set of children and is not finished. */
+static int select_leaf(const Search *S) {
+    const Tree *t = &S->t;
+    int node      = 0;
+    while (!t->v[node].terminal && t->v[node].n_children >= S->opt.expand) {
+        int best  = t->v[node].children[0];
+        double bs = -INFINITY;
+        for (int k = 0; k < t->v[node].n_children; k++) {
+            int c    = t->v[node].children[k];
+            double u = mcts_ucb(t->v[c].value_sum, t->v[c].visits, t->v[node].visits, S->opt.c_ucb);
+            if (u > bs) {
+                bs   = u;
+                best = c;
             }
-            node = best;
         }
-        res.simulations++;
-        if (t.v[node].terminal) { /* re-evaluate a finished path */
-            backup(&t, node, t.v[node].visits ? t.v[node].value_sum / t.v[node].visits : 0.0);
-            continue;
-        }
-        /* Expansion: one sampled step continuing the selected path, within
-         * what is left of the caller's max_tokens along this path. */
-        int used = 0;
-        for (int x = node; x > 0; x = t.v[x].parent) used += t.v[x].tokens;
-        int budget = base->max_tokens - used;
-        if (budget <= 0) {
-            t.v[node].terminal = 1;
-            backup(&t, node, t.v[node].visits ? t.v[node].value_sum / t.v[node].visits : 0.0);
-            continue;
-        }
-        char *prefix = path_text(&t, node, opt.step_delim, /*trailing=*/node > 0);
-        if (!prefix) break;
-        GenerationParams gp = *base;
-        GenerationStats st;
-        memset(&st, 0, sizeof(st));
-        gp.max_tokens          = opt.step_tokens < budget ? opt.step_tokens : budget;
-        gp.sampler.temperature = opt.temperature;
-        gp.seed                = (long long)(seed0 + (unsigned long long)(++expansions));
-        gp.stop[0]             = opt.step_delim;
-        gp.n_stop              = 1;
-        gp.assistant_prefix    = prefix;
-        gp.compute_logprobs    = !res.used_prm;
-        gp.stats               = &st;
-        Sbuf text              = {0};
-        s->current_pos         = 0;
-        generate_ex(cfg, w, s, mc, tok, tp, prompt, &gp, collect_cb, &text);
-        res.tokens_total += st.completion_tokens;
-        if (node == 0 && st.prompt_tokens > 0) prompt_tokens = st.prompt_tokens;
-        if (st.finish_reason == GEN_FINISH_ERROR) {
-            free(prefix);
-            free(text.buf);
-            t.v[node].terminal = 1; /* context full: nothing more below this node */
-            backup(&t, node, 0.0);
-            continue;
-        }
-        char *step = text.buf ? text.buf : (char *)calloc(1, 1);
-        int child  = tree_add(&t, node, step);
-        if (child < 0) {
-            free(prefix);
-            free(step);
-            break;
-        }
-        Node *cn   = &t.v[child];
-        cn->tokens = st.completion_tokens;
-        cn->ended  = st.hit_eos;
-        cn->terminal =
-            st.hit_eos || cn->depth >= opt.max_depth || used + cn->tokens >= base->max_tokens;
-        /* Evaluation */
-        double r;
-        if (res.used_prm) {
-            char *steps = path_text(&t, child, opt.step_delim, 0);
-            float p     = steps ? prm_score(prm, question ? question : prompt, steps) : -1.0f;
-            free(steps);
-            r = p >= 0.0f ? p : 0.0;
-        } else {
-            r = mcts_self_score(&st);
-        }
-        free(prefix);
-        backup(&t, child, r);
+        node = best;
     }
-    res.nodes = t.n - 1;
+    return node;
+}
 
-    /* Final path: most visited child at each level (ties: higher mean value). */
+/* Evaluation of a new step: the PRM's score of the path so far, or the model's own confidence. */
+static double evaluate_step(Search *S, int child, const GenerationStats *st) {
+    if (!S->res.used_prm) return mcts_self_score(st);
+    char *steps = path_text(&S->t, child, S->opt.step_delim, 0);
+    float p     = steps ? prm_score(S->prm, S->question ? S->question : S->prompt, steps) : -1.0f;
+    free(steps);
+    return p >= 0.0f ? p : 0.0;
+}
+
+/* Expansion: one sampled step continuing the selected path, within what is left of the caller's
+ * max_tokens along it (`budget`). Returns 0 when the search must stop (out of memory). */
+static int expand_node(Search *S, int node, int used, int budget) {
+    Tree *t      = &S->t;
+    char *prefix = path_text(t, node, S->opt.step_delim, /*trailing=*/node > 0);
+    if (!prefix) return 0;
+    GenerationParams gp = *S->base;
+    GenerationStats st;
+    memset(&st, 0, sizeof(st));
+    gp.max_tokens          = S->opt.step_tokens < budget ? S->opt.step_tokens : budget;
+    gp.sampler.temperature = S->opt.temperature;
+    gp.seed                = (long long)(S->seed0 + (unsigned long long)(++S->expansions));
+    gp.stop[0]             = S->opt.step_delim;
+    gp.n_stop              = 1;
+    gp.assistant_prefix    = prefix;
+    gp.compute_logprobs    = !S->res.used_prm;
+    gp.stats               = &st;
+    Sbuf text              = {0};
+    S->s->current_pos      = 0;
+    generate_ex(S->cfg, S->w, S->s, S->mc, S->tok, S->tp, S->prompt, &gp, collect_cb, &text);
+    S->res.tokens_total += st.completion_tokens;
+    if (node == 0 && st.prompt_tokens > 0) S->prompt_tokens = st.prompt_tokens;
+    if (st.finish_reason == GEN_FINISH_ERROR) {
+        free(prefix);
+        free(text.buf);
+        t->v[node].terminal = 1; /* context full: nothing more below this node */
+        backup(t, node, 0.0);
+        return 1;
+    }
+    char *step = text.buf ? text.buf : (char *)calloc(1, 1);
+    int child  = tree_add(t, node, step);
+    if (child < 0) {
+        free(prefix);
+        free(step);
+        return 0;
+    }
+    Node *cn   = &t->v[child];
+    cn->tokens = st.completion_tokens;
+    cn->ended  = st.hit_eos;
+    cn->terminal =
+        st.hit_eos || cn->depth >= S->opt.max_depth || used + cn->tokens >= S->base->max_tokens;
+    double r = evaluate_step(S, child, &st);
+    free(prefix);
+    backup(t, child, r);
+    return 1;
+}
+
+/* One simulation: select, then either re-evaluate a finished path or expand it. Returns 0 when
+ * the search must stop. */
+static int simulate_once(Search *S) {
+    Tree *t  = &S->t;
+    int node = select_leaf(S);
+    S->res.simulations++;
+    if (t->v[node].terminal) { /* re-evaluate a finished path */
+        backup(t, node, node_mean(t, node));
+        return 1;
+    }
+    int used = 0;
+    for (int x = node; x > 0; x = t->v[x].parent) used += t->v[x].tokens;
+    int budget = S->base->max_tokens - used;
+    if (budget <= 0) {
+        t->v[node].terminal = 1;
+        backup(t, node, node_mean(t, node));
+        return 1;
+    }
+    return expand_node(S, node, used, budget);
+}
+
+/* The final path: the most visited child at each level (ties: higher mean value). Counts the
+ * steps taken and returns the last node. */
+static int best_path(const Tree *t, int *steps) {
     int node = 0;
-    while (t.v[node].n_children > 0) {
-        int best = t.v[node].children[0];
-        for (int k = 1; k < t.v[node].n_children; k++) {
-            int c         = t.v[node].children[k];
-            const Node *a = &t.v[c], *b = &t.v[best];
+    while (t->v[node].n_children > 0) {
+        int best = t->v[node].children[0];
+        for (int k = 1; k < t->v[node].n_children; k++) {
+            int c         = t->v[node].children[k];
+            const Node *a = &t->v[c], *b = &t->v[best];
             if (a->visits > b->visits ||
                 (a->visits == b->visits && a->value_sum / (a->visits ? a->visits : 1) >
                                                b->value_sum / (b->visits ? b->visits : 1)))
                 best = c;
         }
         node = best;
-        res.steps++;
+        (*steps)++;
     }
-    if (node > 0)
-        res.path_value = (float)(t.v[node].value_sum / (t.v[node].visits ? t.v[node].visits : 1));
+    return node;
+}
 
-    TernaryError rc = TN_OK;
+/* Completes the searched path with the caller's own settings (sampler, stop strings); with no
+ * searched path (node 0) this is plain generation. */
+static TernaryError complete_path(Search *S, int node, int remaining, TokenCallback callback,
+                                  void *userdata) {
+    char *prefix = path_text(&S->t, node, S->opt.step_delim, /*trailing=*/node > 0);
+    if (!prefix) return TN_ERR_OOM;
+    if (callback && node > 0) callback(S->opt.step_delim, userdata);
+    GenerationParams gp = *S->base;
+    gp.max_tokens       = remaining;
+    gp.assistant_prefix = prefix;
+    S->s->current_pos   = 0;
+    generate_ex(S->cfg, S->w, S->s, S->mc, S->tok, S->tp, S->prompt, &gp, callback, userdata);
+    free(prefix);
+    return TN_OK;
+}
+
+/* The caller's stats describe the whole answer: searched steps + completion. */
+static void report_stats(const Search *S, int node, int completed, int path_tokens,
+                         int stop_stream) {
+    GenerationStats *stats = S->base->stats;
+    if (!stats) return;
+    if (completed) {
+        stats->completion_tokens += path_tokens;
+        return;
+    }
+    stats->completion_tokens = path_tokens;
+    stats->prompt_tokens     = S->prompt_tokens;
+    stats->finish_reason     = stop_stream ? GEN_FINISH_CANCELLED : GEN_FINISH_STOP;
+    stats->hit_eos           = node > 0 && S->t.v[node].ended;
+}
+
+/* Records the path's value and token total in the result; returns the tokens. */
+static int summarize_path(Search *S, int node) {
+    const Tree *t = &S->t;
+    if (node > 0)
+        S->res.path_value =
+            (float)(t->v[node].value_sum / (t->v[node].visits ? t->v[node].visits : 1));
     int path_tokens = 0;
-    for (int x = node; x > 0; x = t.v[x].parent) path_tokens += t.v[x].tokens;
-    char *shown     = path_text(&t, node, opt.step_delim, /*trailing=*/0);
+    for (int x = node; x > 0; x = t->v[x].parent) path_tokens += t->v[x].tokens;
+    S->res.path_tokens = path_tokens;
+    return path_tokens;
+}
+
+/* The model's own end of text ends the answer; so does a consumer that stopped the stream or a
+ * path that already used up max_tokens. */
+static int needs_completion(const Search *S, int node, int stop_stream, int remaining) {
+    return !stop_stream && remaining > 0 && !(node > 0 && S->t.v[node].ended);
+}
+
+/* Streams the searched path, completes it when the model did not end it, fills the caller's stats
+ * and the result. */
+static TernaryError finish_search(Search *S, int node, TokenCallback callback, void *userdata,
+                                  MctsResult *out) {
+    int path_tokens = summarize_path(S, node);
+    char *shown     = path_text(&S->t, node, S->opt.step_delim, /*trailing=*/0);
     int stop_stream = 0;
     if (shown && shown[0] && callback) stop_stream = callback(shown, userdata);
-    /* Complete a path the model did not end itself, with the caller's own
-     * settings (sampler, stop strings); with no searched path this is plain
-     * generation. */
-    res.path_tokens = path_tokens;
-    int remaining   = base->max_tokens - path_tokens;
-    int completed   = 0;
-    if (!stop_stream && remaining > 0 && !(node > 0 && t.v[node].ended)) {
-        completed    = 1;
-        char *prefix = path_text(&t, node, opt.step_delim, /*trailing=*/node > 0);
-        if (!prefix) {
-            rc = TN_ERR_OOM;
-        } else {
-            if (callback && node > 0) callback(opt.step_delim, userdata);
-            GenerationParams gp = *base;
-            gp.max_tokens       = remaining;
-            gp.assistant_prefix = prefix;
-            s->current_pos      = 0;
-            generate_ex(cfg, w, s, mc, tok, tp, prompt, &gp, callback, userdata);
-            free(prefix);
-        }
-    }
-    /* The caller's stats describe the whole answer: searched steps + completion. */
-    if (base->stats) {
-        if (completed) {
-            base->stats->completion_tokens += path_tokens;
-        } else {
-            base->stats->completion_tokens = path_tokens;
-            base->stats->prompt_tokens     = prompt_tokens;
-            base->stats->finish_reason     = stop_stream ? GEN_FINISH_CANCELLED : GEN_FINISH_STOP;
-            base->stats->hit_eos           = node > 0 && t.v[node].ended;
-        }
-    }
+    int remaining   = S->base->max_tokens - path_tokens;
+    int completed   = needs_completion(S, node, stop_stream, remaining);
+    TernaryError rc = completed ? complete_path(S, node, remaining, callback, userdata) : TN_OK;
+    report_stats(S, node, completed, path_tokens, stop_stream);
     free(shown);
-    tree_free(&t);
-    if (out) *out = res;
+    if (out) *out = S->res;
+    return rc;
+}
+
+TernaryError generate_mcts(const Config *cfg, const TransformerWeights *w, RunState *s,
+                           const MoEConfig *mc, Tokenizer *tok, ThreadPool *tp, const char *prompt,
+                           const char *question, const GenerationParams *base,
+                           const MctsOptions *opt_in, PrmModel *prm, TokenCallback callback,
+                           void *userdata, MctsAbortFn abort_fn, MctsResult *out) {
+    if (!cfg || !w || !s || !tok || !prompt || !base || !opt_in) return TN_ERR_INVALID_ARGS;
+    Search S;
+    memset(&S, 0, sizeof(S));
+    S.cfg      = cfg;
+    S.w        = w;
+    S.s        = s;
+    S.mc       = mc;
+    S.tok      = tok;
+    S.tp       = tp;
+    S.prompt   = prompt;
+    S.question = question;
+    S.base     = base;
+    S.opt      = *opt_in;
+    S.prm      = prm;
+    mcts_options_defaults(&S.opt);
+    S.res.used_prm = prm && prm->loaded;
+    if (tree_add(&S.t, -1, NULL) != 0) return TN_ERR_OOM;
+    S.seed0 = base->seed >= 0 ? (unsigned long long)base->seed : 0x5eedULL;
+
+    for (int sim = 0; sim < S.opt.simulations; sim++) {
+        if (abort_fn && abort_fn(userdata)) break;
+        if (!simulate_once(&S)) break;
+    }
+    S.res.nodes     = S.t.n - 1;
+    int steps       = 0;
+    int node        = best_path(&S.t, &steps);
+    S.res.steps     = steps;
+    TernaryError rc = finish_search(&S, node, callback, userdata, out);
+    tree_free(&S.t);
     return rc;
 }

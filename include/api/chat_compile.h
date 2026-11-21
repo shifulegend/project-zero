@@ -8,9 +8,10 @@
  * Compiles an array of chat messages into a single formatted prompt string.
  */
 
+#include <stddef.h>
+
 #include "api/chat_request.h"
 #include "core/error.h"
-#include <stddef.h>
 
 /* Template format to use when the tokenizer has no embedded Jinja2 template */
 typedef enum {

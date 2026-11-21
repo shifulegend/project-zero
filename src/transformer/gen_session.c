@@ -7,38 +7,28 @@
  * unchanged from generate_ex; comments carried over.
  */
 #include "transformer/gen_session.h"
-#include "transformer/moe_ffn.h"
-#include "sampling/sampling.h"
-#include "sampling/rng.h"
-#include "sampling/constrained_sample.h"
-#include "sampling/sampler_chain.h"
-#include "sampling/logprob.h"
-#include "distributed/dist_plan.h"
-#include "core/timer.h"
-#include "core/step_timing.h"
-#include "tokenizer/chat_template.h"
-#include "tokenizer/template_guard.h"
-#include "memory/safe_alloc.h"
-#include "core/debug.h"
+
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
-/* Max messages rendered through the chat template in one call (system
- * prompt + history). Bounded so the role/content pointer arrays live on the
- * stack; 64 matches the API's CHAT_MAX_MESSAGES. */
-#define GEN_MAX_TEMPLATE_MESSAGES 65
-
-/* 2026-10-22: since untrusted text is neutralised instead of rejected, the
- * tokenizer only fails when the prompt does not fit in the context. */
-static void report_encode_failure(const char *what, int seq_len) {
-    fprintf(stderr,
-            "[error] the %s does not fit in the model's context of %d tokens. "
-            "Nothing was generated; shorten it or raise --ctx-size.\n",
-            what, seq_len);
-}
+#include "core/debug.h"
+#include "core/log.h"
+#include "core/step_timing.h"
+#include "core/timer.h"
+#include "distributed/dist_plan.h"
+#include "memory/safe_alloc.h"
+#include "sampling/constrained_sample.h"
+#include "sampling/logprob.h"
+#include "sampling/rng.h"
+#include "sampling/sampler_chain.h"
+#include "sampling/sampling.h"
+#include "tokenizer/chat_template.h"
+#include "tokenizer/template_guard.h"
+#include "transformer/gen_prompt.h"
+#include "transformer/moe_ffn.h"
 
 static const char *token_text(const Tokenizer *tok, int id) {
     return (tok && tok->vocab && id >= 0 && id < tok->vocab_size && tok->vocab[id]) ? tok->vocab[id]
@@ -49,161 +39,20 @@ static const char *token_text(const Tokenizer *tok, int id) {
  * generated. Leading servers (llama.cpp, Ollama) answer with an empty message
  * and leave users to guess; name the evidence and the usual cause instead. */
 static void report_empty_generation(const Tokenizer *tok, int first_token, int last_prompt_token) {
-    fprintf(stderr,
-            "[warn] no tokens were generated: the first token the model chose was %d (\"%s\"), "
-            "a stop token; the prompt ended with token %d (\"%s\"). For a chat model this "
-            "usually means a chat-template problem: check the template "
-            "(--chat-template-file replaces it) or run with --verbose.\n",
-            first_token, token_text(tok, first_token), last_prompt_token,
-            token_text(tok, last_prompt_token));
-}
-
-/* Renders and tokenizes the prompt into g->prompt_tokens / g->n_prompt.
- * Returns 0, or -1 when there is nothing to generate. */
-static int build_prompt(GenSession *g, const char *prompt) {
-    const Config *cfg          = g->cfg;
-    const GenerationParams *gp = g->gp;
-    Tokenizer *tok             = g->tok;
-    int n_prompt               = 0;
-
-    /* A request's own template (API "chat_template") wins over the model's. */
-    const char *chat_tmpl =
-        (gp->chat_template && gp->chat_template[0]) ? gp->chat_template : tok->chat_template;
-    /* Chat mode ends a turn at any CONTROL token the template never writes
-     * (Falcon3's ">>UNUSED_1<<"); raw prompts keep the declared EOG set. The
-     * set belongs to this session, so concurrent sessions never share it. */
-    g->chat_stops =
-        tokenizer_chat_stops_new(tok, (chat_tmpl && !gp->raw_prompt) ? chat_tmpl : NULL);
-    g->json_fsm.chat_stops = g->chat_stops;
-    if (chat_tmpl && !gp->raw_prompt) {
-        /* ── GGUF path: apply the model's own Jinja2 chat template ─────────
-         * The template itself renders BOS ({{ bos_token }}) so we must NOT
-         * prepend it manually — that would produce a double-BOS. */
-        const char *bos_str = (tok->bos_token_id >= 0 && tok->bos_token_id < tok->vocab_size)
-                                  ? tok->vocab[tok->bos_token_id]
-                                  : "";
-        const char *eos_str = (tok->eos_token_id >= 0 && tok->eos_token_id < tok->vocab_size)
-                                  ? tok->vocab[tok->eos_token_id]
-                                  : "";
-
-        /* Conversation to render: the caller's history when supplied,
-         * else the single prompt as one user turn; an optional system
-         * prompt goes first unless the history already opens with one. */
-        const char *roles[GEN_MAX_TEMPLATE_MESSAGES];
-        const char *contents[GEN_MAX_TEMPLATE_MESSAGES];
-        int n_msg = 0;
-        int history_has_system =
-            gp->n_messages > 0 && gp->roles && gp->roles[0] && strcmp(gp->roles[0], "system") == 0;
-        if (gp->system_prompt && gp->system_prompt[0] && !history_has_system) {
-            roles[n_msg]      = "system";
-            contents[n_msg++] = gp->system_prompt;
-        }
-        if (gp->n_messages > 0 && gp->roles && gp->contents) {
-            for (int i = 0; i < gp->n_messages && n_msg < GEN_MAX_TEMPLATE_MESSAGES; i++) {
-                roles[n_msg]      = gp->roles[i] ? gp->roles[i] : "user";
-                contents[n_msg++] = gp->contents[i] ? gp->contents[i] : "";
-            }
-        } else {
-            roles[n_msg]      = "user";
-            contents[n_msg++] = prompt;
-        }
-
-        /* Message text is content, never chat markup: a "<|im_end|>" typed by
-         * a user (or pasted from a document) must not close their turn
-         * (2026-10-22, prompt-injection defence; see tokenizer.h). */
-        char *safe[GEN_MAX_TEMPLATE_MESSAGES];
-        int n_safe = 0;
-        for (; n_safe < n_msg; n_safe++) {
-            safe[n_safe] = tokenizer_neutralize_control(tok, contents[n_safe]);
-            if (!safe[n_safe]) break;
-            contents[n_safe] = safe[n_safe];
-        }
-        int64_t t_step  = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-        char *formatted = n_safe < n_msg ? NULL
-                                         : chat_template_apply(chat_tmpl, roles, contents, n_msg,
-                                                               bos_str, eos_str,
-                                                               /*add_generation_prompt=*/1);
-        for (int i = 0; i < n_safe; i++) free(safe[i]);
-        if (t_step) {
-            tn_step_timing_add(TN_STEP_2_BOS_INJECTION, tn_step_timing_now_ns() - t_step);
-        }
-        if (!formatted) return -1;
-
-        if (g_tn_verbose) fprintf(stderr, "[DBG] formatted prompt: %s\n", formatted);
-
-        if (gp->assistant_prefix && gp->assistant_prefix[0]) {
-            size_t fl = strlen(formatted), al = strlen(gp->assistant_prefix);
-            char *joined = (char *)realloc(formatted, fl + al + 1);
-            if (!joined) {
-                free(formatted);
-                return -1;
-            }
-            memcpy(joined + fl, gp->assistant_prefix, al + 1);
-            formatted = joined;
-        }
-
-        /* A generation prompt that ends in the end-of-sequence token makes the
-         * model start a new document: generation stops at 0 tokens. */
-        if (tn_prompt_ends_with_token(formatted, eos_str)) tn_template_warn_eos_ending_once();
-
-        t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-        n_prompt =
-            tokenizer_encode(tok, formatted, strlen(formatted), g->prompt_tokens, cfg->seq_len);
-        if (t_step) {
-            tn_step_timing_add(TN_STEP_1_TOKENIZATION, tn_step_timing_now_ns() - t_step);
-        }
-        free(formatted);
-
-        if (n_prompt < 0) {
-            report_encode_failure("chat-formatted prompt", cfg->seq_len);
-            return -1;
-        }
-    } else {
-        /* ── Legacy path / --raw-prompt: raw prompt + manual BOS ─────────── */
-        /* 2026-10-19: honour tokenizer.ggml.add_bos_token — Qwen/SmolLM GGUFs
-         * say false, and llama.cpp feeds them no BOS. */
-        int bos = !tok->add_bos_token        ? -1
-                  : (cfg->bos_token_id > 0)  ? cfg->bos_token_id
-                  : (tok->bos_token_id >= 0) ? tok->bos_token_id
-                                             : -1;
-        if (bos >= 0) {
-            int64_t t_step               = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-            g->prompt_tokens[n_prompt++] = bos;
-            if (t_step) {
-                tn_step_timing_add(TN_STEP_2_BOS_INJECTION, tn_step_timing_now_ns() - t_step);
-            }
-        }
-
-        int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-        int n_encoded  = tokenizer_encode(tok, prompt, strlen(prompt), &g->prompt_tokens[n_prompt],
-                                          cfg->seq_len - n_prompt);
-        if (t_step) {
-            tn_step_timing_add(TN_STEP_1_TOKENIZATION, tn_step_timing_now_ns() - t_step);
-        }
-        if (n_encoded < 0) {
-            report_encode_failure("prompt", cfg->seq_len);
-            return -1;
-        }
-        n_prompt += n_encoded;
-        if (gp->assistant_prefix && gp->assistant_prefix[0]) {
-            int n_more = tokenizer_encode(tok, gp->assistant_prefix, strlen(gp->assistant_prefix),
-                                          &g->prompt_tokens[n_prompt], cfg->seq_len - n_prompt);
-            if (n_more < 0) {
-                report_encode_failure("assistant prefix", cfg->seq_len);
-                return -1;
-            }
-            n_prompt += n_more;
-        }
-    }
-    g->n_prompt = n_prompt;
-    return 0;
+    TN_LOG_WRN("warn",
+               "[warn] no tokens were generated: the first token the model chose was %d (\"%s\"), "
+               "a stop token; the prompt ended with token %d (\"%s\"). For a chat model this "
+               "usually means a chat-template problem: check the template "
+               "(--chat-template-file replaces it) or run with --verbose.\n",
+               first_token, token_text(tok, first_token), last_prompt_token,
+               token_text(tok, last_prompt_token));
 }
 
 int gen_session_begin(GenSession *g, const Config *cfg, const TransformerWeights *w, RunState *s,
                       const MoEConfig *mc, Tokenizer *tok, ThreadPool *tp, const char *prompt,
                       const GenerationParams *gp, TokenCallback callback, void *userdata) {
     if (gen_session_prepare(g, cfg, w, mc, tok, tp, prompt, gp, callback, userdata) != 0) return -1;
-    return gen_session_start(g, s, g->gp->prefix_cache, g->gp->prompt_store);
+    return gen_session_start(g, s, g->req.gp->prefix_cache, g->req.gp->prompt_store);
 }
 
 int gen_session_prepare(GenSession *g, const Config *cfg, const TransformerWeights *w,
@@ -212,23 +61,23 @@ int gen_session_prepare(GenSession *g, const Config *cfg, const TransformerWeigh
     memset(g, 0, sizeof(*g));
     if (!prompt) prompt = "";
     if (!gp) {
-        gen_params_default(&g->gp_default);
-        gp = &g->gp_default;
+        gen_params_default(&g->req.gp_default);
+        gp = &g->req.gp_default;
     }
-    g->cfg        = cfg;
-    g->w          = w;
-    g->mc         = mc;
-    g->tok        = tok;
-    g->tp         = tp;
-    g->gp         = gp;
-    g->callback   = callback;
-    g->userdata   = userdata;
-    g->max_tokens = gp->max_tokens;
-    g->json_mode  = gp->json_mode;
-    g->ss         = &gp->sampler;
-    g->wm         = gp->watermark.enabled ? &gp->watermark : NULL;
-    g->finish     = GEN_FINISH_LENGTH;
-    g->done       = 1; /* until begin succeeds */
+    g->model.cfg       = cfg;
+    g->model.w         = w;
+    g->model.mc        = mc;
+    g->model.tok       = tok;
+    g->model.tp        = tp;
+    g->req.gp          = gp;
+    g->req.callback    = callback;
+    g->req.userdata    = userdata;
+    g->req.max_tokens  = gp->max_tokens;
+    g->req.json_mode   = gp->json_mode;
+    g->req.ss          = &gp->sampler;
+    g->req.wm          = gp->watermark.enabled ? &gp->watermark : NULL;
+    g->progress.finish = GEN_FINISH_LENGTH;
+    g->progress.done   = 1; /* until begin succeeds */
     tn_step_timing_reset();
     if (gp->stats) {
         gp->stats->prompt_tokens     = 0;
@@ -240,11 +89,11 @@ int gen_session_prepare(GenSession *g, const Config *cfg, const TransformerWeigh
         gp->stats->hit_eos           = false;
     }
 
-    stop_matcher_init(&g->stop, gp->stop, gp->n_stop);
+    stop_matcher_init(&g->sampling.stop, gp->stop, gp->n_stop);
 
     /* Phase 20: grammar-constrained decoding state (only touched when
      * json_mode is set). Fresh per call -- constrains this one generation. */
-    if (g->json_mode) fsm_init(&g->json_fsm);
+    if (g->req.json_mode) fsm_init(&g->sampling.json_fsm);
 
     /* Reset expert hit tracking for MoE models */
     if (mc && mc->is_moe) moe_expert_tracking_reset(cfg->n_layers, mc->num_experts);
@@ -253,291 +102,316 @@ int gen_session_prepare(GenSession *g, const Config *cfg, const TransformerWeigh
      * than letting a required buffer come back NULL. */
     size_t tok_bytes;
     if (tn_size_mul_overflow((size_t)cfg->seq_len + 1, sizeof(int), &tok_bytes)) return -1;
-    g->prompt_tokens = (int *)tn_safe_malloc(tok_bytes, "generate prompt tokens");
+    g->prompt.tokens = (int *)tn_safe_malloc(tok_bytes, "generate prompt tokens");
 
-    if (build_prompt(g, prompt) != 0) return -1;
-    int n_prompt = g->n_prompt;
+    if (gen_session_build_prompt(g, prompt) != 0) return -1;
+    int n_prompt = g->prompt.n_tokens;
 
     /* Debug: print prompt token IDs when verbose */
     if (g_tn_verbose) {
-        fprintf(stderr, "[DBG] n_prompt=%d  tokens:", n_prompt);
-        for (int i = 0; i < n_prompt && i < 32; i++) fprintf(stderr, " %d", g->prompt_tokens[i]);
-        fprintf(stderr, "\n");
+        char ids[32 * 12 + 1];
+        size_t used = 0;
+        ids[0]      = '\0';
+        for (int i = 0; i < n_prompt && i < 32; i++)
+            used += (size_t)snprintf(ids + used, sizeof(ids) - used, " %d", g->prompt.tokens[i]);
+        TN_LOG_DBG("gen_session", "[DBG] n_prompt=%d  tokens:%s\n", n_prompt, ids);
     }
 
     /* RNG: explicit seed (--seed / API "seed") for reproducible sampling,
      * else time-based. */
-    rng_seed(&g->rng_state,
+    rng_seed(&g->sampling.rng_state,
              gp->seed >= 0 ? (unsigned long long)gp->seed : (unsigned long long)time(NULL));
 
     /* Phase 30: raw-logit copy for log-probabilities of sampled tokens. */
-    g->raw_logits = (gp->compute_logprobs && gp->stats)
-                        ? (float *)malloc((size_t)cfg->vocab_size * sizeof(float))
-                        : NULL;
+    g->sampling.raw_logits = (gp->compute_logprobs && gp->stats)
+                                 ? (float *)malloc((size_t)cfg->vocab_size * sizeof(float))
+                                 : NULL;
     /* Generated-token history for repetition/presence/frequency penalties. */
-    if (sampler_penalties_active(g->ss) && g->max_tokens > 0)
-        g->gen_history = (int *)malloc((size_t)g->max_tokens * sizeof(int));
+    if (sampler_penalties_active(g->req.ss) && g->req.max_tokens > 0)
+        g->sampling.gen_history = (int *)malloc((size_t)g->req.max_tokens * sizeof(int));
 
     return 0;
 }
 
+/* Snapshots copy F32 KV rows, so with --kv-type i8 only the live prefix cache applies; they are
+ * also off under --remote-layers (a snapshot restores only the local layers' KV, while each
+ * worker still holds the KV of the last prompt it saw). */
+static PromptStore *snapshot_store_for(PrefixCache *pcache, const MoEConfig *mc, const RunState *s,
+                                       PromptStore *pstore) {
+    return (pcache && prompt_store_supported(mc) && s->key_cache && !s->dist) ? pstore : NULL;
+}
+
 int gen_session_start(GenSession *g, RunState *s, PrefixCache *pcache, PromptStore *pstore) {
-    if (!g->prompt_tokens || g->started) return -1;
-    const Config *cfg          = g->cfg;
-    const MoEConfig *mc        = g->mc;
-    const GenerationParams *gp = g->gp;
-    int n_prompt               = g->n_prompt;
-    g->s                       = s;
+    GenPrompt *pr   = &g->prompt;
+    GenProgress *pg = &g->progress;
+    if (!pr->tokens || pg->started) return -1;
+    const Config *cfg          = g->model.cfg;
+    const MoEConfig *mc        = g->model.mc;
+    const GenerationParams *gp = g->req.gp;
+    int n_prompt               = pr->n_tokens;
+    g->model.s                 = s;
 
     /* pos_offset: skip over any vision tokens already pre-filled in the KV cache */
-    g->pos_offset = s->current_pos;
+    pr->pos_offset = s->current_pos;
 
     /* Initialize Sliding Window (pins the entire prompt) */
-    sw_init(&s->sw, s->max_seq_len, n_prompt + g->pos_offset);
+    sw_init(&s->sw, s->max_seq_len, n_prompt + pr->pos_offset);
 
     /* Commit the KV rows this call can write, up front (no-op once resident). */
-    run_state_kv_reserve(s, cfg,
-                         g->pos_offset + n_prompt + (g->max_tokens > 0 ? g->max_tokens : 0));
+    run_state_kv_reserve(
+        s, cfg, pr->pos_offset + n_prompt + (g->req.max_tokens > 0 ? g->req.max_tokens : 0));
 
     /* Phase 21.5: skip prompt positions whose K/V are already cached from a
      * previous call with the same leading tokens. The last prompt token is
      * always recomputed — its logits seed the first sample. Not valid after
      * a vision prefill (pos_offset > 0) or for recurrent linear-attention
      * layers, whose state cannot be rewound to a partial prefix. */
-    g->pcache = pcache;
-    /* Snapshots copy F32 KV rows; with --kv-type i8 only the live prefix cache applies.
-     * 2026-10-18: also off under --remote-layers — a snapshot restores only the local
-     * layers' KV, while each worker still holds the KV of the last prompt it saw. */
-    g->pstore = (g->pcache && prompt_store_supported(mc) && s->key_cache && !dist_plan_active())
-                    ? pstore
-                    : NULL;
-    int start_step    = 0;
-    g->cache_eligible = g->pcache && g->pos_offset == 0 && !moe_is_recurrent(mc);
-    if (g->pcache) {
-        if (g->cache_eligible && n_prompt > 1) {
-            int lcp = prefix_cache_match(g->pcache, g->prompt_tokens, n_prompt);
+    pr->pcache         = pcache;
+    pr->pstore         = snapshot_store_for(pcache, mc, s, pstore);
+    int start_step     = 0;
+    pr->cache_eligible = pr->pcache && pr->pos_offset == 0 && !moe_is_recurrent(mc);
+    if (pr->pcache) {
+        if (pr->cache_eligible && n_prompt > 1) {
+            int lcp = prefix_cache_match(pr->pcache, pr->tokens, n_prompt);
             /* Phase 26: a stored snapshot may share more than the live KV. */
-            if (g->pstore)
-                lcp = prompt_store_restore(g->pstore, cfg, s, g->pcache, g->prompt_tokens, n_prompt,
-                                           lcp);
+            if (pr->pstore)
+                lcp =
+                    prompt_store_restore(pr->pstore, cfg, s, pr->pcache, pr->tokens, n_prompt, lcp);
             start_step = lcp < n_prompt - 1 ? lcp : n_prompt - 1;
-            prefix_cache_truncate(g->pcache, start_step);
+            prefix_cache_truncate(pr->pcache, start_step);
         } else {
-            prefix_cache_reset(g->pcache);
+            prefix_cache_reset(pr->pcache);
         }
     }
     if (gp->stats) gp->stats->cached_tokens = start_step;
 
     /* prev_token at the start of step k is the token being forwarded at k
      * (for k >= 1) — see the end-of-step update in gen_session_consume. */
-    g->step       = start_step;
-    g->prev_token = start_step > 0 ? g->prompt_tokens[start_step] : -1;
-    g->next       = (start_step < n_prompt - 1) ? g->prompt_tokens[start_step + 1] : 0;
+    pg->step       = start_step;
+    pg->prev_token = start_step > 0 ? pr->tokens[start_step] : -1;
+    pg->next       = (start_step < n_prompt - 1) ? pr->tokens[start_step + 1] : 0;
 
     /* max_tokens generation-eligible steps: the first generated token comes
      * "free" from the last prompt-processing step (step == n_prompt - 1), so
      * only max_tokens - 1 MORE steps are needed after that -- total_steps =
      * n_prompt + max_tokens - 1 (2026-09-24 off-by-one, see mistakes.md). */
-    g->total_steps = n_prompt + g->max_tokens - 1;
-    g->started     = 1;
-    g->done        = !(g->step < g->total_steps && g->step + g->pos_offset < cfg->seq_len);
+    pg->total_steps = n_prompt + g->req.max_tokens - 1;
+    pg->started     = 1;
+    pg->done        = !(pg->step < pg->total_steps && pg->step + pr->pos_offset < cfg->seq_len);
     return 0;
 }
 
 int gen_session_input(const GenSession *g, int *token, int *pos) {
-    if (g->done) return 0;
-    *token = (g->step < g->n_prompt) ? g->prompt_tokens[g->step] : g->next;
-    *pos   = g->step + g->pos_offset;
+    if (g->progress.done) return 0;
+    *token = (g->progress.step < g->prompt.n_tokens) ? g->prompt.tokens[g->progress.step]
+                                                     : g->progress.next;
+    *pos   = g->progress.step + g->prompt.pos_offset;
     return 1;
 }
 
 int gen_session_input_rows(const GenSession *g, int *tokens, int *pos, int max_rows) {
-    if (g->done || max_rows <= 0) return 0;
+    if (g->progress.done || max_rows <= 0) return 0;
     /* Prompt rows up to and including the last one (whose logits seed the
      * first sample) can go in one pass; after that, one row per step. */
     int n = 1;
-    if (g->step < g->n_prompt - 1) {
-        n        = g->n_prompt - g->step;
-        int left = g->total_steps - g->step;
-        int room = g->cfg->seq_len - (g->step + g->pos_offset);
+    if (g->progress.step < g->prompt.n_tokens - 1) {
+        n        = g->prompt.n_tokens - g->progress.step;
+        int left = g->progress.total_steps - g->progress.step;
+        int room = g->model.cfg->seq_len - (g->progress.step + g->prompt.pos_offset);
         if (n > left) n = left;
         if (n > room) n = room;
         if (n > max_rows) n = max_rows;
         if (n < 1) n = 1;
     }
     for (int k = 0; k < n; k++) {
-        int st    = g->step + k;
-        tokens[k] = (st < g->n_prompt) ? g->prompt_tokens[st] : g->next;
-        pos[k]    = st + g->pos_offset;
+        int st    = g->progress.step + k;
+        tokens[k] = (st < g->prompt.n_tokens) ? g->prompt.tokens[st] : g->progress.next;
+        pos[k]    = st + g->prompt.pos_offset;
     }
     return n;
 }
 
 int gen_session_needs_logits(const GenSession *g) {
-    return !g->done && g->step >= g->n_prompt - 1;
+    return !g->progress.done && g->progress.step >= g->prompt.n_tokens - 1;
 }
 
-int gen_session_consume(GenSession *g, float *logits) {
-    if (g->done) return 0;
-    const Config *cfg          = g->cfg;
-    const GenerationParams *gp = g->gp;
-    Tokenizer *tok             = g->tok;
-    int step = g->step, n_prompt = g->n_prompt;
-    int abs_pos = step + g->pos_offset;
-    int token   = (step < n_prompt) ? g->prompt_tokens[step] : g->next;
+/* ignore_eos: never sample an end-of-sequence token (llama.cpp's --ignore-eos), so runs last
+ * exactly max_tokens. */
+static void mask_eos_logits(const GenSession *g, float *logits) {
+    const Config *cfg    = g->model.cfg;
+    const Tokenizer *tok = g->model.tok;
+    if (cfg->eos_token_id >= 0 && cfg->eos_token_id < cfg->vocab_size)
+        logits[cfg->eos_token_id] = -INFINITY;
+    for (int ei = 0; ei < tok->n_eos; ei++)
+        if (tok->eos_list[ei] >= 0 && tok->eos_list[ei] < cfg->vocab_size)
+            logits[tok->eos_list[ei]] = -INFINITY;
+    if (g->req.chat_stops)
+        for (int vi = 0; vi < cfg->vocab_size && vi < tok->vocab_size; vi++)
+            if (g->req.chat_stops[vi]) logits[vi] = -INFINITY;
+}
 
-    if ((!logits && step >= n_prompt - 1) || (dist_plan_active() && dist_plan_active()->failed)) {
-        g->finish = GEN_FINISH_ERROR; /* a remote layer range is unreachable */
-        g->done   = 1;
-        return 0;
+/* Full prompt processed: sample the next token from the logits. */
+static void sample_next(GenSession *g, float *logits, int step) {
+    GenSampling *sm   = &g->sampling;
+    const Config *cfg = g->model.cfg;
+    int64_t t_step    = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    if (sm->raw_logits) {
+        memcpy(sm->raw_logits, logits, (size_t)cfg->vocab_size * sizeof(float));
+        sm->step_lse = logprob_logsumexp(sm->raw_logits, cfg->vocab_size);
     }
-    if (g->pcache && g->pos_offset == 0) prefix_cache_set(g->pcache, abs_pos, token);
-
-    /* Sampling */
-    if (step < n_prompt - 1) {
-        g->next = g->prompt_tokens[step + 1];
+    if (g->req.gp->ignore_eos) mask_eos_logits(g, logits);
+    if (g->req.json_mode) {
+        g->progress.next = sample_constrained_chain(
+            logits, cfg->vocab_size, &sm->json_fsm, g->model.tok, g->progress.prev_token, g->req.ss,
+            sm->gen_history, sm->n_history, g->req.wm, &sm->rng_state);
     } else {
-        /* Full prompt processed, sample from logits */
-        int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-        if (g->raw_logits) {
-            memcpy(g->raw_logits, logits, (size_t)cfg->vocab_size * sizeof(float));
-            g->step_lse = logprob_logsumexp(g->raw_logits, cfg->vocab_size);
-        }
-        /* ignore_eos: never sample an end-of-sequence token (llama.cpp's
-         * --ignore-eos), so runs last exactly max_tokens. */
-        if (gp->ignore_eos) {
-            if (cfg->eos_token_id >= 0 && cfg->eos_token_id < cfg->vocab_size)
-                logits[cfg->eos_token_id] = -INFINITY;
-            for (int ei = 0; ei < tok->n_eos; ei++)
-                if (tok->eos_list[ei] >= 0 && tok->eos_list[ei] < cfg->vocab_size)
-                    logits[tok->eos_list[ei]] = -INFINITY;
-            if (g->chat_stops)
-                for (int vi = 0; vi < cfg->vocab_size && vi < tok->vocab_size; vi++)
-                    if (g->chat_stops[vi]) logits[vi] = -INFINITY;
-        }
-        if (g->json_mode) {
-            g->next =
-                sample_constrained_chain(logits, cfg->vocab_size, &g->json_fsm, tok, g->prev_token,
-                                         g->ss, g->gen_history, g->n_history, g->wm, &g->rng_state);
-        } else {
-            g->next = sampler_chain_sample(logits, cfg->vocab_size, g->ss, g->gen_history,
-                                           g->n_history, g->wm, g->prev_token, &g->rng_state);
-        }
-        if (t_step) {
-            tn_step_timing_add(TN_STEP_20_GREEDY_SAMPLING, tn_step_timing_now_ns() - t_step);
-        }
-        if (g_tn_verbose) {
-            /* Print top-5 logit values to diagnose garbage output */
-            float top5v[5] = {-1e30f, -1e30f, -1e30f, -1e30f, -1e30f};
-            int top5i[5]   = {0, 0, 0, 0, 0};
-            for (int i = 0; i < cfg->vocab_size; i++) {
-                if (logits[i] > top5v[4]) {
-                    top5v[4] = logits[i];
-                    top5i[4] = i;
-                    for (int j = 3; j >= 0 && top5v[j] < top5v[j + 1]; j--) {
-                        float tv     = top5v[j];
-                        top5v[j]     = top5v[j + 1];
-                        top5v[j + 1] = tv;
-                        int ti       = top5i[j];
-                        top5i[j]     = top5i[j + 1];
-                        top5i[j + 1] = ti;
-                    }
-                }
-            }
-            fprintf(
-                stderr,
-                "[DBG] step=%d sampled=%d  top5:[%d(%.3f) %d(%.3f) %d(%.3f) %d(%.3f) %d(%.3f)]\n",
-                step, g->next, top5i[0], top5v[0], top5i[1], top5v[1], top5i[2], top5v[2], top5i[3],
-                top5v[3], top5i[4], top5v[4]);
-        }
+        g->progress.next =
+            sampler_chain_sample(logits, cfg->vocab_size, g->req.ss, sm->gen_history, sm->n_history,
+                                 g->req.wm, g->progress.prev_token, &sm->rng_state);
     }
+    if (t_step) tn_step_timing_add(TN_STEP_20_GREEDY_SAMPLING, tn_step_timing_now_ns() - t_step);
+    if (g_tn_verbose) gen_session_log_top5(step, g->progress.next, logits, cfg->vocab_size);
+}
 
-    /* EOS check first — do NOT print the EOS token itself. All EOS IDs come
-     * from cfg (GGUF loader), tok->eos_list and this session's chat stops. */
-    if (step >= n_prompt - 1) {
-        int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-        int is_eos     = (cfg->eos_token_id > 0 && g->next == cfg->eos_token_id) ||
-                     tokenizer_is_eog(tok, g->next, g->chat_stops);
-        if (t_step) {
-            tn_step_timing_add(TN_STEP_21_EOS_CHECK, tn_step_timing_now_ns() - t_step);
-        }
-        if (is_eos) {
-            g->finish = GEN_FINISH_STOP;
-            if (g->tokens_generated == 0 && n_prompt > 0) {
-                g->empty_stop        = 1;
-                g->first_stop_token  = g->next;
-                g->last_prompt_token = g->prompt_tokens[n_prompt - 1];
-            }
-            if (gp->stats) gp->stats->hit_eos = true;
-            g->done = 1;
-            return 0;
-        }
-        /* Non-EOS token: decode and deliver to callback */
-        if (g->tokens_generated == 0) g->gen_start_us = timer_now_us();
-        const char *piece  = tokenizer_decode(tok, g->prev_token, g->next);
-        int stop_requested = 0;
-        if (piece) stop_requested = stop_matcher_feed(&g->stop, piece, g->callback, g->userdata);
-        if (g->gen_history && g->n_history < g->max_tokens)
-            g->gen_history[g->n_history++] = g->next;
-        if (g->raw_logits) g->sum_logprob += (double)g->raw_logits[g->next] - g->step_lse;
-        g->tokens_generated++;
-        if (stop_requested) {
-            g->finish = g->stop.stopped ? GEN_FINISH_STOP : GEN_FINISH_CANCELLED;
-            g->done   = 1;
-            return 0;
-        }
+/* The sampled token ends the turn: nothing is printed for it, and a first-token stop is recorded
+ * for the empty-generation warning. */
+static void finish_on_eos(GenSession *g) {
+    g->progress.finish = GEN_FINISH_STOP;
+    if (g->progress.tokens_generated == 0 && g->prompt.n_tokens > 0) {
+        g->progress.empty_stop        = 1;
+        g->progress.first_stop_token  = g->progress.next;
+        g->progress.last_prompt_token = g->prompt.tokens[g->prompt.n_tokens - 1];
     }
+    if (g->req.gp->stats) g->req.gp->stats->hit_eos = true;
+    g->progress.done = 1;
+}
 
-    g->prev_token = g->next;
-    if (step < n_prompt - 1) g->next = g->prompt_tokens[step + 1];
-    g->step = step + 1;
-    if (!(g->step < g->total_steps && g->step + g->pos_offset < cfg->seq_len)) {
-        g->done = 1;
-        return 0;
-    }
+/* EOS check first — do NOT print the EOS token itself. All EOS IDs come from cfg (GGUF loader),
+ * tok->eos_list and this session's chat stops. */
+static int next_is_eos(const GenSession *g) {
+    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    int is_eos =
+        (g->model.cfg->eos_token_id > 0 && g->progress.next == g->model.cfg->eos_token_id) ||
+        tokenizer_is_eog(g->model.tok, g->progress.next, g->req.chat_stops);
+    if (t_step) tn_step_timing_add(TN_STEP_21_EOS_CHECK, tn_step_timing_now_ns() - t_step);
+    return is_eos;
+}
+
+/* Non-EOS token: decode, deliver to the callback and record it. Returns 1 when the generation
+ * must stop (a stop sequence matched, or the callback cancelled). */
+static int deliver_token(GenSession *g) {
+    GenSampling *sm = &g->sampling;
+    if (g->progress.tokens_generated == 0) g->progress.gen_start_us = timer_now_us();
+    const char *piece  = tokenizer_decode(g->model.tok, g->progress.prev_token, g->progress.next);
+    int stop_requested = 0;
+    if (piece)
+        stop_requested = stop_matcher_feed(&sm->stop, piece, g->req.callback, g->req.userdata);
+    if (sm->gen_history && sm->n_history < g->req.max_tokens)
+        sm->gen_history[sm->n_history++] = g->progress.next;
+    if (sm->raw_logits) sm->sum_logprob += (double)sm->raw_logits[g->progress.next] - sm->step_lse;
+    g->progress.tokens_generated++;
+    if (!stop_requested) return 0;
+    g->progress.finish = sm->stop.stopped ? GEN_FINISH_STOP : GEN_FINISH_CANCELLED;
+    g->progress.done   = 1;
     return 1;
 }
 
-void gen_session_end(GenSession *g) {
-    const GenerationParams *gp = g->gp;
-    if (g->started) {
-        stop_matcher_flush(&g->stop, g->callback, g->userdata);
-        if (g->pstore && g->cache_eligible) prompt_store_save(g->pstore, g->cfg, g->s, g->pcache);
+/* A step cannot run: no logits where the next token is sampled, or a remote layer range is
+ * unreachable. Ends the generation with an error. */
+static int step_failed(GenSession *g, const float *logits, int step) {
+    int no_logits = !logits && step >= g->prompt.n_tokens - 1;
+    if (!no_logits && !(g->model.s->dist && g->model.s->dist->failed)) return 0;
+    g->progress.finish = GEN_FINISH_ERROR; /* a remote layer range is unreachable */
+    g->progress.done   = 1;
+    return 1;
+}
+
+/* Moves to the next step. Returns 1 when the generation goes on, 0 when it is done (out of steps
+ * or out of context). */
+static int advance_step(GenSession *g, int step) {
+    int n_prompt           = g->prompt.n_tokens;
+    g->progress.prev_token = g->progress.next;
+    if (step < n_prompt - 1) g->progress.next = g->prompt.tokens[step + 1];
+    g->progress.step = step + 1;
+    int more         = g->progress.step < g->progress.total_steps &&
+               g->progress.step + g->prompt.pos_offset < g->model.cfg->seq_len;
+    if (!more) g->progress.done = 1;
+    return more;
+}
+
+int gen_session_consume(GenSession *g, float *logits) {
+    if (g->progress.done) return 0;
+    int step = g->progress.step, n_prompt = g->prompt.n_tokens;
+    int abs_pos = step + g->prompt.pos_offset;
+    int token   = (step < n_prompt) ? g->prompt.tokens[step] : g->progress.next;
+
+    if (step_failed(g, logits, step)) return 0;
+    if (g->prompt.pcache && g->prompt.pos_offset == 0)
+        prefix_cache_set(g->prompt.pcache, abs_pos, token);
+
+    if (step < n_prompt - 1) {
+        g->progress.next = g->prompt.tokens[step + 1];
+    } else {
+        sample_next(g, logits, step);
+        if (next_is_eos(g)) {
+            finish_on_eos(g);
+            return 0;
+        }
+        if (deliver_token(g)) return 0;
     }
-    stop_matcher_free(&g->stop);
-    free(g->gen_history);
-    free(g->raw_logits);
-    free(g->prompt_tokens);
-    free(g->chat_stops);
-    g->gen_history   = NULL;
-    g->raw_logits    = NULL;
-    g->prompt_tokens = NULL;
-    g->chat_stops    = NULL;
-    if (!g->started) return;
+    return advance_step(g, step);
+}
+
+/* Frees what the session allocated (safe to call twice). */
+static void release_buffers(GenSession *g) {
+    stop_matcher_free(&g->sampling.stop);
+    free(g->sampling.gen_history);
+    free(g->sampling.raw_logits);
+    free(g->prompt.tokens);
+    free(g->req.chat_stops);
+    g->sampling.gen_history = NULL;
+    g->sampling.raw_logits  = NULL;
+    g->prompt.tokens        = NULL;
+    g->req.chat_stops       = NULL;
+}
+
+void gen_session_end(GenSession *g) {
+    const GenerationParams *gp = g->req.gp;
+    if (g->progress.started) {
+        stop_matcher_flush(&g->sampling.stop, g->req.callback, g->req.userdata);
+        if (g->prompt.pstore && g->prompt.cache_eligible)
+            prompt_store_save(g->prompt.pstore, g->model.cfg, g->model.s, g->prompt.pcache);
+    }
+    release_buffers(g);
+    if (!g->progress.started) return;
 
     /* 0 tokens in chat mode is almost always a chat-template problem, and the
      * API answer is an empty 200: say what happened (same style as
-     * report_encode_failure). */
-    if (g->empty_stop && g->tokens_generated == 0 && !(gp && gp->raw_prompt))
-        report_empty_generation(g->tok, g->first_stop_token, g->last_prompt_token);
+     * gen_prompt.c's report_encode_failure). */
+    if (g->progress.empty_stop && g->progress.tokens_generated == 0 && !(gp && gp->raw_prompt))
+        report_empty_generation(g->model.tok, g->progress.first_stop_token,
+                                g->progress.last_prompt_token);
 
     /* Report throughput to stderr (does not interfere with callback output) */
     double tok_per_sec = 0.0;
-    if (g->tokens_generated > 1 && g->gen_start_us > 0) {
+    if (g->progress.tokens_generated > 1 && g->progress.gen_start_us > 0) {
         int64_t end_us = timer_now_us();
-        tok_per_sec    = timer_tokens_per_sec(g->gen_start_us, end_us, g->tokens_generated);
-        fprintf(stderr, "\n[gen] %.2f tok/s (%d tokens)\n", tok_per_sec, g->tokens_generated);
+        tok_per_sec =
+            timer_tokens_per_sec(g->progress.gen_start_us, end_us, g->progress.tokens_generated);
+        TN_LOG_INF("gen", "\n[gen] %.2f tok/s (%d tokens)\n", tok_per_sec,
+                   g->progress.tokens_generated);
     }
     if (gp && gp->stats) {
-        gp->stats->prompt_tokens     = g->n_prompt;
-        gp->stats->completion_tokens = g->tokens_generated;
-        gp->stats->finish_reason     = g->finish;
+        gp->stats->prompt_tokens     = g->prompt.n_tokens;
+        gp->stats->completion_tokens = g->progress.tokens_generated;
+        gp->stats->finish_reason     = g->progress.finish;
         gp->stats->tokens_per_sec    = tok_per_sec;
-        gp->stats->sum_logprob       = g->sum_logprob;
+        gp->stats->sum_logprob       = g->sampling.sum_logprob;
     }
 
     /* Print expert utilisation for MoE models */
-    if (g->mc && g->mc->is_moe) moe_expert_tracking_print(g->cfg->n_layers, g->mc->num_experts);
+    if (g->model.mc && g->model.mc->is_moe)
+        moe_expert_tracking_print(g->model.cfg->n_layers, g->model.mc->num_experts);
     tn_step_timing_report(stderr);
-    g->started = 0;
+    g->progress.started = 0;
 }

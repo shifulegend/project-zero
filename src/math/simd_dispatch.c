@@ -1,15 +1,17 @@
 #include "math/simd_dispatch.h"
-#include "math/cpu_features.h"
-#include "math/ternary_matmul.h"
-#include "math/ternary_matmul_packed.h"
-#include "math/quantize_i8.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "core/cpu_features.h"
 #include "core/unpack.h"
+#include "math/elementwise.h"
+#include "math/quantize_i8.h"
 #include "math/rmsnorm.h"
 #include "math/softmax.h"
-#include "math/elementwise.h"
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
+#include "math/ternary_matmul.h"
+#include "math/ternary_matmul_packed.h"
 
 /*
  * Portable distribution build (`make dist`): this TU is compiled at a
@@ -121,27 +123,31 @@ extern void ternary_matmul_packed_neon(float *out, const float *x, const tn_u8 *
 #endif
 
 /* ── Global dispatch table ─────────────────────────────────────────────────
- * Initialized to NULL; call tn_simd_init() once at startup before any math.
+ * Every pointer starts on its portable scalar implementation, so a caller that forgets
+ * tn_simd_init() (a test, an embedder) gets slow but correct math instead of a NULL call. The
+ * exceptions are the three int8-activation pointers at the end: they are bound only for the
+ * AVX-512 VNNI tier and gated by tn_simd_ternary_preq(), so NULL means "not available".
+ * Call tn_simd_init() once at startup to select the fastest tier.
  */
-tn_matmul_fn tn_ternary_matmul               = NULL;
-tn_matmul_packed_fn tn_ternary_matmul_packed = NULL;
-tn_unpack_fn tn_unpack_block                 = NULL;
-tn_rmsnorm_fn tn_rmsnorm                     = NULL;
-tn_softmax_fn tn_softmax                     = NULL;
-tn_vec_add_fn tn_vec_add                     = NULL;
-tn_vec_mul_fn tn_vec_mul                     = NULL;
-tn_vec_scale_fn tn_vec_scale                 = NULL;
-tn_silu_fn tn_silu                           = NULL;
-tn_relu2_fn tn_relu2                         = NULL;
-tn_vec_dot_fn tn_vec_dot                     = NULL;
+tn_matmul_fn tn_ternary_matmul               = ternary_matmul_branchless;
+tn_matmul_packed_fn tn_ternary_matmul_packed = ternary_matmul_packed;
+tn_unpack_fn tn_unpack_block                 = unpack_ternary_block;
+tn_rmsnorm_fn tn_rmsnorm                     = rmsnorm;
+tn_softmax_fn tn_softmax                     = softmax;
+tn_vec_add_fn tn_vec_add                     = vec_add;
+tn_vec_mul_fn tn_vec_mul                     = vec_mul;
+tn_vec_scale_fn tn_vec_scale                 = vec_scale;
+tn_silu_fn tn_silu                           = silu;
+tn_relu2_fn tn_relu2                         = relu2_scalar;
+tn_vec_dot_fn tn_vec_dot                     = vec_dot;
 tn_kvq4_dot_fn tn_kvq4_dot                   = kvq4_dot_scalar;
 tn_kvq4_axpy_fn tn_kvq4_axpy                 = kvq4_axpy_scalar;
-tn_vec_saxpy_fn tn_vec_saxpy                 = NULL;
+tn_vec_saxpy_fn tn_vec_saxpy                 = vec_saxpy;
+tn_cls_rows_fn tn_cls_i8_rows                = tn_cls_i8_rows_generic;
+tn_cls_rows_fn tn_cls_i4_rows                = tn_cls_i4_rows_generic;
 tn_quantize_i8_fn tn_quantize_act_i8         = NULL;
 tn_sum_i8_fn tn_sum_act_i8                   = NULL;
 tn_matmul_preq_fn tn_ternary_matmul_preq     = NULL;
-tn_cls_rows_fn tn_cls_i8_rows                = tn_cls_i8_rows_generic;
-tn_cls_rows_fn tn_cls_i4_rows                = tn_cls_i4_rows_generic;
 
 /* Human-readable name of the selected backend (set by tn_simd_init) */
 static const char *g_backend_name = "Scalar";
@@ -194,46 +200,22 @@ void tn_act_quant_set(TnActQuant m) {
     if (tmp) unsetenv("TN_FORCE_BACKEND");
 }
 
-const char *tn_simd_init(void) {
-    /*
-     * Runtime probe the CPU, then select the best compiled-in kernel.
-     * The probe is cached — subsequent calls to tn_simd_init are safe.
-     *
-     * TN_FORCE_BACKEND override (testing / benchmarking only):
-     *   Set this environment variable to cap the dispatch tier:
-     *     TN_FORCE_BACKEND=scalar    — scalar reference path
-     *     TN_FORCE_BACKEND=avx2      — AVX2 float32 (8-wide FMA)
-     *     TN_FORCE_BACKEND=avx512f   — AVX-512F float32 (16-wide FMA)
-     *     TN_FORCE_BACKEND=vnni      — AVX-512 VNNI int8 512-bit ZMM (default on VNNI CPUs)
-     *     TN_FORCE_BACKEND=vnni256   — VNNI-256 int8 256-bit YMM via AVX-512VNNI (no throttle)
-     * Unrecognised values are silently ignored and auto-detect proceeds.
-     */
-    /* Re-derived on every call: only the AVX-512 VNNI tier binds these. */
-    tn_quantize_act_i8     = NULL;
-    tn_sum_act_i8          = NULL;
-    tn_ternary_matmul_preq = NULL;
-    tn_cls_i8_rows         = tn_cls_i8_rows_generic;
-    tn_cls_i4_rows         = tn_cls_i4_rows_generic;
-    const char *force      = getenv("TN_FORCE_BACKEND");
-    snprintf(g_last_force, sizeof(g_last_force), "%s", force ? force : "");
-    int force_scalar  = force && strcmp(force, "scalar") == 0;
-    int force_avx2    = force && strcmp(force, "avx2") == 0;
-    int force_avx512f = force && strcmp(force, "avx512f") == 0;
-    int force_vnni256 = force && strcmp(force, "vnni256") == 0;
-    /* force_vnni is the default; listed for clarity */
-    /* int force_vnni = force && strcmp(force, "vnni") == 0; */
-    /* Unused when the build has no SIMD tiers (e.g. CMake without -m flags). */
+/* What the tier choice depends on: the CPU, the TN_FORCE_BACKEND cap and the act-quant mode. */
+typedef struct {
+    const TnCpuFeatures *cpu;
+    int force_scalar, force_avx2, force_avx512f, force_vnni256;
+    int float_act; /* act-quant float: skip the tiers whose ternary kernel quantises to int8 */
+} SimdSel;
+
+/* Each bind_* sets its group's function pointers; the ternary ones return the backend name, or NULL
+ * when none of their tiers is available (built or runnable). */
+static void bind_vector_ops(const SimdSel *sel) {
+    const TnCpuFeatures *cpu = sel->cpu;
+    int force_scalar         = sel->force_scalar;
+    int force_avx2           = sel->force_avx2;
+    (void)cpu;
+    (void)force_scalar;
     (void)force_avx2;
-    (void)force_avx512f;
-    (void)force_vnni256;
-
-    const TnCpuFeatures *cpu = tn_cpu_features_detect();
-    /* act-quant float: the tiers whose ternary kernel quantises activations to int8
-     * (VNNI, VNNI-256, AVX-VNNI, ARM dotprod) are skipped; the next float tier runs. */
-    const int float_act = (g_act_quant == TN_ACT_FLOAT);
-    g_ternary_int8      = 0;
-    (void)float_act; /* unused when the build has no int8 tier */
-
     /* ── Utility ops: best float SIMD available ── */
 #if TN_HAS_AVX512
     if (!force_scalar && !force_avx2 && cpu->avx512f) {
@@ -280,7 +262,13 @@ const char *tn_simd_init(void) {
         tn_kvq4_axpy = kvq4_axpy_scalar;
         tn_vec_saxpy = vec_saxpy;
     }
+}
 
+static void bind_unpack(const SimdSel *sel) {
+    const TnCpuFeatures *cpu = sel->cpu;
+    int force_scalar         = sel->force_scalar;
+    (void)cpu;
+    (void)force_scalar;
     /* ── Unpack: AVX2 or scalar ── */
 #if TN_HAS_AVX2
     if (!force_scalar && cpu->avx2) {
@@ -294,99 +282,150 @@ const char *tn_simd_init(void) {
          * reference on random ternary rows; 2026-10-18 microbench, 2048x2048). */
         tn_ternary_matmul = ternary_matmul_branchless;
     }
+}
 
-    /* ── Packed matmul: VNNI tier selection ──
-     *
-     * x86 path (priority: AVX-512 VNNI > AVX-VNNI > AVX-512F > AVX2):
-     *   AVX-512 VNNI: 64 int8 MACs/cycle — biggest gain for ternary inference
-     *   AVX-VNNI:     32 int8 MACs/cycle — Alder Lake / Zen3 (no AVX-512)
-     *   AVX-512F:     16 fp32 MACs/cycle — current baseline
-     *   AVX2:          8 fp32 MACs/cycle — Haswell / Zen2
-     *
-     * ARM path (priority: dotprod > NEON fallback):
-     *   dotprod:      16 int8 MACs/cycle — signed×signed, no bias trick needed
-     *   NEON:          4 fp32 MACs/cycle — always available on ARMv8-A, no
-     *                  dotprod extension required (see
-     *                  ternary_matmul_packed_neon.c)
-     *
-     * TN_FORCE_BACKEND skips upper tiers to reach a specific backend.
-     */
+/* The int8-activation tiers run unless act-quant is float or TN_FORCE_BACKEND caps the tier lower
+ * (scalar, avx2, avx512f); vnni256 selects one of them. */
+static int int8_tiers_allowed(const SimdSel *sel) {
+    return !sel->float_act && !sel->force_scalar && !sel->force_avx2 && !sel->force_avx512f;
+}
 
 #if TN_HAS_AVX512VNNI
-    if (!float_act && !force_scalar && !force_avx2 && !force_avx512f && !force_vnni256 &&
-        cpu->avx512vnni) {
-        g_ternary_int8           = 1;
-        tn_ternary_matmul_packed = ternary_matmul_packed_vnni;
-        tn_quantize_act_i8       = quantize_row_to_i8_avx512;
-        tn_sum_act_i8            = sum_i8_avx512;
-        tn_ternary_matmul_preq   = ternary_matmul_packed_vnni_preq;
+static const char *bind_vnni_512(const SimdSel *sel) {
+    if (!int8_tiers_allowed(sel) || sel->force_vnni256 || !sel->cpu->avx512vnni) return NULL;
+    g_ternary_int8           = 1;
+    tn_ternary_matmul_packed = ternary_matmul_packed_vnni;
+    tn_quantize_act_i8       = quantize_row_to_i8_avx512;
+    tn_sum_act_i8            = sum_i8_avx512;
+    tn_ternary_matmul_preq   = ternary_matmul_packed_vnni_preq;
 #if TN_HAS_AVX512VBMI
-        /* The same kernels built with VBMI (3-instruction unpack). cpu->avx512vbmi is
-         * execution-verified under a SIGILL trap (cpu_features.c), so this is safe on a
-         * hypervisor that advertises VBMI it cannot retire. */
-        if (cpu->avx512vbmi) {
-            tn_ternary_matmul_packed = ternary_matmul_packed_vnni_vbmi;
-            tn_ternary_matmul_preq   = ternary_matmul_packed_vnni_preq_vbmi;
-        }
+    /* The same kernels built with VBMI (3-instruction unpack). cpu->avx512vbmi is
+     * execution-verified under a SIGILL trap (cpu_features.c), so this is safe on a
+     * hypervisor that advertises VBMI it cannot retire. */
+    if (sel->cpu->avx512vbmi) {
+        tn_ternary_matmul_packed = ternary_matmul_packed_vnni_vbmi;
+        tn_ternary_matmul_preq   = ternary_matmul_packed_vnni_preq_vbmi;
+    }
 #endif
-        g_backend_name = "AVX-512 VNNI";
-        return g_backend_name;
-    }
-    /* vnni256: 256-bit EVEX VNNI — same CPU, no ZMM, no frequency throttle */
-    if (!float_act && !force_scalar && !force_avx2 && !force_avx512f && force_vnni256 &&
-        cpu->avx512vnni) {
-        g_ternary_int8           = 1;
-        tn_ternary_matmul_packed = ternary_matmul_packed_vnni256;
-        g_backend_name           = "VNNI-256 (no throttle)";
-        return g_backend_name;
-    }
+    return "AVX-512 VNNI";
+}
+
+/* vnni256: 256-bit EVEX VNNI — same CPU, no ZMM, no frequency throttle */
+static const char *bind_vnni_256(const SimdSel *sel) {
+    if (!int8_tiers_allowed(sel) || !sel->force_vnni256 || !sel->cpu->avx512vnni) return NULL;
+    g_ternary_int8           = 1;
+    tn_ternary_matmul_packed = ternary_matmul_packed_vnni256;
+    return "VNNI-256 (no throttle)";
+}
 #endif
 
 #if TN_HAS_AVXVNNI
-    if (!float_act && !force_scalar && !force_avx2 && !force_avx512f && !force_vnni256 &&
-        cpu->avx_vnni) {
-        g_ternary_int8           = 1;
-        tn_ternary_matmul_packed = ternary_matmul_packed_avx_vnni;
-        g_backend_name           = "AVX-VNNI";
-        return g_backend_name;
-    }
+static const char *bind_avx_vnni(const SimdSel *sel) {
+    if (!int8_tiers_allowed(sel) || sel->force_vnni256 || !sel->cpu->avx_vnni) return NULL;
+    g_ternary_int8           = 1;
+    tn_ternary_matmul_packed = ternary_matmul_packed_avx_vnni;
+    return "AVX-VNNI";
+}
 #endif
 
+/* x86 tiers that quantise activations to int8: AVX-512 VNNI, VNNI-256, AVX-VNNI. */
+static const char *bind_packed_int8_x86(const SimdSel *sel) {
+    (void)sel;
+    const char *name = NULL;
+#if TN_HAS_AVX512VNNI
+    if (!name) name = bind_vnni_512(sel);
+    if (!name) name = bind_vnni_256(sel);
+#endif
+#if TN_HAS_AVXVNNI
+    if (!name) name = bind_avx_vnni(sel);
+#endif
+    return name;
+}
+
+/* x86 float tiers: AVX-512F, AVX2. */
+static const char *bind_packed_float_x86(const SimdSel *sel) {
+    (void)sel;
 #if TN_HAS_AVX512
-    if (!force_scalar && !force_avx2 && cpu->avx512f) {
+    if (!sel->force_scalar && !sel->force_avx2 && sel->cpu->avx512f) {
         tn_ternary_matmul_packed = ternary_matmul_packed_avx512;
-        g_backend_name           = "AVX-512F";
-        return g_backend_name;
+        return "AVX-512F";
     }
 #endif
 
 #if TN_HAS_AVX2
-    if (!force_scalar && cpu->avx2) {
+    if (!sel->force_scalar && sel->cpu->avx2) {
         tn_ternary_matmul_packed = ternary_matmul_packed_avx2;
-        g_backend_name           = "AVX2";
-        return g_backend_name;
+        return "AVX2";
     }
 #endif
+    return NULL;
+}
 
+/* ARM tiers: dotprod, then NEON. */
+static const char *bind_packed_arm(const SimdSel *sel) {
+    (void)sel;
 #if TN_HAS_ARM_DOTPROD
-    if (!float_act && cpu->arm_dotprod) {
+    if (!sel->float_act && sel->cpu->arm_dotprod) {
         g_ternary_int8           = 1;
         tn_ternary_matmul_packed = ternary_matmul_packed_dotprod;
-        g_backend_name           = "NEON+dotprod";
-        return g_backend_name;
+        return "NEON+dotprod";
     }
 #endif
 
 #if TN_HAS_NEON
-    if (!force_scalar && cpu->neon) {
+    if (!sel->force_scalar && sel->cpu->neon) {
         tn_ternary_matmul_packed = ternary_matmul_packed_neon;
-        g_backend_name           = "NEON";
-        return g_backend_name;
+        return "NEON";
     }
 #endif
+    return NULL;
+}
 
-    /* Scalar fallback — always compiled, works on any CPU */
-    tn_ternary_matmul_packed = ternary_matmul_packed;
-    g_backend_name           = "Scalar";
+const char *tn_simd_init(void) {
+    /*
+     * Runtime probe the CPU, then select the best compiled-in kernel.
+     * The probe is cached — subsequent calls to tn_simd_init are safe.
+     *
+     * TN_FORCE_BACKEND override (testing / benchmarking only):
+     *   Set this environment variable to cap the dispatch tier:
+     *     TN_FORCE_BACKEND=scalar    — scalar reference path
+     *     TN_FORCE_BACKEND=avx2      — AVX2 float32 (8-wide FMA)
+     *     TN_FORCE_BACKEND=avx512f   — AVX-512F float32 (16-wide FMA)
+     *     TN_FORCE_BACKEND=vnni      — AVX-512 VNNI int8 512-bit ZMM (default on VNNI CPUs)
+     *     TN_FORCE_BACKEND=vnni256   — VNNI-256 int8 256-bit YMM via AVX-512VNNI (no throttle)
+     * Unrecognised values are silently ignored and auto-detect proceeds.
+     *
+     * Packed matmul tier priority: AVX-512 VNNI (64 int8 MACs/cycle) > AVX-VNNI (32, Alder Lake /
+     * Zen3) > AVX-512F (16 fp32) > AVX2 (8 fp32) on x86; dotprod (16 int8, signed x signed, no bias
+     * trick) > NEON (4 fp32, always on ARMv8-A) on ARM; scalar otherwise.
+     */
+    /* Re-derived on every call: only the AVX-512 VNNI tier binds these. */
+    tn_quantize_act_i8     = NULL;
+    tn_sum_act_i8          = NULL;
+    tn_ternary_matmul_preq = NULL;
+    tn_cls_i8_rows         = tn_cls_i8_rows_generic;
+    tn_cls_i4_rows         = tn_cls_i4_rows_generic;
+    const char *force      = getenv("TN_FORCE_BACKEND");
+    snprintf(g_last_force, sizeof(g_last_force), "%s", force ? force : "");
+    SimdSel sel;
+    sel.cpu           = tn_cpu_features_detect();
+    sel.force_scalar  = force && strcmp(force, "scalar") == 0;
+    sel.force_avx2    = force && strcmp(force, "avx2") == 0;
+    sel.force_avx512f = force && strcmp(force, "avx512f") == 0;
+    sel.force_vnni256 = force && strcmp(force, "vnni256") == 0;
+    sel.float_act     = (g_act_quant == TN_ACT_FLOAT);
+    g_ternary_int8    = 0;
+
+    bind_vector_ops(&sel);
+    bind_unpack(&sel);
+    const char *name = bind_packed_int8_x86(&sel);
+    if (!name) name = bind_packed_float_x86(&sel);
+    if (!name) name = bind_packed_arm(&sel);
+    if (!name) {
+        /* Scalar fallback — always compiled, works on any CPU */
+        tn_ternary_matmul_packed = ternary_matmul_packed;
+        name                     = "Scalar";
+    }
+    g_backend_name = name;
     return g_backend_name;
 }

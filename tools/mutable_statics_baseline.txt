@@ -1,0 +1,18 @@
+# Mutable static variables per file in src/ (tools/check_mutable_statics.py); may only go down.
+src/cli/session_server.c 1
+src/core/cpu_features.c 4
+src/core/log.c 2
+src/core/step_timing.c 2
+src/math/matmul_q4k.c 2
+src/math/q8_0_act.c 3
+src/math/simd_dispatch.c 3
+src/memory/tls_scratch.c 1
+src/runtime/hardware_profile.c 4
+src/threading/cache_probe.c 2
+src/tokenizer/template_guard.c 1
+src/tokenizer/tokenizer_decode.c 1
+src/transformer/forward.c 5
+src/transformer/moe_experts.c 1
+src/transformer/moe_ffn.c 2
+src/transformer/moe_ffn_legacy.c 3
+src/transformer/moe_ffn_track.c 3

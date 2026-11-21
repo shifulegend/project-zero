@@ -4,14 +4,15 @@
  * run_state carving for F32 and int8 KV, disk-budgeted context sizing.
  * Skips gracefully when no writable temp directory supports mmap.
  */
-#include "test_harness.h"
-#include "memory/file_backed.h"
-#include "core/run_state.h"
-#include "kv_cache/kv_strategy.h"
-#include "kv_cache/kv_quant_ops.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "kv_cache/kv_quant_ops.h"
+#include "kv_cache/kv_strategy.h"
+#include "memory/file_backed.h"
+#include "runtime/run_state.h"
+#include "test_harness.h"
 
 static const char *tmp_dir(void) {
     const char *d = getenv("TMPDIR");
@@ -68,18 +69,17 @@ static Config tiny_cfg(void) {
 }
 
 static int inside(const RunState *s, const void *p) {
-    uintptr_t b = (uintptr_t)s->kv_offload_base;
-    return (uintptr_t)p >= b && (uintptr_t)p < b + s->kv_offload_bytes && ((uintptr_t)p % 64) == 0;
+    uintptr_t b = (uintptr_t)s->kvs.offload_base;
+    return (uintptr_t)p >= b && (uintptr_t)p < b + s->kvs.offload_bytes && ((uintptr_t)p % 64) == 0;
 }
 
 static void test_run_state_offload(void) {
     if (g_skip) return;
     Config c            = tiny_cfg();
     KVStrategyOptions o = {0, 0.0f, 0, tmp_dir()};
-    kv_strategy_set_options(&o);
     RunState s;
-    TEST_ASSERT_EQ(run_state_alloc(&s, &c, 128), TN_OK, "F32 KV on disk");
-    TEST_ASSERT(s.kv_offload_base != NULL, "mapping recorded");
+    TEST_ASSERT_EQ(run_state_alloc_ex(&s, &c, 128, false, &o), TN_OK, "F32 KV on disk");
+    TEST_ASSERT(s.kvs.offload_base != NULL, "mapping recorded");
     TEST_ASSERT(inside(&s, s.key_cache) && inside(&s, s.value_cache), "K/V carved, 64-B aligned");
     size_t n           = (size_t)c.n_layers * c.n_kv_heads * 128 * (c.dim / c.n_heads);
     s.key_cache[n - 1] = 3.5f;
@@ -90,21 +90,19 @@ static void test_run_state_offload(void) {
     run_state_kv_prefetch_layer(&s, &c, 2, 100);
     run_state_kv_prefetch_layer(&s, &c, 3, 100); /* past the last layer: no-op */
     run_state_free(&s);
-    TEST_ASSERT(s.kv_offload_base == NULL && s.key_cache == NULL, "freed");
+    TEST_ASSERT(s.kvs.offload_base == NULL && s.key_cache == NULL, "freed");
 
     KVStrategyOptions o8 = {0, 0.0f, KV_TYPE_I8, tmp_dir()};
-    kv_strategy_set_options(&o8);
-    TEST_ASSERT_EQ(run_state_alloc(&s, &c, 128), TN_OK, "int8 KV on disk");
-    TEST_ASSERT(inside(&s, s.key_cache_q) && inside(&s, s.value_cache_q) &&
-                    inside(&s, s.key_scale) && inside(&s, s.value_scale),
+    TEST_ASSERT_EQ(run_state_alloc_ex(&s, &c, 128, false, &o8), TN_OK, "int8 KV on disk");
+    TEST_ASSERT(inside(&s, s.kvs.key_cache_q) && inside(&s, s.kvs.value_cache_q) &&
+                    inside(&s, s.kvs.key_scale) && inside(&s, s.kvs.value_scale),
                 "int8 buffers carved");
     TEST_ASSERT(s.key_cache == NULL, "no F32 cache with int8");
     run_state_kv_prefetch_layer(&s, &c, 1, 64);
     run_state_free(&s);
 
-    kv_strategy_set_options(NULL);
     TEST_ASSERT_EQ(run_state_alloc(&s, &c, 128), TN_OK, "RAM KV still default");
-    TEST_ASSERT(s.kv_offload_base == NULL && s.key_cache != NULL, "heap path unchanged");
+    TEST_ASSERT(s.kvs.offload_base == NULL && s.key_cache != NULL, "heap path unchanged");
     run_state_free(&s);
 }
 

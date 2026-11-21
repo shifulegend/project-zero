@@ -1,9 +1,9 @@
 #ifndef TN_TEST_HARNESS_H
 #define TN_TEST_HARNESS_H
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
 #include <string.h>
 
 /* Not every test TU uses all three counters (e.g. audit-style files with

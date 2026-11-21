@@ -14,8 +14,9 @@ The script matches rows by (layer, step) and reports:
   - A side-by-side diff for any mismatch
 """
 
-import csv
 import argparse
+import csv
+from typing import TypedDict
 
 # Tolerance for float comparison (relative error threshold)
 REL_TOL = 1e-3  # 0.1% relative error
@@ -50,9 +51,18 @@ ANSI_CYAN = "\033[96m"
 ANSI_RESET = "\033[0m"
 
 
-def load_csv(path):
+class Row(TypedDict):
+    """One tensor checkpoint from a dump: element count, first 8 values, mean and absolute maximum."""
+
+    n: int
+    vals: list[float]
+    mean: float
+    absmax: float
+
+
+def load_csv(path: str) -> dict[tuple[int, str], Row]:
     """Load a tensor dump CSV into a dict keyed by (layer, step)."""
-    rows = {}
+    rows: dict[tuple[int, str], Row] = {}
     with open(path, encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
@@ -69,14 +79,15 @@ def load_csv(path):
     return rows
 
 
-def rel_err(a, b):
+def rel_err(a: float, b: float) -> float:
+    """Relative error of two values (denominator floored at 1e-10)."""
     denom = max(abs(a), abs(b), 1e-10)
     return abs(a - b) / denom
 
 
-def check_match(a, b, label):
+def check_match(a: Row, b: Row, label: str) -> tuple[bool, str]:
     """Returns (matched, details_str)."""
-    errs = []
+    errs: list[tuple[int, float, float, float]] = []
     for i in range(8):
         re = rel_err(a["vals"][i], b["vals"][i])
         if re > REL_TOL and abs(a["vals"][i] - b["vals"][i]) > ABS_TOL:
@@ -87,7 +98,7 @@ def check_match(a, b, label):
 
     matched = len(errs) == 0 and mean_re < REL_TOL and abmx_re < REL_TOL
 
-    lines = []
+    lines: list[str] = []
     if not matched:
         lines.append(f"  {ANSI_CYAN}n_elem:{ANSI_RESET} llama={a['n']}  ours={b['n']}")
         lines.append(f"  {'idx':>4}  {'llama':>14}  {'ours':>14}  {'rel_err':>10}")
@@ -101,7 +112,13 @@ def check_match(a, b, label):
     return matched, "\n".join(lines)
 
 
-def compare(llama_csv, ours_csv, filter_layer=None, filter_step=None):
+def compare(
+    llama_csv: str,
+    ours_csv: str,
+    filter_layer: int | None = None,
+    filter_step: str | None = None,
+) -> None:
+    """Compares the llama.cpp and pz tensor dumps step by step (optionally one layer or step) and prints a coloured report."""
     print(f"\n{ANSI_CYAN}Loading llama.cpp dump:{ANSI_RESET} {llama_csv}")
     llama = load_csv(llama_csv)
     print(f"{ANSI_CYAN}Loading our engine dump:{ANSI_RESET} {ours_csv}")
@@ -171,7 +188,8 @@ def compare(llama_csv, ours_csv, filter_layer=None, filter_step=None):
     print()
 
 
-def main():
+def main() -> None:
+    """Command-line entry point for the tensor-dump comparison."""
     ap = argparse.ArgumentParser(description="Compare tensor dumps from llama.cpp and our engine")
     ap.add_argument("llama_csv", help="CSV dump from llama_dump (llama.cpp)")
     ap.add_argument("ours_csv", help="CSV dump from our engine (--dump-tensors)")

@@ -19,10 +19,13 @@
 #include "core/config.h"
 #include "core/error.h"
 #include "core/moe_config.h"
-#include "core/run_state.h"
 #include "core/weights.h"
+#include "runtime/run_state.h"
 #include "threading/thread_pool.h"
 #include "tokenizer/tokenizer.h"
+
+#define SELFCHECK_LINE_BUF 300 /* a formatted verdict line (selfcheck_format) */
+#define SELFCHECK_KEY_BUF 400  /* a cache key (selfcheck_cache_key) */
 
 typedef enum { SC_PASS = 0, SC_FAIL, SC_SKIPPED } SelfCheckVerdict;
 
@@ -74,7 +77,8 @@ typedef struct {
 } SelfCheckAutoCtx;
 /* 1 when a start should check int8 against the accuracy bar (once per model, cached). */
 int selfcheck_auto_applies(const SelfCheckAutoCtx *c);
-/* The activation mode a verdict leaves in force: FAIL puts float activations in force; else AUTO. */
+/* The activation mode a verdict leaves in force: FAIL puts float activations in force; else AUTO.
+ */
 int selfcheck_auto_numerics(SelfCheckVerdict v); /* TnActQuant value: 0 auto, 2 float */
 
 /* ---- First-run probe cache (2026-11-18) -------------------------------------------------------

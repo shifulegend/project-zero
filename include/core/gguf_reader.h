@@ -12,9 +12,10 @@
  * Architecture-specific weight loading is handled by the caller.
  */
 
-#include "core/error.h"
 #include <stddef.h>
 #include <stdint.h>
+
+#include "core/error.h"
 
 /* ── GGUF constants ─────────────────────────────────────────────────────── */
 #define GGUF_MAGIC 0x46554747u /* "GGUF" LE */
@@ -163,9 +164,12 @@ void gguf_header_free(GGUFHeader *hdr);
 const GGUFTensor *gguf_find_tensor(const GGUFHeader *hdr, const char *name);
 
 /**
- * Look up a metadata string value by key. Returns NULL if not found or wrong type.
+ * Copy a metadata string value into the caller's buffer, always NUL-terminated (truncated to
+ * cap - 1 bytes when longer). Returns the length of the full value (so a result >= cap means it was
+ * truncated), or -1 if the key is absent, is not a string, or cap is 0. The caller owns the
+ * buffer: there is no shared storage, so two lookups can never overwrite each other.
  */
-const char *gguf_meta_str(const GGUFHeader *hdr, const char *key);
+int gguf_meta_str_copy(const GGUFHeader *hdr, const char *key, char *out, size_t cap);
 
 /**
  * Look up a metadata uint32 value by key. Returns default_val if not found.
@@ -208,6 +212,11 @@ const void *gguf_meta_array_data(const GGUFHeader *hdr, const char *key,
  * Return human-readable name for a GGUF quantization type.
  */
 const char *gguf_type_name(GGUFType t);
+
+/* Bytes per block and weights per block of a tensor type (0 bytes for a type that is not
+ * block-structured or not listed, 1 weight per block for the plain types). */
+size_t gguf_type_block_bytes(GGUFType t);
+size_t gguf_type_block_elems(GGUFType t);
 
 /**
  * Return bytes-per-element for a GGUF type (approximate for block-quantized types).

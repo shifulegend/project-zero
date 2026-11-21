@@ -110,7 +110,12 @@ if command -v curl >/dev/null 2>&1; then
         esac
     }
 elif command -v wget >/dev/null 2>&1; then
-    fetch() { wget -q --https-only --timeout=60 --tries=3 -O "$2" "$1"; }
+    fetch() {
+        case "$1" in
+            file://*) cp "${1#file://}" "$2" ;; # offline mirror, as in the curl branch
+            *) wget -q --https-only --timeout=60 --tries=3 -O "$2" "$1" ;;
+        esac
+    }
 else
     die "need curl or wget to download"
 fi
@@ -174,7 +179,7 @@ cp "$SRC/pz" "$BIN_DIR/.pz.new"
 chmod 0755 "$BIN_DIR/.pz.new"
 mv -f "$BIN_DIR/.pz.new" "$BIN_DIR/pz"          # atomic: a running pz keeps its old file
 printf '%s\n' "$BIN_DIR/pz" > "$MANIFEST.new"
-for f in LICENSE NOTICE LICENSE-LGPL-3.0.txt README.md CHANGELOG.md; do
+for f in LICENSE NOTICE README.md CHANGELOG.md; do
     if [ -f "$SRC/$f" ]; then
         cp "$SRC/$f" "$DOC_DIR/$f"
         printf '%s\n' "$DOC_DIR/$f" >> "$MANIFEST.new"

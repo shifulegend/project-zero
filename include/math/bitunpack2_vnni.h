@@ -5,7 +5,8 @@
 
 #if TN_HAS_AVX512VNNI
 #include <immintrin.h>
-#include "math/cpu_features.h"
+
+#include "core/cpu_features.h"
 
 /*
  * Unpack 64 packed 2-bit codes (stored in 16 bytes) into 64 uint8 lanes,

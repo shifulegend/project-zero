@@ -8,16 +8,17 @@
  * Needs a real dense GGUF (SmolLM2): $PZ_TEST_MODEL, else
  * models/smollm2-q8_0.gguf; skipped when absent.
  */
-#include "test_harness.h"
-#include "api/batch_scheduler.h"
-#include "runtime/model_load.h"
-#include "threading/thread_pool.h"
-#include "math/simd_dispatch.h"
-#include "tokenizer/tokenizer_gguf.h"
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "api/batch_scheduler.h"
+#include "math/simd_dispatch.h"
+#include "runtime/model_load.h"
+#include "test_harness.h"
+#include "threading/thread_pool.h"
+#include "tokenizer/tokenizer_gguf.h"
 
 #define N_REQ 4
 #define MAX_TOK 20
@@ -104,7 +105,7 @@ static void parallel(BatchScheduler *bs, float temp, int use_cache, Req *req, in
 }
 
 static BatchScheduler *make(int slots, int rows, long long budget, PrefixCache *pc) {
-    BatchSchedulerOptions o = {slots, rows, budget};
+    BatchSchedulerOptions o = {slots, rows, budget, NULL};
     memset(pc, 0, sizeof(*pc));
     return batch_scheduler_create(&M.config, &M.weights, M.state, pc, NULL, &M.moe_config, &T, TP,
                                   &o);
@@ -193,12 +194,12 @@ int main(void) {
     tn_simd_init();
     TP = threadpool_create(4);
     memset(&M, 0, sizeof(M));
-    if (load_gguf_model(&M, path, true, 0, TP, false) != TN_OK) {
+    if (load_gguf_model(&M, path, true, 0, TP, false, NULL) != TN_OK) {
         printf("  (could not load %s) skipped\n", path);
         threadpool_destroy(TP);
         return 0;
     }
-    if (!batch_scheduler_supported(&M.weights, &M.moe_config)) {
+    if (!batch_scheduler_supported(&M.weights, &M.moe_config, M.state)) {
         printf("  (model not supported by the batched forward) skipped\n");
         loaded_model_free(&M);
         threadpool_destroy(TP);

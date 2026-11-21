@@ -1,6 +1,8 @@
 #ifndef TN_CHAT_TEMPLATE_H
 #define TN_CHAT_TEMPLATE_H
 
+#include <stdint.h>
+
 /*
  * chat_template.h — Jinja2 renderer for LLM chat templates.
  *
@@ -66,6 +68,10 @@ extern "C" {
 char *chat_template_apply(const char *tmpl, const char *const *roles, const char *const *contents,
                           int n_messages, const char *bos_token_str, const char *eos_token_str,
                           int add_generation_prompt);
+
+/* FNV-1a hash of the token stream the lexer makes of a template (type, text and number of every
+ * token). Exposed so a test can pin the lexer: the same template must always hash the same. */
+uint64_t chat_template_lex_digest(const char *tmpl);
 
 #ifdef __cplusplus
 }

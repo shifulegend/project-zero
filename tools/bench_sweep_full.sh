@@ -5,7 +5,6 @@
 set -euo pipefail
 ENGINE="./pz"
 OUT_CSV="benchmark_results.csv"
-OUT_REPORT="BENCHMARK_REPORT.md"
 
 # 5 prompts per model
 BITNET_PROMPTS=(
@@ -42,8 +41,6 @@ run_bench() {
     
     local tps
     tps=$(echo "$result" | grep -oP '[0-9]+\.[0-9]+ tok/s' | grep -oP '[0-9]+\.[0-9]+' | head -1)
-    local output
-    output=$(echo "$result" | grep -A1 "^Output:" | tail -1 | head -c 200)
     
     if [ -n "$tps" ]; then
         echo "$label,$threads,$simd,$cls,$prompt_idx,$tps,ok" >> "$OUT_CSV"

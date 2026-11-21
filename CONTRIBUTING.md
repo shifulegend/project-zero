@@ -96,8 +96,25 @@ These phases are completely spec'd in [`IMPLEMENTATION_PLAN.md`](docs/architectu
 - **Memory:** Use `tn_aligned_calloc()` for SIMD buffers (64-byte aligned). No `malloc` in hot paths.
 - **SIMD:** Always add a scalar fallback path. Wrap AVX-512 code in `#ifdef __AVX512F__`.
 - **Documentation:** Update the relevant `.md` file. Benchmark before and after for perf changes.
-- **One logical change per PR, at most 400 changed lines.** Generated, vendored and data files do not count; a mechanical change (reformat, rename) goes in its own PR and may carry the `size-override` label. CI (`tools/check_pr_size.py`) enforces the limit.
+- **One logical change per PR, at most 400 changed lines.** Lockfiles, generated
+  code and bundles, snapshots, vendored files, translations, test fixtures,
+  images and models do not count (`EXCLUDE` in `tools/check_pr_size.py`), so
+  they never need an override. CI (`tools/check_pr_size.py`) enforces the limit.
+- **`size-override` is a documented exception, not a routine shortcut.** A
+  maintainer adds the label only for work that must land in one piece: an
+  automated dependency or framework upgrade, a mechanical search-and-replace
+  refactor across many files (reformat, rename, moving files), a data migration
+  or static-asset addition, or an overall clean-up of the code. The PR
+  description must then contain a filled "Size override justification" section
+  that says why the change cannot be split into smaller, stacked PRs; CI
+  (`tools/check_size_override.py`) fails a labelled PR without it. A reviewer
+  who is not convinced asks for the split instead.
 - **Test first for behaviour changes and bug fixes:** write the failing test, make it pass, then clean up (Red -> Green -> Refactor), and say so in the PR.
+- **Local checks (optional):** `pip install pre-commit && pre-commit install`
+  runs `ruff`, `clang-format` and the repository checks (TODO register, Markdown
+  fences, header guards, file sizes, root files) before each commit; the config
+  is `.pre-commit-config.yaml`, and CI runs the same checks. Editors that read
+  `.editorconfig` get the 100-column limit.
 - **Review comments:** prefix a non-blocking remark with `Nit:`; it never blocks a merge. Review the whole file's context, not only the diff hunk.
 
 ---

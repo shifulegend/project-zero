@@ -4,6 +4,7 @@
 #include "core/config.h"
 #include "core/moe_config.h"
 #include "core/platform.h"
+#include "memory/free_ram.h" /* tn_get_free_ram() (callers of this header expect it) */
 
 /**
  * KV cache strategy tiers, ordered by memory usage (low → high quality).
@@ -59,6 +60,7 @@ typedef struct {
  *                  follow-up rather than solved here.
  * @return          Strategy result with chosen strategy and max_seq_len
  */
+/* Same as select_kv_strategy_ex() with the automatic defaults (no user overrides). */
 KVStrategyResult select_kv_strategy(const Config *cfg, tn_i64 free_ram, const MoEConfig *mc);
 
 /**
@@ -77,46 +79,38 @@ typedef struct {
                               cap then budgets free disk space, not free RAM */
 } KVStrategyOptions;
 
-/* KV storage type chosen by --kv-type (KVCacheType); read by
- * run_state_alloc_ex() for the generic dense/GQA cache. */
-int kv_strategy_kv_type(void);
-
-/* --kv-offload directory, or NULL (KV in RAM). */
-const char *kv_strategy_offload_dir(void);
-
 #define KV_DEFAULT_RAM_FRACTION 0.60f
 
-/* Bytes one context position costs in the KV cache (all layers, K + V) at
- * the configured --kv-type. */
-tn_i64 kv_strategy_bytes_per_token(const Config *cfg, const MoEConfig *mc);
+/* The KV storage type and offload directory of `opt`; NULL means F32 in RAM. */
+static inline int kv_options_type(const KVStrategyOptions *opt) {
+    return opt ? opt->kv_type : 0;
+}
+static inline const char *kv_options_offload_dir(const KVStrategyOptions *opt) {
+    return opt ? opt->offload_dir : NULL;
+}
+
+/* Bytes one context position costs in the KV cache (all layers, K + V) at the --kv-type of `opt`
+ * (NULL = automatic defaults, as in every function below). */
+tn_i64 kv_strategy_bytes_per_token(const Config *cfg, const MoEConfig *mc,
+                                   const KVStrategyOptions *opt);
 
 /* Phase 23 (2026-10-22): how many positions the KV budget (--kv-ram-fraction
  * of free_ram, or of free disk with --kv-offload) holds in total — the pool
  * that parallel-serving slots share. 0 when unknown. */
-tn_i64 kv_strategy_budget_tokens(const Config *cfg, const MoEConfig *mc, tn_i64 free_ram);
+tn_i64 kv_strategy_budget_tokens(const Config *cfg, const MoEConfig *mc, tn_i64 free_ram,
+                                 const KVStrategyOptions *opt);
 
 KVStrategyResult select_kv_strategy_ex(const Config *cfg, tn_i64 free_ram, const MoEConfig *mc,
                                        const KVStrategyOptions *opt);
 
-/* Process-wide options used by select_kv_strategy() (set once from the CLI
- * before any model loads, so every load path — native, GGUF, draft — sizes
- * its context the same way). NULL restores the automatic defaults. */
-void kv_strategy_set_options(const KVStrategyOptions *opt);
-
 /* One honest startup line: the KV cache is stored as F32 on every path today
  * (the int8/int4 kernels in kv_compress.h are not wired into attention), so
  * the tier only determines the context length. */
-void kv_strategy_print(const KVStrategyResult *r, int max_seq_len);
+void kv_strategy_print(const KVStrategyResult *r, int max_seq_len, const KVStrategyOptions *opt);
 
 /**
  * Get a human-readable name for a KV strategy.
  */
 const char *kv_strategy_name(KVStrategy s);
-
-/**
- * Probe available system RAM.
- * Returns bytes of free RAM, or -1 on failure.
- */
-tn_i64 tn_get_free_ram(void);
 
 #endif /* TN_KV_STRATEGY_H */

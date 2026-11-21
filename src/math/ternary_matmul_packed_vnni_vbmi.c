@@ -11,7 +11,7 @@
  * anywhere, and a VNNI CPU without VBMI such as Cascade Lake would take SIGILL),
  * so the kernel is compiled a second time here, with its names suffixed _vbmi,
  * and tn_simd_init() binds this pair only when cpu->avx512vbmi (execution-
- * verified, math/cpu_features.c) is set. Built in every x86 build (Makefile and
+ * verified, core/cpu_features.c) is set. Built in every x86 build (Makefile and
  * CMake per-file flags: -mavx512vnni -mavx512vbmi).
  */
 #include "core/platform.h"

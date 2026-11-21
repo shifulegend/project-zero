@@ -1,14 +1,15 @@
 #include "api/update_endpoint.h"
-#include "api/json_write.h"
-#include "update/update_check.h"
-#include "update/release_links.h"
 
-char *api_update_json(int force) {
-    int started = update_service_poll(force);
+#include "api/json_write.h"
+#include "update/release_links.h"
+#include "update/update_check.h"
+
+char *api_update_json(UpdateService *svc, int force) {
+    int started = update_service_poll(svc, force);
     UpdateInfo ui;
     UpdateOptions uo;
-    update_service_get(&ui);
-    int have_opts = update_service_options(&uo);
+    update_service_get(svc, &ui);
+    int have_opts = update_service_options(svc, &uo);
     JsonBuf jb;
     jb_init(&jb);
     jb_raw(&jb, "{");

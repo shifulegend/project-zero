@@ -2,11 +2,13 @@
  * api/selfcheck_endpoint.c — see api/selfcheck_endpoint.h.
  */
 #include "api/selfcheck_endpoint.h"
-#include "core/json_fields.h"
-#include "api/json_write.h"
-#include "api/http_status.h"
-#include "eval/selfcheck.h"
+
 #include <stdlib.h>
+
+#include "api/http_status.h"
+#include "api/json_write.h"
+#include "core/json_fields.h"
+#include "eval/selfcheck.h"
 
 static double number_or(const char *body, const char *key, double dflt) {
     char *t = body ? json_field_number_text(body, key) : NULL;
@@ -28,23 +30,9 @@ static char *error_body(const char *msg, int code, int *status) {
     return jb_finish(&jb);
 }
 
-char *api_selfcheck(ApiContext *ctx, const char *json_body, int *status) {
-    if (!ctx || !ctx->cfg || !ctx->weights || !ctx->run_state || !ctx->tok)
-        return error_body("no model loaded", HTTP_INTERNAL_ERROR, status);
-    SelfCheckOptions o;
-    o.tolerance_pct = number_or(json_body, "tolerance", ctx->server_config.quality_tolerance);
-    o.n_tokens      = (int)number_or(json_body, "tokens", ctx->server_config.self_check_tokens);
-    if (o.tolerance_pct < 0 || o.tolerance_pct > 100)
-        return error_body("\"tolerance\" must be 0..100 (percent)", HTTP_BAD_REQUEST, status);
-    if (o.n_tokens < 16 || o.n_tokens > 4096)
-        return error_body("\"tokens\" must be 16..4096", HTTP_BAD_REQUEST, status);
-
-    SelfCheckResult r;
-    TernaryError e = selfcheck_run(&o, ctx->cfg, ctx->weights, ctx->run_state, ctx->moe_cfg,
-                                   ctx->tok, ctx->tp, &r);
-    if (e != TN_OK)
-        return error_body("the accuracy probe failed to run", HTTP_INTERNAL_ERROR, status);
-
+/* The JSON reply of a finished probe (malloc'd, NUL-terminated). */
+static char *selfcheck_json(const SelfCheckResult *rp) {
+    const SelfCheckResult r = *rp;
     JsonBuf jb;
     jb_init(&jb);
     jb_raw(&jb, "{");
@@ -81,6 +69,27 @@ char *api_selfcheck(ApiContext *ctx, const char *json_body, int *status) {
     jb_key(&jb, "note");
     jb_str(&jb, r.note);
     jb_raw(&jb, "}");
-    *status = HTTP_OK;
     return jb_finish(&jb);
+}
+
+char *api_selfcheck(ApiContext *ctx, const char *json_body, int *status) {
+    if (!ctx || !ctx->cfg || !ctx->weights || !ctx->run_state || !ctx->tok)
+        return error_body("no model loaded", HTTP_INTERNAL_ERROR, status);
+    SelfCheckOptions o;
+    o.tolerance_pct =
+        number_or(json_body, "tolerance", ctx->server_config.numerics.quality_tolerance);
+    o.n_tokens = (int)number_or(json_body, "tokens", ctx->server_config.numerics.self_check_tokens);
+    if (o.tolerance_pct < 0 || o.tolerance_pct > 100)
+        return error_body("\"tolerance\" must be 0..100 (percent)", HTTP_BAD_REQUEST, status);
+    if (o.n_tokens < 16 || o.n_tokens > 4096)
+        return error_body("\"tokens\" must be 16..4096", HTTP_BAD_REQUEST, status);
+
+    SelfCheckResult r;
+    TernaryError e = selfcheck_run(&o, ctx->cfg, ctx->weights, ctx->run_state, ctx->moe_cfg,
+                                   ctx->tok, ctx->tp, &r);
+    if (e != TN_OK)
+        return error_body("the accuracy probe failed to run", HTTP_INTERNAL_ERROR, status);
+
+    *status = HTTP_OK;
+    return selfcheck_json(&r);
 }

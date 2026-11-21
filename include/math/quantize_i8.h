@@ -1,8 +1,9 @@
 #ifndef TN_QUANTIZE_I8_H
 #define TN_QUANTIZE_I8_H
 
-#include "core/platform.h"
 #include <stdint.h>
+
+#include "core/platform.h"
 
 /*
  * Activation quantization for the int8 kernels (VNNI, AVX-VNNI, dotprod, Q2_0).

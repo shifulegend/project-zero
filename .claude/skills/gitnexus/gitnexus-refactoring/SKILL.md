@@ -14,7 +14,7 @@ description: "Use when the user wants to rename, extract, split, move, or restru
 
 ## Workflow
 
-```
+```text
 1. gitnexus_impact({target: "X", direction: "upstream"})  → Map all dependents
 2. gitnexus_query({query: "X"})                            → Find execution flows involving X
 3. gitnexus_context({name: "X"})                           → See all incoming/outgoing refs
@@ -26,7 +26,7 @@ description: "Use when the user wants to rename, extract, split, move, or restru
 ## Checklists
 
 ### Rename Symbol
-```
+```text
 - [ ] gitnexus_rename({symbol_name: "oldName", new_name: "newName", dry_run: true}) — preview all edits
 - [ ] Review graph edits (high confidence) and ast_search edits (review carefully)
 - [ ] If satisfied: gitnexus_rename({..., dry_run: false}) — apply edits
@@ -35,7 +35,7 @@ description: "Use when the user wants to rename, extract, split, move, or restru
 ```
 
 ### Extract Module
-```
+```text
 - [ ] gitnexus_context({name: target}) — see all incoming/outgoing refs
 - [ ] gitnexus_impact({target, direction: "upstream"}) — find all external callers
 - [ ] Define new module interface
@@ -45,7 +45,7 @@ description: "Use when the user wants to rename, extract, split, move, or restru
 ```
 
 ### Split Function/Service
-```
+```text
 - [ ] gitnexus_context({name: target}) — understand all callees
 - [ ] Group callees by responsibility
 - [ ] gitnexus_impact({target, direction: "upstream"}) — map callers to update
@@ -58,7 +58,7 @@ description: "Use when the user wants to rename, extract, split, move, or restru
 ## Tools
 
 **gitnexus_rename** — automated multi-file rename:
-```
+```text
 gitnexus_rename({symbol_name: "validateUser", new_name: "authenticateUser", dry_run: true})
 → 12 edits across 8 files
 → 10 graph edits (high confidence), 2 ast_search edits (review)
@@ -66,14 +66,14 @@ gitnexus_rename({symbol_name: "validateUser", new_name: "authenticateUser", dry_
 ```
 
 **gitnexus_impact** — map all dependents first:
-```
+```text
 gitnexus_impact({target: "validateUser", direction: "upstream"})
 → d=1: loginHandler, apiMiddleware, testUtils
 → Affected Processes: LoginFlow, TokenRefresh
 ```
 
 **gitnexus_detect_changes** — verify your changes after refactoring:
-```
+```text
 gitnexus_detect_changes({scope: "all"})
 → Changed: 8 files, 12 symbols
 → Affected processes: LoginFlow, TokenRefresh
@@ -97,7 +97,7 @@ RETURN caller.name, caller.filePath ORDER BY caller.filePath
 
 ## Example: Rename `validateUser` to `authenticateUser`
 
-```
+```text
 1. gitnexus_rename({symbol_name: "validateUser", new_name: "authenticateUser", dry_run: true})
    → 12 edits: 10 graph (safe), 2 ast_search (review)
    → Files: validator.ts, login.ts, middleware.ts, config.json...

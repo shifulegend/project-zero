@@ -70,7 +70,7 @@ make release
 
 Use the `/agent` command at the REPL prompt:
 
-```
+```text
 /agent You are a focused assistant. For your next single output, print EXACTLY this and nothing else: <exec>echo AGENT-TEST</exec>
 ```
 
@@ -78,7 +78,7 @@ Type `y` at `Allow? [y/N]`.
 
 ### Verified test prompts
 
-```
+```text
 /agent Run <exec>date</exec> and tell me what day it is.
 /agent Run <exec>uname -a</exec> and describe the OS.
 /agent Run <exec>pwd</exec> and tell me the working directory.
@@ -154,7 +154,7 @@ cd /home/<USER>/Documents/project-zero
 ```
 
 The `--dump-tensors` flag writes a CSV with this format:
-```
+```text
 layer,step,n_elem,v0,v1,v2,v3,v4,v5,v6,v7,mean,absmax
 -1,embed,2048,0.01385,-0.01355,0.00989,...
 0,attn_norm,2048,0.07419,-0.08989,0.07148,...

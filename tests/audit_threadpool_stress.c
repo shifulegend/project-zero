@@ -1,8 +1,9 @@
-#include "test_harness.h"
-#include "threading/thread_pool.h"
 #include <pthread.h>
 #include <stdio.h>
 #include <unistd.h>
+
+#include "test_harness.h"
+#include "threading/thread_pool.h"
 
 /**
  * Audit Test: AUD-THR-01 (Thread Pool Stress & Re-dispatch)

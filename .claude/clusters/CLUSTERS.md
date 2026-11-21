@@ -240,7 +240,7 @@ else                          → parallel_matmul_float32()
 - 📁 `src/kv_cache/sliding_window.c` — `sw_init`, `sw_advance`, `sw_map_position`, `sw_valid_count`
 
 **KV cache layout (in `run_state.h`):**
-```
+```text
 key_cache[layer][kv_head][pos][head_dim]   // TRANSPOSED for cache-line efficiency
 KV_CACHE_IDX(layer, head, pos, d, n_kv_heads, max_seq, head_dim)
 ```
@@ -355,7 +355,7 @@ api_server_start(8080, &ctx);  // background thread
 - 📁 `src/rag/auto_retrieve.c` — auto-prepend relevant memories to prompt
 
 **VRDB file format:**
-```
+```text
 [0..3]  magic: 0x42445256 "VRDB"
 [4..7]  version: 1
 [8..11] num_entries

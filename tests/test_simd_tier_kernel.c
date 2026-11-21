@@ -13,17 +13,18 @@
  * Skips when the build or the CPU has no VNNI path (then the tiers are honoured
  * by construction: the function pointer chosen by tn_simd_init is the only path).
  */
-#include "test_harness.h"
-#include "core/platform.h"
-#include "math/cpu_features.h"
-#include "math/parallel_matmul.h"
-#include "math/simd_dispatch.h"
-#include "math/ternary_matmul_packed.h"
-#include "threading/thread_pool.h"
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "core/cpu_features.h"
+#include "core/platform.h"
+#include "math/parallel_matmul.h"
+#include "math/simd_dispatch.h"
+#include "math/ternary_matmul_packed.h"
+#include "test_harness.h"
+#include "threading/thread_pool.h"
 
 enum { N = 1024, D = 64 };
 

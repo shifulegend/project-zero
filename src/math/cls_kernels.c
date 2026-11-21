@@ -4,6 +4,7 @@
  * the AVX-512 versions are in cls_kernels_avx512.c and bound by tn_simd_init().
  */
 #include "math/cls_kernels.h"
+
 #include <string.h>
 
 #if TN_HAS_AVX2

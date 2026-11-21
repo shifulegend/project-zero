@@ -6,13 +6,13 @@
  * touch t->eos_token_id/t->eos_list/t->n_eos, so a hand-built struct with
  * just those fields set is a faithful, minimal fixture).
  */
-#include "sampling/fsm.h"
-#include "sampling/constrained_sample.h"
-#include "test_harness.h"
-
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
+
+#include "sampling/constrained_sample.h"
+#include "sampling/fsm.h"
+#include "test_harness.h"
 
 enum {
     TOK_LBRACE = 0,

@@ -31,15 +31,25 @@ USE = re.compile(r"_mm512_|__AVX512|TN_HAS_AVX512|TN_HAS_AVXVNNI|__AVXVNNI__")
 
 # Files that legitimately reference the macros without being AVX-512 kernels.
 EXEMPT = {
-    "src/math/simd_dispatch.c": "built with TN_FORCE_DISPATCH_ALL; the only file that references every tier",
-    "src/core/calibration.c": "built with TN_FORCE_DISPATCH_ALL; decides which tiers exist to benchmark",
-    "src/math/cpu_features.c": "CPUID probe and execution-verification of VBMI/VNNI, no tier kernels",
+    "src/math/simd_dispatch.c": (
+        "built with TN_FORCE_DISPATCH_ALL; the only file that references every tier"
+    ),
+    "src/runtime/calibration.c": (
+        "built with TN_FORCE_DISPATCH_ALL; decides which tiers exist to benchmark"
+    ),
+    "src/core/cpu_features.c": (
+        "CPUID probe and execution-verification of VBMI/VNNI, no tier kernels"
+    ),
 }
 
 # Known offenders still to be split into ISA-flagged files. Shrink only.
 PENDING = {
-    "src/math/parallel_matmul.c": "AVX-512 BF16 LM-head and Q8/Q4 dequant matvec sections behind TN_HAS_AVX512",
-    "src/math/matmul_q5_1.c": "mentions TN_HAS_AVX512 in a guard only (no AVX-512 code): simplify with the rest",
+    "src/math/parallel_matmul.c": (
+        "AVX-512 BF16 LM-head and Q8/Q4 dequant matvec sections behind TN_HAS_AVX512"
+    ),
+    "src/math/matmul_q5_1.c": (
+        "mentions TN_HAS_AVX512 in a guard only (no AVX-512 code): simplify with the rest"
+    ),
     "src/math/matmul_f16.c": "AVX-512 F16 matvec behind TN_HAS_AVX512 in an AVX2-flagged file",
     "src/math/batched_matmul_f16.c": "AVX-512 F16 convert behind TN_HAS_AVX512",
     "src/math/matmul_q8_0.c": "AVX-512 section behind TN_HAS_AVX512",
@@ -47,13 +57,15 @@ PENDING = {
     "src/math/matmul_q5_0.c": "AVX-512 section behind TN_HAS_AVX512",
     "src/math/matmul_q4k.c": "AVX2+VNNI dot path behind TN_HAS_AVX512VNNI",
     "src/math/q8_0_act.c": "AVX2+VNNI path behind TN_HAS_AVX512VNNI",
-    "src/math/matmul_q2_0.c": "VNNI dispatch behind TN_HAS_AVX512VNNI (kernel is in matmul_q2_0_vnni.c)",
+    "src/math/matmul_q2_0.c": (
+        "VNNI dispatch behind TN_HAS_AVX512VNNI (kernel is in matmul_q2_0_vnni.c)"
+    ),
     "src/transformer/attention.c": "AVX-512 section in a baseline file",
     "src/sampling/temperature.c": "AVX-512 section in a baseline file",
 }
 
 
-def isa_flagged_files():
+def isa_flagged_files() -> set[str]:
     """Files the Makefile builds with AVX-512 / VNNI per-file flags."""
     mk = (ROOT / "Makefile").read_text()
     flagged = set()
@@ -68,13 +80,14 @@ def isa_flagged_files():
     return flagged
 
 
-def strip_comments(text):
+def strip_comments(text: str) -> str:
     """Drop /* */ and // comments: prose about a macro is not a use of it."""
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
     return re.sub(r"//[^\n]*", "", text)
 
 
-def main():
+def main() -> int:
+    """Entry point: checks that AVX-512/VNNI code only appears in files built with those ISA flags (and that the pending list has no stale entries); returns the exit code."""
     flagged = isa_flagged_files()
     if not flagged:
         print("check_isa_guards: could not read the ISA file lists from the Makefile")

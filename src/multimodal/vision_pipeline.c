@@ -10,16 +10,19 @@
  */
 
 #include "multimodal/vision_pipeline.h"
-#include "multimodal/image_load.h"
-#include "multimodal/patch_extract.h"
-#include "multimodal/vision_encoder.h"
-#include "multimodal/vision_projector.h"
-#include "multimodal/vision_bridge.h"
-#include "multimodal/vision_weights_load.h"
-#include "memory/aligned_alloc.h"
-#include "transformer/forward.h"
+
 #include <stdio.h>
 #include <string.h>
+
+#include "core/log.h"
+#include "memory/aligned_alloc.h"
+#include "multimodal/image_load.h"
+#include "multimodal/patch_extract.h"
+#include "multimodal/vision_bridge.h"
+#include "multimodal/vision_encoder.h"
+#include "multimodal/vision_projector.h"
+#include "multimodal/vision_weights_load.h"
+#include "transformer/forward.h"
 
 TernaryError vision_pipeline_run(const char *image_path, const char *vision_path,
                                  const char *proj_path, Config *cfg, TransformerWeights *w,
@@ -29,11 +32,11 @@ TernaryError vision_pipeline_run(const char *image_path, const char *vision_path
     if (out_prompt) *out_prompt = prompt_text; /* default: unchanged */
 
     if (!vision_path || !proj_path) {
-        fprintf(stderr,
-                "[vision] --image requires --vision <vision.bin> and --proj <projector.bin>\n"
-                "[vision] Extract weights first:\n"
-                "[vision]   python tools/extract_multimodal.py --repo moondream-hf/moondream2 "
-                "--out models/\n");
+        TN_LOG_ERR("vision",
+                   "[vision] --image requires --vision <vision.bin> and --proj <projector.bin>\n"
+                   "[vision] Extract weights first:\n"
+                   "[vision]   python tools/extract_multimodal.py --repo moondream-hf/moondream2 "
+                   "--out models/\n");
         return TN_ERR_INVALID_ARGS;
     }
 
@@ -50,7 +53,7 @@ TernaryError vision_pipeline_run(const char *image_path, const char *vision_path
         vision_model_print_info(&vm);
         vm_ok = 1;
     } else {
-        fprintf(stderr, "[vision] failed to load vision weights\n");
+        TN_LOG_ERR("vision", "[vision] failed to load vision weights\n");
     }
 
     if (vm_ok) {
@@ -62,7 +65,7 @@ TernaryError vision_pipeline_run(const char *image_path, const char *vision_path
         if (target_res <= 0) target_res = 384;
 
         if (load_image(image_path, &pixels, &img_w, &img_h, target_res) != TN_OK) {
-            fprintf(stderr, "[vision] failed to load image: %s\n", image_path);
+            TN_LOG_ERR("vision", "[vision] failed to load image: %s\n", image_path);
             vm_ok = 0;
         } else {
             printf("  Image loaded: %dx%d (SigLIP-normalized)\n", img_w, img_h);
@@ -77,7 +80,7 @@ TernaryError vision_pipeline_run(const char *image_path, const char *vision_path
             int num_patches = 0;
 
             if (!patches) {
-                fprintf(stderr, "[vision] OOM allocating patches\n");
+                TN_LOG_ERR("vision", "[vision] OOM allocating patches\n");
                 vm_ok = 0;
             } else {
                 extract_patches(pixels, patches, target_res, patch_size, &num_patches);
@@ -90,7 +93,7 @@ TernaryError vision_pipeline_run(const char *image_path, const char *vision_path
                 float *vis_emb = (float *)tn_aligned_alloc(
                     (size_t)num_patches * vm.cfg.embed_dim * sizeof(float), 64);
                 if (!vis_emb) {
-                    fprintf(stderr, "[vision] OOM: vision embeddings\n");
+                    TN_LOG_ERR("vision", "[vision] OOM: vision embeddings\n");
                 } else {
                     printf("  Running vision encoder (%d layers)...\n", vm.cfg.n_layers);
                     vision_encoder_forward(vis_emb, patches, &vm.cfg, &vm.weights, tp);
@@ -103,14 +106,14 @@ TernaryError vision_pipeline_run(const char *image_path, const char *vision_path
 
                     /* Projector llm_dim must match LLM dim; warn if mismatched */
                     if (vm.proj.llm_dim != cfg->dim) {
-                        fprintf(stderr,
-                                "[vision] WARNING: projector llm_dim=%d != LLM dim=%d\n"
-                                "[vision] Embeddings will be truncated/zero-padded.\n",
-                                vm.proj.llm_dim, cfg->dim);
+                        TN_LOG_WRN("vision",
+                                   "[vision] WARNING: projector llm_dim=%d != LLM dim=%d\n"
+                                   "[vision] Embeddings will be truncated/zero-padded.\n",
+                                   vm.proj.llm_dim, cfg->dim);
                     }
 
                     if (!projected) {
-                        fprintf(stderr, "[vision] OOM: projected embeddings\n");
+                        TN_LOG_ERR("vision", "[vision] OOM: projected embeddings\n");
                     } else {
                         /* Use projector's own llm_dim for the projection */
                         float *proj_buf = (float *)tn_aligned_alloc(

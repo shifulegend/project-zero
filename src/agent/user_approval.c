@@ -1,6 +1,7 @@
-#include <stdio.h>
 #include <ctype.h>
+#include <stdio.h>
 #include <stdlib.h>
+
 #include "agent/agent_loop.h"
 
 int user_approval_prompt(const char *cmd) {

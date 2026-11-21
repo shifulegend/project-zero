@@ -6,16 +6,16 @@
  * must both fail the policy check and get exit_code == 127 from
  * execute_command, never actually exec).
  */
-#include "test_harness.h"
-#include "agent/cmd_exec.h"
-
-#include <string.h>
-#include <stdio.h>
-#include <sys/wait.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <limits.h>
 #include <errno.h>
+#include <limits.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#include "agent/cmd_exec.h"
+#include "test_harness.h"
 
 /* Both layers must agree: the policy function directly, and
  * execute_command()'s own enforcement (exit_code 127 = policy denied). */

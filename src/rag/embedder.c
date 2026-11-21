@@ -1,11 +1,13 @@
 #include "rag/embedder.h"
-#include "transformer/forward.h"
-#include "kv_cache/sliding_window.h"
-#include "memory/aligned_alloc.h"
-#include <stdlib.h>
-#include <string.h>
+
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "kv_cache/sliding_window.h"
+#include "memory/aligned_alloc.h"
+#include "transformer/forward.h"
 
 TernaryError embedder_init(Embedder *emb, const Config *cfg) {
     if (!emb || !cfg) return TN_ERR_INVALID_ARGS;

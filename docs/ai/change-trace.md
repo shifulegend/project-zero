@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — request-ID counter lives in the server context
+- What: `http_new_id` and `http_request_attach_id` draw from an `atomic_ulong` (`ApiContext.request_seq`) instead of a function-local mutex and counter.
+- Why: finding 14.f (one of the planned removals); two server contexts no longer share a sequence, and the lock is gone. Mutable statics 46 -> 44.
+- Proof: `make test` gcc and clang, TSan, release build; live server: 8 concurrent requests received 8 distinct `X-Request-ID` values and a client-supplied ID is echoed; the headers test uses its own counter.
+- Areas: `include/api/{http_request,api_server}.h`, `src/api/{http_request,http_chat,http_server}.c`, `tests/test_http_headers.c`.
+
 ### 2026-11-21 — remaining process-wide state classified
 - What: `docs/ai/decision-log.md` splits the 46 remaining mutable statics into impossible (signal-handler state, 3), planned removals (9) and four groups of proposed exceptions; the three signal-handler variables carry a comment saying why they stay file-scope. The exception groups are in the Deviation approval log for approval.
 - Why: finding 14.f allows an allow-list only after a formal conclusion that removal is not possible; this is that conclusion, per group, instead of a silent baseline.

@@ -3,6 +3,7 @@
 
 /* Reading and parsing one HTTP/1.1 request (src/api/http_request.c). */
 
+#include <stdatomic.h>
 #include <stddef.h>
 
 #define HTTP_RECV_BUF 8192                    /* initial receive buffer per connection */
@@ -34,12 +35,12 @@ typedef struct {
  * control characters, quotes) is refused so the value can be echoed in a header and logged safely. */
 int http_request_id_valid(const char *id);
 
-/* A process-unique ID ("<hex time>-<hex counter>"), thread-safe. */
-void http_new_id(char *buf, size_t cap);
+/* An ID unique among those drawn from `seq` ("<hex time>-<hex counter>"), thread-safe. */
+void http_new_id(atomic_ulong *seq, char *buf, size_t cap);
 
 /* Gives req an ID if the client sent none and appends "X-Request-ID: <id>\r\n" to the response
  * header block `headers` (capacity cap), so every reply carries it. */
-void http_request_attach_id(HttpRequest *req, char *headers, size_t cap);
+void http_request_attach_id(atomic_ulong *seq, HttpRequest *req, char *headers, size_t cap);
 
 /* Parses a NUL-terminated request in buf. Returns 1 on success, 0 on a malformed request. */
 int http_parse(const char *buf, size_t buf_len, HttpRequest *req);

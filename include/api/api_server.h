@@ -84,6 +84,7 @@ typedef struct {
     void *listener_thread;         /* pthread_t, opaque */
     RateLimiter rate_limiter;      /* non-generation routes (--rate-limit) */
     atomic_int active_connections; /* connection threads alive (listener +1, thread exit -1) */
+    atomic_ulong request_seq;      /* counter behind generated request IDs */
     atomic_int
         running; /* 1 = running, 0 = stop requested (read by the listener and connection threads) */
 } ApiContext;

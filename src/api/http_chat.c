@@ -360,7 +360,7 @@ void http_handle_chat_completions(int fd, const char *body_start, size_t body_le
 
     /* Generate a request ID */
     char id[32];
-    http_new_id(id, sizeof(id));
+    http_new_id(&ctx->request_seq, id, sizeof(id));
 
     /* Set up streaming state */
     StreamState st;

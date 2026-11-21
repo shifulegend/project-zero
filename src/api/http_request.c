@@ -206,17 +206,13 @@ int http_request_read(int fd, char **buf, size_t *len, const char **err) {
 
 /* ── Unique and correlation IDs ──────────────────────────────────────────── */
 
-void http_new_id(char *buf, size_t cap) {
-    static pthread_mutex_t id_lock = PTHREAD_MUTEX_INITIALIZER;
-    static unsigned long counter   = 0;
-    pthread_mutex_lock(&id_lock);
-    unsigned long n = ++counter;
-    pthread_mutex_unlock(&id_lock);
+void http_new_id(atomic_ulong *seq, char *buf, size_t cap) {
+    unsigned long n = atomic_fetch_add(seq, 1) + 1;
     snprintf(buf, cap, "%lx-%lx", (unsigned long)time(NULL), n);
 }
 
-void http_request_attach_id(HttpRequest *req, char *headers, size_t cap) {
-    if (!req->request_id[0]) http_new_id(req->request_id, sizeof(req->request_id));
+void http_request_attach_id(atomic_ulong *seq, HttpRequest *req, char *headers, size_t cap) {
+    if (!req->request_id[0]) http_new_id(seq, req->request_id, sizeof(req->request_id));
     size_t used = strlen(headers);
     snprintf(headers + used, cap - used, "X-Request-ID: %s\r\n", req->request_id);
 }

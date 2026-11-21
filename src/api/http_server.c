@@ -147,7 +147,7 @@ static void handle_connection(int fd, ApiContext *ctx) {
                             extra_headers, sizeof(extra_headers));
     }
 
-    http_request_attach_id(&req, extra_headers, sizeof(extra_headers)); /* echoed on every reply */
+    http_request_attach_id(&ctx->request_seq, &req, extra_headers, sizeof(extra_headers));
 
     int is_health    = (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/health") == 0);
     int is_preflight = (strcmp(req.method, "OPTIONS") == 0);

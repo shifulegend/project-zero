@@ -34,13 +34,14 @@ static void test_request_ids(void) {
     long65[65] = '\0';
     CHECK(http_request_id_valid(long64) && !http_request_id_valid(long65), "64 characters at most");
     char a[40], b[40];
-    http_new_id(a, sizeof a);
-    http_new_id(b, sizeof b);
+    atomic_ulong seq = 0;
+    http_new_id(&seq, a, sizeof a);
+    http_new_id(&seq, b, sizeof b);
     CHECK(strcmp(a, b) != 0 && http_request_id_valid(a), "generated IDs are unique and valid");
     HttpRequest req;
     memset(&req, 0, sizeof req);
     char hdrs[128] = "A: 1\r\n";
-    http_request_attach_id(&req, hdrs, sizeof hdrs);
+    http_request_attach_id(&seq, &req, hdrs, sizeof hdrs);
     CHECK(strstr(hdrs, "A: 1\r\nX-Request-ID: ") == hdrs && req.request_id[0],
           "attach appends the header and generates an ID when none was sent");
 }

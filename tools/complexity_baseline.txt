@@ -10,7 +10,7 @@ src/api/api_config_json.c::config_runtime 12 42 0
 src/api/api_info.c::api_model_meta 14 56 2
 src/api/api_info.c::api_prompt_cache_json 16 41 0
 src/api/batch_scheduler.c::admit 12 43 3
-src/api/batch_scheduler.c::batch_scheduler_create 29 79 2
+src/api/batch_scheduler.c::batch_scheduler_create 12 25 1
 src/api/batch_scheduler.c::batch_scheduler_generate 14 55 3
 src/api/batch_scheduler.c::kv_make_room 15 27 3
 src/api/batch_scheduler.c::scheduler_main 18 42 4

@@ -397,6 +397,7 @@ set(API_SOURCES
     src/api/update_endpoint.c
     src/api/gen_queue.c
     src/api/batch_scheduler.c
+    src/api/batch_slots.c
 )
 
 set(RAG_SOURCES

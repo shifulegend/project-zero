@@ -10,67 +10,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "api/batch_scheduler_internal.h"
 #include "core/log.h"
 #include "runtime/run_state.h"
 #include "runtime/spec_scratch.h"
 #include "transformer/forward.h"
 #include "transformer/gen_session.h"
-
-/* First capacity (bytes) of a job's output buffer; it doubles from here. */
-#define BATCH_JOB_OUT_INIT_CAP 1024
-
-typedef struct BatchJob {
-    const char *prompt;
-    const GenerationParams *gp;
-    int use_cache;
-    GenSession g;
-    struct BatchScheduler *sched;
-    /* Output channel, guarded by sched->mu: NUL-separated pieces. */
-    char *out;
-    size_t out_len, out_cap;
-    int out_pieces;
-    int done;
-    int abort;
-    pthread_cond_t cv;
-    struct BatchJob *next;
-} BatchJob;
-
-typedef struct {
-    RunState *s;
-    int owned; /* allocated by the scheduler (slots >= 1) */
-    PrefixCache *pc;
-    PrefixCache own_pc;
-    BatchJob *job; /* NULL when idle */
-    unsigned long long admit_seq;
-} BatchSlot;
-
-struct BatchScheduler {
-    const Config *cfg;
-    const TransformerWeights *w;
-    const MoEConfig *mc;
-    Tokenizer *tok;
-    ThreadPool *tp;
-    PromptStore *pstore;
-    BatchSchedulerOptions opt;
-
-    BatchSlot *slots;
-    SpecBatchScratch sb;
-    int *row_tok, *row_pos;
-    RunState **row_state;
-    unsigned char *row_want;
-    int *order, *count; /* per step: slots in row order, rows per slot */
-    float *logits;      /* [n_slots][vocab]: at most one wanted row per slot */
-
-    pthread_mutex_t mu;
-    pthread_cond_t cv; /* new work / stop */
-    BatchJob *pend_head, *pend_tail;
-    int n_pending, n_active;
-    long long kv_committed; /* snapshot for stats, updated by the scheduler under mu */
-    unsigned long long seq;
-    int stopping;
-    pthread_t thread;
-    int thread_started;
-};
 
 int batch_scheduler_supported(const TransformerWeights *w, const MoEConfig *mc, const RunState *s) {
     return !s->dist && transformer_forward_multi_supported(w, mc);
@@ -372,21 +317,6 @@ static void *scheduler_main(void *arg) {
 
 /* ── Public API ───────────────────────────────────────────────────────── */
 
-static void free_slots(BatchScheduler *sched) {
-    if (!sched->slots) return;
-    for (int i = 0; i < sched->opt.n_slots; i++) {
-        BatchSlot *slot = &sched->slots[i];
-        if (!slot->owned) continue;
-        if (slot->s) {
-            run_state_free(slot->s);
-            free(slot->s);
-        }
-        prefix_cache_free(&slot->own_pc);
-    }
-    free(sched->slots);
-    sched->slots = NULL;
-}
-
 BatchScheduler *batch_scheduler_create(const Config *cfg, const TransformerWeights *w,
                                        RunState *slot0, PrefixCache *slot0_cache,
                                        PromptStore *pstore, const MoEConfig *mc, Tokenizer *tok,
@@ -403,64 +333,10 @@ BatchScheduler *batch_scheduler_create(const Config *cfg, const TransformerWeigh
     sched->tp     = tp;
     sched->pstore = pstore;
     sched->opt    = *opt;
-    int n = opt->n_slots, rows = opt->max_batch_rows;
-    sched->slots     = (BatchSlot *)calloc((size_t)n, sizeof(BatchSlot));
-    sched->row_tok   = (int *)malloc((size_t)rows * sizeof(int));
-    sched->row_pos   = (int *)malloc((size_t)rows * sizeof(int));
-    sched->row_state = (RunState **)malloc((size_t)rows * sizeof(RunState *));
-    sched->row_want  = (unsigned char *)malloc((size_t)rows);
-    sched->order     = (int *)malloc((size_t)n * sizeof(int));
-    sched->count     = (int *)malloc((size_t)n * sizeof(int));
-    sched->logits    = (float *)malloc((size_t)n * (size_t)cfg->vocab_size * sizeof(float));
-    int ok           = sched->slots && sched->row_tok && sched->row_pos && sched->row_state &&
-             sched->row_want && sched->order && sched->count && sched->logits &&
-             spec_batch_scratch_alloc(&sched->sb, cfg, rows) == TN_OK;
-    if (ok && !slot0_cache->tokens) prefix_cache_init(slot0_cache, slot0->max_seq_len);
-    for (int i = 0; ok && i < n; i++) {
-        BatchSlot *slot = &sched->slots[i];
-        if (i == 0) {
-            slot->s  = slot0;
-            slot->pc = slot0_cache;
-            continue;
-        }
-        slot->owned = 1;
-        slot->s     = (RunState *)malloc(sizeof(RunState));
-        if (!slot->s) {
-            ok = 0;
-            break;
-        }
-        if (run_state_alloc_ex(slot->s, cfg, slot0->max_seq_len, false, opt->kv) != TN_OK) {
-            free(slot->s);
-            slot->s = NULL;
-            ok      = 0;
-            break;
-        }
-        slot->s->active_lora = slot0->active_lora; /* one adapter for every sequence */
-        slot->s->attn        = slot0->attn;        /* and one attention kernel */
-        prefix_cache_init(&slot->own_pc, slot->s->max_seq_len);
-        slot->pc = &slot->own_pc;
-    }
-    if (ok) {
-        pthread_mutex_init(&sched->mu, NULL);
-        pthread_cond_init(&sched->cv, NULL);
-        ok                    = pthread_create(&sched->thread, NULL, scheduler_main, sched) == 0;
-        sched->thread_started = ok;
-        if (!ok) {
-            pthread_cond_destroy(&sched->cv);
-            pthread_mutex_destroy(&sched->mu);
-        }
-    }
-    if (!ok) {
-        TN_LOG_ERR("parallel", "[parallel] could not set up %d slots (out of memory?)\n", n);
-        free_slots(sched);
-        spec_batch_scratch_free(&sched->sb);
-        free(sched->row_tok);
-        free(sched->row_pos);
-        free(sched->row_state);
-        free(sched->row_want);
-        free(sched->order);
-        free(sched->count);
-        free(sched->logits);
+    if (!batch_scheduler_setup(sched, cfg, slot0, slot0_cache, scheduler_main)) {
+        TN_LOG_ERR("parallel", "[parallel] could not set up %d slots (out of memory?)\n",
+                   opt->n_slots);
+        batch_scheduler_release(sched);
         free(sched);
         return NULL;
     }
@@ -482,15 +358,7 @@ void batch_scheduler_destroy(BatchScheduler *sched) {
     batch_scheduler_stop(sched);
     pthread_cond_destroy(&sched->cv);
     pthread_mutex_destroy(&sched->mu);
-    free_slots(sched);
-    spec_batch_scratch_free(&sched->sb);
-    free(sched->row_tok);
-    free(sched->row_pos);
-    free(sched->row_state);
-    free(sched->row_want);
-    free(sched->order);
-    free(sched->count);
-    free(sched->logits);
+    batch_scheduler_release(sched);
     free(sched);
 }
 

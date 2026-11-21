@@ -1,10 +1,10 @@
 /*
- * tests/test_json_string_golden.c — json_parse_string / json_parse_string_heap over 200,000 generated
- * JSON strings built from escapes (simple, \/, \uXXXX, surrogate pairs, lone and malformed ones),
- * raw UTF-8, control bytes and truncations, parsed into buffers of 1..64 bytes. Each input sits in a
- * heap block of exactly its length + NUL, so a read past the end is an ASan failure. The hash covers
- * the return code, how far the cursor moved and every byte of the destination (pre-filled with 0xAA),
- * recorded from the parser before it was split into steps.
+ * tests/test_json_string_golden.c — json_parse_string / json_parse_string_heap over 200,000
+ * generated JSON strings built from escapes (simple, \/, \uXXXX, surrogate pairs, lone and
+ * malformed ones), raw UTF-8, control bytes and truncations, parsed into buffers of 1..64 bytes.
+ * Each input sits in a heap block of exactly its length + NUL, so a read past the end is an ASan
+ * failure. The hash covers the return code, how far the cursor moved and every byte of the
+ * destination (pre-filled with 0xAA), recorded from the parser before it was split into steps.
  */
 #include <stdint.h>
 #include <stdio.h>

@@ -3,6 +3,32 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — parallel-slot scheduler set-up split into steps (finding 20.a)
+- What: `batch_scheduler_create` (complexity 29, 79 lines) is now a short driver over `alloc_buffers`,
+  `init_slots` (with `init_owned_slot`), `start_thread` and `release_buffers`; the failure cleanup that was
+  written inline is the one `release_buffers`.
+- Why: finding 20.a; the baseline entry for this function fell from 29 / 79 to 14 / 27.
+- Proof: `make test` (gcc and clang, incl. `test_batch_scheduler`); `tests/e2e_parallel.sh` on SmolLM2 with the
+  Mamba fallback model passes 7 of 7 (4 concurrent requests, text identical to the sequential server, best_of
+  between batched jobs, cancel, config and metrics, unsupported-model fallback); under a memory cap the
+  failure path logs "could not set up 6 slots" and the server falls back to sequential and stays healthy.
+- Areas: `src/api/batch_scheduler.c`, `tools/complexity_baseline.txt`.
+
+### 2026-11-21 — parallel-slot scheduler set-up split into steps (finding 20.a)
+- What: `batch_scheduler_create` (complexity 29, 79 lines) is now a short driver over `batch_scheduler_setup` and
+  `batch_scheduler_release` in the new `src/api/batch_slots.c` (buffer allocation, per-slot run state and prefix
+  cache, scheduler thread start, and the one cleanup path that `create`'s failure branch and `destroy` both use).
+  The scheduler's private types moved to `include/api/batch_scheduler_internal.h`, shared by both files.
+- Why: finding 20.a; the baseline entry for this function fell from 29 / 79 to 12 / 25, and
+  `batch_scheduler.c` shrank from 571 to 439 lines (it was over the 500-line limit).
+- Proof: `make test` (gcc and clang, incl. `test_batch_scheduler`); `tests/e2e_parallel.sh` on SmolLM2 with the
+  Mamba fallback model passes 7 of 7 (4 concurrent requests, text identical to the sequential server, best_of
+  between batched jobs, cancel, config and metrics, unsupported-model fallback); under a memory cap the
+  failure path logs "could not set up 6 slots" and the server falls back to sequential and stays healthy;
+  `make test-tsan` (see the commit message).
+- Areas: `src/api/batch_scheduler.c`, `src/api/batch_slots.c`, `include/api/batch_scheduler_internal.h`,
+  `CMakeLists.txt`, `tests/test_json_string_golden.c` (header comment wrapped), both baselines.
+
 ### 2026-11-21 — JSON string parser split into steps (finding 20.a)
 - What: `json_parse_string` (complexity 24, nesting 6) now delegates escape handling to `decode_escape`,
   `decode_unicode_escape` and `join_surrogates`, with one bounded `put_byte`. A zero-size destination buffer

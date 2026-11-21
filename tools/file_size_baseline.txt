@@ -9,7 +9,7 @@ src/runtime/hardware_profile.c 664
 src/tokenizer/pretokenize.c 593
 src/tokenizer/tokenizer_encode.c 592
 src/transformer/attention.c 619
-src/transformer/mla_attention.c 565
+src/transformer/mla_attention.c 506
 src/update/update_check.c 512
 tests/test_api_server.c 547
 tests/test_forward.c 666

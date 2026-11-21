@@ -251,8 +251,6 @@ src/transformer/gen_session.c::gen_session_end 15 32 2
 src/transformer/gen_session.c::gen_session_prepare 18 58 2
 src/transformer/gen_session.c::gen_session_start 15 38 3
 src/transformer/mamba.c::mamba_block_forward 11 47 2
-src/transformer/mla_attention.c::mla_attention_forward 37 144 3
-src/transformer/mla_attention.c::mla_attention_forward_batch 49 193 4
 src/transformer/moe_experts.c::moe_experts_forward 16 63 2
 src/transformer/moe_ffn.c::moe_ffn_forward 17 43 2
 src/transformer/moe_ffn.c::moe_fused_try 24 64 4

@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — dense attention: one head scan, one KV-row store, and step functions for the single and batched paths
+- What: the score / softmax / weighted-sum scan of one query head against one sequence's KV cache (`attn_scan_head`) and the per-row K/V store (`store_kv_row`) were written twice, once for the single token and once for the batched rows; both paths now share them, along with `attn_qk_norm`. `attention_forward` is `attn_route_family` (MLA, Qwen3.5 hybrid, Qwen3-MoE) then `attn_project`, `attn_rope`, `attn_store_kv`, `attn_heads`, `attn_output`; `attention_forward_rows` is the same steps over rows (`rows_project`, `rows_bias_norm_rope`, `rows_store_kv`, `rows_heads`, `rows_output`). Every step keeps its own step-timing bracket.
+- Why: finding 20.a; `attention_forward` (38 / 142 lines) and `attention_forward_rows` (37 / 143) left the complexity baseline (374 -> 372 with the Qwen3-MoE numbers dropping from the YaRN change); `attention.c` fell from 680 to 619 lines.
+- Proof: greedy output identical to the pre-change binary on 18 runs: SmolLM2, Qwen3-0.6B (QK-norm) and BitNet (sub-norm, ternary) each plain, with `--kv-type i8` / `i4`, with a draft model (batched rows), plus `--attn-kernel tiled`, `--attn-parallel-min-ctx 1`, a tiny `--ctx-size` that wraps the sliding window, DeepSeek-V2-Lite, Qwen3-30B-A3B and Mamba; `tests/e2e_parallel.sh` 6/6 and `tests/e2e_api_concurrency.sh` 8/8; `make test` gcc and clang. Speed (interleaved A/B, median tok/s): SmolLM2 1.03x, BitNet 0.95x (ranges overlap), Qwen3-0.6B 1.00x, long-context single-thread SmolLM2 1.02x.
+- Areas: `src/transformer/attention.c`, `tools/complexity_baseline.txt`, `tools/file_size_baseline.txt`, `tools/duplication_baseline.txt`.
+
 ### 2026-11-21 — the YaRN correction bounds are computed in one place
 - What: `rope_yarn_corr_dims` and `rope_corr_from_config` (`src/math/rope.c`, `include/math/rope.h`) replace five copies of the same formula: two in `attention.c` (single token and batched rows), two in `qwen3moe_attention.c` and MLA's private `yarn_corr_dims`. `rope_corr_from_config` returns `{0, 0}` unless the config enables the YaRN extension, as each copy did.
 - Why: finding 20.a / duplication; the attention functions shrink (`attention.c` -35 lines, `qwen3moe_attention.c` -34, `mla_attention.c` -24) ahead of splitting them further without growing the files.

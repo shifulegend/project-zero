@@ -89,120 +89,119 @@ static TernaryError alloc_quantized_kv(RunState *s, const char *offload_dir, int
     return TN_OK;
 }
 
+/* Scratch buffers: 64-byte aligned for SIMD. False if any allocation failed. */
+static bool alloc_scratch(RunState *s, const Config *cfg) {
+    s->x   = (float *)tn_aligned_calloc(cfg->dim, sizeof(float), TN_SIMD_ALIGN);
+    s->xb  = (float *)tn_aligned_calloc(cfg->dim, sizeof(float), TN_SIMD_ALIGN);
+    s->xb2 = (float *)tn_aligned_calloc(cfg->dim, sizeof(float), TN_SIMD_ALIGN);
+    s->hb  = (float *)tn_aligned_calloc(cfg->hidden_dim, sizeof(float), TN_SIMD_ALIGN);
+    s->hb2 = (float *)tn_aligned_calloc(cfg->hidden_dim, sizeof(float), TN_SIMD_ALIGN);
+    s->q   = (float *)tn_aligned_calloc(cfg->dim, sizeof(float), TN_SIMD_ALIGN);
+    return s->x && s->xb && s->xb2 && s->hb && s->hb2 && s->q;
+}
+
+/* Attention scores (n_heads * max_seq_len) and the output logits. */
+static bool alloc_scores_and_logits(RunState *s, const Config *cfg, int max_seq_len) {
+    /* FM-005 fix: overflow-checked multiplication for att buffer */
+    size_t att_count;
+    if (tn_size_mul_overflow((size_t)cfg->n_heads, (size_t)max_seq_len, &att_count)) return false;
+    if (tn_alloc_too_large(att_count, sizeof(float))) return false;
+    s->att    = (float *)tn_aligned_calloc(att_count, sizeof(float), TN_SIMD_ALIGN);
+    s->logits = (float *)tn_aligned_calloc(cfg->vocab_size, sizeof(float), TN_SIMD_ALIGN);
+    return s->att && s->logits;
+}
+
+/* The F32 K and V caches, in RAM or carved from the offload mapping. */
+static TernaryError alloc_f32_kv(RunState *s, const char *offload_dir, size_t kv_cache_size) {
+    size_t kv_bytes;
+    if (tn_size_mul_overflow(kv_cache_size, sizeof(float), &kv_bytes) ||
+        (!offload_dir && tn_alloc_too_large(kv_cache_size, sizeof(float)))) {
+        run_state_free(s);
+        return TN_ERR_OOM;
+    }
+    if (offload_dir) {
+        size_t sz[2]   = {kv_bytes, kv_bytes};
+        void *pp[2]    = {NULL, NULL};
+        TernaryError e = kv_offload_carve(s, offload_dir, sz, pp, 2);
+        if (e != TN_OK) {
+            run_state_free(s);
+            return e;
+        }
+        s->key_cache   = (float *)pp[0];
+        s->value_cache = (float *)pp[1];
+    } else {
+        s->key_cache   = (float *)tn_aligned_calloc(kv_cache_size, sizeof(float), TN_SIMD_ALIGN);
+        s->value_cache = (float *)tn_aligned_calloc(kv_cache_size, sizeof(float), TN_SIMD_ALIGN);
+    }
+    if (s->key_cache && s->value_cache) return TN_OK;
+    run_state_free(s);
+    return TN_ERR_OOM;
+}
+
+/* The storage type for the generic KV cache and its row layout. i4 groups need
+ * head_dim % TN_KV_I4_GROUP == 0; anything else falls back to i8. */
+static int resolve_kv_type(int qtype, int head_dim, int *row_bytes, int *row_scales) {
+    *row_bytes  = 0;
+    *row_scales = 0;
+    if (qtype == KV_TYPE_F32) return qtype;
+    if (kvq_row_layout((KVCacheType)qtype, head_dim, row_bytes, row_scales) == 0) return qtype;
+    TN_LOG_ERR("kv", "[kv] --kv-type %s needs head_dim %% %d == 0 (head_dim %d); using i8\n",
+               kv_type_name((KVCacheType)qtype), TN_KV_I4_GROUP, head_dim);
+    kvq_row_layout(KV_TYPE_I8, head_dim, row_bytes, row_scales);
+    return KV_TYPE_I8;
+}
+
+/* KV Cache — transposed layout: [layer][head][pos][head_dim]
+ * FM-002 fix: overflow-checked multiplication for all 4 factors. */
+static TernaryError alloc_generic_kv(RunState *s, const Config *cfg, int head_dim, int max_seq_len,
+                                     const KVStrategyOptions *kv_opt) {
+    const char *offload_dir = kv_options_offload_dir(kv_opt);
+    size_t kv_cache_size;
+    if (tn_size_mul4((size_t)cfg->n_layers, (size_t)cfg->n_kv_heads, (size_t)max_seq_len,
+                     (size_t)head_dim, &kv_cache_size)) {
+        run_state_free(s);
+        return TN_ERR_OOM;
+    }
+    int row_bytes, row_scales;
+    int qtype = resolve_kv_type(kv_options_type(kv_opt), head_dim, &row_bytes, &row_scales);
+    if (qtype == KV_TYPE_F32) return alloc_f32_kv(s, offload_dir, kv_cache_size);
+    return alloc_quantized_kv(s, offload_dir, qtype, kv_cache_size, head_dim, row_bytes,
+                              row_scales);
+}
+
+/* Precompute the RoPE frequency table — eliminates powf() from the hot loop. */
+static bool alloc_rope_table(RunState *s, const Config *cfg, int head_dim) {
+    s->rope_freq_len = head_dim / 2;
+    s->rope_freq     = (float *)tn_aligned_calloc(s->rope_freq_len, sizeof(float), TN_SIMD_ALIGN);
+    if (!s->rope_freq) return false;
+    float theta = cfg->rope_theta > 0 ? cfg->rope_theta : 10000.0f;
+    rope_precompute_freqs(s->rope_freq, head_dim, theta);
+    return true;
+}
+
 TernaryError run_state_alloc_ex(RunState *s, const Config *cfg, int max_seq_len, bool skip_kv_cache,
                                 const KVStrategyOptions *kv_opt) {
     memset(s, 0, sizeof(*s));
     attn_config_default(&s->attn);
     s->max_seq_len = max_seq_len;
-
-    int dim        = cfg->dim;
-    int hidden_dim = cfg->hidden_dim;
-    int kv_dim     = config_kv_dim(cfg);
     int head_dim   = config_head_dim(cfg);
 
-    /* Scratch buffers — 64-byte aligned for SIMD */
-    s->x   = (float *)tn_aligned_calloc(dim, sizeof(float), TN_SIMD_ALIGN);
-    s->xb  = (float *)tn_aligned_calloc(dim, sizeof(float), TN_SIMD_ALIGN);
-    s->xb2 = (float *)tn_aligned_calloc(dim, sizeof(float), TN_SIMD_ALIGN);
-    s->hb  = (float *)tn_aligned_calloc(hidden_dim, sizeof(float), TN_SIMD_ALIGN);
-    s->hb2 = (float *)tn_aligned_calloc(hidden_dim, sizeof(float), TN_SIMD_ALIGN);
-    s->q   = (float *)tn_aligned_calloc(dim, sizeof(float), TN_SIMD_ALIGN);
-
-    if (!s->x || !s->xb || !s->xb2 || !s->hb || !s->hb2 || !s->q) {
+    if (!alloc_scratch(s, cfg) || !alloc_scores_and_logits(s, cfg, max_seq_len)) {
         run_state_free(s);
         return TN_ERR_OOM;
     }
 
-    /* FM-005 fix: overflow-checked multiplication for att buffer */
-    size_t att_count;
-    if (tn_size_mul_overflow((size_t)cfg->n_heads, (size_t)max_seq_len, &att_count)) {
-        run_state_free(s);
-        return TN_ERR_OOM;
-    }
-    if (tn_alloc_too_large(att_count, sizeof(float))) {
-        run_state_free(s);
-        return TN_ERR_OOM;
-    }
-    s->att    = (float *)tn_aligned_calloc(att_count, sizeof(float), TN_SIMD_ALIGN);
-    s->logits = (float *)tn_aligned_calloc(cfg->vocab_size, sizeof(float), TN_SIMD_ALIGN);
-
-    if (!s->att || !s->logits) {
-        run_state_free(s);
-        return TN_ERR_OOM;
-    }
-
-    /* KV Cache — transposed layout: [layer][head][pos][head_dim]
-   * FM-002 fix: overflow-checked multiplication for all 4 factors.
-   * Skipped entirely (not calloc'd, not calloc'd-then-freed — see
-   * run_state_alloc_ex's header comment) when skip_kv_cache is set: the
-   * calloc's explicit memset would force real RSS commit for the whole
-   * buffer even if freed moments later. */
+    /* Skipped entirely (not calloc'd, not calloc'd-then-freed — see run_state_alloc_ex's header
+     * comment) when skip_kv_cache is set: the calloc's explicit memset would force real RSS
+     * commit for the whole buffer even if freed moments later. */
     if (!skip_kv_cache) {
-        const char *offload_dir = kv_options_offload_dir(kv_opt);
-        size_t kv_cache_size;
-        if (tn_size_mul4((size_t)cfg->n_layers, (size_t)cfg->n_kv_heads, (size_t)max_seq_len,
-                         (size_t)head_dim, &kv_cache_size)) {
-            run_state_free(s);
-            return TN_ERR_OOM;
-        }
-        int qtype     = kv_options_type(kv_opt);
-        int row_bytes = 0, row_scales = 0;
-        if (qtype != KV_TYPE_F32 &&
-            kvq_row_layout((KVCacheType)qtype, head_dim, &row_bytes, &row_scales) != 0) {
-            /* i4 groups need head_dim % TN_KV_I4_GROUP == 0; fall back to i8. */
-            TN_LOG_ERR("kv",
-                       "[kv] --kv-type %s needs head_dim %% %d == 0 (head_dim %d); using i8\n",
-                       kv_type_name((KVCacheType)qtype), TN_KV_I4_GROUP, head_dim);
-            qtype = KV_TYPE_I8;
-            kvq_row_layout(KV_TYPE_I8, head_dim, &row_bytes, &row_scales);
-        }
-        if (qtype != KV_TYPE_F32) {
-            TernaryError qe = alloc_quantized_kv(s, offload_dir, qtype, kv_cache_size, head_dim,
-                                                 row_bytes, row_scales);
-            if (qe != TN_OK) return qe;
-        } else {
-            size_t kv_bytes;
-            if (tn_size_mul_overflow(kv_cache_size, sizeof(float), &kv_bytes) ||
-                (!offload_dir && tn_alloc_too_large(kv_cache_size, sizeof(float)))) {
-                run_state_free(s);
-                return TN_ERR_OOM;
-            }
-            if (offload_dir) {
-                size_t sz[2]   = {kv_bytes, kv_bytes};
-                void *pp[2]    = {NULL, NULL};
-                TernaryError e = kv_offload_carve(s, offload_dir, sz, pp, 2);
-                if (e != TN_OK) {
-                    run_state_free(s);
-                    return e;
-                }
-                s->key_cache   = (float *)pp[0];
-                s->value_cache = (float *)pp[1];
-            } else {
-                s->key_cache =
-                    (float *)tn_aligned_calloc(kv_cache_size, sizeof(float), TN_SIMD_ALIGN);
-                s->value_cache =
-                    (float *)tn_aligned_calloc(kv_cache_size, sizeof(float), TN_SIMD_ALIGN);
-            }
-
-            if (!s->key_cache || !s->value_cache) {
-                run_state_free(s);
-                return TN_ERR_OOM;
-            }
-        }
+        TernaryError e = alloc_generic_kv(s, cfg, head_dim, max_seq_len, kv_opt);
+        if (e != TN_OK) return e;
     }
 
-    /* Precompute RoPE frequency table — eliminates powf() from the hot loop */
-    s->rope_freq_len = head_dim / 2;
-    s->rope_freq     = (float *)tn_aligned_calloc(s->rope_freq_len, sizeof(float), TN_SIMD_ALIGN);
-    if (!s->rope_freq) {
-        run_state_free(s);
-        return TN_ERR_OOM;
-    }
-    float theta = cfg->rope_theta > 0 ? cfg->rope_theta : 10000.0f;
-    rope_precompute_freqs(s->rope_freq, head_dim, theta);
-
-    (void)kv_dim; /* used implicitly via n_kv_heads * head_dim */
-    return TN_OK;
+    if (alloc_rope_table(s, cfg, head_dim)) return TN_OK;
+    run_state_free(s);
+    return TN_ERR_OOM;
 }
 
 void run_state_free(RunState *s) {

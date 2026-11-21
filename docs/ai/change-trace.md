@@ -3,6 +3,24 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — generic run-state allocator split into steps (finding 20.a)
+- What: `run_state_alloc_ex` (complexity 26, 96 lines, nesting 4) is now a short driver over `alloc_scratch`,
+  `alloc_scores_and_logits`, `alloc_generic_kv` (with `resolve_kv_type` and `alloc_f32_kv`; the quantized
+  case still goes through `alloc_quantized_kv`) and `alloc_rope_table`. Every failure path still frees
+  what was allocated, exactly once.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: new `tests/test_run_state_alloc_golden.c` allocates 4,000 generated shapes and KV options (3,150
+  succeed: 1,214 with F32 KV, 1,393 quantized incl. the int4-to-int8 fallback, 268 offloaded to a temporary
+  directory; the rest are dim 0, empty or negative contexts and a missing offload directory) and pins one
+  hash of the result code, every field set, which buffers exist and the RoPE table, with the last element
+  of every buffer written under ASan (and leak checking on, so a missing free fails); recorded from the old
+  allocator on gcc and clang. Six of seven mutations fail it; the seventh (dropping the check after the F32
+  `calloc`) only matters when `calloc` itself fails, which no test can provoke. A context past the
+  free-RAM ceiling is not in the test because that limit depends on the machine. `make test` (gcc and
+  clang); SmolLM2, BitNet and DeepSeek-V2-Lite output identical with F32, int8 and int4 KV.
+- Affected: `src/runtime/run_state.c`, `tests/test_run_state_alloc_golden.c`,
+  `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — hardware tuning at start-up split into steps (finding 20.a)
 - What: `session_tune_hardware` (complexity 27, 78 lines) is now a driver over `apply_simd_override`,
   `obtain_calibration` (with `calibrate_first_run`), `apply_calibrated_simd`, `select_classifier` (with

@@ -34,6 +34,8 @@ typedef struct {
     char *chat_template_file; /* --chat-template-file <path>: replaces the
                                   model's tokenizer.chat_template (CLI and
                                   --server); NULL = use the GGUF template     */
+    char vision_prompt[8192]; /* --image: the prompt with the image part removed; `prompt` points
+                                  here afterwards (set by the session, not a flag) */
 } CliInput;
 
 /* How a reply is generated: sampler chain, limits and stop sequences (also the server-side defaults). */

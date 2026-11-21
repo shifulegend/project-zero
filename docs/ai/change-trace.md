@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — the --image prompt buffer is part of the arguments
+- What: `CliInput.vision_prompt[8192]` holds the prompt with the image part removed; the file-local static in `session_apply_runtime_options` is gone.
+- Why: finding 14.f (planned removal); the buffer belongs to the run whose `prompt` points into it. Mutable statics 44 -> 43.
+- Proof: `make test` gcc and clang, TSan; a CLI `--image` run with a real vision encoder and projector prints the same text as the baseline binary.
+- Areas: `include/cli/args.h`, `src/cli/session_extras.c`.
+
 ### 2026-11-21 — request-ID counter lives in the server context
 - What: `http_new_id` and `http_request_attach_id` draw from an `atomic_ulong` (`ApiContext.request_seq`) instead of a function-local mutex and counter.
 - Why: finding 14.f (one of the planned removals); two server contexts no longer share a sequence, and the lock is gone. Mutable statics 46 -> 44.

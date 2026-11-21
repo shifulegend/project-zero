@@ -17,7 +17,6 @@
 #include "threading/cache_probe.h"
 #include "transformer/attn_tiled.h"
 
-#define VIS_PROMPT_BUF 8192 /* prompt with the image part removed */
 
 /* ── Phase 19: LoRA adapter (optional) ───────────────────────────────────
  * --lora is the only way this ever activates -- see cli/args.h. Applies
@@ -121,15 +120,14 @@ static void apply_attn_config(PzSession *ses, const AttnConfig *attn) {
 
 /* --image (vision pipeline, shared with the HTTP API) and the attention kernel settings. */
 void session_apply_runtime_options(PzSession *ses) {
-    static char vis_prompt_buf[VIS_PROMPT_BUF];
     /* ── Phase 34: Vision pipeline (extracted to multimodal/vision_pipeline.c
      * in Phase 22.2 so the HTTP API can reuse it for image_url uploads) ──── */
     if (ses->args.input.image_path) {
         const char *stripped_prompt = ses->args.input.prompt;
         vision_pipeline_run(ses->args.input.image_path, ses->args.input.vision_path,
                             ses->args.input.proj_path, &ses->p, &ses->w, ses->s, &ses->mc, &ses->t,
-                            ses->tp, ses->args.input.prompt, vis_prompt_buf, sizeof(vis_prompt_buf),
-                            &stripped_prompt);
+                            ses->tp, ses->args.input.prompt, ses->args.input.vision_prompt,
+                            sizeof(ses->args.input.vision_prompt), &stripped_prompt);
         ses->args.input.prompt = (char *)stripped_prompt;
     }
 

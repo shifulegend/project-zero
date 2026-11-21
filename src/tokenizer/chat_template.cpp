@@ -75,4 +75,21 @@ char *chat_template_apply(const char *tmpl_cstr, const char *const *roles,
     }
 }
 
+uint64_t chat_template_lex_digest(const char *tmpl) {
+    uint64_t h = 1469598103934665603ull;
+    auto mix   = [&h](const void *p, size_t n) {
+        const unsigned char *b = (const unsigned char *)p;
+        for (size_t i = 0; i < n; i++) h = (h ^ b[i]) * 1099511628211ull;
+    };
+    for (const Token &k : jinja_lex(std::string(tmpl ? tmpl : ""))) {
+        int type = (int)k.type;
+        mix(&type, sizeof type);
+        mix(k.sval.data(), k.sval.size());
+        char sep = 0;
+        mix(&sep, 1);
+        mix(&k.ival, sizeof k.ival);
+    }
+    return h;
+}
+
 } /* extern "C" */

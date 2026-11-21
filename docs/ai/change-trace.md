@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — chat-template lexer split into one function per token kind
+- What: `jinja_lex` (`src/tokenizer/chat_template_lex.cpp`) is a short driver over a `Lexer` cursor; text, comments, whitespace control, strings, integers, identifiers, closing delimiters and operators each have a small function, and the operators are tables (`k_two_char_ops`, `k_single_char_ops`). `chat_template_lex_digest` (new, exported) hashes a template's token stream.
+- Why: finding 20.a; `jinja_lex` was complexity 97, 200 lines, nesting 7 and left the complexity baseline (388 -> 387); every new function is within the limits.
+- Proof: old and new lexers compared token for token on 3,065,280 inputs (3M random strings built from lexer fragments, truncated at arbitrary bytes, plus every one- and two-byte sequence inside a tag): 0 differences. `tests/test_chat_template.c` now hashes the token streams of 16 templates (ChatML, Mistral, Llama 3, Qwen-style macros, comments, whitespace control, escapes, operators, unterminated constructs) with hashes taken from the old lexer, and passes; lexing 200 x 26 KB of template takes the same time (39.8 vs 40.4 ms); SmolLM2 output identical to the baseline; `make test` gcc and clang.
+- Areas: `src/tokenizer/chat_template_lex.cpp`, `src/tokenizer/chat_template.cpp`, `include/tokenizer/chat_template.h`, `tests/test_chat_template.c`.
+
 ### 2026-11-21 — tree search split into select, expand, evaluate and finish
 - What: `generate_mcts` (`src/reasoning/mcts.c`) keeps one `Search` struct and calls `select_leaf`, `simulate_once`, `expand_node`, `evaluate_step`, `best_path` and `finish_search` (with `summarize_path`, `needs_completion`, `complete_path`, `report_stats`). The order of every side effect, the seed sequence and the stats written back are unchanged.
 - Why: finding 20.a; `generate_mcts` was complexity 61, 150 lines, nesting 4 (now 15 / 35 / 2; every new function is within the limits).

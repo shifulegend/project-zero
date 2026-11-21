@@ -300,7 +300,59 @@ static void test_method_call_on_variable_still_works(void) {
     }
 }
 
+/* The lexer's token stream for a corpus of templates (ChatML, Mistral, Llama 3, Qwen-style macros,
+ * comments, whitespace control, escapes, operators, unknown characters and unterminated
+ * constructs), hashed. The hashes were taken from the previous lexer before it was split into
+ * small functions; one differing token anywhere changes them. */
+static void test_lexer_token_streams(void) {
+    static const struct {
+        const char *tmpl;
+        unsigned long long digest;
+    } k_cases[] = {
+        {"{% for message in messages %}{{'<|im_start|>' + message['role'] + '\\n' + "
+         "message['content'] + '<|im_end|>' + '\\n'}}{% endfor %}{% if add_generation_prompt %}{{ "
+         "'<|im_start|>assistant\\n' }}{% endif %}",
+         0x9f2af323d30acd7dull},
+        {"{{ bos_token }}{% for message in messages %}{% if message['role'] == 'user' %}{{ '[INST] "
+         "' + message['content'] + ' [/INST]' }}{% elif message['role'] == 'assistant' %}{{ "
+         "message['content'] + eos_token }}{% endif %}{% endfor %}",
+         0xafb206b6f418d79aull},
+        {"{% set loop_messages = messages %}{% for message in loop_messages %}{% set content = "
+         "'<|start_header_id|>' + message['role'] + '<|end_header_id|>\\n\\n'+ message['content'] "
+         "| trim + '<|eot_id|>' %}{% if loop.index0 == 0 %}{% set content = bos_token + content "
+         "%}{% endif %}{{ content }}{% endfor %}{% if add_generation_prompt %}{{ "
+         "'<|start_header_id|>assistant<|end_header_id|>\\n\\n' }}{% endif %}",
+         0x43a0550022c2eab6ull},
+        {"{%- macro render_content(content) -%}{%- if content is string -%}{{- content -}}{%- else "
+         "-%}{%- for item in content -%}{{- item.text -}}{%- endfor -%}{%- endif -%}{%- endmacro "
+         "-%}\n{%- set ns = namespace(last=0, first=true) -%}\n{%- for m in messages[::-1] -%}{%- "
+         "if m.role == 'user' and ns.last == 0 -%}{%- set ns.last = loop.index0 -%}{%- endif "
+         "-%}{%- endfor -%}",
+         0x1dc567454010715cull},
+        {"{# a comment #}{{- 'x' -}}  {# another\nmulti-line #}\n  text {{ a.b[0] }} {{ c(1, "
+         "'two', k=3) }} {{ d | upper | default('z') }}",
+         0xbf0460c40c733556ull},
+        {"{% if a != b and c <= d or e >= f %}{{ x ~ y }}{% elif not g %}{{ (1 + 2) * 3 / 4 % 5 - "
+         "6 }}{% else %}{{ {'k': [1,2,3]} }}{% endif %}",
+         0x5fc7db4cef34f040ull},
+        {"plain text only, no tags at all", 0xc440762b37d8c1f7ull},
+        {"", 0x5ae60fd3edfea8c9ull},
+        {"{{ 'unterminated", 0x22b43408bb126233ull},
+        {"{% if x %}", 0x0da1e0ba1ca4d97full},
+        {"{{- x -}}{{- y -}}{%- z -%}{# c #}{{ w }}", 0x21d7018ba9884101ull},
+        {"{{ 'esc \\n \\t \\r \\\\ \\' \\\" \\q' }}", 0x22a59cb4dd4d66d3ull},
+        {"{{ 123 456 7890123456789 }} {{ _a1 b_2 }} {{ @ $ ^ ; }}", 0x3a93d641e9e756a0ull},
+        {"a {{ b }} c {% d %} e {# f #} g {", 0x9c27a3f1e14eb628ull},
+        {"{%- if x -%}   \n   text   \n   {%- endif -%}   after", 0x8f7b43dd137be0cdull},
+        {"{{ x == y != z <= w >= v < u > t = s }}", 0xe5a0c7d849caf344ull},
+    };
+    for (size_t i = 0; i < sizeof(k_cases) / sizeof(k_cases[0]); i++)
+        TEST_ASSERT(chat_template_lex_digest(k_cases[i].tmpl) == k_cases[i].digest,
+                    "template lexes to the same tokens as before");
+}
+
 int main(void) {
+    RUN_TEST(test_lexer_token_streams);
     RUN_TEST(test_kwarg_call_does_not_stall);
     RUN_TEST(test_dotted_set_mutates_namespace);
     RUN_TEST(test_macro_positional_and_default_args);

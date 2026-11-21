@@ -267,8 +267,6 @@ src/transformer/moe_router.c::moe_router_forward_opts 16 26 2
 src/transformer/output_inject.c::inject_text_into_kv 11 28 2
 src/transformer/qwen35_attention.c::q35_full_attn_forward 24 85 2
 src/transformer/qwen35_attention.c::q35_linear_attn_forward 36 132 3
-src/transformer/qwen3moe_attention.c::qwen3moe_attention_forward 24 104 2
-src/transformer/qwen3moe_attention.c::qwen3moe_attention_forward_batch 33 153 3
 src/transformer/stop_seq.c::stop_matcher_feed 13 29 2
 src/update/release_links.c::release_web_base 15 21 2
 src/update/semver.c::cmp_pre 18 28 4

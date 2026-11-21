@@ -3,6 +3,20 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — chat-template expression parser split into small functions (finding 20.a)
+- What: `parse_primary` (complexity 32, 95 lines, nesting 6) is now a short driver over `parse_atom`
+  (`parse_ident_primary`, `parse_bool_literal`), `parse_postfix` and the three postfix parsers
+  `parse_subscript` (index and slice), `parse_attribute` and `parse_call`.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: new `tests/test_template_parse_golden.c` renders 30,000 generated expressions (every literal
+  form, parenthesised expressions, chains of index / slice with each part optional / attribute / `.0` /
+  call with keyword arguments, some cut short or with a closing token dropped; 27,037 render, 24,246 with
+  text) and pins one hash recorded from the old parser; mutations of the index bracket, `.0`, and `True`
+  each fail it. `make test` (gcc and clang); startup and generation identical to the old binary on five
+  real models.
+- Affected: `src/tokenizer/chat_template_parse_expr.cpp`, `tests/test_template_parse_golden.c`,
+  `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — chat-template operators split into small functions (finding 20.a)
 - What: `binop_apply` (complexity 34, 50 lines) now dispatches to `arith_apply` (+ `int_arith`),
   `compare_apply` (+ `order_apply`) and `contains` / `not_contained`.

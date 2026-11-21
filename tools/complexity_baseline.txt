@@ -198,7 +198,6 @@ src/tokenizer/chat_template_parse.cpp::parse_macro 12 34 4
 src/tokenizer/chat_template_parse.cpp::parse_stmt 16 36 2
 src/tokenizer/chat_template_parse_expr.cpp::parse_compare 19 67 2
 src/tokenizer/chat_template_parse_expr.cpp::parse_filter 9 24 4
-src/tokenizer/chat_template_parse_expr.cpp::parse_primary 32 95 6
 src/tokenizer/pretokenize.c::cls_match 34 54 3
 src/tokenizer/pretokenize.c::contraction 16 10 2
 src/tokenizer/pretokenize.c::cpts_decode 16 34 4

@@ -39,6 +39,123 @@ static NodePtr parse_call_arg(Parser &p) {
 }
 
 /* ---- Primary / postfix ---- */
+
+static NodePtr parse_bool_literal(Parser &p, bool value) {
+    p.next();
+    auto n  = std::make_unique<Node>(NT::LitBool);
+    n->bval = value;
+    return n;
+}
+
+/* An identifier token: true/false/none keywords (either case) or a plain name. */
+static NodePtr parse_ident_primary(Parser &p) {
+    const std::string sv = p.peek().sval;
+    if (sv == "true" || sv == "True") return parse_bool_literal(p, true);
+    if (sv == "false" || sv == "False") return parse_bool_literal(p, false);
+    if (sv == "none" || sv == "None") {
+        p.next();
+        return std::make_unique<Node>(NT::LitNone);
+    }
+    auto n  = std::make_unique<Node>(NT::Ident);
+    n->sval = p.next().sval;
+    return n;
+}
+
+/* A literal or identifier; a token that cannot start an expression yields none without
+ * consuming anything. */
+static NodePtr parse_atom(Parser &p) {
+    if (p.is(TK::Str)) {
+        auto n  = std::make_unique<Node>(NT::LitStr);
+        n->sval = p.next().sval;
+        return n;
+    }
+    if (p.is(TK::Int)) {
+        auto n  = std::make_unique<Node>(NT::LitInt);
+        n->ival = p.next().ival;
+        return n;
+    }
+    if (p.is(TK::Ident)) return parse_ident_primary(p);
+    return nullptr;
+}
+
+/* After `[`: Python slice syntax `[start:stop:step]` (each part optional), e.g. Qwen 3.6's
+ * chat_template.jinja uses `messages[::-1]` to scan history in reverse. Only enters the slice
+ * path once a ':' is actually seen, so plain `[key]` indexing (the common case) is unaffected. */
+static NodePtr parse_subscript(Parser &p, NodePtr n) {
+    p.next();
+    NodePtr start, stop, step;
+    bool is_slice = false;
+    if (p.is(TK::Colon)) {
+        is_slice = true;
+    } else {
+        start = parse_expr(p);
+        if (p.is(TK::Colon)) is_slice = true;
+    }
+    if (!is_slice) {
+        if (p.is(TK::Rbracket)) p.next();
+        auto gi = std::make_unique<Node>(NT::Getitem);
+        gi->ch.push_back(std::move(n));
+        gi->ch.push_back(std::move(start));
+        return gi;
+    }
+    p.next(); /* consume first ':' */
+    if (!p.is(TK::Colon) && !p.is(TK::Rbracket)) stop = parse_expr(p);
+    if (p.is(TK::Colon)) {
+        p.next();
+        if (!p.is(TK::Rbracket)) step = parse_expr(p);
+    }
+    if (p.is(TK::Rbracket)) p.next();
+    auto gs = std::make_unique<Node>(NT::Getslice);
+    gs->ch.push_back(std::move(n));
+    gs->ch.push_back(std::move(start));
+    gs->ch.push_back(std::move(stop));
+    gs->ch.push_back(std::move(step));
+    return gs;
+}
+
+/* After `.`: an attribute name (or an integer index written as an attribute). */
+static NodePtr parse_attribute(Parser &p, NodePtr n) {
+    p.next();
+    std::string attr = p.is(TK::Ident) ? p.next().sval
+                       : p.is(TK::Int) ? std::to_string(p.next().ival)
+                                       : "";
+    auto ga          = std::make_unique<Node>(NT::Getattr);
+    ga->sval         = attr;
+    ga->ch.push_back(std::move(n));
+    return ga;
+}
+
+/* After `(`: the argument list of a call. */
+static NodePtr parse_call(Parser &p, NodePtr n) {
+    p.next();
+    auto call = std::make_unique<Node>(NT::Call);
+    call->ch.push_back(std::move(n));
+    while (!p.is(TK::Rparen) && !p.is(TK::Eof)) {
+        size_t before = p.pos;
+        call->ch.push_back(parse_call_arg(p));
+        if (p.is(TK::Comma)) p.next();
+        if (p.pos == before)
+            throw std::runtime_error("chat_template: call-arg parse stalled (no forward progress)");
+    }
+    if (p.is(TK::Rparen)) p.next();
+    return call;
+}
+
+/* Applies one postfix (`[...]`, `.attr` or `(...)`) to n; false when none follows. */
+static bool parse_postfix(Parser &p, NodePtr &n) {
+    if (p.is(TK::Lbracket)) {
+        n = parse_subscript(p, std::move(n));
+        return true;
+    }
+    if (p.is(TK::Dot)) {
+        n = parse_attribute(p, std::move(n));
+        return true;
+    }
+    if (!p.is(TK::Lparen)) return false;
+    n = parse_call(p, std::move(n));
+    return true;
+}
+
 static NodePtr parse_primary(Parser &p) {
     /* Parenthesised expression */
     if (p.is(TK::Lparen)) {
@@ -48,36 +165,8 @@ static NodePtr parse_primary(Parser &p) {
         return e;
     }
 
-    NodePtr n;
-
-    /* Literals */
-    if (p.is(TK::Str)) {
-        n       = std::make_unique<Node>(NT::LitStr);
-        n->sval = p.next().sval;
-    } else if (p.is(TK::Int)) {
-        n       = std::make_unique<Node>(NT::LitInt);
-        n->ival = p.next().ival;
-    } else if (p.is(TK::Ident)) {
-        const std::string &sv = p.peek().sval;
-        if (sv == "true" || sv == "True") {
-            p.next();
-            n       = std::make_unique<Node>(NT::LitBool);
-            n->bval = true;
-        } else if (sv == "false" || sv == "False") {
-            p.next();
-            n       = std::make_unique<Node>(NT::LitBool);
-            n->bval = false;
-        } else if (sv == "none" || sv == "None") {
-            p.next();
-            n = std::make_unique<Node>(NT::LitNone);
-        } else {
-            n       = std::make_unique<Node>(NT::Ident);
-            n->sval = p.next().sval;
-        }
-    } else {
-        /* Fallback */
-        return std::make_unique<Node>(NT::LitNone);
-    }
+    NodePtr n = parse_atom(p);
+    if (!n) return std::make_unique<Node>(NT::LitNone); /* Fallback */
 
     /* Postfixes: [key], .attr, (args) — applied uniformly to any primary
      * (identifier or string/int/bool/none literal), not just identifiers,
@@ -86,69 +175,7 @@ static NodePtr parse_primary(Parser &p) {
      * whose receiver is a Getattr — see that case for which string methods
      * are actually implemented; other literal-postfix combinations just
      * evaluate through the existing Getitem/Getattr/Call machinery.) */
-    for (;;) {
-        if (p.is(TK::Lbracket)) {
-            p.next();
-            /* Python slice syntax `[start:stop:step]` (each part
-             * optional), e.g. Qwen 3.6's chat_template.jinja uses
-             * `messages[::-1]` to scan history in reverse. Only enters
-             * the slice path once a ':' is actually seen, so plain
-             * `[key]` indexing (the common case) is unaffected. */
-            NodePtr start, stop, step;
-            bool is_slice = false;
-            if (p.is(TK::Colon)) {
-                is_slice = true;
-            } else {
-                start = parse_expr(p);
-                if (p.is(TK::Colon)) is_slice = true;
-            }
-            if (is_slice) {
-                p.next(); /* consume first ':' */
-                if (!p.is(TK::Colon) && !p.is(TK::Rbracket)) stop = parse_expr(p);
-                if (p.is(TK::Colon)) {
-                    p.next();
-                    if (!p.is(TK::Rbracket)) step = parse_expr(p);
-                }
-                if (p.is(TK::Rbracket)) p.next();
-                auto gs = std::make_unique<Node>(NT::Getslice);
-                gs->ch.push_back(std::move(n));
-                gs->ch.push_back(std::move(start));
-                gs->ch.push_back(std::move(stop));
-                gs->ch.push_back(std::move(step));
-                n = std::move(gs);
-            } else {
-                if (p.is(TK::Rbracket)) p.next();
-                auto gi = std::make_unique<Node>(NT::Getitem);
-                gi->ch.push_back(std::move(n));
-                gi->ch.push_back(std::move(start));
-                n = std::move(gi);
-            }
-        } else if (p.is(TK::Dot)) {
-            p.next();
-            std::string attr = p.is(TK::Ident) ? p.next().sval
-                               : p.is(TK::Int) ? std::to_string(p.next().ival)
-                                               : "";
-            auto ga          = std::make_unique<Node>(NT::Getattr);
-            ga->sval         = attr;
-            ga->ch.push_back(std::move(n));
-            n = std::move(ga);
-        } else if (p.is(TK::Lparen)) {
-            p.next();
-            auto call = std::make_unique<Node>(NT::Call);
-            call->ch.push_back(std::move(n));
-            while (!p.is(TK::Rparen) && !p.is(TK::Eof)) {
-                size_t before = p.pos;
-                call->ch.push_back(parse_call_arg(p));
-                if (p.is(TK::Comma)) p.next();
-                if (p.pos == before)
-                    throw std::runtime_error(
-                        "chat_template: call-arg parse stalled (no forward progress)");
-            }
-            if (p.is(TK::Rparen)) p.next();
-            n = std::move(call);
-        } else {
-            break;
-        }
+    while (parse_postfix(p, n)) {
     }
     return n;
 }

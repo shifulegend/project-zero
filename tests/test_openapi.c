@@ -5,6 +5,7 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "api/openapi.h"
@@ -19,7 +20,7 @@
 static int g_failures = 0;
 
 static void test_openapi_json_has_routes(void) {
-    const char *json = openapi_json();
+    char *json = openapi_json();
     if (!json) {
         FAIL("openapi_json_has_routes", "NULL json");
         return;
@@ -38,23 +39,28 @@ static void test_openapi_json_has_routes(void) {
             char msg[128];
             snprintf(msg, sizeof(msg), "missing route %s", routes[i]);
             FAIL("openapi_json_has_routes", msg);
+            free(json);
             return;
         }
     }
+    free(json);
     PASS("openapi_json_has_routes");
 }
 
 static void test_openapi_json_is_valid_shape(void) {
-    const char *json = openapi_json();
-    if (!strstr(json, "\"openapi\":\"3.0.0\"")) {
+    char *json  = openapi_json();
+    char *again = openapi_json();
+    if (!json || !again || strcmp(json, again) != 0 || json == again) {
+        FAIL("openapi_json_is_valid_shape", "each call must return its own identical copy");
+    } else if (!strstr(json, "\"openapi\":\"3.0.0\"")) {
         FAIL("openapi_json_is_valid_shape", "missing openapi version field");
-        return;
-    }
-    if (!strstr(json, "\"paths\":{")) {
+    } else if (!strstr(json, "\"paths\":{")) {
         FAIL("openapi_json_is_valid_shape", "missing paths object");
-        return;
+    } else {
+        PASS("openapi_json_is_valid_shape");
     }
-    PASS("openapi_json_is_valid_shape");
+    free(json);
+    free(again);
 }
 
 static void test_docs_html_references_openapi(void) {

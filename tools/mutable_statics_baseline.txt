@@ -1,5 +1,4 @@
 # Mutable static variables per file in src/ (tools/check_mutable_statics.py); may only go down.
-src/api/openapi.c 1
 src/cli/session_server.c 1
 src/core/cpu_features.c 4
 src/core/log.c 2

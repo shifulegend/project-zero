@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — the OpenAPI document is joined per call, not cached
+- What: `openapi_json()` returns a freshly joined, caller-owned copy of the two source halves; the static buffer and its `pthread_once` are gone. The route handler frees it; a test checks that two calls give separate identical copies.
+- Why: finding 14.f (planned removal); the join happens on a rarely hit route, so a per-call allocation costs nothing. Mutable statics 43 -> 42.
+- Proof: `make test` gcc and clang, TSan, release build; a live server serves `application/json` from `/openapi.json` (the document itself is unchanged by this commit).
+- Areas: `include/api/openapi.h`, `src/api/{openapi,http_routes}.c`, `tests/test_openapi.c`.
+
 ### 2026-11-21 — the --image prompt buffer is part of the arguments
 - What: `CliInput.vision_prompt[8192]` holds the prompt with the image part removed; the file-local static in `session_apply_runtime_options` is gone.
 - Why: finding 14.f (planned removal); the buffer belongs to the run whose `prompt` points into it. Mutable statics 44 -> 43.

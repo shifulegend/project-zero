@@ -188,7 +188,9 @@ void http_handle_get_docs(int fd, const char *extra_headers) {
 }
 
 void http_handle_get_openapi(int fd, const char *extra_headers) {
-    http_send_response_ex(fd, HTTP_OK, "application/json", openapi_json(), 0, extra_headers);
+    char *json = openapi_json();
+    http_send_response_ex(fd, HTTP_OK, "application/json", json ? json : "{}", 0, extra_headers);
+    free(json);
 }
 
 /* Minimal extraction of {"id":"..."} — the cancel endpoint's only field.

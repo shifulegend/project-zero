@@ -5,6 +5,11 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-11-20.
 
+### 2026-11-21 — the GGUF reader trusted lengths and counts from the file
+- What: found while building a golden test for `gguf_read_header`, whose exact-size buffers and sanitizers flagged it at once: scalar metadata values were read without a bounds check, string lengths were compared as `*p + len > end` (the sum can wrap), a fixed-size array with a huge count looped once per element, and after a rejected count the header kept it, so `gguf_header_free` on the failure path read far past the metadata array: a crafted GGUF with `n_meta = 100000` segfaulted the old `pz` at startup. Model files are downloaded from the internet, so these are untrusted-input bugs, not curiosities.
+- Fix: one `have()` check against the remaining size for every read, a single check for fixed-size arrays, `fail_header` and a clamped `gguf_header_free`.
+- Lesson: every length, count and offset read from a file is checked as `n <= remaining`, never as `p + n <= end`; a reader needs a truncation-and-mutation test from an exactly sized buffer under ASan, not only tests on well-formed files.
+
 ### 2026-11-21 — a golden-hash test's generator depended on the compiler's argument evaluation order
 - What: the first version of `tests/test_semver_parse_equiv.c` built each string with `snprintf(..., pick(a), pick(b), ...)`, every argument calling the random generator. C does not specify argument evaluation order, so gcc and clang drew different strings and the hash recorded on gcc failed on clang. The same hazard sat in `tests/test_pz_config_parse_golden.c` (`1 + rnd(3) * (rnd(4) == 0)`, which happens to agree on both compilers).
 - Fix: each draw is its own statement; the semver hash was re-recorded from the old implementation and verified on gcc and clang.

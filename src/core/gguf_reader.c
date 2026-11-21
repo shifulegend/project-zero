@@ -23,23 +23,18 @@ static uint32_t read_u32(const uint8_t **p) {
     return v;
 }
 
-static uint16_t read_u16(const uint8_t **p) {
-    uint16_t v;
-    memcpy(&v, *p, 2);
-    *p += 2;
-    return v;
-}
-
-static uint8_t read_u8(const uint8_t **p) {
-    return *(*p)++;
+/* 1 when n more bytes can be read at p. Lengths and counts come from the file, so the comparison is
+ * on the remaining size (p + n could wrap). */
+static int have(const uint8_t *p, const uint8_t *end, uint64_t n) {
+    return p <= end && n <= (uint64_t)(end - p);
 }
 
 /* Read a GGUF string (uint64 len + bytes, no NUL in file).
  * Always advances *p by the full on-disk length even if truncating to out_sz. */
 static int read_str(const uint8_t **p, const uint8_t *end, char *out, size_t out_sz) {
-    if (*p + 8 > end) return -1;
+    if (!have(*p, end, 8)) return -1;
     uint64_t len = read_u64(p);
-    if (*p + len > end) return -1;
+    if (!have(*p, end, len)) return -1;
     size_t copy_len = (len < out_sz - 1) ? (size_t)len : out_sz - 1;
     memcpy(out, *p, copy_len);
     out[copy_len] = '\0';
@@ -47,128 +42,91 @@ static int read_str(const uint8_t **p, const uint8_t *end, char *out, size_t out
     return 0;
 }
 
-/* Skip a metadata value of any type (used to skip unknown/array entries). */
-static int skip_meta_value(const uint8_t **p, const uint8_t *end, GGUFValType vtype);
+/* On-disk size of a fixed-size metadata value type (indexed by GGUFValType); 0 for strings, arrays
+ * and unknown types. */
+static size_t scalar_size(GGUFValType t) {
+    static const uint8_t k_size[] = {1, 1, 2, 2, 4, 4, 4, 1, 0, 0, 8, 8, 8};
+    return (unsigned)t < sizeof(k_size) ? k_size[t] : 0;
+}
 
+/* Skip a metadata value of any type (used to skip unknown/array entries). Every step is checked
+ * against the end of the data, so a truncated or crafted file is rejected, not overread. */
 static int skip_meta_value(const uint8_t **p, const uint8_t *end, GGUFValType vtype) {
     if (*p >= end) return -1;
-    switch (vtype) {
-        case GGUF_VAL_UINT8:
-        case GGUF_VAL_INT8:
-        case GGUF_VAL_BOOL:
-            *p += 1;
-            break;
-        case GGUF_VAL_UINT16:
-        case GGUF_VAL_INT16:
-            *p += 2;
-            break;
-        case GGUF_VAL_UINT32:
-        case GGUF_VAL_INT32:
-        case GGUF_VAL_FLOAT32:
-            *p += 4;
-            break;
-        case GGUF_VAL_UINT64:
-        case GGUF_VAL_INT64:
-        case GGUF_VAL_FLOAT64:
-            *p += 8;
-            break;
-        case GGUF_VAL_STRING: {
-            /* Skip string bytes without copying — just advance past them. */
-            if (*p + 8 > end) return -1;
-            uint64_t slen = read_u64(p);
-            if (*p + slen > end) return -1;
-            *p += slen;
-            break;
-        }
-        case GGUF_VAL_ARRAY: {
-            if (*p + 12 > end) return -1;
-            GGUFValType elem_type = (GGUFValType)read_u32(p);
-            uint64_t count        = read_u64(p);
-            for (uint64_t i = 0; i < count; i++) {
-                if (skip_meta_value(p, end, elem_type)) return -1;
-            }
-            break;
-        }
-        default:
-            return -1;
+    size_t sz = scalar_size(vtype);
+    if (sz) {
+        if (!have(*p, end, sz)) return -1;
+        *p += sz;
+        return 0;
     }
+    if (vtype == GGUF_VAL_STRING) {
+        /* Skip string bytes without copying: just advance past them. */
+        if (!have(*p, end, 8)) return -1;
+        uint64_t slen = read_u64(p);
+        if (!have(*p, end, slen)) return -1;
+        *p += slen;
+        return 0;
+    }
+    if (vtype != GGUF_VAL_ARRAY || !have(*p, end, 12)) return -1;
+    GGUFValType elem_type = (GGUFValType)read_u32(p);
+    uint64_t count        = read_u64(p);
+    size_t elem_sz        = scalar_size(elem_type);
+    if (elem_sz) { /* fixed-size elements: one bounds check instead of a loop over count */
+        if (count > (uint64_t)(end - *p) / elem_sz) return -1;
+        *p += count * elem_sz;
+        return 0;
+    }
+    for (uint64_t i = 0; i < count; i++)
+        if (skip_meta_value(p, end, elem_type)) return -1;
+    return 0;
+}
+
+/* A string value: a heap-allocated NUL-terminated copy so callers can safely use strcmp / printf /
+ * strdup without reading past the string end (GGUF on-disk strings have no NUL; the raw mmap
+ * pointer is unsafe). */
+static int parse_string_value(const uint8_t **p, const uint8_t *end, GGUFMeta *m) {
+    if (!have(*p, end, 8)) return -1;
+    uint64_t slen = read_u64(p);
+    if (!have(*p, end, slen)) return -1;
+    m->val.string.len = slen;
+    m->val.string.str = (char *)malloc(slen + 1);
+    if (!m->val.string.str) return -1;
+    memcpy(m->val.string.str, *p, slen);
+    m->val.string.str[slen] = '\0';
+    *p += slen;
+    return 0;
+}
+
+/* An array value: zero-copy pointer into the mapping at the first element; the cursor moves past
+ * all elements. */
+static int parse_array_value(const uint8_t **p, const uint8_t *end, GGUFMeta *m) {
+    if (!have(*p, end, 12)) return -1;
+    GGUFValType elem_type  = (GGUFValType)read_u32(p);
+    uint64_t count         = read_u64(p);
+    m->val.array.elem_type = elem_type;
+    m->val.array.count     = count;
+    m->val.array.data      = *p;
+    for (uint64_t i = 0; i < count; i++)
+        if (skip_meta_value(p, end, elem_type)) return -1;
     return 0;
 }
 
 /* Parse one metadata entry into *m. Returns 0 on success. */
 static int parse_meta_entry(const uint8_t **p, const uint8_t *end, GGUFMeta *m) {
     if (read_str(p, end, m->key, sizeof(m->key))) return -1;
-    if (*p + 4 > end) return -1;
+    if (!have(*p, end, 4)) return -1;
     m->val_type = (GGUFValType)read_u32(p);
 
-    switch (m->val_type) {
-        case GGUF_VAL_UINT8:
-            m->val.u8 = read_u8(p);
-            break;
-        case GGUF_VAL_INT8:
-            m->val.i8 = (int8_t)read_u8(p);
-            break;
-        case GGUF_VAL_UINT16:
-            m->val.u16 = read_u16(p);
-            break;
-        case GGUF_VAL_INT16:
-            m->val.i16 = (int16_t)read_u16(p);
-            break;
-        case GGUF_VAL_UINT32:
-            m->val.u32 = read_u32(p);
-            break;
-        case GGUF_VAL_INT32:
-            m->val.i32 = (int32_t)read_u32(p);
-            break;
-        case GGUF_VAL_FLOAT32:
-            memcpy(&m->val.f32, *p, 4);
-            *p += 4;
-            break;
-        case GGUF_VAL_BOOL:
-            m->val.boolean = read_u8(p);
-            break;
-        case GGUF_VAL_UINT64:
-            m->val.u64 = read_u64(p);
-            break;
-        case GGUF_VAL_INT64:
-            m->val.i64 = (int64_t)read_u64(p);
-            break;
-        case GGUF_VAL_FLOAT64:
-            memcpy(&m->val.f64, *p, 8);
-            *p += 8;
-            break;
-        case GGUF_VAL_STRING: {
-            if (*p + 8 > end) return -1;
-            uint64_t slen = read_u64(p);
-            if (*p + slen > end) return -1;
-            m->val.string.len = slen;
-            /* Heap-allocate a NUL-terminated copy so callers can safely use
-             * strcmp / printf / strdup without reading past the string end.
-             * GGUF on-disk strings have no NUL; the raw mmap pointer is unsafe. */
-            m->val.string.str = (char *)malloc(slen + 1);
-            if (!m->val.string.str) return -1;
-            memcpy(m->val.string.str, *p, slen);
-            m->val.string.str[slen] = '\0';
-            *p += slen;
-            break;
-        }
-        case GGUF_VAL_ARRAY: {
-            if (*p + 12 > end) return -1;
-            GGUFValType elem_type  = (GGUFValType)read_u32(p);
-            uint64_t count         = read_u64(p);
-            m->val.array.elem_type = elem_type;
-            m->val.array.count     = count;
-            m->val.array.data      = *p; /* zero-copy pointer into mmap */
-            /* Advance cursor past all array elements */
-            for (uint64_t i = 0; i < count; i++) {
-                if (skip_meta_value(p, end, elem_type)) return -1;
-            }
-            break;
-        }
-        default:
-            return -1;
+    size_t sz = scalar_size(m->val_type);
+    if (sz) { /* the union's members all start at offset 0 and are little-endian values */
+        if (!have(*p, end, sz)) return -1;
+        memcpy(&m->val, *p, sz);
+        *p += sz;
+        return 0;
     }
-    return 0;
+    if (m->val_type == GGUF_VAL_STRING) return parse_string_value(p, end, m);
+    if (m->val_type == GGUF_VAL_ARRAY) return parse_array_value(p, end, m);
+    return -1;
 }
 
 /* ── What every GGUF tensor type is: name, bytes per block and weights per block ───────────────
@@ -264,45 +222,39 @@ static int looks_like_vision_tensor(const char *name) {
 
 /* ── Public API ─────────────────────────────────────────────────────────── */
 
-TernaryError gguf_read_header(GGUFHeader *hdr, const void *mapped_ptr, size_t mapped_size) {
-    if (!hdr || !mapped_ptr || mapped_size < 24) return TN_ERR_INVALID_ARGS;
-
-    memset(hdr, 0, sizeof(*hdr));
-
-    const uint8_t *p   = (const uint8_t *)mapped_ptr;
-    const uint8_t *end = p + mapped_size;
-
-    /* Magic */
-    uint32_t magic = read_u32(&p);
+/* Magic, version and the two counts. */
+static TernaryError read_preamble(GGUFHeader *hdr, const uint8_t **p) {
+    uint32_t magic = read_u32(p);
     if (magic != GGUF_MAGIC) {
         TN_LOG_INF("gguf", "[gguf] bad magic: 0x%08X (expected 0x%08X)\n", magic, GGUF_MAGIC);
         return TN_ERR_INVALID_ARGS;
     }
 
-    hdr->version = read_u32(&p);
+    hdr->version = read_u32(p);
     if (hdr->version < 1 || hdr->version > 3) {
         TN_LOG_ERR("gguf", "[gguf] unsupported version: %u\n", hdr->version);
         return TN_ERR_INVALID_ARGS;
     }
 
-    hdr->n_tensors = (hdr->version == 1) ? read_u32(&p) : read_u64(&p);
-    hdr->n_meta    = (hdr->version == 1) ? read_u32(&p) : read_u64(&p);
+    hdr->n_tensors = (hdr->version == 1) ? read_u32(p) : read_u64(p);
+    hdr->n_meta    = (hdr->version == 1) ? read_u32(p) : read_u64(p);
 
     if (hdr->n_tensors > GGUF_MAX_TENSORS || hdr->n_meta > GGUF_MAX_META_KEYS) {
         TN_LOG_INF("gguf", "[gguf] tensor count %llu or meta count %llu exceeds limit\n",
                    (unsigned long long)hdr->n_tensors, (unsigned long long)hdr->n_meta);
         return TN_ERR_INVALID_ARGS;
     }
+    return TN_OK;
+}
 
-    /* Parse metadata */
+/* The metadata entries, plus the architecture name as a convenience field. */
+static TernaryError read_meta_section(GGUFHeader *hdr, const uint8_t **p, const uint8_t *end) {
     for (uint64_t i = 0; i < hdr->n_meta; i++) {
         GGUFMeta *m = &hdr->meta[i];
-        if (parse_meta_entry(&p, end, m) != 0) {
+        if (parse_meta_entry(p, end, m) != 0) {
             TN_LOG_ERR("gguf", "[gguf] failed parsing meta entry %llu\n", (unsigned long long)i);
             return TN_ERR_INVALID_ARGS;
         }
-
-        /* Extract convenience fields */
         if (strcmp(m->key, "general.architecture") == 0 && m->val_type == GGUF_VAL_STRING) {
             size_t n = m->val.string.len < sizeof(hdr->arch) - 1 ? m->val.string.len
                                                                  : sizeof(hdr->arch) - 1;
@@ -310,49 +262,48 @@ TernaryError gguf_read_header(GGUFHeader *hdr, const void *mapped_ptr, size_t ma
             hdr->arch[n] = '\0';
         }
     }
+    return TN_OK;
+}
 
-    /* Parse tensor info */
+/* One tensor description: name, dimensions (capped at 4 for safety), type and data offset. */
+static TernaryError read_tensor_info(GGUFTensor *t, uint64_t i, const uint8_t **p,
+                                     const uint8_t *end) {
+    if (read_str(p, end, t->name, sizeof(t->name))) {
+        TN_LOG_ERR("gguf", "[gguf] failed reading tensor %llu name\n", (unsigned long long)i);
+        return TN_ERR_INVALID_ARGS;
+    }
+    if (!have(*p, end, 4)) return TN_ERR_INVALID_ARGS;
+    t->n_dims = read_u32(p);
+    if (t->n_dims > 4) t->n_dims = 4;
+    for (uint32_t d = 0; d < t->n_dims; d++) {
+        if (!have(*p, end, 8)) return TN_ERR_INVALID_ARGS;
+        t->dims[d] = read_u64(p);
+    }
+    if (!have(*p, end, 12)) return TN_ERR_INVALID_ARGS;
+    t->type   = (GGUFType)read_u32(p);
+    t->offset = read_u64(p);
+    return TN_OK;
+}
+
+static TernaryError read_tensor_section(GGUFHeader *hdr, const uint8_t **p, const uint8_t *end) {
     for (uint64_t i = 0; i < hdr->n_tensors; i++) {
-        GGUFTensor *t = &hdr->tensors[i];
-        if (read_str(&p, end, t->name, sizeof(t->name))) {
-            TN_LOG_ERR("gguf", "[gguf] failed reading tensor %llu name\n", (unsigned long long)i);
-            return TN_ERR_INVALID_ARGS;
-        }
-        if (p + 4 > end) return TN_ERR_INVALID_ARGS;
-        t->n_dims = read_u32(&p);
-        if (t->n_dims > 4) {
-            t->n_dims = 4;
-        } /* cap at 4 for safety */
-        for (uint32_t d = 0; d < t->n_dims; d++) {
-            if (p + 8 > end) return TN_ERR_INVALID_ARGS;
-            t->dims[d] = read_u64(&p);
-        }
-        if (p + 12 > end) return TN_ERR_INVALID_ARGS;
-        t->type   = (GGUFType)read_u32(&p);
-        t->offset = read_u64(&p);
-
+        GGUFTensor *t   = &hdr->tensors[i];
+        TernaryError rc = read_tensor_info(t, i, p, end);
+        if (rc != TN_OK) return rc;
         if (looks_like_vision_tensor(t->name)) hdr->is_multimodal = 1;
     }
+    return TN_OK;
+}
 
-    /* Align data region to 32 bytes (GGUF v2+ spec) */
-    size_t header_end = (size_t)(p - (const uint8_t *)mapped_ptr);
-    size_t alignment  = (hdr->version >= 2) ? 32 : 1;
-    size_t data_start = (header_end + alignment - 1) & ~(alignment - 1);
-
-    if (data_start > mapped_size) return TN_ERR_INVALID_ARGS;
-
-    hdr->data_region      = (const uint8_t *)mapped_ptr + data_start;
-    hdr->data_region_size = mapped_size - data_start;
-
-    /* Resolve tensor data pointers */
+/* Points each tensor at its bytes in the data region. 2026-10-18: also require the whole tensor to
+ * fit. Only the start offset was checked, so a truncated file handed kernels a pointer whose tail
+ * ran past the mapping. Q2_0's size is informational (PrismML packing, see gguf_block_size), so it
+ * keeps the old rule. */
+static void resolve_tensor_data(GGUFHeader *hdr) {
     for (uint64_t i = 0; i < hdr->n_tensors; i++) {
         GGUFTensor *t = &hdr->tensors[i];
         size_t sz     = tensor_size_bytes(t);
-        /* 2026-10-18: also require the whole tensor to fit. Only the start
-         * offset was checked, so a truncated file handed kernels a pointer
-         * whose tail ran past the mapping. Q2_0's size is informational
-         * (PrismML packing, see gguf_block_size), so it keeps the old rule. */
-        int fits = t->offset <= hdr->data_region_size &&
+        int fits      = t->offset <= hdr->data_region_size &&
                    (t->type == GGUF_TYPE_Q2_0 || sz <= hdr->data_region_size - t->offset);
         if (!fits) {
             if (t->offset <= hdr->data_region_size)
@@ -366,7 +317,40 @@ TernaryError gguf_read_header(GGUFHeader *hdr, const void *mapped_ptr, size_t ma
             t->size_bytes = sz;
         }
     }
+}
 
+/* A failed read leaves nothing for the caller to free: the strings parsed so far are released and
+ * the counts reset (a rejected count used to stay in the header, and gguf_header_free then walked
+ * far past the metadata array). */
+static TernaryError fail_header(GGUFHeader *hdr, TernaryError rc) {
+    gguf_header_free(hdr);
+    hdr->n_meta    = 0;
+    hdr->n_tensors = 0;
+    return rc;
+}
+
+TernaryError gguf_read_header(GGUFHeader *hdr, const void *mapped_ptr, size_t mapped_size) {
+    if (!hdr || !mapped_ptr || mapped_size < 24) return TN_ERR_INVALID_ARGS;
+
+    memset(hdr, 0, sizeof(*hdr));
+
+    const uint8_t *p   = (const uint8_t *)mapped_ptr;
+    const uint8_t *end = p + mapped_size;
+
+    TernaryError rc = read_preamble(hdr, &p);
+    if (rc == TN_OK) rc = read_meta_section(hdr, &p, end);
+    if (rc == TN_OK) rc = read_tensor_section(hdr, &p, end);
+    if (rc != TN_OK) return fail_header(hdr, rc);
+
+    /* Align data region to 32 bytes (GGUF v2+ spec) */
+    size_t header_end = (size_t)(p - (const uint8_t *)mapped_ptr);
+    size_t alignment  = (hdr->version >= 2) ? 32 : 1;
+    size_t data_start = (header_end + alignment - 1) & ~(alignment - 1);
+    if (data_start > mapped_size) return fail_header(hdr, TN_ERR_INVALID_ARGS);
+
+    hdr->data_region      = (const uint8_t *)mapped_ptr + data_start;
+    hdr->data_region_size = mapped_size - data_start;
+    resolve_tensor_data(hdr);
     return TN_OK;
 }
 
@@ -485,10 +469,13 @@ void gguf_header_free(GGUFHeader *hdr) {
     /* Only GGUF_VAL_STRING metadata entries heap-allocate (parse_meta_entry
      * mallocs a NUL-terminated copy since on-disk GGUF strings aren't
      * NUL-terminated); array/tensor data are zero-copy pointers into the
-     * mmap and owned by mapped_file_close, not by this struct. */
-    for (uint64_t i = 0; i < hdr->n_meta; i++) {
+     * mmap and owned by mapped_file_close, not by this struct. The count is
+     * clamped to the array and each pointer cleared, so a second call (or a
+     * call after a rejected header) is safe. */
+    for (uint64_t i = 0; i < hdr->n_meta && i < GGUF_MAX_META_KEYS; i++) {
         if (hdr->meta[i].val_type == GGUF_VAL_STRING) {
             free(hdr->meta[i].val.string.str);
+            hdr->meta[i].val.string.str = NULL;
         }
     }
 }

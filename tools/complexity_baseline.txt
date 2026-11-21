@@ -131,7 +131,6 @@ src/rag/vector_db.c::copy_file_synced 12 29 2
 src/rag/vector_db.c::upgrade_v1_to_v2 22 72 2
 src/rag/vector_db.c::vector_db_open 13 29 2
 src/rag/vector_db.c::vector_db_store 20 48 2
-src/reasoning/best_of.c::generate_best_of 29 57 3
 src/reasoning/mcts.c::generate_mcts 15 35 2
 src/reasoning/mcts_options.c::mcts_options_clamp 11 12 1
 src/reasoning/prm.c::prm_load 16 31 1

@@ -3,6 +3,15 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — best-of-N generation split into steps (finding 20.a)
+- What: `generate_best_of` (complexity 29, 57 lines) is now a short driver over `best_of_run`,
+  `best_of_candidate`, `best_of_beats`/`best_of_take` (winner choice), `best_of_deliver` and small
+  argument/seed helpers; the shared state travels in two small structs.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: `make test` (gcc and clang); `--best-of 1/3/4/8` runs with fixed seeds on SmolLM2 give text
+  identical to the pre-change binary, and a `best_of: 3` API request returns the same reply and usage.
+- Affected: `src/reasoning/best_of.c`, `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — parallel-slot scheduler set-up split into steps (finding 20.a)
 - What: `batch_scheduler_create` (complexity 29, 79 lines) is now a short driver over `alloc_buffers`,
   `init_slots` (with `init_owned_slot`), `start_thread` and `release_buffers`; the failure cleanup that was

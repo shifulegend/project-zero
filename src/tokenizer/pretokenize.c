@@ -4,15 +4,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "tokenizer/pretok_internal.h"
+
 /* ── Code points ───────────────────────────────────────────────────────── */
-
-#define OUT_OF_RANGE 0xFFFFFFFFu
-
-typedef struct {
-    uint32_t *cp; /* code points */
-    size_t *off;  /* byte offset of each code point (n + 1 entries) */
-    size_t n;
-} Cpts;
 
 static int cpts_decode(Cpts *c, const char *s, size_t len) {
     c->cp  = (uint32_t *)malloc((len + 1) * sizeof(uint32_t));
@@ -56,12 +50,6 @@ static void cpts_free(Cpts *c) {
 
 /* ── Character classes ─────────────────────────────────────────────────── */
 
-enum { F_LETTER = 1, F_NUMBER = 2, F_SPACE = 4, F_PUNCT = 8, F_SYMBOL = 16, F_OTHER = 32 };
-
-static int in(uint32_t c, uint32_t a, uint32_t b) {
-    return c >= a && c <= b;
-}
-
 int pretok_cp_class(uint32_t c) {
     if (c == OUT_OF_RANGE) return 0;
     if (c < 0x80) {
@@ -104,33 +92,6 @@ int pretok_cp_class(uint32_t c) {
 }
 
 /* ── Splitter state ────────────────────────────────────────────────────── */
-
-typedef struct {
-    const Cpts *c;
-    size_t ini, end; /* code-point range of the fragment being split */
-    size_t prev;     /* end of the last emitted piece */
-    size_t *out;     /* piece lengths in code points */
-    int n, cap, overflow;
-} Split;
-
-static uint32_t get_cp(const Split *s, size_t pos) {
-    return (pos >= s->ini && pos < s->end) ? s->c->cp[pos] : OUT_OF_RANGE;
-}
-static int get_fl(const Split *s, size_t pos) {
-    return pretok_cp_class(get_cp(s, pos));
-}
-
-static size_t add_tok(Split *s, size_t end) {
-    size_t len = end - s->prev;
-    if (len > 0) {
-        if (s->n < s->cap)
-            s->out[s->n++] = len;
-        else
-            s->overflow = 1;
-    }
-    s->prev = end;
-    return len;
-}
 
 static int lower(uint32_t c) {
     return (c >= 'A' && c <= 'Z') ? (int)(c | 0x20) : (int)c;
@@ -261,130 +222,6 @@ static void split_llama3(Split *s, int max_digits) {
     }
 }
 
-/* Character-class patterns, matched like std::regex_search: matches become
- * pieces, the text between them stays as its own pieces. */
-typedef enum {
-    CLS_NUMBER_ONE,
-    CLS_NUMBER_RUN,
-    CLS_PUNCT_RUN,
-    CLS_DIGIT3,
-    CLS_NEWLINE,     /* [\r\n]                                           */
-    CLS_DS_LETTERS,  /* \s?[A-Za-z..Latin/Greek/Cyrillic..]+  (deepseek-llm) */
-    CLS_DS_PUNCT,    /* \s?[!-/:-~！-／：-～‘-‟　-。]+            (deepseek-llm) */
-    CLS_TRAIL_SPACE, /* \s+$   (end of the fragment being split)           */
-    CLS_CJK,         /* [一-龥ࠀ-一가-퟿]+                                  */
-    CLS_L_RUN,       /* \s?\p{L}+                       (deepseek-coder) */
-    CLS_P_RUN        /* \s?\p{P}+                       (deepseek-coder) */
-} ClassPat;
-
-/* The CJK / Thai / Hangul blocks the DeepSeek patterns split out as their own runs. */
-static int is_cjk(uint32_t c) {
-    return in(c, 0x4E00, 0x9FA5) || in(c, 0x0800, 0x4E00) || in(c, 0xAC00, 0xD7FF);
-}
-
-/* Letter set of llama.cpp's deepseek-llm pattern: Latin, Greek, Cyrillic, Armenian,
- * Georgian, Cherokee, the Latin/Greek extension blocks and fullwidth Latin (the ranges
- * of its character class, collapsed; scripts outside it stay unsplit between matches). */
-static int ds_letter(uint32_t c) {
-    if (c < 0x80) return ((c | 0x20) >= 'a' && (c | 0x20) <= 'z');
-    if (c == 0xB5) return 1;
-    return (in(c, 0xC0, 0x2AF) && c != 0xD7 && c != 0xF7) || in(c, 0x370, 0x52F) ||
-           in(c, 0x531, 0x556) || in(c, 0x10A0, 0x10C5) || in(c, 0x13A0, 0x13FD) ||
-           in(c, 0x1D00, 0x1FFF) || in(c, 0x2C00, 0x2DFF) || in(c, 0xA640, 0xA7FF) ||
-           in(c, 0xFF21, 0xFF3A) || in(c, 0xFF41, 0xFF5A);
-}
-
-static int ds_punct(uint32_t c) {
-    return in(c, 0x21, 0x2F) || in(c, 0x3A, 0x7E) || in(c, 0xFF01, 0xFF0F) ||
-           in(c, 0xFF1A, 0xFF5E) || in(c, 0x2018, 0x201F) || in(c, 0x3000, 0x3002);
-}
-
-/* Run of characters accepted by `ok`, after one optional whitespace character. */
-static int opt_space_run(const Split *s, size_t pos, int (*ok)(uint32_t)) {
-    size_t q = pos;
-    if (get_fl(s, q) & F_SPACE) q++;
-    size_t b = q;
-    while (get_cp(s, q) != OUT_OF_RANGE && ok(get_cp(s, q))) q++;
-    return q > b ? (int)(q - pos) : 0;
-}
-
-static int cp_is_letter(uint32_t c) {
-    return (pretok_cp_class(c) & F_LETTER) != 0;
-}
-static int cp_is_punct(uint32_t c) {
-    return (pretok_cp_class(c) & F_PUNCT) != 0;
-}
-
-static int cls_match(const Split *s, size_t pos, ClassPat p) {
-    uint32_t c = get_cp(s, pos);
-    int fl     = pretok_cp_class(c);
-    switch (p) {
-        case CLS_NUMBER_ONE:
-            return (fl & F_NUMBER) ? 1 : 0;
-        case CLS_NUMBER_RUN: {
-            size_t q = pos;
-            while (get_fl(s, q) & F_NUMBER) q++;
-            return (int)(q - pos);
-        }
-        case CLS_PUNCT_RUN: {
-            /* [\p{P}\$\+<=>\^~\|]+ */
-            size_t q = pos;
-            for (;;) {
-                uint32_t d = get_cp(s, q);
-                int f      = pretok_cp_class(d);
-                if ((f & F_PUNCT) || d == '$' || d == '+' || d == '<' || d == '=' || d == '>' ||
-                    d == '^' || d == '~' || d == '|')
-                    q++;
-                else
-                    break;
-            }
-            return (int)(q - pos);
-        }
-        case CLS_NEWLINE:
-            return (c == '\r' || c == '\n') ? 1 : 0;
-        case CLS_DS_LETTERS:
-            return opt_space_run(s, pos, ds_letter);
-        case CLS_DS_PUNCT:
-            return opt_space_run(s, pos, ds_punct);
-        case CLS_L_RUN:
-            return opt_space_run(s, pos, cp_is_letter);
-        case CLS_P_RUN:
-            return opt_space_run(s, pos, cp_is_punct);
-        case CLS_CJK: {
-            size_t q = pos;
-            while (get_cp(s, q) != OUT_OF_RANGE && is_cjk(get_cp(s, q))) q++;
-            return (int)(q - pos);
-        }
-        case CLS_TRAIL_SPACE: {
-            size_t q = pos;
-            while (get_fl(s, q) & F_SPACE) q++;
-            return (q > pos && q == s->end) ? (int)(q - pos) : 0;
-        }
-        case CLS_DIGIT3: {
-            for (int i = 0; i < 3; i++) {
-                uint32_t d = get_cp(s, pos + (size_t)i);
-                if (d < '0' || d > '9') return 0;
-            }
-            return 3;
-        }
-    }
-    return 0;
-}
-
-static void split_class(Split *s, ClassPat p) {
-    for (size_t pos = s->ini; pos < s->end;) {
-        int m = cls_match(s, pos, p);
-        if (m > 0) {
-            add_tok(s, pos); /* unmatched text before the match */
-            pos += (size_t)m;
-            add_tok(s, pos);
-        } else {
-            pos++;
-        }
-    }
-    add_tok(s, s->end);
-}
-
 /* ── Pipeline ──────────────────────────────────────────────────────────── */
 
 typedef enum {
@@ -425,37 +262,37 @@ static int run_step(const Cpts *c, Step st, size_t **pieces, int *n_pieces) {
                 split_llama3(&s, 1);
                 break;
             case STEP_NUM1:
-                split_class(&s, CLS_NUMBER_ONE);
+                pretok_split_class(&s, CLS_NUMBER_ONE);
                 break;
             case STEP_NUMRUN:
-                split_class(&s, CLS_NUMBER_RUN);
+                pretok_split_class(&s, CLS_NUMBER_RUN);
                 break;
             case STEP_PUNCT:
-                split_class(&s, CLS_PUNCT_RUN);
+                pretok_split_class(&s, CLS_PUNCT_RUN);
                 break;
             case STEP_DIG3:
-                split_class(&s, CLS_DIGIT3);
+                pretok_split_class(&s, CLS_DIGIT3);
                 break;
             case STEP_NL:
-                split_class(&s, CLS_NEWLINE);
+                pretok_split_class(&s, CLS_NEWLINE);
                 break;
             case STEP_DS_LETTERS:
-                split_class(&s, CLS_DS_LETTERS);
+                pretok_split_class(&s, CLS_DS_LETTERS);
                 break;
             case STEP_DS_PUNCT:
-                split_class(&s, CLS_DS_PUNCT);
+                pretok_split_class(&s, CLS_DS_PUNCT);
                 break;
             case STEP_TRAIL_SPACE:
-                split_class(&s, CLS_TRAIL_SPACE);
+                pretok_split_class(&s, CLS_TRAIL_SPACE);
                 break;
             case STEP_CJK:
-                split_class(&s, CLS_CJK);
+                pretok_split_class(&s, CLS_CJK);
                 break;
             case STEP_L_RUN:
-                split_class(&s, CLS_L_RUN);
+                pretok_split_class(&s, CLS_L_RUN);
                 break;
             case STEP_P_RUN:
-                split_class(&s, CLS_P_RUN);
+                pretok_split_class(&s, CLS_P_RUN);
                 break;
         }
         if (s.overflow) {

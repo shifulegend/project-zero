@@ -3,6 +3,23 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — pre-tokenizer character-class matching split per pattern (finding 20.a)
+- What: `cls_match` (complexity 34, 54 lines) is now a table lookup over eleven small matchers, one per
+  pattern (`cls_number_run`, `cls_punct_run`, `cls_cjk`, ...). The pattern code moved to
+  `src/tokenizer/pretok_classes.c` with the shared types in `include/tokenizer/pretok_internal.h`, so
+  `pretokenize.c` shrinks from 593 to 430 lines and leaves the file-size baseline.
+- Why: finding 20.a; the function left the complexity baseline entirely (`ds_letter` keeps its entry, now
+  under its new file name, same numbers).
+- Proof: new `tests/test_pretokenize_golden.c` runs all eight pre-tokenizer types over 60,000 generated
+  texts each (every class pattern, malformed UTF-8, exact-size heap buffers under ASan) and pins one hash
+  recorded from the old code; mutations of the symbol set, the digit count, the trailing-space rule and
+  the pattern table each fail it. `make test` (gcc and clang); startup and generation identical to the old
+  binary on four real models. Speed on 3 MB of mixed text: default -6%, deepseek-llm -12%, deepseek-coder
+  +7% (about 4 ms), i.e. a wash.
+- Affected: `src/tokenizer/pretokenize.c`, `src/tokenizer/pretok_classes.c`,
+  `include/tokenizer/pretok_internal.h`, `CMakeLists.txt`, `tests/test_pretokenize_golden.c`, both
+  baselines.
+
 ### 2026-11-21 — chat-template expression parser split into small functions (finding 20.a)
 - What: `parse_primary` (complexity 32, 95 lines, nesting 6) is now a short driver over `parse_atom`
   (`parse_ident_primary`, `parse_bool_literal`), `parse_postfix` and the three postfix parsers

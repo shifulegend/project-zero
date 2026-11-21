@@ -249,6 +249,7 @@ set(TOKENIZER_SOURCES
     src/tokenizer/tokenizer_load.c
     src/tokenizer/tokenizer_encode.c
     src/tokenizer/pretokenize.c
+    src/tokenizer/pretok_classes.c
     src/tokenizer/tokenizer_decode.c
     src/tokenizer/tokenizer_gguf.c
 )

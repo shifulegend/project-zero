@@ -92,8 +92,8 @@ static TernaryError alloc_quantized_kv(RunState *s, const char *offload_dir, int
 TernaryError run_state_alloc_ex(RunState *s, const Config *cfg, int max_seq_len, bool skip_kv_cache,
                                 const KVStrategyOptions *kv_opt) {
     memset(s, 0, sizeof(*s));
+    attn_config_default(&s->attn);
     s->max_seq_len = max_seq_len;
-    s->current_pos = 0;
 
     int dim        = cfg->dim;
     int hidden_dim = cfg->hidden_dim;

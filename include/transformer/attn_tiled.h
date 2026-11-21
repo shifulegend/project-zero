@@ -12,30 +12,21 @@
  * grows, and V for the tile is consumed while its K rows are still hot.
  * No O(seq_len) score buffer, one pass over the context.
  *
- * Selection is process-wide (CLI --attn-kernel standard|tiled, --attn-tile N;
- * reported by GET /v1/config). Applies to the generic dense/GQA single-token
- * attention path.
+ * Selection is per RunState (CLI --attn-kernel standard|tiled, --attn-tile N; see
+ * core/attn_config.h, reported by GET /v1/config). Applies to the generic dense/GQA
+ * single-token attention path.
  */
 
+#include "core/attn_config.h"
 #include "kv_cache/sliding_window.h"
-
-typedef enum { ATTN_KERNEL_STANDARD = 0, ATTN_KERNEL_TILED = 1 } AttnKernel;
 
 #define ATTN_TILE_MAX 1024
 
-/* tile <= 0 = derive from the L1d size (cache_probe.h); clamped to
- * [8, ATTN_TILE_MAX]. */
-void attn_kernel_configure(AttnKernel kernel, int tile, int head_dim);
-AttnKernel attn_kernel_get(void);
-int attn_tile_get(void);
+/* tile <= 0 = derive from the L1d size (cache_probe.h); clamped to [8, ATTN_TILE_MAX]. */
+void attn_kernel_configure(AttnConfig *c, AttnKernel kernel, int tile, int head_dim);
 const char *attn_kernel_name(AttnKernel k);
-/* Phase 27: attention heads are dispatched over the thread pool once the
- * valid context reaches this many positions (0 = never). Default
- * ATTN_PARALLEL_MIN_CTX_DEFAULT; CLI --attn-parallel-min-ctx. */
-#define ATTN_PARALLEL_MIN_CTX_DEFAULT                                                              \
-    64 /* 2026-10-18 sweep, SmolLM2-135M, 4 threads: 64 -> 92.6 tok/s vs 256 -> 77.8 (5-run means) */
-void attn_parallel_min_ctx_set(int n);
-int attn_parallel_min_ctx_get(void);
+/* Heads go to the thread pool from `n` valid positions (negative = never). */
+void attn_parallel_min_ctx_set(AttnConfig *c, int n);
 
 /* "standard" | "tiled" -> kernel; returns -1 for anything else. */
 int attn_kernel_parse(const char *s);

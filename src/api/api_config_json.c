@@ -323,6 +323,13 @@ static void config_limits(JsonBuf *jb, const ApiContext *ctx, int lim, int vocab
     jb_raw(jb, "},");
 }
 
+/* The attention settings of the served run state (the defaults without one). */
+static AttnConfig runtime_attn(const ApiContext *ctx) {
+    AttnConfig attn;
+    attn_config_default(&attn);
+    return ctx && ctx->run_state ? ctx->run_state->attn : attn;
+}
+
 /* Read-only runtime facts (startup flags, not per-request settings). */
 static void config_runtime(JsonBuf *jb, const ApiContext *ctx) {
     {
@@ -347,16 +354,16 @@ static void config_runtime(JsonBuf *jb, const ApiContext *ctx) {
         jb_raw(jb, ctx && ctx->run_state && ctx->run_state->kvs.offload_base ? "true" : "false");
         jb_raw(jb, ",");
         jb_key(jb, "attention_kernel");
-        jb_str(jb, attn_kernel_name(attn_kernel_get()));
+        jb_str(jb, attn_kernel_name(runtime_attn(ctx).kernel));
         jb_raw(jb, ",");
         jb_key(jb, "rope_layout");
         jb_str(jb, rope_layout_name(ctx && ctx->cfg ? ctx->cfg->rope_layout : 0));
         jb_raw(jb, ",");
         jb_key(jb, "attention_tile");
-        jb_int(jb, attn_tile_get());
+        jb_int(jb, runtime_attn(ctx).tile);
         jb_raw(jb, ",");
         jb_key(jb, "attention_parallel_min_ctx");
-        jb_int(jb, attn_parallel_min_ctx_get());
+        jb_int(jb, runtime_attn(ctx).parallel_min_ctx);
         jb_raw(jb, ",");
         runtime_distributed(jb);
         jb_raw(jb, ",");

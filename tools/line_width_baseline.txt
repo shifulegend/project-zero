@@ -16,7 +16,6 @@ include/math/simd_vec_ops.h 2
 include/runtime/calibration.h 7
 include/runtime/gguf_load_util.h 1
 include/tokenizer/tokenizer.h 1
-include/transformer/attn_tiled.h 1
 include/transformer/dense_matmul_dispatch.h 1
 install.sh 4
 src/api/api_config_json.c 2

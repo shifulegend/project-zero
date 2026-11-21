@@ -6,19 +6,12 @@
 #include "math/simd_vec_ops.h"
 #include "threading/cache_probe.h"
 
-static AttnKernel g_kernel    = ATTN_KERNEL_STANDARD;
-static int g_tile             = 64;
-static int g_parallel_min_ctx = ATTN_PARALLEL_MIN_CTX_DEFAULT;
-
-void attn_parallel_min_ctx_set(int n) {
-    g_parallel_min_ctx = n < 0 ? 0 : n;
-}
-int attn_parallel_min_ctx_get(void) {
-    return g_parallel_min_ctx;
+void attn_parallel_min_ctx_set(AttnConfig *c, int n) {
+    c->parallel_min_ctx = n < 0 ? 0 : n;
 }
 
-void attn_kernel_configure(AttnKernel kernel, int tile, int head_dim) {
-    g_kernel = kernel;
+void attn_kernel_configure(AttnConfig *c, AttnKernel kernel, int tile, int head_dim) {
+    c->kernel = kernel;
     if (tile <= 0) {
         /* K and V rows for one tile should sit in about half of L1d. */
         int row = head_dim > 0 ? head_dim * (int)sizeof(float) * 2 : 512;
@@ -26,14 +19,7 @@ void attn_kernel_configure(AttnKernel kernel, int tile, int head_dim) {
     }
     if (tile < 8) tile = 8;
     if (tile > ATTN_TILE_MAX) tile = ATTN_TILE_MAX;
-    g_tile = tile;
-}
-
-AttnKernel attn_kernel_get(void) {
-    return g_kernel;
-}
-int attn_tile_get(void) {
-    return g_tile;
+    c->tile = tile;
 }
 
 const char *attn_kernel_name(AttnKernel k) {

@@ -322,13 +322,13 @@ void attention_forward(RunState *s, const TransformerWeights *w, const Config *c
                            n_kv_heads,
                            max_seq,
                            inv_sqrt_head_dim,
-                           attn_kernel_get() == ATTN_KERNEL_TILED,
-                           attn_tile_get()};
+                           s->attn.kernel == ATTN_KERNEL_TILED,
+                           s->attn.tile};
         /* Phase 27: heads are independent (own score row in s->att, own output
      * slice of s->xb) — spread them over the pool once the context is long
      * enough for the dispatch to pay off (--attn-parallel-min-ctx). */
         int valid_ctx = sw_valid_count(&s->sw, pos);
-        int min_ctx   = attn_parallel_min_ctx_get();
+        int min_ctx   = s->attn.parallel_min_ctx;
         if (tp && n_heads > 1 && min_ctx > 0 && valid_ctx >= min_ctx)
             threadpool_dispatch(tp, attn_heads_task, &ha, n_heads);
         else
@@ -608,7 +608,7 @@ static TernaryError attention_forward_rows(RunState *const *states, const int *p
                            dim,    head_dim, kv_mul, n_kv_heads, 1.0f / sqrtf((float)head_dim)};
         int work        = 0;
         for (int k = 0; k < n_tokens; k++) work += sw_valid_count(&states[k]->sw, pos_arr[k]);
-        int min_ctx = attn_parallel_min_ctx_get();
+        int min_ctx = states[0]->attn.parallel_min_ctx;
         if (tp && n_heads > 1 && min_ctx > 0 && work >= min_ctx)
             threadpool_dispatch(tp, rows_heads_task, &ra, n_heads);
         else

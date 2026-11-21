@@ -16,7 +16,6 @@ src/runtime/hardware_profile.c 4
 src/threading/cache_probe.c 2
 src/tokenizer/template_guard.c 1
 src/tokenizer/tokenizer_decode.c 1
-src/transformer/attn_tiled.c 3
 src/transformer/forward.c 5
 src/transformer/moe_experts.c 1
 src/transformer/moe_ffn.c 2

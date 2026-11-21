@@ -85,15 +85,23 @@ static void test_kernel_config(void) {
     TEST_ASSERT_EQ(attn_kernel_parse("tiled"), ATTN_KERNEL_TILED, "parse tiled");
     TEST_ASSERT_EQ(attn_kernel_parse("standard"), ATTN_KERNEL_STANDARD, "parse standard");
     TEST_ASSERT_EQ(attn_kernel_parse("flash"), -1, "reject unknown");
-    attn_kernel_configure(ATTN_KERNEL_TILED, 3, 64);
-    TEST_ASSERT_EQ(attn_tile_get(), 8, "tile clamped up");
-    attn_kernel_configure(ATTN_KERNEL_TILED, 100000, 64);
-    TEST_ASSERT_EQ(attn_tile_get(), ATTN_TILE_MAX, "tile clamped down");
-    attn_kernel_configure(ATTN_KERNEL_STANDARD, 0, 64);
-    TEST_ASSERT(attn_tile_get() >= 8, "auto tile from L1d");
-    attn_parallel_min_ctx_set(-5);
-    TEST_ASSERT_EQ(attn_parallel_min_ctx_get(), 0, "negative -> never");
-    attn_parallel_min_ctx_set(ATTN_PARALLEL_MIN_CTX_DEFAULT);
+    AttnConfig a;
+    attn_config_default(&a);
+    TEST_ASSERT(a.kernel == ATTN_KERNEL_STANDARD && a.tile == 64 &&
+                    a.parallel_min_ctx == ATTN_PARALLEL_MIN_CTX_DEFAULT,
+                "defaults");
+    attn_kernel_configure(&a, ATTN_KERNEL_TILED, 3, 64);
+    TEST_ASSERT_EQ(a.tile, 8, "tile clamped up");
+    attn_kernel_configure(&a, ATTN_KERNEL_TILED, 100000, 64);
+    TEST_ASSERT_EQ(a.tile, ATTN_TILE_MAX, "tile clamped down");
+    attn_kernel_configure(&a, ATTN_KERNEL_STANDARD, 0, 64);
+    TEST_ASSERT(a.tile >= 8, "auto tile from L1d");
+    attn_parallel_min_ctx_set(&a, -5);
+    TEST_ASSERT_EQ(a.parallel_min_ctx, 0, "negative -> never");
+    AttnConfig b;
+    attn_config_default(&b);
+    TEST_ASSERT(b.kernel == ATTN_KERNEL_STANDARD && b.tile == 64,
+                "configuring one state leaves another's settings alone");
 }
 
 int main(void) {

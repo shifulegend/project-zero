@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-20 — attention kernel settings live in each RunState
+- What: `AttnConfig` (kernel, tile, parallel threshold; `include/core/attn_config.h`) is a field of `RunState`, defaulted at allocation. The attention code reads `s->attn`; the session applies `--attn-kernel/--attn-tile/--attn-parallel-min-ctx` to the main, draft, PRM and RAG-embedder states, batch-scheduler slots copy slot 0's, and `/v1/config` reports the served state's. The `attn_*_get()` accessors and the three file-scope variables are gone.
+- Why: finding 14.f; mutable statics 49 -> 46. Two states in one process can now run different kernels. The type sits in `core/` so `run_state.h` does not include the transformer layer (the layer check caught that first).
+- Proof: `make test` gcc and clang, TSan, release; output identical to the baseline binary for default, tiled, tiled with tile 16, parallel threshold 0 and 1, and a draft model with the tiled kernel; `/v1/config` attention fields and two concurrent requests with `--parallel 2` and the tiled kernel match; speed A/B median 84.2 vs 81.2 tok/s (new vs baseline, noise).
+- Areas: `include/core/attn_config.h`, `include/transformer/attn_tiled.h`, `src/transformer/{attn_tiled,attention}.c`, `include/runtime/run_state.h`, `src/runtime/run_state.c`, `src/api/{batch_scheduler,api_config_json}.c`, `src/cli/session_extras.c`, `tests/test_{forward,cache_probe}.c`.
+
 ### 2026-11-20 — attention-kernel setup runs and logs once
 - What: removed the second copy of the attention-kernel block in `session_apply_runtime_options`; added `tests/e2e_verbose_output.sh` and a CI step.
 - Why: the copy came in with the `main()` split (commit 8c256a2) and made `--verbose` print `Attention: ...` twice; the baseline binary prints it once.

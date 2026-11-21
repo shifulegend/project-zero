@@ -110,6 +110,15 @@ int session_load_extras(PzSession *ses) {
     return 0;
 }
 
+/* The attention settings go to every RunState the session owns: the main one, the draft model's,
+ * the PRM judge's and the RAG embedder's (they all ran under one process-wide setting before). */
+static void apply_attn_config(PzSession *ses, const AttnConfig *attn) {
+    ses->s->attn = *attn;
+    if (ses->draft_active) ses->draft.state->attn = *attn;
+    if (ses->prm.loaded) ses->prm.model.state->attn = *attn;
+    if (ses->rag_ok && ses->rag.emb.state) ses->rag.emb.state->attn = *attn;
+}
+
 /* --image (vision pipeline, shared with the HTTP API) and the attention kernel settings. */
 void session_apply_runtime_options(PzSession *ses) {
     static char vis_prompt_buf[VIS_PROMPT_BUF];
@@ -125,18 +134,22 @@ void session_apply_runtime_options(PzSession *ses) {
     }
 
     /* Phase 27: attention kernel + head-parallel threshold (tile size from L1d). */
-    attn_kernel_configure(ses->args.perf.attn_kernel
+    AttnConfig attn;
+    attn_config_default(&attn);
+    attn_kernel_configure(&attn,
+                          ses->args.perf.attn_kernel
                               ? (AttnKernel)attn_kernel_parse(ses->args.perf.attn_kernel)
                               : ATTN_KERNEL_STANDARD,
                           ses->args.perf.attn_tile, config_head_dim(&ses->p));
-    attn_parallel_min_ctx_set(ses->args.perf.attn_parallel_min_ctx);
+    attn_parallel_min_ctx_set(&attn, ses->args.perf.attn_parallel_min_ctx);
+    apply_attn_config(ses, &attn);
     if (ses->args.output.verbose || ses->args.perf.attn_kernel) {
         const CacheInfo *ci = tn_cache_info();
         tn_log_out(
             TN_LOG_INFO, "session_extras",
             "Attention: %s kernel (tile %d), heads parallel from %d ctx; L1d %d KiB, L2 %d KiB "
             "(%s)\n",
-            attn_kernel_name(attn_kernel_get()), attn_tile_get(), attn_parallel_min_ctx_get(),
-            ci->l1d_bytes / 1024, ci->l2_bytes / 1024, tn_cache_source_name(ci->source));
+            attn_kernel_name(attn.kernel), attn.tile, attn.parallel_min_ctx, ci->l1d_bytes / 1024,
+            ci->l2_bytes / 1024, tn_cache_source_name(ci->source));
     }
 }

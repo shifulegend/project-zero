@@ -429,7 +429,6 @@ BatchScheduler *batch_scheduler_create(const Config *cfg, const TransformerWeigh
             ok = 0;
             break;
         }
-        memset(slot->s, 0, sizeof(*slot->s));
         if (run_state_alloc_ex(slot->s, cfg, slot0->max_seq_len, false, opt->kv) != TN_OK) {
             free(slot->s);
             slot->s = NULL;
@@ -437,6 +436,7 @@ BatchScheduler *batch_scheduler_create(const Config *cfg, const TransformerWeigh
             break;
         }
         slot->s->active_lora = slot0->active_lora; /* one adapter for every sequence */
+        slot->s->attn        = slot0->attn;        /* and one attention kernel */
         prefix_cache_init(&slot->own_pc, slot->s->max_seq_len);
         slot->pc = &slot->own_pc;
     }

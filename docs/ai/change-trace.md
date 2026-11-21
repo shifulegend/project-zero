@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — the embedding loader uses the shared dequantiser table
+- What: `gguf_ld_dequant` (new, in `gguf_load_util.c`) is the table lookup behind `gguf_ld_tensor_to_f32`; the token-embedding loader in `gguf_loader.c` calls it instead of its own 6-case switch.
+- Why: finding 8.a; the same seven formats were dispatched in two places.
+- Proof: `tests/test_gguf_dequant_registry.c` now also covers the direct entry (236 assertions); `make test` gcc and clang; greedy text identical to the baseline binary on SmolLM2, BitNet and DeepSeek-V2-Lite.
+- Areas: `src/runtime/{gguf_loader,gguf_load_util}.c`, `include/runtime/gguf_load_util.h`, `tests/test_gguf_dequant_registry.c`.
+
 ### 2026-11-21 — expert formats are a table; the per-row dot stays a switch
 - What: `moe_experts.c` looks each expert weight format up in `k_expert_formats` (activation family, block size, block bytes) for row sizes and for `moe_experts_type_ok`, instead of two switches; the per-row dot in the innermost loop remains the original switch.
 - Why: finding 8.a. A first version also put the dot kernels in the table (indirect call per row) and measured about 2.5% slower on Q4_K expert GEMVs (a microbenchmark of `moe_experts_forward`, 8 experts, 2048x1536, 4 threads, 7 x 200 calls, release flags; Q8_0 was neutral), so that part was reverted. With the cold lookups in a table and the switch back, old vs new is within noise (Q4_K 705-729 vs 692-725 us, Q8_0 1135-1248 vs 1161-1199 us).

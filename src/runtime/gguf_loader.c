@@ -110,29 +110,7 @@ static TernaryError load_dense_embedding(TransformerWeights *w, const Config *cf
          * Also build BF16 copy for the classifier (wcls weight-tied). */
         float *ftmp = (float *)malloc(n * sizeof(float));
         if (!ftmp) return TN_ERR_OOM;
-        switch (t->type) {
-            case GGUF_TYPE_Q4_K:
-                gguf_dequant_q4_k(ftmp, t->data, n);
-                break;
-            case GGUF_TYPE_Q8_0:
-                gguf_dequant_q8_0(ftmp, t->data, n);
-                break;
-            case GGUF_TYPE_Q5_0:
-                gguf_dequant_q5_0(ftmp, t->data, n);
-                break;
-            case GGUF_TYPE_Q5_1:
-                gguf_dequant_q5_1(ftmp, t->data, n);
-                break;
-            case GGUF_TYPE_Q5_K:
-                gguf_dequant_q5_k(ftmp, t->data, n);
-                break;
-            case GGUF_TYPE_Q6_K:
-                gguf_dequant_q6_k(ftmp, t->data, n);
-                break;
-            default:
-                gguf_dequant_q4_0(ftmp, t->data, n);
-                break;
-        }
+        gguf_ld_dequant(t->type, ftmp, t->data, n); /* the type is one of the seven above */
         /* Keep F32 buffer for embedding lookup — registered in store for cleanup */
         if (gguf_ld_store_add(store, ftmp) != 0) {
             free(ftmp);

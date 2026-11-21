@@ -105,6 +105,10 @@ static void test_tensor_to_f32_matches_direct_dequant(void) {
         k_old[i].fn(want, data, N_ELEMS);
         TEST_ASSERT(got && memcmp(got, want, N_ELEMS * sizeof(float)) == 0,
                     "dispatch equals the type's own dequantiser");
+        float *direct = (float *)calloc(N_ELEMS, sizeof(float));
+        TEST_ASSERT_EQ(gguf_ld_dequant(k_old[i].type, direct, data, N_ELEMS), 0, "direct entry");
+        TEST_ASSERT(memcmp(direct, want, N_ELEMS * sizeof(float)) == 0, "direct entry output");
+        free(direct);
         free(data);
         free(want);
     }
@@ -120,7 +124,9 @@ static void test_unsupported_types_refused(void) {
         memset(&t, 0, sizeof(t));
         t.type = (GGUFType)type;
         t.data = data;
+        float out[16];
         TEST_ASSERT(gguf_ld_tensor_to_f32(&t, 16, store) == NULL, "type without a dequantiser");
+        TEST_ASSERT_EQ(gguf_ld_dequant((GGUFType)type, out, data, 16), -1, "direct entry refuses");
     }
     weights_free_gguf(store);
 }

@@ -114,6 +114,13 @@ static DequantFn dequant_for(GGUFType type) {
     return NULL;
 }
 
+int gguf_ld_dequant(GGUFType type, float *out, const void *data, size_t n_elems) {
+    DequantFn dequant = dequant_for(type);
+    if (!dequant) return -1;
+    dequant(out, data, n_elems);
+    return 0;
+}
+
 /* Allocate a float32 buffer (n_elems floats), fill from tensor data, add to store.
  * Returns NULL and prints a message for unsupported types. */
 float *gguf_ld_tensor_to_f32(const GGUFTensor *t, size_t n_elems, GGUFWeightStore *store) {
@@ -129,7 +136,7 @@ float *gguf_ld_tensor_to_f32(const GGUFTensor *t, size_t n_elems, GGUFWeightStor
     }
     float *buf = (float *)malloc(n_elems * sizeof(float));
     if (!buf) return NULL;
-    dequant(buf, t->data, n_elems);
+    gguf_ld_dequant(t->type, buf, t->data, n_elems);
     if (gguf_ld_store_add(store, buf) != 0) {
         free(buf);
         return NULL;

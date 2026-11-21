@@ -30,6 +30,9 @@ static inline tn_u16 gguf_ld_f32_to_bf16_round(float f) {
 GGUFWeightStore *gguf_ld_store_alloc(void);
 int gguf_ld_store_add(GGUFWeightStore *s, void *ptr); /* 0 ok, -1 out of memory */
 
+/* Dequantises n_elems weights of `type` into `out`; -1 (nothing written) when the type has no
+ * dequantiser. */
+int gguf_ld_dequant(GGUFType type, float *out, const void *data, size_t n_elems);
 /* A float32 buffer (n_elems floats) filled from the tensor, registered in the store; NULL and a
  * message for unsupported types. */
 float *gguf_ld_tensor_to_f32(const GGUFTensor *t, size_t n_elems, GGUFWeightStore *store);

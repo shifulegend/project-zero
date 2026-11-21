@@ -3,6 +3,21 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — .bin MoE header reader split into steps (finding 20.a)
+- What: `moe_config_read` (complexity 28, 54 lines) is now a short driver over `moe_bin_header_read` (into a
+  plain struct), three validity checks (`moe_bin_experts_valid`, `moe_bin_shared_valid`,
+  `moe_bin_mla_valid`) and `moe_bin_header_apply`.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: new `tests/test_moe_config_read_golden.c` reads 400,000 generated headers (48-byte, legacy 32-byte
+  and every size 0..60, offsets 0..4, fields at and around every limit; 137,015 accepted, 17,786 with MLA)
+  from exact-size heap blocks under ASan and pins one hash of the return code, the offset and every byte of
+  the config, recorded from the old reader on gcc and clang; six mutations (expert limit, shared check, MLA
+  check, MLA zeroing, offset advance, dense check) each fail it. `make test` (gcc and clang). Only the
+  legacy `.bin` loader calls this function; GGUF models read their MoE settings elsewhere and are
+  unchanged (DeepSeek-V2-Lite and SmolLM2 output identical).
+- Affected: `src/core/moe_config.c`, `tests/test_moe_config_read_golden.c`,
+  `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — chat-template statement executor split per statement (finding 20.a)
 - What: `jinja_exec` (complexity 28, 97 lines, nesting 5) is now a dispatch over `exec_for` (with
   `bind_loop_vars` and `make_loop_object`), `exec_if_chain`, `exec_set` (with `set_attribute_path`) and the

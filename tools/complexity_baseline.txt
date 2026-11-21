@@ -78,7 +78,6 @@ src/core/gguf_reader.c::skip_meta_value 13 28 2
 src/core/log.c::put_escaped 14 29 7
 src/core/log.c::span_api_key 13 14 1
 src/core/log.c::tn_log_parse_level 6 14 4
-src/core/moe_config.c::moe_config_read 28 54 2
 src/core/text_file.c::tn_read_text_file 15 42 3
 src/distributed/dist_plan.c::dist_plan_connect 16 36 2
 src/distributed/dist_plan.c::dist_plan_layers_by_ram 18 26 2

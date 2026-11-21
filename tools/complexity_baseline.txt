@@ -178,8 +178,6 @@ src/runtime/gguf_load_qwen35.c::weights_from_gguf_qwen35 15 93 3
 src/runtime/gguf_load_qwen3moe.c::weights_from_gguf_qwen3moe 20 92 2
 src/runtime/gguf_load_util.c::gguf_ld_bf16_embedding_and_output 13 45 3
 src/runtime/gguf_load_util.c::gguf_ld_proj_typed 15 38 8
-src/runtime/gguf_load_util.c::gguf_ld_quant_bytes 25 54 1
-src/runtime/gguf_load_util.c::gguf_ld_tensor_to_f32 29 98 2
 src/runtime/gguf_loader.c::load_dense_embedding 29 98 5
 src/runtime/gguf_loader.c::load_dense_layer 22 69 2
 src/runtime/gguf_loader.c::load_dense_output 17 71 6

@@ -64,103 +64,72 @@ void weights_free_gguf(GGUFWeightStore *s) {
 
 /* ── Dequantization helpers ───────────────────────────────────────────────── */
 
+typedef void (*DequantFn)(float *out, const void *data, size_t n_elems);
+
+static void dequant_f32(float *out, const void *data, size_t n_elems) {
+    memcpy(out, data, n_elems * sizeof(float));
+}
+
+static void dequant_f16(float *out, const void *data, size_t n_elems) {
+    const uint16_t *s = (const uint16_t *)data;
+    for (size_t i = 0; i < n_elems; i++) out[i] = tn_fp16_to_f32(s[i]);
+}
+
+/* One row per tensor type this loader can turn into float32. A new quantisation format adds a
+ * row here and its block size to the type table in core/gguf_reader.c; nothing else changes. */
+static const struct {
+    GGUFType type;
+    DequantFn fn;
+} k_dequant[] = {
+    {GGUF_TYPE_F32, dequant_f32},
+    {GGUF_TYPE_F16, dequant_f16},
+    {GGUF_TYPE_BF16, gguf_dequant_bf16},
+    {GGUF_TYPE_Q8_0, gguf_dequant_q8_0},
+    {GGUF_TYPE_Q4_K, gguf_dequant_q4_k},
+    {GGUF_TYPE_Q4_0, gguf_dequant_q4_0},
+    {GGUF_TYPE_Q5_0, gguf_dequant_q5_0},
+    {GGUF_TYPE_Q5_1, gguf_dequant_q5_1},
+    {GGUF_TYPE_Q5_K, gguf_dequant_q5_k},
+    {GGUF_TYPE_Q6_K, gguf_dequant_q6_k},
+    {GGUF_TYPE_Q2_K, gguf_dequant_q2_k},
+    {GGUF_TYPE_Q3_K, gguf_dequant_q3_k},
+    {GGUF_TYPE_IQ4_NL, gguf_dequant_iq4_nl},
+    {GGUF_TYPE_Q2_0, gguf_dequant_q2_0},
+    {GGUF_TYPE_Q4_1, gguf_dequant_q4_1},
+    {GGUF_TYPE_Q8_1, gguf_dequant_q8_1},
+    {GGUF_TYPE_Q8_K, gguf_dequant_q8_k},
+    {GGUF_TYPE_IQ4_XS, gguf_dequant_iq4_xs},
+    {GGUF_TYPE_IQ2_XXS, gguf_dequant_iq2_xxs},
+    {GGUF_TYPE_IQ2_XS, gguf_dequant_iq2_xs},
+    {GGUF_TYPE_IQ2_S, gguf_dequant_iq2_s},
+    {GGUF_TYPE_IQ3_XXS, gguf_dequant_iq3_xxs},
+    {GGUF_TYPE_IQ3_S, gguf_dequant_iq3_s},
+    {GGUF_TYPE_IQ1_S, gguf_dequant_iq1_s},
+    {GGUF_TYPE_IQ1_M, gguf_dequant_iq1_m},
+};
+
+static DequantFn dequant_for(GGUFType type) {
+    for (size_t i = 0; i < sizeof(k_dequant) / sizeof(k_dequant[0]); i++)
+        if (k_dequant[i].type == type) return k_dequant[i].fn;
+    return NULL;
+}
 
 /* Allocate a float32 buffer (n_elems floats), fill from tensor data, add to store.
  * Returns NULL and prints a message for unsupported types. */
 float *gguf_ld_tensor_to_f32(const GGUFTensor *t, size_t n_elems, GGUFWeightStore *store) {
+    DequantFn dequant = dequant_for(t->type);
+    if (!dequant) {
+        TN_LOG_ERR("gguf_loader",
+                   "[gguf_loader] unsupported quant type %d ('%s') for tensor '%s'\n"
+                   "[gguf_loader] Supported: F32, F16, BF16, Q8_0, Q4_K, Q4_0, Q5_0, Q5_1, Q5_K, "
+                   "Q6_K, Q2_K, Q3_K, IQ4_NL\n"
+                   "[gguf_loader] Convert with: llama-quantize model.gguf out.gguf Q4_K_S\n",
+                   (int)t->type, gguf_type_name(t->type), t->name);
+        return NULL;
+    }
     float *buf = (float *)malloc(n_elems * sizeof(float));
     if (!buf) return NULL;
-
-    switch (t->type) {
-        case GGUF_TYPE_F32:
-            memcpy(buf, t->data, n_elems * sizeof(float));
-            break;
-        case GGUF_TYPE_F16: {
-            const uint16_t *s = (const uint16_t *)t->data;
-            for (size_t i = 0; i < n_elems; i++) buf[i] = tn_fp16_to_f32(s[i]);
-            break;
-        }
-        case GGUF_TYPE_BF16:
-            gguf_dequant_bf16(buf, t->data, n_elems);
-            break;
-        case GGUF_TYPE_Q8_0:
-            gguf_dequant_q8_0(buf, t->data, n_elems);
-            break;
-        case GGUF_TYPE_Q4_K:
-            gguf_dequant_q4_k(buf, t->data, n_elems);
-            break;
-        case GGUF_TYPE_Q4_0:
-            gguf_dequant_q4_0(buf, t->data, n_elems);
-            break;
-        case GGUF_TYPE_Q5_0:
-            gguf_dequant_q5_0(buf, t->data, n_elems);
-            break;
-        case GGUF_TYPE_Q5_1:
-            gguf_dequant_q5_1(buf, t->data, n_elems);
-            break;
-        case GGUF_TYPE_Q5_K:
-            gguf_dequant_q5_k(buf, t->data, n_elems);
-            break;
-        case GGUF_TYPE_Q6_K:
-            gguf_dequant_q6_k(buf, t->data, n_elems);
-            break;
-        case GGUF_TYPE_Q2_K:
-            gguf_dequant_q2_k(buf, t->data, n_elems);
-            break;
-        case GGUF_TYPE_Q3_K:
-            gguf_dequant_q3_k(buf, t->data, n_elems);
-            break;
-        case GGUF_TYPE_IQ4_NL:
-            gguf_dequant_iq4_nl(buf, t->data, n_elems);
-            break;
-        case GGUF_TYPE_Q2_0:
-            gguf_dequant_q2_0(buf, t->data, n_elems);
-            break;
-        case GGUF_TYPE_Q4_1:
-            gguf_dequant_q4_1(buf, t->data, n_elems);
-            break;
-        case GGUF_TYPE_Q8_1:
-            gguf_dequant_q8_1(buf, t->data, n_elems);
-            break;
-        case GGUF_TYPE_Q8_K:
-            gguf_dequant_q8_k(buf, t->data, n_elems);
-            break;
-        case GGUF_TYPE_IQ4_XS:
-            gguf_dequant_iq4_xs(buf, t->data, n_elems);
-            break;
-        case GGUF_TYPE_IQ2_XXS:
-            gguf_dequant_iq2_xxs(buf, t->data, n_elems);
-            break;
-        case GGUF_TYPE_IQ2_XS:
-            gguf_dequant_iq2_xs(buf, t->data, n_elems);
-            break;
-        case GGUF_TYPE_IQ2_S:
-            gguf_dequant_iq2_s(buf, t->data, n_elems);
-            break;
-        case GGUF_TYPE_IQ3_XXS:
-            gguf_dequant_iq3_xxs(buf, t->data, n_elems);
-            break;
-        case GGUF_TYPE_IQ3_S:
-            gguf_dequant_iq3_s(buf, t->data, n_elems);
-            break;
-        case GGUF_TYPE_IQ1_S:
-            gguf_dequant_iq1_s(buf, t->data, n_elems);
-            break;
-        case GGUF_TYPE_IQ1_M:
-            gguf_dequant_iq1_m(buf, t->data, n_elems);
-            break;
-        default:
-            TN_LOG_ERR(
-                "gguf_loader",
-                "[gguf_loader] unsupported quant type %d ('%s') for tensor '%s'\n"
-                "[gguf_loader] Supported: F32, F16, BF16, Q8_0, Q4_K, Q4_0, Q5_0, Q5_1, Q5_K, "
-                "Q6_K, Q2_K, Q3_K, IQ4_NL\n"
-                "[gguf_loader] Convert with: llama-quantize model.gguf out.gguf Q4_K_S\n",
-                (int)t->type, gguf_type_name(t->type), t->name);
-            free(buf);
-            return NULL;
-    }
-
+    dequant(buf, t->data, n_elems);
     if (gguf_ld_store_add(store, buf) != 0) {
         free(buf);
         return NULL;
@@ -186,58 +155,8 @@ float *gguf_ld_norm_to_f32(const GGUFHeader *hdr, const char *name, size_t n_ele
 /* ── Byte-count helper for quantised blocks ──────────────────────────────── */
 
 size_t gguf_ld_quant_bytes(GGUFType type, size_t n_elems) {
-    switch (type) {
-        case GGUF_TYPE_F32:
-            return n_elems * 4;
-        case GGUF_TYPE_F16:
-            return n_elems * 2;
-        case GGUF_TYPE_BF16:
-            return n_elems * 2;
-        case GGUF_TYPE_Q8_0:
-            return (n_elems / 32) * 34;
-        case GGUF_TYPE_Q4_0:
-            return (n_elems / 32) * 18;
-        case GGUF_TYPE_Q5_0:
-            return (n_elems / 32) * 22;
-        case GGUF_TYPE_Q5_1:
-            return (n_elems / 32) * 24;
-        case GGUF_TYPE_Q4_K:
-            return (n_elems / 256) * 144;
-        case GGUF_TYPE_Q5_K:
-            return (n_elems / 256) * 176;
-        case GGUF_TYPE_Q6_K:
-            return (n_elems / 256) * 210;
-        case GGUF_TYPE_Q2_K:
-            return (n_elems / 256) * 84;
-        case GGUF_TYPE_Q3_K:
-            return (n_elems / 256) * 110;
-        case GGUF_TYPE_IQ4_NL:
-            return (n_elems / 32) * 18;
-        case GGUF_TYPE_Q4_1:
-            return (n_elems / 32) * 20;
-        case GGUF_TYPE_Q8_1:
-            return (n_elems / 32) * 36;
-        case GGUF_TYPE_Q8_K:
-            return (n_elems / 256) * 292;
-        case GGUF_TYPE_IQ4_XS:
-            return (n_elems / 256) * 136;
-        case GGUF_TYPE_IQ2_XXS:
-            return (n_elems / 256) * 66;
-        case GGUF_TYPE_IQ2_XS:
-            return (n_elems / 256) * 74;
-        case GGUF_TYPE_IQ2_S:
-            return (n_elems / 256) * 82;
-        case GGUF_TYPE_IQ3_XXS:
-            return (n_elems / 256) * 98;
-        case GGUF_TYPE_IQ3_S:
-            return (n_elems / 256) * 110;
-        case GGUF_TYPE_IQ1_S:
-            return (n_elems / 256) * 50;
-        case GGUF_TYPE_IQ1_M:
-            return (n_elems / 256) * 56;
-        default:
-            return 0;
-    }
+    if (!dequant_for(type)) return 0;
+    return (n_elems / gguf_type_block_elems(type)) * gguf_type_block_bytes(type);
 }
 
 /* ── Raw quantized LM head (2026-10-21) ──────────────────────────────────

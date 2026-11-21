@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — GGUF float conversion and byte counts come from tables
+- What: `gguf_ld_tensor_to_f32` looks the tensor type up in a `k_dequant` table (one row per supported format) instead of a 24-case switch, and `gguf_ld_quant_bytes` derives the size from that table plus the public block sizes in `core/gguf_reader.c` instead of its own 24-case switch. A new format is one table row.
+- Why: finding 8.a / decision Q11 (quant switches become registries). Two functions left the complexity baseline (395 -> 393). One deliberate fix: the old byte-count switch had no Q2_0 row and returned 0; it now returns the real size (34 bytes per 128 elements), which only matters for Q2_0 expert tensors.
+- Proof: `tests/test_gguf_dequant_registry.c` (141 assertions) checks every type against the old switch kept as test data: byte counts equal (Q2_0 aside), the table's float output equals calling the type's own dequantiser on pseudo-random blocks, unsupported types still return NULL; `make test` gcc and clang; greedy text identical to the baseline binary on SmolLM2 (Q8_0), BitNet (I2_S) and DeepSeek-V2-Lite (Q2_K, expert strides).
+- Areas: `src/runtime/gguf_load_util.c`, `tests/test_gguf_dequant_registry.c`.
+
 ### 2026-11-21 — remaining-statics classification brought up to date
 - What: `docs/ai/decision-log.md` now counts 40 statics (3 impossible, 37 in six proposed exception groups) and states that no planned removals remain; the act-quant mode in `simd_dispatch.c` moved from "to remove" to a "kernel dispatch binding" group, because the dispatch function pointers it describes are process-wide by design.
 - Why: keep the written conclusion true after the removals of this series; the owner's approval list in the Deviation approval log gained the sixth group.

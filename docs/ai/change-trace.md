@@ -3,6 +3,23 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — chat-template statement executor split per statement (finding 20.a)
+- What: `jinja_exec` (complexity 28, 97 lines, nesting 5) is now a dispatch over `exec_for` (with
+  `bind_loop_vars` and `make_loop_object`), `exec_if_chain`, `exec_set` (with `set_attribute_path`) and the
+  three one-line cases.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: new `tests/test_template_exec_golden.c` renders 40,000 generated nested templates (for over the
+  messages / a range / a split string / `|items` pairs with single and tuple targets and every `loop.*`
+  field, if / elif / else chains, plain / namespace / nested / missing-base set, macros; 28,348 outputs
+  with text) and pins one hash recorded from the old executor on gcc and clang; six mutations (if-chain
+  `done` handling, pair size, nested attribute path, `previtem`, tuple target) each fail it. `make test`
+  (gcc and clang); startup and generation identical to the old binary on five real models.
+- Lesson recorded while writing it: a generator must not draw two random numbers inside one call's
+  argument list (evaluation order differs between gcc and clang); the first recording did exactly that
+  and clang caught it.
+- Affected: `src/tokenizer/chat_template_exec.cpp`, `tests/test_template_exec_golden.c`,
+  `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — pre-tokenizer character-class matching split per pattern (finding 20.a)
 - What: `cls_match` (complexity 34, 54 lines) is now a table lookup over eleven small matchers, one per
   pattern (`cls_number_run`, `cls_punct_run`, `cls_cjk`, ...). The pattern code moved to

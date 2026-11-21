@@ -191,7 +191,6 @@ src/tokenizer/chat_template_eval.cpp::eval 18 39 1
 src/tokenizer/chat_template_eval.cpp::eval_call 11 20 1
 src/tokenizer/chat_template_eval.cpp::eval_getslice 16 25 2
 src/tokenizer/chat_template_eval.cpp::eval_isdef 24 27 8
-src/tokenizer/chat_template_exec.cpp::jinja_exec 28 97 5
 src/tokenizer/chat_template_internal.hpp::Parser::at_block_end 11 7 1
 src/tokenizer/chat_template_internal.hpp::Value::equals 11 8 1
 src/tokenizer/chat_template_parse.cpp::parse_macro 12 34 4

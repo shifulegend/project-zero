@@ -3,6 +3,19 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — agent command runner split into child and parent steps (finding 20.a)
+- What: `execute_command` (complexity 25, 85 lines, nesting 4) is now a driver over `run_child` (with
+  `set_child_rlimits`; still allocation-free between fork and exec) and `collect_output` (with `read_chunk`),
+  finished by `finish_result`. The limits (CPU time + 2 s or 30 s, 256 MiB address space, 100 ms polling)
+  moved verbatim.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: the four existing test files for the runner (`test_cmd_exec`, `_adversarial`, `_gaps`, `_rlimits`:
+  115 tests, including the adversarial corpus) pass under ASan on gcc and clang. Mutating the timeout and the
+  EOF reaping fails them; mutating the rlimit constants, the buffer-full handling and the policy gate in
+  `execute_command` did not at the time of this refactor (existing gaps, covered by the follow-up that adds
+  a buffer-full test; the constants were checked by diff).
+- Affected: `src/agent/cmd_exec.c`, `tools/complexity_baseline.txt`; also rewraps a test header comment.
+
 ### 2026-11-21 — legacy `.bin` tokenizer loader split into steps (finding 20.a)
 - What: `tokenizer_load` (complexity 24, 99 lines) is now a short driver over `read_bin_vocab` (with
   `read_bin_header`, `alloc_bin_arrays` and `read_bin_token`) and `derive_special_ids` (with

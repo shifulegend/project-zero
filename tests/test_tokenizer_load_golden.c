@@ -4,9 +4,9 @@
  * include (or leave out) the BOS / EOS names the loader looks for, token lengths at, over and under
  * the declared maximum, negative and zero sizes, vocabularies past the size limits, and files cut
  * short at any byte. Each result is the return code and, when it loaded, every field of the
- * tokenizer: sizes, every token and score, the sorted index, BOS / EOS ids and the end-of-generation
- * list; failed and loaded tokenizers are freed (leaks fail under ASan). Hash recorded from the loader
- * before it was split into steps.
+ * tokenizer: sizes, every token and score, the sorted index, BOS / EOS ids and the
+ * end-of-generation list; failed and loaded tokenizers are freed (leaks fail under ASan). Hash
+ * recorded from the loader before it was split into steps.
  */
 #include <stdint.h>
 #include <stdio.h>

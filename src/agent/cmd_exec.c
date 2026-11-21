@@ -146,6 +146,128 @@ size_t exec_build_child_env(char *out[], size_t cap) {
     return n;
 }
 
+/* Defense-in-depth resource caps, independent of the parent's own
+ * timeout/SIGKILL loop (which is cooperative and could be delayed by scheduler pressure): a hard
+ * CPU-time kill via SIGXCPU, and a bounded address space. The allow-listed commands (echo, ls,
+ * cat, pwd, uname, date, id) never legitimately need more than this. Best-effort -- if setrlimit
+ * itself fails, still proceed to exec rather than silently hang the agent turn.
+ *
+ * RLIMIT_CPU is reliably enforced on both Linux and macOS (verified
+ * via tests/test_cmd_exec_rlimits.c on both, including a real
+ * macOS CI runner). RLIMIT_AS is NOT: on macOS/Darwin, the XNU
+ * kernel does not enforce RLIMIT_AS the way Linux does -- a child's
+ * address space can grow past this cap with no effect (confirmed
+ * 2026-09-21 via the same test failing specifically, and only, on
+ * a real macOS runner; see docs/ai/mistakes.md). Still set here
+ * (harmless, and does bound things on Linux/most other POSIX
+ * targets), but on macOS deployments the parent's timeout/SIGKILL
+ * loop is the ONLY real backstop against a memory-hungry child --
+ * a genuine, currently-unmitigated platform gap, not fixed here
+ * (a real per-platform memory watchdog, e.g. polling task_info()
+ * on Darwin, is a real architectural addition, not a small one). */
+static void set_child_rlimits(int timeout_sec) {
+    struct rlimit cpu_limit;
+    cpu_limit.rlim_cur = (rlim_t)(timeout_sec > 0 ? timeout_sec + 2 : 30);
+    cpu_limit.rlim_max = cpu_limit.rlim_cur;
+    setrlimit(RLIMIT_CPU, &cpu_limit);
+
+    struct rlimit as_limit;
+    as_limit.rlim_cur = (rlim_t)256 * 1024 * 1024; /* 256 MiB */
+    as_limit.rlim_max = as_limit.rlim_cur;
+    setrlimit(RLIMIT_AS, &as_limit);
+}
+
+/* The forked child: stdout and stderr into the pipe, resource caps, exec of the trusted binary.
+ * Never returns. It must not allocate or call getenv() (the environment is built before fork). */
+static void run_child(char *const argv[], int timeout_sec, const int pipefd[2],
+                      char *const child_env[]) {
+    dup2(pipefd[1], STDOUT_FILENO);
+    dup2(pipefd[1], STDERR_FILENO);
+    close(pipefd[0]);
+    close(pipefd[1]);
+    set_child_rlimits(timeout_sec);
+
+    char resolved[PATH_MAX];
+    if (resolve_trusted_path(argv[0], resolved, sizeof(resolved))) {
+        execve(resolved, argv, child_env);
+    }
+    /* Not found in a trusted directory, or exec itself failed --
+     * never fall back to execvp()'s $PATH search here. */
+    _exit(127);
+}
+
+typedef enum { CHUNK_NONE, CHUNK_AGAIN, CHUNK_FULL, CHUNK_EOF } ChunkResult;
+
+/* One read from the pipe: more data (AGAIN), a full buffer, EOF, or nothing usable (an error or
+ * would-block, NONE). */
+static ChunkResult read_chunk(int fd, char *out_buf, size_t out_buf_size, size_t *total_read) {
+    ssize_t r = read(fd, (out_buf ? out_buf + *total_read : NULL),
+                     (out_buf_size > *total_read ? out_buf_size - *total_read - 1 : 0));
+    if (r > 0) {
+        *total_read += (size_t)r;
+        return *total_read >= out_buf_size - 1 ? CHUNK_FULL : CHUNK_AGAIN;
+    }
+    return r == 0 ? CHUNK_EOF : CHUNK_NONE;
+}
+
+/* Reads the child's output into out_buf until EOF, a full buffer, the child's exit or the timeout
+ * (which kills it). Returns the bytes read; *status is the wait status, *timed_out is set on a
+ * timeout. */
+static size_t collect_output(pid_t pid, int fd, int timeout_sec, char *out_buf, size_t out_buf_size,
+                             int *status, int *timed_out) {
+    /* Set non-blocking read */
+    int flags = fcntl(fd, F_GETFL, 0);
+    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+
+    size_t total_read = 0;
+    time_t start      = time(NULL);
+
+    while (1) {
+        fd_set rfds;
+        FD_ZERO(&rfds);
+        FD_SET(fd, &rfds);
+        struct timeval tv;
+        tv.tv_sec         = 0;
+        tv.tv_usec        = 100000; /* 100ms polling */
+        int rv            = select(fd + 1, &rfds, NULL, NULL, &tv);
+        ChunkResult chunk = CHUNK_NONE;
+        if (rv > 0 && FD_ISSET(fd, &rfds))
+            chunk = read_chunk(fd, out_buf, out_buf_size, &total_read);
+        if (chunk == CHUNK_AGAIN) continue;
+        if (chunk == CHUNK_FULL) break;
+        if (chunk == CHUNK_EOF) {
+            /* EOF: the pipe's write end closed (dup'd stdout+stderr),
+             * which happens at/around child exit but is not itself
+             * proof the child has been reaped yet -- do a blocking
+             * waitpid here rather than leaving `status` at its default
+             * 0 (which WIFEXITED/WEXITSTATUS decode as "exited
+             * normally with code 0", silently misreporting any real
+             * nonzero exit code as success; found via the TS-3.1
+             * adversarial corpus, 2026-09-18 -- see mistakes.md). */
+            waitpid(pid, status, 0);
+            break;
+        }
+        if (waitpid(pid, status, WNOHANG) == pid) break;
+        if (timeout_sec > 0 && (time(NULL) - start) >= timeout_sec) {
+            /* timeout */
+            kill(pid, SIGKILL);
+            waitpid(pid, status, 0);
+            *timed_out = 1;
+            break;
+        }
+    }
+    return total_read;
+}
+
+/* NUL-terminates the output and fills in the length and exit code. */
+static void finish_result(ExecResult *res, char *out_buf, size_t out_buf_size, size_t total_read,
+                          int status) {
+    if (out_buf && out_buf_size > 0)
+        out_buf[total_read < out_buf_size ? total_read : out_buf_size - 1] = '\0';
+    res->stdout_len = total_read;
+    if (!res->timed_out && WIFEXITED(status)) res->exit_code = WEXITSTATUS(status);
+}
+
 ExecResult execute_command(char *const argv[], int timeout_sec, char *out_buf,
                            size_t out_buf_size) {
     ExecResult res = {.exit_code = -1, .timed_out = 0, .stdout_len = 0};
@@ -170,112 +292,15 @@ ExecResult execute_command(char *const argv[], int timeout_sec, char *out_buf,
         close(pipefd[1]);
         return res;
     }
-
-    if (pid == 0) {
-        /* child */
-        dup2(pipefd[1], STDOUT_FILENO);
-        dup2(pipefd[1], STDERR_FILENO);
-        close(pipefd[0]);
-        close(pipefd[1]);
-
-        /* Defense-in-depth resource caps, independent of the parent's own
-         * timeout/SIGKILL loop below (which is cooperative and could be
-         * delayed by scheduler pressure): a hard CPU-time kill via SIGXCPU,
-         * and a bounded address space. The allow-listed commands (echo, ls,
-         * cat, pwd, uname, date, id) never legitimately need more than
-         * this. Best-effort -- if setrlimit itself fails, still proceed to
-         * exec rather than silently hang the agent turn.
-         *
-         * RLIMIT_CPU is reliably enforced on both Linux and macOS (verified
-         * via tests/test_cmd_exec_rlimits.c on both, including a real
-         * macOS CI runner). RLIMIT_AS is NOT: on macOS/Darwin, the XNU
-         * kernel does not enforce RLIMIT_AS the way Linux does -- a child's
-         * address space can grow past this cap with no effect (confirmed
-         * 2026-09-21 via the same test failing specifically, and only, on
-         * a real macOS runner; see docs/ai/mistakes.md). Still set here
-         * (harmless, and does bound things on Linux/most other POSIX
-         * targets), but on macOS deployments the parent's timeout/SIGKILL
-         * loop is the ONLY real backstop against a memory-hungry child --
-         * a genuine, currently-unmitigated platform gap, not fixed here
-         * (a real per-platform memory watchdog, e.g. polling task_info()
-         * on Darwin, is a real architectural addition, not a small one). */
-        struct rlimit cpu_limit;
-        cpu_limit.rlim_cur = (rlim_t)(timeout_sec > 0 ? timeout_sec + 2 : 30);
-        cpu_limit.rlim_max = cpu_limit.rlim_cur;
-        setrlimit(RLIMIT_CPU, &cpu_limit);
-
-        struct rlimit as_limit;
-        as_limit.rlim_cur = (rlim_t)256 * 1024 * 1024; /* 256 MiB */
-        as_limit.rlim_max = as_limit.rlim_cur;
-        setrlimit(RLIMIT_AS, &as_limit);
-
-        {
-            char resolved[PATH_MAX];
-            if (resolve_trusted_path(argv[0], resolved, sizeof(resolved))) {
-                execve(resolved, argv, child_env);
-            }
-            /* Not found in a trusted directory, or exec itself failed --
-             * never fall back to execvp()'s $PATH search here. */
-        }
-        _exit(127);
-    }
+    if (pid == 0) run_child(argv, timeout_sec, pipefd, child_env);
 
     /* parent */
     close(pipefd[1]);
-
-    /* Set non-blocking read */
-    int flags = fcntl(pipefd[0], F_GETFL, 0);
-    fcntl(pipefd[0], F_SETFL, flags | O_NONBLOCK);
-
-    size_t total_read = 0;
-    int status        = 0;
-    time_t start      = time(NULL);
-
-    while (1) {
-        fd_set rfds;
-        FD_ZERO(&rfds);
-        FD_SET(pipefd[0], &rfds);
-        struct timeval tv;
-        tv.tv_sec  = 0;
-        tv.tv_usec = 100000; /* 100ms polling */
-        int rv     = select(pipefd[0] + 1, &rfds, NULL, NULL, &tv);
-        if (rv > 0 && FD_ISSET(pipefd[0], &rfds)) {
-            ssize_t r = read(pipefd[0], (out_buf ? out_buf + total_read : NULL),
-                             (out_buf_size > total_read ? out_buf_size - total_read - 1 : 0));
-            if (r > 0) {
-                total_read += (size_t)r;
-                if (total_read >= out_buf_size - 1) break;
-                continue;
-            } else if (r == 0) {
-                /* EOF: the pipe's write end closed (dup'd stdout+stderr),
-                 * which happens at/around child exit but is not itself
-                 * proof the child has been reaped yet -- do a blocking
-                 * waitpid here rather than leaving `status` at its default
-                 * 0 (which WIFEXITED/WEXITSTATUS decode as "exited
-                 * normally with code 0", silently misreporting any real
-                 * nonzero exit code as success; found via the TS-3.1
-                 * adversarial corpus, 2026-09-18 -- see mistakes.md). */
-                waitpid(pid, &status, 0);
-                break;
-            }
-        }
-        pid_t wp = waitpid(pid, &status, WNOHANG);
-        if (wp == pid) break;
-        if (timeout_sec > 0 && (time(NULL) - start) >= timeout_sec) {
-            /* timeout */
-            kill(pid, SIGKILL);
-            waitpid(pid, &status, 0);
-            res.timed_out = 1;
-            break;
-        }
-    }
+    int status = 0;
+    size_t total_read =
+        collect_output(pid, pipefd[0], timeout_sec, out_buf, out_buf_size, &status, &res.timed_out);
 
     close(pipefd[0]);
-    if (out_buf && out_buf_size > 0)
-        out_buf[total_read < out_buf_size ? total_read : out_buf_size - 1] = '\0';
-    res.stdout_len = total_read;
-    if (!res.timed_out) {
-        if (WIFEXITED(status)) res.exit_code = WEXITSTATUS(status);
-    }
+    finish_result(&res, out_buf, out_buf_size, total_read, status);
     return res;
 }

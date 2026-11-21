@@ -1,7 +1,6 @@
 # Functions over complexity 10, 100 lines or nesting 3 (tools/check_complexity.py): key, complexity, lines, nesting; entries may only shrink or go.
 src/agent/agent_loop.c::run_agent_loop 38 115 9
 src/agent/cmd_exec.c::exec_policy_allows_args 13 16 4
-src/agent/cmd_exec.c::execute_command 25 85 4
 src/agent/cmd_exec.c::path_arg_is_safe 13 15 3
 src/agent/tool_interceptor.c::ti_process_piece 13 32 3
 src/agent/user_approval.c::user_approval_prompt 12 22 2

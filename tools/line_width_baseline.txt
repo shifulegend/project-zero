@@ -8,7 +8,7 @@ src/runtime/calibration.c 1
 src/tokenizer/pretokenize.c 1
 tests/a6_replication.sh 19
 tests/a6_thread_sweep.sh 10
-tests/e2e_api_concurrency.sh 12
+tests/e2e_api_concurrency.sh 1
 tests/e2e_cli_exit_status.sh 1
 tests/e2e_cross_site_post.sh 1
 tests/e2e_log_format.sh 2

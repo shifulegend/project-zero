@@ -38,7 +38,8 @@ typedef struct {
 
 /* If argv[*ip] is one of the table's flags (and, for a valued one, has a value after it): applies
  * it, advances *ip past the value and sets *hit. A bad or out-of-range value returns
- * TN_ERR_INVALID_CONFIG (logged under `tag`). Nothing matched: returns TN_OK with *hit left alone. */
+ * TN_ERR_INVALID_CONFIG (logged under `tag`). Nothing matched: returns TN_OK with *hit left alone.
+ */
 TernaryError args_table_parse(const ArgFlagSpec *table, size_t n, const char *tag, CliArgs *args,
                               int argc, char **argv, int *ip, int *hit);
 

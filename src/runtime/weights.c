@@ -1,6 +1,7 @@
 #include "core/weights.h"
 
 #include <math.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -105,61 +106,71 @@ TernaryError weights_alloc_pointers(TransformerWeights *w, const Config *cfg) {
     return TN_OK;
 }
 
+/* Every heap array a TransformerWeights owns directly (zero-copy views into the model file are not
+ * here). Freed in this order; free(NULL) is a no-op. */
+static const size_t k_owned_arrays[] = {
+    offsetof(TransformerWeights, attn.wq),
+    offsetof(TransformerWeights, attn.wk),
+    offsetof(TransformerWeights, attn.wv),
+    offsetof(TransformerWeights, attn.wo),
+    offsetof(TransformerWeights, attn.sq),
+    offsetof(TransformerWeights, attn.sk),
+    offsetof(TransformerWeights, attn.sv),
+    offsetof(TransformerWeights, attn.so),
+    offsetof(TransformerWeights, ffn.w1),
+    offsetof(TransformerWeights, ffn.w2),
+    offsetof(TransformerWeights, ffn.w3),
+    offsetof(TransformerWeights, ffn.s1),
+    offsetof(TransformerWeights, ffn.s2),
+    offsetof(TransformerWeights, ffn.s3),
+    offsetof(TransformerWeights, attn.norm),
+    offsetof(TransformerWeights, ffn.norm),
+    offsetof(TransformerWeights, attn.sub_norm),
+    offsetof(TransformerWeights, ffn.sub_norm),
+    offsetof(TransformerWeights, attn.wq_type),
+    offsetof(TransformerWeights, attn.wk_type),
+    offsetof(TransformerWeights, attn.wv_type),
+    offsetof(TransformerWeights, attn.wo_type),
+    offsetof(TransformerWeights, ffn.w1_type),
+    offsetof(TransformerWeights, ffn.w2_type),
+    offsetof(TransformerWeights, ffn.w3_type),
+    offsetof(TransformerWeights, q35.attn_q_norm),
+    offsetof(TransformerWeights, q35.attn_k_norm),
+    offsetof(TransformerWeights, q35.ssm_qkv),
+    offsetof(TransformerWeights, q35.ssm_gate),
+    offsetof(TransformerWeights, q35.ssm_conv1d),
+    offsetof(TransformerWeights, q35.ssm_dt_bias),
+    offsetof(TransformerWeights, q35.ssm_a),
+    offsetof(TransformerWeights, q35.ssm_alpha),
+    offsetof(TransformerWeights, q35.ssm_beta),
+    offsetof(TransformerWeights, q35.ssm_norm),
+    offsetof(TransformerWeights, q35.ssm_out),
+    offsetof(TransformerWeights, qwen3moe.attn_q_norm),
+    offsetof(TransformerWeights, qwen3moe.attn_k_norm),
+    offsetof(TransformerWeights, attn.bq),
+    offsetof(TransformerWeights, attn.bk),
+    offsetof(TransformerWeights, attn.bv),
+    offsetof(TransformerWeights, cls.i8),
+    offsetof(TransformerWeights, cls.i8_scales),
+    offsetof(TransformerWeights, cls.i4),
+    offsetof(TransformerWeights, cls.i4_scales),
+    offsetof(TransformerWeights, expert_quant.w2_per_layer),
+    offsetof(TransformerWeights, expert_quant.w13_per_layer),
+    offsetof(TransformerWeights, shared.w1_type_per_layer),
+    offsetof(TransformerWeights, shared.w2_type_per_layer),
+    offsetof(TransformerWeights, shared.w3_type_per_layer),
+};
+
 void weights_free_pointers(TransformerWeights *w) {
     if (w->mamba) {
         mamba_weights_free(w->mamba);
         w->mamba = NULL;
     }
-    if (w->attn.wq) free(w->attn.wq);
-    if (w->attn.wk) free(w->attn.wk);
-    if (w->attn.wv) free(w->attn.wv);
-    if (w->attn.wo) free(w->attn.wo);
-    if (w->attn.sq) free(w->attn.sq);
-    if (w->attn.sk) free(w->attn.sk);
-    if (w->attn.sv) free(w->attn.sv);
-    if (w->attn.so) free(w->attn.so);
-    if (w->ffn.w1) free(w->ffn.w1);
-    if (w->ffn.w2) free(w->ffn.w2);
-    if (w->ffn.w3) free(w->ffn.w3);
-    if (w->ffn.s1) free(w->ffn.s1);
-    if (w->ffn.s2) free(w->ffn.s2);
-    if (w->ffn.s3) free(w->ffn.s3);
-    if (w->attn.norm) free(w->attn.norm);
-    if (w->ffn.norm) free(w->ffn.norm);
-    if (w->attn.sub_norm) free(w->attn.sub_norm);
-    if (w->ffn.sub_norm) free(w->ffn.sub_norm);
-    if (w->attn.wq_type) free(w->attn.wq_type);
-    if (w->attn.wk_type) free(w->attn.wk_type);
-    if (w->attn.wv_type) free(w->attn.wv_type);
-    if (w->attn.wo_type) free(w->attn.wo_type);
-    if (w->ffn.w1_type) free(w->ffn.w1_type);
-    if (w->ffn.w2_type) free(w->ffn.w2_type);
-    if (w->ffn.w3_type) free(w->ffn.w3_type);
-    if (w->q35.attn_q_norm) free(w->q35.attn_q_norm);
-    if (w->q35.attn_k_norm) free(w->q35.attn_k_norm);
-    if (w->q35.ssm_qkv) free(w->q35.ssm_qkv);
-    if (w->q35.ssm_gate) free(w->q35.ssm_gate);
-    if (w->q35.ssm_conv1d) free(w->q35.ssm_conv1d);
-    if (w->q35.ssm_dt_bias) free(w->q35.ssm_dt_bias);
-    if (w->q35.ssm_a) free(w->q35.ssm_a);
-    if (w->q35.ssm_alpha) free(w->q35.ssm_alpha);
-    if (w->q35.ssm_beta) free(w->q35.ssm_beta);
-    if (w->q35.ssm_norm) free(w->q35.ssm_norm);
-    if (w->q35.ssm_out) free(w->q35.ssm_out);
-    if (w->qwen3moe.attn_q_norm) free(w->qwen3moe.attn_q_norm);
-    if (w->qwen3moe.attn_k_norm) free(w->qwen3moe.attn_k_norm);
-    free(w->attn.bq);
-    free(w->attn.bk);
-    free(w->attn.bv);
-    if (w->cls.i8) free(w->cls.i8);
-    if (w->cls.i8_scales) free(w->cls.i8_scales);
-    if (w->cls.i4) free(w->cls.i4);
-    if (w->cls.i4_scales) free(w->cls.i4_scales);
-    if (w->expert_quant.w2_per_layer) free(w->expert_quant.w2_per_layer);
-    if (w->expert_quant.w13_per_layer) free(w->expert_quant.w13_per_layer);
-    if (w->shared.w1_type_per_layer) free(w->shared.w1_type_per_layer);
-    if (w->shared.w2_type_per_layer) free(w->shared.w2_type_per_layer);
-    if (w->shared.w3_type_per_layer) free(w->shared.w3_type_per_layer);
+    for (size_t k = 0; k < sizeof(k_owned_arrays) / sizeof(k_owned_arrays[0]); k++) {
+        void *p;
+        memcpy(&p, (const char *)w + k_owned_arrays[k], sizeof p);
+        free(p);
+    }
     /* Phase 17: MoE pointer arrays must be freed explicitly via moe_weights_free()
      * by the owning component before this call, as that requires the MoEConfig.
      * We just zero the entire struct at the end anyway. */

@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — weights_free_pointers frees from a table of owned arrays
+- What: `weights_free_pointers` (`src/runtime/weights.c`) walks `k_owned_arrays`, the offsets of the 50 heap arrays a `TransformerWeights` owns (attention and FFN weights, scales, norms, per-layer types, Qwen3.5 and Qwen3-MoE tensors, biases, classifier copies, per-layer expert tables), instead of 50 `if (p) free(p)` lines. The list was generated from the old function's free calls, so none was dropped. The Mamba block is still released through `mamba_weights_free`.
+- Why: finding 20.a; the function was complexity 49 in 57 lines and left the complexity baseline (382 -> 381).
+- Proof: `make test` gcc and clang under ASan/LeakSanitizer (a missed array would be reported as a leak).
+- Areas: `src/runtime/weights.c`, `include/cli/args_table.h` (one comment line re-wrapped), `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — generation, search and memory flag groups are table-driven; classifier head in its own file
 - What: `args_parse_generation`, `args_parse_search` and `args_parse_memory` (complexity 54 / 52 / 45, nesting 27 / 15 / 16) are rows of `ArgFlagSpec` (flag, CliArgs field, kind, range, message) run by `args_table_parse` (`src/cli/args_table.c`); flags with their own rules (`--stop`, `--mcts-delim`, `--rope-layout`, `--attn-kernel`, `--kv-type`, `--prompt-cache`) are small handlers. `tests/test_args_golden.c` finds flag names in all spellings. Separately the classifier head (`forward_head_classify`, `forward_head_rows`) moved from `forward.c` to `src/transformer/forward_head.c` to keep `forward.c` under the file-size limit.
 - Why: finding 20.a; all three left the complexity baseline (385 -> 382).

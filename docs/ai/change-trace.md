@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — `http_parse` reads its headers from a table
+- What: `http_parse` (`src/api/http_request.c`, nesting 7) is `parse_request_line` (over `copy_token`), `parse_headers` and `parse_header_line`, which matches the line against `k_headers` (name, length, handler: `on_content_length`, `on_origin`, `on_authorization`, `on_content_type`, `on_request_id`, `on_host`) instead of a six-branch `strncasecmp` chain. The doc comment that had drifted onto `http_request_id_valid` is back on `http_parse`.
+- Why: finding 20.a; `http_parse` was complexity 30, 51 lines, nesting 7 and left the complexity baseline (355 after the earlier splits).
+- Proof: new `tests/test_http_parse_golden.c` parses 150,000 generated raw requests from exactly sized NUL-terminated buffers under ASan (all six headers in random case and order, short and over-long values, valid and invalid Content-Length and X-Request-ID, other headers, CRLF and bare-LF endings, a missing blank line, bodies, garbage bytes; 106,451 parse) and hashes the return value and every field including the body offset and length; the hash was recorded from the old function and passes unchanged under gcc and clang. `test_http_limits`, `test_http_headers`, `tests/e2e_api_concurrency.sh` (8/8), `tests/e2e_parallel.sh` (6/6) and `tests/e2e_cross_site_post.sh` (7/7, which depends on Origin parsing) pass; `make test` gcc and clang.
+- Areas: `src/api/http_request.c`, `tests/test_http_parse_golden.c`, `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — `api_config_save` is split into request parsing, applying and the response
 - What: `api_config_save` (`src/api/config_endpoint.c`) is `parse_save_request` (key lookup, `unset`, `parse_save_value` for a list or a scalar) into a `SaveRequest` that `save_request_free` releases, `apply_save` (read, change, write under the save lock) over `apply_change`, and `save_response`. Status codes, messages, the response fields and the lock scope are unchanged.
 - Why: finding 20.a; the function was complexity 31, 100 lines, nesting 5 and left the complexity baseline (356 -> 355).

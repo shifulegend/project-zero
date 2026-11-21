@@ -31,7 +31,6 @@ src/api/http_chat.c::chat_run_generation 9 28 4
 src/api/http_chat.c::http_handle_chat_completions 22 56 1
 src/api/http_headers.c::http_parse_content_length 13 16 2
 src/api/http_headers.c::http_scan_framing 17 38 5
-src/api/http_request.c::http_parse 30 51 7
 src/api/http_request.c::http_request_read 19 63 5
 src/api/http_routes.c::extract_id_field 12 15 1
 src/api/http_server.c::api_server_stop 13 38 2

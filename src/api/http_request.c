@@ -31,10 +31,6 @@ static void copy_header_value(const char *p, char *dst, size_t dst_cap) {
     dst[i] = '\0';
 }
 
-/*
- * Parse a minimal HTTP/1.1 request from a NUL-terminated buffer.
- * Returns 1 on success, 0 on parse failure.
- */
 int http_request_id_valid(const char *id) {
     size_t n = id ? strlen(id) : 0;
     if (n == 0 || n >= HTTP_REQID_MAX) return 0;
@@ -45,68 +41,106 @@ int http_request_id_valid(const char *id) {
     return 1;
 }
 
+/* ── The headers http_parse reads: one handler per name, matched case-insensitively ─────── */
+
+static void on_content_length(const char *value, HttpRequest *req) {
+    size_t cl;
+    if (http_parse_content_length(value, &cl) == 0 && cl <= (size_t)INT_MAX)
+        req->content_length =
+            (int)cl; /* invalid values were already rejected in handle_connection */
+}
+
+static void on_origin(const char *value, HttpRequest *req) {
+    copy_header_value(value, req->origin, sizeof(req->origin));
+    req->has_origin = 1;
+}
+
+static void on_authorization(const char *value, HttpRequest *req) {
+    copy_header_value(value, req->authorization, sizeof(req->authorization));
+    req->has_authorization = 1;
+}
+
+static void on_content_type(const char *value, HttpRequest *req) {
+    copy_header_value(value, req->content_type, sizeof(req->content_type));
+}
+
+static void on_request_id(const char *value, HttpRequest *req) {
+    char id[HTTP_REQID_MAX + 8]; /* longer than allowed, so an over-long ID is rejected */
+    copy_header_value(value, id, sizeof(id));
+    if (http_request_id_valid(id)) memcpy(req->request_id, id, strlen(id) + 1);
+}
+
+static void on_host(const char *value, HttpRequest *req) {
+    copy_header_value(value, req->host, sizeof(req->host));
+}
+
+static const struct {
+    const char *name; /* with its colon */
+    size_t len;
+    void (*apply)(const char *value, HttpRequest *req);
+} k_headers[] = {
+    {"content-length:", 15, on_content_length}, {"origin:", 7, on_origin},
+    {"authorization:", 14, on_authorization},   {"content-type:", 13, on_content_type},
+    {"x-request-id:", 13, on_request_id},       {"host:", 5, on_host},
+};
+
+/* Applies the header on the line at p (if it is one we read). */
+static void parse_header_line(const char *p, HttpRequest *req) {
+    for (size_t k = 0; k < sizeof(k_headers) / sizeof(k_headers[0]); k++) {
+        if (strncasecmp(p, k_headers[k].name, k_headers[k].len) != 0) continue;
+        k_headers[k].apply(p + k_headers[k].len, req);
+        return;
+    }
+}
+
+/* Copies a token from p up to a space (or, with stop_at_cr, a CR) into dst, truncated to cap - 1;
+ * returns where it stopped. */
+static const char *copy_token(const char *p, char *dst, size_t cap, int stop_at_cr) {
+    size_t i = 0;
+    while (*p && *p != ' ' && !(stop_at_cr && *p == '\r') && i < cap - 1) dst[i++] = *p++;
+    dst[i] = '\0';
+    return p;
+}
+
+/* Method and path; the rest of the request line is skipped. Returns the start of the first header
+ * line, or NULL when the line is not "METHOD PATH ...". */
+static const char *parse_request_line(const char *buf, HttpRequest *req) {
+    const char *p = copy_token(buf, req->method, sizeof(req->method), 0);
+    if (*p != ' ') return NULL;
+    p = copy_token(p + 1, req->path, sizeof(req->path), 1);
+    if (*p != ' ') return NULL;
+
+    while (*p && *p != '\n') p++; /* skip to end of request line */
+    if (*p) p++;
+    return p;
+}
+
+/* Reads header lines until the blank line; returns where the body starts. */
+static const char *parse_headers(const char *p, HttpRequest *req) {
+    while (*p) {
+        if (*p == '\r' && *(p + 1) == '\n') return p + 2;
+        if (*p == '\n') return p + 1;
+        parse_header_line(p, req);
+        while (*p && *p != '\n') p++; /* skip to next line */
+        if (*p) p++;
+    }
+    return p;
+}
+
+/*
+ * Parse a minimal HTTP/1.1 request from a NUL-terminated buffer.
+ * Returns 1 on success, 0 on parse failure.
+ */
 int http_parse(const char *buf, size_t buf_len, HttpRequest *req) {
     memset(req, 0, sizeof(*req));
     req->content_length = -1;
 
-    /* Method */
-    const char *p = buf;
-    size_t i      = 0;
-    while (*p && *p != ' ' && i < sizeof(req->method) - 1) req->method[i++] = *p++;
-    req->method[i] = '\0';
-    if (*p != ' ') return 0;
-    p++;
+    const char *p = parse_request_line(buf, req);
+    if (!p) return 0;
+    p = parse_headers(p, req);
 
-    /* Path */
-    i = 0;
-    while (*p && *p != ' ' && *p != '\r' && i < sizeof(req->path) - 1) req->path[i++] = *p++;
-    req->path[i] = '\0';
-    if (*p != ' ') return 0;
-
-    /* Skip to end of request line */
-    while (*p && *p != '\n') p++;
-    if (*p) p++;
-
-    /* Parse headers until blank line */
-    while (*p) {
-        if (*p == '\r' && *(p + 1) == '\n') {
-            p += 2;
-            break;
-        }
-        if (*p == '\n') {
-            p++;
-            break;
-        }
-
-        if (strncasecmp(p, "content-length:", 15) == 0) {
-            size_t cl;
-            if (http_parse_content_length(p + 15, &cl) == 0 && cl <= (size_t)INT_MAX)
-                req->content_length =
-                    (int)cl; /* invalid values were already rejected in handle_connection */
-        } else if (strncasecmp(p, "origin:", 7) == 0) {
-            copy_header_value(p + 7, req->origin, sizeof(req->origin));
-            req->has_origin = 1;
-        } else if (strncasecmp(p, "authorization:", 14) == 0) {
-            copy_header_value(p + 14, req->authorization, sizeof(req->authorization));
-            req->has_authorization = 1;
-        } else if (strncasecmp(p, "content-type:", 13) == 0) {
-            copy_header_value(p + 13, req->content_type, sizeof(req->content_type));
-        } else if (strncasecmp(p, "x-request-id:", 13) == 0) {
-            char id[HTTP_REQID_MAX + 8]; /* longer than allowed, so an over-long ID is rejected */
-            copy_header_value(p + 13, id, sizeof(id));
-            if (http_request_id_valid(id)) memcpy(req->request_id, id, strlen(id) + 1);
-        } else if (strncasecmp(p, "host:", 5) == 0) {
-            copy_header_value(p + 5, req->host, sizeof(req->host));
-        }
-        /* Skip to next line */
-        while (*p && *p != '\n') p++;
-        if (*p) p++;
-    }
-
-    /* Body starts at p */
     req->body     = (char *)p;
     req->body_len = (buf_len > (size_t)(p - buf)) ? buf_len - (size_t)(p - buf) : 0;
-
     return 1;
 }
 

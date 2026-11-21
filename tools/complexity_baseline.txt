@@ -25,7 +25,7 @@ src/api/gen_queue.c::gen_queue_acquire_n 17 50 3
 src/api/http_chat.c::chat_acquire_units 11 34 3
 src/api/http_chat.c::chat_build_prompt 17 57 3
 src/api/http_chat.c::chat_run_generation 9 28 4
-src/api/http_chat.c::http_handle_chat_completions 33 98 3
+src/api/http_chat.c::http_handle_chat_completions 22 56 1
 src/api/http_headers.c::http_parse_content_length 13 16 2
 src/api/http_headers.c::http_scan_framing 17 38 5
 src/api/http_request.c::http_parse 30 51 7

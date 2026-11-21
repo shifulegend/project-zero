@@ -283,32 +283,77 @@ static int chat_request_acceptable(int fd, const ApiContext *ctx, ChatRequest *r
     return 0;
 }
 
-void http_handle_chat_completions(int fd, const char *body_start, size_t body_len, ApiContext *ctx,
-                                  const char *extra_headers) {
-    const ServerSearch *search_p = &ctx->server_config.search;
-    /* Parse first — no shared state is touched — so the request's own
-     * settings (stream) are known while it waits for the slot. */
+/* Copies the body, parses it into `req` and answers 500/400 itself on failure.
+ * Parsing touches no shared state, so the request's own settings (stream) are known while it
+ * waits for the slot. Returns 1 when `req` is ready (the caller frees it). */
+static int chat_parse_body(int fd, const char *body_start, size_t body_len, ChatRequest *req,
+                           const char *extra_headers) {
     char *body = (char *)malloc(body_len + 1);
     if (!body) {
         http_send_error_ex(fd, HTTP_INTERNAL_ERROR, "OOM", extra_headers);
-        return;
+        return 0;
     }
     memcpy(body, body_start, body_len);
     body[body_len] = '\0';
-
-    ChatRequest req;
-    chat_request_init(&req);
-
-    TernaryError parse_err = chat_request_parse(body, &req);
-    if (parse_err != TN_OK) {
-        free(body);
-        chat_request_free(&req);
-        http_send_error_ex(fd, HTTP_BAD_REQUEST, chat_request_error_message(parse_err),
-                           extra_headers);
-        return;
-    }
+    chat_request_init(req);
+    TernaryError parse_err = chat_request_parse(body, req);
     free(body);
+    if (parse_err == TN_OK) return 1;
+    chat_request_free(req);
+    http_send_error_ex(fd, HTTP_BAD_REQUEST, chat_request_error_message(parse_err), extra_headers);
+    return 0;
+}
 
+static int chat_vision_configured(const ApiContext *ctx) {
+    return ctx->server_config.vision.vision_path && ctx->server_config.vision.proj_path;
+}
+
+/* 1 when any user message carries an image_url part. */
+static int chat_has_image(const ChatRequest *req) {
+    for (int i = 0; i < req->num_messages; i++)
+        if (strcmp(req->messages[i].role, "user") == 0 && req->messages[i].image_data_url) return 1;
+    return 0;
+}
+
+/* Takes the engine for requests that cannot share it (everything but batched plain chat): the
+ * generation mutex (uncontended, the queue granted the engine) and a fresh KV position 0, since
+ * every request is a conversation rendered from its full history (2026-10-18: a stale image
+ * prefix leaked into later text requests). image_url parts go through the vision pipeline
+ * (api/chat_image.h, Phase 22.2). Returns whether an image was applied. */
+static int chat_take_engine(ApiContext *ctx, ChatRequest *req) {
+    pthread_mutex_lock(&ctx->generation_mutex);
+    ctx->run_state->current_pos = 0;
+    return chat_apply_image(ctx, req);
+}
+
+/* Phase 21.5: reuse the KV prefix shared with the previous request unless disabled server-wide
+ * (--prompt-cache off) or for this request. Only the exclusive path owns the KV to reuse. */
+static void chat_setup_prefix_cache(ApiContext *ctx, GenerationParams *gp, int had_image,
+                                    int use_cache) {
+    if (had_image) prefix_cache_reset(&ctx->prefix_cache); /* vision prefill rewrote KV */
+    if (use_cache && ctx->prefix_cache.tokens) {
+        gp->prefix_cache = &ctx->prefix_cache;
+        gp->prompt_store = &ctx->prompt_store;
+    } else
+        prefix_cache_reset(&ctx->prefix_cache); /* KV is about to be overwritten */
+}
+
+/* Streaming state of one request; the public ID is the "chatcmpl-<id>" string the client sees. */
+static void chat_init_stream(StreamState *st, int fd, ApiContext *ctx, const ChatRequest *req,
+                             const char *id) {
+    memset(st, 0, sizeof(*st));
+    st->conn_fd      = fd;
+    st->is_streaming = req->output.stream;
+    st->cancel       = &ctx->cancel;
+    snprintf(st->id, sizeof(st->id), "%s", id);
+    snprintf(st->public_id, sizeof(st->public_id), "chatcmpl-%s", id);
+}
+
+void http_handle_chat_completions(int fd, const char *body_start, size_t body_len, ApiContext *ctx,
+                                  const char *extra_headers) {
+    const ServerSearch *search_p = &ctx->server_config.search;
+    ChatRequest req;
+    if (!chat_parse_body(fd, body_start, body_len, &req, extra_headers)) return;
     if (!chat_request_acceptable(fd, ctx, &req, extra_headers)) return;
 
     /* Phase 30: best-of-N (server default --best-of, capped by --best-of-max)
@@ -318,11 +363,8 @@ void http_handle_chat_completions(int fd, const char *body_start, size_t body_le
     if (best_of > search_p->best_of_max) best_of = search_p->best_of_max;
     MctsOptions mopt;
     request_mcts_resolve(&req, &search_p->mcts, search_p->mcts_max, &mopt);
-    int wants_image = 0;
-    if (ctx->server_config.vision.vision_path && ctx->server_config.vision.proj_path)
-        for (int i = 0; i < req.num_messages; i++)
-            if (strcmp(req.messages[i].role, "user") == 0 && req.messages[i].image_data_url)
-                wants_image = 1;
+    int has_image   = chat_has_image(&req);
+    int wants_image = chat_vision_configured(ctx) && has_image;
     /* Phase 23 stage 2b: plain chat requests share the engine through the
      * parallel scheduler (one unit each); the rest need all of it. */
     int batched = ctx->parallel.sched && best_of <= 1 && mopt.simulations <= 0 && !wants_image;
@@ -330,24 +372,10 @@ void http_handle_chat_completions(int fd, const char *body_start, size_t body_le
 
     QueueWaitCtx qw;
     if (!chat_acquire_units(fd, ctx, &req, units, &qw, extra_headers)) return;
-    int had_image = 0;
-    if (batched && !(ctx->server_config.vision.vision_path && ctx->server_config.vision.proj_path))
-        for (int i = 0; i < req.num_messages; i++)
-            if (strcmp(req.messages[i].role, "user") == 0 && req.messages[i].image_data_url) {
-                TN_LOG_INF("vision",
-                           "[vision] image_url provided but server has no --vision/--proj "
-                           "configured; ignoring image\n");
-                break;
-            }
-    if (!batched) {
-        pthread_mutex_lock(&ctx->generation_mutex); /* uncontended: the queue granted the engine */
-        /* Every request is a fresh conversation rendered from its full message history, so start
-         * from KV position 0 (2026-10-18: a stale image prefix leaked into later text requests). */
-        ctx->run_state->current_pos = 0;
-
-        /* Phase 22.2: image_url parts go through the vision pipeline (api/chat_image.h). */
-        had_image = chat_apply_image(ctx, &req);
-    } /* !batched */
+    if (batched && has_image && !chat_vision_configured(ctx))
+        TN_LOG_INF("vision", "[vision] image_url provided but server has no --vision/--proj "
+                             "configured; ignoring image\n");
+    int had_image = batched ? 0 : chat_take_engine(ctx, &req);
 
     char *prompt    = NULL;
     int free_prompt = 0;
@@ -358,42 +386,19 @@ void http_handle_chat_completions(int fd, const char *body_start, size_t body_le
                            &prompt, &free_prompt))
         return;
 
-    /* Generate a request ID */
     char id[32];
     http_new_id(&ctx->request_seq, id, sizeof(id));
-
-    /* Set up streaming state */
     StreamState st;
-    memset(&st, 0, sizeof(st));
-    st.conn_fd      = fd;
-    st.is_streaming = req.output.stream;
-    st.cancel       = &ctx->cancel;
-    snprintf(st.id, sizeof(st.id), "%s", id);
-    snprintf(st.public_id, sizeof(st.public_id), "chatcmpl-%s", id);
-
-    if (req.output.stream && !qw.headers_sent) {
-        /* Send SSE headers before starting generation */
+    chat_init_stream(&st, fd, ctx, &req, id);
+    if (req.output.stream && !qw.headers_sent) /* SSE headers go out before generation starts */
         http_send_response_ex(fd, HTTP_OK, "text/event-stream", NULL, 1, extra_headers);
-    }
 
-    /* Register under public_id — the same "chatcmpl-<id>" string the client
-     * observes in the stream, and therefore what it will send back to
+    /* Register under public_id: what the client will send back to
      * POST /v1/chat/completions/cancel. */
     cancel_registry_begin(&ctx->cancel, st.public_id);
-
-    /* Run inference */
-    /* Phase 21.5: reuse the KV prefix shared with the previous request unless
-     * disabled server-wide (--prompt-cache off) or for this request. */
     int use_cache = (req.set_mask & CHAT_SET_CACHE_PROMPT) ? req.cache_prompt
                                                            : ctx->server_config.cache.prompt_cache;
-    if (!batched) {
-        if (had_image) prefix_cache_reset(&ctx->prefix_cache); /* vision prefill rewrote KV */
-        if (use_cache && ctx->prefix_cache.tokens) {
-            gp.prefix_cache = &ctx->prefix_cache;
-            gp.prompt_store = &ctx->prompt_store;
-        } else
-            prefix_cache_reset(&ctx->prefix_cache); /* KV is about to be overwritten */
-    }
+    if (!batched) chat_setup_prefix_cache(ctx, &gp, had_image, use_cache);
 
     GenerationStats gstats;
     memset(&gstats, 0, sizeof(gstats));

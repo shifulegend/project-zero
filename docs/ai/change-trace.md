@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — chat completion handler split into steps
+- What: `http_handle_chat_completions` (`src/api/http_chat.c`) calls named helpers for the steps it used to inline: `chat_parse_body` (copy, parse, 500/400 replies), `chat_has_image` / `chat_vision_configured`, `chat_take_engine` (generation mutex, KV position 0, image through the vision pipeline), `chat_setup_prefix_cache` and `chat_init_stream`. The order of every side effect is unchanged.
+- Why: finding 7.a; the handler was complexity 33 and 98 lines, now 22 and 56 (nesting 3 -> 1).
+- Proof: against a build of the previous commit, 34 lines of normalised live output (non-stream, stream chunks, stop sequence, cache reuse twice, best-of, empty and malformed bodies, three parallel requests, cancel) are identical with and without `--parallel 2 --queue-size 4`; `e2e_vision_long_prompt` (real vision encoder, two image requests at once), `e2e_prompt_cache`, `e2e_parallel` (cancel), `e2e_json_mode` and `e2e_max_prompt_bytes` pass; `make test` gcc and clang, TSan.
+- Areas: `src/api/http_chat.c`, `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — connection handling split out of http_server.c: gates and a route table
 - What: `src/api/http_connection.c` (new, `api_handle_connection`) holds what `handle_connection` did: read and parse the request, run the gates, route, record the metric. The gates are one small function each (Host, API key, rate limit, cross-site POST) behind `pass_gates`; routing is a `k_routes` table of (method, path, handler) rows plus the web-UI fallback and the 404. `tools/check_openapi_routes.py` now reads that table (with a test that gate comparisons are not mistaken for routes).
 - Why: finding 7.a (`http_server.c` over 500 lines; its `handle_connection` was complexity 54, 125 lines, nesting 16). `http_server.c` leaves the file-size baseline (577 -> under 500); the offender is gone from the complexity baseline (392 -> 391).

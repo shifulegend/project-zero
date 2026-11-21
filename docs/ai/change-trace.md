@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — Q8_0-activation GEMV picks its kernel from a table
+- What: `parallel_matmul_q8a` and `parallel_matmul_q8a_tokens` look the weight format up in `k_q8a_kernels` (type, block size, integer dot) once per call; the per-row worker loops call the resolved function instead of switching on the type for every row, and the two block-size switches are gone.
+- Why: finding 8.a (kernel-dispatch switches become a registry; Q11). `parallel_matmul_q8a_tokens` leaves the complexity baseline (393 -> 392).
+- Proof: new `tests/test_q8a_dispatch.c` (158 assertions) compares both entry points with the direct per-row dots bit for bit for Q5_0, Q5_1 and Q8_0, with and without a thread pool, and checks every other type is refused; it passes on the old and the new code; `make test` gcc and clang, TSan; SmolLM2 greedy text identical to the baseline binary and speed unchanged (median 84.7 vs 83.9 tok/s, 7 interleaved pairs).
+- Areas: `src/math/q8_0_act.c`, `tests/test_q8a_dispatch.c`.
+
 ### 2026-11-21 — GGUF float conversion and byte counts come from tables
 - What: `gguf_ld_tensor_to_f32` looks the tensor type up in a `k_dequant` table (one row per supported format) instead of a 24-case switch, and `gguf_ld_quant_bytes` derives the size from that table plus the public block sizes in `core/gguf_reader.c` instead of its own 24-case switch. A new format is one table row.
 - Why: finding 8.a / decision Q11 (quant switches become registries). Two functions left the complexity baseline (395 -> 393). One deliberate fix: the old byte-count switch had no Q2_0 row and returned 0; it now returns the real size (34 bytes per 128 elements), which only matters for Q2_0 expert tensors.

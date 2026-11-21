@@ -3,6 +3,16 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — agent commands no longer leave a zombie when output fills the buffer
+- What: `collect_output` now calls `stop_and_reap` on a full buffer (kill, then `waitpid`); the reported
+  exit code for a truncated run is unchanged.
+- Why: bug found during the 20.a refactor of `execute_command` (see mistakes.md): every truncated run leaked
+  a process-table entry.
+- Proof: new `tests/test_cmd_exec_buffer.c` (fails on the old code with the zombie, passes with the fix;
+  also pins ordinary, failing and truncated runs); the four existing runner test files and the full suite
+  pass on gcc and clang.
+- Affected: `src/agent/cmd_exec.c`, `tests/test_cmd_exec_buffer.c`, `CHANGELOG.md`, `docs/ai/mistakes.md`.
+
 ### 2026-11-21 — agent command runner split into child and parent steps (finding 20.a)
 - What: `execute_command` (complexity 25, 85 lines, nesting 4) is now a driver over `run_child` (with
   `set_child_rlimits`; still allocation-free between fork and exec) and `collect_output` (with `read_chunk`),

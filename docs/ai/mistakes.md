@@ -5,6 +5,16 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-11-20.
 
+### 2026-11-21 — the agent command runner left a zombie when the output filled the buffer
+- What: found while refactoring `execute_command`: when the child's output reached the buffer size the
+  parent stopped reading and returned without calling `waitpid`, so every such call left a defunct process
+  until the engine exited. The four existing test files never checked it.
+- Fix: `stop_and_reap` kills and collects the child at that point; the exit code reported for a truncated
+  run is unchanged. `tests/test_cmd_exec_buffer.c` fails without it (a `waitpid(-1, WNOHANG)` after the call
+  must find no child) and also pins length, text and exit code for ordinary, failing and truncated runs.
+- Lesson: any early `break` out of a read loop must still reap the child; test the process table, not just
+  the returned buffer.
+
 ### 2026-11-21 — a "clang" check of a test built with the other compiler's library objects
 - What: while pinning `tests/test_gguf_config_golden.c` I built the test with `make build/tests/X CC=clang`
   and read a matching hash as proof that clang agreed. That rule does not rebuild the library: it linked the

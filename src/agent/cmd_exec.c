@@ -210,6 +210,14 @@ static ChunkResult read_chunk(int fd, char *out_buf, size_t out_buf_size, size_t
     return r == 0 ? CHUNK_EOF : CHUNK_NONE;
 }
 
+/* Stops a child whose output we no longer read and reaps it, so it cannot linger as a zombie. The
+ * wait status is not reported: the caller's exit code for a truncated run is unchanged. */
+static void stop_and_reap(pid_t pid) {
+    int ignored = 0;
+    kill(pid, SIGKILL);
+    waitpid(pid, &ignored, 0);
+}
+
 /* Reads the child's output into out_buf until EOF, a full buffer, the child's exit or the timeout
  * (which kills it). Returns the bytes read; *status is the wait status, *timed_out is set on a
  * timeout. */
@@ -234,7 +242,10 @@ static size_t collect_output(pid_t pid, int fd, int timeout_sec, char *out_buf, 
         if (rv > 0 && FD_ISSET(fd, &rfds))
             chunk = read_chunk(fd, out_buf, out_buf_size, &total_read);
         if (chunk == CHUNK_AGAIN) continue;
-        if (chunk == CHUNK_FULL) break;
+        if (chunk == CHUNK_FULL) {
+            stop_and_reap(pid);
+            break;
+        }
         if (chunk == CHUNK_EOF) {
             /* EOF: the pipe's write end closed (dup'd stdout+stderr),
              * which happens at/around child exit but is not itself

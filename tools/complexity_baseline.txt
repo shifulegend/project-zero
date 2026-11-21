@@ -249,7 +249,6 @@ src/transformer/ffn.c::ffn_forward 15 69 2
 src/transformer/ffn.c::ffn_forward_batch 16 67 2
 src/transformer/forward.c::transformer_forward_batch 13 34 3
 src/transformer/forward.c::transformer_forward_multi_ex 14 21 2
-src/transformer/gen_session.c::gen_session_consume 44 92 5
 src/transformer/gen_session.c::gen_session_end 15 32 2
 src/transformer/gen_session.c::gen_session_prepare 18 58 2
 src/transformer/gen_session.c::gen_session_start 15 38 3

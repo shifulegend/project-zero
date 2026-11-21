@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — one generation step is split into failure check, sampling, EOS handling and delivery
+- What: `gen_session_consume` (`src/transformer/gen_session.c`) is a short driver over `step_failed`, `sample_next` (with `mask_eos_logits` for `--ignore-eos`), `next_is_eos`, `finish_on_eos`, `deliver_token` and `advance_step`. Order of operations, step-timing brackets, the prefix-cache update and every state change are as before.
+- Why: finding 20.a; `gen_session_consume` was complexity 44, 92 lines, nesting 5 and left the complexity baseline (375 -> 374).
+- Proof: CLI output identical to the pre-change binary over 17 runs: greedy, seeded sampling with top-k/top-p, `--ignore-eos`, `--json`, `--stop`, raw prompt, `--verbose`, `--best-of`, `--mcts`, penalties, tiny `--ctx-size`, `--max-tokens 1`, speculative draft model, watermark, BitNet and DeepSeek-V2-Lite, and a template that ends in EOS; `tests/e2e_parallel.sh` 6/6 and `tests/e2e_api_concurrency.sh` 8/8 (streaming, cancel, batching); `make test` gcc and clang, `make test-tsan`.
+- Areas: `src/transformer/gen_session.c`, `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — `pz config` subcommands and the setup wizard are split into small functions
 - What: `pz_config_command` (`src/cli/config_cmd.c`) is a short driver: `run_without_config` (help, path), then a `k_subcommands` table (wizard, list, get, set, add, unset) with their argument counts, each a small function (`run_wizard`, `cmd_get`, `cmd_set`, `cmd_unset`); saving and the "open the chat page" launch stay in the driver. The wizard moved to `src/cli/config_wizard.c`; `ask_model` is `show_menu`, `menu_pick`, `fetch_starter` and `answer_model` around a `ModelMenu`, and `pz_config_wizard_ex` calls `confirm_save`. `config_cmd.c` fell from 531 to 272 lines and left the file-size baseline.
 - Why: finding 20.a; `pz_config_command` (42 / 103 / 6), `ask_model` (35 / 74 / 3) and `pz_config_wizard_ex` (14 / 25 / 2) left the complexity baseline (378 -> 375).

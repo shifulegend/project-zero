@@ -235,108 +235,131 @@ int gen_session_needs_logits(const GenSession *g) {
     return !g->progress.done && g->progress.step >= g->prompt.n_tokens - 1;
 }
 
+/* ignore_eos: never sample an end-of-sequence token (llama.cpp's --ignore-eos), so runs last
+ * exactly max_tokens. */
+static void mask_eos_logits(const GenSession *g, float *logits) {
+    const Config *cfg    = g->model.cfg;
+    const Tokenizer *tok = g->model.tok;
+    if (cfg->eos_token_id >= 0 && cfg->eos_token_id < cfg->vocab_size)
+        logits[cfg->eos_token_id] = -INFINITY;
+    for (int ei = 0; ei < tok->n_eos; ei++)
+        if (tok->eos_list[ei] >= 0 && tok->eos_list[ei] < cfg->vocab_size)
+            logits[tok->eos_list[ei]] = -INFINITY;
+    if (g->req.chat_stops)
+        for (int vi = 0; vi < cfg->vocab_size && vi < tok->vocab_size; vi++)
+            if (g->req.chat_stops[vi]) logits[vi] = -INFINITY;
+}
+
+/* Full prompt processed: sample the next token from the logits. */
+static void sample_next(GenSession *g, float *logits, int step) {
+    GenSampling *sm   = &g->sampling;
+    const Config *cfg = g->model.cfg;
+    int64_t t_step    = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    if (sm->raw_logits) {
+        memcpy(sm->raw_logits, logits, (size_t)cfg->vocab_size * sizeof(float));
+        sm->step_lse = logprob_logsumexp(sm->raw_logits, cfg->vocab_size);
+    }
+    if (g->req.gp->ignore_eos) mask_eos_logits(g, logits);
+    if (g->req.json_mode) {
+        g->progress.next = sample_constrained_chain(
+            logits, cfg->vocab_size, &sm->json_fsm, g->model.tok, g->progress.prev_token, g->req.ss,
+            sm->gen_history, sm->n_history, g->req.wm, &sm->rng_state);
+    } else {
+        g->progress.next =
+            sampler_chain_sample(logits, cfg->vocab_size, g->req.ss, sm->gen_history, sm->n_history,
+                                 g->req.wm, g->progress.prev_token, &sm->rng_state);
+    }
+    if (t_step) tn_step_timing_add(TN_STEP_20_GREEDY_SAMPLING, tn_step_timing_now_ns() - t_step);
+    if (g_tn_verbose) gen_session_log_top5(step, g->progress.next, logits, cfg->vocab_size);
+}
+
+/* The sampled token ends the turn: nothing is printed for it, and a first-token stop is recorded
+ * for the empty-generation warning. */
+static void finish_on_eos(GenSession *g) {
+    g->progress.finish = GEN_FINISH_STOP;
+    if (g->progress.tokens_generated == 0 && g->prompt.n_tokens > 0) {
+        g->progress.empty_stop        = 1;
+        g->progress.first_stop_token  = g->progress.next;
+        g->progress.last_prompt_token = g->prompt.tokens[g->prompt.n_tokens - 1];
+    }
+    if (g->req.gp->stats) g->req.gp->stats->hit_eos = true;
+    g->progress.done = 1;
+}
+
+/* EOS check first — do NOT print the EOS token itself. All EOS IDs come from cfg (GGUF loader),
+ * tok->eos_list and this session's chat stops. */
+static int next_is_eos(const GenSession *g) {
+    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    int is_eos =
+        (g->model.cfg->eos_token_id > 0 && g->progress.next == g->model.cfg->eos_token_id) ||
+        tokenizer_is_eog(g->model.tok, g->progress.next, g->req.chat_stops);
+    if (t_step) tn_step_timing_add(TN_STEP_21_EOS_CHECK, tn_step_timing_now_ns() - t_step);
+    return is_eos;
+}
+
+/* Non-EOS token: decode, deliver to the callback and record it. Returns 1 when the generation
+ * must stop (a stop sequence matched, or the callback cancelled). */
+static int deliver_token(GenSession *g) {
+    GenSampling *sm = &g->sampling;
+    if (g->progress.tokens_generated == 0) g->progress.gen_start_us = timer_now_us();
+    const char *piece  = tokenizer_decode(g->model.tok, g->progress.prev_token, g->progress.next);
+    int stop_requested = 0;
+    if (piece)
+        stop_requested = stop_matcher_feed(&sm->stop, piece, g->req.callback, g->req.userdata);
+    if (sm->gen_history && sm->n_history < g->req.max_tokens)
+        sm->gen_history[sm->n_history++] = g->progress.next;
+    if (sm->raw_logits) sm->sum_logprob += (double)sm->raw_logits[g->progress.next] - sm->step_lse;
+    g->progress.tokens_generated++;
+    if (!stop_requested) return 0;
+    g->progress.finish = sm->stop.stopped ? GEN_FINISH_STOP : GEN_FINISH_CANCELLED;
+    g->progress.done   = 1;
+    return 1;
+}
+
+/* A step cannot run: no logits where the next token is sampled, or a remote layer range is
+ * unreachable. Ends the generation with an error. */
+static int step_failed(GenSession *g, const float *logits, int step) {
+    int no_logits = !logits && step >= g->prompt.n_tokens - 1;
+    if (!no_logits && !(g->model.s->dist && g->model.s->dist->failed)) return 0;
+    g->progress.finish = GEN_FINISH_ERROR; /* a remote layer range is unreachable */
+    g->progress.done   = 1;
+    return 1;
+}
+
+/* Moves to the next step. Returns 1 when the generation goes on, 0 when it is done (out of steps
+ * or out of context). */
+static int advance_step(GenSession *g, int step) {
+    int n_prompt           = g->prompt.n_tokens;
+    g->progress.prev_token = g->progress.next;
+    if (step < n_prompt - 1) g->progress.next = g->prompt.tokens[step + 1];
+    g->progress.step = step + 1;
+    int more         = g->progress.step < g->progress.total_steps &&
+               g->progress.step + g->prompt.pos_offset < g->model.cfg->seq_len;
+    if (!more) g->progress.done = 1;
+    return more;
+}
+
 int gen_session_consume(GenSession *g, float *logits) {
     if (g->progress.done) return 0;
-    GenSampling *sm            = &g->sampling;
-    const Config *cfg          = g->model.cfg;
-    const GenerationParams *gp = g->req.gp;
-    Tokenizer *tok             = g->model.tok;
     int step = g->progress.step, n_prompt = g->prompt.n_tokens;
     int abs_pos = step + g->prompt.pos_offset;
     int token   = (step < n_prompt) ? g->prompt.tokens[step] : g->progress.next;
 
-    if ((!logits && step >= n_prompt - 1) || (g->model.s->dist && g->model.s->dist->failed)) {
-        g->progress.finish = GEN_FINISH_ERROR; /* a remote layer range is unreachable */
-        g->progress.done   = 1;
-        return 0;
-    }
+    if (step_failed(g, logits, step)) return 0;
     if (g->prompt.pcache && g->prompt.pos_offset == 0)
         prefix_cache_set(g->prompt.pcache, abs_pos, token);
 
-    /* Sampling */
     if (step < n_prompt - 1) {
         g->progress.next = g->prompt.tokens[step + 1];
     } else {
-        /* Full prompt processed, sample from logits */
-        int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-        if (sm->raw_logits) {
-            memcpy(sm->raw_logits, logits, (size_t)cfg->vocab_size * sizeof(float));
-            sm->step_lse = logprob_logsumexp(sm->raw_logits, cfg->vocab_size);
-        }
-        /* ignore_eos: never sample an end-of-sequence token (llama.cpp's
-         * --ignore-eos), so runs last exactly max_tokens. */
-        if (gp->ignore_eos) {
-            if (cfg->eos_token_id >= 0 && cfg->eos_token_id < cfg->vocab_size)
-                logits[cfg->eos_token_id] = -INFINITY;
-            for (int ei = 0; ei < tok->n_eos; ei++)
-                if (tok->eos_list[ei] >= 0 && tok->eos_list[ei] < cfg->vocab_size)
-                    logits[tok->eos_list[ei]] = -INFINITY;
-            if (g->req.chat_stops)
-                for (int vi = 0; vi < cfg->vocab_size && vi < tok->vocab_size; vi++)
-                    if (g->req.chat_stops[vi]) logits[vi] = -INFINITY;
-        }
-        if (g->req.json_mode) {
-            g->progress.next = sample_constrained_chain(
-                logits, cfg->vocab_size, &sm->json_fsm, tok, g->progress.prev_token, g->req.ss,
-                sm->gen_history, sm->n_history, g->req.wm, &sm->rng_state);
-        } else {
-            g->progress.next = sampler_chain_sample(logits, cfg->vocab_size, g->req.ss,
-                                                    sm->gen_history, sm->n_history, g->req.wm,
-                                                    g->progress.prev_token, &sm->rng_state);
-        }
-        if (t_step) {
-            tn_step_timing_add(TN_STEP_20_GREEDY_SAMPLING, tn_step_timing_now_ns() - t_step);
-        }
-        if (g_tn_verbose) gen_session_log_top5(step, g->progress.next, logits, cfg->vocab_size);
-    }
-
-    /* EOS check first — do NOT print the EOS token itself. All EOS IDs come
-     * from cfg (GGUF loader), tok->eos_list and this session's chat stops. */
-    if (step >= n_prompt - 1) {
-        int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-        int is_eos     = (cfg->eos_token_id > 0 && g->progress.next == cfg->eos_token_id) ||
-                     tokenizer_is_eog(tok, g->progress.next, g->req.chat_stops);
-        if (t_step) {
-            tn_step_timing_add(TN_STEP_21_EOS_CHECK, tn_step_timing_now_ns() - t_step);
-        }
-        if (is_eos) {
-            g->progress.finish = GEN_FINISH_STOP;
-            if (g->progress.tokens_generated == 0 && n_prompt > 0) {
-                g->progress.empty_stop        = 1;
-                g->progress.first_stop_token  = g->progress.next;
-                g->progress.last_prompt_token = g->prompt.tokens[n_prompt - 1];
-            }
-            if (gp->stats) gp->stats->hit_eos = true;
-            g->progress.done = 1;
+        sample_next(g, logits, step);
+        if (next_is_eos(g)) {
+            finish_on_eos(g);
             return 0;
         }
-        /* Non-EOS token: decode and deliver to callback */
-        if (g->progress.tokens_generated == 0) g->progress.gen_start_us = timer_now_us();
-        const char *piece  = tokenizer_decode(tok, g->progress.prev_token, g->progress.next);
-        int stop_requested = 0;
-        if (piece)
-            stop_requested = stop_matcher_feed(&sm->stop, piece, g->req.callback, g->req.userdata);
-        if (sm->gen_history && sm->n_history < g->req.max_tokens)
-            sm->gen_history[sm->n_history++] = g->progress.next;
-        if (sm->raw_logits)
-            sm->sum_logprob += (double)sm->raw_logits[g->progress.next] - sm->step_lse;
-        g->progress.tokens_generated++;
-        if (stop_requested) {
-            g->progress.finish = sm->stop.stopped ? GEN_FINISH_STOP : GEN_FINISH_CANCELLED;
-            g->progress.done   = 1;
-            return 0;
-        }
+        if (deliver_token(g)) return 0;
     }
-
-    g->progress.prev_token = g->progress.next;
-    if (step < n_prompt - 1) g->progress.next = g->prompt.tokens[step + 1];
-    g->progress.step = step + 1;
-    if (!(g->progress.step < g->progress.total_steps &&
-          g->progress.step + g->prompt.pos_offset < cfg->seq_len)) {
-        g->progress.done = 1;
-        return 0;
-    }
-    return 1;
+    return advance_step(g, step);
 }
 
 /* Frees what the session allocated (safe to call twice). */

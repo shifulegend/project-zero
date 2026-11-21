@@ -3,6 +3,24 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — legacy `.bin` tokenizer loader split into steps (finding 20.a)
+- What: `tokenizer_load` (complexity 24, 99 lines) is now a short driver over `read_bin_vocab` (with
+  `read_bin_header`, `alloc_bin_arrays` and `read_bin_token`) and `derive_special_ids` (with
+  `first_known_id`). The twelve copies of "close the file, free the tokenizer, return" became one error
+  path.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: new `tests/test_tokenizer_load_golden.c` writes 6,000 generated `.bin` files (vocabularies of 1-40
+  tokens with and without the BOS/EOS names the loader looks for; token lengths at, over and under the
+  declared maximum; zero, negative and over-limit sizes; a declared maximum of exactly 4,096; files cut
+  short at any byte; 3,368 load) and pins one hash of the result and, for loaded ones, every field of the
+  tokenizer, with leak checking on (a missing free fails); recorded from the old loader with the library
+  rebuilt by gcc and by clang. Ten mutations (the size limits, the length bound, candidate order, the free
+  on a failed token, the id test, the sorted index) fail it; the other three need an allocation failure or
+  are equivalent. `make test` (gcc and clang); a model run with and without a missing `--tokenizer` file
+  prints the same text as the old binary.
+- Affected: `src/tokenizer/tokenizer_load.c`, `tests/test_tokenizer_load_golden.c`,
+  `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — chat message-array parser split into steps (finding 20.a)
 - What: `json_parse_messages` (complexity 25, 55 lines, nesting 7) is now a loop over `begin_message`,
   `parse_message_members` (with `parse_message_member` and `parse_content_value`) and

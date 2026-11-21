@@ -87,6 +87,91 @@ int tokenizer_find_id(const Tokenizer *t, const char *str) {
     return -1;
 }
 
+/* vocab_size and max_token_len, range-checked. */
+static TernaryError read_bin_header(FILE *fp, Tokenizer *t) {
+    if (fread(&t->vocab_size, sizeof(int), 1, fp) != 1) return TN_ERR_TOKENIZER_LOAD;
+    if (fread(&t->max_token_len, sizeof(int), 1, fp) != 1) return TN_ERR_TOKENIZER_LOAD;
+    if (t->vocab_size <= 0 || t->vocab_size > 1000000) return TN_ERR_TOKENIZER_LOAD;
+    if (t->max_token_len <= 0 || t->max_token_len > 4096) return TN_ERR_TOKENIZER_LOAD;
+    return TN_OK;
+}
+
+/* Allocates the three per-token arrays; frees what it made on failure. */
+static TernaryError alloc_bin_arrays(Tokenizer *t) {
+    t->vocab = (char **)calloc((size_t)t->vocab_size, sizeof(char *));
+    if (!t->vocab) return TN_ERR_OOM;
+    t->vocab_scores         = (float *)calloc((size_t)t->vocab_size, sizeof(float));
+    t->sorted_vocab_indices = (int *)calloc((size_t)t->vocab_size, sizeof(int));
+    if (t->vocab_scores && t->sorted_vocab_indices) return TN_OK;
+    tokenizer_free(t);
+    return TN_ERR_OOM;
+}
+
+/* One token: score(float) len(int) bytes(char[len]). */
+static TernaryError read_bin_token(FILE *fp, Tokenizer *t, int i) {
+    float score;
+    int len;
+    if (fread(&score, sizeof(float), 1, fp) != 1) return TN_ERR_TOKENIZER_LOAD;
+    if (fread(&len, sizeof(int), 1, fp) != 1) return TN_ERR_TOKENIZER_LOAD;
+    if (len < 0 || len > t->max_token_len) return TN_ERR_TOKENIZER_LOAD;
+
+    t->vocab_scores[i] = score;
+    t->vocab[i]        = (char *)malloc((size_t)len + 1);
+    if (!t->vocab[i]) return TN_ERR_OOM;
+    if (len > 0 && fread(t->vocab[i], 1, (size_t)len, fp) != (size_t)len)
+        return TN_ERR_TOKENIZER_LOAD;
+    t->vocab[i][len] = '\0';
+    return TN_OK;
+}
+
+/* Header, arrays and every token; the tokenizer is freed on any failure after the header. */
+static TernaryError read_bin_vocab(FILE *fp, Tokenizer *t) {
+    TernaryError err = read_bin_header(fp, t);
+    if (err != TN_OK) return err;
+    err = alloc_bin_arrays(t);
+    if (err != TN_OK) return err;
+    for (int i = 0; i < t->vocab_size; i++) {
+        err = read_bin_token(fp, t, i);
+        if (err != TN_OK) {
+            tokenizer_free(t);
+            return err;
+        }
+    }
+    return TN_OK;
+}
+
+/* The first of `names` that is in the vocabulary, or -1. */
+static int first_known_id(const Tokenizer *t, const char *const *names) {
+    for (int k = 0; names[k]; k++) {
+        int id = tokenizer_find_id(t, names[k]);
+        if (id >= 0) return id;
+    }
+    return -1;
+}
+
+/* ── Derive BOS/EOS token IDs from vocabulary contents ──────────────────
+ * Scan the vocabulary for known BOS/EOS token strings and record their
+ * actual indices. This replaces any hardcoded numeric fallbacks.
+ *
+ * MODULARITY RULE: The tokenizer NEVER sets chat_template. That is model
+ * metadata, not tokenizer metadata. Chat templates are set by:
+ *   1. tokenizer_gguf.c  — reads "tokenizer.chat_template" from the GGUF
+ *   2. main.c patch      — copies GGUF chat_template into an external .bin
+ *                          tokenizer when both are provided together
+ * This ensures base models (e.g. BitNet) are never wrongly given an
+ * instruct chat template just because their BPE vocab contains control
+ * tokens from the same family as an instruct model.
+ * ─────────────────────────────────────────────────────────────────────── */
+static void derive_special_ids(Tokenizer *t) {
+    /* BOS candidates and the primary EOS candidates — first match wins */
+    static const char *const BOS_CANDIDATES[] = {"<|begin_of_text|>", "<s>", "<bos>", NULL};
+    static const char *const EOS_PRIMARY[]    = {
+        "<|eot_id|>", "<|end_of_text|>", "<|im_end|>",    "</s>",
+        "<eos>",      "[EOS]",           "<|endoftext|>", NULL};
+    if (t->bos_token_id < 0) t->bos_token_id = first_known_id(t, BOS_CANDIDATES);
+    if (t->eos_token_id < 0) t->eos_token_id = first_known_id(t, EOS_PRIMARY);
+}
+
 TernaryError tokenizer_load(Tokenizer *t, const char *path) {
     memset(t, 0, sizeof(*t));
     t->add_bos_token = 1; /* legacy .bin tokenizers: the engine always prepended BOS */
@@ -96,130 +181,13 @@ TernaryError tokenizer_load(Tokenizer *t, const char *path) {
 
     FILE *fp = fopen(path, "rb");
     TN_CHECK(fp != NULL, TN_ERR_TOKENIZER_LOAD);
-
-    /* Read vocab_size and max_token_len */
-    if (fread(&t->vocab_size, sizeof(int), 1, fp) != 1) {
-        fclose(fp);
-        return TN_ERR_TOKENIZER_LOAD;
-    }
-    if (fread(&t->max_token_len, sizeof(int), 1, fp) != 1) {
-        fclose(fp);
-        return TN_ERR_TOKENIZER_LOAD;
-    }
-
-    /* Validate ranges — must close fp on failure since TN_CHECK does a
-     * bare return that would leak the FILE handle. */
-    if (t->vocab_size <= 0 || t->vocab_size > 1000000) {
-        fclose(fp);
-        return TN_ERR_TOKENIZER_LOAD;
-    }
-    if (t->max_token_len <= 0 || t->max_token_len > 4096) {
-        fclose(fp);
-        return TN_ERR_TOKENIZER_LOAD;
-    }
-
-    /* Allocate arrays */
-    t->vocab = (char **)calloc((size_t)t->vocab_size, sizeof(char *));
-    if (!t->vocab) {
-        fclose(fp);
-        return TN_ERR_OOM;
-    }
-
-    t->vocab_scores = (float *)calloc((size_t)t->vocab_size, sizeof(float));
-    if (!t->vocab_scores) {
-        fclose(fp);
-        tokenizer_free(t);
-        return TN_ERR_OOM;
-    }
-
-    t->sorted_vocab_indices = (int *)calloc((size_t)t->vocab_size, sizeof(int));
-    if (!t->sorted_vocab_indices) {
-        fclose(fp);
-        tokenizer_free(t);
-        return TN_ERR_OOM;
-    }
-
-    /* Read each token: score(float) len(int) bytes(char[len]) */
-    for (int i = 0; i < t->vocab_size; i++) {
-        float score;
-        int len;
-
-        if (fread(&score, sizeof(float), 1, fp) != 1) {
-            fclose(fp);
-            tokenizer_free(t);
-            return TN_ERR_TOKENIZER_LOAD;
-        }
-        if (fread(&len, sizeof(int), 1, fp) != 1) {
-            fclose(fp);
-            tokenizer_free(t);
-            return TN_ERR_TOKENIZER_LOAD;
-        }
-        if (len < 0 || len > t->max_token_len) {
-            fclose(fp);
-            tokenizer_free(t);
-            return TN_ERR_TOKENIZER_LOAD;
-        }
-
-        t->vocab_scores[i] = score;
-        t->vocab[i]        = (char *)malloc((size_t)len + 1);
-        if (!t->vocab[i]) {
-            fclose(fp);
-            tokenizer_free(t);
-            return TN_ERR_OOM;
-        }
-
-        if (len > 0 && fread(t->vocab[i], 1, (size_t)len, fp) != (size_t)len) {
-            fclose(fp);
-            tokenizer_free(t);
-            return TN_ERR_TOKENIZER_LOAD;
-        }
-        t->vocab[i][len] = '\0';
-    }
-
+    TernaryError err = read_bin_vocab(fp, t);
     fclose(fp);
+    if (err != TN_OK) return err;
 
     /* Build sorted index for binary search during encoding */
     build_sorted_index(t);
-
-    /* ── Derive BOS/EOS token IDs from vocabulary contents ──────────────────
-     * Scan the vocabulary for known BOS/EOS token strings and record their
-     * actual indices. This replaces any hardcoded numeric fallbacks.
-     *
-     * MODULARITY RULE: The tokenizer NEVER sets chat_template. That is model
-     * metadata, not tokenizer metadata. Chat templates are set by:
-     *   1. tokenizer_gguf.c  — reads "tokenizer.chat_template" from the GGUF
-     *   2. main.c patch      — copies GGUF chat_template into an external .bin
-     *                          tokenizer when both are provided together
-     * This ensures base models (e.g. BitNet) are never wrongly given an
-     * instruct chat template just because their BPE vocab contains control
-     * tokens from the same family as an instruct model.
-     * ─────────────────────────────────────────────────────────────────────── */
-
-    /* BOS candidates — first match wins */
-    if (t->bos_token_id < 0) {
-        static const char *const BOS_CANDIDATES[] = {"<|begin_of_text|>", "<s>", "<bos>", NULL};
-        for (int k = 0; BOS_CANDIDATES[k]; k++) {
-            int id = tokenizer_find_id(t, BOS_CANDIDATES[k]);
-            if (id >= 0) {
-                t->bos_token_id = id;
-                break;
-            }
-        }
-    }
-
-    /* Primary EOS candidate — first match wins */
-    if (t->eos_token_id < 0) {
-        static const char *const EOS_PRIMARY[] = {
-            "<|eot_id|>", "<|end_of_text|>", "<|im_end|>",    "</s>",
-            "<eos>",      "[EOS]",           "<|endoftext|>", NULL};
-        for (int k = 0; EOS_PRIMARY[k]; k++) {
-            int id = tokenizer_find_id(t, EOS_PRIMARY[k]);
-            if (id >= 0) {
-                t->eos_token_id = id;
-                break;
-            }
-        }
-    }
+    derive_special_ids(t);
 
     /* ── Populate eos_list (no metadata in a .bin vocab: names only) ─────── */
     tokenizer_collect_eog(t, &t->eos_token_id, 1, 0);

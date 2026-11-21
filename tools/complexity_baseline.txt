@@ -203,7 +203,6 @@ src/tokenizer/tokenizer_encode.c::tokenizer_encode_segment 13 50 3
 src/tokenizer/tokenizer_gguf.c::collect_special_tokens 16 28 3
 src/tokenizer/tokenizer_gguf.c::find_vocab_token 11 23 2
 src/tokenizer/tokenizer_load.c::tokenizer_chat_stops_new 14 16 2
-src/tokenizer/tokenizer_load.c::tokenizer_load 24 99 3
 src/transformer/attention.c::attention_forward_batch 12 37 2
 src/transformer/attn_tiled.c::attn_head_tiled 16 36 3
 src/transformer/dist_worker.c::dist_worker_serve 20 56 5

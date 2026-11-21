@@ -54,9 +54,6 @@ src/brand/block_font.c::glyph_for 12 26 1
 src/brand/block_font.c::tn_block_font_render 13 26 4
 src/cli/args.c::parse_args 21 47 3
 src/cli/args_flags_extras.c::args_parse_extras 28 56 11
-src/cli/args_flags_generation.c::args_parse_generation 54 72 27
-src/cli/args_flags_memory.c::args_parse_memory 45 90 16
-src/cli/args_flags_search.c::args_parse_search 52 87 15
 src/cli/args_flags_serving.c::args_parse_serving 20 37 8
 src/cli/config_cmd.c::ask_model 35 74 3
 src/cli/config_cmd.c::pz_config_command 42 103 6

@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — generation, search and memory flag groups are table-driven; classifier head in its own file
+- What: `args_parse_generation`, `args_parse_search` and `args_parse_memory` (complexity 54 / 52 / 45, nesting 27 / 15 / 16) are rows of `ArgFlagSpec` (flag, CliArgs field, kind, range, message) run by `args_table_parse` (`src/cli/args_table.c`); flags with their own rules (`--stop`, `--mcts-delim`, `--rope-layout`, `--attn-kernel`, `--kv-type`, `--prompt-cache`) are small handlers. `tests/test_args_golden.c` finds flag names in all spellings. Separately the classifier head (`forward_head_classify`, `forward_head_rows`) moved from `forward.c` to `src/transformer/forward_head.c` to keep `forward.c` under the file-size limit.
+- Why: finding 20.a; all three left the complexity baseline (385 -> 382).
+- Proof: the 4970-case golden table (recorded from the old parser) passes unchanged; 27 error and rejection invocations print identical text and exit codes to the previous commit's binary; `make test` gcc and clang, `make test-tsan`.
+- Areas: `src/cli/args_flags_{generation,search,memory}.c`, `src/cli/args_table.c`, `include/cli/args_table.h`, `src/transformer/forward*.c`, `include/transformer/forward_head.h`, `tests/test_args_golden.c`, `CMakeLists.txt`, `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — batched logits head and multi-sequence step split into helpers
 - What: `forward_rows_logits` now calls `rows_final_norm` and `rows_classifier` (early-return format dispatch); `transformer_forward_multi_ex` calls `multi_embed_rows` and `compact_wanted_rows`.
 - Why: finding 20.a; `forward_rows_logits` left the complexity baseline and `transformer_forward_multi_ex` went from 23 / 40 / 3 to 14 / 21 / 2.

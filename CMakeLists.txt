@@ -258,6 +258,7 @@ set(TRANSFORMER_SOURCES
     src/transformer/attention_proj.c
     src/transformer/ffn.c
     src/transformer/forward.c
+    src/transformer/forward_head.c
     src/transformer/generate.c
     src/transformer/gen_session.c
     src/transformer/gen_session_debug.c
@@ -323,6 +324,7 @@ set(REASONING_SOURCES
 set(CLI_SOURCES
     src/cli/args.c
     src/cli/args_usage.c
+    src/cli/args_table.c
     src/cli/args_flags_generation.c
     src/cli/args_flags_memory.c
     src/cli/args_flags_serving.c

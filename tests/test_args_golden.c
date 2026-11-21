@@ -248,14 +248,24 @@ static int cmp_flags(const void *a, const void *b) {
     return strcmp((const char *)a, (const char *)b);
 }
 
-/* The next flag name in `p`: a strcmp(argv[i], "--x") branch or a {"--x", ...} table entry.
- * Copies it to `name` and returns where to continue, or NULL when the line has no more. */
+/* The next flag name in `p`: a strcmp(argv[i], "--x") or strcmp(argv[*ip], "--x") branch, or a
+ * {"--x", ...} table entry. Copies it to `name` and returns where to continue, or NULL when the
+ * line has no more. */
 static const char *next_flag(const char *p, char *name, size_t cap) {
-    const char *s1 = strstr(p, "strcmp(argv[i], \"--");
-    const char *s2 = strstr(p, "{\"--");
-    if (!s1 && !s2) return NULL;
-    int table     = s1 == NULL || (s2 != NULL && s2 < s1);
-    p             = table ? s2 + strlen("{\"") : s1 + strlen("strcmp(argv[i], \"");
+    static const char *const starts[] = {"strcmp(argv[i], \"", "strcmp(argv[*ip], \"", "{\""};
+    const char *best                  = NULL;
+    size_t best_len                   = 0;
+    for (size_t k = 0; k < sizeof starts / sizeof starts[0]; k++) {
+        const char *hit = strstr(p, starts[k]);
+        while (hit && strncmp(hit + strlen(starts[k]), "--", 2) != 0)
+            hit = strstr(hit + 1, starts[k]);
+        if (hit && (!best || hit < best)) {
+            best     = hit;
+            best_len = strlen(starts[k]);
+        }
+    }
+    if (!best) return NULL;
+    p             = best + best_len;
     const char *e = strchr(p, '"');
     if (!e || (size_t)(e - p) >= cap) return NULL;
     memcpy(name, p, (size_t)(e - p));

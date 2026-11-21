@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — tree search split into select, expand, evaluate and finish
+- What: `generate_mcts` (`src/reasoning/mcts.c`) keeps one `Search` struct and calls `select_leaf`, `simulate_once`, `expand_node`, `evaluate_step`, `best_path` and `finish_search` (with `summarize_path`, `needs_completion`, `complete_path`, `report_stats`). The order of every side effect, the seed sequence and the stats written back are unchanged.
+- Why: finding 20.a; `generate_mcts` was complexity 61, 150 lines, nesting 4 (now 15 / 35 / 2; every new function is within the limits).
+- Proof: end to end on SmolLM2 against the original baseline binary: CLI runs with eight parameter sets (`--mcts` 0/1/4, with `--mcts-expand`, `--mcts-depth`, `--mcts-step-tokens`, `--mcts-c`, `--mcts-temperature`; seeded) give identical output, the `[mcts] 4 simulations, 4 nodes, 2-step path ...` line shows the search ran; server requests with `"mcts": 4`, an mcts object, and a streamed mcts request are identical after normalising ids; `make test` gcc and clang, format and ratchets.
+- Areas: `src/reasoning/mcts.c`, `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — every code point's class is pinned; the classifier stays an if-chain
 - What: `cp_flags` is exported as `pretok_cp_class` and `tests/test_pretokenize.c` hashes its result for every value 0..0x110005 (hash recorded from the old function). A range-table rewrite was tried and reverted: identical on 1,114,122 values, but 25-50% slower in `pretokenize()` on 5.4 MB of mixed-script text (35 ms vs 44-54 ms), so the chain stays (decision-log 2026-11-21).
 - Why: finding 20.a (`cp_flags`, complexity 92 in 36 lines); the measurement said no, and the pin makes any later change safe. The complexity baseline entry is renamed with unchanged numbers.

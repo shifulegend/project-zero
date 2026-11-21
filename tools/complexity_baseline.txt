@@ -156,7 +156,7 @@ src/rag/vector_db.c::upgrade_v1_to_v2 22 72 2
 src/rag/vector_db.c::vector_db_open 35 105 3
 src/rag/vector_db.c::vector_db_store 20 48 2
 src/reasoning/best_of.c::generate_best_of 29 57 3
-src/reasoning/mcts.c::generate_mcts 61 150 4
+src/reasoning/mcts.c::generate_mcts 15 35 2
 src/reasoning/mcts_options.c::mcts_options_clamp 11 12 1
 src/reasoning/prm.c::prm_load 16 31 1
 src/reasoning/prm.c::prm_score 15 40 2
@@ -234,9 +234,9 @@ src/tokenizer/chat_template_parse_expr.cpp::parse_filter 9 24 4
 src/tokenizer/chat_template_parse_expr.cpp::parse_primary 32 95 6
 src/tokenizer/pretokenize.c::cls_match 34 54 3
 src/tokenizer/pretokenize.c::contraction 16 10 2
-src/tokenizer/pretokenize.c::pretok_cp_class 92 36 2
 src/tokenizer/pretokenize.c::cpts_decode 16 34 4
 src/tokenizer/pretokenize.c::ds_letter 15 8 1
+src/tokenizer/pretokenize.c::pretok_cp_class 92 36 2
 src/tokenizer/pretokenize.c::pretok_type_from_name 14 21 2
 src/tokenizer/pretokenize.c::pretokenize 20 73 2
 src/tokenizer/pretokenize.c::run_step 18 65 2

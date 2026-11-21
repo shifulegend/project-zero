@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — remaining process-wide state classified
+- What: `docs/ai/decision-log.md` splits the 46 remaining mutable statics into impossible (signal-handler state, 3), planned removals (9) and four groups of proposed exceptions; the three signal-handler variables carry a comment saying why they stay file-scope. The exception groups are in the Deviation approval log for approval.
+- Why: finding 14.f allows an allow-list only after a formal conclusion that removal is not possible; this is that conclusion, per group, instead of a silent baseline.
+- Proof: comment-only code change; `make test` gcc and clang; statics ratchet unchanged at 46.
+- Areas: `docs/ai/decision-log.md`, `src/cli/session_server.c`, `src/core/cpu_features.c`.
+
 ### 2026-11-20 — attention kernel settings live in each RunState
 - What: `AttnConfig` (kernel, tile, parallel threshold; `include/core/attn_config.h`) is a field of `RunState`, defaulted at allocation. The attention code reads `s->attn`; the session applies `--attn-kernel/--attn-tile/--attn-parallel-min-ctx` to the main, draft, PRM and RAG-embedder states, batch-scheduler slots copy slot 0's, and `/v1/config` reports the served state's. The `attn_*_get()` accessors and the three file-scope variables are gone.
 - Why: finding 14.f; mutable statics 49 -> 46. Two states in one process can now run different kernels. The type sits in `core/` so `run_state.h` does not include the transformer layer (the layer check caught that first).

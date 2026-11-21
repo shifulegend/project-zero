@@ -18,6 +18,8 @@
  * mode only — installed right before the blocking wait, not at process
  * start, so REPL/one-shot Ctrl+C behavior (immediate kill, default
  * disposition) is unchanged. */
+/* File scope on purpose: a signal handler receives only the signal number, so it cannot be
+ * handed a context (decision-log 2026-11-21). */
 static volatile sig_atomic_t g_shutdown_requested = 0;
 
 static void handle_shutdown_signal(int sig) {

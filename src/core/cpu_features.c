@@ -58,6 +58,8 @@ static void detect_x86(TnCpuFeatures *f) {
 #endif
 
 #if TN_HAS_AVX512VBMI
+/* File scope on purpose: the SIGILL handler of the probe can only reach it this way
+ * (decision-log 2026-11-21). */
 static sigjmp_buf g_vbmi_test_jmpbuf;
 
 static void vbmi_test_sigill_handler(int sig) {
@@ -100,6 +102,7 @@ static bool verify_avx512vbmi_executable(void) {
 #endif /* TN_HAS_AVX512VBMI */
 
 #if TN_HAS_AVX512VNNI
+/* Same reason as g_vbmi_test_jmpbuf. */
 static sigjmp_buf g_vnni_test_jmpbuf;
 
 static void vnni_test_sigill_handler(int sig) {

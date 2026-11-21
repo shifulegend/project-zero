@@ -1,7 +1,36 @@
 # Decision Log — project-zero
 
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
-> Read at session start. Last updated: 2026-11-18.
+> Read at session start. Last updated: 2026-11-21.
+
+### 2026-11-21 — Process-wide mutable state: what cannot be removed, what is proposed
+- Decision: 46 mutable statics remain in `src/` (down from 69). They fall
+  into seven groups; only the first is impossible to remove. The rest are
+  either planned removals or exceptions proposed to the owner (Deviation
+  approval log, 2026-11-21); nothing is allow-listed until approved.
+- Impossible (3): state a POSIX signal handler touches. A handler gets only
+  the signal number, so `g_shutdown_requested` (`session_server.c`) and the
+  two `sigjmp_buf`s of the CPU-feature probes (`cpu_features.c`) must be
+  file-scope. They stay, each with a comment saying why.
+- Planned removals (9): the dispatch mode in `simd_dispatch.c` (3, belongs
+  in a dispatch context), the request-ID counter and lock (`http_request.c`,
+  2, belong in `ApiContext`), calibration samples, the active distributed
+  plan, the vision prompt buffer (`session_extras.c`, needs a session field)
+  and the OpenAPI document once-flag.
+- Proposed exception, thread-local scratch (9): `TnTlsScratch` buffers and
+  the decode buffer. They are per-thread by construction, not shared state;
+  the alternative is a worker-context argument through every matmul call.
+- Proposed exception, read-once environment flags (4): memoised `getenv`
+  results. The environment is itself process-wide; the flags are atomic.
+- Proposed exception, machine facts (8): CPU features, cache sizes and the
+  hardware profile are measured once and read-only afterwards.
+- Proposed exception, logging level and format (2): one logger per process.
+- Proposed exception, diagnostics (11): `TN_PROFILE`/`TN_STEP_TIMING`
+  counters and the expert-hit tracker; planned alternative is a profiler
+  object on the `RunState`, which costs signature changes in the forward path.
+- Consequence: `tools/check_mutable_statics.py` keeps ratcheting the whole
+  count down; approval of an exception group only moves it from "to remove"
+  to "documented floor".
 
 ### 2026-11-18 — Numerics and quality are settings with one probe, not side effects
 - Decision: `--act-quant auto|int8|float` selects the ternary activation numerics independently of the SIMD tier; `eval/selfcheck.c` scores a built-in passage as configured against float activations and a BF16 head; `--quality-tolerance` (default 1.0 %, 0 = no bar) is the bar. An explicitly requested quantised LM head that fails it falls back to BF16 at startup; `--self-check`, `POST /v1/selfcheck` and the web UI run the same probe on demand.

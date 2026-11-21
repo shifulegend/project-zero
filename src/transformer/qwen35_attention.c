@@ -67,109 +67,135 @@ static void rope_apply_neox_partial(float *v, const float *freq, int rope_dim, i
 
 /* ── Full attention: GQA + QK-norm + partial rotary + sigmoid gate ──────── */
 
-static void q35_full_attn_forward(RunState *s, const TransformerWeights *w, const Config *cfg,
-                                  const MoEConfig *mc, int layer, int pos, ThreadPool *tp) {
-    int dim      = cfg->dim;
-    int n_head   = cfg->n_heads;
-    int n_kv_h   = cfg->n_kv_heads;
-    int head_dim = mc->attn_head_dim;
-    int rope_dim = mc->attn_rope_dim > 0 ? mc->attn_rope_dim : head_dim;
-    int kv_mul   = n_head / n_kv_h;
-    int q_width  = 2 * n_head * head_dim; /* [Q | gate] doubled per head */
-    int kv_width = n_kv_h * head_dim;
-    int max_seq  = s->max_seq_len;
+/* The full-attention layer's shapes. */
+typedef struct {
+    int dim, n_head, n_kv_h, head_dim, rope_dim, kv_mul, q_width, kv_width, max_seq;
+} Q35Full;
 
-    /* Per-RunState scratch (q35_run_state_alloc): no shared static, no width cap. */
-    float *q_full      = s->q35.scratch;
-    float *k_buf       = q_full + q_width;
-    float *v_buf       = k_buf + kv_width;
-    float *attn_concat = v_buf + kv_width;
+static Q35Full q35_full_dims(const RunState *s, const Config *cfg, const MoEConfig *mc) {
+    Q35Full d;
+    d.dim      = cfg->dim;
+    d.n_head   = cfg->n_heads;
+    d.n_kv_h   = cfg->n_kv_heads;
+    d.head_dim = mc->attn_head_dim;
+    d.rope_dim = mc->attn_rope_dim > 0 ? mc->attn_rope_dim : d.head_dim;
+    d.kv_mul   = d.n_head / d.n_kv_h;
+    d.q_width  = 2 * d.n_head * d.head_dim; /* [Q | gate] doubled per head */
+    d.kv_width = d.n_kv_h * d.head_dim;
+    d.max_seq  = s->max_seq_len;
+    return d;
+}
 
-    /* Step 1: RMSNorm */
+/* Steps 1-2: RMSNorm, then the Q (with its gate half), K and V projections. */
+static void q35_full_project(RunState *s, const TransformerWeights *w, const Config *cfg,
+                             const Q35Full *d, int layer, ThreadPool *tp, float *q_full,
+                             float *k_buf, float *v_buf) {
     int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    tn_rmsnorm(s->xb, s->x, w->attn.norm[layer], dim, cfg->rms_norm_eps);
+    tn_rmsnorm(s->xb, s->x, w->attn.norm[layer], d->dim, cfg->rms_norm_eps);
     if (t_step) tn_step_timing_add(TN_STEP_4_PRE_ATTN_RMSNORM, tn_step_timing_now_ns() - t_step);
 
-    /* Step 2: projections */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    parallel_matmul_q2_0(q_full, s->xb, (const uint8_t *)w->attn.wq[layer], dim, q_width, tp);
+    parallel_matmul_q2_0(q_full, s->xb, (const uint8_t *)w->attn.wq[layer], d->dim, d->q_width, tp);
     if (t_step) {
         tn_step_timing_add(TN_STEP_5_Q_PROJECTION, tn_step_timing_now_ns() - t_step);
         t_step = tn_step_timing_now_ns();
     }
-    parallel_matmul_q2_0(k_buf, s->xb, (const uint8_t *)w->attn.wk[layer], dim, kv_width, tp);
-    parallel_matmul_q2_0(v_buf, s->xb, (const uint8_t *)w->attn.wv[layer], dim, kv_width, tp);
+    parallel_matmul_q2_0(k_buf, s->xb, (const uint8_t *)w->attn.wk[layer], d->dim, d->kv_width, tp);
+    parallel_matmul_q2_0(v_buf, s->xb, (const uint8_t *)w->attn.wv[layer], d->dim, d->kv_width, tp);
     if (t_step) tn_step_timing_add(TN_STEP_6_KV_A_COMPRESSION, tn_step_timing_now_ns() - t_step);
+}
 
-    /* Step 3: per-head Q/K RMSNorm, then partial NEOX rotary */
-    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    for (int h = 0; h < n_head; h++) {
-        float *q_h = q_full + (size_t)h * 2 * head_dim;
-        tn_rmsnorm(q_h, q_h, w->q35.attn_q_norm[layer], head_dim, cfg->rms_norm_eps);
-        rope_apply_neox_partial(q_h, s->q35.rope_freq, rope_dim, pos);
+/* Step 3: per-head Q/K RMSNorm, then partial NEOX rotary. */
+static void q35_full_norm_rope(const RunState *s, const TransformerWeights *w, const Config *cfg,
+                               const Q35Full *d, int layer, int pos, float *q_full, float *k_buf) {
+    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    for (int h = 0; h < d->n_head; h++) {
+        float *q_h = q_full + (size_t)h * 2 * d->head_dim;
+        tn_rmsnorm(q_h, q_h, w->q35.attn_q_norm[layer], d->head_dim, cfg->rms_norm_eps);
+        rope_apply_neox_partial(q_h, s->q35.rope_freq, d->rope_dim, pos);
     }
-    for (int kh = 0; kh < n_kv_h; kh++) {
-        float *k_h = k_buf + (size_t)kh * head_dim;
-        tn_rmsnorm(k_h, k_h, w->q35.attn_k_norm[layer], head_dim, cfg->rms_norm_eps);
-        rope_apply_neox_partial(k_h, s->q35.rope_freq, rope_dim, pos);
+    for (int kh = 0; kh < d->n_kv_h; kh++) {
+        float *k_h = k_buf + (size_t)kh * d->head_dim;
+        tn_rmsnorm(k_h, k_h, w->q35.attn_k_norm[layer], d->head_dim, cfg->rms_norm_eps);
+        rope_apply_neox_partial(k_h, s->q35.rope_freq, d->rope_dim, pos);
     }
     if (t_step) tn_step_timing_add(TN_STEP_9_YARN_ROPE, tn_step_timing_now_ns() - t_step);
+}
 
-    /* Step 4: write K/V into this layer's own correctly-sized cache */
-    t_step         = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+/* Step 4: write K/V into this layer's own correctly-sized cache. */
+static void q35_full_store_kv(RunState *s, const Q35Full *d, int layer, int pos, const float *k_buf,
+                              const float *v_buf) {
+    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     int mapped_pos = sw_map_position(&s->sw, pos);
-    for (int kh = 0; kh < n_kv_h; kh++) {
-        size_t off = ((size_t)kh * max_seq + (size_t)mapped_pos) * head_dim;
-        memcpy(&s->q35.key_cache[layer][off], &k_buf[(size_t)kh * head_dim],
-               (size_t)head_dim * sizeof(float));
-        memcpy(&s->q35.value_cache[layer][off], &v_buf[(size_t)kh * head_dim],
-               (size_t)head_dim * sizeof(float));
+    for (int kh = 0; kh < d->n_kv_h; kh++) {
+        size_t off = ((size_t)kh * d->max_seq + (size_t)mapped_pos) * d->head_dim;
+        memcpy(&s->q35.key_cache[layer][off], &k_buf[(size_t)kh * d->head_dim],
+               (size_t)d->head_dim * sizeof(float));
+        memcpy(&s->q35.value_cache[layer][off], &v_buf[(size_t)kh * d->head_dim],
+               (size_t)d->head_dim * sizeof(float));
     }
     sw_advance(&s->sw);
     if (t_step) tn_step_timing_add(TN_STEP_10_KV_CACHE_WRITE, tn_step_timing_now_ns() - t_step);
+}
 
-    /* Step 5: attention per head (scores+softmax+weighted sum+gate together —
-     * one bucket; splitting inside the per-head loop would add timer calls on
-     * a per-head granularity for little attribution value) */
-    t_step            = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+/* Steps 5-6: attention per head (scores + softmax + weighted sum + the per-element sigmoid output
+ * gate, which matches build_layer_attn) in one step-timing bucket: splitting inside the per-head
+ * loop would add timer calls per head for little attribution value. */
+static void q35_full_attend(const RunState *s, const Q35Full *d, int layer, int pos,
+                            const float *q_full, float *attn_concat) {
+    int64_t t_step    = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     int valid_ctx     = sw_valid_count(&s->sw, pos);
-    float inv_sqrt_hd = 1.0f / sqrtf((float)head_dim);
-
-    for (int h = 0; h < n_head; h++) {
-        float *q_h    = q_full + (size_t)h * 2 * head_dim;
-        float *gate_h = q_h + head_dim;
-        int kh        = h / kv_mul;
-        float *att    = s->att + (size_t)h * max_seq;
+    float inv_sqrt_hd = 1.0f / sqrtf((float)d->head_dim);
+    for (int h = 0; h < d->n_head; h++) {
+        const float *q_h    = q_full + (size_t)h * 2 * d->head_dim;
+        const float *gate_h = q_h + d->head_dim;
+        int kh              = h / d->kv_mul;
+        float *att          = s->att + (size_t)h * d->max_seq;
 
         for (int t = 0; t < valid_ctx; t++) {
             int hist     = (pos >= valid_ctx) ? (pos - valid_ctx + 1 + t) : t;
             int mapped_t = sw_map_position(&s->sw, hist);
-            size_t off   = ((size_t)kh * max_seq + (size_t)mapped_t) * head_dim;
-            att[t]       = tn_vec_dot(q_h, &s->q35.key_cache[layer][off], head_dim) * inv_sqrt_hd;
+            size_t off   = ((size_t)kh * d->max_seq + (size_t)mapped_t) * d->head_dim;
+            att[t] = tn_vec_dot(q_h, &s->q35.key_cache[layer][off], d->head_dim) * inv_sqrt_hd;
         }
         tn_softmax(att, valid_ctx);
 
-        float *out_h = attn_concat + (size_t)h * head_dim;
-        memset(out_h, 0, (size_t)head_dim * sizeof(float));
+        float *out_h = attn_concat + (size_t)h * d->head_dim;
+        memset(out_h, 0, (size_t)d->head_dim * sizeof(float));
         for (int t = 0; t < valid_ctx; t++) {
             int hist     = (pos >= valid_ctx) ? (pos - valid_ctx + 1 + t) : t;
             int mapped_t = sw_map_position(&s->sw, hist);
-            size_t off   = ((size_t)kh * max_seq + (size_t)mapped_t) * head_dim;
-            tn_vec_saxpy(out_h, att[t], &s->q35.value_cache[layer][off], head_dim);
+            size_t off   = ((size_t)kh * d->max_seq + (size_t)mapped_t) * d->head_dim;
+            tn_vec_saxpy(out_h, att[t], &s->q35.value_cache[layer][off], d->head_dim);
         }
-        /* Step 6: sigmoid output gate (per-element, matches build_layer_attn) */
-        for (int d = 0; d < head_dim; d++) {
-            float g = 1.0f / (1.0f + expf(-gate_h[d]));
-            out_h[d] *= g;
+        for (int i = 0; i < d->head_dim; i++) {
+            float g = 1.0f / (1.0f + expf(-gate_h[i]));
+            out_h[i] *= g;
         }
     }
     if (t_step) tn_step_timing_add(TN_STEP_11_ATTN_SCORE, tn_step_timing_now_ns() - t_step);
+}
+
+static void q35_full_attn_forward(RunState *s, const TransformerWeights *w, const Config *cfg,
+                                  const MoEConfig *mc, int layer, int pos, ThreadPool *tp) {
+    const Q35Full d = q35_full_dims(s, cfg, mc);
+
+    /* Per-RunState scratch (q35_run_state_alloc): no shared static, no width cap. */
+    float *q_full      = s->q35.scratch;
+    float *k_buf       = q_full + d.q_width;
+    float *v_buf       = k_buf + d.kv_width;
+    float *attn_concat = v_buf + d.kv_width;
+
+    q35_full_project(s, w, cfg, &d, layer, tp, q_full, k_buf, v_buf);
+    q35_full_norm_rope(s, w, cfg, &d, layer, pos, q_full, k_buf);
+    q35_full_store_kv(s, &d, layer, pos, k_buf, v_buf);
+    q35_full_attend(s, &d, layer, pos, q_full, attn_concat);
 
     /* Step 7: output projection + residual */
-    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    parallel_matmul_q2_0(s->xb, attn_concat, (const uint8_t *)w->attn.wo[layer], n_head * head_dim,
-                         dim, tp);
-    tn_vec_add(s->x, s->x, s->xb, dim);
+    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    parallel_matmul_q2_0(s->xb, attn_concat, (const uint8_t *)w->attn.wo[layer],
+                         d.n_head * d.head_dim, d.dim, tp);
+    tn_vec_add(s->x, s->x, s->xb, d.dim);
     if (t_step) tn_step_timing_add(TN_STEP_12_POST_ATTN, tn_step_timing_now_ns() - t_step);
 }
 
@@ -181,190 +207,234 @@ static inline int q35_head_repeat_index(int v_head, int n_k_heads) {
     return v_head % n_k_heads;
 }
 
-static void q35_linear_attn_forward(RunState *s, const TransformerWeights *w, const Config *cfg,
-                                    const MoEConfig *mc, int layer, int pos, ThreadPool *tp) {
-    (void)pos;
-    int dim       = cfg->dim;
-    int conv_k    = mc->ssm_conv_kernel;
-    int n_k_heads = mc->ssm_group_count;
-    int n_v_heads = mc->ssm_time_step_rank;
-    int state_sz  = mc->ssm_state_size; /* head_k_dim == head_v_dim */
-    int key_dim   = n_k_heads * state_sz;
-    int value_dim = mc->ssm_inner_size; /* n_v_heads * state_sz */
-    int conv_dim  = key_dim * 2 + value_dim;
-    float eps     = cfg->rms_norm_eps;
+/* The linear-attention layer's shapes. */
+typedef struct {
+    int dim, conv_k, n_k_heads, n_v_heads;
+    int state_sz; /* head_k_dim == head_v_dim */
+    int key_dim, value_dim, conv_dim;
+    float eps;
+} Q35Lin;
 
-    /* Linear-attention part of the scratch, after the full-attention part (see
-     * q35_run_state_alloc): the full-attention part is q_full (2*n_heads*head_dim) + k + v
-     * (kv_width each) + concat. */
+/* Where each intermediate lives in the per-RunState scratch. */
+typedef struct {
+    float *qkv_mixed, *z, *beta, *alpha, *g_exp, *conv_out, *core_out;
+} Q35LinBuf;
+
+static Q35Lin q35_lin_dims(const Config *cfg, const MoEConfig *mc) {
+    Q35Lin d;
+    d.dim       = cfg->dim;
+    d.conv_k    = mc->ssm_conv_kernel;
+    d.n_k_heads = mc->ssm_group_count;
+    d.n_v_heads = mc->ssm_time_step_rank;
+    d.state_sz  = mc->ssm_state_size;
+    d.key_dim   = d.n_k_heads * d.state_sz;
+    d.value_dim = mc->ssm_inner_size; /* n_v_heads * state_sz */
+    d.conv_dim  = d.key_dim * 2 + d.value_dim;
+    d.eps       = cfg->rms_norm_eps;
+    return d;
+}
+
+/* Linear-attention part of the scratch, after the full-attention part (see q35_run_state_alloc):
+ * the full-attention part is q_full (2*n_heads*head_dim) + k + v (kv_width each) + concat. */
+static Q35LinBuf q35_lin_buf(RunState *s, const Config *cfg, const MoEConfig *mc, const Q35Lin *d) {
     const size_t full_n = 3 * (size_t)cfg->n_heads * (size_t)mc->attn_head_dim +
                           2 * (size_t)cfg->n_kv_heads * (size_t)mc->attn_head_dim;
-    float *qkv_mixed = s->q35.scratch + full_n;
-    float *z         = qkv_mixed + conv_dim;
-    float *beta      = z + value_dim;
-    float *alpha     = beta + n_v_heads;
-    float *g_exp     = alpha + n_v_heads;
-    float *conv_out  = g_exp + n_v_heads;
-    float *core_out  = conv_out + conv_dim;
+    Q35LinBuf b;
+    b.qkv_mixed = s->q35.scratch + full_n;
+    b.z         = b.qkv_mixed + d->conv_dim;
+    b.beta      = b.z + d->value_dim;
+    b.alpha     = b.beta + d->n_v_heads;
+    b.g_exp     = b.alpha + d->n_v_heads;
+    b.conv_out  = b.g_exp + d->n_v_heads;
+    b.core_out  = b.conv_out + d->conv_dim;
+    return b;
+}
 
-    /* Step 1: RMSNorm */
+/* Steps 1-2: RMSNorm, then the projections: combined q|k|v (pre-conv) and the separate output
+ * gate. Attribution note: the combined qkv projection bills to step 5 and the gate/beta/alpha
+ * projections to step 6, the closest available buckets; DeltaNet has no literal "Q
+ * projection"/"KV compression". */
+static void q35_lin_project(RunState *s, const TransformerWeights *w, const Q35Lin *d,
+                            const Q35LinBuf *b, int layer, ThreadPool *tp) {
     int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    tn_rmsnorm(s->xb, s->x, w->attn.norm[layer], dim, eps);
+    tn_rmsnorm(s->xb, s->x, w->attn.norm[layer], d->dim, d->eps);
     if (t_step) tn_step_timing_add(TN_STEP_4_PRE_ATTN_RMSNORM, tn_step_timing_now_ns() - t_step);
 
-    /* Step 2: projections — combined q|k|v (pre-conv), separate output gate.
-     * Attribution note: the combined qkv projection bills to step 5 and the
-     * gate/beta/alpha projections to step 6 — the closest available buckets;
-     * DeltaNet has no literal "Q projection"/"KV compression". */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    parallel_matmul_q2_0(qkv_mixed, s->xb, (const uint8_t *)w->q35.ssm_qkv[layer], dim, conv_dim,
-                         tp);
+    parallel_matmul_q2_0(b->qkv_mixed, s->xb, (const uint8_t *)w->q35.ssm_qkv[layer], d->dim,
+                         d->conv_dim, tp);
     if (t_step) {
         tn_step_timing_add(TN_STEP_5_Q_PROJECTION, tn_step_timing_now_ns() - t_step);
         t_step = tn_step_timing_now_ns();
     }
-    parallel_matmul_q2_0(z, s->xb, (const uint8_t *)w->q35.ssm_gate[layer], dim, value_dim, tp);
-    parallel_matmul_q2_0(beta, s->xb, (const uint8_t *)w->q35.ssm_beta[layer], dim, n_v_heads, tp);
-    parallel_matmul_q2_0(alpha, s->xb, (const uint8_t *)w->q35.ssm_alpha[layer], dim, n_v_heads,
+    parallel_matmul_q2_0(b->z, s->xb, (const uint8_t *)w->q35.ssm_gate[layer], d->dim, d->value_dim,
                          tp);
+    parallel_matmul_q2_0(b->beta, s->xb, (const uint8_t *)w->q35.ssm_beta[layer], d->dim,
+                         d->n_v_heads, tp);
+    parallel_matmul_q2_0(b->alpha, s->xb, (const uint8_t *)w->q35.ssm_alpha[layer], d->dim,
+                         d->n_v_heads, tp);
     if (t_step) tn_step_timing_add(TN_STEP_6_KV_A_COMPRESSION, tn_step_timing_now_ns() - t_step);
+}
 
-    /* Step 3: per-head scalar decay gate.
-     * gate = ssm_a * softplus(alpha + dt_bias); g_exp = exp(gate).
-     * ssm_a/dt_bias already carry whatever sign/scale the conversion baked
-     * in (build_layer_attn_linear multiplies them directly, no extra
-     * negation) — matched verbatim, not re-derived. */
-    for (int hv = 0; hv < n_v_heads; hv++) {
-        float sig      = 1.0f / (1.0f + expf(-beta[hv]));
-        beta[hv]       = sig;
-        float ab       = alpha[hv] + w->q35.ssm_dt_bias[layer][hv];
+/* Step 3: per-head scalar decay gate. gate = ssm_a * softplus(alpha + dt_bias); g_exp = exp(gate).
+ * ssm_a/dt_bias already carry whatever sign/scale the conversion baked in (build_layer_attn_linear
+ * multiplies them directly, no extra negation): matched verbatim, not re-derived. */
+static void q35_lin_decay_gates(const TransformerWeights *w, const Q35Lin *d, const Q35LinBuf *b,
+                                int layer) {
+    for (int hv = 0; hv < d->n_v_heads; hv++) {
+        float sig      = 1.0f / (1.0f + expf(-b->beta[hv]));
+        b->beta[hv]    = sig;
+        float ab       = b->alpha[hv] + w->q35.ssm_dt_bias[layer][hv];
         float softplus = (ab > 20.0f) ? ab : log1pf(expf(ab));
         float gate     = w->q35.ssm_a[layer][hv] * softplus;
-        g_exp[hv]      = expf(gate);
+        b->g_exp[hv]   = expf(gate);
     }
+}
 
-    /* Step 4: depthwise causal conv1d (kernel=conv_k) + SiLU, using the
-     * persisted (conv_k-1)-timestep history; then slide the history window.
-     *
-     * ssm_conv1d.weight's GGUF shape is [conv_k, conv_dim] in ne[] order
-     * (ne0=conv_k is the fast/contiguous dimension — confirmed both from
-     * the real Ternary-Bonsai-27B.gguf's tensor dims and from llama.cpp's
-     * own create_tensor(..., {ssm_d_conv, conv_dim}, ...) — ne0 listed
-     * first is always the fastest-varying axis). So per channel c, the
-     * conv_k tap weights are contiguous: kernel[c*conv_k + i], NOT
-     * kernel[i*conv_dim + c] (channel-major, not tap-major) — the
-     * transposed indexing this file originally used silently read the
-     * wrong weight for every tap/channel pair except the diagonal-ish
-     * overlap, corrupting every linear-attention layer's q/k/v inputs
-     * while still producing finite, plausible-looking numbers (see
-     * docs/ai/mistakes.md). */
-    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    {
-        float *hist = s->q35.conv_state[layer]; /* [conv_k-1][conv_dim], tap-major (this file's own
-                                                   buffer, no GGUF layout constraint) */
-        const float *kernel =
-            w->q35.ssm_conv1d[layer]; /* [conv_dim][conv_k], channel-major per GGUF */
-        for (int c = 0; c < conv_dim; c++) {
-            const float *kc = kernel + (size_t)c * conv_k;
-            float acc       = 0.0f;
-            for (int i = 0; i < conv_k - 1; i++) acc += kc[i] * hist[(size_t)i * conv_dim + c];
-            acc += kc[conv_k - 1] * qkv_mixed[c];
-            conv_out[c] = acc / (1.0f + expf(-acc)); /* SiLU */
-        }
-        /* Slide history: drop oldest, append the *pre-conv* qkv_mixed sample. */
-        for (int i = 0; i < conv_k - 2; i++)
-            memcpy(&hist[(size_t)i * conv_dim], &hist[(size_t)(i + 1) * conv_dim],
-                   (size_t)conv_dim * sizeof(float));
-        if (conv_k - 1 > 0)
-            memcpy(&hist[(size_t)(conv_k - 2) * conv_dim], qkv_mixed,
-                   (size_t)conv_dim * sizeof(float));
+/* Step 4: depthwise causal conv1d (kernel=conv_k) + SiLU, using the persisted (conv_k-1)-timestep
+ * history; then slide the history window.
+ *
+ * ssm_conv1d.weight's GGUF shape is [conv_k, conv_dim] in ne[] order
+ * (ne0=conv_k is the fast/contiguous dimension — confirmed both from
+ * the real Ternary-Bonsai-27B.gguf's tensor dims and from llama.cpp's
+ * own create_tensor(..., {ssm_d_conv, conv_dim}, ...) — ne0 listed
+ * first is always the fastest-varying axis). So per channel c, the
+ * conv_k tap weights are contiguous: kernel[c*conv_k + i], NOT
+ * kernel[i*conv_dim + c] (channel-major, not tap-major) — the
+ * transposed indexing this file originally used silently read the
+ * wrong weight for every tap/channel pair except the diagonal-ish
+ * overlap, corrupting every linear-attention layer's q/k/v inputs
+ * while still producing finite, plausible-looking numbers (see
+ * docs/ai/mistakes.md). */
+static void q35_lin_conv(RunState *s, const TransformerWeights *w, const Q35Lin *d,
+                         const Q35LinBuf *b, int layer) {
+    int64_t t_step   = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    const int conv_k = d->conv_k, conv_dim = d->conv_dim;
+    float *hist = s->q35.conv_state[layer]; /* [conv_k-1][conv_dim], tap-major (this file's own
+                                               buffer, no GGUF layout constraint) */
+    const float *kernel = w->q35.ssm_conv1d[layer]; /* [conv_dim][conv_k], channel-major per GGUF */
+    for (int c = 0; c < conv_dim; c++) {
+        const float *kc = kernel + (size_t)c * conv_k;
+        float acc       = 0.0f;
+        for (int i = 0; i < conv_k - 1; i++) acc += kc[i] * hist[(size_t)i * conv_dim + c];
+        acc += kc[conv_k - 1] * b->qkv_mixed[c];
+        b->conv_out[c] = acc / (1.0f + expf(-acc)); /* SiLU */
     }
+    /* Slide history: drop oldest, append the *pre-conv* qkv_mixed sample. */
+    for (int i = 0; i < conv_k - 2; i++)
+        memcpy(&hist[(size_t)i * conv_dim], &hist[(size_t)(i + 1) * conv_dim],
+               (size_t)conv_dim * sizeof(float));
+    if (conv_k - 1 > 0)
+        memcpy(&hist[(size_t)(conv_k - 2) * conv_dim], b->qkv_mixed,
+               (size_t)conv_dim * sizeof(float));
     if (t_step) tn_step_timing_add(TN_STEP_22_DELTANET_CONV, tn_step_timing_now_ns() - t_step);
+}
 
-    /* Step 5: split into q/k/v, L2-normalize q/k per head (unit vectors) —
-     * billed to the recurrence bucket together with step 6 below */
-    t_step       = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    float *q_lin = conv_out;               /* [n_k_heads][state_sz] */
-    float *k_lin = conv_out + key_dim;     /* [n_k_heads][state_sz] */
-    float *v_lin = conv_out + 2 * key_dim; /* [n_v_heads][state_sz] */
-
-    for (int kh = 0; kh < n_k_heads; kh++) {
-        float *qh    = q_lin + (size_t)kh * state_sz;
-        float *k_row = k_lin + (size_t)kh * state_sz;
+/* Step 5: split conv_out into q/k/v and L2-normalise q and k per head (unit vectors). */
+static void q35_lin_qk_norm(const Q35Lin *d, const Q35LinBuf *b) {
+    float *q_lin = b->conv_out;              /* [n_k_heads][state_sz] */
+    float *k_lin = b->conv_out + d->key_dim; /* [n_k_heads][state_sz] */
+    for (int kh = 0; kh < d->n_k_heads; kh++) {
+        float *qh    = q_lin + (size_t)kh * d->state_sz;
+        float *k_row = k_lin + (size_t)kh * d->state_sz;
         float qn = 0.0f, kn = 0.0f;
-        for (int d = 0; d < state_sz; d++) {
-            qn += qh[d] * qh[d];
-            kn += k_row[d] * k_row[d];
+        for (int i = 0; i < d->state_sz; i++) {
+            qn += qh[i] * qh[i];
+            kn += k_row[i] * k_row[i];
         }
-        float qs = 1.0f / fmaxf(sqrtf(qn), eps);
-        float ks = 1.0f / fmaxf(sqrtf(kn), eps);
-        for (int d = 0; d < state_sz; d++) {
-            qh[d] *= qs;
-            k_row[d] *= ks;
+        float qs = 1.0f / fmaxf(sqrtf(qn), d->eps);
+        float ks = 1.0f / fmaxf(sqrtf(kn), d->eps);
+        for (int i = 0; i < d->state_sz; i++) {
+            qh[i] *= qs;
+            k_row[i] *= ks;
         }
     }
+}
 
-    /* Step 6: gated delta-rule recurrence, per v-head (persistent state) */
-    float q_scale = 1.0f / sqrtf((float)state_sz);
-    for (int hv = 0; hv < n_v_heads; hv++) {
-        int kh           = q35_head_repeat_index(hv, n_k_heads);
-        const float *q_h = q_lin + (size_t)kh * state_sz;
-        const float *k_h = k_lin + (size_t)kh * state_sz;
-        const float *v_h = v_lin + (size_t)hv * state_sz;
-        float gamma      = g_exp[hv];
-        float bh         = beta[hv];
-        float *S = s->q35.recur_state[layer] + (size_t)hv * state_sz * state_sz; /* [i][d] */
+/* acc[j] += sum_i S[i][j] * x[i] * scale over the rows whose x[i] is non-zero: S^T x. */
+static void q35_lin_mat_t_vec(const float *S, int state_sz, const float *x, float scale,
+                              float *acc) {
+    for (int i = 0; i < state_sz; i++) {
+        float xi = x[i] * scale;
+        if (xi == 0.0f) continue;
+        const float *Srow = S + (size_t)i * state_sz;
+        for (int j = 0; j < state_sz; j++) acc[j] += Srow[j] * xi;
+    }
+}
 
-        /* decay */
-        for (int idx = 0; idx < state_sz * state_sz; idx++) S[idx] *= gamma;
+/* Step 6 for one v-head: the gated delta-rule recurrence on its persistent state S [i][d]:
+ * decay, v_pred = S^T k, delta = beta * (v - v_pred), rank-1 update S += k delta^T, read-out
+ * out = S^T (q * q_scale). */
+static void q35_lin_recur_head(float *S, int state_sz, const float *q_h, const float *k_h,
+                               const float *v_h, float gamma, float bh, float q_scale,
+                               float *out_h) {
+    for (int idx = 0; idx < state_sz * state_sz; idx++) S[idx] *= gamma;
 
-        /* v_pred[d] = sum_i S[i][d]*k[i]; delta[d] = beta*(v[d]-v_pred[d]) */
-        float v_pred[Q35_MAX_HEAD_DIM];
-        for (int d = 0; d < state_sz; d++) v_pred[d] = 0.0f;
-        for (int i = 0; i < state_sz; i++) {
-            float ki = k_h[i];
-            if (ki == 0.0f) continue;
-            const float *Srow = S + (size_t)i * state_sz;
-            for (int d = 0; d < state_sz; d++) v_pred[d] += Srow[d] * ki;
-        }
-        float delta[Q35_MAX_HEAD_DIM];
-        for (int d = 0; d < state_sz; d++) delta[d] = bh * (v_h[d] - v_pred[d]);
+    float v_pred[Q35_MAX_HEAD_DIM];
+    for (int i = 0; i < state_sz; i++) v_pred[i] = 0.0f;
+    q35_lin_mat_t_vec(S, state_sz, k_h, 1.0f, v_pred);
+    float delta[Q35_MAX_HEAD_DIM];
+    for (int i = 0; i < state_sz; i++) delta[i] = bh * (v_h[i] - v_pred[i]);
 
-        /* rank-1 update: S[i][d] += k[i]*delta[d] */
-        for (int i = 0; i < state_sz; i++) {
-            float ki    = k_h[i];
-            float *Srow = S + (size_t)i * state_sz;
-            for (int d = 0; d < state_sz; d++) Srow[d] += ki * delta[d];
-        }
+    for (int i = 0; i < state_sz; i++) {
+        float ki    = k_h[i];
+        float *Srow = S + (size_t)i * state_sz;
+        for (int j = 0; j < state_sz; j++) Srow[j] += ki * delta[j];
+    }
 
-        /* read out: out[d] = sum_i S[i][d] * (q[i]*q_scale) */
-        float *out_h = core_out + (size_t)hv * state_sz;
-        for (int d = 0; d < state_sz; d++) out_h[d] = 0.0f;
-        for (int i = 0; i < state_sz; i++) {
-            float qi = q_h[i] * q_scale;
-            if (qi == 0.0f) continue;
-            const float *Srow = S + (size_t)i * state_sz;
-            for (int d = 0; d < state_sz; d++) out_h[d] += Srow[d] * qi;
-        }
+    for (int i = 0; i < state_sz; i++) out_h[i] = 0.0f;
+    q35_lin_mat_t_vec(S, state_sz, q_h, q_scale, out_h);
+}
+
+/* Steps 5-6, billed to the recurrence bucket together: q/k normalisation, then the recurrence of
+ * every v-head (v-head hv reads q/k-head hv % n_k_heads, see q35_head_repeat_index). */
+static void q35_lin_recurrence(RunState *s, const Q35Lin *d, const Q35LinBuf *b, int layer) {
+    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    q35_lin_qk_norm(d, b);
+    const float *q_lin = b->conv_out;
+    const float *k_lin = b->conv_out + d->key_dim;
+    const float *v_lin = b->conv_out + 2 * d->key_dim; /* [n_v_heads][state_sz] */
+    float q_scale      = 1.0f / sqrtf((float)d->state_sz);
+    for (int hv = 0; hv < d->n_v_heads; hv++) {
+        int kh = q35_head_repeat_index(hv, d->n_k_heads);
+        q35_lin_recur_head(s->q35.recur_state[layer] + (size_t)hv * d->state_sz * d->state_sz,
+                           d->state_sz, q_lin + (size_t)kh * d->state_sz,
+                           k_lin + (size_t)kh * d->state_sz, v_lin + (size_t)hv * d->state_sz,
+                           b->g_exp[hv], b->beta[hv], q_scale,
+                           b->core_out + (size_t)hv * d->state_sz);
     }
     if (t_step)
         tn_step_timing_add(TN_STEP_23_DELTANET_RECURRENCE, tn_step_timing_now_ns() - t_step);
+}
 
-    /* Step 7: gated RMSNorm per head — norm(core_out) * silu(z), both per-head */
-    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    for (int hv = 0; hv < n_v_heads; hv++) {
-        float *out_h = core_out + (size_t)hv * state_sz;
-        float *z_h   = z + (size_t)hv * state_sz;
-        tn_rmsnorm(out_h, out_h, w->q35.ssm_norm[layer], state_sz, eps);
-        for (int d = 0; d < state_sz; d++)
-            out_h[d] *= z_h[d] / (1.0f + expf(-z_h[d])); /* SiLU(z) */
+/* Steps 7-8: gated RMSNorm per head (norm(core_out) * silu(z), both per head), then the output
+ * projection and the residual. */
+static void q35_lin_output(RunState *s, const TransformerWeights *w, const Q35Lin *d,
+                           const Q35LinBuf *b, int layer, ThreadPool *tp) {
+    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    for (int hv = 0; hv < d->n_v_heads; hv++) {
+        float *out_h = b->core_out + (size_t)hv * d->state_sz;
+        float *z_h   = b->z + (size_t)hv * d->state_sz;
+        tn_rmsnorm(out_h, out_h, w->q35.ssm_norm[layer], d->state_sz, d->eps);
+        for (int i = 0; i < d->state_sz; i++)
+            out_h[i] *= z_h[i] / (1.0f + expf(-z_h[i])); /* SiLU(z) */
     }
-
-    /* Step 8: output projection + residual (gated norm above included) */
-    parallel_matmul_q2_0(s->xb, core_out, (const uint8_t *)w->q35.ssm_out[layer], value_dim, dim,
-                         tp);
-    tn_vec_add(s->x, s->x, s->xb, dim);
+    parallel_matmul_q2_0(s->xb, b->core_out, (const uint8_t *)w->q35.ssm_out[layer], d->value_dim,
+                         d->dim, tp);
+    tn_vec_add(s->x, s->x, s->xb, d->dim);
     if (t_step) tn_step_timing_add(TN_STEP_12_POST_ATTN, tn_step_timing_now_ns() - t_step);
+}
+
+static void q35_linear_attn_forward(RunState *s, const TransformerWeights *w, const Config *cfg,
+                                    const MoEConfig *mc, int layer, int pos, ThreadPool *tp) {
+    (void)pos;
+    const Q35Lin d    = q35_lin_dims(cfg, mc);
+    const Q35LinBuf b = q35_lin_buf(s, cfg, mc, &d);
+    q35_lin_project(s, w, &d, &b, layer, tp);
+    q35_lin_decay_gates(w, &d, &b, layer);
+    q35_lin_conv(s, w, &d, &b, layer);
+    q35_lin_recurrence(s, &d, &b, layer);
+    q35_lin_output(s, w, &d, &b, layer, tp);
 }
 
 void qwen35_attention_forward(RunState *s, const TransformerWeights *w, const Config *cfg,

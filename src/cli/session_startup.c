@@ -136,15 +136,101 @@ static void announce_act_quant(const TnCalibrationResult *calib, int dispatcher_
 
 /* SIMD tier, calibration, classifier, activation numerics and the thread pool. Returns 1 when
  * the pool cannot be created. */
-int session_tune_hardware(PzSession *ses) {
-    /* ── SIMD backend selection ─────────────────────────────────────────── */
-    /* CLI --simd override takes precedence over calibration and auto-detect.
-     * Order: --simd flag > TN_FORCE_BACKEND env > calibration cache > auto */
-    if (ses->args.perf.simd_override) {
-        setenv("TN_FORCE_BACKEND", ses->args.perf.simd_override, 1);
-        TN_OUT_INF("session_startup", "SIMD override: %s (user-selected)\n",
-                   ses->args.perf.simd_override);
+/* CLI --simd override takes precedence over calibration and auto-detect.
+ * Order: --simd flag > TN_FORCE_BACKEND env > calibration cache > auto */
+static void apply_simd_override(const PzSession *ses) {
+    if (!ses->args.perf.simd_override) return;
+    setenv("TN_FORCE_BACKEND", ses->args.perf.simd_override, 1);
+    TN_OUT_INF("session_startup", "SIMD override: %s (user-selected)\n",
+               ses->args.perf.simd_override);
+}
+
+/* Auto-calibrates (first run or changed hardware) and saves the result. */
+static bool calibrate_first_run(TnCalibrationResult *calib, const TnHardwareProfile *hw) {
+    if (TN_SANITIZED) {
+        /* 2026-10-22: the first-run sweep took >2 min under ASan on a
+         * fresh CI runner (the fuzzer counted it as a hang) and would
+         * save meaningless timings. Auto-detected defaults instead. */
+        TN_OUT_INF("calibration",
+                   "[Calibration] Skipped: sanitizer build (timings not representative)\n");
+        return false;
     }
+    TN_OUT_INF("calibration", "[Calibration] First run on this hardware — calibrating...\n");
+    tn_calibrate(calib, hw);
+    tn_calibration_save(calib);
+    return true;
+}
+
+/* Loads, or runs, the calibration as the flags ask. True when `calib` holds a result. */
+static bool obtain_calibration(const PzSession *ses, TnCalibrationResult *calib,
+                               const TnHardwareProfile *hw) {
+    if (ses->args.perf.no_calibrate) {
+        /* 2026-11-18: no calibration at all -- nothing is loaded, run or saved, so
+         * the dispatcher's own tier and the detected thread count apply and a run
+         * does not depend on what an earlier run left in ~/.project-zero. */
+        TN_OUT_INF("calibration", "[Calibration] Skipped: --no-calibrate\n");
+        return false;
+    }
+    if (ses->args.perf.calibrate) {
+        /* User explicitly requested calibration */
+        tn_calibrate(calib, hw);
+        /* A sanitizer build measures 5-20x slower than release: never let
+         * it overwrite the cache release builds read (2026-10-22). */
+        if (!TN_SANITIZED) tn_calibration_save(calib);
+        return true;
+    }
+    if (tn_calibration_load(calib, hw)) return true;
+    return calibrate_first_run(calib, hw);
+}
+
+/* Apply the calibrated SIMD backend (if no CLI override). */
+static void apply_calibrated_simd(const PzSession *ses, const TnCalibrationResult *calib) {
+    if (ses->args.perf.simd_override || getenv("TN_FORCE_BACKEND")) return;
+    const char *best = tn_calibration_best_simd(calib);
+    if (!best) return;
+    setenv("TN_FORCE_BACKEND", best, 1);
+    tn_simd_init();
+    unsetenv("TN_FORCE_BACKEND");
+    TN_OUT_INF("session_startup", "SIMD: %s (calibrated optimal)\n", best);
+}
+
+static const char *const k_classifier_names[] = {"BF16", "INT8", "INT4"};
+
+/* --classifier auto-fast: the calibration's fastest classifier, or INT8 where there is a
+ * dot-product unit and BF16 otherwise. */
+static TnClassifierFormat fast_classifier(bool have_calib, const TnCalibrationResult *calib,
+                                          const TnHardwareProfile *hw) {
+    if (have_calib) return tn_calibration_best_classifier(calib);
+    bool dot = hw->cpu->avx512vnni || hw->cpu->avx_vnni || hw->cpu->arm_dotprod;
+    return dot ? TN_CLS_INT8 : TN_CLS_BF16;
+}
+
+static void select_classifier(const PzSession *ses, bool have_calib,
+                              const TnCalibrationResult *calib, const TnHardwareProfile *hw) {
+    int mode = ses->args.perf.classifier_override;
+    if (mode == 3) {
+        /* --classifier auto-fast: use calibration's fastest classifier */
+        TnClassifierFormat fast_cls = fast_classifier(have_calib, calib, hw);
+        tn_hardware_profile_set_classifier(fast_cls);
+        TN_OUT_INF("session_startup", "Classifier: %s (auto-fast, calibrated)\n",
+                   k_classifier_names[fast_cls]);
+    } else if (mode >= 0 && mode <= 2) {
+        tn_hardware_profile_set_classifier((TnClassifierFormat)mode);
+        TN_OUT_INF("session_startup", "Classifier: %s (user-selected)\n", k_classifier_names[mode]);
+    }
+    /* else: default BF16 (from hardware_profile.c select_classifier) */
+}
+
+/* Thread count: CLI override > calibration > auto-detected. */
+static int pick_threads(const PzSession *ses, bool have_calib, const TnCalibrationResult *calib,
+                        const TnHardwareProfile *hw) {
+    if (ses->args.perf.num_threads > 0) return ses->args.perf.num_threads;
+    if (have_calib && calib->best_threads > 0) return calib->best_threads;
+    return hw->optimal_threads;
+}
+
+int session_tune_hardware(PzSession *ses) {
+    apply_simd_override(ses);
 
     tn_simd_init();
     const int dispatcher_int8 =
@@ -156,73 +242,14 @@ int session_tune_hardware(PzSession *ses) {
     if (ses->args.perf.calibrate) setenv("PZ_BW_REPROBE", "1", 1);
     const TnHardwareProfile *hw = tn_hardware_profile_init();
 
-    /* ── Calibration ────────────────────────────────────────────────────── */
     TnCalibrationResult calib;
-    bool have_calib = false;
-
-    if (ses->args.perf.no_calibrate) {
-        /* 2026-11-18: no calibration at all -- nothing is loaded, run or saved, so
-         * the dispatcher's own tier and the detected thread count apply and a run
-         * does not depend on what an earlier run left in ~/.project-zero. */
-        TN_OUT_INF("calibration", "[Calibration] Skipped: --no-calibrate\n");
-    } else if (ses->args.perf.calibrate) {
-        /* User explicitly requested calibration */
-        tn_calibrate(&calib, hw);
-        /* A sanitizer build measures 5-20x slower than release: never let
-         * it overwrite the cache release builds read (2026-10-22). */
-        if (!TN_SANITIZED) tn_calibration_save(&calib);
-        have_calib = true;
-    } else {
-        /* Try to load cached calibration */
-        have_calib = tn_calibration_load(&calib, hw);
-        if (!have_calib && TN_SANITIZED) {
-            /* 2026-10-22: the first-run sweep took >2 min under ASan on a
-             * fresh CI runner (the fuzzer counted it as a hang) and would
-             * save meaningless timings. Auto-detected defaults instead. */
-            TN_OUT_INF("calibration",
-                       "[Calibration] Skipped: sanitizer build (timings not representative)\n");
-        } else if (!have_calib) {
-            /* First run or hardware changed — auto-calibrate */
-            TN_OUT_INF("calibration",
-                       "[Calibration] First run on this hardware — calibrating...\n");
-            tn_calibrate(&calib, hw);
-            tn_calibration_save(&calib);
-            have_calib = true;
-        }
-    }
-
-    /* Apply calibrated SIMD backend (if no CLI override) */
-    if (have_calib && !ses->args.perf.simd_override && !getenv("TN_FORCE_BACKEND")) {
-        const char *best = tn_calibration_best_simd(&calib);
-        if (best) {
-            setenv("TN_FORCE_BACKEND", best, 1);
-            tn_simd_init();
-            unsetenv("TN_FORCE_BACKEND");
-            TN_OUT_INF("session_startup", "SIMD: %s (calibrated optimal)\n", best);
-        }
-    }
+    bool have_calib = obtain_calibration(ses, &calib, hw);
+    if (have_calib) apply_calibrated_simd(ses, &calib);
     /* --act-quant auto: the numerics are the calibrated tier's (measured int8 against float). */
     if (have_calib && ses->args.eval.act_quant == 0) announce_act_quant(&calib, dispatcher_int8);
 
-    /* ── Classifier selection ───────────────────────────────────────────── */
-    if (ses->args.perf.classifier_override == 3) {
-        /* --classifier auto-fast: use calibration's fastest classifier */
-        TnClassifierFormat fast_cls =
-            have_calib ? tn_calibration_best_classifier(&calib)
-            : (hw->cpu->avx512vnni || hw->cpu->avx_vnni || hw->cpu->arm_dotprod) ? TN_CLS_INT8
-                                                                                 : TN_CLS_BF16;
-        tn_hardware_profile_set_classifier(fast_cls);
-        const char *names[] = {"BF16", "INT8", "INT4"};
-        TN_OUT_INF("session_startup", "Classifier: %s (auto-fast, calibrated)\n", names[fast_cls]);
-    } else if (ses->args.perf.classifier_override >= 0 && ses->args.perf.classifier_override <= 2) {
-        tn_hardware_profile_set_classifier((TnClassifierFormat)ses->args.perf.classifier_override);
-        const char *names[] = {"BF16", "INT8", "INT4"};
-        TN_OUT_INF("session_startup", "Classifier: %s (user-selected)\n",
-                   names[ses->args.perf.classifier_override]);
-    }
-    /* else: default BF16 (from hardware_profile.c select_classifier) */
+    select_classifier(ses, have_calib, &calib, hw);
 
-    /* ── Activation numerics ────────────────────────────────────────────── */
     if (ses->args.eval.act_quant != 0) {
         tn_act_quant_set((TnActQuant)ses->args.eval.act_quant);
         TN_OUT_INF("session_startup", "Activation quantization: %s (user-selected)\n",
@@ -231,15 +258,7 @@ int session_tune_hardware(PzSession *ses) {
 
     tn_hardware_profile_report(hw);
 
-    /* Thread count: CLI override > calibration > auto-detected */
-    int active_threads;
-    if (ses->args.perf.num_threads > 0) {
-        active_threads = ses->args.perf.num_threads;
-    } else if (have_calib && calib.best_threads > 0) {
-        active_threads = calib.best_threads;
-    } else {
-        active_threads = hw->optimal_threads;
-    }
+    int active_threads = pick_threads(ses, have_calib, &calib, hw);
     TN_OUT_INF("session_startup", "Active: %d threads | %s\n", active_threads, hw->summary);
 
     /* Create Thread Pool */

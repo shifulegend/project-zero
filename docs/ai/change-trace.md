@@ -3,6 +3,19 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — hardware tuning at start-up split into steps (finding 20.a)
+- What: `session_tune_hardware` (complexity 27, 78 lines) is now a driver over `apply_simd_override`,
+  `obtain_calibration` (with `calibrate_first_run`), `apply_calibrated_simd`, `select_classifier` (with
+  `fast_classifier`) and `pick_threads`.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: it only sets environment variables, loads or runs calibration and prints, so the check is the
+  printed text: on SmolLM2 with a calibrated home the start-up output is identical to the old binary for the
+  default run, `--simd` scalar / avx2 / an unknown value, `--classifier` 0-3, `--act-quant` 1 and 2,
+  `--threads`, `--no-calibrate` (alone and with `--classifier 3`) and a combination; a first run on a fresh
+  home prints the same calibration, classifier and thread lines (only the measured bandwidth differs).
+  `make test` (gcc and clang).
+- Affected: `src/cli/session_startup.c`, `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — draft / LoRA / colour / update flags moved to a table plus handlers (finding 20.a)
 - What: `args_parse_extras` (complexity 28, 56 lines, nesting 11) is now an `ArgFlagSpec` table for the six
   flags that need no custom check (`--draft-model`, `--lora`, `--spec-length`, `--update-interval`,

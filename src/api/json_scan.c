@@ -70,6 +70,46 @@ static int utf8_encode(unsigned cp, char *o) {
     return 4;
 }
 
+/* Append one decoded byte, dropping it when the buffer is full (one byte stays for the NUL). */
+static void put_byte(char *dst, size_t dst_cap, size_t *i, char c) {
+    if (dst && *i + 1 < dst_cap) dst[(*i)++] = c;
+}
+
+/* A high surrogate at cp followed by "\\uDC00..\\uDFFF" (*p on the last hex digit of the first
+ * escape) combines into one code point and consumes the second escape. */
+static unsigned join_surrogates(const char **p, unsigned cp) {
+    if (cp < 0xD800 || cp > 0xDBFF || (*p)[1] != '\\' || (*p)[2] != 'u') return cp;
+    unsigned lo = 0;
+    if (!hex4(*p + 3, &lo) || lo < 0xDC00 || lo > 0xDFFF) return cp;
+    (*p) += 6;
+    return 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
+}
+
+/* \uXXXX (+ optional low surrogate) -> UTF-8. *p is on the 'u'. The escape is >= 6 input bytes
+ * and UTF-8 output <= 4 per code point, so json_parse_string_heap's length bound holds.
+ * (2026-10-18: previously every \u escape became '?'.) Appends all but the last output byte and
+ * returns that one, which the caller appends like any other character. */
+static char decode_unicode_escape(const char **p, char *dst, size_t dst_cap, size_t *i) {
+    unsigned cp = 0;
+    if (!hex4(*p + 1, &cp)) return '?';
+    (*p) += 4;
+    cp = join_surrogates(p, cp);
+    if (cp >= 0xD800 && cp <= 0xDFFF) cp = 0xFFFD; /* lone surrogate */
+    char u8[4];
+    int nb = utf8_encode(cp, u8);
+    for (int k = 0; k < nb - 1; k++) put_byte(dst, dst_cap, i, u8[k]);
+    return u8[nb - 1];
+}
+
+/* The character an escape stands for; *p is on the byte after the backslash. */
+static char decode_escape(const char **p, char *dst, size_t dst_cap, size_t *i) {
+    int simple = tn_escape_simple(**p);
+    if (simple >= 0) return (char)simple;
+    if (**p == '/') return '/';
+    if (**p == 'u') return decode_unicode_escape(p, dst, dst_cap, i);
+    return **p;
+}
+
 /*
  * Parse a JSON string starting at *p (which must point to the opening '"').
  * Writes up to (dst_cap - 1) decoded bytes into dst and NUL-terminates.
@@ -89,51 +129,14 @@ int json_parse_string(const char **p, char *dst, size_t dst_cap) {
             /* 2026-10-18: a trailing backslash used to step past the NUL and
              * keep reading beyond the buffer. */
             if (**p == '\0') return 0;
-            int simple = tn_escape_simple(**p);
-            if (simple >= 0)
-                c = (char)simple;
-            else
-                switch (**p) {
-                    case '/':
-                        c = '/';
-                        break;
-                    case 'u': {
-                        /* \uXXXX (+ optional low surrogate) -> UTF-8. The
-                         * escape is >= 6 input bytes and UTF-8 output <= 4 per
-                         * code point, so json_parse_string_heap's length bound holds.
-                         * (2026-10-18: previously every \u escape became '?'.) */
-                        unsigned cp = 0;
-                        if (!hex4(*p + 1, &cp)) {
-                            c = '?';
-                            break;
-                        }
-                        (*p) += 4;
-                        if (cp >= 0xD800 && cp <= 0xDBFF && (*p)[1] == '\\' && (*p)[2] == 'u') {
-                            unsigned lo = 0;
-                            if (hex4(*p + 3, &lo) && lo >= 0xDC00 && lo <= 0xDFFF) {
-                                cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
-                                (*p) += 6;
-                            }
-                        }
-                        if (cp >= 0xD800 && cp <= 0xDFFF) cp = 0xFFFD; /* lone surrogate */
-                        char u8[4];
-                        int nb = utf8_encode(cp, u8);
-                        for (int k = 0; k < nb - 1; k++)
-                            if (i < dst_cap - 1) dst[i++] = u8[k];
-                        c = u8[nb - 1];
-                        break;
-                    }
-                    default:
-                        c = **p;
-                        break;
-                }
+            c = decode_escape(p, dst, dst_cap, &i);
         }
-        if (i < dst_cap - 1) dst[i++] = c;
+        put_byte(dst, dst_cap, &i, c);
         (*p)++;
     }
     if (**p != '"') return 0;
     (*p)++; /* skip closing quote */
-    if (dst) dst[i] = '\0';
+    if (dst && dst_cap > 0) dst[i] = '\0';
     return 1;
 }
 

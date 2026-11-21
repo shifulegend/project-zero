@@ -3,6 +3,19 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — JSON string parser split into steps (finding 20.a)
+- What: `json_parse_string` (complexity 24, nesting 6) now delegates escape handling to `decode_escape`,
+  `decode_unicode_escape` and `join_surrogates`, with one bounded `put_byte`. A zero-size destination buffer
+  no longer wraps the size arithmetic (no caller passes one; the old code would have written past it).
+- Why: finding 20.a; the complexity baseline lost one entry (345 recorded functions). This parser reads every
+  string of every API request, so it got a differential-style pin before the change.
+- Proof: `tests/test_json_string_golden.c` hashes return code, cursor movement and every destination byte over
+  200,000 generated strings (simple, `\/`, `\uXXXX`, surrogate pairs, lone and malformed escapes, raw UTF-8,
+  control bytes, trailing backslash, truncation) into 1..64-byte buffers, each input in an exact-size heap block
+  under ASan; the hash was recorded from the unsplit parser and holds on gcc and clang; narrowing the surrogate
+  range by one makes it fail. Live API requests with escaped content give the same replies as the old binary.
+- Areas: `src/api/json_scan.c`, `tests/test_json_string_golden.c`, `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — hardware profile start-up split into steps (finding 20.a)
 - What: `tn_hardware_profile_init` (complexity 29, 96 lines) now calls `detect_free_ram` (with one small
   fallback function per OS), `tn_hw_classifier_bytes` and `tn_hw_cached_ceiling`. The classifier-size switch

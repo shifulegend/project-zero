@@ -39,7 +39,6 @@ src/api/json_parse.c::find_top_level 11 23 2
 src/api/json_parse.c::json_field_string_list 12 25 3
 src/api/json_parse.c::json_parse_messages 25 55 7
 src/api/json_scan.c::hex4 8 17 4
-src/api/json_scan.c::json_parse_string 24 53 6
 src/api/json_scan.c::json_skip_value 18 44 7
 src/api/request_params.c::request_mcts_resolve 11 18 2
 src/api/selfcheck_endpoint.c::api_selfcheck 11 19 1

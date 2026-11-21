@@ -103,7 +103,8 @@ class Gate(unittest.TestCase):
         self.assertEqual(gate.parse_ppl("no estimate", rx), (None, None))
         self.assertEqual(
             gate.answer_text(
-                "0.01.282.588 I llama_completion: x\nThe capital of France is Paris.\n0.02.123.456 I common_perf_print: y"
+                "0.01.282.588 I llama_completion: x\nThe capital of France is Paris.\n0.02.123.456"
+                " I common_perf_print: y"
             ),
             "The capital of France is Paris.",
         )

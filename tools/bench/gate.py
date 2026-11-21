@@ -97,12 +97,18 @@ def add_args(ap: ArgumentParser) -> ArgumentParser:
     g.add_argument(
         "--allow-dirty-binary",
         action="store_true",
-        help="benchmark a pz binary built from uncommitted state (its version ends in -dirty); the run is marked",
+        help=(
+            "benchmark a pz binary built from uncommitted state (its version ends in -dirty); the"
+            " run is marked"
+        ),
     )
     g.add_argument(
         "--gate-only",
         action="store_true",
-        help="run only the gate (and update summary.csv/summary.md of --out FOLDER if they exist), then exit",
+        help=(
+            "run only the gate (and update summary.csv/summary.md of --out FOLDER if they exist),"
+            " then exit"
+        ),
     )
     return ap
 
@@ -123,8 +129,9 @@ def require_clean(
     dirty = [l for l, p in binaries.items() if is_dirty(bl.bin_info(p).get("version", ""))]
     if dirty and cfg.get("require_clean_binary", True):
         msg = (
-            f"not reproducible: {', '.join(dirty)} {'is' if len(dirty) == 1 else 'are'} a build of uncommitted state "
-            "(version ends in -dirty). Commit or stash, rebuild (make clean && make release), or pass --allow-dirty-binary."
+            f"not reproducible: {', '.join(dirty)} {'is' if len(dirty) == 1 else 'are'} a build of"
+            " uncommitted state (version ends in -dirty). Commit or stash, rebuild (make clean &&"
+            " make release), or pass --allow-dirty-binary."
         )
         if not allow:
             raise SystemExit(msg)
@@ -345,7 +352,8 @@ class Gate:
         )
         self.results[rkey] = out
         self.run.log(
-            f"  gate {rkey:<36} smoke {'ok' if out['smoke_ok'] else 'WRONG'}  ppl {bl.fnum(out['ppl'], 4)}"
+            f"  gate {rkey:<36} smoke {'ok' if out['smoke_ok'] else 'WRONG'}  ppl"
+            f" {bl.fnum(out['ppl'], 4)}"
         )
 
     def check(
@@ -437,10 +445,9 @@ def render_md(results: Results, cfg: Config) -> str:
             ]
         )
     return (
-        "## Correctness gate\n\n"
-        f"Mode {cfg['mode']}; tolerance {cfg['tolerance_pct']} % (WARN up to {cfg['warn_factor']}x); "
-        f"text `{pathlib.Path(cfg['text_path']).name}` (sha256 {cfg['text_sha256'][:12]}), "
-        f"{cfg['ppl_chunks']} chunks of {cfg['ppl_ctx']}.\n\n"
+        f"## Correctness gate\n\nMode {cfg['mode']}; tolerance {cfg['tolerance_pct']} % (WARN up to"
+        f" {cfg['warn_factor']}x); text `{pathlib.Path(cfg['text_path']).name}` (sha256"
+        f" {cfg['text_sha256'][:12]}), {cfg['ppl_chunks']} chunks of {cfg['ppl_ctx']}.\n\n"
         + bl.md_table(
             ["model", "variant", "ppl", "reference ppl", "delta", "smoke", "verdict", "timed"], rows
         )

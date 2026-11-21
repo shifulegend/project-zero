@@ -82,7 +82,8 @@ def gen_toks(text: str) -> tuple[float | None, int | None]:
         return float(m.group(1)), int(m.group(2))
     # llama.cpp / bitnet.cpp (common_perf_print): "eval time = X ms / N runs (... , T tokens per second)"
     m = re.search(
-        r"(?<!prompt )\beval time =\s*[\d.]+ ms /\s*(\d+) (?:runs|tokens)\s*\([^,]+,\s*([\d.]+) tokens per second",
+        r"(?<!prompt )\beval time =\s*[\d.]+ ms /\s*(\d+) (?:runs|tokens)\s*\([^,]+,\s*([\d.]+)"
+        r" tokens per second",
         text,
     )
     if m:
@@ -242,9 +243,9 @@ def main() -> None:
                 stamp = datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
                 with open(os.path.join(tdir, f"run{r}.txt"), "w", encoding="utf-8") as f:
                     f.write(
-                        f"=== {name} t={t} run {r} ===\nDATE: {stamp}\nHOST_CPU: {HOST_CPU}\nCMD: {' '.join(cmd)}\n"
-                        f"PROMPT: {a.prompt}\n{'=' * 60}\n{text}\n"
-                        f"PERF: wall={wall:.2f}s max_rss={rss:.0f}MB cpu={cpu:.0f}% exit={rc}\n"
+                        f"=== {name} t={t} run {r} ===\nDATE: {stamp}\nHOST_CPU: {HOST_CPU}\nCMD:"
+                        f" {' '.join(cmd)}\nPROMPT: {a.prompt}\n{'=' * 60}\n{text}\nPERF:"
+                        f" wall={wall:.2f}s max_rss={rss:.0f}MB cpu={cpu:.0f}% exit={rc}\n"
                         + (f"PROMPT_TPS: {ptps}\n" if ptps else "")
                     )
                 sw.writerow(
@@ -263,8 +264,8 @@ def main() -> None:
                 sf.flush()
                 status = "" if rc == 0 else f"  FAILED (exit {rc}{', signal' if rc < 0 else ''})"
                 print(
-                    f"  t={t} run {r}: {tps} tok/s ({ntok} tok)  wall {wall:.1f}s  rss {rss:.0f}MB  "
-                    f"cpu {cpu:.0f}%{status}",
+                    f"  t={t} run {r}: {tps} tok/s ({ntok} tok)  wall {wall:.1f}s  rss {rss:.0f}MB "
+                    f" cpu {cpu:.0f}%{status}",
                     flush=True,
                 )
                 if tps is not None and (best is None or tps > best):

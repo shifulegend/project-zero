@@ -97,12 +97,18 @@ class Parsers(unittest.TestCase):
     def test_engine_output(self) -> None:
         """Engine output."""
         self.assertEqual(gen_toks("[gen] 25.20 tok/s (128 tokens)")[0], 25.2)
-        llama = "llama_perf_context_print:        eval time =    1000.00 ms /   127 runs   (    7.87 ms per token,   127.00 tokens per second)"
+        llama = (
+            "llama_perf_context_print:        eval time =    1000.00 ms /   127 runs   (    7.87 ms"
+            " per token,   127.00 tokens per second)"
+        )
         self.assertEqual(gen_toks(llama)[0], 127.0)
 
     def test_step_timing(self) -> None:
         """Step timing."""
-        t = 'step=11 name="Attention score / softmax" total_ms=29.46 count=1320 avg_ms=0.02\nstep=6 name="KV-A compression" total_ms=0.0 count=0 avg_ms=0'
+        t = (
+            'step=11 name="Attention score / softmax" total_ms=29.46 count=1320 avg_ms=0.02\nstep=6'
+            ' name="KV-A compression" total_ms=0.0 count=0 avg_ms=0'
+        )
         self.assertEqual(bl.parse_step_timing(t), {"Attention score / softmax": 29.46})
 
     def test_profile_box(self) -> None:

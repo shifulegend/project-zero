@@ -100,8 +100,8 @@ def main(argv: list[str]) -> int:
     wide = {k: v for k, v in cur.items() if v > LIMIT}
     if "--update" in argv:
         BASELINE.write_text(
-            f"# Structs over {LIMIT} fields (tools/check_struct_fields.py): key, fields; entries may only "
-            "shrink or go.\n" + "".join(f"{k} {v}\n" for k, v in sorted(wide.items())),
+            f"# Structs over {LIMIT} fields (tools/check_struct_fields.py): key, fields; entries"
+            " may only shrink or go.\n" + "".join(f"{k} {v}\n" for k, v in sorted(wide.items())),
             encoding="utf-8",
         )
         print(f"baseline written: {len(wide)} struct(s)")

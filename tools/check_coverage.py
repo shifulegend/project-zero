@@ -59,8 +59,8 @@ def check(info_text: str, floor: dict[str, float]) -> list[str]:
             failures.append(f"{name} coverage {pct:.1f}% is below the floor {minimum:.1f}%")
         elif pct > minimum + STALE_MARGIN:
             failures.append(
-                f"{name} coverage {pct:.1f}% is more than {STALE_MARGIN:.0f} points above the floor "
-                f"{minimum:.1f}%: raise it in tools/coverage_floor.txt (the floor only goes up)"
+                f"{name} coverage {pct:.1f}% is more than {STALE_MARGIN:.0f} points above the floor"
+                f" {minimum:.1f}%: raise it in tools/coverage_floor.txt (the floor only goes up)"
             )
     return failures
 

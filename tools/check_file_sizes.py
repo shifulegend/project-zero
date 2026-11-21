@@ -93,8 +93,8 @@ def main(argv: list[str]) -> int:
     if "--update" in argv:
         big = {k: v for k, v in cur.items() if v > LIMIT}
         BASELINE.write_text(
-            f"# Files over {LIMIT} lines and their lengths (tools/check_file_sizes.py); entries may only shrink or go.\n"
-            + "".join(f"{k} {v}\n" for k, v in sorted(big.items())),
+            f"# Files over {LIMIT} lines and their lengths (tools/check_file_sizes.py); entries may"
+            " only shrink or go.\n" + "".join(f"{k} {v}\n" for k, v in sorted(big.items())),
             encoding="utf-8",
         )
         print(f"baseline written: {len(big)} file(s) over {LIMIT} lines")

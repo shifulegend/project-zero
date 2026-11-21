@@ -73,8 +73,8 @@ def main(argv: list[str]) -> int:
     cur = counts()
     if "--update" in argv:
         BASELINE.write_text(
-            "# Mutable static variables per file in src/ (tools/check_mutable_statics.py); may only go down.\n"
-            + "".join(f"{k} {v}\n" for k, v in sorted(cur.items())),
+            "# Mutable static variables per file in src/ (tools/check_mutable_statics.py); may only"
+            " go down.\n" + "".join(f"{k} {v}\n" for k, v in sorted(cur.items())),
             encoding="utf-8",
         )
         print(f"baseline written: {sum(cur.values())} in {len(cur)} files")

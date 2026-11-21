@@ -3,6 +3,13 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — long lines in the Python tooling wrapped (finding 23.c, part 1)
+- What: 40 of the 541 lines over 100 columns, in 21 Python files under `tools/` (the benchmark gate and h2h scripts, the ratchet checkers and their tests, the sweep scripts), were wrapped with black's string-processing mode and `ruff format` (long strings become parenthesised implicit concatenations). A file was only changed when its AST was equivalent to the original (docstring trailing whitespace ignored), `ruff check` stayed clean and none of the width, file-size or complexity ratchets reported anything for it; files where wrapping would have grown a size or complexity baseline (for example `tools/bench/benchlib.py`) were left alone.
+- Why: finding 23.c; the width baseline fell by 40 lines.
+- Proof: `python3 -m unittest discover` in `tools/` (143 tests) and `tools/bench/` (29 tests) pass, `ruff check` and `ruff format --check` are clean, all ratchets pass.
+- Not done: the remaining 501 lines are long strings and expressions in shell scripts, Svelte files, C code and a few Python files where wrapping grows a size or complexity baseline; each needs its own run to prove the script still behaves.
+- Areas: 21 files under `tools/`, `tools/line_width_baseline.txt`.
+
 ### 2026-11-21 — K-quant and IQ dequantisers share the block driver; unused loader includes removed (finding 45.b)
 - What: the legacy formats already decoded through `dequant_blocks`; that driver is now exported (`gguf_dequant_blocks`, `gguf_dequant_zero_tail`, `include/core/gguf_dequant_blocks.h`) and the six K-quant decoders (`src/core/gguf_quant_k.c`) and nine IQ decoders (`src/core/gguf_quant_iq.c`) are each a per-block function (`q4_k_block`, `iq3_s_block`, ...) plus a one-line wrapper, instead of fifteen copies of the super-block loop and the tail zeroing. The four GGUF loaders (`gguf_load_deepseek2/mamba/qwen35/qwen3moe.c`) carried an identical block of includes they did not use (`<math.h>`, `rope.h`, `unpack.h`, `gguf_i2s.h`, ...); only headers whose symbols a file does not use were removed, each confirmed by a warning-free build on gcc and clang.
 - Why: finding 45.b (duplicated dequantiser loops); the nesting-4 entries of nine decoders left the complexity baseline, `gguf_quant_iq.c` fell from 1,573 to 1,545 lines (and `gguf_quant_k.c` by about 30), and duplicated source lines fell from 6.33% to 6.19%.

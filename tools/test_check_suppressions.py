@@ -13,7 +13,10 @@ class SuppressionTest(unittest.TestCase):
 
     def test_counts_each_kind(self) -> None:
         """Counts each kind."""
-        text = 'x // NOLINT(foo) -- why\ny  # noqa: F401\n#pragma GCC diagnostic ignored "-Wx"\n#pragma clang diagnostic push\n'
+        text = (
+            "x // NOLINT(foo) -- why\ny  # noqa: F401\n#pragma GCC diagnostic ignored"
+            ' "-Wx"\n#pragma clang diagnostic push\n'
+        )
         self.assertEqual(c.count(text), {"NOLINT": 1, "noqa": 1, "pragma-diagnostic": 2})
 
     def test_blanket_nolint_is_found_but_one_naming_its_check_is_not(self) -> None:

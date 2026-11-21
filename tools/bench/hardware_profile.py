@@ -100,15 +100,18 @@ def main() -> int:
     run = bl.RunDir("hardware_profile", a.out, a.label)
     if a.dry_run:
         print(
-            f"PLAN hardware_profile -> {run.rel()}\n  pz={a.pz} calibration={a.calibration} model={model}"
+            f"PLAN hardware_profile -> {run.rel()}\n  pz={a.pz} calibration={a.calibration}"
+            f" model={model}"
         )
         print(
-            "  1 pz startup run captured in a real terminal (screenshot + raw bytes), host details, binary checksum"
+            "  1 pz startup run captured in a real terminal (screenshot + raw bytes), host details,"
+            " binary checksum"
         )
         return 0
     if model is None:
         raise SystemExit(
-            "no model found: pass --model or fetch one with tools/bench/setup_engines.py --models smollm2-135m"
+            "no model found: pass --model or fetch one with tools/bench/setup_engines.py --models"
+            " smollm2-135m"
         )
     run.create()
     env = bl.pz_env(run, a.calibration)

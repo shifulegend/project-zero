@@ -28,7 +28,7 @@ def note(src_rel: str) -> str:
     """The "generated from" header placed on every adapter file."""
     return (
         f"<!-- Generated from {src_rel} by tools/sync_ai_adapters.py; "
-        f"edit that file and re-run the script (CI checks this copy). -->"
+        "edit that file and re-run the script (CI checks this copy). -->"
     )
 
 
@@ -106,11 +106,13 @@ def persona_drift() -> list[str]:
 
         if not dst.exists():
             out.append(
-                f"{dst.relative_to(ROOT).as_posix()}: missing copy of {src.relative_to(ROOT).as_posix()}"
+                f"{dst.relative_to(ROOT).as_posix()}: missing copy of"
+                f" {src.relative_to(ROOT).as_posix()}"
             )
         elif body(src.read_text(encoding="utf-8")) != body(dst.read_text(encoding="utf-8")):
             out.append(
-                f"{dst.relative_to(ROOT).as_posix()}: body differs from {src.relative_to(ROOT).as_posix()}"
+                f"{dst.relative_to(ROOT).as_posix()}: body differs from"
+                f" {src.relative_to(ROOT).as_posix()}"
             )
     return out
 

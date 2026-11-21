@@ -69,8 +69,8 @@ def main(argv: list[str]) -> int:
     cur = error_counts(tracked_python())
     if "--update" in argv:
         BASELINE.write_text(
-            "# Python files that do not pass mypy --strict yet (tools/check_py_types.py): path, errors.\n"
-            "# Entries may only shrink or go.\n"
+            "# Python files that do not pass mypy --strict yet (tools/check_py_types.py): path,"
+            " errors.\n# Entries may only shrink or go.\n"
             + "".join(f"{p} {n}\n" for p, n in sorted(cur.items())),
             encoding="utf-8",
         )

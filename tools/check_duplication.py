@@ -90,7 +90,10 @@ def main(argv: list[str]) -> int:
     """Compare the measured shares with the baseline (or rewrite it with --update)."""
     now = measure()
     if "--update" in argv:
-        header = "# Share of duplicated code lines in percent (tools/check_duplication.py); may only fall.\n"
+        header = (
+            "# Share of duplicated code lines in percent (tools/check_duplication.py); may only"
+            " fall.\n"
+        )
         BASELINE.write_text(
             header + "".join(f"{k} {v:.2f}\n" for k, v in now.items()), encoding="utf-8"
         )
@@ -101,12 +104,14 @@ def main(argv: list[str]) -> int:
     for name, value in now.items():
         if value > base.get(name, 0.0) + 1e-9:
             print(
-                f"duplication in {name}: {value:.2f}% is above the recorded {base.get(name, 0.0):.2f}%"
+                f"duplication in {name}: {value:.2f}% is above the recorded"
+                f" {base.get(name, 0.0):.2f}%"
             )
             problems += 1
         elif value < base.get(name, 0.0) - 0.5:
             print(
-                f"duplication in {name} fell to {value:.2f}% (recorded {base[name]:.2f}%): run --update"
+                f"duplication in {name} fell to {value:.2f}% (recorded {base[name]:.2f}%): run"
+                " --update"
             )
             problems += 1
     print("duplication:", ", ".join(f"{k} {v:.2f}%" for k, v in now.items()))

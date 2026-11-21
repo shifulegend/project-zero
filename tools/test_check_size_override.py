@@ -7,7 +7,10 @@ import unittest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import check_size_override as c
 
-GOOD = "## Summary\nx\n\n## Size override justification\nAn overall clean-up of the code: many mechanical moves that cannot be split without breaking the build.\n\n## Testing\n"
+GOOD = (
+    "## Summary\nx\n\n## Size override justification\nAn overall clean-up of the code: many"
+    " mechanical moves that cannot be split without breaking the build.\n\n## Testing\n"
+)
 
 
 class SizeOverrideTests(unittest.TestCase):

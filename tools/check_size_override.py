@@ -42,7 +42,8 @@ def problems(body: str | None) -> list[str]:
         return ["the justification is a placeholder"]
     if len(re.sub(r"\s+", " ", text)) < MIN_CHARS:
         return [
-            f"the justification is shorter than {MIN_CHARS} characters; say why the change cannot be split"
+            f"the justification is shorter than {MIN_CHARS} characters; say why the change cannot"
+            " be split"
         ]
     return []
 

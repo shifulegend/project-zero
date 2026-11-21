@@ -31,7 +31,8 @@ def problems(text: str, path: str, registered: set[str]) -> list[str]:
             ident = m.group(3)
             if not ident or not re.fullmatch(r"(PZ-TODO|QA-ISS)-\d+", ident):
                 out.append(
-                    f"{path}:{n}: {m.group(1)} without an ID (write {m.group(1)}(PZ-TODO-<n>) and list it)"
+                    f"{path}:{n}: {m.group(1)} without an ID (write {m.group(1)}(PZ-TODO-<n>) and"
+                    " list it)"
                 )
             elif ident not in registered:
                 out.append(f"{path}:{n}: {ident} is not listed in docs/ai/todo-register.md")

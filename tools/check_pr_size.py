@@ -82,7 +82,8 @@ def main(argv: list[str]) -> int:
         for n, p in per[:8]:
             print(f"  {n:6d}  {p}")
         print(
-            'Split it, or ask a maintainer to add the label "size-override" for a mechanical change.'
+            'Split it, or ask a maintainer to add the label "size-override" for a mechanical'
+            " change."
         )
         return 1
     return 0

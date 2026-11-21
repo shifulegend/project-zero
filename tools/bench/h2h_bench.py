@@ -127,8 +127,10 @@ def build_report(
     md = [
         "# Head-to-head decode benchmark",
         "",
-        f"UTC start: {bl.iso_utc(run.t0)}  |  host: {bl.cpu_model()}  |  "
-        f"pz commit: {bl.git_info()['commit']}",
+        (
+            f"UTC start: {bl.iso_utc(run.t0)}  |  host: {bl.cpu_model()}  |  "
+            f"pz commit: {bl.git_info()['commit']}"
+        ),
         "",
         bl.summary_md(summary, with_ratio=True, hide_invalid=hide),
     ]
@@ -230,8 +232,10 @@ def parse_options() -> tuple[argparse.ArgumentParser, argparse.Namespace]:
         "--jobs",
         type=int,
         default=0,
-        help="parallel jobs for building engines only; "
-        "measured runs are always one process at a time",
+        help=(
+            "parallel jobs for building engines only; "
+            "measured runs are always one process at a time"
+        ),
     )
     ap.add_argument(
         "--preset", choices=["published"], help="published: the full published sweep (see PRESETS)"
@@ -249,8 +253,8 @@ def gate_line(gcfg: gate.Config) -> str:
     ref = gcfg.get("reference_override")
     where = f", all models vs {ref}" if ref else ""
     return (
-        f"  gate: {gcfg['mode']}, tolerance {gcfg['tolerance_pct']} %, {gcfg['ppl_chunks']} chunks of {gcfg['ppl_ctx']} "
-        f"(reference per model from models.json{where})"
+        f"  gate: {gcfg['mode']}, tolerance {gcfg['tolerance_pct']} %, {gcfg['ppl_chunks']} chunks"
+        f" of {gcfg['ppl_ctx']} (reference per model from models.json{where})"
     )
 
 
@@ -262,8 +266,10 @@ def missing_lines(missing: Sequence[tuple[str, str]]) -> list[str]:
     models = ",".join(n for k, n in missing if k == "model") or "none"
     return [
         "  MISSING: " + ", ".join(f"{k} {n}" for k, n in missing),
-        f"  fetch with: python3 tools/bench/setup_engines.py --engines {engines} --models {models}"
-        "   (or re-run with --engine-fetch missing --model-fetch missing)",
+        (
+            f"  fetch with: python3 tools/bench/setup_engines.py --engines {engines} --models"
+            f" {models}   (or re-run with --engine-fetch missing --model-fetch missing)"
+        ),
     ]
 
 
@@ -304,7 +310,8 @@ def print_plan(
     )
     n = count_pairs(a, variants, models, threads)
     print(
-        f"  {n} (model, variant) pairs x {len(threads)} thread counts x {a.rounds} rounds = {n * len(threads) * a.rounds} runs, about {est:.0f} min"
+        f"  {n} (model, variant) pairs x {len(threads)} thread counts x {a.rounds} rounds ="
+        f" {n * len(threads) * a.rounds} runs, about {est:.0f} min"
     )
     gcfg = gate.config_from_args(a)
     print(gate_line(gcfg))

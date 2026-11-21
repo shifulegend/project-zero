@@ -32,7 +32,10 @@ class SizeTest(unittest.TestCase):
 
     def test_docstring_lines_are_not_counted(self) -> None:
         """Docstring lines are not counted."""
-        src = '"""Module\ndoc."""\n\ndef f():\n    """One."""\n    return 1\n\nclass K:\n    """A\n    B."""\n'
+        src = (
+            '"""Module\ndoc."""\n\ndef f():\n    """One."""\n    return 1\n\nclass K:\n    """A\n  '
+            '  B."""\n'
+        )
         self.assertEqual(c.docstring_lines(src), 2 + 1 + 2)
         self.assertEqual(c.docstring_lines("def broken(:"), 0)
 

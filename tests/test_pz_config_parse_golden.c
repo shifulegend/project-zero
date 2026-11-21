@@ -109,7 +109,9 @@ static void gen_line(char *out, size_t cap) {
     if (rnd(6) == 0) strncat(out, rnd(2) ? "  " : "\t", cap - strlen(out) - 1);
     strncat(out, k_keys[rnd(sizeof k_keys / sizeof *k_keys)], cap - strlen(out) - 1);
     strncat(out, k_seps[rnd(sizeof k_seps / sizeof *k_seps)], cap - strlen(out) - 1);
-    n = 1 + rnd(3) * (rnd(4) == 0);
+    unsigned extra = rnd(3); /* separate statements: argument/operand order is unspecified in C */
+    unsigned multi = rnd(4) == 0;
+    n              = 1 + extra * multi;
     for (size_t i = 0; i < n; i++) {
         if (i) strncat(out, rnd(2) ? ", " : " ", cap - strlen(out) - 1);
         strncat(out, k_values[rnd(sizeof k_values / sizeof *k_values)], cap - strlen(out) - 1);

@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — `semver_parse` is split into core, pre-release and tail steps
+- What: `semver_parse` (`src/update/semver.c`) is `parse_core` (the `[vV]major.minor.patch` part), `ends_version` (nothing left, a bare `-dirty`, or a git-describe suffix), `parse_prerelease` (`read_prerelease` for the tag and a trailing `-dirty`, `split_glued_describe` for a describe suffix glued onto it) and the build-metadata check.
+- Why: finding 20.a; `semver_parse` was complexity 30 in 31 lines and left the complexity baseline (363 -> 362).
+- Proof: new `tests/test_semver_parse_equiv.c` hashes every result code and the whole `SemVer` for 400,000 generated strings (v prefixes, numbers at and beyond the limit, pre-release tags, describe suffixes alone and glued, `-dirty`, build metadata, over-long identifiers, junk, high-bit bytes; 11,266 of them valid); the hash was recorded from the old single function and passes unchanged under gcc and clang; `make test` on both.
+- Areas: `src/update/semver.c`, `tests/test_semver_parse_equiv.c`, `tests/test_pz_config_parse_golden.c` (generator made order-independent), `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — the INT8 and INT4 classifier builders share one block quantiser
 - What: `weights_build_classifier_quant` (`src/runtime/weights.c`) built the INT8 and INT4 LM-head copies with two near-identical loops (BF16 to F32 per block, error-minimising scale search, round and clamp). They now share `quantize_cls_row` (values in `[-qmax, qmax]` plus the per-block scales); `build_cls_i8` and `build_cls_i4` only bias and pack; the function itself is the profile gate. If one of a format's two allocations fails, both are freed and the pointers stay NULL (before, the half-built pair stayed set and a consumer could read an unfilled table).
 - Why: finding 20.a; `weights_build_classifier_quant` was complexity 32 in 89 lines and left the complexity baseline (364 -> 363).

@@ -1,9 +1,9 @@
 /*
- * tests/test_classifier_quant_exact.c — weights_build_classifier_quant produces, bit for bit, the INT8
- * and INT4 tables and scales it did before its two block loops were merged: a hash over the output
- * for synthetic BF16 tables of several shapes (dimensions that are and are not multiples of the
- * quantisation block or of 2, an all-zero row, huge and tiny magnitudes). The hash was recorded from
- * the previous implementation. With no hardware profile initialised both formats are built.
+ * tests/test_classifier_quant_exact.c — weights_build_classifier_quant produces, bit for bit, the
+ * INT8 and INT4 tables and scales it did before its two block loops were merged: a hash over the
+ * output for synthetic BF16 tables of several shapes (dimensions that are and are not multiples of
+ * the quantisation block or of 2, an all-zero row, huge and tiny magnitudes). The hash was recorded
+ * from the previous implementation. With no hardware profile initialised both formats are built.
  */
 #include <stdint.h>
 #include <stdio.h>

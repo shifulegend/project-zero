@@ -11,6 +11,7 @@
 #include "core/cpu_features.h"
 #include "core/sys_probe.h"
 #include "kv_cache/kv_strategy.h"
+#include "runtime/hw_model_constants.h"
 #include "threading/cache_probe.h"
 #include "threading/cpu_probe.h"
 
@@ -21,26 +22,6 @@
 #include <sys/sysinfo.h>
 #endif
 
-/*
- * Model constants for BitNet-b1.58-2B-4T:
- *   30 layers, dim=2560, hidden_dim=6912, vocab=128256
- *   Ternary weights: 2 bits/weight packed as 4 weights/byte
- *   Embedding table: vocab * dim * 2 bytes (BF16)
- *
- * 2026-07-17: these constants are only a PRE-LOAD ESTIMATE (profile init
- * runs before the model file is even opened, so no metadata exists yet).
- * They are correct for the native BitNet-2B path they were written for,
- * but were silently used for every model — a 7.16 GB Ternary-Bonsai-27B
- * GGUF got Data/token "1149 MB" and a ~6x-overstated tok/s ceiling (see
- * docs/ai/mistakes.md). main.c now calls
- * tn_hardware_profile_set_model_bytes() with the real loaded-model sizes
- * to correct weight_bytes_per_tok and theoretical_ceiling post-load.
- */
-#define MODEL_TERNARY_BYTES (522ULL * 1024 * 1024) /* ~522 MB packed ternary */
-#define MODEL_EMBED_BYTES (128256ULL * 2560 * 2)   /* ~628 MB BF16 embedding */
-#define MODEL_NORM_BYTES (1ULL * 1024 * 1024)      /* ~1 MB norms */
-#define MODEL_DIM 2560
-#define MODEL_VOCAB 128256
 
 /* ── Cache size detection ──────────────────────────────────────────────── */
 
@@ -379,6 +360,63 @@ static double cached_dram_bandwidth(int physical_cores, int logical_cores, size_
 static TnHardwareProfile g_profile;
 static bool g_initialized = false;
 
+/* Free RAM — use MemAvailable from /proc/meminfo (same as kv_strategy.c).
+ *
+ * sysinfo().freeram = MemFree: only unowned pages (~0.3–2 GB on a loaded system).
+ * MemAvailable = MemFree + reclaimable buffers/cache: what the kernel will actually
+ * hand to a new allocation.  Using MemFree caused KV strategy to see ~2 GB on a
+ * 16 GB laptop and fall into KV_SLIDING_I4 (1024 ctx) instead of KV_QUANT_I8
+ * (full 4096 ctx), collapsing effective context window unnecessarily.
+ */
+#if TN_POSIX && defined(__APPLE__)
+/* macOS: parse "vm_stat" for free + inactive pages */
+static size_t free_ram_vm_stat(void) {
+    FILE *vf     = popen("vm_stat 2>/dev/null", "r");
+    long page_sz = sysconf(_SC_PAGESIZE);
+    if (!page_sz || page_sz < 0) page_sz = 4096;
+    if (!vf) return 0;
+    char vline[128];
+    size_t free_p = 0, inactive_p = 0;
+    while (fgets(vline, sizeof(vline), vf)) {
+        size_t v = 0;
+        if (sscanf(vline, "Pages free: %zu.", &v) == 1) free_p += v;
+        if (sscanf(vline, "Pages inactive: %zu.", &v) == 1) inactive_p += v;
+    }
+    pclose(vf);
+    return (free_p + inactive_p) * (size_t)page_sz;
+}
+#endif
+
+#if TN_POSIX
+/* When MemAvailable is unreadable: the best per-OS estimate. */
+static size_t free_ram_fallback(void) {
+#if defined(__linux__)
+    /* Fallback to sysinfo MemFree if /proc/meminfo is unavailable */
+    struct sysinfo si;
+    if (sysinfo(&si) == 0) return (size_t)si.freeram * si.mem_unit;
+    return 0;
+#elif defined(__APPLE__)
+    return free_ram_vm_stat();
+#else
+    /* Generic POSIX fallback — _SC_PHYS_PAGES is widely supported */
+    long pages   = sysconf(_SC_PHYS_PAGES);
+    long page_sz = sysconf(_SC_PAGESIZE);
+    if (pages > 0 && page_sz > 0) return (size_t)pages * (size_t)page_sz / 2;
+    return 0;
+#endif
+}
+#endif
+
+static size_t detect_free_ram(void) {
+#if TN_POSIX
+    tn_i64 mem_avail = tn_get_free_ram(); /* reads MemAvailable */
+    if (mem_avail > 0) return (size_t)mem_avail;
+    return free_ram_fallback();
+#else
+    return 0;
+#endif
+}
+
 static void rebuild_summary(void) {
     const char *cls_name = "BF16";
     if (g_profile.classifier_fmt == TN_CLS_INT8) cls_name = "INT8";
@@ -408,56 +446,8 @@ const TnHardwareProfile *tn_hardware_profile_init(void) {
     g_profile.l2_cache_bytes = detect_l2_cache();
     g_profile.l3_cache_bytes = detect_l3_cache();
 
-    /* 4. RAM — use MemAvailable from /proc/meminfo (same as kv_strategy.c).
-     *
-     * sysinfo().freeram = MemFree: only unowned pages (~0.3–2 GB on a loaded system).
-     * MemAvailable = MemFree + reclaimable buffers/cache: what the kernel will actually
-     * hand to a new allocation.  Using MemFree caused KV strategy to see ~2 GB on a
-     * 16 GB laptop and fall into KV_SLIDING_I4 (1024 ctx) instead of KV_QUANT_I8
-     * (full 4096 ctx), collapsing effective context window unnecessarily.
-     */
-#if TN_POSIX
-    {
-        tn_i64 mem_avail = tn_get_free_ram(); /* reads MemAvailable */
-        if (mem_avail > 0) {
-            g_profile.free_ram_bytes = (size_t)mem_avail;
-        } else {
-#if defined(__linux__)
-            /* Fallback to sysinfo MemFree if /proc/meminfo is unavailable */
-            struct sysinfo si;
-            if (sysinfo(&si) == 0) g_profile.free_ram_bytes = (size_t)si.freeram * si.mem_unit;
-#elif defined(__APPLE__)
-            /* macOS: parse "vm_stat" for free + inactive pages */
-            {
-                FILE *vf     = popen("vm_stat 2>/dev/null", "r");
-                long page_sz = sysconf(_SC_PAGESIZE);
-                if (!page_sz || page_sz < 0) page_sz = 4096;
-                if (vf && page_sz > 0) {
-                    char vline[128];
-                    size_t free_p = 0, inactive_p = 0;
-                    while (fgets(vline, sizeof(vline), vf)) {
-                        size_t v = 0;
-                        if (sscanf(vline, "Pages free: %zu.", &v) == 1) free_p += v;
-                        if (sscanf(vline, "Pages inactive: %zu.", &v) == 1) inactive_p += v;
-                    }
-                    pclose(vf);
-                    g_profile.free_ram_bytes = (free_p + inactive_p) * (size_t)page_sz;
-                } else if (vf) {
-                    pclose(vf);
-                }
-            }
-#else
-            /* Generic POSIX fallback — _SC_PHYS_PAGES is widely supported */
-            {
-                long pages   = sysconf(_SC_PHYS_PAGES);
-                long page_sz = sysconf(_SC_PAGESIZE);
-                if (pages > 0 && page_sz > 0)
-                    g_profile.free_ram_bytes = (size_t)pages * (size_t)page_sz / 2;
-            }
-#endif
-        }
-    }
-#endif
+    /* 4. RAM: MemAvailable, with per-OS fallbacks (see detect_free_ram) */
+    g_profile.free_ram_bytes = detect_free_ram();
 
     /* 5. Bandwidth: per-host cache, else probe (core/bw_cache.h) */
     g_free_ram_hint = g_profile.free_ram_bytes;
@@ -478,74 +468,15 @@ const TnHardwareProfile *tn_hardware_profile_init(void) {
     g_profile.model_fits_l3 = (g_profile.l3_cache_bytes >= MODEL_TERNARY_BYTES);
 
     /* 10. Performance projections */
-    double cls_bytes;
-    switch (g_profile.classifier_fmt) {
-        case TN_CLS_INT4:
-            cls_bytes = (double)MODEL_VOCAB * MODEL_DIM / 2.0;
-            break;
-        case TN_CLS_INT8:
-            cls_bytes = (double)MODEL_VOCAB * MODEL_DIM;
-            break;
-        default:
-            cls_bytes = (double)MODEL_VOCAB * MODEL_DIM * 2.0;
-            break;
-    }
+    double cls_bytes            = tn_hw_classifier_bytes(g_profile.classifier_fmt);
     g_profile.cls_bytes_per_tok = cls_bytes;
     g_profile.weight_bytes_per_tok =
         (double)MODEL_TERNARY_BYTES + cls_bytes + (double)MODEL_NORM_BYTES;
 
-    if (g_profile.measured_bw_gbps > 0.0) {
-        /*
-         * L3-aware ceiling estimate (pre-load only; the post-load
-         * set_model_bytes() correction uses plain bandwidth division).
-         *
-         * In steady-state autoregressive inference, L3 retains recently
-         * accessed weights between tokens. The effective DRAM read per
-         * token depends on how much weight data fits in L3.
-         *
-         * Heuristic (2026-07-17: comment corrected to match the code — it
-         * previously described a "~half stay cached" model that only ever
-         * existed in calibration.c's own copy):
-         *  1. Classifier counted fully cached if cls_bytes < L3
-         *  2. Ternary layers: min(L3 - classifier, ternary_bytes) counted
-         *     cached; the remainder billed to DRAM
-         *
-         * Because the cache credit REDUCES billed DRAM bytes, it RAISES the
-         * projected ceiling — this is an optimistic estimate of the
-         * bandwidth bound, not a lower bound on performance (the previous
-         * comment had that backwards; measured throughput "exceeding the
-         * ceiling" was in fact a symptom of the probe under-measuring
-         * bandwidth, fixed the same day — see bw_thread_fn above).
-         */
-        double l3_usable    = (double)g_profile.l3_cache_bytes;
-        double dram_per_tok = g_profile.weight_bytes_per_tok;
-
-        if (l3_usable > 0.0 && l3_usable < dram_per_tok) {
-            /* Classifier: fully cached if it fits in L3 */
-            double cls_cached = 0.0;
-            if (cls_bytes < l3_usable) {
-                cls_cached = cls_bytes;
-            }
-            /* Ternary layers: cache (L3 - classifier) worth of layers */
-            double l3_for_layers  = l3_usable - cls_cached;
-            double ternary_cached = 0.0;
-            if (l3_for_layers > 0.0 && l3_for_layers < (double)MODEL_TERNARY_BYTES) {
-                ternary_cached = l3_for_layers;
-            } else if (l3_for_layers >= (double)MODEL_TERNARY_BYTES) {
-                ternary_cached = (double)MODEL_TERNARY_BYTES;
-            }
-            dram_per_tok -= (cls_cached + ternary_cached);
-        } else if (l3_usable >= dram_per_tok) {
-            dram_per_tok = 0.0;
-        }
-
-        if (dram_per_tok > 0.0) {
-            double seconds_per_tok        = dram_per_tok / (g_profile.measured_bw_gbps * 1e9);
-            g_profile.theoretical_ceiling = 1.0 / seconds_per_tok;
-        } else {
-            g_profile.theoretical_ceiling = 999.0; /* compute-limited */
-        }
-    }
+    if (g_profile.measured_bw_gbps > 0.0)
+        g_profile.theoretical_ceiling =
+            tn_hw_cached_ceiling((double)g_profile.l3_cache_bytes, g_profile.measured_bw_gbps,
+                                 g_profile.weight_bytes_per_tok, cls_bytes);
 
     /* 11. Summary string */
     rebuild_summary();
@@ -566,18 +497,7 @@ void tn_hardware_profile_set_classifier(TnClassifierFormat fmt) {
     g_profile.classifier_explicit = true;
 
     /* Recalculate data-per-token and ceiling */
-    double cls_bytes;
-    switch (fmt) {
-        case TN_CLS_INT4:
-            cls_bytes = (double)MODEL_VOCAB * MODEL_DIM / 2.0;
-            break;
-        case TN_CLS_INT8:
-            cls_bytes = (double)MODEL_VOCAB * MODEL_DIM;
-            break;
-        default:
-            cls_bytes = (double)MODEL_VOCAB * MODEL_DIM * 2.0;
-            break;
-    }
+    double cls_bytes            = tn_hw_classifier_bytes(fmt);
     g_profile.cls_bytes_per_tok = cls_bytes;
     g_profile.weight_bytes_per_tok =
         (double)MODEL_TERNARY_BYTES + cls_bytes + (double)MODEL_NORM_BYTES;

@@ -65,6 +65,15 @@ typedef struct {
     char summary[128]; /* human-readable "AVX-512 VNNI | INT4 | 4T | 45.8 GB/s" */
 } TnHardwareProfile;
 
+/* Bytes the classifier streams per token in `fmt` (the compile-time BitNet-2B shape). */
+double tn_hw_classifier_bytes(TnClassifierFormat fmt);
+
+/* Pre-load tok/s ceiling: weight_bytes_per_tok billed to DRAM after crediting what an L3 of
+ * l3_usable bytes retains (classifier first, then ternary layers); 999 when all of it fits.
+ * Needs bw_gbps > 0. */
+double tn_hw_cached_ceiling(double l3_usable, double bw_gbps, double weight_bytes_per_tok,
+                            double cls_bytes);
+
 /*
  * Probe hardware and populate the profile.
  * Call once at startup, before weights_map.

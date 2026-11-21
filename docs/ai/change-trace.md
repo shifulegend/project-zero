@@ -3,6 +3,19 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — hardware profile start-up split into steps (finding 20.a)
+- What: `tn_hardware_profile_init` (complexity 29, 96 lines) now calls `detect_free_ram` (with one small
+  fallback function per OS), `tn_hw_classifier_bytes` and `tn_hw_cached_ceiling`. The classifier-size switch
+  was written out twice (start-up and `--classifier`); both use the one helper now.
+- Why: finding 20.a; the complexity baseline lost one entry (346 recorded functions).
+- Proof: `tests/test_hw_projection.c` compares both helpers against a verbatim copy of the old code over
+  200,000 generated tuples including the exact L3 boundaries (exact double equality; changing one `<` to
+  `<=` makes it fail), on gcc and clang. The macOS and generic-POSIX branches compile with warnings on.
+  The printed hardware box and loaded-model ceiling are identical to the pre-change binary for the default,
+  `--classifier int4` and `--classifier int8`; SmolLM2 greedy output is identical.
+- Areas: `src/runtime/hardware_profile.c`, `include/runtime/hardware_profile.h`,
+  `src/runtime/hw_projection.c` (helpers moved here so `hardware_profile.c` shrank 664 -> 584 lines), `include/runtime/hw_model_constants.h`, `CMakeLists.txt`, `tests/test_hw_projection.c`, the complexity and file-size baselines.
+
 ### 2026-11-21 — Qwen3.5 run-state allocation split into steps (finding 20.a)
 - What: `q35_run_state_alloc` (complexity 30, 90 lines) is now a short driver over five helpers: shape check,
   context clamp to the 600 MB cache ceiling, per-layer buffers, pointer arrays, RoPE table and scratch.

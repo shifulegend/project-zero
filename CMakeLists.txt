@@ -135,6 +135,7 @@ set(CORE_SOURCES
     src/core/gguf_quant_k.c
     src/core/gguf_quant_iq.c
     src/runtime/hardware_profile.c
+    src/runtime/hw_projection.c
     src/core/bw_cache.c
     src/core/fs_util.c
     src/core/sha256.c

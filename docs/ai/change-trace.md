@@ -3,6 +3,27 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — GGUF model configuration split per concern and per architecture (finding 20.a)
+- What: `config_from_gguf` (complexity 26, 94 lines, nesting 4) is now a driver over `read_core_dims`,
+  `read_heads_and_vocab`, `read_rope_theta`, `apply_arch_defaults`, `read_rms_eps` and `read_yarn`, and
+  `moe_config_from_gguf` (complexity 23, 87 lines) dispatches through a table to one function per
+  architecture (`moe_config_mamba`, `_qwen35`, `_qwen3`, `_qwen3moe`, `_deepseek2`). Key names are built by
+  one `arch_key` helper instead of a macro and eight local buffers.
+- Why: finding 20.a; both functions left the complexity baseline entirely.
+- Proof: new `tests/test_gguf_config_golden.c` builds 60,000 GGUF headers in memory (llama, bitnet, mamba,
+  qwen3, qwen35, qwen3moe, deepseek2 and unknown architectures; each key present or absent with a right
+  or wrong type and zero, small, typical or huge values; YaRN keys; an embedding tensor of 1-3
+  dimensions; 24,987 dense configs accepted) and pins one hash of both result codes and every byte of
+  both configs, recorded from the old functions under gcc and clang; thirteen mutations (defaults,
+  clamps, fall-backs, per-architecture flags and the dispatch) each fail it. `make test` (gcc and clang);
+  start-up and generation identical to the old binary on every architecture with a model available.
+- Lesson: a direct `make build/tests/X CC=clang` reuses whatever library objects exist (here gcc's), so it
+  does not test clang. Use `make test CC=clang` or rebuild the object with the compiler's flags. The real
+  clang build showed the YaRN attention factor (a `logf` and divide) differs from gcc's in the last bit, so
+  the test pins it rounded to four places.
+- Affected: `src/runtime/gguf_config.c`, `tests/test_gguf_config_golden.c`,
+  `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — generic run-state allocator split into steps (finding 20.a)
 - What: `run_state_alloc_ex` (complexity 26, 96 lines, nesting 4) is now a short driver over `alloc_scratch`,
   `alloc_scores_and_logits`, `alloc_generic_kv` (with `resolve_kv_type` and `alloc_f32_kv`; the quantized

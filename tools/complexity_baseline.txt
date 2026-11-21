@@ -134,8 +134,6 @@ src/reasoning/reasoning_generate.c::generate_with_reasoning 15 68 4
 src/runtime/calibration.c::tn_calib_pick_simd 12 20 3
 src/runtime/calibration.c::tn_calibrate 57 234 4
 src/runtime/calibration.c::tn_calibration_act_timing 13 17 2
-src/runtime/gguf_config.c::config_from_gguf 26 94 4
-src/runtime/gguf_config.c::moe_config_from_gguf 23 87 2
 src/runtime/gguf_load_deepseek2.c::weights_from_gguf_deepseek2 12 40 2
 src/runtime/gguf_load_proj.c::gguf_ld_dense_projection 14 32 6
 src/runtime/gguf_load_qwen35.c::weights_from_gguf_qwen35 15 93 3

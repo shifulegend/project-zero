@@ -5,6 +5,18 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-11-20.
 
+### 2026-11-21 — a "clang" check of a test built with the other compiler's library objects
+- What: while pinning `tests/test_gguf_config_golden.c` I built the test with `make build/tests/X CC=clang`
+  and read a matching hash as proof that clang agreed. That rule does not rebuild the library: it linked the
+  objects gcc had just produced, so nothing was compiled by clang. `make test CC=clang` (which switches the
+  build variant) then failed: the YaRN attention factor (`1 / (1 + 0.1 * logf(x))`) differs between the
+  compilers in its last bit.
+- Fix: the test pins that field rounded to four places, and the old code was re-recorded with the library
+  rebuilt by each compiler (`rm` the object, then `make CC=... CFLAGS='$(CFLAGS_DEBUG)' ...`).
+- Lesson: a golden hash over floating-point results is compiler-sensitive; pin floats rounded unless they are
+  bit-exact by construction. A cross-compiler check needs the objects the test links to be rebuilt by that
+  compiler, so use `make test CC=<compiler>`, not a direct test target.
+
 ### 2026-11-21 — the GGUF reader trusted lengths and counts from the file
 - What: found while building a golden test for `gguf_read_header`, whose exact-size buffers and sanitizers flagged it at once: scalar metadata values were read without a bounds check, string lengths were compared as `*p + len > end` (the sum can wrap), a fixed-size array with a huge count looped once per element, and after a rejected count the header kept it, so `gguf_header_free` on the failure path read far past the metadata array: a crafted GGUF with `n_meta = 100000` segfaulted the old `pz` at startup. Model files are downloaded from the internet, so these are untrusted-input bugs, not curiosities.
 - Fix: one `have()` check against the remaining size for every read, a single check for fixed-size arrays, `fail_header` and a clamped `gguf_header_free`.

@@ -1,12 +1,12 @@
 /*
  * tests/test_run_state_alloc_golden.c — run_state_alloc_ex over 4,000 generated model shapes and
- * KV options: head counts and sizes (including dim 0, which must fail), context lengths from negative
- * and empty to a few dozen positions, F32 / int8 / int4 KV storage (int4 on head sizes that do and
- * do not divide into its groups, which falls back to int8), skipped KV caches, and the disk-offload
- * path in a temporary directory (and a missing one). For each: the result code, every field the
- * allocator sets, which buffers exist and the RoPE table; the last element of every buffer is
- * written under ASan, so a buffer smaller than the forward pass needs fails loudly. Hash recorded
- * from the allocator before it was split into steps.
+ * KV options: head counts and sizes (including dim 0, which must fail), context lengths from
+ * negative and empty to a few dozen positions, F32 / int8 / int4 KV storage (int4 on head sizes
+ * that do and do not divide into its groups, which falls back to int8), skipped KV caches, and the
+ * disk-offload path in a temporary directory (and a missing one). For each: the result code, every
+ * field the allocator sets, which buffers exist and the RoPE table; the last element of every
+ * buffer is written under ASan, so a buffer smaller than the forward pass needs fails loudly. Hash
+ * recorded from the allocator before it was split into steps.
  */
 #include <stdint.h>
 #include <stdio.h>

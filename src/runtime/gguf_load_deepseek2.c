@@ -232,58 +232,10 @@ TernaryError weights_from_gguf_deepseek2(TransformerWeights *w, const Config *cf
         } else {
             /* MoE FFN layer */
 
-            /* Router gate matrix (F32, zero-copy from mmap) */
-            snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_gate_inp.weight", l);
-            const GGUFTensor *tgate = gguf_find_tensor(hdr, name_buf);
-            if (!tgate) {
-                TN_LOG_ERR("gguf_loader", "[gguf_loader] missing tensor '%s'\n", name_buf);
-                return TN_ERR_INVALID_WEIGHTS;
-            }
-            if (tgate->type != GGUF_TYPE_F32) {
-                TN_LOG_ERR("gguf_loader",
-                           "[gguf_loader] ffn_gate_inp.weight must be F32 (got %d)\n",
-                           (int)tgate->type);
-                return TN_ERR_INVALID_WEIGHTS;
-            }
-            w->moe.gate_w[l] = (tn_i8 *)tgate->data; /* zero-copy, F32 */
-            w->moe.gate_s[l] = 1.0f;
-
-            /* Stacked routed expert weights — kept quantized in mmap.
-             * Per-expert pointers computed from the stacked tensor's base. */
-            size_t expert_elems = (size_t)exp_hid * (size_t)dim;
-
-            snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_gate_exps.weight", l);
-            const GGUFTensor *tg_exps = gguf_find_tensor(hdr, name_buf);
-            snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_up_exps.weight", l);
-            const GGUFTensor *tu_exps = gguf_find_tensor(hdr, name_buf);
-            snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_down_exps.weight", l);
-            const GGUFTensor *td_exps = gguf_find_tensor(hdr, name_buf);
-
-            if (!tg_exps || !tu_exps || !td_exps) {
-                TN_LOG_ERR("gguf_loader", "[gguf_loader] missing expert tensors for layer %d\n", l);
-                return TN_ERR_INVALID_WEIGHTS;
-            }
-
-            size_t g_stride = gguf_ld_quant_bytes(tg_exps->type, expert_elems);
-            size_t u_stride = gguf_ld_quant_bytes(tu_exps->type, expert_elems);
-            size_t d_stride = gguf_ld_quant_bytes(td_exps->type, expert_elems);
-
-            if (g_stride == 0 || u_stride == 0 || d_stride == 0) {
-                TN_LOG_ERR("gguf_loader",
-                           "[gguf_loader] unknown quant type for expert tensors layer %d\n", l);
-                return TN_ERR_INVALID_WEIGHTS;
-            }
-
-            for (int e = 0; e < num_experts; e++) {
-                w->moe.w1[l][e] = (tn_i8 *)tg_exps->data + (size_t)e * g_stride;
-                w->moe.w3[l][e] = (tn_i8 *)tu_exps->data + (size_t)e * u_stride;
-                w->moe.w2[l][e] = (tn_i8 *)td_exps->data + (size_t)e * d_stride;
-                /* moe_s{1,2,3} unused — has_expert_quant flag drives dequant path */
-                w->moe.s1[l][e] = w->moe.s2[l][e] = w->moe.s3[l][e] = 0.0f;
-            }
-            /* Record the actual quant type for this layer's down-proj AND gate/up experts */
-            w->expert_quant.w2_per_layer[l]  = (int)td_exps->type;
-            w->expert_quant.w13_per_layer[l] = (int)tg_exps->type;
+            /* Router and stacked routed experts, kept quantized in the mapping. */
+            TernaryError me =
+                gguf_ld_moe_layer(hdr, w, l, num_experts, (size_t)exp_hid * (size_t)dim);
+            if (me != TN_OK) return me;
 
             /* Shared expert weights — heap-copy as Q4_K when available.
              * Uses DS_LOAD_SHEXP_HEAP which records per-layer type for correct dispatch.

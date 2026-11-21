@@ -171,13 +171,13 @@ src/runtime/calibration.c::tn_calibrate 57 234 4
 src/runtime/calibration.c::tn_calibration_act_timing 13 17 2
 src/runtime/gguf_config.c::config_from_gguf 26 94 4
 src/runtime/gguf_config.c::moe_config_from_gguf 23 87 2
-src/runtime/gguf_load_deepseek2.c::weights_from_gguf_deepseek2 26 134 3
+src/runtime/gguf_load_deepseek2.c::weights_from_gguf_deepseek2 18 96 3
 src/runtime/gguf_load_proj.c::gguf_ld_dense_projection 14 32 6
 src/runtime/gguf_load_qwen35.c::weights_from_gguf_qwen35 15 93 3
-src/runtime/gguf_load_qwen3moe.c::weights_from_gguf_qwen3moe 20 92 2
+src/runtime/gguf_load_qwen3moe.c::weights_from_gguf_qwen3moe 12 54 2
 src/runtime/gguf_load_util.c::gguf_ld_bf16_embedding_and_output 13 45 3
 src/runtime/gguf_load_util.c::gguf_ld_proj_typed 15 38 8
-src/runtime/gguf_loader.c::load_dense_embedding 29 98 5
+src/runtime/gguf_loader.c::load_dense_embedding 23 76 5
 src/runtime/gguf_loader.c::load_dense_layer 22 69 2
 src/runtime/gguf_loader.c::load_dense_output 17 71 6
 src/runtime/hardware_profile.c::probe_dram_bandwidth 26 56 3

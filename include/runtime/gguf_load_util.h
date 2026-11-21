@@ -30,6 +30,10 @@ static inline tn_u16 gguf_ld_f32_to_bf16_round(float f) {
 GGUFWeightStore *gguf_ld_store_alloc(void);
 int gguf_ld_store_add(GGUFWeightStore *s, void *ptr); /* 0 ok, -1 out of memory */
 
+/* Router + stacked routed-expert tensors of MoE layer `l` (DeepSeek-2 and Qwen3-MoE share it);
+ * TN_ERR_INVALID_WEIGHTS with a log line when a tensor is missing or has an unknown type. */
+TernaryError gguf_ld_moe_layer(const GGUFHeader *hdr, TransformerWeights *w, int l, int num_experts,
+                               size_t expert_elems);
 /* Dequantises n_elems weights of `type` into `out`; -1 (nothing written) when the type has no
  * dequantiser. */
 int gguf_ld_dequant(GGUFType type, float *out, const void *data, size_t n_elems);

@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — one MoE-layer loader for DeepSeek-2 and Qwen3-MoE
+- What: `gguf_ld_moe_layer` (in `gguf_load_util.c`) loads one MoE layer's F32 router and slices the stacked expert tensors into per-expert pointers, recording the layer's quant types; both architecture loaders call it instead of carrying the same ~45 lines. Error messages and behaviour are unchanged.
+- Why: findings 1.g / 20.b (duplication, over-long functions): `weights_from_gguf_deepseek2` 134 -> 96 lines (complexity 26 -> 18), `weights_from_gguf_qwen3moe` 92 -> 54 lines (20 -> 12); duplicated source share 7.55% -> 7.36% (baseline was 7.84%).
+- Proof: `make test` gcc and clang (the synthetic Qwen3-MoE loader test checks the per-expert strides through the helper); DeepSeek-V2-Lite (Q2_K) greedy text identical to the baseline binary.
+- Areas: `src/runtime/{gguf_load_util,gguf_load_deepseek2,gguf_load_qwen3moe}.c`, `include/runtime/gguf_load_util.h`.
+
 ### 2026-11-21 — the embedding loader uses the shared dequantiser table
 - What: `gguf_ld_dequant` (new, in `gguf_load_util.c`) is the table lookup behind `gguf_ld_tensor_to_f32`; the token-embedding loader in `gguf_loader.c` calls it instead of its own 6-case switch.
 - Why: finding 8.a; the same seven formats were dispatched in two places.

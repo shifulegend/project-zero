@@ -166,6 +166,58 @@ size_t gguf_ld_quant_bytes(GGUFType type, size_t n_elems) {
     return (n_elems / gguf_type_block_elems(type)) * gguf_type_block_bytes(type);
 }
 
+/* Router and stacked routed-expert tensors of one MoE layer, shared by the DeepSeek-2 and
+ * Qwen3-MoE loaders. The router is F32 and zero-copy; the three stacked expert tensors stay
+ * quantised in the mapping and each expert's pointer is sliced from them by stride; the layer's
+ * gate/up and down quant types are recorded for dispatch. */
+TernaryError gguf_ld_moe_layer(const GGUFHeader *hdr, TransformerWeights *w, int l, int num_experts,
+                               size_t expert_elems) {
+    char name_buf[128];
+    snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_gate_inp.weight", l);
+    const GGUFTensor *tgate = gguf_find_tensor(hdr, name_buf);
+    if (!tgate) {
+        TN_LOG_ERR("gguf_loader", "[gguf_loader] missing tensor '%s'\n", name_buf);
+        return TN_ERR_INVALID_WEIGHTS;
+    }
+    if (tgate->type != GGUF_TYPE_F32) {
+        TN_LOG_ERR("gguf_loader", "[gguf_loader] ffn_gate_inp.weight must be F32 (got %d)\n",
+                   (int)tgate->type);
+        return TN_ERR_INVALID_WEIGHTS;
+    }
+    w->moe.gate_w[l] = (tn_i8 *)tgate->data; /* zero-copy, F32 */
+    w->moe.gate_s[l] = 1.0f;
+
+    snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_gate_exps.weight", l);
+    const GGUFTensor *tg_exps = gguf_find_tensor(hdr, name_buf);
+    snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_up_exps.weight", l);
+    const GGUFTensor *tu_exps = gguf_find_tensor(hdr, name_buf);
+    snprintf(name_buf, sizeof(name_buf), "blk.%d.ffn_down_exps.weight", l);
+    const GGUFTensor *td_exps = gguf_find_tensor(hdr, name_buf);
+    if (!tg_exps || !tu_exps || !td_exps) {
+        TN_LOG_ERR("gguf_loader", "[gguf_loader] missing expert tensors for layer %d\n", l);
+        return TN_ERR_INVALID_WEIGHTS;
+    }
+
+    size_t g_stride = gguf_ld_quant_bytes(tg_exps->type, expert_elems);
+    size_t u_stride = gguf_ld_quant_bytes(tu_exps->type, expert_elems);
+    size_t d_stride = gguf_ld_quant_bytes(td_exps->type, expert_elems);
+    if (g_stride == 0 || u_stride == 0 || d_stride == 0) {
+        TN_LOG_ERR("gguf_loader", "[gguf_loader] unknown quant type for expert tensors layer %d\n",
+                   l);
+        return TN_ERR_INVALID_WEIGHTS;
+    }
+    for (int e = 0; e < num_experts; e++) {
+        w->moe.w1[l][e] = (tn_i8 *)tg_exps->data + (size_t)e * g_stride;
+        w->moe.w3[l][e] = (tn_i8 *)tu_exps->data + (size_t)e * u_stride;
+        w->moe.w2[l][e] = (tn_i8 *)td_exps->data + (size_t)e * d_stride;
+        /* the scales are unused: the per-layer quant types below drive the dequant path */
+        w->moe.s1[l][e] = w->moe.s2[l][e] = w->moe.s3[l][e] = 0.0f;
+    }
+    w->expert_quant.w2_per_layer[l]  = (int)td_exps->type;
+    w->expert_quant.w13_per_layer[l] = (int)tg_exps->type;
+    return TN_OK;
+}
+
 /* ── Raw quantized LM head (2026-10-21) ──────────────────────────────────
  * Keep output.weight zero-copy in its own Q4_K/Q6_K format when a fused
  * kernel exists and the user did not explicitly ask for a --classifier

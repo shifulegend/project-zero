@@ -1,6 +1,5 @@
 # Files over 500 lines and their lengths (tools/check_file_sizes.py); entries may only shrink or go.
 src/api/batch_scheduler.c 571
-src/api/json_parse.c 837
 src/cli/config_cmd.c 531
 src/config/pz_config.c 636
 src/core/gguf_quant_iq.c 1573

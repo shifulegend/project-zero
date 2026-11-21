@@ -3,7 +3,7 @@ src/agent/agent_loop.c 1
 src/api/batch_scheduler.c 1
 src/api/chat_compile.c 2
 src/api/http_request.c 2
-src/api/json_parse.c 2
+src/api/json_scan.c 2
 src/api/selfcheck_endpoint.c 1
 src/cli/arg_values.c 2
 src/cli/args_flags_behavior.c 1

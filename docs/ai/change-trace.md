@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — chat request parser is table-driven; JSON scanner in its own file
+- What: `chat_request_parse` reads each key through `parse_request_field`: scalar numbers and booleans from a table (`k_scalar_fields`: name, type, offset, set-mask bit; aliases are extra rows), the mcts object keys from `k_mcts_fields`, and the fields with their own shape (stop, watermark, mcts, chat_template, response_format, messages) through small parsers in `k_object_fields`. The code moved out of `json_parse.c` into `chat_request_parse.c`, and the scanning primitives (whitespace, strings, numbers, booleans, skip-value) into `json_scan.c` with `api/json_scan.h`; `json_parse.c` keeps the messages, init/free and the generic top-level field access.
+- Why: finding 20.a; `chat_request_parse` was complexity 73, 165 lines, nesting 27 (now 12 / 23 / 2) and `json_parse.c` was 877 lines against a 837 baseline. Moved functions keep their old complexity numbers (renames in the baselines, nothing raised); `json_parse.c` leaves the file-size baseline (837 -> 330 lines).
+- Proof: `tests/test_chat_request_golden.c` (66 request bodies: every key and alias, `null` for each, malformed and truncated bodies, escapes, nested unknown values, over-long templates, too many stops) serialises every parsed field and hashes it; the hashes were recorded from the old parser (ASan/UBSan clean) and the new parser matches all 66. Live chat output (stream, non-stream, stop, cache, best-of, errors, parallel, cancel) is identical to the original baseline binary; `make test` gcc and clang, TSan; JSON-mode, parallel/cancel, cross-site and vision (real encoder) e2e scripts pass.
+- Areas: `src/api/{json_parse,json_scan,chat_request_parse}.c`, `include/api/json_scan.h`, `tests/test_chat_request_golden.c`, `CMakeLists.txt`, baselines.
+
 ### 2026-11-21 — server start and accept loop split into steps
 - What: `api_server_start` calls `open_listen_socket`, `init_serving_state`, `start_listener` and `print_endpoints`; the accept loop calls `admit_connection` (client timeouts, the connection cap and its 503) and `spawn_connection`. Order of every side effect and every error code is unchanged.
 - Why: findings 7.a / 20.a; `api_server_start` was complexity 17 / 72 lines and `listener_thread_fn` 11 / 58; both left the complexity baseline (391 -> 389).

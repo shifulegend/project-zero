@@ -360,6 +360,8 @@ set(API_SOURCES
     src/api/http_server.c
     src/api/http_headers.c
     src/api/json_parse.c
+    src/api/json_scan.c
+    src/api/chat_request_parse.c
     src/api/net_io.c
     src/api/http_response.c
     src/api/chat_stream.c

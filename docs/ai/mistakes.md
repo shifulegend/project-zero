@@ -5,6 +5,11 @@
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
 > Last updated: 2026-11-20.
 
+### 2026-11-21 — `moe_weights_free` crashed or leaked after a partial allocation failure
+- What: `moe_weights_alloc` calls `moe_weights_free` when any allocation fails, but the free path skipped a layer entirely when one of its three expert-row arrays (`w1`, `w2`, `w3`) was NULL (leaking the other rows) and indexed `w->moe.w2[l]` even when the `w2` array itself had not been allocated (a NULL dereference). Found while turning the 25 repeated blocks into tables; the new `tests/test_moe_weights_alloc.c` builds those partial states and segfaults on the old code.
+- Fix: every array and row is checked and freed on its own.
+- Lesson: an error path that calls the destructor needs a test that builds the half-built state; the destructor cannot assume the constructor got past a given point.
+
 ### 2026-11-20 — `--verbose` printed the attention-kernel line twice
 - What: when `main()` was split into one function per phase, the attention-kernel block (configure + the `Attention: ...` log line) ended up in `session_apply_runtime_options` twice. The second copy re-ran the same configuration, so only the duplicated output was visible; the parity run listed it as an "intended difference" instead of questioning it.
 - Fix: one copy; `tests/e2e_verbose_output.sh` (CI) fails if a startup line appears more than once (it fails on the old code with 2 prints).

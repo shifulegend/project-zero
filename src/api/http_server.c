@@ -485,7 +485,7 @@ TernaryError api_server_start(int port, ApiContext *ctx) {
 static void start_parallel(ApiContext *ctx) {
     int want      = ctx->server_config.limits.parallel;
     ctx->parallel = (ApiParallel){NULL, 1, NULL, 0}; /* sched, slots, note, kv_budget */
-    if (want > 1 && !batch_scheduler_supported(ctx->weights, ctx->moe_cfg)) {
+    if (want > 1 && !batch_scheduler_supported(ctx->weights, ctx->moe_cfg, ctx->run_state)) {
         ctx->parallel.note = "this model architecture runs one request at a time "
                              "(batched serving covers dense attention models)";
     } else if (want > 1) {

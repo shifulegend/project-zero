@@ -116,7 +116,7 @@ typedef struct {
 
 /* The cases speculative decoding refuses or degrades, in one place. Returns 0 to refuse. */
 static int spec_supported(const MoEConfig *mc, const RunState *s, bool *json_mode) {
-    if (dist_plan_active()) {
+    if (s->dist) {
         TN_LOG_ERR(
             "spec",
             "[spec] Speculative decoding is not supported with --remote-layers -- refusing.\n");

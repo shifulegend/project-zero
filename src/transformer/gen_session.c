@@ -292,8 +292,7 @@ int gen_session_prepare(GenSession *g, const Config *cfg, const TransformerWeigh
  * worker still holds the KV of the last prompt it saw). */
 static PromptStore *snapshot_store_for(PrefixCache *pcache, const MoEConfig *mc, const RunState *s,
                                        PromptStore *pstore) {
-    return (pcache && prompt_store_supported(mc) && s->key_cache && !dist_plan_active()) ? pstore
-                                                                                         : NULL;
+    return (pcache && prompt_store_supported(mc) && s->key_cache && !s->dist) ? pstore : NULL;
 }
 
 int gen_session_start(GenSession *g, RunState *s, PrefixCache *pcache, PromptStore *pstore) {
@@ -400,7 +399,7 @@ int gen_session_consume(GenSession *g, float *logits) {
     int abs_pos = step + g->prompt.pos_offset;
     int token   = (step < n_prompt) ? g->prompt.tokens[step] : g->progress.next;
 
-    if ((!logits && step >= n_prompt - 1) || (dist_plan_active() && dist_plan_active()->failed)) {
+    if ((!logits && step >= n_prompt - 1) || (g->model.s->dist && g->model.s->dist->failed)) {
         g->progress.finish = GEN_FINISH_ERROR; /* a remote layer range is unreachable */
         g->progress.done   = 1;
         return 0;

@@ -51,7 +51,7 @@ typedef struct {
 typedef struct BatchScheduler BatchScheduler;
 
 /* 1 when this model can be served by the scheduler. */
-int batch_scheduler_supported(const TransformerWeights *w, const MoEConfig *mc);
+int batch_scheduler_supported(const TransformerWeights *w, const MoEConfig *mc, const RunState *s);
 
 /* Starts the scheduler thread. Slot 0 is slot0 / slot0_cache (shared with
  * the caller's sequential path, which may only use them while the scheduler

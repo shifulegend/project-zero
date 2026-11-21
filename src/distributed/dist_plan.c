@@ -7,15 +7,6 @@
 #include "core/log.h"
 #include "distributed/tensor_rpc.h"
 
-static DistPlan *g_active;
-
-void dist_plan_set_active(DistPlan *dp) {
-    g_active = dp;
-}
-DistPlan *dist_plan_active(void) {
-    return g_active;
-}
-
 int dist_plan_parse(DistPlan *dp, const char *spec, int n_layers) {
     if (!dp || !spec) return -1;
     memset(dp, 0, sizeof(*dp));
@@ -131,7 +122,6 @@ void dist_plan_close(DistPlan *dp) {
         free(dp->nodes[i].scratch);
         dp->nodes[i].scratch = NULL;
     }
-    if (g_active == dp) g_active = NULL;
 }
 
 RemoteNode *dist_plan_node_starting_at(DistPlan *dp, int layer) {

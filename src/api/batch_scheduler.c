@@ -72,8 +72,8 @@ struct BatchScheduler {
     int thread_started;
 };
 
-int batch_scheduler_supported(const TransformerWeights *w, const MoEConfig *mc) {
-    return transformer_forward_multi_supported(w, mc);
+int batch_scheduler_supported(const TransformerWeights *w, const MoEConfig *mc, const RunState *s) {
+    return !s->dist && transformer_forward_multi_supported(w, mc);
 }
 
 /* ── Output channel ───────────────────────────────────────────────────── */
@@ -392,7 +392,7 @@ BatchScheduler *batch_scheduler_create(const Config *cfg, const TransformerWeigh
                                        PromptStore *pstore, const MoEConfig *mc, Tokenizer *tok,
                                        ThreadPool *tp, const BatchSchedulerOptions *opt) {
     if (!cfg || !w || !slot0 || !slot0_cache || !tok || !opt || opt->n_slots < 1 ||
-        opt->max_batch_rows < opt->n_slots || !batch_scheduler_supported(w, mc))
+        opt->max_batch_rows < opt->n_slots || !batch_scheduler_supported(w, mc, slot0))
         return NULL;
     BatchScheduler *sched = (BatchScheduler *)calloc(1, sizeof(*sched));
     if (!sched) return NULL;

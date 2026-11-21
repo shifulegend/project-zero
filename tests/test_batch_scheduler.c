@@ -199,7 +199,7 @@ int main(void) {
         threadpool_destroy(TP);
         return 0;
     }
-    if (!batch_scheduler_supported(&M.weights, &M.moe_config)) {
+    if (!batch_scheduler_supported(&M.weights, &M.moe_config, M.state)) {
         printf("  (model not supported by the batched forward) skipped\n");
         loaded_model_free(&M);
         threadpool_destroy(TP);

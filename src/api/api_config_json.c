@@ -64,10 +64,10 @@ static void runtime_act_quant(JsonBuf *jb, const ApiContext *ctx) {
 }
 
 /* The layer plan of a --remote-layers coordinator (an empty array otherwise). */
-static void runtime_distributed(JsonBuf *jb) {
+static void runtime_distributed(JsonBuf *jb, const ApiContext *ctx) {
     jb_key(jb, "distributed");
     jb_raw(jb, "[");
-    DistPlan *dp = dist_plan_active();
+    DistPlan *dp = ctx && ctx->run_state ? ctx->run_state->dist : NULL;
     for (int i = 0; dp && i < dp->n; i++) {
         if (i) jb_raw(jb, ",");
         jb_raw(jb, "{");
@@ -365,7 +365,7 @@ static void config_runtime(JsonBuf *jb, const ApiContext *ctx) {
         jb_key(jb, "attention_parallel_min_ctx");
         jb_int(jb, runtime_attn(ctx).parallel_min_ctx);
         jb_raw(jb, ",");
-        runtime_distributed(jb);
+        runtime_distributed(jb, ctx);
         jb_raw(jb, ",");
         jb_key(jb, "cache");
         jb_raw(jb, "{");

@@ -433,7 +433,7 @@ void tn_calibrate(TnCalibrationResult *result, const TnHardwareProfile *hw) {
     /* ── Interleaved rounds ──────────────────────────────────────────────
      * Every candidate once per round, the starting candidate rotating, so
      * thermal drift and background load hit all of them alike (2026-11-18). */
-    static double samples[TN_CALIB_SIMD_N][TN_CALIB_MAX_ROUNDS];
+    double samples[TN_CALIB_SIMD_N][TN_CALIB_MAX_ROUNDS];
     memset(samples, 0, sizeof(samples));
     int idx[TN_CALIB_SIMD_N], nc = 0;
     for (int i = 0; i < TN_CALIB_SIMD_N; i++)

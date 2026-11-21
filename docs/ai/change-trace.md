@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — the distributed plan belongs to the RunState; calibration samples are a local
+- What: `RunState.dist` points at the `--remote-layers` plan the state's forward pass follows (set by `session_distributed` on the main state); `dist_plan_set_active`/`dist_plan_active` and the static are gone. `forward`, `transformer_forward_batch`, `gen_session`, `spec_decode` and `/v1/config` read `s->dist`; `batch_scheduler_supported` takes the state. The calibration sample table in `tn_calibrate` is an automatic array (about 1.5 KB).
+- Why: finding 14.f (planned removals); mutable statics 42 -> 40. `transformer_forward_multi_ex` documents that callers must not pass a distributed state (its only caller, the scheduler, checks).
+- Proof: `make test` gcc and clang, TSan, release; a real coordinator plus a local worker (`--remote-layers 127.0.0.1:PORT@10-30`, worker `--layers 10-30`) generates identical text on the baseline and the new binary ("... Paris."); complexity ratchet only went down (396 -> 395).
+- Areas: `include/distributed/dist_plan.h`, `src/distributed/dist_plan.c`, `include/runtime/run_state.h`, `src/transformer/{forward,gen_session}.c`, `src/speculative/spec_decode.c`, `src/api/{batch_scheduler,http_server,api_config_json}.c`, `src/cli/session_dist.c`, `src/runtime/calibration.c`, `tests/test_batch_scheduler.c`.
+
 ### 2026-11-21 — the OpenAPI document is joined per call, not cached
 - What: `openapi_json()` returns a freshly joined, caller-owned copy of the two source halves; the static buffer and its `pthread_once` are gone. The route handler frees it; a test checks that two calls give separate identical copies.
 - Why: finding 14.f (planned removal); the join happens on a rarely hit route, so a per-call allocation costs nothing. Mutable statics 43 -> 42.

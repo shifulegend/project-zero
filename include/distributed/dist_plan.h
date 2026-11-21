@@ -32,7 +32,7 @@ typedef struct {
     float *scratch; /* dim + 1 floats: outgoing FORWARD payload */
 } RemoteNode;
 
-typedef struct {
+typedef struct DistPlan {
     int n;
     RemoteNode nodes[DIST_MAX_NODES];
     int dim;
@@ -52,10 +52,6 @@ void dist_plan_layers_by_ram(int n_layers, const long long *ram, int n_nodes, in
 /* Connects to every node and validates its INFO handshake against cfg/mc. */
 TernaryError dist_plan_connect(DistPlan *dp, const Config *cfg, const MoEConfig *mc);
 void dist_plan_close(DistPlan *dp);
-
-/* Process-wide plan used by transformer_forward() (NULL = all layers local). */
-void dist_plan_set_active(DistPlan *dp);
-DistPlan *dist_plan_active(void);
 
 /* Node whose range starts at `layer`, else NULL. */
 RemoteNode *dist_plan_node_starting_at(DistPlan *dp, int layer);

@@ -74,7 +74,8 @@ TernaryError transformer_forward_multi(const int *tokens, const int *pos_arr,
 
 /* Same, but only rows with want_logits[k] != 0 get logits: they are written
  * to logits_out in row order, one [vocab] row each (want_logits NULL = all
- * rows). Prefill rows that only fill the KV cache skip the classifier. */
+ * rows). Prefill rows that only fill the KV cache skip the classifier. Runs every layer
+ * locally: callers must not pass a state with a --remote-layers plan (state->dist). */
 TernaryError transformer_forward_multi_ex(const int *tokens, const int *pos_arr,
                                           RunState *const *states, int n_tokens,
                                           const unsigned char *want_logits, const Config *cfg,

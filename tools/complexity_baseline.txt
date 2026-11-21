@@ -268,7 +268,6 @@ src/transformer/forward.c::forward_rows_logits 19 41 5
 src/transformer/forward.c::transformer_forward 67 176 6
 src/transformer/forward.c::transformer_forward_batch 13 34 3
 src/transformer/forward.c::transformer_forward_multi_ex 23 40 3
-src/transformer/forward.c::transformer_forward_multi_supported 11 7 1
 src/transformer/gen_session.c::build_prompt 51 111 3
 src/transformer/gen_session.c::gen_session_consume 44 92 5
 src/transformer/gen_session.c::gen_session_end 15 32 2

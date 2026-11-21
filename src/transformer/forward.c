@@ -82,7 +82,7 @@ float *transformer_forward(int token, int pos, const Config *cfg, const Transfor
     if (prof_enabled()) t1 = prof_now();
 
     /* Step 2: Run through all transformer layers */
-    DistPlan *dist = dist_plan_active();
+    DistPlan *dist = s->dist;
     for (int l = 0; l < cfg->n_layers; l++) {
         /* Phase 28: a contiguous range assigned to a remote worker runs there. */
         RemoteNode *rn = dist ? dist_plan_node_starting_at(dist, l) : NULL;
@@ -348,7 +348,7 @@ TernaryError transformer_forward_batch(const int *tokens, int pos, int n_tokens,
                                        SpecBatchScratch *sb, const MoEConfig *mc, ThreadPool *tp,
                                        float *logits_out) {
     if (s->sw.window_size == 0) sw_init(&s->sw, s->max_seq_len, 0); /* see transformer_forward */
-    if (moe_is_recurrent(mc) || dist_plan_active()) {
+    if (moe_is_recurrent(mc) || s->dist) {
         return TN_ERR_UNSUPPORTED;
     }
 
@@ -393,7 +393,7 @@ TernaryError transformer_forward_batch(const int *tokens, int pos, int n_tokens,
  * and the classifier are batched across rows; attention runs per row against
  * states[k]'s own KV. */
 int transformer_forward_multi_supported(const TransformerWeights *w, const MoEConfig *mc) {
-    if (!w || dist_plan_active() || w->q35.is_q2_0_model) return 0;
+    if (!w || w->q35.is_q2_0_model) return 0;
     if (mc && (moe_is_recurrent(mc) || mc->is_moe || mc->mla.enabled || mc->has_linear_attn ||
                mc->has_qk_norm || mc->is_ssm))
         return 0;

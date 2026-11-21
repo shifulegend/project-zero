@@ -83,7 +83,7 @@ int session_distributed(PzSession *ses) {
             dist_plan_close(&ses->dist);
             return 1;
         }
-        dist_plan_set_active(&ses->dist);
+        ses->s->dist     = &ses->dist;
         ses->dist_active = 1;
     }
     return 0;

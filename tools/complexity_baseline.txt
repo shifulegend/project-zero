@@ -65,7 +65,6 @@ src/config/pz_config.c::append_quoted 8 22 5
 src/config/pz_config.c::pz_config_format 23 39 4
 src/config/pz_config.c::pz_config_merge_argv 12 30 3
 src/config/pz_config.c::pz_config_save 16 39 1
-src/config/pz_config.c::pz_config_validate 27 46 3
 src/core/bw_cache.c::tn_bw_cache_key 12 12 1
 src/core/bw_cache.c::tn_bw_cache_load 19 27 3
 src/core/bw_cache.c::tn_bw_cache_save 12 16 1

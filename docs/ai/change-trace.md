@@ -3,6 +3,23 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — setting-value validation split by concern (finding 20.a)
+- What: `pz_config_validate` (complexity 27, 46 lines) is now a short driver over `validate_text` (length and
+  newline rules), `validate_number` (with `number_parsed`), `validate_bool` and `validate_choice`. They live
+  in the new `src/config/pz_config_validate.c`, which takes `pz_config.c` from 503 to 440 lines (back under
+  the 500-line limit) and removes its one long boolean condition from the baseline.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: new `tests/test_config_validate_golden.c` validates every one of the 56 schema keys against each key's
+  bounds and values just outside them, malformed and overflowing numbers, booleans, every choice and near
+  misses, newlines and values at the length limit, with error text captured in 0-, 8-, 64- and 400-byte
+  buffers, and pins one hash recorded from the old validator on gcc and clang; eleven mutations (choice
+  length, range edges, length limit, newline rule, overflow, finite check, trailing text, choice check, error
+  text) each fail it. `make test` (gcc and clang); `pz config list` and `pz config set` (valid and invalid
+  values) print byte-identical text to the old binary.
+- Affected: `src/config/pz_config.c`, `src/config/pz_config_validate.c`, `CMakeLists.txt`,
+  `tests/test_config_validate_golden.c`, `tools/complexity_baseline.txt`, `tools/bool_chains_baseline.txt`
+  (lower counts only).
+
 ### 2026-11-21 — thinking-tag filter split into one function per state (finding 20.a)
 - What: `thought_filter_process` (complexity 27, 80 lines, nesting 6) is now a loop over `step_char`, which
   dispatches to `step_passthrough`, `step_open_tag`, `step_thinking`, `step_close_tag` and `emit_char`,

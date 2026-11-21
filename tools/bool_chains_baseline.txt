@@ -10,11 +10,9 @@ src/cli/args_flags_behavior.c 1
 src/cli/model_catalog.c 1
 src/cli/session_checks.c 1
 src/cli/session_dist.c 1
-src/config/pz_config.c 1
 src/core/bw_cache.c 3
 src/core/gguf_i2s.c 1
 src/core/gguf_reader.c 1
-src/core/moe_weights.c 4
 src/distributed/dist_plan.c 3
 src/eval/perplexity.c 1
 src/eval/selfcheck.c 2
@@ -29,17 +27,15 @@ src/rag/auto_save.c 1
 src/rag/embedder.c 1
 src/rag/memory_search.c 1
 src/rag/similarity.c 1
-src/reasoning/best_of.c 1
 src/reasoning/mcts.c 1
 src/reasoning/prm.c 2
 src/runtime/calibration.c 1
 src/runtime/gguf_config.c 4
 src/runtime/gguf_load_proj.c 1
 src/runtime/gguf_loader.c 2
-src/runtime/lora_load.c 2
 src/runtime/mamba_state.c 3
 src/runtime/prompt_store.c 2
-src/runtime/qwen35_run_state.c 2
+src/runtime/qwen35_run_state.c 1
 src/runtime/qwen3moe_run_state.c 1
 src/runtime/run_state.c 3
 src/runtime/spec_scratch.c 1
@@ -50,7 +46,7 @@ src/speculative/spec_decode.c 2
 src/tokenizer/chat_template_builtins.cpp 2
 src/tokenizer/chat_template_parse.cpp 1
 src/tokenizer/chat_template_parse_expr.cpp 1
-src/tokenizer/pretokenize.c 9
+src/tokenizer/pretokenize.c 8
 src/tokenizer/tokenizer_decode.c 2
 src/tokenizer/tokenizer_encode.c 1
 src/tokenizer/tokenizer_load.c 1
@@ -59,6 +55,5 @@ src/transformer/forward.c 1
 src/transformer/moe_experts.c 1
 src/transformer/moe_ffn.c 2
 src/transformer/output_inject.c 1
-src/transformer/qwen3moe_attention.c 1
 src/update/semver.c 1
 src/update/update_check.c 7

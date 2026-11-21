@@ -1,10 +1,11 @@
 /*
- * tests/test_thought_filter_golden.c — thought_filter_process over 100,000 generated token streams:
- * whole tags, partial and broken tags (`<`, `<th`, `<thinx>`, `</thi`, `</think `), tags split across
- * tokens, text, newlines and empty tokens, fed through output buffers of 1..24 bytes (the small
- * ones hit every bounds check). After every call the hash covers the return value, the output
- * text and the filter's whole state (state, tag position, thinking-token count, tag buffer),
- * recorded from the filter before thought_filter_process was split into one function per state.
+ * tests/test_thought_filter_golden.c — thought_filter_process over 100,000 generated token
+ * streams: whole tags, partial and broken tags (`<`, `<th`, `<thinx>`, `</thi`, `</think `), tags
+ * split across tokens, text, newlines and empty tokens, fed through output buffers of 1..24 bytes
+ * (the small ones hit every bounds check). After every call the hash covers the return value, the
+ * output text and the filter's whole state (state, tag position, thinking-token count, tag
+ * buffer), recorded from the filter before thought_filter_process was split into one function per
+ * state.
  */
 #include <stdint.h>
 #include <stdio.h>

@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — `request_params_resolve` is split into sampling, output, watermark and token-limit steps
+- What: `request_params_resolve` (`src/api/request_params.c`) is `apply_sampling`, `apply_output`, `apply_watermark` and `clamp_max_tokens` around the copy of the server defaults; a request key is still taken whenever one is present, JSON mode still turns on from the request alone, and the stop list is still capped at `GEN_MAX_STOP`.
+- Why: finding 20.a; the function was complexity 31 in 47 lines and left the complexity baseline (362 -> 361).
+- Proof: new `tests/test_request_params_golden.c` hashes every field of the resulting `GenerationParams` (strings by content) over 100,000 generated request, defaults and limit triples (out-of-range values, every subset of the set bits, too many stop strings, missing request or defaults, non-positive limits); the hash was recorded from the old function and passes unchanged under gcc and clang. A live server returns identical bodies to the pre-change binary for 13 request shapes (limits, penalties, seeds, stops as list and string, JSON mode, ignore_eos, watermark, per-request template, zero and negative `max_tokens`, out-of-range temperature and top_p); `make test` gcc and clang.
+- Areas: `src/api/request_params.c`, `tests/test_request_params_golden.c`, `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — `semver_parse` is split into core, pre-release and tail steps
 - What: `semver_parse` (`src/update/semver.c`) is `parse_core` (the `[vV]major.minor.patch` part), `ends_version` (nothing left, a bare `-dirty`, or a git-describe suffix), `parse_prerelease` (`read_prerelease` for the tag and a trailing `-dirty`, `split_glued_describe` for a describe suffix glued onto it) and the build-metadata check.
 - Why: finding 20.a; `semver_parse` was complexity 30 in 31 lines and left the complexity baseline (363 -> 362).

@@ -14,7 +14,6 @@ tests/e2e_cross_site_post.sh 1
 tests/e2e_json_mode.sh 14
 tests/e2e_log_format.sh 2
 tests/e2e_max_prompt_bytes.sh 5
-tests/e2e_parallel.sh 19
 tests/e2e_prompt_cache.sh 2
 tests/e2e_vision_long_prompt.sh 4
 tests/golden_regression.sh 1

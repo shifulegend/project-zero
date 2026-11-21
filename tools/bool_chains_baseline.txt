@@ -7,7 +7,6 @@ src/api/json_scan.c 2
 src/api/selfcheck_endpoint.c 1
 src/cli/arg_values.c 2
 src/cli/args_flags_behavior.c 1
-src/cli/config_cmd.c 2
 src/cli/model_catalog.c 1
 src/cli/session_checks.c 1
 src/cli/session_dist.c 1

@@ -55,9 +55,6 @@ src/brand/block_font.c::tn_block_font_render 13 26 4
 src/cli/args.c::parse_args 21 47 3
 src/cli/args_flags_extras.c::args_parse_extras 28 56 11
 src/cli/args_flags_serving.c::args_parse_serving 20 37 8
-src/cli/config_cmd.c::ask_model 35 74 3
-src/cli/config_cmd.c::pz_config_command 42 103 6
-src/cli/config_cmd.c::pz_config_wizard_ex 14 25 2
 src/cli/md_render.c::md_process 17 52 3
 src/cli/model_catalog.c::pz_model_catalog 16 51 5
 src/cli/model_catalog.c::pz_model_download 13 61 1

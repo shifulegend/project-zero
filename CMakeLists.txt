@@ -336,6 +336,7 @@ set(CLI_SOURCES
     src/cli/arg_values.c
     src/cli/program_name.c
     src/cli/config_cmd.c
+    src/cli/config_wizard.c
     src/cli/model_catalog.c
     src/config/pz_config.c
     src/config/pz_config_parse.c

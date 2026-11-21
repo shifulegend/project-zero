@@ -40,20 +40,64 @@ static unsigned rnd(unsigned n) {
     return (unsigned)(g_rng % n);
 }
 
-static const char *const k_keys[] = {"threads", "top-p", "model", "kv-type", "stop", "cors-origin",
-                                     "no-calibrate", "quality-tolerance", "ctx_size", "seed",
-                                     "nope", "temperature", "Threads", "", "a b", "port"};
-static const char *const k_values[] = {
-    "8", "0", "-1", "1e3", "0.95", "true", "false", "yes", "f32", "i4", "i3", "\"x\"",
-    "\"a b\"", "\"esc\\n\\t\\\"q\\\"\"", "\"bad\\q\"", "\"unterminated", "abc", "8x", "1024",
-    "99999999999999999999", "[]", "[\"a\"]", "[\"a\", \"b\"]", "[a,b,c]", "[\"a\",]", "[,]",
-    "[\"a\" \"b\"]", "[\"a\"", "\"a\" # note", "8 # note", "8 junk", "[1, 2] junk", "[\"x\"] # c",
-    "{}", "'single'", "\"\"", ""};
-static const char *const k_seps[] = {" = ", "=", "\t=\t", "  =  ", " ", " == ", ": "};
-static const char *const k_other[] = {"", "# comment", "   # indented comment", "[table]",
-                                      "  [other] # t", "just words", "= 5", "key",
-                                      "key =", "\t", "   "};
-static const char *const k_eol[] = {"\n", "\r\n", "\n\n", "\n   \n"};
+static const char *const k_keys[]   = {"threads",      "top-p",
+                                       "model",        "kv-type",
+                                       "stop",         "cors-origin",
+                                       "no-calibrate", "quality-tolerance",
+                                       "ctx_size",     "seed",
+                                       "nope",         "temperature",
+                                       "Threads",      "",
+                                       "a b",          "port"};
+static const char *const k_values[] = {"8",
+                                       "0",
+                                       "-1",
+                                       "1e3",
+                                       "0.95",
+                                       "true",
+                                       "false",
+                                       "yes",
+                                       "f32",
+                                       "i4",
+                                       "i3",
+                                       "\"x\"",
+                                       "\"a b\"",
+                                       "\"esc\\n\\t\\\"q\\\"\"",
+                                       "\"bad\\q\"",
+                                       "\"unterminated",
+                                       "abc",
+                                       "8x",
+                                       "1024",
+                                       "99999999999999999999",
+                                       "[]",
+                                       "[\"a\"]",
+                                       "[\"a\", \"b\"]",
+                                       "[a,b,c]",
+                                       "[\"a\",]",
+                                       "[,]",
+                                       "[\"a\" \"b\"]",
+                                       "[\"a\"",
+                                       "\"a\" # note",
+                                       "8 # note",
+                                       "8 junk",
+                                       "[1, 2] junk",
+                                       "[\"x\"] # c",
+                                       "{}",
+                                       "'single'",
+                                       "\"\"",
+                                       ""};
+static const char *const k_seps[]   = {" = ", "=", "\t=\t", "  =  ", " ", " == ", ": "};
+static const char *const k_other[]  = {"",
+                                       "# comment",
+                                       "   # indented comment",
+                                       "[table]",
+                                       "  [other] # t",
+                                       "just words",
+                                       "= 5",
+                                       "key",
+                                       "key =",
+                                       "\t",
+                                       "   "};
+static const char *const k_eol[]    = {"\n", "\r\n", "\n\n", "\n   \n"};
 
 static void gen_line(char *out, size_t cap) {
     out[0] = '\0';
@@ -83,7 +127,8 @@ static void test_parse_golden(void) {
             strncat(text, line, sizeof text - strlen(text) - 1);
             strncat(text, k_eol[rnd(sizeof k_eol / sizeof *k_eol)], sizeof text - strlen(text) - 1);
         }
-        if (rnd(7) == 0) text[strlen(text) > 0 ? strlen(text) - 1 : 0] = '\0'; /* no final newline */
+        /* sometimes no final newline */
+        if (rnd(7) == 0) text[strlen(text) > 0 ? strlen(text) - 1 : 0] = '\0';
         PzConfig c;
         pz_config_init(&c);
         int loaded = pz_config_parse(&c, text, warn_hash);

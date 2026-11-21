@@ -27,21 +27,8 @@
 #include "sampling/sampling.h"
 #include "tokenizer/chat_template.h"
 #include "tokenizer/template_guard.h"
+#include "transformer/gen_prompt.h"
 #include "transformer/moe_ffn.h"
-
-/* Max messages rendered through the chat template in one call (system
- * prompt + history). Bounded so the role/content pointer arrays live on the
- * stack; 64 matches the API's CHAT_MAX_MESSAGES. */
-#define GEN_MAX_TEMPLATE_MESSAGES 65
-
-/* 2026-10-22: since untrusted text is neutralised instead of rejected, the
- * tokenizer only fails when the prompt does not fit in the context. */
-static void report_encode_failure(const char *what, int seq_len) {
-    TN_LOG_ERR("error",
-               "[error] the %s does not fit in the model's context of %d tokens. "
-               "Nothing was generated; shorten it or raise --ctx-size.\n",
-               what, seq_len);
-}
 
 static const char *token_text(const Tokenizer *tok, int id) {
     return (tok && tok->vocab && id >= 0 && id < tok->vocab_size && tok->vocab[id]) ? tok->vocab[id]
@@ -59,147 +46,6 @@ static void report_empty_generation(const Tokenizer *tok, int first_token, int l
                "(--chat-template-file replaces it) or run with --verbose.\n",
                first_token, token_text(tok, first_token), last_prompt_token,
                token_text(tok, last_prompt_token));
-}
-
-/* Renders and tokenizes the prompt into g->prompt_tokens / g->n_prompt.
- * Returns 0, or -1 when there is nothing to generate. */
-static int build_prompt(GenSession *g, const char *prompt) {
-    const Config *cfg          = g->model.cfg;
-    const GenerationParams *gp = g->req.gp;
-    Tokenizer *tok             = g->model.tok;
-    int n_prompt               = 0;
-
-    /* A request's own template (API "chat_template") wins over the model's. */
-    const char *chat_tmpl =
-        (gp->chat_template && gp->chat_template[0]) ? gp->chat_template : tok->chat_template;
-    /* Chat mode ends a turn at any CONTROL token the template never writes
-     * (Falcon3's ">>UNUSED_1<<"); raw prompts keep the declared EOG set. The
-     * set belongs to this session, so concurrent sessions never share it. */
-    g->req.chat_stops =
-        tokenizer_chat_stops_new(tok, (chat_tmpl && !gp->raw_prompt) ? chat_tmpl : NULL);
-    g->sampling.json_fsm.chat_stops = g->req.chat_stops;
-    if (chat_tmpl && !gp->raw_prompt) {
-        /* ── GGUF path: apply the model's own Jinja2 chat template ─────────
-         * The template itself renders BOS ({{ bos_token }}) so we must NOT
-         * prepend it manually — that would produce a double-BOS. */
-        const char *bos_str = (tok->bos_token_id >= 0 && tok->bos_token_id < tok->vocab_size)
-                                  ? tok->vocab[tok->bos_token_id]
-                                  : "";
-        const char *eos_str = (tok->eos_token_id >= 0 && tok->eos_token_id < tok->vocab_size)
-                                  ? tok->vocab[tok->eos_token_id]
-                                  : "";
-
-        /* Conversation to render: the caller's history when supplied,
-         * else the single prompt as one user turn; an optional system
-         * prompt goes first unless the history already opens with one. */
-        const char *roles[GEN_MAX_TEMPLATE_MESSAGES];
-        const char *contents[GEN_MAX_TEMPLATE_MESSAGES];
-        int n_msg = 0;
-        int history_has_system =
-            gp->n_messages > 0 && gp->roles && gp->roles[0] && strcmp(gp->roles[0], "system") == 0;
-        if (gp->system_prompt && gp->system_prompt[0] && !history_has_system) {
-            roles[n_msg]      = "system";
-            contents[n_msg++] = gp->system_prompt;
-        }
-        if (gp->n_messages > 0 && gp->roles && gp->contents) {
-            for (int i = 0; i < gp->n_messages && n_msg < GEN_MAX_TEMPLATE_MESSAGES; i++) {
-                roles[n_msg]      = gp->roles[i] ? gp->roles[i] : "user";
-                contents[n_msg++] = gp->contents[i] ? gp->contents[i] : "";
-            }
-        } else {
-            roles[n_msg]      = "user";
-            contents[n_msg++] = prompt;
-        }
-
-        /* Message text is content, never chat markup: a "<|im_end|>" typed by
-         * a user (or pasted from a document) must not close their turn
-         * (2026-10-22, prompt-injection defence; see tokenizer.h). */
-        char *safe[GEN_MAX_TEMPLATE_MESSAGES];
-        int n_safe = 0;
-        for (; n_safe < n_msg; n_safe++) {
-            safe[n_safe] = tokenizer_neutralize_control(tok, contents[n_safe]);
-            if (!safe[n_safe]) break;
-            contents[n_safe] = safe[n_safe];
-        }
-        int64_t t_step  = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-        char *formatted = n_safe < n_msg ? NULL
-                                         : chat_template_apply(chat_tmpl, roles, contents, n_msg,
-                                                               bos_str, eos_str,
-                                                               /*add_generation_prompt=*/1);
-        for (int i = 0; i < n_safe; i++) free(safe[i]);
-        if (t_step) {
-            tn_step_timing_add(TN_STEP_2_BOS_INJECTION, tn_step_timing_now_ns() - t_step);
-        }
-        if (!formatted) return -1;
-
-        if (g_tn_verbose) TN_LOG_DBG("dbg", "[DBG] formatted prompt: %s\n", formatted);
-
-        if (gp->assistant_prefix && gp->assistant_prefix[0]) {
-            size_t fl = strlen(formatted), al = strlen(gp->assistant_prefix);
-            char *joined = (char *)realloc(formatted, fl + al + 1);
-            if (!joined) {
-                free(formatted);
-                return -1;
-            }
-            memcpy(joined + fl, gp->assistant_prefix, al + 1);
-            formatted = joined;
-        }
-
-        /* A generation prompt that ends in the end-of-sequence token makes the
-         * model start a new document: generation stops at 0 tokens. */
-        if (tn_prompt_ends_with_token(formatted, eos_str)) tn_template_warn_eos_ending_once();
-
-        t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-        n_prompt =
-            tokenizer_encode(tok, formatted, strlen(formatted), g->prompt.tokens, cfg->seq_len);
-        if (t_step) {
-            tn_step_timing_add(TN_STEP_1_TOKENIZATION, tn_step_timing_now_ns() - t_step);
-        }
-        free(formatted);
-
-        if (n_prompt < 0) {
-            report_encode_failure("chat-formatted prompt", cfg->seq_len);
-            return -1;
-        }
-    } else {
-        /* ── Legacy path / --raw-prompt: raw prompt + manual BOS ─────────── */
-        /* 2026-10-19: honour tokenizer.ggml.add_bos_token — Qwen/SmolLM GGUFs
-         * say false, and llama.cpp feeds them no BOS. */
-        int bos = !tok->add_bos_token        ? -1
-                  : (cfg->bos_token_id > 0)  ? cfg->bos_token_id
-                  : (tok->bos_token_id >= 0) ? tok->bos_token_id
-                                             : -1;
-        if (bos >= 0) {
-            int64_t t_step               = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-            g->prompt.tokens[n_prompt++] = bos;
-            if (t_step) {
-                tn_step_timing_add(TN_STEP_2_BOS_INJECTION, tn_step_timing_now_ns() - t_step);
-            }
-        }
-
-        int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-        int n_encoded  = tokenizer_encode(tok, prompt, strlen(prompt), &g->prompt.tokens[n_prompt],
-                                          cfg->seq_len - n_prompt);
-        if (t_step) {
-            tn_step_timing_add(TN_STEP_1_TOKENIZATION, tn_step_timing_now_ns() - t_step);
-        }
-        if (n_encoded < 0) {
-            report_encode_failure("prompt", cfg->seq_len);
-            return -1;
-        }
-        n_prompt += n_encoded;
-        if (gp->assistant_prefix && gp->assistant_prefix[0]) {
-            int n_more = tokenizer_encode(tok, gp->assistant_prefix, strlen(gp->assistant_prefix),
-                                          &g->prompt.tokens[n_prompt], cfg->seq_len - n_prompt);
-            if (n_more < 0) {
-                report_encode_failure("assistant prefix", cfg->seq_len);
-                return -1;
-            }
-            n_prompt += n_more;
-        }
-    }
-    g->prompt.n_tokens = n_prompt;
-    return 0;
 }
 
 int gen_session_begin(GenSession *g, const Config *cfg, const TransformerWeights *w, RunState *s,
@@ -258,7 +104,7 @@ int gen_session_prepare(GenSession *g, const Config *cfg, const TransformerWeigh
     if (tn_size_mul_overflow((size_t)cfg->seq_len + 1, sizeof(int), &tok_bytes)) return -1;
     g->prompt.tokens = (int *)tn_safe_malloc(tok_bytes, "generate prompt tokens");
 
-    if (build_prompt(g, prompt) != 0) return -1;
+    if (gen_session_build_prompt(g, prompt) != 0) return -1;
     int n_prompt = g->prompt.n_tokens;
 
     /* Debug: print prompt token IDs when verbose */
@@ -518,7 +364,7 @@ void gen_session_end(GenSession *g) {
 
     /* 0 tokens in chat mode is almost always a chat-template problem, and the
      * API answer is an empty 200: say what happened (same style as
-     * report_encode_failure). */
+     * gen_prompt.c's report_encode_failure). */
     if (g->progress.empty_stop && g->progress.tokens_generated == 0 && !(gp && gp->raw_prompt))
         report_empty_generation(g->model.tok, g->progress.first_stop_token,
                                 g->progress.last_prompt_token);

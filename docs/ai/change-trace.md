@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — prompt building moves to gen_prompt.c and is split by path
+- What: `build_prompt` (`src/transformer/gen_session.c`) is now `gen_session_build_prompt` in `src/transformer/gen_prompt.c` (`include/transformer/gen_prompt.h`), a short driver over `build_chat_prompt` (template path: `template_messages`, `render_chat_template` with the control-token neutralising, `append_assistant_prefix`) and `build_raw_prompt` (`raw_bos_id`, assistant prefix encoding). Order of operations, step-timing brackets, warnings and error messages are unchanged. `gen_session.c` shrank from 548 to 394 lines (file-size baseline lowered).
+- Why: finding 20.a; `build_prompt` was complexity 51 in 111 lines and left the complexity baseline (380 -> 379).
+- Proof: CLI output identical to the baseline binary for SmolLM2, BitNet and DeepSeek-V2-Lite with default chat, `--raw-prompt`, `--system-prompt`, an over-long prompt (error text), a `--chat-template-file` override and `--verbose` (the only difference is the router debug line the baseline printed garbled, fixed earlier); `--mcts` output identical; a live server answers identical bodies for single and multi-turn history, a system message, an injected `<|im_end|>`, a per-request `chat_template`, `best_of`, `mcts` and an empty message list; `tests/e2e_parallel.sh` 6/6; `make test` gcc and clang.
+- Areas: `src/transformer/gen_session.c`, `src/transformer/gen_prompt.c`, `include/transformer/gen_prompt.h`, `CMakeLists.txt`, `tools/complexity_baseline.txt`, `tools/file_size_baseline.txt`.
+
 ### 2026-11-21 — tn_simd_init binds each kernel group in its own function
 - What: `tn_simd_init` (`src/math/simd_dispatch.c`) builds one `SimdSel` (CPU features, `TN_FORCE_BACKEND` cap, act-quant mode) and calls `bind_vector_ops`, `bind_unpack` and the packed-matmul tiers in the old priority order: `bind_vnni_512`, `bind_vnni_256`, `bind_avx_vnni`, then the AVX-512F and AVX2 float tiers, then the ARM dotprod and NEON tiers, then the scalar fallback. The same `TN_HAS_*` guards wrap the same tiers.
 - Why: finding 20.a; `tn_simd_init` was complexity 51 in 121 lines and left the complexity baseline (381 -> 380).

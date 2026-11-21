@@ -261,6 +261,7 @@ set(TRANSFORMER_SOURCES
     src/transformer/forward_head.c
     src/transformer/generate.c
     src/transformer/gen_session.c
+    src/transformer/gen_prompt.c
     src/transformer/gen_session_debug.c
     src/transformer/mla_attention.c
     src/transformer/moe_ffn.c

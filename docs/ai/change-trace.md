@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — the single-token forward pass is split into embed, layers, final norm and classifier
+- What: `transformer_forward` (`src/transformer/forward.c`) is a short driver over `forward_embed`, `forward_layers` (distributed ranges), `forward_layer` (Mamba or attention plus FFN), `forward_final_norm` and `forward_classifier`; classifier format checks are shared helpers (`cls_raw_is`, `cls_i4_ok`, `cls_i8_ok`) also used by `forward_rows_logits`.
+- Why: finding 20.a; `transformer_forward` was complexity 67, 176 lines, nesting 6 and left the complexity baseline; `forward_rows_logits` dropped from 19 to 13.
+- Proof: greedy output identical to the previous commit for BitNet (default and `--classifier int8`), SmolLM2 (all classifier modes), DeepSeek-V2-Lite and speculative decoding; `make test` gcc and clang; interleaved tok/s within noise.
+- Areas: `src/transformer/forward.c`, `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — chat-template lexer split into one function per token kind
 - What: `jinja_lex` (`src/tokenizer/chat_template_lex.cpp`) is a short driver over a `Lexer` cursor; text, comments, whitespace control, strings, integers, identifiers, closing delimiters and operators each have a small function, and the operators are tables (`k_two_char_ops`, `k_single_char_ops`). `chat_template_lex_digest` (new, exported) hashes a template's token stream.
 - Why: finding 20.a; `jinja_lex` was complexity 97, 200 lines, nesting 7 and left the complexity baseline (388 -> 387); every new function is within the limits.

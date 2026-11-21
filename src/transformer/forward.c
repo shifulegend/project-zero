@@ -47,230 +47,252 @@ static inline int64_t prof_now(void) {
     return (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec;
 }
 
-float *transformer_forward(int token, int pos, const Config *cfg, const TransformerWeights *w,
-                           RunState *s, const MoEConfig *mc, ThreadPool *tp) {
-    int dim = cfg->dim;
-
-    /* 2026-10-18: a RunState whose sliding window was never initialised maps
-   * every position to slot 0 (garbage attention). generate_ex() sets it up,
-   * but direct callers (the Phase 28 worker, --perplexity) got it wrong
-   * twice — default to a plain window over the whole cache instead. */
-    if (s->sw.window_size == 0) sw_init(&s->sw, s->max_seq_len, 0);
-
-    /* One-time check for profiling env var */
-
-    int64_t t0 = 0, t1 = 0, t2 = 0, t3 = 0, t4 = 0;
-    if (prof_enabled()) t0 = prof_now();
-
-    /* Step 1: Embed token → s->x (skip if token < 0, assuming caller injected s->x) */
-    if (token >= 0) {
-        if (token >= cfg->vocab_size) {
-            return s->logits;
-        }
-        int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-        if (w->q35.is_q2_0_model) {
-            embed_token_q2_0(s->x, token, w->q35.token_embd_raw, dim);
-        } else {
-            embed_token(s->x, token, w->embd_f32, w->token_embedding_table, dim);
-        }
-        if (t_step) {
-            tn_step_timing_add(TN_STEP_3_TOKEN_EMBEDDING, tn_step_timing_now_ns() - t_step);
-        }
-        DBG_MSG("token=%d  pos=%d\n", token, pos);
+/* Step 1: embed the token into s->x (skipped when token < 0: the caller injected s->x). Returns 0
+ * when the token is outside the vocabulary and the pass must stop. */
+static int forward_embed(int token, int pos, const Config *cfg, const TransformerWeights *w,
+                         RunState *s) {
+    if (token < 0) return 1;
+    if (token >= cfg->vocab_size) return 0;
+    int dim        = cfg->dim;
+    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    if (w->q35.is_q2_0_model) {
+        embed_token_q2_0(s->x, token, w->q35.token_embd_raw, dim);
+    } else {
+        embed_token(s->x, token, w->embd_f32, w->token_embedding_table, dim);
     }
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_3_TOKEN_EMBEDDING, tn_step_timing_now_ns() - t_step);
+    }
+    DBG_MSG("token=%d  pos=%d\n", token, pos);
+    return 1;
+}
 
-    if (prof_enabled()) t1 = prof_now();
+/* One layer: a Mamba block, or attention then the feed-forward block. */
+static void forward_layer(int l, int pos, const Config *cfg, const TransformerWeights *w,
+                          RunState *s, const MoEConfig *mc, ThreadPool *tp) {
+    int64_t la = 0, lb = 0;
+    if (prof_enabled()) la = prof_now();
+    if (mc && mc->is_ssm) {
+        /* Phase 22-SSM: a Mamba block replaces attention + FFN. */
+        mamba_block_forward(s->x, s->xb, s->xb2, s->mamba, w->mamba, cfg, mc, l, pos, tp);
+        if (prof_enabled()) lb = prof_now();
+    } else {
+        /* Phase 31: disk-backed KV — start reading the next layer's rows now. */
+        if (s->kvs.offload_base) {
+            if (l == 0) run_state_kv_prefetch_layer(s, cfg, 0, pos + 1);
+            run_state_kv_prefetch_layer(s, cfg, l + 1, pos + 1);
+        }
+        attention_forward(s, w, cfg, mc, l, pos, tp);
+        if (prof_enabled()) lb = prof_now();
+        ffn_forward(s, w, cfg, mc, l, tp);
+    }
+    if (prof_enabled()) {
+        int64_t lc = prof_now();
+        g_prof_attn_only_ns += (lb - la);
+        g_prof_ffn_only_ns += (lc - lb);
+    }
+    DBG_DUMP(l, "l_out", s->x, cfg->dim);
+    if (g_tn_verbose) {
+        char tag[48];
+        snprintf(tag, sizeof(tag), "L%02d post-layer x[dim=%d]", l, cfg->dim);
+        dbg_vec_stats(tag, s->x, cfg->dim);
+    }
+}
 
-    /* Step 2: Run through all transformer layers */
+/* Step 2: every transformer layer. Returns 0 when a remote layer range failed. */
+static int forward_layers(int pos, const Config *cfg, const TransformerWeights *w, RunState *s,
+                          const MoEConfig *mc, ThreadPool *tp) {
     DistPlan *dist = s->dist;
     for (int l = 0; l < cfg->n_layers; l++) {
         /* Phase 28: a contiguous range assigned to a remote worker runs there. */
         RemoteNode *rn = dist ? dist_plan_node_starting_at(dist, l) : NULL;
         if (rn) {
             if (dist_forward_remote(dist, rn, s->x, pos, s->sw.system_prompt_len) != TN_OK)
-                return s->logits;
+                return 0;
             l = rn->end - 1;
             continue;
         }
-        int64_t la = 0, lb = 0;
-        if (prof_enabled()) la = prof_now();
-        if (mc && mc->is_ssm) {
-            /* Phase 22-SSM: a Mamba block replaces attention + FFN. */
-            mamba_block_forward(s->x, s->xb, s->xb2, s->mamba, w->mamba, cfg, mc, l, pos, tp);
-            if (prof_enabled()) lb = prof_now();
-        } else {
-            /* Phase 31: disk-backed KV — start reading the next layer's rows now. */
-            if (s->kvs.offload_base) {
-                if (l == 0) run_state_kv_prefetch_layer(s, cfg, 0, pos + 1);
-                run_state_kv_prefetch_layer(s, cfg, l + 1, pos + 1);
-            }
-            attention_forward(s, w, cfg, mc, l, pos, tp);
-            if (prof_enabled()) lb = prof_now();
-            ffn_forward(s, w, cfg, mc, l, tp);
-        }
-        if (prof_enabled()) {
-            int64_t lc = prof_now();
-            g_prof_attn_only_ns += (lb - la);
-            g_prof_ffn_only_ns += (lc - lb);
-        }
-        DBG_DUMP(l, "l_out", s->x, dim);
-        if (g_tn_verbose) {
-            char tag[48];
-            snprintf(tag, sizeof(tag), "L%02d post-layer x[dim=%d]", l, dim);
-            dbg_vec_stats(tag, s->x, dim);
-        }
+        forward_layer(l, pos, cfg, w, s, mc, tp);
     }
+    return 1;
+}
 
-    if (prof_enabled()) t2 = prof_now();
-
-    /* Step 3: Final RMSNorm */
+/* Step 3: final RMSNorm. */
+static void forward_final_norm(const Config *cfg, const TransformerWeights *w, RunState *s) {
     if (w->rms_final_weight) {
         int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-        tn_rmsnorm(s->x, s->x, w->rms_final_weight, dim, cfg->rms_norm_eps);
+        tn_rmsnorm(s->x, s->x, w->rms_final_weight, cfg->dim, cfg->rms_norm_eps);
         if (t_step) {
             tn_step_timing_add(TN_STEP_18_FINAL_RMSNORM, tn_step_timing_now_ns() - t_step);
         }
     }
-    DBG_DUMP(-1, "result_norm", s->x, dim);
+    DBG_DUMP(-1, "result_norm", s->x, cfg->dim);
+}
 
-    if (prof_enabled()) t3 = prof_now();
+/* Which form of the LM head can run: a zero-copy quantized head of this type, or a materialized
+ * INT4 / INT8 copy when the selected classifier format asks for one. */
+static int cls_raw_is(const TransformerWeights *w, int type) {
+    return w->cls.raw && w->cls.raw_type == type;
+}
+static int cls_i4_ok(const TransformerWeights *w, TnClassifierFormat fmt) {
+    return fmt == TN_CLS_INT4 && w->cls.i4 && w->cls.i4_scales;
+}
+static int cls_i8_ok(const TransformerWeights *w, TnClassifierFormat fmt) {
+    return fmt >= TN_CLS_INT8 && w->cls.i8 && w->cls.i8_scales;
+}
 
-    /* Verbose: logits stats before classifier */
-    DBG_VEC("final-norm x", s->x, dim);
-
-    /* Step 4: Classifier matmul → logits
-   *
-   * Hardware-aware dispatch via TnHardwareProfile:
-   *   - INT4 when VNNI available (0.5 bytes/weight, 164 MB bandwidth)
-   *   - INT8 when VNNI or ARM dotprod available (1 byte, 328 MB)
-   *   - BF16 fallback for all other hardware (2 bytes, 656 MB)
-   *
-   * The hardware profile auto-selects the optimal format at startup.
-   * Weights are only quantized to the selected format (saves startup time).
-   * Quality preserved: LM head only needs relative ordering for sampling.
-   */
-    if (w->q35.is_q2_0_model) {
-        int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-        /* Use a materialized BF16/INT8/INT4 classifier copy when one was built
-     * (only happens when the user explicitly passed --classifier — see
-     * gguf_loader.c) instead of always falling back to the raw zero-copy
-     * Q2_0 path regardless of the requested format (the bug this replaces;
-     * see docs/ai/mistakes.md). Absent an explicit request, stay zero-copy. */
-        const TnHardwareProfile *hp_q2 = tn_hardware_profile_get();
-        TnClassifierFormat fmt_q2      = hp_q2 ? hp_q2->classifier_fmt : TN_CLS_BF16;
-        bool used_materialized         = false;
-        if (hp_q2 && hp_q2->classifier_explicit) {
-            if (fmt_q2 == TN_CLS_INT4 && w->cls.i4 && w->cls.i4_scales) {
-                parallel_matmul_i4(s->logits, s->x, w->cls.i4, w->cls.i4_scales, dim,
-                                   cfg->vocab_size, tp);
-                used_materialized = true;
-            } else if (fmt_q2 >= TN_CLS_INT8 && w->cls.i8 && w->cls.i8_scales) {
-                parallel_matmul_i8(s->logits, s->x, w->cls.i8, w->cls.i8_scales, dim,
-                                   cfg->vocab_size, tp);
-                used_materialized = true;
-            } else if (w->cls.w) {
-                parallel_matmul_bf16(s->logits, s->x, w->cls.w, dim, cfg->vocab_size, tp);
-                used_materialized = true;
-            }
-        }
-        if (!used_materialized) {
-            parallel_matmul_q2_0(s->logits, s->x, (const uint8_t *)w->q35.output_raw, dim,
-                                 cfg->vocab_size, tp);
-        }
-        if (t_step) {
-            tn_step_timing_add(TN_STEP_19_LM_HEAD, tn_step_timing_now_ns() - t_step);
-        }
-    } else if (w->cls.is_ternary) {
-        int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-        parallel_ternary_matmul_packed(s->logits, s->x, (const tn_u8 *)w->cls.w, dim,
-                                       cfg->vocab_size, w->cls.scale, tp);
-        if (t_step) {
-            tn_step_timing_add(TN_STEP_19_LM_HEAD, tn_step_timing_now_ns() - t_step);
-        }
+/* Classifier of a Q2_0 model. Uses a materialized BF16/INT8/INT4 classifier copy when one was
+ * built (only happens when the user explicitly passed --classifier — see gguf_loader.c) instead of
+ * always falling back to the raw zero-copy Q2_0 path regardless of the requested format (the bug
+ * this replaces; see docs/ai/mistakes.md). Absent an explicit request, stay zero-copy. */
+static int classify_materialized(const Config *cfg, const TransformerWeights *w, RunState *s,
+                                 ThreadPool *tp, TnClassifierFormat fmt) {
+    int dim = cfg->dim;
+    if (cls_i4_ok(w, fmt)) {
+        parallel_matmul_i4(s->logits, s->x, w->cls.i4, w->cls.i4_scales, dim, cfg->vocab_size, tp);
+    } else if (cls_i8_ok(w, fmt)) {
+        parallel_matmul_i8(s->logits, s->x, w->cls.i8, w->cls.i8_scales, dim, cfg->vocab_size, tp);
+    } else if (w->cls.w) {
+        parallel_matmul_bf16(s->logits, s->x, w->cls.w, dim, cfg->vocab_size, tp);
     } else {
-        const TnHardwareProfile *hp = tn_hardware_profile_get();
-        TnClassifierFormat fmt      = hp ? hp->classifier_fmt : TN_CLS_BF16;
-        int64_t t_step              = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-
-        if (w->cls.raw && w->cls.raw_type == GGUF_TYPE_Q6_K) {
-            /* zero-copy quantized head (2026-10-21, see weights.h) */
-            parallel_matmul_q6k(s->logits, s->x, (const uint8_t *)w->cls.raw, dim, cfg->vocab_size,
-                                tp);
-        } else if (w->cls.raw && w->cls.raw_type == GGUF_TYPE_Q4_K) {
-            parallel_matmul_q4k(s->logits, s->x, (const uint8_t *)w->cls.raw, dim, cfg->vocab_size,
-                                tp);
-        } else if (fmt == TN_CLS_INT4 && w->cls.i4 && w->cls.i4_scales) {
-            parallel_matmul_i4(s->logits, s->x, w->cls.i4, w->cls.i4_scales, dim, cfg->vocab_size,
-                               tp);
-        } else if (fmt >= TN_CLS_INT8 && w->cls.i8 && w->cls.i8_scales) {
-            parallel_matmul_i8(s->logits, s->x, w->cls.i8, w->cls.i8_scales, dim, cfg->vocab_size,
-                               tp);
-        } else {
-            parallel_matmul_bf16(s->logits, s->x, w->cls.w, dim, cfg->vocab_size, tp);
-        }
-        if (t_step) {
-            tn_step_timing_add(TN_STEP_19_LM_HEAD, tn_step_timing_now_ns() - t_step);
-        }
+        return 0;
     }
+    return 1;
+}
 
-    /* Step 19: dump top-8 logit values + their token indices for LM head verification */
-    if (g_dump_fp) {
-        /* Find top-8 logit indices by partial selection sort */
-        float top_vals[8];
-        int top_idx[8];
-        int visited[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-        /* store top-8 by scanning vocab once per pick (8 passes, each O(vocab)) */
-        int vocab = cfg->vocab_size;
-        for (int k = 0; k < 8; k++) {
-            float best = -1e30f;
-            int bi     = 0;
-            for (int i = 0; i < vocab; i++) {
-                int already = 0;
-                for (int j = 0; j < k; j++)
-                    if (top_idx[j] == i) {
-                        already = 1;
-                        break;
-                    }
-                if (!already && s->logits[i] > best) {
-                    best = s->logits[i];
-                    bi   = i;
-                }
+static void classify_q2_0(const Config *cfg, const TransformerWeights *w, RunState *s,
+                          ThreadPool *tp) {
+    const TnHardwareProfile *hp = tn_hardware_profile_get();
+    TnClassifierFormat fmt      = hp ? hp->classifier_fmt : TN_CLS_BF16;
+    if (hp && hp->classifier_explicit && classify_materialized(cfg, w, s, tp, fmt)) return;
+    parallel_matmul_q2_0(s->logits, s->x, (const uint8_t *)w->q35.output_raw, cfg->dim,
+                         cfg->vocab_size, tp);
+}
+
+/* Hardware-aware dispatch via TnHardwareProfile:
+ *   - INT4 when VNNI available (0.5 bytes/weight, 164 MB bandwidth)
+ *   - INT8 when VNNI or ARM dotprod available (1 byte, 328 MB)
+ *   - BF16 fallback for all other hardware (2 bytes, 656 MB)
+ * The hardware profile auto-selects the optimal format at startup. Weights are only quantized to
+ * the selected format (saves startup time). Quality preserved: the LM head only needs relative
+ * ordering for sampling. */
+static void classify_generic(const Config *cfg, const TransformerWeights *w, RunState *s,
+                             ThreadPool *tp) {
+    int dim                     = cfg->dim;
+    const TnHardwareProfile *hp = tn_hardware_profile_get();
+    TnClassifierFormat fmt      = hp ? hp->classifier_fmt : TN_CLS_BF16;
+    if (cls_raw_is(w, GGUF_TYPE_Q6_K)) { /* zero-copy quantized head (2026-10-21, see weights.h) */
+        parallel_matmul_q6k(s->logits, s->x, (const uint8_t *)w->cls.raw, dim, cfg->vocab_size, tp);
+        return;
+    }
+    if (cls_raw_is(w, GGUF_TYPE_Q4_K)) {
+        parallel_matmul_q4k(s->logits, s->x, (const uint8_t *)w->cls.raw, dim, cfg->vocab_size, tp);
+        return;
+    }
+    if (cls_i4_ok(w, fmt)) {
+        parallel_matmul_i4(s->logits, s->x, w->cls.i4, w->cls.i4_scales, dim, cfg->vocab_size, tp);
+        return;
+    }
+    if (cls_i8_ok(w, fmt)) {
+        parallel_matmul_i8(s->logits, s->x, w->cls.i8, w->cls.i8_scales, dim, cfg->vocab_size, tp);
+        return;
+    }
+    parallel_matmul_bf16(s->logits, s->x, w->cls.w, dim, cfg->vocab_size, tp);
+}
+
+/* Step 4: classifier matmul -> logits (Q2_0, ternary or the generic dispatch above). */
+static void forward_classifier(const Config *cfg, const TransformerWeights *w, RunState *s,
+                               ThreadPool *tp) {
+    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    if (w->q35.is_q2_0_model) {
+        classify_q2_0(cfg, w, s, tp);
+    } else if (w->cls.is_ternary) {
+        parallel_ternary_matmul_packed(s->logits, s->x, (const tn_u8 *)w->cls.w, cfg->dim,
+                                       cfg->vocab_size, w->cls.scale, tp);
+    } else {
+        classify_generic(cfg, w, s, tp);
+    }
+    if (t_step) {
+        tn_step_timing_add(TN_STEP_19_LM_HEAD, tn_step_timing_now_ns() - t_step);
+    }
+}
+
+static int already_picked(const int *picked, int n, int idx) {
+    for (int j = 0; j < n; j++)
+        if (picked[j] == idx) return 1;
+    return 0;
+}
+
+/* Step 19: dump the top-8 logit values and their token indices for LM head verification. */
+static void dump_top8_logits(const Config *cfg, const RunState *s) {
+    float top_vals[8];
+    int top_idx[8];
+    /* top-8 by scanning the vocabulary once per pick (8 passes, each O(vocab)) */
+    int vocab = cfg->vocab_size;
+    for (int k = 0; k < 8; k++) {
+        float best = -1e30f;
+        int bi     = 0;
+        for (int i = 0; i < vocab; i++) {
+            if (!already_picked(top_idx, k, i) && s->logits[i] > best) {
+                best = s->logits[i];
+                bi   = i;
             }
-            top_vals[k] = best;
-            top_idx[k]  = bi;
-            (void)visited;
         }
-        /* Dump as a synthetic 8-element vector tagged "lm_head_top8" */
-        DBG_DUMP(-1, "lm_head_top8", top_vals, 8);
-        /* Also dump the corresponding token indices as floats for reference */
-        float idx_f[8];
-        for (int k = 0; k < 8; k++) idx_f[k] = (float)top_idx[k];
-        DBG_DUMP(-1, "lm_head_top8_idx", idx_f, 8);
+        top_vals[k] = best;
+        top_idx[k]  = bi;
     }
+    /* Dump as a synthetic 8-element vector tagged "lm_head_top8" */
+    DBG_DUMP(-1, "lm_head_top8", top_vals, 8);
+    /* Also dump the corresponding token indices as floats for reference */
+    float idx_f[8];
+    for (int k = 0; k < 8; k++) idx_f[k] = (float)top_idx[k];
+    DBG_DUMP(-1, "lm_head_top8_idx", idx_f, 8);
+}
 
+/* TN_PROFILE=1: accumulates the per-component times of one token and prints the running averages
+ * on every 20th. t0..t4 bracket embed, layers, final norm and classifier. */
+static void profile_token(int64_t t0, int64_t t1, int64_t t2, int64_t t3, int64_t t4) {
+    g_prof_embed_ns += (t1 - t0);
+    g_prof_attn_ns += (t2 - t1); /* attn + ffn combined (layers) */
+    g_prof_norm_ns += (t3 - t2);
+    g_prof_cls_ns += (t4 - t3);
+    g_prof_total_ns += (t4 - t0);
+    g_prof_tokens++;
+    if (g_prof_tokens % 20 != 0) return;
+    double ms = 1e-6;
+    TN_LOG_INF("profile",
+               "[PROFILE %d tok] embed=%.2f ms  layers=%.2f ms "
+               "(attn=%.2f ffn=%.2f)  "
+               "norm=%.2f ms  classifier=%.2f ms  TOTAL=%.2f ms\n",
+               g_prof_tokens, g_prof_embed_ns * ms / g_prof_tokens,
+               g_prof_attn_ns * ms / g_prof_tokens, g_prof_attn_only_ns * ms / g_prof_tokens,
+               g_prof_ffn_only_ns * ms / g_prof_tokens, g_prof_norm_ns * ms / g_prof_tokens,
+               g_prof_cls_ns * ms / g_prof_tokens, g_prof_total_ns * ms / g_prof_tokens);
+}
+
+float *transformer_forward(int token, int pos, const Config *cfg, const TransformerWeights *w,
+                           RunState *s, const MoEConfig *mc, ThreadPool *tp) {
+    /* 2026-10-18: a RunState whose sliding window was never initialised maps
+   * every position to slot 0 (garbage attention). generate_ex() sets it up,
+   * but direct callers (the Phase 28 worker, --perplexity) got it wrong
+   * twice — default to a plain window over the whole cache instead. */
+    if (s->sw.window_size == 0) sw_init(&s->sw, s->max_seq_len, 0);
+
+    int64_t t0 = 0, t1 = 0, t2 = 0, t3 = 0, t4 = 0;
+    if (prof_enabled()) t0 = prof_now();
+    if (!forward_embed(token, pos, cfg, w, s)) return s->logits;
+    if (prof_enabled()) t1 = prof_now();
+    if (!forward_layers(pos, cfg, w, s, mc, tp)) return s->logits;
+    if (prof_enabled()) t2 = prof_now();
+    forward_final_norm(cfg, w, s);
+    if (prof_enabled()) t3 = prof_now();
+    DBG_VEC("final-norm x", s->x, cfg->dim); /* verbose: stats before the classifier */
+    forward_classifier(cfg, w, s, tp);
+    if (g_dump_fp) dump_top8_logits(cfg, s);
     if (prof_enabled()) {
         t4 = prof_now();
-        g_prof_embed_ns += (t1 - t0);
-        g_prof_attn_ns += (t2 - t1); /* attn + ffn combined (layers) */
-        g_prof_norm_ns += (t3 - t2);
-        g_prof_cls_ns += (t4 - t3);
-        g_prof_total_ns += (t4 - t0);
-        g_prof_tokens++;
-
-        if (g_prof_tokens % 20 == 0) {
-            double ms = 1e-6;
-            TN_LOG_INF("profile",
-                       "[PROFILE %d tok] embed=%.2f ms  layers=%.2f ms "
-                       "(attn=%.2f ffn=%.2f)  "
-                       "norm=%.2f ms  classifier=%.2f ms  TOTAL=%.2f ms\n",
-                       g_prof_tokens, g_prof_embed_ns * ms / g_prof_tokens,
-                       g_prof_attn_ns * ms / g_prof_tokens,
-                       g_prof_attn_only_ns * ms / g_prof_tokens,
-                       g_prof_ffn_only_ns * ms / g_prof_tokens, g_prof_norm_ns * ms / g_prof_tokens,
-                       g_prof_cls_ns * ms / g_prof_tokens, g_prof_total_ns * ms / g_prof_tokens);
-        }
+        profile_token(t0, t1, t2, t3, t4);
     }
-
     return s->logits;
 }
 
@@ -305,16 +327,16 @@ static void forward_rows_logits(SpecBatchScratch *sb, const TransformerWeights *
         const TnHardwareProfile *hp = tn_hardware_profile_get();
         TnClassifierFormat fmt      = hp ? hp->classifier_fmt : TN_CLS_BF16;
 
-        if (w->cls.raw && w->cls.raw_type == GGUF_TYPE_Q6_K) {
+        if (cls_raw_is(w, GGUF_TYPE_Q6_K)) {
             parallel_matmul_q6k_tokens(logits_out, sb->x, (const uint8_t *)w->cls.raw, dim,
                                        cfg->vocab_size, n_tokens, tp);
-        } else if (w->cls.raw && w->cls.raw_type == GGUF_TYPE_Q4_K) {
+        } else if (cls_raw_is(w, GGUF_TYPE_Q4_K)) {
             parallel_matmul_q4k_tokens(logits_out, sb->x, (const uint8_t *)w->cls.raw, dim,
                                        cfg->vocab_size, n_tokens, tp);
-        } else if (fmt == TN_CLS_INT4 && w->cls.i4 && w->cls.i4_scales) {
+        } else if (cls_i4_ok(w, fmt)) {
             tn_matmul_i4_batch(logits_out, sb->x, w->cls.i4, w->cls.i4_scales, dim, cfg->vocab_size,
                                n_tokens, tp);
-        } else if (fmt >= TN_CLS_INT8 && w->cls.i8 && w->cls.i8_scales) {
+        } else if (cls_i8_ok(w, fmt)) {
             tn_matmul_i8_batch(logits_out, sb->x, w->cls.i8, w->cls.i8_scales, dim, cfg->vocab_size,
                                n_tokens, tp);
         } else {

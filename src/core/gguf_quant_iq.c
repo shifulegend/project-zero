@@ -4,11 +4,12 @@
  * Split out of the former single gguf_quant.c (Phase 34.2b); the public entry points are declared in
  * include/core/gguf_quant.h. Block layout references: llama.cpp ggml-quants.h (public domain / MIT).
  */
-#include <math.h>
+
 #include <stdint.h>
 #include <string.h>
 
 #include "core/fp16.h"
+#include "core/gguf_dequant_blocks.h"
 #include "core/gguf_quant.h"
 
 /* ── IQ4_NL ───────────────────────────────────────────────────────────────── */
@@ -28,23 +29,21 @@
 static const int8_t kvalues_iq4nl[16] = {-127, -104, -83, -65, -49, -35, -22, -10,
                                          1,    13,   25,  38,  53,  69,  89,  113};
 
-void gguf_dequant_iq4_nl(float *out, const void *data, size_t n_elems) {
-    const uint8_t *p = (const uint8_t *)data;
-    size_t n_blocks  = n_elems / IQ4_NL_BLOCK_SIZE;
-
-    for (size_t b = 0; b < n_blocks; b++) {
-        const uint8_t *blk = p + b * IQ4_NL_BYTES_PER_BLOCK;
-        float d            = tn_fp16_load(blk);
-        if (!(d == d)) d = 0.0f; /* NaN guard: bad scale → zero block */
-        const uint8_t *qs = blk + 2;
-        float *dst        = out + b * IQ4_NL_BLOCK_SIZE;
-        for (int i = 0; i < IQ4_NL_BLOCK_SIZE / 2; i++) {
-            dst[i]      = d * (float)kvalues_iq4nl[qs[i] & 0xF];
-            dst[i + 16] = d * (float)kvalues_iq4nl[qs[i] >> 4];
-        }
+static void iq4_nl_block(float *dst, const uint8_t *blk) {
+    float d = tn_fp16_load(blk);
+    if (!(d == d)) d = 0.0f; /* NaN guard: bad scale → zero block */
+    const uint8_t *qs = blk + 2;
+    for (int i = 0; i < IQ4_NL_BLOCK_SIZE / 2; i++) {
+        dst[i]      = d * (float)kvalues_iq4nl[qs[i] & 0xF];
+        dst[i + 16] = d * (float)kvalues_iq4nl[qs[i] >> 4];
     }
-    size_t done = n_blocks * IQ4_NL_BLOCK_SIZE;
-    for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
+}
+
+void gguf_dequant_iq4_nl(float *out, const void *data, size_t n_elems) {
+    gguf_dequant_zero_tail(out,
+                           gguf_dequant_blocks(out, data, n_elems, IQ4_NL_BLOCK_SIZE,
+                                               IQ4_NL_BYTES_PER_BLOCK, iq4_nl_block),
+                           n_elems);
 }
 
 /* ── IQ4_XS ───────────────────────────────────────────────────────────────── */
@@ -59,37 +58,33 @@ void gguf_dequant_iq4_nl(float *out, const void *data, size_t n_elems) {
 #define IQ4_XS_SUPER 256
 #define IQ4_XS_BYTES 136
 
-void gguf_dequant_iq4_xs(float *out, const void *data, size_t n_elems) {
-    const uint8_t *p = (const uint8_t *)data;
-    size_t n_super   = n_elems / IQ4_XS_SUPER;
+static void iq4_xs_block(float *dst, const uint8_t *blk) {
+    uint16_t d_bits;
+    memcpy(&d_bits, blk, 2);
+    uint16_t scales_h;
+    memcpy(&scales_h, blk + 2, 2);
+    const uint8_t *scales_l = blk + 4; /* 4 bytes */
+    const uint8_t *qs_base  = blk + 8; /* 128 bytes */
+    float d                 = tn_fp16_to_f32(d_bits);
+    if (!(d == d)) d = 0.0f; /* NaN guard */
 
-    for (size_t b = 0; b < n_super; b++) {
-        const uint8_t *blk = p + b * IQ4_XS_BYTES;
-        uint16_t d_bits;
-        memcpy(&d_bits, blk, 2);
-        uint16_t scales_h;
-        memcpy(&scales_h, blk + 2, 2);
-        const uint8_t *scales_l = blk + 4; /* 4 bytes */
-        const uint8_t *qs_base  = blk + 8; /* 128 bytes */
-        float d                 = tn_fp16_to_f32(d_bits);
-        if (!(d == d)) d = 0.0f; /* NaN guard */
-
-        float *dst        = out + b * IQ4_XS_SUPER;
-        const uint8_t *qs = qs_base;
-        for (int ib = 0; ib < IQ4_XS_SUPER / 32; ib++) {
-            int ls =
-                ((scales_l[ib / 2] >> (4 * (ib % 2))) & 0xF) | (((scales_h >> (2 * ib)) & 3) << 4);
-            float dl = d * (float)(ls - 32);
-            for (int j = 0; j < 16; j++) {
-                dst[j + 0]  = dl * (float)kvalues_iq4nl[qs[j] & 0xF];
-                dst[j + 16] = dl * (float)kvalues_iq4nl[qs[j] >> 4];
-            }
-            dst += 32;
-            qs += 16;
+    const uint8_t *qs = qs_base;
+    for (int ib = 0; ib < IQ4_XS_SUPER / 32; ib++) {
+        int ls = ((scales_l[ib / 2] >> (4 * (ib % 2))) & 0xF) | (((scales_h >> (2 * ib)) & 3) << 4);
+        float dl = d * (float)(ls - 32);
+        for (int j = 0; j < 16; j++) {
+            dst[j + 0]  = dl * (float)kvalues_iq4nl[qs[j] & 0xF];
+            dst[j + 16] = dl * (float)kvalues_iq4nl[qs[j] >> 4];
         }
+        dst += 32;
+        qs += 16;
     }
-    size_t done = n_super * IQ4_XS_SUPER;
-    for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
+}
+
+void gguf_dequant_iq4_xs(float *out, const void *data, size_t n_elems) {
+    gguf_dequant_zero_tail(
+        out, gguf_dequant_blocks(out, data, n_elems, IQ4_XS_SUPER, IQ4_XS_BYTES, iq4_xs_block),
+        n_elems);
 }
 
 /* ── IQ2_XXS codebook tables ─────────────────────────────────────────────────
@@ -191,33 +186,30 @@ static const uint64_t iq2xxs_grid[256] = {
 #define IQ2_XXS_SUPER 256
 #define IQ2_XXS_BYTES 66
 
-void gguf_dequant_iq2_xxs(float *out, const void *data, size_t n_elems) {
-    const uint8_t *p = (const uint8_t *)data;
-    size_t n_super   = n_elems / IQ2_XXS_SUPER;
+static void iq2_xxs_block(float *dst, const uint8_t *blk) {
+    float d = tn_fp16_load(blk);
+    if (!(d == d)) d = 0.0f;     /* NaN guard */
+    const uint8_t *qs = blk + 2; /* 64 bytes = 16 groups of 4 bytes = 8 * 2 u32 */
 
-    for (size_t b = 0; b < n_super; b++) {
-        const uint8_t *blk = p + b * IQ2_XXS_BYTES;
-        float d            = tn_fp16_load(blk);
-        if (!(d == d)) d = 0.0f;     /* NaN guard */
-        const uint8_t *qs = blk + 2; /* 64 bytes = 16 groups of 4 bytes = 8 * 2 u32 */
-
-        float *dst = out + b * IQ2_XXS_SUPER;
-        for (int ib32 = 0; ib32 < IQ2_XXS_SUPER / 32; ib32++) {
-            uint32_t aux32[2];
-            memcpy(aux32, qs + 8 * ib32, 8);
-            const uint8_t *aux8 = (const uint8_t *)aux32;
-            float db            = d * (0.5f + (float)(aux32[1] >> 28)) * 0.25f;
-            for (int l = 0; l < 4; l++) {
-                const uint8_t *grid = (const uint8_t *)(iq2xxs_grid + aux8[l]);
-                uint8_t signs       = ksigns_iq2xs[(aux32[1] >> (7 * l)) & 127];
-                for (int j = 0; j < 8; j++)
-                    dst[j] = db * (float)grid[j] * ((signs & kmask_iq2xs[j]) ? -1.0f : 1.0f);
-                dst += 8;
-            }
+    for (int ib32 = 0; ib32 < IQ2_XXS_SUPER / 32; ib32++) {
+        uint32_t aux32[2];
+        memcpy(aux32, qs + 8 * ib32, 8);
+        const uint8_t *aux8 = (const uint8_t *)aux32;
+        float db            = d * (0.5f + (float)(aux32[1] >> 28)) * 0.25f;
+        for (int l = 0; l < 4; l++) {
+            const uint8_t *grid = (const uint8_t *)(iq2xxs_grid + aux8[l]);
+            uint8_t signs       = ksigns_iq2xs[(aux32[1] >> (7 * l)) & 127];
+            for (int j = 0; j < 8; j++)
+                dst[j] = db * (float)grid[j] * ((signs & kmask_iq2xs[j]) ? -1.0f : 1.0f);
+            dst += 8;
         }
     }
-    size_t done = n_super * IQ2_XXS_SUPER;
-    for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
+}
+
+void gguf_dequant_iq2_xxs(float *out, const void *data, size_t n_elems) {
+    gguf_dequant_zero_tail(
+        out, gguf_dequant_blocks(out, data, n_elems, IQ2_XXS_SUPER, IQ2_XXS_BYTES, iq2_xxs_block),
+        n_elems);
 }
 
 /* ── IQ2_XS / IQ2_S codebook tables ──────────────────────────────────────────
@@ -630,35 +622,32 @@ static const uint64_t iq2s_grid[1024] = {
 #define IQ2_XS_SUPER 256
 #define IQ2_XS_BYTES 74
 
-void gguf_dequant_iq2_xs(float *out, const void *data, size_t n_elems) {
-    const uint8_t *p = (const uint8_t *)data;
-    size_t n_super   = n_elems / IQ2_XS_SUPER;
+static void iq2_xs_block(float *dst, const uint8_t *blk) {
+    float d = tn_fp16_load(blk);
+    if (!(d == d)) d = 0.0f;                             /* NaN guard */
+    const uint16_t *qs    = (const uint16_t *)(blk + 2); /* 32 u16 = 64 bytes */
+    const uint8_t *scales = blk + 2 + 64;                /* 8 bytes */
 
-    for (size_t b = 0; b < n_super; b++) {
-        const uint8_t *blk = p + b * IQ2_XS_BYTES;
-        float d            = tn_fp16_load(blk);
-        if (!(d == d)) d = 0.0f;                             /* NaN guard */
-        const uint16_t *qs    = (const uint16_t *)(blk + 2); /* 32 u16 = 64 bytes */
-        const uint8_t *scales = blk + 2 + 64;                /* 8 bytes */
-
-        float *dst = out + b * IQ2_XS_SUPER;
-        for (int ib32 = 0; ib32 < IQ2_XS_SUPER / 32; ib32++) {
-            float db[2];
-            db[0] = d * (0.5f + (float)(scales[ib32] & 0xF)) * 0.25f;
-            db[1] = d * (0.5f + (float)(scales[ib32] >> 4)) * 0.25f;
-            for (int l = 0; l < 4; l++) {
-                uint16_t word       = qs[4 * ib32 + l];
-                const uint8_t *grid = (const uint8_t *)(iq2xs_grid + (word & 511));
-                uint8_t signs       = ksigns_iq2xs[word >> 9];
-                float dl            = db[l / 2];
-                for (int j = 0; j < 8; j++)
-                    dst[j] = dl * (float)grid[j] * ((signs & kmask_iq2xs[j]) ? -1.0f : 1.0f);
-                dst += 8;
-            }
+    for (int ib32 = 0; ib32 < IQ2_XS_SUPER / 32; ib32++) {
+        float db[2];
+        db[0] = d * (0.5f + (float)(scales[ib32] & 0xF)) * 0.25f;
+        db[1] = d * (0.5f + (float)(scales[ib32] >> 4)) * 0.25f;
+        for (int l = 0; l < 4; l++) {
+            uint16_t word       = qs[4 * ib32 + l];
+            const uint8_t *grid = (const uint8_t *)(iq2xs_grid + (word & 511));
+            uint8_t signs       = ksigns_iq2xs[word >> 9];
+            float dl            = db[l / 2];
+            for (int j = 0; j < 8; j++)
+                dst[j] = dl * (float)grid[j] * ((signs & kmask_iq2xs[j]) ? -1.0f : 1.0f);
+            dst += 8;
         }
     }
-    size_t done = n_super * IQ2_XS_SUPER;
-    for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
+}
+
+void gguf_dequant_iq2_xs(float *out, const void *data, size_t n_elems) {
+    gguf_dequant_zero_tail(
+        out, gguf_dequant_blocks(out, data, n_elems, IQ2_XS_SUPER, IQ2_XS_BYTES, iq2_xs_block),
+        n_elems);
 }
 
 /* ── IQ2_S ────────────────────────────────────────────────────────────────── */
@@ -674,39 +663,36 @@ void gguf_dequant_iq2_xs(float *out, const void *data, size_t n_elems) {
 #define IQ2_S_SUPER 256
 #define IQ2_S_BYTES 82
 
-void gguf_dequant_iq2_s(float *out, const void *data, size_t n_elems) {
-    const uint8_t *p = (const uint8_t *)data;
-    size_t n_super   = n_elems / IQ2_S_SUPER;
+static void iq2_s_block(float *dst, const uint8_t *blk) {
+    float d = tn_fp16_load(blk);
+    if (!(d == d)) d = 0.0f;                   /* NaN guard */
+    const uint8_t *qs_base = blk + 2;          /* 64 bytes: idx[32] + signs[32] */
+    const uint8_t *qh      = blk + 2 + 64;     /* 8 bytes */
+    const uint8_t *scales  = blk + 2 + 64 + 8; /* 8 bytes */
 
-    for (size_t b = 0; b < n_super; b++) {
-        const uint8_t *blk = p + b * IQ2_S_BYTES;
-        float d            = tn_fp16_load(blk);
-        if (!(d == d)) d = 0.0f;                   /* NaN guard */
-        const uint8_t *qs_base = blk + 2;          /* 64 bytes: idx[32] + signs[32] */
-        const uint8_t *qh      = blk + 2 + 64;     /* 8 bytes */
-        const uint8_t *scales  = blk + 2 + 64 + 8; /* 8 bytes */
-
-        float *dst           = out + b * IQ2_S_SUPER;
-        const uint8_t *qs    = qs_base;
-        const uint8_t *signs = qs_base + IQ2_S_SUPER / 8; /* offset 32 */
-        for (int ib32 = 0; ib32 < IQ2_S_SUPER / 32; ib32++) {
-            float db[2];
-            db[0] = d * (0.5f + (float)(scales[ib32] & 0xF)) * 0.25f;
-            db[1] = d * (0.5f + (float)(scales[ib32] >> 4)) * 0.25f;
-            for (int l = 0; l < 4; l++) {
-                float dl     = db[l / 2];
-                unsigned idx = (unsigned)qs[l] | (((unsigned)qh[ib32] << (8 - 2 * l)) & 0x300u);
-                const uint8_t *grid = (const uint8_t *)(iq2s_grid + idx);
-                for (int j = 0; j < 8; j++)
-                    dst[j] = dl * (float)grid[j] * ((signs[l] & kmask_iq2xs[j]) ? -1.0f : 1.0f);
-                dst += 8;
-            }
-            qs += 4;
-            signs += 4;
+    const uint8_t *qs    = qs_base;
+    const uint8_t *signs = qs_base + IQ2_S_SUPER / 8; /* offset 32 */
+    for (int ib32 = 0; ib32 < IQ2_S_SUPER / 32; ib32++) {
+        float db[2];
+        db[0] = d * (0.5f + (float)(scales[ib32] & 0xF)) * 0.25f;
+        db[1] = d * (0.5f + (float)(scales[ib32] >> 4)) * 0.25f;
+        for (int l = 0; l < 4; l++) {
+            float dl            = db[l / 2];
+            unsigned idx        = (unsigned)qs[l] | (((unsigned)qh[ib32] << (8 - 2 * l)) & 0x300u);
+            const uint8_t *grid = (const uint8_t *)(iq2s_grid + idx);
+            for (int j = 0; j < 8; j++)
+                dst[j] = dl * (float)grid[j] * ((signs[l] & kmask_iq2xs[j]) ? -1.0f : 1.0f);
+            dst += 8;
         }
+        qs += 4;
+        signs += 4;
     }
-    size_t done = n_super * IQ2_S_SUPER;
-    for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
+}
+
+void gguf_dequant_iq2_s(float *out, const void *data, size_t n_elems) {
+    gguf_dequant_zero_tail(
+        out, gguf_dequant_blocks(out, data, n_elems, IQ2_S_SUPER, IQ2_S_BYTES, iq2_s_block),
+        n_elems);
 }
 
 /* ── IQ3_XXS / IQ3_S codebook tables ─────────────────────────────────────────
@@ -831,40 +817,35 @@ static const uint32_t iq3s_grid[512] = {
 #define IQ3_XXS_SUPER 256
 #define IQ3_XXS_BYTES 98
 
-void gguf_dequant_iq3_xxs(float *out, const void *data, size_t n_elems) {
-    const uint8_t *p = (const uint8_t *)data;
-    size_t n_super   = n_elems / IQ3_XXS_SUPER;
+static void iq3_xxs_block(float *dst, const uint8_t *blk) {
+    float d = tn_fp16_load(blk);
+    if (!(d == d)) d = 0.0f;                                       /* NaN guard */
+    const uint8_t *qs_base          = blk + 2;                     /* 96 bytes */
+    const uint8_t *scales_and_signs = qs_base + IQ3_XXS_SUPER / 4; /* offset 64 */
 
-    for (size_t b = 0; b < n_super; b++) {
-        const uint8_t *blk = p + b * IQ3_XXS_BYTES;
-        float d            = tn_fp16_load(blk);
-        if (!(d == d)) d = 0.0f;                                       /* NaN guard */
-        const uint8_t *qs_base          = blk + 2;                     /* 96 bytes */
-        const uint8_t *scales_and_signs = qs_base + IQ3_XXS_SUPER / 4; /* offset 64 */
-
-        float *dst        = out + b * IQ3_XXS_SUPER;
-        const uint8_t *qs = qs_base;
-        for (int ib32 = 0; ib32 < IQ3_XXS_SUPER / 32; ib32++) {
-            uint32_t aux32;
-            memcpy(&aux32, scales_and_signs + 4 * ib32, 4);
-            float db = d * (0.5f + (float)(aux32 >> 28)) * 0.5f;
-            for (int l = 0; l < 4; l++) {
-                uint8_t signs        = ksigns_iq2xs[(aux32 >> (7 * l)) & 127];
-                const uint8_t *grid1 = (const uint8_t *)(iq3xxs_grid + qs[2 * l + 0]);
-                const uint8_t *grid2 = (const uint8_t *)(iq3xxs_grid + qs[2 * l + 1]);
-                for (int j = 0; j < 4; j++) {
-                    dst[j + 0] =
-                        db * (float)grid1[j] * ((signs & kmask_iq2xs[j + 0]) ? -1.0f : 1.0f);
-                    dst[j + 4] =
-                        db * (float)grid2[j] * ((signs & kmask_iq2xs[j + 4]) ? -1.0f : 1.0f);
-                }
-                dst += 8;
+    const uint8_t *qs = qs_base;
+    for (int ib32 = 0; ib32 < IQ3_XXS_SUPER / 32; ib32++) {
+        uint32_t aux32;
+        memcpy(&aux32, scales_and_signs + 4 * ib32, 4);
+        float db = d * (0.5f + (float)(aux32 >> 28)) * 0.5f;
+        for (int l = 0; l < 4; l++) {
+            uint8_t signs        = ksigns_iq2xs[(aux32 >> (7 * l)) & 127];
+            const uint8_t *grid1 = (const uint8_t *)(iq3xxs_grid + qs[2 * l + 0]);
+            const uint8_t *grid2 = (const uint8_t *)(iq3xxs_grid + qs[2 * l + 1]);
+            for (int j = 0; j < 4; j++) {
+                dst[j + 0] = db * (float)grid1[j] * ((signs & kmask_iq2xs[j + 0]) ? -1.0f : 1.0f);
+                dst[j + 4] = db * (float)grid2[j] * ((signs & kmask_iq2xs[j + 4]) ? -1.0f : 1.0f);
             }
-            qs += 8;
+            dst += 8;
         }
+        qs += 8;
     }
-    size_t done = n_super * IQ3_XXS_SUPER;
-    for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
+}
+
+void gguf_dequant_iq3_xxs(float *out, const void *data, size_t n_elems) {
+    gguf_dequant_zero_tail(
+        out, gguf_dequant_blocks(out, data, n_elems, IQ3_XXS_SUPER, IQ3_XXS_BYTES, iq3_xxs_block),
+        n_elems);
 }
 
 /* ── IQ3_S ────────────────────────────────────────────────────────────────── */
@@ -880,61 +861,58 @@ void gguf_dequant_iq3_xxs(float *out, const void *data, size_t n_elems) {
 #define IQ3_S_SUPER 256
 #define IQ3_S_BYTES 110
 
-void gguf_dequant_iq3_s(float *out, const void *data, size_t n_elems) {
-    const uint8_t *p = (const uint8_t *)data;
-    size_t n_super   = n_elems / IQ3_S_SUPER;
+static void iq3_s_block(float *dst, const uint8_t *blk) {
+    float d = tn_fp16_load(blk);
+    if (!(d == d)) d = 0.0f;                           /* NaN guard */
+    const uint8_t *qs_base    = blk + 2;               /* 64 bytes */
+    const uint8_t *qh_base    = blk + 2 + 64;          /* 8 bytes */
+    const uint8_t *signs_base = blk + 2 + 64 + 8;      /* 32 bytes */
+    const uint8_t *scales     = blk + 2 + 64 + 8 + 32; /* 4 bytes */
 
-    for (size_t b = 0; b < n_super; b++) {
-        const uint8_t *blk = p + b * IQ3_S_BYTES;
-        float d            = tn_fp16_load(blk);
-        if (!(d == d)) d = 0.0f;                           /* NaN guard */
-        const uint8_t *qs_base    = blk + 2;               /* 64 bytes */
-        const uint8_t *qh_base    = blk + 2 + 64;          /* 8 bytes */
-        const uint8_t *signs_base = blk + 2 + 64 + 8;      /* 32 bytes */
-        const uint8_t *scales     = blk + 2 + 64 + 8 + 32; /* 4 bytes */
+    const uint8_t *qs = qs_base, *qh = qh_base, *signs = signs_base;
+    for (int ib32 = 0; ib32 < IQ3_S_SUPER / 32; ib32 += 2) {
+        float db1 = d * (float)(1 + 2 * (scales[ib32 / 2] & 0xF));
+        float db2 = d * (float)(1 + 2 * (scales[ib32 / 2] >> 4));
 
-        float *dst        = out + b * IQ3_S_SUPER;
-        const uint8_t *qs = qs_base, *qh = qh_base, *signs = signs_base;
-        for (int ib32 = 0; ib32 < IQ3_S_SUPER / 32; ib32 += 2) {
-            float db1 = d * (float)(1 + 2 * (scales[ib32 / 2] & 0xF));
-            float db2 = d * (float)(1 + 2 * (scales[ib32 / 2] >> 4));
-
-            for (int l = 0; l < 4; l++) {
-                unsigned idx1 = (unsigned)qs[2 * l + 0] | (((unsigned)qh[0] << (8 - 2 * l)) & 256u);
-                unsigned idx2 = (unsigned)qs[2 * l + 1] | (((unsigned)qh[0] << (7 - 2 * l)) & 256u);
-                const uint8_t *grid1 = (const uint8_t *)(iq3s_grid + idx1);
-                const uint8_t *grid2 = (const uint8_t *)(iq3s_grid + idx2);
-                for (int j = 0; j < 4; j++) {
-                    dst[j + 0] =
-                        db1 * (float)grid1[j] * ((signs[l] & kmask_iq2xs[j + 0]) ? -1.0f : 1.0f);
-                    dst[j + 4] =
-                        db1 * (float)grid2[j] * ((signs[l] & kmask_iq2xs[j + 4]) ? -1.0f : 1.0f);
-                }
-                dst += 8;
+        for (int l = 0; l < 4; l++) {
+            unsigned idx1 = (unsigned)qs[2 * l + 0] | (((unsigned)qh[0] << (8 - 2 * l)) & 256u);
+            unsigned idx2 = (unsigned)qs[2 * l + 1] | (((unsigned)qh[0] << (7 - 2 * l)) & 256u);
+            const uint8_t *grid1 = (const uint8_t *)(iq3s_grid + idx1);
+            const uint8_t *grid2 = (const uint8_t *)(iq3s_grid + idx2);
+            for (int j = 0; j < 4; j++) {
+                dst[j + 0] =
+                    db1 * (float)grid1[j] * ((signs[l] & kmask_iq2xs[j + 0]) ? -1.0f : 1.0f);
+                dst[j + 4] =
+                    db1 * (float)grid2[j] * ((signs[l] & kmask_iq2xs[j + 4]) ? -1.0f : 1.0f);
             }
-            qs += 8;
-            signs += 4;
-
-            for (int l = 0; l < 4; l++) {
-                unsigned idx1 = (unsigned)qs[2 * l + 0] | (((unsigned)qh[1] << (8 - 2 * l)) & 256u);
-                unsigned idx2 = (unsigned)qs[2 * l + 1] | (((unsigned)qh[1] << (7 - 2 * l)) & 256u);
-                const uint8_t *grid1 = (const uint8_t *)(iq3s_grid + idx1);
-                const uint8_t *grid2 = (const uint8_t *)(iq3s_grid + idx2);
-                for (int j = 0; j < 4; j++) {
-                    dst[j + 0] =
-                        db2 * (float)grid1[j] * ((signs[l] & kmask_iq2xs[j + 0]) ? -1.0f : 1.0f);
-                    dst[j + 4] =
-                        db2 * (float)grid2[j] * ((signs[l] & kmask_iq2xs[j + 4]) ? -1.0f : 1.0f);
-                }
-                dst += 8;
-            }
-            qh += 2;
-            qs += 8;
-            signs += 4;
+            dst += 8;
         }
+        qs += 8;
+        signs += 4;
+
+        for (int l = 0; l < 4; l++) {
+            unsigned idx1 = (unsigned)qs[2 * l + 0] | (((unsigned)qh[1] << (8 - 2 * l)) & 256u);
+            unsigned idx2 = (unsigned)qs[2 * l + 1] | (((unsigned)qh[1] << (7 - 2 * l)) & 256u);
+            const uint8_t *grid1 = (const uint8_t *)(iq3s_grid + idx1);
+            const uint8_t *grid2 = (const uint8_t *)(iq3s_grid + idx2);
+            for (int j = 0; j < 4; j++) {
+                dst[j + 0] =
+                    db2 * (float)grid1[j] * ((signs[l] & kmask_iq2xs[j + 0]) ? -1.0f : 1.0f);
+                dst[j + 4] =
+                    db2 * (float)grid2[j] * ((signs[l] & kmask_iq2xs[j + 4]) ? -1.0f : 1.0f);
+            }
+            dst += 8;
+        }
+        qh += 2;
+        qs += 8;
+        signs += 4;
     }
-    size_t done = n_super * IQ3_S_SUPER;
-    for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
+}
+
+void gguf_dequant_iq3_s(float *out, const void *data, size_t n_elems) {
+    gguf_dequant_zero_tail(
+        out, gguf_dequant_blocks(out, data, n_elems, IQ3_S_SUPER, IQ3_S_BYTES, iq3_s_block),
+        n_elems);
 }
 
 /* ── IQ1_S / IQ1_M codebook table ────────────────────────────────────────────
@@ -1475,34 +1453,31 @@ static const uint64_t iq1s_grid[2048] = {
 #define IQ1_S_SUPER 256
 #define IQ1_S_BYTES 50
 
-void gguf_dequant_iq1_s(float *out, const void *data, size_t n_elems) {
-    const uint8_t *p = (const uint8_t *)data;
-    size_t n_super   = n_elems / IQ1_S_SUPER;
+static void iq1_s_block(float *dst, const uint8_t *blk) {
+    float d = tn_fp16_load(blk);
+    if (!(d == d)) d = 0.0f;                /* NaN guard */
+    const uint8_t *qs       = blk + 2;      /* 32 bytes */
+    const uint8_t *qh_bytes = blk + 2 + 32; /* 16 bytes -> 8 x u16 */
 
-    for (size_t b = 0; b < n_super; b++) {
-        const uint8_t *blk = p + b * IQ1_S_BYTES;
-        float d            = tn_fp16_load(blk);
-        if (!(d == d)) d = 0.0f;                /* NaN guard */
-        const uint8_t *qs       = blk + 2;      /* 32 bytes */
-        const uint8_t *qh_bytes = blk + 2 + 32; /* 16 bytes -> 8 x u16 */
-
-        float *dst = out + b * IQ1_S_SUPER;
-        for (int ib = 0; ib < IQ1_S_SUPER / 32; ib++) {
-            uint16_t qh_val;
-            memcpy(&qh_val, qh_bytes + 2 * ib, 2);
-            float dl    = d * (float)(2 * ((qh_val >> 12) & 7) + 1);
-            float delta = (qh_val & 0x8000) ? -IQ1S_DELTA : IQ1S_DELTA;
-            for (int l = 0; l < 4; l++) {
-                unsigned idx       = (unsigned)qs[l] | (((unsigned)(qh_val >> (3 * l)) & 7u) << 8);
-                const int8_t *grid = (const int8_t *)(iq1s_grid + idx);
-                for (int j = 0; j < 8; j++) dst[j] = dl * ((float)grid[j] + delta);
-                dst += 8;
-            }
-            qs += 4;
+    for (int ib = 0; ib < IQ1_S_SUPER / 32; ib++) {
+        uint16_t qh_val;
+        memcpy(&qh_val, qh_bytes + 2 * ib, 2);
+        float dl    = d * (float)(2 * ((qh_val >> 12) & 7) + 1);
+        float delta = (qh_val & 0x8000) ? -IQ1S_DELTA : IQ1S_DELTA;
+        for (int l = 0; l < 4; l++) {
+            unsigned idx       = (unsigned)qs[l] | (((unsigned)(qh_val >> (3 * l)) & 7u) << 8);
+            const int8_t *grid = (const int8_t *)(iq1s_grid + idx);
+            for (int j = 0; j < 8; j++) dst[j] = dl * ((float)grid[j] + delta);
+            dst += 8;
         }
+        qs += 4;
     }
-    size_t done = n_super * IQ1_S_SUPER;
-    for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
+}
+
+void gguf_dequant_iq1_s(float *out, const void *data, size_t n_elems) {
+    gguf_dequant_zero_tail(
+        out, gguf_dequant_blocks(out, data, n_elems, IQ1_S_SUPER, IQ1_S_BYTES, iq1_s_block),
+        n_elems);
 }
 
 /* ── IQ1_M ────────────────────────────────────────────────────────────────── */
@@ -1519,55 +1494,52 @@ void gguf_dequant_iq1_s(float *out, const void *data, size_t n_elems) {
 #define IQ1_M_SUPER 256
 #define IQ1_M_BYTES 56
 
-void gguf_dequant_iq1_m(float *out, const void *data, size_t n_elems) {
-    const uint8_t *p = (const uint8_t *)data;
-    size_t n_super   = n_elems / IQ1_M_SUPER;
+static void iq1_m_block(float *dst, const uint8_t *blk) {
+    const uint8_t *qs           = blk;           /* 32 bytes */
+    const uint8_t *qh           = blk + 32;      /* 16 bytes */
+    const uint8_t *scales_bytes = blk + 32 + 16; /* 8 bytes -> 4 x u16 */
+    uint16_t sc[4];
+    memcpy(sc, scales_bytes, 8);
 
-    for (size_t b = 0; b < n_super; b++) {
-        const uint8_t *blk          = p + b * IQ1_M_BYTES;
-        const uint8_t *qs           = blk;           /* 32 bytes */
-        const uint8_t *qh           = blk + 32;      /* 16 bytes */
-        const uint8_t *scales_bytes = blk + 32 + 16; /* 8 bytes -> 4 x u16 */
-        uint16_t sc[4];
-        memcpy(sc, scales_bytes, 8);
+    uint16_t scale_bits = (uint16_t)((sc[0] >> 12) | ((sc[1] >> 8) & 0x00F0u) |
+                                     ((sc[2] >> 4) & 0x0F00u) | (sc[3] & 0xF000u));
+    float d             = tn_fp16_to_f32(scale_bits);
+    if (!(d == d)) d = 0.0f; /* NaN guard */
 
-        uint16_t scale_bits = (uint16_t)((sc[0] >> 12) | ((sc[1] >> 8) & 0x00F0u) |
-                                         ((sc[2] >> 4) & 0x0F00u) | (sc[3] & 0xF000u));
-        float d             = tn_fp16_to_f32(scale_bits);
-        if (!(d == d)) d = 0.0f; /* NaN guard */
-
-        float *dst = out + b * IQ1_M_SUPER;
-        /* Flat 8-iteration loop, one per 32-element sub-block -- matches
-         * llama.cpp's dequantize_row_iq1_m exactly (each ib reads its own
-         * 4 qs bytes + 2 qh bytes; sc[ib/2] and ib%2 select which half of
-         * the shared scale u16 pair this ib uses). */
-        for (int ib = 0; ib < IQ1_M_SUPER / 32; ib++) {
-            float dl1 = d * (float)(2 * ((sc[ib / 2] >> (6 * (ib % 2) + 0)) & 0x7) + 1);
-            float dl2 = d * (float)(2 * ((sc[ib / 2] >> (6 * (ib % 2) + 3)) & 0x7) + 1);
-            uint16_t idx[4];
-            idx[0] = (uint16_t)(qs[0] | ((qh[0] << 8) & 0x700));
-            idx[1] = (uint16_t)(qs[1] | ((qh[0] << 4) & 0x700));
-            idx[2] = (uint16_t)(qs[2] | ((qh[1] << 8) & 0x700));
-            idx[3] = (uint16_t)(qs[3] | ((qh[1] << 4) & 0x700));
-            float delta[4];
-            delta[0] = (qh[0] & 0x08) ? -IQ1S_DELTA : IQ1S_DELTA;
-            delta[1] = (qh[0] & 0x80) ? -IQ1S_DELTA : IQ1S_DELTA;
-            delta[2] = (qh[1] & 0x08) ? -IQ1S_DELTA : IQ1S_DELTA;
-            delta[3] = (qh[1] & 0x80) ? -IQ1S_DELTA : IQ1S_DELTA;
-            for (int l = 0; l < 2; l++) {
-                const int8_t *grid = (const int8_t *)(iq1s_grid + idx[l]);
-                for (int j = 0; j < 8; j++) dst[j] = dl1 * ((float)grid[j] + delta[l]);
-                dst += 8;
-            }
-            for (int l = 2; l < 4; l++) {
-                const int8_t *grid = (const int8_t *)(iq1s_grid + idx[l]);
-                for (int j = 0; j < 8; j++) dst[j] = dl2 * ((float)grid[j] + delta[l]);
-                dst += 8;
-            }
-            qs += 4;
-            qh += 2;
+    /* Flat 8-iteration loop, one per 32-element sub-block -- matches
+     * llama.cpp's dequantize_row_iq1_m exactly (each ib reads its own
+     * 4 qs bytes + 2 qh bytes; sc[ib/2] and ib%2 select which half of
+     * the shared scale u16 pair this ib uses). */
+    for (int ib = 0; ib < IQ1_M_SUPER / 32; ib++) {
+        float dl1 = d * (float)(2 * ((sc[ib / 2] >> (6 * (ib % 2) + 0)) & 0x7) + 1);
+        float dl2 = d * (float)(2 * ((sc[ib / 2] >> (6 * (ib % 2) + 3)) & 0x7) + 1);
+        uint16_t idx[4];
+        idx[0] = (uint16_t)(qs[0] | ((qh[0] << 8) & 0x700));
+        idx[1] = (uint16_t)(qs[1] | ((qh[0] << 4) & 0x700));
+        idx[2] = (uint16_t)(qs[2] | ((qh[1] << 8) & 0x700));
+        idx[3] = (uint16_t)(qs[3] | ((qh[1] << 4) & 0x700));
+        float delta[4];
+        delta[0] = (qh[0] & 0x08) ? -IQ1S_DELTA : IQ1S_DELTA;
+        delta[1] = (qh[0] & 0x80) ? -IQ1S_DELTA : IQ1S_DELTA;
+        delta[2] = (qh[1] & 0x08) ? -IQ1S_DELTA : IQ1S_DELTA;
+        delta[3] = (qh[1] & 0x80) ? -IQ1S_DELTA : IQ1S_DELTA;
+        for (int l = 0; l < 2; l++) {
+            const int8_t *grid = (const int8_t *)(iq1s_grid + idx[l]);
+            for (int j = 0; j < 8; j++) dst[j] = dl1 * ((float)grid[j] + delta[l]);
+            dst += 8;
         }
+        for (int l = 2; l < 4; l++) {
+            const int8_t *grid = (const int8_t *)(iq1s_grid + idx[l]);
+            for (int j = 0; j < 8; j++) dst[j] = dl2 * ((float)grid[j] + delta[l]);
+            dst += 8;
+        }
+        qs += 4;
+        qh += 2;
     }
-    size_t done = n_super * IQ1_M_SUPER;
-    for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
+}
+
+void gguf_dequant_iq1_m(float *out, const void *data, size_t n_elems) {
+    gguf_dequant_zero_tail(
+        out, gguf_dequant_blocks(out, data, n_elems, IQ1_M_SUPER, IQ1_M_BYTES, iq1_m_block),
+        n_elems);
 }

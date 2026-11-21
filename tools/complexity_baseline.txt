@@ -74,15 +74,8 @@ src/core/bw_cache.c::tn_bw_cache_save 12 16 1
 src/core/cpu_features.c::tn_cpu_features_detect 12 18 1
 src/core/cpu_features.c::tn_cpu_features_report 16 23 0
 src/core/gguf_i2s.c::tn_i2s_repack 12 26 3
-src/core/gguf_quant_iq.c::gguf_dequant_iq1_m 13 45 4
-src/core/gguf_quant_iq.c::gguf_dequant_iq1_s 8 27 4
-src/core/gguf_quant_iq.c::gguf_dequant_iq2_s 8 32 4
-src/core/gguf_quant_iq.c::gguf_dequant_iq2_xs 8 28 4
-src/core/gguf_quant_iq.c::gguf_dequant_iq2_xxs 8 26 4
-src/core/gguf_quant_iq.c::gguf_dequant_iq3_s 13 52 4
-src/core/gguf_quant_iq.c::gguf_dequant_iq3_xxs 9 33 4
-src/core/gguf_quant_k.c::gguf_dequant_q2_k 9 35 4
-src/core/gguf_quant_k.c::gguf_dequant_q3_k 9 41 4
+src/core/gguf_quant_iq.c::iq1_m_block 11 37 3
+src/core/gguf_quant_iq.c::iq3_s_block 11 44 3
 src/core/gguf_reader.c::skip_meta_value 13 28 2
 src/core/log.c::put_escaped 14 29 7
 src/core/log.c::span_api_key 13 14 1

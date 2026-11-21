@@ -13,23 +13,26 @@
 #include <string.h>
 
 #include "core/fp16.h"
+#include "core/gguf_dequant_blocks.h"
 
 /* Every legacy format is a run of fixed-size blocks; a format supplies how one block decodes and
- * this walks the whole blocks. Returns how many weights were decoded (the caller deals with a
- * partial last block: some formats decode it, most zero it). */
-typedef void (*BlockDecode)(float *dst, const uint8_t *blk);
+ * gguf_dequant_blocks (include/core/gguf_dequant_blocks.h) walks the whole blocks. */
+typedef GgufBlockDecode BlockDecode;
 
-static size_t dequant_blocks(float *out, const void *data, size_t n_elems, size_t block_elems,
-                             size_t block_bytes, BlockDecode decode) {
+size_t gguf_dequant_blocks(float *out, const void *data, size_t n_elems, size_t block_elems,
+                           size_t block_bytes, GgufBlockDecode decode) {
     const uint8_t *p = (const uint8_t *)data;
     size_t n_blocks  = n_elems / block_elems;
     for (size_t b = 0; b < n_blocks; b++) decode(out + b * block_elems, p + b * block_bytes);
     return n_blocks * block_elems;
 }
 
-static void zero_tail(float *out, size_t done, size_t n_elems) {
+void gguf_dequant_zero_tail(float *out, size_t done, size_t n_elems) {
     for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
 }
+
+#define dequant_blocks gguf_dequant_blocks
+#define zero_tail gguf_dequant_zero_tail
 
 /* ── Q8_0 ─────────────────────────────────────────────────────────────────── */
 /*

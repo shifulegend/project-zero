@@ -1,3 +1,3 @@
 # Share of duplicated code lines in percent (tools/check_duplication.py); may only fall.
-src 6.33
+src 6.19
 webui 16.77

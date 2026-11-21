@@ -5,11 +5,12 @@
  * in include/core/gguf_quant.h. Block layout references: llama.cpp ggml-quants.h (public domain /
  * MIT).
  */
-#include <math.h>
+
 #include <stdint.h>
 #include <string.h>
 
 #include "core/fp16.h"
+#include "core/gguf_dequant_blocks.h"
 #include "core/gguf_quant.h"
 
 /* ── Q4_K ─────────────────────────────────────────────────────────────────── */
@@ -67,49 +68,39 @@ static void q4k_decode_scales(const uint8_t *sc12, float d, float dmin, float *s
     }
 }
 
+static void q4_k_block(float *dst, const uint8_t *blk) {
+    uint16_t d_bits, dmin_bits;
+    memcpy(&d_bits, blk, 2);
+    memcpy(&dmin_bits, blk + 2, 2);
+    float d    = tn_fp16_to_f32(d_bits);
+    float dmin = tn_fp16_to_f32(dmin_bits);
+
+    const uint8_t *sc12 = blk + 4;      /* 12 bytes */
+    const uint8_t *qs   = blk + 4 + 12; /* 128 bytes (256 × 4-bit) */
+
+    float scales[Q4_K_NSUB], mins[Q4_K_NSUB];
+    q4k_decode_scales(sc12, d, dmin, scales, mins);
+
+
+    /* Exact replica of llama.cpp dequantize_row_q4_K():
+     * Four groups of 64 elements each. Each group reads 32 bytes (=64 nibbles):
+     *   first 32 output elems = low  nibbles of qs[g*32 .. g*32+31]  (scale pair 2g)
+     *   next  32 output elems = high nibbles of qs[g*32 .. g*32+31]  (scale pair 2g+1)
+     * This is NOT the same as 8 independent 16-byte sub-blocks. */
+    for (int g = 0; g < 4; g++) {
+        int is   = g * 2;
+        float d1 = scales[is], m1 = mins[is];
+        float d2 = scales[is + 1], m2 = mins[is + 1];
+        const uint8_t *q = qs + g * 32; /* 32 bytes per 64-element group */
+        float *yd        = dst + g * 64;
+        for (int l = 0; l < 32; l++) yd[l] = d1 * (float)(q[l] & 0xF) - m1;
+        for (int l = 0; l < 32; l++) yd[32 + l] = d2 * (float)(q[l] >> 4) - m2;
+    }
+}
+
 void gguf_dequant_q4_k(float *out, const void *data, size_t n_elems) {
-    const uint8_t *p = (const uint8_t *)data;
-    size_t n_super   = n_elems / Q4_K_SUPER;
-
-    for (size_t b = 0; b < n_super; b++) {
-        const uint8_t *blk = p + b * Q4_K_BYTES;
-
-        uint16_t d_bits, dmin_bits;
-        memcpy(&d_bits, blk, 2);
-        memcpy(&dmin_bits, blk + 2, 2);
-        float d    = tn_fp16_to_f32(d_bits);
-        float dmin = tn_fp16_to_f32(dmin_bits);
-
-        const uint8_t *sc12 = blk + 4;      /* 12 bytes */
-        const uint8_t *qs   = blk + 4 + 12; /* 128 bytes (256 × 4-bit) */
-
-        float scales[Q4_K_NSUB], mins[Q4_K_NSUB];
-        q4k_decode_scales(sc12, d, dmin, scales, mins);
-
-        float *dst = out + b * Q4_K_SUPER;
-
-        /* Exact replica of llama.cpp dequantize_row_q4_K():
-         * Four groups of 64 elements each. Each group reads 32 bytes (=64 nibbles):
-         *   first 32 output elems = low  nibbles of qs[g*32 .. g*32+31]  (scale pair 2g)
-         *   next  32 output elems = high nibbles of qs[g*32 .. g*32+31]  (scale pair 2g+1)
-         * This is NOT the same as 8 independent 16-byte sub-blocks. */
-        for (int g = 0; g < 4; g++) {
-            int is   = g * 2;
-            float d1 = scales[is], m1 = mins[is];
-            float d2 = scales[is + 1], m2 = mins[is + 1];
-            const uint8_t *q = qs + g * 32; /* 32 bytes per 64-element group */
-            float *yd        = dst + g * 64;
-            for (int l = 0; l < 32; l++) yd[l] = d1 * (float)(q[l] & 0xF) - m1;
-            for (int l = 0; l < 32; l++) yd[32 + l] = d2 * (float)(q[l] >> 4) - m2;
-        }
-    }
-    /* Partial last super-block (very rare) */
-    size_t done = n_super * Q4_K_SUPER;
-    if (done < n_elems) {
-        /* Fill remaining with 0 — correct since partial blocks are unusual in practice */
-        size_t rem = n_elems - done;
-        for (size_t i = 0; i < rem; i++) out[done + i] = 0.0f;
-    }
+    gguf_dequant_zero_tail(
+        out, gguf_dequant_blocks(out, data, n_elems, Q4_K_SUPER, Q4_K_BYTES, q4_k_block), n_elems);
 }
 
 /* ── Q5_K ─────────────────────────────────────────────────────────────────── */
@@ -138,50 +129,46 @@ void gguf_dequant_q4_k(float *out, const void *data, size_t n_elems) {
 #define Q5_K_NSUB 8
 #define Q5_K_BYTES 176
 
-void gguf_dequant_q5_k(float *out, const void *data, size_t n_elems) {
-    const uint8_t *p = (const uint8_t *)data;
-    size_t n_super   = n_elems / Q5_K_SUPER;
+static void q5_k_block(float *dst, const uint8_t *blk) {
+    uint16_t d_bits, dmin_bits;
+    memcpy(&d_bits, blk, 2);
+    memcpy(&dmin_bits, blk + 2, 2);
+    float d    = tn_fp16_to_f32(d_bits);
+    float dmin = tn_fp16_to_f32(dmin_bits);
 
-    for (size_t b = 0; b < n_super; b++) {
-        const uint8_t *blk = p + b * Q5_K_BYTES;
-        uint16_t d_bits, dmin_bits;
-        memcpy(&d_bits, blk, 2);
-        memcpy(&dmin_bits, blk + 2, 2);
-        float d    = tn_fp16_to_f32(d_bits);
-        float dmin = tn_fp16_to_f32(dmin_bits);
+    const uint8_t *sc12 = blk + 4;  /* 12 bytes — same format as Q4_K */
+    const uint8_t *qh   = blk + 16; /* 32 bytes — interleaved high bits */
+    const uint8_t *ql   = blk + 48; /* 128 bytes — 4-bit low values     */
 
-        const uint8_t *sc12 = blk + 4;  /* 12 bytes — same format as Q4_K */
-        const uint8_t *qh   = blk + 16; /* 32 bytes — interleaved high bits */
-        const uint8_t *ql   = blk + 48; /* 128 bytes — 4-bit low values     */
+    float scales[Q5_K_NSUB], mins[Q5_K_NSUB];
+    q4k_decode_scales(sc12, d, dmin, scales, mins);
 
-        float scales[Q5_K_NSUB], mins[Q5_K_NSUB];
-        q4k_decode_scales(sc12, d, dmin, scales, mins);
 
-        float *dst = out + b * Q5_K_SUPER;
-
-        /* Mirror llama.cpp dequantize_row_q5_K exactly:
-         * Outer loop: 4 groups of 64 elements (j = 0, 64, 128, 192).
-         * u1 mask selects the 5th bit for the low-nibble  32-element half.
-         * u2 mask selects the 5th bit for the high-nibble 32-element half.
-         * Both masks use qh[l] (l = 0..31), shifting left by 2 each iteration
-         * so that successive groups use consecutive bit pairs within each qh byte. */
-        int is     = 0;
-        uint8_t u1 = 1, u2 = 2;
-        for (int j = 0; j < Q5_K_SUPER; j += 64) {
-            float d1 = scales[is], m1 = mins[is];
-            float d2 = scales[is + 1], m2 = mins[is + 1];
-            for (int l = 0; l < 32; l++) {
-                dst[j + l]      = d1 * ((ql[l] & 0xF) + (qh[l] & u1 ? 16 : 0)) - m1;
-                dst[j + l + 32] = d2 * ((ql[l] >> 4) + (qh[l] & u2 ? 16 : 0)) - m2;
-            }
-            ql += 32;
-            is += 2;
-            u1 = (uint8_t)(u1 << 2);
-            u2 = (uint8_t)(u2 << 2);
+    /* Mirror llama.cpp dequantize_row_q5_K exactly:
+     * Outer loop: 4 groups of 64 elements (j = 0, 64, 128, 192).
+     * u1 mask selects the 5th bit for the low-nibble  32-element half.
+     * u2 mask selects the 5th bit for the high-nibble 32-element half.
+     * Both masks use qh[l] (l = 0..31), shifting left by 2 each iteration
+     * so that successive groups use consecutive bit pairs within each qh byte. */
+    int is     = 0;
+    uint8_t u1 = 1, u2 = 2;
+    for (int j = 0; j < Q5_K_SUPER; j += 64) {
+        float d1 = scales[is], m1 = mins[is];
+        float d2 = scales[is + 1], m2 = mins[is + 1];
+        for (int l = 0; l < 32; l++) {
+            dst[j + l]      = d1 * ((ql[l] & 0xF) + (qh[l] & u1 ? 16 : 0)) - m1;
+            dst[j + l + 32] = d2 * ((ql[l] >> 4) + (qh[l] & u2 ? 16 : 0)) - m2;
         }
+        ql += 32;
+        is += 2;
+        u1 = (uint8_t)(u1 << 2);
+        u2 = (uint8_t)(u2 << 2);
     }
-    size_t done = n_super * Q5_K_SUPER;
-    for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
+}
+
+void gguf_dequant_q5_k(float *out, const void *data, size_t n_elems) {
+    gguf_dequant_zero_tail(
+        out, gguf_dequant_blocks(out, data, n_elems, Q5_K_SUPER, Q5_K_BYTES, q5_k_block), n_elems);
 }
 
 /* ── Q3_K ─────────────────────────────────────────────────────────────────── */
@@ -203,55 +190,50 @@ void gguf_dequant_q5_k(float *out, const void *data, size_t n_elems) {
 #define Q3_K_SUPER 256
 #define Q3_K_BYTES 110
 
-void gguf_dequant_q3_k(float *out, const void *data, size_t n_elems) {
-    const uint8_t *p = (const uint8_t *)data;
-    size_t n_super   = n_elems / Q3_K_SUPER;
-
+static void q3_k_block(float *dst, const uint8_t *blk) {
     const uint32_t kmask1 = 0x03030303u;
     const uint32_t kmask2 = 0x0f0f0f0fu;
+    const uint8_t *hm     = blk;      /* hmask[32] */
+    const uint8_t *qs     = blk + 32; /* qs[64]    */
+    const uint8_t *sc     = blk + 96; /* scales[12]*/
+    float d               = tn_fp16_load(blk + 108);
 
-    for (size_t b = 0; b < n_super; b++) {
-        const uint8_t *blk = p + b * Q3_K_BYTES;
-        const uint8_t *hm  = blk;      /* hmask[32] */
-        const uint8_t *qs  = blk + 32; /* qs[64]    */
-        const uint8_t *sc  = blk + 96; /* scales[12]*/
-        float d            = tn_fp16_load(blk + 108);
+    /* Unpack 16 sub-block scales (6-bit each) from 12 packed bytes.
+     * Exact bit manipulation from llama.cpp dequantize_row_q3_K(). */
+    uint32_t aux[4];
+    memcpy(aux, sc, 12);
+    uint32_t tmp         = aux[2];
+    aux[2]               = ((aux[0] >> 4) & kmask2) | (((tmp >> 4) & kmask1) << 4);
+    aux[3]               = ((aux[1] >> 4) & kmask2) | (((tmp >> 6) & kmask1) << 4);
+    aux[0]               = (aux[0] & kmask2) | (((tmp >> 0) & kmask1) << 4);
+    aux[1]               = (aux[1] & kmask2) | (((tmp >> 2) & kmask1) << 4);
+    const int8_t *scales = (const int8_t *)aux; /* scales[0..15], bias -32 */
 
-        /* Unpack 16 sub-block scales (6-bit each) from 12 packed bytes.
-         * Exact bit manipulation from llama.cpp dequantize_row_q3_K(). */
-        uint32_t aux[4];
-        memcpy(aux, sc, 12);
-        uint32_t tmp         = aux[2];
-        aux[2]               = ((aux[0] >> 4) & kmask2) | (((tmp >> 4) & kmask1) << 4);
-        aux[3]               = ((aux[1] >> 4) & kmask2) | (((tmp >> 6) & kmask1) << 4);
-        aux[0]               = (aux[0] & kmask2) | (((tmp >> 0) & kmask1) << 4);
-        aux[1]               = (aux[1] & kmask2) | (((tmp >> 2) & kmask1) << 4);
-        const int8_t *scales = (const int8_t *)aux; /* scales[0..15], bias -32 */
+    const uint8_t *q = qs;
+    uint8_t m        = 1;
+    int is           = 0;
 
-        float *dst       = out + b * Q3_K_SUPER;
-        const uint8_t *q = qs;
-        uint8_t m        = 1;
-        int is           = 0;
+    for (int n = 0; n < Q3_K_SUPER; n += 128) {
+        int shift = 0;
+        for (int j = 0; j < 4; j++) {
+            float dl = d * (float)(scales[is++] - 32);
+            for (int l = 0; l < 16; l++)
+                *dst++ = dl * ((int8_t)((q[l + 0] >> shift) & 3) - ((hm[l + 0] & m) ? 0 : 4));
 
-        for (int n = 0; n < Q3_K_SUPER; n += 128) {
-            int shift = 0;
-            for (int j = 0; j < 4; j++) {
-                float dl = d * (float)(scales[is++] - 32);
-                for (int l = 0; l < 16; l++)
-                    *dst++ = dl * ((int8_t)((q[l + 0] >> shift) & 3) - ((hm[l + 0] & m) ? 0 : 4));
+            dl = d * (float)(scales[is++] - 32);
+            for (int l = 0; l < 16; l++)
+                *dst++ = dl * ((int8_t)((q[l + 16] >> shift) & 3) - ((hm[l + 16] & m) ? 0 : 4));
 
-                dl = d * (float)(scales[is++] - 32);
-                for (int l = 0; l < 16; l++)
-                    *dst++ = dl * ((int8_t)((q[l + 16] >> shift) & 3) - ((hm[l + 16] & m) ? 0 : 4));
-
-                shift += 2;
-                m = (uint8_t)(m << 1);
-            }
-            q += 32; /* advance past the 32 qs bytes used by this 128-element group */
+            shift += 2;
+            m = (uint8_t)(m << 1);
         }
+        q += 32; /* advance past the 32 qs bytes used by this 128-element group */
     }
-    size_t done = n_super * Q3_K_SUPER;
-    for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
+}
+
+void gguf_dequant_q3_k(float *out, const void *data, size_t n_elems) {
+    gguf_dequant_zero_tail(
+        out, gguf_dequant_blocks(out, data, n_elems, Q3_K_SUPER, Q3_K_BYTES, q3_k_block), n_elems);
 }
 
 /* ── Q2_K ─────────────────────────────────────────────────────────────────── */
@@ -271,45 +253,41 @@ void gguf_dequant_q3_k(float *out, const void *data, size_t n_elems) {
 #define Q2_K_SUPER 256
 #define Q2_K_BYTES 84
 
-void gguf_dequant_q2_k(float *out, const void *data, size_t n_elems) {
-    const uint8_t *p = (const uint8_t *)data;
-    size_t n_super   = n_elems / Q2_K_SUPER;
+static void q2_k_block(float *dst, const uint8_t *blk) {
+    const uint8_t *sc   = blk;      /* scales[16] */
+    const uint8_t *qs_b = blk + 16; /* qs[64]     */
+    uint16_t d_bits, dmin_bits;
+    memcpy(&d_bits, blk + 80, 2);
+    memcpy(&dmin_bits, blk + 82, 2);
+    float d    = tn_fp16_to_f32(d_bits);
+    float dmin = tn_fp16_to_f32(dmin_bits);
+    if (!(d == d)) d = 0.0f;          /* NaN guard */
+    if (!(dmin == dmin)) dmin = 0.0f; /* NaN guard */
 
-    for (size_t b = 0; b < n_super; b++) {
-        const uint8_t *blk  = p + b * Q2_K_BYTES;
-        const uint8_t *sc   = blk;      /* scales[16] */
-        const uint8_t *qs_b = blk + 16; /* qs[64]     */
-        uint16_t d_bits, dmin_bits;
-        memcpy(&d_bits, blk + 80, 2);
-        memcpy(&dmin_bits, blk + 82, 2);
-        float d    = tn_fp16_to_f32(d_bits);
-        float dmin = tn_fp16_to_f32(dmin_bits);
-        if (!(d == d)) d = 0.0f;          /* NaN guard */
-        if (!(dmin == dmin)) dmin = 0.0f; /* NaN guard */
+    int is = 0;
 
-        float *dst = out + b * Q2_K_SUPER;
-        int is     = 0;
+    for (int n = 0; n < Q2_K_SUPER; n += 128) {
+        const uint8_t *q = qs_b + n / 4; /* 32 bytes per 128-element group */
+        int shift        = 0;
+        for (int j = 0; j < 4; j++) {
+            float dl = d * (float)(sc[is] & 0xF);
+            float ml = dmin * (float)(sc[is++] >> 4);
+            for (int l = 0; l < 16; l++)
+                dst[n + j * 32 + l] = dl * (float)((q[l] >> shift) & 3) - ml;
 
-        for (int n = 0; n < Q2_K_SUPER; n += 128) {
-            const uint8_t *q = qs_b + n / 4; /* 32 bytes per 128-element group */
-            int shift        = 0;
-            for (int j = 0; j < 4; j++) {
-                float dl = d * (float)(sc[is] & 0xF);
-                float ml = dmin * (float)(sc[is++] >> 4);
-                for (int l = 0; l < 16; l++)
-                    dst[n + j * 32 + l] = dl * (float)((q[l] >> shift) & 3) - ml;
+            dl = d * (float)(sc[is] & 0xF);
+            ml = dmin * (float)(sc[is++] >> 4);
+            for (int l = 0; l < 16; l++)
+                dst[n + j * 32 + 16 + l] = dl * (float)((q[l + 16] >> shift) & 3) - ml;
 
-                dl = d * (float)(sc[is] & 0xF);
-                ml = dmin * (float)(sc[is++] >> 4);
-                for (int l = 0; l < 16; l++)
-                    dst[n + j * 32 + 16 + l] = dl * (float)((q[l + 16] >> shift) & 3) - ml;
-
-                shift += 2;
-            }
+            shift += 2;
         }
     }
-    size_t done = n_super * Q2_K_SUPER;
-    for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
+}
+
+void gguf_dequant_q2_k(float *out, const void *data, size_t n_elems) {
+    gguf_dequant_zero_tail(
+        out, gguf_dequant_blocks(out, data, n_elems, Q2_K_SUPER, Q2_K_BYTES, q2_k_block), n_elems);
 }
 
 /* ── Q6_K ─────────────────────────────────────────────────────────────────── */
@@ -330,40 +308,36 @@ void gguf_dequant_q2_k(float *out, const void *data, size_t n_elems) {
 #define Q6_K_SUPER 256
 #define Q6_K_BYTES 210
 
-void gguf_dequant_q6_k(float *out, const void *data, size_t n_elems) {
-    const uint8_t *p = (const uint8_t *)data;
-    size_t n_super   = n_elems / Q6_K_SUPER;
+static void q6_k_block(float *dst, const uint8_t *blk) {
+    const uint8_t *ql_base = blk;                         /* 128 bytes */
+    const uint8_t *qh_base = blk + 128;                   /* 64 bytes  */
+    const int8_t *sc_base  = (const int8_t *)(blk + 192); /* 16 bytes */
+    float d                = tn_fp16_load(blk + 208);
 
-    for (size_t b = 0; b < n_super; b++) {
-        const uint8_t *blk     = p + b * Q6_K_BYTES;
-        const uint8_t *ql_base = blk;                         /* 128 bytes */
-        const uint8_t *qh_base = blk + 128;                   /* 64 bytes  */
-        const int8_t *sc_base  = (const int8_t *)(blk + 192); /* 16 bytes */
-        float d                = tn_fp16_load(blk + 208);
 
-        float *dst = out + b * Q6_K_SUPER;
+    for (int half = 0; half < 2; half++) {
+        const uint8_t *ql = ql_base + half * 64;
+        const uint8_t *qh = qh_base + half * 32;
+        const int8_t *sc  = sc_base + half * 8;
+        float *yy         = dst + half * 128;
 
-        for (int half = 0; half < 2; half++) {
-            const uint8_t *ql = ql_base + half * 64;
-            const uint8_t *qh = qh_base + half * 32;
-            const int8_t *sc  = sc_base + half * 8;
-            float *yy         = dst + half * 128;
-
-            for (int l = 0; l < 32; l++) {
-                int is     = l / 16;
-                int8_t q1  = (int8_t)(((ql[l + 0] & 0xF) | (((qh[l] >> 0) & 3) << 4)) - 32);
-                int8_t q2  = (int8_t)(((ql[l + 32] & 0xF) | (((qh[l] >> 2) & 3) << 4)) - 32);
-                int8_t q3  = (int8_t)(((ql[l + 0] >> 4) | (((qh[l] >> 4) & 3) << 4)) - 32);
-                int8_t q4  = (int8_t)(((ql[l + 32] >> 4) | (((qh[l] >> 6) & 3) << 4)) - 32);
-                yy[l + 0]  = d * sc[is + 0] * q1;
-                yy[l + 32] = d * sc[is + 2] * q2;
-                yy[l + 64] = d * sc[is + 4] * q3;
-                yy[l + 96] = d * sc[is + 6] * q4;
-            }
+        for (int l = 0; l < 32; l++) {
+            int is     = l / 16;
+            int8_t q1  = (int8_t)(((ql[l + 0] & 0xF) | (((qh[l] >> 0) & 3) << 4)) - 32);
+            int8_t q2  = (int8_t)(((ql[l + 32] & 0xF) | (((qh[l] >> 2) & 3) << 4)) - 32);
+            int8_t q3  = (int8_t)(((ql[l + 0] >> 4) | (((qh[l] >> 4) & 3) << 4)) - 32);
+            int8_t q4  = (int8_t)(((ql[l + 32] >> 4) | (((qh[l] >> 6) & 3) << 4)) - 32);
+            yy[l + 0]  = d * sc[is + 0] * q1;
+            yy[l + 32] = d * sc[is + 2] * q2;
+            yy[l + 64] = d * sc[is + 4] * q3;
+            yy[l + 96] = d * sc[is + 6] * q4;
         }
     }
-    size_t done = n_super * Q6_K_SUPER;
-    for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
+}
+
+void gguf_dequant_q6_k(float *out, const void *data, size_t n_elems) {
+    gguf_dequant_zero_tail(
+        out, gguf_dequant_blocks(out, data, n_elems, Q6_K_SUPER, Q6_K_BYTES, q6_k_block), n_elems);
 }
 
 /* ── Q8_K ─────────────────────────────────────────────────────────────────── */
@@ -378,18 +352,14 @@ void gguf_dequant_q6_k(float *out, const void *data, size_t n_elems) {
 #define Q8_K_SUPER 256
 #define Q8_K_BYTES 292
 
-void gguf_dequant_q8_k(float *out, const void *data, size_t n_elems) {
-    const uint8_t *p = (const uint8_t *)data;
-    size_t n_super   = n_elems / Q8_K_SUPER;
+static void q8_k_block(float *dst, const uint8_t *blk) {
+    float d;
+    memcpy(&d, blk, 4);
+    const int8_t *qs = (const int8_t *)(blk + 4);
+    for (int i = 0; i < Q8_K_SUPER; i++) dst[i] = qs[i] * d;
+}
 
-    for (size_t b = 0; b < n_super; b++) {
-        const uint8_t *blk = p + b * Q8_K_BYTES;
-        float d;
-        memcpy(&d, blk, 4);
-        const int8_t *qs = (const int8_t *)(blk + 4);
-        float *dst       = out + b * Q8_K_SUPER;
-        for (int i = 0; i < Q8_K_SUPER; i++) dst[i] = qs[i] * d;
-    }
-    size_t done = n_super * Q8_K_SUPER;
-    for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
+void gguf_dequant_q8_k(float *out, const void *data, size_t n_elems) {
+    gguf_dequant_zero_tail(
+        out, gguf_dequant_blocks(out, data, n_elems, Q8_K_SUPER, Q8_K_BYTES, q8_k_block), n_elems);
 }

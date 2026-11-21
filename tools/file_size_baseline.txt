@@ -1,6 +1,6 @@
 # Files over 500 lines and their lengths (tools/check_file_sizes.py); entries may only shrink or go.
 src/api/batch_scheduler.c 571
-src/core/gguf_quant_iq.c 1573
+src/core/gguf_quant_iq.c 1545
 src/math/matmul_q4k.c 688
 src/math/matmul_q4k_x8.c 654
 src/math/parallel_matmul.c 566

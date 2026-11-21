@@ -4,19 +4,20 @@
 > Read at session start. Last updated: 2026-11-21.
 
 ### 2026-11-21 — Process-wide mutable state: what cannot be removed, what is proposed
-- Decision: 46 mutable statics remain in `src/` (down from 69). They fall
+- Decision: 40 mutable statics remain in `src/` (down from 69). They fall
   into seven groups; only the first is impossible to remove. The rest are
-  either planned removals or exceptions proposed to the owner (Deviation
-  approval log, 2026-11-21); nothing is allow-listed until approved.
+  exceptions proposed to the owner (Deviation approval log, 2026-11-21);
+  nothing is allow-listed until approved.
 - Impossible (3): state a POSIX signal handler touches. A handler gets only
   the signal number, so `g_shutdown_requested` (`session_server.c`) and the
   two `sigjmp_buf`s of the CPU-feature probes (`cpu_features.c`) must be
   file-scope. They stay, each with a comment saying why.
-- Planned removals (9): the dispatch mode in `simd_dispatch.c` (3, belongs
-  in a dispatch context), the request-ID counter and lock (`http_request.c`,
-  2, belong in `ApiContext`), calibration samples, the active distributed
-  plan, the vision prompt buffer (`session_extras.c`, needs a session field)
-  and the OpenAPI document once-flag.
+- Planned removals: none left. Done since this entry was drafted: the
+  request-ID counter and lock, the vision prompt buffer, the OpenAPI
+  once-flag, the calibration samples and the active distributed plan.
+  The act-quant mode in `simd_dispatch.c` (3) is not a removal: it
+  describes the kernel binding that the dispatch function pointers
+  themselves form, which is process-wide by design (see below).
 - Proposed exception, thread-local scratch (9): `TnTlsScratch` buffers and
   the decode buffer. They are per-thread by construction, not shared state;
   the alternative is a worker-context argument through every matmul call.
@@ -24,6 +25,10 @@
   results. The environment is itself process-wide; the flags are atomic.
 - Proposed exception, machine facts (8): CPU features, cache sizes and the
   hardware profile are measured once and read-only afterwards.
+- Proposed exception, kernel dispatch binding (3): the act-quant mode
+  and last forced backend in `simd_dispatch.c`, next to the dispatch
+  function pointers they describe; per-context kernels would mean passing
+  an ops table through every math call.
 - Proposed exception, logging level and format (2): one logger per process.
 - Proposed exception, diagnostics (11): `TN_PROFILE`/`TN_STEP_TIMING`
   counters and the expert-hit tracker; planned alternative is a profiler

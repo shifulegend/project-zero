@@ -3,6 +3,11 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — remaining-statics classification brought up to date
+- What: `docs/ai/decision-log.md` now counts 40 statics (3 impossible, 37 in six proposed exception groups) and states that no planned removals remain; the act-quant mode in `simd_dispatch.c` moved from "to remove" to a "kernel dispatch binding" group, because the dispatch function pointers it describes are process-wide by design.
+- Why: keep the written conclusion true after the removals of this series; the owner's approval list in the Deviation approval log gained the sixth group.
+- Areas: `docs/ai/decision-log.md`.
+
 ### 2026-11-21 — the distributed plan belongs to the RunState; calibration samples are a local
 - What: `RunState.dist` points at the `--remote-layers` plan the state's forward pass follows (set by `session_distributed` on the main state); `dist_plan_set_active`/`dist_plan_active` and the static are gone. `forward`, `transformer_forward_batch`, `gen_session`, `spec_decode` and `/v1/config` read `s->dist`; `batch_scheduler_supported` takes the state. The calibration sample table in `tn_calibrate` is an automatic array (about 1.5 KB).
 - Why: finding 14.f (planned removals); mutable statics 42 -> 40. `transformer_forward_multi_ex` documents that callers must not pass a distributed state (its only caller, the scheduler, checks).

@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — tn_simd_init binds each kernel group in its own function
+- What: `tn_simd_init` (`src/math/simd_dispatch.c`) builds one `SimdSel` (CPU features, `TN_FORCE_BACKEND` cap, act-quant mode) and calls `bind_vector_ops`, `bind_unpack` and the packed-matmul tiers in the old priority order: `bind_vnni_512`, `bind_vnni_256`, `bind_avx_vnni`, then the AVX-512F and AVX2 float tiers, then the ARM dotprod and NEON tiers, then the scalar fallback. The same `TN_HAS_*` guards wrap the same tiers.
+- Why: finding 20.a; `tn_simd_init` was complexity 51 in 121 lines and left the complexity baseline (381 -> 380).
+- Proof: BitNet greedy output and the banner's backend name identical to the baseline binary for `TN_FORCE_BACKEND` empty, scalar, avx2, avx512f, vnni256 and an unknown value, each with `--act-quant` auto, float and int8; `make test` gcc and clang; `make dist` passes `tools/check_dist_isa.sh` and `tools/check_isa_guards.py`. The ARM and AVX-VNNI tiers cannot run on this machine; their code moved unchanged and compiles under the same guards.
+- Areas: `src/math/simd_dispatch.c`, `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — weights_free_pointers frees from a table of owned arrays
 - What: `weights_free_pointers` (`src/runtime/weights.c`) walks `k_owned_arrays`, the offsets of the 50 heap arrays a `TransformerWeights` owns (attention and FFN weights, scales, norms, per-layer types, Qwen3.5 and Qwen3-MoE tensors, biases, classifier copies, per-layer expert tables), instead of 50 `if (p) free(p)` lines. The list was generated from the old function's free calls, so none was dropped. The Mamba block is still released through `mamba_weights_free`.
 - Why: finding 20.a; the function was complexity 49 in 57 lines and left the complexity baseline (382 -> 381).

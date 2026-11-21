@@ -123,7 +123,6 @@ src/math/matmul_q5k.c::dot_q5k_row 17 125 3
 src/math/matmul_q6k.c::tn_dot_q6k_row_q8k_scalar 7 32 4
 src/math/parallel_matmul.c::matmul_bf16_task 14 117 2
 src/math/parallel_matmul.c::matmul_bf16_tokens_task 19 44 4
-src/math/simd_dispatch.c::tn_simd_init 51 121 2
 src/math/ternary_matmul_avx2.c::ternary_matmul_avx2 6 37 4
 src/math/ternary_matmul_packed.c::ternary_matmul_packed 11 39 6
 src/math/ternary_matmul_packed_avx2.c::ternary_matmul_packed_avx2 14 79 6

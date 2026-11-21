@@ -294,6 +294,112 @@ static int read_flags(char flags[][40], int max) {
     return n;
 }
 
+/* A few multi-flag sequences: later flags override, errors stop the parse. */
+static void add_sequence_cases(char lines[][200], int *nlp) {
+    int nl = *nlp;
+    char res[140];
+    char *seq1[6] = {"--model", "m.gguf", "--threads", "4", "--temperature", "0.3"};
+    char *seq2[4] = {"--server", "--port", "9000", "--cors"};
+    char *seq3[4] = {"--rate-limit", "abc", "--threads", "4"};
+    char *seq4[5] = {"--top-k", "7", "--top-k", "9", "--seed"};
+    run_case(seq1, 6, res, sizeof res);
+    snprintf(lines[nl++], sizeof lines[0], "SEQ1 | %s", res);
+    run_case(seq2, 4, res, sizeof res);
+    snprintf(lines[nl++], sizeof lines[0], "SEQ2 | %s", res);
+    run_case(seq3, 4, res, sizeof res);
+    snprintf(lines[nl++], sizeof lines[0], "SEQ3 | %s", res);
+    run_case(seq4, 5, res, sizeof res);
+    snprintf(lines[nl++], sizeof lines[0], "SEQ4 | %s", res);
+
+    *nlp = nl;
+}
+
+/* The valid and boundary values of the choice and range flags, which the generic sample values
+ * mostly miss. */
+static void add_extra_cases(char lines[][200], int *nlp) {
+    int nl = *nlp;
+    char res[140];
+    static const char *extra[][2] = {
+        {"--chat-format", "auto"},
+        {"--chat-format", "chatml"},
+        {"--chat-format", "llama3"},
+        {"--chat-format", "deepseek"},
+        {"--chat-format", "mistral"},
+        {"--chat-format", "plain"},
+        {"--chat-format", "bogus"},
+        {"--ui-logo", "ascii"},
+        {"--ui-logo", "text"},
+        {"--ui-logo", "other"},
+        {"--classifier", "auto"},
+        {"--classifier", "bf16"},
+        {"--classifier", "int8"},
+        {"--classifier", "int4"},
+        {"--classifier", "auto-fast"},
+        {"--classifier", "other"},
+        {"--simd", "auto"},
+        {"--simd", "avx2"},
+        {"--simd", "avx512f"},
+        {"--simd", "vnni"},
+        {"--simd", "scalar"},
+        {"--simd", "other"},
+        {"--act-quant", "auto"},
+        {"--act-quant", "int8"},
+        {"--act-quant", "float"},
+        {"--act-quant", "other"},
+        {"--quality-tolerance", "0"},
+        {"--quality-tolerance", "100"},
+        {"--quality-tolerance", "100.5"},
+        {"--quality-tolerance", "-1"},
+        {"--quality-tolerance", "nan"},
+        {"--quality-tolerance", "abc"},
+        {"--self-check-tokens", "15"},
+        {"--self-check-tokens", "16"},
+        {"--self-check-tokens", "4096"},
+        {"--self-check-tokens", "4097"},
+        {"--log-format", "text"},
+        {"--log-format", "json"},
+        {"--log-format", "xml"},
+        {"--log-level", "debug"},
+        {"--log-level", "info"},
+        {"--log-level", "warn"},
+        {"--log-level", "error"},
+        {"--log-level", "trace"},
+        {"--port", "1"},
+        {"--port", "65535"},
+        {"--port", "0"},
+        {"--port", "65536"},
+        {"--web-ui", "auto"},
+        {"--web-ui", "on"},
+        {"--web-ui", "off"},
+        {"--web-ui", "x"},
+        {"--ui-title", "My Title"},
+        {"--api-key", "secret"},
+        {"--static-dir", "/tmp/ui"},
+        {"--memory-db", "m.db"},
+        {"--watermark-detect", "t.txt"},
+        {"--dump-tensors", "d.bin"},
+        {"--cors-origin", "http://a.example"},
+    };
+    for (size_t e = 0; e < sizeof extra / sizeof extra[0]; e++) {
+        char *wx[4] = {"--model", "m.gguf", (char *)extra[e][0], (char *)extra[e][1]};
+        run_case(wx, 4, res, sizeof res);
+        snprintf(lines[nl++], sizeof lines[0], "X %s %s | %s", extra[e][0], extra[e][1], res);
+    }
+    char *seq5[10] = {"--model",       "m.gguf",
+                      "--cors-origin", "http://a.example",
+                      "--cors-origin", "http://b.example",
+                      "--api-key",     "k",
+                      "--metrics",     "--cors"};
+    run_case(seq5, 10, res, sizeof res);
+    snprintf(lines[nl++], sizeof lines[0], "SEQ5 | %s", res);
+    char *seq6[10] = {"--model", "m.gguf",       "--calibrate",  "--self-check", "--reasoning",
+                      "--json",  "--raw-prompt", "--ignore-eos", "--verbose",    "--metrics"};
+    run_case(seq6, 10, res, sizeof res);
+    snprintf(lines[nl++], sizeof lines[0], "SEQ6 | %s", res);
+
+    *nlp = nl;
+}
+
 int main(void) {
     g_arena = (char *)malloc(ARENA_BYTES);
     static char flags[300][40];
@@ -326,20 +432,8 @@ int main(void) {
             snprintf(lines[nl++], sizeof lines[0], "M %s %s | %s", flags[i], values[v], res);
         }
     }
-    /* a few multi-flag sequences: later flags override, errors stop the parse */
-    char *seq1[6] = {"--model", "m.gguf", "--threads", "4", "--temperature", "0.3"};
-    char *seq2[4] = {"--server", "--port", "9000", "--cors"};
-    char *seq3[4] = {"--rate-limit", "abc", "--threads", "4"};
-    char *seq4[5] = {"--top-k", "7", "--top-k", "9", "--seed"};
-    char res[140];
-    run_case(seq1, 6, res, sizeof res);
-    snprintf(lines[nl++], sizeof lines[0], "SEQ1 | %s", res);
-    run_case(seq2, 4, res, sizeof res);
-    snprintf(lines[nl++], sizeof lines[0], "SEQ2 | %s", res);
-    run_case(seq3, 4, res, sizeof res);
-    snprintf(lines[nl++], sizeof lines[0], "SEQ3 | %s", res);
-    run_case(seq4, 5, res, sizeof res);
-    snprintf(lines[nl++], sizeof lines[0], "SEQ4 | %s", res);
+    add_sequence_cases(lines, &nl);
+    add_extra_cases(lines, &nl);
 
     if (getenv("ARGS_GOLDEN_UPDATE")) {
         FILE *f = fopen(GOLDEN, "w");

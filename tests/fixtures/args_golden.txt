@@ -4907,3 +4907,64 @@ SEQ1 | 0 00adb91702da4c8b 14650fb0739d0383
 SEQ2 | 5 61820cc547ffe23d 59b3a5e3b3202795
 SEQ3 | 5 9cb4577bbf7e9e05 bc01bd5d1828da9a
 SEQ4 | 5 eadd2ebc5a267f9a 0b64c5cb2d1fc44a
+X --chat-format auto | 0 f95afbb08ed8a729 14650fb0739d0383
+X --chat-format chatml | 0 1b03ffee79de0b95 14650fb0739d0383
+X --chat-format llama3 | 0 72c465c481b83336 14650fb0739d0383
+X --chat-format deepseek | 0 c62ca0b055090ed3 14650fb0739d0383
+X --chat-format mistral | 0 4f03a1f4d63cb80c 14650fb0739d0383
+X --chat-format plain | 0 c8e3ed5589573f61 14650fb0739d0383
+X --chat-format bogus | 5 d9f58c2285367f5a c6e980571d8a83a4
+X --ui-logo ascii | 0 f95afbb08ed8a729 14650fb0739d0383
+X --ui-logo text | 0 c0da9de35ac6658e 14650fb0739d0383
+X --ui-logo other | 5 f95afbb08ed8a729 5b71f45afd4d59fc
+X --classifier auto | 0 f95afbb08ed8a729 14650fb0739d0383
+X --classifier bf16 | 0 9e69d1e9d728e395 14650fb0739d0383
+X --classifier int8 | 0 92acdd02219f7258 14650fb0739d0383
+X --classifier int4 | 0 2f225237836413bf 14650fb0739d0383
+X --classifier auto-fast | 0 fca3deb988658c4a 14650fb0739d0383
+X --classifier other | 5 f95afbb08ed8a729 4219be515f865bf9
+X --simd auto | 0 f95afbb08ed8a729 14650fb0739d0383
+X --simd avx2 | 0 91a65648265eada0 14650fb0739d0383
+X --simd avx512f | 0 8bd262e472d148c2 14650fb0739d0383
+X --simd vnni | 0 b939a46c1125b09c 14650fb0739d0383
+X --simd scalar | 0 f419e017b7bb5995 14650fb0739d0383
+X --simd other | 5 f95afbb08ed8a729 9b207029dc811bd9
+X --act-quant auto | 0 f95afbb08ed8a729 14650fb0739d0383
+X --act-quant int8 | 0 6b74f5897e7103a0 14650fb0739d0383
+X --act-quant float | 0 3b34baed0872ee8b 14650fb0739d0383
+X --act-quant other | 5 f95afbb08ed8a729 95368ece8bc46164
+X --quality-tolerance 0 | 0 b78a3aba12723db4 14650fb0739d0383
+X --quality-tolerance 100 | 0 daf760f443885801 14650fb0739d0383
+X --quality-tolerance 100.5 | 5 168f2a96d8577961 03a5c8d292e4e637
+X --quality-tolerance -1 | 5 a34f2bac9e6165a9 03a5c8d292e4e637
+X --quality-tolerance nan | 5 f95afbb08ed8a729 5dbc54fae5837d11
+X --quality-tolerance abc | 5 f95afbb08ed8a729 ca36dbcadbfbfb94
+X --self-check-tokens 15 | 5 000a3975a64c0c72 85c280f57a0d4c49
+X --self-check-tokens 16 | 0 e1b1ce5cc42396f9 14650fb0739d0383
+X --self-check-tokens 4096 | 0 89ba708dda6b2b39 14650fb0739d0383
+X --self-check-tokens 4097 | 5 bd1689eb66f9f944 85c280f57a0d4c49
+X --log-format text | 0 f95afbb08ed8a729 14650fb0739d0383
+X --log-format json | 0 d4ca78044b49a3ba 14650fb0739d0383
+X --log-format xml | 5 f95afbb08ed8a729 c301f8d0f7940a07
+X --log-level debug | 0 32d07c3d8e9f15f5 14650fb0739d0383
+X --log-level info | 0 6dcb292abbd535fe 14650fb0739d0383
+X --log-level warn | 0 1a0d107644f729b7 14650fb0739d0383
+X --log-level error | 0 46dabbaad0d17668 14650fb0739d0383
+X --log-level trace | 5 f95afbb08ed8a729 ff33bc7f108f0014
+X --port 1 | 0 bf462a84cb946479 14650fb0739d0383
+X --port 65535 | 0 b9b3eeca1df3ee86 14650fb0739d0383
+X --port 0 | 5 a1752b9dd7940414 b7734ebc58bc6202
+X --port 65536 | 5 6c6a43dd2b2fe141 b7734ebc58bc6202
+X --web-ui auto | 0 f95afbb08ed8a729 14650fb0739d0383
+X --web-ui on | 0 52bae4e166a255f4 14650fb0739d0383
+X --web-ui off | 0 f109addb6861919b 14650fb0739d0383
+X --web-ui x | 5 f95afbb08ed8a729 12f58bdf5e510522
+X --ui-title My Title | 0 269744ce9bcb7faf 14650fb0739d0383
+X --api-key secret | 0 85cb41a5adf1edff 14650fb0739d0383
+X --static-dir /tmp/ui | 0 6be6f3e04edaafc2 14650fb0739d0383
+X --memory-db m.db | 0 47be2ba6fe4d21c4 14650fb0739d0383
+X --watermark-detect t.txt | 0 6e99d64780f84b0f 14650fb0739d0383
+X --dump-tensors d.bin | 0 050c419ac638de38 14650fb0739d0383
+X --cors-origin http://a.example | 0 37850aca43363357 14650fb0739d0383
+SEQ5 | 0 2efa789bfcf65a51 14650fb0739d0383
+SEQ6 | 0 285b13df7db9686d 14650fb0739d0383

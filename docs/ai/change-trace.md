@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — chat "content parts" parsing is split into text, image-URL and per-part steps
+- What: `parse_content_parts` (`src/api/json_parse.c`, nesting 7) is `append_text` (the first text part becomes the content, later ones are appended with the same growth rule), `parse_image_url_object`, `parse_part_value`, `parse_part` and a short array loop; the `TextBuf` struct carries the length and capacity that were two locals.
+- Why: finding 20.a; `parse_content_parts` was complexity 35, 80 lines, nesting 7 and left the complexity baseline (358 -> 357).
+- Proof: new `tests/test_content_parts_golden.c` hashes the result code and every message's role, text and image URL for 60,000 generated bodies (several text parts, image_url objects with extra keys and repeated urls, unknown part keys, nested values, string and array contents mixed, malformed and cut-off JSON; 20,239 parse); the hash was recorded from the old function and passes unchanged under gcc and clang; `test_chat_request_golden` still passes; `tests/e2e_vision_long_prompt.sh` (image plus a 15,000-character text, two concurrent image requests) passes against the rebuilt server; `make test` gcc and clang.
+- Areas: `src/api/json_parse.c`, `tests/test_content_parts_golden.c`, `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — the LoRA adapter loader is split into header, model-match, layer and target steps
 - What: `lora_load_ex` (`src/runtime/lora_load.c`) is `lora_read_header` (size, magic, the eight fields, `lora_header_in_range` over a limits table), `lora_matches_model`, `lora_read_targets` over `lora_read_layer`, and `lora_free_arrays` for the failure path. Log messages, the legacy "q_dim field 0 means dim" rule and the failure state (everything freed, the struct zeroed) are unchanged.
 - Why: finding 20.a; `lora_load_ex` was complexity 31 in 106 lines and left the complexity baseline (359 -> 358).

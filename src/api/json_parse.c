@@ -45,92 +45,120 @@
  * the image_url part's nested "url" field). Assumes *p already points past
  * the "content": key, at the opening '['.
  */
+/* The text of a message being assembled from several "text" parts. */
+typedef struct {
+    size_t len, cap;
+} TextBuf;
+
+/* Adds one text part (taking ownership of `text`): the first becomes the message content, later
+ * ones are appended to it. */
+static TernaryError append_text(ChatMessage *msg, TextBuf *tb, char *text) {
+    size_t part_len = strlen(text);
+    if (!msg->content) {
+        msg->content = text;
+        tb->len      = part_len;
+        tb->cap      = tb->len + 1;
+        return TN_OK;
+    }
+    if (part_len > SIZE_MAX - tb->len - 1) {
+        free(text);
+        return TN_ERR_OOM;
+    }
+    size_t required = tb->len + part_len + 1;
+    if (required > tb->cap) {
+        size_t grown    = tb->cap <= SIZE_MAX / 2 ? tb->cap * 2 : required;
+        size_t capacity = required > grown ? required : grown;
+        char *joined    = realloc(msg->content, capacity);
+        if (!joined) {
+            free(text);
+            return TN_ERR_OOM;
+        }
+        msg->content = joined;
+        tb->cap      = capacity;
+    }
+    memcpy(msg->content + tb->len, text, part_len + 1);
+    tb->len += part_len;
+    free(text);
+    return TN_OK;
+}
+
+/* The nested {"url": "..."} object of an image_url part, after its '{'; a later url replaces an
+ * earlier one, other keys are skipped. */
+static TernaryError parse_image_url_object(const char **p, ChatMessage *msg) {
+    while (**p && **p != '}') {
+        json_skip_ws(p);
+        if (**p == '}') break;
+        char nkey[32];
+        if (!json_parse_string(p, nkey, sizeof(nkey))) return TN_ERR_JSON_PARSE;
+        if (!json_expect_char(p, ':')) return TN_ERR_JSON_PARSE;
+        json_skip_ws(p);
+        if (strcmp(nkey, "url") == 0) {
+            char *url = json_parse_string_heap(p);
+            if (!url) return TN_ERR_JSON_PARSE;
+            free(msg->image_data_url);
+            msg->image_data_url = url;
+        } else {
+            json_skip_value(p);
+        }
+        json_skip_ws(p);
+        if (**p == ',') (*p)++;
+    }
+    return json_expect_char(p, '}') ? TN_OK : TN_ERR_JSON_PARSE;
+}
+
+/* One member of a part object, after its key and ':': "text" extends the content, "image_url" with
+ * an object value sets the image, anything else is skipped. */
+static TernaryError parse_part_value(const char **p, ChatMessage *msg, TextBuf *tb,
+                                     const char *key) {
+    if (strcmp(key, "text") == 0) {
+        char *text = json_parse_string_heap(p);
+        if (!text) return TN_ERR_JSON_PARSE;
+        return append_text(msg, tb, text);
+    }
+    if (strcmp(key, "image_url") == 0 && **p == '{') {
+        (*p)++; /* enter the nested {"url": "..."} object */
+        return parse_image_url_object(p, msg);
+    }
+    json_skip_value(p);
+    return TN_OK;
+}
+
+/* One part object {...}. */
+static TernaryError parse_part(const char **p, ChatMessage *msg, TextBuf *tb) {
+    if (!json_expect_char(p, '{')) return TN_ERR_JSON_PARSE;
+    while (**p && **p != '}') {
+        json_skip_ws(p);
+        if (**p == '}') break;
+        char key[64];
+        if (!json_parse_string(p, key, sizeof(key))) return TN_ERR_JSON_PARSE;
+        if (!json_expect_char(p, ':')) return TN_ERR_JSON_PARSE;
+        json_skip_ws(p);
+        TernaryError err = parse_part_value(p, msg, tb, key);
+        if (err != TN_OK) return err;
+        json_skip_ws(p);
+        if (**p == ',') (*p)++;
+    }
+    return json_expect_char(p, '}') ? TN_OK : TN_ERR_JSON_PARSE;
+}
+
 static TernaryError parse_content_parts(const char **p, ChatMessage *msg) {
     if (!json_expect_char(p, '[')) return TN_ERR_JSON_PARSE;
     json_skip_ws(p);
 
-    size_t text_len      = msg->content ? strlen(msg->content) : 0;
-    size_t text_capacity = msg->content ? text_len + 1 : 0;
+    TextBuf tb;
+    tb.len = msg->content ? strlen(msg->content) : 0;
+    tb.cap = msg->content ? tb.len + 1 : 0;
 
     while (**p && **p != ']') {
-        if (!json_expect_char(p, '{')) return TN_ERR_JSON_PARSE;
-
-        while (**p && **p != '}') {
-            json_skip_ws(p);
-            if (**p == '}') break;
-
-            char key[64];
-            if (!json_parse_string(p, key, sizeof(key))) return TN_ERR_JSON_PARSE;
-            if (!json_expect_char(p, ':')) return TN_ERR_JSON_PARSE;
-            json_skip_ws(p);
-
-            if (strcmp(key, "text") == 0) {
-                char *text = json_parse_string_heap(p);
-                if (!text) return TN_ERR_JSON_PARSE;
-                size_t part_len = strlen(text);
-                if (!msg->content) {
-                    msg->content  = text;
-                    text_len      = part_len;
-                    text_capacity = text_len + 1;
-                } else {
-                    if (part_len > SIZE_MAX - text_len - 1) {
-                        free(text);
-                        return TN_ERR_OOM;
-                    }
-                    size_t required = text_len + part_len + 1;
-                    if (required > text_capacity) {
-                        size_t grown = text_capacity <= SIZE_MAX / 2 ? text_capacity * 2 : required;
-                        size_t capacity = required > grown ? required : grown;
-                        char *joined    = realloc(msg->content, capacity);
-                        if (!joined) {
-                            free(text);
-                            return TN_ERR_OOM;
-                        }
-                        msg->content  = joined;
-                        text_capacity = capacity;
-                    }
-                    memcpy(msg->content + text_len, text, part_len + 1);
-                    text_len += part_len;
-                    free(text);
-                }
-            } else if (strcmp(key, "image_url") == 0 && **p == '{') {
-                (*p)++; /* enter the nested {"url": "..."} object */
-                while (**p && **p != '}') {
-                    json_skip_ws(p);
-                    if (**p == '}') break;
-                    char nkey[32];
-                    if (!json_parse_string(p, nkey, sizeof(nkey))) return TN_ERR_JSON_PARSE;
-                    if (!json_expect_char(p, ':')) return TN_ERR_JSON_PARSE;
-                    json_skip_ws(p);
-                    if (strcmp(nkey, "url") == 0) {
-                        char *url = json_parse_string_heap(p);
-                        if (!url) return TN_ERR_JSON_PARSE;
-                        free(msg->image_data_url);
-                        msg->image_data_url = url;
-                    } else {
-                        json_skip_value(p);
-                    }
-                    json_skip_ws(p);
-                    if (**p == ',') (*p)++;
-                }
-                if (!json_expect_char(p, '}')) return TN_ERR_JSON_PARSE;
-            } else {
-                json_skip_value(p);
-            }
-
-            json_skip_ws(p);
-            if (**p == ',') (*p)++;
-        }
-        if (!json_expect_char(p, '}')) return TN_ERR_JSON_PARSE;
-
+        TernaryError err = parse_part(p, msg, &tb);
+        if (err != TN_OK) return err;
         json_skip_ws(p);
         if (**p == ',') {
             (*p)++;
             json_skip_ws(p);
         }
     }
-    if (!json_expect_char(p, ']')) return TN_ERR_JSON_PARSE;
-    return TN_OK;
+    return json_expect_char(p, ']') ? TN_OK : TN_ERR_JSON_PARSE;
 }
 
 /* ── Message array parser ────────────────────────────────────────────────── */

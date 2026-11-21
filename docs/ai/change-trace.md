@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — the settings-file parser is split by step and lives in pz_config_parse.c
+- What: `pz_config_parse` is a loop over `take_line` and `parse_line`, which uses `read_setting` (key, `=`, schema lookup), `parse_value` (list or scalar), `parse_list_value` and `parse_scalar_value`. The parser (with its string, scalar and whitespace helpers) moved from `pz_config.c` to `src/config/pz_config_parse.c`; `pz_config.c` dropped under the 500-line limit and left the file-size baseline. A duplicated `if LIST ... else ...` that called `pz_config_set` in both branches became one call, and one long boolean condition became `ends_bare_value`.
+- Why: finding 20.a; `pz_config_parse` was complexity 41, 94 lines, nesting 4 and left the complexity baseline (379 -> 378).
+- Proof: new `tests/test_pz_config_parse_golden.c` hashes the loaded count, every warning and the resulting settings for 60,000 generated config texts (comments, tables, flat keys, quoted strings with escapes, lists, malformed lines, unknown keys, trailing junk, CRLF); the hash was recorded from the old function and passes unchanged on the new one; a deliberate one-line mutation makes it fail. `pz config set/list` output identical to the baseline binary; `make test` gcc and clang.
+- Areas: `src/config/pz_config.c`, `src/config/pz_config_parse.c`, `tests/test_pz_config_parse_golden.c`, `CMakeLists.txt`, `tools/complexity_baseline.txt`, `tools/file_size_baseline.txt`, `tools/bool_chains_baseline.txt`.
+
 ### 2026-11-21 — prompt building moves to gen_prompt.c and is split by path
 - What: `build_prompt` (`src/transformer/gen_session.c`) is now `gen_session_build_prompt` in `src/transformer/gen_prompt.c` (`include/transformer/gen_prompt.h`), a short driver over `build_chat_prompt` (template path: `template_messages`, `render_chat_template` with the control-token neutralising, `append_assistant_prefix`) and `build_raw_prompt` (`raw_bos_id`, assistant prefix encoding). Order of operations, step-timing brackets, warnings and error messages are unchanged. `gen_session.c` shrank from 548 to 394 lines (file-size baseline lowered).
 - Why: finding 20.a; `build_prompt` was complexity 51 in 111 lines and left the complexity baseline (380 -> 379).

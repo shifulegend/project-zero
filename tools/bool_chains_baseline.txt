@@ -11,7 +11,7 @@ src/cli/config_cmd.c 2
 src/cli/model_catalog.c 1
 src/cli/session_checks.c 1
 src/cli/session_dist.c 1
-src/config/pz_config.c 2
+src/config/pz_config.c 1
 src/core/bw_cache.c 3
 src/core/gguf_i2s.c 1
 src/core/gguf_reader.c 1
@@ -22,7 +22,6 @@ src/eval/selfcheck.c 2
 src/kv_cache/prefix_cache.c 1
 src/math/matmul_q2_0_vnni.c 2
 src/math/q8_0_act.c 1
-src/math/simd_dispatch.c 3
 src/memory/file_backed.c 1
 src/multimodal/image_load.c 1
 src/multimodal/vision_weights_load.c 1

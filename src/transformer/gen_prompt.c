@@ -35,7 +35,8 @@ static int history_opens_with_system(const GenerationParams *gp) {
     return gp->n_messages > 0 && gp->roles && gp->roles[0] && strcmp(gp->roles[0], "system") == 0;
 }
 
-/* Appends the caller's history (null roles read "user", null contents ""); returns the new count. */
+/* Appends the caller's history (null roles read "user", null contents ""); returns the new
+ * count. */
 static int append_history(const GenerationParams *gp, int n_msg, const char **roles,
                           const char **contents) {
     for (int i = 0; i < gp->n_messages && n_msg < GEN_MAX_TEMPLATE_MESSAGES; i++) {
@@ -144,8 +145,8 @@ static int build_chat_prompt(GenSession *g, const char *chat_tmpl, const char *p
     return n_prompt;
 }
 
-/* The BOS id a raw prompt starts with, -1 for none. 2026-10-19: honours tokenizer.ggml.add_bos_token:
- * Qwen/SmolLM GGUFs say false, and llama.cpp feeds them no BOS. */
+/* The BOS id a raw prompt starts with, -1 for none. 2026-10-19: honours
+ * tokenizer.ggml.add_bos_token: Qwen/SmolLM GGUFs say false, and llama.cpp feeds them no BOS. */
 static int raw_bos_id(const Config *cfg, const Tokenizer *tok) {
     if (!tok->add_bos_token) return -1;
     if (cfg->bos_token_id > 0) return cfg->bos_token_id;

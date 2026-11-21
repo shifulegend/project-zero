@@ -338,6 +338,7 @@ set(CLI_SOURCES
     src/cli/config_cmd.c
     src/cli/model_catalog.c
     src/config/pz_config.c
+    src/config/pz_config_parse.c
     src/config/pz_config_schema.c
     src/core/timer.c
     src/cli/repl.c

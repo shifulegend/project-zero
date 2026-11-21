@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — bit-exact reference test for every GGUF dequantiser
+- What: `tests/test_gguf_dequant_golden.c` decodes 1024 weights per format (24 formats: F32, F16, BF16 and the legacy, K and IQ quants) from deterministic pseudo-random blocks and compares an FNV-1a hash of the output bytes with a stored one; `--print` lists the current hashes for a deliberate update.
+- Why: finding 45.b made bit-exact references the prerequisite for merging the per-format block loops (decision Q2). The hashes agree between gcc and clang, debug and `-O3 -march=native`, so the check is stable across the CI compilers.
+- Proof: passes on gcc and clang; a one-constant mutation of the Q4_0 decoder fails exactly the Q4_0 case.
+- Areas: `tests/test_gguf_dequant_golden.c`.
+
 ### 2026-11-21 — one MoE-layer loader for DeepSeek-2 and Qwen3-MoE
 - What: `gguf_ld_moe_layer` (in `gguf_load_util.c`) loads one MoE layer's F32 router and slices the stacked expert tensors into per-expert pointers, recording the layer's quant types; both architecture loaders call it instead of carrying the same ~45 lines. Error messages and behaviour are unchanged.
 - Why: findings 1.g / 20.b (duplication, over-long functions): `weights_from_gguf_deepseek2` 134 -> 96 lines (complexity 26 -> 18), `weights_from_gguf_qwen3moe` 92 -> 54 lines (20 -> 12); duplicated source share 7.55% -> 7.36% (baseline was 7.84%).

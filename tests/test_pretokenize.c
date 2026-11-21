@@ -5,10 +5,13 @@
  * UTF-8, plus name mapping and capacity handling. Expected splits follow
  * llama.cpp's unicode_regex_split_custom_* behaviour.
  */
+#include <stdint.h>
 #include <string.h>
 
 #include "test_harness.h"
 #include "tokenizer/pretokenize.h"
+
+#define PRETOK_CP_CLASS_HASH 0xccba9eb1b14f3e86ull
 
 /* Joins fragments with '|' for compact comparison. */
 static const char *split(PretokType t, const char *s) {
@@ -103,8 +106,25 @@ static void test_api(void) {
     TEST_ASSERT_EQ(pretokenize(PRETOK_GPT2, "", 0, st, ln, 2), 0, "empty input");
 }
 
+/* The class of every code point (and a few non-code-point values) hashed: the table was rewritten
+ * from an if-chain to a range table and compared against the old function over all of 0..0x110005
+ * before this hash was taken, so one changed code point anywhere changes it. */
+static void test_cp_class_table(void) {
+    uint64_t h = 1469598103934665603ull;
+    for (uint32_t c = 0; c <= 0x110005u; c++) {
+        h = (h ^ (uint64_t)pretok_cp_class(c)) * 1099511628211ull;
+    }
+    TEST_ASSERT(pretok_cp_class('a') == 1 && pretok_cp_class('7') == 2 && pretok_cp_class(' ') == 4,
+                "ASCII classes");
+    TEST_ASSERT(pretok_cp_class(0xA0) == 4 && pretok_cp_class(0x3000) == 4, "non-ASCII spaces");
+    TEST_ASSERT_EQ(pretok_cp_class(0xFFFFFFFFu), 0,
+                   "a value that is not a code point has no class");
+    TEST_ASSERT(h == PRETOK_CP_CLASS_HASH, "every code point keeps its class");
+}
+
 int main(void) {
     printf("=== BPE Pre-tokenization Tests ===\n");
+    RUN_TEST(test_cp_class_table);
     RUN_TEST(test_gpt2);
     RUN_TEST(test_llama3);
     RUN_TEST(test_qwen2_smollm_default);

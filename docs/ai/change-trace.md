@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — every code point's class is pinned; the classifier stays an if-chain
+- What: `cp_flags` is exported as `pretok_cp_class` and `tests/test_pretokenize.c` hashes its result for every value 0..0x110005 (hash recorded from the old function). A range-table rewrite was tried and reverted: identical on 1,114,122 values, but 25-50% slower in `pretokenize()` on 5.4 MB of mixed-script text (35 ms vs 44-54 ms), so the chain stays (decision-log 2026-11-21).
+- Why: finding 20.a (`cp_flags`, complexity 92 in 36 lines); the measurement said no, and the pin makes any later change safe. The complexity baseline entry is renamed with unchanged numbers.
+- Proof: exhaustive old-vs-new comparison for the rewrite; `make test` gcc and clang; file-size ratchet unchanged at 593 lines.
+- Areas: `src/tokenizer/pretokenize.c`, `include/tokenizer/pretokenize.h`, `tests/test_pretokenize.c`, `tools/complexity_baseline.txt`, `docs/ai/decision-log.md`.
+
 ### 2026-11-21 — the behaviour/server flag group is table-driven
 - What: `args_parse_behavior` (`src/cli/args_flags_behavior.c`) was one else-if chain over 36 flags (complexity 74, 151 lines, nesting 32). Flags without a value are `k_switch_flags` rows, pointer-valued flags `k_string_flags`, named-choice flags (`--ui-logo`, `--classifier`, `--web-ui`) `k_choice_flags` with their value lists and messages, numeric flags (`--quality-tolerance`, `--self-check-tokens`, `--port`) `k_range_flags`, and the flags with their own rules (`--chat-format`, `--simd`, `--act-quant`, `--log-format`, `--log-level`, `--cors-origin`) are small named handlers. One small function per kind walks its table. Messages, exit codes and the order of side effects are unchanged.
 - Why: finding 20.a (decision Q3: table-driven flag parsing with parity tests). The function left the complexity baseline (389 -> 388).

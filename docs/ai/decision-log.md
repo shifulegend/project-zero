@@ -3,6 +3,23 @@
 > Timestamped architectural / tooling / workflow / process decisions. Newest first.
 > Read at session start. Last updated: 2026-11-21.
 
+### 2026-11-21 — The code-point classifier stays an if-chain
+- Decision: `pretok_cp_class` (formerly the static `cp_flags`) in
+  `src/tokenizer/pretokenize.c` keeps its if-chain over Unicode ranges
+  (complexity 92, 36 lines) and its entry in the complexity baseline.
+- Why: it runs once per character of every prompt. Rewritten as a sorted
+  range table it was identical on all 1,114,122 values checked (every code
+  point plus the sentinel and extremes), but `pretokenize()` took 44-54 ms
+  instead of 35 ms on 5.4 MB of mixed-script text with binary search (a
+  linear scan was far slower in a classification-only benchmark, 177 ms vs
+  24 ms). The compiler turns the chain into a decision tree.
+- Safety net instead: `tests/test_pretokenize.c` hashes the class of every
+  code point (0..0x110005) with the value taken from the old function, so
+  any later change to the chain is caught at the first different character.
+- Consequence: a deviation row for the hot-path exemption (Q3) is in the
+  Deviation approval log; the function's name is exported only so the test
+  can reach it.
+
 ### 2026-11-21 — Process-wide mutable state: what cannot be removed, what is proposed
 - Decision: 40 mutable statics remain in `src/` (down from 69). They fall
   into seven groups; only the first is impossible to remove. The rest are

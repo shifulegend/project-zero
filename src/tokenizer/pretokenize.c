@@ -62,7 +62,7 @@ static int in(uint32_t c, uint32_t a, uint32_t b) {
     return c >= a && c <= b;
 }
 
-static int cp_flags(uint32_t c) {
+int pretok_cp_class(uint32_t c) {
     if (c == OUT_OF_RANGE) return 0;
     if (c < 0x80) {
         if (c >= '0' && c <= '9') return F_NUMBER;
@@ -117,7 +117,7 @@ static uint32_t get_cp(const Split *s, size_t pos) {
     return (pos >= s->ini && pos < s->end) ? s->c->cp[pos] : OUT_OF_RANGE;
 }
 static int get_fl(const Split *s, size_t pos) {
-    return cp_flags(get_cp(s, pos));
+    return pretok_cp_class(get_cp(s, pos));
 }
 
 static size_t add_tok(Split *s, size_t end) {
@@ -309,15 +309,15 @@ static int opt_space_run(const Split *s, size_t pos, int (*ok)(uint32_t)) {
 }
 
 static int cp_is_letter(uint32_t c) {
-    return (cp_flags(c) & F_LETTER) != 0;
+    return (pretok_cp_class(c) & F_LETTER) != 0;
 }
 static int cp_is_punct(uint32_t c) {
-    return (cp_flags(c) & F_PUNCT) != 0;
+    return (pretok_cp_class(c) & F_PUNCT) != 0;
 }
 
 static int cls_match(const Split *s, size_t pos, ClassPat p) {
     uint32_t c = get_cp(s, pos);
-    int fl     = cp_flags(c);
+    int fl     = pretok_cp_class(c);
     switch (p) {
         case CLS_NUMBER_ONE:
             return (fl & F_NUMBER) ? 1 : 0;
@@ -331,7 +331,7 @@ static int cls_match(const Split *s, size_t pos, ClassPat p) {
             size_t q = pos;
             for (;;) {
                 uint32_t d = get_cp(s, q);
-                int f      = cp_flags(d);
+                int f      = pretok_cp_class(d);
                 if ((f & F_PUNCT) || d == '$' || d == '+' || d == '<' || d == '=' || d == '>' ||
                     d == '^' || d == '~' || d == '|')
                     q++;

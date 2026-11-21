@@ -234,7 +234,7 @@ src/tokenizer/chat_template_parse_expr.cpp::parse_filter 9 24 4
 src/tokenizer/chat_template_parse_expr.cpp::parse_primary 32 95 6
 src/tokenizer/pretokenize.c::cls_match 34 54 3
 src/tokenizer/pretokenize.c::contraction 16 10 2
-src/tokenizer/pretokenize.c::cp_flags 92 36 2
+src/tokenizer/pretokenize.c::pretok_cp_class 92 36 2
 src/tokenizer/pretokenize.c::cpts_decode 16 34 4
 src/tokenizer/pretokenize.c::ds_letter 15 8 1
 src/tokenizer/pretokenize.c::pretok_type_from_name 14 21 2

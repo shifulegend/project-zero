@@ -1,9 +1,9 @@
 /*
  * tests/test_semver_parse_equiv.c — semver_parse over 400,000 generated strings: a hash of every
  * result code and the whole SemVer it fills, recorded from the single-function implementation that
- * was later split into parse_core and parse_prerelease. Covers versions with and without a v prefix,
- * numbers at and beyond the limit, pre-release tags, git-describe suffixes (alone and glued onto a
- * pre-release), -dirty, build metadata, over-long identifiers, junk and high-bit bytes.
+ * was later split into parse_core and parse_prerelease. Covers versions with and without a v
+ * prefix, numbers at and beyond the limit, pre-release tags, git-describe suffixes (alone and glued
+ * onto a pre-release), -dirty, build metadata, over-long identifiers, junk and high-bit bytes.
  */
 #include <stdint.h>
 #include <stdio.h>

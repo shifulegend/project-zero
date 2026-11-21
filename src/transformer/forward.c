@@ -296,56 +296,65 @@ float *transformer_forward(int token, int pos, const Config *cfg, const Transfor
     return s->logits;
 }
 
+/* Final RMSNorm, per token (a per-row statistic, not batchable). */
+static void rows_final_norm(SpecBatchScratch *sb, const TransformerWeights *w, const Config *cfg,
+                            int n_tokens) {
+    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    if (w->rms_final_weight) {
+        for (int k = 0; k < n_tokens; k++) {
+            float *x_k = sb->x + (size_t)k * cfg->dim;
+            tn_rmsnorm(x_k, x_k, w->rms_final_weight, cfg->dim, cfg->rms_norm_eps);
+        }
+    }
+    if (t_step) tn_step_timing_add(TN_STEP_18_FINAL_RMSNORM, tn_step_timing_now_ns() - t_step);
+}
+
+/* Classifier matmul -> logits_out, batched. Mirrors transformer_forward()'s non-q35 branches
+ * (wcls_is_ternary, then the hardware-profile-selected INT4/INT8/BF16 generic path); the
+ * q35_is_q2_0_model branch there is unreachable here (see Step 1). */
+static void rows_classifier(SpecBatchScratch *sb, const TransformerWeights *w, const Config *cfg,
+                            int n_tokens, ThreadPool *tp, float *logits_out) {
+    int dim = cfg->dim;
+    if (w->cls.is_ternary) {
+        tn_ternary_matmul_packed_batch(logits_out, sb->x, (const tn_u8 *)w->cls.w, dim,
+                                       cfg->vocab_size, w->cls.scale, n_tokens, tp);
+        return;
+    }
+    const TnHardwareProfile *hp = tn_hardware_profile_get();
+    TnClassifierFormat fmt      = hp ? hp->classifier_fmt : TN_CLS_BF16;
+    if (cls_raw_is(w, GGUF_TYPE_Q6_K)) {
+        parallel_matmul_q6k_tokens(logits_out, sb->x, (const uint8_t *)w->cls.raw, dim,
+                                   cfg->vocab_size, n_tokens, tp);
+        return;
+    }
+    if (cls_raw_is(w, GGUF_TYPE_Q4_K)) {
+        parallel_matmul_q4k_tokens(logits_out, sb->x, (const uint8_t *)w->cls.raw, dim,
+                                   cfg->vocab_size, n_tokens, tp);
+        return;
+    }
+    if (cls_i4_ok(w, fmt)) {
+        tn_matmul_i4_batch(logits_out, sb->x, w->cls.i4, w->cls.i4_scales, dim, cfg->vocab_size,
+                           n_tokens, tp);
+        return;
+    }
+    if (cls_i8_ok(w, fmt)) {
+        tn_matmul_i8_batch(logits_out, sb->x, w->cls.i8, w->cls.i8_scales, dim, cfg->vocab_size,
+                           n_tokens, tp);
+        return;
+    }
+    tn_matmul_bf16_batch(logits_out, sb->x, w->cls.w, dim, cfg->vocab_size, n_tokens, tp);
+}
+
 /* Final RMSNorm + classifier over n_tokens rows of sb->x -> logits_out
  * ([n_tokens][vocab]); shared by the speculative batch and multi-sequence
  * steps. */
 static void forward_rows_logits(SpecBatchScratch *sb, const TransformerWeights *w,
                                 const Config *cfg, int n_tokens, ThreadPool *tp,
                                 float *logits_out) {
-    int dim = cfg->dim;
-    /* final RMSNorm, per token (per-row statistic, not batchable) */
+    rows_final_norm(sb, w, cfg, n_tokens);
     int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    if (w->rms_final_weight) {
-        for (int k = 0; k < n_tokens; k++) {
-            float *x_k = sb->x + (size_t)k * dim;
-            tn_rmsnorm(x_k, x_k, w->rms_final_weight, dim, cfg->rms_norm_eps);
-        }
-    }
-    if (t_step) {
-        tn_step_timing_add(TN_STEP_18_FINAL_RMSNORM, tn_step_timing_now_ns() - t_step);
-    }
-
-    /* classifier matmul -> logits_out, batched. Mirrors
-   * transformer_forward()'s non-q35 branches (wcls_is_ternary, then the
-   * hardware-profile-selected INT4/INT8/BF16 generic path); the
-   * q35_is_q2_0_model branch there is unreachable here (see Step 1). */
-    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    if (w->cls.is_ternary) {
-        tn_ternary_matmul_packed_batch(logits_out, sb->x, (const tn_u8 *)w->cls.w, dim,
-                                       cfg->vocab_size, w->cls.scale, n_tokens, tp);
-    } else {
-        const TnHardwareProfile *hp = tn_hardware_profile_get();
-        TnClassifierFormat fmt      = hp ? hp->classifier_fmt : TN_CLS_BF16;
-
-        if (cls_raw_is(w, GGUF_TYPE_Q6_K)) {
-            parallel_matmul_q6k_tokens(logits_out, sb->x, (const uint8_t *)w->cls.raw, dim,
-                                       cfg->vocab_size, n_tokens, tp);
-        } else if (cls_raw_is(w, GGUF_TYPE_Q4_K)) {
-            parallel_matmul_q4k_tokens(logits_out, sb->x, (const uint8_t *)w->cls.raw, dim,
-                                       cfg->vocab_size, n_tokens, tp);
-        } else if (cls_i4_ok(w, fmt)) {
-            tn_matmul_i4_batch(logits_out, sb->x, w->cls.i4, w->cls.i4_scales, dim, cfg->vocab_size,
-                               n_tokens, tp);
-        } else if (cls_i8_ok(w, fmt)) {
-            tn_matmul_i8_batch(logits_out, sb->x, w->cls.i8, w->cls.i8_scales, dim, cfg->vocab_size,
-                               n_tokens, tp);
-        } else {
-            tn_matmul_bf16_batch(logits_out, sb->x, w->cls.w, dim, cfg->vocab_size, n_tokens, tp);
-        }
-    }
-    if (t_step) {
-        tn_step_timing_add(TN_STEP_19_LM_HEAD, tn_step_timing_now_ns() - t_step);
-    }
+    rows_classifier(sb, w, cfg, n_tokens, tp, logits_out);
+    if (t_step) tn_step_timing_add(TN_STEP_19_LM_HEAD, tn_step_timing_now_ns() - t_step);
 }
 
 /* ── Phase 18 (speculative decoding): batched multi-token forward pass ─────
@@ -430,15 +439,10 @@ TernaryError transformer_forward_multi(const int *tokens, const int *pos_arr,
                                         logits_out);
 }
 
-TernaryError transformer_forward_multi_ex(const int *tokens, const int *pos_arr,
-                                          RunState *const *states, int n_tokens,
-                                          const unsigned char *want_logits, const Config *cfg,
-                                          const TransformerWeights *w, SpecBatchScratch *sb,
-                                          const MoEConfig *mc, ThreadPool *tp, float *logits_out) {
-    if (!tokens || !pos_arr || !states || n_tokens <= 0 || !sb || !logits_out)
-        return TN_ERR_INVALID_ARGS;
-    if (n_tokens > sb->n_tokens) return TN_ERR_INVALID_ARGS;
-    if (!transformer_forward_multi_supported(w, mc)) return TN_ERR_UNSUPPORTED;
+/* Embeds each row's token (zeros for an out-of-range one) and checks its position. */
+static TernaryError multi_embed_rows(const int *tokens, const int *pos_arr, RunState *const *states,
+                                     int n_tokens, const Config *cfg, const TransformerWeights *w,
+                                     SpecBatchScratch *sb) {
     int dim = cfg->dim;
     for (int k = 0; k < n_tokens; k++) {
         if (states[k]->sw.window_size == 0) sw_init(&states[k]->sw, states[k]->max_seq_len, 0);
@@ -449,27 +453,44 @@ TernaryError transformer_forward_multi_ex(const int *tokens, const int *pos_arr,
         else
             embed_token(sb->x + (size_t)k * dim, token, w->embd_f32, w->token_embedding_table, dim);
     }
+    return TN_OK;
+}
+
+/* 2026-10-22: rows that only feed the KV cache (all but the last row of a prefill chunk) skip the
+ * final norm and classifier: the wanted rows' hidden states move to the front, in order. Returns
+ * how many rows the head must run on. */
+static int compact_wanted_rows(SpecBatchScratch *sb, int dim, int n_tokens,
+                               const unsigned char *want_logits) {
+    if (!want_logits) return n_tokens;
+    int n_out = 0;
+    for (int k = 0; k < n_tokens; k++) {
+        if (!want_logits[k]) continue;
+        if (n_out != k)
+            memmove(sb->x + (size_t)n_out * dim, sb->x + (size_t)k * dim,
+                    (size_t)dim * sizeof(float));
+        n_out++;
+    }
+    return n_out;
+}
+
+TernaryError transformer_forward_multi_ex(const int *tokens, const int *pos_arr,
+                                          RunState *const *states, int n_tokens,
+                                          const unsigned char *want_logits, const Config *cfg,
+                                          const TransformerWeights *w, SpecBatchScratch *sb,
+                                          const MoEConfig *mc, ThreadPool *tp, float *logits_out) {
+    if (!tokens || !pos_arr || !states || n_tokens <= 0 || !sb || !logits_out)
+        return TN_ERR_INVALID_ARGS;
+    if (n_tokens > sb->n_tokens) return TN_ERR_INVALID_ARGS;
+    if (!transformer_forward_multi_supported(w, mc)) return TN_ERR_UNSUPPORTED;
+    TernaryError err = multi_embed_rows(tokens, pos_arr, states, n_tokens, cfg, w, sb);
+    if (err != TN_OK) return err;
     for (int l = 0; l < cfg->n_layers; l++) {
-        TernaryError err =
-            attention_forward_multi(states, pos_arr, sb, w, cfg, mc, l, n_tokens, tp);
+        err = attention_forward_multi(states, pos_arr, sb, w, cfg, mc, l, n_tokens, tp);
         if (err != TN_OK) return err;
         err = ffn_forward_batch(states[0], sb, w, cfg, mc, l, n_tokens, tp);
         if (err != TN_OK) return err;
     }
-    /* 2026-10-22: rows that only feed the KV cache (all but the last row of a
-   * prefill chunk) skip the final norm and classifier — move the wanted
-   * rows' hidden states to the front, in order, and run the head on those. */
-    int n_out = n_tokens;
-    if (want_logits) {
-        n_out = 0;
-        for (int k = 0; k < n_tokens; k++) {
-            if (!want_logits[k]) continue;
-            if (n_out != k)
-                memmove(sb->x + (size_t)n_out * dim, sb->x + (size_t)k * dim,
-                        (size_t)dim * sizeof(float));
-            n_out++;
-        }
-    }
+    int n_out = compact_wanted_rows(sb, cfg->dim, n_tokens, want_logits);
     if (n_out > 0) forward_rows_logits(sb, w, cfg, n_out, tp, logits_out);
     return TN_OK;
 }

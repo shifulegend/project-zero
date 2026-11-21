@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — batched logits head and multi-sequence step split into helpers
+- What: `forward_rows_logits` now calls `rows_final_norm` and `rows_classifier` (early-return format dispatch); `transformer_forward_multi_ex` calls `multi_embed_rows` and `compact_wanted_rows`.
+- Why: finding 20.a; `forward_rows_logits` left the complexity baseline and `transformer_forward_multi_ex` went from 23 / 40 / 3 to 14 / 21 / 2.
+- Proof: `make test` gcc and clang, `make test-tsan`, `tests/e2e_parallel.sh` (6 of 6, batched text identical to the sequential server's), speculative decoding output identical to the original baseline binary.
+- Areas: `src/transformer/forward.c`, `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — the single-token forward pass is split into embed, layers, final norm and classifier
 - What: `transformer_forward` (`src/transformer/forward.c`) is a short driver over `forward_embed`, `forward_layers` (distributed ranges), `forward_layer` (Mamba or attention plus FFN), `forward_final_norm` and `forward_classifier`; classifier format checks are shared helpers (`cls_raw_is`, `cls_i4_ok`, `cls_i8_ok`) also used by `forward_rows_logits`.
 - Why: finding 20.a; `transformer_forward` was complexity 67, 176 lines, nesting 6 and left the complexity baseline; `forward_rows_logits` dropped from 19 to 13.

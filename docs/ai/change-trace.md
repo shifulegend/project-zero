@@ -3,6 +3,12 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — the legacy dequantisers share one block walker
+- What: Q8_0, Q4_0, Q4_1, Q5_0, Q5_1, Q8_1 and Q2_0 in `src/core/gguf_quant.c` are now a per-format `*_block` decoder plus one `dequant_blocks` loop (and `zero_tail` for the formats that zero a partial last block); the arithmetic of each decoder is the old loop body, unchanged.
+- Why: finding 45.b (the repeated block-loop skeleton; decision Q2 asked for bit-exact output). The duplication tool's number does not move (7.36%): those loops differed textually, so this is structural clarity, not a metric gain.
+- Proof: `tests/test_gguf_dequant_golden.c` (32 assertions) passes on gcc and clang; its new tail cases (40 weights = one block + 8) were hashed from the old decoder and match: Q8_0 decodes the partial block, Q5_0/Q5_1/Q4_1/Q8_1/Q2_0 zero the rest, Q4_0 leaves it; SmolLM2 greedy text identical to the baseline and model load plus first token unchanged (median 0.716 s vs 0.735 s, 7 interleaved pairs).
+- Areas: `src/core/gguf_quant.c`, `tests/test_gguf_dequant_golden.c`.
+
 ### 2026-11-21 — bit-exact reference test for every GGUF dequantiser
 - What: `tests/test_gguf_dequant_golden.c` decodes 1024 weights per format (24 formats: F32, F16, BF16 and the legacy, K and IQ quants) from deterministic pseudo-random blocks and compares an FNV-1a hash of the output bytes with a stored one; `--print` lists the current hashes for a deliberate update.
 - Why: finding 45.b made bit-exact references the prerequisite for merging the per-format block loops (decision Q2). The hashes agree between gcc and clang, debug and `-O3 -march=native`, so the check is stable across the CI compilers.

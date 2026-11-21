@@ -86,6 +86,57 @@ static uint64_t run_case(size_t idx) {
     return h;
 }
 
+/* Partial last block (40 weights = one block + 8): Q8_0 decodes the partial block, Q5_0, Q5_1,
+ * Q4_1, Q8_1 and Q2_0 zero the weights past the last whole block, Q4_0 leaves them alone. The
+ * output starts as a sentinel pattern so "left alone" is visible in the hash. */
+static const struct {
+    const char *name;
+    GGUFType type;
+    Dq fn;
+    uint64_t golden;
+} k_tail_cases[] = {
+    {"Q8_0", GGUF_TYPE_Q8_0, gguf_dequant_q8_0, 0x51a05b9d15d9f0f5ull},
+    {"Q4_0", GGUF_TYPE_Q4_0, gguf_dequant_q4_0, 0x4937c87c4c1bb069ull},
+    {"Q4_1", GGUF_TYPE_Q4_1, gguf_dequant_q4_1, 0x5d025a1ba4f0f6d4ull},
+    {"Q5_0", GGUF_TYPE_Q5_0, gguf_dequant_q5_0, 0x3d9ab310c6d459f8ull},
+    {"Q5_1", GGUF_TYPE_Q5_1, gguf_dequant_q5_1, 0x898815e0907cd3c0ull},
+    {"Q8_1", GGUF_TYPE_Q8_1, gguf_dequant_q8_1, 0x49e81c90dc77cd4eull},
+    {"Q2_0", GGUF_TYPE_Q2_0, gguf_dequant_q2_0, 0xe69fafcd15fb0b03ull},
+};
+#define N_TAIL (sizeof(k_tail_cases) / sizeof(k_tail_cases[0]))
+
+static uint64_t run_tail(size_t idx) {
+    enum { N_TAIL_ELEMS = 40 };
+    const size_t blocks = (N_TAIL_ELEMS + gguf_type_block_elems(k_tail_cases[idx].type) - 1) /
+                          gguf_type_block_elems(k_tail_cases[idx].type);
+    const size_t bytes = blocks * gguf_type_block_bytes(k_tail_cases[idx].type);
+    uint8_t *data      = (uint8_t *)malloc(bytes + 64);
+    float out[N_TAIL_ELEMS];
+    uint32_t x = 0xC0FFEEu + (uint32_t)idx * 104729u;
+    for (size_t i = 0; i < bytes; i++) {
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        data[i] = (uint8_t)(x >> 11);
+        if (i & 1) data[i] &= 0x3F;
+    }
+    for (int i = 0; i < N_TAIL_ELEMS; i++) out[i] = 123.5f; /* sentinel */
+    k_tail_cases[idx].fn(out, data, N_TAIL_ELEMS);
+    uint64_t h = fnv1a(out, sizeof(out));
+    free(data);
+    return h;
+}
+
+static void test_tail_blocks(void) {
+    for (size_t i = 0; i < N_TAIL; i++) {
+        uint64_t h = run_tail(i);
+        if (h != k_tail_cases[i].golden)
+            printf("  tail mismatch %s: got %016llx\n", k_tail_cases[i].name,
+                   (unsigned long long)h);
+        TEST_ASSERT(h == k_tail_cases[i].golden, "partial last block behaves as before");
+    }
+}
+
 static void test_golden(void) {
     for (size_t i = 0; i < N_CASES; i++) {
         uint64_t h = run_case(i);
@@ -99,8 +150,11 @@ int main(int argc, char **argv) {
     if (argc > 1 && strcmp(argv[1], "--print") == 0) {
         for (size_t i = 0; i < N_CASES; i++)
             printf("%s %016llx\n", k_cases[i].name, (unsigned long long)run_case(i));
+        for (size_t i = 0; i < N_TAIL; i++)
+            printf("tail-%s %016llx\n", k_tail_cases[i].name, (unsigned long long)run_tail(i));
         return 0;
     }
     RUN_TEST(test_golden);
+    RUN_TEST(test_tail_blocks);
     TEST_SUMMARY();
 }

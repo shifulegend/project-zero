@@ -12,6 +12,23 @@
 
 #include "core/fp16.h"
 
+/* Every legacy format is a run of fixed-size blocks; a format supplies how one block decodes and
+ * this walks the whole blocks. Returns how many weights were decoded (the caller deals with a
+ * partial last block: some formats decode it, most zero it). */
+typedef void (*BlockDecode)(float *dst, const uint8_t *blk);
+
+static size_t dequant_blocks(float *out, const void *data, size_t n_elems, size_t block_elems,
+                             size_t block_bytes, BlockDecode decode) {
+    const uint8_t *p = (const uint8_t *)data;
+    size_t n_blocks  = n_elems / block_elems;
+    for (size_t b = 0; b < n_blocks; b++) decode(out + b * block_elems, p + b * block_bytes);
+    return n_blocks * block_elems;
+}
+
+static void zero_tail(float *out, size_t done, size_t n_elems) {
+    for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
+}
+
 /* ── Q8_0 ─────────────────────────────────────────────────────────────────── */
 /*
  * Block layout (34 bytes per 32 elements):
@@ -21,25 +38,23 @@
 #define Q8_0_BLOCK_SIZE 32
 #define Q8_0_BYTES_PER_BLOCK 34 /* 2 (scale) + 32 (int8) */
 
-void gguf_dequant_q8_0(float *out, const void *data, size_t n_elems) {
-    const uint8_t *p = (const uint8_t *)data;
-    size_t n_blocks  = n_elems / Q8_0_BLOCK_SIZE;
+static void q8_0_block(float *dst, const uint8_t *blk) {
+    float scale      = tn_fp16_load(blk);
+    const int8_t *qs = (const int8_t *)(blk + 2);
+    for (int i = 0; i < Q8_0_BLOCK_SIZE; i++) dst[i] = qs[i] * scale;
+}
 
-    for (size_t b = 0; b < n_blocks; b++) {
-        const uint8_t *blk = p + b * Q8_0_BYTES_PER_BLOCK;
-        float scale        = tn_fp16_load(blk);
-        const int8_t *qs   = (const int8_t *)(blk + 2);
-        float *dst         = out + b * Q8_0_BLOCK_SIZE;
-        for (int i = 0; i < Q8_0_BLOCK_SIZE; i++) dst[i] = qs[i] * scale;
-    }
+void gguf_dequant_q8_0(float *out, const void *data, size_t n_elems) {
+    size_t done =
+        dequant_blocks(out, data, n_elems, Q8_0_BLOCK_SIZE, Q8_0_BYTES_PER_BLOCK, q8_0_block);
     /* Handle partial last block (rare; n_elems usually a multiple of 32) */
-    size_t rem = n_elems - n_blocks * Q8_0_BLOCK_SIZE;
+    size_t rem = n_elems - done;
     if (rem > 0) {
-        const uint8_t *blk = p + n_blocks * Q8_0_BYTES_PER_BLOCK;
-        float scale        = tn_fp16_load(blk);
-        const int8_t *qs   = (const int8_t *)(blk + 2);
-        float *dst         = out + n_blocks * Q8_0_BLOCK_SIZE;
-        for (size_t i = 0; i < rem; i++) dst[i] = qs[i] * scale;
+        const uint8_t *blk =
+            (const uint8_t *)data + (done / Q8_0_BLOCK_SIZE) * Q8_0_BYTES_PER_BLOCK;
+        float scale      = tn_fp16_load(blk);
+        const int8_t *qs = (const int8_t *)(blk + 2);
+        for (size_t i = 0; i < rem; i++) out[done + i] = qs[i] * scale;
     }
 }
 
@@ -52,20 +67,17 @@ void gguf_dequant_q8_0(float *out, const void *data, size_t n_elems) {
 #define Q4_0_BLOCK_SIZE 32
 #define Q4_0_BYTES_PER_BLOCK 18
 
-void gguf_dequant_q4_0(float *out, const void *data, size_t n_elems) {
-    const uint8_t *p = (const uint8_t *)data;
-    size_t n_blocks  = n_elems / Q4_0_BLOCK_SIZE;
-
-    for (size_t b = 0; b < n_blocks; b++) {
-        const uint8_t *blk = p + b * Q4_0_BYTES_PER_BLOCK;
-        float scale        = tn_fp16_load(blk);
-        const uint8_t *qs  = blk + 2;
-        float *dst         = out + b * Q4_0_BLOCK_SIZE;
-        for (int i = 0; i < Q4_0_BLOCK_SIZE / 2; i++) {
-            dst[i]                       = ((int)(qs[i] & 0xF) - 8) * scale;
-            dst[i + Q4_0_BLOCK_SIZE / 2] = ((int)(qs[i] >> 4) - 8) * scale;
-        }
+static void q4_0_block(float *dst, const uint8_t *blk) {
+    float scale       = tn_fp16_load(blk);
+    const uint8_t *qs = blk + 2;
+    for (int i = 0; i < Q4_0_BLOCK_SIZE / 2; i++) {
+        dst[i]                       = ((int)(qs[i] & 0xF) - 8) * scale;
+        dst[i + Q4_0_BLOCK_SIZE / 2] = ((int)(qs[i] >> 4) - 8) * scale;
     }
+}
+
+void gguf_dequant_q4_0(float *out, const void *data, size_t n_elems) {
+    dequant_blocks(out, data, n_elems, Q4_0_BLOCK_SIZE, Q4_0_BYTES_PER_BLOCK, q4_0_block);
 }
 
 /* ── Q5_0 ─────────────────────────────────────────────────────────────────── */
@@ -78,26 +90,23 @@ void gguf_dequant_q4_0(float *out, const void *data, size_t n_elems) {
 #define Q5_0_BLOCK_SIZE 32
 #define Q5_0_BYTES_PER_BLOCK 22
 
-void gguf_dequant_q5_0(float *out, const void *data, size_t n_elems) {
-    const uint8_t *p = (const uint8_t *)data;
-    size_t n_blocks  = n_elems / Q5_0_BLOCK_SIZE;
-
-    for (size_t b = 0; b < n_blocks; b++) {
-        const uint8_t *blk = p + b * Q5_0_BYTES_PER_BLOCK;
-        float d            = tn_fp16_load(blk);
-        uint32_t qh;
-        memcpy(&qh, blk + 2, 4);
-        const uint8_t *qs = blk + 6; /* 16 bytes */
-        float *dst        = out + b * Q5_0_BLOCK_SIZE;
-        for (int i = 0; i < 16; i++) {
-            int q0      = (int)((qs[i] & 0xF) | (((qh >> i) & 1) << 4)) - 16;
-            int q1      = (int)((qs[i] >> 4) | (((qh >> (i + 16)) & 1) << 4)) - 16;
-            dst[i]      = q0 * d;
-            dst[i + 16] = q1 * d;
-        }
+static void q5_0_block(float *dst, const uint8_t *blk) {
+    float d = tn_fp16_load(blk);
+    uint32_t qh;
+    memcpy(&qh, blk + 2, 4);
+    const uint8_t *qs = blk + 6; /* 16 bytes */
+    for (int i = 0; i < 16; i++) {
+        int q0      = (int)((qs[i] & 0xF) | (((qh >> i) & 1) << 4)) - 16;
+        int q1      = (int)((qs[i] >> 4) | (((qh >> (i + 16)) & 1) << 4)) - 16;
+        dst[i]      = q0 * d;
+        dst[i + 16] = q1 * d;
     }
-    size_t done = n_blocks * Q5_0_BLOCK_SIZE;
-    for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
+}
+
+void gguf_dequant_q5_0(float *out, const void *data, size_t n_elems) {
+    zero_tail(out,
+              dequant_blocks(out, data, n_elems, Q5_0_BLOCK_SIZE, Q5_0_BYTES_PER_BLOCK, q5_0_block),
+              n_elems);
 }
 
 /* ── Q2_0 ─────────────────────────────────────────────────────────────────── */
@@ -120,24 +129,21 @@ void gguf_dequant_q5_0(float *out, const void *data, size_t n_elems) {
 #define Q2_0_BLOCK_SIZE 128
 #define Q2_0_BYTES_PER_BLOCK 34
 
-void gguf_dequant_q2_0(float *out, const void *data, size_t n_elems) {
-    const uint8_t *p = (const uint8_t *)data;
-    size_t n_blocks  = n_elems / Q2_0_BLOCK_SIZE;
-
-    for (size_t b = 0; b < n_blocks; b++) {
-        const uint8_t *blk = p + b * Q2_0_BYTES_PER_BLOCK;
-        float d            = tn_fp16_load(blk);
-        const uint8_t *qs  = blk + 2; /* 16 bytes */
-        float *dst         = out + b * Q2_0_BLOCK_SIZE;
-        for (int j = 0; j < Q2_0_BLOCK_SIZE; j++) {
-            int byte_index = j / 4;
-            int bit_offset = (j % 4) * 2;
-            int code       = (qs[byte_index] >> bit_offset) & 0x3;
-            dst[j]         = (float)(code - 1) * d;
-        }
+static void q2_0_block(float *dst, const uint8_t *blk) {
+    float d           = tn_fp16_load(blk);
+    const uint8_t *qs = blk + 2; /* 32 bytes */
+    for (int j = 0; j < Q2_0_BLOCK_SIZE; j++) {
+        int byte_index = j / 4;
+        int bit_offset = (j % 4) * 2;
+        int code       = (qs[byte_index] >> bit_offset) & 0x3;
+        dst[j]         = (float)(code - 1) * d;
     }
-    size_t done = n_blocks * Q2_0_BLOCK_SIZE;
-    for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
+}
+
+void gguf_dequant_q2_0(float *out, const void *data, size_t n_elems) {
+    zero_tail(out,
+              dequant_blocks(out, data, n_elems, Q2_0_BLOCK_SIZE, Q2_0_BYTES_PER_BLOCK, q2_0_block),
+              n_elems);
 }
 
 /* ── Q5_1 ─────────────────────────────────────────────────────────────────── */
@@ -151,30 +157,27 @@ void gguf_dequant_q2_0(float *out, const void *data, size_t n_elems) {
 #define Q5_1_BLOCK_SIZE 32
 #define Q5_1_BYTES_PER_BLOCK 24
 
-void gguf_dequant_q5_1(float *out, const void *data, size_t n_elems) {
-    const uint8_t *p = (const uint8_t *)data;
-    size_t n_blocks  = n_elems / Q5_1_BLOCK_SIZE;
-
-    for (size_t b = 0; b < n_blocks; b++) {
-        const uint8_t *blk = p + b * Q5_1_BYTES_PER_BLOCK;
-        uint16_t d_bits, m_bits;
-        memcpy(&d_bits, blk, 2);
-        memcpy(&m_bits, blk + 2, 2);
-        float d = tn_fp16_to_f32(d_bits);
-        float m = tn_fp16_to_f32(m_bits);
-        uint32_t qh;
-        memcpy(&qh, blk + 4, 4);
-        const uint8_t *qs = blk + 8; /* 16 bytes */
-        float *dst        = out + b * Q5_1_BLOCK_SIZE;
-        for (int i = 0; i < 16; i++) {
-            int q0      = (qs[i] & 0xF) | (((qh >> i) & 1) << 4);
-            int q1      = (qs[i] >> 4) | (((qh >> (i + 16)) & 1) << 4);
-            dst[i]      = q0 * d + m;
-            dst[i + 16] = q1 * d + m;
-        }
+static void q5_1_block(float *dst, const uint8_t *blk) {
+    uint16_t d_bits, m_bits;
+    memcpy(&d_bits, blk, 2);
+    memcpy(&m_bits, blk + 2, 2);
+    float d = tn_fp16_to_f32(d_bits);
+    float m = tn_fp16_to_f32(m_bits);
+    uint32_t qh;
+    memcpy(&qh, blk + 4, 4);
+    const uint8_t *qs = blk + 8; /* 16 bytes */
+    for (int i = 0; i < 16; i++) {
+        int q0      = (qs[i] & 0xF) | (((qh >> i) & 1) << 4);
+        int q1      = (qs[i] >> 4) | (((qh >> (i + 16)) & 1) << 4);
+        dst[i]      = q0 * d + m;
+        dst[i + 16] = q1 * d + m;
     }
-    size_t done = n_blocks * Q5_1_BLOCK_SIZE;
-    for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
+}
+
+void gguf_dequant_q5_1(float *out, const void *data, size_t n_elems) {
+    zero_tail(out,
+              dequant_blocks(out, data, n_elems, Q5_1_BLOCK_SIZE, Q5_1_BYTES_PER_BLOCK, q5_1_block),
+              n_elems);
 }
 
 /* ── Q4_1 ─────────────────────────────────────────────────────────────────── */
@@ -188,28 +191,25 @@ void gguf_dequant_q5_1(float *out, const void *data, size_t n_elems) {
 #define Q4_1_BLOCK_SIZE 32
 #define Q4_1_BYTES_PER_BLOCK 20
 
-void gguf_dequant_q4_1(float *out, const void *data, size_t n_elems) {
-    const uint8_t *p = (const uint8_t *)data;
-    size_t n_blocks  = n_elems / Q4_1_BLOCK_SIZE;
-
-    for (size_t b = 0; b < n_blocks; b++) {
-        const uint8_t *blk = p + b * Q4_1_BYTES_PER_BLOCK;
-        uint16_t d_bits, m_bits;
-        memcpy(&d_bits, blk, 2);
-        memcpy(&m_bits, blk + 2, 2);
-        float d           = tn_fp16_to_f32(d_bits);
-        float m           = tn_fp16_to_f32(m_bits);
-        const uint8_t *qs = blk + 4; /* 16 bytes */
-        float *dst        = out + b * Q4_1_BLOCK_SIZE;
-        for (int i = 0; i < 16; i++) {
-            int q0      = qs[i] & 0xF;
-            int q1      = qs[i] >> 4;
-            dst[i]      = q0 * d + m;
-            dst[i + 16] = q1 * d + m;
-        }
+static void q4_1_block(float *dst, const uint8_t *blk) {
+    uint16_t d_bits, m_bits;
+    memcpy(&d_bits, blk, 2);
+    memcpy(&m_bits, blk + 2, 2);
+    float d           = tn_fp16_to_f32(d_bits);
+    float m           = tn_fp16_to_f32(m_bits);
+    const uint8_t *qs = blk + 4; /* 16 bytes */
+    for (int i = 0; i < 16; i++) {
+        int q0      = qs[i] & 0xF;
+        int q1      = qs[i] >> 4;
+        dst[i]      = q0 * d + m;
+        dst[i + 16] = q1 * d + m;
     }
-    size_t done = n_blocks * Q4_1_BLOCK_SIZE;
-    for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
+}
+
+void gguf_dequant_q4_1(float *out, const void *data, size_t n_elems) {
+    zero_tail(out,
+              dequant_blocks(out, data, n_elems, Q4_1_BLOCK_SIZE, Q4_1_BYTES_PER_BLOCK, q4_1_block),
+              n_elems);
 }
 
 /* ── Q8_1 ─────────────────────────────────────────────────────────────────── */
@@ -226,19 +226,16 @@ void gguf_dequant_q4_1(float *out, const void *data, size_t n_elems) {
 #define Q8_1_BLOCK_SIZE 32
 #define Q8_1_BYTES_PER_BLOCK 36 /* 2 (d) + 2 (s) + 32 (int8) */
 
-void gguf_dequant_q8_1(float *out, const void *data, size_t n_elems) {
-    const uint8_t *p = (const uint8_t *)data;
-    size_t n_blocks  = n_elems / Q8_1_BLOCK_SIZE;
+static void q8_1_block(float *dst, const uint8_t *blk) {
+    float d          = tn_fp16_load(blk);
+    const int8_t *qs = (const int8_t *)(blk + 4); /* skip d(2)+s(2) */
+    for (int i = 0; i < Q8_1_BLOCK_SIZE; i++) dst[i] = qs[i] * d;
+}
 
-    for (size_t b = 0; b < n_blocks; b++) {
-        const uint8_t *blk = p + b * Q8_1_BYTES_PER_BLOCK;
-        float d            = tn_fp16_load(blk);
-        const int8_t *qs   = (const int8_t *)(blk + 4); /* skip d(2)+s(2) */
-        float *dst         = out + b * Q8_1_BLOCK_SIZE;
-        for (int i = 0; i < Q8_1_BLOCK_SIZE; i++) dst[i] = qs[i] * d;
-    }
-    size_t done = n_blocks * Q8_1_BLOCK_SIZE;
-    for (size_t i = done; i < n_elems; i++) out[i] = 0.0f;
+void gguf_dequant_q8_1(float *out, const void *data, size_t n_elems) {
+    zero_tail(out,
+              dequant_blocks(out, data, n_elems, Q8_1_BLOCK_SIZE, Q8_1_BYTES_PER_BLOCK, q8_1_block),
+              n_elems);
 }
 
 /* ── BF16 ─────────────────────────────────────────────────────────────────── */

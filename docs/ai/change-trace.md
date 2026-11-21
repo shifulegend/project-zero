@@ -3,6 +3,16 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — Qwen3.5 run-state allocation split into steps (finding 20.a)
+- What: `q35_run_state_alloc` (complexity 30, 90 lines) is now a short driver over five helpers: shape check,
+  context clamp to the 600 MB cache ceiling, per-layer buffers, pointer arrays, RoPE table and scratch.
+- Why: finding 20.a; the complexity baseline lost one entry (353 -> 347 with the other recent splits).
+- Proof: `tests/test_q35_run_state_golden.c` hashes the result code, stored context length, which layers hold
+  K/V or conv/recurrent state, and the RoPE table over 3,000 generated shapes (valid and invalid), writing the
+  last element of every buffer under ASan; the hash was recorded from the unsplit function and holds on gcc and
+  clang. Ternary-Bonsai-27B greedy output is identical to the pre-change binary.
+- Areas: `src/runtime/qwen35_run_state.c`, `tests/test_q35_run_state_golden.c`, `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — long lines in the Python tooling wrapped (finding 23.c, part 1)
 - What: 40 of the 541 lines over 100 columns, in 21 Python files under `tools/` (the benchmark gate and h2h scripts, the ratchet checkers and their tests, the sweep scripts), were wrapped with black's string-processing mode and `ruff format` (long strings become parenthesised implicit concatenations). A file was only changed when its AST was equivalent to the original (docstring trailing whitespace ignored), `ruff check` stayed clean and none of the width, file-size or complexity ratchets reported anything for it; files where wrapping would have grown a size or complexity baseline (for example `tools/bench/benchlib.py`) were left alone.
 - Why: finding 23.c; the width baseline fell by 40 lines.

@@ -23,42 +23,16 @@
 #include "memory/aligned_alloc.h"
 #include "runtime/run_state.h"
 
-TernaryError q35_run_state_alloc(RunState *s, const Config *cfg, const MoEConfig *mc,
-                                 int max_seq_len) {
-    if (!mc || !mc->has_linear_attn) return TN_OK; /* not a hybrid model — no-op */
+/* Not a usable hybrid shape (or no context): refuse before allocating anything. */
+static int q35_shape_invalid(const Config *cfg, const MoEConfig *mc, int max_seq_len) {
+    int conv_dim = mc->ssm_group_count * mc->ssm_state_size * 2 + mc->ssm_inner_size;
+    return cfg->n_layers <= 0 || cfg->n_kv_heads <= 0 || mc->attn_head_dim <= 0 ||
+           mc->ssm_conv_kernel <= 1 || conv_dim <= 0 || mc->ssm_time_step_rank <= 0 ||
+           mc->ssm_state_size <= 0 || max_seq_len <= 0;
+}
 
-    /* s->key_cache/value_cache should already be NULL here: main.c calls
-     * run_state_alloc_ex(..., skip_kv_cache=mc->has_linear_attn) precisely
-     * so the *generic* key_cache/value_cache (sized with
-     * config_head_dim(cfg)==dim/n_heads for ALL cfg->n_layers — wrong
-     * head_dim for this arch, and never read by qwen35_attention.c, which
-     * uses q35.key_cache/q35.value_cache below instead) is never allocated
-     * at all for a hybrid model. This free is a defensive no-op if that
-     * invariant is ever violated (e.g. a caller uses plain run_state_alloc()
-     * instead of the _ex variant) — see docs/ai/mistakes.md for why a
-     * calloc-then-immediately-free of that buffer is NOT equivalent to
-     * never allocating it (tn_aligned_calloc's memset forces the RSS spike
-     * at allocation time, not at free time). */
-    tn_aligned_free(s->key_cache);
-    s->key_cache = NULL;
-    tn_aligned_free(s->value_cache);
-    s->value_cache = NULL;
-
-    int n_layers  = cfg->n_layers;
-    int n_kv_h    = cfg->n_kv_heads;
-    int head_dim  = mc->attn_head_dim;
-    int rope_dim  = mc->attn_rope_dim > 0 ? mc->attn_rope_dim : head_dim;
-    int conv_k    = mc->ssm_conv_kernel;
-    int key_dim   = mc->ssm_group_count * mc->ssm_state_size;
-    int value_dim = mc->ssm_inner_size;
-    int conv_dim  = key_dim * 2 + value_dim;
-    int n_v_heads = mc->ssm_time_step_rank;
-    int state_sz  = mc->ssm_state_size;
-
-    if (n_layers <= 0 || n_kv_h <= 0 || head_dim <= 0 || conv_k <= 1 || conv_dim <= 0 ||
-        n_v_heads <= 0 || state_sz <= 0 || max_seq_len <= 0)
-        return TN_ERR_INVALID_WEIGHTS;
-
+/* Context length this arch's own K/V cache may use under the fixed RAM ceiling. */
+static int q35_clamp_seq(const Config *cfg, const MoEConfig *mc, int max_seq_len) {
     /* Defense-in-depth RAM safety cap for this arch's OWN K/V cache.
      *
      * select_kv_strategy()'s existing budget check (called earlier in
@@ -80,29 +54,119 @@ TernaryError q35_run_state_alloc(RunState *s, const Config *cfg, const MoEConfig
      * verification — see docs/ai/mistakes.md. A fixed, conservative
      * absolute ceiling sidesteps that self-referential accounting problem
      * entirely instead of trying to out-guess it. */
-    {
-        int n_full_layers = 0;
-        for (int l = 0; l < n_layers; l++)
-            if (q35_layer_is_full_attn(mc, l)) n_full_layers++;
+    int n_full_layers = 0;
+    for (int l = 0; l < cfg->n_layers; l++)
+        if (q35_layer_is_full_attn(mc, l)) n_full_layers++;
 
-        /* Fixed ceiling: 600 MB total for this cache. At head_dim=256,
-         * n_kv_heads=4, 16 full-attention layers (Ternary-Bonsai-27B's
-         * actual shape), that's ~600e6 / (4*256*2*4*16) = ~4577 tokens of
-         * context — plenty for correctness verification and short
-         * benchmark prompts, while leaving generous headroom on a 15 GB
-         * host once the ~7 GB of MAP_POPULATE'd weights (always resident,
-         * see comment above) and tokenizer/other overhead are accounted
-         * for. Raise this if a host with more free RAM needs longer
-         * context — it's intentionally conservative, not tuned per-host. */
-        const tn_i64 FIXED_BUDGET_BYTES = 600000000LL;
-        tn_i64 per_pos_bytes =
-            (tn_i64)n_kv_h * (tn_i64)head_dim * 2 * (tn_i64)sizeof(float) * (tn_i64)n_full_layers;
-        if (per_pos_bytes > 0) {
-            tn_i64 safe_max = FIXED_BUDGET_BYTES / per_pos_bytes;
-            if (safe_max < 256) safe_max = 256; /* never below a minimal usable context */
-            if (max_seq_len > (int)safe_max) max_seq_len = (int)safe_max;
-        }
+    /* Fixed ceiling: 600 MB total for this cache. At head_dim=256,
+     * n_kv_heads=4, 16 full-attention layers (Ternary-Bonsai-27B's
+     * actual shape), that's ~600e6 / (4*256*2*4*16) = ~4577 tokens of
+     * context — plenty for correctness verification and short
+     * benchmark prompts, while leaving generous headroom on a 15 GB
+     * host once the ~7 GB of MAP_POPULATE'd weights (always resident,
+     * see comment above) and tokenizer/other overhead are accounted
+     * for. Raise this if a host with more free RAM needs longer
+     * context — it's intentionally conservative, not tuned per-host. */
+    const tn_i64 FIXED_BUDGET_BYTES = 600000000LL;
+    tn_i64 per_pos_bytes            = (tn_i64)cfg->n_kv_heads * (tn_i64)mc->attn_head_dim * 2 *
+                           (tn_i64)sizeof(float) * (tn_i64)n_full_layers;
+    if (per_pos_bytes > 0) {
+        tn_i64 safe_max = FIXED_BUDGET_BYTES / per_pos_bytes;
+        if (safe_max < 256) safe_max = 256; /* never below a minimal usable context */
+        if (max_seq_len > (int)safe_max) max_seq_len = (int)safe_max;
     }
+    return max_seq_len;
+}
+
+/* One layer's buffers: K/V cache for full attention, conv + recurrent state otherwise. */
+static TernaryError q35_alloc_layer(RunState *s, const Config *cfg, const MoEConfig *mc, int l) {
+    if (q35_layer_is_full_attn(mc, l)) {
+        size_t kv_elems =
+            (size_t)cfg->n_kv_heads * (size_t)s->max_seq_len * (size_t)mc->attn_head_dim;
+        s->q35.key_cache[l]   = (float *)tn_aligned_calloc(kv_elems, sizeof(float), 64);
+        s->q35.value_cache[l] = (float *)tn_aligned_calloc(kv_elems, sizeof(float), 64);
+        return s->q35.key_cache[l] && s->q35.value_cache[l] ? TN_OK : TN_ERR_OOM;
+    }
+    size_t conv_dim =
+        (size_t)mc->ssm_group_count * (size_t)mc->ssm_state_size * 2 + (size_t)mc->ssm_inner_size;
+    size_t conv_elems = (size_t)(mc->ssm_conv_kernel - 1) * conv_dim;
+    size_t recur_elems =
+        (size_t)mc->ssm_time_step_rank * (size_t)mc->ssm_state_size * (size_t)mc->ssm_state_size;
+    s->q35.conv_state[l]  = (float *)tn_aligned_calloc(conv_elems, sizeof(float), 64);
+    s->q35.recur_state[l] = (float *)tn_aligned_calloc(recur_elems, sizeof(float), 64);
+    return s->q35.conv_state[l] && s->q35.recur_state[l] ? TN_OK : TN_ERR_OOM;
+}
+
+/* The four per-layer pointer arrays (all NULL-filled), then every layer's buffers. */
+static TernaryError q35_alloc_layers(RunState *s, const Config *cfg, const MoEConfig *mc) {
+    size_t n   = (size_t)cfg->n_layers;
+    float **kc = (float **)calloc(n, sizeof(float *));
+    float **vc = (float **)calloc(n, sizeof(float *));
+    float **cs = (float **)calloc(n, sizeof(float *));
+    float **rs = (float **)calloc(n, sizeof(float *));
+    if (!kc || !vc || !cs || !rs) {
+        free(kc);
+        free(vc);
+        free(cs);
+        free(rs);
+        return TN_ERR_OOM;
+    }
+    s->q35.key_cache   = kc;
+    s->q35.value_cache = vc;
+    s->q35.conv_state  = cs;
+    s->q35.recur_state = rs;
+    for (int l = 0; l < cfg->n_layers; l++)
+        if (q35_alloc_layer(s, cfg, mc, l) != TN_OK) return TN_ERR_OOM;
+    return TN_OK;
+}
+
+/* RoPE table and attention scratch. */
+static TernaryError q35_alloc_tables(RunState *s, const Config *cfg, const MoEConfig *mc) {
+    int head_dim = mc->attn_head_dim;
+    int rope_dim = mc->attn_rope_dim > 0 ? mc->attn_rope_dim : head_dim;
+    /* Shared partial-rotary RoPE frequency table, sized for rope_dim (64),
+     * NOT head_dim (256) — mirrors mla_rope_freq's fix for the same class
+     * of bug (see mla_run_state.c header comment). */
+    s->q35.rope_freq = (float *)tn_aligned_calloc((size_t)(rope_dim / 2), sizeof(float), 64);
+    if (!s->q35.rope_freq) return TN_ERR_OOM;
+    float theta = cfg->rope_theta > 0.0f ? cfg->rope_theta : 10000.0f;
+    rope_precompute_freqs(s->q35.rope_freq, rope_dim, theta);
+
+    /* Attention scratch (see RunState.q35.scratch): both layer kinds' buffers, laid out by
+     * qwen35_attention.c from the same widths. */
+    size_t conv_dim =
+        (size_t)mc->ssm_group_count * (size_t)mc->ssm_state_size * 2 + (size_t)mc->ssm_inner_size;
+    size_t q_w  = (size_t)cfg->n_heads * (size_t)head_dim;
+    size_t kv_w = (size_t)cfg->n_kv_heads * (size_t)head_dim;
+    size_t full = 2 * q_w + 2 * kv_w + q_w;
+    size_t lin = conv_dim * 2 + (size_t)mc->ssm_inner_size * 2 + (size_t)mc->ssm_time_step_rank * 3;
+    s->q35.scratch = (float *)tn_aligned_calloc(full + lin, sizeof(float), 64);
+    return s->q35.scratch ? TN_OK : TN_ERR_OOM;
+}
+
+TernaryError q35_run_state_alloc(RunState *s, const Config *cfg, const MoEConfig *mc,
+                                 int max_seq_len) {
+    if (!mc || !mc->has_linear_attn) return TN_OK; /* not a hybrid model — no-op */
+
+    /* s->key_cache/value_cache should already be NULL here: main.c calls
+     * run_state_alloc_ex(..., skip_kv_cache=mc->has_linear_attn) precisely
+     * so the *generic* key_cache/value_cache (sized with
+     * config_head_dim(cfg)==dim/n_heads for ALL cfg->n_layers — wrong
+     * head_dim for this arch, and never read by qwen35_attention.c, which
+     * uses q35.key_cache/q35.value_cache below instead) is never allocated
+     * at all for a hybrid model. This free is a defensive no-op if that
+     * invariant is ever violated (e.g. a caller uses plain run_state_alloc()
+     * instead of the _ex variant) — see docs/ai/mistakes.md for why a
+     * calloc-then-immediately-free of that buffer is NOT equivalent to
+     * never allocating it (tn_aligned_calloc's memset forces the RSS spike
+     * at allocation time, not at free time). */
+    tn_aligned_free(s->key_cache);
+    s->key_cache = NULL;
+    tn_aligned_free(s->value_cache);
+    s->value_cache = NULL;
+
+    if (q35_shape_invalid(cfg, mc, max_seq_len)) return TN_ERR_INVALID_WEIGHTS;
+    max_seq_len = q35_clamp_seq(cfg, mc, max_seq_len);
 
     /* s->max_seq_len was already set (to the original, unclamped seq_len)
      * by the earlier run_state_alloc_ex() call in main.c. qwen35_attention.c
@@ -117,70 +181,10 @@ TernaryError q35_run_state_alloc(RunState *s, const Config *cfg, const MoEConfig
      * layer. See docs/ai/mistakes.md. */
     s->max_seq_len = max_seq_len;
 
-    float **kc = (float **)calloc((size_t)n_layers, sizeof(float *));
-    float **vc = (float **)calloc((size_t)n_layers, sizeof(float *));
-    float **cs = (float **)calloc((size_t)n_layers, sizeof(float *));
-    float **rs = (float **)calloc((size_t)n_layers, sizeof(float *));
-    if (!kc || !vc || !cs || !rs) {
-        free(kc);
-        free(vc);
-        free(cs);
-        free(rs);
-        return TN_ERR_OOM;
-    }
-    s->q35.key_cache   = kc;
-    s->q35.value_cache = vc;
-    s->q35.conv_state  = cs;
-    s->q35.recur_state = rs;
-
-    for (int l = 0; l < n_layers; l++) {
-        if (q35_layer_is_full_attn(mc, l)) {
-            size_t kv_elems = (size_t)n_kv_h * (size_t)max_seq_len * (size_t)head_dim;
-            kc[l]           = (float *)tn_aligned_calloc(kv_elems, sizeof(float), 64);
-            vc[l]           = (float *)tn_aligned_calloc(kv_elems, sizeof(float), 64);
-            if (!kc[l] || !vc[l]) {
-                q35_run_state_free(s, cfg, mc);
-                return TN_ERR_OOM;
-            }
-        } else {
-            size_t conv_elems  = (size_t)(conv_k - 1) * (size_t)conv_dim;
-            size_t recur_elems = (size_t)n_v_heads * (size_t)state_sz * (size_t)state_sz;
-            cs[l]              = (float *)tn_aligned_calloc(conv_elems, sizeof(float), 64);
-            rs[l]              = (float *)tn_aligned_calloc(recur_elems, sizeof(float), 64);
-            if (!cs[l] || !rs[l]) {
-                q35_run_state_free(s, cfg, mc);
-                return TN_ERR_OOM;
-            }
-        }
-    }
-
-    /* Shared partial-rotary RoPE frequency table, sized for rope_dim (64),
-     * NOT head_dim (256) — mirrors mla_rope_freq's fix for the same class
-     * of bug (see mla_run_state.c header comment). */
-    int freq_len     = rope_dim / 2;
-    s->q35.rope_freq = (float *)tn_aligned_calloc((size_t)freq_len, sizeof(float), 64);
-    if (!s->q35.rope_freq) {
-        q35_run_state_free(s, cfg, mc);
-        return TN_ERR_OOM;
-    }
-    float theta = cfg->rope_theta > 0.0f ? cfg->rope_theta : 10000.0f;
-    rope_precompute_freqs(s->q35.rope_freq, rope_dim, theta);
-
-    /* Attention scratch (see RunState.q35.scratch): both layer kinds' buffers, laid out by
-     * qwen35_attention.c from the same widths. */
-    {
-        size_t q_w     = (size_t)cfg->n_heads * (size_t)head_dim;
-        size_t kv_w    = (size_t)n_kv_h * (size_t)head_dim;
-        size_t full    = 2 * q_w + 2 * kv_w + q_w;
-        size_t lin     = (size_t)conv_dim * 2 + (size_t)value_dim * 2 + (size_t)n_v_heads * 3;
-        s->q35.scratch = (float *)tn_aligned_calloc(full + lin, sizeof(float), 64);
-        if (!s->q35.scratch) {
-            q35_run_state_free(s, cfg, mc);
-            return TN_ERR_OOM;
-        }
-    }
-
-    return TN_OK;
+    TernaryError rc = q35_alloc_layers(s, cfg, mc);
+    if (rc == TN_OK) rc = q35_alloc_tables(s, cfg, mc);
+    if (rc == TN_ERR_OOM && s->q35.key_cache) q35_run_state_free(s, cfg, mc);
+    return rc;
 }
 
 void q35_run_state_free(RunState *s, const Config *cfg, const MoEConfig *mc) {

@@ -181,7 +181,6 @@ src/runtime/qwen35_run_state.c::q35_run_state_free 13 33 2
 src/runtime/qwen3moe_run_state.c::qwen3moe_run_state_alloc 15 47 2
 src/runtime/run_state.c::run_state_alloc_ex 26 96 4
 src/runtime/run_state.c::run_state_kv_reserve 12 28 4
-src/runtime/weights.c::weights_build_classifier_quant 32 89 6
 src/runtime/weights.c::weights_map 11 71 4
 src/sampling/grammar_json.c::json_grammar_step 80 117 3
 src/sampling/grammar_json.c::start_value 11 13 1

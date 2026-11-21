@@ -2,6 +2,7 @@
 
 #include <math.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -380,117 +381,102 @@ static float find_best_block_scale(const float *block, int count, int max_level)
     return best_scale;
 }
 
-void weights_build_classifier_quant(TransformerWeights *w, const Config *cfg) {
-    int dim      = cfg->dim;
-    int n_blocks = (dim + TN_CLS_QUANT_BLOCK - 1) / TN_CLS_QUANT_BLOCK;
+/* Quantises one BF16 row block by block (TN_CLS_QUANT_BLOCK elements per block, scale chosen to
+ * minimise squared error, see find_best_block_scale): the per-block scales go to row_scales, and
+ * the values, rounded to nearest and clamped to +-qmax, to q_row[0..d). */
+static void quantize_cls_row(const tn_u16 *row, size_t d, int n_blocks, int qmax, float *row_scales,
+                             int8_t *q_row) {
+    float block_f32[TN_CLS_QUANT_BLOCK];
+    for (int b = 0; b < n_blocks; b++) {
+        size_t blk_start = (size_t)b * TN_CLS_QUANT_BLOCK;
+        int blk_len      = (int)(d - blk_start);
+        if (blk_len > TN_CLS_QUANT_BLOCK) blk_len = TN_CLS_QUANT_BLOCK;
 
-    /* Build INT8 quantized classifier for faster LM head inference.
-     * Block-wise quantization (TN_CLS_QUANT_BLOCK elements/block, scale
-     * chosen to minimize squared error — see find_best_block_scale).
-     * Halves bandwidth (BF16 → INT8). Stored as unsigned (q + 128).
-     * Hardware-aware: only build if hardware profile recommends INT8 or INT4. */
-    w->cls.i8        = NULL;
-    w->cls.i8_scales = NULL;
-    /* Raw quantized LM head (wcls_raw) in use: there is no BF16 table to
-     * derive INT8/INT4 copies from, and none is needed (2026-10-21). */
-    if (!w->cls.w) {
-        w->cls.i4        = NULL;
-        w->cls.i4_scales = NULL;
+        for (int k = 0; k < blk_len; k++) {
+            tn_u32 bits = (tn_u32)row[blk_start + (size_t)k] << 16;
+            memcpy(&block_f32[k], &bits, sizeof(float));
+        }
+
+        float scale     = find_best_block_scale(block_f32, blk_len, qmax);
+        float inv_scale = (scale > 0.0f) ? 1.0f / scale : 0.0f;
+        row_scales[b]   = scale;
+
+        for (int k = 0; k < blk_len; k++) {
+            float fval = block_f32[k];
+            int q      = (int)(fval * inv_scale + (fval >= 0 ? 0.5f : -0.5f));
+            if (q > qmax) q = qmax;
+            if (q < -qmax) q = -qmax;
+            q_row[blk_start + (size_t)k] = (int8_t)q;
+        }
+    }
+}
+
+/* INT8 classifier for faster LM head inference: block-wise quantization, halving bandwidth
+ * (BF16 -> INT8). Stored as unsigned (q + 128). On an allocation failure nothing is kept. */
+static void build_cls_i8(TransformerWeights *w, const Config *cfg, int n_blocks) {
+    size_t vocab = (size_t)cfg->vocab_size, d = (size_t)cfg->dim;
+    w->cls.i8        = (tn_u8 *)malloc(vocab * d);
+    w->cls.i8_scales = (float *)malloc(vocab * (size_t)n_blocks * sizeof(float));
+    int8_t *q_row    = (int8_t *)malloc(d);
+    if (!w->cls.i8 || !w->cls.i8_scales || !q_row) {
+        free(w->cls.i8);
+        free(w->cls.i8_scales);
+        w->cls.i8        = NULL;
+        w->cls.i8_scales = NULL;
+        free(q_row);
         return;
     }
-    const TnHardwareProfile *hw = tn_hardware_profile_get();
-    bool need_i8                = !hw || hw->classifier_fmt >= TN_CLS_INT8;
-    if (!w->cls.is_ternary && need_i8) {
-        size_t vocab     = (size_t)cfg->vocab_size;
-        size_t d         = (size_t)dim;
-        w->cls.i8        = (tn_u8 *)malloc(vocab * d);
-        w->cls.i8_scales = (float *)malloc(vocab * (size_t)n_blocks * sizeof(float));
-        if (w->cls.i8 && w->cls.i8_scales) {
-            float block_f32[TN_CLS_QUANT_BLOCK];
-            for (size_t i = 0; i < vocab; i++) {
-                const tn_u16 *row = w->cls.w + i * d;
-                tn_u8 *dst        = w->cls.i8 + i * d;
-                float *row_scales = w->cls.i8_scales + i * (size_t)n_blocks;
-
-                for (int b = 0; b < n_blocks; b++) {
-                    size_t blk_start = (size_t)b * TN_CLS_QUANT_BLOCK;
-                    int blk_len      = (int)(d - blk_start);
-                    if (blk_len > TN_CLS_QUANT_BLOCK) blk_len = TN_CLS_QUANT_BLOCK;
-
-                    for (int k = 0; k < blk_len; k++) {
-                        tn_u32 bits = (tn_u32)row[blk_start + (size_t)k] << 16;
-                        memcpy(&block_f32[k], &bits, sizeof(float));
-                    }
-
-                    float scale     = find_best_block_scale(block_f32, blk_len, 127);
-                    float inv_scale = (scale > 0.0f) ? 1.0f / scale : 0.0f;
-                    row_scales[b]   = scale;
-
-                    for (int k = 0; k < blk_len; k++) {
-                        float fval = block_f32[k];
-                        int q      = (int)(fval * inv_scale + (fval >= 0 ? 0.5f : -0.5f));
-                        if (q > 127) q = 127;
-                        if (q < -127) q = -127;
-                        dst[blk_start + (size_t)k] = (tn_u8)(q + 128);
-                    }
-                }
-            }
-        }
+    for (size_t i = 0; i < vocab; i++) {
+        quantize_cls_row(w->cls.w + i * d, d, n_blocks, 127,
+                         w->cls.i8_scales + i * (size_t)n_blocks, q_row);
+        tn_u8 *dst = w->cls.i8 + i * d;
+        for (size_t k = 0; k < d; k++) dst[k] = (tn_u8)(q_row[k] + 128);
     }
+    free(q_row);
+}
 
-    /* Build INT4 quantized classifier for minimum-bandwidth LM head.
-     * Same block-wise, error-minimizing scale search as INT8 above.
-     * Packing: byte[k] = (w[2k+1] << 4) | w[2k], unsigned (+8 bias). */
+/* INT4 classifier for minimum-bandwidth LM head: the same block-wise, error-minimizing scale
+ * search as INT8. Packing: byte[k] = (w[2k+1] << 4) | w[2k], unsigned (+8 bias), at the row's
+ * absolute element index (blocks are a multiple of 2 elements, TN_CLS_QUANT_BLOCK=32, so no block
+ * ever splits a byte). On an allocation failure nothing is kept. */
+static void build_cls_i4(TransformerWeights *w, const Config *cfg, int n_blocks) {
+    size_t vocab = (size_t)cfg->vocab_size, d = (size_t)cfg->dim;
+    size_t row_bytes = (d + 1) / 2;
+    w->cls.i4        = (tn_u8 *)malloc(vocab * row_bytes);
+    w->cls.i4_scales = (float *)malloc(vocab * (size_t)n_blocks * sizeof(float));
+    int8_t *q_row    = (int8_t *)malloc(d);
+    if (!w->cls.i4 || !w->cls.i4_scales || !q_row) {
+        free(w->cls.i4);
+        free(w->cls.i4_scales);
+        w->cls.i4        = NULL;
+        w->cls.i4_scales = NULL;
+        free(q_row);
+        return;
+    }
+    for (size_t i = 0; i < vocab; i++) {
+        quantize_cls_row(w->cls.w + i * d, d, n_blocks, 7, w->cls.i4_scales + i * (size_t)n_blocks,
+                         q_row);
+        tn_u8 *dst = w->cls.i4 + i * row_bytes;
+        for (size_t k = 0; k + 1 < d; k += 2)
+            dst[k / 2] = (tn_u8)(((q_row[k + 1] + 8) << 4) | (q_row[k] + 8));
+        if (d & 1) dst[(d - 1) / 2] = (tn_u8)(q_row[d - 1] + 8);
+    }
+    free(q_row);
+}
+
+void weights_build_classifier_quant(TransformerWeights *w, const Config *cfg) {
+    int n_blocks = (cfg->dim + TN_CLS_QUANT_BLOCK - 1) / TN_CLS_QUANT_BLOCK;
+
+    w->cls.i8        = NULL;
+    w->cls.i8_scales = NULL;
     w->cls.i4        = NULL;
     w->cls.i4_scales = NULL;
-    bool need_i4     = !hw || hw->classifier_fmt >= TN_CLS_INT4;
-    if (!w->cls.is_ternary && need_i4) {
-        size_t vocab        = (size_t)cfg->vocab_size;
-        size_t d            = (size_t)dim;
-        size_t row_bytes_i4 = (d + 1) / 2;
-        w->cls.i4           = (tn_u8 *)malloc(vocab * row_bytes_i4);
-        w->cls.i4_scales    = (float *)malloc(vocab * (size_t)n_blocks * sizeof(float));
-        if (w->cls.i4 && w->cls.i4_scales) {
-            float block_f32[TN_CLS_QUANT_BLOCK];
-            int block_q[TN_CLS_QUANT_BLOCK];
-            for (size_t i = 0; i < vocab; i++) {
-                const tn_u16 *row = w->cls.w + i * d;
-                tn_u8 *dst        = w->cls.i4 + i * row_bytes_i4;
-                float *row_scales = w->cls.i4_scales + i * (size_t)n_blocks;
+    /* Raw quantized LM head (wcls_raw) in use: there is no BF16 table to derive INT8/INT4 copies
+     * from, and none is needed (2026-10-21). */
+    if (!w->cls.w || w->cls.is_ternary) return;
 
-                for (int b = 0; b < n_blocks; b++) {
-                    size_t blk_start = (size_t)b * TN_CLS_QUANT_BLOCK;
-                    int blk_len      = (int)(d - blk_start);
-                    if (blk_len > TN_CLS_QUANT_BLOCK) blk_len = TN_CLS_QUANT_BLOCK;
-
-                    for (int k = 0; k < blk_len; k++) {
-                        tn_u32 bits = (tn_u32)row[blk_start + (size_t)k] << 16;
-                        memcpy(&block_f32[k], &bits, sizeof(float));
-                    }
-
-                    float scale     = find_best_block_scale(block_f32, blk_len, 7);
-                    float inv_scale = (scale > 0.0f) ? 1.0f / scale : 0.0f;
-                    row_scales[b]   = scale;
-
-                    for (int k = 0; k < blk_len; k++) {
-                        float fval = block_f32[k];
-                        int q      = (int)(fval * inv_scale + (fval >= 0 ? 0.5f : -0.5f));
-                        if (q > 7) q = 7;
-                        if (q < -7) q = -7;
-                        block_q[k] = q + 8;
-                    }
-                    /* Pack 2 values/byte at the row's absolute element index
-                     * (blk_start + k), matching the existing byte[k]=(w[2k+1]<<4)|w[2k]
-                     * layout across block boundaries too (blocks are a
-                     * multiple of 2 elements, TN_CLS_QUANT_BLOCK=32, so no
-                     * block ever splits a byte). */
-                    for (int k = 0; k + 1 < blk_len; k += 2)
-                        dst[(blk_start + (size_t)k) / 2] =
-                            (tn_u8)((block_q[k + 1] << 4) | block_q[k]);
-                    if (blk_len & 1)
-                        dst[(blk_start + (size_t)(blk_len - 1)) / 2] = (tn_u8)block_q[blk_len - 1];
-                }
-            }
-        }
-    }
+    /* Hardware-aware: only build what the hardware profile recommends (INT8 or INT4). */
+    const TnHardwareProfile *hw = tn_hardware_profile_get();
+    if (!hw || hw->classifier_fmt >= TN_CLS_INT8) build_cls_i8(w, cfg, n_blocks);
+    if (!hw || hw->classifier_fmt >= TN_CLS_INT4) build_cls_i4(w, cfg, n_blocks);
 }

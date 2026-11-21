@@ -178,32 +178,62 @@ static Value eval_unop(const Node *n, Scope &sc) {
     return Value();
 }
 
+/* `x is defined`: a plain name asks the scope, anything else is defined unless it evaluates to
+ * undefined. */
+static bool test_defined(const Node *n, Scope &sc) {
+    if (n->ch.empty()) return false;
+    if (n->ch[0]->type == NT::Ident) return sc.has(n->ch[0]->sval);
+    return eval(n->ch[0].get(), sc).type != VType::Undef;
+}
+
+static bool vt_none(const Value &v) {
+    return v.type == VType::None;
+}
+static bool vt_string(const Value &v) {
+    return v.type == VType::Str;
+}
+static bool vt_number(const Value &v) {
+    return v.type == VType::Int || v.type == VType::Float;
+}
+static bool vt_iterable(const Value &v) {
+    return v.type == VType::Array || v.type == VType::Str;
+}
+static bool vt_mapping(const Value &v) {
+    return v.type == VType::Object;
+}
+static bool vt_odd(const Value &v) {
+    return v.to_int() % 2 != 0;
+}
+static bool vt_even(const Value &v) {
+    return v.to_int() % 2 == 0;
+}
+
+typedef struct {
+    const char *name;
+    bool (*fn)(const Value &);
+} ValueTest;
+
+/* The tests that look at the evaluated operand (`defined` is separate: it must not evaluate a
+ * plain name). */
+static const ValueTest VALUE_TESTS[] = {
+    {"none", vt_none},       {"None", vt_none},     {"string", vt_string},
+    {"integer", vt_number},  {"number", vt_number}, {"iterable", vt_iterable},
+    {"mapping", vt_mapping}, {"odd", vt_odd},       {"even", vt_even},
+};
+
+static bool is_test_result(const Node *n, Scope &sc) {
+    const std::string &test = n->sval;
+    if (test == "defined") return test_defined(n, sc);
+    if (n->ch.empty()) return false;
+    /* The operand is evaluated only for a test that uses it. */
+    for (const ValueTest &t : VALUE_TESTS)
+        if (test == t.name) return t.fn(eval(n->ch[0].get(), sc));
+    return false;
+}
+
 /* `x is defined / none / string / ...`, optionally negated (`is not`). */
 static Value eval_isdef(const Node *n, Scope &sc) {
-    bool result             = false;
-    const std::string &test = n->sval;
-    if (test == "defined") {
-        if (!n->ch.empty() && n->ch[0]->type == NT::Ident)
-            result = sc.has(n->ch[0]->sval);
-        else if (!n->ch.empty())
-            result = (eval(n->ch[0].get(), sc).type != VType::Undef);
-    } else if (test == "none" || test == "None") {
-        result = !n->ch.empty() && eval(n->ch[0].get(), sc).type == VType::None;
-    } else if (test == "string") {
-        result = !n->ch.empty() && eval(n->ch[0].get(), sc).type == VType::Str;
-    } else if (test == "integer" || test == "number") {
-        VType t = n->ch.empty() ? VType::Undef : eval(n->ch[0].get(), sc).type;
-        result  = (t == VType::Int || t == VType::Float);
-    } else if (test == "iterable") {
-        VType t = n->ch.empty() ? VType::Undef : eval(n->ch[0].get(), sc).type;
-        result  = (t == VType::Array || t == VType::Str);
-    } else if (test == "mapping") {
-        result = !n->ch.empty() && eval(n->ch[0].get(), sc).type == VType::Object;
-    } else if (test == "odd") {
-        result = !n->ch.empty() && (eval(n->ch[0].get(), sc).to_int() % 2 != 0);
-    } else if (test == "even") {
-        result = !n->ch.empty() && (eval(n->ch[0].get(), sc).to_int() % 2 == 0);
-    }
+    bool result = is_test_result(n, sc);
     return Value(n->bval ? !result : result);
 }
 

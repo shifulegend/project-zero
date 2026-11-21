@@ -3,6 +3,20 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-21 — chat-template `is` tests split into small functions (finding 20.a)
+- What: `eval_isdef` (complexity 24, 27 lines, nesting 8) is now `is_test_result` over `test_defined` and a
+  table of seven value tests (`vt_none`, `vt_string`, `vt_number`, `vt_iterable`, `vt_mapping`, `vt_odd`,
+  `vt_even`); the operand is still evaluated only for a test that uses it.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: new `tests/test_template_istest_golden.c` renders every `is` / `is not` test (and names that are
+  not tests) over 38 operands of every value kind, including a name set to an undefined value (the case
+  where asking the scope and evaluating differ); 532 of 1,064 results are true; one hash recorded from the
+  old evaluator on gcc and clang. Mutations of odd, iterable, the None spelling, the scope lookup and the
+  negation each fail it. A Float mutant survives because no template can produce a float (the engine has
+  no float literal or filter). `make test` (gcc and clang); four real models identical.
+- Affected: `src/tokenizer/chat_template_eval.cpp`, `tests/test_template_istest_golden.c`,
+  `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — .bin MoE header reader split into steps (finding 20.a)
 - What: `moe_config_read` (complexity 28, 54 lines) is now a short driver over `moe_bin_header_read` (into a
   plain struct), three validity checks (`moe_bin_experts_valid`, `moe_bin_shared_valid`,

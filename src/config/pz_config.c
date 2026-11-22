@@ -213,6 +213,37 @@ static int append_quoted(char **buf, size_t *len, size_t *cap, const char *v) {
     return append(buf, len, cap, "\"");
 }
 
+/* "[a, b]" with every item quoted. */
+static int append_list_value(char **buf, size_t *len, size_t *cap, const PzCfgEntry *e) {
+    if (append(buf, len, cap, "[")) return 1;
+    for (int j = 0; j < e->n; j++) {
+        if (j && append(buf, len, cap, ", ")) return 1;
+        if (append_quoted(buf, len, cap, e->v[j])) return 1;
+    }
+    return append(buf, len, cap, "]");
+}
+
+/* The value of an entry: a quoted list, a quoted string, or the raw text. */
+static int append_value(char **buf, size_t *len, size_t *cap, const PzCfgEntry *e) {
+    PzCfgType t = e->key->type;
+    if (t == PZ_CFG_LIST) return append_list_value(buf, len, cap, e);
+    if (t == PZ_CFG_STRING) return append_quoted(buf, len, cap, e->v[0]);
+    return append(buf, len, cap, e->v[0]);
+}
+
+/* "key = value\n". */
+static int append_entry(char **buf, size_t *len, size_t *cap, const PzCfgEntry *e) {
+    if (append(buf, len, cap, e->key->key) || append(buf, len, cap, " = ")) return 1;
+    if (append_value(buf, len, cap, e)) return 1;
+    return append(buf, len, cap, "\n");
+}
+
+/* "\n# group\n". */
+static int append_group_header(char **buf, size_t *len, size_t *cap, const char *group) {
+    return append(buf, len, cap, "\n# ") || append(buf, len, cap, group) ||
+           append(buf, len, cap, "\n");
+}
+
 char *pz_config_format(const PzConfig *c) {
     char *buf  = NULL;
     size_t len = 0, cap = 0;
@@ -228,24 +259,9 @@ char *pz_config_format(const PzConfig *c) {
         if (!e->set) continue;
         if (!group || strcmp(group, e->key->group) != 0) {
             group = e->key->group;
-            if (append(&buf, &len, &cap, "\n# ") || append(&buf, &len, &cap, group) ||
-                append(&buf, &len, &cap, "\n"))
-                goto fail;
+            if (append_group_header(&buf, &len, &cap, group)) goto fail;
         }
-        if (append(&buf, &len, &cap, e->key->key) || append(&buf, &len, &cap, " = ")) goto fail;
-        PzCfgType t = e->key->type;
-        if (t == PZ_CFG_LIST) {
-            if (append(&buf, &len, &cap, "[")) goto fail;
-            for (int j = 0; j < e->n; j++) {
-                if (j && append(&buf, &len, &cap, ", ")) goto fail;
-                if (append_quoted(&buf, &len, &cap, e->v[j])) goto fail;
-            }
-            if (append(&buf, &len, &cap, "]")) goto fail;
-        } else if (t == PZ_CFG_STRING) {
-            if (append_quoted(&buf, &len, &cap, e->v[0])) goto fail;
-        } else if (append(&buf, &len, &cap, e->v[0]))
-            goto fail;
-        if (append(&buf, &len, &cap, "\n")) goto fail;
+        if (append_entry(&buf, &len, &cap, e)) goto fail;
     }
     return buf;
 fail:

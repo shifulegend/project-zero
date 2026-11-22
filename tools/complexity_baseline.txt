@@ -54,7 +54,6 @@ src/cli/session_dist.c::session_distributed 12 40 2
 src/cli/session_run.c::session_execute 8 17 5
 src/cli/session_server.c::configure_server 18 51 1
 src/config/pz_config.c::append_quoted 8 22 5
-src/config/pz_config.c::pz_config_format 23 39 4
 src/config/pz_config.c::pz_config_merge_argv 12 30 3
 src/config/pz_config.c::pz_config_save 16 39 1
 src/core/bw_cache.c::tn_bw_cache_key 12 12 1

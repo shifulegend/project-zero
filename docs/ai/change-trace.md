@@ -3,6 +3,19 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-22 — configuration file writer split into group, entry and value helpers (finding 20.a)
+- What: `pz_config_format` (complexity 23, 39 lines, nesting 4) now uses `append_group_header`,
+  `append_entry`, `append_value` and `append_list_value`; the allocation-failure path still frees the buffer
+  and returns NULL from every step.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: its output is hashed by three existing tests that were recorded before the change -
+  `test_pz_config_parse_golden` (60,000 generated config texts dumped through the formatter),
+  `test_config_wizard_golden` and `test_pz_config`; they pass on gcc and clang, and mutations of the list
+  separator, the ` = ` spacing, the string quoting, the group header and the group-change test each fail at
+  least one of them. `pz config list` and the file `pz config set` writes are byte-identical to the old
+  binary for three settings. `make test` (gcc and clang).
+- Affected: `src/config/pz_config.c`, `tools/complexity_baseline.txt`.
+
 ### 2026-11-22 — Llama-3 pre-tokenizer split into one function per rule (finding 20.a)
 - What: `split_llama3` (complexity 26, 61 lines, nesting 4) is now the contraction check plus `l3_word`,
   `l3_digits`, `l3_symbols` and `l3_space`, each returning the position after the piece it emitted (0 when

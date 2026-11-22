@@ -3,6 +3,21 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-22 — vision pipeline split into stages (finding 20.a)
+- What: `vision_pipeline_run` (complexity 28, 132 lines, nesting 10) is now a driver over `run_stages`
+  (`load_vision_weights`, `stage_load_image`, `stage_extract_patches`, `stage_encode`, `stage_project`), then
+  `prefill_chat_prefix` and the KV injection. One `VisionBuffers` struct owns the four buffers and is freed in
+  one place. The order of every allocation, message and warning is unchanged (including the projector-size
+  warning printed before the allocation check, and the silent failure when the projection scratch buffer
+  cannot be allocated).
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: with the SmolVLM-256M vision/projector files and SmolLM2-135M, seven CLI scenarios print identical
+  text to the old binary: image with a prompt (ChatML prefix path), the same with `--raw-prompt`, image
+  without a prompt (REPL), no vision files, a missing vision file, a missing projector file and a missing
+  image. `tests/e2e_vision_long_prompt.sh` (API path: a 15,000-character message with an image, two
+  concurrent image requests) passes. `make test` (gcc and clang).
+- Affected: `src/multimodal/vision_pipeline.c`, `tools/complexity_baseline.txt`.
+
 ### 2026-11-21 — fused MoE job building split into routed and shared parts (finding 20.a)
 - What: `moe_fused_try` (complexity 24, 64 lines, nesting 4) now builds its job list through
   `fused_add_routed` (with `fused_expert_types`) and `fused_add_shared`; the dispatch, hit tracking and the

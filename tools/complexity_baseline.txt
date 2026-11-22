@@ -111,7 +111,6 @@ src/memory/file_backed.c::file_backed_alloc 12 22 1
 src/multimodal/patch_extract.c::extract_patches 5 25 4
 src/multimodal/vision_encoder.c::vision_attention 10 41 4
 src/multimodal/vision_encoder.c::vision_encoder_forward 16 46 3
-src/multimodal/vision_pipeline.c::vision_pipeline_run 28 132 10
 src/multimodal/vision_projector.c::vision_projector_forward_batch 10 45 5
 src/multimodal/vision_weights_load.c::vision_model_load_encoder 18 83 1
 src/multimodal/vision_weights_load.c::vision_model_load_projector 14 65 2

@@ -12,7 +12,6 @@ src/api/batch_scheduler.c::batch_scheduler_create 12 25 1
 src/api/batch_scheduler.c::batch_scheduler_generate 14 55 3
 src/api/batch_scheduler.c::kv_make_room 15 27 3
 src/api/batch_scheduler.c::scheduler_main 18 42 4
-src/api/batch_scheduler.c::step 24 58 4
 src/api/chat_compile.c::chat_template_detect 13 11 1
 src/api/chat_compile.c::compile_deepseek 15 30 4
 src/api/chat_compile.c::compile_mistral 12 18 4

@@ -187,24 +187,32 @@ static void admit(BatchScheduler *sched, BatchJob **staged) {
     }
 }
 
-/* One batched forward pass over every active request. */
-static void step(BatchScheduler *sched) {
-    int n_slots = sched->opt.n_slots, cap = sched->opt.max_batch_rows;
-    int *order = sched->order, *count = sched->count;
-    int n_order = 0, rows = 0;
-    memset(count, 0, (size_t)n_slots * sizeof(int));
+/* The slot with the oldest request that has nothing in this step yet and, for pass 0, needs
+ * logits (decoding) or, for pass 1, does not (prefill); -1 if none. */
+static int pick_oldest(const BatchScheduler *sched, const int *count, int pass) {
+    int pick = -1;
+    for (int i = 0; i < sched->opt.n_slots; i++) {
+        const BatchSlot *slot = &sched->slots[i];
+        if (!slot->job || count[i] || slot->job->g.progress.done) continue;
+        if (gen_session_needs_logits(&slot->job->g) != (pass == 0)) continue;
+        if (pick < 0 || slot->admit_seq < sched->slots[pick].admit_seq) pick = i;
+    }
+    return pick;
+}
 
-    /* Decode rows first (one each), so generation never waits behind a
-     * long prompt; prefill chunks take what is left, oldest request first. */
+/* Fills the step's rows: decode rows first (one each), so generation never waits behind a long
+ * prompt; prefill chunks take what is left, oldest request first. Returns the row count and sets
+ * *n_order to the number of slots that contribute (their indices in sched->order). */
+static int gather_rows(BatchScheduler *sched, int *n_order) {
+    int cap    = sched->opt.max_batch_rows;
+    int *order = sched->order, *count = sched->count;
+    int rows = 0;
+    *n_order = 0;
+    memset(count, 0, (size_t)sched->opt.n_slots * sizeof(int));
+
     for (int pass = 0; pass < 2 && rows < cap; pass++) {
         for (;;) {
-            int pick = -1;
-            for (int i = 0; i < n_slots; i++) {
-                BatchSlot *slot = &sched->slots[i];
-                if (!slot->job || count[i] || slot->job->g.progress.done) continue;
-                if (gen_session_needs_logits(&slot->job->g) != (pass == 0)) continue;
-                if (pick < 0 || slot->admit_seq < sched->slots[pick].admit_seq) pick = i;
-            }
+            int pick = pick_oldest(sched, count, pass);
             if (pick < 0 || rows >= cap) break;
             const GenSession *g = &sched->slots[pick].job->g;
             int n =
@@ -217,40 +225,70 @@ static void step(BatchScheduler *sched) {
                 sched->row_state[rows + k] = sched->slots[pick].s;
                 sched->row_want[rows + k]  = (g->progress.step + k >= g->prompt.n_tokens - 1);
             }
-            count[pick]      = n;
-            order[n_order++] = pick;
+            count[pick]         = n;
+            order[(*n_order)++] = pick;
             rows += n;
         }
     }
-    if (rows == 0) return;
+    return rows;
+}
 
-    /* One row (a lone request decoding): the single-sequence forward is
-     * ~5% faster than a one-row batch and is exactly what generate_ex runs. */
+/* Runs the forward pass over the gathered rows. One row (a lone request decoding): the
+ * single-sequence forward is ~5% faster than a one-row batch and is exactly what generate_ex runs;
+ * *single is then its logits. Otherwise the logits of the rows that want them are in
+ * sched->logits. */
+static TernaryError forward_rows(BatchScheduler *sched, int rows, float **single) {
     TernaryError err = TN_OK;
-    float *single    = NULL;
+    *single          = NULL;
     if (rows == 1)
-        single = transformer_forward(sched->row_tok[0], sched->row_pos[0], sched->cfg, sched->w,
-                                     sched->row_state[0], sched->mc, sched->tp);
+        *single = transformer_forward(sched->row_tok[0], sched->row_pos[0], sched->cfg, sched->w,
+                                      sched->row_state[0], sched->mc, sched->tp);
     else
         err = transformer_forward_multi_ex(sched->row_tok, sched->row_pos, sched->row_state, rows,
                                            sched->row_want, sched->cfg, sched->w, &sched->sb,
                                            sched->mc, sched->tp, sched->logits);
     if (err != TN_OK)
         TN_LOG_ERR("parallel", "[parallel] batched forward failed: %s\n", tn_error_str(err));
+    return err;
+}
+
+/* The logits of row r: none if the row does not want any, the lone request's own, or the next
+ * block of the batched output (*out counts the blocks used). */
+static float *row_logits(const BatchScheduler *sched, int r, float *single, int *out) {
+    if (!sched->row_want[r]) return NULL;
+    if (single) return single;
+    return sched->logits + (size_t)(*out)++ * sched->cfg->vocab_size;
+}
+
+/* A forward error finishes the request as failed; otherwise it consumes its row. */
+static void consume_row(GenSession *g, float *lg, TernaryError err) {
+    if (err != TN_OK) {
+        g->progress.finish = GEN_FINISH_ERROR;
+        g->progress.done   = 1;
+    } else if (!g->progress.done) {
+        gen_session_consume(g, lg);
+    }
+}
+
+/* Hands each contributing slot its rows' logits (or marks it failed after a forward error). */
+static void deliver_rows(BatchScheduler *sched, int n_order, float *single, TernaryError err) {
+    const int *order = sched->order, *count = sched->count;
     int r = 0, out = 0;
     for (int o = 0; o < n_order; o++) {
         GenSession *g = &sched->slots[order[o]].job->g;
-        for (int k = 0; k < count[order[o]]; k++, r++) {
-            float *lg = !sched->row_want[r] ? NULL
-                        : single            ? single
-                                 : sched->logits + (size_t)(out++) * sched->cfg->vocab_size;
-            if (err != TN_OK) {
-                g->progress.finish = GEN_FINISH_ERROR;
-                g->progress.done   = 1;
-            } else if (!g->progress.done)
-                gen_session_consume(g, lg);
-        }
+        for (int k = 0; k < count[order[o]]; k++, r++)
+            consume_row(g, row_logits(sched, r, single, &out), err);
     }
+}
+
+/* One batched forward pass over every active request. */
+static void step(BatchScheduler *sched) {
+    int n_order;
+    int rows = gather_rows(sched, &n_order);
+    if (rows == 0) return;
+    float *single;
+    TernaryError err = forward_rows(sched, rows, &single);
+    deliver_rows(sched, n_order, single, err);
 }
 
 static void finish_done(BatchScheduler *sched) {

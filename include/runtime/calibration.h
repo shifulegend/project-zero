@@ -121,6 +121,23 @@ int tn_calib_pick_simd(const double samples[][TN_CALIB_MAX_ROUNDS], const bool a
                        int n_rounds, double margin);
 
 /*
+ * Thread-count preference (pure): the physical-core count phys_t wins over the fastest count best_t
+ * unless best_t is clearly faster -- its tok/s above phys_t's median * TN_CALIB_OVERRIDE_MARGIN and
+ * its slowest repetition (min_[best_t - 1]) above that median. med/min_ are indexed by T-1. Returns
+ * the chosen count and sets *out_tokps to its tok/s.
+ */
+int tn_calib_prefer_physical(const double med[], const double min_[], int best_t, double best_tokps,
+                             int phys_t, double *out_tokps);
+
+/*
+ * Analytic classifier estimates (pure; BitNet-2B geometry, see calib_run.c): tok/s for a BF16,
+ * INT8 and INT4 classifier head at measured DRAM bandwidth base_bw (GB/s) and an L3 of l3_bytes,
+ * and the index of the fastest.
+ */
+void tn_calib_classifier_estimates(double base_bw, double l3_bytes, double cls_tokps[3],
+                                   int *best_idx);
+
+/*
  * Run calibration micro-benchmarks.
  * Takes ~40-60 seconds depending on hardware and thread count.
  * Does NOT change any global engine state — only populates `result`.

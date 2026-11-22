@@ -142,6 +142,8 @@ set(CORE_SOURCES
     src/core/sha256.c
     src/core/text_file.c
     src/runtime/calibration.c
+    src/runtime/calib_bench.c
+    src/runtime/calib_run.c
     src/runtime/mla_run_state.c
     src/core/moe_config.c
     src/core/moe_weights.c

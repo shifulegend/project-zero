@@ -127,7 +127,6 @@ src/reasoning/prm.c::prm_load 16 31 1
 src/reasoning/prm.c::prm_score 15 40 2
 src/reasoning/reasoning_generate.c::generate_with_reasoning 15 68 4
 src/runtime/calibration.c::tn_calib_pick_simd 12 20 3
-src/runtime/calibration.c::tn_calibrate 57 234 4
 src/runtime/calibration.c::tn_calibration_act_timing 13 17 2
 src/runtime/gguf_load_deepseek2.c::weights_from_gguf_deepseek2 12 40 2
 src/runtime/gguf_load_proj.c::gguf_ld_dense_projection 14 32 6

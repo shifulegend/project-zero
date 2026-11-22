@@ -3,6 +3,26 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-22 — calibration run split into phases, files and testable decisions (finding 20.a)
+- What: `tn_calibrate` (complexity 57, 234 lines) is now a driver over `fingerprint`, `simd_phase` (with
+  `drop_duplicates_of_auto`, `run_simd_rounds`, `report_simd`), `thread_phase` (with `sweep_one`) and
+  `print_result`, in the new `src/runtime/calib_run.c`. The timed benchmark moved to `calib_bench.c` and the
+  rest of `calibration.c` (cache I/O, report, accessors) shrank from 798 to 299 lines, so it leaves the
+  file-size baseline. The tier detection that needs the dispatch flag stays in `calibration.c`
+  (`calib_mark_available`). Two decisions became public pure functions, `tn_calib_prefer_physical` and
+  `tn_calib_classifier_estimates`.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: `tests/test_calibration_pick.c` checks both pure rules against copies of the old inline code over
+  200,000 generated cases each (the physical-core preference exercises both outcomes; mutations of the
+  margin, the slowest-rep rule, the L3 credit and the MiB conversion fail it; two equal-float tie
+  mutations cannot be hit by real data). The measurements cannot be pinned, so a full `--calibrate` run on
+  the old and new binary was compared: the same 26 lines of output (candidates, phases, per-count lines,
+  result box) apart from number widths and one thread count chosen from run-to-run noise; each binary
+  loads the other's `calibration.bin` without recalibrating. `make test` (gcc and clang).
+- Affected: `src/runtime/calibration.c`, `src/runtime/calib_bench.c`, `src/runtime/calib_run.c`,
+  `include/runtime/calib_internal.h`, `include/runtime/calibration.h`, `CMakeLists.txt`,
+  `tests/test_calibration_pick.c`, both baselines.
+
 ### 2026-11-22 — agent loop split into sampling, tag handlers and a step function (finding 20.a)
 - What: `run_agent_loop` (complexity 38, 115 lines, nesting 9) is now a driver over `build_prompt_tokens`,
   `agent_step` (state in an `AgentRun` struct), the new public `agent_sample_next` (greedy / temperature /

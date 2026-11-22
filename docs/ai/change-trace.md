@@ -3,6 +3,24 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-22 — native ternary loader split into steps, with its first test (finding 20.a)
+- What: `load_native` (complexity 31, 130 lines) is now a driver over `native_read_headers`,
+  `native_map_weights`, `native_report_model_bytes` and `native_alloc_state` (with
+  `native_alloc_extra_state`, a table of the MLA / Qwen3.5 / Qwen3-MoE state allocators). The cleanup after
+  each failure is two helpers, `drop_weights` and `drop_state`, which keep what each site released (the
+  MoE tables are freed unconditionally after a failed mapping and only for MoE models elsewhere).
+- Why: finding 20.a. It was marked as untestable for lack of a native model; the format is simple, so
+  `tests/make_tiny_native.py` now writes a tiny random native model and a legacy tokenizer from the layout
+  `weights_map` reads (deterministic, nonsense output by design).
+- Proof: nine scenarios print identical text on the old and new binary - a normal load and generation, one
+  with INT8 classifier + int8 KV + two threads, one with `--ctx-size` and float activations, truncated
+  weights, bad magic, a file shorter than the header, a MoE-flagged file that is too small, one with no
+  valid MoE header, and a missing file (the one-time self-check message is cached after the first run, so
+  that case was compared with the cache cleared). New `tests/e2e_native_load.sh` keeps ten of these checks
+  in the repo (the native format had no test). `make test` (gcc and clang).
+- Affected: `src/cli/session_model.c`, `tests/make_tiny_native.py`, `tests/e2e_native_load.sh`,
+  `tools/complexity_baseline.txt`.
+
 ### 2026-11-22 — calibration run split into phases, files and testable decisions (finding 20.a)
 - What: `tn_calibrate` (complexity 57, 234 lines) is now a driver over `fingerprint`, `simd_phase` (with
   `drop_duplicates_of_auto`, `run_simd_rounds`, `report_simd`), `thread_phase` (with `sweep_one`) and

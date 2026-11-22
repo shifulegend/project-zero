@@ -59,16 +59,25 @@ static void size_native_context(PzSession *ses) {
     kv_strategy_print(&kv_res, ses->p.seq_len, &kv_opt);
 }
 
-/* Native ternary `.bin`: mapped, parsed and its run state sized here (no draft-model use case,
- * see runtime/model_load.h, so it does not share the GGUF helper). */
-static int load_native(PzSession *ses) {
-    TN_OUT_INF("session_model", "Model format: native ternary\n");
+/* Failure cleanup. The sequences differ by site, as they always have: whether the MoE tables are
+ * freed unconditionally or only for a MoE model is part of what each site did. */
+static void drop_weights(PzSession *ses, int moe_always) {
+    if (moe_always || ses->mc.is_moe) moe_weights_free(&ses->w, &ses->mc);
+    weights_free_pointers(&ses->w);
+    mapped_file_close(&ses->mf);
+}
 
-    if (mapped_file_open(&ses->mf, ses->args.input.model_path) != TN_OK) {
-        TN_LOG_ERR("session_model", "Failed to map model file: %s\n", ses->args.input.model_path);
-        return 1;
-    }
+/* ...and when the run state exists: its buffers (if allocated), the header, then the weights. */
+static void drop_state(PzSession *ses, int buffers_allocated) {
+    if (buffers_allocated) run_state_free(ses->s);
+    free(ses->s);
+    drop_weights(ses, 0);
+}
 
+/* Reads the config and, for a MoE file, the MoE header; locates the weight data.
+ * MoE model: scale_mode=2 → read 32-byte MoE header at offset 64, weight data starts at byte 128
+ * (64 header + 32 MoE + 32 padding). Dense model: scale_mode=0 → weight data starts at byte 64. */
+static int native_read_headers(PzSession *ses, tn_i8 **weight_data, size_t *data_size) {
     if (config_read(&ses->p, ses->mf.data, ses->mf.size) != TN_OK) {
         TN_LOG_ERR("session_model", "Invalid model configuration.\n");
         mapped_file_close(&ses->mf);
@@ -76,96 +85,108 @@ static int load_native(PzSession *ses) {
     }
     config_print(&ses->p);
 
-    /* MoE model: scale_mode=2 → read 32-byte MoE header at offset 64,
-     * weight data starts at byte 128 (64 header + 32 MoE + 32 padding).
-     * Dense model: scale_mode=0 → weight data starts at byte 64. */
-    tn_i8 *weight_data;
-    size_t data_size;
-    if (ses->p.scale_mode == 2) {
-        const size_t MOE_HDR_OFFSET = 64;
-        const size_t WEIGHT_OFFSET  = 128;
-        if (ses->mf.size < WEIGHT_OFFSET) {
-            TN_LOG_ERR("session_model", "MoE model file too small.\n");
-            mapped_file_close(&ses->mf);
-            return 1;
-        }
-        size_t moe_size = ses->mf.size - MOE_HDR_OFFSET;
-        size_t moe_off  = 0;
-        if (moe_config_read(&ses->mc, (char *)ses->mf.data + MOE_HDR_OFFSET, moe_size, &moe_off) !=
-            TN_OK) {
-            TN_LOG_ERR("session_model", "Failed to read MoE config header.\n");
-            mapped_file_close(&ses->mf);
-            return 1;
-        }
-        moe_config_print(&ses->mc);
-        weight_data = (tn_i8 *)ses->mf.data + WEIGHT_OFFSET;
-        data_size   = ses->mf.size - WEIGHT_OFFSET;
-    } else {
-        weight_data = (tn_i8 *)ses->mf.data + 64;
-        data_size   = ses->mf.size - 64;
+    if (ses->p.scale_mode != 2) {
+        *weight_data = (tn_i8 *)ses->mf.data + 64;
+        *data_size   = ses->mf.size - 64;
+        return 0;
     }
+    const size_t MOE_HDR_OFFSET = 64;
+    const size_t WEIGHT_OFFSET  = 128;
+    if (ses->mf.size < WEIGHT_OFFSET) {
+        TN_LOG_ERR("session_model", "MoE model file too small.\n");
+        mapped_file_close(&ses->mf);
+        return 1;
+    }
+    size_t moe_size = ses->mf.size - MOE_HDR_OFFSET;
+    size_t moe_off  = 0;
+    if (moe_config_read(&ses->mc, (char *)ses->mf.data + MOE_HDR_OFFSET, moe_size, &moe_off) !=
+        TN_OK) {
+        TN_LOG_ERR("session_model", "Failed to read MoE config header.\n");
+        mapped_file_close(&ses->mf);
+        return 1;
+    }
+    moe_config_print(&ses->mc);
+    *weight_data = (tn_i8 *)ses->mf.data + WEIGHT_OFFSET;
+    *data_size   = ses->mf.size - WEIGHT_OFFSET;
+    return 0;
+}
 
+static int native_map_weights(PzSession *ses, tn_i8 *weight_data, size_t data_size) {
     if (weights_alloc_pointers(&ses->w, &ses->p) != TN_OK) {
         TN_LOG_ERR("session_model", "Failed to allocate weight pointers.\n");
         mapped_file_close(&ses->mf);
         return 1;
     }
-
-    if (ses->mc.is_moe) {
-        if (moe_weights_alloc(&ses->w, &ses->p, &ses->mc) != TN_OK) {
-            TN_LOG_ERR("session_model", "Failed to allocate MoE weight pointers.\n");
-            if (ses->mc.is_moe) moe_weights_free(&ses->w, &ses->mc);
-            weights_free_pointers(&ses->w);
-            mapped_file_close(&ses->mf);
-            return 1;
-        }
-    }
-
-    if (weights_map(&ses->w, &ses->p, &ses->mc, weight_data, data_size) != TN_OK) {
-        TN_LOG_ERR("session_model", "Failed to map weight structures from file.\n");
-        moe_weights_free(&ses->w, &ses->mc);
-        weights_free_pointers(&ses->w);
-        mapped_file_close(&ses->mf);
+    if (ses->mc.is_moe && moe_weights_alloc(&ses->w, &ses->p, &ses->mc) != TN_OK) {
+        TN_LOG_ERR("session_model", "Failed to allocate MoE weight pointers.\n");
+        drop_weights(ses, 0);
         return 1;
     }
-
-    /* Native-format twin of the GGUF set_model_bytes call above
-     * (2026-07-17, independent-review finding: without this, any native
-     * model that isn't exactly BitNet-2B kept the hardcoded pre-load
-     * estimate forever). Per-token traffic = ternary layers + norms
-     * (weight data minus the BF16 embedding table, which is read one
-     * row per token) + the classifier at its selected precision (the
-     * classifier is derived from that embedding: BF16 = full table,
-     * INT8/INT4 = half/quarter). Native MoE (scale_mode==2) overcounts
-     * inactive experts here — same TODO(PZ-TODO-1) as the GGUF branch. */
-    {
-        double embed_bytes            = (double)ses->p.vocab_size * ses->p.dim * 2.0;
-        const TnHardwareProfile *hp_n = tn_hardware_profile_get();
-        double cls_bytes              = embed_bytes; /* BF16 default */
-        if (hp_n && hp_n->classifier_fmt == TN_CLS_INT8) cls_bytes = embed_bytes / 2.0;
-        if (hp_n && hp_n->classifier_fmt == TN_CLS_INT4) cls_bytes = embed_bytes / 4.0;
-        double per_tok = ((double)data_size - embed_bytes) + cls_bytes;
-        tn_hardware_profile_set_model_bytes(per_tok, cls_bytes);
-        if (hp_n && per_tok > 0.0) {
-            TN_OUT_INF("profile",
-                       "[profile] Data/token (loaded model): %.0f MB -> "
-                       "ceiling %.1f tok/s at %.1f GB/s\n",
-                       per_tok / (1024.0 * 1024.0), hp_n->theoretical_ceiling,
-                       hp_n->measured_bw_gbps);
-        }
+    if (weights_map(&ses->w, &ses->p, &ses->mc, weight_data, data_size) != TN_OK) {
+        TN_LOG_ERR("session_model", "Failed to map weight structures from file.\n");
+        drop_weights(ses, 1);
+        return 1;
     }
+    return 0;
+}
 
-    tn_progress_stage(3, 4, "Preparing runtime...", ses->stdout_is_tty);
+/* Native-format twin of the GGUF set_model_bytes call (2026-07-17, independent-review finding:
+ * without this, any native model that isn't exactly BitNet-2B kept the hardcoded pre-load estimate
+ * forever). Per-token traffic = ternary layers + norms (weight data minus the BF16 embedding
+ * table, which is read one row per token) + the classifier at its selected precision (the
+ * classifier is derived from that embedding: BF16 = full table, INT8/INT4 = half/quarter). Native
+ * MoE (scale_mode==2) overcounts inactive experts here — same TODO(PZ-TODO-1) as the GGUF
+ * branch. */
+static void native_report_model_bytes(const PzSession *ses, size_t data_size) {
+    double embed_bytes            = (double)ses->p.vocab_size * ses->p.dim * 2.0;
+    const TnHardwareProfile *hp_n = tn_hardware_profile_get();
+    double cls_bytes              = embed_bytes; /* BF16 default */
+    if (hp_n && hp_n->classifier_fmt == TN_CLS_INT8) cls_bytes = embed_bytes / 2.0;
+    if (hp_n && hp_n->classifier_fmt == TN_CLS_INT4) cls_bytes = embed_bytes / 4.0;
+    double per_tok = ((double)data_size - embed_bytes) + cls_bytes;
+    tn_hardware_profile_set_model_bytes(per_tok, cls_bytes);
+    if (hp_n && per_tok > 0.0) {
+        TN_OUT_INF("profile",
+                   "[profile] Data/token (loaded model): %.0f MB -> "
+                   "ceiling %.1f tok/s at %.1f GB/s\n",
+                   per_tok / (1024.0 * 1024.0), hp_n->theoretical_ceiling, hp_n->measured_bw_gbps);
+    }
+}
 
-    size_native_context(ses);
+typedef TernaryError (*ExtraStateAlloc)(RunState *s, const Config *cfg, const MoEConfig *mc,
+                                        int max_seq_len);
 
-    /* Setup RunState */
+/* Per-architecture attention state, each allocated only for its own model family. */
+static int native_alloc_extra_state(PzSession *ses) {
+    struct {
+        int enabled;
+        ExtraStateAlloc alloc;
+        const char *error;
+    } extras[] = {
+        /* Phase 17.7: MLA k_rope_cache (allocated only when mla.enabled=1) */
+        {ses->mc.mla.enabled, mla_run_state_alloc, "Failed to allocate MLA k_rope_cache.\n"},
+        /* Qwen3.5/3.6 hybrid attention state (allocated only when has_linear_attn=1) */
+        {ses->mc.has_linear_attn, q35_run_state_alloc,
+         "Failed to allocate Qwen3.5/3.6 hybrid attention state.\n"},
+        /* Qwen3-MoE attention state (allocated only when has_qk_norm=1) */
+        {ses->mc.has_qk_norm, qwen3moe_run_state_alloc,
+         "Failed to allocate Qwen3-MoE attention state.\n"},
+    };
+    for (size_t k = 0; k < sizeof(extras) / sizeof(extras[0]); k++) {
+        if (!extras[k].enabled) continue;
+        if (extras[k].alloc(ses->s, &ses->p, &ses->mc, ses->p.seq_len) == TN_OK) continue;
+        TN_LOG_ERR("session_model", "%s", extras[k].error);
+        drop_state(ses, 1);
+        return 1;
+    }
+    return 0;
+}
+
+static int native_alloc_state(PzSession *ses) {
     ses->s = (RunState *)malloc(sizeof(RunState));
     if (!ses->s) {
         TN_LOG_ERR("session_model", "Failed to allocate RunState header.\n");
-        if (ses->mc.is_moe) moe_weights_free(&ses->w, &ses->mc);
-        weights_free_pointers(&ses->w);
-        mapped_file_close(&ses->mf);
+        drop_weights(ses, 0);
         return 1;
     }
 
@@ -180,53 +201,31 @@ static int load_native(PzSession *ses) {
     if (run_state_alloc_ex(ses->s, &ses->p, ses->p.seq_len,
                            ses->mc.has_linear_attn || ses->mc.has_qk_norm, &kv_opt) != TN_OK) {
         TN_LOG_ERR("session_model", "Failed to allocate RunState buffers.\n");
-        free(ses->s);
-        if (ses->mc.is_moe) moe_weights_free(&ses->w, &ses->mc);
-        weights_free_pointers(&ses->w);
-        mapped_file_close(&ses->mf);
+        drop_state(ses, 0);
+        return 1;
+    }
+    return native_alloc_extra_state(ses);
+}
+
+/* Native ternary `.bin`: mapped, parsed and its run state sized here (no draft-model use case,
+ * see runtime/model_load.h, so it does not share the GGUF helper). */
+static int load_native(PzSession *ses) {
+    TN_OUT_INF("session_model", "Model format: native ternary\n");
+
+    if (mapped_file_open(&ses->mf, ses->args.input.model_path) != TN_OK) {
+        TN_LOG_ERR("session_model", "Failed to map model file: %s\n", ses->args.input.model_path);
         return 1;
     }
 
-    /* Phase 17.7: MLA k_rope_cache (allocated only when mla.enabled=1) */
-    if (ses->mc.mla.enabled) {
-        if (mla_run_state_alloc(ses->s, &ses->p, &ses->mc, ses->p.seq_len) != TN_OK) {
-            TN_LOG_ERR("session_model", "Failed to allocate MLA k_rope_cache.\n");
-            run_state_free(ses->s);
-            free(ses->s);
-            if (ses->mc.is_moe) moe_weights_free(&ses->w, &ses->mc);
-            weights_free_pointers(&ses->w);
-            mapped_file_close(&ses->mf);
-            return 1;
-        }
-    }
+    tn_i8 *weight_data;
+    size_t data_size;
+    if (native_read_headers(ses, &weight_data, &data_size)) return 1;
+    if (native_map_weights(ses, weight_data, data_size)) return 1;
+    native_report_model_bytes(ses, data_size);
 
-    /* Qwen3.5/3.6 hybrid attention state (allocated only when has_linear_attn=1) */
-    if (ses->mc.has_linear_attn) {
-        if (q35_run_state_alloc(ses->s, &ses->p, &ses->mc, ses->p.seq_len) != TN_OK) {
-            TN_LOG_ERR("session_model", "Failed to allocate Qwen3.5/3.6 hybrid attention state.\n");
-            run_state_free(ses->s);
-            free(ses->s);
-            if (ses->mc.is_moe) moe_weights_free(&ses->w, &ses->mc);
-            weights_free_pointers(&ses->w);
-            mapped_file_close(&ses->mf);
-            return 1;
-        }
-    }
-
-    /* Qwen3-MoE attention state (allocated only when has_qk_norm=1) */
-    if (ses->mc.has_qk_norm) {
-        if (qwen3moe_run_state_alloc(ses->s, &ses->p, &ses->mc, ses->p.seq_len) != TN_OK) {
-            TN_LOG_ERR("session_model", "Failed to allocate Qwen3-MoE attention state.\n");
-            run_state_free(ses->s);
-            free(ses->s);
-            if (ses->mc.is_moe) moe_weights_free(&ses->w, &ses->mc);
-            weights_free_pointers(&ses->w);
-            mapped_file_close(&ses->mf);
-            return 1;
-        }
-    }
-
-    return 0;
+    tn_progress_stage(3, 4, "Preparing runtime...", ses->stdout_is_tty);
+    size_native_context(ses);
+    return native_alloc_state(ses);
 }
 
 /* Opens the model file and builds weights and run state. Returns 1 when loading failed (the

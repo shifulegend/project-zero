@@ -3,6 +3,19 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-22 — interactive REPL split into command table and steps (finding 20.a)
+- What: `run_repl` (complexity 37, 129 lines, nesting 5) is now a loop over `read_repl_line`, `run_command`
+  and `generate_reply`. The commands are a table of exact and prefix entries (`/help`, `/context`, `/think`,
+  `/json`, `/memory list|search|save`, `/agent`) with one handler each, sharing a `ReplCtx` struct.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: four scripted stdin sessions on SmolLM2 print identical text to the old binary: every command with
+  no memory database (help, context, both toggles twice, memory list/search/save, `/agent` with no prompt,
+  a prompt, `/quit`); a session with `--memory-db` and `--verbose` (save, duplicate save, second save, list,
+  search with and without hits, a prompt that gets memories injected, `/exit`); toggles before prompts; and
+  look-alike inputs (`/memory`, `/memory searchx`, `/agentx`, unknown commands) that must go to the model.
+  `make test` (gcc and clang).
+- Affected: `src/cli/repl.c`, `tools/complexity_baseline.txt`.
+
 ### 2026-11-22 — vision pipeline split into stages (finding 20.a)
 - What: `vision_pipeline_run` (complexity 28, 132 lines, nesting 10) is now a driver over `run_stages`
   (`load_vision_weights`, `stage_load_image`, `stage_extract_patches`, `stage_encode`, `stage_project`), then

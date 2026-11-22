@@ -51,7 +51,6 @@ src/cli/md_render.c::md_process 17 52 3
 src/cli/model_catalog.c::pz_model_catalog 16 51 5
 src/cli/model_catalog.c::pz_model_download 13 61 1
 src/cli/model_catalog.c::valid 12 9 2
-src/cli/repl.c::run_repl 37 129 5
 src/cli/session_checks.c::session_accuracy_checks 12 54 4
 src/cli/session_dist.c::session_distributed 12 40 2
 src/cli/session_model.c::load_native 31 130 3

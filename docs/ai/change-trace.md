@@ -3,6 +3,23 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-22 — agent loop split into sampling, tag handlers and a step function (finding 20.a)
+- What: `run_agent_loop` (complexity 38, 115 lines, nesting 9) is now a driver over `build_prompt_tokens`,
+  `agent_step` (state in an `AgentRun` struct), the new public `agent_sample_next` (greedy / temperature /
+  nucleus / full-distribution choice) and `emit_piece` + `handle_tag` with one function per tag
+  (`handle_exec_tag`, the memory handlers; `<think>` stays hidden, other tags print as before).
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: `tests/test_agent_sampling.c` checks `agent_sample_next` against a copy of the old statements over
+  300,000 generated cases (tokens, every rescaled logit and the generator state, bit for bit; mutations of the
+  greedy cut, the top-p bound and the temperature fail it; two float-equality corner cases cannot be reached
+  by random inputs). The tag paths were driven with a real model: priming prompts that make SmolLM2 emit
+  tags, in four scripted REPL sessions whose text matches the old binary exactly - `<exec>` approved
+  (auto-approval env) and run (`echo`, `uname`) with the output injected, `<exec>` denied and approved at the
+  prompt, `<save_memory>` and `<search_memory>` with a database and with RAG disabled, `<think>`, `<result>`,
+  and `/agent` with no prompt. `make test` (gcc and clang).
+- Affected: `src/agent/agent_loop.c`, `include/agent/agent_loop.h`, `tests/test_agent_sampling.c`,
+  `tools/complexity_baseline.txt`.
+
 ### 2026-11-22 — interactive REPL split into command table and steps (finding 20.a)
 - What: `run_repl` (complexity 37, 129 lines, nesting 5) is now a loop over `read_repl_line`, `run_command`
   and `generate_reply`. The commands are a table of exact and prefix entries (`/help`, `/context`, `/think`,

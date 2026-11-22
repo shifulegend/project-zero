@@ -160,6 +160,70 @@ static void split_gpt2(Split *s) {
  * (max_digits = 1):
  *   (?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,max}|
  *   ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+ */
+/* A word: optional non-newline/non-number lead character, then letters. Emits the piece and
+ * returns the position after it, or 0 if no word starts here. */
+static size_t l3_word(Split *s, size_t pos, uint32_t cpt, int fl) {
+    if (cpt == '\r' || cpt == '\n' || (fl & F_NUMBER)) return 0;
+    if (!((fl & F_LETTER) || (get_fl(s, pos + 1) & F_LETTER))) return 0;
+    pos++;
+    while (get_fl(s, pos) & F_LETTER) pos++;
+    add_tok(s, pos);
+    return pos;
+}
+
+/* A run of digits, in pieces of at most max_digits. */
+static size_t l3_digits(Split *s, size_t pos, int fl, int max_digits) {
+    if (!(fl & F_NUMBER)) return 0;
+    size_t ini = pos;
+    while (get_fl(s, pos) & F_NUMBER) {
+        if (++pos - ini >= (size_t)max_digits) {
+            add_tok(s, pos);
+            ini = pos;
+        }
+    }
+    add_tok(s, pos);
+    return pos;
+}
+
+/* Punctuation or symbols (with an optional leading space) and any newlines after them. */
+static size_t l3_symbols(Split *s, size_t pos, uint32_t cpt, int fl) {
+    int fl2 = (cpt == ' ') ? get_fl(s, pos + 1) : fl;
+    if ((fl2 & (F_SPACE | F_LETTER | F_NUMBER)) || !fl) return 0;
+    pos += (cpt == ' ');
+    while (!(fl2 & (F_SPACE | F_LETTER | F_NUMBER)) && fl2) fl2 = get_fl(s, ++pos);
+    uint32_t c2 = get_cp(s, pos);
+    while (c2 == '\r' || c2 == '\n') c2 = get_cp(s, ++pos);
+    add_tok(s, pos);
+    return pos;
+}
+
+/* Whitespace (or any single character nothing above took). Always advances. */
+static size_t l3_space(Split *s, size_t pos) {
+    size_t nws = 0, last_rn = 0;
+    while (get_fl(s, pos + nws) & F_SPACE) {
+        uint32_t c2 = get_cp(s, pos + nws);
+        if (c2 == '\r' || c2 == '\n') last_rn = pos + nws + 1;
+        nws++;
+    }
+    if (last_rn > 0) {
+        pos = last_rn;
+        add_tok(s, pos);
+        return pos;
+    }
+    if (nws > 1 && get_cp(s, pos + nws) != OUT_OF_RANGE) {
+        pos += nws - 1;
+        add_tok(s, pos);
+        return pos;
+    }
+    if (nws > 0) {
+        pos += nws;
+        add_tok(s, pos);
+        return pos;
+    }
+    add_tok(s, ++pos);
+    return pos;
+}
+
 static void split_llama3(Split *s, int max_digits) {
     for (size_t pos = s->ini; pos < s->end;) {
         uint32_t cpt = get_cp(s, pos);
@@ -169,56 +233,10 @@ static void split_llama3(Split *s, int max_digits) {
             pos += add_tok(s, pos + k);
             continue;
         }
-        if (!(cpt == '\r' || cpt == '\n' || (fl & F_NUMBER))) {
-            if ((fl & F_LETTER) || (get_fl(s, pos + 1) & F_LETTER)) {
-                pos++;
-                while (get_fl(s, pos) & F_LETTER) pos++;
-                add_tok(s, pos);
-                continue;
-            }
-        }
-        if (fl & F_NUMBER) {
-            size_t ini = pos;
-            while (get_fl(s, pos) & F_NUMBER) {
-                if (++pos - ini >= (size_t)max_digits) {
-                    add_tok(s, pos);
-                    ini = pos;
-                }
-            }
-            add_tok(s, pos);
-            continue;
-        }
-        int fl2 = (cpt == ' ') ? get_fl(s, pos + 1) : fl;
-        if (!(fl2 & (F_SPACE | F_LETTER | F_NUMBER)) && fl) {
-            pos += (cpt == ' ');
-            while (!(fl2 & (F_SPACE | F_LETTER | F_NUMBER)) && fl2) fl2 = get_fl(s, ++pos);
-            uint32_t c2 = get_cp(s, pos);
-            while (c2 == '\r' || c2 == '\n') c2 = get_cp(s, ++pos);
-            add_tok(s, pos);
-            continue;
-        }
-        size_t nws = 0, last_rn = 0;
-        while (get_fl(s, pos + nws) & F_SPACE) {
-            uint32_t c2 = get_cp(s, pos + nws);
-            if (c2 == '\r' || c2 == '\n') last_rn = pos + nws + 1;
-            nws++;
-        }
-        if (last_rn > 0) {
-            pos = last_rn;
-            add_tok(s, pos);
-            continue;
-        }
-        if (nws > 1 && get_cp(s, pos + nws) != OUT_OF_RANGE) {
-            pos += nws - 1;
-            add_tok(s, pos);
-            continue;
-        }
-        if (nws > 0) {
-            pos += nws;
-            add_tok(s, pos);
-            continue;
-        }
-        add_tok(s, ++pos);
+        size_t next = l3_word(s, pos, cpt, fl);
+        if (!next) next = l3_digits(s, pos, fl, max_digits);
+        if (!next) next = l3_symbols(s, pos, cpt, fl);
+        pos = next ? next : l3_space(s, pos);
     }
 }
 

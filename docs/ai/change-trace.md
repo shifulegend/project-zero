@@ -3,6 +3,19 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-22 — Llama-3 pre-tokenizer split into one function per rule (finding 20.a)
+- What: `split_llama3` (complexity 26, 61 lines, nesting 4) is now the contraction check plus `l3_word`,
+  `l3_digits`, `l3_symbols` and `l3_space`, each returning the position after the piece it emitted (0 when
+  its rule does not apply), tried in the original order.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: the existing `tests/test_pretokenize_golden.c` (all eight pre-tokenizer types over 60,000 texts
+  each, hash recorded from the original) passes unchanged on gcc and clang. Mutations of the digit group
+  size, the newline lead, the whitespace rules and the symbol/space branches fail it; two survive because
+  they are equivalent (the loop condition right after them repeats the same test). Accented, CJK and
+  punctuation-heavy prompts give identical output to the old binary on SmolLM2, Qwen3-0.6B and
+  DeepSeek-V2-Lite. `make test` (gcc and clang).
+- Affected: `src/tokenizer/pretokenize.c`, `tools/complexity_baseline.txt`.
+
 ### 2026-11-22 — batch scheduler step split into gather, forward and deliver (finding 20.a)
 - What: `step` (complexity 24, 58 lines, nesting 4) in the parallel-slot scheduler is now `gather_rows` (with
   `pick_oldest`), `forward_rows` and `deliver_rows` (with `row_logits` and `consume_row`). Decode rows are

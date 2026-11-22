@@ -3,6 +3,22 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-22 — token decoding split into byte-piece and marker steps (finding 20.a)
+- What: `tokenizer_decode` (complexity 23, 30 lines, nesting 5) now uses `is_byte_piece`, `byte_piece_value`
+  (with `hex_digit_value`) and `strip_space_after_bos`. A non-hex character in a `<0xHH>` piece still shifts
+  the value and adds nothing, as before.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: new `tests/test_tokenizer_decode_golden.c` decodes every (previous, token) pair, including
+  out-of-range ids, over a vocabulary of 44 pieces (raw byte tokens with upper and lower case hex digits,
+  non-hex digits, too short and wrong closing; the G-dot marker, a literal space, multi-byte UTF-8; empty and
+  NULL pieces) under seven BOS ids, and pins one hash recorded from the original on gcc and clang; mutations
+  of each hex range, the piece shape, the marker bytes and the BOS test fail it (a first version missed
+  lowercase `f`, which is why `<0xff>`, `<0xcf>`, `<0xfa>`, `<0xEF>` were added and the hash re-recorded).
+  Accented, CJK and emoji prompts give identical output to the old binary on SmolLM2, BitNet, Qwen3-0.6B and
+  DeepSeek-V2-Lite. `make test` (gcc and clang).
+- Affected: `src/tokenizer/tokenizer_decode.c`, `tests/test_tokenizer_decode_golden.c`,
+  `tools/complexity_baseline.txt`.
+
 ### 2026-11-22 — native ternary loader split into steps, with its first test (finding 20.a)
 - What: `load_native` (complexity 31, 130 lines) is now a driver over `native_read_headers`,
   `native_map_weights`, `native_report_model_bytes` and `native_alloc_state` (with

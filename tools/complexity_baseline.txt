@@ -189,7 +189,6 @@ src/tokenizer/pretokenize.c::pretokenize 20 73 2
 src/tokenizer/pretokenize.c::run_step 18 65 2
 src/tokenizer/pretokenize.c::split_gpt2 16 43 3
 src/tokenizer/pretokenize.c::split_llama3 26 61 4
-src/tokenizer/tokenizer_decode.c::tokenizer_decode 23 30 5
 src/tokenizer/tokenizer_encode.c::match_special_token 14 28 4
 src/tokenizer/tokenizer_encode.c::tokenizer_encode 17 41 3
 src/tokenizer/tokenizer_encode.c::tokenizer_encode_segment 13 50 3

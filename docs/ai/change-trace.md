@@ -3,6 +3,23 @@
 > Notable changes: what, why, affected areas, related commit/PR. Newest first.
 > Update after each meaningful sub-step. Last updated: 2026-11-20.
 
+### 2026-11-23 — prompt snapshot store save split into steps, with a state golden (finding 20.a)
+- What: `prompt_store_save` (complexity 22, 47 lines) is now `save_admissible`, `supersede_or_dedupe`,
+  `ensure_capacity` and `build_entry` around a short driver; the order (drop superseded entries, evict to
+  fit, grow the table, copy, stamp) is unchanged.
+- Why: finding 20.a; the function left the complexity baseline entirely.
+- Proof: the existing `test_prompt_store` (20 assertions) missed five of seven boundary mutations
+  (`>=` vs `>` on the dedupe, the minimum length, the context cap, the budget, the table growth and the
+  last-use stamp), so the new `tests/test_prompt_store_golden.c` runs 40 stores of 600 random save and
+  restore operations (overlapping token prefixes, tight budgets, minimum lengths, shortened contexts;
+  16,249 stores, 10,464 evictions, 2,700 restore hits) and hashes the whole store state after every
+  operation (count, capacity, bytes in use, clock, each entry's tokens, K/V rows, bytes and stamp), recorded
+  from the original on gcc and clang; all eight mutations fail it. Five requests with shared and unrelated
+  prefixes against a server with the prompt cache on report identical text and cached-token counts on the old
+  and new binary. `make test` (gcc and clang).
+- Affected: `src/runtime/prompt_store.c`, `tests/test_prompt_store_golden.c`,
+  `tools/complexity_baseline.txt`.
+
 ### 2026-11-22 — configuration file writer split into group, entry and value helpers (finding 20.a)
 - What: `pz_config_format` (complexity 23, 39 lines, nesting 4) now uses `append_group_header`,
   `append_entry`, `append_value` and `append_list_value`; the allocation-failure path still frees the buffer

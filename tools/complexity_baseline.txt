@@ -140,7 +140,6 @@ src/runtime/mla_run_state.c::mla_run_state_alloc 12 28 3
 src/runtime/model_load.c::alloc_run_state 14 32 4
 src/runtime/model_load.c::read_model_info 13 25 1
 src/runtime/prompt_store.c::prompt_store_restore 15 33 2
-src/runtime/prompt_store.c::prompt_store_save 22 47 2
 src/runtime/qwen35_run_state.c::q35_run_state_free 13 33 2
 src/runtime/qwen3moe_run_state.c::qwen3moe_run_state_alloc 15 47 2
 src/runtime/run_state.c::run_state_kv_reserve 12 28 4

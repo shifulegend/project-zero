@@ -119,22 +119,27 @@ static int evict_lru(PromptStore *ps) {
     return 1;
 }
 
-void prompt_store_save(PromptStore *ps, const Config *cfg, const RunState *s,
-                       const PrefixCache *live) {
-    if (!ps || ps->budget_bytes == 0 || !cfg || !s || !live || !live->tokens) return;
+/* Whether a sequence of `len` tokens may be stored at all (store on, long enough, fits the
+ * context and the budget); the bytes it would take are returned in *bytes. */
+static int save_admissible(const PromptStore *ps, const Config *cfg, const RunState *s,
+                           const PrefixCache *live, size_t *bytes) {
+    if (!ps || ps->budget_bytes == 0 || !cfg || !s || !live || !live->tokens) return 0;
     int len = live->n;
-    if (len < ps->min_tokens || len > s->max_seq_len) return;
-    size_t bytes = (size_t)len * prompt_store_bytes_per_token(cfg) + (size_t)len * sizeof(int);
-    if (bytes > ps->budget_bytes) return;
+    if (len < ps->min_tokens || len > s->max_seq_len) return 0;
+    *bytes = (size_t)len * prompt_store_bytes_per_token(cfg) + (size_t)len * sizeof(int);
+    return *bytes <= ps->budget_bytes;
+}
 
-    /* Drop entries this sequence supersedes (same conversation, shorter), and
-     * skip the save entirely if an identical/longer entry already covers it. */
+/* Drops entries this sequence supersedes (same conversation, shorter). Returns 1, after marking it
+ * used, if an identical or longer entry already covers the sequence (nothing to save). */
+static int supersede_or_dedupe(PromptStore *ps, const PrefixCache *live) {
+    int len = live->n;
     for (int i = 0; i < ps->n;) {
         PromptStoreEntry *e = &ps->entries[i];
         int m               = lcp(e->tokens, e->len, live->tokens, len);
         if (m == len && e->len >= len) {
             e->last_used = ++ps->clock;
-            return;
+            return 1;
         }
         if (m == e->len) {
             remove_at(ps, i);
@@ -142,29 +147,50 @@ void prompt_store_save(PromptStore *ps, const Config *cfg, const RunState *s,
         }
         i++;
     }
+    return 0;
+}
+
+/* Room for one more entry; false if the table cannot grow. */
+static int ensure_capacity(PromptStore *ps) {
+    if (ps->n < ps->cap) return 1;
+    int nc               = ps->cap ? ps->cap * 2 : 8;
+    PromptStoreEntry *ne = (PromptStoreEntry *)realloc(ps->entries, (size_t)nc * sizeof(*ne));
+    if (!ne) return 0;
+    ps->entries = ne;
+    ps->cap     = nc;
+    return 1;
+}
+
+/* Copies the sequence and its K/V rows into *e; false (and nothing owned) on allocation failure. */
+static int build_entry(PromptStoreEntry *e, const Config *cfg, const RunState *s,
+                       const PrefixCache *live) {
+    int len = live->n;
+    memset(e, 0, sizeof(*e));
+    size_t kv_floats = (size_t)len * (prompt_store_bytes_per_token(cfg) / (2u * sizeof(float)));
+    e->tokens        = (int *)malloc((size_t)len * sizeof(int));
+    e->k             = (float *)malloc(kv_floats * sizeof(float));
+    e->v             = (float *)malloc(kv_floats * sizeof(float));
+    if (!e->tokens || !e->k || !e->v) {
+        entry_free(e);
+        return 0;
+    }
+    memcpy(e->tokens, live->tokens, (size_t)len * sizeof(int));
+    snapshot_kv(cfg, s->max_seq_len, s->key_cache, s->value_cache, e->k, e->v, len);
+    return 1;
+}
+
+void prompt_store_save(PromptStore *ps, const Config *cfg, const RunState *s,
+                       const PrefixCache *live) {
+    size_t bytes;
+    if (!save_admissible(ps, cfg, s, live, &bytes)) return;
+    if (supersede_or_dedupe(ps, live)) return;
     while (ps->bytes_used + bytes > ps->budget_bytes && evict_lru(ps)) {
     }
+    if (!ensure_capacity(ps)) return;
 
-    if (ps->n == ps->cap) {
-        int nc               = ps->cap ? ps->cap * 2 : 8;
-        PromptStoreEntry *ne = (PromptStoreEntry *)realloc(ps->entries, (size_t)nc * sizeof(*ne));
-        if (!ne) return;
-        ps->entries = ne;
-        ps->cap     = nc;
-    }
     PromptStoreEntry e;
-    memset(&e, 0, sizeof(e));
-    size_t kv_floats = (size_t)len * (prompt_store_bytes_per_token(cfg) / (2u * sizeof(float)));
-    e.tokens         = (int *)malloc((size_t)len * sizeof(int));
-    e.k              = (float *)malloc(kv_floats * sizeof(float));
-    e.v              = (float *)malloc(kv_floats * sizeof(float));
-    if (!e.tokens || !e.k || !e.v) {
-        entry_free(&e);
-        return;
-    }
-    memcpy(e.tokens, live->tokens, (size_t)len * sizeof(int));
-    snapshot_kv(cfg, s->max_seq_len, s->key_cache, s->value_cache, e.k, e.v, len);
-    e.len                = len;
+    if (!build_entry(&e, cfg, s, live)) return;
+    e.len                = live->n;
     e.bytes              = bytes;
     e.last_used          = ++ps->clock;
     ps->entries[ps->n++] = e;

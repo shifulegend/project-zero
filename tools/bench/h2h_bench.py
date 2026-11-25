@@ -43,21 +43,24 @@ Examples
 
 import argparse
 import json
+import os
 import pathlib
 import shlex
 import sys
+from collections.abc import Sequence
+from typing import Any
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-import benchlib as bl  # noqa: E402
-import hardware_profile as hp  # noqa: E402
-import setup_engines as se  # noqa: E402
-import chart  # noqa: E402
-import gate  # noqa: E402
+import benchlib as bl
+import chart
+import gate
+import hardware_profile as hp
+import setup_engines as se
 
 # The bare minimum of a published sweep (2026-10-19 / 10-29): every engine on every model, 1..4 threads,
 # 500 tokens, 3 rounds with a 10 s cooldown, pz default plus INT4, a live-terminal screenshot of every run
 # cell at the full length, and the throughput-vs-threads chart. Heavy models (DeepSeek) stay opt-in.
-PRESETS = {
+PRESETS: dict[str, dict[str, Any]] = {
     "published": {
         "engines": "all",
         "models": "all-light",
@@ -73,8 +76,12 @@ PRESETS = {
 PZ_CLASSIFIERS = ["default", "auto", "bf16", "int8", "int4", "auto-fast"]
 
 
-def build_variants(a, run, env):
-    variants, missing = [], []
+def build_variants(
+    a: argparse.Namespace, run: bl.RunDir, env: dict[str, str]
+) -> tuple[list[bl.Variant], list[tuple[str, str]]]:
+    """Variant list (pz and the reference engines) selected by the options; also returns the ones that are not available."""
+    variants: list[bl.Variant] = []
+    missing: list[tuple[str, str]] = []
     engines = bl.load_engines()
     wanted = (
         bl.parse_list(a.engines, ["pz"] + list(engines), "engine") if a.engines != "auto" else None
@@ -106,7 +113,13 @@ def build_variants(a, run, env):
     return variants, missing
 
 
-def build_report(run, a, g, shots, ref="pz"):
+def build_report(
+    run: bl.RunDir,
+    a: argparse.Namespace,
+    g: gate.Gate,
+    shots: Sequence[dict[str, Any]],
+    ref: str = "pz",
+) -> list[dict[str, Any]]:
     """summary.md and the chart from the folder's summary.csv and gate.json. Used by a normal run and by
     --gate-only, so the layout exists once."""
     hide = g.cfg["mode"] == "strict"
@@ -114,8 +127,10 @@ def build_report(run, a, g, shots, ref="pz"):
     md = [
         "# Head-to-head decode benchmark",
         "",
-        f"UTC start: {bl.iso_utc(run.t0)}  |  host: {bl.cpu_model()}  |  "
-        f"pz commit: {bl.git_info()['commit']}",
+        (
+            f"UTC start: {bl.iso_utc(run.t0)}  |  host: {bl.cpu_model()}  |  "
+            f"pz commit: {bl.git_info()['commit']}"
+        ),
         "",
         bl.summary_md(summary, with_ratio=True, hide_invalid=hide),
     ]
@@ -143,8 +158,10 @@ def build_report(run, a, g, shots, ref="pz"):
     return summary
 
 
-def select_models(a):
-    models, missing = [], []
+def select_models(a: argparse.Namespace) -> tuple[list[gate.Model], list[tuple[str, str]]]:
+    """Models selected by the options ("auto" and "all-light" pick the light ones); also returns the missing ones."""
+    models: list[gate.Model] = []
+    missing: list[tuple[str, str]] = []
     allm = bl.load_models()
     if a.models in ("auto", "all-light"):
         wanted = [k for k, m in allm.items() if not m.get("heavy")]
@@ -162,11 +179,18 @@ def select_models(a):
 
 
 def estimate_minutes(
-    variants, models, threads, rounds, tokens, cooldown, shots="none", shot_tokens=0
-):
+    variants: Sequence[bl.Variant],
+    models: Sequence[gate.Model],
+    threads: Sequence[int],
+    rounds: int,
+    tokens: int,
+    cooldown: float,
+    shots: str = "none",
+    shot_tokens: int = 0,
+) -> float:
     """Rough wall time: ~12 tok/s decode plus ~6 s load per run, the cooldown after each, and one more
     run (no cooldown) per screenshot."""
-    secs = 0
+    secs = 0.0
     for key, info, p in models:
         ntok = tokens or info["tokens"]
         for v in variants:
@@ -178,7 +202,8 @@ def estimate_minutes(
     return secs / 60.0
 
 
-def main():
+def parse_options() -> tuple[argparse.ArgumentParser, argparse.Namespace]:
+    """The command-line parser and its parsed options, with the --preset values applied."""
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -190,9 +215,9 @@ def main():
     ap.add_argument("--tokens", type=int, default=0)
     ap.add_argument("--cooldown", type=float, default=5.0)
     ap.add_argument("--order", choices=["interleaved", "blocks"], default="interleaved")
-    g = ap.add_mutually_exclusive_group()
-    g.add_argument("--fixed-length", dest="fixed", action="store_true", default=True)
-    g.add_argument("--chat", dest="fixed", action="store_false")
+    length_group = ap.add_mutually_exclusive_group()
+    length_group.add_argument("--fixed-length", dest="fixed", action="store_true", default=True)
+    length_group.add_argument("--chat", dest="fixed", action="store_false")
     ap.add_argument("--pz-classifiers", default="default")
     ap.add_argument("--pz-extra", default="")
     ap.add_argument("--resume", action="store_true")
@@ -207,8 +232,10 @@ def main():
         "--jobs",
         type=int,
         default=0,
-        help="parallel jobs for building engines only; "
-        "measured runs are always one process at a time",
+        help=(
+            "parallel jobs for building engines only; "
+            "measured runs are always one process at a time"
+        ),
     )
     ap.add_argument(
         "--preset", choices=["published"], help="published: the full published sweep (see PRESETS)"
@@ -218,57 +245,150 @@ def main():
         for k, v in PRESETS[a.preset].items():
             if getattr(a, k) == ap.get_default(k):  # an explicit flag still wins
                 setattr(a, k, v)
+    return ap, a
 
-    threads = bl.parse_threads(a.threads)
-    run = bl.RunDir("h2h", a.out, a.label)
-    env = bl.pz_env(run, a.calibration) if not a.dry_run else dict(bl.os.environ)
-    variants, missing = build_variants(a, run, env)
-    models, missing_m = select_models(a)
-    missing += missing_m
 
-    est = (
-        estimate_minutes(
-            variants, models, threads, a.rounds, a.tokens, a.cooldown, a.screenshots, a.shot_tokens
-        )
-        if models
-        else 0
+def gate_line(gcfg: gate.Config) -> str:
+    """The plan line that describes the correctness gate."""
+    ref = gcfg.get("reference_override")
+    where = f", all models vs {ref}" if ref else ""
+    return (
+        f"  gate: {gcfg['mode']}, tolerance {gcfg['tolerance_pct']} %, {gcfg['ppl_chunks']} chunks"
+        f" of {gcfg['ppl_ctx']} (reference per model from models.json{where})"
     )
-    print(f"PLAN h2h -> {run.rel()}")
-    print(f"  variants: {', '.join(v['label'] for v in variants) or '(none)'}")
-    print(f"  models:   {', '.join(k for k, _, _ in models) or '(none)'}")
-    print(
-        f"  threads {threads}, {a.rounds} rounds, order {a.order}, {'fixed-length' if a.fixed else 'chat'}, "
-        f"calibration {a.calibration}, screenshots {a.screenshots}"
-    )
-    n = sum(
+
+
+def missing_lines(missing: Sequence[tuple[str, str]]) -> list[str]:
+    """The plan lines that name missing engines and models and how to fetch them."""
+    if not missing:
+        return []
+    engines = ",".join(n for k, n in missing if k == "engine") or "none"
+    models = ",".join(n for k, n in missing if k == "model") or "none"
+    return [
+        "  MISSING: " + ", ".join(f"{k} {n}" for k, n in missing),
+        (
+            f"  fetch with: python3 tools/bench/setup_engines.py --engines {engines} --models"
+            f" {models}   (or re-run with --engine-fetch missing --model-fetch missing)"
+        ),
+    ]
+
+
+def count_pairs(
+    a: argparse.Namespace,
+    variants: Sequence[bl.Variant],
+    models: Sequence[gate.Model],
+    threads: Sequence[int],
+) -> int:
+    """Number of (model, variant) pairs that have a command at the first thread count."""
+    return sum(
         1
         for key, info, p in models
         for v in variants
         if v["cmd"](key, info, p, a.tokens or info["tokens"], threads[0], a.fixed)
     )
+
+
+def print_plan(
+    a: argparse.Namespace,
+    run: bl.RunDir,
+    variants: Sequence[bl.Variant],
+    models: Sequence[gate.Model],
+    threads: Sequence[int],
+    missing: Sequence[tuple[str, str]],
+) -> gate.Config:
+    """Prints the plan (variants, models, run count, estimate, gate, missing items); returns the gate config."""
+    est = estimate_minutes(
+        variants, models, threads, a.rounds, a.tokens, a.cooldown, a.screenshots, a.shot_tokens
+    )
+    print(f"PLAN h2h -> {run.rel()}")
+    print(f"  variants: {', '.join(v['label'] for v in variants) or '(none)'}")
+    print(f"  models:   {', '.join(k for k, _, _ in models) or '(none)'}")
+    length = "fixed-length" if a.fixed else "chat"
     print(
-        f"  {n} (model, variant) pairs x {len(threads)} thread counts x {a.rounds} rounds = {n * len(threads) * a.rounds} runs, about {est:.0f} min"
+        f"  threads {list(threads)}, {a.rounds} rounds, order {a.order}, {length}, "
+        f"calibration {a.calibration}, screenshots {a.screenshots}"
+    )
+    n = count_pairs(a, variants, models, threads)
+    print(
+        f"  {n} (model, variant) pairs x {len(threads)} thread counts x {a.rounds} rounds ="
+        f" {n * len(threads) * a.rounds} runs, about {est:.0f} min"
     )
     gcfg = gate.config_from_args(a)
-    print(
-        f"  gate: {gcfg['mode']}, tolerance {gcfg['tolerance_pct']} %, {gcfg['ppl_chunks']} chunks of {gcfg['ppl_ctx']} "
-        f"(reference per model from models.json{', all models vs ' + gcfg['reference_override'] if gcfg.get('reference_override') else ''})"
+    print(gate_line(gcfg))
+    for line in missing_lines(missing):
+        print(line)
+    return gcfg
+
+
+def print_commands(
+    a: argparse.Namespace,
+    variants: Sequence[bl.Variant],
+    models: Sequence[gate.Model],
+    threads: Sequence[int],
+) -> None:
+    """--dry-run: the exact command line of every (model, variant) pair at the last thread count."""
+    for key, info, p in models:
+        for v in variants:
+            c = v["cmd"](key, info, p, a.tokens or info["tokens"], threads[-1], a.fixed)
+            if c:
+                print(f"  {key:<20} {v['label']:<14} {shlex.join(c)}")
+
+
+def record_inputs(run: bl.RunDir, a: argparse.Namespace, models: Sequence[gate.Model]) -> None:
+    """Writes system_info.txt (host, binary and engine checksums) and models.txt (files and sizes)."""
+    ids: dict[str, Any] = {"PZ_BINARY": bl.bin_info(a.pz)}
+    for k in bl.load_engines():
+        b = bl.engine_binary(k, a.engine_dir)
+        if b:
+            ids[f"ENGINE_{k}"] = f"{se.engine_commit(k, a.engine_dir)} {b}"
+    run.write("system_info.txt", bl.system_info_text(run, ids))
+    run.write(
+        "models.txt",
+        "\n".join(f"{k}: {p} {p.stat().st_size if p.exists() else '?'} bytes" for k, _, p in models)
+        + "\n",
     )
-    if missing:
-        print("  MISSING: " + ", ".join(f"{k} {n}" for k, n in missing))
-        print(
-            "  fetch with: python3 tools/bench/setup_engines.py --engines "
-            + (",".join(n for k, n in missing if k == "engine") or "none")
-            + " --models "
-            + (",".join(n for k, n in missing if k == "model") or "none")
-            + "   (or re-run with --engine-fetch missing --model-fetch missing)"
+
+
+def take_all_screenshots(
+    run: bl.RunDir,
+    a: argparse.Namespace,
+    g: gate.Gate,
+    variants: Sequence[bl.Variant],
+    models: Sequence[gate.Model],
+    threads: Sequence[int],
+) -> list[dict[str, Any]]:
+    """Live-terminal screenshots of the selected cells ("all": every thread count; else one)."""
+    shots: list[dict[str, Any]] = []
+    if a.screenshots == "none":
+        return shots
+    run.log("\n== screenshots (live terminal) ==")
+    sts = threads if a.screenshots == "all" else [a.shot_threads or max(threads)]
+    for t in sts:
+        shots += bl.take_screenshots(
+            run,
+            variants,
+            models,
+            t,
+            a.shot_tokens,
+            a.screenshots,
+            a.shot_rows,
+            note_of=g.caption,
+            skip_of=g.skipped,
         )
+    return shots
+
+
+def main() -> int:
+    """Command-line entry point for the head-to-head benchmark."""
+    _, a = parse_options()
+    threads = bl.parse_threads(a.threads)
+    run = bl.RunDir("h2h", a.out, a.label)
+    env = bl.pz_env(run, a.calibration) if not a.dry_run else dict(os.environ)
+    variants, missing = build_variants(a, run, env)
+    models, missing_m = select_models(a)
+    gcfg = print_plan(a, run, variants, models, threads, missing + missing_m)
     if a.dry_run:
-        for key, info, p in models:
-            for v in variants:
-                c = v["cmd"](key, info, p, a.tokens or info["tokens"], threads[-1], a.fixed)
-                if c:
-                    print(f"  {key:<20} {v['label']:<14} {shlex.join(c)}")
+        print_commands(a, variants, models, threads)
         return 0
     if not variants or not models:
         raise SystemExit("nothing to run: see MISSING above")
@@ -281,19 +401,7 @@ def main():
     run.create()
     g = gate.Gate(gate.config_from_args(a), run, a.models_dir, resume=a.resume or a.gate_only)
     if not a.gate_only:  # --gate-only never rewrites the record of the timed run
-        ids = {"PZ_BINARY": bl.bin_info(a.pz)}
-        for k in bl.load_engines():
-            b = bl.engine_binary(k, a.engine_dir)
-            if b:
-                ids[f"ENGINE_{k}"] = f"{se.engine_commit(k, a.engine_dir)} {b}"
-        run.write("system_info.txt", bl.system_info_text(run, ids))
-        run.write(
-            "models.txt",
-            "\n".join(
-                f"{k}: {p} {p.stat().st_size if p.exists() else '?'} bytes" for k, _, p in models
-            )
-            + "\n",
-        )
+        record_inputs(run, a, models)
 
     profiled = (
         a.resume and (run.path / "hardware_profile.txt").exists()
@@ -318,25 +426,10 @@ def main():
         a.fixed,
         a.resume,
         gate_of=g.verdict_of,
-        skip_of=lambda k, v: not g.timed(k, v),
+        skip_of=g.skipped,
     )
     ref = variants[0]["label"]
-    shots = []
-    if a.screenshots != "none":
-        run.log("\n== screenshots (live terminal) ==")
-        sts = threads if a.screenshots == "all" else [a.shot_threads or max(threads)]
-        for t in sts:
-            shots += bl.take_screenshots(
-                run,
-                variants,
-                models,
-                t,
-                a.shot_tokens,
-                a.screenshots,
-                a.shot_rows,
-                note_of=lambda k, v: gate.caption_note(g.results.get(f"{k}/{v}")),
-                skip_of=lambda k, v: not g.timed(k, v),
-            )
+    shots = take_all_screenshots(run, a, g, variants, models, threads)
     summary = build_report(run, a, g, shots, ref)
     print("\n" + bl.summary_md(summary, with_ratio=True, hide_invalid=g.cfg["mode"] == "strict"))
     bl.finish(
@@ -360,7 +453,7 @@ def main():
     return gate.exit_status(g.results, g.cfg)
 
 
-def finish_gate_only(run, a, g):
+def finish_gate_only(run: bl.RunDir, a: argparse.Namespace, g: gate.Gate) -> int:
     """--gate-only on an existing folder: verdicts into summary.csv, summary.md, the chart and meta.json."""
     gate.apply_to_summary(run.path / "summary.csv", g.results)
     meta_path = run.path / "meta.json"
@@ -370,7 +463,6 @@ def finish_gate_only(run, a, g):
     meta_path.write_text(json.dumps(meta, indent=2, default=str) + "\n")
     run.close()
     return gate.exit_status(g.results, g.cfg)
-    return 0
 
 
 if __name__ == "__main__":

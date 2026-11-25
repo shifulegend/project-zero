@@ -3,6 +3,7 @@
  * goal (it runs once per downloaded model).
  */
 #include "core/sha256.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

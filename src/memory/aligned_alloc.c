@@ -3,6 +3,7 @@
 #define _DEFAULT_SOURCE
 #endif
 #include "memory/aligned_alloc.h"
+
 #include <string.h>
 
 /* Returns non-zero if alignment is a power of two and >= sizeof(void*).

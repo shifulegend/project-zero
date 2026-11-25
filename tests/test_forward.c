@@ -14,25 +14,25 @@
  * mathematical correctness against hand-computable results.
  */
 
+#include <math.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include "core/config.h"
-#include "core/run_state.h"
 #include "core/weights.h"
+#include "kv_cache/kv_quant_ops.h"
+#include "kv_cache/kv_strategy.h"
 #include "math/simd_dispatch.h"
 #include "memory/aligned_alloc.h"
+#include "runtime/run_state.h"
 #include "test_harness.h"
+#include "threading/thread_pool.h"
 #include "transformer/attention.h"
+#include "transformer/attn_tiled.h"
 #include "transformer/embedding.h"
 #include "transformer/ffn.h"
 #include "transformer/forward.h"
-#include "transformer/attn_tiled.h"
-#include "threading/thread_pool.h"
-#include "kv_cache/kv_strategy.h"
-
-#include <math.h>
-#include "kv_cache/kv_quant_ops.h"
-#include <stdlib.h>
-#include <string.h>
-#include <stdint.h>
 
 /* ---------- helpers ---------- */
 
@@ -107,43 +107,43 @@ static void alloc_synthetic_weights(TransformerWeights *w, const Config *cfg) {
         size_t qo_size = (size_t)dim * dim;
         size_t kv_size = (size_t)dim * kv_dim;
 
-        w->wq[l] = (tn_i8 *)calloc(qo_size, sizeof(float));
-        fill_pattern_f32((float *)w->wq[l], qo_size, l * 100 + 1);
-        w->sq[l] = 1.0f;
+        w->attn.wq[l] = (tn_i8 *)calloc(qo_size, sizeof(float));
+        fill_pattern_f32((float *)w->attn.wq[l], qo_size, l * 100 + 1);
+        w->attn.sq[l] = 1.0f;
 
-        w->wk[l] = (tn_i8 *)calloc(kv_size, sizeof(float));
-        fill_pattern_f32((float *)w->wk[l], kv_size, l * 100 + 2);
-        w->sk[l] = 1.0f;
+        w->attn.wk[l] = (tn_i8 *)calloc(kv_size, sizeof(float));
+        fill_pattern_f32((float *)w->attn.wk[l], kv_size, l * 100 + 2);
+        w->attn.sk[l] = 1.0f;
 
-        w->wv[l] = (tn_i8 *)calloc(kv_size, sizeof(float));
-        fill_pattern_f32((float *)w->wv[l], kv_size, l * 100 + 3);
-        w->sv[l] = 1.0f;
+        w->attn.wv[l] = (tn_i8 *)calloc(kv_size, sizeof(float));
+        fill_pattern_f32((float *)w->attn.wv[l], kv_size, l * 100 + 3);
+        w->attn.sv[l] = 1.0f;
 
-        w->wo[l] = (tn_i8 *)calloc(qo_size, sizeof(float));
-        fill_pattern_f32((float *)w->wo[l], qo_size, l * 100 + 4);
-        w->so[l] = 1.0f;
+        w->attn.wo[l] = (tn_i8 *)calloc(qo_size, sizeof(float));
+        fill_pattern_f32((float *)w->attn.wo[l], qo_size, l * 100 + 4);
+        w->attn.so[l] = 1.0f;
 
         size_t gate_size = (size_t)dim * hidden_dim;
         size_t down_size = (size_t)hidden_dim * dim;
 
-        w->w1[l] = (tn_i8 *)calloc(gate_size, sizeof(float));
-        fill_pattern_f32((float *)w->w1[l], gate_size, l * 100 + 5);
-        w->s1[l] = 1.0f;
+        w->ffn.w1[l] = (tn_i8 *)calloc(gate_size, sizeof(float));
+        fill_pattern_f32((float *)w->ffn.w1[l], gate_size, l * 100 + 5);
+        w->ffn.s1[l] = 1.0f;
 
-        w->w2[l] = (tn_i8 *)calloc(down_size, sizeof(float));
-        fill_pattern_f32((float *)w->w2[l], down_size, l * 100 + 6);
-        w->s2[l] = 1.0f;
+        w->ffn.w2[l] = (tn_i8 *)calloc(down_size, sizeof(float));
+        fill_pattern_f32((float *)w->ffn.w2[l], down_size, l * 100 + 6);
+        w->ffn.s2[l] = 1.0f;
 
-        w->w3[l] = (tn_i8 *)calloc(gate_size, sizeof(float));
-        fill_pattern_f32((float *)w->w3[l], gate_size, l * 100 + 7);
-        w->s3[l] = 1.0f;
+        w->ffn.w3[l] = (tn_i8 *)calloc(gate_size, sizeof(float));
+        fill_pattern_f32((float *)w->ffn.w3[l], gate_size, l * 100 + 7);
+        w->ffn.s3[l] = 1.0f;
 
         /* RMS norm weights (all 1.0 for simplicity) */
-        w->rms_att_weight[l] = (float *)calloc(dim, sizeof(float));
-        for (int i = 0; i < dim; i++) w->rms_att_weight[l][i] = 1.0f;
+        w->attn.norm[l] = (float *)calloc(dim, sizeof(float));
+        for (int i = 0; i < dim; i++) w->attn.norm[l][i] = 1.0f;
 
-        w->rms_ffn_weight[l] = (float *)calloc(dim, sizeof(float));
-        for (int i = 0; i < dim; i++) w->rms_ffn_weight[l][i] = 1.0f;
+        w->ffn.norm[l] = (float *)calloc(dim, sizeof(float));
+        for (int i = 0; i < dim; i++) w->ffn.norm[l][i] = 1.0f;
     }
 
     /* Final RMS norm */
@@ -152,8 +152,8 @@ static void alloc_synthetic_weights(TransformerWeights *w, const Config *cfg) {
 
     /* Output classifier */
     size_t cls_size = (size_t)dim * cfg->vocab_size;
-    w->wcls         = (tn_u16 *)calloc(cls_size, sizeof(tn_u16));
-    fill_pattern_bf16(w->wcls, cls_size, 99);
+    w->cls.w        = (tn_u16 *)calloc(cls_size, sizeof(tn_u16));
+    fill_pattern_bf16(w->cls.w, cls_size, 99);
 }
 
 static void free_synthetic_weights(TransformerWeights *w, const Config *cfg) {
@@ -161,18 +161,18 @@ static void free_synthetic_weights(TransformerWeights *w, const Config *cfg) {
 
     free(w->token_embedding_table);
     for (int l = 0; l < nl; l++) {
-        free(w->wq[l]);
-        free(w->wk[l]);
-        free(w->wv[l]);
-        free(w->wo[l]);
-        free(w->w1[l]);
-        free(w->w2[l]);
-        free(w->w3[l]);
-        free(w->rms_att_weight[l]);
-        free(w->rms_ffn_weight[l]);
+        free(w->attn.wq[l]);
+        free(w->attn.wk[l]);
+        free(w->attn.wv[l]);
+        free(w->attn.wo[l]);
+        free(w->ffn.w1[l]);
+        free(w->ffn.w2[l]);
+        free(w->ffn.w3[l]);
+        free(w->attn.norm[l]);
+        free(w->ffn.norm[l]);
     }
     free(w->rms_final_weight);
-    free(w->wcls);
+    free(w->cls.w);
     weights_free_pointers(w);
 }
 
@@ -433,10 +433,11 @@ static void test_forward_single_token(void) {
  * reproduce the serial standard path over a long-ish context. Also the TSan
  * target for the head dispatch (test_forward is in TSAN_TESTS). */
 static void run_positions(const Config *cfg, TransformerWeights *w, ThreadPool *tp, int n_pos,
-                          float *last_logits) {
+                          float *last_logits, const KVStrategyOptions *kv, const AttnConfig *attn) {
     RunState s;
     memset(&s, 0, sizeof(s));
-    run_state_alloc(&s, cfg, cfg->seq_len);
+    run_state_alloc_ex(&s, cfg, cfg->seq_len, false, kv);
+    if (attn) s.attn = *attn;
     sw_init(&s.sw, cfg->seq_len, 0);
     float *logits = NULL;
     for (int pos = 0; pos < n_pos; pos++)
@@ -455,19 +456,20 @@ static void test_forward_parallel_and_tiled_attention(void) {
     alloc_synthetic_weights(&w, &cfg);
     float serial[8], parallel[8], tiled[8];
 
-    attn_kernel_configure(ATTN_KERNEL_STANDARD, 0, cfg.dim / cfg.n_heads);
-    run_positions(&cfg, &w, NULL, 80, serial);
+    AttnConfig attn = {ATTN_KERNEL_STANDARD, ATTN_TILE_DEFAULT, ATTN_PARALLEL_MIN_CTX_DEFAULT};
+    attn_kernel_configure(&attn, ATTN_KERNEL_STANDARD, 0, cfg.dim / cfg.n_heads);
+    run_positions(&cfg, &w, NULL, 80, serial, NULL, &attn);
 
     ThreadPool *tp = threadpool_create(4);
-    attn_parallel_min_ctx_set(1); /* force the head dispatch from position 0 */
-    run_positions(&cfg, &w, tp, 80, parallel);
+    attn_parallel_min_ctx_set(&attn, 1); /* force the head dispatch from position 0 */
+    run_positions(&cfg, &w, tp, 80, parallel, NULL, &attn);
     int same = 1;
     for (int i = 0; i < cfg.vocab_size; i++)
         if (serial[i] != parallel[i]) same = 0;
     TEST_ASSERT(same, "head-parallel attention is bit-identical to serial");
 
-    attn_kernel_configure(ATTN_KERNEL_TILED, 8, cfg.dim / cfg.n_heads);
-    run_positions(&cfg, &w, tp, 80, tiled);
+    attn_kernel_configure(&attn, ATTN_KERNEL_TILED, 8, cfg.dim / cfg.n_heads);
+    run_positions(&cfg, &w, tp, 80, tiled, NULL, &attn);
     float md = 0;
     for (int i = 0; i < cfg.vocab_size; i++) {
         float e = fabsf(serial[i] - tiled[i]);
@@ -475,8 +477,6 @@ static void test_forward_parallel_and_tiled_attention(void) {
     }
     TEST_ASSERT(md < 1e-4f, "tiled online-softmax attention matches standard");
 
-    attn_kernel_configure(ATTN_KERNEL_STANDARD, 0, cfg.dim / cfg.n_heads);
-    attn_parallel_min_ctx_set(ATTN_PARALLEL_MIN_CTX_DEFAULT);
     threadpool_destroy(tp);
     free_synthetic_weights(&w, &cfg);
 }
@@ -491,17 +491,15 @@ static void test_forward_kv_i8_close_to_f32(void) {
     tn_simd_init();
     alloc_synthetic_weights(&w, &cfg);
     float f32[8], i8[8];
-    run_positions(&cfg, &w, NULL, 60, f32);
+    run_positions(&cfg, &w, NULL, 60, f32, NULL, NULL);
     KVStrategyOptions o = {0, 0.0f, 1, NULL};
-    kv_strategy_set_options(&o);
     RunState probe;
     memset(&probe, 0, sizeof(probe));
-    run_state_alloc(&probe, &cfg, cfg.seq_len);
-    TEST_ASSERT(probe.kv_type == 1 && probe.key_cache == NULL && probe.key_cache_q != NULL,
+    run_state_alloc_ex(&probe, &cfg, cfg.seq_len, false, &o);
+    TEST_ASSERT(probe.kvs.type == 1 && probe.key_cache == NULL && probe.kvs.key_cache_q != NULL,
                 "i8 run state allocates int8 storage only");
     run_state_free(&probe);
-    run_positions(&cfg, &w, NULL, 60, i8);
-    kv_strategy_set_options(NULL);
+    run_positions(&cfg, &w, NULL, 60, i8, &o, NULL);
     float md = 0, mag = 0;
     for (int i = 0; i < cfg.vocab_size; i++) {
         float e = fabsf(f32[i] - i8[i]);
@@ -512,8 +510,7 @@ static void test_forward_kv_i8_close_to_f32(void) {
     free_synthetic_weights(&w, &cfg);
 }
 
-/* int4 KV (2026-10-19): head_dim 32 so the i4 groups apply; a head_dim that is
- * not a multiple of 32 falls back to i8. */
+/* int4 KV (2026-10-19): head_dim 32 so the i4 groups apply; other head_dims fall back to i8. */
 static void test_forward_kv_i4_close_to_f32(void) {
     Config cfg     = tiny_config();
     cfg.dim        = 128;
@@ -525,22 +522,21 @@ static void test_forward_kv_i4_close_to_f32(void) {
     tn_simd_init();
     alloc_synthetic_weights(&w, &cfg);
     float f32[8], i4[8];
-    run_positions(&cfg, &w, NULL, 60, f32);
+    run_positions(&cfg, &w, NULL, 60, f32, NULL, NULL);
     KVStrategyOptions o = {0, 0.0f, KV_TYPE_I4, NULL};
-    kv_strategy_set_options(&o);
     RunState probe;
     memset(&probe, 0, sizeof(probe));
-    run_state_alloc(&probe, &cfg, cfg.seq_len);
-    TEST_ASSERT(probe.kv_type == KV_TYPE_I4 && probe.kv_row_bytes == 16 && probe.kv_row_scales == 2,
+    run_state_alloc_ex(&probe, &cfg, cfg.seq_len, false, &o);
+    TEST_ASSERT(probe.kvs.type == KV_TYPE_I4 && probe.kvs.row_bytes == 16 &&
+                    probe.kvs.row_scales == 2,
                 "i4 run state: 16 data bytes + (scale,min) per 32-wide row");
     run_state_free(&probe);
-    run_positions(&cfg, &w, NULL, 60, i4);
+    run_positions(&cfg, &w, NULL, 60, i4, &o, NULL);
     Config narrow = tiny_config(); /* head_dim 8 */
     memset(&probe, 0, sizeof(probe));
-    run_state_alloc(&probe, &narrow, narrow.seq_len);
-    TEST_ASSERT(probe.kv_type == KV_TYPE_I8, "head_dim % 32 != 0 falls back to i8");
+    run_state_alloc_ex(&probe, &narrow, narrow.seq_len, false, &o);
+    TEST_ASSERT(probe.kvs.type == KV_TYPE_I8, "head_dim % 32 != 0 falls back to i8");
     run_state_free(&probe);
-    kv_strategy_set_options(NULL);
     float md = 0, mag = 0;
     for (int i = 0; i < cfg.vocab_size; i++) {
         float e = fabsf(f32[i] - i4[i]);

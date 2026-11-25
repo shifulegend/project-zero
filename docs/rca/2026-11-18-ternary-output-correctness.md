@@ -128,7 +128,7 @@ quantiser runs in the server, so BitNet quality there is ~10 % worse in perplexi
 4. Understand the 1.7B Q4_K_M 0.46 % gap by per-tensor comparison before calling it benign.
 
 ## 9. Reproduce
-```
+```text
 python3 tools/bench/verify/bitnet_layer0.py A                 # numpy layer 0 (needs models/bitnet-b1.58-2B-4T-i2_s.gguf)
 ./pz --model <gguf> --perplexity <text> --ppl-ctx 512 --ppl-chunks 8 [--simd avx2|vnni --no-calibrate]
 llama-perplexity -m <gguf> -f <text> -c 512 --chunks 8        # llama.cpp / bitnet.cpp builds

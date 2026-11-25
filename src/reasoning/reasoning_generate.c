@@ -1,13 +1,14 @@
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
+
+#include "core/log.h"
 #include "reasoning/prompt_inject.h"
 #include "reasoning/thought_filter.h"
 #include "sampling/rng.h"
 #include "sampling/sampling.h"
 #include "transformer/forward.h"
 #include "transformer/generate.h"
-
-#include <stdio.h>
-#include <string.h>
-#include <time.h>
 
 /**
  * Reasoning-aware generation wrapper.
@@ -40,7 +41,7 @@ void generate_with_reasoning(Config *p, TransformerWeights *w, RunState *s, Toke
         tokenizer_encode(t, augmented_prompt, strlen(augmented_prompt), prompt_tokens, 512);
 
     if (n_prompt <= 0) {
-        fprintf(stderr, "[reasoning] Error: could not encode prompt\n");
+        TN_LOG_ERR("reasoning", "[reasoning] Error: could not encode prompt\n");
         return;
     }
 
@@ -91,7 +92,7 @@ void generate_with_reasoning(Config *p, TransformerWeights *w, RunState *s, Toke
                 bool show = thought_filter_process(&filter, piece, output, sizeof(output));
 
                 if (filter.state == FILTER_THINKING && !printed_thinking) {
-                    fprintf(stderr, "Thinking...\n");
+                    TN_LOG_INF("reasoning_generate", "Thinking...\n");
                     printed_thinking = 1;
                 }
 
@@ -115,8 +116,8 @@ void generate_with_reasoning(Config *p, TransformerWeights *w, RunState *s, Toke
     double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
 
     printf("\n");
-    fprintf(stderr, "[reasoning] %d tokens generated in %.2fs (%.1f tok/s)\n", pos + 1, elapsed,
-            (pos + 1) / elapsed);
-    fprintf(stderr, "[reasoning] %d tokens consumed by <think> reasoning\n",
-            thought_filter_think_count(&filter));
+    TN_LOG_INF("reasoning", "[reasoning] %d tokens generated in %.2fs (%.1f tok/s)\n", pos + 1,
+               elapsed, (pos + 1) / elapsed);
+    TN_LOG_INF("reasoning", "[reasoning] %d tokens consumed by <think> reasoning\n",
+               thought_filter_think_count(&filter));
 }

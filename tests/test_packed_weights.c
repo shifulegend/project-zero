@@ -11,16 +11,16 @@
  *  7. SIMD dispatch integration
  */
 
-#include "core/unpack.h"
-#include "math/ternary_matmul.h"
-#include "math/ternary_matmul_packed.h"
-#include "math/simd_dispatch.h"
-#include "core/platform.h"
-#include "test_harness.h"
-
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
+
+#include "core/platform.h"
+#include "core/unpack.h"
+#include "math/simd_dispatch.h"
+#include "math/ternary_matmul.h"
+#include "math/ternary_matmul_packed.h"
+#include "test_harness.h"
 
 /* Helper: create deterministic ternary weights {-1, 0, 1} */
 static void fill_ternary(tn_i8 *w, int count, unsigned seed) {

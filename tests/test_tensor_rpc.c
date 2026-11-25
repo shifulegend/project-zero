@@ -4,12 +4,13 @@
  * layer-plan helpers (dist_plan_parse validation, dist_plan_layers_by_ram).
  * Multi-threaded; part of TSAN_TESTS.
  */
-#include "test_harness.h"
-#include "distributed/tensor_rpc.h"
-#include "distributed/dist_plan.h"
 #include <pthread.h>
 #include <string.h>
 #include <unistd.h>
+
+#include "distributed/dist_plan.h"
+#include "distributed/tensor_rpc.h"
+#include "test_harness.h"
 
 /* Bind the first free port in a small range so parallel runs don't collide. */
 static int listen_any(int *server_fd) {

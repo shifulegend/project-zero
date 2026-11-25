@@ -4,7 +4,8 @@
  */
 
 #include "api/openapi.h"
-#include <pthread.h>
+
+#include <stdlib.h>
 #include <string.h>
 
 /* One string literal may not exceed 4095 characters (C99 5.2.4.1, -Wpedantic): the document is
@@ -83,6 +84,8 @@ static const char OPENAPI_JSON_B[] =
     "--metrics)\"}}}},"
     "\"/docs\":{\"get\":{\"summary\":\"This documentation page\","
     "\"responses\":{\"200\":{\"description\":\"OK\"}}}},"
+    "\"/openapi.json\":{\"get\":{\"summary\":\"This OpenAPI description\","
+    "\"responses\":{\"200\":{\"description\":\"OK\"}}}},"
     "\"/\":{\"get\":{\"summary\":\"Web chat UI\","
     "\"responses\":{\"200\":{\"description\":\"OK\"}}}}"
     "}"
@@ -121,15 +124,12 @@ static const char OPENAPI_DOCS_HTML[] =
     "</script>"
     "</body></html>";
 
-static char g_openapi_json[sizeof(OPENAPI_JSON_A) + sizeof(OPENAPI_JSON_B)];
-static pthread_once_t g_openapi_once = PTHREAD_ONCE_INIT;
-static void openapi_join(void) {
-    memcpy(g_openapi_json, OPENAPI_JSON_A, sizeof(OPENAPI_JSON_A) - 1);
-    memcpy(g_openapi_json + sizeof(OPENAPI_JSON_A) - 1, OPENAPI_JSON_B, sizeof(OPENAPI_JSON_B));
-}
-const char *openapi_json(void) {
-    pthread_once(&g_openapi_once, openapi_join);
-    return g_openapi_json;
+char *openapi_json(void) {
+    char *json = (char *)malloc(sizeof(OPENAPI_JSON_A) + sizeof(OPENAPI_JSON_B));
+    if (!json) return NULL;
+    memcpy(json, OPENAPI_JSON_A, sizeof(OPENAPI_JSON_A) - 1);
+    memcpy(json + sizeof(OPENAPI_JSON_A) - 1, OPENAPI_JSON_B, sizeof(OPENAPI_JSON_B));
+    return json;
 }
 const char *openapi_docs_html(void) {
     return OPENAPI_DOCS_HTML;

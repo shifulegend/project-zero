@@ -1,4 +1,5 @@
 #include "math/elementwise.h"
+
 #include <math.h>
 
 void vec_add(float *out, const float *a, const float *b, int n) {

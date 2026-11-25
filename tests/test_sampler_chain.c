@@ -1,13 +1,14 @@
 /*
  * tests/test_sampler_chain.c — configurable sampling pipeline.
  */
-#include "test_harness.h"
-#include "sampling/sampler_chain.h"
-#include "sampling/logprob.h"
-#include "sampling/sampling.h"
-#include "sampling/rng.h"
-#include "math/simd_dispatch.h"
 #include <math.h>
+
+#include "math/simd_dispatch.h"
+#include "sampling/logprob.h"
+#include "sampling/rng.h"
+#include "sampling/sampler_chain.h"
+#include "sampling/sampling.h"
+#include "test_harness.h"
 
 #define V 16
 

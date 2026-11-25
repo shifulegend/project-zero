@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Mamba reference."""
+
 # mamba_reference.py — independent numpy Mamba-1 reference for Phase 22-SSM.
 #
 # Reads an F16/F32 Mamba GGUF directly (no llama.cpp, no torch), runs the
@@ -9,24 +11,31 @@
 #
 # Usage: tools/mamba_reference.py <model.gguf> <comma-separated token ids> <n_gen>
 # Tooling only (numpy); not needed to build or run the engine.
-import struct, sys, numpy as np
+import struct
+import sys
+from typing import Any
+
+import numpy as np
+import numpy.typing as npt
 
 path = sys.argv[1]
 toks = [int(t) for t in sys.argv[2].split(",")]
 n_gen = int(sys.argv[3])
-f = open(path, "rb")
-data = f.read()
+with open(path, "rb") as f:
+    data = f.read()
 off = 0
 
 
-def rd(fmt):
+def rd(fmt: str) -> Any:
+    """Reads one value of struct format `fmt` from the GGUF data at the global offset and advances it."""
     global off
     v = struct.unpack_from(fmt, data, off)
     off += struct.calcsize(fmt)
     return v[0]
 
 
-def rs():
+def rs() -> str:
+    """Reads a length-prefixed string."""
     n = rd("<Q")
     global off
     s = data[off : off + n].decode()
@@ -49,7 +58,8 @@ T = {
 }
 
 
-def rv(t):
+def rv(t: int) -> Any:
+    """Reads a metadata value of GGUF type `t`."""
     global off
     if t in T:
         return rd(T[t])
@@ -82,7 +92,8 @@ for _ in range(nt):
 base = (off + align - 1) // align * align
 
 
-def get(name):
+def get(name: str) -> npt.NDArray[np.float32]:
+    """The named tensor as a float array."""
     dims, typ, o = tensors[name]
     n = int(np.prod(dims))
     dt = {0: np.float32, 1: np.float16}[typ]
@@ -120,15 +131,23 @@ conv = [np.zeros((di, dc - 1), np.float32) for _ in range(L)]
 ssm = [np.zeros((di, ds), np.float32) for _ in range(L)]
 
 
-def rms(x, w):
-    return x / np.sqrt(np.mean(x * x) + eps) * w
+def rms(x: npt.NDArray[np.float32], w: npt.NDArray[np.float32]) -> npt.NDArray[np.float32]:
+    """RMS norm of `x` with weight `w`."""
+    return np.asarray(x / np.sqrt(np.mean(x * x) + eps) * w)
 
 
-silu = lambda v: v / (1 + np.exp(-v))
-softplus = lambda v: np.where(v > 20, v, np.log1p(np.exp(v)))
+def silu(v: npt.NDArray[np.float32]) -> npt.NDArray[np.float32]:
+    """Sigmoid linear unit."""
+    return np.asarray(v / (1 + np.exp(-v)))
 
 
-def step(tok):
+def softplus(v: npt.NDArray[np.float32]) -> npt.NDArray[np.float32]:
+    """log(1 + e^v), linear above 20 where the two agree to float precision."""
+    return np.asarray(np.where(v > 20, v, np.log1p(np.exp(v))))
+
+
+def step(tok: int) -> npt.NDArray[np.float32]:
+    """Runs one token through every Mamba layer and returns the output logits."""
     x = emb[tok].copy()
     for l in range(L):
         w = W[l]
@@ -148,7 +167,7 @@ def step(tok):
 
 
 seq = list(toks)
-for i, t in enumerate(seq):
+for _i, t in enumerate(seq):
     logits = step(t)
 for g in range(n_gen):
     top = np.argsort(-logits)[:5]

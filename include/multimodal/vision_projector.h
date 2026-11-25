@@ -1,9 +1,10 @@
 #ifndef TN_VISION_PROJECTOR_H
 #define TN_VISION_PROJECTOR_H
 
+#include <stddef.h>
+
 #include "core/error.h"
 #include "threading/thread_pool.h"
-#include <stddef.h>
 
 /**
  * MLP Vision Projector to bridge vision encoder embeddings into LLM embedding space.

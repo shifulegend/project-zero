@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   import { onMount } from 'svelte';
   import ChatWindow from './lib/ChatWindow.svelte';
   import SettingsPanel from './lib/SettingsPanel.svelte';
@@ -7,16 +7,19 @@
   import ModelInfoPanel from './lib/ModelInfoPanel.svelte';
   import UpdateBanner from './lib/UpdateBanner.svelte';
   import AsciiLogo from './lib/AsciiLogo.svelte';
-  import { fetchConfig } from './lib/api.js';
-  import { loadSettings, saveSettings, clearSavedSettings, defaultsFromConfig, countOverrides } from './lib/settings.js';
+  import { fetchConfig } from './lib/api';
+  import { errorText } from './lib/errors';
+  import { loadSettings, saveSettings, clearSavedSettings, defaultsFromConfig, countOverrides } from './lib/settings';
+  import type { ServerConfig, Settings } from './lib/types';
 
   // Everything below is populated from GET /v1/config — the UI carries no
   // default sampling values, limits or branding of its own.
-  let config = null;
-  let settings = null;
-  let configError = null;
-  let panel = null; // null | 'settings' | 'watermark'
-  let chat;
+  type Panel = 'settings' | 'watermark';
+  let config: ServerConfig | null = null;
+  let settings: Settings | null = null;
+  let configError: string | null = null;
+  let panel: Panel | null = null;
+  let chat: ChatWindow | undefined;
 
   onMount(async () => {
     try {
@@ -24,7 +27,7 @@
       settings = loadSettings(config);
       if (config?.ui?.title) document.title = config.ui.title;
     } catch (e) {
-      configError = e.message ?? String(e);
+      configError = errorText(e);
     }
   });
 
@@ -34,11 +37,11 @@
   $: modelInfo = config?.model ?? null;
   $: overrides = config && settings ? countOverrides(settings, config) : 0;
 
-  function toggle(name) {
+  function toggle(name: Panel): void {
     panel = panel === name ? null : name;
   }
 
-  function resetSettings() {
+  function resetSettings(): void {
     clearSavedSettings();
     settings = defaultsFromConfig(config);
   }
@@ -65,7 +68,7 @@
     </div>
   </header>
 
-  {#if panel === 'settings' && settings}
+  {#if panel === 'settings' && settings && config}
     <SettingsPanel bind:settings {config} onReset={resetSettings} />
   {:else if panel === 'watermark' && config}
     <WatermarkPanel {config} defaultKey={settings?.watermark_key ?? ''} />
@@ -77,7 +80,7 @@
   <main class="main">
     {#if configError}
       <div class="boot-error" role="alert"><strong>Error:</strong> could not load server configuration ({configError}).</div>
-    {:else if settings}
+    {:else if settings && config}
       <ChatWindow bind:this={chat} {settings} {config} {brand} {logoAscii} visionCapable={modelInfo?.vision === true} />
     {/if}
   </main>

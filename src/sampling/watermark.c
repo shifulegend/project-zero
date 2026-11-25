@@ -1,4 +1,5 @@
 #include "sampling/watermark.h"
+
 #include <math.h>
 #include <stddef.h>
 #include <stdlib.h>

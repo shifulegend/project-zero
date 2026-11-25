@@ -3,10 +3,11 @@
  * when disabled, FIFO hand-off, full queue, timeout, abort, try-acquire.
  * Multi-threaded; part of TSAN_TESTS.
  */
-#include "test_harness.h"
-#include "api/gen_queue.h"
 #include <pthread.h>
 #include <time.h>
+
+#include "api/gen_queue.h"
+#include "test_harness.h"
 
 /* usleep() is not in POSIX.1-2008 (the build's -D_POSIX_C_SOURCE level). */
 static void sleep_ms(int ms) {

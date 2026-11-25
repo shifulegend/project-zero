@@ -2,6 +2,7 @@
 #define TN_SAFE_ALLOC_H
 
 #include <stddef.h>
+
 #include "memory/aligned_alloc.h"
 
 /*

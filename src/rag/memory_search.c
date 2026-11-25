@@ -1,9 +1,11 @@
 #include "rag/memory_search.h"
-#include "rag/similarity.h"
-#include "memory/aligned_alloc.h"
+
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
+
+#include "memory/aligned_alloc.h"
+#include "rag/similarity.h"
 
 int memory_search(VectorDB *db, const char *query_text, const Config *cfg,
                   const TransformerWeights *w, Embedder *emb, Tokenizer *tok, ThreadPool *tp,

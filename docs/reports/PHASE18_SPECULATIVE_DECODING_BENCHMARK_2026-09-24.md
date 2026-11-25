@@ -43,7 +43,7 @@ branch `claude/architecture-progress-review-ahv93e`.
 Every command below is the real CLI, unmodified — a plain run omits `--draft-model`, a
 speculative run adds it and `--spec-length`:
 
-```
+```text
 ./adaptive_ai_engine --model models/smollm2-360m.gguf \
   --draft-model models/smollm2.gguf --spec-length 5 \
   --prompt "..." --max-tokens 64 --temperature 0 --threads 4

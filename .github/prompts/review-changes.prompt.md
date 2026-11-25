@@ -10,4 +10,8 @@ Verify before claiming done (definition of done: `docs/ai/engineering-rules.md`)
 4. Diff review: modularity, no hardcoding, memset-before-init, no new warnings, secrets check;
    user-facing changes logged under `[Unreleased]` in `CHANGELOG.md` (`tools/changelog.py check`).
    README reviewed for anything the change made stale (DoD #7: flags vs `./pz --help`, links, numbers, phase status).
-5. Report exactly what was verified and what remains UNVERIFIED.
+5. Security-sensitive diff (`src/api`, `src/agent`, `src/update`, `src/config`,
+   `install.sh`, `webui/`):
+   review it with `.github/agents/appsec-reviewer.agent.md` and address the
+   findings.
+6. Report exactly what was verified and what remains UNVERIFIED.

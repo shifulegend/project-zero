@@ -1,6 +1,7 @@
-#include "test_harness.h"
-#include "agent/cmd_exec.h"
 #include <string.h>
+
+#include "agent/cmd_exec.h"
+#include "test_harness.h"
 
 static void test_policy_allows_basic(void) {
     TEST_ASSERT(exec_policy_allows("ls"), "ls is allowed");

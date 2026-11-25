@@ -7,8 +7,9 @@
  * dependency on the webui/ npm pipeline (Phase 22.2).
  */
 
-/* Static OpenAPI 3.0 JSON document describing every route. Never NULL. */
-const char *openapi_json(void);
+/* OpenAPI 3.0 JSON document describing every route (the two source halves joined). The caller
+ * frees it; NULL when out of memory. */
+char *openapi_json(void);
 
 /* Static HTML+JS docs page that fetches openapi_json() from /openapi.json
  * and renders a simple route list. Never NULL. */

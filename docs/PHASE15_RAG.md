@@ -31,7 +31,7 @@ generation begins.
 
 ## Architecture
 
-```
+```text
 User prompt
      │
      ▼
@@ -106,7 +106,7 @@ warnings remain (unrelated to Phase 15).
 
 **Engine smoke test**:
 
-```
+```text
 $ ./pz --model /tmp/test_tiny_model.bin \
     --tokenizer /tmp/test_tiny_tokenizer.bin \
     --memory-db /tmp/test_memory.vrdb \
@@ -135,7 +135,7 @@ Changes to existing files:
 
 New REPL commands (Phase 15):
 
-```
+```text
 /memory list              — show all stored memories
 /memory search <query>    — manually search and display results
 ```
@@ -230,12 +230,12 @@ The `.vrdb` file is created automatically if it does not exist.
 
 In agentic mode (`/agent <prompt>`), the model can emit:
 
-```
+```text
 <save_memory>User's name is Alice.</save_memory>
 ```
 → Generates an embedding, checks for duplicates (cos ≥ 0.95), stores to disk.
 
-```
+```text
 <search_memory>What is the user's name?</search_memory>
 ```
 → Generates a query embedding, finds top-3 matches (score ≥ 0.5),
@@ -283,7 +283,7 @@ messages.
 
 ### New files
 
-```
+```text
 include/rag/embedder.h
 include/rag/similarity.h
 include/rag/vector_db.h
@@ -303,7 +303,7 @@ docs/PHASE15_RAG.md
 
 ### Modified files
 
-```
+```text
 include/agent/agent_loop.h    — added RagContext* param
 src/agent/agent_loop.c        — wired save/search; strtok→strtok_r
 include/cli/args.h            — added memory_db_path

@@ -2,9 +2,9 @@
 #define TN_MOE_WEIGHTS_H
 
 #include "core/config.h"
+#include "core/error.h"
 #include "core/moe_config.h"
 #include "core/weights.h"
-#include "core/error.h"
 
 /**
  * Allocate the MoE expert weight pointer arrays inside TransformerWeights.

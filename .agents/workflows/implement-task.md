@@ -1,0 +1,16 @@
+# Workflow: implement-task
+
+Implement per `docs/ai/engineering-rules.md`:
+1. For a behaviour change or bug fix, write the failing test first (Red -> Green
+   -> Refactor).
+   Make the smallest coherent edit; reuse existing patterns; no hardcoding;
+   honor memory-safety
+   rules (`memset` before partial init; overflow-checked, RAM-guarded
+   allocations).
+2. After each sub-step: run the `review-and-verify` workflow; update
+   `docs/ai/**`
+   (mistakes/decision-log/change-trace) and sync adapters via the
+   `update-project-memory`
+   workflow; propose an exact commit message (`docs/ai/commit-log-guidance.md`).
+3. At completion: update canonical docs first, then adapters; report verified vs
+   UNVERIFIED.

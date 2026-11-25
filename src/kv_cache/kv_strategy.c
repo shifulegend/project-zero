@@ -1,11 +1,13 @@
 #include "kv_cache/kv_strategy.h"
-#include "memory/file_backed.h"
-#include "kv_cache/kv_quant_ops.h"
-#include "core/platform.h"
-#include "core/config.h"
 
 #include <stdio.h>
 #include <string.h>
+
+#include "core/config.h"
+#include "core/log.h"
+#include "core/platform.h"
+#include "kv_cache/kv_quant_ops.h"
+#include "memory/file_backed.h"
 
 #if TN_POSIX
 #include <unistd.h>
@@ -58,77 +60,6 @@
 #define SW_WINDOW_LARGE 1024
 #define SW_WINDOW_SMALL 512
 
-tn_i64 tn_get_free_ram(void) {
-#if TN_POSIX
-    /*
-   * Use MemAvailable from /proc/meminfo, not _SC_AVPHYS_PAGES.
-   *
-   * _SC_AVPHYS_PAGES returns MemFree — only pages with no current owner.
-   * On a typical Linux system with 16 GB RAM and active page cache, MemFree
-   * may read 400–700 MB while MemAvailable (what the kernel will actually
-   * hand to a new allocation, including reclaimable buffers/cache) reads
-   * 7–14 GB. Using MemFree causes the KV strategy selector to pick I4
-   * Sliding Window on systems that have ample RAM, collapsing throughput
-   * from ~15 tok/s to ~1.8 tok/s.
-   *
-   * MemAvailable was added in Linux 3.14 (2014) and is always present on
-   * any kernel we care about. Fall back to _SC_AVPHYS_PAGES only if the
-   * parse fails.
-   */
-    FILE *f = fopen("/proc/meminfo", "r");
-    if (f) {
-        char line[128];
-        while (fgets(line, sizeof(line), f)) {
-            long long kb = 0;
-            if (sscanf(line, "MemAvailable: %lld kB", &kb) == 1) {
-                fclose(f);
-                return (tn_i64)kb * 1024LL;
-            }
-        }
-        fclose(f);
-    }
-    /* Fallback: use page count * page size.
-   * _SC_AVPHYS_PAGES (free pages) is Linux/glibc; on macOS use _SC_PHYS_PAGES
-   * (total) as a conservative over-estimate — the vm_stat path above is the
-   * accurate macOS path, so reaching here means vm_stat also failed. */
-#if defined(_SC_AVPHYS_PAGES)
-    long pages = sysconf(_SC_AVPHYS_PAGES);
-#else
-    long pages = sysconf(_SC_PHYS_PAGES); /* macOS fallback — total, not free */
-#endif
-    long page_size = sysconf(_SC_PAGESIZE);
-    if (pages > 0 && page_size > 0) {
-        return (tn_i64)pages * (tn_i64)page_size;
-    }
-    return -1;
-#elif TN_WIN32
-    MEMORYSTATUSEX ms;
-    ms.dwLength = sizeof(ms);
-    if (GlobalMemoryStatusEx(&ms)) {
-        return (tn_i64)ms.ullAvailPhys;
-    }
-    return -1;
-#else
-    return -1;
-#endif
-}
-
-static KVStrategyOptions g_kv_opts; /* zero = automatic */
-
-void kv_strategy_set_options(const KVStrategyOptions *opt) {
-    if (opt)
-        g_kv_opts = *opt;
-    else
-        memset(&g_kv_opts, 0, sizeof(g_kv_opts));
-}
-
-int kv_strategy_kv_type(void) {
-    return g_kv_opts.kv_type;
-}
-const char *kv_strategy_offload_dir(void) {
-    return g_kv_opts.offload_dir;
-}
-
 /* Bytes one position costs across all layers and KV heads (K + V).
  * Per head_dim row: F32 = 4/element; quantized (--kv-type i8|i4) = data
  * bytes + F32 scales (kvq_row_layout; i4 falls back to i8). */
@@ -145,39 +76,43 @@ static tn_i64 kv_bytes_per_token(const Config *cfg, const MoEConfig *mc, int kv_
            row_bytes * 2;
 }
 
-tn_i64 kv_strategy_bytes_per_token(const Config *cfg, const MoEConfig *mc) {
-    return cfg ? kv_bytes_per_token(cfg, mc, g_kv_opts.kv_type) : 0;
+tn_i64 kv_strategy_bytes_per_token(const Config *cfg, const MoEConfig *mc,
+                                   const KVStrategyOptions *opt) {
+    return cfg ? kv_bytes_per_token(cfg, mc, opt ? opt->kv_type : 0) : 0;
 }
 
-tn_i64 kv_strategy_budget_tokens(const Config *cfg, const MoEConfig *mc, tn_i64 free_ram) {
-    tn_i64 per_token = kv_strategy_bytes_per_token(cfg, mc);
+tn_i64 kv_strategy_budget_tokens(const Config *cfg, const MoEConfig *mc, tn_i64 free_ram,
+                                 const KVStrategyOptions *opt) {
+    tn_i64 per_token = kv_strategy_bytes_per_token(cfg, mc, opt);
     if (per_token <= 0 || free_ram <= 0) return 0;
-    float frac = g_kv_opts.ram_fraction > 0.0f ? g_kv_opts.ram_fraction : KV_DEFAULT_RAM_FRACTION;
+    float frac = opt && opt->ram_fraction > 0.0f ? opt->ram_fraction : KV_DEFAULT_RAM_FRACTION;
     if (frac > 0.95f) frac = 0.95f;
     tn_i64 base = free_ram;
-    if (g_kv_opts.offload_dir) {
-        tn_i64 disk = file_backed_free_space(g_kv_opts.offload_dir);
+    if (opt && opt->offload_dir) {
+        tn_i64 disk = file_backed_free_space(opt->offload_dir);
         if (disk > 0) base = disk;
     }
     return (tn_i64)((double)base * (double)frac) / per_token;
 }
 
 KVStrategyResult select_kv_strategy(const Config *cfg, tn_i64 free_ram, const MoEConfig *mc) {
-    return select_kv_strategy_ex(cfg, free_ram, mc, &g_kv_opts);
+    return select_kv_strategy_ex(cfg, free_ram, mc, NULL);
 }
 
-void kv_strategy_print(const KVStrategyResult *r, int max_seq_len) {
+void kv_strategy_print(const KVStrategyResult *r, int max_seq_len, const KVStrategyOptions *opt) {
     /* 2026-10-18: this used to print e.g. "KV Strategy: Quantized I8" although
    * no attention path read a quantized cache. It now reports the storage the
    * generic cache really uses (--kv-type) and the tier for what it is: the
    * context-sizing tier. */
-    float frac = g_kv_opts.ram_fraction > 0.0f ? g_kv_opts.ram_fraction : KV_DEFAULT_RAM_FRACTION;
-    printf("KV cache: %s%s%s, max context: %d tokens (sizing tier: %s%s, %s budget %.0f%%)\n",
-           kv_type_name((KVCacheType)g_kv_opts.kv_type),
-           g_kv_opts.offload_dir ? " on disk in " : "",
-           g_kv_opts.offload_dir ? g_kv_opts.offload_dir : "", max_seq_len,
-           r ? kv_strategy_name(r->strategy) : "n/a", g_kv_opts.ctx_size > 0 ? ", --ctx-size" : "",
-           g_kv_opts.offload_dir ? "disk" : "RAM", frac * 100.0f);
+    KVStrategyOptions none = {0, 0.0f, 0, NULL};
+    if (!opt) opt = &none;
+    float frac = opt->ram_fraction > 0.0f ? opt->ram_fraction : KV_DEFAULT_RAM_FRACTION;
+    tn_log_out(TN_LOG_INFO, "kv_strategy",
+               "KV cache: %s%s%s, max context: %d tokens (sizing tier: %s%s, %s budget %.0f%%)\n",
+               kv_type_name((KVCacheType)opt->kv_type), opt->offload_dir ? " on disk in " : "",
+               opt->offload_dir ? opt->offload_dir : "", max_seq_len,
+               r ? kv_strategy_name(r->strategy) : "n/a", opt->ctx_size > 0 ? ", --ctx-size" : "",
+               opt->offload_dir ? "disk" : "RAM", frac * 100.0f);
 }
 
 KVStrategyResult select_kv_strategy_ex(const Config *cfg, tn_i64 free_ram, const MoEConfig *mc,
@@ -232,7 +167,7 @@ KVStrategyResult select_kv_strategy_ex(const Config *cfg, tn_i64 free_ram, const
    * the real 128 for Qwen3-30B-A3B, which under-clamps max_seq_len and can
    * still OOM on constrained hosts — GitHub issue #32, confirmed still
    * broken after the qwen3moe loader fix because this cap never saw the
-   * true head_dim before). MLA (mc->has_mla) intentionally keeps the naive
+   * true head_dim before). MLA (mc->mla.enabled) intentionally keeps the naive
    * formula — its real cache is a smaller low-rank latent, not
    * n_kv_heads*head_dim, so the naive formula over-clamps (conservative,
    * not unsafe) rather than under-clamps; see kv_strategy.h for why that's

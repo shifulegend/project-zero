@@ -16,9 +16,9 @@ Usage:
     python3 parse_llama_log.py llama_raw.txt llama_tensors.csv
 """
 
-import sys
-import re
 import csv
+import re
+import sys
 
 # Tensor names we care about (must match CAPTURE_PATTERNS in compare_tensors.py)
 KEEP = {
@@ -51,7 +51,7 @@ RE_FLOAT = re.compile(r"[-+]?(?:\d+\.\d*|\.\d+)(?:[eE][+-]?\d+)?")
 RE_SUM = re.compile(r"\bsum\s*=\s*([-+]?(?:\d+\.\d*|\.\d+)(?:[eE][+-]?\d+)?)")
 
 
-def extract_layer(name):
+def extract_layer(name: str) -> tuple[str, int]:
     """Try to strip a trailing _<N> layer index from the tensor name."""
     m = re.search(r"_(\d+)$", name)
     if m:
@@ -59,7 +59,8 @@ def extract_layer(name):
     return name, -1
 
 
-def main():
+def main() -> None:
+    """Command-line entry point: converts a raw llama.cpp tensor log into a CSV."""
     if len(sys.argv) < 3:
         print(f"Usage: {sys.argv[0]} llama_raw.txt llama_tensors.csv")
         sys.exit(1)
@@ -70,7 +71,7 @@ def main():
     rows = []  # (layer, step, vals_list)
     cur_name = None
     cur_layer = -1
-    cur_vals = []
+    cur_vals: list[float] = []
     collecting = False
 
     with open(raw_path, encoding="utf-8", errors="replace") as f:

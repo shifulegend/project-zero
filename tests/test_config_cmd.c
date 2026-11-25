@@ -3,14 +3,15 @@
  * input (no terminal): model discovery and pick, keep-on-Enter, re-ask after
  * an invalid value, save vs cancel; and argv preparation with --no-config.
  */
-#include "test_harness.h"
-#include "cli/config_cmd.h"
-#include "config/pz_config.h"
-#include "core/sha256.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h> /* mkdtemp on macOS */
+
+#include "cli/config_cmd.h"
+#include "config/pz_config.h"
+#include "core/sha256.h"
+#include "test_harness.h"
 
 static FILE *script(const char *text) {
     FILE *f = tmpfile();
@@ -83,15 +84,23 @@ static void test_prepare_argv_no_config(void) {
     setenv("PZ_THREADS", "2", 1);
     char *argv[] = {"pz", "--no-config", "--prompt", "hi", NULL};
     char **out   = NULL;
-    int n        = pz_config_prepare_argv(4, argv, &out);
+    PzLaunchConfig lc;
+    memset(&lc, 0, sizeof(lc));
+    int n = pz_config_prepare_argv(&lc, 4, argv, &out);
     TEST_ASSERT_EQ(n, 3, "--no-config removed, env ignored");
     TEST_ASSERT(n == 3 && strcmp(out[1], "--prompt") == 0 && out[3] == NULL, "argv intact");
     char *argv2[] = {"pz", "--prompt", "hi", NULL};
     setenv("PZ_CONFIG", "/nonexistent/pz.toml", 1);
-    n = pz_config_prepare_argv(3, argv2, &out);
+    n = pz_config_prepare_argv(&lc, 3, argv2, &out);
     TEST_ASSERT(n == 5 && strcmp(out[1], "--threads") == 0 && strcmp(out[2], "2") == 0 &&
                     strcmp(out[3], "--prompt") == 0,
                 "env value placed before user flags");
+    TEST_ASSERT(lc.provenance.config == &lc.cfg && lc.provenance.file_used == 1,
+                "provenance points at this launch's configuration");
+    TEST_ASSERT(strcmp(pz_provenance_source(&lc.provenance, "threads"), "env") == 0,
+                "the env value is attributed to the environment");
+    pz_launch_config_free(&lc);
+    TEST_ASSERT(lc.owned == NULL, "freed launch config is zeroed");
     unsetenv("PZ_THREADS");
     unsetenv("PZ_CONFIG");
 }

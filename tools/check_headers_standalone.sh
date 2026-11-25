@@ -7,7 +7,7 @@ set -u
 cc="${1:-gcc}"
 dir="${2:-include}"
 root="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$root"
+cd "$root" || exit 1
 bad=0
 for h in $(find "$dir" -name '*.h' ! -name 'stb_*' | sort); do
     if ! "$cc" -std=c99 -Wall -Wextra -Wpedantic -Iinclude -I"$dir" -D_POSIX_C_SOURCE=200809L -D_GNU_SOURCE \

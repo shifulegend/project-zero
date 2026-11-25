@@ -13,15 +13,15 @@
  *  9. Strategy name lookup
  */
 
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include "kv_cache/kv_compress.h"
 #include "kv_cache/kv_strategy.h"
 #include "kv_cache/sliding_window.h"
 #include "memory/aligned_alloc.h"
 #include "test_harness.h"
-
-#include <math.h>
-#include <stdlib.h>
-#include <string.h>
 
 /* ================================================================
  * TEST: int8 KV Compression (Phase 8.1)
@@ -321,12 +321,10 @@ static void test_strategy_options(void) {
     KVStrategyResult e      = select_kv_strategy_ex(&cfg, ram, NULL, &tight);
     TEST_ASSERT(e.max_seq_len < 4096 && e.max_seq_len >= 512, "RAM fraction caps the context");
 
-    kv_strategy_set_options(&big);
-    TEST_ASSERT_EQ(select_kv_strategy(&cfg, ram, NULL).max_seq_len, 3000,
-                   "process-wide options apply");
-    kv_strategy_set_options(NULL);
+    TEST_ASSERT_EQ(select_kv_strategy_ex(&cfg, ram, NULL, &big).max_seq_len, 3000,
+                   "explicit options apply");
     TEST_ASSERT_EQ(select_kv_strategy(&cfg, ram, NULL).max_seq_len, 1024,
-                   "NULL restores automatic");
+                   "no options means automatic");
 }
 
 static void test_strategy_full_f32(void) {

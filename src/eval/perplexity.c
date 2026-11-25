@@ -1,10 +1,12 @@
 #include "eval/perplexity.h"
-#include "sampling/logprob.h"
-#include "transformer/forward.h"
-#include "kv_cache/sliding_window.h"
+
 #include <math.h>
 #include <string.h>
 #include <time.h>
+
+#include "kv_cache/sliding_window.h"
+#include "sampling/logprob.h"
+#include "transformer/forward.h"
 
 double ppl_token_nll(const float *logits, int vocab, int target) {
     if (!logits || target < 0 || target >= vocab) return NAN;

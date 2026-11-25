@@ -10,12 +10,12 @@
  *  6. Sampling distribution properties
  */
 
+#include <math.h>
+#include <string.h>
+
 #include "sampling/rng.h"
 #include "sampling/sampling.h"
 #include "test_harness.h"
-
-#include <math.h>
-#include <string.h>
 
 /* ================================================================
  * TEST: RNG (Phase 7.5)

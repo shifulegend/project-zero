@@ -19,8 +19,9 @@
  * embeddings/attention/MLP/LM-head projections are all stored as Q2_0.
  */
 
-#include "threading/thread_pool.h"
 #include <stdint.h>
+
+#include "threading/thread_pool.h"
 
 #ifdef __cplusplus
 extern "C" {

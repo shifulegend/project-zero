@@ -14,20 +14,21 @@
  * synthetic fixture needs no byte-level GGUF serialization at all.
  */
 
+#include <math.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stddef.h>
-#include <math.h>
+
 #include "core/gguf_reader.h"
-#include "core/gguf_loader.h"
 #include "core/moe_config.h"
 #include "core/moe_weights.h"
 #include "core/weights.h"
-#include "core/run_state.h"
-#include "transformer/forward.h"
 #include "math/simd_dispatch.h"
+#include "runtime/gguf_loader.h"
+#include "runtime/run_state.h"
 #include "threading/thread_pool.h"
+#include "transformer/forward.h"
 
 #define PASS(name) printf("[PASS] %s\n", name)
 #define FAIL(name, msg)                                                                            \
@@ -358,14 +359,14 @@ static void test_moe_ffn_q4k_batched_path(void) {
         goto cleanup;
     }
 
-    if (w.expert_w13_quant_type != GGUF_TYPE_Q4_K) {
+    if (w.expert_quant.w13_type != GGUF_TYPE_Q4_K) {
         FAIL("moe_ffn_q4k_batched",
              "expert_w13_quant_type != Q4_K -- fixture didn't hit the batched path");
         goto cleanup;
     }
 
     cfg.seq_len = 16;
-    if (run_state_alloc_ex(&s, &cfg, cfg.seq_len, mc.has_qk_norm) != TN_OK) {
+    if (run_state_alloc_ex(&s, &cfg, cfg.seq_len, mc.has_qk_norm, NULL) != TN_OK) {
         FAIL("moe_ffn_q4k_batched", "run_state_alloc_ex failed");
         goto cleanup;
     }
@@ -433,7 +434,7 @@ static void test_config_and_moe_config(void) {
         FAIL("config_and_moe_config", "moe_config_from_gguf failed");
         goto done;
     }
-    if (!mc.is_moe || mc.has_mla != 0 || mc.has_qk_norm != 1 || mc.n_shared_experts != 0 ||
+    if (!mc.is_moe || mc.mla.enabled != 0 || mc.has_qk_norm != 1 || mc.n_shared_experts != 0 ||
         mc.first_k_dense_replace != 0 || mc.num_experts != T_EXPERTS ||
         mc.num_experts_per_tok != T_EXPERTS_PER_TOK || mc.expert_hidden_dim != T_EXP_HID ||
         mc.attn_head_dim != T_HEAD_DIM) {
@@ -480,30 +481,30 @@ static void test_weights_from_gguf_and_expert_stride(void) {
         goto done_moe;
     }
 
-    if (!w.qwen3moe_attn_q_norm || !w.qwen3moe_attn_k_norm) {
+    if (!w.qwen3moe.attn_q_norm || !w.qwen3moe.attn_k_norm) {
         FAIL("weights_from_gguf", "expected qwen3moe_attn_q_norm/k_norm arrays to be allocated");
         goto done_store;
     }
-    if (!w.qwen3moe_attn_q_norm[0] || !w.qwen3moe_attn_k_norm[0]) {
+    if (!w.qwen3moe.attn_q_norm[0] || !w.qwen3moe.attn_k_norm[0]) {
         FAIL("weights_from_gguf", "qwen3moe_attn_q_norm/k_norm[0] is NULL");
         goto done_store;
     }
-    if (!w.moe_gate_w[0]) {
+    if (!w.moe.gate_w[0]) {
         FAIL("weights_from_gguf", "moe_gate_w[0] is NULL");
         goto done_store;
     }
-    if (!w.moe_w1[0][0] || !w.moe_w1[0][1]) {
+    if (!w.moe.w1[0][0] || !w.moe.w1[0][1]) {
         FAIL("weights_from_gguf", "moe_w1[0][0 or 1] is NULL");
         goto done_store;
     }
     /* Per-expert stride correctness: expert 0 and expert 1 must be distinct
      * offsets into the stacked tensor, not aliasing the same base pointer
      * (the exact bug class this stride-slicing scheme is prone to). */
-    if (w.moe_w1[0][0] == w.moe_w1[0][1]) {
+    if (w.moe.w1[0][0] == w.moe.w1[0][1]) {
         FAIL("weights_from_gguf", "moe_w1[0][0] aliases moe_w1[0][1] (stride bug)");
         goto done_store;
     }
-    ptrdiff_t stride_bytes    = (const tn_i8 *)w.moe_w1[0][1] - (const tn_i8 *)w.moe_w1[0][0];
+    ptrdiff_t stride_bytes    = (const tn_i8 *)w.moe.w1[0][1] - (const tn_i8 *)w.moe.w1[0][0];
     ptrdiff_t expected_stride = (ptrdiff_t)((size_t)T_EXP_HID * T_DIM * sizeof(float));
     if (stride_bytes != expected_stride) {
         FAIL("weights_from_gguf",
@@ -560,7 +561,7 @@ static void test_end_to_end_forward_pass(void) {
     }
 
     cfg.seq_len = 16; /* small context, plenty for a 1-token forward pass */
-    if (run_state_alloc_ex(&s, &cfg, cfg.seq_len, mc.has_qk_norm) != TN_OK) {
+    if (run_state_alloc_ex(&s, &cfg, cfg.seq_len, mc.has_qk_norm, NULL) != TN_OK) {
         FAIL("end_to_end_forward", "run_state_alloc_ex failed");
         goto cleanup;
     }

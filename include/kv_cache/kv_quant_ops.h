@@ -7,15 +7,16 @@
  *   --kv-type i8: one absmax scale per (layer, kv_head, position) row.
  *   --kv-type i4 (2026-10-19): Q4_1-style groups of TN_KV_I4_GROUP values,
  *     codes 0..15 with a (scale, min) pair per group;
- *     byte j holds element j (low nibble) and j+16 (high nibble), as ggml. Loops are written to auto-vectorise (int8 -> float
- * convert + FMA) on every SIMD tier, including the portable dist build.
+ *     byte j holds element j (low nibble) and j+16 (high nibble), as ggml. Loops are written to
+ * auto-vectorise (int8 -> float convert + FMA) on every SIMD tier, including the portable dist
+ * build.
  */
 
 #include "core/platform.h"
+#include "math/kvq4_kernels.h" /* TN_KV_I4_GROUP */
 
 typedef enum { KV_TYPE_F32 = 0, KV_TYPE_I8 = 1, KV_TYPE_I4 = 2 } KVCacheType;
 
-#define TN_KV_I4_GROUP 32 /* values per int4 scale (head_dim must be a multiple) */
 
 /* "f32" | "i8" | "i4" -> type, -1 otherwise. */
 int kv_type_parse(const char *s);

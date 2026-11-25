@@ -22,7 +22,6 @@ ENGINE="$REPO_DIR/pz"
 MODEL="$REPO_DIR/models/deepseek-v2-lite-chat-Q4_K_S.gguf"
 LLAMA_CPP_DIR="${LLAMA_CPP_DIR:-$HOME/llama.cpp}"   # reference engine checkout
 LLAMA_BENCH="$LLAMA_CPP_DIR/build/bin/llama-bench"
-LLAMA_CLI="$LLAMA_CPP_DIR/build/bin/llama-cli"
 OUT_DIR="$REPO_DIR/benchmark_results"
 mkdir -p "$OUT_DIR"
 
@@ -34,10 +33,10 @@ PROMPT="List the first 10 prime numbers:"
 BENCH_DATE=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 
 # Dimensions (override with env, e.g. DEEPSEEK_THREADS_MATRIX="1 2 4 8")
-THREADS_MATRIX=(${DEEPSEEK_THREADS_MATRIX:-1 2 3 4 5 6 7 8})
-THREADS_SWEEP=(${DEEPSEEK_THREADS_SWEEP:-1 2 3 4 5 6 7 8})
-SIMD_MODES=(${DEEPSEEK_SIMD_MODES:-scalar avx2 avx512f vnni})
-CLASSIFIERS=(${DEEPSEEK_CLASSIFIERS:-bf16 int8 int4 auto-fast})
+read -r -a THREADS_MATRIX <<< "${DEEPSEEK_THREADS_MATRIX:-1 2 3 4 5 6 7 8}"
+read -r -a THREADS_SWEEP <<< "${DEEPSEEK_THREADS_SWEEP:-1 2 3 4 5 6 7 8}"
+read -r -a SIMD_MODES <<< "${DEEPSEEK_SIMD_MODES:-scalar avx2 avx512f vnni}"
+read -r -a CLASSIFIERS <<< "${DEEPSEEK_CLASSIFIERS:-bf16 int8 int4 auto-fast}"
 LLAMA_THREADS_CSV="${DEEPSEEK_LLAMA_THREADS_CSV:-1,2,3,4,5,6,7,8}"
 BEST_SIMD="${DEEPSEEK_BEST_SIMD:-auto}"
 BEST_CLS="${DEEPSEEK_BEST_CLS:-bf16}"
@@ -124,7 +123,7 @@ run_engine_once() {
 run_engine_best() {
   local T="$1" SIMD="$2" CLS="$3"
   local BEST_TPS=0 BEST_ROW=""
-  for rep in $(seq 1 $REPS); do
+  for _ in $(seq 1 "$REPS"); do
     local ROW TPS
     ROW=$(run_engine_once "$T" "$SIMD" "$CLS")
     TPS=$(echo "$ROW" | tr ' ' '\n' | grep '^TOKS=' | cut -d= -f2 | head -1 || echo "0")

@@ -1,95 +1,28 @@
 #include "transformer/moe_ffn.h"
-#include "transformer/moe_router.h"
-#include "transformer/moe_experts.h"
-#include "math/parallel_matmul.h"
-#include "math/matmul_q4k.h"
-#include "math/matmul_q2k.h"
-#include "math/matmul_q5_1.h"
-#include "math/matmul_q5_0.h"
-#include "math/matmul_q8_0.h"
-#include "math/simd_dispatch.h"
-#include "core/gguf_quant.h"
-#include "core/gguf_reader.h"
-#include "core/debug.h"
-#include "core/step_timing.h"
 
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/mman.h>
 
-/* Maximum experts supported without heap allocation (stack-allocated buffers) */
-#define MOE_MAX_EXPERTS_STACK 512
+#include "core/debug.h"
+#include "core/env_flag.h"
+#include "core/gguf_reader.h"
+#include "core/log.h"
+#include "core/step_timing.h"
+#include "math/matmul_q4k.h"
+#include "math/parallel_matmul.h"
+#include "math/simd_core_ops.h"
+#include "math/simd_vec_ops.h"
+#include "memory/tls_scratch.h"
+#include "transformer/moe_experts.h"
+#include "transformer/moe_ffn_internal.h"
+#include "transformer/moe_router.h"
 
-/* Maximum expert hidden dim supported on stack (for score & index buffers only,
- * not for the FFN output — that uses RunState's hb/hb2 which are heap-allocated) */
-#define MOE_SCORE_BUF_SIZE MOE_MAX_EXPERTS_STACK
-
-/* Lazy-allocated dequantization scratch buffer — holds one expert weight matrix
- * (dim × expert_hdim floats).  Grown as needed; freed at process exit. */
-static float *s_dequant_buf       = NULL;
-static size_t s_dequant_buf_elems = 0;
-
-/* Module-level scratch buffers for batched expert matmul outputs.
- * moe_ffn_forward is not re-entrant (one call at a time from the main thread;
- * internal parallelism is via tp only), so static buffers are safe. */
-static float *s_gate_buf = NULL; /* [top_k * expert_hdim] */
-static float *s_up_buf   = NULL; /* [top_k * expert_hdim] */
-static float *s_down_buf = NULL; /* [top_k * dim] */
-static int s_batch_top_k = 0;
-static int s_batch_ehdim = 0;
-static int s_batch_dim   = 0;
-
-/* P1: Pre-quantized Q8K activation buffer for s->xb.
- * Quantized once per MoE layer; reused for all Q4K matmuls sharing xb
- * (Q4K batched gate+up, shared expert w1+w3). */
-static TnQ8KActBlock *s_xb_q8k = NULL;
-static int s_xb_q8k_blocks     = 0;
-
-static float *dequant_expert_weight(const tn_i8 *raw, int quant_type, size_t n_elems) {
-    if (s_dequant_buf_elems < n_elems) {
-        free(s_dequant_buf);
-        s_dequant_buf       = (float *)malloc(n_elems * sizeof(float));
-        s_dequant_buf_elems = s_dequant_buf ? n_elems : 0;
-        if (!s_dequant_buf) return NULL;
-    }
-    switch (quant_type) {
-        case 10:
-            gguf_dequant_q2_k(s_dequant_buf, raw, n_elems);
-            break; /* Q2_K */
-        case 11:
-            gguf_dequant_q3_k(s_dequant_buf, raw, n_elems);
-            break; /* Q3_K */
-        case 12:
-            gguf_dequant_q4_k(s_dequant_buf, raw, n_elems);
-            break; /* Q4_K */
-        case 6:
-            gguf_dequant_q5_0(s_dequant_buf, raw, n_elems);
-            break; /* Q5_0 */
-        case 7:
-            gguf_dequant_q5_1(s_dequant_buf, raw, n_elems);
-            break; /* Q5_1 */
-        case 13:
-            gguf_dequant_q5_k(s_dequant_buf, raw, n_elems);
-            break; /* Q5_K */
-        case 14:
-            gguf_dequant_q6_k(s_dequant_buf, raw, n_elems);
-            break; /* Q6_K */
-        case 8:
-            gguf_dequant_q8_0(s_dequant_buf, raw, n_elems);
-            break; /* Q8_0 */
-        case 20:
-            gguf_dequant_iq4_nl(s_dequant_buf, raw, n_elems);
-            break; /* IQ4_NL */
-        default:   /* F32 already decoded (ternary / other) */
-            for (size_t i = 0; i < n_elems; i++) {
-                ((float *)s_dequant_buf)[i] = ((const float *)raw)[i];
-            }
-            break;
-    }
-    return s_dequant_buf;
-}
+/* Per-thread scratch (memory/tls_scratch.h): s->xb pre-quantized to Q8K once per MoE layer (Q4K
+ * gate+up, shared w1+w3). Every user runs on the calling thread. */
+static TnTlsScratch s_xb_scratch = TN_TLS_SCRATCH_INIT;
 
 /* P4: Compute raw byte size of a quantized weight tensor.
  * Used to pass the correct length to madvise(MADV_WILLNEED). */
@@ -126,91 +59,15 @@ static void prefetch_expert_weights(const TransformerWeights *w, int layer, cons
     for (int i = 0; i < top_k; i++) {
         int e = selected[i];
         if (e < 0) continue;
-        if (w->moe_w1 && w->moe_w1[layer] && w->moe_w1[layer][e])
-            madvise((void *)w->moe_w1[layer][e], w13_bytes, MADV_WILLNEED);
-        if (w->moe_w3 && w->moe_w3[layer] && w->moe_w3[layer][e])
-            madvise((void *)w->moe_w3[layer][e], w13_bytes, MADV_WILLNEED);
-        if (w->moe_w2 && w->moe_w2[layer] && w->moe_w2[layer][e])
-            madvise((void *)w->moe_w2[layer][e], w2_bytes, MADV_WILLNEED);
+        if (w->moe.w1 && w->moe.w1[layer] && w->moe.w1[layer][e])
+            madvise((void *)w->moe.w1[layer][e], w13_bytes, MADV_WILLNEED);
+        if (w->moe.w3 && w->moe.w3[layer] && w->moe.w3[layer][e])
+            madvise((void *)w->moe.w3[layer][e], w13_bytes, MADV_WILLNEED);
+        if (w->moe.w2 && w->moe.w2[layer] && w->moe.w2[layer][e])
+            madvise((void *)w->moe.w2[layer][e], w2_bytes, MADV_WILLNEED);
     }
 }
 
-
-static int g_track_n_layers    = 0;
-static int g_track_n_experts   = 0;
-static uint32_t *g_expert_hits = NULL; /* [n_layers * num_experts] */
-
-void moe_expert_tracking_reset(int n_layers, int num_experts) {
-    int needed = n_layers * num_experts;
-    if (g_track_n_layers != n_layers || g_track_n_experts != num_experts) {
-        free(g_expert_hits);
-        g_expert_hits     = (uint32_t *)calloc((size_t)needed, sizeof(uint32_t));
-        g_track_n_layers  = n_layers;
-        g_track_n_experts = num_experts;
-    } else if (g_expert_hits) {
-        memset(g_expert_hits, 0, (size_t)needed * sizeof(uint32_t));
-    }
-}
-
-void moe_expert_tracking_print(int n_layers, int num_experts) {
-    if (!g_expert_hits || n_layers <= 0 || num_experts <= 0) return;
-
-    printf("\n--- Expert Utilisation Summary (%d MoE layers × %d experts) ---\n", n_layers,
-           num_experts);
-
-    int total_unique_global                     = 0;
-    uint32_t global_hits[MOE_MAX_EXPERTS_STACK] = {0};
-
-    for (int l = 0; l < n_layers; l++) {
-        uint32_t *row     = g_expert_hits + l * num_experts;
-        int unique        = 0;
-        uint32_t total    = 0;
-        int top5[5]       = {-1, -1, -1, -1, -1};
-        uint32_t top5v[5] = {0};
-
-        for (int e = 0; e < num_experts; e++) {
-            if (row[e] > 0) {
-                unique++;
-                global_hits[e] += row[e];
-            }
-            total += row[e];
-            /* maintain top-5 */
-            for (int k = 0; k < 5; k++) {
-                if (row[e] > top5v[k]) {
-                    /* shift down */
-                    for (int j = 4; j > k; j--) {
-                        top5[j]  = top5[j - 1];
-                        top5v[j] = top5v[j - 1];
-                    }
-                    top5[k]  = e;
-                    top5v[k] = row[e];
-                    break;
-                }
-            }
-        }
-
-        printf("  L%02d: %3d unique / %2d total  (invocations: %4u)  top:", l, unique, num_experts,
-               total);
-        for (int k = 0; k < 5 && top5[k] >= 0; k++) printf(" E%d(%u)", top5[k], top5v[k]);
-        printf("\n");
-    }
-
-    /* Global expert utilisation across all layers */
-    int global_unique = 0;
-    for (int e = 0; e < num_experts; e++)
-        if (global_hits[e] > 0) global_unique++;
-    printf("  Global: %d / %d experts activated (%.1f%%)\n", global_unique, num_experts,
-           100.0f * global_unique / num_experts);
-    (void)total_unique_global;
-    printf("---\n");
-}
-
-void moe_expert_tracking_free(void) {
-    free(g_expert_hits);
-    g_expert_hits     = NULL;
-    g_track_n_layers  = 0;
-    g_track_n_experts = 0;
-}
 
 /* 2026-10-21: fused two-dispatch expert path (moe_experts.c). Builds one job
  * per selected routed expert (+ the shared expert) whose weight types have
@@ -220,12 +77,64 @@ void moe_expert_tracking_free(void) {
  * tensors) stays on the legacy path below. PZ_MOE_FUSED=0 forces the legacy
  * path (A/B and bisecting aid). */
 static int moe_fused_enabled(void) {
-    static int cached = -1;
-    if (cached < 0) {
-        const char *e = getenv("PZ_MOE_FUSED");
-        cached        = (e && e[0] == '0') ? 0 : 1;
+    static atomic_int cached = TN_ENV_FLAG_UNSET;
+    return tn_env_on_unless_zero(&cached, "PZ_MOE_FUSED");
+}
+
+/* Quantisation types of the routed experts' gate/up (w13) and down (w2) matrices of this layer:
+ * the per-layer value when the file has one, else the global one. */
+static void fused_expert_types(const TransformerWeights *w, int layer, int *w13, int *w2) {
+    const WeightsExpertQuant *q = &w->expert_quant;
+    *w13 = (q->w13_per_layer && q->w13_per_layer[layer]) ? q->w13_per_layer[layer] : q->w13_type;
+    *w2  = (q->w2_per_layer && q->w2_per_layer[layer]) ? q->w2_per_layer[layer] : q->w2_type;
+}
+
+/* Appends one job per selected routed expert; returns 1 when the routed experts can run fused. */
+static int fused_add_routed(TnMoEExpertJob *jobs, int *nj, const TransformerWeights *w,
+                            const MoEConfig *mc, int layer, const int *selected,
+                            const float *scores, int top_k, int dim) {
+    if (!w->expert_quant.present) return 0;
+    int w13, w2;
+    fused_expert_types(w, layer, &w13, &w2);
+    TnMoEExpertJob probe = {(const uint8_t *)1,
+                            (const uint8_t *)1,
+                            (const uint8_t *)1,
+                            w13,
+                            w13,
+                            w2,
+                            mc->expert_hidden_dim,
+                            0.0f};
+    if (!moe_experts_job_ok(&probe, dim)) return 0;
+    for (int i = 0; i < top_k; i++) {
+        int e = selected[i];
+        if (e < 0 || e >= mc->num_experts) continue;
+        TnMoEExpertJob j = {(const uint8_t *)w->moe.w1[layer][e],
+                            (const uint8_t *)w->moe.w3[layer][e],
+                            (const uint8_t *)w->moe.w2[layer][e],
+                            w13,
+                            w13,
+                            w2,
+                            mc->expert_hidden_dim,
+                            scores[i]};
+        jobs[(*nj)++]    = j;
     }
-    return cached;
+    return 1;
+}
+
+/* Appends the shared expert's job; returns 1 when it can run fused. */
+static int fused_add_shared(TnMoEExpertJob *jobs, int *nj, const TransformerWeights *w,
+                            const MoEConfig *mc, int layer, int dim) {
+    if (mc->n_shared_experts <= 0 || !w->shared.w1 || !w->shared.w1[layer]) return 0;
+    if (!w->shared.w1_type_per_layer || !w->shared.w2_type_per_layer ||
+        !w->shared.w3_type_per_layer)
+        return 0;
+    TnMoEExpertJob j = {(const uint8_t *)w->shared.w1[layer], (const uint8_t *)w->shared.w3[layer],
+                        (const uint8_t *)w->shared.w2[layer], w->shared.w1_type_per_layer[layer],
+                        w->shared.w3_type_per_layer[layer],   w->shared.w2_type_per_layer[layer],
+                        mc->shared_expert_hidden_dim,         1.0f};
+    if (!moe_experts_job_ok(&j, dim)) return 0;
+    jobs[(*nj)++] = j;
+    return 1;
 }
 
 static void moe_fused_try(RunState *s, const TransformerWeights *w, const Config *cfg,
@@ -236,101 +145,56 @@ static void moe_fused_try(RunState *s, const TransformerWeights *w, const Config
     if (!moe_fused_enabled()) return;
     const int dim = cfg->dim;
     TnMoEExpertJob jobs[MOE_SCORE_BUF_SIZE + 1];
-    int nj = 0, routed = 0, shared = 0;
+    int nj = 0;
 
-    if (w->has_expert_quant) {
-        int w13 = (w->expert_w13_quant_per_layer && w->expert_w13_quant_per_layer[layer])
-                      ? w->expert_w13_quant_per_layer[layer]
-                      : w->expert_w13_quant_type;
-        int w2  = (w->expert_w2_quant_per_layer && w->expert_w2_quant_per_layer[layer])
-                      ? w->expert_w2_quant_per_layer[layer]
-                      : w->expert_w2_quant_type;
-        TnMoEExpertJob probe = {(const uint8_t *)1,
-                                (const uint8_t *)1,
-                                (const uint8_t *)1,
-                                w13,
-                                w13,
-                                w2,
-                                mc->expert_hidden_dim,
-                                0.0f};
-        if (moe_experts_job_ok(&probe, dim)) {
-            for (int i = 0; i < top_k; i++) {
-                int e = selected[i];
-                if (e < 0 || e >= mc->num_experts) continue;
-                TnMoEExpertJob j = {(const uint8_t *)w->moe_w1[layer][e],
-                                    (const uint8_t *)w->moe_w3[layer][e],
-                                    (const uint8_t *)w->moe_w2[layer][e],
-                                    w13,
-                                    w13,
-                                    w2,
-                                    mc->expert_hidden_dim,
-                                    scores[i]};
-                jobs[nj++]       = j;
-            }
-            routed = 1;
-        }
-    }
-    if (mc->n_shared_experts > 0 && w->moe_shared_w1 && w->moe_shared_w1[layer] &&
-        w->shared_w1_type_per_layer && w->shared_w2_type_per_layer && w->shared_w3_type_per_layer) {
-        TnMoEExpertJob j = {(const uint8_t *)w->moe_shared_w1[layer],
-                            (const uint8_t *)w->moe_shared_w3[layer],
-                            (const uint8_t *)w->moe_shared_w2[layer],
-                            w->shared_w1_type_per_layer[layer],
-                            w->shared_w3_type_per_layer[layer],
-                            w->shared_w2_type_per_layer[layer],
-                            mc->shared_expert_hidden_dim,
-                            1.0f};
-        if (moe_experts_job_ok(&j, dim)) {
-            jobs[nj++] = j;
-            shared     = 1;
-        }
-    }
+    int routed = fused_add_routed(jobs, &nj, w, mc, layer, selected, scores, top_k, dim);
+    int shared = fused_add_shared(jobs, &nj, w, mc, layer, dim);
     if (nj == 0) return;
     if (moe_experts_forward(s->xb2, s->xb, jobs, nj, dim, cfg->act_type, tp) != 0) return;
-    if (routed && g_expert_hits && layer < g_track_n_layers) {
+    if (routed) {
         for (int i = 0; i < top_k; i++) {
             int e = selected[i];
-            if (e >= 0 && e < mc->num_experts && e < g_track_n_experts)
-                g_expert_hits[layer * g_track_n_experts + e]++;
+            if (e >= 0 && e < mc->num_experts) moe_track_hit(layer, e);
         }
     }
     *routed_done = routed;
     *shared_done = shared;
 }
-/* -------------------------------------------------------------------------- */
 
-void moe_ffn_forward(RunState *s, const TransformerWeights *w, const Config *cfg,
-                     const MoEConfig *mc, int layer, ThreadPool *tp) {
-    int dim         = cfg->dim;
-    int expert_hdim = mc->expert_hidden_dim;
-    int num_experts = mc->num_experts;
-    int top_k       = mc->num_experts_per_tok;
+/* P4: the raw-byte sizes of one expert's gate/up and down tensors, for madvise(). */
+static void prefetch_selected(const TransformerWeights *w, int layer, int dim, int expert_hdim,
+                              const int *selected, int top_k) {
+    if (!w->expert_quant.present) return;
+    int w2_qtype     = (w->expert_quant.w2_per_layer && w->expert_quant.w2_per_layer[layer])
+                           ? w->expert_quant.w2_per_layer[layer]
+                           : w->expert_quant.w2_type;
+    size_t w13_bytes = quant_tensor_bytes(w->expert_quant.w13_type, (size_t)dim * expert_hdim);
+    size_t w2_bytes  = quant_tensor_bytes(w2_qtype, (size_t)expert_hdim * dim);
+    prefetch_expert_weights(w, layer, selected, top_k, w13_bytes, w2_bytes);
+}
 
-    /* Stack buffers for router outputs — tiny (≤512 floats / ints) */
-    float expert_scores[MOE_SCORE_BUF_SIZE];
-    int selected_experts[MOE_SCORE_BUF_SIZE];
-    float selected_scores[MOE_SCORE_BUF_SIZE];
+/* Steps 1-2: RMSNorm s->x into s->xb, then the router selects the top_k experts (gate weight
+ * w->moe_gate_w[layer], F32 [num_experts x dim]). */
+static void moe_norm_and_route(RunState *s, const TransformerWeights *w, const Config *cfg,
+                               const MoEConfig *mc, int layer, ThreadPool *tp, float *scores,
+                               int *selected, float *selected_scores) {
+    const int dim         = cfg->dim;
+    const int num_experts = mc->num_experts;
+    const int top_k       = mc->num_experts_per_tok;
 
-    /* ----------------------------------------------------------------
-     * Step 1: RMSNorm  →  s->xb
-     * Identical to the dense path; normalise s->x into s->xb.
-     * ---------------------------------------------------------------- */
+    /* Identical to the dense path; normalise s->x into s->xb. */
     int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-    tn_rmsnorm(s->xb, s->x, w->rms_ffn_weight[layer], dim, cfg->rms_norm_eps);
+    tn_rmsnorm(s->xb, s->x, w->ffn.norm[layer], dim, cfg->rms_norm_eps);
     if (t_step) {
         tn_step_timing_add(TN_STEP_13_PRE_FFN_RMSNORM, tn_step_timing_now_ns() - t_step);
     }
     DBG_DUMP(layer, "ffn_norm", s->xb, dim);
 
-    /* ----------------------------------------------------------------
-     * Step 2: Router — select top_k experts
-     * Gate weight is w->moe_gate_w[layer] — F32 [num_experts × dim].
-     * ---------------------------------------------------------------- */
-    /* Dump raw router logits (pre-softmax) — only when tensor dump is active */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    /* Dump raw router logits (pre-softmax) — only when tensor dump is active */
     if (g_dump_fp) {
         float raw_logits[MOE_SCORE_BUF_SIZE];
-        parallel_matmul_float32(raw_logits, s->xb, (const float *)w->moe_gate_w[layer], dim,
+        parallel_matmul_float32(raw_logits, s->xb, (const float *)w->moe.gate_w[layer], dim,
                                 num_experts, tp);
         DBG_DUMP(layer, "router_logits", raw_logits, num_experts);
     }
@@ -338,370 +202,108 @@ void moe_ffn_forward(RunState *s, const TransformerWeights *w, const Config *cfg
     /* Router computes gate matmul, gating, top-k (+ norm/scale) in one call */
     const MoERouterOpts ropts = {mc->expert_gating_func, mc->expert_weights_norm,
                                  mc->expert_weights_scale};
-    moe_router_forward_opts(expert_scores, selected_experts, selected_scores, s->xb,
-                            (const float *)w->moe_gate_w[layer], dim, num_experts, top_k, &ropts,
+    moe_router_forward_opts(scores, selected, selected_scores, s->xb,
+                            (const float *)w->moe.gate_w[layer], dim, num_experts, top_k, &ropts,
                             tp);
     if (t_step) {
         tn_step_timing_add(TN_STEP_15_MOE_ROUTING, tn_step_timing_now_ns() - t_step);
     }
-    DBG_DUMP(layer, "ffn_moe_probs", expert_scores, num_experts);
+    DBG_DUMP(layer, "ffn_moe_probs", scores, num_experts);
 
     if (g_tn_verbose) {
-        fprintf(stderr, "[DBG] L%02d router: xb_max=%.4f  experts=[", layer, (float)0.0f);
         float xb_max = 0.0f;
         for (int ii = 0; ii < dim; ii++) {
             float a = s->xb[ii] < 0 ? -s->xb[ii] : s->xb[ii];
             if (a > xb_max) xb_max = a;
         }
-        fprintf(stderr, "[DBG] L%02d router: xb_max_abs=%.4f  selected=[", layer, xb_max);
-        for (int ii = 0; ii < top_k; ii++)
-            fprintf(stderr, "%d(%.3f)%s", selected_experts[ii], selected_scores[ii],
-                    ii < top_k - 1 ? ", " : "");
-        fprintf(stderr, "]\n");
+        char sel[MOE_SCORE_BUF_SIZE * 16 + 1];
+        size_t used = 0;
+        sel[0]      = '\0';
+        for (int ii = 0; ii < top_k && used + 16 < sizeof(sel); ii++)
+            used += (size_t)snprintf(sel + used, sizeof(sel) - used, "%d(%.3f)%s", selected[ii],
+                                     selected_scores[ii], ii < top_k - 1 ? ", " : "");
+        TN_LOG_DBG("moe_ffn", "[DBG] L%02d router: xb_max_abs=%.4f  selected=[%s]\n", layer, xb_max,
+                   sel);
     }
+}
+
+/* P1: s->xb quantised to Q8K once, reused by every Q4K dispatch (batched gate+up for routed
+ * experts, shared expert w1+w3). NULL when nothing will use it. */
+static TnQ8KActBlock *moe_quantize_xb(RunState *s, const TransformerWeights *w, int layer, int dim,
+                                      int routed_done, int shared_done) {
+    int xb_n_blocks = dim / TN_Q8K_BLOCK;
+    if (!(routed_done && shared_done) && w->expert_quant.present &&
+        (w->expert_quant.w13_type == GGUF_TYPE_Q4_K ||
+         (w->shared.w1_type_per_layer && w->shared.w1_type_per_layer[layer] == GGUF_TYPE_Q4_K))) {
+        TnQ8KActBlock *q = (TnQ8KActBlock *)tn_tls_scratch(
+            &s_xb_scratch, (size_t)xb_n_blocks * sizeof(TnQ8KActBlock));
+        if (q) tn_quantize_q8k(q, s->xb, xb_n_blocks);
+        return q;
+    }
+    return NULL;
+}
+
+void moe_ffn_forward(RunState *s, const TransformerWeights *w, const Config *cfg,
+                     const MoEConfig *mc, int layer, ThreadPool *tp) {
+    const int dim         = cfg->dim;
+    const int expert_hdim = mc->expert_hidden_dim;
+    const int top_k       = mc->num_experts_per_tok;
+
+    /* Stack buffers for router outputs — tiny (≤512 floats / ints) */
+    float expert_scores[MOE_SCORE_BUF_SIZE];
+    int selected_experts[MOE_SCORE_BUF_SIZE];
+    float selected_scores[MOE_SCORE_BUF_SIZE];
+
+    moe_norm_and_route(s, w, cfg, mc, layer, tp, expert_scores, selected_experts, selected_scores);
 
     /* P4: Prefetch selected expert weight pages from mmap into OS page cache
      * immediately after routing. By the time expert 0's FFN finishes,
      * the OS will have page-faulted in experts 1..top_k-1's pages. */
-    if (w->has_expert_quant) {
-        int w2_qtype     = (w->expert_w2_quant_per_layer && w->expert_w2_quant_per_layer[layer])
-                               ? w->expert_w2_quant_per_layer[layer]
-                               : w->expert_w2_quant_type;
-        size_t w13_bytes = quant_tensor_bytes(w->expert_w13_quant_type, (size_t)dim * expert_hdim);
-        size_t w2_bytes  = quant_tensor_bytes(w2_qtype, (size_t)expert_hdim * dim);
-        prefetch_expert_weights(w, layer, selected_experts, top_k, w13_bytes, w2_bytes);
-    }
+    prefetch_selected(w, layer, dim, expert_hdim, selected_experts, top_k);
 
-    /* ----------------------------------------------------------------
-     * Step 3: Accumulate expert outputs into s->xb2 (zeroed first)
-     * For each selected expert: run SwiGLU FFN, scale, accumulate.
-     * Reuses s->hb (gate after activation) and s->hb2 (up proj).
-     * ---------------------------------------------------------------- */
+    /* Step 3: accumulate expert outputs into s->xb2 (zeroed first); each selected expert runs a
+     * SwiGLU FFN, scaled by its routing score. Reuses s->hb (gate after activation) and s->hb2. */
     memset(s->xb2, 0, dim * sizeof(float));
 
     int routed_done = 0, shared_done = 0;
-    t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+    int64_t t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     moe_fused_try(s, w, cfg, mc, layer, selected_experts, selected_scores, top_k, tp, &routed_done,
                   &shared_done);
     if (t_step && (routed_done || shared_done)) {
         tn_step_timing_add(TN_STEP_16_MOE_ROUTED, tn_step_timing_now_ns() - t_step);
     }
 
-    /* P1: Pre-quantize s->xb to Q8K once — reused by all Q4K dispatches
-     * (batched gate+up for routed experts, shared expert w1+w3). */
-    int xb_n_blocks = dim / TN_Q8K_BLOCK;
-    if (s_xb_q8k_blocks < xb_n_blocks) {
-        free(s_xb_q8k);
-        s_xb_q8k        = (TnQ8KActBlock *)malloc((size_t)xb_n_blocks * sizeof(TnQ8KActBlock));
-        s_xb_q8k_blocks = s_xb_q8k ? xb_n_blocks : 0;
-    }
-    if (s_xb_q8k && !(routed_done && shared_done) && w->has_expert_quant &&
-        (w->expert_w13_quant_type == GGUF_TYPE_Q4_K ||
-         (w->shared_w1_type_per_layer && w->shared_w1_type_per_layer[layer] == GGUF_TYPE_Q4_K)))
-        tn_quantize_q8k(s_xb_q8k, s->xb, xb_n_blocks);
+    const TnQ8KActBlock *xb_q8k = moe_quantize_xb(s, w, layer, dim, routed_done, shared_done);
 
-    /* ----------------------------------------------------------------
-     * Expert FFN — batched path for Q4K gate/up + Q5_1 down:
-     *   3 threadpool dispatches per MoE layer (was top_k×3 = 18).
-     *   Workers stay active across all expert rows in a single dispatch,
-     *   eliminating spin-wait gaps between sequential per-expert calls.
-     *
-     * Fallback: sequential per-expert loop for ternary / non-Q4K types.
-     * ---------------------------------------------------------------- */
+    /* Batched path for Q4K gate/up: 3 threadpool dispatches per MoE layer (was top_k*3 = 18);
+     * sequential per-expert loop for ternary / non-Q4K types. */
     t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
     if (routed_done) {
         /* handled by moe_fused_try() above */
-    } else if (w->has_expert_quant && w->expert_w13_quant_type == GGUF_TYPE_Q4_K) {
-
-        int w2_qtype = (w->expert_w2_quant_per_layer && w->expert_w2_quant_per_layer[layer])
-                           ? w->expert_w2_quant_per_layer[layer]
-                           : w->expert_w2_quant_type;
-
-        /* Grow module-level scratch buffers if dimensions increased */
-        if (s_batch_top_k < top_k || s_batch_ehdim < expert_hdim || s_batch_dim < dim) {
-            free(s_gate_buf);
-            free(s_up_buf);
-            free(s_down_buf);
-            s_gate_buf    = (float *)malloc((size_t)top_k * expert_hdim * sizeof(float));
-            s_up_buf      = (float *)malloc((size_t)top_k * expert_hdim * sizeof(float));
-            s_down_buf    = (float *)malloc((size_t)top_k * dim * sizeof(float));
-            s_batch_top_k = top_k;
-            s_batch_ehdim = expert_hdim;
-            s_batch_dim   = dim;
-        }
-
-        /* Build pointer arrays — one entry per valid selected expert */
-        float *gate_ptrs[MOE_SCORE_BUF_SIZE];
-        float *up_ptrs[MOE_SCORE_BUF_SIZE];
-        float *down_ptrs[MOE_SCORE_BUF_SIZE];
-        const uint8_t *w1_ptrs[MOE_SCORE_BUF_SIZE];
-        const uint8_t *w3_ptrs[MOE_SCORE_BUF_SIZE];
-        const uint8_t *w2_ptrs[MOE_SCORE_BUF_SIZE];
-        float sel_sc[MOE_SCORE_BUF_SIZE];
-        int valid_k = 0;
-
-        for (int i = 0; i < top_k; i++) {
-            int e = selected_experts[i];
-            if (e < 0 || e >= num_experts) continue;
-            if (g_expert_hits && layer < g_track_n_layers && e < g_track_n_experts)
-                g_expert_hits[layer * g_track_n_experts + e]++;
-            gate_ptrs[valid_k] = s_gate_buf + (size_t)valid_k * expert_hdim;
-            up_ptrs[valid_k]   = s_up_buf + (size_t)valid_k * expert_hdim;
-            down_ptrs[valid_k] = s_down_buf + (size_t)valid_k * dim;
-            w1_ptrs[valid_k]   = (const uint8_t *)w->moe_w1[layer][e];
-            w3_ptrs[valid_k]   = (const uint8_t *)w->moe_w3[layer][e];
-            w2_ptrs[valid_k]   = (const uint8_t *)w->moe_w2[layer][e];
-            sel_sc[valid_k]    = selected_scores[i];
-            valid_k++;
-        }
-
-        if (valid_k > 0) {
-            int64_t ts_gate = 0, ts_up = 0, ts_silu = 0, ts_down = 0, ts_acc = 0;
-            if (tn_step_timing_enabled()) ts_gate = tn_step_timing_now_ns();
-
-            /* Dispatch 1: all gate projections (Q4K, pre-quantized xb) */
-            if (s_xb_q8k)
-                parallel_matmul_q4k_batch_preq((float *const *)gate_ptrs, s_xb_q8k,
-                                               (const uint8_t *const *)w1_ptrs, dim, expert_hdim,
-                                               valid_k, tp);
-            else
-                parallel_matmul_q4k_batch((float *const *)gate_ptrs, s->xb,
-                                          (const uint8_t *const *)w1_ptrs, dim, expert_hdim,
-                                          valid_k, tp);
-            if (tn_step_timing_enabled()) {
-                ts_up = tn_step_timing_now_ns();
-            }
-
-            /* Dispatch 2: all up projections (Q4K, pre-quantized xb — no re-quantise) */
-            if (s_xb_q8k)
-                parallel_matmul_q4k_batch_preq((float *const *)up_ptrs, s_xb_q8k,
-                                               (const uint8_t *const *)w3_ptrs, dim, expert_hdim,
-                                               valid_k, tp);
-            else
-                parallel_matmul_q4k_batch((float *const *)up_ptrs, s->xb,
-                                          (const uint8_t *const *)w3_ptrs, dim, expert_hdim,
-                                          valid_k, tp);
-            if (tn_step_timing_enabled()) {
-                ts_silu = tn_step_timing_now_ns();
-            }
-
-            /* SiLU + gate×up fusion (sequential, ~8K ops per expert) */
-            for (int i = 0; i < valid_k; i++) {
-                if (cfg->act_type == 1)
-                    tn_relu2(gate_ptrs[i], expert_hdim);
-                else
-                    tn_silu(gate_ptrs[i], expert_hdim);
-                tn_vec_mul(gate_ptrs[i], gate_ptrs[i], up_ptrs[i], expert_hdim);
-            }
-            if (tn_step_timing_enabled()) {
-                ts_down = tn_step_timing_now_ns();
-            }
-
-            /* Dispatch 3: all down projections (per-expert inputs) */
-            if (w2_qtype == GGUF_TYPE_Q5_1) {
-                parallel_matmul_q5_1_batch(down_ptrs, gate_ptrs, (const uint8_t *const *)w2_ptrs,
-                                           expert_hdim, dim, valid_k, tp);
-            } else if (w2_qtype == GGUF_TYPE_Q5_0) {
-                parallel_matmul_q5_0_batch(down_ptrs, gate_ptrs, (const uint8_t *const *)w2_ptrs,
-                                           expert_hdim, dim, valid_k, tp);
-            } else if (w2_qtype == GGUF_TYPE_Q8_0) {
-                parallel_matmul_q8_0_batch(down_ptrs, gate_ptrs, (const uint8_t *const *)w2_ptrs,
-                                           expert_hdim, dim, valid_k, tp);
-            } else if (w2_qtype == GGUF_TYPE_Q4_K) {
-                /* Q4K down: sequential (input is per-expert, not shared) */
-                for (int i = 0; i < valid_k; i++)
-                    parallel_matmul_q4k(down_ptrs[i], gate_ptrs[i], w2_ptrs[i], expert_hdim, dim,
-                                        tp);
-            } else {
-                /* Other types: dequant + F32 sequential */
-                for (int i = 0; i < valid_k; i++) {
-                    size_t n_el = (size_t)expert_hdim * dim;
-                    float *fw   = dequant_expert_weight(w->moe_w2[layer][selected_experts[i]],
-                                                        w2_qtype, n_el);
-                    if (fw)
-                        parallel_matmul_float32(down_ptrs[i], gate_ptrs[i], fw, expert_hdim, dim,
-                                                tp);
-                }
-            }
-
-            if (tn_step_timing_enabled()) {
-                ts_acc = tn_step_timing_now_ns();
-            }
-
-            /* Weighted accumulate: xb2 += sel_sc[i] * down_ptrs[i] */
-            for (int i = 0; i < valid_k; i++) tn_vec_saxpy(s->xb2, sel_sc[i], down_ptrs[i], dim);
-
-            /* Print sub-timing for first 3 MoE calls (diagnostic only) */
-            static int sub_timing_count = 0;
-            if (tn_step_timing_enabled() && sub_timing_count < 3) {
-                sub_timing_count++;
-                int64_t t_end = tn_step_timing_now_ns();
-                fprintf(
-                    stderr,
-                    "[sub-step16 #%d] gate=%.3fms up=%.3fms silu=%.3fms down=%.3fms acc=%.3fms\n",
-                    sub_timing_count, (ts_up - ts_gate) * 1e-6, (ts_silu - ts_up) * 1e-6,
-                    (ts_down - ts_silu) * 1e-6, (ts_acc - ts_down) * 1e-6, (t_end - ts_acc) * 1e-6);
-            }
-        }
-
+    } else if (w->expert_quant.present && w->expert_quant.w13_type == GGUF_TYPE_Q4_K) {
+        moe_legacy_routed_batched(s, w, cfg, mc, layer, selected_experts, selected_scores, top_k,
+                                  xb_q8k, tp);
     } else {
-        /* Sequential fallback for ternary or non-Q4K expert weights */
-        for (int i = 0; i < top_k; i++) {
-            int e    = selected_experts[i];
-            float sc = selected_scores[i];
-            if (e < 0 || e >= num_experts) continue;
-
-            if (g_expert_hits && layer < g_track_n_layers && e < g_track_n_experts)
-                g_expert_hits[layer * g_track_n_experts + e]++;
-
-            if (w->has_expert_quant) {
-                size_t w13_elems = (size_t)dim * (size_t)expert_hdim;
-                size_t w2_elems  = (size_t)expert_hdim * (size_t)dim;
-
-                /* Resolve per-layer w13 quant type (fixes mixed-type models like DASH variant) */
-                int w13_qtype =
-                    (w->expert_w13_quant_per_layer && w->expert_w13_quant_per_layer[layer])
-                        ? w->expert_w13_quant_per_layer[layer]
-                        : w->expert_w13_quant_type;
-
-                /* P7: Fused Q2K matvec — dequant + dot in one pass, no intermediate
-                 * float32 buffer.  Saves ~11.5 MB write + ~11.5 MB re-read vs old path. */
-                if (w13_qtype == GGUF_TYPE_Q2_K) {
-                    parallel_matvec_q2k(s->hb, s->xb, (const uint8_t *)w->moe_w1[layer][e], dim,
-                                        expert_hdim, tp);
-                    parallel_matvec_q2k(s->hb2, s->xb, (const uint8_t *)w->moe_w3[layer][e], dim,
-                                        expert_hdim, tp);
-                } else {
-                    float *fw1 = dequant_expert_weight(w->moe_w1[layer][e], w13_qtype, w13_elems);
-                    if (fw1) parallel_matmul_float32(s->hb, s->xb, fw1, dim, expert_hdim, tp);
-
-                    float *fw3 = dequant_expert_weight(w->moe_w3[layer][e], w13_qtype, w13_elems);
-                    if (fw3) parallel_matmul_float32(s->hb2, s->xb, fw3, dim, expert_hdim, tp);
-                }
-
-                if (cfg->act_type == 1)
-                    tn_relu2(s->hb, expert_hdim);
-                else
-                    tn_silu(s->hb, expert_hdim);
-                tn_vec_mul(s->hb, s->hb, s->hb2, expert_hdim);
-
-                int w2_qtype = (w->expert_w2_quant_per_layer && w->expert_w2_quant_per_layer[layer])
-                                   ? w->expert_w2_quant_per_layer[layer]
-                                   : w->expert_w2_quant_type;
-                if (w2_qtype == GGUF_TYPE_Q2_K) {
-                    /* P7: fused Q2K down projection */
-                    parallel_matvec_q2k(s->q, s->hb, (const uint8_t *)w->moe_w2[layer][e],
-                                        expert_hdim, dim, tp);
-                } else if (w2_qtype == GGUF_TYPE_Q4_K) {
-                    parallel_matmul_q4k(s->q, s->hb, (const uint8_t *)w->moe_w2[layer][e],
-                                        expert_hdim, dim, tp);
-                } else if (w2_qtype == GGUF_TYPE_Q5_1) {
-                    parallel_matmul_q5_1(s->q, s->hb, (const uint8_t *)w->moe_w2[layer][e],
-                                         expert_hdim, dim, tp);
-                } else {
-                    float *fw2 = dequant_expert_weight(w->moe_w2[layer][e], w2_qtype, w2_elems);
-                    if (fw2) parallel_matmul_float32(s->q, s->hb, fw2, expert_hdim, dim, tp);
-                }
-            } else {
-                /* Ternary-packed weights (native .bin format) */
-                parallel_ternary_matmul_packed(s->hb, s->xb, (const tn_u8 *)w->moe_w1[layer][e],
-                                               dim, expert_hdim, w->moe_s1[layer][e], tp);
-
-                parallel_ternary_matmul_packed(s->hb2, s->xb, (const tn_u8 *)w->moe_w3[layer][e],
-                                               dim, expert_hdim, w->moe_s3[layer][e], tp);
-
-                if (cfg->act_type == 1)
-                    tn_relu2(s->hb, expert_hdim);
-                else
-                    tn_silu(s->hb, expert_hdim);
-                tn_vec_mul(s->hb, s->hb, s->hb2, expert_hdim);
-
-                parallel_ternary_matmul_packed(s->q, s->hb, (const tn_u8 *)w->moe_w2[layer][e],
-                                               expert_hdim, dim, w->moe_s2[layer][e], tp);
-            }
-
-            tn_vec_saxpy(s->xb2, sc, s->q, dim);
-        }
+        moe_legacy_routed_sequential(s, w, cfg, mc, layer, selected_experts, selected_scores, top_k,
+                                     tp);
     }
     if (t_step && !routed_done) {
         tn_step_timing_add(TN_STEP_16_MOE_ROUTED, tn_step_timing_now_ns() - t_step);
     }
     DBG_DUMP(layer, "ffn_moe_out", s->xb2, dim);
 
-    /* ----------------------------------------------------------------
-     * Step 3b: Shared expert FFN (DeepSeek-V2 style)
-     * Always-active: runs in addition to top-k routed experts.
-     * Accumulates directly into xb2 with weight 1.0 (no routing scale).
-     * Each projection dispatches on shared_w{1,2,3}_type_per_layer[layer]:
-     *   GGUF_TYPE_Q4_K (12) → fused Q4K kernel (raw bytes, on-the-fly dequant)
-     *   any other type      → F32 dequant path (tensor was dequantized at load)
-     * This handles the mixed-type case: e.g. ffn_down_shexp is Q5_K on layer 1
-     * but Q4_K on all other MoE layers.
-     * ---------------------------------------------------------------- */
-    if (!shared_done && mc->n_shared_experts > 0 && w->moe_shared_w1 && w->moe_shared_w1[layer]) {
-        t_step    = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
-        int shdim = mc->shared_expert_hidden_dim;
-        int w1t   = w->shared_w1_type_per_layer ? w->shared_w1_type_per_layer[layer] : 0;
-        int w2t   = w->shared_w2_type_per_layer ? w->shared_w2_type_per_layer[layer] : 0;
-        int w3t   = w->shared_w3_type_per_layer ? w->shared_w3_type_per_layer[layer] : 0;
-
-        /* P2: fuse shared expert gate (w1) + up (w3) into one batch dispatch
-         * when both are Q4K and pre-quantized acts are available.
-         * Saves 1 thread-pool dispatch per MoE layer (26 total per token). */
-        if (w1t == GGUF_TYPE_Q4_K && w3t == GGUF_TYPE_Q4_K && s_xb_q8k) {
-            float *sh_outs[2]       = {s->hb, s->hb2};
-            const uint8_t *sh_ws[2] = {(const uint8_t *)w->moe_shared_w1[layer],
-                                       (const uint8_t *)w->moe_shared_w3[layer]};
-            parallel_matmul_q4k_batch_preq(sh_outs, s_xb_q8k, sh_ws, dim, shdim, 2, tp);
-        } else {
-            /* Gate projection (w1) */
-            if (w1t == GGUF_TYPE_Q4_K && s_xb_q8k)
-                parallel_matmul_q4k_preq(s->hb, s_xb_q8k, (const uint8_t *)w->moe_shared_w1[layer],
-                                         dim, shdim, tp);
-            else if (w1t == GGUF_TYPE_Q4_K)
-                parallel_matmul_q4k(s->hb, s->xb, (const uint8_t *)w->moe_shared_w1[layer], dim,
-                                    shdim, tp);
-            else
-                parallel_matmul_float32(s->hb, s->xb, (const float *)w->moe_shared_w1[layer], dim,
-                                        shdim, tp);
-
-            /* Up projection (w3) */
-            if (w3t == GGUF_TYPE_Q4_K && s_xb_q8k)
-                parallel_matmul_q4k_preq(s->hb2, s_xb_q8k, (const uint8_t *)w->moe_shared_w3[layer],
-                                         dim, shdim, tp);
-            else if (w3t == GGUF_TYPE_Q4_K)
-                parallel_matmul_q4k(s->hb2, s->xb, (const uint8_t *)w->moe_shared_w3[layer], dim,
-                                    shdim, tp);
-            else
-                parallel_matmul_float32(s->hb2, s->xb, (const float *)w->moe_shared_w3[layer], dim,
-                                        shdim, tp);
-        }
-
-        if (cfg->act_type == 1)
-            tn_relu2(s->hb, shdim);
-        else
-            tn_silu(s->hb, shdim);
-        tn_vec_mul(s->hb, s->hb, s->hb2, shdim);
-
-        /* Down projection (w2) */
-        if (w2t == GGUF_TYPE_Q4_K)
-            parallel_matmul_q4k(s->q, s->hb, (const uint8_t *)w->moe_shared_w2[layer], shdim, dim,
-                                tp);
-        else
-            parallel_matmul_float32(s->q, s->hb, (const float *)w->moe_shared_w2[layer], shdim, dim,
-                                    tp);
-
-        tn_vec_saxpy(s->xb2, 1.0f, s->q, dim);
+    /* Step 3b: the shared expert (DeepSeek-V2 style) is always active, on top of the routed ones.
+     */
+    if (!shared_done && mc->n_shared_experts > 0 && w->shared.w1 && w->shared.w1[layer]) {
+        t_step = tn_step_timing_enabled() ? tn_step_timing_now_ns() : 0;
+        moe_legacy_shared(s, w, cfg, mc, layer, xb_q8k, tp);
         if (t_step) {
             tn_step_timing_add(TN_STEP_17_SHARED_EXPERT, tn_step_timing_now_ns() - t_step);
         }
         DBG_DUMP(layer, "ffn_shexp", s->q, dim);
     }
 
-    /* ----------------------------------------------------------------
-     * Step 4: Residual connection  →  s->x += s->xb2
-     * Same as the dense FFN residual.
-     * ---------------------------------------------------------------- */
+    /* Step 4: residual connection, s->x += s->xb2 (same as the dense FFN). */
     tn_vec_add(s->x, s->x, s->xb2, dim);
     DBG_DUMP(layer, "ffn_out", s->x, dim);
 }

@@ -29,19 +29,22 @@ Examples
 """
 
 import argparse
+import os
 import pathlib
 import shutil
 import subprocess
 import sys
+from typing import Any
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-import benchlib as bl  # noqa: E402
-import hardware_profile as hp  # noqa: E402
-import gate  # noqa: E402
+import benchlib as bl
+import gate
+import hardware_profile as hp
 
 
-def parse_binaries(spec):
-    out = {}
+def parse_binaries(spec: str) -> dict[str, str]:
+    """Parses "label=path,label=path" into {label: path}."""
+    out: dict[str, str] = {}
     for item in [s for s in spec.split(",") if s.strip()]:
         if "=" not in item:
             raise SystemExit(f"--binaries wants label=path pairs, got '{item}'")
@@ -50,13 +53,14 @@ def parse_binaries(spec):
     return out
 
 
-def build_binaries(run, kinds, cc):
-    bins = {}
+def build_binaries(run: bl.RunDir, kinds: list[str], cc: str) -> dict[str, str]:
+    """Builds pz (native and/or portable) with the compiler `cc`, one binary per kind, and returns {kind: path}."""
+    bins: dict[str, str] = {}
     for kind in kinds:
         target = {"native": "release", "portable": "dist"}[kind]
         run.log(f"building {kind} (make {target} CC={cc}) ...")
         r = subprocess.run(
-            ["make", target, f"CC={cc}", f"-j{bl.os.cpu_count() or 2}"],
+            ["make", target, f"CC={cc}", f"-j{os.cpu_count() or 2}"],
             cwd=bl.ROOT,
             capture_output=True,
             text=True,
@@ -72,15 +76,16 @@ def build_binaries(run, kinds, cc):
     return bins
 
 
-def step_table(runs_text, reference):
+def step_table(runs_text: dict[str, str], reference: str) -> str:
+    """Markdown table of per-step timings of every run against the reference run."""
     steps = {lbl: bl.parse_step_timing(t) for lbl, t in runs_text.items()}
-    names = [n for n in steps[reference]]
+    names = list(steps[reference])
     header = (
         ["step"]
         + [f"{lbl} (ms)" for lbl in steps]
         + [f"{lbl} / {reference}" for lbl in steps if lbl != reference]
     )
-    rows = []
+    rows: list[list[str]] = []
     for n in names:
         row = [n] + [f"{steps[l].get(n, 0):.0f}" for l in steps]
         for l in steps:
@@ -91,7 +96,8 @@ def step_table(runs_text, reference):
     return bl.md_table(header, rows)
 
 
-def main():
+def parse_options() -> tuple[argparse.ArgumentParser, argparse.Namespace]:
+    """The command-line parser and its parsed options."""
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -111,27 +117,31 @@ def main():
     ap.add_argument("--no-step-timing", dest="step_timing", action="store_false")
     ap.add_argument("--check-isa", default="auto")
     ap.add_argument("--resume", action="store_true")
-    a = ap.parse_args()
+    return ap, ap.parse_args()
 
-    bins = parse_binaries(a.binaries)
-    kinds = bl.parse_list(a.build, ["native", "portable"], "build") if a.build else []
-    if not bins and not kinds:
-        ap.error("give --binaries label=path,... and/or --build native,portable")
-    threads = bl.parse_threads(a.threads)
+
+def select_models(a: argparse.Namespace) -> list[gate.Model]:
+    """Models to measure: the two default ones that are on disk, or the --models selection."""
     allm = bl.load_models()
     wanted = (
         [k for k in ("bitnet-2b", "smollm2-135m") if bl.model_path(k, a.models_dir)]
         if a.models == "auto"
         else bl.parse_list(a.models, list(allm), "model")
     )
-    models = [
-        (k, allm[k], bl.model_path(k, a.models_dir))
-        for k in wanted
-        if bl.model_path(k, a.models_dir)
+    return [
+        (k, allm[k], model_file) for k in wanted if (model_file := bl.model_path(k, a.models_dir))
     ]
-    run = bl.RunDir("build_compare", a.out, a.label)
-    labels = list(bins) + [k for k in kinds if k not in bins]
-    ref = a.reference or labels[0]
+
+
+def print_plan(
+    a: argparse.Namespace,
+    run: bl.RunDir,
+    labels: list[str],
+    ref: str,
+    models: list[gate.Model],
+    threads: list[int],
+) -> None:
+    """Prints what will run: binaries, models, thread counts, run count and options."""
     print(
         f"PLAN build_compare -> {run.rel()}\n  builds/binaries: {', '.join(labels)}  (reference {ref})"
     )
@@ -142,6 +152,107 @@ def main():
     print(
         f"  {len(labels) * len(models) * len(threads) * a.rounds} measured runs; step timing {'on' if a.step_timing else 'off'}; screenshots {a.screenshots}"
     )
+
+
+def step_timing_section(
+    run: bl.RunDir,
+    a: argparse.Namespace,
+    bins: dict[str, str],
+    envs: dict[str, dict[str, str]],
+    models: list[gate.Model],
+    threads: list[int],
+    ref: str,
+) -> list[str]:
+    """Runs each binary with TN_STEP_TIMING=1 on the first model and returns the report lines."""
+    key, _, path = models[0]
+    run.log(f"\n== per-step time split ({key}, TN_STEP_TIMING=1) ==")
+    texts: dict[str, str] = {}
+    for l, p in bins.items():
+        e = dict(envs[l])
+        e["TN_STEP_TIMING"] = "1"
+        r = bl.run_cmd(bl.pz_cmd(p, path, 64, threads[-1], bl.pz_flags(a.calibration), True), e)
+        texts[l] = r["text"]
+        run.write(
+            f"steps_{key}_{l}.txt",
+            "\n".join(x for x in r["text"].splitlines() if x.startswith("step=")) + "\n",
+        )
+    return ["", f"## Per-step time, {key} (64 tokens, total ms)", "", step_table(texts, ref)]
+
+
+def isa_labels_for(a: argparse.Namespace, bins: dict[str, str]) -> list[str]:
+    """The binaries that check_dist_isa.sh must vet: --check-isa auto (portable builds), none, or a list."""
+    if a.check_isa == "auto":
+        return [l for l in bins if "portable" in l or "dist" in l]
+    if a.check_isa == "none":
+        return []
+    return bl.parse_list(a.check_isa, list(bins), "binary")
+
+
+def isa_section(
+    run: bl.RunDir, bins: dict[str, str], labels: list[str]
+) -> tuple[dict[str, int], list[str]]:
+    """Runs check_dist_isa.sh on each binary; returns the exit codes and the report lines."""
+    results: dict[str, int] = {}
+    for l in labels:
+        isa_run = subprocess.run(
+            ["sh", str(bl.ROOT / "tools" / "check_dist_isa.sh"), bins[l]],
+            capture_output=True,
+            text=True,
+        )
+        run.write(f"check_dist_isa_{l}.txt", isa_run.stdout + isa_run.stderr)
+        results[l] = isa_run.returncode
+        run.log(f"check_dist_isa {l}: {'ok' if isa_run.returncode == 0 else 'FAILED'}")
+    if not results:
+        return results, []
+    table = bl.md_table(
+        ["binary", "result"], [[l, "ok" if c == 0 else "FAILED"] for l, c in results.items()]
+    )
+    return results, ["", "## check_dist_isa.sh", "", table]
+
+
+def screenshots_section(
+    run: bl.RunDir,
+    a: argparse.Namespace,
+    g: gate.Gate,
+    variants: list[bl.Variant],
+    models: list[gate.Model],
+    threads: list[int],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Live-terminal screenshots of every binary and model; returns them and the report lines."""
+    if a.screenshots == "none":
+        return [], []
+    run.log("\n== screenshots (live terminal) ==")
+    shots = bl.take_screenshots(
+        run,
+        variants,
+        models,
+        max(threads),
+        32,
+        a.screenshots,
+        a.shot_rows,
+        note_of=g.caption,
+        skip_of=g.skipped,
+    )
+    table = bl.md_table(
+        ["model", "binary", "threads", "screenshot"],
+        [[s["model"], s["variant"], s["threads"], s["screenshot"]] for s in shots],
+    )
+    return shots, ["", "## Screenshots", "", table]
+
+
+def main() -> int:
+    """Command-line entry point: builds the binaries, runs them with identical settings and writes the comparison."""
+    ap, a = parse_options()
+    bins = parse_binaries(a.binaries)
+    kinds = bl.parse_list(a.build, ["native", "portable"], "build") if a.build else []
+    if not bins and not kinds:
+        ap.error("give --binaries label=path,... and/or --build native,portable")
+    threads = bl.parse_threads(a.threads)
+    models = select_models(a)
+    run = bl.RunDir("build_compare", a.out, a.label)
+    labels = list(bins) + [k for k in kinds if k not in bins]
+    ref = a.reference or labels[0]
+    print_plan(a, run, labels, ref, models, threads)
     if a.dry_run:
         return 0
     if not models:
@@ -186,7 +297,7 @@ def main():
         True,
         a.resume,
         gate_of=g.verdict_of,
-        skip_of=lambda k, v: not g.timed(k, v),
+        skip_of=g.skipped,
     )
     summary = bl.summarize(rows, ref)
     md = [
@@ -198,73 +309,12 @@ def main():
     ]
     if g.results:
         md += ["", gate.render_md(g.results, g.cfg)]
-
     if a.step_timing:
-        key, info, path = models[0]
-        run.log(f"\n== per-step time split ({key}, TN_STEP_TIMING=1) ==")
-        texts = {}
-        for l, p in bins.items():
-            e = dict(envs[l])
-            e["TN_STEP_TIMING"] = "1"
-            r = bl.run_cmd(bl.pz_cmd(p, path, 64, threads[-1], bl.pz_flags(a.calibration), True), e)
-            texts[l] = r["text"]
-            run.write(
-                f"steps_{key}_{l}.txt",
-                "\n".join(x for x in r["text"].splitlines() if x.startswith("step=")) + "\n",
-            )
-        md += ["", f"## Per-step time, {key} (64 tokens, total ms)", "", step_table(texts, ref)]
-
-    isa_labels = (
-        [l for l in bins if "portable" in l or "dist" in l]
-        if a.check_isa == "auto"
-        else []
-        if a.check_isa == "none"
-        else bl.parse_list(a.check_isa, list(bins), "binary")
-    )
-    isa_results = {}
-    for l in isa_labels:
-        r = subprocess.run(
-            ["sh", str(bl.ROOT / "tools" / "check_dist_isa.sh"), bins[l]],
-            capture_output=True,
-            text=True,
-        )
-        run.write(f"check_dist_isa_{l}.txt", r.stdout + r.stderr)
-        isa_results[l] = r.returncode
-        run.log(f"check_dist_isa {l}: {'ok' if r.returncode == 0 else 'FAILED'}")
-    if isa_results:
-        md += [
-            "",
-            "## check_dist_isa.sh",
-            "",
-            bl.md_table(
-                ["binary", "result"],
-                [[l, "ok" if c == 0 else "FAILED"] for l, c in isa_results.items()],
-            ),
-        ]
-
-    shots = []
-    if a.screenshots != "none":
-        run.log("\n== screenshots (live terminal) ==")
-        shots = bl.take_screenshots(
-            run,
-            variants,
-            models,
-            max(threads),
-            32,
-            a.screenshots,
-            a.shot_rows,
-            note_of=lambda k, v: gate.caption_note(g.results.get(f"{k}/{v}")),
-            skip_of=lambda k, v: not g.timed(k, v),
-        )
-        md += [
-            "",
-            "## Screenshots",
-            "",
-            bl.md_table(
-                ["model", "binary", "threads", "screenshot"],
-                [[s["model"], s["variant"], s["threads"], s["screenshot"]] for s in shots],
-            ),
-        ]
+        md += step_timing_section(run, a, bins, envs, models, threads, ref)
+    isa_results, isa_md = isa_section(run, bins, isa_labels_for(a, bins))
+    md += isa_md
+    shots, shots_md = screenshots_section(run, a, g, variants, models, threads)
+    md += shots_md
     run.write("summary.md", "\n".join(md) + "\n")
     print("\n" + bl.summary_md(summary, with_ratio=True, hide_invalid=g.cfg["mode"] == "strict"))
     bl.finish(

@@ -27,7 +27,6 @@ import json
 import os
 import re
 import subprocess
-import sys
 import time
 
 PROMPT = (
@@ -37,7 +36,7 @@ PROMPT = (
 ENGINE = "./pz"
 
 
-def host_cpu():
+def host_cpu() -> str:
     """CPU model string — recorded per run because cloud containers can be moved to
     different hardware by a restart (2026-10-19: a sweep's host changed mid-way)."""
     try:
@@ -53,19 +52,21 @@ def host_cpu():
 HOST_CPU = host_cpu()
 
 
-def parse_threads(spec):
+def parse_threads(spec: str) -> list[int]:
+    """Thread counts from "N", "A-B" or "a,b,c"."""
     if "-" in spec:
         a, b = spec.split("-", 1)
         return list(range(int(a), int(b) + 1))
     return [int(x) for x in spec.split(",")]
 
 
-def run_once(cmd, log_path):
+def run_once(cmd: list[str], log_path: str | None) -> tuple[str, float, float, float, int]:
     """Run cmd, capture stdout+stderr, return (text, wall_s, maxrss_mb, cpu_pct)."""
     t0 = time.monotonic()
     proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL
     )
+    assert proc.stdout is not None  # stdout=PIPE above
     out = proc.stdout.read()
     _, status, ru = os.wait4(proc.pid, 0)
     proc.returncode = os.waitstatus_to_exitcode(status)
@@ -74,13 +75,15 @@ def run_once(cmd, log_path):
     return out.decode("utf-8", "replace"), wall, ru.ru_maxrss / 1024.0, cpu, proc.returncode
 
 
-def gen_toks(text):
+def gen_toks(text: str) -> tuple[float | None, int | None]:
+    """(generation tok/s, token count) from a pz or llama.cpp/bitnet.cpp log, or (None, None)."""
     m = re.search(r"\[gen\]\s+([\d.]+)\s+tok/s\s+\((\d+) tokens\)", text)
     if m:
         return float(m.group(1)), int(m.group(2))
     # llama.cpp / bitnet.cpp (common_perf_print): "eval time = X ms / N runs (... , T tokens per second)"
     m = re.search(
-        r"(?<!prompt )\beval time =\s*[\d.]+ ms /\s*(\d+) (?:runs|tokens)\s*\([^,]+,\s*([\d.]+) tokens per second",
+        r"(?<!prompt )\beval time =\s*[\d.]+ ms /\s*(\d+) (?:runs|tokens)\s*\([^,]+,\s*([\d.]+)"
+        r" tokens per second",
         text,
     )
     if m:
@@ -88,7 +91,8 @@ def gen_toks(text):
     return None, None
 
 
-def prompt_toks(text):
+def prompt_toks(text: str) -> float | None:
+    """Prompt-evaluation tok/s from a llama.cpp-style log, or None."""
     m = re.search(
         r"prompt eval time =\s*[\d.]+ ms /\s*\d+ tokens\s*\([^,]+,\s*([\d.]+) tokens per second",
         text,
@@ -96,7 +100,8 @@ def prompt_toks(text):
     return float(m.group(1)) if m else None
 
 
-def main():
+def main() -> None:
+    """Command-line entry point: runs the thread sweep and writes the results."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
     ap.add_argument(
@@ -238,9 +243,9 @@ def main():
                 stamp = datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
                 with open(os.path.join(tdir, f"run{r}.txt"), "w", encoding="utf-8") as f:
                     f.write(
-                        f"=== {name} t={t} run {r} ===\nDATE: {stamp}\nHOST_CPU: {HOST_CPU}\nCMD: {' '.join(cmd)}\n"
-                        f"PROMPT: {a.prompt}\n{'=' * 60}\n{text}\n"
-                        f"PERF: wall={wall:.2f}s max_rss={rss:.0f}MB cpu={cpu:.0f}% exit={rc}\n"
+                        f"=== {name} t={t} run {r} ===\nDATE: {stamp}\nHOST_CPU: {HOST_CPU}\nCMD:"
+                        f" {' '.join(cmd)}\nPROMPT: {a.prompt}\n{'=' * 60}\n{text}\nPERF:"
+                        f" wall={wall:.2f}s max_rss={rss:.0f}MB cpu={cpu:.0f}% exit={rc}\n"
                         + (f"PROMPT_TPS: {ptps}\n" if ptps else "")
                     )
                 sw.writerow(
@@ -259,8 +264,8 @@ def main():
                 sf.flush()
                 status = "" if rc == 0 else f"  FAILED (exit {rc}{', signal' if rc < 0 else ''})"
                 print(
-                    f"  t={t} run {r}: {tps} tok/s ({ntok} tok)  wall {wall:.1f}s  rss {rss:.0f}MB  "
-                    f"cpu {cpu:.0f}%{status}",
+                    f"  t={t} run {r}: {tps} tok/s ({ntok} tok)  wall {wall:.1f}s  rss {rss:.0f}MB "
+                    f" cpu {cpu:.0f}%{status}",
                     flush=True,
                 )
                 if tps is not None and (best is None or tps > best):
@@ -286,4 +291,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

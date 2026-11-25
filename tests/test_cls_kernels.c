@@ -1,19 +1,21 @@
 /*
  * test_cls_kernels.c — INT8 / INT4 classifier (LM head) row kernels (include/math/cls_kernels.h)
  *
- * Every implementation (generic AVX2/scalar, AVX-512, and whichever tn_simd_init() bound) must equal a
- * double-precision reference to float accumulation accuracy, for ragged shapes (n not a multiple of the 32-element
- * block, odd n for INT4, partial row ranges) and for the real BitNet and Mamba head shapes.
- * 2026-11-18: the kernels were rewritten to reduce once per row instead of once per block.
+ * Every implementation (generic AVX2/scalar, AVX-512, and whichever tn_simd_init() bound) must
+ * equal a double-precision reference to float accumulation accuracy, for ragged shapes (n not a
+ * multiple of the 32-element block, odd n for INT4, partial row ranges) and for the real BitNet and
+ * Mamba head shapes. 2026-11-18: the kernels were rewritten to reduce once per row instead of once
+ * per block.
  */
-#include "test_harness.h"
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include "core/platform.h"
 #include "math/cls_kernels.h"
 #include "math/simd_dispatch.h"
-#include <math.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
+#include "test_harness.h"
 
 static unsigned st = 99u;
 static unsigned rnd32(void) {
@@ -24,8 +26,8 @@ static float frnd(void) {
     return (float)(rnd32() & 0xFFFF) / 32768.0f - 1.0f;
 }
 
-/* Returns the exact result; *mag receives the sum of absolute terms, the scale float accumulation error follows
- * (a result that nearly cancels is not a larger kernel error). */
+/* Returns the exact result; *mag receives the sum of absolute terms, the scale float accumulation
+ * error follows (a result that nearly cancels is not a larger kernel error). */
 static double ref_row(int is4, const tn_u8 *row, const float *x, const float *rs, int n,
                       double *mag) {
     double total = 0.0;

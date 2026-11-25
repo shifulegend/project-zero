@@ -14,7 +14,6 @@ REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ENGINE="$REPO_DIR/pz"
 MODEL="$REPO_DIR/models/deepseek-v2-lite-chat-Q4_K_S.gguf"
 LLAMA_CPP_DIR="${LLAMA_CPP_DIR:-$HOME/llama.cpp}"   # reference engine checkout
-LLAMA_CLI="$LLAMA_CPP_DIR/build/bin/llama-cli"
 LLAMA_BENCH="$LLAMA_CPP_DIR/build/bin/llama-bench"
 OUT_DIR="$REPO_DIR/benchmark_results"
 RAW_DIR="$OUT_DIR/perf_raw"
@@ -24,10 +23,10 @@ PROMPT="List the first 10 prime numbers:"
 MAX_TOKENS=5
 BENCH_DATE=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 PERF_EVENTS="cycles,instructions,cache-references,cache-misses,branches,branch-misses,task-clock,context-switches,page-faults"
-PZ_THREADS=(${DEEPSEEK_PERF_PZ_THREADS:-1 2 3 4 5 6 7 8})
-PZ_SIMDS=(${DEEPSEEK_PERF_PZ_SIMDS:-scalar avx2 avx512f vnni})
-PZ_CLASSIFIERS=(${DEEPSEEK_PERF_PZ_CLASSIFIERS:-bf16 int8 int4})
-LLAMA_THREADS=(${DEEPSEEK_PERF_LLAMA_THREADS:-1 2 3 4 5 6 7 8})
+read -r -a PZ_THREADS <<< "${DEEPSEEK_PERF_PZ_THREADS:-1 2 3 4 5 6 7 8}"
+read -r -a PZ_SIMDS <<< "${DEEPSEEK_PERF_PZ_SIMDS:-scalar avx2 avx512f vnni}"
+read -r -a PZ_CLASSIFIERS <<< "${DEEPSEEK_PERF_PZ_CLASSIFIERS:-bf16 int8 int4}"
+read -r -a LLAMA_THREADS <<< "${DEEPSEEK_PERF_LLAMA_THREADS:-1 2 3 4 5 6 7 8}"
 
 PERF_CSV="$OUT_DIR/perf_results.csv"
 echo "date,engine,threads,simd,cls,tok_s,ipc,cycles,instructions,cache_refs,cache_misses,cache_miss_pct,branch_miss_pct,ctx_switches,page_faults,rss_peak_mb,cpu_freq_mhz" > "$PERF_CSV"
@@ -134,9 +133,6 @@ run_perf_monitored() {
   # Peak RSS from vmstat (free memory dip)
   local RSS_MB=0
   RSS_MB=$(grep -oP 'VmRSS:\s+\K\d+' /proc/self/status 2>/dev/null | head -1 || echo 0)
-  # Better: parse stdout for memory info if engine prints it
-  local MEM_LINE
-  MEM_LINE=$(grep -i "free ram\|rss\|memory" "$STDOUT_FILE" "$STDERR_FILE" 2>/dev/null | head -1 || echo "")
 
   printf "  %-22s T=%-2s  tok/s=%-6s  IPC=%-5s  cache_miss%%=%-5s  branch_miss%%=%-5s  ctx_sw=%-5s  freq=%s MHz\n" \
     "$ELABEL" "$T" "$TPS" "$IPC" "$CMISS_PCT" "$BMISS_PCT" "$CTX" "$FREQ_AVG"

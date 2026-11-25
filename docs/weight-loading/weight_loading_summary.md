@@ -20,7 +20,7 @@ TernaryError weights_map(TransformerWeights *w, const Config *cfg,
 - **Alignment Strategy**: 64-byte alignment boundaries
 
 ### File Structure
-```
+```text
 File Layout:
 [0:8]       - Magic/Version
 [8:48]      - Config (40 bytes)
@@ -198,7 +198,7 @@ void *data = MapViewOfFile(hMapping, FILE_MAP_READ, 0, 0, 0);
 
 ## Size Calculations (Example for Qwen 2B model)
 
-```
+```text
 Config values:
   dim = 4096
   hidden_dim = 14336

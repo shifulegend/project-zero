@@ -8,10 +8,11 @@
  * Synthetic tokenizer: tokenizer_chat_stops_new/tokenizer_is_eog only read
  * vocab_size, the special list, BOS/EOS ids and eos_list.
  */
-#include "test_harness.h"
-#include "tokenizer/tokenizer.h"
 #include <stdlib.h>
 #include <string.h>
+
+#include "test_harness.h"
+#include "tokenizer/tokenizer.h"
 
 enum { T_HELLO, T_EOT, T_UNUSED1, T_USER, T_PYTAG, T_THINK, T_BOS, T_N };
 

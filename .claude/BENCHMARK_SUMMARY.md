@@ -59,7 +59,7 @@ PZ individual run samples:
 ## Key Insight: T=1 Gap — Apple Accelerate BLAS Advantage
 
 **Root cause confirmed:** llama.cpp and bitnet.cpp were compiled with Apple Accelerate BLAS:
-```
+```text
 GGML_BLAS: ON
 GGML_BLAS_VENDOR: Apple
 libggml-blas.0.dylib → links to Accelerate.framework

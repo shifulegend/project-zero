@@ -1,0 +1,28 @@
+# Local checks before each commit (opt-in: `pip install pre-commit && pre-commit install`).
+# They are the fast subset of what CI runs; every hook uses a tool the repo already requires, so
+# nothing here downloads code from a third-party hook repository.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff check
+        entry: ruff check
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: ruff format --check
+        entry: ruff format --check
+        language: system
+        types: [python]
+      - id: clang-format
+        name: clang-format --dry-run -Werror
+        entry: clang-format --dry-run -Werror
+        language: system
+        types_or: [c, c++]
+        exclude: ^(include/stb_|src/api/webui_bundle_generated\.c)
+      - id: repo-checks
+        name: repository checks (todos, fences, header guards, root files, file sizes)
+        entry: bash -c 'python3 tools/check_todos.py && python3 tools/check_md_fences.py && python3 tools/check_header_guards.py && python3 tools/check_file_sizes.py && bash tools/check_root_files.sh'
+        language: system
+        pass_filenames: false
+        always_run: true

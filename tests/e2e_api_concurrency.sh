@@ -56,15 +56,20 @@ pass "server ready on port $PORT"
 REQ_A_OUT=$(mktemp)
 (curl -s -N -o "$REQ_A_OUT" -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/v1/chat/completions" \
     -H "Content-Type: application/json" \
-    -d '{"model":"m","messages":[{"role":"user","content":"Count slowly from one to ten, one number per sentence, with a short explanation for each."}],"max_tokens":400,"temperature":0,"stream":true}' \
+    -d '{"model":"m","messages":[{"role":"user","content":"Count slowly from one to ten,'\
+' one number per sentence, with a short explanation for each."}],'\
+'"max_tokens":400,"temperature":0,"stream":true}' \
     > "${REQ_A_OUT}.code") &
 REQ_A_PID=$!
 
-for _ in $(seq 1 100); do grep -q 'data:' "$REQ_A_OUT" 2>/dev/null && break; sleep 0.1; done   # A holds the slot and is streaming
+# A holds the slot and is streaming
+for _ in $(seq 1 100); do grep -q 'data:' "$REQ_A_OUT" 2>/dev/null && break; sleep 0.1; done
 
-code_b=$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/v1/chat/completions" \
+code_b=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+    "http://127.0.0.1:$PORT/v1/chat/completions" \
     -H "Content-Type: application/json" \
-    -d '{"model":"m","messages":[{"role":"user","content":"The capital of France is"}],"max_tokens":16,"temperature":0,"stream":false}')
+    -d '{"model":"m","messages":[{"role":"user","content":"The capital of France is"}],'\
+'"max_tokens":16,"temperature":0,"stream":false}')
 
 if [ "$code_b" = "429" ]; then
     pass "second concurrent request got 429 while the first was in flight"
@@ -85,8 +90,10 @@ rm -f "$REQ_A_OUT" "${REQ_A_OUT}.code"
 # each independently valid, plus a non-JSON request in between. ----------
 content1=$(curl -s -X POST "http://127.0.0.1:$PORT/v1/chat/completions" \
     -H "Content-Type: application/json" \
-    -d '{"model":"m","messages":[{"role":"user","content":"Return a JSON array of the numbers 1, 2, 3."}],"max_tokens":60,"temperature":0,"stream":false,"response_format":{"type":"json_object"}}' \
-    | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); print(d['choices'][0]['message']['content'])" 2>/dev/null)
+    -d '{"model":"m","messages":[{"role":"user",'\
+'"content":"Return a JSON array of the numbers 1, 2, 3."}],"max_tokens":60,"temperature":0,"stream":false,"response_format":{"type":"json_object"}}' \
+    | python3 -c "import sys,json
+d=json.loads(sys.stdin.read()); print(d['choices'][0]['message']['content'])" 2>/dev/null)
 if echo "$content1" | is_valid_json; then
     pass "sequential JSON request #1 (array shape) is independently valid JSON"
 else
@@ -95,8 +102,10 @@ fi
 
 content_mid=$(curl -s -X POST "http://127.0.0.1:$PORT/v1/chat/completions" \
     -H "Content-Type: application/json" \
-    -d '{"model":"m","messages":[{"role":"user","content":"The capital of France is"}],"max_tokens":16,"temperature":0,"stream":false}' \
-    | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); print(d['choices'][0]['message']['content'])" 2>/dev/null)
+    -d '{"model":"m","messages":[{"role":"user","content":"The capital of France is"}],'\
+'"max_tokens":16,"temperature":0,"stream":false}' \
+    | python3 -c "import sys,json
+d=json.loads(sys.stdin.read()); print(d['choices'][0]['message']['content'])" 2>/dev/null)
 if echo "$content_mid" | grep -qF "Paris"; then
     pass "non-JSON request sandwiched between two JSON-mode requests is unaffected"
 else
@@ -105,10 +114,14 @@ fi
 
 content2=$(curl -s -X POST "http://127.0.0.1:$PORT/v1/chat/completions" \
     -H "Content-Type: application/json" \
-    -d '{"model":"m","messages":[{"role":"user","content":"Return a JSON object with keys a and b, both booleans."}],"max_tokens":60,"temperature":0,"stream":false,"response_format":{"type":"json_object"}}' \
-    | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); print(d['choices'][0]['message']['content'])" 2>/dev/null)
+    -d '{"model":"m","messages":[{"role":"user","content":"Return a JSON object with keys a and b,'\
+' both booleans."}],"max_tokens":60,"temperature":0,"stream":false,'\
+'"response_format":{"type":"json_object"}}' \
+    | python3 -c "import sys,json
+d=json.loads(sys.stdin.read()); print(d['choices'][0]['message']['content'])" 2>/dev/null)
 if echo "$content2" | is_valid_json; then
-    pass "sequential JSON request #2 (different object shape) is independently valid JSON, no leak from #1"
+    pass "sequential JSON request #2 (different object shape) is independently valid JSON,"\
+" no leak from #1"
 else
     fail "sequential JSON request #2 invalid (possible grammar-state leak): $content2"
 fi
@@ -152,7 +165,8 @@ read -r ok_s other_s <<< "$(seq_requests 20 1)"
 if [ "$ok_s" = "20" ]; then
     pass "20 strictly sequential streaming requests (client stops at [DONE]) all got HTTP 200"
 else
-    fail "sequential streaming requests: ${ok_s:-0}/20 got 200, others: ${other_s:-?} (slot released after the final write?)"
+    fail "sequential streaming requests: ${ok_s:-0}/20 got 200, others: ${other_s:-?}"\
+" (slot released after the final write?)"
 fi
 
 read -r ok_j other_j <<< "$(seq_requests 30 0)"

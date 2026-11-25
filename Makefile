@@ -267,7 +267,7 @@ AVX2_TUS := math/ternary_matmul_avx2 math/ternary_matmul_packed_avx2 \
             math/q8_0_act math/kvq4_avx2 math/cls_kernels
 AVX2_OBJS := $(addprefix build/,$(addsuffix .o,$(AVX2_TUS)))
 
-AVX512_TUS := math/ternary_matmul_packed_avx512 math/ternary_matmul_lut_avx512bw \
+AVX512_TUS := math/ternary_matmul_packed_avx512 \
               math/elementwise_avx512 math/quantize_i8_avx512 \
               math/rmsnorm_avx512 math/softmax_avx512 math/kvq4_avx512 \
               math/cls_kernels_avx512
@@ -291,7 +291,7 @@ build/math/simd_dispatch.o: src/math/simd_dispatch.c
 	$(CC) $(CFLAGS) $(DISPATCH_DEFS) -c -o $@ $<
 
 # Calibration decides which backends to benchmark from the same macros.
-build/core/calibration.o: src/core/calibration.c
+build/runtime/calibration.o: src/runtime/calibration.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(DISPATCH_DEFS) -c -o $@ $<
 
@@ -430,7 +430,7 @@ run-tests: $(LIB_OBJS) $(TEST_BINS)
 # driver file directly with CFLAGS_TSAN/LDFLAGS_TSAN -- the generic
 # build/tests/% rule hardcodes CFLAGS_DEBUG (ASan/UBSan) for the driver file,
 # which cannot be linked into a TSan binary.
-TSAN_TESTS = audit_threadpool_stress test_threading test_moe_experts test_api_server test_q4k_x8_matmul test_q2_0_matmul test_forward test_gen_queue test_batch_scheduler test_cancel test_tensor_rpc test_update_check test_net_io test_http_limits test_rate_limit
+TSAN_TESTS = audit_threadpool_stress test_log test_threading test_moe_experts test_api_server test_q4k_x8_matmul test_q2_0_matmul test_forward test_qwen3moe_concurrent test_tls_scratch test_env_flag test_qwen35_attention test_moe_experts_concurrent test_moe_ffn_batched test_gen_queue test_batch_scheduler test_cancel test_tensor_rpc test_update_check test_net_io test_http_limits test_rate_limit test_top_p
 
 test-tsan:
 	$(call ensure_variant,tsan)
@@ -483,7 +483,7 @@ bench: $(LIB_OBJS) tools/bench_simd.c
 build/tools/bench_full: $(LIB_OBJS) tools/bench_full.c
 	@mkdir -p build/tools
 	$(CC) $(CFLAGS_RELEASE) -mavx512vnni -mavxvnni -o $@ \
-	    tools/bench_full.c $(LIB_OBJS) $(LDFLAGS)
+	    tools/bench_full.c $(LIB_OBJS) $(LDFLAGS) -lstdc++
 
 # Q2_0 VNNI kernel A/B micro-benchmark (ref vs optimized row dot in one
 # binary — see docs/architecture/CEILING_CALCULATION.md §7 option A)

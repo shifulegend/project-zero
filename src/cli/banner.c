@@ -7,11 +7,13 @@
  */
 
 #include "cli/banner.h"
-#include "cli/color.h"
-#include "brand/block_font.h"
+
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+
+#include "brand/block_font.h"
+#include "cli/color.h"
 
 #define GLYPH_ROWS TN_BLOCK_FONT_ROWS
 

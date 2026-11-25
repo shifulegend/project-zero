@@ -15,12 +15,12 @@
  *   4. Return 0 on fresh save, 1 if duplicate skipped, -1 on error.
  */
 
-#include "rag/vector_db.h"
-#include "rag/embedder.h"
 #include "core/config.h"
 #include "core/weights.h"
-#include "tokenizer/tokenizer.h"
+#include "rag/embedder.h"
+#include "rag/vector_db.h"
 #include "threading/thread_pool.h"
+#include "tokenizer/tokenizer.h"
 
 #ifdef __cplusplus
 extern "C" {

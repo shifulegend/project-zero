@@ -1,37 +1,43 @@
 """Independent numpy check of BitNet b1.58 2B layer 0 for the BOS token (position 0), straight from the GGUF."""
 
 import sys
+from typing import Any
 
 sys.path.insert(0, ".")
-import numpy as np
-from gguf_min import G
 import os
+
+import numpy as np
+import numpy.typing as npt
+from gguf_min import G
 
 g = G(os.environ.get("BITNET_GGUF", "models/bitnet-b1.58-2B-4T-i2_s.gguf"))
 EPS = g.kv["bitnet-b1.58.attention.layer_norm_rms_epsilon"]
 
 
-def f32(name):
+def f32(name: str) -> npt.NDArray[np.float64]:
+    """The named F32 tensor as a float64 vector."""
     d, ty, off = g.t[name]
     n = int(np.prod(d))
     assert ty == 0
     return np.frombuffer(g.raw(name, n * 4), dtype="<f4").astype(np.float64)
 
 
-def embd(tok):
+def embd(tok: int) -> npt.NDArray[np.float64]:
+    """The F16 embedding row of token `tok` as a float64 vector."""
     d, ty, off = g.t["token_embd.weight"]
     assert ty == 1
     row = np.frombuffer(g.raw("token_embd.weight", d[0] * d[1] * 2), dtype="<f2").reshape(
         d[1], d[0]
     )[tok]
-    return row.astype(np.float64)
+    return np.asarray(row, dtype=np.float64)
 
 
-def rms(x, w):
-    return x / np.sqrt(np.mean(x * x) + EPS) * w
+def rms(x: npt.NDArray[Any], w: npt.NDArray[Any]) -> npt.NDArray[Any]:
+    """RMS norm of `x` with weight `w`."""
+    return np.asarray(x / np.sqrt(np.mean(x * x) + EPS) * w)
 
 
-def i2s_matrix(name, layout="A"):
+def i2s_matrix(name: str, layout: str = "A") -> tuple[npt.NDArray[np.float32], float]:
     """-> ternary matrix W[out, in] in {-1,0,1} (float32) and the per-tensor scale."""
     (nin, nout), ty, off = g.t[name]
     assert ty == 36
@@ -57,16 +63,20 @@ def i2s_matrix(name, layout="A"):
     return W, float(scale)
 
 
-def bitlinear(x, name, layout="A", actq=True):
+def bitlinear(
+    x: npt.NDArray[Any], name: str, layout: str = "A", actq: bool = True
+) -> npt.NDArray[Any]:
+    """BitNet linear layer: ternary I2_S matrix times `x` (activation-quantised to int8 when `actq`), scaled."""
     W, scale = i2s_matrix(name, layout)
     if actq:
         s = 127.0 / np.max(np.abs(x))
         q = np.clip(np.round(x * s), -128, 127)
-        return (W.astype(np.float64) @ q) / s * scale
-    return (W.astype(np.float64) @ x) * scale
+        return np.asarray((W.astype(np.float64) @ q) / s * scale)
+    return np.asarray((W.astype(np.float64) @ x) * scale)
 
 
-def show(tag, v):
+def show(tag: str, v: npt.NDArray[Any]) -> None:
+    """Prints a tag, the first three values and the RMS of a vector."""
     print(
         f"{tag:<26}",
         np.array2string(v[:3], precision=4, floatmode="fixed"),

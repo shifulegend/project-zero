@@ -4,8 +4,9 @@
  */
 
 #include "api/cors.h"
-#include <string.h>
+
 #include <stdio.h>
+#include <string.h>
 
 int cors_is_origin_allowed(const CorsConfig *cfg, const char *origin_hdr) {
     if (!cfg || !cfg->enabled || !origin_hdr) return 0;

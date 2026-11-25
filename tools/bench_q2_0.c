@@ -19,16 +19,16 @@
  * Synthetic weight packing replicates tests/test_q2_0_matmul.c's generator.
  */
 
-#include "core/platform.h"
-#include "math/matmul_q2_0.h"
-#include "threading/thread_pool.h"
-
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 #include <time.h>
+
+#include "core/platform.h"
+#include "math/matmul_q2_0.h"
+#include "threading/thread_pool.h"
 
 #if !TN_HAS_AVX512VNNI
 int main(void) {

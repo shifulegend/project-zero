@@ -66,7 +66,7 @@ gitGraph
 
 ## Branch Ancestry (Pre-Merge Verification — 2026-03-19)
 
-```
+```text
 master (e0cc885)
     └── is ancestor of → claude/simd-performance-analysis-TYUQU (a380cfc) ✓
     └── is ancestor of → claude/k5-context-restore-and-docs (16ab613) ✓

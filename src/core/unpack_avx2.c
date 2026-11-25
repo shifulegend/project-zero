@@ -2,8 +2,9 @@
 
 #if TN_HAS_AVX2
 
-#include "core/unpack.h"
 #include <immintrin.h>
+
+#include "core/unpack.h"
 
 /**
  * AVX2 ternary weight unpacker.

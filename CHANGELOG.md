@@ -16,14 +16,22 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Changed
 
+- Log a connecting client as its network with the last octet masked (`192.168.1.x`) in `--verbose` mode, instead of its full address.
 - Speed up the quantised LM heads: `--classifier int8` decodes BitNet 2B-4T 44% faster (18.0 to 25.9 tok/s) and `--classifier int4` 30% faster (20.4 to 26.5 tok/s), 4 threads, 2.10 GHz Xeon, the default head unchanged at about 21.5; both now beat the default, and the portable release binary uses the same AVX-512 kernels as a native build.
 - Redo the first-run hardware calibration: SIMD tiers are compared in interleaved rounds and one replaces the default only when it wins a sign test and clears a 5% margin, and the thread count stays at the physical-core count unless another count is clearly faster. Existing calibration caches are discarded and rebuilt once on the next run (about a minute).
 - Label the web UI's per-reply usage line in tokens ("7 reply tokens · 37 prompt tokens" instead of "7 tokens · 37 prompt"); hovering it explains that the prompt count includes the chat template and any system message.
 
+### Removed
+
+- Remove the unused AVX-512 LUT ternary kernel (`src/math/ternary_matmul_lut_avx512bw.c`, LGPL-3.0-or-later) and its test: nothing in the engine called it, the binary and its speed are unchanged. `LICENSE-LGPL-3.0.txt` is no longer shipped in release archives or installed, and the README, `NOTICE` and the SBOM say MIT only.
+
 ### Added
 
+- Add `--log-format text|json` and `--log-level debug|info|warn|error` (also `pz config set log-format` / `log-level` and `PZ_LOG_FORMAT` / `PZ_LOG_LEVEL`): every diagnostic the program writes to stderr, and the status lines it prints at startup (model summary, calibration, hardware choices, server messages), now go through one logger. With `--log-format json` stderr carries exactly one JSON object per line (`{"ts","level","component","msg"}`), startup status lines move from stdout to stderr as JSON, an `Authorization:` header, `Bearer` token or `api_key=` value is redacted, and control characters are escaped so a value cannot forge a log line; stdout then holds only program output (generated text, the banner and hardware table, `--help`, results). `--verbose` still turns on the debug lines (it now means `--log-level debug`). The default text format prints the same bytes as before.
+- Echo an `X-Request-ID` header on every API response (the client's own when it is 1 to 64 characters from `A-Z a-z 0-9 . _ : -`, a generated one otherwise) and log it with the status of each request in `--verbose` mode, so a request can be matched to its log line.
 - Publish a CycloneDX software bill of materials (`sbom.cdx.json`) with each release and attach a signed build-provenance attestation to the archive, `install.sh` and the SBOM; check one with `gh attestation verify <file> --repo shifulegend/project-zero`.
 - Add `--rate-limit <n>` (default 20 requests per second, 0 = off; also `pz config set rate-limit`): the API's cheap non-generation routes (`/v1/models`, `/v1/config`, `/v1/update*`, `/v1/prompt_cache*`, `/v1/selfcheck`, `/v1/watermark/detect`) answer `429` with a `Retry-After` header once the limit is exceeded. Chat generation, `/health`, `/metrics` and the web UI files are not limited.
+- Add `--max-prompt-bytes <N>` (default 1048576; 0 = no cap; also `pz config set max-prompt-bytes` and reported as `features.max_prompt_bytes` by `GET /v1/config`): a chat request whose message text is longer than the cap is answered with `400` and a message naming the flag, instead of being cut or consuming memory without a bound. The 8 KiB cut that used to drop the end of a long message that carried an image is gone (the buffer follows the message), so this cap is the one limit on prompt size.
 - Add `--client-timeout <s>` (default 30; 0 = never) and `--max-connections <N>` (default 64; 0 = unlimited), also available as `pz config set client-timeout` / `max-connections` and reported by `GET /v1/config`-style server info: the server drops a client that sends or reads nothing for the timeout, and answers `503` with `Retry-After` when more connections than the cap are open. Before, one stalled client held a server thread forever and a flood could create unbounded threads.
 - Add `--act-quant auto|int8|float` (also `PZ_ACT_QUANT` and `pz config set act-quant`): choose the activation numerics of ternary (BitNet) matmuls independently of `--simd` (`auto` takes the numerics of the calibrated tier, prints them at startup with the measured int8 and float tier speeds and, on a ternary model, checks int8 against the accuracy bar once per model and setting, caching the verdict in `~/.project-zero/selfcheck.txt`, falling back to float activations if it fails); `float` skips the int8 tiers (VNNI, AVX-VNNI, dotprod) and runs float32 activations.
 - Add an accuracy probe: `pz --self-check` scores a built-in passage with the configured numerics and LM head against float activations and a BF16 head and exits 1 when perplexity rises by more than `--quality-tolerance` percent (default 1.0, `pz config set quality-tolerance`); `--self-check-tokens` sets its length. An explicit `--classifier int8`, `int4` or `auto-fast` that fails it falls back to a BF16 head at startup with a message (`--quality-tolerance 0` keeps the request as given; BitNet 2B-4T with `--classifier int4` reads about +9% on the probe, so it needs `--quality-tolerance 10`): Mamba-130M with `--classifier int4` answers correctly again instead of producing gibberish.
@@ -32,7 +40,27 @@ section becomes the version's entry and is published as its GitHub release notes
 - Warn on stderr when a chat template renders a prompt that ends with the end-of-sequence token, and when a chat generation ends with 0 tokens; the second warning names the first token the model chose and the last prompt token.
 
 ### Fixed
+- Stop agent-mode commands leaving a defunct process behind when their output filled the capture buffer: the command is now stopped and collected once its output no longer fits, so a long session no longer accumulates entries in the process table.
+- Fix a streamed reply being cut off when a signal interrupted a socket write: the server-sent-events writer treated an interrupted write as a disconnected client; every response byte now goes through the one write loop that retries on interruption and short writes.
 
+- Stop cutting a chat message that carries an image at 8 KiB: the text part of such a message is now kept whole (a 15,000-character message reached the model as about 8,000 characters before, silently).
+- Make `--seed` work with `--draft-model`: speculative decoding seeded its sampler from the clock, so two runs with the same `--seed` gave different text (plain generation already honoured it).
+- Refuse a truncated model file with an error (`tensor 'token_embd.weight' is missing from the file (truncated download?)`, exit status 1) instead of crashing with a segmentation fault while loading weights.
+- Print one `--verbose` router line per MoE layer: it used to start with a stray unfinished `experts=[` fragment before the real line.
+- Exit with status 1 when a run prints an error and does nothing: `--plan-layers` with no node sizes, `--rpc-worker` without a valid `--layers`, `--remote-layers` that cannot be set up (or is combined with `--draft-model`), `--perplexity` on an unreadable file or too few tokens, `--watermark-detect` text that cannot be tokenised, and `--server` when the port cannot be bound. Before, scripts and service managers saw success.
+- Stop Qwen3.5/3.6 attention from sharing scratch buffers between concurrent callers: both the full-attention and the Gated-DeltaNet layers kept their buffers in function-local statics, so two requests running a forward pass at the same time could overwrite each other's values. The buffers now belong to each request's run state and are sized by the model, so the fixed width caps are gone too.
+- Make `install.sh` work from an offline `file://` mirror when only `wget` is installed (it passed the `file://` URL to wget, which cannot read it).
+- Refuse a non-numeric value for a numeric flag (`--rate-limit abc`, `--threads four`, `--temperature hot`, ...) with an error naming the flag; before, `atoi` turned it into 0, which silently switched off the rate limiter, the client timeout or the connection cap. Trailing junk (`64x`) and numbers outside the integer range are refused too.
+- Answer `501` to a request body sent with any `Transfer-Encoding` (gzip, deflate, ...), not only `chunked`; before, the server ignored the header and read the body as plain bytes.
+- Free the reply body when a client disconnects while the server is sending an error status for a settings, watermark or self-check request (it leaked before), and never send a cut-off header block: extra headers that would not fit are dropped, and error messages are JSON-escaped.
+- List `GET /openapi.json` in the OpenAPI document it serves; the route existed but was missing from its own description.
+- Stop the Mixture-of-Experts layers (expert kernels, the batched expert path and the router's top-k selection) from sharing scratch memory between threads: two requests running an MoE layer at once could corrupt each other's expert selection and outputs. Each calling thread now has its own scratch.
+- Stop the Q4_K, Q5_0, Q5_1 and Q8_0 matrix kernels from sharing one activation buffer between threads: two requests multiplying at the same time could free the buffer under each other. Each thread now has its own, released when the thread exits (before, the shared buffer was also never freed).
+- Stop Qwen3-MoE attention from sharing scratch buffers between concurrent callers: two requests running a forward pass at the same time could overwrite each other's Q/K/V values. The buffers now belong to each request's run state and are sized by the model, so the old 16384-wide Q and 8192-wide K/V caps are gone too.
+- Answer `400` to a chat request whose `response_format.type` is `json_schema` or anything other than `text` or `json_object`; before, the server returned `200` with free text, so a client relying on schema-conformant output was never told it was not getting it.
+
+- Make nucleus (`top_p`) sampling safe when several requests sample at the same time, and apply it to vocabularies larger than 200,000 tokens (those silently fell back to greedy decoding before).
+- Show fenced code blocks in the web UI exactly as written: `**text**` and `` `text` `` inside a ``` block were turned into bold and inline code. Long replies also render faster, because line breaks are now handled in one pass instead of rescanning the whole text for every newline.
 - Decode half-precision (fp16) values the same way everywhere: the Q8_0, Q5_0, Q5_1, Q5_K, Q2_0, F16 and LoRA paths and the model loader turned a very small (subnormal) fp16 value into roughly zero, while the Q4_K, Q2_K, Q6_K paths decoded it correctly. All paths now share one exact converter; values that are not subnormal decode exactly as before.
 - Make the `--memory-db` vector memory crash-safe and tamper-evident: records and the header now carry CRC-32 checksums (a corrupted file is refused instead of silently returning wrong memories), each store is synced to disk in an order that survives a crash (a half-written record is ignored and overwritten, never misaligns later entries), a second `pz` process opening the same file is refused instead of interleaving writes, an entry count beyond the limit is rejected, and failed opens no longer leak memory or file handles. **Format change:** new files use format v2, which older `pz` versions cannot read. An existing v1 file is still read; the first save into it copies it to `<file>.v1.bak` (never overwriting an earlier backup) and rewrites it as v2. The file is now created with owner-only permissions.
 - Make the HTTP server read request sizes strictly: a malformed, negative, overflowing or conflicting `Content-Length` is now answered with `400` (too large with `413`), and a chunked request body is answered with `501` instead of being read as empty. Before, `Content-Length: abc` or a huge number was silently misread.
@@ -50,6 +78,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Security
 
+- Only show the web UI's release-notes and changelog links when the server gives an `https://` URL; a `javascript:`, `data:` or `http:` value is no longer put into a link.
 - Refuse requests whose `Host` header is not `localhost`, `127.0.0.1` or `[::1]` with `403` (except `/health`), which stops DNS-rebinding attacks where a web page's hostname is re-pointed at your local server. Behind a reverse proxy, add the proxy's address with `--cors --cors-origin`.
 - Run the agent's shell commands with a minimal environment: only a fixed `PATH`, `TZ`, `LANG` and `LC_*` are passed on, so API keys, tokens and other `PZ_*` / cloud credentials in the server's environment can no longer be read by the commands the model runs.
 - Make the agent's file-reading commands (`cat`, `ls`) refuse a path argument when the working directory can no longer be determined (for example because it was deleted), instead of allowing it unchecked.
@@ -62,6 +91,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Changed
 
+- Log a connecting client as its network with the last octet masked (`192.168.1.x`) in `--verbose` mode, instead of its full address.
 - **Breaking:** Rename the binary to `pz` (was `adaptive_ai_engine`); `pz --version` prints `Project Zero <version>`.
 - **Breaking:** Rename release downloads to `project-zero-<version>-x86_64-unknown-linux-gnu.tar.gz`, unpacking into a directory of the same name (was `adaptive_ai_engine-<version>-x86_64-linux.tar.gz`).
 - Publish each GitHub release's notes from this changelog instead of an auto-generated commit list.
@@ -78,6 +108,7 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Added
 
+- Echo an `X-Request-ID` header on every API response (the client's own when it is 1 to 64 characters from `A-Z a-z 0-9 . _ : -`, a generated one otherwise) and log it with the status of each request in `--verbose` mode, so a request can be matched to its log line.
 - Add Qwen 3.5/3.6 hybrid-attention models (e.g. Ternary-Bonsai-27B) and the Q2_0 quant.
 - Add Qwen3-MoE GGUF models.
 - Add Mamba-1 state-space models.
@@ -113,6 +144,15 @@ section becomes the version's entry and is published as its GitHub release notes
 
 ### Fixed
 
+- Stop Qwen3.5/3.6 attention from sharing scratch buffers between concurrent callers: both the full-attention and the Gated-DeltaNet layers kept their buffers in function-local statics, so two requests running a forward pass at the same time could overwrite each other's values. The buffers now belong to each request's run state and are sized by the model, so the fixed width caps are gone too.
+- Make `install.sh` work from an offline `file://` mirror when only `wget` is installed (it passed the `file://` URL to wget, which cannot read it).
+- Refuse a non-numeric value for a numeric flag (`--rate-limit abc`, `--threads four`, `--temperature hot`, ...) with an error naming the flag; before, `atoi` turned it into 0, which silently switched off the rate limiter, the client timeout or the connection cap. Trailing junk (`64x`) and numbers outside the integer range are refused too.
+- Answer `501` to a request body sent with any `Transfer-Encoding` (gzip, deflate, ...), not only `chunked`; before, the server ignored the header and read the body as plain bytes.
+- Free the reply body when a client disconnects while the server is sending an error status for a settings, watermark or self-check request (it leaked before), and never send a cut-off header block: extra headers that would not fit are dropped, and error messages are JSON-escaped.
+- List `GET /openapi.json` in the OpenAPI document it serves; the route existed but was missing from its own description.
+- Stop the Mixture-of-Experts layers (expert kernels, the batched expert path and the router's top-k selection) from sharing scratch memory between threads: two requests running an MoE layer at once could corrupt each other's expert selection and outputs. Each calling thread now has its own scratch.
+- Stop the Q4_K, Q5_0, Q5_1 and Q8_0 matrix kernels from sharing one activation buffer between threads: two requests multiplying at the same time could free the buffer under each other. Each thread now has its own, released when the thread exits (before, the shared buffer was also never freed).
+- Stop Qwen3-MoE attention from sharing scratch buffers between concurrent callers: two requests running a forward pass at the same time could overwrite each other's Q/K/V values. The buffers now belong to each request's run state and are sized by the model, so the old 16384-wide Q and 8192-wide K/V caps are gone too.
 - Fix chat replies running past the end of the answer when a model ends its turn with a control token its metadata does not declare (e.g. Falcon3-1.58bit's `>>UNUSED_1<<`): in chat mode any control token the chat template never writes now ends the turn, so no `--stop` workaround is needed.
 - Fix BitNet I2_S GGUF files (the official BitNet b1.58 2B-4T GGUF, Falcon3-1.58bit) producing incoherent text: weights are now read in bitnet.cpp's interleaved 128-weight layout with the per-tensor scale stored after the packed data.
 - Fix `pz config set repeat-last-n -1` being rejected although `--repeat-last-n -1` is valid.
@@ -149,6 +189,7 @@ _First release with a prebuilt, portable x86-64 Linux binary (`adaptive_ai_engin
 
 ### Added
 
+- Echo an `X-Request-ID` header on every API response (the client's own when it is 1 to 64 characters from `A-Z a-z 0-9 . _ : -`, a generated one otherwise) and log it with the status of each request in `--verbose` mode, so a request can be matched to its log line.
 - Add BitNet b1.58 ternary inference with packed 2-bit weights and int8 activation quantization.
 - Add runtime SIMD dispatch across scalar, AVX2, AVX-512F, AVX-512 VNNI, AVX-VNNI, ARM NEON and dotprod.
 - Add GGUF loading (Q8_0, Q4_K, I2_S, embedded tokenizer) with an architecture router.
@@ -160,6 +201,15 @@ _First release with a prebuilt, portable x86-64 Linux binary (`adaptive_ai_engin
 
 ### Fixed
 
+- Stop Qwen3.5/3.6 attention from sharing scratch buffers between concurrent callers: both the full-attention and the Gated-DeltaNet layers kept their buffers in function-local statics, so two requests running a forward pass at the same time could overwrite each other's values. The buffers now belong to each request's run state and are sized by the model, so the fixed width caps are gone too.
+- Make `install.sh` work from an offline `file://` mirror when only `wget` is installed (it passed the `file://` URL to wget, which cannot read it).
+- Refuse a non-numeric value for a numeric flag (`--rate-limit abc`, `--threads four`, `--temperature hot`, ...) with an error naming the flag; before, `atoi` turned it into 0, which silently switched off the rate limiter, the client timeout or the connection cap. Trailing junk (`64x`) and numbers outside the integer range are refused too.
+- Answer `501` to a request body sent with any `Transfer-Encoding` (gzip, deflate, ...), not only `chunked`; before, the server ignored the header and read the body as plain bytes.
+- Free the reply body when a client disconnects while the server is sending an error status for a settings, watermark or self-check request (it leaked before), and never send a cut-off header block: extra headers that would not fit are dropped, and error messages are JSON-escaped.
+- List `GET /openapi.json` in the OpenAPI document it serves; the route existed but was missing from its own description.
+- Stop the Mixture-of-Experts layers (expert kernels, the batched expert path and the router's top-k selection) from sharing scratch memory between threads: two requests running an MoE layer at once could corrupt each other's expert selection and outputs. Each calling thread now has its own scratch.
+- Stop the Q4_K, Q5_0, Q5_1 and Q8_0 matrix kernels from sharing one activation buffer between threads: two requests multiplying at the same time could free the buffer under each other. Each thread now has its own, released when the thread exits (before, the shared buffer was also never freed).
+- Stop Qwen3-MoE attention from sharing scratch buffers between concurrent callers: two requests running a forward pass at the same time could overwrite each other's Q/K/V values. The buffers now belong to each request's run state and are sized by the model, so the old 16384-wide Q and 8192-wide K/V caps are gone too.
 - Fix a stack overflow in top-k sampling and a buffer overflow in the thought filter.
 - Fix file-handle and descriptor leaks in model and tokenizer loading.
 - Fix a NULL dereference in token decoding.

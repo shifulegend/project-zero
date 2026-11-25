@@ -152,7 +152,6 @@ for i in "${!PROMPTS[@]}"; do
   echo "── Pass 1: Clean (no monitoring overhead) ──────────────────────" | tee -a "$OUT"
   R1=$(run_clean "$P" 2>&1)
   TOK1=$(echo "$R1" | grep -Eo '[0-9]+\.[0-9]+ tok/s' | head -1 | awk '{print $1}')
-  GEN1=$(echo "$R1" | grep -Eo '[0-9]+ tok/s' | head -1 | awk '{print $1}' || echo "?")
   OUTPUT1=$(echo "$R1" | grep -v -E '^(Project|SIMD|Model|n_|vocab|seq_len|act_type|rope|head_dim|kv_dim|KV|Detected|Detect|Loading|Warning|Loaded|dim:|hidden_dim:|n_|rope_|act_type:)' | head -5 | tr '\n' ' ')
   {
   echo "  tok/s     : $TOK1"

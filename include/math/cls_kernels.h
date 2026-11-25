@@ -19,15 +19,16 @@
  *              dist binary uses it on any CPU that has the ISA.
  * Both keep the scaled partial sums in vector registers and reduce ONCE PER ROW. The earlier kernel
  * reduced horizontally after every 32-element block (80 reductions per 2560-element row, ~10
- * million per BitNet token), which made the int4 head slower than the BF16 default although it reads
- * ~40% less data (2026-11-18, docs/ai/mistakes.md).
+ * million per BitNet token), which made the int4 head slower than the BF16 default although it
+ * reads ~40% less data (2026-11-18, docs/ai/mistakes.md).
  */
 
 #include "core/platform.h"
 #include "core/weights.h"
 
-/* Scalar helpers shared by every implementation (one definition, no ISA code). `from` is the first element of
- * the partial last block (a multiple of TN_CLS_QUANT_BLOCK); the full blocks are the vector kernels' job. */
+/* Scalar helpers shared by every implementation (one definition, no ISA code). `from` is the first
+ * element of the partial last block (a multiple of TN_CLS_QUANT_BLOCK); the full blocks are the
+ * vector kernels' job. */
 static inline float tn_cls_i8_row_tail(const tn_u8 *row, const float *x, int from, int n) {
     float v = 0.0f;
     for (int j = from; j < n; j++) v += (float)((int)row[j] - 128) * x[j];

@@ -1,4 +1,5 @@
 #include "update/semver.h"
+
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,35 +31,63 @@ static int parse_describe(const char *p, int *ahead) {
     return 0;
 }
 
-int semver_parse(const char *s, SemVer *out) {
-    if (!s || !out) return -1;
-    memset(out, 0, sizeof(*out));
-    const char *p = s;
+/* [vV]<major>.<minor>.<patch>; 0 on success, *pp after the patch number. */
+static int parse_core(const char **pp, SemVer *out) {
+    const char *p = *pp;
     if (*p == 'v' || *p == 'V') p++;
     if (parse_num(&p, &out->major) || *p++ != '.' || parse_num(&p, &out->minor) || *p++ != '.' ||
         parse_num(&p, &out->patch))
         return -1;
-    if (*p == '\0') return 0;
-    if (strcmp(p, "-dirty") == 0) return 0;
-    if (parse_describe(p, &out->commits_ahead) == 0) return 0;
-    if (*p == '-') {
-        p++;
-        size_t n = 0;
-        while (*p && *p != '+' && n + 1 < sizeof(out->pre)) {
-            if (!isalnum((unsigned char)*p) && *p != '.' && *p != '-') return -1;
-            out->pre[n++] = *p++;
-        }
-        out->pre[n] = '\0';
-        if (n == 0) return -1;
-        if (n > 6 && strcmp(out->pre + n - 6, "-dirty") == 0) out->pre[n - 6] = '\0';
-        /* "v1.0.0-rc.1-3-gabc" — describe suffix glued onto a pre-release. */
-        char *g = strstr(out->pre, "-g");
-        if (g) {
-            char *d = g;
-            while (d > out->pre && d[-1] != '-') d--;
-            if (d > out->pre && parse_describe(d - 1, &out->commits_ahead) == 0) d[-1] = '\0';
-        }
+    *pp = p;
+    return 0;
+}
+
+/* Reads the identifiers of a pre-release tag after its '-': up to '+' or the end, only
+ * [A-Za-z0-9.-]. A trailing "-dirty" is dropped. Returns the tag length, -1 on a bad character or
+ * an empty tag. *pp is left after the tag. */
+static int read_prerelease(const char **pp, char *pre, size_t cap) {
+    const char *p = *pp + 1;
+    size_t n      = 0;
+    while (*p && *p != '+' && n + 1 < cap) {
+        if (!isalnum((unsigned char)*p) && *p != '.' && *p != '-') return -1;
+        pre[n++] = *p++;
     }
+    pre[n] = '\0';
+    if (n == 0) return -1;
+    if (n > 6 && strcmp(pre + n - 6, "-dirty") == 0) pre[n - 6] = '\0';
+    *pp = p;
+    return (int)n;
+}
+
+/* "v1.0.0-rc.1-3-gabc": a describe suffix glued onto the pre-release moves to commits_ahead. */
+static void split_glued_describe(SemVer *out) {
+    char *g = strstr(out->pre, "-g");
+    if (!g) return;
+    char *d = g;
+    while (d > out->pre && d[-1] != '-') d--;
+    if (d > out->pre && parse_describe(d - 1, &out->commits_ahead) == 0) d[-1] = '\0';
+}
+
+/* A pre-release tag after its '-'. 0 on success, *pp after the tag. */
+static int parse_prerelease(const char **pp, SemVer *out) {
+    if (read_prerelease(pp, out->pre, sizeof(out->pre)) < 0) return -1;
+    split_glued_describe(out);
+    return 0;
+}
+
+/* What follows the patch number ends the version: nothing, a bare "-dirty", or a git-describe
+ * suffix ("-<n>-g<hex>", sets commits_ahead). */
+static int ends_version(const char *p, SemVer *out) {
+    return *p == '\0' || strcmp(p, "-dirty") == 0 || parse_describe(p, &out->commits_ahead) == 0;
+}
+
+int semver_parse(const char *s, SemVer *out) {
+    if (!s || !out) return -1;
+    memset(out, 0, sizeof(*out));
+    const char *p = s;
+    if (parse_core(&p, out) != 0) return -1;
+    if (ends_version(p, out)) return 0;
+    if (*p == '-' && parse_prerelease(&p, out) != 0) return -1;
     if (*p == '+') return 0; /* build metadata ignored */
     return *p == '\0' ? 0 : -1;
 }

@@ -50,9 +50,9 @@
  */
 
 #include "core/error.h"
+#include "memory/mapped_file.h"
 #include "multimodal/vision_encoder.h"
 #include "multimodal/vision_projector.h"
-#include "memory/mapped_file.h"
 
 #define VISION_BIN_MAGIC 0x57535956u    /* "VISW" LE */
 #define PROJECTOR_BIN_MAGIC 0x4A4F5250u /* "PROJ" LE */

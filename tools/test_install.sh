@@ -27,7 +27,7 @@ package() {   # package <version> [corrupt]
     mkdir -p "$d" "$W/pkg/$name"
     cp "$BIN" "$W/pkg/$name/pz"
     ln -sf pz "$W/pkg/$name/adaptive_ai_engine"
-    cp "$ROOT/LICENSE" "$ROOT/NOTICE" "$ROOT/LICENSE-LGPL-3.0.txt" "$ROOT/README.md" "$ROOT/CHANGELOG.md" "$W/pkg/$name/"
+    cp "$ROOT/LICENSE" "$ROOT/NOTICE" "$ROOT/README.md" "$ROOT/CHANGELOG.md" "$W/pkg/$name/"
     tar -C "$W/pkg" -czf "$d/$name.tar.gz" "$name"
     (cd "$d" && sha256sum "$name.tar.gz" > SHA256SUMS)
 }
@@ -51,15 +51,31 @@ for SH in dash bash; do
        [ -x "$P/bin/pz" ] && "$P/bin/pz" --version > /dev/null 2>&1; then
         ok "install a given version"
     else bad "install a given version"; cat "$W/out"; fi
+    # No curl on PATH: the wget branch must read a file:// mirror itself (wget cannot) and must not
+    # be asked for the file:// URL at all.
+    NC="$W/nocurl"
+    if [ ! -d "$NC" ]; then
+        mkdir -p "$NC"
+        for f in /usr/bin/* /bin/*; do
+            b="${f##*/}"
+            [ "$b" = curl ] || [ -e "$NC/$b" ] || ln -s "$f" "$NC/$b"
+        done
+        rm -f "$NC/wget"
+        printf '#!/bin/sh\necho "$@" >> "%s/wget.log"\nexit 1\n' "$W" > "$NC/wget"
+        chmod +x "$NC/wget"
+    fi
+    PW="$W/prefix-wget-$SH"
+    if PATH="$NC" "$(command -v "$SH")" "$ROOT/install.sh" --version 0.0.1-test --prefix "$PW" --yes \
+        > "$W/out2" 2>&1 && [ -x "$PW/bin/pz" ] && [ ! -e "$W/wget.log" ]; then
+        ok "wget fallback installs from a file:// mirror without calling wget"
+    else bad "wget fallback installs from a file:// mirror without calling wget"; cat "$W/out2"; fi
     [ -f "$P/share/doc/project-zero/LICENSE" ] && [ -f "$P/share/project-zero/install-manifest" ] &&
         ok "docs + manifest installed" || bad "docs + manifest installed"
-    # LGPL-3.0-or-later kernel is linked into pz: notice + licence text must be installed byte-identical.
+    # the notice must be installed byte-identical and recorded in the manifest.
     if cmp -s "$ROOT/NOTICE" "$P/share/doc/project-zero/NOTICE" &&
-       cmp -s "$ROOT/LICENSE-LGPL-3.0.txt" "$P/share/doc/project-zero/LICENSE-LGPL-3.0.txt" &&
-       grep -q "/NOTICE\$" "$P/share/project-zero/install-manifest" &&
-       grep -q "/LICENSE-LGPL-3.0.txt\$" "$P/share/project-zero/install-manifest"; then
-        ok "NOTICE + LICENSE-LGPL-3.0.txt installed and recorded in the manifest"
-    else bad "NOTICE + LICENSE-LGPL-3.0.txt installed and recorded in the manifest"; fi
+       grep -q "/NOTICE\$" "$P/share/project-zero/install-manifest"; then
+        ok "NOTICE installed and recorded in the manifest"
+    else bad "NOTICE installed and recorded in the manifest"; fi
     grep -q "Checksum verified" "$W/out" && ok "checksum reported" || bad "checksum reported"
 
     if "$SH" "$ROOT/install.sh" --prefix "$P" --yes > "$W/out" 2>&1 &&
@@ -112,7 +128,7 @@ for SH in dash bash; do
     touch "$P/bin/other-tool"
     if "$SH" "$ROOT/install.sh" --uninstall --prefix "$P" > "$W/out" 2>&1 &&
        [ ! -e "$P/bin/pz" ] && [ ! -e "$P/share/doc/project-zero/LICENSE" ] && [ ! -e "$P/share/doc/project-zero/NOTICE" ] &&
-       [ ! -e "$P/share/doc/project-zero/LICENSE-LGPL-3.0.txt" ] && [ -e "$P/bin/other-tool" ]; then
+       [ -e "$P/bin/other-tool" ]; then
         ok "uninstall removes only what it installed"
     else bad "uninstall"; cat "$W/out"; fi
     if "$SH" "$ROOT/install.sh" --uninstall --prefix "$P" > "$W/out" 2>&1; then

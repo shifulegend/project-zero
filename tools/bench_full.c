@@ -25,15 +25,15 @@
 #include <unistd.h> /* sleep() */
 
 #include "core/config.h"
+#include "core/cpu_features.h"
 #include "core/error.h"
-#include "core/hardware_profile.h"
 #include "core/moe_config.h"
 #include "core/platform.h"
-#include "core/run_state.h"
 #include "core/weights.h"
-#include "math/cpu_features.h"
 #include "math/simd_dispatch.h"
 #include "memory/mapped_file.h"
+#include "runtime/hardware_profile.h"
+#include "runtime/run_state.h"
 #include "threading/thread_pool.h"
 #include "transformer/forward.h"
 
@@ -255,8 +255,7 @@ int main(int argc, char **argv) {
     if (!saved_backend) saved_backend = "";
     setenv("TN_FORCE_BACKEND", best_simd, 1);
     tn_simd_init();
-    const TnHardwareProfile *hw = tn_hardware_profile_init();
-    (void)hw;
+    tn_hardware_profile_init();
 
     TransformerWeights w;
     memset(&w, 0, sizeof(w));
@@ -265,8 +264,9 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    tn_i8 *wdata = (tn_i8 *)mf.data + 64; /* skip 64-byte header */
-    if (weights_map(&w, &cfg, wdata, mf.size - 64) != TN_OK) {
+    tn_i8 *wdata      = (tn_i8 *)mf.data + 64; /* skip 64-byte header */
+    MoEConfig moe_cfg = {.is_moe = false};     /* the legacy .bin format has no MoE section */
+    if (weights_map(&w, &cfg, &moe_cfg, wdata, mf.size - 64) != TN_OK) {
         fprintf(stderr, "weights_map failed\n");
         return 1;
     }

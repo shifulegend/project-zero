@@ -1,4 +1,5 @@
 #include "sampling/constrained_sample.h"
+
 #include "sampling/sampler_chain.h"
 
 int sample_constrained_chain(float *logits, int vocab_size, FSMState *fsm, Tokenizer *t,

@@ -8,14 +8,14 @@
  * tests the pure-logic components that can be validated without a model.
  */
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <assert.h>
 #include <unistd.h> /* pipe(), read() */
 
-#include "api/chat_request.h"
 #include "api/chat_compile.h"
+#include "api/chat_request.h"
 #include "api/sse_stream.h"
 
 /* ── Test helpers ────────────────────────────────────────────────────────── */
@@ -33,10 +33,10 @@ static void test_chat_request_init(void) {
     ChatRequest req;
     chat_request_init(&req);
     assert(req.num_messages == 0);
-    assert(req.temperature == 1.0f);
-    assert(req.top_p == 1.0f);
-    assert(req.max_tokens == 512);
-    assert(req.stream == 0);
+    assert(req.sampling.temperature == 1.0f);
+    assert(req.sampling.top_p == 1.0f);
+    assert(req.output.max_tokens == 512);
+    assert(req.output.stream == 0);
     chat_request_free(&req);
     PASS("chat_request_init");
 }
@@ -73,15 +73,15 @@ static void test_json_parse_basic(void) {
         FAIL("json_parse_basic", "content mismatch");
         goto done;
     }
-    if (req.temperature != 0.7f) {
+    if (req.sampling.temperature != 0.7f) {
         FAIL("json_parse_basic", "temperature mismatch");
         goto done;
     }
-    if (req.max_tokens != 64) {
+    if (req.output.max_tokens != 64) {
         FAIL("json_parse_basic", "max_tokens mismatch");
         goto done;
     }
-    if (!req.stream) {
+    if (!req.output.stream) {
         FAIL("json_parse_basic", "stream flag mismatch");
         goto done;
     }

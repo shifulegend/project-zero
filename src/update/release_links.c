@@ -2,11 +2,12 @@
  * update/release_links.c — see update/release_links.h.
  */
 #include "update/release_links.h"
-#include "update/semver.h"
-#include "update/update_check.h"
 
 #include <stdio.h>
 #include <string.h>
+
+#include "update/semver.h"
+#include "update/update_check.h"
 
 int release_web_base(const char *api_base, char *out, size_t n) {
     if (!out || n == 0) return -1;

@@ -13,6 +13,7 @@ Usage:
 import argparse
 import os
 import re
+
 from PIL import Image, ImageDraw, ImageFont
 
 # Terminal colour palette (dark theme)
@@ -31,7 +32,8 @@ FONT_SIZE = 16
 IMG_WIDTH = 900
 
 
-def load_font(size: int):
+def load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    """Loads the first available monospace font at `size`."""
     candidates = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
         "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
@@ -44,7 +46,7 @@ def load_font(size: int):
     return ImageFont.load_default()
 
 
-def colour_line(line: str):
+def colour_line(line: str) -> tuple[tuple[int, int, int], str]:
     """Return (colour, line_text) based on content."""
     if re.search(r"\[gen\].*tok/s", line):
         return YELLOW, line
@@ -73,7 +75,8 @@ def colour_line(line: str):
     return FG, line
 
 
-def render(text: str, title: str, command: str, output_path: str):
+def render(text: str, title: str, command: str, output_path: str) -> None:
+    """Renders text, a title and the command as a terminal-style PNG at `output_path`."""
     font = load_font(FONT_SIZE)
     bold_font = load_font(FONT_SIZE)  # same size; bold not critical
 
@@ -126,7 +129,8 @@ def render(text: str, title: str, command: str, output_path: str):
     print(f"Screenshot saved: {output_path}")
 
 
-def main():
+def main() -> None:
+    """Command-line entry point: renders benchmark output as a PNG."""
     parser = argparse.ArgumentParser(description="Render benchmark output as terminal PNG")
     parser.add_argument("--input", required=True, help="Input benchmark .txt file")
     parser.add_argument("--output", required=True, help="Output PNG path")
@@ -134,7 +138,7 @@ def main():
     parser.add_argument("--command", required=True, help="Command that was run")
     args = parser.parse_args()
 
-    with open(args.input, "r", encoding="utf-8") as f:
+    with open(args.input, encoding="utf-8") as f:
         text = f.read()
 
     render(text, args.title, args.command, args.output)

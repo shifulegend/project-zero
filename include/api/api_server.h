@@ -17,22 +17,33 @@
  *   api_server_stop(&ctx);
  */
 
+#include <pthread.h>
 #include <stdatomic.h>
-#include "core/error.h"
+
+#include "api/cancel.h"
+#include "api/gen_queue.h"
+#include "api/metrics.h"
 #include "api/rate_limit.h"
+#include "api/server_config.h"
 #include "core/config.h"
+#include "core/error.h"
 #include "core/moe_config.h"
-#include "core/run_state.h"
 #include "core/weights.h"
+#include "kv_cache/prefix_cache.h"
+#include "runtime/prompt_store.h"
+#include "runtime/run_state.h"
 #include "threading/thread_pool.h"
 #include "tokenizer/tokenizer.h"
-#include "api/server_config.h"
-#include "api/metrics.h"
-#include "api/cancel.h"
-#include "kv_cache/prefix_cache.h"
-#include "kv_cache/prompt_store.h"
-#include "api/gen_queue.h"
-#include <pthread.h>
+#include "update/update_check.h"
+
+/* The --parallel scheduler (NULL = sequential) and what it ended up running: slots, the KV budget
+ * and why fewer slots than requested. */
+typedef struct {
+    struct BatchScheduler *sched;
+    int slots;
+    const char *note;
+    long long kv_budget;
+} ApiParallel;
 
 /* ── Inference context passed from main to API handler ──────────────────── */
 typedef struct {
@@ -42,7 +53,8 @@ typedef struct {
     const MoEConfig *moe_cfg;
     Tokenizer *tok;
     ThreadPool *tp;
-    struct PrmModel *prm; /* Phase 30 judge for "mcts" requests; NULL = self-scored */
+    struct PrmModel *prm;  /* Phase 30 judge for "mcts" requests; NULL = self-scored */
+    UpdateService *update; /* /v1/update state, owned by the caller; NULL = no update info */
 
     /* Phase 22: server hardening state. server_config may be populated by
      * the caller (main.c) any time before api_server_start(); the others are
@@ -50,6 +62,7 @@ typedef struct {
     ServerConfig server_config;
     MetricsState metrics;
     CancelState cancel;
+    pthread_mutex_t config_save_lock; /* serialises load -> change -> save of the config file */
     pthread_mutex_t generation_mutex; /* serializes generate_with_callback calls */
     /* Phase 23 stage 1: FIFO admission to the generation slot (max_waiting =
      * --queue-size; 0 keeps the 429-when-busy behaviour). */
@@ -64,16 +77,14 @@ typedef struct {
     int prompt_store_ready;
     /* Phase 23 stage 2b: the --parallel scheduler (NULL = sequential) and
      * what it ended up running: slots, and why fewer than requested. */
-    struct BatchScheduler *sched;
-    int parallel_slots;
-    const char *parallel_note;
-    long long parallel_kv_budget;
+    ApiParallel parallel;
 
     /* Server state (filled by api_server_start) */
     int server_fd;                 /* listening socket fd, -1 when stopped */
     void *listener_thread;         /* pthread_t, opaque */
     RateLimiter rate_limiter;      /* non-generation routes (--rate-limit) */
     atomic_int active_connections; /* connection threads alive (listener +1, thread exit -1) */
+    atomic_ulong request_seq;      /* counter behind generated request IDs */
     atomic_int
         running; /* 1 = running, 0 = stop requested (read by the listener and connection threads) */
 } ApiContext;

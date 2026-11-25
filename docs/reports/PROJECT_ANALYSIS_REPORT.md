@@ -79,7 +79,7 @@ The project is cleanly partitioned into 11 subsystems, each with a mirrored
 
 ### 2.2 Dependency Graph (High Level)
 
-```
+```text
 main.c
  └─ args.c / repl.c / timer.c
      └─ generate.c               ← token loop
@@ -120,7 +120,7 @@ TN_WIN32       // Windows (MapViewOfFile path)
 
 ### 2.4 Data Flow: Token Generation
 
-```
+```text
 1. Prompt tokens → tokenizer_encode()
 2. For each position:
    a. embedding_lookup(token_id)          → x[dim]  (BF16 → float32)
@@ -313,7 +313,7 @@ transformer layer per token.
 
 Custom C11 atomic thread pool with a spin-then-sleep protocol:
 
-```
+```text
 Dispatcher:
   1. fill task parameters (n_threads slices of output rows)
   2. atomic_store(spin_epoch, epoch+1)  // release fence — workers wake
@@ -335,7 +335,7 @@ CPU during idle REPL wait periods.
 Phase 14 adds a streaming tag parser that intercepts model output for tool
 calls:
 
-```
+```text
 model output stream → ti_process_piece() → detect <exec>...</exec>
                                             detect <think>...</think>
                                             detect <save_memory>

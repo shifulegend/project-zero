@@ -9,10 +9,13 @@ Outputs:
 """
 
 import os
+
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 
 # ── Measured data (i5-11300H, AVX-512 VNNI, 2026-06-21) ──────────────────────
 threads = [1, 2, 3, 4, 5, 6, 7, 8]
@@ -35,7 +38,8 @@ GRID = "#2A2A35"
 FG = "#CCCCCC"
 
 
-def apply_dark(ax, fig):
+def apply_dark(ax: Axes, fig: Figure) -> None:
+    """Applies the dark theme colours to a matplotlib figure and axes."""
     fig.patch.set_facecolor(BG)
     ax.set_facecolor(BG)
     ax.tick_params(colors=FG)
@@ -105,8 +109,8 @@ print(f"Saved: {out}")
 
 
 # ── Graph 2: Speedup ratio ────────────────────────────────────────────────────
-speedup_bf16 = [b / m for b, m in zip(pz_bf16, msft)]
-speedup_int4 = [i / m for i, m in zip(pz_int4, msft)]
+speedup_bf16 = [b / m for b, m in zip(pz_bf16, msft, strict=False)]
+speedup_int4 = [i / m for i, m in zip(pz_int4, msft, strict=False)]
 
 fig, ax = plt.subplots(figsize=(10, 5))
 apply_dark(ax, fig)
@@ -125,7 +129,7 @@ ax.set_title(
 ax.set_xticks(threads)
 ax.legend(facecolor="#1A1A25", edgecolor=GRID, labelcolor=FG, fontsize=11)
 
-for t, su in zip(threads, speedup_int4):
+for t, su in zip(threads, speedup_int4, strict=False):
     ax.annotate(
         f"{su:.1f}×",
         xy=(t, su),
@@ -160,7 +164,7 @@ fig, ax = plt.subplots(figsize=(8, 5))
 apply_dark(ax, fig)
 
 bars = ax.bar(labels, values, color=colours, width=0.45, edgecolor=GRID, linewidth=0.8)
-for bar, val, tlabel in zip(bars, values, t_labels):
+for bar, val, tlabel in zip(bars, values, t_labels, strict=False):
     ax.text(
         bar.get_x() + bar.get_width() / 2,
         bar.get_height() + 0.5,
@@ -181,12 +185,12 @@ ax.set_title(
 ax.set_ylim(0, pk_int4 * 1.25)
 
 # Speedup annotations — as figure text below the chart
-speedup_int4 = pk_int4 / pk_msft
-speedup_bf16 = pk_bf16 / pk_msft
+peak_ratio_int4 = pk_int4 / pk_msft
+peak_ratio_bf16 = pk_bf16 / pk_msft
 plt.figtext(
     0.26,
     0.01,
-    f"{speedup_int4:.1f}× faster than MSFT",
+    f"{peak_ratio_int4:.1f}× faster than MSFT",
     ha="center",
     color=C_INT4,
     fontsize=10,
@@ -195,7 +199,7 @@ plt.figtext(
 plt.figtext(
     0.57,
     0.01,
-    f"{speedup_bf16:.1f}× faster than MSFT",
+    f"{peak_ratio_bf16:.1f}× faster than MSFT",
     ha="center",
     color=C_BF16,
     fontsize=10,

@@ -4,25 +4,25 @@
  * between speculative_generate_with_callback() and plain
  * generate_with_callback() in greedy mode.
  */
-#include "test_harness.h"
-#include "core/config.h"
-#include "core/moe_config.h"
-#include "core/run_state.h"
-#include "core/unpack.h"
-#include "core/weights.h"
-#include "math/simd_dispatch.h"
-#include "speculative/accept_reject.h"
-#include "speculative/draft_model.h"
-#include "speculative/spec_decode.h"
-#include "tokenizer/tokenizer.h"
-#include "transformer/generate.h"
-
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#include "core/config.h"
+#include "core/moe_config.h"
+#include "core/unpack.h"
+#include "core/weights.h"
+#include "math/simd_dispatch.h"
+#include "runtime/run_state.h"
+#include "speculative/accept_reject.h"
+#include "speculative/draft_model.h"
+#include "speculative/spec_decode.h"
+#include "test_harness.h"
+#include "tokenizer/tokenizer.h"
+#include "transformer/generate.h"
 
 #define SPEC_VOCAB 6
 
@@ -184,50 +184,50 @@ static void build_spec_model(Config *cfg, TransformerWeights *w, unsigned seed_b
     fill_pattern_bf16(w->token_embedding_table, (size_t)SPEC_VOCAB * SM_DIM, seed_base + 1);
 
     for (int l = 0; l < SM_LAYERS; l++) {
-        w->wq[l] = (tn_i8 *)make_packed_ternary(SM_DIM, SM_DIM, seed_base + 10 + l);
-        w->sq[l] = 1.0f;
-        w->wk[l] = (tn_i8 *)make_packed_ternary(kv_dim, SM_DIM, seed_base + 20 + l);
-        w->sk[l] = 1.0f;
-        w->wv[l] = (tn_i8 *)make_packed_ternary(kv_dim, SM_DIM, seed_base + 30 + l);
-        w->sv[l] = 1.0f;
-        w->wo[l] = (tn_i8 *)make_packed_ternary(SM_DIM, SM_DIM, seed_base + 40 + l);
-        w->so[l] = 1.0f;
+        w->attn.wq[l] = (tn_i8 *)make_packed_ternary(SM_DIM, SM_DIM, seed_base + 10 + l);
+        w->attn.sq[l] = 1.0f;
+        w->attn.wk[l] = (tn_i8 *)make_packed_ternary(kv_dim, SM_DIM, seed_base + 20 + l);
+        w->attn.sk[l] = 1.0f;
+        w->attn.wv[l] = (tn_i8 *)make_packed_ternary(kv_dim, SM_DIM, seed_base + 30 + l);
+        w->attn.sv[l] = 1.0f;
+        w->attn.wo[l] = (tn_i8 *)make_packed_ternary(SM_DIM, SM_DIM, seed_base + 40 + l);
+        w->attn.so[l] = 1.0f;
 
-        w->w1[l] = (tn_i8 *)make_packed_ternary(SM_HIDDEN, SM_DIM, seed_base + 50 + l);
-        w->s1[l] = 1.0f;
-        w->w3[l] = (tn_i8 *)make_packed_ternary(SM_HIDDEN, SM_DIM, seed_base + 60 + l);
-        w->s3[l] = 1.0f;
-        w->w2[l] = (tn_i8 *)make_packed_ternary(SM_DIM, SM_HIDDEN, seed_base + 70 + l);
-        w->s2[l] = 1.0f;
+        w->ffn.w1[l] = (tn_i8 *)make_packed_ternary(SM_HIDDEN, SM_DIM, seed_base + 50 + l);
+        w->ffn.s1[l] = 1.0f;
+        w->ffn.w3[l] = (tn_i8 *)make_packed_ternary(SM_HIDDEN, SM_DIM, seed_base + 60 + l);
+        w->ffn.s3[l] = 1.0f;
+        w->ffn.w2[l] = (tn_i8 *)make_packed_ternary(SM_DIM, SM_HIDDEN, seed_base + 70 + l);
+        w->ffn.s2[l] = 1.0f;
 
-        w->rms_att_weight[l] = (float *)malloc(SM_DIM * sizeof(float));
-        fill_ones(w->rms_att_weight[l], SM_DIM);
-        w->rms_ffn_weight[l] = (float *)malloc(SM_DIM * sizeof(float));
-        fill_ones(w->rms_ffn_weight[l], SM_DIM);
+        w->attn.norm[l] = (float *)malloc(SM_DIM * sizeof(float));
+        fill_ones(w->attn.norm[l], SM_DIM);
+        w->ffn.norm[l] = (float *)malloc(SM_DIM * sizeof(float));
+        fill_ones(w->ffn.norm[l], SM_DIM);
     }
 
     w->rms_final_weight = (float *)malloc(SM_DIM * sizeof(float));
     fill_ones(w->rms_final_weight, SM_DIM);
 
-    w->wcls = (tn_u16 *)calloc((size_t)SPEC_VOCAB * SM_DIM, sizeof(tn_u16));
-    fill_pattern_bf16(w->wcls, (size_t)SPEC_VOCAB * SM_DIM, seed_base + 99);
+    w->cls.w = (tn_u16 *)calloc((size_t)SPEC_VOCAB * SM_DIM, sizeof(tn_u16));
+    fill_pattern_bf16(w->cls.w, (size_t)SPEC_VOCAB * SM_DIM, seed_base + 99);
 }
 
 static void free_spec_model(TransformerWeights *w) {
     free(w->token_embedding_table);
     for (int l = 0; l < SM_LAYERS; l++) {
-        free(w->wq[l]);
-        free(w->wk[l]);
-        free(w->wv[l]);
-        free(w->wo[l]);
-        free(w->w1[l]);
-        free(w->w2[l]);
-        free(w->w3[l]);
-        free(w->rms_att_weight[l]);
-        free(w->rms_ffn_weight[l]);
+        free(w->attn.wq[l]);
+        free(w->attn.wk[l]);
+        free(w->attn.wv[l]);
+        free(w->attn.wo[l]);
+        free(w->ffn.w1[l]);
+        free(w->ffn.w2[l]);
+        free(w->ffn.w3[l]);
+        free(w->attn.norm[l]);
+        free(w->ffn.norm[l]);
     }
     free(w->rms_final_weight);
-    free(w->wcls);
+    free(w->cls.w);
     weights_free_pointers(w);
 }
 
@@ -335,8 +335,8 @@ static void test_speculative_greedy_matches_plain_generation(void) {
     spec_out.buf[0] = '\0';
     speculative_generate_with_callback(&verifier_cfg, &verifier_w, &s_spec, &mc, &tok, NULL, prompt,
                                        max_tokens, /*temperature=*/0.0f, /*top_p=*/1.0f,
-                                       /*json_mode=*/false, &draft, spec_length, capture_callback,
-                                       &spec_out);
+                                       /*json_mode=*/false, &draft, spec_length, /*seed=*/-1,
+                                       capture_callback, &spec_out);
     run_state_free(&s_spec);
     run_state_free(&s_draft);
 
@@ -347,6 +347,55 @@ static void test_speculative_greedy_matches_plain_generation(void) {
     tokenizer_free(&tok);
     free_spec_model(&verifier_w);
     free_spec_model(&draft_w);
+}
+
+/* --seed / API "seed": sampled speculative decoding must be reproducible. It used to seed from the
+ * clock whatever the caller asked for, so two runs with --seed 5 gave different text. */
+static void run_sampled(const Config *vc, const TransformerWeights *vw, const Config *dc,
+                        const TransformerWeights *dw, Tokenizer *tok, long long seed,
+                        CaptureCtx *out) {
+    MoEConfig mc;
+    moe_config_init_dense(&mc);
+    RunState s_spec, s_draft;
+    TEST_ASSERT(run_state_alloc(&s_spec, vc, vc->seq_len) == TN_OK, "seeded spec run_state_alloc");
+    TEST_ASSERT(run_state_alloc(&s_draft, dc, dc->seq_len) == TN_OK,
+                "seeded draft run_state_alloc");
+    DraftModel draft;
+    memset(&draft, 0, sizeof(draft));
+    draft.config  = *dc;
+    draft.weights = *dw;
+    moe_config_init_dense(&draft.moe_config);
+    draft.state = &s_draft;
+    out->len    = 0;
+    out->buf[0] = '\0';
+    speculative_generate_with_callback(vc, vw, &s_spec, &mc, tok, NULL, "AB", /*max_tokens=*/24,
+                                       /*temperature=*/1.5f, /*top_p=*/1.0f, /*json_mode=*/false,
+                                       &draft, /*spec_length=*/3, seed, capture_callback, out);
+    run_state_free(&s_spec);
+    run_state_free(&s_draft);
+}
+
+static void test_speculative_seed_is_reproducible(void) {
+    tn_simd_init();
+    Config vc, dc;
+    TransformerWeights vw, dw;
+    build_spec_model(&vc, &vw, 1000);
+    build_spec_model(&dc, &dw, 9000);
+    Tokenizer tok;
+    build_test_tokenizer(&tok);
+
+    CaptureCtx a, b, c;
+    run_sampled(&vc, &vw, &dc, &dw, &tok, 7, &a);
+    sleep(1); /* the clock moves on: a clock-seeded run would differ now */
+    run_sampled(&vc, &vw, &dc, &dw, &tok, 7, &b);
+    run_sampled(&vc, &vw, &dc, &dw, &tok, 99, &c);
+    TEST_ASSERT(a.len > 0, "seeded speculative run produced output");
+    TEST_ASSERT(strcmp(a.buf, b.buf) == 0, "the same seed gives the same speculative output");
+    TEST_ASSERT(strcmp(a.buf, c.buf) != 0, "a different seed gives different speculative output");
+
+    tokenizer_free(&tok);
+    free_spec_model(&vw);
+    free_spec_model(&dw);
 }
 
 /* ── draft_model_load() vocab-mismatch validation ────────────────────────
@@ -365,7 +414,7 @@ static void test_draft_model_vocab_mismatch_rejected(void) {
 
     DraftModel dm;
     TernaryError err =
-        draft_model_load(&dm, path, /*verifier_vocab_size=*/1, /*max_seq_len_hint=*/64, NULL);
+        draft_model_load(&dm, path, /*verifier_vocab_size=*/1, /*max_seq_len_hint=*/64, NULL, NULL);
     TEST_ASSERT_EQ(err, TN_ERR_INVALID_ARGS,
                    "draft model load is rejected when vocab_size doesn't match the verifier");
 }
@@ -375,6 +424,7 @@ int main(void) {
     RUN_TEST(test_accept_reject_rejects_at_first_mismatch);
     RUN_TEST(test_accept_reject_rejects_immediately);
     RUN_TEST(test_speculative_greedy_matches_plain_generation);
+    RUN_TEST(test_speculative_seed_is_reproducible);
     RUN_TEST(test_draft_model_vocab_mismatch_rejected);
     TEST_SUMMARY();
 }

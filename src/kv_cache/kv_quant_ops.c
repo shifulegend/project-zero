@@ -1,10 +1,12 @@
 #include "kv_cache/kv_quant_ops.h"
-#include "math/kvq4_kernels.h"
-#include "math/simd_dispatch.h"
-#include "core/clamp.h"
+
 #include <math.h>
 #include <stdint.h>
 #include <string.h>
+
+#include "core/clamp.h"
+#include "math/kvq4_kernels.h"
+#include "math/simd_dispatch.h"
 
 int kv_type_parse(const char *s) {
     if (!s) return -1;

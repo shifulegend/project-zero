@@ -8,13 +8,14 @@
  * paired samples AND clears the median margin. The decision is a pure function,
  * so noise, ties and clear wins are tested with synthetic series.
  */
-#include "test_harness.h"
-#include "core/calibration.h"
-#include "core/hardware_profile.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#include "runtime/calibration.h"
+#include "runtime/hardware_profile.h"
+#include "test_harness.h"
 
 #define R TN_CALIB_ROUNDS
 
@@ -202,6 +203,104 @@ static void test_act_timing(void) {
     TEST_ASSERT(a == 116 && b == 120, "auto is float here");
 }
 
+/* ── The two decisions lifted out of tn_calibrate, against copies of the old inline code ───── */
+
+/* Thread preference, verbatim from tn_calibrate before it was split (result->* became arrays). */
+static int ref_prefer_physical(const double med[], const double min_[], int best_thread_t,
+                               double *best_thread_tokps, int phys_t) {
+    if (best_thread_t != phys_t && med[phys_t - 1] > 0.0) {
+        double pm = med[phys_t - 1];
+        int clear =
+            *best_thread_tokps > pm * TN_CALIB_OVERRIDE_MARGIN && min_[best_thread_t - 1] > pm;
+        if (!clear) {
+            best_thread_t      = phys_t;
+            *best_thread_tokps = pm;
+        }
+    }
+    return best_thread_t;
+}
+
+static double rnd01(unsigned *s) {
+    return (double)lcg(s) / 32767.0;
+}
+
+/* One random series of per-thread-count results: medians (some zero), minima below them. */
+static void gen_thread_series(unsigned *seed, int max_t, double *med, double *mn) {
+    for (int i = 0; i < max_t; i++) {
+        med[i]        = lcg(seed) % 9 == 0 ? 0.0 : 20.0 + 100.0 * rnd01(seed);
+        double spread = rnd01(seed) * 0.6;
+        mn[i]         = med[i] * (1.0 - spread);
+    }
+}
+
+/* The fastest count and its tok/s. */
+static int fastest_count(const double *med, int max_t, double *best) {
+    int best_t = 1;
+    *best      = 0.0;
+    for (int i = 1; i <= max_t; i++) {
+        if (med[i - 1] > *best) {
+            *best  = med[i - 1];
+            best_t = i;
+        }
+    }
+    return best_t;
+}
+
+static void test_prefer_physical(void) {
+    unsigned seed = 77;
+    int bad = 0, kept_best = 0, went_physical = 0;
+    for (int t = 0; t < 200000; t++) {
+        int max_t = 1 + (int)(lcg(&seed) % 16);
+        double med[16], mn[16], best;
+        gen_thread_series(&seed, max_t, med, mn);
+        int best_t       = fastest_count(med, max_t, &best);
+        int phys_t       = 1 + (int)(lcg(&seed) % (unsigned)max_t);
+        double ref_tokps = best, got_tokps;
+        int ref          = ref_prefer_physical(med, mn, best_t, &ref_tokps, phys_t);
+        int got          = tn_calib_prefer_physical(med, mn, best_t, best, phys_t, &got_tokps);
+        kept_best += got == best_t && best_t != phys_t;
+        went_physical += got == phys_t && best_t != phys_t;
+        bad += ref != got || ref_tokps != got_tokps;
+    }
+    TEST_ASSERT(kept_best > 1000 && went_physical > 1000, "both outcomes are exercised");
+    TEST_ASSERT(bad == 0, "thread preference equals the old inline rule");
+}
+
+/* Classifier estimates, verbatim from tn_calibrate before it was split. */
+static void ref_cls(double base_bw, double l3_bytes, double cls_tokps[3], int *best) {
+    double ternary_mb  = 522.0;
+    double bf16_cls_mb = (double)(128256ULL * 2560 * 2) / (1024.0 * 1024.0);
+    double int8_cls_mb = bf16_cls_mb / 2.0;
+    double int4_cls_mb = bf16_cls_mb / 4.0;
+    double l3_mb       = l3_bytes / (1024.0 * 1024.0);
+    double cached      = (l3_mb >= ternary_mb) ? ternary_mb : l3_mb * 0.5;
+    double dram_mb     = ternary_mb - cached;
+    double bw_mbps     = base_bw * (1e9 / (1024.0 * 1024.0));
+    cls_tokps[0]       = bw_mbps / (dram_mb + bf16_cls_mb);
+    cls_tokps[1]       = bw_mbps / (dram_mb + int8_cls_mb);
+    cls_tokps[2]       = bw_mbps / (dram_mb + int4_cls_mb);
+    *best              = 0;
+    for (int i = 1; i < 3; i++)
+        if (cls_tokps[i] > cls_tokps[*best]) *best = i;
+}
+
+static void test_classifier_estimates(void) {
+    unsigned seed = 91;
+    int bad       = 0;
+    for (int t = 0; t < 200000; t++) {
+        double bw = 0.5 + 400.0 * rnd01(&seed);
+        double l3 = lcg(&seed) % 5 == 0   ? 0.0
+                    : lcg(&seed) % 7 == 0 ? 522.0 * 1024.0 * 1024.0
+                                          : 1024.0 * 1024.0 * 1024.0 * rnd01(&seed);
+        double a[3], b[3];
+        int ia, ib;
+        ref_cls(bw, l3, a, &ia);
+        tn_calib_classifier_estimates(bw, l3, b, &ib);
+        if (ia != ib || memcmp(a, b, sizeof a) != 0) bad++;
+    }
+    TEST_ASSERT(bad == 0, "classifier estimates equal the old inline arithmetic");
+}
+
 int main(void) {
     RUN_TEST(test_wins_needed);
     RUN_TEST(test_noise_never_wins);
@@ -210,5 +309,7 @@ int main(void) {
     RUN_TEST(test_cache_key);
     RUN_TEST(test_act_quant_of_tier);
     RUN_TEST(test_act_timing);
+    RUN_TEST(test_prefer_physical);
+    RUN_TEST(test_classifier_estimates);
     TEST_SUMMARY();
 }

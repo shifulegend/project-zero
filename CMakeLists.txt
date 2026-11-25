@@ -81,6 +81,7 @@ find_package(Threads REQUIRED)
 # ---------------------------------------------------------------------------
 if(MSVC)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /W4")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4")
     set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} /O2 /DNDEBUG")
     set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} /Od /Zi")
     if(ENABLE_AVX2)
@@ -90,6 +91,7 @@ if(MSVC)
     endif()
 else()
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wpedantic")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra") # the chat-template engine is C++17
     # Elara Audit: Added OS-level stack protection, PIE, and Fortify Source
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fstack-protector-strong -fPIE")
     # -z,relro,-z,now are Linux ld-only; macOS ld ignores / rejects them
@@ -125,32 +127,50 @@ endif()
 set(CORE_SOURCES
     src/core/config.c
     src/core/debug.c
+    src/core/log.c
     src/core/error.c
+    src/core/escape.c
+    src/core/sys_probe.c
     src/core/gguf_quant.c
-    src/core/hardware_profile.c
+    src/core/gguf_quant_k.c
+    src/core/gguf_quant_iq.c
+    src/runtime/hardware_profile.c
+    src/runtime/hw_projection.c
+    src/runtime/bw_probe.c
     src/core/bw_cache.c
     src/core/fs_util.c
     src/core/sha256.c
     src/core/text_file.c
-    src/core/calibration.c
-    src/core/mla_run_state.c
+    src/runtime/calibration.c
+    src/runtime/calib_bench.c
+    src/runtime/calib_run.c
+    src/runtime/mla_run_state.c
     src/core/moe_config.c
     src/core/moe_weights.c
-    src/core/qwen35_run_state.c
-    src/core/qwen3moe_run_state.c
-    src/core/run_state.c
+    src/runtime/qwen35_run_state.c
+    src/runtime/qwen3moe_run_state.c
+    src/runtime/run_state.c
     src/core/step_timing.c
-    src/core/weights.c
+    src/runtime/weights.c
     src/core/unpack.c
     src/core/unpack_avx2.c
     src/core/gguf_reader.c
     src/core/gguf_i2s.c
-    src/core/gguf_loader.c
-    src/core/lora_load.c
+    src/runtime/gguf_loader.c
+    src/runtime/gguf_load_util.c
+    src/runtime/gguf_load_proj.c
+    src/runtime/gguf_load_deepseek2.c
+    src/runtime/gguf_load_qwen35.c
+    src/runtime/gguf_load_qwen3moe.c
+    src/runtime/gguf_load_mamba.c
+    src/runtime/mamba_state.c
+    src/runtime/spec_scratch.c
+    src/runtime/gguf_config.c
+    src/runtime/lora_load.c
 )
 
 set(MATH_SOURCES
-    src/math/cpu_features.c
+    src/core/cpu_features.c
     src/math/elementwise.c
     src/math/elementwise_avx2.c
     src/math/elementwise_avx512.c
@@ -184,7 +204,6 @@ set(MATH_SOURCES
     src/math/ternary_matmul_packed.c
     src/math/ternary_matmul_packed_avx2.c
     src/math/ternary_matmul_packed_avx512.c
-    src/math/ternary_matmul_lut_avx512bw.c
     src/math/ternary_matmul_packed_vnni.c
     src/math/ternary_matmul_packed_avx_vnni.c
     src/math/ternary_matmul_packed_dotprod.c
@@ -211,6 +230,8 @@ set(MEMORY_SOURCES
     src/memory/mapped_file.c
     src/memory/file_backed.c
     src/memory/safe_alloc.c
+    src/memory/free_ram.c
+    src/memory/tls_scratch.c
 )
 
 set(THREADING_SOURCES
@@ -221,10 +242,17 @@ set(THREADING_SOURCES
 
 set(TOKENIZER_SOURCES
     src/tokenizer/chat_template.cpp
+    src/tokenizer/chat_template_lex.cpp
+    src/tokenizer/chat_template_parse.cpp
+    src/tokenizer/chat_template_parse_expr.cpp
+    src/tokenizer/chat_template_eval.cpp
+    src/tokenizer/chat_template_builtins.cpp
+    src/tokenizer/chat_template_exec.cpp
     src/tokenizer/template_guard.c
     src/tokenizer/tokenizer_load.c
     src/tokenizer/tokenizer_encode.c
     src/tokenizer/pretokenize.c
+    src/tokenizer/pretok_classes.c
     src/tokenizer/tokenizer_decode.c
     src/tokenizer/tokenizer_gguf.c
 )
@@ -232,12 +260,19 @@ set(TOKENIZER_SOURCES
 set(TRANSFORMER_SOURCES
     src/transformer/embedding.c
     src/transformer/attention.c
+    src/transformer/attn_flat_kv.c
+    src/transformer/attention_proj.c
     src/transformer/ffn.c
     src/transformer/forward.c
+    src/transformer/forward_head.c
     src/transformer/generate.c
     src/transformer/gen_session.c
+    src/transformer/gen_prompt.c
+    src/transformer/gen_session_debug.c
     src/transformer/mla_attention.c
     src/transformer/moe_ffn.c
+    src/transformer/moe_ffn_legacy.c
+    src/transformer/moe_ffn_track.c
     src/transformer/moe_experts.c
     src/transformer/moe_router.c
     src/transformer/qwen35_attention.c
@@ -246,6 +281,7 @@ set(TRANSFORMER_SOURCES
     src/transformer/stop_seq.c
     src/transformer/attn_tiled.c
     src/transformer/mamba.c
+    src/transformer/dist_worker.c
 )
 
 set(SAMPLING_SOURCES
@@ -268,7 +304,7 @@ set(KV_CACHE_SOURCES
     src/kv_cache/sliding_window.c
     src/kv_cache/kv_strategy.c
     src/kv_cache/prefix_cache.c
-    src/kv_cache/prompt_store.c
+    src/runtime/prompt_store.c
     src/kv_cache/kv_quant_ops.c
     src/math/kvq4_avx2.c
     src/math/kvq4_avx512.c
@@ -277,7 +313,6 @@ set(KV_CACHE_SOURCES
 )
 
 set(SPECULATIVE_SOURCES
-    src/speculative/spec_scratch.c
     src/speculative/draft_model.c
     src/speculative/accept_reject.c
     src/speculative/spec_decode.c
@@ -295,12 +330,34 @@ set(REASONING_SOURCES
 
 set(CLI_SOURCES
     src/cli/args.c
+    src/cli/args_usage.c
+    src/cli/args_table.c
+    src/cli/args_flags_generation.c
+    src/cli/args_flags_memory.c
+    src/cli/args_flags_serving.c
+    src/cli/args_flags_limits.c
+    src/cli/args_flags_search.c
+    src/cli/args_flags_behavior.c
+    src/cli/args_flags_extras.c
+    src/cli/arg_values.c
     src/cli/program_name.c
     src/cli/config_cmd.c
+    src/cli/config_wizard.c
     src/cli/model_catalog.c
     src/config/pz_config.c
+    src/config/pz_config_validate.c
+    src/config/pz_config_parse.c
+    src/config/pz_config_schema.c
     src/core/timer.c
     src/cli/repl.c
+    src/cli/session_checks.c
+    src/cli/session_dist.c
+    src/cli/session_extras.c
+    src/cli/session_model.c
+    src/cli/session_run.c
+    src/cli/session_server.c
+    src/cli/session_startup.c
+    src/cli/session_tokenizer.c
     src/cli/color.c
     src/core/progress.c
     src/cli/live_stats.c
@@ -311,10 +368,19 @@ set(CLI_SOURCES
 
 set(API_SOURCES
     src/api/chat_compile.c
+    src/api/http_connection.c
     src/api/http_server.c
     src/api/http_headers.c
     src/api/json_parse.c
+    src/api/json_scan.c
+    src/api/chat_request_parse.c
     src/api/net_io.c
+    src/api/http_response.c
+    src/api/chat_stream.c
+    src/api/http_chat.c
+    src/api/http_routes.c
+    src/api/http_request.c
+    src/api/chat_image.c
     src/api/rate_limit.c
     src/api/sse_stream.c
     src/api/server_config.c
@@ -329,12 +395,14 @@ set(API_SOURCES
     src/api/json_write.c
     src/api/request_params.c
     src/api/api_info.c
+    src/api/api_config_json.c
     src/api/watermark_endpoint.c
     src/api/selfcheck_endpoint.c
     src/api/config_endpoint.c
     src/api/update_endpoint.c
     src/api/gen_queue.c
     src/api/batch_scheduler.c
+    src/api/batch_slots.c
 )
 
 set(RAG_SOURCES
@@ -364,6 +432,7 @@ set(UPDATE_SOURCES
     src/update/release_links.c
     src/update/semver.c
     src/update/update_check.c
+    src/update/update_service.c
 )
 
 set(AGENT_SOURCES
@@ -416,7 +485,7 @@ if(PZ_DIST AND NOT MSVC)
         src/math/matmul_f16.c src/math/quantize_i8.c src/math/parallel_matmul.c
         src/math/q8_0_act.c src/math/kvq4_avx2.c src/math/cls_kernels.c)
     set(PZ_AVX512_SRCS
-        src/math/ternary_matmul_packed_avx512.c src/math/ternary_matmul_lut_avx512bw.c
+        src/math/ternary_matmul_packed_avx512.c
         src/math/elementwise_avx512.c src/math/quantize_i8_avx512.c
         src/math/rmsnorm_avx512.c src/math/softmax_avx512.c src/math/kvq4_avx512.c src/math/cls_kernels_avx512.c)
     set_source_files_properties(${PZ_AVX2_SRCS} PROPERTIES
@@ -436,7 +505,7 @@ if(PZ_DIST AND NOT MSVC)
         COMPILE_OPTIONS "-mavx512vnni;-mavx512vbmi;-mavx512vl")
     set_source_files_properties(src/math/ternary_matmul_packed_avx_vnni.c PROPERTIES
         COMPILE_OPTIONS "-mavxvnni")
-    set_source_files_properties(src/math/simd_dispatch.c src/core/calibration.c PROPERTIES
+    set_source_files_properties(src/math/simd_dispatch.c src/runtime/calibration.c PROPERTIES
         COMPILE_DEFINITIONS "TN_FORCE_DISPATCH_ALL")
     target_link_options(pz PRIVATE -static-libstdc++ -static-libgcc)
 endif()

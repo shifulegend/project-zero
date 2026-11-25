@@ -13,19 +13,19 @@
  *   build/test_vision_e2e tests/fixtures/strawberry.jpg
  */
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 #include <time.h>
 
+#include "math/simd_dispatch.h"
+#include "memory/aligned_alloc.h"
 #include "multimodal/image_load.h"
 #include "multimodal/patch_extract.h"
+#include "multimodal/vision_bridge.h"
 #include "multimodal/vision_encoder.h"
 #include "multimodal/vision_projector.h"
-#include "multimodal/vision_bridge.h"
-#include "memory/aligned_alloc.h"
-#include "math/simd_dispatch.h"
 
 /* ── timing ─────────────────────────────────────────────────────────────── */
 static int64_t now_us(void) {

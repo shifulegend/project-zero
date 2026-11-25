@@ -19,6 +19,8 @@
 
 #include <stdint.h>
 
+#define TN_KV_I4_GROUP 32 /* values per int4 scale (head_dim must be a multiple) */
+
 typedef float (*tn_kvq4_dot_fn)(const float *q, const uint8_t *k, const float *scales, int n);
 typedef void (*tn_kvq4_axpy_fn)(float *out, float a, const uint8_t *v, const float *scales, int n);
 

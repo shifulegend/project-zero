@@ -1,5 +1,5 @@
 # clang-format 18 (CI pins the same major). The existing hand style: 4 spaces, attached braces, 100 columns,
-# aligned consecutive assignments. Includes and comments are left as written.
+# aligned consecutive assignments. Includes are grouped (own header, C system, C++ standard, project) and sorted within each group; comments are left as written.
 BasedOnStyle: LLVM
 IndentWidth: 4
 ColumnLimit: 100
@@ -11,7 +11,15 @@ AllowShortLoopsOnASingleLine: true
 AlignConsecutiveAssignments: Consecutive
 AlignConsecutiveDeclarations: None
 AlignTrailingComments: true
-SortIncludes: Never
+SortIncludes: CaseSensitive
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^<.*\.h>'
+    Priority: 1
+  - Regex: '^<'
+    Priority: 2
+  - Regex: '^"'
+    Priority: 3
 IndentCaseLabels: true
 PointerAlignment: Right
 ReflowComments: false

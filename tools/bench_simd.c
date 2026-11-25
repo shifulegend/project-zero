@@ -16,7 +16,7 @@
  *       build/math/ternary_matmul_packed.o \
  *       build/math/ternary_matmul_scalar.o \
  *       build/math/quantize_i8.o \
- *       build/math/cpu_features.o \
+ *       build/core/cpu_features.o \
  *       build/math/simd_dispatch.o \
  *       build/memory/aligned_alloc.o \
  *       -lm -pthread
@@ -25,16 +25,16 @@
  *   make bench
  */
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 #include <time.h>
 
+#include "core/cpu_features.h"
 #include "core/platform.h"
-#include "math/ternary_matmul_packed.h"
-#include "math/cpu_features.h"
 #include "math/simd_dispatch.h"
+#include "math/ternary_matmul_packed.h"
 #include "memory/aligned_alloc.h"
 
 /* ── Benchmark parameters ─────────────────────────────────────────────────── */

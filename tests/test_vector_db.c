@@ -1,13 +1,14 @@
 /* Vector DB persistence: v2 format with checksums, v1 upgrade with backup,
  * file locking, crash-orphan recovery, bounds checks, and no leaks on any
  * error path (this test runs under ASan/LSan in `make test`). */
-#include "test_harness.h"
-#include "rag/vector_db.h"
-#include "core/platform.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#include "core/platform.h"
+#include "rag/vector_db.h"
+#include "test_harness.h"
 
 #define DIM 4
 static char g_dir[] = "/tmp/pz_vdb_test_XXXXXX";

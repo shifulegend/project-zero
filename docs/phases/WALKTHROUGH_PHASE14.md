@@ -51,7 +51,7 @@ that can take actions on the host machine and reason about the results.
 
 ## Architecture: How It Works
 
-```
+```text
 User types: /agent <your prompt here>
                 |
                 v
@@ -100,7 +100,7 @@ User types: /agent <your prompt here>
 Only the following commands are permitted. Any other command is rejected before
 execution with no user prompt:
 
-```
+```text
 echo    ls    cat    pwd    uname    date    id
 ```
 
@@ -143,13 +143,13 @@ make release
 
 At the `>` prompt, enter:
 
-```
+```text
 /agent You are a focused assistant. For your next single output, print EXACTLY this and nothing else (no punctuation, no newlines around it): <exec>echo AGENT-TEST</exec>
 ```
 
 Expected flow:
 
-```
+```text
 > [AGENT] <exec> detected: echo AGENT-TEST
 
 [AGENT] About to execute: echo AGENT-TEST
@@ -224,7 +224,7 @@ while time.time() - start < 120:
 
 Expected output excerpt:
 
-```
+```text
 [AGENT] <exec> detected: echo AGENT-TEST
 [AGENT] Auto-approving (env PROJECT_ZERO_AGENT_AUTO_APPROVE=1) echo AGENT-TEST
 [AGENT] Command exit=0 timed_out=0
@@ -249,7 +249,7 @@ This runs `tests/test_tool_interceptor.c` (tag parsing across split pieces) and
 
 These prompts exercise the agent with different approved commands:
 
-```
+```text
 /agent Print the result of: <exec>date</exec> and say what day it is.
 /agent Run <exec>uname -a</exec> and describe the OS.
 /agent Run <exec>pwd</exec> and tell me where we are.
@@ -265,13 +265,13 @@ All of the above commands are on the allow-list. Type `y` to approve each one.
 
 To verify the allow-list blocks unknown commands:
 
-```
+```text
 /agent Run <exec>rm -rf /tmp/test123</exec>
 ```
 
 Expected:
 
-```
+```text
 [AGENT] <exec> detected: rm
 [AGENT] Command 'rm' not in allow-list — execution blocked.
 ```
@@ -284,7 +284,7 @@ The approval prompt is never shown; the command never runs.
 
 The following is the captured output from a verified automated run:
 
-```
+```text
 Project Zero Engine (Phase 12 Main Entry Point)
 SIMD Backend: AVX-512
 Detected: 4 threads, 1970 MB free RAM

@@ -8,15 +8,16 @@
  * models/smollm2-q8_0.gguf, models/SmolLM2-135M-Instruct-f16.gguf. Skips
  * (passes) when none is present; CI's golden job runs it with the model.
  */
-#include "test_harness.h"
-#include "core/gguf_reader.h"
-#include "memory/mapped_file.h"
-#include "tokenizer/chat_template.h"
-#include "tokenizer/tokenizer.h"
-#include "tokenizer/tokenizer_gguf.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "core/gguf_reader.h"
+#include "memory/mapped_file.h"
+#include "test_harness.h"
+#include "tokenizer/chat_template.h"
+#include "tokenizer/tokenizer.h"
+#include "tokenizer/tokenizer_gguf.h"
 
 #define CAP 4096
 

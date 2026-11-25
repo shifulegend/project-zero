@@ -6,6 +6,7 @@
 
 #include <stdio.h>
 #include <string.h>
+
 #include "cli/color.h"
 
 #define PASS(name) printf("[PASS] %s\n", name)

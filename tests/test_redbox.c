@@ -1,11 +1,12 @@
+#include <stdint.h>
+#include <string.h>
+
 #include "core/config.h"
 #include "core/error.h"
 #include "core/platform.h"
-#include "core/run_state.h"
 #include "memory/aligned_alloc.h"
+#include "runtime/run_state.h"
 #include "test_harness.h"
-#include <stdint.h>
-#include <string.h>
 
 const char *__asan_default_options(void) {
     return "allocator_may_return_null=1";

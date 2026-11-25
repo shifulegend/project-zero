@@ -54,7 +54,7 @@ run_clean() {
 
 run_perf() {
   local T=$1
-  local perf_out sys_out ram_out disk_out tok_s output_text result
+  local perf_out tok_s output_text result
 
   # Background system monitors — sampled during inference
   # per-CPU utilization (mpstat)

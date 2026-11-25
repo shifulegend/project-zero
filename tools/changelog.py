@@ -20,6 +20,7 @@ released without changelog notes.
 import argparse
 import re
 import sys
+from dataclasses import dataclass, field
 
 # Keep a Changelog types, ordered breaking-first (docs/ai/changelog-guidance.md §3).
 SECTIONS = ("Changed", "Deprecated", "Removed", "Added", "Fixed", "Security")
@@ -28,10 +29,22 @@ RELEASE_RE = re.compile(r"^## \[(" + SEMVER + r")\] - (\d{4}-\d{2}-\d{2})( \[YAN
 LINK_RE = re.compile(r"^\[([^\]]+)\]: (\S+)$")
 
 
-def parse(text):
-    """-> (entries [(name, date|None, line_no, body_lines)], links {name: url}, errors)."""
-    entries, links, errors = [], {}, []
-    cur = None
+@dataclass
+class Entry:
+    """One `## [version]` section of the changelog."""
+
+    name: str
+    date: str | None
+    line_no: int
+    body: list[str] = field(default_factory=list)
+
+
+def parse(text: str) -> tuple[list[Entry], dict[str, str], list[str]]:
+    """-> (entries, links {name: url}, errors)."""
+    entries: list[Entry] = []
+    links: dict[str, str] = {}
+    errors: list[str] = []
+    cur: Entry | None = None
     for n, line in enumerate(text.splitlines(), 1):
         m = LINK_RE.match(line)
         if m:
@@ -39,7 +52,7 @@ def parse(text):
             continue
         if line.startswith("## "):
             if line == "## [Unreleased]":
-                cur = ["Unreleased", None, n, []]
+                cur = Entry("Unreleased", None, n)
             else:
                 r = RELEASE_RE.match(line)
                 if not r:
@@ -49,7 +62,7 @@ def parse(text):
                     )
                     cur = None
                     continue
-                cur = [r.group(1), r.group(5), n, []]
+                cur = Entry(r.group(1), r.group(5), n)
             entries.append(cur)
             continue
         if line.startswith("### ") and cur is not None:
@@ -57,57 +70,63 @@ def parse(text):
             if name not in SECTIONS:
                 errors.append(f"line {n}: subsection {name!r} not one of {', '.join(SECTIONS)}")
             else:
-                done = [l[4:].strip() for l in cur[3] if l.startswith("### ")]
-                if name in done:
-                    errors.append(f"line {n}: subsection {name!r} repeated in {cur[0]}")
+                done = [l[4:].strip() for l in cur.body if l.startswith("### ")]
+                if name in set(done):
+                    errors.append(f"line {n}: subsection {name!r} repeated in {cur.name}")
                 elif any(SECTIONS.index(d) > SECTIONS.index(name) for d in done if d in SECTIONS):
                     errors.append(
                         f"line {n}: subsection {name!r} out of order (order: {', '.join(SECTIONS)})"
                     )
         if cur is not None:
-            cur[3].append(line)
+            cur.body.append(line)
     return entries, links, errors
 
 
-def _key(v):
+def _key(v: str) -> tuple[int | tuple[int, str], ...]:
+    """Sort key of a version string: numeric parts, with a pre-release below its release."""
     core = v.split("-", 1)[0]
     pre = v.split("-", 1)[1] if "-" in v else None
     # A pre-release sorts below its release.
-    return tuple(int(x) for x in core.split(".")) + ((0, pre) if pre else (1, ""),)
+    parts: list[int | tuple[int, str]] = [int(x) for x in core.split(".")]
+    parts.append((0, pre) if pre else (1, ""))
+    return tuple(parts)
 
 
-def check(text, require_unreleased=False):
+def check(text: str, require_unreleased: bool = False) -> list[str]:
+    """Problems found in a CHANGELOG (structure, [Unreleased] placement, links); `require_unreleased` also demands a non-empty [Unreleased] section."""
     entries, links, errors = parse(text)
-    names = [e[0] for e in entries]
+    names = [e.name for e in entries]
     if names.count("Unreleased") > 1:
         errors.append("more than one [Unreleased] section")
     if "Unreleased" in names and names[0] != "Unreleased":
         errors.append("[Unreleased] must be the first section")
     if require_unreleased and "Unreleased" not in names:
         errors.append("no [Unreleased] section")
-    rel = [e for e in entries if e[0] != "Unreleased"]
-    seen = set()
+    rel = [e for e in entries if e.name != "Unreleased"]
+    seen: set[str] = set()
     for e in rel:
-        if e[0] in seen:
-            errors.append(f"line {e[2]}: duplicate version {e[0]}")
-        seen.add(e[0])
-    for a, b in zip(rel, rel[1:]):
-        if _key(a[0]) <= _key(b[0]):
-            errors.append(f"line {b[2]}: {b[0]} listed after {a[0]} (newest first)")
-        if a[1] < b[1]:
-            errors.append(f"line {b[2]}: date {b[1]} is later than {a[0]}'s {a[1]}")
+        if e.name in seen:
+            errors.append(f"line {e.line_no}: duplicate version {e.name}")
+        seen.add(e.name)
+    for a, b in zip(rel, rel[1:], strict=False):
+        if _key(a.name) <= _key(b.name):
+            errors.append(f"line {b.line_no}: {b.name} listed after {a.name} (newest first)")
+        if (a.date or "") < (b.date or ""):
+            errors.append(f"line {b.line_no}: date {b.date} is later than {a.name}'s {a.date}")
     for e in entries:
-        if e[0] not in links:
-            errors.append(f"line {e[2]}: no link reference '[{e[0]}]: <url>' at the bottom")
+        if e.name not in links:
+            errors.append(f"line {e.line_no}: no link reference '[{e.name}]: <url>' at the bottom")
     return errors
 
 
-def notes(text, version):
+def notes(text: str, version: str) -> str | None:
+    """Release notes for `version` (its section plus the full-changes link), or None when the section is absent or empty."""
     v = version[1:] if version[:1] in "vV" and version[1:2].isdigit() else version
     entries, links, _ = parse(text)
-    for name, _date, _n, body in entries:
+    for entry in entries:
+        name = entry.name
         if name.lower() == v.lower():
-            out = "\n".join(body).strip()
+            out = "\n".join(entry.body).strip()
             if not out:
                 return None
             if name in links:
@@ -116,7 +135,8 @@ def notes(text, version):
     return None
 
 
-def main(argv=None):
+def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point: the check and notes subcommands."""
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("check")

@@ -9,30 +9,36 @@ import unittest
 
 TOOLS = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS))
-import gen_sbom  # noqa: E402
+import gen_sbom
 
 
 class SbomTest(unittest.TestCase):
-    def test_structure(self):
+    """Tests for sbom."""
+
+    def test_structure(self) -> None:
+        """Structure."""
         bom = gen_sbom.build("0.3.0")
         self.assertEqual(bom["bomFormat"], "CycloneDX")
         self.assertEqual(bom["specVersion"], "1.5")
         self.assertTrue(bom["serialNumber"].startswith("urn:uuid:"))
         self.assertEqual(bom["metadata"]["component"]["version"], "0.3.0")
 
-    def test_vendored_versions_come_from_the_headers(self):
+    def test_vendored_versions_come_from_the_headers(self) -> None:
+        """Vendored versions come from the headers."""
         names = {c["name"]: c["version"] for c in gen_sbom.build("1")["components"]}
         self.assertEqual(set(names), {"stb_image", "stb_image_resize2"})
         for v in names.values():
             self.assertRegex(v, r"^\d+\.\d+$")
 
-    def test_dependencies_reference_existing_components(self):
+    def test_dependencies_reference_existing_components(self) -> None:
+        """Dependencies reference existing components."""
         bom = gen_sbom.build("1")
         refs = {c["bom-ref"] for c in bom["components"]}
         deps = bom["dependencies"][0]
         self.assertEqual(set(deps["dependsOn"]), refs)
 
-    def test_cli_strips_v_and_writes_valid_json(self):
+    def test_cli_strips_v_and_writes_valid_json(self) -> None:
+        """Cli strips v and writes valid json."""
         with tempfile.TemporaryDirectory() as d:
             out = pathlib.Path(d) / "sbom.json"
             subprocess.run(
@@ -41,9 +47,10 @@ class SbomTest(unittest.TestCase):
             bom = json.loads(out.read_text())
             self.assertEqual(bom["metadata"]["component"]["version"], "9.8.7")
 
-    def test_both_licenses_are_declared(self):
+    def test_the_licence_is_declared(self) -> None:
+        """The licence is declared."""
         lic = {x["license"]["id"] for x in gen_sbom.build("1")["metadata"]["component"]["licenses"]}
-        self.assertEqual(lic, {"MIT", "LGPL-3.0-or-later"})
+        self.assertEqual(lic, {"MIT"})
 
 
 if __name__ == "__main__":

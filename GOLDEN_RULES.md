@@ -190,7 +190,7 @@ time.
 
 ## Quick Sanity Checklist Before Any Commit
 
-```
+```text
 [ ] make -j4 succeeds with no errors
 [ ] France → Paris output correct
 [ ] Germany → Berlin output correct
@@ -240,7 +240,7 @@ reading from the wrong weight matrix (`token_embedding_table` instead of `wcls`)
 since the classifier was added, invisible because nobody ever tested it with the right command.
 
 **Mandatory test result template:**
-```
+```text
 Date: YYYY-MM-DD HH:MM UTC | Commit: <SHA>
 Command: ./pz --model <path> --prompt "<text>" \
          --max-tokens N --temperature T --threads N --simd <mode> --classifier <mode>

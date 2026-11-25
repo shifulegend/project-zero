@@ -1,23 +1,24 @@
 #include "agent/agent_loop.h"
-#include "agent/tool_interceptor.h"
+
 #include "agent/cmd_exec.h"
+#include "agent/tool_interceptor.h"
+#include "core/log.h"
+#include "core/timer.h"
+#include "math/simd_core_ops.h"
+#include "sampling/rng.h"
+#include "sampling/sampling.h"
+#include "tokenizer/tokenizer.h"
+#include "transformer/forward.h"
 #include "transformer/output_inject.h"
 
-#include "transformer/forward.h"
-#include "math/simd_dispatch.h"
-#include "sampling/sampling.h"
-#include "sampling/rng.h"
-#include "tokenizer/tokenizer.h"
-#include "core/timer.h"
-
 /* Phase 15 RAG */
-#include "rag/auto_save.h"
-#include "rag/memory_search.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+#include "rag/auto_save.h"
+#include "rag/memory_search.h"
 
 /* Minimal agent loop: replicates the core of generate() but intercepts
  * decoded pieces and reacts to tags such as <exec>...</exec>.
@@ -104,140 +105,179 @@ static void handle_save_memory(const char *text, RagContext *rag, const Config *
     inject_text_into_kv(status_msg, cfg, w, s, tok, tp);
 }
 
+int agent_sample_next(float *logits, int vocab_size, float temperature, float top_p,
+                      unsigned long long *rng_state) {
+    if (temperature <= 0.0f || temperature < 1e-6f) return sample_argmax(logits, vocab_size);
+    apply_temperature(logits, vocab_size, temperature);
+    if (top_p < 1.0f && top_p > 0.0f) return sample_top_p(logits, vocab_size, top_p, rng_state);
+    tn_softmax(logits, vocab_size);
+    float r   = rng_float(rng_state);
+    float cdf = 0.0f;
+    for (int i = 0; i < vocab_size; i++) {
+        cdf += logits[i];
+        if (r < cdf) return i;
+    }
+    return vocab_size - 1;
+}
+
+/* What the tag handlers need. */
+typedef struct {
+    const Config *cfg;
+    const TransformerWeights *w;
+    RunState *s;
+    Tokenizer *tok;
+    ThreadPool *tp;
+    RagContext *rag;
+} AgentCtx;
+
+/* <exec>: ask the user, run the command, show and inject its output. */
+static void handle_exec_tag(const AgentCtx *c, const char *cmd) {
+    printf("\n[AGENT] <exec> detected: %s\n", cmd);
+    if (!user_approval_prompt(cmd)) {
+        printf("[AGENT] Execution denied by user.\n");
+        return;
+    }
+    int argc    = 0;
+    char **argv = build_argv_from_command(cmd, &argc);
+    if (!argv) {
+        printf("[AGENT] Failed to parse command\n");
+        return;
+    }
+    char exec_out[8192] = {0};
+    ExecResult er       = execute_command(argv, 5, exec_out, sizeof(exec_out));
+    printf("[AGENT] Command exit=%d timed_out=%d\n", er.exit_code, er.timed_out);
+    if (er.stdout_len > 0) {
+        printf("[AGENT] Output:\n%s\n", exec_out);
+        inject_text_into_kv(exec_out, c->cfg, c->w, c->s, c->tok, c->tp);
+    }
+    free_argv(argv, argc);
+}
+
+/* Reacts to one detected tag (anything but TI_TAG_NONE). */
+static void handle_tag(const AgentCtx *c, TI_Tag tag, const char *text) {
+    int rag_on = c->rag && c->rag->enabled;
+    switch (tag) {
+        case TI_TAG_EXEC:
+            handle_exec_tag(c, text);
+            break;
+        case TI_TAG_THINK:
+            break; /* Hidden reasoning — logged but not printed to user */
+        case TI_TAG_SAVE_MEMORY:
+            if (rag_on)
+                handle_save_memory(text, c->rag, c->cfg, c->w, c->s, c->tok, c->tp);
+            else
+                printf("[AGENT] <save_memory> (RAG disabled): %s\n", text);
+            break;
+        case TI_TAG_SEARCH_MEMORY:
+            if (rag_on)
+                handle_search_memory(text, c->rag, c->cfg, c->w, c->s, c->tok, c->tp);
+            else
+                printf("[AGENT] <search_memory> (RAG disabled): %s\n", text);
+            break;
+        default:
+            printf("[AGENT] Tag %d: %s\n", tag, text);
+            break;
+    }
+}
+
+/* Feeds one decoded piece through the tag parser: plain text is printed, a tag is acted on. */
+static void emit_piece(const AgentCtx *c, TiParser *ti, const char *piece) {
+    char tag_buf[4096];
+    TI_Tag tag = ti_process_piece(ti, piece, tag_buf, sizeof(tag_buf));
+    if (tag == TI_TAG_NONE) {
+        printf("%s", piece);
+        fflush(stdout);
+    } else {
+        handle_tag(c, tag, tag_buf);
+    }
+    fflush(stdout);
+}
+
+/* BOS (if the tokenizer or config provides one) plus the encoded prompt; the count, or -1. */
+static int build_prompt_tokens(const Config *cfg, Tokenizer *tok, const char *prompt, int *out) {
+    int n_prompt = 0;
+    int bos      = (tok->bos_token_id >= 0)  ? tok->bos_token_id
+                   : (cfg->bos_token_id > 0) ? cfg->bos_token_id
+                                             : -1;
+    if (bos >= 0) out[n_prompt++] = bos;
+    int n_encoded =
+        tokenizer_encode(tok, prompt, strlen(prompt), &out[n_prompt], cfg->seq_len - n_prompt);
+    return n_encoded < 0 ? -1 : n_prompt + n_encoded;
+}
+
+static int agent_args_ok(const Config *cfg, const TransformerWeights *w, const RunState *s,
+                         const Tokenizer *tok) {
+    return cfg && w && s && tok;
+}
+
+/* State of one run of the loop. */
+typedef struct {
+    AgentCtx ctx;
+    TiParser ti;
+    const int *prompt_tokens;
+    int n_prompt;
+    float temperature, top_p;
+    unsigned long long rng_state;
+    int prev_token;
+    int next;
+} AgentRun;
+
+/* One position: feed the token, pick the next one and, once past the prompt, show it. Returns 1
+ * when generation should stop (an end-of-generation token). */
+static int agent_step(AgentRun *r, int pos) {
+    const AgentCtx *c = &r->ctx;
+    int token         = (pos < r->n_prompt) ? r->prompt_tokens[pos] : r->next;
+    float *logits     = transformer_forward(token, pos, c->cfg, c->w, c->s, NULL, c->tp);
+    int generating    = pos >= r->n_prompt - 1;
+
+    if (!generating)
+        r->next = r->prompt_tokens[pos + 1];
+    else
+        r->next =
+            agent_sample_next(logits, c->cfg->vocab_size, r->temperature, r->top_p, &r->rng_state);
+
+    if (generating) {
+        const char *piece = tokenizer_decode(c->tok, r->prev_token, r->next);
+        if (piece) emit_piece(c, &r->ti, piece);
+    }
+
+    r->prev_token = r->next;
+    if (!generating) r->next = r->prompt_tokens[pos + 1];
+
+    /* EOS check: stop on any token in the tokenizer's eos_list.
+     * No hardcoded token IDs — all EOS come from vocab scan / GGUF metadata. */
+    return generating && tokenizer_is_eog(c->tok, r->next, NULL); /* raw prompt: declared EOG set */
+}
+
 int run_agent_loop(const char *prompt, const Config *cfg, const TransformerWeights *w, RunState *s,
                    Tokenizer *tok, ThreadPool *tp, int max_tokens, float temperature, float top_p,
                    RagContext *rag) {
-    if (!cfg || !w || !s || !tok) return -1;
+    if (!agent_args_ok(cfg, w, s, tok)) return -1;
     if (!prompt) prompt = "";
 
     int *prompt_tokens = (int *)malloc((cfg->seq_len + 1) * sizeof(int));
     if (!prompt_tokens) return -1;
-
-    int n_prompt = 0;
-    /* Inject BOS token if the tokenizer or config provides one */
-    {
-        int bos = (tok->bos_token_id >= 0)  ? tok->bos_token_id
-                  : (cfg->bos_token_id > 0) ? cfg->bos_token_id
-                                            : -1;
-        if (bos >= 0) {
-            prompt_tokens[n_prompt++] = bos;
-        }
-    }
-
-    int n_encoded = tokenizer_encode(tok, prompt, strlen(prompt), &prompt_tokens[n_prompt],
-                                     cfg->seq_len - n_prompt);
-    if (n_encoded < 0) {
+    int n_prompt = build_prompt_tokens(cfg, tok, prompt, prompt_tokens);
+    if (n_prompt < 0) {
         free(prompt_tokens);
         return -1;
     }
-    n_prompt += n_encoded;
 
-    unsigned long long rng_state;
-    rng_seed(&rng_state, (unsigned long long)time(NULL));
+    AgentRun run = {.ctx           = {cfg, w, s, tok, tp, rag},
+                    .prompt_tokens = prompt_tokens,
+                    .n_prompt      = n_prompt,
+                    .temperature   = temperature,
+                    .top_p         = top_p,
+                    .prev_token    = -1,
+                    .next          = 0};
+    rng_seed(&run.rng_state, (unsigned long long)time(NULL));
 
     /* Initialize sliding window with prompt pinned */
     sw_init(&s->sw, s->max_seq_len, n_prompt);
-
-    int prev_token = -1;
-    int next       = 0;
-
-    ti_init();
-    char tag_buf[4096];
+    ti_init(&run.ti);
 
     for (int pos = 0; pos < max_tokens && pos < cfg->seq_len; pos++) {
-        int token     = (pos < n_prompt) ? prompt_tokens[pos] : next;
-        float *logits = transformer_forward(token, pos, cfg, w, s, NULL, tp);
-
-        if (pos < n_prompt - 1) {
-            next = prompt_tokens[pos + 1];
-        } else {
-            if (temperature <= 0.0f || temperature < 1e-6f) {
-                next = sample_argmax(logits, cfg->vocab_size);
-            } else {
-                apply_temperature(logits, cfg->vocab_size, temperature);
-                if (top_p < 1.0f && top_p > 0.0f) {
-                    next = sample_top_p(logits, cfg->vocab_size, top_p, &rng_state);
-                } else {
-                    tn_softmax(logits, cfg->vocab_size);
-                    float r   = rng_float(&rng_state);
-                    float cdf = 0.0f;
-                    next      = cfg->vocab_size - 1;
-                    for (int i = 0; i < cfg->vocab_size; i++) {
-                        cdf += logits[i];
-                        if (r < cdf) {
-                            next = i;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        if (pos >= n_prompt - 1) {
-            const char *piece = tokenizer_decode(tok, prev_token, next);
-            if (piece) {
-                TI_Tag tag = ti_process_piece(piece, tag_buf, sizeof(tag_buf));
-
-                if (tag == TI_TAG_NONE) {
-                    printf("%s", piece);
-                    fflush(stdout);
-
-                } else if (tag == TI_TAG_EXEC) {
-                    printf("\n[AGENT] <exec> detected: %s\n", tag_buf);
-                    if (user_approval_prompt(tag_buf)) {
-                        int argc    = 0;
-                        char **argv = build_argv_from_command(tag_buf, &argc);
-                        if (!argv) {
-                            printf("[AGENT] Failed to parse command\n");
-                        } else {
-                            char exec_out[8192] = {0};
-                            ExecResult er = execute_command(argv, 5, exec_out, sizeof(exec_out));
-                            printf("[AGENT] Command exit=%d timed_out=%d\n", er.exit_code,
-                                   er.timed_out);
-                            if (er.stdout_len > 0) {
-                                printf("[AGENT] Output:\n%s\n", exec_out);
-                                inject_text_into_kv(exec_out, cfg, w, s, tok, tp);
-                            }
-                            free_argv(argv, argc);
-                        }
-                    } else {
-                        printf("[AGENT] Execution denied by user.\n");
-                    }
-
-                } else if (tag == TI_TAG_THINK) {
-                    /* Hidden reasoning — logged but not printed to user */
-                    (void)tag_buf;
-
-                } else if (tag == TI_TAG_SAVE_MEMORY) {
-                    if (rag && rag->enabled) {
-                        handle_save_memory(tag_buf, rag, cfg, w, s, tok, tp);
-                    } else {
-                        printf("[AGENT] <save_memory> (RAG disabled): %s\n", tag_buf);
-                    }
-
-                } else if (tag == TI_TAG_SEARCH_MEMORY) {
-                    if (rag && rag->enabled) {
-                        handle_search_memory(tag_buf, rag, cfg, w, s, tok, tp);
-                    } else {
-                        printf("[AGENT] <search_memory> (RAG disabled): %s\n", tag_buf);
-                    }
-
-                } else {
-                    printf("[AGENT] Tag %d: %s\n", tag, tag_buf);
-                }
-
-                fflush(stdout);
-            }
-        }
-
-        prev_token = next;
-        if (pos < n_prompt - 1) next = prompt_tokens[pos + 1];
-
-        /* EOS check: stop on any token in the tokenizer's eos_list.
-         * No hardcoded token IDs — all EOS come from vocab scan / GGUF metadata. */
-        if (pos >= n_prompt - 1) {
-            if (tokenizer_is_eog(tok, next, NULL) /* raw prompt: declared EOG set */) break;
-        }
+        if (agent_step(&run, pos)) break;
     }
 
     free(prompt_tokens);

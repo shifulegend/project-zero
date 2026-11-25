@@ -1,0 +1,283 @@
+// Phase 22.2 — API client for project-zero's HTTP server.
+//
+// Uses fetch() + a manual SSE line parser rather than EventSource, because
+// EventSource cannot send a POST body and /v1/chat/completions requires one
+// (the messages array, sampling params, etc).
+
+import type {
+  ChatMessage,
+  PromptCacheStats,
+  SaveResult,
+  SelfCheckResult,
+  ServerConfig,
+  StatusUpdate,
+  StreamSummary,
+  UpdateInfo,
+  Usage,
+  WatermarkResult,
+} from './types';
+
+/** The JSON error body the server sends on a failed request. */
+interface ErrorBody {
+  error?: { message?: string };
+}
+
+/** Parses a response body as JSON, or {} when it is not JSON. */
+async function jsonBody<T>(res: Response): Promise<T & ErrorBody> {
+  return (await res.json().catch(() => ({}))) as T & ErrorBody;
+}
+
+export interface ModelEntry {
+  id: string;
+  object: string;
+  owned_by: string;
+}
+
+export async function fetchModels(): Promise<ModelEntry[]> {
+  const res = await fetch('/v1/models');
+  if (!res.ok) throw new Error(`GET /v1/models failed: ${res.status}`);
+  const json = await res.json();
+  return json.data ?? [];
+}
+
+/** GET /v1/config — server defaults, valid ranges, feature flags, UI branding. */
+export async function fetchConfig(): Promise<ServerConfig> {
+  const res = await fetch('/v1/config');
+  if (!res.ok) throw new Error(`GET /v1/config failed: ${res.status}`);
+  return res.json();
+}
+
+/** POST /v1/watermark/detect */
+export async function detectWatermark({
+  text,
+  key,
+  gamma,
+}: {
+  text: string;
+  key?: string;
+  gamma?: number;
+}): Promise<WatermarkResult> {
+  const res = await fetch('/v1/watermark/detect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, key, gamma }),
+  });
+  const json = await jsonBody<WatermarkResult>(res);
+  if (!res.ok) throw new Error(json?.error?.message ?? `detect failed: ${res.status}`);
+  return json;
+}
+
+/** A message as sent: plain text, or text plus an image in the OpenAI "content parts" form. */
+type RequestMessage =
+  | ChatMessage
+  | {
+      role: string;
+      content: (
+        | { type: 'text'; text: string }
+        | { type: 'image_url'; image_url: { url: string } }
+      )[];
+    };
+
+export interface StreamParams {
+  messages: ChatMessage[];
+  /** Every other request field (sampling, penalties, seed, stop, response_format, watermark — see settings.ts). */
+  options?: Record<string, unknown>;
+  /** A base64 data: URL, if an image is attached. */
+  imageDataUrl?: string | null;
+}
+
+export interface StreamHandle {
+  id: Promise<string | null>;
+  done: Promise<StreamSummary>;
+  abort: () => void;
+}
+
+/** Streams a chat completion, invoking callbacks as SSE events arrive. */
+/** One parsed SSE `data:` event of a chat completion stream. */
+interface StreamEvent {
+  id?: string;
+  error?: { message?: string };
+  choices?: { delta?: { content?: string }; finish_reason?: string }[];
+  usage?: Usage;
+  best_of?: unknown;
+}
+
+export function streamChatCompletion(
+  { messages, options = {}, imageDataUrl }: StreamParams,
+  onToken: (delta: string) => void,
+  onStatus: (status: StatusUpdate) => void = () => {}
+): StreamHandle {
+  const controller = new AbortController();
+  let resolveId: (id: string | null) => void = () => {};
+  const idPromise = new Promise<string | null>((resolve) => {
+    resolveId = resolve;
+  });
+
+  let requestMessages: RequestMessage[] = messages;
+  if (imageDataUrl) {
+    // OpenAI "content parts" form — the last user message gets the image
+    // attached alongside its text.
+    const last = messages[messages.length - 1];
+    requestMessages = [
+      ...messages.slice(0, -1),
+      {
+        role: last.role,
+        content: [
+          { type: 'text', text: last.content },
+          { type: 'image_url', image_url: { url: imageDataUrl } },
+        ],
+      },
+    ];
+  }
+
+  const body = JSON.stringify({
+    ...options,
+    messages: requestMessages,
+    stream: true,
+  });
+
+  const done = (async (): Promise<StreamSummary> => {
+    let response: Response;
+    try {
+      response = await fetch('/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        signal: controller.signal,
+      });
+    } catch (err) {
+      resolveId(null);
+      if (err instanceof Error && err.name === 'AbortError') return {};
+      throw err;
+    }
+
+    if (!response.ok || !response.body) {
+      resolveId(null);
+      const text = await response.text().catch(() => '');
+      throw new Error(`Chat completion failed: ${response.status} ${text}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let idResolved = false;
+    const summary: StreamSummary = {};
+
+    try {
+      for (;;) {
+        const { value, done: streamDone } = await reader.read();
+        if (streamDone) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let sepIndex: number;
+        while ((sepIndex = buffer.indexOf('\n\n')) !== -1) {
+          const rawEvent = buffer.slice(0, sepIndex);
+          buffer = buffer.slice(sepIndex + 2);
+          const line = rawEvent.trim();
+          // Server comment while waiting for the generation slot (--queue-size).
+          const queued = line.match(/^: queued (\d+)/);
+          if (queued) {
+            onStatus({ queued: Number(queued[1]) });
+            continue;
+          }
+          if (!line.startsWith('data:')) continue;
+          const payload = line.slice(5).trim();
+          if (payload === '[DONE]') continue;
+
+          let evt: StreamEvent;
+          try {
+            evt = JSON.parse(payload);
+          } catch (e) {
+            // A malformed stream event is skipped, but not silently: it points at a server or proxy bug.
+            console.warn('Skipping an unparseable stream event:', payload.slice(0, 80), e);
+            continue;
+          }
+
+          if (evt.error) throw new Error(evt.error.message ?? 'server error');
+          if (!idResolved && evt.id) {
+            idResolved = true;
+            resolveId(evt.id);
+            onStatus({ queued: 0 });
+          }
+          const delta = evt.choices?.[0]?.delta?.content;
+          if (delta) onToken(delta);
+          const fr = evt.choices?.[0]?.finish_reason;
+          if (fr) summary.finish_reason = fr;
+          if (evt.usage) summary.usage = evt.usage;
+          if (evt.best_of) summary.best_of = evt.best_of;
+        }
+      }
+    } finally {
+      if (!idResolved) resolveId(null);
+    }
+    return summary;
+  })();
+
+  return { id: idPromise, done, abort: () => controller.abort() };
+}
+
+/** Cancels an in-flight generation by its "chatcmpl-..." id. */
+export async function cancelGeneration(id: string | null | undefined): Promise<void> {
+  if (!id) return;
+  await fetch('/v1/chat/completions/cancel', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  }).catch(() => {});
+}
+
+/** GET /v1/prompt_cache — Phase 26 snapshot store stats. */
+export async function fetchPromptCache(): Promise<PromptCacheStats> {
+  const res = await fetch('/v1/prompt_cache');
+  if (!res.ok) throw new Error(`GET /v1/prompt_cache failed: ${res.status}`);
+  return res.json();
+}
+
+/** POST /v1/prompt_cache/clear */
+export async function clearPromptCache(): Promise<PromptCacheStats> {
+  const res = await fetch('/v1/prompt_cache/clear', { method: 'POST' });
+  const json = await jsonBody<PromptCacheStats>(res);
+  if (!res.ok) throw new Error(json?.error?.message ?? `clear failed: ${res.status}`);
+  return json;
+}
+
+/** GET /v1/update — Phase 38 update-check state (the server checks; notify only). */
+export async function fetchUpdate(): Promise<UpdateInfo> {
+  const res = await fetch('/v1/update');
+  if (!res.ok) throw new Error(`GET /v1/update failed: ${res.status}`);
+  return res.json();
+}
+
+/** POST /v1/update/check — ask the server to re-check now (rate-limited server-side). */
+export async function checkUpdateNow(): Promise<UpdateInfo> {
+  const res = await fetch('/v1/update/check', { method: 'POST' });
+  if (!res.ok) throw new Error(`update check failed: ${res.status}`);
+  return res.json();
+}
+
+/**
+ * POST /v1/config/defaults — save one server default to the `pz config` file
+ * (applies when the server restarts). Pass value === undefined to unset.
+ */
+export async function saveServerDefault(key: string, value: unknown): Promise<SaveResult> {
+  const body = value === undefined ? { key, unset: true } : { key, value };
+  const res = await fetch('/v1/config/defaults', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await jsonBody<SaveResult>(res);
+  if (!res.ok) throw new Error(json?.error?.message ?? `save failed: ${res.status}`);
+  return json;
+}
+
+/**
+ * POST /v1/selfcheck — the engine's accuracy probe on the loaded model: perplexity of a built-in
+ * passage under the configured numerics against float activations and a BF16 head.
+ */
+export async function runSelfCheck(): Promise<SelfCheckResult> {
+  const res = await fetch('/v1/selfcheck', { method: 'POST' });
+  const json = await jsonBody<SelfCheckResult>(res);
+  if (!res.ok) throw new Error(json?.error?.message ?? `self-check failed: ${res.status}`);
+  return json;
+}

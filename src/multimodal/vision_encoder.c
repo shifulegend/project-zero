@@ -1,11 +1,13 @@
 #include "multimodal/vision_encoder.h"
-#include "math/rmsnorm.h"
-#include "math/softmax.h"
-#include "math/elementwise.h"
-#include "memory/aligned_alloc.h"
+
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
+
+#include "math/elementwise.h"
+#include "math/rmsnorm.h"
+#include "math/softmax.h"
+#include "memory/aligned_alloc.h"
 
 #ifdef __AVX2__
 #include <immintrin.h>
@@ -145,11 +147,13 @@ void vision_encoder_forward(float *out_embeddings, const float *patches, const V
 
     size_t scratch_size = 0;
     tn_size_mul3(P, cfg->hidden_dim, 4, &scratch_size);
-    if (scratch_size < (size_t)(P * D * 3 + P * P + P * D)) {
-        scratch_size = P * D * 3 + P * P + P * D;
-    }
+    /* size_t arithmetic throughout: int products of patch counts and widths could overflow before
+     * the conversion (CodeQL "multiplication result converted to larger type"). */
+    const size_t pd   = (size_t)P * (size_t)D;
+    const size_t need = pd * 3 + (size_t)P * (size_t)P + pd;
+    if (scratch_size < need) scratch_size = need;
     float *scratch = (float *)tn_aligned_alloc(scratch_size * sizeof(float), 64);
-    float *normed  = (float *)tn_aligned_alloc(P * D * sizeof(float), 64);
+    float *normed  = (float *)tn_aligned_alloc(pd * sizeof(float), 64);
 
     if (!scratch || !normed) {
         if (scratch) tn_aligned_free(scratch);
@@ -164,9 +168,10 @@ void vision_encoder_forward(float *out_embeddings, const float *patches, const V
 
         // Attention (modifies normed to hold attention output or returns it in a scratch buffer)
         // Let's pass 'scratch + P*D*3' or similar. Wait, vision_attention overwrites q,k,v.
-        // Actually, vision_attention leaves the final wo output in `out` which is passed via `scratch`.
-        // The last loop in vision_attention copies q to out. But out is local to vision_attention.
-        // Let's just adjust vision_attention and vision_ffn to output to a specific buffer.
+        // Actually, vision_attention leaves the final wo output in `out` which is passed via
+        // `scratch`. The last loop in vision_attention copies q to out. But out is local to
+        // vision_attention. Let's just adjust vision_attention and vision_ffn to output to a
+        // specific buffer.
 
         float *att_out = scratch + P * D * 3 + P * P; // same as 'out' in vision_attention
         vision_attention(normed, cfg, w, l, scratch);

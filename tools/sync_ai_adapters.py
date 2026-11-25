@@ -24,17 +24,18 @@ AGENTS_DIR = ROOT / ".agents" / "rules"
 COPILOT_DIR = ROOT / ".github" / "instructions"
 
 
-def note(src_rel):
+def note(src_rel: str) -> str:
+    """The "generated from" header placed on every adapter file."""
     return (
         f"<!-- Generated from {src_rel} by tools/sync_ai_adapters.py; "
-        f"edit that file and re-run the script (CI checks this copy). -->"
+        "edit that file and re-run the script (CI checks this copy). -->"
     )
 
 
-def parse(path):
+def parse(path: pathlib.Path) -> tuple[list[str], str, str]:
     """Return (paths, title, body) of a .claude/rules file."""
     text = path.read_text(encoding="utf-8")
-    paths = []
+    paths: list[str] = []
     m = re.match(r"^---\n(.*?)\n---\n", text, re.S)
     if m:
         in_paths = False
@@ -58,7 +59,8 @@ def parse(path):
     return paths, title, body
 
 
-def render(path):
+def render(path: pathlib.Path) -> dict[pathlib.Path, str]:
+    """Renders one source rule file into its adapter text (Copilot or Antigravity form)."""
     paths, title, body = parse(path)
     if not paths:
         sys.exit(f"{path}: needs a non-empty `paths:` list (Copilot applyTo is built from it)")
@@ -91,8 +93,33 @@ REQUIRED_RULES = [
 ]
 
 
-def missing_rules():
-    out = []
+def persona_drift() -> list[str]:
+    """The Copilot persona must carry the same instructions as the Claude one (front matter differs)."""
+    out: list[str] = []
+    src_dir = ROOT / ".claude" / "agents"
+    for src in sorted(src_dir.glob("*.md")) if src_dir.exists() else []:
+        dst = ROOT / ".github" / "agents" / f"{src.stem}.agent.md"
+
+        def body(t: str) -> str:
+            """The text of a persona file without its front matter."""
+            return re.sub(r"^---\n.*?\n---\n", "", t, count=1, flags=re.S)
+
+        if not dst.exists():
+            out.append(
+                f"{dst.relative_to(ROOT).as_posix()}: missing copy of"
+                f" {src.relative_to(ROOT).as_posix()}"
+            )
+        elif body(src.read_text(encoding="utf-8")) != body(dst.read_text(encoding="utf-8")):
+            out.append(
+                f"{dst.relative_to(ROOT).as_posix()}: body differs from"
+                f" {src.relative_to(ROOT).as_posix()}"
+            )
+    return out
+
+
+def missing_rules() -> list[str]:
+    """Entry points (CLAUDE.md, AGENTS.md, ...) that are missing a durable rule."""
+    out: list[str] = []
     for ep in ENTRYPOINTS:
         path = ROOT / ep
         text = path.read_text(encoding="utf-8") if path.exists() else ""
@@ -102,7 +129,8 @@ def missing_rules():
     return out
 
 
-def main(argv):
+def main(argv: list[str]) -> int:
+    """Entry point: regenerates the adapter files, or with --check verifies they are current; returns the exit code."""
     check = "--check" in argv[1:]
     sources = sorted(SRC_DIR.glob("*.md"))
     if not sources:
@@ -117,7 +145,7 @@ def main(argv):
             if not check:
                 out.parent.mkdir(parents=True, exist_ok=True)
                 out.write_text(content, encoding="utf-8")
-    gaps = missing_rules() if check else []
+    gaps = (missing_rules() + persona_drift()) if check else []
     if check and gaps:
         print("Root adapter files lost a durable rule (copy it from CLAUDE.md / AGENTS.md):")
         for g in gaps:

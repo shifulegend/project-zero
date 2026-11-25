@@ -1,5 +1,5 @@
-#include "sampling/sampling.h"
 #include "core/platform.h"
+#include "sampling/sampling.h"
 
 #if TN_HAS_AVX512
 #include <immintrin.h>

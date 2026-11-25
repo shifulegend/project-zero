@@ -6,13 +6,14 @@
 #include <netinet/in.h>
 #include <poll.h>
 #include <signal.h>
+#include <stdatomic.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
 
-#include <stdatomic.h>
 #include "api/api_server.h"
 #include "api/config_endpoint.h"
 
@@ -103,8 +104,8 @@ int main(void) {
 
     ApiContext ctx;
     api_context_init(&ctx, NULL, NULL, NULL, NULL, NULL, NULL);
-    ctx.server_config.client_timeout_s = 1;
-    ctx.server_config.max_connections  = 2;
+    ctx.server_config.limits.client_timeout_s = 1;
+    ctx.server_config.limits.max_connections  = 2;
     if (api_server_start(port, &ctx) != TN_OK) {
         printf("FAIL: server did not start\n");
         return 1;
@@ -129,6 +130,9 @@ int main(void) {
         {"POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: "
          "chunked\r\n\r\n0\r\n\r\n",
          "HTTP/1.1 501", "chunked body refused with 501"},
+        {"POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: "
+         "gzip\r\nContent-Length: 2\r\n\r\n{}",
+         "HTTP/1.1 501", "any other Transfer-Encoding is refused with 501 too"},
         {"POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: abc\r\n\r\n",
          "HTTP/1.1 400", "non-numeric Content-Length refused with 400"},
         {"POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: "
@@ -145,13 +149,13 @@ int main(void) {
         send_str(c, fr[i].req);
         slurp(c, buf, sizeof buf, 3000, &eof);
         CHECK(strncmp(buf, fr[i].want, strlen(fr[i].want)) == 0 ||
-                  (i == 3 && strncmp(buf, "HTTP/1.1 413", 12) == 0),
+                  (i == 4 && strncmp(buf, "HTTP/1.1 413", 12) == 0),
               fr[i].what);
         close(c);
     }
 
     { /* a well-formed POST with a body still goes through (and the word
-         * "content-length:" inside the body does not confuse the framing) */
+       * "content-length:" inside the body does not confuse the framing) */
         const char *body = "{\"id\":\"content-length: 1\"}";
         char req[512];
         snprintf(req, sizeof req,
@@ -165,6 +169,62 @@ int main(void) {
                   strncmp(buf, "HTTP/1.1 501", 12) != 0 && strncmp(buf, "HTTP/1.1", 8) == 0,
               "well-formed POST with a body is still handled");
         close(c);
+    }
+
+    { /* X-Request-ID: a well-formed client ID is echoed, anything else is replaced, errors carry it
+         too */
+        struct {
+            const char *req;
+            const char *want;
+            const char *what;
+        } ids[] = {
+            {"GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Request-ID: abc-123\r\n\r\n",
+             "X-Request-ID: abc-123\r\n", "a valid X-Request-ID is echoed"},
+            {"GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+             "X-Request-ID: ", "a request without one gets a generated ID"},
+            {"POST /v1/nothing HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 0\r\n"
+             "X-Request-ID: err-7\r\n\r\n",
+             "X-Request-ID: err-7\r\n", "an error reply carries the ID as well"},
+        };
+        for (size_t i = 0; i < sizeof ids / sizeof ids[0]; i++) {
+            int c = dial(port);
+            send_str(c, ids[i].req);
+            slurp(c, buf, sizeof buf, 3000, &eof);
+            CHECK(strstr(buf, ids[i].want) != NULL, ids[i].what);
+            close(c);
+        }
+        int c = dial(port);
+        send_str(c, "GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Request-ID: bad id\"x\r\n\r\n");
+        slurp(c, buf, sizeof buf, 3000, &eof);
+        CHECK(strstr(buf, "X-Request-ID: bad") == NULL && strstr(buf, "X-Request-ID: ") != NULL,
+              "an invalid X-Request-ID is replaced, not echoed");
+        close(c);
+    }
+
+    { /* a body far larger than the initial receive buffer is read in full (buffer growth) */
+        enum { BODY_N = 200000 };
+        char *body = (char *)malloc(BODY_N + 64);
+        char *req  = (char *)malloc(BODY_N + 512);
+        int len    = snprintf(body, BODY_N + 64, "{\"id\":\"");
+        memset(body + len, 'a', BODY_N);
+        len += BODY_N;
+        len += snprintf(body + len, 64, "\"}");
+        int hl = snprintf(
+            req, 512,
+            "POST /v1/chat/completions/cancel HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: "
+            "application/json\r\nContent-Length: %d\r\n\r\n",
+            len);
+        memcpy(req + hl, body, (size_t)len);
+        req[hl + len] = '\0';
+        int c         = dial(port);
+        send_str(c, req);
+        slurp(c, buf, sizeof buf, 5000, &eof);
+        CHECK(strncmp(buf, "HTTP/1.1 400", 12) != 0 && strncmp(buf, "HTTP/1.1 413", 12) != 0 &&
+                  strncmp(buf, "HTTP/1.1", 8) == 0,
+              "a 200 KB body is read in full and handled");
+        close(c);
+        free(body);
+        free(req);
     }
 
     { /* cross-site guard on every POST route */
@@ -276,7 +336,7 @@ int main(void) {
         int port3 = free_port();
         ApiContext dc;
         api_context_init(&dc, NULL, NULL, NULL, NULL, NULL, NULL);
-        dc.server_config.client_timeout_s = 1;
+        dc.server_config.limits.client_timeout_s = 1;
         if (port3 > 0 && api_server_start(port3, &dc) == TN_OK) {
             nap_ms(100);
             int stalled = dial(port3);
@@ -302,7 +362,7 @@ int main(void) {
         int port2 = free_port();
         ApiContext rc;
         api_context_init(&rc, NULL, NULL, NULL, NULL, NULL, NULL);
-        rc.server_config.rate_limit = 2;
+        rc.server_config.limits.rate_limit = 2;
         if (port2 > 0 && api_server_start(port2, &rc) == TN_OK) {
             nap_ms(100);
             int n429 = 0, n200 = 0, retry_hdr = 0;

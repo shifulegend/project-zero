@@ -2,15 +2,16 @@
  * tests/test_q4k_batch_tokens.c — Phase 18-B: batched Q4_K, Q4_K-x8 and F32
  * matmuls over n_tokens activations are bit-identical to per-token calls.
  */
-#include "test_harness.h"
+#include <stdint.h>
+
+#include "math/batched_matmul.h"
 #include "math/matmul_q4k.h"
 #include "math/matmul_q4k_x8.h"
-#include "math/batched_matmul.h"
 #include "math/parallel_matmul.h"
 #include "math/simd_dispatch.h"
-#include "threading/thread_pool.h"
 #include "sampling/rng.h"
-#include <stdint.h>
+#include "test_harness.h"
+#include "threading/thread_pool.h"
 
 #define Q4K_BYTES 144
 

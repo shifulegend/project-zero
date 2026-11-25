@@ -1,17 +1,19 @@
-<script>
+<script lang="ts">
   // One labelled slider + numeric readout, bounded by a server-provided range
   // ({min, max, step} from GET /v1/config "limits").
-  export let label;
-  export let value;
-  export let range = { min: 0, max: 1, step: 0.01 };
+  import type { Range } from './types';
+
+  export let label: string;
+  export let value: number | undefined;
+  export let range: Range = { min: 0, max: 1, step: 0.01 };
   export let hint = '';
-  export let offValue = null; // value that means "disabled" (shown as "off")
+  export let offValue: number | null = null; // value that means "disabled" (shown as "off")
 
   $: decimals = String(range.step).includes('.') ? String(range.step).split('.')[1].length : 0;
   $: display = offValue !== null && value === offValue ? 'off' : Number(value).toFixed(decimals);
 
-  function onInput(e) {
-    const v = Number(e.target.value);
+  function onInput(e: Event): void {
+    const v = Number((e.target as HTMLInputElement).value);
     value = decimals === 0 ? Math.round(v) : v;
   }
 </script>

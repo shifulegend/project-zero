@@ -1,11 +1,11 @@
-<script>
+<script lang="ts">
   // The Project Zero block wordmark — the same glyphs as the terminal banner
   // (brand/block_font.c), rendered by the server from the configurable title
   // (GET /v1/config ui.logo_ascii). Plain text on a transparent background,
   // tinted with the accent, so it follows light/dark themes.
   export let rows = '';
   export let label = '';
-  export let size = 'lg'; // 'sm' (top bar) | 'lg' (empty state)
+  export let size: 'sm' | 'lg' = 'lg'; // 'sm' (top bar) | 'lg' (empty state)
 </script>
 
 <pre class="ascii-logo {size}" role="img" aria-label={label}>{rows.replace(/\n$/, '')}</pre>

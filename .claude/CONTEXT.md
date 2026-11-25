@@ -8,7 +8,7 @@
 
 ## Architecture Overview (Layer Diagram)
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         CLI / API / Agent                           │
 │  src/cli/main.c   src/api/http_server.c   src/agent/agent_loop.c   │
@@ -44,7 +44,7 @@
 
 ## Complete File Tree with Roles
 
-```
+```text
 project-zero/
 ├── pz          ← compiled binary
 ├── Makefile / CMakeLists.txt
@@ -127,7 +127,7 @@ project-zero/
 
 ## Data Flow: CLI args → model load → inference → output
 
-```
+```text
 argv[]
   └─ parse_args() [args.c]
        ├─ args.model_path, args.prompt, args.num_threads

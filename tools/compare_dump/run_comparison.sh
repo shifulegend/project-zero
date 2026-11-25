@@ -23,7 +23,7 @@ OURS_CSV="${DIR}/ours_tensors.csv"
 ram_mb() { awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo; }
 drop_cache() {
     sync
-    echo 1 | echo "<YOUR_SUDO_PASSWORD>" | sudo -S tee /proc/sys/vm/drop_caches > /dev/null 2>&1 || true
+    echo 1 | sudo -n tee /proc/sys/vm/drop_caches > /dev/null 2>&1 || true
 }
 
 echo "════════════════════════════════════════════════════════"

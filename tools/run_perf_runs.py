@@ -36,13 +36,14 @@ PROMPT = (
 MAX_TOKENS = 500
 
 
-def read_best_thread(suite_name):
+def read_best_thread(suite_name: str) -> int | None:
     """Parse summary.txt to find the thread count with best gen tok/s."""
     summary_path = f"{SWEEP}/{suite_name}/summary.txt"
     if not os.path.exists(summary_path):
         print(f"  WARNING: no summary for {suite_name}")
         return None
-    best_t, best_val = None, -1
+    best_t: int | None = None
+    best_val = -1.0
     with open(summary_path, encoding="utf-8") as f:
         for line in f:
             m = re.match(r"^(\d+)\s+([\d.]+)", line)
@@ -54,7 +55,8 @@ def read_best_thread(suite_name):
     return best_t
 
 
-def build_cmd(suite_name, t):
+def build_cmd(suite_name: str, t: int) -> tuple[list[str], str] | tuple[None, None]:
+    """Command line for a perf-run suite at `t` threads."""
     if suite_name == "bitnet_pz_bf16":
         return (
             [

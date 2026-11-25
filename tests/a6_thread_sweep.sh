@@ -78,7 +78,7 @@ run_clean() {
 }
 
 run_perf() {
-  local T="$1" PROMPT="$2" TIDX="$3" PIDX="$4"
+  local T="$1" PROMPT="$2" PIDX="$4"
   local TAG="t${T}_p${PIDX}"
 
   mpstat -P ALL 1 9999 > /tmp/a6sw_mpstat_${TAG}.txt 2>/dev/null &

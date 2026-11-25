@@ -1,9 +1,9 @@
 #ifndef TN_PLATFORM_H
 #define TN_PLATFORM_H
 
-#include <stdint.h>
-#include <stddef.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 /* ── Platform detection ────────────────────────────────────────────────────── */
 #if defined(_WIN32) || defined(_WIN64)

@@ -1,8 +1,9 @@
-#include "core/platform.h"
-#include "tokenizer/tokenizer.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+
+#include "core/platform.h"
+#include "tokenizer/tokenizer.h"
 
 /*
  * GPT-2 byte-level BPE reverse mapping: unicode codepoint -> raw byte.
@@ -107,6 +108,45 @@ static __declspec(thread) char decode_buf[512];
 static __thread char decode_buf[512];
 #endif
 
+/* A "<0xHH>" raw byte piece. */
+static int is_byte_piece(const char *piece) {
+    return strlen(piece) >= 6 && piece[0] == '<' && piece[1] == '0' && piece[2] == 'x' &&
+           piece[5] == '>';
+}
+
+/* The value of a hex digit, or -1 for any other character. */
+static int hex_digit_value(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+/* The byte of a "<0xHH>" piece. A character that is not a hex digit shifts the value but adds
+ * nothing, as it always has. */
+static unsigned byte_piece_value(const char *piece) {
+    unsigned int byte_val = 0;
+    for (int i = 3; i < 5; i++) {
+        byte_val <<= 4;
+        int d = hex_digit_value(piece[i]);
+        if (d >= 0) byte_val += (unsigned)d;
+    }
+    return byte_val;
+}
+
+/* Strip leading space marker when the previous token was BOS. Two vocab
+ * formats reach this function: this project's native binary tokenizer
+ * (tokenizer_load, tested by test_tokenizer.c) stores pieces as literal
+ * text with a real ' ' byte; GGUF byte-level-BPE vocabs (tokenizer_gguf.c)
+ * store the same leading space as the 2-byte Ġ marker (UTF-8 0xC4 0xA0)
+ * instead — checking only literal ' ' never matched real byte-level-BPE
+ * pieces, so that marker was never stripped for GGUF-loaded models. */
+static const char *strip_space_after_bos(const char *piece) {
+    if ((unsigned char)piece[0] == 0xC4 && (unsigned char)piece[1] == 0xA0) return piece + 2;
+    if (piece[0] == ' ') return piece + 1;
+    return piece;
+}
+
 const char *tokenizer_decode(Tokenizer *t, int prev_token, int token) {
     if (!t || !t->vocab || token < 0 || token >= t->vocab_size) return "";
 
@@ -114,38 +154,13 @@ const char *tokenizer_decode(Tokenizer *t, int prev_token, int token) {
     if (piece == NULL) return "";
 
     /* Handle raw byte tokens: <0xHH> pattern */
-    if (strlen(piece) >= 6 && piece[0] == '<' && piece[1] == '0' && piece[2] == 'x' &&
-        piece[5] == '>') {
-        unsigned int byte_val = 0;
-        /* Parse two hex digits */
-        for (int i = 3; i < 5; i++) {
-            byte_val <<= 4;
-            char c = piece[i];
-            if (c >= '0' && c <= '9')
-                byte_val += (unsigned)(c - '0');
-            else if (c >= 'a' && c <= 'f')
-                byte_val += (unsigned)(c - 'a' + 10);
-            else if (c >= 'A' && c <= 'F')
-                byte_val += (unsigned)(c - 'A' + 10);
-        }
-        decode_buf[0] = (char)byte_val;
+    if (is_byte_piece(piece)) {
+        decode_buf[0] = (char)byte_piece_value(piece);
         decode_buf[1] = '\0';
         return decode_buf;
     }
 
-    /* Strip leading space marker when the previous token was BOS. Two vocab
-   * formats reach this function: this project's native binary tokenizer
-   * (tokenizer_load, tested by test_tokenizer.c) stores pieces as literal
-   * text with a real ' ' byte; GGUF byte-level-BPE vocabs (tokenizer_gguf.c)
-   * store the same leading space as the 2-byte Ġ marker (UTF-8 0xC4 0xA0)
-   * instead — checking only literal ' ' never matched real byte-level-BPE
-   * pieces, so that marker was never stripped for GGUF-loaded models. */
-    if (t->bos_token_id >= 0 && prev_token == t->bos_token_id) {
-        if ((unsigned char)piece[0] == 0xC4 && (unsigned char)piece[1] == 0xA0)
-            piece = piece + 2;
-        else if (piece[0] == ' ')
-            piece = piece + 1;
-    }
+    if (t->bos_token_id >= 0 && prev_token == t->bos_token_id) piece = strip_space_after_bos(piece);
 
     bpe_bytes_decode(piece, decode_buf, sizeof(decode_buf));
     return decode_buf;

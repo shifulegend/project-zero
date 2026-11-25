@@ -8,7 +8,7 @@ set -eu
 root="$(cd "$(dirname "$0")/.." && pwd)"
 tidy="${CLANG_TIDY:-clang-tidy-18}"
 baseline_file="$root/tools/clang_tidy_baseline.txt"
-checks='-*,bugprone-*,clang-analyzer-*,cert-*,-bugprone-easily-swappable-parameters,-bugprone-reserved-identifier,-cert-dcl37-c,-cert-dcl51-cpp,-clang-analyzer-optin.performance.Padding,-bugprone-narrowing-conversions,-cert-err33-c,-bugprone-implicit-widening-of-multiplication-result'
+checks='-*,bugprone-*,clang-analyzer-*,cert-*,readability-identifier-naming,-bugprone-easily-swappable-parameters,-bugprone-reserved-identifier,-cert-dcl37-c,-cert-dcl51-cpp,-clang-analyzer-optin.performance.Padding,-bugprone-narrowing-conversions,-cert-err33-c,-bugprone-implicit-widening-of-multiplication-result'
 out="$(mktemp)"; trap 'rm -f "$out"' EXIT
 cd "$root"
 find src -name '*.c' | sort | xargs -P "$(nproc 2>/dev/null || echo 2)" -I{} \

@@ -1,6 +1,8 @@
-<script>
-  export let modelInfo = null;
-  export let runtime = null; // GET /v1/config "runtime"
+<script lang="ts">
+  import type { ModelInfo, Runtime } from './types';
+
+  export let modelInfo: ModelInfo | null = null;
+  export let runtime: Runtime | null = null; // GET /v1/config "runtime"
 </script>
 
 <div class="model-info">

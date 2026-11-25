@@ -4,9 +4,11 @@
  */
 
 #include "cli/md_render.h"
-#include "cli/color.h"
+
 #include <stdlib.h>
 #include <string.h>
+
+#include "cli/color.h"
 
 #define MD_INITIAL_CAP 256
 

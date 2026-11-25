@@ -17,6 +17,7 @@
  */
 
 #include <stdio.h>
+
 #include "config/pz_config.h"
 
 /* argv[0] is "config". Returns the process exit code. */
@@ -50,12 +51,23 @@ int pz_config_wizard_ex(PzConfig *c, FILE *in, FILE *out, PzWizardOpts *opts);
  * no chat-page offer). */
 int pz_config_wizard(PzConfig *c, FILE *in, FILE *out, const char *const *model_dirs);
 
+/* What a run was launched with: the merged settings, the argv built from them and where each
+ * setting came from. Owned by main; zero it before the first pz_config_prepare_argv. */
+typedef struct {
+    PzConfig cfg;
+    char **owned;
+    char path[1024];
+    PzProvenance provenance;
+} PzLaunchConfig;
+
 /* Loads the config file + PZ_* environment and returns argv with those
  * settings placed before the user's flags (see pz_config_merge_argv). With
  * --no-config anywhere in argv, or PZ_NO_CONFIG=1, nothing is loaded and the
- * flag is removed. The returned argv and its strings are owned by this module
- * and stay valid until the next call (do not free them). Returns the new argc
+ * flag is removed. The returned argv and its strings are owned by `lc` and stay valid until the
+ * next call or pz_launch_config_free (do not free them); `lc` starts zeroed. Returns the new argc
  * (argv unchanged on error). */
-int pz_config_prepare_argv(int argc, char **argv, char ***out_argv);
+int pz_config_prepare_argv(PzLaunchConfig *lc, int argc, char **argv, char ***out_argv);
+/* Frees the argv and the configuration; the struct is zeroed (and may be reused). */
+void pz_launch_config_free(PzLaunchConfig *lc);
 
 #endif /* TN_CLI_CONFIG_CMD_H */

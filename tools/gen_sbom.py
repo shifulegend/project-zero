@@ -13,6 +13,7 @@ import pathlib
 import re
 import sys
 import uuid
+from typing import Any
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
@@ -32,8 +33,9 @@ VENDORED = [
 ]
 
 
-def vendored_components():
-    out = []
+def vendored_components() -> list[dict[str, Any]]:
+    """CycloneDX components for the vendored headers, with versions read from the headers themselves."""
+    out: list[dict[str, Any]] = []
     for name, rel, pattern, url in VENDORED:
         text = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
         m = re.search(pattern, text)
@@ -54,7 +56,8 @@ def vendored_components():
     return out
 
 
-def build(version):
+def build(version: str) -> dict[str, Any]:
+    """The CycloneDX 1.5 document for release `version`."""
     comps = vendored_components()
     return {
         "bomFormat": "CycloneDX",
@@ -67,8 +70,8 @@ def build(version):
                 "bom-ref": f"project-zero@{version}",
                 "name": "project-zero",
                 "version": version,
-                "licenses": [{"license": {"id": "MIT"}}, {"license": {"id": "LGPL-3.0-or-later"}}],
-                "description": "MIT, except src/math/ternary_matmul_lut_avx512bw.c (LGPL-3.0-or-later)",
+                "licenses": [{"license": {"id": "MIT"}}],
+                "description": "MIT",
             }
         },
         "components": comps,
@@ -78,7 +81,8 @@ def build(version):
     }
 
 
-def main(argv):
+def main(argv: list[str]) -> int:
+    """Entry point: prints the SBOM for the version given on the command line."""
     if len(argv) < 2:
         sys.exit(__doc__)
     text = json.dumps(build(argv[1].lstrip("v")), indent=2) + "\n"

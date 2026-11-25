@@ -77,12 +77,10 @@ jobs:
           mkdir -p "dist/${NAME}"
           cp pz "dist/${NAME}/"
           ln -s pz "dist/${NAME}/adaptive_ai_engine"
-          # LGPL-3.0-or-later kernel (src/math/ternary_matmul_lut_avx512bw.c) is statically
-          # linked into pz: the notice and the licence text must travel with the binary.
-          for f in LICENSE NOTICE LICENSE-LGPL-3.0.txt; do
+          for f in LICENSE NOTICE; do
             [ -f "$f" ] || { echo "ERROR: $f missing from the checkout"; exit 1; }
           done
-          cp LICENSE NOTICE LICENSE-LGPL-3.0.txt README.md CHANGELOG.md "dist/${NAME}/"
+          cp LICENSE NOTICE README.md CHANGELOG.md "dist/${NAME}/"
           tar -C dist -czf "dist/${NAME}.tar.gz" "${NAME}"
           # Phase 40.4: the installer ships beside the archive, in SHA256SUMS too.
           cp install.sh dist/install.sh

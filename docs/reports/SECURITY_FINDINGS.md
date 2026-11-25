@@ -332,7 +332,7 @@ Additionally, **RoPE precomputed frequency tables** were added (`RunState.rope_f
 
 The updated architecture:
 
-```
+```text
 ┌──────────────────────────────────────────────────────────────┐
 │  CLI / REPL (not implemented)                               │
 ├──────────────────────────────────────────────────────────────┤

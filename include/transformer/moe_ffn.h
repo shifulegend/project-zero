@@ -1,12 +1,13 @@
 #ifndef TN_MOE_FFN_H
 #define TN_MOE_FFN_H
 
+#include <stdint.h>
+
 #include "core/config.h"
 #include "core/moe_config.h"
-#include "core/run_state.h"
 #include "core/weights.h"
+#include "runtime/run_state.h"
 #include "threading/thread_pool.h"
-#include <stdint.h>
 
 /**
  * moe_ffn_forward — Execute the MoE FFN for one token in one layer.

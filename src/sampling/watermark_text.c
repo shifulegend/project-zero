@@ -1,7 +1,9 @@
 #include "sampling/watermark_text.h"
-#include "core/clamp.h"
+
 #include <stdlib.h>
 #include <string.h>
+
+#include "core/clamp.h"
 
 TernaryError watermark_detect_text(const WatermarkConfig *wm, Tokenizer *tok, const char *text,
                                    WatermarkResult *out) {

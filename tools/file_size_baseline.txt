@@ -1,0 +1,19 @@
+# Files over 500 lines and their lengths (tools/check_file_sizes.py); entries may only shrink or go.
+src/core/gguf_quant_iq.c 1545
+src/math/matmul_q4k.c 688
+src/math/matmul_q4k_x8.c 654
+src/math/parallel_matmul.c 566
+src/tokenizer/tokenizer_encode.c 592
+src/transformer/attention.c 619
+src/transformer/mla_attention.c 506
+src/update/update_check.c 512
+tests/test_api_server.c 547
+tests/test_forward.c 666
+tests/test_forward_batch.c 602
+tests/test_gguf_loader_qwen3moe.c 617
+tests/test_kv_cache.c 527
+tests/test_lora.c 654
+tests/test_packed_weights.c 504
+tests/test_simd_vnni.c 644
+tools/bench/benchlib.py 772
+tools/deepseek_bench_report.py 547

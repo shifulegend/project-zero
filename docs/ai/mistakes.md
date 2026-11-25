@@ -3,7 +3,64 @@
 > Canonical, append-at-top (newest first). Read this at the start of every session.
 > Add an entry **immediately** when a mistake, false assumption, regression, or avoidable
 > rework is found. Propagate durable lessons into `engineering-rules.md` and the tool adapters.
-> Last updated: 2026-11-18.
+> Last updated: 2026-11-20.
+
+### 2026-11-21 — the agent command runner left a zombie when the output filled the buffer
+- What: found while refactoring `execute_command`: when the child's output reached the buffer size the
+  parent stopped reading and returned without calling `waitpid`, so every such call left a defunct process
+  until the engine exited. The four existing test files never checked it.
+- Fix: `stop_and_reap` kills and collects the child at that point; the exit code reported for a truncated
+  run is unchanged. `tests/test_cmd_exec_buffer.c` fails without it (a `waitpid(-1, WNOHANG)` after the call
+  must find no child) and also pins length, text and exit code for ordinary, failing and truncated runs.
+- Lesson: any early `break` out of a read loop must still reap the child; test the process table, not just
+  the returned buffer.
+
+### 2026-11-21 — a "clang" check of a test built with the other compiler's library objects
+- What: while pinning `tests/test_gguf_config_golden.c` I built the test with `make build/tests/X CC=clang`
+  and read a matching hash as proof that clang agreed. That rule does not rebuild the library: it linked the
+  objects gcc had just produced, so nothing was compiled by clang. `make test CC=clang` (which switches the
+  build variant) then failed: the YaRN attention factor (`1 / (1 + 0.1 * logf(x))`) differs between the
+  compilers in its last bit.
+- Fix: the test pins that field rounded to four places, and the old code was re-recorded with the library
+  rebuilt by each compiler (`rm` the object, then `make CC=... CFLAGS='$(CFLAGS_DEBUG)' ...`).
+- Lesson: a golden hash over floating-point results is compiler-sensitive; pin floats rounded unless they are
+  bit-exact by construction. A cross-compiler check needs the objects the test links to be rebuilt by that
+  compiler, so use `make test CC=<compiler>`, not a direct test target.
+
+### 2026-11-21 — the GGUF reader trusted lengths and counts from the file
+- What: found while building a golden test for `gguf_read_header`, whose exact-size buffers and sanitizers flagged it at once: scalar metadata values were read without a bounds check, string lengths were compared as `*p + len > end` (the sum can wrap), a fixed-size array with a huge count looped once per element, and after a rejected count the header kept it, so `gguf_header_free` on the failure path read far past the metadata array: a crafted GGUF with `n_meta = 100000` segfaulted the old `pz` at startup. Model files are downloaded from the internet, so these are untrusted-input bugs, not curiosities.
+- Fix: one `have()` check against the remaining size for every read, a single check for fixed-size arrays, `fail_header` and a clamped `gguf_header_free`.
+- Lesson: every length, count and offset read from a file is checked as `n <= remaining`, never as `p + n <= end`; a reader needs a truncation-and-mutation test from an exactly sized buffer under ASan, not only tests on well-formed files.
+
+### 2026-11-21 — a golden-hash test's generator depended on the compiler's argument evaluation order
+- What: the first version of `tests/test_semver_parse_equiv.c` built each string with `snprintf(..., pick(a), pick(b), ...)`, every argument calling the random generator. C does not specify argument evaluation order, so gcc and clang drew different strings and the hash recorded on gcc failed on clang. The same hazard sat in `tests/test_pz_config_parse_golden.c` (`1 + rnd(3) * (rnd(4) == 0)`, which happens to agree on both compilers).
+- Fix: each draw is its own statement; the semver hash was re-recorded from the old implementation and verified on gcc and clang.
+- Lesson: in a generator that feeds a recorded hash, never put two calls that advance the random state in one expression or argument list; always run such a test under both compilers before pinning the value.
+
+### 2026-11-21 — `moe_weights_free` crashed or leaked after a partial allocation failure
+- What: `moe_weights_alloc` calls `moe_weights_free` when any allocation fails, but the free path skipped a layer entirely when one of its three expert-row arrays (`w1`, `w2`, `w3`) was NULL (leaking the other rows) and indexed `w->moe.w2[l]` even when the `w2` array itself had not been allocated (a NULL dereference). Found while turning the 25 repeated blocks into tables; the new `tests/test_moe_weights_alloc.c` builds those partial states and segfaults on the old code.
+- Fix: every array and row is checked and freed on its own.
+- Lesson: an error path that calls the destructor needs a test that builds the half-built state; the destructor cannot assume the constructor got past a given point.
+
+### 2026-11-20 — `--verbose` printed the attention-kernel line twice
+- What: when `main()` was split into one function per phase, the attention-kernel block (configure + the `Attention: ...` log line) ended up in `session_apply_runtime_options` twice. The second copy re-ran the same configuration, so only the duplicated output was visible; the parity run listed it as an "intended difference" instead of questioning it.
+- Fix: one copy; `tests/e2e_verbose_output.sh` (CI) fails if a startup line appears more than once (it fails on the old code with 2 prints).
+- Lesson: a parity difference nobody can name a finding for is a regression until proven otherwise; after a mechanical function split, diff the moved blocks for copies.
+
+### 2026-11-20 — `--seed` was ignored by speculative decoding
+- What: `speculative_generate_with_callback()` seeded its RNG with `time(NULL)` and had no seed parameter, so with `--draft-model` two runs of `--seed 5 --temperature 1.0` gave different text (plain generation passes `gp->seed`). Found while writing a differential harness for the function: it needed a pinned clock to compare runs, which showed the seed path was missing.
+- Fix: a `seed` parameter (negative = clock) wired from the CLI and REPL; `test_speculative_seed_is_reproducible` (same seed twice, a second apart, same text; another seed differs) fails on the old code.
+- Lesson: a test that has to pin the clock to be deterministic is pointing at a missing seed.
+
+### 2026-11-20 — A truncated GGUF crashed the loader (segmentation fault)
+- What: the GGUF reader leaves `tensor->data` NULL for a tensor that does not fit in the file and only prints a warning; the weight loaders then read through it (SEGV in `gguf_dequant_q8_0` on a 5 MB prefix of SmolLM2, exit 139). Found by running truncated files through the new `load_gguf_model` split under ASan; the pre-series binary crashes the same way. Separately, a failed `weights_from_gguf()` leaked its weight store because only the success path freed it.
+- Fix: `weights_from_gguf()` refuses the file up front, naming the first missing tensor, before any loader touches it; `load_gguf_model()` now releases the store on that path. `tests/test_gguf_truncated.c` (all five architectures) and a truncated-file case in `tests/e2e_cli_exit_status.sh` guard it.
+- Lesson: a reader that tolerates a bad file by returning a NULL pointer pushes the check to every caller; do it once at the boundary the loaders share.
+
+### 2026-11-20 — CLI modes that failed after loading the model still exited 0
+- What: `main()` ended every post-load error path with `goto cleanup_after_run` and returned `exit_code`, which only `--self-check` ever set. `--plan-layers` with no sizes, `--rpc-worker` without `--layers`, `--remote-layers` failures, `--perplexity` errors, `--watermark-detect` tokenisation errors and a `--server` bind failure all printed an error and returned 0, so a script or service manager saw success. Found while splitting `main()` into phases (each error branch had to be named).
+- Fix: each of those branches sets `exit_code = 1`; `tests/e2e_cli_exit_status.sh` (CI) fails 5 of 6 cases on the old binary. `--image` with an unreadable image still degrades to text-only and exits 0, which is the documented behaviour.
+- Lesson: when a function has many error exits, make "status" part of the one place that returns it and test the exit code, not just the message.
 
 ### 2026-11-19 — test_gen_queue read a thread-written int without synchronisation: intermittent TSan failure
 - What: `test_full_timeout_abort` read `Waiter.last_pos` in the main thread while the waiter thread wrote it from the queue callback. ThreadSanitizer reported the race in one of three CI runs of a docs-only commit (the other two passed); the test itself still reported all tests passed, only the sanitizer step failed.
@@ -2582,7 +2639,7 @@ Installing llama.cpp and bitnet.cpp for head-to-head runs exposed nine pre-exist
   staleness tracking.
 
 ## Entry template (copy this)
-```
+```text
 ### YYYY-MM-DD — <short title>
 - Summary: <what went wrong>
 - Root cause: <why>
@@ -3043,3 +3100,43 @@ Installing llama.cpp and bitnet.cpp for head-to-head runs exposed nine pre-exist
 - Detection: code review of the duplicated helpers; `tests/test_fp16.c` checks all 65536 bit patterns.
 - Correction: every copy now calls the shared helper. Normal values, infinities and NaNs convert exactly as before; subnormals are now exact.
 - Prevention rule: shared numeric helpers live in one header with an exhaustive test; do not copy a conversion into a kernel.
+
+### 2026-11-19 — Web UI markdown applied bold/inline code inside fenced code blocks
+- Summary: `renderMarkdown()` replaced fenced blocks first and then ran the bold and inline-code replacements over the whole string, including the new `<pre>` content, so `**x**` inside a code block became `<strong>`. A comment claimed the opposite.
+- Root cause: the transforms ran sequentially on one string with no notion of where the code blocks were.
+- Affected files/modules: `webui/src/lib/markdown.js` (and the embedded bundle).
+- Detection: writing the XSS/equivalence tests for the renderer showed the comment and the behaviour disagreed.
+- Correction: code blocks are split out first; only the text between them gets inline transforms.
+- Prevention rule: renderer tests (`webui/tests/markdown.test.mjs`) cover code-block content; a comment that states a guarantee needs a test.
+
+### 2026-11-19 — Qwen3-MoE attention scratch was a function-local static shared by every caller
+- Summary: `qwen3moe_attention_forward()` kept its Q/K/V and concat buffers as `static float` arrays, so two forward passes running at once (separate RunStates, two threads) wrote the same memory; widths above the fixed 16384/8192 caps would also have overflowed them.
+- Root cause: the buffers were sized "generously" at compile time to avoid a runtime allocation, and nothing tested two callers at once.
+- Affected files/modules: `src/transformer/qwen3moe_attention.c`, `src/core/qwen3moe_run_state.c`, `include/core/run_state.h`.
+- Detection: the mutable-statics inventory; `tests/test_qwen3moe_concurrent.c` runs two threads and TSan reports 4 data races on the old code, none on the new.
+- Correction: the scratch lives in the RunState (`qwen3moe_scratch`, sized `2*q_width + 2*kv_width`); logits are bit-identical before and after (hash of the sequential test run).
+- Prevention rule: per-call scratch belongs to the caller's state, not a function-local static; a function that could run on two threads gets a two-thread test in the TSan set.
+
+### 2026-11-19 — Matmul kernels shared one reallocated activation buffer across threads
+- Summary: `parallel_matmul_q4k()` (and the Q5_0/Q5_1/Q8_0 integer paths in `q8_0_act.c`) quantised the activation into a file-scope buffer that was freed and re-malloc'd whenever a larger input arrived; two threads calling at once could free the buffer the other was reading (use-after-free) or interleave their quantised data, and the buffer was never freed.
+- Root cause: "static scratch, grow on demand" was written for a single caller; nothing tested two callers.
+- Affected files/modules: `src/math/matmul_q4k.c`, `src/math/q8_0_act.c`; fixed with the new `memory/tls_scratch.h` (per-thread buffer, freed at thread exit).
+- Detection: the mutable-statics inventory; `tests/test_tls_scratch.c` runs the Q4_K matmul from two threads with alternating sizes: it fails and TSan reports 6 races on the old code, none on the new.
+- Correction: each use site has a `TnTlsScratch`; results are unchanged (same quantisation, all existing kernel tests pass).
+- Prevention rule: do not write "static buffer, realloc if too small" in code a server thread can reach; use `tn_tls_scratch()` or caller-owned scratch.
+
+### 2026-11-19 — MoE expert kernels and the router shared file-scope scratch between threads
+- Summary: `moe_experts.c` (7 buffers), `moe_ffn.c` (dequant, batched gate/up/down and Q8K activation buffers) and `moe_router.c` (`static int visited[512]` in the top-k selection, whose own comment called it a stack array) kept their scratch in statics. Two concurrent callers corrupted each other's expert selection and outputs. `moe_ffn.c` also used a stale, possibly unquantised Q8K buffer for the shared expert when `has_expert_quant` was false (a read of garbage or of the previous layer's activation).
+- Root cause: "the function is not re-entrant" was written in a comment instead of enforced; the pool workers read some of the statics directly, which made them look unavoidable.
+- Affected files/modules: `src/transformer/moe_experts.c`, `moe_ffn.c`, `moe_router.c`, `include/transformer/moe_experts.h`.
+- Detection: TSan on the new two-thread tests: 23 races (experts), 15 (ffn + router) on the old code, none on the new.
+- Correction: per-thread scratch via `memory/tls_scratch.h`, handed to pool workers through the task argument struct (they run on other threads); the router array is per call; the Q8K pointer is NULL unless this call quantised the activation, so the shared expert falls back to the float path instead of reading stale data. `moe_experts_free()` now releases the calling thread's scratch. Single-thread outputs are bit-identical (hash of the batched path before and after).
+- Prevention rule: a "not re-entrant" comment is a defect to fix, not a contract; scratch that pool workers read must be passed to them, not looked up.
+
+### 2026-11-19 — Qwen3.5 attention scratch was function-local statics shared by every caller
+- Summary: `q35_full_attn_forward()` (4 buffers) and `q35_linear_attn_forward()` (7 buffers) kept their scratch in `static float` arrays with fixed caps, so concurrent forward passes on separate RunStates overwrote each other.
+- Root cause: same as the Qwen3-MoE and matmul cases; and there was no model-less test, so the layer code was never exercised by a test at all.
+- Affected files/modules: `src/transformer/qwen35_attention.c`, `src/runtime/qwen35_run_state.c`, `include/runtime/run_state.h`.
+- Detection: the mutable-statics inventory; the new `tests/test_qwen35_attention.c` (synthetic Q2_0 model with one DeltaNet and one full-attention layer) fails on the old code and TSan reports 36 races.
+- Correction: `RunState.q35_scratch` (sized from the model, allocated and freed with the other Qwen3.5 state); the single-thread output is bit-identical before and after (hash of the six-step run).
+- Prevention rule: every architecture's attention path gets a synthetic-model test (tests/synth_models.h pattern) and a two-thread case in the TSan set.

@@ -1,10 +1,12 @@
 #include "sampling/sampler_chain.h"
-#include "sampling/sampling.h"
-#include "sampling/rng.h"
-#include "math/simd_dispatch.h"
+
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "math/simd_core_ops.h"
+#include "sampling/rng.h"
+#include "sampling/sampling.h"
 
 void sampler_settings_default(SamplerSettings *ss) {
     if (!ss) return;

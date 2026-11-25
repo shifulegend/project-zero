@@ -7,10 +7,11 @@
  * toolchain/arch without AVX-512 the same names are scalar fallbacks (never bound
  * there). Split out of quantize_i8.c, which is compiled at the AVX2 baseline.
  */
-#include "math/quantize_i8.h"
-#include "core/platform.h"
 #include <math.h>
 #include <string.h>
+
+#include "core/platform.h"
+#include "math/quantize_i8.h"
 
 /* ── AVX-512 accelerated ──────────────────────────────────────────────────── */
 #if TN_HAS_AVX512
@@ -56,7 +57,8 @@ float quantize_row_to_i8_avx512(const float *x, int8_t *q, int n) {
         v        = _mm512_min_ps(v, vpos127);
         v        = _mm512_max_ps(v, vneg127);
 
-        /* float → int32 (round to nearest even, MXCSR default; quantize_i8.h specification) → pack to int8 */
+        /* float → int32 (round to nearest even, MXCSR default; quantize_i8.h specification) → pack
+         * to int8 */
         __m512i i32 = _mm512_cvtps_epi32(v);
 
         /* Pack 16 int32 → 16 int8 (values in [-127,127], safe truncation) */

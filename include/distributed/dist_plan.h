@@ -15,13 +15,14 @@
  */
 
 #include "core/config.h"
-#include "core/moe_config.h"
 #include "core/error.h"
-#include "core/run_state.h"
+#include "core/moe_config.h"
 #include "core/weights.h"
+#include "runtime/run_state.h"
 #include "threading/thread_pool.h"
 
 #define DIST_MAX_NODES 8
+#define DIST_SPEC_BUF 256 /* a --plan-layers / --remote-layers node list */
 
 typedef struct {
     char host[128];
@@ -31,7 +32,7 @@ typedef struct {
     float *scratch; /* dim + 1 floats: outgoing FORWARD payload */
 } RemoteNode;
 
-typedef struct {
+typedef struct DistPlan {
     int n;
     RemoteNode nodes[DIST_MAX_NODES];
     int dim;
@@ -52,10 +53,6 @@ void dist_plan_layers_by_ram(int n_layers, const long long *ram, int n_nodes, in
 TernaryError dist_plan_connect(DistPlan *dp, const Config *cfg, const MoEConfig *mc);
 void dist_plan_close(DistPlan *dp);
 
-/* Process-wide plan used by transformer_forward() (NULL = all layers local). */
-void dist_plan_set_active(DistPlan *dp);
-DistPlan *dist_plan_active(void);
-
 /* Node whose range starts at `layer`, else NULL. */
 RemoteNode *dist_plan_node_starting_at(DistPlan *dp, int layer);
 
@@ -63,11 +60,5 @@ RemoteNode *dist_plan_node_starting_at(DistPlan *dp, int layer);
  * sw_pinned = the coordinator's sliding-window pinned length (s->sw), which
  * the worker mirrors so both sides map positions to the same KV slots. */
 TernaryError dist_forward_remote(DistPlan *dp, RemoteNode *node, float *x, int pos, int sw_pinned);
-
-/* Worker loop: serves FORWARD requests for layers [start, end) forever
- * (one coordinator connection at a time). Returns only on listen failure. */
-TernaryError dist_worker_serve(int port, int loopback_only, int start, int end, const Config *cfg,
-                               const TransformerWeights *w, RunState *s, const MoEConfig *mc,
-                               ThreadPool *tp);
 
 #endif /* TN_DIST_PLAN_H */

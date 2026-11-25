@@ -1,6 +1,9 @@
 #include "multimodal/image_load.h"
-#include <stdlib.h>
+
 #include <stdio.h>
+#include <stdlib.h>
+
+#include "core/log.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -30,7 +33,7 @@ TernaryError load_image(const char *path, float **pixels, int *width, int *heigh
     // Load as float RGB (3 channels)
     float *img_f = stbi_loadf(path, &img_w, &img_h, &channels, 3);
     if (!img_f) {
-        fprintf(stderr, "Failed to load image: %s\n", stbi_failure_reason());
+        TN_LOG_ERR("image_load", "Failed to load image: %s\n", stbi_failure_reason());
         return TN_ERR_IMAGE_LOAD;
     }
 

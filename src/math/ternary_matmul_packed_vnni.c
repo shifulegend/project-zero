@@ -2,12 +2,13 @@
 
 #if TN_HAS_AVX512VNNI
 
-#include "math/ternary_matmul_packed.h"
-#include "math/quantize_i8.h"
-#include "math/bitunpack2_vnni.h"
 #include <immintrin.h>
-#include <string.h>
 #include <stdint.h>
+#include <string.h>
+
+#include "math/bitunpack2_vnni.h"
+#include "math/quantize_i8.h"
+#include "math/ternary_matmul_packed.h"
 
 /*
  * AVX-512 VNNI ternary matmul (Phase 16-S.2 — K-1a)

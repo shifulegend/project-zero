@@ -1,9 +1,10 @@
 #ifndef TN_THREAD_POOL_H
 #define TN_THREAD_POOL_H
 
-#include "core/platform.h"
-#include <stdbool.h>
 #include <stdatomic.h>
+#include <stdbool.h>
+
+#include "core/platform.h"
 
 #if TN_POSIX
 #include <pthread.h>

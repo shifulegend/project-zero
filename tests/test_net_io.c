@@ -1,11 +1,12 @@
 /* net_write_all(): full delivery across short writes, and a clean failure when the peer is gone. */
+#include <arpa/inet.h>
 #include <pthread.h>
-#include <time.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "api/net_io.h"
@@ -42,7 +43,24 @@ static void *reader_fn(void *arg) {
     return NULL;
 }
 
+static void test_peer_masked(void) {
+    struct in_addr a;
+    char out[32];
+    inet_pton(AF_INET, "192.168.1.77", &a);
+    net_format_peer_masked(&a, out, sizeof(out));
+    CHECK(strcmp(out, "192.168.1.x") == 0, "peer address: last octet masked");
+    inet_pton(AF_INET, "127.0.0.1", &a);
+    net_format_peer_masked(&a, out, sizeof(out));
+    CHECK(strcmp(out, "127.0.0.x") == 0, "peer address: loopback masked");
+    char tiny[6];
+    net_format_peer_masked(&a, tiny, sizeof(tiny));
+    CHECK(strlen(tiny) < sizeof(tiny), "peer address: small buffer stays terminated");
+    net_format_peer_masked(NULL, out, sizeof(out));
+    CHECK(strcmp(out, "?") == 0, "peer address: NULL gives ?");
+}
+
 int main(void) {
+    test_peer_masked();
     signal(SIGPIPE, SIG_IGN); /* same as the server */
     int sv[2];
     if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) != 0) {
